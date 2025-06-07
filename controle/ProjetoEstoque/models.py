@@ -1,12 +1,17 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
+from dateutil.relativedelta import relativedelta
+from datetime import datetime, timedelta, date
 
+
+## Banco categoria ##
 class Categoria(models.Model):
     nome = models.CharField(max_length=100)
 
     def __str__(self):
         return self.nome
-
+## banco Subtipo
 class Subtipo(models.Model):
     nome = models.CharField(max_length=100)
     categoria = models.ForeignKey(Categoria, on_delete=models.CASCADE, related_name='subtipos')
@@ -14,17 +19,19 @@ class Subtipo(models.Model):
     def __str__(self):
         return f"{self.nome} ({self.categoria.nome})"
 
+## banco equipamentos ##
 class Equipamento(models.Model):
     STATUS_CHOICES = [
         ('ativo', 'Ativo'),
         ('backup', 'Backup'),
+        ('correcao', 'Correção'),
         ('manutencao', 'Manutenção'),
-        ('queimado', 'Defeito'),
+        ('queimado', 'Queimado'),
     ]
 
     nome = models.CharField(max_length=100)
     categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT)
-    subtipo = models.ForeignKey(Subtipo, on_delete=models.PROTECT, blank=True, null=True)
+    subtipo = models.ForeignKey(Subtipo, on_delete=models.PROTECT)
     numero_serie = models.CharField(max_length=100, unique=True)
     marca = models.CharField(max_length=100, blank=True, null=True)
     modelo = models.CharField(max_length=100, blank=True, null=True)
@@ -33,21 +40,15 @@ class Equipamento(models.Model):
     quantidade = models.PositiveIntegerField(default=1)
     estoque_minimo = models.PositiveIntegerField(default=0)
     observacoes = models.TextField(blank=True, null=True)
-
-    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    criado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='equipamentos_criados')
-    atualizado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='equipamentos_atualizados')
-
-    def save(self, *args, **kwargs):
-        if not self.pk and not self.criado_por:
-            self.criado_por = getattr(self, '_user', None)
-        self.atualizado_por = getattr(self, '_user', None)
-        super().save(*args, **kwargs)
+    precisa_preventiva = models.CharField(max_length=3, choices=[('sim', 'Sim'), ('nao', 'Não')], default='nao')
+    data_limite_preventiva = models.PositiveIntegerField(blank=True, null=True, help_text="Intervalo em meses")
 
     def __str__(self):
         return f"{self.nome} - {self.numero_serie}"
 
+## Banco comentários ##
 class Comentario(models.Model):
     equipamento = models.ForeignKey('Equipamento', on_delete=models.CASCADE, related_name='comentarios')
     autor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
@@ -56,3 +57,30 @@ class Comentario(models.Model):
 
     def __str__(self):
         return f"Comentário por {self.autor} em {self.equipamento}"
+    
+
+
+## Banco Preventivas ##
+
+class Preventiva(models.Model):
+    equipamento = models.ForeignKey('Equipamento', on_delete=models.CASCADE)
+    data_ultima = models.DateTimeField()
+    data_proxima = models.DateField(null=True, blank=True)
+    autor = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    dentro_do_prazo = models.CharField(max_length=10, choices=[('sim', 'Sim'), ('não', 'Não')], default='não')
+    observacoes = models.TextField(blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        # Garante que data_proxima seja recalculada
+        if not self.data_proxima:
+            meses = self.equipamento.data_limite_preventiva or 3
+            self.data_proxima = self.data_ultima + timedelta(days=30 * meses)
+
+        # Correção: comparar datas no mesmo formato
+        if self.data_proxima and self.data_ultima:
+            if self.data_ultima.date() <= self.data_proxima.date():
+                self.dentro_do_prazo = "sim"
+            else:
+                self.dentro_do_prazo = "não"
+
+        super().save(*args, **kwargs)

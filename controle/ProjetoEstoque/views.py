@@ -1,12 +1,18 @@
+from datetime import timedelta, date
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .models import Equipamento, Categoria, Subtipo, Comentario
-from .forms import CategoriaForm, SubtipoForm, EquipamentoForm, ComentarioForm
+from .models import Equipamento, Categoria, Subtipo, Preventiva
+from .forms import CategoriaForm, SubtipoForm, EquipamentoForm, ComentarioForm, PreventivaForm
 from django.shortcuts import render, redirect
 import openpyxl
 from openpyxl.utils import get_column_letter
 from django.http import HttpResponse
+from django.contrib import messages
+from django.utils import timezone
+from dateutil.relativedelta import relativedelta
 
+
+############# Home #################
 @login_required
 def home(request):
     equipamentos = Equipamento.objects.all()
@@ -36,7 +42,7 @@ def home(request):
     return render(request, 'front\\home.html', context)
 
 
-
+############### Visualização de Equipamento #########################
 @login_required
 def equipamento_detalhe(request, pk):
     equipamento = get_object_or_404(Equipamento, pk=pk)
@@ -49,7 +55,7 @@ def equipamento_detalhe(request, pk):
             comentario.equipamento = equipamento
             comentario.autor = request.user
             comentario.save()
-            return redirect('equipamento', pk=equipamento.pk)
+            return redirect('equipamento_detalhe', pk=equipamento.pk)
     else:
         form = ComentarioForm()
 
@@ -61,7 +67,7 @@ def equipamento_detalhe(request, pk):
 
     
 
-
+################ Cadastro de Categoria #####################
 
 @login_required
 def cadastrar_categoria(request):
@@ -74,7 +80,7 @@ def cadastrar_categoria(request):
         form = CategoriaForm()
     return render(request, 'front\\cadastrar_categoria.html', {'form': form})
 
-
+#################### Cadastro de SUbtipo ######################
 @login_required
 def cadastrar_subtipo(request):
     if request.method == 'POST':
@@ -86,7 +92,7 @@ def cadastrar_subtipo(request):
         form = SubtipoForm()
     return render(request, 'front\\cadastrar_subtipo.html', {'form': form})
 
-
+################### Cadastro de equipamento ###########################
 @login_required
 def cadastrar_equipamento(request):
     if request.method == 'POST':
@@ -100,6 +106,7 @@ def cadastrar_equipamento(request):
         form = EquipamentoForm()
     return render(request, 'front\\cadastrar_equipamento.html', {'form': form})
 
+############# Edição de equipamento ##########
 @login_required
 def editar_equipamento(request, pk):
     equipamento = get_object_or_404(Equipamento, pk=pk)
@@ -114,7 +121,7 @@ def editar_equipamento(request, pk):
 
     return render(request, 'front\\editar_equipamento.html', {'form': form, 'equipamento': equipamento})
 
-
+######### exclusão de equipamento #############
 @login_required
 def excluir_equipamento(request, pk):
     equipamento = get_object_or_404(Equipamento, pk=pk)
@@ -154,7 +161,7 @@ def exportar_equipamentos_excel(request):
           
         ])
 
-    # Ajuste automático das larguras de coluna
+    ## Ajuste automático das larguras de coluna
     for col in ws.columns:
         max_length = 0
         col_letter = get_column_letter(col[0].column)
@@ -169,3 +176,61 @@ def exportar_equipamentos_excel(request):
     response["Content-Disposition"] = 'attachment; filename="equipamentos.xlsx"'
     wb.save(response)
     return response
+
+################ Visualizar Preventivas ####################
+
+def visualizar_preventivas(request, equipamento_id):
+    equipamento = get_object_or_404(Equipamento, id=equipamento_id)
+    preventivas = Preventiva.objects.filter(equipamento=equipamento).order_by('-data_ultima')
+
+    # calculo de dias
+    for preventiva in preventivas:
+        if preventiva.data_proxima:
+            dias_restantes = (preventiva.data_proxima - date.today()).days
+        else:
+            dias_restantes = None
+        preventiva.dias_restantes = dias_restantes
+
+    return render(request, 'front/preventivas.html', {
+        'equipamento': equipamento,
+        'preventivas': preventivas,
+    })
+
+
+
+################## Preventivas #################
+
+@login_required
+def cadastrar_preventiva(request, equipamento_id):
+    equipamento = get_object_or_404(Equipamento, id=equipamento_id)
+
+    if request.method == 'POST':
+        form = PreventivaForm(request.POST)
+        if form.is_valid():
+            preventiva = form.save(commit=False)
+            preventiva.equipamento = equipamento
+            preventiva.autor = request.user
+            preventiva.data_ultima = timezone.now()
+
+            # Define próxima preventiva (baseado nos meses definidos no equipamento)
+            meses = equipamento.data_limite_preventiva or 3  # padrão 3 meses
+            preventiva.data_proxima = preventiva.data_ultima + timedelta(days=30 * meses)
+
+            preventiva.save()
+
+            # Atualiza equipamento com a nova data da última preventiva
+            equipamento.ultima_preventiva = preventiva.data_ultima
+            equipamento.save()
+            messages.success(
+                request,
+                f"Preventiva cadastrada com sucesso. Próxima prevista para {preventiva.data_proxima.strftime('%d/%m/%Y')}."
+            )
+
+            return redirect('equipamento_detalhe', pk=equipamento.id)
+    else:
+        form = PreventivaForm()
+
+    return render(request, 'front\\preventiva_form.html', {
+        'form': form,
+        'equipamento': equipamento,
+    })

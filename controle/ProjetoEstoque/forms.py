@@ -1,5 +1,7 @@
 from django import forms
-from .models import Categoria, Subtipo, Equipamento, Comentario
+from .models import Categoria, Subtipo, Equipamento, Comentario, Preventiva
+from django.utils import timezone
+from datetime import timedelta
 
 class CategoriaForm(forms.ModelForm):
     class Meta:
@@ -21,10 +23,20 @@ class SubtipoForm(forms.ModelForm):
 class EquipamentoForm(forms.ModelForm):
     class Meta:
         model = Equipamento
-        
         fields = [
-            'nome', 'categoria', 'subtipo', 'numero_serie', 'marca', 'modelo',
-            'local', 'status', 'quantidade', 'estoque_minimo', 'observacoes'
+            'nome',
+            'categoria',
+            'subtipo',
+            'numero_serie',
+            'marca',
+            'modelo',
+            'local',
+            'status',
+            'quantidade',
+            'estoque_minimo',
+            'precisa_preventiva',
+            'data_limite_preventiva',
+            'observacoes',
         ]
         widgets = {
             'nome': forms.TextInput(attrs={'class': 'form-control'}),
@@ -37,6 +49,8 @@ class EquipamentoForm(forms.ModelForm):
             'status': forms.Select(attrs={'class': 'form-control'}),
             'quantidade': forms.NumberInput(attrs={'class': 'form-control'}),
             'estoque_minimo': forms.NumberInput(attrs={'class': 'form-control'}),
+            'precisa_preventiva': forms.Select(choices=[(True, 'Sim'), (False, 'Não')], attrs={'class': 'form-control'}),
+            'data_limite_preventiva': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
             'observacoes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
 
@@ -46,4 +60,12 @@ class ComentarioForm(forms.ModelForm):
         fields = ['texto']
         widgets = {
             'texto': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Escreva seu comentário...'}),
+        }
+
+class PreventivaForm(forms.ModelForm):
+    class Meta:
+        model = Preventiva
+        fields = ['observacoes']
+        widgets = {
+            'observacoes': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Descreva o que foi feito na preventiva...'})
         }
