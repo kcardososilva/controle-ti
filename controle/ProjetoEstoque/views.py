@@ -10,7 +10,7 @@ from django.http import HttpResponse
 from django.contrib import messages
 from django.utils import timezone
 from dateutil.relativedelta import relativedelta
-
+from django.db.models import Max
 
 ############# Home #################
 @login_required
@@ -237,9 +237,23 @@ def cadastrar_preventiva(request, equipamento_id):
         'equipamento': equipamento,
     })
 
+@login_required
 def todas_preventivas(request):
-    preventivas = Preventiva.objects.select_related('equipamento', 'autor', 'equipamento__categoria', 'equipamento__subtipo').all()
+    # Filtrar apenas a última preventiva de cada equipamento
+    ultimas_datas = Preventiva.objects.values('equipamento').annotate(max_data=Max('data_ultima'))
 
+    # Montar queryset com as preventivas correspondentes
+    preventivas = Preventiva.objects.filter(
+        id__in=[
+            Preventiva.objects.filter(
+                equipamento=item['equipamento'],
+                data_ultima=item['max_data']
+            ).first().id
+            for item in ultimas_datas
+        ]
+    ).select_related('equipamento', 'autor', 'equipamento__categoria', 'equipamento__subtipo')
+
+    # Filtros
     search = request.GET.get('search')
     categoria_id = request.GET.get('categoria')
     subtipo_id = request.GET.get('subtipo')
