@@ -2,7 +2,7 @@ from datetime import timedelta, date
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from .models import Equipamento, Categoria, Subtipo, Preventiva
-from .forms import CategoriaForm, SubtipoForm, EquipamentoForm, ComentarioForm, PreventivaForm
+from .forms import CategoriaForm, SubtipoForm, EquipamentoForm, ComentarioForm, PreventivaForm,  PreventivaFormSwitch, PreventivaFormAP
 from django.shortcuts import render, redirect
 import openpyxl
 from openpyxl.utils import get_column_letter
@@ -205,36 +205,41 @@ def visualizar_preventivas(request, equipamento_id):
 @login_required
 def cadastrar_preventiva(request, equipamento_id):
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
+    subtipo_nome = equipamento.subtipo.nome.lower()
+
+    # Escolhe o form correto
+    if "switch" in subtipo_nome:
+        FormClass = PreventivaFormSwitch
+    elif "ap" in subtipo_nome or "access point" in subtipo_nome:
+        FormClass = PreventivaFormAP
+    else:
+        FormClass = PreventivaForm
 
     if request.method == 'POST':
-        form = PreventivaForm(request.POST)
+        form = FormClass(request.POST)
         if form.is_valid():
             preventiva = form.save(commit=False)
             preventiva.equipamento = equipamento
             preventiva.autor = request.user
             preventiva.data_ultima = timezone.now()
-
-            # Define próxima preventiva (baseado nos meses definidos no equipamento)
-            meses = equipamento.data_limite_preventiva or 3  # padrão 3 meses
+            meses = equipamento.data_limite_preventiva or 3
             preventiva.data_proxima = preventiva.data_ultima + timedelta(days=30 * meses)
-
             preventiva.save()
-
-            # Atualiza equipamento com a nova data da última preventiva
+            # Se quiser salvar os extras, use: preventiva.info_extra1 = ...
             equipamento.ultima_preventiva = preventiva.data_ultima
             equipamento.save()
             messages.success(
                 request,
                 f"Preventiva cadastrada com sucesso. Próxima prevista para {preventiva.data_proxima.strftime('%d/%m/%Y')}."
             )
-
             return redirect('equipamento_detalhe', pk=equipamento.id)
     else:
-        form = PreventivaForm()
+        form = FormClass()
 
     return render(request, 'front\\preventiva_form.html', {
         'form': form,
         'equipamento': equipamento,
+        'subtipo_nome': subtipo_nome,
     })
 
 @login_required
