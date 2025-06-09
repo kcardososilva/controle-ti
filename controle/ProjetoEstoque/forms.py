@@ -1,7 +1,7 @@
 from django import forms
 from .models import Categoria, Subtipo, Equipamento, Comentario, Preventiva
-from django.utils import timezone
-from datetime import timedelta
+
+
 
 class CategoriaForm(forms.ModelForm):
     class Meta:

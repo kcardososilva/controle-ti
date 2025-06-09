@@ -44,6 +44,9 @@ class Equipamento(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     precisa_preventiva = models.CharField(max_length=3, choices=[('sim', 'Sim'), ('nao', 'Não')], default='nao')
     data_limite_preventiva = models.PositiveIntegerField(blank=True, null=True, help_text="Intervalo em meses")
+    criado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='equipamentos_criados')
+    atualizado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='equipamentos_atualizados')
+
 
     def __str__(self):
         return f"{self.nome} - {self.numero_serie}"
@@ -84,3 +87,4 @@ class Preventiva(models.Model):
                 self.dentro_do_prazo = "não"
 
         super().save(*args, **kwargs)
+

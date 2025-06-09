@@ -12,7 +12,7 @@ urlpatterns = [
     path('cadastrar-subtipo/', views.cadastrar_subtipo, name='cadastrar_subtipo'),
     path('cadastrar-equipamento/', views.cadastrar_equipamento, name='cadastrar_equipamento'),
 
-    # Crud Equipamentos 
+    # Crud Equipamentos  
     path('editar-equipamento/<int:pk>/', views.editar_equipamento, name='editar_equipamento'),
     path('excluir-equipamento/<int:pk>/', views.excluir_equipamento, name='excluir_equipamento'),
     path('exportar-equipamentos/', views.exportar_equipamentos_excel, name='exportar_equipamentos'),
@@ -21,7 +21,8 @@ urlpatterns = [
     ## Preventivas 
     path('equipamento/<int:equipamento_id>/preventivas/nova/', views.cadastrar_preventiva, name='cadastrar_preventiva'),
     path('equipamento/<int:equipamento_id>/preventivas/', views.visualizar_preventivas, name='visualizar_preventivas'),
-
+    path('preventivas/', views.todas_preventivas, name='todas_preventivas'),
+    
     ## Login
     path('login/', auth_views.LoginView.as_view(template_name='login.html'), name='login'),
     

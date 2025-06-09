@@ -114,8 +114,10 @@ def editar_equipamento(request, pk):
     if request.method == 'POST':
         form = EquipamentoForm(request.POST, instance=equipamento)
         if form.is_valid():
-            form.save()
-            return redirect('home')
+            equipamento = form.save(commit=False)
+            equipamento.atualizado_por = request.user  # <-- salva quem editou
+            equipamento.save()
+            return redirect('equipamento_detalhe', pk=equipamento.pk)  # redirecione corretamente
     else:
         form = EquipamentoForm(instance=equipamento)
 
@@ -233,4 +235,42 @@ def cadastrar_preventiva(request, equipamento_id):
     return render(request, 'front\\preventiva_form.html', {
         'form': form,
         'equipamento': equipamento,
+    })
+
+def todas_preventivas(request):
+    preventivas = Preventiva.objects.select_related('equipamento', 'autor', 'equipamento__categoria', 'equipamento__subtipo').all()
+
+    search = request.GET.get('search')
+    categoria_id = request.GET.get('categoria')
+    subtipo_id = request.GET.get('subtipo')
+    status = request.GET.get('status')
+
+    if search:
+        preventivas = [p for p in preventivas if search.lower() in p.equipamento.nome.lower() or search.lower() in p.equipamento.numero_serie.lower()]
+
+    if categoria_id:
+        preventivas = [p for p in preventivas if str(p.equipamento.categoria.id) == categoria_id]
+
+    if subtipo_id:
+        preventivas = [p for p in preventivas if str(p.equipamento.subtipo.id) == subtipo_id]
+
+    if status:
+        preventivas = [p for p in preventivas if p.equipamento.status == status]
+
+    # Cálculo dos dias restantes
+    for preventiva in preventivas:
+        if preventiva.data_proxima:
+            preventiva.dias_restantes = (preventiva.data_proxima - date.today()).days
+        else:
+            preventiva.dias_restantes = None
+
+    categorias = Categoria.objects.all()
+    subtipos = Subtipo.objects.all()
+    status_choices = Equipamento.STATUS_CHOICES
+
+    return render(request, 'front\\todas_preventivas.html', {
+        'preventivas': preventivas,
+        'categorias': categorias,
+        'subtipos': subtipos,
+        'status_choices': status_choices,
     })

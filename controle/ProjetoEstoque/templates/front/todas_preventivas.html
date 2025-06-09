@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+    <h2 style="margin: 0;">Todas as Preventivas</h2>
+    <a href="{% url 'home' %}" class="btn-cadastrar btn-sm" style="padding: 6px 10px; font-size: 13px; margin-top: 10px;">← Voltar</a>
+  </div>
+
+  <form method="get" class="filter-bar">
+    <input type="text" name="search" placeholder="Buscar por nome do equipamento ou S/N" value="{{ request.GET.search }}">
+    <select name="categoria">
+      <option value="">Todas as categorias</option>
+      {% for cat in categorias %}
+        <option value="{{ cat.id }}" {% if request.GET.categoria == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.nome }}</option>
+      {% endfor %}
+    </select>
+    <select name="subtipo">
+      <option value="">Todos os subtipos</option>
+      {% for sub in subtipos %}
+        <option value="{{ sub.id }}" {% if request.GET.subtipo == sub.id|stringformat:"s" %}selected{% endif %}>{{ sub.nome }}</option>
+      {% endfor %}
+    </select>
+    <select name="status">
+      <option value="">Todos os status</option>
+      {% for code, label in status_choices %}
+        <option value="{{ code }}" {% if request.GET.status == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Filtrar</button>
+  </form>
+
+  <div class="total-itens" style="margin-top: 15px;">
+    Total de preventivas encontradas: <strong>{{ preventivas|length }}</strong>
+  </div>
+
+  <div class="table-container" style="margin-top: 15px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Equipamento</th>
+          <th>Subtipo</th>
+          <th>Status</th>
+          <th>Última Preventiva</th>
+          <th>Próxima Preventiva</th>
+          <th>Dias Restantes</th>
+          <th>Autor</th>
+          <th>Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for preventiva in preventivas %}
+          <tr class="{% if preventiva.dentro_do_prazo == 'sim' %}linha-verde{% else %}linha-vermelha{% endif %}">
+            <td>{{ preventiva.equipamento.nome }}</td>
+            <td>{{ preventiva.equipamento.subtipo.nome }}</td>
+            <td>{{ preventiva.equipamento.get_status_display }}</td>
+            <td>{{ preventiva.data_ultima|date:"d/m/Y" }}</td>
+            <td>
+              {% if preventiva.data_proxima %}
+                {{ preventiva.data_proxima|date:"d/m/Y" }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td>
+              {% if preventiva.dias_restantes != None %}
+                {{ preventiva.dias_restantes }} dias
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td>{{ preventiva.autor.username }}</td>
+            <td><a class="btn-cadastrar btn-sm" style="padding: 6px 10px; font-size: 13px;" href="{% url 'visualizar_preventivas' preventiva.equipamento.id %}">Detalhar</a></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="8">Nenhuma preventiva encontrada.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
