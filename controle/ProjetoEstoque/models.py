@@ -65,6 +65,11 @@ class Comentario(models.Model):
 
 ## Banco Preventivas ##
 
+OPCOES = [
+    ('ok', 'Ok'),
+    ('nao_ok', 'Não Ok'),
+]
+
 class Preventiva(models.Model):
     equipamento = models.ForeignKey('Equipamento', on_delete=models.CASCADE)
     data_ultima = models.DateTimeField()
@@ -72,8 +77,24 @@ class Preventiva(models.Model):
     autor = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     dentro_do_prazo = models.CharField(max_length=10, choices=[('sim', 'Sim'), ('não', 'Não')], default='não')
     observacoes = models.TextField(blank=True, null=True)
-    status_led = models.CharField(max_length=3, choices=[('sim', 'Sim'), ('nao', 'Não')])
-    status_local_ap = models.CharField(max_length=3, choices=[('sim', 'Sim'), ('nao', 'Não')])
+
+    # Campos para perguntas objetivas
+    status_cabo_ethernet = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    limpeza_equipamento = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_leds = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_firmware = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_firmware_bkp = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_congestionamento = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_temperatura = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_teste_portas = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_failover = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_teste_rede = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_local_ap = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_velocidade_ap = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_cobertura_ap = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_canais_ap = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    status_wps_ap = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    copia_seguranca_ap = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
 
     def save(self, *args, **kwargs):
         # Garante que data_proxima seja recalculada
@@ -87,6 +108,5 @@ class Preventiva(models.Model):
                 self.dentro_do_prazo = "sim"
             else:
                 self.dentro_do_prazo = "não"
-
         super().save(*args, **kwargs)
 

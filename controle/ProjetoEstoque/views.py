@@ -2,7 +2,7 @@ from datetime import timedelta, date
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from .models import Equipamento, Categoria, Subtipo, Preventiva
-from .forms import CategoriaForm, SubtipoForm, EquipamentoForm, ComentarioForm, PreventivaForm,  PreventivaFormSwitch, PreventivaFormAP
+from .forms import CategoriaForm, SubtipoForm, EquipamentoForm, ComentarioForm, PreventivaFormComum,  PreventivaFormSwitch, PreventivaFormAP
 from django.shortcuts import render, redirect
 import openpyxl
 from openpyxl.utils import get_column_letter
@@ -205,15 +205,14 @@ def visualizar_preventivas(request, equipamento_id):
 @login_required
 def cadastrar_preventiva(request, equipamento_id):
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
-    subtipo_nome = equipamento.subtipo.nome.lower()
+    subtipo_nome = equipamento.subtipo.nome.lower().replace(" ", "")
 
-    # Escolhe o form correto
-    if "switches" in subtipo_nome:
+    if subtipo_nome in ['switch', 'switches']:
         FormClass = PreventivaFormSwitch
-    elif "acess-point" in subtipo_nome:
+    elif subtipo_nome in ['acess-point', 'ap', 'accesspoint']:
         FormClass = PreventivaFormAP
     else:
-        FormClass = PreventivaForm
+        FormClass = PreventivaFormComum
 
     if request.method == 'POST':
         form = FormClass(request.POST)
@@ -225,13 +224,7 @@ def cadastrar_preventiva(request, equipamento_id):
             meses = equipamento.data_limite_preventiva or 3
             preventiva.data_proxima = preventiva.data_ultima + timedelta(days=30 * meses)
             preventiva.save()
-            # Se quiser salvar os extras, use: preventiva.info_extra1 = ...
-            equipamento.ultima_preventiva = preventiva.data_ultima
-            equipamento.save()
-            messages.success(
-                request,
-                f"Preventiva cadastrada com sucesso. Próxima prevista para {preventiva.data_proxima.strftime('%d/%m/%Y')}."
-            )
+            messages.success(request, "Preventiva cadastrada com sucesso.")
             return redirect('equipamento_detalhe', pk=equipamento.id)
     else:
         form = FormClass()
@@ -239,7 +232,6 @@ def cadastrar_preventiva(request, equipamento_id):
     return render(request, 'front\\preventiva_form.html', {
         'form': form,
         'equipamento': equipamento,
-        'subtipo_nome': subtipo_nome,
     })
 
 @login_required

@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from .views import home
 from django.contrib.auth import views as auth_views
+from django.contrib.auth.views import LogoutView
 
 urlpatterns = [
     path('', home, name="home"),

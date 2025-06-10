@@ -62,30 +62,52 @@ class ComentarioForm(forms.ModelForm):
             'texto': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Escreva seu comentário...'}),
         }
 
-class PreventivaForm(forms.ModelForm):
+
+
+OPCOES = [('ok', 'Ok'), ('nao_ok', 'Não Ok')]
+
+class PreventivaFormComum(forms.ModelForm):
+    status_cabo_ethernet = forms.ChoiceField(label="Confirme se todos os cabos Ethernet estão conectados corretamente e sem sinais de desgaste ou danos", choices=OPCOES, widget=forms.RadioSelect)
+    limpeza_equipamento = forms.ChoiceField(label="Remover poeira e sujeira acumulada nas portas, ventiladores e em outras partes do switch", choices=OPCOES, widget=forms.RadioSelect)
+    status_leds = forms.ChoiceField(label="Observe os LEDs do switch para garantir que todas as portas estão operando e não há falhas ou interrupções no sinal", choices=OPCOES, widget=forms.RadioSelect)
+    status_firmware = forms.ChoiceField(label="O firmware do switch deve atualizado para corrigir falhas de segurança, melhorar a performance e inserir novas funcionalidades", choices=OPCOES, widget=forms.RadioSelect)
+    status_firmware_bkp = forms.ChoiceField(label="Antes de atualizar, faça um backup das configurações para evitar a perda de configurações personalizadas", choices=OPCOES, widget=forms.RadioSelect)
+    observacoes = forms.CharField(widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'Insira as Observações referente aos tópicos'}), required=False)
+
     class Meta:
         model = Preventiva
-        fields = ['observacoes']
-        widgets = {
-            'observacoes': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Descreva o que foi feito na preventiva...'})
-        }
+        fields = ['observacoes', 'status_cabo_ethernet', 'limpeza_equipamento', 'status_leds', 'status_firmware', 'status_firmware_bkp']
 
-class PreventivaFormSwitch(forms.ModelForm):
-    
-    observacoes = forms.CharField(
-        widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'O que foi feito no switch?', 'class': 'form-control'}),
-        required=False,
-    )
-    class Meta:
-        model = Preventiva
-        fields = ['observacoes', 'status_led']
+class PreventivaFormSwitch(PreventivaFormComum):
+    status_congestionamento = forms.ChoiceField(label="Identifique possíveis congestionamentos ou falhas no fluxo de dados", choices=OPCOES, widget=forms.RadioSelect)
+    status_temperatura = forms.ChoiceField(label="Muitos switches possuem sensores de temperatura que ajudam a garantir que o equipamento não esteja superaquecendo", choices=OPCOES, widget=forms.RadioSelect)
+    status_teste_portas = forms.ChoiceField(label="Execute testes de conectividade para garantir que todas as portas estão funcionando corretamente", choices=OPCOES, widget=forms.RadioSelect)
+    status_failover = forms.ChoiceField(label="Se o switch faz parte de uma configuração redundante, verifique se as funções de failover estão operando corretamente", choices=OPCOES, widget=forms.RadioSelect)
+    status_teste_rede = forms.ChoiceField(label="Após a manutenção, realize testes de rede para garantir que as configurações do switch estão funcionando corretamente", choices=OPCOES, widget=forms.RadioSelect)
 
-class PreventivaFormAP(forms.ModelForm):
+    class Meta(PreventivaFormComum.Meta):
+        fields = PreventivaFormComum.Meta.fields + [
+            'status_congestionamento',
+            'status_temperatura',
+            'status_teste_portas',
+            'status_failover',
+            'status_teste_rede',
+        ]
 
-    observacoes = forms.CharField(
-        widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'O que foi feito no AP?', 'class': 'form-control'}),
-        required=False,
-    )
-    class Meta:
-        model = Preventiva
-        fields = ['observacoes', 'status_local_ap']
+class PreventivaFormAP(PreventivaFormComum):
+    status_local_ap = forms.ChoiceField(label="Confirme se o AP está localizado em um local adequado, longe de fontes de calor excessivo ou interferência", choices=OPCOES, widget=forms.RadioSelect)
+    status_velocidade_ap = forms.ChoiceField(label="Realize testes de velocidade periódicos para garantir que o AP está oferecendo o desempenho esperado", choices=OPCOES, widget=forms.RadioSelect)
+    status_cobertura_ap = forms.ChoiceField(label="Teste a cobertura do sinal Wi-Fi para garantir que o AP está alcançando todas as áreas desejadas", choices=OPCOES, widget=forms.RadioSelect)
+    status_canais_ap = forms.ChoiceField(label="Certifique-se de que o AP está configurado para usar canais que não se sobreponham com os de redes vizinhas", choices=OPCOES, widget=forms.RadioSelect)
+    status_wps_ap = forms.ChoiceField(label="Desative funcionalidades como WPS se não forem necessárias, pois podem representar riscos de segurança", choices=OPCOES, widget=forms.RadioSelect)
+    copia_seguranca_ap = forms.ChoiceField(label="Caso algo dê errado durante a manutenção ou atualização, tenha uma cópia de segurança das configurações do AP", choices=OPCOES, widget=forms.RadioSelect)
+
+    class Meta(PreventivaFormComum.Meta):
+        fields = PreventivaFormComum.Meta.fields + [
+            'status_local_ap',
+            'status_velocidade_ap',
+            'status_cobertura_ap',
+            'status_canais_ap',
+            'status_wps_ap',
+            'copia_seguranca_ap',
+        ]

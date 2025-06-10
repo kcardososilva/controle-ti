@@ -1,17 +1,178 @@
 
 {% extends 'base.html ' %}
 
-{% block title  %}Preventiva{% endblock %}
+{% block title  %}Formulário de preventiva{% endblock %}
 
 
 {% block content %}
-<div class="container">
-    <h2>Iniciar Preventiva - {{ equipamento.nome }} <small>({{ equipamento.subtipo.nome }})</small></h2>
+<style>
+    .preventiva-form-container {
+        max-width: 650px;
+        margin: 30px auto 0 auto;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 2px 18px #0002;
+        padding: 32px 22px 22px 22px;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        position: relative;
+    }
+    .back-btn {
+        display: inline-block;
+        margin-bottom: 10px;
+        background: #6c757d;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 7px 20px 7px 12px;
+        font-weight: 600;
+        font-size: 1rem;
+        text-decoration: none;
+        transition: background 0.2s;
+        position: absolute;
+        left: 22px;
+        top: 22px;
+    }
+    .back-btn:hover {
+        background: #495057;
+        color: #fff;
+        text-decoration: none;
+    }
+    .preventiva-form-container h2 {
+        font-weight: 700;
+        font-size: 2rem;
+        color: #007bff;
+        text-align: center;
+        margin-bottom: 30px;
+        margin-top: 16px;
+    }
+    .form-group {
+        margin-bottom: 20px;
+    }
+    .form-group label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 7px;
+        color: #333;
+    }
+    .form-group input[type="text"],
+    .form-group textarea,
+    .form-group select {
+        width: 100%;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #d3d3d3;
+        font-size: 15px;
+        background: #f6f9fc;
+        margin-top: 4px;
+        transition: border 0.2s;
+    }
+    .form-group input[type="text"]:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+        border: 1.5px solid #007bff;
+        outline: none;
+    }
+    /* Estilo para os radio buttons */
+    .radio-group {
+        display: flex;
+        gap: 18px;
+        margin-top: 4px;
+    }
+    .radio-group label {
+        font-weight: 400;
+        color: #444;
+        margin-right: 14px;
+        display: flex;
+        align-items: center;
+    }
+    .radio-group input[type="radio"] {
+        accent-color: #007bff;
+        margin-right: 5px;
+    }
+    .observacoes-label {
+        font-weight: 600;
+        color: #495057;
+        margin-top: 18px;
+        display: block;
+        font-size: 1.06rem;
+    }
+    .submit-btn {
+        background: #28a745;
+        color: #fff;
+        border: none;
+        border-radius: 7px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        padding: 13px 0;
+        width: 100%;
+        margin-top: 28px;
+        box-shadow: 0 2px 6px #0001;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .submit-btn:hover {
+        background: #218838;
+    }
+    .text-danger {
+        color: #dc3545;
+        font-size: 0.93em;
+        margin-top: 2px;
+    }
+
+    /* Responsivo */
+    @media (max-width: 650px) {
+        .preventiva-form-container {
+            max-width: 99vw;
+            padding: 12vw 2vw 7vw 2vw;
+        }
+        .preventiva-form-container h2 {
+            font-size: 1.2rem;
+        }
+        .submit-btn {
+            font-size: 1rem;
+        }
+        .back-btn {
+            position: static;
+            display: block;
+            margin: 0 0 14px 0;
+           
+        }
+    }
+</style>
+
+<div class="preventiva-form-container">
+    <div><a href="{% url 'equipamento_detalhe' equipamento.id %}" class="back-btn">← Voltar</a></div>
+    
+    <h2 style="margin-top: 35px;">Iniciar Preventiva: {{ equipamento.nome }} <small style="font-size:1.1rem;color:#495057;">({{ equipamento.subtipo.nome }})</small></h2>
     <form method="post">
         {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit" class="btn-cadastrar">Salvar Preventiva</button>
-        <a href="{% url 'equipamento_detalhe' equipamento.id %}" class="btn-cadastrar btn-sm gray">← Voltar</a>
+        {% for field in form %}
+            {% if not field.name == 'observacoes' %}
+                <div class="form-group">
+                    <label>{{ field.label }}</label>
+                    {% if field.field.widget.input_type == "radio" %}
+                        <div class="radio-group">
+                            {% for radio in field %}
+                                <label>{{ radio.tag }} {{ radio.choice_label }}</label>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ field }}
+                    {% endif %}
+                    {% for error in field.errors %}
+                        <div class="text-danger">{{ error }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endfor %}
+        <div class="form-group">
+            <label class="observacoes-label" for="{{ form.observacoes.id_for_label }}">Observações finais</label>
+            {{ form.observacoes }}
+            {% for error in form.observacoes.errors %}
+                <div class="text-danger">{{ error }}</div>
+            {% endfor %}
+        </div>
+        <button type="submit" class="submit-btn">Salvar Preventiva</button>
     </form>
 </div>
 
