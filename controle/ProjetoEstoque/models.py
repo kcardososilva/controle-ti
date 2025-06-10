@@ -72,6 +72,8 @@ class Preventiva(models.Model):
     autor = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     dentro_do_prazo = models.CharField(max_length=10, choices=[('sim', 'Sim'), ('não', 'Não')], default='não')
     observacoes = models.TextField(blank=True, null=True)
+    status_led = models.CharField(max_length=3, choices=[('sim', 'Sim'), ('nao', 'Não')])
+    status_local_ap = models.CharField(max_length=3, choices=[('sim', 'Sim'), ('nao', 'Não')])
 
     def save(self, *args, **kwargs):
         # Garante que data_proxima seja recalculada

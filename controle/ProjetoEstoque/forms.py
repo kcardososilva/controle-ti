@@ -71,21 +71,21 @@ class PreventivaForm(forms.ModelForm):
         }
 
 class PreventivaFormSwitch(forms.ModelForm):
-    vlan_configurada = forms.CharField(required=False, label="VLAN configurada", widget=forms.TextInput(attrs={'class': 'form-control'}))
+    
     observacoes = forms.CharField(
         widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'O que foi feito no switch?', 'class': 'form-control'}),
         required=False,
     )
     class Meta:
         model = Preventiva
-        fields = ['observacoes']
+        fields = ['observacoes', 'status_led']
 
 class PreventivaFormAP(forms.ModelForm):
-    sinal = forms.IntegerField(required=False, label="Nível de sinal (dBm)", widget=forms.NumberInput(attrs={'class': 'form-control'}))
+
     observacoes = forms.CharField(
         widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'O que foi feito no AP?', 'class': 'form-control'}),
         required=False,
     )
     class Meta:
         model = Preventiva
-        fields = ['observacoes']
+        fields = ['observacoes', 'status_local_ap']

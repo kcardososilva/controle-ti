@@ -208,9 +208,9 @@ def cadastrar_preventiva(request, equipamento_id):
     subtipo_nome = equipamento.subtipo.nome.lower()
 
     # Escolhe o form correto
-    if "switch" in subtipo_nome:
+    if "switches" in subtipo_nome:
         FormClass = PreventivaFormSwitch
-    elif "ap" in subtipo_nome or "access point" in subtipo_nome:
+    elif "acess-point" in subtipo_nome:
         FormClass = PreventivaFormAP
     else:
         FormClass = PreventivaForm
