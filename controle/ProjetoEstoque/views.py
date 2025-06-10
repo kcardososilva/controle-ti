@@ -285,3 +285,11 @@ def todas_preventivas(request):
         'subtipos': subtipos,
         'status_choices': status_choices,
     })
+
+
+#Detalhe preventiva
+@login_required
+
+def preventiva_detalhe(request, pk):
+    preventiva = get_object_or_404(Preventiva, pk=pk)
+    return render(request, 'front\\preventiva_detalhe.html', {'preventiva': preventiva})
