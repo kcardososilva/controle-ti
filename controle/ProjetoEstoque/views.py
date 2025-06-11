@@ -215,7 +215,7 @@ def cadastrar_preventiva(request, equipamento_id):
         FormClass = PreventivaFormComum
 
     if request.method == 'POST':
-        form = FormClass(request.POST)
+        form = FormClass(request.POST, request.FILES)
         if form.is_valid():
             preventiva = form.save(commit=False)
             preventiva.equipamento = equipamento
@@ -223,6 +223,14 @@ def cadastrar_preventiva(request, equipamento_id):
             preventiva.data_ultima = timezone.now()
             meses = equipamento.data_limite_preventiva or 3
             preventiva.data_proxima = preventiva.data_ultima + timedelta(days=30 * meses)
+
+            # Se os campos de imagem existirem no form e vierem preenchidos, salve-os
+            if hasattr(form, 'cleaned_data'):
+                if 'imagem_antes' in form.cleaned_data:
+                    preventiva.imagem_antes = form.cleaned_data.get('imagem_antes')
+                if 'imagem_depois' in form.cleaned_data:
+                    preventiva.imagem_depois = form.cleaned_data.get('imagem_depois')
+
             preventiva.save()
             messages.success(request, "Preventiva cadastrada com sucesso.")
             return redirect('equipamento_detalhe', pk=equipamento.id)

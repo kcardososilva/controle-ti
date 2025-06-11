@@ -72,11 +72,14 @@ class PreventivaFormComum(forms.ModelForm):
     status_leds = forms.ChoiceField(label="Observe os LEDs do switch para garantir que todas as portas estão operando e não há falhas ou interrupções no sinal", choices=OPCOES, widget=forms.RadioSelect)
     status_firmware = forms.ChoiceField(label="O firmware do switch deve atualizado para corrigir falhas de segurança, melhorar a performance e inserir novas funcionalidades", choices=OPCOES, widget=forms.RadioSelect)
     status_firmware_bkp = forms.ChoiceField(label="Antes de atualizar, faça um backup das configurações para evitar a perda de configurações personalizadas", choices=OPCOES, widget=forms.RadioSelect)
+    imagem_antes = forms.ImageField(label="Foto Antes da Preventiva (opcional)", required=False)
+    imagem_depois = forms.ImageField(label="Foto Depois da Preventiva (opcional)", required=False)
     observacoes = forms.CharField(widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'Insira as Observações referente aos tópicos'}), required=False)
+    
 
     class Meta:
         model = Preventiva
-        fields = ['observacoes', 'status_cabo_ethernet', 'limpeza_equipamento', 'status_leds', 'status_firmware', 'status_firmware_bkp']
+        fields = ['imagem_depois','imagem_antes','observacoes', 'status_cabo_ethernet', 'limpeza_equipamento', 'status_leds', 'status_firmware', 'status_firmware_bkp']
 
 class PreventivaFormSwitch(PreventivaFormComum):
     status_congestionamento = forms.ChoiceField(label="Identifique possíveis congestionamentos ou falhas no fluxo de dados", choices=OPCOES, widget=forms.RadioSelect)

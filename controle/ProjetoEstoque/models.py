@@ -77,6 +77,8 @@ class Preventiva(models.Model):
     autor = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     dentro_do_prazo = models.CharField(max_length=10, choices=[('sim', 'Sim'), ('não', 'Não')], default='não')
     observacoes = models.TextField(blank=True, null=True)
+    imagem_antes = models.ImageField(upload_to='preventivas/antes/', blank=True, null=True)
+    imagem_depois = models.ImageField(upload_to='preventivas/depois/', blank=True, null=True)
 
     # Campos para perguntas objetivas
     status_cabo_ethernet = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
