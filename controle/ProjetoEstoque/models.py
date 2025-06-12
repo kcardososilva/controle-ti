@@ -32,7 +32,7 @@ class Equipamento(models.Model):
     nome = models.CharField(max_length=100)
     categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT)
     subtipo = models.ForeignKey(Subtipo, on_delete=models.PROTECT)
-    numero_serie = models.CharField(max_length=100, unique=True)
+    numero_serie = models.CharField(max_length=100, unique=True, null=True)
     marca = models.CharField(max_length=100, blank=True, null=True)
     modelo = models.CharField(max_length=100, blank=True, null=True)
     local = models.CharField(max_length=100)
