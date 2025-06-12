@@ -301,3 +301,75 @@ def todas_preventivas(request):
 def preventiva_detalhe(request, pk):
     preventiva = get_object_or_404(Preventiva, pk=pk)
     return render(request, 'front\\preventiva_detalhe.html', {'preventiva': preventiva})
+
+
+@login_required
+def exportar_preventivas_excel(request):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Preventivas"
+
+    # Cabeçalhos (ajuste os campos conforme seu model)
+    colunas = [
+        "ID", "Nome Equipamento", "Subtipo", "Categoria", "Número de Série", "Marca", "Modelo", "Local",
+        "Status Equipamento", "Autor", "Data Última", "Data Próxima", "Dentro do Prazo", "Observações",
+        "Status Cabo Ethernet", "Limpeza Equipamento", "Status LEDs", "Status Firmware",
+        "Status Firmware Backup", "Status Congestionamento", "Status Temperatura", "Status Teste de Portas",
+        "Status Failover", "Status Teste de Rede", "Status Local AP", "Status Velocidade AP",
+        "Status Cobertura AP", "Status Canais AP", "Status WPS AP", "Cópia Segurança AP"
+    ]
+    ws.append(colunas)
+
+    # Dados
+    preventivas = Preventiva.objects.select_related(
+        'equipamento', 'autor', 'equipamento__categoria', 'equipamento__subtipo'
+    )
+    for p in preventivas:
+        ws.append([
+            p.id,
+            p.equipamento.nome,
+            p.equipamento.subtipo.nome,
+            p.equipamento.categoria.nome,
+            p.equipamento.numero_serie,
+            p.equipamento.marca or "",
+            p.equipamento.modelo or "",
+            p.equipamento.local,
+            p.equipamento.get_status_display(),
+            p.autor.username if p.autor else "",
+            p.data_ultima.strftime("%d/%m/%Y %H:%M") if p.data_ultima else "",
+            p.data_proxima.strftime("%d/%m/%Y") if p.data_proxima else "",
+            p.get_dentro_do_prazo_display(),
+            p.observacoes or "",
+            p.status_cabo_ethernet or "",
+            p.limpeza_equipamento or "",
+            p.status_leds or "",
+            p.status_firmware or "",
+            p.status_firmware_bkp or "",
+            p.status_congestionamento or "",
+            p.status_temperatura or "",
+            p.status_teste_portas or "",
+            p.status_failover or "",
+            p.status_teste_rede or "",
+            p.status_local_ap or "",
+            p.status_velocidade_ap or "",
+            p.status_cobertura_ap or "",
+            p.status_canais_ap or "",
+            p.status_wps_ap or "",
+            p.copia_seguranca_ap or "",
+        ])
+
+    # Ajuste de largura
+    for col in ws.columns:
+        max_length = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            if cell.value:
+                max_length = max(max_length, len(str(cell.value)))
+        ws.column_dimensions[col_letter].width = max_length + 2
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = 'attachment; filename="preventivas_equipamentos.xlsx"'
+    wb.save(response)
+    return response

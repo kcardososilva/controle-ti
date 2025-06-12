@@ -24,6 +24,8 @@ urlpatterns = [
     path('equipamento/<int:equipamento_id>/preventivas/', views.visualizar_preventivas, name='visualizar_preventivas'),
     path('preventivas/', views.todas_preventivas, name='todas_preventivas'),
     path('preventiva/<int:pk>/', views.preventiva_detalhe, name='preventiva_detalhe'),
+    path('exportar_preventivas/', views.exportar_preventivas_excel, name='exportar_preventivas'),
+
     
     ## Login
     path('login/', auth_views.LoginView.as_view(template_name='login.html'), name='login'),
