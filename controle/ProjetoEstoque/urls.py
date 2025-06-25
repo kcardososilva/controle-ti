@@ -17,7 +17,7 @@ urlpatterns = [
     path('editar-equipamento/<int:pk>/', views.editar_equipamento, name='editar_equipamento'),
     path('excluir-equipamento/<int:pk>/', views.excluir_equipamento, name='excluir_equipamento'),
     path('exportar-equipamentos/', views.exportar_equipamentos_excel, name='exportar_equipamentos'),
-
+  
 
     ## Preventivas 
     path('equipamento/<int:equipamento_id>/preventivas/nova/', views.cadastrar_preventiva, name='cadastrar_preventiva'),

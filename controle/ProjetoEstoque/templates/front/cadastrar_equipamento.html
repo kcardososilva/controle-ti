@@ -1,21 +1,80 @@
-{% extends 'base.html ' %}
-
-{% block title  %}Cadastro de Equipamento{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Cadastro de Equipamento{% endblock %}
 
 
 {% block content %}
-<html> 
-<body>
-  <div class="container-formCadastro">
-    <h2>Cadastrar Equipamento</h2>
-    <form method="post">
-      {% csrf_token %}
-      {{ form.as_p }}
-      <button type="submit" id="submit-form">Salvar</button>
-    </form>
-    <a class="back-link" href="{% url 'home' %}">← Voltar à página inicial</a>
-  </div>
-</body>
-</html>
 
+
+<div class="container-formCadastro">
+  <h2>Cadastrar Equipamento</h2>
+  <form method="post">
+    {% csrf_token %}
+    <!-- Campo nome -->
+    <label for="id_nome">Nome do Equipamento:</label>
+    {{ form.nome }}
+
+    <!-- Campo categoria (vem do form para manter validação do Django) -->
+    <label for="id_categoria">Categoria:</label>
+    {{ form.categoria }}
+
+    <!-- Campo subtipo (filtrado por JS) -->
+    <label for="id_subtipo">Subtipo:</label>
+    <select name="subtipo" id="id_subtipo" class="form-control" required>
+      <option value="">Selecione um subtipo...</option>
+      {% for subtipo in subtipos %}
+        <option value="{{ subtipo.id }}" data-categoria="{{ subtipo.categoria.id }}">
+          {{ subtipo.nome }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <!-- Demais campos (sugestão: você pode adicionar cada campo como quiser, abaixo um exemplo genérico) -->
+    {{ form.numero_serie.label_tag }} {{ form.numero_serie }}
+    {{ form.marca.label_tag }} {{ form.marca }}
+    {{ form.modelo.label_tag }} {{ form.modelo }}
+    {{ form.local.label_tag }} {{ form.local }}
+    {{ form.status.label_tag }} {{ form.status }}
+    {{ form.quantidade.label_tag }} {{ form.quantidade }}
+    {{ form.estoque_minimo.label_tag }} {{ form.estoque_minimo }}
+    {{ form.precisa_preventiva.label_tag }} {{ form.precisa_preventiva }}
+    {{ form.data_limite_preventiva.label_tag }} {{ form.data_limite_preventiva }}
+    {{ form.observacoes.label_tag }} {{ form.observacoes }}
+
+    <button type="submit" id="submit-form">Salvar</button>
+  </form>
+  <a class="back-link" href="{% url 'home' %}">← Voltar à página inicial</a>
+</div>
+
+<script>
+  // Ao trocar a categoria, filtra os subtipos exibidos
+  document.addEventListener("DOMContentLoaded", function() {
+    const categoriaSelect = document.getElementById('id_categoria');
+    const subtipoSelect = document.getElementById('id_subtipo');
+
+    function filtrarSubtipos() {
+      const categoriaId = categoriaSelect.value;
+      // Mostra só subtipos que pertencem à categoria selecionada
+      Array.from(subtipoSelect.options).forEach(function(option) {
+        if (option.value === "") {
+          option.style.display = ""; // sempre mostra o "Selecione..."
+        } else if (option.getAttribute('data-categoria') === categoriaId) {
+          option.style.display = "";
+        } else {
+          option.style.display = "none";
+        }
+      });
+      // Limpa subtipo selecionado se não for compatível
+      if (
+        subtipoSelect.selectedIndex > 0 &&
+        subtipoSelect.options[subtipoSelect.selectedIndex].style.display === "none"
+      ) {
+        subtipoSelect.selectedIndex = 0;
+      }
+    }
+
+    categoriaSelect.addEventListener('change', filtrarSubtipos);
+    // Aplica filtro ao carregar página (útil ao editar)
+    filtrarSubtipos();
+  });
+</script>
 {% endblock %}

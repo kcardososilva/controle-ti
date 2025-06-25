@@ -6,7 +6,7 @@ from .forms import CategoriaForm, SubtipoForm, EquipamentoForm, ComentarioForm, 
 from django.shortcuts import render, redirect
 import openpyxl
 from openpyxl.utils import get_column_letter
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.contrib import messages
 from django.utils import timezone
 from dateutil.relativedelta import relativedelta
@@ -93,7 +93,6 @@ def cadastrar_subtipo(request):
     return render(request, 'front\\cadastrar_subtipo.html', {'form': form})
 
 ################### Cadastro de equipamento ###########################
-@login_required
 def cadastrar_equipamento(request):
     if request.method == 'POST':
         form = EquipamentoForm(request.POST)
@@ -104,7 +103,21 @@ def cadastrar_equipamento(request):
             return redirect('home')
     else:
         form = EquipamentoForm()
-    return render(request, 'front\\cadastrar_equipamento.html', {'form': form})
+
+    # Aqui está o segredo: passar todos os subtipos!
+    subtipos = Subtipo.objects.select_related('categoria').all()
+    return render(
+        request,
+        'front\\cadastrar_equipamento.html',
+        {
+            'form': form,
+            'subtipos': subtipos,  # Envia todos subtipos para popular os options!
+        }
+    )
+
+################### Categoria x subtipo #######################
+
+
 
 ############# Edição de equipamento ##########
 @login_required
