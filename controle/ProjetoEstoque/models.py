@@ -84,19 +84,15 @@ class Preventiva(models.Model):
     status_cabo_ethernet = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
     limpeza_equipamento = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
     status_leds = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
-    status_firmware = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
-    status_firmware_bkp = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
-    status_congestionamento = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+   
     status_temperatura = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
     status_teste_portas = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
-    status_failover = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+   
     status_teste_rede = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
     status_local_ap = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
     status_velocidade_ap = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
     status_cobertura_ap = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
-    status_canais_ap = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
-    status_wps_ap = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
-    copia_seguranca_ap = models.CharField(max_length=10, choices=OPCOES, blank=True, null=True)
+    
 
     def save(self, *args, **kwargs):
         # Garante que data_proxima seja recalculada

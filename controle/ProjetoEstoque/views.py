@@ -313,10 +313,10 @@ def exportar_preventivas_excel(request):
     colunas = [
         "ID", "Nome Equipamento", "Subtipo", "Categoria", "Número de Série", "Marca", "Modelo", "Local",
         "Status Equipamento", "Autor", "Data Última", "Data Próxima", "Dentro do Prazo", "Observações",
-        "Status Cabo Ethernet", "Limpeza Equipamento", "Status LEDs", "Status Firmware",
-        "Status Firmware Backup", "Status Congestionamento", "Status Temperatura", "Status Teste de Portas",
-        "Status Failover", "Status Teste de Rede", "Status Local AP", "Status Velocidade AP",
-        "Status Cobertura AP", "Status Canais AP", "Status WPS AP", "Cópia Segurança AP"
+        "Status Cabo Ethernet", "Limpeza Equipamento", "Status LEDs", 
+         "Status Temperatura", "Status Teste de Portas",
+         "Status Teste de Rede", "Status Local AP", "Status Velocidade AP",
+        "Status Cobertura AP", 
     ]
     ws.append(colunas)
 
@@ -343,19 +343,13 @@ def exportar_preventivas_excel(request):
             p.status_cabo_ethernet or "",
             p.limpeza_equipamento or "",
             p.status_leds or "",
-            p.status_firmware or "",
-            p.status_firmware_bkp or "",
-            p.status_congestionamento or "",
             p.status_temperatura or "",
             p.status_teste_portas or "",
-            p.status_failover or "",
             p.status_teste_rede or "",
             p.status_local_ap or "",
             p.status_velocidade_ap or "",
             p.status_cobertura_ap or "",
-            p.status_canais_ap or "",
-            p.status_wps_ap or "",
-            p.copia_seguranca_ap or "",
+        
         ])
 
     # Ajuste de largura
