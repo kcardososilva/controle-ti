@@ -20,9 +20,13 @@ def home(request):
     subtipos = Subtipo.objects.all()
 
     search = request.GET.get('search')
-   
+
     if search:
-        equipamentos = equipamentos.filter(nome__icontains=search) | equipamentos.filter(numero_serie__icontains=search) | equipamentos.filter(subtipo__nome__icontains=search)
+        # Executa a busca individualmente em nome, número de série e subtipo, e junta os resultados
+        equipamentos_nome = Equipamento.objects.filter(nome__icontains=search)
+        equipamentos_sn = Equipamento.objects.filter(numero_serie__icontains=search)
+        equipamentos_sub = Equipamento.objects.filter(subtipo__nome__icontains=search)
+        equipamentos = (equipamentos_nome | equipamentos_sn | equipamentos_sub).distinct()
 
     if request.GET.get('categoria'):
         equipamentos = equipamentos.filter(categoria_id=request.GET.get('categoria'))
@@ -33,14 +37,24 @@ def home(request):
     if request.GET.get('status'):
         equipamentos = equipamentos.filter(status=request.GET.get('status'))
 
+    # Contadores
+    total_ativos = equipamentos.filter(status='ativo').count()
+    total_backup = equipamentos.filter(status='backup').count()
+    total_queimados = equipamentos.filter(status='queimado').count()
+    total_geral = equipamentos.count()
+
     context = {
         'equipamentos': equipamentos,
         'categorias': categorias,
         'subtipos': subtipos,
-        'status_choices': Equipamento.STATUS_CHOICES
+        'status_choices': Equipamento.STATUS_CHOICES,
+        'total_ativos': total_ativos,
+        'total_backup': total_backup,
+        'total_queimados': total_queimados,
+        'total_geral': total_geral,
     }
-    return render(request, 'front\\home.html', context)
 
+    return render(request, 'front\\home.html', context)
 
 ############### Visualização de Equipamento #########################
 @login_required

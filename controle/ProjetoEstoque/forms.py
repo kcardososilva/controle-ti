@@ -77,7 +77,7 @@ class PreventivaFormComum(forms.ModelForm):
 
     class Meta:
         model = Preventiva
-        fields = ['imagem_depois','imagem_antes','observacoes', 'status_cabo_ethernet', 'limpeza_equipamento', 'status_leds']
+        fields = ['imagem_antes','imagem_depois','observacoes', 'status_cabo_ethernet', 'limpeza_equipamento', 'status_leds']
 
 class PreventivaFormSwitch(PreventivaFormComum):
    
