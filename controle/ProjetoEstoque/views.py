@@ -41,6 +41,7 @@ def home(request):
     total_ativos = equipamentos.filter(status='ativo').count()
     total_backup = equipamentos.filter(status='backup').count()
     total_queimados = equipamentos.filter(status='queimado').count()
+    total_manutencao = equipamentos.filter(status='manutencao').count()
     total_geral = equipamentos.count()
 
     context = {
@@ -52,6 +53,7 @@ def home(request):
         'total_backup': total_backup,
         'total_queimados': total_queimados,
         'total_geral': total_geral,
+        'total_manutencao': total_manutencao,
     }
 
     return render(request, 'front\\home.html', context)
@@ -168,8 +170,7 @@ def exportar_equipamentos_excel(request):
 
     colunas = [
         "ID", "Nome", "Categoria", "Subtipo", "Número de Série",
-        "Marca", "Modelo", "Local", "Status", "Quantidade",
-        "Estoque Mínimo", "Observações"
+        "Marca", "Modelo", "Local", "Status", "Quantidade", "Observações"
     ]
     ws.append(colunas)
     
@@ -185,7 +186,6 @@ def exportar_equipamentos_excel(request):
             equipamento.local,
             equipamento.get_status_display(),
             equipamento.quantidade,
-            equipamento.estoque_minimo,
             equipamento.observacoes or ""
           
         ])

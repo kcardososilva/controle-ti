@@ -38,7 +38,6 @@ class Equipamento(models.Model):
     local = models.CharField(max_length=100, blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ativo')
     quantidade = models.PositiveIntegerField(default=1)
-    estoque_minimo = models.PositiveIntegerField(default=0)
     observacoes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
