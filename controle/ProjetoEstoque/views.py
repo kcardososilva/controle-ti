@@ -11,6 +11,7 @@ from django.contrib import messages
 from django.utils import timezone
 from dateutil.relativedelta import relativedelta
 from django.db.models import Max
+from collections import defaultdict
 
 ############# Home #################
 @login_required
@@ -159,7 +160,96 @@ def excluir_equipamento(request, pk):
     equipamento.delete()
     return redirect('home')
 
+######## Visualizar equipamentos por local ###########
 
+
+@login_required
+def equipamentos_por_local(request):
+    subtipo_id = request.GET.get('subtipo')
+    local = request.GET.get('local')
+
+    subtipos = Subtipo.objects.all()
+    locais_disponiveis = Equipamento.objects.values_list('local', flat=True).distinct()
+
+    equipamentos = Equipamento.objects.select_related('subtipo')
+
+    if subtipo_id:
+        equipamentos = equipamentos.filter(subtipo_id=subtipo_id)
+    if local:
+        equipamentos = equipamentos.filter(local__iexact=local)
+
+    agrupados = {}
+    for equipamento in equipamentos:
+        chave = (equipamento.subtipo.nome, equipamento.local)
+        agrupados.setdefault(chave, []).append(equipamento)
+
+    # NOVO BLOCO: resumo para o dashboard
+    resumo_dict = defaultdict(lambda: {'total': 0, 'quantidade': 0})
+    for equipamento in equipamentos:
+        nome_subtipo = equipamento.subtipo.nome
+        resumo_dict[nome_subtipo]['total'] += 1
+        resumo_dict[nome_subtipo]['quantidade'] += equipamento.quantidade
+
+    resumo = [
+        {'subtipo': subtipo, 'total': valores['total'], 'quantidade': valores['quantidade']}
+        for subtipo, valores in resumo_dict.items()
+    ]
+
+    context = {
+        'agrupados': agrupados,
+        'subtipos': subtipos,
+        'locais': locais_disponiveis,
+        'subtipo_selecionado': subtipo_id,
+        'local_selecionado': local,
+        'resumo': resumo,  # ← agora disponível no template
+    }
+
+    return render(request, 'front\\equipamentos_por_local.html', context)
+
+@login_required
+def exportar_por_local(request):
+    subtipo_id = request.GET.get('subtipo')
+    local = request.GET.get('local')
+
+    equipamentos = Equipamento.objects.select_related('subtipo', 'categoria')
+
+    if subtipo_id:
+        equipamentos = equipamentos.filter(subtipo_id=subtipo_id)
+    if local:
+        equipamentos = equipamentos.filter(local__iexact=local)
+
+    # Criação do Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Relatório"
+
+    colunas = ["ID", "Nome", "Subtipo", "Categoria", "Número de Série", "Local", "Status", "Quantidade"]
+    ws.append(colunas)
+
+    for eq in equipamentos:
+        ws.append([
+            eq.id,
+            eq.nome,
+            eq.subtipo.nome,
+            eq.categoria.nome,
+            eq.numero_serie or '',
+            eq.local or '',
+            eq.get_status_display(),
+            eq.quantidade,
+        ])
+
+    # Ajuste de largura
+    for col in ws.columns:
+        max_length = max((len(str(cell.value)) for cell in col if cell.value), default=0)
+        ws.column_dimensions[get_column_letter(col[0].column)].width = max_length + 2
+
+    # Retorno
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = 'attachment; filename="equipamentos_por_local.xlsx"'
+    wb.save(response)
+    return response
 
 ### Gerar Relatório ###
 @login_required

@@ -17,6 +17,8 @@ urlpatterns = [
     path('editar-equipamento/<int:pk>/', views.editar_equipamento, name='editar_equipamento'),
     path('excluir-equipamento/<int:pk>/', views.excluir_equipamento, name='excluir_equipamento'),
     path('exportar-equipamentos/', views.exportar_equipamentos_excel, name='exportar_equipamentos'),
+    path('equipamento-local/', views.equipamentos_por_local, name='equipamento_por_local'),
+    path('exportar-por-local/', views.exportar_por_local, name='exportar_por_local'),
   
 
     ## Preventivas 
