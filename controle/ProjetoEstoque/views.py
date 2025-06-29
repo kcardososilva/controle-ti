@@ -236,7 +236,7 @@ def cadastrar_preventiva(request, equipamento_id):
 
     if subtipo_nome in ['switch', 'switches']:
         FormClass = PreventivaFormSwitch
-    elif subtipo_nome in ['acess-point', 'ap', 'accesspoint']:
+    elif subtipo_nome in ['access-point', 'ap', 'accesspoint']:
         FormClass = PreventivaFormAP
     else:
         FormClass = PreventivaFormComum

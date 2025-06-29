@@ -66,7 +66,7 @@ OPCOES = [('ok', 'Ok'), ('nao_ok', 'Não Ok')]
 
 class PreventivaFormComum(forms.ModelForm):
     status_cabo_ethernet = forms.ChoiceField(label="Confirme se todos os cabos Ethernet estão conectados corretamente e sem sinais de desgaste ou danos", choices=OPCOES, widget=forms.RadioSelect)
-    limpeza_equipamento = forms.ChoiceField(label="Remover poeira e sujeira acumulada nas portas, ventiladores e em outras partes do switch", choices=OPCOES, widget=forms.RadioSelect)
+    limpeza_equipamento = forms.ChoiceField(label="Remover poeira e sujeira acumulada nas portas, ventiladores e em outras partes do equipamento", choices=OPCOES, widget=forms.RadioSelect)
     status_leds = forms.ChoiceField(label="Observe os LEDs do equipamento para garantir que todas as portas estão operando e não há falhas ou interrupções no sinal", choices=OPCOES, widget=forms.RadioSelect)
     imagem_antes = forms.ImageField(label="Foto Antes da Preventiva (opcional)", required=False)
     imagem_depois = forms.ImageField(label="Foto Depois da Preventiva (opcional)", required=False)

@@ -124,6 +124,13 @@ STATIC_URL = '/static/'
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
+EMAIL_BACKEND = 'django.core.mail.backends.EmailBackend'
+EMAIL_HOST = 'smtp.outlook.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'datasul@santacolomba.com.br'
+EMAIL_HOST_PASSWORD = 'Santa@12345678'
+ALERTA_EMAIL = 'kayque.silva@santacolomba.com.br'
 
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
