@@ -130,7 +130,7 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'datasul@santacolomba.com.br'
 EMAIL_HOST_PASSWORD = 'Santa@12345678'
-ALERTA_EMAIL = 'kayque.silva@santacolomba.com.br'
+ALERTA_EMAIL = 'gabriel.sousa@santacolomba.com.br'
 
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

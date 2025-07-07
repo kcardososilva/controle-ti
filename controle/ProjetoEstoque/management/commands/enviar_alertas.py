@@ -14,7 +14,7 @@ class Command(BaseCommand):
 
         # Preventivas que vencem em até 3 dias
         preventivas_criticas = Preventiva.objects.filter(
-            data_proxima__lte=hoje + timedelta(days=3)
+            data_proxima__lte=hoje + timedelta(days=10)
         ).select_related('equipamento')
 
 

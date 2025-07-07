@@ -6,12 +6,17 @@ from .forms import CategoriaForm, SubtipoForm, EquipamentoForm, ComentarioForm, 
 from django.shortcuts import render, redirect
 import openpyxl
 from openpyxl.utils import get_column_letter
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse
 from django.contrib import messages
 from django.utils import timezone
-from dateutil.relativedelta import relativedelta
+from django.db.models import Sum
+from django.shortcuts import render
 from django.db.models import Max
 from collections import defaultdict
+from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.utils import get_column_letter
+from django.db import models
+
 
 ############# Home #################
 @login_required
@@ -140,18 +145,296 @@ def cadastrar_equipamento(request):
 @login_required
 def editar_equipamento(request, pk):
     equipamento = get_object_or_404(Equipamento, pk=pk)
+    status_anterior = equipamento.status
 
     if request.method == 'POST':
         form = EquipamentoForm(request.POST, instance=equipamento)
         if form.is_valid():
             equipamento = form.save(commit=False)
-            equipamento.atualizado_por = request.user  # <-- salva quem editou
+            equipamento.atualizado_por = request.user
+            equipamento._user = request.user
+
+            status_novo = form.cleaned_data.get('status')
+
+            if status_novo == 'queimado':
+                equipamento._causa_queima = request.POST.get('causa_queima') or None
+
+            elif status_anterior == 'manutencao' and status_novo == 'backup':
+                equipamento._custo_retorno = request.POST.get('custo_retorno') or 0
+
             equipamento.save()
-            return redirect('equipamento_detalhe', pk=equipamento.pk)  # redirecione corretamente
+            return redirect('equipamento_detalhe', pk=equipamento.pk)
     else:
         form = EquipamentoForm(instance=equipamento)
 
     return render(request, 'front\\editar_equipamento.html', {'form': form, 'equipamento': equipamento})
+
+
+
+
+from django.db.models import Sum
+
+############ Histórico de manutenção #####################
+@login_required
+def historico_manutencao(request, equipamento_id):
+    equipamento = get_object_or_404(Equipamento, pk=equipamento_id)
+    historicos = equipamento.historicos.order_by('data_criacao')
+
+    ciclos = []
+    ciclo_atual = []
+
+    for hist in historicos:
+        if hist.tipo == 'queima':
+            ciclo_atual = [hist]  # Inicia novo ciclo
+        elif hist.tipo == 'retorno' and ciclo_atual:
+            # Etapa intermediária "manutenção"
+            manutencao_virtual = {
+                'tipo': 'manutencao',
+                'data_criacao': hist.data_criacao,
+                'autor': hist.autor,
+                'causa': ciclo_atual[0].causa  # causa herdada da queima
+            }
+            ciclo_atual.append(manutencao_virtual)
+            ciclo_atual.append(hist)
+            ciclos.append(ciclo_atual)
+            ciclo_atual = []
+
+    # Calcular totais
+    total_ciclos = len(ciclos)
+    total_gasto = historicos.aggregate(total=Sum('custo'))['total'] or 0
+
+    context = {
+        'equipamento': equipamento,
+        'ciclos': ciclos,
+        'total_ciclos': total_ciclos,
+        'total_gasto': total_gasto,
+    }
+    return render(request, 'front/equipamento_historico.html', context)
+
+
+######### Mapa de custo por área ################
+@login_required
+def mapa_custos_por_area(request):
+    filtro = request.GET.get('filtro', 'por_area')
+
+    equipamentos = Equipamento.objects.all().select_related()
+    dados_resultado = {}
+
+    if filtro == 'por_area':
+        for equipamento in equipamentos:
+            area = equipamento.local or "Não informado"
+            if area not in dados_resultado:
+                dados_resultado[area] = {
+                    'quantidade_equipamentos': 0,
+                    'total_ciclos': 0,
+                    'custo_total': 0,
+                }
+
+            historicos = equipamento.historicos.filter(tipo='retorno')
+            total_custos = historicos.aggregate(Sum('custo'))['custo__sum'] or 0
+
+            dados_resultado[area]['quantidade_equipamentos'] += 1
+            dados_resultado[area]['total_ciclos'] += historicos.count()
+            dados_resultado[area]['custo_total'] += total_custos
+
+    elif filtro == 'equipamentos_mais_defeitos':
+        for equipamento in equipamentos:
+            total_ciclos = equipamento.historicos.filter(tipo='retorno').count()
+            if total_ciclos > 0:
+                dados_resultado[equipamento.id] = {
+                    'nome': equipamento.nome,
+                    'subtipo': equipamento.subtipo.nome if equipamento.subtipo else "—",
+                    'local': equipamento.local or "—",
+                    'total_ciclos': total_ciclos,
+                    'custo_total': equipamento.historicos.filter(tipo='retorno').aggregate(Sum('custo'))['custo__sum'] or 0
+                }
+
+    elif filtro == 'subtipos_mais_defeitos':
+        subtipos = Subtipo.objects.all()
+        for subtipo in subtipos:
+            equipamentos_subtipo = equipamentos.filter(subtipo=subtipo)
+            total_ciclos = sum(eq.historicos.filter(tipo='retorno').count() for eq in equipamentos_subtipo)
+            custo_total = sum(eq.historicos.filter(tipo='retorno').aggregate(Sum('custo'))['custo__sum'] or 0 for eq in equipamentos_subtipo)
+
+            if total_ciclos > 0:
+                dados_resultado[subtipo.nome] = {
+                    'quantidade_equipamentos': equipamentos_subtipo.count(),
+                    'total_ciclos': total_ciclos,
+                    'custo_total': custo_total,
+                }
+
+    dados_ordenados = dict(sorted(dados_resultado.items(), key=lambda item: item[1]['custo_total'], reverse=True))
+
+    return render(request, 'front/mapa_custo_area.html', {
+        'dados_area': dados_ordenados,
+        'filtro_selecionado': filtro,
+    })
+
+
+######### Exportar mapa de custos em excel ###########
+
+
+
+
+@login_required
+def exportar_custos_por_area_excel(request):
+    filtro = request.GET.get('filtro', 'area')
+    equipamentos = Equipamento.objects.all().select_related('subtipo', 'categoria')
+
+    # Dicionário de agrupamento
+    dados = {}
+
+    for eq in equipamentos:
+        historicos = eq.historicos.filter(tipo='retorno')
+        total_custo = historicos.aggregate(Sum('custo'))['custo__sum'] or 0
+        total_ciclos = historicos.count()
+
+        if filtro == 'equipamentos':
+            chave = f"{eq.nome} ({eq.numero_serie or 'S/N'})"
+        elif filtro == 'subtipos':
+            chave = eq.subtipo.nome if eq.subtipo else "Não definido"
+        else:  # filtro == 'area'
+            chave = eq.local or "Não informado"
+
+        if chave not in dados:
+            dados[chave] = {
+                'quantidade_equipamentos': 0,
+                'total_ciclos': 0,
+                'custo_total': 0,
+            }
+
+        dados[chave]['quantidade_equipamentos'] += 1
+        dados[chave]['total_ciclos'] += total_ciclos
+        dados[chave]['custo_total'] += total_custo
+
+    # Criação da planilha
+    wb = openpyxl.Workbook()
+    ws = wb.active
+
+    titulos = {
+        'area': ("Área / Local", "Custos por Área"),
+        'equipamentos': ("Equipamento", "Custos por Equipamento"),
+        'subtipos': ("Subtipo", "Custos por Subtipo")
+    }
+
+    coluna_chave, nome_planilha = titulos.get(filtro, titulos['area'])
+    ws.title = nome_planilha
+
+    headers = [coluna_chave, "Qtd. Equipamentos", "Total de Ciclos", "Total Gasto (R$)"]
+    ws.append(headers)
+
+    header_fill = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid")
+    bold_font = Font(bold=True)
+
+    for col_num, col in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = bold_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for chave, valores in dados.items():
+        ws.append([
+            chave,
+            valores['quantidade_equipamentos'],
+            valores['total_ciclos'],
+            float(valores['custo_total']),
+        ])
+
+    for column_cells in ws.columns:
+        max_len = max((len(str(cell.value)) if cell.value else 0) for cell in column_cells)
+        ws.column_dimensions[get_column_letter(column_cells[0].column)].width = max_len + 3
+
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for cell in row:
+            cell.alignment = Alignment(horizontal="center")
+
+    ws.auto_filter.ref = f"A1:D{ws.max_row}"
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f"attachment; filename=relatorio_{filtro}.xlsx"
+    wb.save(response)
+    return response
+
+######### Exportar equipamento ################
+
+@login_required
+def exportar_historico_excel(request, equipamento_id):
+    equipamento = get_object_or_404(Equipamento, pk=equipamento_id)
+    historicos = equipamento.historicos.order_by('data_criacao')
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Histórico de Manutenção"
+
+    ws.append(['Ciclo', 'Tipo', 'Data', 'Causa', 'Custo', 'Autor'])
+
+    ciclos = []
+    ciclo_atual = []
+    ciclo_num = 1
+
+    for hist in historicos:
+        if hist.tipo == 'queima':
+            ciclo_atual = [hist]
+        elif hist.tipo == 'retorno' and ciclo_atual:
+            manutencao_virtual = {
+                'tipo': 'manutencao',
+                'data_criacao': hist.data_criacao,
+                'autor': hist.autor,
+                'causa': ciclo_atual[0].causa,
+                'custo': None
+            }
+            ciclo_atual.append(manutencao_virtual)
+            ciclo_atual.append(hist)
+            ciclos.append(ciclo_atual)
+            ciclo_atual = []
+
+    for ciclo in ciclos:
+        for etapa in ciclo:
+            if isinstance(etapa, dict):  # manutenção virtual
+                tipo = 'Manutenção'
+                data = etapa['data_criacao']
+                causa = etapa.get('causa', '')
+                custo = etapa.get('custo', '')
+                autor = etapa.get('autor', '')
+            else:
+                tipo = etapa.get_tipo_display()
+                data = etapa.data_criacao
+                causa = etapa.causa
+                custo = etapa.custo
+                autor = etapa.autor
+
+            ws.append([
+                f"Ciclo {ciclo_num}",
+                tipo,
+                data.strftime('%d/%m/%Y %H:%M'),
+                causa or '',
+                f"R$ {custo:.2f}" if custo else '',
+                autor.username if autor else ''
+            ])
+        ciclo_num += 1
+
+    # Totalizador
+    total_ciclos = len(ciclos)
+    total_gasto = sum(
+        etapa.custo or 0
+        for ciclo in ciclos
+        for etapa in ciclo
+        if not isinstance(etapa, dict) and etapa.tipo == 'retorno'
+    )
+    ws.append([])
+    ws.append(['Total de Ciclos', total_ciclos])
+    ws.append(['Total Gasto', f"R$ {total_gasto:.2f}"])
+
+    # Resposta HTTP
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    filename = f"historico_{equipamento.nome}_{equipamento.numero_serie}.xlsx"
+    response['Content-Disposition'] = f'attachment; filename={filename}'
+    wb.save(response)
+    return response
 
 ######### exclusão de equipamento #############
 @login_required

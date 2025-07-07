@@ -49,6 +49,43 @@ class Equipamento(models.Model):
 
     def __str__(self):
         return f"{self.nome} - {self.numero_serie}"
+    
+    def save(self, *args, **kwargs):
+        criando = self._state.adding is True
+        anterior = None
+
+        if not criando and self.pk:
+            anterior = Equipamento.objects.get(pk=self.pk)
+
+        super().save(*args, **kwargs)
+
+        if anterior and anterior.status != self.status:
+            from .models import HistoricoManutencao  # evitar import circular
+            tipo = None
+            causa = None
+            custo = None
+
+            if self.status == 'queimado':
+                tipo = 'queima'
+                causa = getattr(self, '_causa_queima', None)
+
+            elif anterior.status == 'manutencao' and self.status == 'backup':
+                tipo = 'retorno'
+                custo = getattr(self, '_custo_retorno', None)
+                # Buscar a última causa conhecida de manutenção
+                ultima_queima = HistoricoManutencao.objects.filter(equipamento=self, tipo='queima').order_by('-data_criacao').first()
+                if ultima_queima and ultima_queima.causa:
+                    causa = ultima_queima.causa
+
+            if tipo:
+                HistoricoManutencao.objects.create(
+                    equipamento=self,
+                    tipo=tipo,
+                    causa=causa,
+                    custo=custo,
+                    autor=getattr(self, '_user', None)
+                )
+
 
 ## Banco comentários ##
 class Comentario(models.Model):
@@ -106,4 +143,20 @@ class Preventiva(models.Model):
             else:
                 self.dentro_do_prazo = "não"
         super().save(*args, **kwargs)
+
+class HistoricoManutencao(models.Model):
+    TIPO_CHOICES = [
+        ('queima', 'Equipamento Queimado'),
+        ('retorno', 'Retorno de Manutenção'),
+    ]
+
+    equipamento = models.ForeignKey(Equipamento, on_delete=models.CASCADE, related_name="historicos")
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    causa = models.TextField(blank=True, null=True)
+    custo = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    data_criacao = models.DateTimeField(auto_now_add=True)
+    autor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.equipamento.nome} - {self.get_tipo_display()} - {self.data_criacao.strftime('%d/%m/%Y %H:%M')}"
 

@@ -19,7 +19,13 @@ urlpatterns = [
     path('exportar-equipamentos/', views.exportar_equipamentos_excel, name='exportar_equipamentos'),
     path('equipamento-local/', views.equipamentos_por_local, name='equipamento_por_local'),
     path('exportar-por-local/', views.exportar_por_local, name='exportar_por_local'),
-  
+
+    # Custo com equipamentos
+    path('equipamento/<int:equipamento_id>/historico/', views.historico_manutencao, name='historico_manutencao'),
+    path('equipamento/<int:equipamento_id>/exportar_excel/', views.exportar_historico_excel, name='exportar_historico_excel'),
+    path('custos-por-area/', views.mapa_custos_por_area, name='mapa_custos_area'),
+    path('exportar-custos-por-area/', views.exportar_custos_por_area_excel, name='exportar_custos_area'),
+
 
     ## Preventivas 
     path('equipamento/<int:equipamento_id>/preventivas/nova/', views.cadastrar_preventiva, name='cadastrar_preventiva'),

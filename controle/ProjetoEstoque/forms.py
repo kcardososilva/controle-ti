@@ -36,6 +36,7 @@ class EquipamentoForm(forms.ModelForm):
             'precisa_preventiva',
             'data_limite_preventiva',
             'observacoes',
+            
         ]
         widgets = {
             'nome': forms.TextInput(attrs={'class': 'form-control'}),
