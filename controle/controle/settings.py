@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-p+4@sz!nuondvo@6amrfnty6bwhj2+=-wnygd1jkgoy^rjcw0h
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.2.179', '192.168.1.117', '192.168.0.116']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.2.179', '192.168.1.117', '192.168.0.116', '172.16.60.254']
 ALLOWED_HOSTS = ['*']
 
 # Application definition
@@ -130,7 +130,7 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'datasul@santacolomba.com.br'
 EMAIL_HOST_PASSWORD = 'Santa@12345678'
-ALERTA_EMAIL = 'gabriel.sousa@santacolomba.com.br'
+ALERTA_EMAIL = 'ti@santacolomba.com.br'
 
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
