@@ -1,8 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
-from django.utils import timezone
-from dateutil.relativedelta import relativedelta
-from datetime import datetime, timedelta, date
+from datetime import timedelta
 
 
 ## Banco categoria ##
