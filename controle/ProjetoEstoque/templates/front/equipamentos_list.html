@@ -1,0 +1,413 @@
+{% extends 'base.html' %}
+{% block title %}Controle de Ativos{% endblock %}
+
+{% block content %}
+<style>
+:root{
+  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
+  --accent:#2563eb; --ok:#16a34a; --warn:#b45309; --bad:#b91c1c; --info:#2563eb;
+  --shadow:0 20px 40px rgba(2,6,23,.07);
+  --ctrl-h:48px; --rad:12px; --pad-icon:40px;
+}
+*{box-sizing:border-box}
+body{background:#f5f7fa;color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial}
+a{text-decoration:none}
+
+/* ===== CARDS ===== */
+.dashboard-container{max-width:1200px;margin:22px auto 10px;padding:0 14px}
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.card{
+  background:linear-gradient(180deg,#0f172a 0%,#1e293b 100%);
+  border:1px solid #efefef;border-radius:16px;padding:14px 16px;box-shadow:var(--shadow);
+  color:#fff;min-width:0;position:relative;overflow:hidden;isolation:isolate
+}
+.card::after{
+  content:"";position:absolute;inset:-20% -10% auto auto;width:140px;height:140px;border-radius:50%;
+  background:radial-gradient(closest-side,rgba(251, 251, 251, 0.25),transparent 60%);filter:blur(6px);z-index:-1
+}
+.card i{font-size:1.05rem;opacity:.95}
+.card-title{font-size:.92rem;font-weight:700;opacity:.9;margin-top:6px}
+.card-value{font-size:1.5rem;font-weight:900;margin-top:4px;letter-spacing:.3px}
+.card-desc{font-size:.88rem;opacity:.9}
+.card .ok{color:#34d399}.card .warn{color:#fbbf24}.card .bad{color:#f87171}.card .info{color:#93c5fd}
+
+/* ===== CAIXA PRINCIPAL ===== */
+.shell{
+  background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);
+  max-width:1200px;margin:14px auto 28px;padding:0 16px 16px
+}
+
+/* Topbar da lista */
+.list-top{display:flex;align-items:center;gap:10px;padding:16px 4px 8px}
+.list-top h3{margin:0;font-size:1.15rem;color:#0f172a;display:flex;align-items:center;gap:10px}
+.top-actions{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn-add{background:linear-gradient(90deg,#10b981,#059669);color:#fff}
+.btn-export{background:linear-gradient(90deg,#1d4ed8,#2563eb);color:#fff}
+.btn:hover{filter:brightness(.96)}
+
+/* ===== FILTROS “STICKY” ===== */
+.filters-wrap{
+  position:sticky;top:8px;z-index:20;background:#ffffffcc;backdrop-filter:saturate(140%) blur(6px);
+  border:1px solid var(--line);border-radius:14px;margin:8px 0;padding:12px;
+}
+.filtros-grid{
+  display:grid;
+  grid-template-columns:minmax(240px,1.2fr) repeat(4,minmax(170px,1fr));
+  grid-template-areas:
+    "nome  nome  subtipo status serie"
+    "fornecedor localidade centro actions actions";
+  gap:14px;align-items:end;
+}
+.fld-nome{grid-area:nome}
+.fld-subtipo{grid-area:subtipo}
+.fld-status{grid-area:status}
+.fld-serie{grid-area:serie}
+.fld-fornecedor{grid-area:fornecedor}
+.fld-localidade{grid-area:localidade}
+.fld-centro{grid-area:centro}
+.fld-actions{grid-area:actions}
+
+@media (max-width:1100px){
+  .filtros-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    grid-template-areas:
+      "nome   nome   serie"
+      "subtipo status fornecedor"
+      "localidade centro actions";
+  }
+}
+@media (max-width:720px){
+  .filtros-grid{
+    grid-template-columns:1fr;
+    grid-template-areas:
+      "nome" "serie" "subtipo" "status" "fornecedor" "localidade" "centro" "actions";
+  }
+}
+
+.filtro-group{display:flex;flex-direction:column;min-width:0}
+.filtro-group label{font-weight:800;margin-bottom:6px;color:#0f172a}
+
+.filtro-icon-input{position:relative}
+.filtro-icon-input i{
+  position:absolute;left:12px;top:50%;transform:translateY(-50%);
+  color:#334155;pointer-events:none;font-size:1rem
+}
+.filtro-icon-input input,
+.filtro-icon-input select{
+  width:100%;height:var(--ctrl-h);
+  padding:8px 14px 8px var(--pad-icon);
+  border:1px solid #d5deea;border-radius:var(--rad);
+  background:var(--soft);color:#111827;font-size:1rem;outline:none;
+  transition:border .15s,box-shadow .15s,background .15s;appearance:none;
+}
+.filtro-icon-input input::placeholder{color:#64748b}
+.filtro-icon-input input:focus,
+.filtro-icon-input select:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd40;background:#fff}
+
+/* seta custom p/ select */
+.select-wrapper{position:relative}
+.select-wrapper::after{
+  content:"";position:absolute;right:14px;top:50%;transform:translateY(-25%);
+  border-left:6px solid transparent;border-right:6px solid transparent;border-top:7px solid #64748b;pointer-events:none;
+}
+.select-wrapper select{padding-right:40px}
+
+.fld-actions{display:flex;gap:10px;justify-content:flex-end;align-items:center}
+.btn-filtrar,.btn-clear{
+  height:var(--ctrl-h);border-radius:var(--rad);padding:0 16px;font-weight:800;display:inline-flex;gap:8px;align-items:center;white-space:nowrap
+}
+.btn-filtrar{background:linear-gradient(180deg, #18284a 0%, #21439f 100%);color:#fff;border:1px solid #0b1220}
+.btn-clear{background:#f8fafc;border:1.5px solid #dbe6f1;color:#334155}
+.btn-clear:hover{background:#f1f5f9;color:#2563eb;border-color:#bcd6ff}
+
+/* quick chips de status */
+.quick-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.quick-chips a{padding:6px 10px;border-radius:999px;border:1px solid #e2e8f0;background:#f8fafc;font-weight:700;color:#0f172a}
+.quick-chips a.active{background:#e8f0ff;border-color:#c7d2fe;color:#1e3a8a}
+
+/* ===== TABELA ===== */
+.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:12px}
+table{width:100%;border-collapse:collapse;min-width:960px;background:#fff}
+thead th{
+  position:sticky;top:0;background:linear-gradient(180deg, #18284a 0%, #21439f 100%);color:#fff;border-bottom:1px solid #0f172a;
+  padding:11px 12px;text-align:left;font-weight:900;user-select:none;cursor:pointer;z-index:2
+}
+thead th .sort{opacity:.7;font-size:.85rem;margin-left:6px}
+tbody td{padding:11px 12px;border-bottom:1px solid #eef2f7;color:#0f172a;font-size:.98rem;background:#fff}
+tbody tr:nth-child(odd) td{background:#fbfdff}
+tbody tr:hover td{background:#f3f7ff}
+tbody tr.clickable{cursor:pointer}
+tbody tr.clickable td:last-child{cursor:default}
+
+/* primeira coluna “sticky” */
+td.sticky, th.sticky{position:sticky;left:0;z-index:1;background:inherit; color: #0b1220;}
+th.sticky{z-index:3}
+
+/* ações */
+.td-acoes{text-align:center;white-space:nowrap}
+.icon-btn{background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:50%;padding:7px 8px;margin:0 2px;font-size:1.05rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
+.icon-btn.delete{color:#ef4444}
+
+/* status chips */
+.status{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:800;font-size:.9rem}
+.status.ativo,.status.Ativo{background:#e8fff3;color:#15803d}
+.status.backup,.status.Backup{background:#eef2ff;color:#1e40af}
+.status.manutencao,.status.Manutencao{background:#fff7ed;color:#9a3412}
+.status.defeito,.status.Defeito{background:#fee2e2;color:#b91c1c}
+
+/* ===== MODAL ===== */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9999}
+.modal-content{background:#fff;border-radius:14px;padding:22px 26px;max-width:480px;width:92%;box-shadow:0 10px 30px #0005}
+.modal-content h2{margin:0 0 8px;color:#b91c1c}
+.modal-content p{margin:0 0 16px;color:#111827}
+.modal-actions{display:flex;gap:10px;justify-content:center}
+.btn-danger{background:#ef4444;color:#fff;border-radius:10px;padding:10px 16px;border:none}
+.btn-light{background:#f3f4f6;color:#111827;border-radius:10px;padding:10px 16px;border:none}
+
+/* ===== MINOR ===== */
+.count-muted{color:#64748b;font-weight:700}
+</style>
+
+<div class="dashboard-container">
+  <div class="cards-grid">
+    <div class="card" title="Itens em uso" style="background:linear-gradient(135deg, #16a34a 0%, #17a599 100%);">
+      <i class="fa fa-circle ok"></i>
+      <div class="card-title">Ativos</div>
+      <div class="card-value">{{ total_ativos }}</div>
+      <div class="card-desc">Em uso</div>
+    </div>
+    <div class="card" title="Itens em backup" style="background:linear-gradient(135deg, #0891b2 0%, #2563eb 100%);">
+      <i class="fa fa-database info"></i>
+      <div class="card-title">Backup</div>
+      <div class="card-value">{{ total_backup }}</div>
+      <div class="card-desc">Em backup</div>
+    </div>
+    <div class="card" title="Itens em manutenção" style="background:linear-gradient(135deg, #b45309 0%, #f59e0b 100%);">
+      <i class="fa fa-screwdriver-wrench warn"></i>
+      <div class="card-title">Manutenção</div>
+      <div class="card-value">{{ total_manutencao }}</div>
+      <div class="card-desc">Em manutenção</div>
+    </div>
+    <div class="card" title="Itens com defeito" style="background:linear-gradient(135deg, #b91c1c 0%, #dc2626 100%);">
+      <i class="fa fa-exclamation-circle bad"></i>
+      <div class="card-title">Defeitos</div>
+      <div class="card-value">{{ total_queimados }}</div>
+      <div class="card-desc">Com defeito</div>
+    </div>
+    <div class="card" title="Total de itens cadastrados" style="background:linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);">
+      <i class="fa fa-layer-group info"></i>
+      <div class="card-title">Total</div>
+      <div class="card-value">{{ total_geral }}</div>
+      <div class="card-desc">Cadastrados</div>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+  <div class="list-top">
+    <h3><i class="fa fa-boxes-stacked" style="color:var(--info)"></i> Itens cadastrados
+      <span class="count-muted">· {{ equipamentos|length }} resultados</span>
+    </h3>
+    <div class="top-actions">
+      <a class="btn btn-add" href="{% url 'cadastrar_equipamento' %}"><i class="fa fa-plus"></i> Adicionar</a>
+
+      {% with qs=request.GET.urlencode %}
+        <a class="btn btn-export"
+          href="{% url 'equipamentos_exportar' %}{% if qs %}?{{ qs }}{% endif %}">
+          <i class="fa fa-file-export"></i> Exportar
+        </a>
+      {% endwith %}
+    </div>
+  </div>
+
+  <!-- FILTROS -->
+  <div class="filters-wrap">
+    <form class="filtros-grid" autocomplete="off" method="get" id="filtrosForm">
+      <div class="filtro-group filtro-icon-input fld-nome">
+        <label>Nome</label>
+        <i class="fa fa-search"></i>
+        <input type="text" name="nome" id="filtro-nome" placeholder="Buscar por nome..." value="{{ request.GET.nome|default:'' }}" aria-label="Buscar por nome">
+      </div>
+
+      <div class="filtro-group filtro-icon-input select-wrapper fld-subtipo">
+        <label>Subtipo</label>
+        <i class="fa fa-tags"></i>
+        <select name="subtipo" id="filtro-subtipo" aria-label="Filtrar por subtipo">
+          <option value="">Todos Subtipos</option>
+          {% for sub in subtipos %}
+            <option value="{{ sub.id }}" {% if request.GET.subtipo == sub.id|stringformat:"s" %}selected{% endif %}>{{ sub.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filtro-group filtro-icon-input select-wrapper fld-status">
+        <label>Status</label>
+        <i class="fa fa-circle"></i>
+        <select name="status" id="filtro-status" aria-label="Filtrar por status">
+          <option value="">Todos Status</option>
+          {% for code, label in status_choices %}
+            <option value="{{ code }}" {% if request.GET.status == code %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filtro-group filtro-icon-input fld-serie">
+        <label>Nº de Série</label>
+        <i class="fa fa-barcode"></i>
+        <input type="text" name="numero_serie" id="filtro-num-serie" placeholder="Buscar nº de série..." value="{{ request.GET.numero_serie|default:'' }}">
+      </div>
+
+      <div class="filtro-group filtro-icon-input fld-fornecedor">
+        <label>Fornecedor</label>
+        <i class="fa fa-truck"></i>
+        <input type="text" name="fornecedor" id="filtro-fornecedor" placeholder="Buscar fornecedor..." value="{{ request.GET.fornecedor|default:'' }}">
+      </div>
+
+      <div class="filtro-group filtro-icon-input fld-localidade">
+        <label>Localidade</label>
+        <i class="fa fa-location-dot"></i>
+        <input type="text" name="localidade" id="filtro-localidade" placeholder="Buscar localidade..." value="{{ request.GET.localidade|default:'' }}">
+      </div>
+
+      <div class="filtro-group filtro-icon-input fld-centro">
+        <label>Centro de Custo</label>
+        <i class="fa fa-coins"></i>
+        <input type="text" name="centro_custo" id="filtro-centro-custo" placeholder="Centro de custo..." value="{{ request.GET.centro_custo|default:'' }}">
+      </div>
+
+      <div class="fld-actions">
+        <button class="btn-filtrar" type="submit" title="Aplicar filtros (Enter)"><i class="fa fa-filter"></i> Filtrar</button>
+        <button class="btn-clear" type="button" id="btnLimpar" title="Limpar filtros (Esc)"><i class="fa fa-eraser"></i> Limpar</button>
+      </div>
+    </form>
+
+    <!-- atalhos rápidos de status -->
+    <div class="quick-chips" aria-label="Atalhos de status">
+      {% with s=request.GET.status|default:'' %}
+        <a href="?{% if request.GET.nome %}nome={{request.GET.nome}}&{% endif %}{% if request.GET.subtipo %}subtipo={{request.GET.subtipo}}&{% endif %}" class="{% if not s %}active{% endif %}">Todos</a>
+        <a href="?status=ativo{% if request.GET.nome %}&nome={{request.GET.nome}}{% endif %}{% if request.GET.subtipo %}&subtipo={{request.GET.subtipo}}{% endif %}" class="{% if s == 'ativo' %}active{% endif %}">Ativo</a>
+        <a href="?status=backup{% if request.GET.nome %}&nome={{request.GET.nome}}{% endif %}{% if request.GET.subtipo %}&subtipo={{request.GET.subtipo}}{% endif %}" class="{% if s == 'backup' %}active{% endif %}">Backup</a>
+        <a href="?status=manutencao{% if request.GET.nome %}&nome={{request.GET.nome}}{% endif %}{% if request.GET.subtipo %}&subtipo={{request.GET.subtipo}}{% endif %}" class="{% if s == 'manutencao' %}active{% endif %}">Manutenção</a>
+        <a href="?status=defeito{% if request.GET.nome %}&nome={{request.GET.nome}}{% endif %}{% if request.GET.subtipo %}&subtipo={{request.GET.subtipo}}{% endif %}" class="{% if s == 'defeito' %}active{% endif %}">Defeito</a>
+      {% endwith %}
+    </div>
+  </div>
+
+  <!-- TABELA -->
+  <div class="table-wrap">
+    <table id="tabelaEquipamentos">
+      <thead>
+        <tr>
+          <th class="sticky" data-col="0" style="left:0"># <span class="sort"></span></th>
+          <th data-col="1">Nome <span class="sort"></span></th>
+          <th data-col="2">Subtipo <span class="sort"></span></th>
+          <th data-col="3">Status <span class="sort"></span></th>
+          <th data-col="5">Localidade <span class="sort"></span></th>
+          <th data-col="6">Nº Série <span class="sort"></span></th>
+          <th data-col="7">Fornecedor <span class="sort"></span></th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for equipamento in equipamentos %}
+        <tr class="clickable" data-href="{% url 'equipamento_detalhe' equipamento.id %}">
+          <td class="sticky" style="left:0">{{ forloop.counter }}</td>
+          <td title="{{ equipamento.nome|default:'-' }}">{{ equipamento.nome|default:"-" }}</td>
+          <td>{% if equipamento.subtipo %}{{ equipamento.subtipo.nome }}{% else %}-{% endif %}</td>
+          <td>
+            <span class="status {{ equipamento.status|lower }}" title="{{ equipamento.get_status_display|default:equipamento.status|capfirst }}">
+              {{ equipamento.get_status_display|default:equipamento.status|capfirst }}
+            </span>
+          </td>
+          <td>{% if equipamento.localidade %}{{ equipamento.localidade.local }}{% else %}-{% endif %}</td>
+          <td>{{ equipamento.numero_serie|default:"-" }}</td>
+          <td>{% if equipamento.fornecedor %}{{ equipamento.fornecedor.nome }}{% else %}-{% endif %}</td>
+          <td class="td-acoes">
+            <a class="icon-btn view" title="Visualizar" href="{% url 'equipamento_detalhe' equipamento.id %}"><i class="fa fa-eye"></i></a>
+            <button class="icon-btn delete" title="Excluir" onclick="openDeleteModal('{{ equipamento.id }}','{{ equipamento.nome|escapejs }}')"><i class="fa fa-trash"></i></button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" style="text-align:center;color:#64748b;padding:18px">Nenhum equipamento encontrado.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal único -->
+<div id="deleteModal" class="modal-overlay" aria-hidden="true">
+  <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 id="modalTitle"><i class="fa fa-trash"></i> Excluir Item</h2>
+    <p id="deleteMessage"></p>
+    <form id="deleteForm" method="post" action="">
+      {% csrf_token %}
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-danger"><i class="fa fa-trash"></i> Confirmar</button>
+        <button type="button" class="btn btn-light" onclick="closeDeleteModal()"><i class="fa fa-arrow-left"></i> Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+/* ===== Debounce + autosubmit em inputs de texto ===== */
+function debounce(fn, d=450){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),d)}}
+const form = document.getElementById('filtrosForm');
+['filtro-nome','filtro-num-serie','filtro-fornecedor','filtro-localidade','filtro-centro-custo']
+  .forEach(id=>{const el=document.getElementById(id); if(el){el.addEventListener('input',debounce(()=>form.submit(),500));}});
+document.getElementById('filtro-subtipo')?.addEventListener('change',()=>form.submit());
+document.getElementById('filtro-status')?.addEventListener('change',()=>form.submit());
+document.getElementById('btnLimpar').addEventListener('click',()=>{window.location.href=window.location.pathname});
+
+/* Atalho: tecla '/' foca o campo Nome */
+document.addEventListener('keydown',e=>{
+  if(e.key==='/' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){
+    e.preventDefault(); document.getElementById('filtro-nome')?.focus();
+  }
+  if(e.key==='Escape'){ closeDeleteModal(); }
+});
+
+/* ===== Ordenação simples client-side ===== */
+(function(){
+  const table=document.getElementById('tabelaEquipamentos'); if(!table) return;
+  const tbody=table.querySelector('tbody'); const headers=table.querySelectorAll('thead th[data-col]'); let state={};
+  function txt(tr,c){return (tr.children[c]?.innerText||'').trim().toLowerCase()}
+  function cmp(a,b,asc){
+    const na=parseFloat(a.replace(',','.')), nb=parseFloat(b.replace(',','.'));
+    if(!isNaN(na)&&!isNaN(nb)) return asc?na-nb:nb-na;
+    return asc?a.localeCompare(b):b.localeCompare(a);
+  }
+  headers.forEach(th=>{
+    th.addEventListener('click',()=>{
+      const c=+th.dataset.col, asc=!(state[c]==='asc'); state={[c]:asc?'asc':'desc'};
+      headers.forEach(h=>h.querySelector('.sort').textContent=''); th.querySelector('.sort').textContent=asc?'▲':'▼';
+      [...tbody.querySelectorAll('tr')].sort((r1,r2)=>cmp(txt(r1,c),txt(r2,c),asc)).forEach(r=>tbody.appendChild(r));
+    });
+  });
+})();
+
+/* ===== Row clickable (sem interferir nos botões) ===== */
+document.querySelectorAll('#tabelaEquipamentos tbody tr.clickable').forEach(tr=>{
+  tr.addEventListener('click',e=>{
+    const isBtn = e.target.closest('.icon-btn'); if(isBtn) return;
+    const href = tr.dataset.href; if(href) window.location.href = href;
+  });
+});
+
+/* ===== Modal ===== */
+const modal=document.getElementById('deleteModal');
+const msg=document.getElementById('deleteMessage');
+const delForm=document.getElementById('deleteForm');
+function openDeleteModal(id,nome){
+  msg.innerHTML=`Tem certeza que deseja excluir o item <b>${nome}</b>?`;
+  delForm.action=`/equipamentos/${id}/excluir/`;
+  modal.style.display='flex'; modal.setAttribute('aria-hidden','false');
+  delForm.querySelector('button[type="submit"]').focus();
+}
+function closeDeleteModal(){ modal.style.display='none'; modal.setAttribute('aria-hidden','true'); }
+modal.addEventListener('click',e=>{ if(e.target===modal) closeDeleteModal(); });
+</script>
+{% endblock %}

@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+
+<style>
+:root{
+  --line:#e5e7eb; --ink:#172133; --card:#fff; --soft:#f8fafc; --shadow:0 20px 40px rgba(2,6,23,.07);
+  --h:48px; --rad:12px; --padL:44px;
+}
+*{box-sizing:border-box}
+body{color:var(--ink); background:#f6f7fa}
+
+/* container */
+.page{max-width:1200px;margin:22px auto;padding:0 14px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:18px 16px}
+
+/* header/top */
+.top-actions{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.top-left{display:flex;align-items:center;gap:10px}
+.top-left h2{margin:0;display:flex;align-items:center;gap:10px}
+.badge-count{background:#eef2ff;color:#1e40af;border-radius:999px;padding:4px 10px;font-weight:800}
+
+/* buttons */
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+.btn-add{background:linear-gradient(90deg,#10b981,#059669);color:#fff}
+.btn-light{background:#f8fafc;border:1.5px solid #dbe6f1;color:#334155}
+.btn:hover{filter:brightness(.97)}
+
+/* filtros – grid sem sobreposição */
+.filtros{display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,0.8fr) auto;gap:12px;align-items:end;margin-bottom:12px}
+@media (max-width:960px){.filtros{grid-template-columns:1fr 1fr}.filtros .actions{grid-column:1/-1;justify-content:flex-end}}
+@media (max-width:640px){.filtros{grid-template-columns:1fr}}
+.group{display:flex;flex-direction:column;min-width:0}
+.group label{font-weight:800;margin-bottom:6px}
+.filtro-icon-input{position:relative}
+.filtro-icon-input .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#334155}
+.ctrl{width:100%;height:var(--h);padding:8px 14px 8px var(--padL);border:1px solid #d5deea;border-radius:var(--rad);background:#fff;color:#111827;font-size:1rem;outline:none;transition:border .15s, box-shadow .15s}
+.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd55}
+
+/* tabela */
+.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;min-width:980px;background:#fff}
+thead th{position:sticky;top:0;background:linear-gradient(180deg, #18284a 0%, #21439f 100%);color:#fff;border-bottom:1px solid #0f172a;padding:11px 12px;text-align:left;font-weight:900}
+tbody td{padding:11px 12px;border-bottom:1px solid #eef2f7;color:#0f172a}
+tbody tr:nth-child(odd){background:#fbfdff}
+tbody tr:hover{background:#f3f7ff}
+
+/* status chips (tipo de movimentação) */
+.status{display:inline-block;padding:6px 12px;border-radius:999px;font-weight:800;font-size:.9rem;white-space:nowrap}
+.transferencia{background:#e6f0ff;color:#0b3b8c}
+.baixa{background:#ffe6e6;color:#7a1b1b}
+.entrada{background:#e8fff3;color:#166534}
+.envio_manutencao{background:#fff7ed;color:#9a3412}
+.retorno_manutencao,.retorno{background:#f0fdf4;color:#166534}
+.outros{background:#eef2ff;color:#1e3a8a}
+
+/* ação por linha */
+.icon-btn{background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:50%;padding:7px 8px;margin:0 2px;font-size:1.05rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+.icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
+</style>
+
+<div class="page">
+  <div class="panel">
+    <!-- header -->
+    <div class="top-actions">
+      <div class="top-left">
+        <h2><i class="fa fa-exchange-alt"></i> Movimentações de Itens</h2>
+        <span class="badge-count">{{ movimentacoes|length }} registro{{ movimentacoes|length|pluralize }}</span>
+      </div>
+      <div class="top-right" style="display:flex;gap:10px">
+        <a href="{% url 'movimentacao_create' %}" class="btn btn-add"><i class="fa fa-plus"></i> Nova Movimentação</a>
+      </div>
+    </div>
+
+    <!-- filtros -->
+    <form class="filtros" method="get" autocomplete="off" id="fForm">
+      <div class="group">
+        <label>Buscar por item</label>
+        <div class="filtro-icon-input">
+          <span class="ico"><i class="fa fa-search"></i></span>
+          <input type="text" name="q" class="ctrl" placeholder="Digite para buscar…" value="{{ request.GET.q|default:'' }}">
+        </div>
+      </div>
+
+    <div class="group">
+      <label>Tipo de Movimentação</label>
+      <div class="filtro-icon-input">
+        <span class="ico"><i class="fa fa-layer-group"></i></span>
+        <select name="tipo" class="ctrl">
+          <option value="">Todos os tipos</option>
+
+          {# ✅ 'tipos' deve ser uma lista de (value, label) #}
+          {% for value, label in tipos %}
+            <option value="{{ value }}" {% if request.GET.tipo == value %}selected{% endif %}>
+              {{ label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+
+      <div class="actions" style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-light" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
+        <a class="btn btn-light" href="{{ request.path }}"><i class="fa fa-eraser"></i> Limpar</a>
+      </div>
+    </form>
+
+    <!-- tabela -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:320px">Item</th>
+            <th style="width:160px">Tipo</th>
+            <th style="width:160px">Usuário</th>
+            <th style="width:180px">Localidade</th>
+            <th style="width:220px">Centro de Custo</th>
+            <th style="width:160px">Data</th>
+            <th style="width:110px">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mov in movimentacoes %}
+          <tr>
+            <td>{{ mov.item.nome }}</td>
+
+            <td>
+              {# aplicamos a classe diretamente; .retorno e .retorno_manutencao compartilham estilo #}
+              <span class="status {{ mov.tipo_movimentacao|default:'outros' }}">
+                {{ mov.get_tipo_movimentacao_display|default:mov.tipo_movimentacao|capfirst }}
+              </span>
+            </td>
+
+            <td>{{ mov.usuario.nome|default:"-" }}</td>
+
+            <td>
+              {% if mov.fornecedor_manutencao %}
+                {{ mov.fornecedor_manutencao.nome }}
+              {% elif mov.localidade_destino %}
+                {{ mov.localidade_destino.local }}
+              {% elif mov.localidade_origem %}
+                {{ mov.localidade_origem.local }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+
+            <td>
+              {% if mov.centro_custo_destino %}
+                {{ mov.centro_custo_destino.numero }} - {{ mov.centro_custo_destino.departamento }}
+              {% elif mov.centro_custo_origem %}
+                {{ mov.centro_custo_origem.numero }} - {{ mov.centro_custo_origem.departamento }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+
+            <td>{{ mov.created_at|date:"d/m/Y H:i" }}</td>
+            <td style="white-space:nowrap">
+              {% if mov.pk %}
+                <a href="{% url 'movimentacao_detail' mov.pk %}" class="icon-btn" title="Detalhar">
+                  <i class="fa fa-eye"></i>
+                </a>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" style="text-align:center;color:#64748b;padding:16px">Nenhuma movimentação registrado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// auto-submit com debounce
+(function(){
+  const form = document.getElementById('fForm');
+  if(!form) return;
+  const q = form.querySelector('input[name="q"]');
+  const tipo = form.querySelector('select[name="tipo"]');
+  let t;
+  q?.addEventListener('input', ()=>{
+    clearTimeout(t);
+    t = setTimeout(()=>form.submit(), 400);
+  });
+  tipo?.addEventListener('change', ()=>form.submit());
+})();
+</script>
+{% endblock %}

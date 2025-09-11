@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block title %}Detalhe do Subtipo{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+<style>
+:root{--line:#e5e7eb;--ink:#172133;--soft:#f8fafc;--card:#fff;--shadow:0 20px 40px rgba(2,6,23,.07)}
+.wrapper{max-width:900px;margin:22px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:22px}
+.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
+.actions{display:flex;gap:10px}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+.btn-edit{background:#223259;color:#fff}
+.btn-del{background:#ef4444;color:#fff}
+.btn-back{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
+.grid{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.card{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px}
+.label{font-weight:800;color:#0f172a}
+.value{color:#172133}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9999}
+.modal{background:#fff;border-radius:14px;padding:22px 26px;max-width:480px;width:92%;box-shadow:0 10px 30px #0005}
+.modal h3{margin:0 0 8px;color:#0f172a}
+.modal p{margin:0 0 16px;color:#111827}
+.modal .row{display:flex;gap:10px;justify-content:flex-end}
+.btn-danger{background:#ef4444;color:#fff;border-radius:10px;padding:10px 16px;border:none;font-weight:800}
+.btn-light{background:#f3f4f6;color:#111827;border-radius:10px;padding:10px 16px;border:1px solid #e5e7eb;font-weight:800}
+</style>
+
+<div class="wrapper">
+   <h2 style="color: #0f172a;"><i class="fa fa-tag"></i> Detalhe do Subtipo</h2>
+    <div class="actions">
+      <a class="btn btn-back" href="{% url 'subtipo_list' %}"><i class="fa fa-arrow-left"></i> Voltar</a>
+      <a class="btn btn-edit" href="{% url 'subtipo_update' obj.pk %}"><i class="fa fa-pen"></i> Editar</a>
+      <button class="btn btn-del js-open-delete" data-url="{% url 'subtipo_delete' obj.pk %}" data-name="{{ obj.nome|escapejs }}"><i class="fa fa-trash"></i> Excluir</button>
+    </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="label">Nome</div>
+      <div class="value">{{ obj.nome }}</div>
+    </div>
+    <div class="card">
+      <div class="label">É Alocado?</div>
+      <div class="value">{{ obj.get_alocado_display }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Categoria</div>
+      <div class="value">{{ obj.categoria.nome }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Criado em</div>
+      <div class="value">{{ obj.created_at|date:"d/m/Y H:i" }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Atualizado em</div>
+      <div class="value">{{ obj.updated_at|date:"d/m/Y H:i" }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Popup de exclusão -->
+<div id="confirmModal" class="modal-overlay" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <h3 id="confirmTitle"><i class="fa fa-trash"></i> Excluir Subtipo</h3>
+    <p id="confirmText"></p>
+    <form id="confirmForm" method="post" action="">
+      {% csrf_token %}
+      <div class="row">
+        <button type="button" class="btn-light" id="btnCancel"><i class="fa fa-arrow-left"></i> Cancelar</button>
+        <button type="submit" class="btn-danger"><i class="fa fa-trash"></i> Confirmar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function(){
+  const modal = document.getElementById('confirmModal');
+  const text  = document.getElementById('confirmText');
+  const form  = document.getElementById('confirmForm');
+  document.addEventListener('click', function(e){
+    const btn = e.target.closest('.js-open-delete');
+    if(btn){
+      e.preventDefault();
+      text.innerHTML = `Tem certeza que deseja excluir o subtipo <b>${btn.dataset.name||''}</b>?`;
+      form.action = btn.dataset.url;
+      modal.style.display = 'flex'; modal.setAttribute('aria-hidden','false');
+    }
+    if(e.target.id==='btnCancel' || e.target===modal){
+      modal.style.display = 'none'; modal.setAttribute('aria-hidden','true');
+    }
+  });
+  document.addEventListener('keydown', e => { if(e.key==='Escape'){ modal.style.display='none'; modal.setAttribute('aria-hidden','true'); }});
+})();
+</script>
+{% endblock %}

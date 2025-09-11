@@ -1,105 +1,290 @@
-{% extends 'base.html ' %}
-
-{% block title  %}Detalhe {{equipamento.nome}}{% endblock %}
-
+{% extends 'base.html' %}
+{% block title %}Detalhe do Item{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
 
-<html>
-<body>
-  <div class="container-detalhe">
-      <h2>{{ equipamento.nome }}</h2>
+<style>
+:root{
+  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --card:#fff; --soft:#f8fafc;
+  --shadow:0 20px 40px rgba(2,6,23,.08);
+  --ok:#16a34a; --warn:#b45309; --bad:#b91c1c;
+}
+body{background:#f6f7fa;color:var(--ink)}
+.wrap{max-width:1200px;margin:32px auto 24px;padding:0 14px}
 
-        <div class="actions-btn-group">
+/* header */
+.hero{
+  border-radius:18px; background:linear-gradient(135deg, #18284a 0%, #21439f 100%);
+  color:#fff; padding:22px; box-shadow:var(--shadow); border:1px solid #0b1220;
+}
+.hero-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.hero h2{margin:0;font-size:1.9rem;display:flex;gap:10px;align-items:center}
+.actions{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
+.btn{border:none;border-radius:12px;padding:10px 16px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:10px}
+.btn.edit{background:#fff;color:#0f172a}
+.btn.primary{background:linear-gradient(90deg,#22c55e,#16a34a);color:#fff}
+.btn.light{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
+.btn:hover{filter:brightness(.97)}
 
-          <a href="{% url 'home' %}" class="action-btn gray">← Voltar</a>
-          <a href="{% url 'editar_equipamento' equipamento.id %}" class="action-btn blue">✏️ Editar</a>
-          <a href="{% url 'excluir_equipamento' equipamento.id %}" onclick="return confirmarExclusao();" class="action-btn red">🗑️ Excluir</a>
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.chip{padding:6px 10px;border-radius:999px;border:1px solid #1f2a41;background:rgba(255,255,255,.12);font-weight:800;font-size:.9rem;display:inline-flex;align-items:center;gap:8px}
+.chip.light{background:#f1f5f9;border-color:#e2e8f0;color:#0f172a}
+.chip.status.ativo{background:#eafff3;border-color:#bbf7d0;color:#166534}
+.chip.status.backup{background:#eef2ff;border-color:#c7d2fe;color:#1e40af}
+.chip.status.manutencao{background:#fff7ed;border-color:#fed7aa;color:#7c2d12}
+.chip.status.defeito{background:#fee2e2;border-color:#fecaca;color:#7f1d1d}
 
-          {% if equipamento.precisa_preventiva == "sim" %}
-            <a href="{% url 'cadastrar_preventiva' equipamento.id %}" class="action-btn green">➕ Iniciar Preventiva</a>
-            <a href="{% url 'visualizar_preventivas' equipamento_id=equipamento.id %}" class="action-btn dark-blue">📋 Visualizar Preventivas</a>
-          {% endif %}
+/* sections/cards */
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}
+.section{padding:18px}
+.section h3{margin:0 0 12px;display:flex;align-items:center;gap:10px;font-size:1.15rem}
+.grid{display:grid;gap:16px}
+.g-4{grid-template-columns:repeat(4,minmax(220px,1fr))}
+.g-3{grid-template-columns:repeat(3,minmax(240px,1fr))}
+.g-2{grid-template-columns:repeat(2,minmax(280px,1fr))}
+@media (max-width:1050px){.g-4{grid-template-columns:repeat(2,minmax(220px,1fr))}}
+@media (max-width:900px){.g-3{grid-template-columns:repeat(2,minmax(220px,1fr))}}
+@media (max-width:700px){.g-2,.g-3,.g-4{grid-template-columns:1fr}}
+.tile{background:#f9fafc;border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}
+.tile strong{display:block;color:#334155;margin-bottom:6px}
+.muted{color:#64748b}
 
-          <a href="{% url 'historico_manutencao' equipamento.id %}" class="action-btn orange">🛠 Histórico de Manutenção</a>
-        </div>
-        {% if messages %}
-        <div>
-          {% for message in messages %}
-            <div style="background-color: #d4edda; color: #155724; padding: 10px; margin-bottom: 10px; border-radius: 5px;">
-              {{ message }}
-            </div>
-          {% endfor %}
-        </div>
+/* table */
+.table-wrap{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 10px rgba(2,6,23,.06);overflow:auto}
+table{width:100%;border-collapse:collapse;min-width:780px}
+th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}
+th{background:#f5f7fa;font-weight:900}
+
+/* “chips” simples p/ status em tabela */
+.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:800}
+.badge.ok{background:#e8fff3;color:#166534}
+.badge.warn{background:#fff7ed;color:#7c2d12}
+</style>
+
+<div class="wrap">
+  <!-- HEADER -->
+  <div class="hero">
+    <div class="hero-top">
+      <h2><i class="fa fa-clipboard-list"></i> Detalhes do Item</h2>
+      <div class="actions">
+        <a class="btn light" href="{% url 'editar_equipamento' item.id %}">
+          <i class="fa fa-pen-to-square"></i> Editar
+        </a>
+        <!-- Iniciar preventiva deste item -->
+        {% if preventiva %}
+        <a class="btn primary" href="{% url 'preventiva_start_item' item.id %}">
+          <i class="fa fa-shield-heart"></i> Iniciar Preventiva
+        </a>
         {% endif %}
-        
-    <div class="info" style="margin-top: 10px;">
-      <div class="comentario">
-        <p><strong>Categoria:</strong> {{ equipamento.categoria.nome }}</p>
       </div>
-      <div class="comentario">
-        <p><strong>Subtipo:</strong> {{ equipamento.subtipo.nome }}</p>
-      </div>
-      <div class="comentario">
-        <p><strong>Número de Série:</strong> {{ equipamento.numero_serie }}</p>
-      </div>
-      <div class="comentario">
-        <p><strong>Status:</strong> {{ equipamento.get_status_display }}</p>
-      </div>
-      <div class="comentario">
-        <p><strong>Localização ou Setor:</strong> {{ equipamento.local }}</p>
-      </div>
-      <div class="comentario">
-        <p><strong>Quantidade:</strong> {{ equipamento.quantidade }}</p>
-      </div>
-      <div class="comentario">
-        <p><strong>Marca:</strong> {{ equipamento.marca }}</p>
-      </div>
-      <div class="comentario">
-        <p><strong>Modelo:</strong> {{ equipamento.modelo }}</p>
-      </div>
-      <div class="comentario">
-        <p><strong>Atualizado em:</strong> {{ equipamento.updated_at|date:"d/m/Y H:i" }}</p>
-      </div>
-      <div class="comentario">
-        <p><strong>Criado em:</strong> {{ equipamento.created_at|date:"d/m/Y H:i" }}</p>
-      </div>
-      <div class="comentario">
-        <p><strong>Criado por:</strong> {{ equipamento.criado_por }}</p>
-      </div>
-      <div class="comentario">
-        <p><strong>Última atualização por:</strong> {{ equipamento.atualizado_por|default:"Não definido" }}</p>
-      </div>
-    
-        <p class="full-width"><strong>Observações:</strong> {{ equipamento.observacoes }}</p>
-       
-      
     </div>
- 
 
+    <div class="chips">
+      <span class="chip status {{ item.status|default:'-' }}"><i class="fa fa-circle-dot"></i> {{ item.get_status_display|default:item.status|capfirst }}</span>
+      <span class="chip"><i class="fa fa-layer-group"></i> Qtd: <strong>{{ item.quantidade|default:"0" }}</strong></span>
+      <span class="chip light"><i class="fa fa-box"></i> Consumo: <strong>{{ item.item_consumo|default:"não"|title }}</strong></span>
+      <span class="chip light"><i class="fa fa-handshake"></i> Locado: <strong>{{ item.locado|default:"não"|title }}</strong></span>
+      {% if item.fornecedor %}
+        <span class="chip light"><i class="fa fa-truck"></i> Fornecedor: <strong>{{ item.fornecedor.nome|default:"-" }}</strong></span>
+      {% endif %}
+    </div>
+  </div>
 
-    <div class="comentarios-section">
-      <h3>Comentários</h3>
+  <!-- IDENTIFICAÇÃO -->
+  <div class="card" style="margin-top:18px">
+    <div class="section">
+      <h3><i class="fa fa-id-badge"></i> Identificação</h3>
+      <div class="grid g-4">
+        <div class="tile"><strong>Nome</strong><span>{{ item.nome|default:"-" }}</span></div>
+        <div class="tile"><strong>Nº de Série</strong><span>{{ item.numero_serie|default:"-" }}</span></div>
+        <div class="tile"><strong>Marca</strong><span>{{ item.marca|default:"-" }}</span></div>
+        <div class="tile"><strong>Modelo</strong><span>{{ item.modelo|default:"-" }}</span></div>
+        <div class="tile"><strong>Subtipo</strong><span>{% if item.subtipo %}{{ item.subtipo.nome }}{% else %}-{% endif %}</span></div>
+        <div class="tile"><strong>Valor</strong><span>{% if item.valor %}R$ {{ item.valor|floatformat:2 }}{% else %}-{% endif %}</span></div>
+        <div class="tile"><strong>Item de Consumo</strong><span>{{ item.item_consumo|default:"não"|title }}</span></div>
+      </div>
+    </div>
+  </div>
 
-      <form method="post" class="comentario-form">
-        {% csrf_token %}
-        {{ form_comentario.as_p }}
-        <button type="submit">Adicionar Comentário</button>
-      </form>
+  <!-- LOCAL & CONTROLE -->
+  <div class="card" style="margin-top:18px">
+    <div class="section">
+      <h3><i class="fa fa-location-dot"></i> Local & Controle</h3>
+      <div class="grid g-4">
+        <div class="tile"><strong>Localidade</strong><span>{% if item.localidade %}{{ item.localidade.local }}{% else %}-{% endif %}</span></div>
+        <div class="tile"><strong>Centro de Custo</strong><span>{% if item.centro_custo %}{{ item.centro_custo.numero }} — {{ item.centro_custo.departamento }}{% else %}-{% endif %}</span></div>
+        <div class="tile"><strong>Precisa Preventiva?</strong><span>{{ item.precisa_preventiva|default:"não"|title }}</span></div>
+        <div class="tile"><strong>Intervalo Preventiva (dias)</strong><span>{% if item.precisa_preventiva == 'sim' %}{{ item.data_limite_preventiva }}{% else %}-{% endif %}</span></div>
+      </div>
+    </div>
+  </div>
 
-      <hr>
+  <!-- FORNECEDOR (apenas o que existe no model) -->
+  {% if item.fornecedor %}
+  <div class="card" style="margin-top:18px">
+    <div class="section">
+      <h3><i class="fa fa-truck"></i> Fornecedor</h3>
+      <div class="grid g-3">
+        <div class="tile"><strong>Nome</strong><span>{{ item.fornecedor.nome|default:"-" }}</span></div>
+        <div class="tile"><strong>CNPJ</strong><span>{{ item.fornecedor.cnpj|default:"-" }}</span></div>
+        <div class="tile"><strong>Contrato</strong><span>{{ item.fornecedor.contrato|default:"-" }}</span></div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
-      {% for comentario in comentarios %}
-        <div class="comentario">
-          <strong >{{ comentario.autor.username }}</strong> — 
-          <em>{{ comentario.criado_em|date:"d/m/Y H:i" }}</em><br>
-          <h5 style="font-weight: normal">{{ comentario.texto }}</h5>
+  <!-- OBS & AUDITORIA -->
+  <div class="card" style="margin-top:18px">
+    <div class="section">
+      <h3><i class="fa fa-file-lines"></i> Observações & Auditoria</h3>
+      <div class="grid g-2">
+        <div class="tile" style="grid-column:1/-1">
+          <strong>Observações</strong>
+          <span class="muted">{% if item.observacoes %}{{ item.observacoes }}{% else %}Sem observações.{% endif %}</span>
+        </div>
+        <div class="tile">
+          <strong>Criado por</strong>
+          <span>{{ item.criado_por|default:"-" }}</span><br>
+          <span class="muted">{{ item.created_at|date:"d/m/Y H:i" }}</span>
+        </div>
+        <div class="tile">
+          <strong>Atualizado por</strong>
+          <span>{{ item.atualizado_por|default:"-" }}</span><br>
+          <span class="muted">{{ item.updated_at|date:"d/m/Y H:i" }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETALHES DE EQUIPAMENTO -->
+  <div class="card" style="margin-top:18px">
+    <div class="section">
+      <h3><i class="fa fa-briefcase"></i> Detalhes de Equipamento</h3>
+      <div class="grid g-3">
+        <div class="tile"><strong>Data de Compra</strong><span>{% if item.data_compra %}{{ item.data_compra|date:"d/m/Y" }}{% else %}-{% endif %}</span></div>
+        <div class="tile"><strong>Nº do Pedido</strong><span>{{ item.numero_pedido|default:"-" }}</span></div>
+        <div class="tile"><strong>Locado</strong><span>{{ item.locado|default:"não"|title }}</span></div>
+        <div class="tile"><strong>Tempo Locado</strong><span>{% if item.locado == 'sim' and item.locacao %}{{ item.locacao.tempo_locado }} meses{% else %}-{% endif %}</span></div>
+        <div class="tile"><strong>Valor Locação</strong><span>{% if item.locado == 'sim' and item.locacao and item.locacao.valor_mensal %}R$ {{ item.locacao.valor_mensal|floatformat:2 }}{% else %}-{% endif %}</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PREVENTIVAS DO ITEM (visualização + ações) -->
+  {% if preventivas %}
+  <div class="section" style="padding-left:0;padding-right:0">
+    <h3><i class="fa fa-shield-heart"></i> Preventivas do Item</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Checklist</th>
+            <th>Última Execução</th>
+            <th>Próxima Execução</th>
+            <th>Status</th>
+            <th style="width:140px">Ações</th>
+          </tr>
+        </thead>
+
+        
+        <tbody>
+          {% for p in preventivas %}
+          <tr>
+            <td>{{ p.checklist_modelo.nome|default:"-" }}</td>
+            <td>{{ p.data_ultima|date:"d/m/Y"|default:"-" }}</td>
+            <td>{{ p.data_proxima|date:"d/m/Y"|default:"-" }}</td>
+            <td>
+              {% if p.dentro_do_prazo %}
+                <span class="badge ok">No prazo</span>
+              {% else %}
+                <span class="badge warn">Vencida</span>
+              {% endif %}
+            </td>
+            <td style="white-space:nowrap">
+              <a class="btn light" style="padding:6px 10px" title="Detalhar" href="{% url 'preventiva_detail' p.pk %}">
+                <i class="fa fa-eye"></i>
+              </a>
+              <a class="btn primary" style="padding:6px 10px" title="Executar" href="{% url 'preventiva_exec' p.pk %}">
+                <i class="fa fa-play"></i>
+              </a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="5" style="text-align:center;color:#64748b;padding:12px">
+              Nenhuma preventiva cadastrada para este item.
+              <a href="{% url 'preventiva_start_item' item.id %}">Criar agora</a>.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  <!-- MOVIMENTAÇÕES -->
+  <div class="section" style="padding-left:0;padding-right:0">
+    <h3><i class="fa fa-exchange-alt"></i> Histórico de Movimentações</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Data/Hora</th>
+            <th>Tipo</th>
+            <th>Usuário</th>
+            <th>Localidade</th>
+            <th>Centro de Custo</th>
+            <th>Qtd</th>
+            <th>Obs</th>
+            <th>Tipo Transferência</th>
+            <th>Registrado por</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mov in movimentacoes %}
+          <tr>
+            <td>{{ mov.created_at|date:"d/m/Y H:i" }}</td>
+            <td>{{ mov.get_tipo_movimentacao_display|default:mov.tipo_movimentacao|capfirst }}</td>
+            <td>{{ mov.usuario.nome|default:"-" }}</td>
+            <td>
+              {% if mov.localidade_destino %}{{ mov.localidade_destino.local }}
+              {% elif mov.localidade_origem %}{{ mov.localidade_origem.local }}
+              {% else %}-{% endif %}
+            </td>
+            <td>
+              {% if mov.centro_custo_destino %}{{ mov.centro_custo_destino.departamento }}
+              {% elif mov.centro_custo_origem %}{{ mov.centro_custo_origem.departamento }}
+              {% else %}-{% endif %}
+            </td>
+            <td>{{ mov.quantidade|default:"1" }}</td>
+            <td>{{ mov.observacao|default:"-" }}</td>
+            <td>{% if mov.get_tipo_transferencia_display %}{{ mov.get_tipo_transferencia_display }}{% else %}{{ mov.tipo_transferencia|default:"-"|capfirst }}{% endif %}</td>
+            <td>{{ mov.criado_por|default:"-" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="9" style="text-align:center;color:#64748b">Nenhuma movimentação registrada.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- COMENTÁRIOS -->
+  <div class="section" style="padding-left:0;padding-right:0">
+    <h3><i class="fa fa-comments"></i> Comentários</h3>
+    <div class="card" style="padding:12px 16px">
+      {% for c in comentarios %}
+        <div style="padding:8px 0;border-bottom:1px dashed var(--line)">
+          <strong>{{ c.criado_por|default:"" }}</strong>
+          <span class="muted">— {{ c.created_at|date:"d/m/Y H:i" }}</span>
+          <div>{{ c.texto }}</div>
         </div>
       {% empty %}
-        <p>Sem comentários até o momento.</p>
+        <div class="muted">Nenhum comentário registrado.</div>
       {% endfor %}
     </div>
-</body>
-</html>
-
+  </div>
+</div>
 {% endblock %}

@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% block title %}{% if form.instance.pk %}Editar Checklist{% else %}Novo Checklist{% endif %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"/>
+
+<style>
+:root{--line:#e5e7eb;--ink:#172133;--soft:#f8fafc;--card:#fff;--shadow:0 20px 40px rgba(2,6,23,.07);--h:46px;--rad:12px;--padL:44px}
+*{box-sizing:border-box}
+.wrapper{max-width:1100px;margin:22px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:22px}
+.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
+.buttons{display:flex;gap:10px}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
+.btn-secondary{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
+.form-grid{margin-top:14px;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.group{display:flex;flex-direction:column;min-width:0}
+.group label{font-weight:800;margin:0 0 6px;color:#0f172a}
+.filtro-icon-input{position:relative; min-width:0}
+.filtro-icon-input .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#334155;width:20px;display:flex;justify-content:center}
+.ctrl{width:100%;height:var(--h);padding:8px 14px 8px var(--padL);border:1px solid #d5deea;border-radius:var(--rad);background:#fff;color:#111827;font-size:1rem;outline:none;transition:border .15s, box-shadow .15s}
+.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd55}
+.errorlist{margin:6px 0 0 0;color:#b91c1c;font-weight:700}
+
+/* tabela perguntas */
+.block{margin-top:18px;background:var(--card);border:1px dashed var(--line);border-radius:14px;padding:14px}
+.block h3{margin:0 0 8px 0;color:#0f172a;display:flex;justify-content:space-between;align-items:center}
+.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:10px}
+table{width:100%;border-collapse:collapse;min-width:700px;background:#fff}
+thead th{position:sticky;top:0;background:linear-gradient(180deg, #18284a 0%, #21439f 100%);color:#fff;border-bottom:1px solid #0f172a;padding:10px 12px;text-align:left;font-weight:900}
+tbody td{padding:10px 12px;border-bottom:1px solid #eef2f7;color:#0f172a}
+.td-acoes{text-align:center;white-space:nowrap}
+.icon-btn{background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:50%;padding:7px 8px;margin:0 2px;font-size:1.05rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.icon-btn.delete{color:#ef4444}
+.icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
+
+/* modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9999}
+.modal-content{background:#fff;border-radius:14px;padding:22px 26px;max-width:480px;width:92%;box-shadow:0 10px 30px #0005}
+.modal-content h2{margin:0 0 8px;color:#b91c1c}
+.modal-content p{margin:0 0 16px;color:#111827}
+.modal-actions{display:flex;gap:10px;justify-content:center}
+.btn-danger{background:#ef4444;color:#fff;border-radius:10px;padding:10px 16px}
+
+/* Select2 */
+.select2-container{width:100%!important; color: #0b1220;}
+.select2-container--default .select2-selection--single{
+  height:var(--h); border:1px solid #d5deea; border-radius:var(--rad);
+  display:flex; align-items:center; padding-left:calc(var(--padL) - 12px);
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered{
+  line-height:normal!important; padding-left:0!important; color:#111827;
+}
+.select2-container--default .select2-selection--single .select2-selection__arrow{
+  height:var(--h)!important; right:10px!important;
+}
+</style>
+
+<div class="wrapper">
+    <h2 style="color: #0b1220;"><i class="fa fa-clipboard-check"></i> {% if form.instance.pk %}Editar Checklist{% else %}Novo Checklist{% endif %}</h2>
+    <div class="buttons">
+      <a href="{% url 'checklist_list' %}" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
+      <button class="btn btn-primary" type="submit" form="chkForm"><i class="fa fa-save"></i> Salvar</button>
+    </div>
+  <form method="post" id="chkForm" novalidate>
+    {% csrf_token %}
+    <div class="form-grid">
+      <div class="group">
+        <label for="{{ form.nome.id_for_label }}">Nome</label>
+        <div class="filtro-icon-input">
+          <span class="ico"><i class="fa fa-tag"></i></span>
+          {{ form.nome }}
+        </div>
+        {{ form.nome.errors }}
+      </div>
+      <div class="group">
+        <label for="{{ form.subtipo.id_for_label }}">Subtipo</label>
+        <div class="filtro-icon-input" style="color: #0b1220;">
+          <span class="ico"><i class="fa fa-layer-group"></i></span>
+          {{ form.subtipo }}
+        </div>
+        {{ form.subtipo.errors }}
+      </div>
+      <div class="group">
+        <label for="{{ form.ativo.id_for_label }}">Ativo?</label>
+        <div class="filtro-icon-input">
+          <span class="ico"><i class="fa fa-toggle-on"></i></span>
+          {{ form.ativo }}
+        </div>
+        {{ form.ativo.errors }}
+      </div>
+    </div>
+  </form>
+
+  <div class="block">
+    <h3>
+      Perguntas do Checklist
+      {% if form.instance.pk %}
+        <a class="btn btn-primary" href="{% url 'pergunta_create' form.instance.pk %}">
+          <i class="fa fa-plus"></i> Nova Pergunta
+        </a>
+      {% endif %}
+    </h3>
+
+    {% if form.instance.pk %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:64px">#</th>
+              <th>Pergunta</th>
+              <th>Tipo de Resposta</th>
+              <th>Obrigatória</th>
+              <th style="width:120px">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in perguntas %}
+              <tr>
+                <td>{{ forloop.counter }}</td>
+                <td>{{ p.texto_pergunta }}</td>
+                <td>{{ p.get_tipo_resposta_display|default:p.tipo_resposta }}</td>
+                <td>{{ p.obrigatorio|yesno:"Sim,Não" }}</td>
+                <td class="td-acoes">
+                  <a class="icon-btn" title="Editar" href="{% url 'pergunta_form' form.instance.pk p.pk %}">
+                    <i class="fa fa-pen"></i>
+                  </a>
+                  <button class="icon-btn delete" title="Excluir"
+                          onclick="openDeleteModal('{{ form.instance.pk }}','{{ p.pk }}','{{ p.texto_pergunta|escapejs }}')">
+                    <i class="fa fa-trash"></i>
+                  </button>
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" style="text-align:center;color:#64748b;padding:14px">Nenhuma pergunta cadastrada.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div style="color:#64748b">Salve o checklist para adicionar perguntas.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Modal único para deletar pergunta -->
+<div id="deleteModal" class="modal-overlay" aria-hidden="true">
+  <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 id="modalTitle"><i class="fa fa-trash"></i> Excluir Pergunta</h2>
+    <p id="deleteMessage"></p>
+    <form id="deleteForm" method="post" action="">
+      {% csrf_token %}
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-danger"><i class="fa fa-trash"></i> Confirmar</button>
+        <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()"><i class="fa fa-arrow-left"></i> Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+// força .ctrl caso o widget não tenha vindo com a classe
+['#id_nome','#id_subtipo','#id_ativo'].forEach(sel=>{
+  const el=document.querySelector(sel); if(el && !el.classList.contains('ctrl')) el.classList.add('ctrl');
+});
+
+// select2 no subtipo
+const $sub = $('#id_subtipo');
+if ($sub.length) {
+  $sub.select2({ width:'100%', placeholder:'Selecione o subtipo', language:{noResults:()=> 'Sem resultados', searching:()=> 'Buscando...'} });
+}
+
+// modal delete pergunta
+const modal=document.getElementById('deleteModal');
+const msg=document.getElementById('deleteMessage');
+const delForm=document.getElementById('deleteForm');
+function openDeleteModal(checklistId, perguntaId, texto){
+  msg.innerHTML = `Tem certeza que deseja excluir a pergunta <b>${texto}</b>?`;
+  delForm.action = `/preventiva/checklists/${checklistId}/pergunta/${perguntaId}/excluir/`;
+  modal.style.display='flex'; modal.setAttribute('aria-hidden','false');
+}
+function closeDeleteModal(){ modal.style.display='none'; modal.setAttribute('aria-hidden','true'); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDeleteModal(); });
+modal.addEventListener('click',e=>{ if(e.target===modal) closeDeleteModal(); });
+</script>
+{% endblock %}

@@ -1,769 +1,2361 @@
-from datetime import timedelta, date
-from django.shortcuts import render, get_object_or_404
-from django.contrib.auth.decorators import login_required
-from .models import Equipamento, Categoria, Subtipo, Preventiva
-from .forms import CategoriaForm, SubtipoForm, EquipamentoForm, ComentarioForm, PreventivaFormComum,  PreventivaFormSwitch, PreventivaFormAP
-from django.shortcuts import render, redirect
-import openpyxl
-from openpyxl.utils import get_column_letter
-from django.http import HttpResponse
+# Categoria - CRUD
+
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.utils import timezone
-from django.db.models import Sum
-from django.shortcuts import render
-from django.db.models import Max
+from decimal import Decimal
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from django.db.models import DateField, DateTimeField, IntegerField, BigIntegerField, CharField, Sum, Count, Case, When, Value as V, ExpressionWrapper, Window, DecimalField
+from django.db.models import Q, Count, Prefetch, F, Sum, DecimalField, Value, CharField,Exists
+from django.core.paginator import Paginator
+from django.core.exceptions import FieldError
+from django.db.models.functions import TruncMonth, Coalesce, Concat, Cast
 from collections import defaultdict
-from openpyxl.styles import Font, Alignment, PatternFill
+from django.db.models import OuterRef, Subquery
+from datetime import datetime
+from datetime import date, timedelta
+from django.db import transaction
+from django.utils import timezone
+from django.conf import settings
+from django.views.decorators.http import require_POST
+from django.http import HttpResponse
+from io import BytesIO
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from django.db import models
+import unicodedata
+from django.db.models.functions import Coalesce, RowNumber
+from .models import Categoria, Subtipo, Usuario, Fornecedor, Localidade, Funcao, CentroCusto, Item, Locacao, Comentario, MovimentacaoItem, CicloManutencao, StatusItemChoices, LocalidadeChoices, SimNaoChoices, StatusUsuarioChoices, CheckListModelo, CheckListPergunta, Preventiva, PreventivaResposta, TipoRespostaChoices, SimNaoChoices, TipoMovimentacaoChoices, Licenca, MovimentacaoLicenca, TipoMovLicencaChoices, PeriodicidadeChoices
+from django.utils.dateparse import parse_date
+from .forms import CategoriaForm, SubtipoForm, UsuarioForm, FornecedorForm, LocalidadeForm, FuncaoForm, CentroCustoForm, ItemForm, LocacaoForm, LicencaForm, ComentarioForm, MovimentacaoItemForm, CicloManutencaoForm, PreventivaStartForm, ChecklistModeloForm, ChecklistPerguntaForm, PreventivaStartForm, LicencaForm, MovimentacaoLicencaForm
 
+############### CATEGORIA ##############################
 
-############# Home #################
-@login_required
-def home(request):
-    equipamentos = Equipamento.objects.all()
+def categorias_list(request):
     categorias = Categoria.objects.all()
-    subtipos = Subtipo.objects.all()
+    return render(request, 'categoria/list.html', {'categorias': categorias})
 
-    search = request.GET.get('search')
+def categoria_create(request):
+    form = CategoriaForm(request.POST or None)
+    if form.is_valid():
+        categoria = form.save(commit=False)
+        categoria.criado_por = request.user
+        categoria.atualizado_por = request.user
+        categoria.save()
+        return redirect('categorias_list')
+    return render(request, 'categoria/form.html', {'form': form})
 
-    if search:
-        # Executa a busca individualmente em nome, número de série e subtipo, e junta os resultados
-        equipamentos_nome = Equipamento.objects.filter(nome__icontains=search)
-        equipamentos_sn = Equipamento.objects.filter(numero_serie__icontains=search)
-        equipamentos_sub = Equipamento.objects.filter(subtipo__nome__icontains=search)
-        equipamentos = (equipamentos_nome | equipamentos_sn | equipamentos_sub).distinct()
+def categoria_update(request, pk):
+    categoria = get_object_or_404(Categoria, pk=pk)
+    form = CategoriaForm(request.POST or None, instance=categoria)
+    if form.is_valid():
+        categoria = form.save(commit=False)
+        categoria.atualizado_por = request.user
+        categoria.save()
+        return redirect('categorias_list')
+    return render(request, 'categoria/form.html', {'form': form})
 
-    if request.GET.get('categoria'):
-        equipamentos = equipamentos.filter(categoria_id=request.GET.get('categoria'))
+def categoria_delete(request, pk):
+    categoria = get_object_or_404(Categoria, pk=pk)
+    if request.method == 'POST':
+        categoria.delete()
+        return redirect('categorias_list')
+    return render(request, 'categoria/delete.html', {'obj': categoria})
 
-    if request.GET.get('subtipo'):
-        equipamentos = equipamentos.filter(subtipo_id=request.GET.get('subtipo'))
 
-    if request.GET.get('status'):
-        equipamentos = equipamentos.filter(status=request.GET.get('status'))
+############### SUBTIPO ##############################
 
-    # Contadores
-    total_ativos = equipamentos.filter(status='ativo').count()
-    total_backup = equipamentos.filter(status='backup').count()
-    total_queimados = equipamentos.filter(status='queimado').count()
-    total_manutencao = equipamentos.filter(status='manutencao').count()
-    total_geral = equipamentos.count()
+@login_required
+def subtipo_list(request):
+    q = request.GET.get("q", "").strip()
+    cat = request.GET.get("categoria", "").strip()
+    alocado = request.GET.get("alocado", "").strip()
+
+    qs = Subtipo.objects.select_related("categoria").order_by("categoria__nome", "nome")
+
+    if q:
+        qs = qs.filter(Q(nome__icontains=q) | Q(categoria__nome__icontains=q))
+    if cat:
+        qs = qs.filter(categoria__id=cat)
+    if alocado:
+        qs = qs.filter(alocado=alocado)
 
     context = {
-        'equipamentos': equipamentos,
-        'categorias': categorias,
-        'subtipos': subtipos,
-        'status_choices': Equipamento.STATUS_CHOICES,
-        'total_ativos': total_ativos,
-        'total_backup': total_backup,
-        'total_queimados': total_queimados,
-        'total_geral': total_geral,
-        'total_manutencao': total_manutencao,
+        "subtipos": qs,
+        "categorias": Categoria.objects.order_by("nome"),
+        "alocado_choices": (("sim","Sim"),("nao","Não")),
+        "request": request,  # para manter valores nos filtros
     }
-
-    return render(request, 'front\\home.html', context)
-
-############### Visualização de Equipamento #########################
-@login_required
-def equipamento_detalhe(request, pk):
-    equipamento = get_object_or_404(Equipamento, pk=pk)
-    comentarios = equipamento.comentarios.order_by('-criado_em')
-
-    if request.method == 'POST':
-        form = ComentarioForm(request.POST)
-        if form.is_valid():
-            comentario = form.save(commit=False)
-            comentario.equipamento = equipamento
-            comentario.autor = request.user
-            comentario.save()
-            return redirect('equipamento_detalhe', pk=equipamento.pk)
-    else:
-        form = ComentarioForm()
-
-    return render(request, 'front\\equipamento_detalhe.html', {
-        'equipamento': equipamento,
-        'comentarios': comentarios,
-        'form_comentario': form,
-    })
-
-    
-
-################ Cadastro de Categoria #####################
+    return render(request, "front/subtipo_list.html", context)
 
 @login_required
-def cadastrar_categoria(request):
-    if request.method == 'POST':
-        form = CategoriaForm(request.POST)
-        if form.is_valid():
-            form.save()
-            return redirect('home')
-    else:
-        form = CategoriaForm()
-    return render(request, 'front\\cadastrar_categoria.html', {'form': form})
-
-#################### Cadastro de SUbtipo ######################
-@login_required
-def cadastrar_subtipo(request):
-    if request.method == 'POST':
+def subtipo_create(request):
+    if request.method == "POST":
         form = SubtipoForm(request.POST)
         if form.is_valid():
-            form.save()
-            return redirect('home')
+            obj = form.save(commit=False)
+            obj.criado_por = request.user
+            obj.atualizado_por = request.user
+            obj.save()
+            messages.success(request, "Subtipo cadastrado com sucesso!")
+            return redirect("subtipo_list")
+        messages.error(request, "Verifique os campos destacados.")
     else:
         form = SubtipoForm()
-    return render(request, 'front\\cadastrar_subtipo.html', {'form': form})
 
-################### Cadastro de equipamento ###########################
-def cadastrar_equipamento(request):
-    if request.method == 'POST':
-        form = EquipamentoForm(request.POST)
+    return render(request, "front/subtipo_form.html", {"form": form, "editar": False})
+
+@login_required
+def subtipo_update(request, pk):
+    obj = get_object_or_404(Subtipo, pk=pk)
+    if request.method == "POST":
+        form = SubtipoForm(request.POST, instance=obj)
         if form.is_valid():
-            equipamento = form.save(commit=False)
-            equipamento._user = request.user  # Passa o usuário para o modelo
-            equipamento.save()
-            return redirect('home')
+            obj = form.save(commit=False)
+            obj.atualizado_por = request.user
+            obj.save()
+            messages.success(request, "Subtipo atualizado com sucesso!")
+            return redirect("subtipo_list")
+        messages.error(request, "Verifique os campos destacados.")
     else:
-        form = EquipamentoForm()
+        form = SubtipoForm(instance=obj)
 
-    # Aqui está o segredo: passar todos os subtipos!
-    subtipos = Subtipo.objects.select_related('categoria').all()
+    return render(request, "front/subtipo_form.html", {"form": form, "editar": True, "obj": obj})
+
+@login_required
+def subtipo_delete(request, pk):
+    obj = get_object_or_404(Subtipo, pk=pk)
+    if request.method == "POST":
+        obj.delete()
+        messages.success(request, "Subtipo excluído com sucesso!")
+        return redirect("subtipo_list")
+    return render(request, "front/subtipo_confirm_delete.html", {"obj": obj})
+
+@login_required
+def subtipo_detail(request, pk):
+    obj = get_object_or_404(Subtipo.objects.select_related("categoria"), pk=pk)
+    return render(request, "front/subtipo_detail.html", {"obj": obj})
+
+
+############### USUÁRIO ##############################
+
+@login_required
+def usuario_list(request):
+    q = (request.GET.get("q") or "").strip()
+    status = (request.GET.get("status") or "").strip()              # ativo | desligado | ''
+    pmb = (request.GET.get("pmb") or "").strip()                    # sim | nao | ''
+    cc = (request.GET.get("cc") or "").strip()                      # id do centro de custo
+    loc = (request.GET.get("loc") or "").strip()                    # id localidade
+    func = (request.GET.get("func") or "").strip()                  # id função
+
+    qs = Usuario.objects.select_related("centro_custo", "localidade", "funcao").order_by("-created_at")
+
+    if q:
+        qs = qs.filter(Q(nome__icontains=q) | Q(email__icontains=q))
+    if status in dict(StatusUsuarioChoices.choices):
+        qs = qs.filter(status=status)
+    if pmb in dict(SimNaoChoices.choices):
+        qs = qs.filter(pmb=pmb)
+    if cc.isdigit():
+        qs = qs.filter(centro_custo_id=int(cc))
+    if loc.isdigit():
+        qs = qs.filter(localidade_id=int(loc))
+    if func.isdigit():
+        qs = qs.filter(funcao_id=int(func))
+
+    paginator = Paginator(qs, 20)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    ctx = {
+        "usuarios": page_obj.object_list,
+        "page_obj": page_obj,
+        "total": qs.count(),
+        "q": q,
+        "status": status,
+        "pmb": pmb,
+        "cc": cc,
+        "loc": loc,
+        "func": func,
+        "status_choices": StatusUsuarioChoices.choices,
+        "pmb_choices": SimNaoChoices.choices,
+        "cc_list": CentroCusto.objects.order_by("numero", "departamento"),
+        "loc_list": Localidade.objects.order_by("local"),
+        "func_list": Funcao.objects.order_by("nome"),
+    }
+    return render(request, "front/usuario_list.html", ctx)
+
+
+# CREATE
+@login_required
+def usuario_create(request):
+    if request.method == "POST":
+        form = UsuarioForm(request.POST)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.criado_por = request.user
+            obj.atualizado_por = request.user
+            obj.save()
+            messages.success(request, "Usuário criado com sucesso!")
+            return redirect("usuario_list")
+        messages.error(request, "Corrija os erros do formulário.")
+    else:
+        form = UsuarioForm()
+
+    return render(request, "front/usuario_form.html", {"form": form, "editar": False})
+
+
+# UPDATE
+@login_required
+def usuario_update(request, pk: int):
+    obj = get_object_or_404(Usuario, pk=pk)
+    if request.method == "POST":
+        form = UsuarioForm(request.POST, instance=obj)
+        if form.is_valid():
+            sobj = form.save(commit=False)
+            sobj.atualizado_por = request.user
+            sobj.save()
+            messages.success(request, "Usuário atualizado com sucesso!")
+            return redirect("usuario_list")
+        messages.error(request, "Corrija os erros do formulário.")
+    else:
+        form = UsuarioForm(instance=obj)
+
+    return render(request, "front/usuario_form.html", {"form": form, "editar": True})
+
+
+# DETAIL
+@login_required
+def usuario_detail(request, pk):
+    # ---------- USUÁRIO ----------
+    obj = get_object_or_404(
+        Usuario.objects.select_related("centro_custo", "localidade", "funcao"),
+        pk=pk
+    )
+
+    # ---------- ITENS ATUALMENTE COM O USUÁRIO ----------
+    # Última movimentação relevante por item
+    last_posse_qs = (
+        MovimentacaoItem.objects
+        .filter(item=OuterRef("pk"))
+        .exclude(tipo_movimentacao__in=["entrada", "baixa"])  # entrada/baixa não definem posse
+        .order_by("-created_at", "-id")
+    )
+
+    itens_qs = (
+        Item.objects
+        .annotate(
+            _last_user=Subquery(last_posse_qs.values("usuario_id")[:1]),
+            _last_tipo=Subquery(last_posse_qs.values("tipo_movimentacao")[:1]),
+            _last_tptrans=Subquery(last_posse_qs.values("tipo_transferencia")[:1]),
+        )
+        .filter(_last_user=obj.pk)  # último movimento é com este usuário
+        # exclui estados de manutenção/retorno que não representam posse do usuário
+        .exclude(_last_tipo__in=("envio_manutencao", "retorno_manutencao", "retorno"))
+        # se o último foi transferência mas NÃO foi "entrega", então não está em posse do usuário (p.ex. devolução)
+        .exclude(Q(_last_tipo="transferencia") & ~Q(_last_tptrans="entrega"))
+        .select_related("subtipo", "localidade", "centro_custo")
+        .order_by("nome")
+    )
+
+    items_do_usuario = list(itens_qs)
+
+    # custos de itens (locação mensal x aquisição)
+    total_itens_loc_mensal = Decimal("0.00")
+    total_itens_aquis = Decimal("0.00")
+
+    for it in items_do_usuario:
+        # Locação (reverse OneToOne pode não existir)
+        try:
+            loc = it.locacao
+        except Locacao.DoesNotExist:
+            loc = None
+
+        if it.locado == SimNaoChoices.SIM and loc and loc.valor_mensal:
+            it.custo_tipo = "locacao"              # usado no template
+            it.custo_valor = loc.valor_mensal      # usado no template
+            total_itens_loc_mensal += loc.valor_mensal
+        else:
+            it.custo_tipo = "aquisicao"
+            it.custo_valor = it.valor              # pode ser None
+            if it.valor:
+                total_itens_aquis += it.valor
+
+    # ---------- LICENÇAS ATIVAS DO USUÁRIO ----------
+    # Considera ativa quando o ÚLTIMO movimento (para esta licença e este usuário) for ATRIBUIÇÃO
+    last_mov = (
+        MovimentacaoLicenca.objects
+        .filter(licenca=OuterRef("pk"), usuario=obj)
+        .order_by("-created_at", "-id")
+    )
+
+    lic_base = (
+        Licenca.objects
+        .annotate(
+            _last_tipo=Subquery(last_mov.values("tipo")[:1]),
+            _desde=Subquery(last_mov.values("created_at")[:1]),
+        )
+        .filter(_last_tipo=TipoMovLicencaChoices.ATRIBUICAO)
+        .select_related("fornecedor", "centro_custo")
+        .order_by("nome")
+    )
+
+    total_lic_mensal = Decimal("0.00")
+    total_lic_anual  = Decimal("0.00")
+    licencas_do_usuario = []
+
+    for l in lic_base:
+        cm = l.custo_mensal()
+        ca = l.custo_anual_estimado()
+        if cm: total_lic_mensal += cm
+        if ca: total_lic_anual  += ca
+        licencas_do_usuario.append({
+            "licenca": l,
+            "desde": l._desde,        # datetime da última atribuição ao usuário
+            "custo_mensal": cm,
+            "custo_anual": ca,
+        })
+
+    # ---------- CONTEXTO ----------
+    context = {
+        "obj": obj,
+        "items_do_usuario": items_do_usuario,
+        "licencas_do_usuario": licencas_do_usuario,
+        "totais_itens": {
+            "loc_mensal": total_itens_loc_mensal,
+            "aquisicao": total_itens_aquis,
+        },
+        "totais_licencas": {
+            "mensal": total_lic_mensal,
+            "anual": total_lic_anual,
+        },
+    }
+    return render(request, "front/usuario_detail.html", context)
+
+# DELETE (POST via modal)
+@login_required
+def usuario_delete(request, pk: int):
+    obj = get_object_or_404(Usuario, pk=pk)
+    if request.method == "POST":
+        obj.delete()
+        messages.success(request, "Usuário removido com sucesso.")
+    else:
+        messages.error(request, "Ação inválida.")
+    return redirect("usuario_list")
+
+
+############### FORNECEDOR ##############################
+
+@login_required
+def fornecedor_list(request):
+    q = (request.GET.get("q") or "").strip()
+    tem_contrato = (request.GET.get("tem_contrato") or "").strip()  # "sim" | "nao" | ""
+
+    qs = Fornecedor.objects.all().order_by("-created_at")
+    if q:
+        qs = qs.filter(Q(nome__icontains=q) | Q(cnpj__icontains=q))
+    if tem_contrato == "sim":
+        qs = qs.exclude(contrato__isnull=True).exclude(contrato__exact="")
+    elif tem_contrato == "nao":
+        qs = qs.filter(Q(contrato__isnull=True) | Q(contrato__exact=""))
+
+    paginator = Paginator(qs, 20)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    ctx = {
+        "fornecedores": page_obj.object_list,
+        "page_obj": page_obj,
+        "total": qs.count(),
+        "q": q,
+        "tem_contrato": tem_contrato,
+    }
+    return render(request, "front/fornecedor_list.html", ctx)
+
+
+# CREATE
+@login_required
+def fornecedor_create(request):
+    if request.method == "POST":
+        form = FornecedorForm(request.POST)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.criado_por = request.user
+            obj.atualizado_por = request.user
+            obj.save()
+            messages.success(request, "Fornecedor criado com sucesso!")
+            return redirect("fornecedor_list")
+        messages.error(request, "Corrija os erros do formulário.")
+    else:
+        form = FornecedorForm()
+
+    return render(request, "front/fornecedor_form.html", {"form": form, "editar": False})
+
+
+# UPDATE
+@login_required
+def fornecedor_update(request, pk: int):
+    obj = get_object_or_404(Fornecedor, pk=pk)
+    if request.method == "POST":
+        form = FornecedorForm(request.POST, instance=obj)
+        if form.is_valid():
+            sobj = form.save(commit=False)
+            sobj.atualizado_por = request.user
+            sobj.save()
+            messages.success(request, "Fornecedor atualizado com sucesso!")
+            return redirect("fornecedor_list")
+        messages.error(request, "Corrija os erros do formulário.")
+    else:
+        form = FornecedorForm(instance=obj)
+
+    return render(request, "front/fornecedor_form.html", {"form": form, "editar": True})
+
+
+# DETAIL
+@login_required
+def fornecedor_detail(request, pk: int):
+    obj = get_object_or_404(Fornecedor, pk=pk)
+    return render(request, "front/fornecedor_detail.html", {"obj": obj})
+
+
+# DELETE (POST via modal)
+@login_required
+def fornecedor_delete(request, pk: int):
+    obj = get_object_or_404(Fornecedor, pk=pk)
+    if request.method == "POST":
+        obj.delete()
+        messages.success(request, "Fornecedor removido com sucesso.")
+    else:
+        messages.error(request, "Ação inválida.")
+    return redirect("fornecedor_list")
+
+
+############### LOCALIDADE ##############################
+
+@login_required
+def localidade_list(request):
+    qs = Localidade.objects.all().order_by("local")
+
+    q = request.GET.get("q", "").strip()
+    if q:
+        qs = qs.filter(Q(local__icontains=q) | Q(codigo__icontains=q))
+
+    context = {
+        "localidades": qs,
+        "LocalidadeChoices": LocalidadeChoices,
+        "q": q,
+    }
+    return render(request, "front/localidade_list.html", context)
+
+@login_required
+def localidade_create(request):
+    if request.method == "POST":
+        form = LocalidadeForm(request.POST)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.criado_por = request.user
+            obj.atualizado_por = request.user
+            obj.save()
+            messages.success(request, "Localidade criada com sucesso.")
+            return redirect("localidade_list")
+        messages.error(request, "Corrija os erros do formulário.")
+    else:
+        form = LocalidadeForm()
+
+    return render(request, "front/localidade_form.html", {"form": form, "editar": False})
+
+@login_required
+def localidade_update(request, pk):
+    obj = get_object_or_404(Localidade, pk=pk)
+    if request.method == "POST":
+        form = LocalidadeForm(request.POST, instance=obj)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.atualizado_por = request.user
+            obj.save()
+            messages.success(request, "Localidade atualizada com sucesso.")
+            return redirect("localidade_list")
+        messages.error(request, "Corrija os erros do formulário.")
+    else:
+        form = LocalidadeForm(instance=obj)
+
+    return render(request, "front/localidade_form.html", {"form": form, "editar": True, "obj": obj})
+
+@login_required
+def localidade_delete(request, pk):
+    obj = get_object_or_404(Localidade, pk=pk)
+    if request.method == "POST":
+        nome = obj.local
+        obj.delete()
+        messages.success(request, f"Localidade '{nome}' excluída.")
+        return redirect("localidade_list")
+    # Não renderizamos página separada; exclusão via modal na listagem
+    return redirect("localidade_list")
+
+# DETAIL
+@login_required
+def localidade_detail(request, pk):
+    obj = get_object_or_404(Localidade, pk=pk)
+    # Contagens para enriquecer o detalhe
+    itens_count = Item.objects.filter(localidade=obj).count()
+    usuarios_count = Usuario.objects.filter(localidade=obj).count()
+
+    itens = Item.objects.filter(localidade=obj).order_by("nome")[:12]
+    usuarios = Usuario.objects.filter(localidade=obj).order_by("nome")[:12]
+
+    context = {
+        "obj": obj,
+        "itens_count": itens_count,
+        "usuarios_count": usuarios_count,
+        "itens": itens,
+        "usuarios": usuarios,
+    }
+    return render(request, "front/localidade_detail.html", context)
+
+
+
+#################### CENTRO DE CUSTO ########################
+
+@login_required
+def centrocusto_list(request):
+    q = (request.GET.get("q") or "").strip()
+    pmb = (request.GET.get("pmb") or "").strip()
+
+    qs = CentroCusto.objects.all().order_by("-created_at")
+    if q:
+        qs = qs.filter(Q(numero__icontains=q) | Q(departamento__icontains=q))
+    if pmb in dict(SimNaoChoices.choices):
+        qs = qs.filter(pmb=pmb)
+
+    paginator = Paginator(qs, 20)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    ctx = {
+        "centros": page_obj.object_list,
+        "page_obj": page_obj,
+        "total": qs.count(),
+        "q": q,
+        "pmb": pmb,
+        "pmb_choices": SimNaoChoices.choices,
+    }
+    return render(request, "front/centrocusto_list.html", ctx)
+
+
+# CREATE
+@login_required
+def centrocusto_create(request):
+    if request.method == "POST":
+        form = CentroCustoForm(request.POST)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.criado_por = request.user
+            obj.atualizado_por = request.user
+            obj.save()
+            messages.success(request, "Centro de custo criado com sucesso!")
+            return redirect("centrocusto_list")
+        messages.error(request, "Corrija os erros do formulário.")
+    else:
+        form = CentroCustoForm()
+
+    return render(request, "front/centrocusto_form.html", {"form": form, "editar": False})
+
+
+# UPDATE
+@login_required
+def centrocusto_update(request, pk: int):
+    obj = get_object_or_404(CentroCusto, pk=pk)
+    if request.method == "POST":
+        form = CentroCustoForm(request.POST, instance=obj)
+        if form.is_valid():
+            sobj = form.save(commit=False)
+            sobj.atualizado_por = request.user
+            sobj.save()
+            messages.success(request, "Centro de custo atualizado com sucesso!")
+            return redirect("centrocusto_list")
+        messages.error(request, "Corrija os erros do formulário.")
+    else:
+        form = CentroCustoForm(instance=obj)
+
+    return render(request, "front/centrocusto_form.html", {"form": form, "editar": True})
+
+
+# DETAIL
+@login_required
+def centrocusto_detail(request, pk):
+    obj = get_object_or_404(CentroCusto, pk=pk)
+    itens_cc = (Item.objects
+                .filter(centro_custo=obj)
+                .select_related('subtipo','localidade')
+                .order_by('nome'))
+    return render(request, 'front/centrocusto_detail.html', {
+        'obj': obj,
+        'itens_cc': itens_cc,
+    })
+
+
+# DELETE (POST via modal)
+@login_required
+def centrocusto_delete(request, pk: int):
+    obj = get_object_or_404(CentroCusto, pk=pk)
+    if request.method == "POST":
+        obj.delete()
+        messages.success(request, "Centro de custo removido com sucesso.")
+    else:
+        messages.error(request, "Ação inválida.")
+    return redirect("centrocusto_list")
+
+######################### FUNÇÃO ################################
+
+def funcoes_list(request):
+    funcoes = Funcao.objects.all()
+    return render(request, 'funcao/list.html', {'funcoes': funcoes})
+
+def funcao_create(request):
+    form = FuncaoForm(request.POST or None)
+    if form.is_valid():
+        funcao = form.save(commit=False)
+        if not funcao.pk:
+            funcao.criado_por = request.user
+        funcao.atualizado_por = request.user
+        funcao.save()
+        return redirect('funcoes_list')
+    return render(request, 'funcao/form.html', {'form': form})
+
+def funcao_update(request, pk):
+    funcao = get_object_or_404(Funcao, pk=pk)
+    form = FuncaoForm(request.POST or None, instance=funcao)
+    if form.is_valid():
+        funcao = form.save(commit=False)
+        funcao.atualizado_por = request.user
+        funcao.save()
+        return redirect('funcoes_list')
+    return render(request, 'funcao/form.html', {'form': form})
+
+def funcao_delete(request, pk):
+    funcao = get_object_or_404(Funcao, pk=pk)
+    if request.method == 'POST':
+        funcao.delete()
+        return redirect('funcoes_list')
+    return render(request, 'funcao/delete.html', {'obj': funcao})
+
+################ ITEM #######################################
+
+@login_required
+def item_create(request):
+    if request.method == "POST":
+        form = ItemForm(request.POST)
+        locacao_form = LocacaoForm(request.POST if request.POST.get("locado") == "sim" else None)
+
+        if form.is_valid():
+            item = form.save(commit=False)
+            item.criado_por = request.user
+            item.save()
+
+            # 🔹 Centro de custo origem já é salvo pelo form (nada extra aqui)
+
+            # Se o item for locado, exige preenchimento de tempo e valor
+            if item.locado == "sim":
+                if locacao_form.is_valid():
+                    locacao = locacao_form.save(commit=False)
+                    locacao.equipamento = item
+
+                    if not locacao.tempo_locado or not locacao.valor_mensal:
+                        form.add_error(None, "Se o equipamento é locado, informe o tempo em meses e o valor mensal.")
+                        return render(request, "front\\cadastrar_equipamento.html", {
+                            "form": form,
+                            "locacao_form": locacao_form
+                        })
+
+                    locacao.save()
+                else:
+                    return render(request, "front\\cadastrar_equipamento.html", {
+                        "form": form,
+                        "locacao_form": locacao_form
+                    })
+
+            return redirect("equipamentos_list")
+
+    else:
+        form = ItemForm()
+        locacao_form = LocacaoForm()
+
     return render(
         request,
-        'front\\cadastrar_equipamento.html',
-        {
-            'form': form,
-            'subtipos': subtipos,  # Envia todos subtipos para popular os options!
-        }
+        "front\\cadastrar_equipamento.html",
+        {"form": form, "locacao_form": locacao_form}
     )
 
-################### Categoria x subtipo #######################
+
+# ITEM LIST
+
+def _norm(s: str) -> str:
+    return unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode().lower()
 
 
+@login_required
+def equipamentos_list(request):
+    """
+    Lista equipamentos com filtros e cards, sem depender de um campo 'usuarios'.
+    """
+    qs = (
+        Item.objects
+        .select_related("subtipo", "localidade", "centro_custo", "fornecedor")
+        .order_by("nome", "id")
+    )
 
-############# Edição de equipamento ##########
+    # Prefetch da(s) movimentação(ões) com usuário, mais recente primeiro
+    mov_qs = MovimentacaoItem.objects.select_related("usuario").order_by("-created_at")
+    qs = qs.prefetch_related(Prefetch("movimentacoes", queryset=mov_qs, to_attr="pref_movs"))
+
+    # -------- Filtros --------
+    p = request.GET
+    nome         = (p.get("nome") or "").strip()
+    subtipo_id   = (p.get("subtipo") or "").strip()
+    status_code  = (p.get("status") or "").strip()
+    numero_serie = (p.get("numero_serie") or "").strip()
+    usuario      = (p.get("usuario") or "").strip()
+    localidade   = (p.get("localidade") or "").strip()
+    centro_custo = (p.get("centro_custo") or "").strip()
+    fornecedor = (p.get("fornecedor") or "").strip()
+
+    if nome:
+        qs = qs.filter(nome__icontains=nome)
+    if subtipo_id:
+        qs = qs.filter(subtipo_id=subtipo_id)
+    if status_code:
+        qs = qs.filter(status=status_code)
+    if numero_serie:
+        qs = qs.filter(numero_serie__icontains=numero_serie)
+    if usuario:
+        qs = qs.filter(movimentacoes__usuario__nome__icontains=usuario)
+    if localidade:
+        qs = qs.filter(localidade__local__icontains=localidade)
+    if centro_custo:
+        qs = qs.filter(
+            Q(centro_custo__departamento__icontains=centro_custo) |
+            Q(centro_custo__numero__icontains=centro_custo)
+        )
+    if fornecedor:
+        qs = qs.filter(fornecedor__nome__icontains=fornecedor)
+
+    qs = qs.distinct()
+
+    # -------- Cards/Métricas por status --------
+    context = {
+        "equipamentos": qs,
+        "subtipos": Subtipo.objects.all().order_by("nome"),
+        "status_choices": StatusItemChoices.choices,
+        "total_ativos": Item.objects.filter(status=StatusItemChoices.ATIVO).count(),
+        "total_backup": Item.objects.filter(status=StatusItemChoices.BACKUP).count(),
+        "total_manutencao": Item.objects.filter(status=StatusItemChoices.MANUTENCAO).count(),
+        "total_queimados": Item.objects.filter(status=StatusItemChoices.DEFEITO).count(),
+        "total_geral": Item.objects.count(),
+    }
+    return render(request, "front/equipamentos_list.html", context)
+
+### ITEM / Equipamento detalhe 
+
+@login_required
+def equipamento_detalhe(request, pk: int):
+    # Item + relações básicas
+    item = get_object_or_404(
+        Item.objects.select_related("subtipo", "localidade", "centro_custo", "fornecedor"),
+        pk=pk,
+    )
+
+    # Histórico de movimentações do item (objetos, não dicts)
+    movimentacoes = (
+        MovimentacaoItem.objects
+        .filter(item=item)
+        .select_related(
+            "usuario",
+            "localidade_destino", "centro_custo_destino",
+            "localidade_origem",  "centro_custo_origem",
+        )
+        .order_by("-created_at")
+    )
+
+    # Preventivas deste item (objetos, não dicts)
+    preventivas = (
+        Preventiva.objects
+        .filter(equipamento=item)
+        .select_related("checklist_modelo")
+        .order_by("-data_proxima", "-data_ultima", "-created_at")
+    )
+
+    # Backfill e flag visual (sem salvar no banco — apenas para o template)
+    today = timezone.localdate()
+    for p in preventivas:
+        if not p.data_proxima:
+            dias = 0
+            if p.checklist_modelo and p.checklist_modelo.intervalo_dias:
+                dias = int(p.checklist_modelo.intervalo_dias)
+            elif getattr(item, "data_limite_preventiva", None):
+                try:
+                    dias = int(item.data_limite_preventiva)
+                except Exception:
+                    dias = 0
+            if dias > 0:
+                base = p.data_ultima or today
+                p.data_proxima = base + timedelta(days=dias)
+        # atributo apenas para o template (não colide com fields)
+        p._em_dia = (p.data_proxima is None) or (today <= p.data_proxima)
+
+    context = {
+        "item": item,
+        "movimentacoes": movimentacoes,
+        "preventivas": preventivas,   # agora são objetos com .data_proxima
+        "today": today,
+        # "comentarios": comentarios_qs  # se você tiver comentários, injete aqui
+    }
+    return render(request, "front/equipamento_detalhe.html", context)
+
 @login_required
 def editar_equipamento(request, pk):
-    equipamento = get_object_or_404(Equipamento, pk=pk)
-    status_anterior = equipamento.status
+    equipamento = get_object_or_404(Item, pk=pk)
+    # Tenta pegar a locação já existente (OneToOne)
+    try:
+        locacao_instance = equipamento.locacao
+    except Locacao.DoesNotExist:
+        locacao_instance = None
 
-    if request.method == 'POST':
-        form = EquipamentoForm(request.POST, instance=equipamento)
-        if form.is_valid():
-            equipamento = form.save(commit=False)
-            equipamento.atualizado_por = request.user
-            equipamento._user = request.user
+    if request.method == "POST":
+        form = ItemForm(request.POST, instance=equipamento)
+        locacao_form = LocacaoForm(request.POST, instance=locacao_instance)
 
-            status_novo = form.cleaned_data.get('status')
+        if form.is_valid() and (not form.cleaned_data.get("locado") or locacao_form.is_valid()):
+            item = form.save(commit=False)
+            item.atualizado_por = request.user
+            item.save()
 
-            if status_novo == 'queimado':
-                equipamento._causa_queima = request.POST.get('causa_queima') or None
-
-            elif status_anterior == 'manutencao' and status_novo == 'backup':
-                equipamento._custo_retorno = request.POST.get('custo_retorno') or 0
-
-            equipamento.save()
-            return redirect('equipamento_detalhe', pk=equipamento.pk)
-    else:
-        form = EquipamentoForm(instance=equipamento)
-
-    return render(request, 'front\\editar_equipamento.html', {'form': form, 'equipamento': equipamento})
-
-
-
-
-from django.db.models import Sum
-
-############ Histórico de manutenção #####################
-@login_required
-def historico_manutencao(request, equipamento_id):
-    equipamento = get_object_or_404(Equipamento, pk=equipamento_id)
-    historicos = equipamento.historicos.order_by('data_criacao')
-
-    ciclos = []
-    ciclo_atual = []
-
-    for hist in historicos:
-        if hist.tipo == 'queima':
-            ciclo_atual = [hist]  # Inicia novo ciclo
-        elif hist.tipo == 'retorno' and ciclo_atual:
-            # Etapa intermediária "manutenção"
-            manutencao_virtual = {
-                'tipo': 'manutencao',
-                'data_criacao': hist.data_criacao,
-                'autor': hist.autor,
-                'causa': ciclo_atual[0].causa  # causa herdada da queima
-            }
-            ciclo_atual.append(manutencao_virtual)
-            ciclo_atual.append(hist)
-            ciclos.append(ciclo_atual)
-            ciclo_atual = []
-
-    # Calcular totais
-    total_ciclos = len(ciclos)
-    total_gasto = historicos.aggregate(total=Sum('custo'))['total'] or 0
-
-    context = {
-        'equipamento': equipamento,
-        'ciclos': ciclos,
-        'total_ciclos': total_ciclos,
-        'total_gasto': total_gasto,
-    }
-    return render(request, 'front/equipamento_historico.html', context)
-
-
-######### Mapa de custo por área ################
-@login_required
-def mapa_custos_por_area(request):
-    filtro = request.GET.get('filtro', 'por_area')
-
-    equipamentos = Equipamento.objects.all().select_related()
-    dados_resultado = {}
-
-    if filtro == 'por_area':
-        for equipamento in equipamentos:
-            area = equipamento.local or "Não informado"
-            if area not in dados_resultado:
-                dados_resultado[area] = {
-                    'quantidade_equipamentos': 0,
-                    'total_ciclos': 0,
-                    'custo_total': 0,
-                }
-
-            historicos = equipamento.historicos.filter(tipo='retorno')
-            total_custos = historicos.aggregate(Sum('custo'))['custo__sum'] or 0
-
-            dados_resultado[area]['quantidade_equipamentos'] += 1
-            dados_resultado[area]['total_ciclos'] += historicos.count()
-            dados_resultado[area]['custo_total'] += total_custos
-
-    elif filtro == 'equipamentos_mais_defeitos':
-        for equipamento in equipamentos:
-            total_ciclos = equipamento.historicos.filter(tipo='retorno').count()
-            if total_ciclos > 0:
-                dados_resultado[equipamento.id] = {
-                    'nome': equipamento.nome,
-                    'subtipo': equipamento.subtipo.nome if equipamento.subtipo else "—",
-                    'local': equipamento.local or "—",
-                    'total_ciclos': total_ciclos,
-                    'custo_total': equipamento.historicos.filter(tipo='retorno').aggregate(Sum('custo'))['custo__sum'] or 0
-                }
-
-    elif filtro == 'subtipos_mais_defeitos':
-        subtipos = Subtipo.objects.all()
-        for subtipo in subtipos:
-            equipamentos_subtipo = equipamentos.filter(subtipo=subtipo)
-            total_ciclos = sum(eq.historicos.filter(tipo='retorno').count() for eq in equipamentos_subtipo)
-            custo_total = sum(eq.historicos.filter(tipo='retorno').aggregate(Sum('custo'))['custo__sum'] or 0 for eq in equipamentos_subtipo)
-
-            if total_ciclos > 0:
-                dados_resultado[subtipo.nome] = {
-                    'quantidade_equipamentos': equipamentos_subtipo.count(),
-                    'total_ciclos': total_ciclos,
-                    'custo_total': custo_total,
-                }
-
-    dados_ordenados = dict(sorted(dados_resultado.items(), key=lambda item: item[1]['custo_total'], reverse=True))
-
-    return render(request, 'front/mapa_custo_area.html', {
-        'dados_area': dados_ordenados,
-        'filtro_selecionado': filtro,
-    })
-
-
-######### Exportar mapa de custos em excel ###########
-
-
-
-
-@login_required
-def exportar_custos_por_area_excel(request):
-    filtro = request.GET.get('filtro', 'area')
-    equipamentos = Equipamento.objects.all().select_related('subtipo', 'categoria')
-
-    # Dicionário de agrupamento
-    dados = {}
-
-    for eq in equipamentos:
-        historicos = eq.historicos.filter(tipo='retorno')
-        total_custo = historicos.aggregate(Sum('custo'))['custo__sum'] or 0
-        total_ciclos = historicos.count()
-
-        if filtro == 'equipamentos':
-            chave = f"{eq.nome} ({eq.numero_serie or 'S/N'})"
-        elif filtro == 'subtipos':
-            chave = eq.subtipo.nome if eq.subtipo else "Não definido"
-        else:  # filtro == 'area'
-            chave = eq.local or "Não informado"
-
-        if chave not in dados:
-            dados[chave] = {
-                'quantidade_equipamentos': 0,
-                'total_ciclos': 0,
-                'custo_total': 0,
-            }
-
-        dados[chave]['quantidade_equipamentos'] += 1
-        dados[chave]['total_ciclos'] += total_ciclos
-        dados[chave]['custo_total'] += total_custo
-
-    # Criação da planilha
-    wb = openpyxl.Workbook()
-    ws = wb.active
-
-    titulos = {
-        'area': ("Área / Local", "Custos por Área"),
-        'equipamentos': ("Equipamento", "Custos por Equipamento"),
-        'subtipos': ("Subtipo", "Custos por Subtipo")
-    }
-
-    coluna_chave, nome_planilha = titulos.get(filtro, titulos['area'])
-    ws.title = nome_planilha
-
-    headers = [coluna_chave, "Qtd. Equipamentos", "Total de Ciclos", "Total Gasto (R$)"]
-    ws.append(headers)
-
-    header_fill = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid")
-    bold_font = Font(bold=True)
-
-    for col_num, col in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col_num)
-        cell.fill = header_fill
-        cell.font = bold_font
-        cell.alignment = Alignment(horizontal="center")
-
-    for chave, valores in dados.items():
-        ws.append([
-            chave,
-            valores['quantidade_equipamentos'],
-            valores['total_ciclos'],
-            float(valores['custo_total']),
-        ])
-
-    for column_cells in ws.columns:
-        max_len = max((len(str(cell.value)) if cell.value else 0) for cell in column_cells)
-        ws.column_dimensions[get_column_letter(column_cells[0].column)].width = max_len + 3
-
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-        for cell in row:
-            cell.alignment = Alignment(horizontal="center")
-
-    ws.auto_filter.ref = f"A1:D{ws.max_row}"
-
-    response = HttpResponse(
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-    response["Content-Disposition"] = f"attachment; filename=relatorio_{filtro}.xlsx"
-    wb.save(response)
-    return response
-
-######### Exportar equipamento ################
-
-@login_required
-def exportar_historico_excel(request, equipamento_id):
-    equipamento = get_object_or_404(Equipamento, pk=equipamento_id)
-    historicos = equipamento.historicos.order_by('data_criacao')
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Histórico de Manutenção"
-
-    ws.append(['Ciclo', 'Tipo', 'Data', 'Causa', 'Custo', 'Autor'])
-
-    ciclos = []
-    ciclo_atual = []
-    ciclo_num = 1
-
-    for hist in historicos:
-        if hist.tipo == 'queima':
-            ciclo_atual = [hist]
-        elif hist.tipo == 'retorno' and ciclo_atual:
-            manutencao_virtual = {
-                'tipo': 'manutencao',
-                'data_criacao': hist.data_criacao,
-                'autor': hist.autor,
-                'causa': ciclo_atual[0].causa,
-                'custo': None
-            }
-            ciclo_atual.append(manutencao_virtual)
-            ciclo_atual.append(hist)
-            ciclos.append(ciclo_atual)
-            ciclo_atual = []
-
-    for ciclo in ciclos:
-        for etapa in ciclo:
-            if isinstance(etapa, dict):  # manutenção virtual
-                tipo = 'Manutenção'
-                data = etapa['data_criacao']
-                causa = etapa.get('causa', '')
-                custo = etapa.get('custo', '')
-                autor = etapa.get('autor', '')
+            if item.locado == "sim":
+                # Se já existe, atualiza; senão cria
+                locacao = locacao_form.save(commit=False)
+                locacao.equipamento = item
+                locacao.save()
             else:
-                tipo = etapa.get_tipo_display()
-                data = etapa.data_criacao
-                causa = etapa.causa
-                custo = etapa.custo
-                autor = etapa.autor
+                # Se não é mais locado, exclui a locação antiga
+                if locacao_instance:
+                    locacao_instance.delete()
 
-            ws.append([
-                f"Ciclo {ciclo_num}",
-                tipo,
-                data.strftime('%d/%m/%Y %H:%M'),
-                causa or '',
-                f"R$ {custo:.2f}" if custo else '',
-                autor.username if autor else ''
-            ])
-        ciclo_num += 1
+            return redirect("equipamentos_list")
 
-    # Totalizador
-    total_ciclos = len(ciclos)
-    total_gasto = sum(
-        etapa.custo or 0
-        for ciclo in ciclos
-        for etapa in ciclo
-        if not isinstance(etapa, dict) and etapa.tipo == 'retorno'
+    else:
+        form = ItemForm(instance=equipamento)
+        locacao_form = LocacaoForm(instance=locacao_instance)
+
+    return render(
+        request,
+        "front\\cadastrar_equipamento.html",
+        {"form": form, "locacao_form": locacao_form, "editar": True}
     )
-    ws.append([])
-    ws.append(['Total de Ciclos', total_ciclos])
-    ws.append(['Total Gasto', f"R$ {total_gasto:.2f}"])
 
-    # Resposta HTTP
-    response = HttpResponse(
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    )
-    filename = f"historico_{equipamento.nome}_{equipamento.numero_serie}.xlsx"
-    response['Content-Disposition'] = f'attachment; filename={filename}'
-    wb.save(response)
-    return response
-
-######### exclusão de equipamento #############
+@require_POST
 @login_required
-def excluir_equipamento(request, pk):
-    equipamento = get_object_or_404(Equipamento, pk=pk)
-    equipamento.delete()
-    return redirect('home')
+def equipamento_excluir(request, pk: int):
+    item = get_object_or_404(Item, pk=pk)
+    item.delete()
+    messages.success(request, "Item excluído com sucesso.")
+    return redirect("equipamentos_list")
 
-######## Visualizar equipamentos por local ###########
 
+#########################################################################################################################
+
+# Cadastro de licença
+@login_required
+def cadastrar_licenca(request):
+    if request.method == "POST":
+        item_form = ItemForm(request.POST)
+        licenca_form = LicencaForm(request.POST)
+
+        if item_form.is_valid() and licenca_form.is_valid():
+            item = item_form.save(commit=False)
+            item.criado_por = request.user
+            item.atualizado_por = request.user
+            item.save()
+
+            licenca = licenca_form.save(commit=False)
+            licenca.criado_por = request.user
+            licenca.atualizado_por = request.user
+            licenca.save()
+            licenca_form.save_m2m()
+
+            return redirect("lista_licencas")
+    else:
+        item_form = ItemForm()
+        licenca_form = LicencaForm()
+
+    return render(request, "cadastro_licenca.html", {
+        "item_form": item_form,
+        "licenca_form": licenca_form
+    })
+
+################ EQUIPAMENTO ##################
+
+
+
+#def equipamento_delete(request, pk):
+    #equipamento = get_object_or_404(Equipamento, pk=pk)
+    #f request.method == 'POST':
+        #equipamento.delete()
+        #return redirect('equipamentos_list')
+    #return render(request, 'equipamento/delete.html', {'obj': equipamento})
+
+########### LOCADO ##################
+
+def locacoes_list(request):
+    locacoes = Locacao.objects.all()
+    return render(request, 'locacao/list.html', {'locacoes': locacoes})
+
+def locacao_create(request):
+    form = LocacaoForm(request.POST or None)
+    if form.is_valid():
+        locacao = form.save(commit=False)
+        locacao.save()
+        return redirect('locacoes_list')
+    return render(request, 'locacao/form.html', {'form': form})
+
+def locacao_update(request, pk):
+    locacao = get_object_or_404(Locacao, pk=pk)
+    form = LocacaoForm(request.POST or None, instance=locacao)
+    if form.is_valid():
+        locacao = form.save(commit=False)
+        locacao.save()
+        return redirect('locacoes_list')
+    return render(request, 'locacao/form.html', {'form': form})
+
+def locacao_delete(request, pk):
+    locacao = get_object_or_404(Locacao, pk=pk)
+    if request.method == 'POST':
+        locacao.delete()
+        return redirect('locacoes_list')
+    return render(request, 'locacao/delete.html', {'obj': locacao})
+
+
+### COMENTARIO ####
+
+def comentarios_list(request):
+    comentarios = Comentario.objects.all()
+    return render(request, 'comentario/list.html', {'comentarios': comentarios})
+
+def comentario_create(request):
+    form = ComentarioForm(request.POST or None)
+    if form.is_valid():
+        comentario = form.save(commit=False)
+        comentario.criado_por = request.user
+        comentario.save()
+        return redirect('comentarios_list')
+    return render(request, 'comentario/form.html', {'form': form})
+
+def comentario_update(request, pk):
+    comentario = get_object_or_404(Comentario, pk=pk)
+    form = ComentarioForm(request.POST or None, instance=comentario)
+    if form.is_valid():
+        form.save()
+        return redirect('comentarios_list')
+    return render(request, 'comentario/form.html', {'form': form})
+
+def comentario_delete(request, pk):
+    comentario = get_object_or_404(Comentario, pk=pk)
+    if request.method == 'POST':
+        comentario.delete()
+        return redirect('comentarios_list')
+    return render(request, 'comentario/delete.html', {'obj': comentario})
+
+####################### MOVIMENTA ITEM ################
 
 @login_required
-def equipamentos_por_local(request):
-    subtipo_id = request.GET.get('subtipo')
-    local = request.GET.get('local')
+def movimentacao_list(request):
+    q= request.GET.get("q", "")
+    tipo = request.GET.get("tipo", "")
+    movimentacoes = MovimentacaoItem.objects.select_related("item", "usuario").order_by("-created_at")
 
-    subtipos = Subtipo.objects.all()
-    locais_disponiveis = Equipamento.objects.values_list('local', flat=True).distinct()
+    if q:
+        movimentacoes = movimentacoes.filter(item__nome__icontains=q)
 
-    equipamentos = Equipamento.objects.select_related('subtipo')
-
-    if subtipo_id:
-        equipamentos = equipamentos.filter(subtipo_id=subtipo_id)
-    if local:
-        equipamentos = equipamentos.filter(local__iexact=local)
-
-    agrupados = {}
-    for equipamento in equipamentos:
-        chave = (equipamento.subtipo.nome, equipamento.local)
-        agrupados.setdefault(chave, []).append(equipamento)
-
-    # NOVO BLOCO: resumo para o dashboard
-    resumo_dict = defaultdict(lambda: {'total': 0, 'quantidade': 0})
-    for equipamento in equipamentos:
-        nome_subtipo = equipamento.subtipo.nome
-        resumo_dict[nome_subtipo]['total'] += 1
-        resumo_dict[nome_subtipo]['quantidade'] += equipamento.quantidade
-
-    resumo = [
-        {'subtipo': subtipo, 'total': valores['total'], 'quantidade': valores['quantidade']}
-        for subtipo, valores in resumo_dict.items()
-    ]
+    if tipo:
+        movimentacoes = movimentacoes.filter(tipo_movimentacao=tipo)
 
     context = {
-        'agrupados': agrupados,
-        'subtipos': subtipos,
-        'locais': locais_disponiveis,
-        'subtipo_selecionado': subtipo_id,
-        'local_selecionado': local,
-        'resumo': resumo,  # ← agora disponível no template
+        "movimentacoes": movimentacoes,
+        "q": q,
+        "tipo": tipo,
+        # ✅ lista de tuplas (value, label)
+        "tipos": list(TipoMovimentacaoChoices.choices),
+    }
+    return render(request, "front/movimentacao_list.html", context)
+
+
+@login_required
+def movimentacao_create(request):
+    if request.method == "POST":
+        form = MovimentacaoItemForm(request.POST, request.FILES)
+        if form.is_valid():
+            mov = form.save(commit=False)
+            # Remover usuário em envio/retorno de manutenção
+            if mov.tipo_movimentacao in ("envio_manutencao", "retorno_manutencao", "retorno"):
+                mov.usuario = None
+            mov.criado_por = request.user
+            mov.save()  # regras de estoque/status são aplicadas no model.save()
+            messages.success(request, "Movimentação registrada com sucesso!")
+            return redirect("movimentacao_list")
+        else:
+            # Log amigável no console para depuração
+            print("⚠ Erros no formulário:", form.errors.as_ul())
+            messages.error(request, "Erro ao registrar movimentação. Verifique os campos destacados.")
+    else:
+        form = MovimentacaoItemForm()
+
+    return render(request, "front\\movimentacao_form.html", {"form": form})
+
+
+
+
+
+
+@login_required
+def movimentacao_detail(request, pk):
+    movimentacao = get_object_or_404(MovimentacaoItem, pk=pk)
+    return render(request, "front/movimentacao_detail.html", {"movimentacao": movimentacao})
+
+
+def movimentacao_update(request, pk):
+    mov = get_object_or_404(MovimentacaoItem, pk=pk)
+    form = MovimentacaoItemForm(request.POST or None, request.FILES or None, instance=mov)
+    if form.is_valid():
+        mov = form.save(commit=False)
+        mov.atualizado_por = request.user
+        mov.save()
+        return redirect('movimentacoes_list')
+    return render(request, 'movimentacaoitem/form.html', {'form': form})
+
+def movimentacao_delete(request, pk):
+    mov = get_object_or_404(MovimentacaoItem, pk=pk)
+    if request.method == 'POST':
+        mov.delete()
+        return redirect('movimentacoes_list')
+    return render(request, 'movimentacaoitem/delete.html', {'obj': mov})
+
+###################### CICLO MANUTENÇÃO ##########################
+
+# LISTA DE CICLOS
+def ciclos_list(request):
+    ciclos = CicloManutencao.objects.all().order_by('-created_at')
+    return render(request, 'ciclomanutencao/list.html', {'ciclos': ciclos})
+
+# CRIAR CICLO (INTELIGENTE)
+def ciclo_create(request):
+    form = CicloManutencaoForm(request.POST or None)
+
+    if form.is_valid():
+        ciclo = form.save(commit=False)
+        item = ciclo.item
+
+        # Verifica se já existe um ciclo aberto
+        ciclo_aberto = CicloManutencao.objects.filter(item=item, data_fim__isnull=True).exists()
+        if ciclo_aberto:
+            messages.error(request, f"O item '{item.nome}' já possui um ciclo de manutenção em andamento.")
+            return render(request, 'ciclomanutencao/form.html', {'form': form})
+
+        ciclo.criado_por = request.user
+        ciclo.atualizado_por = request.user
+        item.status = 'manutencao'
+        item.atualizado_por = request.user
+
+        item.save()
+        ciclo.save()
+
+        messages.success(request, f"Ciclo de manutenção iniciado para '{item.nome}'.")
+        return redirect('ciclos_list')
+
+    return render(request, 'ciclomanutencao/form.html', {'form': form})
+
+# ATUALIZAR CICLO (ENCERRAR)
+def ciclo_update(request, pk):
+    ciclo = get_object_or_404(CicloManutencao, pk=pk)
+    form = CicloManutencaoForm(request.POST or None, instance=ciclo)
+
+    if form.is_valid():
+        ciclo = form.save(commit=False)
+        ciclo.atualizado_por = request.user
+        item = ciclo.item
+
+        if ciclo.data_fim:
+            item.status = 'ativo'  # ou 'backup', conforme regra de negócio
+            item.atualizado_por = request.user
+            item.save()
+
+            messages.success(request, f"Ciclo encerrado. '{item.nome}' voltou para operação.")
+
+        ciclo.save()
+        return redirect('ciclos_list')
+
+    return render(request, 'ciclomanutencao/form.html', {'form': form})
+
+# EXCLUIR CICLO
+def ciclo_delete(request, pk):
+    ciclo = get_object_or_404(CicloManutencao, pk=pk)
+    if request.method == 'POST':
+        ciclo.delete()
+        return redirect('ciclos_list')
+    return render(request, 'ciclomanutencao/delete.html', {'obj': ciclo})
+
+@login_required
+def sobre_plataforma(request):
+    # Versão/identidade opcionais via settings (defina se quiser)
+    app_name = getattr(settings, "PROJECT_NAME", "Controle de Ativos")
+    version = getattr(settings, "APP_VERSION", "1.0.0")
+    build_date = getattr(settings, "APP_BUILD_DATE", None)
+
+    # Métricas rápidas
+    total_itens = Item.objects.count()
+    total_ativos = Item.objects.filter(status=StatusItemChoices.ATIVO).count()
+    total_backup = Item.objects.filter(status=StatusItemChoices.BACKUP).count()
+    total_manut = Item.objects.filter(status=StatusItemChoices.MANUTENCAO).count()
+    total_defeito = Item.objects.filter(status=StatusItemChoices.DEFEITO).count()
+
+    ctx = {
+        "app_name": app_name,
+        "version": version,
+        "build_date": build_date,
+        "now": timezone.now(),
+        "totais": {
+            "itens": total_itens,
+            "ativos": total_ativos,
+            "backup": total_backup,
+            "manutencao": total_manut,
+            "defeitos": total_defeito,
+            "usuarios": Usuario.objects.count(),
+            "localidades": Localidade.objects.count(),
+            "centros": CentroCusto.objects.count(),
+            "fornecedores": Fornecedor.objects.count(),
+            "subtipos": Subtipo.objects.count(),
+            "categorias": Categoria.objects.count(),
+            "funcoes": Funcao.objects.count(),
+            "licencas": Licenca.objects.count(),
+            "movimentacoes": MovimentacaoItem.objects.count(),
+        },
+    }
+    return render(request, "front/sobre_plataforma.html", ctx)
+
+# ----------------- CHECKLIST: LIST/CRUD -----------------
+def _calc_proxima_para_item(item: Item, base: date | None = None) -> date | None:
+    """
+    Calcula a próxima data de preventiva usando 'data_limite_preventiva' (dias) do Item.
+    Se o item não exige preventiva, retorna None.
+    """
+    if not item or item.precisa_preventiva != SimNaoChoices.SIM:
+        return None
+    dias = item.data_limite_preventiva or 0
+    if dias <= 0:
+        return None
+    base = base or timezone.localdate()
+    return base + timedelta(days=int(dias))
+
+# =========================
+#   CHECKLIST - LIST
+# =========================
+@login_required
+def checklist_list(request):
+    q = (request.GET.get("q") or "").strip()
+
+    checklists = (
+        CheckListModelo.objects
+        .all()
+        .annotate(perguntas_count=Count("perguntas"))  # related_name= 'perguntas'
+        .order_by("nome")
+    )
+    if q:
+        checklists = checklists.filter(Q(nome__icontains=q) | Q(descricao__icontains=q))
+
+    context = {
+        "checklists": checklists,
+        "q": q,
+        "total": checklists.count(),
+    }
+    return render(request, "front/preventivas/checklist_list.html", context)
+
+# =========================
+#   CHECKLIST - CREATE/EDIT
+# =========================
+@login_required
+def checklist_form(request, pk=None):
+    instance = get_object_or_404(CheckListModelo, pk=pk) if pk else None
+    if request.method == "POST":
+        form = ChecklistModeloForm(request.POST, instance=instance)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            if instance is None:
+                obj.criado_por = request.user
+            obj.atualizado_por = request.user
+            obj.save()
+            messages.success(request, "Checklist salvo com sucesso.")
+            return redirect("checklist_form", pk=obj.pk)
+    else:
+        form = ChecklistModeloForm(instance=instance)
+
+    perguntas = CheckListPergunta.objects.filter(checklist_modelo=instance).order_by("id") if instance else []
+    return render(
+        request,
+        "front/preventivas/checklist_form.html",
+        {"form": form, "perguntas": perguntas},
+    )
+
+@login_required
+def checklist_delete(request, pk):
+    if request.method != "POST":
+        messages.error(request, "Requisição inválida.")
+        return redirect("checklist_list")
+    obj = get_object_or_404(CheckListModelo, pk=pk)
+    obj.delete()
+    messages.success(request, "Checklist removido.")
+    return redirect("checklist_list")
+
+# =========================
+#   PERGUNTA - CREATE/EDIT
+# =========================
+@login_required
+def pergunta_form(request, checklist_pk, pk=None):
+    checklist = get_object_or_404(CheckListModelo, pk=checklist_pk)
+    instance = get_object_or_404(CheckListPergunta, pk=pk, checklist_modelo=checklist) if pk else None
+
+    if request.method == "POST":
+        form = ChecklistPerguntaForm(request.POST, instance=instance)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.checklist_modelo = checklist
+            if instance is None:
+                obj.criado_por = request.user
+            obj.atualizado_por = request.user
+            obj.save()
+            messages.success(request, "Pergunta salva com sucesso.")
+            return redirect("checklist_form", pk=checklist.pk)
+    else:
+        form = ChecklistPerguntaForm(instance=instance)
+
+    return render(
+        request,
+        "front/preventivas/pergunta_form.html",
+        {"form": form, "checklist": checklist},
+    )
+
+@login_required
+def pergunta_delete(request, checklist_pk, pk):
+    if request.method != "POST":
+        messages.error(request, "Requisição inválida.")
+        return redirect("checklist_form", pk=checklist_pk)
+    checklist = get_object_or_404(CheckListModelo, pk=checklist_pk)
+    pergunta = get_object_or_404(CheckListPergunta, pk=pk, checklist_modelo=checklist)
+    pergunta.delete()
+    messages.success(request, "Pergunta removida.")
+    return redirect("checklist_form", pk=checklist.pk)
+
+# =========================
+#   PREVENTIVAS - LIST
+# =========================
+@login_required
+def preventiva_list(request):
+    q = (request.GET.get("q") or "").strip()
+    status = (request.GET.get("status") or "").strip()
+
+    qs = (
+        Preventiva.objects.select_related("equipamento", "checklist_modelo")
+        .order_by("-data_proxima", "-data_ultima")
+    )
+    if q:
+        qs = qs.filter(equipamento__nome__icontains=q)
+
+    # status visual (ok/vencida)
+    today = timezone.localdate()
+    if status == "ok":
+        qs = qs.filter(data_proxima__gte=today)
+    elif status == "vencida":
+        qs = qs.filter(data_proxima__lt=today)
+
+    ctx = {
+        "preventivas": qs,
+        "total": qs.count(),
+    }
+    return render(request, "front/preventivas/preventiva_list.html", ctx)
+
+# =========================
+#   PREVENTIVA - START
+# =========================
+@login_required
+def preventiva_start(request, item_id=None):
+    item_instance = None
+    if item_id:
+        item_instance = get_object_or_404(Item.objects.select_related("subtipo"), pk=item_id)
+
+    if request.method == "POST":
+        form = PreventivaStartForm(request.POST, item_instance=item_instance)
+        if form.is_valid():
+            item = form.cleaned_data["item"]
+            modelo = form.cleaned_data["checklist_modelo"]
+            # cria (ou obtém) a preventiva “ativa” para o item + modelo
+            prev, created = Preventiva.objects.get_or_create(
+                equipamento=item,
+                checklist_modelo=modelo,
+                defaults={
+                    "criado_por": request.user,
+                    "atualizado_por": request.user,
+                    "data_ultima": None,
+                    "data_proxima": _calc_proxima_para_item(item, timezone.localdate()),
+                },
+            )
+            if not created:
+                prev.atualizado_por = request.user
+                if not prev.data_proxima:
+                    prev.data_proxima = _calc_proxima_para_item(item, timezone.localdate())
+                prev.save(update_fields=["atualizado_por", "data_proxima", "updated_at"])
+            messages.success(request, "Preventiva inicializada.")
+            return redirect("preventiva_exec", pk=prev.pk)
+    else:
+        form = PreventivaStartForm(item_instance=item_instance)
+
+    return render(request, "front/preventivas/preventiva_start.html", {"form": form})
+
+# alias para a URL com item_id
+@login_required
+def preventiva_start_item(request, item_id):
+    return preventiva_start(request, item_id=item_id)
+
+# =========================
+#   PREVENTIVA - DETAIL
+# =========================
+@login_required
+def preventiva_detail(request, pk):
+    preventiva = get_object_or_404(
+        Preventiva.objects.select_related('equipamento', 'checklist_modelo'),
+        pk=pk
+    )
+
+    # Respostas vinculadas a ESTA preventiva
+    respostas = (
+        PreventivaResposta.objects
+        .filter(preventiva=preventiva)
+        .select_related('pergunta')                # para acessar r.pergunta sem N+1
+        .order_by('pergunta__ordem', 'pergunta__id', 'id')  # preserva a ordem do checklist
+    )
+
+    context = {
+        'preventiva': preventiva,
+        'respostas': respostas,
+        'today': timezone.localdate(),
+        'perguntas': CheckListPergunta.objects.filter(checklist_modelo=preventiva.checklist_modelo).order_by('ordem','id'),
+    }
+    return render(request, 'front/preventivas/preventiva_detail.html', context)
+
+# =========================
+#   PREVENTIVA - EXEC
+# =========================
+@login_required
+@transaction.atomic
+def preventiva_exec(request, pk):
+    preventiva = get_object_or_404(Preventiva, pk=pk)
+
+    perguntas = (CheckListPergunta.objects
+                 .filter(checklist_modelo=preventiva.checklist_modelo)
+                 .order_by('ordem', 'id'))
+
+    # prepara opcoes_list ... (mantido)
+
+    if request.method == "POST":
+        respostas_bulk = []
+        erros = []
+
+        # ... (laço de perguntas e validação mantidos)
+
+        if erros:
+            for e in erros:
+                messages.error(request, e)
+            return render(request, "front/preventivas/preventiva_exec.html", {
+                "preventiva": preventiva,
+                "perguntas": perguntas,
+            })
+
+        # Persiste respostas (mantido)
+        if respostas_bulk:
+            PreventivaResposta.objects.bulk_create(respostas_bulk)
+
+        # Atualiza datas (mantido)
+        hoje = timezone.now().date()
+        preventiva.data_ultima = hoje
+
+        dias = 0
+        if preventiva.checklist_modelo and preventiva.checklist_modelo.intervalo_dias:
+            dias = int(preventiva.checklist_modelo.intervalo_dias)
+        elif preventiva.equipamento and preventiva.equipamento.data_limite_preventiva:
+            try:
+                dias = int(preventiva.equipamento.data_limite_preventiva)
+            except Exception:
+                dias = 0
+
+        preventiva.data_proxima = (hoje + timedelta(days=dias)) if dias > 0 else None
+        preventiva.dentro_do_prazo = (preventiva.data_proxima is None) or (timezone.now().date() <= preventiva.data_proxima)
+
+        # NEW: evidências (opcionais)
+        foto_antes  = request.FILES.get("foto_antes")
+        foto_depois = request.FILES.get("foto_depois")
+        if foto_antes:
+            preventiva.foto_antes = foto_antes
+        if foto_depois:
+            preventiva.foto_depois = foto_depois
+
+        # salva apenas o que mudou
+        update_fields = ["data_ultima", "data_proxima", "dentro_do_prazo", "updated_at"]
+        if foto_antes:  update_fields.append("foto_antes")
+        if foto_depois: update_fields.append("foto_depois")
+
+        preventiva.save(update_fields=update_fields)
+
+        messages.success(request, "Preventiva registrada com sucesso.")
+        return redirect("preventiva_detail", pk=preventiva.pk)
+
+    return render(request, "front/preventivas/preventiva_exec.html", {
+        "preventiva": preventiva,
+        "perguntas": perguntas,
+    })
+
+# =========================
+# Helpers de datas/séries
+# =========================
+def _month_key(dt):
+    """YYYY-MM para indexação."""
+    return f"{dt.year:04d}-{dt.month:02d}"
+
+def _last_n_month_stamps(n=12):
+    """Lista de (ano, mês) dos últimos n meses, do mais antigo ao mais recente."""
+    now = timezone.localtime()
+    y, m = now.year, now.month
+    out = []
+    for _ in range(n):
+        out.append((y, m))
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    return list(reversed(out))
+
+def _labels_pt_br(stamps):
+    """Gera labels 'Mes/AnoCurto' ex.: Jan/25 a partir de (ano, mês)."""
+    nomes = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+    return [f"{nomes[m-1]}/{str(y)[-2:]}" for (y, m) in stamps]
+
+def _align_series(stamps, qs_month_count, field_name="c"):
+    """
+    Alinha uma série mensal (dict {'YYYY-MM': count}) aos stamps fornecidos.
+    qs_month_count: queryset com values('m').annotate(c=Count(...))
+                    onde 'm' = TruncMonth(), retornado como datetime.
+    """
+    m2v = {}
+    for row in qs_month_count:
+        mdt = row["m"]
+        if not isinstance(mdt, datetime):
+            # TruncMonth retorna datetime/tz-aware
+            continue
+        m2v[_month_key(timezone.localtime(mdt))] = row[field_name]
+    out = []
+    for (y, m) in stamps:
+        out.append(int(m2v.get(f"{y:04d}-{m:02d}", 0)))
+    return out
+
+
+# =========================
+# Helpers de custo de licença
+# =========================
+def _custo_mensal_lic(lic: Licenca) -> Decimal:
+    cm = lic.custo_mensal()  # helper implementado na sua model
+    return cm if cm is not None else Decimal("0.00")
+
+
+@login_required
+def dashboard(request):
+    now = timezone.localtime()
+    stamps12 = _last_n_month_stamps(12)
+    stamps6 = _last_n_month_stamps(6)
+    labels12 = _labels_pt_br(stamps12)
+    labels6 = _labels_pt_br(stamps6)
+    start12 = timezone.make_aware(datetime(stamps12[0][0], stamps12[0][1], 1))
+    start6  = timezone.make_aware(datetime(stamps6[0][0],  stamps6[0][1],  1))
+
+    # =============================
+    # KPIs (status dos itens)
+    # =============================
+    total_geral = Item.objects.count()
+    total_ativos = Item.objects.filter(status="ativo").count()
+    total_backup = Item.objects.filter(status="backup").count()
+    total_manutencao = Item.objects.filter(status="manutencao").count()
+    total_defeito = Item.objects.filter(status__in=["defeito", "queimado"]).count()
+
+    # ======================================
+    # Movimentações por mês (últimos 12)
+    # ======================================
+    mov_base = MovimentacaoItem.objects.filter(created_at__gte=start12)
+    def _serie(tipo: str):
+        qs = (mov_base.filter(tipo_movimentacao=tipo)
+                        .annotate(m=TruncMonth("created_at"))
+                        .values("m")
+                        .annotate(c=Count("id"))
+                        .order_by("m"))
+        return _align_series(stamps12, qs)
+
+    mov_entrada       = _serie("entrada")
+    mov_baixa         = _serie("baixa")
+    mov_transferencia = _serie("transferencia")
+    mov_envio         = _serie("envio_manutencao")
+    mov_retorno       = _serie("retorno_manutencao")
+
+    # ======================================
+    # Preventivas: OK x Vencida + Próximas
+    # ======================================
+    prev_total = Item.objects.filter(precisa_preventiva="sim").count() if hasattr(Item, "precisa_preventiva") else 0
+    prev_vencida = 0
+
+    if hasattr(Item, "precisa_preventiva") and hasattr(Item, "data_limite_preventiva"):
+        fld = Item._meta.get_field("data_limite_preventiva")
+        today = timezone.localdate()
+
+        if isinstance(fld, (DateField, DateTimeField)):
+            filtro_venc = {
+                "precisa_preventiva": "sim",
+                "data_limite_preventiva__lt": today,
+            }
+        elif isinstance(fld, (IntegerField, BigIntegerField)):
+            # Assumindo padrão YYYYMMDD (ex.: 20250910)
+            today_int = int(today.strftime("%Y%m%d"))
+            filtro_venc = {
+                "precisa_preventiva": "sim",
+                "data_limite_preventiva__lt": today_int,
+            }
+        elif isinstance(fld, CharField):
+            # Assumindo "YYYY-MM-DD"
+            today_str = today.strftime("%Y-%m-%d")
+            filtro_venc = {
+                "precisa_preventiva": "sim",
+                "data_limite_preventiva__lt": today_str,
+            }
+        else:
+            # fallback defensivo: não filtra por data
+            filtro_venc = {"precisa_preventiva": "sim"}
+
+        prev_vencida = Item.objects.filter(**filtro_venc).count()
+
+    prev_ok = max(0, prev_total - prev_vencida)
+
+    proximas = []
+    if Preventiva is not None and hasattr(Preventiva, "data_proxima"):
+        proximas = (
+            Preventiva.objects
+            .filter(data_proxima__gte=timezone.localdate())
+            .select_related("equipamento", "checklist_modelo")
+            .order_by("data_proxima")[:10]
+        )
+
+    # ======================================
+    # Itens por Subtipo / Localidade / CC
+    # ======================================
+    # Subtipo (Top 10)
+    sub_qs = (Item.objects.values("subtipo__nome")
+              .annotate(q=Count("id"))
+              .order_by("-q")[:10])
+    chart_subtipo_labels = [r["subtipo__nome"] or "—" for r in sub_qs]
+    chart_subtipo_data   = [int(r["q"]) for r in sub_qs]
+
+    # Localidade (Top 8)
+    loc_qs = (Item.objects.values("localidade__local")
+              .annotate(q=Count("id"))
+              .order_by("-q")[:8])
+    chart_loc_labels = [r["localidade__local"] or "—" for r in loc_qs]
+    chart_loc_data   = [int(r["q"]) for r in loc_qs]
+
+    # Centro de Custo (Top 8) - quantidade de itens
+    cc_qs = (Item.objects.values("centro_custo__numero", "centro_custo__departamento")
+             .annotate(q=Count("id"))
+             .order_by("-q")[:8])
+    chart_cc_labels = [f'{r["centro_custo__numero"]} - {r["centro_custo__departamento"]}' if r["centro_custo__numero"] else "—" for r in cc_qs]
+    chart_cc_data   = [int(r["q"]) for r in cc_qs]
+
+    # ======================================
+    # Top Itens mais movimentados (12m)
+    # ======================================
+    top_mov_qs = (mov_base.values("item__nome")
+                  .annotate(q=Count("id"))
+                  .order_by("-q")[:10])
+    top_mov_labels = [r["item__nome"] or "—" for r in top_mov_qs]
+    top_mov_data   = [int(r["q"]) for r in top_mov_qs]
+
+    # ======================================
+    # Custo de manutenção (6 meses)
+    # ======================================
+    custo_labels = labels6
+    custo_data = [0]*len(labels6)
+    if CicloManutencao is not None and hasattr(CicloManutencao, "custo"):
+        cm_qs = (CicloManutencao.objects.filter(created_at__gte=start6)
+                 .annotate(m=TruncMonth("created_at"))
+                 .values("m")
+                 .annotate(total=Sum("custo"))
+                 .order_by("m"))
+        # alinha
+        m2v = {}
+        for r in cm_qs:
+            mdt = r["m"]
+            if isinstance(mdt, datetime):
+                k = _month_key(timezone.localtime(mdt))
+                m2v[k] = float(r["total"] or 0)
+        custo_data = []
+        for (y, m) in stamps6:
+            custo_data.append(m2v.get(f"{y:04d}-{m:02d}", 0.0))
+
+    # ============================================================
+    # *** NOVO *** CUSTOS MENSAIS: por USUÁRIO e por SETOR (CC)
+    #   - Itens: considera somente locação (valor_mensal)
+    #   - Licenças: custo_mensal * assentos ativos
+    # ============================================================
+    # Itens atualmente com usuário (ignora entrada/baixa e não-entrega)
+    last_posse_qs = (MovimentacaoItem.objects
+                     .filter(item=OuterRef("pk"))
+                     .exclude(tipo_movimentacao__in=["entrada", "baixa"])
+                     .order_by("-created_at", "-id"))
+
+    itens_associados = (Item.objects
+                        .annotate(
+                            _last_user=Subquery(last_posse_qs.values("usuario_id")[:1]),
+                            _last_tipo=Subquery(last_posse_qs.values("tipo_movimentacao")[:1]),
+                            _last_tp=Subquery(last_posse_qs.values("tipo_transferencia")[:1]),
+                        )
+                        .filter(~Q(_last_user=None))
+                        .exclude(_last_tipo__in=("envio_manutencao", "retorno_manutencao", "retorno"))
+                        .exclude(Q(_last_tipo="transferencia") & ~Q(_last_tp="entrega"))
+                        .values("id", "_last_user", "centro_custo_id", "locado"))
+
+    item_ids = [r["id"] for r in itens_associados]
+    # ✅ depois: usar o nome correto do FK em Locacao: equipamento_id
+    loc_map = {
+        row["equipamento_id"]: (row["valor_mensal"] or Decimal("0.00"))
+        for row in (
+            Locacao.objects
+            .filter(equipamento_id__in=item_ids)
+            .values("equipamento_id", "valor_mensal")
+        )
     }
 
-    return render(request, 'front\\equipamentos_por_local.html', context)
+    # custos mensais por usuário/cc (itens locados)
+    user_cost_items = defaultdict(Decimal)  # uid -> R$ mês
+    cc_cost_items   = defaultdict(Decimal)  # ccid -> R$ mês
+    for r in itens_associados:
+        if r["locado"] == SimNaoChoices.SIM:
+            vm = loc_map.get(r["id"], Decimal("0.00")) or Decimal("0.00")
+            user_cost_items[r["_last_user"]] += vm
+            cc_cost_items[r["centro_custo_id"]] += vm
 
-@login_required
-def exportar_por_local(request):
-    subtipo_id = request.GET.get('subtipo')
-    local = request.GET.get('local')
+    # Licenças ativas por usuário (assentos atribuídos)
+    mov_lic = (MovimentacaoLicenca.objects
+               .select_related("licenca", "usuario")
+               .order_by("created_at", "id"))
+    active_user_lic = defaultdict(int)   # (uid, lic_id) -> assentos
+    active_lic      = defaultdict(int)   # lic_id -> assentos
+    for m in mov_lic:
+        if not m.usuario_id or not m.licenca_id:
+            continue
+        key = (m.usuario_id, m.licenca_id)
+        if m.tipo == TipoMovLicencaChoices.ATRIBUICAO:
+            active_user_lic[key] += 1
+            active_lic[m.licenca_id] += 1
+        elif m.tipo == TipoMovLicencaChoices.REMOCAO:
+            if active_user_lic[key] > 0:
+                active_user_lic[key] -= 1
+            if active_lic[m.licenca_id] > 0:
+                active_lic[m.licenca_id] -= 1
 
-    equipamentos = Equipamento.objects.select_related('subtipo', 'categoria')
+    lic_ids_usadas = list({lic for (_, lic) in active_user_lic.keys()} | set(active_lic.keys()))
+    lic_map = {l.id: l for l in Licenca.objects.filter(id__in=lic_ids_usadas).select_related("centro_custo")}
 
-    if subtipo_id:
-        equipamentos = equipamentos.filter(subtipo_id=subtipo_id)
-    if local:
-        equipamentos = equipamentos.filter(local__iexact=local)
+    user_cost_lics = defaultdict(Decimal)  # uid -> R$ mês
+    cc_cost_lics   = defaultdict(Decimal)  # ccid -> R$ mês
+    for (uid, lid), qtd in active_user_lic.items():
+        if qtd <= 0:
+            continue
+        lic = lic_map.get(lid)
+        if not lic:
+            continue
+        cm = _custo_mensal_lic(lic) * Decimal(qtd)
+        user_cost_lics[uid] += cm
+        cc_cost_lics[lic.centro_custo_id] += cm
 
-    # Criação do Excel
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Relatório"
+    # Top custos por usuários (itens + licenças)
+    user_ids = set(user_cost_items.keys()) | set(user_cost_lics.keys())
+    usuarios_map = {u.id: u.nome for u in Usuario.objects.filter(id__in=user_ids)}
+    agg_user = []
+    for uid in user_ids:
+        itens = user_cost_items.get(uid, Decimal("0.00"))
+        lics  = user_cost_lics.get(uid, Decimal("0.00"))
+        total = itens + lics
+        if total > 0:
+            agg_user.append((usuarios_map.get(uid, f"Usuário {uid}"), itens, lics, total))
+    agg_user.sort(key=lambda x: x[3], reverse=True)
+    TOPU = 10
+    top_users_labels = [n for (n, *_ ) in agg_user[:TOPU]]
+    top_users_items  = [float(i) for (_, i, _, _) in agg_user[:TOPU]]
+    top_users_lics   = [float(l) for (_, _, l, _) in agg_user[:TOPU]]
 
-    colunas = ["ID", "Nome", "Subtipo", "Categoria", "Número de Série", "Local", "Status", "Quantidade"]
-    ws.append(colunas)
+    # Custo por setores (CC)
+    cc_ids = set(cc_cost_items.keys()) | set(cc_cost_lics.keys())
+    cc_map = {None: "—"}
+    if cc_ids:
+        for c in CentroCusto.objects.filter(id__in=cc_ids).values("id", "numero", "departamento"):
+            cc_map[c["id"]] = f'{c["numero"]} - {c["departamento"]}'
+    agg_cc = []
+    for ccid in cc_ids:
+        itens = cc_cost_items.get(ccid, Decimal("0.00"))
+        lics  = cc_cost_lics.get(ccid, Decimal("0.00"))
+        total = itens + lics
+        if total > 0:
+            agg_cc.append((cc_map.get(ccid, "—"), itens, lics, total))
+    agg_cc.sort(key=lambda x: x[3], reverse=True)
+    TOPCC = 8
+    cc_cost_labels = [n for (n, *_ ) in agg_cc[:TOPCC]]
+    cc_cost_items_s = [float(i) for (_, i, _, _) in agg_cc[:TOPCC]]
+    cc_cost_lics_s  = [float(l) for (_, _, l, _) in agg_cc[:TOPCC]]
 
-    for eq in equipamentos:
-        ws.append([
-            eq.id,
-            eq.nome,
-            eq.subtipo.nome,
-            eq.categoria.nome,
-            eq.numero_serie or '',
-            eq.local or '',
-            eq.get_status_display(),
-            eq.quantidade,
-        ])
+    # Top licenças por custo (mês) = assentos ativos * custo mensal
+    lic_cost_pairs = []
+    for lid, qtd in active_lic.items():
+        if qtd <= 0:
+            continue
+        lic = lic_map.get(lid)
+        if not lic:
+            continue
+        total_mensal = _custo_mensal_lic(lic) * Decimal(qtd)
+        if total_mensal > 0:
+            lic_cost_pairs.append((lic.nome, total_mensal))
+    lic_cost_pairs.sort(key=lambda x: x[1], reverse=True)
+    TOPLIC = 10
+    lic_cost_labels = [n for (n, _) in lic_cost_pairs[:TOPLIC]]
+    lic_cost_data   = [float(v) for (_, v) in lic_cost_pairs[:TOPLIC]]
 
-    # Ajuste de largura
-    for col in ws.columns:
-        max_length = max((len(str(cell.value)) for cell in col if cell.value), default=0)
-        ws.column_dimensions[get_column_letter(col[0].column)].width = max_length + 2
+    # =============================
+    # Contexto para o template
+    # =============================
+    ctx = dict(
+        # KPIs
+        total_geral=total_geral,
+        total_ativos=total_ativos,
+        total_backup=total_backup,
+        total_manutencao=total_manutencao,
+        total_defeito=total_defeito,
 
-    # Retorno
-    response = HttpResponse(
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        # Movimentações
+        mov_labels=labels12,
+        mov_entrada=mov_entrada,
+        mov_baixa=mov_baixa,
+        mov_transferencia=mov_transferencia,
+        mov_envio=mov_envio,
+        mov_retorno=mov_retorno,
+
+        # Preventivas
+        prev_ok=prev_ok,
+        prev_vencida=prev_vencida,
+        prev_total=prev_total,
+        proximas=proximas,
+
+        # Subtipo / Localidade / CC (quantidades)
+        chart_subtipo_labels=chart_subtipo_labels,
+        chart_subtipo_data=chart_subtipo_data,
+        chart_loc_labels=chart_loc_labels,
+        chart_loc_data=chart_loc_data,
+        chart_cc_labels=chart_cc_labels,
+        chart_cc_data=chart_cc_data,
+
+        # Top itens mais movimentados
+        top_mov_labels=top_mov_labels,
+        top_mov_data=top_mov_data,
+
+        # Custo manutenção (6m)
+        custo_labels=labels6,
+        custo_data=custo_data,
+
+        # NOVOS gráficos de custo
+        top_users_labels=top_users_labels,
+        top_users_items=top_users_items,
+        top_users_lics=top_users_lics,
+
+        cc_cost_labels=cc_cost_labels,
+        cc_cost_items=cc_cost_items_s,
+        cc_cost_lics=cc_cost_lics_s,
+
+        lic_cost_labels=lic_cost_labels,
+        lic_cost_data=lic_cost_data,
     )
-    response["Content-Disposition"] = 'attachment; filename="equipamentos_por_local.xlsx"'
-    wb.save(response)
-    return response
 
-### Gerar Relatório ###
+    return render(request, "front/dashboards/dashboard.html", ctx)
+
+
+# ---- helpers de data ----
+def _parse_date(s, default):
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return default
+
 @login_required
-def exportar_equipamentos_excel(request):
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Relatório de Equipamentos Santa Colomba"
+def cc_custos_dashboard(request):
+    # ---- Período para BAIXAS ----
+    hoje = datetime.today().date()
+    dt_ini = _parse_date(request.GET.get("inicio"), hoje - timedelta(days=30))
+    dt_fim = _parse_date(request.GET.get("fim"), hoje)
 
-    colunas = [
-        "ID", "Nome", "Categoria", "Subtipo", "Número de Série",
-        "Marca", "Modelo", "Local", "Status", "Quantidade", "Observações"
-    ]
-    ws.append(colunas)
-    
-    for equipamento in Equipamento.objects.select_related('categoria', 'subtipo').all():
-        ws.append([
-            equipamento.id,
-            equipamento.nome,
-            equipamento.categoria.nome,
-            equipamento.subtipo.nome,
-            equipamento.numero_serie,
-            equipamento.marca or "",
-            equipamento.modelo or "",
-            equipamento.local,
-            equipamento.get_status_display(),
-            equipamento.quantidade,
-            equipamento.observacoes or ""
-          
-        ])
+    # Dicionário acumulador por CC
+    # manteremos também um set de licenças para contar "tipos" distintos
+    totals = {}  # cc_id -> dict
 
-    ## Ajuste automático das larguras de coluna
-    for col in ws.columns:
-        max_length = 0
-        col_letter = get_column_letter(col[0].column)
-        for cell in col:
-            if cell.value:
-                max_length = max(max_length, len(str(cell.value)))
-        ws.column_dimensions[col_letter].width = max_length + 2
+    def acc(cc_id):
+        if not cc_id:
+            return None
+        if cc_id not in totals:
+            totals[cc_id] = {
+                "cc": None,  # preencheremos depois
+                "usuarios": 0,
+                "itens": 0,
+                "licencas_set": set(),
+                "assentos": 0,
+                "custo_itens": Decimal("0.00"),
+                "custo_licencas": Decimal("0.00"),
+                "baixas": Decimal("0.00"),
+            }
+        return totals[cc_id]
 
-    response = HttpResponse(
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    # ---- Custos mensais de ITENS locados por CC ----
+    # Considera itens com OneToOne Locacao e valor_mensal > 0
+    # Centro de custo vem do próprio ITEM (já atualizado nas transferências)
+    loc_qs = (
+        Locacao.objects
+        .select_related("equipamento", "equipamento__centro_custo")
+        .exclude(valor_mensal__isnull=True)
     )
-    response["Content-Disposition"] = 'attachment; filename="equipamentos.xlsx"'
-    wb.save(response)
-    return response
+    for loc in loc_qs:
+        item = loc.equipamento
+        cc_id = getattr(item.centro_custo, "id", None)
+        if not cc_id:
+            continue
+        valor = loc.valor_mensal or Decimal("0.00")
+        if valor <= 0:
+            continue
+        a = acc(cc_id)
+        a["custo_itens"] += valor
 
-################ Visualizar Preventivas ####################
+    # ---- Assentos de LICENÇAS (último evento por par licença/usuário) ----
+    # Ordena por licenca, usuario, data => vamos sobrescrever o "último" no loop
+    mov_l_qs = (
+        MovimentacaoLicenca.objects
+        .select_related("licenca", "usuario__centro_custo", "centro_custo_destino")
+        .order_by("licenca_id", "usuario_id", "created_at", "id")
+    )
 
-def visualizar_preventivas(request, equipamento_id):
-    equipamento = get_object_or_404(Equipamento, id=equipamento_id)
-    preventivas = Preventiva.objects.filter(equipamento=equipamento).order_by('-data_ultima')
+    last_by_pair = {}  # (licenca_id, usuario_id) -> movement
+    for m in mov_l_qs:
+        if m.usuario_id is None:
+            # Não contabilizamos assento sem usuário (se existir)
+            continue
+        last_by_pair[(m.licenca_id, m.usuario_id)] = m
 
-    # calculo de dias
-    for preventiva in preventivas:
-        if preventiva.data_proxima:
-            dias_restantes = (preventiva.data_proxima - date.today()).days
-        else:
-            dias_restantes = None
-        preventiva.dias_restantes = dias_restantes
+    for (lic_id, user_id), m in last_by_pair.items():
+        # Só conta se o último evento é ATRIBUIÇÃO
+        if m.tipo != TipoMovLicencaChoices.ATRIBUICAO:
+            continue
 
-    return render(request, 'front/preventivas.html', {
-        'equipamento': equipamento,
-        'preventivas': preventivas,
-    })
+        # Resolve CC: prioriza o CC ATUAL do usuário (o que você descreveu)
+        cc_id = getattr(getattr(m.usuario, "centro_custo", None), "id", None)
+        if not cc_id:
+            # fallback: CC informado no próprio movimento
+            cc_id = getattr(m.centro_custo_destino, "id", None)
+        if not cc_id:
+            # fallback 2: CC na licença
+            cc_id = getattr(m.licenca.centro_custo, "id", None)
+        if not cc_id:
+            continue  # sem CC não soma
+
+        # Custo mensal POR ASSENTO
+        cm = m.licenca.custo_mensal() or Decimal("0.00")
+        a = acc(cc_id)
+        a["assentos"] += 1
+        a["custo_licencas"] += cm
+        a["licencas_set"].add(lic_id)
+
+    # ---- BAIXAS no período (R$) por CC ----
+    # Usamos centro_custo_origem; se não houver, item.centro_custo na data
+    baixas_qs = (
+        MovimentacaoItem.objects
+        .filter(tipo_movimentacao=TipoMovimentacaoChoices.BAIXA,
+                created_at__date__gte=dt_ini, created_at__date__lte=dt_fim)
+        .select_related("item__centro_custo", "centro_custo_origem")
+    )
+    for mv in baixas_qs:
+        cc_id = getattr(mv.centro_custo_origem, "id", None) or getattr(getattr(mv.item, "centro_custo", None), "id", None)
+        if not cc_id:
+            continue
+        # valor da baixa: usa campo custo; se não houver, usa valor do item * quantidade
+        valor_baixa = mv.custo if mv.custo is not None else (mv.item.valor or Decimal("0.00")) * (mv.quantidade or 1)
+        a = acc(cc_id)
+        a["baixas"] += (valor_baixa or Decimal("0.00"))
+
+    # ---- Completa metadados: usuarios e itens por CC, e objeto CC ----
+    # Busca todos CCs que apareceram em totals
+    cc_ids = list(totals.keys())
+    ccs = {cc.id: cc for cc in CentroCusto.objects.filter(id__in=cc_ids)}
+    # Contagens
+    users_count = (
+        Usuario.objects
+        .filter(centro_custo_id__in=cc_ids, status="ativo")
+        .values("centro_custo_id")
+        .annotate(n=Count("id"))
+    )
+    itens_count = (
+        Item.objects
+        .filter(centro_custo_id__in=cc_ids)
+        .values("centro_custo_id")
+        .annotate(n=Count("id"))
+    )
+    map_users = {r["centro_custo_id"]: r["n"] for r in users_count}
+    map_itens = {r["centro_custo_id"]: r["n"] for r in itens_count}
+
+    linhas = []
+    for cc_id, d in totals.items():
+        cc = ccs.get(cc_id)
+        if not cc:
+            continue
+        d["cc"] = cc
+        d["usuarios"] = map_users.get(cc_id, 0)
+        d["itens"] = map_itens.get(cc_id, 0)
+        lic_tipos = len(d["licencas_set"])
+        d["licencas"] = lic_tipos
+        d["total_mensal"] = (d["custo_itens"] + d["custo_licencas"])
+        d["total_geral"] = (d["total_mensal"] + d["baixas"])
+
+        linhas.append({
+            "cc": cc,
+            "usuarios": d["usuarios"],
+            "itens": d["itens"],
+            "licencas": d["licencas"],          # tipos distintos
+            "assentos": d["assentos"],          # ← **assentos ativos** (é aqui que bate com seu "tem 4 licenças")
+            "custo_itens": d["custo_itens"],
+            "custo_licencas": d["custo_licencas"],
+            "baixas": d["baixas"],
+            "total_mensal": d["total_mensal"],
+            "total_geral": d["total_geral"],
+        })
+
+    # Ordena por total_geral desc para destacar quem pesa mais
+    linhas.sort(key=lambda x: x["total_geral"], reverse=True)
+
+    # Vetores para os gráficos (empilhado mensal: itens + licenças)
+    labels = [f"{l['cc'].numero} - {l['cc'].departamento}" for l in linhas]
+    arr_itens = [float(l["custo_itens"]) for l in linhas]
+    arr_lics  = [float(l["custo_licencas"]) for l in linhas]
+    arr_mensal = [float(l["total_mensal"]) for l in linhas]  # (não usado no gráfico, mas mantido)
+    arr_baixas = [float(l["baixas"]) for l in linhas]
+
+    context = {
+        "dt_ini": dt_ini,
+        "dt_fim": dt_fim,
+        "linhas": linhas,
+        # dados dos gráficos
+        "cc_labels": labels,
+        "cc_itens": arr_itens,
+        "cc_licencas": arr_lics,
+        "cc_mensal": arr_mensal,
+        "cc_baixas": arr_baixas,
+    }
+    return render(request, "front/dashboards/cc_custos_dashboard.html", context)
 
 
-
-################## Preventivas #################
+# ===== LISTA DE LICENÇAS (com cartões) =====
+# ============ LICENÇAS ============
 
 @login_required
-def cadastrar_preventiva(request, equipamento_id):
-    equipamento = get_object_or_404(Equipamento, id=equipamento_id)
-    subtipo_nome = equipamento.subtipo.nome.lower().replace(" ", "")
+def licenca_list(request):
+    q = (request.GET.get("q") or "").strip()
+    fornecedor = (request.GET.get("fornecedor") or "").strip()
+    centro = (request.GET.get("centro") or "").strip()
+    pmb = (request.GET.get("pmb") or "").strip()
+    per = (request.GET.get("periodicidade") or "").strip()
 
-    if subtipo_nome in ['switch', 'switches']:
-        FormClass = PreventivaFormSwitch
-    elif subtipo_nome in ['access-point', 'ap', 'accesspoint']:
-        FormClass = PreventivaFormAP
-    else:
-        FormClass = PreventivaFormComum
+    qs = Licenca.objects.select_related("fornecedor", "centro_custo").order_by("nome")
 
-    if request.method == 'POST':
-        form = FormClass(request.POST, request.FILES)
+    if q:
+        qs = qs.filter(Q(nome__icontains=q) | Q(observacao__icontains=q))
+    if fornecedor:
+        qs = qs.filter(fornecedor__nome__icontains=fornecedor)
+    if centro:
+        qs = qs.filter(
+            Q(centro_custo__numero__icontains=centro) |
+            Q(centro_custo__departamento__icontains=centro)
+        )
+    if pmb:
+        qs = qs.filter(pmb=pmb)
+    if per:
+        qs = qs.filter(periodicidade=per)
+
+    ctx = {
+        "licencas": qs,
+        "q": q,
+        "fornecedor": fornecedor,
+        "centro": centro,
+        "pmb": pmb,
+        "per": per,
+        "total": qs.count(),
+        "periodicidade_choices": [(c.value, c.label) for c in TipoMovLicencaChoices.__class__.__mro__[0].__mro__ if False],  # só para manter compatibilidade; não usamos aqui
+    }
+    # melhor: passar choices do próprio model
+    ctx["pmb_choices"] = Licenca._meta.get_field("pmb").choices
+    ctx["periodicidade_choices"] = Licenca._meta.get_field("periodicidade").choices
+    return render(request, "front/licencas/licenca_list.html", ctx)
+
+@login_required
+def licenca_form(request, pk=None):
+    obj = get_object_or_404(Licenca, pk=pk) if pk else None
+    if request.method == "POST":
+        form = LicencaForm(request.POST, instance=obj)
         if form.is_valid():
-            preventiva = form.save(commit=False)
-            preventiva.equipamento = equipamento
-            preventiva.autor = request.user
-            preventiva.data_ultima = timezone.now()
-            meses = equipamento.data_limite_preventiva or 3
-            preventiva.data_proxima = preventiva.data_ultima + timedelta(days=30 * meses)
-
-            # Se os campos de imagem existirem no form e vierem preenchidos, salve-os
-            if hasattr(form, 'cleaned_data'):
-                if 'imagem_antes' in form.cleaned_data:
-                    preventiva.imagem_antes = form.cleaned_data.get('imagem_antes')
-                if 'imagem_depois' in form.cleaned_data:
-                    preventiva.imagem_depois = form.cleaned_data.get('imagem_depois')
-
-            preventiva.save()
-            messages.success(request, "Preventiva cadastrada com sucesso.")
-            return redirect('equipamento_detalhe', pk=equipamento.id)
+            lic = form.save(commit=False)
+            if obj is None:
+                lic.criado_por = request.user
+            lic.atualizado_por = request.user
+            lic.save()
+            messages.success(request, "Licença salva com sucesso.")
+            return redirect("licenca_detail", pk=lic.pk)
+        messages.error(request, "Corrija os campos destacados.")
     else:
-        form = FormClass()
+        form = LicencaForm(instance=obj)
 
-    return render(request, 'front\\preventiva_form.html', {
-        'form': form,
-        'equipamento': equipamento,
+    return render(request, "front/licencas/licenca_form.html", {"form": form, "obj": obj})
+
+@login_required
+def licenca_detail(request, pk):
+    lic = get_object_or_404(Licenca.objects.select_related("fornecedor", "centro_custo"), pk=pk)
+    movs = (MovimentacaoLicenca.objects
+            .select_related("usuario", "centro_custo_destino")
+            .filter(licenca=lic)
+            .order_by("-created_at")[:20])
+
+    ctx = {
+        "obj": lic,
+        "movs": movs,
+        "custo_ciclo": lic.custo,                         # valor cadastrado
+        "custo_mensal": lic.custo_mensal(),               # normalizado
+        "custo_anual": lic.custo_anual_estimado(),        # estimado
+    }
+    return render(request, "front/licencas/licenca_detail.html", ctx)
+
+# ============ MOVIMENTAÇÕES ============
+
+@login_required
+def mov_licenca_list(request):
+    q = (request.GET.get("q") or "").strip()
+    tipo = (request.GET.get("tipo") or "").strip()
+
+    qs = (MovimentacaoLicenca.objects
+          .select_related("licenca", "usuario", "centro_custo_destino")
+          .order_by("-created_at"))
+    if q:
+        qs = qs.filter(Q(licenca__nome__icontains=q) | Q(usuario__nome__icontains=q))
+    if tipo in (TipoMovLicencaChoices.ATRIBUICAO, TipoMovLicencaChoices.REMOCAO):
+        qs = qs.filter(tipo=tipo)
+
+    return render(request, "front/licencas/mov_licenca_list.html", {
+        "movs": qs,
+        "q": q,
+        "tipo": tipo,
+        "tipos": MovimentacaoLicenca._meta.get_field("tipo").choices,
     })
 
 @login_required
-def todas_preventivas(request):
-    # Filtrar apenas a última preventiva de cada equipamento
-    ultimas_datas = Preventiva.objects.values('equipamento').annotate(max_data=Max('data_ultima'))
+def mov_licenca_form(request):
+    """
+    Cria uma movimentação de licença (atribuição ou remoção).
+    Usa a lógica de save() do form para ajustar quantidade e auditoria.
+    """
+    initial = {}
+    if request.method == "GET":
+        # permite pré-selecionar por querystring ?licenca= & ?usuario=
+        if "licenca" in request.GET:
+            initial["licenca"] = request.GET.get("licenca")
+        if "usuario" in request.GET:
+            initial["usuario"] = request.GET.get("usuario")
 
-    # Montar queryset com as preventivas correspondentes
-    preventivas = Preventiva.objects.filter(
-        id__in=[
-            Preventiva.objects.filter(
-                equipamento=item['equipamento'],
-                data_ultima=item['max_data']
-            ).first().id
-            for item in ultimas_datas
-        ]
-    ).select_related('equipamento', 'autor', 'equipamento__categoria', 'equipamento__subtipo')
+    if request.method == "POST":
+        form = MovimentacaoLicencaForm(request.POST)
+        if form.is_valid():
+            mov = form.save(user=request.user)
+            messages.success(request, f"Movimentação registrada: {mov.get_tipo_display()} - {mov.licenca.nome}.")
+            # redirect inteligente
+            next_url = request.GET.get("next")
+            if next_url:
+                return redirect(next_url)
+            if mov.usuario_id:
+                return redirect("usuario_detail", pk=mov.usuario_id)
+            return redirect("licenca_detail", pk=mov.licenca_id)
+    else:
+        form = MovimentacaoLicencaForm(initial=initial)
 
-    # Filtros
-    search = request.GET.get('search')
-    categoria_id = request.GET.get('categoria')
-    subtipo_id = request.GET.get('subtipo')
-    status = request.GET.get('status')
+    return render(request, "front/licencas/mov_licenca_form.html", {"form": form})
 
-    if search:
-        preventivas = [p for p in preventivas if search.lower() in p.equipamento.nome.lower() or search.lower() in p.equipamento.numero_serie.lower()]
 
-    if categoria_id:
-        preventivas = [p for p in preventivas if str(p.equipamento.categoria.id) == categoria_id]
 
-    if subtipo_id:
-        preventivas = [p for p in preventivas if str(p.equipamento.subtipo.id) == subtipo_id]
 
+
+### exportações 
+
+def _aplicar_filtros_equipamentos(request, base_qs=None):
+    """
+    Aplica os mesmos filtros da tela:
+      nome, subtipo, status, numero_serie, fornecedor, localidade, centro_custo
+    """
+    qs = base_qs or Item.objects.all()
+    qs = qs.select_related("subtipo", "localidade", "fornecedor", "centro_custo")
+
+    nome = (request.GET.get("nome") or "").strip()
+    if nome:
+        qs = qs.filter(nome__icontains=nome)
+
+    subtipo = (request.GET.get("subtipo") or "").strip()
+    if subtipo:
+        qs = qs.filter(subtipo_id=subtipo)
+
+    status = (request.GET.get("status") or "").strip()
     if status:
-        preventivas = [p for p in preventivas if p.equipamento.status == status]
+        qs = qs.filter(status=status)
 
-    # Cálculo dos dias restantes
-    for preventiva in preventivas:
-        if preventiva.data_proxima:
-            preventiva.dias_restantes = (preventiva.data_proxima - date.today()).days
-        else:
-            preventiva.dias_restantes = None
+    numero_serie = (request.GET.get("numero_serie") or "").strip()
+    if numero_serie:
+        qs = qs.filter(numero_serie__icontains=numero_serie)
 
-    categorias = Categoria.objects.all()
-    subtipos = Subtipo.objects.all()
-    status_choices = Equipamento.STATUS_CHOICES
+    fornecedor = (request.GET.get("fornecedor") or "").strip()
+    if fornecedor:
+        qs = qs.filter(fornecedor__nome__icontains=fornecedor)
 
-    return render(request, 'front\\todas_preventivas.html', {
-        'preventivas': preventivas,
-        'categorias': categorias,
-        'subtipos': subtipos,
-        'status_choices': status_choices,
-    })
+    localidade = (request.GET.get("localidade") or "").strip()
+    if localidade:
+        qs = qs.filter(localidade__local__icontains=localidade)
 
+    centro = (request.GET.get("centro_custo") or "").strip()
+    if centro:
+        qs = qs.filter(
+            Q(centro_custo__numero__icontains=centro) |
+            Q(centro_custo__departamento__icontains=centro)
+        )
 
-#Detalhe preventiva
-@login_required
-
-def preventiva_detalhe(request, pk):
-    preventiva = get_object_or_404(Preventiva, pk=pk)
-    return render(request, 'front\\preventiva_detalhe.html', {'preventiva': preventiva})
+    return qs.order_by("nome", "id")
 
 
 @login_required
-def exportar_preventivas_excel(request):
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Preventivas"
+def equipamentos_exportar(request):
+    # 1) Query filtrada igual à lista
+    qs = _aplicar_filtros_equipamentos(request)
 
-    # Cabeçalhos (ajuste os campos conforme seu model)
-    colunas = [
-        "ID", "Nome Equipamento", "Subtipo", "Categoria", "Número de Série", "Marca", "Modelo", "Local",
-        "Status Equipamento", "Autor", "Data Última", "Data Próxima", "Dentro do Prazo", "Observações",
-        "Status Cabo Ethernet", "Limpeza Equipamento", "Status LEDs", 
-         "Status Temperatura", "Status Teste de Portas",
-         "Status Teste de Rede", "Status Local AP", "Status Velocidade AP",
-        "Status Cobertura AP", 
-    ]
-    ws.append(colunas)
-
-    # Dados
-    preventivas = Preventiva.objects.select_related(
-        'equipamento', 'autor', 'equipamento__categoria', 'equipamento__subtipo'
+    # 2) Mapa de locação mensal por equipamento (sua FK é 'equipamento')
+    ids = list(qs.values_list("id", flat=True))
+    loc_map = dict(
+        Locacao.objects
+        .filter(equipamento_id__in=ids)
+        .values_list("equipamento_id", "valor_mensal")
     )
-    for p in preventivas:
-        ws.append([
-            p.id,
-            p.equipamento.nome,
-            p.equipamento.subtipo.nome,
-            p.equipamento.categoria.nome,
-            p.equipamento.numero_serie,
-            p.equipamento.marca or "",
-            p.equipamento.modelo or "",
-            p.equipamento.local,
-            p.equipamento.get_status_display(),
-            p.autor.username if p.autor else "",
-            p.data_ultima.strftime("%d/%m/%Y %H:%M") if p.data_ultima else "",
-            p.data_proxima.strftime("%d/%m/%Y") if p.data_proxima else "",
-            p.get_dentro_do_prazo_display(),
-            p.observacoes or "",
-            p.status_cabo_ethernet or "",
-            p.limpeza_equipamento or "",
-            p.status_leds or "",
-            p.status_temperatura or "",
-            p.status_teste_portas or "",
-            p.status_teste_rede or "",
-            p.status_local_ap or "",
-            p.status_velocidade_ap or "",
-            p.status_cobertura_ap or "",
-        
-        ])
 
-    # Ajuste de largura
-    for col in ws.columns:
-        max_length = 0
-        col_letter = get_column_letter(col[0].column)
-        for cell in col:
-            if cell.value:
-                max_length = max(max_length, len(str(cell.value)))
-        ws.column_dimensions[col_letter].width = max_length + 2
+    # 3) Monta planilha
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Itens"
 
-    response = HttpResponse(
+    header = [
+        "#", "Nome", "Subtipo", "Status", "Localidade",
+        "Nº Série", "Fornecedor", "Centro de Custo",
+        "Locado", "Locação (R$/mês)", "Valor aquisição (R$)"
+    ]
+    ws.append(header)
+
+    # Estilo do header
+    hfill = PatternFill("solid", fgColor="1D4ED8")
+    hfont = Font(color="FFFFFF", bold=True)
+    align_center = Alignment(horizontal="center", vertical="center")
+    thin = Side(style="thin", color="DDE3EE")
+    hborder = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for col in range(1, len(header) + 1):
+        cell = ws.cell(row=1, column=col)
+        cell.fill = hfill
+        cell.font = hfont
+        cell.alignment = align_center
+        cell.border = hborder
+
+    # Linhas
+    def _fmt_cc(obj):
+        if not obj: return "-"
+        num = getattr(obj, "numero", None) or ""
+        dep = getattr(obj, "departamento", None) or ""
+        return f"{num} - {dep}".strip(" -")
+
+    numero_format = 'R$ #,##0.00'
+
+    for i, it in enumerate(qs, start=1):
+        subtipo = getattr(it.subtipo, "nome", "-") if getattr(it, "subtipo", None) else "-"
+        status_disp = getattr(it, "get_status_display", None)
+        status_txt = status_disp() if callable(status_disp) else (it.status or "-")
+        local = getattr(it.localidade, "local", "-") if getattr(it, "localidade", None) else "-"
+        fornecedor = getattr(it.fornecedor, "nome", "-") if getattr(it, "fornecedor", None) else "-"
+        cc_txt = _fmt_cc(getattr(it, "centro_custo", None))
+
+        locado_flag = getattr(it, "locado", None)
+        # seu choices parecem "sim"/"nao" → ajuste se for booleano
+        locado_txt = "Sim" if str(locado_flag).lower() in ("sim", "true", "1") else "Não"
+        loc_mensal = loc_map.get(it.id) or Decimal("0.00")
+
+        valor_aquis = getattr(it, "valor", None) or Decimal("0.00")
+
+        row = [
+            i,
+            it.nome or "",
+            subtipo,
+            status_txt,
+            local,
+            it.numero_serie or "",
+            fornecedor,
+            cc_txt,
+            locado_txt,
+            float(loc_mensal),
+            float(valor_aquis),
+        ]
+        ws.append(row)
+
+    # Formatação de números nos 2 últimos campos
+    for r in range(2, ws.max_row + 1):
+        ws.cell(row=r, column=10).number_format = numero_format
+        ws.cell(row=r, column=11).number_format = numero_format
+
+    # Largura das colunas (auto-ajuste simples)
+    widths = {}
+    for row in ws.iter_rows(values_only=True):
+        for idx, val in enumerate(row, start=1):
+            txt = str(val) if val is not None else ""
+            widths[idx] = max(widths.get(idx, 0), len(txt))
+    for idx, w in widths.items():
+        # um pouco de folga
+        ws.column_dimensions[get_column_letter(idx)].width = min(max(w + 2, 10), 48)
+
+    # 4) Resposta HTTP
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    now = timezone.localtime().strftime("%Y%m%d-%H%M%S")
+    filename = f"itens_filtrados_{now}.xlsx"
+    resp = HttpResponse(
+        buffer.getvalue(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    response["Content-Disposition"] = 'attachment; filename="preventivas_equipamentos.xlsx"'
-    wb.save(response)
-    return response
+    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return resp
+
+
+def _parse_dt(s, default_dt):
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return default_dt
+
+
+@login_required
+def toner_cc_dashboard(request):
+    hoje = date.today()
+    dt_ini = _parse_dt(request.GET.get("inicio") or "", date(hoje.year, 1, 1))
+    dt_fim = _parse_dt(request.GET.get("fim") or "", hoje)
+
+    base = (
+        MovimentacaoItem.objects
+        .filter(
+            tipo_movimentacao="baixa",
+            created_at__date__gte=dt_ini,
+            created_at__date__lte=dt_fim,
+            centro_custo_destino__isnull=False,
+        )
+        .filter(
+            Q(item__subtipo__nome__icontains="toner") |
+            Q(item__categoria__nome__icontains="toner")
+        )
+    )
+
+    # --------- TIPAGEM EXPLÍCITA EM DECIMAL ----------
+    dec14_2 = DecimalField(max_digits=14, decimal_places=2)
+    preco_unit = Coalesce(
+        F("item__valor"),
+        V(Decimal("0.00"), output_field=dec14_2),  # V decimal!
+        output_field=dec14_2,
+    )
+    qtd_dec = Cast(F("quantidade"), output_field=dec14_2)
+
+    # custo = quantidade(decimal) * preco_unit(decimal)  -> Decimal
+    custo_expr = ExpressionWrapper(qtd_dec * preco_unit, output_field=dec14_2)
+
+    # --------- Agregado por Centro de Custo ----------
+    por_cc_qs = (
+        base.values(
+            "centro_custo_destino__id",
+            "centro_custo_destino__numero",
+            "centro_custo_destino__departamento",
+        )
+        .annotate(
+            qtd=Coalesce(Sum(F("quantidade")), V(0)),
+            gasto=Coalesce(Sum(custo_expr, output_field=dec14_2), V(Decimal("0.00"), output_field=dec14_2)),
+        )
+        .order_by("centro_custo_destino__numero", "centro_custo_destino__departamento")
+    )
+
+    linhas = []
+    cc_labels, cc_gasto = [], []
+    total_geral = Decimal("0.00")
+
+    for r in por_cc_qs:
+        cc_nome = f'{r["centro_custo_destino__numero"]} - {r["centro_custo_destino__departamento"]}'
+        gasto = Decimal(r["gasto"] or 0)
+        qtd = int(r["qtd"] or 0)
+        linhas.append({"cc": cc_nome, "qtd": qtd, "gasto": gasto})
+        cc_labels.append(cc_nome)
+        cc_gasto.append(float(gasto))
+        total_geral += gasto
+
+    # --------- Top consumidores (por usuário) ----------
+    por_user_qs = (
+        base.values("usuario__id", "usuario__nome")
+        .annotate(gasto=Coalesce(Sum(custo_expr, output_field=dec14_2), V(Decimal("0.00"), output_field=dec14_2)))
+        .order_by("-gasto")[:10]
+    )
+
+    user_labels = []
+    user_gasto = []
+    for u in por_user_qs:
+        nome = u["usuario__nome"] or "—"
+        val = Decimal(u["gasto"] or 0)
+        user_labels.append(nome)
+        user_gasto.append(float(val))
+
+    # --------- Exportação CSV (abre no Excel) ----------
+    if request.GET.get("export") == "1":
+        resp = HttpResponse(content_type="text/csv; charset=utf-8")
+        fname = f"gasto_toner_{dt_ini:%Y%m%d}_{dt_fim:%Y%m%d}.csv"
+        resp["Content-Disposition"] = f'attachment; filename="{fname}"'
+        resp.write("Centro de Custo;Quantidade;Gasto (R$)\n")
+        for l in linhas:
+            gasto_str = f"{l['gasto']:.2f}".replace(".", ",")
+            resp.write(f"{l['cc']};{l['qtd']};{gasto_str}\n")
+        total_str = f"{total_geral:.2f}".replace(".", ",")
+        resp.write(f"TOTAL;;{total_str}\n")
+        return resp
+
+    ctx = {
+        "dt_ini": dt_ini,
+        "dt_fim": dt_fim,
+        "linhas": linhas,
+        "cc_labels": cc_labels,
+        "cc_gasto": cc_gasto,
+        "user_labels": user_labels,
+        "user_gasto": user_gasto,
+    }
+    return render(request, "front/dashboards/dashboard_toner.html", ctx)

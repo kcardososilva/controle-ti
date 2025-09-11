@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+{% block title %}Detalhes da Preventiva{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+
+<style>
+:root{
+  --line:#e5e7eb; --ink:#172133; --soft:#f8fafc; --card:#fff;
+  --shadow:0 20px 40px rgba(2,6,23,.07);
+  --h:48px; --rad:12px;
+  --ok:#15803d; --warn:#9a3412;
+}
+*{box-sizing:border-box}
+.wrapper{max-width:1100px;margin:22px auto;padding:0 14px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:18px 16px}
+
+/* header */
+.header{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}
+.header h2{margin:0;display:flex;gap:10px;align-items:center;color:var(--ink)}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
+.btn-light{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
+
+/* resumo */
+.summary{
+  margin-top:14px;
+  display:grid;
+  grid-template-columns: repeat(auto-fit,minmax(240px,1fr));
+  gap:12px;
+}
+.card{
+  background:var(--soft);border:1px solid var(--line);border-radius:14px;
+  box-shadow:0 1px 6px #0001;padding:14px;min-width:0
+}
+.card .label{font-weight:800;color:#0f172a;margin-bottom:4px}
+.card .value{font-weight:700; color: #0b1220;}
+
+/* chips */
+.chip{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:800;font-size:.9rem}
+.chip.ok{background:#e8fff3;color:var(--ok)}
+.chip.warn{background:#fff7ed;color:var(--warn)}
+
+/* observação */
+.note{margin-top:12px;background:#fff;border:1px dashed #dbe3ef;padding:12px;border-radius:10px;color:#334155}
+
+/* tabela respostas */
+.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:16px}
+table{width:100%;border-collapse:collapse;min-width:720px;background:#fff}
+thead th{
+  position:sticky;top:0;background:#0b1220;color:#fff;border-bottom:1px solid #0f172a;
+  padding:10px 12px;text-align:left;font-weight:900
+}
+tbody td{padding:10px 12px;border-bottom:1px solid #eef2f7;color:#0f172a}
+</style>
+
+<div class="wrapper">
+  <div class="panel">
+
+      <h2 style="color: #0b1220;"><i class="fa fa-shield-heart"></i> Detalhes da Preventiva</h2>
+      <div class="actions">
+        <a href="{% url 'preventiva_exec' preventiva.pk %}" class="btn btn-primary">
+          <i class="fa fa-play"></i> Executar
+        </a>
+        <a href="{% url 'preventiva_list' %}" class="btn btn-light">
+          <i class="fa fa-arrow-left"></i> Voltar
+        </a>
+      </div>
+
+    <!-- Resumo enxuto -->
+    <div class="summary">
+      <div class="card">
+        <div class="label">Equipamento</div>
+        <div class="value">{{ preventiva.equipamento.nome }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Checklist</div>
+        <div class="value">{{ preventiva.checklist_modelo.nome|default:"—" }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Periodicidade (dias)</div>
+        <div class="value">
+          {{ preventiva.checklist_modelo.intervalo_dias|default:preventiva.equipamento.data_limite_preventiva|default:"—" }}
+        </div>
+      </div>
+      <div class="card">
+        <div class="label">Última Execução</div>
+        <div class="value">{{ preventiva.data_ultima|date:"d/m/Y"|default:"—" }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Próxima Execução</div>
+        <div class="value">{{ preventiva.data_proxima|date:"d/m/Y"|default:"—" }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Status</div>
+        <div class="value">
+          {% if preventiva.dentro_do_prazo %}
+            <span class="chip ok">No prazo</span>
+          {% else %}
+            <span class="chip warn">Vencida/Não definida</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if preventiva.observacao %}
+      <div class="note">
+        <strong>Observações:</strong> {{ preventiva.observacao }}
+      </div>
+    {% endif %}
+
+    <!-- Respostas registradas -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:64px">#</th>
+            <th>Pergunta</th>
+            <th>Resposta</th>
+            <th>Respondido em</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in respostas %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td>{{ r.pergunta.texto_pergunta }}</td>
+              <td>{{ r.resposta|default:"—" }}</td>
+              <td>{{ r.created_at|date:"d/m/Y H:i" }}</td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="4" style="text-align:center;color:#64748b;padding:12px">
+                Ainda não há respostas para esta preventiva.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card" style="margin-top:16px">
+  <div class="section">
+    <h3 style="display:flex;align-items:center;gap:10px;margin:0 0 12px;">
+      <i class="fa fa-camera"></i> Evidências da última execução
+    </h3>
+
+    {% if preventiva.foto_antes or preventiva.foto_depois %}
+      <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+        <div class="tile" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:12px">
+          <strong style="display:block;margin-bottom:8px;color:#334155">Antes</strong>
+          {% if preventiva.foto_antes %}
+            <a href="{{ preventiva.foto_antes.url }}" target="_blank" style="display:block">
+              <img src="{{ preventiva.foto_antes.url }}" alt="Foto antes" style="width:100%;height:auto;border-radius:10px;border:1px solid #e5e7eb">
+            </a>
+          {% else %}
+            <span style="color:#64748b">— sem imagem</span>
+          {% endif %}
+        </div>
+
+        <div class="tile" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:12px">
+          <strong style="display:block;margin-bottom:8px;color:#334155">Depois</strong>
+          {% if preventiva.foto_depois %}
+            <a href="{{ preventiva.foto_depois.url }}" target="_blank" style="display:block">
+              <img src="{{ preventiva.foto_depois.url }}" alt="Foto depois" style="width:100%;height:auto;border-radius:10px;border:1px solid #e5e7eb">
+            </a>
+          {% else %}
+            <span style="color:#64748b">— sem imagem</span>
+          {% endif %}
+        </div>
+      </div>
+      <small style="display:block;margin-top:8px;color:#64748b">
+        Clique nas imagens para visualizar em tamanho original.
+      </small>
+    {% else %}
+      <span style="color:#64748b">Nenhuma evidência enviada na última execução.</span>
+    {% endif %}
+    </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+{% block title %}Executar Preventiva{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+
+<style>
+:root{
+  --line:#e5e7eb; --ink:#172133; --soft:#f8fafc; --card:#fff;
+  --shadow:0 20px 40px rgba(2,6,23,.07);
+  --h:48px; --rad:12px; --padL:44px; --accent:#1d4ed8;
+}
+*{box-sizing:border-box}
+.page{max-width:1100px;margin:22px auto;padding:0 14px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:22px}
+.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:10px 0 16px}
+.meta .card{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:12px}
+.meta .card strong{display:block;margin-bottom:4px;color:#0f172a}
+
+/* mensagens locais */
+.msgs{margin-bottom:10px}
+.msg{border-radius:10px;padding:10px 12px;font-weight:700}
+.msg.error{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+.msg.success{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
+.msg.warning{background:#fef9c3;color:#854d0e;border:1px solid #fde68a}
+
+/* Perguntas */
+.form-wrap{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:16px}
+.q-list{display:grid;grid-template-columns:1fr;gap:14px}
+.q-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}
+.q-head{display:flex;gap:10px;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.q-title{font-weight:800;color:#0f172a}
+.req{color:#b91c1c;font-weight:800;margin-left:6px}
+.help{color:#64748b;font-size:.92rem;margin-top:2px}
+
+/* Inputs-base */
+.ctrl, .ctrl-ta, .ctrl-num, .ctrl-select{
+  width:100%;min-height:var(--h);
+  padding:10px 14px;border:1px solid #d5deea;border-radius:10px;
+  background:#fff;color:#111827;font-size:1rem;outline:none;
+  transition:border .15s, box-shadow .15s; appearance:none; -webkit-appearance:none;
+}
+.ctrl-ta{min-height:96px;resize:vertical}
+.ctrl:focus, .ctrl-ta:focus, .ctrl-num:focus, .ctrl-select:focus{
+  border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd55;
+}
+
+/* Radios Sim/Não (segmented) */
+.sn-group{display:flex;gap:10px;flex-wrap:wrap}
+.sn-option{position:relative}
+.sn-option input{position:absolute;opacity:0;pointer-events:none}
+.sn-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  height:42px;padding:0 16px;border-radius:999px;
+  border:1.5px solid #d5deea;background:#fff;color:#0f172a;font-weight:800;
+  cursor:pointer; user-select:none; transition:.15s;
+}
+.sn-option input:checked + .sn-btn{
+  border-color:var(--accent); box-shadow:0 0 0 3px #93c5fd55; color:var(--accent);
+}
+.sn-btn .icon{font-size:.95rem}
+
+/* Ações */
+.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
+.btn-secondary{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
+span{
+  color: #0f172a;
+}
+</style>
+
+<div class="page">
+  <div class="panel">
+    
+    <h2 style="color: #0f172a;"><i class="fa fa-play"></i> Executar Preventiva</h2>
+      <a href="{% url 'preventiva_detail' preventiva.pk %}" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Detalhes</a>
+
+    <div class="meta">
+      <div class="card"><strong>Equipamento</strong><span>{{ preventiva.equipamento.nome }}</span></div>
+      <div class="card"><strong>Checklist</strong><span>{{ preventiva.checklist_modelo.nome }}</span></div>
+      <div class="card"><strong>Periodicidade</strong><span>{{ preventiva.checklist_modelo.intervalo_dias|default:"-" }} dias</span></div>
+      <div class="card"><strong>Última Execução</strong><span>{{ preventiva.data_ultima|date:"d/m/Y"|default:"-" }}</span></div>
+    </div>
+
+
+
+    <form method="post" class="form-wrap" enctype="multipart/form-data" novalidate>
+      {% csrf_token %}
+
+      <div class="q-list">
+        {% for p in perguntas %}
+          <div class="q-card">
+            <div class="q-head">
+              <div>
+                <div class="q-title">
+                  {{ forloop.counter }}. {{ p.texto_pergunta }}
+                  {% if p.obrigatorio == 'sim' %}<span class="req">*</span>{% endif %}
+                </div>
+                {% if p.tipo_resposta %}
+                  <div class="help">Tipo: {{ p.tipo_resposta|capfirst }}</div>
+                {% endif %}
+              </div>
+            </div>
+
+            {% with tipo=p.tipo_resposta|lower %}
+              {% if tipo == 'booleano' or tipo == 'bool' or tipo == 'sn' or tipo == 'sim/nao' or tipo == 'sim_nao' %}
+                <div class="sn-group">
+                  <label class="sn-option">
+                    <input type="radio" name="r_{{ p.id }}" value="sim" {% if p.obrigatorio == 'sim' %}required{% endif %}>
+                    <span class="sn-btn"><span class="icon"><i class="fa fa-check"></i></span> Sim</span>
+                  </label>
+                  <label class="sn-option">
+                    <input type="radio" name="r_{{ p.id }}" value="nao" {% if p.obrigatorio == 'sim' %}required{% endif %}>
+                    <span class="sn-btn"><span class="icon"><i class="fa fa-xmark"></i></span> Não</span>
+                  </label>
+                </div>
+
+              {% elif tipo == 'numero' or tipo == 'inteiro' or tipo == 'decimal' %}
+                <input class="ctrl-num" type="number" step="any" name="r_{{ p.id }}" {% if p.obrigatorio == 'sim' %}required{% endif %}>
+
+              {% elif tipo == 'escolha' or tipo == 'opcao' or tipo == 'select' %}
+                <select class="ctrl-select" name="r_{{ p.id }}" {% if p.obrigatorio == 'sim' %}required{% endif %}>
+                  <option value="">— Selecione —</option>
+                  {% for op in p.opcoes_list %}
+                    <option value="{{ op }}">{{ op }}</option>
+                  {% endfor %}
+                </select>
+
+              {% else %}
+                <textarea class="ctrl-ta" name="r_{{ p.id }}" {% if p.obrigatorio == 'sim' %}required{% endif %}></textarea>
+              {% endif %}
+            {% endwith %}
+          </div>
+        {% empty %}
+          <div class="q-card">Nenhuma pergunta vinculada a este checklist.</div>
+        {% endfor %}
+      </div>
+  <!-- NEW: Evidências fotográficas -->
+  <div class="section" style="margin-top:14px">
+    <h3 style="display:flex;align-items:center;gap:10px;margin:0 0 10px; color: #0f172a;">
+      <i class="fa fa-camera"></i> Evidências
+    </h3>
+
+    <div class="grid" style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));">
+      <div class="field">
+        <label for="id_foto_antes" style="font-weight:800;color:#1f2937;margin-bottom:6px">
+          <i class="fa fa-image"></i> Foto ANTES
+        </label>
+        <input id="id_foto_antes" name="foto_antes" type="file" accept="image/*" class="ctrl">
+        <small style="color:#64748b">Formatos comuns (JPG/PNG/HEIC). Máx. ~10MB (depende da configuração do servidor).</small>
+      </div>
+
+      <div class="field">
+        <label for="id_foto_depois" style="font-weight:800;color:#1f2937;margin-bottom:6px">
+          <i class="fa fa-image"></i> Foto DEPOIS
+        </label>
+        <input id="id_foto_depois" name="foto_depois" type="file" accept="image/*" class="ctrl">
+        <small style="color:#64748b">Opcional. Use para evidenciar o resultado após a preventiva.</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions" style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+    <button class="btn btn-primary" type="submit"><i class="fa fa-save"></i> Registrar</button>
+    <a class="btn btn-secondary" href="{% url 'preventiva_detail' preventiva.pk %}"><i class="fa fa-arrow-left"></i> Voltar</a>
+  </div>
+  </form>
+  </div>
+</div>
+{% endblock %}

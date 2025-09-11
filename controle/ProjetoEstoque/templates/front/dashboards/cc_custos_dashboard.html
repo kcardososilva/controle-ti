@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}Custo por Centro de Custo{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+
+<style>
+:root{
+  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
+  --primary:#2563eb; --primary2:#1d4ed8; --ok:#16a34a; --bad:#b91c1c; --amber:#b45309;
+  --shadow:0 22px 44px rgba(2,6,23,.07);
+}
+.page{max-width:1200px;margin:18px auto;padding:0 14px}
+.hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.hdr h2{margin:0;color:var(--ink);display:flex;align-items:center;gap:10px}
+.badge{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#f3f6ff;font-weight:800;color:#1e3a8a}
+
+.filters{
+  display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin:8px 0 12px;
+}
+.fg{display:flex;flex-direction:column}
+.fg label{font-weight:800;margin-bottom:6px;color:#0f172a}
+.fg input{height:44px;padding:8px 12px;border:1px solid #d5deea;border-radius:12px;background:#fff;min-width:220px}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
+.btn-light{background:#f8fafc;border:1.5px solid #dbe6f1;color:#334155}
+.btn-link{background:transparent;border:none;color:#1e40af;font-weight:800;text-decoration:underline;cursor:pointer}
+
+.grid{display:grid;gap:14px}
+.g-2{grid-template-columns:2fr 1.2fr}
+@media (max-width:1020px){.g-2{grid-template-columns:1fr}}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
+.card h3{margin:0 0 8px;color:var(--ink);display:flex;align-items:center;gap:8px}
+.chart{height:360px;position:relative}
+.chart.sm{height:310px}
+.nodata{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:700;pointer-events:none}
+
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left;color:#0f172a}
+.table th{background:#f8fafc;font-weight:900}
+.tright{text-align:right}
+.sticky{position:sticky;left:0;background:#f8fafc;z-index:1}
+</style>
+
+<div class="page">
+  <div class="hdr">
+    <h2><i class="fa fa-landmark"></i> Custo por Centro de Custo</h2>
+    <span class="badge">Período de baixas: {{ dt_ini|date:"d/m/Y" }} — {{ dt_fim|date:"d/m/Y" }}</span>
+  </div>
+
+  <!-- FILTROS -->
+  <form method="get" class="filters" autocomplete="off">
+    <div class="fg">
+      <label>Início</label>
+      <input type="date" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}">
+    </div>
+    <div class="fg">
+      <label>Fim</label>
+      <input type="date" name="fim" value="{{ dt_fim|date:'Y-m-d' }}">
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
+    <a class="btn btn-light" href="{{ request.path }}"><i class="fa fa-rotate-left"></i> Limpar</a>
+  </form>
+
+  <!-- GRÁFICOS -->
+  <div class="grid g-2">
+    <div class="card">
+      <h3><i class="fa fa-chart-column" style="color:#2563eb"></i> Mensal (Itens locação + Licenças)</h3>
+      <div class="chart">
+        <canvas id="ccMensalChart"></canvas>
+        <div id="nd-mensal" class="nodata">Sem dados</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3><i class="fa fa-money-bill-trend-up" style="color:#b91c1c"></i> Baixas no período</h3>
+      <div class="chart sm">
+        <canvas id="ccBaixasChart"></canvas>
+        <div id="nd-baixas" class="nodata">Sem dados</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABELA -->
+  <div class="card" style="margin-top:14px">
+    <h3><i class="fa fa-table" style="color:#0ea5e9"></i> Detalhamento por Centro de Custo</h3>
+    <div style="overflow:auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th class="sticky">Centro de Custo</th>
+            <th>Usuários</th>
+            <th>Itens</th>
+            <th>Licenças</th>
+            <th>Assentos ativos</th>
+            <th class="tright">Custo Itens (R$/mês)</th>
+            <th class="tright">Custo Licenças (R$/mês)</th>
+            <th class="tright">Baixas no período (R$)</th>
+            <th class="tright">Total Mensal (R$)</th>
+            <th class="tright">Total Geral (R$)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in linhas %}
+          <tr>
+            <td class="sticky">{{ l.cc.numero }} - {{ l.cc.departamento }}</td>
+            <td>{{ l.usuarios }}</td>
+            <td>{{ l.itens }}</td>
+            <td>{{ l.licencas }}</td>
+            <td>{{ l.assentos }}</td>
+            <td class="tright">R$ {{ l.custo_itens|floatformat:2 }}</td>
+            <td class="tright">R$ {{ l.custo_licencas|floatformat:2 }}</td>
+            <td class="tright">R$ {{ l.baixas|floatformat:2 }}</td>
+            <td class="tright">R$ {{ l.total_mensal|floatformat:2 }}</td>
+            <td class="tright">R$ {{ l.total_geral|floatformat:2 }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="10" style="color:#64748b">Nenhum dado para o período informado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# ===== DADOS PARA JS (com fallbacks para evitar erro) ===== #}
+{{ cc_labels|default:"[]"|json_script:"cc-labels" }}
+{{ cc_itens|default:"[]"|json_script:"cc-itens" }}
+{{ cc_licencas|default:"[]"|json_script:"cc-licencas" }}
+{{ cc_mensal|default:"[]"|json_script:"cc-mensal" }}
+{{ cc_baixas|default:"[]"|json_script:"cc-baixas" }}
+
+<script>
+function J(id, fb){ const el=document.getElementById(id); if(!el) return fb; try{return JSON.parse(el.textContent)}catch(e){return fb} }
+function show(id, on){ const el=document.getElementById(id); if(el) el.style.display = on ? 'flex' : 'none'; }
+function brl(n){ n=+n||0; return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+const labels   = J('cc-labels',   []);
+const itens    = J('cc-itens',    []).map(x=>+x||0);
+const licencas = J('cc-licencas', []).map(x=>+x||0);
+const mensal   = J('cc-mensal',   []).map(x=>+x||0);
+const baixas   = J('cc-baixas',   []).map(x=>+x||0);
+
+const lbls = labels.length ? labels : ['—'];
+function ensure(arr){ return (arr && arr.length) ? arr : [0]; }
+const hasMensal = (mensal.reduce((a,b)=>a+b,0) > 0) || (itens.reduce((a,b)=>a+b,0) > 0) || (licencas.reduce((a,b)=>a+b,0) > 0);
+const hasBaixas = (baixas.reduce((a,b)=>a+b,0) > 0);
+
+Chart.defaults.font.family = "'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial";
+Chart.defaults.plugins.legend.position = 'top';
+Chart.defaults.plugins.tooltip.callbacks = {
+  label: (ctx) => `${ctx.dataset.label}: ${brl(ctx.raw)}`
+};
+
+/* ===== Gráfico Mensal (empilhado) ===== */
+const c1 = document.getElementById('ccMensalChart');
+if (c1){
+  new Chart(c1, {
+    type: 'bar',
+    data: {
+      labels: lbls,
+      datasets: [
+        {label:'Itens (R$/mês)',    data: ensure(itens),    backgroundColor:'rgba(37,99,235,.80)'},
+        {label:'Licenças (R$/mês)', data: ensure(licencas), backgroundColor:'rgba(16,185,129,.80)'},
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      scales: {
+        x: { stacked:true, grid:{color:'rgba(148,163,184,.15)'} },
+        y: { stacked:true, beginAtZero:true,
+             ticks:{ callback:(v)=>brl(v).replace('R$ ','') },
+             grid:{color:'rgba(148,163,184,.15)'} }
+      }
+    }
+  });
+  show('nd-mensal', !hasMensal);
+}
+
+/* ===== Gráfico Baixas ===== */
+const c2 = document.getElementById('ccBaixasChart');
+if (c2){
+  new Chart(c2, {
+    type: 'bar',
+    data: { labels: lbls, datasets: [{ label:'Baixas (R$)', data: ensure(baixas), backgroundColor:'rgba(185,28,28,.85)' }] },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      scales: {
+        y: { beginAtZero:true, ticks:{ callback:(v)=>brl(v).replace('R$ ','') } }
+      }
+    }
+  });
+  show('nd-baixas', !hasBaixas);
+}
+</script>
+{% endblock %}

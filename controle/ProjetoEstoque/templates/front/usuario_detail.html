@@ -1,0 +1,200 @@
+{% extends 'base.html' %}
+{% block title %}Detalhe do Usuário{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+
+<style>
+:root{--line:#e5e7eb;--ink:#172133;--card:#fff;--soft:#f8fafc;--shadow:0 20px 40px rgba(2,6,23,.07)}
+*{box-sizing:border-box}
+.wrap{max-width:1100px;margin:22px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:22px}
+.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
+.subheader{display:flex;gap:8px;align-items:center;color:#475569;margin-top:6px}
+.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:800;font-size:.9rem}
+.badge.ativo{background:#e8fff3;color:#15803d}
+.badge.desligado{background:#fee2e2;color:#b91c1c}
+.badge-pmb.sim{background:#e8fff3;color:#15803d}
+.badge-pmb.nao{background:#fee2e2;color:#b91c1c}
+.grid{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.card{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px}
+.label{font-weight:800;color:#334155;margin-bottom:6px}
+.value{color:#0f172a}
+.meta{margin-top:6px;color:#475569;font-size:.95rem}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+.btn-secondary{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
+.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
+.block{margin-top:18px;background:var(--card);border:1px solid var(--line);border-radius:14px}
+.block .block-h{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.block .block-h h3{margin:0;display:flex;align-items:center;gap:10px;color:#0f172a;font-size:1.05rem}
+.block .block-c{padding:14px}
+.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;min-width:940px;background:#fff}
+thead th{position:sticky;top:0;background:#0b1220;color:#fff;border-bottom:1px solid #0f172a;padding:10px 12px;text-align:left;font-weight:900}
+tbody td{padding:10px 12px;border-bottom:1px solid #eef2f7;color:#0f172a}
+tbody tr:nth-child(odd){background:#fbfdff}
+tbody tr:hover{background:#f3f7ff}
+.status-chip{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:800;font-size:.85rem}
+.status-chip.ativo{background:#e8fff3;color:#15803d}
+.status-chip.backup{background:#eef2ff;color:#1e40af}
+.status-chip.manutencao{background:#fff7ed;color:#9a3412}
+.status-chip.defeito{background:#fee2e2;color:#b91c1c}
+.small-note{color:#64748b;font-size:.92rem}
+.totline{margin-left:8px;color:#0f172a}
+</style>
+
+<div class="wrap">
+  <div>
+    <h2 style="color:#0b1220;"><i class="fa fa-user"></i> Detalhe do Usuário</h2>
+    <div class="subheader">
+      <span class="badge {{ obj.status }}">{{ obj.get_status_display }}</span>
+      <span class="badge-pmb {{ obj.pmb }}">PMB: {{ obj.get_pmb_display }}</span>
+    </div>
+  </div>
+  <div class="actions">
+    <a href="{% url 'usuario_list' %}" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
+    <a href="{% url 'usuario_update' obj.pk %}" class="btn btn-primary"><i class="fa fa-pen"></i> Editar</a>
+  </div>
+
+  <!-- Dados do usuário -->
+  <div class="grid">
+    <div class="card"><div class="label">Nome</div><div class="value">{{ obj.nome }}</div></div>
+    <div class="card"><div class="label">E-mail</div><div class="value">{{ obj.email }}</div></div>
+    <div class="card"><div class="label">Centro de Custo</div><div class="value">{% if obj.centro_custo %}{{ obj.centro_custo.numero }} - {{ obj.centro_custo.departamento }}{% else %}-{% endif %}</div></div>
+    <div class="card"><div class="label">Localidade</div><div class="value">{% if obj.localidade %}{{ obj.localidade.local }}{% else %}-{% endif %}</div></div>
+    <div class="card"><div class="label">Função</div><div class="value">{% if obj.funcao %}{{ obj.funcao.nome }}{% else %}-{% endif %}</div></div>
+    <div class="card"><div class="label">Início</div><div class="value">{{ obj.data_inicio|date:"d/m/Y" }}</div></div>
+    <div class="card"><div class="label">Término</div><div class="value">{{ obj.data_termino|date:"d/m/Y"|default:"-" }}</div></div>
+    <div class="card" style="grid-column:1/-1">
+      <div class="label">Auditoria</div>
+      <div class="meta">Criado por: {{ obj.criado_por|default:"-" }} em {{ obj.created_at|date:"d/m/Y H:i" }}</div>
+      <div class="meta">Atualizado por: {{ obj.atualizado_por|default:"-" }} em {{ obj.updated_at|date:"d/m/Y H:i" }}</div>
+    </div>
+  </div>
+
+  <!-- Itens do usuário (com custo) -->
+  <div class="block">
+    <div class="block-h">
+      <h3><i class="fa fa-laptop"></i> Itens atribuídos a {{ obj.nome }}</h3>
+      <span class="small-note">
+        {{ items_do_usuario|length }} item{{ items_do_usuario|length|pluralize }}
+        <span class="totline">• Locação/mês: <strong>R$ {{ totais_itens.loc_mensal|floatformat:2 }}</strong></span>
+        <span class="totline">• Aquisição: <strong>R$ {{ totais_itens.aquisicao|floatformat:2 }}</strong></span>
+      </span>
+    </div>
+    <div class="block-c">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:56px">#</th>
+              <th>Item</th>
+              <th>Nº Série</th>
+              <th>Subtipo</th>
+              <th>Localidade</th>
+              <th>Centro de Custo</th>
+              <th>Custo</th> <!-- ✅ novo -->
+              <th>Status</th>
+              <th style="width:120px">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for it in items_do_usuario %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td>{{ it.nome|default:"-" }}</td>
+              <td>{{ it.numero_serie|default:"-" }}</td>
+              <td>{{ it.subtipo.nome|default:"-" }}</td>
+              <td>{{ it.localidade.local|default:"-" }}</td>
+              <td>
+                {% if it.centro_custo %}
+                  {{ it.centro_custo.numero }} - {{ it.centro_custo.departamento }}
+                {% else %}-{% endif %}
+              </td>
+              <td>
+                {% if it.custo_valor %}
+                  {% if it.custo_tipo == 'locacao' %}
+                    R$ {{ it.custo_valor|floatformat:2 }}/mês
+                  {% else %}
+                    R$ {{ it.custo_valor|floatformat:2 }}
+                  {% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td><span class="status-chip {{ it.status }}">{{ it.get_status_display|default:it.status|capfirst }}</span></td>
+              <td style="white-space:nowrap">
+                <a class="icon-btn" title="Detalhar" href="{% url 'equipamento_detalhe' it.id %}"><i class="fa fa-eye"></i></a>
+                {% if it.precisa_preventiva == 'sim' %}
+                  <a class="icon-btn" title="Iniciar preventiva" style="background:#172133;color:#fff;border-radius:50%;padding:7px 8px" href="{% url 'preventiva_start_item' it.id %}">
+                    <i class="fa fa-shield-heart"></i>
+                  </a>
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="9" style="text-align:center;color:#64748b;padding:14px">
+              Nenhum item atribuído a este usuário no momento.
+            </td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Licenças do usuário (com custo) -->
+  <div class="block">
+    <div class="block-h">
+      <h3><i class="fa fa-certificate"></i> Licenças atribuídas a {{ obj.nome }}</h3>
+      {% with licencas|length as total_lic %}
+        <span class="small-note">
+          {{ total_lic }} licença{{ total_lic|pluralize }}
+          <span class="totline">• Mensal: <strong>R$ {{ totais_licencas.mensal|floatformat:2 }}</strong></span>
+          <span class="totline">• Anual: <strong>R$ {{ totais_licencas.anual|floatformat:2 }}</strong></span>
+        </span>
+      {% endwith %}
+    </div>
+    <div class="block-c">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:56px">#</th>
+              <th>Licença</th>
+              <th>Fornecedor</th>
+              <th>Periodicidade</th>
+              <th>Desde</th>
+              <th>Centro de Custo</th>
+              <th>PMB</th>
+              <th>Custo mensal</th>   <!-- ✅ novo -->
+              <th>Custo anual</th>    <!-- ✅ novo -->
+              <th style="width:120px">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in licencas_do_usuario %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td>{{ l.licenca.nome }}</td>
+              <td>{% if l.licenca.fornecedor %}{{ l.licenca.fornecedor.nome }}{% else %}-{% endif %}</td>
+              <td><span class="chip-per">{{ l.licenca.get_periodicidade_display }}</span></td>
+              <td>{{ l.desde|date:"d/m/Y H:i" }}</td>
+              <td>{% if l.licenca.centro_custo %}{{ l.licenca.centro_custo.numero }} - {{ l.licenca.centro_custo.departamento }}{% else %}-{% endif %}</td>
+              <td><span class="badge-pmb {{ l.licenca.pmb }}">{{ l.licenca.get_pmb_display }}</span></td>
+              <td>{% if l.custo_mensal %}R$ {{ l.custo_mensal|floatformat:2 }}{% else %}—{% endif %}</td>
+              <td>{% if l.custo_anual %}R$ {{ l.custo_anual|floatformat:2 }}{% else %}—{% endif %}</td>
+              <td style="white-space:nowrap">
+                <a class="icon-btn" title="Detalhar licença" href="{% url 'licenca_detail' l.licenca.id %}"><i class="fa fa-eye"></i></a>
+                <a class="icon-btn" title="Movimentar licença" href="{% url 'mov_licenca_form' %}?licenca={{ l.licenca.id }}"><i class="fa fa-exchange-alt"></i></a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="10" style="text-align:center;color:#64748b;padding:14px">Sem licenças ativas para este usuário.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

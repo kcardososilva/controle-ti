@@ -2,172 +2,475 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}  {% endblock %}</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{% static 'css/estilo.css' %}">
+  <meta charset="UTF-8">
+  <title>Controle TI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:400,500,700&display=swap">
+  <link rel="icon" href="{% static 'img/logo2.png' %}">
+  
 
-    <style>
-      /* NAVBAR VERTICAL */
-/* ===== LAYOUT PADRÃO DESKTOP ===== */
-.navbar-vertical {
-  background-color: #6898A0;
-  padding: 20px;
-  width: 240px;
-  height: 100vh;
-  position: fixed;
-  left: 0;
-  top: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  color: white;
-  z-index: 999;
-}
+  <style>
+    :root {
+      --sidebar-bg: linear-gradient(135deg, #12213f 0%, #21439f 100%);
+      --sidebar-active: #62718c;
+      --sidebar-txt: #eaf9fc;
+      --sidebar-txt-active: #eaf9fc ;
+      --sidebar-logo: #eaf9fc;
+      --sidebar-sair: #ff6868;
+      --sidebar-sair-icon: #50aaff;
+      --main-bg: linear-gradient(120deg, #181f2a 0%, #253049 100%);
+      --main-bg-solid: #181f2a;
+      --border-color: #222a38;
+      --txt-main: #f0f5ff;
+      --txt-muted: #90a4bf;
+      --header-bg: linear-gradient(135deg, #18284a 0%, #21439f 100%);
+      --header-txt: #f0f5ff;
+      --btn-sair-bg: #233149;
+      --btn-sair-txt: #fff;
+    }
+    html, body { height: 100%; margin: 0; padding: 0;}
+    body {
+      font-family: 'Roboto', Arial, sans-serif;
+      background: var(--main-bg);
+      color: var(--txt-main);
+      min-height: 100vh;
+    }
+    .layout {
+      display: flex;
+      height: 100vh;
+    }
+    .sidebar {
+      width: 210px;
+      background: var(--sidebar-bg);
+      color: var(--sidebar-txt);
+      display: flex;
+      flex-direction: column;
+      padding-top: 20px;
+      position: fixed;
+      left: 0;
+      top: 0; bottom: 0;
+      height: 100vh;
+      z-index: 220;
+      transition: left 0.22s cubic-bezier(.7,.22,.2,1);
+      box-shadow: 4px 0 24px #0005;
+    }
+    .sidebar.open { left: 0;}
+    .sidebar-logo {
+      font-size: 1.35rem;
+      font-weight: bold;
+      color: var(--sidebar-logo);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+      margin-left: 14px;
+      letter-spacing: 0.2px;
+      
+    }
+    .sidebar-logo i {
+      font-size: 1.18em;
+      color: var(--sidebar-logo);
+    }
+    .sidebar-menu {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-left: 0;
+      margin-right: 0;
+    }
+    .sidebar-link {
+      padding: 10px 0 10px 18px;
+      color: var(--sidebar-txt);
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      border-radius: 9px;
+      margin: 1px 5px;
+      text-decoration: none;
+      font-weight: 400;
+      transition: background 0.09s, color 0.12s;
+      position: relative;
+    }
+    .sidebar-link i {
+      font-size: 1.08em;
+      min-width: 22px;
+      text-align: center;
+      transition: color 0.18s;
+      color: #eaf9fc !important;
+    }
+    .sidebar-link.active,
+    .sidebar-link:hover {
+      background: var(--sidebar-active);
+      color: var(--sidebar-txt-active);
+      font-weight: 700;
+    }
+    .sidebar-link.active i,
+    .sidebar-link:hover i {
+      color: var(--sidebar-txt-active) !important;
+    }
+    .sidebar-link.logout {
+      color: var(--sidebar-sair);
+      font-weight: 700;
+      margin-top: 10px;
+    }
+    .sidebar-link.logout:hover {
+      background: transparent;
+      color: #fff;
+    }
+    .sidebar-close {
+      display: none;
+      color: #fff;
+      font-size: 2rem;
+      background: none;
+      border: none;
+      cursor: pointer;
+      margin: 9px 0 13px 13px;
+      align-self: flex-end;
+    }
+    .hamburger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #101521;
+      color: #eaf9fc;
+      border: none;
+      border-radius: 8px;
+      padding: 7px 11px;
+      font-size: 1.35rem;
+      margin-left: 8px;
+      margin-right: 10px;
+      cursor: pointer;
+      box-shadow: 0 1px 8px #0003;
+      z-index: 400;
+      height: 35px;
+      width: 38px;
+    }
+    .hamburger:active { background: #172133;}
+    .sidebar-overlay {
+      position: fixed;
+      z-index: 100;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: #001828e6;
+      transition: opacity 0.18s;
+      opacity: 0;
+      pointer-events: none;
+      display: block;
+    }
+    .sidebar.open ~ .sidebar-overlay {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .header {
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      height: 72px;
+      padding: 0 20px 0 0;
+      justify-content: flex-start;
+      position: fixed; /* Fixar no topo */
+      top: 0;
+      left: 0;
+      width: 100vw;
+      z-index: 300;
+      box-sizing: border-box;
+    }
 
-.main-content {
-  margin-left: 240px;
-  padding: 20px;
+    .header-main {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      gap: 10px;
+      flex: 1;
+    }
+    .header-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--header-txt);
+      white-space: nowrap;
+      margin-right: 7px;
+      margin-left: 10px;
+      letter-spacing: .5px;
+    }
+    .header-user {
+      color: #eaf9fc;
+      font-size: 1.02rem;
+      font-weight: 400;
+      margin-left: 7px;
+      white-space: nowrap;
+      
+    }
+    .btn-sair {
+      padding: 7px 18px;
+      background: var(--btn-sair-bg);
+      color: var(--btn-sair-txt);
+      border: none;
+      border-radius: 7px;
+      font-weight: bold;
+      font-size: 1.05rem;
+      cursor: pointer;
+      margin-left: 13px;
+      transition: background .12s;
+      height: 38px;
+      align-self: center;
+      
+    }
+    .btn-sair:hover { background: #2ae9d46b; color: #192840; }
+
+    .main-content {
+  padding: 24px 32px 0 32px;
+  background: #f1fdfd;
+  min-height: 0;
+  flex: 1 1 auto;
+  width: 100%;
+  margin-left: 210px;
+  margin-top: 72px;
+  height: calc(100vh - 72px);
+  overflow-y: auto;
+  box-sizing: border-box;
   transition: margin-left 0.3s;
 }
-
-.navbar-vertical .logo {
-  font-size: 1.3rem;
-  font-weight: bold;
-  margin-bottom: 16px;
-  text-align: center;
-  color: white;
-}
-
-.btn-vertical {
-  width: 100%;
-  padding: 10px;
-  border-radius: 6px;
-  font-weight: bold;
-  text-align: center;
-  text-decoration: none;
-  color: white;
-}
-
-.red { background-color: #dc3545; }
-.orange { background-color: #fd7e14; }
-.green { background-color: #28a745; }
-.blue { background-color: #0d6efd; }
-.gray { background-color: #6c757d; }
-
-.logout {
-  background-color: #dc3545;
-}
-
-.user-label {
-  font-size: 0.9rem;
-  margin-top: 12px;
-  color: white;
-}
-
-/* ===== MOBILE RESPONSIVO MELHORADO ===== */
-@media (max-width: 768px) {
-  .navbar-vertical {
-    position: relative;
-    width: 100%;
-    height: auto;
-    flex-direction: column;
-    align-items: center;
-    padding: 16px 10px;
-  }
-
-  .navbar-vertical .logo {
-    width: 100%;
-    text-align: center;
-    font-size: 1.2rem;
-    margin-bottom: 8px;
-  }
-
-  .btn-vertical {
-    width: 90%;
-    font-size: 15px;
-    padding: 10px;
-    margin: 6px 0;
-    text-align: center;
-  }
-
-  .user-label {
-    width: 100%;
-    text-align: center;
-    margin-top: 6px;
-    font-size: 14px;
-    margin-bottom: 10px;
-  }
-
-  .user-actions {
-    width: 90%;
-    margin-top: 12px;
-  }
-
+@media (max-width: 900px) {
   .main-content {
     margin-left: 0;
-    padding: 15px;
+    padding: 28px 12px 0 12px;
+    margin-top: 72px;
+    height: calc(100vh - 72px);
+    width: 100vw;
+  }
+}
+    .main-content h1 {
+      font-size: 2.1rem;
+      font-weight: bold;
+      margin-bottom: 14px;
+      color: #eaf9fc;
+      
+    }
+    .main-content p {
+      font-size: 1.08rem;
+      color: #c7eaf9;
+    }
+    /* DASHBOARD CARD EXEMPLO */
+    
+    @media (min-width: 901px) {
+      .sidebar { left: 0; position: relative; width: 210px;}
+      .sidebar-close, .sidebar-overlay, .hamburger { display: none !important;}
+      .main-content { margin-left: 0px; }
+    }
+
+    @media (max-width: 900px) {
+      .sidebar {
+        left: -350px;
+        width: 320px;
+        min-width: 0;
+        box-shadow: 4px 0 18px #0004;
+        z-index: 220;
+      }
+    }
+.header {
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  height: 72px;
+  padding: 0 20px 0 0;
+  justify-content: flex-start;
+  position: fixed;
+  top: 0;
+  left: 210px;
+  width: calc(100vw - 210px);
+  z-index: 300;
+  box-sizing: border-box;
+}
+@media (max-width: 900px) {
+  .header {
+    left: 0;
+    width: 100vw;
   }
 }
 
-
-td {
-    font-family: Trebuchet MS, sans-serif;
+    @media (max-width: 900px) {
+      .main-content {
+        margin-left: 0;
+        padding: 28px 12px 0 12px;
+        margin-top: 72px;
+        height: calc(100vh - 72px);
+      }
+      .sidebar.open { left: 0;}
+      .sidebar-close { display: block; }
+      .sidebar-logo { font-size: 1em; }
+      .sidebar-link { font-size: 0.94em; padding: 10px 0 10px 18px;}
+      .hamburger { display: inline-flex; }
+      .main-content { margin-left: 0; padding: 28px 12px 0 12px; }
+      .header { height: 72px; }
     }
-strong {
-  
-    font-family: Trebuchet MS, sans-serif;
-}
-p{
-    font-family: Trebuchet MS, sans-serif;
-}
-button{
-  
-    font-family: Trebuchet MS, sans-serif;
-}
-h1,h2,h3,h4{
-    font-family: Trebuchet MS, sans-serif;
-}
-a{
-    font-family: Trebuchet MS, sans-serif;
-}
-
-
+    @media (max-width: 650px) {
+      .main-content { padding: 16px 3vw 0 3vw; }
+      .sidebar { width: 85vw; max-width: 270px;}
+      .header-title { font-size: 1rem; }
+    }
+    /*Submenu Link */
+    .submenu {
+      background: linear-gradient(360deg, #12213f 0%, #171f35 100%);
+      border-radius: 7px;
+      margin: 3px 10px 7px 28px;
+      padding: 6px 6px 6px 13px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 3px 14px #00fff922;
+      transition: all 0.21s cubic-bezier(.8,.3,.2,1);
+      animation: fadeInSub .22s;
+    }
+    .submenu-link {
+      color: #eaf9fc;
+      font-size: 0.98em;
+      padding: 7px 0 7px 10px;
+      border-radius: 6px;
+      margin-bottom: 2px;
+      text-decoration: none;
+      transition: background .11s, color .16s;
+      display: block;
+    }
+    .submenu-link:hover {
+      background: #ffffff6b;
+      font-weight: bold;
+      color: #ffffff;
+    }
+    .hidden { display: none !important; }
+    @keyframes fadeInSub {
+      from { opacity: 0; transform: translateY(-5px);}
+      to   { opacity: 1; transform: translateY(0);}
+    }
   </style>
 </head>
-
-
 <body>
-
-       
-          <div class="navbar-vertical">
-            <div class="logo">
-              <img src="{% static 'img/logo.png' %}" alt="Logo" style="max-width: 100px; height: auto; margin-bottom: 10px;">
-              <a href="{% url 'home' %}" style="color: white; text-decoration: none;"><h2 class="logo">Controle TI</h2></a>
-            </div>
-            
-            <span class="user-label">Olá, {{ request.user.username }}</span>
-            <a href="{% url 'home' %}" class="btn-vertical" style="background-color: #ffffff; color: #6898A0;">Home</a>
-            <a href="{% url 'equipamento_por_local' %}" class="btn-vertical " style="background-color: #ffffff; color: #6898A0;">Equipamentos por Locais</a>
-            <a href="{% url 'mapa_custos_area' %}" class="btn-vertical " style="background-color: #ffffff; color: #6898A0;"">Mapa de custos</a>
-            <a href="{% url 'todas_preventivas' %}" class="btn-vertical " style="background-color: #ffffff; color: #6898A0;">Visualizar Preventivas</a>
-            <a href="{% url 'cadastrar_categoria' %}" class="btn-vertical" style="background-color: #ffffff; color: #6898A0;">+ Categoria</a>
-            <a href="{% url 'cadastrar_subtipo' %}" class="btn-vertical " style="background-color: #ffffff; color: #6898A0;">+ Subtipo</a>
-            <a href="{% url 'cadastrar_equipamento' %}" class="btn-vertical " style="background-color: #ffffff; color: #6898A0;">+ Equipamento</a>
-            <a href="{% url 'login' %}" class="btn-vertical logout" >Sair</a>
-          
+  <div class="layout">
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="sidebarMenu">
+      <button class="sidebar-close" onclick="closeSidebar()" title="Fechar menu"><i class="fas fa-times"></i></button>
+      <div class="sidebar-logo">
+        <i class="fas fa-network-wired"></i>
+        Controle TI
+      </div>
+      <nav class="sidebar-menu">
+        <div class="sidebar-link-with-sub">
+          <a class="sidebar-link" href="#" onclick="toggleSubmenu(event, 'dashboard-sub')">
+            <i class="fas fa-chart-bar"></i> Dashboard <i class="fas fa-chevron-down" style="margin-left:auto;font-size:0.92em;"></i>
+          </a>
+          <div class="submenu hidden" id="dashboard-sub">
+            <a href="{% url 'dashboard' %}" class="submenu-link">Visão Geral</a>
+           
+            <a href="{% url 'cc_custos_dashboard' %}" class="submenu-link">Custo por setor</a>
+            <a href="{% url 'dashboard_toner' %}" class="submenu-link">Gastos com Toner</a>
           </div>
+        </div>
+        <a class="sidebar-link" href="{% url 'equipamentos_list' %}"><i class="fas fa-laptop"></i> Itens</a>
+         <a class="sidebar-link" href="{% url 'licenca_list' %}"><i class="fa-solid fa-rocket"></i> Licenças</a>
+        <a href="{% url 'movimentacao_list' %}" class="sidebar-link"><i class="fa fa-exchange-alt"></i> Movimentações</a>
+        <div class="sidebar-link-with-sub">
+          <a class="sidebar-link" href="#" onclick="toggleSubmenu(event, 'ativos-sub')">
+            <i class="fas fa-server"></i> Cadastro de Ativos <i class="fas fa-chevron-down" style="margin-left:auto;font-size:0.92em;"></i>
+          </a>
+          <div class="submenu hidden" id="ativos-sub">
+            <a href="{% url 'cadastrar_equipamento' %}" class="submenu-link">Item</a>
+            <a href="{% url 'subtipo_list' %}" class="submenu-link">Subtipo</a>
+          </div>
+        </div>
+        <a class="sidebar-link" href="{% url 'localidade_list' %}"><i class="fas fa-map-pin"></i> Localidades</a>
+        <a class="sidebar-link" href="{% url 'centrocusto_list' %}"><i class="fas fa-dollar-sign"></i> Centro de Custos</a>
+        <a class="sidebar-link" href="{% url 'fornecedor_list' %}"><i class="fas fa-building"></i> Fornecedores</a>
+        <a class="sidebar-link" href="{% url 'usuario_list' %}"><i class="fas fa-user"></i> Usuários</a>
+        <a class="sidebar-link" href="{% url 'usuario_list' %}"><i class="fa-solid fa-address-card"></i> Funções</a>
+          <div class="sidebar-link-with-sub">
+          <a class="sidebar-link" href="#" onclick="toggleSubmenu(event, 'preventivas-sub')">
+            <i class="fas fa-screwdriver-wrench"></i> Sistemas de Preventivas <i class="fas fa-chevron-down" style="margin-left:auto;font-size:0.92em;"></i>
+          </a>
+          <div class="submenu hidden" id="preventivas-sub">
+            <a class="submenu-link" href="{% url 'preventiva_start' %}">
+              <i class="fa fa-play-circle"></i> Iniciar Preventiva (Geral)
+            </a>
+            <a class="submenu-link" href="{% url 'checklist_list' %}">
+              <i class="fa fa-list"></i> Listar Checklists
+            </a>
+            
+            <a class="submenu-link" href="{% url 'preventiva_list' %}">
+              <i class="fa fa-table-list"></i> Listar Preventivas
+            </a>
+          </div>
+        </div>
+        <a class="sidebar-link" href="{% url 'sobre_plataforma' %}"><i class="fas fa-blog"></i> Sobre a plataforma</a>
         
-
-    <div class="main-content">
-    {% block content %}
-    
-    {% endblock %}
+      </nav>
     </div>
-    <script src="{% static 'js/scripts.js' %}"></script>
-    
-</body>
 
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+    <!-- MAIN -->
+    <div style="flex:1; display:flex; flex-direction:column;">
+      
+      <!-- TOPO -->
+      <div class="header">
+        <button class="hamburger" id="hamburgerBtn" onclick="openSidebar()" title="Menu">
+          <i class="fas fa-bars"></i>
+        </button>
+        <div class="header-main">
+          <span class="header-user">Bem-vindo, Kayque</span>
+        </div>
+        <a  style="text-decoration: none; color: red;" href="{% url 'login' %}" class="btn-sair">Sair</a>
+      </div>
+
+
+      <!-- CONTEUDO -->
+      <div class="main-content">
+          {% block content %}
+    
+          {% endblock %}
+      </div>
+      <!-- FIM CONTEUDO -->
+
+
+    </div>
+  </div>
+  <script src="{% static 'js/scripts.js' %}"></script>
+  <script>
+    // Abre e fecha submenus
+    function toggleSubmenu(event, submenuId) {
+      event.preventDefault();
+      // Fecha todos os submenus antes de abrir outro
+      document.querySelectorAll('.submenu').forEach(function(el){
+        if(el.id !== submenuId) el.classList.add('hidden');
+      });
+      var sub = document.getElementById(submenuId);
+      sub.classList.toggle('hidden');
+    }
+    // Fecha submenu ao clicar fora do menu lateral (opcional)
+    document.addEventListener('click', function(e){
+      var sidebar = document.getElementById('sidebarMenu');
+      if (!sidebar.contains(e.target)) {
+        document.querySelectorAll('.submenu').forEach(function(el){
+          el.classList.add('hidden');
+        });
+      }
+    });
+    function openSidebar() {
+      document.getElementById('sidebarMenu').classList.add('open');
+      document.body.style.overflow = "hidden";
+      document.getElementById('hamburgerBtn').style.display = 'none';
+    }
+    function closeSidebar() {
+      document.getElementById('sidebarMenu').classList.remove('open');
+      document.body.style.overflow = "";
+      document.getElementById('hamburgerBtn').style.display = 'inline-flex';
+    }
+    document.addEventListener('keydown', function(e){
+      if (e.key === "Escape") closeSidebar();
+    });
+    window.addEventListener('resize', function() {
+      if (window.innerWidth > 900) closeSidebar();
+    });
+  </script>
+</body>
 </html>

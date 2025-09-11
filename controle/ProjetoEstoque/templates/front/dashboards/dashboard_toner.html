@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Gasto de Toner por Centro de Custo{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+
+<style>
+:root{
+  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
+  --primary:#2563eb; --green:#10b981; --shadow:0 22px 44px rgba(2,6,23,.07);
+}
+.page{max-width:1200px;margin:18px auto;padding:0 14px}
+.hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.hdr h2{margin:0;color:var(--ink);display:flex;align-items:center;gap:10px}
+.badge{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#f3f6ff;font-weight:800;color:#1e3a8a}
+
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin:8px 0 12px}
+.fg{display:flex;flex-direction:column}
+.fg label{font-weight:800;margin-bottom:6px;color:#0f172a}
+.fg input{height:44px;padding:8px 12px;border:1px solid #d5deea;border-radius:12px;background:#fff;min-width:200px}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
+.btn-light{background:#f8fafc;border:1.5px solid #dbe6f1;color:#334155}
+.btn-export{background:linear-gradient(90deg,#1d4ed8,#2563eb);color:#fff}
+
+.grid{display:grid;gap:14px}
+.g-2{grid-template-columns:2fr 1.25fr}
+@media (max-width:1020px){.g-2{grid-template-columns:1fr}}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
+.card h3{margin:0 0 8px;color:var(--ink);display:flex;align-items:center;gap:8px}
+
+.chart{height:360px;position:relative}
+.chart.sm{height:320px}
+.nodata{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:700;pointer-events:none}
+
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left;color:#0f172a}
+.table th{background:#f8fafc;font-weight:900}
+.tright{text-align:right}
+.sticky{position:sticky;left:0;background:#f8fafc;z-index:1}
+</style>
+
+<div class="page">
+  <div class="hdr">
+    <h2><i class="fa fa-print"></i> Gasto de Toner por Centro de Custo</h2>
+    <span class="badge">Período: {{ dt_ini|date:"d/m/Y" }} — {{ dt_fim|date:"d/m/Y" }}</span>
+  </div>
+
+  <!-- FILTROS -->
+  <form method="get" class="filters" autocomplete="off" id="filtrosForm">
+    <div class="fg">
+      <label>Início</label>
+      <input type="date" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}">
+    </div>
+    <div class="fg">
+      <label>Fim</label>
+      <input type="date" name="fim" value="{{ dt_fim|date:'Y-m-d' }}">
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
+    <a class="btn btn-light" href="{{ request.path }}"><i class="fa fa-rotate-left"></i> Limpar</a>
+
+    {% with qs="inicio="|add:dt_ini|date:"Y-m-d"|add:"&fim="|add:dt_fim|date:"Y-m-d" %}
+      <a class="btn btn-export" href="{{ request.path }}?{{ qs }}&export=1">
+        <i class="fa fa-file-excel"></i> Exportar Excel
+      </a>
+    {% endwith %}
+  </form>
+
+  <!-- GRÁFICOS -->
+  <div class="grid g-2">
+    <div class="card">
+      <h3><i class="fa fa-chart-column" style="color:#2563eb"></i> Gasto por Centro de Custo (R$)</h3>
+      <div class="chart">
+        <canvas id="chart-cc"></canvas>
+        <div id="nd-cc" class="nodata">Sem dados</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3><i class="fa fa-list-ol" style="color:#10b981"></i> Top Consumidores (R$)</h3>
+      <div class="chart sm">
+        <canvas id="chart-users"></canvas>
+        <div id="nd-users" class="nodata">Sem dados</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABELA -->
+  <div class="card" style="margin-top:14px">
+    <h3><i class="fa fa-table" style="color:#0ea5e9"></i> Detalhamento</h3>
+    <div style="overflow:auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th class="sticky">Centro de Custo</th>
+            <th class="tright">Quantidade baixas</th>
+            <th class="tright">Gasto (R$)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in linhas %}
+          <tr>
+            <td class="sticky">{{ l.cc }}</td>
+            <td class="tright">{{ l.qtd }}</td>
+            <td class="tright">R$ {{ l.gasto|floatformat:2 }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="3" style="color:#64748b">Nenhum dado no período informado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# ===== DADOS PARA JS ===== #}
+{{ cc_labels|default:"[]"|json_script:"toner-cc-labels" }}
+{{ cc_gasto|default:"[]"|json_script:"toner-cc-gasto" }}
+{{ user_labels|default:"[]"|json_script:"toner-user-labels" }}
+{{ user_gasto|default:"[]"|json_script:"toner-user-gasto" }}
+
+<script>
+function J(id, fb){ const el=document.getElementById(id); if(!el) return fb; try{return JSON.parse(el.textContent)}catch(e){return fb} }
+function sum(a){return (a||[]).reduce((x,y)=>x+(+y||0),0)}
+function brl(n){ n=+n||0; return n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) }
+
+const ccLabels = J('toner-cc-labels', []);
+const ccData   = J('toner-cc-gasto', []).map(x=>+x||0);
+const uLabels  = J('toner-user-labels', []);
+const uData    = J('toner-user-gasto', []).map(x=>+x||0);
+
+Chart.defaults.font.family = "'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial";
+Chart.defaults.plugins.legend.position = 'top';
+Chart.defaults.plugins.tooltip.callbacks = {
+  label: (ctx) => `${ctx.dataset.label}: ${brl(ctx.raw)}`
+};
+
+/* ===== Gráfico 1 — por CC ===== */
+(function(){
+  const el = document.getElementById('chart-cc');
+  if (!el) return;
+  const noData = sum(ccData) === 0;
+  document.getElementById('nd-cc').style.display = noData ? 'flex' : 'none';
+  new Chart(el, {
+    type:'bar',
+    data:{
+      labels: ccLabels.length?ccLabels:['—'],
+      datasets:[{ label:'Gasto (R$)', data: ccData.length?ccData:[0], backgroundColor:'rgba(37,99,235,.85)' }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        y:{ beginAtZero:true, ticks:{ callback:v=>brl(v) }, grid:{ color:'rgba(148,163,184,.15)' } },
+        x:{ grid:{ color:'rgba(148,163,184,.12)' } }
+      }
+    }
+  });
+})();
+
+/* ===== Gráfico 2 — Top consumidores ===== */
+(function(){
+  const el = document.getElementById('chart-users');
+  if (!el) return;
+  const noData = sum(uData) === 0;
+  document.getElementById('nd-users').style.display = noData ? 'flex' : 'none';
+  new Chart(el, {
+    type:'bar',
+    data:{
+      labels: uLabels.length?uLabels:['—'],
+      datasets:[{ label:'Gasto (R$)', data: uData.length?uData:[0], backgroundColor:'rgba(16,185,129,.85)' }]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true, maintainAspectRatio:false,
+      scales:{ x:{ beginAtZero:true, ticks:{ callback:v=>brl(v) } } }
+    }
+  });
+})();
+</script>
+{% endblock %}

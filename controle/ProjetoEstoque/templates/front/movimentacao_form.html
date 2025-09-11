@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+
+<style>
+  :root{
+    --bg:#0f172a; --card:#ffffff; --ink:#0b1220; --sub: #0f172a; --line:#e5e7eb;
+    --brand:#2563eb; --brand-2:#1d4ed8; --soft:#f8fafc; --chip:#eef2ff; --shadow:0 20px 40px rgba(2,6,23,.10);
+    --ok:#16a34a; --ok2:#15803d; --ghost:#64748b; --danger:#b91c1c; --danger-bg:#fee2e2;
+  }
+  body{background:linear-gradient(160deg,#0b1220 0%,#0f172a 30%,#111827 100%)}
+  .page{max-width:1040px;margin:26px auto;padding:0 14px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow)}
+
+  .summary{position:sticky; top:12px; z-index:15; padding:10px 14px; display:flex; gap:12px; align-items:center;
+           background:linear-gradient(180deg,#fff 0%,#f8fafc 100%); border:1px solid var(--line); border-radius:14px}
+  .pill{background:var(--chip); color:#1e40af; font-weight:800; padding:8px 12px; border-radius:999px; font-size:.92rem}
+  .summary .sep{flex:1}
+  .chip-btn{border:none; background:#e2e8f0; color:#0f172a; padding:8px 12px; border-radius:10px; font-weight:700; cursor:pointer}
+  .chip-btn:hover{background:#cbd5e1}
+
+  .shell{padding:24px 24px 18px}
+  .title{display:flex; align-items:center; gap:12px; color:var(--ink); margin:0 0 6px}
+  .title i{color:var(--brand)}
+  .subtitle{color:var(--brand); margin:0 0 18px}
+
+  .grid{display:grid; gap:16px}
+  .g-3{grid-template-columns:repeat(3,minmax(240px,1fr))}
+  .g-2{grid-template-columns:repeat(2,minmax(240px,1fr))}
+  .g-4{grid-template-columns:repeat(4,minmax(200px,1fr))}
+  @media (max-width:980px){.g-4{grid-template-columns:repeat(2,minmax(240px,1fr))}}
+  @media (max-width:700px){.g-3,.g-2,.g-4{grid-template-columns:1fr}}
+
+  .field{display:flex; flex-direction:column}
+  .field>label{font-weight:800; color:#1f2937; margin:2px 0 8px; display:flex; align-items:center; gap:8px}
+
+  .ctrl{
+    height:48px; padding:10px 12px; border:1px solid var(--line); border-radius:12px;
+    background:var(--soft); color:var(--ink); font-size:1rem;
+    transition:border .15s, box-shadow .15s, background .15s;
+  }
+  .ctrl:focus{outline:none; background:#fff; border-color:var(--brand); box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+  textarea.ctrl{min-height:120px; height:auto; resize:vertical}
+
+  .select2-container{width:100%!important}
+  .select2-container--default .select2-selection--single{
+    height:48px; border:1px solid var(--line); border-radius:12px; background:var(--soft);
+    display:flex; align-items:center;
+  }
+  .select2-container--default .select2-selection--single .select2-selection__rendered{color:var(--ink); line-height:46px; padding-left:12px}
+  .select2-container--default .select2-selection--single .select2-selection__arrow{height:46px; right:8px}
+
+  .section{margin-top:14px; padding:18px; border:1px dashed #e2e8f0; border-radius:14px; background:#fbfdff}
+  .section h3{margin:-2px 0 12px; color:#0f172a; display:flex; align-items:center; gap:10px}
+  .hint{color:#334155; font-size:.95rem; margin:0 0 6px}
+
+  .radio-group{display:flex; gap:12px; flex-wrap:wrap}
+  .radio-card{display:flex; align-items:center; gap:8px; padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:#fff; cursor:pointer}
+  .radio-card input{accent-color:var(--brand)}
+  .radio-card:hover{border-color:#c4c9d4}
+
+  .dz{border:2px dashed #cbd5e1; border-radius:14px; padding:16px; background:#f8fafc; display:flex; gap:12px; align-items:center}
+  .dz.drag{background:#eef2ff; border-color:#6366f1}
+  .dz strong{display:block; color:var(--ink)}
+  .dz small{color:#64748b}
+
+  ul.errorlist{list-style:none; margin:8px 0 0; padding:0}
+  ul.errorlist li{background:var(--danger-bg); color:var(--danger); border:1px solid #fecaca; padding:6px 10px; border-radius:10px; font-weight:700}
+  .error-summary{margin:0 0 14px; background:var(--danger-bg); color:var(--danger); border:1px solid #fecaca; padding:10px 12px; border-radius:12px}
+
+  .actions{display:flex; gap:12px; flex-wrap:wrap; padding:18px 24px 22px}
+  .btn{border:none; border-radius:12px; padding:12px 18px; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; gap:10px}
+  .btn.ok{background:linear-gradient(90deg,var(--ok),var(--ok2)); color:#fff}
+  .btn.ghost{background:var(--ghost); color:#fff}
+  .btn[disabled]{opacity:.6; cursor:not-allowed}
+
+  .hidden{display:none!important}
+
+  .select2-results__options {list-style:none;margin:0;padding:0;color:#0f172a}
+  .main-content p {font-size:1.08rem;color:#0b1220}
+  span{color:#0b1220}
+</style>
+
+<div class="page">
+  <!-- SUMÁRIO -->
+  <div class="summary card">
+    <span class="pill" id="sumTipo">Tipo: —</span>
+    <span class="pill" id="sumItem">Item: —</span>
+    <div class="sep"></div>
+    <button type="button" class="chip-btn" id="applyLast" title="Aplicar última destinação">
+      <i class="fa fa-magic-wand-sparkles"></i> Usar última destinação
+    </button>
+  </div>
+
+  <!-- FORM -->
+  <form id="movForm" method="post" enctype="multipart/form-data" class="card" style="margin-top:16px">
+    <div class="shell">
+      {% csrf_token %}
+      <h2 class="title"><i class="fa fa-clipboard-check"></i> Formulário</h2>
+      <p class="subtitle" id="hintText">Escolha um tipo para ver os campos necessários.</p>
+
+      {% if form.errors or form.non_field_errors %}
+      <div class="error-summary"><i class="fa fa-triangle-exclamation"></i> Verifique os campos destacados.</div>
+      {% endif %}
+
+      <div class="grid g-3">
+        <div class="field">
+          <label for="id_tipo_movimentacao"><i class="fa fa-shuffle"></i> Tipo de Movimentação</label>
+          {{ form.tipo_movimentacao }}
+          {{ form.tipo_movimentacao.errors }}
+        </div>
+        <div class="field">
+          <label for="id_item"><i class="fa fa-box-open"></i> Item</label>
+          {{ form.item }}
+          {{ form.item.errors }}
+        </div>
+        <div class="field" id="wrap-usuario">
+          <label for="id_usuario"><i class="fa fa-user"></i> Usuário</label>
+          {{ form.usuario }}
+          {{ form.usuario.errors }}
+        </div>
+      </div>
+
+      <div class="section">
+        <h3><i class="fa fa-sliders"></i> Campos específicos</h3>
+
+        <!-- Tipo da transferência (radios) -->
+        <div class="field hidden" data-field="tipo_transferencia">
+          <label><i class="fa fa-people-arrows"></i> Tipo da Transferência</label>
+          <div class="radio-group">
+            {% for val,label in form.fields.tipo_transferencia.choices %}
+              <label class="radio-card">
+                <input type="radio" name="{{ form.tipo_transferencia.name }}" value="{{ val }}"
+                       {% if form.initial.tipo_transferencia == val or form.data.tipo_transferencia == val %}checked{% endif %}>
+                <span>{{ label }}</span>
+              </label>
+            {% endfor %}
+          </div>
+          {{ form.tipo_transferencia.errors }}
+        </div>
+
+        <div class="grid g-3">
+          <div class="field hidden" data-field="quantidade">
+            <label for="id_quantidade"><i class="fa fa-hashtag"></i> Quantidade</label>
+            {{ form.quantidade }}
+            {{ form.quantidade.errors }}
+          </div>
+
+          <div class="field hidden" data-field="localidade_destino">
+            <label for="id_localidade_destino"><i class="fa fa-location-dot"></i> Localidade Destino</label>
+            {{ form.localidade_destino }}
+            {{ form.localidade_destino.errors }}
+          </div>
+
+          <div class="field hidden" data-field="centro_custo_destino">
+            <label for="id_centro_custo_destino"><i class="fa fa-building"></i> Centro de Custo Destino</label>
+            {{ form.centro_custo_destino }}
+            {{ form.centro_custo_destino.errors }}
+          </div>
+
+          <div class="field hidden" data-field="fornecedor_manutencao">
+            <label for="id_fornecedor_manutencao"><i class="fa fa-truck"></i> Fornecedor (Manutenção)</label>
+            {{ form.fornecedor_manutencao }}
+            {{ form.fornecedor_manutencao.errors }}
+          </div>
+
+          <div class="field hidden" data-field="chamado">
+            <label for="id_chamado"><i class="fa fa-file-signature"></i> Chamado</label>
+            {{ form.chamado }}
+            {{ form.chamado.errors }}
+          </div>
+
+          <div class="field hidden" data-field="custo">
+            <label for="id_custo"><i class="fa fa-money-bill"></i> Custo</label>
+            {{ form.custo }}
+            {{ form.custo.errors }}
+          </div>
+
+          <div class="field hidden" data-field="termo_pdf" style="grid-column:1/-1">
+            <label for="id_termo_pdf"><i class="fa fa-file-pdf"></i> Termo (PDF)</label>
+            <div class="dz" id="pdfDrop">
+              <i class="fa fa-upload"></i>
+              <div>
+                <strong>Arraste o PDF aqui</strong>
+                <small> ou clique para selecionar (máx. 5MB)</small>
+              </div>
+            </div>
+            {{ form.termo_pdf }}
+            {{ form.termo_pdf.errors }}
+          </div>
+
+          <!-- ✅ NOVO: Número do Pedido (somente ENTRADA) -->
+          <div class="field hidden" data-field="numero_pedido">
+            <label for="id_numero_pedido"><i class="fa fa-receipt"></i> Número do Pedido</label>
+            {{ form.numero_pedido }}
+            {{ form.numero_pedido.errors }}
+          </div>
+
+          <div class="field hidden" data-field="observacao" style="grid-column:1/-1">
+            <label for="id_observacao"><i class="fa fa-comment-dots"></i> Observações</label>
+            {{ form.observacao }}
+            {{ form.observacao.errors }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn ok" id="btnSave"><i class="fa fa-check"></i> Salvar</button>
+      <a href="{% url 'movimentacao_list' %}" class="btn ghost"><i class="fa fa-arrow-left"></i> Cancelar</a>
+    </div>
+  </form>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+(function(){
+  const $form = document.getElementById('movForm');
+  const $tipo  = document.getElementById('id_tipo_movimentacao');
+  const $item  = document.getElementById('id_item');
+  const $usuarioWrap = document.getElementById('wrap-usuario');
+  const $usuario = document.getElementById('id_usuario');
+  const hint = document.getElementById('hintText');
+  const sumTipo = document.getElementById('sumTipo');
+  const sumItem = document.getElementById('sumItem');
+  const btnSave = document.getElementById('btnSave');
+  const applyLast = document.getElementById('applyLast');
+
+  // aplica .ctrl em todos os campos padrão (mantém layout)
+  document.querySelectorAll('#movForm select, #movForm input[type="text"], #movForm input[type="number"], #movForm input[type="file"], #movForm textarea')
+    .forEach(el => { if(!el.classList.contains('select2-hidden-accessible')) el.classList.add('ctrl'); });
+
+  // Select2 no Item
+  $(function(){
+    const map={"á":"a","à":"a","ã":"a","â":"a","ä":"a","é":"e","è":"e","ê":"e","ë":"e","í":"i","ì":"i","î":"i","ï":"i","ó":"o","ò":"o","õ":"o","ô":"o","ö":"o","ú":"u","ù":"u","û":"u","ü":"u","ç":"c"};
+    const norm=t=>t.split('').map(c=>map[c]||c).join('').toLowerCase();
+    const $sel = $('#id_item');
+    if($sel.length){
+      $sel.select2({
+        placeholder: 'Selecione um item',
+        allowClear: true,
+        width: '100%',
+        minimumInputLength: 2,
+        language: { noResults:()=> 'Nenhum item encontrado', searching:()=> 'Buscando...' },
+        matcher: function(params, data){
+          if ($.trim(params.term) === '') return data;
+          if (typeof data.text === 'undefined') return null;
+          return norm(data.text).includes(norm(params.term)) ? data : null;
+        }
+      }).on('select2:select select2:clear', updateSummary);
+    }
+  });
+
+  const wrap = (n)=>document.querySelector(`[data-field="${n}"]`);
+  const show = (n, req=false)=>{
+    const w=wrap(n); if(!w) return;
+    w.classList.remove('hidden');
+    w.querySelectorAll('input,select,textarea').forEach(i=>{i.disabled=false; req?i.setAttribute('required','required'):i.removeAttribute('required')});
+  };
+  const hide = (n)=>{
+    const w=wrap(n); if(!w) return;
+    w.classList.add('hidden');
+    w.querySelectorAll('input,select,textarea').forEach(i=>{i.disabled=true; i.removeAttribute('required'); i.setCustomValidity('')});
+  };
+  const hideAll = ()=>{
+    document.querySelectorAll('[data-field]').forEach(el=>{
+      el.classList.add('hidden');
+      el.querySelectorAll('input,select,textarea').forEach(i=>{i.disabled=true; i.removeAttribute('required'); i.setCustomValidity('')});
+    });
+    if($usuario){ $usuario.disabled=false; $usuarioWrap.classList.remove('hidden'); }
+  };
+
+  function updateSummary(){
+    const t = $tipo?.options[$tipo.selectedIndex]?.text || '—';
+    const it = $item?.options[$item.selectedIndex]?.text || '—';
+    sumTipo.textContent = 'Tipo: ' + t;
+    sumItem.textContent = 'Item: ' + it;
+  }
+
+  function layout(){
+    hideAll();
+    const v = $tipo?.value || '';
+    if(v==='transferencia'){
+      show('tipo_transferencia');
+      show('localidade_destino', true);
+      show('centro_custo_destino', true);
+      show('termo_pdf', true);
+      show('observacao');
+      hint.textContent = 'Transferência: selecione localidade, centro de custo e anexe o termo (PDF).';
+    }else if(v==='baixa'){
+      show('quantidade', true);
+      show('localidade_destino', true);
+      show('centro_custo_destino', true);
+      show('observacao', true);
+      hint.textContent = 'Baixa: preencha quantidade, localidade, centro de custo e observação.';
+    }else if(v==='entrada'){
+        show('quantidade', true);
+        show('localidade_destino', true);
+        show('centro_custo_destino', true);
+        show('numero_pedido', true);      // permanece obrigatório na entrada
+        show('observacao');
+
+        // ✅ Entrada não exige usuário
+        if($usuario){
+          $usuario.disabled = true;
+          $usuarioWrap.classList.add('hidden');
+        }
+
+        hint.textContent = 'Entrada: informe quantidade, destinação e o número do pedido.';
+        
+    }else if(v==='envio_manutencao'){
+      show('fornecedor_manutencao', true);
+      show('chamado');
+      show('custo');
+      show('observacao');
+      if($usuario){ $usuario.disabled = true; $usuarioWrap.classList.add('hidden'); }
+      hint.textContent = 'Envio para manutenção: informe o fornecedor (obrigatório).';
+    }else if(v==='retorno' || v==='retorno_manutencao'){
+      show('custo');
+      show('observacao');
+      if($usuario){ $usuario.disabled = true; $usuarioWrap.classList.add('hidden'); }
+      hint.textContent = 'Retorno da manutenção: registre custo e observações (status volta como Backup).';
+    }else{
+      hint.textContent = 'Escolha um tipo para ver os campos necessários.';
+    }
+    updateSummary();
+  }
+
+  if($tipo) $tipo.addEventListener('change', layout);
+  if($item) $item.addEventListener('change', updateSummary);
+  layout(); updateSummary();
+
+  // Dropzone PDF
+  const dz = document.getElementById('pdfDrop');
+  const pdf = document.getElementById('id_termo_pdf');
+  if(pdf){
+    pdf.setAttribute('accept','application/pdf');
+    if(dz){
+      dz.addEventListener('click', ()=> pdf.click());
+      ['dragenter','dragover'].forEach(e=>dz.addEventListener(e,ev=>{ev.preventDefault(); dz.classList.add('drag');}));
+      ['dragleave','drop'].forEach(e=>dz.addEventListener(e,ev=>{ev.preventDefault(); dz.classList.remove('drag');}));
+      dz.addEventListener('drop', ev=>{ const f = ev.dataTransfer.files?.[0]; if(f){ pdf.files = ev.dataTransfer.files; validatePDF(); }});
+      pdf.addEventListener('change', validatePDF);
+    }
+    function validatePDF(){
+      const f = pdf.files?.[0]; if(!f) return;
+      if(f.type!=='application/pdf'){ alert('Envie um arquivo PDF.'); pdf.value=''; }
+      else if(f.size>5*1024*1024){ alert('PDF acima de 5MB.'); pdf.value=''; }
+    }
+  }
+
+  // Lembrar última destinação
+  const KEY='mov-last-dest';
+  const loc = document.getElementById('id_localidade_destino');
+  const cc  = document.getElementById('id_centro_custo_destino');
+  function saveLast(){
+    if(loc && cc && !loc.disabled && !cc.disabled && loc.value && cc.value){
+      localStorage.setItem(KEY, JSON.stringify({loc:loc.value, cc:cc.value}));
+    }
+  }
+  function applyLastDest(){
+    try{
+      const d = JSON.parse(localStorage.getItem(KEY)||'{}');
+      if(loc && cc){ if(d.loc && !loc.disabled) loc.value=d.loc; if(d.cc && !cc.disabled) cc.value=d.cc; }
+    }catch(e){}
+  }
+  if(loc) loc.addEventListener('change', saveLast);
+  if(cc)  cc.addEventListener('change', saveLast);
+  applyLast.addEventListener('click', applyLastDest);
+
+  // Submissão
+  $form.addEventListener('submit', ()=>{
+    document.querySelectorAll('[data-field].hidden input,[data-field].hidden select,[data-field].hidden textarea')
+      .forEach(i=>{i.disabled=true; i.removeAttribute('required'); i.setCustomValidity('')});
+    btnSave.setAttribute('disabled','disabled');
+    btnSave.innerHTML = '<i class="fa fa-circle-notch fa-spin"></i> Salvando...';
+  });
+
+  // Atalhos
+  document.addEventListener('keydown', (e)=>{
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s'){ e.preventDefault(); btnSave?.click(); }
+    if(e.key==='Escape'){ const back=document.querySelector('.btn.ghost'); back && back.click(); }
+  });
+})();
+</script>
+{% endblock %}

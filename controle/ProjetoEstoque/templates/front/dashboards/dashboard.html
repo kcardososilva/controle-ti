@@ -1,0 +1,504 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+
+<style>
+:root{
+  --ink:#0b1220; --muted:#64748b; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
+  --bg:#f1f5fb; --primary:#2563eb; --primary-2:#1d4ed8;
+  --ok:#16a34a; --warn:#b45309; --bad:#b91c1c; --cyan:#0891b2; --vio:#7c3aed;
+  --shadow:0 22px 44px rgba(2,6,23,.07);
+}
+body{background:var(--bg);}
+
+.page{max-width:1200px;margin:18px auto;padding:0 14px}
+
+/* ======= SHIMMER (skeleton) ======= */
+.shimmer{position:relative; overflow:hidden; border-radius:16px}
+.shimmer::before{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(90deg, rgba(148,163,184,.18) 0%, rgba(255,255,255,.55) 50%, rgba(148,163,184,.18) 100%);
+  transform:translateX(-100%); animation:sh 1.2s linear infinite;
+}
+@keyframes sh{to{transform:translateX(100%)}}
+.loading .hide-on-loading{visibility:hidden}
+.loading .show-when-loading{display:block}
+.show-when-loading{display:none}
+
+/* ======= CARDS / KPIs ======= */
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(160px,1fr));gap:14px}
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(3,minmax(180px,1fr))}}
+@media (max-width:720px){.kpis{grid-template-columns:repeat(2,minmax(160px,1fr))}}
+.kpi{
+  position:relative; overflow:hidden; color:#fff; padding:16px; border-radius:16px;
+  background:linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%);
+}
+.kpi.ok{background:linear-gradient(135deg, #16a34a 0%, #0f766e 100%)}
+.kpi.backup{background:linear-gradient(135deg, #0891b2 0%, #2563eb 100%)}
+.kpi.warn{background:linear-gradient(135deg, #b45309 0%, #f59e0b 100%)}
+.kpi.bad{background:linear-gradient(135deg, #b91c1c 0%, #dc2626 100%)}
+.kpi .title{font-weight:800;opacity:.95}
+.kpi .val{font-size:1.7rem;font-weight:900;margin-top:6px}
+.kpi .desc{opacity:.9;font-size:.92rem}
+.kpi i{position:absolute;right:12px;bottom:10px;font-size:1.25rem;opacity:.25}
+
+/* ======= GRIDS ======= */
+.grid{display:grid;gap:14px;margin-top:14px}
+.g-2{grid-template-columns:2fr 1.35fr}
+.g-3{grid-template-columns:repeat(3,1fr)}
+@media (max-width:1100px){.g-2{grid-template-columns:1fr}}
+@media (max-width:900px){.g-3{grid-template-columns:1fr}}
+
+/* ======= HEADERS / BADGES ======= */
+.hdr{display:flex;align-items:center;gap:10px;margin:0 0 10px}
+.hdr h3{margin:0;color:var(--ink)}
+.badge{display:inline-block;padding:4px 12px;border-radius:999px;font-weight:800;font-size:.86rem}
+.badge.ok{background:#e8fff3;color:#166534}
+.badge.bad{background:#fee2e2;color:#9f1239}
+.badge.info{background:#eef2ff;color:#1e3a8a}
+
+/* ======= CHART WRAPPER ======= */
+.chart-wrap{height:340px; position:relative}
+.chart-wrap.sm{height:280px}
+.nodata{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  color:#64748b; font-weight:700; pointer-events:none;
+}
+
+/* ======= TABLE ======= */
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:9px 12px;border-bottom:1px solid #eef2f7;text-align:left; color: #0b1220;}
+</style>
+
+<!-- Marca o HTML como "loading" para exibir shimmer -->
+<script>document.documentElement.classList.add('loading');</script>
+
+<div class="page">
+  <!-- KPIs -->
+  <div class="kpis">
+    <div class="kpi shimmer show-when-loading" style="height:88px"></div>
+    <div class="kpi shimmer show-when-loading" style="height:88px"></div>
+    <div class="kpi shimmer show-when-loading" style="height:88px"></div>
+    <div class="kpi shimmer show-when-loading" style="height:88px"></div>
+    <div class="kpi shimmer show-when-loading" style="height:88px"></div>
+
+    <div class="kpi hide-on-loading">
+      <div class="title">Total de Itens</div>
+      <div class="val">{{ total_geral|default:0 }}</div>
+      <div class="desc">Cadastrados</div>
+      <i class="fa fa-layer-group"></i>
+    </div>
+    <div class="kpi ok hide-on-loading">
+      <div class="title">Ativos</div>
+      <div class="val">{{ total_ativos|default:0 }}</div>
+      <div class="desc">Em uso</div>
+      <i class="fa fa-circle"></i>
+    </div>
+    <div class="kpi backup hide-on-loading">
+      <div class="title">Backup</div>
+      <div class="val">{{ total_backup|default:0 }}</div>
+      <div class="desc">Disponíveis</div>
+      <i class="fa fa-database"></i>
+    </div>
+    <div class="kpi warn hide-on-loading">
+      <div class="title">Manutenção</div>
+      <div class="val">{{ total_manutencao|default:0 }}</div>
+      <div class="desc">Em manutenção</div>
+      <i class="fa fa-screwdriver-wrench"></i>
+    </div>
+    <div class="kpi bad hide-on-loading">
+      <div class="title">Defeitos</div>
+      <div class="val">{{ total_defeito|default:0 }}</div>
+      <div class="desc">Aguardando ação</div>
+      <i class="fa fa-exclamation-circle"></i>
+    </div>
+  </div>
+
+  <!-- Linha 1 -->
+  <div class="grid g-2">
+    <div class="card">
+      <div class="shimmer show-when-loading" style="height:340px;border-radius:12px"></div>
+      <div class="hide-on-loading">
+        <div class="hdr"><i class="fa fa-chart-line" style="color:#2563eb"></i><h3>Movimentações (últimos 12 meses)</h3></div>
+        <div class="chart-wrap"><canvas id="mov12"></canvas><div class="nodata" id="nd-mov12">Sem dados</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
+      <div class="hide-on-loading">
+        <div class="hdr"><i class="fa fa-shield-heart" style="color:#16a34a"></i><h3>Status das Preventivas</h3></div>
+        <div class="chart-wrap sm"><canvas id="prevPie"></canvas><div class="nodata" id="nd-prev">Sem dados</div></div>
+        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+          <span class="badge ok">OK: {{ prev_ok|default:0 }}</span>
+          <span class="badge bad">Vencida: {{ prev_vencida|default:0 }}</span>
+          <span class="badge info">Total: {{ prev_total|default:0 }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Linha 2 -->
+  <div class="grid g-3" style="margin-top:14px">
+    <div class="card">
+      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
+      <div class="hide-on-loading">
+        <div class="hdr"><i class="fa fa-tags" style="color:#1d4ed8"></i><h3>Itens por Subtipo (Top 10)</h3></div>
+        <div class="chart-wrap sm"><canvas id="subtipoBar"></canvas><div class="nodata" id="nd-sub">Sem dados</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
+      <div class="hide-on-loading">
+        <div class="hdr"><i class="fa fa-location-dot" style="color:#b45309"></i><h3>Itens por Localidade (Top 8)</h3></div>
+        <div class="chart-wrap sm"><canvas id="locDonut"></canvas><div class="nodata" id="nd-loc">Sem dados</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
+      <div class="hide-on-loading">
+        <div class="hdr"><i class="fa fa-coins" style="color:#047857"></i><h3>Itens por Centro de Custo (Top 8)</h3></div>
+        <div class="chart-wrap sm"><canvas id="ccBar"></canvas><div class="nodata" id="nd-cc">Sem dados</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Linha 3 -->
+  <div class="grid g-2" style="margin-top:14px">
+    <div class="card">
+      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
+      <div class="hide-on-loading">
+        <div class="hdr"><i class="fa fa-ranking-star" style="color:#7c3aed"></i><h3>Top Itens Mais Movimentados</h3></div>
+        <div class="chart-wrap sm"><canvas id="topMovBar"></canvas><div class="nodata" id="nd-top">Sem dados</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
+      <div class="hide-on-loading">
+        <div class="hdr"><i class="fa fa-money-bill" style="color:#0f766e"></i><h3>Custo de Manutenção (6 meses)</h3></div>
+        <div class="chart-wrap sm"><canvas id="custoLine"></canvas><div class="nodata" id="nd-custo">Sem dados</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Linha de Custos (NOVO) -->
+  <div class="grid g-3" style="margin-top:14px">
+    <!-- Top custos por usuários (stacked: itens + licenças) -->
+    <div class="card">
+      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
+      <div class="hide-on-loading">
+        <div class="hdr"><i class="fa fa-user-tie" style="color:#0f766e"></i><h3>Top custos por usuários (mês)</h3></div>
+        <div class="chart-wrap sm"><canvas id="usersCost"></canvas><div class="nodata" id="nd-ucost">Sem dados</div></div>
+      </div>
+    </div>
+
+    <!-- Custo por setores (Centro de Custo) -->
+    <div class="card">
+      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
+      <div class="hide-on-loading">
+        <div class="hdr"><i class="fa fa-building-columns" style="color:#0891b2"></i><h3>Custo por setores (mês)</h3></div>
+        <div class="chart-wrap sm"><canvas id="ccCost"></canvas><div class="nodata" id="nd-ccost">Sem dados</div></div>
+      </div>
+    </div>
+
+    <!-- Top licenças por custo (mês) -->
+    <div class="card">
+      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
+      <div class="hide-on-loading">
+        <div class="hdr"><i class="fa fa-certificate" style="color:#7c3aed"></i><h3>Top licenças por custo (mês)</h3></div>
+        <div class="chart-wrap sm"><canvas id="licCost"></canvas><div class="nodata" id="nd-licost">Sem dados</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Próximas preventivas -->
+  <div class="card" style="margin-top:14px">
+    <div class="shimmer show-when-loading" style="height:160px;border-radius:12px"></div>
+    <div class="hide-on-loading">
+      <div class="hdr"><i class="fa fa-calendar-check" style="color:#2563eb"></i><h3>Próximas Preventivas</h3></div>
+      <div style="overflow:auto">
+        <table class="table">
+          <thead><tr><th>Data</th><th>Item</th><th>Checklist</th></tr></thead>
+          <tbody>
+          {% for p in proximas %}
+            <tr>
+              <td>{{ p.data_proxima|date:"d/m/Y" }}</td>
+              <td>{{ p.equipamento.nome }}</td>
+              <td>{{ p.checklist_modelo.nome|default:"—" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="3" style="color:#64748b">Nenhuma preventiva futura.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ==== DADOS PARA JS (se algum não vier, o JS lida sem quebrar) ==== #}
+{{ mov_labels|default:"[]"|json_script:"mov-labels" }}
+{{ mov_entrada|default:"[]"|json_script:"mov-entrada" }}
+{{ mov_baixa|default:"[]"|json_script:"mov-baixa" }}
+{{ mov_transferencia|default:"[]"|json_script:"mov-transferencia" }}
+{{ mov_envio|default:"[]"|json_script:"mov-envio" }}
+{{ mov_retorno|default:"[]"|json_script:"mov-retorno" }}
+
+{{ chart_subtipo_labels|default:"[]"|json_script:"subtipo-labels" }}
+{{ chart_subtipo_data|default:"[]"|json_script:"subtipo-data" }}
+
+{{ chart_loc_labels|default:"[]"|json_script:"loc-labels" }}
+{{ chart_loc_data|default:"[]"|json_script:"loc-data" }}
+
+{{ chart_cc_labels|default:"[]"|json_script:"cc-labels" }}
+{{ chart_cc_data|default:"[]"|json_script:"cc-data" }}
+
+{{ top_mov_labels|default:"[]"|json_script:"topmov-labels" }}
+{{ top_mov_data|default:"[]"|json_script:"topmov-data" }}
+
+{{ custo_labels|default:"[]"|json_script:"custo-labels" }}
+{{ custo_data|default:"[]"|json_script:"custo-data" }}
+
+{{ prev_ok|default:"0"|json_script:"prev-ok" }}
+{{ prev_vencida|default:"0"|json_script:"prev-venc" }}
+
+{# ==== NOVOS DADOS DE CUSTO ==== #}
+{{ top_users_labels|default:"[]"|json_script:"ucost-labels" }}
+{{ top_users_items|default:"[]"|json_script:"ucost-items" }}
+{{ top_users_lics|default:"[]"|json_script:"ucost-lics" }}
+
+{{ cc_cost_labels|default:"[]"|json_script:"ccost-labels" }}
+{{ cc_cost_items|default:"[]"|json_script:"ccost-items" }}
+{{ cc_cost_lics|default:"[]"|json_script:"ccost-lics" }}
+
+{{ lic_cost_labels|default:"[]"|json_script:"licost-labels" }}
+{{ lic_cost_data|default:"[]"|json_script:"licost-data" }}
+
+<script>
+/* ===== Helpers robustos ===== */
+function J(id, fallback=[]) {
+  const el = document.getElementById(id);
+  if (!el) return structuredClone(fallback);
+  try {
+    const v = JSON.parse(el.textContent);
+    return (v ?? fallback);
+  } catch(e) { return structuredClone(fallback); }
+}
+function lastMonths(n=12){
+  const m = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const d = new Date(); let out=[];
+  for(let i=n-1;i>=0;i--){const x=new Date(d.getFullYear(), d.getMonth()-i, 1); out.push(`${m[x.getMonth()]}/${String(x.getFullYear()).slice(-2)}`)}
+  return out;
+}
+function sum(arr){return (arr||[]).reduce((a,b)=>a+(+b||0),0)}
+function ensureSeries(labels, seriesArr){
+  labels = Array.isArray(labels) ? labels : [];
+  if (!labels.length) labels = lastMonths(12);
+  let hasData = false;
+  const fixed = seriesArr.map(s=>{
+    const a = Array.isArray(s) ? s.map(x=>+x||0) : [];
+    if (sum(a)>0) hasData = true;
+    if (a.length !== labels.length){
+      const fill = Array(labels.length).fill(0);
+      for(let i=0;i<Math.min(a.length, labels.length);i++) fill[i]=a[i];
+      return fill;
+    }
+    return a;
+  });
+  return {labels, series: fixed, hasData};
+}
+function showNoData(id, show){const el=document.getElementById(id); if(el){el.style.display = show? 'flex':'none';}}
+
+/* ===== Paleta ===== */
+const pal = {
+  blue:   'rgba(37, 99, 235, 0.9)',  blue2:  'rgba(37, 99, 235, 0.18)',
+  green:  'rgba(22, 163, 74, 0.9)',  green2: 'rgba(22, 163, 74, 0.18)',
+  amber:  'rgba(180, 83, 9, 0.9)',   amber2: 'rgba(180, 83, 9, 0.18)',
+  purple: 'rgba(124, 58, 237, 0.9)', purple2:'rgba(124, 58, 237, 0.18)',
+  cyan:   'rgba(8, 145, 178, 0.9)',  cyan2:  'rgba(8, 145, 178, 0.18)',
+  red:    'rgba(185, 28, 28, 0.9)',  red2:   'rgba(185, 28, 28, 0.18)',
+  gray:   'rgba(100, 116, 139, 0.9)',gray2:  'rgba(100, 116, 139, 0.18)',
+};
+Chart.defaults.font.family = "'Roboto', Arial, sans-serif";
+Chart.defaults.plugins.legend.position = 'top';
+Chart.defaults.plugins.tooltip.backgroundColor = '#0b1220';
+Chart.defaults.plugins.tooltip.titleColor = '#fff';
+Chart.defaults.plugins.tooltip.bodyColor = '#e2e8f0';
+
+/* ===== Construtores ===== */
+function lineRounded(ctx, labels, datasets) {
+  return new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: datasets.map(ds => ({...ds, tension: 0.35, fill: true, pointRadius: 3, pointHoverRadius: 5 })) },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { grid: { color: 'rgba(148,163,184,.15)' } },
+        y: { grid: { color: 'rgba(148,163,184,.15)' }, beginAtZero: true }
+      }
+    }
+  });
+}
+function barRounded(ctx, labels, data, color, horizontal=false) {
+  return new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: color.replace('0.9','0.85'), borderColor: color, borderWidth: 1.5, borderRadius: 10, barThickness: 'flex' }] },
+    options: {
+      indexAxis: horizontal ? 'y' : 'x',
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { grid: { color: 'rgba(148,163,184,.12)' } },
+        y: { grid: { color: 'rgba(148,163,184,.12)' }, beginAtZero: true }
+      }
+    }
+  });
+}
+function donut(ctx, labels, data, colors) {
+  return new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#fff', borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '62%' }
+  });
+}
+function barStacked(ctx, labels, dsA, dsB, labelA, labelB, colorA, colorB, horizontal=true){
+  return new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {label: labelA, data: dsA, backgroundColor: colorA.replace('0.9','0.85'), borderColor: colorA, borderWidth: 1.5, borderRadius: 10},
+        {label: labelB, data: dsB, backgroundColor: colorB.replace('0.9','0.85'), borderColor: colorB, borderWidth: 1.5, borderRadius: 10},
+      ],
+    },
+    options: {
+      indexAxis: horizontal ? 'y' : 'x',
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, grid: { color: 'rgba(148,163,184,.12)' } },
+        y: { stacked: true, grid: { color: 'rgba(148,163,184,.12)' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+/* ===== Criação dos gráficos com fallbacks ===== */
+document.addEventListener('DOMContentLoaded', () => {
+  // MOVIMENTAÇÕES
+  const mov = ensureSeries(
+    J('mov-labels', []),
+    [J('mov-entrada', []), J('mov-baixa', []), J('mov-transferencia', []), J('mov-envio', []), J('mov-retorno', [])]
+  );
+  showNoData('nd-mov12', !mov.hasData);
+  lineRounded(
+    document.getElementById('mov12'),
+    mov.labels,
+    [
+      { label: 'Entradas',           data: mov.series[0], backgroundColor: pal.green2,  borderColor: pal.green },
+      { label: 'Baixas',             data: mov.series[1], backgroundColor: pal.red2,    borderColor: pal.red },
+      { label: 'Transferências',     data: mov.series[2], backgroundColor: pal.blue2,   borderColor: pal.blue },
+      { label: 'Envio Manutenção',   data: mov.series[3], backgroundColor: pal.amber2,  borderColor: pal.amber },
+      { label: 'Retorno Manutenção', data: mov.series[4], backgroundColor: pal.purple2, borderColor: pal.purple },
+    ]
+  );
+
+  // PREVENTIVAS
+  const ok = +J('prev-ok', 0) || 0;
+  const vc = +J('prev-venc', 0) || 0;
+  const hasPrev = (ok+vc) > 0;
+  showNoData('nd-prev', !hasPrev);
+  donut(document.getElementById('prevPie'), ['OK', 'Vencida'], [ok, vc], [pal.green, pal.red]);
+
+  // SUBTIPO
+  const subLabels = J('subtipo-labels', []);
+  const subData   = J('subtipo-data', []);
+  showNoData('nd-sub', !(sum(subData)>0));
+  barRounded(document.getElementById('subtipoBar'), subLabels.length?subLabels:['—'], subLabels.length?subData:[0], pal.blue, true);
+
+  // LOCALIDADE
+  const locLabels = J('loc-labels', []);
+  const locData   = J('loc-data', []);
+  showNoData('nd-loc', !(sum(locData)>0));
+  donut(document.getElementById('locDonut'), locLabels.length?locLabels:['—'], locLabels.length?locData:[0],
+    [pal.blue, pal.green, pal.amber, pal.purple, pal.cyan, pal.gray, pal.red, 'rgba(59,130,246,.6)']);
+
+  // CENTRO DE CUSTO (quantidade de itens)
+  const ccLabels = J('cc-labels', []);
+  const ccData   = J('cc-data', []);
+  showNoData('nd-cc', !(sum(ccData)>0));
+  barRounded(document.getElementById('ccBar'), ccLabels.length?ccLabels:['—'], ccLabels.length?ccData:[0], pal.cyan);
+
+  // TOP MOVIMENTADOS
+  const topLabels = J('topmov-labels', []);
+  const topData   = J('topmov-data', []);
+  showNoData('nd-top', !(sum(topData)>0));
+  barRounded(document.getElementById('topMovBar'), topLabels.length?topLabels:['—'], topLabels.length?topData:[0], pal.purple, true);
+
+  // CUSTO MANUTENÇÃO
+  const cLabels = J('custo-labels', []);
+  const cData   = J('custo-data', []);
+  const hasCusto = sum(cData) > 0;
+  showNoData('nd-custo', !hasCusto);
+  lineRounded(document.getElementById('custoLine'), cLabels.length?cLabels:lastMonths(6),
+    [{ label: 'Custo (R$)', data: (cLabels.length?cData:Array(6).fill(0)), backgroundColor: pal.blue2, borderColor: pal.blue }]);
+
+  // === Top custos por usuários (itens locação + licenças) ===
+  const uL = J('ucost-labels', []);
+  const uI = J('ucost-items',  []);
+  const uLc= J('ucost-lics',   []);
+  const hasUC = (sum(uI)+sum(uLc))>0;
+  showNoData('nd-ucost', !hasUC);
+  if (uL.length || hasUC) {
+    barStacked(
+      document.getElementById('usersCost'),
+      uL.length?uL:['—'],
+      uL.length?uI:[0],
+      uL.length?uLc:[0],
+      'Itens (locação/mês)',
+      'Licenças (mês)',
+      pal.cyan, pal.purple, true
+    );
+  }
+
+  // === Custo por setores (CC) ===
+  const ccL2 = J('ccost-labels', []);
+  const ccI2 = J('ccost-items',  []);
+  const ccLc2= J('ccost-lics',   []);
+  const hasCC = (sum(ccI2)+sum(ccLc2))>0;
+  showNoData('nd-ccost', !hasCC);
+  if (ccL2.length || hasCC) {
+    barStacked(
+      document.getElementById('ccCost'),
+      ccL2.length?ccL2:['—'],
+      ccL2.length?ccI2:[0],
+      ccL2.length?ccLc2:[0],
+      'Itens (locação/mês)',
+      'Licenças (mês)',
+      pal.blue, pal.green, false
+    );
+  }
+
+  // === Top licenças por custo (mês) ===
+  const lL = J('licost-labels', []);
+  const lD = J('licost-data',   []);
+  const hasLic = sum(lD)>0;
+  showNoData('nd-licost', !hasLic);
+  barRounded(
+    document.getElementById('licCost'),
+    lL.length?lL:['—'],
+    lL.length?lD:[0],
+    pal.purple,
+    true
+  );
+
+  // Esconde shimmer
+  document.documentElement.classList.remove('loading');
+});
+</script>
+{% endblock %}

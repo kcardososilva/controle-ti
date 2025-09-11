@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+
+<style>
+  :root{
+    --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --card:#ffffff;
+    --accent:#2563eb; --accent-2:#1d4ed8; --soft:#f8fafc; --shadow:0 20px 40px rgba(2,6,23,.08);
+    --danger:#b91c1c; --warn:#b45309; --ok:#15803d;
+  }
+  body{color:var(--ink)}
+  .page{max-width:1100px;margin:28px auto;padding:0 14px}
+
+  /* Header + chips */
+  .head{display:flex; align-items:center; gap:12px; margin-bottom:16px}
+  .head h2{margin:0; font-size:1.9rem; display:flex; align-items:center; gap:10px; color: #dcfce7}
+  .chips{margin-left:auto; display:flex; gap:8px; flex-wrap:wrap}
+  .chip{padding:7px 10px; border-radius:10px; font-weight:800; font-size:.9rem; border:1px solid var(--line); background:var(--soft)}
+  .chip.type.transferencia{background:#eef2ff;color:#1e40af;border-color:#c7d2fe}
+  .chip.type.baixa{background:#fee2e2;color:#7f1d1d;border-color:#fecaca}
+  .chip.type.envio_manutencao{background:#fff7ed;color:#7c2d12;border-color:#fed7aa}
+  .chip.type.retorno,.chip.type.retorno_manutencao{background:#dcfce7;color:#166534;border-color:#bbf7d0}
+  .chip.pmb{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
+  .sub{color:var(--muted); margin:4px 0 18px}
+
+  /* Card container */
+  .card{background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow)}
+  .section{padding:18px 18px 8px}
+  .section h3{margin:0 0 12px; color:var(--ink); display:flex; align-items:center; gap:10px; font-size:1.15rem}
+  .grid{display:grid; gap:14px}
+  .g-3{grid-template-columns:repeat(3,minmax(240px,1fr))}
+  .g-2{grid-template-columns:repeat(2,minmax(280px,1fr))}
+  @media (max-width:900px){.g-3,.g-2{grid-template-columns:1fr}}
+
+  /* Info tile */
+  .tile{background:#f9fafc; border:1px solid var(--line); border-radius:12px; padding:14px}
+  .tile strong{display:block; font-size:.95rem; color:#1f2937; margin-bottom:6px}
+  .tile span{color:var(--ink); word-break:break-word}
+  .muted{color:var(--muted)}
+
+  /* PDF viewer */
+  .pdf-wrap{display:flex; gap:12px; flex-wrap:wrap}
+  .pdf-frame{width:100%; height:440px; border:1px solid var(--line); border-radius:12px; background:#fff}
+
+  /* Actions */
+  .actions{display:flex; gap:12px; flex-wrap:wrap; padding:16px 18px 20px}
+  .btn{border:none; border-radius:12px; padding:12px 18px; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; gap:10px; text-decoration:none}
+  .btn.primary{background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#fff}
+  .btn.secondary{background:#64748b; color:#fff}
+  .btn.outline{background:#fff; color:var(--ink); border:1px solid var(--line)}
+  .btn:hover{filter:brightness(.98)}
+
+  /* Mini table look for “efeitos” */
+  .kv{display:grid; grid-template-columns:220px 1fr; gap:6px 10px}
+  .kv div:nth-child(odd){color:#334155}
+  .kv div:nth-child(even){font-weight:800}
+
+  /* Small helper badge */
+  .badge{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:#fff}
+  .badge.warn{background:#fff7ed; border-color:#fed7aa; color:#9a3412}
+
+  
+</style>
+
+<div class="page">
+
+  <!-- Header -->
+  <div class="head">
+    <h2 style="color: #0f172a;"><i class="fa fa-clipboard-list"></i> Detalhes da Movimentação</h2>
+
+    <div class="chips">
+      <span class="chip type {{ movimentacao.tipo_movimentacao|default:'-' }}" >
+        <i class="fa fa-shuffle"></i>
+        {{ movimentacao.get_tipo_movimentacao_display|default:movimentacao.tipo_movimentacao|capfirst }}
+      </span>
+
+      {% if movimentacao.tipo_transferencia %}
+      <span class="chip"><i class="fa fa-person-arrow-right"></i>
+        {% if movimentacao.get_tipo_transferencia_display %}{{ movimentacao.get_tipo_transferencia_display }}{% else %}{{ movimentacao.tipo_transferencia|capfirst }}{% endif %}
+      </span>
+      {% endif %}
+
+      {% with cc=movimentacao.centro_custo_destino|default:movimentacao.centro_custo_origem %}
+       
+      {% endwith %}
+    </div>
+  </div>
+  <p class="sub" style="color: #0f172a;">
+    Registrada em {{ movimentacao.created_at|date:"d/m/Y H:i" }} —
+    {% if movimentacao.chamado %} Chamado: <strong>{{ movimentacao.chamado }}</strong> {% else %} sem chamado {% endif %}
+  </p>
+
+  <!-- Bloco 1: Principais -->
+  <div class="card">
+    <div class="section">
+      <h3><i class="fa fa-box-open"></i> Informações principais</h3>
+      <div class="grid g-3">
+        <div class="tile">
+          <strong>Item</strong>
+          <span>
+            {{ movimentacao.item.nome|default:"-" }}
+            {% if movimentacao.item.numero_serie %}<span class="muted"> — Nº Série: {{ movimentacao.item.numero_serie }}</span>{% endif %}
+          </span>
+        </div>
+        {% if movimentacao.usuario.nome %}
+        <div class="tile">
+          <strong>Usuário</strong>
+          <span>{{ movimentacao.usuario.nome|default:"-" }}</span>
+        </div>
+        {% endif %}
+        <div class="tile">
+          <strong>Quantidade</strong>
+          <span>{{ movimentacao.quantidade|default:"1" }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bloco 2: Origem/Destino -->
+    <div class="section">
+      <h3><i class="fa fa-route"></i> Origem e destino</h3>
+      <div class="grid g-3">
+        <div class="tile">
+          <strong>Localidade Origem</strong>
+          <span>
+            {% if movimentacao.localidade_origem %}
+              {{ movimentacao.localidade_origem.local }}
+            {% elif movimentacao.item.localidade %}
+              {{ movimentacao.item.localidade.local }}
+            {% else %}-{% endif %}
+          </span>
+        </div>
+        <div class="tile">
+          <strong>Centro de Custo Origem</strong>
+          <span>
+            {% if movimentacao.centro_custo_origem %}
+              {{ movimentacao.centro_custo_origem.numero }} — {{ movimentacao.centro_custo_origem.departamento }}
+              
+            {% elif movimentacao.item.centro_custo %}
+              {{ movimentacao.item.centro_custo.numero }} — {{ movimentacao.item.centro_custo.departamento }}
+              
+            {% else %}-{% endif %}
+          </span>
+        </div>
+        <div class="tile">
+          <strong>Localidade Destino</strong>
+          <span>{% if movimentacao.localidade_destino %}{{ movimentacao.localidade_destino.local }}{% else %}-{% endif %}</span>
+        </div>
+        {% if movimentacao.centro_custo_destino %}
+        <div class="tile">
+          <strong>Centro de Custo Destino</strong>
+          <span>
+            {% if movimentacao.centro_custo_destino %}
+              {{ movimentacao.centro_custo_destino.numero }} — {{ movimentacao.centro_custo_destino.departamento }}
+              
+            {% else %}-{% endif %}
+          </span>
+        </div>
+        {% endif %}
+        <div class="tile">
+          <strong>Status do Item (após)</strong>
+          <span>
+            {% if movimentacao.tipo_movimentacao == 'retorno' or movimentacao.tipo_movimentacao == 'retorno_manutencao' %}
+              Backup
+            {% else %}
+              {{ movimentacao.item.get_status_display|default:movimentacao.item.status|capfirst }}
+            {% endif %}
+          </span>
+        </div>
+        <div class="tile">
+          <strong>Efeito no Estoque</strong>
+          <div class="kv">
+            <div>Movimentação:</div>
+            <div>
+              {% if movimentacao.tipo_movimentacao == 'entrada' %}+ {{ movimentacao.quantidade|default:'1' }}
+              {% elif movimentacao.tipo_movimentacao == 'baixa' or movimentacao.tipo_movimentacao == 'envio_manutencao' %}- {{ movimentacao.quantidade|default:'1' }}
+              {% else %} — {% endif %}
+            </div>
+            <div>Observação:</div>
+            <div class="muted">
+              {% if movimentacao.tipo_movimentacao == 'envio_manutencao' %} Sai para manutenção e status do item fica “Manutenção”.
+              {% elif movimentacao.tipo_movimentacao == 'retorno' or movimentacao.tipo_movimentacao == 'retorno_manutencao' %} Retorna +1 e status “Backup”.
+              {% elif movimentacao.tipo_movimentacao == 'transferencia' %} Sem alteração de quantidade; atualiza destino.
+              {% elif movimentacao.tipo_movimentacao == 'baixa' %} Saída definitiva do estoque.
+              {% elif movimentacao.tipo_movimentacao == 'entrada' %} Entrada de itens no estoque.
+              {% else %} — {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bloco 3: Financeiro / Observações -->
+    <div class="section">
+      <h3><i class="fa fa-file-pen"></i> Financeiro e observações</h3>
+      <div class="grid g-2">
+        {% if movimentacao.chamado %}
+        <div class="tile">
+          <strong>Chamado</strong>
+          <span>{% if movimentacao.chamado %}{{ movimentacao.chamado }}{% else %}-{% endif %}</span>
+        </div>
+        {% endif %}
+        {% if movimentacao.custo %}
+        <div class="tile">
+          <strong>Custo</strong>
+          <span>{% if movimentacao.custo %}R$ {{ movimentacao.custo|floatformat:2 }}{% else %}-{% endif %}</span>
+        </div>
+        {% endif %}
+
+        <div class="tile" style="grid-column:1/-1">
+          <strong>Observações</strong>
+          <span>{{ movimentacao.observacao|default:"Sem Observações" }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bloco 4: Documento -->
+    {% if movimentacao.termo_pdf %}
+    <div class="section">
+      <h3><i class="fa fa-file-pdf"></i> Termo (PDF)</h3>
+      {% if movimentacao.termo_pdf %}
+        <div class="pdf-wrap">
+          <a href="{{ movimentacao.termo_pdf.url }}" target="_blank" class="btn outline">
+            <i class="fa fa-up-right-from-square"></i> Abrir em nova aba
+          </a>
+          <a href="{{ movimentacao.termo_pdf.url }}" download class="btn outline">
+            <i class="fa fa-download"></i> Baixar PDF
+          </a>
+        </div>
+        <object data="{{ movimentacao.termo_pdf.url }}#view=FitH" type="application/pdf" class="pdf-frame">
+          <embed src="{{ movimentacao.termo_pdf.url }}" type="application/pdf" class="pdf-frame"/>
+          <p class="muted" style="padding:10px">
+            Seu navegador não consegue exibir PDF embutido.
+            <a href="{{ movimentacao.termo_pdf.url }}" target="_blank">Clique aqui para abrir</a>.
+          </p>
+        </object>
+      {% else %}
+        <div class="tile"><span class="muted">Nenhum PDF anexado.</span></div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Bloco 5: Auditoria -->
+    <div class="section">
+      <h3><i class="fa fa-user-shield"></i> Auditoria</h3>
+      <div class="grid g-2">
+        <div class="tile">
+          <strong>Criado por</strong>
+          <span>{{ movimentacao.criado_por.username|default:"-" }} em {{ movimentacao.created_at|date:"d/m/Y H:i" }}</span>
+        </div>
+        <div class="tile">
+          <strong>Atualizado por</strong>
+          <span>{{ movimentacao.atualizado_por.username|default:"-" }} em {{ movimentacao.updated_at|date:"d/m/Y H:i" }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ações -->
+  <div class="actions">
+    <a href="{% url 'movimentacao_list' %}" class="btn secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
+    <!-- Se for implementar edição depois, troque o href -->
+    <a href="#" class="btn primary"><i class="fa fa-pen-to-square"></i> Editar</a>
+  </div>
+</div>
+{% endblock %}
