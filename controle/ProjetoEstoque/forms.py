@@ -9,7 +9,7 @@ from .models import (
     StatusItemChoices, TipoMovimentacaoChoices, TipoTransferenciaChoices,
     LocalidadeChoices, CheckListModelo, CheckListPergunta, Preventiva,
     TipoRespostaChoices, SimNaoChoices, Licenca, MovimentacaoLicenca,
-    TipoMovLicencaChoices
+    TipoMovLicencaChoices, LicencaLote
 )
 
 DATE_WIDGET = forms.DateInput(attrs={"type": "date"})
@@ -84,6 +84,12 @@ class FuncaoForm(forms.ModelForm):
     class Meta:
         model = Funcao
         fields = ["nome"]
+        widgets = {
+            "nome": forms.TextInput(attrs={
+                "class": "ctrl",
+                "placeholder": "Ex.: Técnico de TI",
+            })
+        }
 
 
 class UsuarioForm(forms.ModelForm):
@@ -297,12 +303,14 @@ class PreventivaStartForm(forms.Form):
             )
 
 # ================== LICENÇAS ==================
+ISO_FMT = "%Y-%m-%d"
+
 class LicencaForm(forms.ModelForm):
     class Meta:
         model = Licenca
         fields = [
             "nome", "fornecedor", "centro_custo",
-            "quantidade", "custo",  # <- ✅ custo aqui
+            "quantidade", "custo",
             "pmb", "periodicidade",
             "data_inicio", "data_fim", "observacao",
         ]
@@ -311,13 +319,35 @@ class LicencaForm(forms.ModelForm):
             "fornecedor": forms.Select(attrs={"class": "ctrl"}),
             "centro_custo": forms.Select(attrs={"class": "ctrl"}),
             "quantidade": forms.NumberInput(attrs={"class": "ctrl", "min": 0}),
-            "custo": forms.NumberInput(attrs={"class": "ctrl", "step": "0.01", "min": 0}),  # ✅
+            "custo": forms.NumberInput(attrs={"class": "ctrl", "step": "0.01", "min": 0}),
             "pmb": forms.Select(attrs={"class": "ctrl"}),
             "periodicidade": forms.Select(attrs={"class": "ctrl"}),
-            "data_inicio": forms.DateInput(attrs={"type": "date", "class": "ctrl"}),
-            "data_fim": forms.DateInput(attrs={"type": "date", "class": "ctrl"}),
+
+            # ⚠️ IMPORTANTE: define o formato explícito para exibir o valor no input date
+            "data_inicio": forms.DateInput(format=ISO_FMT, attrs={"type": "date", "class": "ctrl"}),
+            "data_fim":    forms.DateInput(format=ISO_FMT, attrs={"type": "date", "class": "ctrl"}),
+
             "observacao": forms.Textarea(attrs={"class": "ctrl", "rows": 4, "placeholder": "Observações…"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Garante que o widget conheça o formato de saída
+        self.fields["data_inicio"].widget.format = ISO_FMT
+        self.fields["data_fim"].widget.format = ISO_FMT
+
+        # Quando for edição, injeta o value no padrão ISO (YYYY-MM-DD)
+        inst = self.instance
+        if inst and getattr(inst, "pk", None):
+            if inst.data_inicio:
+                self.fields["data_inicio"].initial = inst.data_inicio.strftime(ISO_FMT)
+            if inst.data_fim:
+                self.fields["data_fim"].initial = inst.data_fim.strftime(ISO_FMT)
+
+        # Aceita também datas vindas do browser em ISO
+        self.fields["data_inicio"].input_formats = [ISO_FMT]
+        self.fields["data_fim"].input_formats = [ISO_FMT]
 
     def clean(self):
         cleaned = super().clean()
@@ -348,13 +378,6 @@ class MovimentacaoLicencaForm(forms.ModelForm):
 
     @transaction.atomic
     def save(self, commit=True, user=None):
-        """
-        Salva a movimentação e ajusta o estoque da licença.
-        - Usa a instância do modelo (self.instance).
-        - Preenche criado_por/atualizado_por.
-        - Faz fallback do centro de custo se não vier no form.
-        - Ajusta 'quantidade' da Licença com lock pessimista.
-        """
         instance: MovimentacaoLicenca = super().save(commit=False)
 
         # Fallback do Centro de Custo (usuário > licença)
@@ -370,33 +393,70 @@ class MovimentacaoLicencaForm(forms.ModelForm):
                 instance.criado_por = user
             instance.atualizado_por = user
 
+        # 🔹 pega o lote do POST (se selecionado)
+        lote_id_raw = self.data.get("lote")  # "", None ou "123"
+        lote_id = int(lote_id_raw) if lote_id_raw and str(lote_id_raw).isdigit() else None
+        if lote_id:
+            # ⚠️ IMPORTANTE: persistir o vínculo com o lote
+            instance.lote_id = lote_id
+
         is_new = instance.pk is None
         if commit:
-            instance.save()  # dispara o save() do modelo se houver lógica lá
+            instance.save()
 
-        # ===== Ajuste de estoque da licença (apenas em criação) =====
-        if is_new:
-            lic = Licenca.objects.select_for_update().get(pk=instance.licenca_id)
+        # >>> Daqui pra baixo sua lógica de débito/crédito permanece igual <<<
+        lic = Licenca.objects.select_for_update().get(pk=instance.licenca_id)
 
-            if instance.tipo == TipoMovLicencaChoices.ATRIBUICAO:
+        if is_new and instance.tipo == TipoMovLicencaChoices.ATRIBUICAO:
+            if lote_id:
+                lote = LicencaLote.objects.select_for_update().get(pk=lote_id)
+                if (lote.quantidade_disponivel or 0) <= 0:
+                    raise ValidationError("Lote sem assentos disponíveis para atribuição.")
+                lote.quantidade_disponivel = (lote.quantidade_disponivel or 0) - 1
+                lote.save(update_fields=["quantidade_disponivel", "updated_at"])
+            else:
                 if (lic.quantidade or 0) <= 0:
-                    # rollback automático por causa do @atomic
-                    raise ValidationError("Licença sem assentos disponíveis.")
+                    raise ValidationError("Licença sem quantidade disponível para atribuição.")
                 lic.quantidade = (lic.quantidade or 0) - 1
                 lic.save(update_fields=["quantidade", "updated_at"])
 
-            elif instance.tipo == TipoMovLicencaChoices.REMOCAO:
-                # Garante que há uma atribuição ativa antes de remover
-                last = (
-                    MovimentacaoLicenca.objects
+        elif is_new and instance.tipo == TipoMovLicencaChoices.REMOCAO:
+            last = (MovimentacaoLicenca.objects
                     .filter(licenca_id=instance.licenca_id, usuario_id=instance.usuario_id)
                     .exclude(pk=instance.pk)
                     .order_by("-created_at", "-id")
-                    .first()
-                )
-                if not last or last.tipo != TipoMovLicencaChoices.ATRIBUICAO:
-                    raise ValidationError("Não há atribuição ativa dessa licença para este usuário.")
+                    .first())
+            if not last or last.tipo != TipoMovLicencaChoices.ATRIBUICAO:
+                raise ValidationError("Não há atribuição ativa dessa licença para este usuário.")
+
+            if getattr(last, "lote_id", None):
+                lote = LicencaLote.objects.select_for_update().get(pk=last.lote_id)
+                lote.quantidade_disponivel = (lote.quantidade_disponivel or 0) + 1
+                lote.save(update_fields=["quantidade_disponivel", "updated_at"])
+            else:
                 lic.quantidade = (lic.quantidade or 0) + 1
                 lic.save(update_fields=["quantidade", "updated_at"])
 
         return instance
+    
+class LicencaLoteForm(forms.ModelForm):
+    class Meta:
+        model = LicencaLote
+        fields = ["licenca", "quantidade_total", "quantidade_disponivel", "custo_ciclo", "data_compra", "fornecedor", "centro_custo", "observacao"]
+        widgets = {
+            "licenca": forms.Select(attrs={"class": "ctrl"}),
+            "quantidade_total": forms.NumberInput(attrs={"class": "ctrl", "min": 0}),
+            "quantidade_disponivel": forms.NumberInput(attrs={"class": "ctrl", "min": 0}),
+            "custo_ciclo": forms.NumberInput(attrs={"class": "ctrl", "step": "0.01", "min": 0}),
+            "data_compra": forms.DateInput(attrs={"type": "date", "class": "ctrl"}),
+            "fornecedor": forms.Select(attrs={"class": "ctrl"}),
+            "centro_custo": forms.Select(attrs={"class": "ctrl"}),
+            "observacao": forms.Textarea(attrs={"class": "ctrl", "rows": 3}),
+        }
+
+    def clean(self):
+        c = super().clean()
+        qt, qd = c.get("quantidade_total") or 0, c.get("quantidade_disponivel") or 0
+        if qd > qt:
+            self.add_error("quantidade_disponivel", "Disponível não pode superar a quantidade total.")
+        return c

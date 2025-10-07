@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+{% block title %}Dashboard de Licenças{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+
+<style>
+:root{
+  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#fff; --bg:#f3f7ff;
+  --primary:#2563eb; --ok:#16a34a; --bad:#b91c1c; --warn:#b45309; --violet:#7c3aed; --cyan:#0891b2;
+  --shadow:0 22px 44px rgba(2,6,23,.06);
+}
+body{background:var(--bg)}
+.page{max-width:1240px;margin:18px auto;padding:0 14px}
+.hdr{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.hdr h2{margin:0;color:var(--ink);display:flex;align-items:center;gap:10px}
+.badge-periodo{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;border:1px solid #e5e7eb;background:#eef2ff;color:#1e3a8a;font-weight:800}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
+.card h3{margin:0 0 8px;color:var(--ink);display:flex;align-items:center;gap:8px}
+
+.filters-card{margin:12px 0 16px}
+.filters-grid{
+  display:grid; gap:10px; align-items:end;
+  grid-template-columns: 2fr 1fr 1fr 1fr 0.8fr 1fr 1fr auto;
+}
+@media (max-width:1120px){ .filters-grid{grid-template-columns:1fr 1fr} }
+@media (max-width:720px){ .filters-grid{grid-template-columns:1fr} }
+
+.fg{display:flex;flex-direction:column;min-width:0}
+.fg label{font-weight:800;margin:0 0 6px;color:#0f172a}
+.ctrl{height:40px;border:1px solid #d5deea;border-radius:12px;padding:8px 12px;background:#fff;outline:none;transition:border-color .15s, box-shadow .15s}
+.ctrl:focus{border-color:#94b5ff;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+.with-icon{position:relative}
+.with-icon i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#64748b;pointer-events:none}
+.with-icon .ctrl{padding-left:38px}
+
+.filters-actions{grid-column:1 / -1; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
+.btn-light{background:#fff;border:1.5px solid #dbe6f1;color:#334155}
+
+.kpis{display:grid;grid-template-columns:repeat(5, minmax(190px,1fr));gap:12px}
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(3, minmax(200px,1fr))}}
+@media (max-width:720px){.kpis{grid-template-columns:repeat(2, minmax(170px,1fr))}}
+.kpi{color:#fff;border-radius:14px;padding:14px;position:relative;overflow:hidden}
+.kpi.blue{background:linear-gradient(135deg,#18284a 0%, #21439f 100%)}
+.kpi.green{background:linear-gradient(135deg,#0f766e 0%, #16a34a 100%)}
+.kpi.violet{background:linear-gradient(135deg,#5b21b6 0%, #7c3aed 100%)}
+.kpi.orange{background:linear-gradient(135deg,#92400e 0%, #f59e0b 100%)}
+.kpi.red{background:linear-gradient(135deg,#7f1d1d 0%, #b91c1c 100%)}
+.kpi i{position:absolute;right:12px;bottom:12px;opacity:.25}
+.kpi .t{font-weight:800}
+.kpi .v{font-size:1.7rem;font-weight:900;margin-top:4px}
+
+.grid{display:grid;gap:12px}
+.g-3{grid-template-columns:1.2fr 1fr 1fr}
+@media (max-width:1100px){.g-3{grid-template-columns:1fr}}
+.nodata{padding:10px 0;color:#64748b;font-weight:700}
+
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left;color:#0f172a;vertical-align:top}
+.table th{background:#f8fafc;font-weight:900}
+.tright{text-align:right}
+.sticky{position:sticky;left:0;background:#f8fafc;z-index:1}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:800;font-size:.85rem}
+.badge.ok{background:#e8fff3;color:#15803d}
+.badge.bad{background:#fee2e2;color:#b91c1c}
+.small{color:#64748b}
+.muted{color:#64748b}
+</style>
+
+<div class="page">
+  <div class="hdr">
+    <h2><i class="fa fa-certificate"></i> Dashboard de Licenças</h2>
+    <span class="badge-periodo">
+      <i class="fa fa-calendar"></i>
+      Período de início:
+      {% if dt_ini %}{{ dt_ini|date:"d/m/Y" }}{% else %}—{% endif %} —
+      {% if dt_fim %}{{ dt_fim|date:"d/m/Y" }}{% else %}—{% endif %}
+    </span>
+  </div>
+
+  <!-- Filtros -->
+  <div class="card filters-card">
+    <form method="get" class="filters-grid" autocomplete="off">
+      <div class="fg">
+        <label>Buscar (nome / observação)</label>
+        <div class="with-icon">
+          <i class="fa fa-magnifying-glass"></i>
+          <input class="ctrl" type="text" name="q" value="{{ q|default:'' }}" placeholder="Ex.: Microsoft, Adobe…">
+        </div>
+      </div>
+
+      <div class="fg">
+        <label>Fornecedor</label>
+        <select class="ctrl" name="fornecedor" onchange="this.form.submit()">
+          <option value="">Todos</option>
+          {% for f in fornecedores %}
+            <option value="{{ f.id }}" {% if fornecedor == f.id|stringformat:'s' %}selected{% endif %}>{{ f.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="fg">
+        <label>Centro de Custo</label>
+        <select class="ctrl" name="centro_custo" onchange="this.form.submit()">
+          <option value="">Todos</option>
+          {% for cc in centros_custo %}
+            <option value="{{ cc.id }}" {% if centro_custo == cc.id|stringformat:'s' %}selected{% endif %}>
+              {{ cc.numero }} - {{ cc.departamento }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="fg">
+        <label>Periodicidade</label>
+        <select class="ctrl" name="periodicidade" onchange="this.form.submit()">
+          <option value="">Todas</option>
+          {% for k,v in periodicidade_choices %}
+            <option value="{{ k }}" {% if periodicidade == k %}selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="fg">
+        <label>PMB</label>
+        <select class="ctrl" name="pmb" onchange="this.form.submit()">
+          <option value="">Todos</option>
+          <option value="sim" {% if pmb == 'sim' %}selected{% endif %}>Sim</option>
+          <option value="nao" {% if pmb == 'nao' %}selected{% endif %}>Não</option>
+        </select>
+      </div>
+
+      <div class="fg">
+        <label>Início (data de início)</label>
+        <input class="ctrl" type="date" name="inicio" value="{% if dt_ini %}{{ dt_ini|date:'Y-m-d' }}{% endif %}">
+      </div>
+
+      <div class="fg">
+        <label>Fim (data de início)</label>
+        <input class="ctrl" type="date" name="fim" value="{% if dt_fim %}{{ dt_fim|date:'Y-m-d' }}{% endif %}">
+      </div>
+
+      <div class="filters-actions">
+        <button class="btn btn-primary" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
+        <a class="btn btn-light" href="{{ request.path }}"><i class="fa fa-rotate-left"></i> Limpar</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpis">
+    <div class="kpi blue"><div class="t">Licenças</div><div class="v">{{ kpi_total|default:0 }}</div><i class="fa fa-layer-group"></i></div>
+    <div class="kpi green"><div class="t">Assentos Ativos</div><div class="v">{{ kpi_assentos_ativos|default:0 }}</div><i class="fa fa-user-check"></i></div>
+    <div class="kpi violet"><div class="t">Custo Mensal (R$)</div><div class="v">{{ kpi_custo_mensal|floatformat:2|default_if_none:"0,00" }}</div><i class="fa fa-money-bill-wave"></i></div>
+    <div class="kpi orange"><div class="t">Custo Anual (R$)</div><div class="v">{{ kpi_custo_anual|floatformat:2|default_if_none:"0,00" }}</div><i class="fa fa-sack-dollar"></i></div>
+    <div class="kpi red"><div class="t">Fim próximo (≤ 30d)</div><div class="v">{{ kpi_fim_proximo|default:0 }}</div><i class="fa fa-triangle-exclamation"></i></div>
+  </div>
+
+  <!-- Cards: Lista por CC + gráficos secundários -->
+  <div class="grid g-3" style="margin-top:12px">
+    <!-- LISTA por Centro de Custo (substitui o gráfico) -->
+    <div class="card">
+      <h3><i class="fa fa-list" style="color:#2563eb"></i> Custo Mensal por Centro de Custo</h3>
+      <div style="overflow:auto">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Centro de Custo</th>
+              <th class="tright">Custo Mensal (R$)</th>
+            </tr>
+          </thead>
+          <tbody id="ccListBody"></tbody>
+          <tfoot>
+            <tr>
+              <td><b>Total</b></td>
+              <td class="tright"><b id="ccListTotal">R$ 0,00</b></td>
+            </tr>
+          </tfoot>
+        </table>
+        <div id="ccListEmpty" class="nodata" style="display:none">Sem dados</div>
+      </div>
+    </div>
+
+    <!-- Gráfico por fornecedor -->
+    <div class="card">
+      <h3><i class="fa fa-circle-notch" style="color:#16a34a"></i> Distribuição por Fornecedor</h3>
+      <div style="height:320px;position:relative">
+        <canvas id="fornPie"></canvas>
+        <div id="nd-forn" class="nodata">Sem dados</div>
+      </div>
+    </div>
+
+    <!-- Gráfico por periodicidade -->
+    <div class="card">
+      <h3><i class="fa fa-clock" style="color:#7c3aed"></i> Quantidade por Periodicidade</h3>
+      <div style="height:320px;position:relative">
+        <canvas id="perBar"></canvas>
+        <div id="nd-per" class="nodata">Sem dados</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabela principal -->
+  <div class="card" style="margin-top:12px">
+    <h3><i class="fa fa-table" style="color:#0ea5e9"></i> Licenças (detalhes)</h3>
+    <div style="overflow:auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th class="sticky">Licença</th>
+            <th>Fornecedor</th>
+            <th>Centro de Custo</th>
+            <th>Periodicidade</th>
+            <th>PMB</th>
+            <th class="tright">Qtd</th>
+            <th class="tright">Assentos Ativos</th>
+            <th class="tright">Custo/ciclo (R$)</th>
+            <th class="tright">Custo mensal (R$)</th>
+            <th class="tright">Custo anual (R$)</th>
+            <th>Início</th>
+            <th>Fim</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in linhas %}
+          <tr>
+            <td class="sticky">{{ l.nome }}</td>
+            <td>{{ l.fornecedor|default:"—" }}</td>
+            <td>{{ l.cc|default:"—" }}</td>
+            <td>{{ l.periodicidade|default:"—" }}</td>
+            <td>
+              {% if l.pmb == 'sim' or l.pmb == 'Sim' %}
+                <span class="badge ok">Sim</span>
+              {% elif l.pmb == 'nao' or l.pmb == 'Não' %}
+                <span class="badge bad">Não</span>
+              {% else %}<span class="small">—</span>{% endif %}
+            </td>
+            <td class="tright">{{ l.qtd|default:0 }}</td>
+            <td class="tright">{{ l.assentos|default:0 }}</td>
+            <td class="tright">R$ {{ l.custo_ciclo|floatformat:2|default_if_none:"0,00" }}</td>
+            <td class="tright">R$ {{ l.custo_mensal|floatformat:2|default_if_none:"0,00" }}</td>
+            <td class="tright">R$ {{ l.custo_anual|floatformat:2|default_if_none:"0,00" }}</td>
+            <td>{{ l.data_inicio|date:"d/m/Y"|default:"—" }}</td>
+            <td>{% if l.data_fim %}{{ l.data_fim|date:"d/m/Y" }}{% else %}<span class="small">—</span>{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="12" class="small">Nenhum resultado para os filtros.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Lotes detalhados -->
+  <div class="card" style="margin-top:12px">
+    <h3><i class="fa fa-boxes-stacked" style="color:#2563eb"></i> Lotes (custos e disponibilidade)</h3>
+    {% if tem_lotes and lotes_rows %}
+    <div style="overflow:auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Licença</th>
+            <th>Lote</th>
+            <th class="tright">Total</th>
+            <th class="tright">Disponível</th>
+            <th class="tright">Atribuídas</th>
+            <th class="tright">Custo do ciclo (R$)</th>
+            <th class="tright">Custo mensal do lote (R$)</th>
+            <th class="tright">Custo mensal usado (R$)</th>
+            <th class="tright">Custo anual do lote (R$)</th>
+            <th class="tright">Custo anual usado (R$)</th>
+            <th>Periodicidade</th>
+            <th>Pedido/Contrato</th>
+            <th>Obs.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in lotes_rows %}
+          <tr>
+            <td>{{ r.licenca_nome }}</td>
+            <td>{{ r.lote_nome }}</td>
+            <td class="tright">{{ r.total }}</td>
+            <td class="tright">{{ r.disp }}</td>
+            <td class="tright">{{ r.usados }}</td>
+            <td class="tright">{% if r.custo_ciclo %}R$ {{ r.custo_ciclo|floatformat:2 }}{% else %}—{% endif %}</td>
+            <td class="tright">R$ {{ r.custo_mensal_lote|floatformat:2 }}</td>
+            <td class="tright">R$ {{ r.custo_mensal_usado|floatformat:2 }}</td>
+            <td class="tright">R$ {{ r.custo_anual_lote|floatformat:2 }}</td>
+            <td class="tright">R$ {{ r.custo_anual_usado|floatformat:2 }}</td>
+            <td>{{ r.periodicidade|default:"—" }}</td>
+            <td>{{ r.pedido|default:"—" }}</td>
+            <td class="muted">{{ r.obs|default:"" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="muted">Nenhum lote cadastrado para as licenças filtradas.</div>
+    {% endif %}
+  </div>
+</div>
+
+{# Dados para os cards/gráficos/listas #}
+{{ cc_labels|default:"[]"|json_script:"lic-cc-labels" }}
+{{ cc_mensal|default:"[]"|json_script:"lic-cc-mensal" }}
+{{ forn_labels|default:"[]"|json_script:"lic-forn-labels" }}
+{{ forn_mensal|default:"[]"|json_script:"lic-forn-mensal" }}
+{{ per_labels|default:"[]"|json_script:"lic-per-labels" }}
+{{ per_counts|default:"[]"|json_script:"lic-per-counts" }}
+
+<script>
+function J(id, fb){const el=document.getElementById(id); if(!el) return fb; try{ return JSON.parse(el.textContent) }catch(e){return fb}}
+function brl(n){n=+n||0; return 'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function sum(a){return (a||[]).reduce((x,y)=>x+(+y||0),0)}
+
+/* LISTA por Centro de Custo */
+(() => {
+  const labels = J('lic-cc-labels', []);
+  const values = J('lic-cc-mensal', []);
+  const body = document.getElementById('ccListBody');
+  const totalEl = document.getElementById('ccListTotal');
+  const emptyEl = document.getElementById('ccListEmpty');
+
+  if(!body) return;
+
+  const rows = labels.map((lbl,i)=>({lbl, val:+(values[i]||0)}))
+                     .filter(r => r.val >= 0)
+                     .sort((a,b)=>b.val - a.val);
+
+  if(rows.length === 0 || sum(values) === 0){
+    emptyEl.style.display='block';
+    return;
+  }
+
+  let html = '';
+  for(const r of rows){
+    html += `<tr><td>${r.lbl||'—'}</td><td class="tright">${brl(r.val)}</td></tr>`;
+  }
+  body.innerHTML = html;
+  totalEl.textContent = brl(sum(values));
+})();
+
+/* GRÁFICOS secundários (Fornecedor / Periodicidade) */
+const pal = {
+  blue:'rgba(37, 99, 235, 0.9)', blue2:'rgba(37, 99, 235, 0.18)',
+  violet:'rgba(124, 58, 237, .9)', violet2:'rgba(124, 58, 237, .18)',
+  green:'rgba(22, 163, 74, 0.9)', cyan:'rgba(8, 145, 178, .9)', amber:'rgba(245, 158, 11, .9)'
+};
+Chart.defaults.font.family = "'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial";
+Chart.defaults.plugins.legend.position = 'top';
+Chart.defaults.plugins.tooltip.backgroundColor = '#0b1220';
+Chart.defaults.plugins.tooltip.titleColor = '#fff';
+Chart.defaults.plugins.tooltip.bodyColor = '#e2e8f0';
+
+/* Fornecedor (pizza) */
+(() => {
+  const labels = J('lic-forn-labels', []);
+  const data   = J('lic-forn-mensal', []);
+  const ctx = document.getElementById('fornPie');
+  if(!ctx) return;
+  if(sum(data) === 0){ document.getElementById('nd-forn').style.display='block'; return; }
+  new Chart(ctx, {
+    type:'doughnut',
+    data:{ labels: labels.length?labels:['—'], datasets:[{ data: data.length?data:[0], backgroundColor:[pal.blue, pal.green, pal.violet, pal.cyan, pal.amber] }]},
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'60%' }
+  });
+})();
+
+/* Periodicidade (barra) */
+(() => {
+  const labels = J('lic-per-labels', []);
+  const data   = J('lic-per-counts', []);
+  const ctx = document.getElementById('perBar');
+  if(!ctx) return;
+  if(sum(data) === 0){ document.getElementById('nd-per').style.display='block'; return; }
+  new Chart(ctx, {
+    type:'bar',
+    data:{ labels: labels.length?labels:['—'], datasets:[{label:'Quantidade', data: data.length?data:[0], backgroundColor: pal.violet, borderColor: pal.violet, borderWidth:1.5, borderRadius:10}]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      scales:{ y:{ beginAtZero:true, grid:{color:'rgba(148,163,184,.12)'}}, x:{ grid:{color:'rgba(148,163,184,.12)'}} } }
+  });
+})();
+</script>
+{% endblock %}

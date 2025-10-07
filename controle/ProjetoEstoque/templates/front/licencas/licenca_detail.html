@@ -7,8 +7,7 @@
 :root{--line:#e5e7eb;--ink:#172133;--soft:#f8fafc;--card:#fff;--shadow:0 20px 40px rgba(2,6,23,.07)}
 *{box-sizing:border-box}
 .wrap{max-width:1000px;margin:22px auto;padding:0 14px}
-.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
+.header-btns{display:flex;gap:10px;flex-wrap:wrap}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
 .grid{margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
 .box{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:12px}
@@ -18,19 +17,25 @@
 .badge-pmb.sim{background:#e8fff3;color:#15803d}
 .badge-pmb.nao{background:#fee2e2;color:#b91c1c}
 .table{width:100%;border-collapse:collapse;margin-top:8px}
-.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left; color: #0f172a;}
+.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left;color:#0f172a}
+.table tfoot td{font-weight:900;background:#f8fafc}
 .btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
 .btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
+.btn-blue{background:linear-gradient(90deg,#1d4ed8,#2563eb);color:#fff}
 .btn-secondary{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
+.muted{color:#64748b}
 </style>
 
 <div class="wrap">
 
-  <h2 style="color: #0f172a;"><i class="fa fa-certificate"></i> {{ obj.nome }}</h2>
-  <div style="display:flex;gap:10px">
+  <h2 style="color:#0f172a;display:flex;align-items:center;gap:10px">
+    <i class="fa fa-certificate"></i> {{ obj.nome }}
+  </h2>
+
+  <div class="header-btns">
     <a href="{% url 'licenca_list' %}" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
     <a href="{% url 'licenca_update' obj.pk %}" class="btn btn-primary"><i class="fa fa-pen"></i> Editar</a>
-    <a href="{% url 'mov_licenca_form' %}?licenca={{ obj.pk }}" class="btn btn-primary" style="background:linear-gradient(90deg,#1d4ed8,#2563eb)"><i class="fa fa-exchange-alt"></i> Movimentar</a>
+    <a href="{% url 'mov_licenca_form' %}?licenca={{ obj.pk }}" class="btn btn-blue"><i class="fa fa-exchange-alt"></i> Movimentar</a>
   </div>
 
   <div class="grid">
@@ -40,24 +45,130 @@
     <div class="box"><div class="label">Periodicidade</div><div class="value">{{ obj.get_periodicidade_display }}</div></div>
     <div class="box"><div class="label">Quantidade (disponível)</div><div class="value">{{ obj.quantidade }}</div></div>
 
-    <!-- ✅ CUSTOS -->
-    <div class="box"><div class="label">Custo do ciclo</div>
-      <div class="value">{% if custo_ciclo %}R$ {{ custo_ciclo|floatformat:2 }}{% else %}—{% endif %}</div>
-    </div>
-    <div class="box"><div class="label">Custo mensal (estimado)</div>
-      <div class="value">{% if custo_mensal %}R$ {{ custo_mensal|floatformat:2 }}{% else %}—{% endif %}</div>
-    </div>
-    <div class="box"><div class="label">Custo anual (estimado)</div>
-      <div class="value">{% if custo_anual %}R$ {{ custo_anual|floatformat:2 }}{% else %}—{% endif %}</div>
-    </div>
+    <!-- custos -->
+   <!-- custos -->
+<div class="box">
+  <div class="label">Custo do ciclo</div>
+  <div class="value">
+    {% if custo_ciclo %}R$ {{ custo_ciclo|floatformat:2 }}{% else %}—{% endif %}
+  </div>
+</div>
+
+<div class="box">
+  <div class="label">Custo mensal (estimado)</div>
+  <div class="value">
+    {% if custo_mensal %}
+      <div><strong>Unitário:</strong> R$ {{ custo_mensal|floatformat:2 }}</div>
+      <div class="muted" style="font-size:.92rem">
+        <strong>Total:</strong>
+        {{ qtd_disponivel }} × R$ {{ custo_mensal|floatformat:2 }}
+        = <strong>R$ {{ custo_mensal_total|floatformat:2 }}</strong>
+      </div>
+    {% else %}—{% endif %}
+  </div>
+</div>
+
+<div class="box">
+  <div class="label">Custo anual (estimado)</div>
+  <div class="value">
+    {% if custo_anual %}
+      <div><strong>Unitário:</strong> R$ {{ custo_anual|floatformat:2 }}</div>
+      <div class="muted" style="font-size:.92rem">
+        <strong>Total:</strong>
+        {{ qtd_disponivel }} × R$ {{ custo_anual|floatformat:2 }}
+        = <strong>R$ {{ custo_anual_total|floatformat:2 }}</strong>
+      </div>
+    {% else %}—{% endif %}
+  </div>
+</div>
+
 
     <div class="box"><div class="label">Início</div><div class="value">{{ obj.data_inicio|date:"d/m/Y" }}</div></div>
     <div class="box"><div class="label">Fim</div><div class="value">{{ obj.data_fim|date:"d/m/Y"|default:"—" }}</div></div>
     <div class="box" style="grid-column:1/-1"><div class="label">Observações</div><div class="value">{{ obj.observacao|default:"—" }}</div></div>
+
+    <!-- Resumo pelos lotes (se existirem) -->
+    {% if lotes %}
+      <div class="box">
+        <div class="label">Lotes – Total</div>
+        <div class="value">{{ lotes_totais.total }}</div>
+      </div>
+      <div class="box">
+        <div class="label">Lotes – Disponível</div>
+        <div class="value">{{ lotes_totais.disp }}</div>
+      </div>
+      <div class="box">
+        <div class="label">Lotes – Atribuídas</div>
+        <div class="value">{{ lotes_totais.usados }}</div>
+      </div>
+    {% endif %}
   </div>
 
+  <!-- Seção LOTES -->
   <div class="card" style="margin-top:14px">
-    <h3 style="margin:0 0 8px;color:#0f172a;display:flex;align-items:center;gap:8px"><i class="fa fa-history" style="color:#2563eb"></i> Últimas movimentações</h3>
+    <h3 style="margin:0 0 8px;color:#0f172a;display:flex;align-items:center;gap:8px">
+      <i class="fa fa-boxes-stacked" style="color:#2563eb"></i> Lotes desta licença
+    </h3>
+
+    {% if lotes %}
+      <div style="overflow:auto">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="min-width:220px">Lote</th>
+              <th style="min-width:120px">Pedido/Contrato</th>
+              <th class="tright">Total</th>
+              <th class="tright">Disponível</th>
+              <th class="tright">Atribuídas</th>
+              <th class="tright">Custo/Assento</th>
+              <th class="tright">Custo do ciclo</th>
+              <th>Periodicidade</th>
+              <th style="min-width:220px">Obs.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for lt in lotes %}
+              <tr>
+                <td>{{ lt.nome }}</td>
+                <td>{{ lt.pedido|default:"—" }}</td>
+                <td class="tright">{{ lt.total }}</td>
+                <td class="tright">{{ lt.disp }}</td>
+                <td class="tright">{{ lt.usados }}</td>
+                <td class="tright">
+                  {% if lt.custo_unit %}R$ {{ lt.custo_unit|floatformat:2 }}{% else %}—{% endif %}
+                </td>
+                <td class="tright">
+                  {% if lt.custo_ciclo %}R$ {{ lt.custo_ciclo|floatformat:2 }}{% else %}—{% endif %}
+                </td>
+                <td>{{ lt.periodicidade|default:"—" }}</td>
+                <td class="muted">{{ lt.obs|default:"" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2">Totais</td>
+              <td class="tright">{{ lotes_totais.total }}</td>
+              <td class="tright">{{ lotes_totais.disp }}</td>
+              <td class="tright">{{ lotes_totais.usados }}</td>
+              <td class="tright">—</td>
+              <td class="tright">—</td>
+              <td>—</td>
+              <td>—</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    {% else %}
+      <div class="muted">Nenhum lote cadastrado para esta licença.</div>
+    {% endif %}
+  </div>
+
+  <!-- Movimentações -->
+  <div class="card" style="margin-top:14px">
+    <h3 style="margin:0 0 8px;color:#0f172a;display:flex;align-items:center;gap:8px">
+      <i class="fa fa-history" style="color:#2563eb"></i> Últimas movimentações
+    </h3>
     <div style="overflow:auto">
       <table class="table">
         <thead>
@@ -71,23 +182,24 @@
         </thead>
         <tbody>
           {% for mov in movs %}
-          <tr>
-            <td>{{ mov.get_tipo_display }}</td>
-            <td>{{ mov.usuario.nome|default:"—" }}</td>
-            <td>
-              {% if mov.centro_custo_destino %}
-                {{ mov.centro_custo_destino.numero }} - {{ mov.centro_custo_destino.departamento }}
-              {% else %} — {% endif %}
-            </td>
-            <td>{{ mov.observacao|default:"—" }}</td>
-            <td>{{ mov.created_at|date:"d/m/Y H:i" }}</td>
-          </tr>
+            <tr>
+              <td>{{ mov.get_tipo_display }}</td>
+              <td>{{ mov.usuario.nome|default:"—" }}</td>
+              <td>
+                {% if mov.centro_custo_destino %}
+                  {{ mov.centro_custo_destino.numero }} - {{ mov.centro_custo_destino.departamento }}
+                {% else %} — {% endif %}
+              </td>
+              <td>{{ mov.observacao|default:"—" }}</td>
+              <td>{{ mov.created_at|date:"d/m/Y H:i" }}</td>
+            </tr>
           {% empty %}
-          <tr><td colspan="5" style="color:#64748b">Sem movimentações registradas.</td></tr>
+            <tr><td colspan="5" class="muted">Sem movimentações registradas.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
+
 </div>
 {% endblock %}

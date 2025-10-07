@@ -1,0 +1,466 @@
+{% extends "base.html" %}
+{% block title %}Dashboard de Preventivas{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+
+<style>
+:root{
+  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#fff;
+  --bg:#f1f5fb; --primary:#2563eb; --ok:#16a34a; --bad:#b91c1c; --amber:#b45309;
+  --shadow:0 20px 40px rgba(2,6,23,.07);
+}
+body{background:var(--bg)}
+.page{max-width:1240px;margin:18px auto;padding:0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
+.hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.hdr h2{margin:0;color:var(--ink);display:flex;align-items:center;gap:10px}
+.badge-periodo{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;border:1px solid #e5e7eb;background:#eef2ff;color:#1e3a8a;font-weight:800}
+
+/* ===== Filtros (grid 12 col.) ===== */
+.filters-card{margin:12px 0 16px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 20px 40px rgba(2,6,23,.05);padding:14px}
+.filters-grid{
+  display:grid; gap:12px; align-items:end;
+  grid-template-columns: repeat(12, minmax(0,1fr));
+}
+.col-span-1{grid-column:span 1}
+.col-span-2{grid-column:span 2}
+.col-span-3{grid-column:span 3}
+.col-span-4{grid-column:span 4}
+.col-span-5{grid-column:span 5}
+.col-span-6{grid-column:span 6}
+.col-span-12{grid-column:1 / -1}
+
+@media (max-width:1180px){
+  .filters-grid{ grid-template-columns: repeat(6, minmax(0,1fr)); }
+  .filters-grid .col-span-4{ grid-column: span 6; }
+  .filters-grid .col-span-3{ grid-column: span 3; }
+  .filters-grid .col-span-2{ grid-column: span 3; }
+  .filters-grid .col-span-12{ grid-column: 1 / -1; }
+}
+@media (max-width:720px){
+  .filters-grid{ grid-template-columns: 1fr; }
+  .filters-grid [class*="col-span-"]{ grid-column: 1 / -1; }
+}
+
+.fg{display:flex;flex-direction:column;min-width:0}
+.fg label{font-weight:800;margin:0 0 6px;color:#0f172a}
+.ctrl{
+  height:44px;border:1px solid #d5deea;border-radius:12px;padding:8px 12px;background:#fff;
+  outline:none; transition:border-color .15s ease, box-shadow .15s ease; width:100%; box-sizing:border-box;
+}
+.ctrl:focus{border-color:#94b5ff;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+.with-icon{position:relative}
+.with-icon i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#64748b;pointer-events:none}
+.with-icon .ctrl{padding-left:38px}
+
+.filters-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
+.btn-light{background:#fff;border:1.5px solid #dbe6f1;color:#334155}
+.btn-export{background:linear-gradient(90deg,#1d4ed8,#2563eb);color:#fff}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(5, minmax(180px,1fr));gap:12px}
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(3, minmax(200px,1fr))}}
+@media (max-width:720px){.kpis{grid-template-columns:repeat(2, minmax(180px,1fr))}}
+.kpi{background:linear-gradient(135deg,#18284a 0%, #21439f 100%);color:#fff;border-radius:14px;padding:14px;position:relative;overflow:hidden}
+.kpi.ok{background:linear-gradient(135deg,#0f766e 0%, #16a34a 100%)}
+.kpi.bad{background:linear-gradient(135deg,#7c2d12 0%, #b91c1c 100%)}
+.kpi.warn{background:linear-gradient(135deg,#92400e 0%, #f59e0b 100%)}
+.kpi i{position:absolute;right:12px;bottom:12px;opacity:.25}
+.kpi .t{font-weight:800}
+.kpi .v{font-size:1.7rem;font-weight:900;margin-top:4px}
+
+/* Charts / Tables */
+.grid{display:grid;gap:12px}
+.g-2{grid-template-columns:2fr 1.2fr}
+@media (max-width:1100px){.g-2{grid-template-columns:1fr}}
+.chart{height:320px;position:relative}
+.nodata{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:700}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left;color:#0f172a}
+.table th{background:#f8fafc;font-weight:900}
+.sticky{position:sticky;left:0;background:#f8fafc;z-index:1}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:800;font-size:.85rem}
+.badge.ok{background:#e8fff3;color:#15803d}
+.badge.bad{background:#fee2e2;color:#b91c1c}
+.badge.warn{background:#fff7ed;color:#b45309}
+.small{color:#64748b}
+.icon-btn{background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:10px;padding:6px 8px;margin:0 2px;font-size:.95rem;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
+h3{
+  color:#0f172a;
+}
+</style>
+
+<div class="page">
+  <div class="hdr">
+    <h2><i class="fa fa-shield-heart"></i> Dashboard de Preventivas</h2>
+    <span class="badge-periodo"><i class="fa fa-calendar"></i> Período: {{ dt_ini|date:"d/m/Y" }} — {{ dt_fim|date:"d/m/Y" }}</span>
+  </div>
+
+  <!-- FILTROS -->
+  <div class="filters-card card">
+    <form method="get" class="filters-grid" autocomplete="off" id="dashFilters">
+      <div class="fg col-span-4">
+        <label>Buscar (item / observação)</label>
+        <div class="with-icon">
+          <i class="fa fa-magnifying-glass"></i>
+          <input type="text" class="ctrl" name="q" value="{{ q|default:'' }}" placeholder="Ex.: Notebook, impressora…">
+        </div>
+      </div>
+
+      <div class="fg col-span-2">
+        <label>Status</label>
+        <select class="ctrl" name="status" onchange="this.form.submit()">
+          <option value="">Todos</option>
+          <option value="ok" {% if status == 'ok' %}selected{% endif %}>No prazo</option>
+          <option value="vencida" {% if status == 'vencida' %}selected{% endif %}>Vencidas</option>
+          <option value="sem_agenda" {% if status == 'sem_agenda' %}selected{% endif %}>Sem agenda</option>
+        </select>
+      </div>
+
+      <div class="fg col-span-2">
+        <label>Checklist</label>
+        <select class="ctrl" name="checklist" onchange="this.form.submit()">
+          <option value="">Todos</option>
+          {% for c in checklist_opts %}
+            <option value="{{ c.id }}" {% if checklist == c.id|stringformat:'s' %}selected{% endif %}>{{ c.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="fg col-span-2">
+        <label>Localidade (contém)</label>
+        <input class="ctrl" type="text" name="local" value="{{ local|default:'' }}">
+      </div>
+
+      <div class="fg col-span-2">
+        <label>Subtipo (contém)</label>
+        <input class="ctrl" type="text" name="subtipo" value="{{ subtipo|default:'' }}">
+      </div>
+
+      <div class="fg col-span-2">
+        <label>Início</label>
+        <input class="ctrl" type="date" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}">
+      </div>
+
+      <div class="fg col-span-2">
+        <label>Fim</label>
+        <input class="ctrl" type="date" name="fim" value="{{ dt_fim|date:'Y-m-d' }}">
+      </div>
+
+      <div class="col-span-12 filters-actions">
+        <button class="btn btn-primary" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
+        <a class="btn btn-light" href="{{ request.path }}"><i class="fa fa-rotate-left"></i> Limpar</a>
+        <a id="exportLink" class="btn btn-export"><i class="fa fa-file-excel"></i> Exportar Excel</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpis">
+    <div class="kpi"><div class="t">Total de Preventivas</div><div class="v">{{ total|default:0 }}</div><i class="fa fa-list-check"></i></div>
+    <div class="kpi ok"><div class="t">No Prazo</div><div class="v">{{ ok_count|default:0 }}</div><i class="fa fa-circle-check"></i></div>
+    <div class="kpi bad"><div class="t">Vencidas</div><div class="v">{{ vencidas_count|default:0 }}</div><i class="fa fa-triangle-exclamation"></i></div>
+    <div class="kpi warn"><div class="t">Sem Agenda</div><div class="v">{{ sem_agenda_count|default:0 }}</div><i class="fa fa-calendar-xmark"></i></div>
+    <div class="kpi ok"><div class="t">Executadas no mês</div><div class="v">{{ executadas_mes|default:0 }}</div><i class="fa fa-calendar-check"></i></div>
+  </div>
+
+  <!-- GRÁFICOS -->
+  <div class="grid" style="margin-top:12px">
+  
+    <div class="card">
+      <div class="hdr"><i class="fa fa-circle-notch" style="color:#16a34a"></i><h3>Adesão por Checklist (Top 8)</h3></div>
+      <div class="chart"><canvas id="chkRateChart"></canvas><div id="nd-chkrate" class="nodata">Sem dados</div></div>
+    </div>
+  </div>
+
+  <!-- TABELAS DE AGRUPAMENTO -->
+  <div class="grid" style="margin-top:12px">
+    <div class="card">
+      <div class="hdr"><i class="fa fa-list-ul" style="color:#0ea5e9"></i><h3>Por Checklist</h3></div>
+      <div style="overflow:auto">
+        <table class="table">
+          <thead>
+          <tr>
+            <th class="sticky">Checklist</th>
+            <th>Total</th>
+            <th>No prazo</th>
+            <th>Vencidas</th>
+            <th>Sem agenda</th>
+            <th>Próx. 30d</th>
+          </tr>
+          </thead>
+          <tbody>
+          {% for r in agg_chk %}
+            <tr>
+              <td class="sticky">{{ r.checklist_modelo__nome|default:"Sem checklist" }}</td>
+              <td>{{ r.total }}</td>
+              <td>{{ r.ok }}</td>
+              <td>{{ r.vencidas }}</td>
+              <td>{{ r.sem_agenda }}</td>
+              <td>{{ r.prox_30 }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="small">Sem dados.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hdr"><i class="fa fa-location-dot" style="color:#f59e0b"></i><h3>Por Localidade</h3></div>
+      <div style="overflow:auto">
+        <table class="table">
+          <thead>
+          <tr>
+            <th class="sticky">Localidade</th>
+            <th>Total</th>
+            <th>No prazo</th>
+            <th>Vencidas</th>
+            <th>Sem agenda</th>
+          </tr>
+          </thead>
+          <tbody>
+          {% for r in agg_loc %}
+            <tr>
+              <td class="sticky">{{ r.equipamento__localidade__local|default:"—" }}</td>
+              <td>{{ r.total }}</td>
+              <td>{{ r.ok }}</td>
+              <td>{{ r.vencidas }}</td>
+              <td>{{ r.sem_agenda }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="small">Sem dados.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hdr"><i class="fa fa-tags" style="color:#7c3aed"></i><h3>Por Subtipo</h3></div>
+      <div style="overflow:auto">
+        <table class="table">
+          <thead>
+          <tr>
+            <th class="sticky">Subtipo</th>
+            <th>Total</th>
+            <th>No prazo</th>
+            <th>Vencidas</th>
+            <th>Sem agenda</th>
+          </tr>
+          </thead>
+          <tbody>
+          {% for r in agg_sub %}
+            <tr>
+              <td class="sticky">{{ r.equipamento__subtipo__nome|default:"—" }}</td>
+              <td>{{ r.total }}</td>
+              <td>{{ r.ok }}</td>
+              <td>{{ r.vencidas }}</td>
+              <td>{{ r.sem_agenda }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="small">Sem dados.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- LISTAS OPERACIONAIS -->
+  <div class="grid g-2" style="margin-top:12px">
+    <div class="card">
+      <div class="hdr"><i class="fa fa-triangle-exclamation" style="color:#b91c1c"></i><h3>Vencidas (Top 50)</h3></div>
+      <div style="overflow:auto">
+        <table class="table">
+          <thead>
+          <tr>
+            <th>Data Próx.</th>
+            <th>Atraso (dias)</th>
+            <th>Item</th>
+            <th>Checklist</th>
+            <th>Localidade</th>
+            <th>Subtipo</th>
+            
+          </tr>
+          </thead>
+          <tbody>
+          {% for p in vencidas %}
+            <tr>
+              <td>{{ p.data_proxima|date:"d/m/Y" }}</td>
+              <td><span class="badge bad">{{ p.dias_atraso }}</span></td>
+              <td>{{ p.equipamento.nome }}</td>
+              <td>{{ p.checklist_modelo.nome|default:"—" }}</td>
+              <td>{{ p.equipamento.localidade.local|default:"—" }}</td>
+              <td>{{ p.equipamento.subtipo.nome|default:"—" }}</td>
+              <td>
+                <a class="icon-btn" href="{% url 'preventiva_detail' p.id %}"><i class="fa fa-eye"></i> Detalhar</a>
+                <a class="icon-btn" href="{% url 'preventiva_exec' p.id %}"><i class="fa fa-play"></i> Executar</a>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="small">Sem preventivas vencidas.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hdr"><i class="fa fa-calendar" style="color:#16a34a"></i><h3>Próximas (30 dias)</h3></div>
+      <div style="overflow:auto">
+        <table class="table">
+          <thead>
+          <tr>
+            <th>Data Próx.</th>
+            <th>Faltam (dias)</th>
+            <th>Item</th>
+            <th>Checklist</th>
+            <th>Localidade</th>
+            <th>Subtipo</th>
+            
+          </tr>
+          </thead>
+          <tbody>
+          {% for p in proximas %}
+            <tr>
+              <td>{{ p.data_proxima|date:"d/m/Y" }}</td>
+              <td><span class="badge ok">{{ p.dias_faltam }}</span></td>
+              <td>{{ p.equipamento.nome }}</td>
+              <td>{{ p.checklist_modelo.nome|default:"—" }}</td>
+              <td>{{ p.equipamento.localidade.local|default:"—" }}</td>
+              <td>{{ p.equipamento.subtipo.nome|default:"—" }}</td>
+              <td>
+                <a class="icon-btn" href="{% url 'preventiva_detail' p.id %}"><i class="fa fa-eye"></i> Detalhar</a>
+                <a class="icon-btn" href="{% url 'preventiva_exec' p.id %}"><i class="fa fa-play"></i> Executar</a>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="small">Sem preventivas nos próximos 30 dias.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Histórico -->
+  <div class="card" style="margin-top:12px">
+    <div class="hdr"><i class="fa fa-clock-rotate-left" style="color:#0ea5e9"></i><h3>Histórico recente (últimas 20 execuções)</h3></div>
+    <div style="overflow:auto">
+      <table class="table">
+        <thead>
+        <tr>
+          <th>Data Execução</th>
+          <th>Item</th>
+          <th>Checklist</th>
+          <th>Fotos</th>
+          <th>Observação</th>
+          <th>Ações</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for p in historico %}
+          <tr>
+            <td>{{ p.data_ultima|date:"d/m/Y" }}</td>
+            <td>{{ p.equipamento.nome }}</td>
+            <td>{{ p.checklist_modelo.nome|default:"—" }}</td>
+            <td>
+              {% if p.foto_antes %}<span class="badge warn">Antes</span>{% endif %}
+              {% if p.foto_depois %}<span class="badge ok">Depois</span>{% endif %}
+              {% if not p.foto_antes and not p.foto_depois %}<span class="small">—</span>{% endif %}
+            </td>
+            <td class="small">{{ p.observacao|default:"—" }}</td>
+            <td>
+              <a class="icon-btn" href="{% url 'preventiva_detail' p.id %}"><i class="fa fa-eye"></i> Detalhar</a>
+              <a class="icon-btn" href="{% url 'preventiva_exec' p.id %}"><i class="fa fa-rotate-right"></i> Reexecutar</a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="small">Nenhuma execução recente.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# ==== dados para JS ==== #}
+{{ serie_labels|default:"[]"|json_script:"serie-labels" }}
+{{ serie_exec|default:"[]"|json_script:"serie-exec" }}
+{{ serie_prog|default:"[]"|json_script:"serie-prog" }}
+{{ chk_labels|default:"[]"|json_script:"chk-labels" }}
+{{ chk_rates|default:"[]"|json_script:"chk-rates" }}
+
+<script>
+/* Exportar Excel mantendo filtros */
+(() => {
+  const form = document.getElementById('dashFilters');
+  const link = document.getElementById('exportLink');
+  function buildExportHref(){
+    const params = new URLSearchParams(new FormData(form));
+    params.set('export','1');
+    return `${window.location.pathname}?${params.toString()}`;
+  }
+  link.setAttribute('href', buildExportHref());
+  form.addEventListener('change', () => link.setAttribute('href', buildExportHref()));
+})();
+
+/* Helpers gráficos */
+function J(id, fb){ const el=document.getElementById(id); if(!el) return fb; try{ return JSON.parse(el.textContent) }catch(e){return fb} }
+function sum(a){return (a||[]).reduce((x,y)=>x+(+y||0),0)}
+function show(id, on){ const el=document.getElementById(id); if(el){el.style.display = on?'flex':'none'} }
+const pal = {
+  blue:'rgba(37, 99, 235, 0.9)', blue2:'rgba(37, 99, 235, 0.18)',
+  green:'rgba(22, 163, 74, 0.9)', green2:'rgba(22, 163, 74, 0.18)',
+  amber:'rgba(245, 158, 11, .9)', amber2:'rgba(245, 158, 11, .18)'
+};
+Chart.defaults.font.family = "'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial";
+Chart.defaults.plugins.legend.position = 'top';
+
+/* Série Executadas x Programadas */
+(() => {
+  const labels = J('serie-labels', []);
+  const execS  = J('serie-exec',  []);
+  const progS  = J('serie-prog',  []);
+  const has = (sum(execS)+sum(progS))>0;
+  show('nd-serie', !has);
+  const ctx = document.getElementById('serieChart');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: labels.length?labels:['—'],
+      datasets:[
+        {label:'Executadas', data: execS.length?execS:[0], tension:.35, fill:true, borderColor: pal.green, backgroundColor: pal.green2, pointRadius:3},
+        {label:'Programadas', data: progS.length?progS:[0], tension:.35, fill:true, borderColor: pal.blue, backgroundColor: pal.blue2, pointRadius:3},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{ x:{grid:{color:'rgba(148,163,184,.15)'}}, y:{beginAtZero:true, grid:{color:'rgba(148,163,184,.15)'}} }
+    }
+  });
+})();
+
+/* Adesão por Checklist */
+(() => {
+  const labels = J('chk-labels', []);
+  const data   = J('chk-rates',  []);
+  const has = sum(data)>0; show('nd-chkrate', !has);
+  const ctx = document.getElementById('chkRateChart'); if(!ctx) return;
+  new Chart(ctx, {
+    type:'bar',
+    data:{ labels: labels.length?labels:['—'], datasets:[{ label:'% no prazo', data: labels.length?data:[0], backgroundColor: pal.amber, borderColor: pal.amber, borderWidth:1.5, borderRadius:10 }]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      scales:{ y:{ beginAtZero:true, max:100, ticks:{ callback:(v)=>v+'%' } } } }
+  });
+})();
+</script>
+{% endblock %}

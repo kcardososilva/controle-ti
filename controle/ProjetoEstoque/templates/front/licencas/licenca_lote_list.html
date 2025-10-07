@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Lotes de Licenças{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+
+<style>
+:root{
+  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --card:#fff; --soft:#f8fafc;
+  --shadow:0 20px 40px rgba(2,6,23,.08);
+  --ok:#16a34a; --warn:#b45309; --bad:#b91c1c;
+}
+body{background:#f6f7fa;color:var(--ink)}
+.wrap{max-width:1200px;margin:32px auto 24px;padding:0 14px}
+
+/* header herdado do equipamento_detalhe */
+.hero{
+  border-radius:18px; background:linear-gradient(135deg, #18284a 0%, #21439f 100%);
+  color:#fff; padding:22px; box-shadow:var(--shadow); border:1px solid #0b1220;
+}
+.hero-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.hero h2{margin:0;font-size:1.9rem;display:flex;gap:10px;align-items:center}
+.actions{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
+.btn{border:none;border-radius:12px;padding:10px 16px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:10px}
+.btn.edit{background:#fff;color:#0f172a}
+.btn.primary{background:linear-gradient(90deg,#1d4ed8,#2563eb);color:#fff}
+.btn.light{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
+.btn:hover{filter:brightness(.97)}
+
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.chip{padding:6px 10px;border-radius:999px;border:1px solid #1f2a41;background:rgba(255,255,255,.12);font-weight:800;font-size:.9rem;display:inline-flex;align-items:center;gap:8px}
+.chip.light{background:#f1f5f9;border-color:#e2e8f0;color:#0f172a}
+
+/* cards e tabela iguais ao layout */
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}
+.section{padding:18px}
+.section h3{margin:0 0 12px;display:flex;align-items:center;gap:10px;font-size:1.15rem}
+
+.table-wrap{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 10px rgba(2,6,23,.06);overflow:auto}
+table{width:100%;border-collapse:collapse;min-width:820px}
+th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;color:#0f172a}
+th{background:#f5f7fa;font-weight:900}
+tbody tr:hover td{background:#f8fbff}
+
+/* pequenos detalhes */
+.search-grid{display:grid;grid-template-columns:1fr auto auto;gap:10px}
+@media (max-width:700px){.search-grid{grid-template-columns:1fr}}
+.ctrl{
+  height:46px; padding:10px 12px; border:1px solid #d5deea; border-radius:12px;
+  background:#fff; color:#111827; font-size:1rem; outline:none;
+}
+.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd55}
+.icon-btn{background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:50%;padding:7px 8px;margin:0 2px;font-size:1.05rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
+.muted{color:#64748b}
+.count-muted{color:#64748b;font-weight:800}
+</style>
+
+<div class="wrap">
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-top">
+      <h2><i class="fa fa-boxes-stacked"></i> Lotes de Licenças</h2>
+      <div class="actions">
+        <span class="chip light"><i class="fa fa-database"></i> {{ lotes|length }} lote(s)</span>
+        <a class="btn primary" href="{% url 'licenca_lote_novo' %}">
+          <i class="fa fa-plus"></i> Novo Lote
+        </a>
+      </div>
+    </div>
+
+    <!-- Filtro -->
+    <div class="card" style="margin-top:14px">
+      <div class="section" style="padding-bottom:12px">
+        <form method="get" autocomplete="off" class="search-grid">
+          <input class="ctrl" type="text" id="q" name="q" placeholder="Filtrar por licença ou texto do lote…" value="{{ q|default:'' }}">
+          <button class="btn light" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
+          <a class="btn light" href="{{ request.path }}"><i class="fa fa-rotate-left"></i> Limpar</a>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- LISTA -->
+  <div class="section" style="padding-left:0;padding-right:0">
+    <h3><i class="fa fa-list-check"></i> Lista de Lotes</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:90px">ID</th>
+            <th>Licença</th>
+            <th>Resumo</th>
+            <th style="width:120px">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for lote in lotes %}
+            <tr>
+              <td>#{{ lote.id }}</td>
+              <td>
+                {% if lote.licenca %}
+                  {{ lote.licenca.nome|default:lote.licenca }}
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+              <td>{{ lote|stringformat:"s" }}</td>
+              <td style="white-space:nowrap">
+                <a class="icon-btn" title="Editar" href="{% url 'licenca_lote_edit' pk=lote.id %}">
+                  <i class="fa fa-pen"></i>
+                </a>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="4" style="text-align:center" class="muted">Nenhum lote cadastrado.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:10px" class="count-muted">{{ lotes|length }} resultado(s)</div>
+  </div>
+</div>
+{% endblock %}

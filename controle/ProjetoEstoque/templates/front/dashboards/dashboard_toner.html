@@ -61,11 +61,10 @@
     <button class="btn btn-primary" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
     <a class="btn btn-light" href="{{ request.path }}"><i class="fa fa-rotate-left"></i> Limpar</a>
 
-    {% with qs="inicio="|add:dt_ini|date:"Y-m-d"|add:"&fim="|add:dt_fim|date:"Y-m-d" %}
-      <a class="btn btn-export" href="{{ request.path }}?{{ qs }}&export=1">
-        <i class="fa fa-file-excel"></i> Exportar Excel
-      </a>
-    {% endwith %}
+    <!-- Exporta via mesma view (?export=1) preservando o período do formulário -->
+    <a id="exportLink" class="btn btn-export">
+      <i class="fa fa-file-excel"></i> Exportar CSV (Excel)
+    </a>
   </form>
 
   <!-- GRÁFICOS -->
@@ -176,6 +175,24 @@ Chart.defaults.plugins.tooltip.callbacks = {
       scales:{ x:{ beginAtZero:true, ticks:{ callback:v=>brl(v) } } }
     }
   });
+})();
+
+/* ===== Link de exportação dinâmico (usa os valores do formulário) ===== */
+(function(){
+  const link = document.getElementById('exportLink');
+  const form = document.getElementById('filtrosForm');
+  function buildExportHref(){
+    const ini = form.elements['inicio']?.value || '';
+    const fim = form.elements['fim']?.value || '';
+    const base = window.location.pathname;
+    const params = new URLSearchParams();
+    params.set('export','1');
+    if(ini) params.set('inicio', ini);
+    if(fim) params.set('fim', fim);
+    return `${base}?${params.toString()}`;
+  }
+  link.setAttribute('href', buildExportHref());
+  form.addEventListener('change', ()=> link.setAttribute('href', buildExportHref()));
 })();
 </script>
 {% endblock %}

@@ -51,7 +51,7 @@
   </div>
 
   <!-- FILTROS -->
-  <form method="get" class="filters" autocomplete="off">
+  <form method="get" class="filters" autocomplete="off" id="ccFilters">
     <div class="fg">
       <label>Início</label>
       <input type="date" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}">
@@ -60,24 +60,23 @@
       <label>Fim</label>
       <input type="date" name="fim" value="{{ dt_fim|date:'Y-m-d' }}">
     </div>
+
+    <!-- Link de exportação dinâmico (usa os valores atuais do formulário) -->
+    <a id="exportLink" class="btn btn-link" title="Exportar Excel com os filtros atuais">
+      <i class="fa fa-file-excel"></i> Exportar Excel
+    </a>
+
     <button class="btn btn-primary" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
     <a class="btn btn-light" href="{{ request.path }}"><i class="fa fa-rotate-left"></i> Limpar</a>
   </form>
 
   <!-- GRÁFICOS -->
-  <div class="grid g-2">
+  <div class="grid">
     <div class="card">
       <h3><i class="fa fa-chart-column" style="color:#2563eb"></i> Mensal (Itens locação + Licenças)</h3>
       <div class="chart">
         <canvas id="ccMensalChart"></canvas>
         <div id="nd-mensal" class="nodata">Sem dados</div>
-      </div>
-    </div>
-    <div class="card">
-      <h3><i class="fa fa-money-bill-trend-up" style="color:#b91c1c"></i> Baixas no período</h3>
-      <div class="chart sm">
-        <canvas id="ccBaixasChart"></canvas>
-        <div id="nd-baixas" class="nodata">Sem dados</div>
       </div>
     </div>
   </div>
@@ -132,6 +131,20 @@
 {{ cc_baixas|default:"[]"|json_script:"cc-baixas" }}
 
 <script>
+/* ===== Exportar Excel mantendo os filtros atuais do formulário ===== */
+(function(){
+  const form = document.getElementById('ccFilters');
+  const link = document.getElementById('exportLink');
+  function buildHref(){
+    const params = new URLSearchParams(new FormData(form));
+    // monta a URL da view de exportação com os mesmos nomes de parâmetros:
+    return "{% url 'custo_cc_export_excel' %}?" + params.toString();
+  }
+  link.setAttribute('href', buildHref());
+  form.addEventListener('change', () => link.setAttribute('href', buildHref()));
+})();
+
+/* ===== Helpers e gráficos ===== */
 function J(id, fb){ const el=document.getElementById(id); if(!el) return fb; try{return JSON.parse(el.textContent)}catch(e){return fb} }
 function show(id, on){ const el=document.getElementById(id); if(el) el.style.display = on ? 'flex' : 'none'; }
 function brl(n){ n=+n||0; return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
@@ -178,7 +191,7 @@ if (c1){
   show('nd-mensal', !hasMensal);
 }
 
-/* ===== Gráfico Baixas ===== */
+/* ===== Gráfico Baixas (se usar) ===== */
 const c2 = document.getElementById('ccBaixasChart');
 if (c2){
   new Chart(c2, {
@@ -186,9 +199,7 @@ if (c2){
     data: { labels: lbls, datasets: [{ label:'Baixas (R$)', data: ensure(baixas), backgroundColor:'rgba(185,28,28,.85)' }] },
     options: {
       responsive:true, maintainAspectRatio:false,
-      scales: {
-        y: { beginAtZero:true, ticks:{ callback:(v)=>brl(v).replace('R$ ','') } }
-      }
+      scales: { y: { beginAtZero:true, ticks:{ callback:(v)=>brl(v).replace('R$ ','') } } }
     }
   });
   show('nd-baixas', !hasBaixas);

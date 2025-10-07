@@ -13,11 +13,17 @@ urlpatterns = [
     path("dashboard/", views.dashboard, name='dashboard'),
     path("custos/centros/", views.cc_custos_dashboard, name="cc_custos_dashboard"),
     path("custos/toner/", views.toner_cc_dashboard, name="dashboard_toner"),
+    path("preventivas/dashboard/", views.preventiva_dashboard, name="preventiva_dashboard"),
+    path("custo-cc/exportar-excel/", views.custo_cc_export_excel, name="custo_cc_export_excel"),
+    path("dashboards/licencas/", views.licencas_dashboard, name="licencas_dashboard"),
+    # opcional: alias dedicado para export (usa a mesma view)
+    path("dashboards/licencas/exportar/", views.licencas_dashboard, name="licencas_dashboard_export"),
     ### CRUD - Categoria ###
 
     ### exportações
 
     path("equipamentos/exportar/", views.equipamentos_exportar, name="equipamentos_exportar"),
+    path("custos/toner/exportar/", views.toner_cc_export_excel, name="toner_cc_export_excel"),
 
     path('categorias/', views.categorias_list, name='categorias_list'),
     path('categorias/novo/', views.categoria_create, name='categoria_create'),
@@ -67,9 +73,9 @@ urlpatterns = [
 
     ### CRUD - FUNÇÃO ###
 
-    path('funcoes/', views.funcoes_list, name='funcoes_list'),
-    path('funcoes/novo/', views.funcao_create, name='funcao_create'),
-    path('funcoes/editar/<int:pk>/', views.funcao_update, name='funcao_update'),
+    path('funcoes/', views.funcao_list, name='funcoes_list'),
+    path('funcoes/novo/', views.funcao_form, name='funcao_create'),
+    path('funcoes/editar/<int:pk>/', views.funcao_form, name='funcao_edit'),
     path('funcoes/deletar/<int:pk>/', views.funcao_delete, name='funcao_delete'),
 
     ### CRUD - ITEM ###
@@ -101,6 +107,11 @@ urlpatterns = [
     path("licencas/mov/", views.mov_licenca_list, name="mov_licenca_list"),
     path("licencas/mov/nova/", views.mov_licenca_form, name="mov_licenca_form"),
     
+    # MOV lOTE licenças
+
+    path("licencas/lotes/", views.licenca_lote_list, name="licenca_lote_list"),
+    path("licencas/lotes/novo/", views.licenca_lote_form, name="licenca_lote_novo"),
+    path("licencas/lotes/<int:pk>/", views.licenca_lote_form, name="licenca_lote_edit"),
 
     ### COMENTARIO ###
 

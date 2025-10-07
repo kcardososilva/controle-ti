@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block title %}{% if form.instance.pk %}Editar Lote de Licenças{% else %}Novo Lote de Licenças{% endif %}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+<link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#0e1421; --card:#fff; --ink:#172133; --mut:#5b6b84;
+    --line:#e6ecfa; --soft:#f9fafc; --focus:#216eff; --shadow:0 8px 40px rgba(23,33,51,.13);
+    --rad:14px; --ctrl-h:46px;
+  }
+  body{background:linear-gradient(120deg,#181f2a 0%,#253049 100%);font-family:'Roboto',Arial,sans-serif;margin:0;color:var(--ink)}
+  *{box-sizing:border-box}
+
+  .wrap{
+    max-width: 980px; margin: 34px auto; background: var(--card); border-radius: 22px;
+    box-shadow: var(--shadow); border:1px solid #eaf2ff; padding: 34px 34px 26px;
+    animation: pop .25s ease;
+  }
+  @keyframes pop{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+  .title{display:flex;align-items:center;gap:12px;margin:0 0 18px}
+  .title i{color:#1b2740}
+  .title h2{margin:0;font-size:1.9rem;color:#172133;letter-spacing:-.5px}
+
+  /* GRID UTIL */
+  .grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px}
+  .col-12{grid-column:span 12}
+  .col-6{grid-column:span 6}
+  .col-4{grid-column:span 4}
+  .col-3{grid-column:span 3}
+  @media (max-width: 900px){
+    .col-md-12{grid-column:span 12}
+    .col-md-6{grid-column:span 6}
+    .col-md-4{grid-column:span 6}
+    .col-md-3{grid-column:span 6}
+  }
+  @media (max-width: 600px){
+    .col-sm-12{grid-column:span 12}
+    .col-sm-6{grid-column:span 12}
+    .col-sm-4{grid-column:span 12}
+    .col-sm-3{grid-column:span 12}
+  }
+
+  /* FORM */
+  .field{display:flex;flex-direction:column;min-width:0}
+  .label{font-weight:700;font-size:.98rem;color:#23304a;margin:2px 0 6px;display:flex;gap:8px;align-items:center}
+  .ctrl{
+    height:var(--ctrl-h); padding:10px 12px; border:1.2px solid var(--line); border-radius:10px;
+    background:var(--soft); color:#1b2640; font-size:1rem; outline:none; box-shadow: inset 0 1px 8px rgba(23,33,51,.06);
+  }
+  textarea.ctrl{height:auto;min-height:90px;resize:vertical}
+  .ctrl:focus{border-color:#216eff; box-shadow:0 0 0 3px rgba(33,110,255,.18), inset 0 1px 8px rgba(23,33,51,.06); background:#fff}
+  .hint{font-size:.86rem;color:var(--mut);margin-top:6px}
+  .errorlist{list-style:none;margin:6px 0 0;padding:0}
+  .errorlist li{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;padding:8px 10px;border-radius:8px;font-size:.9rem}
+  .alert{
+    background:#fff6e6;border:1px dashed #ffd085;color:#7a4a00;padding:10px 12px;border-radius:10px;margin-bottom:12px;
+    display:flex;gap:8px;align-items:flex-start
+  }
+
+  /* SECTION CARD */
+  .section{
+    background:#f8fbff;border:1px solid #e6efff;border-radius:16px;padding:16px 16px 8px;margin:14px 0;
+  }
+  .section h4{margin:0 0 8px;color:#1b2740;font-size:1.05rem;display:flex;gap:8px;align-items:center}
+
+  /* BUTTON */
+  .actions{display:flex;justify-content:flex-end;margin-top:14px}
+  .btn{
+    background:linear-gradient(90deg,#243049 0%,#172133 100%); color:#fff; border:none; border-radius:10px;
+    height:46px; padding:0 20px; font-weight:800; display:inline-flex; align-items:center; gap:10px; cursor:pointer;
+    box-shadow:0 6px 20px rgba(23,33,51,.18); transition:filter .15s, transform .08s;
+  }
+  .btn:hover{filter:brightness(.96)}
+  .btn:active{transform:translateY(1px)}
+</style>
+
+<div class="wrap">
+  <div class="title">
+    <i class="fa {% if form.instance.pk %}fa-pen-to-square{% else %}fa-plus-circle{% endif %} fa-lg"></i>
+    <h2>{% if form.instance.pk %}Editar Lote de Licenças{% else %}Novo Lote de Licenças{% endif %}</h2>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="alert"><i class="fa fa-triangle-exclamation"></i>
+      <div>
+        <strong>Revise os dados:</strong>
+        <ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" id="loteForm">
+    {% csrf_token %}
+
+    <div class="section">
+      <h4><i class="fa fa-box"></i> Dados do lote</h4>
+
+      <div class="grid">
+        {# Renderização genérica: não alteramos nomes/campos #}
+        {% for field in form.visible_fields %}
+          {# Textarea ocupa a linha inteira como no seu padrão #}
+          <div class="field {% if field.field.widget.input_type == 'textarea' %}col-12 col-md-12 col-sm-12{% else %}col-4 col-md-6 col-sm-12{% endif %}">
+            <label class="label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field.errors }}
+            {{ field }}
+            {% if field.help_text %}<div class="hint">{{ field.help_text|safe }}</div>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn" type="submit">
+        <i class="fa fa-save"></i> {% if form.instance.pk %}Atualizar{% else %}Salvar{% endif %}
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+  (function(){
+    // aplica a classe .ctrl a todos os widgets (igual ao cadastrar_equipamento)
+    document.querySelectorAll('.wrap select, .wrap input, .wrap textarea')
+      .forEach(el => el.classList.add('ctrl'));
+  })();
+</script>
+{% endblock %}

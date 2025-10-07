@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 import datetime
 from django.core.validators import MinValueValidator
 from django.db.models import Q, Count, F, ExpressionWrapper, IntegerField
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from django.utils import timezone
 from datetime import timedelta, date
 from django.utils.translation import gettext_lazy as _
@@ -250,11 +250,12 @@ class MovimentacaoItem(AuditModel):
 
     # Mantemos o campo mas não usamos mais no retorno (regra: voltar como BACKUP)
     status_retorno = models.CharField(max_length=15, choices=StatusItemChoices.choices, blank=True, null=True)
-    # ✅ NOVO: número do pedido — obrigatório somente para ENTRADA
+    # ✅ número do pedido — obrigatório apenas para ENTRADA
     numero_pedido = models.CharField(
         max_length=100, blank=True, null=True,
         help_text="Obrigatório apenas para movimentações do tipo Entrada."
-    )   
+    )
+
     class Meta:
         verbose_name = "Movimentação de Item"
         verbose_name_plural = "Movimentações de Itens"
@@ -265,42 +266,149 @@ class MovimentacaoItem(AuditModel):
 
     @transaction.atomic
     def save(self, *args, **kwargs):
-        """ Regras solicitadas:
-        - Transferência: muda localidade/centro de custo do item (não mexe em quantidade)
-        - Baixa (saída): debita quantidade
-        - Entrada: adiciona quantidade
-        - Envio p/ manutenção: status=manutenção e debita 1
-        - Retorno manutenção: status=backup e soma 1
-        - Remover usuário de envio/retorno (tratado no form/view)
-        """
         is_new = self.pk is None
-        super().save(*args, **kwargs)  # salva primeiro pra ter PK para anexos etc.
-
-        if not is_new:
-            return
+        super().save(*args, **kwargs)  # precisamos do pk/created_at
 
         item = self.item
 
+        if not is_new:
+            # nada a fazer em updates
+            return
+
+        # ===== REGRAS DE ESTOQUE (como já havia no seu código) =====
+        # ===== TRANSFERÊNCIAS DE ESTOQUE (ajuste de status backup/ativo) =====
         if self.tipo_movimentacao == "transferencia":
+            update_fields = ["updated_at"]
+            mudou_algo = False
+
+            # Atualiza localidade/CC como já fazia
             if self.localidade_destino:
                 item.localidade = self.localidade_destino
+                update_fields.append("localidade")
+                mudou_algo = True
             if self.centro_custo_destino:
                 item.centro_custo = self.centro_custo_destino
-            item.save(update_fields=["localidade", "centro_custo", "updated_at"])
+                update_fields.append("centro_custo")
+                mudou_algo = True
+
+            # === Regra solicitada ===
+            # ENTREGAR ao usuário -> se está BACKUP vira ATIVO
+            if self.tipo_transferencia == TipoTransferenciaChoices.ENTREGA and self.usuario_id:
+                if item.status == StatusItemChoices.BACKUP:
+                    item.status = StatusItemChoices.ATIVO
+                    update_fields.append("status")
+                    mudou_algo = True
+
+            # DEVOLVER do usuário -> se está ATIVO volta para BACKUP
+            elif self.tipo_transferencia == TipoTransferenciaChoices.DEVOLUCAO:
+                if item.status == StatusItemChoices.ATIVO:
+                    item.status = StatusItemChoices.BACKUP
+                    update_fields.append("status")
+                    mudou_algo = True
+
+            if mudou_algo:
+                # salva somente o que de fato mudou
+                item.save(update_fields=list(dict.fromkeys(update_fields)))
 
         elif self.tipo_movimentacao == "baixa":
-            # saída = debita
             nova_qtd = max(0, (item.quantidade or 0) - (self.quantidade or 0))
             item.quantidade = nova_qtd
             item.save(update_fields=["quantidade", "updated_at"])
 
-        # models.py  (substitua só o bloco de ENTRADA)
-        elif self.tipo_movimentacao == "entrada":
-            # entrada = soma
-            item.quantidade = (item.quantidade or 0) + (self.quantidade or 0)
+            # ===== NOVO: snapshot de custo (FIFO sobre ENTRADAS) =====
+            try:
+                if not self.custo or self.custo <= 0:
+                    cutoff = self.created_at  # baixa “congela” custo até aqui
 
-            # ✅ Atualiza também CC/localidade do item com o destino informado
+                    # 1) Carrega ENTRADAS (lotes) do item até o cutoff, em ordem
+                    entradas = (
+                        MovimentacaoItem.objects
+                        .filter(item_id=item.id,
+                                tipo_movimentacao="entrada",
+                                created_at__lte=cutoff)
+                        .order_by("created_at", "id")
+                        .values("quantidade", "custo")
+                    )
+
+                    lotes = []
+                    for e in entradas:
+                        q = int(e["quantidade"] or 0)
+                        if q <= 0:
+                            continue
+                        # preço unitário do lote: custo_total / qtd_lote
+                        unit = Decimal("0.00")
+                        if e["custo"] is not None and q > 0:
+                            unit = (Decimal(e["custo"]) / Decimal(q)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                        lotes.append([q, unit])  # [quantidade_disponível, preço_unitário]
+
+                    # 2) Debita as BAIXAS anteriores desse item (consome dos lotes em FIFO)
+                    prev_baixas = (
+                        MovimentacaoItem.objects
+                        .filter(item_id=item.id,
+                                tipo_movimentacao="baixa",
+                                created_at__lt=cutoff)
+                        .order_by("created_at", "id")
+                        .values("quantidade")
+                    )
+
+                    # cópia mutável para consumo
+                    saldo = [[q, u] for (q, u) in lotes]
+                    for b in prev_baixas:
+                        consume = int(b["quantidade"] or 0)
+                        idx = 0
+                        while consume > 0 and idx < len(saldo):
+                            disp, unit = saldo[idx]
+                            if disp <= 0:
+                                idx += 1
+                                continue
+                            take = min(disp, consume)
+                            saldo[idx][0] = disp - take
+                            consume -= take
+                            if saldo[idx][0] == 0:
+                                idx += 1
+                        if consume > 0:
+                            # débito acima do registrado → ignora (sem custo)
+                            pass
+
+                    # 3) Calcula custo da BAIXA atual, consumindo do saldo remanescente
+                    qty = int(self.quantidade or 0)
+                    total_cost = Decimal("0.00")
+                    idx = 0
+                    while qty > 0 and idx < len(saldo):
+                        disp, unit = saldo[idx]
+                        if disp <= 0:
+                            idx += 1
+                            continue
+                        take = min(disp, qty)
+                        total_cost += (Decimal(take) * unit)
+                        saldo[idx][0] = disp - take
+                        qty -= take
+                        if saldo[idx][0] == 0:
+                            idx += 1
+
+                    # 4) Se ainda faltou quantidade, usa último preço unitário conhecido ou item.valor
+                    if qty > 0:
+                        last_unit = Decimal("0.00")
+                        for qrem, unit in reversed(lotes):
+                            if unit > 0:
+                                last_unit = unit
+                                break
+                        if last_unit == Decimal("0.00"):
+                            last_unit = Decimal(item.valor or 0)
+                        total_cost += (Decimal(qty) * last_unit)
+
+                    # grava o snapshot de custo na própria baixa (sem recursão)
+                    MovimentacaoItem.objects.filter(pk=self.pk).update(custo=total_cost)
+                    self.custo = total_cost
+            except Exception:
+                # Em caso de erro, não quebrar o fluxo da baixa
+                pass
+
+        elif self.tipo_movimentacao == "entrada":
+            # soma quantidade
+            item.quantidade = (item.quantidade or 0) + (self.quantidade or 0)
             fields = ["quantidade", "updated_at"]
+
             if self.localidade_destino:
                 item.localidade = self.localidade_destino
                 fields.append("localidade")
@@ -308,19 +416,30 @@ class MovimentacaoItem(AuditModel):
                 item.centro_custo = self.centro_custo_destino
                 fields.append("centro_custo")
 
+            # mantém seu comportamento de atualizar o valor unitário do item,
+            # mas isso NÃO afeta baixas já gravadas (que agora ficam "congeladas")
+            try:
+                qtd = Decimal(self.quantidade or 1)
+                custo_total = Decimal(self.custo or 0)
+                if custo_total > 0 and qtd > 0:
+                    valor_unit = (custo_total / qtd).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    item.valor = valor_unit
+                    fields.append("valor")
+            except Exception:
+                pass
+
             item.save(update_fields=fields)
 
         elif self.tipo_movimentacao == "envio_manutencao":
-            # status=manutenção e debita 1 unidade
             item.status = StatusItemChoices.MANUTENCAO
             item.quantidade = max(0, (item.quantidade or 0) - 1)
             item.save(update_fields=["status", "quantidade", "updated_at"])
 
         elif self.tipo_movimentacao in ("retorno_manutencao", "retorno"):
-            # retorna como BACKUP e soma 1
             item.status = StatusItemChoices.BACKUP
             item.quantidade = (item.quantidade or 0) + 1
             item.save(update_fields=["status", "quantidade", "updated_at"])
+
 
 
 # ----------------- CHECKLIST -----------------
@@ -357,6 +476,41 @@ class CheckListPergunta(AuditModel):
     def __str__(self):
         return f"[{self.checklist_modelo}] {self.texto_pergunta}"
 
+# ----------------- CHECKLIST -----------------
+class CheckListModelo(AuditModel):
+    nome = models.CharField(max_length=120)
+    ativo = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.SIM)
+    subtipo = models.ForeignKey(Subtipo, on_delete=models.SET_NULL, null=True, blank=True,
+                                help_text="Opcional: restringe este checklist a um subtipo de item.")
+    intervalo_dias = models.PositiveIntegerField(default=0, help_text="Periodicidade padrão (dias). 0 = sem programação.")
+
+    class Meta:
+        ordering = ["nome"]
+        verbose_name = "Modelo de Checklist"
+        verbose_name_plural = "Modelos de Checklist"
+
+    def __str__(self):
+        return self.nome
+
+
+class CheckListPergunta(AuditModel):
+    checklist_modelo = models.ForeignKey(CheckListModelo, on_delete=models.CASCADE, related_name="perguntas")
+    texto_pergunta = models.CharField(max_length=255)
+    tipo_resposta = models.CharField(max_length=12, choices=TipoRespostaChoices.choices, default=TipoRespostaChoices.TEXTO)
+    obrigatorio = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.SIM)
+    # Para tipo ESCOLHA: opções separadas por vírgula
+    opcoes = models.CharField(max_length=400, blank=True, null=True, help_text="Para escolha única: separe opções por vírgula.")
+    ordem = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["ordem", "id"]
+        verbose_name = "Pergunta de Checklist"
+        verbose_name_plural = "Perguntas de Checklist"
+
+    def __str__(self):
+        return f"[{self.checklist_modelo}] {self.texto_pergunta}"
+
+
 # ----------------- PREVENTIVA -----------------
 class Preventiva(AuditModel):
     equipamento = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="preventivas")
@@ -367,10 +521,10 @@ class Preventiva(AuditModel):
     dentro_do_prazo = models.BooleanField(default=True)
 
     observacao = models.TextField(blank=True, null=True)
-    # NEW: evidências fotográficas da última execução
+    # Mantemos como "última evidência" para compatibilidade
     foto_antes  = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
     foto_depois = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
-    
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Preventiva"
@@ -381,8 +535,7 @@ class Preventiva(AuditModel):
 
     def _periodo_referencia(self) -> int:
         """
-        Usa a periodicidade do modelo de checklist; se zero/ausente,
-        tenta usar 'data_limite_preventiva' do Item (inteiro – dias).
+        Usa a periodicidade do modelo; se zero/ausente, tenta usar 'data_limite_preventiva' do Item (dias).
         """
         if self.checklist_modelo and self.checklist_modelo.intervalo_dias:
             return int(self.checklist_modelo.intervalo_dias)
@@ -402,20 +555,26 @@ class Preventiva(AuditModel):
             self.dentro_do_prazo = True
 
     @transaction.atomic
-    def registrar_execucao(self, respostas_dict: dict, usuario=None):
+    def registrar_execucao(self, respostas_dict: dict, usuario=None, observacao=None, foto_antes=None, foto_depois=None):
         """
-        Registra a execução preenchendo PreventivaResposta.
+        Registra a execução sem sobrescrever históricos anteriores.
         respostas_dict: { pergunta_id: valor_string }
         """
-        # atualiza data_ultima
         hoje = timezone.now().date()
-        self.data_ultima = hoje
-        self.recomputar_prazo(hoje)
-        self.save()
 
-        # cria respostas
-        perguntas = (self.checklist_modelo.perguntas.all()
-                     if self.checklist_modelo else [])
+        # 1) cria a execução (histórico)
+        execucao = PreventivaExecucao.objects.create(
+            preventiva=self,
+            data_execucao=hoje,
+            observacao=(observacao or ""),
+            foto_antes=foto_antes,
+            foto_depois=foto_depois,
+            criado_por=usuario,
+            atualizado_por=usuario,
+        )
+
+        # 2) cria respostas (ligadas à preventiva e à execução)
+        perguntas = (self.checklist_modelo.perguntas.all() if self.checklist_modelo else [])
         bulk = []
         for p in perguntas:
             valor = (respostas_dict.get(str(p.id)) or "").strip()
@@ -423,6 +582,7 @@ class Preventiva(AuditModel):
                 raise ValueError(f"Pergunta obrigatória sem resposta: {p.texto_pergunta}")
             bulk.append(PreventivaResposta(
                 preventiva=self,
+                execucao=execucao,
                 pergunta=p,
                 resposta=valor,
                 criado_por=usuario,
@@ -431,8 +591,44 @@ class Preventiva(AuditModel):
         if bulk:
             PreventivaResposta.objects.bulk_create(bulk)
 
+        # 3) atualiza os campos de "última execução" para agenda/relatórios
+        self.data_ultima = hoje
+        if observacao:
+            self.observacao = observacao
+        if foto_antes:
+            self.foto_antes = foto_antes
+        if foto_depois:
+            self.foto_depois = foto_depois
+
+        self.recomputar_prazo(hoje)
+        self.save(update_fields=["data_ultima", "data_proxima", "dentro_do_prazo", "observacao", "foto_antes", "foto_depois", "updated_at"])
+
+
+# --- NOVO: execuções de preventiva, com fotos por execução ---
+class PreventivaExecucao(AuditModel):
+    """
+    Histórico de execuções de uma Preventiva.
+    Mantém as evidências e a data da execução, evitando sobrescrita.
+    """
+    preventiva = models.ForeignKey(Preventiva, on_delete=models.CASCADE, related_name="execucoes")
+    data_execucao = models.DateField(default=timezone.now)
+    observacao = models.TextField(blank=True, null=True)
+    foto_antes  = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
+    foto_depois = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
+
+    class Meta:
+        ordering = ["-data_execucao", "-created_at"]
+        verbose_name = "Execução de Preventiva"
+        verbose_name_plural = "Execuções de Preventiva"
+
+    def __str__(self):
+        return f"Execução {self.data_execucao:%d/%m/%Y} - {self.preventiva.equipamento.nome}"
+
+
+# ACRESCENTA o vínculo da resposta à execução
 class PreventivaResposta(AuditModel):
     preventiva = models.ForeignKey(Preventiva, on_delete=models.CASCADE, related_name="respostas")
+    execucao = models.ForeignKey(PreventivaExecucao, on_delete=models.CASCADE, related_name="respostas")
     pergunta = models.ForeignKey(CheckListPergunta, on_delete=models.CASCADE)
     resposta = models.TextField(blank=True, null=True)
 
@@ -499,12 +695,24 @@ class Licenca(AuditModel):
         cm = self.custo_mensal()
         return (cm * Decimal(12)).quantize(Decimal("0.01")) if cm is not None else None
 
+
+def _capacidade_licenca(lic):
+    for campo in ("assentos", "quantidade", "qtd_total", "qtd", "total_assentos"):
+        if hasattr(lic, campo):
+            val = getattr(lic, campo)
+            if val is not None:
+                try:
+                    return max(0, int(val))
+                except Exception:
+                    pass
+    return 1
+
 class MovimentacaoLicenca(AuditModel):
     tipo = models.CharField(max_length=16, choices=TipoMovLicencaChoices.choices)
     licenca = models.ForeignKey(Licenca, on_delete=models.CASCADE, related_name="movimentacoes")
     usuario = models.ForeignKey("Usuario", on_delete=models.SET_NULL, null=True, blank=True, related_name="mov_licencas")
     centro_custo_destino = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True, related_name="mov_licencas_destino")
-
+    lote = models.ForeignKey("LicencaLote", on_delete=models.SET_NULL, null=True, blank=True, related_name="movimentacoes")
     observacao = models.TextField(blank=True, null=True)
 
     class Meta:
@@ -517,18 +725,177 @@ class MovimentacaoLicenca(AuditModel):
 
     @transaction.atomic
     def save(self, *args, **kwargs):
-        is_new = self.pk is None
-        super().save(*args, **kwargs)
-        if not is_new:
-            return
-
+        # --- Lock da licença ---
         lic = self.licenca
-        if self.tipo == TipoMovLicencaChoices.ATRIBUICAO:
-            # estoque suficiente?
-            if (lic.quantidade or 0) <= 0:
-                raise ValueError("Licença sem quantidade disponível para atribuição.")
-            lic.quantidade = (lic.quantidade or 0) - 1
-            lic.save(update_fields=["quantidade", "updated_at"])
-        elif self.tipo == TipoMovLicencaChoices.REMOCAO:
-            lic.quantidade = (lic.quantidade or 0) + 1
-            lic.save(update_fields=["quantidade", "updated_at"])
+        if self.licenca_id:
+            lic = type(self.licenca).objects.select_for_update().get(pk=self.licenca_id)
+
+        # === Último movimento por usuário (para saber quem está ativo) ===
+        qs_last = (type(self).objects
+                   .filter(licenca_id=lic.id, usuario__isnull=False)
+                   .exclude(pk=self.pk)
+                   .order_by("usuario_id", "created_at", "id"))
+        last_by_user = {}
+        for mv in qs_last:
+            last_by_user[mv.usuario_id] = mv  # guarda o ÚLTIMO por usuário
+
+        # Mapa de ativos por lote (apenas quando último = ATRIBUICAO)
+        ativos_por_lote = {}
+        for lm in last_by_user.values():
+            if lm.tipo == TipoMovLicencaChoices.ATRIBUICAO and lm.lote_id:
+                ativos_por_lote[lm.lote_id] = ativos_por_lote.get(lm.lote_id, 0) + 1
+
+        # Estado do usuário desta movimentação
+        ultimo_do_usuario = last_by_user.get(self.usuario_id) if self.usuario_id else None
+        ja_ativo_mesmo_usuario = bool(
+            ultimo_do_usuario and ultimo_do_usuario.tipo == TipoMovLicencaChoices.ATRIBUICAO
+        )
+
+        # --- ATRIBUIÇÃO: escolher lote automaticamente se não veio ---
+        lote_locked = None
+        if getattr(self, "tipo", None) == TipoMovLicencaChoices.ATRIBUICAO and not getattr(self, "lote_id", None):
+            lotes = list(lic.lotes.select_for_update().order_by("created_at", "id"))
+            escolhido = None
+
+            # 1) Preferir lotes com quantidade_disponivel > 0
+            for lt in lotes:
+                disp = getattr(lt, "quantidade_disponivel", None)
+                if disp is not None and int(disp) > 0:
+                    escolhido = lt
+                    break
+
+            # 2) Se não achou, calcular capacidade efetiva e vagas reais
+            if escolhido is None:
+                for lt in lotes:
+                    cap_total = int(getattr(lt, "quantidade_total", 0) or 0)
+                    disp_campo = getattr(lt, "quantidade_disponivel", None)
+                    # capacidade efetiva: total>0 senão usa disponivel, senão 1
+                    cap_efetiva = cap_total if cap_total > 0 else (int(disp_campo) if disp_campo is not None else 1)
+                    ativos_no_lt = int(ativos_por_lote.get(lt.id, 0))
+                    disponivel_efetivo = (int(disp_campo) if disp_campo is not None else (cap_efetiva - ativos_no_lt))
+                    if disponivel_efetivo > 0:
+                        escolhido = lt
+                        break
+
+            if escolhido:
+                self.lote = escolhido
+                lote_locked = type(escolhido).objects.select_for_update().get(pk=escolhido.pk)
+
+        # Se veio lote informado, aplicar lock
+        if getattr(self, "lote_id", None) and lote_locked is None:
+            lote_locked = type(self.lote).objects.select_for_update().get(pk=self.lote_id)
+
+        # === VALIDAÇÃO DE CAPACIDADE ===
+        if getattr(self, "tipo", None) == TipoMovLicencaChoices.ATRIBUICAO:
+            if self.lote_id:
+                lot = lote_locked or self.lote
+                cap_total = int(getattr(lot, "quantidade_total", 0) or 0)
+                disp_campo = getattr(lot, "quantidade_disponivel", None)
+                cap_efetiva = cap_total if cap_total > 0 else (int(disp_campo) if disp_campo is not None else 1)
+
+                ativos_no_lote = int(ativos_por_lote.get(self.lote_id, 0))
+                disponivel_efetivo = (int(disp_campo) if disp_campo is not None else (cap_efetiva - ativos_no_lote))
+
+                if ja_ativo_mesmo_usuario:
+                    # Já está ativo: precisa ser no MESMO lote (senão requer devolução prévia)
+                    if not (ultimo_do_usuario and ultimo_do_usuario.lote_id == self.lote_id):
+                        raise ValueError("Usuário já possui um assento ativo nesta licença. Faça a devolução antes de mudar de lote.")
+                else:
+                    if disponivel_efetivo < 0:
+                        raise ValueError("Licença sem quantidade disponível para atribuição.")
+            else:
+                # Sem lote: regra global da licença
+                cap_global = _capacidade_licenca(lic) or 0
+                if cap_global <= 0:
+                    cap_global = 1
+                ativos_outros = 0
+                for uid, lm in last_by_user.items():
+                    if uid == self.usuario_id:
+                        continue
+                    if lm.tipo == TipoMovLicencaChoices.ATRIBUICAO:
+                        ativos_outros += 1
+                disponivel = cap_global - ativos_outros
+                if not ja_ativo_mesmo_usuario and disponivel < 1:
+                    raise ValueError("Licença sem quantidade disponível para atribuição.")
+
+        is_create = self.pk is None
+        super().save(*args, **kwargs)
+
+        # === AJUSTE DO ESTOQUE DO LOTE (somente ao criar) ===
+        if is_create and getattr(self, "lote_id", None):
+            lot = lote_locked or self.lote
+            cap_total = int(getattr(lot, "quantidade_total", 0) or 0)
+            disp_campo = getattr(lot, "quantidade_disponivel", None)
+
+            # reconstruir disponibilidade real quando necessário
+            cap_efetiva = cap_total if cap_total > 0 else (int(disp_campo) if disp_campo is not None else 1)
+
+            if self.tipo == TipoMovLicencaChoices.ATRIBUICAO:
+                consumir = not (ja_ativo_mesmo_usuario and ultimo_do_usuario and ultimo_do_usuario.lote_id == self.lote_id)
+                if consumir:
+                    if disp_campo is None:
+                        # Recalcula: cap − (ativos_no_lote + 1)
+                        ativos_no_lote = int(ativos_por_lote.get(self.lote_id, 0))
+                        lot.quantidade_disponivel = max(0, cap_efetiva - (ativos_no_lote + 1))
+                    else:
+                        lot.quantidade_disponivel = max(0, int(disp_campo) - 1)
+                    lot.save(update_fields=["quantidade_disponivel", "updated_at"])
+
+            elif self.tipo == TipoMovLicencaChoices.DEVOLUCAO:
+                # Aumenta a disponibilidade do lote do qual o usuário estava ativo
+                if ultimo_do_usuario and ultimo_do_usuario.tipo == TipoMovLicencaChoices.ATRIBUICAO and ultimo_do_usuario.lote_id:
+                    lot_ant = type(ultimo_do_usuario.lote).objects.select_for_update().get(pk=ultimo_do_usuario.lote_id)
+                    cap_ant = int(getattr(lot_ant, "quantidade_total", 0) or 0)
+                    disp_ant = getattr(lot_ant, "quantidade_disponivel", None)
+                    cap_ant_ef = cap_ant if cap_ant >= 0 else (int(disp_ant) if disp_ant is not None else 1)
+                    atual = int(disp_ant or 0)
+                    lot_ant.quantidade_disponivel = min(cap_ant_ef, atual + 1)
+                    lot_ant.save(update_fields=["quantidade_disponivel", "updated_at"])
+    @property
+    def custo_ciclo_usado(self):
+        """Custo do ciclo aplicado nessa movimentação (preferindo o custo do lote)."""
+        try:
+            if getattr(self, "lote_id", None) and self.lote and self.lote.custo_ciclo is not None:
+                return self.lote.custo_ciclo
+        except Exception:
+            pass
+        return self.licenca.custo
+
+    @property
+    def custo_mensal_usado(self):
+        """Custo mensal normalizado a partir do custo_ciclo_usado e periodicidade da licença."""
+        valor = self.custo_ciclo_usado
+        if valor is None:
+            return None
+        meses = self.licenca._meses_do_ciclo()
+        if not meses:
+            return None
+        return (Decimal(valor) / Decimal(meses)).quantize(Decimal("0.01"))
+    
+# --- ADICIONE ABAIXO DO MODELO Licenca ---
+class LicencaLote(AuditModel):
+    licenca = models.ForeignKey("Licenca", on_delete=models.CASCADE, related_name="lotes")
+    quantidade_total = models.PositiveIntegerField()
+    quantidade_disponivel = models.PositiveIntegerField()
+    custo_ciclo = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    data_compra = models.DateField(null=True, blank=True)
+    fornecedor = models.ForeignKey("Fornecedor", on_delete=models.SET_NULL, null=True, blank=True)
+    centro_custo = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True)
+    observacao = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Lote de Licença"
+        verbose_name_plural = "Lotes de Licenças"
+
+    def __str__(self):
+        return f"Lote {self.licenca.nome} (tot={self.quantidade_total}, disp={self.quantidade_disponivel})"
+
+    def custo_mensal(self):
+        if not self.custo_ciclo:
+            return None
+        meses = self.licenca._meses_do_ciclo()
+        if not meses:
+            return None
+        return (self.custo_ciclo / Decimal(meses)).quantize(Decimal("0.01"))
+

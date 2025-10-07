@@ -16,7 +16,7 @@ body{background:var(--bg);}
 
 .page{max-width:1200px;margin:18px auto;padding:0 14px}
 
-/* ======= SHIMMER (skeleton) ======= */
+/* SHIMMER */
 .shimmer{position:relative; overflow:hidden; border-radius:16px}
 .shimmer::before{
   content:""; position:absolute; inset:0;
@@ -28,7 +28,7 @@ body{background:var(--bg);}
 .loading .show-when-loading{display:block}
 .show-when-loading{display:none}
 
-/* ======= CARDS / KPIs ======= */
+/* CARDS / KPIs */
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
 .kpis{display:grid;grid-template-columns:repeat(5,minmax(160px,1fr));gap:14px}
 @media (max-width:1100px){.kpis{grid-template-columns:repeat(3,minmax(180px,1fr))}}
@@ -46,14 +46,14 @@ body{background:var(--bg);}
 .kpi .desc{opacity:.9;font-size:.92rem}
 .kpi i{position:absolute;right:12px;bottom:10px;font-size:1.25rem;opacity:.25}
 
-/* ======= GRIDS ======= */
+/* GRIDS */
 .grid{display:grid;gap:14px;margin-top:14px}
 .g-2{grid-template-columns:2fr 1.35fr}
 .g-3{grid-template-columns:repeat(3,1fr)}
 @media (max-width:1100px){.g-2{grid-template-columns:1fr}}
 @media (max-width:900px){.g-3{grid-template-columns:1fr}}
 
-/* ======= HEADERS / BADGES ======= */
+/* HEADERS / BADGES */
 .hdr{display:flex;align-items:center;gap:10px;margin:0 0 10px}
 .hdr h3{margin:0;color:var(--ink)}
 .badge{display:inline-block;padding:4px 12px;border-radius:999px;font-weight:800;font-size:.86rem}
@@ -61,7 +61,7 @@ body{background:var(--bg);}
 .badge.bad{background:#fee2e2;color:#9f1239}
 .badge.info{background:#eef2ff;color:#1e3a8a}
 
-/* ======= CHART WRAPPER ======= */
+/* CHART WRAPPER */
 .chart-wrap{height:340px; position:relative}
 .chart-wrap.sm{height:280px}
 .nodata{
@@ -69,12 +69,11 @@ body{background:var(--bg);}
   color:#64748b; font-weight:700; pointer-events:none;
 }
 
-/* ======= TABLE ======= */
+/* TABLE */
 .table{width:100%;border-collapse:collapse}
 .table th,.table td{padding:9px 12px;border-bottom:1px solid #eef2f7;text-align:left; color: #0b1220;}
 </style>
 
-<!-- Marca o HTML como "loading" para exibir shimmer -->
 <script>document.documentElement.classList.add('loading');</script>
 
 <div class="page">
@@ -119,7 +118,7 @@ body{background:var(--bg);}
   </div>
 
   <!-- Linha 1 -->
-  <div class="grid g-2">
+  <div class="grid">
     <div class="card">
       <div class="shimmer show-when-loading" style="height:340px;border-radius:12px"></div>
       <div class="hide-on-loading">
@@ -128,18 +127,7 @@ body{background:var(--bg);}
       </div>
     </div>
 
-    <div class="card">
-      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
-      <div class="hide-on-loading">
-        <div class="hdr"><i class="fa fa-shield-heart" style="color:#16a34a"></i><h3>Status das Preventivas</h3></div>
-        <div class="chart-wrap sm"><canvas id="prevPie"></canvas><div class="nodata" id="nd-prev">Sem dados</div></div>
-        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
-          <span class="badge ok">OK: {{ prev_ok|default:0 }}</span>
-          <span class="badge bad">Vencida: {{ prev_vencida|default:0 }}</span>
-          <span class="badge info">Total: {{ prev_total|default:0 }}</span>
-        </div>
-      </div>
-    </div>
+
   </div>
 
   <!-- Linha 2 -->
@@ -243,7 +231,7 @@ body{background:var(--bg);}
   </div>
 </div>
 
-{# ==== DADOS PARA JS (se algum não vier, o JS lida sem quebrar) ==== #}
+{# ==== DADOS PARA JS ==== #}
 {{ mov_labels|default:"[]"|json_script:"mov-labels" }}
 {{ mov_entrada|default:"[]"|json_script:"mov-entrada" }}
 {{ mov_baixa|default:"[]"|json_script:"mov-baixa" }}
@@ -269,7 +257,7 @@ body{background:var(--bg);}
 {{ prev_ok|default:"0"|json_script:"prev-ok" }}
 {{ prev_vencida|default:"0"|json_script:"prev-venc" }}
 
-{# ==== NOVOS DADOS DE CUSTO ==== #}
+{# NOVOS DADOS DE CUSTO #}
 {{ top_users_labels|default:"[]"|json_script:"ucost-labels" }}
 {{ top_users_items|default:"[]"|json_script:"ucost-items" }}
 {{ top_users_lics|default:"[]"|json_script:"ucost-lics" }}
@@ -282,14 +270,11 @@ body{background:var(--bg);}
 {{ lic_cost_data|default:"[]"|json_script:"licost-data" }}
 
 <script>
-/* ===== Helpers robustos ===== */
 function J(id, fallback=[]) {
   const el = document.getElementById(id);
   if (!el) return structuredClone(fallback);
-  try {
-    const v = JSON.parse(el.textContent);
-    return (v ?? fallback);
-  } catch(e) { return structuredClone(fallback); }
+  try { const v = JSON.parse(el.textContent); return (v ?? fallback); }
+  catch(e) { return structuredClone(fallback); }
 }
 function lastMonths(n=12){
   const m = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -316,15 +301,14 @@ function ensureSeries(labels, seriesArr){
 }
 function showNoData(id, show){const el=document.getElementById(id); if(el){el.style.display = show? 'flex':'none';}}
 
-/* ===== Paleta ===== */
 const pal = {
-  blue:   'rgba(37, 99, 235, 0.9)',  blue2:  'rgba(37, 99, 235, 0.18)',
-  green:  'rgba(22, 163, 74, 0.9)',  green2: 'rgba(22, 163, 74, 0.18)',
-  amber:  'rgba(180, 83, 9, 0.9)',   amber2: 'rgba(180, 83, 9, 0.18)',
-  purple: 'rgba(124, 58, 237, 0.9)', purple2:'rgba(124, 58, 237, 0.18)',
-  cyan:   'rgba(8, 145, 178, 0.9)',  cyan2:  'rgba(8, 145, 178, 0.18)',
-  red:    'rgba(185, 28, 28, 0.9)',  red2:   'rgba(185, 28, 28, 0.18)',
-  gray:   'rgba(100, 116, 139, 0.9)',gray2:  'rgba(100, 116, 139, 0.18)',
+  blue:'rgba(37, 99, 235, 0.9)', blue2:'rgba(37, 99, 235, 0.18)',
+  green:'rgba(22, 163, 74, 0.9)', green2:'rgba(22, 163, 74, 0.18)',
+  amber:'rgba(180, 83, 9, 0.9)', amber2:'rgba(180, 83, 9, 0.18)',
+  purple:'rgba(124, 58, 237, 0.9)', purple2:'rgba(124, 58, 237, 0.18)',
+  cyan:'rgba(8, 145, 178, 0.9)', cyan2:'rgba(8, 145, 178, 0.18)',
+  red:'rgba(185, 28, 28, 0.9)', red2:'rgba(185, 28, 28, 0.18)',
+  gray:'rgba(100, 116, 139, 0.9)', gray2:'rgba(100, 116, 139, 0.18)',
 };
 Chart.defaults.font.family = "'Roboto', Arial, sans-serif";
 Chart.defaults.plugins.legend.position = 'top';
@@ -332,7 +316,6 @@ Chart.defaults.plugins.tooltip.backgroundColor = '#0b1220';
 Chart.defaults.plugins.tooltip.titleColor = '#fff';
 Chart.defaults.plugins.tooltip.bodyColor = '#e2e8f0';
 
-/* ===== Construtores ===== */
 function lineRounded(ctx, labels, datasets) {
   return new Chart(ctx, {
     type: 'line',
@@ -388,7 +371,7 @@ function barStacked(ctx, labels, dsA, dsB, labelA, labelB, colorA, colorB, horiz
   });
 }
 
-/* ===== Criação dos gráficos com fallbacks ===== */
+/* ===== Criação dos gráficos ===== */
 document.addEventListener('DOMContentLoaded', () => {
   // MOVIMENTAÇÕES
   const mov = ensureSeries(
@@ -445,13 +428,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const cData   = J('custo-data', []);
   const hasCusto = sum(cData) > 0;
   showNoData('nd-custo', !hasCusto);
-  lineRounded(document.getElementById('custoLine'), cLabels.length?cLabels:lastMonths(6),
-    [{ label: 'Custo (R$)', data: (cLabels.length?cData:Array(6).fill(0)), backgroundColor: pal.blue2, borderColor: pal.blue }]);
+  lineRounded(
+    document.getElementById('custoLine'),
+    cLabels.length?cLabels:lastMonths(6),
+    [{ label: 'Custo (R$)', data: (cLabels.length?cData:Array(6).fill(0)), backgroundColor: pal.blue2, borderColor: pal.blue }]
+  );
 
-  // === Top custos por usuários (itens locação + licenças) ===
-  const uL = J('ucost-labels', []);
-  const uI = J('ucost-items',  []);
-  const uLc= J('ucost-lics',   []);
+  // Top custos por usuários (itens locação + licenças)
+  const uL  = J('ucost-labels', []);
+  const uI  = J('ucost-items',  []);
+  const uLc = J('ucost-lics',   []);
   const hasUC = (sum(uI)+sum(uLc))>0;
   showNoData('nd-ucost', !hasUC);
   if (uL.length || hasUC) {
@@ -466,10 +452,10 @@ document.addEventListener('DOMContentLoaded', () => {
     );
   }
 
-  // === Custo por setores (CC) ===
-  const ccL2 = J('ccost-labels', []);
-  const ccI2 = J('ccost-items',  []);
-  const ccLc2= J('ccost-lics',   []);
+  // Custo por setores (CC)
+  const ccL2  = J('ccost-labels', []);
+  const ccI2  = J('ccost-items',  []);
+  const ccLc2 = J('ccost-lics',   []);
   const hasCC = (sum(ccI2)+sum(ccLc2))>0;
   showNoData('nd-ccost', !hasCC);
   if (ccL2.length || hasCC) {
@@ -484,7 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
     );
   }
 
-  // === Top licenças por custo (mês) ===
+  // Top licenças por custo (mês)
   const lL = J('licost-labels', []);
   const lD = J('licost-data',   []);
   const hasLic = sum(lD)>0;
