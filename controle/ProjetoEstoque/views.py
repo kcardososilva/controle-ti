@@ -30,7 +30,7 @@ from django.utils.dateparse import parse_date
 from .forms import CategoriaForm, SubtipoForm, UsuarioForm, FornecedorForm, LocalidadeForm, FuncaoForm, CentroCustoForm, ItemForm, LocacaoForm, LicencaForm, ComentarioForm, MovimentacaoItemForm, CicloManutencaoForm, PreventivaStartForm, ChecklistModeloForm, ChecklistPerguntaForm, PreventivaStartForm, LicencaForm, MovimentacaoLicencaForm, LicencaLoteForm
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from django.utils.timezone import now
-
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 
 
 # --- Helpers de compatibilidade com nomes de campos diferentes no LicencaLote ---
@@ -235,7 +235,6 @@ def usuario_create(request):
         form = UsuarioForm()
 
     return render(request, "front/usuario_form.html", {"form": form, "editar": False})
-
 
 # UPDATE
 @login_required
@@ -743,7 +742,7 @@ def _norm(s: str) -> str:
 @login_required
 def equipamentos_list(request):
     """
-    Lista equipamentos com filtros e cards, sem depender de um campo 'usuarios'.
+    Lista equipamentos com filtros, cards e paginação.
     """
     qs = (
         Item.objects
@@ -751,7 +750,7 @@ def equipamentos_list(request):
         .order_by("nome", "id")
     )
 
-    # Prefetch da(s) movimentação(ões) com usuário, mais recente primeiro
+    # Movimentações (prefetch otimizado)
     mov_qs = MovimentacaoItem.objects.select_related("usuario").order_by("-created_at")
     qs = qs.prefetch_related(Prefetch("movimentacoes", queryset=mov_qs, to_attr="pref_movs"))
 
@@ -764,7 +763,7 @@ def equipamentos_list(request):
     usuario      = (p.get("usuario") or "").strip()
     localidade   = (p.get("localidade") or "").strip()
     centro_custo = (p.get("centro_custo") or "").strip()
-    fornecedor = (p.get("fornecedor") or "").strip()
+    fornecedor   = (p.get("fornecedor") or "").strip()
 
     if nome:
         qs = qs.filter(nome__icontains=nome)
@@ -787,10 +786,40 @@ def equipamentos_list(request):
         qs = qs.filter(fornecedor__nome__icontains=fornecedor)
 
     qs = qs.distinct()
+    filtered_total = qs.count()
+
+    # -------- Paginação --------
+    # itens por página com fallback (10/20/50/100)
+    try:
+        per_page = int(p.get("pp") or 20)
+        if per_page not in (10, 20, 50, 100):
+            per_page = 20
+    except (TypeError, ValueError):
+        per_page = 20
+
+    paginator = Paginator(qs, per_page)
+    page_number = p.get("page") or 1
+    try:
+        page_obj = paginator.page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.page(1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+
+    # querystring preservada (sem o parâmetro page)
+    params = p.copy()
+    params.pop("page", None)
+    qs_keep = params.urlencode()  # para usar nos links de paginação
 
     # -------- Cards/Métricas por status --------
     context = {
-        "equipamentos": qs,
+        "equipamentos": page_obj.object_list,      # mantém o nome usado no template
+        "page_obj": page_obj,
+        "paginator": paginator,
+        "per_page": per_page,
+        "qs_keep": qs_keep,
+        "filtered_total": filtered_total,
+
         "subtipos": Subtipo.objects.all().order_by("nome"),
         "status_choices": StatusItemChoices.choices,
         "total_ativos": Item.objects.filter(status=StatusItemChoices.ATIVO).count(),
@@ -2418,11 +2447,12 @@ def cc_custos_dashboard(request):
 
 @login_required
 def licenca_list(request):
-    q = (request.GET.get("q") or "").strip()
+    # -------- Filtros (mantidos) --------
+    q          = (request.GET.get("q") or "").strip()
     fornecedor = (request.GET.get("fornecedor") or "").strip()
-    centro = (request.GET.get("centro") or "").strip()
-    pmb = (request.GET.get("pmb") or "").strip()
-    per = (request.GET.get("periodicidade") or "").strip()
+    centro     = (request.GET.get("centro") or "").strip()
+    pmb        = (request.GET.get("pmb") or "").strip()
+    per        = (request.GET.get("periodicidade") or "").strip()
 
     qs = (
         Licenca.objects
@@ -2448,18 +2478,43 @@ def licenca_list(request):
     if per:
         qs = qs.filter(periodicidade=per)
 
+    # total filtrado (mantém compatibilidade com seu template que usa "total")
+    total = qs.count()
+
+    # -------- Paginação --------
+    try:
+        per_page = int(request.GET.get("pp") or 20)
+    except ValueError:
+        per_page = 20
+    per_page = max(1, min(per_page, 100))  # segurança
+
+    paginator = Paginator(qs, per_page)
+    page_num = request.GET.get("page") or 1
+    page_obj = paginator.get_page(page_num)
+
+    # Mantém os parâmetros (exceto 'page') para os links da paginação
+    keep = request.GET.copy()
+    keep.pop("page", None)
+    qs_keep = keep.urlencode()
+
     ctx = {
-        "licencas": qs,
-        "q": q,
-        "fornecedor": fornecedor,
-        "centro": centro,
-        "pmb": pmb,
-        "per": per,
-        "total": qs.count(),
+        "licencas": page_obj.object_list,  # o iterable da página
+        "page_obj": page_obj,
+        "paginator": paginator,
+        "per_page": per_page,
+        "qs_keep": qs_keep,
+
+        # filtros (eco no form)
+        "q": q, "fornecedor": fornecedor, "centro": centro, "pmb": pmb, "per": per,
+
+        # métrica mostrada no topo
+        "total": total,
     }
+
     # choices diretamente do Model (mantendo compatibilidade com seu template)
     ctx["pmb_choices"] = Licenca._meta.get_field("pmb").choices
     ctx["periodicidade_choices"] = Licenca._meta.get_field("periodicidade").choices
+
     return render(request, "front/licencas/licenca_list.html", ctx)
 
 @login_required

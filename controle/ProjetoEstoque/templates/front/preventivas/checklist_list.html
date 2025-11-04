@@ -1,63 +1,92 @@
 {% extends 'base.html' %}
 {% block title %}Checklists de Preventiva{% endblock %}
+
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
 
 <style>
 :root{
-  --line:#e5e7eb; --ink:#172133; --soft:#f8fafc; --card:#fff;
-  --shadow:0 20px 40px rgba(2,6,23,.07);
-  --h:48px; --rad:12px; --padL:44px;
+  /* Paleta neutra profissional + acento azul */
+  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
+  --accent:#1e3a8a; --accent-2:#2563eb; --info:#0ea5e9;
+  --ok:#16a34a; --warn:#d97706; --bad:#ef4444;
+
+  --shadow:0 16px 36px rgba(2,6,23,.07);
+  --rad:12px; --ctrl-h:38px; --pad-icon:34px;
 }
 *{box-sizing:border-box}
-.page{max-width:1200px;margin:22px auto;padding:0 14px}
-.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:18px 16px}
-.top-actions{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
-.metrics{display:flex;gap:10px;align-items:center;color:#475569}
-.metrics .badge{background:#eef2ff;color:#1e40af;border-radius:999px;padding:4px 10px;font-weight:800}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+a{text-decoration:none}
+.page{
+  max-width:1200px;margin:16px auto;padding:0 14px;color:var(--ink);
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial
+}
+
+/* Painel geral */
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:14px}
+
+/* Topo */
+.topbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.title{display:flex;align-items:center;gap:10px;font-weight:900;color:var(--ink)}
+.badge{
+  display:inline-flex;align-items:center;gap:6px;background:#eef2ff;color:#1e40af;
+  padding:6px 10px;border-radius:999px;font-weight:800
+}
+.actions-right{display:flex;gap:10px;margin-left:auto}
+.btn{border:none;border-radius:10px;padding:8px 12px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
 .btn-add{background:linear-gradient(90deg,#10b981,#059669);color:#fff}
-.btn-light{background:#f8fafc;border:1.5px solid #dbe6f1;color:#334155}
-.btn:hover{filter:brightness(.95)}
+.btn-light{background:#f8fafc;border:1.3px solid #dbe6f1;color:#334155}
+.btn:hover{filter:brightness(.98)}
 
-/* Filtros (sem sobreposição) */
-.filtros{
-  display:grid;
-  grid-template-columns:minmax(280px,1fr) auto;
-  gap:14px 16px; align-items:end; margin-bottom:14px;
+/* ===== FILTROS (compactos e responsivos) ===== */
+.filters{border:1px solid var(--line);border-radius:12px;background:#fff}
+.filters summary{
+  list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;
+  padding:10px 12px;font-weight:900;color:var(--ink)
 }
-@media (max-width: 700px){
-  .filtros{ grid-template-columns:1fr; }
-}
-.group{display:flex;flex-direction:column;min-width:0}
-.group label{font-weight:800;margin-bottom:6px;color:#0f172a}
+.filters summary::-webkit-details-marker{display:none}
+.filters[open] summary{border-bottom:1px solid var(--line)}
+.filters-body{padding:10px 12px}
 
-.filtro-icon-input{position:relative;min-width:0}
-.filtro-icon-input .ico{
-  position:absolute;left:12px;top:50%;transform:translateY(-50%);
-  color:#334155;pointer-events:none;width:20px;display:flex;justify-content:center
-}
-.ctrl{
-  width:100%; height:var(--h);
-  padding:8px 14px 8px var(--padL);
-  border:1px solid #d5deea; border-radius:var(--rad);
-  background:#fff; color:#111827; font-size:1rem;
-  outline:none; transition:border .15s, box-shadow .15s;
-  appearance:none; -webkit-appearance:none;
-}
-.ctrl::placeholder{color:#64748b}
-.ctrl:focus{border-color:#93c5fd; box-shadow:0 0 0 3px #93c5fd55}
+.filters-grid{display:grid;gap:10px;align-items:end;grid-template-columns:repeat(12,1fr)}
+.fld{min-width:0}
+.fld label{display:none} /* placeholders comunicam e mantêm o visual clean */
 
-/* Tabela */
-.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px}
+.filtro-icon-input{position:relative}
+.filtro-icon-input i{
+  position:absolute;left:10px;top:50%;transform:translateY(-50%);
+  color:#334155;pointer-events:none;font-size:.95rem
+}
+.filtro-icon-input input{
+  width:100%;height:var(--ctrl-h);
+  padding:6px 12px 6px var(--pad-icon);
+  border:1px solid #d5deea;border-radius:10px;background:var(--soft);color:#111827;font-size:.95rem;
+  outline:none;transition:border .15s,box-shadow .15s,background .15s
+}
+.filtro-icon-input input::placeholder{color:#64748b}
+.filtro-icon-input input:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd33;background:#fff}
+
+.fld-q{grid-column:span 9}
+.fld-actions{grid-column:span 3;display:flex;gap:8px;justify-content:flex-end}
+
+@media (max-width:1000px){
+  .filters-body{padding:10px}
+  .filters-grid{grid-template-columns:repeat(6,1fr)}
+  .fld-q{grid-column:1/-1}
+  .fld-actions{grid-column:1/-1;justify-content:stretch}
+  .fld-actions .btn{flex:1}
+}
+
+/* ===== TABELA ===== */
+.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:12px;background:#fff}
 table{width:100%;border-collapse:collapse;min-width:900px;background:#fff}
 thead th{
-  position:sticky;top:0;background:linear-gradient(180deg, #18284a 0%, #21439f 100%);color:#fff;
-  border-bottom:1px solid #0f172a;padding:11px 12px;text-align:left;font-weight:900
+  position:sticky;top:0;z-index:2;
+  background:linear-gradient(180deg,var(--accent) 0%, var(--accent-2) 100%);
+  color:#fff;border-bottom:1px solid #0f172a;padding:10px 12px;text-align:left;font-weight:900;font-size:.95rem
 }
-tbody td{padding:11px 12px;border-bottom:1px solid #eef2f7;color:#0f172a}
-tbody tr:nth-child(odd){background:#fbfdff}
-tbody tr:hover{background:#f3f7ff}
+tbody td{padding:10px 12px;border-bottom:1px solid #eef2f7;color:#0f172a;font-size:.95rem}
+tbody tr:nth-child(odd) td{background:#fbfdff}
+tbody tr:hover td{background:#f3f7ff}
 .td-acoes{text-align:center;white-space:nowrap}
 .icon-btn{
   background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:50%;
@@ -66,47 +95,70 @@ tbody tr:hover{background:#f3f7ff}
 .icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
 .icon-btn.delete{color:#ef4444}
 
+/* ===== PAGINAÇÃO (opcional: aparece se page_obj existir) ===== */
+.pagination-wrap{
+  display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;
+  margin-top:12px;padding-top:10px;border-top:1px solid var(--line)
+}
+.pager{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto}
+.pager a,.pager span{
+  padding:6px 10px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#0f172a;font-weight:800;font-size:.9rem;text-decoration:none
+}
+.pager a:hover{background:#f8fafc}
+.pager .current{background:#e8f0ff;border-color:#c7d2fe;color:#1e3a8a}
+.pager .disabled{opacity:.5;pointer-events:none}
+.range-hint{color:#64748b;font-weight:700}
+
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9999}
-.modal-content{background:#fff;border-radius:14px;padding:22px 26px;max-width:480px;width:92%;box-shadow:0 10px 30px #0005}
-.modal-content h2{margin:0 0 8px;color:#b91c1c}
-.modal-content p{margin:0 0 16px;color:#111827}
+.modal-content{background:#fff;border-radius:14px;padding:20px 22px;max-width:480px;width:92%;box-shadow:0 10px 30px #0005}
+.modal-content h2{margin:0 0 8px;color:#b91c1c;font-size:1.1rem}
 .modal-actions{display:flex;gap:10px;justify-content:center}
-.btn-danger{background:#ef4444;color:#fff;border-radius:10px;padding:10px 16px}
+.btn-danger{background:#ef4444;color:#fff;border-radius:10px;padding:10px 16px;border:none}
 </style>
 
 <div class="page">
   <div class="panel">
-    <div class="top-actions">
-      <div class="metrics">
-        <span class="badge"><i class="fa fa-list-check"></i> {{ total }} checklists</span>
+    <!-- Topo -->
+    <div class="topbar">
+      <div class="title">
+        <i class="fa fa-list-check" style="color:var(--info)"></i>
+        <span>Checklists de Preventiva</span>
       </div>
-      <div style="display:flex;gap:10px">
+      <span class="badge"><i class="fa fa-database"></i> {{ total|default:checklists|length }} registro{{ total|default:checklists|length|pluralize }}</span>
+      <div class="actions-right">
         <a class="btn btn-add" href="{% url 'checklist_create' %}"><i class="fa fa-plus"></i> Novo Checklist</a>
       </div>
     </div>
 
-    <form class="filtros" method="get" id="fForm" autocomplete="off">
-      <div class="group">
-        <label for="q">Buscar</label>
-        <div class="filtro-icon-input">
-          <span class="ico"><i class="fa fa-search"></i></span>
-          <input id="q" type="text" name="q" class="ctrl" placeholder="Digite o nome/descrição…" value="{{ q|default:'' }}">
-        </div>
+    <!-- Filtros -->
+    <details class="filters" {% if request.GET.q %}open{% endif %}>
+      <summary><i class="fa fa-filter"></i> Filtros
+        <span class="hint" style="font-weight:600;color:#64748b">— digite para aplicar automaticamente</span>
+      </summary>
+      <div class="filters-body">
+        <form class="filters-grid" method="get" id="fForm" autocomplete="off">
+          <div class="fld fld-q filtro-icon-input">
+            <label for="q">Buscar por nome/descrição</label>
+            <i class="fa fa-search" aria-hidden="true"></i>
+            <input id="q" type="text" name="q" placeholder="Nome ou descrição"
+                   value="{{ q|default:'' }}">
+          </div>
+          <div class="fld fld-actions">
+            <button class="btn btn-light" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
+            <button class="btn btn-light" type="button" id="btnClear"><i class="fa fa-eraser"></i> Limpar</button>
+          </div>
+        </form>
       </div>
-      <div class="actions" style="display:flex;gap:10px;justify-content:flex-end">
-        <button class="btn btn-light" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
-        <button class="btn btn-light" type="button" id="btnClear"><i class="fa fa-eraser"></i> Limpar</button>
-      </div>
-    </form>
+    </details>
 
+    <!-- Tabela -->
     <div class="table-wrap">
-      <table>
+      <table aria-describedby="tblhint">
         <thead>
           <tr>
             <th style="width:64px">#</th>
             <th>Nome</th>
-            
             <th>Perguntas</th>
             <th>Criado em</th>
             <th>Atualizado em</th>
@@ -116,11 +168,14 @@ tbody tr:hover{background:#f3f7ff}
         <tbody>
           {% for c in checklists %}
           <tr>
-            <td>{{ forloop.counter }}</td>
+            <td>
+              {% if page_obj %}
+                {{ forloop.counter0|add:page_obj.start_index }}
+              {% else %}
+                {{ forloop.counter }}
+              {% endif %}
+            </td>
             <td>{{ c.nome }}</td>
-            
-
-            {# Mostra a contagem vinda da view; se não tiver, tenta fallback seguro #}
             <td>
               {% if c.perguntas_count is not None %}
                 {{ c.perguntas_count }}
@@ -130,7 +185,6 @@ tbody tr:hover{background:#f3f7ff}
                 -
               {% endif %}
             </td>
-
             <td>{{ c.created_at|date:"d/m/Y H:i" }}</td>
             <td>{{ c.updated_at|date:"d/m/Y H:i" }}</td>
             <td class="td-acoes">
@@ -144,11 +198,48 @@ tbody tr:hover{background:#f3f7ff}
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="7" style="text-align:center;color:#64748b;padding:14px">Nenhum checklist encontrado.</td></tr>
+          <tr><td colspan="6" style="text-align:center;color:#64748b;padding:16px">Nenhum checklist encontrado.</td></tr>
           {% endfor %}
         </tbody>
       </table>
+      <p id="tblhint" style="display:none">Tabela de checklists com filtro de texto e paginação opcional.</p>
     </div>
+
+    {% if page_obj and page_obj.paginator.num_pages > 1 %}
+    <div class="pagination-wrap">
+      <div class="range-hint">
+        Mostrando <strong>{{ page_obj.start_index }}</strong>–<strong>{{ page_obj.end_index }}</strong>
+        de <strong>{{ page_obj.paginator.count }}</strong>
+      </div>
+      <nav class="pager" aria-label="Paginação">
+        {% with base='?' %}
+          {% if page_obj.has_previous %}
+            <a href="{{ base }}q={{ q }}&page=1" title="Primeira">&laquo;</a>
+            <a href="{{ base }}q={{ q }}&page={{ page_obj.previous_page_number }}" title="Anterior">&lsaquo;</a>
+          {% else %}
+            <span class="disabled">&laquo;</span><span class="disabled">&lsaquo;</span>
+          {% endif %}
+
+          {% for num in page_obj.paginator.page_range %}
+            {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+              {% if num == page_obj.number %}
+                <span class="current">{{ num }}</span>
+              {% else %}
+                <a href="{{ base }}q={{ q }}&page={{ num }}">{{ num }}</a>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+
+          {% if page_obj.has_next %}
+            <a href="{{ base }}q={{ q }}&page={{ page_obj.next_page_number }}" title="Próxima">&rsaquo;</a>
+            <a href="{{ base }}q={{ q }}&page={{ page_obj.paginator.num_pages }}" title="Última">&raquo;</a>
+          {% else %}
+            <span class="disabled">&rsaquo;</span><span class="disabled">&raquo;</span>
+          {% endif %}
+        {% endwith %}
+      </nav>
+    </div>
+    {% endif %}
   </div>
 </div>
 
@@ -168,27 +259,34 @@ tbody tr:hover{background:#f3f7ff}
 </div>
 
 <script>
-// Limpar
-document.getElementById('btnClear').addEventListener('click',()=>{window.location.href=window.location.pathname});
+/* Limpar filtros */
+document.getElementById('btnClear')?.addEventListener('click',()=>{
+  window.location.href = window.location.pathname;
+});
 
-// Modal delete
+/* Debounce e auto-submit do filtro de busca */
+(function(){
+  const form = document.getElementById('fForm'); if(!form) return;
+  const q = document.getElementById('q');
+  let t;
+  q?.addEventListener('input', ()=>{
+    clearTimeout(t);
+    t = setTimeout(()=>form.submit(), 450);
+  });
+})();
+
+/* Modal delete */
 const modal=document.getElementById('deleteModal');
 const msg=document.getElementById('deleteMessage');
 const delForm=document.getElementById('deleteForm');
-
 function openDeleteModal(id,nome){
   msg.innerHTML = `Tem certeza que deseja excluir o checklist <b>${nome}</b>?`;
-  // Usa sua rota: preventiva/checklists/<pk>/excluir/
-  delForm.action = `/preventiva/checklists/${id}/excluir/`;
-  modal.style.display='flex';
-  modal.setAttribute('aria-hidden','false');
+  delForm.action = `/preventiva/checklists/${id}/excluir/`;  // ajuste se sua rota for diferente
+  modal.style.display='flex'; modal.setAttribute('aria-hidden','false');
   delForm.querySelector('button[type="submit"]').focus();
 }
-function closeDeleteModal(){
-  modal.style.display='none';
-  modal.setAttribute('aria-hidden','true');
-}
-document.addEventListener('keydown',e=>{if(e.key==='Escape') closeDeleteModal()});
-modal.addEventListener('click',e=>{if(e.target===modal) closeDeleteModal()});
+function closeDeleteModal(){ modal.style.display='none'; modal.setAttribute('aria-hidden','true'); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDeleteModal(); });
+modal?.addEventListener('click',e=>{ if(e.target===modal) closeDeleteModal(); });
 </script>
 {% endblock %}

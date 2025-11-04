@@ -1,93 +1,230 @@
 {% extends 'base.html' %}
+{% load static %}
+
 {% block title %}Detalhe do Usuário{% endblock %}
+
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
 
 <style>
-:root{--line:#e5e7eb;--ink:#172133;--card:#fff;--soft:#f8fafc;--shadow:0 20px 40px rgba(2,6,23,.07)}
+:root{
+  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
+  --accent:#1e3a8a; --accent-2:#2563eb; --info:#0ea5e9;
+  --shadow:0 18px 40px rgba(2,6,23,.08);
+  --rad:14px;
+}
 *{box-sizing:border-box}
-.wrap{max-width:1100px;margin:22px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:22px}
-.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
-.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
-.subheader{display:flex;gap:8px;align-items:center;color:#475569;margin-top:6px}
-.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:800;font-size:.9rem}
-.badge.ativo{background:#e8fff3;color:#15803d}
-.badge.desligado{background:#fee2e2;color:#b91c1c}
-.badge-pmb.sim{background:#e8fff3;color:#15803d}
-.badge-pmb.nao{background:#fee2e2;color:#b91c1c}
-.grid{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
-.card{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px}
-.label{font-weight:800;color:#334155;margin-bottom:6px}
-.value{color:#0f172a}
-.meta{margin-top:6px;color:#475569;font-size:.95rem}
-.actions{display:flex;gap:10px;flex-wrap:wrap}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
-.btn-secondary{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
-.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
-.block{margin-top:18px;background:var(--card);border:1px solid var(--line);border-radius:14px}
-.block .block-h{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
-.block .block-h h3{margin:0;display:flex;align-items:center;gap:10px;color:#0f172a;font-size:1.05rem}
-.block .block-c{padding:14px}
-.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px}
-table{width:100%;border-collapse:collapse;min-width:940px;background:#fff}
-thead th{position:sticky;top:0;background:#0b1220;color:#fff;border-bottom:1px solid #0f172a;padding:10px 12px;text-align:left;font-weight:900}
-tbody td{padding:10px 12px;border-bottom:1px solid #eef2f7;color:#0f172a}
-tbody tr:nth-child(odd){background:#fbfdff}
-tbody tr:hover{background:#f3f7ff}
-.status-chip{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:800;font-size:.85rem}
+a{text-decoration:none}
+.page{
+  max-width:1100px;margin:16px auto;padding:0 14px;color:var(--ink);
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial
+}
+
+/* ===== BREADCRUMB ===== */
+.breadcrumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-weight:700;margin-bottom:10px}
+.breadcrumb a{color:var(--muted)}
+.breadcrumb a:hover{color:var(--accent-2)}
+.badge-id{display:inline-flex;gap:6px;align-items:center;padding:4px 10px;border-radius:999px;background:#eef2ff;border:1px solid #c7d2fe;color:#1e40af;font-weight:900}
+
+/* ===== HEAD ===== */
+.head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:4px 0 10px;min-width:0}
+.head h1{margin:0;font-size:1.5rem;display:flex;align-items:center;gap:10px}
+.chips{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.chip{
+  padding:6px 10px;border-radius:999px;border:1px solid #e2e8f0;background:#fff;
+  font-weight:900;font-size:.86rem;display:inline-flex;gap:8px;align-items:center;color:#0f172a;
+  max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.chip.status-ativo{background:#e8fff3;border-color:#bbf7d0;color:#166534}
+.chip.status-desligado{background:#fee2e2;border-color:#fecaca;color:#7f1d1d}
+.chip.pmb-sim{background:#e8fff3;border-color:#bbf7d0;color:#166534}
+.chip.pmb-nao{background:#fff7ed;border-color:#fed7aa;color:#7c2d12}
+
+/* ===== SUMMARY STICKY (sem sobreposição) ===== */
+.summary{
+  position:sticky; top:8px; z-index:10;
+  background:rgba(255,255,255,.92); backdrop-filter:saturate(130%) blur(6px);
+  border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow);
+  padding:10px; margin-bottom:12px;
+  display:grid; grid-template-columns:repeat(12,1fr); gap:10px;
+}
+
+/* Cada bloco ocupa 4 colunas (≈ 1/3) no desktop, 6 no tablet, 12 no mobile */
+.sum-col{grid-column:span 4; min-width:0; display:flex; gap:10px; align-items:center}
+@media (max-width:1024px){ .sum-col{grid-column:span 6} }
+@media (max-width:680px){ .sum-col{grid-column:1/-1} }
+
+/* Ações: fica à direita no desktop; vira linha inteira abaixo em telas menores */
+.sum-actions{
+  grid-column:span 12; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap
+}
+@media (min-width:1025px){ .sum-actions{grid-column:10 / -1} }
+@media (max-width:1024px){ .sum-actions{grid-column:1 / -1} }
+
+.kv-icon{color:var(--info); flex:0 0 auto}
+.kv-text{min-width:0}
+.kv-label{color:var(--muted); font-weight:800; line-height:1}
+.kv-value{
+  font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%
+}
+
+.btn{
+  border:none;border-radius:10px;padding:8px 12px;font-weight:900;cursor:pointer;
+  display:inline-flex;align-items:center;gap:8px;white-space:nowrap
+}
+.btn.primary{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff}
+.btn.light{background:#fff;border:1.3px solid #dbe6f1;color:#334155}
+.btn:hover{filter:brightness(.98)}
+
+/* ===== PAINÉIS ===== */
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--rad);box-shadow:var(--shadow)}
+.section{padding:16px 16px 10px}
+.section h3{margin:0 0 12px;display:flex;align-items:center;gap:10px;font-size:1.08rem}
+.grid{display:grid;gap:12px}
+.g-3{grid-template-columns:repeat(3,minmax(240px,1fr))}
+.g-2{grid-template-columns:repeat(2,minmax(280px,1fr))}
+@media (max-width:900px){.g-3,.g-2{grid-template-columns:1fr}}
+
+.tile{background:#f9fafc;border:1px solid var(--line);border-radius:12px;padding:12px}
+.tile strong{display:block;color:#1f2937;margin-bottom:6px}
+.tile span{color:var(--ink);word-break:break-word}
+.muted{color:var(--muted)}
+
+/* ===== TABELAS ===== */
+.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+table{width:100%;border-collapse:collapse;min-width:960px;background:#fff}
+thead th{
+  position:sticky;top:0;background:linear-gradient(180deg,#18284a 0%, #21439f 100%);
+  color:#fff;border-bottom:1px solid #0f172a;padding:10px 12px;text-align:left;font-weight:900
+}
+tbody td{padding:10px 12px;border-bottom:1px solid #eef2f7;color:#0f172a;vertical-align:top}
+tbody tr:nth-child(odd) td{background:#fbfdff}
+tbody tr:hover td{background:#f3f7ff}
+.status-chip{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:800;font-size:.86rem}
 .status-chip.ativo{background:#e8fff3;color:#15803d}
 .status-chip.backup{background:#eef2ff;color:#1e40af}
 .status-chip.manutencao{background:#fff7ed;color:#9a3412}
 .status-chip.defeito{background:#fee2e2;color:#b91c1c}
-.small-note{color:#64748b;font-size:.92rem}
-.totline{margin-left:8px;color:#0f172a}
-
-/* complementos usados no layout */
-.chip-per{display:inline-block;padding:3px 10px;border-radius:999px;background:#eef2ff;color:#1e40af;font-weight:800;font-size:.85rem;border:1px solid #e2e8f0}
 .icon-btn{background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:50%;padding:7px 8px;margin:0 2px;font-size:1.05rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
 .icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
+
+/* ===== FOOTER ===== */
+.footer-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+
+/* PRINT */
+@media print{
+  .summary{position:static; top:auto}
+  .btn,.footer-actions,.breadcrumb{display:none}
+}
 </style>
 
-<div class="wrap">
-  <div>
-    <h2 style="color:#0b1220;"><i class="fa fa-user"></i> Detalhe do Usuário</h2>
-    <div class="subheader">
-      <span class="badge {{ obj.status }}">{{ obj.get_status_display }}</span>
-      <span class="badge-pmb {{ obj.pmb }}">PMB: {{ obj.get_pmb_display }}</span>
+<div class="page">
+  <!-- Breadcrumb -->
+  <nav class="breadcrumb" aria-label="Navegação">
+    <a href="{% url 'usuario_list' %}"><i class="fa fa-arrow-left"></i> Usuários</a>
+    <span>/</span>
+    <span>Detalhe</span>
+    {% if obj and obj.pk %}
+      <span class="badge-id"><i class="fa fa-hashtag"></i>{{ obj.pk }}</span>
+    {% endif %}
+  </nav>
+
+  <!-- Head -->
+  <div class="head">
+    <h1><i class="fa fa-user"></i> Detalhe do Usuário</h1>
+    <div class="chips">
+      {% if obj and obj.status %}
+        <span class="chip status-{{ obj.status|lower }}">
+          <i class="fa fa-circle"></i> {{ obj.get_status_display|default:obj.status|capfirst }}
+        </span>
+      {% endif %}
+      {% if obj and obj.pmb != None %}
+        <span class="chip pmb-{{ obj.pmb|lower }}">
+          <i class="fa fa-bolt"></i> PMB: {{ obj.get_pmb_display|default:obj.pmb|capfirst }}
+        </span>
+      {% endif %}
     </div>
-  </div>
-  <div class="actions">
-    <a href="{% url 'usuario_list' %}" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
-    <a href="{% url 'usuario_update' obj.pk %}" class="btn btn-primary"><i class="fa fa-pen"></i> Editar</a>
   </div>
 
-  <!-- Dados do usuário -->
-  <div class="grid">
-    <div class="card"><div class="label">Nome</div><div class="value">{{ obj.nome }}</div></div>
-    <div class="card"><div class="label">E-mail</div><div class="value">{{ obj.email }}</div></div>
-    <div class="card"><div class="label">Centro de Custo</div><div class="value">{% if obj.centro_custo %}{{ obj.centro_custo.numero }} - {{ obj.centro_custo.departamento }}{% else %}-{% endif %}</div></div>
-    <div class="card"><div class="label">Localidade</div><div class="value">{% if obj.localidade %}{{ obj.localidade.local }}{% else %}-{% endif %}</div></div>
-    <div class="card"><div class="label">Função</div><div class="value">{% if obj.funcao %}{{ obj.funcao.nome }}{% else %}-{% endif %}</div></div>
-    <div class="card"><div class="label">Início</div><div class="value">{{ obj.data_inicio|date:"d/m/Y" }}</div></div>
-    <div class="card"><div class="label">Término</div><div class="value">{{ obj.data_termino|date:"d/m/Y"|default:"-" }}</div></div>
-    <div class="card" style="grid-column:1/-1">
-      <div class="label">Auditoria</div>
-      <div class="meta">Criado por: {{ obj.criado_por|default:"-" }} em {{ obj.created_at|date:"d/m/Y H:i" }}</div>
-      <div class="meta">Atualizado por: {{ obj.atualizado_por|default:"-" }} em {{ obj.updated_at|date:"d/m/Y H:i" }}</div>
+  <!-- Summary (gruda no topo e não sobrepõe) -->
+  <div class="summary" role="region" aria-label="Resumo do usuário">
+    <div class="sum-col">
+      <i class="fa fa-id-card kv-icon"></i>
+      <div class="kv-text">
+        <div class="kv-label">Nome</div>
+        <div class="kv-value">{{ obj.nome|default:"—" }}</div>
+      </div>
+    </div>
+    <div class="sum-col">
+      <i class="fa fa-envelope kv-icon"></i>
+      <div class="kv-text">
+        <div class="kv-label">E-mail</div>
+        <div class="kv-value">{{ obj.email|default:"—" }}</div>
+      </div>
+    </div>
+    <div class="sum-col">
+      <i class="fa fa-briefcase kv-icon"></i>
+      <div class="kv-text">
+        <div class="kv-label">Função</div>
+        <div class="kv-value">{% if obj.funcao %}{{ obj.funcao.nome }}{% else %}—{% endif %}</div>
+      </div>
+    </div>
+
+    <div class="sum-actions">
+      <a href="{% url 'usuario_update' obj.pk %}" class="btn light"><i class="fa fa-pen"></i> Editar</a>
+      <button class="btn light" type="button" id="btnCopy"><i class="fa fa-link"></i> Copiar link</button>
+    
     </div>
   </div>
 
-  <!-- Itens do usuário (com custo) -->
-  <div class="block">
-    <div class="block-h">
-      <h3><i class="fa fa-laptop"></i> Itens atribuídos a {{ obj.nome }}</h3>
-      <span class="small-note">
-        {{ items_do_usuario|length }} item{{ items_do_usuario|length|pluralize }}
-        <span class="totline">• Locação/mês: <strong>R$ {{ totais_itens.loc_mensal|floatformat:2 }}</strong></span>
-        <span class="totline">• Aquisição: <strong>R$ {{ totais_itens.aquisicao|floatformat:2 }}</strong></span>
-      </span>
+  <!-- Painel Informações -->
+  <div class="panel">
+    <div class="section">
+      <h3><i class="fa fa-circle-info" style="color:var(--info)"></i> Informações do usuário</h3>
+      <div class="grid g-3">
+        <div class="tile">
+          <strong>Centro de Custo</strong>
+          <span>{% if obj.centro_custo %}{{ obj.centro_custo.numero }} — {{ obj.centro_custo.departamento }}{% else %}—{% endif %}</span>
+        </div>
+        <div class="tile">
+          <strong>Localidade</strong>
+          <span>{% if obj.localidade %}{{ obj.localidade.local }}{% else %}—{% endif %}</span>
+        </div>
+        <div class="tile">
+          <strong>Data de início</strong>
+          <span>{% if obj.data_inicio %}{{ obj.data_inicio|date:"d/m/Y" }}{% else %}—{% endif %}</span>
+        </div>
+        <div class="tile">
+          <strong>Data de término</strong>
+          <span>{% if obj.data_termino %}{{ obj.data_termino|date:"d/m/Y" }}{% else %}—{% endif %}</span>
+        </div>
+        <div class="tile" style="grid-column:1/-1">
+          <strong>Auditoria</strong>
+          <span class="muted">
+            Criado por: {{ obj.criado_por|default:"—" }} ·
+            {% if obj.created_at %}{{ obj.created_at|date:"d/m/Y H:i" }}{% else %}—{% endif %}
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            Atualizado por: {{ obj.atualizado_por|default:"—" }} ·
+            {% if obj.updated_at %}{{ obj.updated_at|date:"d/m/Y H:i" }}{% else %}—{% endif %}
+          </span>
+        </div>
+      </div>
     </div>
-    <div class="block-c">
+  </div>
+
+  <!-- Itens -->
+  <div class="panel" style="margin-top:12px">
+    <div class="section" style="padding-bottom:6px">
+      <h3><i class="fa fa-laptop" style="color:var(--accent-2)"></i> Itens atribuídos</h3>
+      <div class="muted" style="margin-top:-6px">
+        {% with items_do_usuario|length as tot %}
+          {{ tot }} item{% if tot != 1 %}s{% endif %}
+          · Locação/mês: <strong>R$ {{ totais_itens.loc_mensal|floatformat:2 }}</strong>
+          · Aquisição: <strong>R$ {{ totais_itens.aquisicao|floatformat:2 }}</strong>
+        {% endwith %}
+      </div>
+    </div>
+    <div class="section" style="padding-top:8px">
       <div class="table-wrap">
         <table>
           <thead>
@@ -107,15 +244,11 @@ tbody tr:hover{background:#f3f7ff}
             {% for it in items_do_usuario %}
             <tr>
               <td>{{ forloop.counter }}</td>
-              <td>{{ it.nome|default:"-" }}</td>
-              <td>{{ it.numero_serie|default:"-" }}</td>
-              <td>{{ it.subtipo.nome|default:"-" }}</td>
-              <td>{{ it.localidade.local|default:"-" }}</td>
-              <td>
-                {% if it.centro_custo %}
-                  {{ it.centro_custo.numero }} - {{ it.centro_custo.departamento }}
-                {% else %}-{% endif %}
-              </td>
+              <td style="max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.nome|default:"—" }}</td>
+              <td>{{ it.numero_serie|default:"—" }}</td>
+              <td>{% if it.subtipo %}{{ it.subtipo.nome }}{% else %}—{% endif %}</td>
+              <td>{% if it.localidade %}{{ it.localidade.local }}{% else %}—{% endif %}</td>
+              <td>{% if it.centro_custo %}{{ it.centro_custo.numero }} — {{ it.centro_custo.departamento }}{% else %}—{% endif %}</td>
               <td>
                 {% if it.custo_valor %}
                   {% if it.custo_tipo == 'locacao' %}
@@ -125,20 +258,20 @@ tbody tr:hover{background:#f3f7ff}
                   {% endif %}
                 {% else %}—{% endif %}
               </td>
-              <td><span class="status-chip {{ it.status }}">{{ it.get_status_display|default:it.status|capfirst }}</span></td>
+              <td><span class="status-chip {{ it.status|lower }}">{{ it.get_status_display|default:it.status|capfirst }}</span></td>
               <td style="white-space:nowrap">
                 <a class="icon-btn" title="Detalhar" href="{% url 'equipamento_detalhe' it.id %}"><i class="fa fa-eye"></i></a>
                 {% if it.precisa_preventiva == 'sim' %}
-                  <a class="icon-btn" title="Iniciar preventiva" style="background:#172133;color:#fff;border-radius:50%;padding:7px 8px" href="{% url 'preventiva_start_item' it.id %}">
+                  <a class="icon-btn" title="Iniciar preventiva" style="background:#172133;color:#fff" href="{% url 'preventiva_start_item' it.id %}">
                     <i class="fa fa-shield-heart"></i>
                   </a>
                 {% endif %}
               </td>
             </tr>
             {% empty %}
-            <tr><td colspan="9" style="text-align:center;color:#64748b;padding:14px">
-              Nenhum item atribuído a este usuário no momento.
-            </td></tr>
+            <tr>
+              <td colspan="9" style="text-align:center;color:#64748b;padding:14px">Nenhum item atribuído a este usuário.</td>
+            </tr>
             {% endfor %}
           </tbody>
         </table>
@@ -146,19 +279,19 @@ tbody tr:hover{background:#f3f7ff}
     </div>
   </div>
 
-  <!-- Licenças do usuário (com custo) -->
-  <div class="block">
-    <div class="block-h">
-      <h3><i class="fa fa-certificate"></i> Licenças atribuídas a {{ obj.nome }}</h3>
-      {% with licencas_do_usuario|length as total_lic %}
-        <span class="small-note">
-          {{ total_lic }} licença{{ total_lic|pluralize }}
-          <span class="totline">• Mensal: <strong>R$ {{ totais_licencas.mensal|floatformat:2 }}</strong></span>
-          <span class="totline">• Anual: <strong>R$ {{ totais_licencas.anual|floatformat:2 }}</strong></span>
-        </span>
-      {% endwith %}
+  <!-- Licenças -->
+  <div class="panel" style="margin-top:12px">
+    <div class="section" style="padding-bottom:6px">
+      <h3><i class="fa fa-certificate" style="color:var(--accent)"></i> Licenças atribuídas</h3>
+      <div class="muted" style="margin-top:-6px">
+        {% with licencas_do_usuario|length as total_lic %}
+          {{ total_lic }} licença{% if total_lic != 1 %}s{% endif %}
+          · Mensal: <strong>R$ {{ totais_licencas.mensal|floatformat:2 }}</strong>
+          · Anual: <strong>R$ {{ totais_licencas.anual|floatformat:2 }}</strong>
+        {% endwith %}
+      </div>
     </div>
-    <div class="block-c">
+    <div class="section" style="padding-top:8px">
       <div class="table-wrap">
         <table>
           <thead>
@@ -179,12 +312,12 @@ tbody tr:hover{background:#f3f7ff}
             {% for l in licencas_do_usuario %}
             <tr>
               <td>{{ forloop.counter }}</td>
-              <td>{{ l.licenca.nome }}</td>
-              <td>{% if l.licenca.fornecedor %}{{ l.licenca.fornecedor.nome }}{% else %}-{% endif %}</td>
-              <td><span class="chip-per">{{ l.licenca.get_periodicidade_display }}</span></td>
-              <td>{{ l.desde|date:"d/m/Y H:i" }}</td>
-              <td>{% if l.licenca.centro_custo %}{{ l.licenca.centro_custo.numero }} - {{ l.licenca.centro_custo.departamento }}{% else %}-{% endif %}</td>
-              <td><span class="badge-pmb {{ l.licenca.pmb }}">{{ l.licenca.get_pmb_display }}</span></td>
+              <td style="max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.licenca.nome|default:"—" }}</td>
+              <td>{% if l.licenca.fornecedor %}{{ l.licenca.fornecedor.nome }}{% else %}—{% endif %}</td>
+              <td><span class="chip">{{ l.licenca.get_periodicidade_display|default:l.licenca.periodicidade|capfirst }}</span></td>
+              <td>{% if l.desde %}{{ l.desde|date:"d/m/Y H:i" }}{% else %}—{% endif %}</td>
+              <td>{% if l.licenca.centro_custo %}{{ l.licenca.centro_custo.numero }} — {{ l.licenca.centro_custo.departamento }}{% else %}—{% endif %}</td>
+              <td>{% if l.licenca.pmb != None %}<span class="chip pmb-{{ l.licenca.pmb|lower }}">PMB: {{ l.licenca.get_pmb_display|default:l.licenca.pmb|capfirst }}</span>{% else %}—{% endif %}</td>
               <td>{% if l.custo_mensal %}R$ {{ l.custo_mensal|floatformat:2 }}{% else %}—{% endif %}</td>
               <td>{% if l.custo_anual %}R$ {{ l.custo_anual|floatformat:2 }}{% else %}—{% endif %}</td>
               <td style="white-space:nowrap">
@@ -193,7 +326,9 @@ tbody tr:hover{background:#f3f7ff}
               </td>
             </tr>
             {% empty %}
-            <tr><td colspan="10" style="text-align:center;color:#64748b;padding:14px">Sem licenças ativas para este usuário.</td></tr>
+            <tr>
+              <td colspan="10" style="text-align:center;color:#64748b;padding:14px">Sem licenças ativas para este usuário.</td>
+            </tr>
             {% endfor %}
           </tbody>
         </table>
@@ -201,5 +336,25 @@ tbody tr:hover{background:#f3f7ff}
     </div>
   </div>
 
+  <!-- Ações finais -->
+  <div class="footer-actions">
+    <a href="{% url 'usuario_list' %}" class="btn light"><i class="fa fa-arrow-left"></i> Voltar</a>
+    <a href="{% url 'usuario_update' obj.pk %}" class="btn primary"><i class="fa fa-pen-to-square"></i> Editar</a>
+  </div>
 </div>
+
+<script>
+  // Copiar link
+  document.getElementById('btnCopy')?.addEventListener('click', async () => {
+    try{
+      await navigator.clipboard.writeText(location.href);
+      const el = document.getElementById('btnCopy');
+      const old = el.innerHTML;
+      el.innerHTML = '<i class="fa fa-check"></i> Copiado!';
+      setTimeout(()=> el.innerHTML = old, 1600);
+    }catch(e){
+      alert('Não foi possível copiar o link.');
+    }
+  });
+</script>
 {% endblock %}

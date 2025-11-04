@@ -92,6 +92,15 @@ class FuncaoForm(forms.ModelForm):
         }
 
 
+# Widget único para datas: nativo do browser e com formato ISO (YYYY-MM-DD)
+DATE_WIDGET = forms.DateInput(
+    attrs={
+        "type": "date",
+        "class": "ctrl",           # opcional: casa com seu CSS
+    },
+    format="%Y-%m-%d",
+)
+
 class UsuarioForm(forms.ModelForm):
     class Meta:
         model = Usuario
@@ -102,8 +111,28 @@ class UsuarioForm(forms.ModelForm):
         widgets = {
             "data_inicio": DATE_WIDGET,
             "data_termino": DATE_WIDGET,
+            # se quiser, pode definir widgets para os demais campos (Select, EmailInput etc.)
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # 🔧 Garanta que os campos aceitem o formato que o input <type="date"> envia/recebe
+        self.fields["data_inicio"].input_formats = ["%Y-%m-%d"]
+        self.fields["data_termino"].input_formats = ["%Y-%m-%d"]
+
+        # (Opcional) aplique classes padrão aos demais campos, se quiser manter o visual unificado
+        for name, field in self.fields.items():
+            if not isinstance(field.widget, forms.DateInput):
+                field.widget.attrs.setdefault("class", "ctrl")
+
+    def clean(self):
+        data = super().clean()
+        di = data.get("data_inicio")
+        dt = data.get("data_termino")
+        if di and dt and dt < di:
+            self.add_error("data_termino", "A data de término não pode ser anterior à data de início.")
+        return data
 # ================== ITEM ==================
 class ItemForm(forms.ModelForm):
     class Meta:

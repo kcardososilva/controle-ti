@@ -1,123 +1,180 @@
 {% extends "base.html" %}
-{% load static %}
+
+{% block title %}Movimentações{% endblock %}
 
 {% block content %}
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
-
 <style>
 :root{
-  --line:#e5e7eb; --ink:#172133; --card:#fff; --soft:#f8fafc; --shadow:0 20px 40px rgba(2,6,23,.07);
-  --h:48px; --rad:12px; --padL:44px;
+  /* Neutros profissionais + acento azul */
+  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
+  --accent:#1e3a8a; --accent-2:#2563eb; --info:#0ea5e9;
+  --ok:#16a34a; --warn:#d97706; --bad:#ef4444;
+
+  --shadow:0 16px 36px rgba(2,6,23,.07);
+  --rad:12px; --ctrl-h:38px; --pad-icon:34px;
 }
 *{box-sizing:border-box}
-body{color:var(--ink); background:#f6f7fa}
+a{text-decoration:none}
+.page{
+  max-width:1200px;margin:16px auto;padding:0 14px;color:var(--ink);
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial
+}
 
-/* container */
-.page{max-width:1200px;margin:22px auto;padding:0 14px}
-.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:18px 16px}
+/* Painel geral */
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:14px}
 
-/* header/top */
-.top-actions{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
-.top-left{display:flex;align-items:center;gap:10px}
-.top-left h2{margin:0;display:flex;align-items:center;gap:10px}
-.badge-count{background:#eef2ff;color:#1e40af;border-radius:999px;padding:4px 10px;font-weight:800}
-
-/* buttons */
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+/* Topo */
+.topbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.title{display:flex;align-items:center;gap:10px;font-weight:900;color:var(--ink)}
+.count-badge{background:#eef2ff;color:#1e40af;border-radius:999px;padding:6px 10px;font-weight:800}
+.actions-right{display:flex;gap:10px;margin-left:auto}
+.btn{border:none;border-radius:10px;padding:8px 12px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
 .btn-add{background:linear-gradient(90deg,#10b981,#059669);color:#fff}
-.btn-light{background:#f8fafc;border:1.5px solid #dbe6f1;color:#334155}
-.btn:hover{filter:brightness(.97)}
+.btn-light{background:#f8fafc;border:1.3px solid #dbe6f1;color:#334155}
+.btn:hover{filter:brightness(.98)}
 
-/* filtros – grid sem sobreposição */
-.filtros{display:grid;grid-template-columns:minmax(260px,1fr) minmax(220px,0.8fr) auto;gap:12px;align-items:end;margin-bottom:12px}
-@media (max-width:960px){.filtros{grid-template-columns:1fr 1fr}.filtros .actions{grid-column:1/-1;justify-content:flex-end}}
-@media (max-width:640px){.filtros{grid-template-columns:1fr}}
-.group{display:flex;flex-direction:column;min-width:0}
-.group label{font-weight:800;margin-bottom:6px}
+/* ===== FILTROS (colapsáveis) ===== */
+.filters{border:1px solid var(--line);border-radius:12px;background:#fff}
+.filters summary{
+  list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;
+  padding:10px 12px;font-weight:900;color:var(--ink)
+}
+.filters summary::-webkit-details-marker{display:none}
+.filters[open] summary{border-bottom:1px solid var(--line)}
+.filters-body{padding:10px 12px}
+
+.filters-grid{display:grid;gap:10px;align-items:end;grid-template-columns:repeat(12,1fr)}
+.fld{min-width:0}
+.fld label{display:none} /* placeholders comunicam, mantendo clean */
 .filtro-icon-input{position:relative}
-.filtro-icon-input .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#334155}
-.ctrl{width:100%;height:var(--h);padding:8px 14px 8px var(--padL);border:1px solid #d5deea;border-radius:var(--rad);background:#fff;color:#111827;font-size:1rem;outline:none;transition:border .15s, box-shadow .15s}
-.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd55}
+.filtro-icon-input i{
+  position:absolute;left:10px;top:50%;transform:translateY(-50%);
+  color:#334155;pointer-events:none;font-size:.95rem
+}
+.filtro-icon-input input,.filtro-icon-input select{
+  width:100%;height:var(--ctrl-h);
+  padding:6px 12px 6px var(--pad-icon);
+  border:1px solid #d5deea;border-radius:10px;background:var(--soft);color:#111827;font-size:.95rem;
+  outline:none;transition:border .15s,box-shadow .15s,background .15s;appearance:none
+}
+.filtro-icon-input input::placeholder{color:#64748b}
+.filtro-icon-input input:focus,.filtro-icon-input select:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd33;background:#fff}
+.select-wrapper{position:relative}
+.select-wrapper::after{
+  content:"";position:absolute;right:12px;top:50%;transform:translateY(-25%);
+  border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #64748b;pointer-events:none
+}
+.select-wrapper select{padding-right:30px}
 
-/* tabela */
-.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px}
+/* grid das colunas (desktop) */
+.fld-busca{grid-column:span 8}
+.fld-tipo{grid-column:span 3}
+.fld-actions{grid-column:span 1;display:flex;gap:8px;justify-content:flex-end}
+
+@media (max-width:1000px){
+  .filters-grid{grid-template-columns:repeat(6,1fr)}
+  .fld-busca{grid-column:1/-1}
+  .fld-tipo{grid-column:span 4}
+  .fld-actions{grid-column:span 2}
+}
+@media (max-width:640px){
+  .filters-body{padding:10px}
+  .filters-grid{grid-template-columns:repeat(6,1fr)}
+  .fld-tipo{grid-column:1/-1}
+  .fld-actions{grid-column:1/-1;justify-content:stretch}
+  .fld-actions .btn{flex:1}
+}
+
+/* ===== TABELA ===== */
+.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:12px;background:#fff}
 table{width:100%;border-collapse:collapse;min-width:980px;background:#fff}
-thead th{position:sticky;top:0;background:linear-gradient(180deg, #18284a 0%, #21439f 100%);color:#fff;border-bottom:1px solid #0f172a;padding:11px 12px;text-align:left;font-weight:900}
-tbody td{padding:11px 12px;border-bottom:1px solid #eef2f7;color:#0f172a}
-tbody tr:nth-child(odd){background:#fbfdff}
-tbody tr:hover{background:#f3f7ff}
+thead th{
+  position:sticky;top:0;z-index:2;
+  background:linear-gradient(180deg,var(--accent) 0%,var(--accent-2) 100%);
+  color:#fff;border-bottom:1px solid #0f172a;padding:10px 12px;text-align:left;font-weight:900;font-size:.95rem
+}
+tbody td{padding:10px 12px;border-bottom:1px solid #eef2f7;color:#0f172a;font-size:.95rem}
+tbody tr:nth-child(odd) td{background:#fbfdff}
+tbody tr:hover td{background:#f3f7ff}
 
-/* status chips (tipo de movimentação) */
-.status{display:inline-block;padding:6px 12px;border-radius:999px;font-weight:800;font-size:.9rem;white-space:nowrap}
-.transferencia{background:#e6f0ff;color:#0b3b8c}
-.baixa{background:#ffe6e6;color:#7a1b1b}
-.entrada{background:#e8fff3;color:#166534}
-.envio_manutencao{background:#fff7ed;color:#9a3412}
-.retorno_manutencao,.retorno{background:#f0fdf4;color:#166534}
-.outros{background:#eef2ff;color:#1e3a8a}
+/* Chips de tipo de movimentação */
+.tag{display:inline-block;padding:5px 10px;border-radius:999px;font-weight:800;font-size:.85rem;white-space:nowrap}
+.tag.transferencia{background:#e6f0ff;color:#0b3b8c}
+.tag.baixa{background:#ffe6e6;color:#7a1b1b}
+.tag.entrada{background:#e8fff3;color:#166534}
+.tag.envio_manutencao{background:#fff7ed;color:#9a3412}
+.tag.retorno_manutencao,.tag.retorno{background:#f0fdf4;color:#166534}
+.tag.outros{background:#eef2ff;color:#1e3a8a}
 
-/* ação por linha */
-.icon-btn{background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:50%;padding:7px 8px;margin:0 2px;font-size:1.05rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+/* Ações por linha */
+.icon-btn{
+  background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:50%;
+  padding:7px 8px;margin:0 2px;font-size:1.05rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center
+}
 .icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
 </style>
 
 <div class="page">
   <div class="panel">
-    <!-- header -->
-    <div class="top-actions">
-      <div class="top-left">
-        <h2><i class="fa fa-exchange-alt"></i> Movimentações de Itens</h2>
-        <span class="badge-count">{{ movimentacoes|length }} registro{{ movimentacoes|length|pluralize }}</span>
+    <!-- Topo -->
+    <div class="topbar">
+      <div class="title">
+        <i class="fa fa-exchange-alt" style="color:var(--info)"></i>
+        <span>Movimentações de Itens</span>
       </div>
-      <div class="top-right" style="display:flex;gap:10px">
-        <a href="{% url 'movimentacao_create' %}" class="btn btn-add"><i class="fa fa-plus"></i> Nova Movimentação</a>
-      </div>
-    </div>
-
-    <!-- filtros -->
-    <form class="filtros" method="get" autocomplete="off" id="fForm">
-      <div class="group">
-        <label>Buscar por item</label>
-        <div class="filtro-icon-input">
-          <span class="ico"><i class="fa fa-search"></i></span>
-          <input type="text" name="q" class="ctrl" placeholder="Digite para buscar…" value="{{ request.GET.q|default:'' }}">
-        </div>
-      </div>
-
-    <div class="group">
-      <label>Tipo de Movimentação</label>
-      <div class="filtro-icon-input">
-        <span class="ico"><i class="fa fa-layer-group"></i></span>
-        <select name="tipo" class="ctrl">
-          <option value="">Todos os tipos</option>
-
-          {# ✅ 'tipos' deve ser uma lista de (value, label) #}
-          {% for value, label in tipos %}
-            <option value="{{ value }}" {% if request.GET.tipo == value %}selected{% endif %}>
-              {{ label }}
-            </option>
-          {% endfor %}
-        </select>
+      <span class="count-badge">
+        {{ movimentacoes|length }} registro{{ movimentacoes|length|pluralize }}
+      </span>
+      <div class="actions-right">
+        <a href="{% url 'movimentacao_create' %}" class="btn btn-add">
+          <i class="fa fa-plus"></i> Nova Movimentação
+        </a>
       </div>
     </div>
 
+    <!-- Filtros -->
+    <details class="filters" {% if request.GET.q or request.GET.tipo %}open{% endif %}>
+      <summary><i class="fa fa-filter"></i> Filtros
+        <span class="hint" style="font-weight:600;color:#64748b">— digite para aplicar automaticamente</span>
+      </summary>
+      <div class="filters-body">
+        <form method="get" class="filters-grid" id="fForm" autocomplete="off">
+          <div class="fld fld-busca filtro-icon-input">
+            <label for="q">Buscar por item</label>
+            <i class="fa fa-search" aria-hidden="true"></i>
+            <input type="text" name="q" id="q" placeholder="Digite o nome do item"
+                   value="{{ q|default:'' }}">
+          </div>
 
-      <div class="actions" style="display:flex;gap:10px;justify-content:flex-end">
-        <button class="btn btn-light" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
-        <a class="btn btn-light" href="{{ request.path }}"><i class="fa fa-eraser"></i> Limpar</a>
+          <div class="fld fld-tipo filtro-icon-input select-wrapper">
+            <label for="tipo">Tipo de Movimentação</label>
+            <i class="fa fa-layer-group" aria-hidden="true"></i>
+            <select name="tipo" id="tipo" aria-label="Filtrar por tipo de movimentação">
+              <option value="">Todos os tipos</option>
+              {% for value, label in tipos %}
+                <option value="{{ value }}" {% if tipo == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="fld fld-actions">
+            <button class="btn btn-light" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
+            <button class="btn btn-light" type="button" id="btnClear"><i class="fa fa-eraser"></i> Limpar</button>
+          </div>
+        </form>
       </div>
-    </form>
+    </details>
 
-    <!-- tabela -->
+    <!-- Tabela -->
     <div class="table-wrap">
-      <table>
+      <table aria-describedby="tableHint">
         <thead>
           <tr>
             <th style="width:320px">Item</th>
             <th style="width:160px">Tipo</th>
-            <th style="width:160px">Usuário</th>
-            <th style="width:180px">Localidade</th>
-            <th style="width:220px">Centro de Custo</th>
+            <th style="width:180px">Usuário</th>
+            <th style="width:220px">Localidade / Fornecedor</th>
+            <th style="width:240px">Centro de Custo</th>
             <th style="width:160px">Data</th>
             <th style="width:110px">Ações</th>
           </tr>
@@ -128,10 +185,11 @@ tbody tr:hover{background:#f3f7ff}
             <td>{{ mov.item.nome }}</td>
 
             <td>
-              {# aplicamos a classe diretamente; .retorno e .retorno_manutencao compartilham estilo #}
-              <span class="status {{ mov.tipo_movimentacao|default:'outros' }}">
-                {{ mov.get_tipo_movimentacao_display|default:mov.tipo_movimentacao|capfirst }}
-              </span>
+              {% with cls=mov.tipo_movimentacao|default:'outros' %}
+                <span class="tag {{ cls }}">
+                  {{ mov.get_tipo_movimentacao_display|default:mov.tipo_movimentacao|capfirst }}
+                </span>
+              {% endwith %}
             </td>
 
             <td>{{ mov.usuario.nome|default:"-" }}</td>
@@ -159,37 +217,47 @@ tbody tr:hover{background:#f3f7ff}
             </td>
 
             <td>{{ mov.created_at|date:"d/m/Y H:i" }}</td>
+
             <td style="white-space:nowrap">
               {% if mov.pk %}
                 <a href="{% url 'movimentacao_detail' mov.pk %}" class="icon-btn" title="Detalhar">
                   <i class="fa fa-eye"></i>
                 </a>
-              {% else %}
-                —
-              {% endif %}
+              {% else %}—{% endif %}
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="7" style="text-align:center;color:#64748b;padding:16px">Nenhuma movimentação registrado.</td></tr>
+          <tr>
+            <td colspan="7" style="text-align:center;color:#64748b;padding:16px">
+              Nenhuma movimentação encontrada.
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
+      <p id="tableHint" style="display:none">Tabela de movimentações com filtros de item e tipo.</p>
     </div>
   </div>
 </div>
 
 <script>
-// auto-submit com debounce
+/* Limpar filtros */
+document.getElementById('btnClear')?.addEventListener('click', ()=>{
+  window.location.href = window.location.pathname;
+});
+
+/* Debounce e auto-submit */
 (function(){
-  const form = document.getElementById('fForm');
-  if(!form) return;
-  const q = form.querySelector('input[name="q"]');
-  const tipo = form.querySelector('select[name="tipo"]');
+  const form = document.getElementById('fForm'); if(!form) return;
+  const q    = document.getElementById('q');
+  const tipo = document.getElementById('tipo');
+
   let t;
   q?.addEventListener('input', ()=>{
     clearTimeout(t);
-    t = setTimeout(()=>form.submit(), 400);
+    t = setTimeout(()=>form.submit(), 450);
   });
+
   tipo?.addEventListener('change', ()=>form.submit());
 })();
 </script>
