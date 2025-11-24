@@ -2279,8 +2279,27 @@ def _parse_date(s, fb):
     except Exception:
         return fb
 
+def _parse_date(value, default):
+    """
+    Converte 'YYYY-MM-DD' -> date. Se vazio ou inválido, retorna default.
+    """
+    if not value:
+        return default
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except Exception:
+        return default
+
+
 @login_required
 def cc_custos_dashboard(request):
+    """
+    Dashboard de custos por Centro de Custo:
+    - Itens locados (valor mensal)
+    - Licenças (assentos ativos e custo mensal)
+    - Baixas no período (R$)
+    - Gráficos: barras empilhadas (Itens x Licenças), pizza (proporção)
+    """
     # ---- Período para BAIXAS ----
     hoje = datetime.today().date()
     dt_ini = _parse_date(request.GET.get("inicio"), hoje - timedelta(days=30))
@@ -2328,7 +2347,6 @@ def cc_custos_dashboard(request):
         .select_related("licenca", "usuario__centro_custo", "centro_custo_destino", "lote")
         .order_by("licenca_id", "usuario_id", "created_at", "id")
     )
-
     # Guarda o ÚLTIMO por (licenca, usuario)
     last_by_pair = {}  # (licenca_id, usuario_id) -> MovimentacaoLicenca
     for m in mov_l_qs:
@@ -2341,13 +2359,15 @@ def cc_custos_dashboard(request):
             continue
 
         # Resolve CC (prioridade: usuário > mov > licença)
-        cc_id = getattr(getattr(m.usuario, "centro_custo", None), "id", None) \
-                or getattr(m.centro_custo_destino, "id", None) \
-                or getattr(m.licenca.centro_custo, "id", None)
+        cc_id = (
+            getattr(getattr(m.usuario, "centro_custo", None), "id", None)
+            or getattr(m.centro_custo_destino, "id", None)
+            or getattr(m.licenca.centro_custo, "id", None)
+        )
         if not cc_id:
             continue
 
-        # ✅ Custo mensal POR ASSENTO usando o lote da ATRIBUIÇÃO quando houver
+        # Custo mensal POR ASSENTO usando o lote da ATRIBUIÇÃO quando houver
         cm = m.custo_mensal_usado or Decimal("0.00")
 
         a = acc(cc_id)
@@ -2358,20 +2378,28 @@ def cc_custos_dashboard(request):
     # ---- BAIXAS no período (R$) por CC ----
     baixas_qs = (
         MovimentacaoItem.objects
-        .filter(tipo_movimentacao=TipoMovimentacaoChoices.BAIXA,
-                created_at__date__gte=dt_ini, created_at__date__lte=dt_fim)
+        .filter(
+            tipo_movimentacao=TipoMovimentacaoChoices.BAIXA,
+            created_at__date__gte=dt_ini, created_at__date__lte=dt_fim
+        )
         .select_related("item__centro_custo", "centro_custo_origem")
     )
     for mv in baixas_qs:
-        cc_id = getattr(mv.centro_custo_origem, "id", None) \
-                or getattr(getattr(mv.item, "centro_custo", None), "id", None)
+        cc_id = (
+            getattr(mv.centro_custo_origem, "id", None)
+            or getattr(getattr(mv.item, "centro_custo", None), "id", None)
+        )
         if not cc_id:
             continue
-        valor_baixa = mv.custo if mv.custo is not None else (mv.item.valor or Decimal("0.00")) * (mv.quantidade or 1)
+        valor_baixa = (
+            mv.custo
+            if mv.custo is not None
+            else (mv.item.valor or Decimal("0.00")) * (mv.quantidade or 1)
+        )
         a = acc(cc_id)
         a["baixas"] += (valor_baixa or Decimal("0.00"))
 
-    # ---- Completa metadados: usuarios e itens por CC, e objeto CC ----
+    # ---- Completa metadados por CC ----
     cc_ids = list(totals.keys())
     ccs = {cc.id: cc for cc in CentroCusto.objects.filter(id__in=cc_ids)}
 
@@ -2398,8 +2426,7 @@ def cc_custos_dashboard(request):
         d["cc"] = cc
         d["usuarios"] = map_users.get(cc_id, 0)
         d["itens"] = map_itens.get(cc_id, 0)
-        lic_tipos = len(d["licencas_set"])
-        d["licencas"] = lic_tipos
+        d["licencas"] = len(d["licencas_set"])
         d["total_mensal"] = (d["custo_itens"] + d["custo_licencas"])
         d["total_geral"] = (d["total_mensal"] + d["baixas"])
 
@@ -2407,8 +2434,8 @@ def cc_custos_dashboard(request):
             "cc": cc,
             "usuarios": d["usuarios"],
             "itens": d["itens"],
-            "licencas": d["licencas"],    # tipos distintos
-            "assentos": d["assentos"],    # assentos ativos
+            "licencas": d["licencas"],     # tipos distintos
+            "assentos": d["assentos"],     # assentos ativos
             "custo_itens": d["custo_itens"],
             "custo_licencas": d["custo_licencas"],
             "baixas": d["baixas"],
@@ -2421,10 +2448,14 @@ def cc_custos_dashboard(request):
 
     # Vetores para os gráficos
     labels = [f"{l['cc'].numero} - {l['cc'].departamento}" for l in linhas]
-    arr_itens = [float(l["custo_itens"]) for l in linhas]
-    arr_lics  = [float(l["custo_licencas"]) for l in linhas]
-    arr_mensal = [float(l["total_mensal"]) for l in linhas]
-    arr_baixas = [float(l["baixas"]) for l in linhas]
+    arr_itens   = [float(l["custo_itens"]) for l in linhas]
+    arr_lics    = [float(l["custo_licencas"]) for l in linhas]
+    arr_mensal  = [float(l["total_mensal"]) for l in linhas]
+    arr_baixas  = [float(l["baixas"]) for l in linhas]
+
+    # Totais (para pizza/proporção)
+    total_itens_mensal = float(sum(l["custo_itens"] for l in linhas)) if linhas else 0.0
+    total_lics_mensal  = float(sum(l["custo_licencas"] for l in linhas)) if linhas else 0.0
 
     context = {
         "dt_ini": dt_ini,
@@ -2436,9 +2467,9 @@ def cc_custos_dashboard(request):
         "cc_licencas": arr_lics,
         "cc_mensal": arr_mensal,
         "cc_baixas": arr_baixas,
+        "total_itens_mensal": total_itens_mensal,
+        "total_lics_mensal": total_lics_mensal,
     }
-    
-    
     return render(request, "front/dashboards/cc_custos_dashboard.html", context)
 
     

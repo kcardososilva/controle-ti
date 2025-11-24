@@ -2,207 +2,261 @@
 {% block title %}Custo por Centro de Custo{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
 
 <style>
 :root{
   --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
-  --primary:#2563eb; --primary2:#1d4ed8; --ok:#16a34a; --bad:#b91c1c; --amber:#b45309;
+  --p1:#1e3a8a; --p2:#2563eb; --ok:#10b981; --warn:#f59e0b; --bad:#ef4444;
   --shadow:0 22px 44px rgba(2,6,23,.07);
 }
-.page{max-width:1200px;margin:18px auto;padding:0 14px}
-.hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.hdr h2{margin:0;color:var(--ink);display:flex;align-items:center;gap:10px}
-.badge{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#f3f6ff;font-weight:800;color:#1e3a8a}
+.page{max-width:1200px;margin:20px auto;padding:0 14px;color:var(--ink)}
+.hdr{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.hdr h2{margin:0;font-size:1.35rem;display:flex;align-items:center;gap:10px}
+.badge{display:inline-block;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#eef4ff;font-weight:800;color:#1e3a8a}
 
-.filters{
-  display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin:8px 0 12px;
+/* filtros */
+.filters{display:grid;grid-template-columns:repeat(12,1fr);gap:10px;align-items:end;margin:8px 0 14px}
+.fg{display:flex;flex-direction:column;min-width:0}
+.fg label{font-weight:800;margin-bottom:6px}
+.fg input{height:42px;border:1px solid #d5deea;border-radius:10px;background:#fff;padding:8px 12px}
+.f-actions{display:flex;gap:8px;justify-content:flex-end}
+.btn{border:none;border-radius:10px;padding:10px 14px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.btn-primary{background:linear-gradient(90deg,var(--p1),var(--p2));color:#fff}
+.btn-light{background:#fff;border:1.5px solid #dbe6f1;color:#334155}
+.fld-inicio{grid-column:span 3}
+.fld-fim{grid-column:span 3}
+.fld-actions{grid-column:span 6}
+@media (max-width:900px){
+  .fld-inicio,.fld-fim{grid-column:span 6}
+  .fld-actions{grid-column:1/-1;justify-content:stretch}
+  .btn-primary{flex:1}
 }
-.fg{display:flex;flex-direction:column}
-.fg label{font-weight:800;margin-bottom:6px;color:#0f172a}
-.fg input{height:44px;padding:8px 12px;border:1px solid #d5deea;border-radius:12px;background:#fff;min-width:220px}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
-.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
-.btn-light{background:#f8fafc;border:1.5px solid #dbe6f1;color:#334155}
-.btn-link{background:transparent;border:none;color:#1e40af;font-weight:800;text-decoration:underline;cursor:pointer}
 
-.grid{display:grid;gap:14px}
-.g-2{grid-template-columns:2fr 1.2fr}
-@media (max-width:1020px){.g-2{grid-template-columns:1fr}}
+/* cards */
+.cards{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px;margin:10px 0}
+@media (max-width:900px){.cards{grid-template-columns:repeat(2,1fr)}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px 14px}
+.card .label{font-size:.86rem;color:var(--muted);font-weight:800}
+.card .val{font-size:1.2rem;font-weight:900}
 
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
-.card h3{margin:0 0 8px;color:var(--ink);display:flex;align-items:center;gap:8px}
+/* blocos de gráfico */
+.block{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px;margin-top:6px}
+.block h3{margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.grid-2{display:grid;grid-template-columns:2fr 1fr;gap:12px}
+@media (max-width:1000px){ .grid-2{grid-template-columns:1fr} }
 .chart{height:360px;position:relative}
-.chart.sm{height:310px}
+.chart.sm{height:300px}
 .nodata{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:700;pointer-events:none}
 
-.table{width:100%;border-collapse:collapse}
-.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left;color:#0f172a}
+/* tabela */
+.table-wrap{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:10px;margin-top:14px;overflow:auto}
+.table{width:100%;border-collapse:collapse;min-width:900px}
+.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left}
 .table th{background:#f8fafc;font-weight:900}
 .tright{text-align:right}
 .sticky{position:sticky;left:0;background:#f8fafc;z-index:1}
+.highlight{font-weight:900;color:var(--p2)}
 </style>
 
 <div class="page">
   <div class="hdr">
     <h2><i class="fa fa-landmark"></i> Custo por Centro de Custo</h2>
-    <span class="badge">Período de baixas: {{ dt_ini|date:"d/m/Y" }} — {{ dt_fim|date:"d/m/Y" }}</span>
+    <span class="badge">{{ dt_ini|date:"d/m/Y" }} — {{ dt_fim|date:"d/m/Y" }}</span>
   </div>
 
   <!-- FILTROS -->
-  <form method="get" class="filters" autocomplete="off" id="ccFilters">
-    <div class="fg">
+  <form method="get" class="filters" autocomplete="off">
+    <div class="fg fld-inicio">
       <label>Início</label>
       <input type="date" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}">
     </div>
-    <div class="fg">
+    <div class="fg fld-fim">
       <label>Fim</label>
       <input type="date" name="fim" value="{{ dt_fim|date:'Y-m-d' }}">
     </div>
-
-    <!-- Link de exportação dinâmico (usa os valores atuais do formulário) -->
-    <a id="exportLink" class="btn btn-link" title="Exportar Excel com os filtros atuais">
-      <i class="fa fa-file-excel"></i> Exportar Excel
-    </a>
-
-    <button class="btn btn-primary" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
-    <a class="btn btn-light" href="{{ request.path }}"><i class="fa fa-rotate-left"></i> Limpar</a>
+    <div class="f-actions fld-actions">
+      <button class="btn btn-primary" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
+      <a class="btn btn-light" href="{{ request.path }}"><i class="fa fa-rotate-left"></i> Limpar</a>
+    </div>
   </form>
 
-  <!-- GRÁFICOS -->
-  <div class="grid">
+  <!-- CARDS RESUMO -->
+  <div class="cards">
     <div class="card">
-      <h3><i class="fa fa-chart-column" style="color:#2563eb"></i> Mensal (Itens locação + Licenças)</h3>
-      <div class="chart">
-        <canvas id="ccMensalChart"></canvas>
-        <div id="nd-mensal" class="nodata">Sem dados</div>
+      <div class="label">Centros com custo</div>
+      <div class="val">{{ linhas|length }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Top CC (Total Geral)</div>
+      <div class="val">{% if linhas %}{{ linhas.0.cc.numero }} - {{ linhas.0.cc.departamento }}{% else %}—{% endif %}</div>
+    </div>
+    <div class="card">
+      <div class="label">Total Itens (R$/mês)</div>
+      <div class="val">R$ {{ total_itens_mensal|floatformat:2 }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Total Licenças (R$/mês)</div>
+      <div class="val">R$ {{ total_lics_mensal|floatformat:2 }}</div>
+    </div>
+  </div>
+
+  <!-- GRÁFICOS -->
+  <div class="block">
+    <div class="grid-2">
+      <!-- Barras empilhadas por CC -->
+      <div>
+        <h3><i class="fa fa-chart-column" style="color:#2563eb"></i> Mensal por CC (Itens + Licenças)</h3>
+        <div class="chart">
+          <canvas id="ccMensalChart"></canvas>
+          <div id="nd-mensal" class="nodata">Sem dados</div>
+        </div>
+      </div>
+
+      <!-- Pizza de proporção Itens x Licenças -->
+      <div>
+        <h3><i class="fa fa-circle-half-stroke" style="color:#10b981"></i> Proporção Mensal</h3>
+        <div class="chart sm">
+          <canvas id="mixPizza"></canvas>
+          <div id="nd-pizza" class="nodata">Sem dados</div>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- TABELA -->
-  <div class="card" style="margin-top:14px">
-    <h3><i class="fa fa-table" style="color:#0ea5e9"></i> Detalhamento por Centro de Custo</h3>
-    <div style="overflow:auto">
-      <table class="table">
-        <thead>
-          <tr>
-            <th class="sticky">Centro de Custo</th>
-            <th>Usuários</th>
-            <th>Itens</th>
-            <th>Licenças</th>
-            <th>Assentos ativos</th>
-            <th class="tright">Custo Itens (R$/mês)</th>
-            <th class="tright">Custo Licenças (R$/mês)</th>
-            <th class="tright">Baixas no período (R$)</th>
-            <th class="tright">Total Mensal (R$)</th>
-            <th class="tright">Total Geral (R$)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for l in linhas %}
-          <tr>
-            <td class="sticky">{{ l.cc.numero }} - {{ l.cc.departamento }}</td>
-            <td>{{ l.usuarios }}</td>
-            <td>{{ l.itens }}</td>
-            <td>{{ l.licencas }}</td>
-            <td>{{ l.assentos }}</td>
-            <td class="tright">R$ {{ l.custo_itens|floatformat:2 }}</td>
-            <td class="tright">R$ {{ l.custo_licencas|floatformat:2 }}</td>
-            <td class="tright">R$ {{ l.baixas|floatformat:2 }}</td>
-            <td class="tright">R$ {{ l.total_mensal|floatformat:2 }}</td>
-            <td class="tright">R$ {{ l.total_geral|floatformat:2 }}</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="10" style="color:#64748b">Nenhum dado para o período informado.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  <!-- Baixas -->
+  <div class="block">
+    <h3><i class="fa fa-arrow-trend-down" style="color:#ef4444"></i> Baixas (R$) por CC</h3>
+    <div class="chart">
+      <canvas id="baixasChart"></canvas>
+      <div id="nd-baixas" class="nodata">Sem dados</div>
     </div>
+  </div>
+
+  <!-- TABELA -->
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th class="sticky">Centro de Custo</th>
+          <th>Usuários</th>
+          <th>Itens</th>
+          <th>Licenças</th>
+          <th>Assentos</th>
+          <th class="tright">Itens (R$/mês)</th>
+          <th class="tright">Licenças (R$/mês)</th>
+          <th class="tright">Baixas (R$)</th>
+          <th class="tright">Total Mensal (R$)</th>
+          <th class="tright highlight">Total Geral (R$)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in linhas %}
+        <tr>
+          <td class="sticky">{{ l.cc.numero }} - {{ l.cc.departamento }}</td>
+          <td>{{ l.usuarios }}</td>
+          <td>{{ l.itens }}</td>
+          <td>{{ l.licencas }}</td>
+          <td>{{ l.assentos }}</td>
+          <td class="tright">R$ {{ l.custo_itens|floatformat:2 }}</td>
+          <td class="tright">R$ {{ l.custo_licencas|floatformat:2 }}</td>
+          <td class="tright">R$ {{ l.baixas|floatformat:2 }}</td>
+          <td class="tright">R$ {{ l.total_mensal|floatformat:2 }}</td>
+          <td class="tright highlight">R$ {{ l.total_geral|floatformat:2 }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="10" style="color:#64748b">Nenhum dado para o período informado.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 
-{# ===== DADOS PARA JS (com fallbacks para evitar erro) ===== #}
-{{ cc_labels|default:"[]"|json_script:"cc-labels" }}
-{{ cc_itens|default:"[]"|json_script:"cc-itens" }}
-{{ cc_licencas|default:"[]"|json_script:"cc-licencas" }}
-{{ cc_mensal|default:"[]"|json_script:"cc-mensal" }}
-{{ cc_baixas|default:"[]"|json_script:"cc-baixas" }}
+{# Dados JS (seguros) #}
+{{ cc_labels|json_script:"cc-labels" }}
+{{ cc_itens|json_script:"cc-itens" }}
+{{ cc_licencas|json_script:"cc-licencas" }}
+{{ cc_baixas|json_script:"cc-baixas" }}
+{{ total_itens_mensal|json_script:"tot-itens" }}
+{{ total_lics_mensal|json_script:"tot-lics" }}
 
 <script>
-/* ===== Exportar Excel mantendo os filtros atuais do formulário ===== */
-(function(){
-  const form = document.getElementById('ccFilters');
-  const link = document.getElementById('exportLink');
-  function buildHref(){
-    const params = new URLSearchParams(new FormData(form));
-    // monta a URL da view de exportação com os mesmos nomes de parâmetros:
-    return "{% url 'custo_cc_export_excel' %}?" + params.toString();
-  }
-  link.setAttribute('href', buildHref());
-  form.addEventListener('change', () => link.setAttribute('href', buildHref()));
-})();
+function J(id){ try{ return JSON.parse(document.getElementById(id).textContent) }catch(_){ return [] } }
+function n(v){ v = +v; return isFinite(v) ? v : 0 }
+function brl(v){ v = n(v); return 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) }
 
-/* ===== Helpers e gráficos ===== */
-function J(id, fb){ const el=document.getElementById(id); if(!el) return fb; try{return JSON.parse(el.textContent)}catch(e){return fb} }
-function show(id, on){ const el=document.getElementById(id); if(el) el.style.display = on ? 'flex' : 'none'; }
-function brl(n){ n=+n||0; return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+const labels   = J('cc-labels');
+const itens    = J('cc-itens').map(n);
+const licencas = J('cc-licencas').map(n);
+const baixas   = J('cc-baixas').map(n);
+const totItens = n(J('tot-itens'));
+const totLics  = n(J('tot-lics'));
 
-const labels   = J('cc-labels',   []);
-const itens    = J('cc-itens',    []).map(x=>+x||0);
-const licencas = J('cc-licencas', []).map(x=>+x||0);
-const mensal   = J('cc-mensal',   []).map(x=>+x||0);
-const baixas   = J('cc-baixas',   []).map(x=>+x||0);
+const hasMensal = (itens.reduce((a,b)=>a+b,0) + licencas.reduce((a,b)=>a+b,0)) > 0;
+const hasBaixas = baixas.reduce((a,b)=>a+b,0) > 0;
+const hasPizza  = (totItens + totLics) > 0;
 
-const lbls = labels.length ? labels : ['—'];
-function ensure(arr){ return (arr && arr.length) ? arr : [0]; }
-const hasMensal = (mensal.reduce((a,b)=>a+b,0) > 0) || (itens.reduce((a,b)=>a+b,0) > 0) || (licencas.reduce((a,b)=>a+b,0) > 0);
-const hasBaixas = (baixas.reduce((a,b)=>a+b,0) > 0);
+document.getElementById('nd-mensal').style.display = hasMensal ? 'none' : 'flex';
+document.getElementById('nd-baixas').style.display = hasBaixas ? 'none' : 'flex';
+document.getElementById('nd-pizza').style.display  = hasPizza  ? 'none' : 'flex';
 
 Chart.defaults.font.family = "'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial";
 Chart.defaults.plugins.legend.position = 'top';
-Chart.defaults.plugins.tooltip.callbacks = {
-  label: (ctx) => `${ctx.dataset.label}: ${brl(ctx.raw)}`
-};
+Chart.defaults.plugins.tooltip.callbacks = { label:(ctx)=>`${ctx.dataset.label}: ${brl(ctx.raw)}` };
 
-/* ===== Gráfico Mensal (empilhado) ===== */
-const c1 = document.getElementById('ccMensalChart');
-if (c1){
-  new Chart(c1, {
-    type: 'bar',
-    data: {
-      labels: lbls,
-      datasets: [
-        {label:'Itens (R$/mês)',    data: ensure(itens),    backgroundColor:'rgba(37,99,235,.80)'},
-        {label:'Licenças (R$/mês)', data: ensure(licencas), backgroundColor:'rgba(16,185,129,.80)'},
+/* Barras empilhadas: Mensal por CC */
+if (document.getElementById('ccMensalChart')){
+  new Chart(document.getElementById('ccMensalChart'), {
+    type:'bar',
+    data:{
+      labels: labels.length ? labels : ['—'],
+      datasets:[
+        { label:'Itens (R$/mês)', data: itens.length ? itens : [0], backgroundColor:'rgba(37,99,235,.85)' },
+        { label:'Licenças (R$/mês)', data: licencas.length ? licencas : [0], backgroundColor:'rgba(16,185,129,.85)' },
       ]
     },
-    options: {
+    options:{
       responsive:true, maintainAspectRatio:false,
-      scales: {
-        x: { stacked:true, grid:{color:'rgba(148,163,184,.15)'} },
-        y: { stacked:true, beginAtZero:true,
-             ticks:{ callback:(v)=>brl(v).replace('R$ ','') },
-             grid:{color:'rgba(148,163,184,.15)'} }
+      scales:{
+        x:{ stacked:true, grid:{color:'rgba(148,163,184,.15)'} },
+        y:{ stacked:true, beginAtZero:true, grid:{color:'rgba(148,163,184,.15)'}, ticks:{ callback:(v)=> String(v).replace('.',',') } }
       }
     }
   });
-  show('nd-mensal', !hasMensal);
 }
 
-/* ===== Gráfico Baixas (se usar) ===== */
-const c2 = document.getElementById('ccBaixasChart');
-if (c2){
-  new Chart(c2, {
-    type: 'bar',
-    data: { labels: lbls, datasets: [{ label:'Baixas (R$)', data: ensure(baixas), backgroundColor:'rgba(185,28,28,.85)' }] },
-    options: {
+/* Pizza: Proporção total Itens x Licenças */
+if (document.getElementById('mixPizza')){
+  new Chart(document.getElementById('mixPizza'), {
+    type:'doughnut',
+    data:{
+      labels:['Itens (R$/mês)','Licenças (R$/mês)'],
+      datasets:[{
+        data:[totItens, totLics],
+        backgroundColor:['rgba(37,99,235,.9)','rgba(16,185,129,.9)'],
+        borderColor:['#fff','#fff'], borderWidth:2
+      }]
+    },
+    options:{
       responsive:true, maintainAspectRatio:false,
-      scales: { y: { beginAtZero:true, ticks:{ callback:(v)=>brl(v).replace('R$ ','') } } }
+      plugins:{ tooltip:{ callbacks:{ label:(ctx)=> `${ctx.label}: ${brl(ctx.raw)}` } } }
     }
   });
-  show('nd-baixas', !hasBaixas);
+}
+
+/* Baixas por CC (coluna simples) */
+if (document.getElementById('baixasChart')){
+  new Chart(document.getElementById('baixasChart'), {
+    type:'bar',
+    data:{
+      labels: labels.length ? labels : ['—'],
+      datasets:[{ label:'Baixas (R$)', data: baixas.length ? baixas : [0], backgroundColor:'rgba(239,68,68,.85)' }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false,
+      scales:{ y:{ beginAtZero:true, grid:{color:'rgba(148,163,184,.15)'} } }
+    }
+  });
 }
 </script>
 {% endblock %}
