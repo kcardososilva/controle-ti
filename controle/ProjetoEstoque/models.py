@@ -26,6 +26,7 @@ class StatusUsuarioChoices(models.TextChoices):
 
 class TipoMovimentacaoChoices(models.TextChoices):
     TRANSFERENCIA = "transferencia", "Transferência"
+    TRANSFERENCIA_EQUIPAMENTO = "transferencia_equipamento", "Transferência Equipamento"
     BAIXA = "baixa", "Baixa"
     ENTRADA = "entrada", "Entrada"
     ENVIO_MANUTENCAO = "envio_manutencao", "Envio para Manutenção"
@@ -122,7 +123,7 @@ class Funcao(AuditModel):
         return self.nome
 
 
-# ========== USUÁRIO / LICENÇA ==========
+
 
 
 
@@ -220,14 +221,14 @@ class CicloManutencao(AuditModel):
 
 # ✅ Movimentação: adicionamos tipo_transferencia e fornecedor_manutencao
 class MovimentacaoItem(AuditModel):
-    # Tipo principal (transferencia, baixa, entrada, envio_manutencao, retorno_manutencao)
+    # Tipo principal
     tipo_movimentacao = models.CharField(max_length=30, choices=TipoMovimentacaoChoices.choices)
 
-    # Detalhes
+    # Detalhes já existentes
     tipo_transferencia = models.CharField(
         max_length=10,
         blank=True, null=True,
-        choices=(("entrega", "Entrega"), ("devolucao", "Devolução")),
+        choices=TipoTransferenciaChoices.choices,
         help_text="Somente para transferência."
     )
     quantidade = models.PositiveIntegerField(default=1)
@@ -242,15 +243,25 @@ class MovimentacaoItem(AuditModel):
 
     localidade_origem = models.ForeignKey("Localidade", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_origem")
     localidade_destino = models.ForeignKey("Localidade", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_destino")
-    centro_custo_origem = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_origem")
-    centro_custo_destino = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_destino")
+    centro_custo_origem = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_origem_cc")
+    centro_custo_destino = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_destino_cc")
 
-    # Novo: fornecedor para envio à manutenção (substitui “localidade” nesse fluxo)
+    # Envio para manutenção
     fornecedor_manutencao = models.ForeignKey("Fornecedor", on_delete=models.SET_NULL, null=True, blank=True, related_name="manutencoes")
 
-    # Mantemos o campo mas não usamos mais no retorno (regra: voltar como BACKUP)
+    # Mantido
     status_retorno = models.CharField(max_length=15, choices=StatusItemChoices.choices, blank=True, null=True)
-    # ✅ número do pedido — obrigatório apenas para ENTRADA
+
+    # ✅ Status explícito para "Transferência Equipamento"
+    status_transferencia = models.CharField(
+        max_length=15,
+        choices=StatusItemChoices.choices,
+        blank=True,
+        null=True,
+        help_text="Status desejado do equipamento na transferência de equipamento."
+    )
+
+    # ENTRADA
     numero_pedido = models.CharField(
         max_length=100, blank=True, null=True,
         help_text="Obrigatório apenas para movimentações do tipo Entrada."
@@ -262,96 +273,117 @@ class MovimentacaoItem(AuditModel):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"[{self.get_tipo_movimentacao_display()}] {self.item.nome} x{self.quantidade}"
+        try:
+            tipo = self.get_tipo_movimentacao_display()
+        except Exception:
+            tipo = self.tipo_movimentacao
+        nome_item = getattr(self.item, "nome", "—")
+        return f"[{tipo}] {nome_item} x{self.quantidade}"
 
     @transaction.atomic
     def save(self, *args, **kwargs):
         is_new = self.pk is None
-        super().save(*args, **kwargs)  # precisamos do pk/created_at
 
-        item = self.item
+        # Snapshot de ORIGEM antes de mexer no item
+        item = getattr(self, "item", None)
+        item_local_atual = getattr(item, "localidade", None)
+        item_cc_atual = getattr(item, "centro_custo", None)
 
+        super().save(*args, **kwargs)  # precisamos do PK/created_at para eventual update() atômico
+
+        # ===== SNAPSHOT DE ORIGEM (só no primeiro save) =====
+        if is_new:
+            updates = {}
+            if self.localidade_origem_id is None and item_local_atual is not None:
+                updates["localidade_origem_id"] = item_local_atual.id
+            if self.centro_custo_origem_id is None and item_cc_atual is not None:
+                updates["centro_custo_origem_id"] = item_cc_atual.id
+            if updates:
+                MovimentacaoItem.objects.filter(pk=self.pk).update(**updates)
+                # refletir em memória:
+                if "localidade_origem_id" in updates:
+                    self.localidade_origem = item_local_atual
+                if "centro_custo_origem_id" in updates:
+                    self.centro_custo_origem = item_cc_atual
+
+        # Nada a fazer em updates: regras a seguir só disparam em criação
         if not is_new:
-            # nada a fazer em updates
             return
 
-        # ===== REGRAS DE ESTOQUE (como já havia no seu código) =====
-        # ===== TRANSFERÊNCIAS DE ESTOQUE (ajuste de status backup/ativo) =====
-        if self.tipo_movimentacao == "transferencia":
+        # ===== TRANSFERÊNCIA (clássica) =====
+        if self.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA:
             update_fields = ["updated_at"]
             mudou_algo = False
 
-            # Atualiza localidade/CC como já fazia
             if self.localidade_destino:
                 item.localidade = self.localidade_destino
-                update_fields.append("localidade")
-                mudou_algo = True
+                update_fields.append("localidade"); mudou_algo = True
             if self.centro_custo_destino:
                 item.centro_custo = self.centro_custo_destino
-                update_fields.append("centro_custo")
-                mudou_algo = True
+                update_fields.append("centro_custo"); mudou_algo = True
 
-            # === Regra solicitada ===
-            # ENTREGAR ao usuário -> se está BACKUP vira ATIVO
             if self.tipo_transferencia == TipoTransferenciaChoices.ENTREGA and self.usuario_id:
                 if item.status == StatusItemChoices.BACKUP:
                     item.status = StatusItemChoices.ATIVO
-                    update_fields.append("status")
-                    mudou_algo = True
-
-            # DEVOLVER do usuário -> se está ATIVO volta para BACKUP
+                    update_fields.append("status"); mudou_algo = True
             elif self.tipo_transferencia == TipoTransferenciaChoices.DEVOLUCAO:
                 if item.status == StatusItemChoices.ATIVO:
                     item.status = StatusItemChoices.BACKUP
-                    update_fields.append("status")
-                    mudou_algo = True
+                    update_fields.append("status"); mudou_algo = True
 
             if mudou_algo:
-                # salva somente o que de fato mudou
                 item.save(update_fields=list(dict.fromkeys(update_fields)))
 
-        elif self.tipo_movimentacao == "baixa":
+        # ✅ TRANSFERÊNCIA EQUIPAMENTO
+        elif self.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA_EQUIPAMENTO:
+            update_fields = ["updated_at"]
+            mudou_algo = False
+
+            if self.localidade_destino:
+                item.localidade = self.localidade_destino
+                update_fields.append("localidade"); mudou_algo = True
+            if self.centro_custo_destino:
+                item.centro_custo = self.centro_custo_destino
+                update_fields.append("centro_custo"); mudou_algo = True
+
+            if self.status_transferencia:
+                item.status = self.status_transferencia
+                update_fields.append("status"); mudou_algo = True
+
+            if mudou_algo:
+                item.save(update_fields=list(dict.fromkeys(update_fields)))
+
+        # ===== BAIXA =====
+        elif self.tipo_movimentacao == TipoMovimentacaoChoices.BAIXA:
             nova_qtd = max(0, (item.quantidade or 0) - (self.quantidade or 0))
             item.quantidade = nova_qtd
             item.save(update_fields=["quantidade", "updated_at"])
-
-            # ===== NOVO: snapshot de custo (FIFO sobre ENTRADAS) =====
+            # FIFO de custo (mantém seu comportamento)
             try:
                 if not self.custo or self.custo <= 0:
-                    cutoff = self.created_at  # baixa “congela” custo até aqui
-
-                    # 1) Carrega ENTRADAS (lotes) do item até o cutoff, em ordem
+                    cutoff = self.created_at
                     entradas = (
                         MovimentacaoItem.objects
-                        .filter(item_id=item.id,
-                                tipo_movimentacao="entrada",
-                                created_at__lte=cutoff)
+                        .filter(item_id=item.id, tipo_movimentacao=TipoMovimentacaoChoices.ENTRADA, created_at__lte=cutoff)
                         .order_by("created_at", "id")
                         .values("quantidade", "custo")
                     )
-
                     lotes = []
                     for e in entradas:
                         q = int(e["quantidade"] or 0)
-                        if q <= 0:
-                            continue
-                        # preço unitário do lote: custo_total / qtd_lote
+                        if q <= 0: continue
                         unit = Decimal("0.00")
                         if e["custo"] is not None and q > 0:
                             unit = (Decimal(e["custo"]) / Decimal(q)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                        lotes.append([q, unit])  # [quantidade_disponível, preço_unitário]
+                        lotes.append([q, unit])
 
-                    # 2) Debita as BAIXAS anteriores desse item (consome dos lotes em FIFO)
                     prev_baixas = (
                         MovimentacaoItem.objects
-                        .filter(item_id=item.id,
-                                tipo_movimentacao="baixa",
-                                created_at__lt=cutoff)
+                        .filter(item_id=item.id, tipo_movimentacao=TipoMovimentacaoChoices.BAIXA, created_at__lt=cutoff)
                         .order_by("created_at", "id")
                         .values("quantidade")
                     )
 
-                    # cópia mutável para consumo
                     saldo = [[q, u] for (q, u) in lotes]
                     for b in prev_baixas:
                         consume = int(b["quantidade"] or 0)
@@ -359,83 +391,65 @@ class MovimentacaoItem(AuditModel):
                         while consume > 0 and idx < len(saldo):
                             disp, unit = saldo[idx]
                             if disp <= 0:
-                                idx += 1
-                                continue
+                                idx += 1; continue
                             take = min(disp, consume)
                             saldo[idx][0] = disp - take
                             consume -= take
-                            if saldo[idx][0] == 0:
-                                idx += 1
-                        if consume > 0:
-                            # débito acima do registrado → ignora (sem custo)
-                            pass
+                            if saldo[idx][0] == 0: idx += 1
 
-                    # 3) Calcula custo da BAIXA atual, consumindo do saldo remanescente
                     qty = int(self.quantidade or 0)
                     total_cost = Decimal("0.00")
                     idx = 0
                     while qty > 0 and idx < len(saldo):
                         disp, unit = saldo[idx]
                         if disp <= 0:
-                            idx += 1
-                            continue
+                            idx += 1; continue
                         take = min(disp, qty)
                         total_cost += (Decimal(take) * unit)
                         saldo[idx][0] = disp - take
                         qty -= take
-                        if saldo[idx][0] == 0:
-                            idx += 1
+                        if saldo[idx][0] == 0: idx += 1
 
-                    # 4) Se ainda faltou quantidade, usa último preço unitário conhecido ou item.valor
                     if qty > 0:
                         last_unit = Decimal("0.00")
                         for qrem, unit in reversed(lotes):
                             if unit > 0:
-                                last_unit = unit
-                                break
+                                last_unit = unit; break
                         if last_unit == Decimal("0.00"):
                             last_unit = Decimal(item.valor or 0)
                         total_cost += (Decimal(qty) * last_unit)
 
-                    # grava o snapshot de custo na própria baixa (sem recursão)
                     MovimentacaoItem.objects.filter(pk=self.pk).update(custo=total_cost)
                     self.custo = total_cost
             except Exception:
-                # Em caso de erro, não quebrar o fluxo da baixa
                 pass
 
-        elif self.tipo_movimentacao == "entrada":
-            # soma quantidade
+        # ===== ENTRADA =====
+        elif self.tipo_movimentacao == TipoMovimentacaoChoices.ENTRADA:
             item.quantidade = (item.quantidade or 0) + (self.quantidade or 0)
             fields = ["quantidade", "updated_at"]
-
             if self.localidade_destino:
-                item.localidade = self.localidade_destino
-                fields.append("localidade")
+                item.localidade = self.localidade_destino; fields.append("localidade")
             if self.centro_custo_destino:
-                item.centro_custo = self.centro_custo_destino
-                fields.append("centro_custo")
-
-            # mantém seu comportamento de atualizar o valor unitário do item,
-            # mas isso NÃO afeta baixas já gravadas (que agora ficam "congeladas")
+                item.centro_custo = self.centro_custo_destino; fields.append("centro_custo")
             try:
                 qtd = Decimal(self.quantidade or 1)
                 custo_total = Decimal(self.custo or 0)
                 if custo_total > 0 and qtd > 0:
                     valor_unit = (custo_total / qtd).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                    item.valor = valor_unit
-                    fields.append("valor")
+                    item.valor = valor_unit; fields.append("valor")
             except Exception:
                 pass
-
             item.save(update_fields=fields)
 
-        elif self.tipo_movimentacao == "envio_manutencao":
+        # ===== ENVIO MANUTENÇÃO =====
+        elif self.tipo_movimentacao == TipoMovimentacaoChoices.ENVIO_MANUTENCAO:
             item.status = StatusItemChoices.MANUTENCAO
             item.quantidade = max(0, (item.quantidade or 0) - 1)
             item.save(update_fields=["status", "quantidade", "updated_at"])
 
-        elif self.tipo_movimentacao in ("retorno_manutencao", "retorno"):
+        # ===== RETORNO MANUTENÇÃO =====
+        elif self.tipo_movimentacao in (TipoMovimentacaoChoices.RETORNO_MANUTENCAO, "retorno"):
             item.status = StatusItemChoices.BACKUP
             item.quantidade = (item.quantidade or 0) + 1
             item.save(update_fields=["status", "quantidade", "updated_at"])

@@ -111,28 +111,89 @@ class UsuarioForm(forms.ModelForm):
         widgets = {
             "data_inicio": DATE_WIDGET,
             "data_termino": DATE_WIDGET,
-            # se quiser, pode definir widgets para os demais campos (Select, EmailInput etc.)
+            # Demais widgets continuam padrão; classes serão aplicadas no __init__
         }
 
     def __init__(self, *args, **kwargs):
+        """
+        - Mantém seu baseline (funciona).
+        - Aplica Select2 nos selects.
+        - Garante que, em edição (GET), o <input type="date"> venha pré-preenchido.
+        """
         super().__init__(*args, **kwargs)
 
-        # 🔧 Garanta que os campos aceitem o formato que o input <type="date"> envia/recebe
+        # 🔧 Aceitar formato do <input type="date">
         self.fields["data_inicio"].input_formats = ["%Y-%m-%d"]
         self.fields["data_termino"].input_formats = ["%Y-%m-%d"]
 
-        # (Opcional) aplique classes padrão aos demais campos, se quiser manter o visual unificado
+        # Classes padrão e Select2
         for name, field in self.fields.items():
+            # aplica .ctrl em todos (exceto os que já têm via DATE_WIDGET)
             if not isinstance(field.widget, forms.DateInput):
                 field.widget.attrs.setdefault("class", "ctrl")
 
+        # aplica select2 nos selects
+        for name in ("status", "pmb", "centro_custo", "localidade", "funcao"):
+            if name in self.fields and hasattr(self.fields[name].widget, "attrs"):
+                existing = self.fields[name].widget.attrs.get("class", "")
+                if "select2" not in existing:
+                    self.fields[name].widget.attrs["class"] = (existing + " select2").strip()
+                self.fields[name].widget.attrs.setdefault("data-placeholder", "Selecione...")
+
+        # UX: ordenar combos
+        if "centro_custo" in self.fields:
+            self.fields["centro_custo"].queryset = CentroCusto.objects.order_by("numero", "departamento")
+            self.fields["centro_custo"].empty_label = "—"
+        if "localidade" in self.fields:
+            self.fields["localidade"].queryset = Localidade.objects.order_by("local")
+            self.fields["localidade"].empty_label = "—"
+        if "funcao" in self.fields:
+            self.fields["funcao"].queryset = Funcao.objects.order_by("nome")
+            self.fields["funcao"].empty_label = "—"
+
+        # ✅ PRÉ-PREENCHIMENTO NA EDIÇÃO (GET): value no input[type=date]
+        if self.instance and self.instance.pk and not self.is_bound:
+            if self.instance.data_inicio:
+                self.fields["data_inicio"].initial = self.instance.data_inicio
+                self.fields["data_inicio"].widget.attrs["value"] = self.instance.data_inicio.strftime("%Y-%m-%d")
+
     def clean(self):
+        """
+        - Mantém sua validação original (término >= início).
+        - ✅ PRESERVA data_inicio NA EDIÇÃO SE O POST VIER VAZIO (string vazia vira None no cleaned_data).
+        """
         data = super().clean()
+
+        # ✅ preserva data_inicio na edição
+        if self.instance and self.instance.pk:
+            # Se o POST trouxe '' (vazio) ou None, restaura o valor original
+            posted_raw = self.data.get(self.add_prefix("data_inicio"), None)
+            if (posted_raw in (None, "")) and self.instance.data_inicio:
+                data["data_inicio"] = self.instance.data_inicio
+
         di = data.get("data_inicio")
         dt = data.get("data_termino")
         if di and dt and dt < di:
             self.add_error("data_termino", "A data de término não pode ser anterior à data de início.")
+
         return data
+
+    def save(self, commit=True):
+        """
+        ✅ Blindagem final: na edição, se o POST vier vazio para data_inicio,
+        regrava o valor anterior da instância.
+        """
+        instance = super().save(commit=False)
+
+        if self.instance and self.instance.pk:
+            posted_raw = self.data.get(self.add_prefix("data_inicio"), None)
+            if (posted_raw in (None, "")) and self.instance.data_inicio:
+                instance.data_inicio = self.instance.data_inicio
+
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 # ================== ITEM ==================
 class ItemForm(forms.ModelForm):
     class Meta:
@@ -195,11 +256,13 @@ class MovimentacaoItemForm(forms.ModelForm):
             "localidade_destino",
             "centro_custo_destino",
             "fornecedor_manutencao",
-            "numero_pedido",  # exibido no form
+            "numero_pedido",
             "observacao",
             "chamado",
             "custo",
             "termo_pdf",
+            # ✅ status usado apenas em "transferencia_equipamento"
+            "status_transferencia",
         ]
         widgets = {
             "tipo_movimentacao": forms.Select(attrs={"class": "ctrl"}),
@@ -212,45 +275,50 @@ class MovimentacaoItemForm(forms.ModelForm):
             "numero_pedido": forms.TextInput(attrs={"class": "ctrl", "placeholder": "Ex.: PO-2025-0001"}),
             "observacao": forms.Textarea(attrs={"class": "ctrl", "rows": 3}),
             "chamado": forms.TextInput(attrs={"class": "ctrl"}),
-            "custo": forms.NumberInput(attrs={"class": "ctrl", "step": "0.01"}),
+            "custo": forms.NumberInput(attrs={"class": "ctrl", "step": "0.01", "min": "0"}),
+            "status_transferencia": forms.Select(attrs={"class": "ctrl"}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Campos ficam opcionalmente obrigatórios via regra dinâmica (clean)
+        # Tudo opcional por padrão; validação condicional no clean()
         for f in self.fields.values():
             f.required = False
 
     def clean(self):
         cleaned = super().clean()
-        tipo = cleaned.get("tipo_movimentacao")
+        tipo = (cleaned.get("tipo_movimentacao") or "").strip()
 
-        # alias aceito no front
+        # Alias aceito no front
         if tipo == "retorno":
             tipo = "retorno_manutencao"
             cleaned["tipo_movimentacao"] = tipo
 
-        # ===== TRANSFERÊNCIA =====
+        # ========= Regras por tipo =========
+
+        # TRANSFERÊNCIA (clássica)
         if tipo == "transferencia":
-            # exige tipo_transferencia
             if not cleaned.get("tipo_transferencia"):
                 self.add_error("tipo_transferencia", "Selecione Entrega ou Devolução.")
-
-            # exige CC e Local destino
             if not cleaned.get("localidade_destino"):
                 self.add_error("localidade_destino", "Localidade destino é obrigatória para transferência.")
             if not cleaned.get("centro_custo_destino"):
                 self.add_error("centro_custo_destino", "Centro de custo destino é obrigatório para transferência.")
-
-            # termo obrigatório (regra de negócio)
             if not cleaned.get("termo_pdf"):
                 self.add_error("termo_pdf", "O termo PDF é obrigatório para transferência.")
-
-            # ⚠️ FIX: Entrega SEMPRE precisa de usuário (vincula posse)
             if cleaned.get("tipo_transferencia") == "entrega" and not cleaned.get("usuario"):
                 self.add_error("usuario", "Informe o usuário para a Transferência (Entrega).")
 
-        # ===== BAIXA =====
+        # ✅ TRANSFERÊNCIA EQUIPAMENTO (nova)
+        elif tipo == "transferencia_equipamento":
+            if not cleaned.get("localidade_destino"):
+                self.add_error("localidade_destino", "Localidade destino é obrigatória.")
+            if not cleaned.get("centro_custo_destino"):
+                self.add_error("centro_custo_destino", "Centro de custo destino é obrigatório.")
+            if not cleaned.get("status_transferencia"):
+                self.add_error("status_transferencia", "Selecione o status do equipamento para a transferência.")
+
+        # BAIXA
         elif tipo == "baixa":
             if not cleaned.get("quantidade"):
                 self.add_error("quantidade", "Informe a quantidade para a baixa.")
@@ -259,7 +327,7 @@ class MovimentacaoItemForm(forms.ModelForm):
             if not cleaned.get("centro_custo_destino"):
                 self.add_error("centro_custo_destino", "Centro de custo é obrigatório na baixa.")
 
-        # ===== ENTRADA =====
+        # ENTRADA
         elif tipo == "entrada":
             if not cleaned.get("quantidade"):
                 self.add_error("quantidade", "Informe a quantidade para a entrada.")
@@ -267,18 +335,19 @@ class MovimentacaoItemForm(forms.ModelForm):
                 self.add_error("localidade_destino", "Localidade é obrigatória na entrada.")
             if not cleaned.get("centro_custo_destino"):
                 self.add_error("centro_custo_destino", "Centro de custo é obrigatório na entrada.")
-            if not (cleaned.get("numero_pedido") or "").strip():
+            numero = (cleaned.get("numero_pedido") or "").strip()
+            if not numero:
                 self.add_error("numero_pedido", "Informe o número do pedido para a entrada.")
 
-        # ===== ENVIO MANUTENÇÃO =====
+        # ENVIO MANUTENÇÃO
         elif tipo == "envio_manutencao":
             if not cleaned.get("fornecedor_manutencao"):
                 self.add_error("fornecedor_manutencao", "Informe o fornecedor de manutenção.")
 
-        # ===== RETORNO MANUTENÇÃO =====
-        elif tipo == "retorno_manutencao":
-            # sem regras adicionais; o model/view já limpam o usuário se necessário
-            pass
+        # Sanitização leve
+        custo = cleaned.get("custo")
+        if custo is not None and custo < 0:
+            self.add_error("custo", "Custo não pode ser negativo.")
 
         return cleaned
 

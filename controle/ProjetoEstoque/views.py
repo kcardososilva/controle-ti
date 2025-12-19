@@ -31,7 +31,9 @@ from .forms import CategoriaForm, SubtipoForm, UsuarioForm, FornecedorForm, Loca
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from django.utils.timezone import now
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-
+import io
+from django.http import JsonResponse
+from django.template.loader import render_to_string
 
 # --- Helpers de compatibilidade com nomes de campos diferentes no LicencaLote ---
 def _lote_total_get(lote):
@@ -215,7 +217,7 @@ def usuario_list(request):
         "loc_list": Localidade.objects.order_by("local"),
         "func_list": Funcao.objects.order_by("nome"),
     }
-    return render(request, "front/usuario_list.html", ctx)
+    return render(request, "front/usuarios/usuario_list.html", ctx)
 
 
 # CREATE
@@ -233,10 +235,8 @@ def usuario_create(request):
         messages.error(request, "Corrija os erros do formulário.")
     else:
         form = UsuarioForm()
+    return render(request, "front/usuarios/usuario_form.html", {"form": form, "editar": False})
 
-    return render(request, "front/usuario_form.html", {"form": form, "editar": False})
-
-# UPDATE
 @login_required
 def usuario_update(request, pk: int):
     obj = get_object_or_404(Usuario, pk=pk)
@@ -251,23 +251,18 @@ def usuario_update(request, pk: int):
         messages.error(request, "Corrija os erros do formulário.")
     else:
         form = UsuarioForm(instance=obj)
-
-    return render(request, "front/usuario_form.html", {"form": form, "editar": True})
+    return render(request, "front/usuarios/usuario_form.html", {"form": form, "editar": True})
 
 
 # DETAIL
 @login_required
 def usuario_detail(request, pk):
-    # ---------- USUÁRIO ----------
     obj = get_object_or_404(
         Usuario.objects.select_related("centro_custo", "localidade", "funcao"),
         pk=pk
     )
 
-    # ==============
-    # ITENS (sem ROW_NUMBER/Window)
-    # ==============
-    # Buscamos só movimentos relevantes e já ordenamos por item, depois decrescente por data/id
+    # ===== ITENS (último movimento válido aponta posse) =====
     movs_itens = (
         MovimentacaoItem.objects
         .exclude(tipo_movimentacao__in=["entrada", "baixa"])
@@ -275,21 +270,17 @@ def usuario_detail(request, pk):
         .order_by("item_id", "-created_at", "-id")
     )
 
-    # Pegamos o último movimento de cada item “no braço”
     last_mov_by_item = {}
     for m in movs_itens:
         if m.item_id not in last_mov_by_item:
             last_mov_by_item[m.item_id] = m
 
-    # Agora filtramos apenas os itens cujo último mov é com este usuário e representa posse
     item_ids_com_usuario = []
     for item_id, m in last_mov_by_item.items():
         if m.usuario_id != obj.pk:
             continue
-        # Se o último foi transferência mas NÃO “entrega”, não está com o usuário
         if m.tipo_movimentacao == "transferencia" and (m.tipo_transferencia or "").lower() != "entrega":
             continue
-        # Estados de manutenção/retorno não caracterizam posse
         if m.tipo_movimentacao in ("envio_manutencao", "retorno_manutencao", "retorno"):
             continue
         item_ids_com_usuario.append(item_id)
@@ -301,30 +292,26 @@ def usuario_detail(request, pk):
         .order_by("nome")
     )
 
-    # custos de itens (locação mensal x aquisição)
     total_itens_loc_mensal = Decimal("0.00")
     total_itens_aquis = Decimal("0.00")
 
     for it in items_do_usuario:
-        # Pode não existir relação de locação
         try:
             loc = it.locacao
         except Locacao.DoesNotExist:
             loc = None
 
-        if it.locado == SimNaoChoices.SIM and loc and loc.valor_mensal:
-            it.custo_tipo = "locacao"              # usado no template
-            it.custo_valor = loc.valor_mensal      # usado no template
+        if getattr(it, "locado", None) == SimNaoChoices.SIM and loc and loc.valor_mensal:
+            it.custo_tipo = "locacao"
+            it.custo_valor = loc.valor_mensal
             total_itens_loc_mensal += loc.valor_mensal
         else:
             it.custo_tipo = "aquisicao"
-            it.custo_valor = it.valor              # pode ser None
+            it.custo_valor = it.valor
             if it.valor:
                 total_itens_aquis += it.valor
 
-    # ==============
-    # LICENÇAS (sem ROW_NUMBER/Window)
-    # ==============
+    # ===== LICENÇAS (última atribuição ativa para o usuário) =====
     movs_lic_usuario = (
         MovimentacaoLicenca.objects
         .filter(usuario=obj)
@@ -332,13 +319,11 @@ def usuario_detail(request, pk):
         .order_by("licenca_id", "-created_at", "-id")
     )
 
-    # Último movimento por licença para ESTE usuário
     last_mov_by_lic = {}
     for m in movs_lic_usuario:
         if m.licenca_id not in last_mov_by_lic:
             last_mov_by_lic[m.licenca_id] = m
 
-    # Helper para normalizar custo do ciclo -> mensal/anual conforme periodicidade da licença
     def _mensal_anual_from_ciclo(licenca, custo_ciclo):
         if not custo_ciclo:
             return (None, None)
@@ -352,20 +337,17 @@ def usuario_detail(request, pk):
             return (ciclo / Decimal("3"), ciclo * (Decimal("12")/Decimal("3")))
         elif per == "semestral":
             return (ciclo / Decimal("6"), ciclo * (Decimal("12")/Decimal("6")))
-        # fallback: trata como mensal
         return (ciclo, ciclo * Decimal("12"))
 
     licencas_do_usuario = []
     total_lic_mensal = Decimal("0.00")
     total_lic_anual  = Decimal("0.00")
 
-    # Considera ativa quando o último movimento é ATRIBUIÇÃO
     for lic_id, mov in last_mov_by_lic.items():
         if mov.tipo != TipoMovLicencaChoices.ATRIBUICAO:
             continue
 
-        lic = mov.licenca  # já veio via select_related
-        # custo preferencial do LOTE; se não houver, cai no custo da licença
+        lic = mov.licenca
         custo_mensal = None
         custo_anual  = None
 
@@ -373,7 +355,6 @@ def usuario_detail(request, pk):
             cm, ca = _mensal_anual_from_ciclo(lic, mov.lote.custo_ciclo)
             custo_mensal, custo_anual = cm, ca
         else:
-            # Usa as helpers do próprio model da licença (mantém sua lógica)
             try:
                 custo_mensal = lic.custo_mensal()
             except Exception:
@@ -390,26 +371,41 @@ def usuario_detail(request, pk):
 
         licencas_do_usuario.append({
             "licenca": lic,
-            "desde": mov.created_at,     # datetime da última atribuição ao usuário
+            "desde": mov.created_at,
             "custo_mensal": custo_mensal,
             "custo_anual":  custo_anual,
         })
 
-    # ---------- CONTEXTO ----------
+    # ===== KPIs =====
+    hoje = timezone.now().date()
+    tenure_human = None
+    if obj.data_inicio:
+        anos = hoje.year - obj.data_inicio.year - ((hoje.month, hoje.day) < (obj.data_inicio.month, obj.data_inicio.day))
+        meses_total = (hoje.year - obj.data_inicio.year) * 12 + (hoje.month - obj.data_inicio.month) - (1 if hoje.day < obj.data_inicio.day else 0)
+        if anos >= 1:
+            resto_meses = max(0, meses_total - anos*12)
+            tenure_human = f"{anos} ano(s)" + (f" e {resto_meses} mês(es)" if resto_meses else "")
+        else:
+            tenure_human = f"{max(meses_total,0)} mês(es)"
+
+    custo_total_mensal = (total_itens_loc_mensal or Decimal("0.00")) + (total_lic_mensal or Decimal("0.00"))
+    custo_total_anual = (total_lic_anual or Decimal("0.00"))
+
     context = {
         "obj": obj,
         "items_do_usuario": items_do_usuario,
         "licencas_do_usuario": licencas_do_usuario,
-        "totais_itens": {
-            "loc_mensal": total_itens_loc_mensal,
-            "aquisicao": total_itens_aquis,
-        },
-        "totais_licencas": {
-            "mensal": total_lic_mensal,
-            "anual": total_lic_anual,
-        },
+        "totais_itens": {"loc_mensal": total_itens_loc_mensal, "aquisicao": total_itens_aquis},
+        "totais_licencas": {"mensal": total_lic_mensal, "anual": total_lic_anual},
+        "tenure_human": tenure_human,
+        "itens_count": len(items_do_usuario),
+        "custo_total_mensal": custo_total_mensal,
+        "custo_total_anual": custo_total_anual,
     }
-    return render(request, "front/usuario_detail.html", context)
+    return render(request, "front/usuarios/usuario_detail.html", context)
+
+
+
 
 # DELETE (POST via modal)
 @login_required
@@ -708,14 +704,14 @@ def item_create(request):
 
                     if not locacao.tempo_locado or not locacao.valor_mensal:
                         form.add_error(None, "Se o equipamento é locado, informe o tempo em meses e o valor mensal.")
-                        return render(request, "front\\cadastrar_equipamento.html", {
+                        return render(request, "front/equipamentos/cadastrar_equipamento.html", {
                             "form": form,
                             "locacao_form": locacao_form
                         })
 
                     locacao.save()
                 else:
-                    return render(request, "front\\cadastrar_equipamento.html", {
+                    return render(request, "front/equipamentos/cadastrar_equipamento.html", {
                         "form": form,
                         "locacao_form": locacao_form
                     })
@@ -728,7 +724,7 @@ def item_create(request):
 
     return render(
         request,
-        "front\\cadastrar_equipamento.html",
+        "front/equipamentos/cadastrar_equipamento.html",
         {"form": form, "locacao_form": locacao_form}
     )
 
@@ -739,10 +735,15 @@ def _norm(s: str) -> str:
     return unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode().lower()
 
 
-@login_required
-def equipamentos_list(request):
+
+
+
+# importe seus modelos/choices
+# from .models import Item, Subtipo, MovimentacaoItem, StatusItemChoices
+
+def _build_queryset_and_context(request):
     """
-    Lista equipamentos com filtros, cards e paginação.
+    Monta queryset + contexto base (padrão único para página e partial).
     """
     qs = (
         Item.objects
@@ -750,17 +751,18 @@ def equipamentos_list(request):
         .order_by("nome", "id")
     )
 
-    # Movimentações (prefetch otimizado)
+    # Prefetch de movimentações (se for necessário em outras views)
     mov_qs = MovimentacaoItem.objects.select_related("usuario").order_by("-created_at")
     qs = qs.prefetch_related(Prefetch("movimentacoes", queryset=mov_qs, to_attr="pref_movs"))
 
-    # -------- Filtros --------
     p = request.GET
+
+    # -------- Filtros ----------
     nome         = (p.get("nome") or "").strip()
     subtipo_id   = (p.get("subtipo") or "").strip()
     status_code  = (p.get("status") or "").strip()
     numero_serie = (p.get("numero_serie") or "").strip()
-    usuario      = (p.get("usuario") or "").strip()
+    usuario      = (p.get("usuario") or "").strip()  # caso use em algum lugar
     localidade   = (p.get("localidade") or "").strip()
     centro_custo = (p.get("centro_custo") or "").strip()
     fornecedor   = (p.get("fornecedor") or "").strip()
@@ -789,7 +791,6 @@ def equipamentos_list(request):
     filtered_total = qs.count()
 
     # -------- Paginação --------
-    # itens por página com fallback (10/20/50/100)
     try:
         per_page = int(p.get("pp") or 20)
         if per_page not in (10, 20, 50, 100):
@@ -806,41 +807,93 @@ def equipamentos_list(request):
     except EmptyPage:
         page_obj = paginator.page(paginator.num_pages)
 
-    # querystring preservada (sem o parâmetro page)
+    # querystring preservada (sem page)
     params = p.copy()
     params.pop("page", None)
-    qs_keep = params.urlencode()  # para usar nos links de paginação
+    qs_keep = params.urlencode()
 
-    # -------- Cards/Métricas por status --------
+    # -------- KPIs (status) --------
+    total_ativos     = Item.objects.filter(status=StatusItemChoices.ATIVO).count()
+    total_backup     = Item.objects.filter(status=StatusItemChoices.BACKUP).count()
+    total_manutencao = Item.objects.filter(status=StatusItemChoices.MANUTENCAO).count()
+    total_queimados  = Item.objects.filter(status=StatusItemChoices.DEFEITO).count()
+    total_geral      = Item.objects.count()
+
     context = {
-        "equipamentos": page_obj.object_list,      # mantém o nome usado no template
+        "equipamentos": page_obj.object_list,
         "page_obj": page_obj,
         "paginator": paginator,
         "per_page": per_page,
         "qs_keep": qs_keep,
         "filtered_total": filtered_total,
 
+        "row_start": page_obj.start_index(),  # índice base da página (para #)
         "subtipos": Subtipo.objects.all().order_by("nome"),
         "status_choices": StatusItemChoices.choices,
-        "total_ativos": Item.objects.filter(status=StatusItemChoices.ATIVO).count(),
-        "total_backup": Item.objects.filter(status=StatusItemChoices.BACKUP).count(),
-        "total_manutencao": Item.objects.filter(status=StatusItemChoices.MANUTENCAO).count(),
-        "total_queimados": Item.objects.filter(status=StatusItemChoices.DEFEITO).count(),
-        "total_geral": Item.objects.count(),
+
+        "total_ativos": total_ativos,
+        "total_backup": total_backup,
+        "total_manutencao": total_manutencao,
+        "total_queimados": total_queimados,
+        "total_geral": total_geral,
     }
-    return render(request, "front/equipamentos_list.html", context)
+    return context
+
+
+@login_required
+def equipamentos_list(request):
+    """
+    Página completa e também endpoint de atualização parcial (Ajax).
+    Se 'partial=1' vier na query ou X-Requested-With=XMLHttpRequest, devolve JSON com fragmentos.
+    """
+    context = _build_queryset_and_context(request)
+
+    # Modo parcial (Ajax): devolve só os blocos que o front precisa atualizar
+    is_partial = request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    if is_partial:
+        tbody_html = render_to_string(
+            "front/equipamentos/_tbody.html",
+            context,
+            request=request
+        )
+        pagination_html = render_to_string(
+            "front/equipamentos/_pagination.html",
+            context,
+            request=request
+        )
+        kpis_html = render_to_string(
+            "front/equipamentos/_kpis.html",
+            context,
+            request=request
+        )
+        return JsonResponse({
+            "tbody": tbody_html,
+            "pagination": pagination_html,
+            "kpis": kpis_html,
+            "count": context["filtered_total"],
+        })
+
+    # Página inteira
+    return render(request, "front/equipamentos/equipamentos_list.html", context)
 
 ### ITEM / Equipamento detalhe 
 
 @login_required
 def equipamento_detalhe(request, pk: int):
-    # Item + relações básicas
+    """
+    Detalhe do equipamento:
+      - Item + relações
+      - Preventivas (com cálculo de próxima execução quando faltante) e flag de prazo
+      - Histórico de movimentações
+      - Comentários (se existir o model)
+    """
     item = get_object_or_404(
-        Item.objects.select_related("subtipo", "localidade", "centro_custo", "fornecedor"),
+        Item.objects.select_related(
+            "subtipo", "localidade", "centro_custo", "fornecedor"
+        ),
         pk=pk,
     )
 
-    # Histórico de movimentações do item (objetos, não dicts)
     movimentacoes = (
         MovimentacaoItem.objects
         .filter(item=item)
@@ -852,7 +905,6 @@ def equipamento_detalhe(request, pk: int):
         .order_by("-created_at")
     )
 
-    # Preventivas deste item (objetos, não dicts)
     preventivas = (
         Preventiva.objects
         .filter(equipamento=item)
@@ -860,13 +912,16 @@ def equipamento_detalhe(request, pk: int):
         .order_by("-data_proxima", "-data_ultima", "-created_at")
     )
 
-    # Backfill e flag visual (sem salvar no banco — apenas para o template)
+    # Calcula próxima execução quando não houver e adiciona flag legível no template
     today = timezone.localdate()
     for p in preventivas:
-        if not p.data_proxima:
+        if not getattr(p, "data_proxima", None):
             dias = 0
-            if p.checklist_modelo and p.checklist_modelo.intervalo_dias:
-                dias = int(p.checklist_modelo.intervalo_dias)
+            if getattr(p, "checklist_modelo", None) and getattr(p.checklist_modelo, "intervalo_dias", None):
+                try:
+                    dias = int(p.checklist_modelo.intervalo_dias)
+                except Exception:
+                    dias = 0
             elif getattr(item, "data_limite_preventiva", None):
                 try:
                     dias = int(item.data_limite_preventiva)
@@ -875,17 +930,37 @@ def equipamento_detalhe(request, pk: int):
             if dias > 0:
                 base = p.data_ultima or today
                 p.data_proxima = base + timedelta(days=dias)
-        # atributo apenas para o template (não colide com fields)
-        p._em_dia = (p.data_proxima is None) or (today <= p.data_proxima)
+
+        # >>> não usar underscore para permitir no template
+        p.flag_em_dia = (p.data_proxima is None) or (today <= p.data_proxima)
+
+    # Comentários (se existir o model)
+    comentarios = []
+    try:
+        from .models import ComentarioEquipamento  # ajuste se seu app difere
+        comentarios = ComentarioEquipamento.objects.filter(
+            equipamento=item
+        ).select_related("criado_por").order_by("-created_at")
+    except Exception:
+        comentarios = []
+
+    # Locação segura
+    locacao = None
+    try:
+        locacao = item.locacao
+    except Exception:
+        locacao = None
 
     context = {
         "item": item,
         "movimentacoes": movimentacoes,
-        "preventivas": preventivas,   # agora são objetos com .data_proxima
+        "preventivas": preventivas,
+        "comentarios": comentarios,
+        "locacao": locacao,
         "today": today,
-        # "comentarios": comentarios_qs  # se você tiver comentários, injete aqui
     }
-    return render(request, "front/equipamento_detalhe.html", context)
+    return render(request, "front/equipamentos/equipamento_detalhe.html", context)
+
 
 @login_required
 def editar_equipamento(request, pk):
@@ -923,7 +998,7 @@ def editar_equipamento(request, pk):
 
     return render(
         request,
-        "front\\cadastrar_equipamento.html",
+        "front/equipamentos/cadastrar_equipamento.html",
         {"form": form, "locacao_form": locacao_form, "editar": True}
     )
 
@@ -1092,27 +1167,135 @@ def comentario_delete(request, pk):
     return render(request, 'comentario/delete.html', {'obj': comentario})
 
 ####################### MOVIMENTA ITEM ################
+# views.py
+from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator, EmptyPage
+from django.db.models import Count, Q
+from django.shortcuts import render
+
+# Ajuste conforme seu projeto
+# from .models import MovimentacaoItem, TipoMovimentacaoChoices
 
 @login_required
 def movimentacao_list(request):
-    q= request.GET.get("q", "")
-    tipo = request.GET.get("tipo", "")
-    movimentacoes = MovimentacaoItem.objects.select_related("item", "usuario").order_by("-created_at")
+    """
+    Lista de movimentações com:
+      - Filtros: q (item), tipo, usuario, numero_serie, centro_custo
+      - KPIs por tipo SEM lookup inseguro no template
+      - Paginação 10/20/50/100 preservando filtros
+      - Layout responsivo com cabeçalho sticky e chips por tipo
+    """
+    # --------- Entrada / Filtros ---------
+    q             = (request.GET.get("q") or "").strip()                    # nome do item
+    tipo          = (request.GET.get("tipo") or "").strip()                 # choice do tipo
+    usuario_q     = (request.GET.get("usuario") or "").strip()              # nome do usuário
+    numero_serie  = (request.GET.get("numero_serie") or "").strip()         # nº série do item
+    centro_custo  = (request.GET.get("centro_custo") or "").strip()         # número ou departamento
+
+    qs = (
+        MovimentacaoItem.objects
+        .select_related(
+            "item", "usuario",
+            "localidade_origem", "localidade_destino",
+            "centro_custo_origem", "centro_custo_destino",
+            "fornecedor_manutencao",
+        )
+        .order_by("-created_at")
+    )
 
     if q:
-        movimentacoes = movimentacoes.filter(item__nome__icontains=q)
+        qs = qs.filter(item__nome__icontains=q)
 
     if tipo:
-        movimentacoes = movimentacoes.filter(tipo_movimentacao=tipo)
+        qs = qs.filter(tipo_movimentacao=tipo)
+
+    if usuario_q:
+        qs = qs.filter(usuario__nome__icontains=usuario_q)
+
+    if numero_serie:
+        qs = qs.filter(item__numero_serie__icontains=numero_serie)
+
+    if centro_custo:
+        qs = qs.filter(
+            Q(centro_custo_origem__numero__icontains=centro_custo) |
+            Q(centro_custo_origem__departamento__icontains=centro_custo) |
+            Q(centro_custo_destino__numero__icontains=centro_custo) |
+            Q(centro_custo_destino__departamento__icontains=centro_custo)
+        )
+
+    # --------- KPIs (sobre o conjunto filtrado) ---------
+    grouped = dict(qs.values_list("tipo_movimentacao").annotate(c=Count("id")).order_by())
+
+    def c(key: str) -> int:
+        return int(grouped.get(key, 0))
+
+    kpi_entrada                 = c("entrada")
+    kpi_transferencia           = c("transferencia")
+    kpi_transferencia_equip     = c("transferencia_equipamento")
+    kpi_envio_manutencao        = c("envio_manutencao")
+    kpi_retorno_manutencao      = c("retorno_manutencao")
+    kpi_baixa                   = c("baixa")
+    kpi_outros                  = c("outros")
+
+    total_filtrado = (
+        kpi_entrada + kpi_transferencia + kpi_transferencia_equip +
+        kpi_envio_manutencao + kpi_retorno_manutencao + kpi_baixa + kpi_outros
+    )
+
+    tipos_choices = list(TipoMovimentacaoChoices.choices)
+
+    # --------- Paginação ---------
+    try:
+        per_page = int(request.GET.get("pp") or 20)
+        if per_page not in (10, 20, 50, 100):
+            per_page = 20
+    except (TypeError, ValueError):
+        per_page = 20
+
+    paginator = Paginator(qs, per_page)
+    page_num = request.GET.get("page") or 1
+    try:
+        page_obj = paginator.page(page_num)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+
+    # Preserva querystring (sem 'page')
+    params = request.GET.copy()
+    params.pop("page", None)
+    qs_keep = params.urlencode()
 
     context = {
-        "movimentacoes": movimentacoes,
+        # Dados
+        "movimentacoes": page_obj.object_list,
+        "page_obj": page_obj,
+        "paginator": paginator,
+        "per_page": per_page,
+        "qs_keep": qs_keep,
+
+        # Filtros de entrada
         "q": q,
         "tipo": tipo,
-        # ✅ lista de tuplas (value, label)
-        "tipos": list(TipoMovimentacaoChoices.choices),
+        "usuario_q": usuario_q,
+        "numero_serie": numero_serie,
+        "centro_custo": centro_custo,
+
+        # Choices
+        "tipos": tipos_choices,
+
+        # KPIs
+        "kpi_entrada": kpi_entrada,
+        "kpi_transferencia": kpi_transferencia,
+        "kpi_transferencia_equip": kpi_transferencia_equip,
+        "kpi_envio_manutencao": kpi_envio_manutencao,
+        "kpi_retorno_manutencao": kpi_retorno_manutencao,
+        "kpi_baixa": kpi_baixa,
+        "kpi_outros": kpi_outros,
+        "total_filtrado": total_filtrado,
     }
     return render(request, "front/movimentacao_list.html", context)
+
+
+
 
 
 @login_required
@@ -1129,7 +1312,6 @@ def movimentacao_create(request):
             messages.success(request, "Movimentação registrada com sucesso!")
             return redirect("movimentacao_list")
         else:
-            # Log amigável no console para depuração
             print("⚠ Erros no formulário:", form.errors.as_ul())
             messages.error(request, "Erro ao registrar movimentação. Verifique os campos destacados.")
     else:
@@ -1144,8 +1326,51 @@ def movimentacao_create(request):
 
 @login_required
 def movimentacao_detail(request, pk):
-    movimentacao = get_object_or_404(MovimentacaoItem, pk=pk)
-    return render(request, "front/movimentacao_detail.html", {"movimentacao": movimentacao})
+    mov = get_object_or_404(MovimentacaoItem, pk=pk)
+
+    # Origem (sempre a fotografada no momento da criação)
+    origem_localidade = mov.localidade_origem.local if mov.localidade_origem else None
+    origem_cc_num = mov.centro_custo_origem.numero if mov.centro_custo_origem else None
+    origem_cc_dep = mov.centro_custo_origem.departamento if mov.centro_custo_origem else None
+
+    # Destino (campos de destino da movimentação)
+    dest_localidade = mov.localidade_destino.local if mov.localidade_destino else None
+    dest_cc_num = mov.centro_custo_destino.numero if mov.centro_custo_destino else None
+    dest_cc_dep = mov.centro_custo_destino.departamento if mov.centro_custo_destino else None
+
+    # Status exibido após a movimentação
+    if mov.tipo_movimentacao in ("retorno", "retorno_manutencao"):
+        status_pos = "Backup"
+    elif mov.tipo_movimentacao == "transferencia_equipamento" and mov.status_transferencia:
+        # label amigável do enum StatusItemChoices
+        status_pos = dict(StatusItemChoices.choices).get(mov.status_transferencia, mov.status_transferencia)
+    else:
+        status_pos = mov.item.get_status_display() if mov.item else "—"
+
+    # Efeito no estoque (somente texto)
+    efeito_map = {
+        "entrada": f"Entrada (+{mov.quantidade or 1})",
+        "baixa": f"Saída (−{mov.quantidade or 1})",
+        "envio_manutencao": f"Saída (−{mov.quantidade or 1})",
+        "transferencia": "Sem alteração de quantidade (transferência)",
+        "transferencia_equipamento": "Sem alteração de quantidade (transferência)",
+        "retorno": "Sem alteração de quantidade (retorno)",
+        "retorno_manutencao": "Sem alteração de quantidade (retorno)",
+    }
+    efeito_estoque = efeito_map.get(mov.tipo_movimentacao, "—")
+
+    ctx = {
+        "movimentacao": mov,
+        "origem_localidade": origem_localidade,
+        "origem_cc_num": origem_cc_num,
+        "origem_cc_dep": origem_cc_dep,
+        "dest_localidade": dest_localidade,
+        "dest_cc_num": dest_cc_num,
+        "dest_cc_dep": dest_cc_dep,
+        "status_pos": status_pos,
+        "efeito_estoque": efeito_estoque,
+    }
+    return render(request, "front/movimentacao_detail.html", ctx)
 
 
 def movimentacao_update(request, pk):

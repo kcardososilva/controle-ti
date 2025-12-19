@@ -2,22 +2,19 @@
 {% block title %}Detalhe do Item{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
 
 <style>
 :root{
   --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --card:#fff; --soft:#f8fafc;
   --shadow:0 20px 40px rgba(2,6,23,.08);
-  --ok:#16a34a; --warn:#b45309; --bad:#b91c1c;
+  --ok:#16a34a; --warn:#b45309; --bad:#b91c1c; --info:#0ea5e9; --accent:#1e3a8a;
 }
 body{background:#f6f7fa;color:var(--ink)}
-.wrap{max-width:1200px;margin:32px auto 24px;padding:0 14px}
+.wrap{max-width:1200px;margin:24px auto 20px;padding:0 14px}
 
-/* header */
-.hero{
-  border-radius:18px; background:linear-gradient(135deg, #18284a 0%, #21439f 100%);
-  color:#fff; padding:22px; box-shadow:var(--shadow); border:1px solid #0b1220;
-}
+/* Header */
+.hero{border-radius:18px;background:linear-gradient(135deg,#18284a 0%,#18284a 100%);color:#fff;padding:22px;box-shadow:var(--shadow);border:1px solid #0b1220}
 .hero-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .hero h2{margin:0;font-size:1.9rem;display:flex;gap:10px;align-items:center}
 .actions{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
@@ -25,6 +22,8 @@ body{background:#f6f7fa;color:var(--ink)}
 .btn.edit{background:#fff;color:#0f172a}
 .btn.primary{background:linear-gradient(90deg,#22c55e,#16a34a);color:#fff}
 .btn.light{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
+.btn.warn{background:linear-gradient(90deg,#f97316,#ea580c);color:#fff}
+.btn.bad{background:linear-gradient(90deg,#ef4444,#dc2626);color:#fff}
 .btn:hover{filter:brightness(.97)}
 
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
@@ -35,7 +34,13 @@ body{background:#f6f7fa;color:var(--ink)}
 .chip.status.manutencao{background:#fff7ed;border-color:#fed7aa;color:#7c2d12}
 .chip.status.defeito{background:#fee2e2;border-color:#fecaca;color:#7f1d1d}
 
-/* sections/cards */
+/* Banner de alerta */
+.alert{margin-top:12px;border-radius:14px;padding:12px 14px;display:flex;gap:10px;align-items:flex-start;border:1px solid;box-shadow:var(--shadow)}
+.alert i{margin-top:2px}
+.alert.warn{background:#fff7ed;border-color:#fed7aa;color:#7c2d12}
+.alert.bad{background:#fee2e2;border-color:#fecaca;color:#7f1d1d}
+
+/* Cards/sections */
 .card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}
 .section{padding:18px}
 .section h3{margin:0 0 12px;display:flex;align-items:center;gap:10px;font-size:1.15rem}
@@ -50,16 +55,28 @@ body{background:#f6f7fa;color:var(--ink)}
 .tile strong{display:block;color:#334155;margin-bottom:6px}
 .muted{color:#64748b}
 
-/* table */
+/* Table */
 .table-wrap{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 10px rgba(2,6,23,.06);overflow:auto}
 table{width:100%;border-collapse:collapse;min-width:780px}
 th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}
 th{background:#f5f7fa;font-weight:900}
 
-/* “chips” simples p/ status em tabela */
+/* Badges */
 .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:800}
 .badge.ok{background:#e8fff3;color:#166534}
 .badge.warn{background:#fff7ed;color:#7c2d12}
+
+/* Timeline */
+.timeline{position:relative;padding-left:26px;margin:8px 0 0}
+.timeline::before{content:"";position:absolute;left:10px;top:0;bottom:0;width:2px;background:#e5e7eb}
+.tl-item{position:relative;margin:0 0 12px;padding-left:12px}
+.tl-item .dot{position:absolute;left:-6px;top:4px;width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid #94a3b8}
+.tl-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:0 1px 8px rgba(2,6,23,.05)}
+.tl-head{display:flex;align-items:center;gap:8px;font-weight:900;color:#0f172a;margin-bottom:4px}
+.tl-meta{display:flex;gap:10px;color:#64748b;font-weight:700;font-size:.9rem;flex-wrap:wrap}
+.tl-badge{padding:2px 8px;border-radius:999px;border:1px solid #e2e8f0;font-weight:800;font-size:.8rem;background:#f8fafc}
+.tl-item.warn .dot{border-color:#f59e0b}
+.tl-item.bad .dot{border-color:#ef4444}
 </style>
 
 <div class="wrap">
@@ -68,27 +85,41 @@ th{background:#f5f7fa;font-weight:900}
     <div class="hero-top">
       <h2><i class="fa fa-clipboard-list"></i> Detalhes do Item</h2>
       <div class="actions">
-        <a class="btn light" href="{% url 'editar_equipamento' item.id %}">
+        <a class="btn edit" href="{% url 'editar_equipamento' item.id %}">
           <i class="fa fa-pen-to-square"></i> Editar
         </a>
-        <!-- Iniciar preventiva deste item -->
-        {% if preventiva %}
-        <a class="btn primary" href="{% url 'preventiva_start_item' item.id %}">
-          <i class="fa fa-shield-heart"></i> Iniciar Preventiva
-        </a>
+        {% if item.precisa_preventiva == 'sim' %}
+          <a class="btn primary" href="{% url 'preventiva_start_item' item.id %}">
+            <i class="fa fa-shield-heart"></i> Iniciar Preventiva
+          </a>
+        {% endif %}
+        {% if item.status == 'manutencao' %}
+          <span class="btn warn" title="Item em manutenção"><i class="fa fa-screwdriver-wrench"></i> Em manutenção</span>
+        {% elif item.status == 'defeito' %}
+          <span class="btn bad" title="Item com defeito"><i class="fa fa-triangle-exclamation"></i> Com defeito</span>
         {% endif %}
       </div>
     </div>
 
-    <div class="chips">
-      <span class="chip status {{ item.status|default:'-' }}"><i class="fa fa-circle-dot"></i> {{ item.get_status_display|default:item.status|capfirst }}</span>
-      <span class="chip"><i class="fa fa-layer-group"></i> Qtd: <strong>{{ item.quantidade|default:"0" }}</strong></span>
+    <div class="chips" aria-label="Status e atributos">
+      <span class="chip status {{ item.status|default:'-'|lower }}"><i class="fa fa-circle-dot"></i> {{ item.get_status_display|default:item.status|capfirst }}</span>
+      <span class="chip"><i class="fa fa-layer-group"></i> Qtd: <strong>{{ item.quantidade|default:"1" }}</strong></span>
       <span class="chip light"><i class="fa fa-box"></i> Consumo: <strong>{{ item.item_consumo|default:"não"|title }}</strong></span>
       <span class="chip light"><i class="fa fa-handshake"></i> Locado: <strong>{{ item.locado|default:"não"|title }}</strong></span>
       {% if item.fornecedor %}
         <span class="chip light"><i class="fa fa-truck"></i> Fornecedor: <strong>{{ item.fornecedor.nome|default:"-" }}</strong></span>
       {% endif %}
     </div>
+
+    {% if item.status == 'manutencao' %}
+      <div class="alert warn"><i class="fa fa-circle-exclamation"></i>
+        <div><strong>Atenção:</strong> este item está <strong>em manutenção</strong>. Verifique prazos, causa e custo no fluxo de manutenção.</div>
+      </div>
+    {% elif item.status == 'defeito' %}
+      <div class="alert bad"><i class="fa fa-triangle-exclamation"></i>
+        <div><strong>Crítico:</strong> este item está <strong>com defeito</strong>. Considere bloqueio de uso e abertura de OS imediata.</div>
+      </div>
+    {% endif %}
   </div>
 
   <!-- IDENTIFICAÇÃO -->
@@ -115,12 +146,12 @@ th{background:#f5f7fa;font-weight:900}
         <div class="tile"><strong>Localidade</strong><span>{% if item.localidade %}{{ item.localidade.local }}{% else %}-{% endif %}</span></div>
         <div class="tile"><strong>Centro de Custo</strong><span>{% if item.centro_custo %}{{ item.centro_custo.numero }} — {{ item.centro_custo.departamento }}{% else %}-{% endif %}</span></div>
         <div class="tile"><strong>Precisa Preventiva?</strong><span>{{ item.precisa_preventiva|default:"não"|title }}</span></div>
-        <div class="tile"><strong>Intervalo Preventiva (dias)</strong><span>{% if item.precisa_preventiva == 'sim' %}{{ item.data_limite_preventiva }}{% else %}-{% endif %}</span></div>
+        <div class="tile"><strong>Intervalo Preventiva (dias)</strong><span>{% if item.data_limite_preventiva %}{{ item.data_limite_preventiva }}{% else %}-{% endif %}</span></div>
       </div>
     </div>
   </div>
 
-  <!-- FORNECEDOR (apenas o que existe no model) -->
+  <!-- FORNECEDOR -->
   {% if item.fornecedor %}
   <div class="card" style="margin-top:18px">
     <div class="section">
@@ -165,13 +196,17 @@ th{background:#f5f7fa;font-weight:900}
         <div class="tile"><strong>Data de Compra</strong><span>{% if item.data_compra %}{{ item.data_compra|date:"d/m/Y" }}{% else %}-{% endif %}</span></div>
         <div class="tile"><strong>Nº do Pedido</strong><span>{{ item.numero_pedido|default:"-" }}</span></div>
         <div class="tile"><strong>Locado</strong><span>{{ item.locado|default:"não"|title }}</span></div>
-        <div class="tile"><strong>Tempo Locado</strong><span>{% if item.locado == 'sim' and item.locacao %}{{ item.locacao.tempo_locado }} meses{% else %}-{% endif %}</span></div>
-        <div class="tile"><strong>Valor Locação</strong><span>{% if item.locado == 'sim' and item.locacao and item.locacao.valor_mensal %}R$ {{ item.locacao.valor_mensal|floatformat:2 }}{% else %}-{% endif %}</span></div>
+        <div class="tile"><strong>Tempo Locado</strong>
+          <span>{% if item.locado == 'sim' and locacao and locacao.tempo_locado %}{{ locacao.tempo_locado }} meses{% else %}-{% endif %}</span>
+        </div>
+        <div class="tile"><strong>Valor Locação</strong>
+          <span>{% if item.locado == 'sim' and locacao and locacao.valor_mensal %}R$ {{ locacao.valor_mensal|floatformat:2 }}{% else %}-{% endif %}</span>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- PREVENTIVAS DO ITEM (visualização + ações) -->
+  <!-- PREVENTIVAS DO ITEM -->
   {% if preventivas %}
   <div class="section" style="padding-left:0;padding-right:0">
     <h3><i class="fa fa-shield-heart"></i> Preventivas do Item</h3>
@@ -186,8 +221,6 @@ th{background:#f5f7fa;font-weight:900}
             <th style="width:140px">Ações</th>
           </tr>
         </thead>
-
-        
         <tbody>
           {% for p in preventivas %}
           <tr>
@@ -195,7 +228,7 @@ th{background:#f5f7fa;font-weight:900}
             <td>{{ p.data_ultima|date:"d/m/Y"|default:"-" }}</td>
             <td>{{ p.data_proxima|date:"d/m/Y"|default:"-" }}</td>
             <td>
-              {% if p.dentro_do_prazo %}
+              {% if p.flag_em_dia %}
                 <span class="badge ok">No prazo</span>
               {% else %}
                 <span class="badge warn">Vencida</span>
@@ -219,14 +252,65 @@ th{background:#f5f7fa;font-weight:900}
           </tr>
           {% endfor %}
         </tbody>
-      
       </table>
     </div>
   </div>
   {% endif %}
-  <!-- MOVIMENTAÇÕES -->
+
+  <!-- TIMELINE DE MOVIMENTAÇÕES -->
   <div class="section" style="padding-left:0;padding-right:0">
-    <h3><i class="fa fa-exchange-alt"></i> Histórico de Movimentações</h3>
+    <h3><i class="fa fa-stream"></i> Linha do Tempo</h3>
+    <div class="timeline">
+      {% for mov in movimentacoes %}
+        {# classes para cor do ponto #}
+        {% with cls="" %}
+          {% if mov.tipo_movimentacao == 'retorno_manutencao' or mov.tipo_movimentacao == 'retorno' %}
+            {% with cls="ok" %}{% endwith %}
+          {% elif mov.tipo_movimentacao == 'envio_manutencao' %}
+            {% with cls="warn" %}{% endwith %}
+          {% elif mov.tipo_movimentacao == 'baixa' %}
+            {% with cls="bad" %}{% endwith %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="tl-item {% if mov.tipo_movimentacao == 'envio_manutencao' %}warn{% elif mov.tipo_movimentacao == 'baixa' %}bad{% endif %}">
+          <span class="dot"></span>
+          <div class="tl-card">
+            <div class="tl-head">
+              <i class="fa fa-clock"></i> {{ mov.created_at|date:"d/m/Y H:i" }}
+              <span class="tl-badge">{{ mov.get_tipo_movimentacao_display|default:mov.tipo_movimentacao|capfirst }}</span>
+            </div>
+            <div class="tl-meta">
+              <span><i class="fa fa-user"></i> {{ mov.usuario.nome|default:"-" }}</span>
+              <span><i class="fa fa-location-dot"></i>
+                {% if mov.localidade_destino %}{{ mov.localidade_destino.local }}
+                {% elif mov.localidade_origem %}{{ mov.localidade_origem.local }}
+                {% else %}-{% endif %}
+              </span>
+              <span><i class="fa fa-coins"></i>
+                {% if mov.centro_custo_destino %}{{ mov.centro_custo_destino.departamento }}
+                {% elif mov.centro_custo_origem %}{{ mov.centro_custo_origem.departamento }}
+                {% else %}-{% endif %}
+              </span>
+              <span><i class="fa fa-hashtag"></i> Qtd: {{ mov.quantidade|default:"1" }}</span>
+              {% if mov.tipo_transferencia %}
+                <span><i class="fa fa-exchange-alt"></i> {{ mov.get_tipo_transferencia_display|default:mov.tipo_transferencia|capfirst }}</span>
+              {% endif %}
+            </div>
+            {% if mov.observacao %}
+              <div class="muted" style="margin-top:6px">{{ mov.observacao }}</div>
+            {% endif %}
+          </div>
+        </div>
+      {% empty %}
+        <div class="muted" style="padding-left:26px">Nenhuma movimentação registrada.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- TABELA DE MOVIMENTAÇÕES -->
+  <div class="section" style="padding-left:0;padding-right:0">
+    <h3><i class="fa fa-table"></i> Histórico de Movimentações (Tabela)</h3>
     <div class="table-wrap">
       <table>
         <thead>

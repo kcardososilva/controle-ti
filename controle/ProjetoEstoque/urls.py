@@ -46,7 +46,7 @@ urlpatterns = [
     path("usuarios/<int:pk>/editar/", views.usuario_update, name="usuario_update"),
     path("usuarios/<int:pk>/", views.usuario_detail, name="usuario_detail"),
     path("usuarios/<int:pk>/excluir/", views.usuario_delete, name="usuario_delete"),
-
+    
     ### CRUD - Fornecedores ###
 
     path("fornecedores/", views.fornecedor_list, name="fornecedor_list"),

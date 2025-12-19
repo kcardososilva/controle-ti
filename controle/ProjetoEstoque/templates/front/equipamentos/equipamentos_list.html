@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}Controle de Ativos{% endblock %}
 
 {% block content %}
@@ -145,7 +146,7 @@ a{text-decoration:none}
 .table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:12px;background:#fff}
 table{width:100%;border-collapse:collapse;min-width:860px;background:#fff}
 thead th{
-  position:sticky;top:0;background:linear-gradient(180deg, #1e3a8a 0%, #2563eb 100%);
+  position:sticky;top:0;background:#0f172a;
   color:#fff;border-bottom:1px solid #0f172a;
   padding:10px 12px;text-align:left;font-weight:900;user-select:none;cursor:pointer;z-index:2;font-size:.95rem
 }
@@ -203,37 +204,8 @@ th.sticky{z-index:3}
 
 <div class="page">
   <!-- KPI CARDS -->
-  <div class="cards-grid">
-    <div class="kpi" data-variant="ativos" title="Itens em uso">
-      <div class="kpi-row">
-        <span class="kpi-icon"><i class="fa fa-circle"></i></span>
-        <div><div class="kpi-title">Ativos</div><div class="kpi-value">{{ total_ativos }}</div><div class="kpi-desc">Em uso</div></div>
-      </div>
-    </div>
-    <div class="kpi" data-variant="backup" title="Itens em backup">
-      <div class="kpi-row">
-        <span class="kpi-icon"><i class="fa fa-database"></i></span>
-        <div><div class="kpi-title">Backup</div><div class="kpi-value">{{ total_backup }}</div><div class="kpi-desc">Em backup</div></div>
-      </div>
-    </div>
-    <div class="kpi" data-variant="manutencao" title="Itens em manutenção">
-      <div class="kpi-row">
-        <span class="kpi-icon"><i class="fa fa-screwdriver-wrench"></i></span>
-        <div><div class="kpi-title">Manutenção</div><div class="kpi-value">{{ total_manutencao }}</div><div class="kpi-desc">Em manutenção</div></div>
-      </div>
-    </div>
-    <div class="kpi" data-variant="defeitos" title="Itens com defeito">
-      <div class="kpi-row">
-        <span class="kpi-icon"><i class="fa fa-exclamation-circle"></i></span>
-        <div><div class="kpi-title">Defeitos</div><div class="kpi-value">{{ total_queimados }}</div><div class="kpi-desc">Com defeito</div></div>
-      </div>
-    </div>
-    <div class="kpi" data-variant="total" title="Total de itens">
-      <div class="kpi-row">
-        <span class="kpi-icon"><i class="fa fa-layer-group"></i></span>
-        <div><div class="kpi-title">Total</div><div class="kpi-value">{{ total_geral }}</div><div class="kpi-desc">Cadastrados</div></div>
-      </div>
-    </div>
+  <div id="kpisWrap" class="cards-grid">
+    {% include "front/equipamentos/_kpis.html" %}
   </div>
 
   <div class="shell">
@@ -241,11 +213,10 @@ th.sticky{z-index:3}
       <h3>
         <i class="fa fa-boxes-stacked" style="color:var(--info)"></i>
         Itens cadastrados
-        <span class="count-muted">· {{ filtered_total|default:equipamentos|length }} resultados</span>
+        <span class="count-muted">· <span id="countResults">{{ filtered_total }}</span> resultados</span>
       </h3>
 
       <div class="top-actions">
-        <!-- itens por página -->
         <form method="get" id="sizeForm" style="display:flex;align-items:center;gap:8px">
           {% for key, val in request.GET.items %}
             {% if key != 'pp' and key != 'page' %}
@@ -341,7 +312,7 @@ th.sticky{z-index:3}
         </form>
 
         <!-- atalhos rápidos -->
-        <div class="quick-chips" aria-label="Atalhos de status">
+        <div class="quick-chips" aria-label="Atalhos de status" id="chipsWrap">
           {% with s=request.GET.status|default:'' %}
             <a href="?{% if request.GET.nome %}nome={{request.GET.nome}}&{% endif %}{% if request.GET.subtipo %}subtipo={{request.GET.subtipo}}&{% endif %}" class="{% if not s %}active{% endif %}">Todos</a>
             <a href="?status=ativo{% if request.GET.nome %}&nome={{request.GET.nome}}{% endif %}{% if request.GET.subtipo %}&subtipo={{request.GET.subtipo}}{% endif %}" class="{% if s == 'ativo' %}active{% endif %}">Ativo</a>
@@ -368,72 +339,20 @@ th.sticky{z-index:3}
             <th>Ações</th>
           </tr>
         </thead>
-        <tbody>
-          {% for equipamento in equipamentos %}
-          <tr class="clickable" data-href="{% url 'equipamento_detalhe' equipamento.id %}">
-            <td class="sticky" style="left:0">{{ forloop.counter0|add:page_obj.start_index }}</td>
-            <td title="{{ equipamento.nome|default:'-' }}">{{ equipamento.nome|default:"-" }}</td>
-            <td>{% if equipamento.subtipo %}{{ equipamento.subtipo.nome }}{% else %}-{% endif %}</td>
-            <td>
-              <span class="status {{ equipamento.status|lower }}" title="{{ equipamento.get_status_display|default:equipamento.status|capfirst }}">
-                {{ equipamento.get_status_display|default:equipamento.status|capfirst }}
-              </span>
-            </td>
-            <td>{% if equipamento.localidade %}{{ equipamento.localidade.local }}{% else %}-{% endif %}</td>
-            <td>{{ equipamento.numero_serie|default:"-" }}</td>
-            <td>{% if equipamento.fornecedor %}{{ equipamento.fornecedor.nome }}{% else %}-{% endif %}</td>
-            <td class="td-acoes">
-              <a class="icon-btn view" title="Visualizar" href="{% url 'equipamento_detalhe' equipamento.id %}"><i class="fa fa-eye"></i></a>
-              <button class="icon-btn delete" title="Excluir" onclick="openDeleteModal('{{ equipamento.id }}','{{ equipamento.nome|escapejs }}')"><i class="fa fa-trash"></i></button>
-            </td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="8" style="text-align:center;color:#64748b;padding:18px">Nenhum equipamento encontrado.</td></tr>
-          {% endfor %}
+        <tbody id="tbodyEquipamentos">
+          {% include "front/equipamentos/_tbody.html" %}
         </tbody>
       </table>
     </div>
 
     <!-- PAGINAÇÃO -->
-    {% if paginator.num_pages > 1 %}
-    <div class="pagination-wrap">
-      <div class="range-hint">
-        Mostrando <strong>{{ page_obj.start_index }}</strong>–<strong>{{ page_obj.end_index }}</strong>
-        de <strong>{{ paginator.count }}</strong>
-      </div>
-      <nav class="pager" aria-label="Paginação">
-        {% with base='?'|add:qs_keep %}
-          {% if page_obj.has_previous %}
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page=1" title="Primeira">&laquo;</a>
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ page_obj.previous_page_number }}" title="Anterior">&lsaquo;</a>
-          {% else %}
-            <span class="disabled">&laquo;</span><span class="disabled">&lsaquo;</span>
-          {% endif %}
-
-          {% for num in paginator.page_range %}
-            {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
-              {% if num == page_obj.number %}
-                <span class="current">{{ num }}</span>
-              {% else %}
-                <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ num }}">{{ num }}</a>
-              {% endif %}
-            {% endif %}
-          {% endfor %}
-
-          {% if page_obj.has_next %}
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ page_obj.next_page_number }}" title="Próxima">&rsaquo;</a>
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ paginator.num_pages }}" title="Última">&raquo;</a>
-          {% else %}
-            <span class="disabled">&rsaquo;</span><span class="disabled">&raquo;</span>
-          {% endif %}
-        {% endwith %}
-      </nav>
+    <div id="paginationWrap">
+      {% include "front/equipamentos/_pagination.html" %}
     </div>
-    {% endif %}
   </div>
 </div>
 
-<!-- Modal -->
+<!-- Modal de exclusão (opcional, sem mudanças) -->
 <div id="deleteModal" class="modal-overlay" aria-hidden="true">
   <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <h2 id="modalTitle"><i class="fa fa-trash"></i> Excluir Item</h2>
@@ -449,62 +368,147 @@ th.sticky{z-index:3}
 </div>
 
 <script>
-/* ===== Debounce + autosubmit filtros ===== */
-(function(){
-  const form = document.getElementById('filtrosForm');
-  if(!form) return;
+/* === HELPERS === */
+function serializeForm(form){
+  const fd = new FormData(form);
+  const p = new URLSearchParams();
+  for (const [k,v] of fd.entries()) if(v !== "") p.append(k,v);
+  return p.toString();
+}
+function debounce(fn, d=350){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), d); } }
+
+/* === LÓGICA DE ATUALIZAÇÃO PARCIAL (Fetch) === */
+const filtrosForm = document.getElementById('filtrosForm');
+const sizeForm    = document.getElementById('sizeForm');
+const tbodyEl     = document.getElementById('tbodyEquipamentos');
+const pagWrap     = document.getElementById('paginationWrap');
+const kpisWrap    = document.getElementById('kpisWrap');
+const countEl     = document.getElementById('countResults');
+
+async function refreshList(extraParams={}){
+  const base = new URL(window.location.href);
+  // monta query atual (form + extras)
+  const qs = new URLSearchParams(serializeForm(filtrosForm));
+  // parâmetros herdados (pp, page etc.) — exceto page quando digita
+  if (sizeForm) {
+    const ppSel = sizeForm.querySelector('#pp');
+    if (ppSel && ppSel.value) qs.set('pp', ppSel.value);
+  }
+  for (const k in extraParams){
+    if (extraParams[k] === null){ qs.delete(k); } else { qs.set(k, extraParams[k]); }
+  }
+  qs.set('partial','1');
+
+  const url = `${base.pathname}?${qs.toString()}`;
+  const res = await fetch(url, {headers:{'X-Requested-With':'XMLHttpRequest'}});
+  if(!res.ok) return;
+  const data = await res.json();
+
+  // injeta fragmentos
+  if (data.tbody)      tbodyEl.innerHTML = data.tbody;
+  if (data.pagination) pagWrap.innerHTML = data.pagination;
+  if (data.kpis)       kpisWrap.innerHTML = data.kpis;
+  if (typeof data.count !== 'undefined') countEl.textContent = data.count;
+
+  // atualiza URL (sem recarregar)
+  const qsNew = new URLSearchParams(qs); qsNew.delete('partial');
+  history.replaceState({}, '', `${base.pathname}?${qsNew.toString()}`);
+
+  // reanexa handlers da tabela/paginação
+  bindRowNavigation();
+  bindPaginationLinks();
+  bindSortHeaders();
+}
+
+/* === Autosubmit fluido (digitação) === */
+if (filtrosForm){
   const ids = ['filtro-nome','filtro-num-serie','filtro-fornecedor','filtro-localidade','filtro-centro-custo'];
-  function debounce(fn,d=450){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),d)}}
-  ids.forEach(id=>{const el=document.getElementById(id); if(el) el.addEventListener('input',debounce(()=>form.submit(),450));});
-  document.getElementById('filtro-subtipo')?.addEventListener('change',()=>form.submit());
-  document.getElementById('filtro-status')?.addEventListener('change',()=>form.submit());
-  document.getElementById('btnLimpar')?.addEventListener('click',()=>{window.location.href=window.location.pathname});
-})();
+  ids.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.addEventListener('input', debounce(()=> refreshList({page:1}), 350));
+  });
+  document.getElementById('filtro-subtipo')?.addEventListener('change', ()=>refreshList({page:1}));
+  document.getElementById('filtro-status')?.addEventListener('change',  ()=>refreshList({page:1}));
 
-/* Itens por página: auto-submit */
-document.getElementById('pp')?.addEventListener('change', ()=>{
-  const f=document.getElementById('sizeForm'); if(!f) return;
-  const pageInput=document.createElement('input'); pageInput.type='hidden'; pageInput.name='page'; pageInput.value='1';
-  f.appendChild(pageInput); f.submit();
+  // submit normal (Enter) cai no Ajax também
+  filtrosForm.addEventListener('submit', (e)=>{ e.preventDefault(); refreshList({page:1}); });
+  document.getElementById('btnLimpar')?.addEventListener('click', ()=>{ window.location.href = window.location.pathname; });
+}
+
+/* === Tamanho da página === */
+document.getElementById('pp')?.addEventListener('change', ()=> refreshList({page:1}));
+
+/* === Chips (links) via Ajax: intercepta para não recarregar === */
+document.getElementById('chipsWrap')?.addEventListener('click', (e)=>{
+  const a = e.target.closest('a'); if(!a) return;
+  e.preventDefault();
+  const url = new URL(a.href);
+  // mantém subtipo/nome se vierem no link
+  const params = Object.fromEntries(url.searchParams.entries());
+  // zera campos do form e reatribui
+  filtrosForm.reset();
+  ['nome','subtipo','status'].forEach(k=>{
+    const el = filtrosForm.querySelector(`[name="${k}"]`);
+    if(el && params[k]) el.value = params[k];
+  });
+  refreshList({page:1, status: params['status'] || null});
 });
 
-/* Atalhos */
-document.addEventListener('keydown',e=>{
-  if(e.key==='/' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){
-    e.preventDefault(); document.getElementById('filtro-nome')?.focus();
-  }
-  if(e.key==='Escape'){ closeDeleteModal(); }
-});
-
-/* Ordenação simples client-side */
-(function(){
-  const table=document.getElementById('tabelaEquipamentos'); if(!table) return;
-  const tbody=table.querySelector('tbody'); const headers=table.querySelectorAll('thead th[data-col]'); let state={};
-  function txt(tr,c){return (tr.children[c]?.innerText||'').trim().toLowerCase()}
-  function cmp(a,b,asc){
-    const na=parseFloat(a.replace(',','.')), nb=parseFloat(b.replace(',','.'));
-    if(!isNaN(na)&&!isNaN(nb)) return asc?na-nb:nb-na;
-    return asc?a.localeCompare(b):b.localeCompare(a);
-  }
-  headers.forEach(th=>{
-    th.addEventListener('click',()=>{
-      const c=+th.dataset.col, asc=!(state[c]==='asc'); state={[c]:asc?'asc':'desc'};
-      headers.forEach(h=>{const s=h.querySelector('.sort'); if(s) s.textContent='';});
-      th.querySelector('.sort').textContent=asc?'▲':'▼';
-      [...tbody.querySelectorAll('tr')].sort((r1,r2)=>cmp(txt(r1,c),txt(r2,c),asc)).forEach(r=>tbody.appendChild(r));
+/* === Paginação Ajax === */
+function bindPaginationLinks(){
+  const nav = document.querySelector('#paginationWrap');
+  if(!nav) return;
+  nav.querySelectorAll('a[href]').forEach(a=>{
+    a.addEventListener('click', (e)=>{
+      e.preventDefault();
+      const url = new URL(a.href);
+      const page = url.searchParams.get('page') || 1;
+      refreshList({page});
     });
   });
-})();
+}
 
-/* Row clickable */
-document.querySelectorAll('#tabelaEquipamentos tbody tr.clickable').forEach(tr=>{
-  tr.addEventListener('click',e=>{
-    const isBtn=e.target.closest('.icon-btn'); if(isBtn) return;
-    const href=tr.dataset.href; if(href) window.location.href=href;
+/* === Ordenação client-side (reaplica após atualização) === */
+let sortState = {}; // coluna -> asc/desc
+function bindSortHeaders(){
+  const table   = document.getElementById('tabelaEquipamentos');
+  const tbody   = table?.querySelector('tbody');
+  const headers = table?.querySelectorAll('thead th[data-col]');
+  if(!table || !tbody || !headers) return;
+
+  headers.forEach(th=>{
+    const col = +th.dataset.col;
+    const sortSpan = th.querySelector('.sort');
+    // mantém indicador após refresh
+    if (sortState[col]) sortSpan.textContent = sortState[col] === 'asc' ? '▲' : '▼';
+    th.onclick = ()=>{
+      const asc = !(sortState[col] === 'asc');
+      sortState = {[col]: asc ? 'asc':'desc'};
+      headers.forEach(h=>{const s=h.querySelector('.sort'); if(s) s.textContent='';});
+      sortSpan.textContent = asc ? '▲' : '▼';
+      const rows = [...tbody.querySelectorAll('tr')];
+      const getTxt = (r)=> (r.children[col]?.innerText || '').trim().toLowerCase();
+      const cmp = (a,b)=> {
+        const na=parseFloat(a.replace(',','.')), nb=parseFloat(b.replace(',','.'));
+        if(!isNaN(na)&&!isNaN(nb)) return asc?na-nb:nb-na;
+        return asc?a.localeCompare(b):b.localeCompare(a);
+      };
+      rows.sort((r1,r2)=>cmp(getTxt(r1), getTxt(r2))).forEach(r=>tbody.appendChild(r));
+    };
   });
-});
+}
 
-/* Modal */
+/* === Linhas clicáveis === */
+function bindRowNavigation(){
+  document.querySelectorAll('#tabelaEquipamentos tbody tr.clickable').forEach(tr=>{
+    tr.onclick = (e)=>{
+      if(e.target.closest('.icon-btn')) return;
+      const href = tr.dataset.href; if(href) window.location.href = href;
+    };
+  });
+}
+
+/* === Modal (inalterado) === */
 const modal=document.getElementById('deleteModal');
 const msg=document.getElementById('deleteMessage');
 const delForm=document.getElementById('deleteForm');
@@ -516,5 +520,10 @@ function openDeleteModal(id,nome){
 }
 function closeDeleteModal(){ if(!modal) return; modal.style.display='none'; modal.setAttribute('aria-hidden','true'); }
 modal?.addEventListener('click',e=>{ if(e.target===modal) closeDeleteModal(); });
+
+/* === Inicializa bindings === */
+bindPaginationLinks();
+bindSortHeaders();
+bindRowNavigation();
 </script>
 {% endblock %}
