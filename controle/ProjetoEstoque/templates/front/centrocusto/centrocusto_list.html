@@ -1,0 +1,390 @@
+{% extends 'base.html' %}
+{% block title %}Centros de Custo{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+
+<style>
+:root{
+  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
+  --accent:#1e3a8a; --accent-2:#2563eb; --ok:#16a34a; --warn:#d97706; --bad:#ef4444; --info:#0ea5e9;
+  --shadow:0 18px 40px rgba(2,6,23,.07);
+  --rad:12px; --ctrl-h:40px; --pad-icon:34px;
+}
+*{box-sizing:border-box}
+.page{
+  max-width:1200px;margin:18px auto;padding:0 14px;color:var(--ink);
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial;
+}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(200px,1fr));gap:10px;margin-bottom:12px}
+@media (max-width:1000px){.kpis{grid-template-columns:repeat(2,minmax(200px,1fr))}}
+@media (max-width:520px){.kpis{grid-template-columns:1fr}}
+.kpi{
+  --tone:#94a3b8;
+  background:linear-gradient(180deg,#ffffff 0%,#f9fafb 100%);
+  border:1px solid var(--line); border-radius:12px; padding:12px 14px;
+  box-shadow:var(--shadow); position:relative; overflow:hidden; isolation:isolate;
+  transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.kpi:hover{ transform:translateY(-1px); border-color:#d6e2f3; box-shadow:0 14px 28px rgba(2,6,23,.08); }
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:12px 0 0 12px;background:linear-gradient(180deg,var(--tone),color-mix(in srgb,var(--tone) 40%,#ffffff))}
+.kpi .row{display:flex;align-items:center;gap:10px}
+.kpi .ico{width:30px;height:30px;border-radius:10px;background:color-mix(in srgb,var(--tone) 18%, #e2e8f0);display:inline-flex;align-items:center;justify-content:center;color:color-mix(in srgb,var(--tone) 88%, #0f172a);font-size:1rem}
+.kpi .t{font-size:.86rem;font-weight:900;color:#0f172a}
+.kpi .v{font-size:1.28rem;font-weight:900}
+.kpi .s{font-size:.75rem;color:#64748b;margin-top:2px}
+.kpi[data-v="custo_total"]   { --tone:#2563eb }
+.kpi[data-v="media_centro"]  { --tone:#0ea5e9 }
+.kpi[data-v="itens_locados"] { --tone:#22c55e }
+.kpi[data-v="lider_custo"]   { --tone:#f59e0b }
+
+/* Painel + Topbar */
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:14px}
+.topbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.title{display:flex;align-items:center;gap:10px;font-weight:900;color:var(--ink)}
+.count-badge{background:#eef2ff;color:#1e40af;border-radius:999px;padding:6px 10px;font-weight:800}
+.actions-right{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+.btn{border:none;border-radius:10px;padding:10px 14px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+.btn-add{background:linear-gradient(90deg,#10b981,#059669);color:#fff}
+.btn-light{background:#f8fafc;border:1.3px solid #dbe6f1;color:#334155}
+.btn:hover{filter:brightness(.97)}
+
+/* Filtros */
+.filters{border:1px solid var(--line);border-radius:12px;background:#fff}
+.filters summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;font-weight:900;color:#0f172a}
+.filters summary::-webkit-details-marker{display:none}
+.filters[open] summary{border-bottom:1px solid var(--line)}
+.filters-body{padding:10px 12px}
+.filters-grid{display:grid;gap:10px;align-items:end;grid-template-columns:repeat(12,1fr)}
+.group{min-width:0}
+.group label{display:none}
+.filtro-icon-input{position:relative}
+.filtro-icon-input i{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#334155;pointer-events:none}
+.ctrl{
+  width:100%;height:var(--ctrl-h);
+  padding:6px 12px 6px var(--pad-icon);
+  border:1px solid #d5deea;border-radius:10px;background:#fff;color:#111827;font-size:.95rem;
+  outline:none;transition:border .15s,box-shadow .15s,background .15s
+}
+.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd33;background:#fff}
+.select-wrapper{position:relative}
+.select-wrapper::after{content:"";position:absolute;right:12px;top:50%;transform:translateY(-25%);border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #64748b;pointer-events:none}
+.select-wrapper select{padding-right:30px}
+
+.fld-q{grid-column:span 8}
+.fld-pmb{grid-column:span 2}
+.fld-actions{grid-column:span 2;display:flex;gap:8px;justify-content:flex-end}
+@media (max-width:980px){
+  .filters-grid{grid-template-columns:repeat(6,1fr)}
+  .fld-q{grid-column:1/-1}
+  .fld-pmb{grid-column:span 3}
+  .fld-actions{grid-column:span 3}
+}
+
+/* Cards de centro */
+.cards{display:grid;grid-template-columns:repeat(3,minmax(260px,1fr));gap:12px;margin:12px 0}
+@media (max-width:1100px){.cards{grid-template-columns:repeat(2,minmax(260px,1fr))}}
+@media (max-width:700px){.cards{grid-template-columns:1fr}}
+.card{
+  background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+  padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0
+}
+.cc-head{display:flex;align-items:center;gap:10px}
+.cc-icon{width:34px;height:34px;border-radius:10px;background:#eff6ff;color:#1e3a8a;display:inline-flex;align-items:center;justify-content:center}
+.cc-title{font-weight:900;color:#0f172a}
+.cc-sub{color:#64748b;font-weight:700}
+.badge-pmb{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:800;font-size:.85rem}
+.badge-pmb.sim{background:#e8fff3;color:#15803d}
+.badge-pmb.nao{background:#fee2e2;color:#b91c1c}
+
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kv .tile{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:10px}
+.kv .tile strong{display:block;color:#334155;font-size:.9rem}
+.kv .tile span{font-weight:900}
+
+.cc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.btn-mini{border:1.2px solid #dbe6f1;background:#fff;color:#1f2937;border-radius:9px;padding:6px 10px;font-weight:800}
+
+/* Tabela */
+.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff;margin-top:12px}
+table{width:100%;border-collapse:collapse;min-width:900px;background:#fff}
+thead th{position:sticky;top:0;background:#0f172a;color:#fff;border-bottom:1px solid #0f172a;padding:11px 12px;text-align:left;font-weight:900}
+tbody td{padding:11px 12px;border-bottom:1px solid #eef2f7;color:#0f172a}
+tbody tr:nth-child(odd){background:#fbfdff}
+tbody tr:hover{background:#f3f7ff}
+.td-acoes{text-align:center;white-space:nowrap}
+.icon-btn{background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:50%;padding:7px 8px;margin:0 2px;font-size:1.05rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
+
+/* Paginação */
+.pagination-wrap{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;margin-top:12px}
+.page-size{display:flex;align-items:center;gap:8px;color:#475569;font-weight:700}
+.page-size select{height:32px;border:1px solid #d5deea;border-radius:8px;background:#fff;padding:4px 10px;font-weight:700;color:#0f172a}
+.pager{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pager a, .pager span{padding:6px 10px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#0f172a;font-weight:800;font-size:.9rem;text-decoration:none}
+.pager a:hover{background:#f8fafc}
+.pager .current{background:#e8f0ff;border-color:#c7d2fe;color:#1e3a8a}
+.pager .disabled{opacity:.5;pointer-events:none}
+.range-hint{color:#64748b;font-weight:700}
+</style>
+
+<div class="page">
+  <!-- KPIs -->
+  <div class="kpis">
+    <div class="kpi" data-v="custo_total" title="Custo total mensal (locação)">
+      <div class="row">
+        <span class="ico"><i class="fa fa-coins"></i></span>
+        <div>
+          <div class="t">Custo Total (R$/mês)</div>
+          <div class="v">R$ {{ kpi_custo_total|floatformat:2 }}</div>
+          <div class="s">Somente itens locados</div>
+        </div>
+      </div>
+    </div>
+    <div class="kpi" data-v="media_centro" title="Média por centro">
+      <div class="row">
+        <span class="ico"><i class="fa fa-scale-balanced"></i></span>
+        <div>
+          <div class="t">Média por Centro</div>
+          <div class="v">R$ {{ kpi_media_por_centro|floatformat:2 }}</div>
+          <div class="s">{{ total }} centro{% if total != 1 %}s{% endif %} filtrado{% if total != 1 %}s{% endif %}</div>
+        </div>
+      </div>
+    </div>
+    <div class="kpi" data-v="itens_locados" title="Quantidade de itens locados">
+      <div class="row">
+        <span class="ico"><i class="fa fa-boxes-stacked"></i></span>
+        <div>
+          <div class="t">Itens Locados</div>
+          <div class="v">{{ kpi_itens_locados }}</div>
+          <div class="s">Vinculados aos centros filtrados</div>
+        </div>
+      </div>
+    </div>
+    <div class="kpi" data-v="lider_custo" title="Centro com maior custo">
+      <div class="row">
+        <span class="ico"><i class="fa fa-trophy"></i></span>
+        <div>
+          <div class="t">Maior Custo (R$/mês)</div>
+          <div class="v">{% if kpi_top_cc %}R$ {{ kpi_top_cc_val|floatformat:2 }}{% else %}-{% endif %}</div>
+          <div class="s">
+            {% if kpi_top_cc %}{{ kpi_top_cc.numero }} — {{ kpi_top_cc.departamento }}{% else %}Sem dados{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <!-- Topo -->
+    <div class="topbar">
+      <div class="title">
+        <i class="fa fa-coins" style="color:var(--info)"></i>
+        <span>Centros de Custo</span>
+      </div>
+      <span class="count-badge">{{ total }} centro{% if total != 1 %}s{% endif %}</span>
+
+      <div class="actions-right">
+        <!-- Itens por página -->
+        <form method="get" id="ppForm" style="display:flex;align-items:center;gap:8px">
+          {% for key,val in request.GET.items %}
+            {% if key != 'pp' and key != 'page' %}
+              <input type="hidden" name="{{ key }}" value="{{ val }}">
+            {% endif %}
+          {% endfor %}
+          <label class="page-size">Por página:
+            <select name="pp" id="pp">
+              <option value="10"  {% if per_page == 10  %}selected{% endif %}>10</option>
+              <option value="20"  {% if per_page == 20  %}selected{% endif %}>20</option>
+              <option value="50"  {% if per_page == 50  %}selected{% endif %}>50</option>
+              <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+            </select>
+          </label>
+        </form>
+
+        <a class="btn btn-add" href="{% url 'centrocusto_create' %}">
+          <i class="fa fa-plus"></i> Novo Centro
+        </a>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <details class="filters" {% if q or pmb %}open{% endif %}>
+      <summary><i class="fa fa-filter"></i> Filtros
+        <span class="hint" style="font-weight:600;color:#64748b">— digite para aplicar automaticamente</span>
+      </summary>
+      <div class="filters-body">
+        <form class="filters-grid" method="get" id="fForm" autocomplete="off">
+          <div class="group fld-q filtro-icon-input">
+            <i class="fa fa-search" aria-hidden="true"></i>
+            <input type="text" name="q" class="ctrl" id="q" placeholder="Buscar por número ou departamento" value="{{ q|default:'' }}">
+          </div>
+
+          <div class="group fld-pmb filtro-icon-input select-wrapper">
+            <i class="fa fa-building" aria-hidden="true"></i>
+            <select name="pmb" class="ctrl" id="pmb">
+              <option value="">PMB: Todos</option>
+              {% for code, label in pmb_choices %}
+                <option value="{{ code }}" {% if pmb == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="group fld-actions">
+            <button class="btn btn-light" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
+            <button class="btn btn-light" type="button" id="btnClear"><i class="fa fa-eraser"></i> Limpar</button>
+          </div>
+        </form>
+      </div>
+    </details>
+
+    <!-- Cards por Centro -->
+    <div class="cards">
+      {% for c in centros %}
+      <div class="card">
+        <div class="cc-head">
+          <span class="cc-icon"><i class="fa fa-sitemap"></i></span>
+          <div>
+            <div class="cc-title">{{ c.numero }}</div>
+            <div class="cc-sub">{{ c.departamento }}</div>
+          </div>
+          <div style="margin-left:auto">
+            <span class="badge-pmb {{ c.pmb }}">{{ c.get_pmb_display }}</span>
+          </div>
+        </div>
+
+        <div class="kv">
+          <div class="tile">
+            <strong>Itens Locados</strong>
+            <span>{{ c.qtd_locados }}</span>
+          </div>
+          <div class="tile">
+            <strong>Custo Mensal (R$)</strong>
+            <span>R$ {{ c.custo_locacao_total|floatformat:2 }}</span>
+          </div>
+        </div>
+
+        <div class="cc-actions">
+          {# Ajuste a rota conforme sua url de equipamentos #}
+          <a class="btn-mini" href="{% url 'equipamentos_list' %}?centro_custo={{ c.numero }}" title="Ver equipamentos deste centro">
+            <i class="fa fa-laptop"></i> Equipamentos
+          </a>
+          <a class="btn-mini" href="{% url 'centrocusto_detail' c.pk %}" title="Detalhar Centro">
+            <i class="fa fa-eye"></i> Detalhar
+          </a>
+          <a class="btn-mini" href="{% url 'centrocusto_update' c.pk %}" title="Editar">
+            <i class="fa fa-pen"></i> Editar
+          </a>
+        </div>
+      </div>
+      {% empty %}
+        <div class="card" style="grid-column:1/-1;color:#64748b">Nenhum centro encontrado.</div>
+      {% endfor %}
+    </div>
+
+    <!-- Tabela (visão sintética) -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:64px">#</th>
+            <th>Número</th>
+            <th>Departamento</th>
+            <th>PMB?</th>
+            <th>Itens Locados</th>
+            <th>Custo (R$/mês)</th>
+            <th>Criado em</th>
+            <th>Atualizado em</th>
+            <th style="width:120px">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for obj in centros %}
+          <tr>
+            <td>{{ forloop.counter0|add:page_obj.start_index }}</td>
+            <td>{{ obj.numero }}</td>
+            <td>{{ obj.departamento }}</td>
+            <td><span class="badge-pmb {{ obj.pmb }}">{{ obj.get_pmb_display }}</span></td>
+            <td>{{ obj.qtd_locados }}</td>
+            <td>R$ {{ obj.custo_locacao_total|floatformat:2 }}</td>
+            <td>{{ obj.created_at|date:"d/m/Y H:i" }}</td>
+            <td>{{ obj.updated_at|date:"d/m/Y H:i" }}</td>
+            <td class="td-acoes">
+              <a class="icon-btn" title="Detalhar" href="{% url 'centrocusto_detail' obj.pk %}"><i class="fa fa-eye"></i></a>
+              <a class="icon-btn" title="Editar" href="{% url 'centrocusto_update' obj.pk %}"><i class="fa fa-pen"></i></a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="9" style="text-align:center;color:#64748b;padding:16px">Nenhum centro encontrado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if paginator.num_pages > 1 %}
+    <div class="pagination-wrap">
+      <div class="range-hint">
+        Mostrando <strong>{{ page_obj.start_index }}</strong>–<strong>{{ page_obj.end_index }}</strong>
+        de <strong>{{ paginator.count }}</strong>
+      </div>
+      <nav class="pager" aria-label="Paginação">
+        {% with base='?'|add:qs_keep %}
+          {% if page_obj.has_previous %}
+            <a href="{{ base }}{% if qs_keep %}&{% endif %}page=1" title="Primeira">&laquo;</a>
+            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ page_obj.previous_page_number }}" title="Anterior">&lsaquo;</a>
+          {% else %}
+            <span class="disabled">&laquo;</span><span class="disabled">&lsaquo;</span>
+          {% endif %}
+
+          {% for num in paginator.page_range %}
+            {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+              {% if num == page_obj.number %}
+                <span class="current">{{ num }}</span>
+              {% else %}
+                <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ num }}">{{ num }}</a>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+
+          {% if page_obj.has_next %}
+            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ page_obj.next_page_number }}" title="Próxima">&rsaquo;</a>
+            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ paginator.num_pages }}" title="Última">&raquo;</a>
+          {% else %}
+            <span class="disabled">&rsaquo;</span><span class="disabled">&raquo;</span>
+          {% endif %}
+        {% endwith %}
+      </nav>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+/* Limpar filtros */
+document.getElementById('btnClear')?.addEventListener('click', ()=>{
+  window.location.href = window.location.pathname;
+});
+
+/* Debounce + autosubmit */
+(function(){
+  const form = document.getElementById('fForm'); if(!form) return;
+  const q    = document.getElementById('q');
+  const pmb  = document.getElementById('pmb');
+
+  let t;
+  q?.addEventListener('input', ()=>{
+    clearTimeout(t);
+    t = setTimeout(()=>form.submit(), 450);
+  });
+  pmb?.addEventListener('change', ()=>form.submit());
+})();
+
+/* Itens por página: auto-submit resetando page */
+document.getElementById('pp')?.addEventListener('change', ()=>{
+  const f=document.getElementById('ppForm'); if(!f) return;
+  const pageInput=document.createElement('input'); pageInput.type='hidden'; pageInput.name='page'; pageInput.value='1';
+  f.appendChild(pageInput); f.submit();
+});
+</script>
+{% endblock %}

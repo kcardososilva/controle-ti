@@ -176,15 +176,26 @@ def subtipo_detail(request, pk):
 
 @login_required
 def usuario_list(request):
-    q = (request.GET.get("q") or "").strip()
-    status = (request.GET.get("status") or "").strip()              # ativo | desligado | ''
-    pmb = (request.GET.get("pmb") or "").strip()                    # sim | nao | ''
-    cc = (request.GET.get("cc") or "").strip()                      # id do centro de custo
-    loc = (request.GET.get("loc") or "").strip()                    # id localidade
-    func = (request.GET.get("func") or "").strip()                  # id função
+    """
+    Lista de usuários com:
+      - Filtros: q, status, pmb, cc, loc, func
+      - KPIs: total, ativos, desligados, PMB(sim/nao)
+      - Paginação: pp (10/20/50/100) + page
+    """
+    q     = (request.GET.get("q") or "").strip()
+    status = (request.GET.get("status") or "").strip()      # 'ativo' | 'desligado' | ''
+    pmb    = (request.GET.get("pmb") or "").strip()         # 'sim' | 'nao' | ''
+    cc     = (request.GET.get("cc") or "").strip()          # id centro de custo
+    loc    = (request.GET.get("loc") or "").strip()         # id localidade
+    func   = (request.GET.get("func") or "").strip()        # id função
 
-    qs = Usuario.objects.select_related("centro_custo", "localidade", "funcao").order_by("-created_at")
+    qs = (
+        Usuario.objects
+        .select_related("centro_custo", "localidade", "funcao")
+        .order_by("-created_at")
+    )
 
+    # --- Filtros ---
     if q:
         qs = qs.filter(Q(nome__icontains=q) | Q(email__icontains=q))
     if status in dict(StatusUsuarioChoices.choices):
@@ -198,19 +209,53 @@ def usuario_list(request):
     if func.isdigit():
         qs = qs.filter(funcao_id=int(func))
 
-    paginator = Paginator(qs, 20)
-    page_obj = paginator.get_page(request.GET.get("page"))
+    qs = qs.distinct()
+    total_filtrado = qs.count()
+
+    # --- KPIs globais (sem filtro de status/PMB para visão executiva) ---
+    total_geral     = Usuario.objects.count()
+    total_ativos    = Usuario.objects.filter(status="ativo").count()
+    total_desligado = Usuario.objects.filter(status="desligado").count()
+    total_pmb_sim   = Usuario.objects.filter(pmb="sim").count()
+    total_pmb_nao   = Usuario.objects.filter(pmb="nao").count()
+
+    # --- Paginação ---
+    try:
+        per_page = int(request.GET.get("pp") or 20)
+        if per_page not in (10, 20, 50, 100):
+            per_page = 20
+    except (TypeError, ValueError):
+        per_page = 20
+
+    paginator = Paginator(qs, per_page)
+    page_number = request.GET.get("page") or 1
+    try:
+        page_obj = paginator.page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.page(1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+
+    # Querystring preservada (sem o page)
+    params = request.GET.copy()
+    params.pop("page", None)
+    qs_keep = params.urlencode()
 
     ctx = {
         "usuarios": page_obj.object_list,
         "page_obj": page_obj,
-        "total": qs.count(),
-        "q": q,
-        "status": status,
-        "pmb": pmb,
-        "cc": cc,
-        "loc": loc,
-        "func": func,
+        "paginator": paginator,
+        "per_page": per_page,
+        "qs_keep": qs_keep,
+
+        "total": total_filtrado,  # total da lista filtrada
+        "kpi_total_geral": total_geral,
+        "kpi_total_ativos": total_ativos,
+        "kpi_total_desligado": total_desligado,
+        "kpi_total_pmb_sim": total_pmb_sim,
+        "kpi_total_pmb_nao": total_pmb_nao,
+
+        "q": q, "status": status, "pmb": pmb, "cc": cc, "loc": loc, "func": func,
         "status_choices": StatusUsuarioChoices.choices,
         "pmb_choices": SimNaoChoices.choices,
         "cc_list": CentroCusto.objects.order_by("numero", "departamento"),
@@ -218,7 +263,6 @@ def usuario_list(request):
         "func_list": Funcao.objects.order_by("nome"),
     }
     return render(request, "front/usuarios/usuario_list.html", ctx)
-
 
 # CREATE
 @login_required
@@ -423,28 +467,110 @@ def usuario_delete(request, pk: int):
 
 @login_required
 def fornecedor_list(request):
+    """
+    Lista de Fornecedores com KPIs (custo mensal de locação, média, líder),
+    cards por fornecedor (qtd itens, qtd locados, custo mensal) e tabela executiva.
+    Filtros: q = nome/CNPJ, tem_contrato = sim|nao|.
+    """
     q = (request.GET.get("q") or "").strip()
     tem_contrato = (request.GET.get("tem_contrato") or "").strip()  # "sim" | "nao" | ""
 
     qs = Fornecedor.objects.all().order_by("-created_at")
     if q:
         qs = qs.filter(Q(nome__icontains=q) | Q(cnpj__icontains=q))
+
     if tem_contrato == "sim":
         qs = qs.exclude(contrato__isnull=True).exclude(contrato__exact="")
     elif tem_contrato == "nao":
         qs = qs.filter(Q(contrato__isnull=True) | Q(contrato__exact=""))
 
-    paginator = Paginator(qs, 20)
-    page_obj = paginator.get_page(request.GET.get("page"))
+    total_fornecedores = qs.count()
+    fornecedores_ids = list(qs.values_list("id", flat=True))
+
+    # ---------- Agregações por Item (evita depender de related_name) ----------
+    itens_qs = Item.objects.filter(fornecedor_id__in=fornecedores_ids)
+    # Totais globais (somente locados contam custo mensal)
+    globais = itens_qs.filter(locado="sim").aggregate(
+        custo_total=Sum("locacao__valor_mensal"),
+        locados=Count("id"),
+    )
+    kpi_custo_total = globais.get("custo_total") or Decimal("0.00")
+    kpi_total_locados = globais.get("locados") or 0
+    kpi_media_fornecedor = (kpi_custo_total / total_fornecedores) if total_fornecedores else Decimal("0.00")
+
+    # Por fornecedor: quantidade de itens totais, locados e soma mensal
+    por_forn_total = (
+        itens_qs
+        .values("fornecedor_id")
+        .annotate(qtd=Count("id"))
+    )
+    por_forn_locados = (
+        itens_qs.filter(locado="sim")
+        .values("fornecedor_id")
+        .annotate(qtd=Count("id"), total=Sum("locacao__valor_mensal"))
+    )
+
+    m_total = {r["fornecedor_id"]: r["qtd"] for r in por_forn_total}
+    m_loc_qtd = {r["fornecedor_id"]: r["qtd"] for r in por_forn_locados}
+    m_loc_val = {r["fornecedor_id"]: (r["total"] or Decimal("0.00")) for r in por_forn_locados}
+
+    # Fornecedor líder por custo (no conjunto filtrado)
+    lider_id = max(m_loc_val, key=lambda k: m_loc_val[k]) if m_loc_val else None
+    kpi_lider = None
+    kpi_lider_val = Decimal("0.00")
+    if lider_id:
+        try:
+            kpi_lider = Fornecedor.objects.get(id=lider_id)
+            kpi_lider_val = m_loc_val.get(lider_id, Decimal("0.00"))
+        except Fornecedor.DoesNotExist:
+            kpi_lider = None
+            kpi_lider_val = Decimal("0.00")
+
+    # ---------- Paginação ----------
+    try:
+        per_page = int(request.GET.get("pp") or 20)
+        if per_page not in (10, 20, 50, 100):
+            per_page = 20
+    except (TypeError, ValueError):
+        per_page = 20
+
+    paginator = Paginator(qs, per_page)
+    page_number = request.GET.get("page") or 1
+    try:
+        page_obj = paginator.page(page_number)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+
+    # Injeta métricas em cada fornecedor exibido na página
+    for f in page_obj.object_list:
+        f.qtd_itens = m_total.get(f.id, 0)
+        f.qtd_locados = m_loc_qtd.get(f.id, 0)
+        f.custo_locacao_total = m_loc_val.get(f.id, Decimal("0.00"))
+
+    # Preserva filtros na paginação / pp
+    params = request.GET.copy()
+    params.pop("page", None)
+    qs_keep = params.urlencode()
 
     ctx = {
         "fornecedores": page_obj.object_list,
         "page_obj": page_obj,
-        "total": qs.count(),
+        "paginator": paginator,
+        "per_page": per_page,
+        "qs_keep": qs_keep,
+
+        "total": total_fornecedores,
         "q": q,
         "tem_contrato": tem_contrato,
+
+        # KPIs
+        "kpi_custo_total": kpi_custo_total,
+        "kpi_total_locados": kpi_total_locados,
+        "kpi_media_fornecedor": kpi_media_fornecedor,
+        "kpi_lider": kpi_lider,
+        "kpi_lider_val": kpi_lider_val,
     }
-    return render(request, "front/fornecedor_list.html", ctx)
+    return render(request, "front/fornecedores/fornecedor_list.html", ctx)
 
 
 # CREATE
@@ -463,7 +589,7 @@ def fornecedor_create(request):
     else:
         form = FornecedorForm()
 
-    return render(request, "front/fornecedor_form.html", {"form": form, "editar": False})
+    return render(request, "front/fornecedores/fornecedor_form.html", {"form": form, "editar": False})
 
 
 # UPDATE
@@ -482,14 +608,14 @@ def fornecedor_update(request, pk: int):
     else:
         form = FornecedorForm(instance=obj)
 
-    return render(request, "front/fornecedor_form.html", {"form": form, "editar": True})
+    return render(request, "front/fornecedores/fornecedor_form.html", {"form": form, "editar": True})
 
 
 # DETAIL
 @login_required
 def fornecedor_detail(request, pk: int):
     obj = get_object_or_404(Fornecedor, pk=pk)
-    return render(request, "front/fornecedor_detail.html", {"obj": obj})
+    return render(request, "front/fornecedores/fornecedor_detail.html", {"obj": obj})
 
 
 # DELETE (POST via modal)
@@ -592,6 +718,14 @@ def localidade_detail(request, pk):
 
 @login_required
 def centrocusto_list(request):
+    """
+    Lista de Centros de Custo com:
+      - Filtros (q: número/departamento; pmb: sim/não)
+      - KPIs: custo total mensal (locação), média por centro, total de itens locados, centro líder
+      - Cards por centro: custo mensal e qtd de itens locados
+      - Tabela com colunas financeiras
+      - Paginação preservando filtros
+    """
     q = (request.GET.get("q") or "").strip()
     pmb = (request.GET.get("pmb") or "").strip()
 
@@ -601,18 +735,97 @@ def centrocusto_list(request):
     if pmb in dict(SimNaoChoices.choices):
         qs = qs.filter(pmb=pmb)
 
-    paginator = Paginator(qs, 20)
-    page_obj = paginator.get_page(request.GET.get("page"))
+    # Centros filtrados (ids)
+    centros_ids = list(qs.values_list("id", flat=True))
+    total_centros = qs.count()
+
+    # -------- Agregações: SOMENTE itens locados, somando locacao__valor_mensal --------
+    # protegendo nulos com or Decimal("0.00")
+    locados_qs = Item.objects.filter(
+        centro_custo_id__in=centros_ids,
+        locado="sim",
+    )
+
+    globais = locados_qs.aggregate(
+        custo_total=Sum("locacao__valor_mensal"),
+        qtd_itens=Count("id"),
+    )
+    kpi_custo_total = globais.get("custo_total") or Decimal("0.00")
+    kpi_itens_locados = globais.get("qtd_itens") or 0
+    kpi_media_por_centro = (kpi_custo_total / total_centros) if total_centros else Decimal("0.00")
+
+    # Por centro
+    # [{'centro_custo': <id>, 'total': Decimal, 'count': int}, ...]
+    por_centro = (
+        locados_qs
+        .values("centro_custo")
+        .annotate(total=Sum("locacao__valor_mensal"), count=Count("id"))
+    )
+    centro_totais = {row["centro_custo"]: (row["total"] or Decimal("0.00")) for row in por_centro}
+    centro_counts = {row["centro_custo"]: row["count"] for row in por_centro}
+
+    # Centro com maior custo (no conjunto filtrado)
+    kpi_top_cc_id = None
+    kpi_top_cc_val = Decimal("0.00")
+    if centro_totais:
+        kpi_top_cc_id = max(centro_totais, key=lambda k: centro_totais[k])
+        kpi_top_cc_val = centro_totais[kpi_top_cc_id] or Decimal("0.00")
+
+    # -------- Paginação --------
+    try:
+        per_page = int(request.GET.get("pp") or 20)
+        if per_page not in (10, 20, 50, 100):
+            per_page = 20
+    except (TypeError, ValueError):
+        per_page = 20
+
+    paginator = Paginator(qs, per_page)
+    page_number = request.GET.get("page") or 1
+    try:
+        page_obj = paginator.page(page_number)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+
+    # Anexa atributos prontos pra template (sem filtros/templatetags custom)
+    for obj in page_obj.object_list:
+        obj.custo_locacao_total = centro_totais.get(obj.id, Decimal("0.00"))
+        obj.qtd_locados = centro_counts.get(obj.id, 0)
+
+    # Centro líder (instância completa) — independente da página atual
+    kpi_top_cc = None
+    if kpi_top_cc_id:
+        try:
+            kpi_top_cc = CentroCusto.objects.get(id=kpi_top_cc_id)
+        except CentroCusto.DoesNotExist:
+            kpi_top_cc = None
+
+    # Preserva querystring (sem 'page')
+    params = request.GET.copy()
+    params.pop("page", None)
+    qs_keep = params.urlencode()
 
     ctx = {
+        # lista
         "centros": page_obj.object_list,
         "page_obj": page_obj,
-        "total": qs.count(),
+        "paginator": paginator,
+        "per_page": per_page,
+        "qs_keep": qs_keep,
+
+        # filtros
+        "total": total_centros,
         "q": q,
         "pmb": pmb,
         "pmb_choices": SimNaoChoices.choices,
+
+        # KPIs
+        "kpi_custo_total": kpi_custo_total,
+        "kpi_media_por_centro": kpi_media_por_centro,
+        "kpi_itens_locados": kpi_itens_locados,
+        "kpi_top_cc": kpi_top_cc,
+        "kpi_top_cc_val": kpi_top_cc_val,
     }
-    return render(request, "front/centrocusto_list.html", ctx)
+    return render(request, "front/centrocusto/centrocusto_list.html", ctx)
 
 
 # CREATE
@@ -631,7 +844,7 @@ def centrocusto_create(request):
     else:
         form = CentroCustoForm()
 
-    return render(request, "front/centrocusto_form.html", {"form": form, "editar": False})
+    return render(request, "front/centrocusto/centrocusto_form.html", {"form": form, "editar": False})
 
 
 # UPDATE
@@ -650,7 +863,7 @@ def centrocusto_update(request, pk: int):
     else:
         form = CentroCustoForm(instance=obj)
 
-    return render(request, "front/centrocusto_form.html", {"form": form, "editar": True})
+    return render(request, "front/centrocusto/centrocusto_form.html", {"form": form, "editar": True})
 
 
 # DETAIL
@@ -661,7 +874,7 @@ def centrocusto_detail(request, pk):
                 .filter(centro_custo=obj)
                 .select_related('subtipo','localidade')
                 .order_by('nome'))
-    return render(request, 'front/centrocusto_detail.html', {
+    return render(request, 'front/centrocusto/centrocusto_detail.html', {
         'obj': obj,
         'itens_cc': itens_cc,
     })
