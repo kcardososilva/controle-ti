@@ -1,341 +1,269 @@
 {% extends 'base.html' %}
-{% block title %}Preventivas{% endblock %}
+{% load static humanize %}
+
+{% block title %}Gestão de Preventivas{% endblock %}
+
 {% block content %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
 
 <style>
-:root{
-  /* Paleta neutra profissional + acento azul */
-  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
-  --accent:#1e3a8a; --accent-2:#2563eb; --info:#0ea5e9;
-  --ok:#16a34a; --ok-soft:#e8fff3;
-  --warn:#b45309; --warn-soft:#fff7ed;
-
-  --h:40px; --rad:12px; --padL:40px;
-  --shadow:0 18px 40px rgba(2,6,23,.07);
-}
-*{box-sizing:border-box}
-a{text-decoration:none}
-
-.page{
-  max-width:1200px;margin:16px auto;padding:0 14px;color:var(--ink);
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial
-}
-
-/* ===== Header + Ações ===== */
-.header-wrap{
-  display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px
-}
-.header-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.title{display:flex;align-items:center;gap:10px;font-weight:900}
-.badge{
-  display:inline-flex;align-items:center;gap:8px;background:#eef2ff;color:#1e40af;
-  padding:6px 10px;border-radius:999px;font-weight:800
-}
-.header-actions{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
-.btn{
-  border:none;border-radius:10px;padding:8px 12px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px
-}
-.btn-add{background:linear-gradient(90deg,#1e3a8a,#2563eb);color:#fff}
-.btn-light{background:#fff;border:1.3px solid #dbe6f1;color:#334155}
-.btn:hover{filter:brightness(.98)}
-
-/* ===== Painel ===== */
-.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:12px}
-
-/* ===== Barra de Filtros ===== */
-.filters{
-  display:grid;gap:10px;align-items:end;margin:8px 0 10px;
-  grid-template-columns: minmax(260px,1.1fr) minmax(180px,.7fr) auto auto;
-}
-@media (max-width:980px){
-  .filters{grid-template-columns:1fr 1fr;grid-template-rows:auto auto;grid-auto-flow:row}
-}
-@media (max-width:640px){
-  .filters{grid-template-columns:1fr}
+/* --- Enterprise Theme --- */
+:root {
+  --bg-app: #f3f4f6;
+  --bg-card: #ffffff;
+  --primary: #0078d4;
+  --text-main: #242424;
+  --text-sub: #616161;
+  --border: #e0e0e0;
+  --radius: 8px;
+  
+  --ok-bg: #dff6dd; --ok-fg: #107c10;
+  --warn-bg: #fff4ce; --warn-fg: #9a3412;
+  --crit-bg: #fde7e9; --crit-fg: #a80000;
+  
+  --shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 
-.group{display:flex;flex-direction:column;min-width:0}
-.group label{font-weight:900;margin-bottom:6px}
-.filtro-icon-input{position:relative;min-width:0}
-.filtro-icon-input i{
-  position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#334155;pointer-events:none
+body { background-color: var(--bg-app); color: var(--text-main); font-family: 'Segoe UI', sans-serif; }
+.app-container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+/* HEADER */
+.page-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;
 }
-.ctrl{
-  width:100%;height:var(--h);
-  padding:8px 12px 8px var(--padL);
-  border:1px solid #d5deea;border-radius:10px;background:var(--soft);color:#111827;font-size:.95rem;
-  outline:none;transition:border .15s,box-shadow .15s,background .15s;appearance:none
+.header-title h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 10px; }
+.header-actions { display: flex; gap: 10px; }
+
+.btn {
+  height: 40px; padding: 0 20px; border-radius: 6px; font-weight: 600; font-size: 0.9rem; cursor: pointer;
+  border: 1px solid transparent; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; transition: all 0.2s;
 }
-.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd33;background:#fff}
-.select{padding-right:34px}
-.select-wrap{position:relative}
-.select-wrap::after{
-  content:"";position:absolute;right:12px;top:50%;transform:translateY(-25%);
-  border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #64748b;pointer-events:none
+.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.btn-std { background: #fff; border-color: var(--border); color: var(--text-main); }
+
+/* KPI BANNER (Responsivo) */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.kpi-card {
+  background: var(--bg-card); padding: 16px; border-radius: var(--radius); border: 1px solid var(--border);
+  box-shadow: var(--shadow); position: relative; overflow: hidden; display: flex; flex-direction: column;
+}
+.kpi-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+.kpi-card.blue::before { background: var(--primary); }
+.kpi-card.red::before { background: var(--crit-fg); }
+.kpi-card.yellow::before { background: #f59e0b; }
+.kpi-card.green::before { background: var(--ok-fg); }
+
+.kpi-val { font-size: 1.8rem; font-weight: 700; margin-top: 4px; }
+.kpi-label { font-size: 0.75rem; text-transform: uppercase; color: var(--text-sub); font-weight: 700; }
+
+/* SEARCH BAR */
+.filter-bar {
+  background: var(--bg-card); padding: 12px; border-radius: var(--radius); border: 1px solid var(--border);
+  margin-bottom: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+}
+.filter-input { flex: 1; position: relative; min-width: 200px; }
+.filter-input i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-sub); }
+.form-control {
+  width: 100%; height: 40px; padding: 0 12px 0 36px; border: 1px solid var(--border); border-radius: 6px; outline: none;
 }
 
-.filters-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
-@media (max-width:980px){
-  .filters-actions{grid-column:1/-1;justify-content:stretch}
-  .filters-actions .btn{flex:1}
+/* === DESKTOP TABLE VIEW (Default) === */
+.table-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; box-shadow: var(--shadow);
+}
+.table-responsive { overflow-x: auto; width: 100%; }
+table { width: 100%; border-collapse: collapse; font-size: 0.95rem; white-space: nowrap; }
+thead th { background: #f9fafb; padding: 14px 20px; text-align: left; font-weight: 600; color: var(--text-sub); border-bottom: 1px solid var(--border); }
+tbody td { padding: 14px 20px; border-bottom: 1px solid #f0f0f0; color: var(--text-main); vertical-align: middle; }
+tbody tr:hover { background: #fcfcfc; }
+
+/* === MOBILE CARD VIEW (Max-width 768px) === */
+.mobile-cards { display: none; } /* Hidden by default */
+
+@media (max-width: 768px) {
+  .table-card { display: none; } /* Hide table on mobile */
+  .mobile-cards { display: grid; gap: 16px; } /* Show cards */
+  
+  .m-card {
+    background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;
+    box-shadow: var(--shadow); position: relative;
+  }
+  .m-card-header { display: flex; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px; }
+  .m-title { font-weight: 700; font-size: 1rem; color: var(--text-main); }
+  .m-sub { font-size: 0.8rem; color: var(--text-sub); display: block; margin-top: 2px; }
+  
+  .m-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem; }
+  .m-label { color: var(--text-sub); }
+  .m-val { font-weight: 600; color: var(--text-main); }
+  
+  .m-actions { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 }
 
-/* Atalhos de status (chips) + densidade */
-.subbar{
-  display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:4px 0 2px
-}
-.chips{display:flex;gap:8px;flex-wrap:wrap}
-.chip{
-  padding:6px 10px;border-radius:999px;border:1px solid #e2e8f0;background:#f8fafc;font-weight:800;color:#0f172a;
-  font-size:.88rem
-}
-.chip.active{background:#e8f0ff;border-color:#c7d2fe;color:#1e3a8a}
-.tools{display:flex;gap:8px;margin-left:auto}
-.tool-btn{border:1px solid #e2e8f0;background:#fff;border-radius:8px;padding:6px 10px;font-weight:800;cursor:pointer}
-.tool-btn[aria-pressed="true"]{background:#f1f5f9}
+/* STATUS BADGES */
+.st-pill { padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+.st-vencida { background: var(--crit-bg); color: var(--crit-fg); }
+.st-atencao { background: var(--warn-bg); color: var(--warn-fg); }
+.st-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.st-indef { background: #f3f4f6; color: #666; }
 
-/* ===== Tabela “cartão” (linhas separadas) ===== */
-.table-wrap{width:100%;overflow:auto;margin-top:8px}
-table{width:100%;border-collapse:separate;border-spacing:0 8px;min-width:980px}
-thead th{
-  position:sticky;top:0;z-index:2;background:#0f172a;
-  color:#fff;padding:10px 12px;text-align:left;font-weight:900;font-size:.95rem;border:none
-}
-tbody tr{transition:transform .08s ease}
-tbody tr:hover{transform:translateY(-1px)}
-tbody td{
-  background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
-  padding:10px 12px;color:#0f172a;font-size:.95rem;vertical-align:middle
-}
-tbody td:first-child{border-left:1px solid var(--line);border-top-left-radius:12px;border-bottom-left-radius:12px}
-tbody td:last-child{border-right:1px solid var(--line);border-top-right-radius:12px;border-bottom-right-radius:12px}
-
-/* Barra lateral de status na 1ª célula */
-tbody tr.ok td:first-child{border-left:6px solid var(--ok)}
-tbody tr.warn td:first-child{border-left:6px solid var(--warn)}
-
-/* Chips de status */
-.st{display:inline-block;padding:4px 12px;border-radius:999px;font-weight:900;font-size:.86rem}
-.st.ok{background:var(--ok-soft);color:var(--ok)}
-.st.warn{background:var(--warn-soft);color:var(--warn)}
-
-/* Célula de ações */
-.actions{white-space:nowrap}
-.icon-btn{
-  background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:10px;
-  padding:7px 10px;margin:0 2px;font-size:.95rem;cursor:pointer;display:inline-flex;align-items:center;gap:8px
-}
-.icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
-
-/* Densidade compacta */
-.compact tbody td{padding:6px 10px;font-size:.9rem}
-.compact thead th{padding:8px 10px;font-size:.9rem}
-
-/* Paginação (opcional) */
-.pagination{
-  display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;
-  margin-top:10px;padding-top:8px;border-top:1px solid var(--line)
-}
-.pager{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
-.pager a,.pager span{padding:6px 10px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#0f172a;font-weight:800;font-size:.9rem}
-.pager a:hover{background:#f8fafc}
-.pager .current{background:#e8f0ff;border-color:#c7d2fe;color:#1e3a8a}
-.pager .disabled{opacity:.5;pointer-events:none}
-.range-hint{color:#64748b;font-weight:700}
 </style>
 
-<div class="page">
-  <div class="header-wrap">
-    <div class="header-left">
-      <div class="title">
-        <i class="fa fa-shield-heart" style="color:var(--info)"></i>
-        <span>Preventivas</span>
-      </div>
-      <span class="badge"><i class="fa fa-database"></i> {{ total|default:preventivas|length }} registro{{ total|default:preventivas|length|pluralize }}</span>
+<div class="app-container">
+
+  <div class="page-header">
+    <div class="header-title">
+      <h1 style="display:flex; align-items:center; gap:10px;">
+        <i class="fa fa-clipboard-list" style="color:var(--primary)"></i> 
+        Controle de Preventivas
+      </h1>
     </div>
     <div class="header-actions">
-      <a class="btn btn-add" href="{% url 'preventiva_start' %}"><i class="fa fa-play"></i> Iniciar Preventiva</a>
-      <button class="btn btn-light" type="button" id="btnExport"><i class="fa fa-file-export"></i> Exportar CSV</button>
+      <a href="?print=true{% if filter_q %}&q={{filter_q}}{% endif %}{% if filter_status %}&status={{filter_status}}{% endif %}" target="_blank" class="btn btn-std">
+        <i class="fa fa-print"></i> Relatório PDF
+      </a>
+      <a href="{% url 'preventiva_start' %}" class="btn btn-primary">
+        <i class="fa fa-plus"></i> Nova Preventiva
+      </a>
     </div>
   </div>
 
-  <div class="panel">
-    <!-- FILTROS -->
-    <form class="filters" method="get" id="fForm" autocomplete="off">
-      <div class="group">
-        <label for="q">Buscar por equipamento</label>
-        <div class="filtro-icon-input">
-          <i class="fa fa-search" aria-hidden="true"></i>
-          <input class="ctrl" id="q" name="q" type="text" placeholder="Ex.: Notebook Dell, AP Aruba…" value="{{ request.GET.q|default:'' }}">
-        </div>
-      </div>
-
-      <div class="group">
-        <label for="status">Status</label>
-        <div class="filtro-icon-input select-wrap">
-          <i class="fa fa-circle" aria-hidden="true"></i>
-          <select class="ctrl select" id="status" name="status" aria-label="Filtrar por status">
-            <option value="" {% if not request.GET.status %}selected{% endif %}>Todos</option>
-            <option value="ok" {% if request.GET.status == 'ok' %}selected{% endif %}>No prazo</option>
-            <option value="vencida" {% if request.GET.status == 'vencida' %}selected{% endif %}>Vencida/Não definida</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="filters-actions">
-        <button class="btn btn-light" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
-        <a class="btn btn-light" href="{% url 'preventiva_list' %}"><i class="fa fa-eraser"></i> Limpar</a>
-      </div>
-
-      <div class="tools">
-        <button class="tool-btn" id="btnDensity" type="button" aria-pressed="false" title="Alternar densidade">
-          <i class="fa fa-arrows-up-down"></i> Densidade
-        </button>
-      </div>
-    </form>
-
-    <!-- Atalhos de status -->
-    <div class="subbar">
-      <div class="chips" aria-label="Atalhos de status">
-        {% with s=request.GET.status|default:'' %}
-          <a class="chip {% if not s %}active{% endif %}" href="?q={{ request.GET.q|urlencode }}">Todos</a>
-          <a class="chip {% if s == 'ok' %}active{% endif %}" href="?q={{ request.GET.q|urlencode }}&status=ok">No prazo</a>
-          <a class="chip {% if s == 'vencida' %}active{% endif %}" href="?q={{ request.GET.q|urlencode }}&status=vencida">Vencida/Não definida</a>
-        {% endwith %}
-      </div>
-      <div class="chips" style="margin-left:auto">
-        <span class="chip" style="cursor:default"><i class="fa fa-circle" style="color:var(--ok)"></i> No prazo</span>
-        <span class="chip" style="cursor:default"><i class="fa fa-circle" style="color:var(--warn)"></i> Vencida/sem próxima</span>
-      </div>
+  <div class="kpi-grid">
+    <div class="kpi-card blue">
+      <span class="kpi-label">Total</span>
+      <span class="kpi-val">{{ kpi.total }}</span>
     </div>
+    <div class="kpi-card red">
+      <span class="kpi-label">Vencidas</span>
+      <span class="kpi-val">{{ kpi.vencidas }}</span>
+    </div>
+    <div class="kpi-card yellow">
+      <span class="kpi-label">Próximas (7 Dias)</span>
+      <span class="kpi-val">{{ kpi.proximas }}</span>
+    </div>
+    <div class="kpi-card green">
+      <span class="kpi-label">Em Dia</span>
+      <span class="kpi-val">{{ kpi.em_dia }}</span>
+    </div>
+  </div>
 
-    <!-- TABELA -->
-    <div class="table-wrap">
-      <table id="tblPreventivas">
+  <form method="get" class="filter-bar">
+    <div class="filter-input">
+      <i class="fa fa-search"></i>
+      <input type="text" name="q" class="form-control" placeholder="Buscar Equipamento, NS ou Tag..." value="{{ filter_q }}">
+    </div>
+    <select name="status" class="form-control" style="width:auto;" onchange="this.form.submit()">
+      <option value="">Status: Todos</option>
+      <option value="vencida" {% if filter_status == 'vencida' %}selected{% endif %}>Vencidas</option>
+      <option value="proxima" {% if filter_status == 'proxima' %}selected{% endif %}>Próximas</option>
+      <option value="ok" {% if filter_status == 'ok' %}selected{% endif %}>Em Dia</option>
+    </select>
+    {% if filter_q or filter_status %}
+      <a href="{% url 'preventiva_list' %}" class="btn btn-std" style="padding:0 12px;"><i class="fa fa-times"></i></a>
+    {% endif %}
+  </form>
+
+  <div class="table-card">
+    <div class="table-responsive">
+      <table>
         <thead>
           <tr>
-            <th style="width:70px">#</th>
             <th>Equipamento</th>
+            <th>Nº Série (NS)</th>
             <th>Checklist</th>
             <th>Última</th>
-            <th>Próxima</th>
+            <th>Próxima (Calc)</th>
             <th>Status</th>
-            <th style="width:200px">Ações</th>
+            <th style="text-align:right">Ações</th>
           </tr>
         </thead>
         <tbody>
           {% for p in preventivas %}
-          <tr class="{% if p.dentro_do_prazo %}ok{% else %}warn{% endif %}">
-            <td><strong>
-              {% if page_obj %}{{ forloop.counter0|add:page_obj.start_index }}{% else %}{{ forloop.counter }}{% endif %}
-            </strong></td>
+          <tr>
             <td>
-              {{ p.equipamento.nome }}
-              {% if not p.checklist_modelo %}
-                <small style="color:var(--muted)">• sem checklist</small>
+              <div style="font-weight:600;">{{ p.equipamento.nome }}</div>
+              <div style="font-size:0.8rem; color:var(--text-sub);">TAG: {{ p.equipamento.patrimonio|default:"-" }}</div>
+            </td>
+            <td class="mono" style="font-family:monospace; font-size:0.9rem;">
+              {{ p.equipamento.numero_serie|default:"-" }}
+            </td>
+            <td>{{ p.checklist_modelo.nome|default:"-" }}</td>
+            <td>{{ p.data_ultima|date:"d/m/Y"|default:"-" }}</td>
+            <td>
+              <div style="font-weight:700;">{{ p.proxima_calc|date:"d/m/Y"|default:"-" }}</div>
+              {% if p.dias_restantes is not None %}
+                <div style="font-size:0.75rem; color:var(--text-sub);">
+                  {% if p.dias_restantes < 0 %}
+                    <span style="color:var(--crit-fg);">{{ p.dias_restantes|stringformat:"d"|slice:"1:" }} dias atraso</span>
+                  {% else %}
+                    {{ p.dias_restantes }} dias restantes
+                  {% endif %}
+                </div>
               {% endif %}
             </td>
-            <td>{{ p.checklist_modelo.nome|default:"—" }}</td>
-            <td>{{ p.data_ultima|date:"d/m/Y"|default:"—" }}</td>
-            <td>{{ p.data_proxima|date:"d/m/Y"|default:"—" }}</td>
             <td>
-              {% if p.dentro_do_prazo %}
-                <span class="st ok">No prazo</span>
-              {% else %}
-                <span class="st warn">Vencida/Não definida</span>
-              {% endif %}
+              {% if p.status_visual == 'vencida' %}<span class="st-pill st-vencida">Vencida</span>
+              {% elif p.status_visual == 'atencao' %}<span class="st-pill st-atencao">Atenção</span>
+              {% elif p.status_visual == 'ok' %}<span class="st-pill st-ok">Em Dia</span>
+              {% else %}<span class="st-pill st-indef">N/A</span>{% endif %}
             </td>
-            <td class="actions">
-              <a class="icon-btn" href="{% url 'preventiva_exec' p.pk %}" title="Executar"><i class="fa fa-play"></i> Executar</a>
-              <a class="icon-btn" href="{% url 'preventiva_detail' p.pk %}" title="Detalhes"><i class="fa fa-eye"></i> Detalhes</a>
+            <td style="text-align:right;">
+              <a href="{% url 'preventiva_exec' p.pk %}" class="btn btn-std" style="height:32px; padding:0 8px;" title="Executar"><i class="fa fa-play"></i></a>
+              <a href="{% url 'preventiva_detail' p.pk %}" class="btn btn-std" style="height:32px; padding:0 8px;" title="Detalhes"><i class="fa fa-eye"></i></a>
             </td>
           </tr>
           {% empty %}
-          <tr>
-            <td colspan="7" style="text-align:center;color:var(--muted);padding:16px">Nenhuma preventiva encontrada.</td>
-          </tr>
+          <tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-sub);">Nenhum registro encontrado.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+  </div>
 
-    <!-- PAGINAÇÃO (opcional) -->
-    {% if page_obj and page_obj.paginator.num_pages > 1 %}
-    <div class="pagination">
-      <div class="range-hint">
-        Mostrando <strong>{{ page_obj.start_index }}</strong>–<strong>{{ page_obj.end_index }}</strong>
-        de <strong>{{ page_obj.paginator.count }}</strong>
+  <div class="mobile-cards">
+    {% for p in preventivas %}
+    <div class="m-card">
+      <div class="m-card-header">
+        <div>
+          <div class="m-title">{{ p.equipamento.nome }}</div>
+          <span class="m-sub">NS: {{ p.equipamento.numero_serie|default:"-" }}</span>
+        </div>
+        <div>
+          {% if p.status_visual == 'vencida' %}<span class="st-pill st-vencida">Vencida</span>
+          {% elif p.status_visual == 'atencao' %}<span class="st-pill st-atencao">Atenção</span>
+          {% elif p.status_visual == 'ok' %}<span class="st-pill st-ok">Ok</span>
+          {% endif %}
+        </div>
       </div>
-      <nav class="pager" aria-label="Paginação">
-        {% with base='?' %}
-          {% if page_obj.has_previous %}
-            <a href="{{ base }}q={{ request.GET.q }}&status={{ request.GET.status }}&page=1" title="Primeira">&laquo;</a>
-            <a href="{{ base }}q={{ request.GET.q }}&status={{ request.GET.status }}&page={{ page_obj.previous_page_number }}" title="Anterior">&lsaquo;</a>
-          {% else %}<span class="disabled">&laquo;</span><span class="disabled">&lsaquo;</span>{% endif %}
-
-          {% for num in page_obj.paginator.page_range %}
-            {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
-              {% if num == page_obj.number %}<span class="current">{{ num }}</span>
-              {% else %}<a href="{{ base }}q={{ request.GET.q }}&status={{ request.GET.status }}&page={{ num }}">{{ num }}</a>{% endif %}
-            {% endif %}
-          {% endfor %}
-
-          {% if page_obj.has_next %}
-            <a href="{{ base }}q={{ request.GET.q }}&status={{ request.GET.status }}&page={{ page_obj.next_page_number }}" title="Próxima">&rsaquo;</a>
-            <a href="{{ base }}q={{ request.GET.q }}&status={{ request.GET.status }}&page={{ page_obj.paginator.num_pages }}" title="Última">&raquo;</a>
-          {% else %}<span class="disabled">&rsaquo;</span><span class="disabled">&raquo;</span>{% endif %}
-        {% endwith %}
-      </nav>
+      
+      <div class="m-row">
+        <span class="m-label">Próxima:</span>
+        <span class="m-val" style="color:var(--primary);">{{ p.proxima_calc|date:"d/m/Y"|default:"-" }}</span>
+      </div>
+      <div class="m-row">
+        <span class="m-label">Local:</span>
+        <span class="m-val">{{ p.equipamento.localidade.local|default:"-" }}</span>
+      </div>
+      
+      <div class="m-actions">
+        <a href="{% url 'preventiva_exec' p.pk %}" class="btn btn-primary" style="justify-content:center;">Executar</a>
+        <a href="{% url 'preventiva_detail' p.pk %}" class="btn btn-std" style="justify-content:center;">Detalhes</a>
+      </div>
     </div>
+    {% endfor %}
+  </div>
+
+  {% if preventivas.has_other_pages %}
+  <div style="margin-top:20px; display:flex; justify-content:center; gap:8px;">
+    {% if preventivas.has_previous %}
+      <a href="?page={{ preventivas.previous_page_number }}&q={{ filter_q }}" class="btn btn-std">&laquo;</a>
+    {% endif %}
+    <span class="btn btn-std" style="background:#f0f0f0;">Pág {{ preventivas.number }}</span>
+    {% if preventivas.has_next %}
+      <a href="?page={{ preventivas.next_page_number }}&q={{ filter_q }}" class="btn btn-std">&raquo;</a>
     {% endif %}
   </div>
+  {% endif %}
+
 </div>
-
-<script>
-/* Debounce do campo de busca + autosubmit dos selects */
-(function(){
-  const form = document.getElementById('fForm'); if(!form) return;
-  const q = document.getElementById('q');
-  const status = document.getElementById('status');
-  let t;
-  q?.addEventListener('input', ()=>{
-    clearTimeout(t);
-    t = setTimeout(()=>form.submit(), 450);
-  });
-  status?.addEventListener('change', ()=>form.submit());
-})();
-
-/* Alternar densidade (compact) da tabela */
-(function(){
-  const btn = document.getElementById('btnDensity');
-  const table = document.getElementById('tblPreventivas');
-  btn?.addEventListener('click', ()=>{
-    const wrap = table?.closest('.table-wrap');
-    wrap?.classList.toggle('compact');
-    btn.setAttribute('aria-pressed', btn.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
-  });
-})();
-
-/* Exportação CSV client-side (respeita filtros aplicados) */
-(function(){
-  const btn = document.getElementById('btnExport');
-  const table = document.getElementById('tblPreventivas');
-  function toCSV(){
-    const rows = [...table.querySelectorAll('tr')].map(tr =>
-      [...tr.children].map(td => {
-        const txt = (td.innerText || '').replace(/\s+/g,' ').trim();
-        return `"${txt.replace(/"/g,'""')}"`;
-      }).join(',')
-    ).join('\n');
-    const blob = new Blob([rows], {type: 'text/csv;charset=utf-8;'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'preventivas.csv';
-    document.body.appendChild(a); a.click();
-    URL.revokeObjectURL(url); a.remove();
-  }
-  btn?.addEventListener('click', toCSV);
-})();
-</script>
 {% endblock %}

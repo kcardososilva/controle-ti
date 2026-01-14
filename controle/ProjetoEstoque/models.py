@@ -219,53 +219,28 @@ class CicloManutencao(AuditModel):
         return f"Ciclo {self.item.nome} - {self.status_inicial}"
 
 
-# ✅ Movimentação: adicionamos tipo_transferencia e fornecedor_manutencao
 class MovimentacaoItem(AuditModel):
-    # Tipo principal
+    # [cite_start]... Campos existentes mantidos ... [cite: 103, 104, 105]
     tipo_movimentacao = models.CharField(max_length=30, choices=TipoMovimentacaoChoices.choices)
-
-    # Detalhes já existentes
-    tipo_transferencia = models.CharField(
-        max_length=10,
-        blank=True, null=True,
-        choices=TipoTransferenciaChoices.choices,
-        help_text="Somente para transferência."
-    )
+    tipo_transferencia = models.CharField(max_length=10, blank=True, null=True, choices=TipoTransferenciaChoices.choices)
     quantidade = models.PositiveIntegerField(default=1)
-    observacao = models.TextField(blank=True, null=True)
-    chamado = models.CharField(max_length=100, blank=True, null=True)
-    custo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    termo_pdf = models.FileField(upload_to="termos/", blank=True, null=True)
+    observacao = models.TextField(blank=True, null=True, verbose_name="Observações")
+    chamado = models.CharField(max_length=100, blank=True, null=True, verbose_name="Nº Chamado")
+    custo = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Custo da Operação")
+    termo_pdf = models.FileField(upload_to="termos/", blank=True, null=True, verbose_name="Termo de Responsabilidade")
 
-    # Relações
+    # Relacionamentos
     item = models.ForeignKey("Item", on_delete=models.CASCADE, related_name="movimentacoes")
     usuario = models.ForeignKey("Usuario", on_delete=models.SET_NULL, null=True, blank=True, related_name="movimentacoes")
-
     localidade_origem = models.ForeignKey("Localidade", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_origem")
     localidade_destino = models.ForeignKey("Localidade", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_destino")
     centro_custo_origem = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_origem_cc")
     centro_custo_destino = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_destino_cc")
-
-    # Envio para manutenção
     fornecedor_manutencao = models.ForeignKey("Fornecedor", on_delete=models.SET_NULL, null=True, blank=True, related_name="manutencoes")
 
-    # Mantido
     status_retorno = models.CharField(max_length=15, choices=StatusItemChoices.choices, blank=True, null=True)
-
-    # ✅ Status explícito para "Transferência Equipamento"
-    status_transferencia = models.CharField(
-        max_length=15,
-        choices=StatusItemChoices.choices,
-        blank=True,
-        null=True,
-        help_text="Status desejado do equipamento na transferência de equipamento."
-    )
-
-    # ENTRADA
-    numero_pedido = models.CharField(
-        max_length=100, blank=True, null=True,
-        help_text="Obrigatório apenas para movimentações do tipo Entrada."
-    )
+    status_transferencia = models.CharField(max_length=15, choices=StatusItemChoices.choices, blank=True, null=True, verbose_name="Novo Status")
+    numero_pedido = models.CharField(max_length=100, blank=True, null=True, verbose_name="Nº Pedido/NF")
 
     class Meta:
         verbose_name = "Movimentação de Item"
@@ -273,186 +248,109 @@ class MovimentacaoItem(AuditModel):
         ordering = ["-created_at"]
 
     def __str__(self):
-        try:
-            tipo = self.get_tipo_movimentacao_display()
-        except Exception:
-            tipo = self.tipo_movimentacao
-        nome_item = getattr(self.item, "nome", "—")
-        return f"[{tipo}] {nome_item} x{self.quantidade}"
+        return f"[{self.get_tipo_movimentacao_display()}] {self.item} x{self.quantidade}"
 
     @transaction.atomic
     def save(self, *args, **kwargs):
         is_new = self.pk is None
+        
+        # Carrega item atual
+        item_obj = self.item
+        if not is_new:
+            item_obj.refresh_from_db()
+        
+        current_loc = item_obj.localidade
+        current_cc = item_obj.centro_custo
 
-        # Snapshot de ORIGEM antes de mexer no item
-        item = getattr(self, "item", None)
-        item_local_atual = getattr(item, "localidade", None)
-        item_cc_atual = getattr(item, "centro_custo", None)
+        # === AUTOMAÇÃO DE CENTRO DE CUSTO ===
+        
+        # 1. Entrega: Se CC Destino vazio, usa CC do Usuário
+        if self.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA and self.tipo_transferencia == TipoTransferenciaChoices.ENTREGA:
+            if not self.centro_custo_destino and self.usuario and self.usuario.centro_custo:
+                self.centro_custo_destino = self.usuario.centro_custo
 
-        super().save(*args, **kwargs)  # precisamos do PK/created_at para eventual update() atômico
+        # 2. Devolução: Volta para a "Origem" (CC que entregou o item originalmente)
+        elif self.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA and self.tipo_transferencia == TipoTransferenciaChoices.DEVOLUCAO:
+            # A origem desta movimentação é onde o item está agora (com o usuário)
+            self.centro_custo_origem = current_cc
+            self.localidade_origem = current_loc
+            
+            # Busca a última ENTREGA para saber de onde o item veio (TI/Estoque)
+            last_entrega = MovimentacaoItem.objects.filter(
+                item=item_obj, 
+                tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
+                tipo_transferencia=TipoTransferenciaChoices.ENTREGA
+            ).order_by('-created_at').first()
 
-        # ===== SNAPSHOT DE ORIGEM (só no primeiro save) =====
+            if last_entrega and last_entrega.centro_custo_origem:
+                # Define o destino da devolução como a origem da entrega
+                self.centro_custo_destino = last_entrega.centro_custo_origem
+            elif not self.centro_custo_destino:
+                # Se não houver histórico, o ideal seria ter um CC Padrão de Estoque configurado no sistema.
+                # Como fallback, mantém vazio ou pode-se definir um padrão aqui.
+                pass
+
+        super().save(*args, **kwargs)
+
+        # === SNAPSHOT DE ORIGEM (Apenas criação) ===
         if is_new:
             updates = {}
-            if self.localidade_origem_id is None and item_local_atual is not None:
-                updates["localidade_origem_id"] = item_local_atual.id
-            if self.centro_custo_origem_id is None and item_cc_atual is not None:
-                updates["centro_custo_origem_id"] = item_cc_atual.id
+            if not self.localidade_origem_id and current_loc:
+                updates['localidade_origem_id'] = current_loc.id
+            if not self.centro_custo_origem_id and current_cc:
+                updates['centro_custo_origem_id'] = current_cc.id
             if updates:
                 MovimentacaoItem.objects.filter(pk=self.pk).update(**updates)
-                # refletir em memória:
-                if "localidade_origem_id" in updates:
-                    self.localidade_origem = item_local_atual
-                if "centro_custo_origem_id" in updates:
-                    self.centro_custo_origem = item_cc_atual
 
-        # Nada a fazer em updates: regras a seguir só disparam em criação
-        if not is_new:
-            return
+        # === ATUALIZAÇÃO DO ITEM ===
+        update_fields = ['updated_at']
+        
+        # Manutenção (Envio)
+        if self.tipo_movimentacao == TipoMovimentacaoChoices.ENVIO_MANUTENCAO:
+            item_obj.status = StatusItemChoices.MANUTENCAO
+            item_obj.quantidade = max(0, (item_obj.quantidade or 0) - (self.quantidade or 1))
+            update_fields.extend(['status', 'quantidade'])
 
-        # ===== TRANSFERÊNCIA (clássica) =====
-        if self.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA:
-            update_fields = ["updated_at"]
-            mudou_algo = False
-
-            if self.localidade_destino:
-                item.localidade = self.localidade_destino
-                update_fields.append("localidade"); mudou_algo = True
-            if self.centro_custo_destino:
-                item.centro_custo = self.centro_custo_destino
-                update_fields.append("centro_custo"); mudou_algo = True
-
-            if self.tipo_transferencia == TipoTransferenciaChoices.ENTREGA and self.usuario_id:
-                if item.status == StatusItemChoices.BACKUP:
-                    item.status = StatusItemChoices.ATIVO
-                    update_fields.append("status"); mudou_algo = True
-            elif self.tipo_transferencia == TipoTransferenciaChoices.DEVOLUCAO:
-                if item.status == StatusItemChoices.ATIVO:
-                    item.status = StatusItemChoices.BACKUP
-                    update_fields.append("status"); mudou_algo = True
-
-            if mudou_algo:
-                item.save(update_fields=list(dict.fromkeys(update_fields)))
-
-        # ✅ TRANSFERÊNCIA EQUIPAMENTO
-        elif self.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA_EQUIPAMENTO:
-            update_fields = ["updated_at"]
-            mudou_algo = False
-
-            if self.localidade_destino:
-                item.localidade = self.localidade_destino
-                update_fields.append("localidade"); mudou_algo = True
-            if self.centro_custo_destino:
-                item.centro_custo = self.centro_custo_destino
-                update_fields.append("centro_custo"); mudou_algo = True
-
-            if self.status_transferencia:
-                item.status = self.status_transferencia
-                update_fields.append("status"); mudou_algo = True
-
-            if mudou_algo:
-                item.save(update_fields=list(dict.fromkeys(update_fields)))
-
-        # ===== BAIXA =====
-        elif self.tipo_movimentacao == TipoMovimentacaoChoices.BAIXA:
-            nova_qtd = max(0, (item.quantidade or 0) - (self.quantidade or 0))
-            item.quantidade = nova_qtd
-            item.save(update_fields=["quantidade", "updated_at"])
-            # FIFO de custo (mantém seu comportamento)
-            try:
-                if not self.custo or self.custo <= 0:
-                    cutoff = self.created_at
-                    entradas = (
-                        MovimentacaoItem.objects
-                        .filter(item_id=item.id, tipo_movimentacao=TipoMovimentacaoChoices.ENTRADA, created_at__lte=cutoff)
-                        .order_by("created_at", "id")
-                        .values("quantidade", "custo")
-                    )
-                    lotes = []
-                    for e in entradas:
-                        q = int(e["quantidade"] or 0)
-                        if q <= 0: continue
-                        unit = Decimal("0.00")
-                        if e["custo"] is not None and q > 0:
-                            unit = (Decimal(e["custo"]) / Decimal(q)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                        lotes.append([q, unit])
-
-                    prev_baixas = (
-                        MovimentacaoItem.objects
-                        .filter(item_id=item.id, tipo_movimentacao=TipoMovimentacaoChoices.BAIXA, created_at__lt=cutoff)
-                        .order_by("created_at", "id")
-                        .values("quantidade")
-                    )
-
-                    saldo = [[q, u] for (q, u) in lotes]
-                    for b in prev_baixas:
-                        consume = int(b["quantidade"] or 0)
-                        idx = 0
-                        while consume > 0 and idx < len(saldo):
-                            disp, unit = saldo[idx]
-                            if disp <= 0:
-                                idx += 1; continue
-                            take = min(disp, consume)
-                            saldo[idx][0] = disp - take
-                            consume -= take
-                            if saldo[idx][0] == 0: idx += 1
-
-                    qty = int(self.quantidade or 0)
-                    total_cost = Decimal("0.00")
-                    idx = 0
-                    while qty > 0 and idx < len(saldo):
-                        disp, unit = saldo[idx]
-                        if disp <= 0:
-                            idx += 1; continue
-                        take = min(disp, qty)
-                        total_cost += (Decimal(take) * unit)
-                        saldo[idx][0] = disp - take
-                        qty -= take
-                        if saldo[idx][0] == 0: idx += 1
-
-                    if qty > 0:
-                        last_unit = Decimal("0.00")
-                        for qrem, unit in reversed(lotes):
-                            if unit > 0:
-                                last_unit = unit; break
-                        if last_unit == Decimal("0.00"):
-                            last_unit = Decimal(item.valor or 0)
-                        total_cost += (Decimal(qty) * last_unit)
-
-                    MovimentacaoItem.objects.filter(pk=self.pk).update(custo=total_cost)
-                    self.custo = total_cost
-            except Exception:
-                pass
-
-        # ===== ENTRADA =====
-        elif self.tipo_movimentacao == TipoMovimentacaoChoices.ENTRADA:
-            item.quantidade = (item.quantidade or 0) + (self.quantidade or 0)
-            fields = ["quantidade", "updated_at"]
-            if self.localidade_destino:
-                item.localidade = self.localidade_destino; fields.append("localidade")
-            if self.centro_custo_destino:
-                item.centro_custo = self.centro_custo_destino; fields.append("centro_custo")
-            try:
-                qtd = Decimal(self.quantidade or 1)
-                custo_total = Decimal(self.custo or 0)
-                if custo_total > 0 and qtd > 0:
-                    valor_unit = (custo_total / qtd).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                    item.valor = valor_unit; fields.append("valor")
-            except Exception:
-                pass
-            item.save(update_fields=fields)
-
-        # ===== ENVIO MANUTENÇÃO =====
-        elif self.tipo_movimentacao == TipoMovimentacaoChoices.ENVIO_MANUTENCAO:
-            item.status = StatusItemChoices.MANUTENCAO
-            item.quantidade = max(0, (item.quantidade or 0) - 1)
-            item.save(update_fields=["status", "quantidade", "updated_at"])
-
-        # ===== RETORNO MANUTENÇÃO =====
+        # Manutenção (Retorno)
         elif self.tipo_movimentacao in (TipoMovimentacaoChoices.RETORNO_MANUTENCAO, "retorno"):
-            item.status = StatusItemChoices.BACKUP
-            item.quantidade = (item.quantidade or 0) + 1
-            item.save(update_fields=["status", "quantidade", "updated_at"])
+            item_obj.status = StatusItemChoices.BACKUP
+            item_obj.quantidade = (item_obj.quantidade or 0) + (self.quantidade or 1)
+            if self.localidade_destino:
+                item_obj.localidade = self.localidade_destino; update_fields.append('localidade')
+            update_fields.extend(['status', 'quantidade'])
+
+        # Baixa (Cálculo automático de custo se não informado)
+        elif self.tipo_movimentacao == TipoMovimentacaoChoices.BAIXA:
+            item_obj.quantidade = max(0, (item_obj.quantidade or 0) - (self.quantidade or 1))
+            update_fields.append('quantidade')
+            if not self.custo:
+                val_unit = item_obj.valor or Decimal("0.00")
+                qtd = Decimal(self.quantidade or 1)
+                self.custo = val_unit * qtd
+                # Atualiza o custo da movimentação após salvar o item
+                MovimentacaoItem.objects.filter(pk=self.pk).update(custo=self.custo)
+
+        # Transferências (Atualização de posse)
+        elif self.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA:
+            if self.localidade_destino:
+                item_obj.localidade = self.localidade_destino; update_fields.append('localidade')
+            if self.centro_custo_destino:
+                item_obj.centro_custo = self.centro_custo_destino; update_fields.append('centro_custo')
+
+            if self.tipo_transferencia == TipoTransferenciaChoices.ENTREGA and item_obj.status == StatusItemChoices.BACKUP:
+                item_obj.status = StatusItemChoices.ATIVO; update_fields.append('status')
+            elif self.tipo_transferencia == TipoTransferenciaChoices.DEVOLUCAO and item_obj.status == StatusItemChoices.ATIVO:
+                item_obj.status = StatusItemChoices.BACKUP; update_fields.append('status')
+
+        elif self.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA_EQUIPAMENTO:
+            if self.localidade_destino:
+                item_obj.localidade = self.localidade_destino; update_fields.append('localidade')
+            if self.centro_custo_destino:
+                item_obj.centro_custo = self.centro_custo_destino; update_fields.append('centro_custo')
+            if self.status_transferencia:
+                item_obj.status = self.status_transferencia; update_fields.append('status')
+
+        item_obj.save(update_fields=list(set(update_fields)))
 
 
 
@@ -661,25 +559,27 @@ class PeriodicidadeChoices(models.TextChoices):
     CONTRATO = "contrato", _("Contrato/Outro")
 
 class TipoMovLicencaChoices(models.TextChoices):
-    ATRIBUICAO = "atribuicao", _("Atribuição")
-    REMOCAO = "remocao", _("Remoção")
+    ATRIBUICAO = 'atribuicao', _('Atribuição (Saída)')
+    DEVOLUCAO = 'devolucao', _('Devolução (Entrada)')  # Mudamos de REMOCAO para DEVOLUCAO para alinhar com seu erro
 
+# --- MODELO LICENÇA ---
 class Licenca(AuditModel):
-    nome = models.CharField(max_length=160)
+    # Campos Essenciais (Cadastro Simplificado)
+    nome = models.CharField(max_length=160, verbose_name="Nome da Licença")
     fornecedor = models.ForeignKey("Fornecedor", on_delete=models.SET_NULL, null=True, blank=True)
-    centro_custo = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True)
-    pmb = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO)
-
-    periodicidade = models.CharField(max_length=16, choices=PeriodicidadeChoices.choices,
-                                     default=PeriodicidadeChoices.MENSAL)
-    data_inicio = models.DateField()
-    data_fim = models.DateField(null=True, blank=True)
-
-    quantidade = models.PositiveIntegerField(default=0, help_text="Assentos disponíveis para atribuição.")
-    # ✅ novo
-    custo = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
-                                help_text="Custo do ciclo conforme periodicidade.")
+    pmb = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO, verbose_name="PMB?")
     observacao = models.TextField(blank=True, null=True)
+
+    # [CORREÇÃO DO ERRO] Este campo é necessário para a devolução funcionar!
+    # Ele define o "Centro de Custo Dono" da licença (ex: TI). 
+    centro_custo = models.ForeignKey(
+        "CentroCusto", 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        help_text="Centro de Custo proprietário (ex: TI) para onde o ativo volta na devolução."
+    )
+
 
     class Meta:
         ordering = ["nome"]
@@ -689,227 +589,50 @@ class Licenca(AuditModel):
     def __str__(self):
         return self.nome
 
-    # ------- helpers de custo normalizado -------
-    def _meses_do_ciclo(self) -> int | None:
-        if self.periodicidade == PeriodicidadeChoices.MENSAL: return 1
-        if self.periodicidade == PeriodicidadeChoices.SEMESTRAL: return 6
-        if self.periodicidade == PeriodicidadeChoices.ANUAL: return 12
-        if self.periodicidade == PeriodicidadeChoices.TRI: return 36
-        return None  # contrato/outro
+class TipoMovLicencaChoices(models.TextChoices):
+    ATRIBUICAO = 'atribuicao', _('Atribuição (Saída)')
+    DEVOLUCAO = 'devolucao', _('Devolução (Entrada)')
 
-    def custo_mensal(self) -> Decimal | None:
-        if not self.custo:
-            return None
-        meses = self._meses_do_ciclo()
-        if not meses:
-            return None
-        return (self.custo / Decimal(meses)).quantize(Decimal("0.01"))
-
-    def custo_anual_estimado(self) -> Decimal | None:
-        cm = self.custo_mensal()
-        return (cm * Decimal(12)).quantize(Decimal("0.01")) if cm is not None else None
-
-
-def _capacidade_licenca(lic):
-    for campo in ("assentos", "quantidade", "qtd_total", "qtd", "total_assentos"):
-        if hasattr(lic, campo):
-            val = getattr(lic, campo)
-            if val is not None:
-                try:
-                    return max(0, int(val))
-                except Exception:
-                    pass
-    return 1
-
-class MovimentacaoLicenca(AuditModel):
-    tipo = models.CharField(max_length=16, choices=TipoMovLicencaChoices.choices)
-    licenca = models.ForeignKey(Licenca, on_delete=models.CASCADE, related_name="movimentacoes")
-    usuario = models.ForeignKey("Usuario", on_delete=models.SET_NULL, null=True, blank=True, related_name="mov_licencas")
-    centro_custo_destino = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True, related_name="mov_licencas_destino")
-    lote = models.ForeignKey("LicencaLote", on_delete=models.SET_NULL, null=True, blank=True, related_name="movimentacoes")
-    observacao = models.TextField(blank=True, null=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-        verbose_name = "Movimentação de Licença"
-        verbose_name_plural = "Movimentações de Licenças"
-
-    def __str__(self):
-        return f"[{self.get_tipo_display()}] {self.licenca.nome}"
-
-    @transaction.atomic
-    def save(self, *args, **kwargs):
-        # --- Lock da licença ---
-        lic = self.licenca
-        if self.licenca_id:
-            lic = type(self.licenca).objects.select_for_update().get(pk=self.licenca_id)
-
-        # === Último movimento por usuário (para saber quem está ativo) ===
-        qs_last = (type(self).objects
-                   .filter(licenca_id=lic.id, usuario__isnull=False)
-                   .exclude(pk=self.pk)
-                   .order_by("usuario_id", "created_at", "id"))
-        last_by_user = {}
-        for mv in qs_last:
-            last_by_user[mv.usuario_id] = mv  # guarda o ÚLTIMO por usuário
-
-        # Mapa de ativos por lote (apenas quando último = ATRIBUICAO)
-        ativos_por_lote = {}
-        for lm in last_by_user.values():
-            if lm.tipo == TipoMovLicencaChoices.ATRIBUICAO and lm.lote_id:
-                ativos_por_lote[lm.lote_id] = ativos_por_lote.get(lm.lote_id, 0) + 1
-
-        # Estado do usuário desta movimentação
-        ultimo_do_usuario = last_by_user.get(self.usuario_id) if self.usuario_id else None
-        ja_ativo_mesmo_usuario = bool(
-            ultimo_do_usuario and ultimo_do_usuario.tipo == TipoMovLicencaChoices.ATRIBUICAO
-        )
-
-        # --- ATRIBUIÇÃO: escolher lote automaticamente se não veio ---
-        lote_locked = None
-        if getattr(self, "tipo", None) == TipoMovLicencaChoices.ATRIBUICAO and not getattr(self, "lote_id", None):
-            lotes = list(lic.lotes.select_for_update().order_by("created_at", "id"))
-            escolhido = None
-
-            # 1) Preferir lotes com quantidade_disponivel > 0
-            for lt in lotes:
-                disp = getattr(lt, "quantidade_disponivel", None)
-                if disp is not None and int(disp) > 0:
-                    escolhido = lt
-                    break
-
-            # 2) Se não achou, calcular capacidade efetiva e vagas reais
-            if escolhido is None:
-                for lt in lotes:
-                    cap_total = int(getattr(lt, "quantidade_total", 0) or 0)
-                    disp_campo = getattr(lt, "quantidade_disponivel", None)
-                    # capacidade efetiva: total>0 senão usa disponivel, senão 1
-                    cap_efetiva = cap_total if cap_total > 0 else (int(disp_campo) if disp_campo is not None else 1)
-                    ativos_no_lt = int(ativos_por_lote.get(lt.id, 0))
-                    disponivel_efetivo = (int(disp_campo) if disp_campo is not None else (cap_efetiva - ativos_no_lt))
-                    if disponivel_efetivo > 0:
-                        escolhido = lt
-                        break
-
-            if escolhido:
-                self.lote = escolhido
-                lote_locked = type(escolhido).objects.select_for_update().get(pk=escolhido.pk)
-
-        # Se veio lote informado, aplicar lock
-        if getattr(self, "lote_id", None) and lote_locked is None:
-            lote_locked = type(self.lote).objects.select_for_update().get(pk=self.lote_id)
-
-        # === VALIDAÇÃO DE CAPACIDADE ===
-        if getattr(self, "tipo", None) == TipoMovLicencaChoices.ATRIBUICAO:
-            if self.lote_id:
-                lot = lote_locked or self.lote
-                cap_total = int(getattr(lot, "quantidade_total", 0) or 0)
-                disp_campo = getattr(lot, "quantidade_disponivel", None)
-                cap_efetiva = cap_total if cap_total > 0 else (int(disp_campo) if disp_campo is not None else 1)
-
-                ativos_no_lote = int(ativos_por_lote.get(self.lote_id, 0))
-                disponivel_efetivo = (int(disp_campo) if disp_campo is not None else (cap_efetiva - ativos_no_lote))
-
-                if ja_ativo_mesmo_usuario:
-                    # Já está ativo: precisa ser no MESMO lote (senão requer devolução prévia)
-                    if not (ultimo_do_usuario and ultimo_do_usuario.lote_id == self.lote_id):
-                        raise ValueError("Usuário já possui um assento ativo nesta licença. Faça a devolução antes de mudar de lote.")
-                else:
-                    if disponivel_efetivo < 0:
-                        raise ValueError("Licença sem quantidade disponível para atribuição.")
-            else:
-                # Sem lote: regra global da licença
-                cap_global = _capacidade_licenca(lic) or 0
-                if cap_global <= 0:
-                    cap_global = 1
-                ativos_outros = 0
-                for uid, lm in last_by_user.items():
-                    if uid == self.usuario_id:
-                        continue
-                    if lm.tipo == TipoMovLicencaChoices.ATRIBUICAO:
-                        ativos_outros += 1
-                disponivel = cap_global - ativos_outros
-                if not ja_ativo_mesmo_usuario and disponivel < 1:
-                    raise ValueError("Licença sem quantidade disponível para atribuição.")
-
-        is_create = self.pk is None
-        super().save(*args, **kwargs)
-
-        # === AJUSTE DO ESTOQUE DO LOTE (somente ao criar) ===
-        if is_create and getattr(self, "lote_id", None):
-            lot = lote_locked or self.lote
-            cap_total = int(getattr(lot, "quantidade_total", 0) or 0)
-            disp_campo = getattr(lot, "quantidade_disponivel", None)
-
-            # reconstruir disponibilidade real quando necessário
-            cap_efetiva = cap_total if cap_total > 0 else (int(disp_campo) if disp_campo is not None else 1)
-
-            if self.tipo == TipoMovLicencaChoices.ATRIBUICAO:
-                consumir = not (ja_ativo_mesmo_usuario and ultimo_do_usuario and ultimo_do_usuario.lote_id == self.lote_id)
-                if consumir:
-                    if disp_campo is None:
-                        # Recalcula: cap − (ativos_no_lote + 1)
-                        ativos_no_lote = int(ativos_por_lote.get(self.lote_id, 0))
-                        lot.quantidade_disponivel = max(0, cap_efetiva - (ativos_no_lote + 1))
-                    else:
-                        lot.quantidade_disponivel = max(0, int(disp_campo) - 1)
-                    lot.save(update_fields=["quantidade_disponivel", "updated_at"])
-
-            elif self.tipo == TipoMovLicencaChoices.DEVOLUCAO:
-                # Aumenta a disponibilidade do lote do qual o usuário estava ativo
-                if ultimo_do_usuario and ultimo_do_usuario.tipo == TipoMovLicencaChoices.ATRIBUICAO and ultimo_do_usuario.lote_id:
-                    lot_ant = type(ultimo_do_usuario.lote).objects.select_for_update().get(pk=ultimo_do_usuario.lote_id)
-                    cap_ant = int(getattr(lot_ant, "quantidade_total", 0) or 0)
-                    disp_ant = getattr(lot_ant, "quantidade_disponivel", None)
-                    cap_ant_ef = cap_ant if cap_ant >= 0 else (int(disp_ant) if disp_ant is not None else 1)
-                    atual = int(disp_ant or 0)
-                    lot_ant.quantidade_disponivel = min(cap_ant_ef, atual + 1)
-                    lot_ant.save(update_fields=["quantidade_disponivel", "updated_at"])
-    @property
-    def custo_ciclo_usado(self):
-        """Custo do ciclo aplicado nessa movimentação (preferindo o custo do lote)."""
-        try:
-            if getattr(self, "lote_id", None) and self.lote and self.lote.custo_ciclo is not None:
-                return self.lote.custo_ciclo
-        except Exception:
-            pass
-        return self.licenca.custo
-
-    @property
-    def custo_mensal_usado(self):
-        """Custo mensal normalizado a partir do custo_ciclo_usado e periodicidade da licença."""
-        valor = self.custo_ciclo_usado
-        if valor is None:
-            return None
-        meses = self.licenca._meses_do_ciclo()
-        if not meses:
-            return None
-        return (Decimal(valor) / Decimal(meses)).quantize(Decimal("0.01"))
-    
-# --- ADICIONE ABAIXO DO MODELO Licenca ---
+# --- MODELO LOTE ---
 class LicencaLote(AuditModel):
-    licenca = models.ForeignKey("Licenca", on_delete=models.CASCADE, related_name="lotes")
-    quantidade_total = models.PositiveIntegerField()
-    quantidade_disponivel = models.PositiveIntegerField()
+    licenca = models.ForeignKey(Licenca, on_delete=models.CASCADE, related_name="lotes")
+    quantidade_total = models.PositiveIntegerField(verbose_name="Qtd. Comprada")
+    quantidade_disponivel = models.PositiveIntegerField(verbose_name="Saldo Disponível", default=0)
     custo_ciclo = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    periodicidade = models.CharField(max_length=20, choices=PeriodicidadeChoices, default='anual')
     data_compra = models.DateField(null=True, blank=True)
+    numero_pedido = models.CharField(max_length=50, null=True, blank=True)
     fornecedor = models.ForeignKey("Fornecedor", on_delete=models.SET_NULL, null=True, blank=True)
     centro_custo = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True)
     observacao = models.TextField(blank=True, null=True)
 
     class Meta:
-        ordering = ["-created_at", "-id"]
+        ordering = ["-data_compra", "-id"]
         verbose_name = "Lote de Licença"
-        verbose_name_plural = "Lotes de Licenças"
+
+    def save(self, *args, **kwargs):
+        if (self._state.adding or not self.pk) and not self.quantidade_disponivel:
+            self.quantidade_disponivel = self.quantidade_total
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Lote {self.licenca.nome} (tot={self.quantidade_total}, disp={self.quantidade_disponivel})"
+        return f"Lote #{self.pk} - {self.licenca}"
 
-    def custo_mensal(self):
-        if not self.custo_ciclo:
-            return None
-        meses = self.licenca._meses_do_ciclo()
-        if not meses:
-            return None
-        return (self.custo_ciclo / Decimal(meses)).quantize(Decimal("0.01"))
+# --- MODELO MOVIMENTAÇÃO ---
+class MovimentacaoLicenca(AuditModel):
+    tipo = models.CharField(max_length=20, choices=TipoMovLicencaChoices.choices)
+    licenca = models.ForeignKey(Licenca, on_delete=models.CASCADE, related_name="movimentacoes")
+    usuario = models.ForeignKey("Usuario", on_delete=models.SET_NULL, null=True, blank=True)
+    lote = models.ForeignKey(LicencaLote, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # Destino do Custo (Usuário ou Estoque)
+    centro_custo_destino = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True)
+    valor_unitario = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    observacao = models.TextField(blank=True, null=True)
 
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Movimentação de Licença"
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} - {self.licenca}"

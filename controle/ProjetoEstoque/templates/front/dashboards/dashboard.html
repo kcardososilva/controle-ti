@@ -1,490 +1,276 @@
 {% extends "base.html" %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Dashboard Geral{% endblock %}
 
 {% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
 
 <style>
-:root{
-  --ink:#0b1220; --muted:#64748b; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
-  --bg:#f1f5fb; --primary:#2563eb; --primary-2:#1d4ed8;
-  --ok:#16a34a; --warn:#b45309; --bad:#b91c1c; --cyan:#0891b2; --vio:#7c3aed;
-  --shadow:0 22px 44px rgba(2,6,23,.07);
-}
-body{background:var(--bg);}
+  /* --- Design Tokens --- */
+  :root {
+    --bg-body: #f3f4f6;
+    --surface: #ffffff;
+    --border: #e2e8f0;
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --radius: 12px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
 
-.page{max-width:1200px;margin:18px auto;padding:0 14px}
+    /* Palette */
+    --blue: #2563eb; --blue-light: #dbeafe;
+    --green: #16a34a; --green-light: #dcfce7;
+    --red: #dc2626; --red-light: #fee2e2;
+    --orange: #ea580c; --orange-light: #ffedd5;
+    --purple: #7c3aed; --purple-light: #f3e8ff;
+  }
 
-/* SHIMMER */
-.shimmer{position:relative; overflow:hidden; border-radius:16px}
-.shimmer::before{
-  content:""; position:absolute; inset:0;
-  background:linear-gradient(90deg, rgba(148,163,184,.18) 0%, rgba(255,255,255,.55) 50%, rgba(148,163,184,.18) 100%);
-  transform:translateX(-100%); animation:sh 1.2s linear infinite;
-}
-@keyframes sh{to{transform:translateX(100%)}}
-.loading .hide-on-loading{visibility:hidden}
-.loading .show-when-loading{display:block}
-.show-when-loading{display:none}
+  body { background: var(--bg-body); color: var(--text-primary); font-family: 'Inter', sans-serif; }
+  .dash-wrapper { max-width: 1440px; margin: 0 auto; padding: 24px; }
 
-/* CARDS / KPIs */
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
-.kpis{display:grid;grid-template-columns:repeat(5,minmax(160px,1fr));gap:14px}
-@media (max-width:1100px){.kpis{grid-template-columns:repeat(3,minmax(180px,1fr))}}
-@media (max-width:720px){.kpis{grid-template-columns:repeat(2,minmax(160px,1fr))}}
-.kpi{
-  position:relative; overflow:hidden; color:#fff; padding:16px; border-radius:16px;
-  background:linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%);
-}
-.kpi.ok{background:linear-gradient(135deg, #16a34a 0%, #0f766e 100%)}
-.kpi.backup{background:linear-gradient(135deg, #0891b2 0%, #2563eb 100%)}
-.kpi.warn{background:linear-gradient(135deg, #b45309 0%, #f59e0b 100%)}
-.kpi.bad{background:linear-gradient(135deg, #b91c1c 0%, #dc2626 100%)}
-.kpi .title{font-weight:800;opacity:.95}
-.kpi .val{font-size:1.7rem;font-weight:900;margin-top:6px}
-.kpi .desc{opacity:.9;font-size:.92rem}
-.kpi i{position:absolute;right:12px;bottom:10px;font-size:1.25rem;opacity:.25}
+  /* HEADER */
+  .dash-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .dash-header h1 { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); margin: 0; }
+  .dash-header p { font-size: 0.9rem; color: var(--text-secondary); margin: 4px 0 0; }
 
-/* GRIDS */
-.grid{display:grid;gap:14px;margin-top:14px}
-.g-2{grid-template-columns:2fr 1.35fr}
-.g-3{grid-template-columns:repeat(3,1fr)}
-@media (max-width:1100px){.g-2{grid-template-columns:1fr}}
-@media (max-width:900px){.g-3{grid-template-columns:1fr}}
+  /* KPI GRID */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .kpi-card {
+    background: var(--surface); padding: 20px; border-radius: var(--radius); border: 1px solid var(--border);
+    box-shadow: var(--shadow); position: relative; overflow: hidden; display: flex; flex-direction: column;
+  }
+  .kpi-card::before { content:''; position: absolute; left:0; top:0; bottom:0; width: 4px; }
+  .kpi-card.blue::before { background: var(--blue); }
+  .kpi-card.green::before { background: var(--green); }
+  .kpi-card.orange::before { background: var(--orange); }
+  .kpi-card.red::before { background: var(--red); }
+  .kpi-card.purple::before { background: var(--purple); }
 
-/* HEADERS / BADGES */
-.hdr{display:flex;align-items:center;gap:10px;margin:0 0 10px}
-.hdr h3{margin:0;color:var(--ink)}
-.badge{display:inline-block;padding:4px 12px;border-radius:999px;font-weight:800;font-size:.86rem}
-.badge.ok{background:#e8fff3;color:#166534}
-.badge.bad{background:#fee2e2;color:#9f1239}
-.badge.info{background:#eef2ff;color:#1e3a8a}
+  .kpi-val { font-size: 2rem; font-weight: 800; line-height: 1.2; margin-bottom: 4px; }
+  .kpi-lbl { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px; }
+  .kpi-icon { position: absolute; right: 20px; top: 20px; font-size: 1.5rem; opacity: 0.1; }
 
-/* CHART WRAPPER */
-.chart-wrap{height:340px; position:relative}
-.chart-wrap.sm{height:280px}
-.nodata{
-  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  color:#64748b; font-weight:700; pointer-events:none;
-}
+  /* CHARTS LAYOUT */
+  .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+  
+  @media (max-width: 960px) { .grid-2 { grid-template-columns: 1fr; } }
 
-/* TABLE */
-.table{width:100%;border-collapse:collapse}
-.table th,.table td{padding:9px 12px;border-bottom:1px solid #eef2f7;text-align:left; color: #0b1220;}
+  /* CARD STYLE */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden;
+  }
+  .card-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border); background: #f8fafc;
+    font-weight: 600; font-size: 0.95rem; color: var(--text-primary);
+  }
+  .card-body { padding: 20px; flex: 1; position: relative; min-height: 250px; }
+  
+  /* TABLE */
+  .table-responsive { overflow-x: auto; width: 100%; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { text-align: left; padding: 10px 12px; background: #f1f5f9; color: var(--text-secondary); font-weight: 600; }
+  td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; }
+  
+  /* LOADING */
+  .skeleton {
+    position: absolute; inset: 0; background: var(--surface); z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+  }
 </style>
 
-<script>document.documentElement.classList.add('loading');</script>
-
-<div class="page">
-  <!-- KPIs -->
-  <div class="kpis">
-    <div class="kpi shimmer show-when-loading" style="height:88px"></div>
-    <div class="kpi shimmer show-when-loading" style="height:88px"></div>
-    <div class="kpi shimmer show-when-loading" style="height:88px"></div>
-    <div class="kpi shimmer show-when-loading" style="height:88px"></div>
-    <div class="kpi shimmer show-when-loading" style="height:88px"></div>
-
-    <div class="kpi hide-on-loading">
-      <div class="title">Total de Itens</div>
-      <div class="val">{{ total_geral|default:0 }}</div>
-      <div class="desc">Cadastrados</div>
-      <i class="fa fa-layer-group"></i>
+<div class="dash-wrapper">
+  
+  <div class="dash-header">
+    <div>
+      <h1>Visão Geral</h1>
+      <p>Performance operacional e status de ativos</p>
     </div>
-    <div class="kpi ok hide-on-loading">
-      <div class="title">Ativos</div>
-      <div class="val">{{ total_ativos|default:0 }}</div>
-      <div class="desc">Em uso</div>
-      <i class="fa fa-circle"></i>
-    </div>
-    <div class="kpi backup hide-on-loading">
-      <div class="title">Backup</div>
-      <div class="val">{{ total_backup|default:0 }}</div>
-      <div class="desc">Disponíveis</div>
-      <i class="fa fa-database"></i>
-    </div>
-    <div class="kpi warn hide-on-loading">
-      <div class="title">Manutenção</div>
-      <div class="val">{{ total_manutencao|default:0 }}</div>
-      <div class="desc">Em manutenção</div>
-      <i class="fa fa-screwdriver-wrench"></i>
-    </div>
-    <div class="kpi bad hide-on-loading">
-      <div class="title">Defeitos</div>
-      <div class="val">{{ total_defeito|default:0 }}</div>
-      <div class="desc">Aguardando ação</div>
-      <i class="fa fa-exclamation-circle"></i>
+    <div style="font-size:0.85rem; color:var(--text-secondary); background:#fff; padding:8px 12px; border:1px solid var(--border); border-radius:6px;">
+      <i class="fa fa-calendar"></i> Últimos 12 Meses
     </div>
   </div>
 
-  <!-- Linha 1 -->
-  <div class="grid">
-    <div class="card">
-      <div class="shimmer show-when-loading" style="height:340px;border-radius:12px"></div>
-      <div class="hide-on-loading">
-        <div class="hdr"><i class="fa fa-chart-line" style="color:#2563eb"></i><h3>Movimentações (últimos 12 meses)</h3></div>
-        <div class="chart-wrap"><canvas id="mov12"></canvas><div class="nodata" id="nd-mov12">Sem dados</div></div>
-      </div>
+  <div class="kpi-grid">
+    <div class="kpi-card blue">
+      <div class="kpi-val">{{ kpi.total }}</div>
+      <div class="kpi-lbl">Total Geral</div>
+      <i class="fa fa-database kpi-icon"></i>
     </div>
-
-
+    <div class="kpi-card green">
+      <div class="kpi-val">{{ kpi.ativos }}</div>
+      <div class="kpi-lbl">Em Uso</div>
+      <i class="fa fa-check-circle kpi-icon"></i>
+    </div>
+    <div class="kpi-card purple">
+      <div class="kpi-val">{{ kpi.estoque }}</div>
+      <div class="kpi-lbl">Em Estoque</div>
+      <i class="fa fa-boxes kpi-icon"></i>
+    </div>
+    <div class="kpi-card orange">
+      <div class="kpi-val">{{ kpi.manutencao }}</div>
+      <div class="kpi-lbl">Manutenção</div>
+      <i class="fa fa-screwdriver-wrench kpi-icon"></i>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-val">{{ kpi.problema }}</div>
+      <div class="kpi-lbl">Críticos</div>
+      <i class="fa fa-triangle-exclamation kpi-icon"></i>
+    </div>
   </div>
 
-  <!-- Linha 2 -->
-  <div class="grid g-3" style="margin-top:14px">
+  <div class="grid-2">
     <div class="card">
-      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
-      <div class="hide-on-loading">
-        <div class="hdr"><i class="fa fa-tags" style="color:#1d4ed8"></i><h3>Itens por Subtipo (Top 10)</h3></div>
-        <div class="chart-wrap sm"><canvas id="subtipoBar"></canvas><div class="nodata" id="nd-sub">Sem dados</div></div>
+      <div class="card-header">Fluxo de Movimentação</div>
+      <div class="card-body">
+        <div class="skeleton">Carregando...</div>
+        <canvas id="chartMov"></canvas>
       </div>
     </div>
 
     <div class="card">
-      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
-      <div class="hide-on-loading">
-        <div class="hdr"><i class="fa fa-location-dot" style="color:#b45309"></i><h3>Itens por Localidade (Top 8)</h3></div>
-        <div class="chart-wrap sm"><canvas id="locDonut"></canvas><div class="nodata" id="nd-loc">Sem dados</div></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
-      <div class="hide-on-loading">
-        <div class="hdr"><i class="fa fa-coins" style="color:#047857"></i><h3>Itens por Centro de Custo (Top 8)</h3></div>
-        <div class="chart-wrap sm"><canvas id="ccBar"></canvas><div class="nodata" id="nd-cc">Sem dados</div></div>
+      <div class="card-header">Saúde Preventiva</div>
+      <div class="card-body">
+        <div class="skeleton">...</div>
+        <div style="height: 180px; position: relative;">
+          <canvas id="chartPrev"></canvas>
+        </div>
+        
+        <div style="margin-top:20px; border-top:1px solid var(--border); padding-top:10px;">
+          <h4 style="font-size:0.8rem; color:var(--text-secondary); text-transform:uppercase; margin-bottom:8px;">Próximas Agendadas</h4>
+          <div class="table-responsive">
+            <table>
+              {% for p in prev_proximas %}
+              <tr>
+                <td style="font-weight:700;">{{ p.data_proxima|date:"d/m" }}</td>
+                <td>{{ p.equipamento.nome|truncatechars:20 }}</td>
+                <td style="color:var(--text-secondary);">{{ p.checklist_modelo.nome }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="3" style="text-align:center; color:#ccc;">Sem pendências</td></tr>
+              {% endfor %}
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Linha 3 -->
-  <div class="grid g-2" style="margin-top:14px">
+  <div class="grid-3">
     <div class="card">
-      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
-      <div class="hide-on-loading">
-        <div class="hdr"><i class="fa fa-ranking-star" style="color:#7c3aed"></i><h3>Top Itens Mais Movimentados</h3></div>
-        <div class="chart-wrap sm"><canvas id="topMovBar"></canvas><div class="nodata" id="nd-top">Sem dados</div></div>
+      <div class="card-header">Top Subtipos</div>
+      <div class="card-body">
+        <canvas id="chartSub"></canvas>
       </div>
     </div>
-
     <div class="card">
-      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
-      <div class="hide-on-loading">
-        <div class="hdr"><i class="fa fa-money-bill" style="color:#0f766e"></i><h3>Custo de Manutenção (6 meses)</h3></div>
-        <div class="chart-wrap sm"><canvas id="custoLine"></canvas><div class="nodata" id="nd-custo">Sem dados</div></div>
+      <div class="card-header">Por Localidade</div>
+      <div class="card-body">
+        <canvas id="chartLoc"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Custo Manutenção (R$)</div>
+      <div class="card-body">
+        <canvas id="chartCost"></canvas>
       </div>
     </div>
   </div>
 
-  <!-- Linha de Custos (NOVO) -->
-  <div class="grid g-3" style="margin-top:14px">
-    <!-- Top custos por usuários (stacked: itens + licenças) -->
-    <div class="card">
-      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
-      <div class="hide-on-loading">
-        <div class="hdr"><i class="fa fa-user-tie" style="color:#0f766e"></i><h3>Top custos por usuários (mês)</h3></div>
-        <div class="chart-wrap sm"><canvas id="usersCost"></canvas><div class="nodata" id="nd-ucost">Sem dados</div></div>
-      </div>
-    </div>
-
-    <!-- Custo por setores (Centro de Custo) -->
-    <div class="card">
-      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
-      <div class="hide-on-loading">
-        <div class="hdr"><i class="fa fa-building-columns" style="color:#0891b2"></i><h3>Custo por setores (mês)</h3></div>
-        <div class="chart-wrap sm"><canvas id="ccCost"></canvas><div class="nodata" id="nd-ccost">Sem dados</div></div>
-      </div>
-    </div>
-
-    <!-- Top licenças por custo (mês) -->
-    <div class="card">
-      <div class="shimmer show-when-loading" style="height:280px;border-radius:12px"></div>
-      <div class="hide-on-loading">
-        <div class="hdr"><i class="fa fa-certificate" style="color:#7c3aed"></i><h3>Top licenças por custo (mês)</h3></div>
-        <div class="chart-wrap sm"><canvas id="licCost"></canvas><div class="nodata" id="nd-licost">Sem dados</div></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Próximas preventivas -->
-  <div class="card" style="margin-top:14px">
-    <div class="shimmer show-when-loading" style="height:160px;border-radius:12px"></div>
-    <div class="hide-on-loading">
-      <div class="hdr"><i class="fa fa-calendar-check" style="color:#2563eb"></i><h3>Próximas Preventivas</h3></div>
-      <div style="overflow:auto">
-        <table class="table">
-          <thead><tr><th>Data</th><th>Item</th><th>Checklist</th></tr></thead>
-          <tbody>
-          {% for p in proximas %}
-            <tr>
-              <td>{{ p.data_proxima|date:"d/m/Y" }}</td>
-              <td>{{ p.equipamento.nome }}</td>
-              <td>{{ p.checklist_modelo.nome|default:"—" }}</td>
-            </tr>
-          {% empty %}
-            <tr><td colspan="3" style="color:#64748b">Nenhuma preventiva futura.</td></tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
 </div>
 
-{# ==== DADOS PARA JS ==== #}
-{{ mov_labels|default:"[]"|json_script:"mov-labels" }}
-{{ mov_entrada|default:"[]"|json_script:"mov-entrada" }}
-{{ mov_baixa|default:"[]"|json_script:"mov-baixa" }}
-{{ mov_transferencia|default:"[]"|json_script:"mov-transferencia" }}
-{{ mov_envio|default:"[]"|json_script:"mov-envio" }}
-{{ mov_retorno|default:"[]"|json_script:"mov-retorno" }}
+{{ labels|json_script:"d-labels" }}
+{{ series.entrada|json_script:"d-ent" }}
+{{ series.baixa|json_script:"d-bai" }}
+{{ series.transf|json_script:"d-tra" }}
+{{ series.manut|json_script:"d-man" }}
 
-{{ chart_subtipo_labels|default:"[]"|json_script:"subtipo-labels" }}
-{{ chart_subtipo_data|default:"[]"|json_script:"subtipo-data" }}
+{{ prev_status|json_script:"d-prev" }}
 
-{{ chart_loc_labels|default:"[]"|json_script:"loc-labels" }}
-{{ chart_loc_data|default:"[]"|json_script:"loc-data" }}
+{{ cat_subtipo.labels|json_script:"d-sub-lbl" }}
+{{ cat_subtipo.data|json_script:"d-sub-dat" }}
 
-{{ chart_cc_labels|default:"[]"|json_script:"cc-labels" }}
-{{ chart_cc_data|default:"[]"|json_script:"cc-data" }}
+{{ cat_local.labels|json_script:"d-loc-lbl" }}
+{{ cat_local.data|json_script:"d-loc-dat" }}
 
-{{ top_mov_labels|default:"[]"|json_script:"topmov-labels" }}
-{{ top_mov_data|default:"[]"|json_script:"topmov-data" }}
-
-{{ custo_labels|default:"[]"|json_script:"custo-labels" }}
-{{ custo_data|default:"[]"|json_script:"custo-data" }}
-
-{{ prev_ok|default:"0"|json_script:"prev-ok" }}
-{{ prev_vencida|default:"0"|json_script:"prev-venc" }}
-
-{# NOVOS DADOS DE CUSTO #}
-{{ top_users_labels|default:"[]"|json_script:"ucost-labels" }}
-{{ top_users_items|default:"[]"|json_script:"ucost-items" }}
-{{ top_users_lics|default:"[]"|json_script:"ucost-lics" }}
-
-{{ cc_cost_labels|default:"[]"|json_script:"ccost-labels" }}
-{{ cc_cost_items|default:"[]"|json_script:"ccost-items" }}
-{{ cc_cost_lics|default:"[]"|json_script:"ccost-lics" }}
-
-{{ lic_cost_labels|default:"[]"|json_script:"licost-labels" }}
-{{ lic_cost_data|default:"[]"|json_script:"licost-data" }}
+{{ custo_data|json_script:"d-cost" }}
 
 <script>
-function J(id, fallback=[]) {
-  const el = document.getElementById(id);
-  if (!el) return structuredClone(fallback);
-  try { const v = JSON.parse(el.textContent); return (v ?? fallback); }
-  catch(e) { return structuredClone(fallback); }
-}
-function lastMonths(n=12){
-  const m = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const d = new Date(); let out=[];
-  for(let i=n-1;i>=0;i--){const x=new Date(d.getFullYear(), d.getMonth()-i, 1); out.push(`${m[x.getMonth()]}/${String(x.getFullYear()).slice(-2)}`)}
-  return out;
-}
-function sum(arr){return (arr||[]).reduce((a,b)=>a+(+b||0),0)}
-function ensureSeries(labels, seriesArr){
-  labels = Array.isArray(labels) ? labels : [];
-  if (!labels.length) labels = lastMonths(12);
-  let hasData = false;
-  const fixed = seriesArr.map(s=>{
-    const a = Array.isArray(s) ? s.map(x=>+x||0) : [];
-    if (sum(a)>0) hasData = true;
-    if (a.length !== labels.length){
-      const fill = Array(labels.length).fill(0);
-      for(let i=0;i<Math.min(a.length, labels.length);i++) fill[i]=a[i];
-      return fill;
-    }
-    return a;
-  });
-  return {labels, series: fixed, hasData};
-}
-function showNoData(id, show){const el=document.getElementById(id); if(el){el.style.display = show? 'flex':'none';}}
-
-const pal = {
-  blue:'rgba(37, 99, 235, 0.9)', blue2:'rgba(37, 99, 235, 0.18)',
-  green:'rgba(22, 163, 74, 0.9)', green2:'rgba(22, 163, 74, 0.18)',
-  amber:'rgba(180, 83, 9, 0.9)', amber2:'rgba(180, 83, 9, 0.18)',
-  purple:'rgba(124, 58, 237, 0.9)', purple2:'rgba(124, 58, 237, 0.18)',
-  cyan:'rgba(8, 145, 178, 0.9)', cyan2:'rgba(8, 145, 178, 0.18)',
-  red:'rgba(185, 28, 28, 0.9)', red2:'rgba(185, 28, 28, 0.18)',
-  gray:'rgba(100, 116, 139, 0.9)', gray2:'rgba(100, 116, 139, 0.18)',
-};
-Chart.defaults.font.family = "'Roboto', Arial, sans-serif";
-Chart.defaults.plugins.legend.position = 'top';
-Chart.defaults.plugins.tooltip.backgroundColor = '#0b1220';
-Chart.defaults.plugins.tooltip.titleColor = '#fff';
-Chart.defaults.plugins.tooltip.bodyColor = '#e2e8f0';
-
-function lineRounded(ctx, labels, datasets) {
-  return new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets: datasets.map(ds => ({...ds, tension: 0.35, fill: true, pointRadius: 3, pointHoverRadius: 5 })) },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { grid: { color: 'rgba(148,163,184,.15)' } },
-        y: { grid: { color: 'rgba(148,163,184,.15)' }, beginAtZero: true }
-      }
-    }
-  });
-}
-function barRounded(ctx, labels, data, color, horizontal=false) {
-  return new Chart(ctx, {
-    type: 'bar',
-    data: { labels, datasets: [{ data, backgroundColor: color.replace('0.9','0.85'), borderColor: color, borderWidth: 1.5, borderRadius: 10, barThickness: 'flex' }] },
-    options: {
-      indexAxis: horizontal ? 'y' : 'x',
-      responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { grid: { color: 'rgba(148,163,184,.12)' } },
-        y: { grid: { color: 'rgba(148,163,184,.12)' }, beginAtZero: true }
-      }
-    }
-  });
-}
-function donut(ctx, labels, data, colors) {
-  return new Chart(ctx, {
-    type: 'doughnut',
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#fff', borderWidth: 2 }] },
-    options: { responsive: true, maintainAspectRatio: false, cutout: '62%' }
-  });
-}
-function barStacked(ctx, labels, dsA, dsB, labelA, labelB, colorA, colorB, horizontal=true){
-  return new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        {label: labelA, data: dsA, backgroundColor: colorA.replace('0.9','0.85'), borderColor: colorA, borderWidth: 1.5, borderRadius: 10},
-        {label: labelB, data: dsB, backgroundColor: colorB.replace('0.9','0.85'), borderColor: colorB, borderWidth: 1.5, borderRadius: 10},
-      ],
-    },
-    options: {
-      indexAxis: horizontal ? 'y' : 'x',
-      responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { stacked: true, grid: { color: 'rgba(148,163,184,.12)' } },
-        y: { stacked: true, grid: { color: 'rgba(148,163,184,.12)' }, beginAtZero: true }
-      }
-    }
-  });
-}
-
-/* ===== Criação dos gráficos ===== */
 document.addEventListener('DOMContentLoaded', () => {
-  // MOVIMENTAÇÕES
-  const mov = ensureSeries(
-    J('mov-labels', []),
-    [J('mov-entrada', []), J('mov-baixa', []), J('mov-transferencia', []), J('mov-envio', []), J('mov-retorno', [])]
-  );
-  showNoData('nd-mov12', !mov.hasData);
-  lineRounded(
-    document.getElementById('mov12'),
-    mov.labels,
-    [
-      { label: 'Entradas',           data: mov.series[0], backgroundColor: pal.green2,  borderColor: pal.green },
-      { label: 'Baixas',             data: mov.series[1], backgroundColor: pal.red2,    borderColor: pal.red },
-      { label: 'Transferências',     data: mov.series[2], backgroundColor: pal.blue2,   borderColor: pal.blue },
-      { label: 'Envio Manutenção',   data: mov.series[3], backgroundColor: pal.amber2,  borderColor: pal.amber },
-      { label: 'Retorno Manutenção', data: mov.series[4], backgroundColor: pal.purple2, borderColor: pal.purple },
-    ]
-  );
+  
+  // Safe JSON Reader
+  const getD = (id) => {
+    try { return JSON.parse(document.getElementById(id).textContent); } 
+    catch(e) { return []; }
+  };
 
-  // PREVENTIVAS
-  const ok = +J('prev-ok', 0) || 0;
-  const vc = +J('prev-venc', 0) || 0;
-  const hasPrev = (ok+vc) > 0;
-  showNoData('nd-prev', !hasPrev);
-  donut(document.getElementById('prevPie'), ['OK', 'Vencida'], [ok, vc], [pal.green, pal.red]);
+  // Configs
+  Chart.defaults.font.family = "'Inter', sans-serif";
+  Chart.defaults.color = '#64748b';
+  Chart.defaults.borderColor = '#f1f5f9';
+  
+  // Colors
+  const C = {
+    blue: '#2563eb', blue_t: 'rgba(37, 99, 235, 0.1)',
+    green: '#16a34a', green_t: 'rgba(22, 163, 74, 0.1)',
+    red: '#dc2626', red_t: 'rgba(220, 38, 38, 0.1)',
+    orange: '#ea580c', orange_t: 'rgba(234, 88, 12, 0.1)',
+    purple: '#7c3aed',
+    teal: '#0d9488'
+  };
 
-  // SUBTIPO
-  const subLabels = J('subtipo-labels', []);
-  const subData   = J('subtipo-data', []);
-  showNoData('nd-sub', !(sum(subData)>0));
-  barRounded(document.getElementById('subtipoBar'), subLabels.length?subLabels:['—'], subLabels.length?subData:[0], pal.blue, true);
+  // 1. Chart Movimentação
+  new Chart(document.getElementById('chartMov'), {
+    type: 'line',
+    data: {
+      labels: getD('d-labels'),
+      datasets: [
+        { label: 'Entradas', data: getD('d-ent'), borderColor: C.green, backgroundColor: C.green_t, fill: true, tension: 0.3 },
+        { label: 'Saídas', data: getD('d-tra'), borderColor: C.blue, backgroundColor: C.blue_t, fill: true, tension: 0.3 },
+        { label: 'Manutenção', data: getD('d-man'), borderColor: C.orange, borderDash:[4,4], tension: 0.3 },
+        { label: 'Baixas', data: getD('d-bai'), borderColor: C.red, tension: 0.3 },
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, interaction: { mode:'index', intersect: false } }
+  });
 
-  // LOCALIDADE
-  const locLabels = J('loc-labels', []);
-  const locData   = J('loc-data', []);
-  showNoData('nd-loc', !(sum(locData)>0));
-  donut(document.getElementById('locDonut'), locLabels.length?locLabels:['—'], locLabels.length?locData:[0],
-    [pal.blue, pal.green, pal.amber, pal.purple, pal.cyan, pal.gray, pal.red, 'rgba(59,130,246,.6)']);
+  // 2. Chart Preventiva
+  new Chart(document.getElementById('chartPrev'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Em Dia', 'Atrasadas'],
+      datasets: [{
+        data: getD('d-prev'),
+        backgroundColor: [C.green, C.red],
+        borderWidth: 0
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'right' } } }
+  });
 
-  // CENTRO DE CUSTO (quantidade de itens)
-  const ccLabels = J('cc-labels', []);
-  const ccData   = J('cc-data', []);
-  showNoData('nd-cc', !(sum(ccData)>0));
-  barRounded(document.getElementById('ccBar'), ccLabels.length?ccLabels:['—'], ccLabels.length?ccData:[0], pal.cyan);
+  // 3. Bars
+  const barOpt = { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
+  
+  new Chart(document.getElementById('chartSub'), {
+    type: 'bar',
+    data: { labels: getD('d-sub-lbl'), datasets: [{ data: getD('d-sub-dat'), backgroundColor: C.blue, borderRadius: 4 }] },
+    options: barOpt
+  });
 
-  // TOP MOVIMENTADOS
-  const topLabels = J('topmov-labels', []);
-  const topData   = J('topmov-data', []);
-  showNoData('nd-top', !(sum(topData)>0));
-  barRounded(document.getElementById('topMovBar'), topLabels.length?topLabels:['—'], topLabels.length?topData:[0], pal.purple, true);
+  new Chart(document.getElementById('chartLoc'), {
+    type: 'bar',
+    data: { labels: getD('d-loc-lbl'), datasets: [{ data: getD('d-loc-dat'), backgroundColor: C.teal, borderRadius: 4 }] },
+    options: barOpt
+  });
 
-  // CUSTO MANUTENÇÃO
-  const cLabels = J('custo-labels', []);
-  const cData   = J('custo-data', []);
-  const hasCusto = sum(cData) > 0;
-  showNoData('nd-custo', !hasCusto);
-  lineRounded(
-    document.getElementById('custoLine'),
-    cLabels.length?cLabels:lastMonths(6),
-    [{ label: 'Custo (R$)', data: (cLabels.length?cData:Array(6).fill(0)), backgroundColor: pal.blue2, borderColor: pal.blue }]
-  );
+  new Chart(document.getElementById('chartCost'), {
+    type: 'bar',
+    data: { labels: getD('d-labels'), datasets: [{ label:'R$', data: getD('d-cost'), backgroundColor: C.purple, borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
 
-  // Top custos por usuários (itens locação + licenças)
-  const uL  = J('ucost-labels', []);
-  const uI  = J('ucost-items',  []);
-  const uLc = J('ucost-lics',   []);
-  const hasUC = (sum(uI)+sum(uLc))>0;
-  showNoData('nd-ucost', !hasUC);
-  if (uL.length || hasUC) {
-    barStacked(
-      document.getElementById('usersCost'),
-      uL.length?uL:['—'],
-      uL.length?uI:[0],
-      uL.length?uLc:[0],
-      'Itens (locação/mês)',
-      'Licenças (mês)',
-      pal.cyan, pal.purple, true
-    );
-  }
-
-  // Custo por setores (CC)
-  const ccL2  = J('ccost-labels', []);
-  const ccI2  = J('ccost-items',  []);
-  const ccLc2 = J('ccost-lics',   []);
-  const hasCC = (sum(ccI2)+sum(ccLc2))>0;
-  showNoData('nd-ccost', !hasCC);
-  if (ccL2.length || hasCC) {
-    barStacked(
-      document.getElementById('ccCost'),
-      ccL2.length?ccL2:['—'],
-      ccL2.length?ccI2:[0],
-      ccL2.length?ccLc2:[0],
-      'Itens (locação/mês)',
-      'Licenças (mês)',
-      pal.blue, pal.green, false
-    );
-  }
-
-  // Top licenças por custo (mês)
-  const lL = J('licost-labels', []);
-  const lD = J('licost-data',   []);
-  const hasLic = sum(lD)>0;
-  showNoData('nd-licost', !hasLic);
-  barRounded(
-    document.getElementById('licCost'),
-    lL.length?lL:['—'],
-    lL.length?lD:[0],
-    pal.purple,
-    true
-  );
-
-  // Esconde shimmer
-  document.documentElement.classList.remove('loading');
+  // Clear skeletons
+  document.querySelectorAll('.skeleton').forEach(el => el.remove());
 });
 </script>
 {% endblock %}

@@ -1,176 +1,274 @@
 {% extends 'base.html' %}
-{% block title %}Detalhe do Centro de Custo{% endblock %}
+{% load static humanize %}
+
+{% block title %}Detalhe: {{ obj.departamento }}{% endblock %}
+
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 
 <style>
-:root{--line:#e5e7eb;--ink:#172133;--card:#fff;--soft:#f8fafc;--shadow:0 20px 40px rgba(2,6,23,.07);--h:48px;--rad:12px;--padL:44px}
-*{box-sizing:border-box}
-.wrap{max-width:1100px;margin:22px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:22px}
+/* --- Enterprise Theme Styles --- */
+:root {
+  --bg-app: #f3f4f6;
+  --bg-card: #ffffff;
+  --primary: #0078d4; /* Azul Microsoft */
+  --primary-hover: #106ebe;
+  --text-main: #242424;
+  --text-sub: #616161;
+  --border: #e0e0e0;
+  --shadow-card: 0 2px 4px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04);
+  --radius: 8px;
+}
 
-/* header */
-.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
-.actions{display:flex;gap:10px;flex-wrap:wrap}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
-.btn-secondary{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
-.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
-.btn-add{background:linear-gradient(90deg,#10b981,#059669);color:#fff}
+body { background-color: var(--bg-app); font-family: 'Inter', sans-serif; color: var(--text-main); font-size: 14px; }
+.app-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
 
-/* cards */
-.grid{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
-.card{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px}
-.label{font-weight:800;color:#334155;margin-bottom:6px}
-.value{color:#0f172a}
-.meta{margin-top:6px;color:#475569;font-size:.95rem}
-.badge-pmb{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:800;font-size:.95rem}
-.badge-pmb.sim{background:#e8fff3;color:#15803d}
-.badge-pmb.nao{background:#fee2e2;color:#b91c1c}
+/* 1. Header & Ações */
+.page-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;
+}
+.header-title h1 { margin: 0; font-size: 24px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 12px; }
+.header-icon {
+  width: 40px; height: 40px; background: #e0f2fe; color: var(--primary); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; font-size: 20px;
+}
 
-/* bloco itens */
-.block{margin-top:18px;background:var(--card);border:1px solid var(--line);border-radius:14px}
-.block-h{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
-.block-h h3{margin:0;display:flex;align-items:center;gap:10px;color:#0f172a;font-size:1.05rem}
-.block-c{padding:14px}
+.btn {
+  height: 40px; padding: 0 20px; border-radius: 6px; font-weight: 500; font-size: 14px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px; text-decoration: none; transition: all 0.2s; border: 1px solid transparent;
+}
+.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 2px 4px rgba(0,120,212,0.2); }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-white { background: #fff; border-color: var(--border); color: var(--text-main); }
+.btn-white:hover { background: #f9fafb; border-color: #9ca3af; }
 
-/* filtros (sem sobreposição) */
-.filtros{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:12px;align-items:end;margin-bottom:12px}
-@media (max-width:700px){.filtros{grid-template-columns:1fr}}
-.group{display:flex;flex-direction:column}
-.group label{font-weight:800;margin-bottom:6px}
-.filtro-icon-input{position:relative}
-.filtro-icon-input .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#334155}
-.ctrl{width:100%;height:var(--h);padding:8px 14px 8px var(--padL);border:1px solid #d5deea;border-radius:var(--rad);background:#fff;color:#111827;font-size:1rem;outline:none;transition:border .15s,box-shadow .15s}
-.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd55}
+/* 2. KPIs Section */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.kpi-card {
+  background: var(--bg-card); padding: 20px; border-radius: var(--radius); border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: space-between;
+}
+.kpi-content h4 { margin: 0 0 4px 0; font-size: 12px; font-weight: 600; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-content .val { font-size: 22px; font-weight: 700; color: var(--text-main); }
+.kpi-icon-right { font-size: 24px; opacity: 0.8; }
 
-/* tabela */
-.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px}
-table{width:100%;border-collapse:collapse;min-width:920px;background:#fff}
-thead th{position:sticky;top:0;background:#0b1220;color:#fff;border-bottom:1px solid #0f172a;padding:11px 12px;text-align:left;font-weight:900}
-tbody td{padding:11px 12px;border-bottom:1px solid #eef2f7;color:#0f172a}
-tbody tr:nth-child(odd){background:#fbfdff}
-tbody tr:hover{background:#f3f7ff}
-.status-chip{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:800;font-size:.85rem}
-.status-chip.ativo{background:#e8fff3;color:#15803d}
-.status-chip.backup{background:#eef2ff;color:#1e40af}
-.status-chip.manutencao{background:#fff7ed;color:#9a3412}
-.status-chip.defeito{background:#fee2e2;color:#b91c1c}
-.icon-btn{background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:50%;padding:7px 8px;margin:0 2px;font-size:1.05rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
-.icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
-.icon-btn.primary{background:#172133;color:#fff;border-color:#172133}
-.icon-btn.primary:hover{filter:brightness(.95)}
+/* Cores KPI */
+.icon-blue { color: #0078d4; }
+.icon-green { color: #10b981; }
+.icon-orange { color: #f59e0b; }
+
+/* 3. Grid Principal (Detalhes + Lista) */
+.main-grid { display: grid; grid-template-columns: 300px 1fr; gap: 24px; }
+@media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+
+/* Cards Genéricos */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-card); overflow: hidden; display: flex; flex-direction: column;
+}
+.card-header {
+  padding: 16px 20px; border-bottom: 1px solid var(--border); background: #fcfcfc;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.card-title { font-weight: 700; color: var(--text-main); font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.card-body { padding: 20px; }
+
+/* Info List (Lateral) */
+.info-list { display: flex; flex-direction: column; gap: 16px; }
+.info-item label { display: block; font-size: 12px; color: var(--text-sub); font-weight: 600; margin-bottom: 4px; }
+.info-item .value { font-size: 15px; color: var(--text-main); font-weight: 500; }
+.info-item .value-mono { font-family: 'Consolas', monospace; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+
+.badge-pmb { display: inline-flex; padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; }
+.badge-sim { background: #dcfce7; color: #166534; }
+.badge-nao { background: #fee2e2; color: #991b1b; }
+
+/* Barra de Filtro da Tabela */
+.table-filter { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; background: #fff; }
+.search-input {
+  flex: 1; height: 36px; padding: 0 12px 0 32px; border: 1px solid var(--border); border-radius: 6px;
+  font-size: 13px; outline: none; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%239ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>') no-repeat 10px center;
+}
+.search-input:focus { border-color: var(--primary); }
+
+/* Tabela */
+.table-responsive { overflow-x: auto; width: 100%; }
+table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+thead th { background: #f9fafb; color: var(--text-sub); font-size: 12px; font-weight: 600; text-transform: uppercase; padding: 12px 20px; text-align: left; border-bottom: 1px solid var(--border); }
+tbody td { padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text-main); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #fcfcfc; }
+
+/* Status Item */
+.status-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.st-ativo { background: #dcfce7; color: #166534; }
+.st-manutencao { background: #ffedd5; color: #9a3412; }
+.st-defeito { background: #fee2e2; color: #991b1b; }
+.st-default { background: #f3f4f6; color: #4b5563; }
+
+/* Ações Tabela */
+.action-btn {
+  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px; color: var(--text-sub); transition: all 0.2s; text-decoration: none;
+}
+.action-btn:hover { background: #f3f4f6; color: var(--primary); }
+
 </style>
 
-<div class="wrap">
-  <!-- Header -->
-    <h2 style="color: #0b1220;"><i class="fa fa-coins"></i> Detalhe do Centro de Custo</h2>
-    <div class="actions">
-      <a href="{% url 'centrocusto_list' %}" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
-      <a href="{% url 'centrocusto_update' obj.pk %}" class="btn btn-primary"><i class="fa fa-pen"></i> Editar</a>
-    </div>
+<div class="app-container">
 
-  <!-- Dados do centro de custo -->
-  <div class="grid">
-    <div class="card"><div class="label">Número</div><div class="value">{{ obj.numero }}</div></div>
-    <div class="card"><div class="label">Departamento</div><div class="value">{{ obj.departamento }}</div></div>
-    <div class="card">
-      <div class="label">PMB?</div>
-      <div class="value"><span class="badge-pmb {{ obj.pmb }}">{{ obj.get_pmb_display }}</span></div>
+  <div class="page-header">
+    <div class="header-title">
+      <div class="header-icon"><i class="fa fa-building"></i></div>
+      <h1>
+        {{ obj.departamento }}
+        <span style="font-size:14px; color:var(--text-sub); font-weight:400; margin-left:8px;">#{{ obj.numero }}</span>
+      </h1>
     </div>
-    <div class="card" style="grid-column:1/-1">
-      <div class="label">Auditoria</div>
-      <div class="meta">Criado por: {{ obj.criado_por|default:"-" }} em {{ obj.created_at|date:"d/m/Y H:i" }}</div>
-      <div class="meta">Atualizado por: {{ obj.atualizado_por|default:"-" }} em {{ obj.updated_at|date:"d/m/Y H:i" }}</div>
+    <div style="display:flex; gap:10px;">
+      <a href="{% url 'centrocusto_list' %}" class="btn btn-white"><i class="fa fa-arrow-left"></i> Voltar</a>
+      <a href="{% url 'centrocusto_update' obj.pk %}" class="btn btn-primary"><i class="fa fa-pen"></i> Editar</a>
     </div>
   </div>
 
-  <!-- Itens vinculados ao centro de custo -->
-  <div class="block">
-    <div class="block-h">
-      <h3><i class="fa fa-laptop"></i> Itens vinculados a {{ obj.numero }} — {{ obj.departamento }}</h3>
-      <div class="actions">
-        <span class="meta">{{ itens_cc|length }} item{{ itens_cc|length|pluralize }}</span>
-        <a href="{% url 'cadastrar_equipamento' %}" class="btn btn-add"><i class="fa fa-plus"></i> Adicionar Item</a>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-content">
+        <h4>Total de Ativos</h4>
+        <div class="val">{{ kpi.total_itens }}</div>
+      </div>
+      <i class="fa fa-boxes-stacked kpi-icon-right icon-blue"></i>
+    </div>
+    
+    <div class="kpi-card">
+      <div class="kpi-content">
+        <h4>Custo Mensal (Locação)</h4>
+        <div class="val">R$ {{ kpi.custo_mensal|floatformat:2|intcomma }}</div>
+      </div>
+      <i class="fa fa-file-invoice-dollar kpi-icon-right icon-orange"></i>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-content">
+        <h4>Patrimônio (Próprio)</h4>
+        <div class="val">R$ {{ kpi.valor_patrimonial|floatformat:2|intcomma }}</div>
+      </div>
+      <i class="fa fa-vault kpi-icon-right icon-green"></i>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    
+    <div class="card" style="height:fit-content;">
+      <div class="card-header">
+        <div class="card-title"><i class="fa fa-info-circle"></i> Informações</div>
+      </div>
+      <div class="card-body">
+        <div class="info-list">
+          <div class="info-item">
+            <label>Número / Código</label>
+            <div class="value-mono">{{ obj.numero }}</div>
+          </div>
+          <div class="info-item">
+            <label>Departamento</label>
+            <div class="value">{{ obj.departamento }}</div>
+          </div>
+          <div class="info-item">
+            <label>Classificação PMB</label>
+            <div>
+              {% if obj.pmb == 'sim' %}
+                <span class="badge-pmb badge-sim"><i class="fa fa-check"></i> PMB</span>
+              {% else %}
+                <span class="badge-pmb badge-nao">Não PMB</span>
+              {% endif %}
+            </div>
+          </div>
+          <div style="border-top:1px solid var(--border); margin:4px 0;"></div>
+          <div class="info-item">
+            <label>Criado em</label>
+            <div class="value" style="font-size:13px;">{{ obj.created_at|date:"d/m/Y H:i" }}</div>
+          </div>
+          <div class="info-item">
+            <label>Última atualização</label>
+            <div class="value" style="font-size:13px;">{{ obj.updated_at|date:"d/m/Y H:i" }}</div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="block-c">
-      <!-- Filtros locais (client-side) -->
-      <div class="filtros" id="flt">
-        <div class="group">
-          <label style="color: #0b1220;">Buscar</label>
-          <div class="filtro-icon-input">
-            <span class="ico"><i class="fa fa-search"></i></span>
-            <input id="q" type="text" class="ctrl" placeholder="Nome, nº de série, subtipo...">
-          </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <i class="fa fa-laptop"></i> Ativos Vinculados
+          <span style="background:#f3f4f6; color:var(--text-sub); padding:2px 8px; border-radius:12px; font-size:12px;">{{ kpi.total_itens }}</span>
         </div>
-        <div style="display:flex;gap:10px;justify-content:flex-end">
-          <button class="btn btn-secondary" type="button" id="btnClear"><i class="fa fa-eraser"></i> Limpar</button>
-        </div>
+        <a href="{% url 'cadastrar_equipamento' %}?cc={{ obj.pk }}" class="btn btn-white" style="height:32px; font-size:12px;"><i class="fa fa-plus"></i> Add Item</a>
+      </div>
+      
+      <div class="table-filter">
+        <input type="text" id="tableSearch" class="search-input" placeholder="Buscar item por nome, série ou subtipo...">
       </div>
 
-      <div class="table-wrap">
-        <table id="tbl">
+      <div class="table-responsive">
+        <table id="itensTable">
           <thead>
             <tr>
-              <th style="width:56px">#</th>
               <th>Item</th>
               <th>Nº Série</th>
               <th>Subtipo</th>
               <th>Localidade</th>
-              <th>Quantidade</th>
               <th>Status</th>
-              <th style="width:140px">Ações</th>
+              <th style="text-align:right;">Ações</th>
             </tr>
           </thead>
           <tbody>
-            {% for it in itens_cc %}
+            {% for item in itens_cc %}
             <tr>
-              <td>{{ forloop.counter }}</td>
-              <td>{{ it.nome }}</td>
-              <td>{{ it.numero_serie|default:"-" }}</td>
-              <td>{% if it.subtipo %}{{ it.subtipo.nome }}{% else %}-{% endif %}</td>
-              <td>{% if it.localidade %}{{ it.localidade.local }}{% else %}-{% endif %}</td>
-              <td>{{ it.quantidade|default:"0" }}</td>
-              <td><span class="status-chip {{ it.status }}">{{ it.get_status_display|default:it.status|capfirst }}</span></td>
-              <td style="white-space:nowrap">
-                <a class="icon-btn" title="Detalhar" href="{% url 'equipamento_detalhe' it.id %}"><i class="fa fa-eye"></i></a>
-                {% if it.precisa_preventiva == 'sim' %}
-                  <a class="icon-btn primary" title="Iniciar preventiva" href="{% url 'preventiva_start_item' it.id %}">
-                    <i class="fa fa-shield-heart"></i>
-                  </a>
+              <td style="font-weight:600;">{{ item.nome }}</td>
+              <td style="font-family:monospace; color:var(--text-sub);">{{ item.numero_serie|default:"-" }}</td>
+              <td>{{ item.subtipo.nome|default:"-" }}</td>
+              <td>{{ item.localidade.local|default:"-" }}</td>
+              <td>
+                {% if item.status == 'ativo' %}
+                  <span class="status-badge st-ativo">Ativo</span>
+                {% elif item.status == 'manutencao' %}
+                  <span class="status-badge st-manutencao">Manutenção</span>
+                {% elif item.status == 'defeito' %}
+                  <span class="status-badge st-defeito">Defeito</span>
+                {% else %}
+                  <span class="status-badge st-default">{{ item.status|default:"Indefinido" }}</span>
                 {% endif %}
+              </td>
+              <td style="text-align:right;">
+                <a href="{% url 'equipamento_detalhe' item.pk %}" class="action-btn" title="Ver Detalhes"><i class="fa fa-eye"></i></a>
               </td>
             </tr>
             {% empty %}
-            <tr><td colspan="8" style="text-align:center;color:#64748b;padding:14px">Nenhum item vinculado a este centro de custo.</td></tr>
+            <tr>
+              <td colspan="6" style="text-align:center; padding:40px; color:var(--text-sub);">
+                Nenhum ativo vinculado a este centro de custo.
+              </td>
+            </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     </div>
+
   </div>
 </div>
 
 <script>
-// Filtro client-side sem sobreposição
-(function(){
-  const q = document.getElementById('q');
-  const tbl = document.getElementById('tbl');
-  const rows = () => Array.from(tbl.querySelectorAll('tbody tr'));
-  const norm = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-  let t;
-  function apply(){
-    const term = norm(q.value);
-    rows().forEach(r=>{
-      const text = norm(r.innerText);
-      r.style.display = text.includes(term) ? '' : 'none';
+// Filtro Client-Side Simples e Rápido
+document.getElementById('tableSearch').addEventListener('keyup', function() {
+    let searchValue = this.value.toLowerCase();
+    let rows = document.querySelectorAll('#itensTable tbody tr');
+
+    rows.forEach(row => {
+        let text = row.innerText.toLowerCase();
+        row.style.display = text.includes(searchValue) ? '' : 'none';
     });
-  }
-  q.addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(apply, 200); });
-  document.getElementById('btnClear').addEventListener('click', ()=>{
-    q.value=''; apply(); q.focus();
-  });
-})();
+});
 </script>
 {% endblock %}

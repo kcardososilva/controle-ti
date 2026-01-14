@@ -5,7 +5,7 @@ from django.contrib.auth import views as auth_views
 from django.contrib.auth.views import LogoutView
 
 urlpatterns = [
-    path('', equipamentos_list, name="home"),
+    path('', views.dashboard, name="home"),
     #path('equipamento/<int:pk>/', views.equipamento_detalhe, name='equipamento_detalhe'),
 
     #sobre
@@ -54,6 +54,8 @@ urlpatterns = [
     path("fornecedores/<int:pk>/editar/", views.fornecedor_update, name="fornecedor_update"),
     path("fornecedores/<int:pk>/", views.fornecedor_detail, name="fornecedor_detail"),
     path("fornecedores/<int:pk>/excluir/", views.fornecedor_delete, name="fornecedor_delete"),
+    path('fornecedores/', views.fornecedor_list, name='fornecedor_list'),
+    path('fornecedores/pdf/', views.fornecedor_export_pdf, name='fornecedor_export_pdf'),
 
     ### CRUD - Localidade ###
 
@@ -70,6 +72,8 @@ urlpatterns = [
     path("centros-custo/<int:pk>/editar/", views.centrocusto_update, name="centrocusto_update"),
     path("centros-custo/<int:pk>/", views.centrocusto_detail, name="centrocusto_detail"),
     path("centros-custo/<int:pk>/excluir/", views.centrocusto_delete, name="centrocusto_delete"),
+    path('centrocusto/', views.centrocusto_list, name='centrocusto_list'),
+    path('centrocusto/pdf/', views.centrocusto_export_pdf, name='centrocusto_export_pdf'),
 
     ### CRUD - FUNÇÃO ###
 
@@ -102,6 +106,9 @@ urlpatterns = [
     path("licencas/nova/", views.licenca_form, name="licenca_create"),
     path("licencas/<int:pk>/editar/", views.licenca_form, name="licenca_update"),
     path("licencas/<int:pk>/", views.licenca_detail, name="licenca_detail"),
+    path('licencas/<int:pk>/pdf/', views.licenca_export_pdf, name='licenca_export_pdf'),
+    path('usuarios/<int:pk>/', views.usuario_detail, name='usuario_detail'),
+    path('licencas/devolver-rapido/<int:usuario_id>/<int:licenca_id>/', views.licenca_devolver_rapido, name='licenca_devolver_rapido'),
 
     # Movimentações de licença
     path("licencas/mov/", views.mov_licenca_list, name="mov_licenca_list"),

@@ -1,348 +1,317 @@
 {% extends 'base.html' %}
-{% block title %}Licenças{% endblock %}
+{% load static %}
+
+{% block title %}Gestão de Licenças{% endblock %}
 
 {% block content %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
 <style>
-:root{
-  /* Paleta profissional (neutros + acento institucional) */
-  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
-  --accent:#1e3a8a; --accent-2:#2563eb; --info:#0ea5e9;
-  --ok:#16a34a; --warn:#d97706; --bad:#ef4444;
-
-  --shadow:0 16px 36px rgba(2,6,23,.07);
-  --rad:12px; --ctrl-h:38px; --pad-icon:34px;
-}
-*{box-sizing:border-box}
-a{text-decoration:none}
-.page{
-  max-width:1200px;margin:16px auto;padding:0 14px;color:var(--ink);
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial
+/* --- Design System Enterprise --- */
+:root {
+  --primary: #2563eb; --primary-hover: #1d4ed8; --primary-light: #eff6ff;
+  --text-main: #0f172a; --text-muted: #64748b;
+  --border: #e2e8f0; --bg-body: #f8fafc; --bg-card: #ffffff;
+  --success-bg: #dcfce7; --success-text: #166534;
+  --warning-bg: #fef3c7; --warning-text: #92400e;
+  --danger-bg: #fee2e2; --danger-text: #991b1b;
+  --radius: 8px; --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.06);
 }
 
-/* Painel principal */
-.panel{
-  background:var(--card); border:1px solid var(--line); border-radius:16px;
-  box-shadow:var(--shadow); padding:14px
-}
+body { background: var(--bg-body); color: var(--text-main); font-family: 'Inter', sans-serif; }
+.page-wrapper { max-width: 1400px; margin: 24px auto; padding: 0 20px; }
 
-/* Topbar */
-.topbar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px}
-.title{display:flex; align-items:center; gap:10px; font-weight:900; color:var(--ink)}
-.metric-badges{display:flex; gap:8px; flex-wrap:wrap; margin-left:auto}
-.badge{
-  display:inline-flex; align-items:center; gap:8px;
-  background:#eef2ff; color:#1e40af; padding:6px 10px; border-radius:999px; font-weight:800
+/* 1. KPIs (Indicadores) */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-bottom: 24px; }
+.kpi-card {
+  background: var(--bg-card); padding: 20px; border-radius: var(--radius);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  display: flex; align-items: center; gap: 16px; transition: transform 0.2s;
 }
-.btn{border:none;border-radius:10px;padding:8px 12px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
-.btn-add{background:linear-gradient(90deg,#10b981,#059669);color:#fff}
-.btn-light{background:#f8fafc;border:1.3px solid #dbe6f1;color:#334155}
-.btn:hover{filter:brightness(.98)}
+.kpi-card:hover { transform: translateY(-2px); border-color: var(--primary); }
+.kpi-icon {
+  width: 48px; height: 48px; border-radius: 10px; background: var(--primary-light); color: var(--primary);
+  display: flex; align-items: center; justify-content: center; font-size: 1.25rem;
+}
+.kpi-content h3 { margin: 0; font-size: 1.5rem; font-weight: 700; color: var(--text-main); }
+.kpi-content p { margin: 0; font-size: 0.875rem; color: var(--text-muted); font-weight: 500; }
 
-/* ===== FILTROS ===== */
-.filters{border:1px solid var(--line); border-radius:12px; background:#fff}
-.filters summary{
-  list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px;
-  padding:10px 12px; font-weight:900; color:var(--ink)
+/* 2. Header & Ações */
+.actions-bar {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;
 }
-.filters summary::-webkit-details-marker{display:none}
-.filters[open] summary{border-bottom:1px solid var(--line)}
-.filters-body{padding:10px 12px}
+.page-title { font-size: 1.5rem; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 10px; }
+.page-title i { color: var(--primary); }
 
-.filters-grid{display:grid; gap:10px; align-items:end; grid-template-columns:repeat(12,1fr)}
-.fld{min-width:0}
-.fld label{display:none}
-.filtro-icon-input{position:relative}
-.filtro-icon-input i{
-  position:absolute; left:10px; top:50%; transform:translateY(-50%);
-  color:#334155; pointer-events:none; font-size:.95rem
+.btn {
+  height: 40px; padding: 0 20px; border-radius: var(--radius); font-weight: 600; font-size: 0.875rem;
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer; text-decoration: none; border: 1px solid transparent; transition: all 0.2s;
 }
-.filtro-icon-input input,.filtro-icon-input select{
-  width:100%; height:var(--ctrl-h); padding:6px 12px 6px var(--pad-icon);
-  border:1px solid #d5deea; border-radius:10px; background:var(--soft); color:#111827; font-size:.95rem;
-  outline:none; transition:border .15s,box-shadow .15s,background .15s; appearance:none;
-}
-.filtro-icon-input input::placeholder{color:#64748b}
-.filtro-icon-input input:focus,.filtro-icon-input select:focus{border-color:#93c5fd; box-shadow:0 0 0 3px #93c5fd33; background:#fff}
-.select-wrapper{position:relative}
-.select-wrapper::after{
-  content:""; position:absolute; right:12px; top:50%; transform:translateY(-25%);
-  border-left:5px solid transparent; border-right:5px solid transparent; border-top:6px solid #64748b; pointer-events:none
-}
-.select-wrapper select{padding-right:30px}
+.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 2px 4px rgba(37,99,235,0.2); }
+.btn-primary:hover { background: var(--primary-hover); box-shadow: 0 4px 6px rgba(37,99,235,0.3); }
+.btn-white { background: #fff; border-color: var(--border); color: var(--text-main); }
+.btn-white:hover { background: #f1f5f9; border-color: #cbd5e1; }
 
-/* grid das colunas */
-.fld-busca{grid-column:span 5}
-.fld-forn{grid-column:span 3}
-.fld-centro{grid-column:span 2}
-.fld-pmb{grid-column:span 1}
-.fld-per{grid-column:span 1}
-.fld-actions{grid-column:span 12; display:flex; gap:8px; justify-content:flex-end}
+/* 3. Filtros */
+.filter-card {
+  background: var(--bg-card); padding: 16px; border-radius: var(--radius); border: 1px solid var(--border);
+  margin-bottom: 24px; display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 12px; align-items: center;
+}
+@media(max-width: 1024px) { .filter-card { grid-template-columns: 1fr 1fr; } }
+@media(max-width: 600px) { .filter-card { grid-template-columns: 1fr; } }
 
-@media (max-width:1000px){
-  .filters-grid{grid-template-columns:repeat(6,1fr)}
-  .fld-busca{grid-column:1/-1}
-  .fld-forn{grid-column:span 3}
-  .fld-centro{grid-column:span 3}
-  .fld-pmb{grid-column:span 3}
-  .fld-per{grid-column:span 3}
-  .fld-actions{grid-column:1/-1; justify-content:stretch}
-}
-@media (max-width:640px){
-  .filters-body{padding:10px}
-  .filters-grid{grid-template-columns:repeat(6,1fr)}
-  .fld-forn,.fld-centro,.fld-pmb,.fld-per{grid-column:1/-1}
-  .fld-actions .btn{flex:1}
-}
+.form-control { height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius); width: 100%; font-size: 0.875rem; }
+.select2-container .select2-selection--single { height: 40px !important; border: 1px solid var(--border) !important; border-radius: var(--radius) !important; display: flex; align-items: center; }
+.select2-container--default .select2-selection--single .select2-selection__arrow { top: 7px !important; }
 
-/* Badges PMB */
-.badge-pmb{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:800;font-size:.86rem}
-.badge-pmb.sim{background:#e8fff3;color:#15803d}
-.badge-pmb.nao{background:#fee2e2;color:#b91c1c}
+/* 4. Tabela Profissional */
+.table-container {
+  background: var(--bg-card); border-radius: var(--radius); border: 1px solid var(--border);
+  box-shadow: var(--shadow); overflow: hidden;
+}
+.table-responsive { width: 100%; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+thead { background: #f8fafc; border-bottom: 1px solid var(--border); }
+th { text-align: left; padding: 14px 20px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; letter-spacing: 0.05em; }
+td { padding: 14px 20px; border-bottom: 1px solid var(--border); font-size: 0.9rem; color: var(--text-main); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover { background: #f9fafb; }
 
-/* ===== TABELA ===== */
-.table-wrap{width:100%; overflow:auto; border:1px solid var(--line); border-radius:12px; margin-top:12px; background:#fff}
-table{width:100%; border-collapse:collapse; min-width:980px; background:#fff}
-thead th{
-  position:sticky; top:0; z-index:2;
-  background:linear-gradient(180deg, var(--accent) 0%, var(--accent-2) 100%);
-  color:#fff; border-bottom:1px solid #0f172a; padding:10px 12px; text-align:left; font-weight:900; font-size:.95rem
-}
-tbody td{padding:10px 12px; border-bottom:1px solid #eef2f7; color:#0f172a; font-size:.95rem}
-tbody tr:nth-child(odd) td{background:#fbfdff}
-tbody tr:hover td{background:#f3f7ff}
-.td-acoes{text-align:center; white-space:nowrap}
+/* Elementos Visuais da Tabela */
+.licenca-name { font-weight: 600; color: var(--text-main); font-size: 0.95rem; display: block; margin-bottom: 2px; }
+.licenca-obs { font-size: 0.75rem; color: var(--text-muted); display: block; max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* Ações */
-.icon-btn{
-  background:#fff; border:1.3px solid #dbe3ef; color:#1f2937; border-radius:50%;
-  padding:7px 8px; margin:0 2px; font-size:1.05rem; cursor:pointer; display:inline-flex; align-items:center; justify-content:center
-}
-.icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
-.icon-btn.move{color:#2563eb}
-.icon-btn.view{color:#0f172a}
+.badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 99px; font-size: 0.75rem; font-weight: 600; }
+.badge-pmb { background: var(--success-bg); color: var(--success-text); }
+.badge-gray { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+.badge-stock { background: #eff6ff; color: #1e40af; border: 1px solid #dbeafe; font-family: monospace; font-size: 0.85rem; }
+.badge-zero { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; font-family: monospace; font-size: 0.85rem; }
 
-/* ===== PAGINAÇÃO ===== */
-.pagination-wrap{
-  display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;
-  margin-top:12px;padding-top:10px;border-top:1px solid var(--line)
+/* Botões de Ação (Icones) */
+.action-group { display: flex; justify-content: flex-end; gap: 6px; }
+.btn-icon {
+  width: 34px; height: 34px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-muted); border: 1px solid transparent; transition: all 0.2s; text-decoration: none;
 }
-.page-size{display:flex;align-items:center;gap:8px;color:#475569;font-weight:700}
-.page-size select{
-  height:32px;border:1px solid #d5deea;border-radius:8px;background:#fff;padding:4px 10px;font-weight:700;color:#0f172a
+.btn-icon:hover { background: #f1f5f9; color: var(--primary); border-color: var(--border); }
+.btn-icon.detail:hover { color: var(--primary); background: var(--primary-light); }
+.btn-icon.lote:hover { color: #0891b2; background: #cffafe; }
+.btn-icon.move:hover { color: #7c3aed; background: #ede9fe; }
+.btn-icon.edit:hover { color: #d97706; background: #fffbeb; }
+
+/* Paginação */
+.pagination-wrapper { padding: 12px 20px; background: #fff; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.page-info { font-size: 0.85rem; color: var(--text-muted); }
+.pagination { display: flex; gap: 4px; }
+.page-link {
+  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px;
+  border: 1px solid var(--border); color: var(--text-main); text-decoration: none; font-size: 0.85rem; transition: all 0.2s;
 }
-.pager{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.pager a, .pager span{
-  padding:6px 10px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#0f172a;font-weight:800;font-size:.9rem;text-decoration:none
-}
-.pager a:hover{background:#f8fafc}
-.pager .current{background:#e8f0ff;border-color:#c7d2fe;color:#1e3a8a}
-.pager .disabled{opacity:.5;pointer-events:none}
-.range-hint{color:#64748b;font-weight:700}
+.page-link:hover { background: #f8fafc; }
+.page-link.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 </style>
 
-<div class="page">
-  <div class="panel">
-    <!-- Topo -->
-    <div class="topbar">
-      <div class="title">
-        <i class="fa-solid fa-certificate" style="color:var(--info)"></i>
-        <span>Licenças</span>
-      </div>
+<div class="page-wrapper">
 
-      <div class="metric-badges" style="margin-left:auto;gap:10px">
-        <!-- Itens por página -->
-        <form method="get" id="sizeForm" style="display:flex;align-items:center;gap:8px">
-          {% for key, val in request.GET.items %}
-            {% if key != 'pp' and key != 'page' %}
-              <input type="hidden" name="{{ key }}" value="{{ val }}">
-            {% endif %}
-          {% endfor %}
-          <label for="pp" class="page-size" style="gap:6px;">
-            Por página:
-            <select name="pp" id="pp">
-              <option value="10"  {% if per_page == 10  %}selected{% endif %}>10</option>
-              <option value="20"  {% if per_page == 20  %}selected{% endif %}>20</option>
-              <option value="50"  {% if per_page == 50  %}selected{% endif %}>50</option>
-              <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
-            </select>
-          </label>
-        </form>
-
-        <span class="badge"><i class="fa fa-database"></i> {{ total }} registros</span>
-        <a class="btn btn-light" href="{% url 'mov_licenca_list' %}"><i class="fa fa-exchange-alt"></i> Movimentações</a>
-        <a class="btn btn-light" href="{% url 'licenca_lote_list' %}"><i class="fa fa-boxes-stacked"></i> Lotes</a>
-        <a class="btn btn-add" href="{% url 'licenca_create' %}"><i class="fa fa-plus"></i> Nova Licença</a>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-icon"><i class="fa fa-folder-tree"></i></div>
+      <div class="kpi-content">
+        <h3>{{ kpi_total }}</h3>
+        <p>Licenças Cadastradas</p>
       </div>
     </div>
-
-    <!-- Filtros -->
-    <details class="filters" {% if request.GET %}open{% endif %}>
-      <summary><i class="fa fa-filter"></i> Filtros <span class="hint" style="font-weight:600;color:#64748b">— digite para aplicar automaticamente</span></summary>
-      <div class="filters-body">
-        <form method="get" class="filters-grid" id="fForm" autocomplete="off">
-          <div class="fld fld-busca filtro-icon-input">
-            <label for="q">Buscar</label>
-            <i class="fa fa-search"></i>
-            <input type="text" name="q" id="q" placeholder="Nome (ou observação)" value="{{ q|default:'' }}">
-          </div>
-
-          <div class="fld fld-forn filtro-icon-input">
-            <label for="fornecedor">Fornecedor</label>
-            <i class="fa fa-building"></i>
-            <input type="text" name="fornecedor" id="fornecedor" placeholder="Fornecedor" value="{{ fornecedor|default:'' }}">
-          </div>
-
-          <div class="fld fld-centro filtro-icon-input">
-            <label for="centro">Centro de Custo</label>
-            <i class="fa fa-coins"></i>
-            <input type="text" name="centro" id="centro" placeholder="Número ou departamento" value="{{ centro|default:'' }}">
-          </div>
-
-          <div class="fld fld-pmb filtro-icon-input select-wrapper">
-            <label for="pmb">PMB</label>
-            <i class="fa fa-check-circle"></i>
-            <select name="pmb" id="pmb">
-              <option value="">PMB</option>
-              {% for code, label in pmb_choices %}
-                <option value="{{ code }}" {% if pmb == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="fld fld-per filtro-icon-input select-wrapper">
-            <label for="periodicidade">Periodicidade</label>
-            <i class="fa fa-clock"></i>
-            <select name="periodicidade" id="periodicidade">
-              <option value="">Periodicidade</option>
-              {% for code, label in periodicidade_choices %}
-                <option value="{{ code }}" {% if per == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="fld fld-actions">
-            <button class="btn btn-light" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
-            <button class="btn btn-light" type="button" id="btnClear"><i class="fa fa-eraser"></i> Limpar</button>
-          </div>
-        </form>
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:var(--success-bg); color:var(--success-text);"><i class="fa fa-layer-group"></i></div>
+      <div class="kpi-content">
+        <h3>{{ kpi_assentos }}</h3>
+        <p>Assentos Disponíveis</p>
       </div>
-    </details>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:var(--warning-bg); color:var(--warning-text);"><i class="fa fa-star"></i></div>
+      <div class="kpi-content">
+        <h3>{{ kpi_pmb }}</h3>
+        <p>Licenças PMB</p>
+      </div>
+    </div>
+  </div>
 
-    <!-- Tabela -->
-    <div class="table-wrap">
+  <div class="actions-bar">
+    <div class="page-title">
+      <i class="fa fa-list-check"></i> Catálogo de Licenças
+    </div>
+    <div style="display:flex; gap:10px;">
+      <a href="{% url 'mov_licenca_form' %}" class="btn btn-white" title="Nova Movimentação">
+        <i class="fa fa-exchange-alt"></i> Movimentar
+      </a>
+      <a href="{% url 'licenca_lote_list' %}" class="btn btn-white" title="Ver todos os lotes">
+        <i class="fa fa-boxes-stacked"></i> Gerenciar Lotes
+      </a>
+      <a href="{% url 'licenca_create' %}" class="btn btn-primary">
+        <i class="fa fa-plus"></i> Nova Licença
+      </a>
+    </div>
+  </div>
+
+  <form method="get" id="filterForm" class="filter-card">
+    <div>
+      <input type="text" name="q" value="{{ filter_q }}" class="form-control" placeholder="Buscar por nome, obs...">
+    </div>
+    
+    <div>
+      <select name="fornecedor" class="form-control select2-filter">
+        <option value="">Todos Fornecedores</option>
+        {% for f in opt_fornecedores %}
+          <option value="{{ f.id }}" {% if filter_fornecedor == f.id %}selected{% endif %}>{{ f.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <select name="status" class="form-control select2-filter">
+        <option value="">Status Estoque</option>
+        <option value="com_estoque" {% if filter_status == 'com_estoque' %}selected{% endif %}>Com Estoque</option>
+        <option value="sem_estoque" {% if filter_status == 'sem_estoque' %}selected{% endif %}>Sem Estoque</option>
+      </select>
+    </div>
+
+    <div>
+      <select name="pmb" class="form-control select2-filter">
+        <option value="">PMB?</option>
+        {% for val, label in opt_pmb %}
+          <option value="{{ val }}" {% if filter_pmb == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="display:flex; gap:8px;">
+      <button type="submit" class="btn btn-primary" title="Filtrar" style="flex:1; justify-content:center;"><i class="fa fa-search"></i></button>
+      <a href="{% url 'licenca_list' %}" class="btn btn-white" title="Limpar" style="width:40px; justify-content:center; padding:0;"><i class="fa fa-eraser"></i></a>
+    </div>
+  </form>
+
+  <div class="table-container">
+    <div class="table-responsive">
       <table>
         <thead>
           <tr>
-            <th>Nome</th>
+            <th style="width:35%;">Licença</th>
             <th>Fornecedor</th>
-            <th>Centro de Custo</th>
-            <th>PMB</th>
-            <th>Periodicidade</th>
-            <th>Qtd Disp.</th>
-            <th>Lotes</th>
-            <th>Disp. (lotes)</th>
-            <th>Início</th>
-            <th>Fim</th>
-            <th style="width:132px">Ações</th>
+            <th>Classificação</th>
+            <th style="text-align:center;">Lotes Ativos</th>
+            <th style="text-align:center;">Saldo Disponíveis</th>
+            <th style="text-align:right;">Ações</th>
           </tr>
         </thead>
         <tbody>
-          {% for obj in licencas %}
+          {% for obj in page_obj %}
           <tr>
-            <td>{{ obj.nome }}</td>
-            <td>{% if obj.fornecedor %}{{ obj.fornecedor.nome }}{% else %}-{% endif %}</td>
             <td>
-              {% if obj.centro_custo %}
-                {{ obj.centro_custo.numero }} - {{ obj.centro_custo.departamento }}
-              {% else %}-{% endif %}
+              <a href="{% url 'licenca_detail' obj.pk %}" class="licenca-name" style="text-decoration:none;">{{ obj.nome }}</a>
+              {% if obj.observacao %}
+                <span class="licenca-obs"><i class="fa fa-info-circle"></i> {{ obj.observacao }}</span>
+              {% endif %}
             </td>
-            <td><span class="badge-pmb {{ obj.pmb }}">{{ obj.get_pmb_display }}</span></td>
-            <td>{{ obj.get_periodicidade_display }}</td>
-            <td>{{ obj.quantidade }}</td>
-            <td>{{ obj.total_lotes }}</td>
-            <td>{{ obj.disp_lotes }}</td>
-            <td><span class="date"><i class="fa-regular fa-calendar"></i> {{ obj.data_inicio|date:"d/m/Y" }}</span></td>
+            <td>{{ obj.fornecedor.nome|default:"-" }}</td>
             <td>
-              {% if obj.data_fim %}
-                <span class="date"><i class="fa-regular fa-calendar"></i> {{ obj.data_fim|date:"d/m/Y" }}</span>
-              {% else %}—{% endif %}
+              {% if obj.pmb == 'sim' %}
+                <span class="badge badge-pmb">PMB</span>
+              {% else %}
+                <span class="badge badge-gray">Padrão</span>
+              {% endif %}
             </td>
-            <td class="td-acoes">
-              <a class="icon-btn view" title="Detalhar" href="{% url 'licenca_detail' obj.pk %}"><i class="fa fa-eye"></i></a>
-              <a class="icon-btn move" title="Movimentar" href="{% url 'mov_licenca_form' %}?licenca={{ obj.pk }}"><i class="fa fa-exchange-alt"></i></a>
-              <a class="icon-btn" title="Editar" href="{% url 'licenca_update' obj.pk %}"><i class="fa fa-pen"></i></a>
+            <td style="text-align:center;">
+              {% if obj.qtd_lotes > 0 %}
+                <span style="font-weight:600; color:var(--text-main);">{{ obj.qtd_lotes }}</span>
+              {% else %}
+                <span style="color:#cbd5e1;">-</span>
+              {% endif %}
+            </td>
+            <td style="text-align:center;">
+              {% if obj.estoque_real > 0 %}
+                <span class="badge badge-stock">{{ obj.estoque_real }}</span>
+              {% else %}
+                <span class="badge badge-zero">0</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="action-group">
+                <a href="{% url 'licenca_lote_list' %}?licenca={{ obj.pk }}" class="btn-icon lote" title="Gerenciar Lotes">
+                  <i class="fa fa-boxes-stacked"></i>
+                </a>
+
+                <a href="{% url 'mov_licenca_list' %}?licenca={{ obj.pk }}" class="btn-icon move" title="Histórico de Movimentações">
+                  <i class="fa fa-clock-rotate-left"></i>
+                </a>
+
+                <a href="{% url 'licenca_detail' obj.pk %}" class="btn-icon detail" title="Painel Detalhado">
+                  <i class="fa fa-eye"></i>
+                </a>
+
+                <a href="{% url 'licenca_update' obj.pk %}" class="btn-icon edit" title="Editar Cadastro">
+                  <i class="fa fa-pen"></i>
+                </a>
+              </div>
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="11" style="text-align:center;color:#64748b;padding:16px">Nenhuma licença encontrada.</td></tr>
+          <tr>
+            <td colspan="6" style="text-align:center; padding:60px 20px;">
+              <i class="fa fa-folder-open" style="font-size:3rem; color:#e2e8f0; margin-bottom:16px;"></i>
+              <h3 style="margin:0; font-size:1.1rem; color:var(--text-muted);">Nenhuma licença encontrada</h3>
+              <p style="color:#94a3b8;">Tente ajustar os filtros ou cadastre uma nova licença.</p>
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
 
-    <!-- Paginação -->
-    {% if paginator.num_pages > 1 %}
-    <div class="pagination-wrap">
-      <div class="range-hint">
-        Mostrando <strong>{{ page_obj.start_index }}</strong>–<strong>{{ page_obj.end_index }}</strong>
-        de <strong>{{ paginator.count }}</strong>
+    {% if page_obj.has_other_pages %}
+    <div class="pagination-wrapper">
+      <div class="page-info">
+        Página <strong>{{ page_obj.number }}</strong> de {{ page_obj.paginator.num_pages }} ({{ total_registros }} registros)
       </div>
-      <nav class="pager" aria-label="Paginação">
-        {% with base='?'|add:qs_keep %}
-          {% if page_obj.has_previous %}
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page=1" title="Primeira">&laquo;</a>
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ page_obj.previous_page_number }}" title="Anterior">&lsaquo;</a>
-          {% else %}
-            <span class="disabled">&laquo;</span><span class="disabled">&lsaquo;</span>
+      <div class="pagination">
+        {% if page_obj.has_previous %}
+          <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="page-link"><i class="fa fa-angle-left"></i></a>
+        {% endif %}
+        
+        {% for num in page_obj.paginator.page_range %}
+          {% if page_obj.number == num %}
+            <a href="#" class="page-link active">{{ num }}</a>
+          {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+            <a href="?page={{ num }}&{{ qs_keep }}" class="page-link">{{ num }}</a>
           {% endif %}
+        {% endfor %}
 
-          {% for num in paginator.page_range %}
-            {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
-              {% if num == page_obj.number %}
-                <span class="current">{{ num }}</span>
-              {% else %}
-                <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ num }}">{{ num }}</a>
-              {% endif %}
-            {% endif %}
-          {% endfor %}
-
-          {% if page_obj.has_next %}
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ page_obj.next_page_number }}" title="Próxima">&rsaquo;</a>
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ paginator.num_pages }}" title="Última">&raquo;</a>
-          {% else %}
-            <span class="disabled">&rsaquo;</span><span class="disabled">&raquo;</span>
-          {% endif %}
-        {% endwith %}
-      </nav>
+        {% if page_obj.has_next %}
+          <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="page-link"><i class="fa fa-angle-right"></i></a>
+        {% endif %}
+      </div>
     </div>
     {% endif %}
   </div>
+
 </div>
 
 <script>
-/* Limpar filtros */
-document.getElementById('btnClear')?.addEventListener('click',()=>{
-  window.location.href = window.location.pathname;
-});
+$(document).ready(function() {
+    // Inicialização do Select2
+    $('.select2-filter').select2({
+        width: '100%',
+        minimumResultsForSearch: 10,
+        language: "pt-BR"
+    });
 
-/* Debounce + auto-submit (texto); selects submetem ao mudar */
-(function(){
-  const form = document.getElementById('fForm'); if(!form) return;
-  const ids = ['q','fornecedor','centro'];
-  function debounce(fn,d=450){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),d) } }
-  ids.forEach(id=>{
-    const el = document.getElementById(id);
-    if(el) el.addEventListener('input', debounce(()=>form.submit(), 450));
-  });
-  document.getElementById('pmb')?.addEventListener('change', ()=>form.submit());
-  document.getElementById('periodicidade')?.addEventListener('change', ()=>form.submit());
-})();
-
-/* Itens por página: auto-submit e reset da página para 1 */
-document.getElementById('pp')?.addEventListener('change', ()=>{
-  const f=document.getElementById('sizeForm'); if(!f) return;
-  const pageInput=document.createElement('input'); pageInput.type='hidden'; pageInput.name='page'; pageInput.value='1';
-  f.appendChild(pageInput); f.submit();
+    // Auto-Submit ao mudar filtros dropdown
+    $('.select2-filter').on('change', function() {
+        $('#filterForm').submit();
+    });
 });
 </script>
 {% endblock %}

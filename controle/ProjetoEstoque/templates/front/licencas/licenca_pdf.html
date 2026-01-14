@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Relatório de Licença</title>
+    <style>
+        @page { size: A4; margin: 1.5cm; }
+        body { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; color: #333; }
+        .header { border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: 20px; }
+        .header h1 { color: #2563eb; margin: 0; font-size: 18pt; }
+        .header p { margin: 2px 0; color: #666; font-size: 9pt; }
+        
+        .section-title { background-color: #f1f5f9; padding: 5px 10px; font-weight: bold; border-left: 4px solid #2563eb; margin-top: 20px; margin-bottom: 10px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+        th { background-color: #2563eb; color: #fff; text-align: left; padding: 6px; font-size: 9pt; }
+        td { border-bottom: 1px solid #e2e8f0; padding: 6px; font-size: 9pt; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .bold { font-weight: bold; }
+        
+        .kpi-box { float: left; width: 32%; background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; margin-right: 1%; margin-bottom: 20px; border-radius: 4px; }
+        .kpi-title { font-size: 8pt; text-transform: uppercase; color: #64748b; }
+        .kpi-val { font-size: 14pt; font-weight: bold; color: #0f172a; margin-top: 5px; }
+        .clearfix { clear: both; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Relatório de Licença</h1>
+        <p><strong>Licença:</strong> {{ obj.nome }}</p>
+        <p><strong>Fornecedor:</strong> {{ obj.fornecedor.nome|default:"-" }}</p>
+        <p><strong>Data Emissão:</strong> {% now "d/m/Y H:i" %} por {{ user_solicitante.username }}</p>
+    </div>
+
+    <div>
+        <div class="kpi-box">
+            <div class="kpi-title">Estoque Total</div>
+            <div class="kpi-val">{{ kpi.estoque_total }}</div>
+        </div>
+        <div class="kpi-box">
+            <div class="kpi-title">Em Uso (Alocado)</div>
+            <div class="kpi-val">{{ kpi.alocado_qtd }}</div>
+        </div>
+        <div class="kpi-box" style="margin-right:0;">
+            <div class="kpi-title">Saldo Disponível</div>
+            <div class="kpi-val">{{ kpi.estoque_disp }}</div>
+        </div>
+        <div class="clearfix"></div>
+    </div>
+
+    <div class="section-title">Alocação por Centro de Custo</div>
+    <table>
+        <thead>
+            <tr>
+                <th width="60%">Centro de Custo / Departamento</th>
+                <th width="20%" class="text-center">Assentos</th>
+                <th width="20%" class="text-right">Custo Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cc in cc_list %}
+            <tr>
+                <td>{{ cc.nome }}</td>
+                <td class="text-center">{{ cc.qtd }}</td>
+                <td class="text-right">R$ {{ cc.total|floatformat:2 }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3" class="text-center">Nenhuma alocação ativa.</td></tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td class="text-right bold">TOTAL GERAL:</td>
+                <td class="text-center bold">{{ kpi.alocado_qtd }}</td>
+                <td class="text-right bold">R$ {{ kpi.alocado_valor|floatformat:2 }}</td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="section-title">Observações</div>
+    <div style="font-size: 9pt; color: #444; border: 1px solid #e2e8f0; padding: 10px;">
+        {{ obj.observacao|default:"Nenhuma observação registrada."|linebreaksbr }}
+    </div>
+
+    <div style="margin-top: 30px; text-align: center; font-size: 8pt; color: #999;">
+        Relatório gerado automaticamente pelo Sistema de Gestão de Ativos.
+    </div>
+
+</body>
+</html>

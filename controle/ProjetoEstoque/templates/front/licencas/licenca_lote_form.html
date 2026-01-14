@@ -1,131 +1,207 @@
 {% extends 'base.html' %}
-{% block title %}{% if form.instance.pk %}Editar Lote de Licenças{% else %}Novo Lote de Licenças{% endif %}{% endblock %}
+{% load static %}
+
+{% block title %}
+  {% if obj %}Editar Lote{% else %}Novo Lote{% endif %}
+{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-<link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
 
 <style>
-  :root{
-    --bg:#0e1421; --card:#fff; --ink:#172133; --mut:#5b6b84;
-    --line:#e6ecfa; --soft:#f9fafc; --focus:#216eff; --shadow:0 8px 40px rgba(23,33,51,.13);
-    --rad:14px; --ctrl-h:46px;
-  }
-  body{background:linear-gradient(120deg,#181f2a 0%,#253049 100%);font-family:'Roboto',Arial,sans-serif;margin:0;color:var(--ink)}
-  *{box-sizing:border-box}
+:root {
+  --bg-body: #f8fafc; --bg-card: #ffffff;
+  --text-main: #0f172a; --text-muted: #64748b;
+  --border: #e2e8f0; --primary: #2563eb; --primary-hover: #1d4ed8;
+  --danger: #ef4444; --radius: 8px; --input-height: 42px;
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
 
-  .wrap{
-    max-width: 980px; margin: 34px auto; background: var(--card); border-radius: 22px;
-    box-shadow: var(--shadow); border:1px solid #eaf2ff; padding: 34px 34px 26px;
-    animation: pop .25s ease;
-  }
-  @keyframes pop{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+* { box-sizing: border-box; outline: none; }
+body { background: var(--bg-body); color: var(--text-main); font-family: 'Inter', system-ui, sans-serif; overflow-x: hidden; }
 
-  .title{display:flex;align-items:center;gap:12px;margin:0 0 18px}
-  .title i{color:#1b2740}
-  .title h2{margin:0;font-size:1.9rem;color:#172133;letter-spacing:-.5px}
+.page-container { max-width: 900px; margin: 40px auto; padding: 0 20px; width: 100%; }
 
-  /* GRID UTIL */
-  .grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px}
-  .col-12{grid-column:span 12}
-  .col-6{grid-column:span 6}
-  .col-4{grid-column:span 4}
-  .col-3{grid-column:span 3}
-  @media (max-width: 900px){
-    .col-md-12{grid-column:span 12}
-    .col-md-6{grid-column:span 6}
-    .col-md-4{grid-column:span 6}
-    .col-md-3{grid-column:span 6}
-  }
-  @media (max-width: 600px){
-    .col-sm-12{grid-column:span 12}
-    .col-sm-6{grid-column:span 12}
-    .col-sm-4{grid-column:span 12}
-    .col-sm-3{grid-column:span 12}
-  }
+/* Card */
+.form-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 32px;
+  width: 100%; overflow: hidden;
+}
 
-  /* FORM */
-  .field{display:flex;flex-direction:column;min-width:0}
-  .label{font-weight:700;font-size:.98rem;color:#23304a;margin:2px 0 6px;display:flex;gap:8px;align-items:center}
-  .ctrl{
-    height:var(--ctrl-h); padding:10px 12px; border:1.2px solid var(--line); border-radius:10px;
-    background:var(--soft); color:#1b2640; font-size:1rem; outline:none; box-shadow: inset 0 1px 8px rgba(23,33,51,.06);
-  }
-  textarea.ctrl{height:auto;min-height:90px;resize:vertical}
-  .ctrl:focus{border-color:#216eff; box-shadow:0 0 0 3px rgba(33,110,255,.18), inset 0 1px 8px rgba(23,33,51,.06); background:#fff}
-  .hint{font-size:.86rem;color:var(--mut);margin-top:6px}
-  .errorlist{list-style:none;margin:6px 0 0;padding:0}
-  .errorlist li{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;padding:8px 10px;border-radius:8px;font-size:.9rem}
-  .alert{
-    background:#fff6e6;border:1px dashed #ffd085;color:#7a4a00;padding:10px 12px;border-radius:10px;margin-bottom:12px;
-    display:flex;gap:8px;align-items:flex-start
-  }
+/* Header */
+.form-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
+  flex-wrap: wrap; gap: 10px;
+}
+.form-title {
+  margin: 0; font-size: 1.5rem; font-weight: 700; color: var(--text-main);
+  display: flex; align-items: center; gap: 12px;
+}
 
-  /* SECTION CARD */
-  .section{
-    background:#f8fbff;border:1px solid #e6efff;border-radius:16px;padding:16px 16px 8px;margin:14px 0;
-  }
-  .section h4{margin:0 0 8px;color:#1b2740;font-size:1.05rem;display:flex;gap:8px;align-items:center}
+/* Grid Responsivo */
+.form-grid { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); 
+  gap: 20px; align-items: start;
+}
+.full-width { grid-column: 1 / -1; }
 
-  /* BUTTON */
-  .actions{display:flex;justify-content:flex-end;margin-top:14px}
-  .btn{
-    background:linear-gradient(90deg,#243049 0%,#172133 100%); color:#fff; border:none; border-radius:10px;
-    height:46px; padding:0 20px; font-weight:800; display:inline-flex; align-items:center; gap:10px; cursor:pointer;
-    box-shadow:0 6px 20px rgba(23,33,51,.18); transition:filter .15s, transform .08s;
-  }
-  .btn:hover{filter:brightness(.96)}
-  .btn:active{transform:translateY(1px)}
+.form-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; width: 100%; }
+.form-group label { font-size: 0.85rem; font-weight: 600; color: var(--text-main); }
+.form-group label.required::after { content: " *"; color: var(--danger); }
+
+/* Inputs */
+.form-control {
+  width: 100%; height: var(--input-height); padding: 0 12px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 0.95rem; background: #fff; transition: border-color 0.2s;
+}
+.form-control:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+textarea.form-control { height: auto; min-height: 100px; padding: 12px; resize: vertical; }
+
+/* Select2 Custom */
+.select2-container { width: 100% !important; max-width: 100%; min-width: 0; }
+.select2-container .select2-selection--single {
+  height: var(--input-height) !important; border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important; display: flex !important; align-items: center !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__arrow { top: 8px !important; }
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  color: var(--text-main) !important; padding-left: 12px !important;
+}
+
+/* Utils */
+.error-msg { font-size: 0.8rem; color: var(--danger); margin-top: 4px; font-weight: 600; }
+.alert-box {
+  background: #fef2f2; color: #991b1b; border: 1px solid #fecaca;
+  padding: 12px; border-radius: var(--radius); margin-bottom: 20px;
+  display: flex; gap: 10px; align-items: center; font-weight: 500;
+}
+
+/* Actions */
+.form-actions {
+  margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border);
+  display: flex; justify-content: flex-end; gap: 12px; flex-wrap: wrap;
+}
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 24px;
+  height: var(--input-height); border-radius: var(--radius);
+  font-size: 0.9rem; font-weight: 600; text-decoration: none;
+  cursor: pointer; border: 1px solid transparent; transition: all 0.2s; white-space: nowrap;
+}
+.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
+.btn-secondary { background: #fff; border-color: var(--border); color: var(--text-main); }
+.btn-secondary:hover { background: #f1f5f9; }
 </style>
 
-<div class="wrap">
-  <div class="title">
-    <i class="fa {% if form.instance.pk %}fa-pen-to-square{% else %}fa-plus-circle{% endif %} fa-lg"></i>
-    <h2>{% if form.instance.pk %}Editar Lote de Licenças{% else %}Novo Lote de Licenças{% endif %}</h2>
-  </div>
-
-  {% if form.non_field_errors %}
-    <div class="alert"><i class="fa fa-triangle-exclamation"></i>
-      <div>
-        <strong>Revise os dados:</strong>
-        <ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>
-      </div>
+<div class="page-container">
+  <div class="form-card">
+    
+    <div class="form-header">
+      <h2 class="form-title">
+        <i class="fa fa-boxes-stacked" style="color:var(--primary)"></i>
+        {% if obj %}Editar Lote{% else %}Novo Lote de Licenças{% endif %}
+      </h2>
+      <a href="{% url 'licenca_lote_list' %}" class="btn btn-secondary">
+        <i class="fa fa-arrow-left"></i> Voltar
+      </a>
     </div>
-  {% endif %}
 
-  <form method="post" enctype="multipart/form-data" id="loteForm">
-    {% csrf_token %}
+    {% if form.errors %}
+      <div class="alert-box">
+        <i class="fa fa-circle-exclamation"></i>
+        <div>Existem erros no preenchimento. Verifique abaixo.</div>
+      </div>
+    {% endif %}
 
-    <div class="section">
-      <h4><i class="fa fa-box"></i> Dados do lote</h4>
+    <form method="post" novalidate autocomplete="off">
+      {% csrf_token %}
 
-      <div class="grid">
-        {# Renderização genérica: não alteramos nomes/campos #}
-        {% for field in form.visible_fields %}
-          {# Textarea ocupa a linha inteira como no seu padrão #}
-          <div class="field {% if field.field.widget.input_type == 'textarea' %}col-12 col-md-12 col-sm-12{% else %}col-4 col-md-6 col-sm-12{% endif %}">
-            <label class="label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field.errors }}
-            {{ field }}
-            {% if field.help_text %}<div class="hint">{{ field.help_text|safe }}</div>{% endif %}
+      <div class="form-grid">
+        
+        <div class="form-group full-width">
+          <label class="required" for="{{ form.licenca.id_for_label }}">Licença Vinculada</label>
+          {{ form.licenca }}
+          {% if form.licenca.errors %}<div class="error-msg">{{ form.licenca.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="form-group">
+          <label class="required" for="{{ form.fornecedor.id_for_label }}">Fornecedor</label>
+          {{ form.fornecedor }}
+          {% if form.fornecedor.errors %}<div class="error-msg">{{ form.fornecedor.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="form-group">
+          <label for="{{ form.centro_custo.id_for_label }}">Centro de Custo</label>
+          {{ form.centro_custo }}
+          {% if form.centro_custo.errors %}<div class="error-msg">{{ form.centro_custo.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="form-group">
+          <label for="{{ form.numero_pedido.id_for_label }}">Nº Pedido / Contrato</label>
+          {{ form.numero_pedido }}
+          {% if form.numero_pedido.errors %}<div class="error-msg">{{ form.numero_pedido.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="form-group">
+          <label for="{{ form.data_compra.id_for_label }}">Data de Compra</label>
+          {{ form.data_compra }}
+          {% if form.data_compra.errors %}<div class="error-msg">{{ form.data_compra.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="form-group">
+          <label class="required" for="{{ form.quantidade_total.id_for_label }}">Quantidade Comprada</label>
+          {{ form.quantidade_total }}
+          <div style="font-size:0.75rem; color:#64748b; margin-top:2px">
+            {% if obj %}O saldo será recalculado com base na alteração.{% else %}Saldo inicial será igual ao total.{% endif %}
           </div>
-        {% endfor %}
-      </div>
-    </div>
+          {% if form.quantidade_total.errors %}<div class="error-msg">{{ form.quantidade_total.errors.0 }}</div>{% endif %}
+        </div>
 
-    <div class="actions">
-      <button class="btn" type="submit">
-        <i class="fa fa-save"></i> {% if form.instance.pk %}Atualizar{% else %}Salvar{% endif %}
-      </button>
-    </div>
-  </form>
+        <div class="form-group">
+          <label class="required" for="{{ form.periodicidade.id_for_label }}">Periodicidade</label>
+          {{ form.periodicidade }}
+          {% if form.periodicidade.errors %}<div class="error-msg">{{ form.periodicidade.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="form-group">
+          <label for="{{ form.custo_ciclo.id_for_label }}">Custo Total do Lote (R$)</label>
+          {{ form.custo_ciclo }}
+          {% if form.custo_ciclo.errors %}<div class="error-msg">{{ form.custo_ciclo.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="form-group full-width">
+          <label for="{{ form.observacao.id_for_label }}">Observações</label>
+          {{ form.observacao }}
+          {% if form.observacao.errors %}<div class="error-msg">{{ form.observacao.errors.0 }}</div>{% endif %}
+        </div>
+
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">
+          <i class="fa fa-save"></i> {% if obj %}Salvar Alterações{% else %}Cadastrar Lote{% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <script>
-  (function(){
-    // aplica a classe .ctrl a todos os widgets (igual ao cadastrar_equipamento)
-    document.querySelectorAll('.wrap select, .wrap input, .wrap textarea')
-      .forEach(el => el.classList.add('ctrl'));
-  })();
+$(document).ready(function() {
+    // Inicializa Select2
+    $('select').select2({
+        width: '100%',
+        placeholder: "Selecione...",
+        allowClear: true,
+        language: "pt-BR"
+    });
+});
 </script>
 {% endblock %}

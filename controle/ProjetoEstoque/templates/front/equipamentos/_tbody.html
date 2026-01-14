@@ -1,22 +1,48 @@
-{# Corpo da tabela (tbody) #}
-{% for equipamento in equipamentos %}
-<tr class="clickable" data-href="{% url 'equipamento_detalhe' equipamento.id %}">
-  <td class="sticky" style="left:0">{{ forloop.counter0|add:row_start }}</td>
-  <td title="{{ equipamento.nome|default:'-' }}">{{ equipamento.nome|default:"-" }}</td>
-  <td>{% if equipamento.subtipo %}{{ equipamento.subtipo.nome }}{% else %}-{% endif %}</td>
-  <td>
-    <span class="status {{ equipamento.status|lower }}" title="{{ equipamento.get_status_display|default:equipamento.status|capfirst }}">
-      {{ equipamento.get_status_display|default:equipamento.status|capfirst }}
-    </span>
+{% load humanize %}
+
+{% for eq in equipamentos %}
+<tr class="clickable" data-href="{% url 'equipamento_detalhe' eq.id %}" style="cursor:pointer; transition:background 0.15s;">
+  <td style="font-weight:600; color:#94a3b8;">{{ forloop.counter0|add:row_start }}</td>
+  
+  <td style="font-weight:600; color:var(--text-main);">
+    {{ eq.nome|default:"-" }}
   </td>
-  <td>{% if equipamento.localidade %}{{ equipamento.localidade.local }}{% else %}-{% endif %}</td>
-  <td>{{ equipamento.numero_serie|default:"-" }}</td>
-  <td>{% if equipamento.fornecedor %}{{ equipamento.fornecedor.nome }}{% else %}-{% endif %}</td>
-  <td class="td-acoes">
-    <a class="icon-btn view" title="Visualizar" href="{% url 'equipamento_detalhe' equipamento.id %}"><i class="fa fa-eye"></i></a>
-    <button class="icon-btn delete" title="Excluir" onclick="openDeleteModal('{{ equipamento.id }}','{{ equipamento.nome|escapejs }}')"><i class="fa fa-trash"></i></button>
+  
+  <td style="color:var(--text-muted);">
+    {% if eq.subtipo %}{{ eq.subtipo.nome }}{% else %}-{% endif %}
+  </td>
+  
+  <td>
+    {% with s=eq.status|lower %}
+    <span class="badge st-{{ s }}">
+      {{ eq.get_status_display|default:eq.status|capfirst }}
+    </span>
+    {% endwith %}
+  </td>
+  
+  <td>{% if eq.localidade %}{{ eq.localidade.local }}{% else %}-{% endif %}</td>
+  
+  <td style="font-family:'Courier New', monospace; font-size:0.85rem; letter-spacing:-0.5px;">
+    {{ eq.numero_serie|default:"-" }}
+  </td>
+  
+  <td>{% if eq.fornecedor %}{{ eq.fornecedor.nome|truncatechars:20 }}{% else %}-{% endif %}</td>
+  
+  <td style="text-align:right;">
+    <a href="{% url 'equipamento_detalhe' eq.id %}" class="btn-outline" style="border:none; padding:6px 10px; color:var(--text-muted); display:inline-block;" title="Ver Detalhes">
+      <i class="fa fa-eye"></i>
+    </a>
+    <button type="button" style="background:none; border:none; color:#ef4444; cursor:pointer; padding:6px 10px;" title="Excluir" onclick="event.stopPropagation(); openDeleteModal('{{ eq.id }}','{{ eq.nome|escapejs }}')">
+      <i class="fa fa-trash-can"></i>
+    </button>
   </td>
 </tr>
 {% empty %}
-<tr><td colspan="8" style="text-align:center;color:#64748b;padding:18px">Nenhum equipamento encontrado.</td></tr>
+<tr>
+  <td colspan="8" style="padding:48px 0; text-align:center;">
+    <div style="color:#e2e8f0; font-size:3rem; margin-bottom:12px;"><i class="fa fa-folder-open"></i></div>
+    <h3 style="margin:0; font-size:1rem; color:var(--text-main);">Nenhum ativo encontrado</h3>
+    <p style="color:var(--text-muted); font-size:0.85rem; margin-top:4px;">Tente ajustar os filtros.</p>
+  </td>
+</tr>
 {% endfor %}

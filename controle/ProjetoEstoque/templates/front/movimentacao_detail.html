@@ -1,308 +1,281 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static humanize %}
 
-{% block title %}Detalhes da Movimentação{% endblock %}
+{% block title %}Detalhe da Movimentação #{{ mov.pk }}{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 
 <style>
-:root{
-  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
-  --shadow:0 8px 20px rgba(2,6,23,.05);
-  --rad:12px;
-}
-*{box-sizing:border-box}
-a{text-decoration:none}
-.page{max-width:1080px;margin:16px auto;padding:0 14px;color:var(--ink);
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial}
+  /* --- Microsoft Fluent Design System --- */
+  :root {
+    --bg-app: #faf9f8;
+    --bg-surface: #ffffff;
+    --primary: #0078d4;
+    --text-main: #242424;
+    --text-sub: #605e5c;
+    --border: #edebe9;
+    --radius: 6px;
+    --shadow-card: 0 1.6px 3.6px 0 rgba(0,0,0,0.132), 0 0.3px 0.9px 0 rgba(0,0,0,0.108);
+  }
 
-/* Cabeçalho existente */
-.breadcrumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-weight:600;margin-bottom:8px}
-.breadcrumb a{color:var(--muted)}
-.head{display:flex;align-items:center;gap:12px;margin:6px 0 10px;flex-wrap:wrap}
-.head h1{margin:0;font-size:1.45rem;display:flex;align-items:center;gap:10px}
-.chips{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
-.chip{
-  padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#fff;
-  font-weight:700;font-size:.82rem;display:inline-flex;gap:8px;align-items:center;color:#111827
-}
+  body { background-color: var(--bg-app); font-family: 'Segoe UI', 'Inter', sans-serif; color: var(--text-main); font-size: 14px; }
+  .app-container { max-width: 1200px; margin: 0 auto; padding: 24px; }
 
-/* Barra resumo – neutra */
-.summary{
-  position:sticky;top:72px;
-  background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);
-  display:grid;grid-template-columns:1.1fr .9fr .6fr auto;gap:10px;align-items:center;
-  padding:10px 12px;margin-bottom:12px;z-index:2}
-@media (max-width:900px){ .summary{grid-template-columns:1fr 1fr} }
-.summary .kv{display:flex;gap:10px;align-items:center;min-width:0}
-.summary .kv i{color:#64748b}
-.summary .kv-label{color:#6b7280;font-weight:700;font-size:.84rem}
-.summary .kv-value{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.summary .actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
-.btn{border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:#fff;cursor:pointer;font-weight:700}
-.btn:hover{background:var(--soft)}
+  /* Header */
+  .top-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .breadcrumb { font-size: 13px; color: var(--text-sub); margin-bottom: 8px; }
+  .breadcrumb a { color: var(--text-sub); text-decoration: none; }
+  .breadcrumb a:hover { color: var(--primary); text-decoration: underline; }
+  
+  .page-title { margin: 0; font-size: 24px; font-weight: 600; color: var(--text-main); display: flex; align-items: center; gap: 12px; }
+  .id-badge { background: #eff6fc; color: var(--primary); font-size: 14px; padding: 2px 10px; border-radius: 12px; font-family: monospace; }
 
-/* Painel e seções – look corporativo enxuto */
-.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--rad)}
-.section{padding:16px 16px 12px}
-.section h3{margin:0 0 12px;display:flex;align-items:center;gap:8px;font-size:1.02rem;font-weight:800}
-.grid{display:grid;gap:10px}
-.g-3{grid-template-columns:repeat(3,minmax(240px,1fr))}
-.g-2{grid-template-columns:repeat(2,minmax(280px,1fr))}
-@media (max-width:900px){.g-3,.g-2{grid-template-columns:1fr}}
+  .actions { display: flex; gap: 10px; }
+  .btn {
+    height: 36px; padding: 0 16px; border-radius: 4px; font-weight: 600; font-size: 14px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px; text-decoration: none; border: 1px solid transparent; transition: all 0.1s;
+  }
+  .btn-std { background: #fff; border-color: #8a8886; color: var(--text-main); }
+  .btn-std:hover { background: #f3f2f1; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: #106ebe; }
 
-/* “Cards” viram blocos discretos */
-.tile{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px}
-.tile strong{display:block;color:#111827;margin-bottom:6px;font-size:.92rem}
-.tile span{color:#111827;word-break:break-word}
-.muted{color:#6b7280}
+  /* Grid Layout */
+  .grid-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+  @media(max-width: 900px) { .grid-layout { grid-template-columns: 1fr; } }
 
-/* PDF */
-.pdf-wrap{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
-.pdf-frame{width:100%;height:460px;border:1px solid var(--line);border-radius:10px;background:#fff}
+  /* Cards */
+  .card {
+    background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-card); padding: 20px; margin-bottom: 24px;
+  }
+  .card-title { font-size: 16px; font-weight: 600; color: var(--text-main); margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
 
-/* Auditoria */
-.audit{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(240px,1fr))}
-@media (max-width:900px){.audit{grid-template-columns:1fr}}
+  /* Info Tiles */
+  .info-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px; margin-bottom: 16px; }
+  .info-item label { display: block; font-size: 12px; font-weight: 600; color: var(--text-sub); margin-bottom: 4px; }
+  .info-item .value { font-size: 15px; color: var(--text-main); font-weight: 500; }
+  
+  .user-badge { display: flex; align-items: center; gap: 8px; }
+  .user-avatar { width: 28px; height: 28px; background: #e0e7ff; color: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; }
 
-/* Rodapé */
-.footer-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-.badge-info{display:inline-flex;gap:8px;align-items:center;padding:4px 8px;border-radius:999px;border:1px solid var(--line);font-weight:800}
+  /* Flow Component */
+  .flow-viz { display: flex; align-items: stretch; background: #faf9f8; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .flow-step { flex: 1; padding: 16px; }
+  .flow-arrow { width: 40px; display: flex; align-items: center; justify-content: center; background: #fff; border-left: 1px solid var(--border); border-right: 1px solid var(--border); color: var(--text-sub); }
+  .flow-label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-sub); margin-bottom: 8px; }
+  .flow-data { font-weight: 600; font-size: 14px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .flow-detail { font-size: 12px; color: var(--text-sub); padding-left: 24px; }
+
+  /* Status Pills */
+  .pill { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .st-green { background: #dff6dd; color: #107c10; }
+  .st-blue { background: #cfe4fa; color: #005a9e; }
+  .st-orange { background: #ffedd5; color: #c2410c; }
+  .st-red { background: #fde7e9; color: #a80000; }
+  .st-gray { background: #f3f2f1; color: #605e5c; }
+
+  /* Documents */
+  .doc-box { display: flex; align-items: center; justify-content: space-between; background: #f3f2f1; padding: 12px; border-radius: 4px; border: 1px solid var(--border); }
+  .doc-info { display: flex; align-items: center; gap: 12px; }
 </style>
 
-<div class="page">
-  <!-- Breadcrumb -->
-  <nav class="breadcrumb" aria-label="Navegação">
-    <a href="{% url 'movimentacao_list' %}"><i class="fa fa-arrow-left"></i> Movimentações</a>
-    <span>/</span><span>Detalhe</span>
-    {% if movimentacao and movimentacao.pk %}
-      <span class="badge-info"><i class="fa fa-hashtag"></i>&nbsp;{{ movimentacao.pk }}</span>
-    {% endif %}
-  </nav>
-
-  <!-- Header -->
-  <div class="head">
-    <h1><i class="fa fa-clipboard-list"></i> Detalhes da Movimentação</h1>
-    <div class="chips">
-      {% if movimentacao and movimentacao.tipo_movimentacao %}
-        <span class="chip">
-          <i class="fa fa-shuffle"></i>
-          {{ movimentacao.get_tipo_movimentacao_display|default:movimentacao.tipo_movimentacao|capfirst }}
-        </span>
-      {% endif %}
-      {% if movimentacao and movimentacao.tipo_transferencia %}
-        <span class="chip">
-          <i class="fa fa-person-arrow-right"></i>
-          {{ movimentacao.get_tipo_transferencia_display|default:movimentacao.tipo_transferencia|capfirst }}
-        </span>
-      {% endif %}
-      {% if movimentacao and movimentacao.chamado %}
-        <span class="chip"><i class="fa fa-ticket"></i> Chamado: {{ movimentacao.chamado }}</span>
-      {% endif %}
-    </div>
+<div class="app-container">
+  
+  <div class="breadcrumb">
+    <a href="{% url 'movimentacao_list' %}">Movimentações</a> / Detalhes
   </div>
 
-  <!-- Summary sticky -->
-  <div class="summary">
-    <div class="kv">
-      <i class="fa fa-box"></i>
-      <div>
-        <div class="kv-label">Item</div>
-        <div class="kv-value">
-          {% if movimentacao and movimentacao.item %}
-            {{ movimentacao.item.nome|default:"-" }}
-            {% if movimentacao.item.numero_serie %}
-              <span class="muted"> · {{ movimentacao.item.numero_serie }}</span>
-            {% endif %}
-          {% else %}-{% endif %}
-        </div>
-      </div>
-    </div>
-    <div class="kv">
-      <i class="fa fa-user"></i>
-      <div>
-        <div class="kv-label">Usuário</div>
-        <div class="kv-value">
-          {% if movimentacao and movimentacao.usuario %}
-            {{ movimentacao.usuario.nome|default:"—" }}
-          {% else %}—{% endif %}
-        </div>
-      </div>
-    </div>
-    <div class="kv">
-      <i class="fa fa-calendar-days"></i>
-      <div>
-        <div class="kv-label">Registrada</div>
-        <div class="kv-value">
-          {% if movimentacao and movimentacao.created_at %}
-            {{ movimentacao.created_at|date:"d/m/Y H:i" }}
-          {% else %}—{% endif %}
-        </div>
+  <div class="top-header">
+    <div>
+      <h1 class="page-title">
+        Movimentação <span class="id-badge">#{{ mov.pk }}</span>
+      </h1>
+      <div style="margin-top: 8px; display: flex; gap: 10px; align-items: center;">
+        <span class="pill {{ impacto.class }}">{{ impacto.texto }}</span>
+        <span style="font-size: 12px; color: var(--text-sub);">
+          <i class="fa fa-calendar"></i> {{ mov.created_at|date:"d/m/Y H:i" }}
+        </span>
       </div>
     </div>
     <div class="actions">
-      <button class="btn" type="button" id="btnCopy"><i class="fa fa-link"></i>&nbsp;Copiar link</button>
+      {% if mov.termo_pdf %}
+        <a href="{{ mov.termo_pdf.url }}" target="_blank" class="btn btn-std"><i class="fa fa-print"></i> Imprimir Termo</a>
+      {% endif %}
+      <a href="{% url 'movimentacao_list' %}" class="btn btn-primary">Voltar</a>
     </div>
   </div>
 
-  <div class="panel">
-    <!-- Principais -->
-    <div class="section">
-      <h3><i class="fa fa-circle-info"></i> Informações principais</h3>
-      <div class="grid g-3">
-        <div class="tile">
-          <strong>Item</strong>
-          <span>
-            {% if movimentacao and movimentacao.item %}
-              {{ movimentacao.item.nome|default:"-" }}
-              {% if movimentacao.item.numero_serie %}
-                <span class="muted"> — Nº Série: {{ movimentacao.item.numero_serie }}</span>
+  <div class="grid-layout">
+    
+    <div>
+      
+      <div class="card">
+        <div class="card-title">Dados da Operação</div>
+        <div class="info-row">
+          <div class="info-item">
+            <label>Item</label>
+            <div class="value" style="color:var(--primary);">
+              <a href="{% url 'equipamento_detalhe' mov.item.pk %}" style="text-decoration:none; color:inherit;">
+                {{ mov.item.nome }}
+              </a>
+            </div>
+            <div style="font-size:12px; color:var(--text-sub);">S/N: {{ mov.item.numero_serie|default:"-" }}</div>
+          </div>
+          
+          <div class="info-item">
+            <label>Tipo</label>
+            <div class="value">
+              {{ mov.get_tipo_movimentacao_display }}
+              {% if mov.tipo_transferencia %}
+                <span style="font-weight:400; font-size:13px;">({{ mov.get_tipo_transferencia_display }})</span>
               {% endif %}
-            {% else %}-{% endif %}
-          </span>
-        </div>
-        <div class="tile">
-          <strong>Usuário</strong>
-          <span>
-            {% if movimentacao and movimentacao.usuario %}
-              {{ movimentacao.usuario.nome|default:"—" }}
-            {% else %}—{% endif %}
-          </span>
-        </div>
-        <div class="tile">
-          <strong>Quantidade</strong>
-          <span>
-            {% if movimentacao and movimentacao.quantidade %}
-              {{ movimentacao.quantidade }}
-            {% else %}1{% endif %}
-          </span>
+            </div>
+          </div>
+
+          <div class="info-item">
+            <label>Usuário Responsável</label>
+            <div class="value">
+              {% if mov.usuario %}
+                <div class="user-badge">
+                  <div class="user-avatar">{{ mov.usuario.nome|slice:":1" }}</div>
+                  {{ mov.usuario.nome }}
+                </div>
+              {% else %}
+                <span style="color:#ccc;">—</span>
+              {% endif %}
+            </div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Origem/Destino (SEM fallback para item.*) -->
-    <div class="section">
-      <h3><i class="fa fa-route"></i> Origem e destino</h3>
-      <div class="grid g-3">
-        <div class="tile">
-          <strong>Localidade Origem</strong>
-          <span>{{ origem_localidade|default:"—" }}</span>
-        </div>
-        <div class="tile">
-          <strong>Centro de Custo Origem</strong>
-          <span>
-            {% if origem_cc_num or origem_cc_dep %}
-              {{ origem_cc_num|default:"" }}{% if origem_cc_num and origem_cc_dep %} — {% endif %}{{ origem_cc_dep|default:"" }}
-            {% else %}—{% endif %}
-          </span>
-        </div>
-        <div class="tile">
-          <strong>Localidade Destino</strong>
-          <span>{{ dest_localidade|default:"—" }}</span>
-        </div>
-        <div class="tile">
-          <strong>Centro de Custo Destino</strong>
-          <span>
-            {% if dest_cc_num or dest_cc_dep %}
-              {{ dest_cc_num|default:"" }}{% if dest_cc_num and dest_cc_dep %} — {% endif %}{{ dest_cc_dep|default:"" }}
-            {% else %}—{% endif %}
-          </span>
-        </div>
-        <div class="tile">
-          <strong>Status do Item (após)</strong>
-          <span>{{ status_pos|default:"—" }}</span>
-        </div>
-        <div class="tile">
-          <strong>Efeito no Estoque</strong>
-          <span class="muted">{{ efeito_estoque }}</span>
+      <div class="card">
+        <div class="card-title">Fluxo de Movimentação</div>
+        <div class="flow-viz">
+          <div class="flow-step">
+            <div class="flow-label">Origem</div>
+            <div class="flow-data">
+              <i class="fa fa-map-marker-alt" style="color:#9ca3af; width:16px;"></i> 
+              {{ origem.loc }}
+            </div>
+            <div class="flow-detail">{{ origem.cc }}</div>
+          </div>
+
+          <div class="flow-arrow">
+            <i class="fa fa-arrow-right"></i>
+          </div>
+
+          <div class="flow-step" style="background:#fff;">
+            <div class="flow-label" style="color:var(--primary);">Destino</div>
+            <div class="flow-data">
+              <i class="fa fa-map-marker-alt" style="color:var(--primary); width:16px;"></i> 
+              {{ destino.loc }}
+            </div>
+            <div class="flow-detail">{{ destino.cc }}</div>
+            
+            {% if mov.fornecedor_manutencao %}
+              <div style="margin-top:8px; font-size:12px; color:#c2410c; font-weight:600;">
+                <i class="fa fa-truck"></i> {{ mov.fornecedor_manutencao.nome }}
+              </div>
+            {% endif %}
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Financeiro / Observações -->
-    <div class="section">
-      <h3><i class="fa fa-file-pen"></i> Financeiro e observações</h3>
-      <div class="grid g-2">
-        <div class="tile">
-          <strong>Chamado</strong>
-          <span>{% if movimentacao and movimentacao.chamado %}{{ movimentacao.chamado }}{% else %}—{% endif %}</span>
+      <div class="card">
+        <div class="card-title">Informações Adicionais</div>
+        <div class="info-row">
+          <div class="info-item" style="flex:2;">
+            <label>Observações</label>
+            <div style="font-size:14px; line-height:1.5; color:#333; background:#f9f9f9; padding:10px; border-radius:4px;">
+              {{ mov.observacao|default:"Nenhuma observação registrada."|linebreaksbr }}
+            </div>
+          </div>
+          <div class="info-item">
+            <label>Status do Item (Atual)</label>
+            <div class="value">{{ status_final }}</div>
+          </div>
         </div>
-        <div class="tile">
-          <strong>Custo</strong>
-          <span>
-            {% if movimentacao and movimentacao.custo %}
-              R$ {{ movimentacao.custo|floatformat:2 }}
-            {% else %}—{% endif %}
-          </span>
-        </div>
-        <div class="tile" style="grid-column:1/-1">
-          <strong>Observações</strong>
-          <span>{% if movimentacao and movimentacao.observacao %}{{ movimentacao.observacao }}{% else %}Sem observações{% endif %}</span>
+        
+        <div class="info-row" style="margin-top:16px; border-top:1px solid var(--border); padding-top:16px;">
+          <div class="info-item">
+            <label>Custo</label>
+            <div class="value">{% if mov.custo %}R$ {{ mov.custo|floatformat:2 }}{% else %}—{% endif %}</div>
+          </div>
+          <div class="info-item">
+            <label>Nº Pedido</label>
+            <div class="value">{{ mov.numero_pedido|default:"—" }}</div>
+          </div>
+          <div class="info-item">
+            <label>Chamado</label>
+            <div class="value">{{ mov.chamado|default:"—" }}</div>
+          </div>
         </div>
       </div>
+
     </div>
 
-    <!-- Documento -->
-    {% if movimentacao and movimentacao.termo_pdf %}
-    <div class="section">
-      <h3><i class="fa fa-file-pdf"></i> Termo (PDF)</h3>
-      <div class="pdf-wrap">
-        <a href="{{ movimentacao.termo_pdf.url }}" target="_blank" class="btn">
-          <i class="fa fa-up-right-from-square"></i>&nbsp;Abrir em nova aba
-        </a>
-        <a href="{{ movimentacao.termo_pdf.url }}" download class="btn">
-          <i class="fa fa-download"></i>&nbsp;Baixar PDF
-        </a>
-      </div>
-      <object data="{{ movimentacao.termo_pdf.url }}#view=FitH" type="application/pdf" class="pdf-frame">
-        <embed src="{{ movimentacao.termo_pdf.url }}" type="application/pdf" class="pdf-frame"/>
-        <p class="muted" style="padding:8px">
-          Seu navegador não consegue exibir PDF embutido.
-          <a href="{{ movimentacao.termo_pdf.url }}" target="_blank">Clique aqui para abrir</a>.
-        </p>
-      </object>
-    </div>
-    {% endif %}
-
-    <!-- Auditoria -->
-    <div class="section">
-      <h3><i class="fa fa-user-shield"></i> Auditoria</h3>
-      <div class="audit">
-        <div class="tile">
-          <strong>Criado por</strong>
-          <span>
-            {% if movimentacao and movimentacao.criado_por %}{{ movimentacao.criado_por.username|default:"—" }}{% else %}—{% endif %}
-            · {% if movimentacao and movimentacao.created_at %}{{ movimentacao.created_at|date:"d/m/Y H:i" }}{% else %}—{% endif %}
-          </span>
+    <div>
+      
+      <div class="card">
+        <div class="card-title">Contexto do Item</div>
+        <div class="info-item" style="margin-bottom:12px;">
+          <label>Total de Movimentações</label>
+          <div class="value" style="font-size:20px;">{{ stats.total_movs }}</div>
         </div>
-        <div class="tile">
-          <strong>Atualizado por</strong>
-          <span>
-            {% if movimentacao and movimentacao.atualizado_por %}{{ movimentacao.atualizado_por.username|default:"—" }}{% else %}—{% endif %}
-            · {% if movimentacao and movimentacao.updated_at %}{{ movimentacao.updated_at|date:"d/m/Y H:i" }}{% else %}—{% endif %}
-          </span>
+        <div class="info-item">
+          <label>Última Movimentação (Antes desta)</label>
+          <div class="value" style="font-size:13px; color:var(--text-sub);">
+            {% if stats.ultima_data %}
+              {{ stats.ultima_data|date:"d/m/Y H:i" }}
+            {% else %}
+              Primeiro registro
+            {% endif %}
+          </div>
         </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Rodapé -->
-  <div class="footer-actions">
-    <a href="{% url 'movimentacao_list' %}" class="btn"><i class="fa fa-arrow-left"></i>&nbsp;Voltar</a>
+      {% if mov.termo_pdf %}
+      <div class="card">
+        <div class="card-title">Documentação</div>
+        <div class="doc-box">
+          <div class="doc-info">
+            <i class="fa fa-file-pdf fa-2x" style="color:#d32f2f;"></i>
+            <div style="font-size:13px;">
+              <div style="font-weight:600;">Termo Assinado</div>
+              <div style="color:var(--text-sub);">PDF</div>
+            </div>
+          </div>
+          <a href="{{ mov.termo_pdf.url }}" target="_blank" class="btn btn-std" style="height:32px; font-size:12px;">
+            <i class="fa fa-download"></i>
+          </a>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="card">
+        <div class="card-title">Auditoria</div>
+        <div style="font-size:12px; color:var(--text-sub); line-height:1.6;">
+          <div>
+            <strong>Registrado por:</strong><br>
+            {{ mov.criado_por.username|default:"Sistema" }}
+          </div>
+          <div style="margin-top:8px;">
+            <strong>Data:</strong><br>
+            {{ mov.created_at|date:"d/m/Y H:i:s" }}
+          </div>
+          {% if mov.updated_at != mov.created_at %}
+            <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:8px;">
+              <strong>Atualizado em:</strong><br>
+              {{ mov.updated_at|date:"d/m/Y H:i:s" }}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+
   </div>
 </div>
-
-<script>
-  // Copiar link da página
-  document.getElementById('btnCopy')?.addEventListener('click', async () => {
-    try{
-      await navigator.clipboard.writeText(location.href);
-      const el = document.getElementById('btnCopy');
-      const old = el.innerHTML;
-      el.innerHTML = '<i class="fa fa-check"></i>&nbsp;Copiado!';
-      setTimeout(()=> el.innerHTML = old, 1600);
-    }catch(e){ alert('Não foi possível copiar o link.'); }
-  });
-</script>
 {% endblock %}

@@ -1,46 +1,276 @@
 {% extends 'base.html' %}
-{% block title %}Detalhe do Fornecedor{% endblock %}
+{% load static humanize %}
+
+{% block title %}Fornecedor: {{ obj.nome }}{% endblock %}
+
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 
 <style>
-:root{--line:#e5e7eb;--ink:#172133;--card:#fff;--soft:#f8fafc;--shadow:0 20px 40px rgba(2,6,23,.07)}
-*{box-sizing:border-box}
-.wrap{max-width:900px;margin:22px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:22px}
-.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
-.grid{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
-.card{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px}
-.label{font-weight:800;color:#334155;margin-bottom:6px}
-.value{color:#0f172a}
-.meta{margin-top:6px;color:#475569;font-size:.95rem}
-.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
-.btn-secondary{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
-.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
-.contract-box{white-space:pre-wrap;background:#fff;border:1px dashed #dbe6f1;border-radius:10px;padding:12px;color:#172133}
+/* --- Enterprise Theme Styles --- */
+:root {
+  --bg-app: #f3f4f6;
+  --bg-card: #ffffff;
+  --primary: #0078d4; /* Azul Microsoft */
+  --primary-hover: #106ebe;
+  --text-main: #242424;
+  --text-sub: #616161;
+  --border: #e0e0e0;
+  --shadow-card: 0 2px 4px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04);
+  --radius: 8px;
+}
+
+body { background-color: var(--bg-app); font-family: 'Inter', sans-serif; color: var(--text-main); font-size: 14px; }
+.app-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+/* 1. Header */
+.page-header {
+  display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;
+  background: var(--bg-card); padding: 20px 24px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow-card);
+}
+.header-main { display: flex; gap: 16px; align-items: center; }
+.header-icon {
+  width: 56px; height: 56px; background: #e0f2fe; color: var(--primary); border-radius: 12px;
+  display: flex; align-items: center; justify-content: center; font-size: 24px;
+}
+.header-info h1 { margin: 0; font-size: 20px; font-weight: 700; color: var(--text-main); }
+.header-meta { margin-top: 4px; color: var(--text-sub); display: flex; align-items: center; gap: 12px; font-size: 14px; font-family: 'Consolas', monospace; }
+
+.btn {
+  height: 36px; padding: 0 16px; border-radius: 6px; font-weight: 500; font-size: 14px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px; text-decoration: none; transition: all 0.2s; border: 1px solid transparent;
+}
+.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 2px 4px rgba(0,120,212,0.2); }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-white { background: #fff; border-color: var(--border); color: var(--text-main); }
+.btn-white:hover { background: #f9fafb; border-color: #9ca3af; }
+
+/* 2. KPIs */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.kpi-card {
+  background: var(--bg-card); padding: 20px; border-radius: var(--radius); border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; flex-direction: column; justify-content: center; position: relative; overflow: hidden;
+}
+.kpi-val { font-size: 24px; font-weight: 700; color: var(--text-main); z-index: 2; }
+.kpi-label { font-size: 12px; font-weight: 600; color: var(--text-sub); text-transform: uppercase; margin-bottom: 4px; z-index: 2; }
+.kpi-icon-bg { position: absolute; right: 16px; bottom: 16px; font-size: 32px; opacity: 0.1; z-index: 1; }
+
+/* Cores KPI */
+.kpi-blue { border-left: 4px solid var(--primary); }
+.kpi-green { border-left: 4px solid #10b981; }
+.kpi-orange { border-left: 4px solid #f59e0b; }
+
+/* 3. Main Content Grid */
+.main-grid { display: grid; grid-template-columns: 350px 1fr; gap: 24px; }
+@media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+
+/* Cards Genéricos */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-card); overflow: hidden; display: flex; flex-direction: column; height: 100%;
+}
+.card-header {
+  padding: 16px 20px; border-bottom: 1px solid var(--border); background: #fcfcfc;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.card-title { font-weight: 700; color: var(--text-main); font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.card-body { padding: 20px; }
+
+/* Detalhes List */
+.detail-item { margin-bottom: 16px; }
+.detail-item label { display: block; font-size: 12px; color: var(--text-sub); font-weight: 600; margin-bottom: 4px; }
+.detail-item .value { font-size: 14px; color: var(--text-main); }
+
+/* Contrato Box */
+.contract-box {
+  background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 12px;
+  font-family: 'Consolas', monospace; font-size: 13px; color: #334155; white-space: pre-wrap; margin-top: 8px;
+}
+
+/* Auditoria */
+.audit-info { font-size: 12px; color: #9ca3af; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); line-height: 1.5; }
+
+/* Tabela */
+.table-filter { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; background: #fff; }
+.search-input {
+  flex: 1; height: 36px; padding: 0 12px 0 32px; border: 1px solid var(--border); border-radius: 6px;
+  font-size: 13px; outline: none; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%239ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>') no-repeat 10px center;
+}
+.table-responsive { overflow-x: auto; width: 100%; }
+table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+thead th { background: #f9fafb; color: var(--text-sub); font-size: 12px; font-weight: 600; text-transform: uppercase; padding: 12px 20px; text-align: left; border-bottom: 1px solid var(--border); }
+tbody td { padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text-main); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #fcfcfc; }
+
+/* Badges de Status */
+.badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.bg-locado { background: #eef2ff; color: var(--primary); border: 1px solid #c7d2fe; }
+.bg-proprio { background: #f3f4f6; color: var(--text-sub); border: 1px solid #e5e7eb; }
+
 </style>
 
-<div class="wrap">
+<div class="app-container">
 
-    <h2 style="color: #0f172a;"><i class="fa fa-truck"></i> Detalhe do Fornecedor</h2>
-    <div style="display:flex;gap:10px">
-      <a href="{% url 'fornecedor_list' %}" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
+  <div class="page-header">
+    <div class="header-main">
+      <div class="header-icon"><i class="fa fa-truck-fast"></i></div>
+      <div class="header-info">
+        <h1>{{ obj.nome }}</h1>
+        <div class="header-meta">
+          <span>CNPJ: {{ obj.cnpj|default:"Não informado" }}</span>
+          {% if obj.contrato %}
+            <span class="badge bg-locado" style="margin-left:8px;"><i class="fa fa-file-contract"></i> Contrato Ativo</span>
+          {% else %}
+            <span class="badge bg-proprio" style="margin-left:8px;">Sem Contrato</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <a href="{% url 'fornecedor_list' %}" class="btn btn-white"><i class="fa fa-arrow-left"></i> Voltar</a>
       <a href="{% url 'fornecedor_update' obj.pk %}" class="btn btn-primary"><i class="fa fa-pen"></i> Editar</a>
     </div>
+  </div>
 
-  <div class="grid">
-    <div class="card"><div class="label">Nome</div><div class="value">{{ obj.nome }}</div></div>
-    <div class="card"><div class="label">CNPJ</div><div class="value">{{ obj.cnpj|default:"-" }}</div></div>
-    <div class="card" style="grid-column:1/-1">
-      <div class="label">Contrato</div>
-      <div class="contract-box">{{ obj.contrato|default:"(sem contrato)" }}</div>
+  <div class="kpi-grid">
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-label">Custo Mensal (Locação)</div>
+      <div class="kpi-val">R$ {{ kpi.custo_mensal|floatformat:2|intcomma }}</div>
+      <i class="fa fa-file-invoice-dollar kpi-icon-bg"></i>
     </div>
-    <div class="card">
-      <div class="label">Auditoria</div>
-      <div class="meta">Criado por: {{ obj.criado_por|default:"-" }} em {{ obj.created_at|date:"d/m/Y H:i" }}</div>
-      <div class="meta">Atualizado por: {{ obj.atualizado_por|default:"-" }} em {{ obj.updated_at|date:"d/m/Y H:i" }}</div>
+    
+    <div class="kpi-card kpi-orange">
+      <div class="kpi-label">Total de Itens</div>
+      <div class="kpi-val">{{ kpi.total_itens }}</div>
+      <i class="fa fa-boxes-stacked kpi-icon-bg"></i>
+    </div>
+
+    <div class="kpi-card kpi-green">
+      <div class="kpi-label">Itens Locados</div>
+      <div class="kpi-val">{{ kpi.qtd_locados }} <span style="font-size:14px; color:#666; font-weight:400;">/ {{ kpi.total_itens }}</span></div>
+      <i class="fa fa-truck-loading kpi-icon-bg"></i>
     </div>
   </div>
+
+  <div class="main-grid">
+    
+    <div class="card" style="height: fit-content;">
+      <div class="card-header">
+        <div class="card-title"><i class="fa fa-info-circle"></i> Dados Cadastrais</div>
+      </div>
+      <div class="card-body">
+        <div class="detail-item">
+          <label>Razão Social / Nome</label>
+          <div class="value" style="font-weight:600;">{{ obj.nome }}</div>
+        </div>
+        <div class="detail-item">
+          <label>CNPJ</label>
+          <div class="value" style="font-family:'Consolas', monospace;">{{ obj.cnpj|default:"-" }}</div>
+        </div>
+        
+        <div style="border-top:1px solid var(--border); margin:16px 0;"></div>
+        
+        <div class="detail-item">
+          <label>Informações de Contrato</label>
+          {% if obj.contrato %}
+            <div class="contract-box">{{ obj.contrato }}</div>
+          {% else %}
+            <div class="value" style="color:var(--text-sub); font-style:italic;">Nenhum contrato formal registrado.</div>
+          {% endif %}
+        </div>
+
+        <div class="audit-info">
+          <div>Criado por: {{ obj.criado_por|default:"Sistema" }} em {{ obj.created_at|date:"d/m/Y H:i" }}</div>
+          <div>Atualizado em: {{ obj.updated_at|date:"d/m/Y H:i" }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <i class="fa fa-laptop"></i> Ativos Fornecidos
+          <span style="background:#f3f4f6; padding:2px 8px; border-radius:12px; font-size:12px; color:var(--text-sub);">{{ kpi.total_itens }}</span>
+        </div>
+        </div>
+      
+      <div class="table-filter">
+        <input type="text" id="tableSearch" class="search-input" placeholder="Buscar item por nome, série ou centro de custo...">
+      </div>
+
+      <div class="table-responsive">
+        <table id="itensTable">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Nº Série</th>
+              <th>Local Atual</th>
+              <th>Modalidade</th>
+              <th style="text-align:right;">Valor Ref.</th>
+              <th style="text-align:right;">Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in itens_fornecidos %}
+            <tr>
+              <td>
+                <div style="font-weight:600;">{{ item.nome }}</div>
+                <div style="font-size:11px; color:var(--text-sub);">{{ item.subtipo.nome|default:"-" }}</div>
+              </td>
+              <td style="font-family:'Consolas', monospace; color:var(--text-sub);">{{ item.numero_serie|default:"-" }}</td>
+              <td>
+                <div>{{ item.localidade.local|default:"-" }}</div>
+                {% if item.centro_custo %}
+                  <div style="font-size:11px; color:var(--text-sub);">{{ item.centro_custo.departamento }}</div>
+                {% endif %}
+              </td>
+              <td>
+                {% if item.locado == 'sim' %}
+                  <span class="badge bg-locado">Locação</span>
+                {% else %}
+                  <span class="badge bg-proprio">Aquisição</span>
+                {% endif %}
+              </td>
+              <td style="text-align:right; font-family:'Consolas', monospace;">
+                {% if item.locado == 'sim' and item.locacao.valor_mensal %}
+                  R$ {{ item.locacao.valor_mensal|floatformat:2|intcomma }}<small>/mês</small>
+                {% elif item.valor %}
+                  R$ {{ item.valor|floatformat:2|intcomma }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td style="text-align:right;">
+                <a href="{% url 'equipamento_detalhe' item.pk %}" class="btn-white" style="padding:4px 8px; height:28px; border-radius:4px;"><i class="fa fa-eye"></i></a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" style="text-align:center; padding:40px; color:var(--text-sub);">
+                Nenhum ativo registrado para este fornecedor.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
 </div>
+
+<script>
+// Filtro Client-Side Simples
+document.getElementById('tableSearch').addEventListener('keyup', function() {
+    let searchValue = this.value.toLowerCase();
+    let rows = document.querySelectorAll('#itensTable tbody tr');
+
+    rows.forEach(row => {
+        let text = row.innerText.toLowerCase();
+        row.style.display = text.includes(searchValue) ? '' : 'none';
+    });
+});
+</script>
 {% endblock %}

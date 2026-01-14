@@ -1,200 +1,369 @@
 {% extends 'base.html' %}
-{% block title %}Detalhe da Licença{% endblock %}
+{% load static humanize %}
+
+{% block title %}Detalhes: {{ obj.nome }}{% endblock %}
+
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 
 <style>
-:root{--line:#e5e7eb;--ink:#172133;--soft:#f8fafc;--card:#fff;--shadow:0 20px 40px rgba(2,6,23,.07)}
-*{box-sizing:border-box}
-.wrap{max-width:1000px;margin:22px auto;padding:0 14px}
-.header-btns{display:flex;gap:10px;flex-wrap:wrap}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
-.grid{margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
-.box{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:12px}
-.label{font-weight:800;color:#334155;margin-bottom:4px}
-.value{color:#0f172a}
-.badge-pmb{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:800;font-size:.9rem}
-.badge-pmb.sim{background:#e8fff3;color:#15803d}
-.badge-pmb.nao{background:#fee2e2;color:#b91c1c}
-.table{width:100%;border-collapse:collapse;margin-top:8px}
-.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left;color:#0f172a}
-.table tfoot td{font-weight:900;background:#f8fafc}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
-.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
-.btn-blue{background:linear-gradient(90deg,#1d4ed8,#2563eb);color:#fff}
-.btn-secondary{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
-.muted{color:#64748b}
+/* --- Design System Enterprise --- */
+:root {
+  --primary: #4f46e5; 
+  --primary-light: #eef2ff; 
+  --text-main: #0f172a; 
+  --text-muted: #64748b;
+  --border: #e2e8f0; 
+  --bg-body: #f8fafc; 
+  --bg-card: #ffffff;
+  --success: #10b981; 
+  --success-bg: #dcfce7; 
+  --success-text: #166534;
+  --warning: #f59e0b; 
+  --warning-bg: #fef3c7; 
+  --warning-text: #92400e;
+  --danger: #ef4444; 
+  --danger-bg: #fee2e2; 
+  --danger-text: #991b1b;
+  --radius: 8px; 
+  --shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+body { background: var(--bg-body); color: var(--text-main); font-family: 'Inter', system-ui, sans-serif; }
+.page-wrapper { max-width: 1400px; margin: 30px auto; padding: 0 20px; }
+
+/* === HEADER === */
+.detail-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 20px; }
+.header-info h1 { font-size: 1.75rem; font-weight: 700; margin: 0 0 8px 0; color: var(--text-main); }
+.header-meta { display: flex; gap: 16px; font-size: 0.9rem; color: var(--text-muted); align-items: center; flex-wrap: wrap; }
+.meta-item { display: flex; align-items: center; gap: 6px; }
+
+/* === BOTÕES === */
+.btn { height: 40px; padding: 0 20px; border-radius: var(--radius); font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.2s; border: 1px solid transparent; font-size: 0.875rem; cursor: pointer; }
+.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2); }
+.btn-primary:hover { background: #4338ca; }
+.btn-white { background: #fff; border-color: var(--border); color: var(--text-main); }
+.btn-white:hover { background: #f8fafc; border-color: #cbd5e1; }
+.btn-red { background: #ef4444; color: #fff; }
+.btn-red:hover { background: #dc2626; }
+
+/* === KPIs (CARDS) === */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 32px; }
+.kpi-card { background: var(--bg-card); padding: 24px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow); position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
+.kpi-label { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-bottom: 6px; letter-spacing: 0.05em; }
+.kpi-value { font-size: 1.6rem; font-weight: 700; color: var(--text-main); }
+.kpi-sub { font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; }
+.kpi-icon { position: absolute; right: 20px; bottom: 20px; font-size: 2.5rem; opacity: 0.08; color: var(--text-main); }
+
+/* Bordas coloridas para KPIs */
+.kpi-total { border-left: 4px solid var(--primary); }
+.kpi-disp { border-left: 4px solid var(--success); }
+.kpi-uso { border-left: 4px solid #f59e0b; }
+.kpi-fin { border-left: 4px solid #64748b; }
+
+/* === SEÇÕES E GRIDS DE CONTEÚDO === */
+.content-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 32px; }
+@media (max-width: 900px) { .content-grid { grid-template-columns: 1fr; } }
+
+.content-card { background: var(--bg-card); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 32px; }
+.card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); font-weight: 700; color: var(--text-main); display: flex; align-items: center; }
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.section-title { font-size: 1.1rem; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 10px; }
+
+/* === TABELAS === */
+.table-responsive { width: 100%; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+thead { background: #f8fafc; border-bottom: 1px solid var(--border); }
+th { text-align: left; padding: 14px 20px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; letter-spacing: 0.05em; }
+td { padding: 14px 20px; border-bottom: 1px solid var(--border); font-size: 0.9rem; vertical-align: middle; color: var(--text-main); }
+tr:last-child td { border-bottom: none; }
+tr:hover { background: #f9fafb; }
+
+/* === COMPONENTES VISUAIS === */
+.badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 99px; font-size: 0.75rem; font-weight: 600; }
+.badge-pmb { background: var(--success-bg); color: var(--success-text); }
+.badge-stock { background: var(--primary-light); color: var(--primary); font-family: monospace; font-size: 0.85rem; }
+.badge-gray { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+
+.text-mono { font-family: 'Courier New', monospace; font-weight: 600; color: #475569; }
+.action-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--text-muted); transition: 0.2s; text-decoration: none; }
+.action-btn:hover { background: #f1f5f9; color: var(--primary); }
+
+/* Avatar do Usuário */
+.user-avatar { width: 32px; height: 32px; background: #f1f5f9; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #64748b; font-size: 0.8rem; flex-shrink: 0; }
 </style>
 
-<div class="wrap">
+<div class="page-wrapper">
 
-  <h2 style="color:#0f172a;display:flex;align-items:center;gap:10px">
-    <i class="fa fa-certificate"></i> {{ obj.nome }}
-  </h2>
+  <div class="detail-header">
+    <div class="header-info">
+      <h1>{{ obj.nome }}</h1>
+      <div class="header-meta">
+        <div class="meta-item"><i class="fa fa-building"></i> {{ obj.fornecedor.nome|default:"Fornecedor N/A" }}</div>
+        <div class="meta-item">
+          {% if obj.pmb == 'sim' %}
+            <span class="badge badge-pmb"><i class="fa fa-check" style="margin-right:4px;"></i> PMB</span>
+          {% else %}
+            <span class="badge badge-gray">Licença Padrão</span>
+          {% endif %}
+        </div>
+        {% if obj.centro_custo %}
+          <div class="meta-item"><i class="fa fa-sitemap"></i> {{ obj.centro_custo.departamento }}</div>
+        {% endif %}
+      </div>
+    </div>
+    
+    <div style="display:flex; gap:10px;">
+      <a href="{% url 'licenca_list' %}" class="btn btn-white"><i class="fa fa-arrow-left"></i> Voltar</a>
+      
+      <a href="{% url 'licenca_export_pdf' obj.pk %}" class="btn btn-red" target="_blank">
+        <i class="fa fa-file-pdf"></i> PDF
+      </a>
 
-  <div class="header-btns">
-    <a href="{% url 'licenca_list' %}" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
-    <a href="{% url 'licenca_update' obj.pk %}" class="btn btn-primary"><i class="fa fa-pen"></i> Editar</a>
-    <a href="{% url 'mov_licenca_form' %}?licenca={{ obj.pk }}" class="btn btn-blue"><i class="fa fa-exchange-alt"></i> Movimentar</a>
+      <a href="{% url 'licenca_lote_novo' %}?licenca={{ obj.pk }}" class="btn btn-white" title="Adicionar novo lote de estoque"><i class="fa fa-plus"></i> Novo Lote</a>
+      <a href="{% url 'mov_licenca_form' %}?licenca={{ obj.pk }}" class="btn btn-primary" title="Atribuir ou Devolver licença"><i class="fa fa-exchange-alt"></i> Movimentar</a>
+      <a href="{% url 'licenca_update' obj.pk %}" class="btn btn-white" title="Editar cadastro"><i class="fa fa-pen"></i></a>
+    </div>
   </div>
 
-  <div class="grid">
-    <div class="box"><div class="label">Fornecedor</div><div class="value">{% if obj.fornecedor %}{{ obj.fornecedor.nome }}{% else %}-{% endif %}</div></div>
-    <div class="box"><div class="label">Centro de Custo</div><div class="value">{% if obj.centro_custo %}{{ obj.centro_custo.numero }} - {{ obj.centro_custo.departamento }}{% else %}-{% endif %}</div></div>
-    <div class="box"><div class="label">PMB</div><div class="value"><span class="badge-pmb {{ obj.pmb }}">{{ obj.get_pmb_display }}</span></div></div>
-    <div class="box"><div class="label">Periodicidade</div><div class="value">{{ obj.get_periodicidade_display }}</div></div>
-    <div class="box"><div class="label">Quantidade (disponível)</div><div class="value">{{ obj.quantidade }}</div></div>
-
-    <!-- custos -->
-   <!-- custos -->
-<div class="box">
-  <div class="label">Custo do ciclo</div>
-  <div class="value">
-    {% if custo_ciclo %}R$ {{ custo_ciclo|floatformat:2 }}{% else %}—{% endif %}
+  {% if obj.observacao %}
+  <div style="background:#fffbeb; border:1px solid #fcd34d; padding:16px; border-radius:8px; margin-bottom:24px; color:#92400e; font-size:0.9rem; display:flex; gap:10px;">
+    <i class="fa fa-info-circle" style="margin-top:2px;"></i>
+    <div><strong>Observações:</strong> {{ obj.observacao|linebreaksbr }}</div>
   </div>
-</div>
+  {% endif %}
 
-<div class="box">
-  <div class="label">Custo mensal (estimado)</div>
-  <div class="value">
-    {% if custo_mensal %}
-      <div><strong>Unitário:</strong> R$ {{ custo_mensal|floatformat:2 }}</div>
-      <div class="muted" style="font-size:.92rem">
-        <strong>Total:</strong>
-        {{ qtd_disponivel }} × R$ {{ custo_mensal|floatformat:2 }}
-        = <strong>R$ {{ custo_mensal_total|floatformat:2 }}</strong>
-      </div>
-    {% else %}—{% endif %}
-  </div>
-</div>
+  <div class="kpi-grid">
+    <div class="kpi-card kpi-total">
+      <div class="kpi-label">Investimento Total (Histórico)</div>
+      <div class="kpi-value">R$ {{ kpi.investimento_total|floatformat:2|intcomma }}</div>
+      <div class="kpi-sub">{{ kpi.total }} licenças compradas</div>
+      <div class="kpi-icon"><i class="fa fa-wallet"></i></div>
+    </div>
 
-<div class="box">
-  <div class="label">Custo anual (estimado)</div>
-  <div class="value">
-    {% if custo_anual %}
-      <div><strong>Unitário:</strong> R$ {{ custo_anual|floatformat:2 }}</div>
-      <div class="muted" style="font-size:.92rem">
-        <strong>Total:</strong>
-        {{ qtd_disponivel }} × R$ {{ custo_anual|floatformat:2 }}
-        = <strong>R$ {{ custo_anual_total|floatformat:2 }}</strong>
-      </div>
-    {% else %}—{% endif %}
-  </div>
-</div>
+    <div class="kpi-card kpi-uso">
+      <div class="kpi-label">Em Uso</div>
+      <div class="kpi-value">{{ kpi.em_uso }} <span style="font-size:1rem; color:var(--text-muted); font-weight:400;">/ {{ kpi.total }}</span></div>
+      <div class="kpi-sub">{{ kpi.pct_uso }}% utilizado</div>
+      <div class="kpi-icon"><i class="fa fa-users"></i></div>
+    </div>
 
+    <div class="kpi-card kpi-fin">
+      <div class="kpi-label">Custo Mensal (Ativos)</div>
+      <div class="kpi-value">R$ {{ kpi.gasto_mensal|floatformat:2|intcomma }}</div>
+      <div class="kpi-sub">Burn Rate Estimado</div>
+      <div class="kpi-icon"><i class="fa fa-calendar-day"></i></div>
+    </div>
 
-    <div class="box"><div class="label">Início</div><div class="value">{{ obj.data_inicio|date:"d/m/Y" }}</div></div>
-    <div class="box"><div class="label">Fim</div><div class="value">{{ obj.data_fim|date:"d/m/Y"|default:"—" }}</div></div>
-    <div class="box" style="grid-column:1/-1"><div class="label">Observações</div><div class="value">{{ obj.observacao|default:"—" }}</div></div>
-
-    <!-- Resumo pelos lotes (se existirem) -->
-    {% if lotes %}
-      <div class="box">
-        <div class="label">Lotes – Total</div>
-        <div class="value">{{ lotes_totais.total }}</div>
-      </div>
-      <div class="box">
-        <div class="label">Lotes – Disponível</div>
-        <div class="value">{{ lotes_totais.disp }}</div>
-      </div>
-      <div class="box">
-        <div class="label">Lotes – Atribuídas</div>
-        <div class="value">{{ lotes_totais.usados }}</div>
-      </div>
-    {% endif %}
+    <div class="kpi-card kpi-fin">
+      <div class="kpi-label">Projeção Anual (Ativos)</div>
+      <div class="kpi-value">R$ {{ kpi.gasto_anual|floatformat:2|intcomma }}</div>
+      <div class="kpi-sub">Previsão 12 meses</div>
+      <div class="kpi-icon"><i class="fa fa-chart-line"></i></div>
+    </div>
   </div>
 
-  <!-- Seção LOTES -->
-  <div class="card" style="margin-top:14px">
-    <h3 style="margin:0 0 8px;color:#0f172a;display:flex;align-items:center;gap:8px">
-      <i class="fa fa-boxes-stacked" style="color:#2563eb"></i> Lotes desta licença
-    </h3>
-
-    {% if lotes %}
-      <div style="overflow:auto">
-        <table class="table">
+  <div class="content-grid">
+    <div class="content-card" style="margin-bottom:0;">
+      <div class="card-header">
+        <i class="fa fa-chart-pie" style="color:var(--primary); margin-right:8px;"></i> Alocação por Centro de Custo
+      </div>
+      <div class="table-responsive">
+        <table>
           <thead>
             <tr>
-              <th style="min-width:220px">Lote</th>
-              <th style="min-width:120px">Pedido/Contrato</th>
-              <th class="tright">Total</th>
-              <th class="tright">Disponível</th>
-              <th class="tright">Atribuídas</th>
-              <th class="tright">Custo/Assento</th>
-              <th class="tright">Custo do ciclo</th>
-              <th>Periodicidade</th>
-              <th style="min-width:220px">Obs.</th>
+              <th>Departamento / CC</th>
+              <th style="text-align:center;">Assentos</th>
+              <th style="text-align:right;">Gasto (Ciclo)</th>
             </tr>
           </thead>
           <tbody>
-            {% for lt in lotes %}
-              <tr>
-                <td>{{ lt.nome }}</td>
-                <td>{{ lt.pedido|default:"—" }}</td>
-                <td class="tright">{{ lt.total }}</td>
-                <td class="tright">{{ lt.disp }}</td>
-                <td class="tright">{{ lt.usados }}</td>
-                <td class="tright">
-                  {% if lt.custo_unit %}R$ {{ lt.custo_unit|floatformat:2 }}{% else %}—{% endif %}
-                </td>
-                <td class="tright">
-                  {% if lt.custo_ciclo %}R$ {{ lt.custo_ciclo|floatformat:2 }}{% else %}—{% endif %}
-                </td>
-                <td>{{ lt.periodicidade|default:"—" }}</td>
-                <td class="muted">{{ lt.obs|default:"" }}</td>
-              </tr>
+            {% for cc in cc_list %}
+            <tr>
+              <td style="font-weight:500;">{{ cc.nome }}</td>
+              <td style="text-align:center;">
+                <span class="badge badge-stock">{{ cc.qtd }}</span>
+              </td>
+              <td style="text-align:right; font-weight:600; color:#475569;">
+                R$ {{ cc.total|floatformat:2|intcomma }}
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3" style="text-align:center; padding:20px; color:#94a3b8;">Nenhuma alocação ativa.</td></tr>
             {% endfor %}
           </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="2">Totais</td>
-              <td class="tright">{{ lotes_totais.total }}</td>
-              <td class="tright">{{ lotes_totais.disp }}</td>
-              <td class="tright">{{ lotes_totais.usados }}</td>
-              <td class="tright">—</td>
-              <td class="tright">—</td>
-              <td>—</td>
-              <td>—</td>
-            </tr>
-          </tfoot>
         </table>
       </div>
-    {% else %}
-      <div class="muted">Nenhum lote cadastrado para esta licença.</div>
-    {% endif %}
+    </div>
+
+    <div class="content-card" style="margin-bottom:0; padding:20px; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;">
+      <div style="font-size:0.9rem; color:#64748b; font-weight:600; margin-bottom:10px;">TOTAL ALOCADO</div>
+      <div style="font-size:2.5rem; font-weight:700; color:var(--primary);">{{ kpi.em_uso }}</div>
+      <div style="font-size:0.8rem; color:#94a3b8;">Assentos em uso</div>
+      <div style="width:100%; height:1px; background:#e2e8f0; margin:20px 0;"></div>
+      <div style="font-size:0.9rem; color:#64748b; font-weight:600; margin-bottom:5px;">GASTO ATIVO</div>
+      <div style="font-size:1.5rem; font-weight:700; color:#475569;">
+        R$ {{ kpi.gasto_mensal|floatformat:2|intcomma }} <small style="font-size:0.8rem;">/mês</small>
+      </div>
+    </div>
   </div>
 
-  <!-- Movimentações -->
-  <div class="card" style="margin-top:14px">
-    <h3 style="margin:0 0 8px;color:#0f172a;display:flex;align-items:center;gap:8px">
-      <i class="fa fa-history" style="color:#2563eb"></i> Últimas movimentações
-    </h3>
-    <div style="overflow:auto">
-      <table class="table">
+  <div class="section-header" style="margin-top:32px;">
+    <div class="section-title"><i class="fa fa-boxes-stacked" style="color:var(--primary);"></i> Inventário de Lotes</div>
+  </div>
+  
+  <div class="content-card">
+    <div class="table-responsive">
+      <table>
         <thead>
           <tr>
-            <th>Tipo</th>
-            <th>Usuário</th>
-            <th>Centro de Custo</th>
-            <th>Obs.</th>
-            <th>Data</th>
+            <th>ID</th>
+            <th>Data Compra</th>
+            <th>Pedido / NF</th>
+            <th>Periodicidade</th>
+            <th style="text-align:right;">Custo Unit. (Ciclo)</th>
+            <th style="text-align:right;">Investimento Total</th>
+            <th style="text-align:center;">Qtd. Total</th>
+            <th style="text-align:center;">Disp.</th>
+            <th style="text-align:right;">Ação</th>
           </tr>
         </thead>
         <tbody>
-          {% for mov in movs %}
-            <tr>
-              <td>{{ mov.get_tipo_display }}</td>
-              <td>{{ mov.usuario.nome|default:"—" }}</td>
-              <td>
-                {% if mov.centro_custo_destino %}
-                  {{ mov.centro_custo_destino.numero }} - {{ mov.centro_custo_destino.departamento }}
-                {% else %} — {% endif %}
-              </td>
-              <td>{{ mov.observacao|default:"—" }}</td>
-              <td>{{ mov.created_at|date:"d/m/Y H:i" }}</td>
-            </tr>
+          {% for lote in lotes %}
+          <tr>
+            <td class="text-mono" style="color:var(--primary);">#{{ lote.pk }}</td>
+            <td>{{ lote.data_compra|date:"d/m/Y"|default:"-" }}</td>
+            <td>{{ lote.numero_pedido|default:"-" }}</td>
+            
+            <td style="text-transform: capitalize;">
+              <span class="badge badge-gray">{{ lote.get_periodicidade_display|default:"-" }}</span>
+            </td>
+            
+            <td style="text-align:right;">
+              {% if lote.unitario_real %}
+                R$ {{ lote.unitario_real|floatformat:2|intcomma }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+
+            <td style="text-align:right; font-weight:600; color:#475569;">
+              R$ {{ lote.total_investido_calc|floatformat:2|intcomma }}
+            </td>
+
+            <td style="text-align:center;">{{ lote.quantidade_total }}</td>
+            <td style="text-align:center;">
+              {% if lote.quantidade_disponivel > 0 %}
+                <span class="badge badge-stock">{{ lote.quantidade_disponivel }}</span>
+              {% else %}
+                <span class="badge badge-gray">0</span>
+              {% endif %}
+            </td>
+            <td style="text-align:right;">
+              <a href="{% url 'licenca_lote_edit' lote.pk %}" class="action-btn" title="Editar Lote"><i class="fa fa-pen"></i></a>
+            </td>
+          </tr>
           {% empty %}
-            <tr><td colspan="5" class="muted">Sem movimentações registradas.</td></tr>
+          <tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted);">Nenhum lote registrado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <div class="section-title"><i class="fa fa-clock-rotate-left" style="color:var(--primary);"></i> Histórico de Alocação</div>
+  </div>
+
+  <div class="content-card">
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 130px;">Ação</th>
+            <th>Colaborador / Usuário</th>
+            <th>Origem (Lote)</th>
+            <th>Destino (Centro de Custo)</th>
+            <th style="text-align:right;">Custo Alocado</th>
+            <th style="text-align:right;">Data</th>
+            <th style="text-align:right;">Resp.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mov in movimentacoes %}
+          <tr style="border-left: 3px solid {% if mov.tipo == 'atribuicao' %}#ef4444{% else %}#10b981{% endif %};">
+            
+            <td>
+              {% if mov.tipo == 'atribuicao' %}
+                <span class="badge" style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca;">
+                  <i class="fa fa-arrow-right" style="margin-right:4px;"></i> Saída
+                </span>
+              {% else %}
+                <span class="badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0;">
+                  <i class="fa fa-arrow-left" style="margin-right:4px;"></i> Devolução
+                </span>
+              {% endif %}
+            </td>
+
+            <td>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div class="user-avatar"><i class="fa fa-user"></i></div>
+                <div>
+                  <div style="font-weight:600; color:var(--text-main);">
+                    {{ mov.usuario.nome|default:"Usuário Não Identificado" }}
+                  </div>
+                  {% if mov.usuario.email %}
+                    <div style="font-size:0.75rem; color:var(--text-muted);">{{ mov.usuario.email }}</div>
+                  {% endif %}
+                </div>
+              </div>
+            </td>
+
+            <td>
+              {% if mov.lote %}
+                <span class="text-mono" style="color:var(--primary); background:var(--primary-light); padding:2px 6px; border-radius:4px;">
+                  #{{ mov.lote.pk }}
+                </span>
+              {% else %}
+                <span style="color:#cbd5e1;">-</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if mov.centro_custo_destino %}
+                <div style="font-weight:500;">{{ mov.centro_custo_destino.departamento }}</div>
+                <div style="font-size:0.7rem; color:var(--text-muted);">CC: {{ mov.centro_custo_destino.numero }}</div>
+              {% else %}
+                <span style="color:#cbd5e1;">-</span>
+              {% endif %}
+            </td>
+            
+            <td style="text-align:right;">
+              {% if mov.valor_unitario %}
+                <span style="font-weight:600; color:#475569;">
+                  R$ {{ mov.valor_unitario|floatformat:2|intcomma }}
+                </span>
+              {% else %}
+                -
+              {% endif %}
+            </td>
+
+            <td style="text-align:right; font-size:0.85rem;">
+              <div>{{ mov.created_at|date:"d/m/Y" }}</div>
+              <div style="color:#94a3b8; font-size:0.75rem;">{{ mov.created_at|date:"H:i" }}</div>
+            </td>
+
+            <td style="text-align:right; font-size:0.85rem; color:var(--text-muted);">
+              {{ mov.criado_por.username|title }}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">
+              <i class="fa fa-history" style="font-size:2rem; opacity:0.2; margin-bottom:10px;"></i><br>
+              Nenhuma movimentação registrada para esta licença.
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>

@@ -1,444 +1,394 @@
 {% extends 'base.html' %}
+{% load static %}
+
 {% block title %}Usuários{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <style>
-:root{
-  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
-  --accent:#1f2937; --accent-2:#334155;
-  --ok:#16a34a; --bad:#ef4444; --info:#0ea5e9;
-  --rad:12px; --ctrl-h:40px; --pad-icon:36px;
-  --shadow:0 14px 30px rgba(2,6,23,.06);
-}
-*{box-sizing:border-box}
-a{text-decoration:none}
-.page{max-width:1280px;margin:18px auto;padding:0 16px;color:var(--ink);
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial}
-
-/* ===== KPI CARDS ===== */
-.cards{
-  display:grid;grid-template-columns:repeat(5,minmax(160px,1fr));gap:10px;margin:8px 0 14px
-}
-@media (max-width:1100px){.cards{grid-template-columns:repeat(3,minmax(160px,1fr))}}
-@media (max-width:760px){.cards{grid-template-columns:repeat(2,minmax(160px,1fr))}}
-@media (max-width:520px){.cards{grid-template-columns:1fr}}
-.kpi{
-  background:linear-gradient(180deg,#fff 0%,#f9fafb 100%);
-  border:1px solid var(--line);border-radius:14px;padding:12px;
-  box-shadow:var(--shadow);display:flex;gap:10px;align-items:center
-}
-.kpi .ico{
-  width:34px;height:34px;border-radius:10px;background:#eef2f7;display:inline-flex;align-items:center;justify-content:center
-}
-.kpi h4{margin:0;font-size:.85rem;color:#0b1220;letter-spacing:.2px}
-.kpi .v{font-size:1.28rem;font-weight:900;margin-top:4px}
-
-/* ===== PANEL ===== */
-.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
-
-/* Topbar */
-.topbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
-.title{display:flex;align-items:center;gap:10px;font-weight:900;color:var(--ink)}
-.badge{display:inline-flex;align-items:center;gap:6px;background:#f1f5f9;color:#0f172a;
-  padding:6px 10px;border:1px solid #e2e8f0;border-radius:999px;font-weight:800}
-.actions-right{display:flex;gap:10px;margin-left:auto;flex-wrap:wrap}
-.btn{
-  border:1px solid #d6dee9;border-radius:10px;padding:10px 14px;font-weight:800;cursor:pointer;
-  display:inline-flex;align-items:center;gap:8px;background:#fff;color:#0f172a
-}
-.btn:hover{filter:brightness(.98)}
-.btn-add{background:#0f172a;color:#fff;border-color:#0f172a}
-
-/* ===== FILTERS ===== */
-.filters{border:1px solid var(--line);border-radius:12px;background:#fff}
-.filters summary{
-  list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;
-  padding:12px 14px;font-weight:900;color:var(--ink)
-}
-.filters summary::-webkit-details-marker{display:none}
-.filters[open] summary{border-bottom:1px solid var(--line)}
-.filters-body{padding:12px 14px}
-.filters-grid{display:grid;gap:12px;align-items:end;grid-template-columns:repeat(12,1fr)}
-.fld{min-width:0}
-.filtro-icon-input{position:relative}
-.filtro-icon-input i{
-  position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#475569;pointer-events:none;font-size:.95rem
-}
-.filtro-icon-input input,.filtro-icon-input select{
-  width:100%;height:var(--ctrl-h);
-  padding:8px 12px 8px var(--pad-icon);
-  border:1px solid #d5deea;border-radius:10px;background:var(--soft);color:#111827;font-size:.95rem;
-  outline:none;transition:border .15s,box-shadow .15s,background .15s;appearance:none
-}
-.filtro-icon-input input::placeholder{color:#64748b}
-.filtro-icon-input input:focus,.filtro-icon-input select:focus{border-color:#94a3b8;box-shadow:0 0 0 3px #94a3b833;background:#fff}
-.select-wrapper{position:relative}
-.select-wrapper::after{
-  content:"";position:absolute;right:12px;top:50%;transform:translateY(-25%);
-  border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #64748b;pointer-events:none
-}
-.select-wrapper select{padding-right:30px}
-
-/* Grid cols */
-.fld-busca{grid-column:span 4}
-.fld-status{grid-column:span 2}
-.fld-pmb{grid-column:span 2}
-.fld-cc{grid-column:span 2}
-.fld-loc{grid-column:span 2}
-.fld-func{grid-column:span 2}
-.fld-actions{grid-column:1/-1;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
-@media (max-width:1100px){
-  .filters-grid{grid-template-columns:repeat(8,1fr)}
-  .fld-busca{grid-column:1/-1}
-  .fld-status,.fld-pmb,.fld-cc,.fld-loc,.fld-func{grid-column:span 4}
-}
-@media (max-width:700px){
-  .filters-grid{grid-template-columns:repeat(6,1fr)}
-  .fld-status,.fld-pmb,.fld-cc,.fld-loc,.fld-func{grid-column:1/-1}
-  .fld-actions{grid-column:1/-1;justify-content:stretch}
-  .fld-actions .btn{flex:1}
+/* --- Google Material Theme --- */
+:root {
+  --google-blue: #1a73e8;
+  --google-red: #ea4335;
+  --google-green: #34a853;
+  --google-yellow: #fbbc04;
+  --gray-50: #f8f9fa;
+  --gray-100: #f1f3f4;
+  --gray-200: #e8eaed;
+  --gray-300: #dadce0;
+  --gray-600: #5f6368;
+  --gray-800: #202124;
 }
 
-/* ===== TABLE ===== */
-.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:12px;background:#fff}
-table{width:100%;border-collapse:collapse;min-width:1000px;background:#fff}
-thead th{
-  position:sticky;top:0;z-index:2;background:#0f172a;color:#fff;border-bottom:1px solid #0b1220;
-  padding:10px 12px;text-align:left;font-weight:900;font-size:.92rem
-}
-tbody td{padding:10px 12px;border-bottom:1px solid #eef2f7;color:#0f172a;font-size:.95rem}
-tbody tr:nth-child(odd) td{background:#fbfdff}
-tbody tr:hover td{background:#f6f8fb}
-.td-acoes{text-align:center;white-space:nowrap}
-.icon-btn{
-  background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:50%;
-  padding:7px 8px;margin:0 2px;font-size:1.05rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center
-}
-.icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
-.icon-btn.delete{color:#ef4444}
+body { background-color: #fff; color: var(--gray-800); font-family: 'Roboto', sans-serif; font-size: 14px; margin: 0; }
+.main-container { max-width: 100%; padding: 24px; }
 
-/* Status chip */
-.status-chip{display:inline-block;padding:4px 10px;border-radius:999px;font-weight:800;font-size:.86rem;white-space:nowrap;border:1px solid #e2e8f0;background:#f8fafc}
-.status-chip.ativo{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
-.status-chip.desligado{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+/* === KPIS (CARDS) === */
+.kpi-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.kpi-card {
+  background: #fff;
+  border: 1px solid var(--gray-300);
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 2px rgba(60,64,67,0.1);
+  transition: box-shadow 0.2s;
+}
+.kpi-card:hover { box-shadow: 0 1px 3px 1px rgba(60,64,67,0.15); }
+.kpi-info { display: flex; flex-direction: column; }
+.kpi-label { font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--gray-600); margin-bottom: 4px; }
+.kpi-number { font-size: 24px; font-weight: 400; color: var(--gray-800); }
+.kpi-icon { font-size: 24px; opacity: 0.8; }
 
-/* ===== PAGINATION + PAGE SIZE ===== */
-.pagination-wrap{
-  display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;
-  margin-top:12px;padding-top:10px;border-top:1px solid var(--line)
-}
-.page-size{display:flex;align-items:center;gap:8px;color:#475569;font-weight:700}
-.page-size select{
-  height:32px;border:1px solid #d5deea;border-radius:8px;background:#fff;padding:4px 10px;font-weight:700;color:#0f172a
-}
-.pager{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto}
-.pager a,.pager span{
-  padding:6px 10px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#0f172a;font-weight:800;font-size:.9rem;text-decoration:none
-}
-.pager a:hover{background:#f8fafc}
-.pager .current{background:#e5e7eb;border-color:#cbd5e1;color:#111827}
-.pager .disabled{opacity:.5;pointer-events:none}
+/* Cores KPI */
+.icon-blue { color: var(--google-blue); }
+.icon-green { color: var(--google-green); }
+.icon-red { color: var(--google-red); }
+.icon-yellow { color: var(--google-yellow); }
 
-/* ===== MODAL ===== */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9999}
-.modal-content{background:#fff;border-radius:14px;padding:20px 22px;max-width:480px;width:92%;box-shadow:0 10px 30px #0005}
-.modal-content h2{margin:0 0 8px;color:#b91c1c;font-size:1.1rem}
-.modal-actions{display:flex;gap:10px;justify-content:center}
-.btn-danger{background:#ef4444;color:#fff;border-radius:10px;padding:10px 16px;border:1px solid #ef4444}
+/* === BARRA DE PESQUISA E AÇÕES === */
+.top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
+.search-wrapper { flex: 1; max-width: 720px; position: relative; }
+.search-box {
+  width: 100%; height: 48px; background: var(--gray-100); border: 1px solid transparent; border-radius: 24px;
+  padding: 0 20px 0 48px; font-size: 16px; color: var(--gray-800); outline: none; transition: all 0.2s;
+}
+.search-box:focus { background: #fff; box-shadow: 0 1px 6px rgba(32,33,36,0.28); }
+.search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--gray-600); font-size: 18px; }
+
+.btn-create {
+  height: 48px; padding: 0 24px; background-color: #fff; color: var(--google-blue);
+  border: 1px solid var(--gray-300); border-radius: 24px; font-weight: 500; font-size: 14px;
+  cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); text-decoration: none;
+}
+.btn-create:hover { background-color: var(--gray-50); box-shadow: 0 1px 3px rgba(60,64,67,0.3); color: #174ea6; }
+
+/* === FILTROS (CHIPS) === */
+.filter-row { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; align-items: center; }
+.select2-container--default .select2-selection--single {
+  background-color: #fff; border: 1px solid var(--gray-300); border-radius: 18px; height: 36px; display: flex; align-items: center; outline: none;
+}
+.select2-container--default .select2-selection--single:hover { background-color: var(--gray-50); border-color: var(--gray-600); }
+.select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 36px; padding-left: 12px; padding-right: 24px; color: var(--gray-600); font-weight: 500; font-size: 13px; }
+.select2-container--default .select2-selection--single .select2-selection__arrow { height: 34px; right: 8px; }
+
+/* === TABELA === */
+.data-table-container { border: 1px solid var(--gray-300); border-radius: 8px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; background-color: #fff; }
+thead th { background-color: #fff; color: var(--gray-600); font-size: 13px; font-weight: 500; text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--gray-200); }
+tbody tr { transition: background-color 0.1s; border-bottom: 1px solid var(--gray-200); }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background-color: var(--gray-50); }
+tbody td { padding: 10px 16px; vertical-align: middle; color: var(--gray-800); font-size: 14px; }
+
+/* User Cell */
+.user-info-cell { display: flex; align-items: center; gap: 12px; }
+.avatar-circle {
+  width: 32px; height: 32px; border-radius: 50%; background-color: var(--google-blue); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 14px; text-transform: uppercase;
+}
+tr:nth-child(3n+1) .avatar-circle { background-color: var(--google-red); }
+tr:nth-child(3n+2) .avatar-circle { background-color: var(--google-green); }
+tr:nth-child(3n+3) .avatar-circle { background-color: var(--google-yellow); color: #333; }
+.user-text .name { font-weight: 500; display: block; }
+.user-text .email { font-size: 12px; color: var(--gray-600); }
+
+/* Status */
+.status-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; }
+.status-active { color: #137333; }
+.status-active .status-dot { background-color: #1e8e3e; }
+.status-inactive { color: #c5221f; }
+.status-inactive .status-dot { background-color: #d93025; }
+
+/* Actions */
+.row-actions { opacity: 0; transition: opacity 0.2s; display: flex; justify-content: flex-end; gap: 8px; }
+tbody tr:hover .row-actions { opacity: 1; }
+.icon-btn {
+  width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  color: var(--gray-600); cursor: pointer; border: none; background: transparent; transition: background 0.1s;
+}
+.icon-btn:hover { background-color: rgba(95,99,104,0.1); color: var(--gray-800); }
+.icon-btn.del:hover { background-color: rgba(234,67,53,0.1); color: var(--google-red); }
+
+/* Pagination */
+.footer-pagination { display: flex; justify-content: flex-end; align-items: center; padding: 16px 0; gap: 12px; color: var(--gray-600); font-size: 13px; }
+.page-nav-btn { color: var(--gray-600); text-decoration: none; font-size: 18px; padding: 4px 8px; border-radius: 4px; }
+.page-nav-btn:hover { background-color: var(--gray-200); }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.32); display: none; align-items: center; justify-content: center; z-index: 1000; }
+.modal-box { background: #fff; padding: 24px; border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 24px 38px 3px rgba(0,0,0,0.14); }
+.modal-title { font-size: 22px; font-weight: 400; margin-bottom: 12px; }
+.modal-text { color: var(--gray-600); margin-bottom: 24px; line-height: 1.5; }
+.modal-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+.btn-flat { padding: 0 16px; height: 36px; border-radius: 4px; border: none; background: transparent; color: var(--google-blue); font-weight: 500; cursor: pointer; }
+.btn-flat:hover { background: rgba(26,115,232,0.04); }
+.btn-flat.danger { color: var(--google-red); }
+.btn-flat.danger:hover { background: rgba(234,67,53,0.04); }
 </style>
 
-<div class="page">
-  <!-- KPI Cards -->
-  <div class="cards">
-    <div class="kpi" title="Total geral">
-      <div class="ico"><i class="fa fa-users"></i></div>
-      <div><h4>Total</h4><div class="v">{{ kpi_total_geral }}</div></div>
+<div class="main-container">
+
+  <div class="kpi-section">
+    <div class="kpi-card">
+      <div class="kpi-info">
+        <span class="kpi-label">Total Usuários</span>
+        <span class="kpi-number">{{ kpi_total }}</span>
+      </div>
+      <i class="fa fa-users kpi-icon icon-blue"></i>
     </div>
-    <div class="kpi" title="Ativos">
-      <div class="ico"><i class="fa fa-circle-check"></i></div>
-      <div><h4>Ativos</h4><div class="v">{{ kpi_total_ativos }}</div></div>
+    <div class="kpi-card">
+      <div class="kpi-info">
+        <span class="kpi-label">Ativos</span>
+        <span class="kpi-number">{{ kpi_ativos }}</span>
+      </div>
+      <i class="fa fa-user-check kpi-icon icon-green"></i>
     </div>
-    <div class="kpi" title="Desligados">
-      <div class="ico"><i class="fa fa-user-xmark"></i></div>
-      <div><h4>Desligados</h4><div class="v">{{ kpi_total_desligado }}</div></div>
+    <div class="kpi-card">
+      <div class="kpi-info">
+        <span class="kpi-label">Desligados</span>
+        <span class="kpi-number">{{ kpi_desligados }}</span>
+      </div>
+      <i class="fa fa-user-times kpi-icon icon-red"></i>
     </div>
-    <div class="kpi" title="PMB — Sim">
-      <div class="ico"><i class="fa fa-check-double"></i></div>
-      <div><h4>PMB (Sim)</h4><div class="v">{{ kpi_total_pmb_sim }}</div></div>
-    </div>
-    <div class="kpi" title="PMB — Não">
-      <div class="ico"><i class="fa fa-ban"></i></div>
-      <div><h4>PMB (Não)</h4><div class="v">{{ kpi_total_pmb_nao }}</div></div>
+    <div class="kpi-card">
+      <div class="kpi-info">
+        <span class="kpi-label">PMB</span>
+        <span class="kpi-number">{{ kpi_pmb }}</span>
+      </div>
+      <i class="fa fa-star kpi-icon icon-yellow"></i>
     </div>
   </div>
 
-  <div class="panel">
-    <!-- Topo -->
-    <div class="topbar">
-      <div class="title">
-        <i class="fa-solid fa-users" style="color:var(--info)"></i>
-        <span>Usuários</span>
-      </div>
-      <span class="badge"><i class="fa fa-database"></i> {{ total }} resultados</span>
-      <div class="actions-right">
-        <!-- Page size -->
-        <form method="get" id="sizeForm" style="display:flex;align-items:center;gap:8px">
-          {% for key, val in request.GET.items %}
-            {% if key != 'pp' and key != 'page' %}
-              <input type="hidden" name="{{ key }}" value="{{ val }}">
+  <div class="top-bar">
+    <form method="get" id="searchForm" class="search-wrapper">
+      <i class="fa fa-search search-icon"></i>
+      <input type="text" name="q" value="{{ f_q }}" class="search-box" placeholder="Pesquisar usuários, e-mails..." autocomplete="off">
+      <input type="hidden" name="status" value="{{ f_status }}">
+      <input type="hidden" name="pmb" value="{{ f_pmb }}">
+      <input type="hidden" name="cc" value="{{ f_cc }}">
+      <input type="hidden" name="loc" value="{{ f_loc }}">
+      <input type="hidden" name="func" value="{{ f_func }}">
+    </form>
+
+    <a href="{% url 'usuario_create' %}" class="btn-create">
+      <i class="fa fa-plus" style="font-size:24px; color:transparent; background:conic-gradient(from 0deg, #ea4335 0deg 90deg, #34a853 90deg 180deg, #fbbc04 180deg 270deg, #4285f4 270deg 360deg); -webkit-background-clip:text; background-clip:text;"></i>
+      <span style="margin-left:-4px; color:#5f6368;">Novo</span>
+    </a>
+  </div>
+
+  <form method="get" id="filterForm" class="filter-row">
+    <input type="hidden" name="q" value="{{ f_q }}">
+
+    <div style="min-width: 140px;">
+      <select name="status" class="select2-filter" data-placeholder="Status">
+        <option value="">Status: Todos</option>
+        {% for code, label in opt_status %}
+          <option value="{{ code }}" {% if f_status == code %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="min-width: 130px;">
+      <select name="pmb" class="select2-filter" data-placeholder="PMB">
+        <option value="">PMB: Todos</option>
+        {% for code, label in opt_pmb %}
+          <option value="{{ code }}" {% if f_pmb == code %}selected{% endif %}>PMB: {{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="min-width: 180px;">
+      <select name="cc" class="select2-filter" data-placeholder="Centro de Custo">
+        <option value="">Centro de Custo</option>
+        {% for c in opt_cc %}
+          <option value="{{ c.id }}" {% if f_cc == c.id %}selected{% endif %}>{{ c.numero }} - {{ c.departamento }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="min-width: 160px;">
+      <select name="loc" class="select2-filter" data-placeholder="Localidade">
+        <option value="">Localidade</option>
+        {% for l in opt_loc %}
+          <option value="{{ l.id }}" {% if f_loc == l.id %}selected{% endif %}>{{ l.local }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="min-width: 160px;">
+      <select name="func" class="select2-filter" data-placeholder="Função">
+        <option value="">Função</option>
+        {% for f in opt_func %}
+          <option value="{{ f.id }}" {% if f_func == f.id %}selected{% endif %}>{{ f.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    {% if f_q or f_status or f_pmb or f_cc or f_loc or f_func %}
+      <a href="{% url 'usuario_list' %}" style="color:var(--google-red); font-weight:500; font-size:13px; text-decoration:none; margin-left:8px;">
+        Limpar
+      </a>
+    {% endif %}
+  </form>
+
+  <div class="data-table-container">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 30%;">Nome</th>
+          <th>Status</th>
+          <th>Centro de Custo</th>
+          <th>Função / Local</th>
+          <th style="width: 80px; text-align:center;">PMB</th>
+          <th style="width: 120px; text-align:right;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in usuarios %}
+        <tr onclick="window.location='{% url 'usuario_detail' u.pk %}'" style="cursor:pointer;">
+          <td>
+            <div class="user-info-cell">
+              <div class="avatar-circle">
+                {{ u.nome|slice:":1" }}
+              </div>
+              <div class="user-text">
+                <span class="name">{{ u.nome }}</span>
+                <span class="email">{{ u.email|default:"" }}</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            {% if u.status == 'ativo' %}
+              <div class="status-indicator status-active"><div class="status-dot"></div> Ativo</div>
+            {% else %}
+              <div class="status-indicator status-inactive"><div class="status-dot"></div> {{ u.get_status_display }}</div>
             {% endif %}
-          {% endfor %}
-          <label for="pp" class="page-size" style="gap:6px;">
-            Por página:
-            <select name="pp" id="pp">
-              <option value="10"  {% if per_page == 10  %}selected{% endif %}>10</option>
-              <option value="20"  {% if per_page == 20  %}selected{% endif %}>20</option>
-              <option value="50"  {% if per_page == 50  %}selected{% endif %}>50</option>
-              <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
-            </select>
-          </label>
-        </form>
-
-        <a class="btn btn-add" href="{% url 'usuario_create' %}">
-          <i class="fa fa-plus"></i> Novo Usuário
-        </a>
-      </div>
-    </div>
-
-    <!-- Filtros -->
-    <details class="filters" {% if request.GET %}open{% endif %}>
-      <summary><i class="fa fa-filter"></i> Filtros
-        <span class="hint" style="font-weight:600;color:#64748b">— digite para aplicar automaticamente</span>
-      </summary>
-      <div class="filters-body">
-        <form class="filters-grid" method="get" id="fForm" autocomplete="off">
-          <div class="fld fld-busca filtro-icon-input">
-            <i class="fa fa-search" aria-hidden="true"></i>
-            <input type="text" id="q" name="q" placeholder="Nome ou e-mail" value="{{ q|default:'' }}" aria-label="Buscar por nome ou e-mail">
-          </div>
-
-          <div class="fld fld-status filtro-icon-input select-wrapper">
-            <i class="fa fa-circle" aria-hidden="true"></i>
-            <select id="status" name="status" aria-label="Filtrar por status">
-              <option value="">Status: todos</option>
-              {% for code,label in status_choices %}
-                <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="fld fld-pmb filtro-icon-input select-wrapper">
-            <i class="fa fa-check-double" aria-hidden="true"></i>
-            <select id="pmb" name="pmb" aria-label="Filtrar por PMB">
-              <option value="">PMB: todos</option>
-              {% for code,label in pmb_choices %}
-                <option value="{{ code }}" {% if pmb == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="fld fld-cc filtro-icon-input select-wrapper">
-            <i class="fa fa-coins" aria-hidden="true"></i>
-            <select id="cc" name="cc" aria-label="Filtrar por centro de custo">
-              <option value="">Centro de custo: todos</option>
-              {% for c in cc_list %}
-                <option value="{{ c.id }}" {% if cc == c.id|stringformat:'s' %}selected{% endif %}>
-                  {{ c.numero }} - {{ c.departamento }}
-                </option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="fld fld-loc filtro-icon-input select-wrapper">
-            <i class="fa fa-location-dot" aria-hidden="true"></i>
-            <select id="loc" name="loc" aria-label="Filtrar por localidade">
-              <option value="">Localidade: todas</option>
-              {% for l in loc_list %}
-                <option value="{{ l.id }}" {% if loc == l.id|stringformat:'s' %}selected{% endif %}>
-                  {{ l.local }}
-                </option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="fld fld-func filtro-icon-input select-wrapper">
-            <i class="fa fa-briefcase" aria-hidden="true"></i>
-            <select id="func" name="func" aria-label="Filtrar por função">
-              <option value="">Função: todas</option>
-              {% for f in func_list %}
-                <option value="{{ f.id }}" {% if func == f.id|stringformat:'s' %}selected{% endif %}>
-                  {{ f.nome }}
-                </option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="fld fld-actions">
-            <button class="btn" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
-            <button class="btn" type="button" id="btnClear"><i class="fa fa-eraser"></i> Limpar</button>
-          </div>
-        </form>
-      </div>
-    </details>
-
-    <!-- Tabela -->
-    <div class="table-wrap">
-      <table aria-describedby="tblhint">
-        <thead>
-          <tr>
-            <th style="width:64px">#</th>
-            <th>Nome</th>
-            <th>E-mail</th>
-            <th>Status</th>
-            <th>PMB</th>
-            <th>Centro de Custo</th>
-            <th>Localidade</th>
-            <th>Função</th>
-            <th>Início</th>
-            <th>Término</th>
-            <th style="width:120px">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for u in usuarios %}
-          <tr>
-            <td>
-              {% if page_obj %}{{ page_obj.start_index|add:forloop.counter0 }}{% else %}{{ forloop.counter }}{% endif %}
-            </td>
-            <td>{{ u.nome|default:"-" }}</td>
-            <td>{{ u.email|default:"-" }}</td>
-            <td>
-              {% with sc=u.status|default:'' %}
-                <span class="status-chip {% if sc == 'ativo' %}ativo{% elif sc == 'desligado' %}desligado{% endif %}">
-                  {{ u.get_status_display|default:u.status|capfirst }}
-                </span>
-              {% endwith %}
-            </td>
-            <td>{% if u.pmb %}{{ u.get_pmb_display|default:u.pmb|capfirst }}{% else %}-{% endif %}</td>
-            <td>{% if u.centro_custo %}{{ u.centro_custo.numero }} - {{ u.centro_custo.departamento }}{% else %}-{% endif %}</td>
-            <td>{% if u.localidade %}{{ u.localidade.local }}{% else %}-{% endif %}</td>
-            <td>{% if u.funcao %}{{ u.funcao.nome }}{% else %}-{% endif %}</td>
-            <td>{{ u.data_inicio|date:"d/m/Y" }}</td>
-            <td>{% if u.data_termino %}{{ u.data_termino|date:"d/m/Y" }}{% else %}-{% endif %}</td>
-            <td class="td-acoes">
-              <a class="icon-btn" title="Detalhar" href="{% url 'usuario_detail' u.pk %}"><i class="fa fa-eye"></i></a>
-              <a class="icon-btn" title="Editar" href="{% url 'usuario_update' u.pk %}"><i class="fa fa-pen"></i></a>
-              <button class="icon-btn delete" title="Excluir" onclick="openDeleteModal('{{ u.pk }}','{{ u.nome|escapejs }}')"><i class="fa fa-trash"></i></button>
-            </td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="11" style="text-align:center;color:#64748b;padding:16px">Nenhum usuário encontrado.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <p id="tblhint" style="display:none">Tabela de usuários com filtros de busca, status, PMB, centro de custo, localidade e função.</p>
-    </div>
-
-    {% if paginator.num_pages > 1 %}
-    <div class="pagination-wrap">
-      <div class="page-size">
-        <!-- (já entregue no topo via form) apenas mantido lá -->
-      </div>
-      <nav class="pager" aria-label="Paginação">
-        {% with base='?'|add:qs_keep %}
-          {% if page_obj.has_previous %}
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page=1" aria-label="Primeira">&laquo;</a>
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ page_obj.previous_page_number }}" aria-label="Anterior">&lsaquo;</a>
-          {% else %}
-            <span class="disabled" aria-hidden="true">&laquo;</span>
-            <span class="disabled" aria-hidden="true">&lsaquo;</span>
-          {% endif %}
-
-          {% if page_obj.number > 3 %}
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page=1">1</a>
-            {% if page_obj.number > 4 %}<span class="disabled">…</span>{% endif %}
-          {% endif %}
-
-          {% for num in paginator.page_range %}
-            {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
-              {% if num == page_obj.number %}
-                <span class="current">{{ num }}</span>
-              {% else %}
-                <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ num }}">{{ num }}</a>
-              {% endif %}
+          </td>
+          <td>
+            {% if u.centro_custo %}
+              <div>{{ u.centro_custo.departamento }}</div>
+              <div style="font-size:12px; color:var(--gray-600);">{{ u.centro_custo.numero }}</div>
+            {% else %}
+              <span style="color:var(--gray-300);">—</span>
             {% endif %}
-          {% endfor %}
+          </td>
+          <td>
+            <div>{{ u.funcao.nome|default:"-" }}</div>
+            <div style="font-size:12px; color:var(--gray-600);">{{ u.localidade.local|default:"" }}</div>
+          </td>
+          <td style="text-align:center;">
+            {% if u.pmb == 'sim' %}
+              <i class="fa fa-check-circle" style="color:var(--google-green);"></i>
+            {% else %}
+              <span style="color:var(--gray-300);">-</span>
+            {% endif %}
+          </td>
+          <td onclick="event.stopPropagation();">
+            <div class="row-actions">
+              <a href="{% url 'usuario_update' u.pk %}" class="icon-btn" title="Editar">
+                <i class="fa fa-pen"></i>
+              </a>
+              <button class="icon-btn del" title="Excluir" onclick="openModal('{{ u.pk }}', '{{ u.nome|escapejs }}')">
+                <i class="fa fa-trash"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" style="text-align:center; padding: 40px;">
+            <div style="color:var(--gray-600); font-size:16px;">Nenhum usuário encontrado</div>
+            <div style="color:var(--gray-600); font-size:13px; margin-top:4px;">Tente ajustar os filtros ou a pesquisa</div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
-          {% if page_obj.number < paginator.num_pages|add:'-2' %}
-            <span class="disabled">…</span>
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ paginator.num_pages }}">{{ paginator.num_pages }}</a>
-          {% endif %}
-
-          {% if page_obj.has_next %}
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ page_obj.next_page_number }}" aria-label="Próxima">&rsaquo;</a>
-            <a href="{{ base }}{% if qs_keep %}&{% endif %}page={{ paginator.num_pages }}" aria-label="Última">&raquo;</a>
-          {% else %}
-            <span class="disabled" aria-hidden="true">&rsaquo;</span>
-            <span class="disabled" aria-hidden="true">&raquo;</span>
-          {% endif %}
-        {% endwith %}
-      </nav>
-    </div>
+  <div class="footer-pagination">
+    <span>{{ page_obj.start_index }}-{{ page_obj.end_index }} de {{ total }}</span>
+    {% if page_obj.has_previous %}
+      <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="page-nav-btn"><i class="fa fa-chevron-left"></i></a>
+    {% else %}
+      <span class="page-nav-btn" style="opacity:0.3;"><i class="fa fa-chevron-left"></i></span>
+    {% endif %}
+    {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="page-nav-btn"><i class="fa fa-chevron-right"></i></a>
+    {% else %}
+      <span class="page-nav-btn" style="opacity:0.3;"><i class="fa fa-chevron-right"></i></span>
     {% endif %}
   </div>
+
 </div>
 
-<!-- Modal único -->
-<div id="deleteModal" class="modal-overlay" aria-hidden="true">
-  <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-    <h2 id="modalTitle"><i class="fa fa-trash"></i> Excluir Usuário</h2>
-    <p id="deleteMessage"></p>
+<div id="deleteModal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">Excluir usuário?</div>
+    <div class="modal-text" id="modalMsg">
+      Você tem certeza que deseja excluir permanentemente este usuário?
+    </div>
     <form id="deleteForm" method="post" action="">
       {% csrf_token %}
-      <div class="modal-actions">
-        <button type="submit" class="btn btn-danger"><i class="fa fa-trash"></i> Confirmar</button>
-        <button type="button" class="btn" onclick="closeDeleteModal()"><i class="fa fa-arrow-left"></i> Cancelar</button>
+      <div class="modal-buttons">
+        <button type="button" class="btn-flat" onclick="closeModal()">Cancelar</button>
+        <button type="submit" class="btn-flat danger">Excluir</button>
       </div>
     </form>
   </div>
 </div>
 
 <script>
-/* Limpar filtros */
-document.getElementById('btnClear')?.addEventListener('click',()=>{ window.location.href = window.location.pathname; });
+$(document).ready(function() {
+    $('.select2-filter').select2({
+        width: '100%',
+        minimumResultsForSearch: 10,
+        language: "pt-BR"
+    });
 
-/* Auto-submit: selects; debounce: texto */
-(function(){
-  const form  = document.getElementById('fForm'); if(!form) return;
-  const q     = document.getElementById('q');
-  const selId = ['status','pmb','cc','loc','func'];
-
-  let t;
-  q?.addEventListener('input', ()=>{
-    clearTimeout(t);
-    t = setTimeout(()=>form.submit(), 450);
-  });
-  selId.forEach(id => document.getElementById(id)?.addEventListener('change', ()=>form.submit()));
-})();
-
-/* Itens por página: auto-submit + reset da page */
-document.getElementById('pp')?.addEventListener('change', ()=>{
-  const f=document.getElementById('sizeForm'); if(!f) return;
-  const pageInput=document.createElement('input');
-  pageInput.type='hidden'; pageInput.name='page'; pageInput.value='1';
-  f.appendChild(pageInput); f.submit();
+    $('.select2-filter').on('change', function() {
+        $('#filterForm').submit();
+    });
+    
+    let timeout = null;
+    $('.search-box').on('keyup', function() {
+        clearTimeout(timeout);
+        timeout = setTimeout(function() {
+            $('#searchForm').submit();
+        }, 500);
+    });
 });
 
-/* Modal delete */
-const modal=document.getElementById('deleteModal');
-const msg=document.getElementById('deleteMessage');
-const delForm=document.getElementById('deleteForm');
-function openDeleteModal(id,nome){
-  msg.innerHTML = `Tem certeza que deseja excluir o usuário <b>${nome}</b>?`;
-  delForm.action = `/usuarios/${id}/excluir/`;
-  modal.style.display='flex'; modal.setAttribute('aria-hidden','false');
+const modal = document.getElementById('deleteModal');
+const form = document.getElementById('deleteForm');
+const msg = document.getElementById('modalMsg');
+
+function openModal(pk, nome) {
+    form.action = `/usuarios/${pk}/delete/`; 
+    msg.innerHTML = `Deseja realmente excluir <strong>${nome}</strong>?`;
+    modal.style.display = 'flex';
 }
-function closeDeleteModal(){
-  modal.style.display='none'; modal.setAttribute('aria-hidden','true');
+
+function closeModal() {
+    modal.style.display = 'none';
 }
-document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDeleteModal(); });
-modal?.addEventListener('click',e=>{ if(e.target===modal) closeDeleteModal(); });
+
+window.onclick = function(event) {
+    if (event.target == modal) closeModal();
+}
 </script>
 {% endblock %}

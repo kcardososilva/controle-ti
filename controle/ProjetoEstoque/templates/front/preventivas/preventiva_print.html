@@ -1,0 +1,77 @@
+{% load static humanize %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Histórico de Manutenção - {{ equipamento.nome }}</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #333; -webkit-print-color-adjust: exact; padding: 20px; }
+        .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+        .header h1 { margin: 0; font-size: 18px; text-transform: uppercase; }
+        
+        .info-box { background: #f0f0f0; padding: 10px; margin-bottom: 20px; border: 1px solid #ccc; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+        .label { font-weight: bold; font-size: 10px; text-transform: uppercase; color: #666; display: block; }
+        
+        .exec-block { margin-bottom: 30px; border: 1px solid #ddd; page-break-inside: avoid; }
+        .exec-header { background: #e0e0e0; padding: 8px; font-weight: bold; display: flex; justify-content: space-between; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 0; }
+        td, th { padding: 6px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #f9f9f9; }
+        
+        .obs { padding: 10px; font-style: italic; background: #fffbe6; border-bottom: 1px solid #ddd; }
+    </style>
+</head>
+<body onload="window.print()">
+
+    <div class="header">
+        <div>
+            <h1>Relatório de Preventivas</h1>
+            <div style="margin-top:5px;">{{ equipamento.nome }}</div>
+        </div>
+        <div style="text-align:right;">
+            Gerado em: {% now "d/m/Y H:i" %}
+        </div>
+    </div>
+
+    <div class="info-box">
+        <div class="info-grid">
+            <div><span class="label">Modelo Checklist</span> {{ preventiva.checklist_modelo.nome }}</div>
+            <div><span class="label">Patrimônio</span> {{ equipamento.patrimonio|default:"-" }}</div>
+            <div><span class="label">Próxima Execução</span> {{ proxima_calc|date:"d/m/Y"|default:"-" }}</div>
+            <div><span class="label">Localização</span> {{ equipamento.localidade.local }}</div>
+            <div><span class="label">Serial</span> {{ equipamento.numero_serie }}</div>
+            <div><span class="label">Total Execuções</span> {{ execucoes|length }}</div>
+        </div>
+    </div>
+
+    {% for item in execucoes %}
+    <div class="exec-block">
+        <div class="exec-header">
+            <span>Data: {{ item.obj.data_execucao|date:"d/m/Y" }}</span>
+            <span>Resp: {{ item.obj.criado_por.username }}</span>
+        </div>
+
+        {% if item.obj.observacao %}
+        <div class="obs">
+            <strong>Notas:</strong> {{ item.obj.observacao }}
+        </div>
+        {% endif %}
+
+        <table>
+            <thead><tr><th>Verificação</th><th width="20%">Resultado</th></tr></thead>
+            <tbody>
+                {% for l in item.linhas %}
+                <tr>
+                    <td>{{ l.texto }}</td>
+                    <td style="font-weight:bold;">{{ l.resposta }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+
+</body>
+</html>

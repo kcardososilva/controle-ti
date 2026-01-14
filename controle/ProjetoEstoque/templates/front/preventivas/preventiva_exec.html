@@ -1,175 +1,263 @@
 {% extends "base.html" %}
-{% block title %}Executar Preventiva{% endblock %}
+{% block title %}Execução de Preventiva{% endblock %}
+
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
 
 <style>
-:root{
-  --ink:#0b1220; --muted:#64748b; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
-  --bg:#f4f7fc; --primary:#2563eb; --primary-2:#1d4ed8; --ok:#16a34a; --bad:#b91c1c;
-  --shadow:0 20px 40px rgba(2,6,23,.07);
-}
-body{background:var(--bg);}
-.page{max-width:980px;margin:18px auto;padding:0 14px}
-h2{color:var(--ink)}
+  /* --- Enterprise Theme Variables --- */
+  :root {
+    --bg-app: #f0f2f5;
+    --bg-card: #ffffff;
+    --primary: #0078d4;       /* Microsoft Blue */
+    --primary-hover: #106ebe;
+    --text-main: #242424;
+    --text-sub: #616161;
+    --border: #e0e0e0;
+    --radius: 8px;
+    
+    /* Status Colors */
+    --success: #107c10; --success-bg: #dff6dd;
+    --danger: #c50f1f;  --danger-bg: #fde7e9;
+    --neutral: #f3f2f1;
+    
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
 
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);}
+  body { background-color: var(--bg-app); color: var(--text-main); font-family: 'Segoe UI', system-ui, sans-serif; }
+  .app-container { max-width: 800px; margin: 30px auto; padding: 0 20px 80px; } /* Padding bottom for sticky footer */
 
-.section{padding:14px 16px;border-bottom:1px solid #eef2f7}
-.section:last-child{border-bottom:none}
-.q-title{font-weight:900;color:var(--ink);margin-bottom:8px}
-.required{color:var(--bad);font-weight:900}
+  /* HEADER */
+  .exec-header {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 24px; margin-bottom: 24px; box-shadow: var(--shadow);
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;
+  }
+  .header-info h1 { margin: 0; font-size: 1.4rem; font-weight: 600; color: var(--text-main); }
+  .header-sub { color: var(--text-sub); font-size: 0.9rem; margin-top: 4px; display: flex; gap: 12px; align-items: center; }
+  .badge-info { background: #f0f6ff; color: var(--primary); padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 0.8rem; }
 
-.ctrl{height:44px;border:1px solid #dbe3ef;border-radius:12px;padding:8px 12px}
-select.ctrl{min-width:280px}
-input.ctrl{min-width:240px}
+  /* QUESTION CARDS */
+  .question-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px 24px; margin-bottom: 16px; transition: border-color 0.2s;
+  }
+  .question-card:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0,120,212,0.1); }
+  
+  .q-header { display: flex; gap: 12px; margin-bottom: 16px; }
+  .q-number { 
+    background: var(--neutral); color: var(--text-sub); width: 28px; height: 28px; 
+    border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;
+  }
+  .q-text { font-weight: 600; font-size: 1rem; color: var(--text-main); line-height: 1.4; flex: 1; }
+  .required-mark { color: var(--danger); margin-left: 4px; font-size: 1.2rem; line-height: 0; position: relative; top: 4px; }
 
-.radio-wrap{display:flex;gap:12px;flex-wrap:wrap}
-.radio-pill{
-  display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;
-  border:1.6px solid #dbe3ef;background:#fff;cursor:pointer;font-weight:800;color:#1f2937;
-  transition:.2s ease;
-}
-.radio-pill input{display:none}
-.radio-pill.active{border-color:#93c5fd;background:#eff6ff;color:#1e3a8a;box-shadow:0 0 0 3px #dbeafe}
+  /* INPUT STYLES */
+  .form-control {
+    width: 100%; height: 42px; padding: 0 12px; border: 1px solid #8a8886; border-radius: 4px;
+    font-size: 0.95rem; color: var(--text-main); outline: none; transition: all 0.2s;
+  }
+  .form-control:focus { border-color: var(--primary); border-bottom-width: 2px; }
 
-.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
-.hint{color:var(--muted);font-size:.92rem}
+  /* RADIO PILLS (SIM/NÃO) */
+  .radio-group { display: flex; gap: 12px; flex-wrap: wrap; }
+  .radio-pill { position: relative; cursor: pointer; flex: 1; min-width: 120px; }
+  .radio-pill input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .pill-content {
+    display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px;
+    border: 1px solid #8a8886; border-radius: 6px; background: #fff; color: var(--text-main); font-weight: 600;
+    transition: all 0.2s;
+  }
+  .pill-content:hover { background: var(--neutral); }
+  
+  /* Selected States */
+  .radio-pill input:checked + .pill-content { border-color: transparent; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  
+  .radio-pill.sim input:checked + .pill-content { background: var(--success); }
+  .radio-pill.nao input:checked + .pill-content { background: var(--danger); }
 
-.actions{display:flex;gap:10px;justify-content:flex-end;padding:12px 16px}
-.btn{border:none;border-radius:12px;padding:10px 16px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
-.btn-primary{background:linear-gradient(90deg,var(--primary),var(--primary-2));color:#fff}
-.btn-light{background:#fff;border:1.5px solid #dbe3ef;color:#1f2937}
-.err-msg{color:var(--bad);font-weight:800;margin-top:6px}
-.preview{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
-.preview img{height:52px;width:auto;border-radius:10px;border:1px solid #e5e7eb}
+  /* PHOTOS / EVIDENCE */
+  .evidence-section {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px;
+  }
+  @media(max-width: 600px) { .evidence-section { grid-template-columns: 1fr; } }
+
+  .upload-box {
+    border: 2px dashed #c7c7c7; border-radius: 8px; background: #fafafa;
+    height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; position: relative; overflow: hidden; transition: all 0.2s;
+  }
+  .upload-box:hover { border-color: var(--primary); background: #f0f6ff; }
+  .upload-box i { font-size: 2rem; color: #a0a0a0; margin-bottom: 8px; }
+  .upload-box span { font-size: 0.9rem; color: var(--text-sub); font-weight: 500; }
+  .upload-box img { position: absolute; width: 100%; height: 100%; object-fit: cover; display: none; }
+  .upload-label { font-size: 0.9rem; font-weight: 600; margin-bottom: 8px; display: block; }
+
+  /* OBSERVATIONS */
+  .obs-card { margin-top: 24px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  textarea.form-control { height: auto; min-height: 120px; padding: 12px; resize: vertical; font-family: inherit; }
+
+  /* STICKY FOOTER ACTION */
+  .sticky-footer {
+    position: fixed; bottom: 0; left: 0; right: 0; background: #fff;
+    padding: 16px 24px; border-top: 1px solid var(--border); box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
+    display: flex; justify-content: flex-end; gap: 12px; z-index: 100;
+  }
+  
+  .btn {
+    height: 40px; padding: 0 24px; border-radius: 4px; font-weight: 600; font-size: 0.95rem; cursor: pointer;
+    border: none; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; transition: all 0.2s;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-light { background: #fff; border: 1px solid #8a8886; color: var(--text-main); }
+  .btn-light:hover { background: #f3f2f1; }
+
+  /* Select2 Customization */
+  .select2-container { width: 100% !important; }
+  .select2-container--default .select2-selection--single { height: 42px; border: 1px solid #8a8886; border-radius: 4px; display: flex; align-items: center; }
+  .select2-container--default .select2-selection--single .select2-selection__arrow { top: 8px; }
+  .select2-container--default .select2-selection--single .select2-selection__rendered { padding-left: 12px; color: var(--text-main); }
 </style>
 
-<div class="page">
-  <h2 style="display:flex;gap:10px;align-items:center;margin:0 0 12px">
-    <i class="fa fa-clipboard-check"></i> Executar Preventiva — {{ preventiva.equipamento.nome }}
-  </h2>
+<div class="page-container">
+  
+  <div class="exec-header">
+    <div class="header-info">
+      <h1><i class="fa fa-clipboard-check" style="color:var(--primary)"></i> Executar Preventiva</h1>
+      <div class="header-sub">
+        <span>Ativo: <strong>{{ preventiva.equipamento.nome }}</strong></span>
+        <span class="badge-info">{{ preventiva.checklist_modelo.nome }}</span>
+      </div>
+    </div>
+    <div style="font-size:0.9rem; color:var(--text-sub);">
+      Data: <strong>{% now "d/m/Y" %}</strong>
+    </div>
+  </div>
 
-  <form method="post" enctype="multipart/form-data" class="card" id="form-prev">
+  <form method="post" enctype="multipart/form-data" id="form-exec">
     {% csrf_token %}
 
-    {% for p in perguntas %}
-      <div class="section">
-        <div class="q-title">
-          {{ forloop.counter }}. {{ p.texto_pergunta }}
-          {% if p.obrigatorio == "sim" %}<span class="required">*</span>{% endif %}
+    <div id="questions-list">
+      {% for p in perguntas %}
+      <div class="question-card">
+        <div class="q-header">
+          <div class="q-number">{{ forloop.counter }}</div>
+          <div class="q-text">
+            {{ p.texto_pergunta }}
+            {% if p.obrigatorio == 'sim' %}<span class="required-mark">*</span>{% endif %}
+          </div>
         </div>
 
-        {% with t=p.tipo_resposta|lower %}
-          {% if t == "sim_nao" or t == "booleano" or t == "bool" or t == "sn" %}
-            <div class="radio-wrap" data-group="r_{{ p.id }}">
-              <label class="radio-pill" for="p{{ p.id }}_sim">
-                <input type="radio" name="r_{{ p.id }}" id="p{{ p.id }}_sim" value="sim">
-                <i class="fa fa-check-circle"></i> Sim
-              </label>
-              <label class="radio-pill" for="p{{ p.id }}_nao">
-                <input type="radio" name="r_{{ p.id }}" id="p{{ p.id }}_nao" value="nao">
-                <i class="fa fa-circle-xmark"></i> Não
-              </label>
-            </div>
+        <div class="q-input">
+          {% with t=p.tipo_resposta|lower %}
+            
+            {% if t == "sim_nao" or t == "booleano" or t == "sn" %}
+              <div class="radio-group">
+                <label class="radio-pill sim">
+                  <input type="radio" name="r_{{ p.id }}" value="sim" {% if p.obrigatorio == 'sim' %}required{% endif %}>
+                  <div class="pill-content"><i class="fa fa-check"></i> Sim (Conforme)</div>
+                </label>
+                <label class="radio-pill nao">
+                  <input type="radio" name="r_{{ p.id }}" value="nao">
+                  <div class="pill-content"><i class="fa fa-xmark"></i> Não (Irregular)</div>
+                </label>
+              </div>
 
-          {% elif t == "numero" or t == "inteiro" or t == "decimal" %}
-            <input type="number" step="any" class="ctrl" name="r_{{ p.id }}" placeholder="Informe um número">
+            {% elif t == "numero" or t == "inteiro" or t == "decimal" %}
+              <input type="number" step="any" name="r_{{ p.id }}" class="form-control" placeholder="Informe o valor medido..." {% if p.obrigatorio == 'sim' %}required{% endif %}>
 
-          {% elif t == "escolha" or t == "opcao" or t == "choice" %}
-            <select class="ctrl" name="r_{{ p.id }}">
-              <option value="">— selecione —</option>
-              {% for opt in p.opcoes_list %}<option value="{{ opt }}">{{ opt }}</option>{% endfor %}
-            </select>
+            {% elif t == "escolha" or t == "opcao" or t == "choice" %}
+              <select name="r_{{ p.id }}" class="form-control select2" {% if p.obrigatorio == 'sim' %}required{% endif %}>
+                <option value="">Selecione uma opção...</option>
+                {% for opt in p.opcoes_list %}
+                  <option value="{{ opt }}">{{ opt }}</option>
+                {% endfor %}
+              </select>
 
-          {% else %}
-            <input type="text" class="ctrl" name="r_{{ p.id }}" placeholder="Digite a resposta">
-          {% endif %}
-        {% endwith %}
-        <div class="err-msg" id="err_r_{{ p.id }}" style="display:none"></div>
-      </div>
-    {% empty %}
-      <div class="section" style="color:var(--muted)">Nenhuma pergunta cadastrada para este checklist.</div>
-    {% endfor %}
-
-    <div class="section">
-      <div class="grid">
-        <div>
-          <label style="font-weight:800;display:block;margin-bottom:6px">Foto — Antes (opcional)</label>
-          <input type="file" name="foto_antes" accept="image/*" class="ctrl" id="foto_antes">
-          <div class="preview" id="prev_antes"></div>
-        </div>
-        <div>
-          <label style="font-weight:800;display:block;margin-bottom:6px">Foto — Depois (opcional)</label>
-          <input type="file" name="foto_depois" accept="image/*" class="ctrl" id="foto_depois">
-          <div class="preview" id="prev_depois"></div>
+            {% else %}
+              <input type="text" name="r_{{ p.id }}" class="form-control" placeholder="Digite sua resposta..." {% if p.obrigatorio == 'sim' %}required{% endif %}>
+            {% endif %}
+          {% endwith %}
         </div>
       </div>
-      <div style="margin-top:10px">
-        <label style="font-weight:800;display:block;margin-bottom:6px">Observação (opcional)</label>
-        <textarea name="observacao" rows="3" class="ctrl" style="width:100%"></textarea>
-        <div class="hint">As fotos e a observação pertencem apenas a esta execução.</div>
+      {% empty %}
+      <div style="padding:40px; text-align:center; color:#666; background:#fff; border-radius:8px;">
+        <i class="fa fa-list-check" style="font-size:32px; color:#ccc; margin-bottom:10px;"></i>
+        <p>Este modelo não possui perguntas cadastradas.</p>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="evidence-section">
+      <div>
+        <label class="upload-label">Foto Antes (Opcional)</label>
+        <label class="upload-box" id="drop-antes">
+          <input type="file" name="foto_antes" accept="image/*" hidden onchange="previewImage(this, 'img-antes')">
+          <i class="fa fa-camera"></i>
+          <span>Toque para adicionar foto</span>
+          <img id="img-antes">
+        </label>
+      </div>
+      <div>
+        <label class="upload-label">Foto Depois (Opcional)</label>
+        <label class="upload-box" id="drop-depois">
+          <input type="file" name="foto_depois" accept="image/*" hidden onchange="previewImage(this, 'img-depois')">
+          <i class="fa fa-camera"></i>
+          <span>Toque para adicionar foto</span>
+          <img id="img-depois">
+        </label>
       </div>
     </div>
 
-    <div class="actions">
-      <a href="{% url 'preventiva_detail' preventiva.id %}" class="btn btn-light"><i class="fa fa-arrow-left"></i> Cancelar</a>
-      <button class="btn btn-primary" type="submit"><i class="fa fa-floppy-disk"></i> Salvar execução</button>
+    <div class="obs-card">
+      <label class="upload-label">Observações Gerais</label>
+      <textarea name="observacao" class="form-control" placeholder="Descreva anomalias encontradas, peças trocadas ou detalhes relevantes..."></textarea>
     </div>
+
+    <div class="sticky-footer">
+      <a href="javascript:history.back()" class="btn btn-light">Cancelar</a>
+      <button type="submit" class="btn btn-primary" id="btnSave">
+        <i class="fa fa-save"></i> Finalizar Execução
+      </button>
+    </div>
+
   </form>
 </div>
 
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
 <script>
-/* ===== Radios com “pill” ativo ===== */
-document.querySelectorAll('.radio-wrap').forEach(group => {
-  group.addEventListener('change', (e) => {
-    if (e.target && e.target.name) {
-      const name = e.target.name;
-      document.querySelectorAll('[data-group="'+name+'"] .radio-pill').forEach(l => l.classList.remove('active'));
-      const lbl = e.target.closest('.radio-pill');
-      if (lbl) lbl.classList.add('active');
-    }
-  });
+$(document).ready(function() {
+    // Inicializa Select2 apenas nos selects
+    $('select.form-control').select2({
+        width: '100%',
+        minimumResultsForSearch: 10
+    });
 });
 
-/* ===== Pré-visualização leve de imagem ===== */
-function previewImage(input, wrapId){
-  const wrap = document.getElementById(wrapId);
-  if (!wrap) return;
-  wrap.innerHTML = "";
-  const f = input.files && input.files[0];
-  if (!f) return;
-  const url = URL.createObjectURL(f);
-  const img = document.createElement('img');
-  img.src = url; img.alt = 'preview';
-  wrap.appendChild(img);
+// Preview de Imagem
+function previewImage(input, imgId) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var img = document.getElementById(imgId);
+            img.src = e.target.result;
+            img.style.display = 'block';
+            // Oculta ícone e texto do pai
+            img.parentElement.querySelectorAll('i, span').forEach(el => el.style.display = 'none');
+        }
+        reader.readAsDataURL(input.files[0]);
+    }
 }
-document.getElementById('foto_antes')?.addEventListener('change', e=>previewImage(e.target,'prev_antes'));
-document.getElementById('foto_depois')?.addEventListener('change', e=>previewImage(e.target,'prev_depois'));
 
-/* ===== Validação leve (não conflita com backend) ===== */
-document.getElementById('form-prev')?.addEventListener('submit', (e) => {
-  let ok = true;
-  // só mostra mensagens visuais para perguntas obrigatórias não respondidas
-  document.querySelectorAll('.section .q-title').forEach(q => {
-    const req = q.querySelector('.required');
-    if (!req) return;
-    const sec = q.parentElement;
-    const inputs = sec.querySelectorAll('input[name^="r_"], select[name^="r_"]');
-    let hasVal = false;
-    inputs.forEach(inp => {
-      if ((inp.type === 'radio' && inp.checked) ||
-          (inp.tagName === 'SELECT' && inp.value) ||
-          (inp.type !== 'radio' && inp.value.trim() !== '')) { hasVal = true; }
-    });
-    const err = sec.querySelector('.err-msg');
-    if (!hasVal){
-      ok = false;
-      if (err){ err.textContent = 'Campo obrigatório.'; err.style.display='block'; }
-      sec.scrollIntoView({behavior:'smooth',block:'center'});
-    } else if (err){ err.style.display='none'; }
-  });
-  if (!ok) e.preventDefault();
+// Prevenção de duplo clique
+document.getElementById('form-exec').addEventListener('submit', function() {
+    var btn = document.getElementById('btnSave');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Salvando...';
 });
 </script>
 {% endblock %}

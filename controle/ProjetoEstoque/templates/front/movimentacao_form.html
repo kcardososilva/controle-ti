@@ -1,403 +1,284 @@
 {% extends "base.html" %}
 {% load static %}
 
+{% block title %}Nova Movimentação{% endblock %}
+
 {% block content %}
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
 
 <style>
-  :root{
-    --bg:#0f172a; --card:#ffffff; --ink:#0b1220; --sub:#0f172a; --line:#e5e7eb;
-    --brand:#2563eb; --brand-2:#1d4ed8; --soft:#f8fafc; --chip:#eef2ff; --shadow:0 20px 40px rgba(2,6,23,.10);
-    --ok:#16a34a; --ok2:#15803d; --ghost:#64748b; --danger:#b91c1c; --danger-bg:#fee2e2;
+  /* --- Enterprise Theme --- */
+  :root {
+    --primary: #0078d4; --primary-hover: #106ebe;
+    --bg-body: #f3f2f1; --bg-card: #ffffff;
+    --text-main: #201f1e; --text-muted: #605e5c;
+    --border: #edebe9; --radius: 6px; --input-h: 36px;
   }
-  body{background:linear-gradient(160deg,#0b1220 0%,#0f172a 30%,#111827 100%)}
-  .page{max-width:1040px;margin:26px auto;padding:0 14px}
-  .card{background:var(--card); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow)}
-  .summary{position:sticky; top:12px; z-index:15; padding:10px 14px; display:flex; gap:12px; align-items:center;
-           background:linear-gradient(180deg,#fff 0%,#f8fafc 100%); border:1px solid var(--line); border-radius:14px}
-  .pill{background:var(--chip); color:#1e40af; font-weight:800; padding:8px 12px; border-radius:999px; font-size:.92rem}
-  .summary .sep{flex:1}
-  .chip-btn{border:none; background:#e2e8f0; color:#0f172a; padding:8px 12px; border-radius:10px; font-weight:700; cursor:pointer}
-  .chip-btn:hover{background:#cbd5e1}
-  .shell{padding:24px 24px 18px}
-  .title{display:flex; align-items:center; gap:12px; color:var(--ink); margin:0 0 6px}
-  .title i{color:var(--brand)}
-  .subtitle{color:#2563eb; margin:0 0 18px}
-  .grid{display:grid; gap:16px}
-  .g-3{grid-template-columns:repeat(3,minmax(240px,1fr))}
-  .g-2{grid-template-columns:repeat(2,minmax(240px,1fr))}
-  .g-4{grid-template-columns:repeat(4,minmax(200px,1fr))}
-  @media (max-width:980px){.g-4{grid-template-columns:repeat(2,minmax(240px,1fr))}}
-  @media (max-width:700px){.g-3,.g-2,.g-4{grid-template-columns:1fr}}
-  .field{display:flex; flex-direction:column}
-  .field>label{font-weight:800; color:#1f2937; margin:2px 0 8px; display:flex; align-items:center; gap:8px}
-  .ctrl{height:48px; padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:var(--soft); color:#0b1220; font-size:1rem; transition:border .15s, box-shadow .15s, background .15s}
-  .ctrl:focus{outline:none; background:#fff; border-color:var(--brand); box-shadow:0 0 0 3px rgba(37,99,235,.15)}
-  textarea.ctrl{min-height:120px; height:auto; resize:vertical}
-  .select2-container{width:100%!important}
-  .select2-container--default .select2-selection--single{height:48px; border:1px solid var(--line); border-radius:12px; background:var(--soft); display:flex; align-items:center;}
-  .select2-container--default .select2-selection--single .select2-selection__rendered{color:#0b1220; line-height:46px; padding-left:12px}
-  .select2-container--default .select2-selection--single .select2-selection__arrow{height:46px; right:8px}
-  .select2-container--default.select2-container--focus .select2-selection--single{border-color:var(--brand); box-shadow:0 0 0 3px rgba(37,99,235,.15); background:#fff}
-  .select2-dropdown{border:1px solid #dbe2f1; box-shadow:0 10px 24px rgba(2,6,23,.15); border-radius:12px; overflow:hidden; z-index:9999}
-  .select2-results__options{list-style:none;margin:0;padding:4px}
-  .select2-results__option{padding:8px 10px}
-  .select2-results__option--highlighted[aria-selected]{background:#e8f0ff; color:#1e3a8a}
-  .section{margin-top:14px; padding:18px; border:1px dashed #e2e8f0; border-radius:14px; background:#fbfdff}
-  .section h3{margin:-2px 0 12px; color:#0f172a; display:flex; align-items:center; gap:10px}
-  .hint{color:#334155; font-size:.95rem; margin:0 0 6px}
-  .dz{border:2px dashed #cbd5e1; border-radius:14px; padding:16px; background:#f8fafc; display:flex; gap:12px; align-items:center}
-  .dz.drag{background:#eef2ff; border-color:#6366f1}
-  ul.errorlist{list-style:none; margin:8px 0 0; padding:0}
-  ul.errorlist li{background:var(--danger-bg); color:#b91c1c; border:1px solid #fecaca; padding:6px 10px; border-radius:10px; font-weight:700}
-  .error-summary{margin:0 0 14px; background:var(--danger-bg); color:#b91c1c; border:1px solid #fecaca; padding:10px 12px; border-radius:12px}
-  .actions{display:flex; gap:12px; flex-wrap:wrap; padding:18px 24px 22px}
-  .btn{border:none; border-radius:12px; padding:12px 18px; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; gap:10px}
-  .btn.ok{background:linear-gradient(90deg,var(--ok),var(--ok2)); color:#fff}
-  .btn.ghost{background:var(--ghost); color:#fff}
-  .btn[disabled]{opacity:.6; cursor:not-allowed}
-  .hidden{display:none!important}
-  .main-content p {font-size:1.08rem;color:#0b1220}
-  span{color:#0b1220}
+
+  body { background-color: var(--bg-body); color: var(--text-main); font-family: 'Segoe UI', 'Inter', sans-serif; }
+  .page-container { max-width: 900px; margin: 24px auto; padding: 0 20px; }
+
+  /* Card */
+  .form-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: 0 1.6px 3.6px 0 rgba(0,0,0,0.132); overflow: hidden;
+  }
+  
+  .card-header {
+    background: #fff; padding: 20px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-title { font-size: 1.1rem; font-weight: 600; color: var(--text-main); display: flex; align-items: center; gap: 10px; }
+  .card-title i { color: var(--primary); font-size: 1.1rem; background: #eff6fc; padding: 8px; border-radius: 50%; }
+
+  .card-body { padding: 32px; }
+
+  /* Grid */
+  .grid { display: grid; gap: 20px; grid-template-columns: repeat(12, 1fr); }
+  .col-12 { grid-column: span 12; }
+  .col-6 { grid-column: span 6; }
+  .col-4 { grid-column: span 4; }
+  @media (max-width: 768px) { .col-6, .col-4 { grid-column: span 12; } }
+
+  /* Inputs */
+  .form-group label {
+    display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 6px;
+  }
+  .form-control {
+    width: 100%; height: var(--input-h); padding: 0 12px; border: 1px solid #8a8886;
+    border-radius: 4px; font-size: 0.9rem; color: var(--text-main); outline: none; transition: all 0.2s;
+  }
+  .form-control:focus { border-color: var(--primary); border-bottom-width: 2px; }
+  
+  /* Textarea fix */
+  textarea.form-control { min-height: 100px; padding: 8px 12px; resize: vertical; height: auto; font-family: inherit; }
+
+  /* Select2 Fluent Style */
+  .select2-container--default .select2-selection--single {
+    height: var(--input-h); border: 1px solid #8a8886; border-radius: 4px; display: flex; align-items: center;
+  }
+  .select2-container--default .select2-selection--single .select2-selection__arrow { top: 5px; }
+  .select2-container--default .select2-selection--single .select2-selection__rendered { padding-left: 12px; color: var(--text-main); font-size: 0.9rem; }
+
+  /* Radio Group */
+  .radio-group { display: flex; gap: 12px; }
+  .radio-option { flex: 1; position: relative; cursor: pointer; }
+  .radio-option input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .radio-tile {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    height: var(--input-h); border: 1px solid #8a8886; border-radius: 4px;
+    font-weight: 600; color: var(--text-muted); transition: all 0.2s; background: #fff; font-size: 0.9rem;
+  }
+  .radio-option input:checked + .radio-tile {
+    background: #eff6fc; border-color: var(--primary); color: var(--primary); border-width: 2px;
+  }
+
+  /* Helpers */
+  .hidden { display: none !important; }
+  .required-mark { color: #a4262c; margin-left: 2px; }
+  .divider { grid-column: span 12; height: 1px; background: var(--border); margin: 10px 0; }
+  .hint-text { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+
+  /* Footer */
+  .card-footer {
+    padding: 20px 24px; background: #fcfcfc; border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; gap: 12px;
+  }
+  .btn {
+    height: 36px; padding: 0 24px; border-radius: 4px; font-weight: 600; font-size: 0.9rem;
+    border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all 0.2s; text-decoration: none;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
+  .btn-secondary { background: #fff; border: 1px solid #8a8886; color: var(--text-main); }
+  .btn-secondary:hover { background: #f3f2f1; }
+
+  /* Errors */
+  .alert-error {
+    background: #fde7e9; border: 1px solid #a4262c; color: #a4262c; padding: 12px; border-radius: 4px; margin-bottom: 24px;
+    display: flex; gap: 12px; align-items: center; font-size: 0.9rem;
+  }
 </style>
 
-<div class="page">
-  <!-- SUMÁRIO -->
-  <div class="summary card">
-    <span class="pill" id="sumTipo">Tipo: —</span>
-    <span class="pill" id="sumItem">Item: —</span>
-    <div class="sep"></div>
-    <button type="button" class="chip-btn" id="applyLast" title="Aplicar última destinação">
-      <i class="fa fa-magic-wand-sparkles"></i> Usar última destinação
-    </button>
-  </div>
-
-  <!-- FORM -->
-  <form id="movForm" method="post" enctype="multipart/form-data" class="card" style="margin-top:16px">
-    <div class="shell">
-      {% csrf_token %}
-      <h2 class="title"><i class="fa fa-clipboard-check"></i> Formulário</h2>
-      <p class="subtitle" id="hintText">Escolha um tipo para ver os campos necessários.</p>
-
-      {% if form.errors or form.non_field_errors %}
-      <div class="error-summary"><i class="fa fa-triangle-exclamation"></i> Verifique os campos destacados.</div>
-      {% endif %}
-
-      <div class="grid g-3">
-        <div class="field">
-          <label for="id_tipo_movimentacao"><i class="fa fa-shuffle"></i> Tipo de Movimentação</label>
-          {{ form.tipo_movimentacao }}
-          {{ form.tipo_movimentacao.errors }}
-        </div>
-        <div class="field">
-          <label for="id_item"><i class="fa fa-box-open"></i> Item</label>
-          {{ form.item }}
-          {{ form.item.errors }}
-        </div>
-
-        <!-- Usuário fica visível na maioria dos fluxos.
-             Para "Transferência Equipamento", ocultaremos via JS. -->
-        <div class="field" id="wrap-usuario">
-          <label for="id_usuario"><i class="fa fa-user"></i> Usuário</label>
-          {{ form.usuario }}
-          {{ form.usuario.errors }}
-        </div>
-      </div>
-
-      <div class="section">
-        <h3><i class="fa fa-sliders"></i> Campos específicos</h3>
-
-        <!-- Radios da transferência clássica (não usados em transferência_equipamento) -->
-        <div class="field hidden" data-field="tipo_transferencia">
-          <label><i class="fa fa-people-arrows"></i> Tipo da Transferência</label>
-          <div class="radio-group">
-            {% for val,label in form.fields.tipo_transferencia.choices %}
-              <label class="radio-card">
-                <input type="radio" name="{{ form.tipo_transferencia.name }}" value="{{ val }}"
-                       {% if form.initial.tipo_transferencia == val or form.data.tipo_transferencia == val %}checked{% endif %}>
-                <span>{{ label }}</span>
-              </label>
-            {% endfor %}
-          </div>
-          {{ form.tipo_transferencia.errors }}
-        </div>
-
-        <div class="grid g-3">
-          <div class="field hidden" data-field="quantidade">
-            <label for="id_quantidade"><i class="fa fa-hashtag"></i> Quantidade</label>
-            {{ form.quantidade }}
-            {{ form.quantidade.errors }}
-          </div>
-
-          <!-- ✅ Localidade Destino -->
-          <div class="field hidden" data-field="localidade_destino">
-            <label for="id_localidade_destino"><i class="fa fa-location-dot"></i> Localidade Destino</label>
-            {{ form.localidade_destino }}
-            {{ form.localidade_destino.errors }}
-          </div>
-
-          <!-- ✅ Centro de Custo Destino -->
-          <div class="field hidden" data-field="centro_custo_destino">
-            <label for="id_centro_custo_destino"><i class="fa fa-building"></i> Centro de Custo Destino</label>
-            {{ form.centro_custo_destino }}
-            {{ form.centro_custo_destino.errors }}
-          </div>
-
-          <div class="field hidden" data-field="fornecedor_manutencao">
-            <label for="id_fornecedor_manutencao"><i class="fa fa-truck"></i> Fornecedor (Manutenção)</label>
-            {{ form.fornecedor_manutencao }}
-            {{ form.fornecedor_manutencao.errors }}
-          </div>
-
-          <div class="field hidden" data-field="chamado">
-            <label for="id_chamado"><i class="fa fa-file-signature"></i> Chamado</label>
-            {{ form.chamado }}
-            {{ form.chamado.errors }}
-          </div>
-
-          <div class="field hidden" data-field="custo">
-            <label for="id_custo"><i class="fa fa-money-bill"></i> Custo</label>
-            {{ form.custo }}
-            <small class="hint">Na Entrada: informe o custo total do lote <b>ou</b> o valor unitário.</small>
-            {{ form.custo.errors }}
-          </div>
-
-          <div class="field hidden" data-field="termo_pdf" style="grid-column:1/-1">
-            <label for="id_termo_pdf"><i class="fa fa-file-pdf"></i> Termo (PDF)</label>
-            <div class="dz" id="pdfDrop">
-              <i class="fa fa-upload"></i>
-              <div>
-                <strong>Arraste o PDF aqui</strong>
-                <small> ou clique para selecionar (máx. 5MB)</small>
-              </div>
-            </div>
-            {{ form.termo_pdf }}
-            {{ form.termo_pdf.errors }}
-          </div>
-
-          <div class="field hidden" data-field="numero_pedido">
-            <label for="id_numero_pedido"><i class="fa fa-receipt"></i> Número do Pedido</label>
-            {{ form.numero_pedido }}
-            {{ form.numero_pedido.errors }}
-          </div>
-
-          <!-- ✅ NOVO: Status da Transferência de Equipamento -->
-          <div class="field hidden" data-field="status_transferencia">
-            <label for="id_status_transferencia"><i class="fa fa-toggle-on"></i> Status</label>
-            {{ form.status_transferencia }}
-            {{ form.status_transferencia.errors }}
-          </div>
-
-          <!-- ✅ Observações -->
-          <div class="field hidden" data-field="observacao" style="grid-column:1/-1">
-            <label for="id_observacao"><i class="fa fa-comment-dots"></i> Observações</label>
-            {{ form.observacao }}
-            {{ form.observacao.errors }}
-          </div>
-        </div>
+<div class="page-container">
+  <form id="movForm" method="post" enctype="multipart/form-data" class="form-card">
+    {% csrf_token %}
+    
+    <div class="card-header">
+      <div class="card-title">
+        <i class="fa fa-dolly"></i> 
+        <div>Registro de Movimentação</div>
       </div>
     </div>
 
-    <div class="actions">
-      <button type="submit" class="btn ok" id="btnSave"><i class="fa fa-check"></i> Salvar</button>
-      <a href="{% url 'movimentacao_list' %}" class="btn ghost"><i class="fa fa-arrow-left"></i> Cancelar</a>
+    <div class="card-body">
+      
+      {% if form.errors %}
+        <div class="alert-error">
+          <i class="fa fa-circle-exclamation"></i>
+          <div>Verifique os campos destacados abaixo.</div>
+        </div>
+      {% endif %}
+
+      <div class="grid">
+        
+        <div class="col-6 form-group">
+          <label for="id_tipo_movimentacao">Tipo de Movimentação <span class="required-mark">*</span></label>
+          {{ form.tipo_movimentacao }}
+        </div>
+        <div class="col-6 form-group">
+          <label for="id_item">Item / Ativo <span class="required-mark">*</span></label>
+          {{ form.item }}
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="col-12 form-group hidden" data-f="tipo_transferencia">
+          <label>Ação da Transferência <span class="required-mark">*</span></label>
+          <div class="radio-group">
+            {% for val, label in form.fields.tipo_transferencia.choices %}
+            <label class="radio-option">
+              <input type="radio" name="{{ form.tipo_transferencia.name }}" value="{{ val }}" id="id_transf_{{ val }}">
+              <div class="radio-tile">
+                <i class="fa {% if val == 'entrega' %}fa-user-check{% else %}fa-rotate-left{% endif %}"></i>
+                {{ label }}
+              </div>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="col-6 form-group hidden" data-f="usuario">
+          <label for="id_usuario">Usuário Responsável <span class="required-mark">*</span></label>
+          {{ form.usuario }}
+        </div>
+
+        <div class="col-6 form-group hidden" data-f="localidade_destino">
+          <label for="id_localidade_destino">Localidade de Destino <span class="required-mark">*</span></label>
+          {{ form.localidade_destino }}
+        </div>
+        <div class="col-6 form-group hidden" data-f="centro_custo_destino">
+          <label for="id_centro_custo_destino">Centro de Custo Destino</label>
+          {{ form.centro_custo_destino }}
+          <div class="hint-text">
+            <i class="fa fa-info-circle"></i> Se vazio na entrega, usa o do usuário.
+          </div>
+        </div>
+
+        <div class="col-6 form-group hidden" data-f="status_transferencia">
+          <label for="id_status_transferencia">Novo Status <span class="required-mark">*</span></label>
+          {{ form.status_transferencia }}
+        </div>
+
+        <div class="col-4 form-group hidden" data-f="quantidade">
+          <label for="id_quantidade">Quantidade <span class="required-mark">*</span></label>
+          {{ form.quantidade }}
+        </div>
+        <div class="col-4 form-group hidden" data-f="numero_pedido">
+          <label for="id_numero_pedido">Nº Pedido / NF <span class="required-mark">*</span></label>
+          {{ form.numero_pedido }}
+        </div>
+        <div class="col-4 form-group hidden" data-f="custo">
+          <label for="id_custo">Custo Total (R$)</label>
+          {{ form.custo }}
+        </div>
+
+        <div class="col-6 form-group hidden" data-f="fornecedor_manutencao">
+          <label for="id_fornecedor_manutencao">Fornecedor <span class="required-mark">*</span></label>
+          {{ form.fornecedor_manutencao }}
+        </div>
+        <div class="col-6 form-group hidden" data-f="chamado">
+          <label for="id_chamado">Nº Chamado</label>
+          {{ form.chamado }}
+        </div>
+
+        <div class="col-12 form-group hidden" data-f="termo_pdf">
+          <label>Termo de Responsabilidade (PDF) <span class="required-mark">*</span></label>
+          <input type="file" name="termo_pdf" id="id_termo_pdf" class="form-control" style="padding-top:6px;">
+        </div>
+
+        <div class="col-12 form-group hidden" data-f="observacao">
+          <label for="id_observacao">Observações <span class="required-mark">*</span></label>
+          {{ form.observacao }}
+        </div>
+
+      </div>
+    </div>
+
+    <div class="card-footer">
+      <a href="{% url 'movimentacao_list' %}" class="btn btn-secondary">Cancelar</a>
+      <button type="submit" class="btn btn-primary" id="btnSave">
+        <i class="fa fa-check"></i> Confirmar
+      </button>
     </div>
   </form>
 </div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <script>
-(function(){
-  const $form = document.getElementById('movForm');
-  const $usuarioWrap = document.getElementById('wrap-usuario');
-  const hint = document.getElementById('hintText');
-  const sumTipo = document.getElementById('sumTipo');
-  const sumItem = document.getElementById('sumItem');
-  const btnSave = document.getElementById('btnSave');
-
-  // aplica .ctrl
-  document.querySelectorAll('#movForm select, #movForm input[type="text"], #movForm input[type="number"], #movForm input[type="file"], #movForm textarea')
-    .forEach(el => { if(!el.classList.contains('select2-hidden-accessible')) el.classList.add('ctrl'); });
-
-  // Select2
-  const map = {"á":"a","à":"a","ã":"a","â":"a","ä":"a","é":"e","è":"e","ê":"e","ë":"e","í":"i","ì":"i","î":"i","ï":"i","ó":"o","ò":"o","õ":"o","ô":"o","ö":"o","ú":"u","ù":"u","û":"u","ü":"u","ç":"c"};
-  const norm = t => (t||"").split('').map(c=>map[c]||c).join('').toLowerCase();
-  function initSelect2(selector, opts){
-    const $sel = $(selector);
-    if(!$sel.length) return;
-    $sel.select2(Object.assign({
-      allowClear: true,
-      width: '100%',
-      placeholder: 'Selecione...',
-      dropdownParent: $('.page'),
-      language: { noResults: ()=> 'Nenhum resultado', searching: ()=> 'Buscando...' },
-      matcher: function(params, data){
-        if ($.trim(params.term) === '') return data;
-        if (typeof data.text === 'undefined') return null;
-        return norm(data.text).includes(norm(params.term)) ? data : null;
-      }
-    }, opts||{}));
-  }
-  initSelect2('#id_item', { minimumInputLength: 2, placeholder: 'Selecione um item' });
-  initSelect2('#id_usuario', { minimumInputLength: 0, placeholder: 'Vincular a um usuário' });
-  initSelect2('#id_localidade_destino', { minimumInputLength: 0, placeholder: 'Selecione a localidade destino' });
-  initSelect2('#id_centro_custo_destino', { minimumInputLength: 0, placeholder: 'Selecione o centro de custo destino' });
-  initSelect2('#id_fornecedor_manutencao', { minimumInputLength: 0, placeholder: 'Fornecedor da manutenção' });
-  initSelect2('#id_tipo_movimentacao', { minimumResultsForSearch: 0, placeholder: 'Selecione o tipo' });
-  initSelect2('#id_status_transferencia', { minimumResultsForSearch: 0, placeholder: 'Selecione o status' });
-
-  const wrap = (n)=>document.querySelector(`[data-field="${n}"]`);
-  const enableSelect2 = (el, enabled) => { const $el = $(el); $el.prop('disabled', !enabled).trigger('change.select2'); };
-  const show = (n, req=false)=>{ const w=wrap(n); if(!w) return;
-    w.classList.remove('hidden');
-    w.querySelectorAll('input,select,textarea').forEach(i=>{ i.disabled=false; if(i.tagName==='SELECT'){ enableSelect2(i, true); } req ? i.setAttribute('required','required') : i.removeAttribute('required'); });
-  };
-  const hideAll = ()=>{ document.querySelectorAll('[data-field]').forEach(el=>{
-      el.classList.add('hidden');
-      el.querySelectorAll('input,select,textarea').forEach(i=>{
-        i.disabled=true; i.removeAttribute('required'); i.setCustomValidity('');
-        if(i.tagName==='SELECT'){ enableSelect2(i, false); }
-      });
+$(document).ready(function() {
+    // CORREÇÃO CRÍTICA: Aplica Select2 APENAS em elementos <select>
+    // Isso impede que a textarea seja transformada em um dropdown quebrado
+    $('select.form-control').select2({
+        width: '100%',
+        placeholder: "Selecione...",
+        allowClear: true
     });
-    // Por padrão exibe usuário; para Transferência Equipamento ocultaremos explicitamente
-    $('#id_usuario').prop('disabled', false).trigger('change.select2');
-    $('#wrap-usuario').removeClass('hidden');
-  };
 
-  function updateSummary(){
-    const t = $('#id_tipo_movimentacao').find('option:selected').text() || '—';
-    const it = $('#id_item').find('option:selected').text() || '—';
-    sumTipo.textContent = 'Tipo: ' + t;
-    sumItem.textContent = 'Item: ' + it;
-  }
+    // Mapeamento de Campos
+    const config = {
+        'transferencia': ['tipo_transferencia', 'usuario', 'localidade_destino', 'centro_custo_destino', 'termo_pdf', 'observacao'],
+        'transferencia_equipamento': ['localidade_destino', 'centro_custo_destino', 'status_transferencia', 'observacao'],
+        'entrada': ['quantidade', 'numero_pedido', 'custo', 'localidade_destino', 'centro_custo_destino', 'observacao'],
+        'baixa': ['quantidade', 'centro_custo_destino', 'observacao'],
+        'envio_manutencao': ['fornecedor_manutencao', 'chamado', 'observacao'],
+        'retorno': ['localidade_destino', 'custo', 'chamado', 'observacao'],
+        'retorno_manutencao': ['localidade_destino', 'custo', 'chamado', 'observacao']
+    };
 
-  function layout(){
-    hideAll();
-    const v = $('#id_tipo_movimentacao').val() || '';
+    const allDynamicFields = [
+        'tipo_transferencia', 'usuario', 'quantidade', 'numero_pedido', 'custo',
+        'localidade_destino', 'centro_custo_destino', 'status_transferencia',
+        'fornecedor_manutencao', 'chamado', 'termo_pdf', 'observacao'
+    ];
 
-    if(v==='transferencia'){
-      show('tipo_transferencia');
-      show('localidade_destino', true);
-      show('centro_custo_destino', true);
-      show('termo_pdf', true);
-      show('observacao');
-      hint.textContent = 'Transferência: selecione localidade, centro de custo e anexe o termo (PDF).';
+    function updateLayout() {
+        const type = $('#id_tipo_movimentacao').val();
+        const action = $('input[name="tipo_transferencia"]:checked').val();
 
-    // ✅ NOVO: Transferência Equipamento — mostrar somente Item (já no topo), Status, Localidade Destino, CC Destino e Observações
-    }else if(v==='transferencia_equipamento'){
-      show('status_transferencia', true);
-      show('localidade_destino', true);
-      show('centro_custo_destino', true);
-      show('observacao');
-      // Esconder usuário neste fluxo
-      $('#id_usuario').prop('disabled', true).trigger('change.select2');
-      $('#wrap-usuario').addClass('hidden');
-      // Garantir que campos não desejados permaneçam ocultos:
-      // (tipo_transferencia / quantidade / fornecedor_manutencao / chamado / custo / termo_pdf / numero_pedido)
-      hint.textContent = 'Transferência de Equipamento: selecione Status, Localidade e Centro de Custo destino.';
+        // Esconde todos
+        allDynamicFields.forEach(f => $(`[data-f="${f}"]`).addClass('hidden'));
 
-    }else if(v==='baixa'){
-      show('quantidade', true);
-      show('localidade_destino', true);
-      show('centro_custo_destino', true);
-      show('observacao', true);
-      hint.textContent = 'Baixa: preencha quantidade, localidade, centro de custo e observação.';
+        // Mostra os do tipo selecionado
+        if (config[type]) {
+            config[type].forEach(f => $(`[data-f="${f}"]`).removeClass('hidden'));
+        }
 
-    }else if(v==='entrada'){
-      show('quantidade', true);
-      show('localidade_destino', true);
-      show('centro_custo_destino', true);
-      show('numero_pedido', true);
-      show('custo');
-      show('observacao');
-      $('#id_usuario').prop('disabled', true).trigger('change.select2');
-      $('#wrap-usuario').addClass('hidden');
-      hint.textContent = 'Entrada: informe quantidade, destinação, número do pedido e (opcional) custo.';
-
-    }else if(v==='envio_manutencao'){
-      show('fornecedor_manutencao', true);
-      show('chamado');
-      show('custo');
-      show('observacao');
-      $('#id_usuario').prop('disabled', true).trigger('change.select2');
-      $('#wrap-usuario').addClass('hidden');
-      hint.textContent = 'Envio para manutenção: informe o fornecedor (obrigatório).';
-
-    }else if(v==='retorno' || v==='retorno_manutencao'){
-      show('custo');
-      show('observacao');
-      $('#id_usuario').prop('disabled', true).trigger('change.select2');
-      $('#wrap-usuario').addClass('hidden');
-      hint.textContent = 'Retorno de manutenção: registre custo e observações.';
-
-    }else{
-      hint.textContent = 'Escolha um tipo para ver os campos necessários.';
+        // Lógica específica Transferência
+        if (type === 'transferencia') {
+            if (action === 'devolucao') {
+                $('[data-f="usuario"]').addClass('hidden');
+                $('[data-f="centro_custo_destino"]').addClass('hidden'); 
+            } else {
+                $('[data-f="usuario"]').removeClass('hidden');
+                $('[data-f="centro_custo_destino"]').removeClass('hidden');
+            }
+        }
     }
-    updateSummary();
-  }
 
-  $('#id_tipo_movimentacao').on('change', layout);
-  $('#id_item').on('change', updateSummary);
-  layout(); updateSummary();
+    $('#id_tipo_movimentacao').on('change', updateLayout);
+    $('input[name="tipo_transferencia"]').on('change', updateLayout);
+    
+    // Inicialização
+    updateLayout();
 
-  // Dropzone PDF (mantida)
-  const dz = document.getElementById('pdfDrop');
-  const pdf = document.getElementById('id_termo_pdf');
-  if(pdf){
-    pdf.setAttribute('accept','application/pdf');
-    if(dz){
-      dz.addEventListener('click', ()=> pdf.click());
-      ['dragenter','dragover'].forEach(e=>dz.addEventListener(e,ev=>{ev.preventDefault(); dz.classList.add('drag');}));
-      ['dragleave','drop'].forEach(e=>dz.addEventListener(e,ev=>{ev.preventDefault(); dz.classList.remove('drag');}));
-      dz.addEventListener('drop', ev=>{ const f = ev.dataTransfer.files?.[0]; if(f){ pdf.files = ev.dataTransfer.files; validatePDF(); }});
-      pdf.addEventListener('change', validatePDF);
-    }
-    function validatePDF(){
-      const f = pdf.files?.[0]; if(!f) return;
-      if(f.type!=='application/pdf'){ alert('Envie um arquivo PDF.'); pdf.value=''; }
-      else if(f.size>5*1024*1024){ alert('PDF acima de 5MB.'); pdf.value=''; }
-    }
-  }
-
-  // Lembrar última destinação
-  const KEY='mov-last-dest';
-  const loc = document.getElementById('id_localidade_destino');
-  const cc  = document.getElementById('id_centro_custo_destino');
-  function saveLast(){
-    if(loc && cc && !loc.disabled && !cc.disabled && loc.value && cc.value){
-      localStorage.setItem(KEY, JSON.stringify({loc:loc.value, cc:cc.value}));
-    }
-  }
-  function applyLastDest(){
-    try{
-      const d = JSON.parse(localStorage.getItem(KEY)||'{}');
-      if(loc && cc){
-        if(d.loc && !loc.disabled){ $('#id_localidade_destino').val(d.loc).trigger('change'); }
-        if(d.cc && !cc.disabled){ $('#id_centro_custo_destino').val(d.cc).trigger('change'); }
-      }
-    }catch(e){}
-  }
-  if(loc) loc.addEventListener('change', saveLast);
-  if(cc)  cc.addEventListener('change', saveLast);
-  document.getElementById('applyLast').addEventListener('click', applyLastDest);
-
-  // Submissão segura
-  $form.addEventListener('submit', ()=>{
-    document.querySelectorAll('[data-field].hidden input,[data-field].hidden select,[data-field].hidden textarea')
-      .forEach(i=>{i.disabled=true; i.removeAttribute('required'); i.setCustomValidity('')});
-    btnSave.setAttribute('disabled','disabled');
-    btnSave.innerHTML = '<i class="fa fa-circle-notch fa-spin"></i> Salvando...';
-  });
-
-  // Atalhos
-  document.addEventListener('keydown', (e)=>{
-    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s'){ e.preventDefault(); btnSave?.click(); }
-    if(e.key==='/'){ e.preventDefault(); $('#id_item').select2('open'); }
-    if(e.key==='Escape'){ const back=document.querySelector('.btn.ghost'); back && back.click(); }
-  });
-})();
+    // Loading State
+    $('#movForm').on('submit', function() {
+        $('#btnSave').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Processando...');
+    });
+});
 </script>
 {% endblock %}

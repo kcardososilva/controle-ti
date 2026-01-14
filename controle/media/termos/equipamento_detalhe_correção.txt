@@ -1,0 +1,510 @@
+Correção de Bugs e Refatoração:
+Analisar o código fornecido e identificar e corrigir quaisquer bugs ou erros de lógica.
+Refatorar o código para melhorar a legibilidade, desempenho e aderência às melhores práticas de programação (seja JavaScript, Python, HTML/CSS, etc.).
+Design e Layout (Foco em Frontend):
+Implementar um design minimalista, limpo e bonito.
+Implementar uso de select2 nos campos
+Garantir que o layout seja totalmente responsivo, funcionando perfeitamente em dispositivos móveis e desktops.
+Utilizar campos de formulário e elementos de interface com tamanhos justos (sem excesso de espaço ou elementos desnecessários).
+Sem enfeites excessivos: Foco na usabilidade e simplicidade, evitando gradientes fortes, sombras exageradas ou animações desnecessárias.
+Instruções Adicionais:
+Mantenha a funcionalidade original do código, mas melhore a experiência do usuário.
+Se o código envolver frontend (HTML/CSS), prefira usar CSS puro ou, se necessário, uma biblioteca minimalista como Tailwind CSS ou Bootstrap (versão 5+), mas mantenha a simplicidade.
+Explique brevemente as principais correções e mudanças de design que você implementou.
+Refatore a lógica para que a funcionalidade funcione corretamente
+
+
+html
+
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Detalhe do Ativo: {{ item.nome }}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+
+<style>
+:root {
+  /* Paleta Enterprise Clean */
+  --bg-body: #f8fafc;
+  --bg-card: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+
+  /* Brand Colors */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: #10b981;
+  
+  /* Status Colors (Backgrounds) */
+  --bg-success: #dcfce7; --text-success: #166534;
+  --bg-warning: #fef3c7; --text-warning: #92400e;
+  --bg-danger: #fee2e2;  --text-danger: #b91c1c;
+  --bg-info: #e0f2fe;    --text-info: #075985;
+
+  /* Spacing & Radius */
+  --radius: 8px;
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+
+body { background: var(--bg-body); color: var(--text-main); font-family: 'Inter', system-ui, sans-serif; }
+
+.page-container { max-width: 1200px; margin: 24px auto; padding: 0 20px; display: flex; flex-direction: column; gap: 20px; }
+
+/* === HEADER DA PÁGINA === */
+.page-header {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 24px; box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+.header-top { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
+
+.header-title h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 10px; }
+.header-title .subtitle { color: var(--text-muted); font-size: 0.9rem; margin-top: 4px; font-weight: 500; }
+
+.actions-group { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px;
+  border-radius: var(--radius); font-size: 0.875rem; font-weight: 600;
+  text-decoration: none; transition: all 0.2s; border: 1px solid transparent; cursor: pointer;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-outline { background: #fff; border-color: var(--border); color: var(--text-main); }
+.btn-outline:hover { background: var(--bg-body); border-color: #cbd5e1; }
+.btn-danger-outline { background: #fff; border-color: #fca5a5; color: var(--danger); }
+.btn-danger-outline:hover { background: #fef2f2; }
+
+/* Chips / Badges do Header */
+.meta-chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px;
+  border-radius: 99px; font-size: 0.8rem; font-weight: 600;
+  background: var(--bg-body); border: 1px solid var(--border); color: var(--text-muted);
+}
+.chip i { font-size: 0.75rem; }
+
+/* Status Styles */
+.st-ativo { background: var(--bg-success); color: var(--text-success); border-color: transparent; }
+.st-manutencao { background: var(--bg-warning); color: var(--text-warning); border-color: transparent; }
+.st-defeito { background: var(--bg-danger); color: var(--text-danger); border-color: transparent; }
+.st-backup { background: var(--bg-info); color: var(--text-info); border-color: transparent; }
+
+/* === ALERTS === */
+.alert-box {
+  padding: 12px 16px; border-radius: var(--radius); display: flex; gap: 12px; align-items: flex-start; font-size: 0.9rem;
+}
+.alert-warning { background: #fffbeb; color: #92400e; border: 1px solid #fcd34d; }
+.alert-danger { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+
+/* === CARDS DE INFORMAÇÃO === */
+.content-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+@media (max-width: 900px) { .content-grid { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--shadow-sm); overflow: hidden;
+  height: 100%; display: flex; flex-direction: column;
+}
+
+.card-header {
+  padding: 16px 20px; border-bottom: 1px solid var(--border); background: #fcfcfc;
+  display: flex; align-items: center; gap: 10px;
+}
+.card-header h3 { margin: 0; font-size: 1rem; font-weight: 700; color: var(--text-main); }
+.card-body { padding: 20px; flex: 1; }
+
+/* Info Tiles (Label + Value) */
+.info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; }
+.info-tile label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; }
+.info-tile span { font-size: 0.95rem; color: var(--text-main); font-weight: 500; }
+.info-tile span.mono { font-family: 'Courier New', monospace; letter-spacing: -0.5px; font-weight: 600; }
+
+/* === TABELAS === */
+.table-responsive { overflow-x: auto; width: 100%; }
+table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 0.9rem; }
+th { background: #f8fafc; text-align: left; padding: 12px 16px; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text-main); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+
+/* === TIMELINE === */
+.timeline { position: relative; padding-left: 24px; margin-top: 10px; border-left: 2px solid var(--border); }
+.timeline-item { position: relative; margin-bottom: 24px; }
+.timeline-item:last-child { margin-bottom: 0; }
+.timeline-dot {
+  position: absolute; left: -29px; top: 2px; width: 12px; height: 12px;
+  border-radius: 50%; background: #fff; border: 2px solid var(--text-muted);
+}
+/* Cores da Timeline */
+.tl-ok .timeline-dot { border-color: var(--success); background: var(--bg-success); }
+.tl-warn .timeline-dot { border-color: var(--warning); background: var(--bg-warning); }
+.tl-bad .timeline-dot { border-color: var(--danger); background: var(--bg-danger); }
+
+.timeline-content {
+  background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+}
+.tl-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; }
+.tl-date { color: var(--text-muted); }
+.tl-details { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.85rem; color: var(--text-main); }
+.tl-detail-item { display: flex; align-items: center; gap: 6px; }
+.tl-detail-item i { color: var(--text-muted); font-size: 0.8rem; }
+
+</style>
+
+<div class="page-container">
+
+  <div class="page-header">
+    <div class="header-top">
+      <div class="header-title">
+        <h1>
+          <i class="fa fa-cube" style="color:var(--primary)"></i>
+          {{ item.nome|default:"Ativo Sem Nome" }}
+        </h1>
+        <div class="subtitle">Cadastrado em {{ item.created_at|date:"d/m/Y" }}</div>
+      </div>
+
+      <div class="actions-group">
+        {% if item.precisa_preventiva == 'sim' %}
+          <a class="btn btn-outline" href="{% url 'preventiva_start_item' item.id %}">
+            <i class="fa fa-shield-heart" style="color:var(--success)"></i> Preventiva
+          </a>
+        {% endif %}
+        
+        <a class="btn btn-primary" href="{% url 'editar_equipamento' item.id %}">
+          <i class="fa fa-pen"></i> Editar
+        </a>
+      </div>
+    </div>
+
+    <div class="meta-chips">
+      {% with s=item.status|lower %}
+      <span class="chip st-{{ s }}">
+        <i class="fa fa-circle"></i> {{ item.get_status_display|default:item.status|capfirst }}
+      </span>
+      {% endwith %}
+
+      <span class="chip">
+        <i class="fa fa-layer-group"></i> Qtd: {{ item.quantidade|default:"1" }}
+      </span>
+      
+      {% if item.fornecedor %}
+      <span class="chip">
+        <i class="fa fa-truck"></i> {{ item.fornecedor.nome|truncatechars:20 }}
+      </span>
+      {% endif %}
+      
+      {% if item.locado == 'sim' %}
+      <span class="chip" style="background:var(--bg-info); color:var(--text-info);">
+        <i class="fa fa-handshake"></i> Locado
+      </span>
+      {% endif %}
+    </div>
+
+    {% if item.status == 'manutencao' %}
+      <div class="alert-box alert-warning">
+        <i class="fa fa-triangle-exclamation" style="margin-top:2px"></i>
+        <div>
+          <strong>Em Manutenção:</strong> Este item não está disponível para uso imediato. Verifique o fluxo de serviço.
+        </div>
+      </div>
+    {% elif item.status == 'defeito' %}
+      <div class="alert-box alert-danger">
+        <i class="fa fa-circle-xmark" style="margin-top:2px"></i>
+        <div>
+          <strong>Defeito Reportado:</strong> Item inoperante. Recomenda-se bloqueio de movimentação.
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="content-grid">
+    
+    <div style="display:flex; flex-direction:column; gap:20px;">
+      
+      <div class="card">
+        <div class="card-header">
+          <i class="fa fa-id-card" style="color:var(--text-muted)"></i>
+          <h3>Dados de Identificação</h3>
+        </div>
+        <div class="card-body">
+          <div class="info-grid">
+            <div class="info-tile">
+              <label>Serial Number (S/N)</label>
+              <span class="mono">{{ item.numero_serie|default:"-" }}</span>
+            </div>
+            <div class="info-tile">
+              <label>Marca / Modelo</label>
+              <span>{{ item.marca|default:"-" }} / {{ item.modelo|default:"-" }}</span>
+            </div>
+            <div class="info-tile">
+              <label>Subtipo/Categoria</label>
+              <span>{{ item.subtipo.nome|default:"-" }}</span>
+            </div>
+            <div class="info-tile">
+              <label>Valor de Aquisição</label>
+              <span>{% if item.valor %}R$ {{ item.valor|floatformat:2 }}{% else %}-{% endif %}</span>
+            </div>
+            <div class="info-tile">
+              <label>Centro de Custo</label>
+              <span>{{ item.centro_custo.departamento|default:"-" }}</span>
+            </div>
+            <div class="info-tile">
+              <label>Localização Atual</label>
+              <span><i class="fa fa-location-dot" style="color:var(--primary)"></i> {{ item.localidade.local|default:"Indefinido" }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <i class="fa fa-file-invoice" style="color:var(--text-muted)"></i>
+          <h3>Aquisição & Contrato</h3>
+        </div>
+        <div class="card-body">
+          <div class="info-grid">
+            <div class="info-tile">
+              <label>Data Compra</label>
+              <span>{{ item.data_compra|date:"d/m/Y"|default:"-" }}</span>
+            </div>
+            <div class="info-tile">
+              <label>Nº Pedido/NF</label>
+              <span>{{ item.numero_pedido|default:"-" }}</span>
+            </div>
+            
+            {% if item.fornecedor %}
+            <div class="info-tile">
+               <label>Fornecedor</label>
+               <span>{{ item.fornecedor.nome }}</span>
+            </div>
+            <div class="info-tile">
+               <label>Contrato</label>
+               <span>{{ item.fornecedor.contrato|default:"-" }}</span>
+            </div>
+            {% endif %}
+
+            {% if item.locado == 'sim' %}
+            <div class="info-tile">
+               <label>Valor Locação (Mensal)</label>
+               <span>{% if locacao and locacao.valor_mensal %}R$ {{ locacao.valor_mensal|floatformat:2 }}{% else %}-{% endif %}</span>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {% if preventivas %}
+      <div class="card">
+        <div class="card-header">
+          <i class="fa fa-clipboard-check" style="color:var(--text-muted)"></i>
+          <h3>Planos de Manutenção Preventiva</h3>
+        </div>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Modelo Checklist</th>
+                <th>Última Exec.</th>
+                <th>Próxima Exec.</th>
+                <th>Status</th>
+                <th>Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in preventivas %}
+              <tr>
+                <td>{{ p.checklist_modelo.nome }}</td>
+                <td>{{ p.data_ultima|date:"d/m/Y"|default:"-" }}</td>
+                <td>{{ p.data_proxima|date:"d/m/Y"|default:"-" }}</td>
+                <td>
+                  {% if p.flag_em_dia %}
+                    <span class="chip st-ativo" style="font-size:0.75rem; padding:2px 8px;">No Prazo</span>
+                  {% else %}
+                    <span class="chip st-defeito" style="font-size:0.75rem; padding:2px 8px;">Vencida</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <a href="{% url 'preventiva_exec' p.pk %}" class="btn btn-outline" style="padding:4px 8px; font-size:0.8rem;">
+                    <i class="fa fa-play"></i>
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:20px;">
+      
+      <div class="card">
+        <div class="card-header">
+          <i class="fa fa-align-left" style="color:var(--text-muted)"></i>
+          <h3>Observações</h3>
+        </div>
+        <div class="card-body">
+          <p style="margin:0; font-size:0.9rem; color:var(--text-muted); line-height:1.5;">
+            {{ item.observacoes|default:"Nenhuma observação registrada."|linebreaksbr }}
+          </p>
+          <div style="margin-top:16px; padding-top:12px; border-top:1px dashed var(--border); font-size:0.8rem; color:var(--text-muted);">
+            Criado por: <strong>{{ item.criado_por|default:"Sistema" }}</strong> em {{ item.created_at|date:"d/m/Y" }}
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <i class="fa fa-clock-rotate-left" style="color:var(--text-muted)"></i>
+          <h3>Últimas Movimentações</h3>
+        </div>
+        <div class="card-body" style="background:#fff;">
+          <div class="timeline">
+            {% for mov in movimentacoes|slice:":5" %} {% with tipo=mov.tipo_movimentacao %}
+              <div class="timeline-item {% if tipo == 'baixa' %}tl-bad{% elif tipo == 'retorno' %}tl-ok{% else %}tl-warn{% endif %}">
+                <span class="timeline-dot"></span>
+                <div class="timeline-content">
+                  <div class="tl-header">
+                    <span>{{ mov.get_tipo_movimentacao_display|default:tipo|capfirst }}</span>
+                    <span class="tl-date">{{ mov.created_at|date:"d/m/Y H:i" }}</span>
+                  </div>
+                  <div class="tl-details">
+                    <div class="tl-detail-item">
+                      <i class="fa fa-user"></i> {{ mov.usuario.nome|default:"-" }}
+                    </div>
+                    {% if mov.localidade_destino %}
+                    <div class="tl-detail-item">
+                      <i class="fa fa-arrow-right"></i> {{ mov.localidade_destino.local }}
+                    </div>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+              {% endwith %}
+            {% empty %}
+              <p style="color:var(--text-muted); font-style:italic;">Nenhuma movimentação.</p>
+            {% endfor %}
+            
+            {% if movimentacoes.count > 5 %}
+              <div style="text-align:center; margin-top:16px;">
+                <a href="#" class="btn btn-outline" style="font-size:0.8rem;">Ver histórico completo</a>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+VIEWS
+
+@login_required
+def equipamento_detalhe(request, pk: int):
+    """
+    Exibe os detalhes completos de um ativo, incluindo status calculado de preventivas
+    e histórico de movimentações.
+    """
+    # 1. Busca eficiente do item com todas as relações necessárias (JOINs)
+    item = get_object_or_404(
+        Item.objects.select_related(
+            "subtipo", 
+            "localidade", 
+            "centro_custo", 
+            "fornecedor"
+        ),
+        pk=pk,
+    )
+
+    # 2. Histórico de Movimentações (Ordenado do mais recente)
+    movimentacoes = (
+        MovimentacaoItem.objects
+        .filter(item=item)
+        .select_related(
+            "usuario",
+            "localidade_destino", "centro_custo_destino",
+            "localidade_origem", "centro_custo_origem",
+        )
+        .order_by("-created_at")
+    )
+
+    # 3. Preventivas e Cálculo de Datas
+    preventivas = (
+        Preventiva.objects
+        .filter(equipamento=item)
+        .select_related("checklist_modelo")
+        .order_by("-data_proxima", "-data_ultima")
+    )
+
+    today = timezone.localdate()
+
+    for p in preventivas:
+        # Se não tiver data próxima definida no banco, tentamos calcular em tempo real
+        if not p.data_proxima:
+            intervalo = 0
+            
+            # Tenta pegar intervalo do modelo de checklist
+            if p.checklist_modelo and p.checklist_modelo.intervalo_dias:
+                try:
+                    intervalo = int(p.checklist_modelo.intervalo_dias)
+                except (ValueError, TypeError):
+                    intervalo = 0
+            
+            # Se falhar, tenta pegar do cadastro do item
+            elif item.data_limite_preventiva:
+                try:
+                    intervalo = int(item.data_limite_preventiva)
+                except (ValueError, TypeError):
+                    intervalo = 0
+
+            # Se encontrou um intervalo válido, projeta a data
+            if intervalo > 0:
+                base_date = p.data_ultima if p.data_ultima else today
+                p.data_proxima = base_date + timedelta(days=intervalo)
+
+        # Flag booleana para facilitar estilização no template
+        # Está em dia se não tem data definida (null) OU se a data futura ainda não chegou
+        p.flag_em_dia = (p.data_proxima is None) or (p.data_proxima >= today)
+
+    # 4. Dados Opcionais (Try/Except para evitar quebra se o model não existir ou mudar)
+    comentarios = []
+    try:
+        # Verifica se o model existe no contexto do projeto
+        from .models import ComentarioEquipamento 
+        comentarios = ComentarioEquipamento.objects.filter(
+            equipamento=item
+        ).select_related("criado_por").order_by("-created_at")
+    except ImportError:
+        pass # Model não existe, lista vazia
+    except Exception:
+        pass # Erro genérico de DB
+
+    locacao = None
+    try:
+        # Tenta acessar relação OneToOne ou Reverse FK
+        if hasattr(item, 'locacao'):
+            locacao = item.locacao
+    except Exception:
+        pass
+
+    context = {
+        "item": item,
+        "movimentacoes": movimentacoes,
+        "preventivas": preventivas,
+        "comentarios": comentarios,
+        "locacao": locacao,
+        "today": today,
+    }
+
+    return render(request, "front/equipamentos/equipamento_detalhe.html", context)

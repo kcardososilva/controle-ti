@@ -3,6 +3,8 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Sum
+from decimal import Decimal
 from .models import (
     Categoria, Subtipo, Localidade, Fornecedor, CentroCusto, Funcao, Usuario,
     Item, Locacao, Comentario, CicloManutencao, MovimentacaoItem,
@@ -248,109 +250,87 @@ class MovimentacaoItemForm(forms.ModelForm):
     class Meta:
         model = MovimentacaoItem
         fields = [
-            "tipo_movimentacao",
-            "tipo_transferencia",
-            "item",
-            "usuario",
-            "quantidade",
-            "localidade_destino",
-            "centro_custo_destino",
-            "fornecedor_manutencao",
-            "numero_pedido",
-            "observacao",
-            "chamado",
-            "custo",
-            "termo_pdf",
-            # ✅ status usado apenas em "transferencia_equipamento"
-            "status_transferencia",
+            "tipo_movimentacao", "tipo_transferencia", "item", "usuario",
+            "quantidade", "localidade_destino", "centro_custo_destino",
+            "fornecedor_manutencao", "numero_pedido", "observacao",
+            "chamado", "custo", "termo_pdf", "status_transferencia"
         ]
         widgets = {
-            "tipo_movimentacao": forms.Select(attrs={"class": "ctrl"}),
-            "tipo_transferencia": forms.RadioSelect,
-            "item": forms.Select(attrs={"class": "ctrl"}),
-            "usuario": forms.Select(attrs={"class": "ctrl"}),
-            "localidade_destino": forms.Select(attrs={"class": "ctrl"}),
-            "centro_custo_destino": forms.Select(attrs={"class": "ctrl"}),
-            "fornecedor_manutencao": forms.Select(attrs={"class": "ctrl"}),
-            "numero_pedido": forms.TextInput(attrs={"class": "ctrl", "placeholder": "Ex.: PO-2025-0001"}),
-            "observacao": forms.Textarea(attrs={"class": "ctrl", "rows": 3}),
-            "chamado": forms.TextInput(attrs={"class": "ctrl"}),
-            "custo": forms.NumberInput(attrs={"class": "ctrl", "step": "0.01", "min": "0"}),
-            "status_transferencia": forms.Select(attrs={"class": "ctrl"}),
+            # Classes 'form-control' para estilo. O JS agora só aplicará Select2 nos tags <select>
+            "tipo_movimentacao": forms.Select(attrs={"class": "form-control"}),
+            "item": forms.Select(attrs={"class": "form-control"}),
+            "usuario": forms.Select(attrs={"class": "form-control"}),
+            "localidade_destino": forms.Select(attrs={"class": "form-control"}),
+            "centro_custo_destino": forms.Select(attrs={"class": "form-control"}),
+            "fornecedor_manutencao": forms.Select(attrs={"class": "form-control"}),
+            "status_transferencia": forms.Select(attrs={"class": "form-control"}),
+            
+            # CORREÇÃO: Widget explícito de Textarea para não ser confundido pelo JS
+            "observacao": forms.Textarea(attrs={
+                "class": "form-control", 
+                "rows": 3, 
+                "placeholder": "Descreva detalhes importantes..."
+            }),
+            
+            "numero_pedido": forms.TextInput(attrs={"class": "form-control"}),
+            "chamado": forms.TextInput(attrs={"class": "form-control"}),
+            "custo": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
+            "tipo_transferencia": forms.RadioSelect(),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Tudo opcional por padrão; validação condicional no clean()
-        for f in self.fields.values():
-            f.required = False
+        # Remove a obrigatoriedade do HTML para permitir a validação condicional no clean()
+        for field in self.fields.values():
+            field.required = False
 
     def clean(self):
         cleaned = super().clean()
-        tipo = (cleaned.get("tipo_movimentacao") or "").strip()
+        tipo = cleaned.get("tipo_movimentacao")
 
-        # Alias aceito no front
-        if tipo == "retorno":
-            tipo = "retorno_manutencao"
-            cleaned["tipo_movimentacao"] = tipo
+        if not tipo:
+            self.add_error("tipo_movimentacao", "O tipo de movimentação é obrigatório.")
+            return cleaned
 
-        # ========= Regras por tipo =========
-
-        # TRANSFERÊNCIA (clássica)
+        # Regras condicionais de validação
         if tipo == "transferencia":
-            if not cleaned.get("tipo_transferencia"):
-                self.add_error("tipo_transferencia", "Selecione Entrega ou Devolução.")
-            if not cleaned.get("localidade_destino"):
-                self.add_error("localidade_destino", "Localidade destino é obrigatória para transferência.")
-            if not cleaned.get("centro_custo_destino"):
-                self.add_error("centro_custo_destino", "Centro de custo destino é obrigatório para transferência.")
+            acao = cleaned.get("tipo_transferencia")
+            if not acao:
+                self.add_error("tipo_transferencia", "Selecione o tipo da transferência (Entrega ou Devolução).")
             if not cleaned.get("termo_pdf"):
-                self.add_error("termo_pdf", "O termo PDF é obrigatório para transferência.")
-            if cleaned.get("tipo_transferencia") == "entrega" and not cleaned.get("usuario"):
-                self.add_error("usuario", "Informe o usuário para a Transferência (Entrega).")
+                self.add_error("termo_pdf", "O termo de responsabilidade (PDF) é obrigatório.")
+            
+            # Entrega: Usuário e Localidade são obrigatórios
+            if acao == "entrega":
+                if not cleaned.get("usuario"):
+                    self.add_error("usuario", "Selecione o usuário para entrega.")
+                if not cleaned.get("localidade_destino"):
+                    self.add_error("localidade_destino", "Informe a localidade de destino.")
+                # CC Destino é opcional aqui (preenchido pelo Model se vazio)
 
-        # ✅ TRANSFERÊNCIA EQUIPAMENTO (nova)
         elif tipo == "transferencia_equipamento":
             if not cleaned.get("localidade_destino"):
-                self.add_error("localidade_destino", "Localidade destino é obrigatória.")
+                self.add_error("localidade_destino", "Informe a nova localidade.")
             if not cleaned.get("centro_custo_destino"):
-                self.add_error("centro_custo_destino", "Centro de custo destino é obrigatório.")
+                self.add_error("centro_custo_destino", "Informe o novo centro de custo.")
             if not cleaned.get("status_transferencia"):
-                self.add_error("status_transferencia", "Selecione o status do equipamento para a transferência.")
+                self.add_error("status_transferencia", "Informe o novo status.")
 
-        # BAIXA
-        elif tipo == "baixa":
-            if not cleaned.get("quantidade"):
-                self.add_error("quantidade", "Informe a quantidade para a baixa.")
-            if not cleaned.get("localidade_destino"):
-                self.add_error("localidade_destino", "Localidade é obrigatória na baixa.")
-            if not cleaned.get("centro_custo_destino"):
-                self.add_error("centro_custo_destino", "Centro de custo é obrigatório na baixa.")
-
-        # ENTRADA
         elif tipo == "entrada":
-            if not cleaned.get("quantidade"):
-                self.add_error("quantidade", "Informe a quantidade para a entrada.")
-            if not cleaned.get("localidade_destino"):
-                self.add_error("localidade_destino", "Localidade é obrigatória na entrada.")
-            if not cleaned.get("centro_custo_destino"):
-                self.add_error("centro_custo_destino", "Centro de custo é obrigatório na entrada.")
-            numero = (cleaned.get("numero_pedido") or "").strip()
-            if not numero:
-                self.add_error("numero_pedido", "Informe o número do pedido para a entrada.")
+            if not cleaned.get("quantidade"): self.add_error("quantidade", "Quantidade obrigatória.")
+            if not cleaned.get("numero_pedido"): self.add_error("numero_pedido", "Nº Pedido obrigatório.")
 
-        # ENVIO MANUTENÇÃO
+        elif tipo == "baixa":
+            if not cleaned.get("quantidade"): self.add_error("quantidade", "Quantidade obrigatória.")
+            if not cleaned.get("observacao"): self.add_error("observacao", "Justifique a baixa nas observações.")
+
         elif tipo == "envio_manutencao":
-            if not cleaned.get("fornecedor_manutencao"):
-                self.add_error("fornecedor_manutencao", "Informe o fornecedor de manutenção.")
+            if not cleaned.get("observacao"): self.add_error("observacao", "Descreva o problema nas observações.")
 
-        # Sanitização leve
-        custo = cleaned.get("custo")
-        if custo is not None and custo < 0:
-            self.add_error("custo", "Custo não pode ser negativo.")
+        elif tipo == "retorno_manutencao" or tipo == "retorno":
+            if not cleaned.get("localidade_destino"): self.add_error("localidade_destino", "Informe onde o item será guardado.")
 
         return cleaned
-
 # ================== HELPERS/BASE ESTILO ==================
 class BaseStyledForm(forms.ModelForm):
     """Aplica a classe .ctrl a todos os widgets automaticamente."""
@@ -378,27 +358,48 @@ class ChecklistPerguntaForm(BaseStyledForm):
 
 class PreventivaStartForm(forms.Form):
     item = forms.ModelChoiceField(
-        queryset=Item.objects.select_related("subtipo").order_by("nome"),
-        label=_("Equipamento"),
-        widget=forms.Select(attrs={"class": "ctrl"}),
+        queryset=Item.objects.select_related("subtipo")
+                           .filter(status__in=['ativo', 'backup', 'manutencao'])
+                           .order_by("nome"),
+        label="Equipamento / Ativo",
+        widget=forms.Select(attrs={"class": "form-control select2", "data-placeholder": "Busque o ativo..."}),
+        empty_label=None
     )
+    
     checklist_modelo = forms.ModelChoiceField(
-        queryset=CheckListModelo.objects.select_related("subtipo").order_by("nome"),
-        label=_("Modelo de Checklist"),
-        widget=forms.Select(attrs={"class": "ctrl"}),
+        queryset=CheckListModelo.objects.filter(ativo="sim").order_by("nome"),
+        label="Modelo de Checklist",
+        widget=forms.Select(attrs={"class": "form-control select2", "data-placeholder": "Selecione o serviço..."}),
+        empty_label=None
     )
 
     def __init__(self, *args, **kwargs):
         item_instance = kwargs.pop("item_instance", None)
         super().__init__(*args, **kwargs)
-        if item_instance and item_instance.subtipo_id:
+        
+        # Lógica de Filtro Dinâmico
+        if item_instance:
             self.fields["item"].initial = item_instance.pk
-            self.fields["checklist_modelo"].queryset = (
-                CheckListModelo.objects
-                .filter(subtipo=item_instance.subtipo, ativo="sim")
-                .select_related("subtipo")
-                .order_by("nome")
-            )
+            if item_instance.subtipo:
+                self.fields["checklist_modelo"].queryset = (
+                    CheckListModelo.objects
+                    .filter(subtipo=item_instance.subtipo, ativo="sim")
+                    .order_by("nome")
+                )
+        
+        # Se houve post e o item mudou
+        elif self.data and self.data.get('item'):
+            try:
+                item_id = int(self.data.get('item'))
+                item_obj = Item.objects.get(pk=item_id)
+                if item_obj.subtipo:
+                    self.fields["checklist_modelo"].queryset = (
+                        CheckListModelo.objects
+                        .filter(subtipo=item_obj.subtipo, ativo="sim")
+                        .order_by("nome")
+                    )
+            except:
+                pass
 
 # ================== LICENÇAS ==================
 ISO_FMT = "%Y-%m-%d"
@@ -406,155 +407,219 @@ ISO_FMT = "%Y-%m-%d"
 class LicencaForm(forms.ModelForm):
     class Meta:
         model = Licenca
-        fields = [
-            "nome", "fornecedor", "centro_custo",
-            "quantidade", "custo",
-            "pmb", "periodicidade",
-            "data_inicio", "data_fim", "observacao",
-        ]
+        # Apenas os campos solicitados
+        fields = ["nome", "fornecedor", "pmb", "observacao"]
+        
         widgets = {
-            "nome": forms.TextInput(attrs={"class": "ctrl", "placeholder": "Ex.: Microsoft 365 Business"}),
-            "fornecedor": forms.Select(attrs={"class": "ctrl"}),
-            "centro_custo": forms.Select(attrs={"class": "ctrl"}),
-            "quantidade": forms.NumberInput(attrs={"class": "ctrl", "min": 0}),
-            "custo": forms.NumberInput(attrs={"class": "ctrl", "step": "0.01", "min": 0}),
-            "pmb": forms.Select(attrs={"class": "ctrl"}),
-            "periodicidade": forms.Select(attrs={"class": "ctrl"}),
-
-            # ⚠️ IMPORTANTE: define o formato explícito para exibir o valor no input date
-            "data_inicio": forms.DateInput(format=ISO_FMT, attrs={"type": "date", "class": "ctrl"}),
-            "data_fim":    forms.DateInput(format=ISO_FMT, attrs={"type": "date", "class": "ctrl"}),
-
-            "observacao": forms.Textarea(attrs={"class": "ctrl", "rows": 4, "placeholder": "Observações…"}),
+            "nome": forms.TextInput(attrs={
+                "class": "form-control", 
+                "placeholder": "Ex: Microsoft Office 365"
+            }),
+            "fornecedor": forms.Select(attrs={
+                "class": "form-control"
+            }),
+            "pmb": forms.Select(attrs={
+                "class": "form-control"
+            }),
+            "observacao": forms.Textarea(attrs={
+                "class": "form-control", 
+                "rows": 4, 
+                "placeholder": "Insira detalhes adicionais aqui..."
+            }),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        # Garante que o widget conheça o formato de saída
-        self.fields["data_inicio"].widget.format = ISO_FMT
-        self.fields["data_fim"].widget.format = ISO_FMT
-
-        # Quando for edição, injeta o value no padrão ISO (YYYY-MM-DD)
-        inst = self.instance
-        if inst and getattr(inst, "pk", None):
-            if inst.data_inicio:
-                self.fields["data_inicio"].initial = inst.data_inicio.strftime(ISO_FMT)
-            if inst.data_fim:
-                self.fields["data_fim"].initial = inst.data_fim.strftime(ISO_FMT)
-
-        # Aceita também datas vindas do browser em ISO
-        self.fields["data_inicio"].input_formats = [ISO_FMT]
-        self.fields["data_fim"].input_formats = [ISO_FMT]
-
-    def clean(self):
-        cleaned = super().clean()
-        ini, fim = cleaned.get("data_inicio"), cleaned.get("data_fim")
-        if ini and fim and fim < ini:
-            self.add_error("data_fim", "A data de fim não pode ser anterior à data de início.")
-        return cleaned
+        # Placeholder para o Select2 funcionar bonito
+        self.fields['fornecedor'].empty_label = "Selecione um Fornecedor..."
 
 class MovimentacaoLicencaForm(forms.ModelForm):
+    lote_id_select = forms.CharField(required=False, widget=forms.HiddenInput())
+
     class Meta:
         model = MovimentacaoLicenca
-        fields = ["tipo", "licenca", "usuario", "centro_custo_destino", "observacao"]
+        fields = ["tipo", "licenca", "usuario", "observacao"]
         widgets = {
-            "tipo": forms.Select(attrs={"class": "ctrl"}),
-            "licenca": forms.Select(attrs={"class": "ctrl"}),
-            "usuario": forms.Select(attrs={"class": "ctrl"}),
-            "centro_custo_destino": forms.Select(attrs={"class": "ctrl"}),
-            "observacao": forms.Textarea(attrs={"class": "ctrl", "rows": 3}),
+            "tipo": forms.Select(attrs={"class": "form-control"}),
+            "licenca": forms.Select(attrs={"class": "form-control", "id": "id_licenca"}),
+            "usuario": forms.Select(attrs={"class": "form-control"}),
+            "observacao": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
 
     def clean(self):
-        cleaned = super().clean()
-        tipo = cleaned.get("tipo")
-        usuario = cleaned.get("usuario")
-        if tipo in (TipoMovLicencaChoices.ATRIBUICAO, TipoMovLicencaChoices.REMOCAO) and not usuario:
-            raise ValidationError("Informe o usuário para atribuir/remover a licença.")
-        return cleaned
+        cleaned_data = super().clean()
+        # (Mantém a mesma validação robusta de antes)
+        tipo = cleaned_data.get("tipo")
+        licenca = cleaned_data.get("licenca")
+        usuario = cleaned_data.get("usuario")
+        lote_id = cleaned_data.get("lote_id_select")
+
+        if not licenca or not tipo: return cleaned_data
+
+        if tipo == TipoMovLicencaChoices.ATRIBUICAO:
+            if not usuario:
+                self.add_error('usuario', "Informe o colaborador.")
+                return cleaned_data
+            
+            last_mov = MovimentacaoLicenca.objects.filter(
+                licenca=licenca, usuario=usuario
+            ).order_by('-created_at', '-id').first()
+
+            if last_mov and last_mov.tipo == TipoMovLicencaChoices.ATRIBUICAO:
+                self.add_error('usuario', f"O usuário já possui esta licença.")
+
+            if lote_id:
+                try:
+                    lote = LicencaLote.objects.get(pk=lote_id, licenca=licenca)
+                    if lote.quantidade_disponivel < 1:
+                        raise ValidationError(f"O Lote #{lote_id} está esgotado.")
+                    cleaned_data['lote_manual_obj'] = lote
+                except LicencaLote.DoesNotExist:
+                    raise ValidationError("Lote inválido.")
+            else:
+                total = LicencaLote.objects.filter(licenca=licenca).aggregate(s=Sum('quantidade_disponivel'))['s'] or 0
+                if total < 1:
+                    raise ValidationError("Estoque esgotado.")
+
+        elif tipo == TipoMovLicencaChoices.DEVOLUCAO:
+            if not usuario:
+                self.add_error('usuario', "Informe o colaborador.")
+            
+            last_attrib = MovimentacaoLicenca.objects.filter(
+                licenca=licenca, usuario=usuario, tipo=TipoMovLicencaChoices.ATRIBUICAO
+            ).order_by('-created_at', '-id').first()
+
+            if not last_attrib:
+                self.add_error('usuario', "Este usuário não possui licença ativa para devolver.")
+            else:
+                cleaned_data['origem_devolucao'] = last_attrib
+
+        return cleaned_data
 
     @transaction.atomic
     def save(self, commit=True, user=None):
-        instance: MovimentacaoLicenca = super().save(commit=False)
+        instance = super().save(commit=False)
+        
+        lote_manual = self.cleaned_data.get('lote_manual_obj')
+        origem_devolucao = self.cleaned_data.get('origem_devolucao')
 
-        # Fallback do Centro de Custo (usuário > licença)
-        if instance.centro_custo_destino_id is None:
-            if instance.usuario and instance.usuario.centro_custo_id:
-                instance.centro_custo_destino = instance.usuario.centro_custo
-            elif instance.licenca and instance.licenca.centro_custo_id:
-                instance.centro_custo_destino = instance.licenca.centro_custo
-
-        # Auditoria
-        if user is not None:
-            if not instance.pk:
-                instance.criado_por = user
+        if user:
+            if instance.pk is None: instance.criado_por = user
             instance.atualizado_por = user
 
-        # 🔹 pega o lote do POST (se selecionado)
-        lote_id_raw = self.data.get("lote")  # "", None ou "123"
-        lote_id = int(lote_id_raw) if lote_id_raw and str(lote_id_raw).isdigit() else None
-        if lote_id:
-            # ⚠️ IMPORTANTE: persistir o vínculo com o lote
-            instance.lote_id = lote_id
-
-        is_new = instance.pk is None
         if commit:
+            # === ATRIBUIÇÃO (SAÍDA) ===
+            if instance.tipo == TipoMovLicencaChoices.ATRIBUICAO:
+                lote_alvo = None
+                
+                # 1. Define Lote (Manual ou FIFO)
+                if lote_manual:
+                    lote_alvo = LicencaLote.objects.select_for_update().get(pk=lote_manual.pk)
+                else:
+                    lote_alvo = LicencaLote.objects.select_for_update().filter(
+                        licenca=instance.licenca,
+                        quantidade_disponivel__gt=0
+                    ).order_by('data_compra', 'id').first()
+
+                if lote_alvo:
+                    # 2. Baixa de Estoque
+                    lote_alvo.quantidade_disponivel = max(0, lote_alvo.quantidade_disponivel - 1)
+                    lote_alvo.save()
+                    
+                    instance.lote = lote_alvo
+                    
+                    # 3. Define Centro de Custo (Destino = Usuário)
+                    if instance.usuario and instance.usuario.centro_custo:
+                        instance.centro_custo_destino = instance.usuario.centro_custo
+                    
+                    # 4. [MATEMÁTICA CORRIGIDA] Cálculo do Custo Mensal (Alocação)
+                    custo_base = lote_alvo.custo_ciclo or Decimal(0)
+                    periodicidade = str(lote_alvo.periodicidade).lower()
+
+                    if periodicidade == 'anual':
+                        # Anual: R$ 600,00 / 12 = R$ 50,00/mês
+                        instance.valor_unitario = custo_base / Decimal(12)
+                    elif periodicidade == 'semestral':
+                        # Semestral: R$ 300,00 / 6 = R$ 50,00/mês
+                        instance.valor_unitario = custo_base / Decimal(6)
+                    elif periodicidade == 'trimestral':
+                        instance.valor_unitario = custo_base / Decimal(3)
+                    else:
+                        # Mensal (ou indefinido): Valor integral
+                        instance.valor_unitario = custo_base
+
+            # === DEVOLUÇÃO (ENTRADA) ===
+            elif instance.tipo == TipoMovLicencaChoices.DEVOLUCAO:
+                lote_retorno = None
+                origem_id = origem_devolucao.lote_id if origem_devolucao else None
+                
+                if origem_id:
+                    try:
+                        lote_retorno = LicencaLote.objects.select_for_update().get(pk=origem_id)
+                    except LicencaLote.DoesNotExist: pass
+                
+                if not lote_retorno:
+                    lote_retorno = LicencaLote.objects.select_for_update().filter(
+                        licenca=instance.licenca
+                    ).order_by('-data_compra').first()
+
+                if lote_retorno:
+                    lote_retorno.quantidade_disponivel += 1
+                    lote_retorno.save()
+                    instance.lote = lote_retorno
+                    # Retorna custo para quem comprou (Lote)
+                    instance.centro_custo_destino = lote_retorno.centro_custo
+                else:
+                    instance.centro_custo_destino = getattr(instance.licenca, 'centro_custo', None)
+
+                # Mantém valor histórico (estorna o valor cobrado na saída)
+                if origem_devolucao:
+                    instance.valor_unitario = origem_devolucao.valor_unitario
+
             instance.save()
 
-        # >>> Daqui pra baixo sua lógica de débito/crédito permanece igual <<<
-        lic = Licenca.objects.select_for_update().get(pk=instance.licenca_id)
-
-        if is_new and instance.tipo == TipoMovLicencaChoices.ATRIBUICAO:
-            if lote_id:
-                lote = LicencaLote.objects.select_for_update().get(pk=lote_id)
-                if (lote.quantidade_disponivel or 0) <= 0:
-                    raise ValidationError("Lote sem assentos disponíveis para atribuição.")
-                lote.quantidade_disponivel = (lote.quantidade_disponivel or 0) - 1
-                lote.save(update_fields=["quantidade_disponivel", "updated_at"])
-            else:
-                if (lic.quantidade or 0) <= 0:
-                    raise ValidationError("Licença sem quantidade disponível para atribuição.")
-                lic.quantidade = (lic.quantidade or 0) - 1
-                lic.save(update_fields=["quantidade", "updated_at"])
-
-        elif is_new and instance.tipo == TipoMovLicencaChoices.REMOCAO:
-            last = (MovimentacaoLicenca.objects
-                    .filter(licenca_id=instance.licenca_id, usuario_id=instance.usuario_id)
-                    .exclude(pk=instance.pk)
-                    .order_by("-created_at", "-id")
-                    .first())
-            if not last or last.tipo != TipoMovLicencaChoices.ATRIBUICAO:
-                raise ValidationError("Não há atribuição ativa dessa licença para este usuário.")
-
-            if getattr(last, "lote_id", None):
-                lote = LicencaLote.objects.select_for_update().get(pk=last.lote_id)
-                lote.quantidade_disponivel = (lote.quantidade_disponivel or 0) + 1
-                lote.save(update_fields=["quantidade_disponivel", "updated_at"])
-            else:
-                lic.quantidade = (lic.quantidade or 0) + 1
-                lic.save(update_fields=["quantidade", "updated_at"])
-
         return instance
-    
+# --- FORMULÁRIO DE LOTE (Estoque Específico) ---
 class LicencaLoteForm(forms.ModelForm):
     class Meta:
         model = LicencaLote
-        fields = ["licenca", "quantidade_total", "quantidade_disponivel", "custo_ciclo", "data_compra", "fornecedor", "centro_custo", "observacao"]
+        fields = [
+            "licenca", "fornecedor", "centro_custo", 
+            "numero_pedido", "data_compra", 
+            "quantidade_total", # Disponível removido da tela
+            "periodicidade", "custo_ciclo", 
+            "observacao"
+        ]
         widgets = {
-            "licenca": forms.Select(attrs={"class": "ctrl"}),
-            "quantidade_total": forms.NumberInput(attrs={"class": "ctrl", "min": 0}),
-            "quantidade_disponivel": forms.NumberInput(attrs={"class": "ctrl", "min": 0}),
-            "custo_ciclo": forms.NumberInput(attrs={"class": "ctrl", "step": "0.01", "min": 0}),
-            "data_compra": forms.DateInput(attrs={"type": "date", "class": "ctrl"}),
-            "fornecedor": forms.Select(attrs={"class": "ctrl"}),
-            "centro_custo": forms.Select(attrs={"class": "ctrl"}),
-            "observacao": forms.Textarea(attrs={"class": "ctrl", "rows": 3}),
+            "licenca": forms.Select(attrs={"class": "form-control"}),
+            "fornecedor": forms.Select(attrs={"class": "form-control"}),
+            "centro_custo": forms.Select(attrs={"class": "form-control"}),
+            
+            "numero_pedido": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex: PO-2024-001"}),
+            "data_compra": forms.DateInput(format='%Y-%m-%d', attrs={"class": "form-control", "type": "date"}),
+            
+            "quantidade_total": forms.NumberInput(attrs={"class": "form-control", "min": 1}),
+            "periodicidade": forms.Select(attrs={"class": "form-control"}),
+            "custo_ciclo": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "placeholder": "0.00"}),
+            
+            "observacao": forms.Textarea(attrs={"class": "form-control", "rows": 3, "placeholder": "Detalhes adicionais..."}),
         }
 
-    def clean(self):
-        c = super().clean()
-        qt, qd = c.get("quantidade_total") or 0, c.get("quantidade_disponivel") or 0
-        if qd > qt:
-            self.add_error("quantidade_disponivel", "Disponível não pode superar a quantidade total.")
-        return c
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Formata a data corretamente para edição
+        if self.instance.pk and self.instance.data_compra:
+            self.fields['data_compra'].initial = self.instance.data_compra.strftime('%Y-%m-%d')
+
+    def clean_quantidade_total(self):
+        qtd = self.cleaned_data.get('quantidade_total')
+        if qtd is not None and qtd < 1:
+            raise forms.ValidationError("A quantidade total deve ser pelo menos 1.")
+        
+        # Validação extra na edição: não permitir reduzir total abaixo do que já foi usado
+        if self.instance.pk:
+            usados = self.instance.quantidade_total - self.instance.quantidade_disponivel
+            if qtd < usados:
+                raise forms.ValidationError(f"Não é possível reduzir para {qtd}. Já existem {usados} licenças em uso neste lote.")
+        
+        return qtd

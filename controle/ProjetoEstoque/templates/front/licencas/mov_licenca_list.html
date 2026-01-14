@@ -1,106 +1,306 @@
 {% extends 'base.html' %}
-{% block title %}Movimentações de Licenças{% endblock %}
+{% load static %}
+{% block title %}Histórico de Movimentações{% endblock %}
+
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <style>
-:root{--line:#e5e7eb;--ink:#172133;--soft:#f8fafc;--card:#fff;--shadow:0 20px 40px rgba(2,6,23,.07);--h:48px;--rad:12px;--padL:44px}
-*{box-sizing:border-box}
-.page{max-width:1200px;margin:22px auto;padding:0 14px}
-.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:18px 16px}
-.top-actions{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
-.btn-add{background:linear-gradient(90deg,#1d4ed8,#2563eb);color:#fff}
-.btn-light{background:#f8fafc;border:1.5px solid #dbe6f1;color:#334155}
-.btn:hover{filter:brightness(.95)}
-/* filtros */
-.filtros{display:grid;grid-template-columns:minmax(260px,1fr) minmax(200px,260px) auto;gap:12px;align-items:end;margin-bottom:12px}
-@media (max-width:900px){.filtros{grid-template-columns:1fr 1fr}}
-@media (max-width:640px){.filtros{grid-template-columns:1fr}}
-.group{display:flex;flex-direction:column;min-width:0}
-.group label{font-weight:800;margin-bottom:6px;color:#0f172a}
-.filtro-icon-input{position:relative}
-.filtro-icon-input .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#334155}
-.ctrl{width:100%;height:var(--h);padding:8px 14px 8px var(--padL);border:1px solid #d5deea;border-radius:var(--rad);background:#fff;color:#111827;font-size:1rem;outline:none;transition:border .15s, box-shadow .15s}
-.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd55}
-/* tabela */
-.table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px}
-table{width:100%;border-collapse:collapse;min-width:880px;background:#fff}
-thead th{position:sticky;top:0;background:linear-gradient(180deg,#18284a 0%,#21439f 100%);color:#fff;border-bottom:1px solid #0f172a;padding:11px 12px;text-align:left;font-weight:900}
-tbody td{padding:11px 12px;border-bottom:1px solid #eef2f7;color:#0f172a}
-tbody tr:nth-child(odd){background:#fbfdff}
-tbody tr:hover{background:#f3f7ff}
-.chip{display:inline-block;padding:4px 10px;border-radius:999px;font-weight:800}
-.chip.atribuicao{background:#e8fff3;color:#15803d}
-.chip.remocao{background:#fee2e2;color:#b91c1c}
+:root {
+  /* Paleta Corporativa (Slate/Indigo) */
+  --bg-body: #f1f5f9;
+  --bg-card: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-light: #eef2ff;
+  
+  --success-bg: #dcfce7; --success-text: #166534;
+  --danger-bg: #fee2e2;  --danger-text: #991b1b;
+
+  --radius: 8px;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --input-height: 40px;
+}
+
+* { box-sizing: border-box; outline: none; }
+body { background: var(--bg-body); color: var(--text-main); font-family: 'Inter', system-ui, sans-serif; }
+a { text-decoration: none; color: inherit; }
+
+.page-container {
+  max-width: 1200px; margin: 24px auto; padding: 0 20px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+
+/* === HEADER === */
+.page-header {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;
+  margin-bottom: 8px;
+}
+.page-title {
+  font-size: 1.5rem; font-weight: 700; color: var(--text-main);
+  display: flex; align-items: center; gap: 10px;
+}
+.page-title i { color: var(--primary); }
+
+.header-actions { display: flex; gap: 10px; }
+
+/* Botões */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: var(--input-height); padding: 0 16px;
+  font-size: 0.875rem; font-weight: 600; border-radius: var(--radius);
+  cursor: pointer; border: 1px solid transparent; transition: all 0.2s;
+}
+.btn-primary { background: var(--primary); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-white { background: #fff; border-color: var(--border); color: var(--text-main); }
+.btn-white:hover { background: #f8fafc; border-color: #cbd5e1; }
+
+/* === FILTROS === */
+.filter-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  padding: 20px;
+}
+
+.filter-grid {
+  display: grid; grid-template-columns: 2fr 1fr auto; 
+  gap: 16px; align-items: end;
+}
+@media (max-width: 768px) { .filter-grid { grid-template-columns: 1fr; } }
+
+.input-group { display: flex; flex-direction: column; gap: 6px; }
+.input-group label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); }
+
+.form-control {
+  width: 100%; height: var(--input-height); padding: 0 12px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 0.875rem; color: var(--text-main); background: #fff;
+}
+.form-control:focus { border-color: var(--primary); }
+
+/* Select2 Custom */
+.select2-container .select2-selection--single {
+  height: var(--input-height) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  display: flex; align-items: center;
+}
+.select2-container--default .select2-selection--single .select2-selection__arrow { top: 7px !important; }
+.select2-container--default .select2-selection--single .select2-selection__rendered { color: var(--text-main) !important; padding-left: 12px; }
+
+/* === TABELA === */
+.table-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.table-responsive { overflow-x: auto; width: 100%; }
+
+table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 0.875rem; }
+
+thead th {
+  background: #f8fafc; color: var(--text-muted);
+  font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.03em;
+  padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left;
+  position: sticky; top: 0; z-index: 10;
+}
+
+tbody td {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  color: var(--text-main); vertical-align: middle;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background-color: #f8fafc; }
+
+/* Chips de Status */
+.status-badge {
+  display: inline-flex; align-items: center; padding: 2px 10px;
+  border-radius: 99px; font-size: 0.75rem; font-weight: 600;
+}
+.st-atribuicao { background: var(--success-bg); color: var(--success-text); }
+.st-remocao { background: var(--danger-bg); color: var(--danger-text); }
+
+/* === PAGINAÇÃO === */
+.list-footer {
+  padding: 16px 20px; border-top: 1px solid var(--border); background: #fff;
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;
+}
+.page-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 6px;
+  border: 1px solid var(--border); background: #fff;
+  font-size: 0.875rem; font-weight: 500; color: var(--text-main);
+  transition: all 0.2s;
+}
+.page-link:hover { background: var(--bg-body); }
+.page-link.active { background: var(--primary-light); color: var(--primary); border-color: var(--primary-light); font-weight: 700; }
+.page-link.disabled { opacity: 0.5; cursor: not-allowed; }
+
 </style>
 
-<div class="page">
-  <div class="panel">
-    <div class="top-actions">
-      <h2 style="color:#0f172a;margin:0;display:flex;align-items:center;gap:10px"><i class="fa fa-exchange-alt"></i> Movimentações de Licenças</h2>
-      <div style="display:flex;gap:10px">
-        <a class="btn btn-add" href="{% url 'mov_licenca_form' %}"><i class="fa fa-plus"></i> Nova Movimentação</a>
-      </div>
-    </div>
+<div class="page-container">
 
-    <form class="filtros" method="get" id="fForm" autocomplete="off">
-      <div class="group">
-        <label>Buscar (licença ou usuário)</label>
-        <div class="filtro-icon-input"><span class="ico"><i class="fa fa-search"></i></span>
-          <input type="text" name="q" class="ctrl" placeholder="Digite para buscar…" value="{{ q|default:'' }}">
+  <div class="page-header">
+    <div class="page-title">
+      <i class="fa fa-history"></i>
+      Histórico de Movimentações
+      <span style="font-size:0.875rem; font-weight:500; color:var(--text-muted); background:var(--bg-body); padding:2px 8px; border-radius:99px;">{{ total }} registros</span>
+    </div>
+    
+    <div class="header-actions">
+      <a href="{% url 'licenca_list' %}" class="btn btn-white"><i class="fa fa-arrow-left"></i> Voltar</a>
+      <a href="{% url 'mov_licenca_form' %}" class="btn btn-primary"><i class="fa fa-plus"></i> Nova Movimentação</a>
+    </div>
+  </div>
+
+  <div class="filter-card">
+    <form method="get" id="filterForm" autocomplete="off">
+      <div class="filter-grid">
+        
+        <div class="input-group">
+          <label>Buscar (Licença ou Usuário)</label>
+          <input type="text" name="q" id="q" class="form-control" placeholder="Digite para pesquisar..." value="{{ q }}">
         </div>
-      </div>
-      <div class="group">
-        <label>Tipo</label>
-        <div class="filtro-icon-input">
-          <span class="ico"><i class="fa fa-sliders"></i></span>
-          <select name="tipo" class="ctrl" onchange="document.getElementById('fForm').submit()">
+
+        <div class="input-group">
+          <label>Tipo de Movimentação</label>
+          <select name="tipo" id="tipo" class="form-control select2-filter">
             <option value="">Todos</option>
             {% for code, label in tipos %}
               <option value="{{ code }}" {% if tipo == code %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-      </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end">
-        <button class="btn btn-light" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
-        <button class="btn btn-light" type="button" id="btnClear"><i class="fa fa-eraser"></i> Limpar</button>
+
+        <div class="input-group" style="flex-direction:row; gap:8px;">
+          <button type="submit" class="btn btn-primary" title="Filtrar">
+            <i class="fa fa-filter"></i>
+          </button>
+          <button type="button" id="btnClear" class="btn btn-white" title="Limpar Filtros">
+            <i class="fa fa-eraser"></i>
+          </button>
+        </div>
+
       </div>
     </form>
+  </div>
 
-    <div class="table-wrap">
+  <div class="table-card">
+    <div class="table-responsive">
       <table>
         <thead>
           <tr>
             <th>Licença</th>
             <th>Tipo</th>
-            <th>Usuário</th>
-            <th>Centro de Custo</th>
+            <th>Usuário / Destinatário</th>
+            <th>Centro de Custo (Destino)</th>
             <th>Observação</th>
-            <th>Criado em</th>
+            <th>Data/Hora</th>
           </tr>
         </thead>
         <tbody>
           {% for mov in movs %}
           <tr>
-            <td>{{ mov.licenca.nome }}</td>
-            <td><span class="chip {{ mov.tipo }}">{{ mov.get_tipo_display }}</span></td>
-            <td>{{ mov.usuario.nome|default:"—" }}</td>
-            <td>{% if mov.centro_custo_destino %}{{ mov.centro_custo_destino.numero }} - {{ mov.centro_custo_destino.departamento }}{% else %}—{% endif %}</td>
-            <td>{{ mov.observacao|default:"—" }}</td>
+            <td style="font-weight:600;">{{ mov.licenca.nome }}</td>
+            <td>
+              <span class="status-badge st-{{ mov.tipo|lower }}">
+                {{ mov.get_tipo_display }}
+              </span>
+            </td>
+            <td>{{ mov.usuario.nome|default:"-" }}</td>
+            <td>
+              {% if mov.centro_custo_destino %}
+                <span style="color:var(--text-muted); font-size:0.8rem;">{{ mov.centro_custo_destino.numero }}</span><br>
+                {{ mov.centro_custo_destino.departamento }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td style="color:var(--text-muted); font-style:italic;">{{ mov.observacao|default:"-"|truncatechars:50 }}</td>
             <td>{{ mov.created_at|date:"d/m/Y H:i" }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="6" style="text-align:center;color:#64748b;padding:16px">Nenhuma movimentação encontrada.</td></tr>
+          <tr>
+            <td colspan="6" style="padding:40px; text-align:center; color:var(--text-muted);">
+              <i class="fa fa-exchange-alt" style="font-size:2rem; margin-bottom:10px; opacity:0.3;"></i><br>
+              Nenhuma movimentação encontrada.
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+
+    {% if paginator.num_pages > 1 %}
+    <div class="list-footer">
+      <div style="font-size:0.875rem; color:var(--text-muted);">
+        Página <strong>{{ page_obj.number }}</strong> de <strong>{{ paginator.num_pages }}</strong>
+      </div>
+      <div style="display:flex; gap:4px;">
+        {% with base='?'|add:qs_keep %}
+          {% if page_obj.has_previous %}
+            <a href="{{ base }}&page={{ page_obj.previous_page_number }}" class="page-link"><i class="fa fa-chevron-left"></i></a>
+          {% else %}
+            <span class="page-link disabled"><i class="fa fa-chevron-left"></i></span>
+          {% endif %}
+
+          {% for num in paginator.page_range %}
+            {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+              {% if num == page_obj.number %}
+                <span class="page-link active">{{ num }}</span>
+              {% else %}
+                <a href="{{ base }}&page={{ num }}" class="page-link">{{ num }}</a>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+
+          {% if page_obj.has_next %}
+            <a href="{{ base }}&page={{ page_obj.next_page_number }}" class="page-link"><i class="fa fa-chevron-right"></i></a>
+          {% else %}
+            <span class="page-link disabled"><i class="fa fa-chevron-right"></i></span>
+          {% endif %}
+        {% endwith %}
+      </div>
+    </div>
+    {% endif %}
   </div>
+
 </div>
 
 <script>
-document.getElementById('btnClear').addEventListener('click',()=>{window.location.href=window.location.pathname});
+$(document).ready(function() {
+    // Inicializa Select2
+    $('.select2-filter').select2({
+        width: '100%',
+        minimumResultsForSearch: 10,
+        language: "pt-BR"
+    });
+
+    // Auto-Submit no Select
+    $('#tipo').on('change', function() {
+        $('#filterForm').submit();
+    });
+
+    // Botão Limpar
+    $('#btnClear').on('click', function() {
+        window.location.href = window.location.pathname;
+    });
+
+    // Debounce na busca de texto
+    let timeout = null;
+    $('#q').on('input', function() {
+        clearTimeout(timeout);
+        timeout = setTimeout(function() {
+            $('#filterForm').submit();
+        }, 600);
+    });
+});
 </script>
 {% endblock %}

@@ -1,374 +1,397 @@
 {% extends 'base.html' %}
-{% block title %}Detalhe do Item{% endblock %}
+{% load static humanize %}
+
+{% block title %}Asset: {{ item.nome }}{% endblock %}
 
 {% block content %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
 
 <style>
-:root{
-  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --card:#fff; --soft:#f8fafc;
-  --shadow:0 20px 40px rgba(2,6,23,.08);
-  --ok:#16a34a; --warn:#b45309; --bad:#b91c1c; --info:#0ea5e9; --accent:#1e3a8a;
+/* --- Enterprise Theme Variables --- */
+:root {
+  --bg-app: #f3f4f6; --bg-surface: #ffffff;
+  --primary: #0078d4; --primary-dark: #106ebe;
+  --text-main: #201f1e; --text-sub: #605e5c; --text-light: #9ca3af;
+  --border: #edebe9; --radius: 6px;
+  
+  --ok-fg: #107c10; --ok-bg: #dff6dd;
+  --warn-fg: #854d0e; --warn-bg: #fef9c3;
+  --crit-fg: #991b1b; --crit-bg: #fee2e2;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05);
 }
-body{background:#f6f7fa;color:var(--ink)}
-.wrap{max-width:1200px;margin:24px auto 20px;padding:0 14px}
 
-/* Header */
-.hero{border-radius:18px;background:linear-gradient(135deg,#18284a 0%,#18284a 100%);color:#fff;padding:22px;box-shadow:var(--shadow);border:1px solid #0b1220}
-.hero-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.hero h2{margin:0;font-size:1.9rem;display:flex;gap:10px;align-items:center}
-.actions{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
-.btn{border:none;border-radius:12px;padding:10px 16px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:10px}
-.btn.edit{background:#fff;color:#0f172a}
-.btn.primary{background:linear-gradient(90deg,#22c55e,#16a34a);color:#fff}
-.btn.light{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
-.btn.warn{background:linear-gradient(90deg,#f97316,#ea580c);color:#fff}
-.btn.bad{background:linear-gradient(90deg,#ef4444,#dc2626);color:#fff}
-.btn:hover{filter:brightness(.97)}
+body { background-color: var(--bg-app); color: var(--text-main); font-family: 'Segoe UI', 'Inter', sans-serif; }
+.app-container { max-width: 1400px; margin: 24px auto; padding: 0 20px; }
 
-.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.chip{padding:6px 10px;border-radius:999px;border:1px solid #1f2a41;background:rgba(255,255,255,.12);font-weight:800;font-size:.9rem;display:inline-flex;align-items:center;gap:8px}
-.chip.light{background:#f1f5f9;border-color:#e2e8f0;color:#0f172a}
-.chip.status.ativo{background:#eafff3;border-color:#bbf7d0;color:#166534}
-.chip.status.backup{background:#eef2ff;border-color:#c7d2fe;color:#1e40af}
-.chip.status.manutencao{background:#fff7ed;border-color:#fed7aa;color:#7c2d12}
-.chip.status.defeito{background:#fee2e2;border-color:#fecaca;color:#7f1d1d}
+/* HEADER */
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
+.asset-identity { display: flex; align-items: center; gap: 16px; }
+.asset-icon { width: 64px; height: 64px; background: #eff6fc; color: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 32px; }
+.asset-info h1 { margin: 0; font-size: 1.6rem; font-weight: 700; color: var(--text-main); line-height: 1.2; }
+.asset-meta { display: flex; gap: 12px; margin-top: 6px; align-items: center; flex-wrap: wrap; font-size: 0.9rem; color: var(--text-sub); }
+.meta-item { display: flex; align-items: center; gap: 6px; }
 
-/* Banner de alerta */
-.alert{margin-top:12px;border-radius:14px;padding:12px 14px;display:flex;gap:10px;align-items:flex-start;border:1px solid;box-shadow:var(--shadow)}
-.alert i{margin-top:2px}
-.alert.warn{background:#fff7ed;border-color:#fed7aa;color:#7c2d12}
-.alert.bad{background:#fee2e2;border-color:#fecaca;color:#7f1d1d}
+.header-actions { display: flex; gap: 10px; }
+.btn { height: 36px; padding: 0 16px; border-radius: 4px; font-weight: 600; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; border: 1px solid transparent; transition: all 0.1s; }
+.btn-primary { background: var(--primary); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-std { background: #fff; border-color: #8a8886; color: var(--text-main); }
+.btn-std:hover { background: #f3f2f1; }
 
-/* Cards/sections */
-.card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}
-.section{padding:18px}
-.section h3{margin:0 0 12px;display:flex;align-items:center;gap:10px;font-size:1.15rem}
-.grid{display:grid;gap:16px}
-.g-4{grid-template-columns:repeat(4,minmax(220px,1fr))}
-.g-3{grid-template-columns:repeat(3,minmax(240px,1fr))}
-.g-2{grid-template-columns:repeat(2,minmax(280px,1fr))}
-@media (max-width:1050px){.g-4{grid-template-columns:repeat(2,minmax(220px,1fr))}}
-@media (max-width:900px){.g-3{grid-template-columns:repeat(2,minmax(220px,1fr))}}
-@media (max-width:700px){.g-2,.g-3,.g-4{grid-template-columns:1fr}}
-.tile{background:#f9fafc;border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}
-.tile strong{display:block;color:#334155;margin-bottom:6px}
-.muted{color:#64748b}
+/* KPIs */
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.kpi-card { background: var(--bg-surface); padding: 16px 20px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; justify-content: center; }
+.kpi-label { font-size: 0.75rem; font-weight: 700; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.05em; }
+.kpi-value { font-size: 1.8rem; font-weight: 700; color: var(--text-main); margin-top: 4px; }
+.kpi-sub { font-size: 0.85rem; color: var(--text-sub); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
 
-/* Table */
-.table-wrap{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 10px rgba(2,6,23,.06);overflow:auto}
-table{width:100%;border-collapse:collapse;min-width:780px}
-th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}
-th{background:#f5f7fa;font-weight:900}
+/* LAYOUT */
+.main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+@media(max-width: 1000px) { .main-grid { grid-template-columns: 1fr; } }
 
-/* Badges */
-.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:800}
-.badge.ok{background:#e8fff3;color:#166534}
-.badge.warn{background:#fff7ed;color:#7c2d12}
+/* CARDS */
+.card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; margin-bottom: 24px; }
+.card-header { padding: 12px 20px; border-bottom: 1px solid #edebe9; background: #faf9f8; font-size: 14px; font-weight: 700; color: var(--text-main); display: flex; justify-content: space-between; align-items: center; }
+.card-body { padding: 20px; }
 
-/* Timeline */
-.timeline{position:relative;padding-left:26px;margin:8px 0 0}
-.timeline::before{content:"";position:absolute;left:10px;top:0;bottom:0;width:2px;background:#e5e7eb}
-.tl-item{position:relative;margin:0 0 12px;padding-left:12px}
-.tl-item .dot{position:absolute;left:-6px;top:4px;width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid #94a3b8}
-.tl-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:0 1px 8px rgba(2,6,23,.05)}
-.tl-head{display:flex;align-items:center;gap:8px;font-weight:900;color:#0f172a;margin-bottom:4px}
-.tl-meta{display:flex;gap:10px;color:#64748b;font-weight:700;font-size:.9rem;flex-wrap:wrap}
-.tl-badge{padding:2px 8px;border-radius:999px;border:1px solid #e2e8f0;font-weight:800;font-size:.8rem;background:#f8fafc}
-.tl-item.warn .dot{border-color:#f59e0b}
-.tl-item.bad .dot{border-color:#ef4444}
+/* DATA LIST */
+.dl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; }
+.dl-item label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-sub); margin-bottom: 4px; }
+.dl-item div { font-size: 0.95rem; color: var(--text-main); font-weight: 500; }
+.dl-mono { font-family: 'Consolas', monospace; letter-spacing: -0.5px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-size: 0.9rem; }
+
+/* LIFECYCLE */
+.lifecycle-container { margin-top: 24px; background: #f9fafb; padding: 16px; border-radius: 6px; border: 1px solid var(--border); }
+.progress-bg { width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+.progress-fill { height: 100%; background: var(--primary); transition: width 1s ease; }
+.progress-fill.critical { background: var(--crit-fg); }
+.progress-fill.warning { background: #eab308; }
+
+/* TABLE */
+.table-responsive { overflow-x: auto; width: 100%; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 10px 16px; background: #f9fafb; color: var(--text-sub); font-weight: 600; border-bottom: 1px solid #edebe9; }
+td { padding: 10px 16px; border-bottom: 1px solid #edebe9; color: var(--text-main); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+
+/* BADGES */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 99px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+.bg-green { background: var(--ok-bg); color: var(--ok-fg); }
+.bg-red { background: var(--crit-bg); color: var(--crit-fg); }
+.bg-yellow { background: var(--warn-bg); color: var(--warn-fg); }
+.bg-gray { background: #f3f4f6; color: var(--text-sub); }
 </style>
 
-<div class="wrap">
-  <!-- HEADER -->
-  <div class="hero">
-    <div class="hero-top">
-      <h2><i class="fa fa-clipboard-list"></i> Detalhes do Item</h2>
-      <div class="actions">
-        <a class="btn edit" href="{% url 'editar_equipamento' item.id %}">
-          <i class="fa fa-pen-to-square"></i> Editar
-        </a>
-        {% if item.precisa_preventiva == 'sim' %}
-          <a class="btn primary" href="{% url 'preventiva_start_item' item.id %}">
-            <i class="fa fa-shield-heart"></i> Iniciar Preventiva
-          </a>
-        {% endif %}
-        {% if item.status == 'manutencao' %}
-          <span class="btn warn" title="Item em manutenção"><i class="fa fa-screwdriver-wrench"></i> Em manutenção</span>
-        {% elif item.status == 'defeito' %}
-          <span class="btn bad" title="Item com defeito"><i class="fa fa-triangle-exclamation"></i> Com defeito</span>
-        {% endif %}
+<div class="app-container">
+
+  <div class="page-header">
+    <div class="asset-identity">
+      <div class="asset-icon"><i class="fa fa-cube"></i></div>
+      <div class="asset-info">
+        <h1>{{ item.nome }}</h1>
+        <div class="asset-meta">
+          <span class="badge {% if item.status == 'ativo' %}bg-green{% elif item.status == 'manutencao' %}bg-yellow{% elif item.status == 'defeito' %}bg-red{% else %}bg-gray{% endif %}">
+            {{ item.get_status_display|default:item.status|capfirst }}
+          </span>
+          <span class="meta-item"><i class="fa fa-barcode"></i> {{ item.numero_serie|default:"S/N N/D" }}</span>
+          <span class="meta-item"><i class="fa fa-location-dot"></i> {{ item.localidade.local|default:"Local N/D" }}</span>
+        </div>
       </div>
     </div>
+    
+    <div class="header-actions">
+      <a href="{% url 'equipamentos_list' %}" class="btn btn-std"><i class="fa fa-arrow-left"></i> Voltar</a>
+      {% if item.precisa_preventiva == 'sim' %}
+        <a href="{% url 'preventiva_start_item' item.id %}" class="btn btn-std"><i class="fa fa-wrench"></i> Preventiva</a>
+      {% endif %}
+      <a href="{% url 'editar_equipamento' item.id %}" class="btn btn-primary"><i class="fa fa-pen"></i> Editar</a>
+    </div>
+  </div>
 
-    <div class="chips" aria-label="Status e atributos">
-      <span class="chip status {{ item.status|default:'-'|lower }}"><i class="fa fa-circle-dot"></i> {{ item.get_status_display|default:item.status|capfirst }}</span>
-      <span class="chip"><i class="fa fa-layer-group"></i> Qtd: <strong>{{ item.quantidade|default:"1" }}</strong></span>
-      <span class="chip light"><i class="fa fa-box"></i> Consumo: <strong>{{ item.item_consumo|default:"não"|title }}</strong></span>
-      <span class="chip light"><i class="fa fa-handshake"></i> Locado: <strong>{{ item.locado|default:"não"|title }}</strong></span>
-      {% if item.fornecedor %}
-        <span class="chip light"><i class="fa fa-truck"></i> Fornecedor: <strong>{{ item.fornecedor.nome|default:"-" }}</strong></span>
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <span class="kpi-label">Estoque Atual</span>
+      <span class="kpi-val">{{ item.quantidade|default:"0" }}</span>
+      <span class="kpi-sub">unidades disponíveis</span>
+    </div>
+
+    <div class="kpi-card">
+      <span class="kpi-label">
+        {% if financeiro.modo == 'LOCAÇÃO' %}Custo Total (Aluguéis + Manut.){% else %}Custo Total (TCO){% endif %}
+      </span>
+      <span class="kpi-val" style="color:var(--primary);">
+        R$ {{ financeiro.tco|floatformat:2|intcomma }}
+      </span>
+      <span class="kpi-sub">
+        {% if financeiro.modo == 'LOCAÇÃO' %}Pago até o momento{% else %}Aquisição + Manutenções{% endif %}
+      </span>
+    </div>
+
+    <div class="kpi-card">
+      <span class="kpi-label">
+        {% if financeiro.modo == 'LOCAÇÃO' %}Valor Mensal Contrato{% else %}Valor Atual (Depreciado){% endif %}
+      </span>
+      <span class="kpi-val">R$ {{ financeiro.valor_atual|floatformat:2|intcomma }}</span>
+      <span class="kpi-sub">
+        {% if financeiro.modo == 'LOCAÇÃO' %}Recorrente{% else %}Baseado em 5 anos{% endif %}
+      </span>
+    </div>
+
+    <div class="kpi-card">
+      <span class="kpi-label">Status Preventiva</span>
+      {% if status_saude == 'ok' %}
+        <span class="kpi-val" style="color:var(--ok-fg);">Regular</span>
+        <span class="kpi-sub"><i class="fa fa-check-circle"></i> Tudo em dia</span>
+      {% elif status_saude == 'critical' %}
+        <span class="kpi-val" style="color:var(--crit-fg);">Crítico</span>
+        <span class="kpi-sub"><i class="fa fa-triangle-exclamation"></i> Atrasada</span>
+      {% else %}
+        <span class="kpi-val" style="color:var(--text-light);">N/A</span>
+        <span class="kpi-sub">Sem plano</span>
       {% endif %}
     </div>
-
-    {% if item.status == 'manutencao' %}
-      <div class="alert warn"><i class="fa fa-circle-exclamation"></i>
-        <div><strong>Atenção:</strong> este item está <strong>em manutenção</strong>. Verifique prazos, causa e custo no fluxo de manutenção.</div>
-      </div>
-    {% elif item.status == 'defeito' %}
-      <div class="alert bad"><i class="fa fa-triangle-exclamation"></i>
-        <div><strong>Crítico:</strong> este item está <strong>com defeito</strong>. Considere bloqueio de uso e abertura de OS imediata.</div>
-      </div>
-    {% endif %}
   </div>
 
-  <!-- IDENTIFICAÇÃO -->
-  <div class="card" style="margin-top:18px">
-    <div class="section">
-      <h3><i class="fa fa-id-badge"></i> Identificação</h3>
-      <div class="grid g-4">
-        <div class="tile"><strong>Nome</strong><span>{{ item.nome|default:"-" }}</span></div>
-        <div class="tile"><strong>Nº de Série</strong><span>{{ item.numero_serie|default:"-" }}</span></div>
-        <div class="tile"><strong>Marca</strong><span>{{ item.marca|default:"-" }}</span></div>
-        <div class="tile"><strong>Modelo</strong><span>{{ item.modelo|default:"-" }}</span></div>
-        <div class="tile"><strong>Subtipo</strong><span>{% if item.subtipo %}{{ item.subtipo.nome }}{% else %}-{% endif %}</span></div>
-        <div class="tile"><strong>Valor</strong><span>{% if item.valor %}R$ {{ item.valor|floatformat:2 }}{% else %}-{% endif %}</span></div>
-        <div class="tile"><strong>Item de Consumo</strong><span>{{ item.item_consumo|default:"não"|title }}</span></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- LOCAL & CONTROLE -->
-  <div class="card" style="margin-top:18px">
-    <div class="section">
-      <h3><i class="fa fa-location-dot"></i> Local & Controle</h3>
-      <div class="grid g-4">
-        <div class="tile"><strong>Localidade</strong><span>{% if item.localidade %}{{ item.localidade.local }}{% else %}-{% endif %}</span></div>
-        <div class="tile"><strong>Centro de Custo</strong><span>{% if item.centro_custo %}{{ item.centro_custo.numero }} — {{ item.centro_custo.departamento }}{% else %}-{% endif %}</span></div>
-        <div class="tile"><strong>Precisa Preventiva?</strong><span>{{ item.precisa_preventiva|default:"não"|title }}</span></div>
-        <div class="tile"><strong>Intervalo Preventiva (dias)</strong><span>{% if item.data_limite_preventiva %}{{ item.data_limite_preventiva }}{% else %}-{% endif %}</span></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- FORNECEDOR -->
-  {% if item.fornecedor %}
-  <div class="card" style="margin-top:18px">
-    <div class="section">
-      <h3><i class="fa fa-truck"></i> Fornecedor</h3>
-      <div class="grid g-3">
-        <div class="tile"><strong>Nome</strong><span>{{ item.fornecedor.nome|default:"-" }}</span></div>
-        <div class="tile"><strong>CNPJ</strong><span>{{ item.fornecedor.cnpj|default:"-" }}</span></div>
-        <div class="tile"><strong>Contrato</strong><span>{{ item.fornecedor.contrato|default:"-" }}</span></div>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- OBS & AUDITORIA -->
-  <div class="card" style="margin-top:18px">
-    <div class="section">
-      <h3><i class="fa fa-file-lines"></i> Observações & Auditoria</h3>
-      <div class="grid g-2">
-        <div class="tile" style="grid-column:1/-1">
-          <strong>Observações</strong>
-          <span class="muted">{% if item.observacoes %}{{ item.observacoes }}{% else %}Sem observações.{% endif %}</span>
+  <div class="main-grid">
+    
+    <div>
+      
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fa fa-sliders"></i> Ficha Técnica Completa</div>
         </div>
-        <div class="tile">
-          <strong>Criado por</strong>
-          <span>{{ item.criado_por|default:"-" }}</span><br>
-          <span class="muted">{{ item.created_at|date:"d/m/Y H:i" }}</span>
-        </div>
-        <div class="tile">
-          <strong>Atualizado por</strong>
-          <span>{{ item.atualizado_por|default:"-" }}</span><br>
-          <span class="muted">{{ item.updated_at|date:"d/m/Y H:i" }}</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- DETALHES DE EQUIPAMENTO -->
-  <div class="card" style="margin-top:18px">
-    <div class="section">
-      <h3><i class="fa fa-briefcase"></i> Detalhes de Equipamento</h3>
-      <div class="grid g-3">
-        <div class="tile"><strong>Data de Compra</strong><span>{% if item.data_compra %}{{ item.data_compra|date:"d/m/Y" }}{% else %}-{% endif %}</span></div>
-        <div class="tile"><strong>Nº do Pedido</strong><span>{{ item.numero_pedido|default:"-" }}</span></div>
-        <div class="tile"><strong>Locado</strong><span>{{ item.locado|default:"não"|title }}</span></div>
-        <div class="tile"><strong>Tempo Locado</strong>
-          <span>{% if item.locado == 'sim' and locacao and locacao.tempo_locado %}{{ locacao.tempo_locado }} meses{% else %}-{% endif %}</span>
-        </div>
-        <div class="tile"><strong>Valor Locação</strong>
-          <span>{% if item.locado == 'sim' and locacao and locacao.valor_mensal %}R$ {{ locacao.valor_mensal|floatformat:2 }}{% else %}-{% endif %}</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- PREVENTIVAS DO ITEM -->
-  {% if preventivas %}
-  <div class="section" style="padding-left:0;padding-right:0">
-    <h3><i class="fa fa-shield-heart"></i> Preventivas do Item</h3>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Checklist</th>
-            <th>Última Execução</th>
-            <th>Próxima Execução</th>
-            <th>Status</th>
-            <th style="width:140px">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for p in preventivas %}
-          <tr>
-            <td>{{ p.checklist_modelo.nome|default:"-" }}</td>
-            <td>{{ p.data_ultima|date:"d/m/Y"|default:"-" }}</td>
-            <td>{{ p.data_proxima|date:"d/m/Y"|default:"-" }}</td>
-            <td>
-              {% if p.flag_em_dia %}
-                <span class="badge ok">No prazo</span>
-              {% else %}
-                <span class="badge warn">Vencida</span>
-              {% endif %}
-            </td>
-            <td style="white-space:nowrap">
-              <a class="btn light" style="padding:6px 10px" title="Detalhar" href="{% url 'preventiva_detail' p.pk %}">
-                <i class="fa fa-eye"></i>
-              </a>
-              <a class="btn primary" style="padding:6px 10px" title="Executar" href="{% url 'preventiva_exec' p.pk %}">
-                <i class="fa fa-play"></i>
-              </a>
-            </td>
-          </tr>
-          {% empty %}
-          <tr>
-            <td colspan="5" style="text-align:center;color:#64748b;padding:12px">
-              Nenhuma preventiva cadastrada para este item.
-              <a href="{% url 'preventiva_start_item' item.id %}">Criar agora</a>.
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- TIMELINE DE MOVIMENTAÇÕES -->
-  <div class="section" style="padding-left:0;padding-right:0">
-    <h3><i class="fa fa-stream"></i> Linha do Tempo</h3>
-    <div class="timeline">
-      {% for mov in movimentacoes %}
-        {# classes para cor do ponto #}
-        {% with cls="" %}
-          {% if mov.tipo_movimentacao == 'retorno_manutencao' or mov.tipo_movimentacao == 'retorno' %}
-            {% with cls="ok" %}{% endwith %}
-          {% elif mov.tipo_movimentacao == 'envio_manutencao' %}
-            {% with cls="warn" %}{% endwith %}
-          {% elif mov.tipo_movimentacao == 'baixa' %}
-            {% with cls="bad" %}{% endwith %}
-          {% endif %}
-        {% endwith %}
-
-        <div class="tl-item {% if mov.tipo_movimentacao == 'envio_manutencao' %}warn{% elif mov.tipo_movimentacao == 'baixa' %}bad{% endif %}">
-          <span class="dot"></span>
-          <div class="tl-card">
-            <div class="tl-head">
-              <i class="fa fa-clock"></i> {{ mov.created_at|date:"d/m/Y H:i" }}
-              <span class="tl-badge">{{ mov.get_tipo_movimentacao_display|default:mov.tipo_movimentacao|capfirst }}</span>
+        <div class="card-body">
+          <div class="dl-grid">
+            <div class="dl-item">
+              <label>Marca / Modelo</label>
+              <div>{{ item.marca|default:"-" }} / {{ item.modelo|default:"-" }}</div>
             </div>
-            <div class="tl-meta">
-              <span><i class="fa fa-user"></i> {{ mov.usuario.nome|default:"-" }}</span>
-              <span><i class="fa fa-location-dot"></i>
-                {% if mov.localidade_destino %}{{ mov.localidade_destino.local }}
-                {% elif mov.localidade_origem %}{{ mov.localidade_origem.local }}
-                {% else %}-{% endif %}
-              </span>
-              <span><i class="fa fa-coins"></i>
-                {% if mov.centro_custo_destino %}{{ mov.centro_custo_destino.departamento }}
-                {% elif mov.centro_custo_origem %}{{ mov.centro_custo_origem.departamento }}
-                {% else %}-{% endif %}
-              </span>
-              <span><i class="fa fa-hashtag"></i> Qtd: {{ mov.quantidade|default:"1" }}</span>
-              {% if mov.tipo_transferencia %}
-                <span><i class="fa fa-exchange-alt"></i> {{ mov.get_tipo_transferencia_display|default:mov.tipo_transferencia|capfirst }}</span>
-              {% endif %}
+            <div class="dl-item">
+              <label>Categoria</label>
+              <div>{{ item.subtipo.nome|default:"-" }}</div>
             </div>
-            {% if mov.observacao %}
-              <div class="muted" style="margin-top:6px">{{ mov.observacao }}</div>
+            <div class="dl-item">
+              <label>Centro de Custo (Atual)</label>
+              <div>{{ item.centro_custo.departamento|default:"-" }}</div>
+              <div style="font-size:0.8rem; color:var(--text-sub)">{{ item.centro_custo.numero }}</div>
+            </div>
+            <div class="dl-item">
+              <label>Patrimônio</label>
+              <div class="dl-mono">{{ item.patrimonio|default:"-" }}</div>
+            </div>
+            <div class="dl-item">
+              <label>Fornecedor</label>
+              <div>{{ item.fornecedor.nome|default:"-" }}</div>
+            </div>
+            <div class="dl-item">
+              <label>Nota Fiscal</label>
+              <div class="dl-mono">{{ item.numero_pedido|default:"-" }}</div>
+            </div>
+          </div>
+
+          <div class="lifecycle-container">
+            <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:6px; color:var(--text-main);">
+              <span>
+                {% if financeiro.modo == 'LOCAÇÃO' %}Vigência do Contrato{% else %}Depreciação Contábil (5 Anos){% endif %}
+              </span>
+              <span class="{% if financeiro.status_vida == 'critical' %}badge bg-red{% elif financeiro.status_vida == 'warning' %}badge bg-yellow{% endif %}">
+                {{ financeiro.vida_util_texto }}
+              </span>
+            </div>
+            <div class="progress-bg">
+              <div class="progress-fill {% if financeiro.status_vida == 'critical' %}critical{% elif financeiro.status_vida == 'warning' %}warning{% endif %}" style="width: {{ financeiro.vida_util_perc }}%;"></div>
+            </div>
+            {% if financeiro.modo == 'LOCAÇÃO' and locacao.data_inicio %}
+            <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:12px; color:var(--text-sub);">
+              <span>Início: {{ locacao.data_inicio|date:"d/m/Y" }}</span>
+              <span>Fim: {{ locacao.data_fim|date:"d/m/Y"|default:"Indeterminado" }}</span>
+            </div>
             {% endif %}
           </div>
         </div>
-      {% empty %}
-        <div class="muted" style="padding-left:26px">Nenhuma movimentação registrada.</div>
-      {% endfor %}
-    </div>
-  </div>
+      </div>
 
-  <!-- TABELA DE MOVIMENTAÇÕES -->
-  <div class="section" style="padding-left:0;padding-right:0">
-    <h3><i class="fa fa-table"></i> Histórico de Movimentações (Tabela)</h3>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Data/Hora</th>
-            <th>Tipo</th>
-            <th>Usuário</th>
-            <th>Localidade</th>
-            <th>Centro de Custo</th>
-            <th>Qtd</th>
-            <th>Obs</th>
-            <th>Tipo Transferência</th>
-            <th>Registrado por</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for mov in movimentacoes %}
-          <tr>
-            <td>{{ mov.created_at|date:"d/m/Y H:i" }}</td>
-            <td>{{ mov.get_tipo_movimentacao_display|default:mov.tipo_movimentacao|capfirst }}</td>
-            <td>{{ mov.usuario.nome|default:"-" }}</td>
-            <td>
-              {% if mov.localidade_destino %}{{ mov.localidade_destino.local }}
-              {% elif mov.localidade_origem %}{{ mov.localidade_origem.local }}
-              {% else %}-{% endif %}
-            </td>
-            <td>
-              {% if mov.centro_custo_destino %}{{ mov.centro_custo_destino.departamento }}
-              {% elif mov.centro_custo_origem %}{{ mov.centro_custo_origem.departamento }}
-              {% else %}-{% endif %}
-            </td>
-            <td>{{ mov.quantidade|default:"1" }}</td>
-            <td>{{ mov.observacao|default:"-" }}</td>
-            <td>{% if mov.get_tipo_transferencia_display %}{{ mov.get_tipo_transferencia_display }}{% else %}{{ mov.tipo_transferencia|default:"-"|capfirst }}{% endif %}</td>
-            <td>{{ mov.criado_por|default:"-" }}</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="9" style="text-align:center;color:#64748b">Nenhuma movimentação registrada.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- COMENTÁRIOS -->
-  <div class="section" style="padding-left:0;padding-right:0">
-    <h3><i class="fa fa-comments"></i> Comentários</h3>
-    <div class="card" style="padding:12px 16px">
-      {% for c in comentarios %}
-        <div style="padding:8px 0;border-bottom:1px dashed var(--line)">
-          <strong>{{ c.criado_por|default:"" }}</strong>
-          <span class="muted">— {{ c.created_at|date:"d/m/Y H:i" }}</span>
-          <div>{{ c.texto }}</div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fa fa-clock-rotate-left"></i> Rastreabilidade (Todas Movimentações)</div>
         </div>
-      {% empty %}
-        <div class="muted">Nenhum comentário registrado.</div>
-      {% endfor %}
+        <div class="card-body">
+          <div class="timeline">
+            {% for mov in movimentacoes|slice:":10" %}
+            <div class="tl-item {% if forloop.first %}tl-active{% endif %}">
+              <div class="tl-marker"></div>
+              <div class="tl-content">
+                <div class="tl-header">
+                  <span class="tl-type" style="color:var(--primary);">
+                    {% if mov.tipo_movimentacao == 'transferencia' %}TRANSFERÊNCIA
+                    {% elif mov.tipo_movimentacao == 'baixa' %}BAIXA (SAÍDA)
+                    {% elif 'manutencao' in mov.tipo_movimentacao %}MANUTENÇÃO
+                    {% else %}{{ mov.get_tipo_movimentacao_display }}{% endif %}
+                  </span>
+                  <span class="tl-date">{{ mov.created_at|date:"d/m/y H:i" }}</span>
+                </div>
+                
+                <div class="tl-body">
+                  <div class="tl-row">
+                    <i class="fa fa-user-circle"></i>
+                    {% if mov.usuario %}
+                      {{ mov.usuario.nome|truncatechars:25 }}
+                    {% elif mov.fornecedor_manutencao %}
+                      {{ mov.fornecedor_manutencao.nome }} (Fornecedor)
+                    {% else %}
+                      Sistema / Admin
+                    {% endif %}
+                  </div>
+                  
+                  {% if mov.centro_custo_destino %}
+                  <div class="tl-row tl-sub">
+                    <i class="fa fa-building"></i>
+                    {{ mov.centro_custo_destino.departamento }} ({{ mov.centro_custo_destino.numero }})
+                  </div>
+                  {% endif %}
+
+                  {% if mov.localidade_destino %}
+                  <div class="tl-row tl-sub">
+                    <i class="fa fa-map-marker-alt"></i> {{ mov.localidade_destino.local }}
+                  </div>
+                  {% endif %}
+                  
+                  {% if mov.custo > 0 %}
+                  <div class="tl-row tl-sub" style="color:var(--text-sub);">
+                    <i class="fa fa-coins"></i> R$ {{ mov.custo|floatformat:2 }}
+                  </div>
+                  {% endif %}
+                </div>
+                
+                <div style="margin-top:8px; text-align:right;">
+                  <a href="{% url 'movimentacao_detail' mov.pk %}" style="font-size:0.75rem; color:var(--primary); text-decoration:none;">Detalhes &rarr;</a>
+                </div>
+              </div>
+            </div>
+            {% empty %}
+            <div style="text-align:center; color:var(--text-light); padding:20px;">
+              Sem histórico registrado.
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
     </div>
+
+    <div>
+      
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fa fa-user-tag"></i> Detentor Atual</div>
+        </div>
+        <div class="card-body" style="text-align:center;">
+          <div style="font-size:32px; color:var(--primary); margin-bottom:8px;"><i class="fa fa-user-shield"></i></div>
+          <div style="font-size:16px; font-weight:700; color:var(--text-main);">{{ ultimo_resp }}</div>
+          <div style="font-size:12px; color:var(--text-sub); margin-top:4px;">Último registro</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fa fa-wrench"></i> Manutenção Externa</div>
+        </div>
+        <div class="table-responsive">
+          <table style="font-size:0.8rem;">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Tipo</th>
+                <th>Detalhe</th>
+                <th>Custo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for m in historico_manutencao|slice:":5" %}
+              <tr>
+                <td>{{ m.created_at|date:"d/m/y" }}</td>
+                <td>
+                  {% if m.tipo_movimentacao == 'envio_manutencao' %}
+                    <span class="badge bg-yellow">Envio</span>
+                  {% else %}
+                    <span class="badge bg-green">Retorno</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if m.fornecedor_manutencao %}
+                    {{ m.fornecedor_manutencao.nome|truncatechars:10 }}
+                  {% else %}
+                    {{ m.localidade_destino.local|default:"-" }}
+                  {% endif %}
+                </td>
+                <td>
+                  {% if m.custo > 0 %}R$ {{ m.custo|floatformat:0 }}{% else %}-{% endif %}
+                </td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="4" style="text-align:center; color:var(--text-light); padding:12px;">Nenhuma manutenção registrada.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {% if preventivas %}
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fa fa-clipboard-check"></i> Preventivas</div>
+        </div>
+        <div class="card-body" style="padding:0;">
+          {% for p in preventivas %}
+          <div style="padding:12px; border-bottom:1px solid #edebe9; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:600; font-size:13px;">{{ p.checklist_modelo.nome }}</div>
+              <div style="font-size:11px; color:var(--text-sub);">
+                Próxima: <strong>{{ p.data_proxima|date:"d/m/Y" }}</strong>
+              </div>
+            </div>
+            <div>
+              {% if p.atrasado %}
+                <span class="badge bg-red">Atrasada</span>
+              {% else %}
+                <span class="badge bg-green">Em dia</span>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fa fa-sticky-note"></i> Notas Gerais</div>
+        </div>
+        <div class="card-body" style="background:#fffbeb;">
+          <p style="margin:0; font-size:13px; line-height:1.5; color:#78350f;">
+            {{ item.observacoes|default:"Nenhuma observação cadastrada."|linebreaksbr }}
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Auditoria</div>
+        </div>
+        <div class="card-body" style="font-size:12px; color:var(--text-sub);">
+          <div style="margin-bottom:8px;">
+            <strong>Cadastro:</strong> {{ item.created_at|date:"d/m/Y H:i" }}<br>
+            por {{ item.criado_por|default:"Admin" }}
+          </div>
+          <div>
+            <strong>Última Edição:</strong> {{ item.updated_at|date:"d/m/Y H:i" }}
+          </div>
+        </div>
+      </div>
+
+    </div>
+
   </div>
 </div>
 {% endblock %}
