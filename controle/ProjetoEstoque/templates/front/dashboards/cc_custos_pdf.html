@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Relatório de Custos por Centro de Custo</title>
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 1cm;
+            @frame footer_frame {
+                -pdf-frame-content: footerContent;
+                bottom: 0cm; margin-left: 1cm; margin-right: 1cm; height: 1cm;
+            }
+        }
+        body { font-family: Helvetica, sans-serif; font-size: 10px; color: #111; }
+        
+        /* Header */
+        .header-box { border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: 20px; }
+        .title { font-size: 18px; font-weight: bold; text-transform: uppercase; color: #1e3a8a; }
+        .subtitle { font-size: 10px; color: #666; margin-top: 4px; }
+        .meta { text-align: right; font-size: 9px; color: #555; }
+
+        /* KPIs Summary Box */
+        .kpi-box { 
+            background-color: #f3f4f6; border: 1px solid #ddd; padding: 10px; 
+            margin-bottom: 15px; display: block;
+        }
+        .kpi-item { display: inline-block; width: 24%; text-align: center; }
+        .kpi-val { font-size: 12px; font-weight: bold; color: #111; display: block; }
+        .kpi-lbl { font-size: 8px; text-transform: uppercase; color: #666; }
+
+        /* Tabela */
+        table { width: 100%; border-collapse: collapse; repeat-header: yes; }
+        th { 
+            background-color: #f0f0f0; border-bottom: 1px solid #999; 
+            padding: 6px; text-align: left; font-weight: bold; font-size: 8px; text-transform: uppercase;
+        }
+        td { border-bottom: 1px solid #eee; padding: 6px; vertical-align: middle; }
+        tr.even { background-color: #f9f9f9; }
+        
+        .num { text-align: right; }
+        .center { text-align: center; }
+        .total-row { background-color: #eef2ff; font-weight: bold; border-top: 2px solid #ccc; }
+        
+        /* Cores de Texto */
+        .txt-blue { color: #2563eb; }
+        .txt-green { color: #16a34a; }
+        .txt-red { color: #dc2626; }
+
+        #footerContent { text-align: center; font-size: 8px; color: #888; border-top: 1px solid #eee; padding-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="header-box">
+        <table width="100%">
+            <tr>
+                <td>
+                    <div class="title">Relatório Financeiro de TI</div>
+                    <div class="subtitle">Custos Rateados por Centro de Custo</div>
+                </td>
+                <td align="right" class="meta">
+                    Gerado em: {{ data_geracao|date:"d/m/Y H:i" }}<br>
+                    Por: {{ usuario.get_full_name|default:usuario.username }}<br>
+                    Período Ref.: {{ dt_ini|date:"d/m/Y" }} a {{ dt_fim|date:"d/m/Y" }}
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="kpi-box">
+        <table width="100%">
+            <tr>
+                <td align="center">
+                    <span class="kpi-val">{{ kpi_cc_count }}</span>
+                    <br><span class="kpi-lbl">Centros de Custo</span>
+                </td>
+                <td align="center">
+                    <span class="kpi-val txt-blue">R$ {{ kpi_total_mensal|floatformat:2 }}</span>
+                    <br><span class="kpi-lbl">Recorrente Mensal</span>
+                </td>
+                <td align="center">
+                    <span class="kpi-val txt-red">R$ {{ kpi_total_baixas|floatformat:2 }}</span>
+                    <br><span class="kpi-lbl">Perdas/Baixas</span>
+                </td>
+                <td align="center">
+                    <span class="kpi-val">{{ kpi_top_cc|truncatechars:20 }}</span>
+                    <br><span class="kpi-lbl">Maior Ofensor</span>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th width="25%">Centro de Custo</th>
+                <th width="8%" class="center">Usuários</th>
+                <th width="8%" class="center">Hw (Qtd)</th>
+                <th width="8%" class="center">Sw (Qtd)</th>
+                <th width="12%" class="num">Locação (Hw)</th>
+                <th width="12%" class="num">Licenças (Sw)</th>
+                <th width="12%" class="num">Total Mensal</th>
+                <th width="12%" class="num">Baixas/Extra</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for l in linhas %}
+            <tr class="{% cycle 'odd' 'even' %}">
+                <td>
+                    <b>{{ l.cc.numero }}</b><br>
+                    <span style="color:#555; font-size:8px;">{{ l.cc.departamento }}</span>
+                </td>
+                <td class="center">{{ l.usuarios }}</td>
+                <td class="center">{{ l.itens }}</td>
+                <td class="center">{{ l.licencas }}</td>
+                <td class="num txt-blue">R$ {{ l.custo_itens|floatformat:2 }}</td>
+                <td class="num txt-green">R$ {{ l.custo_licencas|floatformat:2 }}</td>
+                <td class="num" style="background-color:#f0f9ff;"><b>R$ {{ l.total_mensal|floatformat:2 }}</b></td>
+                <td class="num txt-red">R$ {{ l.baixas|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+            
+            <tr class="total-row">
+                <td colspan="4" align="right">TOTAIS GERAIS:</td>
+                <td class="num">R$ {{ js_mix_values.0|floatformat:2 }}</td>
+                <td class="num">R$ {{ js_mix_values.1|floatformat:2 }}</td>
+                <td class="num">R$ {{ kpi_total_mensal|floatformat:2 }}</td>
+                <td class="num">R$ {{ kpi_total_baixas|floatformat:2 }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div id="footerContent">
+        Sistema de Gestão de Ativos - Página <pdf:pagenumber> de <pdf:pagecount>
+    </div>
+</body>
+</html>

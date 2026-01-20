@@ -38,6 +38,7 @@ from django.core.exceptions import ValidationError
 from django.template.loader import get_template
 from xhtml2pdf import pisa
 
+
 # --- Helpers de compatibilidade com nomes de campos diferentes no LicencaLote ---
 def _lote_total_get(lote):
     for n in ("qtd_total", "quantidade_total", "quantidade", "total", "qtd"):
@@ -832,19 +833,32 @@ def localidade_delete(request, pk):
 @login_required
 def localidade_detail(request, pk):
     obj = get_object_or_404(Localidade, pk=pk)
-    # Contagens para enriquecer o detalhe
+    
+    # --- CORREÇÃO AQUI ---
+    # Removido 'status' do select_related pois é um campo simples, não uma FK.
+    itens = (
+        Item.objects
+        .filter(localidade=obj)
+        .select_related('subtipo') # Apenas FKs aqui
+        .order_by("nome")[:20]
+    )
     itens_count = Item.objects.filter(localidade=obj).count()
+    
+    # Busca usuários vinculados
+    usuarios = (
+        Usuario.objects
+        .filter(localidade=obj)
+        .select_related('funcao')
+        .order_by("nome")[:20]
+    )
     usuarios_count = Usuario.objects.filter(localidade=obj).count()
-
-    itens = Item.objects.filter(localidade=obj).order_by("nome")[:12]
-    usuarios = Usuario.objects.filter(localidade=obj).order_by("nome")[:12]
 
     context = {
         "obj": obj,
-        "itens_count": itens_count,
-        "usuarios_count": usuarios_count,
         "itens": itens,
+        "itens_count": itens_count,
         "usuarios": usuarios,
+        "usuarios_count": usuarios_count,
     }
     return render(request, "front/localidade_detail.html", context)
 
@@ -1079,7 +1093,7 @@ def centrocusto_delete(request, pk: int):
 ################ ITEM #######################################
 
 @login_required
-@transaction.atomic # Garante que tudo ou nada seja salvo 
+@transaction.atomic  # Garante que tudo ou nada seja salvo 
 def item_create(request):
     if request.method == "POST":
         form = ItemForm(request.POST)
@@ -1091,7 +1105,7 @@ def item_create(request):
             item.criado_por = request.user
             
             # Verifica flag de locação
-            eh_locado = request.POST.get('locado') == 'sim' # Ou use form.cleaned_data após validação básica
+            eh_locado = request.POST.get('locado') == 'sim'  # Ou use form.cleaned_data após validação básica
 
             if eh_locado:
                 if locacao_form.is_valid():
@@ -1100,25 +1114,9 @@ def item_create(request):
                     
                     locacao = locacao_form.save(commit=False)
                     locacao.equipamento = item
-                    
-                    # Validação extra de campos obrigatórios condicionais
-                    if not locacao.tempo_locado or not locacao.valor_mensal:
-                        # Rollback automático ocorre se levantarmos erro ou não salvarmos, 
-                        # mas aqui precisamos forçar o erro no form e não salvar.
-                        # Como já salvamos 'item', setamos rollback manual ou evitamos salvar antes.
-                        # Melhor abordagem: checar validade antes de salvar qualquer coisa.
-                        pass 
-                    else:
-                        locacao.save()
-                        return redirect("equipamentos_list")
-                
-                # Se chegou aqui, locação é inválida
-                # Como usamos atomic, o item.save() acima será desfeito se lançarmos erro 
-                # ou se o request falhar, mas para UX, renderizamos o erro.
-                # Nota: Na prática do Django, se não dermos redirect, o atomic faz rollback se houver exception.
-                # Aqui, vamos re-renderizar. O item não deve persistir se o form de locação falhar.
-                # Para garantir, movemos o item.save() para dentro do bloco de sucesso total.
-            
+                    locacao.save()
+                    return redirect("equipamentos_list")
+                # Se locação não for válida, cai para o render abaixo com erros exibidos
             else:
                 # Não é locado, fluxo simples
                 item.save()
@@ -1132,8 +1130,6 @@ def item_create(request):
         "form": form, 
         "locacao_form": locacao_form
     })
-
-
 # ITEM LIST
 
 def _norm(s: str) -> str:
@@ -1272,121 +1268,193 @@ def equipamento_detalhe(request, pk: int):
         Item.objects.select_related(
             "subtipo", "localidade", "centro_custo", "fornecedor"
         ),
-        pk=pk
+        pk=pk,
     )
 
-    # 1. Rastreio (Histórico)
+    # 1) Histórico de movimentações
     movimentacoes = (
-        MovimentacaoItem.objects
-        .filter(item=item)
-        .select_related("usuario", "localidade_destino", "centro_custo_destino", "fornecedor_manutencao")
+        MovimentacaoItem.objects.filter(item=item)
+        .select_related(
+            "usuario",
+            "localidade_destino",
+            "centro_custo_destino",
+            "fornecedor_manutencao",
+        )
         .order_by("-created_at")
     )
 
     historico_manutencao = movimentacoes.filter(
-        tipo_movimentacao__in=[TipoMovimentacaoChoices.ENVIO_MANUTENCAO, TipoMovimentacaoChoices.RETORNO_MANUTENCAO]
+        tipo_movimentacao__in=[
+            TipoMovimentacaoChoices.ENVIO_MANUTENCAO,
+            TipoMovimentacaoChoices.RETORNO_MANUTENCAO,
+        ]
     )
 
     ultimo_resp = "Em Estoque / Não Definido"
     if movimentacoes.exists():
         last = movimentacoes.first()
-        if last.usuario: ultimo_resp = f"Usuário: {last.usuario.nome}"
-        elif last.centro_custo_destino: ultimo_resp = f"Setor: {last.centro_custo_destino.departamento}"
-        elif last.localidade_destino: ultimo_resp = f"Local: {last.localidade_destino.local}"
-        elif last.fornecedor_manutencao: ultimo_resp = f"Externo: {last.fornecedor_manutencao.nome}"
+        if last.usuario:
+            ultimo_resp = f"Usuário: {last.usuario.nome}"
+        elif last.centro_custo_destino:
+            ultimo_resp = f"Setor: {last.centro_custo_destino.departamento}"
+        elif last.localidade_destino:
+            ultimo_resp = f"Local: {last.localidade_destino.local}"
+        elif last.fornecedor_manutencao:
+            ultimo_resp = f"Externo: {last.fornecedor_manutencao.nome}"
 
-    # 2. Financeiro & Ciclo de Vida
+    # 2) Financeiro / ciclo de vida
     today = timezone.localdate()
-    locacao = getattr(item, 'locacao', None)
-    
+    locacao = getattr(item, "locacao", None)
+
+    custo_manut = historico_manutencao.aggregate(t=Sum("custo"))["t"] or Decimal("0.00")
+
     financeiro = {
-        "modo": "LOCAÇÃO" if getattr(item, 'locado', 'nao') == 'sim' else "AQUISIÇÃO",
+        "modo": "LOCAÇÃO" if getattr(item, "locado", "nao") == "sim" else "AQUISIÇÃO",
         "custo_aquisicao": item.valor or Decimal("0.00"),
-        "custo_manutencao": Decimal("0.00"),
-        "tco": Decimal("0.00"),
-        "valor_atual": Decimal("0.00"),
+
+        # custos
+        "custo_manutencao": custo_manut,
+        "custo_aluguel_acumulado": Decimal("0.00"),  # só locado
+        "custo_tempo_empresa": Decimal("0.00"),       # tempo (aluguéis pagos ou aquisição)
+        "custo_total_empresa": Decimal("0.00"),       # TEMPO + MANUTENÇÕES
+        "tco": Decimal("0.00"),                       # alias do custo_total_empresa
+
+        # valores de referência
+        "valor_atual": Decimal("0.00"),               # aluguel mensal ou valor estimado
         "custo_mensal": Decimal("0.00"),
+
+        # tempo
+        "dias_na_empresa": 0,
+        "meses_na_empresa": 0,
+        "data_inicio": None,
+        "data_fim": None,
+
+        # contrato / vida útil
         "vida_util_perc": 0,
         "vida_util_texto": "Indefinido",
-        "status_vida": "ok"
+        "status_vida": "ok",
     }
 
-    custo_manut = historico_manutencao.aggregate(t=Sum('custo'))['t'] or Decimal("0.00")
-    financeiro["custo_manutencao"] = custo_manut
-
-    # --- LÓGICA LOCAÇÃO ---
+    # ===== EQUIPAMENTO LOCADO =====
     if financeiro["modo"] == "LOCAÇÃO" and locacao:
-        valor_mensal = getattr(locacao, 'valor_mensal', Decimal("0.00")) or Decimal("0.00")
-        dt_inicio = getattr(locacao, 'data_inicio', None)
-        dt_fim = getattr(locacao, 'data_fim', None)
-        
+        valor_mensal = locacao.valor_mensal or Decimal("0.00")
+        dt_inicio = locacao.data_entrada          # campo cadastrado na locação
+        tempo_locado_meses = locacao.tempo_locado or 0
+
         financeiro["custo_mensal"] = valor_mensal
-        
-        # CORREÇÃO: Para locados, o "Valor Atual" visualizado será o Valor Mensal do Aluguel
-        financeiro["valor_atual"] = valor_mensal 
-        
+        financeiro["valor_atual"] = valor_mensal
+
         if dt_inicio:
-            # Cálculo de meses corridos para estimar custo acumulado
+            financeiro["data_inicio"] = dt_inicio
+
             dias_corridos = (today - dt_inicio).days
-            meses_uso = max(1, dias_corridos // 30) if dias_corridos > 0 else 0
-            
-            custo_aluguel_acumulado = Decimal(meses_uso) * valor_mensal
-            financeiro["tco"] = custo_aluguel_acumulado + custo_manut
-            
-            if dt_fim:
-                total_dias = (dt_fim - dt_inicio).days
-                restante = (dt_fim - today).days
-                
+            if dias_corridos < 0:
+                dias_corridos = 0
+
+            # meses que o equipamento já ficou na empresa
+            meses_uso = dias_corridos // 30 if dias_corridos > 0 else 0
+
+            # meses de aluguel considerados como já pagos
+            if tempo_locado_meses > 0:
+                meses_pagos = min(meses_uso, int(tempo_locado_meses))
+            else:
+                meses_pagos = meses_uso
+
+            financeiro["dias_na_empresa"] = dias_corridos
+            financeiro["meses_na_empresa"] = meses_uso
+
+            # >>> ALUGUÉIS JÁ PAGOS <<<
+            custo_aluguel_acumulado = valor_mensal * Decimal(meses_pagos)
+            financeiro["custo_aluguel_acumulado"] = custo_aluguel_acumulado
+
+            # custo do tempo = o que já foi pago em aluguel
+            financeiro["custo_tempo_empresa"] = custo_aluguel_acumulado
+
+            # >>> CUSTO NA EMPRESA (TEMPO + MANUTENÇÕES) <<<
+            custo_total_empresa = custo_aluguel_acumulado + custo_manut
+            financeiro["custo_total_empresa"] = custo_total_empresa
+            financeiro["tco"] = custo_total_empresa
+
+            # contrato / vida
+            if tempo_locado_meses > 0:
+                total_dias = int(tempo_locado_meses) * 30
+                dt_fim = dt_inicio + timedelta(days=total_dias)
+                financeiro["data_fim"] = dt_fim
+
                 if total_dias > 0:
                     perc = (dias_corridos / total_dias) * 100
                     financeiro["vida_util_perc"] = min(100, max(0, int(perc)))
-                
+
+                restante = (dt_fim - today).days
                 if restante < 0:
-                    financeiro["vida_util_texto"] = "Contrato Vencido"
+                    financeiro["vida_util_texto"] = "Contrato vencido"
                     financeiro["status_vida"] = "critical"
                 else:
                     financeiro["vida_util_texto"] = f"{restante} dias restantes"
-                    if restante < 30: financeiro["status_vida"] = "warning"
+                    if restante < 30:
+                        financeiro["status_vida"] = "warning"
+            else:
+                financeiro["vida_util_texto"] = "Contrato sem prazo definido"
         else:
-            financeiro["tco"] = custo_manut # Sem data início, assume apenas manutenção
+            # sem data_entrada → não calcula aluguel, só manutenções
+            financeiro["custo_total_empresa"] = custo_manut
+            financeiro["tco"] = custo_manut
 
-    # --- LÓGICA PRÓPRIO ---
+    # ===== EQUIPAMENTO PRÓPRIO (AQUISIÇÃO) =====
     else:
-        financeiro["tco"] = financeiro["custo_aquisicao"] + custo_manut
-        
+        financeiro["custo_tempo_empresa"] = financeiro["custo_aquisicao"]
+        custo_total_empresa = financeiro["custo_aquisicao"] + custo_manut
+        financeiro["custo_total_empresa"] = custo_total_empresa
+        financeiro["tco"] = custo_total_empresa
+
         if item.data_compra:
+            financeiro["data_inicio"] = item.data_compra
+
             vida_util_anos = 5
             vida_util_dias = vida_util_anos * 365
             dias_uso = (today - item.data_compra).days
-            
+            if dias_uso < 0:
+                dias_uso = 0
+
+            financeiro["dias_na_empresa"] = dias_uso
+            financeiro["meses_na_empresa"] = dias_uso // 30 if dias_uso > 0 else 0
+
             if dias_uso < vida_util_dias:
                 fator = Decimal(dias_uso) / Decimal(vida_util_dias)
                 financeiro["valor_atual"] = financeiro["custo_aquisicao"] * (1 - fator)
-                financeiro["vida_util_perc"] = int((dias_uso / vida_util_dias) * 100)
+                financeiro["vida_util_perc"] = int(
+                    (dias_uso / vida_util_dias) * 100
+                )
                 anos_restantes = max(0, vida_util_anos - (dias_uso // 365))
                 financeiro["vida_util_texto"] = f"~{anos_restantes} anos restantes"
+                financeiro["data_fim"] = item.data_compra + timedelta(
+                    days=vida_util_dias
+                )
             else:
                 financeiro["valor_atual"] = Decimal("0.00")
                 financeiro["vida_util_perc"] = 100
-                financeiro["vida_util_texto"] = "Totalmente Depreciado"
+                financeiro["vida_util_texto"] = "Totalmente depreciado"
                 financeiro["status_vida"] = "warning"
+                financeiro["data_fim"] = item.data_compra + timedelta(
+                    days=vida_util_dias
+                )
 
-    # 3. Preventivas
+    # 3) Preventivas
     preventivas = (
-        Preventiva.objects
-        .filter(equipamento=item)
+        Preventiva.objects.filter(equipamento=item)
         .select_related("checklist_modelo")
         .order_by("data_proxima")
     )
-    
+
     status_saude = "ok"
     for p in preventivas:
         if not p.data_proxima and p.checklist_modelo.intervalo_dias:
             base = p.data_ultima or today
             p.data_proxima = base + timedelta(days=p.checklist_modelo.intervalo_dias)
-        
+
         p.atrasado = p.data_proxima and p.data_proxima < today
-        if p.atrasado: status_saude = "critical"
+        if p.atrasado:
+            status_saude = "critical"
 
     context = {
         "item": item,
@@ -1400,54 +1468,62 @@ def equipamento_detalhe(request, pk: int):
     }
 
     return render(request, "front/equipamentos/equipamento_detalhe.html", context)
+
 @login_required
 @transaction.atomic
 def editar_equipamento(request, pk):
-    equipamento = get_object_or_404(Item, pk=pk)
-    
-    # Tenta recuperar locação existente
-    try:
-        locacao_instance = equipamento.locacao
-    except (Locacao.DoesNotExist, AttributeError):
-        locacao_instance = None
+    item = get_object_or_404(Item, pk=pk)
+    locacao_instance = getattr(item, "locacao", None)  # pode existir ou não
 
     if request.method == "POST":
-        form = ItemForm(request.POST, instance=equipamento)
-        locacao_form = LocacaoForm(request.POST, instance=locacao_instance)
+        form = ItemForm(request.POST, instance=item)
+
+        # verifica se o usuário marcou o item como locado
+        eh_locado = request.POST.get("locado") == "sim"
+
+        # se for locado, sempre usa a MESMA instância de Locacao (se já existir)
+        locacao_form = LocacaoForm(
+            request.POST,
+            instance=locacao_instance if eh_locado else None
+        )
 
         if form.is_valid():
             item = form.save(commit=False)
-            eh_locado = form.cleaned_data.get('locado') == 'sim'
+            item.atualizado_por = request.user
 
             if eh_locado:
+                # precisa validar também a locação
                 if locacao_form.is_valid():
-                    item.atualizado_por = request.user
-                    item.save() # Salva alterações do item
+                    item.save()
 
                     locacao = locacao_form.save(commit=False)
                     locacao.equipamento = item
                     locacao.save()
+
                     return redirect("equipamentos_list")
-                else:
-                    # Form de locação inválido
-                    pass
+                # se locacao_form não for válido, cai para o render lá embaixo
             else:
-                # Se não é locado, salva item e remove locação se existir
-                item.atualizado_por = request.user
+                # se marcou como NÃO locado e existia locação, remove
                 item.save()
                 if locacao_instance:
                     locacao_instance.delete()
+
                 return redirect("equipamentos_list")
 
     else:
-        form = ItemForm(instance=equipamento)
+        # GET: pré-carrega os dados
+        form = ItemForm(instance=item)
         locacao_form = LocacaoForm(instance=locacao_instance)
 
-    return render(request, "front/equipamentos/cadastrar_equipamento.html", {
-        "form": form, 
-        "locacao_form": locacao_form, 
-        "editar": True
-    })
+    return render(
+        request,
+        "front/equipamentos/cadastrar_equipamento.html",
+        {
+            "form": form,
+            "locacao_form": locacao_form,
+            "editar": True,  # para o template saber que é edição
+        },
+    )
 
 @require_POST
 @login_required
@@ -1623,12 +1699,11 @@ from django.shortcuts import render
 # Ajuste conforme seu projeto
 # from .models import MovimentacaoItem, TipoMovimentacaoChoices
 
-@login_required
-def movimentacao_list(request):
+def _get_movimentacao_qs(request):
     """
-    Dashboard de Movimentações (Microsoft Fluent Style).
+    Helper: Aplica os filtros da requisição e retorna o QuerySet.
+    Usado tanto na view de lista quanto na de exportação PDF.
     """
-    # 1. Filtros
     q = (request.GET.get("q") or "").strip()
     tipo = (request.GET.get("tipo") or "").strip()
     usuario_q = (request.GET.get("usuario") or "").strip()
@@ -1648,7 +1723,6 @@ def movimentacao_list(request):
         .order_by("-created_at")
     )
 
-    # Aplicação dos Filtros
     if q:
         qs = qs.filter(item__nome__icontains=q)
     if tipo:
@@ -1664,15 +1738,20 @@ def movimentacao_list(request):
             Q(centro_custo_destino__numero__icontains=centro_custo) |
             Q(centro_custo_destino__departamento__icontains=centro_custo)
         )
-    
     if data_inicio:
         qs = qs.filter(created_at__date__gte=data_inicio)
     if data_fim:
         qs = qs.filter(created_at__date__lte=data_fim)
+        
+    return qs
 
+@login_required
+def movimentacao_list(request):
+    # 1. Recupera QS Filtrado usando o Helper
+    qs = _get_movimentacao_qs(request)
     total_filtrado = qs.count()
 
-    # 2. KPIs
+    # 2. KPIs (Mantendo sua lógica original)
     stats = dict(qs.values_list("tipo_movimentacao").annotate(c=Count("id")).order_by())
     def get_count(key): return stats.get(key, 0)
 
@@ -1707,9 +1786,14 @@ def movimentacao_list(request):
         "page_obj": page_obj,
         "total": total_filtrado,
         "qs_keep": qs_keep,
-        "f_q": q, "f_tipo": tipo, "f_user": usuario_q, 
-        "f_serie": numero_serie, "f_cc": centro_custo,
-        "f_ini": data_inicio, "f_fim": data_fim,
+        # Filtros de volta para o template
+        "f_q": request.GET.get("q", ""), 
+        "f_tipo": request.GET.get("tipo", ""), 
+        "f_user": request.GET.get("usuario", ""), 
+        "f_serie": request.GET.get("numero_serie", ""), 
+        "f_cc": request.GET.get("centro_custo", ""),
+        "f_ini": request.GET.get("data_inicio", ""), 
+        "f_fim": request.GET.get("data_fim", ""),
         "tipos_choices": TipoMovimentacaoChoices.choices,
         "kpi": {
             "hoje": kpi_hoje,
@@ -1724,6 +1808,46 @@ def movimentacao_list(request):
 
     return render(request, "front/movimentacao_list.html", context)
 
+@login_required
+def movimentacao_export_pdf(request):
+    """
+    Gera PDF usando xhtml2pdf (Pisa).
+    """
+    # 1. Recupera dados filtrados
+    qs = _get_movimentacao_qs(request)
+    
+    # 2. Contexto
+    context = {
+        'movimentacoes': qs,
+        'usuario': request.user,
+        'data_geracao': timezone.now(),
+        'total': qs.count(),
+        'filtros': {
+            'inicio': request.GET.get("data_inicio"),
+            'fim': request.GET.get("data_fim"),
+            'tipo': request.GET.get("tipo")
+        }
+    }
+    
+    # 3. Renderiza Template
+    template_path = 'front/movimentacao_pdf.html'
+    template = get_template(template_path)
+    html = template.render(context)
+    
+    # 4. Gera PDF
+    response = HttpResponse(content_type='application/pdf')
+    filename = f"relatorio_movimentacoes_{timezone.now().strftime('%Y%m%d_%H%M')}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    # Criação do PDF
+    pisa_status = pisa.CreatePDF(
+       html, dest=response
+    )
+
+    if pisa_status.err:
+       return HttpResponse('Erro ao gerar PDF <pre>' + html + '</pre>')
+       
+    return response
 
 
 
@@ -1951,21 +2075,33 @@ def _calc_proxima_para_item(item: Item, base: date | None = None) -> date | None
 # =========================
 @login_required
 def checklist_list(request):
+    """
+    Listagem de Checklists com busca e paginação.
+    """
     q = (request.GET.get("q") or "").strip()
 
-    checklists = (
+    # QuerySet Base Otimizada
+    # select_related('subtipo') evita queries N+1 se você exibir o subtipo no template
+    qs = (
         CheckListModelo.objects
-        .all()
-        .annotate(perguntas_count=Count("perguntas"))  # related_name= 'perguntas'
-        .order_by("nome")
+        .select_related('subtipo') 
+        .annotate(perguntas_count=Count("perguntas")) 
+        .order_by("-created_at") # Mais recentes primeiro
     )
+
+    # Filtro Seguro (Removido 'descricao' que causava erro)
     if q:
-        checklists = checklists.filter(Q(nome__icontains=q) | Q(descricao__icontains=q))
+        qs = qs.filter(Q(nome__icontains=q) | Q(subtipo__nome__icontains=q))
+
+    # Paginação (10 itens por página)
+    paginator = Paginator(qs, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
 
     context = {
-        "checklists": checklists,
+        "page_obj": page_obj, # O template iterará sobre page_obj
         "q": q,
-        "total": checklists.count(),
+        "total": qs.count(),
     }
     return render(request, "front/preventivas/checklist_list.html", context)
 
@@ -2866,210 +3002,415 @@ def preventiva_dashboard(request):
     return render(request, "front/dashboards/preventiva_dashboard.html", ctx)
 
 # ---- helpers de data ----
-def _parse_date(s, default):
+def _parse_date(date_str, default):
+    if not date_str: return default
     try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+    except:
         return default
 
-def _parse_date(s, fb):
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date() if s else fb
-    except Exception:
-        return fb
+def _get_meses_ciclo(periodicidade_str):
+    """Auxiliar para converter periodicidade em meses"""
+    if not periodicidade_str: return 1
+    p = str(periodicidade_str).upper()
+    if 'MEN' in p: return 1
+    if 'BI' in p: return 2
+    if 'TRI' in p: return 3
+    if 'SEM' in p: return 6
+    if 'ANU' in p: return 12
+    return 1
 
-def _parse_date(value, default):
+def _get_cc_custos_data(request):
     """
-    Converte 'YYYY-MM-DD' -> date. Se vazio ou inválido, retorna default.
+    Função Helper: Processa todos os cálculos de custo por Centro de Custo.
+    Retorna o dicionário de contexto para ser usado na View Web ou no PDF.
     """
-    if not value:
-        return default
-    try:
-        return datetime.strptime(value, "%Y-%m-%d").date()
-    except Exception:
-        return default
+    hoje = timezone.localdate()
+    dt_ini = _parse_date(request.GET.get("inicio"), hoje.replace(day=1))
+    dt_fim = _parse_date(request.GET.get("fim"), hoje)
 
+    totals = {}
+
+    def get_acc(cc_id):
+        if not cc_id: return None
+        if cc_id not in totals:
+            totals[cc_id] = {
+                "cc_obj": None,
+                "qtd_usuarios": 0,
+                "qtd_itens": 0,
+                "qtd_licencas": 0,
+                "custo_locacao": Decimal("0.00"),
+                "custo_licencas": Decimal("0.00"),
+                "custo_baixas": Decimal("0.00"),
+            }
+        return totals[cc_id]
+
+    # 1. Locação (Hardware)
+    locacoes = Locacao.objects.select_related("equipamento__centro_custo").filter(
+        equipamento__status='ativo', valor_mensal__gt=0, equipamento__centro_custo__isnull=False
+    )
+    for loc in locacoes:
+        acc = get_acc(loc.equipamento.centro_custo.id)
+        if acc: acc["custo_locacao"] += (loc.valor_mensal or Decimal(0))
+
+    # 2. Licenças (Software - Unitário)
+    movs_lic = MovimentacaoLicenca.objects.select_related(
+        "licenca", "usuario__centro_custo", "centro_custo_destino", "lote"
+    ).filter(usuario__isnull=False).order_by("licenca_id", "usuario_id", "created_at")
+
+    estado_atual_lic = { (m.licenca_id, m.usuario_id): m for m in movs_lic }
+
+    for (lid, uid), mov in estado_atual_lic.items():
+        if mov.tipo == TipoMovLicencaChoices.ATRIBUICAO:
+            cc_id = None
+            if mov.usuario and mov.usuario.centro_custo:
+                cc_id = mov.usuario.centro_custo.id
+            elif mov.centro_custo_destino:
+                cc_id = mov.centro_custo_destino.id
+            elif mov.licenca.centro_custo:
+                cc_id = mov.licenca.centro_custo.id
+            
+            acc = get_acc(cc_id)
+            if acc:
+                lote = mov.lote
+                custo_mensal_unit = Decimal("0.00")
+                if lote:
+                    c_ciclo = lote.custo_ciclo or Decimal(0)
+                    meses = _get_meses_ciclo(lote.periodicidade)
+                    if meses > 0: custo_mensal_unit = (c_ciclo / Decimal(meses))
+                else:
+                    custo_mensal_unit = mov.licenca.custo or Decimal(0) # Fallback
+
+                acc["custo_licencas"] += custo_mensal_unit
+                acc["qtd_licencas"] += 1
+
+    # 3. Baixas (Pontual)
+    baixas = MovimentacaoItem.objects.filter(
+        tipo_movimentacao=TipoMovimentacaoChoices.BAIXA,
+        created_at__date__gte=dt_ini, created_at__date__lte=dt_fim
+    ).select_related("item__centro_custo", "centro_custo_origem")
+
+    for b in baixas:
+        cc_id = b.centro_custo_origem.id if b.centro_custo_origem else (b.item.centro_custo.id if b.item.centro_custo else None)
+        acc = get_acc(cc_id)
+        if acc:
+            val = b.custo if b.custo is not None else (b.item.valor or Decimal(0)) * (b.quantidade or 1)
+            acc["custo_baixas"] += val
+
+    # 4. Metadados (Nomes, Contagens)
+    cc_ids = list(totals.keys())
+    ccs_objs = CentroCusto.objects.filter(id__in=cc_ids)
+    for cc in ccs_objs:
+        if cc.id in totals: totals[cc.id]["cc_obj"] = cc
+
+    users_agg = Usuario.objects.filter(centro_custo_id__in=cc_ids, status='ativo').values('centro_custo_id').annotate(n=Count('id'))
+    for u in users_agg: 
+        if u['centro_custo_id'] in totals: totals[u['centro_custo_id']]['qtd_usuarios'] = u['n']
+
+    itens_agg = Item.objects.filter(centro_custo_id__in=cc_ids, status='ativo').values('centro_custo_id').annotate(n=Count('id'))
+    for i in itens_agg:
+        if i['centro_custo_id'] in totals: totals[i['centro_custo_id']]['qtd_itens'] = i['n']
+
+    # 5. Consolidação
+    linhas = []
+    total_geral_itens = Decimal(0)
+    total_geral_lics = Decimal(0)
+    total_geral_baixas = Decimal(0)
+
+    for cc_id, dados in totals.items():
+        if not dados["cc_obj"]: continue
+
+        c_itens = dados["custo_locacao"]
+        c_lics = dados["custo_licencas"]
+        c_baixas = dados["custo_baixas"]
+        total_mensal = c_itens + c_lics
+        total_impacto = total_mensal + c_baixas
+
+        total_geral_itens += c_itens
+        total_geral_lics += c_lics
+        total_geral_baixas += c_baixas
+
+        linhas.append({
+            "cc": dados["cc_obj"],
+            "usuarios": dados["qtd_usuarios"],
+            "itens": dados["qtd_itens"],
+            "licencas": dados["qtd_licencas"],
+            "custo_itens": c_itens,
+            "custo_licencas": c_lics,
+            "baixas": c_baixas,
+            "total_mensal": total_mensal,
+            "total_impacto": total_impacto
+        })
+
+    linhas.sort(key=lambda x: x["total_impacto"], reverse=True)
+
+    # Dados de Gráfico
+    chart_labels = [f"{l['cc'].numero}" for l in linhas[:10]]
+    chart_itens = [float(l['custo_itens']) for l in linhas[:10]]
+    chart_lics = [float(l['custo_licencas']) for l in linhas[:10]]
+
+    return {
+        "dt_ini": dt_ini,
+        "dt_fim": dt_fim,
+        "linhas": linhas,
+        
+        # KPIs
+        "kpi_cc_count": len(linhas),
+        "kpi_total_mensal": total_geral_itens + total_geral_lics,
+        "kpi_total_baixas": total_geral_baixas,
+        "kpi_top_cc": linhas[0]['cc'].departamento if linhas else "-",
+        
+        # Charts (apenas para Web)
+        "js_labels": chart_labels,
+        "js_itens": chart_itens,
+        "js_lics": chart_lics,
+        "js_mix_values": [float(total_geral_itens), float(total_geral_lics)]
+    }
 
 @login_required
 def cc_custos_dashboard(request):
     """
-    Dashboard de custos por Centro de Custo:
-    - Itens locados (valor mensal)
-    - Licenças (assentos ativos e custo mensal)
-    - Baixas no período (R$)
-    - Gráficos: barras empilhadas (Itens x Licenças), pizza (proporção)
+    Dashboard de Custos por Centro de Custo (Enterprise Version)
+    - Locação de Hardware (Valor Mensal)
+    - Licenças de Software (Valor Unitário Mensal x Qtd Usuários)
+    - Baixas/Perdas (Valor Pontual no Período)
     """
-    # ---- Período para BAIXAS ----
-    hoje = datetime.today().date()
-    dt_ini = _parse_date(request.GET.get("inicio"), hoje - timedelta(days=30))
+    hoje = timezone.localdate()
+    dt_ini = _parse_date(request.GET.get("inicio"), hoje.replace(day=1)) # Início do mês atual
     dt_fim = _parse_date(request.GET.get("fim"), hoje)
 
-    # Dicionário acumulador por CC
-    totals = {}  # cc_id -> dict
+    # Estrutura de Acumulação: { cc_id: { dados... } }
+    totals = {}
 
-    def acc(cc_id):
-        if not cc_id:
-            return None
+    def get_acc(cc_id):
+        if not cc_id: return None
         if cc_id not in totals:
             totals[cc_id] = {
-                "cc": None,
-                "usuarios": 0,
-                "itens": 0,
-                "licencas_set": set(),
-                "assentos": 0,
-                "custo_itens": Decimal("0.00"),
-                "custo_licencas": Decimal("0.00"),
-                "baixas": Decimal("0.00"),
+                "cc_obj": None,
+                "qtd_usuarios": 0,
+                "qtd_itens": 0,         # Hardware alocado
+                "qtd_licencas": 0,      # Assentos de software
+                "custo_locacao": Decimal("0.00"),  # Mensal Recorrente
+                "custo_licencas": Decimal("0.00"), # Mensal Recorrente
+                "custo_baixas": Decimal("0.00"),   # Pontual (Perda/Consumo)
             }
         return totals[cc_id]
 
-    # ---- Custos mensais de ITENS locados por CC ----
-    loc_qs = (
+    # ==========================================================
+    # 1. CUSTO DE LOCAÇÃO (Hardware Recorrente)
+    # ==========================================================
+    # Itens ativos que possuem contrato de locação com valor mensal
+    locacoes = (
         Locacao.objects
-        .select_related("equipamento", "equipamento__centro_custo")
-        .exclude(valor_mensal__isnull=True)
+        .select_related("equipamento__centro_custo")
+        .filter(
+            equipamento__status='ativo', # Apenas ativos geram custo recorrente
+            valor_mensal__gt=0,
+            equipamento__centro_custo__isnull=False
+        )
     )
-    for loc in loc_qs:
-        item = loc.equipamento
-        cc_id = getattr(item.centro_custo, "id", None)
-        if not cc_id:
-            continue
-        valor = loc.valor_mensal or Decimal("0.00")
-        if valor <= 0:
-            continue
-        a = acc(cc_id)
-        a["custo_itens"] += valor
+    
+    for loc in locacoes:
+        cc_id = loc.equipamento.centro_custo.id
+        acc = get_acc(cc_id)
+        if acc:
+            acc["custo_locacao"] += (loc.valor_mensal or Decimal(0))
 
-    # ---- Assentos de LICENÇAS (último evento por par licença/usuário) ----
-    mov_l_qs = (
+    # ==========================================================
+    # 2. CUSTO DE LICENÇAS (Software Recorrente - Lógica Unitária)
+    # ==========================================================
+    # Busca a última movimentação de cada par (licença, usuário) para saber quem está usando o que.
+    
+    movs_lic = (
         MovimentacaoLicenca.objects
         .select_related("licenca", "usuario__centro_custo", "centro_custo_destino", "lote")
-        .order_by("licenca_id", "usuario_id", "created_at", "id")
+        .filter(usuario__isnull=False) # Apenas atribuições a pessoas
+        .order_by("licenca_id", "usuario_id", "created_at")
     )
-    # Guarda o ÚLTIMO por (licenca, usuario)
-    last_by_pair = {}  # (licenca_id, usuario_id) -> MovimentacaoLicenca
-    for m in mov_l_qs:
-        if m.usuario_id is None:
-            continue
-        last_by_pair[(m.licenca_id, m.usuario_id)] = m
 
-    for (lic_id, user_id), m in last_by_pair.items():
-        if m.tipo != TipoMovLicencaChoices.ATRIBUICAO:
-            continue
+    # Snapshot do estado atual
+    estado_atual_lic = {}
+    for m in movs_lic:
+        estado_atual_lic[(m.licenca_id, m.usuario_id)] = m
 
-        # Resolve CC (prioridade: usuário > mov > licença)
-        cc_id = (
-            getattr(getattr(m.usuario, "centro_custo", None), "id", None)
-            or getattr(m.centro_custo_destino, "id", None)
-            or getattr(m.licenca.centro_custo, "id", None)
-        )
-        if not cc_id:
-            continue
+    for (lid, uid), mov in estado_atual_lic.items():
+        # Só conta custo se estiver atribuído (não devolvido)
+        if mov.tipo == TipoMovLicencaChoices.ATRIBUICAO:
+            
+            # Determina o CC pagante (CC do Usuário > Destino > CC da Licença)
+            cc_id = None
+            if mov.usuario and mov.usuario.centro_custo:
+                cc_id = mov.usuario.centro_custo.id
+            elif mov.centro_custo_destino:
+                cc_id = mov.centro_custo_destino.id
+            elif mov.licenca.centro_custo: # Fallback para TI se usuário sem setor
+                cc_id = mov.licenca.centro_custo.id
+            
+            acc = get_acc(cc_id)
+            if acc:
+                # CÁLCULO FINANCEIRO UNITÁRIO
+                # Usa o lote vinculado na atribuição para saber o preço exato daquela unidade
+                lote = mov.lote
+                custo_mensal_unitario = Decimal("0.00")
+                
+                if lote:
+                    custo_ciclo = lote.custo_ciclo or Decimal(0)
+                    meses = _get_meses_ciclo(lote.periodicidade)
+                    # Valor Mensal desta unidade = Valor Compra / Meses Ciclo
+                    if meses > 0:
+                        custo_mensal_unitario = (custo_ciclo / Decimal(meses))
+                else:
+                    # Fallback: Se não tem lote (dado legado), usa custo da licença pai
+                    custo_base = mov.licenca.custo or Decimal(0) # Assumindo custo mensal na licença pai
+                    # Se licença pai não tem periodicidade definida, assume 1 mês ou lógica custom
+                    custo_mensal_unitario = custo_base 
 
-        # Custo mensal POR ASSENTO usando o lote da ATRIBUIÇÃO quando houver
-        cm = m.custo_mensal_usado or Decimal("0.00")
+                acc["custo_licencas"] += custo_mensal_unitario
+                acc["qtd_licencas"] += 1
 
-        a = acc(cc_id)
-        a["assentos"] += 1
-        a["custo_licencas"] += cm
-        a["licencas_set"].add(lic_id)
-
-    # ---- BAIXAS no período (R$) por CC ----
-    baixas_qs = (
+    # ==========================================================
+    # 3. CUSTO DE BAIXAS (Perda/Descarte - Pontual no Período)
+    # ==========================================================
+    baixas = (
         MovimentacaoItem.objects
         .filter(
             tipo_movimentacao=TipoMovimentacaoChoices.BAIXA,
-            created_at__date__gte=dt_ini, created_at__date__lte=dt_fim
+            created_at__date__gte=dt_ini,
+            created_at__date__lte=dt_fim
         )
         .select_related("item__centro_custo", "centro_custo_origem")
     )
-    for mv in baixas_qs:
-        cc_id = (
-            getattr(mv.centro_custo_origem, "id", None)
-            or getattr(getattr(mv.item, "centro_custo", None), "id", None)
-        )
-        if not cc_id:
-            continue
-        valor_baixa = (
-            mv.custo
-            if mv.custo is not None
-            else (mv.item.valor or Decimal("0.00")) * (mv.quantidade or 1)
-        )
-        a = acc(cc_id)
-        a["baixas"] += (valor_baixa or Decimal("0.00"))
 
-    # ---- Completa metadados por CC ----
+    for b in baixas:
+        # O custo da baixa vai para o setor de origem (quem perdeu o item)
+        # ou o setor dono do item
+        cc_id = None
+        if b.centro_custo_origem:
+            cc_id = b.centro_custo_origem.id
+        elif b.item.centro_custo:
+            cc_id = b.item.centro_custo.id
+        
+        acc = get_acc(cc_id)
+        if acc:
+            # Se a movimentação tem custo explícito, usa ele. Se não, calcula qtd * valor_item
+            custo_baixa = b.custo if b.custo is not None else (b.item.valor or Decimal(0)) * (b.quantidade or 1)
+            acc["custo_baixas"] += custo_baixa
+
+    # ==========================================================
+    # 4. Dados Cadastrais para Contexto (Qtd Usuários e Itens)
+    # ==========================================================
     cc_ids = list(totals.keys())
-    ccs = {cc.id: cc for cc in CentroCusto.objects.filter(id__in=cc_ids)}
+    
+    # Busca objetos CentroCusto
+    ccs_objs = CentroCusto.objects.filter(id__in=cc_ids)
+    for cc in ccs_objs:
+        if cc.id in totals:
+            totals[cc.id]["cc_obj"] = cc
 
-    users_count = (
-        Usuario.objects
-        .filter(centro_custo_id__in=cc_ids, status="ativo")
-        .values("centro_custo_id")
-        .annotate(n=Count("id"))
-    )
-    itens_count = (
-        Item.objects
-        .filter(centro_custo_id__in=cc_ids)
-        .values("centro_custo_id")
-        .annotate(n=Count("id"))
-    )
-    map_users = {r["centro_custo_id"]: r["n"] for r in users_count}
-    map_itens = {r["centro_custo_id"]: r["n"] for r in itens_count}
+    # Contagem de Usuários Ativos
+    users_agg = Usuario.objects.filter(centro_custo_id__in=cc_ids, status='ativo').values('centro_custo_id').annotate(n=Count('id'))
+    for u in users_agg:
+        if u['centro_custo_id'] in totals:
+            totals[u['centro_custo_id']]['qtd_usuarios'] = u['n']
 
+    # Contagem de Itens (Hardware em posse)
+    itens_agg = Item.objects.filter(centro_custo_id__in=cc_ids, status='ativo').values('centro_custo_id').annotate(n=Count('id'))
+    for i in itens_agg:
+        if i['centro_custo_id'] in totals:
+            totals[i['centro_custo_id']]['qtd_itens'] = i['n']
+
+    # ==========================================================
+    # 5. Montagem Final da Lista
+    # ==========================================================
     linhas = []
-    for cc_id, d in totals.items():
-        cc = ccs.get(cc_id)
-        if not cc:
-            continue
-        d["cc"] = cc
-        d["usuarios"] = map_users.get(cc_id, 0)
-        d["itens"] = map_itens.get(cc_id, 0)
-        d["licencas"] = len(d["licencas_set"])
-        d["total_mensal"] = (d["custo_itens"] + d["custo_licencas"])
-        d["total_geral"] = (d["total_mensal"] + d["baixas"])
+    
+    total_geral_itens = Decimal(0)
+    total_geral_lics = Decimal(0)
+    total_geral_baixas = Decimal(0)
+
+    for cc_id, dados in totals.items():
+        if not dados["cc_obj"]: continue # Pula se CC foi deletado mas tem histórico
+
+        c_itens = dados["custo_locacao"]
+        c_lics = dados["custo_licencas"]
+        c_baixas = dados["custo_baixas"]
+        
+        # Total Mensal Recorrente
+        total_mensal = c_itens + c_lics
+        # Total Geral (Impacto Financeiro no período)
+        total_impacto = total_mensal + c_baixas
+
+        total_geral_itens += c_itens
+        total_geral_lics += c_lics
+        total_geral_baixas += c_baixas
 
         linhas.append({
-            "cc": cc,
-            "usuarios": d["usuarios"],
-            "itens": d["itens"],
-            "licencas": d["licencas"],     # tipos distintos
-            "assentos": d["assentos"],     # assentos ativos
-            "custo_itens": d["custo_itens"],
-            "custo_licencas": d["custo_licencas"],
-            "baixas": d["baixas"],
-            "total_mensal": d["total_mensal"],
-            "total_geral": d["total_geral"],
+            "cc": dados["cc_obj"],
+            "usuarios": dados["qtd_usuarios"],
+            "itens": dados["qtd_itens"],
+            "licencas": dados["qtd_licencas"],
+            "custo_itens": c_itens,
+            "custo_licencas": c_lics,
+            "baixas": c_baixas,
+            "total_mensal": total_mensal,
+            "total_impacto": total_impacto
         })
 
-    # Ordena por total_geral desc
-    linhas.sort(key=lambda x: x["total_geral"], reverse=True)
+    # Ordenar por maior impacto financeiro
+    linhas.sort(key=lambda x: x["total_impacto"], reverse=True)
 
-    # Vetores para os gráficos
-    labels = [f"{l['cc'].numero} - {l['cc'].departamento}" for l in linhas]
-    arr_itens   = [float(l["custo_itens"]) for l in linhas]
-    arr_lics    = [float(l["custo_licencas"]) for l in linhas]
-    arr_mensal  = [float(l["total_mensal"]) for l in linhas]
-    arr_baixas  = [float(l["baixas"]) for l in linhas]
-
-    # Totais (para pizza/proporção)
-    total_itens_mensal = float(sum(l["custo_itens"] for l in linhas)) if linhas else 0.0
-    total_lics_mensal  = float(sum(l["custo_licencas"] for l in linhas)) if linhas else 0.0
+    # Dados para Gráficos
+    chart_labels = [f"{l['cc'].numero}" for l in linhas[:10]] # Top 10 para gráfico não quebrar
+    chart_itens = [float(l['custo_itens']) for l in linhas[:10]]
+    chart_lics = [float(l['custo_licencas']) for l in linhas[:10]]
 
     context = {
         "dt_ini": dt_ini,
         "dt_fim": dt_fim,
         "linhas": linhas,
-        # dados dos gráficos
-        "cc_labels": labels,
-        "cc_itens": arr_itens,
-        "cc_licencas": arr_lics,
-        "cc_mensal": arr_mensal,
-        "cc_baixas": arr_baixas,
-        "total_itens_mensal": total_itens_mensal,
-        "total_lics_mensal": total_lics_mensal,
+        
+        # Totais KPI
+        "kpi_cc_count": len(linhas),
+        "kpi_total_mensal": total_geral_itens + total_geral_lics,
+        "kpi_total_baixas": total_geral_baixas,
+        "kpi_top_cc": linhas[0]['cc'].departamento if linhas else "-",
+
+        # Charts
+        "js_labels": chart_labels,
+        "js_itens": chart_itens,
+        "js_lics": chart_lics,
+        
+        # Pizza Mix (Totais Gerais)
+        "js_mix_values": [float(total_geral_itens), float(total_geral_lics)]
     }
+
     return render(request, "front/dashboards/cc_custos_dashboard.html", context)
+
+@login_required
+def cc_custos_export_pdf(request):
+    """View de Exportação PDF"""
+    # 1. Recupera os mesmos dados
+    data = _get_cc_custos_data(request)
+    
+    # 2. Adiciona dados extras para o PDF
+    data['usuario'] = request.user
+    data['data_geracao'] = timezone.now()
+    
+    # 3. Renderiza Template PDF
+    template_path = 'front/dashboards/cc_custos_pdf.html'
+    template = get_template(template_path)
+    html = template.render(data)
+    
+    # 4. Gera Arquivo
+    response = HttpResponse(content_type='application/pdf')
+    filename = f"relatorio_custos_cc_{timezone.now().strftime('%Y%m%d_%H%M')}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    pisa_status = pisa.CreatePDF(html, dest=response)
+    if pisa_status.err:
+       return HttpResponse('Erro ao gerar PDF')
+       
+    return response
 
     
 # ===== LISTA DE LICENÇAS (com cartões) =====
@@ -3850,14 +4191,13 @@ def _parse_dt(s, default_dt):
     except Exception:
         return default_dt
 
-
 @login_required
 def toner_cc_dashboard(request):
     hoje = date.today()
     dt_ini = _parse_dt(request.GET.get("inicio") or "", date(hoje.year, 1, 1))
     dt_fim = _parse_dt(request.GET.get("fim") or "", hoje)
 
-    # Base: BAIXAS de itens "toner"
+    # --- Query Base: Baixas de Toner ---
     base = (
         MovimentacaoItem.objects
         .filter(
@@ -3873,31 +4213,20 @@ def toner_cc_dashboard(request):
         .select_related("item", "centro_custo_origem", "centro_custo_destino")
     )
 
-    # -------- Tipagem DECIMAL robusta
+    # --- Definições de Cálculo Financeiro ---
     dec14_2 = DecimalField(max_digits=14, decimal_places=2)
     qtd_dec = Cast(F("quantidade"), output_field=dec14_2)
-    preco_item = Coalesce(
-        F("item__valor"),
-        V(Decimal("0.00"), output_field=dec14_2),
-        output_field=dec14_2,
-    )
+    preco_item = Coalesce(F("item__valor"), V(Decimal("0.00"), output_field=dec14_2), output_field=dec14_2)
 
-    # Total da baixa:
-    # - se custo > 0 na movimentação, usa o custo TOTAL informado (congelado)
-    # - senão, usa quantidade * item.valor (fallback)
     custo_total_expr = Case(
         When(custo__gt=Decimal("0.00"), then=F("custo")),
         default=ExpressionWrapper(qtd_dec * preco_item, output_field=dec14_2),
         output_field=dec14_2,
     )
 
-    # -------- Dimensão CC: origem > destino > CC do item
+    # --- Agregação por Centro de Custo ---
     base_cc = base.annotate(
-        cc_id=Coalesce(
-            F("centro_custo_origem_id"),
-            F("centro_custo_destino_id"),
-            F("item__centro_custo_id"),
-        ),
+        cc_id=Coalesce(F("centro_custo_origem_id"), F("centro_custo_destino_id"), F("item__centro_custo_id")),
         cc_numero=Case(
             When(centro_custo_origem__isnull=False, then=F("centro_custo_origem__numero")),
             When(centro_custo_destino__isnull=False, then=F("centro_custo_destino__numero")),
@@ -3912,39 +4241,53 @@ def toner_cc_dashboard(request):
         ),
     ).filter(cc_id__isnull=False)
 
-    # -------- Agregado por CC
     por_cc_qs = (
         base_cc.values("cc_id", "cc_numero", "cc_departamento")
         .annotate(
             qtd=Coalesce(Sum("quantidade"), V(0)),
-            gasto=Coalesce(Sum(custo_total_expr, output_field=dec14_2),
-                           V(Decimal("0.00"), output_field=dec14_2)),
+            gasto=Coalesce(Sum(custo_total_expr, output_field=dec14_2), V(Decimal("0.00"), output_field=dec14_2)),
         )
-        .order_by("cc_numero", "cc_departamento")
+        .order_by("-gasto") # Ordenar por maior gasto para pegar o Top 1 fácil
     )
 
     linhas, cc_labels, cc_gasto = [], [], []
     total_geral = Decimal("0.00")
-    for r in por_cc_qs:
+    total_qtd = 0
+    
+    # KPIs
+    top_cc_nome = "—"
+    top_cc_valor = Decimal("0.00")
+
+    for i, r in enumerate(por_cc_qs):
         cc_nome = f'{r["cc_numero"]} - {r["cc_departamento"]}'
         gasto = Decimal(r["gasto"] or 0)
         qtd = int(r["qtd"] or 0)
+        
+        # Pega o Top 1
+        if i == 0:
+            top_cc_nome = r["cc_departamento"] or r["cc_numero"]
+            top_cc_valor = gasto
+
         linhas.append({"cc": cc_nome, "qtd": qtd, "gasto": gasto})
         cc_labels.append(cc_nome)
         cc_gasto.append(float(gasto))
+        
         total_geral += gasto
+        total_qtd += qtd
 
-    # -------- Top consumidores (por usuário) — mesma regra de custo
+    # KPI: Ticket Médio (Custo por Item Baixado)
+    ticket_medio = (total_geral / total_qtd) if total_qtd > 0 else Decimal("0.00")
+
+    # --- Top Consumidores (Usuários) ---
     por_user_qs = (
         base.values("usuario__id", "usuario__nome")
-        .annotate(gasto=Coalesce(Sum(custo_total_expr, output_field=dec14_2),
-                                 V(Decimal("0.00"), output_field=dec14_2)))
+        .annotate(gasto=Coalesce(Sum(custo_total_expr, output_field=dec14_2), V(Decimal("0.00"), output_field=dec14_2)))
         .order_by("-gasto")[:10]
     )
     user_labels = [r["usuario__nome"] or "—" for r in por_user_qs]
     user_gasto  = [float(r["gasto"] or 0) for r in por_user_qs]
 
-    # -------- Exportação CSV (mesma rota com ?export=1)
+    # --- Exportação CSV ---
     if request.GET.get("export") == "1":
         resp = HttpResponse(content_type="text/csv; charset=utf-8")
         fname = f"gasto_toner_{dt_ini:%Y%m%d}_{dt_fim:%Y%m%d}.csv"
@@ -3965,6 +4308,11 @@ def toner_cc_dashboard(request):
         "cc_gasto": cc_gasto,
         "user_labels": user_labels,
         "user_gasto": user_gasto,
+        # KPIs para o template
+        "kpi_total_gasto": total_geral,
+        "kpi_total_qtd": total_qtd,
+        "kpi_top_cc_nome": top_cc_nome,
+        "kpi_ticket_medio": ticket_medio,
     }
     return render(request, "front/dashboards/dashboard_toner.html", ctx)
 
@@ -4223,280 +4571,256 @@ try:
 except Exception:
     LicencaLote = None
 
-def _parse_date_opt(s: str):
-    """Converte 'YYYY-MM-DD' em date, ou None."""
+def _parse_date_opt(date_str):
+    if not date_str: return None
     try:
-        return datetime.strptime(s, "%Y-%m-%d").date() if s else None
-    except Exception:
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+    except:
         return None
 
-
-def _meses_do_ciclo(lic: Licenca) -> int | None:
-    try:
-        return lic._meses_do_ciclo()
-    except Exception:
-        mapping = {"mensal": 1, "MENSAL": 1,
-                   "semestral": 6, "SEMESTRAL": 6,
-                   "anual": 12, "ANUAL": 12,
-                   "tri": 36, "TRI": 36}
-        m = getattr(lic, "periodicidade", None)
-        return mapping.get(m, None)
-
+def _get_meses_ciclo(periodicidade_str):
+    """
+    Converte periodicidade em meses para cálculo do custo mensal.
+    """
+    if not periodicidade_str: return 1
+    p = str(periodicidade_str).upper()
+    if 'MEN' in p: return 1
+    if 'BI' in p: return 2
+    if 'TRI' in p: return 3
+    if 'SEM' in p: return 6
+    if 'ANU' in p: return 12
+    return 1 
 
 @login_required
 def licencas_dashboard(request):
-    hoje = date.today()
+    hoje = timezone.localdate()
 
-    # ---- filtros ----
+    # --- 1. Filtros ---
     q = (request.GET.get("q") or "").strip()
-    fornecedor = (request.GET.get("fornecedor") or "").strip()
-    centro_custo = (request.GET.get("centro_custo") or "").strip()
+    fornecedor_id = (request.GET.get("fornecedor") or "").strip()
+    cc_id = (request.GET.get("centro_custo") or "").strip()
     periodicidade = (request.GET.get("periodicidade") or "").strip()
     pmb = (request.GET.get("pmb") or "").strip().lower()
+    
     dt_ini = _parse_date_opt(request.GET.get("inicio"))
     dt_fim = _parse_date_opt(request.GET.get("fim"))
 
-    lic_qs = Licenca.objects.select_related("fornecedor", "centro_custo").all().order_by("nome")
+    # Base: Licenças com seus Lotes
+    qs_licencas = Licenca.objects.select_related("fornecedor").prefetch_related('lotes', 'lotes__fornecedor')
+
     if q:
-        lic_qs = lic_qs.filter(
-            Q(nome__icontains=q) |
-            Q(observacao__icontains=q) |
-            Q(fornecedor__nome__icontains=q)
-        )
-    if fornecedor:
-        lic_qs = lic_qs.filter(fornecedor_id=fornecedor)
-    if centro_custo:
-        lic_qs = lic_qs.filter(centro_custo_id=centro_custo)
+        qs_licencas = qs_licencas.filter(Q(nome__icontains=q) | Q(fornecedor__nome__icontains=q))
+    if fornecedor_id:
+        qs_licencas = qs_licencas.filter(fornecedor_id=fornecedor_id)
+    if pmb in ['sim', 'nao']:
+        qs_licencas = qs_licencas.filter(pmb=pmb)
+    
+    # Filtra Licenças baseadas nas propriedades dos seus Lotes
     if periodicidade:
-        lic_qs = lic_qs.filter(periodicidade=periodicidade)
-    if pmb in ("sim", "nao"):
-        lic_qs = lic_qs.filter(pmb=pmb)
+        qs_licencas = qs_licencas.filter(lotes__periodicidade=periodicidade)
+    if cc_id:
+        qs_licencas = qs_licencas.filter(lotes__centro_custo_id=cc_id)
     if dt_ini:
-        lic_qs = lic_qs.filter(data_inicio__gte=dt_ini)
+        qs_licencas = qs_licencas.filter(lotes__data_compra__gte=dt_ini)
     if dt_fim:
-        lic_qs = lic_qs.filter(data_inicio__lte=dt_fim)
+        qs_licencas = qs_licencas.filter(lotes__data_compra__lte=dt_fim)
 
-    licencas = list(lic_qs)
-    lic_ids = [l.id for l in licencas]
+    qs_licencas = qs_licencas.distinct()
+    licencas_list = list(qs_licencas)
+    licenca_ids = [l.id for l in licencas_list]
 
-    # ---- últimos movimentos por (licença, usuário) para saber quem está ATIVO e em qual CC (do usuário) ----
-    mov_qs = (
+    # --- 2. Mapeamento de Usuários Ativos (Snapshot Atual) ---
+    movs_ativas = (
         MovimentacaoLicenca.objects
-        .select_related("usuario__centro_custo", "centro_custo_destino")
-        .filter(licenca_id__in=lic_ids, usuario__isnull=False)
-        .order_by("licenca_id", "usuario_id", "created_at", "id")
+        .filter(licenca_id__in=licenca_ids, usuario__isnull=False)
+        .select_related('usuario__centro_custo', 'centro_custo_destino')
+        .order_by('licenca_id', 'usuario_id', 'created_at')
     )
-    # Guardar o ÚLTIMO objeto (não só o tipo)
-    last_by_pair = {}
-    for m in mov_qs:
-        last_by_pair[(m.licenca_id, m.usuario_id)] = m
 
-    # Quantos ativos por licença (para KPIs/linhas)
-    ativos_por_lic = {}
-    for (lic_id, _uid), mv in last_by_pair.items():
-        if mv.tipo == "atribuicao":
-            ativos_por_lic[lic_id] = ativos_por_lic.get(lic_id, 0) + 1
+    # Identifica o último status de cada usuário para cada licença
+    estado_usuario = {} 
+    for m in movs_ativas:
+        estado_usuario[(m.licenca_id, m.usuario_id)] = m
+    
+    # Agrupa: { licenca_id: [lista_nomes_cc_ativos, ...] }
+    uso_map_cc = {}
+    
+    for (lid, uid), mov in estado_usuario.items():
+        if mov.tipo == 'atribuicao': # Usuário está com a licença
+            if lid not in uso_map_cc: uso_map_cc[lid] = []
+            
+            # Define qual CC paga a conta: Destino da Mov > CC do Usuário > Indefinido
+            cc_nome = "Indefinido"
+            if mov.centro_custo_destino:
+                cc_nome = f"{mov.centro_custo_destino.numero} - {mov.centro_custo_destino.departamento}"
+            elif mov.usuario and mov.usuario.centro_custo:
+                cc_nome = f"{mov.usuario.centro_custo.numero} - {mov.usuario.centro_custo.departamento}"
+            
+            uso_map_cc[lid].append(cc_nome)
 
-    # ---- Lotes (custos detalhados) ----
-    lotes_rows = []
-    lotes_totais_por_lic = {}
-    if LicencaLote and lic_ids:
-        raw_lotes = (
-            LicencaLote.objects
-            .filter(licenca_id__in=lic_ids)
-            .select_related("licenca")
-            .order_by("-created_at", "-id")
-        )
-        for lt in raw_lotes:
-            lic = lt.licenca
-            total = int(getattr(lt, "quantidade_total", 0) or 0)
-            disp = int(getattr(lt, "quantidade_disponivel", 0) or 0)
-            usados = max(0, total - disp)
+    # --- 3. Processamento de Custos (CORRIGIDO: UNITÁRIO) ---
+    
+    kpi_total_licencas = len(licencas_list)
+    kpi_assentos_em_uso = 0
+    kpi_assentos_totais = 0
+    kpi_custo_mensal = Decimal(0)
+    
+    cc_costs = {}   # Rateio por CC
+    forn_costs = {} # Share por Fornecedor
+    per_counts = {} # Contagem Periodicidade
 
-            meses = _meses_do_ciclo(lic) or 1
-            custo_ciclo_lote = getattr(lt, "custo_ciclo", None)
+    linhas_tabela = []
+    lotes_detalhes = []
 
-            if custo_ciclo_lote:
-                custo_mensal_lote = (Decimal(custo_ciclo_lote) / Decimal(meses)).quantize(Decimal("0.01"))
+    for lic in licencas_list:
+        # Filtra lotes relevantes
+        lotes_da_lic = lic.lotes.all()
+        if periodicidade:
+            lotes_da_lic = [l for l in lotes_da_lic if l.periodicidade == periodicidade]
+        if cc_id:
+            lotes_da_lic = [l for l in lotes_da_lic if l.centro_custo_id == int(cc_id)]
+        
+        if not lotes_da_lic:
+            continue
+
+        # Variáveis acumuladoras da Licença (Soma dos Lotes)
+        l_qtd_total = 0
+        l_qtd_disp = 0
+        l_custo_mensal_total_licenca = Decimal(0)
+        l_periodicidades = set()
+        
+        # Para calcular custo médio ponderado unitário desta licença (caso tenha lotes com preços diferentes)
+        custo_unitario_acumulado = Decimal(0)
+
+        # --- LOOP NOS LOTES ---
+        for lote in lotes_da_lic:
+            qtd = lote.quantidade_total
+            disp = lote.quantidade_disponivel
+            
+            # Conversão Temporal
+            meses = _get_meses_ciclo(lote.periodicidade)
+            
+            # [CORREÇÃO] Custo Unitário: O valor cadastrado é por unidade
+            custo_ciclo_unitario = lote.custo_ciclo or Decimal(0)
+            
+            # Custo Mensal de UMA unidade
+            if meses > 0:
+                custo_mensal_unitario = (custo_ciclo_unitario / Decimal(meses)).quantize(Decimal("0.01"))
             else:
-                cm_unit_lic = Decimal("0.00")
-                if getattr(lic, "custo", None):
-                    cm_unit_lic = (Decimal(lic.custo) / Decimal(meses)).quantize(Decimal("0.01"))
-                custo_mensal_lote = (cm_unit_lic * Decimal(total)).quantize(Decimal("0.01"))
+                custo_mensal_unitario = Decimal(0)
+            
+            # Custo Mensal TOTAL deste Lote (para KPIs) = Unitário * Quantidade
+            custo_mensal_lote_total = custo_mensal_unitario * Decimal(qtd)
+            
+            # Acumuladores da Licença
+            l_qtd_total += qtd
+            l_qtd_disp += disp
+            l_custo_mensal_total_licenca += custo_mensal_lote_total
+            
+            # Acumula valor total para depois tirar a média unitária
+            custo_unitario_acumulado += custo_mensal_lote_total 
+            
+            l_periodicidades.add(lote.get_periodicidade_display())
 
-            prop_uso = Decimal(usados) / Decimal(total) if total > 0 else Decimal("0")
-            custo_mensal_usado = (custo_mensal_lote * prop_uso).quantize(Decimal("0.01"))
-            custo_anual_lote = (custo_mensal_lote * Decimal(12)).quantize(Decimal("0.01"))
-            custo_anual_usado = (custo_mensal_usado * Decimal(12)).quantize(Decimal("0.01"))
+            # KPIs Globais
+            kpi_assentos_totais += qtd
+            
+            # Gráficos Auxiliares
+            p_label = lote.get_periodicidade_display()
+            per_counts[p_label] = per_counts.get(p_label, 0) + 1
 
-            agg = lotes_totais_por_lic.setdefault(
-                lic.id,
-                {"total": 0, "disp": 0, "usados": 0,
-                 "cm_lote": Decimal("0.00"), "cm_usado": Decimal("0.00"),
-                 "ca_lote": Decimal("0.00"), "ca_usado": Decimal("0.00")}
-            )
-            agg["total"] += total
-            agg["disp"] += disp
-            agg["usados"] += usados
-            agg["cm_lote"] += custo_mensal_lote
-            agg["cm_usado"] += custo_mensal_usado
-            agg["ca_lote"] += custo_anual_lote
-            agg["ca_usado"] += custo_anual_usado
-
-            lotes_rows.append({
-                "licenca_id": lic.id,
-                "licenca_nome": lic.nome,
-                "lote_nome": getattr(lt, "nome", f"Lote #{lt.id}"),
-                "total": total,
-                "disp": disp,
-                "usados": usados,
-                "custo_ciclo": custo_ciclo_lote,
-                "custo_mensal_lote": custo_mensal_lote,
-                "custo_mensal_usado": custo_mensal_usado,
-                "custo_anual_lote": custo_anual_lote,
-                "custo_anual_usado": custo_anual_usado,
-                "periodicidade": getattr(lt, "periodicidade", None),
-                "pedido": getattr(lt, "pedido", None),
-                "obs": getattr(lt, "observacao", None),
+            # Tabela de Detalhes (Drill-down)
+            lotes_detalhes.append({
+                'licenca': lic.nome,
+                'lote_id': lote.id,
+                'fornecedor': lote.fornecedor.nome if lote.fornecedor else "-",
+                'qtd': qtd,
+                'disp': disp,
+                'custo_unit_ciclo': custo_ciclo_unitario, # Valor de compra (unidade)
+                'custo_mensal_unit': custo_mensal_unitario, # Valor mensal (unidade)
+                'custo_mensal_total': custo_mensal_lote_total, # Valor total lote
+                'periodicidade': p_label
             })
 
-    # ---- helpers ----
-    def cm_unit(lic: Licenca) -> Decimal:
-        meses = _meses_do_ciclo(lic)
-        if not meses or not getattr(lic, "custo", None):
-            return Decimal("0.00")
-        return (Decimal(lic.custo) / Decimal(meses)).quantize(Decimal("0.01"))
+        # --- CÁLCULO INTELIGENTE DE RATEIO ---
+        # 1. Definir o Custo Unitário Médio Mensal desta licença (Mix de Lotes)
+        if l_qtd_total > 0:
+            custo_medio_unitario = custo_unitario_acumulado / Decimal(l_qtd_total)
+        else:
+            custo_medio_unitario = Decimal(0)
 
-    def cc_label_from_cc(cc) -> str:
-        if not cc:
-            return "—"
-        return f"{getattr(cc, 'numero', '—')} - {getattr(cc, 'departamento', '—')}"
+        # 2. Usuários Ativos (Consumo)
+        ccs_ativos = uso_map_cc.get(lic.id, [])
+        qtd_ativos = len(ccs_ativos)
+        kpi_assentos_em_uso += qtd_ativos
 
-    # ---- linhas + KPIs ----
-    linhas = []
-    kpi_total = len(licencas)
-    kpi_assentos_ativos = 0
-    kpi_custo_mensal = Decimal("0.00")
-    kpi_custo_anual = Decimal("0.00")
-    kpi_fim_proximo = 0
+        # 3. Distribuição para Centros de Custo
+        # A) Consumo: Cada usuário gera 1 * Custo Unitário para seu CC
+        for cc_nome in ccs_ativos:
+            cc_costs[cc_nome] = cc_costs.get(cc_nome, Decimal(0)) + custo_medio_unitario
 
-    # Para o gráfico por CC: distribuir custo por CC do usuário
-    cc_costs = {}  # label -> Decimal acumulado
+        # B) Estoque (Ociosidade): O que sobra (Total - Ativos) gera custo para o CC Dono da Licença
+        qtd_estoque = max(0, l_qtd_total - qtd_ativos)
+        if qtd_estoque > 0:
+            cc_estoque = "Estoque (Sem CC Definido)"
+            
+            # Prioridade 1: CC definido na Licença Pai
+            if lic.centro_custo:
+                cc_estoque = f"{lic.centro_custo.numero} - {lic.centro_custo.departamento}"
+            # Prioridade 2: CC do primeiro lote encontrado (fallback)
+            elif lotes_da_lic and lotes_da_lic[0].centro_custo:
+                cc_estoque = f"{lotes_da_lic[0].centro_custo.numero} - {lotes_da_lic[0].centro_custo.departamento}"
+            
+            # Soma ao custo desse CC
+            cc_costs[cc_estoque] = cc_costs.get(cc_estoque, Decimal(0)) + (custo_medio_unitario * Decimal(qtd_estoque))
 
-    forn_labels_map, forn_val_map = {}, {}
-    per_labels_map, per_count_map = {}, {}
+        # --- Totais e Gráficos ---
+        kpi_custo_mensal += l_custo_mensal_total_licenca
 
-    for l in licencas:
-        assentos = int(ativos_por_lic.get(l.id, 0))
-        kpi_assentos_ativos += assentos
+        f_nome = lic.fornecedor.nome if lic.fornecedor else "Indefinido"
+        forn_costs[f_nome] = forn_costs.get(f_nome, Decimal(0)) + l_custo_mensal_total_licenca
 
-        mensal_unit = cm_unit(l)
-        qtd = int(getattr(l, "quantidade", 0) or 0)
-        mensal_total = (mensal_unit * Decimal(qtd)).quantize(Decimal("0.01"))
-        anual_total = (mensal_total * Decimal(12)).quantize(Decimal("0.01"))
-
-        kpi_custo_mensal += mensal_total
-        kpi_custo_anual += anual_total
-
-        if l.data_fim and (l.data_fim <= (hoje + timedelta(days=30))):
-            kpi_fim_proximo += 1
-
-        # —— distribuição por CC do usuário para o gráfico —— #
-        # pega os últimos movimentos ATIVOS desta licença
-        ativos_movs = [mv for (lic_id, _uid), mv in last_by_pair.items()
-                       if lic_id == l.id and mv.tipo == "atribuicao"]
-        # para cada assento ativo, soma 1 * mensal_unit no CC do usuário
-        for mv in ativos_movs:
-            user_cc = getattr(getattr(mv, "usuario", None), "centro_custo", None)
-            cc_label = cc_label_from_cc(user_cc) or "—"
-            cc_costs[cc_label] = cc_costs.get(cc_label, Decimal("0.00")) + mensal_unit
-
-        # se sobrar quantidade sem usuário (estoque), vai pro CC da licença
-        restante = max(0, qtd - len(ativos_movs))
-        if restante > 0:
-            cc_label_lic = cc_label_from_cc(getattr(l, "centro_custo", None))
-            cc_costs[cc_label_lic] = cc_costs.get(cc_label_lic, Decimal("0.00")) + (mensal_unit * Decimal(restante))
-
-        # —— agregações por fornecedor/periodicidade (para gráficos) —— #
-        forn_name = getattr(l.fornecedor, "nome", "—") if l.fornecedor_id else "—"
-        forn_labels_map.setdefault(forn_name, None)
-        forn_val_map[forn_name] = forn_val_map.get(forn_name, 0.0) + float(mensal_total)
-
-        per = l.get_periodicidade_display() if hasattr(l, "get_periodicidade_display") else (l.periodicidade or "—")
-        per_labels_map.setdefault(per, None)
-        per_count_map[per] = per_count_map.get(per, 0) + 1
-
-        # ——— linha p/ tabela principal ———
-        lt = lotes_totais_por_lic.get(l.id, None)
-        linhas.append({
-            "id": l.id,
-            "nome": l.nome,
-            "fornecedor": getattr(l.fornecedor, "nome", None),
-            "cc": cc_label_from_cc(getattr(l, "centro_custo", None)),
-            "periodicidade": per,
-            "pmb": l.pmb,
-            "qtd": qtd,
-            "assentos": assentos,
-            "custo_ciclo": getattr(l, "custo", Decimal("0.00")),
-            "custo_mensal": mensal_total,
-            "custo_anual": anual_total,
-            "data_inicio": l.data_inicio,
-            "data_fim": l.data_fim,
-            "lotes_total": lt["total"] if lt else 0,
-            "lotes_disp": lt["disp"] if lt else 0,
-            "lotes_usados": lt["usados"] if lt else 0,
-            "lotes_cm_lote": lt["cm_lote"] if lt else Decimal("0.00"),
-            "lotes_cm_usado": lt["cm_usado"] if lt else Decimal("0.00"),
-            "lotes_ca_lote": lt["ca_lote"] if lt else Decimal("0.00"),
-            "lotes_ca_usado": lt["ca_usado"] if lt else Decimal("0.00"),
+        per_display = ", ".join(l_periodicidades) if l_periodicidades else "-"
+        
+        # Linha para Tabela Principal
+        linhas_tabela.append({
+            'obj': lic,
+            'periodicidade_display': per_display,
+            'custo_mensal_total': l_custo_mensal_total_licenca,
+            'ativos': qtd_ativos,
+            'total': l_qtd_total,
+            'estoque': qtd_estoque
         })
 
-    # —— gráfico por CC (ordenado por valor decrescente) ——
-    cc_sorted = sorted(cc_costs.items(), key=lambda kv: kv[1], reverse=True)
-    cc_labels = [k for k, _ in cc_sorted]
-    cc_mensal = [float(v) for _, v in cc_sorted]
-
-    forn_labels = list(forn_labels_map.keys())
-    forn_mensal = [float(forn_val_map.get(n, 0.0)) for n in forn_labels]
-    per_labels = list(per_labels_map.keys())
-    per_counts = [int(per_count_map.get(n, 0)) for n in per_labels]
-
-    # choices de periodicidade com ordem “bonita”
-    base_choices = list(getattr(Licenca._meta.get_field("periodicidade"), "choices", []))
-    order_map = {"MENSAL": 0, "mensal": 0, "SEMESTRAL": 1, "semestral": 1, "ANUAL": 2, "anual": 2, "TRI": 3, "tri": 3}
-    periodicidade_choices = sorted(base_choices, key=lambda kv: order_map.get(str(kv[0]), 99))
+    # Ordenação
+    sorted_cc = sorted(cc_costs.items(), key=lambda x: x[1], reverse=True)
+    
+    # Opções para o select do filtro
+    periodicidade_choices = LicencaLote._meta.get_field('periodicidade').choices
 
     context = {
-        "dt_ini": dt_ini or "",
-        "dt_fim": dt_fim or "",
-        "q": q, "fornecedor": fornecedor, "centro_custo": centro_custo,
-        "periodicidade": periodicidade, "pmb": pmb,
+        'f_q': q, 'f_forn': fornecedor_id, 'f_cc': cc_id, 
+        'f_per': periodicidade, 'f_pmb': pmb, 
+        'dt_ini': dt_ini, 'dt_fim': dt_fim,
+        
+        'fornecedores': Fornecedor.objects.all().order_by('nome'),
+        'centros_custo': CentroCusto.objects.all().order_by('numero'),
+        'periodicidade_choices': periodicidade_choices,
 
-        "fornecedores": Fornecedor.objects.all().order_by("nome"),
-        "centros_custo": CentroCusto.objects.all().order_by("numero", "departamento"),
-        "periodicidade_choices": periodicidade_choices,
+        'kpi_total': kpi_total_licencas,
+        'kpi_assentos': kpi_assentos_em_uso,
+        'kpi_disp': kpi_assentos_totais - kpi_assentos_em_uso,
+        'kpi_custo_mensal': kpi_custo_mensal,
+        'kpi_custo_anual': kpi_custo_mensal * 12,
 
-        "kpi_total": kpi_total,
-        "kpi_assentos_ativos": kpi_assentos_ativos,
-        "kpi_custo_mensal": kpi_custo_mensal,
-        "kpi_custo_anual": kpi_custo_anual,
-        "kpi_fim_proximo": kpi_fim_proximo,
-
-        "linhas": linhas,
-
-        # gráficos
-        "cc_labels": cc_labels,
-        "cc_mensal": cc_mensal,
-        "forn_labels": forn_labels,
-        "forn_mensal": forn_mensal,
-        "per_labels": per_labels,
-        "per_counts": per_counts,
-
-        # lotes (flatten)
-        "tem_lotes": bool(LicencaLote),
-        "lotes_rows": lotes_rows,
+        'linhas': linhas_tabela,
+        'lotes_rows': lotes_detalhes,
+        
+        'cc_list': [{'label': k, 'val': v} for k, v in sorted_cc],
+        'chart_forn_labels': list(forn_costs.keys()),
+        'chart_forn_data': [float(v) for v in forn_costs.values()],
+        'chart_per_labels': list(per_counts.keys()),
+        'chart_per_data': list(per_counts.values()),
     }
+
     return render(request, "front/dashboards/licencas_dashboard.html", context)
-
-
-

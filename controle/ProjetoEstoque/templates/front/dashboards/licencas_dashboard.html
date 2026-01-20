@@ -1,389 +1,274 @@
 {% extends "base.html" %}
-{% block title %}Dashboard de Licenças{% endblock %}
+{% load humanize %}
+{% block title %}Dashboard de Licenças | Gestão Enterprise{% endblock %}
 
 {% block content %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
 
 <style>
-:root{
-  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#fff; --bg:#f3f7ff;
-  --primary:#2563eb; --ok:#16a34a; --bad:#b91c1c; --warn:#b45309; --violet:#7c3aed; --cyan:#0891b2;
-  --shadow:0 22px 44px rgba(2,6,23,.06);
-}
-body{background:var(--bg)}
-.page{max-width:1240px;margin:18px auto;padding:0 14px}
-.hdr{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px}
-.hdr h2{margin:0;color:var(--ink);display:flex;align-items:center;gap:10px}
-.badge-periodo{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;border:1px solid #e5e7eb;background:#eef2ff;color:#1e3a8a;font-weight:800}
+    /* Estilos Enterprise (Slate/Blue Theme) */
+    :root {
+        --bg-body: #f8fafc; --bg-card: #ffffff;
+        --text-main: #0f172a; --text-secondary: #64748b;
+        --border: #e2e8f0;
+        --primary: #2563eb; --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --info: #0ea5e9; --purple: #8b5cf6;
+        --radius: 8px; --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    }
+    body { background-color: var(--bg-body); font-family: 'Inter', sans-serif; color: var(--text-main); font-size: 0.9rem; }
+    .page-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
 
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
-.card h3{margin:0 0 8px;color:var(--ink);display:flex;align-items:center;gap:8px}
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    
+    /* KPIs */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .kpi-card { background: var(--bg-card); padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); position: relative; overflow: hidden; }
+    .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 4px; }
+    .kpi-card.blue::before { background: var(--primary); }
+    .kpi-card.green::before { background: var(--success); }
+    .kpi-card.purple::before { background: var(--purple); }
+    .kpi-card.orange::before { background: var(--warning); }
+    .kpi-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 8px; }
+    .kpi-value { font-size: 1.8rem; font-weight: 800; color: var(--text-main); line-height: 1; }
 
-.filters-card{margin:12px 0 16px}
-.filters-grid{
-  display:grid; gap:10px; align-items:end;
-  grid-template-columns: 2fr 1fr 1fr 1fr 0.8fr 1fr 1fr auto;
-}
-@media (max-width:1120px){ .filters-grid{grid-template-columns:1fr 1fr} }
-@media (max-width:720px){ .filters-grid{grid-template-columns:1fr} }
+    /* Filtros */
+    .filters-section { background: #fff; border-radius: var(--radius); padding: 20px; border: 1px solid var(--border); margin-bottom: 24px; box-shadow: var(--shadow); }
+    .filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; align-items: end; }
+    .form-control { width: 100%; height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.9rem; box-sizing: border-box; }
+    .btn { height: 38px; padding: 0 20px; border-radius: var(--radius); font-weight: 600; cursor: pointer; border: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-light { background: #fff; border: 1px solid var(--border); color: var(--text-secondary); }
 
-.fg{display:flex;flex-direction:column;min-width:0}
-.fg label{font-weight:800;margin:0 0 6px;color:#0f172a}
-.ctrl{height:40px;border:1px solid #d5deea;border-radius:12px;padding:8px 12px;background:#fff;outline:none;transition:border-color .15s, box-shadow .15s}
-.ctrl:focus{border-color:#94b5ff;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
-.with-icon{position:relative}
-.with-icon i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#64748b;pointer-events:none}
-.with-icon .ctrl{padding-left:38px}
-
-.filters-actions{grid-column:1 / -1; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
-.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
-.btn-light{background:#fff;border:1.5px solid #dbe6f1;color:#334155}
-
-.kpis{display:grid;grid-template-columns:repeat(5, minmax(190px,1fr));gap:12px}
-@media (max-width:1100px){.kpis{grid-template-columns:repeat(3, minmax(200px,1fr))}}
-@media (max-width:720px){.kpis{grid-template-columns:repeat(2, minmax(170px,1fr))}}
-.kpi{color:#fff;border-radius:14px;padding:14px;position:relative;overflow:hidden}
-.kpi.blue{background:linear-gradient(135deg,#18284a 0%, #21439f 100%)}
-.kpi.green{background:linear-gradient(135deg,#0f766e 0%, #16a34a 100%)}
-.kpi.violet{background:linear-gradient(135deg,#5b21b6 0%, #7c3aed 100%)}
-.kpi.orange{background:linear-gradient(135deg,#92400e 0%, #f59e0b 100%)}
-.kpi.red{background:linear-gradient(135deg,#7f1d1d 0%, #b91c1c 100%)}
-.kpi i{position:absolute;right:12px;bottom:12px;opacity:.25}
-.kpi .t{font-weight:800}
-.kpi .v{font-size:1.7rem;font-weight:900;margin-top:4px}
-
-.grid{display:grid;gap:12px}
-.g-3{grid-template-columns:1.2fr 1fr 1fr}
-@media (max-width:1100px){.g-3{grid-template-columns:1fr}}
-.nodata{padding:10px 0;color:#64748b;font-weight:700}
-
-.table{width:100%;border-collapse:collapse}
-.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left;color:#0f172a;vertical-align:top}
-.table th{background:#f8fafc;font-weight:900}
-.tright{text-align:right}
-.sticky{position:sticky;left:0;background:#f8fafc;z-index:1}
-.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:800;font-size:.85rem}
-.badge.ok{background:#e8fff3;color:#15803d}
-.badge.bad{background:#fee2e2;color:#b91c1c}
-.small{color:#64748b}
-.muted{color:#64748b}
+    /* Layout Principal */
+    .main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px; }
+    @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
+    .content-card { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; }
+    .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: #fcfcfc; }
+    .card-title { font-weight: 700; color: var(--text-main); }
+    
+    /* Tabelas */
+    .table-container { overflow-x: auto; width: 100%; }
+    .table { width: 100%; border-collapse: collapse; font-size: 0.9rem; white-space: nowrap; }
+    .table th { background: #f8fafc; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+    .table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text-main); vertical-align: middle; }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .badge { padding: 4px 10px; border-radius: 99px; font-size: 0.75rem; font-weight: 700; }
+    .badge.gray { background: #f1f5f9; color: #64748b; }
+    
+    /* Lista Lateral */
+    .cc-list { max-height: 400px; overflow-y: auto; padding: 0 20px; }
+    .cc-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+    .cc-name { font-size: 0.85rem; color: var(--text-main); font-weight: 500; }
+    .cc-val { font-size: 0.9rem; font-weight: 700; color: var(--text-main); }
+    
+    .chart-box { height: 250px; position: relative; padding: 20px; }
+    .nodata { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
 </style>
 
-<div class="page">
-  <div class="hdr">
-    <h2><i class="fa fa-certificate"></i> Dashboard de Licenças</h2>
-    <span class="badge-periodo">
-      <i class="fa fa-calendar"></i>
-      Período de início:
-      {% if dt_ini %}{{ dt_ini|date:"d/m/Y" }}{% else %}—{% endif %} —
-      {% if dt_fim %}{{ dt_fim|date:"d/m/Y" }}{% else %}—{% endif %}
-    </span>
-  </div>
+<div class="page-container">
+    <div class="page-header">
+        <h2 style="font-size: 1.5rem; font-weight: 800; color: var(--text-main);">
+            <i class="fa fa-certificate" style="color:var(--purple); margin-right:8px;"></i> Dashboard de Licenças
+        </h2>
+    </div>
 
-  <!-- Filtros -->
-  <div class="card filters-card">
-    <form method="get" class="filters-grid" autocomplete="off">
-      <div class="fg">
-        <label>Buscar (nome / observação)</label>
-        <div class="with-icon">
-          <i class="fa fa-magnifying-glass"></i>
-          <input class="ctrl" type="text" name="q" value="{{ q|default:'' }}" placeholder="Ex.: Microsoft, Adobe…">
+    <div class="filters-section">
+        <form method="get" class="filters-grid" autocomplete="off">
+            <div style="grid-column: span 2;">
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:0.8rem;">Buscar</label>
+                <input type="text" name="q" class="form-control" value="{{ f_q }}" placeholder="Nome da licença...">
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:0.8rem;">Fornecedor</label>
+                <select name="fornecedor" class="form-control" onchange="this.form.submit()">
+                    <option value="">Todos</option>
+                    {% for f in fornecedores %}
+                        <option value="{{ f.id }}" {% if f_forn == f.id|stringformat:'s' %}selected{% endif %}>{{ f.nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:0.8rem;">Periodicidade</label>
+                <select name="periodicidade" class="form-control" onchange="this.form.submit()">
+                    <option value="">Todas</option>
+                    {% for k, v in periodicidade_choices %}
+                        <option value="{{ k }}" {% if f_per == k %}selected{% endif %}>{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:0.8rem;">Compra Início</label>
+                <input type="date" name="inicio" class="form-control" value="{{ dt_ini|date:'Y-m-d' }}">
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:0.8rem;">Compra Fim</label>
+                <input type="date" name="fim" class="form-control" value="{{ dt_fim|date:'Y-m-d' }}">
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button type="submit" class="btn btn-primary" style="flex:1"><i class="fa fa-filter"></i></button>
+                <a href="{{ request.path }}" class="btn btn-light" style="flex:1"><i class="fa fa-eraser"></i></a>
+            </div>
+        </form>
+    </div>
+
+    <div class="kpi-grid">
+        <div class="kpi-card blue">
+            <div class="kpi-label">Total Licenças</div>
+            <div class="kpi-value">{{ kpi_total }}</div>
         </div>
-      </div>
-
-      <div class="fg">
-        <label>Fornecedor</label>
-        <select class="ctrl" name="fornecedor" onchange="this.form.submit()">
-          <option value="">Todos</option>
-          {% for f in fornecedores %}
-            <option value="{{ f.id }}" {% if fornecedor == f.id|stringformat:'s' %}selected{% endif %}>{{ f.nome }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="fg">
-        <label>Centro de Custo</label>
-        <select class="ctrl" name="centro_custo" onchange="this.form.submit()">
-          <option value="">Todos</option>
-          {% for cc in centros_custo %}
-            <option value="{{ cc.id }}" {% if centro_custo == cc.id|stringformat:'s' %}selected{% endif %}>
-              {{ cc.numero }} - {{ cc.departamento }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="fg">
-        <label>Periodicidade</label>
-        <select class="ctrl" name="periodicidade" onchange="this.form.submit()">
-          <option value="">Todas</option>
-          {% for k,v in periodicidade_choices %}
-            <option value="{{ k }}" {% if periodicidade == k %}selected{% endif %}>{{ v }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="fg">
-        <label>PMB</label>
-        <select class="ctrl" name="pmb" onchange="this.form.submit()">
-          <option value="">Todos</option>
-          <option value="sim" {% if pmb == 'sim' %}selected{% endif %}>Sim</option>
-          <option value="nao" {% if pmb == 'nao' %}selected{% endif %}>Não</option>
-        </select>
-      </div>
-
-      <div class="fg">
-        <label>Início (data de início)</label>
-        <input class="ctrl" type="date" name="inicio" value="{% if dt_ini %}{{ dt_ini|date:'Y-m-d' }}{% endif %}">
-      </div>
-
-      <div class="fg">
-        <label>Fim (data de início)</label>
-        <input class="ctrl" type="date" name="fim" value="{% if dt_fim %}{{ dt_fim|date:'Y-m-d' }}{% endif %}">
-      </div>
-
-      <div class="filters-actions">
-        <button class="btn btn-primary" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
-        <a class="btn btn-light" href="{{ request.path }}"><i class="fa fa-rotate-left"></i> Limpar</a>
-      </div>
-    </form>
-  </div>
-
-  <!-- KPIs -->
-  <div class="kpis">
-    <div class="kpi blue"><div class="t">Licenças</div><div class="v">{{ kpi_total|default:0 }}</div><i class="fa fa-layer-group"></i></div>
-    <div class="kpi green"><div class="t">Assentos Ativos</div><div class="v">{{ kpi_assentos_ativos|default:0 }}</div><i class="fa fa-user-check"></i></div>
-    <div class="kpi violet"><div class="t">Custo Mensal (R$)</div><div class="v">{{ kpi_custo_mensal|floatformat:2|default_if_none:"0,00" }}</div><i class="fa fa-money-bill-wave"></i></div>
-    <div class="kpi orange"><div class="t">Custo Anual (R$)</div><div class="v">{{ kpi_custo_anual|floatformat:2|default_if_none:"0,00" }}</div><i class="fa fa-sack-dollar"></i></div>
-    <div class="kpi red"><div class="t">Fim próximo (≤ 30d)</div><div class="v">{{ kpi_fim_proximo|default:0 }}</div><i class="fa fa-triangle-exclamation"></i></div>
-  </div>
-
-  <!-- Cards: Lista por CC + gráficos secundários -->
-  <div class="grid g-3" style="margin-top:12px">
-    <!-- LISTA por Centro de Custo (substitui o gráfico) -->
-    <div class="card">
-      <h3><i class="fa fa-list" style="color:#2563eb"></i> Custo Mensal por Centro de Custo</h3>
-      <div style="overflow:auto">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Centro de Custo</th>
-              <th class="tright">Custo Mensal (R$)</th>
-            </tr>
-          </thead>
-          <tbody id="ccListBody"></tbody>
-          <tfoot>
-            <tr>
-              <td><b>Total</b></td>
-              <td class="tright"><b id="ccListTotal">R$ 0,00</b></td>
-            </tr>
-          </tfoot>
-        </table>
-        <div id="ccListEmpty" class="nodata" style="display:none">Sem dados</div>
-      </div>
+        <div class="kpi-card green">
+            <div class="kpi-label">Assentos em Uso</div>
+            <div class="kpi-value">{{ kpi_assentos }}</div>
+        </div>
+        <div class="kpi-card orange">
+            <div class="kpi-label">Disponíveis (Estoque)</div>
+            <div class="kpi-value">{{ kpi_disp }}</div>
+        </div>
+        <div class="kpi-card purple">
+            <div class="kpi-label">Custo Mensal Total</div>
+            <div class="kpi-value">R$ {{ kpi_custo_mensal|floatformat:2 }}</div>
+        </div>
+        <div class="kpi-card blue">
+            <div class="kpi-label">Custo Anual Total</div>
+            <div class="kpi-value">R$ {{ kpi_custo_anual|floatformat:2 }}</div>
+        </div>
     </div>
 
-    <!-- Gráfico por fornecedor -->
-    <div class="card">
-      <h3><i class="fa fa-circle-notch" style="color:#16a34a"></i> Distribuição por Fornecedor</h3>
-      <div style="height:320px;position:relative">
-        <canvas id="fornPie"></canvas>
-        <div id="nd-forn" class="nodata">Sem dados</div>
-      </div>
-    </div>
+    <div class="main-grid">
+        
+        <div style="display:flex; flex-direction:column; gap:24px;">
+            
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title"><i class="fa fa-layer-group" style="color:var(--primary)"></i> Visão Geral (Soma dos Lotes)</div>
+                </div>
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Licença</th>
+                                <th>Fornecedor</th>
+                                <th>Periodicidade</th>
+                                <th class="text-center">Total</th>
+                                <th class="text-center">Em Uso</th>
+                                <th class="text-center">Estoque</th>
+                                <th class="text-right">Custo Mensal (Total)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for l in linhas %}
+                            <tr>
+                                <td>
+                                    <span style="font-weight:600; color:var(--text-main)">{{ l.obj.nome }}</span>
+                                    <br><span style="font-size:0.8rem; color:var(--text-secondary)">{{ l.obj.centro_custo.numero|default:"CC Indefinido" }}</span>
+                                </td>
+                                <td>{{ l.obj.fornecedor.nome|default:"-" }}</td>
+                                <td><span class="badge gray">{{ l.periodicidade_display }}</span></td>
+                                <td class="text-center">{{ l.total }}</td>
+                                <td class="text-center" style="font-weight:700; color:var(--success)">{{ l.ativos }}</td>
+                                <td class="text-center" style="color:var(--warning)">{{ l.estoque }}</td>
+                                <td class="text-right">R$ {{ l.custo_mensal_total|floatformat:2 }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="7" class="text-center" style="padding:20px">Nenhum dado encontrado.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-    <!-- Gráfico por periodicidade -->
-    <div class="card">
-      <h3><i class="fa fa-clock" style="color:#7c3aed"></i> Quantidade por Periodicidade</h3>
-      <div style="height:320px;position:relative">
-        <canvas id="perBar"></canvas>
-        <div id="nd-per" class="nodata">Sem dados</div>
-      </div>
-    </div>
-  </div>
+            {% if lotes_rows %}
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title"><i class="fa fa-boxes-stacked" style="color:var(--info)"></i> Detalhamento de Compras (Lotes)</div>
+                </div>
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Licença</th>
+                                <th>Lote / Pedido</th>
+                                <th>Periodicidade</th>
+                                <th class="text-center">Qtd.</th>
+                                <th class="text-right" style="background:#f0f9ff">Custo Unitário (Compra)</th>
+                                <th class="text-right">Custo Unitário (Mensal)</th>
+                                <th class="text-right">Custo Total Lote (Mensal)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for lote in lotes_rows %}
+                            <tr>
+                                <td>{{ lote.licenca }}</td>
+                                <td>{{ lote.lote }} <small style="color:var(--text-secondary)">({{ lote.pedido|default:"-" }})</small></td>
+                                <td>{{ lote.periodicidade }}</td>
+                                <td class="text-center">{{ lote.qtd }}</td>
+                                <td class="text-right" style="background:#f0f9ff">R$ {{ lote.custo_unit_ciclo|floatformat:2 }}</td>
+                                <td class="text-right" style="color:var(--purple); font-weight:600;">R$ {{ lote.custo_mensal_unit|floatformat:2 }}</td>
+                                <td class="text-right">R$ {{ lote.custo_mensal_total|floatformat:2 }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+        </div>
 
-  <!-- Tabela principal -->
-  <div class="card" style="margin-top:12px">
-    <h3><i class="fa fa-table" style="color:#0ea5e9"></i> Licenças (detalhes)</h3>
-    <div style="overflow:auto">
-      <table class="table">
-        <thead>
-          <tr>
-            <th class="sticky">Licença</th>
-            <th>Fornecedor</th>
-            <th>Centro de Custo</th>
-            <th>Periodicidade</th>
-            <th>PMB</th>
-            <th class="tright">Qtd</th>
-            <th class="tright">Assentos Ativos</th>
-            <th class="tright">Custo/ciclo (R$)</th>
-            <th class="tright">Custo mensal (R$)</th>
-            <th class="tright">Custo anual (R$)</th>
-            <th>Início</th>
-            <th>Fim</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for l in linhas %}
-          <tr>
-            <td class="sticky">{{ l.nome }}</td>
-            <td>{{ l.fornecedor|default:"—" }}</td>
-            <td>{{ l.cc|default:"—" }}</td>
-            <td>{{ l.periodicidade|default:"—" }}</td>
-            <td>
-              {% if l.pmb == 'sim' or l.pmb == 'Sim' %}
-                <span class="badge ok">Sim</span>
-              {% elif l.pmb == 'nao' or l.pmb == 'Não' %}
-                <span class="badge bad">Não</span>
-              {% else %}<span class="small">—</span>{% endif %}
-            </td>
-            <td class="tright">{{ l.qtd|default:0 }}</td>
-            <td class="tright">{{ l.assentos|default:0 }}</td>
-            <td class="tright">R$ {{ l.custo_ciclo|floatformat:2|default_if_none:"0,00" }}</td>
-            <td class="tright">R$ {{ l.custo_mensal|floatformat:2|default_if_none:"0,00" }}</td>
-            <td class="tright">R$ {{ l.custo_anual|floatformat:2|default_if_none:"0,00" }}</td>
-            <td>{{ l.data_inicio|date:"d/m/Y"|default:"—" }}</td>
-            <td>{% if l.data_fim %}{{ l.data_fim|date:"d/m/Y" }}{% else %}<span class="small">—</span>{% endif %}</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="12" class="small">Nenhum resultado para os filtros.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
+        <div style="display:flex; flex-direction:column; gap:24px;">
+            
 
-  <!-- Lotes detalhados -->
-  <div class="card" style="margin-top:12px">
-    <h3><i class="fa fa-boxes-stacked" style="color:#2563eb"></i> Lotes (custos e disponibilidade)</h3>
-    {% if tem_lotes and lotes_rows %}
-    <div style="overflow:auto">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Licença</th>
-            <th>Lote</th>
-            <th class="tright">Total</th>
-            <th class="tright">Disponível</th>
-            <th class="tright">Atribuídas</th>
-            <th class="tright">Custo do ciclo (R$)</th>
-            <th class="tright">Custo mensal do lote (R$)</th>
-            <th class="tright">Custo mensal usado (R$)</th>
-            <th class="tright">Custo anual do lote (R$)</th>
-            <th class="tright">Custo anual usado (R$)</th>
-            <th>Periodicidade</th>
-            <th>Pedido/Contrato</th>
-            <th>Obs.</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in lotes_rows %}
-          <tr>
-            <td>{{ r.licenca_nome }}</td>
-            <td>{{ r.lote_nome }}</td>
-            <td class="tright">{{ r.total }}</td>
-            <td class="tright">{{ r.disp }}</td>
-            <td class="tright">{{ r.usados }}</td>
-            <td class="tright">{% if r.custo_ciclo %}R$ {{ r.custo_ciclo|floatformat:2 }}{% else %}—{% endif %}</td>
-            <td class="tright">R$ {{ r.custo_mensal_lote|floatformat:2 }}</td>
-            <td class="tright">R$ {{ r.custo_mensal_usado|floatformat:2 }}</td>
-            <td class="tright">R$ {{ r.custo_anual_lote|floatformat:2 }}</td>
-            <td class="tright">R$ {{ r.custo_anual_usado|floatformat:2 }}</td>
-            <td>{{ r.periodicidade|default:"—" }}</td>
-            <td>{{ r.pedido|default:"—" }}</td>
-            <td class="muted">{{ r.obs|default:"" }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title"><i class="fa fa-chart-pie" style="color:var(--success)"></i> Custo por Fornecedor</div>
+                </div>
+                <div class="card-body chart-box">
+                    <canvas id="fornChart"></canvas>
+                    <div id="nd-forn" class="nodata" style="display:none">Sem dados</div>
+                </div>
+            </div>
+        </div>
     </div>
-    {% else %}
-      <div class="muted">Nenhum lote cadastrado para as licenças filtradas.</div>
-    {% endif %}
-  </div>
 </div>
 
-{# Dados para os cards/gráficos/listas #}
-{{ cc_labels|default:"[]"|json_script:"lic-cc-labels" }}
-{{ cc_mensal|default:"[]"|json_script:"lic-cc-mensal" }}
-{{ forn_labels|default:"[]"|json_script:"lic-forn-labels" }}
-{{ forn_mensal|default:"[]"|json_script:"lic-forn-mensal" }}
-{{ per_labels|default:"[]"|json_script:"lic-per-labels" }}
-{{ per_counts|default:"[]"|json_script:"lic-per-counts" }}
+{{ chart_forn_labels|default:"[]"|json_script:"js-forn-labels" }}
+{{ chart_forn_data|default:"[]"|json_script:"js-forn-data" }}
 
 <script>
-function J(id, fb){const el=document.getElementById(id); if(!el) return fb; try{ return JSON.parse(el.textContent) }catch(e){return fb}}
-function brl(n){n=+n||0; return 'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
-function sum(a){return (a||[]).reduce((x,y)=>x+(+y||0),0)}
+    const getJSON = (id) => JSON.parse(document.getElementById(id).textContent || '[]');
+    const sum = (arr) => arr.reduce((a, b) => a + (Number(b) || 0), 0);
+    const money = (val) => "R$ " + val.toLocaleString('pt-BR', {minimumFractionDigits: 2});
 
-/* LISTA por Centro de Custo */
-(() => {
-  const labels = J('lic-cc-labels', []);
-  const values = J('lic-cc-mensal', []);
-  const body = document.getElementById('ccListBody');
-  const totalEl = document.getElementById('ccListTotal');
-  const emptyEl = document.getElementById('ccListEmpty');
-
-  if(!body) return;
-
-  const rows = labels.map((lbl,i)=>({lbl, val:+(values[i]||0)}))
-                     .filter(r => r.val >= 0)
-                     .sort((a,b)=>b.val - a.val);
-
-  if(rows.length === 0 || sum(values) === 0){
-    emptyEl.style.display='block';
-    return;
-  }
-
-  let html = '';
-  for(const r of rows){
-    html += `<tr><td>${r.lbl||'—'}</td><td class="tright">${brl(r.val)}</td></tr>`;
-  }
-  body.innerHTML = html;
-  totalEl.textContent = brl(sum(values));
-})();
-
-/* GRÁFICOS secundários (Fornecedor / Periodicidade) */
-const pal = {
-  blue:'rgba(37, 99, 235, 0.9)', blue2:'rgba(37, 99, 235, 0.18)',
-  violet:'rgba(124, 58, 237, .9)', violet2:'rgba(124, 58, 237, .18)',
-  green:'rgba(22, 163, 74, 0.9)', cyan:'rgba(8, 145, 178, .9)', amber:'rgba(245, 158, 11, .9)'
-};
-Chart.defaults.font.family = "'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial";
-Chart.defaults.plugins.legend.position = 'top';
-Chart.defaults.plugins.tooltip.backgroundColor = '#0b1220';
-Chart.defaults.plugins.tooltip.titleColor = '#fff';
-Chart.defaults.plugins.tooltip.bodyColor = '#e2e8f0';
-
-/* Fornecedor (pizza) */
-(() => {
-  const labels = J('lic-forn-labels', []);
-  const data   = J('lic-forn-mensal', []);
-  const ctx = document.getElementById('fornPie');
-  if(!ctx) return;
-  if(sum(data) === 0){ document.getElementById('nd-forn').style.display='block'; return; }
-  new Chart(ctx, {
-    type:'doughnut',
-    data:{ labels: labels.length?labels:['—'], datasets:[{ data: data.length?data:[0], backgroundColor:[pal.blue, pal.green, pal.violet, pal.cyan, pal.amber] }]},
-    options:{ responsive:true, maintainAspectRatio:false, cutout:'60%' }
-  });
-})();
-
-/* Periodicidade (barra) */
-(() => {
-  const labels = J('lic-per-labels', []);
-  const data   = J('lic-per-counts', []);
-  const ctx = document.getElementById('perBar');
-  if(!ctx) return;
-  if(sum(data) === 0){ document.getElementById('nd-per').style.display='block'; return; }
-  new Chart(ctx, {
-    type:'bar',
-    data:{ labels: labels.length?labels:['—'], datasets:[{label:'Quantidade', data: data.length?data:[0], backgroundColor: pal.violet, borderColor: pal.violet, borderWidth:1.5, borderRadius:10}]},
-    options:{ responsive:true, maintainAspectRatio:false,
-      scales:{ y:{ beginAtZero:true, grid:{color:'rgba(148,163,184,.12)'}}, x:{ grid:{color:'rgba(148,163,184,.12)'}} } }
-  });
-})();
+    Chart.defaults.font.family = "'Inter', sans-serif";
+    Chart.defaults.color = '#64748b';
+    
+    // Gráfico Fornecedores
+    const fornLabels = getJSON('js-forn-labels');
+    const fornData = getJSON('js-forn-data');
+    
+    if (sum(fornData) === 0) {
+        document.getElementById('nd-forn').style.display = 'flex';
+    } else {
+        new Chart(document.getElementById('fornChart'), {
+            type: 'doughnut',
+            data: {
+                labels: fornLabels,
+                datasets: [{
+                    data: fornData,
+                    backgroundColor: ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 12 } },
+                    tooltip: { callbacks: { label: (c) => ` ${c.label}: ${money(c.raw)}` } }
+                }
+            }
+        });
+    }
 </script>
 {% endblock %}

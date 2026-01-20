@@ -219,14 +219,25 @@ class ItemForm(forms.ModelForm):
 
 
 class LocacaoForm(forms.ModelForm):
+    # 🔧 Forçamos o formato que o navegador entende (YYYY-MM-DD)
+    data_entrada = forms.DateField(
+        required=False,
+        widget=forms.DateInput(
+            format='%Y-%m-%d',
+            attrs={
+                'type': 'date',
+            }
+        ),
+        # Aceita tanto o formato do navegador quanto dd/mm/aaaa, se necessário
+        input_formats=['%Y-%m-%d', '%d/%m/%Y'],
+    )
+
     class Meta:
         model = Locacao
-        fields = ["tempo_locado", "valor_mensal", "contrato", "observacoes", "fornecedor"]
-        labels = {
-            "tempo_locado": "Tempo locado (meses)",
-            "valor_mensal": "Valor mensal (R$)",
+        fields = ["tempo_locado", "valor_mensal", "data_entrada", "fornecedor", "contrato", "observacoes"]
+        widgets = {
+            "observacoes": forms.Textarea(attrs={'rows': 2}),
         }
-
 # ================== COMENTÁRIO ==================
 class ComentarioForm(forms.ModelForm):
     class Meta:

@@ -24,7 +24,7 @@ urlpatterns = [
 
     path("equipamentos/exportar/", views.equipamentos_exportar, name="equipamentos_exportar"),
     path("custos/toner/exportar/", views.toner_cc_export_excel, name="toner_cc_export_excel"),
-
+    path('dashboards/custos-cc/pdf/', views.cc_custos_export_pdf, name='cc_custos_export_pdf'),
     path('categorias/', views.categorias_list, name='categorias_list'),
     path('categorias/novo/', views.categoria_create, name='categoria_create'),
     path('categorias/editar/<int:pk>/', views.categoria_update, name='categoria_update'),
@@ -132,7 +132,7 @@ urlpatterns = [
     path("movimentacoes/", views.movimentacao_list, name="movimentacao_list"),
     path("movimentacoes/nova/", views.movimentacao_create, name="movimentacao_create"),
     path("movimentacoes/<int:pk>/", views.movimentacao_detail, name="movimentacao_detail"),
-
+    path('movimentacoes/pdf/', views.movimentacao_export_pdf, name='movimentacao_export_pdf'),
     path('movimentacoes/editar/<int:pk>/', views.movimentacao_update, name='movimentacao_update'),
     path('movimentacoes/deletar/<int:pk>/', views.movimentacao_delete, name='movimentacao_delete'),
 

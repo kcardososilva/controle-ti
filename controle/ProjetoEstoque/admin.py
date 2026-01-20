@@ -28,7 +28,6 @@ class AuditAdminMixin(admin.ModelAdmin):
     def save_formset(self, request, form, formset, change):
         instances = formset.save(commit=False)
         for instance in instances:
-            # Se o modelo do inline tiver campos de auditoria, preenche
             if hasattr(instance, 'atualizado_por'):
                 instance.atualizado_por = request.user
             if not instance.pk and hasattr(instance, 'criado_por'):
@@ -106,7 +105,9 @@ class LocacaoInline(admin.StackedInline):
     model = Locacao
     extra = 0
     max_num = 1
-    autocomplete_fields = ("fornecedor",)
+    # CORREÇÃO: Removido 'autocomplete_fields' para fornecedor, pois o campo não existe mais na Locacao.
+    # Adicionado 'data_entrada' que criamos.
+    fields = ("data_entrada", "tempo_locado", "valor_mensal", "contrato", "observacoes")
 
 
 class ComentarioInline(admin.TabularInline):
@@ -120,25 +121,30 @@ class ComentarioInline(admin.TabularInline):
 class ItemAdmin(AuditAdminMixin):
     list_display = (
         "id", "nome", "numero_serie", "status", "quantidade",
-        "centro_custo", "localidade", "subtipo", "pmb"
+        "centro_custo", "localidade", "subtipo", "fornecedor", "locado"
     )
+    # CORREÇÃO: Removido 'categoria' do filtro direto (use subtipo__categoria se precisar)
     list_filter = (
-        "status", "pmb", "item_consumo", "categoria", "subtipo",
+        "status", "pmb", "item_consumo", "subtipo",
         "localidade", "centro_custo", "fornecedor", "locado"
     )
     search_fields = ("nome", "numero_serie", "marca", "modelo", "numero_pedido")
-    autocomplete_fields = ("centro_custo", "localidade", "subtipo", "categoria", "fornecedor")
+    
+    # Fornecedor continua aqui, pois pertence ao Item
+    autocomplete_fields = ("centro_custo", "localidade", "subtipo", "fornecedor")
+    
     inlines = [LocacaoInline, ComentarioInline]
-    list_select_related = ("centro_custo", "localidade", "subtipo", "fornecedor", "categoria")
+    list_select_related = ("centro_custo", "localidade", "subtipo", "fornecedor")
     ordering = ("nome",)
 
 
 @admin.register(Locacao)
 class LocacaoAdmin(AuditAdminMixin):
-    list_display = ("id", "equipamento", "tempo_locado", "valor_mensal", "fornecedor")
-    search_fields = ("equipamento__nome", "fornecedor__nome", "contrato")
-    autocomplete_fields = ("equipamento", "fornecedor")
-    list_select_related = ("equipamento", "fornecedor")
+    # CORREÇÃO: Removido 'fornecedor' de list_display e autocomplete_fields
+    list_display = ("id", "equipamento", "data_entrada", "tempo_locado", "valor_mensal", "contrato")
+    search_fields = ("equipamento__nome", "contrato")
+    autocomplete_fields = ("equipamento",)
+    list_select_related = ("equipamento",)
 
 
 @admin.register(Comentario)
@@ -275,9 +281,7 @@ class LicencaLoteInline(admin.TabularInline):
 
 @admin.register(Licenca)
 class LicencaAdmin(AuditAdminMixin):
-    # EXIBINDO APENAS CAMPOS QUE EXISTEM NO MODELO SIMPLIFICADO
     list_display = ("id", "nome", "fornecedor", "pmb", "created_at")
-    
     list_filter = ("pmb", "fornecedor")
     search_fields = ("nome",)
     autocomplete_fields = ("fornecedor",)
@@ -299,7 +303,6 @@ class LicencaLoteAdmin(AuditAdminMixin):
 
 @admin.register(MovimentacaoLicenca)
 class MovimentacaoLicencaAdmin(AuditAdminMixin):
-    # Atualizado para exibir valor_unitario (snapshot financeiro)
     list_display = (
         "id", "licenca", "tipo", "usuario", 
         "lote", "centro_custo_destino", "valor_unitario_display", "created_at"

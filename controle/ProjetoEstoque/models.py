@@ -128,7 +128,6 @@ class Funcao(AuditModel):
 
 
 # ========== ITEM (Equipamento) ==========
-
 class Item(AuditModel):
     nome = models.CharField(max_length=100)
     numero_serie = models.CharField(max_length=100, blank=True, null=True)
@@ -164,6 +163,25 @@ class Item(AuditModel):
     def __str__(self):
         return f"{self.nome} - {self.numero_serie or 's/ nº'}"
 
+class Locacao(AuditModel):
+    equipamento = models.OneToOneField(Item, on_delete=models.CASCADE, related_name="locacao")
+    tempo_locado = models.IntegerField(blank=True, null=True, help_text="Informe a quantidade de meses")
+    valor_mensal = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(0)],
+        help_text="Valor do pagamento mensal (R$)"
+    )
+    data_entrada = models.DateField(blank=True, null=True, help_text="Data de entrada do equipamento locado")
+    contrato = models.CharField(max_length=200, blank=True, null=True)
+    observacoes = models.TextField(blank=True, null=True)
+    fornecedor = models.ForeignKey(Fornecedor, on_delete=models.SET_NULL, blank=True, null=True)
+
+    def __str__(self):
+        return f"Locação: {self.equipamento.nome} - {self.tempo_locado or 0} meses"
+
 
 
 class Usuario(AuditModel):
@@ -179,19 +197,6 @@ class Usuario(AuditModel):
 
     def __str__(self):
         return f"{self.nome} ({self.email})"
-# ========== LOCAÇÃO ==========
-
-class Locacao(AuditModel):
-    equipamento = models.OneToOneField(Item, on_delete=models.CASCADE, related_name="locacao")
-    tempo_locado = models.IntegerField(blank=True, null=True, help_text="Informe a quantidade de meses")
-    valor_mensal = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True,
-                                       validators=[MinValueValidator(0)], help_text="Valor do pagamento mensal (R$)")
-    contrato = models.CharField(max_length=200, blank=True, null=True)
-    observacoes = models.TextField(blank=True, null=True)
-    fornecedor = models.ForeignKey(Fornecedor, on_delete=models.SET_NULL, blank=True, null=True)
-
-    def __str__(self):
-        return f"Locação: {self.equipamento.nome} - {self.tempo_locado or 0} meses"
 
 
 # ========== COMENTARIO ==========

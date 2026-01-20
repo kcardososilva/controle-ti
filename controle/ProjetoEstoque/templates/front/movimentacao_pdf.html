@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Relatório de Movimentações</title>
+    <style>
+        /* Configuração de Página Padrão do Pisa */
+        @page {
+            size: A4 landscape;
+            margin: 1cm;
+            @frame footer_frame {           /* Frame estático para o rodapé */
+                -pdf-frame-content: footerContent;
+                bottom: 0cm;
+                margin-left: 1cm;
+                margin-right: 1cm;
+                height: 1cm;
+            }
+        }
+
+        body { font-family: Helvetica, sans-serif; font-size: 10px; color: #1f2937; }
+        
+        /* Header */
+        .header-table { width: 100%; border-bottom: 2px solid #2563eb; margin-bottom: 10px; padding-bottom: 5px; }
+        .header-title { font-size: 18px; text-transform: uppercase; color: #111; font-weight: bold; }
+        .header-meta { font-size: 9px; color: #666; text-align: right; }
+
+        /* Info Bar */
+        .info-bar { 
+            background-color: #f3f4f6; padding: 5px; border: 1px solid #e5e7eb; 
+            margin-bottom: 15px; font-size: 9px; color: #333;
+        }
+
+        /* Tabela de Dados */
+        table.main-table { width: 100%; border-collapse: collapse; repeat-header: yes; } /* repeat-header repete o cabeçalho em novas páginas */
+        
+        table.main-table th { 
+            background-color: #f0f0f0; border-bottom: 1px solid #999; 
+            padding: 6px; text-align: left; font-weight: bold; font-size: 9px; color: #333;
+        }
+        
+        table.main-table td { 
+            border-bottom: 1px solid #eee; padding: 6px; vertical-align: top; color: #333;
+        }
+        
+        /* Zebrado (xhtml2pdf suporta mas as vezes falha, mantendo simples) */
+        tr.even { background-color: #f9f9f9; }
+
+        /* Badges (usando background color simples pois pisa não suporta todo CSS3) */
+        .badge { font-size: 8px; font-weight: bold; text-transform: uppercase; color: #333; }
+        
+        /* Rodapé */
+        #footerContent { text-align: center; font-size: 8px; color: #666; padding-top: 5px; border-top: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <table class="header-table">
+        <tr>
+            <td>
+                <div class="header-title">Histórico de Movimentações</div>
+                <div style="font-size: 10px; margin-top: 2px;">Sistema de Gestão de Ativos</div>
+            </td>
+            <td class="header-meta">
+                Gerado em: {{ data_geracao|date:"d/m/Y H:i" }}<br>
+                Emissor: {{ usuario.get_full_name|default:usuario.username }}
+            </td>
+        </tr>
+    </table>
+
+    <div class="info-bar">
+        <b>Total:</b> {{ total }} registros
+        {% if filtros.inicio or filtros.fim %}
+            | <b>Período:</b> {{ filtros.inicio|default:"Início" }} a {{ filtros.fim|default:"Hoje" }}
+        {% endif %}
+        {% if filtros.tipo %}
+            | <b>Tipo:</b> {{ filtros.tipo|upper }}
+        {% endif %}
+    </div>
+
+    <table class="main-table">
+        <thead>
+            <tr>
+                <th width="12%">Data</th>
+                <th width="10%">Tipo</th>
+                <th width="20%">Item</th>
+                <th width="18%">Origem</th>
+                <th width="18%">Destino</th>
+                <th width="15%">Responsável</th>
+                <th width="7%" align="center">Qtd</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for mov in movimentacoes %}
+            <tr class="{% cycle 'odd' 'even' %}">
+                <td>{{ mov.created_at|date:"d/m/Y H:i" }}</td>
+                <td>
+                    <span class="badge">
+                        {{ mov.get_tipo_movimentacao_display|truncatechars:12 }}
+                    </span>
+                </td>
+                <td>
+                    <b>{{ mov.item.nome }}</b><br/>
+                    <span style="font-size:8px; color:#666;">S/N: {{ mov.item.numero_serie|default:"-" }}</span>
+                </td>
+                <td>
+                    {% if mov.centro_custo_origem %}{{ mov.centro_custo_origem.numero }}
+                    {% elif mov.localidade_origem %}{{ mov.localidade_origem.local }}
+                    {% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if mov.centro_custo_destino %}{{ mov.centro_custo_destino.departamento }}
+                    {% elif mov.localidade_destino %}{{ mov.localidade_destino.local }}
+                    {% elif mov.fornecedor_manutencao %}{{ mov.fornecedor_manutencao.nome }}
+                    {% else %}-{% endif %}
+                </td>
+                <td>{{ mov.usuario.nome|default:"-"|truncatechars:20 }}</td>
+                <td align="center">{{ mov.quantidade }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" align="center" style="padding: 20px;">
+                    Nenhum registro encontrado.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div id="footerContent">
+        Página <pdf:pagenumber> de <pdf:pagecount>
+    </div>
+</body>
+</html>

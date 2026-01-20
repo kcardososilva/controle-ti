@@ -1,198 +1,461 @@
 {% extends "base.html" %}
-{% block title %}Gasto de Toner por Centro de Custo{% endblock %}
+{% block title %}Indicadores de Consumo de Toner | Gestão de Ativos{% endblock %}
 
 {% block content %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
 
 <style>
-:root{
-  --ink:#0f172a; --muted:#475569; --line:#e5e7eb; --soft:#f8fafc; --card:#ffffff;
-  --primary:#2563eb; --green:#10b981; --shadow:0 22px 44px rgba(2,6,23,.07);
-}
-.page{max-width:1200px;margin:18px auto;padding:0 14px}
-.hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
-.hdr h2{margin:0;color:var(--ink);display:flex;align-items:center;gap:10px}
-.badge{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#f3f6ff;font-weight:800;color:#1e3a8a}
+    /* --- Enterprise Design System --- */
+    :root {
+        /* Paleta Corporativa */
+        --bg-body: #f8fafc;
+        --bg-card: #ffffff;
+        --text-primary: #0f172a;
+        --text-secondary: #64748b;
+        --border-subtle: #e2e8f0;
+        
+        /* Cores de Marca e Status */
+        --brand-color: #2563eb;
+        --brand-hover: #1d4ed8;
+        --success-color: #10b981;
+        --danger-color: #ef4444;
+        --warning-color: #f59e0b;
+        --info-color: #0ea5e9;
 
-.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin:8px 0 12px}
-.fg{display:flex;flex-direction:column}
-.fg label{font-weight:800;margin-bottom:6px;color:#0f172a}
-.fg input{height:44px;padding:8px 12px;border:1px solid #d5deea;border-radius:12px;background:#fff;min-width:200px}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
-.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
-.btn-light{background:#f8fafc;border:1.5px solid #dbe6f1;color:#334155}
-.btn-export{background:linear-gradient(90deg,#1d4ed8,#2563eb);color:#fff}
+        /* Efeitos */
+        --radius-lg: 12px;
+        --radius-md: 8px;
+        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    }
 
-.grid{display:grid;gap:14px}
-.g-2{grid-template-columns:2fr 1.25fr}
-@media (max-width:1020px){.g-2{grid-template-columns:1fr}}
+    body {
+        background-color: var(--bg-body);
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        color: var(--text-primary);
+    }
 
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
-.card h3{margin:0 0 8px;color:var(--ink);display:flex;align-items:center;gap:8px}
+    .page-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 24px;
+    }
 
-.chart{height:360px;position:relative}
-.chart.sm{height:320px}
-.nodata{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:700;pointer-events:none}
+    /* --- Header --- */
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
 
-.table{width:100%;border-collapse:collapse}
-.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left;color:#0f172a}
-.table th{background:#f8fafc;font-weight:900}
-.tright{text-align:right}
-.sticky{position:sticky;left:0;background:#f8fafc;z-index:1}
+    .page-title h2 {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .period-badge {
+        background: #fff;
+        border: 1px solid var(--border-subtle);
+        color: var(--text-secondary);
+        padding: 6px 16px;
+        border-radius: 99px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        box-shadow: var(--shadow-sm);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* --- Filtros --- */
+    .filters-section {
+        background: #fff;
+        border-radius: var(--radius-lg);
+        padding: 20px;
+        border: 1px solid var(--border-subtle);
+        margin-bottom: 24px;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .filters-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 16px;
+        align-items: end;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+    }
+
+    .form-control {
+        width: 100%;
+        height: 40px;
+        padding: 0 12px;
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        font-size: 0.9rem;
+        box-sizing: border-box;
+    }
+
+    .form-control:focus {
+        border-color: var(--brand-color);
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    /* Botões */
+    .btn {
+        height: 40px;
+        padding: 0 20px;
+        border-radius: var(--radius-md);
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border: none;
+        text-decoration: none;
+        transition: all 0.2s;
+    }
+
+    .btn-primary { background: var(--brand-color); color: #fff; }
+    .btn-primary:hover { background: var(--brand-hover); }
+    
+    .btn-outline { background: #fff; border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+    .btn-outline:hover { background: #f8fafc; border-color: #cbd5e1; color: var(--text-primary); }
+
+    .btn-success { background: var(--success-color); color: #fff; }
+    .btn-success:hover { filter: brightness(90%); }
+
+    /* --- KPIs (Cards) --- */
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 20px;
+        margin-bottom: 24px;
+    }
+
+    .kpi-card {
+        background: #fff;
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+        transition: transform 0.2s;
+    }
+    
+    .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+    .kpi-label { font-size: 0.85rem; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .kpi-value { font-size: 1.75rem; font-weight: 800; color: var(--text-primary); margin-top: 8px; }
+    .kpi-sub { font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px; }
+    .kpi-icon { position: absolute; right: 20px; top: 20px; font-size: 1.5rem; opacity: 0.2; }
+
+    /* Cores das bordas laterais dos KPIs */
+    .kpi-card.blue { border-left: 4px solid var(--brand-color); }
+    .kpi-card.green { border-left: 4px solid var(--success-color); }
+    .kpi-card.orange { border-left: 4px solid var(--warning-color); }
+    .kpi-card.purple { border-left: 4px solid #8b5cf6; }
+
+    /* --- Gráficos e Tabelas --- */
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 24px;
+        margin-bottom: 24px;
+    }
+    
+    @media (max-width: 1100px) { .dashboard-grid { grid-template-columns: 1fr; } }
+
+    .dashboard-card {
+        background: #fff;
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        padding: 20px;
+        box-shadow: var(--shadow-sm);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--border-subtle);
+        padding-bottom: 12px;
+    }
+
+    .card-title {
+        font-size: 1rem; font-weight: 700; color: var(--text-primary);
+        display: flex; align-items: center; gap: 10px;
+    }
+
+    .chart-container { position: relative; height: 320px; width: 100%; }
+    .nodata { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); background: rgba(255,255,255,0.8); }
+
+    /* Tabela */
+    .table-responsive { overflow-x: auto; border-radius: var(--radius-md); }
+    .table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .table th { background: #f1f5f9; color: var(--text-primary); font-weight: 700; text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-subtle); white-space: nowrap; }
+    .table td { padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
+    .table tr:hover td { background-color: #f8fafc; color: var(--text-primary); }
+    .text-right { text-align: right; }
+
+    /* Responsividade Grid */
+    .col-span-12 { grid-column: span 12; }
+    .col-span-4 { grid-column: span 4; }
+    .col-span-2 { grid-column: span 2; }
+
+    @media (max-width: 768px) {
+        .col-span-4, .col-span-2 { grid-column: span 12; }
+        .page-header { flex-direction: column; align-items: flex-start; }
+        .filters-actions { margin-top: 12px; }
+        .btn { width: 100%; }
+    }
 </style>
 
-<div class="page">
-  <div class="hdr">
-    <h2><i class="fa fa-print"></i> Gasto de Toner por Centro de Custo</h2>
-    <span class="badge">Período: {{ dt_ini|date:"d/m/Y" }} — {{ dt_fim|date:"d/m/Y" }}</span>
-  </div>
+<div class="page-container">
+    <div class="page-header">
+        <div class="page-title">
+            <h2><i class="fa fa-print" style="color:var(--text-secondary)"></i> Consumo de Toner</h2>
+        </div>
+        <div class="period-badge">
+            <i class="fa fa-calendar-alt"></i> 
+            <span>{{ dt_ini|date:"d/m/Y" }} — {{ dt_fim|date:"d/m/Y" }}</span>
+        </div>
+    </div>
 
-  <!-- FILTROS -->
-  <form method="get" class="filters" autocomplete="off" id="filtrosForm">
-    <div class="fg">
-      <label>Início</label>
-      <input type="date" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}">
-    </div>
-    <div class="fg">
-      <label>Fim</label>
-      <input type="date" name="fim" value="{{ dt_fim|date:'Y-m-d' }}">
-    </div>
-    <button class="btn btn-primary" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
-    <a class="btn btn-light" href="{{ request.path }}"><i class="fa fa-rotate-left"></i> Limpar</a>
+    <div class="filters-section">
+        <form method="get" class="filters-grid" id="filtrosForm" autocomplete="off">
+            <div class="form-group col-span-2">
+                <label>Data Início</label>
+                <input type="date" class="form-control" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}">
+            </div>
+            
+            <div class="form-group col-span-2">
+                <label>Data Fim</label>
+                <input type="date" class="form-control" name="fim" value="{{ dt_fim|date:'Y-m-d' }}">
+            </div>
 
-    <!-- Exporta via mesma view (?export=1) preservando o período do formulário -->
-    <a id="exportLink" class="btn btn-export">
-      <i class="fa fa-file-excel"></i> Exportar CSV (Excel)
-    </a>
-  </form>
+            <div class="col-span-4 filters-actions" style="display: flex; gap: 10px; padding-bottom: 2px;">
+                <button type="submit" class="btn btn-primary"><i class="fa fa-filter"></i> Filtrar</button>
+                <a href="{{ request.path }}" class="btn btn-outline"><i class="fa fa-eraser"></i> Limpar</a>
+                <a id="exportLink" href="#" class="btn btn-success"><i class="fa fa-file-excel"></i> Exportar</a>
+            </div>
+        </form>
+    </div>
 
-  <!-- GRÁFICOS -->
-  <div class="grid g-2">
-    <div class="card">
-      <h3><i class="fa fa-chart-column" style="color:#2563eb"></i> Gasto por Centro de Custo (R$)</h3>
-      <div class="chart">
-        <canvas id="chart-cc"></canvas>
-        <div id="nd-cc" class="nodata">Sem dados</div>
-      </div>
-    </div>
-    <div class="card">
-      <h3><i class="fa fa-list-ol" style="color:#10b981"></i> Top Consumidores (R$)</h3>
-      <div class="chart sm">
-        <canvas id="chart-users"></canvas>
-        <div id="nd-users" class="nodata">Sem dados</div>
-      </div>
-    </div>
-  </div>
+    <div class="kpi-grid">
+        <div class="kpi-card blue">
+            <div class="kpi-label">Gasto Total no Período</div>
+            <div class="kpi-value">R$ {{ kpi_total_gasto|floatformat:2 }}</div>
+            <i class="fa fa-money-bill-wave kpi-icon" style="color:var(--brand-color)"></i>
+        </div>
+        
+        <div class="kpi-card purple">
+            <div class="kpi-label">Volume de Itens</div>
+            <div class="kpi-value">{{ kpi_total_qtd }} <span style="font-size:1rem; font-weight:400; color:var(--text-secondary)">unidades</span></div>
+            <i class="fa fa-boxes-stacked kpi-icon" style="color:#8b5cf6"></i>
+        </div>
 
-  <!-- TABELA -->
-  <div class="card" style="margin-top:14px">
-    <h3><i class="fa fa-table" style="color:#0ea5e9"></i> Detalhamento</h3>
-    <div style="overflow:auto">
-      <table class="table">
-        <thead>
-          <tr>
-            <th class="sticky">Centro de Custo</th>
-            <th class="tright">Quantidade baixas</th>
-            <th class="tright">Gasto (R$)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for l in linhas %}
-          <tr>
-            <td class="sticky">{{ l.cc }}</td>
-            <td class="tright">{{ l.qtd }}</td>
-            <td class="tright">R$ {{ l.gasto|floatformat:2 }}</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="3" style="color:#64748b">Nenhum dado no período informado.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+        <div class="kpi-card orange">
+            <div class="kpi-label">Maior Consumidor</div>
+            <div class="kpi-value" style="font-size:1.1rem; line-height:1.4; margin-top:12px">{{ kpi_top_cc_nome }}</div>
+            <div class="kpi-sub">Representa o maior custo</div>
+            <i class="fa fa-building kpi-icon" style="color:var(--warning-color)"></i>
+        </div>
+
+        <div class="kpi-card green">
+            <div class="kpi-label">Custo Médio / Item</div>
+            <div class="kpi-value">R$ {{ kpi_ticket_medio|floatformat:2 }}</div>
+            <i class="fa fa-chart-line kpi-icon" style="color:var(--success-color)"></i>
+        </div>
     </div>
-  </div>
+
+    <div class="dashboard-grid">
+        <div class="dashboard-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fa fa-chart-bar" style="color:var(--brand-color)"></i> Gasto por Centro de Custo</div>
+            </div>
+            <div class="chart-container">
+                <canvas id="chart-cc"></canvas>
+                <div id="nd-cc" class="nodata">Sem dados no período</div>
+            </div>
+        </div>
+
+        <div class="dashboard-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fa fa-users" style="color:var(--success-color)"></i> Top 10 Usuários</div>
+            </div>
+            <div class="chart-container">
+                <canvas id="chart-users"></canvas>
+                <div id="nd-users" class="nodata">Sem dados</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-card">
+        <div class="card-header">
+            <div class="card-title"><i class="fa fa-list-ul"></i> Detalhamento Analítico</div>
+        </div>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Centro de Custo</th>
+                        <th class="text-right">Quantidade</th>
+                        <th class="text-right">Custo Total</th>
+                        <th class="text-right">% do Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in linhas %}
+                    <tr>
+                        <td style="font-weight:600">{{ l.cc }}</td>
+                        <td class="text-right">{{ l.qtd }}</td>
+                        <td class="text-right" style="color:var(--brand-color); font-weight:700">R$ {{ l.gasto|floatformat:2 }}</td>
+                        <td class="text-right" style="color:var(--text-secondary)">
+                            {% widthratio l.gasto kpi_total_gasto 100 %}%
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" style="text-align:center; padding: 20px;">Nenhum registro encontrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
-{# ===== DADOS PARA JS ===== #}
 {{ cc_labels|default:"[]"|json_script:"toner-cc-labels" }}
 {{ cc_gasto|default:"[]"|json_script:"toner-cc-gasto" }}
 {{ user_labels|default:"[]"|json_script:"toner-user-labels" }}
 {{ user_gasto|default:"[]"|json_script:"toner-user-gasto" }}
 
 <script>
-function J(id, fb){ const el=document.getElementById(id); if(!el) return fb; try{return JSON.parse(el.textContent)}catch(e){return fb} }
-function sum(a){return (a||[]).reduce((x,y)=>x+(+y||0),0)}
-function brl(n){ n=+n||0; return n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) }
+    // Helpers
+    const getJson = (id) => JSON.parse(document.getElementById(id).textContent || '[]');
+    const sumArr = (arr) => arr.reduce((a, b) => a + (Number(b) || 0), 0);
+    const brl = (v) => v.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
 
-const ccLabels = J('toner-cc-labels', []);
-const ccData   = J('toner-cc-gasto', []).map(x=>+x||0);
-const uLabels  = J('toner-user-labels', []);
-const uData    = J('toner-user-gasto', []).map(x=>+x||0);
+    // Configuração Global ChartJS
+    Chart.defaults.font.family = "'Inter', sans-serif";
+    Chart.defaults.color = '#64748b';
+    Chart.defaults.plugins.tooltip.backgroundColor = '#1e293b';
+    Chart.defaults.plugins.tooltip.padding = 12;
+    Chart.defaults.plugins.tooltip.cornerRadius = 8;
+    Chart.defaults.plugins.tooltip.callbacks.label = (ctx) => ` ${ctx.dataset.label}: ${brl(ctx.raw)}`;
 
-Chart.defaults.font.family = "'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial";
-Chart.defaults.plugins.legend.position = 'top';
-Chart.defaults.plugins.tooltip.callbacks = {
-  label: (ctx) => `${ctx.dataset.label}: ${brl(ctx.raw)}`
-};
+    // Dados
+    const ccLabels = getJson('toner-cc-labels');
+    const ccData = getJson('toner-cc-gasto');
+    const uLabels = getJson('toner-user-labels');
+    const uData = getJson('toner-user-gasto');
 
-/* ===== Gráfico 1 — por CC ===== */
-(function(){
-  const el = document.getElementById('chart-cc');
-  if (!el) return;
-  const noData = sum(ccData) === 0;
-  document.getElementById('nd-cc').style.display = noData ? 'flex' : 'none';
-  new Chart(el, {
-    type:'bar',
-    data:{
-      labels: ccLabels.length?ccLabels:['—'],
-      datasets:[{ label:'Gasto (R$)', data: ccData.length?ccData:[0], backgroundColor:'rgba(37,99,235,.85)' }]
-    },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      scales:{
-        y:{ beginAtZero:true, ticks:{ callback:v=>brl(v) }, grid:{ color:'rgba(148,163,184,.15)' } },
-        x:{ grid:{ color:'rgba(148,163,184,.12)' } }
-      }
-    }
-  });
-})();
+    // Gráfico 1: Centro de Custo
+    (function(){
+        const el = document.getElementById('chart-cc');
+        if (!el) return;
+        
+        const hasData = sumArr(ccData) > 0;
+        document.getElementById('nd-cc').style.display = hasData ? 'none' : 'flex';
 
-/* ===== Gráfico 2 — Top consumidores ===== */
-(function(){
-  const el = document.getElementById('chart-users');
-  if (!el) return;
-  const noData = sum(uData) === 0;
-  document.getElementById('nd-users').style.display = noData ? 'flex' : 'none';
-  new Chart(el, {
-    type:'bar',
-    data:{
-      labels: uLabels.length?uLabels:['—'],
-      datasets:[{ label:'Gasto (R$)', data: uData.length?uData:[0], backgroundColor:'rgba(16,185,129,.85)' }]
-    },
-    options:{
-      indexAxis:'y',
-      responsive:true, maintainAspectRatio:false,
-      scales:{ x:{ beginAtZero:true, ticks:{ callback:v=>brl(v) } } }
-    }
-  });
-})();
+        new Chart(el, {
+            type: 'bar',
+            data: {
+                labels: ccLabels.length ? ccLabels : ['-'],
+                datasets: [{
+                    label: 'Custo Total',
+                    data: ccData.length ? ccData : [0],
+                    backgroundColor: '#2563eb', // Azul Brand
+                    borderRadius: 4,
+                    barPercentage: 0.6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { 
+                        beginAtZero: true, 
+                        grid: { color: '#f1f5f9' },
+                        ticks: { callback: (v) => brl(v) }
+                    },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+    })();
 
-/* ===== Link de exportação dinâmico (usa os valores do formulário) ===== */
-(function(){
-  const link = document.getElementById('exportLink');
-  const form = document.getElementById('filtrosForm');
-  function buildExportHref(){
-    const ini = form.elements['inicio']?.value || '';
-    const fim = form.elements['fim']?.value || '';
-    const base = window.location.pathname;
-    const params = new URLSearchParams();
-    params.set('export','1');
-    if(ini) params.set('inicio', ini);
-    if(fim) params.set('fim', fim);
-    return `${base}?${params.toString()}`;
-  }
-  link.setAttribute('href', buildExportHref());
-  form.addEventListener('change', ()=> link.setAttribute('href', buildExportHref()));
-})();
+    // Gráfico 2: Top Usuários
+    (function(){
+        const el = document.getElementById('chart-users');
+        if (!el) return;
+
+        const hasData = sumArr(uData) > 0;
+        document.getElementById('nd-users').style.display = hasData ? 'none' : 'flex';
+
+        new Chart(el, {
+            type: 'bar',
+            data: {
+                labels: uLabels.length ? uLabels : ['-'],
+                datasets: [{
+                    label: 'Gasto',
+                    data: uData.length ? uData : [0],
+                    backgroundColor: '#10b981', // Verde
+                    borderRadius: 4,
+                    barPercentage: 0.7
+                }]
+            },
+            options: {
+                indexAxis: 'y', // Barra Horizontal
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { 
+                        beginAtZero: true, 
+                        grid: { color: '#f1f5f9' },
+                        ticks: { callback: (v) => brl(v) }
+                    },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+    })();
+
+    // Export Link Logic
+    (function(){
+        const form = document.getElementById('filtrosForm');
+        const link = document.getElementById('exportLink');
+        function updateLink() {
+            const params = new URLSearchParams(new FormData(form));
+            params.set('export', '1');
+            link.href = window.location.pathname + '?' + params.toString();
+        }
+        form.addEventListener('change', updateLink);
+        updateLink();
+    })();
 </script>
 {% endblock %}
