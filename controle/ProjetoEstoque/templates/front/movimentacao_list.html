@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load static %}
+
 {% block title %}Histórico de Movimentações | Gestão de Ativos{% endblock %}
 
 {% block content %}
@@ -9,408 +11,473 @@
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <style>
-    /* --- Enterprise Design System --- */
-    :root {
-        --bg-body: #f8fafc;
-        --bg-card: #ffffff;
-        --text-main: #0f172a;
-        --text-secondary: #64748b;
-        --border: #e2e8f0;
-        
-        /* Cores da Marca */
-        --primary: #2563eb;
-        --primary-hover: #1d4ed8;
-        --success: #10b981;
-        --warning: #f59e0b;
-        --danger: #ef4444;
-        --info: #0ea5e9;
-        
-        --radius: 8px;
-        --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-    }
+/* === VARIÁVEIS SAAS MODERN === */
+:root {
+    --bg-body: #f8fafc;
+    --surface: #ffffff;
+    --border: #e2e8f0;
+    
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --primary-light: #eff6ff;
+    
+    --success: #10b981;
+    --success-bg: #ecfdf5;
+    --warning: #f59e0b;
+    --warning-bg: #fffbeb;
+    --danger: #ef4444;
+    --danger-bg: #fef2f2;
+    --purple: #8b5cf6;
+    --purple-bg: #f5f3ff;
+    
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.05);
+    
+    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
 
-    body {
-        background-color: var(--bg-body);
-        font-family: 'Inter', sans-serif;
-        color: var(--text-main);
-        font-size: 0.9rem;
-    }
+body {
+    background-color: var(--bg-body);
+    font-family: 'Inter', sans-serif;
+    color: var(--text-main);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+}
 
-    .page-container {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 24px;
-    }
+.page-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
 
-    /* --- KPIs (Cards de Topo) --- */
-    .kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 16px;
-        margin-bottom: 24px;
-    }
+/* === CABEÇALHO === */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+}
 
-    .kpi-card {
-        background: var(--bg-card);
-        padding: 20px;
+.page-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.page-title i {
+    color: var(--primary);
+    background: var(--primary-light);
+    padding: 8px;
+    border-radius: var(--radius-sm);
+    font-size: 18px;
+}
+
+.record-count {
+    background: var(--border);
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+/* Botões */
+.btn {
+    height: 44px;
+    padding: 0 20px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    text-decoration: none;
+    border: 1px solid transparent;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.btn-primary { background: var(--primary); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+
+.btn-danger { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
+.btn-danger:hover { background: var(--danger); color: #fff; }
+
+.btn-light { background: var(--surface); border-color: var(--border); color: var(--text-muted); }
+.btn-light:hover { background: var(--bg-body); color: var(--text-main); }
+
+/* === KPI BENTO GRID === */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+}
+
+.kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.kpi-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.kpi-icon-wrapper {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+}
+
+.kpi-purple .kpi-icon-wrapper { background: var(--purple-bg); color: var(--purple); }
+.kpi-blue .kpi-icon-wrapper { background: var(--primary-light); color: var(--primary); }
+.kpi-green .kpi-icon-wrapper { background: var(--success-bg); color: var(--success); }
+.kpi-orange .kpi-icon-wrapper { background: var(--warning-bg); color: var(--warning); }
+
+.kpi-info { display: flex; flex-direction: column; }
+.kpi-label { font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
+.kpi-value { font-size: 22px; font-weight: 700; color: var(--text-main); line-height: 1.2; margin-top: 4px; }
+.kpi-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; font-weight: 500;}
+
+/* === FILTROS === */
+.filters-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+}
+
+.filters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    align-items: end;
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.form-control {
+    width: 100%;
+    height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    color: var(--text-main);
+    background: var(--bg-body);
+    transition: var(--transition);
+}
+
+.form-control:focus {
+    background: var(--surface);
+    border-color: var(--primary);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.filter-actions-group {
+    display: flex;
+    gap: 12px;
+}
+
+/* Customização Select2 para altura 44px */
+.select2-container .select2-selection--single {
+    height: 44px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius-sm) !important;
+    background-color: var(--bg-body) !important;
+    display: flex;
+    align-items: center;
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+    color: var(--text-main) !important;
+    font-size: 14px;
+    padding-left: 12px;
+}
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 42px !important;
+}
+
+/* === TABELA === */
+.table-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.table-responsive { overflow-x: auto; }
+
+table { width: 100%; border-collapse: collapse; text-align: left; }
+
+thead th {
+    background-color: var(--bg-body);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+tbody td {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+tbody tr { transition: var(--transition); }
+tbody tr:hover { background-color: var(--bg-body); }
+tbody tr:last-child td { border-bottom: none; }
+
+/* Elementos da Tabela */
+.item-cell { display: flex; flex-direction: column; gap: 4px; }
+.item-name { font-weight: 600; color: var(--text-main); font-size: 14px; }
+.item-serial { font-size: 12px; color: var(--text-muted); }
+
+/* Badges estilo Pill */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+.badge.green { background: var(--success-bg); color: var(--success); }
+.badge.blue { background: var(--primary-light); color: var(--primary); }
+.badge.orange { background: var(--warning-bg); color: var(--warning); }
+.badge.gray { background: var(--border); color: var(--text-muted); }
+
+/* Fluxo (Pílulas de Origem/Destino) */
+.flow-container { 
+    display: flex; 
+    align-items: center; 
+    gap: 8px; 
+    flex-wrap: wrap; 
+}
+.flow-tag { 
+    display: inline-flex;
+    align-items: center; 
+    gap: 6px; 
+    background: var(--bg-body); 
+    border: 1px solid var(--border); 
+    padding: 4px 10px; 
+    border-radius: var(--radius-sm); 
+    font-size: 12px; 
+    font-weight: 500;
+    color: var(--text-main);
+}
+.flow-arrow { color: var(--text-muted); font-size: 12px; }
+
+/* Avatar do Usuário Responsável */
+.user-cell { display: flex; align-items: center; gap: 12px; }
+.user-avatar {
+    width: 32px; height: 32px;
+    background: var(--primary-light);
+    color: var(--primary);
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600;
+}
+.user-name { font-size: 14px; font-weight: 500; color: var(--text-main); }
+
+/* Paginação */
+.pagination {
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+}
+.pagination-info { font-size: 13px; color: var(--text-muted); }
+.pagination-info strong { color: var(--text-main); }
+
+/* === RESPONSIVO === */
+@media (max-width: 992px) {
+    .filters-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 768px) {
+    .filters-grid { grid-template-columns: 1fr; }
+    .page-header { flex-direction: column; align-items: stretch; }
+    
+    /* Transformar tabela em Cards no Mobile */
+    table, thead, tbody, th, td, tr { display: block; }
+    thead tr { position: absolute; top: -9999px; left: -9999px; }
+    
+    tbody tr {
         border: 1px solid var(--border);
-        border-radius: var(--radius);
-        box-shadow: var(--shadow);
+        border-radius: var(--radius-md);
+        margin-bottom: 16px;
+        background: var(--surface);
+        padding: 16px;
+    }
+    
+    tbody td {
+        border: none;
+        border-bottom: 1px solid var(--bg-body);
         position: relative;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-    }
-
-    /* Barra de destaque lateral */
-    .kpi-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
-    .kpi-card.purple::before { background: #8b5cf6; }
-    .kpi-card.blue::before { background: var(--primary); }
-    .kpi-card.green::before { background: var(--success); }
-    .kpi-card.orange::before { background: var(--warning); }
-    .kpi-card.red::before { background: var(--danger); }
-
-    .kpi-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em; margin-bottom: 8px; }
-    .kpi-value { font-size: 1.75rem; font-weight: 800; color: var(--text-main); line-height: 1; }
-    .kpi-sub { font-size: 0.85rem; color: var(--text-secondary); margin-top: 6px; }
-
-    /* --- Barra de Filtros --- */
-    .filters-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 20px;
-        margin-bottom: 24px;
-        box-shadow: var(--shadow);
-    }
-
-    .filters-header {
+        padding: 12px 0;
+        text-align: right;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 20px; /* Aumentado espaço */
-        flex-wrap: wrap; /* Permite quebrar linha no mobile */
-        gap: 15px;
     }
-
-    .page-title {
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: var(--text-main);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        white-space: nowrap;
-    }
-
-    .record-count {
-        background: #f1f5f9;
-        color: var(--text-secondary);
-        padding: 4px 10px;
-        border-radius: 99px;
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-
-    .filters-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 16px;
-        align-items: end;
-    }
-
-    .form-group label {
-        display: block;
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: var(--text-secondary);
-        margin-bottom: 6px;
-    }
-
-    .form-control {
-        width: 100%;
-        height: 38px;
-        padding: 0 12px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        font-size: 0.9rem;
-        transition: all 0.2s;
-        box-sizing: border-box; /* Garante que o padding não estoure a largura */
-    }
-
-    .form-control:focus {
-        border-color: var(--primary);
-        outline: none;
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-    }
-
-    /* Container de Botões de Ação do Filtro */
-    .filter-actions-group {
-        display: flex;
-        gap: 10px;
-    }
-
-    /* Botões */
-    .btn {
-        height: 38px;
-        padding: 0 16px;
-        border-radius: var(--radius);
-        font-weight: 600;
-        font-size: 0.9rem;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        cursor: pointer;
-        text-decoration: none;
-        border: 1px solid transparent;
-        transition: all 0.2s;
-        white-space: nowrap;
-    }
-
-    .btn-primary { background: var(--primary); color: #fff; }
-    .btn-primary:hover { background: var(--primary-hover); }
+    tbody td:last-child { border-bottom: 0; padding-bottom: 0; }
     
-    .btn-light { background: #fff; border-color: var(--border); color: var(--text-secondary); }
-    .btn-light:hover { background: #f8fafc; color: var(--text-main); }
-
-    /* --- Tabela Responsiva (Enterprise) --- */
-    .table-container {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        box-shadow: var(--shadow);
-        overflow: hidden;
-    }
-
-    .table {
-        width: 100%;
-        border-collapse: collapse;
+    tbody td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        color: var(--text-muted);
         text-align: left;
     }
-
-    .table th {
-        background: #f8fafc;
-        padding: 12px 20px;
-        font-weight: 600;
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        color: var(--text-secondary);
-        border-bottom: 1px solid var(--border);
-    }
-
-    .table td {
-        padding: 16px 20px;
-        border-bottom: 1px solid var(--border);
-        vertical-align: middle;
-    }
-
-    .table tbody tr:hover { background-color: #fcfcfc; }
-    .table tbody tr:last-child td { border-bottom: none; }
-
-    /* Componentes da Tabela */
-    .item-name { font-weight: 600; color: var(--text-main); font-size: 0.95rem; }
-    .item-serial { font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px; }
-
-    /* Badges de Status */
-    .badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 4px 10px;
-        border-radius: 99px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        text-transform: uppercase;
-    }
-    .badge.green { background: #dcfce7; color: #166534; } 
-    .badge.blue { background: #dbeafe; color: #1e40af; } 
-    .badge.orange { background: #ffedd5; color: #9a3412; } 
-    .badge.gray { background: #f1f5f9; color: #475569; }
-
-    /* Fluxo (Origem > Destino) */
-    .flow-container { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .flow-tag { 
-        display: inline-flex; align-items: center; gap: 6px; 
-        background: #f8fafc; border: 1px solid var(--border); 
-        padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; color: var(--text-main);
-    }
-    .flow-arrow { color: var(--text-secondary); font-size: 0.8rem; }
-
-    .user-avatar {
-        width: 24px; height: 24px;
-        background: #e0e7ff; color: #4338ca;
-        border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 0.75rem; font-weight: 700;
-        margin-right: 8px;
-    }
-
-    /* Paginação */
-    .pagination {
-        padding: 16px 20px;
-        border-top: 1px solid var(--border);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: #fcfcfc;
-    }
-
-    /* Select2 Customization */
-    .select2-container .select2-selection--single { height: 38px; border: 1px solid var(--border); border-radius: var(--radius); display: flex; align-items: center; }
-    .select2-container--default .select2-selection--single .select2-selection__arrow { top: 6px; }
-    .select2-container--default .select2-selection--single .select2-selection__rendered { padding-left: 12px; color: var(--text-main); }
-
-    /* --- MOBILE RESPONSIVENESS (Ajustes Críticos) --- */
-    @media (max-width: 768px) {
-        .page-container { padding: 12px; } /* Menos padding lateral */
-        
-        .filters-header { 
-            flex-direction: column; 
-            align-items: stretch; /* Ocupar toda a largura */
-            gap: 12px;
-        }
-        
-        .filters-header .btn {
-            width: 100%; /* Botão Nova Movimentação Full Width */
-        }
-
-        .filter-actions-group {
-            margin-top: 10px;
-        }
-        
-        .filter-actions-group .btn {
-            flex: 1; /* Botões dividem o espaço (50%/50%) */
-        }
-        
-        /* Esconde cabeçalho da tabela */
-        .table thead { display: none; }
-        
-        /* Transforma linhas em blocos (cards) */
-        .table, .table tbody, .table tr, .table td { display: block; width: 100%; box-sizing: border-box; }
-        
-        .table tr {
-            margin-bottom: 16px;
-            background: #fff;
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            padding: 16px;
-        }
-
-        .table td {
-            padding: 8px 0;
-            border-bottom: 1px solid #f1f5f9;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            text-align: right;
-        }
-
-        .table td:last-child { border-bottom: none; margin-top: 8px; justify-content: flex-end; }
-
-        /* Adiciona Label via CSS (data-label) */
-        .table td::before {
-            content: attr(data-label);
-            font-weight: 600;
-            color: var(--text-secondary);
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            text-align: left;
-            margin-right: auto;
-        }
-        
-        .flow-container { justify-content: flex-end; }
-    }
+    
+    .flow-container { justify-content: flex-end; }
+}
 </style>
 
 <div class="page-container">
 
+    <div class="page-header">
+        <h1 class="page-title">
+            <i class="fa fa-arrow-right-arrow-left"></i> 
+            Movimentações
+            <span class="record-count">{{ total }}</span>
+        </h1>
+        <a href="{% url 'movimentacao_create' %}" class="btn btn-primary">
+            <i class="fa fa-plus"></i> Nova Movimentação
+        </a>
+    </div>
+
     <div class="kpi-grid">
-        <div class="kpi-card purple">
-            <div class="kpi-label">Movimentações Hoje</div>
-            <div class="kpi-value">{{ kpi.hoje }}</div>
-            <div class="kpi-sub">Registros do dia</div>
+        <div class="kpi-card kpi-purple">
+            <div class="kpi-icon-wrapper"><i class="fa fa-calendar-day"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Movimentações Hoje</span>
+                <span class="kpi-value">{{ kpi.hoje }}</span>
+                <span class="kpi-sub">Registros do dia</span>
+            </div>
         </div>
-        <div class="kpi-card blue">
-            <div class="kpi-label">Mais Movimentado</div>
-            <div class="kpi-value" style="font-size: 1.2rem; margin-top:8px; line-height:1.4">{{ kpi.top_item|truncatechars:20 }}</div>
-            <div class="kpi-sub">{{ kpi.top_item_qtd }} movimentos</div>
+        <div class="kpi-card kpi-blue">
+            <div class="kpi-icon-wrapper"><i class="fa fa-fire"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Mais Movimentado</span>
+                <span class="kpi-value" style="font-size: 18px;">{{ kpi.top_item|truncatechars:20 }}</span>
+                <span class="kpi-sub">{{ kpi.top_item_qtd }} movimentos</span>
+            </div>
         </div>
-        <div class="kpi-card green">
-            <div class="kpi-label">Entradas</div>
-            <div class="kpi-value">{{ kpi.entrada }}</div>
-            <div class="kpi-sub">Total acumulado</div>
+        <div class="kpi-card kpi-green">
+            <div class="kpi-icon-wrapper"><i class="fa fa-arrow-down"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Entradas</span>
+                <span class="kpi-value">{{ kpi.entrada }}</span>
+                <span class="kpi-sub">Total acumulado</span>
+            </div>
         </div>
-        <div class="kpi-card orange">
-            <div class="kpi-label">Saídas / Baixas</div>
-            <div class="kpi-value">{{ kpi.saida }}</div>
-            <div class="kpi-sub">Itens retirados</div>
+        <div class="kpi-card kpi-orange">
+            <div class="kpi-icon-wrapper"><i class="fa fa-arrow-up"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Saídas / Baixas</span>
+                <span class="kpi-value">{{ kpi.saida }}</span>
+                <span class="kpi-sub">Itens retirados</span>
+            </div>
         </div>
     </div>
 
     <div class="filters-card">
-        <div class="filters-header">
-            <div class="page-title">
-                <i class="fa fa-history" style="color:var(--primary)"></i> Histórico de Movimentações
-                <span class="record-count">{{ total }}</span>
-            </div>
-            <a href="{% url 'movimentacao_create' %}" class="btn btn-primary">
-                <i class="fa fa-plus"></i> Nova Movimentação
-            </a>
-        </div>
-
         <form method="get" id="filterForm" class="filters-grid" autocomplete="off">
-            <div>
+            <div class="form-group">
                 <label>Buscar Item</label>
                 <input type="text" name="q" value="{{ f_q }}" class="form-control" placeholder="Nome do item...">
             </div>
             
-            <div>
+            <div class="form-group">
                 <label>Data Início</label>
                 <input type="date" name="data_inicio" value="{{ f_ini }}" class="form-control">
             </div>
             
-            <div>
+            <div class="form-group">
                 <label>Data Fim</label>
                 <input type="date" name="data_fim" value="{{ f_fim }}" class="form-control">
             </div>
 
-            <div>
+            <div class="form-group">
                 <label>Tipo</label>
                 <select name="tipo" class="select2-filter" style="width: 100%;">
-                    <option value="">Todos</option>
+                    <option value="">Todos os Tipos</option>
                     {% for value, label in tipos_choices %}
                         <option value="{{ value }}" {% if f_tipo == value %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
             </div>
 
-            <div>
-                <label>Usuário</label>
+            <div class="form-group">
+                <label>Usuário Responsável</label>
                 <input type="text" name="usuario" value="{{ f_user }}" class="form-control" placeholder="Nome...">
             </div>
             
-            <div>
-                <label>Nº Série</label>
+            <div class="form-group">
+                <label>Nº de Série</label>
                 <input type="text" name="numero_serie" value="{{ f_serie }}" class="form-control" placeholder="S/N...">
             </div>
             
-            <div>
+            <div class="form-group">
                 <label>Centro de Custo</label>
                 <input type="text" name="centro_custo" value="{{ f_cc }}" class="form-control" placeholder="Código/Depto...">
             </div>
             
-            <div>
+            <div class="form-group">
                 <label>&nbsp;</label>
                 <div class="filter-actions-group">
                     <button type="submit" class="btn btn-primary" style="flex: 2;">
                         <i class="fa fa-filter"></i> Filtrar
                     </button>
-                    
-                    <button type="button" id="btnPdf" class="btn btn-danger" style="flex: 1; background-color: #ef4444; border-color: #ef4444; color: white;" title="Exportar PDF">
-                        <i class="fa fa-file-pdf"></i> PDF
+                    <button type="button" id="btnPdf" class="btn btn-danger" style="flex: 1;" title="Exportar PDF">
+                        <i class="fa fa-file-pdf"></i>
                     </button>
-                    
                     <button type="button" id="btnClear" class="btn btn-light" style="flex: 1;" title="Limpar Filtros">
                         <i class="fa fa-eraser"></i>
                     </button>
@@ -419,112 +486,118 @@
         </form>
     </div>
 
-    <div class="table-container">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Item / Série</th>
-                    <th>Tipo</th>
-                    <th>Fluxo (Origem <i class="fa fa-arrow-right"></i> Destino)</th>
-                    <th>Responsável</th>
-                    <th>Data</th>
-                    <th style="text-align:right;">Ações</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for mov in movimentacoes %}
-                <tr>
-                    <td data-label="Item">
-                        <div class="item-name">{{ mov.item.nome }}</div>
-                        <div class="item-serial">{{ mov.item.numero_serie|default:"-" }}</div>
-                    </td>
-                    
-                    <td data-label="Tipo">
-                        {% if mov.tipo_movimentacao == 'entrada' %}
-                            <span class="badge green">Entrada</span>
-                        {% elif 'transferencia' in mov.tipo_movimentacao %}
-                            <span class="badge blue">Transferência</span>
-                        {% elif 'manutencao' in mov.tipo_movimentacao %}
-                            <span class="badge orange">Manutenção</span>
-                        {% elif mov.tipo_movimentacao == 'baixa' %}
-                            <span class="badge orange">Baixa</span>
-                        {% else %}
-                            <span class="badge gray">{{ mov.get_tipo_movimentacao_display }}</span>
-                        {% endif %}
-                    </td>
-
-                    <td data-label="Fluxo">
-                        <div class="flow-container">
-                            <span class="flow-tag">
-                                {% if mov.centro_custo_origem %}
-                                    <i class="fa fa-building" style="color:var(--text-secondary)"></i> {{ mov.centro_custo_origem.numero }}
-                                {% elif mov.localidade_origem %}
-                                    <i class="fa fa-map-marker-alt" style="color:var(--text-secondary)"></i> {{ mov.localidade_origem.local }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </span>
-                            
-                            <i class="fa fa-arrow-right flow-arrow"></i>
-
-                            <span class="flow-tag" style="font-weight:600">
-                                {% if mov.centro_custo_destino %}
-                                    {{ mov.centro_custo_destino.departamento }}
-                                {% elif mov.localidade_destino %}
-                                    {{ mov.localidade_destino.local }}
-                                {% elif mov.fornecedor_manutencao %}
-                                    {{ mov.fornecedor_manutencao.nome }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </span>
-                        </div>
-                    </td>
-
-                    <td data-label="Responsável">
-                        {% if mov.usuario %}
-                            <div style="display:flex; align-items:center;">
-                                <div class="user-avatar">{{ mov.usuario.nome|slice:":1" }}</div>
-                                <span>{{ mov.usuario.nome }}</span>
+    <div class="table-card">
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 25%;">Item / Série</th>
+                        <th>Tipo</th>
+                        <th>Fluxo <span style="text-transform: none; color: var(--border); margin: 0 4px;">(Origem <i class="fa fa-arrow-right" style="font-size: 10px;"></i> Destino)</span></th>
+                        <th>Responsável</th>
+                        <th>Data</th>
+                        <th style="text-align:right;">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mov in movimentacoes %}
+                    <tr>
+                        <td data-label="Item">
+                            <div class="item-cell">
+                                <span class="item-name">{{ mov.item.nome }}</span>
+                                <span class="item-serial"><i class="fa fa-barcode" style="margin-right: 4px;"></i> {{ mov.item.numero_serie|default:"S/N não registrado" }}</span>
                             </div>
-                        {% else %}
-                            <span style="color:var(--text-secondary)">-</span>
-                        {% endif %}
-                    </td>
+                        </td>
+                        
+                        <td data-label="Tipo">
+                            {% if mov.tipo_movimentacao == 'entrada' %}
+                                <span class="badge green">Entrada</span>
+                            {% elif 'transferencia' in mov.tipo_movimentacao %}
+                                <span class="badge blue">Transferência</span>
+                            {% elif 'manutencao' in mov.tipo_movimentacao %}
+                                <span class="badge orange">Manutenção</span>
+                            {% elif mov.tipo_movimentacao == 'baixa' %}
+                                <span class="badge orange">Baixa</span>
+                            {% else %}
+                                <span class="badge gray">{{ mov.get_tipo_movimentacao_display }}</span>
+                            {% endif %}
+                        </td>
 
-                    <td data-label="Data">
-                        {{ mov.created_at|date:"d/m/Y H:i" }}
-                    </td>
+                        <td data-label="Fluxo">
+                            <div class="flow-container">
+                                <span class="flow-tag" title="Origem">
+                                    {% if mov.centro_custo_origem %}
+                                        <i class="fa fa-building" style="color:var(--text-muted)"></i> {{ mov.centro_custo_origem.numero }}
+                                    {% elif mov.localidade_origem %}
+                                        <i class="fa fa-map-marker-alt" style="color:var(--text-muted)"></i> {{ mov.localidade_origem.local }}
+                                    {% else %}
+                                        <i class="fa fa-minus" style="color:var(--text-muted)"></i>
+                                    {% endif %}
+                                </span>
+                                
+                                <i class="fa fa-arrow-right flow-arrow"></i>
 
-                    <td data-label="Ações" style="text-align:right;">
-                        <a href="{% url 'movimentacao_detail' mov.pk %}" class="btn btn-light" style="padding: 6px 12px;" title="Ver Detalhes">
-                            <i class="fa fa-eye"></i>
-                        </a>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="6" style="text-align:center; padding: 40px; color:var(--text-secondary);">
-                        <i class="fa fa-inbox" style="font-size:2rem; margin-bottom:10px; display:block; opacity:0.3;"></i>
-                        Nenhuma movimentação encontrada com estes filtros.
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                                <span class="flow-tag" style="background-color: var(--primary-light); border-color: var(--primary-light); font-weight: 600;" title="Destino">
+                                    {% if mov.centro_custo_destino %}
+                                        {{ mov.centro_custo_destino.departamento }}
+                                    {% elif mov.localidade_destino %}
+                                        {{ mov.localidade_destino.local }}
+                                    {% elif mov.fornecedor_manutencao %}
+                                        {{ mov.fornecedor_manutencao.nome }}
+                                    {% else %}
+                                        <i class="fa fa-minus" style="color:var(--text-muted)"></i>
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </td>
+
+                        <td data-label="Responsável">
+                            {% if mov.usuario %}
+                                <div class="user-cell">
+                                    <div class="user-avatar">{{ mov.usuario.nome|slice:":1"|upper }}</div>
+                                    <span class="user-name">{{ mov.usuario.nome }}</span>
+                                </div>
+                            {% else %}
+                                <span style="color:var(--text-muted)">-</span>
+                            {% endif %}
+                        </td>
+
+                        <td data-label="Data">
+                            <div style="color: var(--text-main); font-weight: 500;">{{ mov.created_at|date:"d/m/Y" }}</div>
+                            <div style="color: var(--text-muted); font-size: 12px;">{{ mov.created_at|date:"H:i" }}</div>
+                        </td>
+
+                        <td data-label="Ações" style="text-align:right;">
+                            <a href="{% url 'movimentacao_detail' mov.pk %}" class="btn btn-light" style="padding: 0 14px; height: 36px;" title="Ver Detalhes">
+                                <i class="fa fa-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" style="text-align:center; padding: 64px 20px;">
+                            <i class="fa fa-arrow-right-arrow-left" style="font-size: 40px; color: var(--border); margin-bottom: 16px; display: block;"></i>
+                            <h3 style="color: var(--text-main); font-weight: 600; font-size: 16px; margin: 0 0 8px 0;">Nenhuma movimentação</h3>
+                            <p style="color: var(--text-muted); margin: 0;">Altere os filtros ou registre uma nova movimentação.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
 
         {% if page_obj.has_other_pages %}
         <div class="pagination">
-            <span style="color:var(--text-secondary)">
-                Página <strong>{{ page_obj.number }}</strong> de {{ page_obj.paginator.num_pages }}
+            <span class="pagination-info">
+                Página <strong>{{ page_obj.number }}</strong> de <strong>{{ page_obj.paginator.num_pages }}</strong>
             </span>
             <div style="display:flex; gap:8px;">
                 {% if page_obj.has_previous %}
-                    <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="btn btn-light"><i class="fa fa-chevron-left"></i></a>
+                    <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="btn btn-light" style="padding: 0 14px; height: 36px;"><i class="fa fa-chevron-left"></i></a>
                 {% endif %}
                 
                 {% if page_obj.has_next %}
-                    <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="btn btn-light"><i class="fa fa-chevron-right"></i></a>
+                    <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="btn btn-light" style="padding: 0 14px; height: 36px;"><i class="fa fa-chevron-right"></i></a>
                 {% endif %}
             </div>
         </div>
@@ -535,21 +608,24 @@
 
 <script>
 $(document).ready(function() {
-    // Inicializa Select2
-    $('.select2-filter').select2({ minimumResultsForSearch: Infinity });
+    // UI moderna para o Select2
+    $('.select2-filter').select2({ 
+        minimumResultsForSearch: Infinity,
+        width: '100%'
+    });
 
-    // Botão Limpar
-    $('#btnClear').on('click', function() { window.location.href = window.location.pathname; });
+    // Ações dos botões
+    $('#btnClear').on('click', function() { 
+        window.location.href = window.location.pathname; 
+    });
 
-    // Botão PDF - Redireciona com os filtros atuais
     $('#btnPdf').on('click', function() {
         const params = $('#filterForm').serialize();
-        // Certifique-se de adicionar a rota no seu urls.py com o nome 'movimentacao_export_pdf'
         const url = "{% url 'movimentacao_export_pdf' %}?" + params;
         window.open(url, '_blank');
     });
 
-    // Debounce na busca de texto
+    // Debounce Suave na busca de texto (melhora a UX)
     let timeout = null;
     $('input[type="text"]').on('keyup', function() {
         if(this.name === 'q') {
@@ -559,5 +635,4 @@ $(document).ready(function() {
     });
 });
 </script>
-
 {% endblock %}
