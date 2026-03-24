@@ -1,222 +1,510 @@
 {% extends 'base.html' %}
 {% load static %}
+
 {% block title %}Gestão de Ativos Corporativos{% endblock %}
 
 {% block content %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <style>
+/* === VARIÁVEIS SAAS MODERN (Estilo Invigate) === */
 :root {
-  /* Paleta Enterprise */
-  --bg-body: #f8fafc;
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  --border: #e2e8f0;
-  --primary: #2563eb;
-  --primary-light: #eff6ff;
-  
-  /* Status Colors */
-  --success-bg: #dcfce7; --success-text: #166534;
-  --warning-bg: #fef3c7; --warning-text: #92400e;
-  --danger-bg: #fee2e2;  --danger-text: #b91c1c;
-  --info-bg: #e0f2fe;    --info-text: #075985;
-  
-  --radius: 8px;
-  --ctrl-height: 40px;
+    --bg-body: #f8fafc;        /* Fundo principal neutro */
+    --surface: #ffffff;        /* Fundo de cards */
+    --border: #e2e8f0;         /* Linhas e separadores suaves */
+    
+    --text-main: #0f172a;      /* Alta legibilidade para textos */
+    --text-muted: #64748b;     /* Textos secundários */
+    
+    --primary: #2563eb;        /* Azul Ação Principal */
+    --primary-hover: #1d4ed8;
+    --primary-light: #eff6ff;
+    
+    --success: #10b981; --success-bg: #ecfdf5;
+    --warning: #f59e0b; --warning-bg: #fffbeb;
+    --danger:  #ef4444; --danger-bg:  #fef2f2;
+    --info:    #3b82f6; --info-bg:    #eff6ff;
+    
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.05);
+    
+    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --ctrl-height: 44px; /* Altura padrão para inputs SaaS */
 }
 
 * { box-sizing: border-box; outline: none; }
-body { background: var(--bg-body); color: var(--text-main); font-family: 'Inter', system-ui, sans-serif; }
 
-.page-container { max-width: 1400px; margin: 24px auto; padding: 0 24px; display: flex; flex-direction: column; gap: 24px; }
+body { 
+    background-color: var(--bg-body); 
+    color: var(--text-main); 
+    font-family: 'Inter', sans-serif; 
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+}
 
-/* KPI Grid */
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 8px; }
+.page-container { 
+    max-width: 1400px; 
+    margin: 0 auto; 
+    padding: 24px; 
+    display: flex; 
+    flex-direction: column; 
+    gap: 24px; 
+}
 
-/* Container Principal */
-.shell { background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); overflow: hidden; }
+/* === HEADER E BOTÕES === */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+}
 
-/* Header */
-.list-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; background: #fff; }
-.list-title h1 { font-size: 1.25rem; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 10px; }
-.meta-badge { font-size: 0.75rem; color: var(--primary); background: var(--primary-light); padding: 4px 10px; border-radius: 99px; }
+.page-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
 
-/* Botões */
-.btn { display: inline-flex; align-items: center; gap: 8px; height: var(--ctrl-height); padding: 0 16px; font-size: 0.875rem; font-weight: 600; border-radius: var(--radius); cursor: pointer; text-decoration: none; border: 1px solid transparent; transition: all 0.2s; }
-.btn-primary { background: var(--primary); color: #fff; }
-.btn-primary:hover { background: #1d4ed8; }
-.btn-outline { background: #fff; border-color: var(--border); color: var(--text-main); }
-.btn-outline:hover { background: var(--bg-body); border-color: #cbd5e1; }
+.page-title i {
+    color: var(--primary);
+    background: var(--primary-light);
+    padding: 8px;
+    border-radius: var(--radius-sm);
+    font-size: 18px;
+}
 
-/* Filtros */
-.filters-section { background: #f8fafc; border-bottom: 1px solid var(--border); padding: 20px 24px; }
-.filters-header { display: flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer; margin-bottom: 16px; user-select: none; }
-.filters-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; align-items: end; }
+.meta-badge {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--border);
+    padding: 4px 10px;
+    border-radius: 9999px;
+    font-weight: 600;
+}
 
-/* Grid Classes */
-.col-4 { grid-column: span 4; }
-.col-3 { grid-column: span 3; }
-.col-2 { grid-column: span 2; }
-.col-1 { grid-column: span 1; }
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
 
-.input-group label { display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; }
-.form-ctrl { width: 100%; height: var(--ctrl-height); padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.9rem; background: #fff; }
-.form-ctrl:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+.btn {
+    height: var(--ctrl-height);
+    padding: 0 20px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    text-decoration: none;
+    border: 1px solid transparent;
+    transition: var(--transition);
+}
 
-/* Ajustes Select2 */
-.select2-container .select2-selection--single { height: var(--ctrl-height) !important; border: 1px solid var(--border) !important; border-radius: var(--radius) !important; display: flex; align-items: center; }
-.select2-container--default .select2-selection--single .select2-selection__arrow { top: 7px !important; }
-.select2-container--default .select2-selection--single .select2-selection__rendered { line-height: normal !important; padding-left: 12px; color: var(--text-main); }
+.btn-primary { 
+    background: var(--primary); 
+    color: #fff; 
+    box-shadow: var(--shadow-sm);
+}
+.btn-primary:hover { 
+    background: var(--primary-hover); 
+    transform: translateY(-1px); 
+    box-shadow: var(--shadow-md); 
+}
 
-/* Chips */
-.chips-bar { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
-.chip { font-size: 0.8rem; font-weight: 500; padding: 4px 12px; border-radius: 99px; background: #fff; border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; text-decoration: none; }
-.chip.active { background: var(--primary-light); color: var(--primary); border-color: var(--primary); font-weight: 600; }
+.btn-outline { 
+    background: var(--surface); 
+    border-color: var(--border); 
+    color: var(--text-muted); 
+}
+.btn-outline:hover { 
+    background: var(--bg-body); 
+    color: var(--text-main); 
+}
 
-/* Tabela */
-.table-container { position: relative; width: 100%; overflow-x: auto; min-height: 300px; background: #fff; }
-.table-loading { position: absolute; inset: 0; background: rgba(255,255,255,0.8); backdrop-filter: blur(2px); z-index: 10; display: none; align-items: center; justify-content: center; color: var(--primary); font-weight: 600; flex-direction: column; gap: 10px; }
+/* Formulário de Tamanho da Página no Header */
+.size-form select {
+    height: var(--ctrl-height);
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: 'Inter', sans-serif;
+    color: var(--text-main);
+    background: var(--surface);
+    cursor: pointer;
+}
+
+/* === KPI GRID (Estilo Bento) === */
+.kpi-grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); 
+    gap: 20px; 
+}
+/* Obs: Certifique-se de que o _kpis.html usa os wrappers modernos das views anteriores (kpi-card, kpi-icon-wrapper, etc) */
+
+/* === FILTROS AVANÇADOS === */
+.filters-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.filters-header {
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    color: var(--text-main);
+    cursor: pointer;
+    user-select: none;
+    font-size: 15px;
+    list-style: none; /* Remove seta nativa do details em alguns browsers */
+}
+.filters-header::-webkit-details-marker { display: none; }
+.filters-header i { color: var(--text-muted); transition: transform 0.3s; }
+.filters-section[open] .filters-header i { transform: rotate(180deg); color: var(--primary); }
+
+.filters-body {
+    padding: 0 24px 24px 24px;
+    border-top: 1px solid var(--border);
+}
+
+.filters-grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+    gap: 16px; 
+    align-items: end;
+    margin-top: 20px;
+}
+
+.input-group label { 
+    display: block; 
+    font-size: 13px; 
+    font-weight: 600; 
+    color: var(--text-muted); 
+    margin-bottom: 8px; 
+}
+
+.form-ctrl { 
+    width: 100%; 
+    height: var(--ctrl-height); 
+    padding: 0 16px; 
+    border: 1px solid var(--border); 
+    border-radius: var(--radius-sm); 
+    font-size: 14px; 
+    background: var(--bg-body); 
+    color: var(--text-main);
+    transition: var(--transition);
+    font-family: 'Inter', sans-serif;
+}
+.form-ctrl:focus { 
+    border-color: var(--primary); 
+    box-shadow: 0 0 0 3px var(--primary-light); 
+    background: var(--surface);
+}
+
+/* Customização do Select2 */
+.select2-container .select2-selection--single { 
+    height: var(--ctrl-height) !important; 
+    border: 1px solid var(--border) !important; 
+    border-radius: var(--radius-sm) !important; 
+    background-color: var(--bg-body) !important;
+    display: flex; 
+    align-items: center; 
+}
+.select2-container--default .select2-selection--single .select2-selection__arrow { 
+    height: 42px !important; right: 8px !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered { 
+    padding-left: 16px; color: var(--text-main) !important; font-size: 14px;
+}
+
+/* Chips de Filtro Rápido */
+.chips-bar { 
+    display: flex; 
+    gap: 10px; 
+    margin-top: 20px; 
+    flex-wrap: wrap; 
+}
+.chip { 
+    font-size: 13px; 
+    font-weight: 500; 
+    padding: 6px 14px; 
+    border-radius: 9999px; 
+    background: var(--bg-body); 
+    border: 1px solid var(--border); 
+    color: var(--text-muted); 
+    cursor: pointer; 
+    text-decoration: none;
+    transition: var(--transition);
+}
+.chip:hover { background: var(--border); color: var(--text-main); }
+.chip.active { 
+    background: var(--primary-light); 
+    color: var(--primary); 
+    border-color: var(--primary-light); 
+    font-weight: 600; 
+}
+
+/* === TABELA === */
+.table-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    position: relative;
+    min-height: 300px;
+}
+
+.table-responsive { overflow-x: auto; }
+
+.table-loading { 
+    position: absolute; inset: 0; 
+    background: rgba(255, 255, 255, 0.7); 
+    backdrop-filter: blur(2px); 
+    z-index: 10; 
+    display: none; 
+    align-items: center; 
+    justify-content: center; 
+    color: var(--primary); 
+}
 .table-loading.active { display: flex; }
 
-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
-th { background: #f1f5f9; color: var(--text-muted); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left; position: sticky; top: 0; z-index: 2; cursor: pointer; }
-td { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 0.875rem; vertical-align: middle; }
-tr:hover td { background: #f8fafc; }
+table { width: 100%; border-collapse: collapse; text-align: left; }
 
-/* Badges */
-.badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
-.st-ativo { background: var(--success-bg); color: var(--success-text); }
-.st-backup { background: var(--info-bg); color: var(--info-text); }
-.st-manutencao { background: var(--warning-bg); color: var(--warning-text); }
-.st-defeito { background: var(--danger-bg); color: var(--danger-text); }
+thead th { 
+    background-color: var(--bg-body); 
+    color: var(--text-muted); 
+    font-size: 12px; 
+    font-weight: 600; 
+    text-transform: uppercase; 
+    letter-spacing: 0.5px;
+    padding: 16px 20px; 
+    border-bottom: 1px solid var(--border); 
+    cursor: pointer;
+    transition: var(--transition);
+}
+thead th:hover { background-color: var(--border); color: var(--text-main); }
 
-/* Modal */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: none; align-items: center; justify-content: center; }
-.modal-content { background: #fff; padding: 24px; border-radius: 12px; width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+tbody td { 
+    padding: 16px 20px; 
+    border-bottom: 1px solid var(--border); 
+    font-size: 14px; 
+    vertical-align: middle; 
+}
+tbody tr { transition: var(--transition); }
+tbody tr:hover { background-color: var(--bg-body); }
+tbody tr:last-child td { border-bottom: none; }
 
-/* Responsivo */
-@media (max-width: 1024px) { .filters-grid { grid-template-columns: repeat(6, 1fr); } .col-4, .col-3, .col-2 { grid-column: span 3; } }
-@media (max-width: 640px) { .filters-grid { grid-template-columns: 1fr; } .col-4, .col-3, .col-2, .col-1 { grid-column: span 1; } }
+/* Status Badges */
+.badge { 
+    display: inline-flex; 
+    align-items: center; 
+    padding: 4px 12px; 
+    border-radius: 9999px; 
+    font-size: 12px; 
+    font-weight: 600; 
+}
+.badge::before { content: ''; display: block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; }
+
+.st-ativo { background: var(--success-bg); color: var(--success); }
+.st-ativo::before { background-color: var(--success); }
+
+.st-backup { background: var(--info-bg); color: var(--info); }
+.st-backup::before { background-color: var(--info); }
+
+.st-manutencao { background: var(--warning-bg); color: var(--warning); }
+.st-manutencao::before { background-color: var(--warning); }
+
+.st-defeito { background: var(--danger-bg); color: var(--danger); }
+.st-defeito::before { background-color: var(--danger); }
+
+/* Paginação Embutida */
+.list-footer {
+    padding: 16px 24px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* === MODAL SAAS === */
+.modal-overlay { 
+    position: fixed; inset: 0; 
+    background: rgba(15, 23, 42, 0.4); 
+    backdrop-filter: blur(4px);
+    z-index: 9999; 
+    display: none; 
+    align-items: center; 
+    justify-content: center; 
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.modal-overlay.show { display: flex; opacity: 1; }
+.modal-content { 
+    background: var(--surface); 
+    padding: 32px; 
+    border-radius: var(--radius-md); 
+    width: 90%; 
+    max-width: 440px; 
+    box-shadow: var(--shadow-md);
+    transform: scale(0.95);
+    transition: transform 0.3s ease;
+}
+.modal-overlay.show .modal-content { transform: scale(1); }
+
+.modal-header-flex { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.modal-icon { width: 40px; height: 40px; border-radius: 50%; background: var(--danger-bg); color: var(--danger); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.modal-title { font-size: 18px; font-weight: 600; color: var(--text-main); margin: 0; }
+
+@media (max-width: 768px) {
+    .page-header { flex-direction: column; align-items: stretch; }
+    .header-actions { flex-wrap: wrap; justify-content: space-between; }
+    .size-form { width: 100%; display: flex; }
+    .size-form select { flex: 1; }
+}
 </style>
 
 <div class="page-container">
   
+  <div class="page-header">
+    <h1 class="page-title">
+      <i class="fa fa-desktop"></i>
+      Ativos Cadastrados
+      <span class="meta-badge" id="countResults">{{ filtered_total }}</span>
+    </h1>
+
+    <div class="header-actions">
+      <form id="sizeForm" class="size-form">
+         {% for key, val in request.GET.items %}
+            {% if key != 'pp' and key != 'page' %}<input type="hidden" name="{{ key }}" value="{{ val }}">{% endif %}
+         {% endfor %}
+         <select name="pp" id="pp" onchange="refreshList({page:1})">
+           <option value="10" {% if per_page == 10 %}selected{% endif %}>10 por pág.</option>
+           <option value="20" {% if per_page == 20 %}selected{% endif %}>20 por pág.</option>
+           <option value="50" {% if per_page == 50 %}selected{% endif %}>50 por pág.</option>
+         </select>
+      </form>
+
+      <a class="btn btn-primary" href="{% url 'cadastrar_equipamento' %}">
+        <i class="fa fa-plus"></i> Novo Ativo
+      </a>
+      
+      {% with qs=request.GET.urlencode %}
+      <a class="btn btn-outline" href="{% url 'equipamentos_exportar' %}{% if qs %}?{{ qs }}{% endif %}" title="Exportar para Excel">
+        <i class="fa fa-file-excel"></i>
+      </a>
+      {% endwith %}
+    </div>
+  </div>
+
   <div id="kpisWrap" class="kpi-grid">
     {% include "front/equipamentos/_kpis.html" %}
   </div>
 
-  <div class="shell">
-    <div class="list-header">
-      <div class="list-title">
-        <h1>
-          <i class="fa fa-layer-group" style="color:var(--primary)"></i>
-          Ativos Cadastrados
-          <span class="meta-badge" id="countResults">{{ filtered_total }}</span>
-        </h1>
-      </div>
-
-      <div style="display:flex; gap:10px; align-items:center;">
-        <form id="sizeForm">
-           {% for key, val in request.GET.items %}
-              {% if key != 'pp' and key != 'page' %}<input type="hidden" name="{{ key }}" value="{{ val }}">{% endif %}
-           {% endfor %}
-           <select name="pp" id="pp" class="form-ctrl" style="width:auto; cursor:pointer;" onchange="refreshList({page:1})">
-             <option value="10" {% if per_page == 10 %}selected{% endif %}>10 linhas</option>
-             <option value="20" {% if per_page == 20 %}selected{% endif %}>20 linhas</option>
-             <option value="50" {% if per_page == 50 %}selected{% endif %}>50 linhas</option>
-           </select>
-        </form>
-
-        <a class="btn btn-primary" href="{% url 'cadastrar_equipamento' %}"><i class="fa fa-plus"></i> Novo</a>
+  <details class="filters-section" {% if request.GET %}open{% endif %}>
+    <summary class="filters-header"><i class="fa fa-sliders"></i> Filtros de Busca Avançada</summary>
+    
+    <div class="filters-body">
+      <form class="filters-grid" id="filtrosForm" onsubmit="event.preventDefault(); refreshList({page:1});">
         
-        {% with qs=request.GET.urlencode %}
-        <a class="btn btn-outline" href="{% url 'equipamentos_exportar' %}{% if qs %}?{{ qs }}{% endif %}"><i class="fa fa-file-excel"></i></a>
+        <div class="input-group">
+          <label>Nome do Ativo</label>
+          <input type="text" name="nome" id="filtro-nome" class="form-ctrl" placeholder="Pesquisar..." value="{{ request.GET.nome|default:'' }}">
+        </div>
+
+        <div class="input-group">
+          <label>Nº de Série (S/N)</label>
+          <input type="text" name="numero_serie" id="filtro-num-serie" class="form-ctrl" placeholder="Ex: SN123..." value="{{ request.GET.numero_serie|default:'' }}">
+        </div>
+
+        <div class="input-group">
+          <label>Categoria</label>
+          <select name="subtipo" id="filtro-subtipo" class="form-ctrl select2-enable">
+            <option value="">Todas as Categorias</option>
+            {% for sub in subtipos %}
+              <option value="{{ sub.id }}" {% if request.GET.subtipo == sub.id|stringformat:"s" %}selected{% endif %}>{{ sub.nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="input-group">
+          <label>Status</label>
+          <select name="status" id="filtro-status" class="form-ctrl select2-enable">
+            <option value="">Todos os Status</option>
+            {% for code, label in status_choices %}
+              <option value="{{ code }}" {% if request.GET.status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="input-group">
+           <label>Fornecedor</label>
+           <input type="text" name="fornecedor" id="filtro-fornecedor" class="form-ctrl" placeholder="Buscar fornecedor..." value="{{ request.GET.fornecedor|default:'' }}">
+        </div>
+
+        <div class="input-group">
+           <label>Localidade</label>
+           <input type="text" name="localidade" id="filtro-localidade" class="form-ctrl" placeholder="Buscar localidade..." value="{{ request.GET.localidade|default:'' }}">
+        </div>
+
+        <div class="input-group">
+           <label>Centro de Custo</label>
+           <input type="text" name="centro_custo" id="filtro-centro-custo" class="form-ctrl" placeholder="Código ou nome..." value="{{ request.GET.centro_custo|default:'' }}">
+        </div>
+
+        <div class="input-group">
+           <button type="button" id="btnLimpar" class="btn btn-outline" style="width:100%;" title="Limpar todos os filtros">
+              <i class="fa fa-eraser"></i> Limpar Busca
+           </button>
+        </div>
+
+      </form>
+
+      <div class="chips-bar" id="chipsWrap">
+        {% with s=request.GET.status|default:'' %}
+          <a href="#" class="chip {% if not s %}active{% endif %}" data-val="">Todos</a>
+          <a href="#" class="chip {% if s == 'ativo' %}active{% endif %}" data-val="ativo">Ativos</a>
+          <a href="#" class="chip {% if s == 'backup' %}active{% endif %}" data-val="backup">Backup</a>
+          <a href="#" class="chip {% if s == 'manutencao' %}active{% endif %}" data-val="manutencao">Manutenção</a>
+          <a href="#" class="chip {% if s == 'defeito' %}active{% endif %}" data-val="defeito">Defeito</a>
         {% endwith %}
       </div>
     </div>
+  </details>
 
-    <details class="filters-section" {% if request.GET %}open{% endif %}>
-      <summary class="filters-header"><i class="fa fa-filter"></i> Filtros Avançados</summary>
-      
-      <div class="filters-body">
-        <form class="filters-grid" id="filtrosForm" onsubmit="event.preventDefault(); refreshList({page:1});">
-          
-          <div class="col-4 input-group">
-            <label>Nome do Ativo</label>
-            <input type="text" name="nome" id="filtro-nome" class="form-ctrl" placeholder="Pesquisar..." value="{{ request.GET.nome|default:'' }}">
-          </div>
-
-          <div class="col-3 input-group">
-            <label>Serial Number (S/N)</label>
-            <input type="text" name="numero_serie" id="filtro-num-serie" class="form-ctrl" placeholder="Ex: SN123..." value="{{ request.GET.numero_serie|default:'' }}">
-          </div>
-
-          <div class="col-2 input-group">
-            <label>Categoria</label>
-            <select name="subtipo" id="filtro-subtipo" class="form-ctrl select2-enable">
-              <option value="">Todas</option>
-              {% for sub in subtipos %}
-                <option value="{{ sub.id }}" {% if request.GET.subtipo == sub.id|stringformat:"s" %}selected{% endif %}>{{ sub.nome }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="col-2 input-group">
-            <label>Status</label>
-            <select name="status" id="filtro-status" class="form-ctrl select2-enable">
-              <option value="">Todos</option>
-              {% for code, label in status_choices %}
-                <option value="{{ code }}" {% if request.GET.status == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="col-1 input-group">
-             <button type="button" id="btnLimpar" class="btn btn-outline" style="width:100%; justify-content:center;" title="Limpar Filtros">
-                <i class="fa fa-eraser"></i>
-             </button>
-          </div>
-
-          <div class="col-4 input-group">
-             <label>Fornecedor</label>
-             <input type="text" name="fornecedor" id="filtro-fornecedor" class="form-ctrl" value="{{ request.GET.fornecedor|default:'' }}">
-          </div>
-
-          <div class="col-4 input-group">
-             <label>Localidade</label>
-             <input type="text" name="localidade" id="filtro-localidade" class="form-ctrl" value="{{ request.GET.localidade|default:'' }}">
-          </div>
-
-          <div class="col-4 input-group">
-             <label>Centro de Custo</label>
-             <input type="text" name="centro_custo" id="filtro-centro-custo" class="form-ctrl" value="{{ request.GET.centro_custo|default:'' }}">
-          </div>
-        </form>
-
-        <div class="chips-bar" id="chipsWrap">
-          {% with s=request.GET.status|default:'' %}
-            <a href="#" class="chip {% if not s %}active{% endif %}" data-val="">Todos</a>
-            <a href="#" class="chip {% if s == 'ativo' %}active{% endif %}" data-val="ativo">Ativos</a>
-            <a href="#" class="chip {% if s == 'backup' %}active{% endif %}" data-val="backup">Backup</a>
-            <a href="#" class="chip {% if s == 'manutencao' %}active{% endif %}" data-val="manutencao">Manutenção</a>
-            <a href="#" class="chip {% if s == 'defeito' %}active{% endif %}" data-val="defeito">Defeito</a>
-          {% endwith %}
-        </div>
-      </div>
-    </details>
-
-    <div class="table-container">
-      <div id="tableLoader" class="table-loading"><i class="fa fa-circle-notch fa-spin fa-2x"></i></div>
-      
+  <div class="table-card">
+    <div id="tableLoader" class="table-loading">
+      <i class="fa fa-circle-notch fa-spin fa-2x"></i>
+    </div>
+    
+    <div class="table-responsive">
       <table id="tabelaEquipamentos">
         <thead>
           <tr>
             <th data-col="0">#</th>
-            <th data-col="1">Ativo <i class="sort-icon"></i></th>
-            <th data-col="2">Subtipo <i class="sort-icon"></i></th>
-            <th data-col="3">Status <i class="sort-icon"></i></th>
+            <th data-col="1">Ativo <i class="fa fa-sort" style="margin-left:4px; opacity:0.5;"></i></th>
+            <th data-col="2">Subtipo <i class="fa fa-sort" style="margin-left:4px; opacity:0.5;"></i></th>
+            <th data-col="3">Status</th>
             <th data-col="5">Localidade</th>
             <th data-col="6">Serial</th>
             <th data-col="7">Fornecedor</th>
@@ -229,30 +517,33 @@ tr:hover td { background: #f8fafc; }
       </table>
     </div>
 
-    <div id="paginationWrap" class="list-footer" style="background:#fff; padding:16px 24px; border-top:1px solid var(--border);">
+    <div id="paginationWrap" class="list-footer">
       {% include "front/equipamentos/_pagination.html" %}
     </div>
   </div>
+
 </div>
 
 <div id="deleteModal" class="modal-overlay" aria-hidden="true">
   <div class="modal-content">
-    <h2 style="margin-top:0; color:var(--danger-text);">Confirmar Exclusão</h2>
-    <p id="deleteMessage" style="color:var(--text-muted);">...</p>
+    <div class="modal-header-flex">
+      <div class="modal-icon"><i class="fa fa-triangle-exclamation"></i></div>
+      <h2 class="modal-title">Confirmar Exclusão</h2>
+    </div>
+    <p id="deleteMessage" style="color:var(--text-muted); font-size:14px; margin-bottom: 24px;">...</p>
+    
     <form id="deleteForm" method="post" action="">
       {% csrf_token %}
-      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+      <div style="display:flex; justify-content:flex-end; gap:12px;">
         <button type="button" class="btn btn-outline" onclick="closeDeleteModal()">Cancelar</button>
-        <button type="submit" class="btn" style="background:var(--danger-text); color:#fff;">Excluir</button>
+        <button type="submit" class="btn" style="background:var(--danger); color:#fff;">Sim, Excluir</button>
       </div>
     </form>
   </div>
 </div>
 
 <script>
-/* === LÓGICA CORRIGIDA DOS FILTROS E SELECT2 === */
-
-// Variáveis Globais
+/* === LÓGICA MANTIDA E OTIMIZADA === */
 const dom = {
   form: document.getElementById('filtrosForm'),
   sizeForm: document.getElementById('sizeForm'),
@@ -263,61 +554,45 @@ const dom = {
   loader: document.getElementById('tableLoader'),
   chips: document.getElementById('chipsWrap')
 };
-let currentController = null; // Para abortar requisições antigas
+let currentController = null;
 
 $(document).ready(function() {
-    // 1. Inicializa Select2
-    $('.select2-enable').select2({
-        width: '100%',
-        placeholder: "Selecione...",
-        allowClear: true
-    });
+    $('.select2-enable').select2({ width: '100%', allowClear: true });
 
-    // 2. Bind no evento CHANGE do jQuery (que o Select2 dispara)
-    // Isso garante que funcione tanto ao selecionar quanto ao limpar (X)
     $('.select2-enable').on('change', function(e) {
         refreshList({page: 1});
     });
 
-    // 3. Bind Inputs de Texto com Debounce
     $('input[type="text"]').on('input', debounce(function() {
         refreshList({page: 1});
     }, 400));
 });
 
-// Função para Atualizar a Lista (AJAX)
+// AJAX Atualização de Lista (Mantido Original e Funcional)
 async function refreshList(extraParams = {}) {
-    // Aborta request anterior se existir
     if (currentController) currentController.abort();
     currentController = new AbortController();
     
-    // Mostra Loading
     dom.loader.classList.add('active');
-    dom.tbody.style.opacity = '0.5';
+    dom.tbody.style.opacity = '0.4';
 
     try {
-        // Coleta dados do formulário manualmente para garantir precisão
         const formData = new FormData(dom.form);
         const params = new URLSearchParams();
 
-        // Adiciona campos do form principal (incluindo selects ocultos pelo Select2)
         for(let [key, val] of formData.entries()) {
             if(val.trim() !== "") params.append(key, val);
         }
 
-        // Adiciona Tamanho da Página (PP)
         const pp = dom.sizeForm.querySelector('[name="pp"]').value;
         if(pp) params.append('pp', pp);
 
-        // Adiciona Parâmetros Extras (ex: paginação)
         for (const [key, val] of Object.entries(extraParams)) {
             if (val === null) params.delete(key);
             else params.set(key, val);
         }
+        params.set('partial', '1');
 
-        params.set('partial', '1'); // Flag para o backend
-
-        // Faz a Requisição
         const url = `${window.location.pathname}?${params.toString()}`;
         const res = await fetch(url, {
             headers: {'X-Requested-With': 'XMLHttpRequest'},
@@ -327,17 +602,13 @@ async function refreshList(extraParams = {}) {
         if (!res.ok) throw new Error('Erro na requisição');
         const data = await res.json();
 
-        // Atualiza HTML
         if (data.tbody) dom.tbody.innerHTML = data.tbody;
         if (data.pagination) dom.pagWrap.innerHTML = data.pagination;
         if (data.kpis) dom.kpis.innerHTML = data.kpis;
         if (data.count !== undefined) dom.count.textContent = data.count;
 
-        // Atualiza URL do navegador (Sem recarregar)
         params.delete('partial');
         window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
-
-        // Re-aplica eventos na tabela nova (ex: ordenação)
         bindTableEvents();
 
     } catch (err) {
@@ -351,7 +622,7 @@ async function refreshList(extraParams = {}) {
     }
 }
 
-// Helper: Debounce (atraso na digitação)
+// Debounce para inputs textuais
 function debounce(func, wait) {
     let timeout;
     return function(...args) {
@@ -363,27 +634,17 @@ function debounce(func, wait) {
 // Botão Limpar
 document.getElementById('btnLimpar').addEventListener('click', function() {
     dom.form.reset();
-    // Reseta Select2 via jQuery
     $('.select2-enable').val(null).trigger('change.select2');
-    
-    // Reseta Chips
     updateChipsVisual("");
-    
-    // Dispara refresh limpando tudo
     refreshList({page:1, nome:null, status:null, subtipo:null, fornecedor:null, localidade:null, centro_custo:null, numero_serie:null});
 });
 
-// Lógica dos Chips (Status Rápido)
+// Controle de Chips de Status Rapido
 dom.chips.addEventListener('click', function(e) {
     if(!e.target.classList.contains('chip')) return;
     e.preventDefault();
-    
     const statusVal = e.target.dataset.val;
-    
-    // 1. Atualiza visual dos chips
     updateChipsVisual(statusVal);
-    
-    // 2. Atualiza o Select2 de Status e dispara o evento change (que chama o refresh)
     $('#filtro-status').val(statusVal).trigger('change');
 });
 
@@ -393,7 +654,7 @@ function updateChipsVisual(val) {
     if(activeChip) activeChip.classList.add('active');
 }
 
-// Eventos da Tabela (Paginação e Ordenação)
+// Interação e Paginação via AJAX
 document.getElementById('paginationWrap').addEventListener('click', function(e) {
     const link = e.target.closest('a');
     if(!link) return;
@@ -402,9 +663,8 @@ document.getElementById('paginationWrap').addEventListener('click', function(e) 
     refreshList({page});
 });
 
-// Ordenação Client-Side (Simples)
+// Ordenação e Links nas Linhas
 function bindTableEvents() {
-    // Links das linhas
     document.querySelectorAll('tr.clickable').forEach(tr => {
         tr.onclick = (e) => {
             if(e.target.closest('a, button')) return;
@@ -413,11 +673,9 @@ function bindTableEvents() {
         };
     });
 
-    // Ordenação Header
     document.querySelectorAll('th[data-col]').forEach(th => {
         th.onclick = () => {
             const col = th.dataset.col;
-            // Lógica simples de sort visual
             const tbody = dom.tbody;
             const rows = Array.from(tbody.querySelectorAll('tr'));
             const isAsc = th.dataset.order !== 'asc';
@@ -428,26 +686,25 @@ function bindTableEvents() {
                 const valB = b.children[col]?.innerText.trim().toLowerCase() || '';
                 return isAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
             });
-            
             rows.forEach(r => tbody.appendChild(r));
         };
     });
 }
 
-// Modal
+// Modal Refatorado
 const modal = document.getElementById('deleteModal');
 window.openDeleteModal = function(id, nome) {
-  document.getElementById('deleteMessage').innerHTML = `Tem certeza que deseja excluir <strong>${nome}</strong>?`;
+  document.getElementById('deleteMessage').innerHTML = `Tem certeza que deseja remover o equipamento <strong>${nome}</strong> do sistema?`;
   document.getElementById('deleteForm').action = `/equipamentos/${id}/excluir/`;
-  modal.style.display = 'flex';
+  modal.classList.add('show');
   modal.setAttribute('aria-hidden', 'false');
 }
 window.closeDeleteModal = function() {
-  modal.style.display = 'none';
+  modal.classList.remove('show');
   modal.setAttribute('aria-hidden', 'true');
 }
 
-// Init inicial
+// Init
 bindTableEvents();
 </script>
 {% endblock %}

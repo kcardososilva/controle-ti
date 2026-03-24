@@ -374,7 +374,8 @@ def usuario_detail(request, pk):
             # Cálculos Financeiros baseados no Snapshot da Movimentação (valor_unitario)
             # O valor_unitario gravado é o CUSTO DO CICLO (ex: 50 mensal ou 600 anual)
             custo_base = mov.valor_unitario or Decimal(0)
-            
+            quantidade = lote.quantidade_total
+            valor = lote.custo_ciclo 
             custo_mensal = Decimal(0)
             custo_anual = Decimal(0)
             periodicidade = ""
@@ -387,8 +388,8 @@ def usuario_detail(request, pk):
 
             # Projeção
             if periodicidade == 'anual':
-                custo_mensal = custo_base / Decimal(12)
-                custo_anual = custo_base
+                custo_mensal = (valor / quantidade)
+                custo_anual = (valor / quantidade) * 12
             elif periodicidade == 'semestral':
                 custo_mensal = custo_base / Decimal(6)
                 custo_anual = custo_base * 2
@@ -3253,17 +3254,29 @@ def cc_custos_dashboard(request):
                 lote = mov.lote
                 custo_mensal_unitario = Decimal("0.00")
                 
-                if lote:
-                    custo_ciclo = lote.custo_ciclo or Decimal(0)
-                    meses = _get_meses_ciclo(lote.periodicidade)
+                #if lote:
+                    #custo_ciclo = lote.custo_ciclo or Decimal(0)
+                    #meses = _get_meses_ciclo(lote.periodicidade)
                     # Valor Mensal desta unidade = Valor Compra / Meses Ciclo
-                    if meses > 0:
-                        custo_mensal_unitario = (custo_ciclo / Decimal(meses))
-                else:
+                    #if meses > 0:
+                        #custo_mensal_unitario = (custo_ciclo / Decimal(meses))
+               # else:
                     # Fallback: Se não tem lote (dado legado), usa custo da licença pai
-                    custo_base = mov.licenca.custo or Decimal(0) # Assumindo custo mensal na licença pai
+                    #custo_base = mov.licenca.custo or Decimal(0) # Assumindo custo mensal na licença pai
                     # Se licença pai não tem periodicidade definida, assume 1 mês ou lógica custom
-                    custo_mensal_unitario = custo_base 
+                    #custo_mensal_unitario = custo_base 
+                
+                #if lote: 
+                quantidade_Lote = mov.lote.quantidade_total
+                custo_Lote = mov.lote.custo_ciclo
+                    #periodicidade = str(mov.lote.periodicidade).lower()
+
+                    #if periodicidade == "anual":
+                custo_mensal_unitario = custo_Lote / quantidade_Lote
+
+                    
+
+                    #custo_mensal_unitario
 
                 acc["custo_licencas"] += custo_mensal_unitario
                 acc["qtd_licencas"] += 1
@@ -3604,17 +3617,27 @@ def licenca_detail(request, pk):
     burn_rate_anual = Decimal(0)
 
     for lote in lotes:
+
+        periodicidade = str(lote.periodicidade).lower()
         qtd_total += lote.quantidade_total
         qtd_disp += lote.quantidade_disponivel
         unit_price = lote.custo_ciclo or Decimal(0)
-        lote_investimento = unit_price * lote.quantidade_total
+
+
+        if periodicidade == 'anual':
+            lote_investimento = unit_price
+        elif periodicidade == 'semestral':
+            lote_investimento = (lote.quantidade_total * unit_price) * 6
+        else:
+            lote_investimento = (lote.quantidade_total * unit_price)
+        
         total_investido_historico += lote_investimento
         lote.unitario_real = unit_price
         lote.total_investido_calc = lote_investimento
         
         em_uso = lote.quantidade_total - lote.quantidade_disponivel
         if em_uso > 0:
-            periodicidade = str(lote.periodicidade).lower()
+            
             if periodicidade == 'anual':
                 burn_rate_mensal += (unit_price / 12) * em_uso
                 burn_rate_anual += unit_price * em_uso
@@ -3634,7 +3657,7 @@ def licenca_detail(request, pk):
 
     # [NOVO] Agrupamento por Centro de Custo
     cc_list = _get_dados_cc(licenca)
-
+    
     context = {
         "obj": licenca,
         "kpi": {
@@ -4703,6 +4726,7 @@ def licencas_dashboard(request):
             # [CORREÇÃO] Custo Unitário: O valor cadastrado é por unidade
             custo_ciclo_unitario = lote.custo_ciclo or Decimal(0)
             
+
             # Custo Mensal de UMA unidade
             if meses > 0:
                 custo_mensal_unitario = (custo_ciclo_unitario / Decimal(meses)).quantize(Decimal("0.01"))
