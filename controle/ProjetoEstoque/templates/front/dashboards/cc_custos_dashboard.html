@@ -67,7 +67,7 @@
     .fw-bold { font-weight: 700; }
     .text-primary { color: var(--primary); }
     .text-danger { color: var(--danger); }
-    
+    .text-success { color: var(--success); }
     .chart-container { height: 300px; position: relative; }
     .nodata { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-sec); font-weight: 600; }
 </style>
@@ -168,7 +168,7 @@
                         <th class="tcenter">Locados</th>
                         <th class="tcenter">Licenças</th>
                         <th class="tright" style="color:var(--primary)">Locação (R$)</th>
-                        <th class="tright" style="color:var(--success)">Licenças (R$)</th>
+                        <th class="tright" style="color:var(--success)">Licenças Mensais (R$)</th>
                         <th class="tright fw-bold" style="background:#f0f9ff">Total Mensal</th>
                         <th class="tright text-danger">Baixas/Perdas</th>
                         <th class="tright fw-bold">Impacto Total</th>
@@ -214,14 +214,12 @@
     Chart.defaults.plugins.tooltip.backgroundColor = '#0f172a';
     Chart.defaults.plugins.tooltip.callbacks.label = (ctx) => ` ${ctx.dataset.label}: ${brl(ctx.raw)}`;
 
-    // 1. Gráfico de Barras Empilhadas (Locação + Licenças)
     const labels = getJSON('js-labels');
     const dItens = getJSON('js-itens');
     const dLics = getJSON('js-lics');
+    const dMix = getJSON('js-mix');
 
-    
-
-    if(sum(dItens) + sum(dLics) === 0) {
+    if (sum(dItens) + sum(dLics) === 0) {
         document.getElementById('nd-bar').style.display = 'flex';
     } else {
         new Chart(document.getElementById('barChart'), {
@@ -229,8 +227,8 @@
             data: {
                 labels: labels,
                 datasets: [
-                    { label: 'Locação (Hardware)', data: dItens, backgroundColor: '#2563eb', borderRadius:4 },
-                    { label: 'Licenças (Software)', data: dLics, backgroundColor: '#10b981', borderRadius:4 }
+                    { label: 'Locação (Hardware)', data: dItens, backgroundColor: '#2563eb', borderRadius: 4 },
+                    { label: 'Licenças (Software)', data: dLics, backgroundColor: '#10b981', borderRadius: 4 }
                 ]
             },
             options: {
@@ -238,15 +236,17 @@
                 maintainAspectRatio: false,
                 scales: {
                     x: { stacked: true, grid: { display: false } },
-                    y: { stacked: true, grid: { color: '#f1f5f9' }, ticks: { callback: (v) => v.toLocaleString('pt-BR') } }
+                    y: {
+                        stacked: true,
+                        grid: { color: '#f1f5f9' },
+                        ticks: { callback: (v) => v.toLocaleString('pt-BR') }
+                    }
                 }
             }
         });
     }
 
-    // 2. Gráfico de Pizza (Mix)
-    const dMix = getJSON('js-mix');
-    if(sum(dMix) === 0) {
+    if (sum(dMix) === 0) {
         document.getElementById('nd-pie').style.display = 'flex';
     } else {
         new Chart(document.getElementById('pieChart'), {
@@ -267,20 +267,17 @@
                 }
             }
         });
+    }
 
-        document.getElementById('btnPdf').addEventListener('click', function() {
-        // Pega os valores atuais dos inputs de data
+    document.getElementById('btnPdf').addEventListener('click', function() {
         const ini = document.querySelector('input[name="inicio"]').value;
         const fim = document.querySelector('input[name="fim"]').value;
-        
-        // Monta a URL (Ajuste o nome da rota se necessário no urls.py)
+
         let url = "{% url 'cc_custos_export_pdf' %}?";
-        if(ini) url += `inicio=${ini}&`;
-        if(fim) url += `fim=${fim}`;
-        
+        if (ini) url += `inicio=${ini}&`;
+        if (fim) url += `fim=${fim}&`;
+
         window.open(url, '_blank');
-        });
-        
-    }
+    });
 </script>
 {% endblock %}

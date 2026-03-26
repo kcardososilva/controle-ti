@@ -551,7 +551,7 @@ class MovimentacaoLicencaForm(forms.ModelForm):
                     valor_Lote = lote_alvo.custo_ciclo
                     if periodicidade == 'anual':
                         # Anual: R$ 600,00 / 12 = R$ 50,00/mês
-                        instance.valor_unitario = (valor_Lote / quantidade) * 12
+                        instance.valor_unitario = (valor_Lote / quantidade) / 12
                     elif periodicidade == 'semestral':
                         # Semestral: R$ 300,00 / 6 = R$ 50,00/mês
                         instance.valor_unitario = custo_base / Decimal(6)

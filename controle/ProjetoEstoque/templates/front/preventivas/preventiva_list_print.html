@@ -5,73 +5,473 @@
     <meta charset="UTF-8">
     <title>Relatório Geral de Preventivas</title>
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #333; -webkit-print-color-adjust: exact; padding: 20px; }
-        .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
-        .header h1 { margin: 0; font-size: 20px; text-transform: uppercase; color: #0078d4; }
-        
-        .kpi-bar { display: flex; gap: 20px; margin-bottom: 20px; background: #f0f0f0; padding: 10px; border: 1px solid #ccc; }
-        .kpi { font-weight: bold; }
-        
-        table { width: 100%; border-collapse: collapse; }
-        th { background: #f0f0f0; text-align: left; padding: 8px; border-bottom: 2px solid #ccc; font-weight: bold; }
-        td { padding: 8px; border-bottom: 1px solid #eee; }
-        tr:nth-child(even) { background: #f9f9f9; }
-        
-        .late { color: #a80000; font-weight: bold; }
-        .warn { color: #d97706; }
+        :root{
+            --primary: #0078d4;
+            --text-main: #333333;
+            --text-sub: #616161;
+            --border: #d9d9d9;
+            --bg-soft: #f4f6f8;
+            --bg-even: #fafafa;
+
+            --late: #a80000;
+            --warn: #d97706;
+            --ok: #107c10;
+
+            --late-bg: #fde7e9;
+            --warn-bg: #fff4ce;
+            --ok-bg: #dff6dd;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            -webkit-text-size-adjust: 100%;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 12px;
+            color: var(--text-main);
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            margin: 0;
+            padding: 20px;
+            background: #fff;
+        }
+
+        img,
+        video,
+        iframe,
+        svg,
+        canvas {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .report-container {
+            width: 100%;
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+
+        .header {
+            border-bottom: 2px solid #000;
+            padding-bottom: 12px;
+            margin-bottom: 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .header-left {
+            min-width: 0;
+            flex: 1 1 420px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 22px;
+            text-transform: uppercase;
+            color: var(--primary);
+            line-height: 1.2;
+            word-break: break-word;
+        }
+
+        .header-subtitle {
+            margin-top: 4px;
+            color: var(--text-sub);
+            font-size: 13px;
+        }
+
+        .header-right {
+            text-align: right;
+            font-size: 12px;
+            color: var(--text-sub);
+            white-space: nowrap;
+        }
+
+        .kpi-bar {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .kpi-card {
+            border: 1px solid var(--border);
+            background: var(--bg-soft);
+            padding: 12px 14px;
+            border-radius: 6px;
+        }
+
+        .kpi-label {
+            display: block;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-sub);
+            font-weight: 700;
+            margin-bottom: 4px;
+            letter-spacing: .3px;
+        }
+
+        .kpi-value {
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .kpi-total .kpi-value { color: var(--primary); }
+        .kpi-late .kpi-value { color: var(--late); }
+        .kpi-warn .kpi-value { color: var(--warn); }
+        .kpi-ok .kpi-value { color: var(--ok); }
+
+        .table-wrap {
+            width: 100%;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        thead th {
+            background: #f0f0f0;
+            text-align: left;
+            padding: 10px 8px;
+            border-bottom: 2px solid #ccc;
+            font-weight: 700;
+            font-size: 11px;
+            color: #222;
+            vertical-align: middle;
+        }
+
+        tbody td {
+            padding: 9px 8px;
+            border-bottom: 1px solid #eee;
+            vertical-align: top;
+            font-size: 11px;
+            line-height: 1.35;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        tbody tr:nth-child(even) {
+            background: var(--bg-even);
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .eq-name {
+            font-weight: 700;
+        }
+
+        .eq-sub {
+            display: block;
+            margin-top: 3px;
+            font-size: 10px;
+            color: var(--text-sub);
+        }
+
+        .status-pill {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .2px;
+        }
+
+        .late {
+            color: var(--late);
+            background: var(--late-bg);
+        }
+
+        .warn {
+            color: var(--warn);
+            background: var(--warn-bg);
+        }
+
+        .ok {
+            color: var(--ok);
+            background: var(--ok-bg);
+        }
+
+        .neutral {
+            color: #666;
+            background: #efefef;
+        }
+
+        .date-main {
+            font-weight: 700;
+        }
+
+        .date-sub {
+            display: block;
+            margin-top: 2px;
+            font-size: 10px;
+            color: var(--text-sub);
+        }
+
+        .executor {
+            font-weight: 600;
+        }
+
+        .footer-note {
+            margin-top: 14px;
+            font-size: 10px;
+            color: var(--text-sub);
+        }
+
+        @media screen and (max-width: 900px) {
+            body {
+                padding: 14px;
+                font-size: 11px;
+            }
+
+            .header {
+                align-items: flex-start;
+            }
+
+            .header h1 {
+                font-size: 18px;
+            }
+
+            .header-subtitle,
+            .header-right {
+                font-size: 11px;
+            }
+
+            .kpi-bar {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            thead th,
+            tbody td {
+                font-size: 10px;
+                padding: 8px 6px;
+            }
+        }
+
+        @media screen and (max-width: 640px) {
+            body {
+                padding: 10px;
+            }
+
+            .kpi-bar {
+                grid-template-columns: 1fr;
+            }
+
+            .header {
+                flex-direction: column;
+            }
+
+            .header-right {
+                text-align: left;
+                white-space: normal;
+            }
+
+            table {
+                table-layout: auto;
+            }
+        }
+
+        @media print {
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+
+            body {
+                padding: 0;
+                font-size: 10.5px;
+            }
+
+            .report-container {
+                max-width: 100%;
+            }
+
+            .header {
+                margin-bottom: 12px;
+                padding-bottom: 8px;
+            }
+
+            .header h1 {
+                font-size: 18px;
+            }
+
+            .header-subtitle,
+            .header-right {
+                font-size: 10.5px;
+            }
+
+            .kpi-bar {
+                gap: 8px;
+                margin-bottom: 12px;
+            }
+
+            .kpi-card {
+                padding: 8px 10px;
+            }
+
+            .kpi-value {
+                font-size: 15px;
+            }
+
+            thead th {
+                font-size: 10px;
+                padding: 8px 6px;
+            }
+
+            tbody td {
+                font-size: 9.5px;
+                padding: 7px 6px;
+            }
+
+            .footer-note {
+                margin-top: 8px;
+                font-size: 9px;
+            }
+
+            tr, td, th {
+                page-break-inside: avoid;
+            }
+        }
     </style>
 </head>
 <body onload="window.print()">
+    <div class="report-container">
 
-    <div class="header">
-        <div>
-            <h1>Relatório de Preventivas</h1>
-            <div>Status Geral da Manutenção</div>
+        <div class="header">
+            <div class="header-left">
+                <h1>Relatório de Preventivas</h1>
+                <div class="header-subtitle">Status geral da manutenção preventiva</div>
+            </div>
+            <div class="header-right">
+                Gerado em: {% now "d/m/Y H:i" %}
+            </div>
         </div>
-        <div style="text-align:right;">
-            Gerado em: {% now "d/m/Y H:i" %}
+
+        <div class="kpi-bar">
+            <div class="kpi-card kpi-total">
+                <span class="kpi-label">Total</span>
+                <span class="kpi-value">{{ kpi.total }}</span>
+            </div>
+            <div class="kpi-card kpi-late">
+                <span class="kpi-label">Vencidas</span>
+                <span class="kpi-value">{{ kpi.vencidas }}</span>
+            </div>
+            <div class="kpi-card kpi-warn">
+                <span class="kpi-label">Próximas</span>
+                <span class="kpi-value">{{ kpi.proximas }}</span>
+            </div>
+            <div class="kpi-card kpi-ok">
+                <span class="kpi-label">Em dia</span>
+                <span class="kpi-value">{{ kpi.em_dia }}</span>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 21%;">Equipamento</th>
+                        <th style="width: 16%;">Checklist</th>
+                        <th style="width: 11%;">Última Exec.</th>
+                        <th style="width: 13%;">Próxima (Calc)</th>
+                        <th style="width: 16%;">Executada por</th>
+                        <th style="width: 11%;">Status</th>
+                        <th style="width: 12%;">Observação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in preventivas %}
+                    <tr>
+                        <td>
+                            <span class="eq-name">{{ p.equipamento.nome }}</span>
+                            <span class="eq-sub">
+                                NS: {{ p.equipamento.numero_serie|default:"-" }}
+                                {% if p.equipamento.patrimonio %}
+                                    | TAG: {{ p.equipamento.patrimonio }}
+                                {% endif %}
+                            </span>
+                        </td>
+
+                        <td>{{ p.checklist_modelo.nome|default:"-" }}</td>
+
+                        <td>
+                            <span class="date-main">{{ p.data_ultima|date:"d/m/Y"|default:"-" }}</span>
+                        </td>
+
+                        <td>
+                            <span class="date-main">{{ p.proxima_calc|date:"d/m/Y"|default:"-" }}</span>
+                            {% if p.dias_restantes is not None %}
+                                <span class="date-sub">
+                                    {% if p.dias_restantes < 0 %}
+                                        {{ p.dias_restantes|stringformat:"d"|slice:"1:" }} dias atraso
+                                    {% else %}
+                                        {{ p.dias_restantes }} dias restantes
+                                    {% endif %}
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            <span class="executor">{{ p.ultimo_executor_username|default:"-" }}</span>
+                            <span class="date-sub">
+                                Última execução: {{ p.ultima_execucao_data|date:"d/m/Y"|default:"-" }}
+                            </span>
+                        </td>
+
+                        <td>
+                            {% if p.status_visual == 'vencida' %}
+                                <span class="status-pill late">Vencida</span>
+                            {% elif p.status_visual == 'atencao' %}
+                                <span class="status-pill warn">Atenção</span>
+                            {% elif p.status_visual == 'ok' %}
+                                <span class="status-pill ok">Em Dia</span>
+                            {% else %}
+                                <span class="status-pill neutral">N/A</span>
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {% if p.status_visual == 'vencida' %}
+                                Preventiva fora do prazo
+                            {% elif p.status_visual == 'atencao' %}
+                                Janela próxima de vencimento
+                            {% elif p.status_visual == 'ok' %}
+                                Dentro do intervalo previsto
+                            {% else %}
+                                Sem data definida
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" style="text-align:center; padding: 18px;">
+                            Nenhum registro encontrado.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer-note">
+            Relatório emitido com base na data calculada da preventiva, status visual e último executor registrado no sistema.
         </div>
     </div>
-
-    <div class="kpi-bar">
-        <span class="kpi">Total: {{ kpi.total }}</span>
-        <span class="kpi" style="color:#a80000">Vencidas: {{ kpi.vencidas }}</span>
-        <span class="kpi" style="color:#d97706">Próximas: {{ kpi.proximas }}</span>
-        <span class="kpi" style="color:#107c10">Em Dia: {{ kpi.em_dia }}</span>
-    </div>
-
-    <table>
-        <thead>
-            <tr>
-                <th>Equipamento</th>
-                <th>Checklist</th>
-                <th>Última Exec.</th>
-                <th>Vencimento</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for p in preventivas %}
-            <tr>
-                <td>{{ p.equipamento.nome }}</td>
-                <td>{{ p.checklist_modelo.nome|default:"-" }}</td>
-                <td>{{ p.data_ultima|date:"d/m/Y"|default:"-" }}</td>
-                <td>{{ p.data_proxima|date:"d/m/Y"|default:"-" }}</td>
-                <td>
-                    {% if p.status_visual == 'vencida' %}
-                        <span class="late">VENCIDA</span>
-                    {% elif p.status_visual == 'atencao' %}
-                        <span class="warn">ATENÇÃO</span>
-                    {% elif p.status_visual == 'ok' %}
-                        OK
-                    {% else %}
-                        -
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
 </body>
 </html>
