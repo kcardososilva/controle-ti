@@ -42,7 +42,7 @@ class LocalidadeChoices(models.TextChoices):
     RIO_DO_MEIO = "Rio_do_Meio", "Rio do Meio"
     Mambai = "Mambai", "Mambai"
     Sao_Paulo =  "Sao_Paulo", "Sao Paulo"
-
+    
 class TipoRespostaChoices(models.TextChoices):
     TEXTO    = 'texto', 'Texto'
     NUMERO   = 'numero', 'Número'

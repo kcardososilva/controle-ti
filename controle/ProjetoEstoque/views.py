@@ -37,8 +37,8 @@ from django.template.loader import render_to_string
 from django.core.exceptions import ValidationError
 from django.template.loader import get_template
 from xhtml2pdf import pisa
-
-
+from services.importador_planilha import ImportadorPlanilhaService
+import traceback
 # --- Helpers de compatibilidade com nomes de campos diferentes no LicencaLote ---
 def _lote_total_get(lote):
     for n in ("qtd_total", "quantidade_total", "quantidade", "total", "qtd"):
@@ -1261,6 +1261,38 @@ def equipamentos_list(request):
 
     # Renderização Full Page
     return render(request, "front/equipamentos/equipamentos_list.html", context)
+## IMPORTAR PLANILHA ITEM
+@login_required
+def importar_planilha(request):
+    if request.method != "POST":
+        return JsonResponse({
+            "ok": False,
+            "mensagem": "Método não permitido."
+        }, status=405)
+
+    arquivo = request.FILES.get("arquivo")
+
+    if not arquivo:
+        return JsonResponse({
+            "ok": False,
+            "mensagem": "Selecione um arquivo."
+        }, status=400)
+
+    try:
+        service = ImportadorPlanilhaService(arquivo, atualizar_sem_serie=True)
+        resultado = service.executar()
+
+        return JsonResponse({
+            "ok": True,
+            "mensagem": "Importação concluída com sucesso.",
+            "resultado": resultado
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            "ok": False,
+            "mensagem": f"Erro ao importar: {str(e)}"
+        }, status=500)
 
 ### ITEM / Equipamento detalhe 
 @login_required
@@ -4486,30 +4518,61 @@ def toner_cc_export_excel(request):
 
 @login_required
 def equipamentos_exportar(request):
-    # 1) Query filtrada igual à lista
-    qs = _aplicar_filtros_equipamentos(request)
-
-    # 2) Mapa de locação mensal por equipamento (sua FK é 'equipamento')
-    ids = list(qs.values_list("id", flat=True))
-    loc_map = dict(
-        Locacao.objects
-        .filter(equipamento_id__in=ids)
-        .values_list("equipamento_id", "valor_mensal")
+    # Mesma base filtrada da listagem
+    qs = (
+        _aplicar_filtros_equipamentos(request)
+        .select_related(
+            "centro_custo",
+            "fornecedor",
+            "categoria",
+            "subtipo",
+            "localidade",
+            "locacao",
+        )
+        .order_by("id")
     )
 
-    # 3) Monta planilha
     wb = Workbook()
     ws = wb.active
     ws.title = "Itens"
 
     header = [
-        "#", "Nome", "Subtipo", "Status", "Localidade",
-        "Nº Série", "Fornecedor", "Centro de Custo",
-        "Locado", "Locação (R$/mês)", "Valor aquisição (R$)"
+        "#",
+        "ID",
+        "Nome",
+        "Número de Série",
+        "Marca",
+        "Modelo",
+        "Quantidade",
+        "Item de Consumo",
+        "PMB",
+        "Valor de Aquisição (R$)",
+        "Status",
+        "Fornecedor",
+        "Categoria",
+        "Subtipo",
+        "Localidade",
+        "Centro de Custo",
+        "Precisa Preventiva",
+        "Data Limite Preventiva (dias)",
+        "Data da Compra",
+        "Número do Pedido",
+        "Observações do Item",
+        "Locado",
+        "Tempo Locado (meses)",
+        "Valor Locação Mensal (R$)",
+        "Data de Entrada Locação",
+        "Contrato Locação",
+        "Observações da Locação",
+        "Fornecedor da Locação",
+        "Criado em",
+        "Criado por",
+        "Atualizado em",
+        "Atualizado por",
     ]
     ws.append(header)
 
-    # Estilo do header
+    # Estilo do cabeçalho
     hfill = PatternFill("solid", fgColor="1D4ED8")
     hfont = Font(color="FFFFFF", bold=True)
     align_center = Alignment(horizontal="center", vertical="center")
@@ -4523,80 +4586,151 @@ def equipamentos_exportar(request):
         cell.alignment = align_center
         cell.border = hborder
 
-    # Linhas
-    def _fmt_cc(obj):
-        if not obj: return "-"
-        num = getattr(obj, "numero", None) or ""
-        dep = getattr(obj, "departamento", None) or ""
-        return f"{num} - {dep}".strip(" -")
-
     numero_format = 'R$ #,##0.00'
+    data_format = 'DD/MM/YYYY'
+    data_hora_format = 'DD/MM/YYYY HH:MM'
 
-    for i, it in enumerate(qs, start=1):
-        subtipo = getattr(it.subtipo, "nome", "-") if getattr(it, "subtipo", None) else "-"
-        status_disp = getattr(it, "get_status_display", None)
-        status_txt = status_disp() if callable(status_disp) else (it.status or "-")
-        local = getattr(it.localidade, "local", "-") if getattr(it, "localidade", None) else "-"
-        fornecedor = getattr(it.fornecedor, "nome", "-") if getattr(it, "fornecedor", None) else "-"
-        cc_txt = _fmt_cc(getattr(it, "centro_custo", None))
+    def _sim_nao(valor):
+        return "Sim" if str(valor).lower() in ("sim", "true", "1") else "Não"
 
-        locado_flag = getattr(it, "locado", None)
-        # seu choices parecem "sim"/"nao" → ajuste se for booleano
-        locado_txt = "Sim" if str(locado_flag).lower() in ("sim", "true", "1") else "Não"
-        loc_mensal = loc_map.get(it.id) or Decimal("0.00")
+    def _fmt_cc(obj):
+        if not obj:
+            return "-"
+        numero = getattr(obj, "numero", "") or ""
+        departamento = getattr(obj, "departamento", "") or ""
+        texto = f"{numero} - {departamento}".strip(" -")
+        return texto or "-"
 
-        valor_aquis = getattr(it, "valor", None) or Decimal("0.00")
+    def _texto_relacionado(obj, attr="nome", fallback="__str__"):
+        if not obj:
+            return "-"
+        if attr and hasattr(obj, attr):
+            valor = getattr(obj, attr)
+            if valor:
+                return str(valor)
+        if fallback == "__str__":
+            return str(obj)
+        return "-"
+
+    def _texto_usuario_auditoria(obj):
+        if not obj:
+            return "-"
+        for campo in ("get_full_name", "username", "nome", "email"):
+            if hasattr(obj, campo):
+                valor = getattr(obj, campo)
+                if callable(valor):
+                    valor = valor()
+                if valor:
+                    return str(valor)
+        return str(obj)
+
+    for i, item in enumerate(qs, start=1):
+        locacao = getattr(item, "locacao", None)
+
+        status_txt = item.get_status_display() if hasattr(item, "get_status_display") else (item.status or "-")
+        item_consumo_txt = item.get_item_consumo_display() if hasattr(item, "get_item_consumo_display") else _sim_nao(item.item_consumo)
+        pmb_txt = item.get_pmb_display() if hasattr(item, "get_pmb_display") else _sim_nao(item.pmb)
+        preventiva_txt = (
+            item.get_precisa_preventiva_display()
+            if hasattr(item, "get_precisa_preventiva_display")
+            else _sim_nao(item.precisa_preventiva)
+        )
+        locado_txt = item.get_locado_display() if hasattr(item, "get_locado_display") else _sim_nao(item.locado)
+
+        valor_item = item.valor if item.valor is not None else Decimal("0.00")
+        valor_locacao = locacao.valor_mensal if (locacao and locacao.valor_mensal is not None) else Decimal("0.00")
+
+        criado_em = getattr(item, "criado_em", None)
+        criado_por = getattr(item, "criado_por", None)
+        atualizado_em = getattr(item, "atualizado_em", None)
+        atualizado_por = getattr(item, "atualizado_por", None)
 
         row = [
             i,
-            it.nome or "",
-            subtipo,
+            item.id,
+            item.nome or "",
+            item.numero_serie or "",
+            item.marca or "",
+            item.modelo or "",
+            item.quantidade or 0,
+            item_consumo_txt,
+            pmb_txt,
+            float(valor_item),
             status_txt,
-            local,
-            it.numero_serie or "",
-            fornecedor,
-            cc_txt,
+            _texto_relacionado(item.fornecedor),
+            _texto_relacionado(item.categoria),
+            _texto_relacionado(item.subtipo),
+            _texto_relacionado(item.localidade, attr="local"),
+            _fmt_cc(item.centro_custo),
+            preventiva_txt,
+            item.data_limite_preventiva if item.data_limite_preventiva is not None else "",
+            item.data_compra,
+            item.numero_pedido or "",
+            item.observacoes or "",
             locado_txt,
-            float(loc_mensal),
-            float(valor_aquis),
+            locacao.tempo_locado if locacao and locacao.tempo_locado is not None else "",
+            float(valor_locacao),
+            locacao.data_entrada if locacao else "",
+            locacao.contrato if locacao and locacao.contrato else "",
+            locacao.observacoes if locacao and locacao.observacoes else "",
+            _texto_relacionado(locacao.fornecedor) if locacao else "-",
+            criado_em,
+            _texto_usuario_auditoria(criado_por),
+            atualizado_em,
+            _texto_usuario_auditoria(atualizado_por),
         ]
         ws.append(row)
 
-    # Formatação de números nos 2 últimos campos
+    # Formatação
     for r in range(2, ws.max_row + 1):
+        # Valor aquisição
         ws.cell(row=r, column=10).number_format = numero_format
-        ws.cell(row=r, column=11).number_format = numero_format
+        # Valor locação mensal
+        ws.cell(row=r, column=24).number_format = numero_format
 
-    # Largura das colunas (auto-ajuste simples)
+        # Data compra
+        if ws.cell(row=r, column=19).value:
+            ws.cell(row=r, column=19).number_format = data_format
+
+        # Data entrada locação
+        if ws.cell(row=r, column=25).value:
+            ws.cell(row=r, column=25).number_format = data_format
+
+        # Criado em
+        if ws.cell(row=r, column=29).value:
+            ws.cell(row=r, column=29).number_format = data_hora_format
+
+        # Atualizado em
+        if ws.cell(row=r, column=31).value:
+            ws.cell(row=r, column=31).number_format = data_hora_format
+
+    # Congelar cabeçalho
+    ws.freeze_panes = "A2"
+
+    # Auto ajuste de largura
     widths = {}
     for row in ws.iter_rows(values_only=True):
         for idx, val in enumerate(row, start=1):
-            txt = str(val) if val is not None else ""
-            widths[idx] = max(widths.get(idx, 0), len(txt))
-    for idx, w in widths.items():
-        # um pouco de folga
-        ws.column_dimensions[get_column_letter(idx)].width = min(max(w + 2, 10), 48)
+            texto = str(val) if val is not None else ""
+            widths[idx] = max(widths.get(idx, 0), len(texto))
 
-    # 4) Resposta HTTP
+    for idx, width in widths.items():
+        ws.column_dimensions[get_column_letter(idx)].width = min(max(width + 2, 12), 40)
+
+    # Resposta
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
 
     now = timezone.localtime().strftime("%Y%m%d-%H%M%S")
-    filename = f"itens_filtrados_{now}.xlsx"
-    resp = HttpResponse(
+    filename = f"itens_completos_{now}.xlsx"
+
+    response = HttpResponse(
         buffer.getvalue(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return resp
-
-
-def _parse_dt(s, default_dt):
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
-        return default_dt
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 @login_required
 def toner_cc_dashboard(request):

@@ -89,7 +89,7 @@ urlpatterns = [
     path("equipamentos/<int:pk>/", views.equipamento_detalhe, name="equipamento_detalhe"),
     path("equipamentos/<int:pk>/editar/", views.editar_equipamento, name="editar_equipamento"),
     path("equipamentos/<int:pk>/excluir/", views.equipamento_excluir, name="equipamento_excluir"),
-
+    path("equipamentos/importar/", views.importar_planilha, name="importar_planilha"),
    
 
     ### LOCADO ###
