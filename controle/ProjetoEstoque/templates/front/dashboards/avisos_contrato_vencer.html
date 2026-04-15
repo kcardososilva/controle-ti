@@ -1,0 +1,630 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Avisos - Contratos a Vencer{% endblock %}
+
+{% block content %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+<style>
+:root {
+  --bg-app: #f4f6f8;
+  --bg-card: #ffffff;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --text-main: #0f172a;
+  --text-sub: #64748b;
+  --border: #e2e8f0;
+  --shadow-card: 0 8px 24px rgba(15,23,42,0.06);
+  --radius: 14px;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --muted: #94a3b8;
+}
+
+body {
+  background: var(--bg-app);
+  font-family: 'Inter', sans-serif;
+  color: var(--text-main);
+}
+
+.page-wrap {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.page-header {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 22px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.header-left h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+.header-left p {
+  margin: 6px 0 0;
+  color: var(--text-sub);
+  font-size: 0.95rem;
+}
+
+.btn {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  transition: .2s ease;
+  cursor: pointer;
+}
+
+.btn-white {
+  background: #fff;
+  border-color: var(--border);
+  color: var(--text-main);
+}
+
+.btn-white:hover {
+  background: #f8fafc;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.kpi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--text-sub);
+  letter-spacing: .05em;
+  margin-bottom: 8px;
+}
+
+.kpi-value {
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.kpi-sub {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.kpi-blue { border-left: 4px solid var(--primary); }
+.kpi-green { border-left: 4px solid var(--success); }
+.kpi-orange { border-left: 4px solid var(--warning); }
+.kpi-red { border-left: 4px solid var(--danger); }
+
+.filter-card,
+.section-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1rem;
+}
+
+.section-count {
+  background: #f1f5f9;
+  color: var(--text-sub);
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.filter-body {
+  padding: 18px 20px;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-sub);
+}
+
+.field input,
+.field select {
+  width: 100%;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 12px;
+  font-size: 14px;
+  background: #fff;
+  outline: none;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: var(--primary);
+}
+
+.filter-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  min-width: 1180px;
+  border-collapse: collapse;
+}
+
+thead th {
+  background: #f8fafc;
+  color: var(--text-sub);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  font-size: 14px;
+}
+
+tbody tr:hover {
+  background: #fcfdff;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.rank-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #eef2ff;
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.status-ativo,
+.status-backup {
+  background: #ecfdf5;
+  color: #166534;
+  border-color: #bbf7d0;
+}
+
+.status-manutencao {
+  background: #fff7ed;
+  color: #9a3412;
+  border-color: #fed7aa;
+}
+
+.status-defeito,
+.status-queimado {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+.status-pausado {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-color: #ddd6fe;
+}
+
+.deadline-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.deadline-vencido {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.deadline-critico {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.deadline-alerta {
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.money {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-sub);
+}
+
+@media (max-width: 768px) {
+  .page-wrap {
+    padding: 14px;
+  }
+
+  .page-header {
+    padding: 18px;
+  }
+
+  .header-left h1 {
+    font-size: 1.25rem;
+  }
+}
+</style>
+
+<div class="page-wrap">
+
+  <div class="page-header">
+    <div class="header-left">
+      <h1>Central de Avisos - Contratos a Vencer</h1>
+      <p>Ranking de itens locados com contrato próximo do vencimento ou já vencido.</p>
+    </div>
+
+    <div>
+      <a href="javascript:history.back()" class="btn btn-white">
+        <i class="fa fa-arrow-left"></i> Voltar
+      </a>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-label">Total em Alerta</div>
+      <div class="kpi-value">{{ kpi.total_alertas }}</div>
+      <div class="kpi-sub">Janela de {{ kpi.dias_alerta }} dias</div>
+    </div>
+
+    <div class="kpi-card kpi-green">
+      <div class="kpi-label">Ranking Operacional</div>
+      <div class="kpi-value">{{ kpi.total_operacionais }}</div>
+      <div class="kpi-sub">Ativo, backup, manutenção e defeito</div>
+    </div>
+
+    <div class="kpi-card kpi-orange">
+      <div class="kpi-label">Pausados</div>
+      <div class="kpi-value">{{ kpi.total_pausados }}</div>
+      <div class="kpi-sub">Itens com contrato em pausa operacional</div>
+    </div>
+
+    <div class="kpi-card kpi-red">
+      <div class="kpi-label">Já Vencidos</div>
+      <div class="kpi-value">{{ kpi.vencidos }}</div>
+      <div class="kpi-sub">Exigem tratativa imediata</div>
+    </div>
+  </div>
+
+  <div class="filter-card">
+    <div class="card-header">
+      <div class="card-title">
+        <i class="fa fa-filter"></i> Filtros
+      </div>
+    </div>
+
+    <div class="filter-body">
+      <form method="get">
+        <div class="filter-grid">
+          <div class="field">
+            <label>Nome</label>
+            <input type="text" name="nome" value="{{ filtros.nome }}" placeholder="Nome do item">
+          </div>
+
+          <div class="field">
+            <label>Número de Série</label>
+            <input type="text" name="ns" value="{{ filtros.ns }}" placeholder="NS">
+          </div>
+
+          <div class="field">
+            <label>Subtipo</label>
+            <select name="subtipo">
+              <option value="">Todos</option>
+              {% for s in subtipoes|default:subtipos %}
+                <option value="{{ s.id }}" {% if filtros.subtipo == s.id|stringformat:"s" %}selected{% endif %}>{{ s.nome }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Status</label>
+            <select name="status">
+              <option value="">Todos</option>
+              {% for st in status_opcoes %}
+                <option value="{{ st }}" {% if filtros.status == st %}selected{% endif %}>{{ st|title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Fornecedor</label>
+            <select name="fornecedor">
+              <option value="">Todos</option>
+              {% for f in fornecedores %}
+                <option value="{{ f.id }}" {% if filtros.fornecedor == f.id|stringformat:"s" %}selected{% endif %}>{{ f.nome }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="filter-actions">
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <a href="{% url 'avisos_contratos_vencer_export_excel' %}?nome={{ filtros.nome }}&ns={{ filtros.ns }}&subtipo={{ filtros.subtipo }}&status={{ filtros.status }}&fornecedor={{ filtros.fornecedor }}" class="btn btn-primary">
+                <i class="fa fa-file-excel"></i> Excel
+            </a>
+
+            <a href="javascript:history.back()" class="btn btn-white">
+                <i class="fa fa-arrow-left"></i> Voltar
+            </a>
+            </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="fa fa-magnifying-glass"></i> Filtrar
+          </button>
+          <a href="{% url 'avisos_contratos_vencer' %}" class="btn btn-white">
+            <i class="fa fa-rotate-left"></i> Limpar
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="card-header">
+      <div class="card-title">
+        <i class="fa fa-triangle-exclamation" style="color:#f59e0b;"></i>
+        Ranking Operacional
+      </div>
+      <span class="section-count">{{ ranking_operacional|length }}</span>
+    </div>
+
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Item</th>
+            <th>NS</th>
+            <th>Subtipo</th>
+            <th>Status</th>
+            <th>Fornecedor</th>
+            <th>Data Entrada</th>
+            <th>Prazo</th>
+            <th>Vencimento</th>
+            <th>Dias Restantes</th>
+            <th style="text-align:right;">Valor Mensal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in ranking_operacional %}
+          <tr>
+            <td><span class="rank-badge">{{ forloop.counter }}</span></td>
+            <td>
+              <div style="font-weight:700;">{{ item.nome }}</div>
+              {% if item.centro_custo %}
+                <div style="font-size:12px; color:#64748b;">{{ item.centro_custo.departamento }}</div>
+              {% endif %}
+            </td>
+            <td>{{ item.numero_serie|default:"-" }}</td>
+            <td>{{ item.subtipo.nome|default:"-" }}</td>
+            <td>
+              <span class="status-badge status-{{ item.status|lower }}">
+                {{ item.status }}
+              </span>
+            </td>
+            <td>{{ item.fornecedor.nome|default:"-" }}</td>
+            <td>{{ item.locacao.data_entrada|date:"d/m/Y" }}</td>
+            <td>{{ item.locacao.tempo_locado }} mês(es)</td>
+            <td>{{ item.data_vencimento_contrato|date:"d/m/Y" }}</td>
+            <td>
+              {% if item.dias_restantes_contrato < 0 %}
+                <span class="deadline-badge deadline-vencido">
+                  {{ item.dias_restantes_contrato|add:"0" }} dia(s)
+                </span>
+              {% elif item.dias_restantes_contrato <= 15 %}
+                <span class="deadline-badge deadline-critico">
+                  {{ item.dias_restantes_contrato }} dia(s)
+                </span>
+              {% else %}
+                <span class="deadline-badge deadline-alerta">
+                  {{ item.dias_restantes_contrato }} dia(s)
+                </span>
+              {% endif %}
+            </td>
+            <td style="text-align:right;" class="money">
+              R$ {{ item.valor_mensal_calc|floatformat:2|intcomma }}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="11" class="empty-state">
+              Nenhum item operacional em alerta de vencimento.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="card-header">
+      <div class="card-title">
+        <i class="fa fa-pause-circle" style="color:#8b5cf6;"></i>
+        Ranking de Itens Pausados
+      </div>
+      <span class="section-count">{{ ranking_pausados|length }}</span>
+    </div>
+
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Item</th>
+            <th>NS</th>
+            <th>Subtipo</th>
+            <th>Status</th>
+            <th>Fornecedor</th>
+            <th>Data Entrada</th>
+            <th>Prazo</th>
+            <th>Vencimento</th>
+            <th>Dias Restantes</th>
+            <th style="text-align:right;">Valor Mensal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in ranking_pausados %}
+          <tr>
+            <td><span class="rank-badge">{{ forloop.counter }}</span></td>
+            <td>
+              <div style="font-weight:700;">{{ item.nome }}</div>
+              {% if item.centro_custo %}
+                <div style="font-size:12px; color:#64748b;">{{ item.centro_custo.departamento }}</div>
+              {% endif %}
+            </td>
+            <td>{{ item.numero_serie|default:"-" }}</td>
+            <td>{{ item.subtipo.nome|default:"-" }}</td>
+            <td>
+              <span class="status-badge status-{{ item.status|lower }}">
+                {{ item.status }}
+              </span>
+            </td>
+            <td>{{ item.fornecedor.nome|default:"-" }}</td>
+            <td>{{ item.locacao.data_entrada|date:"d/m/Y" }}</td>
+            <td>{{ item.locacao.tempo_locado }} mês(es)</td>
+            <td>{{ item.data_vencimento_contrato|date:"d/m/Y" }}</td>
+            <td>
+              {% if item.dias_restantes_contrato < 0 %}
+                <span class="deadline-badge deadline-vencido">
+                  {{ item.dias_restantes_contrato }} dia(s)
+                </span>
+              {% elif item.dias_restantes_contrato <= 15 %}
+                <span class="deadline-badge deadline-critico">
+                  {{ item.dias_restantes_contrato }} dia(s)
+                </span>
+              {% else %}
+                <span class="deadline-badge deadline-alerta">
+                  {{ item.dias_restantes_contrato }} dia(s)
+                </span>
+              {% endif %}
+            </td>
+            <td style="text-align:right;" class="money">
+              R$ {{ item.valor_mensal_calc|floatformat:2|intcomma }}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="11" class="empty-state">
+              Nenhum item pausado em alerta de vencimento.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

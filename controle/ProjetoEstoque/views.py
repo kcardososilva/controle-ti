@@ -38,6 +38,7 @@ from django.core.exceptions import ValidationError
 from django.template.loader import get_template
 from xhtml2pdf import pisa
 from services.importador_planilha import ImportadorPlanilhaService
+from dateutil.relativedelta import relativedelta
 import traceback
 # --- Helpers de compatibilidade com nomes de campos diferentes no LicencaLote ---
 def _lote_total_get(lote):
@@ -542,49 +543,140 @@ def _get_fornecedores_filtrados(request):
 @login_required
 def fornecedor_list(request):
     """
-    Dashboard de Fornecedores (Enterprise Style).
+    Dashboard de Fornecedores com consolidação de custos:
+    - Itens comprados
+    - Itens locados
+    - Licenças / lotes
     """
     qs, q, tem_contrato = _get_fornecedores_filtrados(request)
-    
-    forn_ids = list(qs.values_list("id", flat=True))
+
+    fornecedores_ids = list(qs.values_list("id", flat=True))
     total_filtrado = qs.count()
 
-    # --- KPIs (Baseados em Itens) ---
-    itens_qs = Item.objects.filter(fornecedor_id__in=forn_ids)
-    
-    # 1. Agregação Global (Itens Locados geram custo)
-    globais = itens_qs.filter(locado="sim").aggregate(
-        total_custo=Sum("locacao__valor_mensal"),
-        qtd_locados=Count("id")
+    def calcular_custos_lote_agregado(lotes):
+        mensal_total = Decimal("0.00")
+        anual_total = Decimal("0.00")
+        qtd_licencas_total = 0
+
+        for lote in lotes:
+            periodicidade = str(lote.periodicidade or "").lower()
+            qtd_lote = int(lote.quantidade_total or 0)
+            custo_ciclo_lote = Decimal(lote.custo_ciclo or 0)
+
+            qtd_licencas_total += qtd_lote
+
+            if qtd_lote <= 0:
+                continue
+
+            if periodicidade == "mensal":
+                custo_mensal_lote = custo_ciclo_lote
+            elif periodicidade == "trimestral":
+                custo_mensal_lote = (custo_ciclo_lote / Decimal("3")).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+            elif periodicidade == "semestral":
+                custo_mensal_lote = (custo_ciclo_lote / Decimal("6")).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+            elif periodicidade == "anual":
+                custo_mensal_lote = (custo_ciclo_lote / Decimal("12")).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+            else:
+                custo_mensal_lote = custo_ciclo_lote.quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+
+            custo_anual_lote = (custo_mensal_lote * Decimal("12")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+
+            mensal_total += custo_mensal_lote
+            anual_total += custo_anual_lote
+
+        return {
+            "mensal_total": mensal_total,
+            "anual_total": anual_total,
+            "qtd_licencas_total": qtd_licencas_total,
+        }
+
+    # =========================
+    # MAPAS DE ITENS
+    # =========================
+    itens_qs = Item.objects.filter(fornecedor_id__in=fornecedores_ids)
+
+    dados_itens = (
+        itens_qs.values("fornecedor")
+        .annotate(
+            qtd_total=Count("id"),
+            valor_total_itens=Coalesce(Sum("valor"), Decimal("0.00")),
+            qtd_locados=Count("id", filter=Q(locado="sim")),
+            custo_mensal_locacao=Coalesce(
+                Sum("locacao__valor_mensal", filter=Q(locado="sim")),
+                Decimal("0.00")
+            ),
+        )
     )
-    kpi_custo_total = globais["total_custo"] or Decimal(0)
-    kpi_itens_locados = globais["qtd_locados"] or 0
-    kpi_media = (kpi_custo_total / total_filtrado) if total_filtrado > 0 else 0
 
-    # 2. Dados por Fornecedor (Mapas para performance)
-    # Total de itens (locados ou não)
-    dados_total = itens_qs.values("fornecedor").annotate(qtd=Count("id"))
-    mapa_total = {d["fornecedor"]: d["qtd"] for d in dados_total}
+    mapa_itens = {}
+    for d in dados_itens:
+        mapa_itens[d["fornecedor"]] = {
+            "qtd_total": d["qtd_total"] or 0,
+            "valor_total_itens": d["valor_total_itens"] or Decimal("0.00"),
+            "qtd_locados": d["qtd_locados"] or 0,
+            "custo_mensal_locacao": d["custo_mensal_locacao"] or Decimal("0.00"),
+        }
 
-    # Dados financeiros (apenas locados)
-    dados_fin = itens_qs.filter(locado="sim").values("fornecedor").annotate(
-        custo=Sum("locacao__valor_mensal"), 
-        qtd_loc=Count("id")
+    # =========================
+    # MAPAS DE LICENÇAS
+    # =========================
+    licencas_qs = (
+        Licenca.objects.filter(fornecedor_id__in=fornecedores_ids)
+        .select_related("fornecedor")
     )
-    mapa_custo = {d["fornecedor"]: d["custo"] or 0 for d in dados_fin}
-    mapa_locados = {d["fornecedor"]: d["qtd_loc"] or 0 for d in dados_fin}
 
-    # 3. Top Fornecedor (Maior Custo)
+    dados_licencas = (
+        licencas_qs.values("fornecedor")
+        .annotate(qtd_licencas=Count("id"))
+    )
+    mapa_qtd_licencas = {
+        d["fornecedor"]: d["qtd_licencas"] or 0
+        for d in dados_licencas
+    }
+
+    lotes_qs = (
+        LicencaLote.objects.filter(licenca__fornecedor_id__in=fornecedores_ids)
+        .select_related("licenca", "licenca__fornecedor")
+    )
+
+    mapa_licencas = {}
+    mapa_lotes = {}
+
+    for fornecedor_id in fornecedores_ids:
+        lotes_fornecedor = [l for l in lotes_qs if l.licenca and l.licenca.fornecedor_id == fornecedor_id]
+        custo_lic = calcular_custos_lote_agregado(lotes_fornecedor)
+
+        mapa_licencas[fornecedor_id] = {
+            "custo_mensal_licencas": custo_lic["mensal_total"],
+            "custo_anual_licencas": custo_lic["anual_total"],
+            "qtd_assentos_licencas": custo_lic["qtd_licencas_total"],
+        }
+        mapa_lotes[fornecedor_id] = len(lotes_fornecedor)
+
+    # =========================
+    # KPI GLOBAIS
+    # =========================
+    kpi_custo_mensal_total = Decimal("0.00")
+    kpi_custo_anual_total = Decimal("0.00")
+    kpi_total_itens = 0
+    kpi_total_licencas = 0
+
     kpi_top_forn = None
-    kpi_top_val = 0
-    if mapa_custo:
-        top_id = max(mapa_custo, key=mapa_custo.get)
-        kpi_top_val = mapa_custo[top_id]
-        try:
-            kpi_top_forn = Fornecedor.objects.get(id=top_id)
-        except Fornecedor.DoesNotExist: pass
+    kpi_top_val = Decimal("0.00")
 
-    # --- Paginação ---
+    # =========================
+    # PAGINAÇÃO
+    # =========================
     try:
         per_page = int(request.GET.get("pp", 12))
     except ValueError:
@@ -594,29 +686,82 @@ def fornecedor_list(request):
     page_num = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_num)
 
-    # Injeta dados calculados nos objetos da página
     for f in page_obj.object_list:
-        f.qtd_total_calc = mapa_total.get(f.id, 0)
-        f.qtd_locados_calc = mapa_locados.get(f.id, 0)
-        f.custo_calc = mapa_custo.get(f.id, 0)
+        item_data = mapa_itens.get(f.id, {})
+        lic_data = mapa_licencas.get(f.id, {})
+
+        f.qtd_total_itens_calc = item_data.get("qtd_total", 0)
+        f.valor_total_itens_calc = item_data.get("valor_total_itens", Decimal("0.00"))
+        f.qtd_locados_calc = item_data.get("qtd_locados", 0)
+        f.custo_mensal_itens_calc = item_data.get("custo_mensal_locacao", Decimal("0.00"))
+
+        f.qtd_licencas_calc = mapa_qtd_licencas.get(f.id, 0)
+        f.qtd_lotes_calc = mapa_lotes.get(f.id, 0)
+        f.qtd_assentos_licencas_calc = lic_data.get("qtd_assentos_licencas", 0)
+        f.custo_mensal_licencas_calc = lic_data.get("custo_mensal_licencas", Decimal("0.00"))
+        f.custo_anual_licencas_calc = lic_data.get("custo_anual_licencas", Decimal("0.00"))
+
+        # Totais consolidados do fornecedor
+        f.custo_total_mensal_calc = (
+            f.custo_mensal_itens_calc + f.custo_mensal_licencas_calc
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        f.custo_total_anual_calc = (
+            f.valor_total_itens_calc + f.custo_anual_licencas_calc
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    # KPI global com base em TODOS os fornecedores filtrados
+    for f in qs:
+        item_data = mapa_itens.get(f.id, {})
+        lic_data = mapa_licencas.get(f.id, {})
+
+        custo_mensal_itens = item_data.get("custo_mensal_locacao", Decimal("0.00"))
+        valor_total_itens = item_data.get("valor_total_itens", Decimal("0.00"))
+        custo_mensal_lic = lic_data.get("custo_mensal_licencas", Decimal("0.00"))
+        custo_anual_lic = lic_data.get("custo_anual_licencas", Decimal("0.00"))
+        qtd_itens = item_data.get("qtd_total", 0)
+        qtd_lic = mapa_qtd_licencas.get(f.id, 0)
+
+        total_mensal_forn = (custo_mensal_itens + custo_mensal_lic).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        total_anual_forn = (valor_total_itens + custo_anual_lic).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        kpi_custo_mensal_total += total_mensal_forn
+        kpi_custo_anual_total += total_anual_forn
+        kpi_total_itens += qtd_itens
+        kpi_total_licencas += qtd_lic
+
+        if total_mensal_forn > kpi_top_val:
+            kpi_top_val = total_mensal_forn
+            kpi_top_forn = f
+
+    kpi_media = (
+        (kpi_custo_mensal_total / total_filtrado).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if total_filtrado > 0 else Decimal("0.00")
+    )
 
     get_copy = request.GET.copy()
-    if "page" in get_copy: del get_copy["page"]
+    if "page" in get_copy:
+        del get_copy["page"]
     qs_keep = get_copy.urlencode()
 
     context = {
         "fornecedores": page_obj.object_list,
         "page_obj": page_obj,
+        "paginator": paginator,
         "total": total_filtrado,
         "qs_keep": qs_keep,
-        
-        # Filtros
+
         "f_q": q,
         "f_contrato": tem_contrato,
 
-        # KPIs
-        "kpi_custo_total": kpi_custo_total,
-        "kpi_locados": kpi_itens_locados,
+        "kpi_custo_mensal_total": kpi_custo_mensal_total,
+        "kpi_custo_anual_total": kpi_custo_anual_total,
+        "kpi_total_itens": kpi_total_itens,
+        "kpi_total_licencas": kpi_total_licencas,
         "kpi_media": kpi_media,
         "kpi_top_forn": kpi_top_forn,
         "kpi_top_val": kpi_top_val,
@@ -712,47 +857,154 @@ def fornecedor_update(request, pk: int):
 @login_required
 def fornecedor_detail(request, pk: int):
     """
-    Dashboard detalhado do Fornecedor.
-    Inclui dados cadastrais, contrato, KPIs financeiros e lista de ativos fornecidos.
+    Dashboard detalhado do fornecedor com consolidação de:
+    - Itens
+    - Itens locados
+    - Licenças
+    - Lotes de licença
     """
     obj = get_object_or_404(Fornecedor, pk=pk)
-    
-    # 1. Busca Itens fornecidos por este parceiro
+
+    def calcular_custos_lote(lote):
+        periodicidade = str(lote.periodicidade or "").lower()
+        qtd_lote = int(lote.quantidade_total or 0)
+        custo_ciclo_lote = Decimal(lote.custo_ciclo or 0)
+
+        if qtd_lote <= 0:
+            return {
+                "mensal_lote": Decimal("0.00"),
+                "anual_lote": Decimal("0.00"),
+                "mensal_unit": Decimal("0.00"),
+                "anual_unit": Decimal("0.00"),
+            }
+
+        if periodicidade == "mensal":
+            custo_mensal_lote = custo_ciclo_lote
+        elif periodicidade == "trimestral":
+            custo_mensal_lote = (custo_ciclo_lote / Decimal("3")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        elif periodicidade == "semestral":
+            custo_mensal_lote = (custo_ciclo_lote / Decimal("6")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        elif periodicidade == "anual":
+            custo_mensal_lote = (custo_ciclo_lote / Decimal("12")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        else:
+            custo_mensal_lote = custo_ciclo_lote.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+
+        custo_anual_lote = (custo_mensal_lote * Decimal("12")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        mensal_unit = (custo_mensal_lote / Decimal(qtd_lote)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        anual_unit = (custo_anual_lote / Decimal(qtd_lote)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        return {
+            "mensal_lote": custo_mensal_lote,
+            "anual_lote": custo_anual_lote,
+            "mensal_unit": mensal_unit,
+            "anual_unit": anual_unit,
+        }
+
+    # =========================
+    # ITENS
+    # =========================
     itens_qs = (
         Item.objects
         .filter(fornecedor=obj)
-        .select_related('subtipo', 'localidade', 'centro_custo')
-        .order_by('-created_at')
+        .select_related("subtipo", "localidade", "centro_custo", "locacao")
+        .order_by("-created_at")
     )
 
-    # 2. KPIs em Tempo Real
     total_itens = itens_qs.count()
-    
-    # Filtra apenas itens que são locados (custo recorrente)
     locados_qs = itens_qs.filter(locado=SimNaoChoices.SIM)
     qtd_locados = locados_qs.count()
-    
-    # Soma o valor mensal dos contratos de locação
-    custo_mensal = locados_qs.aggregate(
-        total=Sum('locacao__valor_mensal')
-    )['total'] or Decimal(0)
 
-    # Valor patrimonial (Itens comprados/próprios)
-    valor_patrimonial = itens_qs.exclude(locado=SimNaoChoices.SIM).aggregate(
-        total=Sum('valor')
-    )['total'] or Decimal(0)
+    custo_mensal_itens = locados_qs.aggregate(
+        total=Sum("locacao__valor_mensal")
+    )["total"] or Decimal("0.00")
+
+    valor_patrimonial = itens_qs.exclude(
+        locado=SimNaoChoices.SIM
+    ).aggregate(
+        total=Sum("valor")
+    )["total"] or Decimal("0.00")
+
+    # =========================
+    # LICENÇAS
+    # =========================
+    licencas_qs = (
+        Licenca.objects
+        .filter(fornecedor=obj)
+        .select_related("centro_custo")
+        .order_by("nome")
+    )
+
+    total_licencas = licencas_qs.count()
+
+    # =========================
+    # LOTES DE LICENÇA
+    # =========================
+    lotes_qs = (
+        LicencaLote.objects
+        .filter(licenca__fornecedor=obj)
+        .select_related("licenca", "centro_custo", "fornecedor")
+        .order_by("-data_compra", "-id")
+    )
+
+    total_lotes = lotes_qs.count()
+    total_assentos_licencas = 0
+    custo_mensal_licencas = Decimal("0.00")
+    custo_anual_licencas = Decimal("0.00")
+
+    for lote in lotes_qs:
+        custos = calcular_custos_lote(lote)
+
+        lote.custo_mensal_calc = custos["mensal_lote"]
+        lote.custo_anual_calc = custos["anual_lote"]
+        lote.custo_mensal_unit_calc = custos["mensal_unit"]
+        lote.custo_anual_unit_calc = custos["anual_unit"]
+
+        total_assentos_licencas += int(lote.quantidade_total or 0)
+        custo_mensal_licencas += custos["mensal_lote"]
+        custo_anual_licencas += custos["anual_lote"]
+
+    custo_total_mensal = (custo_mensal_itens + custo_mensal_licencas).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    custo_total_anual = (valor_patrimonial + custo_anual_licencas).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
     context = {
         "obj": obj,
         "itens_fornecidos": itens_qs,
+        "licencas_fornecidas": licencas_qs,
+        "lotes_licencas": lotes_qs,
         "kpi": {
             "total_itens": total_itens,
             "qtd_locados": qtd_locados,
-            "custo_mensal": custo_mensal,
+            "custo_mensal_itens": custo_mensal_itens,
             "valor_aquisicao": valor_patrimonial,
+            "total_licencas": total_licencas,
+            "total_lotes": total_lotes,
+            "total_assentos_licencas": total_assentos_licencas,
+            "custo_mensal_licencas": custo_mensal_licencas,
+            "custo_anual_licencas": custo_anual_licencas,
+            "custo_total_mensal": custo_total_mensal,
+            "custo_total_anual": custo_total_anual,
         }
     }
-    
+
     return render(request, "front/fornecedores/fornecedor_detail.html", context)
 
 
@@ -1131,17 +1383,12 @@ def item_create(request):
         "form": form, 
         "locacao_form": locacao_form
     })
+
 # ITEM LIST
 
 def _norm(s: str) -> str:
     return unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode().lower()
 
-
-
-
-
-# importe seus modelos/choices
-# from .models import Item, Subtipo, MovimentacaoItem, StatusItemChoices
 
 def _build_queryset_and_context(request):
     """
@@ -1192,7 +1439,6 @@ def _build_queryset_and_context(request):
     qs = qs.distinct()
     filtered_total = qs.count()
 
-    # -------- Paginação --------
     try:
         per_page = int(p.get("pp") or 20)
         if per_page not in (10, 20, 50, 100):
@@ -1241,16 +1487,14 @@ def _build_queryset_and_context(request):
     }
     return context
 
-
+### LISTAGEM DE EQUIPAMENO ##
 @login_required
 def equipamentos_list(request):
     context = _build_queryset_and_context(request)
-
-    # Verifica se é uma requisição AJAX / Partial
     is_partial = request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
     if is_partial:
-        # Renderiza apenas os fragmentos
+    
         data = {
             "tbody": render_to_string("front/equipamentos/_tbody.html", context, request=request),
             "pagination": render_to_string("front/equipamentos/_pagination.html", context, request=request),
@@ -1259,8 +1503,9 @@ def equipamentos_list(request):
         }
         return JsonResponse(data)
 
-    # Renderização Full Page
     return render(request, "front/equipamentos/equipamentos_list.html", context)
+
+
 ## IMPORTAR PLANILHA ITEM
 @login_required
 def importar_planilha(request):
@@ -1472,7 +1717,7 @@ def equipamento_detalhe(request, pk: int):
                     days=vida_util_dias
                 )
 
-    # 3) Preventivas
+  
     preventivas = (
         Preventiva.objects.filter(equipamento=item)
         .select_related("checklist_modelo")
@@ -3971,9 +4216,11 @@ def licenca_detail(request, pk):
         pk=pk
     )
 
-    lotes_qs = LicencaLote.objects.filter(licenca=licenca).select_related(
-        "fornecedor", "centro_custo"
-    ).order_by("-data_compra", "-id")
+    lotes_qs = (
+        LicencaLote.objects.filter(licenca=licenca)
+        .select_related("fornecedor", "centro_custo")
+        .order_by("-data_compra", "-id")
+    )
     lotes = list(lotes_qs)
 
     qtd_total = 0
@@ -3983,94 +4230,121 @@ def licenca_detail(request, pk):
     burn_rate_mensal = Decimal("0.00")
     burn_rate_anual = Decimal("0.00")
 
-    for lote in lotes:
+    def normalizar_custos_lote(lote):
         periodicidade = str(lote.periodicidade or "").lower()
+        qtd_lote = int(lote.quantidade_total or 0)
+        custo_ciclo_lote = Decimal(lote.custo_ciclo or 0)
+
+        if qtd_lote <= 0:
+            return {
+                "unitario_ciclo": Decimal("0.00"),
+                "mensal_unit": Decimal("0.00"),
+                "anual_unit": Decimal("0.00"),
+                "mensal_total": Decimal("0.00"),
+                "anual_total": Decimal("0.00"),
+            }
+
+        if periodicidade == "mensal":
+            custo_mensal_lote_base = custo_ciclo_lote
+        elif periodicidade == "trimestral":
+            custo_mensal_lote_base = (custo_ciclo_lote / Decimal("3")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        elif periodicidade == "semestral":
+            custo_mensal_lote_base = (custo_ciclo_lote / Decimal("6")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        elif periodicidade == "anual":
+            custo_mensal_lote_base = (custo_ciclo_lote / Decimal("12")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        else:
+            custo_mensal_lote_base = custo_ciclo_lote.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+
+        unitario_ciclo = (custo_ciclo_lote / Decimal(qtd_lote)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        mensal_unit = (custo_mensal_lote_base / Decimal(qtd_lote)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        anual_unit = (mensal_unit * Decimal("12")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        mensal_total = (mensal_unit * Decimal(qtd_lote)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        anual_total = (mensal_total * Decimal("12")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        return {
+            "unitario_ciclo": unitario_ciclo,
+            "mensal_unit": mensal_unit,
+            "anual_unit": anual_unit,
+            "mensal_total": mensal_total,
+            "anual_total": anual_total,
+        }
+
+    # Normalização dos lotes + KPIs
+    for lote in lotes:
         qtd_lote = int(lote.quantidade_total or 0)
         qtd_disponivel = int(lote.quantidade_disponivel or 0)
         em_uso = max(0, qtd_lote - qtd_disponivel)
 
-        custo_ciclo_lote = Decimal(lote.custo_ciclo or 0)
-
         qtd_total += qtd_lote
         qtd_disp += qtd_disponivel
 
-        if qtd_lote <= 0:
-            custo_unit_ciclo = Decimal("0.00")
-            custo_mensal_unit = Decimal("0.00")
-            custo_anual_unit = Decimal("0.00")
-            custo_mensal_lote_total = Decimal("0.00")
-            custo_anual_lote_total = Decimal("0.00")
-        else:
-            # 1) Normaliza o custo do lote para base mensal do lote
-            if periodicidade == "mensal":
-                custo_mensal_lote_base = custo_ciclo_lote
-            elif periodicidade == "trimestral":
-                custo_mensal_lote_base = (custo_ciclo_lote / Decimal("3")).quantize(
-                    Decimal("0.01"), rounding=ROUND_HALF_UP
-                )
-            elif periodicidade == "semestral":
-                custo_mensal_lote_base = (custo_ciclo_lote / Decimal("6")).quantize(
-                    Decimal("0.01"), rounding=ROUND_HALF_UP
-                )
-            elif periodicidade == "anual":
-                custo_mensal_lote_base = (custo_ciclo_lote / Decimal("12")).quantize(
-                    Decimal("0.01"), rounding=ROUND_HALF_UP
-                )
-            else:
-                # fallback seguro
-                custo_mensal_lote_base = custo_ciclo_lote.quantize(
-                    Decimal("0.01"), rounding=ROUND_HALF_UP
-                )
+        custos = normalizar_custos_lote(lote)
 
-            # 2) Custos individuais
-            custo_unit_ciclo = (custo_ciclo_lote / Decimal(qtd_lote)).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
+        lote.unitario_real = custos["unitario_ciclo"]
+        lote.custo_mensal_unit = custos["mensal_unit"]
+        lote.custo_anual_unit = custos["anual_unit"]
+        lote.total_mensal_calc = custos["mensal_total"]
+        lote.total_investido_calc = custos["anual_total"]
 
-            custo_mensal_unit = (custo_mensal_lote_base / Decimal(qtd_lote)).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
+        total_investido_historico += custos["anual_total"]
 
-            custo_anual_unit = (custo_mensal_unit * Decimal("12")).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-
-            # 3) Totais do lote
-            custo_mensal_lote_total = (custo_mensal_unit * Decimal(qtd_lote)).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-
-            custo_anual_lote_total = (custo_mensal_lote_total * Decimal("12")).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-
-        # KPI histórico da licença = soma anual de todos os lotes
-        total_investido_historico += custo_anual_lote_total
-
-        # Burn rate = somente assentos em uso
         if em_uso > 0:
-            burn_rate_mensal += (custo_mensal_unit * Decimal(em_uso)).quantize(
+            burn_rate_mensal += (custos["mensal_unit"] * Decimal(em_uso)).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
-            burn_rate_anual += (custo_anual_unit * Decimal(em_uso)).quantize(
+            burn_rate_anual += (custos["anual_unit"] * Decimal(em_uso)).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
-
-        # Campos auxiliares para o template
-        lote.unitario_real = custo_unit_ciclo
-        lote.custo_mensal_unit = custo_mensal_unit
-        lote.custo_anual_unit = custo_anual_unit
-        lote.total_mensal_calc = custo_mensal_lote_total
-        lote.total_investido_calc = custo_anual_lote_total
 
     qtd_em_uso = max(0, qtd_total - qtd_disp)
     pct_uso = int((qtd_em_uso / qtd_total) * 100) if qtd_total > 0 else 0
 
-    movimentacoes = MovimentacaoLicenca.objects.filter(
-        licenca=licenca
-    ).select_related(
-        "usuario", "lote", "centro_custo_destino", "criado_por"
-    ).order_by("-created_at")[:50]
+    # Histórico completo + paginação
+    movimentacoes_qs = (
+        MovimentacaoLicenca.objects.filter(licenca=licenca)
+        .select_related("usuario", "lote", "centro_custo_destino", "criado_por")
+        .order_by("-created_at")
+    )
+
+    movimentacoes_lista = []
+    for mov in movimentacoes_qs:
+        mensal = Decimal("0.00")
+        anual = Decimal("0.00")
+
+        if mov.lote:
+            custos_mov = normalizar_custos_lote(mov.lote)
+            mensal = custos_mov["mensal_unit"]
+            anual = custos_mov["anual_unit"]
+
+        mov.custo_mensal_exibicao = mensal
+        mov.custo_anual_exibicao = anual
+        movimentacoes_lista.append(mov)
+
+    paginator = Paginator(movimentacoes_lista, 10)
+    page_number = request.GET.get("page")
+    movimentacoes_page = paginator.get_page(page_number)
 
     cc_list = _get_dados_cc(licenca)
 
@@ -4086,51 +4360,395 @@ def licenca_detail(request, pk):
             "gasto_anual": burn_rate_anual,
         },
         "lotes": lotes,
-        "movimentacoes": movimentacoes,
+        "movimentacoes": movimentacoes_page,
         "cc_list": cc_list,
     }
 
     return render(request, "front/licencas/licenca_detail.html", context)
-# --- NOVA VIEW: Exportação PDF ---
+
+
 @login_required
-def licenca_export_pdf(request, pk):
-    licenca = get_object_or_404(Licenca, pk=pk)
-    
-    # Recalcula dados essenciais para o relatório (KPIs + CCs)
-    # Reutilizando a lógica simplificada ou chamando o helper
+def licenca_export_excel(request, pk):
+    licenca = get_object_or_404(
+        Licenca.objects.select_related("fornecedor", "centro_custo"),
+        pk=pk
+    )
+
+    lotes_qs = (
+        LicencaLote.objects.filter(licenca=licenca)
+        .select_related("fornecedor", "centro_custo")
+        .order_by("-data_compra", "-id")
+    )
+
+    movimentacoes_qs = (
+        MovimentacaoLicenca.objects.filter(licenca=licenca)
+        .select_related("usuario", "lote", "centro_custo_destino", "criado_por")
+        .order_by("-created_at")
+    )
+
     cc_list = _get_dados_cc(licenca)
-    
-    # Totais dos CCs
-    total_alocado_valor = sum(item['total'] for item in cc_list)
-    total_alocado_qtd = sum(item['qtd'] for item in cc_list)
 
-    # Dados de Lote para Inventário
-    lotes = LicencaLote.objects.filter(licenca=licenca)
-    estoque_total = lotes.aggregate(t=Coalesce(Sum('quantidade_total'),0))['t']
-    estoque_disp = lotes.aggregate(d=Coalesce(Sum('quantidade_disponivel'),0))['d']
+    def normalizar_custos_lote(lote):
+        periodicidade = str(lote.periodicidade or "").lower()
+        qtd_lote = int(lote.quantidade_total or 0)
+        custo_ciclo_lote = Decimal(lote.custo_ciclo or 0)
 
-    context = {
-        "obj": licenca,
-        "cc_list": cc_list,
-        "kpi": {
-            "alocado_qtd": total_alocado_qtd,
-            "alocado_valor": total_alocado_valor,
-            "estoque_total": estoque_total,
-            "estoque_disp": estoque_disp
-        },
-        "user_solicitante": request.user
+        if qtd_lote <= 0:
+            return {
+                "unitario_ciclo": Decimal("0.00"),
+                "mensal_unit": Decimal("0.00"),
+                "anual_unit": Decimal("0.00"),
+                "mensal_total": Decimal("0.00"),
+                "anual_total": Decimal("0.00"),
+            }
+
+        if periodicidade == "mensal":
+            custo_mensal_lote_base = custo_ciclo_lote
+        elif periodicidade == "trimestral":
+            custo_mensal_lote_base = (custo_ciclo_lote / Decimal("3")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        elif periodicidade == "semestral":
+            custo_mensal_lote_base = (custo_ciclo_lote / Decimal("6")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        elif periodicidade == "anual":
+            custo_mensal_lote_base = (custo_ciclo_lote / Decimal("12")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        else:
+            custo_mensal_lote_base = custo_ciclo_lote.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+
+        unitario_ciclo = (custo_ciclo_lote / Decimal(qtd_lote)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        mensal_unit = (custo_mensal_lote_base / Decimal(qtd_lote)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        anual_unit = (mensal_unit * Decimal("12")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        mensal_total = (mensal_unit * Decimal(qtd_lote)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        anual_total = (mensal_total * Decimal("12")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        return {
+            "unitario_ciclo": unitario_ciclo,
+            "mensal_unit": mensal_unit,
+            "anual_unit": anual_unit,
+            "mensal_total": mensal_total,
+            "anual_total": anual_total,
+        }
+
+    # =========================
+    # CRIA WORKBOOK
+    # =========================
+    wb = Workbook()
+
+    # Estilos
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    title_font = Font(size=13, bold=True, color="1F1F1F")
+    bold_font = Font(bold=True)
+    thin_border = Border(
+        left=Side(style="thin", color="D9D9D9"),
+        right=Side(style="thin", color="D9D9D9"),
+        top=Side(style="thin", color="D9D9D9"),
+        bottom=Side(style="thin", color="D9D9D9"),
+    )
+    center_alignment = Alignment(horizontal="center", vertical="center")
+    left_alignment = Alignment(horizontal="left", vertical="center")
+    right_alignment = Alignment(horizontal="right", vertical="center")
+
+    # =========================
+    # ABA 1 - HISTÓRICO USUÁRIOS
+    # =========================
+    ws1 = wb.active
+    ws1.title = "Usuarios e Alocacoes"
+
+    ws1["A1"] = f"Exportação de Licença - {licenca.nome}"
+    ws1["A1"].font = title_font
+
+    ws1["A2"] = "Fornecedor:"
+    ws1["A2"].font = bold_font
+    ws1["B2"] = licenca.fornecedor.nome if licenca.fornecedor else "-"
+
+    ws1["D2"] = "Centro de Custo Padrão:"
+    ws1["D2"].font = bold_font
+    ws1["E2"] = licenca.centro_custo.departamento if licenca.centro_custo else "-"
+
+    headers_ws1 = [
+        "Tipo de Ação",
+        "Colaborador",
+        "E-mail",
+        "Usuário do Sistema",
+        "Lote",
+        "Periodicidade do Lote",
+        "Centro de Custo Destino",
+        "Número CC",
+        "Custo Mensal",
+        "Custo Anual",
+        "Responsável Registro",
+        "Data",
+        "Hora",
+    ]
+
+    start_row_ws1 = 4
+    for col_num, header in enumerate(headers_ws1, 1):
+        cell = ws1.cell(row=start_row_ws1, column=col_num, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = thin_border
+        cell.alignment = center_alignment
+
+    row = start_row_ws1 + 1
+
+    for mov in movimentacoes_qs:
+        mensal = Decimal("0.00")
+        anual = Decimal("0.00")
+
+        if mov.lote:
+            custos = normalizar_custos_lote(mov.lote)
+            mensal = custos["mensal_unit"]
+            anual = custos["anual_unit"]
+
+        nome_usuario = "-"
+        email_usuario = "-"
+        username_usuario = "-"
+
+        if mov.usuario:
+            if getattr(mov.usuario, "first_name", None) or getattr(mov.usuario, "last_name", None):
+                nome_usuario = f"{mov.usuario.first_name} {mov.usuario.last_name}".strip()
+            elif getattr(mov.usuario, "nome", None):
+                nome_usuario = f"{mov.usuario.nome} {getattr(mov.usuario, 'last_name', '')}".strip()
+            else:
+                nome_usuario = getattr(mov.usuario, "username", "-") or "-"
+
+            email_usuario = getattr(mov.usuario, "email", "-") or "-"
+            username_usuario = getattr(mov.usuario, "username", "-") or "-"
+
+        tipo_acao = "Saída" if mov.tipo == "atribuicao" else "Devolução"
+
+        ws1.cell(row=row, column=1, value=tipo_acao)
+        ws1.cell(row=row, column=2, value=nome_usuario)
+        ws1.cell(row=row, column=3, value=email_usuario)
+        ws1.cell(row=row, column=4, value=username_usuario)
+        ws1.cell(row=row, column=5, value=f"#{mov.lote.pk}" if mov.lote else "-")
+        ws1.cell(
+            row=row,
+            column=6,
+            value=mov.lote.get_periodicidade_display() if mov.lote else "-"
+        )
+        ws1.cell(
+            row=row,
+            column=7,
+            value=mov.centro_custo_destino.departamento if mov.centro_custo_destino else "-"
+        )
+        ws1.cell(
+            row=row,
+            column=8,
+            value=mov.centro_custo_destino.numero if mov.centro_custo_destino else "-"
+        )
+        ws1.cell(row=row, column=9, value=float(mensal))
+        ws1.cell(row=row, column=10, value=float(anual))
+        ws1.cell(
+            row=row,
+            column=11,
+            value=mov.criado_por.username if mov.criado_por else "-"
+        )
+        ws1.cell(
+            row=row,
+            column=12,
+            value=mov.created_at.strftime("%d/%m/%Y") if mov.created_at else "-"
+        )
+        ws1.cell(
+            row=row,
+            column=13,
+            value=mov.created_at.strftime("%H:%M") if mov.created_at else "-"
+        )
+
+        for col in range(1, 14):
+            cell = ws1.cell(row=row, column=col)
+            cell.border = thin_border
+            if col in [9, 10]:
+                cell.number_format = 'R$ #,##0.00'
+                cell.alignment = right_alignment
+            else:
+                cell.alignment = left_alignment
+
+        row += 1
+
+    # Auto width aba 1
+    widths_ws1 = {
+        1: 16, 2: 28, 3: 30, 4: 22, 5: 12, 6: 18, 7: 28,
+        8: 14, 9: 16, 10: 16, 11: 20, 12: 14, 13: 10
     }
+    for col_idx, width in widths_ws1.items():
+        ws1.column_dimensions[get_column_letter(col_idx)].width = width
 
-    template_path = 'front/licencas/licenca_pdf.html'
-    response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="relatorio_licenca_{pk}.pdf"'
+    ws1.freeze_panes = "A5"
 
-    template = get_template(template_path)
-    html = template.render(context)
+    # =========================
+    # ABA 2 - CENTROS DE CUSTO
+    # =========================
+    ws2 = wb.create_sheet(title="Centros de Custo")
 
-    pisa_status = pisa.CreatePDF(html, dest=response)
-    if pisa_status.err:
-        return HttpResponse('Erro ao gerar PDF', status=500)
+    ws2["A1"] = f"Centros de Custo - {licenca.nome}"
+    ws2["A1"].font = title_font
+
+    headers_ws2 = [
+        "Departamento / Centro de Custo",
+        "Qtd. Assentos",
+        "Gasto Consolidado",
+    ]
+
+    start_row_ws2 = 3
+    for col_num, header in enumerate(headers_ws2, 1):
+        cell = ws2.cell(row=start_row_ws2, column=col_num, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = thin_border
+        cell.alignment = center_alignment
+
+    row = start_row_ws2 + 1
+    total_assentos = 0
+    total_gasto = Decimal("0.00")
+
+    for cc in cc_list:
+        qtd = cc.get("qtd", 0) or 0
+        total = Decimal(cc.get("total", 0) or 0)
+
+        ws2.cell(row=row, column=1, value=cc.get("nome", "-"))
+        ws2.cell(row=row, column=2, value=qtd)
+        ws2.cell(row=row, column=3, value=float(total))
+
+        ws2.cell(row=row, column=1).alignment = left_alignment
+        ws2.cell(row=row, column=2).alignment = center_alignment
+        ws2.cell(row=row, column=3).alignment = right_alignment
+        ws2.cell(row=row, column=3).number_format = 'R$ #,##0.00'
+
+        for col in range(1, 4):
+            ws2.cell(row=row, column=col).border = thin_border
+
+        total_assentos += qtd
+        total_gasto += total
+        row += 1
+
+    # Linha de total
+    ws2.cell(row=row, column=1, value="TOTAL")
+    ws2.cell(row=row, column=2, value=total_assentos)
+    ws2.cell(row=row, column=3, value=float(total_gasto))
+
+    for col in range(1, 4):
+        cell = ws2.cell(row=row, column=col)
+        cell.font = bold_font
+        cell.border = thin_border
+        if col == 1:
+            cell.alignment = left_alignment
+        elif col == 2:
+            cell.alignment = center_alignment
+        else:
+            cell.alignment = right_alignment
+            cell.number_format = 'R$ #,##0.00'
+
+    ws2.column_dimensions["A"].width = 38
+    ws2.column_dimensions["B"].width = 16
+    ws2.column_dimensions["C"].width = 20
+    ws2.freeze_panes = "A4"
+
+    # =========================
+    # ABA 3 - LOTES
+    # =========================
+    ws3 = wb.create_sheet(title="Lotes")
+
+    ws3["A1"] = f"Lotes da Licença - {licenca.nome}"
+    ws3["A1"].font = title_font
+
+    headers_ws3 = [
+        "Lote",
+        "Data Compra",
+        "Pedido / NF",
+        "Periodicidade",
+        "Qtd. Total",
+        "Qtd. Disponível",
+        "Custo Ciclo / Licença",
+        "Custo Mensal / Licença",
+        "Custo Anual / Licença",
+        "Mensal do Lote",
+        "Anual do Lote",
+    ]
+
+    start_row_ws3 = 3
+    for col_num, header in enumerate(headers_ws3, 1):
+        cell = ws3.cell(row=start_row_ws3, column=col_num, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = thin_border
+        cell.alignment = center_alignment
+
+    row = start_row_ws3 + 1
+
+    for lote in lotes_qs:
+        custos = normalizar_custos_lote(lote)
+
+        ws3.cell(row=row, column=1, value=f"#{lote.pk}")
+        ws3.cell(row=row, column=2, value=lote.data_compra.strftime("%d/%m/%Y") if lote.data_compra else "-")
+        ws3.cell(row=row, column=3, value=lote.numero_pedido or "-")
+        ws3.cell(row=row, column=4, value=lote.get_periodicidade_display() if lote.periodicidade else "-")
+        ws3.cell(row=row, column=5, value=lote.quantidade_total or 0)
+        ws3.cell(row=row, column=6, value=lote.quantidade_disponivel or 0)
+        ws3.cell(row=row, column=7, value=float(custos["unitario_ciclo"]))
+        ws3.cell(row=row, column=8, value=float(custos["mensal_unit"]))
+        ws3.cell(row=row, column=9, value=float(custos["anual_unit"]))
+        ws3.cell(row=row, column=10, value=float(custos["mensal_total"]))
+        ws3.cell(row=row, column=11, value=float(custos["anual_total"]))
+
+        for col in range(1, 12):
+            cell = ws3.cell(row=row, column=col)
+            cell.border = thin_border
+            if col in [7, 8, 9, 10, 11]:
+                cell.number_format = 'R$ #,##0.00'
+                cell.alignment = right_alignment
+            elif col in [5, 6]:
+                cell.alignment = center_alignment
+            else:
+                cell.alignment = left_alignment
+
+        row += 1
+
+    widths_ws3 = {
+        1: 12, 2: 14, 3: 18, 4: 16, 5: 12, 6: 14,
+        7: 18, 8: 18, 9: 18, 10: 18, 11: 18
+    }
+    for col_idx, width in widths_ws3.items():
+        ws3.column_dimensions[get_column_letter(col_idx)].width = width
+
+    ws3.freeze_panes = "A4"
+
+    # =========================
+    # RESPOSTA
+    # =========================
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    nome_arquivo = f"licenca_{licenca.pk}_{licenca.nome.replace(' ', '_')}.xlsx"
+
+    response = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f'attachment; filename="{nome_arquivo}"'
+
     return response
 
 # ============ MOVIMENTAÇÕES ============
@@ -5393,3 +6011,462 @@ def licencas_dashboard(request):
     }
 
     return render(request, "front/dashboards/licencas_dashboard.html", context)
+
+@login_required
+def avisos_contratos_vencer(request):
+    """
+    Tela de avisos para contratos próximos do vencimento.
+    Divide em dois rankings:
+    1) Itens operacionais (ativo, backup, manutencao, defeito)
+    2) Itens pausados
+    """
+
+    # =========================
+    # CONFIG
+    # =========================
+    DIAS_ALERTA = 60  # ajuste conforme sua operação
+
+    # Ajuste estes nomes conforme os valores reais do seu StatusItemChoices
+    STATUS_OPERACIONAIS = ["ativo", "backup", "manutencao", "defeito", "queimado"]
+    STATUS_PAUSADO = "pausado"
+
+    hoje = date.today()
+
+    # =========================
+    # FILTROS
+    # =========================
+    f_nome = (request.GET.get("nome") or "").strip()
+    f_ns = (request.GET.get("ns") or "").strip()
+    f_subtipo = (request.GET.get("subtipo") or "").strip()
+    f_status = (request.GET.get("status") or "").strip()
+    f_fornecedor = (request.GET.get("fornecedor") or "").strip()
+
+    qs = (
+        Item.objects
+        .filter(
+            locado="sim",
+            locacao__isnull=False,
+            locacao__data_entrada__isnull=False,
+            locacao__tempo_locado__isnull=False,
+        )
+        .select_related(
+            "subtipo",
+            "fornecedor",
+            "centro_custo",
+            "localidade",
+            "locacao",
+        )
+        .order_by("nome")
+    )
+
+    if f_nome:
+        qs = qs.filter(nome__icontains=f_nome)
+
+    if f_ns:
+        qs = qs.filter(numero_serie__icontains=f_ns)
+
+    if f_subtipo:
+        qs = qs.filter(subtipo_id=f_subtipo)
+
+    if f_status:
+        qs = qs.filter(status=f_status)
+
+    if f_fornecedor:
+        qs = qs.filter(fornecedor_id=f_fornecedor)
+
+    itens_alerta = []
+
+    for item in qs:
+        loc = getattr(item, "locacao", None)
+        if not loc or not loc.data_entrada or not loc.tempo_locado:
+            continue
+
+        try:
+            data_vencimento = loc.data_entrada + relativedelta(months=int(loc.tempo_locado))
+        except Exception:
+            continue
+
+        dias_restantes = (data_vencimento - hoje).days
+
+        # traz vencidos e próximos do vencimento
+        if dias_restantes <= DIAS_ALERTA:
+            item.data_vencimento_contrato = data_vencimento
+            item.dias_restantes_contrato = dias_restantes
+            item.valor_mensal_calc = loc.valor_mensal or 0
+            itens_alerta.append(item)
+
+    # Ordenação do ranking:
+    # vencidos primeiro, depois os mais próximos
+    itens_alerta.sort(
+        key=lambda x: (
+            x.dias_restantes_contrato > 0,
+            x.dias_restantes_contrato,
+            x.nome.lower()
+        )
+    )
+
+    ranking_operacional = [
+        i for i in itens_alerta
+        if (i.status or "").lower() in STATUS_OPERACIONAIS
+    ]
+
+    ranking_pausados = [
+        i for i in itens_alerta
+        if (i.status or "").lower() == STATUS_PAUSADO
+    ]
+
+    # KPIs
+    total_alertas = len(itens_alerta)
+    total_operacionais = len(ranking_operacional)
+    total_pausados = len(ranking_pausados)
+    vencidos = len([i for i in itens_alerta if i.dias_restantes_contrato < 0])
+
+    subtipos = Subtipo.objects.order_by("nome")
+    fornecedores = Fornecedor.objects.order_by("nome")
+
+    # status disponíveis na própria base filtrada
+    status_opcoes = (
+        Item.objects.exclude(status__isnull=True)
+        .exclude(status__exact="")
+        .values_list("status", flat=True)
+        .distinct()
+        .order_by("status")
+    )
+
+    context = {
+        "ranking_operacional": ranking_operacional,
+        "ranking_pausados": ranking_pausados,
+        "subtipos": subtipos,
+        "fornecedores": fornecedores,
+        "status_opcoes": status_opcoes,
+        "filtros": {
+            "nome": f_nome,
+            "ns": f_ns,
+            "subtipo": f_subtipo,
+            "status": f_status,
+            "fornecedor": f_fornecedor,
+        },
+        "kpi": {
+            "total_alertas": total_alertas,
+            "total_operacionais": total_operacionais,
+            "total_pausados": total_pausados,
+            "vencidos": vencidos,
+            "dias_alerta": DIAS_ALERTA,
+        }
+    }
+
+    return render(request, "front/dashboards/avisos_contrato_vencer.html", context)
+
+@login_required
+def avisos_contratos_vencer_export_excel(request):
+    """
+    Exporta para Excel a tela de avisos de contratos a vencer,
+    respeitando os mesmos filtros da listagem.
+    Inclui o usuário atual do equipamento com base na última movimentação válida.
+    """
+
+    DIAS_ALERTA = 60
+    STATUS_OPERACIONAIS = ["ativo", "backup", "manutencao", "defeito", "queimado"]
+    STATUS_PAUSADO = "pausado"
+
+    hoje = date.today()
+
+    # =========================
+    # FILTROS
+    # =========================
+    f_nome = (request.GET.get("nome") or "").strip()
+    f_ns = (request.GET.get("ns") or "").strip()
+    f_subtipo = (request.GET.get("subtipo") or "").strip()
+    f_status = (request.GET.get("status") or "").strip()
+    f_fornecedor = (request.GET.get("fornecedor") or "").strip()
+
+    qs = (
+        Item.objects
+        .filter(
+            locado="sim",
+            locacao__isnull=False,
+            locacao__data_entrada__isnull=False,
+            locacao__tempo_locado__isnull=False,
+        )
+        .select_related(
+            "subtipo",
+            "fornecedor",
+            "centro_custo",
+            "localidade",
+            "locacao",
+        )
+        .order_by("nome")
+    )
+
+    if f_nome:
+        qs = qs.filter(nome__icontains=f_nome)
+
+    if f_ns:
+        qs = qs.filter(numero_serie__icontains=f_ns)
+
+    if f_subtipo:
+        qs = qs.filter(subtipo_id=f_subtipo)
+
+    if f_status:
+        qs = qs.filter(status=f_status)
+
+    if f_fornecedor:
+        qs = qs.filter(fornecedor_id=f_fornecedor)
+
+    itens_alerta = []
+
+    for item in qs:
+        loc = getattr(item, "locacao", None)
+        if not loc or not loc.data_entrada or not loc.tempo_locado:
+            continue
+
+        try:
+            data_vencimento = loc.data_entrada + relativedelta(months=int(loc.tempo_locado))
+        except Exception:
+            continue
+
+        dias_restantes = (data_vencimento - hoje).days
+
+        if dias_restantes <= DIAS_ALERTA:
+            item.data_vencimento_contrato = data_vencimento
+            item.dias_restantes_contrato = dias_restantes
+            item.valor_mensal_calc = loc.valor_mensal or 0
+            itens_alerta.append(item)
+
+    itens_alerta.sort(
+        key=lambda x: (
+            x.dias_restantes_contrato > 0,
+            x.dias_restantes_contrato,
+            x.nome.lower()
+        )
+    )
+
+    ranking_operacional = [
+        i for i in itens_alerta
+        if (i.status or "").lower() in STATUS_OPERACIONAIS
+    ]
+
+    ranking_pausados = [
+        i for i in itens_alerta
+        if (i.status or "").lower() == STATUS_PAUSADO
+    ]
+
+    # =========================
+    # WORKBOOK
+    # =========================
+    wb = Workbook()
+
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    title_font = Font(size=13, bold=True, color="1F1F1F")
+    bold_font = Font(bold=True)
+
+    thin_border = Border(
+        left=Side(style="thin", color="D9D9D9"),
+        right=Side(style="thin", color="D9D9D9"),
+        top=Side(style="thin", color="D9D9D9"),
+        bottom=Side(style="thin", color="D9D9D9"),
+    )
+
+    left_alignment = Alignment(horizontal="left", vertical="center")
+    center_alignment = Alignment(horizontal="center", vertical="center")
+    right_alignment = Alignment(horizontal="right", vertical="center")
+
+    def get_usuario_atual(item):
+        """
+        Busca o usuário atual do equipamento com base
+        na última movimentação com campo usuario preenchido.
+        Ajuste 'MovimentacaoItem' para o nome real do seu model, se necessário.
+        """
+        ultima_mov = (
+            MovimentacaoItem.objects
+            .filter(item=item, usuario__isnull=False)
+            .select_related("usuario")
+            .order_by("-created_at")
+            .first()
+        )
+
+        if not ultima_mov or not ultima_mov.usuario:
+            return {
+                "nome": "-",
+                "username": "-",
+                "email": "-",
+            }
+
+        usuario = ultima_mov.usuario
+
+        nome = "-"
+        if getattr(usuario, "first_name", None) or getattr(usuario, "last_name", None):
+            nome = f"{usuario.first_name} {usuario.last_name}".strip()
+        elif getattr(usuario, "nome", None):
+            nome = f"{usuario.nome} {getattr(usuario, 'last_name', '')}".strip()
+        else:
+            nome = getattr(usuario, "username", "-") or "-"
+
+        return {
+            "nome": nome,
+            "username": getattr(usuario, "username", "-") or "-",
+            "email": getattr(usuario, "email", "-") or "-",
+        }
+
+    def preencher_aba(ws, titulo, itens, grupo_nome):
+        ws["A1"] = titulo
+        ws["A1"].font = title_font
+
+        ws["A2"] = "Grupo"
+        ws["A2"].font = bold_font
+        ws["B2"] = grupo_nome
+
+        ws["D2"] = "Data Exportação"
+        ws["D2"].font = bold_font
+        ws["E2"] = hoje.strftime("%d/%m/%Y")
+
+        headers = [
+            "Ranking",
+            "Grupo",
+            "Item",
+            "Número de Série",
+            "Marca",
+            "Modelo",
+            "Subtipo",
+            "Status",
+            "Fornecedor",
+            "Centro de Custo",
+            "Localidade",
+            "Valor Item",
+            "Locado",
+            "Valor Mensal",
+            "Data Entrada Contrato",
+            "Prazo (Meses)",
+            "Data Vencimento",
+            "Dias Restantes",
+            "Contrato",
+            "Observações Locação",
+            "Usuário Atual",
+            "Username Atual",
+            "E-mail Usuário Atual",
+        ]
+
+        start_row = 4
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=start_row, column=col_num, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.border = thin_border
+            cell.alignment = center_alignment
+
+        row = start_row + 1
+
+        for idx, item in enumerate(itens, start=1):
+            usuario_atual = get_usuario_atual(item)
+            loc = getattr(item, "locacao", None)
+
+            ws.cell(row=row, column=1, value=idx)
+            ws.cell(row=row, column=2, value=grupo_nome)
+            ws.cell(row=row, column=3, value=item.nome or "-")
+            ws.cell(row=row, column=4, value=item.numero_serie or "-")
+            ws.cell(row=row, column=5, value=item.marca or "-")
+            ws.cell(row=row, column=6, value=item.modelo or "-")
+            ws.cell(row=row, column=7, value=item.subtipo.nome if item.subtipo else "-")
+            ws.cell(row=row, column=8, value=item.status or "-")
+            ws.cell(row=row, column=9, value=item.fornecedor.nome if item.fornecedor else "-")
+            ws.cell(row=row, column=10, value=item.centro_custo.departamento if item.centro_custo else "-")
+            ws.cell(row=row, column=11, value=item.localidade.local if item.localidade else "-")
+            ws.cell(row=row, column=12, value=float(item.valor or 0))
+            ws.cell(row=row, column=13, value="Sim" if item.locado == "sim" else "Não")
+            ws.cell(row=row, column=14, value=float(item.valor_mensal_calc or 0))
+            ws.cell(row=row, column=15, value=loc.data_entrada.strftime("%d/%m/%Y") if loc and loc.data_entrada else "-")
+            ws.cell(row=row, column=16, value=loc.tempo_locado if loc and loc.tempo_locado else "-")
+            ws.cell(row=row, column=17, value=item.data_vencimento_contrato.strftime("%d/%m/%Y") if item.data_vencimento_contrato else "-")
+            ws.cell(row=row, column=18, value=item.dias_restantes_contrato)
+            ws.cell(row=row, column=19, value=loc.contrato if loc and loc.contrato else "-")
+            ws.cell(row=row, column=20, value=loc.observacoes if loc and loc.observacoes else "-")
+            ws.cell(row=row, column=21, value=usuario_atual["nome"])
+            ws.cell(row=row, column=22, value=usuario_atual["username"])
+            ws.cell(row=row, column=23, value=usuario_atual["email"])
+
+            for col in range(1, 24):
+                cell = ws.cell(row=row, column=col)
+                cell.border = thin_border
+
+                if col in [12, 14]:
+                    cell.number_format = 'R$ #,##0.00'
+                    cell.alignment = right_alignment
+                elif col in [1, 16, 18]:
+                    cell.alignment = center_alignment
+                else:
+                    cell.alignment = left_alignment
+
+            row += 1
+
+        widths = {
+            1: 10, 2: 18, 3: 28, 4: 22, 5: 16, 6: 18, 7: 18, 8: 16, 9: 26,
+            10: 24, 11: 20, 12: 14, 13: 10, 14: 14, 15: 18, 16: 14, 17: 18,
+            18: 14, 19: 24, 20: 28, 21: 24, 22: 18, 23: 28
+        }
+
+        for col_idx, width in widths.items():
+            ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+        ws.freeze_panes = "A5"
+
+    # Aba 1 - Operacionais
+    ws1 = wb.active
+    ws1.title = "Ranking Operacional"
+    preencher_aba(
+        ws1,
+        "Avisos de Contratos a Vencer - Ranking Operacional",
+        ranking_operacional,
+        "Operacional"
+    )
+
+    # Aba 2 - Pausados
+    ws2 = wb.create_sheet(title="Ranking Pausados")
+    preencher_aba(
+        ws2,
+        "Avisos de Contratos a Vencer - Ranking Pausados",
+        ranking_pausados,
+        "Pausado"
+    )
+
+    # Aba 3 - Resumo
+    ws3 = wb.create_sheet(title="Resumo")
+
+    ws3["A1"] = "Resumo da Exportação"
+    ws3["A1"].font = title_font
+
+    resumo = [
+        ("Data da Exportação", hoje.strftime("%d/%m/%Y")),
+        ("Janela de Alerta (dias)", DIAS_ALERTA),
+        ("Total em Alerta", len(itens_alerta)),
+        ("Ranking Operacional", len(ranking_operacional)),
+        ("Ranking Pausados", len(ranking_pausados)),
+        ("Vencidos", len([i for i in itens_alerta if i.dias_restantes_contrato < 0])),
+        ("Filtro Nome", f_nome or "-"),
+        ("Filtro NS", f_ns or "-"),
+        ("Filtro Subtipo", f_subtipo or "-"),
+        ("Filtro Status", f_status or "-"),
+        ("Filtro Fornecedor", f_fornecedor or "-"),
+    ]
+
+    row = 3
+    for label, value in resumo:
+        ws3.cell(row=row, column=1, value=label).font = bold_font
+        ws3.cell(row=row, column=2, value=value)
+        ws3.cell(row=row, column=1).border = thin_border
+        ws3.cell(row=row, column=2).border = thin_border
+        row += 1
+
+    ws3.column_dimensions["A"].width = 28
+    ws3.column_dimensions["B"].width = 26
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    response = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = 'attachment; filename="avisos_contratos_vencer.xlsx"'
+    return response

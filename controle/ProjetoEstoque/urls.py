@@ -106,10 +106,10 @@ urlpatterns = [
     path("licencas/nova/", views.licenca_form, name="licenca_create"),
     path("licencas/<int:pk>/editar/", views.licenca_form, name="licenca_update"),
     path("licencas/<int:pk>/", views.licenca_detail, name="licenca_detail"),
-    path('licencas/<int:pk>/pdf/', views.licenca_export_pdf, name='licenca_export_pdf'),
+  
     path('usuarios/<int:pk>/', views.usuario_detail, name='usuario_detail'),
     path('licencas/devolver-rapido/<int:usuario_id>/<int:licenca_id>/', views.licenca_devolver_rapido, name='licenca_devolver_rapido'),
-
+    path("licencas/<int:pk>/exportar-excel/", views.licenca_export_excel, name="licenca_export_excel"),
     # Movimentações de licença
     path("licencas/mov/", views.mov_licenca_list, name="mov_licenca_list"),
     path("licencas/mov/nova/", views.mov_licenca_form, name="mov_licenca_form"),
@@ -161,6 +161,14 @@ urlpatterns = [
     path("preventiva/<int:pk>/executar/", views.preventiva_exec, name="preventiva_exec"),
     path("preventiva/<int:pk>/", views.preventiva_detail, name="preventiva_detail"),
     
+
+
+    path("avisos/contratos-a-vencer/", views.avisos_contratos_vencer, name="avisos_contratos_vencer"),
+    path(
+    "dashboards/avisos-contratos-vencer/exportar-excel/",
+    views.avisos_contratos_vencer_export_excel,
+    name="avisos_contratos_vencer_export_excel"
+    ),
     ## Cadastros ##
     #path('cadastrar-categoria/', views.cadastrar_categoria, name='cadastrar_categoria'),
     #path('cadastrar-subtipo/', views.cadastrar_subtipo, name='cadastrar_subtipo'),
