@@ -169,6 +169,17 @@ urlpatterns = [
     views.avisos_contratos_vencer_export_excel,
     name="avisos_contratos_vencer_export_excel"
     ),
+
+    path(
+        "equipamentos/<int:pk>/termo/entrega/",
+        views.termo_entrega_form,
+        name="termo_entrega_form",
+    ),
+    path(
+        "equipamentos/<int:pk>/termo/devolucao/",
+        views.termo_devolucao_form,
+        name="termo_devolucao_form",
+    ),
     ## Cadastros ##
     #path('cadastrar-categoria/', views.cadastrar_categoria, name='cadastrar_categoria'),
     #path('cadastrar-subtipo/', views.cadastrar_subtipo, name='cadastrar_subtipo'),

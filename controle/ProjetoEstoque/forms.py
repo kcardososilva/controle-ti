@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Sum
 from decimal import Decimal
+from ProjetoEstoque.models import Usuario
 from .models import (
     Categoria, Subtipo, Localidade, Fornecedor, CentroCusto, Funcao, Usuario,
     Item, Locacao, Comentario, CicloManutencao, MovimentacaoItem,
@@ -636,3 +637,61 @@ class LicencaLoteForm(forms.ModelForm):
                 raise forms.ValidationError(f"Não é possível reduzir para {qtd}. Já existem {usados} licenças em uso neste lote.")
         
         return qtd
+
+ESTABELECIMENTO_CHOICES = [
+    ("rio_do_meio", "Rio do Meio"),
+    ("karitel", "Karitel"),
+    ("sao_paulo", "São Paulo"),
+    ("sta_edwiges", "Sta. Edwiges"),
+]
+
+
+class TermoGeracaoForm(forms.Form):
+    colaborador = forms.ModelChoiceField(
+        queryset=Usuario.objects.filter(status="ativo").order_by("nome"),
+        required=False,
+        label="Colaborador",
+        empty_label="Selecione um colaborador",
+        widget=forms.Select(attrs={
+            "class": "form-select select2"
+        })
+    )
+
+    numero_termo = forms.CharField(
+        required=False,
+        label="Número do termo",
+        widget=forms.TextInput(attrs={"class": "form-control"})
+    )
+
+    numero_chamado = forms.CharField(
+        required=False,
+        label="Número do chamado",
+        widget=forms.TextInput(attrs={"class": "form-control"})
+    )
+
+    acessorios = forms.CharField(
+        required=False,
+        label="Acessórios",
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 3})
+    )
+
+    observacoes = forms.CharField(
+        required=False,
+        label="Observações do termo",
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 4})
+    )
+
+    responsavel_ti_nome = forms.CharField(
+        required=False,
+        label="Responsável do TI",
+        widget=forms.TextInput(attrs={"class": "form-control"})
+    )
+
+    estabelecimento = forms.ChoiceField(
+        choices=ESTABELECIMENTO_CHOICES,
+        required=False,
+        label="Estabelecimento",
+        widget=forms.Select(attrs={
+            "class": "form-select select2-basic"
+        })
+    )
