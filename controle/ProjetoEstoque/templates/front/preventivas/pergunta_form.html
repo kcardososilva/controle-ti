@@ -1,74 +1,280 @@
 {% extends 'base.html' %}
+
 {% block title %}{% if form.instance.pk %}Editar Pergunta{% else %}Nova Pergunta{% endif %}{% endblock %}
-{% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+{% block page_title %}{% if form.instance.pk %}Editar Pergunta{% else %}Nova Pergunta{% endif %}{% endblock %}
+{% block page_subtitle %}Checklist: {{ checklist.nome }}{% endblock %}
 
+{% block header_actions %}
+  <a href="{% url 'checklist_form' checklist.pk %}" class="btn btn-sm">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i> Voltar ao Checklist
+  </a>
+{% endblock %}
+
+{% block extra_css %}
 <style>
-:root{--line:#e5e7eb;--ink:#172133;--soft:#f8fafc;--card:#fff;--shadow:0 20px 40px rgba(2,6,23,.07);--h:46px;--rad:12px;--padL:44px}
-*{box-sizing:border-box}
-.wrapper{max-width:900px;margin:22px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:22px}
-.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
-.buttons{display:flex;gap:10px}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
-.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
-.btn-secondary{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
-.form-grid{margin-top:14px;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
-.group{display:flex;flex-direction:column;min-width:0}
-.group label{font-weight:800;margin:0 0 6px;color:#0f172a}
-.filtro-icon-input{position:relative; min-width:0}
-.filtro-icon-input .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#334155;width:20px;display:flex;justify-content:center}
-.ctrl{width:100%;height:var(--h);padding:8px 14px 8px var(--padL);border:1px solid #d5deea;border-radius:var(--rad);background:#fff;color:#111827;font-size:1rem;outline:none;transition:border .15s, box-shadow .15s}
-.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd55}
-.errorlist{margin:6px 0 0 0;color:#b91c1c;font-weight:700}
-</style>
+:where(.cl-pergunta-page) {
+  --cl-primary:       var(--brand,               #0071e3);
+  --cl-primary-hover: var(--brand-hover,          #0077ed);
+  --cl-primary-soft:  var(--brand-soft,           rgba(0,113,227,.10));
+  --cl-surface:       var(--bg-elevated,          #ffffff);
+  --cl-muted-surface: var(--bg-fill-tertiary,     rgba(120,120,128,.08));
+  --cl-hover:         var(--bg-hover,             rgba(0,0,0,.04));
+  --cl-text:          var(--text-primary,         #1d1d1f);
+  --cl-muted:         var(--text-tertiary,        #6e6e73);
+  --cl-soft:          var(--text-quaternary,      #86868b);
+  --cl-border:        var(--separator-hairline,   rgba(0,0,0,.06));
+  --cl-border2:       var(--separator-non-opaque, rgba(0,0,0,.10));
+  --cl-border-strong: var(--separator-strong,     rgba(0,0,0,.18));
+  --cl-danger:        var(--system-red,           #ff3b30);
+  --cl-radius-sm:     var(--radius-sm,            10px);
+  --cl-radius-md:     var(--radius-md,            14px);
+  --cl-radius-lg:     var(--radius-lg,            18px);
+  --cl-radius-xl:     var(--radius-xl,            22px);
+  --cl-radius-pill:   var(--radius-pill,          980px);
+  --cl-shadow-sm:     var(--shadow-sm,            0 1px 2px rgba(0,0,0,.05));
+  --cl-shadow-md:     var(--shadow-md,            0 4px 12px rgba(0,0,0,.06));
+  --cl-control-h:     2.75rem;
+  --cl-transition:    var(--transition-fast,      160ms ease);
+}
 
-<div class="wrapper">
-  
-    <h2 style="color: #0f172a;"><i class="fa fa-question-circle"></i> {% if form.instance.pk %}Editar Pergunta{% else %}Nova Pergunta{% endif %}</h2>
-    <div class="buttons">
-      <a href="{% url 'checklist_form' checklist.pk %}" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar ao Checklist</a>
-      <button class="btn btn-primary" type="submit" form="pgForm"><i class="fa fa-save"></i> Salvar</button>
+.cl-pergunta-page,
+.cl-pergunta-page * { box-sizing: border-box; min-width: 0; }
+
+.cl-pergunta-page {
+  width: min(100%, 720px);
+  margin: 0 auto;
+  color: var(--cl-text);
+}
+
+/* ── Form card ── */
+.cl-form-card {
+  overflow: hidden;
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-xl);
+  background: var(--cl-surface);
+  box-shadow: var(--cl-shadow-sm);
+}
+
+.cl-card-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--cl-border);
+  background: color-mix(in srgb, var(--cl-surface) 90%, var(--cl-muted-surface));
+}
+
+.cl-card-title {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  color: var(--cl-text);
+  font-size: .96rem;
+  font-weight: 700;
+}
+
+.cl-card-title i { color: var(--cl-primary); }
+.cl-card-subtitle { margin-top: .25rem; color: var(--cl-muted); font-size: .82rem; }
+
+.cl-card-body { padding: clamp(1rem, 2.5vw, 1.5rem); }
+
+/* ── Grid & Fields ── */
+.cl-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.cl-field { display: flex; flex-direction: column; gap: .42rem; }
+
+.cl-field label {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  color: var(--cl-muted);
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.cl-input-wrap { position: relative; }
+
+.cl-input-wrap .cl-ico {
+  position: absolute;
+  left: .85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--cl-soft);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.cl-pergunta-page input,
+.cl-pergunta-page select,
+.cl-pergunta-page .cl-control {
+  width: 100%;
+  min-height: var(--cl-control-h);
+  padding: .68rem .85rem .68rem 2.45rem;
+  border: 1px solid var(--cl-border2);
+  border-radius: var(--cl-radius-sm);
+  background: var(--cl-surface);
+  color: var(--cl-text);
+  font-family: inherit;
+  font-size: .92rem;
+  outline: none;
+  transition: border-color var(--cl-transition), box-shadow var(--cl-transition);
+}
+
+.cl-pergunta-page input:focus,
+.cl-pergunta-page select:focus,
+.cl-pergunta-page .cl-control:focus {
+  border-color: var(--cl-primary);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30));
+}
+
+.cl-pergunta-page .errorlist {
+  display: grid;
+  gap: .25rem;
+  margin: .15rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--cl-danger);
+  font-size: .78rem;
+  font-weight: 650;
+}
+
+.cl-alert-error {
+  display: flex;
+  gap: .7rem;
+  align-items: flex-start;
+  padding: .9rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: var(--cl-radius-md);
+  border: 1px solid color-mix(in srgb, var(--cl-danger) 22%, transparent);
+  background: rgba(255,59,48,.10);
+  color: var(--cl-danger);
+  font-size: .88rem;
+  font-weight: 600;
+}
+
+/* ── Actions ── */
+.cl-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .75rem;
+  flex-wrap: wrap;
+  padding: 1rem clamp(1rem, 2.5vw, 1.5rem);
+  border-top: 1px solid var(--cl-border);
+  background: color-mix(in srgb, var(--cl-surface) 92%, var(--cl-muted-surface));
+}
+
+.cl-btn-primary, .cl-btn-secondary {
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  padding: .6rem 1.05rem;
+  border-radius: var(--cl-radius-pill);
+  border: 1px solid transparent;
+  font-size: .9rem;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--cl-transition), background var(--cl-transition), color var(--cl-transition);
+}
+
+.cl-btn-primary:hover, .cl-btn-secondary:hover { transform: translateY(-1px); }
+.cl-btn-primary { background: var(--cl-primary); color: #fff; }
+.cl-btn-primary:hover { background: var(--cl-primary-hover); color: #fff; }
+.cl-btn-secondary { background: transparent; color: var(--cl-text); border-color: var(--cl-border2); }
+.cl-btn-secondary:hover { background: var(--cl-hover); border-color: var(--cl-border-strong); color: var(--cl-text); }
+
+@media (max-width: 38rem) {
+  .cl-form-grid { grid-template-columns: 1fr; }
+  .cl-form-actions { flex-direction: column-reverse; display: grid; }
+  .cl-btn-primary, .cl-btn-secondary { width: 100%; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cl-pergunta-page">
+
+  <form method="post" id="pgForm" novalidate class="cl-form-card">
+    {% csrf_token %}
+
+    <div class="cl-card-header">
+      <div class="cl-card-title">
+        <i class="fa fa-question-circle" aria-hidden="true"></i>
+        {% if form.instance.pk %}Editar Pergunta{% else %}Nova Pergunta{% endif %}
+      </div>
+      <div class="cl-card-subtitle">Defina o texto, tipo de resposta e se a pergunta é obrigatória.</div>
     </div>
 
-
-  <form method="post" id="pgForm" novalidate>
-    {% csrf_token %}
-    <div class="form-grid">
-      <div class="group" style="grid-column:1/-1">
-        <label for="{{ form.texto_pergunta.id_for_label }}">Pergunta</label>
-        <div class="filtro-icon-input">
-          <span class="ico"><i class="fa fa-comment-dots"></i></span>
-          {{ form.texto_pergunta }}
+    <div class="cl-card-body">
+      {% if form.errors %}
+        <div class="cl-alert-error" role="alert">
+          <i class="fa fa-circle-exclamation" aria-hidden="true"></i>
+          <div>Verifique os campos destacados antes de salvar.</div>
         </div>
-        {{ form.texto_pergunta.errors }}
-      </div>
+      {% endif %}
 
-      <div class="group">
-        <label for="{{ form.tipo_resposta.id_for_label }}">Tipo de Resposta</label>
-        <div class="filtro-icon-input">
-          <span class="ico"><i class="fa fa-list-check"></i></span>
-          {{ form.tipo_resposta }}
+      <div class="cl-form-grid">
+        <div class="cl-field" style="grid-column:1/-1">
+          <label for="{{ form.texto_pergunta.id_for_label }}">
+            <i class="fa fa-comment-dots" aria-hidden="true"></i>
+            Texto da Pergunta
+          </label>
+          <div class="cl-input-wrap">
+            <span class="cl-ico"><i class="fa fa-comment-dots" aria-hidden="true"></i></span>
+            {{ form.texto_pergunta }}
+          </div>
+          {{ form.texto_pergunta.errors }}
         </div>
-        {{ form.tipo_resposta.errors }}
-      </div>
 
-      <div class="group">
-        <label for="{{ form.obrigatorio.id_for_label }}">Obrigatória?</label>
-        <div class="filtro-icon-input">
-          <span class="ico"><i class="fa fa-asterisk"></i></span>
-          {{ form.obrigatorio }}
+        <div class="cl-field">
+          <label for="{{ form.tipo_resposta.id_for_label }}">
+            <i class="fa fa-list-check" aria-hidden="true"></i>
+            Tipo de Resposta
+          </label>
+          <div class="cl-input-wrap">
+            <span class="cl-ico"><i class="fa fa-list-check" aria-hidden="true"></i></span>
+            {{ form.tipo_resposta }}
+          </div>
+          {{ form.tipo_resposta.errors }}
         </div>
-        {{ form.obrigatorio.errors }}
+
+        <div class="cl-field">
+          <label for="{{ form.obrigatorio.id_for_label }}">
+            <i class="fa fa-asterisk" aria-hidden="true"></i>
+            Obrigatória?
+          </label>
+          <div class="cl-input-wrap">
+            <span class="cl-ico"><i class="fa fa-asterisk" aria-hidden="true"></i></span>
+            {{ form.obrigatorio }}
+          </div>
+          {{ form.obrigatorio.errors }}
+        </div>
       </div>
+    </div>
+
+    <div class="cl-form-actions">
+      <a href="{% url 'checklist_form' checklist.pk %}" class="cl-btn-secondary">
+        <i class="fa fa-arrow-left" aria-hidden="true"></i> Cancelar
+      </a>
+      <button type="submit" class="cl-btn-primary">
+        <i class="fa fa-save" aria-hidden="true"></i>
+        {% if form.instance.pk %}Atualizar{% else %}Salvar{% endif %}
+      </button>
     </div>
   </form>
-</div>
 
+</div>
+{% endblock %}
+
+{% block extra_js %}
 <script>
-// força .ctrl caso o widget não tenha vindo com a classe
-['#id_texto_pergunta','#id_tipo_resposta','#id_obrigatorio'].forEach(sel=>{
-  const el=document.querySelector(sel); if(el && !el.classList.contains('ctrl')) el.classList.add('ctrl');
-});
+  ['#{{ form.texto_pergunta.auto_id }}', '#{{ form.tipo_resposta.auto_id }}', '#{{ form.obrigatorio.auto_id }}'].forEach(function(sel) {
+    const el = document.querySelector(sel);
+    if (el && !el.classList.contains('cl-control')) el.classList.add('cl-control');
+  });
 </script>
 {% endblock %}

@@ -1,292 +1,448 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static humanize %}
 
 {% block title %}Gestão de Ativos Corporativos{% endblock %}
+{% block page_title %}Ativos Corporativos{% endblock %}
+{% block page_subtitle %}Patrimônio, locação, consumo, lotes e rastreabilidade operacional{% endblock %}
 
-{% block content %}
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+{% block header_actions %}
+    <a class="eq-top-action" href="{% url 'cadastrar_equipamento' %}">
+        <i class="fa fa-plus" aria-hidden="true"></i>
+        Novo Ativo
+    </a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
 
 <style>
-:root {
-    --bg-body: #f8fafc;
-    --surface: #ffffff;
-    --surface-soft: #f8fafc;
-    --border: #e2e8f0;
+:where(.equipment-page, #deleteModal, #importResultModal, .select2-container, .select2-dropdown) {
+    --eq-brand: var(--brand, #0071e3);
+    --eq-brand-hover: var(--brand-hover, #0077ed);
+    --eq-brand-soft: var(--brand-soft, rgba(0, 113, 227, .10));
+    --eq-brand-softer: var(--brand-softer, rgba(0, 113, 227, .05));
+    --eq-ring: var(--brand-ring, rgba(0, 113, 227, .30));
 
-    --text-main: #0f172a;
-    --text-muted: #64748b;
+    --eq-bg: var(--bg-elevated, #ffffff);
+    --eq-bg-2: var(--bg-page-2, #f5f5f7);
+    --eq-bg-soft: var(--bg-fill-tertiary, rgba(120, 120, 128, .08));
+    --eq-bg-muted: var(--bg-fill-secondary, rgba(120, 120, 128, .12));
+    --eq-hover: var(--bg-hover, rgba(0, 0, 0, .04));
 
-    --primary: #2563eb;
-    --primary-hover: #1d4ed8;
-    --primary-light: #eff6ff;
+    --eq-text: var(--text-primary, #1d1d1f);
+    --eq-muted: var(--text-tertiary, #6e6e73);
+    --eq-soft: var(--text-quaternary, #86868b);
 
-    --success: #10b981;
-    --success-bg: #ecfdf5;
-    --warning: #f59e0b;
-    --warning-bg: #fffbeb;
-    --danger: #ef4444;
-    --danger-bg: #fef2f2;
-    --info: #3b82f6;
-    --info-bg: #eff6ff;
+    --eq-border: var(--separator-hairline, rgba(0, 0, 0, .06));
+    --eq-border-2: var(--separator-non-opaque, rgba(0, 0, 0, .10));
+    --eq-border-strong: var(--separator-strong, rgba(0, 0, 0, .18));
 
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 16px;
+    --eq-success: var(--success, #34c759);
+    --eq-success-bg: var(--success-soft, rgba(52, 199, 89, .12));
+    --eq-warning: var(--warning, #ff9500);
+    --eq-warning-bg: var(--warning-soft, rgba(255, 149, 0, .12));
+    --eq-danger: var(--danger, #ff3b30);
+    --eq-danger-bg: var(--danger-soft, rgba(255, 59, 48, .10));
+    --eq-info: var(--info, #5ac8fa);
+    --eq-info-bg: var(--info-soft, rgba(90, 200, 250, .12));
+    --eq-purple: var(--system-indigo, #5856d6);
+    --eq-purple-bg: var(--system-indigo-soft, rgba(88, 86, 214, .10));
 
-    --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05);
-    --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.06);
+    --eq-radius-sm: var(--radius-sm, 10px);
+    --eq-radius-md: var(--radius-md, 14px);
+    --eq-radius-lg: var(--radius-lg, 18px);
+    --eq-radius-xl: var(--radius-xl, 22px);
+    --eq-radius-pill: var(--radius-pill, 980px);
 
-    --transition: all 0.2s ease;
-    --ctrl-height: 44px;
+    --eq-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, .05), 0 2px 8px rgba(0, 0, 0, .04));
+    --eq-shadow-md: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .04));
+    --eq-shadow-lg: var(--shadow-lg, 0 12px 32px rgba(0, 0, 0, .10), 0 4px 12px rgba(0, 0, 0, .05));
+
+    --eq-control-h: 38px;
+    --eq-transition: 180ms var(--ease-apple, cubic-bezier(.32, .72, 0, 1));
 }
 
-* {
+.equipment-page,
+.equipment-page * {
     box-sizing: border-box;
     min-width: 0;
 }
 
-html, body {
-    overflow-x: hidden;
+.equipment-page {
+    width: 100%;
+    max-width: 1680px;
+    margin-inline: auto;
+    color: var(--eq-text);
 }
 
-body {
-    background: var(--bg-body);
-    color: var(--text-main);
-    font-family: 'Inter', sans-serif;
-    font-size: 14px;
-    -webkit-font-smoothing: antialiased;
-}
-
-.page-shell {
-    width: min(100%, 1680px);
-    margin: 0 auto;
-    padding: 24px;
-}
-
-.page-container {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 20px;
-}
-
-.page-topbar {
-    display: grid;
-    grid-template-columns: minmax(280px, 1fr) auto;
-    gap: 16px;
-    align-items: center;
-}
-
-.page-title-wrap {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
-.page-title {
-    margin: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 28px;
-    font-weight: 800;
-    line-height: 1.1;
-    color: var(--text-main);
-}
-
-.page-title i {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 42px;
-    height: 42px;
-    background: var(--primary-light);
-    color: var(--primary);
-    border-radius: 12px;
-    font-size: 18px;
-    flex-shrink: 0;
-}
-
-.meta-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px 10px;
-    border-radius: 9999px;
-    background: #e9eef7;
-    color: #607089;
-    font-size: 12px;
-    font-weight: 700;
-    white-space: nowrap;
-}
-
-.header-actions {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
-.size-form {
-    display: flex;
-    align-items: center;
-}
-
-.size-form select {
-    height: var(--ctrl-height);
-    min-width: 120px;
-    padding: 0 14px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text-main);
-    font-family: 'Inter', sans-serif;
-    cursor: pointer;
-}
-
-.btn {
-    height: var(--ctrl-height);
-    padding: 0 18px;
-    border-radius: var(--radius-sm);
-    font-size: 14px;
-    font-weight: 700;
-    border: 1px solid transparent;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    text-decoration: none;
-    cursor: pointer;
-    transition: var(--transition);
-    white-space: nowrap;
-}
-
-.btn-primary {
-    background: var(--primary);
-    color: #fff;
-    box-shadow: var(--shadow-sm);
-}
-
-.btn-primary:hover {
-    background: var(--primary-hover);
-    transform: translateY(-1px);
-}
-
-.btn-outline {
-    background: var(--surface);
-    border-color: var(--border);
-    color: var(--text-muted);
-}
-
-.btn-outline:hover {
-    background: var(--surface-soft);
-    color: var(--text-main);
-}
-
-.content-layout {
+.equipment-shell {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 20px;
+    gap: 18px;
 }
 
-#kpisWrap.kpi-grid {
-    display: grid !important;
-    grid-template-columns: repeat(4, minmax(220px, 1fr));
-    gap: 16px;
+.eq-top-action {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 7px 14px;
+    border-radius: var(--eq-radius-pill);
+    background: var(--eq-brand);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.014em;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background var(--eq-transition), transform var(--eq-transition);
+}
+.eq-top-action:hover {
+    background: var(--eq-brand-hover);
+    color: #fff;
+}
+.eq-top-action:active {
+    transform: scale(.97);
+}
+
+.eq-page-hero,
+.eq-panel,
+.eq-table-card {
     width: 100%;
-}
-
-#kpisWrap > * {
-    width: 100% !important;
-    max-width: none !important;
-    margin: 0 !important;
-}
-
-.section-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--eq-border);
+    border-radius: var(--eq-radius-xl);
+    background: var(--eq-bg);
+    box-shadow: none;
     overflow: hidden;
+    transition: border-color var(--eq-transition), box-shadow var(--eq-transition);
 }
 
-.filters-section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
+.eq-page-hero:hover,
+.eq-panel:hover,
+.eq-table-card:hover {
+    border-color: var(--eq-border-2);
+    box-shadow: var(--eq-shadow-sm);
+}
+
+.eq-page-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+    padding: clamp(18px, 2.3vw, 28px);
+}
+
+.eq-hero-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+}
+
+.eq-hero-icon {
+    width: clamp(46px, 7vw, 58px);
+    height: clamp(46px, 7vw, 58px);
+    display: grid;
+    place-items: center;
+    border-radius: 18px;
+    background: var(--eq-brand-soft);
+    color: var(--eq-brand);
+    border: 1px solid color-mix(in srgb, var(--eq-brand) 18%, transparent);
+    font-size: clamp(18px, 3vw, 23px);
+}
+
+.eq-hero-title h2 {
+    margin: 0;
+    color: var(--eq-text);
+    font-family: var(--font-display);
+    font-size: clamp(26px, 4vw, 42px);
+    line-height: 1.06;
+    font-weight: 600;
+    letter-spacing: -0.036em;
+}
+
+.eq-hero-title p {
+    max-width: 820px;
+    margin: 8px 0 0;
+    color: var(--eq-muted);
+    font-size: clamp(14px, 1.5vw, 17px);
+    line-height: 1.42;
+    letter-spacing: -0.012em;
+}
+
+.eq-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.eq-meta-badge,
+.eq-chip,
+.eq-badge,
+.eq-type-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: var(--eq-radius-pill);
+    white-space: nowrap;
+}
+
+.eq-meta-badge {
+    min-height: 26px;
+    padding: 4px 10px;
+    background: var(--eq-brand-soft);
+    color: var(--eq-brand);
+    border: 1px solid color-mix(in srgb, var(--eq-brand) 18%, transparent);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.eq-hero-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.eq-size-form {
+    display: flex;
+    align-items: center;
+}
+
+.eq-size-form select,
+.eq-form-control {
+    width: 100%;
+    min-height: var(--eq-control-h);
+    padding: 8px 14px;
+    border: 1px solid var(--eq-border-2);
+    border-radius: 12px;
+    background: var(--eq-bg);
+    color: var(--eq-text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color var(--eq-transition), box-shadow var(--eq-transition), background var(--eq-transition);
+}
+
+.eq-size-form select {
+    min-width: 128px;
+    cursor: pointer;
+}
+
+.eq-form-control:hover,
+.eq-size-form select:hover {
+    border-color: var(--eq-border-strong);
+}
+
+.eq-form-control:focus,
+.eq-size-form select:focus {
+    border-color: var(--eq-brand);
+    box-shadow: 0 0 0 4px var(--eq-ring);
+}
+
+.eq-btn {
+    min-height: var(--eq-control-h);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 16px;
+    border: 1px solid transparent;
+    border-radius: var(--eq-radius-pill);
+    background: transparent;
+    color: var(--eq-text);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: -0.014em;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        transform var(--eq-transition),
+        background var(--eq-transition),
+        border-color var(--eq-transition),
+        color var(--eq-transition),
+        opacity var(--eq-transition);
+}
+
+.eq-btn:active {
+    transform: scale(.97);
+}
+
+.eq-btn-primary {
+    background: var(--eq-brand);
+    border-color: var(--eq-brand);
+    color: #fff;
+}
+
+.eq-btn-primary:hover {
+    background: var(--eq-brand-hover);
+    border-color: var(--eq-brand-hover);
+    color: #fff;
+}
+
+.eq-btn-outline {
+    background: transparent;
+    border-color: var(--eq-border-2);
+    color: var(--eq-text);
+}
+
+.eq-btn-outline:hover {
+    background: var(--eq-hover);
+    border-color: var(--eq-border-strong);
+    color: var(--eq-text);
+}
+
+.eq-btn-danger {
+    background: var(--eq-danger);
+    border-color: var(--eq-danger);
+    color: #fff;
+}
+
+.eq-btn-danger:hover {
+    background: #ff5147;
+    border-color: #ff5147;
+    color: #fff;
+}
+
+.eq-btn[disabled],
+.eq-btn.is-disabled {
+    opacity: .48;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.eq-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+    gap: 14px;
+}
+
+.eq-kpi-card {
+    position: relative;
+    min-height: 126px;
+    display: grid;
+    align-content: space-between;
+    gap: 10px;
+    padding: 18px;
+    border: 1px solid var(--eq-border);
+    border-radius: var(--eq-radius-lg);
+    background: var(--eq-bg);
     overflow: hidden;
+    transition: transform var(--eq-transition), border-color var(--eq-transition), box-shadow var(--eq-transition);
 }
 
-.filters-header {
+.eq-kpi-card:hover {
+    transform: translateY(-1px);
+    border-color: var(--eq-border-2);
+    box-shadow: var(--eq-shadow-sm);
+}
+
+.eq-kpi-card::after {
+    content: "";
+    position: absolute;
+    top: -34px;
+    right: -34px;
+    width: 88px;
+    height: 88px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--eq-kpi-color, var(--eq-brand)) 12%, transparent);
+}
+
+.eq-kpi-label {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--eq-muted);
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .045em;
+}
+
+.eq-kpi-label i {
+    color: var(--eq-kpi-color, var(--eq-brand));
+}
+
+.eq-kpi-value {
+    position: relative;
+    z-index: 1;
+    display: block;
+    color: var(--eq-text);
+    font-family: var(--font-display);
+    font-size: clamp(24px, 3vw, 32px);
+    font-weight: 600;
+    line-height: 1.08;
+    letter-spacing: -0.032em;
+    overflow-wrap: anywhere;
+}
+
+.eq-kpi-sub {
+    position: relative;
+    z-index: 1;
+    color: var(--eq-muted);
+    font-size: 12.5px;
+    line-height: 1.35;
+}
+
+.eq-filters[open] {
+    box-shadow: var(--eq-shadow-sm);
+}
+
+.eq-filters-summary {
+    min-height: 58px;
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 18px 20px;
-    font-weight: 700;
-    color: var(--text-main);
+    padding: 16px 20px;
+    color: var(--eq-text);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.016em;
     cursor: pointer;
     user-select: none;
     list-style: none;
 }
 
-.filters-header::-webkit-details-marker {
+.eq-filters-summary::-webkit-details-marker {
     display: none;
 }
 
-.filters-header i {
-    color: var(--text-muted);
-    transition: transform 0.2s ease;
+.eq-filters-summary i {
+    color: var(--eq-muted);
+    transition: transform var(--eq-transition), color var(--eq-transition);
 }
 
-.filters-section[open] .filters-header i {
+.eq-filters[open] .eq-filters-summary i {
     transform: rotate(180deg);
-    color: var(--primary);
+    color: var(--eq-brand);
 }
 
-.filters-body {
-    padding: 0 20px 20px;
-    border-top: 1px solid var(--border);
+.eq-filters-body {
+    padding: 18px 20px 20px;
+    border-top: 1px solid var(--eq-border);
 }
 
-.filters-grid {
+.eq-filters-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
     gap: 16px;
     align-items: end;
-    margin-top: 18px;
 }
 
-.input-group label {
+.eq-input-group label {
     display: block;
-    margin-bottom: 8px;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text-muted);
-}
-
-.form-ctrl {
-    width: 100%;
-    height: var(--ctrl-height);
-    padding: 0 14px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface-soft);
-    color: var(--text-main);
-    font-size: 14px;
-    font-family: 'Inter', sans-serif;
-    transition: var(--transition);
-}
-
-.form-ctrl:focus {
-    border-color: var(--primary);
-    background: var(--surface);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    margin-bottom: 7px;
+    color: var(--eq-muted);
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: -0.008em;
 }
 
 .select2-container {
@@ -294,177 +450,440 @@ body {
 }
 
 .select2-container .select2-selection--single {
-    height: var(--ctrl-height) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius-sm) !important;
-    background-color: var(--surface-soft) !important;
+    min-height: var(--eq-control-h) !important;
+    height: var(--eq-control-h) !important;
     display: flex !important;
     align-items: center !important;
+    border: 1px solid var(--eq-border-2) !important;
+    border-radius: 12px !important;
+    background: var(--eq-bg) !important;
+    transition: border-color var(--eq-transition), box-shadow var(--eq-transition) !important;
+}
+
+.select2-container--default.select2-container--focus .select2-selection--single {
+    border-color: var(--eq-brand) !important;
+    box-shadow: 0 0 0 4px var(--eq-ring) !important;
 }
 
 .select2-container--default .select2-selection--single .select2-selection__rendered {
+    width: 100%;
     padding-left: 14px !important;
-    color: var(--text-main) !important;
-    line-height: 42px !important;
+    padding-right: 34px !important;
+    color: var(--eq-text) !important;
+    line-height: calc(var(--eq-control-h) - 2px) !important;
+    font-size: 14px !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__placeholder {
+    color: var(--eq-soft) !important;
 }
 
 .select2-container--default .select2-selection--single .select2-selection__arrow {
-    height: 42px !important;
+    height: calc(var(--eq-control-h) - 2px) !important;
     right: 8px !important;
 }
 
-.chips-bar {
+.select2-dropdown {
+    z-index: 10000 !important;
+    overflow: hidden !important;
+    border: 1px solid var(--eq-border-2) !important;
+    border-radius: var(--eq-radius-md) !important;
+    background: var(--eq-bg) !important;
+    color: var(--eq-text) !important;
+    box-shadow: var(--eq-shadow-lg);
+}
+
+.select2-search__field {
+    border: 1px solid var(--eq-border-2) !important;
+    border-radius: 10px !important;
+    background: var(--eq-bg) !important;
+    color: var(--eq-text) !important;
+    outline: none !important;
+}
+
+.select2-results__option {
+    color: var(--eq-text) !important;
+}
+
+.select2-results__option--highlighted {
+    background: var(--eq-brand) !important;
+    color: #fff !important;
+}
+
+.eq-chip-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 18px;
+    gap: 8px;
+    margin-top: 16px;
 }
 
-.chip {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 7px 14px;
-    border-radius: 9999px;
-    border: 1px solid var(--border);
-    background: var(--surface-soft);
-    color: var(--text-muted);
-    text-decoration: none;
+.eq-chip {
+    min-height: 30px;
+    padding: 6px 12px;
+    border: 1px solid var(--eq-border-2);
+    background: transparent;
+    color: var(--eq-muted);
     font-size: 13px;
-    font-weight: 600;
-    transition: var(--transition);
+    font-weight: 500;
+    text-decoration: none;
+    transition: background var(--eq-transition), border-color var(--eq-transition), color var(--eq-transition);
 }
 
-.chip:hover {
-    background: #edf2f7;
-    color: var(--text-main);
+.eq-chip:hover {
+    background: var(--eq-hover);
+    border-color: var(--eq-border-strong);
+    color: var(--eq-text);
 }
 
-.chip.active {
-    background: var(--primary-light);
-    color: var(--primary);
-    border-color: rgba(37, 99, 235, 0.18);
+.eq-chip.is-active {
+    background: var(--eq-brand-soft);
+    border-color: color-mix(in srgb, var(--eq-brand) 20%, transparent);
+    color: var(--eq-brand);
 }
 
-.table-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
-    overflow: hidden;
+.eq-table-card {
     position: relative;
 }
 
-.table-loading {
+.eq-table-loading {
     position: absolute;
     inset: 0;
-    z-index: 10;
+    z-index: 20;
     display: none;
     align-items: center;
     justify-content: center;
-    background: rgba(255,255,255,0.72);
-    backdrop-filter: blur(2px);
-    color: var(--primary);
+    gap: 10px;
+    background: color-mix(in srgb, var(--eq-bg) 78%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--eq-brand);
+    font-weight: 600;
 }
 
-.table-loading.active {
+.eq-table-loading.is-active {
     display: flex;
 }
 
-.table-responsive {
+.eq-table-scroll {
     width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
 }
 
-#tabelaEquipamentos {
+.eq-table {
     width: 100%;
-    min-width: 980px;
     border-collapse: collapse;
     text-align: left;
 }
 
-#tabelaEquipamentos thead th {
-    background: var(--surface-soft);
-    color: var(--text-muted);
-    font-size: 12px;
-    font-weight: 700;
+.eq-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--eq-border);
+    background: var(--eq-bg);
+    color: var(--eq-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
-    padding: 16px 18px;
-    border-bottom: 1px solid var(--border);
     white-space: nowrap;
-    transition: var(--transition);
+    cursor: pointer;
+    transition: color var(--eq-transition), background var(--eq-transition);
 }
 
-#tabelaEquipamentos thead th:hover {
-    background: #eef2f7;
-    color: var(--text-main);
+.eq-table thead th:hover {
+    background: var(--eq-bg-soft);
+    color: var(--eq-text);
 }
 
-#tabelaEquipamentos tbody td {
-    padding: 16px 18px;
-    border-bottom: 1px solid var(--border);
+.eq-table tbody td {
+    padding: 15px 16px;
+    border-bottom: 1px solid var(--eq-border);
+    color: var(--eq-text);
+    font-size: 13.5px;
     vertical-align: middle;
-    font-size: 14px;
 }
 
-#tabelaEquipamentos tbody tr {
-    transition: var(--transition);
+.eq-table tbody tr {
+    transition: background var(--eq-transition);
 }
 
-#tabelaEquipamentos tbody tr:hover {
-    background: #fafcff;
+.eq-table tbody tr:hover {
+    background: var(--eq-hover);
 }
 
-#tabelaEquipamentos tbody tr:last-child td {
+.eq-table tbody tr:last-child td {
     border-bottom: none;
 }
 
-.badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 12px;
-    border-radius: 9999px;
-    font-size: 12px;
-    font-weight: 700;
-    white-space: nowrap;
+.eq-clickable {
+    cursor: pointer;
 }
 
-.badge::before {
-    content: '';
-    display: block;
+.eq-asset-cell {
+    min-width: 260px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.eq-asset-avatar {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 13px;
+    background: var(--eq-brand-soft);
+    color: var(--eq-brand);
+    border: 1px solid color-mix(in srgb, var(--eq-brand) 18%, transparent);
+}
+
+.eq-asset-main {
+    min-width: 0;
+}
+
+.eq-asset-name {
+    color: var(--eq-text);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.eq-asset-sub {
+    margin-top: 3px;
+    color: var(--eq-muted);
+    font-size: 12px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.eq-badge {
+    min-height: 24px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.eq-badge::before {
+    content: "";
     width: 6px;
     height: 6px;
-    margin-right: 6px;
-    border-radius: 50%;
+    display: block;
+    border-radius: 999px;
 }
 
-.st-ativo { background: var(--success-bg); color: var(--success); }
-.st-ativo::before { background: var(--success); }
+.st-ativo {
+    background: var(--eq-success-bg);
+    color: var(--eq-success);
+}
+.st-ativo::before {
+    background: var(--eq-success);
+}
 
-.st-backup { background: var(--info-bg); color: var(--info); }
-.st-backup::before { background: var(--info); }
+.st-backup {
+    background: var(--eq-info-bg);
+    color: #0090d4;
+}
+.st-backup::before {
+    background: #0090d4;
+}
+body.theme-dark .st-backup {
+    color: var(--eq-info);
+}
+body.theme-dark .st-backup::before {
+    background: var(--eq-info);
+}
 
-.st-manutencao { background: var(--warning-bg); color: var(--warning); }
-.st-manutencao::before { background: var(--warning); }
+.st-manutencao,
+.st-correcao {
+    background: var(--eq-warning-bg);
+    color: var(--eq-warning);
+}
+.st-manutencao::before,
+.st-correcao::before {
+    background: var(--eq-warning);
+}
 
-.st-defeito { background: var(--danger-bg); color: var(--danger); }
-.st-defeito::before { background: var(--danger); }
+.st-defeito,
+.st-queimado {
+    background: var(--eq-danger-bg);
+    color: var(--eq-danger);
+}
+.st-defeito::before,
+.st-queimado::before {
+    background: var(--eq-danger);
+}
 
-.list-footer {
+.st-pausado,
+.st-inativo {
+    background: color-mix(in srgb, var(--eq-muted) 12%, transparent);
+    color: var(--eq-muted);
+}
+.st-pausado::before,
+.st-inativo::before {
+    background: var(--eq-muted);
+}
+
+.eq-type-badge {
+    min-height: 24px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.tp-consumo {
+    background: var(--eq-purple-bg);
+    color: var(--eq-purple);
+}
+
+.tp-locado {
+    background: var(--eq-info-bg);
+    color: #0090d4;
+}
+body.theme-dark .tp-locado {
+    color: var(--eq-info);
+}
+
+.tp-lote {
+    background: var(--eq-warning-bg);
+    color: var(--eq-warning);
+}
+
+.tp-patrimonio {
+    background: color-mix(in srgb, var(--eq-muted) 10%, transparent);
+    color: var(--eq-muted);
+}
+
+.eq-lote-stack {
+    min-width: 180px;
+    display: grid;
+    gap: 7px;
+}
+
+.eq-lote-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--eq-muted);
+    font-size: 12px;
+}
+
+.eq-lote-line strong {
+    color: var(--eq-text);
+    font-weight: 600;
+}
+
+.eq-lote-progress {
+    height: 7px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--eq-muted) 18%, transparent);
+}
+
+.eq-lote-fill {
+    height: 100%;
+    min-width: 0;
+    border-radius: inherit;
+    background: var(--eq-success);
+}
+
+.eq-lote-fill.atencao {
+    background: var(--eq-warning);
+}
+
+.eq-lote-fill.critico,
+.eq-lote-fill.zerado {
+    background: var(--eq-danger);
+}
+
+.eq-muted-dash {
+    color: var(--eq-soft);
+}
+
+.eq-actions-cell {
+    display: flex;
+    justify-content: flex-end;
+    gap: 7px;
+}
+
+.eq-icon-action {
+    width: 34px;
+    height: 34px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    border: 1px solid var(--eq-border-2);
+    background: transparent;
+    color: var(--eq-muted);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background var(--eq-transition), border-color var(--eq-transition), color var(--eq-transition), transform var(--eq-transition);
+}
+
+.eq-icon-action:hover {
+    background: var(--eq-brand-soft);
+    border-color: color-mix(in srgb, var(--eq-brand) 24%, transparent);
+    color: var(--eq-brand);
+}
+
+.eq-icon-action.eq-danger:hover {
+    background: var(--eq-danger-bg);
+    border-color: color-mix(in srgb, var(--eq-danger) 24%, transparent);
+    color: var(--eq-danger);
+}
+
+.eq-icon-action:active {
+    transform: scale(.94);
+}
+
+.eq-list-footer {
+    min-height: 64px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 14px;
     flex-wrap: wrap;
-    padding: 16px 20px;
-    border-top: 1px solid var(--border);
-    background: var(--surface);
+    padding: 14px 18px;
+    border-top: 1px solid var(--eq-border);
+    background: var(--eq-bg);
 }
 
-.modal-overlay {
+.eq-pagination-info {
+    color: var(--eq-muted);
+    font-size: 13px;
+}
+
+.eq-pagination-info strong {
+    color: var(--eq-text);
+    font-weight: 600;
+}
+
+.eq-pagination-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.eq-empty-state {
+    display: grid;
+    place-items: center;
+    gap: 8px;
+    padding: 38px 18px;
+    color: var(--eq-muted);
+    text-align: center;
+}
+
+.eq-empty-state i {
+    color: var(--eq-soft);
+    font-size: 28px;
+}
+
+.eq-modal-overlay {
     position: fixed;
     inset: 0;
     z-index: 9999;
@@ -472,760 +891,1033 @@ body {
     align-items: center;
     justify-content: center;
     padding: 20px;
-    background: rgba(15, 23, 42, 0.42);
-    backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, .38);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     opacity: 0;
-    transition: opacity 0.2s ease;
+    transition: opacity var(--eq-transition);
 }
 
-.modal-overlay.show {
+.eq-modal-overlay.is-open {
     display: flex;
     opacity: 1;
 }
 
-.modal-content {
+.eq-modal {
     width: min(100%, 980px);
-    max-height: calc(100vh - 40px);
+    max-height: calc(100dvh - 40px);
     overflow-y: auto;
-    background: var(--surface);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
-    padding: 28px;
-    transform: scale(0.96);
-    transition: transform 0.2s ease;
+    padding: 24px;
+    border: 1px solid var(--eq-border-2);
+    border-radius: var(--eq-radius-xl);
+    background: var(--eq-bg);
+    color: var(--eq-text);
+    box-shadow: var(--eq-shadow-lg);
+    transform: translateY(6px) scale(.98);
+    transition: transform var(--eq-transition);
 }
 
-.modal-overlay.show .modal-content {
-    transform: scale(1);
+.eq-modal-overlay.is-open .eq-modal {
+    transform: translateY(0) scale(1);
 }
 
-.modal-header-flex {
+.eq-modal-sm {
+    max-width: 460px;
+}
+
+.eq-modal-header {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
 }
 
-.modal-icon {
+.eq-modal-icon {
     width: 42px;
     height: 42px;
-    border-radius: 50%;
-    background: var(--danger-bg);
-    color: var(--danger);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    flex-shrink: 0;
+    flex: 0 0 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: var(--eq-danger-bg);
+    color: var(--eq-danger);
+    font-size: 17px;
 }
 
-.modal-title {
+.eq-modal-icon.eq-info {
+    background: var(--eq-info-bg);
+    color: #0090d4;
+}
+body.theme-dark .eq-modal-icon.eq-info {
+    color: var(--eq-info);
+}
+
+.eq-modal-title {
     margin: 0;
+    color: var(--eq-text);
+    font-family: var(--font-display);
     font-size: 18px;
-    font-weight: 800;
-    color: var(--text-main);
+    font-weight: 600;
+    letter-spacing: -0.018em;
 }
 
-.import-result-grid {
+.eq-modal-text {
+    color: var(--eq-muted);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.eq-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 22px;
+}
+
+.eq-import-summary {
+    margin-bottom: 18px;
+    color: var(--eq-muted);
+    font-size: 14px;
+}
+
+.eq-import-result-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
 }
 
-.import-card {
-    min-width: 0;
-}
-
-.import-card h4 {
-    margin: 0 0 10px 0;
+.eq-result-title {
+    margin: 0 0 10px;
     font-size: 14px;
-    font-weight: 800;
+    font-weight: 600;
 }
 
-.import-list {
+.eq-result-title.eq-created {
+    color: var(--eq-success);
+}
+
+.eq-result-title.eq-updated {
+    color: var(--eq-warning);
+}
+
+.eq-result-title.eq-ignored {
+    color: var(--eq-danger);
+}
+
+.eq-import-list {
     max-height: 260px;
     overflow: auto;
-    border: 1px solid var(--border);
-    border-radius: 10px;
     padding: 12px;
-    background: #fff;
+    border: 1px solid var(--eq-border);
+    border-radius: var(--eq-radius-md);
+    background: var(--eq-bg-soft);
+    color: var(--eq-text);
 }
 
-@media (max-width: 1280px) {
-    .page-shell {
-        padding: 20px;
-    }
-
-    #kpisWrap.kpi-grid {
-        grid-template-columns: repeat(2, minmax(220px, 1fr));
-    }
+.eq-import-row {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--eq-border);
 }
 
-@media (max-width: 1024px) {
-    .page-topbar {
+.eq-import-row:last-child {
+    border-bottom: none;
+}
+
+.eq-import-row small {
+    color: var(--eq-muted);
+}
+
+.eq-error-wrap {
+    display: none;
+    margin-top: 18px;
+}
+
+@media (max-width: 860px) {
+    .eq-page-hero {
         grid-template-columns: 1fr;
-        align-items: stretch;
     }
 
-    .header-actions {
-        justify-content: flex-start;
-    }
-
-    .import-result-grid {
+    .eq-hero-main {
         grid-template-columns: 1fr;
     }
-}
 
-@media (max-width: 768px) {
-    .page-shell {
-        padding: 14px;
-    }
-
-    .page-title {
-        font-size: 22px;
-    }
-
-    .header-actions {
+    .eq-hero-actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
+        justify-content: stretch;
+    }
+
+    .eq-hero-actions .eq-btn,
+    .eq-size-form,
+    .eq-size-form select {
         width: 100%;
-        gap: 10px;
     }
 
-    .header-actions .btn,
-    .header-actions .size-form,
-    .header-actions .size-form select {
-        width: 100%;
+    .eq-filters-summary {
+        padding: 15px 16px;
     }
 
-    .filters-body {
-        padding: 0 16px 16px;
-    }
-
-    .filters-header {
+    .eq-filters-body {
         padding: 16px;
     }
 
-    .filters-grid {
-        grid-template-columns: 1fr;
-        gap: 14px;
+    .eq-table,
+    .eq-table thead,
+    .eq-table tbody,
+    .eq-table tr,
+    .eq-table td {
+        display: block;
+        width: 100%;
     }
 
-    #kpisWrap.kpi-grid {
-        grid-template-columns: 1fr;
+    .eq-table thead {
+        display: none;
     }
 
-    .chips-bar {
-        gap: 8px;
+    .eq-table tbody {
+        display: grid;
+        gap: 12px;
+        padding: 12px;
     }
 
-    .list-footer {
+    .eq-table tbody tr {
+        border: 1px solid var(--eq-border);
+        border-radius: var(--eq-radius-lg);
+        background: var(--eq-bg);
+        padding: 12px;
+        box-shadow: var(--eq-shadow-sm);
+    }
+
+    .eq-table tbody tr:hover {
+        background: var(--eq-bg);
+    }
+
+    .eq-table tbody td {
+        display: grid;
+        grid-template-columns: minmax(7rem, .35fr) minmax(0, 1fr);
+        gap: 10px;
+        padding: 9px 0;
+        border-bottom: 1px solid var(--eq-border);
+        text-align: left !important;
+    }
+
+    .eq-table tbody td:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    .eq-table tbody td:not(.eq-td-main)::before {
+        content: attr(data-label);
+        color: var(--eq-muted);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+    }
+
+    .eq-table tbody td.eq-td-main {
+        display: block;
+    }
+
+    .eq-table tbody td.eq-td-main::before {
+        display: none;
+    }
+
+    .eq-asset-cell {
+        min-width: 0;
+    }
+
+    .eq-actions-cell {
+        justify-content: stretch;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .eq-icon-action {
+        width: 100%;
+    }
+
+    .eq-list-footer {
         align-items: stretch;
         flex-direction: column;
     }
 
-    .modal-content {
-        padding: 20px;
+    .eq-pagination-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .eq-pagination-actions .eq-btn {
+        width: 100%;
+    }
+
+    .eq-import-result-grid {
+        grid-template-columns: 1fr;
     }
 }
 
-@media (max-width: 520px) {
-    .header-actions {
-        grid-template-columns: 1fr;
+@media (max-width: 540px) {
+    .equipment-shell {
+        gap: 14px;
     }
 
-    .page-title {
-        font-size: 20px;
-    }
-
-    .chip {
-        width: 100%;
-        text-align: center;
-    }
-
-    .modal-content {
+    .eq-page-hero {
         padding: 16px;
     }
 
-    .modal-title {
-        font-size: 16px;
+    .eq-hero-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .eq-chip {
+        width: 100%;
+    }
+
+    .eq-table tbody td {
+        grid-template-columns: 1fr;
+        gap: 5px;
+    }
+
+    .eq-pagination-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .eq-modal {
+        padding: 16px;
+    }
+
+    .eq-modal-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .eq-modal-actions .eq-btn {
+        width: 100%;
     }
 }
 </style>
+{% endblock %}
 
-<div class="page-shell">
-  <div class="page-container">
+{% block content %}
+<div class="equipment-page">
+    <div class="equipment-shell">
 
-    <div class="page-topbar">
-      <div class="page-title-wrap">
-        <h1 class="page-title">
-          <i class="fa fa-desktop"></i>
-          Ativos Cadastrados
-        </h1>
-        <span class="meta-badge" id="countResults">{{ filtered_total }}</span>
-      </div>
+        <section class="eq-page-hero" aria-labelledby="eqPageTitle">
+            <div class="eq-hero-main">
+                <div class="eq-hero-icon" aria-hidden="true">
+                    <i class="fa fa-desktop"></i>
+                </div>
 
-      <div class="header-actions">
-        <form id="sizeForm" class="size-form">
-          {% for key, val in request.GET.items %}
-            {% if key != 'pp' and key != 'page' %}
-              <input type="hidden" name="{{ key }}" value="{{ val }}">
-            {% endif %}
-          {% endfor %}
-          <select name="pp" id="pp" onchange="refreshList({page:1})">
-            <option value="10" {% if per_page == 10 %}selected{% endif %}>10 por pág.</option>
-            <option value="20" {% if per_page == 20 %}selected{% endif %}>20 por pág.</option>
-            <option value="50" {% if per_page == 50 %}selected{% endif %}>50 por pág.</option>
-          </select>
-        </form>
+                <div class="eq-hero-title">
+                    <h2 id="eqPageTitle">Ativos Cadastrados</h2>
+                    <p>
+                        Gestão integrada de patrimônio, locação, consumo, lotes e rastreabilidade operacional.
+                    </p>
 
-        <a class="btn btn-primary" href="{% url 'cadastrar_equipamento' %}">
-          <i class="fa fa-plus"></i> Novo Ativo
-        </a>
+                    <div class="eq-meta-row">
+                        <span class="eq-meta-badge" id="countResults">
+                            {{ filtered_total }} resultado(s)
+                        </span>
+                        <span class="eq-meta-badge">
+                            Base operacional de TI
+                        </span>
+                    </div>
+                </div>
+            </div>
 
-        <form
-          id="formImportar"
-          method="post"
-          enctype="multipart/form-data"
-          action="{% url 'importar_planilha' %}"
-          style="display:none;"
-        >
-          {% csrf_token %}
-          <input type="file" name="arquivo" id="inputArquivo" accept=".xlsx">
-        </form>
+            <div class="eq-hero-actions">
+                <form id="sizeForm" class="eq-size-form">
+                    {% for key, val in request.GET.items %}
+                        {% if key != 'pp' and key != 'page' %}
+                            <input type="hidden" name="{{ key }}" value="{{ val }}">
+                        {% endif %}
+                    {% endfor %}
 
-        <button type="button" class="btn btn-outline" id="btnImportar" title="Importar planilha">
-          <i class="fa fa-upload"></i>
-          <span class="btn-import-text">Importar</span>
-        </button>
+                    <select name="pp" id="pp" aria-label="Registros por página">
+                        <option value="10" {% if per_page == 10 %}selected{% endif %}>10 por pág.</option>
+                        <option value="20" {% if per_page == 20 %}selected{% endif %}>20 por pág.</option>
+                        <option value="50" {% if per_page == 50 %}selected{% endif %}>50 por pág.</option>
+                        <option value="100" {% if per_page == 100 %}selected{% endif %}>100 por pág.</option>
+                    </select>
+                </form>
 
-        {% with qs=request.GET.urlencode %}
-        <a class="btn btn-outline" href="{% url 'equipamentos_exportar' %}{% if qs %}?{{ qs }}{% endif %}" title="Exportar para Excel">
-          <i class="fa fa-file-excel"></i>
-        </a>
-        {% endwith %}
-      </div>
+                <a class="eq-btn eq-btn-primary" href="{% url 'cadastrar_equipamento' %}">
+                    <i class="fa fa-plus" aria-hidden="true"></i>
+                    Novo Ativo
+                </a>
+
+                <form
+                    id="formImportar"
+                    method="post"
+                    enctype="multipart/form-data"
+                    action="{% url 'importar_planilha' %}"
+                    hidden>
+                    {% csrf_token %}
+                    <input type="file" name="arquivo" id="inputArquivo" accept=".xlsx">
+                </form>
+
+                <button type="button" class="eq-btn eq-btn-outline" id="btnImportar" title="Importar planilha">
+                    <i class="fa fa-upload" aria-hidden="true"></i>
+                    <span class="btn-import-text">Importar</span>
+                </button>
+
+                {% with qs=request.GET.urlencode %}
+                    <a class="eq-btn eq-btn-outline" href="{% url 'equipamentos_exportar' %}{% if qs %}?{{ qs }}{% endif %}" title="Exportar para Excel">
+                        <i class="fa fa-file-excel" aria-hidden="true"></i>
+                        Exportar
+                    </a>
+                {% endwith %}
+            </div>
+        </section>
+
+        <section id="kpisWrap" class="eq-kpi-grid" aria-label="Indicadores dos ativos">
+            {% include "front/equipamentos/_kpis.html" %}
+        </section>
+
+        <details class="eq-panel eq-filters" {% if request.GET %}open{% endif %}>
+            <summary class="eq-filters-summary">
+                <i class="fa fa-chevron-down" aria-hidden="true"></i>
+                Filtros de Busca Avançada
+            </summary>
+
+            <div class="eq-filters-body">
+                <form class="eq-filters-grid" id="filtrosForm" onsubmit="event.preventDefault(); refreshList({ page: 1 });">
+                    <div class="eq-input-group">
+                        <label for="filtro-nome">Nome do Ativo</label>
+                        <input type="text" name="nome" id="filtro-nome" class="eq-form-control" placeholder="Pesquisar..." value="{{ request.GET.nome|default:'' }}">
+                    </div>
+
+                    <div class="eq-input-group">
+                        <label for="filtro-num-serie">Nº de Série</label>
+                        <input type="text" name="numero_serie" id="filtro-num-serie" class="eq-form-control" placeholder="Ex: SN123..." value="{{ request.GET.numero_serie|default:'' }}">
+                    </div>
+
+                    <div class="eq-input-group">
+                        <label for="filtro-subtipo">Categoria/Subtipo</label>
+                        <select name="subtipo" id="filtro-subtipo" class="eq-form-control select2-enable" data-placeholder="Todas as Categorias">
+                            <option value="">Todas as Categorias</option>
+                            {% for sub in subtipos %}
+                                <option value="{{ sub.id }}" {% if request.GET.subtipo == sub.id|stringformat:"s" %}selected{% endif %}>
+                                    {{ sub.nome|default:sub }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="eq-input-group">
+                        <label for="filtro-status">Status</label>
+                        <select name="status" id="filtro-status" class="eq-form-control select2-enable" data-placeholder="Todos os Status">
+                            <option value="">Todos os Status</option>
+                            {% for code, label in status_choices %}
+                                <option value="{{ code }}" {% if request.GET.status == code %}selected{% endif %}>
+                                    {{ label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="eq-input-group">
+                        <label for="filtro-tipo-item">Tipo Operacional</label>
+                        <select name="tipo_item" id="filtro-tipo-item" class="eq-form-control select2-enable" data-placeholder="Todos">
+                            <option value="">Todos</option>
+                            <option value="patrimonio" {% if request.GET.tipo_item == "patrimonio" %}selected{% endif %}>Patrimônio</option>
+                            <option value="consumo" {% if request.GET.tipo_item == "consumo" %}selected{% endif %}>Item de Consumo</option>
+                            <option value="locado" {% if request.GET.tipo_item == "locado" %}selected{% endif %}>Locado</option>
+                            <option value="com_lote" {% if request.GET.tipo_item == "com_lote" %}selected{% endif %}>Com Lote</option>
+                        </select>
+                    </div>
+
+                    <div class="eq-input-group">
+                        <label for="filtro-estoque">Estoque</label>
+                        <select name="estoque" id="filtro-estoque" class="eq-form-control select2-enable" data-placeholder="Todos">
+                            <option value="">Todos</option>
+                            <option value="com_saldo" {% if request.GET.estoque == "com_saldo" %}selected{% endif %}>Com saldo</option>
+                            <option value="zerado" {% if request.GET.estoque == "zerado" %}selected{% endif %}>Zerado</option>
+                        </select>
+                    </div>
+
+                    <div class="eq-input-group">
+                        <label for="filtro-fornecedor">Fornecedor</label>
+                        <input type="text" name="fornecedor" id="filtro-fornecedor" class="eq-form-control" placeholder="Buscar fornecedor..." value="{{ request.GET.fornecedor|default:'' }}">
+                    </div>
+
+                    <div class="eq-input-group">
+                        <label for="filtro-localidade">Localidade</label>
+                        <input type="text" name="localidade" id="filtro-localidade" class="eq-form-control" placeholder="Buscar localidade..." value="{{ request.GET.localidade|default:'' }}">
+                    </div>
+
+                    <div class="eq-input-group">
+                        <label for="filtro-centro-custo">Centro de Custo</label>
+                        <input type="text" name="centro_custo" id="filtro-centro-custo" class="eq-form-control" placeholder="Código ou nome..." value="{{ request.GET.centro_custo|default:'' }}">
+                    </div>
+
+                    <div class="eq-input-group">
+                        <button type="button" id="btnLimpar" class="eq-btn eq-btn-outline" style="width: 100%;">
+                            <i class="fa fa-eraser" aria-hidden="true"></i>
+                            Limpar Busca
+                        </button>
+                    </div>
+                </form>
+
+                <div class="eq-chip-row" id="chipsWrap" aria-label="Atalhos de status">
+                    {% with s=request.GET.status|default:'' %}
+                        <a href="#" class="eq-chip {% if not s %}is-active{% endif %}" data-val="">Todos</a>
+                        <a href="#" class="eq-chip {% if s == 'ativo' %}is-active{% endif %}" data-val="ativo">Ativos</a>
+                        <a href="#" class="eq-chip {% if s == 'backup' %}is-active{% endif %}" data-val="backup">Backup</a>
+                        <a href="#" class="eq-chip {% if s == 'manutencao' %}is-active{% endif %}" data-val="manutencao">Manutenção</a>
+                        <a href="#" class="eq-chip {% if s == 'correcao' %}is-active{% endif %}" data-val="correcao">Correção</a>
+                        <a href="#" class="eq-chip {% if s == 'queimado' %}is-active{% endif %}" data-val="queimado">Queimado</a>
+                        <a href="#" class="eq-chip {% if s == 'defeito' %}is-active{% endif %}" data-val="defeito">Defeito</a>
+                    {% endwith %}
+                </div>
+            </div>
+        </details>
+
+        <section class="eq-table-card" aria-label="Tabela de ativos cadastrados">
+            <div id="tableLoader" class="eq-table-loading" aria-live="polite">
+                <i class="fa fa-circle-notch fa-spin" aria-hidden="true"></i>
+                Atualizando ativos...
+            </div>
+
+            <div class="eq-table-scroll">
+                <table id="tabelaEquipamentos" class="eq-table">
+                    <thead>
+                        <tr>
+                            <th data-col="0" scope="col">Ativo</th>
+                            <th data-col="1" scope="col">Tipo</th>
+                            <th data-col="2" scope="col">Status</th>
+                            <th data-col="3" scope="col">Localidade / CC</th>
+                            <th data-col="4" scope="col">Fornecedor</th>
+                            <th data-col="5" scope="col">Lotes / Saldo</th>
+                            <th scope="col" style="text-align: right;">Ações</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="tbodyEquipamentos">
+                        {% include "front/equipamentos/_tbody.html" %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="paginationWrap" class="eq-list-footer">
+                {% include "front/equipamentos/_pagination.html" %}
+            </div>
+        </section>
     </div>
+</div>
 
-    <div id="kpisWrap" class="kpi-grid">
-      {% include "front/equipamentos/_kpis.html" %}
-    </div>
+<div id="deleteModal" class="eq-modal-overlay" aria-hidden="true">
+    <div class="eq-modal eq-modal-sm" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+        <div class="eq-modal-header">
+            <div class="eq-modal-icon" aria-hidden="true">
+                <i class="fa fa-triangle-exclamation"></i>
+            </div>
 
-    <details class="filters-section" {% if request.GET %}open{% endif %}>
-      <summary class="filters-header">
-        <i class="fa fa-sliders"></i>
-        Filtros de Busca Avançada
-      </summary>
-
-      <div class="filters-body">
-        <form class="filters-grid" id="filtrosForm" onsubmit="event.preventDefault(); refreshList({page:1});">
-          <div class="input-group">
-            <label>Nome do Ativo</label>
-            <input type="text" name="nome" id="filtro-nome" class="form-ctrl" placeholder="Pesquisar..." value="{{ request.GET.nome|default:'' }}">
-          </div>
-
-          <div class="input-group">
-            <label>Nº de Série (S/N)</label>
-            <input type="text" name="numero_serie" id="filtro-num-serie" class="form-ctrl" placeholder="Ex: SN123..." value="{{ request.GET.numero_serie|default:'' }}">
-          </div>
-
-          <div class="input-group">
-            <label>Categoria</label>
-            <select name="subtipo" id="filtro-subtipo" class="form-ctrl select2-enable">
-              <option value="">Todas as Categorias</option>
-              {% for sub in subtipos %}
-                <option value="{{ sub.id }}" {% if request.GET.subtipo == sub.id|stringformat:"s" %}selected{% endif %}>{{ sub.nome }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="input-group">
-            <label>Status</label>
-            <select name="status" id="filtro-status" class="form-ctrl select2-enable">
-              <option value="">Todos os Status</option>
-              {% for code, label in status_choices %}
-                <option value="{{ code }}" {% if request.GET.status == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="input-group">
-            <label>Fornecedor</label>
-            <input type="text" name="fornecedor" id="filtro-fornecedor" class="form-ctrl" placeholder="Buscar fornecedor..." value="{{ request.GET.fornecedor|default:'' }}">
-          </div>
-
-          <div class="input-group">
-            <label>Localidade</label>
-            <input type="text" name="localidade" id="filtro-localidade" class="form-ctrl" placeholder="Buscar localidade..." value="{{ request.GET.localidade|default:'' }}">
-          </div>
-
-          <div class="input-group">
-            <label>Centro de Custo</label>
-            <input type="text" name="centro_custo" id="filtro-centro-custo" class="form-ctrl" placeholder="Código ou nome..." value="{{ request.GET.centro_custo|default:'' }}">
-          </div>
-
-          <div class="input-group">
-            <button type="button" id="btnLimpar" class="btn btn-outline" style="width:100%;" title="Limpar todos os filtros">
-              <i class="fa fa-eraser"></i> Limpar Busca
-            </button>
-          </div>
-        </form>
-
-        <div class="chips-bar" id="chipsWrap">
-          {% with s=request.GET.status|default:'' %}
-            <a href="#" class="chip {% if not s %}active{% endif %}" data-val="">Todos</a>
-            <a href="#" class="chip {% if s == 'ativo' %}active{% endif %}" data-val="ativo">Ativos</a>
-            <a href="#" class="chip {% if s == 'backup' %}active{% endif %}" data-val="backup">Backup</a>
-            <a href="#" class="chip {% if s == 'manutencao' %}active{% endif %}" data-val="manutencao">Manutenção</a>
-            <a href="#" class="chip {% if s == 'defeito' %}active{% endif %}" data-val="defeito">Defeito</a>
-          {% endwith %}
+            <h2 class="eq-modal-title" id="deleteModalTitle">Confirmar Exclusão</h2>
         </div>
-      </div>
-    </details>
 
-    <div class="table-card">
-      <div id="tableLoader" class="table-loading">
-        <i class="fa fa-circle-notch fa-spin fa-2x"></i>
-      </div>
+        <p id="deleteMessage" class="eq-modal-text">...</p>
 
-      <div class="table-responsive">
-        <table id="tabelaEquipamentos">
-          <thead>
-            <tr>
-              <th data-col="0">#</th>
-              <th data-col="1">Ativo <i class="fa fa-sort" style="margin-left:4px; opacity:0.5;"></i></th>
-              <th data-col="2">Subtipo <i class="fa fa-sort" style="margin-left:4px; opacity:0.5;"></i></th>
-              <th data-col="3">Status</th>
-              <th data-col="5">Localidade</th>
-              <th data-col="6">Serial</th>
-              <th data-col="7">Fornecedor</th>
-              <th style="text-align:right">Ações</th>
-            </tr>
-          </thead>
-          <tbody id="tbodyEquipamentos">
-            {% include "front/equipamentos/_tbody.html" %}
-          </tbody>
-        </table>
-      </div>
+        <form id="deleteForm" method="post" action="">
+            {% csrf_token %}
 
-      <div id="paginationWrap" class="list-footer">
-        {% include "front/equipamentos/_pagination.html" %}
-      </div>
+            <div class="eq-modal-actions">
+                <button type="button" class="eq-btn eq-btn-outline" onclick="closeDeleteModal()">Cancelar</button>
+                <button type="submit" class="eq-btn eq-btn-danger">Sim, Excluir</button>
+            </div>
+        </form>
     </div>
-
-  </div>
 </div>
 
-<div id="deleteModal" class="modal-overlay" aria-hidden="true">
-  <div class="modal-content" style="max-width: 440px;">
-    <div class="modal-header-flex">
-      <div class="modal-icon"><i class="fa fa-triangle-exclamation"></i></div>
-      <h2 class="modal-title">Confirmar Exclusão</h2>
-    </div>
-    <p id="deleteMessage" style="color:var(--text-muted); font-size:14px; margin-bottom:24px;">...</p>
+<div id="importResultModal" class="eq-modal-overlay" aria-hidden="true">
+    <div class="eq-modal" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
+        <div class="eq-modal-header">
+            <div class="eq-modal-icon eq-info" aria-hidden="true">
+                <i class="fa fa-file-import"></i>
+            </div>
 
-    <form id="deleteForm" method="post" action="">
-      {% csrf_token %}
-      <div style="display:flex; justify-content:flex-end; gap:12px; flex-wrap:wrap;">
-        <button type="button" class="btn btn-outline" onclick="closeDeleteModal()">Cancelar</button>
-        <button type="submit" class="btn" style="background:var(--danger); color:#fff;">Sim, Excluir</button>
-      </div>
-    </form>
-  </div>
+            <h2 class="eq-modal-title" id="importModalTitle">Resultado da Importação</h2>
+        </div>
+
+        <div id="importSummary" class="eq-import-summary"></div>
+
+        <div class="eq-import-result-grid">
+            <div>
+                <h4 class="eq-result-title eq-created">Criados</h4>
+                <div id="importCreatedList" class="eq-import-list"></div>
+            </div>
+
+            <div>
+                <h4 class="eq-result-title eq-updated">Atualizados</h4>
+                <div id="importUpdatedList" class="eq-import-list"></div>
+            </div>
+
+            <div>
+                <h4 class="eq-result-title eq-ignored">Ignorados</h4>
+                <div id="importIgnoredList" class="eq-import-list"></div>
+            </div>
+        </div>
+
+        <div id="importErrorWrap" class="eq-error-wrap">
+            <h4 class="eq-result-title eq-ignored">Detalhes adicionais</h4>
+            <div id="importErrorList" class="eq-import-list" style="max-height: 180px;"></div>
+        </div>
+
+        <div class="eq-modal-actions">
+            <button type="button" class="eq-btn eq-btn-outline" id="btnCloseImportModal">Fechar</button>
+        </div>
+    </div>
 </div>
+{% endblock %}
 
-<div id="importResultModal" class="modal-overlay" aria-hidden="true">
-  <div class="modal-content">
-    <div class="modal-header-flex">
-      <div class="modal-icon" style="background: var(--info-bg); color: var(--info);">
-        <i class="fa fa-file-import"></i>
-      </div>
-      <h2 class="modal-title">Resultado da Importação</h2>
-    </div>
-
-    <div id="importSummary" style="margin-bottom:20px; color:var(--text-muted); font-size:14px;"></div>
-
-    <div class="import-result-grid">
-      <div class="import-card">
-        <h4 style="color:var(--success);">Criados</h4>
-        <div id="importCreatedList" class="import-list"></div>
-      </div>
-
-      <div class="import-card">
-        <h4 style="color:var(--warning);">Atualizados</h4>
-        <div id="importUpdatedList" class="import-list"></div>
-      </div>
-
-      <div class="import-card">
-        <h4 style="color:var(--danger);">Ignorados</h4>
-        <div id="importIgnoredList" class="import-list"></div>
-      </div>
-    </div>
-
-    <div id="importErrorWrap" style="display:none; margin-top:18px;">
-      <h4 style="margin:0 0 10px 0; color:var(--danger); font-size:14px; font-weight:800;">Detalhes adicionais</h4>
-      <div id="importErrorList" class="import-list" style="max-height:180px;"></div>
-    </div>
-
-    <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:24px; flex-wrap:wrap;">
-      <button type="button" class="btn btn-outline" id="btnCloseImportModal">Fechar</button>
-    </div>
-  </div>
-</div>
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <script>
-const dom = {
-  form: document.getElementById('filtrosForm'),
-  sizeForm: document.getElementById('sizeForm'),
-  tbody: document.getElementById('tbodyEquipamentos'),
-  pagWrap: document.getElementById('paginationWrap'),
-  kpis: document.getElementById('kpisWrap'),
-  count: document.getElementById('countResults'),
-  loader: document.getElementById('tableLoader'),
-  chips: document.getElementById('chipsWrap'),
-  deleteModal: document.getElementById('deleteModal'),
-  importModal: document.getElementById('importResultModal'),
-  importForm: document.getElementById('formImportar'),
-  inputArquivo: document.getElementById('inputArquivo'),
-  btnImportar: document.getElementById('btnImportar'),
-  btnCloseImportModal: document.getElementById('btnCloseImportModal'),
-  importSummary: document.getElementById('importSummary'),
-  importCreatedList: document.getElementById('importCreatedList'),
-  importUpdatedList: document.getElementById('importUpdatedList'),
-  importIgnoredList: document.getElementById('importIgnoredList'),
-  importErrorWrap: document.getElementById('importErrorWrap'),
-  importErrorList: document.getElementById('importErrorList'),
-};
+(() => {
+    'use strict';
 
-let currentController = null;
-let importInProgress = false;
-
-$(document).ready(function() {
-  $('.select2-enable').select2({ width: '100%', allowClear: true });
-
-  $('.select2-enable').on('change', function() {
-    refreshList({ page: 1 });
-  });
-
-  $('#filtrosForm input[type="text"]').on('input', debounce(function() {
-    refreshList({ page: 1 });
-  }, 400));
-});
-
-async function refreshList(extraParams = {}) {
-  if (currentController) currentController.abort();
-  currentController = new AbortController();
-
-  dom.loader.classList.add('active');
-  dom.tbody.style.opacity = '0.4';
-
-  try {
-    const formData = new FormData(dom.form);
-    const params = new URLSearchParams();
-
-    for (const [key, val] of formData.entries()) {
-      if ((val || '').trim() !== '') {
-        params.append(key, val);
-      }
-    }
-
-    const pp = dom.sizeForm.querySelector('[name="pp"]').value;
-    if (pp) params.append('pp', pp);
-
-    for (const [key, val] of Object.entries(extraParams)) {
-      if (val === null || val === undefined || val === '') {
-        params.delete(key);
-      } else {
-        params.set(key, val);
-      }
-    }
-
-    params.set('partial', '1');
-
-    const url = `${window.location.pathname}?${params.toString()}`;
-    const res = await fetch(url, {
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      signal: currentController.signal
-    });
-
-    if (!res.ok) throw new Error('Erro na atualização da listagem.');
-
-    const data = await res.json();
-
-    if (data.tbody !== undefined) dom.tbody.innerHTML = data.tbody;
-    if (data.pagination !== undefined) dom.pagWrap.innerHTML = data.pagination;
-    if (data.kpis !== undefined) dom.kpis.innerHTML = data.kpis;
-    if (data.count !== undefined) dom.count.textContent = data.count;
-
-    params.delete('partial');
-    const finalQuery = params.toString();
-    const finalUrl = finalQuery ? `${window.location.pathname}?${finalQuery}` : window.location.pathname;
-    window.history.replaceState({}, '', finalUrl);
-
-    bindTableEvents();
-  } catch (err) {
-    if (err.name !== 'AbortError') {
-      console.error('Erro:', err);
-    }
-  } finally {
-    if (!currentController?.signal.aborted) {
-      dom.loader.classList.remove('active');
-      dom.tbody.style.opacity = '1';
-      currentController = null;
-    }
-  }
-}
-
-function debounce(func, wait) {
-  let timeout;
-  return function(...args) {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(this, args), wait);
-  };
-}
-
-document.getElementById('btnLimpar').addEventListener('click', function() {
-  dom.form.reset();
-  $('.select2-enable').val(null).trigger('change.select2');
-  updateChipsVisual('');
-  refreshList({
-    page: 1,
-    nome: null,
-    status: null,
-    subtipo: null,
-    fornecedor: null,
-    localidade: null,
-    centro_custo: null,
-    numero_serie: null
-  });
-});
-
-dom.chips.addEventListener('click', function(e) {
-  const chip = e.target.closest('.chip');
-  if (!chip) return;
-
-  e.preventDefault();
-  const statusVal = chip.dataset.val || '';
-  updateChipsVisual(statusVal);
-  $('#filtro-status').val(statusVal).trigger('change');
-});
-
-function updateChipsVisual(val) {
-  dom.chips.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-  const activeChip = dom.chips.querySelector(`.chip[data-val="${val}"]`);
-  if (activeChip) activeChip.classList.add('active');
-}
-
-document.getElementById('paginationWrap').addEventListener('click', function(e) {
-  const link = e.target.closest('a');
-  if (!link) return;
-
-  e.preventDefault();
-  const page = new URL(link.href).searchParams.get('page') || 1;
-  refreshList({ page });
-});
-
-function bindTableEvents() {
-  document.querySelectorAll('tr.clickable').forEach(tr => {
-    tr.onclick = (e) => {
-      if (e.target.closest('a, button')) return;
-      const href = tr.dataset.href;
-      if (href) window.location.href = href;
+    const dom = {
+        form: document.getElementById('filtrosForm'),
+        sizeForm: document.getElementById('sizeForm'),
+        tbody: document.getElementById('tbodyEquipamentos'),
+        pagWrap: document.getElementById('paginationWrap'),
+        kpis: document.getElementById('kpisWrap'),
+        count: document.getElementById('countResults'),
+        loader: document.getElementById('tableLoader'),
+        chips: document.getElementById('chipsWrap'),
+        deleteModal: document.getElementById('deleteModal'),
+        deleteMessage: document.getElementById('deleteMessage'),
+        deleteForm: document.getElementById('deleteForm'),
+        importModal: document.getElementById('importResultModal'),
+        importForm: document.getElementById('formImportar'),
+        inputArquivo: document.getElementById('inputArquivo'),
+        btnImportar: document.getElementById('btnImportar'),
+        btnCloseImportModal: document.getElementById('btnCloseImportModal'),
+        importSummary: document.getElementById('importSummary'),
+        importCreatedList: document.getElementById('importCreatedList'),
+        importUpdatedList: document.getElementById('importUpdatedList'),
+        importIgnoredList: document.getElementById('importIgnoredList'),
+        importErrorWrap: document.getElementById('importErrorWrap'),
+        importErrorList: document.getElementById('importErrorList'),
     };
-  });
 
-  document.querySelectorAll('th[data-col]').forEach(th => {
-    th.onclick = () => {
-      const col = th.dataset.col;
-      const tbody = dom.tbody;
-      const rows = Array.from(tbody.querySelectorAll('tr'));
-      const isAsc = th.dataset.order !== 'asc';
-      th.dataset.order = isAsc ? 'asc' : 'desc';
+    let currentController = null;
+    let importInProgress = false;
 
-      rows.sort((a, b) => {
-        const valA = (a.children[col]?.innerText || '').trim().toLowerCase();
-        const valB = (b.children[col]?.innerText || '').trim().toLowerCase();
-        return isAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      });
-
-      rows.forEach(r => tbody.appendChild(r));
-    };
-  });
-}
-
-window.openDeleteModal = function(id, nome) {
-  document.getElementById('deleteMessage').innerHTML =
-    `Tem certeza que deseja remover o equipamento <strong>${nome}</strong> do sistema?`;
-  document.getElementById('deleteForm').action = `/equipamentos/${id}/excluir/`;
-  dom.deleteModal.classList.add('show');
-  dom.deleteModal.setAttribute('aria-hidden', 'false');
-};
-
-window.closeDeleteModal = function() {
-  dom.deleteModal.classList.remove('show');
-  dom.deleteModal.setAttribute('aria-hidden', 'true');
-};
-
-function openImportResultModal() {
-  dom.importModal.classList.add('show');
-  dom.importModal.setAttribute('aria-hidden', 'false');
-}
-
-function closeImportResultModal() {
-  dom.importModal.classList.remove('show');
-  dom.importModal.setAttribute('aria-hidden', 'true');
-}
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-function montarListaCriadosAtualizados(lista) {
-  if (!Array.isArray(lista) || !lista.length) {
-    return '<div style="color: var(--text-muted);">Nenhum registro.</div>';
-  }
-
-  return lista.map(item => `
-    <div style="padding:8px 0; border-bottom:1px solid var(--border);">
-      <strong>${escapeHtml(item.nome || '-')}</strong><br>
-      <small style="color:var(--text-muted);">S/N: ${escapeHtml(item.numero_serie || '-')}</small>
-    </div>
-  `).join('');
-}
-
-function montarListaIgnorados(lista) {
-  if (!Array.isArray(lista) || !lista.length) {
-    return '<div style="color: var(--text-muted);">Nenhum registro.</div>';
-  }
-
-  return lista.map(item => `
-    <div style="padding:8px 0; border-bottom:1px solid var(--border);">
-      <strong>Linha ${escapeHtml(item.linha ?? '-')}</strong><br>
-      <small style="color:var(--text-muted);">${escapeHtml(item.motivo || 'Registro ignorado')}</small>
-    </div>
-  `).join('');
-}
-
-function montarListaErros(lista) {
-  if (!Array.isArray(lista) || !lista.length) {
-    return '';
-  }
-
-  return lista.map(item => `
-    <div style="padding:8px 0; border-bottom:1px solid var(--border); color:var(--text-muted);">
-      ${escapeHtml(item)}
-    </div>
-  `).join('');
-}
-
-function preencherModalImportacao(resultado) {
-  const totais = resultado?.totais || {};
-
-  dom.importSummary.innerHTML = `
-    <strong>Criados:</strong> ${totais.criados || 0}
-    &nbsp;|&nbsp;
-    <strong>Atualizados:</strong> ${totais.atualizados || 0}
-    &nbsp;|&nbsp;
-    <strong>Ignorados:</strong> ${totais.ignorados || 0}
-  `;
-
-  dom.importCreatedList.innerHTML = montarListaCriadosAtualizados(resultado?.criados || []);
-  dom.importUpdatedList.innerHTML = montarListaCriadosAtualizados(resultado?.atualizados || []);
-  dom.importIgnoredList.innerHTML = montarListaIgnorados(resultado?.ignorados || []);
-
-  const erros = resultado?.erros || [];
-  if (Array.isArray(erros) && erros.length) {
-    dom.importErrorWrap.style.display = 'block';
-    dom.importErrorList.innerHTML = montarListaErros(erros);
-  } else {
-    dom.importErrorWrap.style.display = 'none';
-    dom.importErrorList.innerHTML = '';
-  }
-}
-
-function setImportButtonLoading(isLoading) {
-  importInProgress = isLoading;
-  dom.btnImportar.disabled = isLoading;
-  dom.inputArquivo.disabled = isLoading;
-
-  if (isLoading) {
-    dom.btnImportar.innerHTML = '<i class="fa fa-circle-notch fa-spin"></i><span class="btn-import-text">Importando...</span>';
-  } else {
-    dom.btnImportar.innerHTML = '<i class="fa fa-upload"></i><span class="btn-import-text">Importar</span>';
-  }
-}
-
-async function enviarImportacao() {
-  if (!dom.inputArquivo.files || !dom.inputArquivo.files.length || importInProgress) return;
-
-  const arquivo = dom.inputArquivo.files[0];
-  const nomeArquivo = (arquivo.name || '').toLowerCase();
-
-  if (!nomeArquivo.endsWith('.xlsx')) {
-    alert('Selecione um arquivo no formato .xlsx');
-    dom.inputArquivo.value = '';
-    return;
-  }
-
-  const formData = new FormData(dom.importForm);
-  setImportButtonLoading(true);
-
-  try {
-    const response = await fetch(dom.importForm.action, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'X-Requested-With': 'XMLHttpRequest'
-      }
-    });
-
-    const data = await response.json();
-
-    if (!response.ok || !data.ok) {
-      throw new Error(data.mensagem || 'Erro ao importar a planilha.');
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 
-    preencherModalImportacao(data.resultado || {});
-    openImportResultModal();
-    await refreshList({ page: 1 });
+    function debounce(func, wait) {
+        let timeout;
 
-  } catch (error) {
-    console.error(error);
-    alert(error.message || 'Erro ao processar a importação.');
-  } finally {
-    setImportButtonLoading(false);
-    dom.inputArquivo.value = '';
-  }
-}
+        return function(...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
+        };
+    }
 
-dom.btnImportar.addEventListener('click', function() {
-  if (importInProgress) return;
-  dom.inputArquivo.click();
-});
+    function setLoading(isLoading) {
+        if (!dom.loader || !dom.tbody) return;
 
-dom.inputArquivo.addEventListener('change', function() {
-  enviarImportacao();
-});
+        dom.loader.classList.toggle('is-active', isLoading);
+        dom.tbody.style.opacity = isLoading ? '0.45' : '1';
+    }
 
-dom.btnCloseImportModal.addEventListener('click', closeImportResultModal);
+    function buildListParams(extraParams = {}) {
+        const formData = new FormData(dom.form);
+        const params = new URLSearchParams();
 
-dom.importModal.addEventListener('click', function(e) {
-  if (e.target === dom.importModal) {
-    closeImportResultModal();
-  }
-});
+        for (const [key, val] of formData.entries()) {
+            const cleanValue = String(val || '').trim();
 
-dom.deleteModal.addEventListener('click', function(e) {
-  if (e.target === dom.deleteModal) {
-    closeDeleteModal();
-  }
-});
+            if (cleanValue !== '') {
+                params.append(key, cleanValue);
+            }
+        }
 
-bindTableEvents();
+        const pp = dom.sizeForm?.querySelector('[name="pp"]')?.value;
+
+        if (pp) {
+            params.set('pp', pp);
+        }
+
+        for (const [key, val] of Object.entries(extraParams)) {
+            if (val === null || val === undefined || val === '') {
+                params.delete(key);
+            } else {
+                params.set(key, val);
+            }
+        }
+
+        params.set('partial', '1');
+
+        return params;
+    }
+
+    async function refreshList(extraParams = {}) {
+        if (!dom.form) return;
+
+        if (currentController) {
+            currentController.abort();
+        }
+
+        currentController = new AbortController();
+        setLoading(true);
+
+        try {
+            const params = buildListParams(extraParams);
+            const url = `${window.location.pathname}?${params.toString()}`;
+
+            const response = await fetch(url, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                signal: currentController.signal,
+            });
+
+            if (!response.ok) {
+                throw new Error('Erro na atualização da listagem.');
+            }
+
+            const data = await response.json();
+
+            if (data.tbody !== undefined) dom.tbody.innerHTML = data.tbody;
+            if (data.pagination !== undefined) dom.pagWrap.innerHTML = data.pagination;
+            if (data.kpis !== undefined) dom.kpis.innerHTML = data.kpis;
+            if (data.count !== undefined) dom.count.textContent = `${data.count} resultado(s)`;
+
+            params.delete('partial');
+
+            const finalQuery = params.toString();
+            const finalUrl = finalQuery ? `${window.location.pathname}?${finalQuery}` : window.location.pathname;
+
+            window.history.replaceState({}, '', finalUrl);
+            bindTableEvents();
+
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.error('[Equipamentos] Erro ao atualizar listagem:', error);
+            }
+        } finally {
+            if (!currentController?.signal.aborted) {
+                setLoading(false);
+                currentController = null;
+            }
+        }
+    }
+
+    function updateChipsVisual(value) {
+        if (!dom.chips) return;
+
+        dom.chips.querySelectorAll('.eq-chip').forEach((chip) => {
+            chip.classList.toggle('is-active', (chip.dataset.val || '') === (value || ''));
+        });
+    }
+
+    function resetFilters() {
+        dom.form.reset();
+
+        $('.select2-enable').val(null).trigger('change.select2');
+        updateChipsVisual('');
+
+        refreshList({
+            page: 1,
+            nome: null,
+            status: null,
+            subtipo: null,
+            fornecedor: null,
+            localidade: null,
+            centro_custo: null,
+            numero_serie: null,
+            tipo_item: null,
+            estoque: null,
+        });
+    }
+
+    function sortTableByColumn(th) {
+        const col = Number(th.dataset.col);
+
+        if (!Number.isFinite(col)) return;
+
+        const rows = Array.from(dom.tbody.querySelectorAll('tr')).filter((row) => row.children.length > col);
+        const isAsc = th.dataset.order !== 'asc';
+
+        th.dataset.order = isAsc ? 'asc' : 'desc';
+
+        rows.sort((a, b) => {
+            const valA = (a.children[col]?.innerText || '').trim().toLowerCase();
+            const valB = (b.children[col]?.innerText || '').trim().toLowerCase();
+
+            return isAsc ? valA.localeCompare(valB, 'pt-BR') : valB.localeCompare(valA, 'pt-BR');
+        });
+
+        rows.forEach((row) => dom.tbody.appendChild(row));
+    }
+
+    function bindTableEvents() {
+        document.querySelectorAll('tr.eq-clickable').forEach((row) => {
+            row.onclick = (event) => {
+                if (event.target.closest('a, button')) return;
+
+                const href = row.dataset.href;
+
+                if (href) {
+                    window.location.href = href;
+                }
+            };
+        });
+
+        document.querySelectorAll('th[data-col]').forEach((th) => {
+            th.onclick = () => sortTableByColumn(th);
+        });
+    }
+
+    function openImportResultModal() {
+        dom.importModal.classList.add('is-open');
+        dom.importModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeImportResultModal() {
+        dom.importModal.classList.remove('is-open');
+        dom.importModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function renderImportList(lista, type = 'default') {
+        if (!Array.isArray(lista) || !lista.length) {
+            return '<div style="color: var(--eq-muted);">Nenhum registro.</div>';
+        }
+
+        return lista.map((item) => {
+            if (type === 'ignored') {
+                return `
+                    <div class="eq-import-row">
+                        <strong>Linha ${escapeHtml(item.linha ?? '-')}</strong><br>
+                        <small>${escapeHtml(item.motivo || 'Registro ignorado')}</small>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="eq-import-row">
+                    <strong>${escapeHtml(item.nome || '-')}</strong><br>
+                    <small>S/N: ${escapeHtml(item.numero_serie || '-')}</small>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderErrorList(lista) {
+        if (!Array.isArray(lista) || !lista.length) {
+            return '';
+        }
+
+        return lista.map((item) => `
+            <div class="eq-import-row">
+                <small>${escapeHtml(item)}</small>
+            </div>
+        `).join('');
+    }
+
+    function fillImportModal(resultado) {
+        const totais = resultado?.totais || {};
+
+        dom.importSummary.innerHTML = `
+            <strong>Criados:</strong> ${totais.criados || 0}
+            &nbsp;|&nbsp;
+            <strong>Atualizados:</strong> ${totais.atualizados || 0}
+            &nbsp;|&nbsp;
+            <strong>Ignorados:</strong> ${totais.ignorados || 0}
+        `;
+
+        dom.importCreatedList.innerHTML = renderImportList(resultado?.criados || []);
+        dom.importUpdatedList.innerHTML = renderImportList(resultado?.atualizados || []);
+        dom.importIgnoredList.innerHTML = renderImportList(resultado?.ignorados || [], 'ignored');
+
+        const erros = resultado?.erros || [];
+
+        if (Array.isArray(erros) && erros.length) {
+            dom.importErrorWrap.style.display = 'block';
+            dom.importErrorList.innerHTML = renderErrorList(erros);
+        } else {
+            dom.importErrorWrap.style.display = 'none';
+            dom.importErrorList.innerHTML = '';
+        }
+    }
+
+    function setImportButtonLoading(isLoading) {
+        importInProgress = isLoading;
+
+        dom.btnImportar.disabled = isLoading;
+        dom.inputArquivo.disabled = isLoading;
+
+        dom.btnImportar.innerHTML = isLoading
+            ? '<i class="fa fa-circle-notch fa-spin" aria-hidden="true"></i><span class="btn-import-text">Importando...</span>'
+            : '<i class="fa fa-upload" aria-hidden="true"></i><span class="btn-import-text">Importar</span>';
+    }
+
+    async function sendImport() {
+        if (!dom.inputArquivo.files || !dom.inputArquivo.files.length || importInProgress) return;
+
+        const arquivo = dom.inputArquivo.files[0];
+        const nomeArquivo = (arquivo.name || '').toLowerCase();
+
+        if (!nomeArquivo.endsWith('.xlsx')) {
+            alert('Selecione um arquivo no formato .xlsx');
+            dom.inputArquivo.value = '';
+            return;
+        }
+
+        const formData = new FormData(dom.importForm);
+
+        setImportButtonLoading(true);
+
+        try {
+            const response = await fetch(dom.importForm.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                throw new Error(data.mensagem || 'Erro ao importar a planilha.');
+            }
+
+            fillImportModal(data.resultado || {});
+            openImportResultModal();
+
+            await refreshList({ page: 1 });
+
+        } catch (error) {
+            console.error('[Equipamentos] Erro na importação:', error);
+            alert(error.message || 'Erro ao processar a importação.');
+        } finally {
+            setImportButtonLoading(false);
+            dom.inputArquivo.value = '';
+        }
+    }
+
+    window.openDeleteModalFromButton = function(button) {
+        const nome = button.dataset.nome || 'este equipamento';
+        const url = button.dataset.url || '';
+
+        dom.deleteMessage.innerHTML =
+            `Tem certeza que deseja remover o equipamento <strong>${escapeHtml(nome)}</strong> do sistema?`;
+
+        dom.deleteForm.action = url;
+
+        dom.deleteModal.classList.add('is-open');
+        dom.deleteModal.setAttribute('aria-hidden', 'false');
+    };
+
+    window.closeDeleteModal = function() {
+        dom.deleteModal.classList.remove('is-open');
+        dom.deleteModal.setAttribute('aria-hidden', 'true');
+    };
+
+    window.refreshList = refreshList;
+
+    function bindEvents() {
+        $('.select2-enable').select2({
+            width: '100%',
+            allowClear: true,
+            placeholder: function() {
+                return $(this).data('placeholder') || 'Selecione...';
+            },
+            language: {
+                noResults: () => 'Nenhum resultado encontrado',
+                searching: () => 'Buscando...'
+            }
+        });
+
+        $('.select2-enable').on('change', function() {
+            if (this.id === 'filtro-status') {
+                updateChipsVisual(this.value || '');
+            }
+
+            refreshList({ page: 1 });
+        });
+
+        $('#filtrosForm input[type="text"]').on('input', debounce(() => {
+            refreshList({ page: 1 });
+        }, 450));
+
+        document.getElementById('pp')?.addEventListener('change', () => {
+            refreshList({ page: 1 });
+        });
+
+        document.getElementById('btnLimpar')?.addEventListener('click', resetFilters);
+
+        dom.chips?.addEventListener('click', (event) => {
+            const chip = event.target.closest('.eq-chip');
+
+            if (!chip) return;
+
+            event.preventDefault();
+
+            const statusValue = chip.dataset.val || '';
+
+            updateChipsVisual(statusValue);
+            $('#filtro-status').val(statusValue).trigger('change');
+        });
+
+        dom.pagWrap?.addEventListener('click', (event) => {
+            const link = event.target.closest('a[data-page], a[href]');
+
+            if (!link) return;
+
+            event.preventDefault();
+
+            const page = link.dataset.page || new URL(link.href, window.location.origin).searchParams.get('page') || 1;
+
+            refreshList({ page });
+        });
+
+        dom.btnImportar?.addEventListener('click', () => {
+            if (importInProgress) return;
+            dom.inputArquivo.click();
+        });
+
+        dom.inputArquivo?.addEventListener('change', sendImport);
+        dom.btnCloseImportModal?.addEventListener('click', closeImportResultModal);
+
+        dom.importModal?.addEventListener('click', (event) => {
+            if (event.target === dom.importModal) closeImportResultModal();
+        });
+
+        dom.deleteModal?.addEventListener('click', (event) => {
+            if (event.target === dom.deleteModal) closeDeleteModal();
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+
+            if (dom.deleteModal?.classList.contains('is-open')) {
+                closeDeleteModal();
+            }
+
+            if (dom.importModal?.classList.contains('is-open')) {
+                closeImportResultModal();
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        bindEvents();
+        bindTableEvents();
+    });
+})();
 </script>
 {% endblock %}

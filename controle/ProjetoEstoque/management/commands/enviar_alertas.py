@@ -1,79 +1,78 @@
-import smtplib
-from email.message import EmailMessage
+"""
+Comando de gestão para envio dos alertas periódicos por e-mail.
+
+Uso:
+    python manage.py enviar_alertas                          # todos os alertas avulsos
+    python manage.py enviar_alertas --tipo preventivas
+    python manage.py enviar_alertas --tipo estoque
+    python manage.py enviar_alertas --tipo licencas
+    python manage.py enviar_alertas --tipo diario            # relatório diário consolidado
+    python manage.py enviar_alertas --tipo diario --horas 48 # últimas 48h de movimentações
+"""
+
 from django.core.management.base import BaseCommand
-from django.utils import timezone
-from datetime import timedelta
-from ProjetoEstoque.models import Equipamento, Preventiva  # ajuste se o nome do app for diferente
-from django.conf import settings
+
 
 class Command(BaseCommand):
-    help = "Envia alertas de preventiva e equipamentos críticos via SMTP"
+    help = "Envia alertas periódicos por e-mail (preventivas, estoque, licenças, relatório diário)"
 
-    def handle(self, *args, **kwargs):
-        hoje = timezone.now().date()
-
-        # Preventivas que vencem em até 3 dias
-        preventivas_criticas = Preventiva.objects.filter(
-            data_proxima__lte=hoje + timedelta(days=10)
-        ).select_related('equipamento')
-
-
-        # Access Points com status backup e quantidade baixa
-        aps_criticos = Equipamento.objects.filter(
-            subtipo__nome__icontains='access-point',
-            status='backup',
-            
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--tipo",
+            choices=["preventivas", "estoque", "licencas", "todos", "diario"],
+            default="todos",
+            help="Tipo de alerta a enviar (padrão: todos). Use 'diario' para o relatório consolidado.",
+        )
+        parser.add_argument(
+            "--horas",
+            type=int,
+            default=24,
+            help="Janela de horas para baixas/movimentações no relatório diário (padrão: 24).",
         )
 
-        switches_criticos = Equipamento.objects.filter(
-            subtipo__nome__icontains='Switches',
-            status='backup',
+    def handle(self, *args, **options):
+        from services.email_alertas import (
+            alerta_estoque_critico,
+            alerta_licencas_desligados,
+            alerta_preventivas_proximas,
+            relatorio_diario,
         )
 
-        if preventivas_criticas.exists() or switches_criticos.exists() or aps_criticos.exists():
-            mensagem = "🚨 ALERTA AUTOMÁTICO DE EQUIPAMENTOS 🚨\n\n"
+        tipo = options["tipo"]
+        horas = options["horas"]
+        enviados = 0
+        erros = 0
 
-            # Preventivas próximas
-            if preventivas_criticas.exists():
-                mensagem += f"🛠️ Preventivas próximas do vencimento ({preventivas_criticas.count()}):\n"
-                for p in preventivas_criticas:
-                    mensagem += f"- {p.equipamento.nome} | Próxima: {p.data_proxima.strftime('%d/%m/%Y')}\n"
-
-            # Equipamentos em backup críticos
-            if switches_criticos.exists():
-                if switches_criticos.count() <4:
-                    mensagem += f"\nQuantidade de Switch em Backup ({switches_criticos.count()}):\n"
-                    for eq in switches_criticos:
-                        mensagem += f"- {eq.nome}\n"
-                else:
-                    mensagem += f"\nOs switchs estão com estoque acima de 4 unidades\n\n"
-
-            # Access Points críticos
-            if aps_criticos.exists():
-                if aps_criticos.count() < 5:
-                    mensagem += f"\nQuantidade de Access-Point com estoque crítico : {aps_criticos.count()} encontrados\n \n Acces-Point atual em estoque: \n"
-                    for ap in aps_criticos:
-                        mensagem += f"- {ap.nome}\n"
-                else:
-                    mensagem += f"\nOs Access-Point estão com estoque acima de 5 unidades\n\n"
-
-            # Enviar e-mail via SMTP
-            email = EmailMessage()
-            email['Subject'] = '🔔 Alerta de Equipamentos - Santa Colomba'
-            email['From'] = settings.EMAIL_HOST_USER
-            email['To'] = settings.ALERTA_EMAIL
-            email.set_content(mensagem)
-
+        def _rodar(nome, func, **kwargs):
+            nonlocal enviados, erros
+            self.stdout.write(f"  → {nome}... ", ending="")
             try:
-                with smtplib.SMTP(settings.EMAIL_HOST, settings.EMAIL_PORT) as server:
-                    server.starttls()
-                    server.login(settings.EMAIL_HOST_USER, settings.EMAIL_HOST_PASSWORD)
-                    server.send_message(email)
+                ok = func(**kwargs)
+                if ok:
+                    self.stdout.write(self.style.SUCCESS("enviado"))
+                    enviados += 1
+                else:
+                    self.stdout.write(self.style.WARNING("sem dados (nenhum e-mail enviado)"))
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(f"ERRO: {exc}"))
+                erros += 1
 
-                self.stdout.write(self.style.SUCCESS("✅ Alerta enviado com sucesso via SMTP."))
+        self.stdout.write(self.style.MIGRATE_HEADING("Controle TI — Alertas por E-mail"))
 
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f"❌ Erro ao enviar e-mail: {e}"))
-
+        if tipo == "diario":
+            _rodar(f"Relatório diário consolidado (últimas {horas}h)", relatorio_diario, horas=horas)
         else:
-            self.stdout.write("Nenhum alerta necessário hoje.")
+            if tipo in ("preventivas", "todos"):
+                _rodar("Preventivas nos próximos 7 dias", alerta_preventivas_proximas)
+
+            if tipo in ("estoque", "todos"):
+                _rodar("Estoque crítico (consumo < 2 un.)", alerta_estoque_critico)
+
+            if tipo in ("licencas", "todos"):
+                _rodar("Licenças de usuários desligados", alerta_licencas_desligados)
+
+        self.stdout.write("")
+        if erros:
+            self.stdout.write(self.style.ERROR(f"Concluído com {erros} erro(s). {enviados} enviado(s)."))
+        else:
+            self.stdout.write(self.style.SUCCESS(f"Concluído. {enviados} alerta(s) enviado(s)."))

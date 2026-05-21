@@ -1,828 +1,1231 @@
 {% extends 'base.html' %}
 {% load static humanize %}
 
-{% block title %}Asset: {{ item.nome }}{% endblock %}
+{% block title %}Detalhe: {{ item.nome }}{% endblock %}
+{% block page_title %}Detalhe do Ativo{% endblock %}
+{% block page_subtitle %}Ficha técnica, rastreabilidade, lotes, custos, manutenção e preventivas{% endblock %}
 
-{% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+{% block header_actions %}
+<a href="{% url 'equipamentos_list' %}" class="btn-secondary btn-sm">
+  <i class="fa fa-arrow-left" aria-hidden="true"></i>
+  Voltar
+</a>
+<a href="{% url 'item_update' item.id %}" class="btn-primary btn-sm">
+  <i class="fa fa-pen" aria-hidden="true"></i>
+  Editar
+</a>
+{% endblock %}
 
+{% block extra_css %}
 <style>
-:root {
-  --bg-app: #f3f4f6;
-  --bg-surface: #ffffff;
-  --primary: #0078d4;
-  --primary-dark: #106ebe;
-  --text-main: #201f1e;
-  --text-sub: #605e5c;
-  --text-light: #9ca3af;
-  --border: #edebe9;
-  --radius: 6px;
-
-  --ok-fg: #107c10;
-  --ok-bg: #dff6dd;
-  --warn-fg: #854d0e;
-  --warn-bg: #fef9c3;
-  --crit-fg: #991b1b;
-  --crit-bg: #fee2e2;
-
-  --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05);
+:where(.asset-detail-page) {
+  --ad-brand: var(--brand, #0071e3);
+  --ad-brand-hover: var(--brand-hover, #0077ed);
+  --ad-brand-soft: var(--brand-soft, rgba(0, 113, 227, .10));
+  --ad-surface: var(--bg-elevated, #ffffff);
+  --ad-surface-soft: var(--bg-fill-tertiary, rgba(120, 120, 128, .08));
+  --ad-surface-muted: var(--bg-fill-secondary, rgba(120, 120, 128, .12));
+  --ad-text: var(--text-primary, #1d1d1f);
+  --ad-muted: var(--text-tertiary, #6e6e73);
+  --ad-soft: var(--text-quaternary, #86868b);
+  --ad-border: var(--separator-hairline, rgba(0, 0, 0, .06));
+  --ad-border-strong: var(--separator-non-opaque, rgba(0, 0, 0, .10));
+  --ad-success: var(--success, #34c759);
+  --ad-success-soft: var(--success-soft, rgba(52, 199, 89, .12));
+  --ad-warning: var(--warning, #ff9500);
+  --ad-warning-soft: var(--warning-soft, rgba(255, 149, 0, .12));
+  --ad-danger: var(--danger, #ff3b30);
+  --ad-danger-soft: var(--danger-soft, rgba(255, 59, 48, .10));
+  --ad-info: var(--info, #5ac8fa);
+  --ad-info-soft: var(--info-soft, rgba(90, 200, 250, .12));
+  --ad-radius-sm: var(--radius-sm, 10px);
+  --ad-radius-md: var(--radius-md, 14px);
+  --ad-radius-lg: var(--radius-lg, 18px);
+  --ad-radius-xl: var(--radius-xl, 22px);
+  --ad-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05));
+  --ad-shadow-md: var(--shadow-md, 0 4px 12px rgba(0,0,0,.06));
+  --ad-transition: var(--transition-fast, 160ms cubic-bezier(.32,.72,0,1));
 }
 
-body {
-  background-color: var(--bg-app);
-  color: var(--text-main);
-  font-family: 'Segoe UI', 'Inter', sans-serif;
+.asset-detail-page,
+.asset-detail-page * {
+  box-sizing: border-box;
+  min-width: 0;
 }
 
-.app-container {
-  max-width: 1400px;
-  margin: 24px auto;
-  padding: 0 20px 40px;
+.asset-detail-page {
+  width: 100%;
+  max-width: 1500px;
+  margin: 0 auto;
+  color: var(--ad-text);
 }
 
-/* HEADER */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-  gap: 16px;
+.ad-shell {
+  display: grid;
+  gap: 18px;
 }
 
-.asset-identity {
-  display: flex;
+.ad-hero,
+.ad-card,
+.ad-kpi-card,
+.ad-info-item,
+.ad-lote-card,
+.ad-simple-item {
+  background: var(--ad-surface);
+  border: 1px solid var(--ad-border);
+  box-shadow: var(--ad-shadow);
+}
+
+.ad-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: clamp(18px, 2.8vw, 30px);
+  border-radius: var(--ad-radius-xl);
+}
+
+.ad-hero-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 16px;
-  flex: 1 1 280px;
 }
 
-.asset-icon {
-  width: 64px;
-  height: 64px;
-  background: #eff6fc;
-  color: var(--primary);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 32px;
+.ad-icon {
+  width: clamp(58px, 8vw, 78px);
+  height: clamp(58px, 8vw, 78px);
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background: var(--ad-brand-soft);
+  color: var(--ad-brand);
+  border: 1px solid color-mix(in srgb, var(--ad-brand) 18%, transparent);
+  font-size: clamp(24px, 4vw, 34px);
 }
 
-.asset-info h1 {
+.ad-title-wrap h1 {
   margin: 0;
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: var(--text-main);
-  line-height: 1.2;
+  color: var(--ad-text);
+  font-family: var(--font-display, inherit);
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  font-weight: 650;
+  overflow-wrap: anywhere;
 }
 
-.asset-meta {
+.ad-subtitle {
   display: flex;
-  gap: 12px;
-  margin-top: 6px;
-  align-items: center;
   flex-wrap: wrap;
-  font-size: 0.9rem;
-  color: var(--text-sub);
+  gap: 8px;
+  margin-top: 10px;
 }
 
-.meta-item { display: flex; align-items: center; gap: 6px; }
-
-.header-actions {
+.ad-actions {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-/* Botões */
-.btn {
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
+.ad-btn {
+  min-height: 38px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  text-decoration: none;
-  border: 1px solid transparent;
-  transition: all 0.1s;
-}
-
-.btn-primary {
-  background: var(--primary);
-  color: #fff;
-  box-shadow: var(--shadow-sm);
-}
-.btn-primary:hover { background: var(--primary-dark); }
-
-.btn-std {
-  background: #fff;
-  border-color: #8a8886;
-  color: var(--text-main);
-}
-.btn-std:hover { background: #f3f2f1; }
-
-/* KPIs */
-.kpi-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.kpi-card {
-  background: var(--bg-surface);
-  padding: 16px 20px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
-  display: flex;
-  flex-direction: column;
   justify-content: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--ad-transition), background var(--ad-transition), border-color var(--ad-transition), color var(--ad-transition);
 }
 
-.kpi-label {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--text-sub);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.ad-btn:hover { transform: translateY(-1px); }
+.ad-btn:active { transform: scale(.98); }
+
+.ad-btn-primary {
+  background: var(--ad-brand);
+  border-color: var(--ad-brand);
+  color: #fff;
 }
 
-.kpi-value {
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: var(--text-main);
-  margin-top: 4px;
-  word-break: break-word;
+.ad-btn-primary:hover {
+  background: var(--ad-brand-hover);
+  border-color: var(--ad-brand-hover);
+  color: #fff;
 }
 
-.kpi-sub {
-  font-size: 0.85rem;
-  color: var(--text-sub);
-  margin-top: 4px;
-  display: flex;
+.ad-btn-secondary {
+  background: transparent;
+  border-color: var(--ad-border-strong);
+  color: var(--ad-text);
+}
+
+.ad-btn-secondary:hover {
+  background: var(--bg-hover, rgba(0,0,0,.04));
+  color: var(--ad-text);
+}
+
+.ad-badge {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-
-/* Layout principal */
-.main-grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 24px;
-}
-
-@media (max-width: 1000px) {
-  .main-grid { grid-template-columns: 1fr; }
-}
-
-/* Cards genéricos */
-.card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-  margin-bottom: 24px;
-}
-
-.card-header {
-  padding: 12px 20px;
-  border-bottom: 1px solid #edebe9;
-  background: #faf9f8;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-main);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-body { padding: 20px; }
-
-/* Data list */
-.dl-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 20px;
-}
-
-.dl-item label {
-  display: block;
-  font-size: 0.8rem;
+  min-height: 24px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--ad-surface-soft);
+  color: var(--ad-muted);
+  font-size: 12px;
   font-weight: 600;
-  color: var(--text-sub);
-  margin-bottom: 4px;
+  white-space: nowrap;
 }
 
-.dl-item div {
-  font-size: 0.95rem;
-  color: var(--text-main);
-  font-weight: 500;
+.ad-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-.dl-mono {
-  font-family: 'Consolas', monospace;
-  letter-spacing: -0.5px;
-  background: #f3f4f6;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 0.9rem;
-}
-
-/* Lifecycle */
-.lifecycle-container {
-  margin-top: 24px;
-  background: #f9fafb;
-  padding: 16px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-}
-
-.progress-bg {
-  width: 100%;
-  height: 8px;
-  background: #e5e7eb;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-top: 8px;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--primary);
-  transition: width 1s ease;
-}
-
-.progress-fill.critical { background: var(--crit-fg); }
-.progress-fill.warning { background: #eab308; }
-
-/* Tabela */
-.table-responsive {
-  overflow-x: auto;
-  width: 100%;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-th {
-  text-align: left;
-  padding: 10px 16px;
-  background: #f9fafb;
-  color: var(--text-sub);
-  font-weight: 600;
-  border-bottom: 1px solid #edebe9;
-}
-
-td {
-  padding: 10px 16px;
-  border-bottom: 1px solid #edebe9;
-  color: var(--text-main);
-  vertical-align: middle;
-}
-
-tr:last-child td { border-bottom: none; }
-
-/* Badges */
-.badge {
+.ad-badge i + span,
+.ad-badge i {
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 10px;
-  border-radius: 99px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
 }
 
-.bg-green { background: var(--ok-bg); color: var(--ok-fg); }
-.bg-red   { background: var(--crit-bg); color: var(--crit-fg); }
-.bg-yellow{ background: var(--warn-bg); color: var(--warn-fg); }
-.bg-gray  { background: #f3f4f6; color: var(--text-sub); }
+.ad-badge-success { background: var(--ad-success-soft); color: var(--ad-success); }
+.ad-badge-warning { background: var(--ad-warning-soft); color: var(--ad-warning); }
+.ad-badge-danger { background: var(--ad-danger-soft); color: var(--ad-danger); }
+.ad-badge-info { background: var(--ad-info-soft); color: #0090d4; }
+.ad-badge-neutral { background: var(--ad-surface-muted); color: var(--ad-muted); }
 
-/* Timeline */
-.timeline {
-  position: relative;
-  display: flex;
-  flex-direction: column;
+body.theme-dark .ad-badge-info { color: var(--ad-info); }
+
+.ad-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 14px;
 }
 
-.tl-item { position: relative; padding-left: 16px; }
-
-.tl-marker {
-  position: absolute;
-  left: 0;
-  top: 10px;
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--primary);
-}
-
-.tl-content {
-  border-left: 2px solid #e5e7eb;
-  padding-left: 16px;
-  padding-bottom: 8px;
-}
-
-.tl-header {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-main);
-}
-
-.tl-body {
-  margin-top: 4px;
-  font-size: 0.8rem;
-  color: var(--text-sub);
-}
-
-.tl-row {
+.ad-kpi-card {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 2px;
+  gap: 14px;
+  padding: 16px;
+  border-radius: var(--ad-radius-lg);
 }
 
-.tl-sub { font-size: 0.78rem; }
+.ad-kpi-icon {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--kpi-color, var(--ad-brand)) 12%, transparent);
+  color: var(--kpi-color, var(--ad-brand));
+  border: 1px solid color-mix(in srgb, var(--kpi-color, var(--ad-brand)) 18%, transparent);
+}
 
-/* Responsividade extra */
-@media (max-width: 768px) {
-  .page-header { flex-direction: column; align-items: stretch; }
-  .header-actions { justify-content: flex-start; }
-  .header-actions .btn { flex: 1 1 auto; justify-content: center; }
+.ad-kpi-label {
+  display: block;
+  color: var(--ad-muted);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: .045em;
+}
+
+.ad-kpi-value {
+  display: block;
+  margin-top: 4px;
+  color: var(--ad-text);
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  overflow-wrap: anywhere;
+}
+
+.ad-kpi-sub {
+  margin-top: 4px;
+  color: var(--ad-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ad-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(310px, .9fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.ad-main,
+.ad-side {
+  display: grid;
+  gap: 18px;
+}
+
+.ad-card {
+  border-radius: var(--ad-radius-xl);
+  overflow: hidden;
+}
+
+.ad-card-warning {
+  border-color: color-mix(in srgb, var(--ad-warning) 36%, var(--ad-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ad-warning) 12%, transparent), var(--ad-shadow);
+}
+
+.ad-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--ad-border);
+  background: color-mix(in srgb, var(--ad-surface) 92%, var(--ad-brand) 2%);
+}
+
+.ad-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ad-text);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.016em;
+}
+
+.ad-card-title i {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--ad-brand-soft);
+  color: var(--ad-brand);
+}
+
+.ad-card-body {
+  padding: clamp(14px, 2vw, 18px);
+}
+
+.ad-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 14px;
+}
+
+.ad-info-item,
+.ad-simple-item,
+.ad-lote-card {
+  border-radius: var(--ad-radius-md);
+  padding: 14px;
+}
+
+.ad-info-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ad-muted);
+  font-size: 11.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.ad-info-label i {
+  color: var(--ad-brand);
+}
+
+.ad-info-value {
+  margin-top: 7px;
+  color: var(--ad-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.ad-mono {
+  font-family: var(--font-mono, monospace);
+  letter-spacing: -0.02em;
+}
+
+.ad-life {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: var(--ad-radius-lg);
+  border: 1px solid var(--ad-border);
+  background: var(--ad-surface-soft);
+}
+
+.ad-life-head,
+.ad-life-dates,
+.ad-progress-text {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ad-life-head {
+  color: var(--ad-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.ad-progress-bg {
+  width: 100%;
+  height: 8px;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: var(--ad-surface-muted);
+  overflow: hidden;
+}
+
+.ad-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--ad-success);
+}
+
+.ad-progress-fill.ad-warning { background: var(--ad-warning); }
+.ad-progress-fill.ad-critical { background: var(--ad-danger); }
+
+.ad-life-dates,
+.ad-progress-text {
+  margin-top: 8px;
+  color: var(--ad-muted);
+  font-size: 12px;
+}
+
+.ad-lotes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 14px;
+}
+
+.ad-lote-top,
+.ad-simple-top,
+.ad-timeline-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ad-lote-title,
+.ad-simple-title {
+  color: var(--ad-text);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.ad-lote-meta,
+.ad-simple-sub {
+  margin-top: 4px;
+  color: var(--ad-muted);
+  font-size: 12px;
+  line-height: 1.42;
+}
+
+.ad-lote-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.ad-lote-mini {
+  padding: 10px;
+  border-radius: var(--ad-radius-sm);
+  background: var(--ad-surface-soft);
+  border: 1px solid var(--ad-border);
+}
+
+.ad-lote-mini span {
+  display: block;
+  color: var(--ad-muted);
+  font-size: 10.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.ad-lote-mini strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ad-text);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.ad-timeline {
+  display: grid;
+  gap: 14px;
+}
+
+.ad-timeline-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.ad-marker {
+  width: 10px;
+  height: 10px;
+  margin-top: 10px;
+  border-radius: 50%;
+  background: var(--ad-brand);
+  box-shadow: 0 0 0 4px var(--ad-brand-soft);
+}
+
+.ad-timeline-content {
+  padding: 0 0 14px 14px;
+  border-left: 1px solid var(--ad-border);
+}
+
+.ad-timeline-type {
+  color: var(--ad-brand);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.ad-timeline-date {
+  color: var(--ad-muted);
+  font-size: 12px;
+}
+
+.ad-timeline-body {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--ad-muted);
+  font-size: 13px;
+}
+
+.ad-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.ad-row i {
+  margin-top: 2px;
+  color: var(--ad-brand);
+}
+
+.ad-link {
+  display: inline-flex;
+  margin-top: 8px;
+  color: var(--ad-brand);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.ad-person-box {
+  text-align: center;
+}
+
+.ad-person-icon {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 10px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--ad-brand-soft);
+  color: var(--ad-brand);
+  font-size: 24px;
+}
+
+.ad-person-title {
+  color: var(--ad-text);
+  font-size: 16px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.ad-person-sub {
+  margin-top: 4px;
+  color: var(--ad-muted);
+  font-size: 12px;
+}
+
+.ad-simple-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ad-note-box,
+.ad-pos-alert,
+.ad-pos-paused {
+  padding: 14px;
+  border-radius: var(--ad-radius-md);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.ad-note-box {
+  background: var(--ad-warning-soft);
+  color: color-mix(in srgb, var(--ad-warning) 72%, var(--ad-text));
+  border: 1px solid color-mix(in srgb, var(--ad-warning) 26%, transparent);
+}
+
+.ad-pos {
+  display: grid;
+  gap: 12px;
+}
+
+.ad-pos-counter {
+  display: grid;
+  place-items: center;
+  padding: 20px 14px;
+  border-radius: var(--ad-radius-lg);
+  background: var(--ad-warning-soft);
+  border: 1px solid color-mix(in srgb, var(--ad-warning) 24%, transparent);
+}
+
+.ad-pos-number {
+  color: color-mix(in srgb, var(--ad-warning) 76%, var(--ad-text));
+  font-size: clamp(28px, 6vw, 38px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.ad-pos-label {
+  margin-top: 6px;
+  color: var(--ad-warning);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.ad-pos-alert {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: var(--ad-warning-soft);
+  color: color-mix(in srgb, var(--ad-warning) 74%, var(--ad-text));
+  border: 1px solid color-mix(in srgb, var(--ad-warning) 24%, transparent);
+}
+
+.ad-pos-alert i {
+  margin-top: 2px;
+  color: var(--ad-warning);
+}
+
+.ad-pos-paused {
+  background: var(--ad-surface-soft);
+  border: 1px solid var(--ad-border);
+  color: var(--ad-muted);
+}
+
+.ad-empty {
+  padding: 28px 14px;
+  text-align: center;
+  color: var(--ad-soft);
+  font-size: 14px;
+}
+
+@media (max-width: 1100px) {
+  .ad-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .ad-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .ad-hero-main {
+    grid-template-columns: 1fr;
+  }
+
+  .ad-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .ad-btn {
+    width: 100%;
+  }
+
+  .ad-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ad-lote-values {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .ad-card-body,
+  .ad-card-header,
+  .ad-info-item,
+  .ad-lote-card,
+  .ad-simple-item {
+    padding: 12px;
+  }
+
+  .ad-hero {
+    padding: 14px;
+  }
 }
 </style>
+{% endblock %}
 
-<div class="app-container">
+{% block content %}
+<div class="asset-detail-page">
+  <div class="ad-shell">
 
-  <!-- HEADER -->
-  <div class="page-header">
-    <div class="asset-identity">
-      <div class="asset-icon"><i class="fa fa-cube"></i></div>
-      <div class="asset-info">
-        <h1>{{ item.nome }}</h1>
-        <div class="asset-meta">
-          <span class="badge {% if item.status == 'ativo' %}bg-green{% elif item.status == 'manutencao' %}bg-yellow{% elif item.status == 'defeito' %}bg-red{% else %}bg-gray{% endif %}">
-            {{ item.get_status_display|default:item.status|capfirst }}
-          </span>
-          <span class="meta-item">
-            <i class="fa fa-barcode"></i>
-            {{ item.numero_serie|default:"S/N N/D" }}
-          </span>
-          <span class="meta-item">
-            <i class="fa fa-location-dot"></i>
-            {{ item.localidade.local|default:"Local N/D" }}
-          </span>
+    <section class="ad-hero">
+      <div class="ad-hero-main">
+        <div class="ad-icon" aria-hidden="true">
+          {% if item.item_consumo == 'sim' %}
+            <i class="fa fa-boxes-stacked"></i>
+          {% elif item.locado == 'sim' %}
+            <i class="fa fa-file-contract"></i>
+          {% else %}
+            <i class="fa fa-cube"></i>
+          {% endif %}
         </div>
-      </div>
-    </div>
 
-    <div class="header-actions">
-      <a href="{% url 'equipamentos_list' %}" class="btn btn-std">
-        <i class="fa fa-arrow-left"></i> Voltar
-      </a>
-      {% if item.status == "ativo"%}
-      <a href="{% url 'termo_devolucao_form' item.id %}" class="btn btn-std">
-        <i class="fa fa-file-arrow-up"></i> Gerar Termo Devolução
-      </a>
-      {% else %}
-      <a href="{% url 'termo_entrega_form' item.id %}" class="btn btn-std">
-        <i class="fa fa-file-signature"></i> Gerar Termo Entrega
-      </a>
-      {% endif %}
+        <div class="ad-title-wrap">
+          <h1>{{ item.nome }}</h1>
 
-      {% if item.precisa_preventiva == 'sim' %}
-      <a href="{% url 'preventiva_start_item' item.id %}" class="btn btn-std">
-        <i class="fa fa-wrench"></i> Preventiva
-      </a>
-      {% endif %}
-      <a href="{% url 'editar_equipamento' item.id %}" class="btn btn-primary">
-        <i class="fa fa-pen"></i> Editar
-      </a>
-    </div>
-  </div>
-
-  <!-- KPIs PRINCIPAIS -->
-  <div class="kpi-row">
-    <!-- Estoque -->
-    <div class="kpi-card">
-      <span class="kpi-label">Estoque Atual</span>
-      <span class="kpi-value">{{ item.quantidade|default:"0" }}</span>
-      <span class="kpi-sub">unidades disponíveis</span>
-    </div>
-
-    <!-- Custo Total (Aluguéis + Manutenções) – SOMENTE PARA LOCADOS -->
-    {% if financeiro.modo == 'LOCAÇÃO' %}
-    <div class="kpi-card">
-      <span class="kpi-label">
-        Custo Total (Aluguéis + Manutenções)
-      </span>
-      <span class="kpi-value" style="color:var(--primary);">
-        R$ {{ financeiro.custo_total_empresa|floatformat:2|intcomma }}
-      </span>
-      <span class="kpi-sub">
-        R$ {{ financeiro.custo_aluguel_acumulado|floatformat:2|intcomma }} em aluguéis +
-        R$ {{ financeiro.custo_manutencao|floatformat:2|intcomma }} em manutenções
-      </span>
-    </div>
-
-    <!-- Valor Mensal de Aluguel -->
-    <div class="kpi-card">
-      <span class="kpi-label">Valor Mensal de Aluguel</span>
-      <span class="kpi-value">
-        R$ {{ financeiro.valor_atual|floatformat:2|intcomma }}
-      </span>
-      <span class="kpi-sub">
-        Parcela recorrente do contrato
-      </span>
-    </div>
-    {% endif %}
-
-    <!-- Status Preventiva -->
-    <div class="kpi-card">
-      <span class="kpi-label">Status Preventiva</span>
-      {% if status_saude == 'ok' %}
-        <span class="kpi-value" style="color:var(--ok-fg);">Regular</span>
-        <span class="kpi-sub"><i class="fa fa-check-circle"></i> Tudo em dia</span>
-      {% elif status_saude == 'critical' %}
-        <span class="kpi-value" style="color:var(--crit-fg);">Crítico</span>
-        <span class="kpi-sub"><i class="fa fa-triangle-exclamation"></i> Atrasada</span>
-      {% else %}
-        <span class="kpi-value" style="color:var(--text-light);">N/A</span>
-        <span class="kpi-sub">Sem plano</span>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- KPIs FINANCEIROS DETALHADOS -->
-  <div class="kpi-row">
-    <!-- Tempo na Empresa (sempre aparece) -->
-    <div class="kpi-card">
-      <span class="kpi-label">Tempo na Empresa</span>
-      <span class="kpi-value">
-        {% if financeiro.dias_na_empresa > 0 %}
-          {{ financeiro.meses_na_empresa }} meses
-        {% else %}
-          N/D
-        {% endif %}
-      </span>
-      <span class="kpi-sub">
-        {% if financeiro.data_inicio %}
-          {{ financeiro.dias_na_empresa }} dias desde {{ financeiro.data_inicio|date:"d/m/Y" }}
-        {% else %}
-          Data de entrada não informada
-        {% endif %}
-      </span>
-    </div>
-
-    <!-- Custo do Tempo (Aluguel) – APENAS PARA LOCADOS -->
-    {% if financeiro.modo == 'LOCAÇÃO' %}
-    <div class="kpi-card">
-      <span class="kpi-label">Custo do Tempo (Aluguel)</span>
-      <span class="kpi-value">
-        R$ {{ financeiro.custo_tempo_empresa|floatformat:2|intcomma }}
-      </span>
-      <span class="kpi-sub">
-        Aluguéis já pagos no período
-      </span>
-    </div>
-    {% endif %}
-
-    <!-- Custo Total de Manutenções (sempre aparece) -->
-    <div class="kpi-card">
-      <span class="kpi-label">Custo Total de Manutenções</span>
-      <span class="kpi-value">
-        R$ {{ financeiro.custo_manutencao|floatformat:2|intcomma }}
-      </span>
-      <span class="kpi-sub">
-        Somatório de todas as manutenções registradas
-      </span>
-    </div>
-
-    <!-- Custo na Empresa (Tempo + Manutenções) – APENAS PARA LOCADOS -->
-    {% if financeiro.modo == 'LOCAÇÃO' %}
-    <div class="kpi-card">
-      <span class="kpi-label">Custo na Empresa (Tempo + Manutenções)</span>
-      <span class="kpi-value" style="color:var(--primary-dark);">
-        R$ {{ financeiro.custo_total_empresa|floatformat:2|intcomma }}
-      </span>
-      <span class="kpi-sub">
-        R$ {{ financeiro.custo_aluguel_acumulado|floatformat:2|intcomma }} em aluguéis +
-        R$ {{ financeiro.custo_manutencao|floatformat:2|intcomma }} em manutenções
-      </span>
-    </div>
-    {% endif %}
-  </div>
-
-  <!-- GRID PRINCIPAL -->
-  <div class="main-grid">
-
-    <!-- COLUNA ESQUERDA -->
-    <div>
-
-      <!-- FICHA TÉCNICA -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <i class="fa fa-sliders"></i> Ficha Técnica Completa
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="dl-grid">
-            <div class="dl-item">
-              <label>Marca / Modelo</label>
-              <div>{{ item.marca|default:"-" }} / {{ item.modelo|default:"-" }}</div>
-            </div>
-            <div class="dl-item">
-              <label>Categoria</label>
-              <div>{{ item.subtipo.nome|default:"-" }}</div>
-            </div>
-            <div class="dl-item">
-              <label>Centro de Custo (Atual)</label>
-              <div>{{ item.centro_custo.departamento|default:"-" }}</div>
-              <div style="font-size:0.8rem; color:var(--text-sub);">
-                {{ item.centro_custo.numero }}
-              </div>
-            </div>
-            <div class="dl-item">
-              <label>Patrimônio</label>
-              <div class="dl-mono">{{ item.patrimonio|default:"-" }}</div>
-            </div>
-            <div class="dl-item">
-              <label>Fornecedor Principal</label>
-              <div>{{ item.fornecedor.nome|default:"-" }}</div>
-            </div>
-            <div class="dl-item">
-              <label>Nota Fiscal / Pedido</label>
-              <div class="dl-mono">{{ item.numero_pedido|default:"-" }}</div>
-            </div>
-          </div>
-
-          <!-- VIDA ÚTIL / CONTRATO -->
-          <div class="lifecycle-container">
-            <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:6px; color:var(--text-main);">
-              <span>
-                {% if financeiro.modo == 'LOCAÇÃO' %}
-                  Vigência do Contrato
-                {% else %}
-                  Depreciação Contábil (5 anos)
-                {% endif %}
+          <div class="ad-subtitle">
+            {% if item.status %}
+              <span class="ad-badge {% if item.status == 'ativo' %}ad-badge-success{% elif item.status == 'manutencao' or item.status == 'correcao' %}ad-badge-warning{% elif item.status == 'defeito' or item.status == 'queimado' %}ad-badge-danger{% else %}ad-badge-neutral{% endif %}">
+                {{ item.get_status_display|default:item.status|capfirst }}
               </span>
-              {% if financeiro.vida_util_texto %}
-              <span class="{% if financeiro.status_vida == 'critical' %}badge bg-red{% elif financeiro.status_vida == 'warning' %}badge bg-yellow{% endif %}">
-                {{ financeiro.vida_util_texto }}
-              </span>
-              {% endif %}
-            </div>
-            <div class="progress-bg">
-              <div class="progress-fill {% if financeiro.status_vida == 'critical' %}critical{% elif financeiro.status_vida == 'warning' %}warning{% endif %}" style="width: {{ financeiro.vida_util_perc }}%;"></div>
-            </div>
-            {% if financeiro.data_inicio %}
-            <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:12px; color:var(--text-sub);">
-              <span>Início: {{ financeiro.data_inicio|date:"d/m/Y" }}</span>
-              <span>Fim: {% if financeiro.data_fim %}{{ financeiro.data_fim|date:"d/m/Y" }}{% else %}Indeterminado{% endif %}</span>
-            </div>
+            {% endif %}
+
+            {% if item.numero_serie %}
+              <span class="ad-badge ad-badge-info">{{ item.numero_serie }}</span>
+            {% endif %}
+
+            {% if item.localidade %}
+              <span class="ad-badge ad-badge-neutral">{{ item.localidade.local|default:item.localidade }}</span>
+            {% endif %}
+
+            {% if item.item_consumo == 'sim' %}
+              <span class="ad-badge ad-badge-warning">Consumo / Lote</span>
+            {% endif %}
+
+            {% if item.locado == 'sim' %}
+              <span class="ad-badge ad-badge-info">Locado</span>
             {% endif %}
           </div>
         </div>
       </div>
 
-      <!-- RASTREABILIDADE -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <i class="fa fa-clock-rotate-left"></i> Rastreabilidade (Todas Movimentações)
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="timeline">
-            {% for mov in movimentacoes|slice:":10" %}
-            <div class="tl-item">
-              <div class="tl-marker"></div>
-              <div class="tl-content">
-                <div class="tl-header">
-                  <span class="tl-type" style="color:var(--primary);">
-                    {% if mov.tipo_movimentacao == 'transferencia' %}
-                      TRANSFERÊNCIA
-                    {% elif mov.tipo_movimentacao == 'baixa' %}
-                      BAIXA (SAÍDA)
-                    {% elif 'manutencao' in mov.tipo_movimentacao %}
-                      MANUTENÇÃO
-                    {% else %}
-                      {{ mov.get_tipo_movimentacao_display }}
-                    {% endif %}
-                  </span>
-                  <span class="tl-date">{{ mov.created_at|date:"d/m/y H:i" }}</span>
-                </div>
+      <div class="ad-actions">
+        <a href="{% url 'equipamentos_list' %}" class="ad-btn ad-btn-secondary">
+          <i class="fa fa-arrow-left" aria-hidden="true"></i>
+          Voltar
+        </a>
 
-                <div class="tl-body">
-                  <div class="tl-row">
-                    <i class="fa fa-user-circle"></i>
-                    {% if mov.usuario %}
-                      {{ mov.usuario.nome|truncatechars:25 }}
-                    {% elif mov.fornecedor_manutencao %}
-                      {{ mov.fornecedor_manutencao.nome }} (Fornecedor)
-                    {% else %}
-                      Sistema / Admin
-                    {% endif %}
-                  </div>
+        {% if item.status == "ativo" %}
+          <a href="{% url 'termo_devolucao_form' item.id %}" class="ad-btn ad-btn-secondary">
+            <i class="fa fa-file-arrow-up" aria-hidden="true"></i>
+            Termo Devolução
+          </a>
+        {% else %}
+          <a href="{% url 'termo_entrega_form' item.id %}" class="ad-btn ad-btn-secondary">
+            <i class="fa fa-file-signature" aria-hidden="true"></i>
+            Termo Entrega
+          </a>
+        {% endif %}
 
-                  {% if mov.centro_custo_destino %}
-                  <div class="tl-row tl-sub">
-                    <i class="fa fa-building"></i>
-                    {{ mov.centro_custo_destino.departamento }} ({{ mov.centro_custo_destino.numero }})
-                  </div>
-                  {% endif %}
+        {% if item.precisa_preventiva == 'sim' %}
+          <a href="{% url 'preventiva_start_item' item.id %}" class="ad-btn ad-btn-secondary">
+            <i class="fa fa-screwdriver-wrench" aria-hidden="true"></i>
+            Preventiva
+          </a>
+        {% endif %}
 
-                  {% if mov.localidade_destino %}
-                  <div class="tl-row tl-sub">
-                    <i class="fa fa-map-marker-alt"></i>
-                    {{ mov.localidade_destino.local }}
-                  </div>
-                  {% endif %}
+        <a href="{% url 'ciclo_create' item.id %}" class="ad-btn ad-btn-secondary">
+          <i class="fa fa-rotate" aria-hidden="true"></i>
+          Iniciar Ciclo
+        </a>
 
-                  {% if mov.custo > 0 %}
-                  <div class="tl-row tl-sub" style="color:var(--text-sub);">
-                    <i class="fa fa-coins"></i>
-                    R$ {{ mov.custo|floatformat:2 }}
-                  </div>
-                  {% endif %}
-                </div>
-
-                <div style="margin-top:8px; text-align:right;">
-                  <a href="{% url 'movimentacao_detail' mov.pk %}"
-                     style="font-size:0.75rem; color:var(--primary); text-decoration:none;">
-                    Detalhes &rarr;
-                  </a>
-                </div>
-              </div>
-            </div>
-            {% empty %}
-            <div style="text-align:center; color:var(--text-light); padding:20px;">
-              Sem histórico registrado.
-            </div>
-            {% endfor %}
-          </div>
-        </div>
+        <a href="{% url 'item_update' item.id %}" class="ad-btn ad-btn-primary">
+          <i class="fa fa-pen" aria-hidden="true"></i>
+          Editar
+        </a>
       </div>
+    </section>
 
-    </div>
-
-    <!-- COLUNA DIREITA -->
-    <div>
-
-      <!-- DETENTOR ATUAL -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <i class="fa fa-user-tag"></i> Detentor Atual
+    <section class="ad-kpi-grid">
+      {% if item.quantidade is not None %}
+        <div class="ad-kpi-card" style="--kpi-color: var(--ad-brand);">
+          <div class="ad-kpi-icon"><i class="fa fa-layer-group" aria-hidden="true"></i></div>
+          <div>
+            <span class="ad-kpi-label">Estoque Atual</span>
+            <span class="ad-kpi-value">{{ item.quantidade }}</span>
+            <div class="ad-kpi-sub">Quantidade registrada no cadastro do item</div>
           </div>
         </div>
-        <div class="card-body" style="text-align:center;">
-          <div style="font-size:32px; color:var(--primary); margin-bottom:8px;">
-            <i class="fa fa-user-shield"></i>
-          </div>
-          <div style="font-size:16px; font-weight:700; color:var(--text-main);">
-            {{ ultimo_resp }}
-          </div>
-          <div style="font-size:12px; color:var(--text-sub); margin-top:4px;">
-            Último registro de movimentação
-          </div>
-        </div>
-      </div>
-
-      <!-- MANUTENÇÃO EXTERNA -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <i class="fa fa-wrench"></i> Manutenção Externa
-          </div>
-        </div>
-        <div class="table-responsive">
-          <table style="font-size:0.8rem;">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Tipo</th>
-                <th>Detalhe</th>
-                <th>Custo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for m in historico_manutencao|slice:":5" %}
-              <tr>
-                <td>{{ m.created_at|date:"d/m/y" }}</td>
-                <td>
-                  {% if m.tipo_movimentacao == 'envio_manutencao' %}
-                    <span class="badge bg-yellow">Envio</span>
-                  {% else %}
-                    <span class="badge bg-green">Retorno</span>
-                  {% endif %}
-                </td>
-                <td>
-                  {% if m.fornecedor_manutencao %}
-                    {{ m.fornecedor_manutencao.nome|truncatechars:10 }}
-                  {% else %}
-                    {{ m.localidade_destino.local|default:"-" }}
-                  {% endif %}
-                </td>
-                <td>
-                  {% if m.custo > 0 %}
-                    R$ {{ m.custo|floatformat:0 }}
-                  {% else %}
-                    -
-                  {% endif %}
-                </td>
-              </tr>
-              {% empty %}
-              <tr>
-                <td colspan="4" style="text-align:center; color:var(--text-light); padding:12px;">
-                  Nenhuma manutenção registrada.
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- PREVENTIVAS -->
-      {% if preventivas %}
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <i class="fa fa-clipboard-check"></i> Preventivas
-          </div>
-        </div>
-        <div class="card-body" style="padding:0;">
-          {% for p in preventivas %}
-          <div style="padding:12px; border-bottom:1px solid #edebe9; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <div style="font-weight:600; font-size:13px;">
-                {{ p.checklist_modelo.nome }}
-              </div>
-              <div style="font-size:11px; color:var(--text-sub);">
-                Próxima: <strong>{{ p.data_proxima|date:"d/m/Y" }}</strong>
-              </div>
-            </div>
-            <div>
-              {% if p.atrasado %}
-                <span class="badge bg-red">Atrasada</span>
-              {% else %}
-                <span class="badge bg-green">Em dia</span>
-              {% endif %}
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
       {% endif %}
 
-      <!-- NOTAS GERAIS -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <i class="fa fa-sticky-note"></i> Notas Gerais
-          </div>
-        </div>
-        <div class="card-body" style="background:#fffbeb;">
-          <p style="margin:0; font-size:13px; line-height:1.5; color:#78350f;">
-            {{ item.observacoes|default:"Nenhuma observação cadastrada."|linebreaksbr }}
-          </p>
-        </div>
-      </div>
-
-      <!-- AUDITORIA -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">Auditoria</div>
-        </div>
-        <div class="card-body" style="font-size:12px; color:var(--text-sub);">
-          <div style="margin-bottom:8px;">
-            <strong>Cadastro:</strong> {{ item.created_at|date:"d/m/Y H:i" }}<br>
-            por {{ item.criado_por|default:"Admin" }}
-          </div>
+      {% if possui_lotes %}
+        <div class="ad-kpi-card" style="--kpi-color: var(--ad-warning);">
+          <div class="ad-kpi-icon"><i class="fa fa-boxes-stacked" aria-hidden="true"></i></div>
           <div>
-            <strong>Última Edição:</strong> {{ item.updated_at|date:"d/m/Y H:i" }}
+            <span class="ad-kpi-label">Saldo em Lotes</span>
+            <span class="ad-kpi-value">{{ total_disponivel_lotes }}</span>
+            <div class="ad-kpi-sub">{{ total_entrada_lotes }} unidades de entrada rastreadas</div>
           </div>
         </div>
-      </div>
 
+        <div class="ad-kpi-card" style="--kpi-color: var(--ad-success);">
+          <div class="ad-kpi-icon"><i class="fa fa-coins" aria-hidden="true"></i></div>
+          <div>
+            <span class="ad-kpi-label">Valor em Estoque</span>
+            <span class="ad-kpi-value">R$ {{ valor_disponivel_lotes|floatformat:2|intcomma }}</span>
+            <div class="ad-kpi-sub">Saldo financeiro dos lotes disponíveis</div>
+          </div>
+        </div>
+      {% endif %}
+
+      {% if financeiro.modo == 'LOCAÇÃO' %}
+        <div class="ad-kpi-card" style="--kpi-color: var(--ad-info);">
+          <div class="ad-kpi-icon"><i class="fa fa-file-contract" aria-hidden="true"></i></div>
+          <div>
+            <span class="ad-kpi-label">Aluguel Mensal</span>
+            <span class="ad-kpi-value">R$ {{ financeiro.valor_atual|floatformat:2|intcomma }}</span>
+            <div class="ad-kpi-sub">Valor recorrente do contrato</div>
+          </div>
+        </div>
+      {% endif %}
+
+      {% if financeiro.custo_manutencao > 0 %}
+        <div class="ad-kpi-card" style="--kpi-color: var(--ad-danger);">
+          <div class="ad-kpi-icon"><i class="fa fa-screwdriver-wrench" aria-hidden="true"></i></div>
+          <div>
+            <span class="ad-kpi-label">Manutenções</span>
+            <span class="ad-kpi-value">R$ {{ financeiro.custo_manutencao|floatformat:2|intcomma }}</span>
+            <div class="ad-kpi-sub">Custo acumulado em manutenção</div>
+          </div>
+        </div>
+      {% endif %}
+
+      {% if item.precisa_preventiva == 'sim' or preventivas %}
+        <div class="ad-kpi-card" style="--kpi-color: {% if status_saude == 'critical' %}var(--ad-danger){% elif status_saude == 'ok' %}var(--ad-success){% else %}var(--ad-muted){% endif %};">
+          <div class="ad-kpi-icon"><i class="fa fa-clipboard-check" aria-hidden="true"></i></div>
+          <div>
+            <span class="ad-kpi-label">Preventiva</span>
+            {% if status_saude == 'ok' %}
+              <span class="ad-kpi-value" style="color:var(--ad-success);">Regular</span>
+              <div class="ad-kpi-sub">Plano preventivo em dia</div>
+            {% elif status_saude == 'critical' %}
+              <span class="ad-kpi-value" style="color:var(--ad-danger);">Crítico</span>
+              <div class="ad-kpi-sub">Existe preventiva atrasada</div>
+            {% else %}
+              <span class="ad-kpi-value">N/D</span>
+              <div class="ad-kpi-sub">Sem plano preventivo registrado</div>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    </section>
+
+    <div class="ad-layout">
+      <main class="ad-main">
+
+        {% if dados_item %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title">
+                <i class="fa fa-sliders" aria-hidden="true"></i>
+                Ficha Técnica Inteligente
+              </div>
+              <span class="ad-badge ad-badge-neutral">Somente campos preenchidos</span>
+            </div>
+
+            <div class="ad-card-body">
+              <div class="ad-info-grid">
+                {% for dado in dados_item %}
+                  <div class="ad-info-item">
+                    <div class="ad-info-label">
+                      <i class="fa {{ dado.icon }}" aria-hidden="true"></i>
+                      {{ dado.label }}
+                    </div>
+                    <div class="ad-info-value {% if dado.mono %}ad-mono{% endif %}">
+                      {% if dado.label == "Data de Compra" %}
+                        {{ dado.valor|date:"d/m/Y" }}
+                      {% elif dado.label == "Valor Unitário" %}
+                        R$ {{ dado.valor|floatformat:2|intcomma }}
+                      {% else %}
+                        {{ dado.valor }}
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+
+              {% if financeiro.vida_util_texto %}
+                <div class="ad-life">
+                  <div class="ad-life-head">
+                    <span>{% if financeiro.modo == 'LOCAÇÃO' %}Vigência do Contrato{% else %}Ciclo de Vida / Depreciação{% endif %}</span>
+                    <span class="ad-badge {% if financeiro.status_vida == 'critical' %}ad-badge-danger{% elif financeiro.status_vida == 'warning' %}ad-badge-warning{% else %}ad-badge-success{% endif %}">
+                      {{ financeiro.vida_util_texto }}
+                    </span>
+                  </div>
+
+                  <div class="ad-progress-bg">
+                    <div class="ad-progress-fill {% if financeiro.status_vida == 'critical' %}ad-critical{% elif financeiro.status_vida == 'warning' %}ad-warning{% endif %}" style="width: {{ financeiro.vida_util_perc }}%;"></div>
+                  </div>
+
+                  <div class="ad-life-dates">
+                    {% if financeiro.data_inicio %}<span>Início: {{ financeiro.data_inicio|date:"d/m/Y" }}</span>{% endif %}
+                    {% if financeiro.data_fim %}<span>Fim: {{ financeiro.data_fim|date:"d/m/Y" }}</span>{% endif %}
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+          </section>
+        {% endif %}
+
+        {% if possui_lotes %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title">
+                <i class="fa fa-boxes-stacked" aria-hidden="true"></i>
+                Lotes Vinculados e Rastreabilidade
+              </div>
+              <span class="ad-badge ad-badge-info">{{ lotes_cards|length }} lote(s)</span>
+            </div>
+
+            <div class="ad-card-body">
+              <div class="ad-lotes-grid">
+                {% for lote_card in lotes_cards %}
+                  <div class="ad-lote-card">
+                    <div class="ad-lote-top">
+                      <div>
+                        <div class="ad-lote-title">NF {{ lote_card.lote.numero_nf }}</div>
+                        <div class="ad-lote-meta">
+                          {% if lote_card.lote.data_entrada %}Entrada: {{ lote_card.lote.data_entrada|date:"d/m/Y" }}{% endif %}
+                          {% if lote_card.lote.fornecedor %} · {{ lote_card.lote.fornecedor.nome|default:lote_card.lote.fornecedor }}{% endif %}
+                        </div>
+                      </div>
+
+                      {% if lote_card.status_lote == 'ok' %}
+                        <span class="ad-badge ad-badge-success">Disponível</span>
+                      {% elif lote_card.status_lote == 'atencao' %}
+                        <span class="ad-badge ad-badge-warning">Atenção</span>
+                      {% elif lote_card.status_lote == 'critico' %}
+                        <span class="ad-badge ad-badge-danger">Crítico</span>
+                      {% else %}
+                        <span class="ad-badge ad-badge-neutral">Zerado</span>
+                      {% endif %}
+                    </div>
+
+                    <div class="ad-lote-values">
+                      <div class="ad-lote-mini"><span>Entrada</span><strong>{{ lote_card.quantidade_entrada }}</strong></div>
+                      <div class="ad-lote-mini"><span>Disponível</span><strong>{{ lote_card.quantidade_disponivel }}</strong></div>
+                      <div class="ad-lote-mini"><span>Custo Unit.</span><strong>R$ {{ lote_card.custo_unitario|floatformat:2|intcomma }}</strong></div>
+                      <div class="ad-lote-mini"><span>Saldo R$</span><strong>R$ {{ lote_card.valor_disponivel|floatformat:2|intcomma }}</strong></div>
+                    </div>
+
+                    <div class="ad-progress-text">
+                      <span>Saldo do lote</span>
+                      <span>{{ lote_card.percentual_saldo }}%</span>
+                    </div>
+                    <div class="ad-progress-bg">
+                      <div class="ad-progress-fill {% if lote_card.status_lote == 'critico' or lote_card.status_lote == 'zerado' %}ad-critical{% elif lote_card.status_lote == 'atencao' %}ad-warning{% endif %}" style="width: {{ lote_card.percentual_saldo }}%;"></div>
+                    </div>
+
+                    {% if lote_card.lote.observacao_tecnica %}
+                      <div class="ad-lote-meta" style="margin-top:12px;">
+                        <i class="fa fa-note-sticky" aria-hidden="true"></i>
+                        {{ lote_card.lote.observacao_tecnica|linebreaksbr }}
+                      </div>
+                    {% endif %}
+
+                    <div class="ad-lote-meta" style="margin-top:12px;">
+                      <i class="fa fa-clock-rotate-left" aria-hidden="true"></i>
+                      {{ lote_card.movimentacoes_count }} movimentação(ões) vinculada(s)
+                      {% if lote_card.ultima_movimentacao %} · Última: {{ lote_card.ultima_movimentacao.created_at|date:"d/m/Y H:i" }}{% endif %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+        {% endif %}
+
+        <section class="ad-card">
+          <div class="ad-card-header">
+            <div class="ad-card-title">
+              <i class="fa fa-clock-rotate-left" aria-hidden="true"></i>
+              Rastreabilidade Operacional
+            </div>
+            <span class="ad-badge ad-badge-neutral">Últimas 15</span>
+          </div>
+
+          <div class="ad-card-body">
+            <div class="ad-timeline">
+              {% for mov in movimentacoes|slice:":15" %}
+                <div class="ad-timeline-item">
+                  <div class="ad-marker" aria-hidden="true"></div>
+                  <div class="ad-timeline-content">
+                    <div class="ad-timeline-header">
+                      <span class="ad-timeline-type">
+                        {% if mov.tipo_movimentacao == 'transferencia' %}
+                          Transferência
+                        {% elif mov.tipo_movimentacao == 'baixa' %}
+                          Baixa
+                        {% elif mov.tipo_movimentacao == 'entrada' %}
+                          Entrada
+                        {% elif 'manutencao' in mov.tipo_movimentacao %}
+                          Manutenção
+                        {% else %}
+                          {{ mov.get_tipo_movimentacao_display }}
+                        {% endif %}
+                      </span>
+                      <span class="ad-timeline-date">{{ mov.created_at|date:"d/m/Y H:i" }}</span>
+                    </div>
+
+                    <div class="ad-timeline-body">
+                      {% if mov.lote %}<div class="ad-row"><i class="fa fa-box"></i> Lote/NF: {{ mov.lote.numero_nf }}</div>{% endif %}
+                      {% if mov.usuario %}
+                        <div class="ad-row"><i class="fa fa-user-circle"></i> {{ mov.usuario.nome }}</div>
+                      {% elif mov.fornecedor_manutencao %}
+                        <div class="ad-row"><i class="fa fa-truck"></i> {{ mov.fornecedor_manutencao.nome }}</div>
+                      {% elif mov.criado_por %}
+                        <div class="ad-row"><i class="fa fa-user-gear"></i> {{ mov.criado_por }}</div>
+                      {% endif %}
+                      {% if mov.quantidade %}<div class="ad-row"><i class="fa fa-layer-group"></i> Quantidade: {{ mov.quantidade }}</div>{% endif %}
+                      {% if mov.centro_custo_origem %}<div class="ad-row"><i class="fa fa-building-circle-arrow-right"></i> Origem: {{ mov.centro_custo_origem.departamento|default:mov.centro_custo_origem }}</div>{% endif %}
+                      {% if mov.centro_custo_destino %}<div class="ad-row"><i class="fa fa-building"></i> Destino: {{ mov.centro_custo_destino.departamento|default:mov.centro_custo_destino }}</div>{% endif %}
+                      {% if mov.localidade_destino %}<div class="ad-row"><i class="fa fa-location-dot"></i> {{ mov.localidade_destino.local|default:mov.localidade_destino }}</div>{% endif %}
+                      {% if mov.custo > 0 %}<div class="ad-row"><i class="fa fa-coins"></i> R$ {{ mov.custo|floatformat:2|intcomma }}</div>{% endif %}
+                      {% if mov.observacao %}<div class="ad-row"><i class="fa fa-comment-dots"></i> {{ mov.observacao|truncatechars:120 }}</div>{% endif %}
+                    </div>
+
+                    <a href="{% url 'movimentacao_detail' mov.pk %}" class="ad-link">Ver detalhes →</a>
+                  </div>
+                </div>
+              {% empty %}
+                <div class="ad-empty">
+                  <i class="fa fa-inbox" aria-hidden="true"></i><br>
+                  Sem histórico registrado.
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="ad-side">
+        <section class="ad-card">
+          <div class="ad-card-header">
+            <div class="ad-card-title">
+              <i class="fa fa-user-tag" aria-hidden="true"></i>
+              Detentor Atual
+            </div>
+          </div>
+          <div class="ad-card-body ad-person-box">
+            <div class="ad-person-icon"><i class="fa fa-user-shield" aria-hidden="true"></i></div>
+            <div class="ad-person-title">{{ ultimo_resp }}</div>
+            <div class="ad-person-sub">Baseado na última movimentação registrada</div>
+          </div>
+        </section>
+
+        {% if dados_locacao %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title">
+                <i class="fa fa-file-contract" aria-hidden="true"></i>
+                Dados da Locação
+              </div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-simple-list">
+                {% for dado in dados_locacao %}
+                  <div class="ad-simple-item">
+                    <div class="ad-info-label"><i class="fa {{ dado.icon }}" aria-hidden="true"></i> {{ dado.label }}</div>
+                    <div class="ad-info-value">
+                      {% if dado.label == "Valor Mensal" %}
+                        R$ {{ dado.valor|floatformat:2|intcomma }}
+                      {% elif dado.label == "Data de Entrada" or dado.label == "Vencimento do Contrato" %}
+                        {{ dado.valor|date:"d/m/Y" }}
+                      {% else %}
+                        {{ dado.valor|linebreaksbr }}
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+
+          {% if pos_contrato %}
+            <section class="ad-card {% if not pos_contrato.pausado %}ad-card-warning{% endif %}">
+              <div class="ad-card-header">
+                <div class="ad-card-title">
+                  {% if pos_contrato.pausado %}
+                    <i class="fa fa-pause-circle" aria-hidden="true"></i> Contagem Pós-Contrato Encerrada
+                  {% else %}
+                    <i class="fa fa-triangle-exclamation" aria-hidden="true"></i> Equipamento Além do Prazo Contratado
+                  {% endif %}
+                </div>
+              </div>
+
+              <div class="ad-card-body">
+                {% if pos_contrato.pausado %}
+                  <div class="ad-pos-paused">
+                    O contrato desta locação venceu em <strong>{{ pos_contrato.data_vencimento|date:"d/m/Y" }}</strong>, mas o equipamento está <strong>pausado</strong>. A contagem pós-contrato está suspensa.
+                  </div>
+                {% else %}
+                  <div class="ad-pos">
+                    <div class="ad-pos-counter">
+                      <div class="ad-pos-number">
+                        {% if pos_contrato.meses > 0 %}{{ pos_contrato.meses }}m {{ pos_contrato.dias_restantes }}d{% else %}{{ pos_contrato.dias_total }}d{% endif %}
+                      </div>
+                      <div class="ad-pos-label">além do contrato</div>
+                    </div>
+
+                    <div class="ad-simple-list">
+                      <div class="ad-simple-item">
+                        <div class="ad-info-label"><i class="fa fa-calendar-xmark"></i> Contrato venceu em</div>
+                        <div class="ad-info-value">{{ pos_contrato.data_vencimento|date:"d/m/Y" }}</div>
+                      </div>
+                      <div class="ad-simple-item">
+                        <div class="ad-info-label"><i class="fa fa-clock"></i> Dias além do prazo</div>
+                        <div class="ad-info-value">{{ pos_contrato.dias_total }} dias</div>
+                      </div>
+                      <div class="ad-simple-item">
+                        <div class="ad-info-label"><i class="fa fa-tag"></i> Status atual</div>
+                        <div class="ad-info-value">{{ pos_contrato.status_item }}</div>
+                      </div>
+                    </div>
+
+                    <div class="ad-pos-alert">
+                      <i class="fa fa-circle-info" aria-hidden="true"></i>
+                      <span>Este equipamento permanece em uso na empresa após o vencimento do contrato de locação. A contagem é encerrada quando o status mudar para <strong>Pausado</strong>.</span>
+                    </div>
+                  </div>
+                {% endif %}
+              </div>
+            </section>
+          {% endif %}
+        {% endif %}
+
+        {% if historico_manutencao %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa fa-wrench"></i> Manutenção Externa</div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-simple-list">
+                {% for m in historico_manutencao|slice:":5" %}
+                  <div class="ad-simple-item">
+                    <div class="ad-simple-top">
+                      <div>
+                        <div class="ad-simple-title">{% if m.tipo_movimentacao == 'envio_manutencao' %}Envio para manutenção{% else %}Retorno de manutenção{% endif %}</div>
+                        <div class="ad-simple-sub">{{ m.created_at|date:"d/m/Y H:i" }}</div>
+                      </div>
+                      {% if m.tipo_movimentacao == 'envio_manutencao' %}<span class="ad-badge ad-badge-warning">Envio</span>{% else %}<span class="ad-badge ad-badge-success">Retorno</span>{% endif %}
+                    </div>
+                    {% if m.fornecedor_manutencao %}<div class="ad-simple-sub">Fornecedor: {{ m.fornecedor_manutencao.nome }}</div>{% endif %}
+                    {% if m.localidade_destino %}<div class="ad-simple-sub">Local: {{ m.localidade_destino.local|default:m.localidade_destino }}</div>{% endif %}
+                    {% if m.custo > 0 %}<div class="ad-simple-sub">Custo: R$ {{ m.custo|floatformat:2|intcomma }}</div>{% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+        {% endif %}
+
+        {% if preventivas %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa fa-clipboard-check"></i> Preventivas</div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-simple-list">
+                {% for p in preventivas %}
+                  <div class="ad-simple-item">
+                    <div class="ad-simple-top">
+                      <div>
+                        <div class="ad-simple-title">{{ p.checklist_modelo.nome }}</div>
+                        {% if p.data_proxima %}<div class="ad-simple-sub">Próxima: {{ p.data_proxima|date:"d/m/Y" }}</div>{% endif %}
+                      </div>
+                      {% if p.atrasado %}<span class="ad-badge ad-badge-danger">Atrasada</span>{% else %}<span class="ad-badge ad-badge-success">Em dia</span>{% endif %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+        {% endif %}
+
+        {% if item.observacoes %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa fa-note-sticky"></i> Notas Gerais</div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-note-box">{{ item.observacoes|linebreaksbr }}</div>
+            </div>
+          </section>
+        {% endif %}
+
+        {% if auditoria %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa fa-fingerprint"></i> Auditoria</div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-simple-list">
+                {% for dado in auditoria %}
+                  <div class="ad-simple-item">
+                    <div class="ad-info-label"><i class="fa {{ dado.icon }}"></i> {{ dado.label }}</div>
+                    <div class="ad-info-value">
+                      {% if dado.label == "Criado em" or dado.label == "Última edição" %}
+                        {{ dado.valor|date:"d/m/Y H:i" }}
+                      {% else %}
+                        {{ dado.valor }}
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+        {% endif %}
+      </aside>
     </div>
-
   </div>
 </div>
 {% endblock %}

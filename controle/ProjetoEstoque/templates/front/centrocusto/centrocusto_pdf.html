@@ -1,60 +1,235 @@
+{% load humanize %}
 <!DOCTYPE html>
-<html>
+<html lang="pt-br">
 <head>
     <meta charset="utf-8">
     <title>Relatório de Centros de Custo</title>
     <style>
-        @page { size: A4; margin: 1.5cm; }
-        body { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; color: #333; }
-        .header { border-bottom: 2px solid #1a73e8; padding-bottom: 10px; margin-bottom: 20px; }
-        .header h1 { color: #1a73e8; margin: 0; font-size: 18pt; }
-        .info { font-size: 9pt; color: #666; margin-top: 5px; }
-        
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th { background-color: #f1f3f4; text-align: left; padding: 8px; font-size: 9pt; border-bottom: 1px solid #ccc; }
-        td { padding: 8px; border-bottom: 1px solid #eee; font-size: 9pt; }
+        @page {
+            size: A4;
+            margin: 1.4cm;
+
+            @frame footer_frame {
+                -pdf-frame-content: footerContent;
+                bottom: 0.5cm;
+                margin-left: 1.4cm;
+                margin-right: 1.4cm;
+                height: 0.8cm;
+            }
+        }
+
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            font-size: 9pt;
+            color: #1d1d1f;
+            margin: 0;
+            padding: 0;
+        }
+
+        .header-table {
+            width: 100%;
+            border-bottom: 2px solid #1d1d1f;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+        }
+
+        .header-title {
+            font-size: 17pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #1d1d1f;
+            letter-spacing: 0.02em;
+        }
+
+        .header-subtitle {
+            margin-top: 3px;
+            font-size: 8pt;
+            color: #6e6e73;
+        }
+
+        .header-meta {
+            width: 34%;
+            text-align: right;
+            font-size: 8pt;
+            color: #424245;
+            line-height: 1.45;
+        }
+
+        .info-bar {
+            margin-bottom: 10px;
+            padding: 6px 8px;
+            border: 1px solid #d2d2d7;
+            background-color: #f5f5f7;
+            color: #424245;
+            font-size: 8pt;
+            line-height: 1.4;
+        }
+
+        .kpi-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+
+        .kpi-box {
+            width: 33.33%;
+            padding: 7px;
+            border: 1px solid #d2d2d7;
+            background-color: #fbfbfd;
+        }
+
+        .kpi-label {
+            font-size: 7pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #6e6e73;
+            letter-spacing: 0.04em;
+        }
+
+        .kpi-value {
+            margin-top: 3px;
+            font-size: 11pt;
+            font-weight: bold;
+            color: #1d1d1f;
+            line-height: 1.15;
+        }
+
+        table.main-table {
+            width: 100%;
+            border-collapse: collapse;
+            repeat-header: yes;
+        }
+
+        table.main-table th {
+            padding: 6px;
+            border: 1px solid #1d1d1f;
+            background-color: #1d1d1f;
+            color: #ffffff;
+            font-size: 8pt;
+            font-weight: bold;
+            text-align: left;
+            text-transform: uppercase;
+        }
+
+        table.main-table td {
+            padding: 6px;
+            border: 1px solid #e5e5ea;
+            color: #1d1d1f;
+            font-size: 8pt;
+            line-height: 1.35;
+            vertical-align: top;
+            word-wrap: break-word;
+        }
+
+        tr.even {
+            background-color: #fbfbfd;
+        }
+
         .text-right { text-align: right; }
         .text-center { text-align: center; }
         .bold { font-weight: bold; }
-        .total-row td { background-color: #f8f9fa; border-top: 2px solid #ccc; font-weight: bold; }
+        .muted { color: #6e6e73; font-size: 7pt; }
+
+        .total-row td {
+            background-color: #f5f5f7;
+            border-top: 2px solid #1d1d1f;
+            font-weight: bold;
+        }
+
+        #footerContent {
+            text-align: center;
+            font-size: 8pt;
+            color: #6e6e73;
+            border-top: 1px solid #d2d2d7;
+            padding-top: 4px;
+        }
+
+        @media screen {
+            body {
+                background: #f5f5f7;
+            }
+            .preview-wrap {
+                max-width: 1000px;
+                margin: 0 auto;
+                padding: 14px;
+                background: #ffffff;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Relatório de Centros de Custo</h1>
-        <div class="info">
-            Gerado em {% now "d/m/Y H:i" %} por {{ usuario.username }}<br>
-            Filtros: Busca="{{ filtros.Busca }}", PMB="{{ filtros.PMB }}"
+    <div class="preview-wrap">
+        <table class="header-table">
+            <tr>
+                <td>
+                    <div class="header-title">Relatório de Centros de Custo</div>
+                    <div class="header-subtitle">Sistema de Gestão de Ativos — visão consolidada por departamento</div>
+                </td>
+                <td class="header-meta">
+                    <strong>Gerado em:</strong> {% now "d/m/Y H:i" %}<br>
+                    <strong>Emissor:</strong> {{ usuario.get_full_name|default:usuario.username }}
+                </td>
+            </tr>
+        </table>
+
+        <div class="info-bar">
+            <strong>Filtros aplicados:</strong>
+            Busca="{{ filtros.Busca }}" &nbsp;|&nbsp; PMB="{{ filtros.PMB }}"
+        </div>
+
+        <table class="kpi-table">
+            <tr>
+                <td class="kpi-box">
+                    <div class="kpi-label">Relatório</div>
+                    <div class="kpi-value">Centros de Custo</div>
+                </td>
+                <td class="kpi-box">
+                    <div class="kpi-label">Total Geral</div>
+                    <div class="kpi-value">R$ {{ total_geral|floatformat:2|intcomma }}</div>
+                </td>
+                <td class="kpi-box">
+                    <div class="kpi-label">Data de Emissão</div>
+                    <div class="kpi-value">{% now "d/m/Y" %}</div>
+                </td>
+            </tr>
+        </table>
+
+        <table class="main-table">
+            <thead>
+                <tr>
+                    <th width="15%">Número</th>
+                    <th width="43%">Departamento</th>
+                    <th width="10%" class="text-center">PMB</th>
+                    <th width="14%" class="text-center">Qtd. Itens</th>
+                    <th width="18%" class="text-right">Custo Mensal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in centros %}
+                    <tr class="{% cycle 'odd' 'even' %}">
+                        <td class="bold">{{ c.numero }}</td>
+                        <td>{{ c.departamento }}</td>
+                        <td class="text-center">{{ c.get_pmb_display }}</td>
+                        <td class="text-center">{{ c.qtd_calc }}</td>
+                        <td class="text-right">R$ {{ c.custo_calc|floatformat:2|intcomma }}</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center muted">Nenhum centro de custo encontrado.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="total-row">
+                    <td colspan="4" class="text-right">TOTAL GERAL:</td>
+                    <td class="text-right">R$ {{ total_geral|floatformat:2|intcomma }}</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div id="footerContent">
+            Página <pdf:pagenumber> de <pdf:pagecount>
         </div>
     </div>
-
-    <table>
-        <thead>
-            <tr>
-                <th width="15%">Número</th>
-                <th width="45%">Departamento</th>
-                <th width="10%" class="text-center">PMB</th>
-                <th width="15%" class="text-center">Qtd. Itens</th>
-                <th width="15%" class="text-right">Custo Mensal</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for c in centros %}
-            <tr>
-                <td>{{ c.numero }}</td>
-                <td>{{ c.departamento }}</td>
-                <td class="text-center">{{ c.get_pmb_display }}</td>
-                <td class="text-center">{{ c.qtd_calc }}</td>
-                <td class="text-right">R$ {{ c.custo_calc|floatformat:2 }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-        <tfoot>
-            <tr class="total-row">
-                <td colspan="4" class="text-right">TOTAL GERAL:</td>
-                <td class="text-right">R$ {{ total_geral|floatformat:2 }}</td>
-            </tr>
-        </tfoot>
-    </table>
 </body>
 </html>

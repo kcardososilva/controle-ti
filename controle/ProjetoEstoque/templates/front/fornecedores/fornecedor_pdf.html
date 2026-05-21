@@ -1,60 +1,201 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-br">
 <head>
     <meta charset="utf-8">
     <title>Relatório de Fornecedores</title>
     <style>
-        @page { size: A4; margin: 1.5cm; }
-        body { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; color: #333; }
-        .header { border-bottom: 2px solid #0078d4; padding-bottom: 10px; margin-bottom: 20px; }
-        .header h1 { color: #0078d4; margin: 0; font-size: 18pt; }
-        .info { font-size: 9pt; color: #666; margin-top: 5px; }
-        
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th { background-color: #f3f4f6; text-align: left; padding: 8px; font-size: 9pt; border-bottom: 1px solid #ccc; }
-        td { padding: 8px; border-bottom: 1px solid #eee; font-size: 9pt; }
+        @page {
+            size: A4;
+            margin: 1.4cm;
+
+            @frame footer_frame {
+                -pdf-frame-content: footerContent;
+                bottom: 0cm;
+                margin-left: 1.4cm;
+                margin-right: 1.4cm;
+                height: 0.9cm;
+            }
+        }
+
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            font-size: 9pt;
+            color: #1d1d1f;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container { width: 100%; }
+
+        .header-table {
+            width: 100%;
+            border-bottom: 2px solid #1d1d1f;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+        }
+
+        .header-title {
+            margin: 0;
+            color: #1d1d1f;
+            font-size: 18pt;
+            font-weight: bold;
+            letter-spacing: -0.02em;
+        }
+
+        .header-subtitle {
+            margin-top: 4px;
+            color: #6e6e73;
+            font-size: 8pt;
+            line-height: 1.35;
+        }
+
+        .header-meta {
+            width: 36%;
+            text-align: right;
+            color: #6e6e73;
+            font-size: 8pt;
+            line-height: 1.45;
+        }
+
+        .info-bar {
+            margin-bottom: 12px;
+            padding: 7px 8px;
+            border: 1px solid #d2d2d7;
+            background-color: #f5f5f7;
+            color: #424245;
+            font-size: 8pt;
+            line-height: 1.4;
+        }
+
+        table.main-table {
+            width: 100%;
+            border-collapse: collapse;
+            repeat-header: yes;
+        }
+
+        table.main-table th {
+            padding: 7px;
+            border: 1px solid #1d1d1f;
+            background-color: #1d1d1f;
+            color: #ffffff;
+            text-align: left;
+            font-size: 8pt;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        table.main-table td {
+            padding: 7px;
+            border: 1px solid #e5e5ea;
+            color: #1d1d1f;
+            font-size: 8pt;
+            line-height: 1.35;
+            vertical-align: top;
+            word-wrap: break-word;
+        }
+
+        tr.even { background-color: #f9fafb; }
+
         .text-right { text-align: right; }
         .text-center { text-align: center; }
         .bold { font-weight: bold; }
-        .total-row td { background-color: #f8f9fa; border-top: 2px solid #ccc; font-weight: bold; }
+        .muted { color: #6e6e73; font-size: 7pt; }
+
+        .badge {
+            font-size: 7pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #1d1d1f;
+        }
+
+        .total-row td {
+            background-color: #f5f5f7;
+            border-top: 2px solid #1d1d1f;
+            font-weight: bold;
+        }
+
+        .empty-box {
+            text-align: center;
+            padding: 20px;
+            color: #6e6e73;
+        }
+
+        #footerContent {
+            text-align: center;
+            font-size: 8pt;
+            color: #6e6e73;
+            padding-top: 4px;
+            border-top: 1px solid #d2d2d7;
+        }
+
+        @media screen {
+            body { background: #f5f5f7; font-size: 10pt; }
+            .container {
+                max-width: 1100px;
+                margin: 0 auto;
+                padding: 16px;
+                background: #ffffff;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Relatório de Fornecedores</h1>
-        <div class="info">
-            Gerado em {% now "d/m/Y H:i" %} por {{ usuario.username }}<br>
-            Filtros: Busca="{{ filtros.Busca }}", Contrato="{{ filtros.Contrato }}"
+    <div class="container">
+        <table class="header-table">
+            <tr>
+                <td>
+                    <div class="header-title">Relatório de Fornecedores</div>
+                    <div class="header-subtitle">Sistema de Gestão de Ativos — fornecedores, contratos e custos consolidados</div>
+                </td>
+                <td class="header-meta">
+                    <strong>Gerado em:</strong> {% now "d/m/Y H:i" %}<br>
+                    <strong>Emissor:</strong> {{ usuario.get_full_name|default:usuario.username }}<br>
+                    <strong>Busca:</strong> {{ filtros.Busca|default:"-" }}<br>
+                    <strong>Contrato:</strong> {{ filtros.Contrato|default:"Todos" }}
+                </td>
+            </tr>
+        </table>
+
+        <div class="info-bar">
+            <strong>Objetivo:</strong> consolidar fornecedores cadastrados, vínculo contratual, quantidade de itens e custo mensal de referência.
+        </div>
+
+        <table class="main-table">
+            <thead>
+                <tr>
+                    <th width="34%">Fornecedor</th>
+                    <th width="20%">CNPJ</th>
+                    <th width="14%" class="text-center">Contrato</th>
+                    <th width="14%" class="text-center">Qtd. Itens</th>
+                    <th width="18%" class="text-right">Custo Mensal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in fornecedores %}
+                <tr class="{% cycle 'odd' 'even' %}">
+                    <td class="bold">{{ f.nome }}</td>
+                    <td>{{ f.cnpj|default:"-" }}</td>
+                    <td class="text-center"><span class="badge">{% if f.contrato %}Sim{% else %}Não{% endif %}</span></td>
+                    <td class="text-center">{{ f.qtd_total_calc }}</td>
+                    <td class="text-right">R$ {{ f.custo_calc|floatformat:2 }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="empty-box">Nenhum fornecedor encontrado.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="total-row">
+                    <td colspan="4" class="text-right">TOTAL GERAL:</td>
+                    <td class="text-right">R$ {{ total_geral_custo|floatformat:2 }}</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div id="footerContent">
+            Página <pdf:pagenumber> de <pdf:pagecount>
         </div>
     </div>
-
-    <table>
-        <thead>
-            <tr>
-                <th width="35%">Fornecedor</th>
-                <th width="20%">CNPJ</th>
-                <th width="15%" class="text-center">Contrato</th>
-                <th width="15%" class="text-center">Qtd. Itens</th>
-                <th width="15%" class="text-right">Custo Mensal</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for f in fornecedores %}
-            <tr>
-                <td>{{ f.nome }}</td>
-                <td>{{ f.cnpj|default:"-" }}</td>
-                <td class="text-center">{% if f.contrato %}Sim{% else %}Não{% endif %}</td>
-                <td class="text-center">{{ f.qtd_total_calc }}</td>
-                <td class="text-right">R$ {{ f.custo_calc|floatformat:2 }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-        <tfoot>
-            <tr class="total-row">
-                <td colspan="4" class="text-right">TOTAL GERAL:</td>
-                <td class="text-right">R$ {{ total_geral_custo|floatformat:2 }}</td>
-            </tr>
-        </tfoot>
-    </table>
 </body>
 </html>

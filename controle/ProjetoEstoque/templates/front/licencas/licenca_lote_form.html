@@ -1,207 +1,813 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}
-  {% if obj %}Editar Lote{% else %}Novo Lote{% endif %}
+{% block title %}{% if obj %}Editar Lote{% else %}Novo Lote{% endif %}{% endblock %}
+{% block page_title %}{% if obj %}Editar lote de licenças{% else %}Novo lote de licenças{% endif %}{% endblock %}
+{% block page_subtitle %}Controle de compra, custo de ciclo, periodicidade e saldo de assentos{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+
+:where(.lic-page, .lic-modal, .select2-container, .select2-dropdown) {
+  --lic-brand: var(--brand, #0071e3);
+  --lic-brand-hover: var(--brand-hover, #0077ed);
+  --lic-brand-soft: var(--brand-soft, rgba(0, 113, 227, .10));
+  --lic-surface: var(--bg-elevated, #ffffff);
+  --lic-surface-2: var(--bg-elevated-2, #ffffff);
+  --lic-fill: var(--bg-fill-tertiary, rgba(120, 120, 128, .08));
+  --lic-fill-2: var(--bg-fill-secondary, rgba(120, 120, 128, .12));
+  --lic-text: var(--text-primary, #1d1d1f);
+  --lic-muted: var(--text-tertiary, #6e6e73);
+  --lic-soft: var(--text-quaternary, #86868b);
+  --lic-border: var(--separator-hairline, rgba(0, 0, 0, .06));
+  --lic-border-strong: var(--separator-non-opaque, rgba(0, 0, 0, .10));
+  --lic-success: var(--success, #34c759);
+  --lic-success-bg: var(--success-soft, rgba(52, 199, 89, .12));
+  --lic-warning: var(--warning, #ff9500);
+  --lic-warning-bg: var(--warning-soft, rgba(255, 149, 0, .12));
+  --lic-danger: var(--danger, #ff3b30);
+  --lic-danger-bg: var(--danger-soft, rgba(255, 59, 48, .10));
+  --lic-info: var(--info, #5ac8fa);
+  --lic-info-bg: var(--info-soft, rgba(90, 200, 250, .12));
+  --lic-radius-sm: var(--radius-sm, 10px);
+  --lic-radius-md: var(--radius-md, 14px);
+  --lic-radius-lg: var(--radius-lg, 18px);
+  --lic-radius-xl: var(--radius-xl, 22px);
+  --lic-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04));
+  --lic-shadow-md: var(--shadow-md, 0 4px 12px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04));
+  --lic-control-h: 42px;
+  --lic-transition: 180ms var(--ease-apple, ease);
+}
+
+.lic-page,
+.lic-page * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.lic-page {
+  width: min(100%, 1500px);
+  margin-inline: auto;
+  color: var(--lic-text);
+}
+
+.lic-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.lic-hero,
+.lic-card,
+.lic-panel,
+.lic-kpi-card {
+  background: var(--lic-surface);
+  border: 1px solid var(--lic-border);
+  border-radius: var(--lic-radius-xl);
+  box-shadow: var(--lic-shadow-sm);
+}
+
+.lic-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: clamp(18px, 3vw, 28px);
+}
+
+.lic-hero-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.lic-hero-icon {
+  width: clamp(48px, 8vw, 64px);
+  height: clamp(48px, 8vw, 64px);
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--lic-brand-soft);
+  color: var(--lic-brand);
+  border: 1px solid color-mix(in srgb, var(--lic-brand) 18%, transparent);
+  font-size: clamp(1.2rem, 3vw, 1.55rem);
+}
+
+.lic-hero-title h1 {
+  margin: 0;
+  color: var(--lic-text);
+  font-size: clamp(1.45rem, 4vw, 2.35rem);
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.lic-hero-title p,
+.lic-subtitle {
+  margin: 8px 0 0;
+  color: var(--lic-muted);
+  font-size: clamp(.9rem, 1.8vw, 1rem);
+  line-height: 1.45;
+}
+
+.lic-actions,
+.lic-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.lic-btn {
+  min-height: var(--lic-control-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 17px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
+  font-size: .9rem;
+  font-weight: 550;
+  letter-spacing: -.014em;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--lic-transition), background var(--lic-transition), border-color var(--lic-transition), color var(--lic-transition), box-shadow var(--lic-transition);
+}
+
+.lic-btn:hover {
+  transform: translateY(-1px);
+}
+
+.lic-btn-primary {
+  background: var(--lic-brand);
+  border-color: var(--lic-brand);
+  color: #fff;
+}
+
+.lic-btn-primary:hover {
+  background: var(--lic-brand-hover);
+  color: #fff;
+}
+
+.lic-btn-secondary,
+.lic-btn-outline {
+  background: transparent;
+  border-color: var(--lic-border-strong);
+  color: var(--lic-text);
+}
+
+.lic-btn-secondary:hover,
+.lic-btn-outline:hover {
+  background: var(--lic-fill);
+  color: var(--lic-text);
+}
+
+.lic-btn-danger {
+  background: var(--lic-danger);
+  border-color: var(--lic-danger);
+  color: #fff;
+}
+
+.lic-card {
+  overflow: hidden;
+}
+
+.lic-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--lic-border);
+  background: color-mix(in srgb, var(--lic-surface) 92%, var(--lic-fill));
+}
+
+.lic-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--lic-text);
+  font-size: .98rem;
+  font-weight: 650;
+  letter-spacing: -.018em;
+}
+
+.lic-card-title i {
+  color: var(--lic-brand);
+}
+
+.lic-card-body {
+  padding: clamp(16px, 2vw, 22px);
+}
+
+.lic-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 14px;
+}
+
+.lic-kpi-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.lic-kpi-card::after {
+  content: "";
+  position: absolute;
+  right: -28px;
+  top: -28px;
+  width: 92px;
+  height: 92px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kpi-color, var(--lic-brand)) 12%, transparent);
+}
+
+.lic-kpi-icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--kpi-color, var(--lic-brand)) 12%, transparent);
+  color: var(--kpi-color, var(--lic-brand));
+  border: 1px solid color-mix(in srgb, var(--kpi-color, var(--lic-brand)) 20%, transparent);
+  z-index: 1;
+}
+
+.lic-kpi-content {
+  z-index: 1;
+}
+
+.lic-kpi-label {
+  display: block;
+  color: var(--lic-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.lic-kpi-value {
+  display: block;
+  margin-top: 4px;
+  color: var(--lic-text);
+  font-size: clamp(1.25rem, 3vw, 1.65rem);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -.025em;
+  overflow-wrap: anywhere;
+}
+
+.lic-kpi-sub {
+  display: block;
+  margin-top: 4px;
+  color: var(--lic-muted);
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.lic-filter-card {
+  padding: 16px;
+  background: var(--lic-surface);
+  border: 1px solid var(--lic-border);
+  border-radius: var(--lic-radius-xl);
+  box-shadow: var(--lic-shadow-sm);
+}
+
+.lic-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(auto-fit, minmax(170px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.lic-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lic-field.full {
+  grid-column: 1 / -1;
+}
+
+.lic-label {
+  color: var(--lic-muted);
+  font-size: .76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .045em;
+}
+
+.lic-help {
+  color: var(--lic-soft);
+  font-size: .78rem;
+  line-height: 1.38;
+}
+
+.lic-page input:not([type="hidden"]),
+.lic-page select,
+.lic-page textarea,
+.lic-form-control {
+  width: 100%;
+  min-height: var(--lic-control-h);
+  padding: 9px 13px;
+  border: 1px solid var(--lic-border-strong);
+  border-radius: var(--lic-radius-sm);
+  background: var(--lic-surface);
+  color: var(--lic-text);
+  font-size: .92rem;
+  outline: none;
+  transition: border-color var(--lic-transition), box-shadow var(--lic-transition), background var(--lic-transition);
+}
+
+.lic-page textarea {
+  min-height: 104px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.lic-page input:not([type="hidden"]):focus,
+.lic-page select:focus,
+.lic-page textarea:focus,
+.lic-form-control:focus {
+  border-color: var(--lic-brand);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, .30));
+}
+
+.lic-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lic-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+}
+
+.lic-table th,
+.lic-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--lic-border);
+  vertical-align: middle;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.lic-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--lic-surface);
+  color: var(--lic-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.lic-table td {
+  color: var(--lic-text);
+  font-size: .9rem;
+}
+
+.lic-table tbody tr:hover {
+  background: var(--lic-fill);
+}
+
+.lic-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.lic-text-right { text-align: right !important; }
+.lic-text-center { text-align: center !important; }
+.lic-nowrap { white-space: nowrap; }
+.lic-muted { color: var(--lic-muted); }
+.lic-mono { font-family: var(--font-mono, ui-monospace, monospace); font-weight: 650; letter-spacing: -.02em; }
+
+.lic-title-link,
+.lic-link {
+  color: var(--lic-text);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.lic-title-link:hover,
+.lic-link:hover {
+  color: var(--lic-brand);
+}
+
+.lic-sub {
+  display: block;
+  margin-top: 3px;
+  color: var(--lic-muted);
+  font-size: .78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.lic-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--lic-fill);
+  color: var(--lic-muted);
+  border: 1px solid transparent;
+  font-size: .75rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.lic-badge-success { background: var(--lic-success-bg); color: var(--lic-success); }
+.lic-badge-warning { background: var(--lic-warning-bg); color: var(--lic-warning); }
+.lic-badge-danger { background: var(--lic-danger-bg); color: var(--lic-danger); }
+.lic-badge-info { background: var(--lic-info-bg); color: #0090d4; }
+.lic-badge-brand { background: var(--lic-brand-soft); color: var(--lic-brand); }
+
+.lic-icon-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--lic-border-strong);
+  background: var(--lic-surface);
+  color: var(--lic-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--lic-transition), color var(--lic-transition), border-color var(--lic-transition), transform var(--lic-transition);
+}
+
+.lic-icon-btn:hover {
+  color: var(--lic-brand);
+  background: var(--lic-brand-soft);
+  border-color: color-mix(in srgb, var(--lic-brand) 25%, transparent);
+  transform: translateY(-1px);
+}
+
+.lic-icon-btn.danger:hover {
+  color: var(--lic-danger);
+  background: var(--lic-danger-bg);
+  border-color: color-mix(in srgb, var(--lic-danger) 25%, transparent);
+}
+
+.lic-empty {
+  padding: 38px 20px;
+  text-align: center;
+  color: var(--lic-muted);
+}
+
+.lic-empty i {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--lic-soft);
+  font-size: 2rem;
+}
+
+.lic-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.lic-col-12 { grid-column: span 12; }
+.lic-col-8 { grid-column: span 8; }
+.lic-col-6 { grid-column: span 6; }
+.lic-col-4 { grid-column: span 4; }
+
+.lic-error-list,
+.errorlist {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--lic-danger);
+  font-size: .78rem;
+  font-weight: 650;
+}
+
+.lic-alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: var(--lic-radius-md);
+  border: 1px solid transparent;
+  background: var(--lic-brand-soft);
+  color: var(--lic-muted);
+  line-height: 1.45;
+}
+
+.lic-alert i {
+  margin-top: 2px;
+  color: var(--lic-brand);
+}
+
+.lic-alert-warning {
+  background: var(--lic-warning-bg);
+  color: var(--lic-warning);
+  border-color: color-mix(in srgb, var(--lic-warning) 20%, transparent);
+}
+
+.lic-alert-danger {
+  background: var(--lic-danger-bg);
+  color: var(--lic-danger);
+  border-color: color-mix(in srgb, var(--lic-danger) 20%, transparent);
+}
+
+.lic-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  border-top: 1px solid var(--lic-border);
+  background: var(--lic-surface);
+}
+
+.lic-page-links {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.lic-page-link {
+  min-width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--lic-border-strong);
+  border-radius: 10px;
+  background: var(--lic-surface);
+  color: var(--lic-text);
+  text-decoration: none;
+  font-size: .84rem;
+  font-weight: 650;
+}
+
+.lic-page-link:hover,
+.lic-page-link.active {
+  background: var(--lic-brand);
+  border-color: var(--lic-brand);
+  color: #fff;
+}
+
+.lic-page-link.disabled {
+  opacity: .45;
+  pointer-events: none;
+}
+
+.select2-container {
+  width: 100% !important;
+}
+
+.select2-container--default .select2-selection--single {
+  min-height: var(--lic-control-h) !important;
+  border: 1px solid var(--lic-border-strong) !important;
+  border-radius: var(--lic-radius-sm) !important;
+  background: var(--lic-surface) !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  color: var(--lic-text) !important;
+  line-height: 40px !important;
+  padding-left: 13px !important;
+  padding-right: 34px !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__placeholder {
+  color: var(--lic-muted) !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 40px !important;
+  right: 8px !important;
+}
+
+.select2-dropdown {
+  z-index: 9999 !important;
+  border: 1px solid var(--lic-border-strong) !important;
+  border-radius: var(--lic-radius-md) !important;
+  background: var(--lic-surface) !important;
+  color: var(--lic-text) !important;
+  overflow: hidden;
+  box-shadow: var(--lic-shadow-md);
+}
+
+.select2-search--dropdown .select2-search__field {
+  border: 1px solid var(--lic-border-strong) !important;
+  border-radius: var(--lic-radius-sm) !important;
+  background: var(--lic-surface) !important;
+  color: var(--lic-text) !important;
+}
+
+.select2-results__option {
+  color: var(--lic-text) !important;
+}
+
+.select2-results__option--highlighted {
+  background: var(--lic-brand) !important;
+  color: #fff !important;
+}
+
+@media (max-width: 900px) {
+  .lic-hero,
+  .lic-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lic-actions,
+  .lic-action-row {
+    justify-content: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .lic-btn {
+    width: 100%;
+  }
+
+  .lic-col-8,
+  .lic-col-6,
+  .lic-col-4 {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 640px) {
+  .lic-hero-main {
+    grid-template-columns: 1fr;
+  }
+
+  .lic-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .lic-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lic-page-links {
+    justify-content: center;
+  }
+}
+
+
+.lic-lote-form-page {
+  width: min(100%, 980px);
+}
+</style>
 {% endblock %}
 
 {% block content %}
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
-
-<style>
-:root {
-  --bg-body: #f8fafc; --bg-card: #ffffff;
-  --text-main: #0f172a; --text-muted: #64748b;
-  --border: #e2e8f0; --primary: #2563eb; --primary-hover: #1d4ed8;
-  --danger: #ef4444; --radius: 8px; --input-height: 42px;
-  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-}
-
-* { box-sizing: border-box; outline: none; }
-body { background: var(--bg-body); color: var(--text-main); font-family: 'Inter', system-ui, sans-serif; overflow-x: hidden; }
-
-.page-container { max-width: 900px; margin: 40px auto; padding: 0 20px; width: 100%; }
-
-/* Card */
-.form-card {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: var(--shadow); padding: 32px;
-  width: 100%; overflow: hidden;
-}
-
-/* Header */
-.form-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
-  flex-wrap: wrap; gap: 10px;
-}
-.form-title {
-  margin: 0; font-size: 1.5rem; font-weight: 700; color: var(--text-main);
-  display: flex; align-items: center; gap: 12px;
-}
-
-/* Grid Responsivo */
-.form-grid { 
-  display: grid; 
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); 
-  gap: 20px; align-items: start;
-}
-.full-width { grid-column: 1 / -1; }
-
-.form-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; width: 100%; }
-.form-group label { font-size: 0.85rem; font-weight: 600; color: var(--text-main); }
-.form-group label.required::after { content: " *"; color: var(--danger); }
-
-/* Inputs */
-.form-control {
-  width: 100%; height: var(--input-height); padding: 0 12px;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  font-size: 0.95rem; background: #fff; transition: border-color 0.2s;
-}
-.form-control:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
-textarea.form-control { height: auto; min-height: 100px; padding: 12px; resize: vertical; }
-
-/* Select2 Custom */
-.select2-container { width: 100% !important; max-width: 100%; min-width: 0; }
-.select2-container .select2-selection--single {
-  height: var(--input-height) !important; border: 1px solid var(--border) !important;
-  border-radius: var(--radius) !important; display: flex !important; align-items: center !important;
-}
-.select2-container--default .select2-selection--single .select2-selection__arrow { top: 8px !important; }
-.select2-container--default .select2-selection--single .select2-selection__rendered {
-  color: var(--text-main) !important; padding-left: 12px !important;
-}
-
-/* Utils */
-.error-msg { font-size: 0.8rem; color: var(--danger); margin-top: 4px; font-weight: 600; }
-.alert-box {
-  background: #fef2f2; color: #991b1b; border: 1px solid #fecaca;
-  padding: 12px; border-radius: var(--radius); margin-bottom: 20px;
-  display: flex; gap: 10px; align-items: center; font-weight: 500;
-}
-
-/* Actions */
-.form-actions {
-  margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border);
-  display: flex; justify-content: flex-end; gap: 12px; flex-wrap: wrap;
-}
-.btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 24px;
-  height: var(--input-height); border-radius: var(--radius);
-  font-size: 0.9rem; font-weight: 600; text-decoration: none;
-  cursor: pointer; border: 1px solid transparent; transition: all 0.2s; white-space: nowrap;
-}
-.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-.btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
-.btn-secondary { background: #fff; border-color: var(--border); color: var(--text-main); }
-.btn-secondary:hover { background: #f1f5f9; }
-</style>
-
-<div class="page-container">
-  <div class="form-card">
-    
-    <div class="form-header">
-      <h2 class="form-title">
-        <i class="fa fa-boxes-stacked" style="color:var(--primary)"></i>
-        {% if obj %}Editar Lote{% else %}Novo Lote de Licenças{% endif %}
-      </h2>
-      <a href="{% url 'licenca_lote_list' %}" class="btn btn-secondary">
-        <i class="fa fa-arrow-left"></i> Voltar
-      </a>
-    </div>
-
-    {% if form.errors %}
-      <div class="alert-box">
-        <i class="fa fa-circle-exclamation"></i>
-        <div>Existem erros no preenchimento. Verifique abaixo.</div>
+<div class="lic-page lic-lote-form-page">
+  <div class="lic-shell">
+    <section class="lic-hero">
+      <div class="lic-hero-main">
+        <div class="lic-hero-icon">
+          <i class="fa fa-boxes-stacked"></i>
+        </div>
+        <div class="lic-hero-title">
+          <h1>{% if obj %}Editar Lote{% else %}Novo Lote de Licenças{% endif %}</h1>
+          <p>Cadastre a entrada do lote com rastreabilidade financeira e saldo para movimentações futuras.</p>
+        </div>
       </div>
-    {% endif %}
 
-    <form method="post" novalidate autocomplete="off">
-      {% csrf_token %}
+      <div class="lic-actions">
+        <a href="{% url 'licenca_lote_list' %}" class="lic-btn lic-btn-secondary">
+          <i class="fa fa-arrow-left"></i>
+          Voltar
+        </a>
+      </div>
+    </section>
 
-      <div class="form-grid">
-        
-        <div class="form-group full-width">
-          <label class="required" for="{{ form.licenca.id_for_label }}">Licença Vinculada</label>
-          {{ form.licenca }}
-          {% if form.licenca.errors %}<div class="error-msg">{{ form.licenca.errors.0 }}</div>{% endif %}
+    <section class="lic-card">
+      <div class="lic-card-header">
+        <div class="lic-card-title">
+          <i class="fa fa-layer-group"></i>
+          Dados do lote
         </div>
+      </div>
 
-        <div class="form-group">
-          <label class="required" for="{{ form.fornecedor.id_for_label }}">Fornecedor</label>
-          {{ form.fornecedor }}
-          {% if form.fornecedor.errors %}<div class="error-msg">{{ form.fornecedor.errors.0 }}</div>{% endif %}
-        </div>
+      <form method="post" novalidate autocomplete="off">
+        {% csrf_token %}
 
-        <div class="form-group">
-          <label for="{{ form.centro_custo.id_for_label }}">Centro de Custo</label>
-          {{ form.centro_custo }}
-          {% if form.centro_custo.errors %}<div class="error-msg">{{ form.centro_custo.errors.0 }}</div>{% endif %}
-        </div>
+        <div class="lic-card-body">
+          {% if form.errors %}
+            <div class="lic-alert lic-alert-danger">
+              <i class="fa fa-circle-exclamation"></i>
+              <div>Existem erros no preenchimento. Revise os campos destacados abaixo.</div>
+            </div>
+          {% endif %}
 
-        <div class="form-group">
-          <label for="{{ form.numero_pedido.id_for_label }}">Nº Pedido / Contrato</label>
-          {{ form.numero_pedido }}
-          {% if form.numero_pedido.errors %}<div class="error-msg">{{ form.numero_pedido.errors.0 }}</div>{% endif %}
-        </div>
+          <div class="lic-form-grid">
+            <div class="lic-col-12 lic-field">
+              <label class="lic-label" for="{{ form.licenca.id_for_label }}">Licença Vinculada</label>
+              {{ form.licenca }}
+              {{ form.licenca.errors }}
+            </div>
 
-        <div class="form-group">
-          <label for="{{ form.data_compra.id_for_label }}">Data de Compra</label>
-          {{ form.data_compra }}
-          {% if form.data_compra.errors %}<div class="error-msg">{{ form.data_compra.errors.0 }}</div>{% endif %}
-        </div>
+            <div class="lic-col-6 lic-field">
+              <label class="lic-label" for="{{ form.fornecedor.id_for_label }}">Fornecedor</label>
+              {{ form.fornecedor }}
+              {{ form.fornecedor.errors }}
+            </div>
 
-        <div class="form-group">
-          <label class="required" for="{{ form.quantidade_total.id_for_label }}">Quantidade Comprada</label>
-          {{ form.quantidade_total }}
-          <div style="font-size:0.75rem; color:#64748b; margin-top:2px">
-            {% if obj %}O saldo será recalculado com base na alteração.{% else %}Saldo inicial será igual ao total.{% endif %}
+            <div class="lic-col-6 lic-field">
+              <label class="lic-label" for="{{ form.centro_custo.id_for_label }}">Centro de Custo</label>
+              {{ form.centro_custo }}
+              {{ form.centro_custo.errors }}
+            </div>
+
+            <div class="lic-col-6 lic-field">
+              <label class="lic-label" for="{{ form.numero_pedido.id_for_label }}">Nº Pedido / Contrato</label>
+              {{ form.numero_pedido }}
+              {{ form.numero_pedido.errors }}
+            </div>
+
+            <div class="lic-col-6 lic-field">
+              <label class="lic-label" for="{{ form.data_compra.id_for_label }}">Data de Compra</label>
+              {{ form.data_compra }}
+              {{ form.data_compra.errors }}
+            </div>
+
+            <div class="lic-col-4 lic-field">
+              <label class="lic-label" for="{{ form.quantidade_total.id_for_label }}">Quantidade Comprada</label>
+              {{ form.quantidade_total }}
+              {{ form.quantidade_total.errors }}
+              <span class="lic-help">{% if obj %}O saldo será recalculado conforme a alteração.{% else %}O saldo inicial será igual à quantidade comprada.{% endif %}</span>
+            </div>
+
+            <div class="lic-col-4 lic-field">
+              <label class="lic-label" for="{{ form.periodicidade.id_for_label }}">Periodicidade</label>
+              {{ form.periodicidade }}
+              {{ form.periodicidade.errors }}
+            </div>
+
+            <div class="lic-col-4 lic-field">
+              <label class="lic-label" for="{{ form.custo_ciclo.id_for_label }}">Custo Total do Lote (R$)</label>
+              {{ form.custo_ciclo }}
+              {{ form.custo_ciclo.errors }}
+            </div>
+
+            <div class="lic-col-12 lic-field">
+              <label class="lic-label" for="{{ form.observacao.id_for_label }}">Observações</label>
+              {{ form.observacao }}
+              {{ form.observacao.errors }}
+            </div>
           </div>
-          {% if form.quantidade_total.errors %}<div class="error-msg">{{ form.quantidade_total.errors.0 }}</div>{% endif %}
         </div>
 
-        <div class="form-group">
-          <label class="required" for="{{ form.periodicidade.id_for_label }}">Periodicidade</label>
-          {{ form.periodicidade }}
-          {% if form.periodicidade.errors %}<div class="error-msg">{{ form.periodicidade.errors.0 }}</div>{% endif %}
+        <div class="lic-pagination">
+          <div class="lic-muted">A consistência do saldo depende da movimentação correta dos assentos.</div>
+          <button type="submit" class="lic-btn lic-btn-primary">
+            <i class="fa fa-save"></i>
+            {% if obj %}Salvar alterações{% else %}Cadastrar lote{% endif %}
+          </button>
         </div>
-
-        <div class="form-group">
-          <label for="{{ form.custo_ciclo.id_for_label }}">Custo Total do Lote (R$)</label>
-          {{ form.custo_ciclo }}
-          {% if form.custo_ciclo.errors %}<div class="error-msg">{{ form.custo_ciclo.errors.0 }}</div>{% endif %}
-        </div>
-
-        <div class="form-group full-width">
-          <label for="{{ form.observacao.id_for_label }}">Observações</label>
-          {{ form.observacao }}
-          {% if form.observacao.errors %}<div class="error-msg">{{ form.observacao.errors.0 }}</div>{% endif %}
-        </div>
-
-      </div>
-
-      <div class="form-actions">
-        <button type="submit" class="btn btn-primary">
-          <i class="fa fa-save"></i> {% if obj %}Salvar Alterações{% else %}Cadastrar Lote{% endif %}
-        </button>
-      </div>
-    </form>
+      </form>
+    </section>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <script>
 $(document).ready(function() {
-    // Inicializa Select2
-    $('select').select2({
-        width: '100%',
-        placeholder: "Selecione...",
-        allowClear: true,
-        language: "pt-BR"
-    });
+  $('.lic-page select').select2({
+    width: '100%',
+    placeholder: 'Selecione...',
+    allowClear: true,
+    language: {
+      noResults: function () { return 'Nenhum resultado encontrado'; },
+      searching: function () { return 'Buscando...'; }
+    }
+  });
+
+  $('.lic-page input:not([type="hidden"]), .lic-page textarea').addClass('lic-form-control');
 });
 </script>
 {% endblock %}

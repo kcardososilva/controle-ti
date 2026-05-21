@@ -1,48 +1,143 @@
 {% load humanize %}
 
-{% for eq in equipamentos %}
-<tr class="clickable" data-href="{% url 'equipamento_detalhe' eq.id %}" style="cursor:pointer; transition:background 0.15s;">
-  <td style="font-weight:600; color:#94a3b8;">{{ forloop.counter0|add:row_start }}</td>
-  
-  <td style="font-weight:600; color:var(--text-main);">
-    {{ eq.nome|default:"-" }}
-  </td>
-  
-  <td style="color:var(--text-muted);">
-    {% if eq.subtipo %}{{ eq.subtipo.nome }}{% else %}-{% endif %}
-  </td>
-  
-  <td>
-    {% with s=eq.status|lower %}
-    <span class="badge st-{{ s }}">
-      {{ eq.get_status_display|default:eq.status|capfirst }}
-    </span>
-    {% endwith %}
-  </td>
-  
-  <td>{% if eq.localidade %}{{ eq.localidade.local }}{% else %}-{% endif %}</td>
-  
-  <td style="font-family:'Courier New', monospace; font-size:0.85rem; letter-spacing:-0.5px;">
-    {{ eq.numero_serie|default:"-" }}
-  </td>
-  
-  <td>{% if eq.fornecedor %}{{ eq.fornecedor.nome|truncatechars:20 }}{% else %}-{% endif %}</td>
-  
-  <td style="text-align:right;">
-    <a href="{% url 'equipamento_detalhe' eq.id %}" class="btn-outline" style="border:none; padding:6px 10px; color:var(--text-muted); display:inline-block;" title="Ver Detalhes">
-      <i class="fa fa-eye"></i>
-    </a>
-    <button type="button" style="background:none; border:none; color:#ef4444; cursor:pointer; padding:6px 10px;" title="Excluir" onclick="event.stopPropagation(); openDeleteModal('{{ eq.id }}','{{ eq.nome|escapejs }}')">
-      <i class="fa fa-trash-can"></i>
-    </button>
-  </td>
+{% for item in itens %}
+<tr class="eq-clickable" data-href="{% url 'equipamento_detalhe' item.id %}">
+    <td class="eq-td-main" data-label="Ativo">
+        <div class="eq-asset-cell">
+            <div class="eq-asset-avatar" aria-hidden="true">
+                <i class="fa {{ item.tipo_operacional_icon }}"></i>
+            </div>
+
+            <div class="eq-asset-main">
+                <div class="eq-asset-name">{{ item.nome }}</div>
+
+                <div class="eq-asset-sub">
+                    {% if item.numero_serie %}
+                        S/N: {{ item.numero_serie }}
+                    {% else %}
+                        Sem número de série
+                    {% endif %}
+                </div>
+
+                {% if item.marca or item.modelo %}
+                    <div class="eq-asset-sub">
+                        {{ item.marca|default:"" }}{% if item.marca and item.modelo %} / {% endif %}{{ item.modelo|default:"" }}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </td>
+
+    <td data-label="Tipo">
+        <div style="display: grid; gap: 6px;">
+            <span class="eq-type-badge {{ item.tipo_operacional_class }}">
+                <i class="fa {{ item.tipo_operacional_icon }}" aria-hidden="true"></i>
+                {{ item.tipo_operacional }}
+            </span>
+
+            {% if item.subtipo_label %}
+                <span class="eq-asset-sub">{{ item.subtipo_label }}</span>
+            {% endif %}
+        </div>
+    </td>
+
+    <td data-label="Status">
+        <span class="eq-badge st-{{ item.status }}">
+            {{ item.get_status_display|default:item.status|capfirst }}
+        </span>
+    </td>
+
+    <td data-label="Localidade / CC">
+        {% if item.localidade_label %}
+            <div class="eq-asset-name">{{ item.localidade_label }}</div>
+        {% endif %}
+
+        {% if item.centro_custo_label %}
+            <div class="eq-asset-sub">
+                {{ item.centro_custo_label }}
+                {% if item.centro_custo_numero %}
+                    · {{ item.centro_custo_numero }}
+                {% endif %}
+            </div>
+        {% endif %}
+
+        {% if not item.localidade_label and not item.centro_custo_label %}
+            <span class="eq-muted-dash">Não informado</span>
+        {% endif %}
+    </td>
+
+    <td data-label="Fornecedor">
+        {% if item.fornecedor_label %}
+            {{ item.fornecedor_label }}
+        {% else %}
+            <span class="eq-muted-dash">Não informado</span>
+        {% endif %}
+    </td>
+
+    <td data-label="Lotes / Saldo">
+        {% if item.lotes_count > 0 %}
+            <div class="eq-lote-stack">
+                <div class="eq-lote-line">
+                    <span>{{ item.lotes_count }} lote(s)</span>
+                    <strong>{{ item.lote_total_disponivel }}/{{ item.lote_total_entrada }}</strong>
+                </div>
+
+                <div class="eq-lote-progress" aria-label="Percentual de saldo em lote">
+                    <div
+                        class="eq-lote-fill {{ item.lote_status }}"
+                        style="width: {{ item.lote_percentual }}%;">
+                    </div>
+                </div>
+
+                <div class="eq-lote-line">
+                    <span>Saldo R$</span>
+                    <strong>R$ {{ item.lote_valor_disponivel|floatformat:2|intcomma }}</strong>
+                </div>
+            </div>
+        {% else %}
+            <span class="eq-muted-dash">Sem lote</span>
+        {% endif %}
+    </td>
+
+    <td data-label="Ações">
+        <div class="eq-actions-cell">
+            <a
+                href="{% url 'equipamento_detalhe' item.id %}"
+                class="eq-icon-action"
+                title="Detalhar"
+                aria-label="Detalhar {{ item.nome }}">
+                <i class="fa fa-eye" aria-hidden="true"></i>
+            </a>
+
+            <a
+                href="{% url 'item_update' item.id %}"
+                class="eq-icon-action"
+                title="Editar"
+                aria-label="Editar {{ item.nome }}">
+                <i class="fa fa-pen" aria-hidden="true"></i>
+            </a>
+
+            <button
+                type="button"
+                class="eq-icon-action eq-danger"
+                title="Excluir"
+                aria-label="Excluir {{ item.nome }}"
+                data-url="/equipamentos/{{ item.id }}/excluir/"
+                data-nome="{{ item.nome|escapejs }}"
+                onclick="event.stopPropagation(); openDeleteModalFromButton(this);">
+                <i class="fa fa-trash" aria-hidden="true"></i>
+            </button>
+        </div>
+    </td>
 </tr>
 {% empty %}
 <tr>
-  <td colspan="8" style="padding:48px 0; text-align:center;">
-    <div style="color:#e2e8f0; font-size:3rem; margin-bottom:12px;"><i class="fa fa-folder-open"></i></div>
-    <h3 style="margin:0; font-size:1rem; color:var(--text-main);">Nenhum ativo encontrado</h3>
-    <p style="color:var(--text-muted); font-size:0.85rem; margin-top:4px;">Tente ajustar os filtros.</p>
-  </td>
+    <td colspan="7">
+        <div class="eq-empty-state">
+            <i class="fa fa-inbox" aria-hidden="true"></i>
+            <strong>Nenhum ativo encontrado</strong>
+            <span>Ajuste os filtros ou revise os critérios de busca aplicados.</span>
+        </div>
+    </td>
 </tr>
 {% endfor %}

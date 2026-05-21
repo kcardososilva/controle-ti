@@ -1,721 +1,520 @@
 {% extends "base.html" %}
-{% block title %}Execução de Preventiva{% endblock %}
+
+{% block title %}Executar Preventiva — {{ preventiva.equipamento.nome }}{% endblock %}
+{% block page_title %}Executar Preventiva{% endblock %}
+{% block page_subtitle %}{{ preventiva.equipamento.nome }} · {{ preventiva.checklist_modelo.nome }}{% endblock %}
+
+{% block header_actions %}
+  <a href="javascript:history.back()" class="btn btn-sm">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i> Cancelar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+:where(.pv-exec-page, .select2-container, .select2-dropdown) {
+  --pv-primary:       var(--brand,               #0071e3);
+  --pv-primary-soft:  var(--brand-soft,           rgba(0,113,227,.10));
+  --pv-surface:       var(--bg-elevated,          #ffffff);
+  --pv-muted-surface: var(--bg-fill-tertiary,     rgba(120,120,128,.08));
+  --pv-hover:         var(--bg-hover,             rgba(0,0,0,.04));
+  --pv-text:          var(--text-primary,         #1d1d1f);
+  --pv-muted:         var(--text-tertiary,        #6e6e73);
+  --pv-soft:          var(--text-quaternary,      #86868b);
+  --pv-border:        var(--separator-hairline,   rgba(0,0,0,.06));
+  --pv-border2:       var(--separator-non-opaque, rgba(0,0,0,.10));
+  --pv-danger:        var(--system-red,           #ff3b30);
+  --pv-radius-sm:     var(--radius-sm,            10px);
+  --pv-radius-md:     var(--radius-md,            14px);
+  --pv-radius-lg:     var(--radius-lg,            18px);
+  --pv-radius-xl:     var(--radius-xl,            22px);
+  --pv-radius-pill:   var(--radius-pill,          980px);
+  --pv-shadow-sm:     var(--shadow-sm,            0 1px 2px rgba(0,0,0,.05));
+  --pv-shadow-md:     var(--shadow-md,            0 4px 12px rgba(0,0,0,.06));
+  --pv-control-h:     2.8rem;
+  --pv-transition:    var(--transition-fast,      160ms ease);
+}
+
+.pv-exec-page,
+.pv-exec-page * { box-sizing: border-box; min-width: 0; }
+
+.pv-exec-page {
+  width: 100%;
+  max-width: 62rem;
+  margin: 0 auto;
+  padding-bottom: 6rem;
+  display: grid;
+  gap: 1rem;
+  color: var(--pv-text);
+}
+
+/* ── Status strip ── */
+.pv-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.pv-mini {
+  padding: .9rem 1rem;
+  border-radius: var(--pv-radius-lg);
+  border: 1px solid var(--pv-border);
+  background: var(--pv-surface);
+  box-shadow: var(--pv-shadow-sm);
+}
+
+.pv-mini-label {
+  color: var(--pv-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.pv-mini-val {
+  display: block;
+  margin-top: .3rem;
+  color: var(--pv-text);
+  font-size: .9rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+/* ── Question cards ── */
+.pv-question-card,
+.pv-evidence-card,
+.pv-obs-card {
+  overflow: hidden;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-xl);
+  background: var(--pv-surface);
+  box-shadow: var(--pv-shadow-sm);
+  padding: 1.25rem;
+}
+
+.pv-q-head {
+  display: grid;
+  grid-template-columns: 2.15rem minmax(0, 1fr);
+  gap: .8rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.pv-q-num {
+  width: 2.15rem;
+  height: 2.15rem;
+  display: grid;
+  place-items: center;
+  border-radius: .8rem;
+  background: var(--pv-primary-soft);
+  color: var(--pv-primary);
+  font-size: .8rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.pv-q-text {
+  color: var(--pv-text);
+  font-size: .96rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.pv-required { color: var(--pv-danger); margin-left: .2rem; }
+
+/* ── Controls ── */
+.pv-exec-page input[type="text"],
+.pv-exec-page input[type="number"],
+.pv-exec-page textarea,
+.pv-exec-page select,
+.pv-exec-page .pv-control {
+  width: 100%;
+  min-height: var(--pv-control-h);
+  border: 1px solid var(--pv-border2);
+  border-radius: var(--pv-radius-sm);
+  background: var(--pv-surface);
+  color: var(--pv-text);
+  padding: .72rem .9rem;
+  font-size: .9rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--pv-transition), box-shadow var(--pv-transition);
+}
+
+.pv-exec-page input:focus,
+.pv-exec-page textarea:focus,
+.pv-exec-page select:focus,
+.pv-exec-page .pv-control:focus {
+  border-color: var(--pv-primary);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30));
+}
+
+.pv-exec-page textarea { min-height: 8rem; resize: vertical; }
+
+/* ── Radio (Sim / Não) ── */
+.pv-radio-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.pv-radio { position: relative; cursor: pointer; }
+
+.pv-radio input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  min-height: unset;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.pv-radio-face {
+  min-height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .55rem;
+  border-radius: var(--pv-radius-sm);
+  border: 1px solid var(--pv-border2);
+  background: var(--pv-muted-surface);
+  color: var(--pv-text);
+  font-weight: 700;
+  font-size: .9rem;
+  transition: border-color var(--pv-transition), background var(--pv-transition), color var(--pv-transition), transform var(--pv-transition);
+}
+
+.pv-radio input:checked + .pv-radio-face {
+  color: #fff;
+  border-color: transparent;
+  transform: translateY(-1px);
+}
+
+.pv-radio.sim input:checked + .pv-radio-face { background: #059669; }
+.pv-radio.nao input:checked + .pv-radio-face { background: #dc2626; }
+
+/* ── Evidence ── */
+.pv-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.pv-evidence-title {
+  display: block;
+  margin-bottom: .5rem;
+  color: var(--pv-muted);
+  font-size: .82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.pv-upload-box {
+  min-height: 11rem;
+  display: grid;
+  place-items: center;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--pv-radius-lg);
+  border: 2px dashed var(--pv-border2);
+  background: var(--pv-muted-surface);
+  cursor: pointer;
+  transition: border-color var(--pv-transition), background var(--pv-transition);
+}
+
+.pv-upload-box:hover {
+  border-color: color-mix(in srgb, var(--pv-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--pv-primary) 5%, var(--pv-muted-surface));
+}
+
+.pv-upload-placeholder {
+  display: grid;
+  gap: .45rem;
+  place-items: center;
+  color: var(--pv-muted);
+  text-align: center;
+  padding: 1rem;
+  font-size: .84rem;
+}
+
+.pv-upload-placeholder i { font-size: 2rem; color: var(--pv-primary); }
+
+.pv-upload-box img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: none;
+}
+
+/* ── Obs card title ── */
+.pv-obs-title {
+  display: block;
+  margin-bottom: .65rem;
+  color: var(--pv-muted);
+  font-size: .82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+/* ── Empty ── */
+.pv-exec-empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--pv-muted);
+}
+
+/* ── Sticky footer ── */
+.pv-sticky-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+  gap: .75rem;
+  padding: .85rem clamp(.75rem, 3vw, 1.5rem);
+  border-top: 1px solid var(--pv-border);
+  background: color-mix(in srgb, var(--pv-surface) 90%, transparent);
+  backdrop-filter: blur(1rem) saturate(140%);
+}
+
+.pv-btn-primary, .pv-btn-secondary {
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  padding: .6rem 1.1rem;
+  border-radius: var(--pv-radius-pill);
+  border: 1px solid transparent;
+  font-size: .9rem;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--pv-transition), background var(--pv-transition), color var(--pv-transition);
+}
+
+.pv-btn-primary:hover, .pv-btn-secondary:hover { transform: translateY(-1px); }
+.pv-btn-primary { background: var(--pv-primary); color: #fff; }
+.pv-btn-secondary { background: transparent; color: var(--pv-text); border-color: var(--pv-border2); }
+
+/* ── Select2 ── */
+.select2-container { width: 100% !important; }
+
+.select2-container .select2-selection--single {
+  min-height: var(--pv-control-h) !important;
+  border: 1px solid var(--pv-border2) !important;
+  border-radius: var(--pv-radius-sm) !important;
+  background: var(--pv-surface) !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  width: 100%;
+  padding-left: .9rem !important;
+  padding-right: 2rem !important;
+  color: var(--pv-text) !important;
+  font-size: .9rem;
+  line-height: 2.7rem !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 2.7rem !important;
+  right: .5rem !important;
+}
+
+.select2-container--open .select2-selection--single {
+  border-color: var(--pv-primary) !important;
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30)) !important;
+}
+
+.select2-dropdown {
+  z-index: 9999 !important;
+  overflow: hidden !important;
+  border: 1px solid var(--pv-border2) !important;
+  border-radius: var(--pv-radius-md) !important;
+  background: var(--pv-surface) !important;
+  box-shadow: var(--pv-shadow-md);
+}
+
+.select2-results__option { color: var(--pv-text) !important; }
+.select2-results__option--highlighted { background: var(--pv-primary) !important; color: #fff !important; }
+
+@media (max-width: 48rem) {
+  .pv-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pv-evidence-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 30rem) {
+  .pv-strip { grid-template-columns: 1fr; }
+  .pv-radio-grid { grid-template-columns: 1fr; }
+  .pv-sticky-footer { flex-direction: column-reverse; }
+  .pv-sticky-footer .pv-btn-primary,
+  .pv-sticky-footer .pv-btn-secondary { width: 100%; }
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
-
-<style>
-  :root {
-    --bg-app: #f0f2f5;
-    --bg-card: #ffffff;
-    --primary: #0078d4;
-    --primary-hover: #106ebe;
-    --text-main: #242424;
-    --text-sub: #616161;
-    --border: #e0e0e0;
-    --radius: 8px;
-
-    --success: #107c10;
-    --success-bg: #dff6dd;
-    --danger: #c50f1f;
-    --danger-bg: #fde7e9;
-    --neutral: #f3f2f1;
-
-    --shadow: 0 2px 8px rgba(0,0,0,0.08);
-  }
-
-  * {
-    box-sizing: border-box;
-  }
-
-  html {
-    -webkit-text-size-adjust: 100%;
-  }
-
-  body {
-    background-color: var(--bg-app);
-    color: var(--text-main);
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    margin: 0;
-  }
-
-  img,
-  video,
-  iframe,
-  canvas,
-  svg {
-    max-width: 100%;
-    height: auto;
-    display: block;
-  }
-
-  .page-container {
-    max-width: 860px;
-    margin: 0 auto;
-    padding: 24px 20px 110px;
-  }
-
-  /* HEADER */
-  .exec-header {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 24px;
-    margin-bottom: 24px;
-    box-shadow: var(--shadow);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 16px;
-  }
-
-  .header-info {
-    min-width: 0;
-    flex: 1 1 420px;
-  }
-
-  .header-info h1 {
-    margin: 0;
-    font-size: 1.4rem;
-    font-weight: 600;
-    color: var(--text-main);
-    line-height: 1.3;
-    word-break: break-word;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .header-sub {
-    color: var(--text-sub);
-    font-size: 0.92rem;
-    margin-top: 8px;
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-    line-height: 1.4;
-  }
-
-  .badge-info {
-    background: #f0f6ff;
-    color: var(--primary);
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-weight: 600;
-    font-size: 0.8rem;
-    display: inline-flex;
-    align-items: center;
-  }
-
-  .header-date {
-    font-size: 0.92rem;
-    color: var(--text-sub);
-    flex: 0 1 auto;
-    white-space: nowrap;
-  }
-
-  /* QUESTION CARDS */
-  .question-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 20px 24px;
-    margin-bottom: 16px;
-    transition: border-color 0.2s, box-shadow 0.2s;
-  }
-
-  .question-card:focus-within {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(0,120,212,0.1);
-  }
-
-  .q-header {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 16px;
-    align-items: flex-start;
-  }
-
-  .q-number {
-    background: var(--neutral);
-    color: var(--text-sub);
-    width: 30px;
-    height: 30px;
-    min-width: 30px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 0.85rem;
-    flex-shrink: 0;
-  }
-
-  .q-text {
-    font-weight: 600;
-    font-size: 1rem;
-    color: var(--text-main);
-    line-height: 1.45;
-    flex: 1;
-    min-width: 0;
-    word-break: break-word;
-  }
-
-  .required-mark {
-    color: var(--danger);
-    margin-left: 4px;
-    font-size: 1.05rem;
-    vertical-align: middle;
-  }
-
-  .q-input {
-    min-width: 0;
-  }
-
-  /* INPUTS */
-  .form-control {
-    width: 100%;
-    min-height: 42px;
-    padding: 10px 12px;
-    border: 1px solid #8a8886;
-    border-radius: 4px;
-    font-size: 0.95rem;
-    color: var(--text-main);
-    outline: none;
-    transition: all 0.2s;
-    background: #fff;
-  }
-
-  .form-control:focus {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(0,120,212,0.08);
-  }
-
-  textarea.form-control {
-    height: auto;
-    min-height: 120px;
-    resize: vertical;
-    font-family: inherit;
-  }
-
-  /* RADIO PILLS */
-  .radio-group {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .radio-pill {
-    position: relative;
-    cursor: pointer;
-    flex: 1 1 220px;
-    min-width: 180px;
-  }
-
-  .radio-pill input {
-    position: absolute;
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-
-  .pill-content {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-height: 46px;
-    padding: 10px 14px;
-    border: 1px solid #8a8886;
-    border-radius: 6px;
-    background: #fff;
-    color: var(--text-main);
-    font-weight: 600;
-    text-align: center;
-    transition: all 0.2s;
-    line-height: 1.35;
-  }
-
-  .pill-content:hover {
-    background: var(--neutral);
-  }
-
-  .radio-pill input:checked + .pill-content {
-    border-color: transparent;
-    color: #fff;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-  }
-
-  .radio-pill.sim input:checked + .pill-content {
-    background: var(--success);
-  }
-
-  .radio-pill.nao input:checked + .pill-content {
-    background: var(--danger);
-  }
-
-  /* EVIDÊNCIAS */
-  .evidence-section {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 20px;
-    margin-top: 24px;
-  }
-
-  .upload-wrapper {
-    min-width: 0;
-  }
-
-  .upload-label {
-    font-size: 0.92rem;
-    font-weight: 600;
-    margin-bottom: 8px;
-    display: block;
-    color: var(--text-main);
-  }
-
-  .upload-box {
-    border: 2px dashed #c7c7c7;
-    border-radius: 8px;
-    background: #fafafa;
-    min-height: 180px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.2s;
-    text-align: center;
-    padding: 16px;
-  }
-
-  .upload-box:hover {
-    border-color: var(--primary);
-    background: #f0f6ff;
-  }
-
-  .upload-box i {
-    font-size: 2rem;
-    color: #a0a0a0;
-    margin-bottom: 8px;
-  }
-
-  .upload-box span {
-    font-size: 0.92rem;
-    color: var(--text-sub);
-    font-weight: 500;
-    line-height: 1.35;
-  }
-
-  .upload-box img {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: none;
-  }
-
-  /* OBS */
-  .obs-card {
-    margin-top: 24px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 20px;
-  }
-
-  /* EMPTY */
-  .empty-state {
-    padding: 40px 20px;
-    text-align: center;
-    color: #666;
-    background: #fff;
-    border-radius: 8px;
-    border: 1px dashed var(--border);
-  }
-
-  .empty-state i {
-    font-size: 32px;
-    color: #ccc;
-    margin-bottom: 10px;
-  }
-
-  .empty-state p {
-    margin: 0;
-  }
-
-  /* FOOTER */
-  .sticky-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: rgba(255,255,255,0.98);
-    backdrop-filter: blur(8px);
-    padding: 14px 20px;
-    border-top: 1px solid var(--border);
-    box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-    z-index: 100;
-  }
-
-  .btn {
-    min-height: 42px;
-    padding: 10px 22px;
-    border-radius: 4px;
-    font-weight: 600;
-    font-size: 0.95rem;
-    cursor: pointer;
-    border: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    text-decoration: none;
-    transition: all 0.2s;
-    white-space: nowrap;
-  }
-
-  .btn-primary {
-    background: var(--primary);
-    color: #fff;
-  }
-
-  .btn-primary:hover {
-    background: var(--primary-hover);
-  }
-
-  .btn-light {
-    background: #fff;
-    border: 1px solid #8a8886;
-    color: var(--text-main);
-  }
-
-  .btn-light:hover {
-    background: #f3f2f1;
-  }
-
-  /* SELECT2 */
-  .select2-container {
-    width: 100% !important;
-  }
-
-  .select2-container--default .select2-selection--single {
-    height: 42px;
-    border: 1px solid #8a8886;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-  }
-
-  .select2-container--default .select2-selection--single .select2-selection__rendered {
-    padding-left: 12px;
-    padding-right: 32px;
-    color: var(--text-main);
-    line-height: 40px;
-  }
-
-  .select2-container--default .select2-selection--single .select2-selection__arrow {
-    height: 40px;
-    top: 0;
-    right: 6px;
-  }
-
-  .select2-dropdown {
-    border-color: #8a8886;
-  }
-
-  /* TABLET */
-  @media (max-width: 768px) {
-    .page-container {
-      padding: 16px 14px 120px;
-    }
-
-    .exec-header {
-      padding: 18px;
-      align-items: flex-start;
-    }
-
-    .header-info h1 {
-      font-size: 1.2rem;
-    }
-
-    .header-sub {
-      font-size: 0.88rem;
-    }
-
-    .header-date {
-      width: 100%;
-      white-space: normal;
-    }
-
-    .question-card {
-      padding: 16px;
-    }
-
-    .q-text {
-      font-size: 0.95rem;
-    }
-
-    .evidence-section {
-      grid-template-columns: 1fr;
-      gap: 16px;
-    }
-
-    .obs-card {
-      padding: 16px;
-    }
-
-    .sticky-footer {
-      padding: 12px 14px;
-    }
-
-    .btn {
-      padding: 10px 18px;
-      font-size: 0.92rem;
-    }
-  }
-
-  /* MOBILE */
-  @media (max-width: 520px) {
-    .page-container {
-      padding: 12px 12px 138px;
-    }
-
-    .exec-header {
-      padding: 16px;
-      gap: 12px;
-    }
-
-    .header-info h1 {
-      font-size: 1.08rem;
-      gap: 8px;
-    }
-
-    .header-sub {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 8px;
-      font-size: 0.84rem;
-    }
-
-    .badge-info {
-      font-size: 0.75rem;
-    }
-
-    .question-card {
-      padding: 14px;
-      margin-bottom: 12px;
-    }
-
-    .q-header {
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-
-    .q-number {
-      width: 28px;
-      height: 28px;
-      min-width: 28px;
-      font-size: 0.8rem;
-    }
-
-    .q-text {
-      font-size: 0.92rem;
-      line-height: 1.4;
-    }
-
-    .form-control {
-      font-size: 0.92rem;
-      min-height: 40px;
-    }
-
-    .radio-group {
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .radio-pill {
-      min-width: 100%;
-      flex: 1 1 100%;
-    }
-
-    .pill-content {
-      justify-content: flex-start;
-      text-align: left;
-      padding: 12px 14px;
-      min-height: 44px;
-    }
-
-    .upload-box {
-      min-height: 160px;
-    }
-
-    .upload-box i {
-      font-size: 1.7rem;
-    }
-
-    .upload-box span {
-      font-size: 0.86rem;
-    }
-
-    .sticky-footer {
-      flex-direction: column-reverse;
-      align-items: stretch;
-      gap: 10px;
-      padding: 12px;
-    }
-
-    .sticky-footer .btn,
-    .sticky-footer button {
-      width: 100%;
-    }
-  }
-</style>
-
-<div class="page-container">
-  <div class="exec-header">
-    <div class="header-info">
-      <h1><i class="fa fa-clipboard-check" style="color:var(--primary)"></i> Executar Preventiva</h1>
-      <div class="header-sub">
-        <span>Ativo: <strong>{{ preventiva.equipamento.nome }}</strong></span>
-        <span class="badge-info">{{ preventiva.checklist_modelo.nome }}</span>
-      </div>
+<div class="pv-exec-page">
+
+  <section class="pv-strip" aria-label="Informações do equipamento">
+    <div class="pv-mini">
+      <div class="pv-mini-label">Nº Série</div>
+      <span class="pv-mini-val">{{ preventiva.equipamento.numero_serie|default:"—" }}</span>
     </div>
-    <div class="header-date">
-      Data: <strong>{% now "d/m/Y" %}</strong>
+    <div class="pv-mini">
+      <div class="pv-mini-label">Localidade</div>
+      <span class="pv-mini-val">{{ preventiva.equipamento.localidade.local|default:"—" }}</span>
     </div>
-  </div>
+    <div class="pv-mini">
+      <div class="pv-mini-label">Última execução</div>
+      <span class="pv-mini-val">{{ preventiva.data_ultima|date:"d/m/Y"|default:"—" }}</span>
+    </div>
+    <div class="pv-mini">
+      <div class="pv-mini-label">Próxima (atual)</div>
+      <span class="pv-mini-val">{{ preventiva.proxima_calc|date:"d/m/Y"|default:preventiva.data_proxima|date:"d/m/Y"|default:"—" }}</span>
+    </div>
+  </section>
 
   <form method="post" enctype="multipart/form-data" id="form-exec">
     {% csrf_token %}
 
-    <div id="questions-list">
+    <div style="display:grid;gap:1rem;">
       {% for p in perguntas %}
-      <div class="question-card">
-        <div class="q-header">
-          <div class="q-number">{{ forloop.counter }}</div>
-          <div class="q-text">
-            {{ p.texto_pergunta }}
-            {% if p.obrigatorio == 'sim' %}<span class="required-mark">*</span>{% endif %}
+        <section class="pv-question-card" aria-label="Pergunta {{ forloop.counter }}">
+          <div class="pv-q-head">
+            <div class="pv-q-num" aria-hidden="true">{{ forloop.counter }}</div>
+            <div class="pv-q-text">
+              {{ p.texto_pergunta }}
+              {% if p.obrigatorio == 'sim' %}<span class="pv-required" aria-label="Obrigatório">*</span>{% endif %}
+            </div>
           </div>
-        </div>
 
-        <div class="q-input">
           {% with t=p.tipo_resposta|lower %}
-            {% if t == "sim_nao" or t == "booleano" or t == "sn" %}
-              <div class="radio-group">
-                <label class="radio-pill sim">
+            {% if t == "booleano" or t == "sim_nao" or t == "sn" %}
+              <div class="pv-radio-grid">
+                <label class="pv-radio sim">
                   <input type="radio" name="r_{{ p.id }}" value="sim" {% if p.obrigatorio == 'sim' %}required{% endif %}>
-                  <div class="pill-content"><i class="fa fa-check"></i> Sim (Conforme)</div>
+                  <span class="pv-radio-face"><i class="fa fa-check" aria-hidden="true"></i> Conforme</span>
                 </label>
-
-                <label class="radio-pill nao">
+                <label class="pv-radio nao">
                   <input type="radio" name="r_{{ p.id }}" value="nao">
-                  <div class="pill-content"><i class="fa fa-xmark"></i> Não (Irregular)</div>
+                  <span class="pv-radio-face"><i class="fa fa-xmark" aria-hidden="true"></i> Não conforme</span>
                 </label>
               </div>
-
             {% elif t == "numero" or t == "inteiro" or t == "decimal" %}
-              <input type="number" step="any" name="r_{{ p.id }}" class="form-control" placeholder="Informe o valor medido..." {% if p.obrigatorio == 'sim' %}required{% endif %}>
-
+              <input type="text" inputmode="decimal" name="r_{{ p.id }}"
+                     placeholder="Informe o valor medido..."
+                     {% if p.obrigatorio == 'sim' %}required{% endif %}>
             {% elif t == "escolha" or t == "opcao" or t == "choice" %}
-              <select name="r_{{ p.id }}" class="form-control select2" {% if p.obrigatorio == 'sim' %}required{% endif %}>
+              <select name="r_{{ p.id }}" class="pv-control select2-choice" {% if p.obrigatorio == 'sim' %}required{% endif %}>
                 <option value="">Selecione uma opção...</option>
                 {% for opt in p.opcoes_list %}
                   <option value="{{ opt }}">{{ opt }}</option>
                 {% endfor %}
               </select>
-
             {% else %}
-              <input type="text" name="r_{{ p.id }}" class="form-control" placeholder="Digite sua resposta..." {% if p.obrigatorio == 'sim' %}required{% endif %}>
+              <input type="text" name="r_{{ p.id }}"
+                     placeholder="Digite sua resposta..."
+                     {% if p.obrigatorio == 'sim' %}required{% endif %}>
             {% endif %}
           {% endwith %}
-        </div>
-      </div>
+        </section>
       {% empty %}
-      <div class="empty-state">
-        <i class="fa fa-list-check"></i>
-        <p>Este modelo não possui perguntas cadastradas.</p>
-      </div>
+        <section class="pv-question-card">
+          <div class="pv-exec-empty">
+            <i class="fa fa-list-check" aria-hidden="true" style="font-size:2rem;opacity:.3;display:block;margin-bottom:.5rem;"></i>
+            Este checklist ainda não possui perguntas cadastradas.
+          </div>
+        </section>
       {% endfor %}
     </div>
 
-    <div class="evidence-section">
-      <div class="upload-wrapper">
-        <label class="upload-label">Foto Antes (Opcional)</label>
-        <label class="upload-box" id="drop-antes">
-          <input type="file" name="foto_antes" accept="image/*" hidden onchange="previewImage(this, 'img-antes')">
-          <i class="fa fa-camera"></i>
-          <span>Toque para adicionar foto</span>
-          <img id="img-antes" alt="Preview foto antes">
-        </label>
+    <section class="pv-evidence-card" style="margin-top:1rem;" aria-label="Evidências fotográficas">
+      <div class="pv-evidence-grid">
+        <div>
+          <span class="pv-evidence-title">Foto Antes <span style="font-weight:400;text-transform:none">(opcional)</span></span>
+          <label class="pv-upload-box">
+            <input type="file" name="foto_antes" accept="image/*" hidden
+                   onchange="pvPreviewImage(this, 'img-antes')">
+            <span class="pv-upload-placeholder">
+              <i class="fa fa-camera" aria-hidden="true"></i>
+              <span>Adicionar evidência inicial</span>
+            </span>
+            <img id="img-antes" alt="Preview foto antes">
+          </label>
+        </div>
+        <div>
+          <span class="pv-evidence-title">Foto Depois <span style="font-weight:400;text-transform:none">(opcional)</span></span>
+          <label class="pv-upload-box">
+            <input type="file" name="foto_depois" accept="image/*" hidden
+                   onchange="pvPreviewImage(this, 'img-depois')">
+            <span class="pv-upload-placeholder">
+              <i class="fa fa-camera-retro" aria-hidden="true"></i>
+              <span>Adicionar evidência final</span>
+            </span>
+            <img id="img-depois" alt="Preview foto depois">
+          </label>
+        </div>
       </div>
+    </section>
 
-      <div class="upload-wrapper">
-        <label class="upload-label">Foto Depois (Opcional)</label>
-        <label class="upload-box" id="drop-depois">
-          <input type="file" name="foto_depois" accept="image/*" hidden onchange="previewImage(this, 'img-depois')">
-          <i class="fa fa-camera"></i>
-          <span>Toque para adicionar foto</span>
-          <img id="img-depois" alt="Preview foto depois">
-        </label>
-      </div>
-    </div>
+    <section class="pv-obs-card" style="margin-top:1rem;" aria-label="Observações técnicas">
+      <span class="pv-obs-title">Observações gerais</span>
+      <textarea name="observacao"
+                placeholder="Registre anomalias, serviços executados, peças trocadas, condição do ativo ou recomendações técnicas..."></textarea>
+    </section>
 
-    <div class="obs-card">
-      <label class="upload-label">Observações Gerais</label>
-      <textarea name="observacao" class="form-control" placeholder="Descreva anomalias encontradas, peças trocadas ou detalhes relevantes..."></textarea>
-    </div>
-
-    <div class="sticky-footer">
-      <a href="javascript:history.back()" class="btn btn-light">Cancelar</a>
-      <button type="submit" class="btn btn-primary" id="btnSave">
-        <i class="fa fa-save"></i> Finalizar Execução
+    <div class="pv-sticky-footer">
+      <a href="javascript:history.back()" class="pv-btn-secondary">
+        <i class="fa fa-arrow-left" aria-hidden="true"></i> Cancelar
+      </a>
+      <button type="submit" class="pv-btn-primary" id="btnSave">
+        <i class="fa fa-save" aria-hidden="true"></i> Finalizar execução
       </button>
     </div>
   </form>
-</div>
 
+</div>
+{% endblock %}
+
+{% block extra_js %}
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
 <script>
-$(document).ready(function() {
-    $('select.form-control').select2({
-        width: '100%',
-        minimumResultsForSearch: 10
-    });
-});
+  $(document).ready(function() {
+    $('select.select2-choice').select2({ width: '100%', minimumResultsForSearch: 8 });
+  });
 
-function previewImage(input, imgId) {
+  function pvPreviewImage(input, imgId) {
     if (input.files && input.files[0]) {
-        var reader = new FileReader();
-        reader.onload = function(e) {
-            var img = document.getElementById(imgId);
-            img.src = e.target.result;
-            img.style.display = 'block';
-            img.parentElement.querySelectorAll('i, span').forEach(function(el) {
-                el.style.display = 'none';
-            });
-        }
-        reader.readAsDataURL(input.files[0]);
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = document.getElementById(imgId);
+        img.src = e.target.result;
+        img.style.display = 'block';
+        const placeholder = img.parentElement.querySelector('.pv-upload-placeholder');
+        if (placeholder) placeholder.style.display = 'none';
+      };
+      reader.readAsDataURL(input.files[0]);
     }
-}
+  }
 
-document.getElementById('form-exec').addEventListener('submit', function() {
-    var btn = document.getElementById('btnSave');
+  document.getElementById('form-exec').addEventListener('submit', function() {
+    const btn = document.getElementById('btnSave');
     btn.disabled = true;
     btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Salvando...';
-});
+    btn.style.opacity = '.85';
+  });
 </script>
 {% endblock %}

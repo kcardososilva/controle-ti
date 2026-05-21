@@ -1,0 +1,604 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Central de Inteligência do Sistema{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+<style>
+:where(.intel-page) {
+    --in-primary: var(--primary-accent, #2563eb);
+    --in-primary-hover: var(--primary-hover, #1d4ed8);
+    --in-surface: var(--bg-glass-strong, rgba(255,255,255,.78));
+    --in-surface-soft: color-mix(in srgb, var(--bg-glass, rgba(255,255,255,.58)) 84%, var(--in-primary) 3%);
+    --in-text: var(--text-color, #0f172a);
+    --in-muted: var(--text-muted, #64748b);
+    --in-soft: var(--text-soft, #94a3b8);
+    --in-border: var(--border-glass, rgba(226,232,240,.9));
+    --in-border-subtle: var(--border-subtle, rgba(15,23,42,.10));
+    --in-success: var(--success, #10b981);
+    --in-success-bg: var(--success-bg, rgba(16,185,129,.12));
+    --in-warning: var(--warning, #f59e0b);
+    --in-warning-bg: var(--warning-bg, rgba(245,158,11,.14));
+    --in-danger: var(--danger, #ef4444);
+    --in-danger-bg: var(--danger-bg, rgba(239,68,68,.12));
+    --in-info: var(--info, #0ea5e9);
+    --in-info-bg: var(--info-bg, rgba(14,165,233,.12));
+    --in-radius-sm: .75rem;
+    --in-radius-md: 1rem;
+    --in-radius-lg: 1.25rem;
+    --in-radius-xl: 1.5rem;
+    --in-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.08));
+    --in-shadow-md: var(--shadow-md, 0 16px 40px rgba(15,23,42,.12));
+    --in-control-h: 2.75rem;
+}
+
+.intel-page,
+.intel-page * {
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.intel-page {
+    width: 100%;
+    max-width: 1580px;
+    margin: 0 auto;
+    padding: clamp(.625rem, 2vw, 1.5rem);
+    color: var(--in-text);
+}
+
+.intel-shell {
+    display: grid;
+    gap: 1rem;
+}
+
+.intel-card,
+.intel-hero,
+.kpi-card {
+    border: 1px solid var(--in-border);
+    border-radius: var(--in-radius-xl);
+    background:
+        linear-gradient(135deg, rgba(255,255,255,.14), transparent 44%),
+        var(--in-surface);
+    box-shadow: var(--in-shadow-sm);
+    backdrop-filter: blur(var(--blur-card, .85rem)) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--blur-card, .85rem)) saturate(140%);
+}
+
+.intel-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+    padding: clamp(1rem, 2.5vw, 1.5rem);
+}
+
+.hero-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: .875rem;
+    align-items: center;
+}
+
+.hero-icon {
+    width: clamp(3.25rem, 9vw, 4.25rem);
+    height: clamp(3.25rem, 9vw, 4.25rem);
+    display: grid;
+    place-items: center;
+    border-radius: 1.25rem;
+    background: color-mix(in srgb, var(--in-primary) 14%, transparent);
+    color: var(--in-primary);
+    border: 1px solid color-mix(in srgb, var(--in-primary) 24%, transparent);
+    font-size: 1.5rem;
+}
+
+.hero-title h1 {
+    margin: 0;
+    color: var(--in-text);
+    font-size: clamp(1.25rem, 4vw, 2rem);
+    font-weight: 900;
+    line-height: 1.1;
+}
+
+.hero-title p {
+    margin: .45rem 0 0;
+    color: var(--in-muted);
+    line-height: 1.5;
+    font-size: .92rem;
+}
+
+.hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .625rem;
+}
+
+.in-btn {
+    min-height: var(--in-control-h);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    padding: 0 1rem;
+    border-radius: var(--in-radius-sm);
+    border: 1px solid transparent;
+    text-decoration: none;
+    font-weight: 850;
+    font-size: .9rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.in-btn-primary {
+    background: var(--in-primary);
+    color: #fff;
+}
+
+.in-btn-outline {
+    background: var(--in-surface);
+    color: var(--in-muted);
+    border-color: var(--in-border-subtle);
+}
+
+.in-btn-outline:hover {
+    color: var(--in-text);
+    border-color: color-mix(in srgb, var(--in-primary) 22%, var(--in-border-subtle));
+}
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.kpi-card {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: .875rem;
+    padding: 1rem;
+}
+
+.kpi-card::after {
+    content: "";
+    position: absolute;
+    top: -1.5rem;
+    right: -1.5rem;
+    width: 5rem;
+    height: 5rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--kpi-color, var(--in-primary)) 14%, transparent);
+}
+
+.kpi-icon {
+    width: 3rem;
+    height: 3rem;
+    flex: 0 0 3rem;
+    display: grid;
+    place-items: center;
+    border-radius: var(--in-radius-md);
+    background: color-mix(in srgb, var(--kpi-color, var(--in-primary)) 13%, transparent);
+    color: var(--kpi-color, var(--in-primary));
+    border: 1px solid color-mix(in srgb, var(--kpi-color, var(--in-primary)) 22%, transparent);
+    z-index: 1;
+}
+
+.kpi-body {
+    z-index: 1;
+}
+
+.kpi-label {
+    display: block;
+    color: var(--in-muted);
+    font-size: .72rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+
+.kpi-value {
+    display: block;
+    margin-top: .25rem;
+    color: var(--in-text);
+    font-size: clamp(1.15rem, 3vw, 1.55rem);
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.kpi-sub {
+    display: block;
+    margin-top: .2rem;
+    color: var(--in-muted);
+    font-size: .74rem;
+}
+
+.filter-card {
+    padding: 1rem;
+}
+
+.filter-grid {
+    display: grid;
+    grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(150px, .6fr)) auto;
+    gap: .875rem;
+    align-items: end;
+}
+
+.form-group {
+    display: grid;
+    gap: .4rem;
+}
+
+.form-group label {
+    color: var(--in-muted);
+    font-size: .76rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.in-control {
+    width: 100%;
+    min-height: var(--in-control-h);
+    padding: .68rem .8rem;
+    border-radius: var(--in-radius-sm);
+    border: 1px solid var(--in-border-subtle);
+    background: color-mix(in srgb, var(--in-surface) 86%, transparent);
+    color: var(--in-text);
+    outline: none;
+}
+
+.in-control:focus {
+    border-color: var(--in-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--in-primary) 18%, transparent);
+}
+
+.search-panel {
+    position: relative;
+}
+
+.global-results {
+    position: absolute;
+    z-index: 50;
+    top: calc(100% + .5rem);
+    left: 0;
+    right: 0;
+    display: none;
+    border: 1px solid var(--in-border);
+    border-radius: var(--in-radius-md);
+    background: var(--in-surface);
+    box-shadow: var(--in-shadow-md);
+    overflow: hidden;
+}
+
+.global-results.active {
+    display: block;
+}
+
+.global-result {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: .65rem;
+    align-items: center;
+    padding: .8rem;
+    text-decoration: none;
+    color: var(--in-text);
+    border-bottom: 1px solid var(--in-border-subtle);
+}
+
+.global-result:last-child {
+    border-bottom: 0;
+}
+
+.global-result:hover {
+    background: color-mix(in srgb, var(--in-primary) 8%, transparent);
+}
+
+.global-result i {
+    color: var(--in-primary);
+}
+
+.global-title {
+    font-weight: 900;
+    font-size: .86rem;
+}
+
+.global-sub {
+    margin-top: .15rem;
+    color: var(--in-muted);
+    font-size: .75rem;
+}
+
+.table-loader {
+    display: none;
+    padding: .85rem 1rem;
+    color: var(--in-primary);
+    font-weight: 900;
+    border-bottom: 1px solid var(--in-border-subtle);
+}
+
+.table-loader.active {
+    display: block;
+}
+
+@media (max-width: 1280px) {
+    .kpi-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .filter-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 820px) {
+    .intel-page {
+        padding: .5rem;
+    }
+
+    .intel-hero {
+        grid-template-columns: 1fr;
+    }
+
+    .hero-main {
+        grid-template-columns: 1fr;
+    }
+
+    .hero-actions,
+    .filter-grid {
+        grid-template-columns: 1fr;
+        display: grid;
+    }
+
+    .in-btn {
+        width: 100%;
+    }
+
+    .kpi-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<div class="intel-page">
+    <div class="intel-shell">
+
+        <section class="intel-hero">
+            <div class="hero-main">
+                <div class="hero-icon">
+                    <i class="fa fa-brain"></i>
+                </div>
+
+                <div class="hero-title">
+                    <h1>Central de Inteligência do Sistema</h1>
+                    <p>
+                        Auditoria inteligente de duplicidades, divergências, pendências, saldos, licenças,
+                        movimentações, preventivas e qualidade cadastral.
+                    </p>
+                </div>
+            </div>
+
+            <div class="hero-actions">
+                <a href="{% url 'sistema_inteligencia_export_csv' %}?q={{ filters.q }}&severity={{ filters.severity }}&scope={{ filters.scope }}&type={{ filters.type }}" class="in-btn in-btn-outline">
+                    <i class="fa fa-file-csv"></i>
+                    Exportar CSV
+                </a>
+
+                <a href="{% url 'sistema_inteligencia_dashboard' %}" class="in-btn in-btn-primary">
+                    <i class="fa fa-rotate-right"></i>
+                    Atualizar
+                </a>
+            </div>
+        </section>
+
+        <section id="kpiWrap" class="kpi-grid">
+            {% include "front/inteligencia/_sistema_inteligencia_kpis.html" %}
+        </section>
+
+        <section class="intel-card filter-card">
+            <form id="intelFilterForm" method="get">
+                <div class="filter-grid">
+                    <div class="form-group search-panel">
+                        <label>Busca inteligente</label>
+                        <input
+                            type="text"
+                            class="in-control"
+                            name="q"
+                            id="intelSearch"
+                            value="{{ filters.q }}"
+                            autocomplete="off"
+                            placeholder="Buscar por nome, matrícula, série, NF, licença, fornecedor...">
+                        <div id="globalResults" class="global-results"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Severidade</label>
+                        <select name="severity" class="in-control">
+                            {% for value, label in severity_options %}
+                                <option value="{{ value }}" {% if filters.severity == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Módulo</label>
+                        <select name="scope" class="in-control">
+                            {% for value, label in scope_options %}
+                                <option value="{{ value }}" {% if filters.scope == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Tipo</label>
+                        <select name="type" class="in-control">
+                            {% for value, label in type_options %}
+                                <option value="{{ value }}" {% if filters.type == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <button type="submit" class="in-btn in-btn-primary">
+                            <i class="fa fa-filter"></i>
+                            Filtrar
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </section>
+
+        <section class="intel-card">
+            <div id="tableLoader" class="table-loader">
+                <i class="fa fa-circle-notch fa-spin"></i>
+                Analisando dados...
+            </div>
+
+            <div id="issuesWrap">
+                {% include "front/inteligencia/_sistema_inteligencia_issues.html" %}
+            </div>
+        </section>
+
+    </div>
+</div>
+
+<script>
+(function() {
+    const form = document.getElementById('intelFilterForm');
+    const search = document.getElementById('intelSearch');
+    const issuesWrap = document.getElementById('issuesWrap');
+    const kpiWrap = document.getElementById('kpiWrap');
+    const loader = document.getElementById('tableLoader');
+    const globalResults = document.getElementById('globalResults');
+
+    let filterTimer = null;
+    let searchTimer = null;
+    let currentController = null;
+
+    function paramsFromForm(extra = {}) {
+        const params = new URLSearchParams(new FormData(form));
+
+        Object.entries(extra).forEach(([key, value]) => {
+            if (value === null || value === undefined || value === '') {
+                params.delete(key);
+            } else {
+                params.set(key, value);
+            }
+        });
+
+        params.set('partial', '1');
+
+        return params;
+    }
+
+    async function refreshDashboard() {
+        if (currentController) currentController.abort();
+
+        currentController = new AbortController();
+
+        loader.classList.add('active');
+        issuesWrap.style.opacity = '.55';
+
+        try {
+            const params = paramsFromForm();
+            const url = `${window.location.pathname}?${params.toString()}`;
+
+            const response = await fetch(url, {
+                headers: {'X-Requested-With': 'XMLHttpRequest'},
+                signal: currentController.signal
+            });
+
+            const data = await response.json();
+
+            if (!data.ok) throw new Error('Resposta inválida.');
+
+            issuesWrap.innerHTML = data.html;
+            kpiWrap.innerHTML = data.kpis;
+
+            params.delete('partial');
+            const finalQuery = params.toString();
+            window.history.replaceState({}, '', finalQuery ? `${window.location.pathname}?${finalQuery}` : window.location.pathname);
+
+        } catch (error) {
+            if (error.name !== 'AbortError') console.error(error);
+        } finally {
+            loader.classList.remove('active');
+            issuesWrap.style.opacity = '1';
+        }
+    }
+
+    async function globalSearch(query) {
+        if (!query || query.length < 2) {
+            globalResults.classList.remove('active');
+            globalResults.innerHTML = '';
+            return;
+        }
+
+        try {
+            const url = `{% url 'sistema_inteligencia_busca_global' %}?q=${encodeURIComponent(query)}`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (!data.ok || !data.results.length) {
+                globalResults.classList.remove('active');
+                globalResults.innerHTML = '';
+                return;
+            }
+
+            globalResults.innerHTML = data.results.map(item => {
+                const href = item.url || '#';
+                return `
+                    <a class="global-result" href="${href}">
+                        <i class="fa ${item.icon}"></i>
+                        <div>
+                            <div class="global-title">${escapeHtml(item.title)}</div>
+                            <div class="global-sub">${escapeHtml(item.scope)} · ${escapeHtml(item.subtitle)}</div>
+                        </div>
+                    </a>
+                `;
+            }).join('');
+
+            globalResults.classList.add('active');
+
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    form.addEventListener('submit', function(event) {
+        event.preventDefault();
+        refreshDashboard();
+    });
+
+    form.querySelectorAll('select').forEach(select => {
+        select.addEventListener('change', refreshDashboard);
+    });
+
+    search.addEventListener('input', function() {
+        clearTimeout(filterTimer);
+        clearTimeout(searchTimer);
+
+        filterTimer = setTimeout(refreshDashboard, 650);
+        searchTimer = setTimeout(() => globalSearch(search.value.trim()), 300);
+    });
+
+    document.addEventListener('click', function(event) {
+        if (!event.target.closest('.search-panel')) {
+            globalResults.classList.remove('active');
+        }
+    });
+})();
+</script>
+{% endblock %}

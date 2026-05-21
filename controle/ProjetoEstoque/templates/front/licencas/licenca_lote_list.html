@@ -1,211 +1,825 @@
 {% extends "base.html" %}
+
 {% block title %}Gestão de Lotes{% endblock %}
+{% block page_title %}Gestão de Lotes{% endblock %}
+{% block page_subtitle %}Entradas, saldos e rastreabilidade dos lotes de licenças{% endblock %}
+
+{% block extra_css %}
+<style>
+
+:where(.lic-page, .lic-modal, .select2-container, .select2-dropdown) {
+  --lic-brand: var(--brand, #0071e3);
+  --lic-brand-hover: var(--brand-hover, #0077ed);
+  --lic-brand-soft: var(--brand-soft, rgba(0, 113, 227, .10));
+  --lic-surface: var(--bg-elevated, #ffffff);
+  --lic-surface-2: var(--bg-elevated-2, #ffffff);
+  --lic-fill: var(--bg-fill-tertiary, rgba(120, 120, 128, .08));
+  --lic-fill-2: var(--bg-fill-secondary, rgba(120, 120, 128, .12));
+  --lic-text: var(--text-primary, #1d1d1f);
+  --lic-muted: var(--text-tertiary, #6e6e73);
+  --lic-soft: var(--text-quaternary, #86868b);
+  --lic-border: var(--separator-hairline, rgba(0, 0, 0, .06));
+  --lic-border-strong: var(--separator-non-opaque, rgba(0, 0, 0, .10));
+  --lic-success: var(--success, #34c759);
+  --lic-success-bg: var(--success-soft, rgba(52, 199, 89, .12));
+  --lic-warning: var(--warning, #ff9500);
+  --lic-warning-bg: var(--warning-soft, rgba(255, 149, 0, .12));
+  --lic-danger: var(--danger, #ff3b30);
+  --lic-danger-bg: var(--danger-soft, rgba(255, 59, 48, .10));
+  --lic-info: var(--info, #5ac8fa);
+  --lic-info-bg: var(--info-soft, rgba(90, 200, 250, .12));
+  --lic-radius-sm: var(--radius-sm, 10px);
+  --lic-radius-md: var(--radius-md, 14px);
+  --lic-radius-lg: var(--radius-lg, 18px);
+  --lic-radius-xl: var(--radius-xl, 22px);
+  --lic-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04));
+  --lic-shadow-md: var(--shadow-md, 0 4px 12px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04));
+  --lic-control-h: 42px;
+  --lic-transition: 180ms var(--ease-apple, ease);
+}
+
+.lic-page,
+.lic-page * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.lic-page {
+  width: min(100%, 1500px);
+  margin-inline: auto;
+  color: var(--lic-text);
+}
+
+.lic-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.lic-hero,
+.lic-card,
+.lic-panel,
+.lic-kpi-card {
+  background: var(--lic-surface);
+  border: 1px solid var(--lic-border);
+  border-radius: var(--lic-radius-xl);
+  box-shadow: var(--lic-shadow-sm);
+}
+
+.lic-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: clamp(18px, 3vw, 28px);
+}
+
+.lic-hero-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.lic-hero-icon {
+  width: clamp(48px, 8vw, 64px);
+  height: clamp(48px, 8vw, 64px);
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--lic-brand-soft);
+  color: var(--lic-brand);
+  border: 1px solid color-mix(in srgb, var(--lic-brand) 18%, transparent);
+  font-size: clamp(1.2rem, 3vw, 1.55rem);
+}
+
+.lic-hero-title h1 {
+  margin: 0;
+  color: var(--lic-text);
+  font-size: clamp(1.45rem, 4vw, 2.35rem);
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.lic-hero-title p,
+.lic-subtitle {
+  margin: 8px 0 0;
+  color: var(--lic-muted);
+  font-size: clamp(.9rem, 1.8vw, 1rem);
+  line-height: 1.45;
+}
+
+.lic-actions,
+.lic-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.lic-btn {
+  min-height: var(--lic-control-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 17px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
+  font-size: .9rem;
+  font-weight: 550;
+  letter-spacing: -.014em;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--lic-transition), background var(--lic-transition), border-color var(--lic-transition), color var(--lic-transition), box-shadow var(--lic-transition);
+}
+
+.lic-btn:hover {
+  transform: translateY(-1px);
+}
+
+.lic-btn-primary {
+  background: var(--lic-brand);
+  border-color: var(--lic-brand);
+  color: #fff;
+}
+
+.lic-btn-primary:hover {
+  background: var(--lic-brand-hover);
+  color: #fff;
+}
+
+.lic-btn-secondary,
+.lic-btn-outline {
+  background: transparent;
+  border-color: var(--lic-border-strong);
+  color: var(--lic-text);
+}
+
+.lic-btn-secondary:hover,
+.lic-btn-outline:hover {
+  background: var(--lic-fill);
+  color: var(--lic-text);
+}
+
+.lic-btn-danger {
+  background: var(--lic-danger);
+  border-color: var(--lic-danger);
+  color: #fff;
+}
+
+.lic-card {
+  overflow: hidden;
+}
+
+.lic-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--lic-border);
+  background: color-mix(in srgb, var(--lic-surface) 92%, var(--lic-fill));
+}
+
+.lic-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--lic-text);
+  font-size: .98rem;
+  font-weight: 650;
+  letter-spacing: -.018em;
+}
+
+.lic-card-title i {
+  color: var(--lic-brand);
+}
+
+.lic-card-body {
+  padding: clamp(16px, 2vw, 22px);
+}
+
+.lic-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 14px;
+}
+
+.lic-kpi-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.lic-kpi-card::after {
+  content: "";
+  position: absolute;
+  right: -28px;
+  top: -28px;
+  width: 92px;
+  height: 92px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kpi-color, var(--lic-brand)) 12%, transparent);
+}
+
+.lic-kpi-icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--kpi-color, var(--lic-brand)) 12%, transparent);
+  color: var(--kpi-color, var(--lic-brand));
+  border: 1px solid color-mix(in srgb, var(--kpi-color, var(--lic-brand)) 20%, transparent);
+  z-index: 1;
+}
+
+.lic-kpi-content {
+  z-index: 1;
+}
+
+.lic-kpi-label {
+  display: block;
+  color: var(--lic-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.lic-kpi-value {
+  display: block;
+  margin-top: 4px;
+  color: var(--lic-text);
+  font-size: clamp(1.25rem, 3vw, 1.65rem);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -.025em;
+  overflow-wrap: anywhere;
+}
+
+.lic-kpi-sub {
+  display: block;
+  margin-top: 4px;
+  color: var(--lic-muted);
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.lic-filter-card {
+  padding: 16px;
+  background: var(--lic-surface);
+  border: 1px solid var(--lic-border);
+  border-radius: var(--lic-radius-xl);
+  box-shadow: var(--lic-shadow-sm);
+}
+
+.lic-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(auto-fit, minmax(170px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.lic-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lic-field.full {
+  grid-column: 1 / -1;
+}
+
+.lic-label {
+  color: var(--lic-muted);
+  font-size: .76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .045em;
+}
+
+.lic-help {
+  color: var(--lic-soft);
+  font-size: .78rem;
+  line-height: 1.38;
+}
+
+.lic-page input:not([type="hidden"]),
+.lic-page select,
+.lic-page textarea,
+.lic-form-control {
+  width: 100%;
+  min-height: var(--lic-control-h);
+  padding: 9px 13px;
+  border: 1px solid var(--lic-border-strong);
+  border-radius: var(--lic-radius-sm);
+  background: var(--lic-surface);
+  color: var(--lic-text);
+  font-size: .92rem;
+  outline: none;
+  transition: border-color var(--lic-transition), box-shadow var(--lic-transition), background var(--lic-transition);
+}
+
+.lic-page textarea {
+  min-height: 104px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.lic-page input:not([type="hidden"]):focus,
+.lic-page select:focus,
+.lic-page textarea:focus,
+.lic-form-control:focus {
+  border-color: var(--lic-brand);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, .30));
+}
+
+.lic-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lic-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+}
+
+.lic-table th,
+.lic-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--lic-border);
+  vertical-align: middle;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.lic-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--lic-surface);
+  color: var(--lic-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.lic-table td {
+  color: var(--lic-text);
+  font-size: .9rem;
+}
+
+.lic-table tbody tr:hover {
+  background: var(--lic-fill);
+}
+
+.lic-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.lic-text-right { text-align: right !important; }
+.lic-text-center { text-align: center !important; }
+.lic-nowrap { white-space: nowrap; }
+.lic-muted { color: var(--lic-muted); }
+.lic-mono { font-family: var(--font-mono, ui-monospace, monospace); font-weight: 650; letter-spacing: -.02em; }
+
+.lic-title-link,
+.lic-link {
+  color: var(--lic-text);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.lic-title-link:hover,
+.lic-link:hover {
+  color: var(--lic-brand);
+}
+
+.lic-sub {
+  display: block;
+  margin-top: 3px;
+  color: var(--lic-muted);
+  font-size: .78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.lic-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--lic-fill);
+  color: var(--lic-muted);
+  border: 1px solid transparent;
+  font-size: .75rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.lic-badge-success { background: var(--lic-success-bg); color: var(--lic-success); }
+.lic-badge-warning { background: var(--lic-warning-bg); color: var(--lic-warning); }
+.lic-badge-danger { background: var(--lic-danger-bg); color: var(--lic-danger); }
+.lic-badge-info { background: var(--lic-info-bg); color: #0090d4; }
+.lic-badge-brand { background: var(--lic-brand-soft); color: var(--lic-brand); }
+
+.lic-icon-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--lic-border-strong);
+  background: var(--lic-surface);
+  color: var(--lic-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--lic-transition), color var(--lic-transition), border-color var(--lic-transition), transform var(--lic-transition);
+}
+
+.lic-icon-btn:hover {
+  color: var(--lic-brand);
+  background: var(--lic-brand-soft);
+  border-color: color-mix(in srgb, var(--lic-brand) 25%, transparent);
+  transform: translateY(-1px);
+}
+
+.lic-icon-btn.danger:hover {
+  color: var(--lic-danger);
+  background: var(--lic-danger-bg);
+  border-color: color-mix(in srgb, var(--lic-danger) 25%, transparent);
+}
+
+.lic-empty {
+  padding: 38px 20px;
+  text-align: center;
+  color: var(--lic-muted);
+}
+
+.lic-empty i {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--lic-soft);
+  font-size: 2rem;
+}
+
+.lic-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.lic-col-12 { grid-column: span 12; }
+.lic-col-8 { grid-column: span 8; }
+.lic-col-6 { grid-column: span 6; }
+.lic-col-4 { grid-column: span 4; }
+
+.lic-error-list,
+.errorlist {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--lic-danger);
+  font-size: .78rem;
+  font-weight: 650;
+}
+
+.lic-alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: var(--lic-radius-md);
+  border: 1px solid transparent;
+  background: var(--lic-brand-soft);
+  color: var(--lic-muted);
+  line-height: 1.45;
+}
+
+.lic-alert i {
+  margin-top: 2px;
+  color: var(--lic-brand);
+}
+
+.lic-alert-warning {
+  background: var(--lic-warning-bg);
+  color: var(--lic-warning);
+  border-color: color-mix(in srgb, var(--lic-warning) 20%, transparent);
+}
+
+.lic-alert-danger {
+  background: var(--lic-danger-bg);
+  color: var(--lic-danger);
+  border-color: color-mix(in srgb, var(--lic-danger) 20%, transparent);
+}
+
+.lic-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  border-top: 1px solid var(--lic-border);
+  background: var(--lic-surface);
+}
+
+.lic-page-links {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.lic-page-link {
+  min-width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--lic-border-strong);
+  border-radius: 10px;
+  background: var(--lic-surface);
+  color: var(--lic-text);
+  text-decoration: none;
+  font-size: .84rem;
+  font-weight: 650;
+}
+
+.lic-page-link:hover,
+.lic-page-link.active {
+  background: var(--lic-brand);
+  border-color: var(--lic-brand);
+  color: #fff;
+}
+
+.lic-page-link.disabled {
+  opacity: .45;
+  pointer-events: none;
+}
+
+.select2-container {
+  width: 100% !important;
+}
+
+.select2-container--default .select2-selection--single {
+  min-height: var(--lic-control-h) !important;
+  border: 1px solid var(--lic-border-strong) !important;
+  border-radius: var(--lic-radius-sm) !important;
+  background: var(--lic-surface) !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  color: var(--lic-text) !important;
+  line-height: 40px !important;
+  padding-left: 13px !important;
+  padding-right: 34px !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__placeholder {
+  color: var(--lic-muted) !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 40px !important;
+  right: 8px !important;
+}
+
+.select2-dropdown {
+  z-index: 9999 !important;
+  border: 1px solid var(--lic-border-strong) !important;
+  border-radius: var(--lic-radius-md) !important;
+  background: var(--lic-surface) !important;
+  color: var(--lic-text) !important;
+  overflow: hidden;
+  box-shadow: var(--lic-shadow-md);
+}
+
+.select2-search--dropdown .select2-search__field {
+  border: 1px solid var(--lic-border-strong) !important;
+  border-radius: var(--lic-radius-sm) !important;
+  background: var(--lic-surface) !important;
+  color: var(--lic-text) !important;
+}
+
+.select2-results__option {
+  color: var(--lic-text) !important;
+}
+
+.select2-results__option--highlighted {
+  background: var(--lic-brand) !important;
+  color: #fff !important;
+}
+
+@media (max-width: 900px) {
+  .lic-hero,
+  .lic-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lic-actions,
+  .lic-action-row {
+    justify-content: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .lic-btn {
+    width: 100%;
+  }
+
+  .lic-col-8,
+  .lic-col-6,
+  .lic-col-4 {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 640px) {
+  .lic-hero-main {
+    grid-template-columns: 1fr;
+  }
+
+  .lic-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .lic-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lic-page-links {
+    justify-content: center;
+  }
+}
+
+
+.lic-lote-list-page {
+  width: min(100%, 1300px);
+}
+
+.lic-search-wrap {
+  position: relative;
+}
+
+.lic-search-wrap i {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--lic-muted);
+  pointer-events: none;
+}
+
+.lic-search-wrap input {
+  padding-left: 38px !important;
+}
+
+@media (max-width: 760px) {
+  .lic-lote-list-page .lic-table {
+    min-width: 820px;
+  }
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
-
-<style>
-:root {
-  --bg-body: #f8fafc;
-  --bg-card: #ffffff;
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  --border: #e2e8f0;
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --radius: 8px;
-  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-  --input-height: 42px;
-}
-
-* { box-sizing: border-box; outline: none; }
-body { background: var(--bg-body); color: var(--text-main); font-family: 'Inter', system-ui, sans-serif; }
-
-.page-container {
-  max-width: 1200px; margin: 32px auto; padding: 0 20px;
-}
-
-/* === HEADER HERO === */
-.hero {
-  background: #f1f5f9;
-  color: #0f172a; padding: 24px; border-radius: 12px;
-  box-shadow: var(--shadow); margin-bottom: 24px;
-  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;
-}
-.hero h2 { margin: 0; font-size: 1.75rem; display: flex; align-items: center; gap: 12px; }
-.hero-actions { display: flex; gap: 10px; }
-
-/* Botões */
-.btn {
-  display: inline-flex; align-items: center; gap: 8px; padding: 0 16px;
-  height: var(--input-height); border-radius: var(--radius);
-  font-size: 0.9rem; font-weight: 600; text-decoration: none;
-  cursor: pointer; border: 1px solid transparent; transition: all 0.2s;
-}
-.btn-light { background: rgba(255,255,255,0.2); color: #fff; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.3); }
-.btn-light:hover { background: rgba(255,255,255,0.3); }
-.btn-white { background: #fff; color: var(--primary); }
-.btn-white:hover { background: #f8fafc; }
-
-/* === FILTROS === */
-.filter-card {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 20px; margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-.filter-grid {
-  display: grid; grid-template-columns: 1fr auto; gap: 12px;
-}
-.search-group { position: relative; width: 100%; }
-.search-group i {
-  position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted);
-}
-.form-control {
-  width: 100%; height: var(--input-height); padding: 0 12px 0 36px;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  font-size: 0.95rem; color: var(--text-main);
-}
-.form-control:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
-
-/* === TABELA === */
-.table-card {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
-}
-.table-responsive { overflow-x: auto; width: 100%; }
-
-table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 0.9rem; }
-thead th {
-  background: #f8fafc; color: var(--text-muted); font-weight: 700; text-transform: uppercase;
-  font-size: 0.75rem; padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left;
-}
-tbody td {
-  padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text-main); vertical-align: middle;
-}
-tbody tr:hover { background: #f8fafc; }
-
-/* Status Badges */
-.badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 99px; font-size: 0.75rem; font-weight: 700; }
-.bg-success { background: #dcfce7; color: #166534; } /* Disponível */
-.bg-warning { background: #fef3c7; color: #92400e; } /* Pouco saldo */
-.bg-danger { background: #fee2e2; color: #991b1b; }  /* Esgotado */
-
-/* Ações */
-.action-btn {
-  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 6px; color: var(--text-muted); transition: all 0.2s;
-}
-.action-btn:hover { background: #f1f5f9; color: var(--primary); }
-
-.text-right { text-align: right; }
-.font-mono { font-family: 'Courier New', monospace; letter-spacing: -0.5px; font-weight: 600; }
-</style>
-
-<div class="page-container">
-  
-  <div class="hero">
-    <div>
-      <h2><i class="fa fa-layer-group"></i> Gestão de Lotes</h2>
-      <div style="opacity: 0.9; margin-top: 4px; font-size: 0.95rem;">
-        Gerencie as entradas e saldos de licenças por lote de compra.
+<div class="lic-page lic-lote-list-page">
+  <div class="lic-shell">
+    <section class="lic-hero">
+      <div class="lic-hero-main">
+        <div class="lic-hero-icon">
+          <i class="fa fa-layer-group"></i>
+        </div>
+        <div class="lic-hero-title">
+          <h1>Gestão de Lotes</h1>
+          <p>Gerencie entradas, compras, disponibilidade e status dos lotes de licenças.</p>
+        </div>
       </div>
-    </div>
-    <div class="hero-actions">
-      <a href="{% url 'licenca_list' %}" class="btn btn-light" style="color: #0f172a;">
-        <i class="fa fa-arrow-left" style="color: #0f172a;"></i> Voltar
-      </a>
-      <a href="{% url 'licenca_lote_novo' %}" class="btn btn-white">
-        <i class="fa fa-plus"></i> Novo Lote
-      </a>
-    </div>
-  </div>
 
-  <div class="filter-card">
-    <form method="get" class="filter-grid" autocomplete="off">
-      <div class="search-group">
-        <i class="fa fa-search"></i>
-        <input type="text" name="q" class="form-control" placeholder="Buscar por nome da licença, pedido ou observação..." value="{{ q }}">
+      <div class="lic-actions">
+        <a href="{% url 'licenca_list' %}" class="lic-btn lic-btn-secondary">
+          <i class="fa fa-arrow-left"></i>
+          Voltar
+        </a>
+        <a href="{% url 'licenca_lote_novo' %}" class="lic-btn lic-btn-primary">
+          <i class="fa fa-plus"></i>
+          Novo Lote
+        </a>
       </div>
-      <div>
-        {% if q %}
-          <a href="{{ request.path }}" class="btn btn-light" style="background:#ef4444; border-color:#ef4444;">
-            <i class="fa fa-times"></i> Limpar
-          </a>
-        {% else %}
-          <button type="submit" class="btn btn-white" style="border:1px solid var(--border); color:var(--text-main)">
-            <i class="fa fa-filter"></i> Filtrar
-          </button>
-        {% endif %}
+    </section>
+
+    <form method="get" class="lic-filter-card" autocomplete="off">
+      <div class="lic-filter-grid" style="grid-template-columns:minmax(0,1fr) auto;">
+        <div class="lic-field">
+          <label class="lic-label" for="id_q">Busca</label>
+          <div class="lic-search-wrap">
+            <i class="fa fa-search"></i>
+            <input type="text" id="id_q" name="q" placeholder="Buscar por licença, pedido ou observação..." value="{{ q }}">
+          </div>
+        </div>
+
+        <div class="lic-action-row">
+          {% if q %}
+            <a href="{{ request.path }}" class="lic-btn lic-btn-danger">
+              <i class="fa fa-times"></i>
+              Limpar
+            </a>
+          {% else %}
+            <button type="submit" class="lic-btn lic-btn-primary">
+              <i class="fa fa-filter"></i>
+              Filtrar
+            </button>
+          {% endif %}
+        </div>
       </div>
     </form>
+
+    <section class="lic-card">
+      <div class="lic-card-header">
+        <div class="lic-card-title">
+          <i class="fa fa-boxes-stacked"></i>
+          Lotes cadastrados
+        </div>
+        <span class="lic-badge">Total: {{ lotes.count }}</span>
+      </div>
+
+      <div class="lic-table-wrap">
+        <table class="lic-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Licença vinculada</th>
+              <th>Nº Pedido</th>
+              <th>Data Compra</th>
+              <th class="lic-text-right">Total</th>
+              <th class="lic-text-right">Disponível</th>
+              <th>Status</th>
+              <th class="lic-text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for lote in lotes %}
+              <tr>
+                <td class="lic-mono">#{{ lote.id }}</td>
+                <td>
+                  {% if lote.licenca %}
+                    <a href="{% url 'licenca_detail' lote.licenca.pk %}" class="lic-title-link">
+                      {{ lote.licenca.nome }}
+                    </a>
+                  {% else %}
+                    <span class="lic-muted">Licença excluída</span>
+                  {% endif %}
+                </td>
+                <td>{{ lote.numero_pedido|default:"-" }}</td>
+                <td>{{ lote.data_compra|date:"d/m/Y"|default:"-" }}</td>
+                <td class="lic-text-right lic-mono">{{ lote.quantidade_total }}</td>
+                <td class="lic-text-right lic-mono">{{ lote.quantidade_disponivel }}</td>
+                <td>
+                  {% if lote.quantidade_disponivel == 0 %}
+                    <span class="lic-badge lic-badge-danger">Esgotado</span>
+                  {% elif lote.quantidade_disponivel == lote.quantidade_total %}
+                    <span class="lic-badge lic-badge-success">Intacto</span>
+                  {% else %}
+                    <span class="lic-badge lic-badge-warning">Em uso</span>
+                  {% endif %}
+                </td>
+                <td class="lic-text-right">
+                  <a href="{% url 'licenca_lote_edit' pk=lote.id %}" class="lic-icon-btn" title="Editar Lote">
+                    <i class="fa fa-pen"></i>
+                  </a>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="8">
+                  <div class="lic-empty">
+                    <i class="fa fa-box-open"></i>
+                    Nenhum lote encontrado com os critérios atuais.
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
   </div>
-
-  <div class="table-card">
-    <div class="table-responsive">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Licença Vinculada</th>
-            <th>Nº Pedido</th>
-            <th>Data Compra</th>
-            <th class="text-right">Total</th>
-            <th class="text-right">Disponível</th>
-            <th>Status</th>
-            <th class="text-right">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for lote in lotes %}
-          <tr>
-            <td class="font-mono text-muted">#{{ lote.id }}</td>
-            <td style="font-weight: 600;">
-              {% if lote.licenca %}
-                <a href="{% url 'licenca_detail' lote.licenca.pk %}" style="color:var(--primary); text-decoration:none;">
-                  {{ lote.licenca.nome }}
-                </a>
-              {% else %}
-                <span class="text-muted">Licença Excluída</span>
-              {% endif %}
-            </td>
-            <td>{{ lote.numero_pedido|default:"-" }}</td>
-            <td>{{ lote.data_compra|date:"d/m/Y"|default:"-" }}</td>
-            
-            <td class="text-right font-mono">{{ lote.quantidade_total }}</td>
-            <td class="text-right font-mono" style="color:var(--primary)">{{ lote.quantidade_disponivel }}</td>
-            
-            <td>
-              {% if lote.quantidade_disponivel == 0 %}
-                <span class="badge bg-danger">Esgotado</span>
-              {% elif lote.quantidade_disponivel == lote.quantidade_total %}
-                <span class="badge bg-success">Intacto</span>
-              {% else %}
-                <span class="badge bg-warning">Em Uso</span>
-              {% endif %}
-            </td>
-
-            <td class="text-right">
-              <a href="{% url 'licenca_lote_edit' pk=lote.id %}" class="action-btn" title="Editar Lote">
-                <i class="fa fa-pen"></i>
-              </a>
-            </td>
-          </tr>
-          {% empty %}
-          <tr>
-            <td colspan="8" style="text-align:center; padding: 32px; color: var(--text-muted);">
-              <i class="fa fa-box-open" style="font-size: 2rem; margin-bottom: 12px; opacity: 0.5;"></i><br>
-              Nenhum lote encontrado com os critérios atuais.
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    
-    <div style="padding: 12px 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; font-weight: 600;">
-      Total de registros: {{ lotes.count }}
-    </div>
-  </div>
-
 </div>
 {% endblock %}

@@ -1,197 +1,710 @@
 {% extends 'base.html' %}
-{% block title %}{% if editar %}Editar Usuário{% else %}Novo Usuário{% endif %}{% endblock %}
-{% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+
+{% block title %}{% if editar %}Editar Funcionário{% else %}Novo Funcionário{% endif %}{% endblock %}
+{% block page_title %}{% if editar %}Editar Funcionário{% else %}Novo Funcionário{% endif %}{% endblock %}
+{% block page_subtitle %}Cadastro operacional com matrícula, status, PMB, centro de custo, função e localidade{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'usuario_importar' %}" class="btn-secondary btn-sm">
+    <i class="fa-solid fa-file-import" aria-hidden="true"></i>
+    Importar Excel
+  </a>
+  <a href="{% url 'usuario_list' %}" class="btn-secondary btn-sm">
+    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+    Voltar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 
 <style>
-:root{--line:#e5e7eb;--ink:#172133;--soft:#f8fafc;--card:#fff;--shadow:0 20px 40px rgba(2,6,23,.07);--h:46px;--rad:12px;--padL:44px}
-*{box-sizing:border-box}
-.page{max-width:980px;margin:18px auto;padding:0 14px}
-.wrapper{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:18px}
-.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
-.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
-.form-grid{margin-top:12px;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
-.group{display:flex;flex-direction:column;min-width:0;grid-column:span 6}
-@media (max-width:820px){ .group{grid-column:1/-1} }
-.group label{font-weight:800;margin:0 0 6px;color:#0f172a}
-.filtro-icon-input{position:relative;min-width:0}
-.filtro-icon-input .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#334155;pointer-events:none;width:20px;display:flex;justify-content:center}
-.ctrl{width:100%;height:var(--h);padding:8px 14px 8px var(--padL);border:1px solid #d5deea;border-radius:var(--rad);background:#fff;color:#111827;font-size:1rem;outline:none;transition:border .15s, box-shadow .15s}
-.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd55}
-.errorlist{margin:6px 0 0 0;color:#b91c1c;font-weight:700;list-style:none;padding-left:0}
-.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
-.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
-.btn-secondary{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
+  /*
+    Tela: Formulário de Funcionário
+    Padrão visual integrado ao base.html.
+    Mantém Select2 e evita conflito com componentes globais.
+  */
 
-/* Select2 */
-.select2-container{width:100%!important}
-.select2-container--default .select2-selection--single{
-  height:var(--h); border:1px solid #d5deea; border-radius:var(--rad); background:#fff; display:flex; align-items:center
-}
-.select2-container--default .select2-selection--single .select2-selection__rendered{
-  color:#111827; line-height:calc(var(--h) - 2px); padding-left:14px
-}
-.select2-container--default .select2-selection--single .select2-selection__arrow{height:var(--h); right:8px}
-.select2-container--default.select2-container--focus .select2-selection--single{
-  border-color:#93c5fd; box-shadow:0 0 0 3px #93c5fd55
-}
-.select2-dropdown{border:1px solid #dbe2f1;box-shadow:0 10px 24px rgba(2,6,23,.12);border-radius:10px;overflow:hidden;z-index:9999}
-.select2-results__option{padding:8px 10px}
-.select2-results__option--highlighted[aria-selected]{background:#e8f0ff;color:#1e3a8a}
-.select2-container .select2-search__field{outline:none}
-.small{font-size:.92rem;color:#64748b}
+  .uf-page,
+  .uf-page * {
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  .uf-page {
+    width: 100%;
+    max-width: 1180px;
+    margin-inline: auto;
+    color: var(--text-primary);
+  }
+
+  .uf-shell {
+    display: grid;
+    gap: 18px;
+  }
+
+  .uf-hero,
+  .uf-card {
+    width: 100%;
+    border: 1px solid var(--separator-hairline);
+    border-radius: var(--radius-2xl);
+    background:
+      radial-gradient(circle at top left, var(--brand-softer), transparent 34%),
+      var(--bg-elevated);
+    box-shadow: var(--shadow-xs);
+    overflow: hidden;
+  }
+
+  body.theme-dark .uf-hero,
+  body.theme-dark .uf-card {
+    border-color: var(--separator-non-opaque);
+  }
+
+  .uf-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 18px;
+    align-items: center;
+    padding: clamp(18px, 2.8vw, 28px);
+  }
+
+  .uf-hero-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 16px;
+  }
+
+  .uf-hero-icon {
+    width: clamp(56px, 8vw, 72px);
+    height: clamp(56px, 8vw, 72px);
+    display: grid;
+    place-items: center;
+    border-radius: 22px;
+    border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
+    background: linear-gradient(135deg, var(--brand-soft), var(--bg-fill-tertiary));
+    color: var(--brand);
+    font-size: clamp(21px, 3vw, 28px);
+  }
+
+  .uf-title {
+    margin: 0;
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: clamp(26px, 4vw, 38px);
+    line-height: 1.05;
+    font-weight: 650;
+    letter-spacing: -0.04em;
+  }
+
+  .uf-description {
+    max-width: 720px;
+    margin-top: 8px;
+    color: var(--text-tertiary);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+
+  .uf-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .uf-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--separator-hairline);
+    background: var(--bg-fill-tertiary);
+  }
+
+  .uf-card-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+  }
+
+  .uf-card-title i {
+    color: var(--brand);
+  }
+
+  .uf-card-subtitle {
+    margin-top: 3px;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .uf-form {
+    margin: 0;
+  }
+
+  .uf-card-body {
+    padding: clamp(18px, 2.4vw, 24px);
+  }
+
+  .uf-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .uf-group {
+    display: grid;
+    grid-column: span 6;
+    gap: 7px;
+  }
+
+  .uf-group-full {
+    grid-column: span 12;
+  }
+
+  .uf-group label {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: .035em;
+    text-transform: uppercase;
+  }
+
+  .uf-input-wrap {
+    position: relative;
+  }
+
+  .uf-input-icon {
+    position: absolute;
+    top: 50%;
+    left: 13px;
+    z-index: 3;
+    width: 18px;
+    color: var(--brand);
+    text-align: center;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  .uf-input-wrap input,
+  .uf-input-wrap select,
+  .uf-input-wrap textarea {
+    width: 100%;
+    min-height: 42px;
+    padding: 10px 14px 10px 42px;
+    border: 1px solid var(--separator-non-opaque);
+    border-radius: 14px;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-size: 14px;
+    outline: none;
+    transition:
+      border-color var(--transition-fast),
+      box-shadow var(--transition-fast),
+      background var(--transition-fast);
+  }
+
+  .uf-input-wrap textarea {
+    min-height: 110px;
+    resize: vertical;
+  }
+
+  .uf-input-wrap input:hover,
+  .uf-input-wrap select:hover,
+  .uf-input-wrap textarea:hover {
+    border-color: var(--separator-strong);
+  }
+
+  .uf-input-wrap input:focus,
+  .uf-input-wrap select:focus,
+  .uf-input-wrap textarea:focus {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 4px var(--brand-ring);
+  }
+
+  .uf-help {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .uf-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    border: 1px solid color-mix(in srgb, var(--danger) 22%, transparent);
+    border-radius: var(--radius-lg);
+    background: var(--danger-soft);
+    color: var(--danger);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.45;
+  }
+
+  .uf-alert i {
+    margin-top: 2px;
+  }
+
+  .uf-errorlist,
+  .uf-page .errorlist {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--danger);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .uf-page .errorlist li + li {
+    margin-top: 4px;
+  }
+
+  .uf-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 18px 20px;
+    border-top: 1px solid var(--separator-hairline);
+    background: var(--bg-fill-tertiary);
+  }
+
+  .uf-btn {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 9px 18px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-pill);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: -0.014em;
+    line-height: 1;
+    white-space: nowrap;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+      transform var(--transition-fast),
+      color var(--transition-fast),
+      background var(--transition-fast),
+      border-color var(--transition-fast),
+      box-shadow var(--transition-fast);
+  }
+
+  .uf-btn:hover {
+    transform: translateY(-1px);
+  }
+
+  .uf-btn:active {
+    transform: scale(.98);
+  }
+
+  .uf-btn-primary {
+    color: #fff;
+    background: var(--brand);
+    border-color: var(--brand);
+  }
+
+  .uf-btn-primary:hover {
+    color: #fff;
+    background: var(--brand-hover);
+    border-color: var(--brand-hover);
+    box-shadow: var(--shadow-brand);
+  }
+
+  .uf-btn-secondary {
+    color: var(--text-primary);
+    background: transparent;
+    border-color: var(--separator-non-opaque);
+  }
+
+  .uf-btn-secondary:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+    border-color: var(--separator-strong);
+  }
+
+  .uf-required-note {
+    color: var(--text-tertiary);
+    font-size: 12px;
+  }
+
+  /* Select2 integrado ao padrão do base.html */
+  .uf-page .select2-container {
+    width: 100% !important;
+  }
+
+  .uf-page .select2-container--default .select2-selection--single {
+    min-height: 42px !important;
+    display: flex !important;
+    align-items: center !important;
+    border: 1px solid var(--separator-non-opaque) !important;
+    border-radius: 14px !important;
+    background: var(--bg-elevated) !important;
+    padding-left: 31px !important;
+    transition:
+      border-color var(--transition-fast),
+      box-shadow var(--transition-fast);
+  }
+
+  .uf-page .select2-container--default.select2-container--focus .select2-selection--single,
+  .uf-page .select2-container--default.select2-container--open .select2-selection--single {
+    border-color: var(--brand) !important;
+    box-shadow: 0 0 0 4px var(--brand-ring) !important;
+  }
+
+  .uf-page .select2-container--default .select2-selection--single .select2-selection__rendered {
+    width: 100%;
+    padding-left: 0 !important;
+    padding-right: 34px !important;
+    color: var(--text-primary) !important;
+    font-size: 14px;
+    line-height: 40px !important;
+  }
+
+  .uf-page .select2-container--default .select2-selection--single .select2-selection__placeholder {
+    color: var(--text-quaternary) !important;
+  }
+
+  .uf-page .select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 40px !important;
+    right: 8px !important;
+  }
+
+  .select2-dropdown.uf-select2-dropdown {
+    z-index: 9999 !important;
+    border: 1px solid var(--separator-non-opaque) !important;
+    border-radius: var(--radius-lg) !important;
+    background: var(--bg-vibrancy-strong) !important;
+    color: var(--text-primary) !important;
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+  }
+
+  .select2-dropdown.uf-select2-dropdown .select2-results__option {
+    color: var(--text-primary) !important;
+    font-size: 14px;
+  }
+
+  .select2-dropdown.uf-select2-dropdown .select2-results__option--highlighted[aria-selected] {
+    background: var(--brand) !important;
+    color: #fff !important;
+  }
+
+  .select2-dropdown.uf-select2-dropdown .select2-search__field {
+    border: 1px solid var(--separator-non-opaque) !important;
+    border-radius: 10px !important;
+    outline: none;
+  }
+
+  @media (max-width: 820px) {
+    .uf-hero {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .uf-hero-main {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .uf-hero-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .uf-btn {
+      width: 100%;
+    }
+
+    .uf-group {
+      grid-column: span 12;
+    }
+
+    .uf-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (max-width: 440px) {
+    .uf-hero,
+    .uf-card {
+      border-radius: var(--radius-xl);
+    }
+
+    .uf-hero,
+    .uf-card-body,
+    .uf-card-header,
+    .uf-actions {
+      padding: 16px;
+    }
+  }
 </style>
+{% endblock %}
 
-<div class="page">
-  <div class="wrapper">
-    
-      <h2><i class="fa fa-user"></i> {% if editar %}Editar Usuário{% else %}Novo Usuário{% endif %}</h2>
-      <a href="{% url 'usuario_list' %}" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
-  
+{% block content %}
+<div class="uf-page">
+  <div class="uf-shell">
 
-    <form method="post" novalidate>
-      {% csrf_token %}
-
-      {% if form.non_field_errors %}
-        <ul class="errorlist">{{ form.non_field_errors }}</ul>
-      {% endif %}
-
-      <div class="form-grid">
-        <div class="group">
-          <label for="{{ form.nome.id_for_label }}">Nome</label>
-          <div class="filtro-icon-input">
-            <span class="ico"><i class="fa fa-id-badge"></i></span>
-            {{ form.nome }}
-          </div>
-          {{ form.nome.errors }}
+    <section class="uf-hero" aria-labelledby="usuarioFormTitulo">
+      <div class="uf-hero-main">
+        <div class="uf-hero-icon" aria-hidden="true">
+          <i class="fa-solid fa-user-tie"></i>
         </div>
 
-        <div class="group">
-          <label for="{{ form.email.id_for_label }}">E-mail</label>
-          <div class="filtro-icon-input">
-            <span class="ico"><i class="fa fa-envelope"></i></span>
-            {{ form.email }}
-          </div>
-          {{ form.email.errors }}
-        </div>
-
-        <div class="group">
-          <label for="{{ form.status.id_for_label }}">Status</label>
-          <div class="filtro-icon-input">
-            <span class="ico"><i class="fa fa-circle"></i></span>
-            {{ form.status }}
-          </div>
-          {{ form.status.errors }}
-        </div>
-
-        <div class="group">
-          <label for="{{ form.pmb.id_for_label }}">PMB?</label>
-          <div class="filtro-icon-input">
-            <span class="ico"><i class="fa fa-check-double"></i></span>
-            {{ form.pmb }}
-          </div>
-          {{ form.pmb.errors }}
-        </div>
-
-        <div class="group">
-          <label for="{{ form.centro_custo.id_for_label }}">Centro de Custo</label>
-          <div class="filtro-icon-input">
-            <span class="ico"><i class="fa fa-coins"></i></span>
-            {{ form.centro_custo }}
-          </div>
-          {{ form.centro_custo.errors }}
-        </div>
-
-        <div class="group">
-          <label for="{{ form.localidade.id_for_label }}">Localidade</label>
-          <div class="filtro-icon-input">
-            <span class="ico"><i class="fa fa-location-dot"></i></span>
-            {{ form.localidade }}
-          </div>
-          {{ form.localidade.errors }}
-        </div>
-
-        <div class="group">
-          <label for="{{ form.funcao.id_for_label }}">Função</label>
-          <div class="filtro-icon-input">
-            <span class="ico"><i class="fa fa-briefcase"></i></span>
-            {{ form.funcao }}
-          </div>
-          {{ form.funcao.errors }}
-        </div>
-
-        <div class="group">
-          <label for="{{ form.data_inicio.id_for_label }}">Data de Início</label>
-          <div class="filtro-icon-input">
-            <span class="ico"><i class="fa fa-calendar-day"></i></span>
-            {{ form.data_inicio }}
-          </div>
-          {{ form.data_inicio.errors }}
-        </div>
-
-        <div class="group">
-          <label for="{{ form.data_termino.id_for_label }}">Data de Término</label>
-          <div class="filtro-icon-input">
-            <span class="ico"><i class="fa fa-calendar-check"></i></span>
-            {{ form.data_termino }}
-          </div>
-          <span class="small">Opcional — preencha quando houver encerramento.</span>
-          {{ form.data_termino.errors }}
+        <div>
+          <h1 class="uf-title" id="usuarioFormTitulo">
+            {% if editar %}Editar Funcionário{% else %}Novo Funcionário{% endif %}
+          </h1>
+          <p class="uf-description">
+            Cadastro operacional de funcionários, com matrícula, centro de custo, função, vínculo de localidade e controle de status.
+          </p>
         </div>
       </div>
 
-      <div class="actions">
-        <button class="btn btn-primary" type="submit">
-          <i class="fa fa-save"></i> {% if editar %}Atualizar{% else %}Salvar{% endif %}
-        </button>
+      <div class="uf-hero-actions">
+        <a href="{% url 'usuario_importar' %}" class="uf-btn uf-btn-secondary">
+          <i class="fa-solid fa-file-import" aria-hidden="true"></i>
+          Importar Excel
+        </a>
+
+        <a href="{% url 'usuario_list' %}" class="uf-btn uf-btn-secondary">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+          Voltar
+        </a>
       </div>
-    </form>
+    </section>
+
+    <section class="uf-card" aria-labelledby="dadosFuncionarioTitulo">
+      <div class="uf-card-header">
+        <div>
+          <div class="uf-card-title" id="dadosFuncionarioTitulo">
+            <i class="fa-solid fa-id-card" aria-hidden="true"></i>
+            Dados do Funcionário
+          </div>
+          <div class="uf-card-subtitle">
+            Campos estruturados para manter consistência na importação, rastreabilidade e saneamento da base do RH.
+          </div>
+        </div>
+
+        <div class="uf-required-note">
+          Revise antes de salvar
+        </div>
+      </div>
+
+      <form method="post" class="uf-form" novalidate>
+        {% csrf_token %}
+
+        <div class="uf-card-body">
+          {% if form.non_field_errors %}
+            <div class="uf-alert">
+              <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+              <div>{{ form.non_field_errors }}</div>
+            </div>
+          {% endif %}
+
+          <div class="uf-grid">
+
+            <div class="uf-group">
+              <label for="{{ form.matricula.id_for_label }}">Matrícula</label>
+              <div class="uf-input-wrap">
+                <span class="uf-input-icon"><i class="fa-solid fa-hashtag" aria-hidden="true"></i></span>
+                {{ form.matricula }}
+              </div>
+              <span class="uf-help">Usada para importação, atualização automática e identificação única.</span>
+              {{ form.matricula.errors }}
+            </div>
+
+            <div class="uf-group">
+              <label for="{{ form.nome.id_for_label }}">Nome</label>
+              <div class="uf-input-wrap">
+                <span class="uf-input-icon"><i class="fa-solid fa-id-badge" aria-hidden="true"></i></span>
+                {{ form.nome }}
+              </div>
+              {{ form.nome.errors }}
+            </div>
+
+            <div class="uf-group">
+              <label for="{{ form.email.id_for_label }}">E-mail</label>
+              <div class="uf-input-wrap">
+                <span class="uf-input-icon"><i class="fa-solid fa-envelope" aria-hidden="true"></i></span>
+                {{ form.email }}
+              </div>
+              {{ form.email.errors }}
+            </div>
+
+            <div class="uf-group">
+              <label for="{{ form.status.id_for_label }}">Status</label>
+              <div class="uf-input-wrap">
+                <span class="uf-input-icon"><i class="fa-solid fa-circle" aria-hidden="true"></i></span>
+                {{ form.status }}
+              </div>
+              {{ form.status.errors }}
+            </div>
+
+            <div class="uf-group">
+              <label for="{{ form.pmb.id_for_label }}">PMB?</label>
+              <div class="uf-input-wrap">
+                <span class="uf-input-icon"><i class="fa-solid fa-check-double" aria-hidden="true"></i></span>
+                {{ form.pmb }}
+              </div>
+              {{ form.pmb.errors }}
+            </div>
+
+            <div class="uf-group">
+              <label for="{{ form.funcao.id_for_label }}">Função</label>
+              <div class="uf-input-wrap">
+                <span class="uf-input-icon"><i class="fa-solid fa-briefcase" aria-hidden="true"></i></span>
+                {{ form.funcao }}
+              </div>
+              {{ form.funcao.errors }}
+            </div>
+
+            <div class="uf-group">
+              <label for="{{ form.centro_custo.id_for_label }}">Centro de Custo</label>
+              <div class="uf-input-wrap">
+                <span class="uf-input-icon"><i class="fa-solid fa-coins" aria-hidden="true"></i></span>
+                {{ form.centro_custo }}
+              </div>
+              {{ form.centro_custo.errors }}
+            </div>
+
+            <div class="uf-group">
+              <label for="{{ form.localidade.id_for_label }}">Localidade</label>
+              <div class="uf-input-wrap">
+                <span class="uf-input-icon"><i class="fa-solid fa-location-dot" aria-hidden="true"></i></span>
+                {{ form.localidade }}
+              </div>
+              {{ form.localidade.errors }}
+            </div>
+
+            <div class="uf-group">
+              <label for="{{ form.data_inicio.id_for_label }}">Data de Início</label>
+              <div class="uf-input-wrap">
+                <span class="uf-input-icon"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i></span>
+                {{ form.data_inicio }}
+              </div>
+              {{ form.data_inicio.errors }}
+            </div>
+
+            <div class="uf-group">
+              <label for="{{ form.data_termino.id_for_label }}">Data de Término</label>
+              <div class="uf-input-wrap">
+                <span class="uf-input-icon"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i></span>
+                {{ form.data_termino }}
+              </div>
+              <span class="uf-help">Opcional. Preencha quando houver encerramento/desligamento.</span>
+              {{ form.data_termino.errors }}
+            </div>
+
+          </div>
+        </div>
+
+        <div class="uf-actions">
+          <a href="{% url 'usuario_list' %}" class="uf-btn uf-btn-secondary">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            Cancelar
+          </a>
+
+          <button class="uf-btn uf-btn-primary" type="submit">
+            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+            {% if editar %}Atualizar{% else %}Salvar{% endif %}
+          </button>
+        </div>
+      </form>
+    </section>
+
   </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <script>
-(function(){
-  const map = {"á":"a","à":"a","ã":"a","â":"a","ä":"a","é":"e","è":"e","ê":"e","ë":"e","í":"i","ì":"i","î":"i","ï":"i","ó":"o","ò":"o","õ":"o","ô":"o","ö":"o","ú":"u","ù":"u","û":"u","ü":"u","ç":"c"};
-  const norm = t => (t||"").split("").map(c=>map[c]||c).join("").toLowerCase();
+  (() => {
+    'use strict';
 
-  function initSelect2(){
-    $('.select2').each(function(){
-      const $el = $(this);
-      const placeholder = $el.data('placeholder') || 'Selecione...';
-      $el.select2({
-        placeholder,
-        allowClear: true,
-        width: '100%',
-        language: {
-          errorLoading: () => "Os resultados não puderam ser carregados.",
-          inputTooLong: args => "Apague " + (args.input.length - args.maximum) + " caracter(es)",
-          inputTooShort: args => "Digite " + (args.minimum - args.input.length) + " ou mais caracteres",
-          loadingMore: () => "Carregando mais resultados…",
-          maximumSelected: args => "Você só pode selecionar " + args.maximum + " item(ns)",
-          noResults: () => "Nenhum resultado encontrado",
-          searching: () => "Buscando…",
-          removeAllItems: () => "Remover todos os itens"
-        },
-        matcher: function(params, data){
-          if ($.trim(params.term) === '') return data;
-          if (typeof data.text === 'undefined') return null;
-          return norm(data.text).includes(norm(params.term)) ? data : null;
+    const accentMap = {
+      'á': 'a', 'à': 'a', 'ã': 'a', 'â': 'a', 'ä': 'a',
+      'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+      'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+      'ó': 'o', 'ò': 'o', 'õ': 'o', 'ô': 'o', 'ö': 'o',
+      'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
+      'ç': 'c'
+    };
+
+    const normalizeText = (text) => String(text || '')
+      .split('')
+      .map((char) => accentMap[char] || accentMap[char.toLowerCase()] || char)
+      .join('')
+      .toLowerCase();
+
+    function applyBaseControlClass() {
+      document.querySelectorAll('.uf-input-wrap input, .uf-input-wrap select, .uf-input-wrap textarea').forEach((field) => {
+        field.classList.add('uf-control');
+
+        if (field.tagName === 'SELECT') {
+          field.classList.add('uf-select2');
         }
       });
+    }
+
+    function initSelect2() {
+      if (!window.jQuery || !window.jQuery.fn || !window.jQuery.fn.select2) {
+        return;
+      }
+
+      const $ = window.jQuery;
+
+      $('.uf-select2').each(function() {
+        const $field = $(this);
+
+        if ($field.data('select2')) {
+          return;
+        }
+
+        $field.select2({
+          placeholder: $field.data('placeholder') || 'Selecione...',
+          allowClear: true,
+          width: '100%',
+          dropdownCssClass: 'uf-select2-dropdown',
+          language: {
+            noResults: () => 'Nenhum resultado encontrado',
+            searching: () => 'Buscando...'
+          },
+          matcher: function(params, data) {
+            if ($.trim(params.term) === '') {
+              return data;
+            }
+
+            if (typeof data.text === 'undefined') {
+              return null;
+            }
+
+            return normalizeText(data.text).includes(normalizeText(params.term)) ? data : null;
+          }
+        });
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      applyBaseControlClass();
+      initSelect2();
     });
-  }
-
-  // Garante .ctrl nos inputs base
-  ['#id_nome','#id_email','#id_data_inicio','#id_data_termino']
-    .forEach(sel=>{const el=document.querySelector(sel); if(el && !el.classList.contains('ctrl')) el.classList.add('ctrl');});
-
-  if (document.readyState !== 'loading') initSelect2();
-  else document.addEventListener('DOMContentLoaded', initSelect2);
-})();
+  })();
 </script>
 {% endblock %}

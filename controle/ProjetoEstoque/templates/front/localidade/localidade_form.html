@@ -1,0 +1,414 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if editar %}Editar Localidade{% else %}Nova Localidade{% endif %}{% endblock %}
+{% block page_title %}{% if editar %}Editar Localidade{% else %}Nova Localidade{% endif %}{% endblock %}
+{% block page_subtitle %}Cadastro de sede, filial e nome exibido no sistema{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'localidade_list' %}" class="btn btn-sm">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i>
+    Voltar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+:where(.lc-form-page, .select2-container, .select2-dropdown) {
+  --lc-primary:       var(--brand,              #0071e3);
+  --lc-primary-hover: var(--brand-hover,         #0077ed);
+  --lc-primary-soft:  var(--brand-soft,          rgba(0,113,227,.10));
+  --lc-surface:       var(--bg-elevated,         #ffffff);
+  --lc-muted-surface: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
+  --lc-hover:         var(--bg-hover,            rgba(0,0,0,.04));
+  --lc-text:          var(--text-primary,        #1d1d1f);
+  --lc-muted:         var(--text-tertiary,       #6e6e73);
+  --lc-soft:          var(--text-quaternary,     #86868b);
+  --lc-border:        var(--separator-hairline,  rgba(0,0,0,.06));
+  --lc-border2:       var(--separator-non-opaque,rgba(0,0,0,.10));
+  --lc-border-strong: var(--separator-strong,    rgba(0,0,0,.18));
+  --lc-danger:        var(--danger,              #ff3b30);
+  --lc-danger-soft:   var(--danger-soft,         rgba(255,59,48,.10));
+  --lc-radius-sm:     var(--radius-sm,           10px);
+  --lc-radius-md:     var(--radius-md,           14px);
+  --lc-radius-lg:     var(--radius-lg,           18px);
+  --lc-radius-xl:     var(--radius-xl,           22px);
+  --lc-radius-pill:   var(--radius-pill,         980px);
+  --lc-shadow-sm:     var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+  --lc-shadow-md:     var(--shadow-md,           0 4px 12px rgba(0,0,0,.06));
+  --lc-transition:    var(--transition-fast,     160ms ease);
+  --lc-control-h:     2.75rem;
+}
+
+.lc-form-page,
+.lc-form-page * { box-sizing: border-box; min-width: 0; }
+
+.lc-form-page {
+  width: min(100%, 840px);
+  margin: 0 auto;
+  color: var(--lc-text);
+}
+
+.lc-form-shell { display: grid; gap: 1rem; }
+
+/* ── Hero ── */
+.lc-form-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr);
+  gap: .875rem;
+  align-items: center;
+  padding: clamp(1rem,2.5vw,1.5rem);
+  border: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius-xl);
+  background:
+    radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--lc-primary) 12%, transparent), transparent 16rem),
+    var(--lc-surface);
+  box-shadow: var(--lc-shadow-sm);
+}
+
+.lc-form-icon {
+  width: clamp(3rem,8vw,3.75rem);
+  height: clamp(3rem,8vw,3.75rem);
+  display: grid;
+  place-items: center;
+  border-radius: 1.15rem;
+  background: var(--lc-primary-soft);
+  color: var(--lc-primary);
+  border: 1px solid color-mix(in srgb, var(--lc-primary) 20%, transparent);
+  font-size: clamp(1.1rem,3vw,1.4rem);
+}
+
+.lc-form-title {
+  margin: 0;
+  color: var(--lc-text);
+  font-size: clamp(1.25rem,4vw,1.85rem);
+  font-weight: 650;
+  line-height: 1.08;
+  letter-spacing: -.035em;
+}
+
+.lc-form-subtitle {
+  margin-top: .38rem;
+  color: var(--lc-muted);
+  font-size: .9rem;
+  line-height: 1.45;
+}
+
+/* ── Form card ── */
+.lc-form-card {
+  overflow: hidden;
+  border: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius-xl);
+  background: var(--lc-surface);
+  box-shadow: var(--lc-shadow-sm);
+}
+
+.lc-card-header {
+  padding: 1rem 1.125rem;
+  border-bottom: 1px solid var(--lc-border);
+  background: color-mix(in srgb, var(--lc-surface) 90%, var(--lc-muted-surface));
+}
+
+.lc-card-title {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  color: var(--lc-text);
+  font-size: .98rem;
+  font-weight: 650;
+}
+
+.lc-card-title i { color: var(--lc-primary); }
+.lc-card-subtitle { margin-top: .25rem; color: var(--lc-muted); font-size: .82rem; }
+
+.lc-card-body { padding: clamp(1rem,2.5vw,1.5rem); }
+
+/* ── Grid & Fields ── */
+.lc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 1rem;
+}
+
+.lc-field { display: flex; flex-direction: column; gap: .42rem; }
+
+.lc-field label {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  margin: 0;
+  color: var(--lc-muted);
+  font-size: .82rem;
+  font-weight: 650;
+}
+
+.lc-input-wrap { position: relative; }
+
+.lc-input-wrap .lc-ico {
+  position: absolute;
+  left: .85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--lc-soft);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.lc-form-page input,
+.lc-form-page select,
+.lc-form-page textarea,
+.lc-form-page .lc-control {
+  width: 100%;
+  min-height: var(--lc-control-h);
+  padding: .68rem .85rem .68rem 2.45rem;
+  border: 1px solid var(--lc-border2);
+  border-radius: var(--lc-radius-sm);
+  background: var(--lc-surface);
+  color: var(--lc-text);
+  font-family: inherit;
+  font-size: .92rem;
+  outline: none;
+  transition: border-color var(--lc-transition), box-shadow var(--lc-transition);
+}
+
+.lc-form-page input:focus,
+.lc-form-page select:focus,
+.lc-form-page textarea:focus,
+.lc-form-page .lc-control:focus {
+  border-color: var(--lc-primary);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30));
+}
+
+.lc-form-page .errorlist {
+  display: grid;
+  gap: .25rem;
+  margin: .15rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--lc-danger);
+  font-size: .78rem;
+  font-weight: 650;
+}
+
+.lc-alert-error {
+  display: flex;
+  gap: .7rem;
+  align-items: flex-start;
+  padding: .9rem;
+  margin-bottom: 1rem;
+  border-radius: var(--lc-radius-md);
+  border: 1px solid color-mix(in srgb, var(--lc-danger) 22%, transparent);
+  background: var(--lc-danger-soft);
+  color: var(--lc-danger);
+  font-size: .88rem;
+  font-weight: 600;
+}
+
+/* ── Actions ── */
+.lc-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .75rem;
+  flex-wrap: wrap;
+  padding: 1rem clamp(1rem,2.5vw,1.5rem);
+  border-top: 1px solid var(--lc-border);
+  background: color-mix(in srgb, var(--lc-surface) 92%, var(--lc-muted-surface));
+}
+
+.lc-btn-primary, .lc-btn-secondary {
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  padding: .6rem 1.05rem;
+  border-radius: var(--lc-radius-pill);
+  border: 1px solid transparent;
+  font-size: .9rem;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--lc-transition), background var(--lc-transition), color var(--lc-transition);
+}
+
+.lc-btn-primary:hover, .lc-btn-secondary:hover { transform: translateY(-1px); }
+.lc-btn-primary { background: var(--lc-primary); color: #fff; }
+.lc-btn-primary:hover { background: var(--lc-primary-hover); color: #fff; }
+.lc-btn-secondary { background: transparent; color: var(--lc-text); border-color: var(--lc-border2); }
+.lc-btn-secondary:hover { background: var(--lc-hover); color: var(--lc-text); border-color: var(--lc-border-strong); }
+
+/* ── Select2 ── */
+.select2-container { width: 100% !important; }
+
+.select2-container .select2-selection--single {
+  min-height: var(--lc-control-h) !important;
+  border: 1px solid var(--lc-border2) !important;
+  border-radius: var(--lc-radius-sm) !important;
+  background: var(--lc-surface) !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  width: 100%;
+  padding-left: 2.45rem !important;
+  padding-right: 2rem !important;
+  color: var(--lc-text) !important;
+  font-size: .92rem;
+  line-height: 2.65rem !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 2.65rem !important;
+  right: .35rem !important;
+}
+
+.select2-container--open .select2-selection--single {
+  border-color: var(--lc-primary) !important;
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30)) !important;
+}
+
+.select2-dropdown {
+  z-index: 9999 !important;
+  overflow: hidden !important;
+  border: 1px solid var(--lc-border2) !important;
+  border-radius: var(--lc-radius-md) !important;
+  background: var(--lc-surface) !important;
+  box-shadow: var(--lc-shadow-md);
+}
+
+.select2-results__option { color: var(--lc-text) !important; }
+.select2-results__option--highlighted { background: var(--lc-primary) !important; color: #fff !important; }
+
+@media (max-width: 42rem) {
+  .lc-form-hero, .lc-grid { grid-template-columns: 1fr; }
+  .lc-actions { grid-template-columns: 1fr; display: grid; }
+  .lc-btn-primary, .lc-btn-secondary { width: 100%; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lc-form-page">
+  <div class="lc-form-shell">
+
+    <section class="lc-form-hero" aria-label="Formulário de localidade">
+      <div class="lc-form-icon" aria-hidden="true">
+        <i class="fa fa-{% if editar %}pen{% else %}map-location-dot{% endif %}"></i>
+      </div>
+      <div>
+        <h2 class="lc-form-title">{% if editar %}Editar Localidade{% else %}Nova Localidade{% endif %}</h2>
+        <p class="lc-form-subtitle">Mantenha o cadastro atualizado para garantir rastreabilidade correta de equipamentos e colaboradores.</p>
+      </div>
+    </section>
+
+    <form method="post" novalidate class="lc-form-card">
+      {% csrf_token %}
+
+      <div class="lc-card-header">
+        <div class="lc-card-title">
+          <i class="fa fa-clipboard-list" aria-hidden="true"></i>
+          Dados da Localidade
+        </div>
+        <div class="lc-card-subtitle">Selecione o código da sede e defina o nome exibido no sistema.</div>
+      </div>
+
+      <div class="lc-card-body">
+        {% if form.errors %}
+          <div class="lc-alert-error" role="alert">
+            <i class="fa fa-circle-exclamation" aria-hidden="true"></i>
+            <div>Verifique os campos destacados antes de salvar.</div>
+          </div>
+        {% endif %}
+
+        {% if form.non_field_errors %}
+          <div class="lc-alert-error" role="alert">
+            <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+            <div>{{ form.non_field_errors }}</div>
+          </div>
+        {% endif %}
+
+        <div class="lc-grid">
+          <div class="lc-field">
+            <label for="{{ form.codigo.id_for_label }}">
+              <i class="fa fa-hashtag" aria-hidden="true"></i>
+              Código / Sede
+            </label>
+            <div class="lc-input-wrap">
+              <span class="lc-ico"><i class="fa fa-hashtag" aria-hidden="true"></i></span>
+              {{ form.codigo }}
+            </div>
+            {{ form.codigo.errors }}
+          </div>
+
+          <div class="lc-field">
+            <label for="{{ form.local.id_for_label }}">
+              <i class="fa fa-map-marker-alt" aria-hidden="true"></i>
+              Nome exibido
+            </label>
+            <div class="lc-input-wrap">
+              <span class="lc-ico"><i class="fa fa-map-marker-alt" aria-hidden="true"></i></span>
+              {{ form.local }}
+            </div>
+            {{ form.local.errors }}
+          </div>
+        </div>
+      </div>
+
+      <div class="lc-actions">
+        <a href="{% url 'localidade_list' %}" class="lc-btn-secondary">
+          <i class="fa fa-arrow-left" aria-hidden="true"></i>
+          Cancelar
+        </a>
+        <button class="lc-btn-primary" type="submit">
+          <i class="fa fa-save" aria-hidden="true"></i>
+          {% if editar %}Atualizar{% else %}Salvar{% endif %}
+        </button>
+      </div>
+    </form>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    ['#{{ form.codigo.auto_id }}', '#{{ form.local.auto_id }}'].forEach(function(sel) {
+      const el = document.querySelector(sel);
+      if (el && !el.classList.contains('lc-control')) el.classList.add('lc-control');
+    });
+
+    const localInput = document.getElementById('{{ form.local.auto_id }}');
+    if (localInput && !localInput.getAttribute('placeholder')) {
+      localInput.setAttribute('placeholder', 'Ex.: Matriz Karitel, Sede Rio do Meio...');
+    }
+  });
+
+  $(document).ready(function () {
+    const $codigo = $('#{{ form.codigo.auto_id }}');
+    if ($codigo.length) {
+      $codigo.select2({
+        width: '100%',
+        placeholder: 'Selecione o código...',
+        allowClear: true,
+        language: {
+          noResults: () => 'Sem resultados',
+          searching: () => 'Buscando...'
+        }
+      });
+
+      // Preenche o nome exibido com o label do código, se estiver vazio
+      $codigo.on('change', function () {
+        const nome = document.getElementById('{{ form.local.auto_id }}');
+        if (!nome || nome.value) return;
+        const opt = this.options[this.selectedIndex];
+        if (opt && opt.text) nome.value = opt.text.trim();
+      });
+    }
+  });
+</script>
+{% endblock %}

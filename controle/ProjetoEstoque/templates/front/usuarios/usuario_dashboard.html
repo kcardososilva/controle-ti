@@ -1,0 +1,1227 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Dashboard de Usuários{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+
+<style>
+:where(.user-dashboard-page) {
+  --ud-primary: var(--primary-accent, #2563eb);
+  --ud-primary-hover: var(--primary-hover, #1d4ed8);
+  --ud-primary-soft: var(--primary-soft, rgba(37,99,235,.14));
+
+  --ud-surface: var(--bg-glass-strong, rgba(255,255,255,.78));
+  --ud-surface-soft: color-mix(in srgb, var(--bg-glass, rgba(255,255,255,.58)) 84%, var(--ud-primary) 3%);
+  --ud-surface-muted: color-mix(in srgb, var(--bg-glass-soft, rgba(255,255,255,.36)) 84%, var(--ud-primary) 4%);
+
+  --ud-text: var(--text-color, #0f172a);
+  --ud-muted: var(--text-muted, #64748b);
+  --ud-soft: var(--text-soft, #94a3b8);
+
+  --ud-border: var(--border-glass, rgba(226,232,240,.9));
+  --ud-border-subtle: var(--border-subtle, rgba(15,23,42,.10));
+
+  --ud-success: var(--success, #10b981);
+  --ud-success-bg: var(--success-bg, rgba(16,185,129,.12));
+
+  --ud-warning: var(--warning, #f59e0b);
+  --ud-warning-bg: var(--warning-bg, rgba(245,158,11,.14));
+
+  --ud-danger: var(--danger, #ef4444);
+  --ud-danger-bg: var(--danger-bg, rgba(239,68,68,.12));
+
+  --ud-info: var(--info, #0ea5e9);
+  --ud-info-bg: var(--info-bg, rgba(14,165,233,.12));
+
+  --ud-radius-sm: .75rem;
+  --ud-radius-md: 1rem;
+  --ud-radius-lg: 1.25rem;
+  --ud-radius-xl: 1.5rem;
+
+  --ud-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.08));
+  --ud-shadow-md: var(--shadow-md, 0 16px 40px rgba(15,23,42,.12));
+
+  --ud-transition: 180ms ease;
+}
+
+.user-dashboard-page,
+.user-dashboard-page * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.user-dashboard-page {
+  width: 100%;
+  max-width: 1580px;
+  margin: 0 auto;
+  padding: clamp(.625rem, 2vw, 1.5rem);
+  color: var(--ud-text);
+}
+
+.ud-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.ud-card,
+.ud-hero,
+.ud-kpi {
+  border: 1px solid var(--ud-border);
+  border-radius: var(--ud-radius-xl);
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.14), transparent 44%),
+    var(--ud-surface);
+  box-shadow: var(--ud-shadow-sm);
+  backdrop-filter: blur(var(--blur-card, .85rem)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--blur-card, .85rem)) saturate(140%);
+}
+
+.ud-hero {
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+}
+
+.hero-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .875rem;
+  align-items: center;
+}
+
+.hero-icon {
+  width: clamp(3.2rem, 9vw, 4.2rem);
+  height: clamp(3.2rem, 9vw, 4.2rem);
+  display: grid;
+  place-items: center;
+  border-radius: 1.2rem;
+  background: color-mix(in srgb, var(--ud-primary) 14%, transparent);
+  color: var(--ud-primary);
+  border: 1px solid color-mix(in srgb, var(--ud-primary) 24%, transparent);
+  font-size: 1.55rem;
+}
+
+.hero-title h1 {
+  margin: 0;
+  color: var(--ud-text);
+  font-size: clamp(1.25rem, 4vw, 2rem);
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.hero-title p {
+  margin: .45rem 0 0;
+  color: var(--ud-muted);
+  font-size: .92rem;
+  line-height: 1.5;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: .625rem;
+}
+
+.ud-btn {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  padding: 0 1rem;
+  border-radius: var(--ud-radius-sm);
+  font-size: .9rem;
+  font-weight: 850;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform var(--ud-transition),
+    background var(--ud-transition),
+    color var(--ud-transition),
+    border-color var(--ud-transition);
+}
+
+.ud-btn:hover {
+  transform: translateY(-1px);
+}
+
+.ud-btn-primary {
+  background: var(--ud-primary);
+  color: #fff;
+}
+
+.ud-btn-primary:hover {
+  background: var(--ud-primary-hover);
+}
+
+.ud-btn-outline {
+  background: var(--ud-surface);
+  color: var(--ud-muted);
+  border-color: var(--ud-border-subtle);
+}
+
+.ud-btn-outline:hover {
+  background: var(--ud-surface-muted);
+  color: var(--ud-text);
+  border-color: color-mix(in srgb, var(--ud-primary) 22%, var(--ud-border-subtle));
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.ud-kpi {
+  position: relative;
+  overflow: hidden;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: .875rem;
+}
+
+.ud-kpi::after {
+  content: "";
+  position: absolute;
+  top: -1.5rem;
+  right: -1.5rem;
+  width: 5rem;
+  height: 5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kpi-color, var(--ud-primary)) 14%, transparent);
+}
+
+.kpi-icon {
+  width: 3rem;
+  height: 3rem;
+  flex: 0 0 3rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--ud-radius-md);
+  background: color-mix(in srgb, var(--kpi-color, var(--ud-primary)) 13%, transparent);
+  color: var(--kpi-color, var(--ud-primary));
+  border: 1px solid color-mix(in srgb, var(--kpi-color, var(--ud-primary)) 22%, transparent);
+  z-index: 1;
+}
+
+.kpi-content {
+  z-index: 1;
+}
+
+.kpi-label {
+  display: block;
+  color: var(--ud-muted);
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.kpi-value {
+  display: block;
+  margin-top: .25rem;
+  color: var(--ud-text);
+  font-size: clamp(1.1rem, 3vw, 1.55rem);
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.kpi-sub {
+  display: block;
+  margin-top: .18rem;
+  color: var(--ud-muted);
+  font-size: .74rem;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1fr;
+  gap: 1rem;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .875rem;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--ud-border-subtle);
+  background: color-mix(in srgb, var(--ud-surface) 88%, transparent);
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  color: var(--ud-text);
+  font-size: .96rem;
+  font-weight: 900;
+}
+
+.card-title i {
+  color: var(--ud-primary);
+}
+
+.card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .36rem .72rem;
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 900;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--ud-muted) 12%, transparent);
+  color: var(--ud-muted);
+}
+
+.list-wrap {
+  display: grid;
+  gap: .8rem;
+  padding: 1rem;
+}
+
+.rank-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: .75rem;
+  align-items: center;
+  padding: .85rem;
+  border: 1px solid var(--ud-border-subtle);
+  border-radius: var(--ud-radius-md);
+  background: color-mix(in srgb, var(--ud-surface-soft) 88%, transparent);
+}
+
+.rank-index {
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  border-radius: .75rem;
+  background: color-mix(in srgb, var(--ud-primary) 13%, transparent);
+  color: var(--ud-primary);
+  font-size: .82rem;
+  font-weight: 900;
+}
+
+.rank-main {
+  display: grid;
+  gap: .28rem;
+}
+
+.rank-name {
+  color: var(--ud-text);
+  font-size: .92rem;
+  font-weight: 900;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.rank-meta {
+  color: var(--ud-muted);
+  font-size: .76rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.rank-value {
+  text-align: right;
+  color: var(--ud-text);
+  font-size: .92rem;
+  font-weight: 900;
+}
+
+.mini-progress {
+  margin-top: .35rem;
+  width: 100%;
+  height: .45rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ud-muted) 12%, transparent);
+}
+
+.mini-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--ud-primary), color-mix(in srgb, var(--ud-primary) 60%, white));
+}
+
+.alert-list {
+  display: grid;
+  gap: .8rem;
+  padding: 1rem;
+}
+
+.alert-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: .75rem;
+  align-items: start;
+  padding: .9rem;
+  border: 1px solid color-mix(in srgb, var(--ud-danger) 20%, var(--ud-border));
+  border-radius: var(--ud-radius-md);
+  background: color-mix(in srgb, var(--ud-danger) 7%, transparent);
+}
+
+.alert-icon {
+  width: 2.4rem;
+  height: 2.4rem;
+  display: grid;
+  place-items: center;
+  border-radius: .8rem;
+  background: var(--ud-danger-bg);
+  color: var(--ud-danger);
+}
+
+.alert-title {
+  color: var(--ud-text);
+  font-size: .9rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.alert-meta {
+  margin-top: .2rem;
+  color: var(--ud-muted);
+  font-size: .77rem;
+  line-height: 1.45;
+}
+
+.deadline-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .38rem;
+  padding: .35rem .65rem;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.deadline-chip.warning {
+  background: var(--ud-warning-bg);
+  color: var(--ud-warning);
+}
+
+.deadline-chip.danger {
+  background: var(--ud-danger-bg);
+  color: var(--ud-danger);
+}
+
+.bar-list {
+  display: grid;
+  gap: .8rem;
+  padding: 1rem;
+}
+
+.bar-item {
+  display: grid;
+  gap: .35rem;
+}
+
+.bar-head {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  align-items: center;
+}
+
+.bar-label {
+  color: var(--ud-text);
+  font-size: .86rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.bar-value {
+  color: var(--ud-muted);
+  font-size: .8rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.bar-track {
+  width: 100%;
+  height: .55rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ud-muted) 12%, transparent);
+}
+
+.bar-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--ud-primary), color-mix(in srgb, var(--ud-primary) 60%, white));
+}
+
+.saneamento-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .8rem;
+  padding: 1rem;
+}
+
+.info-chip {
+  padding: .9rem;
+  border-radius: var(--ud-radius-md);
+  border: 1px solid var(--ud-border-subtle);
+  background: color-mix(in srgb, var(--ud-surface-soft) 88%, transparent);
+}
+
+.info-chip small {
+  display: block;
+  color: var(--ud-muted);
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.info-chip strong {
+  display: block;
+  margin-top: .3rem;
+  color: var(--ud-text);
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ud-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.ud-table th {
+  background: var(--ud-surface-soft);
+  color: var(--ud-muted);
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: .95rem 1rem;
+  border-bottom: 1px solid var(--ud-border-subtle);
+  white-space: nowrap;
+}
+
+.ud-table td {
+  padding: .95rem 1rem;
+  border-bottom: 1px solid var(--ud-border-subtle);
+  color: var(--ud-text);
+  vertical-align: middle;
+}
+
+.ud-table tbody tr:hover {
+  background: color-mix(in srgb, var(--ud-primary) 5%, transparent);
+}
+
+.cell-main {
+  color: var(--ud-text);
+  font-size: .9rem;
+  font-weight: 900;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.cell-sub {
+  margin-top: .2rem;
+  color: var(--ud-muted);
+  font-size: .76rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.badge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: .36rem;
+  padding: .35rem .68rem;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 900;
+}
+
+.badge-status::before {
+  content: "";
+  width: .42rem;
+  height: .42rem;
+  border-radius: 999px;
+  display: block;
+}
+
+.badge-status.active {
+  background: var(--ud-success-bg);
+  color: var(--ud-success);
+}
+.badge-status.active::before {
+  background: var(--ud-success);
+}
+
+.badge-status.inactive {
+  background: var(--ud-danger-bg);
+  color: var(--ud-danger);
+}
+.badge-status.inactive::before {
+  background: var(--ud-danger);
+}
+
+.table-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .5rem;
+}
+
+.icon-btn {
+  width: 2.35rem;
+  height: 2.35rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: .75rem;
+  border: 1px solid var(--ud-border-subtle);
+  background: var(--ud-surface);
+  color: var(--ud-muted);
+  text-decoration: none;
+}
+
+.icon-btn:hover {
+  background: color-mix(in srgb, var(--ud-primary) 12%, transparent);
+  color: var(--ud-primary);
+  border-color: color-mix(in srgb, var(--ud-primary) 24%, transparent);
+}
+
+.empty-state {
+  padding: 2rem 1rem;
+  color: var(--ud-muted);
+  text-align: center;
+}
+
+@media (max-width: 1320px) {
+  .kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .ud-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-main {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-actions {
+    justify-content: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .ud-btn {
+    width: 100%;
+  }
+
+  .kpi-grid,
+  .grid-2,
+  .saneamento-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .user-dashboard-page {
+    padding: .5rem;
+  }
+
+  .ud-table,
+  .ud-table thead,
+  .ud-table tbody,
+  .ud-table tr,
+  .ud-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .ud-table thead {
+    display: none;
+  }
+
+  .ud-table tbody {
+    display: grid;
+    gap: .75rem;
+    padding: .75rem;
+  }
+
+  .ud-table tbody tr {
+    border: 1px solid var(--ud-border);
+    border-radius: var(--ud-radius-lg);
+    background: var(--ud-surface);
+    padding: .875rem;
+  }
+
+  .ud-table td {
+    display: grid;
+    grid-template-columns: minmax(7rem, .35fr) minmax(0, 1fr);
+    gap: .75rem;
+    padding: .7rem 0;
+    border-bottom: 1px solid var(--ud-border-subtle);
+    text-align: left !important;
+  }
+
+  .ud-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .ud-table td::before {
+    content: attr(data-label);
+    color: var(--ud-muted);
+    font-size: .68rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+
+  .table-actions {
+    justify-content: flex-start;
+  }
+
+  .rank-item,
+  .alert-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 420px) {
+  .ud-table td {
+    grid-template-columns: 1fr;
+    gap: .35rem;
+  }
+}
+</style>
+
+<div class="user-dashboard-page">
+  <div class="ud-shell">
+
+    <section class="ud-hero">
+      <div class="hero-main">
+        <div class="hero-icon">
+          <i class="fa fa-users-viewfinder"></i>
+        </div>
+
+        <div class="hero-title">
+          <h1>Dashboard de Usuários</h1>
+          <p>
+            Painel consolidado com visão de custo, ativos vinculados, licenças, tempo de empresa,
+            pendências de desligamento e qualidade cadastral dos funcionários.
+          </p>
+        </div>
+      </div>
+
+      <div class="hero-actions">
+        <a href="{% url 'usuario_list' %}" class="ud-btn ud-btn-outline">
+          <i class="fa fa-list"></i>
+          Listagem
+        </a>
+
+        <a href="{% url 'usuario_create' %}" class="ud-btn ud-btn-primary">
+          <i class="fa fa-plus"></i>
+          Novo Usuário
+        </a>
+      </div>
+    </section>
+
+    <section class="kpi-grid">
+      <div class="ud-kpi" style="--kpi-color: var(--ud-primary);">
+        <div class="kpi-icon"><i class="fa fa-users"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Total de Usuários</span>
+          <span class="kpi-value">{{ kpi.total_usuarios }}</span>
+          <span class="kpi-sub">{{ kpi.total_ativos }} ativos / {{ kpi.total_desligados }} desligados</span>
+        </div>
+      </div>
+
+      <div class="ud-kpi" style="--kpi-color: var(--ud-danger);">
+        <div class="kpi-icon"><i class="fa fa-user-xmark"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Desligados com Pendências</span>
+          <span class="kpi-value">{{ kpi.desligados_pendencias }}</span>
+          <span class="kpi-sub">Itens e/ou licenças ainda vinculados</span>
+        </div>
+      </div>
+
+      <div class="ud-kpi" style="--kpi-color: var(--ud-info);">
+        <div class="kpi-icon"><i class="fa fa-laptop"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Itens Vinculados</span>
+          <span class="kpi-value">{{ kpi.total_itens_vinculados }}</span>
+          <span class="kpi-sub">Inventário atualmente em posse</span>
+        </div>
+      </div>
+
+      <div class="ud-kpi" style="--kpi-color: var(--ud-warning);">
+        <div class="kpi-icon"><i class="fa fa-certificate"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Licenças Vinculadas</span>
+          <span class="kpi-value">{{ kpi.total_licencas_vinculadas }}</span>
+          <span class="kpi-sub">Softwares ativos por usuário</span>
+        </div>
+      </div>
+
+      <div class="ud-kpi" style="--kpi-color: var(--ud-success);">
+        <div class="kpi-icon"><i class="fa fa-coins"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Burn Rate Mensal</span>
+          <span class="kpi-value">R$ {{ kpi.total_burn_rate|floatformat:2|intcomma }}</span>
+          <span class="kpi-sub">Locação + software</span>
+        </div>
+      </div>
+
+      <div class="ud-kpi" style="--kpi-color: var(--ud-primary);">
+        <div class="kpi-icon"><i class="fa fa-calendar-check"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Custo Anual Soft</span>
+          <span class="kpi-value">R$ {{ kpi.total_custo_anual_lic|floatformat:2|intcomma }}</span>
+          <span class="kpi-sub">Estimativa anual das licenças</span>
+        </div>
+      </div>
+
+      <div class="ud-kpi" style="--kpi-color: var(--ud-warning);">
+        <div class="kpi-icon"><i class="fa fa-id-card"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Sem Matrícula</span>
+          <span class="kpi-value">{{ kpi.total_sem_matricula }}</span>
+          <span class="kpi-sub">Necessitam saneamento</span>
+        </div>
+      </div>
+
+      <div class="ud-kpi" style="--kpi-color: var(--ud-info);">
+        <div class="kpi-icon"><i class="fa fa-envelope-circle-check"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Sem E-mail</span>
+          <span class="kpi-value">{{ kpi.total_sem_email }}</span>
+          <span class="kpi-sub">Cadastro incompleto</span>
+        </div>
+      </div>
+
+      <div class="ud-kpi" style="--kpi-color: var(--ud-success);">
+        <div class="kpi-icon"><i class="fa fa-star"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Usuários PMB</span>
+          <span class="kpi-value">{{ kpi.total_pmb }}</span>
+          <span class="kpi-sub">Marcados como PMB</span>
+        </div>
+      </div>
+
+      <div class="ud-kpi" style="--kpi-color: var(--ud-danger);">
+        <div class="kpi-icon"><i class="fa fa-triangle-exclamation"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Risco Operacional</span>
+          <span class="kpi-value">{{ kpi.desligados_pendencias }}</span>
+          <span class="kpi-sub">Desligados ainda com patrimônio/software</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <article class="ud-card">
+        <div class="card-header">
+          <div class="card-title">
+            <i class="fa fa-sack-dollar"></i>
+            Usuários Mais Custosos
+          </div>
+          <span class="card-badge">Top 10</span>
+        </div>
+
+        <div class="list-wrap">
+          {% for item in usuarios_mais_custosos %}
+            <div class="rank-item">
+              <div class="rank-index">{{ forloop.counter }}</div>
+
+              <div class="rank-main">
+                <div class="rank-name">
+                  <a href="{% url 'usuario_detail' item.usuario.pk %}" style="text-decoration:none; color:inherit;">
+                    {{ item.usuario.nome }}
+                  </a>
+                </div>
+                <div class="rank-meta">
+                  {{ item.usuario.centro_custo.departamento|default:"Centro não informado" }}
+                  · {{ item.itens_qtd }} item(ns)
+                  · {{ item.licencas_qtd }} licença(s)
+                  · Patrimônio: R$ {{ item.total_aquisicao|floatformat:2|intcomma }}
+                </div>
+                <div class="mini-progress">
+                  <span style="width: {{ item.custo_pct }}%;"></span>
+                </div>
+              </div>
+
+              <div class="rank-value">
+                R$ {{ item.custo_total_consolidado|floatformat:2|intcomma }}
+                <div class="rank-meta" style="text-align:right;">
+                  Mensal: R$ {{ item.burn_rate_total|floatformat:2|intcomma }}
+                </div>
+              </div>
+            </div>
+          {% empty %}
+            <div class="empty-state">Nenhum usuário com custo consolidado.</div>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="ud-card">
+        <div class="card-header">
+          <div class="card-title">
+            <i class="fa fa-hourglass-half"></i>
+            Usuários com Mais Tempo de Empresa
+          </div>
+          <span class="card-badge">Top 10</span>
+        </div>
+
+        <div class="list-wrap">
+          {% for item in usuarios_mais_antigos %}
+            <div class="rank-item">
+              <div class="rank-index">{{ forloop.counter }}</div>
+
+              <div class="rank-main">
+                <div class="rank-name">
+                  <a href="{% url 'usuario_detail' item.usuario.pk %}" style="text-decoration:none; color:inherit;">
+                    {{ item.usuario.nome }}
+                  </a>
+                </div>
+                <div class="rank-meta">
+                  Admissão:
+                  {% if item.usuario.data_inicio %}
+                    {{ item.usuario.data_inicio|date:"d/m/Y" }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </div>
+                <div class="mini-progress">
+                  <span style="width: {{ item.tempo_pct }}%;"></span>
+                </div>
+              </div>
+
+              <div class="rank-value">
+                {{ item.tempo_empresa_label }}
+              </div>
+            </div>
+          {% empty %}
+            <div class="empty-state">Nenhum histórico de tempo de empresa disponível.</div>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="grid-2">
+      <article class="ud-card">
+        <div class="card-header">
+          <div class="card-title">
+            <i class="fa fa-user-clock"></i>
+            Desligados com Itens/Licenças Vinculados
+          </div>
+          <span class="card-badge">{{ desligados_com_pendencias|length }} alerta(s)</span>
+        </div>
+
+        <div class="alert-list">
+          {% for item in desligados_com_pendencias %}
+            <div class="alert-item">
+              <div class="alert-icon">
+                <i class="fa fa-triangle-exclamation"></i>
+              </div>
+
+              <div>
+                <div class="alert-title">
+                  <a href="{% url 'usuario_detail' item.usuario.pk %}" style="text-decoration:none; color:inherit;">
+                    {{ item.usuario.nome }}
+                  </a>
+                </div>
+
+                <div class="alert-meta">
+                  {{ item.status_label }} ·
+                  {{ item.itens_qtd }} item(ns) ·
+                  {{ item.licencas_qtd }} licença(s)
+                  {% if item.itens_preview %}
+                    <br>Itens: {{ item.itens_preview|join:", " }}
+                  {% endif %}
+                  {% if item.licencas_preview %}
+                    <br>Licenças: {{ item.licencas_preview|join:", " }}
+                  {% endif %}
+                </div>
+              </div>
+
+              <div>
+                {% if item.prazo_vencido %}
+                  <span class="deadline-chip danger">
+                    <i class="fa fa-bolt"></i>
+                    Prazo vencido
+                  </span>
+                {% elif item.dias_restantes_licencas is not None %}
+                  <span class="deadline-chip warning">
+                    <i class="fa fa-clock"></i>
+                    {{ item.dias_restantes_licencas }} dia{{ item.dias_restantes_licencas|pluralize }}
+                  </span>
+                {% else %}
+                  <span class="deadline-chip warning">
+                    <i class="fa fa-circle-info"></i>
+                    Sem prazo
+                  </span>
+                {% endif %}
+              </div>
+            </div>
+          {% empty %}
+            <div class="empty-state">
+              Nenhum usuário desligado com pendência encontrada.
+            </div>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="ud-card">
+        <div class="card-header">
+          <div class="card-title">
+            <i class="fa fa-boxes-stacked"></i>
+            Usuários com Mais Ativos Vinculados
+          </div>
+          <span class="card-badge">Top 10</span>
+        </div>
+
+        <div class="list-wrap">
+          {% for item in usuarios_com_mais_ativos %}
+            <div class="rank-item">
+              <div class="rank-index">{{ forloop.counter }}</div>
+
+              <div class="rank-main">
+                <div class="rank-name">
+                  <a href="{% url 'usuario_detail' item.usuario.pk %}" style="text-decoration:none; color:inherit;">
+                    {{ item.usuario.nome }}
+                  </a>
+                </div>
+                <div class="rank-meta">
+                  {{ item.itens_qtd }} item(ns) · {{ item.licencas_qtd }} licença(s)
+                </div>
+                <div class="mini-progress">
+                  <span style="width: {{ item.ativos_pct }}%;"></span>
+                </div>
+              </div>
+
+              <div class="rank-value">
+                {{ item.ativos_total }}
+              </div>
+            </div>
+          {% empty %}
+            <div class="empty-state">Nenhum ativo vinculado a usuários.</div>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="grid-3">
+      <article class="ud-card">
+        <div class="card-header">
+          <div class="card-title">
+            <i class="fa fa-building"></i>
+            Centros com Mais Usuários
+          </div>
+          <span class="card-badge">Top 8</span>
+        </div>
+
+        <div class="bar-list">
+          {% for item in centros_top %}
+            <div class="bar-item">
+              <div class="bar-head">
+                <div class="bar-label">{{ item.label }}</div>
+                <div class="bar-value">{{ item.total }}</div>
+              </div>
+              <div class="bar-track">
+                <span style="width: {{ item.pct }}%;"></span>
+              </div>
+            </div>
+          {% empty %}
+            <div class="empty-state">Sem dados de centro de custo.</div>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="ud-card">
+        <div class="card-header">
+          <div class="card-title">
+            <i class="fa fa-location-dot"></i>
+            Localidades com Mais Usuários
+          </div>
+          <span class="card-badge">Top 8</span>
+        </div>
+
+        <div class="bar-list">
+          {% for item in localidades_top %}
+            <div class="bar-item">
+              <div class="bar-head">
+                <div class="bar-label">{{ item.label }}</div>
+                <div class="bar-value">{{ item.total }}</div>
+              </div>
+              <div class="bar-track">
+                <span style="width: {{ item.pct }}%;"></span>
+              </div>
+            </div>
+          {% empty %}
+            <div class="empty-state">Sem dados de localidade.</div>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="ud-card">
+        <div class="card-header">
+          <div class="card-title">
+            <i class="fa fa-shield-halved"></i>
+            Saneamento Cadastral
+          </div>
+          <span class="card-badge">Governança</span>
+        </div>
+
+        <div class="saneamento-grid">
+          <div class="info-chip">
+            <small>Sem Matrícula</small>
+            <strong>{{ kpi.total_sem_matricula }}</strong>
+          </div>
+
+          <div class="info-chip">
+            <small>Sem E-mail</small>
+            <strong>{{ kpi.total_sem_email }}</strong>
+          </div>
+
+          <div class="info-chip">
+            <small>Usuários PMB</small>
+            <strong>{{ kpi.total_pmb }}</strong>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="ud-card">
+      <div class="card-header">
+        <div class="card-title">
+          <i class="fa fa-table-list"></i>
+          Consolidado de Usuários
+        </div>
+        <span class="card-badge">Top 20 por relevância operacional</span>
+      </div>
+
+      <div class="table-wrap">
+        <table class="ud-table">
+          <thead>
+            <tr>
+              <th>Usuário</th>
+              <th>Status</th>
+              <th>Tempo Empresa</th>
+              <th>Itens</th>
+              <th>Licenças</th>
+              <th style="text-align:right;">Mensal Locação</th>
+              <th style="text-align:right;">Mensal Software</th>
+              <th style="text-align:right;">Burn Rate</th>
+              <th style="text-align:right;">Ações</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for item in top_consolidado %}
+              <tr>
+                <td data-label="Usuário">
+                  <div class="cell-main">{{ item.usuario.nome }}</div>
+                  <div class="cell-sub">
+                    {{ item.usuario.centro_custo.departamento|default:"Centro não informado" }}
+                    {% if item.usuario.localidade %}
+                      · {{ item.usuario.localidade.local }}
+                    {% endif %}
+                  </div>
+                </td>
+
+                <td data-label="Status">
+                  {% if item.usuario_desligado %}
+                    <span class="badge-status inactive">{{ item.status_label }}</span>
+                  {% else %}
+                    <span class="badge-status active">{{ item.status_label }}</span>
+                  {% endif %}
+                </td>
+
+                <td data-label="Tempo Empresa">
+                  <div class="cell-main">{{ item.tempo_empresa_label }}</div>
+                  <div class="cell-sub">
+                    {% if item.usuario.data_inicio %}
+                      Desde {{ item.usuario.data_inicio|date:"d/m/Y" }}
+                    {% else %}
+                      Sem admissão
+                    {% endif %}
+                  </div>
+                </td>
+
+                <td data-label="Itens">
+                  {{ item.itens_qtd }}
+                </td>
+
+                <td data-label="Licenças">
+                  {{ item.licencas_qtd }}
+                </td>
+
+                <td data-label="Mensal Locação" style="text-align:right;">
+                  R$ {{ item.custo_mensal_loc|floatformat:2|intcomma }}
+                </td>
+
+                <td data-label="Mensal Software" style="text-align:right;">
+                  R$ {{ item.custo_mensal_lic|floatformat:2|intcomma }}
+                </td>
+
+                <td data-label="Burn Rate" style="text-align:right;">
+                  <div class="cell-main">R$ {{ item.burn_rate_total|floatformat:2|intcomma }}</div>
+                  <div class="cell-sub">
+                    Anual soft: R$ {{ item.custo_anual_lic|floatformat:2|intcomma }}
+                  </div>
+                </td>
+
+                <td data-label="Ações" style="text-align:right;">
+                  <div class="table-actions">
+                    <a href="{% url 'usuario_detail' item.usuario.pk %}" class="icon-btn" title="Detalhar">
+                      <i class="fa fa-eye"></i>
+                    </a>
+                    <a href="{% url 'usuario_update' item.usuario.pk %}" class="icon-btn" title="Editar">
+                      <i class="fa fa-pen"></i>
+                    </a>
+                  </div>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="9">
+                  <div class="empty-state">Nenhum dado consolidado disponível.</div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</div>
+{% endblock %}

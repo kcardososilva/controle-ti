@@ -1,896 +1,616 @@
 {% extends "base.html" %}
-{% block title %}Detalhes da Preventiva{% endblock %}
+
+{% block title %}Preventiva: {{ equipamento.nome }}{% endblock %}
+{% block page_title %}Preventiva: {{ equipamento.nome }}{% endblock %}
+{% block page_subtitle %}Checklist: {{ preventiva.checklist_modelo.nome }}{% endblock %}
+
+{% block header_actions %}
+  <a href="?print=true" target="_blank" class="btn btn-sm">
+    <i class="fa fa-print" aria-hidden="true"></i> Imprimir
+  </a>
+  <a href="{% url 'preventiva_exec' preventiva.id %}" class="btn btn-sm btn-primary">
+    <i class="fa fa-play" aria-hidden="true"></i> Nova Execução
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.pv-detail-page) {
+  --pv-primary:       var(--brand,               #0071e3);
+  --pv-primary-hover: var(--brand-hover,          #0077ed);
+  --pv-primary-soft:  var(--brand-soft,           rgba(0,113,227,.10));
+  --pv-surface:       var(--bg-elevated,          #ffffff);
+  --pv-muted-surface: var(--bg-fill-tertiary,     rgba(120,120,128,.08));
+  --pv-hover:         var(--bg-hover,             rgba(0,0,0,.04));
+  --pv-text:          var(--text-primary,         #1d1d1f);
+  --pv-muted:         var(--text-tertiary,        #6e6e73);
+  --pv-soft:          var(--text-quaternary,      #86868b);
+  --pv-border:        var(--separator-hairline,   rgba(0,0,0,.06));
+  --pv-border2:       var(--separator-non-opaque, rgba(0,0,0,.10));
+  --pv-border-strong: var(--separator-strong,     rgba(0,0,0,.18));
+  --pv-radius-sm:     var(--radius-sm,            10px);
+  --pv-radius-md:     var(--radius-md,            14px);
+  --pv-radius-lg:     var(--radius-lg,            18px);
+  --pv-radius-xl:     var(--radius-xl,            22px);
+  --pv-radius-pill:   var(--radius-pill,          980px);
+  --pv-shadow-sm:     var(--shadow-sm,            0 1px 2px rgba(0,0,0,.05));
+  --pv-shadow-md:     var(--shadow-md,            0 4px 12px rgba(0,0,0,.06));
+  --pv-transition:    var(--transition-fast,      160ms ease);
+}
+
+.pv-detail-page,
+.pv-detail-page * { box-sizing: border-box; min-width: 0; }
+
+.pv-detail-page {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  width: 100%;
+  color: var(--pv-text);
+}
+
+/* ── Sidebar ── */
+.pv-sidebar { display: grid; gap: 1rem; }
+
+.pv-card {
+  overflow: hidden;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-xl);
+  background: var(--pv-surface);
+  box-shadow: var(--pv-shadow-sm);
+}
+
+.pv-card-header {
+  padding: .875rem 1.125rem;
+  border-bottom: 1px solid var(--pv-border);
+  background: color-mix(in srgb, var(--pv-surface) 90%, var(--pv-muted-surface));
+}
+
+.pv-card-title {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  color: var(--pv-text);
+  font-size: .9rem;
+  font-weight: 700;
+}
+
+.pv-card-title i { color: var(--pv-primary); }
+.pv-card-body { padding: 1.125rem; }
+
+/* Status widget */
+.pv-status-widget { text-align: center; padding: .5rem 0 .75rem; }
+.pv-status-label { color: var(--pv-muted); font-size: .8rem; margin-bottom: .35rem; }
+
+.pv-status-date {
+  font-size: clamp(1.3rem, 3vw, 1.65rem);
+  font-weight: 700;
+  color: var(--pv-text);
+  line-height: 1.2;
+}
+
+.pv-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  padding: .38rem .8rem;
+  border-radius: var(--pv-radius-pill);
+  font-size: .78rem;
+  font-weight: 700;
+  margin-top: .65rem;
+}
+
+.pv-status-badge.late   { color: #b91c1c; background: rgba(239,68,68,.13); }
+.pv-status-badge.warn   { color: #a16207; background: rgba(245,158,11,.16); }
+.pv-status-badge.ok     { color: #047857; background: rgba(16,185,129,.14); }
+
+.pv-status-interval {
+  margin-top: .85rem;
+  padding-top: .85rem;
+  border-top: 1px dashed var(--pv-border2);
+  text-align: center;
+  color: var(--pv-muted);
+  font-size: .8rem;
+}
+
+.pv-status-interval strong { color: var(--pv-text); }
+
+/* Info list */
+.pv-info-list { display: grid; gap: .65rem; }
+
+.pv-info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  align-items: flex-start;
+  font-size: .85rem;
+}
+
+.pv-info-k { color: var(--pv-muted); flex: 0 0 auto; }
+.pv-info-v { font-weight: 700; color: var(--pv-text); text-align: right; word-break: break-word; }
+
+.pv-link-sm {
+  display: block;
+  text-align: center;
+  margin-top: 1rem;
+  padding-top: .85rem;
+  border-top: 1px dashed var(--pv-border2);
+  color: var(--pv-primary);
+  font-size: .82rem;
+  text-decoration: none;
+}
+
+.pv-link-sm:hover { text-decoration: underline; }
+
+/* ── Main ── */
+.pv-main { display: grid; gap: 1rem; }
+
+.pv-filter-bar {
+  display: flex;
+  gap: .75rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  padding: .875rem 1.125rem;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-lg);
+  background: var(--pv-surface);
+  box-shadow: var(--pv-shadow-sm);
+}
+
+.pv-filter-group { display: flex; flex-direction: column; gap: .3rem; flex: 1 1 160px; }
+
+.pv-filter-group label {
+  color: var(--pv-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.pv-filter-input {
+  height: 2.4rem;
+  border: 1px solid var(--pv-border2);
+  border-radius: var(--pv-radius-sm);
+  background: var(--pv-surface);
+  color: var(--pv-text);
+  padding: 0 .75rem;
+  font-size: .86rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--pv-transition);
+}
+
+.pv-filter-input:focus {
+  border-color: var(--pv-primary);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30));
+}
+
+.pv-btn-sm {
+  min-height: 2.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .5rem .9rem;
+  border-radius: var(--pv-radius-pill);
+  border: 1px solid var(--pv-border2);
+  background: transparent;
+  color: var(--pv-text);
+  font-size: .86rem;
+  font-weight: 650;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background var(--pv-transition), border-color var(--pv-transition);
+  align-self: flex-end;
+}
+
+.pv-btn-sm:hover { background: var(--pv-hover); border-color: var(--pv-border-strong); }
+
+/* ── Executions ── */
+.pv-exec-list { display: grid; gap: .85rem; }
+
+.pv-exec-card {
+  overflow: hidden;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-xl);
+  background: var(--pv-surface);
+  box-shadow: var(--pv-shadow-sm);
+  transition: box-shadow var(--pv-transition);
+}
+
+.pv-exec-card:hover { box-shadow: var(--pv-shadow-md); }
+
+.pv-exec-summary {
+  list-style: none;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid transparent;
+}
+
+.pv-exec-summary::-webkit-details-marker { display: none; }
+.pv-exec-card[open] .pv-exec-summary { border-bottom-color: var(--pv-border); background: var(--pv-muted-surface); }
+
+.pv-exec-meta { display: flex; align-items: center; gap: .85rem; flex: 1 1 auto; }
+
+.pv-exec-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 2.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--pv-radius-sm);
+  background: rgba(16,185,129,.12);
+  color: #047857;
+  font-size: 1rem;
+}
+
+.pv-exec-date { font-weight: 700; font-size: 1rem; color: var(--pv-text); }
+.pv-exec-by { margin-top: .2rem; font-size: .82rem; color: var(--pv-muted); }
+
+.pv-exec-chevron {
+  flex-shrink: 0;
+  color: var(--pv-muted);
+  transition: transform var(--pv-transition);
+}
+
+.pv-exec-card[open] .pv-exec-chevron { transform: rotate(180deg); }
+
+.pv-exec-body { padding: 1.25rem; }
+
+/* Photos */
+.pv-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.pv-photo-item {
+  border: 1px solid var(--pv-border2);
+  border-radius: var(--pv-radius-md);
+  overflow: hidden;
+  background: var(--pv-muted-surface);
+}
+
+.pv-photo-tag {
+  display: block;
+  padding: .35rem .75rem;
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--pv-muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  border-bottom: 1px solid var(--pv-border);
+}
+
+.pv-photo-item img {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  display: block;
+  cursor: zoom-in;
+}
+
+/* Observation */
+.pv-obs-box {
+  display: flex;
+  gap: .7rem;
+  align-items: flex-start;
+  padding: .875rem 1rem;
+  margin-bottom: 1.25rem;
+  border-radius: var(--pv-radius-md);
+  border: 1px solid rgba(245,158,11,.25);
+  background: rgba(245,158,11,.08);
+  color: #92400e;
+  font-size: .88rem;
+  line-height: 1.55;
+}
+
+/* Checklist table */
+.pv-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-md);
+  -webkit-overflow-scrolling: touch;
+}
+
+.pv-exec-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 420px;
+}
+
+.pv-exec-table th {
+  background: color-mix(in srgb, var(--pv-surface) 90%, var(--pv-muted-surface));
+  padding: .75rem 1rem;
+  text-align: left;
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--pv-muted);
+  border-bottom: 1px solid var(--pv-border);
+}
+
+.pv-exec-table td {
+  padding: .75rem 1rem;
+  border-bottom: 1px solid var(--pv-border);
+  font-size: .88rem;
+  color: var(--pv-text);
+  vertical-align: top;
+}
+
+.pv-exec-table tbody tr:last-child td { border-bottom: none; }
+
+.pv-ans-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .3rem .65rem;
+  border-radius: var(--pv-radius-pill);
+  font-size: .78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pv-ans-sim { background: rgba(16,185,129,.14); color: #047857; }
+.pv-ans-nao { background: rgba(239,68,68,.13); color: #b91c1c; }
+.pv-ans-other { color: var(--pv-primary); font-weight: 700; }
+
+/* Empty state */
+.pv-empty-state {
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--pv-muted);
+  border: 1px dashed var(--pv-border2);
+  border-radius: var(--pv-radius-xl);
+  background: var(--pv-muted-surface);
+}
+
+/* Lightbox */
+.pv-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.85);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.25rem;
+  cursor: zoom-out;
+}
+
+.pv-lightbox.active { display: flex; }
+.pv-lightbox img { max-width: 90%; max-height: 90vh; border-radius: var(--pv-radius-md); box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+
+@media (max-width: 56rem) {
+  .pv-detail-page { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 36rem) {
+  .pv-filter-bar { flex-direction: column; align-items: stretch; }
+  .pv-filter-group { flex: 1 1 100%; }
+  .pv-btn-sm { width: 100%; justify-content: center; }
+  .pv-photo-item img { height: 180px; }
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
-
-<style>
-  :root {
-    --bg-body: #f3f4f6;
-    --bg-card: #ffffff;
-    --primary: #0f6cbd;
-    --primary-dark: #0f548c;
-    --text-main: #242424;
-    --text-sub: #616161;
-    --border: #e0e0e0;
-    --radius: 8px;
-
-    --ok-bg: #dff6dd;
-    --ok-fg: #107c10;
-    --warn-bg: #fff4ce;
-    --warn-fg: #9a3412;
-    --late-bg: #fde7e9;
-    --late-fg: #a80000;
-
-    --shadow: 0 4px 12px rgba(0,0,0,0.06);
-  }
-
-  * {
-    box-sizing: border-box;
-  }
-
-  html {
-    -webkit-text-size-adjust: 100%;
-  }
-
-  body {
-    background-color: var(--bg-body);
-    color: var(--text-main);
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    margin: 0;
-  }
-
-  img,
-  video,
-  iframe {
-    max-width: 100%;
-    height: auto;
-    display: block;
-  }
-
-  .page-container {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 24px;
-  }
-
-  /* HEADER */
-  .header-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 24px;
-    margin-bottom: 24px;
-    box-shadow: var(--shadow);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 20px;
-    flex-wrap: wrap;
-  }
-
-  .header-titles {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    min-width: 0;
-    flex: 1 1 420px;
-  }
-
-  .header-icon {
-    flex-shrink: 0;
-    background: #e1f0fa;
-    color: var(--primary);
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.4rem;
-  }
-
-  .header-text {
-    min-width: 0;
-  }
-
-  .header-text h1 {
-    margin: 0;
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: var(--text-main);
-    line-height: 1.25;
-    word-break: break-word;
-  }
-
-  .header-text .subtitle {
-    color: var(--text-sub);
-    margin-top: 4px;
-    font-size: 0.95rem;
-    line-height: 1.4;
-    word-break: break-word;
-  }
-
-  .header-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    flex: 0 1 auto;
-  }
-
-  .btn {
-    min-height: 40px;
-    padding: 10px 18px;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 0.9rem;
-    cursor: pointer;
-    border: 1px solid transparent;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    text-decoration: none;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-  }
-
-  .btn-primary {
-    background: var(--primary);
-    color: #fff;
-  }
-
-  .btn-primary:hover {
-    background: var(--primary-dark);
-  }
-
-  .btn-light {
-    background: #fff;
-    border-color: var(--border);
-    color: var(--text-main);
-  }
-
-  .btn-light:hover {
-    background: #f9f9f9;
-  }
-
-  /* GRID LAYOUT PRINCIPAL */
-  .layout-grid {
-    display: grid;
-    grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
-    gap: 24px;
-    align-items: start;
-  }
-
-  aside,
-  main {
-    min-width: 0;
-  }
-
-  /* SIDEBAR CARDS */
-  .side-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 20px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.03);
-  }
-
-  .side-title {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--text-sub);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 16px;
-    border-bottom: 1px solid #f0f0f0;
-    padding-bottom: 8px;
-  }
-
-  /* Status Box */
-  .status-box {
-    text-align: center;
-    padding: 10px 0;
-  }
-
-  .status-label {
-    font-size: 0.9rem;
-    color: var(--text-sub);
-    margin-bottom: 6px;
-  }
-
-  .status-date {
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: var(--text-main);
-    line-height: 1.2;
-    word-break: break-word;
-  }
-
-  .status-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-weight: 700;
-    font-size: 0.8rem;
-    margin-top: 8px;
-    text-align: center;
-    flex-wrap: wrap;
-  }
-
-  .sb-ok {
-    background: var(--ok-bg);
-    color: var(--ok-fg);
-  }
-
-  .sb-warn {
-    background: var(--warn-bg);
-    color: var(--warn-fg);
-  }
-
-  .sb-late {
-    background: var(--late-bg);
-    color: var(--late-fg);
-  }
-
-  /* Info Rows */
-  .info-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
-    font-size: 0.92rem;
-    align-items: flex-start;
-  }
-
-  .info-k {
-    color: var(--text-sub);
-    flex: 1 1 42%;
-    min-width: 0;
-  }
-
-  .info-v {
-    font-weight: 600;
-    color: var(--text-main);
-    text-align: right;
-    flex: 1 1 58%;
-    min-width: 0;
-    word-break: break-word;
-    overflow-wrap: anywhere;
-  }
-
-  /* MAIN CONTENT */
-  .filters {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 20px;
-    background: #fff;
-    padding: 16px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    align-items: end;
-    flex-wrap: wrap;
-  }
-
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    min-width: 180px;
-    flex: 1 1 220px;
-  }
-
-  .form-group label {
-    display: block;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text-sub);
-    margin-bottom: 4px;
-  }
-
-  .form-control {
-    width: 100%;
-    min-height: 38px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0 10px;
-    font-size: 0.9rem;
-    background: #fff;
-  }
-
-  .filter-submit {
-    flex: 0 0 auto;
-  }
-
-  /* EXECUTION LIST */
-  .exec-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    margin-bottom: 16px;
-    overflow: hidden;
-    transition: box-shadow 0.2s;
-  }
-
-  .exec-card:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-  }
-
-  .exec-summary {
-    list-style: none;
-    padding: 16px 20px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    background: #fff;
-    border-bottom: 1px solid transparent;
-  }
-
-  .exec-summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .exec-card[open] .exec-summary {
-    border-bottom-color: var(--border);
-    background: #fcfcfc;
-  }
-
-  .exec-meta {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-
-  .exec-meta > i {
-    flex-shrink: 0;
-  }
-
-  .exec-info {
-    min-width: 0;
-  }
-
-  .exec-date {
-    font-weight: 700;
-    font-size: 1.05rem;
-    color: var(--text-main);
-    line-height: 1.3;
-  }
-
-  .exec-by {
-    font-size: 0.9rem;
-    color: var(--text-sub);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-    line-height: 1.4;
-    word-break: break-word;
-  }
-
-  .exec-chevron {
-    flex-shrink: 0;
-    color: var(--text-sub);
-    transition: transform 0.2s ease;
-  }
-
-  .exec-card[open] .exec-chevron {
-    transform: rotate(180deg);
-  }
-
-  .exec-content {
-    padding: 20px;
-    background: #fff;
-  }
-
-  /* Photos */
-  .photo-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
-  }
-
-  .photo-item {
-    border: 1px solid var(--border);
-    padding: 8px;
-    border-radius: 6px;
-    text-align: center;
-    background: #fff;
-  }
-
-  .photo-item img {
-    width: 100%;
-    height: 140px;
-    object-fit: cover;
-    border-radius: 4px;
-    cursor: zoom-in;
-  }
-
-  .photo-tag {
-    display: block;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: var(--text-sub);
-    margin-bottom: 6px;
-    text-transform: uppercase;
-  }
-
-  /* Observation Box */
-  .obs-box {
-    background: #fffbeb;
-    padding: 12px;
-    border-radius: 6px;
-    border: 1px solid #fcd34d;
-    margin-bottom: 20px;
-    font-size: 0.92rem;
-    color: #92400e;
-    line-height: 1.5;
-    word-break: break-word;
-  }
-
-  /* Table */
-  .table-responsive {
-    overflow-x: auto;
-    width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    -webkit-overflow-scrolling: touch;
-    background: #fff;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9rem;
-    min-width: 520px;
-  }
-
-  th {
-    background: #f8f9fa;
-    text-align: left;
-    padding: 12px 16px;
-    font-weight: 600;
-    color: var(--text-sub);
-    border-bottom: 1px solid var(--border);
-  }
-
-  td {
-    padding: 12px 16px;
-    border-bottom: 1px solid #f0f0f0;
-    color: var(--text-main);
-    vertical-align: top;
-  }
-
-  tr:last-child td {
-    border-bottom: none;
-  }
-
-  .ans-pill {
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 0.8rem;
-    font-weight: 700;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-  }
-
-  .ans-sim {
-    background: var(--ok-bg);
-    color: var(--ok-fg);
-  }
-
-  .ans-nao {
-    background: var(--late-bg);
-    color: var(--late-fg);
-  }
-
-  /* Empty State */
-  .empty-state {
-    padding: 40px 20px;
-    text-align: center;
-    color: var(--text-sub);
-    background: #fff;
-    border-radius: var(--radius);
-    border: 1px dashed var(--border);
-  }
-
-  /* Lightbox */
-  .lightbox {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.85);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 999;
-    padding: 20px;
-  }
-
-  .lightbox img {
-    max-width: 90%;
-    max-height: 90%;
-    border-radius: 4px;
-    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-  }
-
-  .lightbox.active {
-    display: flex;
-  }
-
-  /* TABLET */
-  @media (max-width: 1024px) {
-    .page-container {
-      padding: 20px;
-    }
-
-    .layout-grid {
-      grid-template-columns: 1fr;
-    }
-
-    aside {
-      order: 1;
-    }
-
-    main {
-      order: 2;
-    }
-  }
-
-  /* MOBILE */
-  @media (max-width: 768px) {
-    .page-container {
-      padding: 14px;
-    }
-
-    .header-card {
-      padding: 16px;
-    }
-
-    .header-titles {
-      align-items: flex-start;
-      flex: 1 1 100%;
-    }
-
-    .header-text h1 {
-      font-size: 1.2rem;
-    }
-
-    .header-text .subtitle {
-      font-size: 0.88rem;
-    }
-
-    .header-actions {
-      width: 100%;
-      justify-content: stretch;
-      flex-direction: column;
-    }
-
-    .header-actions .btn {
-      width: 100%;
-    }
-
-    .side-card,
-    .filters,
-    .exec-content {
-      padding: 16px;
-    }
-
-    .status-date {
-      font-size: 1.3rem;
-    }
-
-    .info-row {
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .info-v {
-      text-align: left;
-    }
-
-    .form-group {
-      min-width: 100%;
-      flex: 1 1 100%;
-    }
-
-    .filter-submit {
-      width: 100%;
-    }
-
-    .filter-submit .btn {
-      width: 100%;
-    }
-
-    .exec-summary {
-      padding: 14px 16px;
-      align-items: flex-start;
-    }
-
-    .exec-meta {
-      align-items: flex-start;
-    }
-
-    .exec-date {
-      font-size: 0.98rem;
-    }
-
-    .exec-by {
-      font-size: 0.84rem;
-    }
-
-    .photo-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .photo-item img {
-      height: 180px;
-    }
-
-    th,
-    td {
-      padding: 10px 12px;
-      font-size: 0.85rem;
-    }
-
-    .empty-state {
-      padding: 28px 16px;
-    }
-  }
-
-  @media (max-width: 480px) {
-    .header-icon {
-      width: 42px;
-      height: 42px;
-      font-size: 1.15rem;
-    }
-
-    .header-text h1 {
-      font-size: 1.05rem;
-    }
-
-    .status-date {
-      font-size: 1.15rem;
-    }
-
-    .btn {
-      font-size: 0.85rem;
-      padding: 10px 14px;
-    }
-
-    .exec-summary {
-      gap: 10px;
-    }
-
-    .exec-content {
-      padding: 14px;
-    }
-
-    .obs-box {
-      font-size: 0.88rem;
-    }
-  }
-</style>
-
-<div class="page-container">
-
-  <div class="header-card">
-    <div class="header-titles">
-      <div class="header-icon">
-        <i class="fa fa-clipboard-list"></i>
-      </div>
-      <div class="header-text">
-        <h1>Preventiva: {{ equipamento.nome }}</h1>
-        <div class="subtitle">
-          Modelo de Checklist: <strong>{{ preventiva.checklist_modelo.nome }}</strong>
+<div class="pv-detail-page">
+
+  <!-- ── Sidebar ── -->
+  <aside class="pv-sidebar">
+
+    <div class="pv-card">
+      <div class="pv-card-header">
+        <div class="pv-card-title">
+          <i class="fa fa-calendar-check" aria-hidden="true"></i>
+          Status da Programação
         </div>
       </div>
-    </div>
-
-    <div class="header-actions">
-      <a href="?print=true" target="_blank" class="btn btn-light">
-        <i class="fa fa-print"></i> Imprimir / PDF
-      </a>
-      <a href="{% url 'preventiva_exec' preventiva.id %}" class="btn btn-primary">
-        <i class="fa fa-play"></i> Nova Execução
-      </a>
-    </div>
-  </div>
-
-  <div class="layout-grid">
-
-    <aside>
-      <div class="side-card">
-        <div class="side-title">Status da Programação</div>
-        <div class="status-box">
-          <div class="status-label">Próxima Manutenção</div>
-          <div class="status-date">
-            {{ proxima_calc|date:"d/m/Y"|default:"Não Agendada" }}
+      <div class="pv-card-body">
+        <div class="pv-status-widget">
+          <div class="pv-status-label">Próxima manutenção</div>
+          <div class="pv-status-date">
+            {{ proxima_calc|date:"d/m/Y"|default:"Não agendada" }}
           </div>
-
           {% if proxima_calc %}
             {% if status_prazo == 'late' %}
-              <div class="status-badge sb-late">
-                <i class="fa fa-circle-exclamation"></i>
+              <span class="pv-status-badge late">
+                <i class="fa fa-circle-exclamation" aria-hidden="true"></i>
                 Atrasada {{ dias_restantes|stringformat:"d"|slice:"1:" }} dias
-              </div>
+              </span>
             {% elif status_prazo == 'warning' %}
-              <div class="status-badge sb-warn">
-                <i class="fa fa-clock"></i>
+              <span class="pv-status-badge warn">
+                <i class="fa fa-clock" aria-hidden="true"></i>
                 Vence em breve
-              </div>
+              </span>
             {% else %}
-              <div class="status-badge sb-ok">
-                <i class="fa fa-check-circle"></i>
-                No Prazo
-              </div>
+              <span class="pv-status-badge ok">
+                <i class="fa fa-circle-check" aria-hidden="true"></i>
+                No prazo
+              </span>
             {% endif %}
           {% endif %}
         </div>
-
-        <div style="margin-top:16px; border-top:1px dashed #e0e0e0; padding-top:12px; font-size:0.85rem; color:var(--text-sub); text-align:center;">
-          Intervalo Configurado: <strong>{{ intervalo_info }}</strong>
+        <div class="pv-status-interval">
+          Intervalo configurado: <strong>{{ intervalo_info }}</strong>
         </div>
       </div>
+    </div>
 
-      <div class="side-card">
-        <div class="side-title">Ficha do Equipamento</div>
-
-        <div class="info-row">
-          <span class="info-k">Patrimônio (Tag)</span>
-          <span class="info-v">{{ equipamento.patrimonio|default:"-" }}</span>
-        </div>
-
-        <div class="info-row">
-          <span class="info-k">Marca / Modelo</span>
-          <span class="info-v">{{ equipamento.marca|default:"-" }} / {{ equipamento.modelo }}</span>
-        </div>
-
-        <div class="info-row">
-          <span class="info-k">Nº Série</span>
-          <span class="info-v">{{ equipamento.numero_serie|default:"-" }}</span>
-        </div>
-
-        <div class="info-row">
-          <span class="info-k">Localização</span>
-          <span class="info-v">{{ equipamento.localidade.local|default:"-" }}</span>
-        </div>
-
-        <div class="info-row">
-          <span class="info-k">Centro Custo</span>
-          <span class="info-v">{{ equipamento.centro_custo.departamento|default:"-" }}</span>
-        </div>
-
-        <div style="text-align:center; margin-top:16px;">
-          <a href="{% url 'equipamento_detalhe' equipamento.id %}" style="font-size:0.85rem; color:var(--primary); text-decoration:none;">
-            Ver cadastro completo &rarr;
-          </a>
+    <div class="pv-card">
+      <div class="pv-card-header">
+        <div class="pv-card-title">
+          <i class="fa fa-desktop" aria-hidden="true"></i>
+          Ficha do Equipamento
         </div>
       </div>
-    </aside>
-
-    <main>
-      <form method="get" class="filters">
-        <div class="form-group">
-          <label>Data Início</label>
-          <input type="date" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}" class="form-control">
+      <div class="pv-card-body">
+        <div class="pv-info-list">
+          <div class="pv-info-row">
+            <span class="pv-info-k">Patrimônio</span>
+            <span class="pv-info-v">{{ equipamento.patrimonio|default:"—" }}</span>
+          </div>
+          <div class="pv-info-row">
+            <span class="pv-info-k">Marca / Modelo</span>
+            <span class="pv-info-v">{{ equipamento.marca|default:"—" }} / {{ equipamento.modelo|default:"—" }}</span>
+          </div>
+          <div class="pv-info-row">
+            <span class="pv-info-k">Nº Série</span>
+            <span class="pv-info-v">{{ equipamento.numero_serie|default:"—" }}</span>
+          </div>
+          <div class="pv-info-row">
+            <span class="pv-info-k">Localização</span>
+            <span class="pv-info-v">{{ equipamento.localidade.local|default:"—" }}</span>
+          </div>
+          <div class="pv-info-row">
+            <span class="pv-info-k">Centro de Custo</span>
+            <span class="pv-info-v">{{ equipamento.centro_custo.departamento|default:"—" }}</span>
+          </div>
         </div>
+        <a href="{% url 'equipamento_detalhe' equipamento.id %}" class="pv-link-sm">
+          Ver cadastro completo <i class="fa fa-arrow-right" aria-hidden="true"></i>
+        </a>
+      </div>
+    </div>
 
-        <div class="form-group">
-          <label>Data Fim</label>
-          <input type="date" name="fim" value="{{ dt_fim|date:'Y-m-d' }}" class="form-control">
-        </div>
+  </aside>
 
-        <div class="filter-submit">
-          <button type="submit" class="btn btn-light" style="min-height:38px;">
-            <i class="fa fa-filter"></i> Filtrar
-          </button>
-        </div>
-      </form>
+  <!-- ── Main ── -->
+  <main class="pv-main">
 
-      {% if not execucoes %}
-        <div class="empty-state">
-          <i class="fa fa-clipboard-list" style="font-size:32px; opacity:0.3; margin-bottom:10px;"></i>
-          <div>Nenhuma execução encontrada no período.</div>
-        </div>
-      {% endif %}
+    <form method="get" class="pv-filter-bar">
+      <div class="pv-filter-group">
+        <label for="dt-ini">Data Início</label>
+        <input id="dt-ini" type="date" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}" class="pv-filter-input">
+      </div>
+      <div class="pv-filter-group">
+        <label for="dt-fim">Data Fim</label>
+        <input id="dt-fim" type="date" name="fim" value="{{ dt_fim|date:'Y-m-d' }}" class="pv-filter-input">
+      </div>
+      <button type="submit" class="pv-btn-sm">
+        <i class="fa fa-filter" aria-hidden="true"></i> Filtrar
+      </button>
+    </form>
 
-      {% for item in execucoes %}
-        <details class="exec-card" {% if forloop.first %}open{% endif %}>
-          <summary class="exec-summary">
-            <div class="exec-meta">
-              <i class="fa fa-circle-check" style="color:var(--ok-fg); font-size:1.2rem;"></i>
-              <div class="exec-info">
-                <div class="exec-date">{{ item.obj.data_execucao|date:"d/m/Y" }}</div>
-                <div class="exec-by">
-                  <i class="fa fa-user-circle"></i>
-                  {{ item.obj.criado_por.username|default:"Técnico" }}
-                  &bull;
-                  {{ item.obj.created_at|date:"H:i" }}
+    {% if not execucoes %}
+      <div class="pv-empty-state">
+        <i class="fa fa-clipboard-list" aria-hidden="true" style="font-size:2rem;opacity:.3;display:block;margin-bottom:.65rem;"></i>
+        Nenhuma execução encontrada no período.
+      </div>
+    {% else %}
+      <div class="pv-exec-list">
+        {% for item in execucoes %}
+          <details class="pv-exec-card" {% if forloop.first %}open{% endif %}>
+            <summary class="pv-exec-summary">
+              <div class="pv-exec-meta">
+                <div class="pv-exec-icon" aria-hidden="true">
+                  <i class="fa fa-circle-check"></i>
+                </div>
+                <div>
+                  <div class="pv-exec-date">{{ item.obj.data_execucao|date:"d/m/Y" }}</div>
+                  <div class="pv-exec-by">
+                    <i class="fa fa-user" aria-hidden="true"></i>
+                    {{ item.obj.criado_por.username|default:"Técnico" }} &bull; {{ item.obj.created_at|date:"H:i" }}
+                  </div>
                 </div>
               </div>
-            </div>
-            <i class="fa fa-chevron-down exec-chevron"></i>
-          </summary>
+              <i class="fa fa-chevron-down pv-exec-chevron" aria-hidden="true"></i>
+            </summary>
 
-          <div class="exec-content">
+            <div class="pv-exec-body">
 
-            {% if item.obj.foto_antes or item.obj.foto_depois %}
-              <div class="photo-grid">
-                {% if item.obj.foto_antes %}
-                  <div class="photo-item">
-                    <span class="photo-tag">Antes</span>
-                    <img src="{{ item.obj.foto_antes.url }}" alt="Foto antes" onclick="openLightbox(this.src)">
-                  </div>
-                {% endif %}
+              {% if item.obj.foto_antes or item.obj.foto_depois %}
+                <div class="pv-photo-grid">
+                  {% if item.obj.foto_antes %}
+                    <div class="pv-photo-item">
+                      <span class="pv-photo-tag">Antes</span>
+                      <img src="{{ item.obj.foto_antes.url }}" alt="Foto antes da execução"
+                           onclick="pvOpenLightbox(this.src)">
+                    </div>
+                  {% endif %}
+                  {% if item.obj.foto_depois %}
+                    <div class="pv-photo-item">
+                      <span class="pv-photo-tag">Depois</span>
+                      <img src="{{ item.obj.foto_depois.url }}" alt="Foto após execução"
+                           onclick="pvOpenLightbox(this.src)">
+                    </div>
+                  {% endif %}
+                </div>
+              {% endif %}
 
-                {% if item.obj.foto_depois %}
-                  <div class="photo-item">
-                    <span class="photo-tag">Depois</span>
-                    <img src="{{ item.obj.foto_depois.url }}" alt="Foto depois" onclick="openLightbox(this.src)">
-                  </div>
-                {% endif %}
-              </div>
-            {% endif %}
+              {% if item.obj.observacao %}
+                <div class="pv-obs-box">
+                  <i class="fa fa-comment" aria-hidden="true" style="flex:0 0 1rem;margin-top:.1rem;"></i>
+                  <span>{{ item.obj.observacao }}</span>
+                </div>
+              {% endif %}
 
-            {% if item.obj.observacao %}
-              <div class="obs-box">
-                <strong><i class="fa fa-comment"></i> Observações:</strong>
-                {{ item.obj.observacao }}
-              </div>
-            {% endif %}
-
-            <div class="table-responsive">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Item de Verificação</th>
-                    <th style="width:140px;">Resultado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for linha in item.linhas %}
+              <div class="pv-table-wrap">
+                <table class="pv-exec-table">
+                  <thead>
                     <tr>
-                      <td>{{ linha.texto }}</td>
-                      <td>
-                        {% if linha.resposta|lower == 'sim' %}
-                          <span class="ans-pill ans-sim"><i class="fa fa-check"></i> Sim</span>
-                        {% elif linha.resposta|lower == 'nao' %}
-                          <span class="ans-pill ans-nao"><i class="fa fa-times"></i> Não</span>
-                        {% else %}
-                          <span style="font-weight:600; color:var(--primary);">{{ linha.resposta }}</span>
-                        {% endif %}
-                      </td>
+                      <th>Item de Verificação</th>
+                      <th style="width:130px">Resultado</th>
                     </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {% for linha in item.linhas %}
+                      <tr>
+                        <td>{{ linha.texto }}</td>
+                        <td>
+                          {% if linha.resposta|lower == 'sim' %}
+                            <span class="pv-ans-pill pv-ans-sim"><i class="fa fa-check" aria-hidden="true"></i> Sim</span>
+                          {% elif linha.resposta|lower == 'nao' %}
+                            <span class="pv-ans-pill pv-ans-nao"><i class="fa fa-xmark" aria-hidden="true"></i> Não</span>
+                          {% else %}
+                            <span class="pv-ans-other">{{ linha.resposta }}</span>
+                          {% endif %}
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+
             </div>
+          </details>
+        {% endfor %}
+      </div>
+    {% endif %}
 
-          </div>
-        </details>
-      {% endfor %}
-    </main>
-  </div>
+  </main>
+
 </div>
 
-<div class="lightbox" id="lightbox" onclick="this.classList.remove('active')">
-  <img id="lightbox-img" src="" alt="Imagem ampliada">
+<div class="pv-lightbox" id="pv-lightbox" onclick="pvCloseLightbox()" role="dialog" aria-label="Visualizar imagem">
+  <img id="pv-lightbox-img" src="" alt="Imagem ampliada">
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
-  function openLightbox(src) {
-    document.getElementById('lightbox-img').src = src;
-    document.getElementById('lightbox').classList.add('active');
+  function pvOpenLightbox(src) {
+    document.getElementById('pv-lightbox-img').src = src;
+    document.getElementById('pv-lightbox').classList.add('active');
+    document.body.style.overflow = 'hidden';
   }
+
+  function pvCloseLightbox() {
+    document.getElementById('pv-lightbox').classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') pvCloseLightbox();
+  });
 </script>
 {% endblock %}

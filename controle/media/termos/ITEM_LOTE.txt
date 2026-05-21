@@ -1,0 +1,216 @@
+class LoteEstoque(AuditModel):
+    fornecedor = models.ForeignKey(
+        "Fornecedor",
+        on_delete=models.PROTECT,
+        related_name="lotes_estoque",
+        verbose_name="Fornecedor"
+    )
+
+    data_entrada = models.DateField(
+        verbose_name="Data de Entrada"
+    )
+
+    numero_nf = models.CharField(
+        max_length=60,
+        verbose_name="Número da NF"
+    )
+
+    serie_nf = models.CharField(
+        max_length=30,
+        verbose_name="Série da NF"
+    )
+
+    quantidade = models.PositiveIntegerField(
+        default=1,
+        validators=[MinValueValidator(1)],
+        verbose_name="Quantidade do Lote"
+    )
+
+    custo_unitario = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Custo Unitário"
+    )
+
+    custo_total = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Custo Total"
+    )
+
+    observacao_tecnica = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Observação Técnica"
+    )
+
+    class Meta:
+        verbose_name = "Lote de Estoque"
+        verbose_name_plural = "Lotes de Estoque"
+        ordering = ["-data_entrada", "-created_at"]
+        indexes = [
+            models.Index(fields=["numero_nf", "serie_nf"]),
+            models.Index(fields=["data_entrada"]),
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if not self.fornecedor_id:
+            raise ValidationError({"fornecedor": "Fornecedor é obrigatório para o lote."})
+
+        if not self.data_entrada:
+            raise ValidationError({"data_entrada": "Data de entrada é obrigatória para o lote."})
+
+        if not self.numero_nf:
+            raise ValidationError({"numero_nf": "Número da NF é obrigatório para o lote."})
+
+        if not self.serie_nf:
+            raise ValidationError({"serie_nf": "Série da NF é obrigatória para o lote."})
+
+        if not self.quantidade or self.quantidade <= 0:
+            raise ValidationError({"quantidade": "A quantidade do lote deve ser maior que zero."})
+
+        if not self.custo_unitario or self.custo_unitario <= 0:
+            raise ValidationError({"custo_unitario": "O custo unitário deve ser maior que zero."})
+
+        if not self.custo_total or self.custo_total <= 0:
+            raise ValidationError({"custo_total": "O custo total deve ser maior que zero."})
+
+        total_calculado = self.custo_unitario * Decimal(self.quantidade)
+
+        if self.custo_total != total_calculado:
+            raise ValidationError({
+                "custo_total": (
+                    f"Custo total inconsistente. Esperado: R$ {total_calculado:.2f} "
+                    f"com base em {self.quantidade} unidade(s) x R$ {self.custo_unitario:.2f}."
+                )
+            })
+
+    def __str__(self):
+        return f"Lote NF {self.numero_nf}/{self.serie_nf} - {self.fornecedor}"
+    
+class ItemLote(AuditModel):
+    item = models.ForeignKey(
+        "Item",
+        on_delete=models.PROTECT,
+        related_name="vinculos_lote",
+        verbose_name="Item / Equipamento"
+    )
+
+    lote = models.ForeignKey(
+        "LoteEstoque",
+        on_delete=models.PROTECT,
+        related_name="itens_vinculados",
+        verbose_name="Lote"
+    )
+
+    quantidade_entrada = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)],
+        verbose_name="Quantidade de Entrada"
+    )
+
+    quantidade_disponivel = models.PositiveIntegerField(
+        validators=[MinValueValidator(0)],
+        verbose_name="Quantidade Disponível"
+    )
+
+    custo_unitario = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Custo Unitário"
+    )
+
+    custo_total = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Custo Total"
+    )
+
+    class Meta:
+        verbose_name = "Vínculo Item x Lote"
+        verbose_name_plural = "Vínculos Item x Lote"
+        ordering = ["-created_at"]
+
+    def clean(self):
+        super().clean()
+
+        if not self.item_id:
+            raise ValidationError({"item": "Item é obrigatório no vínculo de lote."})
+
+        if not self.lote_id:
+            raise ValidationError({"lote": "Lote é obrigatório."})
+
+        if self.quantidade_disponivel > self.quantidade_entrada:
+            raise ValidationError({
+                "quantidade_disponivel": "A quantidade disponível não pode ser maior que a quantidade de entrada."
+            })
+
+    def __str__(self):
+        return f"{self.item} | {self.lote} | Qtd: {self.quantidade_entrada}"
+
+
+class LoteEstoqueForm(forms.ModelForm):
+    class Meta:
+        model = LoteEstoque
+        fields = [
+            "fornecedor",
+            "data_entrada",
+            "numero_nf",
+            "serie_nf",
+            "custo_unitario",
+            "custo_total",
+            "observacao_tecnica",
+        ]
+
+        widgets = {
+            "fornecedor": forms.Select(attrs={"class": "form-control"}),
+            "data_entrada": forms.DateInput(attrs={
+                "class": "form-control",
+                "type": "date",
+            }),
+            "numero_nf": forms.TextInput(attrs={
+                "class": "form-control",
+                "placeholder": "Ex: 123456",
+            }),
+            "serie_nf": forms.TextInput(attrs={
+                "class": "form-control",
+                "placeholder": "Ex: 1",
+            }),
+            "custo_unitario": forms.NumberInput(attrs={
+                "class": "form-control",
+                "step": "0.01",
+                "min": "0.01",
+            }),
+            "custo_total": forms.NumberInput(attrs={
+                "class": "form-control",
+                "step": "0.01",
+                "min": "0.01",
+            }),
+            "observacao_tecnica": forms.Textarea(attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": "Descreva observações fiscais, técnicas ou de recebimento do lote.",
+            }),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+
+        custo_unitario = cleaned.get("custo_unitario")
+        custo_total = cleaned.get("custo_total")
+
+        if custo_unitario is not None and custo_unitario <= 0:
+            self.add_error("custo_unitario", "O custo unitário deve ser maior que zero.")
+
+        if custo_total is not None and custo_total <= 0:
+            self.add_error("custo_total", "O custo total deve ser maior que zero.")
+
+        return cleaned
+
+
+

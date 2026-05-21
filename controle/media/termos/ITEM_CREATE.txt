@@ -1,0 +1,1048 @@
+item CREATE
+
+@login_required
+@transaction.atomic  # Garante que tudo ou nada seja salvo 
+def item_create(request):
+    if request.method == "POST":
+        form = ItemForm(request.POST)
+        locacao_form = LocacaoForm(request.POST)
+        lote_form = LoteEstoqueForm(request.POST)
+
+        form_valido = form.is_valid()
+
+        tem_lote = False
+        eh_locado = False
+
+        if form_valido:
+            tem_lote = form.cleaned_data.get("tem_lote") is True
+            eh_locado = form.cleaned_data.get("locado") == SimNaoChoices.SIM
+
+        locacao_valida = locacao_form.is_valid() if eh_locado else True
+        lote_valido = lote_form.is_valid() if tem_lote else True
+
+        if form_valido and locacao_valida and lote_valido:
+            try:
+                with transaction.atomic():
+                    item = form.save(commit=False)
+                    preencher_auditoria(item, request.user, criando=True)
+
+                    lote = None
+
+                    if tem_lote:
+                        lote = lote_form.save(commit=False)
+                        lote.quantidade = item.quantidade or 1
+
+                        preencher_auditoria(lote, request.user, criando=True)
+
+                        # Importante:
+                        # full_clean depois de preencher auditoria.
+                        lote.full_clean()
+                        lote.save()
+
+                        item.fornecedor = lote.fornecedor
+                        item.valor = lote.custo_unitario
+                        item.numero_pedido = lote.numero_nf
+
+                    preencher_auditoria(item, request.user, criando=True)
+                    item.save()
+
+                    if tem_lote and lote:
+                        item_lote = ItemLote(
+                            item=item,
+                            lote=lote,
+                            quantidade_entrada=lote.quantidade,
+                            quantidade_disponivel=lote.quantidade,
+                            custo_unitario=lote.custo_unitario,
+                            custo_total=lote.custo_total,
+                        )
+
+                        preencher_auditoria(item_lote, request.user, criando=True)
+                        item_lote.full_clean()
+                        item_lote.save()
+
+                    if eh_locado:
+                        locacao = locacao_form.save(commit=False)
+                        locacao.equipamento = item
+
+                        preencher_auditoria(locacao, request.user, criando=True)
+                        locacao.full_clean()
+                        locacao.save()
+
+                    messages.success(request, "Equipamento cadastrado com sucesso.")
+                    return redirect("equipamentos_list")
+
+            except ValidationError as e:
+                adicionar_erros_validacao_no_form(form, e)
+                messages.error(request, "Erro de validação. Verifique os dados informados.")
+
+            except IntegrityError as e:
+                messages.error(
+                    request,
+                    f"Erro de integridade ao salvar o equipamento. Nenhum dado foi gravado. Detalhe: {str(e)}"
+                )
+
+            except Exception as e:
+                messages.error(
+                    request,
+                    f"Erro inesperado ao salvar o equipamento: {str(e)}"
+                )
+
+        else:
+            messages.error(request, "Verifique os campos obrigatórios antes de salvar.")
+
+    else:
+        form = ItemForm()
+        locacao_form = LocacaoForm()
+        lote_form = LoteEstoqueForm()
+
+    return render(request, "front/equipamentos/cadastrar_equipamento.html", {
+        "form": form,
+        "locacao_form": locacao_form,
+        "lote_form": lote_form,
+    })
+
+
+{% extends 'base.html' %}
+{% block title %}{{ editar|yesno:"Editar Item,Novo Item" }}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css">
+
+<style>
+    /* Variáveis de Design - Tema Limpo e Minimalista */
+    :root {
+        --bg-body: #f1f5f9;       /* Slate 100 */
+        --bg-card: #ffffff;
+        --text-main: #0f172a;     /* Slate 900 */
+        --text-mut: #64748b;      /* Slate 500 */
+        --border: #e2e8f0;        /* Slate 200 */
+        --focus-ring: #3b82f6;    /* Blue 500 */
+        --primary: #2563eb;       /* Blue 600 */
+        --primary-hover: #1d4ed8;
+        --danger: #ef4444;
+        --radius: 8px;
+        --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    }
+
+    body {
+        background-color: var(--bg-body);
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        color: var(--text-main);
+        line-height: 1.5;
+    }
+
+    /* Container Centralizado */
+    .page-container {
+        max-width: 1000px;
+        margin: 40px auto;
+        padding: 0 20px;
+    }
+
+    /* Card Principal */
+    .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        padding: 32px;
+        animation: fadeIn 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Cabeçalho */
+    .header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 32px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 24px;
+    }
+
+    .header-icon {
+        width: 48px;
+        height: 48px;
+        background: #eff6ff;
+        color: var(--primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-size: 1.25rem;
+    }
+
+    .header h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-main);
+    }
+
+    /* Sistema de Grid Responsivo */
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 20px;
+        margin-bottom: 24px;
+    }
+
+    .col-12 { grid-column: span 12; }
+    .col-6  { grid-column: span 6; }
+    .col-4  { grid-column: span 4; }
+    .col-3  { grid-column: span 3; }
+    .col-8  { grid-column: span 8; }
+
+    @media (max-width: 768px) {
+        .col-md-12 { grid-column: span 12 !important; }
+        .col-md-6  { grid-column: span 6 !important; }
+    }
+    @media (max-width: 640px) {
+        .col-sm-12 { grid-column: span 12 !important; }
+    }
+
+    /* Seções do Formulário */
+    .form-section {
+        margin-bottom: 32px;
+    }
+
+    .section-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-main);
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .section-title i { color: var(--text-mut); font-size: 0.9em; }
+
+    /* Inputs e Labels */
+    .field-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .field-label {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: #fff;
+        font-size: 0.95rem;
+        transition: all 0.2s;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--focus-ring);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
+    textarea.form-control {
+        min-height: 100px;
+        resize: vertical;
+    }
+
+    .help-text {
+        font-size: 0.8rem;
+        color: var(--text-mut);
+        margin-top: 4px;
+    }
+
+    /* Alertas de Erro */
+    .alert-box {
+        background: #fef2f2;
+        border: 1px solid #fee2e2;
+        color: #991b1b;
+        padding: 16px;
+        border-radius: var(--radius);
+        margin-bottom: 24px;
+        font-size: 0.95rem;
+    }
+    .errorlist { list-style: none; padding: 0; margin: 0; color: var(--danger); font-size: 0.85rem; }
+
+    /* Botões */
+    .actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 40px;
+        border-top: 1px solid var(--border);
+        padding-top: 24px;
+    }
+
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 24px;
+        border-radius: var(--radius);
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        border: none;
+        transition: background 0.2s;
+        text-decoration: none;
+    }
+
+    .btn-secondary {
+        background: #fff;
+        border: 1px solid var(--border);
+        color: var(--text-main);
+    }
+    .btn-secondary:hover { background: #f8fafc; }
+
+    .btn-primary {
+        background: var(--primary);
+        color: white;
+    }
+    .btn-primary:hover { background: var(--primary-hover); }
+
+    /* Ajustes Choices.js para combinar com o tema */
+    .choices__inner {
+        background-color: #fff;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        min-height: 42px;
+    }
+    .is-focused .choices__inner {
+        border-color: var(--focus-ring);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+</style>
+
+<div class="page-container">
+    <div class="card">
+       
+        <div>
+            <h1>{% if editar %}Editar Equipamento{% else %}Novo Equipamento{% endif %}</h1>
+            <span style="color: var(--text-mut); font-size: 0.9rem;">Preencha os dados abaixo</span>
+        </div>
+       
+        {% if form.non_field_errors or locacao_form.non_field_errors or lote_form.non_field_errors %}
+            <div class="alert-box">
+                <strong><i class="fa fa-circle-exclamation"></i> Atenção:</strong> Verifique os erros abaixo.
+                {{ form.non_field_errors }}
+                {{ locacao_form.non_field_errors }}
+                {{ lote_form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <form method="post" id="itemForm" novalidate>
+            {% csrf_token %}
+
+            <div class="form-section">
+                <div class="section-title"><i class="fa fa-cube"></i> Dados Identificação</div>
+                <div class="grid">
+                    <div class="col-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ form.nome.id_for_label }}">Nome do Item</label>
+                        {{ form.nome }}
+                        {{ form.nome.errors }}
+                    </div>
+                    <div class="col-3 col-sm-12 field-group">
+                        <label class="field-label" for="{{ form.numero_serie.id_for_label }}">Nº Série</label>
+                        {{ form.numero_serie }}
+                        {{ form.numero_serie.errors }}
+                    </div>
+                    <div class="col-3 col-sm-12 field-group">
+                        <label class="field-label" for="{{ form.quantidade.id_for_label }}">Quantidade</label>
+                        {{ form.quantidade }}
+                        {{ form.quantidade.errors }}
+                    </div>
+                </div>
+
+                <div class="grid">
+                    <div class="col-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ form.marca.id_for_label }}">Marca</label>
+                        {{ form.marca }}
+                        {{ form.marca.errors }}
+                    </div>
+                    <div class="col-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ form.modelo.id_for_label }}">Modelo</label>
+                        {{ form.modelo }}
+                        {{ form.modelo.errors }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-title"><i class="fa fa-tags"></i> Classificação & Localização</div>
+                <div class="grid">
+                    <div class="col-3 col-md-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ form.status.id_for_label }}">Status</label>
+                        {{ form.status }}
+                        {{ form.status.errors }}
+                    </div>
+                    <div class="col-3 col-md-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ form.subtipo.id_for_label }}">Subtipo/Categoria</label>
+                        {{ form.subtipo }}
+                        {{ form.subtipo.errors }}
+                    </div>
+                    <div class="col-3 col-md-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ form.localidade.id_for_label }}">Localidade</label>
+                        {{ form.localidade }}
+                        {{ form.localidade.errors }}
+                    </div>
+                    <div class="col-3 col-md-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ form.centro_custo.id_for_label }}">Centro de Custo</label>
+                        {{ form.centro_custo }}
+                        {{ form.centro_custo.errors }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-title"><i class="fa fa-coins"></i> Controle & Valores</div>
+                <div class="grid">
+                    <div class="col-3 col-md-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ form.pmb.id_for_label }}">PMB?</label>
+                        {{ form.pmb }}
+                        {{ form.pmb.errors }}
+                    </div>
+                    <div class="col-3 col-md-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ form.item_consumo.id_for_label }}">Item de Consumo?</label>
+                        {{ form.item_consumo }}
+                        {{ form.item_consumo.errors }}
+                    </div>
+                    <div class="col-6 col-md-12 field-group">
+                        <label class="field-label" for="{{ form.valor.id_for_label }}">Valor Unitário (R$)</label>
+                        {{ form.valor }}
+                        {{ form.valor.errors }}
+                    </div>
+                    <div class="col-12 field-group">
+                        <label class="field-label" for="{{ form.tem_lote.id_for_label }}">
+                            Controle por Lote?
+                        </label>
+
+                        <label style="display:flex; align-items:center; gap:10px; background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:12px;">
+                            {{ form.tem_lote }}
+                            <span>Sim, este item deve ter rastreabilidade por lote fiscal.</span>
+                        </label>
+
+                        {{ form.tem_lote.errors }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-title"><i class="fa fa-screwdriver-wrench"></i> Manutenção Preventiva</div>
+                <div class="grid">
+                    <div class="col-4 col-md-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ form.precisa_preventiva.id_for_label }}">Requer Preventiva?</label>
+                        {{ form.precisa_preventiva }}
+                        {{ form.precisa_preventiva.errors }}
+                    </div>
+                    <div class="col-8 col-md-6 col-sm-12 field-group" id="grp_preventiva" style="display:none;">
+                        <label class="field-label" for="{{ form.data_limite_preventiva.id_for_label }}">Periodicidade (em dias)</label>
+                        {{ form.data_limite_preventiva }}
+                        <span class="help-text">Informe a cada quantos dias a manutenção deve ocorrer.</span>
+                        {{ form.data_limite_preventiva.errors }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-title"><i class="fa fa-file-contract"></i> Dados de Aquisição / Locação</div>
+                
+                <div class="grid">
+                    <div class="col-12 field-group">
+                        <label class="field-label" for="{{ form.locado.id_for_label }}">Este equipamento é locado?</label>
+                        {{ form.locado }}
+                        {{ form.locado.errors }}
+                    </div>
+                </div>
+
+                <div id="box_nao_locado">
+                    <div class="grid">
+                        <div class="col-6 col-sm-12 field-group">
+                            <label class="field-label" for="{{ form.data_compra.id_for_label }}">Data da Compra</label>
+                            {{ form.data_compra }}
+                            {{ form.data_compra.errors }}
+                        </div>
+                        <div class="col-6 col-sm-12 field-group">
+                            <label class="field-label" for="{{ form.numero_pedido.id_for_label }}">Número do Pedido/NF</label>
+                            {{ form.numero_pedido }}
+                            {{ form.numero_pedido.errors }}
+                        </div>
+                    </div>
+                </div>
+
+                <div id="box_locado" style="display:none; background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px dashed var(--border);">
+                    <div class="grid">
+                        <div class="col-6 col-sm-12 field-group">
+                            <label class="field-label" for="{{ locacao_form.data_entrada.id_for_label }}">Data de Entrada*</label>
+                            {{ locacao_form.data_entrada }}
+                            {{ locacao_form.data_entrada.errors }}
+                        </div>
+                        <div class="col-6 col-sm-12 field-group">
+                            <label class="field-label" for="{{ locacao_form.tempo_locado.id_for_label }}">Tempo de Contrato (Meses)*</label>
+                            {{ locacao_form.tempo_locado }}
+                            {{ locacao_form.tempo_locado.errors }}
+                        </div>
+                        <div class="col-6 col-sm-12 field-group">
+                            <label class="field-label" for="{{ locacao_form.valor_mensal.id_for_label }}">Valor Mensal (R$)*</label>
+                            {{ locacao_form.valor_mensal }}
+                            {{ locacao_form.valor_mensal.errors }}
+                        </div>
+                        <div class="col-6 col-sm-12 field-group">
+                            <label class="field-label" for="{{ locacao_form.fornecedor.id_for_label }}">Fornecedor (Locador)</label>
+                            {{ locacao_form.fornecedor }}
+                            {{ locacao_form.fornecedor.errors }}
+                        </div>
+                        <div class="col-6 col-sm-12 field-group">
+                            <label class="field-label" for="{{ locacao_form.contrato.id_for_label }}">Anexo Contrato</label>
+                            {{ locacao_form.contrato }}
+                            {{ locacao_form.contrato.errors }}
+                        </div>
+                        <div class="col-12 field-group">
+                            <label class="field-label" for="{{ locacao_form.observacoes.id_for_label }}">Obs. da Locação</label>
+                            {{ locacao_form.observacoes }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-section" id="box_lote" style="display:none; background:#f8fafc; padding:16px; border-radius:8px; border:1px dashed var(--border);">
+                <div class="section-title">
+                    <i class="fa fa-boxes-stacked"></i> Formulário de Lote
+                </div>
+
+                <div class="grid">
+                    <div class="col-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ lote_form.fornecedor.id_for_label }}">Fornecedor*</label>
+                        {{ lote_form.fornecedor }}
+                        {{ lote_form.fornecedor.errors }}
+                    </div>
+
+                    <div class="col-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ lote_form.data_entrada.id_for_label }}">Data de Entrada*</label>
+                        {{ lote_form.data_entrada }}
+                        {{ lote_form.data_entrada.errors }}
+                    </div>
+
+                    <div class="col-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ lote_form.numero_nf.id_for_label }}">Número da NF*</label>
+                        {{ lote_form.numero_nf }}
+                        {{ lote_form.numero_nf.errors }}
+                    </div>
+
+                    <div class="col-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ lote_form.serie_nf.id_for_label }}">Série da NF*</label>
+                        {{ lote_form.serie_nf }}
+                        {{ lote_form.serie_nf.errors }}
+                    </div>
+
+                    <div class="col-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ lote_form.custo_unitario.id_for_label }}">Custo Unitário (R$)*</label>
+                        {{ lote_form.custo_unitario }}
+                        {{ lote_form.custo_unitario.errors }}
+                    </div>
+
+                    <div class="col-6 col-sm-12 field-group">
+                        <label class="field-label" for="{{ lote_form.custo_total.id_for_label }}">Custo Total (R$)*</label>
+                        {{ lote_form.custo_total }}
+                        {{ lote_form.custo_total.errors }}
+                        <span class="help-text">
+                            O sistema valida se custo total = quantidade x custo unitário.
+                        </span>
+                    </div>
+
+                    <div class="col-12 field-group">
+                        <label class="field-label" for="{{ lote_form.observacao_tecnica.id_for_label }}">Observação Técnica</label>
+                        {{ lote_form.observacao_tecnica }}
+                        {{ lote_form.observacao_tecnica.errors }}
+                    </div>
+                </div>
+            </div>            
+            <div class="form-section">
+                <div class="grid">
+                    <div class="col-12 field-group">
+                        <label class="field-label" for="{{ form.observacoes.id_for_label }}">Observações Gerais</label>
+                        {{ form.observacoes }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="actions">
+                <a href="javascript:history.back()" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
+                <button type="submit" class="btn btn-primary"><i class="fa fa-save"></i> {% if editar %}Atualizar{% else %}Salvar{% endif %}</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // 1. Aplica estilo aos inputs padrões do Django (caso widget não tenha classe)
+    const inputs = document.querySelectorAll('input:not([type=checkbox]):not([type=radio]), textarea, select');
+    inputs.forEach(el => el.classList.add('form-control'));
+
+    // 2. Inicializa Choices.js (Select2 style) automaticamente em todos os selects
+    const selects = document.querySelectorAll('select');
+    selects.forEach(select => {
+        new Choices(select, {
+            searchEnabled: true,
+            searchPlaceholderValue: 'Pesquisar...',
+            itemSelectText: '',
+            shouldSort: false, // Mantém ordem do Django
+            placeholder: true,
+            allowHTML: false
+        });
+    });
+
+    // 3. Lógica de Mostrar/Ocultar Locação
+    const fieldLocado = document.getElementById('{{ form.locado.auto_id }}');
+    const boxLocado = document.getElementById('box_locado');
+    const boxNaoLocado = document.getElementById('box_nao_locado');
+
+    function toggleLocacao() {
+        if (!fieldLocado) return;
+        
+        // Verifica se é "Sim" (compatível com ChoiceField 'sim', 'nao' ou Boolean)
+        const val = fieldLocado.value.toLowerCase();
+        const isLocado = (val === 'sim' || val === 'true' || val === '1');
+
+        if (isLocado) {
+            boxLocado.style.display = 'block';
+            boxNaoLocado.style.display = 'none';
+        } else {
+            boxLocado.style.display = 'none';
+            boxNaoLocado.style.display = 'block';
+        }
+    }
+
+    if (fieldLocado) {
+        fieldLocado.addEventListener('change', toggleLocacao);
+        // Dispara no load para pegar o estado inicial (edição)
+        toggleLocacao();
+    }
+
+    // 4. Lógica de Preventiva
+    const fieldPrev = document.getElementById('{{ form.precisa_preventiva.auto_id }}');
+    const grpPrev = document.getElementById('grp_preventiva');
+
+    function togglePreventiva() {
+        if (!fieldPrev) return;
+        const val = fieldPrev.value.toLowerCase();
+        const needsPrev = (val === 'sim' || val === 'true' || val === '1');
+        
+        // Exibe o grupo se necessário. 'flex' porque é um container de grid/flex no CSS
+        if (grpPrev) {
+            grpPrev.style.display = needsPrev ? 'flex' : 'none'; 
+        }
+    }
+
+    if (fieldPrev) {
+        fieldPrev.addEventListener('change', togglePreventiva);
+        togglePreventiva();
+    }
+    const fieldTemLote = document.getElementById('{{ form.tem_lote.auto_id }}');
+    const boxLote = document.getElementById('box_lote');
+
+    function toggleLote() {
+        if (!fieldTemLote || !boxLote) return;
+
+        let temLote = false;
+
+        if (fieldTemLote.type === 'checkbox') {
+            temLote = fieldTemLote.checked;
+        } else {
+            const val = String(fieldTemLote.value).toLowerCase();
+            temLote = (val === 'sim' || val === 'true' || val === '1');
+        }
+
+        boxLote.style.display = temLote ? 'block' : 'none';
+    }
+
+    if (fieldTemLote) {
+        fieldTemLote.addEventListener('change', toggleLote);
+        toggleLote();
+    }
+});
+</script>
+{% endblock %}
+
+class SimNaoChoices(models.TextChoices):
+    SIM = 'sim', 'Sim'
+    NAO = 'nao', 'Não'
+
+class StatusItemChoices(models.TextChoices):
+    ATIVO = 'ativo', 'Ativo'
+    BACKUP = 'backup', 'Backup'
+    MANUTENCAO = 'manutencao', 'Manutenção'
+    DEFEITO = 'defeito', 'Defeito'
+    PAUSADO = 'pausado', 'Pausado'
+
+class StatusUsuarioChoices(models.TextChoices):
+    ATIVO = 'ativo', 'Ativo'
+    DESLIGADO = 'desligado', 'Desligado'
+
+class TipoMovimentacaoChoices(models.TextChoices):
+    TRANSFERENCIA = "transferencia", "Transferência"
+    TRANSFERENCIA_EQUIPAMENTO = "transferencia_equipamento", "Transferência Equipamento"
+    BAIXA = "baixa", "Baixa"
+    ENTRADA = "entrada", "Entrada"
+    ENVIO_MANUTENCAO = "envio_manutencao", "Envio para Manutenção"
+    RETORNO_MANUTENCAO = "retorno_manutencao", "Retorno de Manutenção"
+    OUTROS = "outros", "Outros"
+
+class TipoTransferenciaChoices(models.TextChoices):
+    ENTREGA = "entrega", "Entrega"
+    DEVOLUCAO = "devolucao", "Devolução"
+
+class LocalidadeChoices(models.TextChoices):
+    KARITEL = "Karitel", "Karitel"
+    RIO_DO_MEIO = "Rio_do_Meio", "Rio do Meio"
+    Mambai = "Mambai", "Mambai"
+    Sao_Paulo =  "Sao_Paulo", "Sao Paulo"
+    
+class TipoRespostaChoices(models.TextChoices):
+    TEXTO    = 'texto', 'Texto'
+    NUMERO   = 'numero', 'Número'
+    BOOLEANO = 'booleano', 'Sim/Não'
+    ESCOLHA  = 'escolha', 'Escolha única'
+
+class Item(AuditModel):
+    nome = models.CharField(max_length=100)
+    numero_serie = models.CharField(max_length=100, blank=True, null=True)
+    marca = models.CharField(max_length=100, blank=True, null=True)
+    modelo = models.CharField(max_length=100, blank=True, null=True)
+    
+    centro_custo = models.ForeignKey(CentroCusto, on_delete=models.SET_NULL, null=True, blank=True)  # <-- novo campo
+    quantidade = models.PositiveIntegerField(default=1)
+    item_consumo = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO)
+    pmb = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO)
+
+    tem_lote = models.BooleanField(
+    default=False,
+    verbose_name="Controlar por lote?"
+    )
+
+    valor = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    status = models.CharField(max_length=15, choices=StatusItemChoices.choices, default=StatusItemChoices.ATIVO)
+
+    fornecedor = models.ForeignKey(Fornecedor, on_delete=models.SET_NULL, null=True, blank=True)
+    categoria = models.ForeignKey(Categoria, on_delete=models.SET_NULL, null=True, blank=True)
+    subtipo = models.ForeignKey(Subtipo, on_delete=models.SET_NULL, null=True, blank=True)
+    localidade = models.ForeignKey(Localidade, on_delete=models.SET_NULL, null=True, blank=True)
+
+    precisa_preventiva = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO)
+    data_limite_preventiva = models.IntegerField(help_text="Dias para nova preventiva", blank=True, null=True)
+
+    data_compra = models.DateField(blank=True, null=True)
+    numero_pedido = models.CharField(max_length=100, blank=True, null=True)
+    observacoes = models.TextField(blank=True, null=True)
+
+    locado = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO)
+
+    class Meta:
+        verbose_name = "Item / Equipamento"
+        verbose_name_plural = "Itens / Equipamentos"
+
+    
+    def clean(self):
+        super().clean()
+
+        if self.tem_lote and self.pk:
+            possui_lote = self.vinculos_lote.exists()
+
+            if not possui_lote:
+                raise ValidationError(
+                    "Este item está marcado como controlado por lote, mas não possui nenhum lote vinculado."
+                )
+
+    def __str__(self):
+        return f"{self.nome} - {self.numero_serie or 's/ nº'}"
+
+class Locacao(AuditModel):
+    equipamento = models.OneToOneField(Item, on_delete=models.CASCADE, related_name="locacao")
+    tempo_locado = models.IntegerField(blank=True, null=True, help_text="Informe a quantidade de meses")
+    valor_mensal = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(0)],
+        help_text="Valor do pagamento mensal (R$)"
+    )
+    data_entrada = models.DateField(blank=True, null=True, help_text="Data de entrada do equipamento locado")
+    contrato = models.CharField(max_length=200, blank=True, null=True)
+    observacoes = models.TextField(blank=True, null=True)
+    fornecedor = models.ForeignKey(Fornecedor, on_delete=models.SET_NULL, blank=True, null=True)
+
+    def __str__(self):
+        return f"Locação: {self.equipamento.nome} - {self.tempo_locado or 0} meses"
+
+
+class ItemForm(forms.ModelForm):
+    class Meta:
+        model = Item
+        fields = [
+            # principais
+            "nome", "numero_serie", "quantidade", "marca", "modelo", "centro_custo",
+            # estoque/consumo
+            "pmb", "item_consumo", "tem_lote",
+            # valor e status
+            "valor", "status",
+            # relações
+            "subtipo", "localidade", "fornecedor",
+            # observações
+            "observacoes",
+            # preventiva
+            "precisa_preventiva", "data_limite_preventiva",
+            # locação
+            "locado", "data_compra", "numero_pedido",
+        ]
+
+
+class LocacaoForm(forms.ModelForm):
+    # 🔧 Forçamos o formato que o navegador entende (YYYY-MM-DD)
+    data_entrada = forms.DateField(
+        required=False,
+        widget=forms.DateInput(
+            format='%Y-%m-%d',
+            attrs={
+                'type': 'date',
+            }
+        ),
+        # Aceita tanto o formato do navegador quanto dd/mm/aaaa, se necessário
+        input_formats=['%Y-%m-%d', '%d/%m/%Y'],
+    )
+
+    class Meta:
+        model = Locacao
+        fields = ["tempo_locado", "valor_mensal", "data_entrada", "fornecedor", "contrato", "observacoes"]
+        widgets = {
+            "observacoes": forms.Textarea(attrs={'rows': 2}),
+        }
+
+class LoteEstoque(AuditModel):
+    fornecedor = models.ForeignKey(
+        "Fornecedor",
+        on_delete=models.PROTECT,
+        related_name="lotes_estoque",
+        verbose_name="Fornecedor"
+    )
+
+    data_entrada = models.DateField(
+        verbose_name="Data de Entrada"
+    )
+
+    numero_nf = models.CharField(
+        max_length=60,
+        verbose_name="Número da NF"
+    )
+
+    serie_nf = models.CharField(
+        max_length=30,
+        verbose_name="Série da NF"
+    )
+
+    quantidade = models.PositiveIntegerField(
+        default=1,
+        validators=[MinValueValidator(1)],
+        verbose_name="Quantidade do Lote"
+    )
+
+    custo_unitario = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Custo Unitário"
+    )
+
+    custo_total = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Custo Total"
+    )
+
+    observacao_tecnica = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Observação Técnica"
+    )
+
+    class Meta:
+        verbose_name = "Lote de Estoque"
+        verbose_name_plural = "Lotes de Estoque"
+        ordering = ["-data_entrada", "-created_at"]
+        indexes = [
+            models.Index(fields=["numero_nf", "serie_nf"]),
+            models.Index(fields=["data_entrada"]),
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if not self.fornecedor_id:
+            raise ValidationError({"fornecedor": "Fornecedor é obrigatório para o lote."})
+
+        if not self.data_entrada:
+            raise ValidationError({"data_entrada": "Data de entrada é obrigatória para o lote."})
+
+        if not self.numero_nf:
+            raise ValidationError({"numero_nf": "Número da NF é obrigatório para o lote."})
+
+        if not self.serie_nf:
+            raise ValidationError({"serie_nf": "Série da NF é obrigatória para o lote."})
+
+        if not self.quantidade or self.quantidade <= 0:
+            raise ValidationError({"quantidade": "A quantidade do lote deve ser maior que zero."})
+
+        if not self.custo_unitario or self.custo_unitario <= 0:
+            raise ValidationError({"custo_unitario": "O custo unitário deve ser maior que zero."})
+
+        if not self.custo_total or self.custo_total <= 0:
+            raise ValidationError({"custo_total": "O custo total deve ser maior que zero."})
+
+        total_calculado = self.custo_unitario * Decimal(self.quantidade)
+
+        if self.custo_total != total_calculado:
+            raise ValidationError({
+                "custo_total": (
+                    f"Custo total inconsistente. Esperado: R$ {total_calculado:.2f} "
+                    f"com base em {self.quantidade} unidade(s) x R$ {self.custo_unitario:.2f}."
+                )
+            })
+
+    def __str__(self):
+        return f"Lote NF {self.numero_nf}/{self.serie_nf} - {self.fornecedor}"
+    
+class ItemLote(AuditModel):
+    item = models.ForeignKey(
+        "Item",
+        on_delete=models.PROTECT,
+        related_name="vinculos_lote",
+        verbose_name="Item / Equipamento"
+    )
+
+    lote = models.ForeignKey(
+        "LoteEstoque",
+        on_delete=models.PROTECT,
+        related_name="itens_vinculados",
+        verbose_name="Lote"
+    )
+
+    quantidade_entrada = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)],
+        verbose_name="Quantidade de Entrada"
+    )
+
+    quantidade_disponivel = models.PositiveIntegerField(
+        validators=[MinValueValidator(0)],
+        verbose_name="Quantidade Disponível"
+    )
+
+    custo_unitario = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Custo Unitário"
+    )
+
+    custo_total = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Custo Total"
+    )
+
+    class Meta:
+        verbose_name = "Vínculo Item x Lote"
+        verbose_name_plural = "Vínculos Item x Lote"
+        ordering = ["-created_at"]
+
+    def clean(self):
+        super().clean()
+
+        if not self.item_id:
+            raise ValidationError({"item": "Item é obrigatório no vínculo de lote."})
+
+        if not self.lote_id:
+            raise ValidationError({"lote": "Lote é obrigatório."})
+
+        if self.quantidade_disponivel > self.quantidade_entrada:
+            raise ValidationError({
+                "quantidade_disponivel": "A quantidade disponível não pode ser maior que a quantidade de entrada."
+            })
+
+    def __str__(self):
+        return f"{self.item} | {self.lote} | Qtd: {self.quantidade_entrada}"
+
+
+class LoteEstoqueForm(forms.ModelForm):
+    class Meta:
+        model = LoteEstoque
+        fields = [
+            "fornecedor",
+            "data_entrada",
+            "numero_nf",
+            "serie_nf",
+            "custo_unitario",
+            "custo_total",
+            "observacao_tecnica",
+        ]
+
+        widgets = {
+            "fornecedor": forms.Select(attrs={"class": "form-control"}),
+            "data_entrada": forms.DateInput(attrs={
+                "class": "form-control",
+                "type": "date",
+            }),
+            "numero_nf": forms.TextInput(attrs={
+                "class": "form-control",
+                "placeholder": "Ex: 123456",
+            }),
+            "serie_nf": forms.TextInput(attrs={
+                "class": "form-control",
+                "placeholder": "Ex: 1",
+            }),
+            "custo_unitario": forms.NumberInput(attrs={
+                "class": "form-control",
+                "step": "0.01",
+                "min": "0.01",
+            }),
+            "custo_total": forms.NumberInput(attrs={
+                "class": "form-control",
+                "step": "0.01",
+                "min": "0.01",
+            }),
+            "observacao_tecnica": forms.Textarea(attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": "Descreva observações fiscais, técnicas ou de recebimento do lote.",
+            }),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+
+        custo_unitario = cleaned.get("custo_unitario")
+        custo_total = cleaned.get("custo_total")
+
+        if custo_unitario is not None and custo_unitario <= 0:
+            self.add_error("custo_unitario", "O custo unitário deve ser maior que zero.")
+
+        if custo_total is not None and custo_total <= 0:
+            self.add_error("custo_total", "O custo total deve ser maior que zero.")
+
+        return cleaned
+
+
+

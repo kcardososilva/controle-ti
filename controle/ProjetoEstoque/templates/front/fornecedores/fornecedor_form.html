@@ -1,94 +1,440 @@
 {% extends 'base.html' %}
 {% block title %}{% if editar %}Editar Fornecedor{% else %}Novo Fornecedor{% endif %}{% endblock %}
-{% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+{% block page_title %}{% if editar %}Editar Fornecedor{% else %}Novo Fornecedor{% endif %}{% endblock %}
+{% block page_subtitle %}Cadastro de parceiro com CNPJ, contrato e rastreabilidade para custos e ativos.{% endblock %}
 
+{% block extra_css %}
 <style>
-:root{--line:#e5e7eb;--ink:#172133;--soft:#f8fafc;--card:#fff;--shadow:0 20px 40px rgba(2,6,23,.07);--h:46px;--rad:12px;--padL:44px}
-*{box-sizing:border-box}
-.wrapper{max-width:900px;margin:22px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:24px}
-.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
-.form-grid{margin-top:14px;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
-.group{display:flex;flex-direction:column;min-width:0}
-.group label{font-weight:800;margin:0 0 6px;color:#0f172a}
-.filtro-icon-input{position:relative;min-width:0}
-.filtro-icon-input .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#334155;pointer-events:none;width:20px;display:flex;justify-content:center}
-.ctrl{width:100%;height:var(--h);padding:8px 14px 8px var(--padL);border:1px solid #d5deea;border-radius:var(--rad);background:#fff;color:#111827;font-size:1rem;outline:none;transition:border .15s, box-shadow .15s}
-.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd55}
-textarea.ctrl{height:auto;min-height:var(--h)}
-.errorlist{margin:6px 0 0 0;color:#b91c1c;font-weight:700}
-.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
-.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
-.btn-secondary{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
-.hint{color:#64748b;font-size:.9rem;margin-top:4px}
-</style>
+/* =========================================================
+   FORNECEDOR FORM - INTEGRADO AO BASE.HTML
+   Apenas layout. Sem alteração de regra de negócio.
+   ========================================================= */
 
-<div class="wrapper">
-  
-    <h2 style="color: #0f172a;"><i class="fa fa-truck"></i> {% if editar %}Editar Fornecedor{% else %}Novo Fornecedor{% endif %}</h2>
-    <a href="{% url 'fornecedor_list' %}" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
- 
-
-  <form method="post" novalidate>
-    {% csrf_token %}
-    <div class="form-grid">
-      <div class="group">
-        <label for="{{ form.nome.id_for_label }}">Nome</label>
-        <div class="filtro-icon-input">
-          <span class="ico"><i class="fa fa-building"></i></span>
-          {{ form.nome }}
-        </div>
-        {{ form.nome.errors }}
-      </div>
-
-      <div class="group">
-        <label for="{{ form.cnpj.id_for_label }}">CNPJ</label>
-        <div class="filtro-icon-input">
-          <span class="ico"><i class="fa fa-barcode"></i></span>
-          {{ form.cnpj }}
-        </div>
-        <div class="hint">Aceita com ou sem máscara; será normalizado.</div>
-        {{ form.cnpj.errors }}
-      </div>
-
-      <div class="group" style="grid-column:1/-1">
-        <label for="{{ form.contrato.id_for_label }}">Contrato (opcional)</label>
-        <div class="filtro-icon-input">
-          <span class="ico" style="top:14px"><i class="fa fa-file-contract"></i></span>
-          {{ form.contrato }}
-        </div>
-        {{ form.contrato.errors }}
-      </div>
-    </div>
-
-    <div class="actions">
-      <button class="btn btn-primary" type="submit">
-        <i class="fa fa-save"></i> {% if editar %}Atualizar{% else %}Salvar{% endif %}
-      </button>
-    </div>
-  </form>
-</div>
-
-<script>
-// Garante .ctrl mesmo que mude o widget
-['#id_nome','#id_cnpj','#id_contrato'].forEach(sel=>{
-  const el=document.querySelector(sel);
-  if(el && !el.classList.contains('ctrl')) el.classList.add('ctrl');
-});
-
-// Máscara leve de CNPJ (sem dependências) – não quebra se colar
-const cnpj = document.getElementById('id_cnpj');
-if (cnpj) {
-  cnpj.addEventListener('input', function(){
-    let d = this.value.replace(/\D/g,'').slice(0,14);
-    if (d.length >= 3)  d = d.replace(/^(\d{2})(\d)/, "$1.$2");
-    if (d.length >= 6)  d = d.replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3");
-    if (d.length >= 9)  d = d.replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3/$4");
-    if (d.length >= 13) d = d.replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d)/, "$1.$2.$3/$4-$5");
-    this.value = d;
-  });
+:where(.forn-form-page) {
+  --ff-primary: var(--brand, #0071e3);
+  --ff-primary-hover: var(--brand-hover, #0077ed);
+  --ff-primary-soft: var(--brand-soft, rgba(0, 113, 227, 0.10));
+  --ff-primary-softer: var(--brand-softer, rgba(0, 113, 227, 0.05));
+  --ff-surface: var(--bg-elevated, #ffffff);
+  --ff-surface-soft: var(--bg-fill-tertiary, rgba(120, 120, 128, 0.08));
+  --ff-surface-muted: var(--bg-fill-secondary, rgba(120, 120, 128, 0.12));
+  --ff-text: var(--text-primary, #1d1d1f);
+  --ff-muted: var(--text-tertiary, #6e6e73);
+  --ff-soft: var(--text-quaternary, #86868b);
+  --ff-border: var(--separator-hairline, rgba(0, 0, 0, 0.06));
+  --ff-border-strong: var(--separator-non-opaque, rgba(0, 0, 0, 0.10));
+  --ff-danger: var(--danger, #ff3b30);
+  --ff-danger-bg: var(--danger-soft, rgba(255, 59, 48, 0.10));
+  --ff-radius-sm: var(--radius-sm, 10px);
+  --ff-radius-md: var(--radius-md, 14px);
+  --ff-radius-lg: var(--radius-lg, 18px);
+  --ff-radius-xl: var(--radius-xl, 22px);
+  --ff-radius-pill: var(--radius-pill, 980px);
+  --ff-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.05));
+  --ff-shadow-md: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.06));
+  --ff-control-h: 2.75rem;
+  --ff-transition: var(--transition-fast, 160ms cubic-bezier(0.32, 0.72, 0, 1));
 }
+
+.forn-form-page,
+.forn-form-page * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.forn-form-page {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0;
+  color: var(--ff-text);
+}
+
+.forn-form-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.forn-form-hero,
+.forn-form-card {
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-xl);
+  background:
+    linear-gradient(135deg, var(--ff-primary-softer), transparent 48%),
+    var(--ff-surface);
+  box-shadow: var(--ff-shadow-sm);
+  overflow: hidden;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+.forn-form-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+}
+
+.forn-form-hero-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.875rem;
+}
+
+.forn-form-icon {
+  width: clamp(3rem, 8vw, 3.75rem);
+  height: clamp(3rem, 8vw, 3.75rem);
+  display: grid;
+  place-items: center;
+  border-radius: 1.15rem;
+  background: var(--ff-primary-soft);
+  color: var(--ff-primary);
+  border: 1px solid color-mix(in srgb, var(--ff-primary) 22%, transparent);
+  font-size: clamp(1.15rem, 3vw, 1.5rem);
+}
+
+.forn-form-title h1 {
+  margin: 0;
+  color: var(--ff-text);
+  font-size: clamp(1.35rem, 4vw, 1.95rem);
+  font-weight: 700;
+  letter-spacing: -0.034em;
+  line-height: 1.08;
+}
+
+.forn-form-title span {
+  display: block;
+  margin-top: 0.45rem;
+  color: var(--ff-muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.forn-form-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.875rem;
+  padding: clamp(0.9rem, 2vw, 1.25rem);
+  border-bottom: 1px solid var(--ff-border);
+  background: color-mix(in srgb, var(--ff-surface) 92%, var(--ff-primary) 3%);
+}
+
+.forn-form-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--ff-text);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.forn-form-card-title i {
+  width: 2.35rem;
+  height: 2.35rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-primary-soft);
+  color: var(--ff-primary);
+  border: 1px solid color-mix(in srgb, var(--ff-primary) 20%, transparent);
+}
+
+.forn-form-card-subtitle {
+  margin-top: 0.2rem;
+  color: var(--ff-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.forn-form-card-body {
+  padding: clamp(0.9rem, 2.5vw, 1.5rem);
+}
+
+.forn-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.forn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.forn-field.full { grid-column: 1 / -1; }
+
+.forn-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--ff-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.forn-input-wrap {
+  position: relative;
+}
+
+.forn-input-wrap .forn-field-icon {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ff-soft);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.forn-input-wrap.textarea .forn-field-icon {
+  top: 1rem;
+  transform: none;
+}
+
+.forn-form-page input[type="text"],
+.forn-form-page textarea,
+.forn-form-page .form-control,
+.forn-form-page .ctrl {
+  width: 100%;
+  max-width: 100%;
+  min-height: var(--ff-control-h);
+  padding: 0.68rem 0.9rem 0.68rem 2.65rem;
+  border: 1px solid var(--ff-border-strong);
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-surface);
+  color: var(--ff-text);
+  font-family: inherit;
+  font-size: 0.92rem;
+  outline: none;
+  transition:
+    border-color var(--ff-transition),
+    box-shadow var(--ff-transition),
+    background var(--ff-transition);
+}
+
+.forn-form-page textarea,
+.forn-form-page textarea.form-control,
+.forn-form-page textarea.ctrl {
+  min-height: 8.5rem;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.forn-form-page input:focus,
+.forn-form-page textarea:focus,
+.forn-form-page .form-control:focus,
+.forn-form-page .ctrl:focus {
+  border-color: var(--ff-primary);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, 0.30));
+  background: var(--ff-surface);
+}
+
+.forn-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  color: var(--ff-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.forn-hint i {
+  margin-top: 0.1rem;
+  color: var(--ff-primary);
+}
+
+.forn-form-page .errorlist {
+  margin: 0.1rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ff-danger);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.forn-form-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 1rem clamp(0.9rem, 2.5vw, 1.5rem);
+  border-top: 1px solid var(--ff-border);
+  background: color-mix(in srgb, var(--ff-surface) 92%, transparent);
+}
+
+.forn-btn {
+  min-height: var(--ff-control-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0 1.1rem;
+  border-radius: var(--ff-radius-pill);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform var(--ff-transition),
+    background var(--ff-transition),
+    border-color var(--ff-transition),
+    color var(--ff-transition),
+    box-shadow var(--ff-transition);
+}
+
+.forn-btn:hover { transform: translateY(-1px); }
+.forn-btn:active { transform: scale(0.98); }
+
+.forn-btn-primary {
+  color: #fff;
+  background: var(--ff-primary);
+  border-color: var(--ff-primary);
+  box-shadow: var(--shadow-brand, 0 4px 14px rgba(0, 113, 227, 0.25));
+}
+
+.forn-btn-primary:hover {
+  color: #fff;
+  background: var(--ff-primary-hover);
+  border-color: var(--ff-primary-hover);
+}
+
+.forn-btn-secondary {
+  color: var(--ff-text);
+  background: var(--ff-surface);
+  border-color: var(--ff-border-strong);
+}
+
+.forn-btn-secondary:hover {
+  color: var(--ff-text);
+  background: var(--ff-surface-soft);
+}
+
+@media (max-width: 760px) {
+  .forn-form-hero { grid-template-columns: 1fr; }
+  .forn-form-hero-main { grid-template-columns: 1fr; }
+  .forn-form-grid { grid-template-columns: 1fr; }
+  .forn-form-footer { display: grid; grid-template-columns: 1fr; }
+  .forn-btn { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="forn-form-page">
+  <div class="forn-form-shell">
+
+    <section class="forn-form-hero">
+      <div class="forn-form-hero-main">
+        <div class="forn-form-icon">
+          <i class="fa-solid fa-truck-ramp-box"></i>
+        </div>
+        <div class="forn-form-title">
+          <h1>{% if editar %}Editar Fornecedor{% else %}Novo Fornecedor{% endif %}</h1>
+          <span>Cadastre ou atualize o parceiro mantendo a base de custos, contratos e vínculos operacionais consistente.</span>
+        </div>
+      </div>
+
+      <a href="{% url 'fornecedor_list' %}" class="forn-btn forn-btn-secondary">
+        <i class="fa-solid fa-arrow-left"></i>
+        Voltar
+      </a>
+    </section>
+
+    <form method="post" novalidate class="forn-form-card">
+      {% csrf_token %}
+
+      <div class="forn-form-card-header">
+        <div>
+          <div class="forn-form-card-title">
+            <i class="fa-solid fa-id-card-clip"></i>
+            <div>Dados do Fornecedor</div>
+          </div>
+          <div class="forn-form-card-subtitle">Preencha os campos principais sem alterar a lógica original do cadastro.</div>
+        </div>
+      </div>
+
+      <div class="forn-form-card-body">
+        <div class="forn-form-grid">
+          <div class="forn-field">
+            <label class="forn-label" for="{{ form.nome.id_for_label }}">Nome</label>
+            <div class="forn-input-wrap">
+              <span class="forn-field-icon"><i class="fa-solid fa-building"></i></span>
+              {{ form.nome }}
+            </div>
+            {{ form.nome.errors }}
+          </div>
+
+          <div class="forn-field">
+            <label class="forn-label" for="{{ form.cnpj.id_for_label }}">CNPJ</label>
+            <div class="forn-input-wrap">
+              <span class="forn-field-icon"><i class="fa-solid fa-barcode"></i></span>
+              {{ form.cnpj }}
+            </div>
+            <div class="forn-hint"><i class="fa-solid fa-circle-info"></i>Aceita com ou sem máscara; será normalizado.</div>
+            {{ form.cnpj.errors }}
+          </div>
+
+          <div class="forn-field full">
+            <label class="forn-label" for="{{ form.contrato.id_for_label }}">Contrato <span style="color:var(--ff-muted); font-weight:500;">(opcional)</span></label>
+            <div class="forn-input-wrap textarea">
+              <span class="forn-field-icon"><i class="fa-solid fa-file-contract"></i></span>
+              {{ form.contrato }}
+            </div>
+            {{ form.contrato.errors }}
+          </div>
+        </div>
+      </div>
+
+      <div class="forn-form-footer">
+        <a href="{% url 'fornecedor_list' %}" class="forn-btn forn-btn-secondary">
+          <i class="fa-solid fa-xmark"></i>
+          Cancelar
+        </a>
+        <button class="forn-btn forn-btn-primary" type="submit">
+          <i class="fa-solid fa-floppy-disk"></i>
+          {% if editar %}Atualizar{% else %}Salvar{% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+  'use strict';
+
+  ['#id_nome', '#id_cnpj', '#id_contrato'].forEach(function(selector) {
+    const element = document.querySelector(selector);
+    if (element && !element.classList.contains('ctrl')) {
+      element.classList.add('ctrl');
+    }
+  });
+
+  const cnpj = document.getElementById('id_cnpj');
+  if (cnpj) {
+    cnpj.addEventListener('input', function() {
+      let digits = this.value.replace(/\D/g, '').slice(0, 14);
+      if (digits.length >= 3) digits = digits.replace(/^(\d{2})(\d)/, '$1.$2');
+      if (digits.length >= 6) digits = digits.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+      if (digits.length >= 9) digits = digits.replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3/$4');
+      if (digits.length >= 13) digits = digits.replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d)/, '$1.$2.$3/$4-$5');
+      this.value = digits;
+    });
+  }
+})();
 </script>
 {% endblock %}

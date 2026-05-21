@@ -2,873 +2,900 @@
 {% load static humanize %}
 
 {% block title %}Fornecedores{% endblock %}
+{% block page_title %}Fornecedores{% endblock %}
+{% block page_subtitle %}Gestão de parceiros, contratos, custos e base vinculada.{% endblock %}
 
-{% block content %}
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-:root {
-  --bg-app: #f4f6f8;
-  --bg-card: #ffffff;
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --text-main: #0f172a;
-  --text-sub: #64748b;
-  --border: #e2e8f0;
-  --radius: 12px;
-  --shadow-card: 0 8px 24px rgba(15,23,42,0.06);
-  --success: #10b981;
-  --orange: #f59e0b;
-  --purple: #8b5cf6;
-  --danger: #ef4444;
+/* =========================================================
+   FORNECEDOR LIST - INTEGRADO AO BASE.HTML
+   Apple Design Language + dark mode + tokens globais
+   ========================================================= */
+
+:where(.forn-page, .select2-container, .select2-dropdown) {
+  --fn-primary: var(--brand, #0071e3);
+  --fn-primary-hover: var(--brand-hover, #0077ed);
+  --fn-primary-soft: var(--brand-soft, rgba(0, 113, 227, 0.10));
+  --fn-primary-softer: var(--brand-softer, rgba(0, 113, 227, 0.05));
+
+  --fn-surface: var(--bg-elevated, #ffffff);
+  --fn-surface-soft: var(--bg-fill-tertiary, rgba(120, 120, 128, 0.08));
+  --fn-surface-muted: var(--bg-fill-secondary, rgba(120, 120, 128, 0.12));
+
+  --fn-text: var(--text-primary, #1d1d1f);
+  --fn-muted: var(--text-tertiary, #6e6e73);
+  --fn-soft: var(--text-quaternary, #86868b);
+
+  --fn-border: var(--separator-hairline, rgba(0, 0, 0, 0.06));
+  --fn-border-strong: var(--separator-non-opaque, rgba(0, 0, 0, 0.10));
+
+  --fn-success: var(--success, #34c759);
+  --fn-success-bg: var(--success-soft, rgba(52, 199, 89, 0.12));
+  --fn-warning: var(--warning, #ff9500);
+  --fn-warning-bg: var(--warning-soft, rgba(255, 149, 0, 0.12));
+  --fn-danger: var(--danger, #ff3b30);
+  --fn-danger-bg: var(--danger-soft, rgba(255, 59, 48, 0.10));
+  --fn-info: var(--info, #5ac8fa);
+  --fn-info-bg: var(--info-soft, rgba(90, 200, 250, 0.12));
+  --fn-purple: var(--system-purple, #af52de);
+  --fn-purple-bg: rgba(175, 82, 222, 0.12);
+
+  --fn-radius-sm: var(--radius-sm, 10px);
+  --fn-radius-md: var(--radius-md, 14px);
+  --fn-radius-lg: var(--radius-lg, 18px);
+  --fn-radius-xl: var(--radius-xl, 22px);
+  --fn-radius-pill: var(--radius-pill, 980px);
+
+  --fn-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.05));
+  --fn-shadow-md: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.06));
+  --fn-transition: var(--transition-fast, 160ms cubic-bezier(0.32, 0.72, 0, 1));
+  --fn-control-h: 2.625rem;
 }
 
-* {
+.forn-page,
+.forn-page * {
   box-sizing: border-box;
+  min-width: 0;
 }
 
-html {
-  -webkit-text-size-adjust: 100%;
-}
-
-body {
-  background-color: var(--bg-app);
-  font-family: 'Inter', sans-serif;
-  color: var(--text-main);
-  font-size: 14px;
-  margin: 0;
-}
-
-img,
-svg,
-canvas,
-video,
-iframe {
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
-
-.app-container {
-  max-width: 1480px;
+.forn-page {
+  width: 100%;
+  max-width: 1560px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 0;
+  color: var(--fn-text);
+  font-family: inherit;
 }
 
-/* ===== KPI ===== */
-.kpi-grid {
+.forn-shell {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 1.125rem;
 }
 
-.kpi-card {
-  background: var(--bg-card);
-  padding: 20px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-card);
-  display: flex;
+/* HEADER */
+.forn-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
   align-items: center;
-  justify-content: space-between;
-  min-height: 112px;
-  gap: 14px;
-  min-width: 0;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  border: 1px solid var(--fn-border);
+  border-radius: var(--fn-radius-xl);
+  background:
+    linear-gradient(135deg, var(--fn-primary-softer), transparent 48%),
+    var(--fn-surface);
+  box-shadow: var(--fn-shadow-sm);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
 }
 
-.kpi-content {
-  min-width: 0;
-  flex: 1;
+.forn-title-wrap {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.875rem;
 }
 
-.kpi-content h4 {
-  margin: 0 0 6px 0;
-  font-size: 12px;
+.forn-title-icon {
+  width: clamp(3rem, 8vw, 3.75rem);
+  height: clamp(3rem, 8vw, 3.75rem);
+  display: grid;
+  place-items: center;
+  border-radius: 1.15rem;
+  background: color-mix(in srgb, var(--fn-primary) 14%, transparent);
+  color: var(--fn-primary);
+  border: 1px solid color-mix(in srgb, var(--fn-primary) 22%, transparent);
+  font-size: clamp(1.15rem, 3vw, 1.5rem);
+}
+
+.forn-title {
+  margin: 0;
+  color: var(--fn-text);
+  font-size: clamp(1.35rem, 4vw, 2rem);
   font-weight: 700;
-  color: var(--text-sub);
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  line-height: 1.4;
+  letter-spacing: -0.034em;
+  line-height: 1.08;
+  overflow-wrap: anywhere;
 }
 
-.kpi-content .val {
-  font-size: 24px;
-  font-weight: 800;
-  color: var(--text-main);
-  line-height: 1.2;
-  word-break: break-word;
-}
-
-.kpi-content .sub {
-  font-size: 12px;
-  color: #94a3b8;
-  margin-top: 6px;
+.forn-subtitle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+  color: var(--fn-muted);
+  font-size: 0.92rem;
   line-height: 1.45;
 }
 
-.kpi-icon {
-  font-size: 24px;
-  opacity: .9;
-  flex-shrink: 0;
-}
-
-.icon-blue { color: var(--primary); }
-.icon-green { color: var(--success); }
-.icon-orange { color: var(--orange); }
-.icon-purple { color: var(--purple); }
-
-/* ===== TOOLBAR ===== */
-.toolbar {
-  background: var(--bg-card);
-  padding: 14px 16px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 24px;
-  box-shadow: var(--shadow-card);
-}
-
-.search-form {
-  flex: 1 1 720px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-.search-input-wrap {
-  position: relative;
-  flex: 1 1 320px;
-  min-width: 0;
-}
-
-.search-input-wrap i {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #9ca3af;
-}
-
-.search-input {
-  width: 100%;
-  height: 42px;
-  padding: 0 12px 0 38px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 14px;
-  outline: none;
-  transition: border .2s;
-  background: #fff;
-}
-
-.search-input:focus {
-  border-color: var(--primary);
-}
-
-.filter-select-wrap {
-  width: 180px;
-  flex: 0 0 180px;
-  min-width: 0;
-}
-
-.action-group {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.btn {
-  min-height: 42px;
-  padding: 0 18px;
-  border-radius: 10px;
-  font-weight: 700;
-  font-size: 14px;
-  cursor: pointer;
+.forn-pill {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-decoration: none;
-  transition: all .2s;
-  border: 1px solid transparent;
+  gap: 0.4rem;
+  padding: 0.32rem 0.72rem;
+  border-radius: var(--fn-radius-pill);
+  background: var(--fn-primary-soft);
+  color: var(--fn-primary);
+  border: 1px solid color-mix(in srgb, var(--fn-primary) 18%, transparent);
+  font-size: 0.78rem;
+  font-weight: 700;
   white-space: nowrap;
 }
 
-.btn-primary {
-  background: var(--primary);
+.forn-header-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+
+/* BUTTONS */
+.forn-btn {
+  min-height: var(--fn-control-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0 1rem;
+  border-radius: var(--fn-radius-pill);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform var(--fn-transition),
+    background var(--fn-transition),
+    border-color var(--fn-transition),
+    color var(--fn-transition),
+    box-shadow var(--fn-transition);
+}
+
+.forn-btn:hover { transform: translateY(-1px); }
+.forn-btn:active { transform: scale(0.98); }
+
+.forn-btn-primary {
   color: #fff;
+  background: var(--fn-primary);
+  border-color: var(--fn-primary);
+  box-shadow: var(--shadow-brand, 0 4px 14px rgba(0, 113, 227, 0.25));
 }
 
-.btn-primary:hover {
-  background: var(--primary-hover);
+.forn-btn-primary:hover {
+  color: #fff;
+  background: var(--fn-primary-hover);
+  border-color: var(--fn-primary-hover);
 }
 
-.btn-secondary {
-  background: #fff;
-  border-color: var(--border);
-  color: var(--text-main);
+.forn-btn-secondary {
+  color: var(--fn-text);
+  background: var(--fn-surface);
+  border-color: var(--fn-border-strong);
 }
 
-.btn-secondary:hover {
-  background: #f8fafc;
+.forn-btn-secondary:hover {
+  color: var(--fn-text);
+  background: var(--fn-surface-soft);
+  border-color: var(--fn-border-strong);
 }
 
-/* ===== CARDS ===== */
-.cards-grid {
+.forn-btn-danger {
+  color: var(--fn-danger);
+  background: var(--fn-danger-bg);
+  border-color: color-mix(in srgb, var(--fn-danger) 20%, transparent);
+}
+
+.forn-btn-danger:hover {
+  color: #fff;
+  background: var(--fn-danger);
+  border-color: var(--fn-danger);
+}
+
+.forn-btn-icon {
+  width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
+  border-radius: 999px;
+}
+
+/* KPIS */
+.forn-dashboard {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 20px;
+  gap: 1rem;
 }
 
-.f-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow-card);
+.forn-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.forn-kpi-card {
+  position: relative;
+  min-height: 7rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.875rem;
+  padding: 1rem;
   overflow: hidden;
+  border: 1px solid var(--fn-border);
+  border-radius: var(--fn-radius-lg);
+  background:
+    linear-gradient(135deg, var(--fn-primary-softer), transparent 50%),
+    var(--fn-surface);
+  box-shadow: var(--fn-shadow-sm);
+  transition:
+    transform var(--fn-transition),
+    border-color var(--fn-transition),
+    box-shadow var(--fn-transition);
+}
+
+.forn-kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--fn-border-strong);
+  box-shadow: var(--fn-shadow-md);
+}
+
+.forn-kpi-content { min-width: 0; }
+
+.forn-kpi-label {
+  display: block;
+  color: var(--fn-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.forn-kpi-value {
+  display: block;
+  margin-top: 0.28rem;
+  color: var(--fn-text);
+  font-size: clamp(1.15rem, 3vw, 1.55rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+
+.forn-kpi-sub {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--fn-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.forn-kpi-icon {
+  width: 3rem;
+  height: 3rem;
+  flex: 0 0 3rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-primary-soft);
+  color: var(--fn-primary);
+  border: 1px solid color-mix(in srgb, var(--fn-primary) 20%, transparent);
+  font-size: 1.15rem;
+}
+
+.forn-kpi-green .forn-kpi-icon { background: var(--fn-success-bg); color: var(--fn-success); border-color: color-mix(in srgb, var(--fn-success) 20%, transparent); }
+.forn-kpi-orange .forn-kpi-icon { background: var(--fn-warning-bg); color: var(--fn-warning); border-color: color-mix(in srgb, var(--fn-warning) 20%, transparent); }
+.forn-kpi-purple .forn-kpi-icon { background: var(--fn-purple-bg); color: var(--fn-purple); border-color: color-mix(in srgb, var(--fn-purple) 20%, transparent); }
+
+/* TOOLBAR */
+.forn-toolbar {
+  padding: clamp(0.875rem, 2vw, 1.125rem);
+  border: 1px solid var(--fn-border);
+  border-radius: var(--fn-radius-lg);
+  background: var(--fn-surface);
+  box-shadow: var(--fn-shadow-sm);
+}
+
+.forn-filter-form {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, 220px) auto;
+  gap: 0.875rem;
+  align-items: end;
+}
+
+.forn-search-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.forn-search-wrap i {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--fn-soft);
+  pointer-events: none;
+}
+
+.forn-control,
+.forn-page input[type="text"],
+.forn-page select {
+  width: 100%;
+  min-height: var(--fn-control-h);
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--fn-border-strong);
+  border-radius: var(--fn-radius-pill);
+  background: var(--fn-surface);
+  color: var(--fn-text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  outline: none;
+  transition:
+    border-color var(--fn-transition),
+    box-shadow var(--fn-transition),
+    background var(--fn-transition);
+}
+
+.forn-search-wrap .forn-control {
+  padding-left: 2.45rem;
+}
+
+.forn-control:focus,
+.forn-page input[type="text"]:focus,
+.forn-page select:focus {
+  border-color: var(--fn-primary);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, 0.30));
+  background: var(--fn-surface);
+}
+
+.forn-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+
+/* SELECT2 */
+.select2-container { width: 100% !important; max-width: 100% !important; }
+.select2-container .select2-selection--single {
+  min-height: var(--fn-control-h) !important;
+  border: 1px solid var(--fn-border-strong) !important;
+  border-radius: var(--fn-radius-pill) !important;
+  background: var(--fn-surface) !important;
+  display: flex !important;
+  align-items: center !important;
+}
+.select2-container--focus .select2-selection--single,
+.select2-container--open .select2-selection--single {
+  border-color: var(--fn-primary) !important;
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, 0.30)) !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  width: 100%;
+  padding-left: 0.9rem !important;
+  padding-right: 2rem !important;
+  color: var(--fn-text) !important;
+  font-size: 0.9rem;
+  line-height: 2.55rem !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 2.55rem !important;
+  right: 0.5rem !important;
+}
+.select2-dropdown {
+  z-index: 9999 !important;
+  overflow: hidden !important;
+  border: 1px solid var(--fn-border-strong) !important;
+  border-radius: var(--fn-radius-md) !important;
+  background: var(--fn-surface) !important;
+  color: var(--fn-text) !important;
+  box-shadow: var(--fn-shadow-md);
+}
+.select2-results__option { color: var(--fn-text) !important; }
+.select2-results__option--highlighted { background: var(--fn-primary) !important; color: #fff !important; }
+.select2-results__option[aria-selected=true] { background: var(--fn-primary-soft) !important; color: var(--fn-primary) !important; }
+
+/* CARDS */
+.forn-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 1rem;
+}
+
+.forn-card {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  transition: .2s ease;
-  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--fn-border);
+  border-radius: var(--fn-radius-lg);
+  background: var(--fn-surface);
+  box-shadow: var(--fn-shadow-sm);
+  transition:
+    transform var(--fn-transition),
+    border-color var(--fn-transition),
+    box-shadow var(--fn-transition);
 }
 
-.f-card:hover {
-  transform: translateY(-4px);
-  border-color: #bfdbfe;
-  box-shadow: 0 14px 30px rgba(15,23,42,0.10);
+.forn-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--fn-border-strong);
+  box-shadow: var(--fn-shadow-md);
 }
 
-.f-header {
-  padding: 18px;
-  border-bottom: 1px solid var(--border);
-  background: #fcfdff;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  min-width: 0;
-}
-
-.f-icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: #dbeafe;
-  color: var(--primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  flex-shrink: 0;
-}
-
-.f-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.f-name {
-  font-weight: 800;
-  font-size: 15px;
-  color: var(--text-main);
-  line-height: 1.35;
-  word-break: break-word;
-}
-
-.f-cnpj {
-  font-size: 12px;
-  color: var(--text-sub);
-  margin-top: 4px;
-  font-family: Consolas, monospace;
-  word-break: break-word;
-}
-
-.f-body {
-  padding: 16px;
+.forn-card-header {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.875rem;
+  align-items: start;
+  padding: 1rem;
+  border-bottom: 1px solid var(--fn-border);
+  background: color-mix(in srgb, var(--fn-surface) 92%, var(--fn-primary) 3%);
 }
 
-.metric-box {
-  background: #f8fafc;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid #eef2f7;
-  min-width: 0;
+.forn-card-icon {
+  width: 2.85rem;
+  height: 2.85rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-primary-soft);
+  color: var(--fn-primary);
+  border: 1px solid color-mix(in srgb, var(--fn-primary) 20%, transparent);
+  font-size: 1.1rem;
 }
 
-.metric-lbl {
-  font-size: 11px;
-  color: var(--text-sub);
-  text-transform: uppercase;
-  font-weight: 700;
-  letter-spacing: .04em;
-  line-height: 1.4;
-}
-
-.metric-val {
-  font-size: 15px;
+.forn-name {
+  color: var(--fn-text);
+  font-size: 0.98rem;
   font-weight: 800;
-  color: var(--text-main);
-  margin-top: 6px;
-  line-height: 1.35;
-  word-break: break-word;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
-.metric-val.money-blue { color: var(--primary); }
-.metric-val.money-green { color: var(--success); }
-.metric-val.money-purple { color: var(--purple); }
+.forn-cnpj {
+  margin-top: 0.25rem;
+  color: var(--fn-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
 
-.metric-box-full {
+.forn-card-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.forn-metric {
+  padding: 0.75rem;
+  border: 1px solid var(--fn-border);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-surface-soft);
+}
+
+.forn-metric-full {
   grid-column: 1 / -1;
-  background: #eff6ff;
-  border: 1px solid #dbeafe;
+  background: linear-gradient(135deg, var(--fn-primary-soft), transparent 78%), var(--fn-surface-soft);
+  border-color: color-mix(in srgb, var(--fn-primary) 18%, transparent);
 }
 
-.f-footer {
-  padding: 14px 16px;
-  border-top: 1px solid var(--border);
-  background: #fff;
+.forn-metric-label {
+  color: var(--fn-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.35;
+}
+
+.forn-metric-value {
+  margin-top: 0.32rem;
+  color: var(--fn-text);
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
+}
+
+.forn-metric-value.green { color: var(--fn-success); }
+.forn-metric-value.purple { color: var(--fn-purple); }
+.forn-metric-value.blue { color: var(--fn-primary); }
+
+.forn-card-footer {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   margin-top: auto;
-  gap: 12px;
-  flex-wrap: wrap;
+  padding: 0.875rem 1rem;
+  border-top: 1px solid var(--fn-border);
+  background: var(--fn-surface);
 }
 
-.badge-ct {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 5px 10px;
-  border-radius: 999px;
+.forn-badge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 1.55rem;
+  padding: 0.25rem 0.68rem;
+  border-radius: var(--fn-radius-pill);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.forn-badge-success { background: var(--fn-success-bg); color: var(--fn-success); }
+.forn-badge-danger { background: var(--fn-danger-bg); color: var(--fn-danger); }
+.forn-badge-info { background: var(--fn-info-bg); color: #0090d4; }
+body.theme-dark .forn-badge-info { color: var(--fn-info); }
+
+.forn-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.forn-empty-state {
+  grid-column: 1 / -1;
   text-align: center;
+  padding: clamp(2.5rem, 6vw, 4rem) 1rem;
+  border: 1px solid var(--fn-border);
+  border-radius: var(--fn-radius-lg);
+  background: var(--fn-surface);
+  box-shadow: var(--fn-shadow-sm);
+  color: var(--fn-muted);
 }
 
-.ct-sim {
-  background: #dcfce7;
-  color: #166534;
+.forn-empty-state i {
+  display: block;
+  margin-bottom: 0.875rem;
+  color: var(--fn-soft);
+  font-size: 2.25rem;
 }
 
-.ct-nao {
-  background: #fee2e2;
-  color: #991b1b;
+.forn-empty-state h3 {
+  margin: 0 0 0.35rem;
+  color: var(--fn-text);
+  font-size: 1rem;
+  font-weight: 800;
 }
 
-.card-actions {
+/* PAGINATION */
+.forn-pagination {
   display: flex;
-  gap: 6px;
+  justify-content: center;
+  gap: 0.35rem;
   flex-wrap: wrap;
+  margin-top: 0.75rem;
 }
 
-.card-actions a {
-  color: var(--text-sub);
-  width: 34px;
-  height: 34px;
+.forn-page-link {
+  min-width: 2.35rem;
+  height: 2.35rem;
+  padding: 0 0.7rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: var(--fn-radius-pill);
+  background: var(--fn-surface);
+  border: 1px solid var(--fn-border-strong);
+  color: var(--fn-text);
   text-decoration: none;
-  transition: background .2s;
-  flex-shrink: 0;
-}
-
-.card-actions a:hover {
-  background: #f1f5f9;
-  color: var(--primary);
-}
-
-/* ===== PAGINAÇÃO ===== */
-.pagination-row {
-  margin-top: 32px;
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.page-link {
-  min-width: 38px;
-  height: 38px;
-  padding: 0 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  background: #fff;
-  border: 1px solid var(--border);
-  color: var(--text-main);
-  text-decoration: none;
+  font-size: 0.86rem;
   font-weight: 700;
-  transition: .2s;
+  transition:
+    transform var(--fn-transition),
+    background var(--fn-transition),
+    border-color var(--fn-transition),
+    color var(--fn-transition);
 }
 
-.page-link:hover {
-  background: #f8fafc;
+.forn-page-link:hover {
+  transform: translateY(-1px);
+  background: var(--fn-surface-soft);
+  color: var(--fn-text);
 }
 
-.page-link.active {
-  background: var(--primary);
+.forn-page-link.is-active {
+  background: var(--fn-primary);
+  border-color: var(--fn-primary);
   color: #fff;
-  border-color: var(--primary);
 }
 
-/* ===== SELECT2 ===== */
-.select2-container {
-  width: 100% !important;
-  max-width: 100%;
+@media (max-width: 1280px) {
+  .forn-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-.select2-container--default .select2-selection--single {
-  height: 42px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
+@media (max-width: 860px) {
+  .forn-header { grid-template-columns: 1fr; align-items: stretch; }
+  .forn-title-wrap { grid-template-columns: 1fr; }
+  .forn-header-actions { justify-content: stretch; display: grid; grid-template-columns: 1fr; }
+  .forn-header-actions .forn-btn { width: 100%; }
+  .forn-filter-form { grid-template-columns: 1fr; }
+  .forn-actions { justify-content: stretch; display: grid; grid-template-columns: 1fr; }
+  .forn-actions .forn-btn { width: 100%; }
 }
 
-.select2-container--default .select2-selection--single .select2-selection__rendered {
-  line-height: 40px;
-  padding-left: 12px;
-  padding-right: 30px;
-  color: var(--text-main);
-  font-size: 14px;
+@media (max-width: 640px) {
+  .forn-kpi-grid { grid-template-columns: 1fr; }
+  .forn-card-body { grid-template-columns: 1fr; }
+  .forn-card-footer { align-items: stretch; flex-direction: column; }
+  .forn-card-actions { width: 100%; justify-content: flex-end; }
 }
 
-.select2-container--default .select2-selection--single .select2-selection__arrow {
-  top: 8px;
-  right: 8px;
-}
-
-/* ===== EMPTY ===== */
-.empty-state {
-  grid-column: 1/-1;
-  text-align: center;
-  padding: 50px 20px;
-  color: var(--text-sub);
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow-card);
-}
-
-/* ===== RESPONSIVO ===== */
-@media (max-width: 1200px) {
-  .kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 900px) {
-  .app-container {
-    padding: 18px;
-  }
-
-  .cards-grid {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  }
-
-  .toolbar {
-    align-items: stretch;
-  }
-
-  .search-form {
-    flex: 1 1 100%;
-    max-width: 100%;
-  }
-
-  .action-group {
-    width: 100%;
-    justify-content: stretch;
-  }
-
-  .action-group .btn {
-    flex: 1 1 220px;
-  }
-}
-
-@media (max-width: 768px) {
-  .app-container {
-    padding: 14px;
-  }
-
-  .kpi-grid {
-    grid-template-columns: 1fr;
-    gap: 14px;
-  }
-
-  .kpi-card {
-    padding: 16px;
-    min-height: auto;
-  }
-
-  .kpi-content .val {
-    font-size: 20px;
-  }
-
-  .kpi-content .sub {
-    font-size: 11px;
-  }
-
-  .toolbar {
-    padding: 14px;
-  }
-
-  .search-form {
-    gap: 10px;
-  }
-
-  .search-input-wrap,
-  .filter-select-wrap {
-    flex: 1 1 100%;
-    width: 100%;
-  }
-
-  .action-group {
-    width: 100%;
-    gap: 10px;
-  }
-
-  .action-group .btn {
-    width: 100%;
-    flex: 1 1 100%;
-  }
-
-  .cards-grid {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .f-header {
-    padding: 14px;
-  }
-
-  .f-body {
-    grid-template-columns: 1fr;
-    padding: 14px;
-  }
-
-  .metric-box {
-    padding: 11px;
-  }
-
-  .metric-val {
-    font-size: 14px;
-  }
-
-  .f-footer {
-    padding: 12px 14px;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .f-footer > div:first-child {
-    width: 100%;
-  }
-
-  .badge-ct {
-    justify-content: center;
-    width: 100%;
-  }
-
-  .card-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-
-  .page-link {
-    min-width: 36px;
-    height: 36px;
-  }
-}
-
-@media (max-width: 480px) {
-  .app-container {
-    padding: 12px;
-  }
-
-  .toolbar,
-  .kpi-card,
-  .f-card,
-  .empty-state {
-    border-radius: 14px;
-  }
-
-  .kpi-card {
-    gap: 10px;
-  }
-
-  .kpi-content h4 {
-    font-size: 11px;
-  }
-
-  .kpi-content .val {
-    font-size: 18px;
-  }
-
-  .kpi-icon {
-    font-size: 20px;
-  }
-
-  .f-icon {
-    width: 40px;
-    height: 40px;
-    font-size: 18px;
-  }
-
-  .f-name {
-    font-size: 14px;
-  }
-
-  .f-cnpj {
-    font-size: 11px;
-  }
-
-  .metric-lbl {
-    font-size: 10px;
-  }
-
-  .metric-val {
-    font-size: 13px;
-  }
-
-  .btn {
-    font-size: 13px;
-    padding: 0 14px;
-  }
-
-  .pagination-row {
-    gap: 4px;
-  }
-
-  .page-link {
-    min-width: 34px;
-    height: 34px;
-    padding: 0 8px;
-    font-size: 13px;
-  }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
 }
 </style>
+{% endblock %}
 
-<div class="app-container">
+{% block content %}
+<div class="forn-page">
+  <div class="forn-shell">
 
-  <div class="kpi-grid">
-    <div class="kpi-card">
-      <div class="kpi-content">
-        <h4>Custo Total Mensal</h4>
-        <div class="val">R$ {{ kpi_custo_mensal_total|floatformat:2|intcomma }}</div>
-        <div class="sub">Itens locados + licenças</div>
-      </div>
-      <i class="fa fa-coins kpi-icon icon-blue"></i>
-    </div>
-
-    <div class="kpi-card">
-      <div class="kpi-content">
-        <h4>Custo Total Anual</h4>
-        <div class="val">R$ {{ kpi_custo_anual_total|floatformat:2|intcomma }}</div>
-        <div class="sub">Itens + licenças anualizadas</div>
-      </div>
-      <i class="fa fa-chart-line kpi-icon icon-green"></i>
-    </div>
-
-    <div class="kpi-card">
-      <div class="kpi-content">
-        <h4>Base Ativa</h4>
-        <div class="val">{{ kpi_total_itens }} itens / {{ kpi_total_licencas }} licenças</div>
-        <div class="sub">Consolidado dos fornecedores filtrados</div>
-      </div>
-      <i class="fa fa-layer-group kpi-icon icon-purple"></i>
-    </div>
-
-    <div class="kpi-card">
-      <div class="kpi-content">
-        <h4>Maior Parceiro</h4>
-        <div class="val">R$ {{ kpi_top_val|floatformat:2|intcomma }}</div>
-        <div class="sub">{{ kpi_top_forn.nome|default:"-"|truncatechars:22 }}</div>
-      </div>
-      <i class="fa fa-trophy kpi-icon icon-orange"></i>
-    </div>
-  </div>
-
-  <div class="toolbar">
-    <form method="get" id="searchForm" class="search-form">
-      <div class="search-input-wrap">
-        <i class="fa fa-search"></i>
-        <input type="text" name="q" value="{{ f_q }}" class="search-input" placeholder="Pesquisar fornecedor ou CNPJ...">
-      </div>
-
-      <div class="filter-select-wrap">
-        <select name="tem_contrato" class="select2-filter">
-          <option value="">Contrato: Todos</option>
-          <option value="sim" {% if f_contrato == 'sim' %}selected{% endif %}>Com Contrato</option>
-          <option value="nao" {% if f_contrato == 'nao' %}selected{% endif %}>Sem Contrato</option>
-        </select>
-      </div>
-    </form>
-
-    <div class="action-group">
-      <a href="{% url 'fornecedor_export_pdf' %}?{{ qs_keep }}" target="_blank" class="btn btn-secondary" style="color:#ef4444; border-color:#fee2e2;">
-        <i class="fa fa-file-pdf"></i> Exportar
-      </a>
-      <a href="{% url 'fornecedor_create' %}" class="btn btn-primary">
-        <i class="fa fa-plus"></i> Novo
-      </a>
-    </div>
-  </div>
-
-  <div class="cards-grid">
-    {% for f in fornecedores %}
-      <div class="f-card">
-        <div class="f-header">
-          <div class="f-icon"><i class="fa fa-building"></i></div>
-          <div class="f-info">
-            <div class="f-name" title="{{ f.nome }}">{{ f.nome }}</div>
-            <div class="f-cnpj">{{ f.cnpj|default:"CNPJ não informado" }}</div>
-          </div>
+    <section class="forn-header">
+      <div class="forn-title-wrap">
+        <div class="forn-title-icon">
+          <i class="fa-solid fa-truck-ramp-box"></i>
         </div>
-
-        <div class="f-body">
-          <div class="metric-box">
-            <div class="metric-lbl">Itens</div>
-            <div class="metric-val">{{ f.qtd_total_itens_calc }}</div>
-          </div>
-
-          <div class="metric-box">
-            <div class="metric-lbl">Licenças</div>
-            <div class="metric-val">{{ f.qtd_licencas_calc }}</div>
-          </div>
-
-          <div class="metric-box">
-            <div class="metric-lbl">Itens Locados</div>
-            <div class="metric-val">{{ f.qtd_locados_calc }}</div>
-          </div>
-
-          <div class="metric-box">
-            <div class="metric-lbl">Lotes de Licença</div>
-            <div class="metric-val">{{ f.qtd_lotes_calc }}</div>
-          </div>
-
-          <div class="metric-box">
-            <div class="metric-lbl">Custo Mensal Itens</div>
-            <div class="metric-val money-green">R$ {{ f.custo_mensal_itens_calc|floatformat:2|intcomma }}</div>
-          </div>
-
-          <div class="metric-box">
-            <div class="metric-lbl">Custo Mensal Licenças</div>
-            <div class="metric-val money-purple">R$ {{ f.custo_mensal_licencas_calc|floatformat:2|intcomma }}</div>
-          </div>
-
-          <div class="metric-box">
-            <div class="metric-lbl">Valor Total Itens</div>
-            <div class="metric-val">R$ {{ f.valor_total_itens_calc|floatformat:2|intcomma }}</div>
-          </div>
-
-          <div class="metric-box">
-            <div class="metric-lbl">Custo Anual Licenças</div>
-            <div class="metric-val">R$ {{ f.custo_anual_licencas_calc|floatformat:2|intcomma }}</div>
-          </div>
-
-          <div class="metric-box metric-box-full">
-            <div class="metric-lbl">Total Consolidado do Fornecedor</div>
-            <div class="metric-val money-blue">
-              Mensal: R$ {{ f.custo_total_mensal_calc|floatformat:2|intcomma }}
-            </div>
-            <div class="metric-val" style="font-size:14px; margin-top:4px;">
-              Anual: R$ {{ f.custo_total_anual_calc|floatformat:2|intcomma }}
-            </div>
-          </div>
-        </div>
-
-        <div class="f-footer">
-          <div>
-            {% if f.contrato %}
-              <span class="badge-ct ct-sim">Contrato Ativo</span>
-            {% else %}
-              <span class="badge-ct ct-nao">Sem Contrato</span>
-            {% endif %}
-          </div>
-
-          <div class="card-actions">
-            <a href="{% url 'fornecedor_detail' f.pk %}" title="Detalhes">
-              <i class="fa fa-eye"></i>
-            </a>
-            <a href="{% url 'fornecedor_update' f.pk %}" title="Editar">
-              <i class="fa fa-pen"></i>
-            </a>
+        <div>
+          <h1 class="forn-title">Fornecedores</h1>
+          <div class="forn-subtitle">
+            <span>Controle executivo de parceiros, contratos, custos, ativos e licenças vinculadas.</span>
+            <span class="forn-pill"><i class="fa-solid fa-layer-group"></i>{{ kpi_total_itens }} itens / {{ kpi_total_licencas }} licenças</span>
           </div>
         </div>
       </div>
-    {% empty %}
-      <div class="empty-state">
-        <i class="fa fa-folder-open" style="font-size:34px; margin-bottom:10px; opacity:.5;"></i><br>
-        Nenhum fornecedor encontrado.
-      </div>
-    {% endfor %}
-  </div>
 
-  {% if page_obj.has_other_pages %}
-    <div class="pagination-row">
-      {% if page_obj.has_previous %}
-        <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="page-link">
-          <i class="fa fa-chevron-left"></i>
+      <div class="forn-header-actions">
+        <a href="{% url 'fornecedor_export_pdf' %}?{{ qs_keep }}" target="_blank" class="forn-btn forn-btn-danger">
+          <i class="fa-solid fa-file-pdf"></i>
+          Exportar PDF
         </a>
-      {% endif %}
+        <a href="{% url 'fornecedor_create' %}" class="forn-btn forn-btn-primary">
+          <i class="fa-solid fa-plus"></i>
+          Novo Fornecedor
+        </a>
+      </div>
+    </section>
 
-      {% for num in paginator.page_range %}
-        {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
-          {% if num == page_obj.number %}
-            <span class="page-link active">{{ num }}</span>
-          {% else %}
-            <a href="?page={{ num }}&{{ qs_keep }}" class="page-link">{{ num }}</a>
-          {% endif %}
-        {% endif %}
+    <section class="forn-dashboard">
+      <div class="forn-kpi-grid">
+        <div class="forn-kpi-card">
+          <div class="forn-kpi-content">
+            <span class="forn-kpi-label">Custo Total Mensal</span>
+            <span class="forn-kpi-value">R$ {{ kpi_custo_mensal_total|floatformat:2|intcomma }}</span>
+            <span class="forn-kpi-sub">Itens locados + licenças</span>
+          </div>
+          <div class="forn-kpi-icon"><i class="fa-solid fa-coins"></i></div>
+        </div>
+
+        <div class="forn-kpi-card forn-kpi-green">
+          <div class="forn-kpi-content">
+            <span class="forn-kpi-label">Custo Total Anual</span>
+            <span class="forn-kpi-value">R$ {{ kpi_custo_anual_total|floatformat:2|intcomma }}</span>
+            <span class="forn-kpi-sub">Itens + licenças anualizadas</span>
+          </div>
+          <div class="forn-kpi-icon"><i class="fa-solid fa-chart-line"></i></div>
+        </div>
+
+        <div class="forn-kpi-card forn-kpi-purple">
+          <div class="forn-kpi-content">
+            <span class="forn-kpi-label">Base Ativa</span>
+            <span class="forn-kpi-value">{{ kpi_total_itens }} / {{ kpi_total_licencas }}</span>
+            <span class="forn-kpi-sub">Itens e licenças dos fornecedores filtrados</span>
+          </div>
+          <div class="forn-kpi-icon"><i class="fa-solid fa-layer-group"></i></div>
+        </div>
+
+        <div class="forn-kpi-card forn-kpi-orange">
+          <div class="forn-kpi-content">
+            <span class="forn-kpi-label">Maior Parceiro</span>
+            <span class="forn-kpi-value">R$ {{ kpi_top_val|floatformat:2|intcomma }}</span>
+            <span class="forn-kpi-sub">{{ kpi_top_forn.nome|default:"-"|truncatechars:32 }}</span>
+          </div>
+          <div class="forn-kpi-icon"><i class="fa-solid fa-trophy"></i></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="forn-toolbar">
+      <form method="get" id="searchForm" class="forn-filter-form" autocomplete="off">
+        <div class="forn-search-wrap">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" name="q" value="{{ f_q }}" class="forn-control" placeholder="Pesquisar fornecedor ou CNPJ...">
+        </div>
+
+        <div>
+          <select name="tem_contrato" class="select2-filter" aria-label="Filtrar por contrato">
+            <option value="">Contrato: Todos</option>
+            <option value="sim" {% if f_contrato == 'sim' %}selected{% endif %}>Com Contrato</option>
+            <option value="nao" {% if f_contrato == 'nao' %}selected{% endif %}>Sem Contrato</option>
+          </select>
+        </div>
+
+        <div class="forn-actions">
+          <button type="submit" class="forn-btn forn-btn-primary">
+            <i class="fa-solid fa-filter"></i>
+            Filtrar
+          </button>
+          <a href="{% url 'fornecedor_list' %}" class="forn-btn forn-btn-secondary">
+            <i class="fa-solid fa-eraser"></i>
+            Limpar
+          </a>
+        </div>
+      </form>
+    </section>
+
+    <section class="forn-cards-grid">
+      {% for f in fornecedores %}
+        <article class="forn-card">
+          <div class="forn-card-header">
+            <div class="forn-card-icon"><i class="fa-solid fa-building"></i></div>
+            <div>
+              <div class="forn-name" title="{{ f.nome }}">{{ f.nome }}</div>
+              <div class="forn-cnpj">{{ f.cnpj|default:"CNPJ não informado" }}</div>
+            </div>
+          </div>
+
+          <div class="forn-card-body">
+            <div class="forn-metric">
+              <div class="forn-metric-label">Itens</div>
+              <div class="forn-metric-value">{{ f.qtd_total_itens_calc }}</div>
+            </div>
+
+            <div class="forn-metric">
+              <div class="forn-metric-label">Licenças</div>
+              <div class="forn-metric-value">{{ f.qtd_licencas_calc }}</div>
+            </div>
+
+            <div class="forn-metric">
+              <div class="forn-metric-label">Itens Locados</div>
+              <div class="forn-metric-value">{{ f.qtd_locados_calc }}</div>
+            </div>
+
+            <div class="forn-metric">
+              <div class="forn-metric-label">Lotes de Licença</div>
+              <div class="forn-metric-value">{{ f.qtd_lotes_calc }}</div>
+            </div>
+
+            <div class="forn-metric">
+              <div class="forn-metric-label">Custo Mensal Itens</div>
+              <div class="forn-metric-value green">R$ {{ f.custo_mensal_itens_calc|floatformat:2|intcomma }}</div>
+            </div>
+
+            <div class="forn-metric">
+              <div class="forn-metric-label">Custo Mensal Licenças</div>
+              <div class="forn-metric-value purple">R$ {{ f.custo_mensal_licencas_calc|floatformat:2|intcomma }}</div>
+            </div>
+
+            <div class="forn-metric">
+              <div class="forn-metric-label">Valor Total Itens</div>
+              <div class="forn-metric-value">R$ {{ f.valor_total_itens_calc|floatformat:2|intcomma }}</div>
+            </div>
+
+            <div class="forn-metric">
+              <div class="forn-metric-label">Custo Anual Licenças</div>
+              <div class="forn-metric-value">R$ {{ f.custo_anual_licencas_calc|floatformat:2|intcomma }}</div>
+            </div>
+
+            <div class="forn-metric forn-metric-full">
+              <div class="forn-metric-label">Total Consolidado do Fornecedor</div>
+              <div class="forn-metric-value blue">Mensal: R$ {{ f.custo_total_mensal_calc|floatformat:2|intcomma }}</div>
+              <div class="forn-metric-value" style="font-size:0.82rem; margin-top:0.25rem;">Anual: R$ {{ f.custo_total_anual_calc|floatformat:2|intcomma }}</div>
+            </div>
+          </div>
+
+          <div class="forn-card-footer">
+            <div>
+              {% if f.contrato %}
+                <span class="forn-badge forn-badge-success"><i class="fa-solid fa-file-contract"></i>Contrato Ativo</span>
+              {% else %}
+                <span class="forn-badge forn-badge-danger"><i class="fa-solid fa-circle-exclamation"></i>Sem Contrato</span>
+              {% endif %}
+            </div>
+
+            <div class="forn-card-actions">
+              <a href="{% url 'fornecedor_detail' f.pk %}" class="forn-btn forn-btn-secondary forn-btn-icon" title="Detalhes" aria-label="Ver detalhes de {{ f.nome }}">
+                <i class="fa-solid fa-eye"></i>
+              </a>
+              <a href="{% url 'fornecedor_update' f.pk %}" class="forn-btn forn-btn-secondary forn-btn-icon" title="Editar" aria-label="Editar {{ f.nome }}">
+                <i class="fa-solid fa-pen"></i>
+              </a>
+            </div>
+          </div>
+        </article>
+      {% empty %}
+        <div class="forn-empty-state">
+          <i class="fa-solid fa-folder-open"></i>
+          <h3>Nenhum fornecedor encontrado</h3>
+          <p>Altere os filtros ou cadastre um novo fornecedor.</p>
+        </div>
       {% endfor %}
+    </section>
 
-      {% if page_obj.has_next %}
-        <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="page-link">
-          <i class="fa fa-chevron-right"></i>
-        </a>
-      {% endif %}
-    </div>
-  {% endif %}
+    {% if page_obj.has_other_pages %}
+      <nav class="forn-pagination" aria-label="Paginação de fornecedores">
+        {% if page_obj.has_previous %}
+          <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="forn-page-link" aria-label="Página anterior">
+            <i class="fa-solid fa-chevron-left"></i>
+          </a>
+        {% endif %}
 
+        {% for num in paginator.page_range %}
+          {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+            {% if num == page_obj.number %}
+              <span class="forn-page-link is-active" aria-current="page">{{ num }}</span>
+            {% else %}
+              <a href="?page={{ num }}&{{ qs_keep }}" class="forn-page-link">{{ num }}</a>
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+
+        {% if page_obj.has_next %}
+          <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="forn-page-link" aria-label="Próxima página">
+            <i class="fa-solid fa-chevron-right"></i>
+          </a>
+        {% endif %}
+      </nav>
+    {% endif %}
+
+  </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
 $(document).ready(function() {
-    $('.select2-filter').select2({
-        minimumResultsForSearch: Infinity,
-        width: '100%'
-    });
+  $('.select2-filter').select2({
+    minimumResultsForSearch: Infinity,
+    width: '100%'
+  });
 
-    $('.select2-filter').on('change', function() {
-        $('#searchForm').submit();
-    });
+  $('.select2-filter').on('change', function() {
+    $('#searchForm').submit();
+  });
 
-    let timeout = null;
-    $('.search-input').on('keyup', function() {
-        clearTimeout(timeout);
-        timeout = setTimeout(function() {
-            $('#searchForm').submit();
-        }, 500);
-    });
+  let timeout = null;
+  $('.forn-control[name="q"]').on('keyup', function() {
+    clearTimeout(timeout);
+    timeout = setTimeout(function() {
+      $('#searchForm').submit();
+    }, 500);
+  });
 });
 </script>
 {% endblock %}

@@ -1,813 +1,1382 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Gestão de Usuários{% endblock %}
+{% block title %}Gestão de Funcionários{% endblock %}
+{% block page_title %}Gestão de Funcionários{% endblock %}
+{% block page_subtitle %}Controle de colaboradores, status, PMB, centro de custo e base do RH{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'usuario_importar' %}" class="btn-secondary btn-sm">
+    <i class="fa-solid fa-file-import" aria-hidden="true"></i>
+    Importar RH
+  </a>
+  <a href="{% url 'usuario_create' %}" class="btn-primary btn-sm">
+    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+    Novo Funcionário
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+
+<style>
+  /* =========================================================
+     USUÁRIOS · LISTAGEM
+     Ajustado para trabalhar com os tokens do base.html
+     ========================================================= */
+
+  :where(.user-list-page, #desligarModal, .select2-container, .select2-dropdown) {
+    --ul-primary: var(--brand);
+    --ul-primary-hover: var(--brand-hover);
+    --ul-primary-soft: var(--brand-soft);
+    --ul-primary-softer: var(--brand-softer);
+
+    --ul-bg: var(--bg-page);
+    --ul-surface: var(--bg-elevated);
+    --ul-surface-2: var(--bg-elevated-2);
+    --ul-muted-fill: var(--bg-fill-tertiary);
+    --ul-muted-fill-hover: var(--bg-fill-secondary);
+    --ul-hover: var(--bg-hover);
+
+    --ul-text: var(--text-primary);
+    --ul-text-2: var(--text-secondary);
+    --ul-muted: var(--text-tertiary);
+    --ul-soft: var(--text-quaternary);
+
+    --ul-border: var(--separator-hairline);
+    --ul-border-strong: var(--separator-non-opaque);
+    --ul-border-hover: var(--separator-strong);
+
+    --ul-success: var(--success);
+    --ul-success-bg: var(--success-soft);
+    --ul-warning: var(--warning);
+    --ul-warning-bg: var(--warning-soft);
+    --ul-danger: var(--danger);
+    --ul-danger-bg: var(--danger-soft);
+    --ul-info: var(--info);
+    --ul-info-bg: var(--info-soft);
+
+    --ul-radius-sm: var(--radius-sm);
+    --ul-radius-md: var(--radius-md);
+    --ul-radius-lg: var(--radius-lg);
+    --ul-radius-xl: var(--radius-xl);
+    --ul-radius-pill: var(--radius-pill);
+
+    --ul-shadow-xs: var(--shadow-xs);
+    --ul-shadow-sm: var(--shadow-sm);
+    --ul-shadow-md: var(--shadow-md);
+
+    --ul-control-h: 38px;
+    --ul-transition-fast: var(--transition-fast);
+    --ul-transition-base: var(--transition-base);
+  }
+
+  .user-list-page,
+  .user-list-page * {
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  .user-list-page {
+    width: 100%;
+    color: var(--ul-text);
+  }
+
+  .user-list-shell {
+    display: grid;
+    gap: 18px;
+  }
+
+  .user-page-header {
+    margin-bottom: 4px;
+  }
+
+  .user-page-header .page-description {
+    max-width: 780px;
+  }
+
+  .user-mobile-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .user-panel {
+    width: 100%;
+    border: 1px solid var(--ul-border);
+    border-radius: var(--ul-radius-xl);
+    background: var(--ul-surface);
+    overflow: hidden;
+    transition:
+      border-color var(--ul-transition-fast),
+      box-shadow var(--ul-transition-base),
+      transform var(--ul-transition-base);
+  }
+
+  .user-panel:hover {
+    border-color: var(--ul-border-hover);
+    box-shadow: var(--ul-shadow-sm);
+  }
+
+  .user-panel-body {
+    padding: clamp(16px, 2vw, 22px);
+  }
+
+  /* KPIs */
+  .ul-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .ul-kpi-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 104px;
+    padding: 16px;
+    border: 1px solid var(--ul-border);
+    border-radius: var(--ul-radius-lg);
+    background: var(--ul-surface);
+    overflow: hidden;
+    transition:
+      transform var(--ul-transition-base),
+      border-color var(--ul-transition-fast),
+      box-shadow var(--ul-transition-base),
+      background var(--ul-transition-fast);
+  }
+
+  .ul-kpi-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 92% 4%, color-mix(in srgb, var(--kpi-color, var(--ul-primary)) 16%, transparent) 0, transparent 34%),
+      linear-gradient(135deg, rgba(255,255,255,.10), transparent 42%);
+    pointer-events: none;
+  }
+
+  .ul-kpi-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--kpi-color, var(--ul-primary)) 28%, var(--ul-border-hover));
+    box-shadow: var(--ul-shadow-sm);
+  }
+
+  .ul-kpi-icon {
+    position: relative;
+    z-index: 1;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--kpi-color, var(--ul-primary)) 12%, transparent);
+    color: var(--kpi-color, var(--ul-primary));
+    border: 1px solid color-mix(in srgb, var(--kpi-color, var(--ul-primary)) 20%, transparent);
+    font-size: 15px;
+  }
+
+  .ul-kpi-info {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 2px;
+  }
+
+  .ul-kpi-label {
+    color: var(--ul-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .ul-kpi-number {
+    color: var(--ul-text);
+    font-family: var(--font-display);
+    font-size: clamp(22px, 2vw, 28px);
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ul-kpi-sub {
+    color: var(--ul-soft);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  /* Filtros */
+  .filter-card {
+    overflow: visible;
+  }
+
+  .filter-form {
+    display: grid;
+    gap: 16px;
+  }
+
+  .filter-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 14px;
+  }
+
+  .search-wrap {
+    position: relative;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--ul-soft);
+    font-size: 13px;
+    pointer-events: none;
+  }
+
+  .search-input {
+    width: 100%;
+    min-height: 42px;
+    padding: 10px 14px 10px 40px;
+    border: 1px solid var(--ul-border-strong);
+    border-radius: var(--ul-radius-pill);
+    background: var(--ul-muted-fill);
+    color: var(--ul-text);
+    font-size: 14px;
+    letter-spacing: -0.014em;
+    outline: none;
+    transition:
+      background var(--ul-transition-fast),
+      border-color var(--ul-transition-fast),
+      box-shadow var(--ul-transition-fast);
+  }
+
+  .search-input:hover {
+    background: var(--ul-muted-fill-hover);
+    border-color: var(--ul-border-hover);
+  }
+
+  .search-input:focus {
+    background: var(--ul-surface);
+    border-color: var(--ul-primary);
+    box-shadow: 0 0 0 4px var(--brand-ring);
+  }
+
+  .search-input::placeholder {
+    color: var(--ul-soft);
+  }
+
+  .search-hint {
+    margin-top: 7px;
+    color: var(--ul-soft);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .filter-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .ul-btn {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 16px;
+    border-radius: var(--ul-radius-pill);
+    border: 1px solid transparent;
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: -0.014em;
+    white-space: nowrap;
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+      transform var(--ul-transition-fast),
+      background var(--ul-transition-fast),
+      border-color var(--ul-transition-fast),
+      color var(--ul-transition-fast),
+      box-shadow var(--ul-transition-fast);
+  }
+
+  .ul-btn:hover {
+    text-decoration: none;
+  }
+
+  .ul-btn:active {
+    transform: scale(.97);
+  }
+
+  .ul-btn-primary {
+    color: #fff;
+    background: var(--ul-primary);
+    border-color: var(--ul-primary);
+  }
+
+  .ul-btn-primary:hover {
+    color: #fff;
+    background: var(--ul-primary-hover);
+    border-color: var(--ul-primary-hover);
+  }
+
+  .ul-btn-outline {
+    color: var(--ul-text-2);
+    background: transparent;
+    border-color: var(--ul-border-strong);
+  }
+
+  .ul-btn-outline:hover {
+    color: var(--ul-text);
+    background: var(--ul-hover);
+    border-color: var(--ul-border-hover);
+  }
+
+  .ul-btn-danger {
+    color: #fff;
+    background: var(--ul-danger);
+    border-color: var(--ul-danger);
+  }
+
+  .ul-btn-danger:hover {
+    color: #fff;
+    background: #ff5147;
+    border-color: #ff5147;
+  }
+
+  .ul-btn.is-disabled,
+  .ul-btn[aria-disabled="true"] {
+    opacity: .42;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  /* Select2 alinhado ao base */
+  .select2-container {
+    width: 100% !important;
+    font-family: var(--font-sans) !important;
+  }
+
+  .select2-container--default .select2-selection--single {
+    min-height: var(--ul-control-h) !important;
+    display: flex !important;
+    align-items: center !important;
+    border: 1px solid var(--ul-border-strong) !important;
+    border-radius: 12px !important;
+    background: var(--ul-surface) !important;
+    transition:
+      border-color var(--ul-transition-fast),
+      box-shadow var(--ul-transition-fast),
+      background var(--ul-transition-fast);
+  }
+
+  .select2-container--default .select2-selection--single:hover {
+    border-color: var(--ul-border-hover) !important;
+  }
+
+  .select2-container--default.select2-container--focus .select2-selection--single,
+  .select2-container--default.select2-container--open .select2-selection--single {
+    border-color: var(--ul-primary) !important;
+    box-shadow: 0 0 0 4px var(--brand-ring) !important;
+  }
+
+  .select2-container--default .select2-selection--single .select2-selection__rendered {
+    width: 100%;
+    padding-left: 12px !important;
+    padding-right: 32px !important;
+    color: var(--ul-text) !important;
+    font-size: 13.5px;
+    line-height: var(--ul-control-h) !important;
+    letter-spacing: -0.012em;
+  }
+
+  .select2-container--default .select2-selection--single .select2-selection__placeholder {
+    color: var(--ul-soft) !important;
+  }
+
+  .select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: var(--ul-control-h) !important;
+    right: 8px !important;
+  }
+
+  .select2-dropdown {
+    z-index: 9999 !important;
+    overflow: hidden;
+    border: 1px solid var(--ul-border-strong) !important;
+    border-radius: var(--ul-radius-md) !important;
+    background: var(--ul-surface) !important;
+    color: var(--ul-text) !important;
+    box-shadow: var(--ul-shadow-md) !important;
+  }
+
+  .select2-search--dropdown {
+    padding: 8px !important;
+    background: var(--ul-surface) !important;
+  }
+
+  .select2-container--default .select2-search--dropdown .select2-search__field {
+    min-height: 34px;
+    border: 1px solid var(--ul-border-strong) !important;
+    border-radius: 10px !important;
+    background: var(--ul-muted-fill) !important;
+    color: var(--ul-text) !important;
+    outline: none;
+  }
+
+  .select2-results__option {
+    padding: 8px 12px !important;
+    color: var(--ul-text) !important;
+    font-size: 13px;
+  }
+
+  .select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background: var(--ul-primary) !important;
+    color: #fff !important;
+  }
+
+  .select2-container--default .select2-results__option[aria-selected="true"] {
+    background: var(--ul-primary-soft) !important;
+    color: var(--ul-primary) !important;
+  }
+
+  /* Tabela */
+  .table-card {
+    position: relative;
+  }
+
+  .table-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: color-mix(in srgb, var(--ul-surface) 82%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: var(--ul-primary);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: -0.012em;
+  }
+
+  .table-loading.active {
+    display: flex;
+  }
+
+  .user-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .user-table {
+    width: 100%;
+    min-width: 980px;
+    border-collapse: collapse;
+  }
+
+  .user-table th,
+  .user-table td {
+    border-bottom: 1px solid var(--ul-border);
+    text-align: left;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .user-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 13px 16px;
+    background: var(--ul-surface);
+    color: var(--ul-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .user-table td {
+    padding: 14px 16px;
+    color: var(--ul-text);
+    font-size: 13.5px;
+    letter-spacing: -0.012em;
+  }
+
+  .user-table tbody tr {
+    transition: background var(--ul-transition-fast);
+  }
+
+  .user-table tbody tr:hover {
+    background: var(--ul-hover);
+  }
+
+  .user-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .td-actions {
+    text-align: right;
+  }
+
+  .td-pmb {
+    text-align: center;
+  }
+
+  .user-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 280px;
+    cursor: pointer;
+  }
+
+  .user-avatar {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    background: var(--ul-primary-soft);
+    color: var(--ul-primary);
+    border: 1px solid color-mix(in srgb, var(--ul-primary) 18%, transparent);
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .user-cell-copy {
+    display: grid;
+    gap: 2px;
+  }
+
+  .user-name {
+    color: var(--ul-text);
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+
+  .user-sub {
+    color: var(--ul-muted);
+    font-size: 12px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .matricula-chip {
+    width: fit-content;
+    max-width: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 4px;
+    padding: 3px 9px;
+    border-radius: var(--ul-radius-pill);
+    background: var(--ul-primary-softer);
+    color: var(--ul-primary);
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: -0.006em;
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+    padding: 4px 10px;
+    border-radius: var(--ul-radius-pill);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .status-pill::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    flex: 0 0 6px;
+    border-radius: 999px;
+    background: currentColor;
+  }
+
+  .status-active {
+    background: var(--ul-success-bg);
+    color: var(--ul-success);
+  }
+
+  .status-inactive {
+    background: var(--ul-danger-bg);
+    color: var(--ul-danger);
+  }
+
+  .status-neutral {
+    background: var(--ul-muted-fill);
+    color: var(--ul-muted);
+  }
+
+  .pmb-star {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: var(--ul-warning-bg);
+    color: var(--ul-warning);
+    font-size: 13px;
+  }
+
+  .pmb-empty {
+    color: var(--ul-soft);
+  }
+
+  .actions-cell {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .icon-btn {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ul-muted);
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+      transform var(--ul-transition-fast),
+      background var(--ul-transition-fast),
+      border-color var(--ul-transition-fast),
+      color var(--ul-transition-fast);
+  }
+
+  .icon-btn:hover {
+    background: var(--ul-primary-soft);
+    color: var(--ul-primary);
+    border-color: color-mix(in srgb, var(--ul-primary) 18%, transparent);
+  }
+
+  .icon-btn.danger:hover {
+    background: var(--ul-danger-bg);
+    color: var(--ul-danger);
+    border-color: color-mix(in srgb, var(--ul-danger) 18%, transparent);
+  }
+
+  .icon-btn:active {
+    transform: scale(.92);
+  }
+
+  .icon-btn.is-disabled {
+    opacity: .38;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .empty-state {
+    display: grid;
+    place-items: center;
+    gap: 8px;
+    padding: 48px 16px;
+    color: var(--ul-muted);
+    text-align: center;
+  }
+
+  .empty-state i {
+    width: 54px;
+    height: 54px;
+    display: grid;
+    place-items: center;
+    border-radius: 18px;
+    background: var(--ul-muted-fill);
+    color: var(--ul-soft);
+    font-size: 22px;
+  }
+
+  .empty-state h3 {
+    margin: 4px 0 0;
+    color: var(--ul-text);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.018em;
+  }
+
+  .empty-state p {
+    margin: 0;
+    color: var(--ul-muted);
+    font-size: 13px;
+  }
+
+  /* Paginação */
+  .pagination-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-top: 1px solid var(--ul-border);
+    background: var(--ul-surface);
+  }
+
+  .pagination-info {
+    color: var(--ul-muted);
+    font-size: 13px;
+  }
+
+  .pagination-info strong {
+    color: var(--ul-text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pagination-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(0, 0, 0, .42);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    opacity: 0;
+    transition: opacity var(--ul-transition-base);
+  }
+
+  .modal-overlay.show {
+    display: flex;
+    opacity: 1;
+  }
+
+  .modal-box {
+    width: min(100%, 480px);
+    border: 1px solid var(--ul-border-strong);
+    border-radius: var(--ul-radius-xl);
+    background: var(--ul-surface);
+    color: var(--ul-text);
+    box-shadow: var(--shadow-xl);
+    padding: 22px;
+    animation: userModalIn 260ms var(--ease-apple-out) both;
+  }
+
+  @keyframes userModalIn {
+    from { opacity: 0; transform: translateY(8px) scale(.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    color: var(--ul-text);
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.022em;
+  }
+
+  .modal-icon {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: var(--ul-danger-bg);
+    color: var(--ul-danger);
+  }
+
+  .modal-body {
+    margin-bottom: 20px;
+    color: var(--ul-muted);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .modal-body strong {
+    color: var(--ul-text);
+    font-weight: 600;
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  @media (max-width: 1280px) {
+    .ul-kpi-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .filter-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 860px) {
+    .user-list-shell {
+      gap: 14px;
+    }
+
+    .user-page-header {
+      margin-bottom: 0;
+    }
+
+    .filter-top {
+      grid-template-columns: 1fr;
+    }
+
+    .filter-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+
+    .filter-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .ul-kpi-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .user-table-wrap {
+      overflow: visible;
+    }
+
+    .user-table,
+    .user-table thead,
+    .user-table tbody,
+    .user-table tr,
+    .user-table td {
+      display: block;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .user-table thead {
+      display: none;
+    }
+
+    .user-table tbody {
+      display: grid;
+      gap: 12px;
+      padding: 12px;
+      background: var(--ul-bg);
+    }
+
+    .user-table tbody tr {
+      border: 1px solid var(--ul-border);
+      border-radius: var(--ul-radius-lg);
+      background: var(--ul-surface);
+      overflow: hidden;
+    }
+
+    .user-table tbody tr:hover {
+      background: var(--ul-surface);
+    }
+
+    .user-table td {
+      display: grid;
+      grid-template-columns: minmax(104px, .38fr) minmax(0, 1fr);
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--ul-border);
+      white-space: normal;
+    }
+
+    .user-table td::before {
+      content: attr(data-label);
+      color: var(--ul-muted);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .user-table td.td-main {
+      display: block;
+      padding: 14px;
+    }
+
+    .user-table td.td-main::before {
+      display: none;
+    }
+
+    .td-pmb,
+    .td-actions {
+      text-align: left;
+    }
+
+    .actions-cell {
+      justify-content: flex-start;
+    }
+
+    .pagination-container {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .pagination-controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      justify-content: stretch;
+    }
+
+    .pagination-controls .ul-btn {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .ul-kpi-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .user-table tbody {
+      padding: 10px;
+    }
+
+    .user-table td {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+
+    .user-cell {
+      align-items: flex-start;
+      min-width: 0;
+    }
+
+    .modal-box {
+      padding: 18px;
+      border-radius: var(--ul-radius-lg);
+    }
+
+    .modal-footer {
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+
+    .modal-footer .ul-btn {
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
 
 {% block content %}
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<div class="user-list-page">
+  <div class="user-list-shell">
+
+    <section class="page-header user-page-header" aria-labelledby="usuarios-title">
+      <div class="page-header-main">
+        <div class="page-kicker">
+          <i class="fa-solid fa-users-gear" aria-hidden="true"></i>
+          Operação RH / Cadastro corporativo
+        </div>
+        <h2 class="page-heading" id="usuarios-title">Funcionários</h2>
+        <p class="page-description">
+          Gestão centralizada de colaboradores, matrícula, status operacional, PMB, centro de custo, função e localidade para manter a base saneada e rastreável.
+        </p>
+      </div>
+
+      <div class="page-actions user-mobile-actions">
+        <a href="{% url 'usuario_importar' %}" class="btn-secondary">
+          <i class="fa-solid fa-file-import" aria-hidden="true"></i>
+          Importar RH
+        </a>
+        <a href="{% url 'usuario_create' %}" class="btn-primary">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i>
+          Novo Funcionário
+        </a>
+      </div>
+    </section>
+
+    <section id="kpiWrap" class="ul-kpi-grid" aria-label="Indicadores de funcionários">
+      {% include "front/usuarios/_usuario_kpis.html" %}
+    </section>
+
+    <section class="user-panel filter-card" aria-label="Filtros de funcionários">
+      <div class="user-panel-body">
+        <form method="get" id="filterForm" class="filter-form" autocomplete="off">
+          <div class="filter-top">
+            <div>
+              <div class="search-wrap">
+                <i class="fa-solid fa-magnifying-glass search-icon" aria-hidden="true"></i>
+                <input
+                  type="search"
+                  name="q"
+                  value="{{ f_q }}"
+                  class="search-input"
+                  id="searchInput"
+                  placeholder="Pesquisar por nome, matrícula ou e-mail..."
+                  autocomplete="off">
+              </div>
+
+              <div class="search-hint">
+                Digite pelo menos 2 caracteres ou pressione Enter. A tabela atualiza via AJAX, sem recarregar a tela inteira.
+              </div>
+            </div>
+
+            <div class="filter-actions">
+              <button type="submit" class="ul-btn ul-btn-primary">
+                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                Aplicar
+              </button>
+
+              <a href="{% url 'usuario_list' %}" class="ul-btn ul-btn-outline" id="clearFilters">
+                <i class="fa-solid fa-eraser" aria-hidden="true"></i>
+                Limpar
+              </a>
+            </div>
+          </div>
+
+          <div class="filter-grid">
+            <select name="status" class="select2-filter" data-placeholder="Situação" aria-label="Filtrar por status">
+              <option value="">Todos os Status</option>
+              {% for code, label in opt_status %}
+                <option value="{{ code }}" {% if f_status == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+
+            <select name="cc" class="select2-filter" data-placeholder="Centro de Custo" aria-label="Filtrar por centro de custo">
+              <option value="">Todos os Centros</option>
+              {% for c in opt_cc %}
+                <option value="{{ c.id }}" {% if f_cc == c.id %}selected{% endif %}>{{ c.numero }} - {{ c.departamento }}</option>
+              {% endfor %}
+            </select>
+
+            <select name="loc" class="select2-filter" data-placeholder="Localidade" aria-label="Filtrar por localidade">
+              <option value="">Todas Localidades</option>
+              {% for l in opt_loc %}
+                <option value="{{ l.id }}" {% if f_loc == l.id %}selected{% endif %}>{{ l.local }}</option>
+              {% endfor %}
+            </select>
+
+            <select name="func" class="select2-filter" data-placeholder="Função" aria-label="Filtrar por função">
+              <option value="">Todas Funções</option>
+              {% for f in opt_func %}
+                <option value="{{ f.id }}" {% if f_func == f.id %}selected{% endif %}>{{ f.nome }}</option>
+              {% endfor %}
+            </select>
+
+            <select name="pmb" class="select2-filter" data-placeholder="PMB" aria-label="Filtrar por PMB">
+              <option value="">PMB: Todos</option>
+              {% for code, label in opt_pmb %}
+                <option value="{{ code }}" {% if f_pmb == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+
+            <select name="pp" class="select2-filter" data-placeholder="Por página" aria-label="Quantidade por página">
+              <option value="10" {% if per_page == 10 %}selected{% endif %}>10 por página</option>
+              <option value="20" {% if per_page == 20 %}selected{% endif %}>20 por página</option>
+              <option value="50" {% if per_page == 50 %}selected{% endif %}>50 por página</option>
+              <option value="100" {% if per_page == 100 %}selected{% endif %}>100 por página</option>
+            </select>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="user-panel table-card" aria-label="Tabela de funcionários">
+      <div id="tableLoader" class="table-loading" aria-live="polite" aria-hidden="true">
+        <i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i>
+        Atualizando registros...
+      </div>
+
+      <div class="user-table-wrap" id="tableWrap">
+        {% include "front/usuarios/_usuario_table.html" %}
+      </div>
+
+      <div id="paginationWrap">
+        {% include "front/usuarios/_usuario_pagination.html" %}
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div id="desligarModal" class="modal-overlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="desligarModalTitle">
+  <div class="modal-box" role="document">
+    <div class="modal-header" id="desligarModalTitle">
+      <div class="modal-icon" aria-hidden="true">
+        <i class="fa-solid fa-user-xmark"></i>
+      </div>
+      Desligar Funcionário
+    </div>
+
+    <div class="modal-body" id="modalMsg"></div>
+
+    <form id="desligarForm" method="post" action="">
+      {% csrf_token %}
+      <div class="modal-footer">
+        <button type="button" class="ul-btn ul-btn-outline" onclick="closeDesligarModal()">
+          Cancelar
+        </button>
+
+        <button type="submit" class="ul-btn ul-btn-danger">
+          Confirmar Desligamento
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
-<style>
-/* === VARIÁVEIS SAAS MODERN (Estilo Invigate) === */
-:root {
-    --surface: #ffffff;
-    --background: #f8fafc; /* Fundo cinza bem claro */
-    --border: #e2e8f0;
-    
-    --text-main: #0f172a; /* Contraste forte para leitura */
-    --text-muted: #64748b;
-    
-    --primary: #2563eb; /* Azul Ação Principal */
-    --primary-hover: #1d4ed8;
-    --primary-light: #eff6ff;
-    
-    --danger: #ef4444;
-    --danger-bg: #fef2f2;
-    --success: #10b981;
-    --success-bg: #ecfdf5;
-    --warning: #f59e0b;
-    --warning-bg: #fffbeb;
-
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.05);
-    
-    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-body {
-    background-color: var(--background);
-    font-family: 'Inter', sans-serif;
-    color: var(--text-main);
-    margin: 0;
-    font-size: 14px;
-    -webkit-font-smoothing: antialiased;
-}
-
-.main-container {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-}
-
-/* === CABEÇALHO === */
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.page-title {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text-main);
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.page-title i {
-    color: var(--primary);
-    background: var(--primary-light);
-    padding: 8px;
-    border-radius: var(--radius-sm);
-    font-size: 18px;
-}
-
-.btn-primary {
-    background-color: var(--primary);
-    color: #fff;
-    padding: 10px 20px;
-    border-radius: var(--radius-sm);
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 14px;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    transition: var(--transition);
-    border: none;
-    cursor: pointer;
-    box-shadow: var(--shadow-sm);
-}
-
-.btn-primary:hover {
-    background-color: var(--primary-hover);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-md);
-}
-
-/* === KPI SECTION (BENTO GRID) === */
-.kpi-section {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 20px;
-}
-
-.kpi-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 20px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    box-shadow: var(--shadow-sm);
-    transition: var(--transition);
-}
-
-.kpi-card:hover {
-    box-shadow: var(--shadow-md);
-    transform: translateY(-2px);
-}
-
-.kpi-icon-wrapper {
-    width: 48px;
-    height: 48px;
-    border-radius: var(--radius-md);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-}
-
-.kpi-total .kpi-icon-wrapper { background: var(--primary-light); color: var(--primary); }
-.kpi-active .kpi-icon-wrapper { background: var(--success-bg); color: var(--success); }
-.kpi-inactive .kpi-icon-wrapper { background: var(--danger-bg); color: var(--danger); }
-.kpi-pmb .kpi-icon-wrapper { background: var(--warning-bg); color: var(--warning); }
-
-.kpi-info {
-    display: flex;
-    flex-direction: column;
-}
-
-.kpi-label {
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    letter-spacing: 0.5px;
-}
-
-.kpi-number {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text-main);
-    line-height: 1.2;
-    margin-top: 4px;
-}
-
-/* === FILTROS E PESQUISA === */
-.filter-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 20px;
-    box-shadow: var(--shadow-sm);
-}
-
-.search-main {
-    position: relative;
-    margin-bottom: 16px;
-}
-
-.search-input {
-    width: 100%;
-    height: 44px;
-    padding: 10px 16px 10px 44px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    font-size: 14px;
-    color: var(--text-main);
-    font-family: 'Inter', sans-serif;
-    transition: var(--transition);
-    background: var(--background);
-}
-
-.search-input:focus {
-    border-color: var(--primary);
-    outline: none;
-    box-shadow: 0 0 0 3px var(--primary-light);
-    background: var(--surface);
-}
-
-.search-icon-main {
-    position: absolute;
-    left: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-muted);
-    font-size: 14px;
-}
-
-.filters-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 16px;
-    align-items: end;
-}
-
-/* Reset Visual do Select2 para casar com SaaS */
-.select2-container .select2-selection--single {
-    height: 44px !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius-sm) !important;
-    background-color: var(--background) !important;
-    display: flex;
-    align-items: center;
-}
-.select2-container--default .select2-selection--single .select2-selection__rendered {
-    color: var(--text-main) !important;
-    font-size: 14px;
-    font-family: 'Inter', sans-serif;
-    padding-left: 12px;
-}
-.select2-container--default .select2-selection--single .select2-selection__arrow {
-    height: 42px !important;
-    right: 8px !important;
-}
-.select2-dropdown {
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius-sm) !important;
-    box-shadow: var(--shadow-md) !important;
-    font-family: 'Inter', sans-serif;
-    font-size: 14px;
-}
-
-.btn-limpar {
-    color: var(--text-muted);
-    font-weight: 500;
-    font-size: 13px;
-    cursor: pointer;
-    transition: var(--transition);
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-.btn-limpar:hover {
-    color: var(--danger);
-}
-
-/* === TABELA === */
-.table-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-sm);
-    overflow: hidden; /* Para respeitar as bordas arredondadas */
-}
-
-.table-responsive {
-    overflow-x: auto;
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-    text-align: left;
-}
-
-thead th {
-    background-color: var(--background);
-    color: var(--text-muted);
-    font-weight: 600;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
-}
-
-tbody td {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
-    vertical-align: middle;
-    color: var(--text-main);
-    font-size: 14px;
-}
-
-tbody tr:last-child td {
-    border-bottom: none;
-}
-
-tbody tr {
-    transition: var(--transition);
-}
-
-tbody tr:hover {
-    background-color: var(--background);
-}
-
-/* Célula do Usuário */
-.user-cell { 
-    display: flex; 
-    align-items: center; 
-    gap: 16px;
-}
-.user-avatar {
-    width: 40px; 
-    height: 40px;
-    background: var(--primary-light);
-    color: var(--primary);
-    border-radius: var(--radius-sm); /* Squircle look */
-    display: flex; 
-    align-items: center; 
-    justify-content: center;
-    font-weight: 600; 
-    font-size: 14px;
-}
-.user-details { display: flex; flex-direction: column; gap: 2px; }
-.user-name { font-weight: 600; color: var(--text-main); font-size: 14px; }
-.user-email { font-size: 13px; color: var(--text-muted); }
-
-/* Badges (Pills) */
-.badge-status {
-    padding: 4px 12px;
-    border-radius: 9999px; /* Pill shape */
-    font-size: 12px;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-.badge-status::before {
-    content: '';
-    display: block;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-}
-.badge-active { 
-    background-color: var(--success-bg); 
-    color: var(--success); 
-}
-.badge-active::before { background-color: var(--success); }
-
-.badge-inactive { 
-    background-color: var(--danger-bg); 
-    color: var(--danger); 
-}
-.badge-inactive::before { background-color: var(--danger); }
-
-/* Ações */
-.actions-cell { 
-    display: flex; 
-    justify-content: flex-end; 
-    gap: 8px; 
-}
-.btn-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px; 
-    height: 36px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text-muted);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: var(--transition);
-}
-.btn-icon:hover { 
-    background-color: var(--primary-light); 
-    color: var(--primary); 
-    border-color: var(--primary-light);
-}
-.btn-icon.del:hover { 
-    background-color: var(--danger-bg); 
-    color: var(--danger); 
-    border-color: var(--danger-bg); 
-}
-
-/* Paginação */
-.pagination-container {
-    padding: 16px 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-}
-.pagination-info {
-    color: var(--text-muted); 
-    font-size: 13px;
-}
-.pagination-info strong {
-    color: var(--text-main);
-    font-weight: 600;
-}
-.pagination-controls {
-    display: flex;
-    gap: 8px;
-}
-.pagination-btn {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    padding: 8px 16px;
-    color: var(--text-main);
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    font-weight: 500;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    transition: var(--transition);
-}
-.pagination-btn:hover { 
-    background: var(--background); 
-}
-.pagination-btn.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    background: var(--background);
-}
-
-/* Modal */
-.modal-overlay {
-    position: fixed; inset: 0; 
-    background: rgba(15, 23, 42, 0.5); /* Overlay escuro azulado */
-    backdrop-filter: blur(4px);
-    display: none; align-items: center; justify-content: center;
-    z-index: 9999;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-.modal-overlay.show {
-    display: flex;
-    opacity: 1;
-}
-.modal-box {
-    background: var(--surface); 
-    width: 90%; 
-    max-width: 480px;
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-md);
-    padding: 32px;
-    transform: scale(0.95);
-    transition: transform 0.3s ease;
-}
-.modal-overlay.show .modal-box {
-    transform: scale(1);
-}
-.modal-header { 
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 18px; 
-    font-weight: 600; 
-    color: var(--text-main); 
-    margin-bottom: 16px;
-}
-.modal-icon {
-    width: 40px; height: 40px;
-    border-radius: 50%;
-    background: var(--danger-bg);
-    color: var(--danger);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 20px;
-}
-.modal-body { 
-    font-size: 14px; 
-    color: var(--text-muted); 
-    margin-bottom: 32px; 
-    line-height: 1.6; 
-}
-.modal-footer { 
-    display: flex; 
-    justify-content: flex-end; 
-    gap: 12px;
-}
-.btn-cancel { 
-    background: var(--surface); 
-    color: var(--text-main); 
-    padding: 10px 20px; 
-    border-radius: var(--radius-sm); 
-    border: 1px solid var(--border); 
-    cursor: pointer; 
-    font-weight: 500;
-    transition: var(--transition);
-}
-.btn-cancel:hover { background: var(--background); }
-.btn-danger { 
-    background: var(--danger); 
-    color: #fff; 
-    padding: 10px 20px; 
-    border-radius: var(--radius-sm); 
-    border: none; 
-    cursor: pointer; 
-    font-weight: 500;
-    transition: var(--transition);
-}
-.btn-danger:hover { background: #dc2626; }
-
-/* Responsividade */
-@media (max-width: 768px) {
-    .page-header { flex-direction: column; align-items: stretch; gap: 16px; }
-    .btn-primary { justify-content: center; }
-    .filters-grid { grid-template-columns: 1fr; }
-    .kpi-section { grid-template-columns: 1fr 1fr; }
-    .actions-cell { justify-content: flex-start; }
-    .pagination-container { flex-direction: column; gap: 16px; }
-}
-@media (max-width: 480px) {
-    .kpi-section { grid-template-columns: 1fr; }
-}
-</style>
-
-<div class="main-container">
-
-    <div class="page-header">
-        <h1 class="page-title">
-            <i class="fa fa-users"></i> Gestão de Usuários
-        </h1>
-        <a href="{% url 'usuario_create' %}" class="btn-primary">
-            <i class="fa fa-plus"></i> Novo Usuário
-        </a>
-    </div>
-
-    <div class="kpi-section">
-        <div class="kpi-card kpi-total">
-            <div class="kpi-icon-wrapper">
-                <i class="fa fa-folder-open"></i>
-            </div>
-            <div class="kpi-info">
-                <span class="kpi-label">Total Cadastrado</span>
-                <span class="kpi-number">{{ kpi_total }}</span>
-            </div>
-        </div>
-        <div class="kpi-card kpi-active">
-            <div class="kpi-icon-wrapper">
-                <i class="fa fa-check-circle"></i>
-            </div>
-            <div class="kpi-info">
-                <span class="kpi-label">Usuários Ativos</span>
-                <span class="kpi-number">{{ kpi_ativos }}</span>
-            </div>
-        </div>
-        <div class="kpi-card kpi-inactive">
-            <div class="kpi-icon-wrapper">
-                <i class="fa fa-ban"></i>
-            </div>
-            <div class="kpi-info">
-                <span class="kpi-label">Desligados</span>
-                <span class="kpi-number">{{ kpi_desligados }}</span>
-            </div>
-        </div>
-        <div class="kpi-card kpi-pmb">
-            <div class="kpi-icon-wrapper">
-                <i class="fa fa-star"></i>
-            </div>
-            <div class="kpi-info">
-                <span class="kpi-label">PMB</span>
-                <span class="kpi-number">{{ kpi_pmb }}</span>
-            </div>
-        </div>
-    </div>
-
-    <div class="filter-card">
-        <form method="get" id="filterForm">
-            <div class="search-main">
-                <i class="fa fa-search search-icon-main"></i>
-                <input type="text" name="q" value="{{ f_q }}" class="search-input" placeholder="Pesquisar por nome, matrícula ou e-mail..." autocomplete="off">
-            </div>
-
-            <div class="filters-grid">
-                <div>
-                    <select name="status" class="select2-filter" data-placeholder="Situação">
-                        <option value="">Todos os Status</option>
-                        {% for code, label in opt_status %}
-                            <option value="{{ code }}" {% if f_status == code %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div>
-                    <select name="cc" class="select2-filter" data-placeholder="Centro de Custo">
-                        <option value="">Todos os Centros</option>
-                        {% for c in opt_cc %}
-                            <option value="{{ c.id }}" {% if f_cc == c.id %}selected{% endif %}>{{ c.numero }} - {{ c.departamento }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div>
-                    <select name="loc" class="select2-filter" data-placeholder="Localidade">
-                        <option value="">Todas Localidades</option>
-                        {% for l in opt_loc %}
-                            <option value="{{ l.id }}" {% if f_loc == l.id %}selected{% endif %}>{{ l.local }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div>
-                    <select name="func" class="select2-filter" data-placeholder="Função">
-                        <option value="">Todas Funções</option>
-                        {% for f in opt_func %}
-                            <option value="{{ f.id }}" {% if f_func == f.id %}selected{% endif %}>{{ f.nome }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div>
-                    <select name="pmb" class="select2-filter" data-placeholder="PMB">
-                        <option value="">PMB: Todos</option>
-                        {% for code, label in opt_pmb %}
-                            <option value="{{ code }}" {% if f_pmb == code %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                {% if f_q or f_status or f_pmb or f_cc or f_loc or f_func %}
-                <div style="display: flex; align-items: center;">
-                    <a href="{% url 'usuario_list' %}" class="btn-limpar">
-                        <i class="fa fa-times"></i> Limpar Filtros
-                    </a>
-                </div>
-                {% endif %}
-            </div>
-        </form>
-    </div>
-
-    <div class="table-card">
-        <div class="table-responsive">
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 35%;">Usuário</th>
-                        <th>Status</th>
-                        <th>Lotação / CC</th>
-                        <th>Função / Local</th>
-                        <th style="text-align: center;">PMB</th>
-                        <th style="text-align: right; padding-right: 24px;">Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for u in usuarios %}
-                    <tr>
-                        <td onclick="window.location='{% url 'usuario_detail' u.pk %}'" style="cursor: pointer;">
-                            <div class="user-cell">
-                                <div class="user-avatar">
-                                    {{ u.nome|slice:":1"|upper }}
-                                </div>
-                                <div class="user-details">
-                                    <span class="user-name">{{ u.nome }}</span>
-                                    <span class="user-email">{{ u.email|default:"Sem e-mail" }}</span>
-                                </div>
-                            </div>
-                        </td>
-                        <td>
-                            {% if u.status == 'ativo' %}
-                                <span class="badge-status badge-active">Ativo</span>
-                            {% else %}
-                                <span class="badge-status badge-inactive">{{ u.get_status_display }}</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if u.centro_custo %}
-                                <div class="user-details">
-                                    <span class="user-name">{{ u.centro_custo.numero }}</span>
-                                    <span class="user-email">{{ u.centro_custo.departamento }}</span>
-                                </div>
-                            {% else %}
-                                <span style="color: var(--text-muted);">-</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <div class="user-details">
-                                <span class="user-name">{{ u.funcao.nome|default:"-" }}</span>
-                                <span class="user-email">{{ u.localidade.local|default:"" }}</span>
-                            </div>
-                        </td>
-                        <td style="text-align: center;">
-                            {% if u.pmb == 'sim' %}
-                                <i class="fa fa-star" style="color: var(--warning); font-size: 16px;"></i>
-                            {% else %}
-                                <span style="color: var(--border);">-</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <div class="actions-cell">
-                                <a href="{% url 'usuario_update' u.pk %}" class="btn-icon" title="Editar">
-                                    <i class="fa fa-pen"></i>
-                                </a>
-                                <button class="btn-icon del" title="Excluir" onclick="openModal('{{ u.pk }}', '{{ u.nome|escapejs }}')">
-                                    <i class="fa fa-trash"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="6" style="text-align: center; padding: 64px 20px;">
-                            <i class="fa fa-folder-open" style="font-size: 48px; color: var(--border); margin-bottom: 16px; display: block;"></i>
-                            <h3 style="color: var(--text-main); font-weight: 600; font-size: 16px; margin: 0 0 8px 0;">Nenhum usuário encontrado</h3>
-                            <p style="color: var(--text-muted); margin: 0;">Tente ajustar os filtros de pesquisa acima.</p>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
-        <div class="pagination-container">
-            <div class="pagination-info">
-                Exibindo <strong>{{ page_obj.start_index }}</strong> a <strong>{{ page_obj.end_index }}</strong> de <strong>{{ total }}</strong> registros
-            </div>
-            <div class="pagination-controls">
-                {% if page_obj.has_previous %}
-                    <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="pagination-btn">
-                        <i class="fa fa-chevron-left"></i> Anterior
-                    </a>
-                {% else %}
-                    <span class="pagination-btn disabled">
-                        <i class="fa fa-chevron-left"></i> Anterior
-                    </span>
-                {% endif %}
-
-                {% if page_obj.has_next %}
-                    <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="pagination-btn">
-                        Próximo <i class="fa fa-chevron-right"></i>
-                    </a>
-                {% else %}
-                    <span class="pagination-btn disabled">
-                        Próximo <i class="fa fa-chevron-right"></i>
-                    </span>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-
-</div>
-
-<div id="deleteModal" class="modal-overlay">
-    <div class="modal-box">
-        <div class="modal-header">
-            <div class="modal-icon"><i class="fa fa-triangle-exclamation"></i></div>
-            Remover Acesso
-        </div>
-        <div class="modal-body" id="modalMsg">
-            </div>
-        <form id="deleteForm" method="post" action="">
-            {% csrf_token %}
-            <div class="modal-footer">
-                <button type="button" class="btn-cancel" onclick="closeModal()">Cancelar</button>
-                <button type="submit" class="btn-danger">Confirmar Exclusão</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <script>
-$(document).ready(function() {
-    // Configuração Select2 com UI moderna
-    $('.select2-filter').select2({
+  (() => {
+    'use strict';
+
+    const form = document.getElementById('filterForm');
+    const searchInput = document.getElementById('searchInput');
+    const tableWrap = document.getElementById('tableWrap');
+    const paginationWrap = document.getElementById('paginationWrap');
+    const kpiWrap = document.getElementById('kpiWrap');
+    const loader = document.getElementById('tableLoader');
+    const desligarModal = document.getElementById('desligarModal');
+    const desligarForm = document.getElementById('desligarForm');
+    const modalMsg = document.getElementById('modalMsg');
+
+    let debounceTimer = null;
+    let currentController = null;
+
+    function initSelect2() {
+      if (!window.jQuery || !jQuery.fn.select2) return;
+
+      jQuery('.select2-filter').select2({
         width: '100%',
         minimumResultsForSearch: 10,
-        language: "pt-BR"
-    });
+        allowClear: false,
+        language: {
+          noResults: () => 'Nenhum resultado encontrado',
+          searching: () => 'Buscando...'
+        }
+      });
+    }
 
-    // Auto-submit nos filtros [cite: 183]
-    $('.select2-filter').on('change', function() {
-        $('#filterForm').submit();
-    });
+    function setLoading(isLoading) {
+      if (!loader || !tableWrap) return;
 
-    // Debounce na pesquisa textual [cite: 184]
-    let timeout = null;
-    $('.search-input').on('keyup', function() {
-        clearTimeout(timeout);
-        timeout = setTimeout(function() {
-            $('#filterForm').submit();
+      loader.classList.toggle('active', isLoading);
+      loader.setAttribute('aria-hidden', String(!isLoading));
+      tableWrap.style.opacity = isLoading ? '0.55' : '1';
+    }
+
+    function buildParams(extra = {}) {
+      const params = new URLSearchParams(new FormData(form));
+
+      Object.entries(extra).forEach(([key, value]) => {
+        if (value === null || value === undefined || value === '') {
+          params.delete(key);
+        } else {
+          params.set(key, value);
+        }
+      });
+
+      params.set('partial', '1');
+      return params;
+    }
+
+    async function refreshUsers(extra = {}) {
+      if (!form || !tableWrap || !paginationWrap || !kpiWrap) return;
+
+      if (currentController) {
+        currentController.abort();
+      }
+
+      currentController = new AbortController();
+      setLoading(true);
+
+      try {
+        const params = buildParams(extra);
+        const url = `${window.location.pathname}?${params.toString()}`;
+
+        const response = await fetch(url, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          signal: currentController.signal
+        });
+
+        if (!response.ok) {
+          throw new Error('Falha ao atualizar usuários.');
+        }
+
+        const data = await response.json();
+
+        if (!data.ok) {
+          throw new Error('Resposta inválida do servidor.');
+        }
+
+        tableWrap.innerHTML = data.table;
+        paginationWrap.innerHTML = data.pagination;
+        kpiWrap.innerHTML = data.kpis;
+
+        params.delete('partial');
+        const finalQuery = params.toString();
+        const finalUrl = finalQuery ? `${window.location.pathname}?${finalQuery}` : window.location.pathname;
+        window.history.replaceState({}, '', finalUrl);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error(error);
+        }
+      } finally {
+        if (!currentController?.signal.aborted) {
+          setLoading(false);
+          currentController = null;
+        }
+      }
+    }
+
+    function bindFilters() {
+      if (!form || !searchInput || !paginationWrap) return;
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        refreshUsers({ page: 1 });
+      });
+
+      if (window.jQuery) {
+        jQuery('.select2-filter').on('change', () => {
+          refreshUsers({ page: 1 });
+        });
+      } else {
+        document.querySelectorAll('.select2-filter').forEach((select) => {
+          select.addEventListener('change', () => refreshUsers({ page: 1 }));
+        });
+      }
+
+      searchInput.addEventListener('input', () => {
+        const value = searchInput.value.trim();
+        clearTimeout(debounceTimer);
+
+        if (value.length === 1) return;
+
+        debounceTimer = setTimeout(() => {
+          refreshUsers({ page: 1 });
         }, 600);
+      });
+
+      searchInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          clearTimeout(debounceTimer);
+          refreshUsers({ page: 1 });
+        }
+      });
+
+      paginationWrap.addEventListener('click', (event) => {
+        const link = event.target.closest('a[data-page]');
+        if (!link) return;
+
+        event.preventDefault();
+        refreshUsers({ page: link.dataset.page });
+      });
+
+      tableWrap.addEventListener('keydown', (event) => {
+        const rowTrigger = event.target.closest('.user-cell[role="button"]');
+        if (!rowTrigger) return;
+
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          rowTrigger.click();
+        }
+      });
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    window.openDesligarModal = function openDesligarModal(button) {
+      if (!desligarModal || !desligarForm || !modalMsg || !button) return;
+
+      const url = button.dataset.url;
+      const nome = button.dataset.nome;
+
+      desligarForm.action = url || '';
+      modalMsg.innerHTML = `
+        Tem certeza que deseja desligar o funcionário <strong>${escapeHtml(nome)}</strong>?<br><br>
+        O registro não será excluído. O sistema apenas alterará o status para desligado e registrará a data de término.
+      `;
+
+      desligarModal.classList.add('show');
+      desligarModal.setAttribute('aria-hidden', 'false');
+    };
+
+    window.closeDesligarModal = function closeDesligarModal() {
+      if (!desligarModal) return;
+
+      desligarModal.classList.remove('show');
+      desligarModal.setAttribute('aria-hidden', 'true');
+    };
+
+    function bindModal() {
+      if (!desligarModal) return;
+
+      desligarModal.addEventListener('click', (event) => {
+        if (event.target === desligarModal) {
+          window.closeDesligarModal();
+        }
+      });
+
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && desligarModal.classList.contains('show')) {
+          window.closeDesligarModal();
+        }
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initSelect2();
+      bindFilters();
+      bindModal();
     });
-});
-
-// Lógica do Modal com Microinteração [cite: 187, 189]
-const modal = document.getElementById('deleteModal');
-const form = document.getElementById('deleteForm');
-const msg = document.getElementById('modalMsg');
-
-function openModal(pk, nome) {
-    form.action = `/usuarios/${pk}/delete/`;
-    msg.innerHTML = `Tem certeza que deseja remover o usuário <strong>${nome}</strong> do sistema?<br><br>Esta ação não poderá ser desfeita.`;
-    
-    modal.classList.add('show');
-}
-
-function closeModal() {
-    modal.classList.remove('show');
-}
-
-// Fechar ao clicar fora [cite: 190]
-window.onclick = function(event) {
-    if (event.target == modal) closeModal();
-}
+  })();
 </script>
 {% endblock %}

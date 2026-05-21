@@ -1,487 +1,964 @@
 {% extends 'base.html' %}
-{% block title %}{{ editar|yesno:"Editar Item,Novo Item" }}{% endblock %}
+{% load static %}
 
-{% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+{% block title %}{% if editar %}Editar Item{% else %}Novo Item{% endif %}{% endblock %}
+{% block page_title %}{% if editar %}Editar Item{% else %}Novo Item{% endif %}{% endblock %}
+{% block page_subtitle %}Cadastro inteligente de patrimônio, consumo, locação, lotes e preventiva{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'equipamentos_list' %}" class="btn-secondary btn-sm">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i>
+    Voltar
+</a>
+{% endblock %}
+
+{% block extra_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css">
 
 <style>
-    /* Variáveis de Design - Tema Limpo e Minimalista */
-    :root {
-        --bg-body: #f1f5f9;       /* Slate 100 */
-        --bg-card: #ffffff;
-        --text-main: #0f172a;     /* Slate 900 */
-        --text-mut: #64748b;      /* Slate 500 */
-        --border: #e2e8f0;        /* Slate 200 */
-        --focus-ring: #3b82f6;    /* Blue 500 */
-        --primary: #2563eb;       /* Blue 600 */
-        --primary-hover: #1d4ed8;
-        --danger: #ef4444;
-        --radius: 8px;
-        --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+:where(.item-form-page, .choices, .choices__list--dropdown, .choices__list[aria-expanded]) {
+    --if-brand: var(--brand, #0071e3);
+    --if-brand-hover: var(--brand-hover, #0077ed);
+    --if-brand-soft: var(--brand-soft, rgba(0, 113, 227, .10));
+    --if-surface: var(--bg-elevated, #ffffff);
+    --if-surface-soft: var(--bg-fill-tertiary, rgba(120, 120, 128, .08));
+    --if-surface-muted: var(--bg-fill-secondary, rgba(120, 120, 128, .12));
+    --if-text: var(--text-primary, #1d1d1f);
+    --if-muted: var(--text-tertiary, #6e6e73);
+    --if-soft: var(--text-quaternary, #86868b);
+    --if-border: var(--separator-hairline, rgba(0, 0, 0, .06));
+    --if-border-strong: var(--separator-non-opaque, rgba(0, 0, 0, .10));
+    --if-success: var(--success, #34c759);
+    --if-warning: var(--warning, #ff9500);
+    --if-danger: var(--danger, #ff3b30);
+    --if-radius-sm: var(--radius-sm, 10px);
+    --if-radius-md: var(--radius-md, 14px);
+    --if-radius-lg: var(--radius-lg, 18px);
+    --if-radius-xl: var(--radius-xl, 22px);
+    --if-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05));
+    --if-shadow-md: var(--shadow-md, 0 4px 12px rgba(0,0,0,.06));
+    --if-control-h: 42px;
+    --if-transition: var(--transition-fast, 160ms cubic-bezier(.32,.72,0,1));
+}
+
+.item-form-page,
+.item-form-page * {
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.item-form-page {
+    width: 100%;
+    max-width: 1360px;
+    margin: 0 auto;
+    color: var(--if-text);
+}
+
+.if-shell {
+    display: grid;
+    gap: 16px;
+}
+
+.if-hero,
+.if-card,
+.if-section {
+    background: var(--if-surface);
+    border: 1px solid var(--if-border);
+    box-shadow: var(--if-shadow);
+}
+
+.if-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 18px;
+    align-items: center;
+    padding: clamp(18px, 2.5vw, 28px);
+    border-radius: var(--if-radius-xl);
+}
+
+.if-hero-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+}
+
+.if-hero-icon {
+    width: clamp(52px, 8vw, 68px);
+    height: clamp(52px, 8vw, 68px);
+    display: grid;
+    place-items: center;
+    border-radius: 20px;
+    background: var(--if-brand-soft);
+    color: var(--if-brand);
+    border: 1px solid color-mix(in srgb, var(--if-brand) 18%, transparent);
+    font-size: clamp(20px, 4vw, 28px);
+}
+
+.if-hero-title h1 {
+    margin: 0;
+    color: var(--if-text);
+    font-family: var(--font-display, inherit);
+    font-size: clamp(28px, 4vw, 42px);
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+.if-hero-title p {
+    max-width: 760px;
+    margin: 8px 0 0;
+    color: var(--if-muted);
+    font-size: clamp(14px, 1.5vw, 17px);
+    line-height: 1.45;
+}
+
+.if-hero-chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.if-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 32px;
+    padding: 6px 12px;
+    border-radius: var(--radius-pill, 999px);
+    background: var(--if-surface-soft);
+    color: var(--if-muted);
+    border: 1px solid var(--if-border);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.if-chip i {
+    color: var(--if-brand);
+}
+
+.if-card {
+    border-radius: var(--if-radius-xl);
+    overflow: hidden;
+}
+
+.if-card-body {
+    padding: clamp(14px, 2.5vw, 24px);
+}
+
+.if-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 14px 16px;
+    border-radius: var(--if-radius-md);
+    background: var(--danger-soft, rgba(255, 59, 48, .10));
+    color: var(--if-danger);
+    border: 1px solid color-mix(in srgb, var(--if-danger) 22%, transparent);
+    font-size: 14px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.if-alert i {
+    margin-top: 2px;
+    flex: 0 0 auto;
+}
+
+.if-form {
+    display: grid;
+    gap: 16px;
+}
+
+.if-section {
+    border-radius: var(--if-radius-lg);
+    overflow: hidden;
+}
+
+.if-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--if-border);
+    background: color-mix(in srgb, var(--if-surface) 92%, var(--if-brand) 2%);
+}
+
+.if-section-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--if-text);
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.016em;
+}
+
+.if-section-title i {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--if-brand-soft);
+    color: var(--if-brand);
+}
+
+.if-section-body {
+    padding: clamp(14px, 2vw, 18px);
+}
+
+.if-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.if-col-12 { grid-column: span 12; }
+.if-col-8 { grid-column: span 8; }
+.if-col-6 { grid-column: span 6; }
+.if-col-4 { grid-column: span 4; }
+.if-col-3 { grid-column: span 3; }
+
+.if-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.if-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: var(--if-muted);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: -0.006em;
+}
+
+.if-help {
+    color: var(--if-soft);
+    font-size: 12px;
+    line-height: 1.38;
+    overflow-wrap: anywhere;
+}
+
+.if-form input[type="text"],
+.if-form input[type="number"],
+.if-form input[type="date"],
+.if-form input[type="email"],
+.if-form input[type="password"],
+.if-form select,
+.if-form textarea,
+.if-control {
+    width: 100%;
+    min-height: var(--if-control-h);
+    padding: 9px 12px;
+    border-radius: var(--if-radius-sm);
+    border: 1px solid var(--if-border-strong);
+    background: var(--if-surface);
+    color: var(--if-text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color var(--if-transition), box-shadow var(--if-transition), background var(--if-transition);
+}
+
+.if-form textarea {
+    min-height: 108px;
+    resize: vertical;
+    line-height: 1.45;
+}
+
+.if-form input:focus,
+.if-form select:focus,
+.if-form textarea:focus,
+.if-control:focus {
+    border-color: var(--if-brand);
+    box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, .30));
+}
+
+.errorlist {
+    margin: 2px 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--if-danger);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.if-smart-box {
+    display: none;
+}
+
+.if-smart-box.is-active {
+    display: block;
+    animation: ifFade 180ms var(--ease-apple-out, ease-out) both;
+}
+
+@keyframes ifFade {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.if-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: var(--if-radius-md);
+    border: 1px dashed color-mix(in srgb, var(--if-brand) 24%, var(--if-border));
+    background: var(--if-brand-soft);
+    color: var(--if-muted);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.if-note i {
+    margin-top: 2px;
+    color: var(--if-brand);
+    flex: 0 0 auto;
+}
+
+.if-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px clamp(14px, 2.5vw, 24px);
+    border-top: 1px solid var(--if-border);
+    background: var(--bg-vibrancy-strong, rgba(255,255,255,.85));
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+}
+
+.if-btn {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-radius: var(--radius-pill, 999px);
+    border: 1px solid transparent;
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform var(--if-transition), background var(--if-transition), border-color var(--if-transition), color var(--if-transition);
+}
+
+.if-btn:hover { transform: translateY(-1px); }
+.if-btn:active { transform: scale(.98); }
+
+.if-btn-primary {
+    background: var(--if-brand);
+    border-color: var(--if-brand);
+    color: #fff;
+}
+
+.if-btn-primary:hover {
+    background: var(--if-brand-hover);
+    border-color: var(--if-brand-hover);
+    color: #fff;
+}
+
+.if-btn-secondary {
+    background: transparent;
+    border-color: var(--if-border-strong);
+    color: var(--if-text);
+}
+
+.if-btn-secondary:hover {
+    background: var(--bg-hover, rgba(0,0,0,.04));
+    color: var(--if-text);
+}
+
+/* Choices.js */
+.item-form-page .choices {
+    width: 100%;
+    margin-bottom: 0;
+    color: var(--if-text);
+}
+
+.item-form-page .choices__inner {
+    min-height: var(--if-control-h);
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--if-border-strong);
+    border-radius: var(--if-radius-sm);
+    background: var(--if-surface);
+    color: var(--if-text);
+    padding: 5px 10px;
+    transition: border-color var(--if-transition), box-shadow var(--if-transition);
+}
+
+.item-form-page .choices.is-focused .choices__inner,
+.item-form-page .choices.is-open .choices__inner {
+    border-color: var(--if-brand);
+    box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30));
+}
+
+.item-form-page .choices__list--single {
+    padding: 0;
+}
+
+.item-form-page .choices__placeholder {
+    color: var(--if-soft);
+    opacity: 1;
+}
+
+.item-form-page .choices__list--dropdown,
+.item-form-page .choices__list[aria-expanded] {
+    z-index: 9999;
+    margin-top: 6px;
+    border: 1px solid var(--if-border-strong);
+    border-radius: var(--if-radius-md);
+    background: var(--if-surface);
+    color: var(--if-text);
+    box-shadow: var(--if-shadow-md);
+    overflow: hidden;
+}
+
+.item-form-page .choices__input {
+    background: var(--if-surface-soft) !important;
+    color: var(--if-text) !important;
+    border-bottom: 1px solid var(--if-border) !important;
+}
+
+.item-form-page .choices__item--choice {
+    color: var(--if-text);
+    font-size: 14px;
+}
+
+.item-form-page .choices__item--choice.is-highlighted {
+    background: var(--if-brand-soft);
+    color: var(--if-brand);
+}
+
+.item-form-page .choices[data-type*=select-one]::after {
+    border-color: var(--if-muted) transparent transparent;
+}
+
+.item-form-page .choices[data-type*=select-one].is-open::after {
+    border-color: transparent transparent var(--if-brand);
+}
+
+.item-form-page .choices.is-disabled .choices__inner,
+.item-form-page .choices.is-disabled .choices__input {
+    background: var(--if-surface-soft);
+    opacity: .72;
+}
+
+@media (max-width: 980px) {
+    .if-col-8,
+    .if-col-6,
+    .if-col-4,
+    .if-col-3 {
+        grid-column: span 12;
+    }
+}
+
+@media (max-width: 760px) {
+    .if-hero {
+        grid-template-columns: 1fr;
     }
 
-    body {
-        background-color: var(--bg-body);
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        color: var(--text-main);
-        line-height: 1.5;
+    .if-hero-main {
+        grid-template-columns: 1fr;
     }
 
-    /* Container Centralizado */
-    .page-container {
-        max-width: 1000px;
-        margin: 40px auto;
-        padding: 0 20px;
-    }
-
-    /* Card Principal */
-    .card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        box-shadow: var(--shadow);
-        padding: 32px;
-        animation: fadeIn 0.3s ease-out;
-    }
-
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* Cabeçalho */
-    .header {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        margin-bottom: 32px;
-        border-bottom: 1px solid var(--border);
-        padding-bottom: 24px;
-    }
-
-    .header-icon {
-        width: 48px;
-        height: 48px;
-        background: #eff6ff;
-        color: var(--primary);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-        font-size: 1.25rem;
-    }
-
-    .header h1 {
-        margin: 0;
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: var(--text-main);
-    }
-
-    /* Sistema de Grid Responsivo */
-    .grid {
+    .if-hero-chips {
+        justify-content: stretch;
         display: grid;
-        grid-template-columns: repeat(12, 1fr);
-        gap: 20px;
-        margin-bottom: 24px;
+        grid-template-columns: 1fr;
     }
 
-    .col-12 { grid-column: span 12; }
-    .col-6  { grid-column: span 6; }
-    .col-4  { grid-column: span 4; }
-    .col-3  { grid-column: span 3; }
-    .col-8  { grid-column: span 8; }
-
-    @media (max-width: 768px) {
-        .col-md-12 { grid-column: span 12 !important; }
-        .col-md-6  { grid-column: span 6 !important; }
-    }
-    @media (max-width: 640px) {
-        .col-sm-12 { grid-column: span 12 !important; }
+    .if-chip {
+        justify-content: center;
     }
 
-    /* Seções do Formulário */
-    .form-section {
-        margin-bottom: 32px;
-    }
-
-    .section-title {
-        font-size: 1rem;
-        font-weight: 600;
-        color: var(--text-main);
-        margin-bottom: 16px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    
-    .section-title i { color: var(--text-mut); font-size: 0.9em; }
-
-    /* Inputs e Labels */
-    .field-group {
-        display: flex;
+    .if-section-header {
+        align-items: flex-start;
         flex-direction: column;
-        gap: 6px;
     }
 
-    .field-label {
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: #334155;
+    .if-actions {
+        position: static;
+        display: grid;
+        grid-template-columns: 1fr;
     }
 
-    .form-control {
+    .if-btn {
         width: 100%;
-        padding: 10px 12px;
-        border-radius: var(--radius);
-        border: 1px solid var(--border);
-        background: #fff;
-        font-size: 0.95rem;
-        transition: all 0.2s;
+    }
+}
+
+@media (max-width: 420px) {
+    .if-card-body,
+    .if-section-body,
+    .if-section-header,
+    .if-actions {
+        padding: 12px;
     }
 
-    .form-control:focus {
-        outline: none;
-        border-color: var(--focus-ring);
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    .if-hero {
+        padding: 14px;
     }
-
-    textarea.form-control {
-        min-height: 100px;
-        resize: vertical;
-    }
-
-    .help-text {
-        font-size: 0.8rem;
-        color: var(--text-mut);
-        margin-top: 4px;
-    }
-
-    /* Alertas de Erro */
-    .alert-box {
-        background: #fef2f2;
-        border: 1px solid #fee2e2;
-        color: #991b1b;
-        padding: 16px;
-        border-radius: var(--radius);
-        margin-bottom: 24px;
-        font-size: 0.95rem;
-    }
-    .errorlist { list-style: none; padding: 0; margin: 0; color: var(--danger); font-size: 0.85rem; }
-
-    /* Botões */
-    .actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 12px;
-        margin-top: 40px;
-        border-top: 1px solid var(--border);
-        padding-top: 24px;
-    }
-
-    .btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 10px 24px;
-        border-radius: var(--radius);
-        font-weight: 600;
-        font-size: 0.95rem;
-        cursor: pointer;
-        border: none;
-        transition: background 0.2s;
-        text-decoration: none;
-    }
-
-    .btn-secondary {
-        background: #fff;
-        border: 1px solid var(--border);
-        color: var(--text-main);
-    }
-    .btn-secondary:hover { background: #f8fafc; }
-
-    .btn-primary {
-        background: var(--primary);
-        color: white;
-    }
-    .btn-primary:hover { background: var(--primary-hover); }
-
-    /* Ajustes Choices.js para combinar com o tema */
-    .choices__inner {
-        background-color: #fff;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        min-height: 42px;
-    }
-    .is-focused .choices__inner {
-        border-color: var(--focus-ring);
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
-    }
+}
 </style>
+{% endblock %}
 
-<div class="page-container">
-    <div class="card">
-       
-        <div>
-            <h1>{% if editar %}Editar Equipamento{% else %}Novo Equipamento{% endif %}</h1>
-            <span style="color: var(--text-mut); font-size: 0.9rem;">Preencha os dados abaixo</span>
-        </div>
-       
-        {% if form.non_field_errors or locacao_form.non_field_errors %}
-            <div class="alert-box">
-                <strong><i class="fa fa-circle-exclamation"></i> Atenção:</strong> Verifique os erros abaixo.
-                {{ form.non_field_errors }}
-                {{ locacao_form.non_field_errors }}
-            </div>
-        {% endif %}
+{% block content %}
+<div class="item-form-page">
+    <div class="if-shell">
 
-        <form method="post" id="itemForm" novalidate>
-            {% csrf_token %}
-
-            <div class="form-section">
-                <div class="section-title"><i class="fa fa-cube"></i> Dados Identificação</div>
-                <div class="grid">
-                    <div class="col-6 col-sm-12 field-group">
-                        <label class="field-label" for="{{ form.nome.id_for_label }}">Nome do Item</label>
-                        {{ form.nome }}
-                        {{ form.nome.errors }}
-                    </div>
-                    <div class="col-3 col-sm-12 field-group">
-                        <label class="field-label" for="{{ form.numero_serie.id_for_label }}">Nº Série</label>
-                        {{ form.numero_serie }}
-                        {{ form.numero_serie.errors }}
-                    </div>
-                    <div class="col-3 col-sm-12 field-group">
-                        <label class="field-label" for="{{ form.quantidade.id_for_label }}">Quantidade</label>
-                        {{ form.quantidade }}
-                        {{ form.quantidade.errors }}
-                    </div>
+        <section class="if-hero">
+            <div class="if-hero-main">
+                <div class="if-hero-icon" aria-hidden="true">
+                    <i class="fa {% if editar %}fa-pen-to-square{% else %}fa-box{% endif %}"></i>
                 </div>
 
-                <div class="grid">
-                    <div class="col-6 col-sm-12 field-group">
-                        <label class="field-label" for="{{ form.marca.id_for_label }}">Marca</label>
-                        {{ form.marca }}
-                        {{ form.marca.errors }}
-                    </div>
-                    <div class="col-6 col-sm-12 field-group">
-                        <label class="field-label" for="{{ form.modelo.id_for_label }}">Modelo</label>
-                        {{ form.modelo }}
-                        {{ form.modelo.errors }}
-                    </div>
+                <div class="if-hero-title">
+                    <h1>{% if editar %}Editar Item{% else %}Novo Item{% endif %}</h1>
+                    <p>Cadastro técnico com controle de locação, consumo, lote, preventiva e rastreabilidade operacional.</p>
                 </div>
             </div>
 
-            <div class="form-section">
-                <div class="section-title"><i class="fa fa-tags"></i> Classificação & Localização</div>
-                <div class="grid">
-                    <div class="col-3 col-md-6 col-sm-12 field-group">
-                        <label class="field-label" for="{{ form.status.id_for_label }}">Status</label>
-                        {{ form.status }}
-                        {{ form.status.errors }}
-                    </div>
-                    <div class="col-3 col-md-6 col-sm-12 field-group">
-                        <label class="field-label" for="{{ form.subtipo.id_for_label }}">Subtipo/Categoria</label>
-                        {{ form.subtipo }}
-                        {{ form.subtipo.errors }}
-                    </div>
-                    <div class="col-3 col-md-6 col-sm-12 field-group">
-                        <label class="field-label" for="{{ form.localidade.id_for_label }}">Localidade</label>
-                        {{ form.localidade }}
-                        {{ form.localidade.errors }}
-                    </div>
-                    <div class="col-3 col-md-6 col-sm-12 field-group">
-                        <label class="field-label" for="{{ form.centro_custo.id_for_label }}">Centro de Custo</label>
-                        {{ form.centro_custo }}
-                        {{ form.centro_custo.errors }}
-                    </div>
-                </div>
+            <div class="if-hero-chips">
+                <span class="if-chip"><i class="fa fa-layer-group" aria-hidden="true"></i> Dados mestres</span>
+                <span class="if-chip"><i class="fa fa-boxes-stacked" aria-hidden="true"></i> Lote automático</span>
+                <span class="if-chip"><i class="fa fa-file-contract" aria-hidden="true"></i> Locação controlada</span>
             </div>
+        </section>
 
-            <div class="form-section">
-                <div class="section-title"><i class="fa fa-coins"></i> Controle & Valores</div>
-                <div class="grid">
-                    <div class="col-3 col-md-6 col-sm-12 field-group">
-                        <label class="field-label" for="{{ form.pmb.id_for_label }}">PMB?</label>
-                        {{ form.pmb }}
-                        {{ form.pmb.errors }}
+        <section class="if-card">
+            <div class="if-card-body">
+                {% if form.non_field_errors or locacao_form.non_field_errors or lote_form.non_field_errors %}
+                    <div class="if-alert" role="alert">
+                        <i class="fa fa-circle-exclamation" aria-hidden="true"></i>
+                        <div>
+                            <strong>Atenção:</strong> verifique os erros abaixo.
+                            {{ form.non_field_errors }}
+                            {{ locacao_form.non_field_errors }}
+                            {{ lote_form.non_field_errors }}
+                        </div>
                     </div>
-                    <div class="col-3 col-md-6 col-sm-12 field-group">
-                        <label class="field-label" for="{{ form.item_consumo.id_for_label }}">Item de Consumo?</label>
-                        {{ form.item_consumo }}
-                        {{ form.item_consumo.errors }}
+                {% endif %}
+
+                <form method="post" id="itemForm" class="if-form" novalidate>
+                    {% csrf_token %}
+
+                    <div class="if-section">
+                        <div class="if-section-header">
+                            <div class="if-section-title">
+                                <i class="fa fa-route" aria-hidden="true"></i>
+                                Natureza do Cadastro
+                            </div>
+                        </div>
+
+                        <div class="if-section-body">
+                            <div class="if-grid">
+                                <div class="if-col-6 if-field">
+                                    <label class="if-label" for="{{ form.locado.id_for_label }}">Este item é locado?</label>
+                                    {{ form.locado }}
+                                    {{ form.locado.errors }}
+                                    <span class="if-help">Se for locado, os dados da locação serão exigidos pelo fluxo.</span>
+                                </div>
+
+                                <div class="if-col-6 if-field">
+                                    <label class="if-label" for="{{ form.item_consumo.id_for_label }}">Este item é de consumo?</label>
+                                    {{ form.item_consumo }}
+                                    {{ form.item_consumo.errors }}
+                                    <span class="if-help">Item de consumo entra automaticamente no controle de lote.</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-6 col-md-12 field-group">
-                        <label class="field-label" for="{{ form.valor.id_for_label }}">Valor Unitário (R$)</label>
-                        {{ form.valor }}
-                        {{ form.valor.errors }}
+
+                    <div class="if-section">
+                        <div class="if-section-header">
+                            <div class="if-section-title">
+                                <i class="fa fa-cube" aria-hidden="true"></i>
+                                Dados do Item
+                            </div>
+                        </div>
+
+                        <div class="if-section-body">
+                            <div class="if-grid">
+                                <div class="if-col-6 if-field">
+                                    <label class="if-label" for="{{ form.nome.id_for_label }}">Nome</label>
+                                    {{ form.nome }}
+                                    {{ form.nome.errors }}
+                                </div>
+
+                                <div class="if-col-3 if-field">
+                                    <label class="if-label" for="{{ form.numero_serie.id_for_label }}">Número de Série</label>
+                                    {{ form.numero_serie }}
+                                    {{ form.numero_serie.errors }}
+                                </div>
+
+                                <div class="if-col-3 if-field js-item-only">
+                                    <label class="if-label" for="{{ form.quantidade.id_for_label }}">Quantidade</label>
+                                    {{ form.quantidade }}
+                                    {{ form.quantidade.errors }}
+                                </div>
+
+                                <div class="if-col-6 if-field">
+                                    <label class="if-label" for="{{ form.marca.id_for_label }}">Marca</label>
+                                    {{ form.marca }}
+                                    {{ form.marca.errors }}
+                                </div>
+
+                                <div class="if-col-6 if-field">
+                                    <label class="if-label" for="{{ form.modelo.id_for_label }}">Modelo</label>
+                                    {{ form.modelo }}
+                                    {{ form.modelo.errors }}
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                </div>
+
+                    <div class="if-section">
+                        <div class="if-section-header">
+                            <div class="if-section-title">
+                                <i class="fa fa-tags" aria-hidden="true"></i>
+                                Classificação e Localização
+                            </div>
+                        </div>
+
+                        <div class="if-section-body">
+                            <div class="if-grid">
+                                <div class="if-col-3 if-field">
+                                    <label class="if-label" for="{{ form.subtipo.id_for_label }}">Subtipo</label>
+                                    {{ form.subtipo }}
+                                    {{ form.subtipo.errors }}
+                                </div>
+
+                                <div class="if-col-3 if-field">
+                                    <label class="if-label" for="{{ form.localidade.id_for_label }}">Localidade</label>
+                                    {{ form.localidade }}
+                                    {{ form.localidade.errors }}
+                                </div>
+
+                                <div class="if-col-3 if-field">
+                                    <label class="if-label" for="{{ form.status.id_for_label }}">Status</label>
+                                    {{ form.status }}
+                                    {{ form.status.errors }}
+                                </div>
+
+                                <div class="if-col-3 if-field">
+                                    <label class="if-label" for="{{ form.centro_custo.id_for_label }}">Centro de Custo</label>
+                                    {{ form.centro_custo }}
+                                    {{ form.centro_custo.errors }}
+                                </div>
+
+                                <div class="if-col-6 if-field">
+                                    <label class="if-label" for="{{ form.fornecedor.id_for_label }}">Fornecedor</label>
+                                    {{ form.fornecedor }}
+                                    {{ form.fornecedor.errors }}
+                                    <span class="if-help">Para item locado, este fornecedor será usado também na locação.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="if-section">
+                        <div class="if-section-header">
+                            <div class="if-section-title">
+                                <i class="fa fa-sliders" aria-hidden="true"></i>
+                                Controle Operacional
+                            </div>
+                        </div>
+
+                        <div class="if-section-body">
+                            <div class="if-grid">
+                                <div class="if-col-3 if-field">
+                                    <label class="if-label" for="{{ form.pmb.id_for_label }}">PMB?</label>
+                                    {{ form.pmb }}
+                                    {{ form.pmb.errors }}
+                                </div>
+
+                                <div class="if-col-3 if-field">
+                                    <label class="if-label" for="{{ form.precisa_preventiva.id_for_label }}">Precisa Preventiva?</label>
+                                    {{ form.precisa_preventiva }}
+                                    {{ form.precisa_preventiva.errors }}
+                                </div>
+
+                                <div class="if-col-6 if-field" id="grp_preventiva" hidden>
+                                    <label class="if-label" for="{{ form.data_limite_preventiva.id_for_label }}">Data Limite / Periodicidade Preventiva</label>
+                                    {{ form.data_limite_preventiva }}
+                                    {{ form.data_limite_preventiva.errors }}
+                                    <span class="if-help">Informe a periodicidade em dias, conforme regra atual do sistema.</span>
+                                </div>
+
+                                <div class="if-col-4 if-field js-aquisicao-only">
+                                    <label class="if-label" for="{{ form.valor.id_for_label }}">Valor Unitário do Item</label>
+                                    {{ form.valor }}
+                                    {{ form.valor.errors }}
+                                </div>
+
+                                <div class="if-col-4 if-field js-aquisicao-only">
+                                    <label class="if-label" for="{{ form.data_compra.id_for_label }}">Data da Compra</label>
+                                    {{ form.data_compra }}
+                                    {{ form.data_compra.errors }}
+                                </div>
+
+                                <div class="if-col-4 if-field js-aquisicao-only">
+                                    <label class="if-label" for="{{ form.numero_pedido.id_for_label }}">Número do Pedido/NF</label>
+                                    {{ form.numero_pedido }}
+                                    {{ form.numero_pedido.errors }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="if-section if-smart-box {% if editar and form.instance.locado == 'sim' %}is-active{% endif %}" id="box_locado">
+                        <div class="if-section-header">
+                            <div class="if-section-title">
+                                <i class="fa fa-file-contract" aria-hidden="true"></i>
+                                Dados da Locação
+                            </div>
+                        </div>
+
+                        <div class="if-section-body">
+                            <div class="if-grid">
+                                <div class="if-col-6 if-field">
+                                    <label class="if-label" for="{{ locacao_form.data_entrada.id_for_label }}">Data de Entrada</label>
+                                    {{ locacao_form.data_entrada }}
+                                    {{ locacao_form.data_entrada.errors }}
+                                </div>
+
+                                <div class="if-col-6 if-field">
+                                    <label class="if-label" for="{{ locacao_form.tempo_locado.id_for_label }}">Tempo de Contrato em Meses</label>
+                                    {{ locacao_form.tempo_locado }}
+                                    {{ locacao_form.tempo_locado.errors }}
+                                </div>
+
+                                <div class="if-col-6 if-field">
+                                    <label class="if-label" for="{{ locacao_form.valor_mensal.id_for_label }}">Valor Mensal</label>
+                                    {{ locacao_form.valor_mensal }}
+                                    {{ locacao_form.valor_mensal.errors }}
+                                </div>
+
+                                <div class="if-col-6 if-field">
+                                    <label class="if-label" for="{{ locacao_form.contrato.id_for_label }}">Contrato</label>
+                                    {{ locacao_form.contrato }}
+                                    {{ locacao_form.contrato.errors }}
+                                </div>
+
+                                <div class="if-col-12 if-field">
+                                    <div class="if-note">
+                                        <i class="fa fa-circle-info" aria-hidden="true"></i>
+                                        <span>O fornecedor da locação será herdado automaticamente do fornecedor informado no cadastro do item.</span>
+                                    </div>
+                                </div>
+
+                                <div class="if-col-12 if-field">
+                                    <label class="if-label" for="{{ locacao_form.observacoes.id_for_label }}">Observações da Locação</label>
+                                    {{ locacao_form.observacoes }}
+                                    {{ locacao_form.observacoes.errors }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="if-section if-smart-box {% if editar and form.instance.item_consumo == 'sim' %}is-active{% endif %}" id="box_lote">
+                        <div class="if-section-header">
+                            <div class="if-section-title">
+                                <i class="fa fa-boxes-stacked" aria-hidden="true"></i>
+                                Dados do Lote para Item de Consumo
+                            </div>
+                        </div>
+
+                        <div class="if-section-body">
+                            <div class="if-grid">
+                                <div class="if-col-6 if-field">
+                                    <label class="if-label" for="{{ lote_form.fornecedor.id_for_label }}">Fornecedor</label>
+                                    {{ lote_form.fornecedor }}
+                                    {{ lote_form.fornecedor.errors }}
+                                </div>
+
+                                <div class="if-col-6 if-field">
+                                    <label class="if-label" for="{{ lote_form.data_entrada.id_for_label }}">Data de Entrada</label>
+                                    {{ lote_form.data_entrada }}
+                                    {{ lote_form.data_entrada.errors }}
+                                </div>
+
+                                <div class="if-col-4 if-field">
+                                    <label class="if-label" for="{{ lote_form.numero_nf.id_for_label }}">Número da NF</label>
+                                    {{ lote_form.numero_nf }}
+                                    {{ lote_form.numero_nf.errors }}
+                                </div>
+
+                                <div class="if-col-4 if-field">
+                                    <label class="if-label" for="{{ lote_form.quantidade.id_for_label }}">Quantidade</label>
+                                    {{ lote_form.quantidade }}
+                                    {{ lote_form.quantidade.errors }}
+                                </div>
+
+                                <div class="if-col-4 if-field">
+                                    <label class="if-label" for="{{ lote_form.custo_unitario.id_for_label }}">Custo Unitário</label>
+                                    {{ lote_form.custo_unitario }}
+                                    {{ lote_form.custo_unitario.errors }}
+                                </div>
+
+                                <div class="if-col-12 if-field">
+                                    <label class="if-label" for="{{ lote_form.observacao_tecnica.id_for_label }}">Observação Técnica</label>
+                                    {{ lote_form.observacao_tecnica }}
+                                    {{ lote_form.observacao_tecnica.errors }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="if-section">
+                        <div class="if-section-header">
+                            <div class="if-section-title">
+                                <i class="fa fa-note-sticky" aria-hidden="true"></i>
+                                Observações Gerais
+                            </div>
+                        </div>
+
+                        <div class="if-section-body">
+                            <div class="if-grid">
+                                <div class="if-col-12 if-field">
+                                    <label class="if-label" for="{{ form.observacoes.id_for_label }}">Observações</label>
+                                    {{ form.observacoes }}
+                                    {{ form.observacoes.errors }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="if-actions">
+                        <a href="javascript:history.back()" class="if-btn if-btn-secondary">
+                            <i class="fa fa-arrow-left" aria-hidden="true"></i>
+                            Voltar
+                        </a>
+
+                        <button type="submit" class="if-btn if-btn-primary">
+                            <i class="fa fa-save" aria-hidden="true"></i>
+                            Salvar Item
+                        </button>
+                    </div>
+                </form>
             </div>
-
-            <div class="form-section">
-                <div class="section-title"><i class="fa fa-screwdriver-wrench"></i> Manutenção Preventiva</div>
-                <div class="grid">
-                    <div class="col-4 col-md-6 col-sm-12 field-group">
-                        <label class="field-label" for="{{ form.precisa_preventiva.id_for_label }}">Requer Preventiva?</label>
-                        {{ form.precisa_preventiva }}
-                        {{ form.precisa_preventiva.errors }}
-                    </div>
-                    <div class="col-8 col-md-6 col-sm-12 field-group" id="grp_preventiva" style="display:none;">
-                        <label class="field-label" for="{{ form.data_limite_preventiva.id_for_label }}">Periodicidade (em dias)</label>
-                        {{ form.data_limite_preventiva }}
-                        <span class="help-text">Informe a cada quantos dias a manutenção deve ocorrer.</span>
-                        {{ form.data_limite_preventiva.errors }}
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-section">
-                <div class="section-title"><i class="fa fa-file-contract"></i> Dados de Aquisição / Locação</div>
-                
-                <div class="grid">
-                    <div class="col-12 field-group">
-                        <label class="field-label" for="{{ form.locado.id_for_label }}">Este equipamento é locado?</label>
-                        {{ form.locado }}
-                        {{ form.locado.errors }}
-                    </div>
-                </div>
-
-                <div id="box_nao_locado">
-                    <div class="grid">
-                        <div class="col-6 col-sm-12 field-group">
-                            <label class="field-label" for="{{ form.data_compra.id_for_label }}">Data da Compra</label>
-                            {{ form.data_compra }}
-                            {{ form.data_compra.errors }}
-                        </div>
-                        <div class="col-6 col-sm-12 field-group">
-                            <label class="field-label" for="{{ form.numero_pedido.id_for_label }}">Número do Pedido/NF</label>
-                            {{ form.numero_pedido }}
-                            {{ form.numero_pedido.errors }}
-                        </div>
-                    </div>
-                </div>
-
-                <div id="box_locado" style="display:none; background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px dashed var(--border);">
-                    <div class="grid">
-                        <div class="col-6 col-sm-12 field-group">
-                            <label class="field-label" for="{{ locacao_form.data_entrada.id_for_label }}">Data de Entrada*</label>
-                            {{ locacao_form.data_entrada }}
-                            {{ locacao_form.data_entrada.errors }}
-                        </div>
-                        <div class="col-6 col-sm-12 field-group">
-                            <label class="field-label" for="{{ locacao_form.tempo_locado.id_for_label }}">Tempo de Contrato (Meses)*</label>
-                            {{ locacao_form.tempo_locado }}
-                            {{ locacao_form.tempo_locado.errors }}
-                        </div>
-                        <div class="col-6 col-sm-12 field-group">
-                            <label class="field-label" for="{{ locacao_form.valor_mensal.id_for_label }}">Valor Mensal (R$)*</label>
-                            {{ locacao_form.valor_mensal }}
-                            {{ locacao_form.valor_mensal.errors }}
-                        </div>
-                        <div class="col-6 col-sm-12 field-group">
-                            <label class="field-label" for="{{ locacao_form.fornecedor.id_for_label }}">Fornecedor (Locador)</label>
-                            {{ locacao_form.fornecedor }}
-                            {{ locacao_form.fornecedor.errors }}
-                        </div>
-                        <div class="col-6 col-sm-12 field-group">
-                            <label class="field-label" for="{{ locacao_form.contrato.id_for_label }}">Anexo Contrato</label>
-                            {{ locacao_form.contrato }}
-                            {{ locacao_form.contrato.errors }}
-                        </div>
-                        <div class="col-12 field-group">
-                            <label class="field-label" for="{{ locacao_form.observacoes.id_for_label }}">Obs. da Locação</label>
-                            {{ locacao_form.observacoes }}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-section">
-                <div class="grid">
-                    <div class="col-12 field-group">
-                        <label class="field-label" for="{{ form.observacoes.id_for_label }}">Observações Gerais</label>
-                        {{ form.observacoes }}
-                    </div>
-                </div>
-            </div>
-
-            <div class="actions">
-                <a href="javascript:history.back()" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
-                <button type="submit" class="btn btn-primary"><i class="fa fa-save"></i> {% if editar %}Atualizar{% else %}Salvar{% endif %}</button>
-            </div>
-        </form>
+        </section>
     </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    
-    // 1. Aplica estilo aos inputs padrões do Django (caso widget não tenha classe)
-    const inputs = document.querySelectorAll('input:not([type=checkbox]):not([type=radio]), textarea, select');
-    inputs.forEach(el => el.classList.add('form-control'));
 
-    // 2. Inicializa Choices.js (Select2 style) automaticamente em todos os selects
-    const selects = document.querySelectorAll('select');
-    selects.forEach(select => {
-        new Choices(select, {
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    'use strict';
+
+    const choicesMap = new Map();
+
+    document.querySelectorAll('.item-form-page select').forEach((select) => {
+        const instance = new Choices(select, {
             searchEnabled: true,
             searchPlaceholderValue: 'Pesquisar...',
             itemSelectText: '',
-            shouldSort: false, // Mantém ordem do Django
+            shouldSort: false,
             placeholder: true,
-            allowHTML: false
+            allowHTML: false,
+            removeItemButton: false
         });
+
+        choicesMap.set(select, instance);
     });
 
-    // 3. Lógica de Mostrar/Ocultar Locação
     const fieldLocado = document.getElementById('{{ form.locado.auto_id }}');
+    const fieldItemConsumo = document.getElementById('{{ form.item_consumo.auto_id }}');
+    const fieldPreventiva = document.getElementById('{{ form.precisa_preventiva.auto_id }}');
+
     const boxLocado = document.getElementById('box_locado');
-    const boxNaoLocado = document.getElementById('box_nao_locado');
+    const boxLote = document.getElementById('box_lote');
+    const grpPreventiva = document.getElementById('grp_preventiva');
+    const itemOnlyFields = document.querySelectorAll('.js-item-only');
+    const aquisicaoOnlyFields = document.querySelectorAll('.js-aquisicao-only');
 
-    function toggleLocacao() {
-        if (!fieldLocado) return;
-        
-        // Verifica se é "Sim" (compatível com ChoiceField 'sim', 'nao' ou Boolean)
-        const val = fieldLocado.value.toLowerCase();
-        const isLocado = (val === 'sim' || val === 'true' || val === '1');
+    function isSim(field) {
+        if (!field) return false;
+        const value = String(field.value || '').toLowerCase();
+        return value === 'sim' || value === 'true' || value === '1';
+    }
 
-        if (isLocado) {
-            boxLocado.style.display = 'block';
-            boxNaoLocado.style.display = 'none';
+    function setChoiceDisabled(field, disabled) {
+        const instance = choicesMap.get(field);
+
+        if (!instance) return;
+
+        if (disabled) {
+            instance.disable();
         } else {
-            boxLocado.style.display = 'none';
-            boxNaoLocado.style.display = 'block';
+            instance.enable();
         }
     }
 
-    if (fieldLocado) {
-        fieldLocado.addEventListener('change', toggleLocacao);
-        // Dispara no load para pegar o estado inicial (edição)
-        toggleLocacao();
+    function setFieldsDisabled(container, disabled) {
+        if (!container) return;
+
+        container.querySelectorAll('input, select, textarea').forEach((field) => {
+            field.disabled = disabled;
+            setChoiceDisabled(field, disabled);
+        });
     }
 
-    // 4. Lógica de Preventiva
-    const fieldPrev = document.getElementById('{{ form.precisa_preventiva.auto_id }}');
-    const grpPrev = document.getElementById('grp_preventiva');
+    function toggleFieldGroup(group, visible) {
+        if (!group) return;
 
-    function togglePreventiva() {
-        if (!fieldPrev) return;
-        const val = fieldPrev.value.toLowerCase();
-        const needsPrev = (val === 'sim' || val === 'true' || val === '1');
-        
-        // Exibe o grupo se necessário. 'flex' porque é um container de grid/flex no CSS
-        if (grpPrev) {
-            grpPrev.style.display = needsPrev ? 'flex' : 'none'; 
+        group.hidden = !visible;
+        group.querySelectorAll('input, select, textarea').forEach((field) => {
+            field.disabled = !visible;
+            setChoiceDisabled(field, !visible);
+        });
+    }
+
+    function updateFormState() {
+        let locado = isSim(fieldLocado);
+        const consumo = isSim(fieldItemConsumo);
+        const preventiva = isSim(fieldPreventiva);
+
+        if (consumo && fieldLocado && locado) {
+            fieldLocado.value = 'nao';
+            const instance = choicesMap.get(fieldLocado);
+            if (instance) instance.setChoiceByValue('nao');
+            locado = false;
         }
+
+        const showLocado = locado && !consumo;
+        const showLote = consumo;
+
+        if (boxLocado) boxLocado.classList.toggle('is-active', showLocado);
+        if (boxLote) boxLote.classList.toggle('is-active', showLote);
+
+        setFieldsDisabled(boxLocado, !showLocado);
+        setFieldsDisabled(boxLote, !showLote);
+
+        itemOnlyFields.forEach((group) => toggleFieldGroup(group, !consumo));
+        aquisicaoOnlyFields.forEach((group) => toggleFieldGroup(group, !(consumo || locado)));
+        toggleFieldGroup(grpPreventiva, preventiva);
     }
 
-    if (fieldPrev) {
-        fieldPrev.addEventListener('change', togglePreventiva);
-        togglePreventiva();
-    }
+    [fieldLocado, fieldItemConsumo, fieldPreventiva].forEach((field) => {
+        if (field) field.addEventListener('change', updateFormState);
+    });
+
+    updateFormState();
 });
 </script>
 {% endblock %}

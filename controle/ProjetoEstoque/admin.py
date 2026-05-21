@@ -4,7 +4,7 @@ from .models import (
     Categoria, Subtipo, Localidade, Fornecedor, CentroCusto, Funcao,
     Item, Usuario, Locacao, Comentario, CicloManutencao, MovimentacaoItem,
     CheckListModelo, CheckListPergunta, Preventiva, PreventivaExecucao, PreventivaResposta,
-    Licenca, MovimentacaoLicenca, LicencaLote
+    Licenca, MovimentacaoLicenca, LicencaLote, ItemLote, LoteEstoque
 )
 
 # ---------------------------
@@ -328,3 +328,35 @@ class MovimentacaoLicencaAdmin(AuditAdminMixin):
     @admin.display(description="Valor Unit.")
     def valor_unitario_display(self, obj):
         return f"R$ {obj.valor_unitario:.2f}" if obj.valor_unitario else "-"
+    
+@admin.register(LoteEstoque)
+class LoteEstoqueAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "numero_nf",
+       
+        "fornecedor",
+        "data_entrada",
+        "quantidade",
+        "custo_unitario",
+        
+    )
+    search_fields = ("numero_nf", "fornecedor__nome")
+    list_filter = ("fornecedor", "data_entrada")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ItemLote)
+class ItemLoteAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "item",
+        "lote",
+        "quantidade_entrada",
+        "quantidade_disponivel",
+        "custo_unitario",
+        
+    )
+    search_fields = ("item__nome", "item__numero_serie", "lote__numero_nf")
+    list_filter = ("lote__fornecedor", "lote__data_entrada")
+    readonly_fields = ("created_at", "updated_at")

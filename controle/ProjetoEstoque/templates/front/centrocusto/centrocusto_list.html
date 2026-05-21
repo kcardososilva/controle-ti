@@ -2,182 +2,726 @@
 {% load static humanize %}
 
 {% block title %}Centros de Custo{% endblock %}
+{% block page_title %}Centros de Custo{% endblock %}
+{% block page_subtitle %}Custos, PMB, locações e estrutura operacional{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'centrocusto_export_pdf' %}?{{ qs_keep }}" target="_blank" class="btn btn-sm">
+    <i class="fa fa-file-pdf" aria-hidden="true"></i>
+    Exportar
+  </a>
+  <a href="{% url 'centrocusto_create' %}" class="btn-primary btn-sm">
+    <i class="fa fa-plus" aria-hidden="true"></i>
+    Novo Centro
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+:where(.cc-list-page, .select2-container, .select2-dropdown) {
+  --cc-primary: var(--brand, #0071e3);
+  --cc-primary-hover: var(--brand-hover, #0077ed);
+  --cc-primary-soft: var(--brand-soft, rgba(0, 113, 227, 0.10));
+  --cc-primary-softer: var(--brand-softer, rgba(0, 113, 227, 0.05));
+  --cc-surface: var(--bg-elevated, #ffffff);
+  --cc-surface-2: var(--bg-elevated-2, #ffffff);
+  --cc-muted-surface: var(--bg-fill-tertiary, rgba(120, 120, 128, 0.08));
+  --cc-muted-surface-2: var(--bg-fill-secondary, rgba(120, 120, 128, 0.12));
+  --cc-hover: var(--bg-hover, rgba(0, 0, 0, 0.04));
+  --cc-text: var(--text-primary, #1d1d1f);
+  --cc-text-2: var(--text-secondary, #424245);
+  --cc-muted: var(--text-tertiary, #6e6e73);
+  --cc-soft: var(--text-quaternary, #86868b);
+  --cc-border: var(--separator-hairline, rgba(0, 0, 0, 0.06));
+  --cc-border-2: var(--separator-non-opaque, rgba(0, 0, 0, 0.10));
+  --cc-border-strong: var(--separator-strong, rgba(0, 0, 0, 0.18));
+  --cc-success: var(--success, #34c759);
+  --cc-success-soft: var(--success-soft, rgba(52, 199, 89, 0.12));
+  --cc-warning: var(--warning, #ff9500);
+  --cc-warning-soft: var(--warning-soft, rgba(255, 149, 0, 0.12));
+  --cc-danger: var(--danger, #ff3b30);
+  --cc-danger-soft: var(--danger-soft, rgba(255, 59, 48, 0.10));
+  --cc-info: var(--info, #5ac8fa);
+  --cc-info-soft: var(--info-soft, rgba(90, 200, 250, 0.12));
+  --cc-radius-sm: var(--radius-sm, 10px);
+  --cc-radius-md: var(--radius-md, 14px);
+  --cc-radius-lg: var(--radius-lg, 18px);
+  --cc-radius-xl: var(--radius-xl, 22px);
+  --cc-radius-pill: var(--radius-pill, 980px);
+  --cc-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.05));
+  --cc-shadow-md: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.06));
+  --cc-transition: var(--transition-fast, 160ms ease);
+  --cc-control-h: 2.5rem;
+}
+
+.cc-list-page,
+.cc-list-page * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.cc-list-page {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+  color: var(--cc-text);
+}
+
+.cc-hero {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-xl);
+  background:
+    radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--cc-primary) 16%, transparent), transparent 18rem),
+    linear-gradient(135deg, rgba(255,255,255,.12), transparent 42%),
+    var(--cc-surface);
+  box-shadow: var(--cc-shadow-sm);
+}
+
+.cc-hero-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .875rem;
+  align-items: center;
+}
+
+.cc-hero-icon {
+  width: clamp(3rem, 8vw, 3.75rem);
+  height: clamp(3rem, 8vw, 3.75rem);
+  display: grid;
+  place-items: center;
+  border-radius: 1.15rem;
+  background: var(--cc-primary-soft);
+  color: var(--cc-primary);
+  border: 1px solid color-mix(in srgb, var(--cc-primary) 20%, transparent);
+  font-size: clamp(1.1rem, 3vw, 1.45rem);
+}
+
+.cc-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  margin-bottom: .35rem;
+  padding: .22rem .55rem;
+  border-radius: var(--cc-radius-pill);
+  background: var(--cc-primary-soft);
+  color: var(--cc-primary);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.cc-title {
+  margin: 0;
+  color: var(--cc-text);
+  font-size: clamp(1.55rem, 4vw, 2.45rem);
+  line-height: 1.05;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+}
+
+.cc-subtitle {
+  margin-top: .45rem;
+  max-width: 760px;
+  color: var(--cc-muted);
+  font-size: clamp(.92rem, 1.5vw, 1.05rem);
+  line-height: 1.45;
+}
+
+.cc-hero-actions,
+.cc-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .625rem;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.cc-btn,
+.cc-btn-primary,
+.cc-btn-secondary,
+.cc-icon-btn {
+  min-height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .48rem;
+  padding: .55rem 1rem;
+  border-radius: var(--cc-radius-pill);
+  border: 1px solid transparent;
+  font-size: .88rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--cc-transition), background var(--cc-transition), border-color var(--cc-transition), color var(--cc-transition), box-shadow var(--cc-transition);
+}
+
+.cc-btn:hover,
+.cc-btn-primary:hover,
+.cc-btn-secondary:hover,
+.cc-icon-btn:hover {
+  transform: translateY(-1px);
+}
+
+.cc-btn-primary {
+  background: var(--cc-primary);
+  color: #fff;
+  box-shadow: var(--cc-shadow-sm);
+}
+
+.cc-btn-primary:hover {
+  background: var(--cc-primary-hover);
+  color: #fff;
+}
+
+.cc-btn-secondary,
+.cc-btn {
+  background: transparent;
+  color: var(--cc-text);
+  border-color: var(--cc-border-2);
+}
+
+.cc-btn-secondary:hover,
+.cc-btn:hover {
+  background: var(--cc-hover);
+  border-color: var(--cc-border-strong);
+  color: var(--cc-text);
+}
+
+.cc-icon-btn {
+  width: 2.35rem;
+  padding-inline: 0;
+  color: var(--cc-muted);
+  background: transparent;
+  border-color: transparent;
+}
+
+.cc-icon-btn:hover {
+  background: var(--cc-primary-soft);
+  color: var(--cc-primary);
+}
+
+.cc-icon-btn-danger:hover {
+  background: var(--cc-danger-soft);
+  color: var(--cc-danger);
+}
+
+.cc-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.cc-kpi-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 7rem;
+  padding: 1rem;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-lg);
+  background: var(--cc-surface);
+  box-shadow: var(--cc-shadow-sm);
+  transition: transform var(--cc-transition), border-color var(--cc-transition), box-shadow var(--cc-transition);
+}
+
+.cc-kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--cc-border-strong);
+  box-shadow: var(--cc-shadow-md);
+}
+
+.cc-kpi-label {
+  display: block;
+  color: var(--cc-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.cc-kpi-value {
+  display: block;
+  margin-top: .35rem;
+  color: var(--cc-text);
+  font-size: clamp(1.2rem, 3vw, 1.55rem);
+  line-height: 1.1;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.cc-kpi-sub {
+  display: block;
+  margin-top: .35rem;
+  color: var(--cc-muted);
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.cc-kpi-icon {
+  width: 2.8rem;
+  height: 2.8rem;
+  flex: 0 0 2.8rem;
+  display: grid;
+  place-items: center;
+  border-radius: 1rem;
+  background: var(--cc-kpi-soft, var(--cc-primary-soft));
+  color: var(--cc-kpi-color, var(--cc-primary));
+  border: 1px solid color-mix(in srgb, var(--cc-kpi-color, var(--cc-primary)) 18%, transparent);
+}
+
+.cc-kpi-blue { --cc-kpi-color: var(--cc-primary); --cc-kpi-soft: var(--cc-primary-soft); }
+.cc-kpi-green { --cc-kpi-color: var(--cc-success); --cc-kpi-soft: var(--cc-success-soft); }
+.cc-kpi-orange { --cc-kpi-color: var(--cc-warning); --cc-kpi-soft: var(--cc-warning-soft); }
+.cc-kpi-red { --cc-kpi-color: var(--cc-danger); --cc-kpi-soft: var(--cc-danger-soft); }
+
+.cc-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: end;
+  padding: 1rem;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-lg);
+  background: var(--cc-surface);
+  box-shadow: var(--cc-shadow-sm);
+}
+
+.cc-filter-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 210px);
+  gap: .875rem;
+  align-items: end;
+}
+
+.cc-form-group label {
+  display: block;
+  margin-bottom: .4rem;
+  color: var(--cc-muted);
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.cc-search-wrap {
+  position: relative;
+}
+
+.cc-search-wrap i {
+  position: absolute;
+  left: .85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--cc-soft);
+  pointer-events: none;
+}
+
+.cc-list-page input,
+.cc-list-page select,
+.cc-list-page .form-control {
+  width: 100%;
+  min-height: var(--cc-control-h);
+  padding: .62rem .85rem;
+  border: 1px solid var(--cc-border-2);
+  border-radius: var(--cc-radius-sm);
+  background: var(--cc-surface);
+  color: var(--cc-text);
+  outline: none;
+  font-size: .9rem;
+  transition: border-color var(--cc-transition), box-shadow var(--cc-transition), background var(--cc-transition);
+}
+
+.cc-search-wrap input {
+  padding-left: 2.35rem;
+}
+
+.cc-list-page input:focus,
+.cc-list-page select:focus,
+.cc-list-page .form-control:focus {
+  border-color: var(--cc-primary);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, .30));
+}
+
+.cc-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(21rem, 100%), 1fr));
+  gap: 1rem;
+}
+
+.cc-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-lg);
+  background: var(--cc-surface);
+  box-shadow: var(--cc-shadow-sm);
+  transition: transform var(--cc-transition), border-color var(--cc-transition), box-shadow var(--cc-transition);
+}
+
+.cc-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--cc-border-strong);
+  box-shadow: var(--cc-shadow-md);
+}
+
+.cc-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: .8rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--cc-border);
+  background: color-mix(in srgb, var(--cc-surface) 88%, var(--cc-muted-surface));
+}
+
+.cc-avatar {
+  width: 2.8rem;
+  height: 2.8rem;
+  flex: 0 0 2.8rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--cc-primary-soft);
+  color: var(--cc-primary);
+  border: 1px solid color-mix(in srgb, var(--cc-primary) 18%, transparent);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cc-card-title {
+  color: var(--cc-text);
+  font-size: .98rem;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.cc-card-code {
+  display: inline-flex;
+  align-items: center;
+  margin-top: .4rem;
+  padding: .22rem .55rem;
+  border-radius: var(--cc-radius-pill);
+  background: var(--cc-muted-surface);
+  color: var(--cc-muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: .74rem;
+  font-weight: 600;
+}
+
+.cc-card-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .75rem;
+  padding: 1rem;
+}
+
+.cc-metric {
+  padding: .85rem;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-md);
+  background: var(--cc-muted-surface);
+}
+
+.cc-metric-label {
+  color: var(--cc-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.cc-metric-value {
+  margin-top: .32rem;
+  color: var(--cc-text);
+  font-size: .98rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.cc-metric-value.cost {
+  color: var(--cc-primary);
+}
+
+.cc-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .75rem;
+  margin-top: auto;
+  padding: .85rem 1rem;
+  border-top: 1px solid var(--cc-border);
+  background: color-mix(in srgb, var(--cc-surface) 92%, var(--cc-muted-surface));
+}
+
+.cc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 1.55rem;
+  padding: .25rem .65rem;
+  border-radius: var(--cc-radius-pill);
+  font-size: .74rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.cc-badge-success {
+  background: var(--cc-success-soft);
+  color: var(--cc-success);
+}
+
+.cc-badge-muted {
+  background: var(--cc-muted-surface-2);
+  color: var(--cc-muted);
+}
+
+.cc-empty {
+  grid-column: 1 / -1;
+  display: grid;
+  place-items: center;
+  gap: .75rem;
+  min-height: 13rem;
+  padding: 2rem;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-lg);
+  background: var(--cc-surface);
+  color: var(--cc-muted);
+  text-align: center;
+}
+
+.cc-empty i {
+  color: var(--cc-soft);
+  font-size: 2rem;
+}
+
+.cc-pagination {
+  display: flex;
+  justify-content: center;
+  gap: .4rem;
+  flex-wrap: wrap;
+  margin-top: .25rem;
+}
+
+.cc-page-link {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 .65rem;
+  border-radius: var(--cc-radius-pill);
+  border: 1px solid var(--cc-border-2);
+  background: var(--cc-surface);
+  color: var(--cc-text);
+  font-size: .86rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cc-page-link:hover {
+  background: var(--cc-hover);
+}
+
+.cc-page-link.active {
+  background: var(--cc-primary);
+  color: #fff;
+  border-color: var(--cc-primary);
+}
+
+.select2-container {
+  width: 100% !important;
+}
+
+.select2-container .select2-selection--single {
+  min-height: var(--cc-control-h) !important;
+  border: 1px solid var(--cc-border-2) !important;
+  border-radius: var(--cc-radius-sm) !important;
+  background: var(--cc-surface) !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  width: 100%;
+  padding-left: .85rem !important;
+  padding-right: 2rem !important;
+  color: var(--cc-text) !important;
+  font-size: .9rem;
+  line-height: 2.35rem !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 2.35rem !important;
+  right: .35rem !important;
+}
+
+.select2-container--open .select2-selection--single {
+  border-color: var(--cc-primary) !important;
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.3)) !important;
+}
+
+.select2-dropdown {
+  z-index: 9999 !important;
+  overflow: hidden !important;
+  border: 1px solid var(--cc-border-2) !important;
+  border-radius: var(--cc-radius-md) !important;
+  background: var(--cc-surface) !important;
+  box-shadow: var(--cc-shadow-md);
+}
+
+.select2-results__option {
+  color: var(--cc-text) !important;
+}
+
+.select2-results__option--highlighted {
+  background: var(--cc-primary) !important;
+  color: #fff !important;
+}
+
+@media (max-width: 72rem) {
+  .cc-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 52rem) {
+  .cc-hero,
+  .cc-toolbar,
+  .cc-filter-form {
+    grid-template-columns: 1fr;
+  }
+
+  .cc-hero-actions,
+  .cc-actions-row {
+    justify-content: stretch;
+  }
+
+  .cc-btn,
+  .cc-btn-primary,
+  .cc-btn-secondary {
+    width: 100%;
+  }
+}
+
+@media (max-width: 40rem) {
+  .cc-kpi-grid,
+  .cc-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .cc-hero-main {
+    grid-template-columns: 1fr;
+  }
+
+  .cc-card-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cc-actions-row {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-list-page *,
+  .cc-list-page *::before,
+  .cc-list-page *::after {
+    transition: none !important;
+  }
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
-<style>
-/* --- Enterprise Theme Styles --- */
-:root {
-  --bg-app: #f3f4f6; /* Cinza Microsoft */
-  --bg-card: #ffffff;
-  --primary: #0078d4; /* Azul Microsoft/Outlook */
-  --primary-hover: #106ebe;
-  --text-main: #242424;
-  --text-sub: #616161;
-  --border: #e0e0e0;
-  --shadow-card: 0 2px 4px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04);
-  --radius: 8px;
-}
-
-body { background-color: var(--bg-app); font-family: 'Inter', sans-serif; color: var(--text-main); font-size: 14px; }
-.app-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
-
-/* 1. KPIs Section (Topo) */
-.kpi-wrapper { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }
-.kpi-box {
-  background: var(--bg-card); padding: 20px; border-radius: var(--radius);
-  border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  display: flex; align-items: flex-start; justify-content: space-between;
-}
-.kpi-data h4 { margin: 0 0 4px 0; font-size: 13px; color: var(--text-sub); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-data .val { font-size: 24px; font-weight: 700; color: var(--text-main); }
-.kpi-data .desc { font-size: 12px; color: #888; margin-top: 4px; }
-.kpi-icon-wrap {
-  width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px;
-}
-/* Variações de cor KPI */
-.kpi-blue .kpi-icon-wrap { background: #e0f2fe; color: #0284c7; }
-.kpi-green .kpi-icon-wrap { background: #dcfce7; color: #16a34a; }
-.kpi-orange .kpi-icon-wrap { background: #ffedd5; color: #ea580c; }
-.kpi-red .kpi-icon-wrap { background: #fee2e2; color: #dc2626; }
-
-/* 2. Barra de Ferramentas */
-.toolbar {
-  background: var(--bg-card); padding: 12px 16px; border-radius: var(--radius); border: 1px solid var(--border);
-  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; box-shadow: var(--shadow-card);
-}
-.toolbar-left { flex: 1; display: flex; align-items: center; gap: 16px; min-width: 300px; }
-.search-wrapper { position: relative; flex: 1; max-width: 400px; }
-.search-wrapper i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af; }
-.search-input {
-  width: 100%; height: 40px; padding: 0 12px 0 36px; border: 1px solid var(--border); border-radius: 6px;
-  font-size: 14px; outline: none; transition: border 0.2s;
-}
-.search-input:focus { border-color: var(--primary); }
-
-.toolbar-right { display: flex; gap: 10px; }
-.btn {
-  height: 40px; padding: 0 20px; border-radius: 6px; font-weight: 500; font-size: 14px; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 8px; text-decoration: none; transition: all 0.2s; border: 1px solid transparent;
-}
-.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 2px 4px rgba(0,120,212,0.2); }
-.btn-primary:hover { background: var(--primary-hover); }
-.btn-secondary { background: #fff; border-color: var(--border); color: var(--text-main); }
-.btn-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
-
-/* 3. Grid de Cards (Conteúdo Principal) */
-.cards-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;
-}
-.cc-card {
-  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
-  box-shadow: var(--shadow-card); overflow: hidden; transition: transform 0.2s, box-shadow 0.2s;
-  display: flex; flex-direction: column;
-}
-.cc-card:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.08); border-color: var(--primary); }
-
-/* Card Header */
-.cc-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; background: #fcfcfc; }
-.cc-icon {
-  width: 42px; height: 42px; border-radius: 50%; background: #f0fdf4; color: #166534;
-  display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700;
-  border: 1px solid #dcfce7;
-}
-.cc-info { flex: 1; margin-left: 12px; }
-.cc-name { font-weight: 700; color: var(--text-main); font-size: 15px; margin-bottom: 2px; }
-.cc-code { font-family: 'Consolas', monospace; font-size: 12px; color: var(--text-sub); background: #f3f4f6; padding: 2px 6px; border-radius: 4px; }
-
-/* Card Body (Métricas) */
-.cc-body { padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.metric { background: #f9fafb; padding: 10px; border-radius: 8px; border: 1px solid #f3f4f6; }
-.metric-label { font-size: 11px; color: var(--text-sub); text-transform: uppercase; font-weight: 600; }
-.metric-value { font-size: 16px; font-weight: 700; color: var(--text-main); margin-top: 4px; }
-.metric-value.cost { color: var(--primary); }
-
-/* Card Footer (Status + Ações) */
-.cc-footer {
-  padding: 12px 16px; border-top: 1px solid var(--border); background: #fff;
-  display: flex; justify-content: space-between; align-items: center; margin-top: auto;
-}
-.badge-pmb { font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; }
-.badge-sim { background: #dcfce7; color: #166534; }
-.badge-nao { background: #f3f4f6; color: #64748b; }
-
-.card-actions a {
-  color: var(--text-sub); width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 50%; transition: background 0.2s; text-decoration: none;
-}
-.card-actions a:hover { background: #f3f4f6; color: var(--primary); }
-
-/* Paginação */
-.pagination-container { margin-top: 32px; display: flex; justify-content: center; gap: 6px; }
-.page-link {
-  width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 6px;
-  background: #fff; border: 1px solid var(--border); color: var(--text-main); text-decoration: none; font-weight: 500; transition: all 0.2s;
-}
-.page-link:hover { background: #f9fafb; border-color: #9ca3af; }
-.page-link.active { background: var(--primary); color: #fff; border-color: var(--primary); }
-
-/* Select2 Custom */
-.select2-container--default .select2-selection--single { height: 40px; border: 1px solid var(--border); border-radius: 6px; display: flex; align-items: center; }
-.select2-container--default .select2-selection--single .select2-selection__arrow { top: 7px; }
-</style>
-
-<div class="app-container">
-
-  <div class="kpi-wrapper">
-    <div class="kpi-box kpi-blue">
-      <div class="kpi-data">
-        <h4>Custo Total (Mensal)</h4>
-        <div class="val">R$ {{ kpi_custo_total|floatformat:2|intcomma }}</div>
-        <div class="desc">Somatório locações</div>
+<div class="cc-list-page">
+  <section class="cc-hero" aria-label="Resumo de centros de custo">
+    <div class="cc-hero-main">
+      <div class="cc-hero-icon" aria-hidden="true">
+        <i class="fa fa-coins"></i>
       </div>
-      <div class="kpi-icon-wrap"><i class="fa fa-coins"></i></div>
-    </div>
-    
-    <div class="kpi-box kpi-green">
-      <div class="kpi-data">
-        <h4>Itens Locados</h4>
-        <div class="val">{{ kpi_itens }}</div>
-        <div class="desc">Equipamentos ativos</div>
+      <div>
+        <span class="cc-kicker"><i class="fa fa-diagram-project" aria-hidden="true"></i> Gestão financeira</span>
+        <h2 class="cc-title">Centros de Custo</h2>
+        <p class="cc-subtitle">Visão executiva dos centros de custo, custos mensais de locação, classificação PMB e vínculo operacional dos itens.</p>
       </div>
-      <div class="kpi-icon-wrap"><i class="fa fa-boxes-stacked"></i></div>
     </div>
 
-    <div class="kpi-box kpi-orange">
-      <div class="kpi-data">
-        <h4>Média por Centro</h4>
-        <div class="val">R$ {{ kpi_media|floatformat:2|intcomma }}</div>
-        <div class="desc">Ticket médio</div>
-      </div>
-      <div class="kpi-icon-wrap"><i class="fa fa-chart-pie"></i></div>
+    <div class="cc-hero-actions">
+      <a href="{% url 'centrocusto_export_pdf' %}?{{ qs_keep }}" target="_blank" class="cc-btn-secondary">
+        <i class="fa fa-file-pdf" aria-hidden="true"></i>
+        Exportar PDF
+      </a>
+      <a href="{% url 'centrocusto_create' %}" class="cc-btn-primary">
+        <i class="fa fa-plus" aria-hidden="true"></i>
+        Novo Centro
+      </a>
     </div>
+  </section>
 
-    <div class="kpi-box kpi-red">
-      <div class="kpi-data">
-        <h4>Maior Ofensor</h4>
-        <div class="val">R$ {{ kpi_top_val|floatformat:2|intcomma }}</div>
-        <div class="desc">{{ kpi_top_cc.departamento|default:"-"|truncatechars:15 }}</div>
+  <section class="cc-kpi-grid" aria-label="Indicadores principais">
+    <article class="cc-kpi-card cc-kpi-blue">
+      <div>
+        <span class="cc-kpi-label">Custo Total Mensal</span>
+        <span class="cc-kpi-value">R$ {{ kpi_custo_total|floatformat:2|intcomma }}</span>
+        <span class="cc-kpi-sub">Somatório das locações</span>
       </div>
-      <div class="kpi-icon-wrap"><i class="fa fa-arrow-trend-up"></i></div>
-    </div>
-  </div>
+      <div class="cc-kpi-icon" aria-hidden="true"><i class="fa fa-coins"></i></div>
+    </article>
 
-  <div class="toolbar">
-    <form method="get" id="searchForm" class="toolbar-left">
-      <div class="search-wrapper">
-        <i class="fa fa-search"></i>
-        <input type="text" name="q" value="{{ f_q }}" class="search-input" placeholder="Pesquisar por Departamento ou Código...">
+    <article class="cc-kpi-card cc-kpi-green">
+      <div>
+        <span class="cc-kpi-label">Itens Locados</span>
+        <span class="cc-kpi-value">{{ kpi_itens }}</span>
+        <span class="cc-kpi-sub">Equipamentos ativos vinculados</span>
       </div>
-      
-      <div style="width: 150px;">
-        <select name="pmb" class="select2-filter">
-          <option value="">PMB: Todos</option>
+      <div class="cc-kpi-icon" aria-hidden="true"><i class="fa fa-boxes-stacked"></i></div>
+    </article>
+
+    <article class="cc-kpi-card cc-kpi-orange">
+      <div>
+        <span class="cc-kpi-label">Média por Centro</span>
+        <span class="cc-kpi-value">R$ {{ kpi_media|floatformat:2|intcomma }}</span>
+        <span class="cc-kpi-sub">Ticket médio mensal</span>
+      </div>
+      <div class="cc-kpi-icon" aria-hidden="true"><i class="fa fa-chart-pie"></i></div>
+    </article>
+
+    <article class="cc-kpi-card cc-kpi-red">
+      <div>
+        <span class="cc-kpi-label">Maior Ofensor</span>
+        <span class="cc-kpi-value">R$ {{ kpi_top_val|floatformat:2|intcomma }}</span>
+        <span class="cc-kpi-sub">{{ kpi_top_cc.departamento|default:"-"|truncatechars:28 }}</span>
+      </div>
+      <div class="cc-kpi-icon" aria-hidden="true"><i class="fa fa-arrow-trend-up"></i></div>
+    </article>
+  </section>
+
+  <section class="cc-toolbar" aria-label="Filtros de centro de custo">
+    <form method="get" id="searchForm" class="cc-filter-form" autocomplete="off">
+      <div class="cc-form-group">
+        <label for="id_q">Pesquisar</label>
+        <div class="cc-search-wrap">
+          <i class="fa fa-search" aria-hidden="true"></i>
+          <input id="id_q" type="text" name="q" value="{{ f_q }}" placeholder="Departamento ou código...">
+        </div>
+      </div>
+
+      <div class="cc-form-group">
+        <label for="id_pmb">PMB</label>
+        <select id="id_pmb" name="pmb" class="select2-filter">
+          <option value="">Todos</option>
           {% for code, label in opt_pmb %}
             <option value="{{ code }}" {% if f_pmb == code %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
@@ -185,109 +729,117 @@ body { background-color: var(--bg-app); font-family: 'Inter', sans-serif; color:
       </div>
     </form>
 
-    <div class="toolbar-right">
-      <a href="{% url 'centrocusto_export_pdf' %}?{{ qs_keep }}" target="_blank" class="btn btn-secondary">
-        <i class="fa fa-file-pdf" style="color:#ef4444;"></i> Exportar
+    <div class="cc-actions-row">
+      <a href="{% url 'centrocusto_list' %}" class="cc-btn-secondary">
+        <i class="fa fa-eraser" aria-hidden="true"></i>
+        Limpar
       </a>
-      <a href="{% url 'centrocusto_create' %}" class="btn btn-primary">
-        <i class="fa fa-plus"></i> Novo Centro
-      </a>
+      <button type="submit" form="searchForm" class="cc-btn-primary">
+        <i class="fa fa-filter" aria-hidden="true"></i>
+        Filtrar
+      </button>
     </div>
-  </div>
+  </section>
 
-  <div class="cards-grid">
+  <section class="cc-cards-grid" aria-label="Lista de centros de custo">
     {% for cc in centros %}
-    <div class="cc-card">
-      <div class="cc-header">
-        <div style="display:flex; align-items:center;">
-          <div class="cc-icon">
-            {{ cc.departamento|slice:":1" }}
-          </div>
-          <div class="cc-info">
-            <div class="cc-name">{{ cc.departamento }}</div>
-            <div class="cc-code">ID: {{ cc.numero }}</div>
+      <article class="cc-card">
+        <div class="cc-card-header">
+          <div class="cc-avatar" aria-hidden="true">{{ cc.departamento|slice:":1" }}</div>
+          <div>
+            <div class="cc-card-title">{{ cc.departamento }}</div>
+            <span class="cc-card-code">ID: {{ cc.numero }}</span>
           </div>
         </div>
-      </div>
-      
-      <div class="cc-body">
-        <div class="metric">
-          <div class="metric-label">Custo Mensal</div>
-          <div class="metric-value cost">R$ {{ cc.custo_calc|floatformat:2|intcomma }}</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">Itens Locados</div>
-          <div class="metric-value">{{ cc.qtd_calc }}</div>
-        </div>
-      </div>
 
-      <div class="cc-footer">
-        <div>
-          {% if cc.pmb == 'sim' %}
-            <span class="badge-pmb badge-sim"><i class="fa fa-check-circle"></i> PMB</span>
-          {% else %}
-            <span class="badge-pmb badge-nao">Não PMB</span>
-          {% endif %}
+        <div class="cc-card-body">
+          <div class="cc-metric">
+            <div class="cc-metric-label">Custo Mensal</div>
+            <div class="cc-metric-value cost">R$ {{ cc.custo_calc|floatformat:2|intcomma }}</div>
+          </div>
+
+          <div class="cc-metric">
+            <div class="cc-metric-label">Itens Locados</div>
+            <div class="cc-metric-value">{{ cc.qtd_calc }}</div>
+          </div>
         </div>
-        <div class="card-actions">
-          <a href="{% url 'centrocusto_detail' cc.pk %}" title="Detalhes"><i class="fa fa-eye"></i></a>
-          <a href="{% url 'centrocusto_update' cc.pk %}" title="Editar"><i class="fa fa-pen"></i></a>
+
+        <div class="cc-card-footer">
+          <div>
+            {% if cc.pmb == 'sim' %}
+              <span class="cc-badge cc-badge-success"><i class="fa fa-check-circle" aria-hidden="true"></i> PMB</span>
+            {% else %}
+              <span class="cc-badge cc-badge-muted"><i class="fa fa-minus-circle" aria-hidden="true"></i> Não PMB</span>
+            {% endif %}
+          </div>
+
+          <div class="cc-actions-row">
+            <a href="{% url 'centrocusto_detail' cc.pk %}" class="cc-icon-btn" title="Detalhes" aria-label="Detalhes de {{ cc.departamento }}">
+              <i class="fa fa-eye" aria-hidden="true"></i>
+            </a>
+            <a href="{% url 'centrocusto_update' cc.pk %}" class="cc-icon-btn" title="Editar" aria-label="Editar {{ cc.departamento }}">
+              <i class="fa fa-pen" aria-hidden="true"></i>
+            </a>
+          </div>
         </div>
-      </div>
-    </div>
+      </article>
     {% empty %}
-    <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-sub);">
-      <i class="fa fa-folder-open" style="font-size: 32px; margin-bottom: 10px; opacity: 0.5;"></i><br>
-      Nenhum centro de custo encontrado.
-    </div>
+      <div class="cc-empty">
+        <i class="fa fa-folder-open" aria-hidden="true"></i>
+        <div>Nenhum centro de custo encontrado.</div>
+      </div>
     {% endfor %}
-  </div>
+  </section>
 
   {% if page_obj.has_other_pages %}
-  <div class="pagination-container">
-    {% if page_obj.has_previous %}
-      <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="page-link"><i class="fa fa-chevron-left"></i></a>
-    {% endif %}
-    
-    {% for num in paginator.page_range %}
-      {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
-        {% if num == page_obj.number %}
-          <span class="page-link active">{{ num }}</span>
-        {% else %}
-          <a href="?page={{ num }}&{{ qs_keep }}" class="page-link">{{ num }}</a>
-        {% endif %}
+    <nav class="cc-pagination" aria-label="Paginação de centros de custo">
+      {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="cc-page-link" aria-label="Página anterior">
+          <i class="fa fa-chevron-left" aria-hidden="true"></i>
+        </a>
       {% endif %}
-    {% endfor %}
 
-    {% if page_obj.has_next %}
-      <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="page-link"><i class="fa fa-chevron-right"></i></a>
-    {% endif %}
-  </div>
+      {% for num in paginator.page_range %}
+        {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+          {% if num == page_obj.number %}
+            <span class="cc-page-link active" aria-current="page">{{ num }}</span>
+          {% else %}
+            <a href="?page={{ num }}&{{ qs_keep }}" class="cc-page-link">{{ num }}</a>
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+
+      {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="cc-page-link" aria-label="Próxima página">
+          <i class="fa fa-chevron-right" aria-hidden="true"></i>
+        </a>
+      {% endif %}
+    </nav>
   {% endif %}
-
 </div>
+{% endblock %}
 
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
-$(document).ready(function() {
-    // Select2
+  $(document).ready(function() {
     $('.select2-filter').select2({
-        minimumResultsForSearch: Infinity,
-        width: '100%'
+      minimumResultsForSearch: Infinity,
+      width: '100%'
     });
 
-    // Auto-submit Filtros
     $('.select2-filter').on('change', function() {
-        $('#searchForm').submit();
+      $('#searchForm').trigger('submit');
     });
 
-    // Auto-submit Search (Debounce)
     let timeout = null;
-    $('.search-input').on('keyup', function() {
-        clearTimeout(timeout);
-        timeout = setTimeout(function() {
-            $('#searchForm').submit();
-        }, 500);
+    $('#id_q').on('keyup', function() {
+      clearTimeout(timeout);
+      timeout = setTimeout(function() {
+        $('#searchForm').trigger('submit');
+      }, 500);
     });
-});
+  });
 </script>
 {% endblock %}

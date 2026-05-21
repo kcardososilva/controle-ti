@@ -1,0 +1,648 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Localidades{% endblock %}
+{% block page_title %}Localidades{% endblock %}
+{% block page_subtitle %}Gestão de sedes, filiais e localidades do parque de equipamentos{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'localidade_create' %}" class="btn-primary btn-sm">
+    <i class="fa fa-plus" aria-hidden="true"></i>
+    Nova Localidade
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.lc-list-page) {
+  --lc-primary:       var(--brand,              #0071e3);
+  --lc-primary-hover: var(--brand-hover,         #0077ed);
+  --lc-primary-soft:  var(--brand-soft,          rgba(0,113,227,.10));
+  --lc-surface:       var(--bg-elevated,         #ffffff);
+  --lc-muted-surface: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
+  --lc-muted-surface2:var(--bg-fill-secondary,   rgba(120,120,128,.12));
+  --lc-hover:         var(--bg-hover,            rgba(0,0,0,.04));
+  --lc-text:          var(--text-primary,        #1d1d1f);
+  --lc-muted:         var(--text-tertiary,       #6e6e73);
+  --lc-soft:          var(--text-quaternary,     #86868b);
+  --lc-border:        var(--separator-hairline,  rgba(0,0,0,.06));
+  --lc-border2:       var(--separator-non-opaque,rgba(0,0,0,.10));
+  --lc-border-strong: var(--separator-strong,    rgba(0,0,0,.18));
+  --lc-danger:        var(--danger,              #ff3b30);
+  --lc-danger-soft:   var(--danger-soft,         rgba(255,59,48,.10));
+  --lc-radius-sm:     var(--radius-sm,           10px);
+  --lc-radius-md:     var(--radius-md,           14px);
+  --lc-radius-lg:     var(--radius-lg,           18px);
+  --lc-radius-xl:     var(--radius-xl,           22px);
+  --lc-radius-pill:   var(--radius-pill,         980px);
+  --lc-shadow-sm:     var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+  --lc-shadow-md:     var(--shadow-md,           0 4px 12px rgba(0,0,0,.06));
+  --lc-transition:    var(--transition-fast,     160ms ease);
+  --lc-control-h:     2.5rem;
+}
+
+.lc-list-page,
+.lc-list-page * { box-sizing: border-box; min-width: 0; }
+
+.lc-list-page {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+  color: var(--lc-text);
+}
+
+/* ── Hero ── */
+.lc-hero {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: clamp(1rem,2.5vw,1.5rem);
+  border: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius-xl);
+  background:
+    radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--lc-primary) 14%, transparent), transparent 18rem),
+    var(--lc-surface);
+  box-shadow: var(--lc-shadow-sm);
+}
+
+.lc-hero-main {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr);
+  gap: .875rem;
+  align-items: center;
+}
+
+.lc-hero-icon {
+  width: clamp(3rem,8vw,3.75rem);
+  height: clamp(3rem,8vw,3.75rem);
+  display: grid;
+  place-items: center;
+  border-radius: 1.15rem;
+  background: var(--lc-primary-soft);
+  color: var(--lc-primary);
+  border: 1px solid color-mix(in srgb, var(--lc-primary) 20%, transparent);
+  font-size: clamp(1.1rem,3vw,1.4rem);
+}
+
+.lc-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  margin-bottom: .35rem;
+  padding: .22rem .55rem;
+  border-radius: var(--lc-radius-pill);
+  background: var(--lc-primary-soft);
+  color: var(--lc-primary);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.lc-title {
+  margin: 0;
+  color: var(--lc-text);
+  font-size: clamp(1.45rem,4vw,2.25rem);
+  line-height: 1.05;
+  font-weight: 650;
+  letter-spacing: -.04em;
+}
+
+.lc-subtitle {
+  margin-top: .4rem;
+  color: var(--lc-muted);
+  font-size: clamp(.9rem,1.5vw,1rem);
+  line-height: 1.45;
+}
+
+.lc-hero-actions,
+.lc-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .625rem;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* ── KPI strip ── */
+.lc-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 1rem;
+}
+
+.lc-kpi {
+  position: relative;
+  overflow: hidden;
+  min-height: 6.5rem;
+  padding: 1rem 1rem 1rem 1.1rem;
+  border: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius-lg);
+  background: var(--lc-surface);
+  box-shadow: var(--lc-shadow-sm);
+  transition: transform var(--lc-transition), box-shadow var(--lc-transition);
+}
+
+.lc-kpi:hover { transform: translateY(-2px); box-shadow: var(--lc-shadow-md); }
+
+.lc-kpi-label {
+  color: var(--lc-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.lc-kpi-value {
+  display: block;
+  margin-top: .35rem;
+  color: var(--lc-text);
+  font-size: clamp(1.2rem,3vw,1.6rem);
+  font-weight: 650;
+  letter-spacing: -.035em;
+}
+
+.lc-kpi-sub {
+  display: block;
+  margin-top: .28rem;
+  color: var(--lc-muted);
+  font-size: .76rem;
+}
+
+.lc-kpi-icon {
+  position: absolute;
+  right: .9rem;
+  bottom: .9rem;
+  width: 2.35rem;
+  height: 2.35rem;
+  display: grid;
+  place-items: center;
+  border-radius: .95rem;
+  background: var(--lc-kpi-soft, var(--lc-primary-soft));
+  color: var(--lc-kpi-color, var(--lc-primary));
+}
+
+.lc-kpi-blue   { --lc-kpi-color: var(--lc-primary); --lc-kpi-soft: var(--lc-primary-soft); }
+.lc-kpi-green  { --lc-kpi-color: var(--system-green,#34c759); --lc-kpi-soft: var(--system-green-soft,rgba(52,199,89,.12)); }
+
+/* ── Toolbar ── */
+.lc-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 1rem;
+  align-items: end;
+  padding: 1rem;
+  border: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius-lg);
+  background: var(--lc-surface);
+  box-shadow: var(--lc-shadow-sm);
+}
+
+.lc-form-group label {
+  display: block;
+  margin-bottom: .4rem;
+  color: var(--lc-muted);
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.lc-search-wrap { position: relative; }
+.lc-search-wrap i {
+  position: absolute;
+  left: .85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--lc-soft);
+  pointer-events: none;
+}
+
+.lc-search-wrap input {
+  width: 100%;
+  min-height: var(--lc-control-h);
+  padding: .62rem .85rem .62rem 2.35rem;
+  border: 1px solid var(--lc-border2);
+  border-radius: var(--lc-radius-sm);
+  background: var(--lc-surface);
+  color: var(--lc-text);
+  font-size: .9rem;
+  outline: none;
+  transition: border-color var(--lc-transition), box-shadow var(--lc-transition);
+}
+
+.lc-search-wrap input:focus {
+  border-color: var(--lc-primary);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30));
+}
+
+/* ── Buttons ── */
+.lc-btn,
+.lc-btn-primary,
+.lc-btn-secondary,
+.lc-icon-btn {
+  min-height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .48rem;
+  padding: .55rem 1rem;
+  border-radius: var(--lc-radius-pill);
+  border: 1px solid transparent;
+  font-size: .88rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--lc-transition), background var(--lc-transition), border-color var(--lc-transition), color var(--lc-transition);
+}
+
+.lc-btn:hover, .lc-btn-primary:hover, .lc-btn-secondary:hover, .lc-icon-btn:hover {
+  transform: translateY(-1px);
+}
+
+.lc-btn-primary { background: var(--lc-primary); color: #fff; }
+.lc-btn-primary:hover { background: var(--lc-primary-hover); color: #fff; }
+
+.lc-btn-secondary, .lc-btn {
+  background: transparent;
+  color: var(--lc-text);
+  border-color: var(--lc-border2);
+}
+
+.lc-btn-secondary:hover, .lc-btn:hover {
+  background: var(--lc-hover);
+  border-color: var(--lc-border-strong);
+  color: var(--lc-text);
+}
+
+.lc-icon-btn {
+  width: 2.1rem;
+  padding-inline: 0;
+  color: var(--lc-muted);
+  background: transparent;
+  border-color: transparent;
+  border-radius: var(--lc-radius-sm);
+}
+
+.lc-icon-btn:hover { background: var(--lc-primary-soft); color: var(--lc-primary); }
+.lc-icon-btn-danger:hover { background: var(--lc-danger-soft); color: var(--lc-danger); }
+
+/* ── Table card ── */
+.lc-table-card {
+  overflow: hidden;
+  border: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius-lg);
+  background: var(--lc-surface);
+  box-shadow: var(--lc-shadow-sm);
+}
+
+.lc-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lc-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+}
+
+.lc-table th, .lc-table td {
+  padding: .85rem 1rem;
+  border-bottom: 1px solid var(--lc-border);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.lc-table th {
+  background: var(--lc-surface);
+  color: var(--lc-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.lc-table td { color: var(--lc-text); font-size: .86rem; font-weight: 500; }
+.lc-table tbody tr:last-child td { border-bottom: 0; }
+.lc-table tbody tr:hover td { background: var(--lc-hover); }
+
+.lc-mono {
+  display: inline-flex;
+  align-items: center;
+  padding: .22rem .55rem;
+  border-radius: var(--lc-radius-sm);
+  background: var(--lc-muted-surface);
+  border: 1px solid var(--lc-border);
+  font-family: var(--font-mono, ui-monospace, Menlo, Consolas, monospace);
+  font-size: .75rem;
+  font-weight: 650;
+  color: var(--lc-text);
+}
+
+.lc-empty-row td { text-align: center; }
+.lc-empty {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .6rem;
+  padding: 2.5rem 1rem;
+  color: var(--lc-soft);
+  font-size: .9rem;
+}
+.lc-empty i { font-size: 2rem; color: var(--lc-soft); }
+
+/* ── Badge ── */
+.lc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .22rem .6rem;
+  border-radius: var(--lc-radius-pill);
+  font-size: .72rem;
+  font-weight: 650;
+  white-space: nowrap;
+  background: var(--lc-muted-surface2);
+  color: var(--lc-muted);
+}
+
+/* ── Delete Modal ── */
+.lc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  backdrop-filter: blur(4px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1rem;
+}
+
+.lc-modal {
+  width: min(100%,420px);
+  border: 1px solid var(--lc-border2);
+  border-radius: var(--lc-radius-xl);
+  background: var(--lc-surface);
+  box-shadow: 0 20px 60px rgba(0,0,0,.20);
+  overflow: hidden;
+}
+
+.lc-modal-header {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: 1.25rem 1.25rem .85rem;
+}
+
+.lc-modal-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 2.75rem;
+  display: grid;
+  place-items: center;
+  border-radius: .95rem;
+  background: var(--lc-danger-soft);
+  color: var(--lc-danger);
+  font-size: 1.1rem;
+}
+
+.lc-modal-title {
+  margin: 0;
+  color: var(--lc-text);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.lc-modal-body {
+  padding: 0 1.25rem 1rem;
+  color: var(--lc-muted);
+  font-size: .88rem;
+  line-height: 1.55;
+}
+
+.lc-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: .625rem;
+  padding: .85rem 1.25rem 1.25rem;
+  border-top: 1px solid var(--lc-border);
+  background: color-mix(in srgb, var(--lc-surface) 92%, var(--lc-muted-surface));
+}
+
+.lc-btn-danger {
+  min-height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .55rem 1rem;
+  border-radius: var(--lc-radius-pill);
+  border: none;
+  font-size: .88rem;
+  font-weight: 650;
+  cursor: pointer;
+  background: var(--lc-danger);
+  color: #fff;
+  transition: opacity var(--lc-transition), transform var(--lc-transition);
+}
+
+.lc-btn-danger:hover { opacity: .88; transform: translateY(-1px); }
+
+/* ── Responsive ── */
+@media (max-width: 60rem) { .lc-kpi-strip { grid-template-columns: 1fr; } }
+
+@media (max-width: 44rem) {
+  .lc-hero, .lc-toolbar { grid-template-columns: 1fr; }
+  .lc-hero-actions, .lc-actions-row { justify-content: stretch; }
+  .lc-btn, .lc-btn-primary, .lc-btn-secondary { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-list-page *, .lc-list-page *::before, .lc-list-page *::after { transition: none !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lc-list-page">
+
+  <!-- Hero -->
+  <section class="lc-hero" aria-label="Gestão de localidades">
+    <div class="lc-hero-main">
+      <div class="lc-hero-icon" aria-hidden="true">
+        <i class="fa fa-map-location-dot"></i>
+      </div>
+      <div>
+        <span class="lc-kicker"><i class="fa fa-location-dot" aria-hidden="true"></i> Infraestrutura</span>
+        <h2 class="lc-title">Localidades</h2>
+        <p class="lc-subtitle">Sedes, filiais e localidades vinculadas ao parque de equipamentos e colaboradores.</p>
+      </div>
+    </div>
+    <div class="lc-hero-actions">
+      <a href="{% url 'localidade_create' %}" class="lc-btn-primary">
+        <i class="fa fa-plus" aria-hidden="true"></i>
+        Nova Localidade
+      </a>
+    </div>
+  </section>
+
+  <!-- KPIs -->
+  <section class="lc-kpi-strip" aria-label="Indicadores de localidades">
+    <article class="lc-kpi lc-kpi-blue">
+      <div class="lc-kpi-label">Total de Localidades</div>
+      <span class="lc-kpi-value">{{ localidades|length }}</span>
+      <span class="lc-kpi-sub">Sedes e filiais cadastradas</span>
+      <div class="lc-kpi-icon" aria-hidden="true"><i class="fa fa-map-location-dot"></i></div>
+    </article>
+
+    <article class="lc-kpi lc-kpi-green">
+      <div class="lc-kpi-label">Resultado da Busca</div>
+      <span class="lc-kpi-value">{{ localidades|length }}</span>
+      <span class="lc-kpi-sub">{% if q %}Filtrado por "{{ q }}"{% else %}Exibindo todos os registros{% endif %}</span>
+      <div class="lc-kpi-icon" aria-hidden="true"><i class="fa fa-filter"></i></div>
+    </article>
+  </section>
+
+  <!-- Toolbar -->
+  <section class="lc-toolbar" aria-label="Filtros">
+    <form method="get" id="searchForm" autocomplete="off">
+      <div class="lc-form-group">
+        <label for="id_q">Pesquisar localidade</label>
+        <div class="lc-search-wrap">
+          <i class="fa fa-magnifying-glass" aria-hidden="true"></i>
+          <input id="id_q" type="text" name="q" value="{{ q|default:'' }}" placeholder="Buscar por nome ou código...">
+        </div>
+      </div>
+    </form>
+
+    <div class="lc-actions-row">
+      <a href="{% url 'localidade_list' %}" class="lc-btn-secondary">
+        <i class="fa fa-eraser" aria-hidden="true"></i>
+        Limpar
+      </a>
+      <button type="submit" form="searchForm" class="lc-btn-primary">
+        <i class="fa fa-filter" aria-hidden="true"></i>
+        Filtrar
+      </button>
+    </div>
+  </section>
+
+  <!-- Table -->
+  <div class="lc-table-card">
+    <div class="lc-table-wrap">
+      <table class="lc-table" aria-label="Lista de localidades">
+        <thead>
+          <tr>
+            <th style="width:3rem;">#</th>
+            <th>Localidade</th>
+            <th>Código / Sede</th>
+            <th>Criado em</th>
+            <th>Atualizado em</th>
+            <th style="width:6.5rem; text-align:right;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for obj in localidades %}
+          <tr>
+            <td style="color:var(--lc-soft);font-size:.8rem;">{{ forloop.counter }}</td>
+            <td>
+              <a href="{% url 'localidade_detail' obj.pk %}"
+                 style="color:var(--lc-text);font-weight:650;text-decoration:none;">
+                {{ obj.local }}
+              </a>
+            </td>
+            <td>
+              {% if obj.codigo %}
+                <span class="lc-mono">{{ obj.get_codigo_display }}</span>
+              {% else %}
+                <span style="color:var(--lc-soft);">—</span>
+              {% endif %}
+            </td>
+            <td style="color:var(--lc-muted);font-size:.82rem;">{{ obj.created_at|date:"d/m/Y H:i" }}</td>
+            <td style="color:var(--lc-muted);font-size:.82rem;">{{ obj.updated_at|date:"d/m/Y H:i" }}</td>
+            <td style="text-align:right;">
+              <a href="{% url 'localidade_detail' obj.pk %}" class="lc-icon-btn" title="Detalhes" aria-label="Detalhes de {{ obj.local }}">
+                <i class="fa fa-eye" aria-hidden="true"></i>
+              </a>
+              <a href="{% url 'localidade_update' obj.pk %}" class="lc-icon-btn" title="Editar" aria-label="Editar {{ obj.local }}">
+                <i class="fa fa-pen" aria-hidden="true"></i>
+              </a>
+              <button class="lc-icon-btn lc-icon-btn-danger" title="Excluir"
+                      aria-label="Excluir {{ obj.local }}"
+                      onclick="openDeleteModal('{{ obj.pk }}','{{ obj.local|escapejs }}')">
+                <i class="fa fa-trash" aria-hidden="true"></i>
+              </button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr class="lc-empty-row">
+            <td colspan="6">
+              <div class="lc-empty">
+                <i class="fa fa-folder-open" aria-hidden="true"></i>
+                Nenhuma localidade encontrada
+                {% if q %}para "{{ q }}"{% endif %}.
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Delete Modal -->
+<div id="deleteModal" class="lc-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="lc-modal">
+    <div class="lc-modal-header">
+      <div class="lc-modal-icon" aria-hidden="true"><i class="fa fa-triangle-exclamation"></i></div>
+      <h2 class="lc-modal-title" id="modalTitle">Confirmar exclusão</h2>
+    </div>
+    <div class="lc-modal-body" id="modalMsg"></div>
+    <form id="deleteForm" method="post" action="">
+      {% csrf_token %}
+      <div class="lc-modal-footer">
+        <button type="button" class="lc-btn-secondary" onclick="closeDeleteModal()">Cancelar</button>
+        <button type="submit" class="lc-btn-danger">
+          <i class="fa fa-trash" aria-hidden="true"></i>
+          Excluir
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  const modal   = document.getElementById('deleteModal');
+  const msg     = document.getElementById('modalMsg');
+  const delForm = document.getElementById('deleteForm');
+
+  function openDeleteModal(id, nome) {
+    msg.innerHTML = `Deseja realmente excluir a localidade <strong>${nome}</strong>?<br><br>Essa ação é <strong>irreversível</strong> e pode afetar equipamentos e colaboradores vinculados.`;
+    delForm.action = `/localidades/${id}/excluir/`;
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeDeleteModal() {
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  modal.addEventListener('click', e => { if (e.target === modal) closeDeleteModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDeleteModal(); });
+
+  // Auto-submit on search with debounce
+  const searchInput = document.getElementById('id_q');
+  let debounce;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => document.getElementById('searchForm').submit(), 500);
+  });
+</script>
+{% endblock %}

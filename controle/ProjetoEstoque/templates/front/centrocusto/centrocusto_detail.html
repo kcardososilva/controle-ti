@@ -1,274 +1,967 @@
 {% extends 'base.html' %}
 {% load static humanize %}
 
-{% block title %}Detalhe: {{ obj.departamento }}{% endblock %}
+{% block title %}{{ obj.departamento }} — Centro de Custo{% endblock %}
+{% block page_title %}Centro de Custo{% endblock %}
+{% block page_subtitle %}{{ obj.numero }} — {{ obj.departamento }}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'centrocusto_list' %}" class="btn btn-sm">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i>
+    Voltar
+  </a>
+  <a href="{% url 'centrocusto_update' obj.pk %}" class="btn-primary btn-sm">
+    <i class="fa fa-pen" aria-hidden="true"></i>
+    Editar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.cc-detail-page) {
+  --cc-primary: var(--brand, #0071e3);
+  --cc-primary-hover: var(--brand-hover, #0077ed);
+  --cc-primary-soft: var(--brand-soft, rgba(0,113,227,.10));
+  --cc-primary-softer: var(--brand-softer, rgba(0,113,227,.05));
+  --cc-surface: var(--bg-elevated, #fff);
+  --cc-surface-2: var(--bg-elevated-2, #fff);
+  --cc-muted-surface: var(--bg-fill-tertiary, rgba(120,120,128,.08));
+  --cc-muted-surface-2: var(--bg-fill-secondary, rgba(120,120,128,.12));
+  --cc-hover: var(--bg-hover, rgba(0,0,0,.04));
+  --cc-text: var(--text-primary, #1d1d1f);
+  --cc-text-2: var(--text-secondary, #424245);
+  --cc-muted: var(--text-tertiary, #6e6e73);
+  --cc-soft: var(--text-quaternary, #86868b);
+  --cc-border: var(--separator-hairline, rgba(0,0,0,.06));
+  --cc-border-2: var(--separator-non-opaque, rgba(0,0,0,.10));
+  --cc-border-strong: var(--separator-strong, rgba(0,0,0,.18));
+  --cc-success: var(--success, #34c759);
+  --cc-success-soft: var(--success-soft, rgba(52,199,89,.12));
+  --cc-warning: var(--warning, #ff9500);
+  --cc-warning-soft: var(--warning-soft, rgba(255,149,0,.12));
+  --cc-danger: var(--danger, #ff3b30);
+  --cc-danger-soft: var(--danger-soft, rgba(255,59,48,.10));
+  --cc-info: var(--info, #5ac8fa);
+  --cc-info-soft: var(--info-soft, rgba(90,200,250,.12));
+  --cc-radius-sm: var(--radius-sm, 10px);
+  --cc-radius-md: var(--radius-md, 14px);
+  --cc-radius-lg: var(--radius-lg, 18px);
+  --cc-radius-xl: var(--radius-xl, 22px);
+  --cc-radius-pill: var(--radius-pill, 980px);
+  --cc-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05));
+  --cc-shadow-md: var(--shadow-md, 0 4px 12px rgba(0,0,0,.06));
+  --cc-transition: var(--transition-fast, 160ms ease);
+}
+
+.cc-detail-page,
+.cc-detail-page * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.cc-detail-page {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+  color: var(--cc-text);
+}
+
+.cc-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .45rem;
+  color: var(--cc-muted);
+  font-size: .8rem;
+  font-weight: 600;
+}
+
+.cc-breadcrumb a {
+  color: var(--cc-muted);
+  text-decoration: none;
+}
+
+.cc-breadcrumb a:hover {
+  color: var(--cc-primary);
+}
+
+.cc-breadcrumb i {
+  color: var(--cc-soft);
+  font-size: .65rem;
+}
+
+.cc-hero {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-xl);
+  background:
+    radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--cc-primary) 16%, transparent), transparent 18rem),
+    linear-gradient(135deg, rgba(255,255,255,.12), transparent 42%),
+    var(--cc-surface);
+  box-shadow: var(--cc-shadow-sm);
+}
+
+.cc-hero-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .875rem;
+  align-items: center;
+}
+
+.cc-hero-icon {
+  width: clamp(3rem, 8vw, 3.75rem);
+  height: clamp(3rem, 8vw, 3.75rem);
+  display: grid;
+  place-items: center;
+  border-radius: 1.15rem;
+  background: var(--cc-primary-soft);
+  color: var(--cc-primary);
+  border: 1px solid color-mix(in srgb, var(--cc-primary) 20%, transparent);
+  font-size: clamp(1.1rem, 3vw, 1.45rem);
+}
+
+.cc-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  margin-bottom: .35rem;
+  padding: .22rem .55rem;
+  border-radius: var(--cc-radius-pill);
+  background: var(--cc-primary-soft);
+  color: var(--cc-primary);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.cc-title {
+  margin: 0;
+  color: var(--cc-text);
+  font-size: clamp(1.55rem, 4vw, 2.45rem);
+  line-height: 1.05;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+}
+
+.cc-subtitle {
+  margin-top: .45rem;
+  color: var(--cc-muted);
+  font-size: .95rem;
+  line-height: 1.45;
+}
+
+.cc-hero-actions,
+.cc-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .625rem;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.cc-btn,
+.cc-btn-primary,
+.cc-btn-secondary,
+.cc-icon-btn {
+  min-height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .48rem;
+  padding: .55rem 1rem;
+  border-radius: var(--cc-radius-pill);
+  border: 1px solid transparent;
+  font-size: .88rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--cc-transition), background var(--cc-transition), border-color var(--cc-transition), color var(--cc-transition), box-shadow var(--cc-transition);
+}
+
+.cc-btn:hover,
+.cc-btn-primary:hover,
+.cc-btn-secondary:hover,
+.cc-icon-btn:hover {
+  transform: translateY(-1px);
+}
+
+.cc-btn-primary {
+  background: var(--cc-primary);
+  color: #fff;
+}
+
+.cc-btn-primary:hover {
+  background: var(--cc-primary-hover);
+  color: #fff;
+}
+
+.cc-btn-secondary,
+.cc-btn {
+  background: transparent;
+  color: var(--cc-text);
+  border-color: var(--cc-border-2);
+}
+
+.cc-btn-secondary:hover,
+.cc-btn:hover {
+  background: var(--cc-hover);
+  color: var(--cc-text);
+  border-color: var(--cc-border-strong);
+}
+
+.cc-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .9rem;
+}
+
+.cc-kpi {
+  position: relative;
+  overflow: hidden;
+  min-height: 7rem;
+  padding: 1rem;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-lg);
+  background: var(--cc-surface);
+  box-shadow: var(--cc-shadow-sm);
+}
+
+.cc-kpi-label {
+  color: var(--cc-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.cc-kpi-value {
+  margin-top: .38rem;
+  color: var(--cc-text);
+  font-size: clamp(1.15rem, 2.4vw, 1.65rem);
+  line-height: 1.05;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.cc-kpi-note {
+  margin-top: .35rem;
+  color: var(--cc-muted);
+  font-size: .76rem;
+  line-height: 1.35;
+}
+
+.cc-kpi-icon {
+  position: absolute;
+  right: .85rem;
+  bottom: .85rem;
+  width: 2.35rem;
+  height: 2.35rem;
+  display: grid;
+  place-items: center;
+  border-radius: .95rem;
+  background: var(--cc-kpi-soft, var(--cc-primary-soft));
+  color: var(--cc-kpi-color, var(--cc-primary));
+}
+
+.cc-kpi-blue { --cc-kpi-color: var(--cc-primary); --cc-kpi-soft: var(--cc-primary-soft); }
+.cc-kpi-indigo { --cc-kpi-color: var(--cc-info); --cc-kpi-soft: var(--cc-info-soft); }
+.cc-kpi-green { --cc-kpi-color: var(--cc-success); --cc-kpi-soft: var(--cc-success-soft); }
+.cc-kpi-amber { --cc-kpi-color: var(--cc-warning); --cc-kpi-soft: var(--cc-warning-soft); }
+.cc-kpi-slate { --cc-kpi-color: var(--cc-muted); --cc-kpi-soft: var(--cc-muted-surface-2); }
+
+.cc-main-grid {
+  display: grid;
+  grid-template-columns: minmax(16rem, 19rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.cc-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.cc-card {
+  overflow: hidden;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-lg);
+  background: var(--cc-surface);
+  box-shadow: var(--cc-shadow-sm);
+}
+
+.cc-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .85rem;
+  padding: .95rem 1rem;
+  border-bottom: 1px solid var(--cc-border);
+  background: color-mix(in srgb, var(--cc-surface) 90%, var(--cc-muted-surface));
+}
+
+.cc-card-title {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  color: var(--cc-text);
+  font-size: .93rem;
+  font-weight: 650;
+}
+
+.cc-card-title i {
+  color: var(--cc-primary);
+}
+
+.cc-card-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  min-height: 1.45rem;
+  padding: .15rem .55rem;
+  border-radius: var(--cc-radius-pill);
+  background: var(--cc-primary-soft);
+  color: var(--cc-primary);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.cc-card-body {
+  padding: 1rem;
+}
+
+.cc-info-list {
+  display: grid;
+  gap: .95rem;
+}
+
+.cc-info-item label {
+  display: block;
+  margin-bottom: .25rem;
+  color: var(--cc-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.cc-info-value {
+  color: var(--cc-text);
+  font-size: .88rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.cc-mono {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: .25rem .55rem;
+  border-radius: var(--cc-radius-sm);
+  background: var(--cc-muted-surface);
+  color: var(--cc-text);
+  border: 1px solid var(--cc-border);
+  font-family: var(--font-mono, ui-monospace, Menlo, Consolas, monospace);
+  font-size: .78rem;
+  font-weight: 650;
+}
+
+.cc-divider {
+  border: 0;
+  border-top: 1px solid var(--cc-border);
+}
+
+.cc-filter {
+  padding: .85rem 1rem;
+  border-bottom: 1px solid var(--cc-border);
+  background: color-mix(in srgb, var(--cc-surface) 92%, var(--cc-muted-surface));
+}
+
+.cc-search-wrap {
+  position: relative;
+}
+
+.cc-search-wrap i {
+  position: absolute;
+  left: .85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--cc-soft);
+  pointer-events: none;
+}
+
+.cc-search-wrap input {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: .62rem .85rem .62rem 2.35rem;
+  border: 1px solid var(--cc-border-2);
+  border-radius: var(--cc-radius-sm);
+  background: var(--cc-surface);
+  color: var(--cc-text);
+  outline: none;
+}
+
+.cc-search-wrap input:focus {
+  border-color: var(--cc-primary);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30));
+}
+
+.cc-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cc-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+}
+
+.cc-table th,
+.cc-table td {
+  padding: .85rem 1rem;
+  border-bottom: 1px solid var(--cc-border);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.cc-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--cc-surface);
+  color: var(--cc-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.cc-table td {
+  color: var(--cc-text);
+  font-size: .84rem;
+  font-weight: 500;
+}
+
+.cc-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.cc-table tbody tr:hover td {
+  background: var(--cc-hover);
+}
+
+.cc-item-cell,
+.cc-user-chip,
+.cc-collab-name {
+  display: flex;
+  align-items: center;
+  gap: .68rem;
+}
+
+.cc-avatar {
+  width: 2.15rem;
+  height: 2.15rem;
+  flex: 0 0 2.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--cc-primary-soft);
+  color: var(--cc-primary);
+  border: 1px solid color-mix(in srgb, var(--cc-primary) 18%, transparent);
+  font-size: .78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cc-avatar-sm {
+  width: 2rem;
+  height: 2rem;
+  flex-basis: 2rem;
+  font-size: .74rem;
+}
+
+.cc-line-main {
+  display: block;
+  max-width: 18rem;
+  color: var(--cc-text);
+  font-size: .84rem;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cc-line-main a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.cc-line-main a:hover {
+  color: var(--cc-primary);
+}
+
+.cc-line-sub {
+  display: block;
+  max-width: 18rem;
+  margin-top: .18rem;
+  color: var(--cc-muted);
+  font-size: .74rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cc-muted-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  color: var(--cc-soft);
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.cc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 1.55rem;
+  padding: .25rem .6rem;
+  border-radius: var(--cc-radius-pill);
+  background: var(--cc-muted-surface);
+  color: var(--cc-muted);
+  font-size: .72rem;
+  font-weight: 650;
+}
+
+.cc-badge-success { color: var(--cc-success); background: var(--cc-success-soft); }
+.cc-badge-warning { color: var(--cc-warning); background: var(--cc-warning-soft); }
+.cc-badge-danger { color: var(--cc-danger); background: var(--cc-danger-soft); }
+.cc-badge-info { color: var(--cc-info); background: var(--cc-info-soft); }
+
+.cc-user-status-dot {
+  width: .45rem;
+  height: .45rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.cc-table-action {
+  width: 2.1rem;
+  height: 2.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--cc-radius-sm);
+  color: var(--cc-muted);
+  text-decoration: none;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.cc-table-action:hover {
+  color: var(--cc-primary);
+  background: var(--cc-primary-soft);
+}
+
+.cc-empty {
+  padding: 3rem 1rem;
+  text-align: center;
+  color: var(--cc-soft);
+  font-size: .88rem;
+}
+
+.cc-empty i {
+  display: block;
+  margin-bottom: .7rem;
+  color: var(--cc-soft);
+  font-size: 2rem;
+}
+
+@media (max-width: 84rem) {
+  .cc-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 66rem) {
+  .cc-main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cc-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 52rem) {
+  .cc-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .cc-hero-main {
+    grid-template-columns: 1fr;
+  }
+
+  .cc-hero-actions {
+    justify-content: stretch;
+  }
+
+  .cc-btn,
+  .cc-btn-primary,
+  .cc-btn-secondary {
+    width: 100%;
+  }
+
+  .cc-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cc-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+<div class="cc-detail-page">
+  <nav class="cc-breadcrumb" aria-label="Navegação estrutural">
+    <a href="{% url 'centrocusto_list' %}">Centros de Custo</a>
+    <i class="fa fa-chevron-right" aria-hidden="true"></i>
+    <span>{{ obj.departamento }}</span>
+  </nav>
 
-<style>
-/* --- Enterprise Theme Styles --- */
-:root {
-  --bg-app: #f3f4f6;
-  --bg-card: #ffffff;
-  --primary: #0078d4; /* Azul Microsoft */
-  --primary-hover: #106ebe;
-  --text-main: #242424;
-  --text-sub: #616161;
-  --border: #e0e0e0;
-  --shadow-card: 0 2px 4px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04);
-  --radius: 8px;
-}
-
-body { background-color: var(--bg-app); font-family: 'Inter', sans-serif; color: var(--text-main); font-size: 14px; }
-.app-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
-
-/* 1. Header & Ações */
-.page-header {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;
-}
-.header-title h1 { margin: 0; font-size: 24px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 12px; }
-.header-icon {
-  width: 40px; height: 40px; background: #e0f2fe; color: var(--primary); border-radius: 8px;
-  display: flex; align-items: center; justify-content: center; font-size: 20px;
-}
-
-.btn {
-  height: 40px; padding: 0 20px; border-radius: 6px; font-weight: 500; font-size: 14px; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 8px; text-decoration: none; transition: all 0.2s; border: 1px solid transparent;
-}
-.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 2px 4px rgba(0,120,212,0.2); }
-.btn-primary:hover { background: var(--primary-hover); }
-.btn-white { background: #fff; border-color: var(--border); color: var(--text-main); }
-.btn-white:hover { background: #f9fafb; border-color: #9ca3af; }
-
-/* 2. KPIs Section */
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }
-.kpi-card {
-  background: var(--bg-card); padding: 20px; border-radius: var(--radius); border: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: space-between;
-}
-.kpi-content h4 { margin: 0 0 4px 0; font-size: 12px; font-weight: 600; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-content .val { font-size: 22px; font-weight: 700; color: var(--text-main); }
-.kpi-icon-right { font-size: 24px; opacity: 0.8; }
-
-/* Cores KPI */
-.icon-blue { color: #0078d4; }
-.icon-green { color: #10b981; }
-.icon-orange { color: #f59e0b; }
-
-/* 3. Grid Principal (Detalhes + Lista) */
-.main-grid { display: grid; grid-template-columns: 300px 1fr; gap: 24px; }
-@media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
-
-/* Cards Genéricos */
-.card {
-  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--shadow-card); overflow: hidden; display: flex; flex-direction: column;
-}
-.card-header {
-  padding: 16px 20px; border-bottom: 1px solid var(--border); background: #fcfcfc;
-  display: flex; justify-content: space-between; align-items: center;
-}
-.card-title { font-weight: 700; color: var(--text-main); font-size: 15px; display: flex; align-items: center; gap: 8px; }
-.card-body { padding: 20px; }
-
-/* Info List (Lateral) */
-.info-list { display: flex; flex-direction: column; gap: 16px; }
-.info-item label { display: block; font-size: 12px; color: var(--text-sub); font-weight: 600; margin-bottom: 4px; }
-.info-item .value { font-size: 15px; color: var(--text-main); font-weight: 500; }
-.info-item .value-mono { font-family: 'Consolas', monospace; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
-
-.badge-pmb { display: inline-flex; padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; }
-.badge-sim { background: #dcfce7; color: #166534; }
-.badge-nao { background: #fee2e2; color: #991b1b; }
-
-/* Barra de Filtro da Tabela */
-.table-filter { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; background: #fff; }
-.search-input {
-  flex: 1; height: 36px; padding: 0 12px 0 32px; border: 1px solid var(--border); border-radius: 6px;
-  font-size: 13px; outline: none; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%239ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>') no-repeat 10px center;
-}
-.search-input:focus { border-color: var(--primary); }
-
-/* Tabela */
-.table-responsive { overflow-x: auto; width: 100%; }
-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
-thead th { background: #f9fafb; color: var(--text-sub); font-size: 12px; font-weight: 600; text-transform: uppercase; padding: 12px 20px; text-align: left; border-bottom: 1px solid var(--border); }
-tbody td { padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text-main); vertical-align: middle; }
-tbody tr:last-child td { border-bottom: none; }
-tbody tr:hover { background: #fcfcfc; }
-
-/* Status Item */
-.status-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
-.st-ativo { background: #dcfce7; color: #166534; }
-.st-manutencao { background: #ffedd5; color: #9a3412; }
-.st-defeito { background: #fee2e2; color: #991b1b; }
-.st-default { background: #f3f4f6; color: #4b5563; }
-
-/* Ações Tabela */
-.action-btn {
-  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 6px; color: var(--text-sub); transition: all 0.2s; text-decoration: none;
-}
-.action-btn:hover { background: #f3f4f6; color: var(--primary); }
-
-</style>
-
-<div class="app-container">
-
-  <div class="page-header">
-    <div class="header-title">
-      <div class="header-icon"><i class="fa fa-building"></i></div>
-      <h1>
-        {{ obj.departamento }}
-        <span style="font-size:14px; color:var(--text-sub); font-weight:400; margin-left:8px;">#{{ obj.numero }}</span>
-      </h1>
-    </div>
-    <div style="display:flex; gap:10px;">
-      <a href="{% url 'centrocusto_list' %}" class="btn btn-white"><i class="fa fa-arrow-left"></i> Voltar</a>
-      <a href="{% url 'centrocusto_update' obj.pk %}" class="btn btn-primary"><i class="fa fa-pen"></i> Editar</a>
-    </div>
-  </div>
-
-  <div class="kpi-grid">
-    <div class="kpi-card">
-      <div class="kpi-content">
-        <h4>Total de Ativos</h4>
-        <div class="val">{{ kpi.total_itens }}</div>
+  <section class="cc-hero" aria-label="Centro de custo selecionado">
+    <div class="cc-hero-main">
+      <div class="cc-hero-icon" aria-hidden="true">
+        <i class="fa fa-building"></i>
       </div>
-      <i class="fa fa-boxes-stacked kpi-icon-right icon-blue"></i>
-    </div>
-    
-    <div class="kpi-card">
-      <div class="kpi-content">
-        <h4>Custo Mensal (Locação)</h4>
-        <div class="val">R$ {{ kpi.custo_mensal|floatformat:2|intcomma }}</div>
+      <div>
+        <span class="cc-eyebrow"><i class="fa fa-diagram-project" aria-hidden="true"></i> Centro de Custo</span>
+        <h2 class="cc-title">{{ obj.departamento }}</h2>
+        <p class="cc-subtitle">Código {{ obj.numero }} · Gestão de ativos, colaboradores e custos vinculados.</p>
       </div>
-      <i class="fa fa-file-invoice-dollar kpi-icon-right icon-orange"></i>
     </div>
 
-    <div class="kpi-card">
-      <div class="kpi-content">
-        <h4>Patrimônio (Próprio)</h4>
-        <div class="val">R$ {{ kpi.valor_patrimonial|floatformat:2|intcomma }}</div>
-      </div>
-      <i class="fa fa-vault kpi-icon-right icon-green"></i>
+    <div class="cc-hero-actions">
+      <a href="{% url 'centrocusto_list' %}" class="cc-btn-secondary">
+        <i class="fa fa-arrow-left" aria-hidden="true"></i>
+        Voltar
+      </a>
+      <a href="{% url 'centrocusto_update' obj.pk %}" class="cc-btn-primary">
+        <i class="fa fa-pen" aria-hidden="true"></i>
+        Editar Centro
+      </a>
     </div>
-  </div>
+  </section>
 
-  <div class="main-grid">
-    
-    <div class="card" style="height:fit-content;">
-      <div class="card-header">
-        <div class="card-title"><i class="fa fa-info-circle"></i> Informações</div>
+  <section class="cc-kpi-grid" aria-label="Indicadores do centro de custo">
+    <article class="cc-kpi cc-kpi-blue">
+      <div class="cc-kpi-label">Ativos Vinculados</div>
+      <div class="cc-kpi-value">{{ kpi.total_itens }}</div>
+      <div class="cc-kpi-note">Itens neste centro de custo</div>
+      <div class="cc-kpi-icon" aria-hidden="true"><i class="fa fa-boxes-stacked"></i></div>
+    </article>
+
+    <article class="cc-kpi cc-kpi-green">
+      <div class="cc-kpi-label">Com Usuário</div>
+      <div class="cc-kpi-value">{{ kpi.total_itens_com_usuario }}</div>
+      <div class="cc-kpi-note">Ativos com responsável atual</div>
+      <div class="cc-kpi-icon" aria-hidden="true"><i class="fa fa-user-check"></i></div>
+    </article>
+
+    <article class="cc-kpi cc-kpi-indigo">
+      <div class="cc-kpi-label">Colaboradores</div>
+      <div class="cc-kpi-value">{{ kpi.total_colaboradores }}</div>
+      <div class="cc-kpi-note">{{ kpi.total_colaboradores_ativos }} ativo{{ kpi.total_colaboradores_ativos|pluralize:"s" }}</div>
+      <div class="cc-kpi-icon" aria-hidden="true"><i class="fa fa-users"></i></div>
+    </article>
+
+    <article class="cc-kpi cc-kpi-amber">
+      <div class="cc-kpi-label">Custo Mensal</div>
+      <div class="cc-kpi-value">R$ {{ kpi.custo_mensal|floatformat:2|intcomma }}</div>
+      <div class="cc-kpi-note">Locações vinculadas</div>
+      <div class="cc-kpi-icon" aria-hidden="true"><i class="fa fa-file-invoice-dollar"></i></div>
+    </article>
+
+    <article class="cc-kpi cc-kpi-slate">
+      <div class="cc-kpi-label">Patrimônio Próprio</div>
+      <div class="cc-kpi-value">R$ {{ kpi.valor_patrimonial|floatformat:2|intcomma }}</div>
+      <div class="cc-kpi-note">Valor cadastrado dos itens</div>
+      <div class="cc-kpi-icon" aria-hidden="true"><i class="fa fa-vault"></i></div>
+    </article>
+  </section>
+
+  <div class="cc-main-grid">
+    <aside class="cc-card">
+      <div class="cc-card-header">
+        <div class="cc-card-title"><i class="fa fa-circle-info" aria-hidden="true"></i> Informações</div>
       </div>
-      <div class="card-body">
-        <div class="info-list">
-          <div class="info-item">
+      <div class="cc-card-body">
+        <div class="cc-info-list">
+          <div class="cc-info-item">
             <label>Número / Código</label>
-            <div class="value-mono">{{ obj.numero }}</div>
+            <span class="cc-mono">{{ obj.numero }}</span>
           </div>
-          <div class="info-item">
+
+          <div class="cc-info-item">
             <label>Departamento</label>
-            <div class="value">{{ obj.departamento }}</div>
+            <div class="cc-info-value">{{ obj.departamento }}</div>
           </div>
-          <div class="info-item">
+
+          <div class="cc-info-item">
             <label>Classificação PMB</label>
-            <div>
-              {% if obj.pmb == 'sim' %}
-                <span class="badge-pmb badge-sim"><i class="fa fa-check"></i> PMB</span>
-              {% else %}
-                <span class="badge-pmb badge-nao">Não PMB</span>
-              {% endif %}
-            </div>
+            {% if obj.pmb == 'sim' %}
+              <span class="cc-badge cc-badge-success"><i class="fa fa-check" aria-hidden="true"></i> PMB</span>
+            {% else %}
+              <span class="cc-badge cc-badge-danger"><i class="fa fa-xmark" aria-hidden="true"></i> Não PMB</span>
+            {% endif %}
           </div>
-          <div style="border-top:1px solid var(--border); margin:4px 0;"></div>
-          <div class="info-item">
+
+          <hr class="cc-divider">
+
+          <div class="cc-info-item">
             <label>Criado em</label>
-            <div class="value" style="font-size:13px;">{{ obj.created_at|date:"d/m/Y H:i" }}</div>
+            <div class="cc-info-value">{{ obj.created_at|date:"d/m/Y H:i"|default:"—" }}</div>
           </div>
-          <div class="info-item">
+
+          <div class="cc-info-item">
             <label>Última atualização</label>
-            <div class="value" style="font-size:13px;">{{ obj.updated_at|date:"d/m/Y H:i" }}</div>
+            <div class="cc-info-value">{{ obj.updated_at|date:"d/m/Y H:i"|default:"—" }}</div>
+          </div>
+
+          {% if obj.criado_por %}
+            <div class="cc-info-item">
+              <label>Criado por</label>
+              <div class="cc-info-value">{{ obj.criado_por.get_full_name|default:obj.criado_por.username }}</div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </aside>
+
+    <section class="cc-stack">
+      <article class="cc-card">
+        <div class="cc-card-header">
+          <div class="cc-card-title">
+            <i class="fa fa-laptop" aria-hidden="true"></i>
+            Ativos Vinculados
+            <span class="cc-card-count">{{ kpi.total_itens }}</span>
+          </div>
+          <a href="{% url 'cadastrar_equipamento' %}?cc={{ obj.pk }}" class="cc-btn">
+            <i class="fa fa-plus" aria-hidden="true"></i>
+            Novo Ativo
+          </a>
+        </div>
+
+        <div class="cc-filter">
+          <div class="cc-search-wrap">
+            <i class="fa fa-magnifying-glass" aria-hidden="true"></i>
+            <input type="search" id="searchAtivos" placeholder="Buscar por item, usuário, matrícula, série, subtipo ou localidade…" autocomplete="off">
           </div>
         </div>
-      </div>
-    </div>
 
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">
-          <i class="fa fa-laptop"></i> Ativos Vinculados
-          <span style="background:#f3f4f6; color:var(--text-sub); padding:2px 8px; border-radius:12px; font-size:12px;">{{ kpi.total_itens }}</span>
+        <div class="cc-table-wrap">
+          <table class="cc-table" id="tblAtivos">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Usuário vinculado</th>
+                <th>Nº Série</th>
+                <th>Subtipo</th>
+                <th>Localidade</th>
+                <th>Status</th>
+                <th style="text-align:right;">Ver</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in itens_cc %}
+                <tr>
+                  <td data-label="Item">
+                    <div class="cc-item-cell">
+                      <span class="cc-avatar cc-avatar-sm"><i class="fa fa-laptop" aria-hidden="true"></i></span>
+                      <div>
+                        <span class="cc-line-main">{{ item.nome }}</span>
+                        <span class="cc-line-sub">{{ item.marca|default:"Sem marca" }}{% if item.modelo %} · {{ item.modelo }}{% endif %}</span>
+                      </div>
+                    </div>
+                  </td>
+
+                  <td data-label="Usuário vinculado">
+                    {% if item.usuario_vinculado %}
+                      <div class="cc-user-chip">
+                        <span class="cc-avatar cc-avatar-sm">{{ item.usuario_vinculado.nome|first|upper }}</span>
+                        <div>
+                          <span class="cc-line-main">
+                            <a href="{% url 'usuario_detail' item.usuario_vinculado.pk %}">{{ item.usuario_vinculado.nome }}</a>
+                          </span>
+                          <span class="cc-line-sub">
+                            {% if item.usuario_vinculado.matricula %}Mat. {{ item.usuario_vinculado.matricula }}{% else %}Sem matrícula{% endif %}
+                            {% if item.usuario_vinculado.status == 'desligado' %} · Desligado{% endif %}
+                          </span>
+                        </div>
+                      </div>
+                    {% else %}
+                      <span class="cc-muted-inline"><i class="fa fa-user-slash" aria-hidden="true"></i> Sem usuário</span>
+                    {% endif %}
+                  </td>
+
+                  <td data-label="Nº Série"><span class="cc-mono">{{ item.numero_serie|default:"—" }}</span></td>
+                  <td data-label="Subtipo">{{ item.subtipo.nome|default:"—" }}</td>
+                  <td data-label="Localidade">{{ item.localidade.local|default:"—" }}</td>
+
+                  <td data-label="Status">
+                    {% if item.status == 'ativo' %}
+                      <span class="cc-badge cc-badge-success">Ativo</span>
+                    {% elif item.status == 'backup' %}
+                      <span class="cc-badge cc-badge-info">Backup</span>
+                    {% elif item.status == 'manutencao' %}
+                      <span class="cc-badge cc-badge-warning">Manutenção</span>
+                    {% elif item.status == 'queimado' or item.status == 'defeito' %}
+                      <span class="cc-badge cc-badge-danger">Defeito</span>
+                    {% elif item.status == 'pausado' %}
+                      <span class="cc-badge">Pausado</span>
+                    {% else %}
+                      <span class="cc-badge">{{ item.get_status_display|default:item.status }}</span>
+                    {% endif %}
+                  </td>
+
+                  <td data-label="Ver" style="text-align:right;">
+                    <a href="{% url 'equipamento_detalhe' item.pk %}" class="cc-table-action" title="Abrir detalhe do item" aria-label="Abrir detalhe do item {{ item.nome }}">
+                      <i class="fa fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                    </a>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="7">
+                    <div class="cc-empty">
+                      <i class="fa fa-boxes-stacked" aria-hidden="true"></i>
+                      Nenhum ativo vinculado a este centro de custo.
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
-        <a href="{% url 'cadastrar_equipamento' %}?cc={{ obj.pk }}" class="btn btn-white" style="height:32px; font-size:12px;"><i class="fa fa-plus"></i> Add Item</a>
-      </div>
-      
-      <div class="table-filter">
-        <input type="text" id="tableSearch" class="search-input" placeholder="Buscar item por nome, série ou subtipo...">
-      </div>
+      </article>
 
-      <div class="table-responsive">
-        <table id="itensTable">
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>Nº Série</th>
-              <th>Subtipo</th>
-              <th>Localidade</th>
-              <th>Status</th>
-              <th style="text-align:right;">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for item in itens_cc %}
-            <tr>
-              <td style="font-weight:600;">{{ item.nome }}</td>
-              <td style="font-family:monospace; color:var(--text-sub);">{{ item.numero_serie|default:"-" }}</td>
-              <td>{{ item.subtipo.nome|default:"-" }}</td>
-              <td>{{ item.localidade.local|default:"-" }}</td>
-              <td>
-                {% if item.status == 'ativo' %}
-                  <span class="status-badge st-ativo">Ativo</span>
-                {% elif item.status == 'manutencao' %}
-                  <span class="status-badge st-manutencao">Manutenção</span>
-                {% elif item.status == 'defeito' %}
-                  <span class="status-badge st-defeito">Defeito</span>
-                {% else %}
-                  <span class="status-badge st-default">{{ item.status|default:"Indefinido" }}</span>
-                {% endif %}
-              </td>
-              <td style="text-align:right;">
-                <a href="{% url 'equipamento_detalhe' item.pk %}" class="action-btn" title="Ver Detalhes"><i class="fa fa-eye"></i></a>
-              </td>
-            </tr>
-            {% empty %}
-            <tr>
-              <td colspan="6" style="text-align:center; padding:40px; color:var(--text-sub);">
-                Nenhum ativo vinculado a este centro de custo.
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <article class="cc-card">
+        <div class="cc-card-header">
+          <div class="cc-card-title">
+            <i class="fa fa-users" aria-hidden="true"></i>
+            Colaboradores
+            <span class="cc-card-count">{{ kpi.total_colaboradores }}</span>
+          </div>
+          <a href="{% url 'usuario_create' %}?cc={{ obj.pk }}" class="cc-btn">
+            <i class="fa fa-plus" aria-hidden="true"></i>
+            Novo Colaborador
+          </a>
+        </div>
 
+        <div class="cc-filter">
+          <div class="cc-search-wrap">
+            <i class="fa fa-magnifying-glass" aria-hidden="true"></i>
+            <input type="search" id="searchColabs" placeholder="Buscar por nome, matrícula, função ou localidade…" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="cc-table-wrap">
+          <table class="cc-table" id="tblColabs">
+            <thead>
+              <tr>
+                <th>Colaborador</th>
+                <th>Matrícula</th>
+                <th>Função</th>
+                <th>Localidade</th>
+                <th>Status</th>
+                <th style="text-align:right;">Ver</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for colab in colaboradores %}
+                <tr>
+                  <td data-label="Colaborador">
+                    <div class="cc-collab-name">
+                      <span class="cc-avatar">{{ colab.nome|first|upper }}</span>
+                      <div>
+                        <span class="cc-line-main">{{ colab.nome }}</span>
+                        <span class="cc-line-sub">{{ colab.email|default:"Sem e-mail" }}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td data-label="Matrícula"><span class="cc-mono">{{ colab.matricula|default:"—" }}</span></td>
+                  <td data-label="Função">{{ colab.funcao.nome|default:"—" }}</td>
+                  <td data-label="Localidade">{{ colab.localidade.local|default:"—" }}</td>
+                  <td data-label="Status">
+                    {% if colab.status == 'ativo' %}
+                      <span class="cc-badge cc-badge-success"><span class="cc-user-status-dot"></span> Ativo</span>
+                    {% else %}
+                      <span class="cc-badge cc-badge-danger"><span class="cc-user-status-dot"></span> Desligado</span>
+                    {% endif %}
+                  </td>
+                  <td data-label="Ver" style="text-align:right;">
+                    <a href="{% url 'usuario_detail' colab.pk %}" class="cc-table-action" title="Ver colaborador" aria-label="Ver colaborador {{ colab.nome }}">
+                      <i class="fa fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                    </a>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="6">
+                    <div class="cc-empty">
+                      <i class="fa fa-users" aria-hidden="true"></i>
+                      Nenhum colaborador vinculado a este centro de custo.
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
   </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
-// Filtro Client-Side Simples e Rápido
-document.getElementById('tableSearch').addEventListener('keyup', function() {
-    let searchValue = this.value.toLowerCase();
-    let rows = document.querySelectorAll('#itensTable tbody tr');
+  function filterTable(inputId, tableId) {
+    const input = document.getElementById(inputId);
+    const table = document.getElementById(tableId);
 
-    rows.forEach(row => {
-        let text = row.innerText.toLowerCase();
-        row.style.display = text.includes(searchValue) ? '' : 'none';
+    if (!input || !table) return;
+
+    input.addEventListener('input', function () {
+      const query = this.value.trim().toLowerCase();
+      const rows = table.querySelectorAll('tbody tr');
+
+      rows.forEach(function(row) {
+        const isEmptyRow = row.querySelector('.cc-empty');
+        if (isEmptyRow) return;
+
+        const rowText = row.innerText.toLowerCase();
+        row.style.display = rowText.includes(query) ? '' : 'none';
+      });
     });
-});
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    filterTable('searchAtivos', 'tblAtivos');
+    filterTable('searchColabs', 'tblColabs');
+  });
 </script>
 {% endblock %}

@@ -1,177 +1,734 @@
 {% extends 'base.html' %}
 {% load static %}
+
 {% block title %}Histórico de Movimentações{% endblock %}
+{% block page_title %}Histórico de Movimentações{% endblock %}
+{% block page_subtitle %}Auditoria de atribuições, devoluções e movimentações de licenças{% endblock %}
 
-{% block content %}
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-:root {
-  /* Paleta Corporativa (Slate/Indigo) */
-  --bg-body: #f1f5f9;
-  --bg-card: #ffffff;
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  --border: #e2e8f0;
 
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --primary-light: #eef2ff;
-  
-  --success-bg: #dcfce7; --success-text: #166534;
-  --danger-bg: #fee2e2;  --danger-text: #991b1b;
-
-  --radius: 8px;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --input-height: 40px;
+:where(.lic-page, .lic-modal, .select2-container, .select2-dropdown) {
+  --lic-brand: var(--brand, #0071e3);
+  --lic-brand-hover: var(--brand-hover, #0077ed);
+  --lic-brand-soft: var(--brand-soft, rgba(0, 113, 227, .10));
+  --lic-surface: var(--bg-elevated, #ffffff);
+  --lic-surface-2: var(--bg-elevated-2, #ffffff);
+  --lic-fill: var(--bg-fill-tertiary, rgba(120, 120, 128, .08));
+  --lic-fill-2: var(--bg-fill-secondary, rgba(120, 120, 128, .12));
+  --lic-text: var(--text-primary, #1d1d1f);
+  --lic-muted: var(--text-tertiary, #6e6e73);
+  --lic-soft: var(--text-quaternary, #86868b);
+  --lic-border: var(--separator-hairline, rgba(0, 0, 0, .06));
+  --lic-border-strong: var(--separator-non-opaque, rgba(0, 0, 0, .10));
+  --lic-success: var(--success, #34c759);
+  --lic-success-bg: var(--success-soft, rgba(52, 199, 89, .12));
+  --lic-warning: var(--warning, #ff9500);
+  --lic-warning-bg: var(--warning-soft, rgba(255, 149, 0, .12));
+  --lic-danger: var(--danger, #ff3b30);
+  --lic-danger-bg: var(--danger-soft, rgba(255, 59, 48, .10));
+  --lic-info: var(--info, #5ac8fa);
+  --lic-info-bg: var(--info-soft, rgba(90, 200, 250, .12));
+  --lic-radius-sm: var(--radius-sm, 10px);
+  --lic-radius-md: var(--radius-md, 14px);
+  --lic-radius-lg: var(--radius-lg, 18px);
+  --lic-radius-xl: var(--radius-xl, 22px);
+  --lic-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04));
+  --lic-shadow-md: var(--shadow-md, 0 4px 12px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04));
+  --lic-control-h: 42px;
+  --lic-transition: 180ms var(--ease-apple, ease);
 }
 
-* { box-sizing: border-box; outline: none; }
-body { background: var(--bg-body); color: var(--text-main); font-family: 'Inter', system-ui, sans-serif; }
-a { text-decoration: none; color: inherit; }
-
-.page-container {
-  max-width: 1200px; margin: 24px auto; padding: 0 20px;
-  display: flex; flex-direction: column; gap: 20px;
+.lic-page,
+.lic-page * {
+  box-sizing: border-box;
+  min-width: 0;
 }
 
-/* === HEADER === */
-.page-header {
-  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;
-  margin-bottom: 8px;
-}
-.page-title {
-  font-size: 1.5rem; font-weight: 700; color: var(--text-main);
-  display: flex; align-items: center; gap: 10px;
-}
-.page-title i { color: var(--primary); }
-
-.header-actions { display: flex; gap: 10px; }
-
-/* Botões */
-.btn {
-  display: inline-flex; align-items: center; gap: 8px;
-  height: var(--input-height); padding: 0 16px;
-  font-size: 0.875rem; font-weight: 600; border-radius: var(--radius);
-  cursor: pointer; border: 1px solid transparent; transition: all 0.2s;
-}
-.btn-primary { background: var(--primary); color: #fff; box-shadow: var(--shadow-sm); }
-.btn-primary:hover { background: var(--primary-hover); }
-.btn-white { background: #fff; border-color: var(--border); color: var(--text-main); }
-.btn-white:hover { background: #f8fafc; border-color: #cbd5e1; }
-
-/* === FILTROS === */
-.filter-card {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: var(--shadow-sm);
-  padding: 20px;
+.lic-page {
+  width: min(100%, 1500px);
+  margin-inline: auto;
+  color: var(--lic-text);
 }
 
-.filter-grid {
-  display: grid; grid-template-columns: 2fr 1fr auto; 
-  gap: 16px; align-items: end;
+.lic-shell {
+  display: grid;
+  gap: 18px;
 }
-@media (max-width: 768px) { .filter-grid { grid-template-columns: 1fr; } }
 
-.input-group { display: flex; flex-direction: column; gap: 6px; }
-.input-group label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); }
-
-.form-control {
-  width: 100%; height: var(--input-height); padding: 0 12px;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  font-size: 0.875rem; color: var(--text-main); background: #fff;
+.lic-hero,
+.lic-card,
+.lic-panel,
+.lic-kpi-card {
+  background: var(--lic-surface);
+  border: 1px solid var(--lic-border);
+  border-radius: var(--lic-radius-xl);
+  box-shadow: var(--lic-shadow-sm);
 }
-.form-control:focus { border-color: var(--primary); }
 
-/* Select2 Custom */
-.select2-container .select2-selection--single {
-  height: var(--input-height) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--radius) !important;
-  display: flex; align-items: center;
+.lic-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: clamp(18px, 3vw, 28px);
 }
-.select2-container--default .select2-selection--single .select2-selection__arrow { top: 7px !important; }
-.select2-container--default .select2-selection--single .select2-selection__rendered { color: var(--text-main) !important; padding-left: 12px; }
 
-/* === TABELA === */
-.table-card {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+.lic-hero-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.lic-hero-icon {
+  width: clamp(48px, 8vw, 64px);
+  height: clamp(48px, 8vw, 64px);
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--lic-brand-soft);
+  color: var(--lic-brand);
+  border: 1px solid color-mix(in srgb, var(--lic-brand) 18%, transparent);
+  font-size: clamp(1.2rem, 3vw, 1.55rem);
+}
+
+.lic-hero-title h1 {
+  margin: 0;
+  color: var(--lic-text);
+  font-size: clamp(1.45rem, 4vw, 2.35rem);
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.lic-hero-title p,
+.lic-subtitle {
+  margin: 8px 0 0;
+  color: var(--lic-muted);
+  font-size: clamp(.9rem, 1.8vw, 1rem);
+  line-height: 1.45;
+}
+
+.lic-actions,
+.lic-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.lic-btn {
+  min-height: var(--lic-control-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 17px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
+  font-size: .9rem;
+  font-weight: 550;
+  letter-spacing: -.014em;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--lic-transition), background var(--lic-transition), border-color var(--lic-transition), color var(--lic-transition), box-shadow var(--lic-transition);
+}
+
+.lic-btn:hover {
+  transform: translateY(-1px);
+}
+
+.lic-btn-primary {
+  background: var(--lic-brand);
+  border-color: var(--lic-brand);
+  color: #fff;
+}
+
+.lic-btn-primary:hover {
+  background: var(--lic-brand-hover);
+  color: #fff;
+}
+
+.lic-btn-secondary,
+.lic-btn-outline {
+  background: transparent;
+  border-color: var(--lic-border-strong);
+  color: var(--lic-text);
+}
+
+.lic-btn-secondary:hover,
+.lic-btn-outline:hover {
+  background: var(--lic-fill);
+  color: var(--lic-text);
+}
+
+.lic-btn-danger {
+  background: var(--lic-danger);
+  border-color: var(--lic-danger);
+  color: #fff;
+}
+
+.lic-card {
   overflow: hidden;
 }
-.table-responsive { overflow-x: auto; width: 100%; }
 
-table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 0.875rem; }
-
-thead th {
-  background: #f8fafc; color: var(--text-muted);
-  font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.03em;
-  padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left;
-  position: sticky; top: 0; z-index: 10;
+.lic-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--lic-border);
+  background: color-mix(in srgb, var(--lic-surface) 92%, var(--lic-fill));
 }
 
-tbody td {
-  padding: 12px 16px; border-bottom: 1px solid var(--border);
-  color: var(--text-main); vertical-align: middle;
+.lic-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--lic-text);
+  font-size: .98rem;
+  font-weight: 650;
+  letter-spacing: -.018em;
 }
-tbody tr:last-child td { border-bottom: none; }
-tbody tr:hover { background-color: #f8fafc; }
 
-/* Chips de Status */
-.status-badge {
-  display: inline-flex; align-items: center; padding: 2px 10px;
-  border-radius: 99px; font-size: 0.75rem; font-weight: 600;
+.lic-card-title i {
+  color: var(--lic-brand);
 }
-.st-atribuicao { background: var(--success-bg); color: var(--success-text); }
-.st-remocao { background: var(--danger-bg); color: var(--danger-text); }
 
-/* === PAGINAÇÃO === */
-.list-footer {
-  padding: 16px 20px; border-top: 1px solid var(--border); background: #fff;
-  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;
+.lic-card-body {
+  padding: clamp(16px, 2vw, 22px);
 }
-.page-link {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; border-radius: 6px;
-  border: 1px solid var(--border); background: #fff;
-  font-size: 0.875rem; font-weight: 500; color: var(--text-main);
-  transition: all 0.2s;
-}
-.page-link:hover { background: var(--bg-body); }
-.page-link.active { background: var(--primary-light); color: var(--primary); border-color: var(--primary-light); font-weight: 700; }
-.page-link.disabled { opacity: 0.5; cursor: not-allowed; }
 
+.lic-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 14px;
+}
+
+.lic-kpi-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.lic-kpi-card::after {
+  content: "";
+  position: absolute;
+  right: -28px;
+  top: -28px;
+  width: 92px;
+  height: 92px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kpi-color, var(--lic-brand)) 12%, transparent);
+}
+
+.lic-kpi-icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--kpi-color, var(--lic-brand)) 12%, transparent);
+  color: var(--kpi-color, var(--lic-brand));
+  border: 1px solid color-mix(in srgb, var(--kpi-color, var(--lic-brand)) 20%, transparent);
+  z-index: 1;
+}
+
+.lic-kpi-content {
+  z-index: 1;
+}
+
+.lic-kpi-label {
+  display: block;
+  color: var(--lic-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.lic-kpi-value {
+  display: block;
+  margin-top: 4px;
+  color: var(--lic-text);
+  font-size: clamp(1.25rem, 3vw, 1.65rem);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -.025em;
+  overflow-wrap: anywhere;
+}
+
+.lic-kpi-sub {
+  display: block;
+  margin-top: 4px;
+  color: var(--lic-muted);
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.lic-filter-card {
+  padding: 16px;
+  background: var(--lic-surface);
+  border: 1px solid var(--lic-border);
+  border-radius: var(--lic-radius-xl);
+  box-shadow: var(--lic-shadow-sm);
+}
+
+.lic-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(auto-fit, minmax(170px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.lic-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lic-field.full {
+  grid-column: 1 / -1;
+}
+
+.lic-label {
+  color: var(--lic-muted);
+  font-size: .76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .045em;
+}
+
+.lic-help {
+  color: var(--lic-soft);
+  font-size: .78rem;
+  line-height: 1.38;
+}
+
+.lic-page input:not([type="hidden"]),
+.lic-page select,
+.lic-page textarea,
+.lic-form-control {
+  width: 100%;
+  min-height: var(--lic-control-h);
+  padding: 9px 13px;
+  border: 1px solid var(--lic-border-strong);
+  border-radius: var(--lic-radius-sm);
+  background: var(--lic-surface);
+  color: var(--lic-text);
+  font-size: .92rem;
+  outline: none;
+  transition: border-color var(--lic-transition), box-shadow var(--lic-transition), background var(--lic-transition);
+}
+
+.lic-page textarea {
+  min-height: 104px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.lic-page input:not([type="hidden"]):focus,
+.lic-page select:focus,
+.lic-page textarea:focus,
+.lic-form-control:focus {
+  border-color: var(--lic-brand);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, .30));
+}
+
+.lic-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lic-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+}
+
+.lic-table th,
+.lic-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--lic-border);
+  vertical-align: middle;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.lic-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--lic-surface);
+  color: var(--lic-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.lic-table td {
+  color: var(--lic-text);
+  font-size: .9rem;
+}
+
+.lic-table tbody tr:hover {
+  background: var(--lic-fill);
+}
+
+.lic-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.lic-text-right { text-align: right !important; }
+.lic-text-center { text-align: center !important; }
+.lic-nowrap { white-space: nowrap; }
+.lic-muted { color: var(--lic-muted); }
+.lic-mono { font-family: var(--font-mono, ui-monospace, monospace); font-weight: 650; letter-spacing: -.02em; }
+
+.lic-title-link,
+.lic-link {
+  color: var(--lic-text);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.lic-title-link:hover,
+.lic-link:hover {
+  color: var(--lic-brand);
+}
+
+.lic-sub {
+  display: block;
+  margin-top: 3px;
+  color: var(--lic-muted);
+  font-size: .78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.lic-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--lic-fill);
+  color: var(--lic-muted);
+  border: 1px solid transparent;
+  font-size: .75rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.lic-badge-success { background: var(--lic-success-bg); color: var(--lic-success); }
+.lic-badge-warning { background: var(--lic-warning-bg); color: var(--lic-warning); }
+.lic-badge-danger { background: var(--lic-danger-bg); color: var(--lic-danger); }
+.lic-badge-info { background: var(--lic-info-bg); color: #0090d4; }
+.lic-badge-brand { background: var(--lic-brand-soft); color: var(--lic-brand); }
+
+.lic-icon-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--lic-border-strong);
+  background: var(--lic-surface);
+  color: var(--lic-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--lic-transition), color var(--lic-transition), border-color var(--lic-transition), transform var(--lic-transition);
+}
+
+.lic-icon-btn:hover {
+  color: var(--lic-brand);
+  background: var(--lic-brand-soft);
+  border-color: color-mix(in srgb, var(--lic-brand) 25%, transparent);
+  transform: translateY(-1px);
+}
+
+.lic-icon-btn.danger:hover {
+  color: var(--lic-danger);
+  background: var(--lic-danger-bg);
+  border-color: color-mix(in srgb, var(--lic-danger) 25%, transparent);
+}
+
+.lic-empty {
+  padding: 38px 20px;
+  text-align: center;
+  color: var(--lic-muted);
+}
+
+.lic-empty i {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--lic-soft);
+  font-size: 2rem;
+}
+
+.lic-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.lic-col-12 { grid-column: span 12; }
+.lic-col-8 { grid-column: span 8; }
+.lic-col-6 { grid-column: span 6; }
+.lic-col-4 { grid-column: span 4; }
+
+.lic-error-list,
+.errorlist {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--lic-danger);
+  font-size: .78rem;
+  font-weight: 650;
+}
+
+.lic-alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: var(--lic-radius-md);
+  border: 1px solid transparent;
+  background: var(--lic-brand-soft);
+  color: var(--lic-muted);
+  line-height: 1.45;
+}
+
+.lic-alert i {
+  margin-top: 2px;
+  color: var(--lic-brand);
+}
+
+.lic-alert-warning {
+  background: var(--lic-warning-bg);
+  color: var(--lic-warning);
+  border-color: color-mix(in srgb, var(--lic-warning) 20%, transparent);
+}
+
+.lic-alert-danger {
+  background: var(--lic-danger-bg);
+  color: var(--lic-danger);
+  border-color: color-mix(in srgb, var(--lic-danger) 20%, transparent);
+}
+
+.lic-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  border-top: 1px solid var(--lic-border);
+  background: var(--lic-surface);
+}
+
+.lic-page-links {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.lic-page-link {
+  min-width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--lic-border-strong);
+  border-radius: 10px;
+  background: var(--lic-surface);
+  color: var(--lic-text);
+  text-decoration: none;
+  font-size: .84rem;
+  font-weight: 650;
+}
+
+.lic-page-link:hover,
+.lic-page-link.active {
+  background: var(--lic-brand);
+  border-color: var(--lic-brand);
+  color: #fff;
+}
+
+.lic-page-link.disabled {
+  opacity: .45;
+  pointer-events: none;
+}
+
+.select2-container {
+  width: 100% !important;
+}
+
+.select2-container--default .select2-selection--single {
+  min-height: var(--lic-control-h) !important;
+  border: 1px solid var(--lic-border-strong) !important;
+  border-radius: var(--lic-radius-sm) !important;
+  background: var(--lic-surface) !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  color: var(--lic-text) !important;
+  line-height: 40px !important;
+  padding-left: 13px !important;
+  padding-right: 34px !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__placeholder {
+  color: var(--lic-muted) !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 40px !important;
+  right: 8px !important;
+}
+
+.select2-dropdown {
+  z-index: 9999 !important;
+  border: 1px solid var(--lic-border-strong) !important;
+  border-radius: var(--lic-radius-md) !important;
+  background: var(--lic-surface) !important;
+  color: var(--lic-text) !important;
+  overflow: hidden;
+  box-shadow: var(--lic-shadow-md);
+}
+
+.select2-search--dropdown .select2-search__field {
+  border: 1px solid var(--lic-border-strong) !important;
+  border-radius: var(--lic-radius-sm) !important;
+  background: var(--lic-surface) !important;
+  color: var(--lic-text) !important;
+}
+
+.select2-results__option {
+  color: var(--lic-text) !important;
+}
+
+.select2-results__option--highlighted {
+  background: var(--lic-brand) !important;
+  color: #fff !important;
+}
+
+@media (max-width: 900px) {
+  .lic-hero,
+  .lic-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lic-actions,
+  .lic-action-row {
+    justify-content: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .lic-btn {
+    width: 100%;
+  }
+
+  .lic-col-8,
+  .lic-col-6,
+  .lic-col-4 {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 640px) {
+  .lic-hero-main {
+    grid-template-columns: 1fr;
+  }
+
+  .lic-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .lic-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lic-page-links {
+    justify-content: center;
+  }
+}
+
+
+.lic-mov-list-page {
+  width: min(100%, 1300px);
+}
+
+.lic-status-dot::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+@media (max-width: 760px) {
+  .lic-mov-list-page .lic-table {
+    min-width: 920px;
+  }
+}
 </style>
+{% endblock %}
 
-<div class="page-container">
+{% block content %}
+<div class="lic-page lic-mov-list-page">
+  <div class="lic-shell">
+    <section class="lic-hero">
+      <div class="lic-hero-main">
+        <div class="lic-hero-icon">
+          <i class="fa fa-clock-rotate-left"></i>
+        </div>
+        <div class="lic-hero-title">
+          <h1>Histórico de Movimentações</h1>
+          <p>Consulta operacional das movimentações de licenças por usuário, centro de custo e período.</p>
+          <span class="lic-badge lic-badge-brand">{{ total }} registro(s)</span>
+        </div>
+      </div>
 
-  <div class="page-header">
-    <div class="page-title">
-      <i class="fa fa-history"></i>
-      Histórico de Movimentações
-      <span style="font-size:0.875rem; font-weight:500; color:var(--text-muted); background:var(--bg-body); padding:2px 8px; border-radius:99px;">{{ total }} registros</span>
-    </div>
-    
-    <div class="header-actions">
-      <a href="{% url 'licenca_list' %}" class="btn btn-white"><i class="fa fa-arrow-left"></i> Voltar</a>
-      <a href="{% url 'mov_licenca_form' %}" class="btn btn-primary"><i class="fa fa-plus"></i> Nova Movimentação</a>
-    </div>
-  </div>
+      <div class="lic-actions">
+        <a href="{% url 'licenca_list' %}" class="lic-btn lic-btn-secondary">
+          <i class="fa fa-arrow-left"></i>
+          Voltar
+        </a>
+        <a href="{% url 'mov_licenca_form' %}" class="lic-btn lic-btn-primary">
+          <i class="fa fa-plus"></i>
+          Nova Movimentação
+        </a>
+      </div>
+    </section>
 
-  <div class="filter-card">
-    <form method="get" id="filterForm" autocomplete="off">
-      <div class="filter-grid">
-        
-        <div class="input-group">
-          <label>Buscar (Licença ou Usuário)</label>
-          <input type="text" name="q" id="q" class="form-control" placeholder="Digite para pesquisar..." value="{{ q }}">
+    <form method="get" id="filterForm" class="lic-filter-card" autocomplete="off">
+      <div class="lic-filter-grid" style="grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr) auto;">
+        <div class="lic-field">
+          <label class="lic-label" for="q">Buscar</label>
+          <input type="text" name="q" id="q" placeholder="Licença ou usuário..." value="{{ q }}">
         </div>
 
-        <div class="input-group">
-          <label>Tipo de Movimentação</label>
-          <select name="tipo" id="tipo" class="form-control select2-filter">
+        <div class="lic-field">
+          <label class="lic-label" for="tipo">Tipo de Movimentação</label>
+          <select name="tipo" id="tipo" class="select2-filter">
             <option value="">Todos</option>
             {% for code, label in tipos %}
               <option value="{{ code }}" {% if tipo == code %}selected{% endif %}>{{ label }}</option>
@@ -179,128 +736,151 @@ tbody tr:hover { background-color: #f8fafc; }
           </select>
         </div>
 
-        <div class="input-group" style="flex-direction:row; gap:8px;">
-          <button type="submit" class="btn btn-primary" title="Filtrar">
+        <div class="lic-action-row">
+          <button type="submit" class="lic-btn lic-btn-primary" title="Filtrar">
             <i class="fa fa-filter"></i>
+            Filtrar
           </button>
-          <button type="button" id="btnClear" class="btn btn-white" title="Limpar Filtros">
+          <button type="button" id="btnClear" class="lic-btn lic-btn-secondary" title="Limpar Filtros">
             <i class="fa fa-eraser"></i>
+            Limpar
           </button>
         </div>
-
       </div>
     </form>
-  </div>
 
-  <div class="table-card">
-    <div class="table-responsive">
-      <table>
-        <thead>
-          <tr>
-            <th>Licença</th>
-            <th>Tipo</th>
-            <th>Usuário / Destinatário</th>
-            <th>Centro de Custo (Destino)</th>
-            <th>Observação</th>
-            <th>Data/Hora</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for mov in movs %}
-          <tr>
-            <td style="font-weight:600;">{{ mov.licenca.nome }}</td>
-            <td>
-              <span class="status-badge st-{{ mov.tipo|lower }}">
-                {{ mov.get_tipo_display }}
-              </span>
-            </td>
-            <td>{{ mov.usuario.nome|default:"-" }}</td>
-            <td>
-              {% if mov.centro_custo_destino %}
-                <span style="color:var(--text-muted); font-size:0.8rem;">{{ mov.centro_custo_destino.numero }}</span><br>
-                {{ mov.centro_custo_destino.departamento }}
-              {% else %}
-                -
-              {% endif %}
-            </td>
-            <td style="color:var(--text-muted); font-style:italic;">{{ mov.observacao|default:"-"|truncatechars:50 }}</td>
-            <td>{{ mov.created_at|date:"d/m/Y H:i" }}</td>
-          </tr>
-          {% empty %}
-          <tr>
-            <td colspan="6" style="padding:40px; text-align:center; color:var(--text-muted);">
-              <i class="fa fa-exchange-alt" style="font-size:2rem; margin-bottom:10px; opacity:0.3;"></i><br>
-              Nenhuma movimentação encontrada.
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    {% if paginator.num_pages > 1 %}
-    <div class="list-footer">
-      <div style="font-size:0.875rem; color:var(--text-muted);">
-        Página <strong>{{ page_obj.number }}</strong> de <strong>{{ paginator.num_pages }}</strong>
+    <section class="lic-card">
+      <div class="lic-card-header">
+        <div class="lic-card-title">
+          <i class="fa fa-history"></i>
+          Registros encontrados
+        </div>
       </div>
-      <div style="display:flex; gap:4px;">
-        {% with base='?'|add:qs_keep %}
-          {% if page_obj.has_previous %}
-            <a href="{{ base }}&page={{ page_obj.previous_page_number }}" class="page-link"><i class="fa fa-chevron-left"></i></a>
-          {% else %}
-            <span class="page-link disabled"><i class="fa fa-chevron-left"></i></span>
-          {% endif %}
 
-          {% for num in paginator.page_range %}
-            {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
-              {% if num == page_obj.number %}
-                <span class="page-link active">{{ num }}</span>
-              {% else %}
-                <a href="{{ base }}&page={{ num }}" class="page-link">{{ num }}</a>
-              {% endif %}
-            {% endif %}
-          {% endfor %}
-
-          {% if page_obj.has_next %}
-            <a href="{{ base }}&page={{ page_obj.next_page_number }}" class="page-link"><i class="fa fa-chevron-right"></i></a>
-          {% else %}
-            <span class="page-link disabled"><i class="fa fa-chevron-right"></i></span>
-          {% endif %}
-        {% endwith %}
+      <div class="lic-table-wrap">
+        <table class="lic-table">
+          <thead>
+            <tr>
+              <th>Licença</th>
+              <th>Tipo</th>
+              <th>Usuário / Destinatário</th>
+              <th>Centro de Custo</th>
+              <th>Observação</th>
+              <th>Data/Hora</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for mov in movs %}
+              <tr>
+                <td>
+                  <strong>{{ mov.licenca.nome }}</strong>
+                </td>
+                <td>
+                  {% if mov.tipo == 'atribuicao' %}
+                    <span class="lic-badge lic-badge-success lic-status-dot">{{ mov.get_tipo_display }}</span>
+                  {% elif mov.tipo == 'remocao' or mov.tipo == 'devolucao' %}
+                    <span class="lic-badge lic-badge-danger lic-status-dot">{{ mov.get_tipo_display }}</span>
+                  {% else %}
+                    <span class="lic-badge lic-status-dot">{{ mov.get_tipo_display }}</span>
+                  {% endif %}
+                </td>
+                <td>{{ mov.usuario.nome|default:"-" }}</td>
+                <td>
+                  {% if mov.centro_custo_destino %}
+                    <strong>{{ mov.centro_custo_destino.departamento }}</strong>
+                    <span class="lic-sub">CC: {{ mov.centro_custo_destino.numero }}</span>
+                  {% else %}
+                    <span class="lic-muted">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="lic-muted">{{ mov.observacao|default:"-"|truncatechars:70 }}</span>
+                </td>
+                <td class="lic-nowrap">{{ mov.created_at|date:"d/m/Y H:i" }}</td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="6">
+                  <div class="lic-empty">
+                    <i class="fa fa-exchange-alt"></i>
+                    Nenhuma movimentação encontrada.
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-    </div>
-    {% endif %}
-  </div>
 
+      {% if paginator.num_pages > 1 %}
+        <div class="lic-pagination">
+          <div class="lic-muted">
+            Página <strong>{{ page_obj.number }}</strong> de <strong>{{ paginator.num_pages }}</strong>
+          </div>
+
+          <div class="lic-page-links">
+            {% with base='?'|add:qs_keep %}
+              {% if page_obj.has_previous %}
+                <a href="{{ base }}&page={{ page_obj.previous_page_number }}" class="lic-page-link"><i class="fa fa-chevron-left"></i></a>
+              {% else %}
+                <span class="lic-page-link disabled"><i class="fa fa-chevron-left"></i></span>
+              {% endif %}
+
+              {% for num in paginator.page_range %}
+                {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+                  {% if num == page_obj.number %}
+                    <span class="lic-page-link active">{{ num }}</span>
+                  {% else %}
+                    <a href="{{ base }}&page={{ num }}" class="lic-page-link">{{ num }}</a>
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+
+              {% if page_obj.has_next %}
+                <a href="{{ base }}&page={{ page_obj.next_page_number }}" class="lic-page-link"><i class="fa fa-chevron-right"></i></a>
+              {% else %}
+                <span class="lic-page-link disabled"><i class="fa fa-chevron-right"></i></span>
+              {% endif %}
+            {% endwith %}
+          </div>
+        </div>
+      {% endif %}
+    </section>
+  </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <script>
 $(document).ready(function() {
-    // Inicializa Select2
-    $('.select2-filter').select2({
-        width: '100%',
-        minimumResultsForSearch: 10,
-        language: "pt-BR"
-    });
+  $('.select2-filter').select2({
+    width: '100%',
+    minimumResultsForSearch: 10,
+    language: {
+      noResults: function () { return 'Nenhum resultado encontrado'; },
+      searching: function () { return 'Buscando...'; }
+    }
+  });
 
-    // Auto-Submit no Select
-    $('#tipo').on('change', function() {
-        $('#filterForm').submit();
-    });
+  $('#tipo').on('change', function() {
+    $('#filterForm').submit();
+  });
 
-    // Botão Limpar
-    $('#btnClear').on('click', function() {
-        window.location.href = window.location.pathname;
-    });
+  $('#btnClear').on('click', function() {
+    window.location.href = window.location.pathname;
+  });
 
-    // Debounce na busca de texto
-    let timeout = null;
-    $('#q').on('input', function() {
-        clearTimeout(timeout);
-        timeout = setTimeout(function() {
-            $('#filterForm').submit();
-        }, 600);
-    });
+  let timeout = null;
+  $('#q').on('input', function() {
+    clearTimeout(timeout);
+    timeout = setTimeout(function() {
+      $('#filterForm').submit();
+    }, 600);
+  });
 });
 </script>
 {% endblock %}

@@ -1,459 +1,489 @@
 {% extends 'base.html' %}
-{% block title %}Checklists de Manutenção | Gestão Enterprise{% endblock %}
+
+{% block title %}Checklists de Preventiva{% endblock %}
+{% block page_title %}Checklists de Preventiva{% endblock %}
+{% block page_subtitle %}Modelos de verificação técnica por subtipo de equipamento{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'checklist_create' %}" class="btn btn-sm btn-primary">
+    <i class="fa fa-plus" aria-hidden="true"></i> Novo Checklist
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.cl-list-page) {
+  --cl-primary:       var(--brand,               #0071e3);
+  --cl-primary-soft:  var(--brand-soft,           rgba(0,113,227,.10));
+  --cl-surface:       var(--bg-elevated,          #ffffff);
+  --cl-muted-surface: var(--bg-fill-tertiary,     rgba(120,120,128,.08));
+  --cl-hover:         var(--bg-hover,             rgba(0,0,0,.04));
+  --cl-text:          var(--text-primary,         #1d1d1f);
+  --cl-muted:         var(--text-tertiary,        #6e6e73);
+  --cl-soft:          var(--text-quaternary,      #86868b);
+  --cl-border:        var(--separator-hairline,   rgba(0,0,0,.06));
+  --cl-border2:       var(--separator-non-opaque, rgba(0,0,0,.10));
+  --cl-border-strong: var(--separator-strong,     rgba(0,0,0,.18));
+  --cl-danger:        var(--system-red,           #ff3b30);
+  --cl-danger-soft:   var(--system-red-soft,      rgba(255,59,48,.10));
+  --cl-radius-sm:     var(--radius-sm,            10px);
+  --cl-radius-md:     var(--radius-md,            14px);
+  --cl-radius-lg:     var(--radius-lg,            18px);
+  --cl-radius-xl:     var(--radius-xl,            22px);
+  --cl-radius-pill:   var(--radius-pill,          980px);
+  --cl-shadow-sm:     var(--shadow-sm,            0 1px 2px rgba(0,0,0,.05));
+  --cl-shadow-md:     var(--shadow-md,            0 4px 12px rgba(0,0,0,.06));
+  --cl-transition:    var(--transition-fast,      160ms ease);
+}
+
+.cl-list-page,
+.cl-list-page * { box-sizing: border-box; min-width: 0; }
+
+.cl-list-page {
+  width: 100%;
+  max-width: 76rem;
+  margin: 0 auto;
+  display: grid;
+  gap: 1.25rem;
+  color: var(--cl-text);
+}
+
+/* ── Toolbar ── */
+.cl-toolbar {
+  display: flex;
+  gap: .75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: .875rem 1.125rem;
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-xl);
+  background: var(--cl-surface);
+  box-shadow: var(--cl-shadow-sm);
+}
+
+.cl-search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+}
+
+.cl-search-wrap i {
+  position: absolute;
+  left: .85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--cl-soft);
+  pointer-events: none;
+}
+
+.cl-search-input {
+  width: 100%;
+  height: 2.5rem;
+  padding: 0 .85rem 0 2.35rem;
+  border: 1px solid var(--cl-border2);
+  border-radius: var(--cl-radius-pill);
+  background: var(--cl-muted-surface);
+  color: var(--cl-text);
+  font-size: .9rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--cl-transition), box-shadow var(--cl-transition), background var(--cl-transition);
+}
+
+.cl-search-input:focus {
+  border-color: var(--cl-primary);
+  background: var(--cl-surface);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30));
+}
+
+.cl-btn-secondary {
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  padding: .55rem .95rem;
+  border-radius: var(--cl-radius-pill);
+  border: 1px solid var(--cl-border2);
+  background: transparent;
+  color: var(--cl-text);
+  font-size: .88rem;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--cl-transition), border-color var(--cl-transition);
+}
+
+.cl-btn-secondary:hover { background: var(--cl-hover); border-color: var(--cl-border-strong); }
+
+/* ── Table card ── */
+.cl-table-card {
+  overflow: hidden;
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-xl);
+  background: var(--cl-surface);
+  box-shadow: var(--cl-shadow-sm);
+}
+
+.cl-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cl-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+}
+
+.cl-table th,
+.cl-table td {
+  padding: .85rem 1.125rem;
+  border-bottom: 1px solid var(--cl-border);
+  vertical-align: middle;
+  text-align: left;
+}
+
+.cl-table th {
+  background: color-mix(in srgb, var(--cl-surface) 90%, var(--cl-muted-surface));
+  color: var(--cl-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  white-space: nowrap;
+}
+
+.cl-table td { color: var(--cl-text); font-size: .88rem; }
+.cl-table tbody tr:hover td { background: var(--cl-hover); }
+.cl-table tbody tr:last-child td { border-bottom: none; }
+
+/* Status badge */
+.cl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .3rem .65rem;
+  border-radius: var(--cl-radius-pill);
+  font-size: .75rem;
+  font-weight: 700;
+}
+
+.cl-badge-active   { background: rgba(16,185,129,.14); color: #047857; }
+.cl-badge-inactive { background: var(--cl-muted-surface); color: var(--cl-muted); }
+
+/* Count pill */
+.cl-count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  padding: .2rem .55rem;
+  border-radius: var(--cl-radius-sm);
+  background: var(--cl-muted-surface);
+  color: var(--cl-muted);
+  font-size: .8rem;
+  font-weight: 700;
+}
+
+/* Subtipo tag */
+.cl-subtipo {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  color: var(--cl-muted);
+  font-size: .84rem;
+}
+
+/* Action icons */
+.cl-action-group { display: inline-flex; gap: .4rem; justify-content: flex-end; }
+
+.cl-icon-btn {
+  width: 2.1rem;
+  height: 2.1rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--cl-radius-sm);
+  color: var(--cl-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color var(--cl-transition), background var(--cl-transition), border-color var(--cl-transition);
+}
+
+.cl-icon-btn:hover { color: var(--cl-primary); background: var(--cl-primary-soft); border-color: color-mix(in srgb, var(--cl-primary) 22%, transparent); }
+.cl-icon-btn.danger:hover { color: var(--cl-danger); background: var(--cl-danger-soft); border-color: color-mix(in srgb, var(--cl-danger) 22%, transparent); }
+
+/* Empty */
+.cl-empty { padding: 3rem 1rem; text-align: center; color: var(--cl-muted); }
+
+/* Pagination */
+.cl-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .875rem 1.125rem;
+  border-top: 1px solid var(--cl-border);
+  background: color-mix(in srgb, var(--cl-surface) 92%, var(--cl-muted-surface));
+}
+
+.cl-page-info { font-size: .86rem; color: var(--cl-muted); }
+.cl-page-btns { display: flex; gap: .5rem; }
+
+.cl-page-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--cl-radius-sm);
+  border: 1px solid var(--cl-border2);
+  background: transparent;
+  color: var(--cl-text);
+  text-decoration: none;
+  transition: background var(--cl-transition);
+}
+
+.cl-page-btn:hover { background: var(--cl-hover); }
+
+/* ── Delete modal ── */
+.cl-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(.5rem);
+}
+
+.cl-modal-overlay.active { display: flex; }
+
+.cl-modal-card {
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-border2);
+  border-radius: var(--cl-radius-xl);
+  padding: 1.75rem;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: var(--cl-shadow-md);
+  text-align: center;
+}
+
+.cl-modal-icon {
+  width: 3.25rem;
+  height: 3.25rem;
+  display: grid;
+  place-items: center;
+  border-radius: 1rem;
+  background: var(--cl-danger-soft);
+  color: var(--cl-danger);
+  font-size: 1.25rem;
+  margin: 0 auto .875rem;
+  border: 1px solid color-mix(in srgb, var(--cl-danger) 20%, transparent);
+}
+
+.cl-modal-title { margin: 0 0 .35rem; font-size: 1rem; font-weight: 700; color: var(--cl-text); }
+.cl-modal-body { color: var(--cl-muted); font-size: .88rem; margin-bottom: 1.25rem; line-height: 1.5; }
+
+.cl-modal-actions { display: flex; gap: .65rem; }
+
+.cl-btn-cancel, .cl-btn-danger {
+  flex: 1;
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  padding: .6rem 1rem;
+  border-radius: var(--cl-radius-pill);
+  font-size: .9rem;
+  font-weight: 650;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: opacity var(--cl-transition), transform var(--cl-transition);
+}
+
+.cl-btn-cancel:hover, .cl-btn-danger:hover { transform: translateY(-1px); }
+.cl-btn-cancel { background: transparent; color: var(--cl-text); border-color: var(--cl-border2); }
+.cl-btn-cancel:hover { background: var(--cl-hover); }
+.cl-btn-danger { background: var(--cl-danger); color: #fff; }
+.cl-btn-danger:hover { opacity: .88; }
+
+@media (max-width: 36rem) {
+  .cl-toolbar { flex-direction: column; align-items: stretch; }
+  .cl-search-wrap { min-width: unset; }
+  .cl-pagination { flex-direction: column; gap: .75rem; }
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<div class="cl-list-page">
 
-<style>
-    /* --- Enterprise Design System --- */
-    :root {
-        --bg-body: #f8fafc;
-        --bg-card: #ffffff;
-        --text-main: #0f172a;
-        --text-secondary: #64748b;
-        --border: #e2e8f0;
-        --primary: #2563eb;
-        --primary-hover: #1d4ed8;
-        --danger: #ef4444;
-        --success: #10b981;
-        --radius: 8px;
-        --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    }
+  <div class="cl-toolbar">
+    <form id="searchForm" method="get" class="cl-search-wrap" autocomplete="off">
+      <i class="fa fa-search" aria-hidden="true"></i>
+      <input id="q-input" type="text" name="q" class="cl-search-input"
+             placeholder="Buscar por nome ou subtipo..." value="{{ q|default:'' }}">
+    </form>
+    {% if q %}
+      <a href="{% url 'checklist_list' %}" class="cl-btn-secondary">
+        <i class="fa fa-xmark" aria-hidden="true"></i> Limpar
+      </a>
+    {% endif %}
+  </div>
 
-    body {
-        background-color: var(--bg-body);
-        font-family: 'Inter', sans-serif;
-        color: var(--text-main);
-        font-size: 0.9rem;
-    }
-
-    .page-container {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 24px;
-    }
-
-    /* Card Principal */
-    .content-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        box-shadow: var(--shadow);
-        overflow: hidden; /* Importante para bordas arredondadas */
-    }
-
-    /* Header da Página */
-    .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 24px;
-        flex-wrap: wrap;
-        gap: 16px;
-    }
-
-    .page-title h1 {
-        font-size: 1.5rem;
-        font-weight: 700;
-        margin: 0;
-        color: var(--text-main);
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-
-    .counter-badge {
-        background: #eff6ff;
-        color: var(--primary);
-        font-size: 0.85rem;
-        padding: 4px 12px;
-        border-radius: 99px;
-        font-weight: 600;
-        border: 1px solid #dbeafe;
-    }
-
-    /* Barra de Ferramentas (Busca + Ações) */
-    .toolbar {
-        padding: 16px 24px;
-        border-bottom: 1px solid var(--border);
-        display: flex;
-        gap: 16px;
-        background: #fff;
-        flex-wrap: wrap;
-        align-items: center;
-    }
-
-    .search-box {
-        position: relative;
-        flex: 1;
-        min-width: 250px;
-    }
-
-    .search-box i {
-        position: absolute;
-        left: 12px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: var(--text-secondary);
-    }
-
-    .search-input {
-        width: 100%;
-        height: 40px;
-        padding: 0 12px 0 38px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        font-size: 0.95rem;
-        transition: all 0.2s;
-        box-sizing: border-box;
-    }
-
-    .search-input:focus {
-        outline: none;
-        border-color: var(--primary);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-    }
-
-    /* Botões */
-    .btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        height: 40px;
-        padding: 0 20px;
-        border-radius: var(--radius);
-        font-weight: 600;
-        font-size: 0.9rem;
-        text-decoration: none;
-        cursor: pointer;
-        border: 1px solid transparent;
-        transition: all 0.2s;
-    }
-
-    .btn-primary { background: var(--primary); color: #fff; }
-    .btn-primary:hover { background: var(--primary-hover); }
-    
-    .btn-light { background: #fff; border-color: var(--border); color: var(--text-secondary); }
-    .btn-light:hover { background: #f8fafc; color: var(--text-main); }
-
-    .btn-icon {
-        width: 32px; height: 32px;
-        display: inline-flex; align-items: center; justify-content: center;
-        border-radius: 6px;
-        color: var(--text-secondary);
-        transition: all 0.2s;
-        border: 1px solid transparent;
-        background: transparent;
-    }
-    .btn-icon:hover { background: #f1f5f9; color: var(--primary); }
-    .btn-icon.delete:hover { background: #fef2f2; color: var(--danger); }
-
-    /* --- Tabela Responsiva --- */
-    .table-container { width: 100%; }
-    
-    .table {
-        width: 100%;
-        border-collapse: collapse;
-        text-align: left;
-    }
-
-    .table th {
-        background: #f8fafc;
-        padding: 12px 24px;
-        font-weight: 600;
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        color: var(--text-secondary);
-        border-bottom: 1px solid var(--border);
-        letter-spacing: 0.02em;
-    }
-
-    .table td {
-        padding: 16px 24px;
-        border-bottom: 1px solid var(--border);
-        color: var(--text-main);
-        font-size: 0.95rem;
-        vertical-align: middle;
-    }
-
-    .table tbody tr:hover { background-color: #fcfcfc; }
-    .table tbody tr:last-child td { border-bottom: none; }
-
-    /* Badges na tabela */
-    .status-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 4px 10px;
-        border-radius: 99px;
-        font-size: 0.75rem;
-        font-weight: 700;
-    }
-    .status-badge.active { background: #dcfce7; color: #166534; }
-    .status-badge.inactive { background: #f1f5f9; color: #64748b; }
-
-    /* Paginação */
-    .pagination {
-        padding: 16px 24px;
-        border-top: 1px solid var(--border);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: #fff;
-    }
-
-    .page-info { font-size: 0.9rem; color: var(--text-secondary); }
-
-    /* Modal */
-    .modal-overlay {
-        position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-        display: none; align-items: center; justify-content: center; z-index: 1000;
-        backdrop-filter: blur(2px);
-    }
-    .modal-card {
-        background: #fff; padding: 24px; border-radius: 12px;
-        width: 90%; max-width: 400px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
-        text-align: center;
-    }
-    .modal-icon {
-        width: 48px; height: 48px; background: #fee2e2; color: var(--danger);
-        border-radius: 50%; display: flex; align-items: center; justify-content: center;
-        font-size: 1.5rem; margin: 0 auto 16px;
-    }
-
-    /* --- MOBILE RESPONSIVENESS (Transforma Tabela em Cards) --- */
-    @media (max-width: 768px) {
-        .page-header { flex-direction: column; align-items: flex-start; }
-        .toolbar { flex-direction: column; align-items: stretch; padding: 16px; }
-        .btn { width: 100%; justify-content: center; }
-        
-        /* Esconde o cabeçalho da tabela */
-        .table thead { display: none; }
-        
-        /* Transforma linhas em blocos */
-        .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
-        
-        .table tr {
-            margin-bottom: 12px;
-            border-top: 1px solid var(--border);
-            border-bottom: 1px solid var(--border);
-            background: #fff;
-            padding: 16px;
-        }
-        /* Remove borda dupla entre cards se estiverem colados, ou adiciona margem */
-        .table-container { background: var(--bg-body); border: none; box-shadow: none; }
-        .content-card { background: transparent; border: none; box-shadow: none; }
-        
-        .table tr {
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            border-radius: 8px;
-            border: 1px solid var(--border);
-        }
-
-        .table td {
-            padding: 8px 0;
-            border-bottom: 1px solid #f1f5f9;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            text-align: right;
-        }
-
-        .table td:last-child { border-bottom: none; justify-content: flex-end; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
-
-        /* Adiciona labels via CSS para contexto no mobile */
-        .table td::before {
-            content: attr(data-label);
-            font-weight: 600;
-            color: var(--text-secondary);
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            text-align: left;
-            margin-right: auto; /* Empurra o valor para a direita */
-        }
-    }
-</style>
-
-<div class="page-container">
-    
-    <div class="page-header">
-        <div class="page-title">
-            <h1>
-                <i class="fa fa-list-check" style="color:var(--primary)"></i> 
-                Checklists de Preventiva
-                <span class="counter-badge">{{ total|default:0 }}</span>
-            </h1>
-        </div>
-        <a href="{% url 'checklist_create' %}" class="btn btn-primary">
-            <i class="fa fa-plus"></i> Novo Checklist
-        </a>
+  <div class="cl-table-card">
+    <div class="cl-table-wrap">
+      <table class="cl-table">
+        <thead>
+          <tr>
+            <th style="width:35%">Checklist</th>
+            <th style="width:22%">Subtipo / Categoria</th>
+            <th style="width:14%">Intervalo</th>
+            <th style="width:10%">Perguntas</th>
+            <th style="width:10%">Status</th>
+            <th style="width:9%;text-align:right">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in page_obj %}
+            <tr>
+              <td>
+                <strong>{{ c.nome }}</strong>
+              </td>
+              <td>
+                {% if c.subtipo %}
+                  <span class="cl-subtipo">
+                    <i class="fa fa-tag" aria-hidden="true" style="font-size:.75rem;"></i>
+                    {{ c.subtipo.nome }}
+                  </span>
+                {% else %}
+                  <span style="color:var(--separator-strong,rgba(0,0,0,.18))">—</span>
+                {% endif %}
+              </td>
+              <td>{{ c.intervalo_dias|default:"—" }}{% if c.intervalo_dias %} dias{% endif %}</td>
+              <td><span class="cl-count-pill">{{ c.perguntas_count }}</span></td>
+              <td>
+                {% if c.ativo %}
+                  <span class="cl-badge cl-badge-active"><i class="fa fa-check" aria-hidden="true"></i> Ativo</span>
+                {% else %}
+                  <span class="cl-badge cl-badge-inactive">Inativo</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="cl-action-group">
+                  <a href="{% url 'checklist_form' c.pk %}" class="cl-icon-btn" title="Editar" aria-label="Editar {{ c.nome }}">
+                    <i class="fa fa-pen" aria-hidden="true"></i>
+                  </a>
+                  <button type="button" class="cl-icon-btn danger" title="Excluir"
+                          aria-label="Excluir {{ c.nome }}"
+                          onclick="clOpenDeleteModal('{{ c.pk }}', '{{ c.nome|escapejs }}')">
+                    <i class="fa fa-trash" aria-hidden="true"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="6">
+                <div class="cl-empty">
+                  <i class="fa fa-folder-open" aria-hidden="true" style="font-size:2rem;opacity:.3;display:block;margin-bottom:.5rem;"></i>
+                  Nenhum checklist encontrado.
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
 
-    <div class="content-card">
-        
-        <div class="toolbar">
-            <form id="searchForm" method="get" class="search-box" autocomplete="off">
-                <i class="fa fa-search"></i>
-                <input type="text" name="q" id="q" 
-                       class="search-input" 
-                       placeholder="Buscar por nome ou subtipo..." 
-                       value="{{ q|default:'' }}">
-            </form>
-            {% if q %}
-            <a href="{% url 'checklist_list' %}" class="btn btn-light" style="width: auto;">
-                <i class="fa fa-times"></i> Limpar
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="cl-pagination">
+        <div class="cl-page-info">
+          Página <strong>{{ page_obj.number }}</strong> de {{ page_obj.paginator.num_pages }}
+        </div>
+        <div class="cl-page-btns">
+          {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}" class="cl-page-btn" aria-label="Página anterior">
+              <i class="fa fa-chevron-left" aria-hidden="true"></i>
             </a>
-            {% endif %}
+          {% endif %}
+          {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}&q={{ q }}" class="cl-page-btn" aria-label="Próxima página">
+              <i class="fa fa-chevron-right" aria-hidden="true"></i>
+            </a>
+          {% endif %}
         </div>
+      </div>
+    {% endif %}
+  </div>
 
-        <div class="table-container">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th width="35%">Checklist</th>
-                        <th width="20%">Subtipo / Categoria</th>
-                        <th width="15%">Intervalo</th>
-                        <th width="10%">Perguntas</th>
-                        <th width="10%">Status</th>
-                        <th width="10%" style="text-align:right">Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for c in page_obj %}
-                    <tr>
-                        <td data-label="Checklist">
-                            <strong style="color:var(--text-main); font-size:1rem;">{{ c.nome }}</strong>
-                        </td>
-                        <td data-label="Subtipo">
-                            {% if c.subtipo %}
-                                <span style="display:inline-flex; align-items:center; gap:6px; color:var(--text-secondary);">
-                                    <i class="fa fa-tag" style="font-size:0.75rem;"></i> {{ c.subtipo.nome }}
-                                </span>
-                            {% else %}
-                                <span style="color:#cbd5e1;">-</span>
-                            {% endif %}
-                        </td>
-                        <td data-label="Intervalo">
-                            <span style="color:var(--text-main); font-weight:500;">
-                                {{ c.intervalo_dias|default:"-" }} dias
-                            </span>
-                        </td>
-                        <td data-label="Perguntas">
-                            <span style="background:#f1f5f9; padding:4px 8px; border-radius:6px; font-weight:600; font-size:0.85rem; color:var(--text-secondary);">
-                                {{ c.perguntas_count }}
-                            </span>
-                        </td>
-                        <td data-label="Status">
-                            {% if c.ativo %}
-                                <span class="status-badge active"><i class="fa fa-check" style="margin-right:4px;"></i> Ativo</span>
-                            {% else %}
-                                <span class="status-badge inactive">Inativo</span>
-                            {% endif %}
-                        </td>
-                        <td data-label="Ações">
-                            <div style="display:flex; gap:4px; justify-content:flex-end;">
-                                <a href="{% url 'checklist_form' c.pk %}" class="btn-icon" title="Editar">
-                                    <i class="fa fa-pen"></i>
-                                </a>
-                                <button type="button" class="btn-icon delete" title="Excluir"
-                                        onclick="openDeleteModal('{{ c.pk }}', '{{ c.nome|escapejs }}')">
-                                    <i class="fa fa-trash"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="6" style="text-align:center; padding: 40px; color:var(--text-secondary);">
-                            <i class="fa fa-folder-open" style="font-size:2rem; margin-bottom:10px; display:block; opacity:0.3;"></i>
-                            Nenhum checklist encontrado.
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
-        {% if page_obj.paginator.num_pages > 1 %}
-        <div class="pagination">
-            <div class="page-info">
-                Página <strong>{{ page_obj.number }}</strong> de {{ page_obj.paginator.num_pages }}
-            </div>
-            <div style="display:flex; gap:8px;">
-                {% if page_obj.has_previous %}
-                    <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}" class="btn btn-light" style="padding: 6px 12px;">
-                        <i class="fa fa-chevron-left"></i>
-                    </a>
-                {% endif %}
-                
-                {% if page_obj.has_next %}
-                    <a href="?page={{ page_obj.next_page_number }}&q={{ q }}" class="btn btn-light" style="padding: 6px 12px;">
-                        <i class="fa fa-chevron-right"></i>
-                    </a>
-                {% endif %}
-            </div>
-        </div>
-        {% endif %}
-    </div>
 </div>
 
-<div id="deleteModal" class="modal-overlay">
-    <div class="modal-card">
-        <div class="modal-icon"><i class="fa fa-trash-alt"></i></div>
-        <h3 style="margin-bottom:8px; color:var(--text-main);">Excluir Checklist?</h3>
-        <p style="color:var(--text-secondary); margin-bottom:24px; font-size:0.95rem;">
-            Você está prestes a remover <strong id="delName"></strong>. Esta ação não pode ser desfeita.
-        </p>
-        <form id="deleteForm" method="post">
-            {% csrf_token %}
-            <div style="display:flex; gap:10px;">
-                <button type="button" class="btn btn-light" style="flex:1" onclick="closeDeleteModal()">Cancelar</button>
-                <button type="submit" class="btn" style="flex:1; background:var(--danger); color:#fff; border:none;">Excluir</button>
-            </div>
-        </form>
+<div id="clDeleteModal" class="cl-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="clModalTitle">
+  <div class="cl-modal-card">
+    <div class="cl-modal-icon" aria-hidden="true">
+      <i class="fa fa-trash"></i>
     </div>
+    <h3 class="cl-modal-title" id="clModalTitle">Excluir Checklist?</h3>
+    <p class="cl-modal-body">
+      Você está prestes a remover <strong id="clDelName"></strong>. Esta ação não pode ser desfeita.
+    </p>
+    <form id="clDeleteForm" method="post">
+      {% csrf_token %}
+      <div class="cl-modal-actions">
+        <button type="button" class="cl-btn-cancel" onclick="clCloseDeleteModal()">Cancelar</button>
+        <button type="submit" class="cl-btn-danger">
+          <i class="fa fa-trash" aria-hidden="true"></i> Excluir
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
-    // Debounce na busca (Enterprise UX)
-    const searchInput = document.getElementById('q');
-    const searchForm = document.getElementById('searchForm');
-    let timeout = null;
+  const clSearchInput = document.getElementById('q-input');
+  const clSearchForm  = document.getElementById('searchForm');
+  let clSearchTimeout = null;
 
-    if(searchInput){
-        searchInput.addEventListener('input', function() {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => {
-                searchForm.submit();
-            }, 500); 
-        });
-        // Foca no input e coloca o cursor no final (UX)
-        const val = searchInput.value;
-        searchInput.focus();
-        searchInput.value = '';
-        searchInput.value = val;
-    }
+  if (clSearchInput) {
+    clSearchInput.addEventListener('input', function() {
+      clearTimeout(clSearchTimeout);
+      clSearchTimeout = setTimeout(() => clSearchForm.submit(), 500);
+    });
+    const val = clSearchInput.value;
+    clSearchInput.focus();
+    clSearchInput.value = '';
+    clSearchInput.value = val;
+  }
 
-    // Lógica do Modal
-    const modal = document.getElementById('deleteModal');
-    const delForm = document.getElementById('deleteForm');
-    const delName = document.getElementById('delName');
+  const clModal   = document.getElementById('clDeleteModal');
+  const clDelForm = document.getElementById('clDeleteForm');
+  const clDelName = document.getElementById('clDelName');
 
-    function openDeleteModal(id, name) {
-        delName.textContent = name;
-        // Ajuste a URL abaixo se a sua rota for diferente
-        delForm.action = `/preventiva/checklists/${id}/excluir/`; 
-        modal.style.display = 'flex';
-    }
+  function clOpenDeleteModal(id, name) {
+    clDelName.textContent = name;
+    clDelForm.action = `/preventiva/checklists/${id}/excluir/`;
+    clModal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
 
-    function closeDeleteModal() {
-        modal.style.display = 'none';
-    }
+  function clCloseDeleteModal() {
+    clModal.classList.remove('active');
+    document.body.style.overflow = '';
+  }
 
-    if(modal){
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) closeDeleteModal();
-        });
-    }
+  if (clModal) {
+    clModal.addEventListener('click', function(e) { if (e.target === clModal) clCloseDeleteModal(); });
+  }
+
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') clCloseDeleteModal(); });
 </script>
 {% endblock %}

@@ -1,524 +1,439 @@
 {% extends "base.html" %}
-{% block title %}Iniciar Manutenção{% endblock %}
 
-{% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+{% block title %}Nova Preventiva{% endblock %}
+{% block page_title %}Nova Preventiva{% endblock %}
+{% block page_subtitle %}Gerar programação e iniciar execução de checklist{% endblock %}
 
+{% block header_actions %}
+  <a href="javascript:history.back()" class="btn btn-sm">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i> Voltar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-:root {
-  --bg-app: #f0f2f5;
-  --bg-card: #ffffff;
-  --primary: #0078d4;
-  --primary-hover: #106ebe;
-  --text-main: #242424;
-  --text-sub: #616161;
-  --border: #e0e0e0;
-  --radius: 10px;
-  --shadow: 0 8px 24px rgba(0,0,0,0.08);
-  --danger: #a80000;
-  --danger-bg: #fde7e9;
+:where(.pv-start-page, .select2-container, .select2-dropdown) {
+  --pv-primary:       var(--brand,               #0071e3);
+  --pv-primary-hover: var(--brand-hover,          #0077ed);
+  --pv-primary-soft:  var(--brand-soft,           rgba(0,113,227,.10));
+  --pv-surface:       var(--bg-elevated,          #ffffff);
+  --pv-muted-surface: var(--bg-fill-tertiary,     rgba(120,120,128,.08));
+  --pv-hover:         var(--bg-hover,             rgba(0,0,0,.04));
+  --pv-text:          var(--text-primary,         #1d1d1f);
+  --pv-muted:         var(--text-tertiary,        #6e6e73);
+  --pv-soft:          var(--text-quaternary,      #86868b);
+  --pv-border:        var(--separator-hairline,   rgba(0,0,0,.06));
+  --pv-border2:       var(--separator-non-opaque, rgba(0,0,0,.10));
+  --pv-border-strong: var(--separator-strong,     rgba(0,0,0,.18));
+  --pv-danger:        var(--system-red,           #ff3b30);
+  --pv-danger-soft:   var(--system-red-soft,      rgba(255,59,48,.10));
+  --pv-radius-sm:     var(--radius-sm,            10px);
+  --pv-radius-md:     var(--radius-md,            14px);
+  --pv-radius-lg:     var(--radius-lg,            18px);
+  --pv-radius-xl:     var(--radius-xl,            22px);
+  --pv-radius-pill:   var(--radius-pill,          980px);
+  --pv-shadow-sm:     var(--shadow-sm,            0 1px 2px rgba(0,0,0,.05));
+  --pv-shadow-md:     var(--shadow-md,            0 4px 12px rgba(0,0,0,.06));
+  --pv-control-h:     2.75rem;
+  --pv-transition:    var(--transition-fast,      160ms ease);
 }
 
-* {
-  box-sizing: border-box;
-}
+.pv-start-page,
+.pv-start-page * { box-sizing: border-box; min-width: 0; }
 
-html {
-  -webkit-text-size-adjust: 100%;
-}
-
-body {
-  margin: 0;
-  background-color: var(--bg-app);
-  color: var(--text-main);
-  font-family: 'Segoe UI', system-ui, sans-serif;
-}
-
-img,
-video,
-iframe,
-svg,
-canvas {
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
-
-.app-container {
+.pv-start-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22rem;
+  gap: 1.25rem;
+  align-items: start;
   width: 100%;
-  max-width: 980px;
+  max-width: 76rem;
   margin: 0 auto;
-  padding: 32px 20px;
+  color: var(--pv-text);
 }
 
-.start-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 24px;
-}
-
-/* CARD PRINCIPAL */
-.start-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+/* ── Form card ── */
+.pv-form-card {
   overflow: hidden;
-  width: 100%;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-xl);
+  background: var(--pv-surface);
+  box-shadow: var(--pv-shadow-sm);
 }
 
-.card-header {
-  background: #faf9f8;
-  padding: 36px 28px 28px;
-  border-bottom: 1px solid var(--border);
-  text-align: center;
-}
-
-.icon-box {
-  width: 80px;
-  height: 80px;
-  background: #e1f0fa;
-  color: var(--primary);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 36px;
-  margin: 0 auto 18px;
-  box-shadow: 0 4px 12px rgba(0,120,212,0.15);
-  flex-shrink: 0;
-}
-
-.card-title {
-  margin: 0;
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: var(--text-main);
-  line-height: 1.25;
-  word-break: break-word;
-}
-
-.card-subtitle {
-  margin: 10px auto 0;
-  font-size: 1rem;
-  color: var(--text-sub);
-  line-height: 1.6;
-  max-width: 700px;
-}
-
-.card-body {
-  padding: 30px 28px;
-}
-
-/* FORM */
-.form-grid {
+.pv-form-hero {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-}
-
-.form-group {
-  margin-bottom: 0;
-  min-width: 0;
-}
-
-.form-group.full {
-  grid-column: 1 / -1;
-}
-
-.form-label {
-  display: flex;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .875rem;
   align-items: center;
-  gap: 8px;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  border-bottom: 1px solid var(--pv-border);
+  background: radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--pv-primary) 10%, transparent), transparent 14rem),
+              color-mix(in srgb, var(--pv-surface) 94%, var(--pv-muted-surface));
+}
+
+.pv-form-icon {
+  width: 3.25rem;
+  height: 3.25rem;
+  flex: 0 0 3.25rem;
+  display: grid;
+  place-items: center;
+  border-radius: 1rem;
+  background: var(--pv-primary-soft);
+  color: var(--pv-primary);
+  border: 1px solid color-mix(in srgb, var(--pv-primary) 20%, transparent);
+  font-size: 1.3rem;
+}
+
+.pv-form-title {
+  margin: 0;
+  color: var(--pv-text);
+  font-size: clamp(1.1rem, 3vw, 1.45rem);
   font-weight: 700;
-  font-size: 0.94rem;
-  color: var(--text-main);
-  margin-bottom: 8px;
-  line-height: 1.4;
+  line-height: 1.15;
 }
 
-.form-label i {
-  color: var(--text-sub);
-  flex-shrink: 0;
-}
-
-.form-hint {
-  font-size: 0.82rem;
-  color: var(--text-sub);
-  margin-top: 6px;
-  display: block;
+.pv-form-subtitle {
+  margin-top: .3rem;
+  color: var(--pv-muted);
+  font-size: .86rem;
   line-height: 1.45;
 }
 
-.field-error {
-  color: var(--danger);
-  font-size: 0.84rem;
-  margin-top: 6px;
-  line-height: 1.4;
+.pv-form-body {
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  display: grid;
+  gap: 1.25rem;
 }
 
-/* INPUT BASE */
-input,
-select,
-textarea,
-button {
-  font: inherit;
-}
-
-.select2-container {
-  width: 100% !important;
-}
-
-.select2-container--default .select2-selection--single {
-  height: 50px;
-  border: 1px solid #8a8886;
-  border-radius: 6px;
+.pv-alert-error {
   display: flex;
-  align-items: center;
-  background-color: #fff;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.select2-container--default .select2-selection--single .select2-selection__rendered {
-  padding-left: 14px;
-  padding-right: 38px;
-  color: var(--text-main);
-  font-size: 0.98rem;
-  line-height: 48px;
-}
-
-.select2-container--default .select2-selection--single .select2-selection__arrow {
-  height: 48px;
-  top: 0;
-  right: 8px;
-}
-
-.select2-container--default.select2-container--focus .select2-selection--single,
-.select2-container--default .select2-selection--single:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(0,120,212,0.12);
-}
-
-.select2-dropdown {
-  border: 1px solid #8a8886;
-}
-
-.select2-results__option {
-  font-size: 0.94rem;
-}
-
-/* ALERT */
-.alert-error {
-  background: var(--danger-bg);
-  color: var(--danger);
-  padding: 14px 16px;
-  border-radius: 8px;
-  font-size: 0.92rem;
-  margin-bottom: 22px;
-  border: 1px solid #fecaca;
-  display: flex;
+  gap: .7rem;
   align-items: flex-start;
-  gap: 10px;
+  padding: .9rem 1rem;
+  border-radius: var(--pv-radius-md);
+  border: 1px solid color-mix(in srgb, var(--pv-danger) 22%, transparent);
+  background: var(--pv-danger-soft);
+  color: var(--pv-danger);
+  font-size: .88rem;
+  font-weight: 600;
+}
+
+.pv-field { display: flex; flex-direction: column; gap: .42rem; }
+
+.pv-field label {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  color: var(--pv-muted);
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.pv-field label i { color: var(--pv-primary); }
+
+.pv-hint {
+  color: var(--pv-soft);
+  font-size: .78rem;
   line-height: 1.45;
 }
 
-.alert-error i {
-  margin-top: 2px;
-  flex-shrink: 0;
+.pv-error { color: var(--pv-danger); font-size: .8rem; font-weight: 650; }
+
+.pv-input-wrap { position: relative; }
+
+.pv-input-wrap .pv-ico {
+  position: absolute;
+  left: .85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--pv-soft);
+  pointer-events: none;
+  z-index: 2;
 }
 
-/* ACTIONS */
-.actions {
+.pv-start-page input,
+.pv-start-page select,
+.pv-start-page .pv-control {
+  width: 100%;
+  min-height: var(--pv-control-h);
+  padding: .68rem .85rem .68rem 2.45rem;
+  border: 1px solid var(--pv-border2);
+  border-radius: var(--pv-radius-sm);
+  background: var(--pv-surface);
+  color: var(--pv-text);
+  font-family: inherit;
+  font-size: .92rem;
+  outline: none;
+  transition: border-color var(--pv-transition), box-shadow var(--pv-transition);
+}
+
+.pv-start-page input:focus,
+.pv-start-page select:focus,
+.pv-start-page .pv-control:focus {
+  border-color: var(--pv-primary);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30));
+}
+
+.pv-form-actions {
   display: flex;
-  gap: 12px;
-  margin-top: 28px;
   justify-content: flex-end;
+  gap: .75rem;
   flex-wrap: wrap;
+  padding: 1rem clamp(1rem, 2.5vw, 1.5rem);
+  border-top: 1px solid var(--pv-border);
+  background: color-mix(in srgb, var(--pv-surface) 92%, var(--pv-muted-surface));
 }
 
-.btn {
-  min-height: 48px;
-  padding: 12px 22px;
-  border: none;
-  border-radius: 6px;
-  font-weight: 700;
-  font-size: 0.96rem;
-  cursor: pointer;
+.pv-btn-primary, .pv-btn-secondary {
+  min-height: 2.5rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: .5rem;
+  padding: .6rem 1.1rem;
+  border-radius: var(--pv-radius-pill);
+  border: 1px solid transparent;
+  font-size: .9rem;
+  font-weight: 650;
   text-decoration: none;
-  transition: 0.2s ease;
+  cursor: pointer;
   white-space: nowrap;
+  transition: transform var(--pv-transition), background var(--pv-transition), color var(--pv-transition);
 }
 
-.btn-primary {
-  background: var(--primary);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(0,120,212,0.2);
+.pv-btn-primary:hover, .pv-btn-secondary:hover { transform: translateY(-1px); }
+.pv-btn-primary { background: var(--pv-primary); color: #fff; }
+.pv-btn-primary:hover { background: var(--pv-primary-hover); color: #fff; }
+.pv-btn-secondary { background: transparent; color: var(--pv-text); border-color: var(--pv-border2); }
+.pv-btn-secondary:hover { background: var(--pv-hover); border-color: var(--pv-border-strong); color: var(--pv-text); }
+
+/* ── Sidebar ── */
+.pv-start-side {
+  position: sticky;
+  top: 1rem;
+  overflow: hidden;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-xl);
+  background: var(--pv-surface);
+  box-shadow: var(--pv-shadow-sm);
+  padding: 1.25rem;
 }
 
-.btn-primary:hover {
-  background: var(--primary-hover);
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  background: #fff;
-  border: 1px solid #8a8886;
-  color: var(--text-main);
-}
-
-.btn-secondary:hover {
-  background: #f3f2f1;
-}
-
-/* INFO PANEL OPCIONAL VISUAL */
-.info-panel {
-  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
-  border: 1px solid #dbe8f5;
-  border-radius: var(--radius);
-  padding: 20px;
-}
-
-.info-title {
-  margin: 0 0 10px;
-  font-size: 1rem;
+.pv-side-title {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  color: var(--pv-text);
+  font-size: .92rem;
   font-weight: 700;
-  color: var(--text-main);
+  margin-bottom: 1rem;
+  padding-bottom: .75rem;
+  border-bottom: 1px solid var(--pv-border);
 }
 
-.info-list {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text-sub);
-  line-height: 1.6;
-  font-size: 0.9rem;
+.pv-side-title i { color: var(--pv-primary); }
+
+.pv-steps { display: grid; gap: .85rem; list-style: none; margin: 0; padding: 0; }
+
+.pv-steps li {
+  display: grid;
+  grid-template-columns: 1.85rem minmax(0, 1fr);
+  gap: .7rem;
+  align-items: start;
+  color: var(--pv-muted);
+  font-size: .84rem;
+  line-height: 1.5;
 }
 
-/* NOTEBOOK */
-@media (min-width: 900px) {
-  .start-layout.with-side {
-    grid-template-columns: minmax(0, 1fr) 300px;
-    align-items: start;
-  }
-
-  .info-panel {
-    position: sticky;
-    top: 24px;
-  }
+.pv-step-num {
+  width: 1.85rem;
+  height: 1.85rem;
+  display: grid;
+  place-items: center;
+  border-radius: .65rem;
+  background: var(--pv-primary-soft);
+  color: var(--pv-primary);
+  font-size: .75rem;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
-/* TABLET */
-@media (max-width: 899px) {
-  .app-container {
-    max-width: 760px;
-    padding: 24px 18px;
-  }
+/* ── Select2 integration ── */
+.select2-container { width: 100% !important; }
 
-  .card-header {
-    padding: 30px 22px 24px;
-  }
-
-  .card-body {
-    padding: 24px 22px;
-  }
-
-  .card-title {
-    font-size: 1.55rem;
-  }
-
-  .card-subtitle {
-    font-size: 0.95rem;
-  }
-
-  .form-grid {
-    grid-template-columns: 1fr;
-    gap: 18px;
-  }
+.select2-container .select2-selection--single {
+  min-height: var(--pv-control-h) !important;
+  border: 1px solid var(--pv-border2) !important;
+  border-radius: var(--pv-radius-sm) !important;
+  background: var(--pv-surface) !important;
+  display: flex !important;
+  align-items: center !important;
 }
 
-/* MOBILE */
-@media (max-width: 640px) {
-  .app-container {
-    padding: 14px 12px 20px;
-  }
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  width: 100%;
+  padding-left: 2.45rem !important;
+  padding-right: 2rem !important;
+  color: var(--pv-text) !important;
+  font-size: .92rem;
+  line-height: 2.65rem !important;
+}
 
-  .start-card {
-    border-radius: 8px;
-  }
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 2.65rem !important;
+  right: .35rem !important;
+}
 
-  .card-header {
-    padding: 24px 16px 20px;
-  }
+.select2-container--open .select2-selection--single {
+  border-color: var(--pv-primary) !important;
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30)) !important;
+}
 
-  .icon-box {
-    width: 62px;
-    height: 62px;
-    font-size: 26px;
-    margin-bottom: 14px;
-  }
+.select2-dropdown {
+  z-index: 9999 !important;
+  overflow: hidden !important;
+  border: 1px solid var(--pv-border2) !important;
+  border-radius: var(--pv-radius-md) !important;
+  background: var(--pv-surface) !important;
+  box-shadow: var(--pv-shadow-md);
+}
 
-  .card-title {
-    font-size: 1.2rem;
-  }
+.select2-results__option { color: var(--pv-text) !important; }
+.select2-results__option--highlighted { background: var(--pv-primary) !important; color: #fff !important; }
 
-  .card-subtitle {
-    font-size: 0.9rem;
-    line-height: 1.5;
-  }
+@media (max-width: 62rem) {
+  .pv-start-page { grid-template-columns: 1fr; }
+  .pv-start-side { position: static; }
+}
 
-  .card-body {
-    padding: 18px 16px;
-  }
-
-  .form-label {
-    font-size: 0.9rem;
-    align-items: flex-start;
-  }
-
-  .form-hint,
-  .field-error {
-    font-size: 0.8rem;
-  }
-
-  .select2-container--default .select2-selection--single {
-    height: 46px;
-  }
-
-  .select2-container--default .select2-selection--single .select2-selection__rendered {
-    font-size: 0.92rem;
-    line-height: 44px;
-    padding-left: 12px;
-    padding-right: 34px;
-  }
-
-  .select2-container--default .select2-selection--single .select2-selection__arrow {
-    height: 44px;
-    right: 6px;
-  }
-
-  .actions {
-    flex-direction: column-reverse;
-    align-items: stretch;
-    gap: 10px;
-  }
-
-  .actions .btn,
-  .actions button {
-    width: 100%;
-  }
-
-  .btn {
-    min-height: 46px;
-    font-size: 0.92rem;
-    padding: 11px 16px;
-  }
-
-  .alert-error {
-    padding: 12px 14px;
-    font-size: 0.88rem;
-  }
-
-  .info-panel {
-    padding: 16px;
-  }
-
-  .info-title {
-    font-size: 0.95rem;
-  }
-
-  .info-list {
-    font-size: 0.86rem;
-  }
+@media (max-width: 36rem) {
+  .pv-form-actions { flex-direction: column-reverse; }
+  .pv-btn-primary, .pv-btn-secondary { width: 100%; }
 }
 </style>
+{% endblock %}
 
-<div class="app-container">
-  <div class="start-layout">
-    <form method="post" class="start-card" id="startForm">
-      {% csrf_token %}
+{% block content %}
+<div class="pv-start-page">
 
-      <div class="card-header">
-        <div class="icon-box"><i class="fa fa-play"></i></div>
-        <h1 class="card-title">Nova Manutenção</h1>
-        <div class="card-subtitle">
-          Selecione o equipamento e o plano de checklist para iniciar a ordem de serviço.
-        </div>
+  <form method="post" class="pv-form-card" id="startForm" novalidate>
+    {% csrf_token %}
+
+    <div class="pv-form-hero">
+      <div class="pv-form-icon" aria-hidden="true">
+        <i class="fa fa-play"></i>
       </div>
+      <div>
+        <h2 class="pv-form-title">Gerar programação preventiva</h2>
+        <p class="pv-form-subtitle">
+          Selecione o ativo e o checklist. O sistema cria a programação e, após a execução, calcula automaticamente a próxima data.
+        </p>
+      </div>
+    </div>
 
-      <div class="card-body">
-        {% if form.errors %}
-          <div class="alert-error">
-            <i class="fa fa-circle-exclamation"></i>
-            <div>Por favor, corrija os erros abaixo.</div>
-          </div>
+    <div class="pv-form-body">
+      {% if form.errors %}
+        <div class="pv-alert-error" role="alert">
+          <i class="fa fa-circle-exclamation" aria-hidden="true"></i>
+          <div>Existem campos pendentes. Revise o ativo e o modelo de checklist.</div>
+        </div>
+      {% endif %}
+
+      <div class="pv-field">
+        <label for="{{ form.item.id_for_label }}">
+          <i class="fa fa-cube" aria-hidden="true"></i>
+          Equipamento / Ativo
+        </label>
+        <div class="pv-input-wrap">
+          <span class="pv-ico"><i class="fa fa-cube" aria-hidden="true"></i></span>
+          {{ form.item }}
+        </div>
+        {% if form.item.errors %}
+          <div class="pv-error">{{ form.item.errors.0 }}</div>
         {% endif %}
-
-        <div class="form-grid">
-          <div class="form-group full">
-            <label class="form-label">
-              <i class="fa fa-cube"></i>
-              <span>Equipamento / Ativo</span>
-            </label>
-            {{ form.item }}
-            {% if form.item.errors %}
-              <div class="field-error">{{ form.item.errors.0 }}</div>
-            {% endif %}
-          </div>
-
-          <div class="form-group full">
-            <label class="form-label">
-              <i class="fa fa-list-check"></i>
-              <span>Modelo de Checklist</span>
-            </label>
-            {{ form.checklist_modelo }}
-            {% if form.checklist_modelo.errors %}
-              <div class="field-error">{{ form.checklist_modelo.errors.0 }}</div>
-            {% endif %}
-            <span class="form-hint">O modelo define as perguntas de verificação.</span>
-          </div>
-        </div>
-
-        <div class="actions">
-          <a href="javascript:history.back()" class="btn btn-secondary">
-            Cancelar
-          </a>
-          <button type="submit" class="btn btn-primary" id="btnSubmit">
-            Iniciar Execução <i class="fa fa-arrow-right"></i>
-          </button>
-        </div>
+        <div class="pv-hint">Use ativos com preventiva habilitada sempre que possível para manter o calendário limpo.</div>
       </div>
-    </form>
-  </div>
-</div>
 
+      <div class="pv-field">
+        <label for="{{ form.checklist_modelo.id_for_label }}">
+          <i class="fa fa-list-check" aria-hidden="true"></i>
+          Modelo de Checklist
+        </label>
+        <div class="pv-input-wrap">
+          <span class="pv-ico"><i class="fa fa-list-check" aria-hidden="true"></i></span>
+          {{ form.checklist_modelo }}
+        </div>
+        {% if form.checklist_modelo.errors %}
+          <div class="pv-error">{{ form.checklist_modelo.errors.0 }}</div>
+        {% endif %}
+        <div class="pv-hint">O intervalo será buscado primeiro no equipamento; se não houver, será usado o intervalo do checklist.</div>
+      </div>
+    </div>
+
+    <div class="pv-form-actions">
+      <a href="javascript:history.back()" class="pv-btn-secondary">
+        <i class="fa fa-arrow-left" aria-hidden="true"></i> Cancelar
+      </a>
+      <button type="submit" class="pv-btn-primary" id="btnSubmit">
+        Iniciar execução <i class="fa fa-arrow-right" aria-hidden="true"></i>
+      </button>
+    </div>
+  </form>
+
+  <aside class="pv-start-side">
+    <div class="pv-side-title">
+      <i class="fa fa-route" aria-hidden="true"></i> Fluxo recomendado
+    </div>
+    <ul class="pv-steps">
+      <li>
+        <span class="pv-step-num">1</span>
+        <span>Cadastre o ativo com <strong>precisa preventiva = sim</strong> e intervalo em dias.</span>
+      </li>
+      <li>
+        <span class="pv-step-num">2</span>
+        <span>Vincule um checklist ao subtipo do equipamento para padronizar a execução.</span>
+      </li>
+      <li>
+        <span class="pv-step-num">3</span>
+        <span>Execute a preventiva com respostas, observação e evidências quando necessário.</span>
+      </li>
+      <li>
+        <span class="pv-step-num">4</span>
+        <span>A próxima data será reagendada automaticamente após finalizar a execução.</span>
+      </li>
+    </ul>
+  </aside>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
 <script>
-$(document).ready(function() {
-    $('.select2').select2({
-        width: '100%',
-        language: {
-            noResults: function() { return "Nenhum resultado encontrado"; },
-            searching: function() { return "Buscando..."; }
-        }
-    });
+  $(document).ready(function() {
+    const config = {
+      width: '100%',
+      language: {
+        noResults: function() { return 'Nenhum resultado encontrado'; },
+        searching: function() { return 'Buscando...'; }
+      }
+    };
 
-    const itemVal = $('#id_item').val();
-    if (itemVal) {
-        $('#id_checklist_modelo').select2('open');
+    $('#{{ form.item.auto_id }}, #{{ form.checklist_modelo.auto_id }}').addClass('pv-control').select2(config);
+
+    if ($('#{{ form.item.auto_id }}').val()) {
+      setTimeout(function() { $('#{{ form.checklist_modelo.auto_id }}').select2('open'); }, 250);
     }
 
     $('#startForm').on('submit', function() {
-        const btn = $('#btnSubmit');
-        btn.prop('disabled', true)
-           .html('<i class="fa fa-spinner fa-spin"></i> Iniciando...')
-           .css('opacity', '0.85');
+      const btn = document.getElementById('btnSubmit');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Iniciando...';
+      btn.style.opacity = '.85';
     });
-});
+  });
 </script>
 {% endblock %}

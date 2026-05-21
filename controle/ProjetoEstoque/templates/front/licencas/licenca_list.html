@@ -2,935 +2,1050 @@
 {% load static %}
 
 {% block title %}Gestão de Licenças{% endblock %}
+{% block page_title %}Gestão de Licenças{% endblock %}
+{% block page_subtitle %}Catálogo, lotes, saldo de assentos e movimentações por licença{% endblock %}
 
-{% block content %}
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-/* --- Design System Enterprise --- */
-:root {
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --primary-light: #eff6ff;
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  --border: #e2e8f0;
-  --bg-body: #f8fafc;
-  --bg-card: #ffffff;
-  --success-bg: #dcfce7;
-  --success-text: #166534;
-  --warning-bg: #fef3c7;
-  --warning-text: #92400e;
-  --danger-bg: #fee2e2;
-  --danger-text: #991b1b;
-  --radius: 8px;
-  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+
+:where(.lic-page, .lic-modal, .select2-container, .select2-dropdown) {
+  --lic-brand: var(--brand, #0071e3);
+  --lic-brand-hover: var(--brand-hover, #0077ed);
+  --lic-brand-soft: var(--brand-soft, rgba(0, 113, 227, .10));
+  --lic-surface: var(--bg-elevated, #ffffff);
+  --lic-surface-2: var(--bg-elevated-2, #ffffff);
+  --lic-fill: var(--bg-fill-tertiary, rgba(120, 120, 128, .08));
+  --lic-fill-2: var(--bg-fill-secondary, rgba(120, 120, 128, .12));
+  --lic-text: var(--text-primary, #1d1d1f);
+  --lic-muted: var(--text-tertiary, #6e6e73);
+  --lic-soft: var(--text-quaternary, #86868b);
+  --lic-border: var(--separator-hairline, rgba(0, 0, 0, .06));
+  --lic-border-strong: var(--separator-non-opaque, rgba(0, 0, 0, .10));
+  --lic-success: var(--success, #34c759);
+  --lic-success-bg: var(--success-soft, rgba(52, 199, 89, .12));
+  --lic-warning: var(--warning, #ff9500);
+  --lic-warning-bg: var(--warning-soft, rgba(255, 149, 0, .12));
+  --lic-danger: var(--danger, #ff3b30);
+  --lic-danger-bg: var(--danger-soft, rgba(255, 59, 48, .10));
+  --lic-info: var(--info, #5ac8fa);
+  --lic-info-bg: var(--info-soft, rgba(90, 200, 250, .12));
+  --lic-radius-sm: var(--radius-sm, 10px);
+  --lic-radius-md: var(--radius-md, 14px);
+  --lic-radius-lg: var(--radius-lg, 18px);
+  --lic-radius-xl: var(--radius-xl, 22px);
+  --lic-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04));
+  --lic-shadow-md: var(--shadow-md, 0 4px 12px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04));
+  --lic-control-h: 42px;
+  --lic-transition: 180ms var(--ease-apple, ease);
 }
 
-* {
+.lic-page,
+.lic-page * {
   box-sizing: border-box;
+  min-width: 0;
 }
 
-html {
-  -webkit-text-size-adjust: 100%;
+.lic-page {
+  width: min(100%, 1500px);
+  margin-inline: auto;
+  color: var(--lic-text);
 }
 
-body {
-  background: var(--bg-body);
-  color: var(--text-main);
-  font-family: 'Inter', sans-serif;
-  margin: 0;
-}
-
-img,
-video,
-iframe,
-svg,
-canvas {
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
-
-.page-wrapper {
-  max-width: 1400px;
-  margin: 24px auto;
-  padding: 0 20px;
-}
-
-/* 1. KPIs */
-.kpi-grid {
+.lic-shell {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 20px;
-  margin-bottom: 24px;
+  gap: 18px;
 }
 
-.kpi-card {
-  background: var(--bg-card);
-  padding: 20px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  display: flex;
+.lic-hero,
+.lic-card,
+.lic-panel,
+.lic-kpi-card {
+  background: var(--lic-surface);
+  border: 1px solid var(--lic-border);
+  border-radius: var(--lic-radius-xl);
+  box-shadow: var(--lic-shadow-sm);
+}
+
+.lic-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
   align-items: center;
-  gap: 16px;
-  transition: transform 0.2s, border-color 0.2s;
-  min-width: 0;
+  padding: clamp(18px, 3vw, 28px);
 }
 
-.kpi-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--primary);
-}
-
-.kpi-icon {
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  border-radius: 10px;
-  background: var(--primary-light);
-  color: var(--primary);
-  display: flex;
+.lic-hero-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
   align-items: center;
-  justify-content: center;
-  font-size: 1.25rem;
 }
 
-.kpi-content {
-  min-width: 0;
+.lic-hero-icon {
+  width: clamp(48px, 8vw, 64px);
+  height: clamp(48px, 8vw, 64px);
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--lic-brand-soft);
+  color: var(--lic-brand);
+  border: 1px solid color-mix(in srgb, var(--lic-brand) 18%, transparent);
+  font-size: clamp(1.2rem, 3vw, 1.55rem);
 }
 
-.kpi-content h3 {
+.lic-hero-title h1 {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--text-main);
-  line-height: 1.2;
-  word-break: break-word;
+  color: var(--lic-text);
+  font-size: clamp(1.45rem, 4vw, 2.35rem);
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
 }
 
-.kpi-content p {
-  margin: 2px 0 0;
-  font-size: 0.875rem;
-  color: var(--text-muted);
-  font-weight: 500;
-  line-height: 1.4;
+.lic-hero-title p,
+.lic-subtitle {
+  margin: 8px 0 0;
+  color: var(--lic-muted);
+  font-size: clamp(.9rem, 1.8vw, 1rem);
+  line-height: 1.45;
 }
 
-/* 2. Header & Ações */
-.actions-bar {
+.lic-actions,
+.lic-action-row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--text-main);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  line-height: 1.3;
-  flex-wrap: wrap;
-}
-
-.page-title i {
-  color: var(--primary);
-}
-
-.actions-group {
-  display: flex;
-  gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 10px;
 }
 
-.btn {
-  min-height: 40px;
-  padding: 10px 20px;
-  border-radius: var(--radius);
-  font-weight: 600;
-  font-size: 0.875rem;
+.lic-btn {
+  min-height: var(--lic-control-h);
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  text-decoration: none;
-  border: 1px solid transparent;
-  transition: all 0.2s;
-  white-space: nowrap;
   justify-content: center;
+  gap: 8px;
+  padding: 9px 17px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
+  font-size: .9rem;
+  font-weight: 550;
+  letter-spacing: -.014em;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--lic-transition), background var(--lic-transition), border-color var(--lic-transition), color var(--lic-transition), box-shadow var(--lic-transition);
 }
 
-.btn-primary {
-  background: var(--primary);
+.lic-btn:hover {
+  transform: translateY(-1px);
+}
+
+.lic-btn-primary {
+  background: var(--lic-brand);
+  border-color: var(--lic-brand);
   color: #fff;
-  box-shadow: 0 2px 4px rgba(37,99,235,0.2);
 }
 
-.btn-primary:hover {
-  background: var(--primary-hover);
-  box-shadow: 0 4px 6px rgba(37,99,235,0.3);
+.lic-btn-primary:hover {
+  background: var(--lic-brand-hover);
+  color: #fff;
 }
 
-.btn-white {
-  background: #fff;
-  border-color: var(--border);
-  color: var(--text-main);
+.lic-btn-secondary,
+.lic-btn-outline {
+  background: transparent;
+  border-color: var(--lic-border-strong);
+  color: var(--lic-text);
 }
 
-.btn-white:hover {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
+.lic-btn-secondary:hover,
+.lic-btn-outline:hover {
+  background: var(--lic-fill);
+  color: var(--lic-text);
 }
 
-/* 3. Filtros */
-.filter-card {
-  background: var(--bg-card);
-  padding: 16px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  margin-bottom: 24px;
+.lic-btn-danger {
+  background: var(--lic-danger);
+  border-color: var(--lic-danger);
+  color: #fff;
+}
+
+.lic-card {
+  overflow: hidden;
+}
+
+.lic-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--lic-border);
+  background: color-mix(in srgb, var(--lic-surface) 92%, var(--lic-fill));
+}
+
+.lic-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--lic-text);
+  font-size: .98rem;
+  font-weight: 650;
+  letter-spacing: -.018em;
+}
+
+.lic-card-title i {
+  color: var(--lic-brand);
+}
+
+.lic-card-body {
+  padding: clamp(16px, 2vw, 22px);
+}
+
+.lic-kpi-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(170px, 1fr)) auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 14px;
+}
+
+.lic-kpi-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.lic-kpi-card::after {
+  content: "";
+  position: absolute;
+  right: -28px;
+  top: -28px;
+  width: 92px;
+  height: 92px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kpi-color, var(--lic-brand)) 12%, transparent);
+}
+
+.lic-kpi-icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--kpi-color, var(--lic-brand)) 12%, transparent);
+  color: var(--kpi-color, var(--lic-brand));
+  border: 1px solid color-mix(in srgb, var(--kpi-color, var(--lic-brand)) 20%, transparent);
+  z-index: 1;
+}
+
+.lic-kpi-content {
+  z-index: 1;
+}
+
+.lic-kpi-label {
+  display: block;
+  color: var(--lic-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.lic-kpi-value {
+  display: block;
+  margin-top: 4px;
+  color: var(--lic-text);
+  font-size: clamp(1.25rem, 3vw, 1.65rem);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -.025em;
+  overflow-wrap: anywhere;
+}
+
+.lic-kpi-sub {
+  display: block;
+  margin-top: 4px;
+  color: var(--lic-muted);
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.lic-filter-card {
+  padding: 16px;
+  background: var(--lic-surface);
+  border: 1px solid var(--lic-border);
+  border-radius: var(--lic-radius-xl);
+  box-shadow: var(--lic-shadow-sm);
+}
+
+.lic-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(auto-fit, minmax(170px, 1fr)) auto;
   gap: 12px;
   align-items: end;
 }
 
-.filter-actions {
+.lic-field {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.form-control {
-  min-height: 40px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+.lic-field.full {
+  grid-column: 1 / -1;
+}
+
+.lic-label {
+  color: var(--lic-muted);
+  font-size: .76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .045em;
+}
+
+.lic-help {
+  color: var(--lic-soft);
+  font-size: .78rem;
+  line-height: 1.38;
+}
+
+.lic-page input:not([type="hidden"]),
+.lic-page select,
+.lic-page textarea,
+.lic-form-control {
   width: 100%;
-  font-size: 0.875rem;
-  color: var(--text-main);
-  background: #fff;
+  min-height: var(--lic-control-h);
+  padding: 9px 13px;
+  border: 1px solid var(--lic-border-strong);
+  border-radius: var(--lic-radius-sm);
+  background: var(--lic-surface);
+  color: var(--lic-text);
+  font-size: .92rem;
+  outline: none;
+  transition: border-color var(--lic-transition), box-shadow var(--lic-transition), background var(--lic-transition);
 }
 
-.form-control:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.08);
+.lic-page textarea {
+  min-height: 104px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.lic-page input:not([type="hidden"]):focus,
+.lic-page select:focus,
+.lic-page textarea:focus,
+.lic-form-control:focus {
+  border-color: var(--lic-brand);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, .30));
+}
+
+.lic-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lic-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+}
+
+.lic-table th,
+.lic-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--lic-border);
+  vertical-align: middle;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.lic-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--lic-surface);
+  color: var(--lic-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.lic-table td {
+  color: var(--lic-text);
+  font-size: .9rem;
+}
+
+.lic-table tbody tr:hover {
+  background: var(--lic-fill);
+}
+
+.lic-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.lic-text-right { text-align: right !important; }
+.lic-text-center { text-align: center !important; }
+.lic-nowrap { white-space: nowrap; }
+.lic-muted { color: var(--lic-muted); }
+.lic-mono { font-family: var(--font-mono, ui-monospace, monospace); font-weight: 650; letter-spacing: -.02em; }
+
+.lic-title-link,
+.lic-link {
+  color: var(--lic-text);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.lic-title-link:hover,
+.lic-link:hover {
+  color: var(--lic-brand);
+}
+
+.lic-sub {
+  display: block;
+  margin-top: 3px;
+  color: var(--lic-muted);
+  font-size: .78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.lic-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--lic-fill);
+  color: var(--lic-muted);
+  border: 1px solid transparent;
+  font-size: .75rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.lic-badge-success { background: var(--lic-success-bg); color: var(--lic-success); }
+.lic-badge-warning { background: var(--lic-warning-bg); color: var(--lic-warning); }
+.lic-badge-danger { background: var(--lic-danger-bg); color: var(--lic-danger); }
+.lic-badge-info { background: var(--lic-info-bg); color: #0090d4; }
+.lic-badge-brand { background: var(--lic-brand-soft); color: var(--lic-brand); }
+
+.lic-icon-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--lic-border-strong);
+  background: var(--lic-surface);
+  color: var(--lic-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--lic-transition), color var(--lic-transition), border-color var(--lic-transition), transform var(--lic-transition);
+}
+
+.lic-icon-btn:hover {
+  color: var(--lic-brand);
+  background: var(--lic-brand-soft);
+  border-color: color-mix(in srgb, var(--lic-brand) 25%, transparent);
+  transform: translateY(-1px);
+}
+
+.lic-icon-btn.danger:hover {
+  color: var(--lic-danger);
+  background: var(--lic-danger-bg);
+  border-color: color-mix(in srgb, var(--lic-danger) 25%, transparent);
+}
+
+.lic-empty {
+  padding: 38px 20px;
+  text-align: center;
+  color: var(--lic-muted);
+}
+
+.lic-empty i {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--lic-soft);
+  font-size: 2rem;
+}
+
+.lic-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.lic-col-12 { grid-column: span 12; }
+.lic-col-8 { grid-column: span 8; }
+.lic-col-6 { grid-column: span 6; }
+.lic-col-4 { grid-column: span 4; }
+
+.lic-error-list,
+.errorlist {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--lic-danger);
+  font-size: .78rem;
+  font-weight: 650;
+}
+
+.lic-alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: var(--lic-radius-md);
+  border: 1px solid transparent;
+  background: var(--lic-brand-soft);
+  color: var(--lic-muted);
+  line-height: 1.45;
+}
+
+.lic-alert i {
+  margin-top: 2px;
+  color: var(--lic-brand);
+}
+
+.lic-alert-warning {
+  background: var(--lic-warning-bg);
+  color: var(--lic-warning);
+  border-color: color-mix(in srgb, var(--lic-warning) 20%, transparent);
+}
+
+.lic-alert-danger {
+  background: var(--lic-danger-bg);
+  color: var(--lic-danger);
+  border-color: color-mix(in srgb, var(--lic-danger) 20%, transparent);
+}
+
+.lic-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  border-top: 1px solid var(--lic-border);
+  background: var(--lic-surface);
+}
+
+.lic-page-links {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.lic-page-link {
+  min-width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--lic-border-strong);
+  border-radius: 10px;
+  background: var(--lic-surface);
+  color: var(--lic-text);
+  text-decoration: none;
+  font-size: .84rem;
+  font-weight: 650;
+}
+
+.lic-page-link:hover,
+.lic-page-link.active {
+  background: var(--lic-brand);
+  border-color: var(--lic-brand);
+  color: #fff;
+}
+
+.lic-page-link.disabled {
+  opacity: .45;
+  pointer-events: none;
 }
 
 .select2-container {
   width: 100% !important;
 }
 
-.select2-container .select2-selection--single {
-  min-height: 40px !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--radius) !important;
+.select2-container--default .select2-selection--single {
+  min-height: var(--lic-control-h) !important;
+  border: 1px solid var(--lic-border-strong) !important;
+  border-radius: var(--lic-radius-sm) !important;
+  background: var(--lic-surface) !important;
   display: flex !important;
   align-items: center !important;
 }
 
 .select2-container--default .select2-selection--single .select2-selection__rendered {
-  line-height: 38px !important;
-  padding-left: 12px;
-  padding-right: 30px;
-  color: var(--text-main) !important;
-  font-size: 0.875rem;
+  color: var(--lic-text) !important;
+  line-height: 40px !important;
+  padding-left: 13px !important;
+  padding-right: 34px !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__placeholder {
+  color: var(--lic-muted) !important;
 }
 
 .select2-container--default .select2-selection--single .select2-selection__arrow {
-  top: 7px !important;
+  height: 40px !important;
+  right: 8px !important;
 }
 
-/* 4. Tabela Profissional */
-.table-container {
-  background: var(--bg-card);
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
+.select2-dropdown {
+  z-index: 9999 !important;
+  border: 1px solid var(--lic-border-strong) !important;
+  border-radius: var(--lic-radius-md) !important;
+  background: var(--lic-surface) !important;
+  color: var(--lic-text) !important;
   overflow: hidden;
+  box-shadow: var(--lic-shadow-md);
 }
 
-.table-responsive {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+.select2-search--dropdown .select2-search__field {
+  border: 1px solid var(--lic-border-strong) !important;
+  border-radius: var(--lic-radius-sm) !important;
+  background: var(--lic-surface) !important;
+  color: var(--lic-text) !important;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 980px;
+.select2-results__option {
+  color: var(--lic-text) !important;
 }
 
-thead {
-  background: #f8fafc;
-  border-bottom: 1px solid var(--border);
+.select2-results__option--highlighted {
+  background: var(--lic-brand) !important;
+  color: #fff !important;
 }
 
-th {
-  text-align: left;
-  padding: 14px 20px;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
+@media (max-width: 900px) {
+  .lic-hero,
+  .lic-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lic-actions,
+  .lic-action-row {
+    justify-content: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .lic-btn {
+    width: 100%;
+  }
+
+  .lic-col-8,
+  .lic-col-6,
+  .lic-col-4 {
+    grid-column: span 12;
+  }
 }
 
-td {
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.9rem;
-  color: var(--text-main);
-  vertical-align: middle;
+@media (max-width: 640px) {
+  .lic-hero-main {
+    grid-template-columns: 1fr;
+  }
+
+  .lic-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .lic-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lic-page-links {
+    justify-content: center;
+  }
 }
 
-tr:last-child td {
-  border-bottom: none;
+
+.lic-list-page {
+  width: min(100%, 1500px);
 }
 
-tbody tr:hover {
-  background: #f9fafb;
-}
-
-.licenca-name {
-  font-weight: 600;
-  color: var(--text-main);
-  font-size: 0.95rem;
-  display: block;
-  margin-bottom: 2px;
-  text-decoration: none;
-  word-break: break-word;
-}
-
-.licenca-name:hover {
-  color: var(--primary);
-}
-
-.licenca-obs {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  display: block;
-  max-width: 320px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.4;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 99px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.badge-pmb {
-  background: var(--success-bg);
-  color: var(--success-text);
-}
-
-.badge-gray {
-  background: #f1f5f9;
-  color: #475569;
-  border: 1px solid #e2e8f0;
-}
-
-.badge-stock {
-  background: #eff6ff;
-  color: #1e40af;
-  border: 1px solid #dbeafe;
-  font-family: monospace;
-  font-size: 0.85rem;
-}
-
-.badge-zero {
-  background: #fef2f2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
-  font-family: monospace;
-  font-size: 0.85rem;
-}
-
-/* Botões de Ação */
-.action-group {
+.lic-list-header {
   display: flex;
-  justify-content: flex-end;
-  gap: 6px;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
-.btn-icon {
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  border: 1px solid transparent;
-  transition: all 0.2s;
-  text-decoration: none;
-}
-
-.btn-icon:hover {
-  background: #f1f5f9;
-  color: var(--primary);
-  border-color: var(--border);
-}
-
-.btn-icon.detail:hover {
-  color: var(--primary);
-  background: var(--primary-light);
-}
-
-.btn-icon.lote:hover {
-  color: #0891b2;
-  background: #cffafe;
-}
-
-.btn-icon.move:hover {
-  color: #7c3aed;
-  background: #ede9fe;
-}
-
-.btn-icon.edit:hover {
-  color: #d97706;
-  background: #fffbeb;
-}
-
-/* Cards mobile */
-.mobile-list {
+.lic-mobile-list {
   display: none;
-  padding: 16px;
-  gap: 14px;
+  padding: 14px;
+  gap: 12px;
 }
 
-.mobile-card {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+.lic-mobile-card {
+  display: grid;
+  gap: 12px;
   padding: 16px;
+  border: 1px solid var(--lic-border);
+  border-radius: var(--lic-radius-lg);
+  background: var(--lic-surface);
 }
 
-.mobile-card-header {
+.lic-mobile-head {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  align-items: flex-start;
-  margin-bottom: 12px;
 }
 
-.mobile-card-left {
-  min-width: 0;
-}
-
-.mobile-meta {
+.lic-mobile-meta {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
-.mobile-meta-item {
-  min-width: 0;
-}
-
-.mobile-meta-label {
+.lic-mobile-label {
   display: block;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
+  color: var(--lic-muted);
+  font-size: .7rem;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
   margin-bottom: 4px;
-  letter-spacing: .04em;
 }
 
-.mobile-meta-value {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--text-main);
-  word-break: break-word;
-}
-
-.mobile-actions {
+.lic-mobile-actions {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 
-/* Paginação */
-.pagination-wrapper {
-  padding: 12px 20px;
-  background: #fff;
-  border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.page-info {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.pagination {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.page-link {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  color: var(--text-main);
-  text-decoration: none;
-  font-size: 0.85rem;
-  transition: all 0.2s;
-}
-
-.page-link:hover {
-  background: #f8fafc;
-}
-
-.page-link.active {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
-}
-
-/* Responsividade */
-@media (max-width: 1200px) {
-  .filter-card {
-    grid-template-columns: 1fr 1fr 1fr;
-  }
-
-  .filter-card > div:first-child {
-    grid-column: 1 / -1;
-  }
-
-  .filter-actions {
-    grid-column: span 3;
-    justify-content: flex-end;
-  }
-}
-
-@media (max-width: 768px) {
-  .page-wrapper {
-    margin: 16px auto;
-    padding: 0 14px;
-  }
-
-  .kpi-grid {
-    gap: 14px;
-  }
-
-  .kpi-card {
-    padding: 16px;
-  }
-
-  .kpi-content h3 {
-    font-size: 1.25rem;
-  }
-
-  .page-title {
-    font-size: 1.2rem;
-  }
-
-  .actions-bar {
-    align-items: stretch;
-  }
-
-  .actions-group {
-    width: 100%;
-    flex-direction: column;
-  }
-
-  .actions-group .btn {
-    width: 100%;
-  }
-
-  .filter-card {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .filter-actions {
-    grid-column: auto;
-  }
-
-  .filter-actions .btn {
-    flex: 1;
-  }
-
-  .table-responsive {
+@media (max-width: 760px) {
+  .lic-list-page .lic-table-wrap {
     display: none;
   }
 
-  .mobile-list {
+  .lic-mobile-list {
     display: grid;
   }
 
-  .pagination-wrapper {
-    padding: 14px 16px;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .pagination {
-    justify-content: center;
-  }
-}
-
-@media (max-width: 480px) {
-  .page-wrapper {
-    padding: 0 12px;
-  }
-
-  .kpi-grid {
+  .lic-mobile-meta {
     grid-template-columns: 1fr;
   }
 
-  .kpi-content h3 {
-    font-size: 1.15rem;
-  }
-
-  .kpi-content p {
-    font-size: 0.8rem;
-  }
-
-  .page-title {
-    font-size: 1.05rem;
-  }
-
-  .btn {
-    font-size: 0.82rem;
-    padding: 10px 14px;
-  }
-
-  .mobile-meta {
-    grid-template-columns: 1fr;
-  }
-
-  .mobile-actions {
+  .lic-mobile-actions {
     grid-template-columns: repeat(2, 1fr);
-  }
-
-  .page-link {
-    width: 30px;
-    height: 30px;
   }
 }
 </style>
+{% endblock %}
 
-<div class="page-wrapper">
-
-  <div class="kpi-grid">
-    <div class="kpi-card">
-      <div class="kpi-icon"><i class="fa fa-folder-tree"></i></div>
-      <div class="kpi-content">
-        <h3>{{ kpi_total }}</h3>
-        <p>Licenças Cadastradas</p>
+{% block content %}
+<div class="lic-page lic-list-page">
+  <div class="lic-shell">
+    <section class="lic-kpi-grid">
+      <div class="lic-kpi-card" style="--kpi-color: var(--lic-brand);">
+        <div class="lic-kpi-icon"><i class="fa fa-folder-tree"></i></div>
+        <div class="lic-kpi-content">
+          <span class="lic-kpi-label">Licenças cadastradas</span>
+          <span class="lic-kpi-value">{{ kpi_total }}</span>
+          <span class="lic-kpi-sub">Catálogo mestre de softwares</span>
+        </div>
       </div>
-    </div>
 
-    <div class="kpi-card">
-      <div class="kpi-icon" style="background:var(--success-bg); color:var(--success-text);">
-        <i class="fa fa-layer-group"></i>
+      <div class="lic-kpi-card" style="--kpi-color: var(--lic-success);">
+        <div class="lic-kpi-icon"><i class="fa fa-layer-group"></i></div>
+        <div class="lic-kpi-content">
+          <span class="lic-kpi-label">Assentos disponíveis</span>
+          <span class="lic-kpi-value">{{ kpi_assentos }}</span>
+          <span class="lic-kpi-sub">Saldo operacional para alocação</span>
+        </div>
       </div>
-      <div class="kpi-content">
-        <h3>{{ kpi_assentos }}</h3>
-        <p>Assentos Disponíveis</p>
+
+      <div class="lic-kpi-card" style="--kpi-color: var(--lic-warning);">
+        <div class="lic-kpi-icon"><i class="fa fa-star"></i></div>
+        <div class="lic-kpi-content">
+          <span class="lic-kpi-label">Licenças PMB</span>
+          <span class="lic-kpi-value">{{ kpi_pmb }}</span>
+          <span class="lic-kpi-sub">Classificadas como PMB</span>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <div class="kpi-card">
-      <div class="kpi-icon" style="background:var(--warning-bg); color:var(--warning-text);">
-        <i class="fa fa-star"></i>
+    <section class="lic-hero">
+      <div class="lic-hero-main">
+        <div class="lic-hero-icon">
+          <i class="fa fa-list-check"></i>
+        </div>
+        <div class="lic-hero-title">
+          <h1>Catálogo de Licenças</h1>
+          <p>Controle centralizado de licenças, lotes, disponibilidade e histórico de movimentações.</p>
+        </div>
       </div>
-      <div class="kpi-content">
-        <h3>{{ kpi_pmb }}</h3>
-        <p>Licenças PMB</p>
+
+      <div class="lic-actions">
+        <a href="{% url 'mov_licenca_form' %}" class="lic-btn lic-btn-secondary">
+          <i class="fa fa-exchange-alt"></i>
+          Movimentar
+        </a>
+        <a href="{% url 'licenca_lote_list' %}" class="lic-btn lic-btn-secondary">
+          <i class="fa fa-boxes-stacked"></i>
+          Gerenciar Lotes
+        </a>
+        <a href="{% url 'licenca_create' %}" class="lic-btn lic-btn-primary">
+          <i class="fa fa-plus"></i>
+          Nova Licença
+        </a>
       </div>
-    </div>
-  </div>
+    </section>
 
-  <div class="actions-bar">
-    <div class="page-title">
-      <i class="fa fa-list-check"></i> Catálogo de Licenças
-    </div>
+    <form method="get" id="filterForm" class="lic-filter-card">
+      <div class="lic-filter-grid">
+        <div class="lic-field">
+          <label class="lic-label" for="id_q">Busca</label>
+          <input type="text" id="id_q" name="q" value="{{ filter_q }}" placeholder="Buscar por nome ou observação...">
+        </div>
 
-    <div class="actions-group">
-      <a href="{% url 'mov_licenca_form' %}" class="btn btn-white" title="Nova Movimentação">
-        <i class="fa fa-exchange-alt"></i> Movimentar
-      </a>
-      <a href="{% url 'licenca_lote_list' %}" class="btn btn-white" title="Ver todos os lotes">
-        <i class="fa fa-boxes-stacked"></i> Gerenciar Lotes
-      </a>
-      <a href="{% url 'licenca_create' %}" class="btn btn-primary">
-        <i class="fa fa-plus"></i> Nova Licença
-      </a>
-    </div>
-  </div>
+        <div class="lic-field">
+          <label class="lic-label" for="id_fornecedor">Fornecedor</label>
+          <select name="fornecedor" id="id_fornecedor" class="select2-filter">
+            <option value="">Todos Fornecedores</option>
+            {% for f in opt_fornecedores %}
+              <option value="{{ f.id }}" {% if filter_fornecedor == f.id %}selected{% endif %}>{{ f.nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
 
-  <form method="get" id="filterForm" class="filter-card">
-    <div>
-      <input type="text" name="q" value="{{ filter_q }}" class="form-control" placeholder="Buscar por nome, obs...">
-    </div>
+        <div class="lic-field">
+          <label class="lic-label" for="id_status">Status Estoque</label>
+          <select name="status" id="id_status" class="select2-filter">
+            <option value="">Todos</option>
+            <option value="com_estoque" {% if filter_status == 'com_estoque' %}selected{% endif %}>Com Estoque</option>
+            <option value="sem_estoque" {% if filter_status == 'sem_estoque' %}selected{% endif %}>Sem Estoque</option>
+          </select>
+        </div>
 
-    <div>
-      <select name="fornecedor" class="form-control select2-filter">
-        <option value="">Todos Fornecedores</option>
-        {% for f in opt_fornecedores %}
-          <option value="{{ f.id }}" {% if filter_fornecedor == f.id %}selected{% endif %}>{{ f.nome }}</option>
-        {% endfor %}
-      </select>
-    </div>
+        <div class="lic-field">
+          <label class="lic-label" for="id_pmb">PMB?</label>
+          <select name="pmb" id="id_pmb" class="select2-filter">
+            <option value="">Todos</option>
+            {% for val, label in opt_pmb %}
+              <option value="{{ val }}" {% if filter_pmb == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
 
-    <div>
-      <select name="status" class="form-control select2-filter">
-        <option value="">Status Estoque</option>
-        <option value="com_estoque" {% if filter_status == 'com_estoque' %}selected{% endif %}>Com Estoque</option>
-        <option value="sem_estoque" {% if filter_status == 'sem_estoque' %}selected{% endif %}>Sem Estoque</option>
-      </select>
-    </div>
+        <div class="lic-action-row">
+          <button type="submit" class="lic-btn lic-btn-primary">
+            <i class="fa fa-search"></i>
+            Filtrar
+          </button>
+          <a href="{% url 'licenca_list' %}" class="lic-btn lic-btn-secondary">
+            <i class="fa fa-eraser"></i>
+            Limpar
+          </a>
+        </div>
+      </div>
+    </form>
 
-    <div>
-      <select name="pmb" class="form-control select2-filter">
-        <option value="">PMB?</option>
-        {% for val, label in opt_pmb %}
-          <option value="{{ val }}" {% if filter_pmb == val %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </div>
+    <section class="lic-card">
+      <div class="lic-card-header">
+        <div class="lic-card-title">
+          <i class="fa fa-key"></i>
+          Licenças cadastradas
+        </div>
+        <span class="lic-badge">{{ total_registros }} registro(s)</span>
+      </div>
 
-    <div class="filter-actions">
-      <button type="submit" class="btn btn-primary" title="Filtrar" style="flex:1;">
-        <i class="fa fa-search"></i>
-      </button>
-      <a href="{% url 'licenca_list' %}" class="btn btn-white" title="Limpar" style="width:40px; padding:0;">
-        <i class="fa fa-eraser"></i>
-      </a>
-    </div>
-  </form>
+      <div class="lic-table-wrap">
+        <table class="lic-table">
+          <thead>
+            <tr>
+              <th style="width:35%;">Licença</th>
+              <th>Fornecedor</th>
+              <th>Classificação</th>
+              <th class="lic-text-center">Lotes Ativos</th>
+              <th class="lic-text-center">Saldo Disponível</th>
+              <th class="lic-text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for obj in page_obj %}
+              <tr>
+                <td>
+                  <a href="{% url 'licenca_detail' obj.pk %}" class="lic-title-link">{{ obj.nome }}</a>
+                  {% if obj.observacao %}
+                    <span class="lic-sub"><i class="fa fa-circle-info"></i> {{ obj.observacao }}</span>
+                  {% endif %}
+                </td>
 
-  <div class="table-container">
-    <div class="table-responsive">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:35%;">Licença</th>
-            <th>Fornecedor</th>
-            <th>Classificação</th>
-            <th style="text-align:center;">Lotes Ativos</th>
-            <th style="text-align:center;">Saldo Disponíveis</th>
-            <th style="text-align:right;">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for obj in page_obj %}
-          <tr>
-            <td>
-              <a href="{% url 'licenca_detail' obj.pk %}" class="licenca-name">{{ obj.nome }}</a>
-              {% if obj.observacao %}
-                <span class="licenca-obs"><i class="fa fa-info-circle"></i> {{ obj.observacao }}</span>
-              {% endif %}
-            </td>
+                <td>{{ obj.fornecedor.nome|default:"-" }}</td>
 
-            <td>{{ obj.fornecedor.nome|default:"-" }}</td>
+                <td>
+                  {% if obj.pmb == 'sim' %}
+                    <span class="lic-badge lic-badge-success">PMB</span>
+                  {% else %}
+                    <span class="lic-badge">Padrão</span>
+                  {% endif %}
+                </td>
 
-            <td>
-              {% if obj.pmb == 'sim' %}
-                <span class="badge badge-pmb">PMB</span>
-              {% else %}
-                <span class="badge badge-gray">Padrão</span>
-              {% endif %}
-            </td>
+                <td class="lic-text-center">
+                  {% if obj.qtd_lotes > 0 %}
+                    <span class="lic-mono">{{ obj.qtd_lotes }}</span>
+                  {% else %}
+                    <span class="lic-muted">—</span>
+                  {% endif %}
+                </td>
 
-            <td style="text-align:center;">
-              {% if obj.qtd_lotes > 0 %}
-                <span style="font-weight:600; color:var(--text-main);">{{ obj.qtd_lotes }}</span>
-              {% else %}
-                <span style="color:#cbd5e1;">-</span>
-              {% endif %}
-            </td>
+                <td class="lic-text-center">
+                  {% if obj.estoque_real > 0 %}
+                    <span class="lic-badge lic-badge-brand">{{ obj.estoque_real }}</span>
+                  {% else %}
+                    <span class="lic-badge lic-badge-danger">0</span>
+                  {% endif %}
+                </td>
 
-            <td style="text-align:center;">
-              {% if obj.estoque_real > 0 %}
-                <span class="badge badge-stock">{{ obj.estoque_real }}</span>
-              {% else %}
-                <span class="badge badge-zero">0</span>
-              {% endif %}
-            </td>
+                <td class="lic-text-right">
+                  <div class="lic-action-row">
+                    <a href="{% url 'licenca_lote_list' %}?licenca={{ obj.pk }}" class="lic-icon-btn" title="Gerenciar Lotes">
+                      <i class="fa fa-boxes-stacked"></i>
+                    </a>
+                    <a href="{% url 'mov_licenca_list' %}?licenca={{ obj.pk }}" class="lic-icon-btn" title="Histórico de Movimentações">
+                      <i class="fa fa-clock-rotate-left"></i>
+                    </a>
+                    <a href="{% url 'licenca_detail' obj.pk %}" class="lic-icon-btn" title="Painel Detalhado">
+                      <i class="fa fa-eye"></i>
+                    </a>
+                    <a href="{% url 'licenca_update' obj.pk %}" class="lic-icon-btn" title="Editar Cadastro">
+                      <i class="fa fa-pen"></i>
+                    </a>
+                  </div>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="6">
+                  <div class="lic-empty">
+                    <i class="fa fa-folder-open"></i>
+                    <strong>Nenhuma licença encontrada</strong>
+                    <div>Ajuste os filtros ou cadastre uma nova licença.</div>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
 
-            <td>
-              <div class="action-group">
-                <a href="{% url 'licenca_lote_list' %}?licenca={{ obj.pk }}" class="btn-icon lote" title="Gerenciar Lotes">
-                  <i class="fa fa-boxes-stacked"></i>
-                </a>
-
-                <a href="{% url 'mov_licenca_list' %}?licenca={{ obj.pk }}" class="btn-icon move" title="Histórico de Movimentações">
-                  <i class="fa fa-clock-rotate-left"></i>
-                </a>
-
-                <a href="{% url 'licenca_detail' obj.pk %}" class="btn-icon detail" title="Painel Detalhado">
-                  <i class="fa fa-eye"></i>
-                </a>
-
-                <a href="{% url 'licenca_update' obj.pk %}" class="btn-icon edit" title="Editar Cadastro">
-                  <i class="fa fa-pen"></i>
-                </a>
+      <div class="lic-mobile-list">
+        {% for obj in page_obj %}
+          <article class="lic-mobile-card">
+            <div class="lic-mobile-head">
+              <div>
+                <a href="{% url 'licenca_detail' obj.pk %}" class="lic-title-link">{{ obj.nome }}</a>
+                {% if obj.observacao %}
+                  <span class="lic-sub">{{ obj.observacao }}</span>
+                {% endif %}
               </div>
-            </td>
-          </tr>
-          {% empty %}
-          <tr>
-            <td colspan="6" style="text-align:center; padding:60px 20px;">
-              <i class="fa fa-folder-open" style="font-size:3rem; color:#e2e8f0; margin-bottom:16px;"></i>
-              <h3 style="margin:0; font-size:1.1rem; color:var(--text-muted);">Nenhuma licença encontrada</h3>
-              <p style="color:#94a3b8;">Tente ajustar os filtros ou cadastre uma nova licença.</p>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
 
-    <div class="mobile-list">
-      {% for obj in page_obj %}
-      <div class="mobile-card">
-        <div class="mobile-card-header">
-          <div class="mobile-card-left">
-            <a href="{% url 'licenca_detail' obj.pk %}" class="licenca-name">{{ obj.nome }}</a>
-            {% if obj.observacao %}
-              <span class="licenca-obs" style="max-width:100%; white-space:normal; overflow:visible; text-overflow:unset;">
-                <i class="fa fa-info-circle"></i> {{ obj.observacao }}
-              </span>
-            {% endif %}
-          </div>
-
-          <div>
-            {% if obj.pmb == 'sim' %}
-              <span class="badge badge-pmb">PMB</span>
-            {% else %}
-              <span class="badge badge-gray">Padrão</span>
-            {% endif %}
-          </div>
-        </div>
-
-        <div class="mobile-meta">
-          <div class="mobile-meta-item">
-            <span class="mobile-meta-label">Fornecedor</span>
-            <span class="mobile-meta-value">{{ obj.fornecedor.nome|default:"-" }}</span>
-          </div>
-
-          <div class="mobile-meta-item">
-            <span class="mobile-meta-label">Lotes Ativos</span>
-            <span class="mobile-meta-value">{{ obj.qtd_lotes|default:"0" }}</span>
-          </div>
-
-          <div class="mobile-meta-item">
-            <span class="mobile-meta-label">Saldo</span>
-            <span class="mobile-meta-value">
-              {% if obj.estoque_real > 0 %}
-                <span class="badge badge-stock">{{ obj.estoque_real }}</span>
+              {% if obj.pmb == 'sim' %}
+                <span class="lic-badge lic-badge-success">PMB</span>
               {% else %}
-                <span class="badge badge-zero">0</span>
+                <span class="lic-badge">Padrão</span>
               {% endif %}
-            </span>
+            </div>
+
+            <div class="lic-mobile-meta">
+              <div>
+                <span class="lic-mobile-label">Fornecedor</span>
+                <span>{{ obj.fornecedor.nome|default:"-" }}</span>
+              </div>
+              <div>
+                <span class="lic-mobile-label">Lotes ativos</span>
+                <span>{{ obj.qtd_lotes|default:"0" }}</span>
+              </div>
+              <div>
+                <span class="lic-mobile-label">Saldo</span>
+                {% if obj.estoque_real > 0 %}
+                  <span class="lic-badge lic-badge-brand">{{ obj.estoque_real }}</span>
+                {% else %}
+                  <span class="lic-badge lic-badge-danger">0</span>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="lic-mobile-actions">
+              <a href="{% url 'licenca_lote_list' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary" title="Gerenciar Lotes"><i class="fa fa-boxes-stacked"></i></a>
+              <a href="{% url 'mov_licenca_list' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary" title="Histórico"><i class="fa fa-clock-rotate-left"></i></a>
+              <a href="{% url 'licenca_detail' obj.pk %}" class="lic-btn lic-btn-secondary" title="Detalhes"><i class="fa fa-eye"></i></a>
+              <a href="{% url 'licenca_update' obj.pk %}" class="lic-btn lic-btn-secondary" title="Editar"><i class="fa fa-pen"></i></a>
+            </div>
+          </article>
+        {% empty %}
+          <div class="lic-empty">
+            <i class="fa fa-folder-open"></i>
+            Nenhuma licença encontrada.
+          </div>
+        {% endfor %}
+      </div>
+
+      {% if page_obj.has_other_pages %}
+        <div class="lic-pagination">
+          <div class="lic-muted">
+            Página <strong>{{ page_obj.number }}</strong> de {{ page_obj.paginator.num_pages }} — {{ total_registros }} registro(s)
+          </div>
+
+          <div class="lic-page-links">
+            {% if page_obj.has_previous %}
+              <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="lic-page-link"><i class="fa fa-angle-left"></i></a>
+            {% endif %}
+
+            {% for num in page_obj.paginator.page_range %}
+              {% if page_obj.number == num %}
+                <span class="lic-page-link active">{{ num }}</span>
+              {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                <a href="?page={{ num }}&{{ qs_keep }}" class="lic-page-link">{{ num }}</a>
+              {% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+              <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="lic-page-link"><i class="fa fa-angle-right"></i></a>
+            {% endif %}
           </div>
         </div>
-
-        <div class="mobile-actions">
-          <a href="{% url 'licenca_lote_list' %}?licenca={{ obj.pk }}" class="btn btn-white" title="Gerenciar Lotes">
-            <i class="fa fa-boxes-stacked"></i>
-          </a>
-          <a href="{% url 'mov_licenca_list' %}?licenca={{ obj.pk }}" class="btn btn-white" title="Histórico">
-            <i class="fa fa-clock-rotate-left"></i>
-          </a>
-          <a href="{% url 'licenca_detail' obj.pk %}" class="btn btn-white" title="Detalhes">
-            <i class="fa fa-eye"></i>
-          </a>
-          <a href="{% url 'licenca_update' obj.pk %}" class="btn btn-white" title="Editar">
-            <i class="fa fa-pen"></i>
-          </a>
-        </div>
-      </div>
-      {% empty %}
-      <div style="text-align:center; padding:40px 16px;">
-        <i class="fa fa-folder-open" style="font-size:2.5rem; color:#e2e8f0; margin-bottom:16px;"></i>
-        <h3 style="margin:0; font-size:1rem; color:var(--text-muted);">Nenhuma licença encontrada</h3>
-        <p style="color:#94a3b8;">Tente ajustar os filtros ou cadastre uma nova licença.</p>
-      </div>
-      {% endfor %}
-    </div>
-
-    {% if page_obj.has_other_pages %}
-    <div class="pagination-wrapper">
-      <div class="page-info">
-        Página <strong>{{ page_obj.number }}</strong> de {{ page_obj.paginator.num_pages }} ({{ total_registros }} registros)
-      </div>
-
-      <div class="pagination">
-        {% if page_obj.has_previous %}
-          <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="page-link">
-            <i class="fa fa-angle-left"></i>
-          </a>
-        {% endif %}
-
-        {% for num in page_obj.paginator.page_range %}
-          {% if page_obj.number == num %}
-            <a href="#" class="page-link active">{{ num }}</a>
-          {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-            <a href="?page={{ num }}&{{ qs_keep }}" class="page-link">{{ num }}</a>
-          {% endif %}
-        {% endfor %}
-
-        {% if page_obj.has_next %}
-          <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="page-link">
-            <i class="fa fa-angle-right"></i>
-          </a>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
+      {% endif %}
+    </section>
   </div>
-
 </div>
+{% endblock %}
+
+{% block extra_js %}
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <script>
 $(document).ready(function() {
-    $('.select2-filter').select2({
-        width: '100%',
-        minimumResultsForSearch: 10,
-        language: "pt-BR"
-    });
+  $('.select2-filter').select2({
+    width: '100%',
+    minimumResultsForSearch: 10,
+    language: {
+      noResults: function () { return 'Nenhum resultado encontrado'; },
+      searching: function () { return 'Buscando...'; }
+    }
+  });
 
-    $('.select2-filter').on('change', function() {
-        $('#filterForm').submit();
-    });
+  $('.select2-filter').on('change', function() {
+    $('#filterForm').submit();
+  });
 });
 </script>
 {% endblock %}

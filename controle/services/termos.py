@@ -65,14 +65,44 @@ def _usuario_display(usuario):
 
 
 def get_usuario_atual_item(item):
-    ultima_mov = (
+    """
+    Retorna o usuário atualmente com o item: última entrega (transferencia + tipo_transferencia=entrega)
+    sem uma devolução posterior. Garante que devolução não seja confundida com posse atual.
+    """
+    from ProjetoEstoque.models import TipoMovimentacaoChoices, TipoTransferenciaChoices
+
+    ultima_entrega = (
         MovimentacaoItem.objects
-        .filter(item=item, usuario__isnull=False)
+        .filter(
+            item=item,
+            tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
+            tipo_transferencia=TipoTransferenciaChoices.ENTREGA,
+            usuario__isnull=False,
+        )
         .select_related("usuario")
         .order_by("-created_at")
         .first()
     )
-    return ultima_mov.usuario if ultima_mov and ultima_mov.usuario else None
+
+    if not ultima_entrega:
+        return None
+
+    # Verifica se houve devolução posterior
+    devolucao_posterior = (
+        MovimentacaoItem.objects
+        .filter(
+            item=item,
+            tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
+            tipo_transferencia=TipoTransferenciaChoices.DEVOLUCAO,
+            created_at__gt=ultima_entrega.created_at,
+        )
+        .exists()
+    )
+
+    if devolucao_posterior:
+        return None
+
+    return ultima_entrega.usuario
 
 
 def _build_estabelecimento_line(estabelecimento):

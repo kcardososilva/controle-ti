@@ -1,0 +1,1206 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Notícias do Sistema{% endblock %}
+{% block page_title %}Notícias do Sistema{% endblock %}
+{% block page_subtitle %}Destaques, atualizações, eventos recentes e indicadores operacionais{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'sistema_inteligencia_dashboard' %}" class="btn btn-sm">
+    <i class="fa fa-brain" aria-hidden="true"></i>
+    Inteligência
+  </a>
+  <a href="{% url 'sistema_noticias' %}" class="btn-primary btn-sm">
+    <i class="fa fa-rotate-right" aria-hidden="true"></i>
+    Atualizar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ========================================================================
+   Sistema Notícias - Apple UI
+   Integrado ao base.html. Layout apenas; regra de negócio preservada.
+   ======================================================================== */
+
+:where(.news-page) {
+  --ns-primary: var(--brand, #0071e3);
+  --ns-primary-hover: var(--brand-hover, #0077ed);
+  --ns-primary-soft: var(--brand-soft, rgba(0,113,227,.10));
+  --ns-primary-softer: var(--brand-softer, rgba(0,113,227,.05));
+
+  --ns-surface: var(--bg-elevated, #ffffff);
+  --ns-surface-2: var(--bg-elevated-2, #ffffff);
+  --ns-surface-soft: var(--bg-fill-tertiary, rgba(120,120,128,.08));
+  --ns-surface-muted: var(--bg-fill-secondary, rgba(120,120,128,.12));
+  --ns-hover: var(--bg-hover, rgba(0,0,0,.04));
+
+  --ns-text: var(--text-primary, #1d1d1f);
+  --ns-muted: var(--text-tertiary, #6e6e73);
+  --ns-soft: var(--text-quaternary, #86868b);
+  --ns-link: var(--text-link, #0071e3);
+
+  --ns-border: var(--separator-hairline, rgba(0,0,0,.06));
+  --ns-border-strong: var(--separator-non-opaque, rgba(0,0,0,.10));
+
+  --ns-success: var(--success, #34c759);
+  --ns-success-bg: var(--success-soft, rgba(52,199,89,.12));
+  --ns-warning: var(--warning, #ff9500);
+  --ns-warning-bg: var(--warning-soft, rgba(255,149,0,.12));
+  --ns-danger: var(--danger, #ff3b30);
+  --ns-danger-bg: var(--danger-soft, rgba(255,59,48,.10));
+  --ns-info: var(--info, #5ac8fa);
+  --ns-info-bg: var(--info-soft, rgba(90,200,250,.12));
+
+  --ns-radius-sm: var(--radius-sm, 10px);
+  --ns-radius-md: var(--radius-md, 14px);
+  --ns-radius-lg: var(--radius-lg, 18px);
+  --ns-radius-xl: var(--radius-xl, 22px);
+  --ns-radius-2xl: var(--radius-2xl, 28px);
+  --ns-radius-pill: var(--radius-pill, 980px);
+
+  --ns-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04));
+  --ns-shadow-md: var(--shadow-md, 0 4px 12px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04));
+  --ns-shadow-lg: var(--shadow-lg, 0 12px 32px rgba(0,0,0,.10), 0 4px 12px rgba(0,0,0,.05));
+
+  --ns-transition: var(--transition-fast, 160ms cubic-bezier(.32,.72,0,1));
+  --ns-transition-base: var(--transition-base, 280ms cubic-bezier(.32,.72,0,1));
+}
+
+.news-page,
+.news-page * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.news-page {
+  width: 100%;
+  max-width: min(100%, var(--content-max, 110rem));
+  margin-inline: auto;
+  color: var(--ns-text);
+}
+
+.news-shell {
+  width: 100%;
+  display: grid;
+  gap: 1rem;
+}
+
+.glass-card {
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid var(--ns-border);
+  border-radius: var(--ns-radius-xl);
+  background: var(--ns-surface);
+  box-shadow: var(--ns-shadow-sm);
+  overflow: hidden;
+  transition:
+    transform var(--ns-transition-base),
+    border-color var(--ns-transition),
+    box-shadow var(--ns-transition-base),
+    background var(--ns-transition);
+}
+
+@supports (backdrop-filter: blur(18px)) {
+  .glass-card {
+    background: color-mix(in srgb, var(--ns-surface) 88%, transparent);
+    backdrop-filter: blur(18px) saturate(180%);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+  }
+}
+
+.glass-card:hover {
+  border-color: var(--ns-border-strong);
+  box-shadow: var(--ns-shadow-md);
+}
+
+/* Header */
+.hero-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+}
+
+.hero-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .875rem;
+  align-items: center;
+}
+
+.hero-icon {
+  width: clamp(3.15rem, 8vw, 4rem);
+  height: clamp(3.15rem, 8vw, 4rem);
+  display: grid;
+  place-items: center;
+  border-radius: 1.15rem;
+  background: var(--ns-primary-soft);
+  color: var(--ns-primary);
+  border: 1px solid color-mix(in srgb, var(--ns-primary) 18%, transparent);
+  font-size: clamp(1.25rem, 3vw, 1.55rem);
+}
+
+.hero-title h1 {
+  margin: 0;
+  color: var(--ns-text);
+  font-family: var(--font-display, inherit);
+  font-size: clamp(1.5rem, 4vw, 2.35rem);
+  line-height: 1.05;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+}
+
+.hero-title p {
+  max-width: 58rem;
+  margin: .55rem 0 0;
+  color: var(--ns-muted);
+  font-size: clamp(.92rem, 1.5vw, 1.03rem);
+  line-height: 1.46;
+  letter-spacing: -0.012em;
+}
+
+.hero-actions,
+.slide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: .625rem;
+}
+
+.ns-btn {
+  min-height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  padding: .55rem 1rem;
+  border-radius: var(--ns-radius-pill);
+  font-size: .88rem;
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  line-height: 1;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform var(--ns-transition),
+    background var(--ns-transition),
+    border-color var(--ns-transition),
+    color var(--ns-transition),
+    box-shadow var(--ns-transition);
+}
+
+.ns-btn:hover { transform: translateY(-1px); }
+.ns-btn:active { transform: scale(.98); }
+
+.ns-btn-primary {
+  background: var(--ns-primary);
+  border-color: var(--ns-primary);
+  color: #fff;
+}
+
+.ns-btn-primary:hover {
+  background: var(--ns-primary-hover);
+  border-color: var(--ns-primary-hover);
+  color: #fff;
+}
+
+.ns-btn-outline {
+  background: transparent;
+  color: var(--ns-text);
+  border-color: var(--ns-border-strong);
+}
+
+.ns-btn-outline:hover {
+  background: var(--ns-hover);
+  color: var(--ns-text);
+  border-color: var(--separator-strong, rgba(0,0,0,.18));
+}
+
+/* Ticker */
+.news-ticker {
+  overflow: hidden;
+  border-top: 1px solid var(--ns-border);
+  background: var(--ns-surface-soft);
+}
+
+.news-ticker-track {
+  display: flex;
+  gap: 2rem;
+  width: max-content;
+  padding: .82rem 0;
+  animation: tickerMove 34s linear infinite;
+  will-change: transform;
+}
+
+.news-ticker:hover .news-ticker-track {
+  animation-play-state: paused;
+}
+
+.news-ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  color: var(--ns-text);
+  font-size: .82rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.news-ticker-item i {
+  color: var(--ns-primary);
+}
+
+@keyframes tickerMove {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* Carousel */
+.carousel-card { overflow: hidden; }
+.carousel-shell { position: relative; padding: 1rem; }
+.carousel-viewport { overflow: hidden; border-radius: var(--ns-radius-xl); }
+.carousel-track {
+  display: flex;
+  transition: transform var(--ns-transition-base);
+  will-change: transform;
+}
+
+.carousel-slide {
+  min-width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 15rem);
+  gap: 1rem;
+  align-items: stretch;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  border-radius: var(--ns-radius-xl);
+  border: 1px solid var(--ns-border);
+  background: var(--ns-surface-soft);
+}
+
+.carousel-slide.primary { background: linear-gradient(135deg, var(--ns-primary-softer), transparent 58%), var(--ns-surface-soft); }
+.carousel-slide.success { background: linear-gradient(135deg, var(--ns-success-bg), transparent 58%), var(--ns-surface-soft); }
+.carousel-slide.warning { background: linear-gradient(135deg, var(--ns-warning-bg), transparent 58%), var(--ns-surface-soft); }
+.carousel-slide.danger { background: linear-gradient(135deg, var(--ns-danger-bg), transparent 58%), var(--ns-surface-soft); }
+.carousel-slide.info { background: linear-gradient(135deg, var(--ns-info-bg), transparent 58%), var(--ns-surface-soft); }
+
+.slide-copy {
+  display: grid;
+  gap: .72rem;
+  align-content: center;
+}
+
+.slide-eyebrow {
+  color: var(--ns-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.slide-title {
+  margin: 0;
+  color: var(--ns-text);
+  font-family: var(--font-display, inherit);
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+
+.slide-headline {
+  margin: 0;
+  color: var(--ns-primary);
+  font-size: clamp(1rem, 2vw, 1.3rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.slide-desc {
+  max-width: 56rem;
+  color: var(--ns-muted);
+  font-size: .92rem;
+  line-height: 1.55;
+}
+
+.slide-actions { justify-content: flex-start; margin-top: .15rem; }
+
+.slide-visual {
+  display: grid;
+  place-items: center;
+  min-height: 12rem;
+  border-radius: var(--ns-radius-xl);
+  border: 1px solid var(--ns-border);
+  background: color-mix(in srgb, var(--ns-surface) 76%, transparent);
+}
+
+.slide-visual .visual-icon {
+  width: 5.75rem;
+  height: 5.75rem;
+  display: grid;
+  place-items: center;
+  border-radius: 1.45rem;
+  background: var(--ns-primary-soft);
+  color: var(--ns-primary);
+  border: 1px solid color-mix(in srgb, var(--ns-primary) 16%, transparent);
+  font-size: 2rem;
+}
+
+.carousel-nav {
+  position: absolute;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  display: flex;
+  gap: .5rem;
+  z-index: 3;
+}
+
+.carousel-btn {
+  width: 2.4rem;
+  height: 2.4rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--ns-radius-pill);
+  border: 1px solid var(--ns-border-strong);
+  background: color-mix(in srgb, var(--ns-surface) 88%, transparent);
+  color: var(--ns-text);
+  cursor: pointer;
+  box-shadow: var(--ns-shadow-sm);
+  transition:
+    transform var(--ns-transition),
+    background var(--ns-transition),
+    color var(--ns-transition),
+    border-color var(--ns-transition);
+}
+
+.carousel-btn:hover {
+  background: var(--ns-primary);
+  border-color: var(--ns-primary);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: .45rem;
+  padding: .95rem 0 .15rem;
+}
+
+.carousel-dot {
+  width: .62rem;
+  height: .62rem;
+  border-radius: var(--ns-radius-pill);
+  border: 0;
+  background: color-mix(in srgb, var(--ns-muted) 28%, transparent);
+  cursor: pointer;
+  transition:
+    width var(--ns-transition),
+    background var(--ns-transition),
+    transform var(--ns-transition);
+}
+
+.carousel-dot:hover { transform: scale(1.12); }
+.carousel-dot.active { width: 1.45rem; background: var(--ns-primary); }
+
+/* KPIs */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.kpi-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: .875rem;
+  padding: 1rem;
+  min-height: 7rem;
+}
+
+.kpi-card::after {
+  content: "";
+  position: absolute;
+  top: -1.75rem;
+  right: -1.75rem;
+  width: 5.5rem;
+  height: 5.5rem;
+  border-radius: var(--ns-radius-pill);
+  background: color-mix(in srgb, var(--kpi-color, var(--ns-primary)) 14%, transparent);
+  pointer-events: none;
+}
+
+.kpi-icon {
+  width: 3rem;
+  height: 3rem;
+  flex: 0 0 3rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--ns-radius-md);
+  background: color-mix(in srgb, var(--kpi-color, var(--ns-primary)) 13%, transparent);
+  color: var(--kpi-color, var(--ns-primary));
+  border: 1px solid color-mix(in srgb, var(--kpi-color, var(--ns-primary)) 22%, transparent);
+  z-index: 1;
+}
+
+.kpi-content { position: relative; z-index: 1; }
+.kpi-label {
+  display: block;
+  color: var(--ns-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .055em;
+}
+.kpi-value {
+  display: block;
+  margin-top: .25rem;
+  color: var(--ns-text);
+  font-family: var(--font-display, inherit);
+  font-size: clamp(1.18rem, 3vw, 1.55rem);
+  font-weight: 650;
+  letter-spacing: -0.028em;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.kpi-sub {
+  display: block;
+  margin-top: .18rem;
+  color: var(--ns-muted);
+  font-size: .74rem;
+  line-height: 1.35;
+}
+
+/* Sections */
+.section-card { overflow: hidden; }
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .875rem;
+  padding: 1rem 1.125rem;
+  border-bottom: 1px solid var(--ns-border);
+  background: var(--ns-surface-soft);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  color: var(--ns-text);
+  font-family: var(--font-display, inherit);
+  font-size: .98rem;
+  font-weight: 650;
+  letter-spacing: -0.018em;
+}
+
+.section-title i { color: var(--ns-primary); }
+
+.section-badge,
+.meta-pill,
+.alert-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .3rem .65rem;
+  border-radius: var(--ns-radius-pill);
+  font-size: .7rem;
+  font-weight: 650;
+  background: var(--ns-surface-muted);
+  color: var(--ns-muted);
+  white-space: nowrap;
+}
+
+.updates-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.update-card,
+.timeline-item,
+.alert-item {
+  border: 1px solid var(--ns-border);
+  border-radius: var(--ns-radius-lg);
+  background: var(--ns-surface-soft);
+  transition:
+    transform var(--ns-transition),
+    background var(--ns-transition),
+    border-color var(--ns-transition),
+    box-shadow var(--ns-transition);
+}
+
+.update-card:hover,
+.timeline-item:hover,
+.alert-item:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--ns-surface-soft) 78%, var(--ns-primary) 4%);
+  border-color: color-mix(in srgb, var(--ns-primary) 18%, var(--ns-border));
+  box-shadow: var(--ns-shadow-sm);
+}
+
+.update-card {
+  display: grid;
+  gap: .55rem;
+  padding: 1rem;
+}
+
+.update-card .update-icon {
+  width: 2.7rem;
+  height: 2.7rem;
+  display: grid;
+  place-items: center;
+  border-radius: .9rem;
+  font-size: 1rem;
+}
+.update-card.primary .update-icon { background: var(--ns-primary-soft); color: var(--ns-primary); }
+.update-card.success .update-icon { background: var(--ns-success-bg); color: var(--ns-success); }
+.update-card.warning .update-icon { background: var(--ns-warning-bg); color: var(--ns-warning); }
+.update-card.danger .update-icon { background: var(--ns-danger-bg); color: var(--ns-danger); }
+.update-card.info .update-icon { background: var(--ns-info-bg); color: var(--ns-info); }
+
+.update-title,
+.timeline-title,
+.alert-title {
+  color: var(--ns-text);
+  font-size: .92rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.update-value {
+  color: var(--ns-text);
+  font-family: var(--font-display, inherit);
+  font-size: 1.65rem;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.update-desc,
+.timeline-summary,
+.alert-sub {
+  color: var(--ns-muted);
+  font-size: .8rem;
+  line-height: 1.48;
+}
+
+.news-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(19rem, .95fr);
+  gap: 1rem;
+}
+
+.timeline {
+  display: grid;
+  gap: .85rem;
+  padding: 1rem;
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .8rem;
+  padding: .95rem;
+}
+
+.timeline-icon {
+  width: 2.65rem;
+  height: 2.65rem;
+  display: grid;
+  place-items: center;
+  border-radius: .9rem;
+  background: var(--ns-primary-soft);
+  color: var(--ns-primary);
+  border: 1px solid color-mix(in srgb, var(--ns-primary) 16%, transparent);
+}
+
+.timeline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-bottom: .35rem;
+}
+
+.timeline-link,
+.alert-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .38rem;
+  margin-top: .5rem;
+  color: var(--ns-link);
+  font-weight: 650;
+  font-size: .78rem;
+  text-decoration: none;
+}
+
+.timeline-link:hover,
+.alert-link:hover {
+  color: var(--ns-primary-hover);
+}
+
+.side-stack { display: grid; gap: 1rem; align-content: start; }
+
+.mini-bars,
+.alert-list {
+  display: grid;
+  gap: .8rem;
+  padding: 1rem;
+}
+
+.bar-item { display: grid; gap: .4rem; }
+.bar-head {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  align-items: center;
+}
+.bar-label {
+  color: var(--ns-text);
+  font-size: .84rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.bar-value {
+  color: var(--ns-muted);
+  font-size: .78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.bar-track {
+  width: 100%;
+  height: .5rem;
+  border-radius: var(--ns-radius-pill);
+  overflow: hidden;
+  background: var(--ns-surface-muted);
+}
+.bar-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--ns-primary), color-mix(in srgb, var(--ns-primary) 64%, var(--ns-info)));
+}
+
+.alert-item {
+  display: grid;
+  gap: .38rem;
+  padding: .9rem;
+}
+.alert-chip { width: fit-content; }
+.alert-chip.vencida { background: var(--ns-danger-bg); color: var(--ns-danger); }
+.alert-chip.urgente { background: var(--ns-warning-bg); color: var(--ns-warning); }
+.alert-chip.planejada { background: var(--ns-success-bg); color: var(--ns-success); }
+
+.empty-box {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--ns-muted);
+  font-size: .88rem;
+  font-weight: 500;
+}
+
+@media (max-width: 1300px) {
+  .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .updates-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .news-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 900px) {
+  .hero-head { grid-template-columns: 1fr; }
+  .hero-main { grid-template-columns: 1fr; }
+  .hero-actions { display: grid; grid-template-columns: 1fr; justify-content: stretch; }
+  .ns-btn { width: 100%; }
+  .carousel-slide { grid-template-columns: 1fr; }
+  .slide-visual { min-height: 11rem; }
+}
+
+@media (max-width: 760px) {
+  .kpi-grid,
+  .updates-grid { grid-template-columns: 1fr; }
+  .timeline-item { grid-template-columns: 1fr; }
+  .carousel-shell { padding: .75rem; }
+  .carousel-nav {
+    position: static;
+    justify-content: center;
+    margin-top: .85rem;
+  }
+  .section-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 520px) {
+  .glass-card { border-radius: var(--ns-radius-lg); }
+  .hero-head,
+  .carousel-slide,
+  .updates-grid,
+  .timeline,
+  .mini-bars,
+  .alert-list { padding: .85rem; }
+  .kpi-card { align-items: flex-start; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .news-ticker-track { animation: none; }
+  .carousel-track,
+  .glass-card,
+  .ns-btn,
+  .carousel-btn,
+  .carousel-dot,
+  .update-card,
+  .timeline-item,
+  .alert-item {
+    transition: none !important;
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="news-page">
+  <div class="news-shell">
+
+    <section class="glass-card">
+      <div class="hero-head">
+        <div class="hero-main">
+          <div class="hero-icon">
+            <i class="fa fa-newspaper"></i>
+          </div>
+
+          <div class="hero-title">
+            <h1>Notícias do Sistema</h1>
+            <p>
+              Painel vivo com destaques, atualizações, eventos recentes e leitura rápida
+              do que está acontecendo no sistema.
+            </p>
+          </div>
+        </div>
+
+        <div class="hero-actions">
+          <a href="{% url 'sistema_inteligencia_dashboard' %}" class="ns-btn ns-btn-outline">
+            <i class="fa fa-brain"></i>
+            Inteligência
+          </a>
+          <a href="{% url 'sistema_noticias' %}" class="ns-btn ns-btn-primary">
+            <i class="fa fa-rotate-right"></i>
+            Atualizar
+          </a>
+        </div>
+      </div>
+
+      <div class="news-ticker">
+        <div class="news-ticker-track">
+          {% for item in ticker_items %}
+            <div class="news-ticker-item">
+              <i class="fa fa-bolt"></i>
+              {{ item }}
+            </div>
+          {% endfor %}
+          {% for item in ticker_items %}
+            <div class="news-ticker-item">
+              <i class="fa fa-bolt"></i>
+              {{ item }}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="glass-card carousel-card">
+      <div class="carousel-shell">
+        <div class="carousel-viewport">
+          <div id="newsCarouselTrack" class="carousel-track">
+            {% for slide in hero_slides %}
+              <article class="carousel-slide {{ slide.tone }}">
+                <div class="slide-copy">
+                  <div class="slide-eyebrow">{{ slide.eyebrow }}</div>
+                  <h2 class="slide-title">{{ slide.title }}</h2>
+                  <p class="slide-headline">{{ slide.headline }}</p>
+                  <div class="slide-desc">{{ slide.description }}</div>
+
+                  <div class="slide-actions">
+                    <a href="{{ slide.cta_url }}" class="ns-btn ns-btn-primary">
+                      <i class="fa fa-arrow-up-right-from-square"></i>
+                      {{ slide.cta_label }}
+                    </a>
+                  </div>
+                </div>
+
+                <div class="slide-visual">
+                  <div class="visual-icon">
+                    <i class="fa {{ slide.icon }}"></i>
+                  </div>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="carousel-nav">
+          <button type="button" id="prevSlide" class="carousel-btn" aria-label="Slide anterior">
+            <i class="fa fa-chevron-left"></i>
+          </button>
+          <button type="button" id="nextSlide" class="carousel-btn" aria-label="Próximo slide">
+            <i class="fa fa-chevron-right"></i>
+          </button>
+        </div>
+
+        <div id="carouselDots" class="carousel-dots">
+          {% for slide in hero_slides %}
+            <button type="button" class="carousel-dot {% if forloop.first %}active{% endif %}" data-index="{{ forloop.counter0 }}"></button>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="kpi-grid">
+      <div class="glass-card kpi-card" style="--kpi-color: var(--ns-primary);">
+        <div class="kpi-icon"><i class="fa fa-users"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Usuários</span>
+          <span class="kpi-value">{{ kpi.total_usuarios }}</span>
+          <span class="kpi-sub">{{ kpi.usuarios_ativos }} ativos / {{ kpi.usuarios_desligados }} desligados</span>
+        </div>
+      </div>
+
+      <div class="glass-card kpi-card" style="--kpi-color: var(--ns-info);">
+        <div class="kpi-icon"><i class="fa fa-boxes-stacked"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Itens</span>
+          <span class="kpi-value">{{ kpi.total_itens }}</span>
+          <span class="kpi-sub">{{ kpi.itens_ativos }} ativos</span>
+        </div>
+      </div>
+
+      <div class="glass-card kpi-card" style="--kpi-color: var(--ns-warning);">
+        <div class="kpi-icon"><i class="fa fa-toolbox"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Manutenção / Defeito</span>
+          <span class="kpi-value">{{ kpi.itens_manutencao }}</span>
+          <span class="kpi-sub">Itens fora do ideal</span>
+        </div>
+      </div>
+
+      <div class="glass-card kpi-card" style="--kpi-color: var(--ns-danger);">
+        <div class="kpi-icon"><i class="fa fa-calendar-xmark"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Preventivas vencidas</span>
+          <span class="kpi-value">{{ kpi.preventivas_vencidas }}</span>
+          <span class="kpi-sub">{{ kpi.preventivas_programadas }} no total</span>
+        </div>
+      </div>
+
+      <div class="glass-card kpi-card" style="--kpi-color: var(--ns-success);">
+        <div class="kpi-icon"><i class="fa fa-money-bill-trend-up"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Burn rate mensal</span>
+          <span class="kpi-value">R$ {{ kpi.burn_rate_total|floatformat:2 }}</span>
+          <span class="kpi-sub">Locações + licenças</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="glass-card section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <i class="fa fa-sparkles"></i>
+          Atualizações do Sistema
+        </div>
+        <div class="section-badge">Resumo rápido</div>
+      </div>
+
+      <div class="updates-grid">
+        {% for update in updates %}
+          <article class="update-card {{ update.tone }}">
+            <div class="update-icon">
+              <i class="fa {{ update.icon }}"></i>
+            </div>
+            <div class="update-title">{{ update.title }}</div>
+            <div class="update-value">{{ update.value }}</div>
+            <div class="update-desc">{{ update.description }}</div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="news-grid">
+      <article class="glass-card section-card">
+        <div class="section-header">
+          <div class="section-title">
+            <i class="fa fa-timeline"></i>
+            Notícias e Eventos Recentes
+          </div>
+          <div class="section-badge">{{ news_feed|length }} registros</div>
+        </div>
+
+        <div class="timeline">
+          {% for news in news_feed %}
+            <article class="timeline-item">
+              <div class="timeline-icon">
+                <i class="fa {{ news.icon }}"></i>
+              </div>
+
+              <div>
+                <div class="timeline-meta">
+                  <span class="meta-pill">{{ news.category }}</span>
+                  <span class="meta-pill">
+                    <i class="fa fa-clock"></i>
+                    {{ news.timestamp_label }}
+                  </span>
+                </div>
+
+                <div class="timeline-title">{{ news.title }}</div>
+                <div class="timeline-summary">{{ news.summary }}</div>
+
+                {% if news.url and news.url != "#" %}
+                  <a href="{{ news.url }}" class="timeline-link">
+                    <i class="fa fa-arrow-up-right-from-square"></i>
+                    Abrir registro
+                  </a>
+                {% endif %}
+              </div>
+            </article>
+          {% empty %}
+            <div class="empty-box">
+              Nenhum evento recente encontrado.
+            </div>
+          {% endfor %}
+        </div>
+      </article>
+
+      <aside class="side-stack">
+
+        <section class="glass-card section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fa fa-chart-pie"></i>
+              Status dos Itens
+            </div>
+            <div class="section-badge">Radar</div>
+          </div>
+
+          <div class="mini-bars">
+            {% for row in panels.itens_status %}
+              <div class="bar-item">
+                <div class="bar-head">
+                  <div class="bar-label">{{ row.label }}</div>
+                  <div class="bar-value">{{ row.total }}</div>
+                </div>
+                <div class="bar-track">
+                  <span style="width: {{ row.pct }}%;"></span>
+                </div>
+              </div>
+            {% empty %}
+              <div class="empty-box">Sem dados.</div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="glass-card section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fa fa-layer-group"></i>
+              Top Subtipos
+            </div>
+            <div class="section-badge">Distribuição</div>
+          </div>
+
+          <div class="mini-bars">
+            {% for row in panels.top_subtipos %}
+              <div class="bar-item">
+                <div class="bar-head">
+                  <div class="bar-label">{{ row.label }}</div>
+                  <div class="bar-value">{{ row.total }}</div>
+                </div>
+                <div class="bar-track">
+                  <span style="width: {{ row.pct }}%;"></span>
+                </div>
+              </div>
+            {% empty %}
+              <div class="empty-box">Sem subtipos com itens.</div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="glass-card section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fa fa-location-dot"></i>
+              Top Localidades
+            </div>
+            <div class="section-badge">Distribuição</div>
+          </div>
+
+          <div class="mini-bars">
+            {% for row in panels.top_localidades %}
+              <div class="bar-item">
+                <div class="bar-head">
+                  <div class="bar-label">{{ row.label }}</div>
+                  <div class="bar-value">{{ row.total }}</div>
+                </div>
+                <div class="bar-track">
+                  <span style="width: {{ row.pct }}%;"></span>
+                </div>
+              </div>
+            {% empty %}
+              <div class="empty-box">Sem localidades com itens.</div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="glass-card section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fa fa-calendar-days"></i>
+              Agenda Crítica
+            </div>
+            <div class="section-badge">Preventivas</div>
+          </div>
+
+          <div class="alert-list">
+            {% for row in panels.agenda_critica %}
+              <article class="alert-item">
+                <div class="alert-chip {{ row.status }}">
+                  {% if row.status == 'vencida' %}
+                    <i class="fa fa-triangle-exclamation"></i> Vencida
+                  {% elif row.status == 'urgente' %}
+                    <i class="fa fa-clock"></i> Urgente
+                  {% else %}
+                    <i class="fa fa-check"></i> Planejada
+                  {% endif %}
+                </div>
+
+                <div class="alert-title">{{ row.item }}</div>
+
+                <div class="alert-sub">
+                  Data programada: {{ row.date|date:"d/m/Y" }} ·
+                  {% if row.dias < 0 %}
+                    {{ row.dias|add:"0"|cut:"-" }} dia(s) em atraso
+                  {% else %}
+                    faltam {{ row.dias }} dia(s)
+                  {% endif %}
+                </div>
+
+                {% if row.url and row.url != "#" %}
+                  <a href="{{ row.url }}" class="alert-link">
+                    Abrir equipamento
+                  </a>
+                {% endif %}
+              </article>
+            {% empty %}
+              <div class="empty-box">Nenhuma preventiva na agenda crítica.</div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="glass-card section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fa fa-user-shield"></i>
+              Governança
+            </div>
+            <div class="section-badge">Pendências</div>
+          </div>
+
+          <div class="alert-list">
+            {% for row in panels.governanca %}
+              <article class="alert-item">
+                <div class="alert-title">{{ row.name }}</div>
+                <div class="alert-sub">
+                  {{ row.itens }} item(ns) ativo(s) · {{ row.licencas }} licença(s) ativa(s)
+                </div>
+                {% if row.url and row.url != "#" %}
+                  <a href="{{ row.url }}" class="alert-link">Abrir usuário</a>
+                {% endif %}
+              </article>
+            {% empty %}
+              <div class="empty-box">Sem pendências de desligamento no momento.</div>
+            {% endfor %}
+          </div>
+        </section>
+
+      </aside>
+    </section>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+  const track = document.getElementById('newsCarouselTrack');
+  const prevBtn = document.getElementById('prevSlide');
+  const nextBtn = document.getElementById('nextSlide');
+  const dots = Array.from(document.querySelectorAll('.carousel-dot'));
+  const slides = Array.from(track ? track.children : []);
+  const total = slides.length;
+
+  if (!track || total <= 1) return;
+
+  let current = 0;
+  let intervalId = null;
+
+  function render() {
+    track.style.transform = `translateX(-${current * 100}%)`;
+    dots.forEach((dot, index) => {
+      dot.classList.toggle('active', index === current);
+    });
+  }
+
+  function next() {
+    current = (current + 1) % total;
+    render();
+  }
+
+  function prev() {
+    current = (current - 1 + total) % total;
+    render();
+  }
+
+  function startAuto() {
+    stopAuto();
+    intervalId = setInterval(next, 7000);
+  }
+
+  function stopAuto() {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  }
+
+  nextBtn.addEventListener('click', () => {
+    next();
+    startAuto();
+  });
+
+  prevBtn.addEventListener('click', () => {
+    prev();
+    startAuto();
+  });
+
+  dots.forEach((dot) => {
+    dot.addEventListener('click', () => {
+      current = Number(dot.dataset.index || 0);
+      render();
+      startAuto();
+    });
+  });
+
+  track.addEventListener('mouseenter', stopAuto);
+  track.addEventListener('mouseleave', startAuto);
+
+  render();
+  startAuto();
+})();
+</script>
+{% endblock %}

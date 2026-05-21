@@ -5,17 +5,14 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Sum
 from decimal import Decimal
-from ProjetoEstoque.models import Usuario
 from .models import (
     Categoria, Subtipo, Localidade, Fornecedor, CentroCusto, Funcao, Usuario,
     Item, Locacao, Comentario, CicloManutencao, MovimentacaoItem,
     StatusItemChoices, TipoMovimentacaoChoices, TipoTransferenciaChoices,
     LocalidadeChoices, CheckListModelo, CheckListPergunta, Preventiva,
     TipoRespostaChoices, SimNaoChoices, Licenca, MovimentacaoLicenca,
-    TipoMovLicencaChoices, LicencaLote
+    TipoMovLicencaChoices, LicencaLote, LoteEstoque, ItemLote
 )
-
-DATE_WIDGET = forms.DateInput(attrs={"type": "date"})
 
 BASE_CTRL_CSS = {
     "class": "ctrl",
@@ -99,146 +96,351 @@ class FuncaoForm(forms.ModelForm):
 DATE_WIDGET = forms.DateInput(
     attrs={
         "type": "date",
-        "class": "ctrl",           # opcional: casa com seu CSS
+        "class": "ctrl",
     },
     format="%Y-%m-%d",
 )
+
 
 class UsuarioForm(forms.ModelForm):
     class Meta:
         model = Usuario
         fields = [
-            "nome", "status", "data_inicio", "data_termino",
-            "pmb", "email", "centro_custo", "localidade", "funcao"
+            "matricula",
+            "nome",
+            "status",
+            "data_inicio",
+            "data_termino",
+            "pmb",
+            "email",
+            "centro_custo",
+            "localidade",
+            "funcao",
         ]
+
         widgets = {
             "data_inicio": DATE_WIDGET,
             "data_termino": DATE_WIDGET,
-            # Demais widgets continuam padrão; classes serão aplicadas no __init__
         }
 
     def __init__(self, *args, **kwargs):
-        """
-        - Mantém seu baseline (funciona).
-        - Aplica Select2 nos selects.
-        - Garante que, em edição (GET), o <input type="date"> venha pré-preenchido.
-        """
         super().__init__(*args, **kwargs)
 
-        # 🔧 Aceitar formato do <input type="date">
         self.fields["data_inicio"].input_formats = ["%Y-%m-%d"]
         self.fields["data_termino"].input_formats = ["%Y-%m-%d"]
 
-        # Classes padrão e Select2
         for name, field in self.fields.items():
-            # aplica .ctrl em todos (exceto os que já têm via DATE_WIDGET)
-            if not isinstance(field.widget, forms.DateInput):
-                field.widget.attrs.setdefault("class", "ctrl")
+            existing_class = field.widget.attrs.get("class", "")
+            if "ctrl" not in existing_class:
+                field.widget.attrs["class"] = f"{existing_class} ctrl".strip()
 
-        # aplica select2 nos selects
         for name in ("status", "pmb", "centro_custo", "localidade", "funcao"):
-            if name in self.fields and hasattr(self.fields[name].widget, "attrs"):
+            if name in self.fields:
                 existing = self.fields[name].widget.attrs.get("class", "")
                 if "select2" not in existing:
-                    self.fields[name].widget.attrs["class"] = (existing + " select2").strip()
+                    self.fields[name].widget.attrs["class"] = f"{existing} select2".strip()
                 self.fields[name].widget.attrs.setdefault("data-placeholder", "Selecione...")
 
-        # UX: ordenar combos
-        if "centro_custo" in self.fields:
-            self.fields["centro_custo"].queryset = CentroCusto.objects.order_by("numero", "departamento")
-            self.fields["centro_custo"].empty_label = "—"
-        if "localidade" in self.fields:
-            self.fields["localidade"].queryset = Localidade.objects.order_by("local")
-            self.fields["localidade"].empty_label = "—"
-        if "funcao" in self.fields:
-            self.fields["funcao"].queryset = Funcao.objects.order_by("nome")
-            self.fields["funcao"].empty_label = "—"
+        self.fields["matricula"].widget.attrs.update({
+            "placeholder": "Ex: 12345",
+            "autocomplete": "off",
+        })
 
-        # ✅ PRÉ-PREENCHIMENTO NA EDIÇÃO (GET): value no input[type=date]
+        self.fields["nome"].widget.attrs.update({
+            "placeholder": "Nome completo do funcionário",
+            "autocomplete": "off",
+        })
+
+        self.fields["email"].widget.attrs.update({
+            "placeholder": "email@empresa.com.br",
+            "autocomplete": "off",
+        })
+
+        self.fields["email"].required = False
+        self.fields["matricula"].required = False
+        self.fields["centro_custo"].required = False
+        self.fields["localidade"].required = False
+        self.fields["funcao"].required = False
+        self.fields["data_termino"].required = False
+
+        self.fields["centro_custo"].queryset = CentroCusto.objects.order_by("numero", "departamento")
+        self.fields["centro_custo"].empty_label = "—"
+
+        self.fields["localidade"].queryset = Localidade.objects.order_by("local")
+        self.fields["localidade"].empty_label = "—"
+
+        self.fields["funcao"].queryset = Funcao.objects.order_by("nome")
+        self.fields["funcao"].empty_label = "—"
+
         if self.instance and self.instance.pk and not self.is_bound:
             if self.instance.data_inicio:
                 self.fields["data_inicio"].initial = self.instance.data_inicio
                 self.fields["data_inicio"].widget.attrs["value"] = self.instance.data_inicio.strftime("%Y-%m-%d")
 
+            if self.instance.data_termino:
+                self.fields["data_termino"].initial = self.instance.data_termino
+                self.fields["data_termino"].widget.attrs["value"] = self.instance.data_termino.strftime("%Y-%m-%d")
+
+    def clean_matricula(self):
+        matricula = self.cleaned_data.get("matricula")
+
+        if not matricula:
+            return None
+
+        matricula = str(matricula).strip()
+
+        qs = Usuario.objects.filter(matricula__iexact=matricula)
+
+        if self.instance and self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+
+        if qs.exists():
+            raise forms.ValidationError("Já existe um funcionário cadastrado com esta matrícula.")
+
+        return matricula
+
     def clean(self):
-        """
-        - Mantém sua validação original (término >= início).
-        - ✅ PRESERVA data_inicio NA EDIÇÃO SE O POST VIER VAZIO (string vazia vira None no cleaned_data).
-        """
         data = super().clean()
 
-        # ✅ preserva data_inicio na edição
         if self.instance and self.instance.pk:
-            # Se o POST trouxe '' (vazio) ou None, restaura o valor original
             posted_raw = self.data.get(self.add_prefix("data_inicio"), None)
-            if (posted_raw in (None, "")) and self.instance.data_inicio:
+            if posted_raw in (None, "") and self.instance.data_inicio:
                 data["data_inicio"] = self.instance.data_inicio
 
         di = data.get("data_inicio")
         dt = data.get("data_termino")
+
         if di and dt and dt < di:
             self.add_error("data_termino", "A data de término não pode ser anterior à data de início.")
 
         return data
 
     def save(self, commit=True):
-        """
-        ✅ Blindagem final: na edição, se o POST vier vazio para data_inicio,
-        regrava o valor anterior da instância.
-        """
         instance = super().save(commit=False)
 
         if self.instance and self.instance.pk:
             posted_raw = self.data.get(self.add_prefix("data_inicio"), None)
-            if (posted_raw in (None, "")) and self.instance.data_inicio:
+            if posted_raw in (None, "") and self.instance.data_inicio:
                 instance.data_inicio = self.instance.data_inicio
 
         if commit:
             instance.save()
             self.save_m2m()
+
         return instance
+
+
+class ImportarUsuariosForm(forms.Form):
+    MODO_IMPORTACAO_CHOICES = [
+        ("ultima_aba", "Importar somente a aba mensal mais recente"),
+        ("todas_abas", "Importar todas as abas da planilha"),
+        ("aba_especifica", "Importar uma aba específica"),
+    ]
+
+    arquivo = forms.FileField(
+        label="Planilha Excel do RH",
+        help_text="Envie a planilha mensal do RH no formato .xlsx.",
+        widget=forms.FileInput(attrs={
+            "class": "ctrl",
+            "accept": ".xlsx",
+        })
+    )
+
+    modo_importacao = forms.ChoiceField(
+        label="Modo de importação",
+        choices=MODO_IMPORTACAO_CHOICES,
+        initial="ultima_aba",
+        widget=forms.Select(attrs={
+            "class": "ctrl",
+        })
+    )
+
+    nome_aba = forms.CharField(
+        label="Nome da aba",
+        required=False,
+        help_text="Preencha somente se escolher importação por aba específica. Exemplo: Abr 2026.",
+        widget=forms.TextInput(attrs={
+            "class": "ctrl",
+            "placeholder": "Ex: Abr 2026",
+        })
+    )
+
+    desligar_ausentes = forms.BooleanField(
+        required=False,
+        initial=False,
+        label="Desligar funcionários ausentes na aba importada",
+        help_text="Use apenas se a aba mensal representar a base oficial completa de funcionários ativos."
+    )
+    
 # ================== ITEM ==================
+
+def formatar_data_para_input_html(data):
+    """
+    Converte DateField para o formato aceito por input type=date.
+    Evita campo vazio ao editar registros existentes.
+    """
+    if not data:
+        return None
+
+    return data.strftime("%Y-%m-%d")
+
 class ItemForm(forms.ModelForm):
+    data_compra = forms.DateField(
+        required=False,
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={
+                "type": "date",
+                "class": "form-control",
+            }
+        ),
+        input_formats=["%Y-%m-%d", "%d/%m/%Y"],
+    )
+
     class Meta:
         model = Item
         fields = [
-            # principais
-            "nome", "numero_serie", "quantidade", "marca", "modelo", "centro_custo",
-            # estoque/consumo
-            "pmb", "item_consumo",
-            # valor e status
-            "valor", "status",
-            # relações
-            "subtipo", "localidade", "fornecedor",
-            # observações
+            "locado",
+            "nome",
+            "numero_serie",
+            "marca",
+            "modelo",
+            "subtipo",
+            "localidade",
+            "status",
+            "centro_custo",
+            "fornecedor",
+            "quantidade",
+            "item_consumo",
+            "pmb",
+            "precisa_preventiva",
+            "data_limite_preventiva",
+            "valor",
+            "data_compra",
+            "numero_pedido",
             "observacoes",
-            # preventiva
-            "precisa_preventiva", "data_limite_preventiva",
-            # locação
-            "locado", "data_compra", "numero_pedido",
         ]
+
+        widgets = {
+            "locado": forms.Select(attrs={"class": "form-control"}),
+            "nome": forms.TextInput(attrs={"class": "form-control"}),
+            "numero_serie": forms.TextInput(attrs={"class": "form-control"}),
+            "marca": forms.TextInput(attrs={"class": "form-control"}),
+            "modelo": forms.TextInput(attrs={"class": "form-control"}),
+            "subtipo": forms.Select(attrs={"class": "form-control"}),
+            "localidade": forms.Select(attrs={"class": "form-control"}),
+            "status": forms.Select(attrs={"class": "form-control"}),
+            "centro_custo": forms.Select(attrs={"class": "form-control"}),
+            "fornecedor": forms.Select(attrs={"class": "form-control"}),
+            "quantidade": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
+            "item_consumo": forms.Select(attrs={"class": "form-control"}),
+            "pmb": forms.Select(attrs={"class": "form-control"}),
+            "precisa_preventiva": forms.Select(attrs={"class": "form-control"}),
+            "data_limite_preventiva": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
+            "valor": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "min": "0"}),
+            "numero_pedido": forms.TextInput(attrs={"class": "form-control"}),
+            "observacoes": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields["quantidade"].required = False
+        self.fields["valor"].required = False
+        self.fields["data_compra"].required = False
+        self.fields["numero_pedido"].required = False
+        self.fields["fornecedor"].required = False
+        self.fields["data_limite_preventiva"].required = False
+
+        if self.instance and self.instance.pk:
+            self.initial["data_compra"] = formatar_data_para_input_html(
+                self.instance.data_compra
+            )
+
+    def clean(self):
+        cleaned = super().clean()
+
+        locado = cleaned.get("locado")
+        item_consumo = cleaned.get("item_consumo")
+        precisa_preventiva = cleaned.get("precisa_preventiva")
+        data_limite_preventiva = cleaned.get("data_limite_preventiva")
+        quantidade = cleaned.get("quantidade")
+
+        eh_locado = locado == SimNaoChoices.SIM
+        eh_consumo = item_consumo == SimNaoChoices.SIM
+
+        if eh_consumo and eh_locado:
+            self.add_error("item_consumo", "Item de consumo não pode ser cadastrado como locado.")
+            self.add_error("locado", "Item locado deve ser um ativo/equipamento, não item de consumo.")
+
+        if precisa_preventiva == SimNaoChoices.SIM and not data_limite_preventiva:
+            self.add_error("data_limite_preventiva", "Informe a periodicidade da preventiva em dias.")
+
+        if precisa_preventiva == SimNaoChoices.NAO:
+            cleaned["data_limite_preventiva"] = None
+
+        if not eh_consumo:
+            if not quantidade or quantidade <= 0:
+                self.add_error("quantidade", "Informe uma quantidade válida.")
+
+        if eh_locado:
+            cleaned["data_compra"] = None
+            cleaned["numero_pedido"] = None
+
+        return cleaned
 
 
 class LocacaoForm(forms.ModelForm):
-    # 🔧 Forçamos o formato que o navegador entende (YYYY-MM-DD)
     data_entrada = forms.DateField(
         required=False,
         widget=forms.DateInput(
-            format='%Y-%m-%d',
+            format="%Y-%m-%d",
             attrs={
-                'type': 'date',
+                "type": "date",
+                "class": "form-control",
             }
         ),
-        # Aceita tanto o formato do navegador quanto dd/mm/aaaa, se necessário
-        input_formats=['%Y-%m-%d', '%d/%m/%Y'],
+        input_formats=["%Y-%m-%d", "%d/%m/%Y"],
     )
 
     class Meta:
         model = Locacao
-        fields = ["tempo_locado", "valor_mensal", "data_entrada", "fornecedor", "contrato", "observacoes"]
+        fields = [
+            "tempo_locado",
+            "valor_mensal",
+            "data_entrada",
+            "contrato",
+            "observacoes",
+        ]
+
         widgets = {
-            "observacoes": forms.Textarea(attrs={'rows': 2}),
+            "tempo_locado": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
+            "valor_mensal": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "min": "0"}),
+            "contrato": forms.TextInput(attrs={"class": "form-control"}),
+            "observacoes": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if self.instance and self.instance.pk:
+            self.initial["data_entrada"] = formatar_data_para_input_html(
+                self.instance.data_entrada
+            )
+
+    def clean(self):
+        cleaned = super().clean()
+
+        if not cleaned.get("data_entrada"):
+            self.add_error("data_entrada", "Informe a data de entrada da locação.")
+
+        if not cleaned.get("tempo_locado"):
+            self.add_error("tempo_locado", "Informe o tempo de contrato em meses.")
+
+        if cleaned.get("valor_mensal") is None:
+            self.add_error("valor_mensal", "Informe o valor mensal da locação.")
+
+        return cleaned
 # ================== COMENTÁRIO ==================
 class ComentarioForm(forms.ModelForm):
     class Meta:
@@ -249,7 +451,8 @@ class ComentarioForm(forms.ModelForm):
 class CicloManutencaoForm(forms.ModelForm):
     class Meta:
         model = CicloManutencao
-        fields = ["item", "status_inicial", "data_inicio", "data_fim", "causa", "custo"]
+        # item é injetado pela view via URL — nunca exposto ao usuário
+        fields = ["status_inicial", "data_inicio", "data_fim", "causa", "custo"]
         widgets = {
             "data_inicio": DATE_WIDGET,
             "data_fim": DATE_WIDGET,
@@ -259,88 +462,312 @@ class CicloManutencaoForm(forms.ModelForm):
 
 # ================== MOVIMENTAÇÃO ==================
 class MovimentacaoItemForm(forms.ModelForm):
+    lote_fornecedor = forms.ModelChoiceField(
+        queryset=Fornecedor.objects.all(),
+        required=False,
+        label="Fornecedor do Lote",
+        widget=forms.Select(attrs={"class": "form-control"})
+    )
+
+    lote_data_entrada = forms.DateField(
+        required=False,
+        label="Data de Entrada do Lote",
+        input_formats=["%Y-%m-%d", "%d/%m/%Y"],
+        widget=forms.DateInput(attrs={
+            "class": "form-control",
+            "type": "date"
+        })
+    )
+
+    lote_numero_nf = forms.CharField(
+        required=False,
+        label="Número da NF",
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "Ex: 123456"
+        })
+    )
+
+    lote_quantidade = forms.IntegerField(
+        required=False,
+        label="Quantidade de Entrada",
+        min_value=1,
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "min": "1"
+        })
+    )
+
+    lote_custo_unitario = forms.DecimalField(
+        required=False,
+        label="Custo Unitário",
+        min_value=Decimal("0.01"),
+        max_digits=12,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "step": "0.01",
+            "min": "0.01"
+        })
+    )
+
+    lote_observacao_tecnica = forms.CharField(
+        required=False,
+        label="Observação Técnica do Lote",
+        widget=forms.Textarea(attrs={
+            "class": "form-control",
+            "rows": 3,
+            "placeholder": "Descreva observações técnicas, fiscais ou de recebimento do lote."
+        })
+    )
+
     class Meta:
         model = MovimentacaoItem
         fields = [
-            "tipo_movimentacao", "tipo_transferencia", "item", "usuario",
-            "quantidade", "localidade_destino", "centro_custo_destino",
-            "fornecedor_manutencao", "numero_pedido", "observacao",
-            "chamado", "custo", "termo_pdf", "status_transferencia"
+            "tipo_movimentacao",
+            "tipo_transferencia",
+            "item",
+            "usuario",
+            "quantidade",
+            "lote",
+            "localidade_destino",
+            "centro_custo_destino",
+            "fornecedor_manutencao",
+            "numero_pedido",
+            "observacao",
+            "chamado",
+            "custo",
+            "termo_pdf",
+            "status_transferencia",
+            "status_retorno",
         ]
+
         widgets = {
-            # Classes 'form-control' para estilo. O JS agora só aplicará Select2 nos tags <select>
             "tipo_movimentacao": forms.Select(attrs={"class": "form-control"}),
             "item": forms.Select(attrs={"class": "form-control"}),
             "usuario": forms.Select(attrs={"class": "form-control"}),
+            "lote": forms.Select(attrs={"class": "form-control"}),
             "localidade_destino": forms.Select(attrs={"class": "form-control"}),
             "centro_custo_destino": forms.Select(attrs={"class": "form-control"}),
             "fornecedor_manutencao": forms.Select(attrs={"class": "form-control"}),
             "status_transferencia": forms.Select(attrs={"class": "form-control"}),
-            
-            # CORREÇÃO: Widget explícito de Textarea para não ser confundido pelo JS
+            "status_retorno": forms.Select(attrs={"class": "form-control"}),
+
             "observacao": forms.Textarea(attrs={
-                "class": "form-control", 
-                "rows": 3, 
+                "class": "form-control",
+                "rows": 3,
                 "placeholder": "Descreva detalhes importantes..."
             }),
-            
+
             "numero_pedido": forms.TextInput(attrs={"class": "form-control"}),
             "chamado": forms.TextInput(attrs={"class": "form-control"}),
-            "custo": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
+            "custo": forms.NumberInput(attrs={
+                "class": "form-control",
+                "step": "0.01",
+                "min": "0"
+            }),
             "tipo_transferencia": forms.RadioSelect(),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Remove a obrigatoriedade do HTML para permitir a validação condicional no clean()
+
         for field in self.fields.values():
             field.required = False
 
+        self.fields["lote"].queryset = (
+            LoteEstoque.objects
+            .none()
+        )
+
+        item_id = None
+
+        if self.data:
+            item_id = self.data.get("item") or self.data.get("id_item")
+
+        elif self.instance and self.instance.pk and self.instance.item_id:
+            item_id = self.instance.item_id
+
+        if item_id:
+            self.fields["lote"].queryset = (
+                LoteEstoque.objects
+                .filter(itens_vinculados__item_id=item_id)
+                .distinct()
+                .order_by("-data_entrada", "-created_at")
+            )
+
+        self.fields["lote"].label_from_instance = self._label_lote
+
+    def _label_lote(self, lote):
+        item_lote = (
+            ItemLote.objects
+            .filter(lote=lote)
+            .select_related("item", "item__centro_custo")
+            .first()
+        )
+
+        saldo = item_lote.quantidade_disponivel if item_lote else lote.quantidade
+        centro_custo = "-"
+
+        if item_lote and item_lote.item and item_lote.item.centro_custo:
+            centro_custo = str(item_lote.item.centro_custo)
+
+        return f"NF {lote.numero_nf} | Saldo: {saldo} | CC: {centro_custo} | {lote.data_entrada:%d/%m/%Y}"
+
     def clean(self):
         cleaned = super().clean()
+
         tipo = cleaned.get("tipo_movimentacao")
+        item = cleaned.get("item")
+        lote = cleaned.get("lote")
+        quantidade = cleaned.get("quantidade")
 
         if not tipo:
             self.add_error("tipo_movimentacao", "O tipo de movimentação é obrigatório.")
             return cleaned
 
-        # Regras condicionais de validação
-        if tipo == "transferencia":
+        if not item:
+            self.add_error("item", "Selecione o item.")
+            return cleaned
+
+        if tipo == "entrada":
+            lote_quantidade = cleaned.get("lote_quantidade")
+
+            if not cleaned.get("lote_fornecedor"):
+                self.add_error("lote_fornecedor", "Informe o fornecedor do lote.")
+
+            if not cleaned.get("lote_data_entrada"):
+                self.add_error("lote_data_entrada", "Informe a data de entrada do lote.")
+
+            if not cleaned.get("lote_numero_nf"):
+                self.add_error("lote_numero_nf", "Informe o número da NF.")
+
+            if not lote_quantidade or lote_quantidade <= 0:
+                self.add_error("lote_quantidade", "Informe a quantidade de entrada.")
+
+            if not cleaned.get("lote_custo_unitario"):
+                self.add_error("lote_custo_unitario", "Informe o custo unitário.")
+
+            if not cleaned.get("localidade_destino"):
+                self.add_error("localidade_destino", "Informe a localidade de destino.")
+
+            if not cleaned.get("centro_custo_destino"):
+                self.add_error("centro_custo_destino", "Informe o centro de custo destino.")
+
+        elif tipo == "baixa":
+            if not lote:
+                self.add_error("lote", "Selecione o lote que será baixado.")
+
+            if not quantidade or quantidade <= 0:
+                self.add_error("quantidade", "Informe a quantidade da baixa.")
+
+            if not cleaned.get("usuario"):
+                self.add_error("usuario", "Informe o solicitante da baixa.")
+
+            if not cleaned.get("localidade_destino"):
+                self.add_error("localidade_destino", "Informe a localidade.")
+
+            if not cleaned.get("centro_custo_destino"):
+                self.add_error("centro_custo_destino", "Informe o centro de custo destino.")
+
+            if not cleaned.get("observacao"):
+                self.add_error("observacao", "Justifique a baixa nas observações.")
+
+        elif tipo == "transferencia":
             acao = cleaned.get("tipo_transferencia")
+
             if not acao:
-                self.add_error("tipo_transferencia", "Selecione o tipo da transferência (Entrega ou Devolução).")
+                self.add_error("tipo_transferencia", "Selecione o tipo da transferência.")
+
             if not cleaned.get("termo_pdf"):
-                self.add_error("termo_pdf", "O termo de responsabilidade (PDF) é obrigatório.")
-            
-            # Entrega: Usuário e Localidade são obrigatórios
+                self.add_error("termo_pdf", "O termo de responsabilidade em PDF é obrigatório.")
+
             if acao == "entrega":
                 if not cleaned.get("usuario"):
                     self.add_error("usuario", "Selecione o usuário para entrega.")
+
                 if not cleaned.get("localidade_destino"):
                     self.add_error("localidade_destino", "Informe a localidade de destino.")
-                # CC Destino é opcional aqui (preenchido pelo Model se vazio)
 
         elif tipo == "transferencia_equipamento":
             if not cleaned.get("localidade_destino"):
                 self.add_error("localidade_destino", "Informe a nova localidade.")
+
             if not cleaned.get("centro_custo_destino"):
                 self.add_error("centro_custo_destino", "Informe o novo centro de custo.")
+
             if not cleaned.get("status_transferencia"):
                 self.add_error("status_transferencia", "Informe o novo status.")
 
-        elif tipo == "entrada":
-            if not cleaned.get("quantidade"): self.add_error("quantidade", "Quantidade obrigatória.")
-            if not cleaned.get("numero_pedido"): self.add_error("numero_pedido", "Nº Pedido obrigatório.")
-
-        elif tipo == "baixa":
-            if not cleaned.get("quantidade"): self.add_error("quantidade", "Quantidade obrigatória.")
-            if not cleaned.get("observacao"): self.add_error("observacao", "Justifique a baixa nas observações.")
-
         elif tipo == "envio_manutencao":
-            if not cleaned.get("observacao"): self.add_error("observacao", "Descreva o problema nas observações.")
+            if not cleaned.get("observacao"):
+                self.add_error("observacao", "Descreva o problema nas observações.")
 
-        elif tipo == "retorno_manutencao" or tipo == "retorno":
-            if not cleaned.get("localidade_destino"): self.add_error("localidade_destino", "Informe onde o item será guardado.")
+        elif tipo in ("retorno_manutencao", "retorno"):
+            if not cleaned.get("localidade_destino"):
+                self.add_error("localidade_destino", "Informe onde o item será guardado.")
+
+        return cleaned
+    
+class LoteEstoqueCreateForm(forms.ModelForm):
+    data_entrada = forms.DateField(
+        required=False,
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={
+                "type": "date",
+                "class": "form-control",
+            }
+        ),
+        input_formats=["%Y-%m-%d", "%d/%m/%Y"],
+    )
+
+    class Meta:
+        model = LoteEstoque
+        fields = [
+            "fornecedor",
+            "data_entrada",
+            "numero_nf",
+            "quantidade",
+            "custo_unitario",
+            "observacao_tecnica",
+        ]
+
+        widgets = {
+            "fornecedor": forms.Select(attrs={"class": "form-control"}),
+            "numero_nf": forms.TextInput(attrs={"class": "form-control", "placeholder": "Número da NF"}),
+            "quantidade": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
+            "custo_unitario": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "min": "0.01"}),
+            "observacao_tecnica": forms.Textarea(attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": "Observações técnicas do lote, recebimento ou conferência."
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if self.instance and self.instance.pk:
+            self.initial["data_entrada"] = formatar_data_para_input_html(
+                self.instance.data_entrada
+            )
+
+    def clean(self):
+        cleaned = super().clean()
+
+        data_entrada = cleaned.get("data_entrada")
+        quantidade = cleaned.get("quantidade")
+        custo_unitario = cleaned.get("custo_unitario")
+
+        if not data_entrada:
+            self.add_error("data_entrada", "Informe a data de entrada do lote.")
+
+        if not quantidade or quantidade <= 0:
+            self.add_error("quantidade", "A quantidade do lote deve ser maior que zero.")
+
+        if not custo_unitario or custo_unitario <= 0:
+            self.add_error("custo_unitario", "O custo unitário deve ser maior que zero.")
 
         return cleaned
 # ================== HELPERS/BASE ESTILO ==================
@@ -410,7 +837,7 @@ class PreventivaStartForm(forms.Form):
                         .filter(subtipo=item_obj.subtipo, ativo="sim")
                         .order_by("nome")
                     )
-            except:
+            except Exception:
                 pass
 
 # ================== LICENÇAS ==================
@@ -419,31 +846,28 @@ ISO_FMT = "%Y-%m-%d"
 class LicencaForm(forms.ModelForm):
     class Meta:
         model = Licenca
-        # Apenas os campos solicitados
-        fields = ["nome", "fornecedor", "pmb", "observacao"]
-        
+        fields = ["nome", "fornecedor", "centro_custo", "pmb", "observacao"]
+
         widgets = {
             "nome": forms.TextInput(attrs={
-                "class": "form-control", 
+                "class": "form-control",
                 "placeholder": "Ex: Microsoft Office 365"
             }),
-            "fornecedor": forms.Select(attrs={
-                "class": "form-control"
-            }),
-            "pmb": forms.Select(attrs={
-                "class": "form-control"
-            }),
+            "fornecedor": forms.Select(attrs={"class": "form-control"}),
+            "centro_custo": forms.Select(attrs={"class": "form-control"}),
+            "pmb": forms.Select(attrs={"class": "form-control"}),
             "observacao": forms.Textarea(attrs={
-                "class": "form-control", 
-                "rows": 4, 
+                "class": "form-control",
+                "rows": 4,
                 "placeholder": "Insira detalhes adicionais aqui..."
             }),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Placeholder para o Select2 funcionar bonito
-        self.fields['fornecedor'].empty_label = "Selecione um Fornecedor..."
+        self.fields["fornecedor"].empty_label = "Selecione um Fornecedor..."
+        self.fields["centro_custo"].empty_label = "CC proprietário (devolução retorna aqui)"
+        self.fields["centro_custo"].required = False
 
 class MovimentacaoLicencaForm(forms.ModelForm):
     lote_id_select = forms.CharField(required=False, widget=forms.HiddenInput())
@@ -544,23 +968,21 @@ class MovimentacaoLicencaForm(forms.ModelForm):
                     if instance.usuario and instance.usuario.centro_custo:
                         instance.centro_custo_destino = instance.usuario.centro_custo
                     
-                    # 4. [MATEMÁTICA CORRIGIDA] Cálculo do Custo Mensal (Alocação)
-                    custo_base = lote_alvo.custo_ciclo or Decimal(0)
-                    periodicidade = str(lote_alvo.periodicidade).lower()
+                    # Cálculo do custo mensal unitário por licença
+                    custo_ciclo = lote_alvo.custo_ciclo or Decimal(0)
+                    periodicidade = str(lote_alvo.periodicidade or "").lower()
+                    qtd_total = Decimal(lote_alvo.quantidade_total or 1)
 
-                    quantidade = lote_alvo.quantidade_total
-                    valor_Lote = lote_alvo.custo_ciclo
-                    if periodicidade == 'anual':
-                        # Anual: R$ 600,00 / 12 = R$ 50,00/mês
-                        instance.valor_unitario = (valor_Lote / quantidade) / 12
-                    elif periodicidade == 'semestral':
-                        # Semestral: R$ 300,00 / 6 = R$ 50,00/mês
-                        instance.valor_unitario = custo_base / Decimal(6)
-                    elif periodicidade == 'trimestral':
-                        instance.valor_unitario = custo_base / Decimal(3)
+                    custo_unitario_ciclo = custo_ciclo / qtd_total
+
+                    if periodicidade == "anual":
+                        instance.valor_unitario = (custo_unitario_ciclo / Decimal("12")).quantize(Decimal("0.01"))
+                    elif periodicidade == "semestral":
+                        instance.valor_unitario = (custo_unitario_ciclo / Decimal("6")).quantize(Decimal("0.01"))
+                    elif periodicidade == "trimestral":
+                        instance.valor_unitario = (custo_unitario_ciclo / Decimal("3")).quantize(Decimal("0.01"))
                     else:
-                        # Mensal (ou indefinido): Valor integral
-                        instance.valor_unitario = custo_base
+                        instance.valor_unitario = custo_unitario_ciclo.quantize(Decimal("0.01"))
 
             # === DEVOLUÇÃO (ENTRADA) ===
             elif instance.tipo == TipoMovLicencaChoices.DEVOLUCAO:

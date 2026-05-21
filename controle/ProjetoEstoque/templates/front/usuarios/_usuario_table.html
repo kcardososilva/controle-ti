@@ -1,0 +1,141 @@
+<table class="user-table">
+    <thead>
+        <tr>
+            <th scope="col" style="width: 32%;">Funcionário</th>
+            <th scope="col">Status</th>
+            <th scope="col">Centro de Custo</th>
+            <th scope="col">Função / Local</th>
+            <th scope="col">Admissão / Término</th>
+            <th scope="col" class="td-pmb">PMB</th>
+            <th scope="col" class="td-actions">Ações</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for u in usuarios %}
+            <tr>
+                <td class="td-main" data-label="Funcionário">
+                    <div class="user-cell" onclick="window.location='{% url 'usuario_detail' u.pk %}'" role="button" tabindex="0" aria-label="Abrir cadastro de {{ u.nome }}">
+                        <div class="user-avatar" aria-hidden="true">
+                            {{ u.nome|slice:":1"|upper }}
+                        </div>
+
+                        <div class="user-cell-copy">
+                            <div class="user-name">{{ u.nome }}</div>
+                            <div class="user-sub">{{ u.email|default:"Sem e-mail" }}</div>
+
+                            <span class="matricula-chip">
+                                <i class="fa-solid fa-id-card" aria-hidden="true"></i>
+                                Matrícula: {{ u.matricula|default:"Não informada" }}
+                            </span>
+                        </div>
+                    </div>
+                </td>
+
+                <td data-label="Status">
+                    {% if u.status == 'ativo' %}
+                        <span class="status-pill status-active">Ativo</span>
+                    {% elif u.status == 'desligado' or u.status == 'inativo' %}
+                        <span class="status-pill status-inactive">{{ u.get_status_display }}</span>
+                    {% else %}
+                        <span class="status-pill status-neutral">{{ u.get_status_display }}</span>
+                    {% endif %}
+                </td>
+
+                <td data-label="Centro de Custo">
+                    {% if u.centro_custo %}
+                        <div class="user-name">{{ u.centro_custo.numero|default:"-" }}</div>
+                        <div class="user-sub">{{ u.centro_custo.departamento|default:"" }}</div>
+                    {% else %}
+                        <span class="user-sub">Não informado</span>
+                    {% endif %}
+                </td>
+
+                <td data-label="Função / Local">
+                    <div class="user-name">
+                        {% if u.funcao %}
+                            {{ u.funcao.nome }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </div>
+
+                    <div class="user-sub">
+                        {% if u.localidade %}
+                            {{ u.localidade.local }}
+                        {% else %}
+                            Localidade não informada
+                        {% endif %}
+                    </div>
+                </td>
+
+                <td data-label="Datas">
+                    <div class="user-name">
+                        {% if u.data_inicio %}
+                            {{ u.data_inicio|date:"d/m/Y" }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </div>
+
+                    <div class="user-sub">
+                        {% if u.data_termino %}
+                            Término: {{ u.data_termino|date:"d/m/Y" }}
+                        {% else %}
+                            Sem término
+                        {% endif %}
+                    </div>
+                </td>
+
+                <td data-label="PMB" class="td-pmb">
+                    {% if u.pmb == 'sim' %}
+                        <span class="pmb-star" title="PMB" aria-label="PMB sim">
+                            <i class="fa-solid fa-star" aria-hidden="true"></i>
+                        </span>
+                    {% else %}
+                        <span class="pmb-empty" aria-label="PMB não">—</span>
+                    {% endif %}
+                </td>
+
+                <td data-label="Ações" class="td-actions">
+                    <div class="actions-cell">
+                        <a href="{% url 'usuario_detail' u.pk %}" class="icon-btn" title="Detalhar" aria-label="Detalhar {{ u.nome }}">
+                            <i class="fa-regular fa-eye" aria-hidden="true"></i>
+                        </a>
+
+                        <a href="{% url 'usuario_update' u.pk %}" class="icon-btn" title="Editar" aria-label="Editar {{ u.nome }}">
+                            <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                        </a>
+
+                        {% if u.status == 'ativo' %}
+                            <button
+                                type="button"
+                                class="icon-btn danger"
+                                title="Desligar"
+                                aria-label="Desligar {{ u.nome }}"
+                                data-url="{% url 'usuario_desligar' u.pk %}"
+                                data-nome="{{ u.nome }}"
+                                onclick="openDesligarModal(this)">
+                                <i class="fa-solid fa-user-xmark" aria-hidden="true"></i>
+                            </button>
+                        {% else %}
+                            <span class="icon-btn is-disabled" title="Funcionário já desligado" aria-disabled="true">
+                                <i class="fa-solid fa-user-slash" aria-hidden="true"></i>
+                            </span>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="7">
+                    <div class="empty-state">
+                        <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
+                        <h3>Nenhum funcionário encontrado</h3>
+                        <p>Ajuste os filtros ou importe a planilha mensal do RH.</p>
+                    </div>
+                </td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>

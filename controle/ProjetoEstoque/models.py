@@ -2,11 +2,12 @@ from django.db import models, transaction
 from django.contrib.auth.models import User
 import datetime
 from django.core.validators import MinValueValidator
-from django.db.models import Q, Count, F, ExpressionWrapper, IntegerField
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from django.utils import timezone
-from datetime import timedelta, date
+from datetime import timedelta
 from django.utils.translation import gettext_lazy as _
+from django.core.exceptions import ValidationError
+from dateutil.relativedelta import relativedelta
 
 # ========== CHOICES ==========
 class SimNaoChoices(models.TextChoices):
@@ -51,15 +52,14 @@ class TipoRespostaChoices(models.TextChoices):
     
 # ========== BASE ABSTRATA ==========
 class AuditModel(models.Model):
-    criado_por = models.ForeignKey(User, related_name="%(class)s_criador", on_delete=models.SET_NULL, null=True)
-    atualizado_por = models.ForeignKey(User, related_name="%(class)s_atualizador", on_delete=models.SET_NULL, null=True)
+    criado_por = models.ForeignKey(User, related_name="%(class)s_criador", on_delete=models.SET_NULL, null=True, blank=True)
+    atualizado_por = models.ForeignKey(User, related_name="%(class)s_atualizador", on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         abstract = True
 
-# ========== ENTIDADES BASE ==========
 # ========== ENTIDADES BASE ==========
 
 class Categoria(AuditModel):
@@ -94,7 +94,7 @@ class Localidade(AuditModel):
 
 class Fornecedor(AuditModel):
     nome = models.CharField(max_length=100)
-    cnpj = models.CharField(max_length=18)
+    cnpj = models.CharField(max_length=18, unique=True)
     contrato = models.TextField(blank=True, null=True)
 
     def __str__(self):
@@ -133,32 +133,131 @@ class Item(AuditModel):
     numero_serie = models.CharField(max_length=100, blank=True, null=True)
     marca = models.CharField(max_length=100, blank=True, null=True)
     modelo = models.CharField(max_length=100, blank=True, null=True)
-    
-    centro_custo = models.ForeignKey(CentroCusto, on_delete=models.SET_NULL, null=True, blank=True)  # <-- novo campo
+
+    centro_custo = models.ForeignKey(
+        CentroCusto,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
     quantidade = models.PositiveIntegerField(default=1)
-    item_consumo = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO)
-    pmb = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO)
 
-    valor = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    status = models.CharField(max_length=15, choices=StatusItemChoices.choices, default=StatusItemChoices.ATIVO)
+    item_consumo = models.CharField(
+        max_length=3,
+        choices=SimNaoChoices.choices,
+        default=SimNaoChoices.NAO
+    )
 
-    fornecedor = models.ForeignKey(Fornecedor, on_delete=models.SET_NULL, null=True, blank=True)
-    categoria = models.ForeignKey(Categoria, on_delete=models.SET_NULL, null=True, blank=True)
-    subtipo = models.ForeignKey(Subtipo, on_delete=models.SET_NULL, null=True, blank=True)
-    localidade = models.ForeignKey(Localidade, on_delete=models.SET_NULL, null=True, blank=True)
+    pmb = models.CharField(
+        max_length=3,
+        choices=SimNaoChoices.choices,
+        default=SimNaoChoices.NAO
+    )
 
-    precisa_preventiva = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO)
-    data_limite_preventiva = models.IntegerField(help_text="Dias para nova preventiva", blank=True, null=True)
+    tem_lote = models.BooleanField(
+        default=False,
+        verbose_name="Controlar por lote?"
+    )
+
+    valor = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True
+    )
+
+    status = models.CharField(
+        max_length=15,
+        choices=StatusItemChoices.choices,
+        default=StatusItemChoices.ATIVO
+    )
+
+    fornecedor = models.ForeignKey(
+        Fornecedor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    categoria = models.ForeignKey(
+        Categoria,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    subtipo = models.ForeignKey(
+        Subtipo,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    localidade = models.ForeignKey(
+        Localidade,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    precisa_preventiva = models.CharField(
+        max_length=3,
+        choices=SimNaoChoices.choices,
+        default=SimNaoChoices.NAO
+    )
+
+    data_limite_preventiva = models.IntegerField(
+        help_text="Dias para nova preventiva",
+        blank=True,
+        null=True
+    )
 
     data_compra = models.DateField(blank=True, null=True)
     numero_pedido = models.CharField(max_length=100, blank=True, null=True)
     observacoes = models.TextField(blank=True, null=True)
 
-    locado = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO)
+    locado = models.CharField(
+        max_length=3,
+        choices=SimNaoChoices.choices,
+        default=SimNaoChoices.NAO
+    )
 
     class Meta:
         verbose_name = "Item / Equipamento"
         verbose_name_plural = "Itens / Equipamentos"
+        indexes = [
+            models.Index(fields=["nome"]),
+            models.Index(fields=["status"]),
+            models.Index(fields=["item_consumo"]),
+            models.Index(fields=["localidade"]),
+            models.Index(fields=["centro_custo"]),
+        ]
+
+    @property
+    def eh_consumo(self):
+        return self.item_consumo == SimNaoChoices.SIM
+
+    @property
+    def eh_locado(self):
+        return self.locado == SimNaoChoices.SIM
+
+    def clean(self):
+        super().clean()
+
+        errors = {}
+
+        if self.item_consumo == SimNaoChoices.SIM and self.locado == SimNaoChoices.SIM:
+            errors["item_consumo"] = "Item de consumo não pode ser cadastrado como locado."
+
+        if self.precisa_preventiva == SimNaoChoices.SIM and not self.data_limite_preventiva:
+            errors["data_limite_preventiva"] = "Informe a periodicidade da preventiva."
+
+        if self.precisa_preventiva == SimNaoChoices.NAO:
+            self.data_limite_preventiva = None
+
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self):
         return f"{self.nome} - {self.numero_serie or 's/ nº'}"
@@ -179,24 +278,247 @@ class Locacao(AuditModel):
     observacoes = models.TextField(blank=True, null=True)
     fornecedor = models.ForeignKey(Fornecedor, on_delete=models.SET_NULL, blank=True, null=True)
 
+    @property
+    def data_vencimento(self):
+        """Data em que o contrato de locação encerra."""
+        if self.data_entrada and self.tempo_locado:
+            return self.data_entrada + relativedelta(months=self.tempo_locado)
+        return None
+
+    @property
+    def contrato_vencido(self):
+        venc = self.data_vencimento
+        return venc is not None and datetime.date.today() > venc
+
+    @property
+    def dias_pos_contrato(self):
+        """
+        Dias além do prazo contratado. Retorna None quando:
+        - não há vencimento calculável
+        - o contrato ainda não venceu
+        - o item está pausado (contagem encerrada)
+        """
+        if not self.contrato_vencido:
+            return None
+        status = getattr(self.equipamento, "status", None)
+        if status == StatusItemChoices.PAUSADO:
+            return None
+        return (datetime.date.today() - self.data_vencimento).days
+
+    @property
+    def meses_e_dias_pos_contrato(self):
+        """Tupla (meses, dias_restantes) para exibição amigável."""
+        dias = self.dias_pos_contrato
+        if dias is None:
+            return None
+        delta = relativedelta(datetime.date.today(), self.data_vencimento)
+        return delta.months + delta.years * 12, delta.days
+
     def __str__(self):
         return f"Locação: {self.equipamento.nome} - {self.tempo_locado or 0} meses"
 
+class LoteEstoque(AuditModel):
+    fornecedor = models.ForeignKey(
+        "Fornecedor",
+        on_delete=models.PROTECT,
+        related_name="lotes_estoque",
+        verbose_name="Fornecedor"
+    )
 
+    data_entrada = models.DateField(
+        verbose_name="Data de Entrada"
+    )
 
+    numero_nf = models.CharField(
+        max_length=60,
+        verbose_name="Número da NF"
+    )
+
+    quantidade = models.PositiveIntegerField(
+        default=1,
+        validators=[MinValueValidator(1)],
+        verbose_name="Quantidade do Lote"
+    )
+
+    custo_unitario = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Custo Unitário"
+    )
+
+    observacao_tecnica = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Observação Técnica"
+    )
+
+    class Meta:
+        verbose_name = "Lote de Estoque"
+        verbose_name_plural = "Lotes de Estoque"
+        ordering = ["-data_entrada", "-created_at"]
+        indexes = [
+            models.Index(fields=["numero_nf"]),
+            models.Index(fields=["data_entrada"]),
+            models.Index(fields=["fornecedor"]),
+        ]
+
+    @property
+    def valor_total_calculado(self):
+        quantidade = Decimal(self.quantidade or 0)
+        custo_unitario = self.custo_unitario or Decimal("0.00")
+        return quantidade * custo_unitario
+
+    def clean(self):
+        super().clean()
+
+        errors = {}
+
+        if not self.fornecedor_id:
+            errors["fornecedor"] = "Fornecedor é obrigatório para o lote."
+
+        if not self.data_entrada:
+            errors["data_entrada"] = "Data de entrada é obrigatória para o lote."
+
+        if not self.numero_nf:
+            errors["numero_nf"] = "Número da NF é obrigatório para o lote."
+
+        if not self.quantidade or self.quantidade <= 0:
+            errors["quantidade"] = "A quantidade do lote deve ser maior que zero."
+
+        if not self.custo_unitario or self.custo_unitario <= 0:
+            errors["custo_unitario"] = "O custo unitário deve ser maior que zero."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return f"Lote NF {self.numero_nf} - {self.fornecedor}"
+    
+class ItemLote(AuditModel):
+    item = models.ForeignKey(
+        "Item",
+        on_delete=models.PROTECT,
+        related_name="vinculos_lote",
+        verbose_name="Item / Equipamento"
+    )
+
+    lote = models.ForeignKey(
+        "LoteEstoque",
+        on_delete=models.PROTECT,
+        related_name="itens_vinculados",
+        verbose_name="Lote"
+    )
+
+    quantidade_entrada = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)],
+        verbose_name="Quantidade de Entrada"
+    )
+
+    quantidade_disponivel = models.PositiveIntegerField(
+        validators=[MinValueValidator(0)],
+        verbose_name="Quantidade Disponível"
+    )
+
+    custo_unitario = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Custo Unitário"
+    )
+
+    class Meta:
+        verbose_name = "Vínculo Item x Lote"
+        verbose_name_plural = "Vínculos Item x Lote"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["item"]),
+            models.Index(fields=["lote"]),
+        ]
+
+    @property
+    def valor_total_calculado(self):
+        quantidade = Decimal(self.quantidade_entrada or 0)
+        custo_unitario = self.custo_unitario or Decimal("0.00")
+        return quantidade * custo_unitario
+
+    def clean(self):
+        super().clean()
+
+        errors = {}
+
+        if not self.item_id:
+            errors["item"] = "Item é obrigatório no vínculo de lote."
+
+        if not self.lote_id:
+            errors["lote"] = "Lote é obrigatório."
+
+        if not self.quantidade_entrada or self.quantidade_entrada <= 0:
+            errors["quantidade_entrada"] = "Quantidade de entrada deve ser maior que zero."
+
+        if self.quantidade_disponivel is None:
+            errors["quantidade_disponivel"] = "Quantidade disponível é obrigatória."
+
+        elif self.quantidade_disponivel > self.quantidade_entrada:
+            errors["quantidade_disponivel"] = "Quantidade disponível não pode ser maior que a entrada."
+
+        if not self.custo_unitario or self.custo_unitario <= 0:
+            errors["custo_unitario"] = "Custo unitário deve ser maior que zero."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return f"{self.item} | {self.lote} | Qtd: {self.quantidade_entrada}"
 class Usuario(AuditModel):
+    matricula = models.CharField(
+        max_length=30,
+        unique=True,
+        blank=True,
+        null=True,
+        verbose_name="Matrícula"
+    )
+
     nome = models.CharField(max_length=100)
     status = models.CharField(max_length=10, choices=StatusUsuarioChoices.choices)
     data_inicio = models.DateField(default=datetime.date.today)
     data_termino = models.DateField(blank=True, null=True)
     pmb = models.CharField(max_length=3, choices=SimNaoChoices.choices)
-    email = models.EmailField()
-    centro_custo = models.ForeignKey(CentroCusto, on_delete=models.SET_NULL, null=True)
-    localidade = models.ForeignKey(Localidade, on_delete=models.SET_NULL, null=True)
-    funcao = models.ForeignKey(Funcao, on_delete=models.SET_NULL, null=True)
+    email = models.EmailField(blank=True, null=True)
+
+    centro_custo = models.ForeignKey(
+        CentroCusto,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    localidade = models.ForeignKey(
+        Localidade,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    funcao = models.ForeignKey(
+        Funcao,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        ordering = ["nome"]
+        indexes = [
+            models.Index(fields=["matricula"]),
+            models.Index(fields=["nome"]),
+            models.Index(fields=["status"]),
+        ]
 
     def __str__(self):
-        return f"{self.nome} ({self.email})"
+        if self.matricula:
+            return f"{self.matricula} - {self.nome}"
+        return f"{self.nome} ({self.email or 'sem e-mail'})"
 
 
 # ========== COMENTARIO ==========
@@ -205,6 +527,11 @@ class Usuario(AuditModel):
 class Comentario(AuditModel):
     texto = models.TextField()
     item = models.ForeignKey(Item, on_delete=models.CASCADE, null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Comentário"
+        verbose_name_plural = "Comentários"
 
     def __str__(self):
         return f"Comentário sobre {self.item.nome if self.item else 'Sem item'}"
@@ -220,145 +547,180 @@ class CicloManutencao(AuditModel):
     custo = models.DecimalField(max_digits=10, decimal_places=2)
     item = models.ForeignKey(Item, on_delete=models.CASCADE)
 
+    class Meta:
+        ordering = ["-data_inicio"]
+        verbose_name = "Ciclo de Manutenção"
+        verbose_name_plural = "Ciclos de Manutenção"
+
     def __str__(self):
         return f"Ciclo {self.item.nome} - {self.status_inicial}"
 
 
 class MovimentacaoItem(AuditModel):
-    # [cite_start]... Campos existentes mantidos ... [cite: 103, 104, 105]
-    tipo_movimentacao = models.CharField(max_length=30, choices=TipoMovimentacaoChoices.choices)
-    tipo_transferencia = models.CharField(max_length=10, blank=True, null=True, choices=TipoTransferenciaChoices.choices)
-    quantidade = models.PositiveIntegerField(default=1)
-    observacao = models.TextField(blank=True, null=True, verbose_name="Observações")
-    chamado = models.CharField(max_length=100, blank=True, null=True, verbose_name="Nº Chamado")
-    custo = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Custo da Operação")
-    termo_pdf = models.FileField(upload_to="termos/", blank=True, null=True, verbose_name="Termo de Responsabilidade")
+    tipo_movimentacao = models.CharField(
+        max_length=30,
+        choices=TipoMovimentacaoChoices.choices,
+        verbose_name="Tipo de Movimentação"
+    )
 
-    # Relacionamentos
-    item = models.ForeignKey("Item", on_delete=models.CASCADE, related_name="movimentacoes")
-    usuario = models.ForeignKey("Usuario", on_delete=models.SET_NULL, null=True, blank=True, related_name="movimentacoes")
-    localidade_origem = models.ForeignKey("Localidade", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_origem")
-    localidade_destino = models.ForeignKey("Localidade", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_destino")
-    centro_custo_origem = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_origem_cc")
-    centro_custo_destino = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True, related_name="movs_destino_cc")
-    fornecedor_manutencao = models.ForeignKey("Fornecedor", on_delete=models.SET_NULL, null=True, blank=True, related_name="manutencoes")
+    tipo_transferencia = models.CharField(
+        max_length=10,
+        blank=True,
+        null=True,
+        choices=TipoTransferenciaChoices.choices,
+        verbose_name="Tipo de Transferência"
+    )
 
-    status_retorno = models.CharField(max_length=15, choices=StatusItemChoices.choices, blank=True, null=True)
-    status_transferencia = models.CharField(max_length=15, choices=StatusItemChoices.choices, blank=True, null=True, verbose_name="Novo Status")
-    numero_pedido = models.CharField(max_length=100, blank=True, null=True, verbose_name="Nº Pedido/NF")
+    item = models.ForeignKey(
+        "Item",
+        on_delete=models.CASCADE,
+        related_name="movimentacoes",
+        verbose_name="Item"
+    )
+
+    lote = models.ForeignKey(
+        "LoteEstoque",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="movimentacoes",
+        verbose_name="Lote vinculado"
+    )
+
+    usuario = models.ForeignKey(
+        "Usuario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="movimentacoes",
+        verbose_name="Usuário / Solicitante"
+    )
+
+    quantidade = models.PositiveIntegerField(
+        default=1,
+        verbose_name="Quantidade"
+    )
+
+    localidade_origem = models.ForeignKey(
+        "Localidade",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="movs_origem",
+        verbose_name="Localidade de Origem"
+    )
+
+    localidade_destino = models.ForeignKey(
+        "Localidade",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="movs_destino",
+        verbose_name="Localidade de Destino"
+    )
+
+    centro_custo_origem = models.ForeignKey(
+        "CentroCusto",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="movs_origem_cc",
+        verbose_name="Centro de Custo Origem"
+    )
+
+    centro_custo_destino = models.ForeignKey(
+        "CentroCusto",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="movs_destino_cc",
+        verbose_name="Centro de Custo Destino"
+    )
+
+    fornecedor_manutencao = models.ForeignKey(
+        "Fornecedor",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="manutencoes",
+        verbose_name="Fornecedor Manutenção"
+    )
+
+    status_retorno = models.CharField(
+        max_length=15,
+        choices=StatusItemChoices.choices,
+        blank=True,
+        null=True,
+        verbose_name="Status Retorno"
+    )
+
+    status_transferencia = models.CharField(
+        max_length=15,
+        choices=StatusItemChoices.choices,
+        blank=True,
+        null=True,
+        verbose_name="Novo Status"
+    )
+
+    numero_pedido = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Nº Pedido/NF"
+    )
+
+    observacao = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Observações"
+    )
+
+    chamado = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Nº Chamado"
+    )
+
+    custo = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        verbose_name="Custo da Operação"
+    )
+
+    termo_pdf = models.FileField(
+        upload_to="termos/",
+        blank=True,
+        null=True,
+        verbose_name="Termo de Responsabilidade"
+    )
 
     class Meta:
         verbose_name = "Movimentação de Item"
         verbose_name_plural = "Movimentações de Itens"
         ordering = ["-created_at"]
 
+    def clean(self):
+        super().clean()
+
+        errors = {}
+
+        if not self.tipo_movimentacao:
+            errors["tipo_movimentacao"] = "Informe o tipo de movimentação."
+
+        if not self.item_id:
+            errors["item"] = "Selecione o item."
+
+        if not self.quantidade or self.quantidade <= 0:
+            errors["quantidade"] = "Informe uma quantidade maior que zero."
+
+        if errors:
+            raise ValidationError(errors)
+
     def __str__(self):
         return f"[{self.get_tipo_movimentacao_display()}] {self.item} x{self.quantidade}"
 
-    @transaction.atomic
-    def save(self, *args, **kwargs):
-        is_new = self.pk is None
-        
-        # Carrega item atual
-        item_obj = self.item
-        if not is_new:
-            item_obj.refresh_from_db()
-        
-        current_loc = item_obj.localidade
-        current_cc = item_obj.centro_custo
-
-        # === AUTOMAÇÃO DE CENTRO DE CUSTO ===
-        
-        # 1. Entrega: Se CC Destino vazio, usa CC do Usuário
-        if self.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA and self.tipo_transferencia == TipoTransferenciaChoices.ENTREGA:
-            if not self.centro_custo_destino and self.usuario and self.usuario.centro_custo:
-                self.centro_custo_destino = self.usuario.centro_custo
-
-        # 2. Devolução: Volta para a "Origem" (CC que entregou o item originalmente)
-        elif self.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA and self.tipo_transferencia == TipoTransferenciaChoices.DEVOLUCAO:
-            # A origem desta movimentação é onde o item está agora (com o usuário)
-            self.centro_custo_origem = current_cc
-            self.localidade_origem = current_loc
-            
-            # Busca a última ENTREGA para saber de onde o item veio (TI/Estoque)
-            last_entrega = MovimentacaoItem.objects.filter(
-                item=item_obj, 
-                tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
-                tipo_transferencia=TipoTransferenciaChoices.ENTREGA
-            ).order_by('-created_at').first()
-
-            if last_entrega and last_entrega.centro_custo_origem:
-                # Define o destino da devolução como a origem da entrega
-                self.centro_custo_destino = last_entrega.centro_custo_origem
-            elif not self.centro_custo_destino:
-                # Se não houver histórico, o ideal seria ter um CC Padrão de Estoque configurado no sistema.
-                # Como fallback, mantém vazio ou pode-se definir um padrão aqui.
-                pass
-
-        super().save(*args, **kwargs)
-
-        # === SNAPSHOT DE ORIGEM (Apenas criação) ===
-        if is_new:
-            updates = {}
-            if not self.localidade_origem_id and current_loc:
-                updates['localidade_origem_id'] = current_loc.id
-            if not self.centro_custo_origem_id and current_cc:
-                updates['centro_custo_origem_id'] = current_cc.id
-            if updates:
-                MovimentacaoItem.objects.filter(pk=self.pk).update(**updates)
-
-        # === ATUALIZAÇÃO DO ITEM ===
-        update_fields = ['updated_at']
-        
-        # Manutenção (Envio)
-        if self.tipo_movimentacao == TipoMovimentacaoChoices.ENVIO_MANUTENCAO:
-            item_obj.status = StatusItemChoices.MANUTENCAO
-            item_obj.quantidade = max(0, (item_obj.quantidade or 0) - (self.quantidade or 1))
-            update_fields.extend(['status', 'quantidade'])
-
-        # Manutenção (Retorno)
-        elif self.tipo_movimentacao in (TipoMovimentacaoChoices.RETORNO_MANUTENCAO, "retorno"):
-            item_obj.status = StatusItemChoices.BACKUP
-            item_obj.quantidade = (item_obj.quantidade or 0) + (self.quantidade or 1)
-            if self.localidade_destino:
-                item_obj.localidade = self.localidade_destino; update_fields.append('localidade')
-            update_fields.extend(['status', 'quantidade'])
-
-        # Baixa (Cálculo automático de custo se não informado)
-        elif self.tipo_movimentacao == TipoMovimentacaoChoices.BAIXA:
-            item_obj.quantidade = max(0, (item_obj.quantidade or 0) - (self.quantidade or 1))
-            update_fields.append('quantidade')
-            if not self.custo:
-                val_unit = item_obj.valor or Decimal("0.00")
-                qtd = Decimal(self.quantidade or 1)
-                self.custo = val_unit * qtd
-                # Atualiza o custo da movimentação após salvar o item
-                MovimentacaoItem.objects.filter(pk=self.pk).update(custo=self.custo)
-
-        # Transferências (Atualização de posse)
-        elif self.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA:
-            if self.localidade_destino:
-                item_obj.localidade = self.localidade_destino; update_fields.append('localidade')
-            if self.centro_custo_destino:
-                item_obj.centro_custo = self.centro_custo_destino; update_fields.append('centro_custo')
-
-            if self.tipo_transferencia == TipoTransferenciaChoices.ENTREGA and item_obj.status == StatusItemChoices.BACKUP:
-                item_obj.status = StatusItemChoices.ATIVO; update_fields.append('status')
-            elif self.tipo_transferencia == TipoTransferenciaChoices.DEVOLUCAO and item_obj.status == StatusItemChoices.ATIVO:
-                item_obj.status = StatusItemChoices.BACKUP; update_fields.append('status')
-
-        elif self.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA_EQUIPAMENTO:
-            if self.localidade_destino:
-                item_obj.localidade = self.localidade_destino; update_fields.append('localidade')
-            if self.centro_custo_destino:
-                item_obj.centro_custo = self.centro_custo_destino; update_fields.append('centro_custo')
-            if self.status_transferencia:
-                item_obj.status = self.status_transferencia; update_fields.append('status')
-
-        item_obj.save(update_fields=list(set(update_fields)))
-
-
-
 # ----------------- CHECKLIST -----------------
 class CheckListModelo(AuditModel):
     nome = models.CharField(max_length=120)
@@ -383,40 +745,6 @@ class CheckListPergunta(AuditModel):
     # Para tipo ESCOLHA: opções separadas por vírgula
     opcoes = models.CharField(max_length=400, blank=True, null=True, help_text="Para escolha única: separe opções por vírgula.")
 
-    ordem = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        ordering = ["ordem", "id"]
-        verbose_name = "Pergunta de Checklist"
-        verbose_name_plural = "Perguntas de Checklist"
-
-    def __str__(self):
-        return f"[{self.checklist_modelo}] {self.texto_pergunta}"
-
-# ----------------- CHECKLIST -----------------
-class CheckListModelo(AuditModel):
-    nome = models.CharField(max_length=120)
-    ativo = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.SIM)
-    subtipo = models.ForeignKey(Subtipo, on_delete=models.SET_NULL, null=True, blank=True,
-                                help_text="Opcional: restringe este checklist a um subtipo de item.")
-    intervalo_dias = models.PositiveIntegerField(default=0, help_text="Periodicidade padrão (dias). 0 = sem programação.")
-
-    class Meta:
-        ordering = ["nome"]
-        verbose_name = "Modelo de Checklist"
-        verbose_name_plural = "Modelos de Checklist"
-
-    def __str__(self):
-        return self.nome
-
-
-class CheckListPergunta(AuditModel):
-    checklist_modelo = models.ForeignKey(CheckListModelo, on_delete=models.CASCADE, related_name="perguntas")
-    texto_pergunta = models.CharField(max_length=255)
-    tipo_resposta = models.CharField(max_length=12, choices=TipoRespostaChoices.choices, default=TipoRespostaChoices.TEXTO)
-    obrigatorio = models.CharField(max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.SIM)
-    # Para tipo ESCOLHA: opções separadas por vírgula
-    opcoes = models.CharField(max_length=400, blank=True, null=True, help_text="Para escolha única: separe opções por vírgula.")
     ordem = models.PositiveIntegerField(default=0)
 
     class Meta:
@@ -436,6 +764,11 @@ class Preventiva(AuditModel):
     data_ultima = models.DateField(blank=True, null=True)
     data_proxima = models.DateField(blank=True, null=True)
     dentro_do_prazo = models.BooleanField(default=True)
+
+    # Controle de pausa — ativado quando o equipamento sai de "ativo"
+    pausada = models.BooleanField(default=False, verbose_name="Preventiva pausada")
+    data_pausada = models.DateField(blank=True, null=True, verbose_name="Data de início da pausa")
+    dias_restantes_pausa = models.IntegerField(blank=True, null=True, verbose_name="Dias restantes congelados na pausa")
 
     observacao = models.TextField(blank=True, null=True)
     # Mantemos como "última evidência" para compatibilidade
@@ -462,7 +795,9 @@ class Preventiva(AuditModel):
             return 0
 
     def recomputar_prazo(self, data_exec=None):
-        """Recalcula data_proxima e dentro_do_prazo."""
+        """Recalcula data_proxima e dentro_do_prazo. Não age enquanto pausada."""
+        if self.pausada:
+            return
         base = data_exec or self.data_ultima or timezone.now().date()
         dias = self._periodo_referencia()
         self.data_proxima = (base + timedelta(days=dias)) if dias > 0 else None
@@ -470,6 +805,49 @@ class Preventiva(AuditModel):
             self.dentro_do_prazo = timezone.now().date() <= self.data_proxima
         else:
             self.dentro_do_prazo = True
+
+    def pausar(self):
+        """
+        Congela a contagem registrando quantos dias restavam até a próxima execução.
+        Chamado quando o equipamento sai do status 'ativo'.
+        """
+        if self.pausada:
+            return
+        hoje = timezone.now().date()
+        self.pausada = True
+        self.data_pausada = hoje
+        if self.data_proxima:
+            self.dias_restantes_pausa = max((self.data_proxima - hoje).days, 0)
+        else:
+            self.dias_restantes_pausa = None
+        # Item fora de operação não é considerado atrasado
+        self.dentro_do_prazo = True
+        self.save(update_fields=[
+            "pausada", "data_pausada", "dias_restantes_pausa",
+            "dentro_do_prazo", "updated_at",
+        ])
+
+    def retomar(self):
+        """
+        Retoma a contagem a partir de hoje com os dias restantes que foram congelados.
+        Chamado quando o equipamento volta ao status 'ativo'.
+        """
+        if not self.pausada:
+            return
+        hoje = timezone.now().date()
+        self.pausada = False
+        if self.dias_restantes_pausa is not None:
+            self.data_proxima = hoje + timedelta(days=self.dias_restantes_pausa)
+            self.dentro_do_prazo = hoje <= self.data_proxima
+        else:
+            # Sem data congelada — recalcula normalmente a partir de hoje
+            self.recomputar_prazo(hoje)
+        self.data_pausada = None
+        self.dias_restantes_pausa = None
+        self.save(update_fields=[
+            "pausada", "data_pausada", "dias_restantes_pausa",
+            "data_proxima", "dentro_do_prazo", "updated_at",
+        ])
 
     @transaction.atomic
     def registrar_execucao(self, respostas_dict: dict, usuario=None, observacao=None, foto_antes=None, foto_depois=None):
@@ -594,17 +972,13 @@ class Licenca(AuditModel):
     def __str__(self):
         return self.nome
 
-class TipoMovLicencaChoices(models.TextChoices):
-    ATRIBUICAO = 'atribuicao', _('Atribuição (Saída)')
-    DEVOLUCAO = 'devolucao', _('Devolução (Entrada)')
-
 # --- MODELO LOTE ---
 class LicencaLote(AuditModel):
     licenca = models.ForeignKey(Licenca, on_delete=models.CASCADE, related_name="lotes")
     quantidade_total = models.PositiveIntegerField(verbose_name="Qtd. Comprada")
     quantidade_disponivel = models.PositiveIntegerField(verbose_name="Saldo Disponível", default=0)
     custo_ciclo = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
-    periodicidade = models.CharField(max_length=20, choices=PeriodicidadeChoices, default='anual')
+    periodicidade = models.CharField(max_length=20, choices=PeriodicidadeChoices.choices, default=PeriodicidadeChoices.ANUAL)
     data_compra = models.DateField(null=True, blank=True)
     numero_pedido = models.CharField(max_length=50, null=True, blank=True)
     fornecedor = models.ForeignKey("Fornecedor", on_delete=models.SET_NULL, null=True, blank=True)
@@ -616,7 +990,7 @@ class LicencaLote(AuditModel):
         verbose_name = "Lote de Licença"
 
     def save(self, *args, **kwargs):
-        if (self._state.adding or not self.pk) and not self.quantidade_disponivel:
+        if self._state.adding and self.quantidade_disponivel is None:
             self.quantidade_disponivel = self.quantidade_total
         super().save(*args, **kwargs)
 
