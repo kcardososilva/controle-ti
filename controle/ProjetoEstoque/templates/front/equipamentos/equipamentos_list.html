@@ -1196,6 +1196,61 @@ body.theme-dark .eq-modal-icon.eq-info {
         width: 100%;
     }
 }
+
+/* ── 3D Animations · Equipamentos List ──────────────────────────── */
+
+/* Hero canvas host */
+.eq-page-hero {
+    position: relative;
+}
+
+#eq-hero-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+    border-radius: inherit;
+}
+
+.eq-hero-main,
+.eq-hero-actions {
+    position: relative;
+    z-index: 1;
+}
+
+/* KPI card tilt via CSS custom props — AJAX-safe, sem injeção de DOM */
+.eq-kpi-card {
+    --_rx: 0deg; --_ry: 0deg; --_tz: 0px;
+    --_gx: 50%;  --_gy: 50%;  --_ga: 0;
+    transform: perspective(720px) rotateX(var(--_rx)) rotateY(var(--_ry)) translateZ(var(--_tz));
+    will-change: transform;
+}
+
+/* Glint — ::before pinta antes de ::after (círculo decorativo) */
+.eq-kpi-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(
+        circle at var(--_gx) var(--_gy),
+        rgba(0, 113, 227, .11) 0%,
+        transparent 56%
+    );
+    opacity: var(--_ga);
+    transition: opacity .13s;
+}
+
+/* Garante que o conteúdo fique acima dos pseudo-elementos */
+.eq-kpi-label,
+.eq-kpi-value,
+.eq-kpi-sub {
+    position: relative;
+    z-index: 2;
+}
 </style>
 {% endblock %}
 
@@ -1919,5 +1974,195 @@ body.theme-dark .eq-modal-icon.eq-info {
         bindTableEvents();
     });
 })();
+</script>
+
+<script>
+/* ── 3D Animations · Equipamentos List ────────────────────────── */
+(function () {
+'use strict';
+
+/* ═══════════════════════════════════════════════════════
+   1 · HERO CANVAS — rede 3D sutil (tema claro, brand blue)
+═══════════════════════════════════════════════════════ */
+(function () {
+  var hero = document.querySelector('.eq-page-hero');
+  if (!hero) return;
+
+  var cvs = document.createElement('canvas');
+  cvs.id = 'eq-hero-canvas';
+  hero.insertBefore(cvs, hero.firstChild);
+
+  var ctx  = cvs.getContext('2d');
+  var W, H, raf;
+  var mx = 0, my = 0;
+  var N = 26, FOCAL = 400, MAX_D = 108;
+
+  var pts = (function () {
+    var a = [];
+    for (var i = 0; i < N; i++) {
+      var t = Math.random() * Math.PI * 2;
+      var p = Math.acos(2 * Math.random() - 1);
+      var r = 120 * (0.28 + 0.72 * Math.random());
+      a.push([r * Math.sin(p) * Math.cos(t),
+              r * Math.sin(p) * Math.sin(t),
+              r * Math.cos(p)]);
+    }
+    return a;
+  }());
+
+  function resize() {
+    W = cvs.width  = hero.offsetWidth;
+    H = cvs.height = hero.offsetHeight;
+  }
+
+  var ro = ('ResizeObserver' in window) ? new ResizeObserver(resize) : null;
+  if (ro) ro.observe(hero);
+  window.addEventListener('resize', resize, { passive: true });
+  resize();
+
+  document.addEventListener('mousemove', function (e) {
+    mx = (e.clientX / window.innerWidth  - 0.5) * 2;
+    my = (e.clientY / window.innerHeight - 0.5) * 2;
+  }, { passive: true });
+
+  function proj(x, y, z) {
+    var s = FOCAL / (FOCAL + z + 340);
+    return [W * 0.5 + x * s, H * 0.5 + y * s, s];
+  }
+
+  function draw(ts) {
+    raf = requestAnimationFrame(draw);
+    ctx.clearRect(0, 0, W, H);
+
+    var ay = ts * 0.00017 + mx * 0.08;
+    var ax = my * 0.040;
+    var cy = Math.cos(ay), sy = Math.sin(ay);
+    var cx = Math.cos(ax), sx = Math.sin(ax);
+
+    var p = pts.map(function (pt) {
+      var rx = pt[0] * cy - pt[2] * sy,  rz = pt[0] * sy + pt[2] * cy;
+      var ry = pt[1] * cx - rz * sx;     rz = pt[1] * sx + rz * cx;
+      return proj(rx, ry, rz);
+    });
+
+    /* Arestas */
+    ctx.lineWidth = 0.65;
+    for (var i = 0; i < N; i++) {
+      for (var j = i + 1; j < N; j++) {
+        var dx = p[i][0] - p[j][0], dy = p[i][1] - p[j][1];
+        var d  = Math.sqrt(dx * dx + dy * dy);
+        if (d < MAX_D) {
+          var a = (1 - d / MAX_D) * 0.16 * Math.min(p[i][2], p[j][2]);
+          ctx.strokeStyle = 'rgba(0,113,227,' + a.toFixed(3) + ')';
+          ctx.beginPath();
+          ctx.moveTo(p[i][0], p[i][1]);
+          ctx.lineTo(p[j][0], p[j][1]);
+          ctx.stroke();
+        }
+      }
+    }
+
+    /* Nós */
+    for (var i = 0; i < N; i++) {
+      var a = p[i][2] * 0.48;
+      ctx.fillStyle = 'rgba(0,113,227,' + a.toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(p[i][0], p[i][1], 0.8 + p[i][2] * 1.0, 0, 6.2832);
+      ctx.fill();
+    }
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) cancelAnimationFrame(raf);
+    else requestAnimationFrame(draw);
+  });
+
+  requestAnimationFrame(draw);
+}());
+
+
+/* ═══════════════════════════════════════════════════════
+   2 · KPI TILT + GLINT (event delegation — sobrevive ao AJAX)
+═══════════════════════════════════════════════════════ */
+(function () {
+  var wrap = document.getElementById('kpisWrap');
+  if (!wrap) return;
+
+  wrap.addEventListener('mousemove', function (e) {
+    var card = e.target.closest('.eq-kpi-card');
+    if (!card) return;
+    card.style.transition = 'transform .1s ease, box-shadow .35s, border-color .35s';
+    var r  = card.getBoundingClientRect();
+    var dx = (e.clientX - r.left - r.width  * 0.5) / (r.width  * 0.5);
+    var dy = (e.clientY - r.top  - r.height * 0.5) / (r.height * 0.5);
+    card.style.setProperty('--_rx', (-dy * 9).toFixed(2) + 'deg');
+    card.style.setProperty('--_ry', ( dx * 9).toFixed(2) + 'deg');
+    card.style.setProperty('--_tz', '5px');
+    card.style.setProperty('--_gx', ((e.clientX - r.left) / r.width  * 100).toFixed(1) + '%');
+    card.style.setProperty('--_gy', ((e.clientY - r.top)  / r.height * 100).toFixed(1) + '%');
+    card.style.setProperty('--_ga', '1');
+  });
+
+  wrap.addEventListener('mouseout', function (e) {
+    var card = e.target.closest('.eq-kpi-card');
+    if (!card || card.contains(e.relatedTarget)) return;
+    card.style.transition = 'transform .55s cubic-bezier(.23,1,.32,1), box-shadow .35s, border-color .35s';
+    card.style.setProperty('--_rx', '0deg');
+    card.style.setProperty('--_ry', '0deg');
+    card.style.setProperty('--_tz', '0px');
+    card.style.setProperty('--_ga', '0');
+  });
+}());
+
+
+/* ═══════════════════════════════════════════════════════
+   3 · KPI COUNTER — conta do zero ao valor ao entrar na tela
+═══════════════════════════════════════════════════════ */
+(function () {
+  var wrap = document.getElementById('kpisWrap');
+  if (!wrap) return;
+
+  var triggered = false;
+
+  function gatherItems() {
+    return Array.from(wrap.querySelectorAll('.eq-kpi-value')).reduce(function (acc, el) {
+      var text = el.textContent.trim();
+      /* Anima apenas inteiros puros — ignora "684 / 231", "R$ 25.377,80", etc. */
+      if (!/^\d+$/.test(text)) return acc;
+      var n = parseInt(text, 10);
+      if (n > 0) {
+        el.textContent = '0';
+        acc.push({ el: el, target: n, original: text });
+      }
+      return acc;
+    }, []);
+  }
+
+  function runCounters(items) {
+    var t0  = performance.now(), DUR = 980;
+    (function tick(ts) {
+      var pct  = Math.min((ts - t0) / DUR, 1);
+      var ease = 1 - Math.pow(1 - pct, 3);
+      items.forEach(function (it) {
+        /* Preserva o formato original — sem toLocaleString para não inserir separadores */
+        it.el.textContent = pct >= 1 ? it.original : String(Math.round(it.target * ease));
+      });
+      if (pct < 1) requestAnimationFrame(tick);
+    }(performance.now()));
+  }
+
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries, obs) {
+      if (!entries[0].isIntersecting || triggered) return;
+      triggered = true;
+      obs.disconnect();
+      runCounters(gatherItems());
+    }, { threshold: 0.15 }).observe(wrap);
+  } else {
+    runCounters(gatherItems());
+  }
+}());
+
+}());
 </script>
 {% endblock %}

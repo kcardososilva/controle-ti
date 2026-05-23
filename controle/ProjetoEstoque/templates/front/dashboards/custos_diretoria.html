@@ -1,0 +1,967 @@
+﻿{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Custos por Diretoria{% endblock %}
+{% block page_title %}Custos por Diretoria{% endblock %}
+{% block page_subtitle %}Distribuição de gastos com licenças, movimentações e locação de itens por {{ label_grupo|lower }}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'cc_custos_dashboard' %}" class="btn btn-sm">
+    <i class="fa-solid fa-building" aria-hidden="true"></i> Custos por Setor
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.cdir-page) {
+  --c-brand:     var(--brand,              #0071e3);
+  --c-soft:      var(--brand-soft,         rgba(0,113,227,.10));
+  --c-surface:   var(--bg-elevated,        #fff);
+  --c-fill:      var(--bg-fill-tertiary,   rgba(120,120,128,.07));
+  --c-text:      var(--text-primary,       #1d1d1f);
+  --c-muted:     var(--text-tertiary,      #6e6e73);
+  --c-border:    var(--separator-hairline, rgba(0,0,0,.06));
+  --c-border2:   var(--separator-non-opaque, rgba(0,0,0,.10));
+  --c-shadow:    var(--shadow-sm,  0 1px 2px rgba(0,0,0,.05));
+  --c-shadow-md: var(--shadow-md,  0 4px 12px rgba(0,0,0,.06));
+  --c-radius-md: var(--radius-md,  14px);
+  --c-radius-lg: var(--radius-lg,  18px);
+  --c-radius-xl: var(--radius-xl,  22px);
+  --c-green:     var(--system-green,  #34c759);
+  --c-orange:    var(--system-orange, #ff9500);
+  --c-purple:    var(--system-indigo, #5856d6);
+  --c-red:       var(--system-red,    #ff3b30);
+  --c-t:         160ms cubic-bezier(.32,.72,0,1);
+}
+
+.cdir-page, .cdir-page * { box-sizing: border-box; min-width: 0; }
+
+.cdir-page {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  color: var(--c-text);
+}
+
+/* ── KPI strip ── */
+.cdir-kpi-row { display: flex; gap: 12px; flex-wrap: wrap; }
+
+.cdir-kpi {
+  flex: 1;
+  min-width: 170px;
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius-lg);
+  background: var(--c-surface);
+  box-shadow: var(--c-shadow);
+}
+.cdir-kpi-icon {
+  width: 40px; height: 40px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 12px; font-size: 17px;
+}
+.cdir-kpi-body { display: flex; flex-direction: column; gap: 2px; }
+.cdir-kpi-value { font-size: 22px; font-weight: 700; line-height: 1; }
+.cdir-kpi-label { font-size: 11px; font-weight: 600; color: var(--c-muted); letter-spacing: .03em; text-transform: uppercase; }
+.cdir-kpi-sub   { font-size: 10px; color: var(--c-muted); margin-top: 2px; }
+
+/* ── Aviso sem dados ── */
+.cdir-alert {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid rgba(255,149,0,.3);
+  border-radius: var(--c-radius-xl);
+  background: rgba(255,149,0,.07);
+}
+.cdir-alert-icon {
+  width: 38px; height: 38px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 12px; background: rgba(255,149,0,.15); color: var(--c-orange); font-size: 16px;
+}
+.cdir-alert-title { font-size: 14px; font-weight: 700; color: var(--c-text); margin: 0 0 4px; }
+.cdir-alert-text  { font-size: 13px; color: var(--c-muted); margin: 0; line-height: 1.5; }
+
+/* ── Card genérico ── */
+.cdir-card {
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius-xl);
+  background: var(--c-surface);
+  box-shadow: var(--c-shadow);
+  overflow: hidden;
+}
+
+.cdir-card-header {
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-fill);
+  display: flex; align-items: center; gap: 10px;
+}
+.cdir-card-title {
+  font-size: 13px; font-weight: 700; color: var(--c-text);
+  display: flex; align-items: center; gap: 8px;
+}
+.cdir-card-title i { color: var(--c-brand); font-size: 13px; }
+
+.cdir-card-body { padding: 20px; }
+
+/* ── Grid 2 colunas para gráficos ── */
+.cdir-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 16px;
+}
+@media (max-width: 900px) { .cdir-charts-grid { grid-template-columns: 1fr; } }
+
+.cdir-chart-wrap { position: relative; height: 320px; }
+
+/* ── Tabela ── */
+.cdir-table-wrap { overflow-x: auto; }
+
+.cdir-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.cdir-table th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 10px; font-weight: 700;
+  color: var(--c-muted); letter-spacing: .05em; text-transform: uppercase;
+  border-bottom: 1px solid var(--c-border2);
+  white-space: nowrap;
+}
+.cdir-table th.num { text-align: right; }
+
+.cdir-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--c-border);
+  vertical-align: middle;
+}
+.cdir-table tr:last-child td { border-bottom: none; }
+.cdir-table tr:hover td { background: var(--c-fill); }
+
+.cdir-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.cdir-dir-name { font-weight: 700; color: var(--c-text); font-size: 13px; }
+.cdir-dir-dot  {
+  display: inline-block; width: 10px; height: 10px;
+  border-radius: 50%; margin-right: 8px; flex: 0 0 auto;
+}
+
+.cdir-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px; font-size: 11px; font-weight: 650;
+}
+.cdir-badge-blue   { background: var(--c-soft); color: var(--c-brand); }
+.cdir-badge-purple { background: rgba(88,86,214,.10); color: var(--c-purple); }
+
+.cdir-bar-cell { position: relative; min-width: 100px; }
+.cdir-bar-bg {
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  height: 6px; border-radius: 3px;
+  background: var(--c-fill); width: 100%;
+}
+.cdir-bar-fill {
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  height: 6px; border-radius: 3px;
+  background: var(--c-brand);
+  transition: width .6s ease;
+}
+.cdir-bar-val {
+  position: relative; z-index: 1;
+  font-size: 12px; font-weight: 650; color: var(--c-text);
+  padding-top: 14px;
+}
+
+/* Tfoot totais */
+.cdir-table tfoot td {
+  padding: 12px 14px;
+  border-top: 2px solid var(--c-border2);
+  font-weight: 700; color: var(--c-text);
+  background: var(--c-fill);
+}
+.cdir-table tfoot td.num { font-variant-numeric: tabular-nums; }
+
+/* ── Empty state ── */
+.cdir-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; padding: 60px 20px;
+  color: var(--c-muted); text-align: center;
+}
+.cdir-empty i  { font-size: 38px; opacity: .35; }
+.cdir-empty h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--c-text); }
+.cdir-empty p  { margin: 0; font-size: 13px; }
+
+/* ── Linha clicável ── */
+.cdir-table tbody tr[data-grupo] {
+  cursor: pointer; transition: background var(--c-t);
+}
+.cdir-table tbody tr[data-grupo]:hover td { background: var(--c-soft); }
+.cdir-row-hint {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; color: var(--c-muted); opacity: 0;
+  transition: opacity .2s;
+  margin-left: 6px; vertical-align: middle;
+}
+.cdir-table tbody tr[data-grupo]:hover .cdir-row-hint { opacity: 1; }
+
+/* ── Overlay ── */
+.cdir-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.62);
+  z-index: 1000;
+  opacity: 0; pointer-events: none;
+  transition: opacity .28s ease;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+.cdir-overlay.is-open { opacity: 1; pointer-events: auto; }
+
+/* ── Drawer — base (desktop: side panel) ── */
+.cdir-drawer {
+  position: fixed; top: 0; right: 0;
+  width: min(520px, 92vw);
+  height: 100dvh;
+  background: var(--c-surface);
+  z-index: 1001;
+  transform: translateX(calc(100% + 2px));
+  transition: transform .34s cubic-bezier(.32,.72,0,1);
+  display: flex; flex-direction: column;
+  box-shadow: -6px 0 48px rgba(0,0,0,.18);
+  overflow: hidden;
+  will-change: transform;
+}
+.cdir-drawer.is-open { transform: translateX(0); }
+
+/* ── Drag handle (visible only on mobile) ── */
+.cdir-drawer-handle {
+  display: none;
+  width: 36px; height: 4px; border-radius: 2px;
+  background: var(--c-border2);
+  margin: 10px auto 2px;
+  flex: 0 0 auto;
+  touch-action: none;
+}
+
+/* ── Tablet: slightly narrower ── */
+@media (max-width: 900px) and (min-width: 560px) {
+  .cdir-drawer { width: min(480px, 88vw); }
+}
+
+/* ── Mobile: bottom sheet ── */
+@media (max-width: 559px) {
+  .cdir-drawer {
+    top: auto; bottom: 0; left: 0; right: 0;
+    width: 100%;
+    height: auto;
+    max-height: 88dvh;
+    border-radius: 20px 20px 0 0;
+    transform: translateY(calc(100% + 2px));
+    box-shadow: 0 -6px 48px rgba(0,0,0,.18);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .cdir-drawer.is-open { transform: translateY(0); }
+  .cdir-drawer-handle { display: block; }
+  /* Wider tap targets on mobile */
+  .cdir-det-list-row { padding: 10px 16px; }
+  /* Mini KPIs wrap on very small screens */
+  .cdir-det-kpis { flex-wrap: wrap; }
+  .cdir-det-kpi  { min-width: calc(50% - 4px); }
+  /* Row hint hidden on touch (no hover) */
+  .cdir-row-hint { display: none; }
+}
+
+.cdir-drawer-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 18px 14px;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-fill);
+  flex: 0 0 auto;
+}
+.cdir-drawer-title {
+  display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;
+}
+.cdir-drawer-nome {
+  font-size: 15px; font-weight: 700; color: var(--c-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cdir-drawer-meta {
+  display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
+}
+.cdir-drawer-total {
+  font-size: 14px; font-weight: 700; color: var(--c-brand);
+  white-space: nowrap;
+}
+.cdir-drawer-close {
+  width: 32px; height: 32px; border: none; background: var(--c-border);
+  border-radius: 50%; cursor: pointer; display: grid; place-items: center;
+  color: var(--c-muted); font-size: 13px;
+  transition: background var(--c-t), color var(--c-t);
+  flex: 0 0 auto; touch-action: manipulation;
+}
+.cdir-drawer-close:hover  { background: var(--c-border2); color: var(--c-text); }
+.cdir-drawer-close:active { transform: scale(.92); }
+
+.cdir-drawer-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+
+/* ── Loading ── */
+.cdir-det-loading {
+  display: flex; align-items: center; gap: 10px; justify-content: center;
+  padding: 60px 20px; color: var(--c-muted); font-size: 13px;
+}
+
+/* ── Resumo inteligente ── */
+.cdir-det-resumo {
+  display: flex; gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--c-radius-md);
+  background: linear-gradient(135deg, rgba(0,113,227,.07) 0%, rgba(90,200,250,.06) 100%);
+  border: 1px solid rgba(0,113,227,.15);
+}
+.cdir-det-resumo-icon {
+  width: 32px; height: 32px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 10px; background: rgba(0,113,227,.12); color: var(--c-brand); font-size: 14px;
+}
+.cdir-det-resumo-text { font-size: 12.5px; line-height: 1.65; color: var(--c-text); }
+
+/* ── Mini KPIs dentro do drawer ── */
+.cdir-det-kpis { display: flex; gap: 8px; }
+.cdir-det-kpi {
+  flex: 1; display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 12px;
+  border-radius: var(--c-radius-md);
+  border: 1px solid var(--c-border);
+  background: var(--c-fill);
+}
+.cdir-det-kpi span  { font-size: 13px; font-weight: 700; color: var(--dk, var(--c-brand)); white-space: nowrap; }
+.cdir-det-kpi label { font-size: 9.5px; font-weight: 600; color: var(--c-muted); letter-spacing: .03em; text-transform: uppercase; cursor: default; }
+
+/* ── Seção de detalhe ── */
+.cdir-det-section { border: 1px solid var(--c-border); border-radius: var(--c-radius-md); overflow: hidden; }
+.cdir-det-sec-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: var(--c-fill);
+  border-bottom: 1px solid var(--c-border);
+  font-size: 12px; font-weight: 700; color: var(--c-text);
+}
+.cdir-det-sec-header i { color: var(--sec-color, var(--c-brand)); font-size: 12px; }
+.cdir-det-sec-body { padding: 8px 0; }
+
+/* ── Lista de itens dentro das seções ── */
+.cdir-det-list-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--c-border);
+  font-size: 12.5px;
+}
+.cdir-det-list-row:last-child { border-bottom: none; }
+.cdir-det-list-name { flex: 1; color: var(--c-text); font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cdir-det-list-meta { font-size: 11px; color: var(--c-muted); flex: 0 0 auto; }
+.cdir-det-list-val  { font-size: 12px; font-weight: 700; color: var(--c-text); flex: 0 0 auto; text-align: right; min-width: 80px; font-variant-numeric: tabular-nums; }
+.cdir-det-list-sm .cdir-det-list-name { font-weight: 400; }
+.cdir-det-badge-tipo {
+  padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 650;
+  background: var(--c-fill); color: var(--c-muted); flex: 0 0 auto;
+  white-space: nowrap;
+}
+.cdir-det-sub-label {
+  padding: 8px 14px 4px;
+  font-size: 10px; font-weight: 700; color: var(--c-muted); text-transform: uppercase; letter-spacing: .05em;
+}
+.cdir-det-more {
+  padding: 8px 14px;
+  font-size: 11px; color: var(--c-muted); font-style: italic;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cdir-page">
+
+  {# ── KPIs ── #}
+  <div class="cdir-kpi-row">
+    <div class="cdir-kpi">
+      <div class="cdir-kpi-icon" style="background:var(--c-soft);color:var(--c-brand);">
+        <i class="fa-solid fa-sitemap"></i>
+      </div>
+      <div class="cdir-kpi-body">
+        <span class="cdir-kpi-value">{{ qtd_diretorias }}</span>
+        <span class="cdir-kpi-label">Diretorias</span>
+      </div>
+    </div>
+
+    <div class="cdir-kpi">
+      <div class="cdir-kpi-icon" style="background:rgba(52,199,89,.12);color:var(--c-green);">
+        <i class="fa-solid fa-users"></i>
+      </div>
+      <div class="cdir-kpi-body">
+        <span class="cdir-kpi-value">{{ total_colab|intcomma }}</span>
+        <span class="cdir-kpi-label">Colaboradores</span>
+      </div>
+    </div>
+
+    <div class="cdir-kpi">
+      <div class="cdir-kpi-icon" style="background:rgba(88,86,214,.10);color:var(--c-purple);">
+        <i class="fa-solid fa-key"></i>
+      </div>
+      <div class="cdir-kpi-body">
+        <span class="cdir-kpi-value">R$ {{ total_lics|floatformat:2|intcomma }}</span>
+        <span class="cdir-kpi-label">Custo Licenças / mês</span>
+      </div>
+    </div>
+
+    <div class="cdir-kpi">
+      <div class="cdir-kpi-icon" style="background:rgba(255,149,0,.12);color:var(--c-orange);">
+        <i class="fa-solid fa-boxes-stacked"></i>
+      </div>
+      <div class="cdir-kpi-body">
+        <span class="cdir-kpi-value">R$ {{ total_movs|floatformat:2|intcomma }}</span>
+        <span class="cdir-kpi-label">Custo Movimentações</span>
+      </div>
+    </div>
+
+    <div class="cdir-kpi">
+      <div class="cdir-kpi-icon" style="background:rgba(90,200,250,.12);color:#5ac8fa;">
+        <i class="fa-solid fa-computer"></i>
+      </div>
+      <div class="cdir-kpi-body">
+        <span class="cdir-kpi-value">R$ {{ total_itens|floatformat:2|intcomma }}</span>
+        <span class="cdir-kpi-label">Locação Itens / mês</span>
+      </div>
+    </div>
+
+    <div class="cdir-kpi">
+      <div class="cdir-kpi-icon" style="background:rgba(255,59,48,.10);color:var(--c-red);">
+        <i class="fa-solid fa-wallet"></i>
+      </div>
+      <div class="cdir-kpi-body">
+        <span class="cdir-kpi-value">R$ {{ total_geral|floatformat:2|intcomma }}</span>
+        <span class="cdir-kpi-label">Total Geral</span>
+        <span class="cdir-kpi-sub">R$ {{ custo_medio_colab|floatformat:2 }} / colaborador</span>
+      </div>
+    </div>
+  </div>
+
+  {% if sem_dados %}
+  {# ── Aviso sem dados ── #}
+  <div class="cdir-alert">
+    <div class="cdir-alert-icon"><i class="fa-solid fa-circle-info"></i></div>
+    <div>
+      <p class="cdir-alert-title">Nenhum custo encontrado por diretoria</p>
+      <p class="cdir-alert-text">
+        Os custos são calculados a partir de licenças atribuídas a colaboradores com gestor vinculado e movimentações de itens com custo registrado.
+        Importe a planilha do RH para preencher os vínculos hierárquicos dos colaboradores.
+      </p>
+    </div>
+  </div>
+  {% else %}
+
+  {# ── Gráficos ── #}
+  <div class="cdir-charts-grid">
+    {# Barras horizontais #}
+    <div class="cdir-card">
+      <div class="cdir-card-header">
+        <div class="cdir-card-title">
+          <i class="fa-solid fa-chart-bar"></i>
+          Custo Total por Diretoria
+        </div>
+      </div>
+      <div class="cdir-card-body">
+        <div class="cdir-chart-wrap">
+          <canvas id="chartBars"></canvas>
+        </div>
+      </div>
+    </div>
+
+    {# Donut #}
+    <div class="cdir-card">
+      <div class="cdir-card-header">
+        <div class="cdir-card-title">
+          <i class="fa-solid fa-chart-pie"></i>
+          Distribuição Percentual
+        </div>
+      </div>
+      <div class="cdir-card-body">
+        <div class="cdir-chart-wrap" style="height:280px;">
+          <canvas id="chartDonut"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Tabela detalhada ── #}
+  <div class="cdir-card">
+    <div class="cdir-card-header">
+      <div class="cdir-card-title">
+        <i class="fa-solid fa-table"></i>
+        Detalhamento por Diretoria
+      </div>
+    </div>
+    <div class="cdir-table-wrap">
+      {% if linhas %}
+      {% with max_total=linhas.0.total_geral %}
+      <table class="cdir-table">
+        <thead>
+          <tr>
+            <th>{{ label_grupo }}</th>
+            <th class="num">Colaboradores</th>
+            <th class="num">Custo Licenças<br><span style="font-weight:400;opacity:.7;">/mês</span></th>
+            <th class="num">Custo Movim.</th>
+            <th class="num">Locação Itens<br><span style="font-weight:400;opacity:.7;">/mês</span></th>
+            <th class="num">Total Geral</th>
+            <th class="num">Custo/Colab.</th>
+            <th style="min-width:120px;">Participação</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for linha in linhas %}
+          <tr data-grupo="{{ linha.gestor }}" data-color="{{ linha.color }}">
+            <td>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="cdir-dir-dot" style="background:{{ linha.color }}"></span>
+                <span class="cdir-dir-name">{{ linha.gestor }}</span>
+                <span class="cdir-row-hint"><i class="fa-solid fa-circle-info"></i> detalhes</span>
+              </div>
+            </td>
+            <td class="num">
+              <span class="cdir-badge cdir-badge-blue">
+                <i class="fa-solid fa-users" style="font-size:9px;"></i>
+                {{ linha.qtd_colaboradores|intcomma }}
+              </span>
+            </td>
+            <td class="num">
+              {% if linha.custo_licencas %}
+                <span class="cdir-badge cdir-badge-purple">R$ {{ linha.custo_licencas|floatformat:2|intcomma }}</span>
+              {% else %}
+                <span style="color:var(--c-muted);">—</span>
+              {% endif %}
+            </td>
+            <td class="num">
+              {% if linha.custo_movimentacoes %}
+                R$ {{ linha.custo_movimentacoes|floatformat:2|intcomma }}
+              {% else %}
+                <span style="color:var(--c-muted);">—</span>
+              {% endif %}
+            </td>
+            <td class="num">
+              {% if linha.custo_itens %}
+                <span style="color:#5ac8fa;font-weight:650;">R$ {{ linha.custo_itens|floatformat:2|intcomma }}</span>
+              {% else %}
+                <span style="color:var(--c-muted);">—</span>
+              {% endif %}
+            </td>
+            <td class="num" style="font-weight:700;">
+              R$ {{ linha.total_geral|floatformat:2|intcomma }}
+            </td>
+            <td class="num" style="color:var(--c-muted);">
+              R$ {{ linha.custo_por_colab|floatformat:2 }}
+            </td>
+            <td class="cdir-bar-cell">
+              {% if max_total and max_total > 0 %}
+                {% widthratio linha.total_geral max_total 100 as pct %}
+                <div style="position:relative;height:22px;">
+                  <div class="cdir-bar-bg"></div>
+                  <div class="cdir-bar-fill" style="width:{{ pct }}%;"></div>
+                </div>
+                <div class="cdir-bar-val">{{ pct }}%</div>
+              {% else %}
+                <span style="color:var(--c-muted);">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td><strong>Total</strong></td>
+            <td class="num">{{ total_colab|intcomma }}</td>
+            <td class="num">R$ {{ total_lics|floatformat:2|intcomma }}</td>
+            <td class="num">R$ {{ total_movs|floatformat:2|intcomma }}</td>
+            <td class="num">R$ {{ total_itens|floatformat:2|intcomma }}</td>
+            <td class="num">R$ {{ total_geral|floatformat:2|intcomma }}</td>
+            <td class="num">R$ {{ custo_medio_colab|floatformat:2 }}</td>
+            <td class="num">100%</td>
+          </tr>
+        </tfoot>
+      </table>
+      {% endwith %}
+      {% else %}
+        <div class="cdir-empty">
+          <i class="fa-solid fa-chart-simple"></i>
+          <h3>Sem dados disponíveis</h3>
+          <p>Nenhuma diretoria com custos registrados no período.</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% endif %}{# sem_dados #}
+
+</div>
+
+{# ── Overlay + Drawer de detalhes ── #}
+<div id="cdirOverlay" class="cdir-overlay" aria-hidden="true"></div>
+<div id="cdirDrawer"  class="cdir-drawer"  role="dialog" aria-modal="true" aria-label="Detalhamento da Diretoria">
+  <div id="cdirHandle" class="cdir-drawer-handle" aria-hidden="true"></div>
+  <div class="cdir-drawer-header">
+    <div class="cdir-drawer-title">
+      <span id="cdirDot" class="cdir-dir-dot"></span>
+      <span id="cdirNome" class="cdir-drawer-nome">—</span>
+    </div>
+    <div class="cdir-drawer-meta">
+      <span id="cdirTotal" class="cdir-drawer-total"></span>
+      <button id="cdirClose" class="cdir-drawer-close" aria-label="Fechar"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+  </div>
+  <div class="cdir-drawer-body" id="cdirBody">
+    <div class="cdir-det-loading" id="cdirLoading">
+      <i class="fa-solid fa-spinner fa-spin"></i>&nbsp;Carregando...
+    </div>
+    <div id="cdirContent" style="display:none; flex-direction:column; gap:14px;"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if not sem_dados %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+'use strict';
+
+var labels  = {{ js_labels|safe }};
+var lics    = {{ js_lics|safe }};
+var movs    = {{ js_movs|safe }};
+var itens   = {{ js_itens|safe }};
+var total   = {{ js_total|safe }};
+var colors  = {{ js_colors|safe }};
+
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif";
+Chart.defaults.color = '#6e6e73';
+
+/* ── Gráfico de barras horizontais ── */
+var ctxBars = document.getElementById('chartBars').getContext('2d');
+new Chart(ctxBars, {
+  type: 'bar',
+  data: {
+    labels: labels,
+    datasets: [
+      {
+        label: 'Licenças',
+        data: lics,
+        backgroundColor: 'rgba(88,86,214,.80)',
+        borderRadius: 4,
+        borderSkipped: false,
+      },
+      {
+        label: 'Movimentações',
+        data: movs,
+        backgroundColor: 'rgba(255,149,0,.80)',
+        borderRadius: 4,
+        borderSkipped: false,
+      },
+      {
+        label: 'Locação Itens',
+        data: itens,
+        backgroundColor: 'rgba(90,200,250,.80)',
+        borderRadius: 4,
+        borderSkipped: false,
+      }
+    ]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top', labels: { boxWidth: 12, padding: 16, font: { size: 12 } } },
+      tooltip: {
+        callbacks: {
+          label: function (ctx) {
+            return ' R$ ' + ctx.parsed.x.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        stacked: true,
+        grid: { color: 'rgba(0,0,0,.05)' },
+        ticks: {
+          callback: function (v) {
+            if (v >= 1000) return 'R$ ' + (v/1000).toFixed(1) + 'k';
+            return 'R$ ' + v;
+          },
+          font: { size: 11 }
+        }
+      },
+      y: {
+        stacked: true,
+        grid: { display: false },
+        ticks: { font: { size: 11 } }
+      }
+    }
+  }
+});
+
+/* ── Gráfico donut ── */
+var ctxDonut = document.getElementById('chartDonut').getContext('2d');
+new Chart(ctxDonut, {
+  type: 'doughnut',
+  data: {
+    labels: labels,
+    datasets: [{
+      data: total,
+      backgroundColor: colors,
+      borderWidth: 2,
+      borderColor: '#fff',
+      hoverOffset: 6,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '62%',
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: { boxWidth: 10, padding: 10, font: { size: 11 } }
+      },
+      tooltip: {
+        callbacks: {
+          label: function (ctx) {
+            var val  = ctx.parsed;
+            var sum  = ctx.dataset.data.reduce(function (a, b) { return a + b; }, 0);
+            var pct  = sum > 0 ? (val / sum * 100).toFixed(1) : 0;
+            return ' R$ ' + val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + ' (' + pct + '%)';
+          }
+        }
+      }
+    }
+  }
+});
+
+})();
+</script>
+{% endif %}
+
+<script>
+/* Drawer de detalhes por diretoria */
+(function () {
+'use strict';
+
+var overlay    = document.getElementById('cdirOverlay');
+var drawer     = document.getElementById('cdirDrawer');
+var drawerBody = document.getElementById('cdirBody');
+var loading    = document.getElementById('cdirLoading');
+var content    = document.getElementById('cdirContent');
+var campo      = '{{ campo_grupo }}';
+var _scrollY   = 0;
+var _closeTimer = null;
+
+function fmtBRL(v) {
+  return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function isMobile() { return window.matchMedia('(max-width:559px)').matches; }
+
+function lockScroll() {
+  _scrollY = window.scrollY;
+  document.body.style.cssText += ';position:fixed;top:-' + _scrollY + 'px;left:0;right:0;overflow-y:scroll;';
+}
+function unlockScroll() {
+  var s = document.body.style.cssText;
+  document.body.style.cssText = s
+    .replace(/position\s*:[^;]+;/gi, '')
+    .replace(/top\s*:[^;]+;/gi, '')
+    .replace(/left\s*:[^;]+;/gi, '')
+    .replace(/right\s*:[^;]+;/gi, '')
+    .replace(/overflow-y\s*:[^;]+;/gi, '');
+  window.scrollTo(0, _scrollY);
+}
+
+function openDrawer(nome, color) {
+  clearTimeout(_closeTimer);
+  document.getElementById('cdirDot').style.background = color;
+  document.getElementById('cdirNome').textContent     = nome;
+  document.getElementById('cdirTotal').textContent    = '';
+  content.style.display = 'none';
+  loading.style.display = 'flex';
+  if (drawerBody) drawerBody.scrollTop = 0;
+  lockScroll();
+  overlay.classList.add('is-open');
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () { drawer.classList.add('is-open'); });
+  });
+  var url = '{% url "custos_diretoria_detalhe" %}?grupo=' + encodeURIComponent(nome) + '&campo=' + encodeURIComponent(campo);
+  fetch(url)
+    .then(function (r) { return r.json(); })
+    .then(function (d) { renderDrawer(d); })
+    .catch(function () {
+      loading.style.display = 'none';
+      content.innerHTML = '<p style="padding:24px;color:var(--c-muted);text-align:center;font-size:13px;">Erro ao carregar dados.</p>';
+      content.style.display = 'flex';
+    });
+}
+
+function closeDrawer() {
+  drawer.classList.remove('is-open');
+  overlay.classList.remove('is-open');
+  unlockScroll();
+  _closeTimer = setTimeout(function () {
+    content.innerHTML = '';
+    content.style.display = 'none';
+    loading.style.display = 'flex';
+  }, 360);
+}
+
+document.getElementById('cdirClose').addEventListener('click', closeDrawer);
+overlay.addEventListener('click', closeDrawer);
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && drawer.classList.contains('is-open')) closeDrawer();
+});
+document.querySelectorAll('.cdir-table tbody tr[data-grupo]').forEach(function (tr) {
+  tr.addEventListener('click', function () { openDrawer(tr.dataset.grupo, tr.dataset.color); });
+});
+
+/* swipe para fechar */
+var _sw = { x:0, y:0, active:false, axis:null };
+drawer.addEventListener('touchstart', function (e) {
+  if (e.touches.length !== 1) return;
+  _sw.x = e.touches[0].clientX; _sw.y = e.touches[0].clientY;
+  _sw.active = true; _sw.axis = null;
+  drawer.style.transition = 'none';
+}, {passive:true});
+drawer.addEventListener('touchmove', function (e) {
+  if (!_sw.active || e.touches.length !== 1) return;
+  var dx = e.touches[0].clientX - _sw.x;
+  var dy = e.touches[0].clientY - _sw.y;
+  if (!_sw.axis) {
+    if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+    _sw.axis = Math.abs(dy) > Math.abs(dx) ? 'y' : 'x';
+  }
+  if (isMobile() && _sw.axis === 'y') {
+    if (dy < 0) return;
+    if (drawerBody && drawerBody.scrollTop > 2) return;
+    drawer.style.transform = 'translateY(' + dy + 'px)';
+  } else if (!isMobile() && _sw.axis === 'x') {
+    if (dx < 0) return;
+    drawer.style.transform = 'translateX(' + dx + 'px)';
+  }
+}, {passive:true});
+drawer.addEventListener('touchend', function (e) {
+  if (!_sw.active) return;
+  _sw.active = false;
+  drawer.style.transition = '';
+  var dx  = (e.changedTouches[0] ? e.changedTouches[0].clientX : _sw.x) - _sw.x;
+  var dy  = (e.changedTouches[0] ? e.changedTouches[0].clientY : _sw.y) - _sw.y;
+  var mob = isMobile();
+  if (_sw.axis && (mob ? dy : dx) > (mob ? 70 : 90)) { closeDrawer(); }
+  else { drawer.style.transform = mob ? 'translateY(0)' : 'translateX(0)'; }
+}, {passive:true});
+
+function buildResumo(d) {
+  var t = d.totais, parts = [], custos = [];
+  if (t.qtd_colaboradores) parts.push('Esta diretoria possui <strong>' + t.qtd_colaboradores + ' colaboradores ativos</strong>');
+  if (t.custo_itens > 0)         custos.push('<strong>' + fmtBRL(t.custo_itens) + '/mes</strong> em locacao de ' + d.qtd_itens_total + ' item(ns)');
+  if (t.custo_licencas > 0)      custos.push('<strong>' + fmtBRL(t.custo_licencas) + '/mes</strong> em ' + d.licencas.length + ' licenca(s)');
+  if (t.custo_movimentacoes > 0) custos.push('<strong>' + fmtBRL(t.custo_movimentacoes) + '</strong> em movimentacoes');
+  if (custos.length) parts.push('com custos compostos por ' + custos.join(', '));
+  if (t.total_geral > 0 && t.qtd_colaboradores > 0) {
+    parts.push('totalizando <strong>' + fmtBRL(t.total_geral) + '</strong> e custo medio de <strong>' + fmtBRL(t.total_geral / t.qtd_colaboradores) + '</strong> por colaborador');
+  }
+  return parts.length ? parts.join(', ') + '.' : 'Nenhum dado de custo disponivel para esta diretoria.';
+}
+function secao(icon, title, color, body) {
+  return '<div class="cdir-det-section">' +
+    '<div class="cdir-det-sec-header" style="--sec-color:' + color + '">' +
+    '<i class="' + icon + '"></i>' + esc(title) + '</div>' +
+    '<div class="cdir-det-sec-body">' + body + '</div></div>';
+}
+function row(name, meta, val) {
+  return '<div class="cdir-det-list-row">' +
+    '<span class="cdir-det-list-name">' + name + '</span>' +
+    '<span class="cdir-det-list-meta">' + meta + '</span>' +
+    '<span class="cdir-det-list-val">'  + val  + '</span></div>';
+}
+
+function renderDrawer(d) {
+  loading.style.display = 'none';
+  var t = d.totais;
+  document.getElementById('cdirTotal').textContent = fmtBRL(t.total_geral);
+  var html = '';
+
+  html += '<div class="cdir-det-resumo">' +
+    '<div class="cdir-det-resumo-icon"><i class="fa-solid fa-lightbulb"></i></div>' +
+    '<div class="cdir-det-resumo-text">' + buildResumo(d) + '</div></div>';
+
+  html += '<div class="cdir-det-kpis">' +
+    '<div class="cdir-det-kpi" style="--dk:#5856d6"><span>' + fmtBRL(t.custo_licencas)      + '</span><label>Licencas / mes</label></div>' +
+    '<div class="cdir-det-kpi" style="--dk:#ff9500"><span>' + fmtBRL(t.custo_movimentacoes) + '</span><label>Movimentacoes</label></div>' +
+    '<div class="cdir-det-kpi" style="--dk:#5ac8fa"><span>' + fmtBRL(t.custo_itens)         + '</span><label>Locacao / mes</label></div>' +
+    '</div>';
+
+  if (d.licencas && d.licencas.length) {
+    var b = '<div class="cdir-det-list">';
+    d.licencas.forEach(function (l) {
+      b += row(esc(l.nome), l.qtd_usuarios + ' usuario' + (l.qtd_usuarios !== 1 ? 's' : ''), fmtBRL(l.subtotal) + '/mes');
+    });
+    html += secao('fa-solid fa-key', 'Licencas de Software', '#5856d6', b + '</div>');
+  }
+
+  if (d.movimentacoes && d.movimentacoes.length) {
+    var b2 = '<div class="cdir-det-list">';
+    d.movimentacoes.forEach(function (m) {
+      b2 += row(esc(m.tipo), m.qtd + ' ocorrencia' + (m.qtd !== 1 ? 's' : ''), fmtBRL(m.total));
+    });
+    b2 += '</div>';
+    if (d.top_movimentacoes && d.top_movimentacoes.length) {
+      b2 += '<div class="cdir-det-sub-label">Maiores custos individuais</div><div class="cdir-det-list cdir-det-list-sm">';
+      d.top_movimentacoes.forEach(function (m) {
+        b2 += '<div class="cdir-det-list-row"><span class="cdir-det-list-name">' + esc(m.item) +
+              '</span><span class="cdir-det-badge-tipo">' + esc(m.tipo) +
+              '</span><span class="cdir-det-list-val">' + fmtBRL(m.custo) + '</span></div>';
+      });
+      b2 += '</div>';
+    }
+    html += secao('fa-solid fa-boxes-stacked', 'Movimentacoes de Estoque', '#ff9500', b2);
+  }
+
+  if (d.itens && d.itens.length) {
+    var b3 = '<div class="cdir-det-list">';
+    d.itens.forEach(function (it) {
+      b3 += row(esc(it.nome), 'CC ' + esc(it.centro_custo), fmtBRL(it.valor) + '/mes');
+    });
+    b3 += '</div>';
+    if (d.qtd_itens_total > d.itens.length) {
+      b3 += '<div class="cdir-det-more">+ ' + (d.qtd_itens_total - d.itens.length) + ' outros contratos nao listados</div>';
+    }
+    html += secao('fa-solid fa-computer', 'Locacao de Itens (' + d.qtd_itens_total + ' contrato' + (d.qtd_itens_total !== 1 ? 's' : '') + ')', '#5ac8fa', b3);
+  }
+
+  if (!d.licencas.length && !d.movimentacoes.length && !d.itens.length) {
+    html += '<div class="cdir-empty" style="padding:40px 20px;"><i class="fa-solid fa-chart-simple"></i><p>Nenhum detalhe disponivel.</p></div>';
+  }
+
+  content.innerHTML = html;
+  content.style.display = 'flex';
+}
+
+})();
+</script>
+{% endblock %}

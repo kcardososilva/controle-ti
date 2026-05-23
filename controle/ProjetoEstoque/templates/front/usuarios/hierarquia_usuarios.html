@@ -1,0 +1,939 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Hierarquia Organizacional{% endblock %}
+{% block page_title %}Hierarquia Organizacional{% endblock %}
+{% block page_subtitle %}Visualize a estrutura de liderança por responsável, centro de custo e localidade{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'usuario_list' %}" class="btn btn-sm">
+    <i class="fa-solid fa-users" aria-hidden="true"></i> Colaboradores
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.hier-page) {
+  --h-brand:       var(--brand,              #0071e3);
+  --h-brand-soft:  var(--brand-soft,         rgba(0,113,227,.10));
+  --h-surface:     var(--bg-elevated,        #ffffff);
+  --h-fill:        var(--bg-fill-tertiary,   rgba(120,120,128,.07));
+  --h-text:        var(--text-primary,       #1d1d1f);
+  --h-muted:       var(--text-tertiary,      #6e6e73);
+  --h-soft:        var(--text-quaternary,    #86868b);
+  --h-border:      var(--separator-hairline, rgba(0,0,0,.06));
+  --h-border2:     var(--separator-non-opaque, rgba(0,0,0,.10));
+  --h-radius-sm:   var(--radius-sm,  10px);
+  --h-radius-md:   var(--radius-md,  14px);
+  --h-radius-lg:   var(--radius-lg,  18px);
+  --h-radius-xl:   var(--radius-xl,  22px);
+  --h-shadow:      var(--shadow-sm,  0 1px 2px rgba(0,0,0,.05));
+  --h-shadow-md:   var(--shadow-md,  0 4px 12px rgba(0,0,0,.06));
+  --h-green:       var(--system-green, #34c759);
+  --h-red:         var(--system-red,   #ff3b30);
+  --h-orange:      var(--system-orange, #ff9500);
+  --h-transition:  160ms cubic-bezier(.32,.72,0,1);
+}
+
+.hier-page, .hier-page * { box-sizing: border-box; min-width: 0; }
+
+.hier-page {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  color: var(--h-text);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── KPI strip ── */
+.hier-kpi-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hier-kpi {
+  flex: 1;
+  min-width: 160px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--h-border);
+  border-radius: var(--h-radius-lg);
+  background: var(--h-surface);
+  box-shadow: var(--h-shadow);
+}
+
+.hier-kpi-icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  font-size: 17px;
+}
+
+.hier-kpi-body { display: flex; flex-direction: column; gap: 2px; }
+.hier-kpi-value { font-size: 22px; font-weight: 700; line-height: 1; color: var(--h-text); }
+.hier-kpi-label { font-size: 11px; font-weight: 600; color: var(--h-muted); letter-spacing: .03em; text-transform: uppercase; }
+
+/* ── Filter bar ── */
+.hier-filter-card {
+  padding: 18px 20px;
+  border: 1px solid var(--h-border);
+  border-radius: var(--h-radius-xl);
+  background: var(--h-surface);
+  box-shadow: var(--h-shadow);
+}
+
+.hier-filter-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--h-muted);
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.hier-filter-title i { color: var(--h-brand); }
+
+.hier-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.hier-filter-field { display: flex; flex-direction: column; gap: 5px; }
+
+.hier-filter-field label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--h-muted);
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.hier-filter-field select,
+.hier-filter-field input[type="text"] {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--h-border2);
+  border-radius: var(--h-radius-sm);
+  background: var(--h-surface);
+  color: var(--h-text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--h-transition), box-shadow var(--h-transition);
+}
+
+.hier-filter-field select:focus,
+.hier-filter-field input:focus {
+  border-color: var(--h-brand);
+  box-shadow: 0 0 0 3px var(--brand-ring, rgba(0,113,227,.25));
+}
+
+.hier-filter-actions { display: flex; gap: 8px; align-items: flex-end; padding-bottom: 1px; }
+
+.hier-btn {
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background var(--h-transition), border-color var(--h-transition), transform var(--h-transition);
+}
+
+.hier-btn:hover { transform: translateY(-1px); }
+.hier-btn-primary { background: var(--h-brand); color: #fff; }
+.hier-btn-primary:hover { background: var(--brand-hover, #0077ed); color: #fff; }
+.hier-btn-ghost { background: transparent; border-color: var(--h-border2); color: var(--h-text); }
+.hier-btn-ghost:hover { background: var(--bg-hover, rgba(0,0,0,.04)); }
+
+/* ── Tabs ── */
+.hier-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--h-border);
+  border-radius: var(--h-radius-lg);
+  background: var(--h-fill);
+  width: fit-content;
+}
+
+.hier-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 18px;
+  border-radius: 11px;
+  border: none;
+  background: transparent;
+  color: var(--h-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--h-transition), color var(--h-transition), box-shadow var(--h-transition);
+}
+
+.hier-tab.is-active {
+  background: var(--h-surface);
+  color: var(--h-brand);
+  font-weight: 700;
+  box-shadow: var(--h-shadow-md);
+}
+
+.hier-tab i { font-size: 12px; }
+
+/* ── Panel container ── */
+.hier-panel { display: none; }
+.hier-panel.is-active { display: block; }
+
+/* ── Group card ── */
+.hier-group {
+  margin-bottom: 16px;
+  border: 1px solid var(--h-border);
+  border-radius: var(--h-radius-xl);
+  background: var(--h-surface);
+  box-shadow: var(--h-shadow);
+  overflow: hidden;
+}
+
+.hier-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--h-fill);
+  border-bottom: 1px solid var(--h-border);
+  cursor: pointer;
+  user-select: none;
+}
+
+.hier-group-header:hover { background: color-mix(in srgb, var(--h-fill) 80%, var(--h-brand-soft)); }
+
+.hier-group-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hier-group-avatar {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--h-brand-soft);
+  color: var(--h-brand);
+  font-size: 16px;
+}
+
+.hier-group-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--h-text);
+  line-height: 1.3;
+}
+
+.hier-group-sub {
+  font-size: 11px;
+  color: var(--h-muted);
+  margin-top: 2px;
+}
+
+.hier-group-right { display: flex; align-items: center; gap: 10px; }
+
+.hier-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--h-brand-soft);
+  color: var(--h-brand);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hier-chevron {
+  color: var(--h-soft);
+  font-size: 12px;
+  transition: transform var(--h-transition);
+}
+
+.hier-group.is-open .hier-chevron { transform: rotate(180deg); }
+
+/* ── Member list ── */
+.hier-members {
+  display: none;
+  padding: 4px 0 8px;
+}
+
+.hier-group.is-open .hier-members { display: block; }
+
+.hier-member {
+  display: grid;
+  grid-template-columns: 36px minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 80px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--h-border);
+  transition: background var(--h-transition);
+  text-decoration: none;
+  color: inherit;
+}
+
+.hier-member:last-child { border-bottom: none; }
+.hier-member:hover { background: var(--h-fill); }
+
+.hier-member-avatar {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--h-fill);
+  border: 1px solid var(--h-border2);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--h-brand);
+}
+
+.hier-member-name { font-size: 13px; font-weight: 600; color: var(--h-text); }
+.hier-member-sub  { font-size: 11px; color: var(--h-muted); margin-top: 2px; }
+
+.hier-member-col  { font-size: 12px; color: var(--h-muted); line-height: 1.35; }
+.hier-member-col strong { color: var(--h-text); font-weight: 600; }
+
+.hier-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.hier-status-pill.ativo   { background: rgba(52,199,89,.12);  color: var(--h-green); }
+.hier-status-pill.desl    { background: rgba(255,59,48,.10);  color: var(--h-red); }
+
+.hier-action-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--h-fill);
+  border: 1px solid var(--h-border2);
+  color: var(--h-muted);
+  font-size: 12px;
+  text-decoration: none;
+  transition: background var(--h-transition), color var(--h-transition);
+}
+
+.hier-action-link:hover { background: var(--h-brand-soft); color: var(--h-brand); }
+
+/* ── Empty state ── */
+.hier-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--h-muted);
+}
+
+.hier-empty i { font-size: 38px; color: var(--h-soft); }
+.hier-empty h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--h-text); }
+.hier-empty p  { margin: 0; font-size: 13px; }
+
+/* ── Column headers ── */
+.hier-col-headers {
+  display: grid;
+  grid-template-columns: 36px minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 80px;
+  gap: 12px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--h-border);
+  background: var(--h-fill);
+}
+
+.hier-col-head {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--h-soft);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+/* ── Onboarding banner ── */
+.hier-onboarding {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 1px solid rgba(255,149,0,.3);
+  border-radius: var(--h-radius-xl);
+  background: rgba(255,149,0,.07);
+  box-shadow: var(--h-shadow);
+}
+
+.hier-onboarding-icon {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(255,149,0,.15);
+  color: var(--h-orange);
+  font-size: 17px;
+}
+
+.hier-onboarding-body { flex: 1; min-width: 0; }
+.hier-onboarding-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--h-text);
+  margin: 0 0 4px;
+}
+
+.hier-onboarding-text {
+  font-size: 13px;
+  color: var(--h-muted);
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+
+.hier-onboarding-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .hier-filter-grid { grid-template-columns: 1fr 1fr; }
+  .hier-filter-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .hier-kpi-row { gap: 8px; }
+
+  .hier-member {
+    grid-template-columns: 32px minmax(0,1fr) auto;
+    grid-template-rows: auto auto;
+  }
+
+  .hier-member-avatar { grid-row: 1 / 3; }
+  .hier-member:nth-child(n) > .hier-member-col:nth-child(n+4) { display: none; }
+  .hier-col-headers { display: none; }
+}
+
+@media (max-width: 560px) {
+  .hier-filter-grid { grid-template-columns: 1fr; }
+  .hier-tabs { width: 100%; overflow-x: auto; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="hier-page">
+
+  {# ── KPIs ──────────────────────────────────────────────────────────── #}
+  <div class="hier-kpi-row">
+    <div class="hier-kpi">
+      <div class="hier-kpi-icon" style="background:var(--brand-soft,rgba(0,113,227,.10));color:var(--brand);">
+        <i class="fa-solid fa-users" aria-hidden="true"></i>
+      </div>
+      <div class="hier-kpi-body">
+        <span class="hier-kpi-value">{{ total_filtrado }}</span>
+        <span class="hier-kpi-label">Colaboradores</span>
+      </div>
+    </div>
+
+    <div class="hier-kpi">
+      <div class="hier-kpi-icon" style="background:rgba(52,199,89,.12);color:#34c759;">
+        <i class="fa-solid fa-sitemap" aria-hidden="true"></i>
+      </div>
+      <div class="hier-kpi-body">
+        <span class="hier-kpi-value">{{ grupos_responsavel|length }}</span>
+        <span class="hier-kpi-label">Responsáveis</span>
+      </div>
+    </div>
+
+    <div class="hier-kpi">
+      <div class="hier-kpi-icon" style="background:rgba(255,149,0,.12);color:#ff9500;">
+        <i class="fa-solid fa-building" aria-hidden="true"></i>
+      </div>
+      <div class="hier-kpi-body">
+        <span class="hier-kpi-value">{{ grupos_cc|length }}</span>
+        <span class="hier-kpi-label">Centros de Custo</span>
+      </div>
+    </div>
+
+    <div class="hier-kpi">
+      <div class="hier-kpi-icon" style="background:rgba(88,86,214,.12);color:#5856d6;">
+        <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+      </div>
+      <div class="hier-kpi-body">
+        <span class="hier-kpi-value">{{ grupos_loc|length }}</span>
+        <span class="hier-kpi-label">Localidades</span>
+      </div>
+    </div>
+  </div>
+
+  {# ── Banner de onboarding (sem dados de hierarquia) ───────────────── #}
+  {% if sem_hierarquia %}
+  <div class="hier-onboarding">
+    <div class="hier-onboarding-icon">
+      <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+    </div>
+    <div class="hier-onboarding-body">
+      <p class="hier-onboarding-title">Dados de hierarquia ainda não importados</p>
+      <p class="hier-onboarding-text">
+        Nenhum colaborador possui gestor, supervisor ou responsável vinculado ainda.
+        Importe a planilha mensal do RH para popular a hierarquia automaticamente.
+        Enquanto isso, utilize as abas <strong>Por Centro de Custo</strong> e <strong>Por Localidade</strong> para visualizar os colaboradores.
+        {% if total_sem_hierarquia %}
+          <br><span style="margin-top:4px;display:inline-block;">
+            <strong>{{ total_sem_hierarquia }}</strong> colaborador{{ total_sem_hierarquia|pluralize:"es" }} aguardando vínculo hierárquico.
+          </span>
+        {% endif %}
+      </p>
+      <div class="hier-onboarding-actions">
+        <a href="{% url 'usuario_importar' %}" class="hier-btn hier-btn-primary" style="background:var(--h-orange);">
+          <i class="fa-solid fa-file-import" aria-hidden="true"></i>
+          Importar Planilha do RH
+        </a>
+        <a href="{% url 'usuario_list' %}" class="hier-btn hier-btn-ghost">
+          <i class="fa-solid fa-users" aria-hidden="true"></i>
+          Ver Colaboradores
+        </a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Filtros ───────────────────────────────────────────────────────── #}
+  <div class="hier-filter-card">
+    <div class="hier-filter-title">
+      <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+      Filtros
+    </div>
+
+    <form method="get" id="filterForm">
+      <div class="hier-filter-grid">
+        <div class="hier-filter-field">
+          <label for="f-resp">Responsável</label>
+          <input type="text" id="f-resp" name="resp" value="{{ f_responsavel }}" placeholder="Buscar responsável...">
+        </div>
+
+        <div class="hier-filter-field">
+          <label for="f-cc">Centro de Custo</label>
+          <select id="f-cc" name="cc">
+            <option value="">Todos</option>
+            {% for cc in todos_cc %}
+              <option value="{{ cc.pk }}" {% if f_cc == cc.pk|stringformat:"s" %}selected{% endif %}>
+                {{ cc.numero }} – {{ cc.departamento }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="hier-filter-field">
+          <label for="f-loc">Localidade</label>
+          <select id="f-loc" name="loc">
+            <option value="">Todas</option>
+            {% for loc in todas_loc %}
+              <option value="{{ loc.pk }}" {% if f_loc == loc.pk|stringformat:"s" %}selected{% endif %}>
+                {{ loc.local }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="hier-filter-field">
+          <label for="f-status">Status</label>
+          <select id="f-status" name="status">
+            <option value="ativo"    {% if f_status == "ativo"    %}selected{% endif %}>Ativos</option>
+            <option value="desligado"{% if f_status == "desligado"%}selected{% endif %}>Desligados</option>
+            <option value="todos"   {% if f_status == "todos"    %}selected{% endif %}>Todos</option>
+          </select>
+        </div>
+
+        <div class="hier-filter-actions">
+          <button type="submit" class="hier-btn hier-btn-primary">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            Filtrar
+          </button>
+          <a href="{% url 'hierarquia_usuarios' %}" class="hier-btn hier-btn-ghost">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            Limpar
+          </a>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {# ── Tabs de visualização ──────────────────────────────────────────── #}
+  <div>
+    <div class="hier-tabs" role="tablist" aria-label="Agrupamento de hierarquia">
+      <button class="hier-tab {% if not sem_hierarquia %}is-active{% endif %}" role="tab"
+              aria-selected="{% if not sem_hierarquia %}true{% else %}false{% endif %}"
+              aria-controls="panel-resp" id="tab-resp" onclick="switchTab('resp', this)">
+        <i class="fa-solid fa-user-tie" aria-hidden="true"></i>
+        Por Responsável
+      </button>
+      <button class="hier-tab {% if sem_hierarquia %}is-active{% endif %}" role="tab"
+              aria-selected="{% if sem_hierarquia %}true{% else %}false{% endif %}"
+              aria-controls="panel-cc" id="tab-cc" onclick="switchTab('cc', this)">
+        <i class="fa-solid fa-building" aria-hidden="true"></i>
+        Por Centro de Custo
+      </button>
+      <button class="hier-tab" role="tab" aria-selected="false"
+              aria-controls="panel-loc" id="tab-loc" onclick="switchTab('loc', this)">
+        <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+        Por Localidade
+      </button>
+    </div>
+  </div>
+
+  {# ── Panel: Por Responsável ─────────────────────────────────────────── #}
+  <div class="hier-panel {% if not sem_hierarquia %}is-active{% endif %}" id="panel-resp" role="tabpanel" aria-labelledby="tab-resp">
+    {% if grupos_responsavel %}
+      {% for responsavel, membros in grupos_responsavel.items %}
+        <div class="hier-group" id="grp-resp-{{ forloop.counter }}">
+          <div class="hier-group-header" onclick="toggleGroup(this.parentElement)">
+            <div class="hier-group-left">
+              <div class="hier-group-avatar">
+                <i class="fa-solid fa-user-tie" aria-hidden="true"></i>
+              </div>
+              <div>
+                <div class="hier-group-name">{{ responsavel }}</div>
+                <div class="hier-group-sub">Responsável hierárquico</div>
+              </div>
+            </div>
+            <div class="hier-group-right">
+              <span class="hier-count-badge">
+                <i class="fa-solid fa-users" aria-hidden="true"></i>
+                {{ membros|length }} colaborador{{ membros|length|pluralize:"es" }}
+              </span>
+              <i class="fa-solid fa-chevron-down hier-chevron" aria-hidden="true"></i>
+            </div>
+          </div>
+
+          <div class="hier-members">
+            <div class="hier-col-headers" aria-hidden="true">
+              <span></span>
+              <span class="hier-col-head">Colaborador</span>
+              <span class="hier-col-head">Função</span>
+              <span class="hier-col-head">Centro de Custo</span>
+              <span class="hier-col-head">Localidade</span>
+              <span class="hier-col-head">Status</span>
+            </div>
+
+            {% for u in membros %}
+              <a href="{% url 'usuario_detail' u.pk %}" class="hier-member">
+                <div class="hier-member-avatar">{{ u.nome|slice:":1"|upper }}</div>
+
+                <div>
+                  <div class="hier-member-name">{{ u.nome }}</div>
+                  <div class="hier-member-sub">
+                    Mat: {{ u.matricula|default:"—" }}
+                    {% if u.diretor %}· Dir: {{ u.diretor }}{% endif %}
+                    {% if u.gestor and u.gestor != responsavel %}· Gest: {{ u.gestor }}{% endif %}
+                  </div>
+                </div>
+
+                <div class="hier-member-col">
+                  <strong>{{ u.funcao.nome|default:"—" }}</strong>
+                </div>
+
+                <div class="hier-member-col">
+                  {% if u.centro_custo %}
+                    <strong>{{ u.centro_custo.numero }}</strong><br>
+                    {{ u.centro_custo.departamento|truncatechars:28 }}
+                  {% else %}—{% endif %}
+                </div>
+
+                <div class="hier-member-col">
+                  {{ u.localidade.local|default:"—"|truncatechars:28 }}
+                </div>
+
+                <div>
+                  {% if u.status == "ativo" %}
+                    <span class="hier-status-pill ativo"><i class="fa-solid fa-circle" style="font-size:6px;"></i> Ativo</span>
+                  {% else %}
+                    <span class="hier-status-pill desl"><i class="fa-solid fa-circle" style="font-size:6px;"></i> {{ u.get_status_display }}</span>
+                  {% endif %}
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="hier-empty">
+        <i class="fa-solid fa-sitemap" aria-hidden="true"></i>
+        <h3>{% if sem_hierarquia %}Hierarquia ainda não configurada{% else %}Nenhum resultado encontrado{% endif %}</h3>
+        <p>
+          {% if sem_hierarquia %}
+            Importe a planilha do RH para vincular gestores, supervisores e coordenadores automaticamente.
+          {% else %}
+            Ajuste os filtros ou importe a planilha mensal do RH.
+          {% endif %}
+        </p>
+        {% if sem_hierarquia %}
+          <a href="{% url 'usuario_importar' %}" class="hier-btn hier-btn-primary" style="margin-top:12px;background:var(--h-orange);">
+            <i class="fa-solid fa-file-import" aria-hidden="true"></i>
+            Importar Planilha do RH
+          </a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  {# ── Panel: Por Centro de Custo ─────────────────────────────────────── #}
+  <div class="hier-panel {% if sem_hierarquia %}is-active{% endif %}" id="panel-cc" role="tabpanel" aria-labelledby="tab-cc">
+    {% if grupos_cc %}
+      {% for cc_nome, membros in grupos_cc.items %}
+        <div class="hier-group" id="grp-cc-{{ forloop.counter }}">
+          <div class="hier-group-header" onclick="toggleGroup(this.parentElement)">
+            <div class="hier-group-left">
+              <div class="hier-group-avatar">
+                <i class="fa-solid fa-building" aria-hidden="true"></i>
+              </div>
+              <div>
+                <div class="hier-group-name">{{ cc_nome }}</div>
+                <div class="hier-group-sub">Centro de Custo</div>
+              </div>
+            </div>
+            <div class="hier-group-right">
+              <span class="hier-count-badge">
+                <i class="fa-solid fa-users" aria-hidden="true"></i>
+                {{ membros|length }} colaborador{{ membros|length|pluralize:"es" }}
+              </span>
+              <i class="fa-solid fa-chevron-down hier-chevron" aria-hidden="true"></i>
+            </div>
+          </div>
+
+          <div class="hier-members">
+            <div class="hier-col-headers" aria-hidden="true">
+              <span></span>
+              <span class="hier-col-head">Colaborador</span>
+              <span class="hier-col-head">Função</span>
+              <span class="hier-col-head">Responsável</span>
+              <span class="hier-col-head">Localidade</span>
+              <span class="hier-col-head">Status</span>
+            </div>
+
+            {% for u in membros %}
+              <a href="{% url 'usuario_detail' u.pk %}" class="hier-member">
+                <div class="hier-member-avatar">{{ u.nome|slice:":1"|upper }}</div>
+
+                <div>
+                  <div class="hier-member-name">{{ u.nome }}</div>
+                  <div class="hier-member-sub">Mat: {{ u.matricula|default:"—" }}</div>
+                </div>
+
+                <div class="hier-member-col">
+                  <strong>{{ u.funcao.nome|default:"—" }}</strong>
+                </div>
+
+                <div class="hier-member-col">
+                  {% if u.responsavel %}
+                    <strong>{{ u.responsavel }}</strong>
+                    {% if u.supervisor and u.supervisor != u.responsavel %}
+                      <br><span style="font-size:10px;">Sup: {{ u.supervisor }}</span>
+                    {% endif %}
+                  {% else %}—{% endif %}
+                </div>
+
+                <div class="hier-member-col">
+                  {{ u.localidade.local|default:"—"|truncatechars:28 }}
+                </div>
+
+                <div>
+                  {% if u.status == "ativo" %}
+                    <span class="hier-status-pill ativo"><i class="fa-solid fa-circle" style="font-size:6px;"></i> Ativo</span>
+                  {% else %}
+                    <span class="hier-status-pill desl"><i class="fa-solid fa-circle" style="font-size:6px;"></i> {{ u.get_status_display }}</span>
+                  {% endif %}
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="hier-empty">
+        <i class="fa-solid fa-building-circle-xmark" aria-hidden="true"></i>
+        <h3>Nenhum resultado encontrado</h3>
+        <p>Ajuste os filtros ou cadastre centros de custo nos colaboradores.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  {# ── Panel: Por Localidade ──────────────────────────────────────────── #}
+  <div class="hier-panel" id="panel-loc" role="tabpanel" aria-labelledby="tab-loc">
+    {% if grupos_loc %}
+      {% for loc_nome, membros in grupos_loc.items %}
+        <div class="hier-group" id="grp-loc-{{ forloop.counter }}">
+          <div class="hier-group-header" onclick="toggleGroup(this.parentElement)">
+            <div class="hier-group-left">
+              <div class="hier-group-avatar">
+                <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+              </div>
+              <div>
+                <div class="hier-group-name">{{ loc_nome }}</div>
+                <div class="hier-group-sub">Localidade / Área</div>
+              </div>
+            </div>
+            <div class="hier-group-right">
+              <span class="hier-count-badge">
+                <i class="fa-solid fa-users" aria-hidden="true"></i>
+                {{ membros|length }} colaborador{{ membros|length|pluralize:"es" }}
+              </span>
+              <i class="fa-solid fa-chevron-down hier-chevron" aria-hidden="true"></i>
+            </div>
+          </div>
+
+          <div class="hier-members">
+            <div class="hier-col-headers" aria-hidden="true">
+              <span></span>
+              <span class="hier-col-head">Colaborador</span>
+              <span class="hier-col-head">Função</span>
+              <span class="hier-col-head">Responsável</span>
+              <span class="hier-col-head">Centro de Custo</span>
+              <span class="hier-col-head">Status</span>
+            </div>
+
+            {% for u in membros %}
+              <a href="{% url 'usuario_detail' u.pk %}" class="hier-member">
+                <div class="hier-member-avatar">{{ u.nome|slice:":1"|upper }}</div>
+
+                <div>
+                  <div class="hier-member-name">{{ u.nome }}</div>
+                  <div class="hier-member-sub">Mat: {{ u.matricula|default:"—" }}</div>
+                </div>
+
+                <div class="hier-member-col">
+                  <strong>{{ u.funcao.nome|default:"—" }}</strong>
+                </div>
+
+                <div class="hier-member-col">
+                  {% if u.responsavel %}
+                    <strong>{{ u.responsavel }}</strong>
+                  {% else %}—{% endif %}
+                </div>
+
+                <div class="hier-member-col">
+                  {% if u.centro_custo %}
+                    <strong>{{ u.centro_custo.numero }}</strong><br>
+                    {{ u.centro_custo.departamento|truncatechars:28 }}
+                  {% else %}—{% endif %}
+                </div>
+
+                <div>
+                  {% if u.status == "ativo" %}
+                    <span class="hier-status-pill ativo"><i class="fa-solid fa-circle" style="font-size:6px;"></i> Ativo</span>
+                  {% else %}
+                    <span class="hier-status-pill desl"><i class="fa-solid fa-circle" style="font-size:6px;"></i> {{ u.get_status_display }}</span>
+                  {% endif %}
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="hier-empty">
+        <i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>
+        <h3>Nenhum resultado encontrado</h3>
+        <p>Ajuste os filtros ou cadastre localidades nos colaboradores.</p>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  'use strict';
+
+  /* ── Alternância de tabs ── */
+  window.switchTab = function (key, btn) {
+    document.querySelectorAll('.hier-tab').forEach(function (t) {
+      t.classList.remove('is-active');
+      t.setAttribute('aria-selected', 'false');
+    });
+    document.querySelectorAll('.hier-panel').forEach(function (p) {
+      p.classList.remove('is-active');
+    });
+
+    btn.classList.add('is-active');
+    btn.setAttribute('aria-selected', 'true');
+
+    var panel = document.getElementById('panel-' + key);
+    if (panel) panel.classList.add('is-active');
+
+    // Salva tab ativa na URL sem recarregar
+    var url = new URL(window.location);
+    url.searchParams.set('tab', key);
+    history.replaceState(null, '', url.toString());
+  };
+
+  /* ── Restaura tab ativa da URL (ou usa default do servidor) ── */
+  (function restoreTab() {
+    var params = new URLSearchParams(window.location.search);
+    var tab = params.get('tab');
+    if (!tab) return;
+    var btn = document.getElementById('tab-' + tab);
+    if (btn) window.switchTab(tab, btn);
+  })();
+
+  /* ── Garante que o painel ativo inicial está visível ── */
+  (function ensureActivePanel() {
+    var activeTab = document.querySelector('.hier-tab.is-active');
+    if (!activeTab) return;
+    var id = activeTab.getAttribute('aria-controls');
+    document.querySelectorAll('.hier-panel').forEach(function (p) { p.classList.remove('is-active'); });
+    var panel = document.getElementById(id);
+    if (panel) panel.classList.add('is-active');
+  })();
+
+  /* ── Expand/collapse grupos ── */
+  window.toggleGroup = function (groupEl) {
+    groupEl.classList.toggle('is-open');
+  };
+
+  /* ── Expande o primeiro grupo de cada panel automaticamente ── */
+  document.querySelectorAll('.hier-panel').forEach(function (panel) {
+    var firstGroup = panel.querySelector('.hier-group');
+    if (firstGroup) firstGroup.classList.add('is-open');
+  });
+
+  /* ── Select2 nos filtros ── */
+  if (typeof $ !== 'undefined' && $.fn && $.fn.select2) {
+    $('#f-cc, #f-loc, #f-status').select2({ width: '100%', placeholder: 'Todos' });
+  }
+})();
+</script>
+{% endblock %}

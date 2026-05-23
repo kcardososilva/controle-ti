@@ -1164,4 +1164,230 @@ def usuario_dashboard(request):
     }
 
     return render(request, "front/usuarios/usuario_dashboard.html", context)
+
+
+@login_required
+def hierarquia_usuarios(request):
+    """
+    Tela de hierarquia organizacional de colaboradores.
+    Agrupa ativos por responsável, por centro de custo e por localidade.
+    Suporta filtros por responsável, centro de custo e localidade.
+    """
+    from django.db.models import Count
+
+    f_responsavel = request.GET.get("resp", "").strip()
+    f_cc = request.GET.get("cc", "").strip()
+    f_loc = request.GET.get("loc", "").strip()
+    f_status = request.GET.get("status", "ativo").strip()
+
+    qs = Usuario.objects.select_related("centro_custo", "localidade", "funcao")
+
+    if f_status == "todos":
+        pass
+    elif f_status == "desligado":
+        qs = qs.filter(status="desligado")
+    else:
+        qs = qs.filter(status="ativo")
+
+    if f_responsavel:
+        qs = qs.filter(responsavel__icontains=f_responsavel)
+    if f_cc:
+        qs = qs.filter(centro_custo__id=f_cc)
+    if f_loc:
+        qs = qs.filter(localidade__id=f_loc)
+
+    # ── Grupos por responsável (apenas quem tem responsável definido) ──────
+    grupos_responsavel = {}
+    sem_hierarquia_list = []
+    for u in qs.order_by("responsavel", "nome"):
+        if u.responsavel:
+            grupos_responsavel.setdefault(u.responsavel, []).append(u)
+        else:
+            sem_hierarquia_list.append(u)
+
+    # Flag usada pelo template para exibir onboarding e defaultar aba CC
+    sem_hierarquia = not grupos_responsavel
+
+    # ── Grupos por centro de custo ─────────────────────────────────────────
+    grupos_cc = {}
+    for u in qs.order_by("centro_custo__numero", "nome"):
+        if u.centro_custo:
+            chave = f"{u.centro_custo.numero} – {u.centro_custo.departamento}"
+        else:
+            chave = "Sem centro de custo"
+        grupos_cc.setdefault(chave, []).append(u)
+
+    # ── Grupos por localidade ──────────────────────────────────────────────
+    grupos_loc = {}
+    for u in qs.order_by("localidade__local", "nome"):
+        chave = getattr(u.localidade, "local", None) or "Sem localidade"
+        grupos_loc.setdefault(chave, []).append(u)
+
+    # ── Listas para filtros ────────────────────────────────────────────────
+    todos_cc = CentroCusto.objects.order_by("numero")
+    todas_loc = Localidade.objects.order_by("local")
+
+    responsaveis_disponiveis = (
+        Usuario.objects.filter(responsavel__isnull=False)
+        .exclude(responsavel="")
+        .values_list("responsavel", flat=True)
+        .distinct()
+        .order_by("responsavel")
+    )
+
+    context = {
+        "grupos_responsavel": dict(sorted(grupos_responsavel.items())),
+        "grupos_cc": dict(sorted(grupos_cc.items())),
+        "grupos_loc": dict(sorted(grupos_loc.items())),
+        "total_filtrado": qs.count(),
+        "total_sem_hierarquia": len(sem_hierarquia_list),
+        "sem_hierarquia": sem_hierarquia,
+        "todos_cc": todos_cc,
+        "todas_loc": todas_loc,
+        "responsaveis_disponiveis": responsaveis_disponiveis,
+        "f_responsavel": f_responsavel,
+        "f_cc": f_cc,
+        "f_loc": f_loc,
+        "f_status": f_status,
+    }
+    return render(request, "front/usuarios/hierarquia_usuarios.html", context)
+
+
+@login_required
+def organograma_usuarios(request):
+    import json
+    from django.db.models import Count as _Count
+
+    f_diretor = request.GET.get("diretor", "").strip()
+    f_status  = request.GET.get("status", "ativo").strip()
+
+    qs = Usuario.objects.all()
+    if f_status in ("ativo", "desligado"):
+        qs = qs.filter(status=f_status)
+    if f_diretor:
+        qs = qs.filter(diretor=f_diretor)
+
+    # Detectar quais níveis superiores têm dados reais (não nulos/vazios)
+    has_dg = qs.filter(diretor_geral__isnull=False).exclude(diretor_geral="").exists()
+    has_d  = qs.filter(diretor__isnull=False).exclude(diretor="").exists()
+
+    if has_dg:
+        nivel_fields = ["diretor_geral", "diretor", "gestor", "coordenador", "supervisor"]
+    elif has_d:
+        nivel_fields = ["diretor", "gestor", "coordenador", "supervisor"]
+    else:
+        nivel_fields = ["gestor", "coordenador", "supervisor"]
+
+    combos = (
+        qs.values(*nivel_fields)
+          .annotate(count=_Count("id"))
+    )
+
+    # Monta dict aninhado: [nivel0][nivel1]...[nivelN] = count (int)
+    def _acc(d, keys, n):
+        cur = d
+        for k in keys[:-1]:
+            cur = cur.setdefault(k or "–", {})
+        last = keys[-1] or "–"
+        cur[last] = cur.get(last, 0) + n
+
+    tree = {}
+    for row in combos:
+        _acc(tree, [row[f] for f in nivel_fields], row["count"])
+
+    # Constrói nós D3 recursivamente a partir do tree
+    def _build(d, depth, path):
+        nodes = []
+        role = nivel_fields[depth]
+        is_last = (depth == len(nivel_fields) - 1)
+        for name, children in sorted(d.items()):
+            cur_path = {**path, role: name}
+            if is_last:
+                # Nível supervisor: children é o count (int)
+                nodes.append({
+                    "name": name,
+                    "role": "supervisor",
+                    "count": children,
+                    "supervisor_key":    cur_path.get("supervisor",    ""),
+                    "coordenador_key":   cur_path.get("coordenador",   ""),
+                    "gestor_key":        cur_path.get("gestor",        ""),
+                    "diretor_key":       cur_path.get("diretor",       ""),
+                    "diretor_geral_key": cur_path.get("diretor_geral", ""),
+                })
+            else:
+                child_nodes = _build(children, depth + 1, cur_path)
+                nodes.append({
+                    "name": name,
+                    "role": role,
+                    "count": sum(n["count"] for n in child_nodes),
+                    "children": child_nodes,
+                })
+        return nodes
+
+    top_nodes = _build(tree, 0, {})
+
+    tree_data = {
+        "name": "Santa Colomba",
+        "role": "empresa",
+        "count": sum(n["count"] for n in top_nodes),
+        "children": top_nodes,
+    }
+
+    diretores_disponiveis = (
+        Usuario.objects
+        .filter(diretor__isnull=False).exclude(diretor="")
+        .values_list("diretor", flat=True).distinct().order_by("diretor")
+    )
+
+    return render(request, "front/usuarios/organograma_usuarios.html", {
+        "tree_json": json.dumps(tree_data, ensure_ascii=False),
+        "diretores_disponiveis": list(diretores_disponiveis),
+        "f_diretor": f_diretor,
+        "f_status": f_status,
+        "total_colaboradores": qs.count(),
+        "sem_hierarquia": not top_nodes,
+    })
+
+
+@login_required
+def organograma_membros_supervisor(request):
+    from django.http import JsonResponse
+
+    supervisor    = request.GET.get("supervisor", "").strip()
+    coordenador   = request.GET.get("coordenador", "").strip()
+    gestor        = request.GET.get("gestor", "").strip()
+    diretor       = request.GET.get("diretor", "").strip()
+    diretor_geral = request.GET.get("diretor_geral", "").strip()
+    f_status      = request.GET.get("status", "ativo").strip()
+
+    qs = Usuario.objects.select_related("funcao", "centro_custo", "localidade")
+    if f_status in ("ativo", "desligado"):
+        qs = qs.filter(status=f_status)
+    if diretor_geral and diretor_geral != "–":
+        qs = qs.filter(diretor_geral=diretor_geral)
+    if diretor and diretor != "–":
+        qs = qs.filter(diretor=diretor)
+    if gestor and gestor != "–":
+        qs = qs.filter(gestor=gestor)
+    if supervisor and supervisor != "–":
+        qs = qs.filter(supervisor=supervisor)
+    elif coordenador and coordenador != "–":
+        qs = qs.filter(coordenador=coordenador)
+
+    members = [
+        {
+            "id": u.pk,
+            "nome": u.nome,
+            "matricula": u.matricula or "",
+            "funcao": u.funcao.nome if u.funcao else "",
+            "cc_numero": u.centro_custo.numero if u.centro_custo else "",
+            "cc_nome": u.centro_custo.departamento if u.centro_custo else "",
+            "localidade": u.localidade.local if u.localidade else "",
+            "status": u.status,
+        }
+        for u in qs.order_by("nome")
+    ]
+    return JsonResponse({"members": members, "count": len(members)})
+
+
 ############### FORNECEDOR ##############################

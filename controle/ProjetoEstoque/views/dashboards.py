@@ -3,7 +3,7 @@ from datetime import date, timedelta, datetime
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.template.loader import get_template
 from xhtml2pdf import pisa
 from django.db.models import Q, Count, Sum, F, Case, When, Value as V
@@ -1101,3 +1101,325 @@ def _get_cc_custos_data(request):
         ],
     }
 
+
+@login_required
+def custos_diretoria_dashboard(request):
+    """
+    Dashboard de Gastos por Diretoria/Gestor.
+    Agrega por 'diretor' quando o campo estiver populado;
+    caso contrário usa 'gestor' como fallback automático.
+    """
+    # Detectar qual campo agrupar: diretor (quando importado) ou gestor (fallback)
+    has_diretor = Usuario.objects.filter(diretor__isnull=False).exclude(diretor="").exists()
+    campo = "diretor" if has_diretor else "gestor"
+    label_grupo = "Diretoria" if has_diretor else "Gestor"
+
+    totais = {}
+
+    def get_acc(nome):
+        if not nome:
+            return None
+        if nome not in totais:
+            totais[nome] = {
+                "nome": nome,
+                "qtd_colaboradores": 0,
+                "custo_licencas": Decimal("0.00"),
+                "custo_movimentacoes": Decimal("0.00"),
+                "custo_itens": Decimal("0.00"),
+            }
+        return totais[nome]
+
+    # 1. Colaboradores ativos agrupados pelo campo escolhido
+    colab_agg = (
+        Usuario.objects
+        .filter(status="ativo", **{f"{campo}__isnull": False})
+        .exclude(**{campo: ""})
+        .values(campo)
+        .annotate(n=Count("id"))
+    )
+    for row in colab_agg:
+        a = get_acc(row[campo])
+        if a:
+            a["qtd_colaboradores"] = row["n"]
+
+    # 2. Custo mensal de licenças agrupado pelo campo
+    movs_lic = (
+        MovimentacaoLicenca.objects
+        .select_related("licenca", "usuario", "lote")
+        .filter(usuario__isnull=False, **{f"usuario__{campo}__isnull": False})
+        .exclude(**{f"usuario__{campo}": ""})
+        .order_by("licenca_id", "usuario_id", "created_at")
+    )
+    estado_lic = {}
+    for m in movs_lic:
+        estado_lic[(m.licenca_id, m.usuario_id)] = m
+
+    for mov in estado_lic.values():
+        if mov.tipo != TipoMovLicencaChoices.ATRIBUICAO:
+            continue
+        grupo_val = getattr(mov.usuario, campo, None) if mov.usuario else None
+        a = get_acc(grupo_val)
+        if not a:
+            continue
+        custo = (
+            _calcular_custo_mensal_unitario_lote(mov.lote)
+            if mov.lote
+            else Decimal(getattr(mov.licenca, "custo", 0) or 0).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        )
+        a["custo_licencas"] += custo
+
+    # 3. Custo de movimentações com valor registrado, agrupado pelo campo
+    movs_item = (
+        MovimentacaoItem.objects
+        .filter(custo__isnull=False, usuario__isnull=False,
+                **{f"usuario__{campo}__isnull": False})
+        .exclude(custo=0)
+        .exclude(**{f"usuario__{campo}": ""})
+        .select_related("usuario")
+    )
+    for mov in movs_item:
+        grupo_val = getattr(mov.usuario, campo, None) if mov.usuario else None
+        a = get_acc(grupo_val)
+        if a:
+            a["custo_movimentacoes"] += Decimal(mov.custo or 0)
+
+    # 4. Custo mensal de locação de itens por diretoria via centro de custo
+    cc_grupo_map = {}
+    for cc_id, grupo in (
+        Usuario.objects
+        .filter(status="ativo", **{f"{campo}__isnull": False})
+        .exclude(**{campo: ""})
+        .exclude(centro_custo__isnull=True)
+        .values_list("centro_custo_id", campo)
+    ):
+        if cc_id not in cc_grupo_map:
+            cc_grupo_map[cc_id] = grupo
+
+    locacoes_agg = (
+        Locacao.objects
+        .filter(
+            equipamento__status="ativo",
+            valor_mensal__isnull=False,
+            equipamento__centro_custo__isnull=False,
+        )
+        .exclude(valor_mensal=0)
+        .values("equipamento__centro_custo_id")
+        .annotate(total=Sum("valor_mensal"))
+    )
+    for row in locacoes_agg:
+        grupo = cc_grupo_map.get(row["equipamento__centro_custo_id"])
+        if not grupo:
+            continue
+        a = get_acc(grupo)
+        if a:
+            a["custo_itens"] += Decimal(row["total"] or 0)
+
+    # Consolidação
+    linhas = []
+    total_colab = 0
+    total_lics = Decimal("0.00")
+    total_movs = Decimal("0.00")
+    total_itens = Decimal("0.00")
+
+    for dados in totais.values():
+        total_g = dados["custo_licencas"] + dados["custo_movimentacoes"] + dados["custo_itens"]
+        n = dados["qtd_colaboradores"]
+        linhas.append({
+            "gestor": dados["nome"],
+            "qtd_colaboradores": n,
+            "custo_licencas": dados["custo_licencas"].quantize(Decimal("0.01")),
+            "custo_movimentacoes": dados["custo_movimentacoes"].quantize(Decimal("0.01")),
+            "custo_itens": dados["custo_itens"].quantize(Decimal("0.01")),
+            "total_geral": total_g.quantize(Decimal("0.01")),
+            "custo_por_colab": (total_g / n).quantize(Decimal("0.01")) if n > 0 else Decimal("0.00"),
+        })
+        total_colab += n
+        total_lics += dados["custo_licencas"]
+        total_movs += dados["custo_movimentacoes"]
+        total_itens += dados["custo_itens"]
+
+    linhas.sort(key=lambda x: x["total_geral"], reverse=True)
+
+    total_geral = (total_lics + total_movs + total_itens).quantize(Decimal("0.01"))
+    custo_medio = (total_geral / total_colab).quantize(Decimal("0.01")) if total_colab else Decimal("0.00")
+
+    palette = [
+        "#0071e3", "#34c759", "#ff9500", "#ff3b30", "#5856d6",
+        "#af52de", "#ff2d55", "#5ac8fa", "#ffcc00", "#30b0c7",
+        "#32ade6", "#fe3c30", "#64d2ff", "#bf5af2", "#ff6961",
+        "#4cd964", "#007aff", "#ff375f", "#ffd60a",
+    ]
+
+    for i, l in enumerate(linhas):
+        l["color"] = palette[i % len(palette)]
+
+    js_labels = [l["gestor"] for l in linhas]
+    js_lics   = [float(l["custo_licencas"]) for l in linhas]
+    js_movs   = [float(l["custo_movimentacoes"]) for l in linhas]
+    js_itens  = [float(l["custo_itens"]) for l in linhas]
+    js_total  = [float(l["total_geral"]) for l in linhas]
+    js_colors = [l["color"] for l in linhas]
+
+    return render(request, "front/dashboards/custos_diretoria.html", {
+        "linhas": linhas,
+        "total_colab": total_colab,
+        "total_lics": total_lics.quantize(Decimal("0.01")),
+        "total_movs": total_movs.quantize(Decimal("0.01")),
+        "total_itens": total_itens.quantize(Decimal("0.01")),
+        "total_geral": total_geral,
+        "top_diretoria": linhas[0]["gestor"] if linhas else "–",
+        "custo_medio_colab": custo_medio,
+        "qtd_diretorias": len(linhas),
+        "label_grupo": label_grupo,
+        "campo_grupo": campo,
+        "js_labels": js_labels,
+        "js_lics": js_lics,
+        "js_movs": js_movs,
+        "js_itens": js_itens,
+        "js_total": js_total,
+        "js_colors": js_colors,
+        "sem_dados": not linhas,
+    })
+
+
+@login_required
+def custos_diretoria_detalhe(request):
+    """AJAX – detalhamento de custos de uma diretoria/gestor específico."""
+    grupo = request.GET.get("grupo", "").strip()
+    campo = request.GET.get("campo", "diretor")
+    if not grupo or campo not in ("diretor", "gestor"):
+        return JsonResponse({"erro": "Parâmetros inválidos."}, status=400)
+
+    tipo_label = {
+        "entrada": "Entrada", "baixa": "Baixa",
+        "transferencia": "Transferência", "transferencia_equipamento": "Transf. Equipamento",
+        "envio_manutencao": "Envio Manutenção", "retorno_manutencao": "Ret. Manutenção",
+        "outros": "Outros",
+    }
+
+    # ── 1. Licenças ───────────────────────────────────────────────────────────
+    movs_lic = (
+        MovimentacaoLicenca.objects
+        .select_related("licenca", "usuario", "lote")
+        .filter(usuario__isnull=False, **{f"usuario__{campo}": grupo})
+        .order_by("licenca_id", "usuario_id", "created_at")
+    )
+    estado_lic = {}
+    for m in movs_lic:
+        estado_lic[(m.licenca_id, m.usuario_id)] = m
+
+    lic_agg = {}
+    for mov in estado_lic.values():
+        if mov.tipo != TipoMovLicencaChoices.ATRIBUICAO:
+            continue
+        nome_lic = mov.licenca.nome if mov.licenca else "Desconhecida"
+        custo = (
+            _calcular_custo_mensal_unitario_lote(mov.lote)
+            if mov.lote
+            else Decimal(getattr(mov.licenca, "custo", 0) or 0).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        )
+        if nome_lic not in lic_agg:
+            lic_agg[nome_lic] = {"nome": nome_lic, "qtd_usuarios": 0, "subtotal": Decimal("0.00")}
+        lic_agg[nome_lic]["qtd_usuarios"] += 1
+        lic_agg[nome_lic]["subtotal"] += custo
+
+    licencas = sorted(
+        [{"nome": k, "qtd_usuarios": v["qtd_usuarios"], "subtotal": float(v["subtotal"].quantize(Decimal("0.01")))}
+         for k, v in lic_agg.items()],
+        key=lambda x: x["subtotal"], reverse=True
+    )[:10]
+    total_lics = sum((v["subtotal"] for v in lic_agg.values()), Decimal("0.00"))
+
+    # ── 2. Movimentações ──────────────────────────────────────────────────────
+    all_movs = list(
+        MovimentacaoItem.objects
+        .filter(custo__isnull=False, usuario__isnull=False, **{f"usuario__{campo}": grupo})
+        .exclude(custo=0)
+        .select_related("item")
+        .order_by("-custo")
+    )
+
+    mov_tipo_agg = {}
+    for mov in all_movs:
+        lbl = tipo_label.get(mov.tipo_movimentacao, mov.tipo_movimentacao)
+        if lbl not in mov_tipo_agg:
+            mov_tipo_agg[lbl] = {"tipo": lbl, "qtd": 0, "total": Decimal("0.00")}
+        mov_tipo_agg[lbl]["qtd"] += 1
+        mov_tipo_agg[lbl]["total"] += Decimal(mov.custo or 0)
+
+    movimentacoes = sorted(
+        [{"tipo": v["tipo"], "qtd": v["qtd"], "total": float(v["total"].quantize(Decimal("0.01")))}
+         for v in mov_tipo_agg.values()],
+        key=lambda x: x["total"], reverse=True
+    )
+    total_movs = sum((v["total"] for v in mov_tipo_agg.values()), Decimal("0.00"))
+
+    top_movs = [
+        {
+            "item": mov.item.nome if mov.item else "—",
+            "tipo": tipo_label.get(mov.tipo_movimentacao, mov.tipo_movimentacao),
+            "custo": float(Decimal(mov.custo or 0).quantize(Decimal("0.01"))),
+        }
+        for mov in all_movs[:8]
+    ]
+
+    # ── 3. Mensalidades de locação de itens ───────────────────────────────────
+    cc_ids = list(
+        Usuario.objects
+        .filter(status="ativo", **{f"{campo}": grupo})
+        .exclude(centro_custo__isnull=True)
+        .values_list("centro_custo_id", flat=True)
+        .distinct()
+    )
+
+    locacoes_top = (
+        Locacao.objects
+        .filter(
+            equipamento__status="ativo",
+            valor_mensal__isnull=False,
+            equipamento__centro_custo__id__in=cc_ids,
+        )
+        .exclude(valor_mensal=0)
+        .select_related("equipamento", "equipamento__centro_custo")
+        .order_by("-valor_mensal")[:10]
+    )
+    itens = [
+        {
+            "nome": loc.equipamento.nome,
+            "valor": float(loc.valor_mensal),
+            "centro_custo": loc.equipamento.centro_custo.numero if loc.equipamento.centro_custo else "—",
+        }
+        for loc in locacoes_top
+    ]
+
+    itens_totais = (
+        Locacao.objects
+        .filter(
+            equipamento__status="ativo",
+            valor_mensal__isnull=False,
+            equipamento__centro_custo__id__in=cc_ids,
+        )
+        .exclude(valor_mensal=0)
+        .aggregate(total=Sum("valor_mensal"), qtd=Count("id"))
+    )
+    total_itens = Decimal(itens_totais["total"] or 0).quantize(Decimal("0.01"))
+    qtd_itens = itens_totais["qtd"] or 0
+
+    total_geral = (total_lics + total_movs + total_itens).quantize(Decimal("0.01"))
+    qtd_colab = Usuario.objects.filter(status="ativo", **{f"{campo}": grupo}).count()
+
+    return JsonResponse({
+        "nome": grupo,
+        "totais": {
+            "qtd_colaboradores": qtd_colab,
+            "custo_licencas": float(total_lics.quantize(Decimal("0.01"))),
+            "custo_movimentacoes": float(total_movs.quantize(Decimal("0.01"))),
+            "custo_itens": float(total_itens),
+            "total_geral": float(total_geral),
+        },
+        "licencas": licencas,
+        "movimentacoes": movimentacoes,
+        "top_movimentacoes": top_movs,
+        "itens": itens,
+        "qtd_itens_total": qtd_itens,
+    })

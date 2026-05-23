@@ -2,6 +2,58 @@
 
 {% block title %}Controle de Ativos{% endblock %}
 
+{% block extra_css %}
+<style>
+/* ── Home · 3D Scene ─────────────────────────────────────── */
+:where(.home-hero) {
+  --h-a: #0c1828;
+  --h-b: #172d4e;
+  --h-c: #0e1e35;
+}
+
+.home-hero {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(148deg, var(--h-a) 0%, var(--h-b) 48%, var(--h-c) 100%);
+  padding: 28px 10px 34px;
+  border-radius: var(--radius-xl, 22px);
+  margin-bottom: 18px;
+  box-shadow: 0 10px 48px rgba(0,0,0,.22), 0 2px 8px rgba(0,0,0,.14);
+}
+
+#home-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Card 3D tilt & glint */
+.dashboard-card {
+  position: relative;
+  overflow: hidden;
+  transform-style: preserve-3d;
+  will-change: transform;
+  cursor: default;
+}
+
+.dashboard-card:hover {
+  box-shadow: 0 14px 44px rgba(0,90,220,.26), 0 3px 10px rgba(0,0,0,.18);
+}
+
+.card-glint {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* Counter: prevent layout shift while animating */
+.card-value { min-width: 2ch; display: inline-block; }
+</style>
+{% endblock %}
+
 {% block content %}
 <style>
 body {
@@ -12,14 +64,16 @@ body {
 }
 .dashboard-container {
   max-width: 830px;
-  margin: 18px auto 0 auto;
+  margin: 0 auto;
   padding: 0 10px;
+  position: relative;
+  z-index: 1;
 }
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
   gap: 12px;
-  margin-bottom: 15px;
+  margin-bottom: 0;
 }
 .dashboard-card {
   background: #213358;
@@ -30,17 +84,15 @@ body {
   flex-direction: column;
   align-items: flex-start;
   min-width: 0;
-  border: 1px solid #f1f3f7;
-  transition: box-shadow .17s;
-  
+  border: 1px solid rgba(255,255,255,.06);
+  transition: transform .55s cubic-bezier(.23,1,.32,1), box-shadow .35s;
 }
-.dashboard-card:hover { box-shadow: 0 2px 10px #abbedb15; }
 .card-icon { font-size: 1.25rem; margin-bottom: 3px; color: #62b8f6; opacity: 0.90;}
-.card-green { color: #34c88a; }
-.card-red   { color: #ff6371; }
-.card-blue  { color: #2491ff; }
+.card-green  { color: #34c88a; }
+.card-red    { color: #ff6371; }
+.card-blue   { color: #2491ff; }
 .card-orange { color: #ffad44; }
-.card-purple { color: #bb8fff;}
+.card-purple { color: #bb8fff; }
 .card-title { font-size: 0.92rem; font-weight: 700; color: #fff; margin-bottom: 1px;}
 .card-value { font-size: 1.13rem; font-weight: bold; color: #fff;}
 .card-desc  { font-size: 0.85rem; color: #fff; }
@@ -164,7 +216,6 @@ body {
   border-color: #aad1ff;
 }
 
-/* RESPONSIVIDADE DOS FILTROS */
 @media (max-width: 1100px) {
   .filtros-row { grid-template-columns: repeat(2, 1fr);}
 }
@@ -182,7 +233,6 @@ body {
   font-size: 1em;
   min-width: 800px;
   background: #213358;
-
 }
 .tabela-equipamentos th, .tabela-equipamentos td {
   padding: 10px 10px;
@@ -198,7 +248,7 @@ body {
   cursor: pointer;
   user-select: none;
   font-size: 1em;
-  border-radius: 3% ;
+  border-radius: 3%;
 }
 .tabela-equipamentos tbody tr:hover {
   background: #101521;
@@ -233,7 +283,6 @@ body {
   .tabela-equipamentos th, .tabela-equipamentos td { padding: 6px 4px; font-size: 0.95em;}
   .tabela-equipamentos { min-width: 600px;}
 }
-/* Tabela rola horizontal no mobile */
 @media (max-width: 600px) {
   .tabela-container { padding: 0 2vw;}
   .tabela-equipamentos th, .tabela-equipamentos td { font-size: 0.92em; padding: 5px 2px;}
@@ -243,41 +292,54 @@ body {
 </style>
 
 <div class="content">
-  <div class="dashboard-container">
-    <div class="cards-grid">
-      <div class="dashboard-card">
-        <i class="fa fa-circle card-icon card-green"></i>
-        <div class="card-title">Ativos</div>
-        <div class="card-value">{{ total_ativos }}</div>
-        <div class="card-desc">Em uso</div>
-      </div>
-      <div class="dashboard-card">
-        <i class="fa fa-database card-icon card-blue"></i>
-        <div class="card-title">Backup</div>
-        <div class="card-value">{{ total_backup }}</div>
-        <div class="card-desc">Em backup</div>
-      </div>
-      <div class="dashboard-card">
-        <i class="fa fa-tools card-icon card-orange"></i>
-        <div class="card-title">Manutenção</div>
-        <div class="card-value">{{ total_manutencao }}</div>
-        <div class="card-desc">Em manutenção</div>
-      </div>
-      <div class="dashboard-card">
-        <i class="fa fa-exclamation-circle card-icon card-red"></i>
-        <div class="card-title">Defeitos</div>
-        <div class="card-value">{{ total_queimados }}</div>
-        <div class="card-desc">Com defeito</div>
-      </div>
-      <div class="dashboard-card">
-        <i class="fa fa-layer-group card-icon card-purple"></i>
-        <div class="card-title">Total</div>
-        <div class="card-value">{{ total_geral }}</div>
-        <div class="card-desc">Cadastrados</div>
+
+  {# ── Hero 3D ── #}
+  <div class="home-hero">
+    <canvas id="home-canvas" aria-hidden="true"></canvas>
+
+    <div class="dashboard-container">
+      <div class="cards-grid">
+
+        <div class="dashboard-card">
+          <i class="fa fa-circle card-icon card-green"></i>
+          <div class="card-title">Ativos</div>
+          <div class="card-value">{{ total_ativos }}</div>
+          <div class="card-desc">Em uso</div>
+        </div>
+
+        <div class="dashboard-card">
+          <i class="fa fa-database card-icon card-blue"></i>
+          <div class="card-title">Backup</div>
+          <div class="card-value">{{ total_backup }}</div>
+          <div class="card-desc">Em backup</div>
+        </div>
+
+        <div class="dashboard-card">
+          <i class="fa fa-tools card-icon card-orange"></i>
+          <div class="card-title">Manutenção</div>
+          <div class="card-value">{{ total_manutencao }}</div>
+          <div class="card-desc">Em manutenção</div>
+        </div>
+
+        <div class="dashboard-card">
+          <i class="fa fa-exclamation-circle card-icon card-red"></i>
+          <div class="card-title">Defeitos</div>
+          <div class="card-value">{{ total_queimados }}</div>
+          <div class="card-desc">Com defeito</div>
+        </div>
+
+        <div class="dashboard-card">
+          <i class="fa fa-layer-group card-icon card-purple"></i>
+          <div class="card-title">Total</div>
+          <div class="card-value">{{ total_geral }}</div>
+          <div class="card-desc">Cadastrados</div>
+        </div>
+
       </div>
     </div>
   </div>
 
+  {# ── Tabela ── #}
   <div class="tabela-container">
     <div class="top-actions">
       <a class="btn-exportar" href="{% url 'exportar_equipamentos' %}">
@@ -285,7 +347,6 @@ body {
       </a>
     </div>
 
-    <!-- FILTROS -->
     <form class="filtros-row" autocomplete="off" method="get">
       <div class="filtro-group">
         <div class="filtro-icon-input">
@@ -356,19 +417,16 @@ body {
       </div>
     </form>
 
-    <!-- TABELA -->
     <div style="width:100%;overflow-x:auto;">
       <table class="tabela-equipamentos" id="tabelaEquipamentos">
         <thead>
           <tr>
             <th>#</th>
             <th>Nome</th>
-           
             <th>Subtipo</th>
             <th>Status</th>
             <th>Usuário</th>
             <th>Localidade</th>
-
             <th>Nº Série</th>
             <th>Ações</th>
           </tr>
@@ -378,12 +436,10 @@ body {
         <tr>
           <td>{{ forloop.counter }}</td>
           <td>{{ equipamento.nome }}</td>
-          
           <td>{{ equipamento.subtipo }}</td>
           <td><span class="status {{ equipamento.status }}">{{ equipamento.get_status_display }}</span></td>
           <td>Usuário</td>
           <td>{{ equipamento.local }}</td>
-        
           <td>{{ equipamento.numero_serie }}</td>
           <td class="td-acoes">
               <a class="icon-btn view" title="Visualizar" href="{% url 'equipamento_detalhe' equipamento.id %}"><i class="fa fa-eye"></i></a>
@@ -397,5 +453,199 @@ body {
       </table>
     </div>
   </div>
+
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+'use strict';
+
+/* ═══════════════════════════════════════════════
+   1 · REDE 3D (Canvas + perspectiva manual)
+═══════════════════════════════════════════════ */
+var cvs = document.getElementById('home-canvas');
+if (!cvs) return;
+var ctx  = cvs.getContext('2d');
+var W, H, raf;
+
+/* Mouse normalizado −1..1 */
+var mx = 0, my = 0;
+document.addEventListener('mousemove', function (e) {
+  mx = (e.clientX / window.innerWidth  - 0.5) * 2;
+  my = (e.clientY / window.innerHeight - 0.5) * 2;
+}, { passive: true });
+
+/* 38 pontos distribuídos em esfera */
+var N    = 38;
+var FOCAL = 480;
+var MAX_D = 145;   /* distância 2D máxima p/ conectar arestas */
+
+var pts = (function () {
+  var arr = [];
+  for (var i = 0; i < N; i++) {
+    var a = Math.random() * Math.PI * 2;
+    var b = Math.acos(2 * Math.random() - 1);
+    var r = 160 * (0.30 + 0.70 * Math.random());
+    arr.push([
+      r * Math.sin(b) * Math.cos(a),
+      r * Math.sin(b) * Math.sin(a),
+      r * Math.cos(b)
+    ]);
+  }
+  return arr;
+}());
+
+function resize() {
+  W = cvs.width  = cvs.offsetWidth  || cvs.parentElement.offsetWidth;
+  H = cvs.height = cvs.offsetHeight || cvs.parentElement.offsetHeight;
+}
+
+var ro = ('ResizeObserver' in window)
+  ? new ResizeObserver(resize)
+  : null;
+if (ro) ro.observe(cvs.parentElement);
+window.addEventListener('resize', resize, { passive: true });
+resize();
+
+/* Projeção perspectiva */
+function proj(x, y, z) {
+  var s = FOCAL / (FOCAL + z + 380);
+  return [W * 0.5 + x * s, H * 0.5 + y * s, s];
+}
+
+/* Rotações inline — evita criação de objetos por frame */
+function draw(ts) {
+  raf = requestAnimationFrame(draw);
+  ctx.clearRect(0, 0, W, H);
+
+  var ay = ts * 0.00022 + mx * 0.11;     /* rotação Y: auto + mouse */
+  var ax = my * 0.055;                    /* rotação X: só mouse    */
+
+  var cy = Math.cos(ay), sy = Math.sin(ay);
+  var cx = Math.cos(ax), sx = Math.sin(ax);
+
+  /* Projeta todos os pontos */
+  var p = new Array(N);
+  for (var i = 0; i < N; i++) {
+    var px = pts[i][0], py = pts[i][1], pz = pts[i][2];
+    /* Y-rotation */
+    var rx = px * cy - pz * sy;
+    var rz = px * sy + pz * cy;
+    /* X-rotation */
+    var ry = py * cx - rz * sx;
+    rz     = py * sx + rz * cx;
+    p[i]   = proj(rx, ry, rz);
+  }
+
+  /* Arestas */
+  ctx.lineWidth = 0.85;
+  for (var i = 0; i < N; i++) {
+    for (var j = i + 1; j < N; j++) {
+      var dx = p[i][0] - p[j][0];
+      var dy = p[i][1] - p[j][1];
+      var d  = Math.sqrt(dx*dx + dy*dy);
+      if (d < MAX_D) {
+        var a = (1 - d / MAX_D) * 0.26 * Math.min(p[i][2], p[j][2]);
+        ctx.strokeStyle = 'rgba(75,160,255,' + a.toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.moveTo(p[i][0], p[i][1]);
+        ctx.lineTo(p[j][0], p[j][1]);
+        ctx.stroke();
+      }
+    }
+  }
+
+  /* Nós */
+  for (var i = 0; i < N; i++) {
+    var a = p[i][2] * 0.75;
+    ctx.fillStyle = 'rgba(110,195,255,' + a.toFixed(3) + ')';
+    ctx.beginPath();
+    ctx.arc(p[i][0], p[i][1], 1.1 + p[i][2] * 1.5, 0, 6.2832);
+    ctx.fill();
+  }
+}
+
+document.addEventListener('visibilitychange', function () {
+  if (document.hidden) { cancelAnimationFrame(raf); }
+  else { requestAnimationFrame(draw); }
+});
+
+requestAnimationFrame(draw);
+
+
+/* ═══════════════════════════════════════════════
+   2 · TILT 3D + GLINT nos cards
+═══════════════════════════════════════════════ */
+var cards = document.querySelectorAll('.dashboard-card');
+cards.forEach(function (card) {
+  /* Elemento glint (reflexo de luz) */
+  var glint = document.createElement('div');
+  glint.className = 'card-glint';
+  card.appendChild(glint);
+
+  card.addEventListener('mouseenter', function () {
+    card.style.transition = 'transform .1s ease, box-shadow .35s';
+  });
+
+  card.addEventListener('mousemove', function (e) {
+    var r  = card.getBoundingClientRect();
+    var dx = (e.clientX - r.left - r.width  * 0.5) / (r.width  * 0.5);
+    var dy = (e.clientY - r.top  - r.height * 0.5) / (r.height * 0.5);
+    card.style.transform =
+      'perspective(700px) rotateX(' + (-dy * 11).toFixed(2) + 'deg)' +
+      ' rotateY('                   + ( dx * 11).toFixed(2) + 'deg)' +
+      ' translateZ(6px)';
+    /* glint segue o cursor */
+    var gx = ((e.clientX - r.left) / r.width  * 100).toFixed(1);
+    var gy = ((e.clientY - r.top)  / r.height * 100).toFixed(1);
+    glint.style.background =
+      'radial-gradient(circle at ' + gx + '% ' + gy + '%, rgba(255,255,255,.14) 0%, transparent 58%)';
+  });
+
+  card.addEventListener('mouseleave', function () {
+    card.style.transition = 'transform .55s cubic-bezier(.23,1,.32,1), box-shadow .35s';
+    card.style.transform  = '';
+    glint.style.background = '';
+  });
+});
+
+
+/* ═══════════════════════════════════════════════
+   3 · COUNTER ANIMATION
+═══════════════════════════════════════════════ */
+var items = Array.from(document.querySelectorAll('.card-value')).map(function (el) {
+  var n = parseInt(el.textContent, 10) || 0;
+  el.textContent = '0';
+  return { el: el, target: n };
+});
+
+var triggered = false;
+function runCounters() {
+  if (triggered) return;
+  triggered = true;
+  var t0  = performance.now();
+  var DUR = 1050;
+  (function tick(ts) {
+    var pct  = Math.min((ts - t0) / DUR, 1);
+    var ease = 1 - Math.pow(1 - pct, 3);   /* ease-out cúbico */
+    items.forEach(function (it) {
+      it.el.textContent = Math.round(it.target * ease);
+    });
+    if (pct < 1) requestAnimationFrame(tick);
+  }(performance.now()));
+}
+
+var hero = document.querySelector('.home-hero');
+if (hero && 'IntersectionObserver' in window) {
+  new IntersectionObserver(function (entries, obs) {
+    if (entries[0].isIntersecting) { runCounters(); obs.disconnect(); }
+  }, { threshold: 0.1 }).observe(hero);
+} else {
+  setTimeout(runCounters, 350);
+}
+
+}());
+</script>
 {% endblock %}

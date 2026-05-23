@@ -51,6 +51,9 @@ from .usuarios import (
     usuario_remover_todas_licencas,
     usuario_dashboard,
     licenca_devolver_rapido,
+    hierarquia_usuarios,
+    organograma_usuarios,
+    organograma_membros_supervisor,
 )
 
 # ── Fornecedores ─────────────────────────────────────────────────────────────
@@ -165,7 +168,10 @@ from .dashboards import (
     cc_custos_dashboard,
     cc_custos_export_pdf,
     preventiva_dashboard,
+    custos_diretoria_dashboard,
+    custos_diretoria_detalhe,
 )
+
 
 # ── Relatórios / Exportações ─────────────────────────────────────────────────
 from .relatorios import (

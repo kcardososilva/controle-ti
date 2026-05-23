@@ -421,19 +421,53 @@ class ResultadoImportacao:
 
 
 class UsuarioImportService:
+    # Diretor Geral da empresa — fixo para todos os colaboradores.
+    # Quando a planilha não possui a coluna "Diretor Geral", esse valor é
+    # atribuído automaticamente a todos os registros importados.
+    DIRETOR_GERAL_PADRAO = "MIGUEL PRADO"
+
+    # Estrutura hierárquica real da empresa:
+    #   Diretor Geral → Diretor → Gestor → Coordenador → Supervisor → Colaborador
+    #
+    # A planilha atual do RH (Relação Funcionários) possui apenas as colunas:
+    #   Gestor | Coordenador | Supervisor | Junção (imediato consolidado)
+    # Os níveis Diretor Geral e Diretor não fazem parte desta planilha;
+    # Diretor Geral é sempre MIGUEL PRADO (via DIRETOR_GERAL_PADRAO acima).
+    # Diretor será preenchido automaticamente quando a planilha incluir essa coluna.
     COLUNAS_RH = {
-        "matricula": ["matricula", "matrícula"],
-        "nome": ["nome"],
-        "status": ["observacao", "observação", "status"],
-        "data_inicio": ["data admissao", "data admissão"],
-        "funcao": ["cargo basico descricao", "cargo básico descrição", "cargo basico descricao"],
-        "centro_custo_numero": ["centro custo", "centro de custo"],
-        "centro_custo_descricao": ["centro custo descricao", "centro custo descrição", "centro custo-descricao", "centro custo-descrição"],
-        "estabelecimento": ["estabelecimento descricao", "estabelecimento descrição"],
-        "data_termino": ["data desligamento", "data demissao", "data demissão"],
-        "localidade": ["unid lotacao descricao", "unid lotação descrição", "unidade lotacao descricao", "unidade lotação descrição"],
-        "email": ["email", "e-mail"],
-        "pmb": ["pmb"],
+        "matricula":              ["matrícula", "matricula"],
+        "nome":                   ["nome"],
+        "status":                 ["observação", "observacao", "status"],
+        "data_inicio":            ["data admissão", "data admissao"],
+        "funcao":                 ["cargo básico-descrição", "cargo basico-descricao",
+                                   "cargo básico descrição", "cargo basico descricao"],
+        "centro_custo_numero":    ["centro custo", "centro de custo"],
+        "centro_custo_descricao": ["centro custo-descrição", "centro custo-descricao",
+                                   "centro custo descrição", "centro custo descricao"],
+        "estabelecimento":        ["estabelecimento-descrição", "estabelecimento-descricao",
+                                   "estabelecimento descrição", "estabelecimento descricao"],
+        "data_termino":           ["data desligamento", "data demissão", "data demissao"],
+        "localidade":             ["unid lotação-descrição", "unid lotacao-descricao",
+                                   "unid lotação descrição", "unid lotacao descricao",
+                                   "unidade lotação descrição", "unidade lotacao descricao"],
+        "email":                  ["email", "e-mail"],
+        "pmb":                    ["pmb"],
+        # ── Hierarquia organizacional ──
+        "diretor_geral": ["diretor geral", "diretor-geral", "diretoria geral"],
+        "diretor":       ["diretor", "diretoria", "outros diretores"],
+        "gestor":        ["gestor", "gerente"],
+        "coordenador":   ["coordenador"],
+        "supervisor":    ["supervisor"],
+        # "Junção - Gestor, Coordenador e Supervisor" é o imediato consolidado da planilha atual
+        "responsavel": [
+            "junção - gestor, coordenador e supervisor",
+            "juncao gestor coordenador e supervisor",
+            "junção gestor coordenador e supervisor",
+            "junção",
+            "juncao",
+            "responsável",
+            "responsavel",
+        ],
     }
 
     def __init__(
@@ -474,13 +508,21 @@ class UsuarioImportService:
                     )
                     continue
 
+                # Passagem 1: carrega todas as linhas em memória.
+                # Necessário para construir o índice de nomes antes de processar.
+                linhas = []
                 for row_idx in range(2, ws.max_row + 1):
                     dados = self._ler_linha(ws, row_idx, headers)
+                    if any(dados.values()):
+                        linhas.append((row_idx, dados))
 
-                    if not any(dados.values()):
-                        continue
+                # Índice nome_completo → dados_da_linha, usado para resolver a
+                # cadeia hierárquica (Gestor → Diretor → Diretor Geral).
+                indice_nomes = self._construir_indice_nomes(linhas)
 
-                    self._processar_linha(nome_aba, row_idx, dados)
+                # Passagem 2: processa cada linha com hierarquia completamente resolvida.
+                for row_idx, dados in linhas:
+                    self._processar_linha(nome_aba, row_idx, dados, indice_nomes)
 
             if self.desligar_ausentes:
                 self._desligar_ausentes()
@@ -515,7 +557,105 @@ class UsuarioImportService:
 
         return dados
 
-    def _processar_linha(self, nome_aba, row_idx, dados):
+    def _construir_indice_nomes(self, linhas):
+        """
+        Monta um dicionário { nome_normalizado → dados_da_linha } para todas as
+        linhas da planilha. Usado para resolver nomes abreviados nas colunas de
+        hierarquia (Gestor, Coordenador, Supervisor, Junção) de volta ao
+        colaborador correspondente e percorrer a cadeia de liderança.
+        """
+        indice = {}
+        for _, dados in linhas:
+            nome = str(dados.get("nome") or "").strip()
+            if nome:
+                indice[normalizar_texto(nome)] = dados
+        return indice
+
+    def _resolver_nome_no_indice(self, nome_curto, indice):
+        """
+        Localiza no índice o colaborador referenciado por um nome abreviado
+        (formato usado nas colunas Gestor/Coordenador/Supervisor/Junção).
+
+        Estratégias aplicadas em ordem de confiabilidade:
+          1. Match exato (nome normalizado igual).
+          2. Primeiro e último palavra do abrev. == primeiro e último do nome completo.
+          3. Todas as palavras do abrev. contidas (exatas) no nome completo.
+          4. Todas as palavras do abrev. contidas com similaridade ≥ 0.75 por palavra
+             (cobre variações ortográficas: ACASSIO↔ACACIO, TALLES↔THALES).
+          5. SequenceMatcher ≥ 0.72 sobre o nome inteiro (fallback geral).
+
+        Compostos com "/" (ex: "JUNIO TEIXEIRA /EDIVILSON") usam apenas o
+        primeiro segmento para a resolução.
+
+        Retorna None se nenhuma estratégia encontrar candidato confiável.
+        """
+        if not nome_curto:
+            return None
+
+        # Compostos: usar apenas o primeiro nome do conjunto
+        segmento = str(nome_curto).strip().split("/")[0].strip()
+        alvo = normalizar_texto(segmento)
+        if not alvo:
+            return None
+
+        # 1) Match exato
+        if alvo in indice:
+            return indice[alvo]
+
+        partes = alvo.split()
+
+        # 2) Primeiro + último palavra
+        if len(partes) >= 2:
+            pri, ult = partes[0], partes[-1]
+            cands = [
+                (k, v) for k, v in indice.items()
+                if k.split() and k.split()[0] == pri and k.split()[-1] == ult
+            ]
+            if len(cands) == 1:
+                return cands[0][1]
+            if len(cands) > 1:
+                melhor = max(cands, key=lambda x: SequenceMatcher(None, alvo, x[0]).ratio())
+                return melhor[1]
+
+        # 3) Todas as palavras do abrev. presentes (exatas) no nome completo
+        cands = [
+            (k, v) for k, v in indice.items()
+            if all(p in k.split() for p in partes)
+        ]
+        if len(cands) == 1:
+            return cands[0][1]
+        if len(cands) > 1:
+            melhor = max(cands, key=lambda x: SequenceMatcher(None, alvo, x[0]).ratio())
+            return melhor[1]
+
+        # 4) Palavras do abrev. com correspondência fuzzy por palavra (≥ 0.75)
+        #    Cobre variações ortográficas como ACASSIO↔ACACIO, TALLES↔THALES
+        def _palavras_batem(k_norm):
+            k_partes = k_norm.split()
+            return all(
+                any(SequenceMatcher(None, p, kp).ratio() >= 0.75 for kp in k_partes)
+                for p in partes
+            )
+
+        cands = [(k, v) for k, v in indice.items() if _palavras_batem(k)]
+        if len(cands) == 1:
+            return cands[0][1]
+        if len(cands) > 1:
+            melhor = max(cands, key=lambda x: SequenceMatcher(None, alvo, x[0]).ratio())
+            return melhor[1]
+
+        # 5) SequenceMatcher global (fallback; threshold alto para evitar falsos positivos)
+        melhor_score, melhor_dados = 0, None
+        for k, v in indice.items():
+            s = SequenceMatcher(None, alvo, k).ratio()
+            if s > melhor_score:
+                melhor_score, melhor_dados = s, v
+        if melhor_dados and melhor_score >= 0.72:
+            return melhor_dados
+
+        return None
+
+    def _processar_linha(self, nome_aba, row_idx, dados, indice_nomes=None):
         nome = str(dados.get("nome") or "").strip()
         matricula = normalizar_matricula(dados.get("matricula"))
 
@@ -578,6 +718,95 @@ class UsuarioImportService:
                 matricula=matricula,
             )
 
+        # ── Hierarquia: normaliza cada campo (strip; None se vazio ou só traço) ──
+        def _limpar_nome(v):
+            v = str(v or "").strip()
+            return v if v and v not in ("-", "–", "—") else None
+
+        diretor_geral_val = _limpar_nome(dados.get("diretor_geral"))
+        diretor_val       = _limpar_nome(dados.get("diretor"))
+        gestor_val        = _limpar_nome(dados.get("gestor"))
+        coordenador_val   = _limpar_nome(dados.get("coordenador"))
+        supervisor_val    = _limpar_nome(dados.get("supervisor"))
+
+        # ── Normalização de duplicatas nas colunas de hierarquia ─────────────
+        # Regra 1: Coordenador == Supervisor (mesmo nome).
+        #   A planilha preenche os dois campos com o mesmo nome quando a área
+        #   não tem Coordenador intermediário. Nesse caso o campo Coordenador
+        #   é redundante; a pessoa age somente como Supervisor.
+        if coordenador_val and supervisor_val:
+            if normalizar_texto(coordenador_val) == normalizar_texto(supervisor_val):
+                coordenador_val = None
+
+        # Regra 2: Coordenador sem Supervisor + Coordenador == Junção (imediato).
+        #   Quando o mesmo nome aparece em Coordenador e na coluna Junção, mas
+        #   o campo Supervisor está vazio, a pessoa é o Supervisor direto
+        #   (não há nível de Coordenador na cadeia).
+        responsavel_raw = _limpar_nome(dados.get("responsavel"))
+        if coordenador_val and not supervisor_val and responsavel_raw:
+            if normalizar_texto(coordenador_val) == normalizar_texto(responsavel_raw):
+                supervisor_val  = coordenador_val
+                coordenador_val = None
+
+        # ── Resolução da cadeia hierárquica ──────────────────────────────────
+        # Todos os colaboradores da planilha (inclusive Gestores, Diretores e o
+        # Diretor Geral) possuem um imediato registrado na coluna Gestor.
+        # A cadeia é:  colaborador → Gestor → Diretor → Diretor Geral (auto-ref)
+        #
+        # Algoritmo: percorre a cadeia gestor → gestor-do-gestor → ... até
+        # encontrar auto-referência (quem é seu próprio gestor = raiz/DG) ou
+        # nome não encontrado na planilha.
+        #
+        # Resultado:
+        #   chain[-1] = Diretor Geral   (topo da cadeia)
+        #   chain[-2] = Diretor         (nível imediatamente abaixo do DG)
+        #
+        # Quando a planilha tiver colunas explícitas de Diretor/DG, os valores
+        # lidos diretamente prevalecem e a travessia é pulada.
+        if indice_nomes and gestor_val and not (diretor_val and diretor_geral_val):
+            chain = []
+            current = gestor_val
+            seen = set()
+
+            while current:
+                current_norm = normalizar_texto(current)
+                if current_norm in seen:
+                    break  # ciclo detectado — para aqui
+                seen.add(current_norm)
+
+                row = self._resolver_nome_no_indice(current, indice_nomes)
+                chain.append(current)
+
+                if not row:
+                    break  # nome não encontrado na planilha — fim da cadeia
+
+                next_g = _limpar_nome(row.get("gestor"))
+                if next_g and normalizar_texto(next_g) == current_norm:
+                    break  # auto-referência — este é o Diretor Geral (raiz)
+
+                current = next_g
+
+            # Atribui apenas os campos ainda não preenchidos pela planilha
+            if chain and not diretor_geral_val:
+                diretor_geral_val = chain[-1]
+            if len(chain) >= 2 and not diretor_val:
+                diretor_val = chain[-2]
+
+        # Fallback: DG padrão quando a cadeia não consegue resolver o topo
+        if not diretor_geral_val and self.DIRETOR_GERAL_PADRAO:
+            diretor_geral_val = self.DIRETOR_GERAL_PADRAO
+
+        # "Junção" = responsável imediato consolidado; se ausente, sobe a cadeia
+        # hierárquica do mais específico para o mais geral.
+        responsavel_val = (
+            _limpar_nome(dados.get("responsavel"))
+            or supervisor_val
+            or coordenador_val
+            or gestor_val
+            or diretor_val
+            or diretor_geral_val
+        )
+
         payload = {
             "matricula": matricula,
             "nome": nome,
@@ -589,6 +818,12 @@ class UsuarioImportService:
             "centro_custo": centro_custo,
             "localidade": localidade,
             "funcao": funcao,
+            "diretor_geral": diretor_geral_val,
+            "diretor": diretor_val,
+            "gestor": gestor_val,
+            "coordenador": coordenador_val,
+            "supervisor": supervisor_val,
+            "responsavel": responsavel_val,
         }
 
         if usuario:
@@ -667,13 +902,31 @@ class UsuarioImportService:
         })
 
     def _desligar_ausentes(self):
+        """
+        Desliga colaboradores ativos ausentes na planilha.
+
+        Regra:
+        - COM matrícula → desligado automaticamente se a matrícula não aparece
+          na planilha (o RH controla oficialmente pelo número de matrícula).
+        - SEM matrícula → nunca desligado automaticamente; o desligamento deve
+          ser feito manualmente, pois não há chave formal de verificação.
+        """
         ativos = Usuario.objects.filter(status=self.status_ativo)
 
         for usuario in ativos:
             matricula = usuario.matricula
             nome_norm = normalizar_texto(usuario.nome)
 
-            presente_por_matricula = matricula and matricula in self.matriculas_processadas
+            # Colaboradores SEM matrícula: não podem ser desligados
+            # automaticamente — sem chave formal não há como confirmar ausência.
+            if not matricula:
+                continue
+
+            # Colaboradores COM matrícula: verifica se a matrícula está na planilha.
+            presente_por_matricula = matricula in self.matriculas_processadas
+
+            # Fallback por nome normalizado caso a matrícula não tenha sido
+            # importada nesta planilha mas o nome bata exatamente.
             presente_por_nome = nome_norm and nome_norm in self.nomes_processados
 
             if presente_por_matricula or presente_por_nome:
@@ -694,7 +947,7 @@ class UsuarioImportService:
                 "aba": "ausente",
                 "linha": "-",
                 "nome": usuario.nome,
-                "matricula": usuario.matricula or "—",
+                "matricula": matricula,
                 "email": usuario.email or "—",
                 "acao": "desligado por ausência na planilha mensal",
             })

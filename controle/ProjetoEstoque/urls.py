@@ -58,6 +58,9 @@ urlpatterns = [
     path("usuarios/cadastrar/", views.usuario_create, name="usuario_create"),
     path("usuarios/importar/", views.usuario_importar, name="usuario_importar"),
     path("usuarios/dashboard/", views.usuario_dashboard, name="usuario_dashboard"),
+    path("usuarios/hierarquia/", views.hierarquia_usuarios, name="hierarquia_usuarios"),
+    path("usuarios/organograma/", views.organograma_usuarios, name="organograma_usuarios"),
+    path("usuarios/organograma/membros/", views.organograma_membros_supervisor, name="organograma_membros_supervisor"),
     path("usuarios/<int:pk>/", views.usuario_detail, name="usuario_detail"),
     path("usuarios/<int:pk>/editar/", views.usuario_update, name="usuario_update"),
     path("usuarios/<int:pk>/excluir/", views.usuario_delete, name="usuario_delete"),
@@ -132,6 +135,8 @@ urlpatterns = [
 
     # ── Dashboards ──────────────────────────────────────────────────────────
     path("dashboards/custos-cc/", views.cc_custos_dashboard, name="cc_custos_dashboard"),
+    path("dashboards/custos-diretoria/", views.custos_diretoria_dashboard, name="custos_diretoria_dashboard"),
+    path("dashboards/custos-diretoria/detalhe/", views.custos_diretoria_detalhe, name="custos_diretoria_detalhe"),
     path("dashboards/custos-cc/pdf/", views.cc_custos_export_pdf, name="cc_custos_export_pdf"),
     path("dashboards/custos-cc/exportar-excel/", views.custo_cc_export_excel, name="custo_cc_export_excel"),
     path("dashboards/toner/", views.toner_cc_dashboard, name="dashboard_toner"),

@@ -507,12 +507,49 @@ class Usuario(AuditModel):
         blank=True
     )
 
+    # ── Hierarquia organizacional (preenchida via importação da planilha RH) ──
+    # Ordem real: Diretor Geral → Diretor → Gestor → Coordenador → Supervisor
+    diretor_geral = models.CharField(
+        max_length=150, blank=True, null=True, verbose_name="Diretor Geral"
+    )
+    diretor = models.CharField(
+        max_length=150, blank=True, null=True, verbose_name="Diretor"
+    )
+    gestor = models.CharField(
+        max_length=150,
+        blank=True,
+        null=True,
+        verbose_name="Gestor"
+    )
+    coordenador = models.CharField(
+        max_length=150,
+        blank=True,
+        null=True,
+        verbose_name="Coordenador"
+    )
+    supervisor = models.CharField(
+        max_length=150,
+        blank=True,
+        null=True,
+        verbose_name="Supervisor"
+    )
+    responsavel = models.CharField(
+        max_length=150,
+        blank=True,
+        null=True,
+        verbose_name="Responsável",
+        help_text="Responsável hierárquico consolidado (Junção: Supervisor > Coordenador > Gestor > Diretor > Diretor Geral)"
+    )
+
     class Meta:
         ordering = ["nome"]
         indexes = [
             models.Index(fields=["matricula"]),
             models.Index(fields=["nome"]),
             models.Index(fields=["status"]),
+            models.Index(fields=["responsavel"]),
+            models.Index(fields=["diretor"]),
+            models.Index(fields=["diretor_geral"]),
         ]
 
     def __str__(self):
