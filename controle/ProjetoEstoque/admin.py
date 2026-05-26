@@ -4,7 +4,8 @@ from .models import (
     Categoria, Subtipo, Localidade, Fornecedor, CentroCusto, Funcao,
     Item, Usuario, Locacao, Comentario, CicloManutencao, MovimentacaoItem,
     CheckListModelo, CheckListPergunta, Preventiva, PreventivaExecucao, PreventivaResposta,
-    Licenca, MovimentacaoLicenca, LicencaLote, ItemLote, LoteEstoque
+    Licenca, MovimentacaoLicenca, LicencaLote, ItemLote, LoteEstoque,
+    PlantaProjeto,
 )
 
 # ---------------------------
@@ -360,3 +361,12 @@ class ItemLoteAdmin(admin.ModelAdmin):
     search_fields = ("item__nome", "item__numero_serie", "lote__numero_nf")
     list_filter = ("lote__fornecedor", "lote__data_entrada")
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(PlantaProjeto)
+class PlantaProjetoAdmin(AuditAdminMixin):
+    list_display  = ("id", "nome", "localidade", "total_elementos", "elementos_com_prtg", "criado_por", "created_at")
+    list_filter   = ("localidade",)
+    search_fields = ("nome", "descricao", "localidade__local")
+    ordering      = ("localidade__local", "nome")
+    readonly_fields = ("created_at", "updated_at", "criado_por", "atualizado_por")

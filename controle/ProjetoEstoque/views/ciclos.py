@@ -1,14 +1,25 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
+from django.core.paginator import Paginator
 from ..models import CicloManutencao, Item
 from ..forms import CicloManutencaoForm
 
 
 @login_required
 def ciclos_list(request):
-    ciclos = CicloManutencao.objects.select_related("item").all().order_by("-created_at")
-    return render(request, "front/ciclos/ciclo_list.html", {"ciclos": ciclos})
+    qs = CicloManutencao.objects.select_related("item").order_by("-created_at")
+    total = qs.count()
+
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+
+    return render(request, "front/ciclos/ciclo_list.html", {
+        "ciclos": page_obj.object_list,
+        "page_obj": page_obj,
+        "total": total,
+        "qs_keep": "",
+    })
 
 
 @login_required

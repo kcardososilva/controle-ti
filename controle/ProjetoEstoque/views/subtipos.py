@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
+from django.core.paginator import Paginator
 from django.db.models import Q
 from ..models import Subtipo, Categoria
 from ..forms import SubtipoForm
@@ -21,10 +22,23 @@ def subtipo_list(request):
     if alocado:
         qs = qs.filter(alocado=alocado)
 
+    total = qs.count()
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    get_copy = request.GET.copy()
+    if "page" in get_copy:
+        del get_copy["page"]
+
     context = {
-        "subtipos": qs,
+        "subtipos": page_obj.object_list,
+        "page_obj": page_obj,
+        "total": total,
+        "qs_keep": get_copy.urlencode(),
         "categorias": Categoria.objects.order_by("nome"),
         "alocado_choices": (("sim", "Sim"), ("nao", "Não")),
+        "q": q,
+        "f_cat": cat,
+        "f_alocado": alocado,
         "request": request,
     }
     return render(request, "front/subtipo/subtipo_list.html", context)
@@ -65,6 +79,7 @@ def subtipo_update(request, pk):
 
 
 @login_required
+@permission_required("ProjetoEstoque.delete_subtipo", raise_exception=True)
 def subtipo_delete(request, pk):
     obj = get_object_or_404(Subtipo, pk=pk)
     if request.method == "POST":

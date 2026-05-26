@@ -45,20 +45,23 @@ def _labels_pt_br(stamps):
 
 def _align_series(stamps, qs_month_count, field_name="c"):
     """
-    Alinha uma série mensal (dict {'YYYY-MM': count}) aos stamps fornecidos.
-    qs_month_count: queryset com values('m').annotate(c=Count(...))
-                    onde 'm' = TruncMonth(), retornado como datetime.
+    Alinha uma série mensal aos stamps fornecidos.
+    TruncMonth sobre DateField retorna date; sobre DateTimeField retorna datetime.
+    Ambos são tratados aqui.
     """
     m2v = {}
     for row in qs_month_count:
         mdt = row["m"]
-        if not isinstance(mdt, datetime):
-            # TruncMonth retorna datetime/tz-aware
+        if isinstance(mdt, datetime):
+            key = _month_key(timezone.localtime(mdt))
+        elif isinstance(mdt, date):
+            key = f"{mdt.year:04d}-{mdt.month:02d}"
+        else:
             continue
-        m2v[_month_key(timezone.localtime(mdt))] = row[field_name]
+        m2v[key] = int(row[field_name] or 0)
     out = []
     for (y, m) in stamps:
-        out.append(int(m2v.get(f"{y:04d}-{m:02d}", 0)))
+        out.append(m2v.get(f"{y:04d}-{m:02d}", 0))
     return out
 
 
@@ -247,17 +250,24 @@ def _labels_pt_br(stamps):
     nomes = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
     return [f"{nomes[m-1]}/{str(y)[-2:]}" for (y, m) in stamps]
 
-def _align_series(stamps, qs_month_count, field_name="c"):
-    """Alinha uma série mensal (values('m').annotate(c=...)) em relação aos stamps fornecidos."""
+def _align_series_date(stamps, qs_month_count, field_name="c"):
+    """
+    Igual a _align_series mas aceita date ou datetime (TruncMonth sobre DateField → date).
+    Usada nas séries do dashboard de preventivas.
+    """
     m2v = {}
     for row in qs_month_count:
         mdt = row["m"]
-        if not isinstance(mdt, datetime):
+        if isinstance(mdt, datetime):
+            key = _month_key(timezone.localtime(mdt))
+        elif isinstance(mdt, date):
+            key = f"{mdt.year:04d}-{mdt.month:02d}"
+        else:
             continue
-        m2v[_month_key(timezone.localtime(mdt))] = int(row[field_name] or 0)
+        m2v[key] = int(row[field_name] or 0)
     out = []
     for (y, m) in stamps:
-        out.append(int(m2v.get(f"{y:04d}-{m:02d}", 0)))
+        out.append(m2v.get(f"{y:04d}-{m:02d}", 0))
     return out
 
 
@@ -303,39 +313,53 @@ def preventiva_dashboard(request):
     # (Se preferir que o status também afete KPIs/listas, troque 'base_kpi' por 'base' nos cálculos.)
     base_kpi = base
 
-    # Filtro de status (apenas para a visualização geral; KPIs usam base_kpi para não “zerar”)
+    # Filtro de status — usa data_agendamento quando explícita, senão data_proxima
+    base = base.annotate(data_ref_filt=Coalesce("data_agendamento", "data_proxima"))
     if status == "ok":
-        base = base.filter(data_proxima__isnull=False, data_proxima__gte=today)
+        base = base.filter(data_ref_filt__isnull=False, data_ref_filt__gte=today)
     elif status == "vencida":
-        base = base.filter(data_proxima__lt=today)
+        base = base.filter(data_ref_filt__lt=today)
     elif status == "sem_agenda":
-        base = base.filter(data_proxima__isnull=True)
+        base = base.filter(data_ref_filt__isnull=True)
 
     # -------- KPIs (usando base_kpi para refletir a situação real do parque) --------
+    # data de referência: data_agendamento (quando explícita) ou data_proxima (calculada)
+    base_kpi_ref = base_kpi.annotate(data_ref=Coalesce("data_agendamento", "data_proxima"))
+
     total             = base_kpi.count()
-    vencidas_count    = base_kpi.filter(data_proxima__lt=today).count()
-    sem_agenda_count  = base_kpi.filter(data_proxima__isnull=True).count()
-    ok_count          = base_kpi.filter(data_proxima__isnull=False, data_proxima__gte=today).count()
-    executadas_mes    = base_kpi.filter(data_ultima__year=now.year, data_ultima__month=now.month).count()
+    vencidas_count    = base_kpi_ref.filter(data_ref__lt=today).count()
+    sem_agenda_count  = base_kpi_ref.filter(data_ref__isnull=True).count()
+    ok_count          = base_kpi_ref.filter(data_ref__isnull=False, data_ref__gte=today).count()
+    # Executadas no mês: usa PreventivaExecucao para contar execuções reais (histórico preciso)
+    executadas_mes    = PreventivaExecucao.objects.filter(
+        preventiva__in=base_kpi.values("id"),
+        data_execucao__year=now.year,
+        data_execucao__month=now.month,
+    ).count()
+    agendadas_count   = base_kpi.filter(data_agendamento__isnull=False).count()
 
-    # -------- Séries 12 meses: executadas x programadas (também a partir de base_kpi) --------
-    stamps12 = _last_n_month_stamps(12)
-    labels12 = _labels_pt_br(stamps12)
-    start12  = timezone.make_aware(datetime(stamps12[0][0], stamps12[0][1], 1))
+    # -------- Séries 12 meses: executadas x agendadas --------
+    stamps12   = _last_n_month_stamps(12)
+    labels12   = _labels_pt_br(stamps12)
+    start12_dt = date(stamps12[0][0], stamps12[0][1], 1)
 
-    exec_qs = (base_kpi.filter(data_ultima__isnull=False, data_ultima__gte=start12)
-                        .annotate(m=TruncMonth("data_ultima"))
-                        .values("m")
-                        .annotate(c=Count("id"))
-                        .order_by("m"))
-    prog_qs = (base_kpi.filter(data_proxima__isnull=False, data_proxima__gte=start12)
-                        .annotate(m=TruncMonth("data_proxima"))
-                        .values("m")
-                        .annotate(c=Count("id"))
-                        .order_by("m"))
+    # Executadas: conta registros reais de PreventivaExecucao por mês (histórico preciso)
+    exec_qs = (PreventivaExecucao.objects
+               .filter(preventiva__in=base_kpi.values("id"), data_execucao__gte=start12_dt)
+               .annotate(m=TruncMonth("data_execucao"))
+               .values("m")
+               .annotate(c=Count("id"))
+               .order_by("m"))
+    # Agendadas: usa data_agendamento (explícita) ou data_proxima (calculada auto)
+    prog_qs = (base_kpi_ref
+               .filter(data_ref__isnull=False, data_ref__gte=start12_dt)
+               .annotate(m=TruncMonth("data_ref"))
+               .values("m")
+               .annotate(c=Count("id"))
+               .order_by("m"))
 
-    serie_exec = _align_series(stamps12, exec_qs)
-    serie_prog = _align_series(stamps12, prog_qs)
+    serie_exec = _align_series_date(stamps12, exec_qs)
+    serie_prog = _align_series_date(stamps12, prog_qs)
 
     # -------- AGG por Checklist / Localidade / Subtipo (usando base_kpi) --------
     agg_chk = (base_kpi.values("checklist_modelo_id", "checklist_modelo__nome")
@@ -404,12 +428,17 @@ def preventiva_dashboard(request):
         q=q, status=status, checklist=chk_id, local=loc, subtipo=subtipo,
         checklist_opts=checklist_opts,
 
+        # Período exibido (janela de 12 meses)
+        dt_ini=start12_dt,
+        dt_fim=today,
+
         # KPIs
         total=total,
         ok_count=ok_count,
         vencidas_count=vencidas_count,
         sem_agenda_count=sem_agenda_count,
         executadas_mes=executadas_mes,
+        agendadas_count=agendadas_count,
 
         # Séries
         serie_labels=labels12,

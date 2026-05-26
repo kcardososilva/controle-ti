@@ -1,0 +1,594 @@
+{% extends 'base.html' %}
+{% block title %}Status Board{% endblock %}
+{% block page_title %}Status Board{% endblock %}
+{% block page_subtitle %}Monitoramento em tempo real · todos os equipamentos{% endblock %}
+
+{% block header_actions %}
+  <a href="?tv=1" class="btn btn-sm" target="_blank">
+    <i class="fa-solid fa-tv"></i> Modo TV
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.sb-page) {
+  --sb-up:      #34c759;
+  --sb-warn:    #ff9500;
+  --sb-down:    #ff3b30;
+  --sb-none:    #aeaeb2;
+  --sb-brand:   var(--brand, #0071e3);
+  --sb-bg:      var(--bg-elevated, #fff);
+  --sb-page:    var(--bg-page-2, #f2f2f7);
+  --sb-border:  var(--separator-hairline, rgba(0,0,0,.07));
+  --sb-radius:  14px;
+  --sb-ease:    cubic-bezier(.32,.72,0,1);
+}
+
+/* ── Page layout ─────────────────────────────────────────────────────────────── */
+.sb-page { display: flex; flex-direction: column; gap: 14px; padding-bottom: 32px; }
+
+/* ── Hero ────────────────────────────────────────────────────────────────────── */
+.sb-hero {
+  background: linear-gradient(135deg, #0a0a1a 0%, #0d1b3e 50%, #0a2a0a 100%);
+  border-radius: 18px; padding: 22px 28px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  position: relative; overflow: hidden;
+}
+.sb-hero::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse 60% 80% at 20% 50%, rgba(0,113,227,.18) 0%, transparent 70%),
+              radial-gradient(ellipse 40% 60% at 80% 30%, rgba(52,199,89,.10) 0%, transparent 60%);
+  pointer-events: none;
+}
+.sb-hero-left  { display: flex; flex-direction: column; gap: 6px; position: relative; }
+.sb-hero-title { font-size: 1.5rem; font-weight: 800; color: #fff; letter-spacing: -.02em; }
+.sb-hero-sub   { font-size: .82rem; color: rgba(255,255,255,.52); }
+.sb-hero-right { display: flex; align-items: center; gap: 10px; position: relative; flex-shrink: 0; }
+
+/* Refresh badge */
+.sb-refresh-badge {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: 20px;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+  font-size: .78rem; font-weight: 600; color: rgba(255,255,255,.75);
+  backdrop-filter: blur(8px);
+}
+.sb-refresh-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--sb-up);
+  box-shadow: 0 0 6px var(--sb-up);
+  animation: sb-blink 2s ease-in-out infinite;
+}
+@keyframes sb-blink {
+  0%,100% { opacity:1; } 50% { opacity:.3; }
+}
+.sb-refresh-badge.fetching .sb-refresh-dot { background: var(--sb-warn); box-shadow: 0 0 6px var(--sb-warn); }
+.sb-refresh-badge.error    .sb-refresh-dot { background: var(--sb-down); box-shadow: 0 0 6px var(--sb-down); }
+
+/* Last-update timestamp */
+.sb-last-update { font-size: .72rem; color: rgba(255,255,255,.40); }
+
+/* ── KPI Bar ─────────────────────────────────────────────────────────────────── */
+.sb-kpi-bar {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 10px;
+}
+.sb-kpi-card {
+  background: var(--sb-bg); border: 1px solid var(--sb-border);
+  border-radius: var(--sb-radius); padding: 14px 18px;
+  display: flex; align-items: center; gap: 12px;
+  transition: transform 180ms var(--sb-ease), box-shadow 180ms;
+  position: relative; overflow: hidden;
+}
+.sb-kpi-card::after {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  border-radius: var(--sb-radius) var(--sb-radius) 0 0;
+}
+.sb-kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+.sb-kpi-up::after    { background: var(--sb-up);   }
+.sb-kpi-warn::after  { background: var(--sb-warn); }
+.sb-kpi-down::after  { background: var(--sb-down); }
+.sb-kpi-none::after  { background: var(--sb-none); }
+.sb-kpi-icon {
+  width: 38px; height: 38px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; flex-shrink: 0;
+}
+.sb-kpi-up   .sb-kpi-icon { background: rgba(52,199,89,.12);  color: var(--sb-up);   }
+.sb-kpi-warn .sb-kpi-icon { background: rgba(255,149,0,.12);  color: var(--sb-warn); }
+.sb-kpi-down .sb-kpi-icon { background: rgba(255,59,48,.12);  color: var(--sb-down); }
+.sb-kpi-none .sb-kpi-icon { background: rgba(174,174,178,.12);color: var(--sb-none); }
+.sb-kpi-value { font-size: 1.55rem; font-weight: 800; line-height: 1; color: var(--text-primary,#1d1d1f); }
+.sb-kpi-label { font-size: 11px; color: var(--text-tertiary,#6e6e73); margin-top: 3px; }
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────────── */
+.sb-toolbar {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--sb-bg); border: 1px solid var(--sb-border);
+  border-radius: 12px; padding: 8px 12px; flex-wrap: wrap;
+}
+.sb-search {
+  flex: 1; min-width: 180px;
+  height: 32px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--sb-border); background: var(--sb-page);
+  font-size: .82rem; color: var(--text-primary,#1d1d1f); outline: none;
+  transition: border-color 140ms;
+}
+.sb-search:focus { border-color: var(--sb-brand); }
+.sb-filter-sel {
+  height: 32px; padding: 0 10px; border-radius: 8px;
+  border: 1px solid var(--sb-border); background: var(--sb-page);
+  font-size: .8rem; color: var(--text-primary,#1d1d1f); cursor: pointer; outline: none;
+}
+.sb-filter-btn {
+  height: 32px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--sb-border); background: transparent;
+  font-size: .8rem; font-weight: 600; cursor: pointer;
+  display: flex; align-items: center; gap: 5px;
+  color: var(--text-primary,#1d1d1f); transition: background 120ms;
+  white-space: nowrap;
+}
+.sb-filter-btn:hover { background: rgba(0,0,0,.04); }
+.sb-filter-btn.active { background: var(--sb-brand); color: #fff; border-color: var(--sb-brand); }
+.sb-tb-sep { width: 1px; height: 20px; background: var(--sb-border); margin: 0 2px; }
+.sb-count-label { font-size: .78rem; color: var(--text-tertiary,#6e6e73); margin-left: auto; white-space: nowrap; }
+
+/* ── Groups ──────────────────────────────────────────────────────────────────── */
+.sb-group { display: flex; flex-direction: column; gap: 10px; }
+.sb-group-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 0;
+}
+.sb-group-title {
+  font-size: .9rem; font-weight: 800; color: var(--text-primary,#1d1d1f);
+  letter-spacing: -.01em;
+}
+.sb-group-sep { flex: 1; height: 1px; background: var(--sb-border); }
+.sb-group-count {
+  font-size: 11px; font-weight: 700; color: var(--text-tertiary,#6e6e73);
+  background: rgba(0,0,0,.06); padding: 2px 8px; border-radius: 8px;
+}
+
+/* ── Card Grid ───────────────────────────────────────────────────────────────── */
+.sb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+/* ── Card ────────────────────────────────────────────────────────────────────── */
+.sb-card {
+  background: var(--sb-bg); border: 1px solid var(--sb-border);
+  border-radius: var(--sb-radius); overflow: hidden;
+  transition: transform 200ms var(--sb-ease), box-shadow 200ms;
+  cursor: pointer; position: relative;
+}
+.sb-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.10); }
+.sb-card-strip { height: 4px; width: 100%; }
+.sb-card-body  { padding: 12px 14px 11px; }
+
+/* Header row */
+.sb-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.sb-card-icon-wrap {
+  width: 36px; height: 36px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+.sb-card-name { font-size: .84rem; font-weight: 700; color: var(--text-primary,#1d1d1f);
+  line-height: 1.25; word-break: break-word; flex: 1; }
+.sb-card-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px;
+  transition: background 400ms, box-shadow 400ms;
+}
+
+/* Meta rows */
+.sb-card-type { font-size: .72rem; color: var(--text-tertiary,#6e6e73); margin-bottom: 5px; }
+.sb-card-ip   { font-size: .73rem; font-family: 'SF Mono','Fira Code',monospace;
+  color: var(--text-tertiary,#6e6e73); margin-bottom: 7px; }
+.sb-card-ip:empty { display: none; }
+
+/* Status badge */
+.sb-card-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 12px;
+  font-size: .7rem; font-weight: 700;
+  transition: background 400ms, color 400ms;
+}
+
+/* Footer */
+.sb-card-footer {
+  margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--sb-border);
+  font-size: .69rem; color: var(--text-tertiary,#6e6e73);
+  display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sb-card-footer a { color: var(--sb-brand); text-decoration: none; font-weight: 600; }
+.sb-card-footer a:hover { text-decoration: underline; }
+
+/* ── Status colour variants ──────────────────────────────────────────────────── */
+.sb-card[data-status="up"]      { border-color: rgba(52,199,89,.25); }
+.sb-card[data-status="warning"] { border-color: rgba(255,149,0,.30); }
+.sb-card[data-status="down"]    { border-color: rgba(255,59,48,.30);  }
+
+.sb-card[data-status="up"]      .sb-card-dot { background: var(--sb-up);   box-shadow: 0 0 5px var(--sb-up);   }
+.sb-card[data-status="warning"] .sb-card-dot { background: var(--sb-warn); box-shadow: 0 0 5px var(--sb-warn); }
+.sb-card[data-status="down"]    .sb-card-dot { background: var(--sb-down); box-shadow: 0 0 5px var(--sb-down); }
+.sb-card[data-status="unknown"] .sb-card-dot { background: var(--sb-none); }
+.sb-card[data-status="none"]    .sb-card-dot { background: #d1d1d6; }
+
+.sb-card[data-status="up"]      .sb-card-badge { background: rgba(52,199,89,.12);  color: #1a7035; }
+.sb-card[data-status="warning"] .sb-card-badge { background: rgba(255,149,0,.12);  color: #7a4200; }
+.sb-card[data-status="down"]    .sb-card-badge { background: rgba(255,59,48,.12);  color: #b0100a; }
+.sb-card[data-status="unknown"] .sb-card-badge { background: rgba(174,174,178,.12);color: #6e6e73; }
+.sb-card[data-status="none"]    .sb-card-badge { background: rgba(174,174,178,.10);color: #8e8e93; }
+
+/* Pulse rings - offline e warning */
+@keyframes sb-pulse {
+  0%   { transform: scale(1);   opacity: .7; }
+  100% { transform: scale(2.4); opacity: 0;  }
+}
+.sb-card[data-status="down"]    .sb-card-dot::after,
+.sb-card[data-status="warning"] .sb-card-dot::after {
+  content: ''; position: absolute; inset: 0; border-radius: 50%;
+  background: inherit; animation: sb-pulse 1.8s ease-out infinite;
+}
+.sb-card[data-status="down"] .sb-card-dot::after { animation-duration: 1.2s; }
+.sb-card-dot { position: relative; }
+
+/* Neon glow on card hover for offline */
+.sb-card[data-status="down"]:hover    { box-shadow: 0 8px 28px rgba(255,59,48,.22); }
+.sb-card[data-status="warning"]:hover { box-shadow: 0 8px 28px rgba(255,149,0,.18); }
+.sb-card[data-status="up"]:hover      { box-shadow: 0 8px 28px rgba(52,199,89,.15); }
+
+/* ── Empty / Loading state ───────────────────────────────────────────────────── */
+.sb-empty {
+  grid-column: 1/-1; text-align: center; padding: 48px;
+  color: var(--text-tertiary,#6e6e73); font-size: .9rem;
+}
+.sb-skeleton {
+  background: linear-gradient(90deg, rgba(0,0,0,.05) 25%, rgba(0,0,0,.09) 50%, rgba(0,0,0,.05) 75%);
+  background-size: 200% 100%; border-radius: 8px; height: 16px;
+  animation: sb-shimmer 1.4s infinite;
+}
+@keyframes sb-shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
+
+/* ── TV Mode ─────────────────────────────────────────────────────────────────── */
+.sb-page.tv-mode {
+  --sb-bg:   #1c1c1e; --sb-page: #000; --sb-border: rgba(255,255,255,.08);
+}
+.sb-page.tv-mode .sb-kpi-card,
+.sb-page.tv-mode .sb-toolbar,
+.sb-page.tv-mode .sb-card          { background: #1c1c1e; color: #fff; }
+.sb-page.tv-mode .sb-card-name     { color: #fff; }
+.sb-page.tv-mode .sb-group-title   { color: rgba(255,255,255,.85); }
+.sb-page.tv-mode .sb-search,
+.sb-page.tv-mode .sb-filter-sel    { background: #2c2c2e; color: #fff; border-color: rgba(255,255,255,.1); }
+.sb-page.tv-mode .sb-filter-btn    { color: rgba(255,255,255,.8); border-color: rgba(255,255,255,.1); }
+.sb-page.tv-mode .sb-filter-btn:hover { background: rgba(255,255,255,.07); }
+.sb-page.tv-mode .sb-kpi-value     { color: #fff; }
+.sb-page.tv-mode .sb-card-footer   { border-color: rgba(255,255,255,.06); }
+.sb-page.tv-mode .sb-tb-sep,
+.sb-page.tv-mode .sb-group-sep     { background: rgba(255,255,255,.08); }
+
+/* ── Responsive ──────────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .sb-kpi-bar { grid-template-columns: repeat(2,1fr); }
+  .sb-grid    { grid-template-columns: repeat(auto-fill, minmax(175px,1fr)); }
+}
+@media (max-width: 560px) {
+  .sb-hero    { padding: 16px 18px; }
+  .sb-hero-title { font-size: 1.2rem; }
+  .sb-last-update { display: none; }
+  .sb-kpi-bar { grid-template-columns: repeat(2,1fr); gap: 7px; }
+  .sb-toolbar { gap: 5px; }
+  .sb-search  { min-width: 120px; }
+  .sb-tb-sep, .sb-count-label { display: none; }
+  .sb-grid    { grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 8px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sb-page{% if tv_mode %} tv-mode{% endif %}">
+
+  <!-- Hero -->
+  <div class="sb-hero">
+    <div class="sb-hero-left">
+      <div class="sb-hero-title">
+        <i class="fa-solid fa-satellite-dish" style="margin-right:8px;opacity:.7"></i>Status Board
+      </div>
+      <div class="sb-hero-sub">Todos os equipamentos monitorados em tempo real</div>
+    </div>
+    <div class="sb-hero-right" style="flex-direction:column;align-items:flex-end;gap:6px">
+      <div class="sb-refresh-badge" id="sbBadge">
+        <div class="sb-refresh-dot"></div>
+        <span id="sbBadgeText">Aguardando…</span>
+      </div>
+      <div class="sb-last-update" id="sbLastUpdate"></div>
+    </div>
+  </div>
+
+  <!-- KPI Bar -->
+  <div class="sb-kpi-bar">
+    <div class="sb-kpi-card sb-kpi-up">
+      <div class="sb-kpi-icon"><i class="fa-solid fa-circle-check"></i></div>
+      <div>
+        <div class="sb-kpi-value" id="kpiUp">—</div>
+        <div class="sb-kpi-label">Online</div>
+      </div>
+    </div>
+    <div class="sb-kpi-card sb-kpi-warn">
+      <div class="sb-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <div>
+        <div class="sb-kpi-value" id="kpiWarn">—</div>
+        <div class="sb-kpi-label">Instável</div>
+      </div>
+    </div>
+    <div class="sb-kpi-card sb-kpi-down">
+      <div class="sb-kpi-icon"><i class="fa-solid fa-circle-xmark"></i></div>
+      <div>
+        <div class="sb-kpi-value" id="kpiDown">—</div>
+        <div class="sb-kpi-label">Offline</div>
+      </div>
+    </div>
+    <div class="sb-kpi-card sb-kpi-none">
+      <div class="sb-kpi-icon"><i class="fa-solid fa-circle-minus"></i></div>
+      <div>
+        <div class="sb-kpi-value" id="kpiNone">—</div>
+        <div class="sb-kpi-label">Sem monitoramento</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="sb-toolbar">
+    <input  class="sb-search" id="sbSearch" type="search" placeholder="Buscar equipamento…" oninput="filtrar()">
+    <select class="sb-filter-sel" id="sbFilterLoc"    onchange="filtrar()"><option value="">Todas localidades</option></select>
+    <select class="sb-filter-sel" id="sbFilterTipo"   onchange="filtrar()"><option value="">Todos os tipos</option></select>
+    <select class="sb-filter-sel" id="sbFilterStatus" onchange="filtrar()">
+      <option value="">Todos status</option>
+      <option value="up">Online</option>
+      <option value="warning">Instável</option>
+      <option value="down">Offline</option>
+      <option value="none">Sem PRTG</option>
+    </select>
+    <div class="sb-tb-sep"></div>
+    <button class="sb-filter-btn" id="btnGroupLoc"  onclick="setGroupBy('localidade')" title="Agrupar por localidade">
+      <i class="fa-solid fa-location-dot"></i> Localidade
+    </button>
+    <button class="sb-filter-btn" id="btnGroupTipo" onclick="setGroupBy('tipo')" title="Agrupar por tipo">
+      <i class="fa-solid fa-layer-group"></i> Tipo
+    </button>
+    <div class="sb-tb-sep"></div>
+    <span class="sb-count-label" id="sbCountLabel">—</span>
+  </div>
+
+  <!-- Device grid (rendered by JS) -->
+  <div id="sbContent"></div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ devices_json|json_script:"__devices_data" }}
+<script>
+const DEVICES     = JSON.parse(document.getElementById('__devices_data').textContent);
+const PRTG_OK     = {{ prtg_ok|yesno:"true,false" }};
+const STATUS_URL  = "{% url 'prtg_status_api' %}";
+const INTERVAL_MS = {{ interval }} * 1000;
+const TV_MODE     = {{ tv_mode|yesno:"true,false" }};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let devicesMap = {};   // prtg_objid → device data
+let statusMap  = {};   // prtg_objid (string) → 'up'|'warning'|'down'|'unknown'
+let groupBy    = 'localidade';
+
+const ST_MAP = {
+  3:'up', 4:'warning', 5:'down',
+  1:'unknown',2:'unknown',6:'unknown',7:'unknown',8:'unknown',
+  9:'unknown',10:'unknown',11:'unknown',12:'unknown'
+};
+const ST_LABEL = { up:'Online', warning:'Instável', down:'Offline', unknown:'Desconhecido', none:'Sem PRTG' };
+const ST_ICON  = { up:'fa-circle-check', warning:'fa-triangle-exclamation', down:'fa-circle-xmark', unknown:'fa-circle-question', none:'fa-circle-minus' };
+
+// Populate filter selects
+(function buildFilters() {
+  const locs  = [...new Set(DEVICES.map(d => d.localidade))].sort();
+  const tipos = [...new Set(DEVICES.map(d => d.type_label))].sort();
+  const sl = document.getElementById('sbFilterLoc');
+  const st = document.getElementById('sbFilterTipo');
+  locs .forEach(l => sl.add(new Option(l, l)));
+  tipos.forEach(t => st.add(new Option(t, t)));
+})();
+
+// ── PRTG fetch ────────────────────────────────────────────────────────────────
+async function fetchStatus() {
+  setBadge('fetching', 'Atualizando…');
+  try {
+    const r = await fetch(STATUS_URL, {credentials:'same-origin'});
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Erro PRTG');
+    devicesMap = d.devices_map || {};
+    // Build statusMap from devices
+    statusMap = {};
+    for (const [objid, dev] of Object.entries(devicesMap)) {
+      statusMap[String(objid)] = ST_MAP[parseInt(dev.status)] || 'unknown';
+    }
+    renderAll();
+    setBadge('ok', `Atualizado · ${DEVICES.filter(d=>d.prtg_objid).length} com PRTG`);
+    document.getElementById('sbLastUpdate').textContent =
+      'Última atualização: ' + new Date().toLocaleTimeString('pt-BR');
+  } catch(e) {
+    setBadge('error', 'Erro ao buscar status');
+    console.error(e);
+  }
+}
+
+function setBadge(cls, txt) {
+  const b = document.getElementById('sbBadge');
+  b.className = 'sb-refresh-badge ' + cls;
+  document.getElementById('sbBadgeText').textContent = txt;
+}
+
+// ── Resolve status of a device entry ─────────────────────────────────────────
+function resolveStatus(dev) {
+  if (!dev.prtg_objid) return 'none';
+  return statusMap[String(dev.prtg_objid)] || (PRTG_OK ? 'unknown' : 'none');
+}
+
+// ── Escape HTML ───────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Render all groups ─────────────────────────────────────────────────────────
+function renderAll() {
+  updateKPIs();
+  renderGroups();
+}
+
+function updateKPIs() {
+  let up=0, warn=0, down=0, none=0;
+  for (const d of DEVICES) {
+    const st = resolveStatus(d);
+    if (st==='up')      up++;
+    else if (st==='warning') warn++;
+    else if (st==='down')    down++;
+    else                     none++;
+  }
+  animCount('kpiUp',   up);
+  animCount('kpiWarn', warn);
+  animCount('kpiDown', down);
+  animCount('kpiNone', none);
+}
+
+function animCount(id, val) {
+  const el = document.getElementById(id);
+  const from = parseInt(el.textContent) || 0;
+  if (from === val) return;
+  let start = null;
+  const dur = 500;
+  function step(ts) {
+    if (!start) start = ts;
+    const p = Math.min((ts - start) / dur, 1);
+    el.textContent = Math.round(from + (val - from) * p);
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function setGroupBy(mode) {
+  groupBy = mode;
+  document.getElementById('btnGroupLoc').classList.toggle('active',  mode==='localidade');
+  document.getElementById('btnGroupTipo').classList.toggle('active', mode==='tipo');
+  renderGroups();
+}
+
+function filtrar() { renderGroups(); }
+
+function renderGroups() {
+  const q      = document.getElementById('sbSearch').value.trim().toLowerCase();
+  const fLoc   = document.getElementById('sbFilterLoc').value;
+  const fTipo  = document.getElementById('sbFilterTipo').value;
+  const fSt    = document.getElementById('sbFilterStatus').value;
+
+  const filtered = DEVICES.filter(d => {
+    const st = resolveStatus(d);
+    if (q     && !d.label.toLowerCase().includes(q) && !d.ip.includes(q) && !d.type_label.toLowerCase().includes(q) && !d.localidade.toLowerCase().includes(q)) return false;
+    if (fLoc  && d.localidade !== fLoc)   return false;
+    if (fTipo && d.type_label !== fTipo)  return false;
+    if (fSt   && st !== fSt)             return false;
+    return true;
+  });
+
+  document.getElementById('sbCountLabel').textContent = `${filtered.length} equipamento${filtered.length!==1?'s':''}`;
+
+  // Group
+  const groups = {};
+  for (const d of filtered) {
+    const key = groupBy === 'localidade' ? d.localidade : d.type_label;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(d);
+  }
+
+  const content = document.getElementById('sbContent');
+  if (!filtered.length) {
+    content.innerHTML = '<div class="sb-empty"><i class="fa-solid fa-magnifying-glass" style="font-size:2rem;opacity:.25;display:block;margin-bottom:10px"></i>Nenhum equipamento encontrado.</div>';
+    return;
+  }
+
+  const sortedKeys = Object.keys(groups).sort();
+  let html = '';
+  for (const key of sortedKeys) {
+    const items = groups[key];
+    html += `<div class="sb-group" style="margin-bottom:20px">
+      <div class="sb-group-header">
+        <i class="fa-solid ${groupBy==='localidade' ? 'fa-location-dot' : 'fa-layer-group'}" style="color:var(--sb-brand);font-size:13px"></i>
+        <span class="sb-group-title">${esc(key)}</span>
+        <div class="sb-group-sep"></div>
+        <span class="sb-group-count">${items.length}</span>
+      </div>
+      <div class="sb-grid">`;
+    for (const d of items) {
+      html += buildCard(d);
+    }
+    html += '</div></div>';
+  }
+  content.innerHTML = html;
+}
+
+function buildCard(d) {
+  const st      = resolveStatus(d);
+  const stLabel = ST_LABEL[st] || '—';
+  const stIcon  = ST_ICON[st]  || 'fa-circle-minus';
+  const prtgDev = d.prtg_objid ? devicesMap[d.prtg_objid] : null;
+  const hostStr = (d.ip || prtgDev?.host || '');
+  const bgAlpha = '22';
+  const stripColor = d.color;
+
+  return `<div class="sb-card" data-status="${esc(st)}" data-id="${esc(d.id)}"
+      onclick="abrirDetalhe('${esc(d.planta_pk)}','${esc(d.id)}')" title="${esc(d.label)}">
+    <div class="sb-card-strip" style="background:${esc(stripColor)}"></div>
+    <div class="sb-card-body">
+      <div class="sb-card-header">
+        <div class="sb-card-icon-wrap" style="background:${esc(d.color)}${bgAlpha};color:${esc(d.color)}">
+          <i class="fa-solid fa-${esc(d.icon)}"></i>
+        </div>
+        <div class="sb-card-name">${esc(d.label)}</div>
+        <div class="sb-card-dot"></div>
+      </div>
+      <div class="sb-card-type">${esc(d.type_label)}</div>
+      <div class="sb-card-ip">${esc(hostStr)}</div>
+      <div class="sb-card-badge">
+        <i class="fa-solid ${esc(stIcon)}" style="font-size:9px"></i> ${esc(stLabel)}
+      </div>
+      <div class="sb-card-footer">
+        <i class="fa-solid fa-location-dot" style="font-size:9px;opacity:.5"></i>
+        ${esc(d.localidade)} ·
+        <a href="/plantas/${esc(d.planta_pk)}/" onclick="event.stopPropagation()">
+          ${esc(d.planta_nome)}
+        </a>
+      </div>
+    </div>
+  </div>`;
+}
+
+function abrirDetalhe(plantaPk, elId) {
+  window.location.href = `/plantas/${plantaPk}/`;
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+setGroupBy('localidade');
+renderAll();  // render cards sem status primeiro
+
+if (PRTG_OK) {
+  fetchStatus();
+  setInterval(fetchStatus, INTERVAL_MS);
+} else {
+  setBadge('error', 'PRTG não configurado');
+  document.getElementById('sbCountLabel').textContent = `${DEVICES.length} equipamentos`;
+}
+
+// TV mode: auto-fullscreen offer
+if (TV_MODE && document.documentElement.requestFullscreen) {
+  document.documentElement.requestFullscreen().catch(()=>{});
+}
+</script>
+{% endblock %}

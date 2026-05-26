@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
+from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
 from ..models import Funcao
 from ..forms import FuncaoForm
@@ -9,15 +10,24 @@ from ..forms import FuncaoForm
 @login_required
 def funcao_list(request):
     q = (request.GET.get("q") or "").strip()
-    funcoes = Funcao.objects.all().order_by("nome")
+    qs = Funcao.objects.all().order_by("nome")
     if q:
-        funcoes = funcoes.filter(nome__icontains=q)
-    ctx = {
-        "funcoes": funcoes,
+        qs = qs.filter(nome__icontains=q)
+    total = qs.count()
+
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    get_copy = request.GET.copy()
+    if "page" in get_copy:
+        del get_copy["page"]
+
+    return render(request, "front/funcoes/funcao_list.html", {
+        "funcoes": page_obj.object_list,
+        "page_obj": page_obj,
+        "total": total,
+        "qs_keep": get_copy.urlencode(),
         "q": q,
-        "total": funcoes.count(),
-    }
-    return render(request, "front/funcoes/funcao_list.html", ctx)
+    })
 
 
 @login_required
@@ -43,6 +53,7 @@ def funcao_form(request, pk=None):
 
 
 @login_required
+@permission_required("ProjetoEstoque.delete_funcao", raise_exception=True)
 @require_POST
 def funcao_delete(request, pk):
     obj = get_object_or_404(Funcao, pk=pk)

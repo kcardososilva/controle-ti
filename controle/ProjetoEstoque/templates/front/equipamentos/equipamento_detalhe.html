@@ -10,6 +10,9 @@
   <i class="fa fa-arrow-left" aria-hidden="true"></i>
   Voltar
 </a>
+<a href="{% url 'equipamento_qr' item.id %}" class="btn-secondary btn-sm" title="Gerar QR Code">
+  <i class="fa-solid fa-qrcode"></i> QR
+</a>
 <a href="{% url 'item_update' item.id %}" class="btn-primary btn-sm">
   <i class="fa fa-pen" aria-hidden="true"></i>
   Editar
@@ -825,6 +828,17 @@ body.theme-dark .ad-badge-info { color: var(--ad-info); }
             <div class="ad-kpi-sub">Valor recorrente do contrato</div>
           </div>
         </div>
+
+        {% if financeiro.custo_aluguel_acumulado > 0 %}
+          <div class="ad-kpi-card" style="--kpi-color: #6366f1;">
+            <div class="ad-kpi-icon"><i class="fa fa-receipt" aria-hidden="true"></i></div>
+            <div>
+              <span class="ad-kpi-label">Locação Acumulada</span>
+              <span class="ad-kpi-value" style="color:#4f46e5;">R$ {{ financeiro.custo_aluguel_acumulado|floatformat:2|intcomma }}</span>
+              <div class="ad-kpi-sub">{{ financeiro.meses_na_empresa }} mes{{ financeiro.meses_na_empresa|pluralize:"es" }} × R$ {{ financeiro.custo_mensal|floatformat:2|intcomma }}/mês</div>
+            </div>
+          </div>
+        {% endif %}
       {% endif %}
 
       {% if financeiro.custo_manutencao > 0 %}
@@ -838,20 +852,34 @@ body.theme-dark .ad-badge-info { color: var(--ad-info); }
         </div>
       {% endif %}
 
+      {% if financeiro.modo == 'LOCAÇÃO' and financeiro.custo_total_empresa > 0 %}
+        <div class="ad-kpi-card" style="--kpi-color: #059669; border: 1px solid rgba(5,150,105,.20); background: linear-gradient(135deg, rgba(5,150,105,.06), transparent);">
+          <div class="ad-kpi-icon" style="background: rgba(5,150,105,.12); border-color: rgba(5,150,105,.20);"><i class="fa fa-coins" aria-hidden="true"></i></div>
+          <div>
+            <span class="ad-kpi-label">Total Gasto (TCO)</span>
+            <span class="ad-kpi-value" style="color:#047857;">R$ {{ financeiro.custo_total_empresa|floatformat:2|intcomma }}</span>
+            <div class="ad-kpi-sub">Locação acumulada{% if financeiro.custo_manutencao > 0 %} + manutenção{% endif %}</div>
+          </div>
+        </div>
+      {% endif %}
+
       {% if item.precisa_preventiva == 'sim' or preventivas %}
-        <div class="ad-kpi-card" style="--kpi-color: {% if status_saude == 'critical' %}var(--ad-danger){% elif status_saude == 'ok' %}var(--ad-success){% else %}var(--ad-muted){% endif %};">
+        <div class="ad-kpi-card" style="--kpi-color: {% if status_saude == 'critical' %}var(--ad-danger){% elif status_saude == 'atencao' %}var(--ad-warning){% elif status_saude == 'ok' %}var(--ad-success){% else %}var(--ad-muted){% endif %};">
           <div class="ad-kpi-icon"><i class="fa fa-clipboard-check" aria-hidden="true"></i></div>
           <div>
             <span class="ad-kpi-label">Preventiva</span>
             {% if status_saude == 'ok' %}
               <span class="ad-kpi-value" style="color:var(--ad-success);">Regular</span>
               <div class="ad-kpi-sub">Plano preventivo em dia</div>
+            {% elif status_saude == 'atencao' %}
+              <span class="ad-kpi-value" style="color:var(--ad-warning);">Atenção</span>
+              <div class="ad-kpi-sub">Preventiva vence em breve</div>
             {% elif status_saude == 'critical' %}
-              <span class="ad-kpi-value" style="color:var(--ad-danger);">Crítico</span>
-              <div class="ad-kpi-sub">Existe preventiva atrasada</div>
+              <span class="ad-kpi-value" style="color:var(--ad-danger);">Atrasada</span>
+              <div class="ad-kpi-sub">Existe preventiva vencida</div>
             {% else %}
               <span class="ad-kpi-value">N/D</span>
-              <div class="ad-kpi-sub">Sem plano preventivo registrado</div>
+              <div class="ad-kpi-sub">Sem data de próxima preventiva</div>
             {% endif %}
           </div>
         </div>
@@ -1089,6 +1117,58 @@ body.theme-dark .ad-badge-info { color: var(--ad-info); }
             </div>
           </section>
 
+          {% if financeiro.custo_aluguel_acumulado > 0 or financeiro.custo_manutencao > 0 %}
+            <section class="ad-card" style="border-color: rgba(99,102,241,.22);">
+              <div class="ad-card-header" style="background: linear-gradient(135deg, rgba(99,102,241,.07), transparent);">
+                <div class="ad-card-title">
+                  <i class="fa fa-chart-pie" style="background: rgba(99,102,241,.12); color: #4f46e5;" aria-hidden="true"></i>
+                  Resumo de Custos
+                </div>
+                <span class="ad-badge" style="background: rgba(99,102,241,.10); color: #4f46e5;">Locado</span>
+              </div>
+              <div class="ad-card-body">
+                <div class="ad-simple-list">
+
+                  {% if financeiro.meses_na_empresa %}
+                    <div class="ad-simple-item">
+                      <div class="ad-info-label"><i class="fa fa-calendar-days" aria-hidden="true"></i> Tempo em uso</div>
+                      <div class="ad-info-value">{{ financeiro.meses_na_empresa }} mes{{ financeiro.meses_na_empresa|pluralize:"es" }} ({{ financeiro.dias_na_empresa }} dias)</div>
+                    </div>
+                  {% endif %}
+
+                  {% if financeiro.custo_mensal > 0 %}
+                    <div class="ad-simple-item">
+                      <div class="ad-info-label"><i class="fa fa-file-contract" aria-hidden="true"></i> Valor mensal</div>
+                      <div class="ad-info-value">R$ {{ financeiro.custo_mensal|floatformat:2|intcomma }}</div>
+                    </div>
+                  {% endif %}
+
+                  {% if financeiro.custo_aluguel_acumulado > 0 %}
+                    <div class="ad-simple-item" style="border-color: rgba(99,102,241,.20); background: rgba(99,102,241,.04);">
+                      <div class="ad-info-label" style="color: #6366f1;"><i class="fa fa-receipt" aria-hidden="true"></i> Locação acumulada</div>
+                      <div class="ad-info-value" style="color: #4f46e5; font-size: 16px;">R$ {{ financeiro.custo_aluguel_acumulado|floatformat:2|intcomma }}</div>
+                    </div>
+                  {% endif %}
+
+                  {% if financeiro.custo_manutencao > 0 %}
+                    <div class="ad-simple-item" style="border-color: rgba(239,68,68,.18); background: rgba(239,68,68,.04);">
+                      <div class="ad-info-label" style="color: var(--ad-danger);"><i class="fa fa-screwdriver-wrench" aria-hidden="true"></i> Manutenção</div>
+                      <div class="ad-info-value" style="color: var(--ad-danger);">R$ {{ financeiro.custo_manutencao|floatformat:2|intcomma }}</div>
+                    </div>
+                  {% endif %}
+
+                  {% if financeiro.custo_total_empresa > 0 %}
+                    <div class="ad-simple-item" style="border-color: rgba(5,150,105,.25); background: rgba(5,150,105,.07);">
+                      <div class="ad-info-label" style="color: #059669;"><i class="fa fa-coins" aria-hidden="true"></i> Total gasto (TCO)</div>
+                      <div class="ad-info-value" style="color: #047857; font-size: 18px; font-weight: 700;">R$ {{ financeiro.custo_total_empresa|floatformat:2|intcomma }}</div>
+                    </div>
+                  {% endif %}
+
+                </div>
+              </div>
+            </section>
+          {% endif %}
+
           {% if pos_contrato %}
             <section class="ad-card {% if not pos_contrato.pausado %}ad-card-warning{% endif %}">
               <div class="ad-card-header">
@@ -1179,9 +1259,23 @@ body.theme-dark .ad-badge-info { color: var(--ad-info); }
                     <div class="ad-simple-top">
                       <div>
                         <div class="ad-simple-title">{{ p.checklist_modelo.nome }}</div>
-                        {% if p.data_proxima %}<div class="ad-simple-sub">Próxima: {{ p.data_proxima|date:"d/m/Y" }}</div>{% endif %}
+                        {% if p.proxima_calc %}
+                          <div class="ad-simple-sub">Próxima: {{ p.proxima_calc|date:"d/m/Y" }}{% if p.atrasado %} ({{ p.proxima_calc|timesince }} atrás){% elif p.atencao %} (em {{ p.proxima_calc|timeuntil }}){% endif %}</div>
+                        {% elif p.data_proxima %}
+                          <div class="ad-simple-sub">Próxima: {{ p.data_proxima|date:"d/m/Y" }}</div>
+                        {% else %}
+                          <div class="ad-simple-sub">Sem data programada</div>
+                        {% endif %}
                       </div>
-                      {% if p.atrasado %}<span class="ad-badge ad-badge-danger">Atrasada</span>{% else %}<span class="ad-badge ad-badge-success">Em dia</span>{% endif %}
+                      {% if p.atrasado %}
+                        <span class="ad-badge ad-badge-danger">Atrasada</span>
+                      {% elif p.atencao %}
+                        <span class="ad-badge ad-badge-warning">Atenção</span>
+                      {% elif p.proxima_calc or p.data_proxima %}
+                        <span class="ad-badge ad-badge-success">Em dia</span>
+                      {% else %}
+                        <span class="ad-badge ad-badge-neutral">Sem data</span>
+                      {% endif %}
                     </div>
                   </div>
                 {% endfor %}
@@ -1197,6 +1291,32 @@ body.theme-dark .ad-badge-info { color: var(--ad-info); }
             </div>
             <div class="ad-card-body">
               <div class="ad-note-box">{{ item.observacoes|linebreaksbr }}</div>
+            </div>
+          </section>
+        {% endif %}
+
+        <!-- Onde está mapeado (Fase 1.3) -->
+        {% if plantas_mapeadas %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-map"></i> Plantas de Infraestrutura</div>
+            </div>
+            <div class="ad-card-body">
+              <p style="font-size:.75rem;color:var(--ad-muted,#6e6e73);margin:0 0 8px">
+                Este equipamento está mapeado em {{ plantas_mapeadas|length }} planta{{ plantas_mapeadas|length|pluralize }}:
+              </p>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                {% for pl in plantas_mapeadas %}
+                <a href="{% url 'planta_viewer' pl.pk %}" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;border:1px solid var(--separator-hairline,rgba(0,0,0,.06));text-decoration:none;color:inherit;transition:background 110ms" onmouseover="this.style.background='rgba(0,113,227,.04)'" onmouseout="this.style.background=''">
+                  <i class="fa-solid fa-map-location-dot" style="color:var(--brand,#0071e3);font-size:14px;flex-shrink:0"></i>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:.8rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ pl.nome }}</div>
+                    <div style="font-size:.7rem;color:var(--ad-muted,#6e6e73)">{{ pl.localidade.local|default:"Sem localidade" }} · {{ pl.updated_at|date:"d/m/Y" }}</div>
+                  </div>
+                  <i class="fa-solid fa-arrow-right" style="font-size:11px;color:var(--ad-muted,#6e6e73)"></i>
+                </a>
+                {% endfor %}
+              </div>
             </div>
           </section>
         {% endif %}

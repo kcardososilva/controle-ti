@@ -5,6 +5,7 @@ from django.http import HttpResponse, JsonResponse
 from django.template.loader import render_to_string
 from services.sistema_inteligencia_service import SistemaInteligenciaService
 from services.sistema_noticias_service import SistemaNoticiasService
+from services import prtg_service
 
 
 @login_required
@@ -123,4 +124,5 @@ def sistema_inteligencia_export_csv(request):
 def sistema_noticias(request):
     service = SistemaNoticiasService()
     context = service.build()
+    context["prtg_ok"] = prtg_service.is_configured()
     return render(request, "front/noticias/sistema_noticias.html", context)

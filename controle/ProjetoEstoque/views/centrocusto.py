@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
 from django.http import HttpResponse
 from django.db.models import Q, Count, Sum
 from django.core.paginator import Paginator
@@ -306,6 +306,7 @@ def centrocusto_detail(request, pk):
 
 # DELETE (POST via modal)
 @login_required
+@permission_required("ProjetoEstoque.delete_centrocusto", raise_exception=True)
 def centrocusto_delete(request, pk: int):
     obj = get_object_or_404(CentroCusto, pk=pk)
     if request.method == "POST":

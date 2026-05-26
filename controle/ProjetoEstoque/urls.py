@@ -73,6 +73,7 @@ urlpatterns = [
     path("equipamentos/importar/", views.importar_planilha, name="importar_planilha"),
     path("equipamentos/exportar/", views.equipamentos_exportar, name="equipamentos_exportar"),
     path("equipamentos/<int:pk>/", views.equipamento_detalhe, name="equipamento_detalhe"),
+    path("equipamentos/<int:pk>/qr/", views.equipamento_qr, name="equipamento_qr"),
     path("equipamentos/<int:pk>/editar/", views.item_update, name="item_update"),
     path("equipamentos/<int:pk>/excluir/", views.equipamento_excluir, name="equipamento_excluir"),
     path("equipamentos/<int:pk>/termo/entrega/", views.termo_entrega_form, name="termo_entrega_form"),
@@ -111,6 +112,9 @@ urlpatterns = [
     path("preventiva/item/<int:item_id>/iniciar/", views.preventiva_start, name="preventiva_start_item"),
     path("preventiva/<int:pk>/", views.preventiva_detail, name="preventiva_detail"),
     path("preventiva/<int:pk>/executar/", views.preventiva_exec, name="preventiva_exec"),
+    path("preventiva/<int:pk>/agendar/", views.preventiva_agendar, name="preventiva_agendar"),
+    path("preventiva/plano/", views.preventiva_plano, name="preventiva_plano"),
+    path("preventiva/agendadas/", views.preventiva_agendadas, name="preventiva_agendadas"),
     # Checklists de preventiva
     path("preventiva/checklists/", views.checklist_list, name="checklist_list"),
     path("preventiva/checklists/novo/", views.checklist_form, name="checklist_create"),
@@ -143,7 +147,26 @@ urlpatterns = [
     path("dashboards/toner/exportar-excel/", views.toner_cc_export_excel, name="toner_cc_export_excel"),
     path("dashboards/licencas/", views.licencas_dashboard, name="licencas_dashboard"),
     path("dashboards/preventivas/", views.preventiva_dashboard, name="preventiva_dashboard"),
-    path("preventiva/sincronizar-programacao/", views.preventivas.preventiva_sincronizar_programacao,name="preventiva_sincronizar_programacao"),
+    path("preventiva/sincronizar-programacao/", views.preventiva_sincronizar_programacao, name="preventiva_sincronizar_programacao"),
+
+    # ── Status Board ───────────────────────────────────────────────────────
+    path("status-board/",                   views.status_board,         name="status_board"),
+
+    # ── Plantas / Mapa de Infraestrutura ───────────────────────────────────
+    path("plantas/",                        views.planta_list,          name="planta_list"),
+    path("plantas/nova/",                   views.planta_create,        name="planta_create"),
+    path("plantas/api/prtg-status/",        views.prtg_status_api,      name="prtg_status_api"),
+    path("plantas/api/prtg-buscar/",        views.prtg_search_api,      name="prtg_search_api"),
+    path("plantas/api/itens-buscar/",       views.item_search_api,      name="item_search_api"),
+    path("plantas/<int:pk>/",               views.planta_viewer,        name="planta_viewer"),
+    path("plantas/<int:pk>/editar/",        views.planta_update,        name="planta_update"),
+    path("plantas/<int:pk>/excluir/",       views.planta_delete,        name="planta_delete"),
+    path("plantas/<int:pk>/editor/",        views.planta_editor,        name="planta_editor"),
+    path("plantas/<int:pk>/salvar/",                      views.planta_salvar_layout,  name="planta_salvar_layout"),
+    path("plantas/<int:pk>/check-version/",               views.planta_check_version,  name="planta_check_version"),
+    path("plantas/<int:pk>/historico/",                   views.planta_historico_api,  name="planta_historico_api"),
+    path("plantas/<int:pk>/restaurar/<int:hist_pk>/",     views.planta_restaurar_versao, name="planta_restaurar_versao"),
+    path("plantas/<int:pk>/tv/",                          views.planta_tv,             name="planta_tv"),
 
     # ── Avisos & Relatórios ─────────────────────────────────────────────────
     path("avisos/contratos-a-vencer/", views.avisos_contratos_vencer, name="avisos_contratos_vencer"),

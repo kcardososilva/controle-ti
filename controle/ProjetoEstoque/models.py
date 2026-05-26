@@ -317,6 +317,73 @@ class Locacao(AuditModel):
     def __str__(self):
         return f"Locação: {self.equipamento.nome} - {self.tempo_locado or 0} meses"
 
+
+# ========== PLANTA DE LOCALIDADE ==========
+class PlantaProjeto(AuditModel):
+    nome         = models.CharField(max_length=200, verbose_name="Nome da Planta")
+    descricao    = models.TextField(blank=True, verbose_name="Descrição")
+    localidade   = models.ForeignKey(
+        Localidade,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="plantas",
+        verbose_name="Localidade"
+    )
+    layout       = models.JSONField(
+        default=dict,
+        verbose_name="Layout JSON",
+        help_text="Estrutura visual da planta: elementos, conexões e posições"
+    )
+    layout_version = models.PositiveIntegerField(default=1, verbose_name="Versão do Layout")
+    imagem_fundo = models.ImageField(
+        upload_to="plantas/fundos/",
+        null=True, blank=True,
+        verbose_name="Imagem de Fundo",
+        help_text="Planta baixa ou croqui (PNG/JPG, máx. 10 MB)"
+    )
+
+    class Meta:
+        verbose_name = "Planta de Localidade"
+        verbose_name_plural = "Plantas de Localidades"
+        ordering = ["localidade__local", "nome"]
+        indexes = [models.Index(fields=["localidade"])]
+
+    def __str__(self):
+        return f"{self.nome} — {self.localidade or 'Sem localidade'}"
+
+    _TIPOS_FORMA = frozenset({'quadro', 'circulo', 'linha', 'texto'})
+
+    @property
+    def total_elementos(self):
+        return sum(1 for e in self.layout.get("elements", []) if e.get("type") not in self._TIPOS_FORMA)
+
+    @property
+    def elementos_com_prtg(self):
+        return sum(1 for e in self.layout.get("elements", []) if e.get("type") not in self._TIPOS_FORMA and e.get("prtg_objid"))
+
+
+class PlantaLayoutHistorico(models.Model):
+    planta    = models.ForeignKey(
+        PlantaProjeto, on_delete=models.CASCADE, related_name='historico_versoes'
+    )
+    versao    = models.PositiveIntegerField()
+    layout    = models.JSONField()
+    salvo_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='layouts_salvos'
+    )
+    descricao = models.CharField(max_length=200, blank=True, verbose_name="Descrição")
+    salvo_em  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-versao']
+        unique_together = [['planta', 'versao']]
+        verbose_name = "Versão de Layout"
+        verbose_name_plural = "Versões de Layout"
+
+    def __str__(self):
+        return f"{self.planta.nome} — v{self.versao}"
+
+
 class LoteEstoque(AuditModel):
     fornecedor = models.ForeignKey(
         "Fornecedor",
@@ -800,6 +867,8 @@ class Preventiva(AuditModel):
 
     data_ultima = models.DateField(blank=True, null=True)
     data_proxima = models.DateField(blank=True, null=True)
+    data_agendamento = models.DateField(blank=True, null=True, verbose_name="Data agendada",
+                                        help_text="Data explícita para a próxima execução. Sobrepõe o cálculo automático. Limpa após execução.")
     dentro_do_prazo = models.BooleanField(default=True)
 
     # Controle de pausa — ativado quando o equipamento sai de "ativo"
@@ -925,6 +994,7 @@ class Preventiva(AuditModel):
 
         # 3) atualiza os campos de "última execução" para agenda/relatórios
         self.data_ultima = hoje
+        self.data_agendamento = None  # agendamento consumido pela execução
         if observacao:
             self.observacao = observacao
         if foto_antes:
@@ -933,7 +1003,7 @@ class Preventiva(AuditModel):
             self.foto_depois = foto_depois
 
         self.recomputar_prazo(hoje)
-        self.save(update_fields=["data_ultima", "data_proxima", "dentro_do_prazo", "observacao", "foto_antes", "foto_depois", "updated_at"])
+        self.save(update_fields=["data_ultima", "data_agendamento", "data_proxima", "dentro_do_prazo", "observacao", "foto_antes", "foto_depois", "updated_at"])
 
 
 # --- NOVO: execuções de preventiva, com fotos por execução ---

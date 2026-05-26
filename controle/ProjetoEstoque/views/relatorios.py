@@ -29,46 +29,7 @@ from ..models import (
     TipoMovLicencaChoices, ItemLote,
 )
 
-def _aplicar_filtros_equipamentos(request, base_qs=None):
-    """
-    Aplica os mesmos filtros da tela:
-      nome, subtipo, status, numero_serie, fornecedor, localidade, centro_custo
-    """
-    qs = base_qs or Item.objects.all()
-    qs = qs.select_related("subtipo", "localidade", "fornecedor", "centro_custo")
-
-    nome = (request.GET.get("nome") or "").strip()
-    if nome:
-        qs = qs.filter(nome__icontains=nome)
-
-    subtipo = (request.GET.get("subtipo") or "").strip()
-    if subtipo:
-        qs = qs.filter(subtipo_id=subtipo)
-
-    status = (request.GET.get("status") or "").strip()
-    if status:
-        qs = qs.filter(status=status)
-
-    numero_serie = (request.GET.get("numero_serie") or "").strip()
-    if numero_serie:
-        qs = qs.filter(numero_serie__icontains=numero_serie)
-
-    fornecedor = (request.GET.get("fornecedor") or "").strip()
-    if fornecedor:
-        qs = qs.filter(fornecedor__nome__icontains=fornecedor)
-
-    localidade = (request.GET.get("localidade") or "").strip()
-    if localidade:
-        qs = qs.filter(localidade__local__icontains=localidade)
-
-    centro = (request.GET.get("centro_custo") or "").strip()
-    if centro:
-        qs = qs.filter(
-            Q(centro_custo__numero__icontains=centro) |
-            Q(centro_custo__departamento__icontains=centro)
-        )
-
-    return qs.order_by("nome", "id")
+from .equipamentos import _aplicar_filtros_itens
 
 
 @login_required
@@ -239,19 +200,10 @@ def toner_cc_export_excel(request):
 
 @login_required
 def equipamentos_exportar(request):
-    # Mesma base filtrada da listagem
-    qs = (
-        _aplicar_filtros_equipamentos(request)
-        .select_related(
-            "centro_custo",
-            "fornecedor",
-            "categoria",
-            "subtipo",
-            "localidade",
-            "locacao",
-        )
-        .order_by("id")
+    base_qs = Item.objects.select_related(
+        "centro_custo", "fornecedor", "categoria", "subtipo", "localidade", "locacao",
     )
+    qs = _aplicar_filtros_itens(request, base_qs).order_by("id")
 
     wb = Workbook()
     ws = wb.active

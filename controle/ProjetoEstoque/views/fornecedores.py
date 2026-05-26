@@ -2,7 +2,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
 from django.http import HttpResponse
 from django.db.models import Q, Count, Sum
 from django.db.models.functions import Coalesce
@@ -499,6 +499,7 @@ def fornecedor_detail(request, pk: int):
 
 # DELETE (POST via modal)
 @login_required
+@permission_required("ProjetoEstoque.delete_fornecedor", raise_exception=True)
 def fornecedor_delete(request, pk: int):
     obj = get_object_or_404(Fornecedor, pk=pk)
     if request.method == "POST":

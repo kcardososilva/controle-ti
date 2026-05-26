@@ -5,15 +5,7 @@
 {% block page_title %}Controle de Preventivas{% endblock %}
 {% block page_subtitle %}Programação, execução, vencimentos e histórico técnico{% endblock %}
 
-{% block header_actions %}
-  <a href="?print=true{% if filter_q %}&q={{ filter_q }}{% endif %}{% if filter_status %}&status={{ filter_status }}{% endif %}{% if filter_localidade %}&localidade={{ filter_localidade }}{% endif %}{% if filter_checklist %}&checklist={{ filter_checklist }}{% endif %}&janela={{ janela_alerta }}"
-     target="_blank" class="btn btn-sm">
-    <i class="fa fa-print" aria-hidden="true"></i> Relatório
-  </a>
-  <a href="{% url 'preventiva_start' %}" class="btn btn-sm btn-primary">
-    <i class="fa fa-plus" aria-hidden="true"></i> Nova preventiva
-  </a>
-{% endblock %}
+{% block header_actions %}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -268,6 +260,47 @@
   transform: translateY(-1px);
 }
 
+/* Badge de agendamento explícito */
+.pv-agendamento-badge {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-size: .78rem; font-weight: 600;
+  color: #1a7a35; background: rgba(52,199,89,.1);
+  border: 1px solid rgba(52,199,89,.25);
+  border-radius: 6px; padding: 1px 6px;
+}
+
+/* Modal de agendamento */
+.pv-sched-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.35);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9000; opacity: 0; pointer-events: none;
+  transition: opacity 160ms ease;
+}
+.pv-sched-backdrop.open { opacity: 1; pointer-events: all; }
+.pv-sched-modal {
+  background: var(--pv-surface); border-radius: var(--pv-radius-lg);
+  padding: 1.5rem; min-width: 300px; max-width: 380px; width: 90%;
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+  transform: translateY(12px) scale(.97);
+  transition: transform 160ms ease;
+}
+.pv-sched-backdrop.open .pv-sched-modal { transform: none; }
+.pv-sched-modal h3 { margin: 0 0 .25rem; font-size: 1rem; font-weight: 700; }
+.pv-sched-modal p  { margin: 0 0 1rem; font-size: .8rem; color: var(--pv-muted); }
+.pv-sched-input {
+  width: 100%; padding: .5rem .75rem; border-radius: var(--pv-radius-sm);
+  border: 1px solid var(--pv-border2); font-size: .9rem;
+  background: var(--pv-muted-surface); margin-bottom: 1rem;
+}
+.pv-sched-actions { display: flex; gap: .5rem; justify-content: flex-end; flex-wrap: wrap; }
+.pv-sched-actions button {
+  padding: .45rem .9rem; border-radius: var(--pv-radius-sm);
+  font-size: .85rem; font-weight: 600; cursor: pointer; border: none;
+}
+.pv-sched-save   { background: var(--pv-primary); color: #fff; }
+.pv-sched-clear  { background: var(--pv-muted-surface); color: var(--pv-text); }
+.pv-sched-cancel { background: transparent; color: var(--pv-muted); }
+
 /* ── Mobile ── */
 .pv-mobile-list { display: none; gap: .85rem; }
 
@@ -333,6 +366,7 @@
   .pv-mobile-grid { grid-template-columns: 1fr; }
   .pv-mobile-actions { grid-template-columns: 1fr; }
 }
+
 </style>
 {% endblock %}
 
@@ -372,8 +406,15 @@
     </article>
   </section>
 
+  <div style="display:flex;justify-content:flex-end;">
+    <a href="?print=true{% if filter_q %}&q={{ filter_q }}{% endif %}{% if filter_status %}&status={{ filter_status }}{% endif %}{% if filter_localidade %}&localidade={{ filter_localidade }}{% endif %}{% if filter_checklist %}&checklist={{ filter_checklist }}{% endif %}&janela={{ janela_alerta }}"
+       target="_blank" class="btn btn-sm">
+      <i class="fa fa-print" aria-hidden="true"></i> Relatório
+    </a>
+  </div>
+
   <section class="pv-filter-card">
-    <form method="get" class="pv-filter-grid">
+    <form method="get" class="pv-filter-grid" id="pv-filter-form">
       <div class="pv-field">
         <label for="q-input">Buscar</label>
         <div class="pv-control-wrap">
@@ -396,8 +437,8 @@
       </div>
 
       <div class="pv-field">
-        <label>Localidade</label>
-        <select name="localidade" class="pv-control">
+        <label for="pv-filtro-localidade">Localidade</label>
+        <select name="localidade" id="pv-filtro-localidade" class="pv-control">
           <option value="">Todas</option>
           {% for l in localidades %}
             <option value="{{ l.pk }}" {% if filter_localidade|stringformat:'s' == l.pk|stringformat:'s' %}selected{% endif %}>{{ l.local }}</option>
@@ -474,7 +515,19 @@
               </td>
               <td>{{ p.data_ultima|date:"d/m/Y"|default:"—" }}</td>
               <td>
-                <div class="pv-due">{{ p.proxima_calc|date:"d/m/Y"|default:"—" }}</div>
+                <div class="pv-due">
+                  {% if p.tem_agendamento %}
+                    <span class="pv-agendamento-badge" title="Data agendada manualmente">
+                      <i class="fa fa-calendar-check" aria-hidden="true"></i>
+                      {{ p.proxima_calc|date:"d/m/Y" }}
+                    </span>
+                  {% else %}
+                    {{ p.proxima_calc|date:"d/m/Y"|default:"—" }}
+                  {% endif %}
+                </div>
+                {% if p.tem_agendamento and p.atualizado_por %}
+                  <div class="pv-due-note">Agendado por: {{ p.atualizado_por.get_full_name|default:p.atualizado_por.username }}</div>
+                {% endif %}
                 {% if p.dias_restantes is not None %}
                   <div class="pv-due-note">
                     {% if p.dias_restantes < 0 %}
@@ -494,6 +547,14 @@
               <td><span class="pv-pill {{ p.status_css }}">{{ p.status_label }}</span></td>
               <td style="text-align:right">
                 <div class="pv-action-group">
+                  <button type="button" class="pv-icon-action pv-btn-agendar"
+                          data-pk="{{ p.pk }}"
+                          data-url="{% url 'preventiva_agendar' p.pk %}"
+                          data-atual="{{ p.data_agendamento|date:'Y-m-d'|default:'' }}"
+                          data-criador="{{ p.atualizado_por.get_full_name|default:p.atualizado_por.username|default:'' }}"
+                          title="Agendar data" aria-label="Agendar data para {{ p.equipamento.nome }}">
+                    <i class="fa fa-calendar-plus" aria-hidden="true"></i>
+                  </button>
                   <a href="{% url 'preventiva_exec' p.pk %}" class="pv-icon-action"
                      title="Executar" aria-label="Executar preventiva de {{ p.equipamento.nome }}">
                     <i class="fa fa-play" aria-hidden="true"></i>
@@ -539,6 +600,15 @@
           <div><span class="pv-mobile-label">Executor</span><span class="pv-mobile-val">{{ p.ultimo_executor_nome|default:p.ultimo_executor_username|default:"—" }}</span></div>
         </div>
         <div class="pv-mobile-actions">
+          <button type="button" class="pv-btn-primary pv-btn-agendar"
+                  data-pk="{{ p.pk }}"
+                  data-url="{% url 'preventiva_agendar' p.pk %}"
+                  data-atual="{{ p.data_agendamento|date:'Y-m-d'|default:'' }}"
+                  data-criador="{{ p.atualizado_por.get_full_name|default:p.atualizado_por.username|default:'' }}"
+                  style="grid-column:1/-1;">
+            <i class="fa fa-calendar-plus" aria-hidden="true"></i>
+            {% if p.tem_agendamento %}Editar agendamento{% else %}Agendar{% endif %}
+          </button>
           <a href="{% url 'preventiva_exec' p.pk %}" class="pv-btn-primary">
             <i class="fa fa-play" aria-hidden="true"></i> Executar
           </a>
@@ -574,5 +644,133 @@
     </nav>
   {% endif %}
 
+  <!-- Modal de agendamento -->
+  <div id="pvSchedBackdrop" class="pv-sched-backdrop" role="dialog" aria-modal="true" aria-labelledby="pvSchedTitle">
+    <div class="pv-sched-modal">
+      <h3 id="pvSchedTitle"><i class="fa fa-calendar-plus" aria-hidden="true"></i> Agendar data</h3>
+      <p id="pvSchedEquip" style="margin-bottom:.25rem;"></p>
+      <p id="pvSchedCriador" style="margin:0 0 .85rem;font-size:.78rem;color:var(--pv-muted);"></p>
+      <input type="date" id="pvSchedInput" class="pv-sched-input" />
+      <div class="pv-sched-actions">
+        <button type="button" class="pv-sched-cancel" id="pvSchedCancel">Cancelar</button>
+        <button type="button" class="pv-sched-clear"  id="pvSchedClear">Remover agendamento</button>
+        <button type="button" class="pv-sched-save"   id="pvSchedSave">Salvar</button>
+      </div>
+    </div>
+  </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+  /* ── Autosubmit filtro localidade ──────────────────────────── */
+  var locSelect = document.getElementById('pv-filtro-localidade');
+  if (locSelect) {
+    locSelect.addEventListener('change', function () {
+      document.getElementById('pv-filter-form').submit();
+    });
+  }
+
+  /* ── Modal de agendamento ───────────────────────────────────── */
+  var backdrop   = document.getElementById('pvSchedBackdrop');
+  var inputDate  = document.getElementById('pvSchedInput');
+  var equipEl    = document.getElementById('pvSchedEquip');
+  var criadorEl  = document.getElementById('pvSchedCriador');
+  var currentUrl = null;
+  var currentBtn = null;
+
+  function getCsrf() {
+    var el = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (el) return el.value;
+    var m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+
+  function openModal(btn) {
+    currentBtn = btn;
+    currentUrl = btn.dataset.url;
+    var row    = btn.closest('tr') || btn.closest('article');
+    var nome   = row ? (row.querySelector('.pv-main-text') || {}).textContent || '' : '';
+    equipEl.textContent  = nome.trim() || 'esta preventiva';
+    var criador = btn.dataset.criador || '';
+    criadorEl.textContent = criador ? ('Agendado por: ' + criador) : '';
+    inputDate.value = btn.dataset.atual || '';
+    backdrop.classList.add('open');
+    setTimeout(function () { inputDate.focus(); }, 50);
+  }
+
+  function closeModal() {
+    backdrop.classList.remove('open');
+    currentUrl = null;
+    currentBtn = null;
+  }
+
+  function salvar(data) {
+    if (!currentUrl) return;
+    fetch(currentUrl, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrf(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'data_agendamento=' + encodeURIComponent(data || ''),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (json) {
+      if (json.ok) {
+        var row = currentBtn ? (currentBtn.closest('tr') || currentBtn.closest('article')) : null;
+        var dueEl = row ? row.querySelector('.pv-due') : null;
+        if (dueEl) {
+          if (json.data_agendamento_fmt) {
+            dueEl.innerHTML = '<span class="pv-agendamento-badge">'
+              + '<i class="fa fa-calendar-check" aria-hidden="true"></i> '
+              + json.data_agendamento_fmt + '</span>';
+          } else {
+            var badge = dueEl.querySelector('.pv-agendamento-badge');
+            if (badge) badge.remove();
+          }
+        }
+        if (currentBtn) currentBtn.dataset.atual = json.data_agendamento || '';
+        closeModal();
+      } else {
+        alert('Erro ao salvar: ' + (json.erro || 'tente novamente.'));
+      }
+    })
+    .catch(function (e) {
+      alert('Erro de conexão: ' + e.message);
+    });
+  }
+
+  /* Event delegation — abre modal */
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.pv-btn-agendar');
+    if (!btn) return;
+    e.preventDefault();
+    openModal(btn);
+  });
+
+  /* Fechar ao clicar no fundo */
+  if (backdrop) {
+    backdrop.addEventListener('click', function (e) {
+      if (e.target === backdrop) closeModal();
+    });
+  }
+
+  /* Botões do modal */
+  var cancelBtn = document.getElementById('pvSchedCancel');
+  var clearBtn  = document.getElementById('pvSchedClear');
+  var saveBtn   = document.getElementById('pvSchedSave');
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+  if (clearBtn)  clearBtn.addEventListener('click',  function () { salvar(''); });
+  if (saveBtn)   saveBtn.addEventListener('click',   function () { salvar(inputDate.value); });
+
+  /* Escape fecha modal */
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && backdrop && backdrop.classList.contains('open')) closeModal();
+  });
+
+});
+</script>
 {% endblock %}

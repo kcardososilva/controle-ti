@@ -410,7 +410,7 @@
 /* KPIs */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 1rem;
 }
 
@@ -906,6 +906,17 @@
           <span class="kpi-sub">Locações + licenças</span>
         </div>
       </div>
+
+      {% if prtg_ok %}
+      <a href="{% url 'planta_list' %}" id="kpiPrtg" class="glass-card kpi-card" style="--kpi-color:#34c759;text-decoration:none;color:inherit">
+        <div class="kpi-icon" id="kpiPrtgIcon"><i class="fa fa-satellite-dish"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">Rede / PRTG</span>
+          <span class="kpi-value" id="kpiPrtgVal"><i class="fa fa-spinner fa-spin" style="font-size:.9rem"></i></span>
+          <span class="kpi-sub" id="kpiPrtgSub">Carregando status...</span>
+        </div>
+      </a>
+      {% endif %}
     </section>
 
     <section class="glass-card section-card">
@@ -1202,5 +1213,33 @@
   render();
   startAuto();
 })();
+
+{% if prtg_ok %}
+(async function() {
+  try {
+    const r = await fetch("{% url 'prtg_status_api' %}");
+    const d = await r.json();
+    if (!d.ok) return;
+    const devs = Object.values(d.devices_map);
+    const up   = devs.filter(v => parseInt(v.status ?? 0) === 3).length;
+    const warn = devs.filter(v => parseInt(v.status ?? 0) === 4).length;
+    const down = devs.filter(v => parseInt(v.status ?? 0) === 5).length;
+    const valEl = document.getElementById('kpiPrtgVal');
+    const subEl = document.getElementById('kpiPrtgSub');
+    const iconEl = document.getElementById('kpiPrtgIcon');
+    const card  = document.getElementById('kpiPrtg');
+    if (!valEl) return;
+    valEl.textContent = up + ' online';
+    subEl.textContent = (warn ? warn + ' instável · ' : '') + down + ' offline · ' + devs.length + ' total';
+    if (down > 0) {
+      card.style.setProperty('--kpi-color', '#ff3b30');
+      iconEl.innerHTML = '<i class="fa fa-circle-exclamation"></i>';
+    } else if (warn > 0) {
+      card.style.setProperty('--kpi-color', '#ff9500');
+      iconEl.innerHTML = '<i class="fa fa-triangle-exclamation"></i>';
+    }
+  } catch {}
+})();
+{% endif %}
 </script>
 {% endblock %}

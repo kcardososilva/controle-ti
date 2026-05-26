@@ -97,6 +97,7 @@ from .equipamentos import (
     item_create,
     equipamentos_list,
     equipamento_detalhe,
+    equipamento_qr,
     item_update,
     equipamento_excluir,
     importar_planilha,
@@ -148,6 +149,10 @@ from .preventivas import (
     preventiva_start,
     preventiva_exec,
     preventiva_detail,
+    preventiva_agendar,
+    preventiva_plano,
+    preventiva_agendadas,
+    preventiva_sincronizar_programacao,
 )
 
 # ── Licenças ─────────────────────────────────────────────────────────────────
@@ -203,3 +208,24 @@ from .home import sobre_plataforma
 
 # ── Alertas ──────────────────────────────────────────────────────────────────
 from .alertas import alertas_dashboard, alertas_enviar
+
+# ── Status Board ─────────────────────────────────────────────────────────────
+from .status_board import status_board
+
+# ── Plantas / Mapa de Infraestrutura ─────────────────────────────────────────
+from .plantas import (
+    planta_list,
+    planta_create,
+    planta_update,
+    planta_delete,
+    planta_editor,
+    planta_viewer,
+    planta_salvar_layout,
+    planta_check_version,
+    planta_historico_api,
+    planta_restaurar_versao,
+    planta_tv,
+    prtg_status_api,
+    prtg_search_api,
+    item_search_api,
+)

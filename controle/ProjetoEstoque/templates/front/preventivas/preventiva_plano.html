@@ -1,0 +1,568 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Plano de Agendamento{% endblock %}
+{% block page_title %}Plano de Agendamento{% endblock %}
+{% block page_subtitle %}Selecione equipamentos e defina a data de execução em lote{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'preventiva_agendadas' %}" class="btn btn-sm">
+    <i class="fa fa-calendar-days" aria-hidden="true"></i> Agendadas
+  </a>
+  <a href="{% url 'preventiva_list' %}" class="btn btn-sm">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i> Voltar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.plano-page) {
+  --pl-brand:    var(--brand);
+  --pl-surface:  var(--bg-elevated);
+  --pl-fill:     var(--bg-fill-tertiary);
+  --pl-text:     var(--text-primary);
+  --pl-sub:      var(--text-tertiary);
+  --pl-soft:     var(--text-quaternary);
+  --pl-border:   var(--separator-hairline);
+  --pl-border2:  var(--separator-non-opaque);
+  --pl-hover:    var(--bg-hover);
+  --pl-r-sm:     var(--radius-sm);
+  --pl-r-xl:     var(--radius-xl);
+  --pl-pill:     var(--radius-pill);
+  --pl-shadow:   var(--shadow-sm);
+  --pl-tr:       var(--transition-fast);
+}
+.plano-page, .plano-page * { box-sizing: border-box; min-width: 0; }
+.plano-page {
+  width: 100%; max-width: 92rem; margin: 0 auto;
+  display: grid; gap: 1rem; color: var(--pl-text);
+}
+
+/* ── Hero / cabeçalho interno ── */
+.pl-hero {
+  padding: 1.4rem 1.6rem;
+  border-radius: var(--pl-r-xl);
+  border: 1px solid var(--pl-border);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--pl-brand) 6%, transparent), var(--pl-surface));
+  box-shadow: var(--pl-shadow);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 1rem;
+}
+.pl-hero-info { display: flex; flex-direction: column; gap: .25rem; }
+.pl-hero-label {
+  font-size: .68rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--pl-brand);
+}
+.pl-hero-title {
+  font-size: 1.05rem; font-weight: 700; color: var(--pl-text); line-height: 1.2;
+}
+.pl-hero-hint { font-size: .78rem; color: var(--pl-sub); }
+.pl-hero-stat {
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+}
+.pl-stat-pill {
+  display: flex; flex-direction: column; align-items: center;
+  padding: .6rem 1.1rem; border-radius: var(--pl-r-sm);
+  background: var(--pl-fill); border: 1px solid var(--pl-border2);
+  min-width: 5rem;
+}
+.pl-stat-num { font-size: 1.35rem; font-weight: 800; color: var(--pl-text); line-height: 1; }
+.pl-stat-lbl { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--pl-sub); margin-top: .2rem; }
+
+/* ── Filtros ── */
+.pl-filter-card {
+  padding: 1rem 1.25rem;
+  border-radius: var(--pl-r-xl);
+  border: 1px solid var(--pl-border);
+  background: var(--pl-surface);
+  box-shadow: var(--pl-shadow);
+}
+.pl-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(13rem, 1.8fr) repeat(3, minmax(8rem, 1fr)) auto;
+  gap: .7rem; align-items: end;
+}
+.pl-field label {
+  display: block; margin: 0 0 .28rem;
+  color: var(--pl-sub); font-size: .68rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .07em;
+}
+.pl-input-wrap { position: relative; }
+.pl-input-wrap i {
+  position: absolute; left: .75rem; top: 50%;
+  transform: translateY(-50%);
+  color: var(--pl-soft); pointer-events: none; font-size: .82rem;
+}
+.pl-control {
+  width: 100%; height: 2.45rem;
+  border: 1px solid var(--pl-border2);
+  border-radius: var(--pl-r-sm);
+  background: var(--pl-surface); color: var(--pl-text);
+  padding: 0 .8rem; font-size: .85rem; font-family: inherit;
+  outline: none; appearance: auto;
+  transition: border-color var(--pl-tr), box-shadow var(--pl-tr);
+}
+.pl-control.has-icon { padding-left: 2.2rem; }
+.pl-control:focus {
+  border-color: var(--pl-brand);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.28));
+}
+.pl-filter-actions { display: flex; gap: .4rem; align-items: flex-end; }
+
+/* ── Barra de ação sticky ── */
+.pl-action-bar {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .8rem;
+  padding: .85rem 1.25rem;
+  border-radius: var(--pl-r-xl);
+  border: 1px solid color-mix(in srgb, var(--pl-brand) 20%, var(--pl-border));
+  background: color-mix(in srgb, var(--pl-surface) 94%, var(--pl-brand) 6%);
+  box-shadow: 0 4px 18px rgba(0,0,0,.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Contador grande */
+.pl-counter-wrap {
+  display: flex; align-items: center; gap: .65rem;
+  padding: .5rem .9rem;
+  border-radius: var(--pl-r-sm);
+  background: var(--pl-fill);
+  border: 1px solid var(--pl-border2);
+}
+.pl-counter-num {
+  font-size: 1.5rem; font-weight: 800; line-height: 1;
+  color: var(--pl-brand); min-width: 2ch; text-align: center;
+  transition: transform .15s ease, color .15s ease;
+}
+.pl-counter-num.bump { transform: scale(1.25); color: var(--pl-brand); }
+.pl-counter-sep { color: var(--pl-soft); font-size: .85rem; }
+.pl-counter-total { font-size: .95rem; font-weight: 600; color: var(--pl-text); }
+.pl-counter-label {
+  font-size: .65rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--pl-sub);
+}
+
+/* Separador vertical */
+.pl-sep { width: 1px; height: 2.2rem; background: var(--pl-border2); flex-shrink: 0; }
+
+/* Campo de data */
+.pl-date-wrap { display: flex; flex-direction: column; gap: .22rem; }
+.pl-date-wrap label {
+  font-size: .68rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--pl-sub);
+}
+.pl-date-input {
+  height: 2.45rem; min-width: 9.5rem;
+  border: 1px solid var(--pl-border2); border-radius: var(--pl-r-sm);
+  background: var(--pl-surface); color: var(--pl-text);
+  padding: 0 .8rem; font-size: .85rem; font-family: inherit; outline: none;
+  transition: border-color var(--pl-tr), box-shadow var(--pl-tr);
+}
+.pl-date-input:focus {
+  border-color: var(--pl-brand);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.28));
+}
+
+.pl-action-buttons { margin-left: auto; display: flex; gap: .45rem; flex-wrap: wrap; }
+
+/* ── Tabela ── */
+.pl-table-card {
+  overflow: hidden;
+  border-radius: var(--pl-r-xl);
+  border: 1px solid var(--pl-border);
+  background: var(--pl-surface);
+  box-shadow: var(--pl-shadow);
+}
+.pl-table-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .75rem; padding: .75rem 1.2rem;
+  border-bottom: 1px solid var(--pl-border); flex-wrap: wrap;
+}
+.pl-table-title { color: var(--pl-sub); font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; }
+.pl-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.pl-table { width: 100%; min-width: 54rem; border-collapse: collapse; }
+.pl-table th, .pl-table td {
+  padding: .75rem .95rem; border-bottom: 1px solid var(--pl-border);
+  vertical-align: middle; text-align: left;
+}
+.pl-table th {
+  background: color-mix(in srgb, var(--pl-surface) 88%, var(--pl-fill));
+  color: var(--pl-sub); font-size: .67rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .07em; white-space: nowrap;
+}
+.pl-table td { color: var(--pl-text); font-size: .83rem; }
+.pl-table tbody tr { transition: background var(--pl-tr); }
+.pl-table tbody tr:hover td { background: var(--pl-hover); }
+.pl-table tbody tr.is-selected td {
+  background: color-mix(in srgb, var(--pl-brand) 6%, transparent);
+}
+.pl-table tbody tr.is-selected { --row-accent: var(--pl-brand); }
+.pl-table tbody tr:last-child td { border-bottom: none; }
+
+/* Checkbox estilo pilha */
+.pl-cb-wrap { display: flex; justify-content: center; }
+.pl-cb {
+  width: 1.1rem; height: 1.1rem;
+  accent-color: var(--pl-brand); cursor: pointer;
+  border-radius: 4px;
+}
+
+.pl-name  { font-weight: 700; line-height: 1.2; }
+.pl-meta  { margin-top: .18rem; color: var(--pl-sub); font-size: .73rem; line-height: 1.35; }
+
+/* Status pills */
+.pl-pill {
+  display: inline-flex; align-items: center; gap: .28rem;
+  padding: .26rem .58rem; border-radius: var(--pl-pill);
+  font-size: .67rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .04em; white-space: nowrap;
+}
+.st-vencida { color: #b91c1c; background: rgba(239,68,68,.13); }
+.st-atencao { color: #a16207; background: rgba(245,158,11,.16); }
+.st-ok      { color: #047857; background: rgba(16,185,129,.14); }
+.st-indef   { color: var(--pl-sub); background: var(--pl-fill); }
+.st-pausada { color: #6d28d9; background: rgba(139,92,246,.14); }
+
+.pl-badge-agendado {
+  display: inline-flex; align-items: center; gap: .28rem;
+  font-size: .73rem; font-weight: 700;
+  color: #065f46; background: rgba(16,185,129,.12);
+  border: 1px solid rgba(16,185,129,.28);
+  border-radius: 7px; padding: .2rem .55rem;
+}
+
+/* Linha em destaque quando tem agendamento */
+.pl-table tbody tr.has-sched td:first-child {
+  border-left: 3px solid rgba(16,185,129,.55);
+}
+
+/* Vazia */
+.pl-empty { padding: 3.5rem 1rem; text-align: center; color: var(--pl-sub); }
+.pl-empty i { font-size: 2.2rem; opacity: .25; display: block; margin-bottom: .65rem; }
+
+/* Paginação */
+.pl-pagination { display: flex; justify-content: center; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.pl-page-info { color: var(--pl-sub); font-size: .82rem; padding: .45rem .75rem; }
+
+/* ── Responsivo ── */
+@media (max-width: 72rem) {
+  .pl-filter-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .pl-filter-grid .pl-filter-actions { grid-column: 1/-1; }
+  .pl-action-bar { flex-direction: column; align-items: stretch; }
+  .pl-action-buttons { margin-left: 0; }
+  .pl-sep { display: none; }
+}
+@media (max-width: 48rem) {
+  .pl-filter-grid { grid-template-columns: 1fr; }
+  .pl-hero { flex-direction: column; align-items: flex-start; }
+  .pl-counter-wrap { justify-content: center; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="plano-page">
+
+  <!-- Hero interno -->
+  <section class="pl-hero">
+    <div class="pl-hero-info">
+      <span class="pl-hero-label"><i class="fa fa-calendar-plus" aria-hidden="true"></i> Agendamento em lote</span>
+      <span class="pl-hero-title">Plano de Preventivas</span>
+      <span class="pl-hero-hint">Selecione os equipamentos, defina a data e agende em um único clique</span>
+    </div>
+    <div class="pl-hero-stat">
+      <div class="pl-stat-pill">
+        <span class="pl-stat-num">{{ total }}</span>
+        <span class="pl-stat-lbl">equipamentos</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Filtros -->
+  <section class="pl-filter-card">
+    <form method="get" action="{% url 'preventiva_plano' %}" class="pl-filter-grid" id="pl-filter-form">
+      <div class="pl-field">
+        <label for="pl-q">Buscar</label>
+        <div class="pl-input-wrap">
+          <i class="fa fa-search" aria-hidden="true"></i>
+          <input id="pl-q" type="text" name="q" class="pl-control has-icon"
+                 placeholder="Equipamento, NS, local, checklist..." value="{{ filter_q }}">
+        </div>
+      </div>
+      <div class="pl-field">
+        <label>Status</label>
+        <select name="status" class="pl-control">
+          <option value="">Todos</option>
+          <option value="vencida"    {% if filter_status == 'vencida'    %}selected{% endif %}>Vencidas</option>
+          <option value="proxima"    {% if filter_status == 'proxima'    %}selected{% endif %}>Próximas</option>
+          <option value="ok"         {% if filter_status == 'ok'         %}selected{% endif %}>Em dia</option>
+          <option value="agendada"   {% if filter_status == 'agendada'   %}selected{% endif %}>Já agendadas</option>
+          <option value="indefinido" {% if filter_status == 'indefinido' %}selected{% endif %}>Sem data</option>
+        </select>
+      </div>
+      <div class="pl-field">
+        <label for="pl-filtro-localidade">Localidade</label>
+        <select name="localidade" id="pl-filtro-localidade" class="pl-control">
+          <option value="">Todas</option>
+          {% for l in localidades %}
+            <option value="{{ l.pk }}" {% if filter_localidade|stringformat:'s' == l.pk|stringformat:'s' %}selected{% endif %}>{{ l.local }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="pl-field">
+        <label>Checklist</label>
+        <select name="checklist" class="pl-control">
+          <option value="">Todos</option>
+          {% for c in checklists %}
+            <option value="{{ c.pk }}" {% if filter_checklist|stringformat:'s' == c.pk|stringformat:'s' %}selected{% endif %}>{{ c.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="pl-filter-actions">
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="fa fa-filter" aria-hidden="true"></i> Filtrar
+        </button>
+        {% if filter_q or filter_status or filter_localidade or filter_checklist %}
+          <a href="{% url 'preventiva_plano' %}" class="btn btn-sm">
+            <i class="fa fa-xmark" aria-hidden="true"></i> Limpar
+          </a>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+
+  <!-- POST form -->
+  <form method="post" action="{% url 'preventiva_plano' %}" id="pl-plano-form" novalidate>
+    {% csrf_token %}
+
+    <!-- Barra de ação sticky -->
+    <div class="pl-action-bar">
+
+      <!-- Contador -->
+      <div class="pl-counter-wrap">
+        <div class="pl-counter-label">Sel.</div>
+        <div class="pl-counter-num" id="pl-count">0</div>
+        <div class="pl-counter-sep">/</div>
+        <div class="pl-counter-total">{{ total }}</div>
+      </div>
+
+      <div class="pl-sep" aria-hidden="true"></div>
+
+      <!-- Data -->
+      <div class="pl-date-wrap">
+        <label for="pl-data-input">Data de agendamento</label>
+        <input type="date" name="data_agendamento" id="pl-data-input"
+               class="pl-date-input" autocomplete="off">
+      </div>
+
+      <!-- Botões -->
+      <div class="pl-action-buttons">
+        <button type="submit" name="acao" value="agendar" class="btn btn-primary btn-sm" id="pl-btn-agendar">
+          <i class="fa fa-calendar-check" aria-hidden="true"></i> Agendar selecionados
+        </button>
+        <button type="submit" name="acao" value="limpar" class="btn btn-danger btn-sm" id="pl-btn-limpar">
+          <i class="fa fa-calendar-xmark" aria-hidden="true"></i> Remover agendamento
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabela -->
+    <div class="pl-table-card" style="margin-top:.85rem;">
+      <div class="pl-table-header">
+        <span class="pl-table-title">
+          <i class="fa fa-list-check" aria-hidden="true"></i>
+          {{ total }} equipamento{{ total|pluralize:"s" }}{% if filter_q or filter_status or filter_localidade or filter_checklist %} — filtro ativo{% endif %}
+        </span>
+        {% if page_obj %}
+          <label style="display:flex;align-items:center;gap:.45rem;font-size:.82rem;font-weight:600;cursor:pointer;user-select:none;color:var(--pl-sub);">
+            <input type="checkbox" id="pl-sel-all" class="pl-cb" style="display:inline;margin:0;"> Selecionar página
+          </label>
+        {% endif %}
+      </div>
+
+      <div class="pl-table-wrap">
+        <table class="pl-table">
+          <thead>
+            <tr>
+              <th style="width:3rem; text-align:center;"></th>
+              <th>Equipamento</th>
+              <th>Checklist</th>
+              <th>Intervalo</th>
+              <th>Última execução</th>
+              <th>Próxima / Agendada</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in page_obj %}
+              <tr {% if p.tem_agendamento %}class="has-sched"{% endif %}>
+                <td style="text-align:center;">
+                  <div class="pl-cb-wrap">
+                    <input type="checkbox" name="item_ids" value="{{ p.pk }}"
+                           class="pl-cb pl-row-cb"
+                           aria-label="Selecionar {{ p.equipamento.nome }}">
+                  </div>
+                </td>
+                <td>
+                  <div class="pl-name">{{ p.equipamento.nome }}</div>
+                  <div class="pl-meta">
+                    {% if p.equipamento.numero_serie %}NS: {{ p.equipamento.numero_serie }}{% endif %}
+                    {% if p.equipamento.localidade %} · {{ p.equipamento.localidade.local }}{% endif %}
+                    {% if p.equipamento.subtipo %} · {{ p.equipamento.subtipo.nome }}{% endif %}
+                  </div>
+                </td>
+                <td style="color:var(--pl-sub);font-size:.8rem;">{{ p.checklist_modelo.nome|default:"—" }}</td>
+                <td>
+                  <span style="font-weight:700;">{{ p.intervalo_dias_calc|default:0 }}d</span>
+                  <div class="pl-meta">{{ p.intervalo_origem_calc }}</div>
+                </td>
+                <td style="color:var(--pl-sub);font-size:.8rem;">{{ p.data_ultima|date:"d/m/Y"|default:"—" }}</td>
+                <td>
+                  {% if p.tem_agendamento %}
+                    <span class="pl-badge-agendado">
+                      <i class="fa fa-calendar-check" aria-hidden="true"></i>
+                      {{ p.proxima_calc|date:"d/m/Y" }}
+                    </span>
+                  {% else %}
+                    <span style="color:var(--pl-sub);">{{ p.proxima_calc|date:"d/m/Y"|default:"—" }}</span>
+                  {% endif %}
+                  {% if p.dias_restantes is not None %}
+                    <div class="pl-meta">
+                      {% if p.dias_restantes < 0 %}
+                        {{ p.dias_restantes|stringformat:"d"|slice:"1:" }} dia{{ p.dias_restantes|stringformat:"d"|slice:"1:"|pluralize:"s" }} em atraso
+                      {% elif p.dias_restantes == 0 %}Vence hoje
+                      {% else %}{{ p.dias_restantes }} dia{{ p.dias_restantes|pluralize:"s" }}
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                </td>
+                <td><span class="pl-pill {{ p.status_css }}">{{ p.status_label }}</span></td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="7">
+                  <div class="pl-empty">
+                    <i class="fa fa-inbox" aria-hidden="true"></i>
+                    Nenhum equipamento encontrado{% if filter_q or filter_status or filter_localidade or filter_checklist %} para os filtros aplicados{% endif %}.
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </form>
+
+  <!-- Paginação (fora do form) -->
+  {% if page_obj.has_other_pages %}
+    <nav class="pl-pagination" aria-label="Paginação">
+      {% if page_obj.has_previous %}
+        <a class="btn btn-sm" href="?page={{ page_obj.previous_page_number }}{% if filter_q %}&q={{ filter_q }}{% endif %}{% if filter_status %}&status={{ filter_status }}{% endif %}{% if filter_localidade %}&localidade={{ filter_localidade }}{% endif %}{% if filter_checklist %}&checklist={{ filter_checklist }}{% endif %}">
+          <i class="fa fa-chevron-left" aria-hidden="true"></i> Anterior
+        </a>
+      {% endif %}
+      <span class="pl-page-info">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+      {% if page_obj.has_next %}
+        <a class="btn btn-sm" href="?page={{ page_obj.next_page_number }}{% if filter_q %}&q={{ filter_q }}{% endif %}{% if filter_status %}&status={{ filter_status }}{% endif %}{% if filter_localidade %}&localidade={{ filter_localidade }}{% endif %}{% if filter_checklist %}&checklist={{ filter_checklist }}{% endif %}">
+          Próxima <i class="fa fa-chevron-right" aria-hidden="true"></i>
+        </a>
+      {% endif %}
+    </nav>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+  /* ── Autosubmit localidade ───────────────────────────────── */
+  var locSelect = document.getElementById('pl-filtro-localidade');
+  if (locSelect) {
+    locSelect.addEventListener('change', function () {
+      document.getElementById('pl-filter-form').submit();
+    });
+  }
+
+  /* ── Contador ────────────────────────────────────────────── */
+  var counterEl = document.getElementById('pl-count');
+  var selAll    = document.getElementById('pl-sel-all');
+
+  function bump(el) {
+    if (!el) return;
+    el.classList.remove('bump');
+    void el.offsetWidth;
+    el.classList.add('bump');
+    setTimeout(function () { el.classList.remove('bump'); }, 200);
+  }
+
+  function atualizarContador() {
+    var checked = document.querySelectorAll('.pl-row-cb:checked');
+    var all     = document.querySelectorAll('.pl-row-cb');
+    var n       = checked.length;
+    var total   = all.length;
+    if (counterEl) { counterEl.textContent = n; bump(counterEl); }
+    if (selAll) {
+      selAll.checked       = (n > 0 && n === total);
+      selAll.indeterminate = (n > 0 && n < total);
+    }
+  }
+
+  if (selAll) {
+    selAll.addEventListener('change', function () {
+      var marcado = this.checked;
+      document.querySelectorAll('.pl-row-cb').forEach(function (cb) {
+        cb.checked = marcado;
+        var tr = cb.closest('tr');
+        if (tr) tr.classList.toggle('is-selected', marcado);
+      });
+      atualizarContador();
+    });
+  }
+
+  document.addEventListener('change', function (e) {
+    if (e.target && e.target.classList.contains('pl-row-cb')) {
+      var tr = e.target.closest('tr');
+      if (tr) tr.classList.toggle('is-selected', e.target.checked);
+      atualizarContador();
+    }
+  });
+
+  /* ── Validação submit ────────────────────────────────────── */
+  var form = document.getElementById('pl-plano-form');
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      var checked = document.querySelectorAll('.pl-row-cb:checked');
+      if (!checked.length) {
+        e.preventDefault();
+        alert('Selecione pelo menos um equipamento antes de continuar.');
+        return;
+      }
+      var acao = '';
+      var ae = document.activeElement;
+      if (ae && ae.name === 'acao') acao = ae.value;
+      if (acao === 'agendar') {
+        var dataInput = document.getElementById('pl-data-input');
+        if (!dataInput || !dataInput.value) {
+          e.preventDefault();
+          alert('Informe a data de agendamento.');
+          if (dataInput) dataInput.focus();
+          return;
+        }
+      }
+      if (acao === 'limpar') {
+        if (!confirm('Remover o agendamento de ' + checked.length + ' equipamento(s)?')) {
+          e.preventDefault();
+          return;
+        }
+      }
+    });
+  }
+
+});
+</script>
+{% endblock %}

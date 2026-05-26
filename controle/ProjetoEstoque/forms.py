@@ -11,7 +11,7 @@ from .models import (
     StatusItemChoices, TipoMovimentacaoChoices, TipoTransferenciaChoices,
     LocalidadeChoices, CheckListModelo, CheckListPergunta, Preventiva,
     TipoRespostaChoices, SimNaoChoices, Licenca, MovimentacaoLicenca,
-    TipoMovLicencaChoices, LicencaLote, LoteEstoque, ItemLote
+    TipoMovLicencaChoices, LicencaLote, LoteEstoque, ItemLote, PlantaProjeto
 )
 
 BASE_CTRL_CSS = {
@@ -1117,3 +1117,35 @@ class TermoGeracaoForm(forms.Form):
             "class": "form-select select2-basic"
         })
     )
+
+
+# ================== PLANTAS ==================
+class PlantaProjetoForm(forms.ModelForm):
+    class Meta:
+        model = PlantaProjeto
+        fields = ["nome", "localidade", "descricao", "imagem_fundo"]
+        widgets = {
+            "nome": forms.TextInput(attrs={
+                "class": "ctrl", "placeholder": "Ex: Karitel - Sala Técnica"
+            }),
+            "localidade": forms.Select(attrs={
+                "class": "ctrl", "data-select2": "1"
+            }),
+            "descricao": forms.Textarea(attrs={
+                "class": "ctrl", "rows": 3,
+                "placeholder": "Descrição opcional da planta..."
+            }),
+            "imagem_fundo": forms.ClearableFileInput(attrs={
+                "class": "ctrl", "accept": ".png,.jpg,.jpeg,.svg"
+            }),
+        }
+
+    def clean_imagem_fundo(self):
+        img = self.cleaned_data.get("imagem_fundo")
+        if img and hasattr(img, "name"):
+            ext = img.name.rsplit(".", 1)[-1].lower()
+            if ext not in ("png", "jpg", "jpeg"):
+                raise ValidationError("Formato não suportado. Use PNG ou JPG.")
+            if img.size > 10 * 1024 * 1024:
+                raise ValidationError("Imagem excede o limite de 10 MB.")
+        return img

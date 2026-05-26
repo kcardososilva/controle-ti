@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+{% block title %}QR Code — {{ item.nome }}{% endblock %}
+{% block page_title %}{{ item.nome }}{% endblock %}
+{% block page_subtitle %}QR Code de identificação do equipamento{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'equipamento_detalhe' item.pk %}" class="btn btn-sm">
+    <i class="fa-solid fa-arrow-left"></i> Voltar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.qr-page) {
+  --qr-bg: var(--bg-elevated, #fff);
+  --qr-radius: var(--radius-lg, 18px);
+  --qr-border: var(--separator-hairline, rgba(0,0,0,.06));
+}
+.qr-page {
+  max-width: 480px; margin: 0 auto; padding: 24px 0;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.qr-card {
+  background: var(--qr-bg); border: 1px solid var(--qr-border);
+  border-radius: var(--qr-radius);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 32px 24px; gap: 18px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.06);
+}
+.qr-title {
+  font-size: 1rem; font-weight: 700; text-align: center;
+  color: var(--text-primary, #1d1d1f);
+}
+.qr-sub {
+  font-size: .75rem; color: var(--text-tertiary, #6e6e73);
+  text-align: center; max-width: 300px;
+}
+#qrCode canvas, #qrCode img { border-radius: 10px; }
+.qr-info {
+  width: 100%; background: var(--bg-page, #f5f5f7);
+  border-radius: 10px; padding: 12px 16px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.qr-info-row {
+  display: flex; gap: 8px; align-items: baseline;
+  font-size: .78rem;
+}
+.qr-info-label { color: var(--text-tertiary, #6e6e73); font-weight: 600; min-width: 80px; }
+.qr-info-val { color: var(--text-primary, #1d1d1f); word-break: break-word; }
+.qr-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.qr-btn {
+  padding: 9px 20px; border-radius: 10px; font-size: .83rem;
+  font-weight: 600; cursor: pointer; border: none; display: flex;
+  align-items: center; gap: 7px; text-decoration: none;
+  transition: opacity 130ms;
+}
+.qr-btn:hover { opacity: .85; }
+.qr-btn.primary { background: var(--brand, #0071e3); color: #fff; }
+.qr-btn.secondary { background: var(--bg-page, #f5f5f7); color: var(--text-primary,#1d1d1f); border: 1px solid var(--separator-hairline,rgba(0,0,0,.08)); }
+@media print {
+  .qr-actions, nav, .page-header, .sidebar { display: none !important; }
+  .qr-card { box-shadow: none; border: 1px solid #ccc; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="qr-page">
+  <div class="qr-card">
+    <div class="qr-title"><i class="fa-solid fa-qrcode" style="color:var(--brand,#0071e3)"></i> QR Code</div>
+    <div id="qrCode"></div>
+    <div class="qr-info">
+      <div class="qr-info-row">
+        <span class="qr-info-label">Equipamento</span>
+        <span class="qr-info-val">{{ item.nome }}</span>
+      </div>
+      {% if item.numero_serie %}
+      <div class="qr-info-row">
+        <span class="qr-info-label">Série</span>
+        <span class="qr-info-val" style="font-family:monospace">{{ item.numero_serie }}</span>
+      </div>
+      {% endif %}
+      {% if item.marca %}
+      <div class="qr-info-row">
+        <span class="qr-info-label">Marca</span>
+        <span class="qr-info-val">{{ item.marca }}{% if item.modelo %} {{ item.modelo }}{% endif %}</span>
+      </div>
+      {% endif %}
+      {% if item.localidade %}
+      <div class="qr-info-row">
+        <span class="qr-info-label">Localidade</span>
+        <span class="qr-info-val">{{ item.localidade.local }}</span>
+      </div>
+      {% endif %}
+    </div>
+    <div class="qr-sub">Aponte a câmera para abrir a ficha completa deste equipamento</div>
+    <div class="qr-actions">
+      <button class="qr-btn primary" onclick="baixarQR()">
+        <i class="fa-solid fa-download"></i> Baixar PNG
+      </button>
+      <button class="qr-btn secondary" onclick="window.print()">
+        <i class="fa-solid fa-print"></i> Imprimir
+      </button>
+      <a href="{% url 'equipamento_detalhe' item.pk %}" class="qr-btn secondary">
+        <i class="fa-solid fa-arrow-up-right-from-square"></i> Abrir Ficha
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+const QR_URL = "{{ detalhe_url|escapejs }}";
+const qr = new QRCode(document.getElementById('qrCode'), {
+  text: QR_URL,
+  width: 220, height: 220,
+  colorDark: '#1d1d1f', colorLight: '#ffffff',
+  correctLevel: QRCode.CorrectLevel.H,
+});
+function baixarQR() {
+  setTimeout(() => {
+    const canvas = document.querySelector('#qrCode canvas');
+    if (!canvas) { alert('QR ainda carregando, tente novamente.'); return; }
+    const link = document.createElement('a');
+    link.download = 'qr-{{ item.nome|slugify|default:"equipamento" }}.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }, 100);
+}
+</script>
+{% endblock %}

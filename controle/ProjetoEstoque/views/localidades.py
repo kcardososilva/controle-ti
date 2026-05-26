@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
+from django.core.paginator import Paginator
 from django.db.models import Q
 from ..models import Localidade, LocalidadeChoices, Item, Usuario
 from ..forms import LocalidadeForm
@@ -8,12 +9,23 @@ from ..forms import LocalidadeForm
 
 @login_required
 def localidade_list(request):
-    qs = Localidade.objects.all().order_by("local")
     q = request.GET.get("q", "").strip()
+    qs = Localidade.objects.all().order_by("local")
     if q:
         qs = qs.filter(Q(local__icontains=q) | Q(codigo__icontains=q))
+    total = qs.count()
+
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    get_copy = request.GET.copy()
+    if "page" in get_copy:
+        del get_copy["page"]
+
     context = {
-        "localidades": qs,
+        "localidades": page_obj.object_list,
+        "page_obj": page_obj,
+        "total": total,
+        "qs_keep": get_copy.urlencode(),
         "LocalidadeChoices": LocalidadeChoices,
         "q": q,
     }
@@ -55,6 +67,7 @@ def localidade_update(request, pk):
 
 
 @login_required
+@permission_required("ProjetoEstoque.delete_localidade", raise_exception=True)
 def localidade_delete(request, pk):
     obj = get_object_or_404(Localidade, pk=pk)
     if request.method == "POST":

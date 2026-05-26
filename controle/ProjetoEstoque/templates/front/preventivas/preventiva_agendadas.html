@@ -1,0 +1,926 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Preventivas Agendadas{% endblock %}
+{% block page_title %}Preventivas Agendadas{% endblock %}
+{% block page_subtitle %}Visualize e gerencie todos os equipamentos com data de execução programada{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'preventiva_plano' %}" class="btn btn-sm btn-primary">
+    <i class="fa fa-calendar-plus" aria-hidden="true"></i> Novo Agendamento
+  </a>
+  <a href="{% url 'preventiva_list' %}" class="btn btn-sm">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i> Voltar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.agd-page) {
+  --agd-primary:   var(--brand);
+  --agd-surface:   var(--bg-elevated);
+  --agd-muted:     var(--bg-fill-tertiary);
+  --agd-text:      var(--text-primary);
+  --agd-sub:       var(--text-tertiary);
+  --agd-soft:      var(--text-quaternary);
+  --agd-border:    var(--separator-hairline);
+  --agd-border2:   var(--separator-non-opaque);
+  --agd-hover:     var(--bg-hover);
+  --agd-r-sm:      var(--radius-sm);
+  --agd-r-md:      var(--radius-md);
+  --agd-r-lg:      var(--radius-lg);
+  --agd-r-xl:      var(--radius-xl);
+  --agd-pill:      var(--radius-pill);
+  --agd-shadow:    var(--shadow-sm);
+  --agd-shadow-md: var(--shadow-md);
+  --agd-tr:        var(--transition-fast);
+
+  /* urgency palette */
+  --agd-red:       #ef4444;
+  --agd-red-bg:    rgba(239,68,68,.10);
+  --agd-red-brd:   rgba(239,68,68,.25);
+  --agd-red-txt:   #b91c1c;
+  --agd-amber:     #f59e0b;
+  --agd-amber-bg:  rgba(245,158,11,.12);
+  --agd-amber-brd: rgba(245,158,11,.30);
+  --agd-amber-txt: #92400e;
+  --agd-green:     #10b981;
+  --agd-green-bg:  rgba(16,185,129,.11);
+  --agd-green-brd: rgba(16,185,129,.28);
+  --agd-green-txt: #047857;
+  --agd-indigo:    #6366f1;
+}
+
+.agd-page, .agd-page * { box-sizing: border-box; min-width: 0; }
+
+.agd-page {
+  width: 100%; max-width: 92rem;
+  margin: 0 auto;
+  display: grid; gap: 1.25rem;
+  color: var(--agd-text);
+}
+
+/* ── HERO ──────────────────────────────────────────────────── */
+.agd-hero {
+  position: relative;
+  background: linear-gradient(135deg, #4338ca 0%, #6366f1 55%, #818cf8 100%);
+  border-radius: var(--agd-r-xl);
+  padding: 2rem 2.25rem;
+  color: #fff;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(99,102,241,.30);
+}
+
+.agd-hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 80% 50%, rgba(255,255,255,.08) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.agd-hero-body {
+  position: relative;
+  display: flex; align-items: center; gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.agd-hero-icon {
+  width: 3.6rem; height: 3.6rem;
+  display: grid; place-items: center;
+  border-radius: var(--agd-r-lg);
+  background: rgba(255,255,255,.18);
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.agd-hero-title {
+  font-size: clamp(1.1rem, 2vw, 1.45rem);
+  font-weight: 700; line-height: 1.2;
+}
+
+.agd-hero-sub {
+  margin-top: .3rem;
+  font-size: .83rem;
+  opacity: .78;
+}
+
+.agd-hero-stat {
+  margin-left: auto;
+  display: flex; align-items: center; gap: .5rem;
+  background: rgba(255,255,255,.15);
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: var(--agd-pill);
+  padding: .5rem 1rem;
+  font-size: .88rem; font-weight: 700;
+}
+
+.agd-hero-stat i { opacity: .8; }
+
+/* ── KPI CARDS ─────────────────────────────────────────────── */
+.agd-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: .85rem;
+}
+
+.agd-kpi {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 1.15rem 1.25rem;
+  border-radius: var(--agd-r-xl);
+  border: 1px solid var(--agd-border);
+  background: var(--agd-surface);
+  box-shadow: var(--agd-shadow);
+  transition: box-shadow var(--agd-tr), transform var(--agd-tr);
+}
+
+.agd-kpi:hover {
+  box-shadow: var(--agd-shadow-md);
+  transform: translateY(-2px);
+}
+
+.agd-kpi-icon {
+  width: 3rem; height: 3rem;
+  display: grid; place-items: center;
+  border-radius: var(--agd-r-md);
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.agd-kpi-icon.k-default  { background: rgba(99,102,241,.12); color: var(--agd-indigo); }
+.agd-kpi-icon.k-red      { background: var(--agd-red-bg);   color: var(--agd-red-txt); }
+.agd-kpi-icon.k-amber    { background: var(--agd-amber-bg); color: var(--agd-amber-txt); }
+.agd-kpi-icon.k-green    { background: var(--agd-green-bg); color: var(--agd-green-txt); }
+
+.agd-kpi-body { flex: 1; min-width: 0; }
+
+.agd-kpi-label {
+  color: var(--agd-sub);
+  font-size: .7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.agd-kpi-value {
+  margin-top: .3rem;
+  font-size: clamp(1.5rem, 2.5vw, 2rem);
+  font-weight: 800; line-height: 1;
+  color: var(--agd-text);
+}
+
+.agd-kpi-hint {
+  margin-top: .25rem;
+  font-size: .72rem;
+  color: var(--agd-soft);
+}
+
+/* ── FILTER CARD ───────────────────────────────────────────── */
+.agd-filter-card {
+  padding: 1rem 1.25rem;
+  border-radius: var(--agd-r-xl);
+  border: 1px solid var(--agd-border);
+  background: var(--agd-surface);
+  box-shadow: var(--agd-shadow);
+}
+
+.agd-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(14rem,2fr) minmax(10rem,1fr) minmax(10rem,1fr) auto;
+  gap: .75rem; align-items: end;
+}
+
+.agd-field label {
+  display: block; margin: 0 0 .3rem;
+  color: var(--agd-sub);
+  font-size: .7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .065em;
+}
+
+.agd-input-wrap { position: relative; }
+.agd-input-wrap i {
+  position: absolute; left: .8rem; top: 50%;
+  transform: translateY(-50%);
+  color: var(--agd-soft); pointer-events: none; font-size: .84rem;
+}
+
+.agd-control {
+  width: 100%; height: 2.5rem;
+  border: 1px solid var(--agd-border2);
+  border-radius: var(--agd-r-sm);
+  background: var(--agd-surface); color: var(--agd-text);
+  padding: 0 .85rem; font-size: .86rem; font-family: inherit;
+  outline: none; appearance: auto;
+  transition: border-color var(--agd-tr), box-shadow var(--agd-tr);
+}
+.agd-control.has-icon { padding-left: 2.3rem; }
+.agd-control:focus {
+  border-color: var(--agd-primary);
+  box-shadow: 0 0 0 4px rgba(0,113,227,.22);
+}
+
+.agd-filter-actions { display: flex; gap: .45rem; }
+
+/* ── TABLE CARD ────────────────────────────────────────────── */
+.agd-table-card {
+  overflow: hidden;
+  border-radius: var(--agd-r-xl);
+  border: 1px solid var(--agd-border);
+  background: var(--agd-surface);
+  box-shadow: var(--agd-shadow);
+}
+
+.agd-table-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .75rem; padding: .9rem 1.25rem;
+  border-bottom: 1px solid var(--agd-border); flex-wrap: wrap;
+}
+
+.agd-table-title {
+  color: var(--agd-sub); font-size: .75rem;
+  font-weight: 700; text-transform: uppercase; letter-spacing: .065em;
+}
+
+.agd-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+.agd-table {
+  width: 100%; min-width: 60rem; border-collapse: collapse;
+}
+
+.agd-table th, .agd-table td {
+  padding: .9rem 1rem;
+  border-bottom: 1px solid var(--agd-border);
+  vertical-align: middle; text-align: left;
+}
+
+.agd-table th {
+  background: color-mix(in srgb, var(--agd-surface) 85%, var(--agd-muted));
+  color: var(--agd-sub); font-size: .7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .065em; white-space: nowrap;
+}
+
+.agd-table td { color: var(--agd-text); font-size: .84rem; }
+.agd-table tbody tr:hover td { background: var(--agd-hover); }
+.agd-table tbody tr:last-child td { border-bottom: none; }
+
+/* Urgency: left-border accent (cleaner than background tinting) */
+.agd-row-vencida td:first-child { border-left: 3px solid var(--agd-red); }
+.agd-row-hoje     td:first-child { border-left: 3px solid var(--agd-amber); }
+.agd-row-breve    td:first-child { border-left: 3px solid var(--agd-green); }
+
+.agd-name  { font-weight: 700; line-height: 1.25; }
+.agd-meta  { margin-top: .2rem; color: var(--agd-sub); font-size: .75rem; line-height: 1.35; }
+
+/* Date badge */
+.agd-date-badge {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: .82rem; font-weight: 700;
+  border-radius: 8px; padding: .28rem .65rem;
+  white-space: nowrap;
+}
+.agd-date-badge.vencida  { color: var(--agd-red-txt);   background: var(--agd-red-bg);   border: 1px solid var(--agd-red-brd); }
+.agd-date-badge.hoje     { color: var(--agd-amber-txt);  background: var(--agd-amber-bg);  border: 1px solid var(--agd-amber-brd); }
+.agd-date-badge.em-breve { color: var(--agd-green-txt);  background: var(--agd-green-bg);  border: 1px solid var(--agd-green-brd); }
+.agd-date-badge.futuro   { color: var(--agd-sub); background: var(--agd-muted); border: 1px solid var(--agd-border2); }
+
+/* Deadline text */
+.agd-prazo-atraso { color: var(--agd-red-txt);   font-weight: 700; font-size: .82rem; }
+.agd-prazo-hoje   { color: var(--agd-amber-txt);  font-weight: 700; font-size: .82rem; }
+.agd-prazo-ok     { color: var(--agd-sub);         font-size: .82rem; }
+
+/* Status pill */
+.agd-pill {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .3rem .65rem; border-radius: var(--agd-pill);
+  font-size: .7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em; white-space: nowrap;
+}
+.st-vencida { color: var(--agd-red-txt);   background: var(--agd-red-bg); }
+.st-atencao { color: var(--agd-amber-txt);  background: var(--agd-amber-bg); }
+.st-ok      { color: var(--agd-green-txt);  background: var(--agd-green-bg); }
+.st-indef   { color: var(--agd-sub);        background: var(--agd-muted); }
+.st-pausada { color: #6d28d9; background: rgba(139,92,246,.14); }
+
+/* Executor chip */
+.agd-executor-chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  margin-top: .35rem;
+  padding: .2rem .5rem;
+  border-radius: var(--agd-pill);
+  background: var(--agd-muted);
+  border: 1px solid var(--agd-border2);
+  font-size: .72rem; color: var(--agd-sub);
+}
+
+/* Action buttons */
+.agd-action-group { display: inline-flex; gap: .35rem; justify-content: flex-end; }
+
+.agd-icon-btn {
+  width: 2.1rem; height: 2.1rem;
+  display: inline-grid; place-items: center;
+  border-radius: var(--agd-r-sm);
+  color: var(--agd-sub);
+  background: var(--agd-surface);
+  border: 1px solid var(--agd-border2);
+  text-decoration: none; cursor: pointer;
+  transition: color var(--agd-tr), border-color var(--agd-tr),
+              background var(--agd-tr), transform var(--agd-tr);
+  font-size: .82rem;
+}
+.agd-icon-btn:hover {
+  color: var(--agd-primary);
+  background: rgba(0,113,227,.06);
+  border-color: rgba(0,113,227,.30);
+  transform: translateY(-1px);
+}
+.agd-icon-btn.danger:hover {
+  color: var(--agd-red-txt);
+  background: var(--agd-red-bg);
+  border-color: var(--agd-red-brd);
+}
+.agd-icon-btn.exec-btn:hover {
+  color: var(--agd-green-txt);
+  background: var(--agd-green-bg);
+  border-color: var(--agd-green-brd);
+}
+
+/* Empty state */
+.agd-empty {
+  padding: 4rem 1rem; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: .75rem;
+}
+.agd-empty-icon {
+  width: 3.5rem; height: 3.5rem;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--agd-muted);
+  font-size: 1.4rem; color: var(--agd-soft);
+}
+.agd-empty-text { color: var(--agd-sub); font-size: .9rem; }
+.agd-empty-sub  { color: var(--agd-soft); font-size: .8rem; }
+
+/* Pagination */
+.agd-pagination { display: flex; justify-content: center; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.agd-page-info  { color: var(--agd-sub); font-size: .84rem; padding: .45rem .75rem; }
+
+/* ── MOBILE CARDS ─────────────────────────────────────────── */
+.agd-mobile-list { display: none; }
+
+.agd-mobile-card {
+  border-radius: var(--agd-r-xl);
+  border: 1px solid var(--agd-border);
+  background: var(--agd-surface);
+  box-shadow: var(--agd-shadow);
+  overflow: hidden;
+}
+
+.agd-mc-head {
+  display: flex; align-items: flex-start;
+  justify-content: space-between; gap: .75rem;
+  padding: 1rem 1rem .75rem;
+}
+
+.agd-mc-eq  { flex: 1; min-width: 0; }
+.agd-mc-eq-name  { font-weight: 700; font-size: .9rem; line-height: 1.25; }
+.agd-mc-eq-meta  { margin-top: .2rem; color: var(--agd-sub); font-size: .76rem; line-height: 1.3; }
+
+.agd-mc-body {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 0; border-top: 1px solid var(--agd-border);
+}
+
+.agd-mc-cell {
+  padding: .7rem 1rem;
+  border-right: 1px solid var(--agd-border);
+  border-bottom: 1px solid var(--agd-border);
+}
+.agd-mc-cell:nth-child(2n) { border-right: none; }
+.agd-mc-cell:nth-last-child(-n+2) { border-bottom: none; }
+
+.agd-mc-cell-label {
+  font-size: .68rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em;
+  color: var(--agd-soft); margin-bottom: .3rem;
+}
+
+.agd-mc-actions {
+  display: flex; gap: .5rem;
+  padding: .75rem 1rem;
+  border-top: 1px solid var(--agd-border);
+  background: color-mix(in srgb, var(--agd-surface) 85%, var(--agd-muted));
+}
+
+.agd-mc-btn {
+  flex: 1; height: 2.3rem;
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  border-radius: var(--agd-r-sm);
+  font-size: .78rem; font-weight: 600;
+  text-decoration: none; cursor: pointer;
+  border: 1px solid var(--agd-border2);
+  background: var(--agd-surface); color: var(--agd-sub);
+  transition: background var(--agd-tr), color var(--agd-tr), border-color var(--agd-tr);
+}
+.agd-mc-btn:hover { background: var(--agd-hover); color: var(--agd-text); }
+.agd-mc-btn.exec { color: var(--agd-green-txt); border-color: var(--agd-green-brd); }
+.agd-mc-btn.exec:hover { background: var(--agd-green-bg); }
+.agd-mc-btn.remove { color: var(--agd-red-txt); border-color: var(--agd-red-brd); }
+.agd-mc-btn.remove:hover { background: var(--agd-red-bg); }
+
+/* Urgency accent on mobile card */
+.agd-mobile-card.mc-vencida { border-left: 3px solid var(--agd-red); }
+.agd-mobile-card.mc-hoje    { border-left: 3px solid var(--agd-amber); }
+.agd-mobile-card.mc-breve   { border-left: 3px solid var(--agd-green); }
+
+/* ── RESPONSIVE ───────────────────────────────────────────── */
+@media (max-width: 72rem) {
+  .agd-kpi-grid    { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .agd-filter-grid { grid-template-columns: 1fr 1fr; }
+  .agd-filter-grid .agd-filter-actions { grid-column: 1/-1; justify-content: flex-end; }
+}
+
+@media (max-width: 54rem) {
+  .agd-table-wrap  { display: none; }
+  .agd-mobile-list { display: grid; gap: .85rem; }
+}
+
+@media (max-width: 40rem) {
+  .agd-hero { padding: 1.5rem 1.25rem; }
+  .agd-hero-stat { display: none; }
+  .agd-kpi-grid { grid-template-columns: 1fr 1fr; }
+  .agd-kpi      { flex-direction: column; align-items: flex-start; gap: .5rem; }
+  .agd-kpi-icon { width: 2.4rem; height: 2.4rem; font-size: .95rem; }
+  .agd-filter-grid { grid-template-columns: 1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="agd-page">
+
+  <!-- Hero -->
+  <section class="agd-hero">
+    <div class="agd-hero-body">
+      <div class="agd-hero-icon">
+        <i class="fa fa-calendar-check" aria-hidden="true"></i>
+      </div>
+      <div>
+        <div class="agd-hero-title">Preventivas Agendadas</div>
+        <div class="agd-hero-sub">
+          Todas as manutenções com data de execução programada
+          {% if filter_q or filter_localidade or filter_periodo %}— filtro ativo{% endif %}
+        </div>
+      </div>
+      <div class="agd-hero-stat">
+        <i class="fa fa-calendar-days" aria-hidden="true"></i>
+        {{ total }} agendada{{ total|pluralize:"s" }}
+      </div>
+    </div>
+  </section>
+
+  <!-- KPIs -->
+  <section class="agd-kpi-grid">
+    <article class="agd-kpi">
+      <div class="agd-kpi-icon k-default">
+        <i class="fa fa-calendar-check" aria-hidden="true"></i>
+      </div>
+      <div class="agd-kpi-body">
+        <div class="agd-kpi-label">Total agendadas</div>
+        <div class="agd-kpi-value">{{ kpi.total }}</div>
+        <div class="agd-kpi-hint">Com data definida</div>
+      </div>
+    </article>
+
+    <article class="agd-kpi">
+      <div class="agd-kpi-icon k-red">
+        <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+      </div>
+      <div class="agd-kpi-body">
+        <div class="agd-kpi-label">Vencidas</div>
+        <div class="agd-kpi-value" style="color:var(--agd-red-txt);">{{ kpi.vencidas }}</div>
+        <div class="agd-kpi-hint">Data no passado</div>
+      </div>
+    </article>
+
+    <article class="agd-kpi">
+      <div class="agd-kpi-icon k-amber">
+        <i class="fa fa-sun" aria-hidden="true"></i>
+      </div>
+      <div class="agd-kpi-body">
+        <div class="agd-kpi-label">Hoje</div>
+        <div class="agd-kpi-value" style="color:var(--agd-amber-txt);">{{ kpi.hoje }}</div>
+        <div class="agd-kpi-hint">Programadas para hoje</div>
+      </div>
+    </article>
+
+    <article class="agd-kpi">
+      <div class="agd-kpi-icon k-green">
+        <i class="fa fa-calendar-week" aria-hidden="true"></i>
+      </div>
+      <div class="agd-kpi-body">
+        <div class="agd-kpi-label">Próximos 7 dias</div>
+        <div class="agd-kpi-value" style="color:var(--agd-green-txt);">{{ kpi.semana }}</div>
+        <div class="agd-kpi-hint">Carga da semana</div>
+      </div>
+    </article>
+  </section>
+
+  <!-- Filtros -->
+  <section class="agd-filter-card">
+    <form method="get" action="{% url 'preventiva_agendadas' %}" class="agd-filter-grid" id="agd-filter-form">
+      <div class="agd-field">
+        <label for="agd-q">Buscar</label>
+        <div class="agd-input-wrap">
+          <i class="fa fa-search" aria-hidden="true"></i>
+          <input id="agd-q" type="text" name="q" class="agd-control has-icon"
+                 placeholder="Equipamento, NS, local, checklist…" value="{{ filter_q }}">
+        </div>
+      </div>
+
+      <div class="agd-field">
+        <label for="agd-filtro-localidade">Localidade</label>
+        <select name="localidade" id="agd-filtro-localidade" class="agd-control">
+          <option value="">Todas</option>
+          {% for l in localidades %}
+            <option value="{{ l.pk }}" {% if filter_localidade|stringformat:'s' == l.pk|stringformat:'s' %}selected{% endif %}>{{ l.local }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="agd-field">
+        <label>Período</label>
+        <select name="periodo" class="agd-control">
+          <option value="">Todos</option>
+          <option value="vencidas" {% if filter_periodo == 'vencidas' %}selected{% endif %}>Vencidas</option>
+          <option value="hoje"     {% if filter_periodo == 'hoje'     %}selected{% endif %}>Hoje</option>
+          <option value="semana"   {% if filter_periodo == 'semana'   %}selected{% endif %}>Próximos 7 dias</option>
+        </select>
+      </div>
+
+      <div class="agd-filter-actions" style="align-items: flex-end;">
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="fa fa-filter" aria-hidden="true"></i> Filtrar
+        </button>
+        {% if filter_q or filter_localidade or filter_periodo %}
+          <a href="{% url 'preventiva_agendadas' %}" class="btn btn-sm">
+            <i class="fa fa-xmark" aria-hidden="true"></i> Limpar
+          </a>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+
+  <!-- Tabela (desktop) -->
+  <section class="agd-table-card">
+    <div class="agd-table-header">
+      <span class="agd-table-title">
+        <i class="fa fa-calendar-days" aria-hidden="true"></i>
+        {{ total }} preventiva{{ total|pluralize:"s" }} agendada{{ total|pluralize:"s" }}
+        {% if filter_q or filter_localidade or filter_periodo %} — filtro ativo{% endif %}
+      </span>
+    </div>
+
+    <!-- Desktop table -->
+    <div class="agd-table-wrap">
+      <table class="agd-table">
+        <thead>
+          <tr>
+            <th>Equipamento</th>
+            <th>Checklist</th>
+            <th>Data agendada</th>
+            <th>Prazo</th>
+            <th>Última execução</th>
+            <th>Status</th>
+            <th style="text-align:right;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in page_obj %}
+            <tr class="{% if p.dias_agendamento < 0 %}agd-row-vencida{% elif p.dias_agendamento == 0 %}agd-row-hoje{% elif p.dias_agendamento <= 7 %}agd-row-breve{% endif %}"
+                id="agd-row-{{ p.pk }}">
+              <td>
+                <div class="agd-name">{{ p.equipamento.nome }}</div>
+                <div class="agd-meta">
+                  {% if p.equipamento.numero_serie %}NS: {{ p.equipamento.numero_serie }}{% endif %}
+                  {% if p.equipamento.localidade %} · {{ p.equipamento.localidade.local }}{% endif %}
+                  {% if p.equipamento.subtipo %} · {{ p.equipamento.subtipo.nome }}{% endif %}
+                </div>
+              </td>
+
+              <td>{{ p.checklist_modelo.nome|default:"—" }}</td>
+
+              <td>
+                {% if p.dias_agendamento < 0 %}
+                  <span class="agd-date-badge vencida">
+                    <i class="fa fa-circle-exclamation" aria-hidden="true"></i>
+                    {{ p.data_agendamento|date:"d/m/Y" }}
+                  </span>
+                {% elif p.dias_agendamento == 0 %}
+                  <span class="agd-date-badge hoje">
+                    <i class="fa fa-sun" aria-hidden="true"></i>
+                    {{ p.data_agendamento|date:"d/m/Y" }}
+                  </span>
+                {% elif p.dias_agendamento <= 7 %}
+                  <span class="agd-date-badge em-breve">
+                    <i class="fa fa-calendar-check" aria-hidden="true"></i>
+                    {{ p.data_agendamento|date:"d/m/Y" }}
+                  </span>
+                {% else %}
+                  <span class="agd-date-badge futuro">
+                    <i class="fa fa-calendar" aria-hidden="true"></i>
+                    {{ p.data_agendamento|date:"d/m/Y" }}
+                  </span>
+                {% endif %}
+                {% if p.atualizado_por %}
+                  <div class="agd-meta" style="margin-top:.3rem;">
+                    <i class="fa fa-user" style="font-size:.68rem;opacity:.6;" aria-hidden="true"></i>
+                    {{ p.atualizado_por.get_full_name|default:p.atualizado_por.username }}
+                  </div>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if p.dias_agendamento < 0 %}
+                  <span class="agd-prazo-atraso">
+                    <i class="fa fa-clock" aria-hidden="true"></i>
+                    {{ p.dias_agendamento|stringformat:"d"|slice:"1:" }} dia{{ p.dias_agendamento|stringformat:"d"|slice:"1:"|pluralize:"s" }} atraso
+                  </span>
+                {% elif p.dias_agendamento == 0 %}
+                  <span class="agd-prazo-hoje">
+                    <i class="fa fa-sun" aria-hidden="true"></i> Hoje
+                  </span>
+                {% else %}
+                  <span class="agd-prazo-ok">em {{ p.dias_agendamento }} dia{{ p.dias_agendamento|pluralize:"s" }}</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if p.ultima_execucao_data %}
+                  <div>{{ p.ultima_execucao_data|date:"d/m/Y" }}</div>
+                  {% if p.ultimo_executor_nome or p.ultimo_executor_username %}
+                    <div class="agd-executor-chip">
+                      <i class="fa fa-user-check" style="font-size:.68rem;" aria-hidden="true"></i>
+                      {{ p.ultimo_executor_nome|default:p.ultimo_executor_username }}
+                    </div>
+                  {% endif %}
+                {% else %}
+                  <span style="color:var(--agd-soft);font-size:.82rem;">Sem execução</span>
+                {% endif %}
+              </td>
+
+              <td>
+                <span class="agd-pill {{ p.status_css }}">{{ p.status_label }}</span>
+              </td>
+
+              <td style="text-align:right;">
+                <div class="agd-action-group">
+                  <a href="{% url 'preventiva_exec' p.pk %}" class="agd-icon-btn exec-btn"
+                     title="Executar" aria-label="Executar preventiva">
+                    <i class="fa fa-play" aria-hidden="true"></i>
+                  </a>
+                  <a href="{% url 'preventiva_detail' p.pk %}" class="agd-icon-btn"
+                     title="Detalhes" aria-label="Ver detalhes">
+                    <i class="fa fa-eye" aria-hidden="true"></i>
+                  </a>
+                  <button type="button" class="agd-icon-btn danger agd-btn-remover"
+                          data-pk="{{ p.pk }}"
+                          data-url="{% url 'preventiva_agendar' p.pk %}"
+                          title="Remover agendamento"
+                          aria-label="Remover agendamento de {{ p.equipamento.nome }}">
+                    <i class="fa fa-calendar-xmark" aria-hidden="true"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+
+          {% empty %}
+            <tr>
+              <td colspan="7">
+                <div class="agd-empty">
+                  <div class="agd-empty-icon">
+                    <i class="fa fa-calendar-check" aria-hidden="true"></i>
+                  </div>
+                  <div class="agd-empty-text">
+                    {% if filter_q or filter_localidade or filter_periodo %}
+                      Nenhuma preventiva encontrada para os filtros aplicados.
+                    {% else %}
+                      Nenhuma preventiva agendada.
+                    {% endif %}
+                  </div>
+                  {% if not filter_q and not filter_localidade and not filter_periodo %}
+                    <div class="agd-empty-sub">
+                      <a href="{% url 'preventiva_plano' %}">Criar agendamento via Plano de Agendamento</a>
+                    </div>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Mobile cards -->
+    <div class="agd-mobile-list" style="padding: 1rem;">
+      {% for p in page_obj %}
+        <div class="agd-mobile-card {% if p.dias_agendamento < 0 %}mc-vencida{% elif p.dias_agendamento == 0 %}mc-hoje{% elif p.dias_agendamento <= 7 %}mc-breve{% endif %}"
+             id="agd-mc-{{ p.pk }}">
+
+          <div class="agd-mc-head">
+            <div class="agd-mc-eq">
+              <div class="agd-mc-eq-name">{{ p.equipamento.nome }}</div>
+              <div class="agd-mc-eq-meta">
+                {% if p.equipamento.numero_serie %}NS: {{ p.equipamento.numero_serie }}{% endif %}
+                {% if p.equipamento.localidade %} · {{ p.equipamento.localidade.local }}{% endif %}
+              </div>
+            </div>
+            <span class="agd-pill {{ p.status_css }}" style="flex-shrink:0;">{{ p.status_label }}</span>
+          </div>
+
+          <div class="agd-mc-body">
+            <div class="agd-mc-cell">
+              <div class="agd-mc-cell-label">Data agendada</div>
+              {% if p.dias_agendamento < 0 %}
+                <span class="agd-date-badge vencida" style="font-size:.76rem;">
+                  <i class="fa fa-circle-exclamation" aria-hidden="true"></i>
+                  {{ p.data_agendamento|date:"d/m/Y" }}
+                </span>
+              {% elif p.dias_agendamento == 0 %}
+                <span class="agd-date-badge hoje" style="font-size:.76rem;">
+                  <i class="fa fa-sun" aria-hidden="true"></i>
+                  {{ p.data_agendamento|date:"d/m/Y" }}
+                </span>
+              {% elif p.dias_agendamento <= 7 %}
+                <span class="agd-date-badge em-breve" style="font-size:.76rem;">
+                  <i class="fa fa-calendar-check" aria-hidden="true"></i>
+                  {{ p.data_agendamento|date:"d/m/Y" }}
+                </span>
+              {% else %}
+                <span class="agd-date-badge futuro" style="font-size:.76rem;">
+                  <i class="fa fa-calendar" aria-hidden="true"></i>
+                  {{ p.data_agendamento|date:"d/m/Y" }}
+                </span>
+              {% endif %}
+              {% if p.atualizado_por %}
+                <div class="agd-meta" style="margin-top:.3rem;">
+                  {{ p.atualizado_por.get_full_name|default:p.atualizado_por.username }}
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="agd-mc-cell">
+              <div class="agd-mc-cell-label">Prazo</div>
+              {% if p.dias_agendamento < 0 %}
+                <span class="agd-prazo-atraso">{{ p.dias_agendamento|stringformat:"d"|slice:"1:" }}d atraso</span>
+              {% elif p.dias_agendamento == 0 %}
+                <span class="agd-prazo-hoje">Hoje</span>
+              {% else %}
+                <span class="agd-prazo-ok">em {{ p.dias_agendamento }}d</span>
+              {% endif %}
+            </div>
+
+            <div class="agd-mc-cell">
+              <div class="agd-mc-cell-label">Checklist</div>
+              <span style="font-size:.82rem;">{{ p.checklist_modelo.nome|default:"—" }}</span>
+            </div>
+
+            <div class="agd-mc-cell">
+              <div class="agd-mc-cell-label">Última execução</div>
+              {% if p.ultima_execucao_data %}
+                <span style="font-size:.82rem;">{{ p.ultima_execucao_data|date:"d/m/Y" }}</span>
+                {% if p.ultimo_executor_nome or p.ultimo_executor_username %}
+                  <div class="agd-meta">{{ p.ultimo_executor_nome|default:p.ultimo_executor_username }}</div>
+                {% endif %}
+              {% else %}
+                <span style="color:var(--agd-soft);font-size:.8rem;">Sem execução</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="agd-mc-actions">
+            <a href="{% url 'preventiva_exec' p.pk %}" class="agd-mc-btn exec">
+              <i class="fa fa-play" aria-hidden="true"></i> Executar
+            </a>
+            <a href="{% url 'preventiva_detail' p.pk %}" class="agd-mc-btn">
+              <i class="fa fa-eye" aria-hidden="true"></i> Detalhes
+            </a>
+            <button type="button" class="agd-mc-btn remove agd-btn-remover"
+                    data-pk="{{ p.pk }}"
+                    data-url="{% url 'preventiva_agendar' p.pk %}"
+                    aria-label="Remover agendamento">
+              <i class="fa fa-calendar-xmark" aria-hidden="true"></i> Remover
+            </button>
+          </div>
+        </div>
+
+      {% empty %}
+        <div class="agd-empty">
+          <div class="agd-empty-icon">
+            <i class="fa fa-calendar-check" aria-hidden="true"></i>
+          </div>
+          <div class="agd-empty-text">
+            {% if filter_q or filter_localidade or filter_periodo %}
+              Nenhuma preventiva encontrada para os filtros aplicados.
+            {% else %}
+              Nenhuma preventiva agendada.
+              <a href="{% url 'preventiva_plano' %}">Criar agendamento</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- Paginação -->
+  {% if page_obj.has_other_pages %}
+    <nav class="agd-pagination" aria-label="Paginação">
+      {% if page_obj.has_previous %}
+        <a class="btn btn-sm"
+           href="?page={{ page_obj.previous_page_number }}{% if filter_q %}&q={{ filter_q }}{% endif %}{% if filter_localidade %}&localidade={{ filter_localidade }}{% endif %}{% if filter_periodo %}&periodo={{ filter_periodo }}{% endif %}">
+          <i class="fa fa-chevron-left" aria-hidden="true"></i> Anterior
+        </a>
+      {% endif %}
+      <span class="agd-page-info">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+      {% if page_obj.has_next %}
+        <a class="btn btn-sm"
+           href="?page={{ page_obj.next_page_number }}{% if filter_q %}&q={{ filter_q }}{% endif %}{% if filter_localidade %}&localidade={{ filter_localidade }}{% endif %}{% if filter_periodo %}&periodo={{ filter_periodo }}{% endif %}">
+          Próxima <i class="fa fa-chevron-right" aria-hidden="true"></i>
+        </a>
+      {% endif %}
+    </nav>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+  /* ── Autosubmit filtro de localidade ─────────────────────── */
+  var locSelect = document.getElementById('agd-filtro-localidade');
+  if (locSelect) {
+    locSelect.addEventListener('change', function () {
+      document.getElementById('agd-filter-form').submit();
+    });
+  }
+
+  /* ── Remover agendamento via AJAX ────────────────────────── */
+  function getCsrf() {
+    var el = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (el) return el.value;
+    var m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.agd-btn-remover');
+    if (!btn) return;
+    e.preventDefault();
+
+    var pk  = btn.dataset.pk;
+    var url = btn.dataset.url;
+
+    /* resolve o row da tabela e o card mobile, se existir */
+    var row = document.getElementById('agd-row-' + pk);
+    var mc  = document.getElementById('agd-mc-' + pk);
+
+    var nameEl = (row && row.querySelector('.agd-name'))
+              || (mc  && mc.querySelector('.agd-mc-eq-name'));
+    var nome = nameEl ? nameEl.textContent.trim() : 'esta preventiva';
+
+    if (!confirm('Remover o agendamento de "' + nome + '"?')) return;
+
+    btn.disabled = true;
+
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrf(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'data_agendamento=',
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (json) {
+      if (json.ok) {
+        function fadeOut(el) {
+          if (!el) return;
+          el.style.transition = 'opacity 240ms, transform 240ms';
+          el.style.opacity = '0';
+          el.style.transform = 'scale(.97)';
+          setTimeout(function () { el.remove(); }, 260);
+        }
+        fadeOut(row);
+        fadeOut(mc);
+      } else {
+        alert('Erro: ' + (json.erro || 'Tente novamente.'));
+        btn.disabled = false;
+      }
+    })
+    .catch(function () {
+      alert('Erro de conexão. Tente novamente.');
+      btn.disabled = false;
+    });
+  });
+
+});
+</script>
+{% endblock %}

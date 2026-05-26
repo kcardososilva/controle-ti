@@ -18,7 +18,7 @@ from django.utils import timezone
 from ..models import (
     Item, Subtipo, Categoria, Localidade, CentroCusto, Fornecedor,
     Locacao, SimNaoChoices, StatusItemChoices, ItemLote,
-    MovimentacaoItem, TipoMovimentacaoChoices, Preventiva,
+    MovimentacaoItem, TipoMovimentacaoChoices, Preventiva, PlantaProjeto,
 )
 from ..forms import ItemForm, LocacaoForm, LoteEstoqueCreateForm
 from services.importador_planilha import ImportadorPlanilhaService
@@ -276,6 +276,71 @@ def _subtipos_queryset():
     return qs.order_by("id")
 
 
+def _aplicar_filtros_itens(request, qs):
+    """Aplica todos os filtros GET ao queryset de Item. Fonte única de verdade — usada pela listagem e pela exportação."""
+    nome = request.GET.get("nome", "").strip()
+    numero_serie = request.GET.get("numero_serie", "").strip()
+    subtipo = request.GET.get("subtipo", "").strip()
+    status = request.GET.get("status", "").strip()
+    fornecedor = request.GET.get("fornecedor", "").strip()
+    localidade = request.GET.get("localidade", "").strip()
+    centro_custo = request.GET.get("centro_custo", "").strip()
+    tipo_item = request.GET.get("tipo_item", "").strip()
+    estoque = request.GET.get("estoque", "").strip()
+
+    if nome:
+        qs = qs.filter(nome__icontains=nome)
+    if numero_serie:
+        qs = qs.filter(numero_serie__icontains=numero_serie)
+    if subtipo:
+        qs = qs.filter(subtipo_id=subtipo)
+    if status:
+        qs = qs.filter(status=status)
+
+    if fornecedor:
+        fornecedor_q = _build_related_q(Item, "fornecedor", ["nome", "razao_social", "fantasia"], fornecedor)
+        try:
+            fornecedor_model = Item._meta.get_field("fornecedor").remote_field.model
+        except Exception:
+            fornecedor_model = None
+        fornecedor_lote_q = _build_nested_q(
+            fornecedor_model, "vinculos_lote__lote__fornecedor",
+            ["nome", "razao_social", "fantasia"], fornecedor,
+        )
+        query = fornecedor_q | fornecedor_lote_q
+        if query:
+            qs = qs.filter(query).distinct()
+
+    if localidade:
+        query = _build_related_q(Item, "localidade", ["local", "nome", "descricao"], localidade)
+        if query:
+            qs = qs.filter(query).distinct()
+
+    if centro_custo:
+        query = _build_related_q(
+            Item, "centro_custo",
+            ["departamento", "nome", "numero", "codigo", "descricao"], centro_custo,
+        )
+        if query:
+            qs = qs.filter(query).distinct()
+
+    if tipo_item == "consumo":
+        qs = qs.filter(item_consumo="sim")
+    elif tipo_item == "locado":
+        qs = qs.filter(locado="sim")
+    elif tipo_item == "com_lote":
+        qs = qs.filter(Q(tem_lote=True) | Q(vinculos_lote__isnull=False)).distinct()
+    elif tipo_item == "patrimonio":
+        qs = qs.exclude(item_consumo="sim").exclude(locado="sim")
+
+    if estoque == "com_saldo":
+        qs = qs.filter(quantidade__gt=0)
+    elif estoque == "zerado":
+        qs = qs.filter(Q(quantidade__lte=0) | Q(quantidade__isnull=True))
+
+    return qs
+
+
 def _build_queryset_and_context(request):
     qs = (
         Item.objects
@@ -298,94 +363,7 @@ def _build_queryset_and_context(request):
         .order_by("-created_at")
     )
 
-    nome = request.GET.get("nome", "").strip()
-    numero_serie = request.GET.get("numero_serie", "").strip()
-    subtipo = request.GET.get("subtipo", "").strip()
-    status = request.GET.get("status", "").strip()
-    fornecedor = request.GET.get("fornecedor", "").strip()
-    localidade = request.GET.get("localidade", "").strip()
-    centro_custo = request.GET.get("centro_custo", "").strip()
-    tipo_item = request.GET.get("tipo_item", "").strip()
-    estoque = request.GET.get("estoque", "").strip()
-
-    if nome:
-        qs = qs.filter(nome__icontains=nome)
-
-    if numero_serie:
-        qs = qs.filter(numero_serie__icontains=numero_serie)
-
-    if subtipo:
-        qs = qs.filter(subtipo_id=subtipo)
-
-    if status:
-        qs = qs.filter(status=status)
-
-    if fornecedor:
-        fornecedor_q = _build_related_q(
-            Item,
-            "fornecedor",
-            ["nome", "razao_social", "fantasia"],
-            fornecedor,
-        )
-
-        fornecedor_model = None
-
-        try:
-            fornecedor_model = Item._meta.get_field("fornecedor").remote_field.model
-        except Exception:
-            fornecedor_model = None
-
-        fornecedor_lote_q = _build_nested_q(
-            fornecedor_model,
-            "vinculos_lote__lote__fornecedor",
-            ["nome", "razao_social", "fantasia"],
-            fornecedor,
-        )
-
-        query = fornecedor_q | fornecedor_lote_q
-
-        if query:
-            qs = qs.filter(query).distinct()
-
-    if localidade:
-        query = _build_related_q(
-            Item,
-            "localidade",
-            ["local", "nome", "descricao"],
-            localidade,
-        )
-
-        if query:
-            qs = qs.filter(query).distinct()
-
-    if centro_custo:
-        query = _build_related_q(
-            Item,
-            "centro_custo",
-            ["departamento", "nome", "numero", "codigo", "descricao"],
-            centro_custo,
-        )
-
-        if query:
-            qs = qs.filter(query).distinct()
-
-    if tipo_item == "consumo":
-        qs = qs.filter(item_consumo="sim")
-
-    elif tipo_item == "locado":
-        qs = qs.filter(locado="sim")
-
-    elif tipo_item == "com_lote":
-        qs = qs.filter(Q(tem_lote=True) | Q(vinculos_lote__isnull=False)).distinct()
-
-    elif tipo_item == "patrimonio":
-        qs = qs.exclude(item_consumo="sim").exclude(locado="sim")
-
-    if estoque == "com_saldo":
-        qs = qs.filter(quantidade__gt=0)
-
-    elif estoque == "zerado":
-        qs = qs.filter(Q(quantidade__lte=0) | Q(quantidade__isnull=True))
+    qs = _aplicar_filtros_itens(request, qs)
 
     filtered_total = qs.count()
 
@@ -451,8 +429,8 @@ def _build_queryset_and_context(request):
         "subtipos": _subtipos_queryset(),
         "status_choices": status_choices,
         "kpis": kpis,
-        "tipo_item": tipo_item,
-        "estoque": estoque,
+        "tipo_item": request.GET.get("tipo_item", ""),
+        "estoque": request.GET.get("estoque", ""),
     }
 
     return context
@@ -588,6 +566,16 @@ def _get_locacao(item):
         return getattr(item, "locacao", None)
     except Exception:
         return None
+
+
+@login_required
+def equipamento_qr(request, pk: int):
+    item = get_object_or_404(Item, pk=pk)
+    detalhe_url = request.build_absolute_uri(f"/equipamentos/{pk}/")
+    return render(request, "front/equipamentos/equipamento_qr.html", {
+        "item": item,
+        "detalhe_url": detalhe_url,
+    })
 
 
 @login_required
@@ -829,16 +817,40 @@ def equipamento_detalhe(request, pk: int):
         .order_by("data_proxima")
     )
 
-    status_saude = "ok"
+    _JANELA_ATENCAO = 7
+    status_saude = "ok" if not preventivas else "sem_data"
     for p in preventivas:
-        if not p.data_proxima and p.checklist_modelo and p.checklist_modelo.intervalo_dias:
-            base = p.data_ultima or today
-            p.data_proxima = base + timedelta(days=p.checklist_modelo.intervalo_dias)
+        # Prioridade: data_limite_preventiva do item → intervalo_dias do checklist
+        intervalo = 0
+        try:
+            intervalo = int(item.data_limite_preventiva or 0)
+        except (TypeError, ValueError):
+            pass
+        if intervalo <= 0 and p.checklist_modelo:
+            try:
+                intervalo = int(p.checklist_modelo.intervalo_dias or 0)
+            except (TypeError, ValueError):
+                pass
 
-        p.atrasado = p.data_proxima and p.data_proxima < today
+        # Calcula a data efetiva da próxima preventiva
+        if intervalo > 0 and p.data_ultima:
+            p.proxima_calc = p.data_ultima + timedelta(days=intervalo)
+        else:
+            p.proxima_calc = p.data_proxima
 
-        if p.atrasado:
-            status_saude = "critical"
+        if p.proxima_calc:
+            dias = (p.proxima_calc - today).days
+            p.atrasado = dias < 0
+            p.atencao  = 0 <= dias <= _JANELA_ATENCAO
+            if p.atrasado:
+                status_saude = "critical"
+            elif p.atencao and status_saude not in ("critical",):
+                status_saude = "atencao"
+            elif not p.atrasado and not p.atencao and status_saude == "sem_data":
+                status_saude = "ok"
+        else:
+            p.atrasado = False
+            p.atencao  = False
 
     # =========================================================
     # Ficha técnica dinâmica
@@ -905,6 +917,17 @@ def equipamento_detalhe(request, pk: int):
     _add_info(auditoria, "Última edição", getattr(item, "updated_at", None), "fa-pen-to-square")
     _add_info(auditoria, "Atualizado por", getattr(item, "atualizado_por", None), "fa-user-pen")
 
+    # =========================================================
+    # Plantas onde este item está mapeado
+    # =========================================================
+    item_id_str = str(item.pk)
+    plantas_mapeadas = [
+        p for p in PlantaProjeto.objects.select_related("localidade").only(
+            "pk", "nome", "localidade__local", "updated_at"
+        )
+        if any(str(e.get("item_id", "")) == item_id_str for e in p.layout.get("elements", []))
+    ]
+
     context = {
         "item": item,
         "ultimo_resp": ultimo_resp,
@@ -926,6 +949,7 @@ def equipamento_detalhe(request, pk: int):
         "total_disponivel_lotes": total_disponivel_lotes,
         "valor_total_lotes": valor_total_lotes,
         "valor_disponivel_lotes": valor_disponivel_lotes,
+        "plantas_mapeadas": plantas_mapeadas,
     }
 
     return render(request, "front/equipamentos/equipamento_detalhe.html", context)

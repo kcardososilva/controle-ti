@@ -1,0 +1,1285 @@
+{% extends 'base.html' %}
+{% block title %}{{ planta.nome }}{% endblock %}
+{% block page_title %}{{ planta.nome }}{% endblock %}
+{% block page_subtitle %}Visualizador · {{ planta.localidade|default:"Sem localidade" }}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'planta_tv' planta.pk %}" class="btn btn-sm" target="_blank">
+    <i class="fa-solid fa-tv"></i> TV
+  </a>
+  <a href="{% url 'planta_editor' planta.pk %}" class="btn btn-sm">
+    <i class="fa-solid fa-pen-to-square"></i> Editar
+  </a>
+  <a href="{% url 'planta_list' %}" class="btn btn-sm">
+    <i class="fa-solid fa-arrow-left"></i> Voltar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.plt-vw-page) {
+  --vw-brand:     var(--brand, #0071e3);
+  --vw-success:   #34c759;
+  --vw-warning:   #ff9500;
+  --vw-danger:    #ff3b30;
+  --vw-muted:     var(--text-tertiary, #6e6e73);
+  --vw-bg:        var(--bg-elevated, #fff);
+  --vw-border:    var(--separator-hairline, rgba(0,0,0,.06));
+  --vw-radius:    var(--radius-lg, 18px);
+  --vw-ease:      cubic-bezier(.32,.72,0,1);
+  --vw-sidebar-w: 268px;
+}
+
+.plt-vw-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 120px);
+  gap: 10px;
+}
+
+/* ── KPI Bar ───────────────────────────────────────────────────────────────── */
+.vw-kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  flex-shrink: 0;
+}
+.vw-kpi-card {
+  padding: 12px 16px;
+  background: var(--vw-bg);
+  border: 1px solid var(--vw-border);
+  border-radius: 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.vw-kpi-icon {
+  width: 34px; height: 34px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+.vw-kpi-value { font-size: 1.45rem; font-weight: 700; line-height: 1; color: var(--text-primary,#1d1d1f); }
+.vw-kpi-label { font-size: 11px; color: var(--vw-muted); margin-top: 2px; }
+.vw-kpi-up   .vw-kpi-icon { background: rgba(52,199,89,.12);   color: var(--vw-success); }
+.vw-kpi-warn .vw-kpi-icon { background: rgba(255,149,0,.12);   color: var(--vw-warning); }
+.vw-kpi-down .vw-kpi-icon { background: rgba(255,59,48,.12);   color: var(--vw-danger);  }
+.vw-kpi-none   .vw-kpi-icon { background: rgba(110,110,115,.1);  color: var(--vw-muted);   }
+.vw-kpi-paused .vw-kpi-icon { background: rgba(0,207,255,.14);  color: #00cfff;           }
+
+/* ── Toolbar ───────────────────────────────────────────────────────────────── */
+.vw-toolbar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  background: var(--vw-bg);
+  border: 1px solid var(--vw-border);
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+.vw-tb-btn {
+  height: 30px; padding: 0 10px; border-radius: 7px;
+  border: 1px solid var(--vw-border); background: transparent; cursor: pointer;
+  font-size: .78rem; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--text-primary,#1d1d1f); transition: background 120ms;
+  white-space: nowrap;
+}
+.vw-tb-btn:hover { background: rgba(0,0,0,.04); }
+.vw-tb-btn.active { background: var(--vw-brand); color: #fff; border-color: var(--vw-brand); }
+.vw-tb-sep { width: 1px; height: 18px; background: var(--vw-border); margin: 0 2px; flex-shrink: 0; }
+.vw-tb-zoom { font-size: .78rem; font-weight: 700; min-width: 40px; text-align: center; color: var(--vw-muted); }
+.vw-tb-badge {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
+  font-size: .75rem; font-weight: 600; padding: 3px 9px; border-radius: 20px;
+  color: var(--vw-muted); background: rgba(0,0,0,.05);
+  transition: all 220ms;
+}
+.vw-tb-badge.loading { background: rgba(0,113,227,.1); color: var(--vw-brand); }
+.vw-tb-badge.ok      { background: rgba(52,199,89,.12); color: #1a7a35; }
+.vw-tb-badge.err     { background: rgba(255,59,48,.1);  color: #c0100a; }
+
+/* ── Main area ─────────────────────────────────────────────────────────────── */
+.vw-main {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+  min-height: 0;
+}
+
+/* ── Canvas section ────────────────────────────────────────────────────────── */
+.vw-canvas-section {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.vw-canvas-wrap {
+  flex: 1;
+  background: var(--vw-bg);
+  border: 1px solid var(--vw-border);
+  border-radius: var(--vw-radius);
+  overflow: hidden;
+  position: relative;
+}
+#vwCanvas { display: block; width: 100%; height: 100%; }
+
+/* Legend */
+.vw-legend {
+  position: absolute; bottom: 12px; left: 12px;
+  background: var(--vw-bg);
+  border: 1px solid var(--vw-border);
+  border-radius: 10px;
+  padding: 7px 11px;
+  font-size: 10.5px; font-weight: 600;
+  display: flex; gap: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.05);
+}
+.vw-legend-item { display: flex; align-items: center; gap: 5px; color: var(--text-primary,#1d1d1f); }
+.vw-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* ── Sidebar ───────────────────────────────────────────────────────────────── */
+.vw-sidebar {
+  width: clamp(220px, 22vw, 300px);
+  flex-shrink: 0;
+  background: var(--vw-bg);
+  border: 1px solid var(--vw-border);
+  border-radius: var(--vw-radius);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  transition: width 240ms var(--vw-ease), opacity 200ms;
+}
+.vw-sidebar.collapsed { width: 0; opacity: 0; pointer-events: none; }
+.vw-sb-header {
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--vw-border);
+  flex-shrink: 0;
+  font-size: .82rem; font-weight: 700;
+  color: var(--text-primary,#1d1d1f);
+  display: flex; align-items: center; gap: 7px;
+}
+.vw-sb-header i { color: var(--vw-brand); }
+.vw-sb-body { flex: 1; overflow-y: auto; padding: 8px 0; }
+.vw-sb-group { }
+.vw-sb-group-header {
+  padding: 5px 14px;
+  display: flex; align-items: center; gap: 7px;
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--vw-muted); cursor: pointer; user-select: none;
+}
+.vw-sb-group-header:hover { background: rgba(0,0,0,.02); }
+.vw-sb-group-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.vw-sb-group-count {
+  margin-left: auto; font-size: 10.5px; font-weight: 700;
+  background: rgba(0,0,0,.07); border-radius: 8px; padding: 1px 6px;
+}
+.vw-sb-group-items.hidden { display: none; }
+.vw-sb-item {
+  padding: 6px 14px 6px 28px;
+  display: flex; align-items: flex-start; gap: 7px;
+  font-size: .78rem; cursor: pointer;
+  transition: background 80ms;
+  color: var(--text-primary,#1d1d1f);
+}
+.vw-sb-item:hover  { background: rgba(0,0,0,.03); }
+.vw-sb-item.active { background: rgba(0,113,227,.07); }
+.vw-sb-item-emoji  { font-size: 12px; flex-shrink: 0; padding-top: 1px; }
+.vw-sb-item-name   { flex: 1; white-space: normal; word-break: break-word; line-height: 1.35; font-size: .77rem; min-width: 0; }
+.vw-sb-item-dot    { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+
+/* PRTG warning banner */
+.vw-prtg-warn {
+  padding: 9px 14px; margin-bottom: 2px;
+  background: rgba(255,149,0,.08); border: 1px solid rgba(255,149,0,.22);
+  border-radius: 10px; font-size: .8rem;
+  display: flex; align-items: center; gap: 8px; color: #7a4800;
+  flex-shrink: 0;
+}
+
+/* ── Drawer ────────────────────────────────────────────────────────────────── */
+.vw-drawer-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,.22);
+  opacity: 0; visibility: hidden;
+  transition: opacity 260ms var(--vw-ease);
+}
+.vw-drawer-overlay.open { opacity: 1; visibility: visible; }
+.vw-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 348px; max-width: 100%;
+  background: var(--bg-page,#fbfbfd);
+  border-left: 1px solid var(--vw-border);
+  z-index: 201;
+  transform: translateX(100%);
+  transition: transform 300ms var(--vw-ease);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.vw-drawer.open { transform: translateX(0); }
+
+/* ── Tablet (≤900px) ─────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .plt-vw-page { height: calc(100dvh - 110px); }
+  .vw-kpi-bar { grid-template-columns: repeat(3, 1fr); }
+  .vw-tb-label { display: none; }
+  .vw-tb-zoom  { min-width: 34px; font-size: .72rem; }
+  .vw-legend { gap: 6px; padding: 5px 9px; font-size: 9.5px; }
+}
+
+/* ── Mobile (≤559px) ─────────────────────────────────────────────────────────── */
+@media (max-width: 559px) {
+  .plt-vw-page { height: calc(100dvh - 96px); gap: 6px; }
+  .vw-kpi-bar { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .vw-kpi-card { padding: 9px 12px; }
+  .vw-kpi-value { font-size: 1.2rem; }
+  .vw-sidebar { display: none !important; }
+  .vw-toolbar { padding: 4px 8px; gap: 4px; }
+  .vw-tb-sep { display: none; }
+  .vw-tb-badge { display: none; }
+  .vw-legend { gap: 5px; padding: 5px 8px; font-size: 9px; bottom: 6px; left: 6px; }
+  .vw-legend-dot { width: 6px; height: 6px; }
+  .vw-drawer {
+    top: auto; right: 0; left: 0; bottom: 0;
+    width: 100%; max-height: 88dvh;
+    border-left: none; border-top: 1px solid var(--vw-border);
+    border-radius: 20px 20px 0 0;
+    transform: translateY(100%);
+  }
+  .vw-drawer.open { transform: translateY(0); }
+  .vw-drw-handle { display: flex; justify-content: center; padding: 10px 0 2px; }
+  .vw-drw-handle-bar { width: 36px; height: 4px; border-radius: 2px; background: rgba(0,0,0,.14); }
+}
+
+/* ── Muito pequeno (≤380px) ──────────────────────────────────────────────────── */
+@media (max-width: 380px) {
+  .vw-kpi-bar { grid-template-columns: 1fr 1fr; gap: 4px; }
+  .vw-kpi-icon { width: 28px; height: 28px; font-size: 11px; }
+  .vw-kpi-value { font-size: 1.05rem; }
+  .vw-kpi-label { font-size: 9.5px; }
+}
+
+@media (min-width: 560px) { .vw-drw-handle { display: none; } }
+
+.vw-drw-header {
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid var(--vw-border);
+  flex-shrink: 0;
+}
+.vw-drw-title-row { display: flex; align-items: center; gap: 11px; }
+.vw-drw-icon {
+  width: 42px; height: 42px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 19px; flex-shrink: 0;
+}
+.vw-drw-name { font-weight: 700; font-size: .95rem; margin: 0 0 2px; }
+.vw-drw-type { font-size: .78rem; color: var(--vw-muted); }
+.vw-drw-close {
+  margin-left: auto; width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--vw-border); background: transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: var(--vw-muted); flex-shrink: 0;
+}
+.vw-drw-close:hover { background: rgba(0,0,0,.04); }
+.vw-drw-body {
+  flex: 1; overflow-y: auto; padding: 14px 18px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.vw-drw-sec-title {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--vw-muted); margin: 0 0 9px;
+  display: flex; align-items: center; gap: 5px;
+}
+.vw-drw-sec-title i { color: var(--vw-brand); }
+.vw-status-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: 18px;
+  font-size: .82rem; font-weight: 700; margin-bottom: 8px;
+}
+.vw-status-badge.up   { background: rgba(52,199,89,.12); color: #1a7a35; }
+.vw-status-badge.warn { background: rgba(255,149,0,.12); color: #7a4800; }
+.vw-status-badge.down { background: rgba(255,59,48,.12); color: #c0100a; }
+.vw-status-badge.none       { background: rgba(110,110,115,.1); color: var(--vw-muted); }
+.vw-status-badge.paused_dep { background: rgba(0,207,255,.12);  color: #007a99; }
+.vw-detail-row {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 7px 0; border-bottom: 1px solid var(--vw-border);
+}
+.vw-detail-row:last-child { border-bottom: none; }
+.vw-detail-key { font-size: .76rem; color: var(--vw-muted); min-width: 86px; padding-top: 1px; }
+.vw-detail-val { font-size: .82rem; font-weight: 600; color: var(--text-primary,#1d1d1f); flex: 1; word-break: break-all; }
+.vw-obs-box {
+  background: rgba(120,120,128,.06); border-radius: 9px;
+  padding: 9px 11px; font-size: .81rem; line-height: 1.5;
+}
+.vw-drw-link {
+  display: flex; align-items: center; gap: 6px;
+  padding: 9px 12px; border-radius: 10px;
+  border: 1px solid var(--vw-border); background: var(--vw-bg);
+  text-decoration: none; font-size: .82rem; font-weight: 600;
+  color: var(--vw-brand); transition: background 130ms;
+}
+.vw-drw-link:hover { background: rgba(0,0,0,.03); }
+
+/* Conexões no drawer */
+.vw-cn-list { display: flex; flex-direction: column; gap: 5px; }
+.vw-cn-item {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 10px; border-radius: 9px;
+  border: 1px solid var(--vw-border);
+  background: var(--bg-hover,rgba(0,0,0,.02));
+  font-size: .8rem; transition: background 120ms;
+}
+.vw-cn-item:hover { background: rgba(0,113,227,.05); border-color: rgba(0,113,227,.18); }
+.vw-cn-badge {
+  font-size: .7rem; font-weight: 700; padding: 2px 7px;
+  border-radius: 6px; flex-shrink: 0;
+}
+.vw-cn-arrow { font-size: .8rem; color: var(--vw-muted); flex-shrink: 0; }
+.vw-cn-endpoint {
+  display: flex; align-items: center; gap: 4px;
+  font-size: .78rem; color: var(--text-primary,#1d1d1f);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 110px;
+}
+
+/* Toast (Fase 4.2) */
+.vw-toast-container {
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+  z-index: 9999; display: flex; flex-direction: column;
+  align-items: center; gap: 8px; pointer-events: none;
+}
+.vw-toast {
+  padding: 10px 18px; border-radius: 20px; font-size: .8rem; font-weight: 600;
+  display: flex; align-items: center; gap: 8px; pointer-events: all;
+  box-shadow: 0 4px 14px rgba(0,0,0,.18); max-width: 340px; white-space: nowrap;
+  animation: vwToastIn .3s var(--vw-ease,ease) both;
+}
+.vw-toast.up      { background: #34c759; color: #fff; }
+.vw-toast.warn    { background: #ff9500; color: #fff; }
+.vw-toast.down    { background: #ff3b30; color: #fff; }
+.vw-toast.paused  { background: #00cfff; color: #001a22; }
+.vw-toast.info    { background: rgba(30,30,40,.85); color: #fff; backdrop-filter: blur(8px); }
+@keyframes vwToastIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="plt-vw-page">
+
+  {% if not prtg_ok %}
+  <div class="vw-prtg-warn">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    PRTG não configurado — elementos exibidos sem status de rede.
+  </div>
+  {% endif %}
+
+  <!-- KPI Bar -->
+  <div class="vw-kpi-bar">
+    <div class="vw-kpi-card vw-kpi-up">
+      <div class="vw-kpi-icon"><i class="fa-solid fa-circle-check"></i></div>
+      <div>
+        <div class="vw-kpi-value" id="kpiUp">—</div>
+        <div class="vw-kpi-label">Online</div>
+      </div>
+    </div>
+    <div class="vw-kpi-card vw-kpi-warn">
+      <div class="vw-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <div>
+        <div class="vw-kpi-value" id="kpiWarn">—</div>
+        <div class="vw-kpi-label">Instável</div>
+      </div>
+    </div>
+    <div class="vw-kpi-card vw-kpi-down">
+      <div class="vw-kpi-icon"><i class="fa-solid fa-circle-xmark"></i></div>
+      <div>
+        <div class="vw-kpi-value" id="kpiDown">—</div>
+        <div class="vw-kpi-label">Offline</div>
+      </div>
+    </div>
+    <div class="vw-kpi-card vw-kpi-none">
+      <div class="vw-kpi-icon"><i class="fa-solid fa-circle-minus"></i></div>
+      <div>
+        <div class="vw-kpi-value" id="kpiNone">—</div>
+        <div class="vw-kpi-label">Sem monitoramento</div>
+      </div>
+    </div>
+    <div class="vw-kpi-card vw-kpi-paused">
+      <div class="vw-kpi-icon"><i class="fa-solid fa-circle-pause"></i></div>
+      <div>
+        <div class="vw-kpi-value" id="kpiPaused">—</div>
+        <div class="vw-kpi-label">Pausado p/ Dep.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="vw-toolbar">
+    <button class="vw-tb-btn" onclick="ajustarZoom(-0.1)" title="Reduzir">
+      <i class="fa-solid fa-minus"></i>
+    </button>
+    <span class="vw-tb-zoom" id="zoomLabel">100%</span>
+    <button class="vw-tb-btn" onclick="ajustarZoom(0.1)" title="Ampliar">
+      <i class="fa-solid fa-plus"></i>
+    </button>
+    <button class="vw-tb-btn" onclick="fitCanvas()" title="Ajustar à tela">
+      <i class="fa-solid fa-expand"></i> <span class="vw-tb-label">Ajustar</span>
+    </button>
+    <div class="vw-tb-sep"></div>
+    <button class="vw-tb-btn active" id="sidebarBtn" onclick="toggleSidebar()" title="Painel de equipamentos">
+      <i class="fa-solid fa-list-ul"></i> <span class="vw-tb-label">Painel</span>
+    </button>
+    <button class="vw-tb-btn" id="fsBtn" onclick="toggleFullscreen()" title="Tela cheia">
+      <i class="fa-solid fa-expand-arrows-alt" id="fsIcon"></i> <span class="vw-tb-label">Tela Cheia</span>
+    </button>
+    <div class="vw-tb-badge" id="vwBadge">
+      <i class="fa-solid fa-circle" style="font-size:6px"></i> Aguardando...
+    </div>
+  </div>
+
+  <!-- Main: canvas + sidebar -->
+  <div class="vw-main">
+
+    <div class="vw-canvas-section">
+      <div class="vw-canvas-wrap" id="vwWrap">
+        <canvas id="vwCanvas"></canvas>
+        <div class="vw-legend">
+          <div class="vw-legend-item">
+            <div class="vw-legend-dot" style="background:#34c759;box-shadow:0 0 5px #34c75988"></div> Online
+          </div>
+          <div class="vw-legend-item">
+            <div class="vw-legend-dot" style="background:#ff9500;box-shadow:0 0 5px #ff950088"></div> Instável
+          </div>
+          <div class="vw-legend-item">
+            <div class="vw-legend-dot" style="background:#ff3b30;box-shadow:0 0 5px #ff3b3088"></div> Offline
+          </div>
+          <div class="vw-legend-item">
+            <div class="vw-legend-dot" style="background:#aeaeb2"></div> Sem PRTG
+          </div>
+          <div class="vw-legend-item">
+            <div class="vw-legend-dot" style="background:#00cfff;box-shadow:0 0 5px #00cfff88"></div> Pausado p/ Dep.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="vw-sidebar" id="vwSidebar">
+      <div class="vw-sb-header">
+        <i class="fa-solid fa-list-ul"></i> Equipamentos
+      </div>
+      <div class="vw-sb-body" id="vwSbBody">
+        <div style="padding:16px;font-size:.78rem;color:var(--vw-muted);text-align:center">
+          <i class="fa-solid fa-spinner fa-spin"></i> Carregando...
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Drawer overlay -->
+<div class="vw-drawer-overlay" id="vwOverlay" onclick="fecharDrawer()"></div>
+<!-- Toast container (Fase 4.2) -->
+<div class="vw-toast-container" id="toastContainer"></div>
+
+<!-- Drawer -->
+<div class="vw-drawer" id="vwDrawer">
+  <div class="vw-drw-handle"><div class="vw-drw-handle-bar"></div></div>
+  <div class="vw-drw-header">
+    <div class="vw-drw-title-row">
+      <div class="vw-drw-icon" id="drwIcon"></div>
+      <div>
+        <div class="vw-drw-name" id="drwName">—</div>
+        <div class="vw-drw-type" id="drwType">—</div>
+      </div>
+      <button class="vw-drw-close" onclick="fecharDrawer()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+  </div>
+  <div class="vw-drw-body" id="drwBody"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ layout_json|json_script:"__layout_data" }}
+<script>
+const LAYOUT     = JSON.parse(document.getElementById('__layout_data').textContent);
+const PRTG_OK    = {{ prtg_ok|yesno:"true,false" }};
+const STATUS_URL = "{% url 'prtg_status_api' %}";
+
+// ── Type config ────────────────────────────────────────────────────────────────
+const TIPO = {
+  camera:       { label:"Câmera",        emoji:"📷", color:"#5856d6" },
+  access_point: { label:"Access Point",  emoji:"📡", color:"#30b0c7" },
+  switch:       { label:"Switch",        emoji:"🔀", color:"#0071e3" },
+  rack:         { label:"Rack",          emoji:"🗄️",  color:"#8e8e93" },
+  desktop:      { label:"Desktop",       emoji:"🖥️",  color:"#34c759" },
+  impressora:   { label:"Impressora",    emoji:"🖨️",  color:"#ff9500" },
+  nobreak:      { label:"Nobreak",       emoji:"⚡",  color:"#ff6b35" },
+  servidor:     { label:"Servidor",      emoji:"☁️",  color:"#5ac8fa" },
+  ponto_rede:   { label:"Ponto de Rede", emoji:"📍",  color:"#6e6e73" },
+  texto:        { label:"Texto",         emoji:"✏️",  color:"#1d1d1f" },
+  quadro:       { label:"Quadro/Área",   emoji:"□",   color:"#0071e3" },
+  circulo:      { label:"Círculo/Zona",  emoji:"○",   color:"#5856d6" },
+};
+const CN_CFG = {
+  network:    { label:"Rede",       color:"#0071e3", dash:[],    arrow:true  },
+  fiber:      { label:"Fibra",      color:"#5856d6", dash:[8,4], arrow:true  },
+  power:      { label:"Energia",    color:"#ff9500", dash:[],    arrow:false },
+  dependencia:{ label:"Dependência",color:"#34c759", dash:[4,4], arrow:true  },
+};
+const ST_COLOR = { up:"#34c759", warning:"#ff9500", down:"#ff3b30", unknown:"#aeaeb2", none:"#aeaeb2", paused_dep:"#00cfff" };
+const ST_MAP   = { 3:"up", 4:"warning", 5:"down", 10:"warning",
+                   1:"unknown", 2:"unknown", 6:"unknown", 11:"unknown",
+                   7:"unknown", 9:"unknown", 12:"unknown",
+                   8:"paused_dep" };
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let elements    = JSON.parse(JSON.stringify(LAYOUT.elements    || []));
+let connections = JSON.parse(JSON.stringify(LAYOUT.connections || []));
+let devicesMap  = {};
+let selectedEl  = null;
+let pan         = { x:0, y:0 };
+let zoom        = 1;
+let isPanning   = false;
+let panStart    = null;
+let pulseT      = 0;
+let lastTs      = 0;
+let sidebarOpen = true;
+
+// ── Canvas setup ───────────────────────────────────────────────────────────────
+const wrap   = document.getElementById("vwWrap");
+const canvas = document.getElementById("vwCanvas");
+const ctx    = canvas.getContext("2d");
+let _fitDone = false;
+
+function resizeCanvas() {
+  const r = wrap.getBoundingClientRect();
+  canvas.width  = r.width;
+  canvas.height = r.height;
+  if (!_fitDone && r.width > 0 && r.height > 0) { _fitDone = true; fitCanvas(); }
+}
+new ResizeObserver(resizeCanvas).observe(wrap);
+
+function fitCanvas() {
+  const cw = LAYOUT.canvas?.width  || 1400;
+  const ch = LAYOUT.canvas?.height || 900;
+  const m  = 36;
+  zoom = Math.min((canvas.width  - m*2) / cw, (canvas.height - m*2) / ch, 1);
+  pan.x = (canvas.width  / zoom - cw) / 2;
+  pan.y = (canvas.height / zoom - ch) / 2;
+  updZoom();
+}
+
+function ajustarZoom(delta) {
+  const cx = canvas.width/2, cy = canvas.height/2;
+  const wx = cx/zoom - pan.x, wy = cy/zoom - pan.y;
+  zoom = Math.max(0.1, Math.min(4, zoom + delta));
+  pan.x = cx/zoom - wx; pan.y = cy/zoom - wy;
+  updZoom();
+}
+function updZoom() {
+  document.getElementById("zoomLabel").textContent = Math.round(zoom*100) + "%";
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function toScreen(wx,wy) { return { x:(wx+pan.x)*zoom, y:(wy+pan.y)*zoom }; }
+function toWorld(cx,cy)  { return { x:cx/zoom-pan.x,   y:cy/zoom-pan.y   }; }
+function canvasXY(e) {
+  const r=canvas.getBoundingClientRect(), t=e.touches;
+  return { x:(t?t[0].clientX:e.clientX)-r.left, y:(t?t[0].clientY:e.clientY)-r.top };
+}
+function hexAlpha(hex,a) {
+  try { const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return `rgba(${r},${g},${b},${a})`; }
+  catch { return `rgba(0,113,227,${a})`; }
+}
+function elCenter(el) { return { cx:el.x+(el.width||60)/2, cy:el.y+(el.height||60)/2 }; }
+const IS_FORMA = t => t==='quadro' || t==='circulo' || t==='linha';
+function anchorPoint(el, edge) {
+  const w = el.width  || (el.type==='circulo'?120 : IS_FORMA(el.type)?200 : 60);
+  const h = el.height || (el.type==='circulo'?120 : IS_FORMA(el.type)?140 : 60);
+  switch (edge) {
+    case 'n': return { ax: el.x+w/2, ay: el.y     };
+    case 's': return { ax: el.x+w/2, ay: el.y+h   };
+    case 'e': return { ax: el.x+w,   ay: el.y+h/2 };
+    case 'w': return { ax: el.x,     ay: el.y+h/2 };
+    default:  return { ax: el.x+w/2, ay: el.y+h/2 };
+  }
+}
+function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+// Nome exibível: label do elemento > nome PRTG > nome do tipo
+function elName(el) {
+  if (el.label) return el.label;
+  const dev = el.prtg_objid ? devicesMap[parseInt(el.prtg_objid)] : null;
+  if (dev?.name) return dev.name;
+  return (TIPO[el.type] || TIPO.switch).label;
+}
+
+// ── Status ─────────────────────────────────────────────────────────────────────
+function elStKey(el) {
+  if (!el.prtg_objid) return "none";
+  const dev = devicesMap[parseInt(el.prtg_objid)];
+  if (!dev) return "none";
+  return ST_MAP[parseInt(dev.status)] || "unknown";
+}
+function elStColor(el) { return ST_COLOR[elStKey(el)] || ST_COLOR.none; }
+
+// ── Background image ───────────────────────────────────────────────────────────
+const bgImg = new Image();
+if (LAYOUT.canvas?.bgImage) bgImg.src = LAYOUT.canvas.bgImage;
+
+// ── Draw ───────────────────────────────────────────────────────────────────────
+function drawGrid() {
+  const step = 32*zoom, ox = (pan.x*zoom)%step, oy = (pan.y*zoom)%step;
+  ctx.strokeStyle = "rgba(0,0,0,.032)"; ctx.lineWidth = 1;
+  for (let x=ox; x<canvas.width;  x+=step) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
+  for (let y=oy; y<canvas.height; y+=step) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y);  ctx.stroke(); }
+}
+
+function drawBg() {
+  if (!LAYOUT.canvas?.bgImage || !bgImg.complete || !bgImg.naturalWidth) return;
+  ctx.globalAlpha = 0.42;
+  ctx.drawImage(bgImg, pan.x*zoom, pan.y*zoom, (LAYOUT.canvas.width||1400)*zoom, (LAYOUT.canvas.height||900)*zoom);
+  ctx.globalAlpha = 1;
+}
+
+function computeOrthoRoute(ax, ay, fromEdge, bx, by, toEdge) {
+  const STUB = 28;
+  const dirs = { e:[1,0], w:[-1,0], s:[0,1], n:[0,-1] };
+  const fd   = dirs[fromEdge] || (bx >= ax ? [1,0] : [-1,0]);
+  const td   = dirs[toEdge]   || (ax >= bx ? [1,0] : [-1,0]);
+  const p1x  = ax + fd[0]*STUB, p1y = ay + fd[1]*STUB;
+  const p2x  = bx + td[0]*STUB, p2y = by + td[1]*STUB;
+  const hout = fd[1] === 0;
+  const hin  = td[1] === 0;
+  const bends = [];
+  if (hout && hin) {
+    const midX = (p1x + p2x) / 2;
+    bends.push({x: midX, y: p1y}, {x: midX, y: p2y});
+  } else if (!hout && !hin) {
+    const midY = (p1y + p2y) / 2;
+    bends.push({x: p1x, y: midY}, {x: p2x, y: midY});
+  } else if (hout) {
+    bends.push({x: p2x, y: p1y});
+  } else {
+    bends.push({x: p1x, y: p2y});
+  }
+  return [{x:p1x,y:p1y}, ...bends, {x:p2x,y:p2y}];
+}
+
+function getConnectionPts(cn) {
+  const a = elements.find(e => e.id === cn.from);
+  const b = elements.find(e => e.id === cn.to);
+  if (!a || !b) return [];
+  const {ax, ay}      = anchorPoint(a, cn.fromEdge);
+  const {ax:bx,ay:by} = anchorPoint(b, cn.toEdge);
+  const wps = cn.waypoints || computeOrthoRoute(ax, ay, cn.fromEdge, bx, by, cn.toEdge);
+  return [{x:ax,y:ay}, ...wps, {x:bx,y:by}];
+}
+
+function drawConnection(cn) {
+  const cfg    = CN_CFG[cn.type] || CN_CFG.network;
+  const cnCor  = cn.color || cfg.color;
+  const cnW    = (cn.strokeWidth || cfg.width || 2) * zoom;
+  const cnArrow = cn.arrow !== undefined && cn.arrow !== null ? cn.arrow : cfg.arrow;
+  const cnDash  = cn.dash ? (
+    cn.dash === 'solid'  ? [] :
+    cn.dash === 'dotted' ? [3*zoom, 3*zoom] :
+    [8*zoom, 4*zoom]
+  ) : cfg.dash.map(d => d * zoom);
+
+  const wpts = getConnectionPts(cn);
+  if (wpts.length < 2) return;
+  const pts = wpts.map(p => toScreen(p.x, p.y));
+  const mIdx = Math.floor((pts.length - 1) / 2);
+  const mx = (pts[mIdx].x + pts[mIdx+1].x) / 2;
+  const my = (pts[mIdx].y + pts[mIdx+1].y) / 2;
+
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = cnCor; ctx.lineWidth = cnW;
+  ctx.setLineDash(cnDash);
+  ctx.globalAlpha = 0.82;
+
+  const R = 8 * zoom;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const P = pts[i-1], C = pts[i], N = pts[i+1];
+    const d1 = Math.hypot(C.x-P.x, C.y-P.y);
+    const d2 = Math.hypot(N.x-C.x, N.y-C.y);
+    const r = Math.min(R, d1/2, d2/2);
+    if (r < 0.5 || d1 < 0.1 || d2 < 0.1) {
+      ctx.lineTo(C.x, C.y);
+    } else {
+      const dx1=(C.x-P.x)/d1, dy1=(C.y-P.y)/d1;
+      const dx2=(N.x-C.x)/d2, dy2=(N.y-C.y)/d2;
+      ctx.lineTo(C.x - dx1*r, C.y - dy1*r);
+      ctx.quadraticCurveTo(C.x, C.y, C.x + dx2*r, C.y + dy2*r);
+    }
+  }
+  ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y);
+  ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+
+  if (cnArrow) {
+    const last = pts[pts.length-1], prev = pts[pts.length-2];
+    const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
+    const al = 9 * zoom;
+    ctx.fillStyle = cnCor; ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.moveTo(last.x, last.y);
+    ctx.lineTo(last.x - al*Math.cos(angle-0.40), last.y - al*Math.sin(angle-0.40));
+    ctx.lineTo(last.x - al*Math.cos(angle+0.40), last.y - al*Math.sin(angle+0.40));
+    ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+  }
+
+  if (zoom > 0.5 && (cn.label || cfg.label)) {
+    const sz = Math.max(7, 9*zoom);
+    ctx.font = `600 ${sz}px -apple-system,sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const lbl = cn.label || cfg.label;
+    const tw = ctx.measureText(lbl).width + 8*zoom, th = sz * 1.5;
+    ctx.fillStyle = hexAlpha(cnCor, .12);
+    ctx.beginPath(); ctx.roundRect(mx-tw/2, my-th/2, tw, th, 3*zoom); ctx.fill();
+    ctx.fillStyle = cnCor; ctx.fillText(lbl, mx, my);
+  }
+  ctx.restore();
+}
+
+/* Pulse rings for warning/down elements */
+function drawPulseRings(sc, w, h, stCol, st) {
+  if (st !== 'warning' && st !== 'down') return;
+  const rings  = st === 'down' ? 2 : 1;
+  const period = st === 'down' ? 1.4 : 2.2;
+  for (let i = 0; i < rings; i++) {
+    const t = ((pulseT / period + i / rings) % 1.0);
+    const ex = t * 16 * zoom;
+    ctx.save();
+    ctx.globalAlpha = 0.5 * (1 - t);
+    ctx.strokeStyle = stCol;
+    ctx.lineWidth   = 1.5 * zoom;
+    ctx.beginPath();
+    ctx.roundRect(sc.x - ex, sc.y - ex, w + ex*2, h + ex*2, 8*zoom + ex);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawElement(el) {
+  const cfg   = TIPO[el.type] || TIPO.switch;
+  const color = el.color || cfg.color;
+  const sc    = toScreen(el.x, el.y);
+  const isSel = selectedEl && selectedEl.id === el.id;
+
+  /* Linha */
+  if (el.type === 'linha') {
+    const x2 = el.x2 ?? el.x+150, y2 = el.y2 ?? el.y;
+    const sa = toScreen(el.x, el.y), sb = toScreen(x2, y2);
+    const sw = (el.strokeWidth || 2) * zoom;
+    const color = el.color || '#6e6e73';
+    const dash = el.dash==='dashed' ? [8*zoom,4*zoom] : el.dash==='dotted' ? [3*zoom,3*zoom] : [];
+    ctx.save();
+    ctx.beginPath(); ctx.moveTo(sa.x,sa.y); ctx.lineTo(sb.x,sb.y);
+    ctx.strokeStyle = color; ctx.lineWidth = sw;
+    ctx.setLineDash(dash); ctx.globalAlpha = 0.88; ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    if (el.arrowEnd) {
+      const ang = Math.atan2(sb.y-sa.y, sb.x-sa.x), al = 12*zoom;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.moveTo(sb.x,sb.y);
+      ctx.lineTo(sb.x-al*Math.cos(ang-0.42),sb.y-al*Math.sin(ang-0.42));
+      ctx.lineTo(sb.x-al*Math.cos(ang+0.42),sb.y-al*Math.sin(ang+0.42));
+      ctx.closePath(); ctx.fill();
+    }
+    if (el.label && zoom>0.4) {
+      const mx=(sa.x+sb.x)/2, my=(sa.y+sb.y)/2;
+      ctx.font=`600 ${Math.max(8,9*zoom)}px -apple-system,sans-serif`;
+      ctx.fillStyle=color; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(el.label,mx,my-10*zoom);
+    }
+    ctx.restore(); return;
+  }
+
+  /* Shape (quadro / circulo) */
+  if (IS_FORMA(el.type)) {
+    const w       = (el.width  || (el.type==='circulo'?120:200)) * zoom;
+    const h       = (el.height || (el.type==='circulo'?120:140)) * zoom;
+    const op      = el.fillOpacity ?? 0.08;
+    const bCor    = el.borderColor || color;
+    const bw      = (el.borderWidth ?? 2) * zoom;
+    const bStyle  = el.borderStyle || 'dashed';
+    const bDash   = isSel ? [] : (bStyle === 'solid' ? [] : bStyle === 'dotted' ? [3*zoom,3*zoom] : [6*zoom,4*zoom]);
+    const bAlpha  = isSel ? bCor : hexAlpha(bCor, 0.55);
+    ctx.save();
+    if (el.type === 'quadro') {
+      const r = (el.cornerRadius ?? 8) * zoom;
+      ctx.beginPath(); ctx.roundRect(sc.x,sc.y,w,h,r);
+      ctx.fillStyle = hexAlpha(color,op); ctx.fill();
+      ctx.strokeStyle = bAlpha;
+      ctx.lineWidth = isSel ? bw*1.8 : bw;
+      ctx.setLineDash(bDash); ctx.stroke(); ctx.setLineDash([]);
+      if (el.label && zoom>0.35) {
+        ctx.font=`700 ${Math.max(8,12*zoom)}px -apple-system,sans-serif`;
+        ctx.fillStyle=color; ctx.textAlign='left'; ctx.textBaseline='top';
+        ctx.fillText(el.label,sc.x+8*zoom,sc.y+8*zoom);
+      }
+    } else {
+      const cx=sc.x+w/2, cy=sc.y+h/2;
+      ctx.beginPath(); ctx.ellipse(cx,cy,w/2,h/2,0,0,Math.PI*2);
+      ctx.fillStyle=hexAlpha(color,op); ctx.fill();
+      ctx.strokeStyle=bAlpha;
+      ctx.lineWidth=isSel ? bw*1.8 : bw;
+      ctx.setLineDash(bDash); ctx.stroke(); ctx.setLineDash([]);
+      if (el.label && zoom>0.35) {
+        ctx.font=`700 ${Math.max(8,12*zoom)}px -apple-system,sans-serif`;
+        ctx.fillStyle=color; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(el.label,cx,cy);
+      }
+    }
+    ctx.restore(); return;
+  }
+
+  /* Text element */
+  if (el.type==='texto') {
+    ctx.font=`600 ${(el.fontSize||14)*zoom}px -apple-system,sans-serif`;
+    ctx.fillStyle=color; ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.fillText(el.label||"Texto",sc.x,sc.y); return;
+  }
+
+  /* Equipment card */
+  const w     = (el.width  || 60) * zoom;
+  const h     = (el.height || 60) * zoom;
+  const r     = 8 * zoom;
+  const stCol = elStColor(el);
+  const st    = elStKey(el);
+
+  /* Animated pulse rings — drawn before card so they appear behind it */
+  drawPulseRings(sc, w, h, stCol, st);
+
+  ctx.save();
+
+  /* Status neon glow shadow */
+  if (st==='down') {
+    ctx.shadowColor = stCol;
+    ctx.shadowBlur  = 28 * zoom;
+  } else if (st==='warning') {
+    ctx.shadowColor = stCol;
+    ctx.shadowBlur  = 20 * zoom;
+  } else if (st==='up') {
+    ctx.shadowColor = stCol;
+    ctx.shadowBlur  = 12 * zoom;
+  } else {
+    ctx.shadowColor = "rgba(0,0,0,.10)";
+    ctx.shadowBlur  = 8 * zoom;
+  }
+  ctx.shadowOffsetY = st==='none' ? 2*zoom : 0;
+
+  /* White card background */
+  ctx.beginPath(); ctx.roundRect(sc.x,sc.y,w,h,r);
+  ctx.fillStyle="#fff"; ctx.fill();
+  ctx.shadowColor="transparent"; ctx.shadowBlur=0; ctx.shadowOffsetY=0;
+
+  /* Colored left bar (type color) */
+  ctx.beginPath(); ctx.roundRect(sc.x,sc.y,3.5*zoom,h,[r,0,0,r]);
+  ctx.fillStyle=color; ctx.fill();
+
+  /* Status top stripe */
+  ctx.beginPath(); ctx.roundRect(sc.x,sc.y,w,3.5*zoom,[r,r,0,0]);
+  ctx.fillStyle=stCol; ctx.fill();
+
+  /* Border */
+  ctx.beginPath(); ctx.roundRect(sc.x,sc.y,w,h,r);
+  if (isSel) {
+    ctx.strokeStyle=color; ctx.lineWidth=2*zoom;
+  } else if (st==='down'||st==='warning') {
+    ctx.strokeStyle=hexAlpha(stCol,0.45); ctx.lineWidth=1.5*zoom;
+  } else {
+    ctx.strokeStyle="rgba(0,0,0,.07)"; ctx.lineWidth=1*zoom;
+  }
+  ctx.stroke();
+
+  /* Emoji icon */
+  const esz=Math.max(10,15*zoom);
+  ctx.font=`${esz}px serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(cfg.emoji, sc.x+w/2, sc.y+h*0.4);
+
+  /* Label */
+  const _lbl = elName(el);
+  if (_lbl && zoom>0.35) {
+    const fs2=Math.max(7,8.5*zoom);
+    ctx.font=`600 ${fs2}px -apple-system,sans-serif`;
+    ctx.fillStyle="#1d1d1f"; ctx.textAlign='center'; ctx.textBaseline='middle';
+    const lbl=_lbl.length>13?_lbl.slice(0,12)+'…':_lbl;
+    ctx.fillText(lbl, sc.x+w/2, sc.y+h*0.78);
+  }
+
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawGrid();
+  drawBg();
+  const sorted = [...elements].sort((a,b)=>(a.zIndex??0)-(b.zIndex??0));
+  connections.forEach(drawConnection);
+  sorted.forEach(drawElement);
+}
+
+// ── Animation loop ─────────────────────────────────────────────────────────────
+function animLoop(ts) {
+  pulseT += (ts - lastTs) / 1000;
+  lastTs = ts;
+  draw();
+  if (!document.hidden) requestAnimationFrame(animLoop);
+}
+requestAnimationFrame(ts => { lastTs = ts; animLoop(ts); });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { lastTs = performance.now(); requestAnimationFrame(animLoop); }
+});
+
+// ── Hit test ───────────────────────────────────────────────────────────────────
+function hitTest(wx, wy) {
+  const sorted = [...elements].sort((a,b)=>(b.zIndex??0)-(a.zIndex??0));
+  for (const el of sorted) {
+    if (el.type === 'linha') continue; // lines not clickable in viewer
+    const w = el.width  || (IS_FORMA(el.type) ? (el.type==='circulo'?120:200) : 60);
+    const h = el.height || (IS_FORMA(el.type) ? (el.type==='circulo'?120:140) : 60);
+    if (el.type==='circulo') {
+      const cx=el.x+w/2, cy=el.y+h/2;
+      if (((wx-cx)/(w/2))**2 + ((wy-cy)/(h/2))**2 <= 1) return el;
+    } else if (el.type==='texto') {
+      if (wx>=el.x && wx<=el.x+100 && wy>=el.y && wy<=el.y+20) return el;
+    } else {
+      if (wx>=el.x && wx<=el.x+w && wy>=el.y && wy<=el.y+h) return el;
+    }
+  }
+  return null;
+}
+
+// ── Mouse events ───────────────────────────────────────────────────────────────
+canvas.addEventListener("click", e => {
+  const {x,y} = canvasXY(e);
+  const {x:wx,y:wy} = toWorld(x,y);
+  const hit = hitTest(wx,wy);
+  selectedEl = hit || null;
+  if (hit) abrirDrawer(hit); else fecharDrawer();
+});
+
+canvas.addEventListener("mousedown", e => {
+  if (e.button===1 || e.altKey) {
+    isPanning=true; panStart={x:e.clientX-pan.x*zoom, y:e.clientY-pan.y*zoom};
+    canvas.style.cursor="grabbing";
+  }
+});
+canvas.addEventListener("mousemove", e => {
+  if (isPanning) { pan.x=(e.clientX-panStart.x)/zoom; pan.y=(e.clientY-panStart.y)/zoom; return; }
+  const {x,y}=canvasXY(e); const {x:wx,y:wy}=toWorld(x,y);
+  canvas.style.cursor=hitTest(wx,wy)?"pointer":"default";
+});
+canvas.addEventListener("mouseup", ()=>{ isPanning=false; canvas.style.cursor="default"; });
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  const {x,y}=canvasXY(e); const f=e.deltaY<0?1.1:0.9;
+  const wx=x/zoom-pan.x, wy=y/zoom-pan.y;
+  zoom=Math.max(0.1,Math.min(4,zoom*f));
+  pan.x=x/zoom-wx; pan.y=y/zoom-wy; updZoom();
+}, {passive:false});
+
+// ── Sidebar ─────────────────────────────────────────────────────────────────
+function toggleSidebar() {
+  sidebarOpen = !sidebarOpen;
+  document.getElementById("vwSidebar").classList.toggle("collapsed", !sidebarOpen);
+  document.getElementById("sidebarBtn").classList.toggle("active", sidebarOpen);
+}
+
+function populateSidebar() {
+  const body  = document.getElementById("vwSbBody");
+  const equip = elements.filter(e => !IS_FORMA(e.type) && e.type !== 'texto');
+  const groups = {
+    up:         { label:"Online",           color:"#34c759", items:[] },
+    warning:    { label:"Instável",         color:"#ff9500", items:[] },
+    down:       { label:"Offline",          color:"#ff3b30", items:[] },
+    paused_dep: { label:"Pausado p/ Dep.",  color:"#00cfff", items:[] },
+    none:       { label:"Sem monitoramento",color:"#aeaeb2", items:[] },
+  };
+  equip.forEach(el => {
+    const k = elStKey(el);
+    const grKey = groups[k] ? k : 'none';
+    groups[grKey].items.push(el);
+  });
+  if (!equip.length) {
+    body.innerHTML='<div style="padding:14px;font-size:.78rem;color:var(--vw-muted);text-align:center">Nenhum equipamento na planta.</div>';
+    return;
+  }
+  let html='';
+  for (const [key,g] of Object.entries(groups)) {
+    if (!g.items.length) continue;
+    const glow = key!=='none' ? `box-shadow:0 0 4px ${g.color}` : '';
+    html += `<div class="vw-sb-group">
+      <div class="vw-sb-group-header" onclick="this.nextElementSibling.classList.toggle('hidden')">
+        <div class="vw-sb-group-dot" style="background:${g.color};${glow}"></div>
+        ${g.label}
+        <span class="vw-sb-group-count">${g.items.length}</span>
+      </div>
+      <div class="vw-sb-group-items">`;
+    g.items.forEach(el => {
+      const cfg = TIPO[el.type] || TIPO.switch;
+      html += `<div class="vw-sb-item" data-el-id="${el.id}" onclick="focarElemento('${el.id}')">
+        <span class="vw-sb-item-emoji">${cfg.emoji}</span>
+        <span class="vw-sb-item-name">${esc(elName(el))}</span>
+        <div class="vw-sb-item-dot" style="background:${g.color}"></div>
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+  body.innerHTML = html;
+}
+
+function focarElemento(id) {
+  const el = elements.find(e=>e.id===id);
+  if (!el) return;
+  const w = el.width||60, h = el.height||60;
+  pan.x = canvas.width/zoom/2 - el.x - w/2;
+  pan.y = canvas.height/zoom/2 - el.y - h/2;
+  selectedEl = el;
+  document.querySelectorAll('.vw-sb-item').forEach(i => {
+    i.classList.toggle('active', i.dataset.elId === id);
+  });
+}
+
+// ── Fullscreen ─────────────────────────────────────────────────────────────────
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    wrap.requestFullscreen().catch(()=>{});
+  } else {
+    document.exitFullscreen();
+  }
+}
+document.addEventListener("fullscreenchange", () => {
+  const ic = document.getElementById("fsIcon");
+  ic.className = document.fullscreenElement ? "fa-solid fa-compress-arrows-alt" : "fa-solid fa-expand-arrows-alt";
+  if (!document.fullscreenElement) resizeCanvas();
+});
+
+// ── PRTG Status refresh ────────────────────────────────────────────────────────
+const badge = document.getElementById("vwBadge");
+function setBadge(cls, txt) {
+  badge.className = `vw-tb-badge ${cls}`;
+  badge.innerHTML = `<i class="fa-solid fa-circle" style="font-size:6px"></i> ${txt}`;
+}
+
+function atualizarKPIs() {
+  let up=0,warn=0,down=0,none=0,paused=0;
+  elements.forEach(el => {
+    if (IS_FORMA(el.type)||el.type==='texto') return;
+    const k=elStKey(el);
+    if(k==='up')up++;
+    else if(k==='warning')warn++;
+    else if(k==='down')down++;
+    else if(k==='paused_dep')paused++;
+    else none++;
+  });
+  document.getElementById("kpiUp").textContent     = up;
+  document.getElementById("kpiWarn").textContent   = warn;
+  document.getElementById("kpiDown").textContent   = down;
+  document.getElementById("kpiNone").textContent   = none;
+  document.getElementById("kpiPaused").textContent = paused;
+}
+
+let prevStatusSnap = null;  // snapshot {id: effective_status} após primeira carga
+let _firstLoad = true;      // flag para suprimir toasts na carga inicial
+
+async function refreshStatus() {
+  if (!PRTG_OK) { setBadge("","PRTG não configurado"); atualizarKPIs(); populateSidebar(); return; }
+  setBadge("loading","Atualizando...");
+  try {
+    const r = await fetch(STATUS_URL, {credentials:"same-origin"});
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    if (d.ok) {
+      const newMap = d.devices_map || {};
+      if (prevStatusSnap && !_firstLoad) detectarMudancas(prevStatusSnap, newMap);
+      devicesMap    = newMap;
+      _firstLoad    = false;
+      prevStatusSnap = Object.fromEntries(Object.entries(newMap).map(([k,v]) => [k, v.status ?? 0]));
+      const t = new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+      setBadge("ok",`Atualizado ${t}`);
+    } else throw new Error(d.erro||"Erro");
+  } catch(err) {
+    setBadge("err","Falha ao atualizar");
+    console.warn("PRTG:", err);
+  }
+  atualizarKPIs();
+  populateSidebar();
+}
+
+function detectarMudancas(prev, newMap) {
+  const elsPrtg = elements.filter(e => e.prtg_objid);
+  for (const el of elsPrtg) {
+    const id    = String(el.prtg_objid);
+    const stOld = parseInt(prev[id] ?? 0);
+    const dev   = newMap[id];
+    if (!dev) continue;
+    const stNew = parseInt(dev.status ?? 0);
+    if (stOld === stNew) continue;
+    const nome = el.label || dev.name || `Device #${id}`;
+    if (stNew === 5) showToast(`${nome} ficou OFFLINE`, 'down', 7000);
+    else if (stNew === 8) showToast(`${nome} pausado por dependência`, 'paused', 6000);
+    else if (stNew === 4 && stOld !== 5) showToast(`${nome} está instável`, 'warn', 5000);
+    else if (stNew === 3 && (stOld === 5 || stOld === 4 || stOld === 8)) showToast(`${nome} voltou online`, 'up', 4000);
+  }
+}
+
+function showToast(msg, tipo, dur=4000) {
+  const cont = document.getElementById('toastContainer');
+  if (!cont) return;
+  const el = document.createElement('div');
+  el.className = `vw-toast ${tipo}`;
+  const icons = {up:'fa-circle-check', warn:'fa-triangle-exclamation', down:'fa-circle-xmark', paused:'fa-circle-pause', info:'fa-info-circle'};
+  el.innerHTML = `<i class="fa-solid ${icons[tipo]||'fa-info-circle'}"></i> ${msg}`;
+  cont.appendChild(el);
+  setTimeout(() => { el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(),350); }, dur);
+}
+
+refreshStatus();
+setInterval(refreshStatus, 30_000);
+
+// ── Drawer ─────────────────────────────────────────────────────────────────────
+const overlay = document.getElementById("vwOverlay");
+const drawer  = document.getElementById("vwDrawer");
+
+function row(k,v) {
+  const vStr = typeof v==='string' && v.startsWith('<') ? v : esc(v);
+  return `<div class="vw-detail-row"><span class="vw-detail-key">${esc(k)}</span><span class="vw-detail-val">${vStr}</span></div>`;
+}
+
+function abrirDrawer(el) {
+  const cfg   = TIPO[el.type] || TIPO.switch;
+  const color = el.color || cfg.color;
+  const dev   = el.prtg_objid ? devicesMap[parseInt(el.prtg_objid)] : null;
+  const st    = dev ? (ST_MAP[parseInt(dev.status)]||"unknown") : "none";
+  const stL   = {up:"Online",warning:"Instável",down:"Offline",paused_dep:"Pausado p/ Dep.",unknown:"Desconhecido",none:"Sem monitoramento"};
+  const stI   = {up:"fa-circle-check",warning:"fa-triangle-exclamation",down:"fa-circle-xmark",paused_dep:"fa-circle-pause",unknown:"fa-circle-question",none:"fa-circle-minus"};
+
+  document.getElementById("drwIcon").innerHTML = cfg.emoji;
+  document.getElementById("drwIcon").style.cssText =
+    `background:${color}22;color:${color};width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;`;
+  document.getElementById("drwName").textContent = elName(el);
+  document.getElementById("drwType").textContent = cfg.label;
+
+  const isForma = IS_FORMA(el.type) || el.type === 'texto';
+  let html = '';
+  if (!isForma) {
+    html += `<div>
+    <div class="vw-drw-sec-title"><i class="fa-solid fa-satellite-dish"></i> Monitoramento PRTG</div>
+    <div class="vw-status-badge ${st}"><i class="fa-solid ${stI[st]||stI.none}"></i> ${stL[st]||"—"}</div>`;
+    if (dev) {
+      html += row("Nome",dev.name||"—");
+      if (dev.host)       html += row("Host / IP",dev.host);
+      if (dev.group)      html += row("Grupo",dev.group);
+      if (dev.statustext) html += row("Status PRTG",dev.statustext);
+      // Ping sensor status — exibe separadamente quando diverge do status de device
+      if (dev.ping_status !== null && dev.ping_status !== undefined) {
+        const pSt  = ST_MAP[parseInt(dev.ping_status)] || "unknown";
+        const pClr = {up:"#1a7a35",warning:"#7a4800",down:"#c0100a",paused_dep:"#007a99",unknown:"var(--vw-muted)"}[pSt] || "var(--vw-muted)";
+        const pLbl = {up:"Online",warning:"Instável",down:"Offline",paused_dep:"Pausado p/ Dep.",unknown:"Desconhecido"}[pSt] || "—";
+        const pIco = {up:"fa-circle-check",warning:"fa-triangle-exclamation",down:"fa-circle-xmark",paused_dep:"fa-circle-pause",unknown:"fa-circle-question"}[pSt]||"fa-circle-question";
+        html += row("Ping",`<span style="color:${pClr};font-weight:700"><i class="fa-solid ${pIco}" style="font-size:.85em"></i> ${pLbl}</span>`);
+      }
+    } else if (el.prtg_objid) {
+      html += row("ObjID",el.prtg_objid) + row("Situação","<span style='color:var(--vw-muted)'>Não encontrado no PRTG</span>");
+    } else {
+      html += `<p style="font-size:.78rem;color:var(--vw-muted);margin:0">Sem dispositivo PRTG vinculado.</p>`;
+    }
+    if (el.ip && !dev?.host) html += row("IP Manual",el.ip);
+    html += `</div>`;
+  }
+
+  if (el.item_id) {
+    html += `<div><div class="vw-drw-sec-title"><i class="fa-solid fa-box-archive"></i> Equipamento no Sistema</div>
+      <div id="drwItemLoader" style="font-size:.78rem;color:var(--vw-muted)">
+        <i class="fa-solid fa-spinner fa-spin"></i> Carregando...
+      </div></div>`;
+  }
+  if (el.observacoes) {
+    html += `<div><div class="vw-drw-sec-title"><i class="fa-solid fa-note-sticky"></i> Observações</div>
+      <div class="vw-obs-box">${esc(el.observacoes)}</div></div>`;
+  }
+
+  // Conexões deste elemento — mostra a relação completa: ORIGEM → TIPO → DESTINO
+  const cnEste = connections.filter(c => c.from === el.id || c.to === el.id);
+  if (cnEste.length) {
+    html += `<div><div class="vw-drw-sec-title"><i class="fa-solid fa-network-wired"></i> Conexões (${cnEste.length})</div>
+      <div class="vw-cn-list">`;
+    for (const cn of cnEste) {
+      const fromEl  = elements.find(e => e.id === cn.from);
+      const toEl    = elements.find(e => e.id === cn.to);
+      if (!fromEl || !toEl) continue;
+      const otherId   = cn.from === el.id ? cn.to : cn.from;
+      const fromName  = elName(fromEl);
+      const toName    = elName(toEl);
+      const cnCfg2    = CN_CFG[cn.type] || CN_CFG.network;
+      const fromCfg   = TIPO[fromEl.type] || TIPO.switch;
+      const toCfg     = TIPO[toEl.type]   || TIPO.switch;
+      html += `<div class="vw-cn-item" onclick="selectedEl=elements.find(e=>e.id==='${otherId}');if(selectedEl)abrirDrawer(selectedEl);">
+        <span class="vw-cn-badge" style="background:${cnCfg2.color}22;color:${cnCfg2.color}">${cnCfg2.label}</span>
+        <span class="vw-cn-endpoint">${fromCfg.emoji} <b>${esc(fromName)}</b></span>
+        <span class="vw-cn-arrow">→</span>
+        <span class="vw-cn-endpoint">${toCfg.emoji} <b>${esc(toName)}</b></span>
+      </div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  document.getElementById("drwBody").innerHTML = html;
+  overlay.classList.add("open");
+  drawer.classList.add("open");
+  if (el.item_id) carregarItem(el.item_id);
+  initSwipe();
+}
+
+function fecharDrawer() {
+  overlay.classList.remove("open");
+  drawer.classList.remove("open");
+  selectedEl = null;
+}
+
+async function carregarItem(itemId) {
+  try {
+    const r = await fetch(`/plantas/api/itens-buscar/?q=id:${itemId}`,{credentials:"same-origin"});
+    const d = await r.json();
+    const loader = document.getElementById("drwItemLoader");
+    if (!loader) return;
+    const item = (d.results||[]).find(i=>i.id==itemId);
+    if (!item) { loader.innerHTML='<span style="color:var(--vw-muted)">Não encontrado.</span>'; return; }
+    loader.outerHTML = row("Nome",item.nome)
+      + (item.serie  ? row("Série", item.serie)   : "")
+      + (item.marca  ? row("Marca", item.marca)   : "")
+      + (item.modelo ? row("Modelo",item.modelo)  : "")
+      + (item.subtipo? row("Tipo",  item.subtipo) : "")
+      + (item.status ? row("Status",item.status)  : "")
+      + `<a href="/equipamentos/${itemId}/" class="vw-drw-link" style="margin-top:6px">
+           <i class="fa-solid fa-arrow-up-right-from-square"></i> Ver equipamento completo
+         </a>`;
+  } catch {
+    const l=document.getElementById("drwItemLoader");
+    if(l) l.innerHTML='<span style="color:var(--vw-muted)">Erro ao carregar.</span>';
+  }
+}
+
+function initSwipe() {
+  let sx=null, sy=null, sst=0;
+  const mob = window.innerWidth<=559;
+  drawer.addEventListener("touchstart", e=>{
+    sx=e.touches[0].clientX; sy=e.touches[0].clientY;
+    sst=document.getElementById("drwBody").scrollTop;
+  },{passive:true,once:true});
+  drawer.addEventListener("touchend", e=>{
+    if(sx===null)return;
+    const dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy;
+    if(mob&&dy>60&&Math.abs(dy)>Math.abs(dx)&&sst<=0)fecharDrawer();
+    if(!mob&&dx>60&&Math.abs(dx)>Math.abs(dy))fecharDrawer();
+    sx=null;
+  },{passive:true,once:true});
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+resizeCanvas();
+</script>
+{% endblock %}
