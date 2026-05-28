@@ -2,8 +2,20 @@ import json
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+
+_GRUPO_TV = 'Visualizador TV'
+
+
+def _is_tv_user(user) -> bool:
+    return (
+        user.is_authenticated
+        and not user.is_staff
+        and not user.is_superuser
+        and user.groups.filter(name=_GRUPO_TV).exists()
+    )
 
 from django.core.cache import cache
 
@@ -331,11 +343,126 @@ def planta_restaurar_versao(request, pk, hist_pk):
     return JsonResponse({"ok": True, "versao": nova_versao})
 
 
+# ── Gerenciamento de Acesso TV (somente staff/superusuários) ─────────────────
+
+@login_required
+def planta_tv_gerenciar(request):
+    """Página de gerenciamento de acesso ao modo TV — restrito a staff/superusuários."""
+    if not (request.user.is_staff or request.user.is_superuser):
+        messages.error(request, "Acesso restrito a administradores.")
+        return redirect("planta_list")
+
+    from django.contrib.auth.models import Group
+    from django.contrib.auth import get_user_model
+    AuthUser = get_user_model()
+
+    grupo_tv, _ = Group.objects.get_or_create(name=_GRUPO_TV)
+    usuarios_tv = (
+        grupo_tv.user_set.all()
+        .prefetch_related("plantas_tv_autorizadas__localidade")
+        .order_by("first_name", "last_name", "username")
+    )
+    usuarios_disponiveis = (
+        AuthUser.objects.filter(is_active=True)
+        .exclude(pk__in=grupo_tv.user_set.values("pk"))
+        .order_by("first_name", "last_name", "username")
+    )
+    todas_plantas = (
+        PlantaProjeto.objects.select_related("localidade")
+        .order_by("localidade__local", "nome")
+    )
+    return render(request, "front/plantas/planta_tv_gerenciar.html", {
+        "usuarios_tv":          list(usuarios_tv),
+        "usuarios_disponiveis": list(usuarios_disponiveis),
+        "todas_plantas":        list(todas_plantas),
+    })
+
+
+@login_required
+def planta_tv_gerenciar_acao(request):
+    """Endpoint JSON para adicionar/remover usuários do grupo TV e salvar plantas autorizadas."""
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"ok": False, "erro": "Acesso negado."}, status=403)
+    if request.method != "POST":
+        return JsonResponse({"ok": False}, status=405)
+
+    from django.contrib.auth.models import Group
+    from django.contrib.auth import get_user_model
+    AuthUser = get_user_model()
+
+    try:
+        payload = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"ok": False, "erro": "JSON inválido."}, status=400)
+
+    action  = payload.get("action")
+    user_id = payload.get("user_id")
+    grupo_tv, _ = Group.objects.get_or_create(name=_GRUPO_TV)
+
+    try:
+        target = AuthUser.objects.get(pk=user_id)
+    except AuthUser.DoesNotExist:
+        return JsonResponse({"ok": False, "erro": "Usuário não encontrado."}, status=404)
+
+    if action == "adicionar_grupo":
+        target.groups.add(grupo_tv)
+        return JsonResponse({
+            "ok": True,
+            "user_id": target.pk,
+            "nome": target.get_full_name() or target.username,
+            "username": target.username,
+            "email": target.email,
+        })
+
+    if action == "remover_grupo":
+        target.groups.remove(grupo_tv)
+        target.plantas_tv_autorizadas.clear()
+        return JsonResponse({"ok": True})
+
+    if action == "salvar_plantas":
+        raw_ids = payload.get("plant_ids", [])
+        plant_ids = [int(x) for x in raw_ids if str(x).isdigit()]
+        plantas = PlantaProjeto.objects.filter(pk__in=plant_ids)
+        target.plantas_tv_autorizadas.set(plantas)
+        return JsonResponse({"ok": True, "total": plantas.count()})
+
+    return JsonResponse({"ok": False, "erro": "Ação desconhecida."}, status=400)
+
+
+# ── Seletor TV (acessível ao grupo Visualizador TV) ──────────────────────────
+
+@login_required
+def planta_tv_lista(request):
+    """Página standalone com a lista de plantas disponíveis no modo TV.
+    Usuários do grupo 'Visualizador TV' veem apenas as plantas autorizadas para eles.
+    Demais usuários autenticados veem todas."""
+    user = request.user
+    qs = PlantaProjeto.objects.select_related("localidade").order_by("localidade__local", "nome")
+    if _is_tv_user(user):
+        qs = qs.filter(visualizadores_tv=user)
+
+    plantas_list = list(qs)
+    prtg_ids_map = {
+        str(p.pk): [str(e["prtg_objid"]) for e in p.layout.get("elements", []) if e.get("prtg_objid")]
+        for p in plantas_list
+    }
+
+    return render(request, "front/plantas/planta_tv_lista.html", {
+        "plantas":       plantas_list,
+        "prtg_ok":       prtg_service.is_configured(),
+        "prtg_ids_json": prtg_ids_map,
+        "status_url":    reverse("prtg_status_api"),
+    })
+
+
 # ── Modo TV ─────────────────────────────────────────────────────────────────
 
 @login_required
 def planta_tv(request, pk):
-    planta   = get_object_or_404(PlantaProjeto, pk=pk)
+    planta = get_object_or_404(PlantaProjeto, pk=pk)
+    # Usuários TV só podem ver plantas autorizadas para eles
+    if _is_tv_user(request.user) and not planta.visualizadores_tv.filter(pk=request.user.pk).exists():
+        return redirect("planta_tv_lista")
     interval = max(10, min(300, int(request.GET.get("interval", 30))))
     return render(request, "front/plantas/planta_tv.html", {
         "planta":      planta,
@@ -369,6 +496,78 @@ def prtg_search_api(request):
         return JsonResponse({"ok": True, "results": []})
     results = prtg_service.search_devices(q)
     return JsonResponse({"ok": True, "results": results})
+
+
+# ── Monitor PRTG — cards com status em tempo real ────────────────────────────
+
+@login_required
+def prtg_monitor(request):
+    """Página de monitoramento: todos os dispositivos PRTG em cards com auto-refresh."""
+    import re as _re
+    from collections import defaultdict
+
+    if not prtg_service.is_configured():
+        return render(request, 'front/plantas/prtg_monitor.html', {'prtg_ok': False})
+
+    devices_map = prtg_service.get_devices_map()
+    devices = list(devices_map.values())
+
+    # ── Correlacionar dispositivos PRTG com itens do estoque por nome ─────────
+    def _norm(s):
+        return _re.sub(r'[^a-z0-9]', '', (s or '').lower())
+
+    all_items = list(
+        Item.objects.select_related('localidade', 'subtipo')
+        .filter(status='ativo')
+        .values('id', 'nome', 'numero_serie', 'marca', 'modelo',
+                'localidade__local', 'subtipo__nome')
+    )
+    items_by_norm = {}
+    for it in all_items:
+        key = _norm(it['nome'])
+        if key and key not in items_by_norm:
+            items_by_norm[key] = it
+
+    def _find_item(dev_name):
+        dn = _norm(dev_name)
+        if not dn:
+            return None
+        if dn in items_by_norm:
+            return items_by_norm[dn]
+        for k, it in items_by_norm.items():
+            if len(k) >= 4 and (k in dn or dn in k):
+                return it
+        return None
+
+    for dev in devices:
+        dev['item_match'] = _find_item(dev['name'])
+
+    # ── KPIs ──────────────────────────────────────────────────────────────────
+    total   = len(devices)
+    online  = sum(1 for d in devices if d['status_slug'] == 'up')
+    offline = sum(1 for d in devices if d['status_slug'] == 'down')
+    warning = sum(1 for d in devices if d['status_slug'] in ('warning', 'unusual'))
+    paused  = sum(1 for d in devices if 'paused' in d['status_slug'])
+    unknown = total - online - offline - warning - paused
+
+    # ── Agrupar por grupo PRTG ────────────────────────────────────────────────
+    groups: dict = defaultdict(list)
+    for dev in sorted(devices, key=lambda d: d['name'].lower()):
+        groups[dev.get('group') or 'Sem Grupo'].append(dev)
+    groups_list = sorted(groups.items(), key=lambda g: g[0].lower())
+
+    return render(request, 'front/plantas/prtg_monitor.html', {
+        'devices':     devices,
+        'groups_list': groups_list,
+        'total':   total,
+        'online':  online,
+        'offline': offline,
+        'warning': warning,
+        'paused':  paused,
+        'unknown': unknown,
+        'prtg_ok': True,
+        'status_url': reverse('prtg_status_api'),
+    })
 
 
 # ── API: Buscar Items do sistema (autocomplete editor) ────────────────────────

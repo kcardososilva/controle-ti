@@ -49,7 +49,7 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: #f5f5f7; fon
 
 /* ── Canvas wrap ── */
 .tv-canvas-wrap { flex: 1; position: relative; overflow: hidden; }
-#tvCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#tvCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: default; }
 
 /* ── 3D badge ── */
 .tv-3d-badge {
@@ -59,8 +59,45 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: #f5f5f7; fon
   padding: 3px 10px; border-radius: 20px; display: none; pointer-events: none;
   backdrop-filter: blur(8px); animation: badge3dPulse 2.5s ease-in-out infinite;
 }
-.tv-3d-badge.on { display: block; }
-@keyframes badge3dPulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+.tv-3d-badge.on { display: flex; align-items: center; gap: 6px; }
+@keyframes badge3dPulse { 0%,100%{opacity:1} 50%{opacity:.65} }
+
+/* ── Orbit / nav hint ── */
+.tv-orbit-hint {
+  position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,.55); backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,.09); border-radius: 99px;
+  padding: 5px 16px; font-size: .68rem; color: rgba(255,255,255,.52);
+  pointer-events: none; display: none; white-space: nowrap; z-index: 15;
+  transition: opacity .6s ease;
+}
+.tv-orbit-hint.visible { display: block; opacity: 1; }
+.tv-orbit-hint.fading  { opacity: 0; }
+
+/* ── Tooltip ── */
+.tv-tooltip {
+  position: absolute; pointer-events: none; display: none; z-index: 25;
+  background: rgba(8,8,12,.92); backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,.13); border-radius: 11px;
+  padding: 8px 12px; max-width: 215px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.5);
+  color: #c8c8cc; font-size: .71rem; line-height: 1.5;
+}
+.tv-tooltip .tt-name { font-weight: 700; font-size: .78rem; color: #f5f5f7; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-tooltip .tt-row  { display: flex; align-items: center; gap: 5px; font-size: .68rem; }
+.tv-tooltip .tt-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 20px;
+  font-size: .66rem; font-weight: 700;
+}
+.tv-tooltip .tt-chip.up         { background: rgba(52,199,89,.15);  color: #34c759; }
+.tv-tooltip .tt-chip.warning    { background: rgba(255,149,0,.15);  color: #ff9500; }
+.tv-tooltip .tt-chip.down       { background: rgba(255,59,48,.15);  color: #ff3b30; }
+.tv-tooltip .tt-chip.paused_dep { background: rgba(0,207,255,.15);  color: #00cfff; }
+.tv-tooltip .tt-chip.unknown    { background: rgba(120,120,128,.12);color: #8e8e93; }
+.tv-tooltip .tt-chip.none       { background: rgba(72,72,74,.1);    color: #636366; }
+.tv-tooltip .tt-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; display: inline-block; flex-shrink: 0; }
+.tv-tooltip .tt-host { color: #636366; font-size: .66rem; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── Legend ── */
 .tv-legend {
@@ -109,6 +146,9 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: #f5f5f7; fon
 .tv-root.light .tv-legend { background: rgba(245,245,247,.92); border-color: rgba(0,0,0,.1); }
 .tv-root.light .tv-legend-row { color: rgba(0,0,0,.55); }
 .tv-root.light .tv-3d-badge { background: rgba(0,160,210,.1); border-color: rgba(0,160,210,.3); color: #007aaa; }
+.tv-root.light .tv-tooltip { background: rgba(245,245,247,.96); border-color: rgba(0,0,0,.1); color: #3a3a3c; box-shadow: 0 6px 24px rgba(0,0,0,.12); }
+.tv-root.light .tv-tooltip .tt-name { color: #1d1d1f; }
+.tv-root.light .tv-orbit-hint { background: rgba(255,255,255,.8); border-color: rgba(0,0,0,.1); color: rgba(0,0,0,.45); }
 </style>
 </head>
 <body>
@@ -128,6 +168,14 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: #f5f5f7; fon
       <button class="tv-mode-btn" id="btn3d" onclick="setMode('3d')"><i class="fa-solid fa-cube" style="font-size:.65rem"></i> 3D</button>
     </div>
     <div class="tv-sep"></div>
+    <button class="tv-icon-btn" onclick="navigateElement(true)" title="Elemento anterior (Shift+Tab)">
+      <i class="fa-solid fa-chevron-left"></i>
+    </button>
+    <span id="tvNavInfo" style="font-size:.68rem;font-weight:700;color:rgba(255,255,255,.4);min-width:44px;text-align:center;font-variant-numeric:tabular-nums">—</span>
+    <button class="tv-icon-btn" onclick="navigateElement(false)" title="Próximo elemento (Tab)">
+      <i class="fa-solid fa-chevron-right"></i>
+    </button>
+    <div class="tv-sep"></div>
     <button class="tv-icon-btn" onclick="(()=>{const r=wrap.getBoundingClientRect();applyZoom(1/1.18,r.width/2,r.height/2);})()" title="Reduzir zoom (−)">
       <i class="fa-solid fa-minus"></i>
     </button>
@@ -135,7 +183,7 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: #f5f5f7; fon
     <button class="tv-icon-btn" onclick="(()=>{const r=wrap.getBoundingClientRect();applyZoom(1.18,r.width/2,r.height/2);})()" title="Ampliar zoom (+)">
       <i class="fa-solid fa-plus"></i>
     </button>
-    <button class="tv-icon-btn" onclick="fitCanvas()" title="Ajustar à tela (R)">
+    <button class="tv-icon-btn" onclick="resetView()" title="Ajustar à tela (R)">
       <i class="fa-solid fa-expand-arrows-alt"></i>
     </button>
     <div class="tv-sep"></div>
@@ -149,7 +197,11 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: #f5f5f7; fon
 
   <div class="tv-canvas-wrap" id="tvWrap">
     <canvas id="tvCanvas"></canvas>
-    <div class="tv-3d-badge" id="tv3dBadge"><i class="fa-solid fa-cube"></i> MODO 3D · ISO</div>
+    <div class="tv-3d-badge" id="tv3dBadge"><i class="fa-solid fa-cube"></i> 3D · ISO</div>
+    <div class="tv-orbit-hint" id="tvOrbitHint">
+      <i class="fa-solid fa-hand-pointer"></i>&nbsp; Arraste = orbitar &nbsp;·&nbsp; Btn dir. = pan &nbsp;·&nbsp; ‹ › = navegar elementos &nbsp;·&nbsp; ← → ↑ ↓ = órbita fina &nbsp;·&nbsp; Espaço = auto-órbita
+    </div>
+    <div class="tv-tooltip" id="tvTooltip"></div>
     <div class="tv-legend">
       <div class="tv-legend-row"><div class="tv-legend-dot" style="background:#34c759;box-shadow:0 0 4px #34c75966"></div> Online</div>
       <div class="tv-legend-row"><div class="tv-legend-dot" style="background:#ff9500;box-shadow:0 0 4px #ff950066"></div> Instável</div>
@@ -205,7 +257,8 @@ const ST_COLOR = { up:"#34c759", warning:"#ff9500", down:"#ff3b30", unknown:"#48
 const ST_MAP   = { 3:"up", 4:"warning", 5:"down", 10:"warning",
                    1:"unknown", 2:"unknown", 6:"unknown", 11:"unknown",
                    7:"unknown", 9:"unknown", 12:"unknown", 8:"paused_dep" };
-const EL_H3D   = { servidor:60, rack:52, switch:38, nobreak:32, desktop:28, impressora:22, camera:22, access_point:26, ponto_rede:18 };
+const ST_LABEL = { up:"Online", warning:"Instável", down:"Offline", paused_dep:"Paus. por Dep.", unknown:"Desconhecido", none:"Sem PRTG" };
+const EL_H3D   = { servidor:82, rack:72, switch:52, nobreak:46, desktop:42, impressora:34, camera:34, access_point:40, ponto_rede:26 };
 
 // ── State ──────────────────────────────────────────────────────────────────────
 let elements    = JSON.parse(JSON.stringify(LAYOUT.elements    || []));
@@ -215,8 +268,23 @@ let pulseT = 0, lastTs = 0, dt = 0;
 let zoom = 1, pan = {x:0, y:0};
 let darkMode  = true;
 let viewMode  = '2d';
-let isoAngle  = -Math.PI * 0.14;
+
+// 3D orbit + pan state
+let azimuth   = -Math.PI * 0.15;
+let pitch     = Math.PI / 4;   // 45° — visão lateral+superior equilibrada
+let autoOrbit = true;
+let _autoOrbitId = null;
+let pan3D     = {x:0, y:0};   // screen-space offset for 3D scene pan
+
+// Interaction state
 let particles = [], packets = [];
+let _drag = null;
+let _mousePos = {x:0, y:0};
+let _hoverEl  = null;
+
+// Selection / navigation state
+let selectedElId = null;
+let _panTarget   = null;   // smooth pan target {x, y} for 2D navigation
 
 const wrap   = document.getElementById("tvWrap");
 const canvas = document.getElementById("tvCanvas");
@@ -239,6 +307,11 @@ function elStKey(el) {
   return dev ? (ST_MAP[parseInt(dev.status)] || "unknown") : "none";
 }
 function elStColor(el) { return ST_COLOR[elStKey(el)] || ST_COLOR.none; }
+
+// ── Visible navigable elements (non-forma, non-text, non-line) ─────────────────
+function navElements() {
+  return elements.filter(e => !IS_FORMA(e.type) && e.type !== 'texto' && e.type !== 'linha');
+}
 
 // ── Canvas resize & fit ────────────────────────────────────────────────────────
 new ResizeObserver(() => {
@@ -266,13 +339,25 @@ function fitCanvas() {
   pan.y = (canvas.height/zoom - ch)/2 - Math.min(by0,0);
 }
 
+function resetView() {
+  fitCanvas();
+  pan3D = {x:0, y:0};
+  _panTarget = null;
+  if (viewMode === '3d') {
+    azimuth   = -Math.PI * 0.15;
+    pitch     = Math.PI / 4;   // 45° — consistente com o valor inicial
+    autoOrbit = true;
+    if (_autoOrbitId) { clearTimeout(_autoOrbitId); _autoOrbitId = null; }
+  }
+}
+
 function toScreen(wx,wy) { return { x:(wx+pan.x)*zoom, y:(wy+pan.y)*zoom }; }
 
 // ── 2D: background image ───────────────────────────────────────────────────────
 const bgImg = new Image();
 if (LAYOUT.canvas?.bgImage) bgImg.src = LAYOUT.canvas.bgImage;
 
-// ── 2D: connection geometry ────────────────────────────────────────────────────
+// ── Connection geometry (shared by 2D + 3D) ───────────────────────────────────
 function anchorPt(el, edge) {
   const w=el.width||(el.type==='circulo'?120:IS_FORMA(el.type)?200:60);
   const h=el.height||(el.type==='circulo'?120:IS_FORMA(el.type)?140:60);
@@ -293,32 +378,39 @@ function orthoRoute(ax,ay,fe,bx,by,te) {
   return [{x:p1x,y:p1y},...bends,{x:p2x,y:p2y}];
 }
 
+// Returns the full 2D world-space path for a connection (start, waypoints, end)
+function connPath2D(cn) {
+  const a = elements.find(e=>e.id===cn.from), b = elements.find(e=>e.id===cn.to);
+  if(!a||!b)return null;
+  const {ax,ay} = anchorPt(a,cn.fromEdge), {ax:bx,ay:by} = anchorPt(b,cn.toEdge);
+  const wps = cn.waypoints || orthoRoute(ax,ay,cn.fromEdge,bx,by,cn.toEdge);
+  return {a, b, pts:[{x:ax,y:ay},...wps,{x:bx,y:by}]};
+}
+
 // ── 2D: draw ───────────────────────────────────────────────────────────────────
 function drawConn2D(cn) {
-  const a=elements.find(e=>e.id===cn.from), b=elements.find(e=>e.id===cn.to);
-  if(!a||!b)return;
+  const r = connPath2D(cn); if(!r)return;
+  const {pts} = r;
   const cfg=CN_CFG[cn.type]||CN_CFG.network;
-  const {ax,ay}=anchorPt(a,cn.fromEdge), {ax:bx,ay:by}=anchorPt(b,cn.toEdge);
-  const wps=cn.waypoints||orthoRoute(ax,ay,cn.fromEdge,bx,by,cn.toEdge);
-  const pts=[{x:ax,y:ay},...wps,{x:bx,y:by}].map(p=>toScreen(p.x,p.y));
+  const scPts = pts.map(p=>toScreen(p.x,p.y));
   const col=cn.color||cfg.color, lw=(cn.strokeWidth||2)*zoom;
   const dash=cn.dash?(cn.dash==='solid'?[]:(cn.dash==='dotted'?[2*zoom,4*zoom]:[8*zoom,4*zoom])):cfg.dash.map(d=>d*zoom);
   const arrow=cn.arrow!==undefined&&cn.arrow!==null?cn.arrow:cfg.arrow;
   ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
   ctx.strokeStyle=col; ctx.lineWidth=lw; ctx.setLineDash(dash); ctx.globalAlpha=0.82;
   const R=8*zoom;
-  ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y);
-  for(let i=1;i<pts.length-1;i++){
-    const P=pts[i-1],C=pts[i],N=pts[i+1];
-    const d1=Math.hypot(C.x-P.x,C.y-P.y),d2=Math.hypot(N.x-C.x,N.y-C.y),r=Math.min(R,d1/2,d2/2);
-    if(r<0.5){ctx.lineTo(C.x,C.y);}else{
+  ctx.beginPath(); ctx.moveTo(scPts[0].x,scPts[0].y);
+  for(let i=1;i<scPts.length-1;i++){
+    const P=scPts[i-1],C=scPts[i],N=scPts[i+1];
+    const d1=Math.hypot(C.x-P.x,C.y-P.y),d2=Math.hypot(N.x-C.x,N.y-C.y),r2=Math.min(R,d1/2,d2/2);
+    if(r2<0.5){ctx.lineTo(C.x,C.y);}else{
       const dx1=(C.x-P.x)/d1,dy1=(C.y-P.y)/d1,dx2=(N.x-C.x)/d2,dy2=(N.y-C.y)/d2;
-      ctx.lineTo(C.x-dx1*r,C.y-dy1*r); ctx.quadraticCurveTo(C.x,C.y,C.x+dx2*r,C.y+dy2*r);
+      ctx.lineTo(C.x-dx1*r2,C.y-dy1*r2); ctx.quadraticCurveTo(C.x,C.y,C.x+dx2*r2,C.y+dy2*r2);
     }
   }
-  ctx.lineTo(pts[pts.length-1].x,pts[pts.length-1].y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
+  ctx.lineTo(scPts[scPts.length-1].x,scPts[scPts.length-1].y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
   if(arrow){
-    const L=pts[pts.length-1],P=pts[pts.length-2],ang=Math.atan2(L.y-P.y,L.x-P.x),al=9*zoom;
+    const L=scPts[scPts.length-1],P=scPts[scPts.length-2],ang=Math.atan2(L.y-P.y,L.x-P.x),al=9*zoom;
     ctx.fillStyle=col; ctx.globalAlpha=0.9;
     ctx.beginPath(); ctx.moveTo(L.x,L.y);
     ctx.lineTo(L.x-al*Math.cos(ang-.4),L.y-al*Math.sin(ang-.4));
@@ -412,6 +504,24 @@ function drawPackets2D() {
   });
 }
 
+// ── 2D: selection highlight ────────────────────────────────────────────────────
+function drawSelectionHighlight2D(el) {
+  const sc = toScreen(el.x, el.y);
+  const w = (el.width||60)*zoom, h = (el.height||60)*zoom;
+  const t = (Math.sin(pulseT*4)+1)/2;
+  const expand = 3*zoom + t*2*zoom;
+  ctx.save();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth   = 1.8*zoom;
+  ctx.globalAlpha = 0.7 + t*0.3;
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur  = 12*zoom;
+  ctx.beginPath();
+  ctx.roundRect(sc.x-expand, sc.y-expand, w+expand*2, h+expand*2, (8+expand/zoom)*zoom);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function draw2D() {
   const bg=darkMode?'#0a0a0b':'#f2f2f7';
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -429,25 +539,34 @@ function draw2D() {
   const sorted=[...elements].sort((a,b)=>(a.zIndex??0)-(b.zIndex??0));
   sorted.filter(e=>IS_FORMA(e.type)).forEach(drawEl2D);
   connections.forEach(drawConn2D);
-  sorted.filter(e=>!IS_FORMA(e.type)).forEach(drawEl2D);
+  sorted.filter(e=>!IS_FORMA(e.type)).forEach(e=>{
+    drawEl2D(e);
+    if(e.id===selectedElId) drawSelectionHighlight2D(e);
+  });
   drawPackets2D();
 }
 
-// ── 3D: Isometric projection ───────────────────────────────────────────────────
+// ── 3D: Isometric projection (parametric pitch + azimuth + pan3D) ─────────────
 const ISO_CX = () => (LAYOUT.canvas?.width  || 1400) / 2;
 const ISO_CY = () => (LAYOUT.canvas?.height || 900)  / 2;
 
 function isoProj(wx, wy, wz) {
-  const dx=wx-ISO_CX(), dy=wy-ISO_CY();
-  const c=Math.cos(isoAngle), s=Math.sin(isoAngle);
-  const rx=dx*c-dy*s, ry=dx*s+dy*c;
-  const scl=zoom*0.50;
-  return { sx: canvas.width/2+(rx-ry)*0.866*scl, sy: canvas.height*0.48+((rx+ry)*0.5-wz)*scl };
+  const dx = wx - ISO_CX(), dy = wy - ISO_CY();
+  const c = Math.cos(azimuth), s = Math.sin(azimuth);
+  const rx = dx*c - dy*s, ry = dx*s + dy*c;
+  const scl = zoom * 0.50;
+  const kh = Math.cos(pitch);
+  const kv = Math.sin(pitch);
+  return {
+    sx: canvas.width/2  + (rx - ry) * kh * scl + pan3D.x,
+    sy: canvas.height*0.46 + ((rx + ry) * kv - wz) * scl + pan3D.y
+  };
 }
 
 function depth3D(el) {
-  const dx=el.x+(el.width||60)/2-ISO_CX(), dy=el.y+(el.height||60)/2-ISO_CY();
-  return dx*Math.sin(isoAngle)+dy*Math.cos(isoAngle);
+  const dx = el.x+(el.width||60)/2 - ISO_CX();
+  const dy = el.y+(el.height||60)/2 - ISO_CY();
+  return dx*Math.sin(azimuth) + dy*Math.cos(azimuth);
 }
 
 function initParticles() {
@@ -496,141 +615,281 @@ function drawStars() {
   });
 }
 
-function drawConn3D(cn) {
-  const a=elements.find(e=>e.id===cn.from),b=elements.find(e=>e.id===cn.to);
-  if(!a||!b)return;
-  const az=EL_H3D[a.type]||30, bz=EL_H3D[b.type]||30;
-  const as=isoProj(a.x+(a.width||60)/2,a.y+(a.height||60)/2,az);
-  const bs=isoProj(b.x+(b.width||60)/2,b.y+(b.height||60)/2,bz);
-  const cfg=CN_CFG[cn.type]||CN_CFG.network, col=cn.color||cfg.color;
-  const dsh=cfg.dash.length?[cfg.dash[0]*zoom*.48,cfg.dash[1]*zoom*.48]:[];
+// ── 3D: Floor grid ─────────────────────────────────────────────────────────────
+function drawFloorGrid3D() {
+  const cw = LAYOUT.canvas?.width || 1400, ch = LAYOUT.canvas?.height || 900;
+  const step = 80;
+  const corners = [
+    isoProj(0,0,0), isoProj(cw,0,0), isoProj(cw,ch,0), isoProj(0,ch,0)
+  ];
   ctx.save();
-  ctx.shadowColor=col;ctx.shadowBlur=7;
-  ctx.beginPath();ctx.moveTo(as.sx,as.sy);ctx.lineTo(bs.sx,bs.sy);
-  ctx.strokeStyle=col;ctx.lineWidth=(cn.strokeWidth||2)*zoom*.44;
-  ctx.globalAlpha=0.6;ctx.setLineDash(dsh);ctx.stroke();ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(corners[0].sx, corners[0].sy);
+  corners.slice(1).forEach(p => ctx.lineTo(p.sx, p.sy));
+  ctx.closePath();
+  ctx.fillStyle = darkMode ? 'rgba(0,12,35,.5)' : 'rgba(200,215,240,.25)';
+  ctx.fill();
+  ctx.strokeStyle = darkMode ? 'rgba(0,100,220,.18)' : 'rgba(0,60,180,.1)';
+  ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.strokeStyle = darkMode ? 'rgba(255,255,255,.04)' : 'rgba(0,0,80,.05)';
+  ctx.lineWidth = 0.5;
+  for (let x = step; x < cw; x += step) {
+    const p1=isoProj(x,0,0),p2=isoProj(x,ch,0);
+    ctx.beginPath();ctx.moveTo(p1.sx,p1.sy);ctx.lineTo(p2.sx,p2.sy);ctx.stroke();
+  }
+  for (let y = step; y < ch; y += step) {
+    const p1=isoProj(0,y,0),p2=isoProj(cw,y,0);
+    ctx.beginPath();ctx.moveTo(p1.sx,p1.sy);ctx.lineTo(p2.sx,p2.sy);ctx.stroke();
+  }
   ctx.restore();
 }
 
-function drawPackets3D() {
-  packets.forEach(pk=>{
-    const a=elements.find(e=>e.id===pk.cn.from),b=elements.find(e=>e.id===pk.cn.to);
-    if(!a||!b)return;
-    const az=EL_H3D[a.type]||30, bz=EL_H3D[b.type]||30;
-    const as=isoProj(a.x+(a.width||60)/2,a.y+(a.height||60)/2,az);
-    const bs=isoProj(b.x+(b.width||60)/2,b.y+(b.height||60)/2,bz);
-    const t=((pulseT/pk.period)+pk.offset)%1;
-    const px=as.sx+(bs.sx-as.sx)*t, py=as.sy+(bs.sy-as.sy)*t;
-    const col=pk.cn.color||(CN_CFG[pk.cn.type]||CN_CFG.network).color;
+// ── 3D: Ground shadows ─────────────────────────────────────────────────────────
+function drawGroundShadows3D() {
+  navElements().forEach(el => {
+    const bw=el.width||60, bd=el.height||60;
+    const sp=isoProj(el.x+bw/2,el.y+bd/2,0);
+    const k=zoom*0.5;
+    const rx=Math.max(8,bw*Math.cos(pitch)*k*0.5);
+    const ry=Math.max(5,bd*Math.sin(pitch)*k*0.5);
     ctx.save();
-    ctx.shadowColor=col;ctx.shadowBlur=14;
-    const g=ctx.createRadialGradient(px,py,0,px,py,5*zoom*.5);
-    g.addColorStop(0,col+'ff');g.addColorStop(1,col+'00');
-    ctx.fillStyle=g;ctx.beginPath();ctx.arc(px,py,5*zoom*.5,0,Math.PI*2);ctx.fill();
+    const sg=ctx.createRadialGradient(sp.sx,sp.sy,0,sp.sx,sp.sy,Math.max(rx,ry)*1.4);
+    sg.addColorStop(0,darkMode?'rgba(0,0,0,.55)':'rgba(0,0,0,.22)');
+    sg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=sg;
+    ctx.beginPath();ctx.ellipse(sp.sx,sp.sy,rx*1.35,ry*1.35,0,0,Math.PI*2);ctx.fill();
     ctx.restore();
   });
 }
 
+// ── 3D: Compass ────────────────────────────────────────────────────────────────
+function drawCompass3D() {
+  const cx=38,cy=canvas.height-48,r=18;
+  ctx.save();
+  ctx.beginPath();ctx.arc(cx,cy,r+3,0,Math.PI*2);
+  ctx.fillStyle=darkMode?'rgba(0,0,0,.6)':'rgba(255,255,255,.7)';ctx.fill();
+  ctx.strokeStyle=darkMode?'rgba(255,255,255,.14)':'rgba(0,0,0,.1)';ctx.lineWidth=1;ctx.stroke();
+  ['N','E','S','W'].forEach((lbl,i)=>{
+    const a=i*Math.PI/2-Math.PI/2;
+    ctx.font='600 7px -apple-system,sans-serif';
+    ctx.fillStyle=lbl==='N'?'#ff3b30':(darkMode?'rgba(255,255,255,.3)':'rgba(0,0,0,.3)');
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(lbl,cx+Math.cos(a)*(r-3),cy+Math.sin(a)*(r-3));
+  });
+  const na=-azimuth-Math.PI/2, nl=r-7;
+  ctx.beginPath();ctx.moveTo(cx,cy);
+  ctx.lineTo(cx+Math.cos(na+Math.PI)*nl,cy+Math.sin(na+Math.PI)*nl);
+  ctx.strokeStyle=darkMode?'rgba(255,255,255,.35)':'rgba(0,0,0,.25)';ctx.lineWidth=2;ctx.lineCap='round';ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx,cy);
+  ctx.lineTo(cx+Math.cos(na)*nl,cy+Math.sin(na)*nl);
+  ctx.strokeStyle='#ff3b30';ctx.lineWidth=2;ctx.stroke();
+  ctx.beginPath();ctx.arc(cx,cy,2.5,0,Math.PI*2);
+  ctx.fillStyle=darkMode?'#fff':'#1d1d1f';ctx.fill();
+  ctx.font='500 7.5px -apple-system,sans-serif';
+  ctx.fillStyle=darkMode?'rgba(255,255,255,.32)':'rgba(0,0,0,.32)';
+  ctx.textAlign='left';ctx.textBaseline='middle';
+  ctx.fillText(`${Math.round(pitch*180/Math.PI)}°`,cx+r+6,cy);
+  ctx.restore();
+}
+
+// ── 3D: Connections — follow actual ortho waypoints ────────────────────────────
+// Z assignments: start = element top, waypoints = cable z (low), end = element top
+const CABLE_Z = 5;  // cable routing height above floor
+
+function connPath3D(cn) {
+  const r = connPath2D(cn); if(!r) return null;
+  const {a, b, pts} = r;
+  const az = EL_H3D[a.type]||30, bz = EL_H3D[b.type]||30;
+  const n = pts.length;
+  // Project each point: first = top of A, last = top of B, intermediates = cable height
+  return pts.map((p,i) => {
+    const z = i===0 ? az : i===n-1 ? bz : CABLE_Z;
+    return isoProj(p.x, p.y, z);
+  });
+}
+
+function drawConn3D(cn) {
+  const spts = connPath3D(cn); if(!spts) return;
+  const cfg=CN_CFG[cn.type]||CN_CFG.network, col=cn.color||cfg.color;
+  const dsh=cfg.dash.length?[cfg.dash[0]*zoom*.5,cfg.dash[1]*zoom*.5]:[];
+  const lw=(cn.strokeWidth||2)*zoom*.5;
+  ctx.save();
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  // Shadow pass
+  ctx.beginPath();ctx.moveTo(spts[0].sx,spts[0].sy);
+  spts.slice(1).forEach(p=>ctx.lineTo(p.sx,p.sy));
+  ctx.strokeStyle='rgba(0,0,0,.28)';ctx.lineWidth=lw+2.5;ctx.globalAlpha=0.3;
+  ctx.setLineDash(dsh);ctx.stroke();ctx.setLineDash([]);
+  // Glow pass
+  ctx.shadowColor=col;ctx.shadowBlur=10;
+  ctx.beginPath();ctx.moveTo(spts[0].sx,spts[0].sy);
+  spts.slice(1).forEach(p=>ctx.lineTo(p.sx,p.sy));
+  ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.globalAlpha=0.78;
+  ctx.setLineDash(dsh);ctx.stroke();ctx.setLineDash([]);
+  ctx.restore();
+}
+
+// ── 3D: Data packets — follow projected path ───────────────────────────────────
+function drawPackets3D() {
+  packets.forEach(pk=>{
+    const spts = connPath3D(pk.cn); if(!spts||spts.length<2) return;
+    // ptAlongPath works in any coordinate space — use screen coords
+    const screenPts = spts.map(p=>({x:p.sx,y:p.sy}));
+    const t=((pulseT/pk.period)+pk.offset)%1;
+    const pos=ptAlongPath(screenPts,t);
+    const col=pk.cn.color||(CN_CFG[pk.cn.type]||CN_CFG.network).color;
+    const r=5*zoom*.5;
+    ctx.save();
+    ctx.shadowColor=col;ctx.shadowBlur=18;
+    const g=ctx.createRadialGradient(pos.x,pos.y,0,pos.x,pos.y,r*2.5);
+    g.addColorStop(0,col+'ff');g.addColorStop(0.5,col+'99');g.addColorStop(1,col+'00');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(pos.x,pos.y,r*2.5,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0;ctx.globalAlpha=0.85;
+    ctx.fillStyle='rgba(255,255,255,.9)';
+    ctx.beginPath();ctx.arc(pos.x,pos.y,r*.55,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  });
+}
+
+// ── 3D: Elements (isometric boxes) ────────────────────────────────────────────
 function drawEl3D(el) {
   if(IS_FORMA(el.type)||el.type==='texto')return;
   const cfg=TIPO[el.type]||TIPO.switch, color=el.color||cfg.color;
   const stCol=elStColor(el), st=elStKey(el);
   const bw=el.width||60, bd=el.height||60, bh=EL_H3D[el.type]||32;
   const wx=el.x, wy=el.y;
-
-  const bfl=isoProj(wx,   wy,   0); const bfr=isoProj(wx+bw,wy,   0);
-  const bbr=isoProj(wx+bw,wy+bd,0); const bbl=isoProj(wx,   wy+bd,0);
-  const tfl=isoProj(wx,   wy,   bh); const tfr=isoProj(wx+bw,wy,   bh);
-  const tbr=isoProj(wx+bw,wy+bd,bh); const tbl=isoProj(wx,   wy+bd,bh);
-
+  const bfl=isoProj(wx,   wy,   0);const bfr=isoProj(wx+bw,wy,   0);
+  const bbr=isoProj(wx+bw,wy+bd,0);const bbl=isoProj(wx,   wy+bd,0);
+  const tfl=isoProj(wx,   wy,   bh);const tfr=isoProj(wx+bw,wy,   bh);
+  const tbr=isoProj(wx+bw,wy+bd,bh);const tbl=isoProj(wx,   wy+bd,bh);
   function poly(pts){
     ctx.beginPath();ctx.moveTo(pts[0].sx,pts[0].sy);
-    for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].sx,pts[i].sy);
-    ctx.closePath();
+    pts.slice(1).forEach(p=>ctx.lineTo(p.sx,p.sy));ctx.closePath();
   }
-
   ctx.save();
-
-  // Glow halo below element top
+  // Status glow
   if(st!=='none'&&st!=='unknown'){
     const tc=isoProj(wx+bw/2,wy+bd/2,bh);
-    const gr=ctx.createRadialGradient(tc.sx,tc.sy,0,tc.sx,tc.sy,38*zoom*.5);
-    gr.addColorStop(0,stCol+'55');gr.addColorStop(1,stCol+'00');
-    ctx.fillStyle=gr;ctx.beginPath();ctx.arc(tc.sx,tc.sy,38*zoom*.5,0,Math.PI*2);ctx.fill();
+    const gr=ctx.createRadialGradient(tc.sx,tc.sy,0,tc.sx,tc.sy,44*zoom*.5);
+    gr.addColorStop(0,stCol+'44');gr.addColorStop(1,stCol+'00');
+    ctx.fillStyle=gr;ctx.beginPath();ctx.arc(tc.sx,tc.sy,44*zoom*.5,0,Math.PI*2);ctx.fill();
   }
-
-  // Pulse ring
+  // Pulse ring — outline isométrico expandindo a partir da face superior
   if(st==='down'||st==='warning'||st==='paused_dep'){
     const period=st==='down'?1.4:st==='paused_dep'?3.2:2.2;
     const t=(pulseT/period)%1;
-    const tc=isoProj(wx+bw/2,wy+bd/2,bh);
+    const ex=t*14;
+    const ptfl=isoProj(wx-ex,wy-ex,bh+2), ptfr=isoProj(wx+bw+ex,wy-ex,bh+2);
+    const ptbr=isoProj(wx+bw+ex,wy+bd+ex,bh+2), ptbl=isoProj(wx-ex,wy+bd+ex,bh+2);
     ctx.save();ctx.globalAlpha=0.55*(1-t);ctx.strokeStyle=stCol;ctx.lineWidth=2*zoom*.5;
-    ctx.shadowColor=stCol;ctx.shadowBlur=12;
-    ctx.beginPath();ctx.arc(tc.sx,tc.sy,(14+t*26)*zoom*.5,0,Math.PI*2);ctx.stroke();
-    ctx.restore();
+    ctx.shadowColor=stCol;ctx.shadowBlur=14;
+    ctx.beginPath();
+    ctx.moveTo(ptfl.sx,ptfl.sy);ctx.lineTo(ptfr.sx,ptfr.sy);
+    ctx.lineTo(ptbr.sx,ptbr.sy);ctx.lineTo(ptbl.sx,ptbl.sy);
+    ctx.closePath();ctx.stroke();ctx.restore();
   }
-
   // Left face
   poly([bfl,bbl,tbl,tfl]);
-  ctx.fillStyle=hexShade(color,0.32);ctx.globalAlpha=0.92;ctx.fill();
-  ctx.strokeStyle='rgba(0,0,0,0.18)';ctx.lineWidth=0.5;ctx.stroke();
-
+  ctx.fillStyle=hexShade(color,darkMode?0.38:0.62);ctx.globalAlpha=0.94;ctx.fill();
+  ctx.strokeStyle=darkMode?'rgba(0,0,0,.2)':'rgba(0,0,0,.08)';ctx.lineWidth=0.5;ctx.stroke();
   // Right face
   poly([bfr,bbr,tbr,tfr]);
-  ctx.fillStyle=hexShade(color,0.52);ctx.globalAlpha=0.92;ctx.fill();
-  ctx.strokeStyle='rgba(0,0,0,0.18)';ctx.lineWidth=0.5;ctx.stroke();
-
+  ctx.fillStyle=hexShade(color,darkMode?0.56:0.80);ctx.globalAlpha=0.94;ctx.fill();
+  ctx.strokeStyle=darkMode?'rgba(0,0,0,.2)':'rgba(0,0,0,.08)';ctx.lineWidth=0.5;ctx.stroke();
   // Top face
   poly([tfl,tfr,tbr,tbl]);
   const tg=ctx.createLinearGradient(tfl.sx,tfl.sy,tbr.sx,tbr.sy);
   if(st!=='none'&&st!=='unknown'){
-    tg.addColorStop(0,stCol+'ee');tg.addColorStop(1,stCol+'99');
+    tg.addColorStop(0,hexAlpha(stCol,.95));tg.addColorStop(.55,hexAlpha(stCol,.78));tg.addColorStop(1,hexAlpha(stCol,.55));
   }else{
-    tg.addColorStop(0,color+'cc');tg.addColorStop(1,hexShade(color,0.75)+'cc');
+    tg.addColorStop(0,hexAlpha(color,.90));tg.addColorStop(1,hexAlpha(hexShade(color,.80),.90));
   }
-  ctx.fillStyle=tg;ctx.globalAlpha=0.96;ctx.fill();
-  ctx.strokeStyle=st!=='none'?stCol:color;ctx.lineWidth=1.2*zoom*.5;ctx.stroke();
-
-  // Emoji on top
+  ctx.fillStyle=tg;ctx.globalAlpha=0.97;ctx.fill();
+  poly([tfl,tfr,tbr,tbl]);
+  ctx.strokeStyle=st!=='none'?hexAlpha(stCol,.75):hexAlpha(color,.65);ctx.lineWidth=1.3*zoom*.5;ctx.stroke();
+  // Emoji
   ctx.globalAlpha=1;
   const tc=isoProj(wx+bw/2,wy+bd/2,bh+3);
   ctx.font=`${Math.max(9,14*zoom*.5)}px serif`;
   ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.shadowColor='rgba(0,0,0,.5)';ctx.shadowBlur=3;
+  ctx.shadowColor='rgba(0,0,0,.6)';ctx.shadowBlur=4;
   ctx.fillText(cfg.emoji,tc.sx,tc.sy);
-
-  // Label floating above
-  if(el.label&&zoom>0.28){
-    const lp=isoProj(wx+bw/2,wy+bd/2,bh+22);
-    const fs=Math.max(7,8*zoom*.5);
+  // Label
+  if(el.label&&zoom>0.25){
+    const lp=isoProj(wx+bw/2,wy+bd/2,bh+24);
+    const fs=Math.max(7,8.5*zoom*.5);
     ctx.font=`700 ${fs}px -apple-system,sans-serif`;
     ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowBlur=0;
-    const lbl=el.label.length>14?el.label.slice(0,13)+'…':el.label;
-    const tw=ctx.measureText(lbl).width+8;
-    ctx.fillStyle=darkMode?'rgba(0,0,0,.6)':'rgba(255,255,255,.75)';
-    ctx.beginPath();ctx.roundRect(lp.sx-tw/2,lp.sy-fs/2-2,tw,fs+4,3);ctx.fill();
+    const lbl=el.label.length>15?el.label.slice(0,14)+'…':el.label;
+    const tw=ctx.measureText(lbl).width+10;
+    ctx.fillStyle=darkMode?'rgba(0,0,0,.68)':'rgba(255,255,255,.82)';
+    ctx.beginPath();ctx.roundRect(lp.sx-tw/2,lp.sy-fs/2-2.5,tw,fs+5,4);ctx.fill();
     ctx.fillStyle=darkMode?'#e5e5ea':'#1d1d1f';ctx.fillText(lbl,lp.sx,lp.sy);
   }
-
   ctx.globalAlpha=1;ctx.shadowBlur=0;ctx.restore();
 }
 
+// ── 3D: Selection highlight — wireframe isométrico completo da caixa ──────────
+function drawSelectionHighlight3D(el) {
+  const bw=el.width||60, bd=el.height||60;
+  const bh=(EL_H3D[el.type]||32)+10;
+  const t=(Math.sin(pulseT*4)+1)/2;
+  const ex=3+t*2;
+  // Face superior expandida
+  const tfl=isoProj(el.x-ex,el.y-ex,bh), tfr=isoProj(el.x+bw+ex,el.y-ex,bh);
+  const tbr=isoProj(el.x+bw+ex,el.y+bd+ex,bh), tbl=isoProj(el.x-ex,el.y+bd+ex,bh);
+  // Base expandida
+  const bfl=isoProj(el.x-ex,el.y-ex,0), bfr=isoProj(el.x+bw+ex,el.y-ex,0);
+  const bbr=isoProj(el.x+bw+ex,el.y+bd+ex,0), bbl=isoProj(el.x-ex,el.y+bd+ex,0);
+  ctx.save();
+  ctx.strokeStyle='#ffffff';
+  ctx.shadowColor='#ffffff';
+  ctx.shadowBlur=18;
+  // Topo
+  ctx.lineWidth=(1.8+t*0.8)*zoom*.5;
+  ctx.globalAlpha=0.65+t*0.35;
+  ctx.beginPath();
+  ctx.moveTo(tfl.sx,tfl.sy);ctx.lineTo(tfr.sx,tfr.sy);
+  ctx.lineTo(tbr.sx,tbr.sy);ctx.lineTo(tbl.sx,tbl.sy);
+  ctx.closePath();ctx.stroke();
+  // Arestas verticais (mais sutis)
+  ctx.lineWidth=(1.1+t*0.4)*zoom*.5;
+  ctx.globalAlpha=0.30+t*0.18;
+  [[tfl,bfl],[tfr,bfr],[tbr,bbr],[tbl,bbl]].forEach(([tp,bp])=>{
+    ctx.beginPath();ctx.moveTo(tp.sx,tp.sy);ctx.lineTo(bp.sx,bp.sy);ctx.stroke();
+  });
+  ctx.restore();
+}
+
+// ── 3D: Shapes (quadro, circulo, linha) ────────────────────────────────────────
 function drawForma3D(el) {
-  if(el.type==='linha')return;
   const color=el.color||'#0071e3';
+
+  // Linha → flat line on near-floor level
+  if(el.type==='linha'){
+    const x2=el.x2??el.x+150, y2=el.y2??el.y;
+    const sa=isoProj(el.x,el.y,CABLE_Z), sb=isoProj(x2,y2,CABLE_Z);
+    const sw=(el.strokeWidth||2)*zoom*.5;
+    const dash=el.dash==='dashed'?[8*zoom*.5,4*zoom*.5]:el.dash==='dotted'?[3*zoom*.5,3*zoom*.5]:[];
+    ctx.save();
+    ctx.beginPath();ctx.moveTo(sa.sx,sa.sy);ctx.lineTo(sb.sx,sb.sy);
+    ctx.strokeStyle=color;ctx.lineWidth=sw;ctx.setLineDash(dash);ctx.globalAlpha=0.6;ctx.stroke();
+    ctx.setLineDash([]);ctx.restore();
+    return;
+  }
+
   const ew=el.width||(el.type==='circulo'?120:200), eh=el.height||(el.type==='circulo'?120:140);
   let pts;
   if(el.type==='quadro'){
     pts=[isoProj(el.x,el.y,0),isoProj(el.x+ew,el.y,0),isoProj(el.x+ew,el.y+eh,0),isoProj(el.x,el.y+eh,0)];
   }else{
-    pts=Array.from({length:20},(_,i)=>{const a=i/20*Math.PI*2;return isoProj(el.x+ew/2+Math.cos(a)*ew/2,el.y+eh/2+Math.sin(a)*eh/2,0);});
+    pts=Array.from({length:24},(_,i)=>{const a=i/24*Math.PI*2;return isoProj(el.x+ew/2+Math.cos(a)*ew/2,el.y+eh/2+Math.sin(a)*eh/2,0);});
   }
   ctx.save();
   ctx.beginPath();ctx.moveTo(pts[0].sx,pts[0].sy);
-  for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].sx,pts[i].sy);
-  ctx.closePath();
-  ctx.fillStyle=hexAlpha(color,0.06);ctx.fill();
-  ctx.strokeStyle=hexAlpha(color,0.28);ctx.lineWidth=(el.borderWidth||2)*zoom*.5;
+  pts.slice(1).forEach(p=>ctx.lineTo(p.sx,p.sy));ctx.closePath();
+  ctx.fillStyle=hexAlpha(color,0.07);ctx.fill();
+  ctx.strokeStyle=hexAlpha(color,0.30);ctx.lineWidth=(el.borderWidth||2)*zoom*.5;
   ctx.setLineDash([6*zoom*.5,4*zoom*.5]);ctx.stroke();ctx.setLineDash([]);
   if(el.label&&zoom>0.25){
     const lc=isoProj(el.x+ew/2,el.y+eh/2,6);
@@ -641,28 +900,35 @@ function drawForma3D(el) {
   ctx.restore();
 }
 
+// ── 3D: Main draw ──────────────────────────────────────────────────────────────
 function draw3D() {
-  isoAngle = -Math.PI*0.12 + Math.sin(pulseT*0.042)*0.28;
+  if (autoOrbit) azimuth += dt * 0.07;
 
-  const bg=darkMode?'#020409':'#d4dced';
+  const bg = darkMode ? '#020409' : '#d4dced';
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.fillStyle=bg;ctx.fillRect(0,0,canvas.width,canvas.height);
-
-  // Radial ambient glow
   const rg=ctx.createRadialGradient(canvas.width/2,canvas.height/2,0,canvas.width/2,canvas.height/2,canvas.width*.65);
-  if(darkMode){rg.addColorStop(0,'rgba(0,30,70,.45)');rg.addColorStop(1,'rgba(0,0,0,0)');}
-  else{rg.addColorStop(0,'rgba(80,120,220,.12)');rg.addColorStop(1,'rgba(0,0,0,0)');}
+  if(darkMode){rg.addColorStop(0,'rgba(0,25,65,.5)');rg.addColorStop(1,'rgba(0,0,0,0)');}
+  else{rg.addColorStop(0,'rgba(80,120,220,.14)');rg.addColorStop(1,'rgba(0,0,0,0)');}
   ctx.fillStyle=rg;ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  if(darkMode)drawStars();
+  if(darkMode) drawStars();
+  drawFloorGrid3D();
+  drawGroundShadows3D();
 
-  const vis=elements.filter(e=>!IS_FORMA(e.type)&&e.type!=='texto'&&e.type!=='linha');
+  const vis=navElements();
   vis.sort((a,b)=>depth3D(a)-depth3D(b));
 
-  elements.filter(e=>IS_FORMA(e.type)).forEach(drawForma3D);
+  // All forma types (including linha)
+  elements.filter(e=>IS_FORMA(e.type)||e.type==='linha').forEach(drawForma3D);
   connections.forEach(drawConn3D);
   drawPackets3D();
-  vis.forEach(drawEl3D);
+  vis.forEach(el=>{
+    drawEl3D(el);
+    if(el.id===selectedElId) drawSelectionHighlight3D(el);
+  });
+
+  drawCompass3D();
 }
 
 // ── Animation loop ─────────────────────────────────────────────────────────────
@@ -671,6 +937,17 @@ function animLoop(ts) {
   if(!lastTs)lastTs=ts;
   dt=Math.min((ts-lastTs)/1000,.1);
   pulseT+=dt; lastTs=ts;
+
+  // Smooth pan animation (2D navigation)
+  if(_panTarget && viewMode==='2d'){
+    const spd=8*dt;
+    pan.x+=((_panTarget.x-pan.x)*Math.min(1,spd));
+    pan.y+=((_panTarget.y-pan.y)*Math.min(1,spd));
+    if(Math.abs(pan.x-_panTarget.x)<0.5&&Math.abs(pan.y-_panTarget.y)<0.5){
+      pan.x=_panTarget.x; pan.y=_panTarget.y; _panTarget=null;
+    }
+  }
+
   viewMode==='2d'?draw2D():draw3D();
   const zl=Math.round(zoom*100)+'%';
   if(zl!==_prevZoomLabel){_prevZoomLabel=zl;const el=document.getElementById('tvZoomLbl');if(el)el.textContent=zl;}
@@ -687,12 +964,164 @@ function setMode(m) {
   document.getElementById('btn2d').className='tv-mode-btn'+(m==='2d'?' is-2d':'');
   document.getElementById('btn3d').className='tv-mode-btn'+(m==='3d'?' is-3d':'');
   document.getElementById('tv3dBadge').classList.toggle('on',m==='3d');
-  if(m==='3d'){initParticles();initPackets();}else{initPackets();}
+  hideTooltip();
+  _panTarget=null;
+  // Recalculate zoom so both modes have consistent fitting
+  fitCanvas();
+  if(m==='3d'){
+    pan3D={x:0,y:0};
+    initParticles(); initPackets();
+    autoOrbit=true;
+    wrap.style.cursor='grab';
+    show3DHint();
+  }else{
+    initPackets();
+    wrap.style.cursor='default';
+    if(_autoOrbitId){clearTimeout(_autoOrbitId);_autoOrbitId=null;}
+  }
+}
+
+// ── Mouse drag: pan (2D) + orbit/pan3D (3D) ───────────────────────────────────
+wrap.addEventListener('mousedown', e=>{
+  e.preventDefault();
+  _panTarget=null; // cancel smooth pan on manual drag
+  hideTooltip();
+  const is3D = viewMode==='3d';
+  if(!is3D || e.button===2){
+    // 2D: any button = pan  |  3D: right-click = pan3D
+    if(is3D){
+      _drag={type:'pan3d',sx:e.clientX,sy:e.clientY,p0:{x:pan3D.x,y:pan3D.y}};
+    }else{
+      _drag={type:'pan',sx:e.clientX,sy:e.clientY,p0:{x:pan.x,y:pan.y}};
+    }
+  }else if(is3D && e.button===0){
+    // 3D: left-click = orbit
+    _drag={type:'orbit',sx:e.clientX,sy:e.clientY,az0:azimuth,pitch0:pitch};
+    if(_autoOrbitId){clearTimeout(_autoOrbitId);_autoOrbitId=null;}
+    autoOrbit=false;
+  }
+  wrap.style.cursor='grabbing';
+});
+
+window.addEventListener('mousemove', e=>{
+  if(!_drag)return;
+  const dx=e.clientX-_drag.sx, dy=e.clientY-_drag.sy;
+  if(_drag.type==='pan'){
+    pan.x=_drag.p0.x+dx/zoom; pan.y=_drag.p0.y+dy/zoom;
+  }else if(_drag.type==='pan3d'){
+    pan3D.x=_drag.p0.x+dx; pan3D.y=_drag.p0.y+dy;
+  }else if(_drag.type==='orbit'){
+    azimuth=_drag.az0-dx*0.006;
+    pitch=Math.max(Math.PI/10,Math.min(Math.PI/2.2,_drag.pitch0-dy*0.004));
+  }
+});
+
+window.addEventListener('mouseup', ()=>{
+  if(!_drag)return;
+  _drag=null;
+  if(viewMode==='3d'){
+    wrap.style.cursor='grab';
+    if(_autoOrbitId)clearTimeout(_autoOrbitId);
+    _autoOrbitId=setTimeout(()=>{autoOrbit=true;_autoOrbitId=null;},5000);
+  }else{
+    wrap.style.cursor='default';
+  }
+});
+
+wrap.addEventListener('contextmenu', e=>{ if(viewMode==='3d')e.preventDefault(); });
+
+// ── Hover tooltip ─────────────────────────────────────────────────────────────
+wrap.addEventListener('mousemove', e=>{
+  if(_drag)return;
+  const r=wrap.getBoundingClientRect();
+  _mousePos={x:e.clientX-r.left,y:e.clientY-r.top};
+  updateHover();
+});
+wrap.addEventListener('mouseleave',()=>{ _hoverEl=null; hideTooltip(); });
+
+function updateHover() {
+  let found=null;
+  if(viewMode==='2d'){
+    const wx=_mousePos.x/zoom-pan.x, wy=_mousePos.y/zoom-pan.y;
+    for(const el of elements){
+      if(IS_FORMA(el.type)||el.type==='texto'||el.type==='linha')continue;
+      const w=el.width||60,h=el.height||60;
+      if(wx>=el.x&&wx<=el.x+w&&wy>=el.y&&wy<=el.y+h){found=el;break;}
+    }
+  }else{
+    let bestD=Infinity;
+    const thresh=28*Math.max(0.4,Math.min(zoom,1));
+    for(const el of navElements()){
+      const bh=EL_H3D[el.type]||32;
+      const sp=isoProj(el.x+(el.width||60)/2,el.y+(el.height||60)/2,bh);
+      const d=Math.hypot(sp.sx-_mousePos.x,sp.sy-_mousePos.y);
+      if(d<thresh&&d<bestD){bestD=d;found=el;}
+    }
+  }
+  if(found!==_hoverEl){
+    _hoverEl=found;
+    found?showTooltip(found):hideTooltip();
+  }
+}
+
+function showTooltip(el) {
+  const tt=document.getElementById('tvTooltip'); if(!tt)return;
+  const cfg=TIPO[el.type]||TIPO.switch;
+  const st=elStKey(el);
+  const lbl=ST_LABEL[st]||st;
+  const dev=el.prtg_objid?devicesMap[parseInt(el.prtg_objid)]:null;
+  const hostLine=dev?.host?`<div class="tt-host">${dev.host}</div>`:'';
+  const chip=el.prtg_objid
+    ?`<span class="tt-chip ${st}"><span class="tt-dot"></span>${lbl}</span>`
+    :`<span class="tt-chip none"><span class="tt-dot"></span>Sem PRTG</span>`;
+  tt.innerHTML=`<div class="tt-name">${cfg.emoji} ${el.label||'—'}</div><div class="tt-row">${chip}</div>${hostLine}`;
+  let tx=_mousePos.x+14, ty=_mousePos.y-10;
+  if(tx+220>wrap.offsetWidth)tx=_mousePos.x-226;
+  if(ty<0)ty=_mousePos.y+12;
+  tt.style.left=tx+'px';tt.style.top=ty+'px';tt.style.display='block';
+}
+
+function hideTooltip() {
+  const tt=document.getElementById('tvTooltip'); if(tt)tt.style.display='none';
+}
+
+// ── 3D hint ────────────────────────────────────────────────────────────────────
+function show3DHint() {
+  const h=document.getElementById('tvOrbitHint'); if(!h)return;
+  h.className='tv-orbit-hint visible';
+  setTimeout(()=>{h.className='tv-orbit-hint visible fading';
+    setTimeout(()=>{h.className='tv-orbit-hint';},700);},3500);
+}
+
+// ── Navegação entre elementos (botões ‹ › e Tab/Shift+Tab) ────────────────────
+function navigateElement(reverse) {
+  const vis=navElements();
+  if(!vis.length)return;
+  let idx=vis.findIndex(e=>e.id===selectedElId);
+  idx=reverse?(idx-1+vis.length)%vis.length:(idx+1)%vis.length;
+  selectedElId=vis[idx].id;
+  const el=vis[idx];
+
+  // Atualiza contador no header
+  const navInfo=document.getElementById('tvNavInfo');
+  if(navInfo)navInfo.textContent=`${idx+1}/${vis.length}`;
+
+  if(viewMode==='2d'){
+    const cx=el.x+(el.width||60)/2, cy=el.y+(el.height||60)/2;
+    _panTarget={x:canvas.width/(2*zoom)-cx, y:canvas.height/(2*zoom)-cy};
+    const sc=toScreen(el.x+(el.width||60)/2,el.y+(el.height||60)/2);
+    _mousePos={x:sc.x, y:sc.y};
+  }else{
+    const bh=EL_H3D[el.type]||32;
+    const sp=isoProj(el.x+(el.width||60)/2,el.y+(el.height||60)/2,bh);
+    _mousePos={x:sp.sx, y:sp.sy};
+  }
+  _hoverEl=el; showTooltip(el);
 }
 
 // ── PRTG KPIs ─────────────────────────────────────────────────────────────────
 function updateKpis() {
-  const vis=elements.filter(e=>!IS_FORMA(e.type)&&e.type!=='texto'&&e.type!=='linha');
+  const vis=navElements();
   let up=0,warn=0,down=0,paused=0,none=0;
   vis.forEach(e=>{
     const st=elStKey(e);
@@ -718,9 +1147,10 @@ async function fetchPrtg() {
   }catch{}
 }
 fetchPrtg(); setInterval(fetchPrtg,INTERVAL); updateKpis();
-
-// Init packets for 2D mode on load
 initPackets();
+
+// Inicializa contador de navegação
+(()=>{ const n=navElements().length; const el=document.getElementById('tvNavInfo'); if(el&&n>0)el.textContent=`0/${n}`; })();
 
 // ── Clock ──────────────────────────────────────────────────────────────────────
 function updateClock(){
@@ -741,19 +1171,20 @@ function toggleTheme(){
 
 // ── Fullscreen ─────────────────────────────────────────────────────────────────
 function toggleFullscreen(){
-  if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}
+  if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});
   else document.exitFullscreen();
 }
 document.addEventListener('fullscreenchange',()=>{
   document.getElementById('tvFsIcon').className=document.fullscreenElement?'fa-solid fa-compress':'fa-solid fa-expand';
 });
+
 // ── Zoom ───────────────────────────────────────────────────────────────────────
 function applyZoom(factor, cx, cy) {
   if(viewMode==='2d'){
     const wx=cx/zoom-pan.x, wy=cy/zoom-pan.y;
     zoom=Math.max(0.05,Math.min(zoom*factor,12));
     pan.x=cx/zoom-wx; pan.y=cy/zoom-wy;
-  } else {
+  }else{
     zoom=Math.max(0.08,Math.min(zoom*factor,10));
   }
 }
@@ -764,37 +1195,57 @@ wrap.addEventListener('wheel', e=>{
   applyZoom(e.deltaY<0?1.12:1/1.12, e.clientX-r.left, e.clientY-r.top);
 },{passive:false});
 
-// Touch pinch-to-zoom
-let _touches={}, _lastPinchDist=null;
-wrap.addEventListener('touchstart', e=>{
+// ── Touch: pinch zoom + single-finger pan ─────────────────────────────────────
+let _touches={}, _lastPinchDist=null, _touchPan=null;
+wrap.addEventListener('touchstart',e=>{
   [...e.changedTouches].forEach(t=>{_touches[t.identifier]={x:t.clientX,y:t.clientY};});
+  if(e.touches.length===1)_touchPan={sx:e.touches[0].clientX,sy:e.touches[0].clientY,p0:{x:pan.x,y:pan.y}};
 },{passive:true});
-wrap.addEventListener('touchmove', e=>{
+wrap.addEventListener('touchmove',e=>{
   e.preventDefault();
-  const ids=Object.keys(_touches);
-  if(ids.length<2){_lastPinchDist=null;return;}
+  if(e.touches.length===1&&_touchPan&&viewMode==='2d'){
+    const dx=e.touches[0].clientX-_touchPan.sx,dy=e.touches[0].clientY-_touchPan.sy;
+    pan.x=_touchPan.p0.x+dx/zoom; pan.y=_touchPan.p0.y+dy/zoom; return;
+  }
+  if(Object.keys(_touches).length<2){_lastPinchDist=null;return;}
   const [t1,t2]=[...e.touches].slice(0,2);
   const dist=Math.hypot(t1.clientX-t2.clientX,t1.clientY-t2.clientY);
   if(_lastPinchDist!==null&&_lastPinchDist>0){
-    const cx=(t1.clientX+t2.clientX)/2, cy=(t1.clientY+t2.clientY)/2;
+    const cx=(t1.clientX+t2.clientX)/2,cy=(t1.clientY+t2.clientY)/2;
     const r=wrap.getBoundingClientRect();
-    applyZoom(dist/_lastPinchDist, cx-r.left, cy-r.top);
+    applyZoom(dist/_lastPinchDist,cx-r.left,cy-r.top);
   }
   _lastPinchDist=dist;
 },{passive:false});
-wrap.addEventListener('touchend', e=>{
+wrap.addEventListener('touchend',e=>{
   [...e.changedTouches].forEach(t=>{delete _touches[t.identifier];});
   if(Object.keys(_touches).length<2)_lastPinchDist=null;
+  if(e.touches.length===0)_touchPan=null;
 },{passive:true});
 
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+function scheduleAutoOrbitResume(){
+  if(_autoOrbitId)clearTimeout(_autoOrbitId);
+  _autoOrbitId=setTimeout(()=>{autoOrbit=true;_autoOrbitId=null;},5000);
+}
 document.addEventListener('keydown',e=>{
   if(e.key==='f'||e.key==='F')toggleFullscreen();
   if(e.key==='2')setMode('2d');
   if(e.key==='3')setMode('3d');
   if(e.key==='+'||e.key==='='){const r=wrap.getBoundingClientRect();applyZoom(1.18,r.width/2,r.height/2);}
   if(e.key==='-'){const r=wrap.getBoundingClientRect();applyZoom(1/1.18,r.width/2,r.height/2);}
-  if(e.key==='0'||e.key==='r'||e.key==='R')fitCanvas();
-  if(e.key==='Escape'&&document.fullscreenElement)document.exitFullscreen();
+  if(e.key==='0'||e.key==='r'||e.key==='R'){resetView();selectedElId=null;hideTooltip();}
+  if(e.key==='Escape'){if(document.fullscreenElement)document.exitFullscreen();selectedElId=null;hideTooltip();}
+  // Tab — navigate between elements
+  if(e.key==='Tab'){e.preventDefault();navigateElement(e.shiftKey);}
+  // 3D orbit fine-tune
+  if(viewMode==='3d'){
+    if(e.key==='ArrowLeft'){azimuth-=0.07;autoOrbit=false;scheduleAutoOrbitResume();e.preventDefault();}
+    if(e.key==='ArrowRight'){azimuth+=0.07;autoOrbit=false;scheduleAutoOrbitResume();e.preventDefault();}
+    if(e.key==='ArrowUp'){pitch=Math.max(Math.PI/10,pitch-0.03);e.preventDefault();}
+    if(e.key==='ArrowDown'){pitch=Math.min(Math.PI/2.2,pitch+0.03);e.preventDefault();}
+    if(e.key===' '){autoOrbit=!autoOrbit;if(_autoOrbitId){clearTimeout(_autoOrbitId);_autoOrbitId=null;}e.preventDefault();}
+  }
 });
 </script>
 </body>

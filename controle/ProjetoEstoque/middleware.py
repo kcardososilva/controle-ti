@@ -1,6 +1,8 @@
+import re
 import time
 
 from django.core.cache import cache
+from django.shortcuts import redirect
 
 # (tentativas_mínimas, segundos_de_espera) — do mais restritivo ao menos
 _COOLDOWN = [(10, 600), (5, 60), (3, 10)]
@@ -90,3 +92,46 @@ class LoginThrottleMiddleware:
             '</div></body></html>'
         )
         return HttpResponse(html, status=429)
+
+
+# ─── Middleware: Visualizador TV ──────────────────────────────────────────────
+
+_TV_PERMITIDO = re.compile(
+    r'^(/plantas/\d+/tv/'           # modo TV de uma planta
+    r'|/plantas/tv/'                # seletor de plantas TV
+    r'|/plantas/api/prtg-status/'   # API PRTG (usada pelo canvas TV)
+    r'|/static/'                    # arquivos estáticos
+    r'|/login/'                     # login
+    r'|/logout/'                    # logout
+    r')'
+)
+
+_GRUPO_TV = 'Visualizador TV'
+
+
+class TVAccessMiddleware:
+    """
+    Usuários do grupo 'Visualizador TV' só podem acessar o modo TV das plantas.
+    Qualquer outra URL é redirecionada para /plantas/tv/ (seletor de plantas).
+    Usuários staff e superusuários não são afetados.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, 'user', None)
+        if (
+            user is not None
+            and user.is_authenticated
+            and not user.is_staff
+            and not user.is_superuser
+            and self._is_tv_only(user)
+            and not _TV_PERMITIDO.match(request.path)
+        ):
+            return redirect('/plantas/tv/')
+        return self.get_response(request)
+
+    @staticmethod
+    def _is_tv_only(user) -> bool:
+        return user.groups.filter(name=_GRUPO_TV).exists()

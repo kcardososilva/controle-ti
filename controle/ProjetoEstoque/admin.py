@@ -365,8 +365,17 @@ class ItemLoteAdmin(admin.ModelAdmin):
 
 @admin.register(PlantaProjeto)
 class PlantaProjetoAdmin(AuditAdminMixin):
-    list_display  = ("id", "nome", "localidade", "total_elementos", "elementos_com_prtg", "criado_por", "created_at")
-    list_filter   = ("localidade",)
-    search_fields = ("nome", "descricao", "localidade__local")
-    ordering      = ("localidade__local", "nome")
+    list_display    = ("id", "nome", "localidade", "total_elementos", "elementos_com_prtg", "criado_por", "created_at")
+    list_filter     = ("localidade",)
+    search_fields   = ("nome", "descricao", "localidade__local")
+    ordering        = ("localidade__local", "nome")
     readonly_fields = ("created_at", "updated_at", "criado_por", "atualizado_por")
+    filter_horizontal = ("visualizadores_tv",)
+    fieldsets = (
+        (None, {"fields": ("nome", "descricao", "localidade", "imagem_fundo")}),
+        ("Visualizadores TV", {
+            "description": "Selecione os usuários do grupo 'Visualizador TV' que podem ver esta planta no modo TV.",
+            "fields": ("visualizadores_tv",),
+        }),
+        ("Auditoria", {"fields": ("criado_por", "atualizado_por", "created_at", "updated_at"), "classes": ("collapse",)}),
+    )

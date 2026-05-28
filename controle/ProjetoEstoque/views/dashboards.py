@@ -274,191 +274,182 @@ def _align_series_date(stamps, qs_month_count, field_name="c"):
 @login_required
 def preventiva_dashboard(request):
     """
-    Dashboard de Preventivas:
-      - KPIs: totais, no prazo, vencidas, sem agenda, executadas no mês
-      - Séries (12 meses): executadas x programadas
-      - Tabelas: por checklist, localidade e subtipo
-      - Listas: vencidas e próximas 30 dias (+ histórico)
-    Filtros: q (item/obs), status (ok|vencida|sem_agenda|""), checklist (id),
-             local (icontains), subtipo (icontains), inicio/fim (opcional p/ séries)
+    Dashboard de Preventivas.
+    Usa _aplicar_status_preventiva para calcular proxima_calc = data_ultima + intervalo
+    dinamicamente, evitando dependência de data_proxima gravada no banco.
     """
+    from .preventivas import _aplicar_status_preventiva
+    from collections import defaultdict
+
     today = timezone.localdate()
-    now = timezone.localtime()
+    now   = timezone.localtime()
 
-    # -------- filtros básicos --------
-    q       = (request.GET.get("q") or "").strip()
-    status  = (request.GET.get("status") or "").strip()       # ok | vencida | sem_agenda | ""
-    chk_id  = (request.GET.get("checklist") or "").strip()
-    loc     = (request.GET.get("local") or "").strip()
-    subtipo = (request.GET.get("subtipo") or "").strip()
+    # -------- filtros --------
+    q        = (request.GET.get("q") or "").strip()
+    status   = (request.GET.get("status") or "").strip()
+    chk_id   = (request.GET.get("checklist") or "").strip()
+    loc      = (request.GET.get("local") or "").strip()
+    subtipo  = (request.GET.get("subtipo") or "").strip()
 
-    base = (Preventiva.objects
-            .select_related(
-                "equipamento",
-                "equipamento__localidade",
-                "equipamento__subtipo",
-                "checklist_modelo",
-            ))
-
+    base_qs = Preventiva.objects.select_related(
+        "equipamento", "equipamento__localidade",
+        "equipamento__subtipo", "checklist_modelo",
+    )
     if q:
-        base = base.filter(Q(equipamento__nome__icontains=q) | Q(observacao__icontains=q))
+        base_qs = base_qs.filter(Q(equipamento__nome__icontains=q) | Q(observacao__icontains=q))
     if chk_id.isdigit():
-        base = base.filter(checklist_modelo_id=int(chk_id))
+        base_qs = base_qs.filter(checklist_modelo_id=int(chk_id))
     if loc:
-        base = base.filter(equipamento__localidade__local__icontains=loc)
+        base_qs = base_qs.filter(equipamento__localidade__local__icontains=loc)
     if subtipo:
-        base = base.filter(equipamento__subtipo__nome__icontains=subtipo)
+        base_qs = base_qs.filter(equipamento__subtipo__nome__icontains=subtipo)
 
-    # Guardamos uma cópia SEM o filtro de status para KPIs/listas.
-    # (Se preferir que o status também afete KPIs/listas, troque 'base_kpi' por 'base' nos cálculos.)
-    base_kpi = base
+    # Processa TODAS em Python para garantir proxima_calc correto
+    all_preventivas = list(base_qs)
+    for p in all_preventivas:
+        _aplicar_status_preventiva(p, today)
 
-    # Filtro de status — usa data_agendamento quando explícita, senão data_proxima
-    base = base.annotate(data_ref_filt=Coalesce("data_agendamento", "data_proxima"))
+    # Filtro de status (afeta tabelas/listas, não KPIs)
     if status == "ok":
-        base = base.filter(data_ref_filt__isnull=False, data_ref_filt__gte=today)
+        filtered = [p for p in all_preventivas if p.status_visual in ("ok", "atencao")]
     elif status == "vencida":
-        base = base.filter(data_ref_filt__lt=today)
+        filtered = [p for p in all_preventivas if p.status_visual == "vencida"]
     elif status == "sem_agenda":
-        base = base.filter(data_ref_filt__isnull=True)
+        filtered = [p for p in all_preventivas if p.status_visual == "indefinido"]
+    else:
+        filtered = all_preventivas
 
-    # -------- KPIs (usando base_kpi para refletir a situação real do parque) --------
-    # data de referência: data_agendamento (quando explícita) ou data_proxima (calculada)
-    base_kpi_ref = base_kpi.annotate(data_ref=Coalesce("data_agendamento", "data_proxima"))
-
-    total             = base_kpi.count()
-    vencidas_count    = base_kpi_ref.filter(data_ref__lt=today).count()
-    sem_agenda_count  = base_kpi_ref.filter(data_ref__isnull=True).count()
-    ok_count          = base_kpi_ref.filter(data_ref__isnull=False, data_ref__gte=today).count()
-    # Executadas no mês: usa PreventivaExecucao para contar execuções reais (histórico preciso)
-    executadas_mes    = PreventivaExecucao.objects.filter(
-        preventiva__in=base_kpi.values("id"),
+    # -------- KPIs --------
+    total            = len(all_preventivas)
+    vencidas_count   = sum(1 for p in all_preventivas if p.status_visual == "vencida")
+    ok_count         = sum(1 for p in all_preventivas if p.status_visual in ("ok", "atencao"))
+    sem_agenda_count = sum(1 for p in all_preventivas if p.status_visual == "indefinido")
+    agendadas_count  = sum(1 for p in all_preventivas if p.data_agendamento)
+    executadas_mes   = PreventivaExecucao.objects.filter(
+        preventiva_id__in=[p.id for p in all_preventivas],
         data_execucao__year=now.year,
         data_execucao__month=now.month,
     ).count()
-    agendadas_count   = base_kpi.filter(data_agendamento__isnull=False).count()
 
-    # -------- Séries 12 meses: executadas x agendadas --------
+    # -------- Séries 12 meses --------
     stamps12   = _last_n_month_stamps(12)
     labels12   = _labels_pt_br(stamps12)
     start12_dt = date(stamps12[0][0], stamps12[0][1], 1)
 
-    # Executadas: conta registros reais de PreventivaExecucao por mês (histórico preciso)
     exec_qs = (PreventivaExecucao.objects
-               .filter(preventiva__in=base_kpi.values("id"), data_execucao__gte=start12_dt)
+               .filter(preventiva_id__in=[p.id for p in all_preventivas],
+                       data_execucao__gte=start12_dt)
                .annotate(m=TruncMonth("data_execucao"))
-               .values("m")
-               .annotate(c=Count("id"))
-               .order_by("m"))
-    # Agendadas: usa data_agendamento (explícita) ou data_proxima (calculada auto)
-    prog_qs = (base_kpi_ref
-               .filter(data_ref__isnull=False, data_ref__gte=start12_dt)
-               .annotate(m=TruncMonth("data_ref"))
-               .values("m")
-               .annotate(c=Count("id"))
-               .order_by("m"))
-
+               .values("m").annotate(c=Count("id")).order_by("m"))
     serie_exec = _align_series_date(stamps12, exec_qs)
-    serie_prog = _align_series_date(stamps12, prog_qs)
 
-    # -------- AGG por Checklist / Localidade / Subtipo (usando base_kpi) --------
-    agg_chk = (base_kpi.values("checklist_modelo_id", "checklist_modelo__nome")
-                      .annotate(
-                          total=Count("id"),
-                          vencidas=Count("id", filter=Q(data_proxima__lt=today)),
-                          ok=Count("id", filter=Q(data_proxima__isnull=False, data_proxima__gte=today)),
-                          sem_agenda=Count("id", filter=Q(data_proxima__isnull=True)),
-                          prox_30=Count("id", filter=Q(data_proxima__gte=today,
-                                                       data_proxima__lte=today + timedelta(days=30))),
-                      )
-                      .order_by("-total", "checklist_modelo__nome"))
+    prog_by_month = defaultdict(int)
+    for p in all_preventivas:
+        if p.proxima_calc and p.proxima_calc >= start12_dt:
+            key = f"{p.proxima_calc.year:04d}-{p.proxima_calc.month:02d}"
+            prog_by_month[key] += 1
+    serie_prog = [prog_by_month.get(f"{y:04d}-{m:02d}", 0) for y, m in stamps12]
+
+    # -------- Listas operacionais --------
+    vencidas = sorted(
+        [p for p in all_preventivas if p.status_visual == "vencida"],
+        key=lambda p: p.proxima_calc or date.max,
+    )[:50]
+    for p in vencidas:
+        p.dias_atraso = abs(p.dias_restantes) if p.dias_restantes is not None else None
+
+    proximas = sorted(
+        [p for p in all_preventivas
+         if p.proxima_calc and 0 <= (p.proxima_calc - today).days <= 30
+         and not getattr(p, "pausada", False)],
+        key=lambda p: p.proxima_calc,
+    )
+    for p in proximas:
+        p.dias_faltam = (p.proxima_calc - today).days
+
+    historico = sorted(
+        [p for p in all_preventivas if p.data_ultima],
+        key=lambda p: p.data_ultima,
+        reverse=True,
+    )[:20]
+
+    # -------- AGG tables (usando filtered para refletir filtro de status) --------
+    chk_agg = defaultdict(lambda: {"nome": None, "total": 0, "vencidas": 0, "ok": 0, "sem_agenda": 0, "prox_30": 0})
+    loc_agg = defaultdict(lambda: {"nome": None, "total": 0, "vencidas": 0, "ok": 0, "sem_agenda": 0})
+    sub_agg = defaultdict(lambda: {"nome": None, "total": 0, "vencidas": 0, "ok": 0, "sem_agenda": 0})
+
+    for p in filtered:
+        ck = p.checklist_modelo_id
+        chk_agg[ck]["nome"] = p.checklist_modelo.nome if p.checklist_modelo else None
+        chk_agg[ck]["total"] += 1
+
+        lk = (p.equipamento.localidade.local if p.equipamento.localidade else None) or "—"
+        loc_agg[lk]["nome"] = lk
+        loc_agg[lk]["total"] += 1
+
+        sk = (p.equipamento.subtipo.nome if p.equipamento.subtipo else None) or "—"
+        sub_agg[sk]["nome"] = sk
+        sub_agg[sk]["total"] += 1
+
+        sv = p.status_visual
+        for d in (chk_agg[ck], loc_agg[lk], sub_agg[sk]):
+            if sv == "vencida":
+                d["vencidas"] += 1
+            elif sv in ("ok", "atencao"):
+                d["ok"] += 1
+            elif sv == "indefinido":
+                d["sem_agenda"] += 1
+
+        if p.proxima_calc and 0 <= (p.proxima_calc - today).days <= 30:
+            chk_agg[ck]["prox_30"] += 1
+
+    agg_chk = sorted(
+        [{"checklist_modelo__nome": d["nome"], **{k: d[k] for k in ("total","vencidas","ok","sem_agenda","prox_30")}}
+         for d in chk_agg.values()],
+        key=lambda x: -x["total"],
+    )
+    agg_loc = sorted(
+        [{"equipamento__localidade__local": d["nome"], **{k: d[k] for k in ("total","vencidas","ok","sem_agenda")}}
+         for d in loc_agg.values()],
+        key=lambda x: -x["vencidas"],
+    )
+    agg_sub = sorted(
+        [{"equipamento__subtipo__nome": d["nome"], **{k: d[k] for k in ("total","vencidas","ok","sem_agenda")}}
+         for d in sub_agg.values()],
+        key=lambda x: -x["vencidas"],
+    )
 
     chk_labels, chk_rates = [], []
     for r in agg_chk[:8]:
-        den = (r["ok"] or 0) + (r["vencidas"] or 0)
-        taxa = (100.0 * (r["ok"] or 0) / den) if den > 0 else 0.0
+        den = r["ok"] + r["vencidas"]
+        taxa = (100.0 * r["ok"] / den) if den > 0 else 0.0
         chk_labels.append(r["checklist_modelo__nome"] or "Sem checklist")
         chk_rates.append(round(taxa, 2))
-
-    agg_loc = (base_kpi.values("equipamento__localidade__local")
-                      .annotate(
-                          total=Count("id"),
-                          vencidas=Count("id", filter=Q(data_proxima__lt=today)),
-                          ok=Count("id", filter=Q(data_proxima__isnull=False, data_proxima__gte=today)),
-                          sem_agenda=Count("id", filter=Q(data_proxima__isnull=True)),
-                      )
-                      .order_by("-vencidas", "equipamento__localidade__local"))
-
-    agg_sub = (base_kpi.values("equipamento__subtipo__nome")
-                      .annotate(
-                          total=Count("id"),
-                          vencidas=Count("id", filter=Q(data_proxima__lt=today)),
-                          ok=Count("id", filter=Q(data_proxima__isnull=False, data_proxima__gte=today)),
-                          sem_agenda=Count("id", filter=Q(data_proxima__isnull=True)),
-                      )
-                      .order_by("-vencidas", "equipamento__subtipo__nome"))
-
-    # -------- Listas operacionais (calculadas corretamente) --------
-    vencidas = list(
-        base_kpi.filter(data_proxima__lt=today)
-                .order_by("data_proxima")
-                .select_related("equipamento", "equipamento__localidade", "equipamento__subtipo", "checklist_modelo")[:50]
-    )
-    for p in vencidas:
-        p.dias_atraso = (today - p.data_proxima).days if p.data_proxima else None
-
-    proximas = list(
-        base_kpi.filter(data_proxima__isnull=False,
-                        data_proxima__gte=today,
-                        data_proxima__lte=today + timedelta(days=30))
-                .order_by("data_proxima")
-                .select_related("equipamento", "equipamento__localidade", "equipamento__subtipo", "checklist_modelo")
-    )
-    for p in proximas:
-        p.dias_faltam = (p.data_proxima - today).days if p.data_proxima else None
-
-    historico = (base_kpi.filter(data_ultima__isnull=False)
-                        .order_by("-data_ultima", "-updated_at")
-                        .select_related("equipamento", "checklist_modelo")[:20])
 
     checklist_opts = CheckListModelo.objects.all().order_by("nome").values("id", "nome")
 
     ctx = dict(
-        # filtros
         q=q, status=status, checklist=chk_id, local=loc, subtipo=subtipo,
         checklist_opts=checklist_opts,
-
-        # Período exibido (janela de 12 meses)
         dt_ini=start12_dt,
         dt_fim=today,
-
-        # KPIs
         total=total,
         ok_count=ok_count,
         vencidas_count=vencidas_count,
         sem_agenda_count=sem_agenda_count,
         executadas_mes=executadas_mes,
         agendadas_count=agendadas_count,
-
-        # Séries
         serie_labels=labels12,
         serie_exec=serie_exec,
         serie_prog=serie_prog,
-
-        # Tabelas
-        agg_chk=list(agg_chk),
-        agg_loc=list(agg_loc),
-        agg_sub=list(agg_sub),
-
-        # Listas
+        agg_chk=agg_chk,
+        agg_loc=agg_loc,
+        agg_sub=agg_sub,
         vencidas=vencidas,
         proximas=proximas,
         historico=historico,
-
-        # Gráfico de adesão por checklist
         chk_labels=chk_labels,
         chk_rates=chk_rates,
-
         today=today,
     )
     return render(request, "front/dashboards/preventiva_dashboard.html", ctx)

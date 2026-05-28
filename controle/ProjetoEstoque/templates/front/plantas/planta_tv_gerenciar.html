@@ -1,0 +1,1015 @@
+{% extends 'base.html' %}
+{% block title %}Gerenciar Acesso TV{% endblock %}
+{% block page_title %}Acesso ao Modo TV{% endblock %}
+{% block page_subtitle %}Gerencie quais colaboradores podem visualizar as plantas em modo TV e quais plantas cada um acessa{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'planta_tv_lista' %}" class="btn btn-sm" target="_blank" rel="noopener">
+    <i class="fa-solid fa-tv"></i> Ver como TV
+  </a>
+  <a href="{% url 'planta_list' %}" class="btn btn-sm">
+    <i class="fa-solid fa-arrow-left"></i> Voltar às Plantas
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+
+<style>
+/* ─── Tokens ────────────────────────────────────────────────────────────────── */
+:where(.tvgr-page, .select2-container, .select2-dropdown) {
+  --tvgr-brand:        var(--brand, #0071e3);
+  --tvgr-brand-hover:  var(--brand-hover, #0077ed);
+  --tvgr-brand-soft:   var(--brand-soft, rgba(0,113,227,.10));
+  --tvgr-brand-ring:   var(--brand-ring, rgba(0,113,227,.28));
+
+  --tvgr-bg:           var(--bg-elevated, #fff);
+  --tvgr-bg2:          var(--bg-page-2, #f5f5f7);
+  --tvgr-bg-fill:      var(--bg-fill-tertiary, rgba(120,120,128,.08));
+  --tvgr-hover:        var(--bg-hover, rgba(0,0,0,.04));
+
+  --tvgr-text:         var(--text-primary, #1d1d1f);
+  --tvgr-text2:        var(--text-secondary, #3a3a3c);
+  --tvgr-muted:        var(--text-tertiary, #6e6e73);
+  --tvgr-soft:         var(--text-quaternary, #86868b);
+
+  --tvgr-border:       var(--separator-hairline, rgba(0,0,0,.06));
+  --tvgr-border2:      var(--separator-non-opaque, rgba(0,0,0,.10));
+  --tvgr-border3:      var(--separator-strong, rgba(0,0,0,.18));
+
+  --tvgr-success:      var(--success, #34c759);
+  --tvgr-success-bg:   var(--success-soft, rgba(52,199,89,.12));
+  --tvgr-warning:      var(--warning, #ff9500);
+  --tvgr-warning-bg:   var(--warning-soft, rgba(255,149,0,.12));
+  --tvgr-danger:       var(--danger, #ff3b30);
+  --tvgr-danger-bg:    var(--danger-soft, rgba(255,59,48,.10));
+  --tvgr-indigo:       var(--system-indigo, #5856d6);
+
+  --tvgr-radius-sm:    var(--radius-sm, 10px);
+  --tvgr-radius-md:    var(--radius-md, 14px);
+  --tvgr-radius-lg:    var(--radius-lg, 18px);
+  --tvgr-radius-xl:    var(--radius-xl, 22px);
+  --tvgr-radius-pill:  var(--radius-pill, 980px);
+
+  --tvgr-shadow-sm:    var(--shadow-sm);
+  --tvgr-shadow-md:    var(--shadow-md);
+  --tvgr-control-h:    38px;
+  --tvgr-ease:         var(--ease-apple, cubic-bezier(.32,.72,0,1));
+  --tvgr-t-fast:       var(--transition-fast, 130ms ease);
+  --tvgr-t-base:       var(--transition-base, 200ms ease);
+}
+
+.tvgr-page, .tvgr-page * { box-sizing: border-box; min-width: 0; }
+
+.tvgr-page {
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  color: var(--tvgr-text);
+}
+
+/* ─── KPI Cards ─────────────────────────────────────────────────────────────── */
+.tvgr-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.tvgr-kpi {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 96px;
+  padding: 16px 18px;
+  border: 1px solid var(--tvgr-border);
+  border-radius: var(--tvgr-radius-lg);
+  background: var(--tvgr-bg);
+  overflow: hidden;
+  transition:
+    transform var(--tvgr-t-base),
+    border-color var(--tvgr-t-fast),
+    box-shadow var(--tvgr-t-base);
+}
+
+.tvgr-kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 92% 6%,
+      color-mix(in srgb, var(--kpi-c, var(--tvgr-brand)) 14%, transparent) 0,
+      transparent 34%),
+    linear-gradient(135deg, rgba(255,255,255,.08), transparent 40%);
+  pointer-events: none;
+}
+
+.tvgr-kpi:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--kpi-c, var(--tvgr-brand)) 28%, var(--tvgr-border2));
+  box-shadow: var(--tvgr-shadow-sm);
+}
+
+.tvgr-kpi-icon {
+  position: relative; z-index: 1;
+  width: 44px; height: 44px; flex: 0 0 44px;
+  display: grid; place-items: center;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--kpi-c, var(--tvgr-brand)) 12%, transparent);
+  color: var(--kpi-c, var(--tvgr-brand));
+  border: 1px solid color-mix(in srgb, var(--kpi-c, var(--tvgr-brand)) 22%, transparent);
+  font-size: 16px;
+}
+
+.tvgr-kpi-info { position: relative; z-index: 1; display: grid; gap: 2px; }
+
+.tvgr-kpi-label {
+  color: var(--tvgr-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.tvgr-kpi-number {
+  color: var(--tvgr-text);
+  font-size: clamp(24px, 2.4vw, 30px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tvgr-kpi-sub { color: var(--tvgr-soft); font-size: 12px; margin-top: 2px; }
+
+/* ─── Painel ────────────────────────────────────────────────────────────────── */
+.tvgr-panel {
+  background: var(--tvgr-bg);
+  border: 1px solid var(--tvgr-border);
+  border-radius: var(--tvgr-radius-xl);
+  overflow: hidden;
+  transition: border-color var(--tvgr-t-fast), box-shadow var(--tvgr-t-base);
+}
+
+.tvgr-panel:hover { border-color: var(--tvgr-border2); box-shadow: var(--tvgr-shadow-sm); }
+
+.tvgr-panel-hd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--tvgr-border);
+}
+
+.tvgr-panel-hd-icon {
+  width: 34px; height: 34px; flex: 0 0 34px;
+  display: grid; place-items: center;
+  border-radius: 10px;
+  background: var(--tvgr-brand-soft);
+  color: var(--tvgr-brand);
+  font-size: 14px;
+}
+
+.tvgr-panel-hd-text { flex: 1; min-width: 0; }
+.tvgr-panel-hd-text h3 {
+  font-size: .9rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--tvgr-text);
+}
+.tvgr-panel-hd-text p {
+  font-size: .72rem;
+  color: var(--tvgr-muted);
+  margin: 2px 0 0;
+}
+
+.tvgr-panel-body { padding: 20px; }
+
+/* ─── Adicionar usuário ─────────────────────────────────────────────────────── */
+.tvgr-add-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.tvgr-hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: .72rem;
+  color: var(--tvgr-muted);
+  margin-top: 12px;
+  padding: 10px 13px;
+  border-radius: var(--tvgr-radius-sm);
+  background: var(--tvgr-bg-fill);
+  border: 1px solid var(--tvgr-border);
+}
+
+.tvgr-hint i { color: var(--tvgr-brand); flex-shrink: 0; }
+
+/* ─── Empty state ───────────────────────────────────────────────────────────── */
+.tvgr-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--tvgr-muted);
+}
+
+.tvgr-empty-icon {
+  width: 56px; height: 56px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--tvgr-bg-fill);
+  border: 1px solid var(--tvgr-border);
+  font-size: 20px;
+  color: var(--tvgr-soft);
+}
+
+.tvgr-empty h4 { font-size: .88rem; font-weight: 700; margin: 0; color: var(--tvgr-text2); }
+.tvgr-empty p  { font-size: .76rem; margin: 0; max-width: 320px; }
+
+/* ─── Busca ─────────────────────────────────────────────────────────────────── */
+.tvgr-search-wrap {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.tvgr-search-wrap i {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--tvgr-soft);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.tvgr-search {
+  width: 100%;
+  height: var(--tvgr-control-h);
+  padding: 0 12px 0 34px;
+  border: 1px solid var(--tvgr-border2);
+  border-radius: var(--tvgr-radius-sm);
+  background: var(--tvgr-bg2);
+  color: var(--tvgr-text);
+  font-size: .82rem;
+  transition: border-color var(--tvgr-t-fast), box-shadow var(--tvgr-t-fast);
+}
+
+.tvgr-search:focus {
+  outline: none;
+  border-color: var(--tvgr-brand);
+  box-shadow: 0 0 0 3px var(--tvgr-brand-ring);
+}
+
+/* ─── Card de usuário ───────────────────────────────────────────────────────── */
+.tvgr-user-card {
+  border: 1px solid var(--tvgr-border);
+  border-radius: var(--tvgr-radius-md);
+  overflow: hidden;
+  margin-bottom: 10px;
+  transition: border-color var(--tvgr-t-fast), box-shadow var(--tvgr-t-base);
+}
+
+.tvgr-user-card:last-child { margin-bottom: 0; }
+
+.tvgr-user-card:hover { border-color: var(--tvgr-border2); box-shadow: var(--tvgr-shadow-sm); }
+.tvgr-user-card.is-open { border-color: var(--tvgr-brand); box-shadow: 0 0 0 1px var(--tvgr-brand); }
+
+.tvgr-user-hd {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 16px;
+  cursor: pointer;
+  background: var(--tvgr-bg);
+  transition: background var(--tvgr-t-fast);
+  user-select: none;
+}
+
+.tvgr-user-hd:hover { background: var(--tvgr-hover); }
+
+.tvgr-avatar {
+  width: 40px; height: 40px;
+  flex: 0 0 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--tvgr-brand), var(--tvgr-indigo));
+  display: grid; place-items: center;
+  color: #fff;
+  font-size: .82rem;
+  font-weight: 800;
+  letter-spacing: -.01em;
+}
+
+.tvgr-user-info { flex: 1; min-width: 0; }
+
+.tvgr-user-name {
+  font-size: .85rem;
+  font-weight: 700;
+  color: var(--tvgr-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tvgr-user-meta {
+  font-size: .7rem;
+  color: var(--tvgr-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tvgr-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 340px;
+  justify-content: flex-end;
+}
+
+.tvgr-chip {
+  padding: 2px 9px;
+  border-radius: var(--tvgr-radius-pill);
+  font-size: .62rem;
+  font-weight: 600;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+
+.tvgr-chip-blue {
+  background: color-mix(in srgb, var(--tvgr-brand) 12%, transparent);
+  color: var(--tvgr-brand);
+  border: 1px solid color-mix(in srgb, var(--tvgr-brand) 22%, transparent);
+}
+
+.tvgr-chip-muted {
+  background: var(--tvgr-bg-fill);
+  color: var(--tvgr-muted);
+  border: 1px solid var(--tvgr-border2);
+}
+
+.tvgr-expand-icon {
+  flex-shrink: 0;
+  color: var(--tvgr-muted);
+  font-size: .72rem;
+  transition: transform 220ms var(--tvgr-ease);
+}
+
+.tvgr-user-card.is-open .tvgr-expand-icon { transform: rotate(180deg); }
+
+/* ─── Painel de plantas por usuário ─────────────────────────────────────────── */
+.tvgr-editor {
+  display: none;
+  border-top: 1px solid var(--tvgr-border);
+  padding: 16px;
+  background: var(--tvgr-bg2);
+}
+
+.tvgr-user-card.is-open .tvgr-editor { display: block; }
+
+.tvgr-editor-section-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--tvgr-muted);
+  margin-bottom: 12px;
+}
+
+.tvgr-plant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.tvgr-plant-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: var(--tvgr-radius-sm);
+  border: 1px solid var(--tvgr-border);
+  background: var(--tvgr-bg);
+  cursor: pointer;
+  transition: border-color var(--tvgr-t-fast), background var(--tvgr-t-fast);
+}
+
+.tvgr-plant-check:has(input:checked) {
+  border-color: color-mix(in srgb, var(--tvgr-brand) 38%, transparent);
+  background: color-mix(in srgb, var(--tvgr-brand) 6%, var(--tvgr-bg));
+}
+
+.tvgr-plant-check input[type=checkbox] {
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  accent-color: var(--tvgr-brand);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tvgr-plant-check-name {
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--tvgr-text);
+  line-height: 1.3;
+}
+
+.tvgr-plant-check-loc {
+  font-size: .63rem;
+  color: var(--tvgr-muted);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tvgr-editor-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tvgr-feedback {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  font-size: .72rem;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.tvgr-feedback.ok  { display: flex; color: var(--tvgr-success); }
+.tvgr-feedback.err { display: flex; color: var(--tvgr-danger); }
+
+/* ─── Toast ─────────────────────────────────────────────────────────────────── */
+#tvgrToast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: #1d1d1f;
+  color: #fff;
+  padding: 10px 22px;
+  border-radius: var(--tvgr-radius-pill);
+  font-size: .82rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .28s, transform .28s var(--tvgr-ease);
+  white-space: nowrap;
+  box-shadow: var(--tvgr-shadow-md);
+}
+
+#tvgrToast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ─── Select2 ajustado ───────────────────────────────────────────────────────── */
+.select2-container { width: 100% !important; font-family: var(--font-sans) !important; }
+
+.select2-container--default .select2-selection--single {
+  min-height: var(--tvgr-control-h) !important;
+  display: flex !important;
+  align-items: center !important;
+  border: 1px solid var(--tvgr-border2) !important;
+  border-radius: var(--tvgr-radius-sm) !important;
+  background: var(--tvgr-bg) !important;
+  transition: border-color var(--tvgr-t-fast), box-shadow var(--tvgr-t-fast);
+}
+
+.select2-container--default.select2-container--focus .select2-selection--single,
+.select2-container--default.select2-container--open  .select2-selection--single {
+  border-color: var(--tvgr-brand) !important;
+  box-shadow: 0 0 0 3px var(--tvgr-brand-ring) !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  width: 100%;
+  padding-left: 12px !important;
+  padding-right: 32px !important;
+  color: var(--tvgr-text) !important;
+  font-size: 13.5px;
+  line-height: var(--tvgr-control-h) !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__placeholder {
+  color: var(--tvgr-soft) !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: var(--tvgr-control-h) !important;
+  right: 8px !important;
+}
+
+.select2-dropdown {
+  z-index: 9999 !important;
+  border: 1px solid var(--tvgr-border2) !important;
+  border-radius: var(--tvgr-radius-md) !important;
+  box-shadow: var(--tvgr-shadow-md) !important;
+  background: var(--tvgr-bg) !important;
+}
+
+.select2-container--default .select2-results__option {
+  padding: 8px 12px !important;
+  font-size: 13.5px;
+  color: var(--tvgr-text) !important;
+}
+
+.select2-container--default .select2-results__option--highlighted {
+  background: var(--tvgr-brand-soft) !important;
+  color: var(--tvgr-brand) !important;
+}
+
+.select2-search--dropdown .select2-search__field {
+  border: 1px solid var(--tvgr-border2) !important;
+  border-radius: 8px !important;
+  padding: 6px 10px !important;
+  font-size: 13px;
+  color: var(--tvgr-text);
+  background: var(--tvgr-bg2) !important;
+}
+
+/* ─── Responsivo ────────────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .tvgr-kpi-grid    { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .tvgr-kpi         { padding: 13px 14px; gap: 10px; }
+  .tvgr-kpi-icon    { display: none; }
+  .tvgr-add-row     { grid-template-columns: 1fr; }
+  .tvgr-plant-grid  { grid-template-columns: 1fr 1fr; }
+  .tvgr-chip-group  { display: none; }
+}
+
+@media (max-width: 480px) {
+  .tvgr-plant-grid  { grid-template-columns: 1fr; }
+  .tvgr-kpi-number  { font-size: 20px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tvgr-page">
+
+  <!-- ── KPI Cards ─────────────────────────────────────────────────────────── -->
+  <div class="tvgr-kpi-grid">
+
+    <div class="tvgr-kpi" style="--kpi-c: var(--tvgr-brand)">
+      <div class="tvgr-kpi-icon"><i class="fa-solid fa-users"></i></div>
+      <div class="tvgr-kpi-info">
+        <div class="tvgr-kpi-label">No grupo TV</div>
+        <div class="tvgr-kpi-number" id="kpiTotalUsers">{{ usuarios_tv|length }}</div>
+        <div class="tvgr-kpi-sub">colaboradores autorizados</div>
+      </div>
+    </div>
+
+    <div class="tvgr-kpi" style="--kpi-c: var(--tvgr-success)">
+      <div class="tvgr-kpi-icon"><i class="fa-solid fa-map"></i></div>
+      <div class="tvgr-kpi-info">
+        <div class="tvgr-kpi-label">Plantas disponíveis</div>
+        <div class="tvgr-kpi-number">{{ todas_plantas|length }}</div>
+        <div class="tvgr-kpi-sub">cadastradas no sistema</div>
+      </div>
+    </div>
+
+    <div class="tvgr-kpi" style="--kpi-c: var(--tvgr-indigo)">
+      <div class="tvgr-kpi-icon"><i class="fa-solid fa-tv"></i></div>
+      <div class="tvgr-kpi-info">
+        <div class="tvgr-kpi-label">Colaboradores disponíveis</div>
+        <div class="tvgr-kpi-number">{{ usuarios_disponiveis|length }}</div>
+        <div class="tvgr-kpi-sub">ainda fora do grupo</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Painel: Adicionar usuário ─────────────────────────────────────────── -->
+  <div class="tvgr-panel">
+    <div class="tvgr-panel-hd">
+      <div class="tvgr-panel-hd-icon"><i class="fa-solid fa-user-plus"></i></div>
+      <div class="tvgr-panel-hd-text">
+        <h3>Adicionar colaborador ao grupo <em>Visualizador TV</em></h3>
+        <p>Usuários adicionados poderão acessar apenas as plantas autorizadas em modo TV</p>
+      </div>
+    </div>
+    <div class="tvgr-panel-body">
+      {% if usuarios_disponiveis %}
+      <div class="tvgr-add-row">
+        <select id="selAddUser" style="width:100%">
+          <option value="">— Selecione um colaborador —</option>
+          {% for u in usuarios_disponiveis %}
+          <option value="{{ u.pk }}">
+            {{ u.get_full_name|default:u.username }}{% if u.email %} · {{ u.email }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <button class="btn-primary btn-sm" onclick="adicionarUsuario()" id="btnAdicionar">
+          <i class="fa-solid fa-plus"></i> Adicionar ao grupo
+        </button>
+      </div>
+      <div class="tvgr-hint">
+        <i class="fa-solid fa-circle-info"></i>
+        Após adicionar, expanda o cartão do colaborador para definir quais plantas ele pode visualizar.
+      </div>
+      {% else %}
+      <div class="tvgr-hint" style="--tvgr-brand: var(--tvgr-success);">
+        <i class="fa-solid fa-circle-check" style="color:var(--tvgr-success)"></i>
+        Todos os colaboradores ativos já fazem parte do grupo ou não há usuários disponíveis.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Painel: Lista de usuários TV ─────────────────────────────────────── -->
+  <div class="tvgr-panel">
+    <div class="tvgr-panel-hd">
+      <div class="tvgr-panel-hd-icon"><i class="fa-solid fa-id-badge"></i></div>
+      <div class="tvgr-panel-hd-text">
+        <h3>Colaboradores com acesso ao Modo TV</h3>
+        <p>Expanda o cartão para configurar as plantas autorizadas ou remover o acesso</p>
+      </div>
+    </div>
+
+    {% if usuarios_tv %}
+    <div class="tvgr-panel-body" style="padding-top:14px;padding-bottom:14px;">
+      <!-- Busca -->
+      <div class="tvgr-search-wrap">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input class="tvgr-search" type="text" id="searchUsers"
+               placeholder="Buscar colaborador por nome ou e-mail…"
+               oninput="filtrarCards(this.value)">
+      </div>
+      <!-- Lista -->
+      <div id="tvUserList">
+        {% for u in usuarios_tv %}
+        {% with initials=u.get_full_name|default:u.username|slice:":2"|upper %}
+        <div class="tvgr-user-card"
+             id="ucard-{{ u.pk }}"
+             data-user-id="{{ u.pk }}"
+             data-search="{{ u.get_full_name|default:u.username|lower }} {{ u.username|lower }} {{ u.email|lower }}">
+
+          <!-- Cabeçalho clicável -->
+          <div class="tvgr-user-hd" onclick="toggleCard({{ u.pk }})">
+            <div class="tvgr-avatar">{{ initials }}</div>
+            <div class="tvgr-user-info">
+              <div class="tvgr-user-name">{{ u.get_full_name|default:u.username }}</div>
+              <div class="tvgr-user-meta">
+                @{{ u.username }}{% if u.email %}&nbsp;·&nbsp;{{ u.email }}{% endif %}
+              </div>
+            </div>
+            <!-- Chips de plantas autorizadas -->
+            <div class="tvgr-chip-group" style="margin: 0 12px;">
+              {% with pa=u.plantas_tv_autorizadas.all %}
+              {% if pa %}
+                {% for p in pa %}<span class="tvgr-chip tvgr-chip-blue">{{ p.nome }}</span>{% endfor %}
+              {% else %}
+                <span class="tvgr-chip tvgr-chip-muted">Sem plantas</span>
+              {% endif %}
+              {% endwith %}
+            </div>
+            <i class="fa-solid fa-chevron-down tvgr-expand-icon"></i>
+          </div>
+
+          <!-- Painel de edição de plantas -->
+          <div class="tvgr-editor">
+            <div class="tvgr-editor-section-label">
+              <i class="fa-solid fa-network-wired"></i> Plantas autorizadas
+            </div>
+
+            {% if todas_plantas %}
+            <div class="tvgr-plant-grid" id="pgrid-{{ u.pk }}">
+              {% for planta in todas_plantas %}
+              <label class="tvgr-plant-check">
+                <input type="checkbox"
+                       name="plant"
+                       value="{{ planta.pk }}"
+                       {% if planta in u.plantas_tv_autorizadas.all %}checked{% endif %}>
+                <div>
+                  <div class="tvgr-plant-check-name">{{ planta.nome }}</div>
+                  <div class="tvgr-plant-check-loc">
+                    <i class="fa-solid fa-location-dot" style="font-size:.58rem;opacity:.7"></i>
+                    {{ planta.localidade|default:"Sem localidade" }}
+                  </div>
+                </div>
+              </label>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p style="font-size:.78rem;color:var(--tvgr-muted);margin-bottom:14px;">
+              Nenhuma planta cadastrada ainda.
+            </p>
+            {% endif %}
+
+            <div class="tvgr-editor-actions">
+              <button class="btn-primary btn-sm" onclick="salvarPlantas({{ u.pk }}, this)">
+                <i class="fa-solid fa-floppy-disk"></i> Salvar acesso
+              </button>
+              <button class="btn btn-sm" onclick="marcarTodas({{ u.pk }}, true)">
+                Selecionar todas
+              </button>
+              <button class="btn btn-sm" onclick="marcarTodas({{ u.pk }}, false)">
+                Limpar seleção
+              </button>
+              <span class="tvgr-feedback" id="fb-{{ u.pk }}"></span>
+              <button class="btn-danger btn-sm" style="margin-left:auto;"
+                onclick="removerDoGrupo({{ u.pk }}, '{{ u.get_full_name|default:u.username|escapejs }}')">
+                <i class="fa-solid fa-user-minus"></i> Remover do grupo
+              </button>
+            </div>
+          </div><!-- /tvgr-editor -->
+
+        </div><!-- /tvgr-user-card -->
+        {% endwith %}
+        {% endfor %}
+      </div><!-- /tvUserList -->
+    </div>
+
+    {% else %}
+    <div class="tvgr-panel-body">
+      <div class="tvgr-empty">
+        <div class="tvgr-empty-icon"><i class="fa-solid fa-users-slash"></i></div>
+        <h4>Nenhum colaborador no grupo ainda</h4>
+        <p>Use o painel acima para adicionar colaboradores ao grupo <strong>Visualizador TV</strong>.</p>
+      </div>
+    </div>
+    {% endif %}
+
+  </div><!-- /tvgr-panel -->
+
+</div><!-- /tvgr-page -->
+
+<div id="tvgrToast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+const ACAO_URL = "{% url 'planta_tv_gerenciar_acao' %}";
+const CSRF     = "{{ csrf_token }}";
+
+// ── Select2 ──────────────────────────────────────────────────────────────────
+$(function () {
+  $('#selAddUser').select2({
+    placeholder: '— Selecione um colaborador —',
+    allowClear: true,
+    width: '100%',
+    language: { noResults: () => 'Nenhum colaborador encontrado' },
+  });
+});
+
+// ── Toggle card ───────────────────────────────────────────────────────────────
+function toggleCard(uid) {
+  document.getElementById('ucard-' + uid).classList.toggle('is-open');
+}
+
+// ── Filtro de busca ───────────────────────────────────────────────────────────
+function filtrarCards(q) {
+  const term = q.toLowerCase().trim();
+  document.querySelectorAll('#tvUserList .tvgr-user-card').forEach(card => {
+    const hay = (card.dataset.search || '').toLowerCase();
+    card.style.display = (!term || hay.includes(term)) ? '' : 'none';
+  });
+}
+
+// ── Selecionar / limpar todas as plantas ──────────────────────────────────────
+function marcarTodas(uid, checked) {
+  document.querySelectorAll(`#pgrid-${uid} input[type=checkbox]`).forEach(cb => cb.checked = checked);
+}
+
+// ── Salvar plantas autorizadas ────────────────────────────────────────────────
+async function salvarPlantas(uid, btn) {
+  const plantIds = [...document.querySelectorAll(`#pgrid-${uid} input[type=checkbox]:checked`)]
+    .map(cb => cb.value);
+
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Salvando…';
+
+  try {
+    const r = await fetch(ACAO_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ action: 'salvar_plantas', user_id: uid, plant_ids: plantIds }),
+    });
+    const d = await r.json();
+    const fb = document.getElementById('fb-' + uid);
+    if (d.ok) {
+      _atualizarChips(uid, plantIds);
+      fb.className = 'tvgr-feedback ok';
+      fb.innerHTML = `<i class="fa-solid fa-circle-check"></i> Salvo — ${d.total} planta(s)`;
+      toast('Acesso salvo com sucesso.');
+    } else {
+      fb.className = 'tvgr-feedback err';
+      fb.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${d.erro || 'Erro'}`;
+    }
+    setTimeout(() => { fb.className = 'tvgr-feedback'; }, 4000);
+  } catch {
+    toast('Erro de comunicação.', true);
+  }
+  btn.disabled = false;
+  btn.innerHTML = orig;
+}
+
+// ── Atualiza chips do cabeçalho do card ───────────────────────────────────────
+function _atualizarChips(uid, plantIds) {
+  const group = document.querySelector(`#ucard-${uid} .tvgr-chip-group`);
+  if (!group) return;
+  if (!plantIds.length) {
+    group.innerHTML = '<span class="tvgr-chip tvgr-chip-muted">Sem plantas</span>';
+    return;
+  }
+  const checks = document.querySelectorAll(`#pgrid-${uid} input[type=checkbox]:checked`);
+  group.innerHTML = [...checks]
+    .map(cb => {
+      const name = cb.closest('label').querySelector('.tvgr-plant-check-name').textContent.trim();
+      return `<span class="tvgr-chip tvgr-chip-blue">${_esc(name)}</span>`;
+    }).join('');
+}
+
+// ── Remover usuário do grupo ──────────────────────────────────────────────────
+async function removerDoGrupo(uid, nome) {
+  if (!confirm(`Remover "${nome}" do grupo Visualizador TV?\nTodos os acessos a plantas serão revogados.`)) return;
+  try {
+    const r = await fetch(ACAO_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ action: 'remover_grupo', user_id: uid }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      const card = document.getElementById('ucard-' + uid);
+      card.style.transition = 'opacity .22s, max-height .25s, margin .22s';
+      card.style.overflow = 'hidden';
+      card.style.maxHeight = card.offsetHeight + 'px';
+      card.style.opacity = '0';
+      requestAnimationFrame(() => { card.style.maxHeight = '0'; card.style.marginBottom = '0'; });
+      setTimeout(() => card.remove(), 280);
+      _updateKpi('kpiTotalUsers', -1);
+      toast(`"${nome}" removido do grupo TV.`);
+    } else {
+      toast(d.erro || 'Erro ao remover.', true);
+    }
+  } catch {
+    toast('Erro de comunicação.', true);
+  }
+}
+
+// ── Adicionar usuário ao grupo ────────────────────────────────────────────────
+async function adicionarUsuario() {
+  const sel = document.getElementById('selAddUser');
+  const uid = sel.value;
+  if (!uid) { toast('Selecione um colaborador.', true); return; }
+
+  const btn = document.getElementById('btnAdicionar');
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+  try {
+    const r = await fetch(ACAO_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ action: 'adicionar_grupo', user_id: uid }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      // Remove opção do select2
+      const opt = $('#selAddUser').find(`option[value="${uid}"]`);
+      opt.remove();
+      $('#selAddUser').val('').trigger('change');
+
+      _injetarCard(d);
+      _updateKpi('kpiTotalUsers', +1);
+      toast(`"${d.nome}" adicionado ao grupo TV.`);
+    } else {
+      toast(d.erro || 'Erro ao adicionar.', true);
+    }
+  } catch {
+    toast('Erro de comunicação.', true);
+  }
+  btn.disabled = false;
+  btn.innerHTML = orig;
+}
+
+// ── Injeta novo card dinamicamente ────────────────────────────────────────────
+function _injetarCard(u) {
+  let list = document.getElementById('tvUserList');
+  if (!list) {
+    // Não havia lista ainda (painel estava em empty state) — recria estrutura
+    const body = document.querySelector('.tvgr-panel:last-child .tvgr-panel-body');
+    if (body) {
+      body.innerHTML = `
+        <div class="tvgr-search-wrap">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input class="tvgr-search" type="text" id="searchUsers"
+                 placeholder="Buscar colaborador por nome ou e-mail…"
+                 oninput="filtrarCards(this.value)">
+        </div>
+        <div id="tvUserList"></div>`;
+    }
+    list = document.getElementById('tvUserList');
+    if (!list) return;
+  }
+
+  const initials = (u.nome || u.username || '?').slice(0, 2).toUpperCase();
+  const email    = u.email ? ` · ${_esc(u.email)}` : '';
+
+  const html = `
+  <div class="tvgr-user-card is-open"
+       id="ucard-${u.user_id}"
+       data-user-id="${u.user_id}"
+       data-search="${_esc(u.nome).toLowerCase()} ${_esc(u.username).toLowerCase()} ${(u.email||'').toLowerCase()}">
+    <div class="tvgr-user-hd" onclick="toggleCard(${u.user_id})">
+      <div class="tvgr-avatar">${initials}</div>
+      <div class="tvgr-user-info">
+        <div class="tvgr-user-name">${_esc(u.nome)}</div>
+        <div class="tvgr-user-meta">@${_esc(u.username)}${email}</div>
+      </div>
+      <div class="tvgr-chip-group" style="margin:0 12px;">
+        <span class="tvgr-chip tvgr-chip-muted">Sem plantas</span>
+      </div>
+      <i class="fa-solid fa-chevron-down tvgr-expand-icon"></i>
+    </div>
+    <div class="tvgr-editor">
+      <div class="tvgr-editor-section-label">
+        <i class="fa-solid fa-network-wired"></i> Plantas autorizadas
+      </div>
+      <div class="tvgr-plant-grid" id="pgrid-${u.user_id}">
+        ${_plantasHtml(u.user_id)}
+      </div>
+      <div class="tvgr-editor-actions">
+        <button class="btn-primary btn-sm" onclick="salvarPlantas(${u.user_id}, this)">
+          <i class="fa-solid fa-floppy-disk"></i> Salvar acesso
+        </button>
+        <button class="btn btn-sm" onclick="marcarTodas(${u.user_id}, true)">Selecionar todas</button>
+        <button class="btn btn-sm" onclick="marcarTodas(${u.user_id}, false)">Limpar seleção</button>
+        <span class="tvgr-feedback" id="fb-${u.user_id}"></span>
+        <button class="btn-danger btn-sm" style="margin-left:auto;"
+          onclick="removerDoGrupo(${u.user_id}, '${_esc(u.nome).replace(/'/g,"\\'")}')">
+          <i class="fa-solid fa-user-minus"></i> Remover do grupo
+        </button>
+      </div>
+    </div>
+  </div>`;
+  list.insertAdjacentHTML('beforeend', html);
+}
+
+// Copia a grade de checkboxes de um card existente (sem marcar nenhum)
+function _plantasHtml(uid) {
+  const ref = document.querySelector('.tvgr-plant-grid');
+  if (!ref) return '<p style="font-size:.75rem;color:var(--tvgr-muted)">Nenhuma planta cadastrada.</p>';
+  return [...ref.querySelectorAll('.tvgr-plant-check')].map(lbl => {
+    const cb   = lbl.querySelector('input');
+    const name = lbl.querySelector('.tvgr-plant-check-name').textContent.trim();
+    const loc  = lbl.querySelector('.tvgr-plant-check-loc').innerHTML;
+    return `<label class="tvgr-plant-check">
+      <input type="checkbox" name="plant" value="${cb.value}">
+      <div>
+        <div class="tvgr-plant-check-name">${_esc(name)}</div>
+        <div class="tvgr-plant-check-loc">${loc}</div>
+      </div>
+    </label>`;
+  }).join('');
+}
+
+// ── Utilitários ───────────────────────────────────────────────────────────────
+function _updateKpi(id, delta) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = Math.max(0, parseInt(el.textContent || '0') + delta);
+}
+
+function _esc(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let _toastTimer = null;
+function toast(msg, err = false) {
+  const el = document.getElementById('tvgrToast');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.background = err ? '#c0392b' : '#1d1d1f';
+  el.classList.add('show');
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+</script>
+{% endblock %}

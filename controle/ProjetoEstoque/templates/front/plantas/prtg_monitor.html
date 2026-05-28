@@ -1,0 +1,657 @@
+{% extends 'base.html' %}
+{% block title %}Monitor PRTG{% endblock %}
+{% block page_title %}Monitor PRTG{% endblock %}
+{% block page_subtitle %}Dispositivos de rede em tempo real{% endblock %}
+
+{% block header_actions %}
+{% if prtg_ok %}
+<span class="pm-refresh-badge" id="pmRefreshBadge" title="Atualizado há 0s">
+  <i class="fa-solid fa-rotate pm-spin-icon" id="pmSpinIcon" aria-hidden="true"></i>
+  <span id="pmRefreshLabel">ao vivo</span>
+</span>
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.pm-page) {
+  --pm-radius: 14px;
+  --pm-card-w: 280px;
+  --pm-gap: 14px;
+  --pm-up:      #34c759;
+  --pm-warn:    #ff9500;
+  --pm-down:    #ff3b30;
+  --pm-paused:  #8e8e93;
+  --pm-unknown: #636366;
+  --pm-trans: 0.22s ease;
+}
+
+/* ── Hero KPIs ─────────────────────────────────────────────────────────────── */
+.pm-hero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.pm-kpi {
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pm-kpi-val {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-primary);
+}
+.pm-kpi-lbl { font-size: 12px; color: var(--text-tertiary); font-weight: 500; }
+.pm-kpi.is-up    .pm-kpi-val { color: var(--pm-up); }
+.pm-kpi.is-down  .pm-kpi-val { color: var(--pm-down); }
+.pm-kpi.is-warn  .pm-kpi-val { color: var(--pm-warn); }
+.pm-kpi.is-paused .pm-kpi-val { color: var(--pm-paused); }
+
+/* ── Filtros ───────────────────────────────────────────────────────────────── */
+.pm-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-lg);
+}
+.pm-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1.5px solid var(--separator-hairline);
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  transition: background var(--pm-trans), color var(--pm-trans), border-color var(--pm-trans);
+}
+.pm-filter-btn:hover { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
+.pm-filter-btn.is-active { background: var(--brand); color: #fff; border-color: var(--brand); }
+.pm-filter-btn[data-f="up"].is-active    { background: var(--pm-up);      border-color: var(--pm-up); }
+.pm-filter-btn[data-f="down"].is-active  { background: var(--pm-down);    border-color: var(--pm-down); }
+.pm-filter-btn[data-f="warning"].is-active { background: var(--pm-warn);  border-color: var(--pm-warn); }
+.pm-filter-btn[data-f="paused"].is-active  { background: var(--pm-paused);border-color: var(--pm-paused); }
+
+.pm-search {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--separator-hairline);
+  border-radius: 20px;
+  padding: 5px 14px;
+  min-width: 200px;
+  transition: border-color var(--pm-trans);
+}
+.pm-search:focus-within { border-color: var(--brand); }
+.pm-search input {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-primary);
+  width: 100%;
+}
+.pm-search-icon { color: var(--text-tertiary); font-size: 12px; }
+
+/* ── Grupo / Carrossel ─────────────────────────────────────────────────────── */
+.pm-group { margin-bottom: 28px; }
+.pm-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.pm-group-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pm-group-count {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator-hairline);
+  border-radius: 20px;
+  padding: 1px 8px;
+}
+.pm-carousel-wrap { position: relative; }
+.pm-carousel {
+  display: flex;
+  gap: var(--pm-gap);
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--separator-hairline) transparent;
+}
+.pm-carousel::-webkit-scrollbar { height: 5px; }
+.pm-carousel::-webkit-scrollbar-track { background: transparent; }
+.pm-carousel::-webkit-scrollbar-thumb { background: var(--separator-hairline); border-radius: 3px; }
+
+.pm-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid var(--separator-hairline);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
+  transition: background var(--pm-trans), border-color var(--pm-trans);
+}
+.pm-nav-btn:hover { background: var(--brand); border-color: var(--brand); color: #fff; }
+.pm-nav-prev { left: -16px; }
+.pm-nav-next { right: -16px; }
+@media (max-width: 768px) {
+  .pm-nav-prev { left: 0; }
+  .pm-nav-next { right: 0; }
+}
+
+/* ── Card ──────────────────────────────────────────────────────────────────── */
+.pm-card {
+  flex: 0 0 var(--pm-card-w);
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--separator-hairline);
+  border-radius: var(--pm-radius);
+  overflow: hidden;
+  transition: box-shadow var(--pm-trans), transform var(--pm-trans), border-color var(--pm-trans);
+  cursor: default;
+}
+.pm-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+
+/* barra colorida de status no topo do card */
+.pm-card-bar {
+  height: 4px;
+  width: 100%;
+  transition: background var(--pm-trans);
+}
+.pm-bar-up      { background: var(--pm-up); }
+.pm-bar-warning,.pm-bar-unusual { background: var(--pm-warn); }
+.pm-bar-down    { background: var(--pm-down); }
+.pm-bar-paused_by_user,.pm-bar-paused_by_dep,.pm-bar-paused_by_sched,.pm-bar-paused_until,
+.pm-bar-no_probe,.pm-bar-not_licensed { background: var(--pm-paused); }
+.pm-bar-unknown,.pm-bar-collecting { background: var(--pm-unknown); }
+
+.pm-card-body { padding: 14px 16px 16px; }
+.pm-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.pm-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+  transition: background var(--pm-trans);
+}
+.pm-dot-up      { background: var(--pm-up); box-shadow: 0 0 6px var(--pm-up); }
+.pm-dot-warning,.pm-dot-unusual { background: var(--pm-warn); box-shadow: 0 0 6px var(--pm-warn); }
+.pm-dot-down    { background: var(--pm-down); box-shadow: 0 0 6px var(--pm-down); }
+.pm-dot-paused_by_user,.pm-dot-paused_by_dep,.pm-dot-paused_by_sched,.pm-dot-paused_until,
+.pm-dot-no_probe,.pm-dot-not_licensed { background: var(--pm-paused); }
+.pm-dot-unknown,.pm-dot-collecting { background: var(--pm-unknown); }
+
+.pm-card-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+  word-break: break-word;
+}
+.pm-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+.pm-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+.pm-meta-row i { width: 12px; text-align: center; }
+.pm-meta-val { color: var(--text-primary); font-size: 12px; font-weight: 500; }
+
+.pm-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  border: 1.5px solid transparent;
+  transition: background var(--pm-trans), color var(--pm-trans);
+}
+.pm-badge-up      { background: #e8f9ee; color: var(--pm-up);   border-color: #c5f0d0; }
+.pm-badge-warning,.pm-badge-unusual { background: #fff4e5; color: var(--pm-warn); border-color: #ffe0b2; }
+.pm-badge-down    { background: #ffecea; color: var(--pm-down); border-color: #ffd4d0; }
+.pm-badge-paused_by_user,.pm-badge-paused_by_dep,.pm-badge-paused_by_sched,
+.pm-badge-paused_until,.pm-badge-no_probe,.pm-badge-not_licensed { background: #f2f2f7; color: var(--pm-paused); border-color: #e5e5ea; }
+.pm-badge-unknown,.pm-badge-collecting { background: #f2f2f7; color: var(--pm-unknown); border-color: #e5e5ea; }
+
+/* item vinculado */
+.pm-card-item {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--separator-hairline);
+}
+.pm-item-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.pm-item-link {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand);
+  text-decoration: none;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pm-item-link:hover { text-decoration: underline; }
+.pm-item-sub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Estado vazio ──────────────────────────────────────────────────────────── */
+.pm-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-tertiary);
+}
+.pm-empty i { font-size: 2.5rem; margin-bottom: 12px; display: block; }
+
+/* ── Sem PRTG ──────────────────────────────────────────────────────────────── */
+.pm-no-prtg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 80px 20px;
+  text-align: center;
+  color: var(--text-tertiary);
+}
+.pm-no-prtg i { font-size: 3rem; }
+.pm-no-prtg h3 { color: var(--text-primary); margin: 0; }
+
+/* ── refresh badge ─────────────────────────────────────────────────────────── */
+.pm-refresh-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator-hairline);
+  border-radius: 20px;
+  padding: 4px 12px;
+}
+@keyframes pmSpin { to { transform: rotate(360deg); } }
+.pm-spin-icon.is-spinning { animation: pmSpin 0.8s linear infinite; }
+
+/* hidden filter */
+.pm-card.is-hidden { display: none !important; }
+.pm-group.is-empty { display: none !important; }
+
+@media (max-width: 600px) {
+  :where(.pm-page) { --pm-card-w: 240px; }
+  .pm-hero { grid-template-columns: repeat(3, 1fr); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pm-page">
+
+{% if not prtg_ok %}
+<div class="pm-no-prtg">
+  <i class="fa-solid fa-plug-circle-xmark"></i>
+  <h3>PRTG não configurado</h3>
+  <p>Defina <code>PRTG_URL</code>, <code>PRTG_USER</code> e <code>PRTG_PASSHASH</code> no arquivo <code>.env</code>.</p>
+</div>
+{% else %}
+
+<!-- KPIs -->
+<div class="pm-hero">
+  <div class="pm-kpi">
+    <span class="pm-kpi-val" id="kpiTotal">{{ total }}</span>
+    <span class="pm-kpi-lbl">Total de dispositivos</span>
+  </div>
+  <div class="pm-kpi is-up">
+    <span class="pm-kpi-val" id="kpiOnline">{{ online }}</span>
+    <span class="pm-kpi-lbl">Online</span>
+  </div>
+  <div class="pm-kpi is-down">
+    <span class="pm-kpi-val" id="kpiOffline">{{ offline }}</span>
+    <span class="pm-kpi-lbl">Offline</span>
+  </div>
+  <div class="pm-kpi is-warn">
+    <span class="pm-kpi-val" id="kpiWarn">{{ warning }}</span>
+    <span class="pm-kpi-lbl">Atenção</span>
+  </div>
+  <div class="pm-kpi is-paused">
+    <span class="pm-kpi-val" id="kpiPaused">{{ paused }}</span>
+    <span class="pm-kpi-lbl">Pausado</span>
+  </div>
+</div>
+
+<!-- Filtros -->
+<div class="pm-filters">
+  <button class="pm-filter-btn is-active" data-f="all">Todos <span class="pm-group-count" id="fbAll">{{ total }}</span></button>
+  <button class="pm-filter-btn" data-f="up">Online <span class="pm-group-count" id="fbUp">{{ online }}</span></button>
+  <button class="pm-filter-btn" data-f="down">Offline <span class="pm-group-count" id="fbDown">{{ offline }}</span></button>
+  <button class="pm-filter-btn" data-f="warning">Atenção <span class="pm-group-count" id="fbWarn">{{ warning }}</span></button>
+  <button class="pm-filter-btn" data-f="paused">Pausado <span class="pm-group-count" id="fbPaused">{{ paused }}</span></button>
+  <label class="pm-search">
+    <i class="fa-solid fa-magnifying-glass pm-search-icon" aria-hidden="true"></i>
+    <input type="search" id="pmSearch" placeholder="Buscar dispositivo..." autocomplete="off">
+  </label>
+</div>
+
+<!-- Grupos / Carrosséis -->
+{% for group_name, devs in groups_list %}
+<div class="pm-group" id="grp-{{ forloop.counter }}">
+  <div class="pm-group-header">
+    <span class="pm-group-title">
+      <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+      {{ group_name }}
+    </span>
+    <span class="pm-group-count grp-count" data-grp="{{ forloop.counter }}">{{ devs|length }}</span>
+  </div>
+  <div class="pm-carousel-wrap">
+    <button class="pm-nav-btn pm-nav-prev" data-carousel="car-{{ forloop.counter }}" aria-label="Anterior">
+      <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+    </button>
+    <div class="pm-carousel" id="car-{{ forloop.counter }}">
+      {% for dev in devs %}
+      <div class="pm-card"
+           data-prtg-id="{{ dev.objid }}"
+           data-status="{{ dev.status_slug }}"
+           data-grp="{{ forloop.parentloop.counter }}"
+           data-name="{{ dev.name|lower }}">
+        <div class="pm-card-bar pm-bar-{{ dev.status_slug }}"></div>
+        <div class="pm-card-body">
+          <div class="pm-card-top">
+            <span class="pm-dot pm-dot-{{ dev.status_slug }}"></span>
+            <span class="pm-card-name">{{ dev.name }}</span>
+          </div>
+          <div class="pm-card-meta">
+            {% if dev.host %}
+            <div class="pm-meta-row">
+              <i class="fa-solid fa-network-wired" aria-hidden="true"></i>
+              <span class="pm-meta-val">{{ dev.host }}</span>
+            </div>
+            {% endif %}
+            {% if dev.group %}
+            <div class="pm-meta-row">
+              <i class="fa-solid fa-folder" aria-hidden="true"></i>
+              <span>{{ dev.group }}</span>
+            </div>
+            {% endif %}
+          </div>
+          <span class="pm-status-badge pm-badge-{{ dev.status_slug }}">
+            {{ dev.statustext|default:dev.status_slug }}
+          </span>
+          {% if dev.item_match %}
+          <div class="pm-card-item">
+            <div class="pm-item-label">Estoque</div>
+            <a href="{% url 'equipamento_detalhe' dev.item_match.id %}" class="pm-item-link" title="{{ dev.item_match.nome }}">
+              {{ dev.item_match.nome }}
+            </a>
+            <div class="pm-item-sub">
+              {% if dev.item_match.marca %}{{ dev.item_match.marca }}{% endif %}
+              {% if dev.item_match.modelo %} — {{ dev.item_match.modelo }}{% endif %}
+              {% if dev.item_match.localidade__local %} · {{ dev.item_match.localidade__local }}{% endif %}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <button class="pm-nav-btn pm-nav-next" data-carousel="car-{{ forloop.counter }}" aria-label="Próximo">
+      <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+    </button>
+  </div>
+</div>
+{% empty %}
+<div class="pm-empty">
+  <i class="fa-solid fa-satellite-dish"></i>
+  <p>Nenhum dispositivo encontrado no PRTG.</p>
+</div>
+{% endfor %}
+
+{% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  'use strict';
+
+  var STATUS_URL = '{{ status_url }}';
+  var REFRESH_MS = 30000;
+  var _lastRefresh = Date.now();
+  var _filterActive = 'all';
+  var _searchTerm   = '';
+
+  // ── Carrossel ──────────────────────────────────────────────────────────────
+  document.querySelectorAll('.pm-nav-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var car = document.getElementById(btn.dataset.carousel);
+      if (!car) return;
+      var step = car.clientWidth * 0.75;
+      car.scrollBy({ left: btn.classList.contains('pm-nav-prev') ? -step : step, behavior: 'smooth' });
+    });
+  });
+
+  // ── Filtro de status ───────────────────────────────────────────────────────
+  document.querySelectorAll('.pm-filter-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.pm-filter-btn').forEach(function (b) { b.classList.remove('is-active'); });
+      btn.classList.add('is-active');
+      _filterActive = btn.dataset.f;
+      applyFilter();
+    });
+  });
+
+  // ── Busca ──────────────────────────────────────────────────────────────────
+  var searchInput = document.getElementById('pmSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      _searchTerm = this.value.toLowerCase().trim();
+      applyFilter();
+    });
+  }
+
+  function statusMatchesFilter(slug) {
+    if (_filterActive === 'all') return true;
+    if (_filterActive === 'up')      return slug === 'up';
+    if (_filterActive === 'down')    return slug === 'down';
+    if (_filterActive === 'warning') return slug === 'warning' || slug === 'unusual';
+    if (_filterActive === 'paused')  return slug.indexOf('paused') !== -1;
+    return true;
+  }
+
+  function applyFilter() {
+    var groups = {};
+    document.querySelectorAll('.pm-card').forEach(function (card) {
+      var slug = card.dataset.status || '';
+      var name = card.dataset.name  || '';
+      var grp  = card.dataset.grp   || '';
+      var show = statusMatchesFilter(slug) && (!_searchTerm || name.indexOf(_searchTerm) !== -1);
+      card.classList.toggle('is-hidden', !show);
+      if (!groups[grp]) groups[grp] = { total: 0, visible: 0 };
+      groups[grp].total++;
+      if (show) groups[grp].visible++;
+    });
+    // Oculta grupos sem cards visíveis; atualiza contagem
+    document.querySelectorAll('.pm-group').forEach(function (grpEl) {
+      var id   = grpEl.id.replace('grp-', '');
+      var info = groups[id];
+      var cnt  = info ? info.visible : 0;
+      grpEl.classList.toggle('is-empty', cnt === 0);
+      var badge = grpEl.querySelector('.grp-count');
+      if (badge) badge.textContent = cnt;
+    });
+  }
+
+  // ── Auto-refresh de status PRTG ───────────────────────────────────────────
+  var spinIcon = document.getElementById('pmSpinIcon');
+  var refreshLabel = document.getElementById('pmRefreshLabel');
+
+  function slugToStatusText(slug) {
+    var map = {
+      'up': 'Online', 'down': 'Offline', 'warning': 'Atenção',
+      'unusual': 'Incomum', 'unknown': 'Desconhecido', 'collecting': 'Coletando',
+      'paused_by_user': 'Pausado (usuário)', 'paused_by_dep': 'Pausado (dep.)',
+      'paused_by_sched': 'Pausado (agend.)', 'paused_until': 'Pausado (tempo)',
+      'no_probe': 'Sem sonda', 'not_licensed': 'Sem licença',
+    };
+    return map[slug] || slug;
+  }
+
+  function refreshStatus() {
+    if (spinIcon) spinIcon.classList.add('is-spinning');
+    fetch(STATUS_URL, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok || !data.devices_map) return;
+        var map = data.devices_map;
+        var counts = { online: 0, offline: 0, warning: 0, paused: 0, total: 0 };
+
+        document.querySelectorAll('.pm-card[data-prtg-id]').forEach(function (card) {
+          var id  = parseInt(card.dataset.prtgId, 10);
+          var dev = map[id] || map[String(id)];
+          if (!dev) return;
+          var slug = dev.status_slug || 'unknown';
+          var oldSlug = card.dataset.status;
+          if (slug !== oldSlug) {
+            // Atualizar barra
+            var bar = card.querySelector('.pm-card-bar');
+            if (bar) { bar.className = 'pm-card-bar pm-bar-' + slug; }
+            // Atualizar dot
+            var dot = card.querySelector('.pm-dot');
+            if (dot) { dot.className = 'pm-dot pm-dot-' + slug; }
+            // Atualizar badge
+            var badge = card.querySelector('.pm-status-badge');
+            if (badge) {
+              badge.className = 'pm-status-badge pm-badge-' + slug;
+              badge.textContent = dev.statustext || slugToStatusText(slug);
+            }
+            card.dataset.status = slug;
+          }
+        });
+
+        // Recontagem total
+        document.querySelectorAll('.pm-card').forEach(function (card) {
+          var slug = card.dataset.status || '';
+          counts.total++;
+          if (slug === 'up') counts.online++;
+          else if (slug === 'down') counts.offline++;
+          else if (slug === 'warning' || slug === 'unusual') counts.warning++;
+          else if (slug.indexOf('paused') !== -1) counts.paused++;
+        });
+
+        var kpiTotal  = document.getElementById('kpiTotal');
+        var kpiOnline = document.getElementById('kpiOnline');
+        var kpiOffline= document.getElementById('kpiOffline');
+        var kpiWarn   = document.getElementById('kpiWarn');
+        var kpiPaused = document.getElementById('kpiPaused');
+        var fbAll     = document.getElementById('fbAll');
+        var fbUp      = document.getElementById('fbUp');
+        var fbDown    = document.getElementById('fbDown');
+        var fbWarn    = document.getElementById('fbWarn');
+        var fbPaused  = document.getElementById('fbPaused');
+
+        if (kpiTotal)   kpiTotal.textContent   = counts.total;
+        if (kpiOnline)  kpiOnline.textContent  = counts.online;
+        if (kpiOffline) kpiOffline.textContent = counts.offline;
+        if (kpiWarn)    kpiWarn.textContent    = counts.warning;
+        if (kpiPaused)  kpiPaused.textContent  = counts.paused;
+        if (fbAll)      fbAll.textContent      = counts.total;
+        if (fbUp)       fbUp.textContent       = counts.online;
+        if (fbDown)     fbDown.textContent     = counts.offline;
+        if (fbWarn)     fbWarn.textContent     = counts.warning;
+        if (fbPaused)   fbPaused.textContent   = counts.paused;
+
+        applyFilter();
+        _lastRefresh = Date.now();
+      })
+      .catch(function () {})
+      .finally(function () {
+        if (spinIcon) spinIcon.classList.remove('is-spinning');
+      });
+  }
+
+  // Contador "atualizado há Xs"
+  setInterval(function () {
+    if (!refreshLabel) return;
+    var sec = Math.round((Date.now() - _lastRefresh) / 1000);
+    refreshLabel.textContent = sec < 5 ? 'ao vivo' : 'há ' + sec + 's';
+  }, 5000);
+
+  // Iniciar refresh periódico
+  setTimeout(function tick() {
+    refreshStatus();
+    setTimeout(tick, REFRESH_MS);
+  }, REFRESH_MS);
+
+  // Pausar quando aba está oculta
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && Date.now() - _lastRefresh > REFRESH_MS) {
+      refreshStatus();
+    }
+  });
+})();
+</script>
+{% endblock %}

@@ -341,6 +341,13 @@ class PlantaProjeto(AuditModel):
         verbose_name="Imagem de Fundo",
         help_text="Planta baixa ou croqui (PNG/JPG, máx. 10 MB)"
     )
+    visualizadores_tv = models.ManyToManyField(
+        User,
+        blank=True,
+        related_name='plantas_tv_autorizadas',
+        verbose_name="Visualizadores TV",
+        help_text="Usuários do grupo 'Visualizador TV' autorizados a ver esta planta no modo TV."
+    )
 
     class Meta:
         verbose_name = "Planta de Localidade"
@@ -1122,3 +1129,100 @@ class MovimentacaoLicenca(AuditModel):
 
     def __str__(self):
         return f"{self.get_tipo_display()} - {self.licenca}"
+
+
+# ========== HISTÓRICO DE STATUS DO ITEM ==========
+
+class ItemStatusHistorico(models.Model):
+    """Registra cada mudança de status de um equipamento para monitoração de tempo."""
+    item = models.ForeignKey(
+        Item,
+        on_delete=models.CASCADE,
+        related_name='status_historico',
+        verbose_name='Equipamento',
+    )
+    status_anterior = models.CharField(max_length=20, blank=True, default='')
+    status_novo     = models.CharField(max_length=20)
+    alterado_em     = models.DateTimeField(auto_now_add=True)
+    alterado_por    = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        verbose_name='Alterado por',
+    )
+
+    class Meta:
+        ordering = ['-alterado_em']
+        verbose_name = 'Histórico de Status do Item'
+        verbose_name_plural = 'Históricos de Status de Itens'
+        indexes = [models.Index(fields=['item', '-alterado_em'])]
+
+    def __str__(self):
+        return f"{self.item.nome}: {self.status_anterior or '(novo)'} → {self.status_novo}"
+
+
+# ========== HISTÓRICO DE CONECTIVIDADE PRTG DO ITEM ==========
+
+class ItemPRTGHistorico(models.Model):
+    """Registra cada mudança de status PRTG (conectividade de rede) de um equipamento.
+
+    Populado automaticamente pela view item_monitoracao toda vez que o painel
+    é aberto: consulta o PRTG ao vivo e grava se o status mudou desde o último
+    registro. Diferente de ItemStatusHistorico (campo manual Item.status), este
+    modelo reflete o estado real de rede reportado pelo PRTG.
+    """
+    item = models.ForeignKey(
+        Item,
+        on_delete=models.CASCADE,
+        related_name='prtg_historico',
+        verbose_name='Equipamento',
+    )
+    prtg_objid      = models.IntegerField(verbose_name='PRTG ObjID')
+    status_anterior = models.CharField(max_length=20, blank=True, default='')
+    status_novo     = models.CharField(max_length=20)
+    registrado_em   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-registrado_em']
+        verbose_name = 'Histórico PRTG do Item'
+        verbose_name_plural = 'Históricos PRTG dos Itens'
+        indexes = [models.Index(fields=['item', '-registrado_em'])]
+
+    def __str__(self):
+        return f"{self.item.nome}: {self.status_anterior or '(novo)'} → {self.status_novo} (PRTG)"
+
+
+# ── Signals: rastrear mudanças de status automaticamente ──────────────────────
+from django.db.models.signals import pre_save, post_save
+from django.dispatch import receiver
+
+
+@receiver(pre_save, sender=Item)
+def _item_status_pre_save(sender, instance, **kwargs):
+    if instance.pk:
+        try:
+            instance._status_old = Item.objects.only('status').get(pk=instance.pk).status
+        except Item.DoesNotExist:
+            instance._status_old = None
+    else:
+        instance._status_old = None
+
+
+@receiver(post_save, sender=Item)
+def _item_status_post_save(sender, instance, created, **kwargs):
+    status_old = getattr(instance, '_status_old', None)
+    usuario = instance.atualizado_por or instance.criado_por
+    if created:
+        ItemStatusHistorico.objects.create(
+            item=instance,
+            status_anterior='',
+            status_novo=instance.status,
+            alterado_por=usuario,
+        )
+    elif status_old is not None and status_old != instance.status:
+        ItemStatusHistorico.objects.create(
+            item=instance,
+            status_anterior=status_old,
+            status_novo=instance.status,
+            alterado_por=usuario,
+        )

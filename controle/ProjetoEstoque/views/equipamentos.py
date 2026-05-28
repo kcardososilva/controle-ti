@@ -19,6 +19,7 @@ from ..models import (
     Item, Subtipo, Categoria, Localidade, CentroCusto, Fornecedor,
     Locacao, SimNaoChoices, StatusItemChoices, ItemLote,
     MovimentacaoItem, TipoMovimentacaoChoices, Preventiva, PlantaProjeto,
+    ItemStatusHistorico, ItemPRTGHistorico,
 )
 from ..forms import ItemForm, LocacaoForm, LoteEstoqueCreateForm
 from services.importador_planilha import ImportadorPlanilhaService
@@ -569,6 +570,150 @@ def _get_locacao(item):
 
 
 @login_required
+def item_monitoracao(request, pk: int):
+    """AJAX — conectividade PRTG do equipamento (histórico e status em tempo real)."""
+    from collections import defaultdict
+
+    item = get_object_or_404(Item, pk=pk)
+
+    try:
+        dias = int(request.GET.get('periodo', '30'))
+    except (ValueError, TypeError):
+        dias = 30
+    if dias not in (7, 14, 30, 90, 0):
+        dias = 30
+
+    agora  = timezone.now()
+    inicio = agora - timedelta(days=dias) if dias > 0 else None
+
+    # ── Descobrir prtg_objid via layout das plantas ────────────────────────
+    prtg_objid = None
+    for planta in PlantaProjeto.objects.all():
+        for el in planta.layout.get('elements', []):
+            if el.get('item_id') == item.pk and el.get('prtg_objid'):
+                try:
+                    prtg_objid = int(el['prtg_objid'])
+                except (ValueError, TypeError):
+                    pass
+                if prtg_objid:
+                    break
+        if prtg_objid:
+            break
+
+    if not prtg_objid:
+        return JsonResponse({
+            'ok':            True,
+            'encontrado':    False,
+            'periodo_dias':  dias,
+            'periodo_label': 'Histórico completo' if dias == 0 else f'Últimos {dias} dias',
+            'info':          None,
+            'status_atual':  None,
+            'periodos':      [],
+            'totais':        {},
+            'historico':     [],
+        })
+
+    # ── Consultar PRTG ao vivo e auto-registrar mudança ────────────────────
+    prtg_info        = None
+    prtg_status_atual = None
+    try:
+        from services.prtg_service import get_devices_map
+        dev = get_devices_map().get(prtg_objid)
+        if dev:
+            prtg_status_atual = dev['status_slug']
+            ultimo_prtg = (
+                ItemPRTGHistorico.objects.filter(item=item).order_by('-registrado_em').first()
+            )
+            if ultimo_prtg is None or ultimo_prtg.status_novo != prtg_status_atual:
+                ItemPRTGHistorico.objects.create(
+                    item=item,
+                    prtg_objid=prtg_objid,
+                    status_anterior=ultimo_prtg.status_novo if ultimo_prtg else '',
+                    status_novo=prtg_status_atual,
+                )
+            prtg_info = {
+                'objid':       prtg_objid,
+                'nome':        dev['name'],
+                'host':        dev['host'],
+                'status_slug': prtg_status_atual,
+                'statustext':  dev['statustext'],
+                'css_color':   dev['css_color'],
+                'ping_status': dev.get('ping_status'),
+            }
+    except Exception:
+        pass  # PRTG indisponível — mantém histórico já gravado
+
+    # ── Construir períodos contínuos ───────────────────────────────────────
+    prtg_qs = ItemPRTGHistorico.objects.filter(item=item)
+
+    if inicio is not None:
+        ult_ant = prtg_qs.filter(registrado_em__lt=inicio).order_by('-registrado_em').first()
+        if ult_ant:
+            entry_status = ult_ant.status_novo
+        else:
+            prim = prtg_qs.order_by('registrado_em').first()
+            entry_status = (prim.status_anterior or prim.status_novo) if prim else (prtg_status_atual or 'unknown')
+        evs  = list(prtg_qs.filter(registrado_em__gte=inicio, registrado_em__lte=agora).order_by('registrado_em'))
+        dt0  = inicio
+    else:
+        prim = prtg_qs.order_by('registrado_em').first()
+        if prim:
+            entry_status = prim.status_anterior or prim.status_novo
+            dt0          = prim.registrado_em
+        else:
+            entry_status = prtg_status_atual or 'unknown'
+            dt0          = agora
+        evs = list(prtg_qs.filter(registrado_em__lte=agora).order_by('registrado_em'))
+
+    periodos: list = []
+    cur_dt, cur_st = dt0, entry_status
+    for ev in evs:
+        fim = ev.registrado_em
+        if fim > cur_dt:
+            dur = (fim - cur_dt).total_seconds() / 86400
+            periodos.append({'status': cur_st,
+                             'inicio': cur_dt.strftime('%d/%m/%Y %H:%M'),
+                             'fim':    fim.strftime('%d/%m/%Y %H:%M'),
+                             'dias':   round(dur, 1), 'pct': 0})
+        cur_dt, cur_st = fim, ev.status_novo
+    if cur_dt < agora:
+        dur = (agora - cur_dt).total_seconds() / 86400
+        periodos.append({'status': cur_st,
+                         'inicio': cur_dt.strftime('%d/%m/%Y %H:%M'),
+                         'fim':    agora.strftime('%d/%m/%Y %H:%M'),
+                         'dias':   round(dur, 1), 'pct': 0})
+
+    total = sum(p['dias'] for p in periodos)
+    if total > 0:
+        for p in periodos:
+            p['pct'] = round(p['dias'] / total * 100, 2)
+
+    totais_dd: dict = defaultdict(float)
+    for p in periodos:
+        totais_dd[p['status']] += p['dias']
+
+    historico = []
+    for ev in prtg_qs.order_by('-registrado_em')[:100]:
+        historico.append({
+            'status_anterior': ev.status_anterior,
+            'status_novo':     ev.status_novo,
+            'registrado_em':   ev.registrado_em.strftime('%d/%m/%Y %H:%M'),
+        })
+
+    return JsonResponse({
+        'ok':            True,
+        'encontrado':    True,
+        'periodo_dias':  dias,
+        'periodo_label': 'Histórico completo' if dias == 0 else f'Últimos {dias} dias',
+        'info':          prtg_info,
+        'status_atual':  prtg_status_atual,
+        'periodos':      periodos,
+        'totais':        dict(totais_dd),
+        'historico':     historico,
+    })
+
+
+@login_required
 def equipamento_qr(request, pk: int):
     item = get_object_or_404(Item, pk=pk)
     detalhe_url = request.build_absolute_uri(f"/equipamentos/{pk}/")
@@ -950,6 +1095,7 @@ def equipamento_detalhe(request, pk: int):
         "valor_total_lotes": valor_total_lotes,
         "valor_disponivel_lotes": valor_disponivel_lotes,
         "plantas_mapeadas": plantas_mapeadas,
+        "monitoracao_url": f"/equipamentos/{item.pk}/monitoracao/",
     }
 
     return render(request, "front/equipamentos/equipamento_detalhe.html", context)

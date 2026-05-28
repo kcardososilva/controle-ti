@@ -101,6 +101,7 @@ from .equipamentos import (
     item_update,
     equipamento_excluir,
     importar_planilha,
+    item_monitoracao,
 )
 
 # ── Locações ─────────────────────────────────────────────────────────────────
@@ -225,7 +226,11 @@ from .plantas import (
     planta_historico_api,
     planta_restaurar_versao,
     planta_tv,
+    planta_tv_lista,
+    planta_tv_gerenciar,
+    planta_tv_gerenciar_acao,
     prtg_status_api,
     prtg_search_api,
+    prtg_monitor,
     item_search_api,
 )

@@ -78,6 +78,7 @@ urlpatterns = [
     path("equipamentos/<int:pk>/excluir/", views.equipamento_excluir, name="equipamento_excluir"),
     path("equipamentos/<int:pk>/termo/entrega/", views.termo_entrega_form, name="termo_entrega_form"),
     path("equipamentos/<int:pk>/termo/devolucao/", views.termo_devolucao_form, name="termo_devolucao_form"),
+    path("equipamentos/<int:pk>/monitoracao/", views.item_monitoracao, name="item_monitoracao"),
 
     # ── Locações ────────────────────────────────────────────────────────────
     path("locacoes/", views.locacoes_list, name="locacoes_list"),
@@ -166,7 +167,11 @@ urlpatterns = [
     path("plantas/<int:pk>/check-version/",               views.planta_check_version,  name="planta_check_version"),
     path("plantas/<int:pk>/historico/",                   views.planta_historico_api,  name="planta_historico_api"),
     path("plantas/<int:pk>/restaurar/<int:hist_pk>/",     views.planta_restaurar_versao, name="planta_restaurar_versao"),
-    path("plantas/<int:pk>/tv/",                          views.planta_tv,             name="planta_tv"),
+    path("plantas/<int:pk>/tv/",                          views.planta_tv,                  name="planta_tv"),
+    path("plantas/tv/",                                   views.planta_tv_lista,             name="planta_tv_lista"),
+    path("plantas/tv/gerenciar/",                         views.planta_tv_gerenciar,         name="planta_tv_gerenciar"),
+    path("plantas/tv/gerenciar/acao/",                    views.planta_tv_gerenciar_acao,    name="planta_tv_gerenciar_acao"),
+    path("plantas/monitor/",                              views.prtg_monitor,                name="prtg_monitor"),
 
     # ── Avisos & Relatórios ─────────────────────────────────────────────────
     path("avisos/contratos-a-vencer/", views.avisos_contratos_vencer, name="avisos_contratos_vencer"),
