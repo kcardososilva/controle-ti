@@ -28,8 +28,24 @@ def ninja_dashboard(request):
     from ProjetoEstoque.models import NinjaDevice, NinjaDeviceSnapshot
     from services.ninja_service import is_configured
 
-    configurado = is_configured()
+    configurado    = is_configured()
+    autenticado    = is_authenticated()
     hoje = timezone.localdate()
+
+    # Info do token para exibir no dashboard
+    ninja_token_info = None
+    try:
+        from ProjetoEstoque.models import NinjaOAuthToken
+        t = NinjaOAuthToken.get()
+        if t.access_token:
+            ninja_token_info = {
+                "expires_at":   t.expires_at,
+                "has_refresh":  bool(t.refresh_token),
+                "updated_at":   t.updated_at,
+                "is_valid":     t.is_valid,
+            }
+    except Exception:
+        pass
 
     qs = NinjaDevice.objects.select_related("item", "item__centro_custo", "item__localidade")
 
@@ -75,7 +91,9 @@ def ninja_dashboard(request):
     sem_match_online = qs.filter(is_online=True, item__isnull=True).order_by("display_name")[:10]
 
     context = {
-        "configurado": configurado,
+        "configurado":    configurado,
+        "autenticado":    autenticado,
+        "ninja_token_info": ninja_token_info,
         "hoje": hoje,
         "last_sync": last_sync,
         "snapshots_hoje": snapshots_hoje,
@@ -305,6 +323,67 @@ def ninja_sync(request):
 # ─────────────────────────────────────────────────────────────
 # AJAX — status em tempo real
 # ─────────────────────────────────────────────────────────────
+
+@login_required
+def ninja_oauth_start(request):
+    """
+    Redireciona o usuario para a pagina de login do NinjaOne.
+    Depois do login, o NinjaOne redireciona de volta para ninja_oauth_callback.
+    """
+    from services.ninja_service import get_authorization_url, is_configured
+
+    if not is_configured():
+        messages.error(request, "NinjaOne nao configurado. Verifique NINJA_BASE_URL, NINJA_CLIENT_ID e NINJA_CLIENT_SECRET no .env.")
+        return redirect("ninja_dashboard")
+
+    auth_url = get_authorization_url()
+    return redirect(auth_url)
+
+
+@login_required
+def ninja_oauth_callback(request):
+    """
+    Recebe o authorization code do NinjaOne e troca pelo access token.
+    URL registrada no NinjaOne: /ninja/oauth/callback/
+    """
+    from services.ninja_service import exchange_code_for_token
+
+    error = request.GET.get("error")
+    if error:
+        desc = request.GET.get("error_description", error)
+        messages.error(request, f"NinjaOne retornou erro: {desc}")
+        return redirect("ninja_dashboard")
+
+    code = request.GET.get("code")
+    if not code:
+        messages.error(request, "Codigo de autorizacao nao recebido.")
+        return redirect("ninja_dashboard")
+
+    result = exchange_code_for_token(code, user=request.user)
+
+    if result.get("ok"):
+        msg = "NinjaOne conectado com sucesso!"
+        if not result.get("has_refresh"):
+            expires_h = round(result.get("expires_in", 3600) / 3600, 1)
+            msg += f" Token expira em ~{expires_h}h — reconecte quando necessario."
+        messages.success(request, msg)
+    else:
+        messages.error(request, f"Falha ao obter token: {result.get('error', 'erro desconhecido')}")
+
+    return redirect("ninja_dashboard")
+
+
+@login_required
+def ninja_oauth_revogar(request):
+    """Remove os tokens armazenados (desconecta do NinjaOne)."""
+    if request.method != "POST":
+        return redirect("ninja_dashboard")
+
+    from services.ninja_service import revoke_token
+    revoke_token(user=request.user)
+    messages.warning(request, "NinjaOne desconectado. Clique em 'Conectar' para autenticar novamente.")
+    return redirect("ninja_dashboard")
+
 
 @login_required
 def ninja_api_live(request):

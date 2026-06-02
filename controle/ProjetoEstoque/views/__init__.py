@@ -217,6 +217,9 @@ from .ninja import (
     ninja_relatorio,
     ninja_sync,
     ninja_api_live,
+    ninja_oauth_start,
+    ninja_oauth_callback,
+    ninja_oauth_revogar,
 )
 
 # ── Status Board ─────────────────────────────────────────────────────────────

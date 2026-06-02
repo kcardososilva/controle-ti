@@ -183,11 +183,14 @@ urlpatterns = [
     path("alertas/toggle/", views.alertas_toggle, name="alertas_toggle"),
 
     # ── NinjaOne RMM ───────────────────────────────────────────────────────
-    path("ninja/",                views.ninja_dashboard,    name="ninja_dashboard"),
-    path("ninja/dispositivos/",   views.ninja_dispositivos, name="ninja_dispositivos"),
-    path("ninja/relatorio/",      views.ninja_relatorio,    name="ninja_relatorio"),
-    path("ninja/sync/",           views.ninja_sync,         name="ninja_sync"),
-    path("ninja/api/live/",       views.ninja_api_live,     name="ninja_api_live"),
+    path("ninja/",                    views.ninja_dashboard,     name="ninja_dashboard"),
+    path("ninja/dispositivos/",       views.ninja_dispositivos,  name="ninja_dispositivos"),
+    path("ninja/relatorio/",          views.ninja_relatorio,     name="ninja_relatorio"),
+    path("ninja/sync/",               views.ninja_sync,          name="ninja_sync"),
+    path("ninja/api/live/",           views.ninja_api_live,      name="ninja_api_live"),
+    path("ninja/autorizar/",          views.ninja_oauth_start,   name="ninja_oauth_start"),
+    path("ninja/oauth/callback/",     views.ninja_oauth_callback, name="ninja_oauth_callback"),
+    path("ninja/oauth/revogar/",      views.ninja_oauth_revogar, name="ninja_oauth_revogar"),
 
     # ── Inteligência de Sistema ─────────────────────────────────────────────
     path("inteligencia/", views.sistema_inteligencia_dashboard, name="sistema_inteligencia_dashboard"),

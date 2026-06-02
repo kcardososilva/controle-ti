@@ -1194,6 +1194,39 @@ class ItemPRTGHistorico(models.Model):
 
 # ========== NINJAONE RMM ==========
 
+class NinjaOAuthToken(models.Model):
+    """
+    Armazena o token OAuth2 do NinjaOne obtido via Authorization Code flow.
+    Singleton (pk=1). Gerenciado pelas views ninja_oauth_start / ninja_oauth_callback.
+    """
+    access_token  = models.TextField(blank=True, verbose_name="Access Token")
+    refresh_token = models.TextField(blank=True, verbose_name="Refresh Token")
+    expires_at    = models.DateTimeField(null=True, blank=True, verbose_name="Expira em")
+    scope         = models.CharField(max_length=255, blank=True, verbose_name="Scopes")
+    updated_at    = models.DateTimeField(auto_now=True)
+    updated_by    = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        verbose_name = "Token OAuth NinjaOne"
+
+    def __str__(self):
+        status = "ativo" if self.access_token else "não autenticado"
+        return f"NinjaOne OAuth Token ({status})"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @property
+    def is_valid(self) -> bool:
+        from django.utils import timezone
+        return bool(self.access_token) and (
+            self.expires_at is None or self.expires_at > timezone.now()
+        )
+
 class NinjaDevice(AuditModel):
     """Cache dos dispositivos NinjaOne sincronizados via API. Vincula ao Item pelo número de série."""
 

@@ -1,39 +1,39 @@
 """
 ninja_service.py — Proxy seguro para a API NinjaOne RMM.
 
-Credenciais lidas EXCLUSIVAMENTE de settings.NINJA_BASE_URL / CLIENT_ID / CLIENT_SECRET.
-Nunca expoe credenciais ao browser.
+Autenticacao: Authorization Code flow (nao client_credentials).
+O usuario realiza login UMA vez pelo botao 'Conectar NinjaOne' no dashboard.
+O token e armazenado no banco (NinjaOAuthToken pk=1).
+Refresh automatico via refresh_token quando disponivel.
 
-Fluxo OAuth2 (Client Credentials Grant):
-    POST {BASE_URL}/ws/oauth/token  ->  access_token (~1h)
-    GET  {BASE_URL}/api/v2/...      ->  dados com Authorization: Bearer <token>
+Fluxo:
+  1. Usuario acessa /ninja/autorizar/
+  2. Redireciona para https://app.ninjarmm.com/ws/oauth/authorize
+  3. Usuario faz login no NinjaOne
+  4. NinjaOne redireciona para /ninja/oauth/callback/?code=XXXX
+  5. Django troca code por access_token + refresh_token
+  6. Tokens salvos em NinjaOAuthToken (pk=1)
+  7. sync_ninja usa o token armazenado automaticamente
 
-Schema real do endpoint GET /api/v2/devices (confirmado via documentacao):
-  - offline: bool          -> online = not offline
-  - displayName / systemName / dnsName / netbiosName
-  - lastContact: int       -> epoch Unix
-  - organizationId: int
-  - references.organization.name -> nome da organizacao (inline)
-  - references.assignedOwner     -> tecnico responsavel (nao eh o usuario logado)
-
-Hardware (serial, fabricante, modelo, CPU, RAM) e usuario logado NAO estao
-no endpoint basico de devices. Sao obtidos via chamadas adicionais:
-  - GET /api/v2/device/{id}/windows/system-info  -> hardware/sistema
-  - GET /api/v2/device/{id}/last-logged-on-user  -> ultimo usuario logado
+Redirect URI registrada no NinjaOne:
+  http://santa-colomba-karitel-qqprmnjdwc.dynamic-m.com:65300/ninja/oauth/callback/
 """
 
 import logging
-from datetime import datetime, timezone as tz
+from datetime import datetime, timedelta, timezone as tz
 
 from django.conf import settings
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
-_TOKEN_CACHE_KEY   = "ninja_token_v2"
-_DEVICES_CACHE_KEY = "ninja_devices_v2"
-_DEVICES_CACHE_TTL = 120   # 2 min
-_ORG_CACHE_TTL     = 600   # 10 min
+# Dominio principal do NinjaOne (OAuth sempre usa app.ninjarmm.com)
+_NINJA_AUTH_DOMAIN = "https://app.ninjarmm.com"
+_TOKEN_CACHE_KEY   = "ninja_access_token_v3"
+_SCOPE             = "monitoring"
+
+# Redirect URI exata cadastrada no app NinjaOne
+REDIRECT_URI = "http://santa-colomba-karitel-qqprmnjdwc.dynamic-m.com:65300/ninja/oauth/callback/"
 
 _INVALID_SERIALS = frozenset({
     "", "to be filled by o.e.m.", "not specified", "default string",
@@ -47,6 +47,7 @@ _INVALID_SERIALS = frozenset({
 # ─────────────────────────────────────────────────────────────
 
 def _cfg() -> tuple[str, str, str]:
+    """Retorna (base_api_url, client_id, client_secret)."""
     base = getattr(settings, "NINJA_BASE_URL", "").rstrip("/")
     cid  = getattr(settings, "NINJA_CLIENT_ID", "")
     sec  = getattr(settings, "NINJA_CLIENT_SECRET", "")
@@ -58,47 +59,193 @@ def is_configured() -> bool:
     return bool(base and cid and sec)
 
 
+def is_authenticated() -> bool:
+    """Retorna True se ha um token valido armazenado."""
+    try:
+        from ProjetoEstoque.models import NinjaOAuthToken
+        return NinjaOAuthToken.get().is_valid
+    except Exception:
+        return False
+
+
 # ─────────────────────────────────────────────────────────────
-# OAuth2
+# Authorization URL (passo 1 do fluxo)
+# ─────────────────────────────────────────────────────────────
+
+def get_authorization_url() -> str:
+    """
+    Gera a URL para o usuario autorizar o acesso no NinjaOne.
+    O usuario deve ser redirecionado para esta URL pelo browser.
+    """
+    import urllib.parse
+    _, cid, _ = _cfg()
+    params = urllib.parse.urlencode({
+        "client_id":     cid,
+        "response_type": "code",
+        "redirect_uri":  REDIRECT_URI,
+        "scope":         _SCOPE,
+    })
+    return f"{_NINJA_AUTH_DOMAIN}/ws/oauth/authorize?{params}"
+
+
+# ─────────────────────────────────────────────────────────────
+# Troca code por token (passo 5 do fluxo)
+# ─────────────────────────────────────────────────────────────
+
+def exchange_code_for_token(code: str, user=None) -> dict:
+    """
+    Troca o authorization code por access_token + refresh_token.
+    Salva os tokens no banco (NinjaOAuthToken pk=1).
+    Retorna dict com sucesso/erro.
+    """
+    import requests as req
+    from ProjetoEstoque.models import NinjaOAuthToken
+    from django.utils import timezone
+
+    _, cid, sec = _cfg()
+
+    try:
+        resp = req.post(
+            f"{_NINJA_AUTH_DOMAIN}/ws/oauth/token",
+            data={
+                "grant_type":   "authorization_code",
+                "client_id":    cid,
+                "client_secret": sec,
+                "code":         code,
+                "redirect_uri": REDIRECT_URI,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        logger.error("ninja_service.exchange_code: falha — %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+    access  = data.get("access_token", "")
+    refresh = data.get("refresh_token", "")
+    expires = data.get("expires_in", 3600)
+
+    if not access:
+        return {"ok": False, "error": f"Sem access_token na resposta: {data}"}
+
+    token_obj = NinjaOAuthToken.get()
+    token_obj.access_token  = access
+    token_obj.refresh_token = refresh
+    token_obj.expires_at    = timezone.now() + timedelta(seconds=int(expires) - 60)
+    token_obj.scope         = data.get("scope", _SCOPE)
+    token_obj.updated_by    = user
+    token_obj.save()
+
+    # Atualiza cache imediatamente
+    cache.set(_TOKEN_CACHE_KEY, access, timeout=max(int(expires) - 60, 30))
+
+    logger.info(
+        "ninja_service: token autorizado. Expira em %ds. Refresh: %s",
+        expires, "sim" if refresh else "nao",
+    )
+    return {"ok": True, "has_refresh": bool(refresh), "expires_in": expires}
+
+
+# ─────────────────────────────────────────────────────────────
+# Obtencao do token (uso interno)
 # ─────────────────────────────────────────────────────────────
 
 def _get_token() -> str | None:
+    """
+    Retorna access_token valido.
+    Ordem: cache -> banco (valido) -> refresh_token -> None
+    """
+    # 1. Cache em memoria (mais rapido)
     cached = cache.get(_TOKEN_CACHE_KEY)
     if cached:
         return cached
 
-    base, cid, sec = _cfg()
-    if not all([base, cid, sec]):
-        logger.warning("ninja_service: credenciais nao configuradas.")
-        return None
-
-    import requests
     try:
-        resp = requests.post(
-            f"{base}/ws/oauth/token",
+        from ProjetoEstoque.models import NinjaOAuthToken
+        from django.utils import timezone
+
+        token_obj = NinjaOAuthToken.get()
+
+        # 2. Token no banco ainda valido
+        if token_obj.is_valid:
+            ttl = max(
+                int((token_obj.expires_at - timezone.now()).total_seconds()) - 30,
+                60,
+            ) if token_obj.expires_at else 3540
+            cache.set(_TOKEN_CACHE_KEY, token_obj.access_token, timeout=ttl)
+            return token_obj.access_token
+
+        # 3. Tenta refresh_token se disponivel
+        if token_obj.refresh_token:
+            return _refresh_access_token(token_obj)
+
+    except Exception as exc:
+        logger.error("ninja_service._get_token: erro — %s", exc)
+
+    logger.warning("ninja_service: nao autenticado — acesse /ninja/autorizar/ para conectar.")
+    return None
+
+
+def _refresh_access_token(token_obj) -> str | None:
+    """Usa o refresh_token para obter um novo access_token."""
+    import requests as req
+    from django.utils import timezone
+
+    _, cid, sec = _cfg()
+
+    try:
+        resp = req.post(
+            f"{_NINJA_AUTH_DOMAIN}/ws/oauth/token",
             data={
-                "grant_type":    "client_credentials",
+                "grant_type":    "refresh_token",
                 "client_id":     cid,
                 "client_secret": sec,
-                "scope":         "monitoring management",
+                "refresh_token": token_obj.refresh_token,
             },
-            timeout=10,
+            timeout=15,
         )
         resp.raise_for_status()
-        data  = resp.json()
-        token = data.get("access_token")
-        ttl   = max(int(data.get("expires_in", 3600)) - 60, 30)
-        if token:
-            cache.set(_TOKEN_CACHE_KEY, token, timeout=ttl)
-            logger.info("ninja_service: token obtido (expira em %ds).", ttl)
-        return token
+        data = resp.json()
     except Exception as exc:
-        logger.error("ninja_service: falha ao obter token — %s", exc)
+        logger.error("ninja_service._refresh: falha — %s", exc)
         return None
+
+    access  = data.get("access_token", "")
+    refresh = data.get("refresh_token", token_obj.refresh_token)
+    expires = int(data.get("expires_in", 3600))
+
+    if not access:
+        return None
+
+    token_obj.access_token  = access
+    token_obj.refresh_token = refresh
+    token_obj.expires_at    = timezone.now() + timedelta(seconds=expires - 60)
+    token_obj.save(update_fields=["access_token", "refresh_token", "expires_at", "updated_at"])
+
+    cache.set(_TOKEN_CACHE_KEY, access, timeout=max(expires - 60, 30))
+    logger.info("ninja_service: token renovado via refresh_token.")
+    return access
 
 
 def invalidate_token():
     cache.delete(_TOKEN_CACHE_KEY)
+
+
+def revoke_token(user=None):
+    """Remove os tokens do banco e limpa o cache."""
+    try:
+        from ProjetoEstoque.models import NinjaOAuthToken
+        token_obj = NinjaOAuthToken.get()
+        token_obj.access_token  = ""
+        token_obj.refresh_token = ""
+        token_obj.expires_at    = None
+        token_obj.updated_by    = user
+        token_obj.save()
+    except Exception as exc:
+        logger.error("ninja_service.revoke_token: %s", exc)
+    finally:
+        cache.delete(_TOKEN_CACHE_KEY)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -112,8 +259,8 @@ def _api_get(path: str, params: dict | None = None) -> list | dict | None:
     if not token:
         return None
 
-    base, _, _ = _cfg()
-    url = f"{base}/api/v2{path}"
+    _, api_base, _ = ("", getattr(settings, "NINJA_BASE_URL", "").rstrip("/"), "")
+    url = f"{api_base}/api/v2{path}"
     try:
         resp = requests.get(
             url,
@@ -122,6 +269,7 @@ def _api_get(path: str, params: dict | None = None) -> list | dict | None:
             timeout=15,
         )
         if resp.status_code == 401:
+            # Token expirou — tenta refresh uma vez
             invalidate_token()
             new_token = _get_token()
             if not new_token:
@@ -135,7 +283,7 @@ def _api_get(path: str, params: dict | None = None) -> list | dict | None:
         resp.raise_for_status()
         return resp.json()
     except Exception as exc:
-        logger.error("ninja_service: erro em GET %s — %s", path, exc)
+        logger.error("ninja_service._api_get %s: %s", path, exc)
         return None
 
 
@@ -146,27 +294,18 @@ def _api_get(path: str, params: dict | None = None) -> list | dict | None:
 def _paginate(path: str, page_size: int = 200) -> list[dict]:
     results: list[dict] = []
     after = None
-
     while True:
         params: dict = {"pageSize": page_size}
         if after:
             params["after"] = after
-
         data = _api_get(path, params)
         if data is None:
             break
-
         if isinstance(data, list):
             results.extend(data)
             break
-
         if isinstance(data, dict):
-            items = (
-                data.get("devices") or
-                data.get("data") or
-                data.get("results") or
-                []
-            )
+            items = data.get("devices") or data.get("data") or data.get("results") or []
             results.extend(items)
             cursor = data.get("cursor") or data.get("nextCursor")
             if not cursor or not items:
@@ -174,69 +313,44 @@ def _paginate(path: str, page_size: int = 200) -> list[dict]:
             after = cursor
         else:
             break
-
     return results
 
 
 # ─────────────────────────────────────────────────────────────
-# Endpoints publicos de leitura
+# Endpoints de dados
 # ─────────────────────────────────────────────────────────────
 
 def get_devices() -> list[dict]:
-    """
-    Lista dispositivos do NinjaOne.
-    Schema real: offline(bool), displayName, dnsName, lastContact(epoch),
-                 organizationId, references.organization.name
-    Hardware e usuario logado NAO estao aqui — requerem chamadas por device.
-    """
-    cached = cache.get(_DEVICES_CACHE_KEY)
+    cached = cache.get("ninja_devices_v3")
     if cached is not None:
         return cached
-
     devices = _paginate("/devices")
     if devices:
-        cache.set(_DEVICES_CACHE_KEY, devices, _DEVICES_CACHE_TTL)
+        cache.set("ninja_devices_v3", devices, 120)
     return devices
 
 
 def get_device_system_info(device_id: int) -> dict:
-    """
-    Retorna informacoes de hardware/sistema de um device especifico.
-    Tenta varias rotas conhecidas da API NinjaOne em ordem de preferencia.
-    Retorna dict com: serialNumber, manufacturer, model, processorType,
-                      totalPhysicalMemory, biosSerialNumber, ipAddress
-    """
-    # Rota 1: endpoint de system info do Windows
-    data = _api_get(f"/device/{device_id}/windows/system-info")
-    if isinstance(data, dict) and data:
-        return data
-
-    # Rota 2: endpoint generico de system info
-    data = _api_get(f"/device/{device_id}/system-info")
-    if isinstance(data, dict) and data:
-        return data
-
-    # Rota 3: detalhe completo do device (pode incluir system inline)
+    for path in [
+        f"/device/{device_id}/windows/system-info",
+        f"/device/{device_id}/system-info",
+    ]:
+        data = _api_get(path)
+        if isinstance(data, dict) and data:
+            return data
     data = _api_get(f"/device/{device_id}")
     if isinstance(data, dict):
         return data.get("system") or data.get("systemInfo") or {}
-
     return {}
 
 
 def get_device_last_user(device_id: int) -> str:
-    """
-    Retorna o ultimo usuario logado no dispositivo.
-    Endpoint: GET /api/v2/device/{id}/last-logged-on-user
-    """
     data = _api_get(f"/device/{device_id}/last-logged-on-user")
     if isinstance(data, dict):
         user = (
             data.get("lastLoggedOnUser") or
             data.get("username") or
-            data.get("user") or
-            data.get("name") or
-            ""
+            data.get("user") or ""
         )
         return _clean_user(str(user))
     if isinstance(data, str):
@@ -245,7 +359,7 @@ def get_device_last_user(device_id: int) -> str:
 
 
 def invalidate_devices_cache():
-    cache.delete(_DEVICES_CACHE_KEY)
+    cache.delete("ninja_devices_v3")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -283,46 +397,26 @@ def _clean_user(raw: str) -> str:
 
 
 def _parse_device_basic(d: dict) -> dict:
-    """
-    Extrai campos do schema real de GET /api/v2/devices.
-    Hardware e usuario logado ficam em branco — preenchidos pelo sync completo.
-    """
-    refs      = d.get("references") or {}
-    org_ref   = refs.get("organization") or {}
-    org_name  = org_ref.get("name") or ""
-
-    # Online: campo e 'offline' (bool) — True = offline, False = online
+    refs     = d.get("references") or {}
+    org_ref  = refs.get("organization") or {}
+    org_name = org_ref.get("name") or ""
     is_online = not d.get("offline", True)
-
-    # Hostname preferencia: dnsName > netbiosName > systemName
-    hostname = (
-        d.get("dnsName") or
-        d.get("netbiosName") or
-        d.get("systemName") or
-        ""
-    )
-
-    # Display name
-    display_name = (
-        d.get("displayName") or
-        d.get("systemName") or
-        f"Device #{d.get('id', '?')}"
-    )
-
+    hostname  = d.get("dnsName") or d.get("netbiosName") or d.get("systemName") or ""
+    display_name = d.get("displayName") or d.get("systemName") or f"Device #{d.get('id','?')}"
     return {
         "ninja_id":        d.get("id"),
         "display_name":    display_name,
         "hostname":        hostname,
-        "serial_number":   "",        # preenchido via get_device_system_info
-        "os_name":         "",        # idem
-        "manufacturer":    "",        # idem
-        "model_name":      "",        # idem
-        "processor":       "",        # idem
-        "total_memory_mb": None,      # idem
-        "ip_address":      "",        # idem
+        "serial_number":   "",
+        "os_name":         "",
+        "manufacturer":    "",
+        "model_name":      "",
+        "processor":       "",
+        "total_memory_mb": None,
+        "ip_address":      "",
         "last_contact":    _parse_timestamp(d.get("lastContact")),
         "is_online":       is_online,
-        "last_user":       "",        # preenchido via get_device_last_user
+        "last_user":       "",
         "node_class":      d.get("nodeClass") or "",
         "organization_name": org_name,
         "org_id":          d.get("organizationId"),
@@ -330,39 +424,16 @@ def _parse_device_basic(d: dict) -> dict:
 
 
 def _parse_system_info(raw: dict) -> dict:
-    """
-    Extrai campos de hardware do endpoint system-info.
-    Suporta variacoes de schema (campo raiz ou aninhado em 'system').
-    """
-    # Alguns endpoints retornam os dados direto, outros dentro de 'system'
-    data = raw.get("system") or raw
-
+    data   = raw.get("system") or raw
     serial = _clean_serial(
-        data.get("biosSerialNumber") or
-        data.get("serialNumber") or
-        raw.get("serialNumber") or
-        ""
+        data.get("biosSerialNumber") or data.get("serialNumber") or
+        raw.get("serialNumber") or ""
     )
-
     mem_raw = data.get("totalPhysicalMemory") or data.get("physicalMemory") or 0
-    if mem_raw > 1_000_000:        # bytes -> MB
-        mem_mb = int(mem_raw / (1024 * 1024))
-    elif mem_raw > 0:              # ja em MB
-        mem_mb = int(mem_raw)
-    else:
-        mem_mb = None
-
-    # IP: pode estar em varios campos dependendo da versao
-    ips = data.get("ipAddresses") or raw.get("ipAddresses") or []
-    ip  = ips[0] if isinstance(ips, list) and ips else (data.get("ipAddress") or raw.get("ipAddress") or "")
-
-    os_name = (
-        (data.get("os") or {}).get("name") or
-        data.get("osName") or
-        raw.get("osName") or
-        ""
-    )
-
+    mem_mb  = int(mem_raw / (1024 * 1024)) if mem_raw > 1_000_000 else (int(mem_raw) if mem_raw > 0 else None)
+    ips    = data.get("ipAddresses") or raw.get("ipAddresses") or []
+    ip     = ips[0] if isinstance(ips, list) and ips else (data.get("ipAddress") or raw.get("ipAddress") or "")
+    os_name = (data.get("os") or {}).get("name") or data.get("osName") or raw.get("osName") or ""
     return {
         "serial_number":   serial,
         "os_name":         os_name,
@@ -380,49 +451,42 @@ def _parse_system_info(raw: dict) -> dict:
 
 def sync_devices() -> dict:
     """
-    Sincroniza todos os dispositivos NinjaOne com a tabela NinjaDevice.
-
-    Fluxo:
-    1. Busca lista de devices (GET /devices) — status, nome, org
-    2. Para cada device, busca system-info (serial, hardware) e last-logged-user
-    3. Vincula ao Item pelo numero de serie
-    4. Grava snapshot do estado atual
-
-    Retorna: {"synced": N, "matched": N, "online": N, "error": bool}
+    Sincroniza dispositivos NinjaOne -> NinjaDevice.
+    Requer autenticacao previa via /ninja/autorizar/.
     """
     from ProjetoEstoque.models import NinjaDevice, Item
     from django.utils import timezone
 
+    if not is_authenticated():
+        logger.error("ninja_service.sync_devices: nao autenticado.")
+        return {"synced": 0, "matched": 0, "online": 0, "error": True,
+                "error_msg": "Nao autenticado. Acesse /ninja/autorizar/ primeiro."}
+
     raw_devices = get_devices()
     if not raw_devices:
-        logger.error("ninja_service.sync_devices: API nao retornou dispositivos.")
-        return {"synced": 0, "matched": 0, "online": 0, "error": True}
+        return {"synced": 0, "matched": 0, "online": 0, "error": True,
+                "error_msg": "API nao retornou dispositivos."}
 
     synced = matched = online = 0
     now = timezone.now()
 
     for raw in raw_devices:
-        parsed = _parse_device_basic(raw)
+        parsed   = _parse_device_basic(raw)
         ninja_id = parsed.get("ninja_id")
         if not ninja_id:
             continue
 
-        # ── Hardware e serial (chamada adicional por device) ──────────────
         sys_info_raw = get_device_system_info(ninja_id)
-        hw = _parse_system_info(sys_info_raw) if sys_info_raw else {}
+        hw           = _parse_system_info(sys_info_raw) if sys_info_raw else {}
+        last_user    = get_device_last_user(ninja_id)
 
-        # ── Ultimo usuario logado ─────────────────────────────────────────
-        last_user = get_device_last_user(ninja_id)
-
-        # Mescla dados
         parsed.update({k: v for k, v in hw.items() if v})
         if last_user:
             parsed["last_user"] = last_user
 
-        serial   = parsed.get("serial_number", "")
-        org_id   = parsed.pop("org_id", None)
+        serial = parsed.get("serial_number", "")
+        parsed.pop("org_id", None)
 
-        # ── Vincula ao Item pelo numero de serie ──────────────────────────
         item = Item.objects.filter(numero_serie__iexact=serial).first() if serial else None
 
         defaults = {k: v for k, v in parsed.items() if k != "ninja_id"}
@@ -437,11 +501,6 @@ def sync_devices() -> dict:
 
     _take_snapshot(now)
     invalidate_devices_cache()
-
-    logger.info(
-        "ninja_service.sync_devices: %d devices | %d vinculados | %d online",
-        synced, matched, online,
-    )
     return {"synced": synced, "matched": matched, "online": online, "error": False}
 
 
@@ -461,23 +520,16 @@ def _take_snapshot(timestamp=None) -> int:
         for device in NinjaDevice.objects.all()
     ]
     NinjaDeviceSnapshot.objects.bulk_create(snapshots)
-    logger.info("ninja_service._take_snapshot: %d snapshots.", len(snapshots))
     return len(snapshots)
 
 
-# ─────────────────────────────────────────────────────────────
-# Helpers para views
-# ─────────────────────────────────────────────────────────────
-
 def get_live_status() -> dict:
     from ProjetoEstoque.models import NinjaDevice
-
     qs       = NinjaDevice.objects.select_related("item")
     total    = qs.count()
     online   = qs.filter(is_online=True).count()
     matched  = qs.filter(item__isnull=False).count()
     com_user = qs.filter(is_online=True).exclude(last_user="").count()
-
     return {
         "total":       total,
         "online":      online,
