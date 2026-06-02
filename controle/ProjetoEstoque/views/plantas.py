@@ -136,18 +136,18 @@ def planta_delete(request, pk):
 # ── Editor Canvas ─────────────────────────────────────────────────────────────
 
 _TIPOS_ELEMENTOS = [
-    ("camera",       "Câmera",       "#5856d6", "camera"),
-    ("access_point", "Access Point", "#30b0c7", "wifi"),
-    ("switch",       "Switch",       "#0071e3", "network-wired"),
-    ("rack",         "Rack",         "#8e8e93", "server"),
-    ("desktop",      "Desktop",      "#34c759", "desktop"),
-    ("impressora",   "Impressora",   "#ff9500", "print"),
-    ("nobreak",      "Nobreak",      "#ff6b35", "bolt"),
-    ("servidor",     "Servidor",     "#5ac8fa", "cloud"),
-    ("ponto_rede",   "Ponto de Rede","#6e6e73", "circle-dot"),
+    ("camera",       "Câmera",       "#ef4444", "camera"),
+    ("access_point", "Access Point", "#0ea5e9", "wifi"),
+    ("switch",       "Switch",       "#2563eb", "network-wired"),
+    ("rack",         "Rack",         "#475569", "server"),
+    ("desktop",      "Desktop",      "#10b981", "desktop"),
+    ("impressora",   "Impressora",   "#f97316", "print"),
+    ("nobreak",      "Nobreak",      "#f59e0b", "bolt"),
+    ("servidor",     "Servidor",     "#8b5cf6", "cloud"),
+    ("ponto_rede",   "Ponto de Rede","#6366f1", "circle-dot"),
     ("texto",        "Texto",        "#1d1d1f", "font"),
-    ("quadro",       "Quadro/Área",  "#0071e3", "square"),
-    ("circulo",      "Círculo/Zona", "#5856d6", "circle"),
+    ("quadro",       "Quadro/Área",  "#2563eb", "square"),
+    ("circulo",      "Círculo/Zona", "#8b5cf6", "circle"),
 ]
 
 @login_required

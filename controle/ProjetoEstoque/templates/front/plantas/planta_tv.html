@@ -234,24 +234,24 @@ const STATUS_URL = "{% url 'prtg_status_api' %}";
 const INTERVAL   = {{ interval }} * 1000;
 
 const TIPO = {
-  camera:       { label:"Câmera",        emoji:"📷", color:"#5856d6" },
-  access_point: { label:"Access Point",  emoji:"📡", color:"#30b0c7" },
-  switch:       { label:"Switch",        emoji:"🔀", color:"#0071e3" },
-  rack:         { label:"Rack",          emoji:"🗄️",  color:"#8e8e93" },
-  desktop:      { label:"Desktop",       emoji:"🖥️",  color:"#34c759" },
-  impressora:   { label:"Impressora",    emoji:"🖨️",  color:"#ff9500" },
-  nobreak:      { label:"Nobreak",       emoji:"⚡",  color:"#ff6b35" },
-  servidor:     { label:"Servidor",      emoji:"☁️",  color:"#5ac8fa" },
-  ponto_rede:   { label:"Ponto de Rede", emoji:"📍",  color:"#6e6e73" },
+  camera:       { label:"Câmera",        emoji:"📷", color:"#ef4444" },
+  access_point: { label:"Access Point",  emoji:"📡", color:"#0ea5e9" },
+  switch:       { label:"Switch",        emoji:"🔀", color:"#2563eb" },
+  rack:         { label:"Rack",          emoji:"🗄️",  color:"#475569" },
+  desktop:      { label:"Desktop",       emoji:"🖥️",  color:"#10b981" },
+  impressora:   { label:"Impressora",    emoji:"🖨️",  color:"#f97316" },
+  nobreak:      { label:"Nobreak",       emoji:"⚡",  color:"#f59e0b" },
+  servidor:     { label:"Servidor",      emoji:"☁️",  color:"#8b5cf6" },
+  ponto_rede:   { label:"Ponto de Rede", emoji:"📍",  color:"#6366f1" },
   texto:        { label:"Texto",         emoji:"✏️",  color:"#e5e5ea" },
-  quadro:       { label:"Quadro/Área",   emoji:"□",   color:"#0071e3" },
-  circulo:      { label:"Círculo/Zona",  emoji:"○",   color:"#5856d6" },
+  quadro:       { label:"Quadro/Área",   emoji:"□",   color:"#2563eb" },
+  circulo:      { label:"Círculo/Zona",  emoji:"○",   color:"#8b5cf6" },
 };
 const CN_CFG = {
-  network:     { color:"#0071e3", dash:[],    arrow:true  },
-  fiber:       { color:"#7c7cff", dash:[8,4], arrow:true  },
-  power:       { color:"#ff9500", dash:[],    arrow:false },
-  dependencia: { color:"#34c759", dash:[4,4], arrow:true  },
+  network:     { color:"#2563eb", dash:[],    arrow:true  },
+  fiber:       { color:"#8b5cf6", dash:[8,4], arrow:true  },
+  power:       { color:"#f97316", dash:[],    arrow:false },
+  dependencia: { color:"#10b981", dash:[4,4], arrow:true  },
 };
 const ST_COLOR = { up:"#34c759", warning:"#ff9500", down:"#ff3b30", unknown:"#48484a", none:"#48484a", paused_dep:"#00cfff" };
 const ST_MAP   = { 3:"up", 4:"warning", 5:"down", 10:"warning",
@@ -465,6 +465,43 @@ function drawEl2D(el) {
     ctx.fillStyle=el.color||(darkMode?'#e5e5ea':'#1d1d1f');
     ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(el.label||"Texto",sc.x,sc.y); return;
   }
+  /* Camera circle */
+  if(el.type==='camera'){
+    const bw=(el.width||56)*zoom,bh=(el.height||56)*zoom;
+    const r=Math.min(bw,bh)/2,cx=sc.x+bw/2,cy=sc.y+bh/2;
+    const stCol=elStColor(el),st=elStKey(el);
+    const fovHalf=((el.fovAngle??60)/2)*Math.PI/180;
+    const fovDir=(el.fovDir??0)*Math.PI/180;
+    const fovLen=r*2.8;
+    ctx.save();
+    drawPulse2D({x:cx-r,y:cy-r},r*2,r*2,stCol,st);
+    ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,fovLen,fovDir-fovHalf,fovDir+fovHalf);ctx.closePath();
+    ctx.fillStyle=hexAlpha(color,0.09);ctx.strokeStyle=hexAlpha(color,0.25);
+    ctx.lineWidth=1.2*zoom;ctx.setLineDash([4*zoom,3*zoom]);ctx.fill();ctx.stroke();ctx.setLineDash([]);
+    if(st==='down'){ctx.shadowColor=stCol;ctx.shadowBlur=20*zoom;}
+    else if(st==='warning'){ctx.shadowColor=stCol;ctx.shadowBlur=12*zoom;}
+    else if(st==='up'){ctx.shadowColor=stCol;ctx.shadowBlur=7*zoom;}
+    else{ctx.shadowColor=darkMode?'rgba(0,0,0,.3)':'rgba(0,0,0,.1)';ctx.shadowBlur=6*zoom;}
+    ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.fillStyle=darkMode?'#1c1c1e':'#fff';ctx.fill();
+    ctx.shadowColor='transparent';ctx.shadowBlur=0;
+    ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.strokeStyle=hexAlpha(st!=='none'?stCol:color,0.50);ctx.lineWidth=1.5*zoom;ctx.stroke();
+    if(st!=='none'){ctx.beginPath();ctx.arc(cx,cy,r+2*zoom,0,Math.PI*2);ctx.strokeStyle=stCol;ctx.lineWidth=2*zoom;ctx.stroke();}
+    const iRad=r*0.68;
+    ctx.strokeStyle=color;ctx.lineWidth=Math.max(0.8,r*0.08);
+    ctx.beginPath();ctx.arc(cx,cy,iRad*0.80,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.arc(cx,cy,iRad*0.50,0,Math.PI*2);ctx.fillStyle=hexAlpha(color,0.22);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.arc(cx,cy,iRad*0.24,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+    ctx.beginPath();ctx.arc(cx-iRad*0.15,cy-iRad*0.15,iRad*0.09,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,.80)';ctx.fill();
+    if(el.label&&zoom>0.3){
+      ctx.font=`600 ${Math.max(7,8.5*zoom)}px -apple-system,sans-serif`;
+      ctx.fillStyle=darkMode?'#e5e5ea':'#1d1d1f';ctx.textAlign='center';ctx.textBaseline='top';
+      ctx.fillText(el.label.length>13?el.label.slice(0,12)+'…':el.label,cx,cy+r+4*zoom);
+    }
+    ctx.restore();return;
+  }
+
   const w=(el.width||60)*zoom,h=(el.height||60)*zoom,r=8*zoom;
   const stCol=elStColor(el),st=elStKey(el);
   drawPulse2D(sc,w,h,stCol,st);
@@ -527,9 +564,8 @@ function draw2D() {
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.fillStyle=bg;ctx.fillRect(0,0,canvas.width,canvas.height);
   const step=32*zoom,ox=(pan.x*zoom)%step,oy=(pan.y*zoom)%step;
-  ctx.strokeStyle=darkMode?'rgba(255,255,255,.03)':'rgba(0,0,0,.04)';ctx.lineWidth=1;
-  for(let x=ox;x<canvas.width;x+=step){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,canvas.height);ctx.stroke();}
-  for(let y=oy;y<canvas.height;y+=step){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(canvas.width,y);ctx.stroke();}
+  ctx.fillStyle=darkMode?'rgba(255,255,255,.07)':'rgba(0,0,0,.09)';
+  for(let x=ox;x<canvas.width;x+=step){for(let y=oy;y<canvas.height;y+=step){ctx.beginPath();ctx.arc(x,y,Math.max(0.7,zoom*0.9),0,Math.PI*2);ctx.fill();}}
   const cw=LAYOUT.canvas?.width||1400,ch=LAYOUT.canvas?.height||900;
   ctx.save();ctx.strokeStyle=darkMode?'rgba(255,255,255,.12)':'rgba(0,0,0,.09)';
   ctx.lineWidth=1;ctx.setLineDash([6,4]);ctx.strokeRect(pan.x*zoom,pan.y*zoom,cw*zoom,ch*zoom);ctx.setLineDash([]);ctx.restore();

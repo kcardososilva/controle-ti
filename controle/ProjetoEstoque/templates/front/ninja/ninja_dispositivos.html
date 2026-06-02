@@ -1,0 +1,290 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Dispositivos NinjaOne{% endblock %}
+{% block page_title %}Dispositivos NinjaOne{% endblock %}
+{% block page_subtitle %}Mapeamento de máquinas, séries e vínculo com estoque{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'ninja_dashboard' %}" class="btn btn-light" style="min-height:2.25rem;padding:0 1rem;">
+  <i class="fa fa-arrow-left"></i> Dashboard
+</a>
+<a href="{% url 'ninja_relatorio' %}" class="btn btn-light" style="min-height:2.25rem;padding:0 1rem;">
+  <i class="fa fa-chart-bar"></i> Relatório de uso
+</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.njd-page) { --nj-brand:#6528d8; --nj-brand-soft:color-mix(in srgb,#6528d8 10%,transparent); }
+.njd-page,
+.njd-page * { box-sizing:border-box; min-width:0; }
+.njd-page { width:100%; max-width:92rem; margin:0 auto; display:grid; gap:1.25rem; }
+
+/* ── KPI bar ─── */
+.njd-kpi-row {
+  display:flex; flex-wrap:wrap; gap:.65rem;
+  padding:.85rem 1rem;
+  background:var(--bg-elevated); border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-xl); box-shadow:var(--shadow-xs);
+}
+.njd-stat {
+  display:flex; align-items:center; gap:.45rem;
+  padding:.3rem .75rem; border-radius:var(--radius-pill);
+  font-size:.8rem; font-weight:700; white-space:nowrap;
+  background:var(--bg-fill-secondary); color:var(--text-secondary);
+  border:1px solid var(--separator-hairline);
+}
+.njd-stat-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+/* ── Filtro retratável ─── */
+.njd-filter-details { --filter-open:0; }
+.njd-filter-details[open] { --filter-open:1; }
+.njd-filter-summary {
+  list-style:none; display:flex; align-items:center; gap:.6rem;
+  padding:.75rem 1.1rem; cursor:pointer; user-select:none;
+  background:var(--bg-elevated); border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-xl); box-shadow:var(--shadow-xs);
+  font-size:.84rem; font-weight:700; color:var(--text-primary);
+}
+.njd-filter-summary::-webkit-details-marker { display:none; }
+.njd-filter-summary i.chevron { margin-left:auto; color:var(--text-tertiary); transition:transform .2s; }
+.njd-filter-details[open] .njd-filter-summary i.chevron { transform:rotate(180deg); }
+.njd-filter-body {
+  display:flex; flex-wrap:wrap; gap:.75rem; align-items:flex-end;
+  padding:.9rem 1.1rem .85rem;
+  background:var(--bg-elevated); border:1px solid var(--separator-hairline);
+  border-top:none; border-radius:0 0 var(--radius-xl) var(--radius-xl);
+}
+.njd-field { display:flex; flex-direction:column; gap:.35rem; flex:1; min-width:180px; }
+.njd-field label { font-size:.75rem; font-weight:700; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.045em; }
+.njd-filter-actions { display:flex; gap:.5rem; align-self:flex-end; flex-wrap:wrap; }
+
+/* ── Tabela card ─── */
+.njd-table-card {
+  background:var(--bg-elevated); border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden;
+}
+.njd-table-header {
+  display:flex; align-items:center; justify-content:space-between; gap:1rem;
+  padding:.85rem 1.15rem; border-bottom:1px solid var(--separator-hairline);
+}
+.njd-table-title { font-size:.92rem; font-weight:700; color:var(--text-primary); letter-spacing:-.016em; }
+.njd-count { font-size:.8rem; color:var(--text-tertiary); font-weight:600; }
+
+.njd-table-wrap { width:100%; overflow-x:auto; }
+.njd-table { width:max-content; min-width:100%; border-collapse:collapse; }
+.njd-table th, .njd-table td {
+  padding:.8rem 1rem; border-bottom:1px solid var(--separator-hairline);
+  vertical-align:middle; text-align:left;
+}
+.njd-table th { background:var(--bg-elevated); color:var(--text-tertiary); font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.055em; white-space:nowrap; }
+.njd-table td { color:var(--text-primary); font-size:.84rem; font-weight:500; white-space:nowrap; }
+.njd-table tbody tr { transition:background var(--transition-fast); }
+.njd-table tbody tr:hover { background:var(--bg-hover); }
+.njd-table tbody tr:last-child td { border-bottom:none; }
+
+.njd-dot-on  { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--success); box-shadow:0 0 0 2px color-mix(in srgb,var(--success) 30%,transparent); }
+.njd-dot-off { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--text-quaternary); }
+
+.njd-chip {
+  display:inline-flex; align-items:center; gap:.3rem;
+  padding:.22rem .6rem; border-radius:var(--radius-pill);
+  font-size:.7rem; font-weight:700; white-space:nowrap;
+}
+.njd-chip-match   { color:var(--success); background:var(--success-soft); }
+.njd-chip-nomatch { color:var(--warning); background:var(--warning-soft); }
+.njd-chip-noserie { color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline); }
+.njd-chip-user    { color:var(--nj-brand); background:var(--nj-brand-soft); }
+
+.njd-main-text { font-weight:700; letter-spacing:-.014em; }
+.njd-sub-text  { margin-top:.18rem; color:var(--text-tertiary); font-size:.74rem; }
+
+.njd-empty { display:grid; place-items:center; gap:.5rem; padding:2rem 1rem; text-align:center; color:var(--text-tertiary); font-size:.9rem; font-weight:600; }
+.njd-empty i { font-size:1.4rem; color:var(--text-quaternary); }
+
+@media(max-width:36rem) {
+  .njd-kpi-row { gap:.5rem; }
+  .njd-stat { font-size:.75rem; padding:.25rem .6rem; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="njd-page">
+
+  <!-- KPIs rápidos -->
+  <div class="njd-kpi-row">
+    <span class="njd-stat"><span class="njd-stat-dot" style="background:var(--nj-brand);"></span> {{ resumo.total }} total</span>
+    <span class="njd-stat"><span class="njd-stat-dot" style="background:var(--success);"></span> {{ resumo.online }} online</span>
+    <span class="njd-stat"><span class="njd-stat-dot" style="background:var(--text-quaternary);"></span> {{ resumo.total|add:resumo.online|add:"-"|add:resumo.online }} offline</span>
+    <span class="njd-stat"><span class="njd-stat-dot" style="background:var(--brand);"></span> {{ resumo.matched }} vinculados</span>
+    <span class="njd-stat"><span class="njd-stat-dot" style="background:var(--warning);"></span> {{ resumo.unmatched }} sem vínculo</span>
+    <span style="margin-left:auto;">
+      <a href="{% url 'ninja_relatorio' %}" class="btn btn-light" style="padding:0 .8rem;min-height:1.9rem;font-size:.78rem;">
+        <i class="fa fa-chart-bar"></i> Relatório de uso
+      </a>
+    </span>
+  </div>
+
+  <!-- Filtro retratável -->
+  <details class="njd-filter-details" id="njdFilter"
+    {% if f_q or f_status or f_match %}open{% endif %}>
+    <summary class="njd-filter-summary">
+      <i class="fa fa-filter" style="color:var(--brand);"></i>
+      Filtros
+      {% if f_q or f_status or f_match %}
+        <span style="font-size:.73rem;font-weight:600;color:var(--brand);padding:.18rem .5rem;background:var(--brand-soft);border-radius:var(--radius-pill);">Ativo</span>
+      {% endif %}
+      <i class="fa fa-chevron-down chevron"></i>
+    </summary>
+    <form method="get" action="" class="njd-filter-body">
+      <div class="njd-field">
+        <label for="f_q">Busca</label>
+        <input id="f_q" name="q" type="text" class="form-control"
+               value="{{ f_q }}" placeholder="Nome, série, usuário, IP...">
+      </div>
+      <div class="njd-field" style="max-width:180px;">
+        <label for="f_status">Status</label>
+        <select id="f_status" name="status" class="form-control">
+          <option value="">Todos</option>
+          <option value="online"  {% if f_status == 'online' %}selected{% endif %}>Online</option>
+          <option value="offline" {% if f_status == 'offline' %}selected{% endif %}>Offline</option>
+        </select>
+      </div>
+      <div class="njd-field" style="max-width:210px;">
+        <label for="f_match">Vínculo</label>
+        <select id="f_match" name="match" class="form-control">
+          <option value="">Todos</option>
+          <option value="matched"   {% if f_match == 'matched' %}selected{% endif %}>Vinculados ao estoque</option>
+          <option value="unmatched" {% if f_match == 'unmatched' %}selected{% endif %}>Sem vínculo (com série)</option>
+          <option value="sem_serie" {% if f_match == 'sem_serie' %}selected{% endif %}>Sem número de série</option>
+        </select>
+      </div>
+      <div class="njd-filter-actions">
+        <button type="submit" class="btn btn-primary" style="padding:0 1rem;min-height:2.25rem;">
+          <i class="fa fa-search"></i> Filtrar
+        </button>
+        <a href="{% url 'ninja_dispositivos' %}" class="btn btn-light" style="padding:0 1rem;min-height:2.25rem;">
+          <i class="fa fa-xmark"></i> Limpar
+        </a>
+      </div>
+    </form>
+  </details>
+
+  <!-- Tabela de dispositivos -->
+  <div class="njd-table-card">
+    <div class="njd-table-header">
+      <span class="njd-table-title"><i class="fa fa-desktop" style="color:var(--nj-brand);margin-right:.4rem;"></i>Dispositivos</span>
+      <span class="njd-count">{{ total_filtrado }} encontrado(s)</span>
+    </div>
+    <div class="njd-table-wrap">
+      <table class="njd-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Máquina</th>
+            <th>Número de série</th>
+            <th>Sistema Operacional</th>
+            <th>Vínculo no estoque</th>
+            <th>Usuário logado</th>
+            <th>Centro de Custo</th>
+            <th>IP</th>
+            <th>Último contato</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for dev in dispositivos %}
+          <tr>
+            <td style="width:28px;padding-left:.85rem;">
+              {% if dev.is_online %}
+                <span class="njd-dot-on" title="Online"></span>
+              {% else %}
+                <span class="njd-dot-off" title="Offline"></span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="njd-main-text">{{ dev.display_name }}</div>
+              <div class="njd-sub-text">{{ dev.node_class_label }}{% if dev.manufacturer %} · {{ dev.manufacturer }}{% endif %}{% if dev.model_name %} {{ dev.model_name }}{% endif %}</div>
+            </td>
+            <td>
+              {% if dev.serial_number %}
+                <code style="font-size:.8rem;letter-spacing:.03em;">{{ dev.serial_number }}</code>
+              {% else %}
+                <span class="njd-chip njd-chip-noserie"><i class="fa fa-question"></i> Sem série</span>
+              {% endif %}
+            </td>
+            <td style="color:var(--text-secondary);font-size:.8rem;">
+              {{ dev.os_name|default:"—" }}
+            </td>
+            <td>
+              {% if dev.item %}
+                <a href="{% url 'equipamento_detalhe' dev.item.pk %}" class="njd-chip njd-chip-match">
+                  <i class="fa fa-link" style="font-size:.62rem;"></i>
+                  {{ dev.item.nome|truncatechars:24 }}
+                </a>
+              {% elif dev.serial_number %}
+                <span class="njd-chip njd-chip-nomatch">
+                  <i class="fa fa-link-slash" style="font-size:.62rem;"></i> Sem match
+                </span>
+              {% else %}
+                <span class="njd-chip njd-chip-noserie">Sem série</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if dev.last_user %}
+                <span class="njd-chip njd-chip-user">
+                  <i class="fa fa-user" style="font-size:.62rem;"></i>
+                  {{ dev.last_user }}
+                </span>
+              {% else %}
+                <span style="color:var(--text-quaternary);">—</span>
+              {% endif %}
+            </td>
+            <td style="font-size:.8rem;color:var(--text-tertiary);">
+              {% if dev.item and dev.item.centro_custo %}
+                {{ dev.item.centro_custo.departamento }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td style="font-size:.79rem;color:var(--text-tertiary);">{{ dev.ip_address|default:"—" }}</td>
+            <td style="font-size:.79rem;color:var(--text-tertiary);">
+              {% if dev.last_contact %}
+                {{ dev.last_contact|date:"d/m/Y H:i" }}
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="9">
+              <div class="njd-empty">
+                <i class="fa fa-desktop"></i>
+                Nenhum dispositivo encontrado para os filtros aplicados.
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Persistir estado do filtro
+(function () {
+  const el = document.getElementById('njdFilter');
+  if (!el) return;
+  el.addEventListener('toggle', () =>
+    localStorage.setItem('njd_filter_open', el.open ? '1' : '0')
+  );
+  const saved = localStorage.getItem('njd_filter_open');
+  if (saved === '0' && !el.hasAttribute('open')) return;
+  if (saved === '1' && !el.hasAttribute('open')) el.open = true;
+})();
+</script>
+{% endblock %}

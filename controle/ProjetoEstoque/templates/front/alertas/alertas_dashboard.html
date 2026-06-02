@@ -315,6 +315,97 @@
     border-color: color-mix(in srgb, var(--info) 22%, transparent);
   }
 
+  /* ── Toggle de alertas ──────────────────────────── */
+  .al-toggle-banner {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: .85rem 1.15rem;
+    border-radius: var(--radius-xl);
+    border: 1.5px solid;
+    font-size: .87rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .al-toggle-banner.active {
+    background: color-mix(in srgb, var(--success) 8%, var(--bg-elevated));
+    border-color: color-mix(in srgb, var(--success) 28%, transparent);
+    color: var(--text-primary);
+  }
+
+  .al-toggle-banner.inactive {
+    background: color-mix(in srgb, var(--warning) 10%, var(--bg-elevated));
+    border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+    color: var(--text-primary);
+  }
+
+  .al-toggle-icon {
+    flex-shrink: 0;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: var(--radius-md);
+    display: grid;
+    place-items: center;
+    font-size: 1.05rem;
+  }
+
+  .active .al-toggle-icon { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success); }
+  .inactive .al-toggle-icon { background: color-mix(in srgb, var(--warning) 22%, transparent); color: var(--warning); }
+
+  .al-toggle-text { flex: 1; min-width: 0; }
+  .al-toggle-text strong { display: block; font-size: .9rem; font-weight: 800; letter-spacing: -.014em; }
+  .active .al-toggle-text strong { color: var(--success); }
+  .inactive .al-toggle-text strong { color: var(--warning); }
+
+  .al-toggle-text span {
+    font-size: .78rem;
+    font-weight: 500;
+    color: var(--text-tertiary);
+  }
+
+  .al-btn-toggle-on {
+    color: var(--success);
+    background: color-mix(in srgb, var(--success) 12%, var(--bg-elevated));
+    border-color: color-mix(in srgb, var(--success) 28%, transparent);
+  }
+
+  .al-btn-toggle-on:hover {
+    background: color-mix(in srgb, var(--success) 18%, var(--bg-elevated));
+    border-color: color-mix(in srgb, var(--success) 45%, transparent);
+    color: var(--success);
+  }
+
+  .al-btn-toggle-off {
+    color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 12%, var(--bg-elevated));
+    border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+  }
+
+  .al-btn-toggle-off:hover {
+    background: color-mix(in srgb, var(--warning) 20%, var(--bg-elevated));
+    border-color: color-mix(in srgb, var(--warning) 50%, transparent);
+    color: var(--warning);
+  }
+
+  /* Faixa de aviso global quando desativado */
+  .al-disabled-warning {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    padding: .9rem 1.15rem;
+    border-radius: var(--radius-xl);
+    background: color-mix(in srgb, var(--warning) 12%, var(--bg-elevated));
+    border: 1.5px dashed color-mix(in srgb, var(--warning) 45%, transparent);
+    color: var(--warning);
+    font-size: .86rem;
+    font-weight: 700;
+    letter-spacing: -.01em;
+  }
+
+  .al-disabled-warning i { font-size: 1.1rem; flex-shrink: 0; }
+
   .al-section {
     overflow: hidden;
   }
@@ -539,6 +630,13 @@
 
 <div class="al-page">
 
+  {% if not alertas_ativos %}
+  <div class="al-disabled-warning" role="alert">
+    <i class="fa fa-ban" aria-hidden="true"></i>
+    <span>Alertas de e-mail <strong>desativados</strong> — nenhuma notificação automática será enviada. Reative quando estiver em produção.</span>
+  </div>
+  {% endif %}
+
   <section class="al-hero al-surface" aria-label="Resumo da central de alertas">
     <div class="al-hero-main">
       <div class="al-eyebrow"><i class="fa fa-bell" aria-hidden="true"></i> Alertas & Monitoramento</div>
@@ -547,6 +645,19 @@
     </div>
 
     <div class="al-hero-actions">
+      <form method="post" action="{% url 'alertas_toggle' %}">
+        {% csrf_token %}
+        {% if alertas_ativos %}
+          <button type="submit" class="al-btn al-btn-toggle-on" title="Clique para desativar os alertas de e-mail">
+            <i class="fa fa-bell" aria-hidden="true"></i> Alertas ativos
+          </button>
+        {% else %}
+          <button type="submit" class="al-btn al-btn-toggle-off" title="Clique para reativar os alertas de e-mail">
+            <i class="fa fa-bell-slash" aria-hidden="true"></i> Alertas desativados
+          </button>
+        {% endif %}
+      </form>
+
       <form method="post" action="{% url 'alertas_enviar' %}">
         {% csrf_token %}
         <input type="hidden" name="tipo" value="todos">
@@ -556,6 +667,38 @@
       </form>
     </div>
   </section>
+
+  <!-- Painel de estado dos alertas -->
+  <div class="al-toggle-banner {% if alertas_ativos %}active{% else %}inactive{% endif %}" aria-live="polite">
+    <div class="al-toggle-icon">
+      {% if alertas_ativos %}
+        <i class="fa fa-circle-check" aria-hidden="true"></i>
+      {% else %}
+        <i class="fa fa-circle-xmark" aria-hidden="true"></i>
+      {% endif %}
+    </div>
+    <div class="al-toggle-text">
+      {% if alertas_ativos %}
+        <strong>Envio de e-mails ativo</strong>
+        <span>Todos os alertas automáticos e notificações transacionais estão habilitados.{% if config_atualizado_por %} Ativado por {{ config_atualizado_por.get_full_name|default:config_atualizado_por.username }}.{% endif %}</span>
+      {% else %}
+        <strong>Envio de e-mails desativado</strong>
+        <span>Nenhuma notificação será enviada enquanto estiver desativado. Use durante testes para evitar envios acidentais.{% if config_atualizado_por %} Desativado por {{ config_atualizado_por.get_full_name|default:config_atualizado_por.username }}.{% endif %}</span>
+      {% endif %}
+    </div>
+    <form method="post" action="{% url 'alertas_toggle' %}" style="margin:0;">
+      {% csrf_token %}
+      {% if alertas_ativos %}
+        <button type="submit" class="al-btn al-btn-toggle-off" style="white-space:nowrap;">
+          <i class="fa fa-bell-slash" aria-hidden="true"></i> Desativar alertas
+        </button>
+      {% else %}
+        <button type="submit" class="al-btn al-btn-toggle-on" style="white-space:nowrap;">
+          <i class="fa fa-bell" aria-hidden="true"></i> Reativar alertas
+        </button>
+      {% endif %}
+    </form>
+  </div>
 
   <section class="al-kpi-grid" aria-label="Indicadores de alertas">
     <article class="al-kpi {% if kpi.total > 0 %}kpi-danger{% else %}kpi-ok{% endif %}">

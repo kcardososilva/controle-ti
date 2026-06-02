@@ -10,12 +10,14 @@ from django.utils import timezone
 @login_required
 def alertas_dashboard(request):
     from ProjetoEstoque.models import (
+        ConfiguracaoSistema,
         Item,
         MovimentacaoLicenca,
         Preventiva,
         SimNaoChoices,
         StatusUsuarioChoices,
     )
+    config = ConfiguracaoSistema.get()
 
     hoje = timezone.localdate()
 
@@ -58,6 +60,9 @@ def alertas_dashboard(request):
         "itens_criticos": itens_criticos,
         "licencas_pendentes": licencas_pendentes,
         "hoje": hoje,
+        "alertas_ativos": config.alertas_email_ativos,
+        "config_updated_at": config.updated_at,
+        "config_atualizado_por": config.atualizado_por,
         "kpi": {
             "preventivas": preventivas.count(),
             "estoque": itens_criticos.count(),
@@ -105,5 +110,31 @@ def alertas_enviar(request):
 
     except Exception as exc:
         messages.error(request, f"Erro ao enviar alertas: {exc}")
+
+    return redirect("alertas_dashboard")
+
+
+@login_required
+def alertas_toggle(request):
+    if request.method != "POST":
+        return redirect("alertas_dashboard")
+
+    from ProjetoEstoque.models import ConfiguracaoSistema
+
+    config = ConfiguracaoSistema.get()
+    config.alertas_email_ativos = not config.alertas_email_ativos
+    config.atualizado_por = request.user
+    config.save()
+
+    if config.alertas_email_ativos:
+        messages.success(
+            request,
+            "Alertas de e-mail ativados. O sistema voltará a enviar notificações automáticas.",
+        )
+    else:
+        messages.warning(
+            request,
+            "Alertas de e-mail desativados. Nenhuma notificação será enviada até que sejam reativados.",
+        )
 
     return redirect("alertas_dashboard")

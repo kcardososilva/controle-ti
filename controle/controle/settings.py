@@ -166,3 +166,9 @@ CACHES = {
 PRTG_URL      = os.environ.get("PRTG_URL", "")
 PRTG_USER     = os.environ.get("PRTG_USER", "")
 PRTG_PASSHASH = os.environ.get("PRTG_PASSHASH", "")
+
+# NinjaOne RMM — credenciais via .env (OAuth2 Client Credentials)
+# Gerar em: Administração → Apps → API → Adicionar aplicativo OAuth
+NINJA_BASE_URL      = os.environ.get("NINJA_BASE_URL", "")       # ex: https://isc.rmmservice.com
+NINJA_CLIENT_ID     = os.environ.get("NINJA_CLIENT_ID", "")      # Client ID do aplicativo OAuth
+NINJA_CLIENT_SECRET = os.environ.get("NINJA_CLIENT_SECRET", "")  # Client Secret

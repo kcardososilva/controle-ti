@@ -1,0 +1,64 @@
+{% for mov in movimentacoes %}
+<tr>
+    <td data-label="Item">
+        <div class="item-cell">
+            <span class="item-name">{{ mov.item.nome }}</span>
+            <span class="item-serial"><i class="fa fa-barcode"></i> {{ mov.item.numero_serie|default:"S/N não registrado" }}</span>
+            <div class="item-extra">
+                {% if mov.lote %}<span class="mini-chip"><i class="fa fa-box"></i> Lote/NF: {{ mov.lote.numero_nf|default:mov.lote.id }}</span>{% endif %}
+                {% if mov.quantidade %}<span class="mini-chip"><i class="fa fa-layer-group"></i> Qtd: {{ mov.quantidade }}</span>{% endif %}
+            </div>
+        </div>
+    </td>
+    <td data-label="Tipo">
+        {% if mov.tipo_movimentacao == 'entrada' %}<span class="badge green">Entrada</span>
+        {% elif 'transferencia' in mov.tipo_movimentacao %}<span class="badge blue">Transferência</span>
+        {% elif 'manutencao' in mov.tipo_movimentacao %}<span class="badge orange">Manutenção</span>
+        {% elif mov.tipo_movimentacao == 'baixa' %}<span class="badge red">Baixa</span>
+        {% else %}<span class="badge gray">{{ mov.get_tipo_movimentacao_display }}</span>{% endif %}
+    </td>
+    <td data-label="Fluxo">
+        <div class="flow-container">
+            <span class="flow-tag">
+                {% if mov.centro_custo_origem %}<i class="fa fa-building" style="color:var(--mv-muted)"></i> {{ mov.centro_custo_origem.numero|default:mov.centro_custo_origem }}
+                {% elif mov.localidade_origem %}<i class="fa fa-map-marker-alt" style="color:var(--mv-muted)"></i> {{ mov.localidade_origem.local|default:mov.localidade_origem }}
+                {% else %}<i class="fa fa-minus" style="color:var(--mv-muted)"></i>{% endif %}
+            </span>
+            <i class="fa fa-arrow-right flow-arrow"></i>
+            <span class="flow-tag destino">
+                {% if mov.centro_custo_destino %}{{ mov.centro_custo_destino.departamento|default:mov.centro_custo_destino }}
+                {% elif mov.localidade_destino %}{{ mov.localidade_destino.local|default:mov.localidade_destino }}
+                {% elif mov.fornecedor_manutencao %}{{ mov.fornecedor_manutencao.nome|default:mov.fornecedor_manutencao }}
+                {% else %}<i class="fa fa-minus" style="color:var(--mv-muted)"></i>{% endif %}
+            </span>
+        </div>
+    </td>
+    <td data-label="Responsável">
+        {% if mov.criado_por %}
+            <div class="user-cell">
+                <div class="user-avatar">{% if mov.criado_por.first_name %}{{ mov.criado_por.first_name|slice:":1"|upper }}{% else %}{{ mov.criado_por.username|slice:":1"|upper }}{% endif %}</div>
+                <span class="user-name">{% if mov.criado_por.first_name or mov.criado_por.last_name %}{{ mov.criado_por.first_name }} {{ mov.criado_por.last_name }}{% else %}{{ mov.criado_por.username }}{% endif %}</span>
+            </div>
+        {% else %}<span style="color:var(--mv-muted)">-</span>{% endif %}
+    </td>
+    <td data-label="Data">
+        <div class="date-cell-main">{{ mov.created_at|date:"d/m/Y" }}</div>
+        <div class="date-cell-sub">{{ mov.created_at|date:"H:i" }}</div>
+    </td>
+    <td data-label="Ações" style="text-align:right;">
+        <a href="{% url 'movimentacao_detail' mov.pk %}" class="btn btn-light" style="padding:0 .875rem;min-height:2.25rem;" title="Ver Detalhes">
+            <i class="fa fa-eye"></i>
+        </a>
+    </td>
+</tr>
+{% empty %}
+<tr>
+    <td colspan="6">
+        <div class="empty-state">
+            <i class="fa fa-arrow-right-arrow-left"></i>
+            <h3>Nenhuma movimentação</h3>
+            <p>Altere os filtros ou registre uma nova movimentação.</p>
+        </div>
+    </td>
+</tr>
+{% endfor %}

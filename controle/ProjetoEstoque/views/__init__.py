@@ -208,7 +208,16 @@ from .inteligencia import (
 from .home import sobre_plataforma
 
 # ── Alertas ──────────────────────────────────────────────────────────────────
-from .alertas import alertas_dashboard, alertas_enviar
+from .alertas import alertas_dashboard, alertas_enviar, alertas_toggle
+
+# ── NinjaOne RMM ──────────────────────────────────────────────────────────────
+from .ninja import (
+    ninja_dashboard,
+    ninja_dispositivos,
+    ninja_relatorio,
+    ninja_sync,
+    ninja_api_live,
+)
 
 # ── Status Board ─────────────────────────────────────────────────────────────
 from .status_board import status_board

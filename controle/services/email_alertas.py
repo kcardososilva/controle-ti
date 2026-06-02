@@ -45,7 +45,18 @@ _TIPO_LABELS = {
 # Utilitários internos
 # ─────────────────────────────────────────────────────────────
 
+def _alertas_habilitados() -> bool:
+    try:
+        from ProjetoEstoque.models import ConfiguracaoSistema
+        return ConfiguracaoSistema.get().alertas_email_ativos
+    except Exception:
+        return True
+
+
 def _enviar(assunto: str, texto: str, html: str, destinatarios: list[str] | None = None) -> bool:
+    if not _alertas_habilitados():
+        logger.info("email_alertas: envio suprimido — alertas desativados nas configurações do sistema.")
+        return False
     alvos = destinatarios or DESTINATARIOS
     if not alvos:
         logger.warning("email_alertas: nenhum destinatário configurado.")

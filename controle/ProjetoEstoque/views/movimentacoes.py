@@ -8,7 +8,7 @@ from django.db.models import Q, Count
 from django.core.paginator import Paginator
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
-from django.template.loader import get_template
+from django.template.loader import get_template, render_to_string
 from django.utils import timezone
 from xhtml2pdf import pisa
 
@@ -162,6 +162,18 @@ def movimentacao_list(request):
             "manutencao": kpi_manut,
         }
     }
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        view_mode = request.GET.get('view', 'list')
+        data = {
+            'count': total_filtrado,
+            'pagination': render_to_string('front/movimentacao/_mov_pagination.html', context, request=request),
+        }
+        if view_mode == 'gallery':
+            data['gallery'] = render_to_string('front/movimentacao/_mov_gallery.html', context, request=request)
+        else:
+            data['tbody'] = render_to_string('front/movimentacao/_mov_rows.html', context, request=request)
+        return JsonResponse(data)
 
     return render(request, "front/movimentacao/movimentacao_list.html", context)
 

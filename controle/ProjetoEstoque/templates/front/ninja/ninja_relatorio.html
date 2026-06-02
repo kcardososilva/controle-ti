@@ -1,0 +1,312 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Relatório de Uso — NinjaOne{% endblock %}
+{% block page_title %}Relatório de Uso{% endblock %}
+{% block page_subtitle %}Tempo de atividade por máquina, usuários conectados e máquinas ativas{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'ninja_dashboard' %}" class="btn btn-light" style="min-height:2.25rem;padding:0 1rem;">
+  <i class="fa fa-arrow-left"></i> Dashboard
+</a>
+<a href="{% url 'ninja_dispositivos' %}" class="btn btn-light" style="min-height:2.25rem;padding:0 1rem;">
+  <i class="fa fa-list"></i> Dispositivos
+</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.njr-page) { --nj-brand:#6528d8; --nj-brand-soft:color-mix(in srgb,#6528d8 10%,transparent); }
+.njr-page, .njr-page * { box-sizing:border-box; min-width:0; }
+.njr-page { width:100%; max-width:92rem; margin:0 auto; display:grid; gap:1.25rem; }
+
+/* ── KPI compact ─── */
+.njr-kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+.njr-kpi {
+  display:flex; align-items:center; gap:.7rem;
+  padding:12px 14px; background:var(--bg-elevated);
+  border:1px solid var(--separator-hairline);
+  border-left:3px solid var(--njr-color, var(--nj-brand));
+  border-radius:var(--radius-md); box-shadow:var(--shadow-xs);
+}
+.njr-kpi-icon {
+  flex-shrink:0; width:34px; height:34px; border-radius:var(--radius-sm);
+  display:grid; place-items:center; font-size:13px;
+  background:color-mix(in srgb,var(--njr-color,var(--nj-brand)) 14%,transparent);
+  color:var(--njr-color,var(--nj-brand));
+}
+.njr-kpi-val { font-size:18px; font-weight:700; color:var(--text-primary); line-height:1; }
+.njr-kpi-lbl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.055em; color:var(--text-tertiary); margin-top:2px; }
+
+/* ── Período ─── */
+.njr-period-card {
+  display:flex; align-items:flex-end; flex-wrap:wrap; gap:.75rem;
+  padding:.85rem 1.1rem;
+  background:var(--bg-elevated); border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-xl); box-shadow:var(--shadow-xs);
+}
+.njr-period-field { display:flex; flex-direction:column; gap:.35rem; }
+.njr-period-field label { font-size:.74rem; font-weight:700; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.045em; }
+.njr-info-chip {
+  font-size:.76rem; font-weight:600; color:var(--text-tertiary);
+  background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline);
+  padding:.3rem .7rem; border-radius:var(--radius-pill); white-space:nowrap;
+  align-self:flex-end;
+}
+
+/* ── Tabela ─── */
+.njr-table-card {
+  background:var(--bg-elevated); border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden;
+}
+.njr-table-header {
+  display:flex; align-items:center; justify-content:space-between; gap:1rem;
+  padding:.85rem 1.15rem; border-bottom:1px solid var(--separator-hairline);
+}
+.njr-table-title { font-size:.92rem; font-weight:700; letter-spacing:-.016em; display:flex; align-items:center; gap:.5rem; }
+.njr-table-title i { color:var(--nj-brand); }
+
+.njr-table-wrap { width:100%; overflow-x:auto; }
+.njr-table { width:max-content; min-width:100%; border-collapse:collapse; }
+.njr-table th, .njr-table td {
+  padding:.8rem 1rem; border-bottom:1px solid var(--separator-hairline);
+  vertical-align:middle; text-align:left;
+}
+.njr-table th {
+  background:var(--bg-elevated); color:var(--text-tertiary);
+  font-size:.67rem; font-weight:700; text-transform:uppercase; letter-spacing:.055em; white-space:nowrap;
+}
+.njr-table td { color:var(--text-primary); font-size:.84rem; font-weight:500; white-space:nowrap; }
+.njr-table tbody tr { transition:background var(--transition-fast); }
+.njr-table tbody tr:hover { background:var(--bg-hover); }
+.njr-table tbody tr:last-child td { border-bottom:none; }
+
+/* Barra de uso */
+.njr-bar-wrap { display:flex; align-items:center; gap:.6rem; min-width:120px; }
+.njr-bar-bg { flex:1; height:6px; border-radius:3px; background:var(--separator-hairline); overflow:hidden; }
+.njr-bar-fill { height:100%; border-radius:3px; background:var(--success); }
+.njr-pct { font-size:.76rem; font-weight:700; color:var(--text-secondary); width:32px; text-align:right; flex-shrink:0; }
+
+.njr-main-text { font-weight:700; letter-spacing:-.014em; }
+.njr-sub-text  { margin-top:.18rem; color:var(--text-tertiary); font-size:.74rem; }
+
+.njr-chip {
+  display:inline-flex; align-items:center; gap:.3rem;
+  padding:.2rem .55rem; border-radius:var(--radius-pill);
+  font-size:.69rem; font-weight:700; white-space:nowrap;
+  margin:.1rem .1rem 0 0;
+}
+.njr-chip-match   { color:var(--success); background:var(--success-soft); }
+.njr-chip-nomatch { color:var(--warning); background:var(--warning-soft); }
+.njr-chip-user    { color:var(--nj-brand); background:var(--nj-brand-soft); }
+.njr-chip-inativo { color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline); }
+
+.njr-empty { display:grid; place-items:center; gap:.5rem; padding:2.5rem 1rem; text-align:center; color:var(--text-tertiary); font-size:.9rem; font-weight:600; }
+.njr-empty i { font-size:1.5rem; color:var(--text-quaternary); }
+
+/* Legenda de estimativa */
+.njr-nota {
+  font-size:.75rem; color:var(--text-quaternary);
+  padding:.55rem .9rem; background:var(--bg-fill-secondary);
+  border-radius:var(--radius-md); border:1px solid var(--separator-hairline);
+  margin:.1rem 0 0;
+}
+
+@media(max-width:36rem) {
+  .njr-kpi-grid { grid-template-columns:repeat(2,1fr); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="njr-page">
+
+  <!-- KPIs -->
+  <div class="njr-kpi-grid">
+    <div class="njr-kpi" style="--njr-color:var(--nj-brand);">
+      <div class="njr-kpi-icon"><i class="fa fa-desktop"></i></div>
+      <div>
+        <div class="njr-kpi-val">{{ kpi.total_devices }}</div>
+        <div class="njr-kpi-lbl">Dispositivos c/ dados</div>
+      </div>
+    </div>
+    <div class="njr-kpi" style="--njr-color:var(--success);">
+      <div class="njr-kpi-icon"><i class="fa fa-circle-check"></i></div>
+      <div>
+        <div class="njr-kpi-val">{{ kpi.total_ativas }}</div>
+        <div class="njr-kpi-lbl">Ativas no período</div>
+      </div>
+    </div>
+    <div class="njr-kpi" style="--njr-color:var(--text-tertiary);">
+      <div class="njr-kpi-icon"><i class="fa fa-circle-xmark"></i></div>
+      <div>
+        <div class="njr-kpi-val">{{ kpi.total_inativas }}</div>
+        <div class="njr-kpi-lbl">Inativas no período</div>
+      </div>
+    </div>
+    <div class="njr-kpi" style="--njr-color:var(--info);">
+      <div class="njr-kpi-icon"><i class="fa fa-database"></i></div>
+      <div>
+        <div class="njr-kpi-val">{{ total_snaps }}</div>
+        <div class="njr-kpi-lbl">Snapshots no período</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Seletor de período -->
+  <form method="get" action="" class="njr-period-card">
+    <div class="njr-period-field">
+      <label for="data_ini">De</label>
+      <input id="data_ini" name="data_ini" type="date" class="form-control"
+             value="{{ data_ini|date:'Y-m-d' }}" max="{{ hoje|date:'Y-m-d' }}">
+    </div>
+    <div class="njr-period-field">
+      <label for="data_fim">Até</label>
+      <input id="data_fim" name="data_fim" type="date" class="form-control"
+             value="{{ data_fim|date:'Y-m-d' }}" max="{{ hoje|date:'Y-m-d' }}">
+    </div>
+    <button type="submit" class="btn btn-primary" style="padding:0 1rem;min-height:2.25rem;align-self:flex-end;">
+      <i class="fa fa-chart-bar"></i> Gerar
+    </button>
+    <span class="njr-info-chip">
+      <i class="fa fa-calendar-days"></i>
+      {{ delta_dias }} dia{{ delta_dias|pluralize:"s" }}
+      ({{ data_ini|date:"d/m" }} → {{ data_fim|date:"d/m/Y" }})
+    </span>
+    {% if total_snaps == 0 %}
+    <span class="njr-info-chip" style="color:var(--warning);border-color:color-mix(in srgb,var(--warning) 30%,transparent);">
+      <i class="fa fa-triangle-exclamation"></i>
+      Sem snapshots — execute <code>sync_ninja</code> no período
+    </span>
+    {% endif %}
+  </form>
+
+  <!-- Nota sobre a estimativa -->
+  <div class="njr-nota">
+    <i class="fa fa-circle-info"></i>
+    <strong>Como funciona:</strong> O relatório é baseado em snapshots periódicos do estado de cada máquina.
+    O tempo de atividade é estimado como <strong>nº de snapshots online × 15 min</strong> (intervalo padrão de agendamento).
+    Para maior precisão, agende <code>python manage.py sync_ninja --snapshot-only</code> a cada 15 minutos no Agendador de Tarefas do Windows.
+  </div>
+
+  <!-- Tabela principal do relatório -->
+  <div class="njr-table-card">
+    <div class="njr-table-header">
+      <span class="njr-table-title"><i class="fa fa-chart-bar"></i> Uso por dispositivo — {{ data_ini|date:"d/m" }} a {{ data_fim|date:"d/m/Y" }}</span>
+      <span style="font-size:.8rem;color:var(--text-tertiary);">{{ relatorio|length }} dispositivo(s)</span>
+    </div>
+    <div class="njr-table-wrap">
+      <table class="njr-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Dispositivo</th>
+            <th>Estoque (série)</th>
+            <th>Ativo no período</th>
+            <th>Tempo estimado</th>
+            <th>Dias com atividade</th>
+            <th>Primeiro online</th>
+            <th>Último online</th>
+            <th>Usuários logados</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in relatorio %}
+          <tr>
+            <td style="color:var(--text-quaternary);font-size:.78rem;padding-left:.85rem;">{{ forloop.counter }}</td>
+            <td>
+              <div class="njr-main-text">{{ row.device.display_name }}</div>
+              <div class="njr-sub-text">
+                {{ row.device.os_name|default:"" }}{% if row.device.manufacturer %} · {{ row.device.manufacturer }}{% endif %}
+              </div>
+            </td>
+            <td>
+              {% if row.device.item %}
+                <a href="{% url 'equipamento_detalhe' row.device.item.pk %}" class="njr-chip njr-chip-match">
+                  <i class="fa fa-link" style="font-size:.62rem;"></i>
+                  {{ row.device.item.nome|truncatechars:24 }}
+                </a>
+                {% if row.device.serial_number %}
+                  <div style="font-size:.72rem;color:var(--text-quaternary);margin-top:.2rem;font-family:monospace;">{{ row.device.serial_number }}</div>
+                {% endif %}
+              {% elif row.device.serial_number %}
+                <span class="njr-chip njr-chip-nomatch"><i class="fa fa-link-slash" style="font-size:.62rem;"></i> Sem match</span>
+                <div style="font-size:.72rem;color:var(--text-quaternary);margin-top:.2rem;font-family:monospace;">{{ row.device.serial_number }}</div>
+              {% else %}
+                <span class="njr-chip" style="color:var(--text-tertiary);background:var(--bg-fill-secondary);">Sem série</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if row.total_online > 0 %}
+                <div class="njr-bar-wrap">
+                  <div class="njr-bar-bg">
+                    <div class="njr-bar-fill" style="width:{{ row.pct_online }}%;{% if row.pct_online < 20 %}background:var(--warning);{% elif row.pct_online > 80 %}background:var(--success);{% else %}background:var(--brand);{% endif %}"></div>
+                  </div>
+                  <span class="njr-pct">{{ row.pct_online }}%</span>
+                </div>
+              {% else %}
+                <span class="njr-chip njr-chip-inativo"><i class="fa fa-circle-xmark" style="font-size:.62rem;"></i> Inativa</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if row.horas_est > 0 %}
+                <strong style="color:var(--text-primary);">{{ row.horas_est }}h</strong>
+                <span style="color:var(--text-tertiary);font-size:.78rem;"> (~{{ row.minutos_est }} min)</span>
+              {% else %}
+                <span style="color:var(--text-quaternary);">—</span>
+              {% endif %}
+            </td>
+            <td style="text-align:center;">
+              {% if row.dias_ativos > 0 %}
+                <strong>{{ row.dias_ativos }}</strong>
+                <span style="color:var(--text-tertiary);font-size:.78rem;">de {{ delta_dias }}</span>
+              {% else %}
+                <span style="color:var(--text-quaternary);">0</span>
+              {% endif %}
+            </td>
+            <td style="font-size:.79rem;color:var(--text-tertiary);">
+              {% if row.primeira_vez %}{{ row.primeira_vez|date:"d/m H:i" }}{% else %}—{% endif %}
+            </td>
+            <td style="font-size:.79rem;color:var(--text-tertiary);">
+              {% if row.ultima_vez %}{{ row.ultima_vez|date:"d/m H:i" }}{% else %}—{% endif %}
+            </td>
+            <td>
+              {% for u in row.usuarios %}
+                <span class="njr-chip njr-chip-user"><i class="fa fa-user" style="font-size:.6rem;"></i>{{ u }}</span>
+              {% empty %}
+                <span style="color:var(--text-quaternary);font-size:.8rem;">—</span>
+              {% endfor %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="9">
+              <div class="njr-empty">
+                <i class="fa fa-inbox"></i>
+                Nenhum dado de snapshot disponível para o período selecionado.<br>
+                <span style="font-size:.82rem;font-weight:400;color:var(--text-quaternary);">
+                  Execute <code>python manage.py sync_ninja</code> e aguarde o acúmulo de dados.
+                </span>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Instrução de agendamento -->
+  <div style="padding:.75rem 1rem; background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); font-size:.82rem; color:var(--text-tertiary); line-height:1.65;">
+    <strong style="color:var(--text-primary);"><i class="fa fa-clock" style="color:var(--nj-brand);margin-right:.35rem;"></i>Agendamento recomendado (Windows Task Scheduler)</strong><br>
+    Para relatório granular de 15 minutos:<br>
+    <code style="background:var(--bg-fill-secondary);padding:.2rem .5rem;border-radius:4px;font-size:.8rem;">python manage.py sync_ninja --snapshot-only</code>
+    &nbsp;— a cada 15 min<br>
+    <code style="background:var(--bg-fill-secondary);padding:.2rem .5rem;border-radius:4px;font-size:.8rem;">python manage.py sync_ninja</code>
+    &nbsp;— a cada hora (sync completo com a API NinjaOne)<br>
+    <code style="background:var(--bg-fill-secondary);padding:.2rem .5rem;border-radius:4px;font-size:.8rem;">python manage.py sync_ninja --purge-old 90</code>
+    &nbsp;— mensalmente (limpar snapshots com mais de 90 dias)
+  </div>
+
+</div>
+{% endblock %}

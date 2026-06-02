@@ -1,0 +1,452 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}NinjaOne RMM{% endblock %}
+{% block page_title %}NinjaOne RMM{% endblock %}
+{% block page_subtitle %}Monitoramento de dispositivos, usuários e vínculo com estoque{% endblock %}
+
+{% block header_actions %}
+<form method="post" action="{% url 'ninja_sync' %}" style="margin:0;">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-primary" style="min-height:2.25rem;padding:0 1rem;gap:.5rem;">
+    <i class="fa fa-rotate"></i> Sincronizar agora
+  </button>
+</form>
+<a href="{% url 'ninja_dispositivos' %}" class="btn btn-light" style="min-height:2.25rem;padding:0 1rem;">
+  <i class="fa fa-list"></i> Dispositivos
+</a>
+<a href="{% url 'ninja_relatorio' %}" class="btn btn-light" style="min-height:2.25rem;padding:0 1rem;">
+  <i class="fa fa-chart-bar"></i> Relatório de uso
+</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.nj-page) { --nj-brand: #6528d8; --nj-brand-soft: color-mix(in srgb,#6528d8 10%,transparent); }
+
+.nj-page,
+.nj-page * { box-sizing: border-box; min-width: 0; }
+
+.nj-page {
+  width: 100%; max-width: 92rem; margin: 0 auto;
+  display: grid; gap: 1.25rem;
+}
+
+/* ── Hero ─── */
+.nj-hero {
+  position: relative; overflow: hidden;
+  display: grid; grid-template-columns: 1fr auto;
+  gap: 1rem; align-items: center;
+  padding: clamp(.85rem,2vw,1.2rem) clamp(.85rem,2vw,1.4rem);
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xs);
+}
+.nj-hero::after {
+  content:""; position:absolute; right:-4rem; top:-4rem;
+  width:11rem; height:11rem; border-radius:999px;
+  background: var(--nj-brand-soft); pointer-events:none;
+}
+.nj-hero-icon {
+  width:40px; height:40px; border-radius:10px; flex-shrink:0;
+  display:grid; place-items:center; font-size:17px;
+  background: var(--nj-brand-soft); color: var(--nj-brand);
+}
+.nj-hero-content { display:flex; align-items:center; gap:.75rem; }
+.nj-hero-title { margin:0; font-size:clamp(1.1rem,2.2vw,1.55rem); font-weight:700; letter-spacing:-.03em; }
+.nj-hero-sub { margin:.2rem 0 0; color:var(--text-tertiary); font-size:.83rem; }
+.nj-hero-actions { display:flex; gap:.6rem; flex-wrap:wrap; justify-content:flex-end; position:relative; z-index:1; }
+.nj-hero-main { position:relative; z-index:1; }
+
+/* ── Status banner (configuração) ─── */
+.nj-config-warn {
+  display:flex; align-items:center; gap:.75rem;
+  padding:.8rem 1.1rem; border-radius:var(--radius-xl);
+  background: color-mix(in srgb, var(--warning) 10%, var(--bg-elevated));
+  border: 1.5px dashed color-mix(in srgb, var(--warning) 40%, transparent);
+  color: var(--warning); font-size:.86rem; font-weight:600;
+}
+
+/* ── KPI Grid ─── */
+.nj-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.nj-kpi-card {
+  display: flex; align-items: center; gap: .75rem;
+  padding: 12px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator-hairline);
+  border-left: 3px solid var(--nj-color, var(--nj-brand));
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+}
+.nj-kpi-icon {
+  flex-shrink: 0; width: 36px; height: 36px;
+  border-radius: var(--radius-sm);
+  display: grid; place-items: center; font-size: 14px;
+  background: color-mix(in srgb, var(--nj-color, var(--nj-brand)) 14%, transparent);
+  color: var(--nj-color, var(--nj-brand));
+}
+.nj-kpi-value { font-size: 19px; font-weight: 700; line-height: 1; color: var(--text-primary); }
+.nj-kpi-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .055em; color: var(--text-tertiary); margin-top: 2px; }
+
+/* ── Seção / card ─── */
+.nj-section {
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+.nj-section-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: .85rem 1.15rem;
+  border-bottom: 1px solid var(--separator-hairline);
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+}
+.nj-section-title {
+  display: flex; align-items: center; gap: .55rem;
+  font-size: .92rem; font-weight: 700; letter-spacing: -.016em;
+  color: var(--text-primary);
+}
+.nj-section-title i { color: var(--nj-sec-color, var(--nj-brand)); }
+.nj-badge {
+  min-width:1.5rem; height:1.5rem; padding:.1rem .5rem;
+  display:inline-flex; align-items:center; justify-content:center;
+  border-radius:var(--radius-pill); font-size:.72rem; font-weight:800; line-height:1;
+}
+.nj-badge-green { color:var(--success); background:var(--success-soft); border:1px solid color-mix(in srgb,var(--success) 20%,transparent); }
+.nj-badge-purple { color:var(--nj-brand); background:var(--nj-brand-soft); border:1px solid color-mix(in srgb,var(--nj-brand) 20%,transparent); }
+.nj-badge-warn  { color:var(--warning); background:var(--warning-soft); border:1px solid color-mix(in srgb,var(--warning) 20%,transparent); }
+.nj-badge-red   { color:var(--danger); background:var(--danger-soft); border:1px solid color-mix(in srgb,var(--danger) 20%,transparent); }
+
+/* ── Tabela ─── */
+.nj-table-wrap { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.nj-table { width:max-content; min-width:100%; border-collapse:collapse; }
+.nj-table th, .nj-table td {
+  padding:.8rem 1rem; border-bottom:1px solid var(--separator-hairline);
+  vertical-align:middle; text-align:left; white-space:nowrap;
+}
+.nj-table th {
+  background:var(--bg-elevated); color:var(--text-tertiary);
+  font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.055em;
+}
+.nj-table td { color:var(--text-primary); font-size:.84rem; font-weight:500; }
+.nj-table tbody tr { transition:background var(--transition-fast); }
+.nj-table tbody tr:hover { background:var(--bg-hover); }
+.nj-table tbody tr:last-child td { border-bottom:none; }
+
+.nj-dot { display:inline-block; width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.nj-dot-online  { background:var(--success); box-shadow:0 0 0 2px color-mix(in srgb,var(--success) 30%,transparent); }
+.nj-dot-offline { background:var(--text-quaternary); }
+
+.nj-main-text { font-weight:700; letter-spacing:-.014em; }
+.nj-sub-text  { margin-top:.18rem; color:var(--text-tertiary); font-size:.75rem; }
+
+.nj-chip {
+  display:inline-flex; align-items:center; gap:.3rem;
+  padding:.22rem .6rem; border-radius:var(--radius-pill);
+  font-size:.7rem; font-weight:700; white-space:nowrap;
+}
+.nj-chip-match   { color:var(--success); background:var(--success-soft); }
+.nj-chip-nomatch { color:var(--warning); background:var(--warning-soft); }
+.nj-chip-noserie { color:var(--text-tertiary); background:var(--bg-fill-secondary); }
+.nj-chip-user    { color:var(--nj-brand); background:var(--nj-brand-soft); }
+
+.nj-empty {
+  display:grid; place-items:center; gap:.5rem;
+  padding:2rem 1rem; text-align:center;
+  color:var(--text-tertiary); font-size:.9rem; font-weight:600;
+}
+.nj-empty i { font-size:1.4rem; color:var(--text-quaternary); }
+
+/* ── Sync info ─── */
+.nj-sync-info {
+  display:flex; align-items:center; gap:.5rem;
+  font-size:.76rem; font-weight:600; color:var(--text-tertiary);
+}
+
+/* ── Grid 2 col ─── */
+.nj-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  gap: 1.25rem;
+}
+
+/* ── Pct bar ─── */
+.nj-pct-bar {
+  height:4px; border-radius:2px; background:var(--separator-hairline); overflow:hidden;
+  margin-top:4px;
+}
+.nj-pct-fill { height:100%; border-radius:2px; background:var(--nj-color,var(--nj-brand)); transition:width .6s ease; }
+
+@media(max-width:48rem) {
+  .nj-hero { grid-template-columns:1fr; }
+  .nj-hero-actions { justify-content:flex-start; }
+}
+@media(max-width:36rem) {
+  .nj-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="nj-page">
+
+  {% if not configurado %}
+  <div class="nj-config-warn" role="alert">
+    <i class="fa fa-triangle-exclamation"></i>
+    <span>NinjaOne não configurado. Adicione <strong>NINJA_BASE_URL</strong>, <strong>NINJA_CLIENT_ID</strong> e <strong>NINJA_CLIENT_SECRET</strong> ao arquivo <code>.env</code> e reinicie o servidor.</span>
+  </div>
+  {% endif %}
+
+  <!-- Hero -->
+  <div class="nj-hero">
+    <div class="nj-hero-main">
+      <div class="nj-hero-content">
+        <div class="nj-hero-icon"><i class="fa fa-shield-halved"></i></div>
+        <div>
+          <h1 class="nj-hero-title">NinjaOne RMM</h1>
+          <p class="nj-hero-sub">
+            {% if last_sync %}
+              Última sync: {{ last_sync|date:"d/m/Y H:i" }}
+              &nbsp;·&nbsp;
+            {% endif %}
+            {{ snapshots_hoje }} snapshot(s) hoje
+            &nbsp;·&nbsp;
+            {{ kpi.ativas_hoje }} máquina(s) ativa(s) hoje
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="nj-hero-actions" id="nj-live-status">
+      <div class="nj-sync-info">
+        <span class="nj-dot nj-dot-online"></span>
+        <span id="nj-online-count">{{ kpi.online }}</span> online &nbsp;/&nbsp;
+        <span id="nj-total-count">{{ kpi.total }}</span> total
+      </div>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="nj-kpi-grid">
+    <div class="nj-kpi-card" style="--nj-color:var(--nj-brand);">
+      <div class="nj-kpi-icon"><i class="fa fa-desktop"></i></div>
+      <div>
+        <div class="nj-kpi-value">{{ kpi.total }}</div>
+        <div class="nj-kpi-label">Total dispositivos</div>
+        <div class="nj-pct-bar"><div class="nj-pct-fill" style="width:100%;"></div></div>
+      </div>
+    </div>
+    <div class="nj-kpi-card" style="--nj-color:var(--success);">
+      <div class="nj-kpi-icon"><i class="fa fa-circle-check"></i></div>
+      <div>
+        <div class="nj-kpi-value" id="kpi-online">{{ kpi.online }}</div>
+        <div class="nj-kpi-label">Online agora</div>
+        <div class="nj-pct-bar"><div class="nj-pct-fill" id="bar-online" style="width:{{ kpi.pct_online }}%;"></div></div>
+      </div>
+    </div>
+    <div class="nj-kpi-card" style="--nj-color:var(--brand);">
+      <div class="nj-kpi-icon"><i class="fa fa-link"></i></div>
+      <div>
+        <div class="nj-kpi-value">{{ kpi.matched }}</div>
+        <div class="nj-kpi-label">Vinculados ao estoque</div>
+        <div class="nj-pct-bar"><div class="nj-pct-fill" style="background:var(--brand);width:{{ kpi.pct_matched }}%;"></div></div>
+      </div>
+    </div>
+    <div class="nj-kpi-card" style="--nj-color:var(--warning);">
+      <div class="nj-kpi-icon"><i class="fa fa-link-slash"></i></div>
+      <div>
+        <div class="nj-kpi-value">{{ kpi.unmatched }}</div>
+        <div class="nj-kpi-label">Sem match no estoque</div>
+      </div>
+    </div>
+    <div class="nj-kpi-card" style="--nj-color:var(--text-tertiary);">
+      <div class="nj-kpi-icon"><i class="fa fa-barcode"></i></div>
+      <div>
+        <div class="nj-kpi-value">{{ kpi.sem_serie }}</div>
+        <div class="nj-kpi-label">Sem número de série</div>
+      </div>
+    </div>
+    <div class="nj-kpi-card" style="--nj-color:var(--info);">
+      <div class="nj-kpi-icon"><i class="fa fa-sun"></i></div>
+      <div>
+        <div class="nj-kpi-value">{{ kpi.ativas_hoje }}</div>
+        <div class="nj-kpi-label">Ativas hoje</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nj-grid-2">
+
+    <!-- Dispositivos online com usuário logado -->
+    <div class="nj-section" style="--nj-sec-color:var(--success);">
+      <div class="nj-section-head">
+        <div class="nj-section-title">
+          <i class="fa fa-user-check"></i>
+          Online com usuário logado
+          <span class="nj-badge nj-badge-green">{{ online_com_user|length }}</span>
+        </div>
+      </div>
+      <div class="nj-table-wrap">
+        <table class="nj-table">
+          <thead>
+            <tr>
+              <th>Máquina</th>
+              <th>Usuário</th>
+              <th>Estoque</th>
+              <th>IP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dev in online_com_user %}
+            <tr>
+              <td>
+                <div class="nj-main-text">{{ dev.display_name }}</div>
+                <div class="nj-sub-text">{{ dev.serial_number|default:"S/N —" }}</div>
+              </td>
+              <td>
+                <span class="nj-chip nj-chip-user">
+                  <i class="fa fa-user" style="font-size:.62rem;"></i>
+                  {{ dev.last_user }}
+                </span>
+              </td>
+              <td>
+                {% if dev.item %}
+                  <a href="{% url 'equipamento_detalhe' dev.item.pk %}" class="nj-chip nj-chip-match">
+                    <i class="fa fa-link" style="font-size:.62rem;"></i>
+                    {{ dev.item.nome|truncatechars:22 }}
+                  </a>
+                {% else %}
+                  <span class="nj-chip nj-chip-nomatch"><i class="fa fa-link-slash" style="font-size:.62rem;"></i> Sem vínculo</span>
+                {% endif %}
+              </td>
+              <td style="color:var(--text-tertiary);font-size:.78rem;">{{ dev.ip_address|default:"—" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4"><div class="nj-empty"><i class="fa fa-user-slash"></i>Nenhum dispositivo online com usuário registrado.</div></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Divergência: ativo no NinjaOne mas sem match no estoque -->
+    <div class="nj-section" style="--nj-sec-color:var(--warning);">
+      <div class="nj-section-head">
+        <div class="nj-section-title">
+          <i class="fa fa-triangle-exclamation"></i>
+          Online sem vínculo no estoque
+          <span class="nj-badge nj-badge-warn">{{ sem_match_online|length }}</span>
+        </div>
+        <a href="{% url 'ninja_dispositivos' %}?status=online&match=unmatched" class="btn btn-light" style="padding:0 .7rem;min-height:1.9rem;font-size:.78rem;">
+          Ver todos
+        </a>
+      </div>
+      <div class="nj-table-wrap">
+        <table class="nj-table">
+          <thead>
+            <tr>
+              <th>Máquina</th>
+              <th>Número de série</th>
+              <th>Usuário</th>
+              <th>IP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dev in sem_match_online %}
+            <tr>
+              <td>
+                <div class="nj-main-text">{{ dev.display_name }}</div>
+                <div class="nj-sub-text">{{ dev.node_class_label }}</div>
+              </td>
+              <td>
+                {% if dev.serial_number %}
+                  <code style="font-size:.8rem;">{{ dev.serial_number }}</code>
+                {% else %}
+                  <span style="color:var(--text-tertiary);font-size:.8rem;">Sem série</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if dev.last_user %}
+                  <span class="nj-chip nj-chip-user" style="font-size:.72rem;">{{ dev.last_user }}</span>
+                {% else %}
+                  <span style="color:var(--text-tertiary);">—</span>
+                {% endif %}
+              </td>
+              <td style="color:var(--text-tertiary);font-size:.78rem;">{{ dev.ip_address|default:"—" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4"><div class="nj-empty"><i class="fa fa-circle-check" style="color:var(--success);"></i>Todos os dispositivos online estão vinculados ao estoque.</div></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- .nj-grid-2 -->
+
+  <!-- Dispositivos online sem usuário -->
+  {% if online_sem_user %}
+  <div class="nj-section" style="--nj-sec-color:var(--text-tertiary);">
+    <div class="nj-section-head">
+      <div class="nj-section-title">
+        <i class="fa fa-desktop"></i>
+        Online sem usuário registrado
+        <span class="nj-badge" style="color:var(--text-tertiary);background:var(--bg-fill-secondary);border:1px solid var(--separator-hairline);">{{ online_sem_user|length }}</span>
+      </div>
+    </div>
+    <div class="nj-table-wrap">
+      <table class="nj-table">
+        <thead><tr><th>Máquina</th><th>Série</th><th>Estoque</th><th>Último contato</th></tr></thead>
+        <tbody>
+          {% for dev in online_sem_user %}
+          <tr>
+            <td>
+              <div class="nj-main-text">{{ dev.display_name }}</div>
+              <div class="nj-sub-text">{{ dev.os_name|default:"—" }}</div>
+            </td>
+            <td style="font-size:.8rem; color:var(--text-tertiary);">{{ dev.serial_number|default:"—" }}</td>
+            <td>
+              {% if dev.item %}
+                <span class="nj-chip nj-chip-match"><i class="fa fa-link" style="font-size:.62rem;"></i> {{ dev.item.nome|truncatechars:22 }}</span>
+              {% else %}
+                <span class="nj-chip nj-chip-nomatch"><i class="fa fa-link-slash" style="font-size:.62rem;"></i> Sem vínculo</span>
+              {% endif %}
+            </td>
+            <td style="color:var(--text-tertiary);font-size:.8rem;">{{ dev.last_contact|date:"d/m H:i"|default:"—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div><!-- .nj-page -->
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  // Atualiza KPIs em tempo real a cada 30s
+  function refreshLive() {
+    fetch("{% url 'ninja_api_live' %}", { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(r => r.json())
+      .then(d => {
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        set('kpi-online', d.online);
+        set('nj-online-count', d.online);
+        set('nj-total-count', d.total);
+        const bar = document.getElementById('bar-online');
+        if (bar) bar.style.width = d.pct_online + '%';
+      })
+      .catch(() => {});
+  }
+  setInterval(refreshLive, 30000);
+})();
+</script>
+{% endblock %}

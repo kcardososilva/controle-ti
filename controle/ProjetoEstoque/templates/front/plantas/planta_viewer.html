@@ -505,23 +505,23 @@ const STATUS_URL = "{% url 'prtg_status_api' %}";
 
 // ── Type config ────────────────────────────────────────────────────────────────
 const TIPO = {
-  camera:       { label:"Câmera",        emoji:"📷", color:"#5856d6" },
-  access_point: { label:"Access Point",  emoji:"📡", color:"#30b0c7" },
-  switch:       { label:"Switch",        emoji:"🔀", color:"#0071e3" },
-  rack:         { label:"Rack",          emoji:"🗄️",  color:"#8e8e93" },
-  desktop:      { label:"Desktop",       emoji:"🖥️",  color:"#34c759" },
-  impressora:   { label:"Impressora",    emoji:"🖨️",  color:"#ff9500" },
-  nobreak:      { label:"Nobreak",       emoji:"⚡",  color:"#ff6b35" },
-  servidor:     { label:"Servidor",      emoji:"☁️",  color:"#5ac8fa" },
-  ponto_rede:   { label:"Ponto de Rede", emoji:"📍",  color:"#6e6e73" },
+  camera:       { label:"Câmera",        emoji:"📷", color:"#ef4444" },
+  access_point: { label:"Access Point",  emoji:"📡", color:"#0ea5e9" },
+  switch:       { label:"Switch",        emoji:"🔀", color:"#2563eb" },
+  rack:         { label:"Rack",          emoji:"🗄️",  color:"#475569" },
+  desktop:      { label:"Desktop",       emoji:"🖥️",  color:"#10b981" },
+  impressora:   { label:"Impressora",    emoji:"🖨️",  color:"#f97316" },
+  nobreak:      { label:"Nobreak",       emoji:"⚡",  color:"#f59e0b" },
+  servidor:     { label:"Servidor",      emoji:"☁️",  color:"#8b5cf6" },
+  ponto_rede:   { label:"Ponto de Rede", emoji:"📍",  color:"#6366f1" },
   texto:        { label:"Texto",         emoji:"✏️",  color:"#1d1d1f" },
-  quadro:       { label:"Quadro/Área",   emoji:"□",   color:"#0071e3" },
-  circulo:      { label:"Círculo/Zona",  emoji:"○",   color:"#5856d6" },
+  quadro:       { label:"Quadro/Área",   emoji:"□",   color:"#2563eb" },
+  circulo:      { label:"Círculo/Zona",  emoji:"○",   color:"#8b5cf6" },
 };
 const CN_CFG = {
-  network:    { label:"Rede",       color:"#0071e3", dash:[],    arrow:true  },
-  fiber:      { label:"Fibra",      color:"#5856d6", dash:[8,4], arrow:true  },
-  power:      { label:"Energia",    color:"#ff9500", dash:[],    arrow:false },
+  network:    { label:"Rede",       color:"#2563eb", dash:[],    arrow:true  },
+  fiber:      { label:"Fibra",      color:"#8b5cf6", dash:[8,4], arrow:true  },
+  power:      { label:"Energia",    color:"#f97316", dash:[],    arrow:false },
   dependencia:{ label:"Dependência",color:"#34c759", dash:[4,4], arrow:true  },
 };
 const ST_COLOR = { up:"#34c759", warning:"#ff9500", down:"#ff3b30", unknown:"#aeaeb2", none:"#aeaeb2", paused_dep:"#00cfff" };
@@ -840,6 +840,68 @@ function drawElement(el) {
     ctx.font=`600 ${(el.fontSize||14)*zoom}px -apple-system,sans-serif`;
     ctx.fillStyle=color; ctx.textAlign='left'; ctx.textBaseline='top';
     ctx.fillText(el.label||"Texto",sc.x,sc.y); return;
+  }
+
+  /* Camera circle with FOV sector */
+  if (el.type === 'camera') {
+    const bw = (el.width  || 56) * zoom;
+    const bh = (el.height || 56) * zoom;
+    const r  = Math.min(bw, bh) / 2;
+    const cx = sc.x + bw/2, cy = sc.y + bh/2;
+    const stCol = elStColor(el);
+    const st    = elStKey(el);
+    const fovHalf = ((el.fovAngle ?? 60) / 2) * Math.PI / 180;
+    const fovDir  = (el.fovDir  ?? 0)  * Math.PI / 180;
+    const fovLen  = r * 2.8;
+    ctx.save();
+    // Pulse rings for status
+    drawPulseRings({x:cx-r,y:cy-r}, r*2, r*2, stCol, st);
+    // FOV sector
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, fovLen, fovDir - fovHalf, fovDir + fovHalf);
+    ctx.closePath();
+    ctx.fillStyle   = hexAlpha(color, isSel ? 0.22 : 0.09);
+    ctx.strokeStyle = hexAlpha(color, isSel ? 0.55 : 0.25);
+    ctx.lineWidth   = 1.2 * zoom;
+    ctx.setLineDash([4*zoom, 3*zoom]);
+    ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
+    // Status glow
+    if (st === 'down')    { ctx.shadowColor = stCol; ctx.shadowBlur = 28*zoom; }
+    else if (st === 'warning') { ctx.shadowColor = stCol; ctx.shadowBlur = 20*zoom; }
+    else if (st === 'up')      { ctx.shadowColor = stCol; ctx.shadowBlur = 12*zoom; }
+    else { ctx.shadowColor = 'rgba(0,0,0,.10)'; ctx.shadowBlur = 8*zoom; }
+    // Camera body
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+    // Status ring
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.strokeStyle = isSel ? color : (st==='down'||st==='warning' ? hexAlpha(stCol,0.6) : hexAlpha(color,0.45));
+    ctx.lineWidth   = (isSel ? 2 : 1.5) * zoom; ctx.stroke();
+    if (st !== 'none') {
+      ctx.beginPath(); ctx.arc(cx, cy, r + 2*zoom, 0, Math.PI*2);
+      ctx.strokeStyle = stCol; ctx.lineWidth = 2*zoom; ctx.stroke();
+    }
+    // Lens icon
+    const iRad = r * 0.68;
+    ctx.strokeStyle = color; ctx.lineWidth = Math.max(0.8, r * 0.08);
+    ctx.beginPath(); ctx.arc(cx, cy, iRad*0.80, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, iRad*0.50, 0, Math.PI*2);
+    ctx.fillStyle = hexAlpha(color,0.22); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, iRad*0.24, 0, Math.PI*2);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx-iRad*0.15, cy-iRad*0.15, iRad*0.09, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,.80)'; ctx.fill();
+    // Label
+    const _clbl = elName(el);
+    if (_clbl && zoom > 0.35) {
+      const fs2 = Math.max(7, 8.5*zoom);
+      ctx.font = `600 ${fs2}px -apple-system,sans-serif`;
+      ctx.fillStyle = '#1d1d1f'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText(_clbl.length>13?_clbl.slice(0,12)+'…':_clbl, cx, cy + r + 4*zoom);
+    }
+    ctx.restore(); return;
   }
 
   /* Equipment card */

@@ -5,7 +5,8 @@ from io import BytesIO
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.template.loader import render_to_string
 from django.db.models import Q, Count, Sum, F
 from django.db.models.functions import Coalesce
 from django.core.paginator import Paginator
@@ -177,6 +178,19 @@ def licenca_list(request):
         "opt_fornecedores": Fornecedor.objects.values("id", "nome").order_by("nome"),
         "opt_pmb": SimNaoChoices.choices,
     }
+
+    # AJAX partial render (view toggle + pagination)
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        view_mode = request.GET.get('view', 'list')
+        data = {
+            'count': context['total_registros'],
+            'pagination': render_to_string('front/licencas/_lic_pagination.html', context, request=request),
+        }
+        if view_mode == 'gallery':
+            data['gallery'] = render_to_string('front/licencas/_lic_gallery.html', context, request=request)
+        else:
+            data['tbody'] = render_to_string('front/licencas/_lic_rows.html', context, request=request)
+        return JsonResponse(data)
 
     return render(request, "front/licencas/licenca_list.html", context)
 

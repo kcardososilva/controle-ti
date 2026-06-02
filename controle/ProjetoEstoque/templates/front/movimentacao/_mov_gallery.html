@@ -1,0 +1,89 @@
+{% for mov in movimentacoes %}
+<div class="mov-gc" data-href="{% url 'movimentacao_detail' mov.pk %}" tabindex="0" role="article">
+
+    {% if mov.tipo_movimentacao == 'entrada' %}
+        <div class="mov-gc-stripe gc-green"></div>
+    {% elif 'transferencia' in mov.tipo_movimentacao %}
+        <div class="mov-gc-stripe gc-blue"></div>
+    {% elif 'manutencao' in mov.tipo_movimentacao %}
+        <div class="mov-gc-stripe gc-orange"></div>
+    {% elif mov.tipo_movimentacao == 'baixa' %}
+        <div class="mov-gc-stripe gc-red"></div>
+    {% else %}
+        <div class="mov-gc-stripe gc-gray"></div>
+    {% endif %}
+
+    <div class="mov-gc-header">
+        <div class="mov-gc-icon
+            {% if mov.tipo_movimentacao == 'entrada' %}gc-green
+            {% elif 'transferencia' in mov.tipo_movimentacao %}gc-blue
+            {% elif 'manutencao' in mov.tipo_movimentacao %}gc-orange
+            {% elif mov.tipo_movimentacao == 'baixa' %}gc-red
+            {% else %}gc-gray{% endif %}">
+            {% if mov.tipo_movimentacao == 'entrada' %}<i class="fa fa-arrow-down"></i>
+            {% elif 'transferencia' in mov.tipo_movimentacao %}<i class="fa fa-arrow-right-arrow-left"></i>
+            {% elif 'manutencao' in mov.tipo_movimentacao %}<i class="fa fa-screwdriver-wrench"></i>
+            {% elif mov.tipo_movimentacao == 'baixa' %}<i class="fa fa-arrow-up"></i>
+            {% else %}<i class="fa fa-circle-dot"></i>{% endif %}
+        </div>
+        <div class="mov-gc-info">
+            <div class="mov-gc-name">{{ mov.item.nome }}</div>
+            <div class="mov-gc-sub">{{ mov.item.numero_serie|default:"S/N —" }}</div>
+        </div>
+        <span class="badge
+            {% if mov.tipo_movimentacao == 'entrada' %}green
+            {% elif 'transferencia' in mov.tipo_movimentacao %}blue
+            {% elif 'manutencao' in mov.tipo_movimentacao %}orange
+            {% elif mov.tipo_movimentacao == 'baixa' %}red
+            {% else %}gray{% endif %} mov-gc-badge">
+            {% if mov.tipo_movimentacao == 'entrada' %}Entrada
+            {% elif 'transferencia' in mov.tipo_movimentacao %}Transf.
+            {% elif 'manutencao' in mov.tipo_movimentacao %}Manut.
+            {% elif mov.tipo_movimentacao == 'baixa' %}Baixa
+            {% else %}{{ mov.get_tipo_movimentacao_display }}{% endif %}
+        </span>
+    </div>
+
+    <div class="mov-gc-flow">
+        <span class="mov-gc-flow-tag">
+            {% if mov.centro_custo_origem %}{{ mov.centro_custo_origem.numero|default:"CC Origem" }}
+            {% elif mov.localidade_origem %}{{ mov.localidade_origem.local|default:"Origem" }}
+            {% else %}—{% endif %}
+        </span>
+        <i class="fa fa-arrow-right" style="color:var(--mv-muted);font-size:.7rem;flex-shrink:0;"></i>
+        <span class="mov-gc-flow-tag destino">
+            {% if mov.centro_custo_destino %}{{ mov.centro_custo_destino.departamento|default:"CC Destino" }}
+            {% elif mov.localidade_destino %}{{ mov.localidade_destino.local|default:"Destino" }}
+            {% elif mov.fornecedor_manutencao %}{{ mov.fornecedor_manutencao.nome|default:"Fornecedor" }}
+            {% else %}—{% endif %}
+        </span>
+    </div>
+
+    {% if mov.quantidade or mov.lote %}
+    <div class="mov-gc-chips">
+        {% if mov.quantidade %}<span class="mini-chip"><i class="fa fa-layer-group"></i> {{ mov.quantidade }} un.</span>{% endif %}
+        {% if mov.lote %}<span class="mini-chip"><i class="fa fa-box"></i> NF {{ mov.lote.numero_nf|default:mov.lote.id }}</span>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="mov-gc-footer">
+        <div class="mov-gc-user">
+            {% if mov.criado_por %}
+                <div class="user-avatar" style="width:24px;height:24px;font-size:.65rem;">
+                    {% if mov.criado_por.first_name %}{{ mov.criado_por.first_name|slice:":1"|upper }}{% else %}{{ mov.criado_por.username|slice:":1"|upper }}{% endif %}
+                </div>
+                <span class="mov-gc-user-name">
+                    {% if mov.criado_por.first_name %}{{ mov.criado_por.first_name }}{% else %}{{ mov.criado_por.username }}{% endif %}
+                </span>
+            {% else %}<span style="color:var(--mv-muted)">—</span>{% endif %}
+        </div>
+        <span class="mov-gc-date">{{ mov.created_at|date:"d/m/Y" }}</span>
+    </div>
+</div>
+{% empty %}
+<div class="mov-gallery-empty">
+    <i class="fa fa-inbox"></i>
+    <strong>Nenhuma movimentação encontrada</strong>
+    <span>Ajuste os filtros ou registre uma nova movimentação.</span>
+</div>
+{% endfor %}

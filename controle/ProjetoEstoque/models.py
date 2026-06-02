@@ -1192,6 +1192,137 @@ class ItemPRTGHistorico(models.Model):
         return f"{self.item.nome}: {self.status_anterior or '(novo)'} → {self.status_novo} (PRTG)"
 
 
+# ========== NINJAONE RMM ==========
+
+class NinjaDevice(AuditModel):
+    """Cache dos dispositivos NinjaOne sincronizados via API. Vincula ao Item pelo número de série."""
+
+    ninja_id = models.IntegerField(unique=True, verbose_name="ID NinjaOne", db_index=True)
+    display_name = models.CharField(max_length=255, verbose_name="Nome do dispositivo")
+    hostname = models.CharField(max_length=255, blank=True, verbose_name="Hostname / DNS")
+    serial_number = models.CharField(max_length=100, blank=True, db_index=True, verbose_name="Número de série")
+    item = models.OneToOneField(
+        "Item",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="ninja_device",
+        verbose_name="Item vinculado (estoque)",
+    )
+    os_name = models.CharField(max_length=255, blank=True, verbose_name="Sistema Operacional")
+    manufacturer = models.CharField(max_length=255, blank=True, verbose_name="Fabricante")
+    model_name = models.CharField(max_length=255, blank=True, verbose_name="Modelo")
+    processor = models.CharField(max_length=255, blank=True, verbose_name="Processador")
+    total_memory_mb = models.IntegerField(null=True, blank=True, verbose_name="Memória RAM (MB)")
+    ip_address = models.CharField(max_length=50, blank=True, verbose_name="Endereço IP")
+    last_contact = models.DateTimeField(null=True, blank=True, verbose_name="Último contato")
+    is_online = models.BooleanField(default=False, verbose_name="Online agora")
+    last_user = models.CharField(max_length=255, blank=True, verbose_name="Último usuário logado")
+    organization_name = models.CharField(max_length=255, blank=True, verbose_name="Organização")
+    node_class = models.CharField(max_length=60, blank=True, verbose_name="Tipo de dispositivo")
+    last_sync = models.DateTimeField(auto_now=True, verbose_name="Última sincronização")
+
+    class Meta:
+        verbose_name = "Dispositivo NinjaOne"
+        verbose_name_plural = "Dispositivos NinjaOne"
+        ordering = ["display_name"]
+        indexes = [
+            models.Index(fields=["is_online"]),
+            models.Index(fields=["serial_number"]),
+        ]
+
+    def __str__(self):
+        return self.display_name or f"Device #{self.ninja_id}"
+
+    @property
+    def memory_gb(self):
+        if self.total_memory_mb:
+            return round(self.total_memory_mb / 1024, 1)
+        return None
+
+    @property
+    def node_class_label(self):
+        labels = {
+            "WINDOWS_WORKSTATION": "Workstation Windows",
+            "WINDOWS_SERVER": "Servidor Windows",
+            "MAC": "Mac",
+            "LINUX_WORKSTATION": "Workstation Linux",
+            "LINUX_SERVER": "Servidor Linux",
+            "NMS_SWITCH": "Switch",
+            "NMS_ROUTER": "Roteador",
+            "NMS_PRINTER": "Impressora",
+            "NMS_FIREWALL": "Firewall",
+            "ANDROID": "Android",
+            "APPLE_IOS": "iOS",
+        }
+        return labels.get(self.node_class, self.node_class or "—")
+
+
+class NinjaDeviceSnapshot(models.Model):
+    """
+    Snapshot periódico do estado de cada dispositivo NinjaOne.
+    Base de dados para o relatório de uso/tempo de atividade por máquina.
+    Populado pelo comando: python manage.py sync_ninja
+    """
+
+    device = models.ForeignKey(
+        NinjaDevice,
+        on_delete=models.CASCADE,
+        related_name="snapshots",
+        verbose_name="Dispositivo",
+    )
+    timestamp = models.DateTimeField(db_index=True, verbose_name="Horário")
+    is_online = models.BooleanField(default=False, verbose_name="Online")
+    current_user = models.CharField(max_length=255, blank=True, verbose_name="Usuário logado")
+    ip_address = models.CharField(max_length=50, blank=True, verbose_name="IP")
+
+    class Meta:
+        verbose_name = "Snapshot NinjaOne"
+        verbose_name_plural = "Snapshots NinjaOne"
+        ordering = ["-timestamp"]
+        indexes = [
+            models.Index(fields=["device", "-timestamp"]),
+            models.Index(fields=["timestamp"]),
+            models.Index(fields=["device", "is_online"]),
+        ]
+
+    def __str__(self):
+        estado = "online" if self.is_online else "offline"
+        return f"{self.device} — {self.timestamp:%d/%m %H:%M} ({estado})"
+
+
+# ========== CONFIGURAÇÃO DO SISTEMA ==========
+
+class ConfiguracaoSistema(models.Model):
+    """Singleton de configuração global. Sempre usar ConfiguracaoSistema.get()."""
+    alertas_email_ativos = models.BooleanField(
+        default=True,
+        verbose_name="Alertas de e-mail ativos",
+        help_text="Quando desativado, nenhum e-mail de alerta é enviado pelo sistema (útil em ambiente de testes).",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    atualizado_por = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Atualizado por",
+    )
+
+    class Meta:
+        verbose_name = "Configuração do Sistema"
+        verbose_name_plural = "Configurações do Sistema"
+
+    def __str__(self):
+        estado = "ATIVO" if self.alertas_email_ativos else "DESATIVADO"
+        return f"Configuração do Sistema — Alertas: {estado}"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
 # ── Signals: rastrear mudanças de status automaticamente ──────────────────────
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver

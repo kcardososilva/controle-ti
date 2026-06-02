@@ -1061,6 +1061,12 @@ body.theme-dark .ad-badge-info { color: var(--ad-info); }
       <button class="ad-tab-btn" data-tab="monitoracao" role="tab" aria-selected="false">
         <i class="fa fa-chart-gantt" aria-hidden="true"></i> Monitoração
       </button>
+      {% if ninja_device %}
+      <button class="ad-tab-btn" data-tab="ninja" role="tab" aria-selected="false">
+        <i class="fa fa-shield-halved" aria-hidden="true"></i> NinjaOne
+        {% if ninja_device.is_online %}<span class="ad-badge" style="background:color-mix(in srgb,var(--ad-success) 15%,transparent);color:var(--ad-success);border:none;padding:.1rem .45rem;font-size:.65rem;margin-left:.25rem;">online</span>{% endif %}
+      </button>
+      {% endif %}
     </nav>
 
     {# ─────────────────────── TAB: FICHA TÉCNICA ─────────────────────── #}
@@ -1623,6 +1629,232 @@ body.theme-dark .ad-badge-info { color: var(--ad-info); }
       </section>
 
     </div>{# /tab-monitoracao #}
+
+    {# ─────────────────────── TAB: NINJAONE ─────────────────────── #}
+    {% if ninja_device %}
+    <div id="tab-ninja" class="ad-tab-panel" role="tabpanel">
+
+      {# ── Cabeçalho de status ── #}
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;
+                  padding:.85rem 1rem;margin-bottom:1rem;
+                  background:var(--ad-card-bg);border:1px solid var(--ad-border);
+                  border-radius:var(--ad-radius-lg);box-shadow:var(--ad-shadow-sm);">
+        <div style="display:flex;align-items:center;gap:.75rem;">
+          <div style="width:38px;height:38px;border-radius:9px;display:grid;place-items:center;font-size:15px;
+                      background:color-mix(in srgb,#6528d8 12%,transparent);color:#6528d8;flex-shrink:0;">
+            <i class="fa fa-shield-halved" aria-hidden="true"></i>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:.92rem;letter-spacing:-.016em;">{{ ninja_device.display_name }}</div>
+            <div style="font-size:.76rem;color:var(--ad-text-muted);margin-top:.1rem;">
+              NinjaOne ID #{{ ninja_device.ninja_id }}
+              {% if ninja_device.hostname %}&nbsp;·&nbsp;{{ ninja_device.hostname }}{% endif %}
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+          {% if ninja_device.is_online %}
+            <span style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .75rem;
+                         border-radius:999px;font-size:.75rem;font-weight:700;
+                         background:color-mix(in srgb,var(--ad-success) 12%,transparent);
+                         color:var(--ad-success);border:1px solid color-mix(in srgb,var(--ad-success) 25%,transparent);">
+              <span style="width:7px;height:7px;border-radius:50%;background:var(--ad-success);
+                           box-shadow:0 0 0 2px color-mix(in srgb,var(--ad-success) 30%,transparent);"></span>
+              Online agora
+            </span>
+          {% else %}
+            <span style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .75rem;
+                         border-radius:999px;font-size:.75rem;font-weight:700;
+                         background:var(--ad-fill-secondary);
+                         color:var(--ad-text-muted);border:1px solid var(--ad-border);">
+              <span style="width:7px;height:7px;border-radius:50%;background:var(--ad-text-placeholder);"></span>
+              Offline
+            </span>
+          {% endif %}
+          {% if ninja_device.last_contact %}
+            <span style="font-size:.75rem;color:var(--ad-text-muted);">
+              <i class="fa fa-clock" aria-hidden="true"></i>
+              Último contato: {{ ninja_device.last_contact|date:"d/m/Y H:i" }}
+            </span>
+          {% endif %}
+          <a href="{% url 'ninja_dispositivos' %}?q={{ item.numero_serie }}"
+             style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .75rem;
+                    border-radius:999px;font-size:.75rem;font-weight:700;
+                    background:color-mix(in srgb,#6528d8 10%,transparent);
+                    color:#6528d8;border:1px solid color-mix(in srgb,#6528d8 22%,transparent);
+                    text-decoration:none;">
+            <i class="fa fa-arrow-up-right-from-square" aria-hidden="true" style="font-size:.65rem;"></i>
+            Ver no NinjaOne
+          </a>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1rem;">
+
+        {# ── Especificações do hardware ── #}
+        <section class="ad-card">
+          <div class="ad-card-header">
+            <div class="ad-card-title">
+              <i class="fa fa-microchip" aria-hidden="true"></i>
+              Especificações do dispositivo
+            </div>
+          </div>
+          <div class="ad-card-body">
+            <div class="ad-info-grid">
+              {% if ninja_device.os_name %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa fa-windows" aria-hidden="true"></i> Sistema Operacional</div>
+                <div class="ad-info-value">{{ ninja_device.os_name }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.manufacturer %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa fa-industry" aria-hidden="true"></i> Fabricante</div>
+                <div class="ad-info-value">{{ ninja_device.manufacturer }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.model_name %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa fa-desktop" aria-hidden="true"></i> Modelo</div>
+                <div class="ad-info-value">{{ ninja_device.model_name }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.processor %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa fa-microchip" aria-hidden="true"></i> Processador</div>
+                <div class="ad-info-value">{{ ninja_device.processor }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.memory_gb %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa fa-memory" aria-hidden="true"></i> Memória RAM</div>
+                <div class="ad-info-value">{{ ninja_device.memory_gb }} GB</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.ip_address %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa fa-network-wired" aria-hidden="true"></i> Endereço IP</div>
+                <div class="ad-info-value ad-mono">{{ ninja_device.ip_address }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.serial_number %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa fa-barcode" aria-hidden="true"></i> Série (NinjaOne)</div>
+                <div class="ad-info-value ad-mono">{{ ninja_device.serial_number }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.node_class_label %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa fa-tag" aria-hidden="true"></i> Tipo</div>
+                <div class="ad-info-value">{{ ninja_device.node_class_label }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.organization_name %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa fa-building" aria-hidden="true"></i> Organização</div>
+                <div class="ad-info-value">{{ ninja_device.organization_name }}</div>
+              </div>
+              {% endif %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa fa-rotate" aria-hidden="true"></i> Última sincronização</div>
+                <div class="ad-info-value">{{ ninja_device.last_sync|date:"d/m/Y H:i" }}</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {# ── Usuário e atividade de hoje ── #}
+        <section class="ad-card">
+          <div class="ad-card-header">
+            <div class="ad-card-title">
+              <i class="fa fa-user-clock" aria-hidden="true"></i>
+              Usuário e atividade hoje
+            </div>
+          </div>
+          <div class="ad-card-body">
+
+            {# Usuário logado atual #}
+            <div style="display:flex;align-items:center;gap:.75rem;
+                        padding:.75rem .9rem;margin-bottom:.85rem;
+                        border-radius:var(--ad-radius-md);
+                        background:color-mix(in srgb,#6528d8 7%,transparent);
+                        border:1px solid color-mix(in srgb,#6528d8 18%,transparent);">
+              <div style="width:32px;height:32px;border-radius:50%;display:grid;place-items:center;
+                          background:color-mix(in srgb,#6528d8 14%,transparent);
+                          color:#6528d8;font-size:.8rem;flex-shrink:0;">
+                <i class="fa fa-user" aria-hidden="true"></i>
+              </div>
+              <div>
+                <div style="font-size:.72rem;font-weight:700;color:#6528d8;text-transform:uppercase;letter-spacing:.04em;">Último usuário logado</div>
+                <div style="font-size:.92rem;font-weight:700;margin-top:.1rem;">
+                  {% if ninja_device.last_user %}{{ ninja_device.last_user }}{% else %}<span style="color:var(--ad-text-placeholder);font-weight:400;">Não registrado</span>{% endif %}
+                </div>
+              </div>
+            </div>
+
+            {# Snapshots de hoje #}
+            {% if ninja_snapshots_hoje %}
+              {% with total=ninja_snapshots_hoje|length %}
+              {% with online_count=0 %}
+              {# Calcula online time a partir dos snapshots #}
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.85rem;">
+                <div style="padding:.65rem .85rem;border-radius:var(--ad-radius-md);
+                            background:var(--ad-fill-secondary);border:1px solid var(--ad-border);text-align:center;">
+                  <div style="font-size:1.4rem;font-weight:700;line-height:1;color:var(--ad-text);">{{ ninja_snapshots_hoje|length }}</div>
+                  <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ad-text-muted);margin-top:.2rem;">Snapshots hoje</div>
+                </div>
+                <div style="padding:.65rem .85rem;border-radius:var(--ad-radius-md);
+                            background:var(--ad-fill-secondary);border:1px solid var(--ad-border);text-align:center;">
+                  <div style="font-size:1.4rem;font-weight:700;line-height:1;color:var(--ad-success);" id="nj-online-snaps-{{ item.pk }}">—</div>
+                  <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ad-text-muted);margin-top:.2rem;">Online hoje (~min)</div>
+                </div>
+              </div>
+              {% endwith %}{% endwith %}
+
+              {# Mini-timeline #}
+              <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+                          color:var(--ad-text-muted);margin-bottom:.4rem;">
+                Atividade de hoje
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:3px;" title="Verde = online · Cinza = offline">
+                {% for snap in ninja_snapshots_hoje %}
+                  <div style="width:10px;height:18px;border-radius:2px;
+                              background:{% if snap.is_online %}var(--ad-success){% else %}var(--ad-border){% endif %};"
+                       title="{{ snap.timestamp|date:'H:i' }}{% if snap.current_user %} · {{ snap.current_user }}{% endif %}">
+                  </div>
+                {% endfor %}
+              </div>
+              <div style="font-size:.7rem;color:var(--ad-text-placeholder);margin-top:.3rem;">
+                Cada barra = 1 snapshot · Verde = online · Cinza = offline
+              </div>
+
+              {# Script para calcular online count em JS #}
+              <script>
+              (function(){
+                var snaps = {{ ninja_snapshots_hoje|length }};
+                var onlineData = [{% for s in ninja_snapshots_hoje %}{% if s.is_online %}1{% else %}0{% endif %}{% if not forloop.last %},{% endif %}{% endfor %}];
+                var onlineCount = onlineData.reduce(function(a,b){return a+b;},0);
+                var minutos = onlineCount * 15;
+                var el = document.getElementById('nj-online-snaps-{{ item.pk }}');
+                if(el) el.textContent = minutos + ' min';
+              })();
+              </script>
+
+            {% else %}
+              <div style="text-align:center;padding:1.5rem;color:var(--ad-text-muted);font-size:.85rem;">
+                <i class="fa fa-calendar-day" style="font-size:1.3rem;display:block;margin-bottom:.5rem;color:var(--ad-text-placeholder);" aria-hidden="true"></i>
+                Nenhum snapshot registrado hoje.<br>
+                <span style="font-size:.76rem;">Execute <code>sync_ninja</code> para coletar dados.</span>
+              </div>
+            {% endif %}
+
+          </div>
+        </section>
+
+      </div>{# /grid #}
+
+    </div>{# /tab-ninja #}
+    {% endif %}
 
   </div>{# /ad-shell #}
 </div>{# /asset-detail-page #}

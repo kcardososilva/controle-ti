@@ -447,12 +447,8 @@ def equipamentos_list(request):
     )
 
     if is_partial:
+        view_mode = request.GET.get("view", "list")
         data = {
-            "tbody": render_to_string(
-                "front/equipamentos/_tbody.html",
-                context,
-                request=request,
-            ),
             "pagination": render_to_string(
                 "front/equipamentos/_pagination.html",
                 context,
@@ -465,6 +461,18 @@ def equipamentos_list(request):
             ),
             "count": context["filtered_total"],
         }
+        if view_mode == "gallery":
+            data["gallery"] = render_to_string(
+                "front/equipamentos/_gallery.html",
+                context,
+                request=request,
+            )
+        else:
+            data["tbody"] = render_to_string(
+                "front/equipamentos/_tbody.html",
+                context,
+                request=request,
+            )
 
         return JsonResponse(data)
 
@@ -1073,6 +1081,24 @@ def equipamento_detalhe(request, pk: int):
         if any(str(e.get("item_id", "")) == item_id_str for e in p.layout.get("elements", []))
     ]
 
+    # =========================================================
+    # NinjaOne RMM — somente se o item tiver NinjaDevice vinculado
+    # =========================================================
+    ninja_device = None
+    ninja_snapshots_hoje = []
+    try:
+        from ProjetoEstoque.models import NinjaDevice, NinjaDeviceSnapshot
+        ninja_device = NinjaDevice.objects.filter(item=item).select_related("item").first()
+        if ninja_device:
+            ninja_snapshots_hoje = list(
+                NinjaDeviceSnapshot.objects
+                .filter(device=ninja_device, timestamp__date=today)
+                .order_by("timestamp")
+                .values("timestamp", "is_online", "current_user", "ip_address")
+            )
+    except Exception:
+        pass
+
     context = {
         "item": item,
         "ultimo_resp": ultimo_resp,
@@ -1096,6 +1122,8 @@ def equipamento_detalhe(request, pk: int):
         "valor_disponivel_lotes": valor_disponivel_lotes,
         "plantas_mapeadas": plantas_mapeadas,
         "monitoracao_url": f"/equipamentos/{item.pk}/monitoracao/",
+        "ninja_device": ninja_device,
+        "ninja_snapshots_hoje": ninja_snapshots_hoje,
     }
 
     return render(request, "front/equipamentos/equipamento_detalhe.html", context)

@@ -249,6 +249,9 @@ class MovimentacaoEstoqueService:
         ):
             mov.centro_custo_destino = mov.usuario.centro_custo
 
+        _devolucao_restore_cc = False
+        _restore_cc = None
+
         if (
             mov.tipo_movimentacao == cls.TRANSFERENCIA
             and mov.tipo_transferencia == "devolucao"
@@ -264,7 +267,9 @@ class MovimentacaoEstoqueService:
                 .first()
             )
 
-            if ultima_entrega and ultima_entrega.centro_custo_origem:
+            if ultima_entrega is not None:
+                _devolucao_restore_cc = True
+                _restore_cc = ultima_entrega.centro_custo_origem
                 mov.centro_custo_destino = ultima_entrega.centro_custo_origem
 
         cls.preencher_auditoria(mov, user, criando=True)
@@ -292,7 +297,11 @@ class MovimentacaoEstoqueService:
                 item.localidade = mov.localidade_destino
                 update_fields.append("localidade")
 
-            if mov.centro_custo_destino:
+            if _devolucao_restore_cc:
+                # Restaura o CC original do item (pode ser None se não tinha CC antes da entrega)
+                item.centro_custo = _restore_cc
+                update_fields.append("centro_custo")
+            elif mov.centro_custo_destino:
                 item.centro_custo = mov.centro_custo_destino
                 update_fields.append("centro_custo")
 
