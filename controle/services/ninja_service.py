@@ -27,13 +27,15 @@ from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
-# Dominio principal do NinjaOne (OAuth sempre usa app.ninjarmm.com)
-_NINJA_AUTH_DOMAIN = "https://app.ninjarmm.com"
-_TOKEN_CACHE_KEY   = "ninja_access_token_v3"
-_SCOPE             = "monitoring"
+_TOKEN_CACHE_KEY  = "ninja_access_token_v3"
+_OAUTH_STATE_KEY  = "ninja_oauth_state"   # chave de cache para o state CSRF
+_SCOPE            = "monitoring"
 
-# Redirect URI exata cadastrada no app NinjaOne
-REDIRECT_URI = "http://santa-colomba-karitel-qqprmnjdwc.dynamic-m.com:65300/ninja/oauth/callback/"
+
+def get_redirect_uri() -> str:
+    """Lê NINJA_REDIRECT_URI do .env. Fallback para localhost em dev."""
+    return getattr(settings, "NINJA_REDIRECT_URI",
+                   "http://localhost:8000/ninja/oauth/callback/")
 
 _INVALID_SERIALS = frozenset({
     "", "to be filled by o.e.m.", "not specified", "default string",
@@ -72,20 +74,26 @@ def is_authenticated() -> bool:
 # Authorization URL (passo 1 do fluxo)
 # ─────────────────────────────────────────────────────────────
 
-def get_authorization_url() -> str:
+def get_authorization_url() -> tuple[str, str]:
     """
-    Gera a URL para o usuario autorizar o acesso no NinjaOne.
-    O usuario deve ser redirecionado para esta URL pelo browser.
+    Gera (url_de_autorizacao, state).
+    O state deve ser salvo na sessao do usuario e validado no callback
+    para prevenir CSRF via OAuth (RFC 6749 §10.12).
     """
+    import secrets
     import urllib.parse
-    _, cid, _ = _cfg()
+
+    base, cid, _ = _cfg()
+    state = secrets.token_urlsafe(32)
+
     params = urllib.parse.urlencode({
         "client_id":     cid,
         "response_type": "code",
-        "redirect_uri":  REDIRECT_URI,
+        "redirect_uri":  get_redirect_uri(),
         "scope":         _SCOPE,
+        "state":         state,
     })
-    return f"{_NINJA_AUTH_DOMAIN}/ws/oauth/authorize?{params}"
+    return f"{base}/ws/oauth/authorize?{params}", state
 
 
 # ─────────────────────────────────────────────────────────────
@@ -102,17 +110,17 @@ def exchange_code_for_token(code: str, user=None) -> dict:
     from ProjetoEstoque.models import NinjaOAuthToken
     from django.utils import timezone
 
-    _, cid, sec = _cfg()
+    base, cid, sec = _cfg()
 
     try:
         resp = req.post(
-            f"{_NINJA_AUTH_DOMAIN}/ws/oauth/token",
+            f"{base}/ws/oauth/token",
             data={
                 "grant_type":   "authorization_code",
                 "client_id":    cid,
                 "client_secret": sec,
                 "code":         code,
-                "redirect_uri": REDIRECT_URI,
+                "redirect_uri": get_redirect_uri(),
             },
             timeout=15,
         )
@@ -127,7 +135,9 @@ def exchange_code_for_token(code: str, user=None) -> dict:
     expires = data.get("expires_in", 3600)
 
     if not access:
-        return {"ok": False, "error": f"Sem access_token na resposta: {data}"}
+        # Loga detalhes internamente, não expõe ao usuário
+        logger.error("ninja_service.exchange_code: resposta sem access_token — campos: %s", list(data.keys()))
+        return {"ok": False, "error": "Falha ao obter token de acesso. Verifique as credenciais no .env."}
 
     token_obj = NinjaOAuthToken.get()
     token_obj.access_token  = access
@@ -192,11 +202,11 @@ def _refresh_access_token(token_obj) -> str | None:
     import requests as req
     from django.utils import timezone
 
-    _, cid, sec = _cfg()
+    base, cid, sec = _cfg()
 
     try:
         resp = req.post(
-            f"{_NINJA_AUTH_DOMAIN}/ws/oauth/token",
+            f"{base}/ws/oauth/token",
             data={
                 "grant_type":    "refresh_token",
                 "client_id":     cid,

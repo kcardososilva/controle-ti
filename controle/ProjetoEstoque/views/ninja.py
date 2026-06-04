@@ -17,6 +17,7 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.db.models import Count, Q
+from services.ninja_service import is_configured, is_authenticated
 
 
 # ─────────────────────────────────────────────────────────────
@@ -26,10 +27,9 @@ from django.db.models import Count, Q
 @login_required
 def ninja_dashboard(request):
     from ProjetoEstoque.models import NinjaDevice, NinjaDeviceSnapshot
-    from services.ninja_service import is_configured
 
-    configurado    = is_configured()
-    autenticado    = is_authenticated()
+    configurado = is_configured()
+    autenticado = is_authenticated()
     hoje = timezone.localdate()
 
     # Info do token para exibir no dashboard
@@ -328,15 +328,18 @@ def ninja_sync(request):
 def ninja_oauth_start(request):
     """
     Redireciona o usuario para a pagina de login do NinjaOne.
-    Depois do login, o NinjaOne redireciona de volta para ninja_oauth_callback.
+    Gera um state aleatorio (RFC 6749 §10.12) e salva na sessao
+    para validacao no callback e prevencao de CSRF via OAuth.
     """
-    from services.ninja_service import get_authorization_url, is_configured
+    from services.ninja_service import get_authorization_url
 
     if not is_configured():
         messages.error(request, "NinjaOne nao configurado. Verifique NINJA_BASE_URL, NINJA_CLIENT_ID e NINJA_CLIENT_SECRET no .env.")
         return redirect("ninja_dashboard")
 
-    auth_url = get_authorization_url()
+    auth_url, state = get_authorization_url()
+    request.session["ninja_oauth_state"] = state
+    request.session.modified = True
     return redirect(auth_url)
 
 
@@ -344,16 +347,35 @@ def ninja_oauth_start(request):
 def ninja_oauth_callback(request):
     """
     Recebe o authorization code do NinjaOne e troca pelo access token.
+    Valida o state para prevenir CSRF (RFC 6749 §10.12).
     URL registrada no NinjaOne: /ninja/oauth/callback/
     """
     from services.ninja_service import exchange_code_for_token
+    import logging
+    logger = logging.getLogger(__name__)
 
-    error = request.GET.get("error")
-    if error:
-        desc = request.GET.get("error_description", error)
-        messages.error(request, f"NinjaOne retornou erro: {desc}")
+    # ── Valida state (anti-CSRF) ──────────────────────────────────
+    state_recebido = request.GET.get("state", "")
+    state_esperado = request.session.pop("ninja_oauth_state", None)
+
+    if not state_esperado or state_recebido != state_esperado:
+        logger.warning(
+            "ninja_oauth_callback: state invalido para user %s (ip %s)",
+            request.user, request.META.get("REMOTE_ADDR"),
+        )
+        messages.error(request, "Falha de segurança na autenticação. Tente novamente.")
         return redirect("ninja_dashboard")
 
+    # ── Verifica erro do NinjaOne ─────────────────────────────────
+    error = request.GET.get("error")
+    if error:
+        # Loga detalhes, exibe mensagem genérica ao usuário
+        logger.error("ninja_oauth_callback: NinjaOne retornou error=%s desc=%s",
+                     error, request.GET.get("error_description", ""))
+        messages.error(request, "O NinjaOne recusou a autorização. Verifique as permissões do aplicativo OAuth.")
+        return redirect("ninja_dashboard")
+
+    # ── Troca code por token ──────────────────────────────────────
     code = request.GET.get("code")
     if not code:
         messages.error(request, "Codigo de autorizacao nao recebido.")
@@ -368,7 +390,8 @@ def ninja_oauth_callback(request):
             msg += f" Token expira em ~{expires_h}h — reconecte quando necessario."
         messages.success(request, msg)
     else:
-        messages.error(request, f"Falha ao obter token: {result.get('error', 'erro desconhecido')}")
+        # Exibe mensagem genérica; detalhe já está no log
+        messages.error(request, "Falha ao conectar NinjaOne. Tente novamente ou verifique as credenciais.")
 
     return redirect("ninja_dashboard")
 

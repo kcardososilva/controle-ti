@@ -42,7 +42,8 @@ Copy `.env.example` to `.env` in `controle/` and fill in:
 
 ```
 DJANGO_SECRET_KEY=...
-DJANGO_DEBUG=True
+DJANGO_DEBUG=False
+DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost,172.16.60.254,santa-colomba-karitel-qqprmnjdwc.dynamic-m.com
 EMAIL_HOST=smtp.outlook.com
 EMAIL_PORT=587
 EMAIL_USE_TLS=True
@@ -53,6 +54,26 @@ PRTG_URL=https://<prtg-host>
 PRTG_USER=...
 PRTG_PASSHASH=...
 ```
+
+### Production Server
+
+| Item | Valor |
+|---|---|
+| Domínio externo | `santa-colomba-karitel-qqprmnjdwc.dynamic-m.com:65300` |
+| IP interno | `172.16.60.254` |
+| Porta | `65300` |
+
+**Iniciar o servidor em produção** (dentro de `controle/`):
+
+```bash
+python manage.py runserver 0.0.0.0:65300
+```
+
+**Variáveis críticas para produção no `.env`:**
+- `DJANGO_DEBUG=False` — nunca True em produção (expõe stack traces e desativa segurança)
+- `DJANGO_ALLOWED_HOSTS` — deve conter o IP interno (`172.16.60.254`) e o domínio externo; sem isso o Django retorna erro 400
+
+**Arquivos estáticos em produção:** com `DEBUG=False` o Django não serve arquivos estáticos pelo `runserver`. É necessário usar `whitenoise` ou um servidor web (nginx/IIS) para servir `/static/`. Veja seção "Static Files" abaixo.
 
 ## Architecture
 
@@ -106,7 +127,7 @@ controle/                        ← Django project root (manage.py lives here)
 │   │   │   ├── planta_list.html    ← Lista de plantas + chips de status PRTG por planta
 │   │   │   ├── planta_editor.html  ← Editor drag-and-drop + autosave + histórico de versões
 │   │   │   ├── planta_viewer.html  ← Visualizador somente-leitura + drawer de detalhes + toasts
-│   │   │   └── planta_tv.html      ← Modo TV fullscreen com refresh automático
+│   │   │   └── planta_tv.html      ← Modo TV fullscreen — 2D pan/zoom + 3D isométrico interativo
 │   │   ├── usuarios/            ← Collaborator templates (import, hierarchy, organogram)
 │   │   ├── licencas/            ← License templates
 │   │   ├── preventivas/         ← Maintenance templates
@@ -352,6 +373,7 @@ Key tokens: `--brand`, `--brand-hover`, `--brand-soft`, `--text-primary`, `--tex
 | Plantas (lista) | `.plt-*` |
 | Plantas (viewer) | `.vw-*` |
 | Plantas (editor) | `.pe-*` |
+| Plantas (TV) | `.tv-*` |
 
 ### 3D Animations
 
@@ -376,6 +398,49 @@ Os três templates (`planta_editor.html`, `planta_viewer.html`, `planta_tv.html`
 - **Formas**: propriedades de borda por elemento: `el.borderColor`, `el.borderWidth`, `el.borderStyle`.
 - **Status PRTG no canvas**: `elStKey(el)` → `ST_MAP[parseInt(dev.status)]`. `dev.status` = status efetivo (pior de device + ping sensor) retornado pelo servidor.
 - **`ST_MAP`** deve cobrir todos os 12 códigos PRTG (1–12). Código 10 (unusual) → `"warning"`.
+
+### TV Mode — Arquitetura 2D/3D (`planta_tv.html`)
+
+`planta_tv.html` é uma **página standalone** (não estende `base.html`) com dois modos de visualização:
+
+**Modo 2D:**
+- Pan: arrastar com mouse; zoom: scroll wheel / pinch (touch)
+- Conexões com waypoints ortogonais arredondados (mesmo roteamento do editor)
+- Pacotes de dados animados seguindo o caminho da conexão via `ptAlongPath`
+
+**Modo 3D (isométrico paramétrico):**
+```javascript
+function isoProj(wx, wy, wz) {
+  // azimuth = ângulo horizontal de órbita (rotação auto-contínua ou drag)
+  // pitch   = ângulo de elevação (30° padrão; ajustável ↑↓ ou drag vertical)
+  // pan3D   = offset screen-space para pan da cena (right-click drag)
+}
+```
+- `EL_H3D` — alturas 3D por tipo de equipamento (rack=52, switch=38, etc.)
+- `CABLE_Z = 5` — altura de roteamento de cabos/conexões acima do piso
+- `connPath3D(cn)` — projeta os waypoints ortogonais reais via `isoProj`; start/end na altura do elemento, intermediários em `CABLE_Z`
+- `drawPackets3D()` — usa `ptAlongPath` nas coordenadas de tela projetadas
+- `drawForma3D(el)` — renderiza `quadro`, `circulo` e `linha` em 3D (linha projetada em `CABLE_Z`)
+- Floor grid isométrico + sombras radiais por elemento + widget bússola
+
+**Controles do modo TV:**
+
+| Ação | Mouse | Teclado |
+|---|---|---|
+| Pan (2D) | Arrastar | — |
+| Órbita (3D) | Left-drag | `← →` |
+| Pitch (3D) | Drag vertical | `↑ ↓` |
+| Pan cena (3D) | Right-drag | — |
+| Zoom | Scroll / Pinch | `+` / `-` |
+| Auto-órbita toggle | — | `Space` |
+| Navegar elementos | — | `Tab` / `Shift+Tab` |
+| Reset view | Botão ↔ | `R` / `0` |
+| Trocar modo | Botões 2D/3D | `2` / `3` |
+| Tela cheia | Botão | `F` / `Escape` |
+
+**Navegação por elementos (Tab):** `navigateElement(reverse)` percorre `navElements()` (equipamentos, excluindo formas/textos), centraliza suavemente a câmera via `_panTarget` (2D) ou exibe tooltip no topo do elemento (3D), com highlight pulsante animado.
+
+**Auto-órbita:** rotação contínua `azimuth += dt * 0.07`, pausa ao interagir, retoma após 5s de inatividade.
 
 ### Custos por Diretoria Dashboard — Detail Drawer
 
