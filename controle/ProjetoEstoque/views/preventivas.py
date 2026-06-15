@@ -331,6 +331,7 @@ def preventiva_sincronizar_programacao(request):
     sem_intervalo = 0
     pausadas_sync = 0
     retomadas_sync = 0
+    resync = 0
 
     with transaction.atomic():
         for item in itens:
@@ -367,10 +368,15 @@ def preventiva_sincronizar_programacao(request):
                 criadas += 1
             else:
                 existentes += 1
-                if not prev.data_proxima and not prev.data_ultima:
-                    prev.data_proxima = hoje
+                # Recalcula e PERSISTE data_proxima = data efetiva (agendamento OU
+                # data_ultima + intervalo). Corrige o campo defasado/nulo, que fazia
+                # dashboards/alertas mostrarem vencidas erradas.
+                antes = prev.data_proxima
+                prev.sincronizar_data_proxima(hoje, salvar=False)
+                if prev.data_proxima != antes:
                     prev.atualizado_por = request.user
-                    prev.save(update_fields=["data_proxima", "atualizado_por", "updated_at"])
+                    prev.save(update_fields=["data_proxima", "dentro_do_prazo", "atualizado_por", "updated_at"])
+                    resync += 1
 
             # Sincroniza estado de pausa conforme status atual do equipamento.
             item_pausante = item.status in _STATUS_PAUSANTES
@@ -385,8 +391,8 @@ def preventiva_sincronizar_programacao(request):
         request,
         (
             f"Programação sincronizada. Criadas: {criadas}. "
-            f"Já existentes: {existentes}. Sem checklist: {sem_checklist}. "
-            f"Sem intervalo: {sem_intervalo}. "
+            f"Já existentes: {existentes}. Datas recalculadas: {resync}. "
+            f"Sem checklist: {sem_checklist}. Sem intervalo: {sem_intervalo}. "
             f"Pausadas: {pausadas_sync}. Retomadas: {retomadas_sync}."
         ),
     )
@@ -760,12 +766,19 @@ def preventiva_exec(request, pk):
             intervalo, _origem = _intervalo_preventiva(preventiva.equipamento, preventiva.checklist_modelo)
             proxima = hoje + timedelta(days=intervalo) if intervalo > 0 else None
 
+            # Snapshot de desempenho antes de limpar o agendamento
+            data_agendada_snap = preventiva.data_agendamento
+            no_prazo_snap = (data_agendada_snap is None) or (hoje <= data_agendada_snap)
+
             execucao = PreventivaExecucao.objects.create(
                 preventiva=preventiva,
                 data_execucao=hoje,
                 observacao=(request.POST.get("observacao") or "").strip(),
                 foto_antes=request.FILES.get("foto_antes"),
                 foto_depois=request.FILES.get("foto_depois"),
+                tecnico=(preventiva.tecnico or request.user),
+                data_agendada=data_agendada_snap,
+                no_prazo=no_prazo_snap,
                 criado_por=request.user,
                 atualizado_por=request.user,
             )
@@ -915,10 +928,14 @@ def preventiva_plano(request):
     from django.utils.dateparse import parse_date
     from types import SimpleNamespace
 
+    from django.contrib.auth import get_user_model
+    AuthUser = get_user_model()
+
     q = (request.GET.get("q") or "").strip()
     status_filter = (request.GET.get("status") or "").strip()
     localidade_filter = (request.GET.get("localidade") or "").strip()
     checklist_filter = (request.GET.get("checklist") or "").strip()
+    tecnico_filter = (request.GET.get("tecnico") or "").strip()
 
     if request.method == "POST":
         item_ids_raw = request.POST.getlist("item_ids")
@@ -935,9 +952,25 @@ def preventiva_plano(request):
             return redirect("preventiva_plano")
 
         if acao == "limpar":
-            count = Preventiva.objects.filter(
-                equipamento_id__in=item_ids
-            ).update(data_agendamento=None)
+            hoje = timezone.localdate()
+            prevs = (
+                Preventiva.objects
+                .filter(equipamento_id__in=item_ids)
+                .select_related("equipamento", "checklist_modelo")
+            )
+            count = 0
+            with transaction.atomic():
+                for pv in prevs:
+                    pv.data_agendamento = None
+                    pv.tecnico = None
+                    # data_proxima volta a refletir a data automática (data_ultima + intervalo)
+                    pv.sincronizar_data_proxima(hoje, salvar=False)
+                    pv.atualizado_por = request.user
+                    pv.save(update_fields=[
+                        "data_agendamento", "tecnico", "data_proxima",
+                        "dentro_do_prazo", "atualizado_por", "updated_at",
+                    ])
+                    count += 1
             messages.success(request, f"Agendamento removido de {count} preventiva(s).")
             return redirect("preventiva_plano")
 
@@ -949,6 +982,14 @@ def preventiva_plano(request):
         if not data:
             messages.error(request, "Data inválida.")
             return redirect("preventiva_plano")
+
+        # Técnico responsável (opcional) — usuário Django ativo (equipe de TI)
+        tecnico_obj = None
+        tecnico_id = (request.POST.get("tecnico_id") or "").strip()
+        if tecnico_id.isdigit():
+            from django.contrib.auth import get_user_model
+            AuthUser = get_user_model()
+            tecnico_obj = AuthUser.objects.filter(pk=int(tecnico_id), is_active=True).first()
 
         itens = Item.objects.filter(pk__in=item_ids).select_related("subtipo")
         checklists_ativos = (
@@ -984,10 +1025,13 @@ def preventiva_plano(request):
                 )
                 preventiva.data_agendamento = data
                 preventiva.atualizado_por = request.user
-                # Para preventivas recém-criadas ou sem data_proxima, calcula o prazo
-                if not preventiva.data_proxima:
-                    preventiva.recomputar_prazo()
-                preventiva.save(update_fields=["data_agendamento", "data_proxima", "dentro_do_prazo", "atualizado_por", "updated_at"])
+                campos = ["data_agendamento", "data_proxima", "dentro_do_prazo", "atualizado_por", "updated_at"]
+                if tecnico_obj is not None:
+                    preventiva.tecnico = tecnico_obj
+                    campos.append("tecnico")
+                # data_proxima passa a refletir a data efetiva (o agendamento)
+                preventiva.sincronizar_data_proxima(hoje, salvar=False)
+                preventiva.save(update_fields=campos)
                 count += 1
 
         if sem_checklist:
@@ -1037,7 +1081,7 @@ def preventiva_plano(request):
     for p in (
         Preventiva.objects
         .filter(equipamento__in=items_qs)
-        .select_related("checklist_modelo", "equipamento")
+        .select_related("checklist_modelo", "equipamento", "tecnico")
         .order_by("equipamento_id", "data_proxima")
     ):
         if p.equipamento_id not in prev_map:
@@ -1066,6 +1110,7 @@ def preventiva_plano(request):
             intervalo_origem_calc="Sem intervalo configurado",
             proxima_calc=None,
             tem_agendamento=False,
+            tecnico=(p.tecnico if p else None),
         )
 
         if p:
@@ -1094,6 +1139,12 @@ def preventiva_plano(request):
         elif status_filter in ("vencida", "ok", "indefinido", "pausada"):
             rows = [r for r in rows if r.status_visual == status_filter]
 
+    if tecnico_filter.isdigit():
+        _tid = int(tecnico_filter)
+        rows = [r for r in rows if r.tecnico and r.tecnico.pk == _tid]
+    elif tecnico_filter == "sem":
+        rows = [r for r in rows if not r.tecnico]
+
     rows.sort(
         key=lambda r: (r.prioridade_visual, r.proxima_calc or date.max, r.equipamento.nome)
     )
@@ -1108,8 +1159,10 @@ def preventiva_plano(request):
         "filter_status": status_filter,
         "filter_localidade": localidade_filter,
         "filter_checklist": checklist_filter,
+        "filter_tecnico": tecnico_filter,
         "localidades": Localidade.objects.order_by("local"),
         "checklists": CheckListModelo.objects.order_by("nome"),
+        "tecnicos": AuthUser.objects.filter(is_active=True).order_by("first_name", "last_name", "username"),
         "total": len(rows),
     }
     return render(request, "front/preventivas/preventiva_plano.html", context)
@@ -1136,10 +1189,220 @@ def preventiva_agendar(request, pk):
         preventiva.data_agendamento = None
 
     preventiva.atualizado_por = request.user
-    preventiva.save(update_fields=["data_agendamento", "atualizado_por", "updated_at"])
+    # Mantém data_proxima = data efetiva (agendamento, ou data automática ao limpar)
+    preventiva.sincronizar_data_proxima(timezone.localdate(), salvar=False)
+    preventiva.save(update_fields=[
+        "data_agendamento", "data_proxima", "dentro_do_prazo", "atualizado_por", "updated_at",
+    ])
 
     return JsonResponse({
         "ok": True,
         "data_agendamento": preventiva.data_agendamento.strftime("%Y-%m-%d") if preventiva.data_agendamento else None,
         "data_agendamento_fmt": preventiva.data_agendamento.strftime("%d/%m/%Y") if preventiva.data_agendamento else None,
     })
+
+
+# =========================================================
+# DESEMPENHO DO TÉCNICO + MINHAS ATIVIDADES
+# =========================================================
+
+def _parse_data_opt(valor, default):
+    from django.utils.dateparse import parse_date
+    d = parse_date(valor) if valor else None
+    return d or default
+
+
+_MESES_PT_PREV = ["", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+                  "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
+
+@login_required
+def tecnico_desempenho(request):
+    """Medidores de desempenho dos técnicos quanto às atividades agendadas/executadas."""
+    from django.contrib.auth import get_user_model
+    from django.db.models.functions import Coalesce, TruncMonth
+
+    AuthUser = get_user_model()
+    hoje = timezone.localdate()
+
+    inicio = _parse_data_opt(request.GET.get("inicio"), date(hoje.year, 1, 1))
+    fim = _parse_data_opt(request.GET.get("fim"), hoje)
+    if inicio > fim:
+        inicio, fim = fim, inicio
+
+    # Execuções no período, agrupadas pelo técnico efetivo (snapshot ou executor)
+    execs = (
+        PreventivaExecucao.objects
+        .filter(data_execucao__gte=inicio, data_execucao__lte=fim)
+        .annotate(tec=Coalesce("tecnico_id", "criado_por_id"))
+    )
+
+    por_exec = {
+        row["tec"]: row
+        for row in execs.values("tec").annotate(
+            total=Count("id"),
+            com_agenda=Count("id", filter=Q(data_agendada__isnull=False)),
+            no_prazo=Count("id", filter=Q(data_agendada__isnull=False, no_prazo=True)),
+        )
+        if row["tec"] is not None
+    }
+
+    # Atribuições atuais (pendentes agendadas) por técnico
+    por_atrib = {
+        row["tecnico_id"]: row
+        for row in (
+            Preventiva.objects
+            .filter(tecnico__isnull=False, data_agendamento__isnull=False)
+            .values("tecnico_id")
+            .annotate(
+                atribuidas=Count("id"),
+                atrasadas=Count("id", filter=Q(data_agendamento__lt=hoje)),
+            )
+        )
+    }
+
+    ids = set(por_exec) | set(por_atrib) | set(
+        AuthUser.objects.filter(is_active=True).values_list("id", flat=True)
+    )
+    users = {u.id: u for u in AuthUser.objects.filter(id__in=ids)}
+
+    tecnicos = []
+    for uid in ids:
+        u = users.get(uid)
+        if not u:
+            continue
+        ex = por_exec.get(uid, {})
+        at = por_atrib.get(uid, {})
+        execucoes = int(ex.get("total", 0))
+        com_agenda = int(ex.get("com_agenda", 0))
+        no_prazo = int(ex.get("no_prazo", 0))
+        atribuidas = int(at.get("atribuidas", 0))
+        atrasadas = int(at.get("atrasadas", 0))
+        if execucoes == 0 and atribuidas == 0:
+            continue
+        pontualidade = round(no_prazo / com_agenda * 100) if com_agenda else None
+        tecnicos.append({
+            "id": uid,
+            "nome": u.get_full_name() or u.username,
+            "username": u.username,
+            "execucoes": execucoes,
+            "com_agenda": com_agenda,
+            "no_prazo": no_prazo,
+            "atribuidas": atribuidas,
+            "atrasadas": atrasadas,
+            "pendentes": max(0, atribuidas - atrasadas),
+            "pontualidade": pontualidade,
+        })
+
+    tecnicos.sort(key=lambda t: (-t["execucoes"], -t["atribuidas"], t["nome"]))
+
+    tot_exec = sum(t["execucoes"] for t in tecnicos)
+    tot_com_agenda = sum(t["com_agenda"] for t in tecnicos)
+    tot_no_prazo = sum(t["no_prazo"] for t in tecnicos)
+    tot_atribuidas = sum(t["atribuidas"] for t in tecnicos)
+    tot_atrasadas = sum(t["atrasadas"] for t in tecnicos)
+    pont_global = round(tot_no_prazo / tot_com_agenda * 100) if tot_com_agenda else None
+
+    mensal = {
+        (r["m"].year, r["m"].month): int(r["c"] or 0)
+        for r in execs.annotate(m=TruncMonth("data_execucao")).values("m").annotate(c=Count("id"))
+        if r["m"]
+    }
+    mes_labels, mes_exec = [], []
+    cursor = date(inicio.year, inicio.month, 1)
+    limite = date(fim.year, fim.month, 1)
+    guard = 0
+    while cursor <= limite and guard < 60:
+        mes_labels.append(f"{_MESES_PT_PREV[cursor.month]}/{str(cursor.year)[2:]}")
+        mes_exec.append(mensal.get((cursor.year, cursor.month), 0))
+        cursor = date(cursor.year + 1, 1, 1) if cursor.month == 12 else date(cursor.year, cursor.month + 1, 1)
+        guard += 1
+
+    context = {
+        "inicio": inicio,
+        "fim": fim,
+        "kpi": {
+            "execucoes": tot_exec,
+            "com_agenda": tot_com_agenda,
+            "no_prazo": tot_no_prazo,
+            "pontualidade": pont_global,
+            "atribuidas": tot_atribuidas,
+            "atrasadas": tot_atrasadas,
+            "tecnicos": len(tecnicos),
+        },
+        "tecnicos": tecnicos,
+        "chart_tec_labels": [t["nome"] for t in tecnicos],
+        "chart_tec_exec": [t["execucoes"] for t in tecnicos],
+        "chart_tec_pont": [t["pontualidade"] if t["pontualidade"] is not None else 0 for t in tecnicos],
+        "chart_tec_atrasadas": [t["atrasadas"] for t in tecnicos],
+        "mes_labels": mes_labels,
+        "mes_exec": mes_exec,
+    }
+    return render(request, "front/preventivas/tecnico_desempenho.html", context)
+
+
+@login_required
+def minhas_atividades(request):
+    """
+    Atividades (preventivas agendadas) atribuídas a um técnico.
+    Padrão: o usuário logado. Staff/superuser pode escolher outro técnico (?tecnico=<id>).
+    """
+    from django.contrib.auth import get_user_model
+    AuthUser = get_user_model()
+    hoje = timezone.localdate()
+
+    pode_escolher = request.user.is_staff or request.user.is_superuser
+    alvo = request.user
+    if pode_escolher:
+        tid = (request.GET.get("tecnico") or "").strip()
+        if tid.isdigit():
+            escolhido = AuthUser.objects.filter(pk=int(tid)).first()
+            if escolhido:
+                alvo = escolhido
+
+    base = (
+        Preventiva.objects
+        .filter(tecnico=alvo, data_agendamento__isnull=False)
+        .select_related("equipamento", "equipamento__localidade", "equipamento__centro_custo", "checklist_modelo")
+        .order_by("data_agendamento", "equipamento__nome")
+    )
+
+    atividades = list(base)
+    for p in atividades:
+        dias = (p.data_agendamento - hoje).days
+        p.dias_agendamento = dias
+        if dias < 0:
+            p.classe_prazo, p.label_prazo = "vencida", "Vencida"
+        elif dias == 0:
+            p.classe_prazo, p.label_prazo = "hoje", "Hoje"
+        elif dias <= 7:
+            p.classe_prazo, p.label_prazo = "semana", "Esta semana"
+        else:
+            p.classe_prazo, p.label_prazo = "futura", "Programada"
+
+    kpi = {
+        "total": len(atividades),
+        "vencidas": sum(1 for p in atividades if p.dias_agendamento < 0),
+        "hoje": sum(1 for p in atividades if p.dias_agendamento == 0),
+        "semana": sum(1 for p in atividades if 0 <= p.dias_agendamento <= 7),
+    }
+
+    recentes = list(
+        PreventivaExecucao.objects
+        .filter(Q(tecnico=alvo) | Q(tecnico__isnull=True, criado_por=alvo))
+        .select_related("preventiva", "preventiva__equipamento")
+        .order_by("-data_execucao", "-id")[:8]
+    )
+
+    context = {
+        "today": hoje,
+        "alvo": alvo,
+        "alvo_nome": alvo.get_full_name() or alvo.username,
+        "is_proprio": (alvo == request.user),
+        "pode_escolher": pode_escolher,
+        "tecnicos": AuthUser.objects.filter(is_active=True).order_by("first_name", "last_name", "username") if pode_escolher else [],
+        "atividades": atividades,
+        "kpi": kpi,
+        "recentes": recentes,
+    }
+    return render(request, "front/preventivas/minhas_atividades.html", context)

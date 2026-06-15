@@ -357,6 +357,36 @@
 .vw-toast.paused  { background: #00cfff; color: #001a22; }
 .vw-toast.info    { background: rgba(30,30,40,.85); color: #fff; backdrop-filter: blur(8px); }
 @keyframes vwToastIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+
+/* ── Minimapa / navegador ─────────────────────────────────────────── */
+.vw-minimap {
+  position: absolute; right: 12px; bottom: 12px; z-index: 12;
+  width: 200px; background: rgba(255,255,255,.86);
+  border: 1px solid var(--vw-border); border-radius: 12px;
+  box-shadow: 0 6px 22px rgba(0,0,0,.12); overflow: hidden;
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+}
+.vw-minimap.collapsed { width: auto; }
+.vw-minimap.collapsed .vw-minimap-cv { display: none; }
+.vw-minimap-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 9px; font-size: .64rem; font-weight: 800;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--vw-muted);
+  border-bottom: 1px solid var(--vw-border); user-select: none;
+}
+.vw-minimap.collapsed .vw-minimap-head { border-bottom: none; }
+.vw-minimap-head i.vw-mm-glyph { color: var(--vw-brand); font-size: .72rem; }
+.vw-minimap-head .vw-mm-count { margin-left: auto; font-weight: 700; text-transform: none; letter-spacing: 0; }
+.vw-minimap-toggle {
+  width: 18px; height: 18px; border: none; background: transparent;
+  cursor: pointer; color: var(--vw-muted); font-size: .7rem; padding: 0;
+  display: flex; align-items: center; justify-content: center; border-radius: 5px;
+}
+.vw-minimap-toggle:hover { background: rgba(0,0,0,.05); }
+.vw-minimap-cv { position: relative; line-height: 0; }
+#vwMiniMap { display: block; width: 200px; height: 132px; cursor: pointer; }
+@media (max-width: 680px) { .vw-minimap { display: none; } }
 </style>
 {% endblock %}
 
@@ -454,6 +484,20 @@
           </div>
           <div class="vw-legend-item">
             <div class="vw-legend-dot" style="background:#00cfff;box-shadow:0 0 5px #00cfff88"></div> Pausado p/ Dep.
+          </div>
+        </div>
+
+        <!-- Minimapa / navegador -->
+        <div class="vw-minimap" id="vwMiniBox">
+          <div class="vw-minimap-head">
+            <i class="fa-solid fa-map vw-mm-glyph"></i> Mapa
+            <span class="vw-mm-count" id="vwMiniCount">0</span>
+            <button class="vw-minimap-toggle" onclick="toggleMiniViewer()" title="Recolher / expandir minimapa">
+              <i class="fa-solid fa-chevron-down" id="vwMiniChevron"></i>
+            </button>
+          </div>
+          <div class="vw-minimap-cv">
+            <canvas id="vwMiniMap"></canvas>
           </div>
         </div>
       </div>
@@ -904,6 +948,46 @@ function drawElement(el) {
     ctx.restore(); return;
   }
 
+  /* Access Point: ícone Wi-Fi dentro de um círculo + nome */
+  if (el.type === 'access_point') {
+    const bw = (el.width  || 60) * zoom;
+    const bh = (el.height || 60) * zoom;
+    const cx = sc.x + bw/2, cy = sc.y + bh/2;
+    const R  = Math.min(bw, bh) * 0.46;
+    const stCol = elStColor(el), st = elStKey(el);
+    ctx.save();
+    drawPulseRings({x:cx-R, y:cy-R}, R*2, R*2, stCol, st);
+    // glow + corpo branco (destaca o ícone sobre qualquer fundo)
+    if (st==='down')         { ctx.shadowColor = stCol; ctx.shadowBlur = 28*zoom; }
+    else if (st==='warning') { ctx.shadowColor = stCol; ctx.shadowBlur = 20*zoom; }
+    else if (st==='up')      { ctx.shadowColor = stCol; ctx.shadowBlur = 12*zoom; }
+    else { ctx.shadowColor = 'rgba(0,0,0,.12)'; ctx.shadowBlur = 8*zoom; }
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+    // anel
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2);
+    ctx.strokeStyle = isSel ? color : (st==='down'||st==='warning' ? hexAlpha(stCol, 0.6) : hexAlpha(color, 0.45));
+    ctx.lineWidth   = (isSel ? 2 : 1.5) * zoom; ctx.stroke();
+    if (st !== 'none') {
+      ctx.beginPath(); ctx.arc(cx, cy, R + 2*zoom, 0, Math.PI*2);
+      ctx.strokeStyle = stCol; ctx.lineWidth = 2*zoom; ctx.stroke();
+    }
+    // emoji dentro do círculo
+    ctx.font = `${Math.max(12, R*1.15)}px serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(cfg.emoji, cx, cy);
+    // nome abaixo do círculo
+    const _lbl = elName(el);
+    if (_lbl && zoom > 0.35) {
+      const fs2 = Math.max(7, 8.5*zoom);
+      ctx.font = `600 ${fs2}px -apple-system,sans-serif`;
+      ctx.fillStyle = '#1d1d1f'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText(_lbl.length>14 ? _lbl.slice(0,13)+'…' : _lbl, cx, cy + R + 4*zoom);
+    }
+    ctx.restore(); return;
+  }
+
   /* Equipment card */
   const w     = (el.width  || 60) * zoom;
   const h     = (el.height || 60) * zoom;
@@ -981,6 +1065,7 @@ function draw() {
   const sorted = [...elements].sort((a,b)=>(a.zIndex??0)-(b.zIndex??0));
   connections.forEach(drawConnection);
   sorted.forEach(drawElement);
+  if ((_vwMiniFrame++ % 6) === 0) drawMiniViewer();   // minimapa ~10fps
 }
 
 // ── Animation loop ─────────────────────────────────────────────────────────────
@@ -994,6 +1079,120 @@ requestAnimationFrame(ts => { lastTs = ts; animLoop(ts); });
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) { lastTs = performance.now(); requestAnimationFrame(animLoop); }
 });
+
+// ── Minimapa / navegador ─────────────────────────────────────────────────────────
+const VMM    = document.getElementById('vwMiniMap');
+const vmmCtx = VMM.getContext('2d');
+const VMM_W = 200, VMM_H = 132;
+let _vmmView = null, _vmmDrag = false, _vwMiniFrame = 0;
+(function () {
+  const dpr = window.devicePixelRatio || 1;
+  VMM.width = VMM_W * dpr; VMM.height = VMM_H * dpr;
+  vmmCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+})();
+
+function vwContentBounds() {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  elements.forEach(el => {
+    const isL = el.type === 'linha';
+    const ex2 = isL ? (el.x2 ?? el.x + 150)
+                    : el.x + (el.width  || (IS_FORMA(el.type) ? (el.type==='circulo'?120:200) : 60));
+    const ey2 = isL ? (el.y2 ?? el.y)
+                    : el.y + (el.height || (IS_FORMA(el.type) ? (el.type==='circulo'?120:140) : 60));
+    minX = Math.min(minX, el.x, ex2); minY = Math.min(minY, el.y, ey2);
+    maxX = Math.max(maxX, el.x, ex2); maxY = Math.max(maxY, el.y, ey2);
+  });
+  const cw = LAYOUT.canvas?.width || 1400, ch = LAYOUT.canvas?.height || 900;
+  if (!isFinite(minX)) { minX = 0; minY = 0; maxX = cw; maxY = ch; }
+  return { minX, minY, maxX, maxY };
+}
+
+function vwElColor(el) {
+  const key = elStKey(el);
+  if (key === 'none') return el.color || (TIPO[el.type] && TIPO[el.type].color) || '#0071e3';
+  return ST_COLOR[key] || el.color || '#0071e3';
+}
+
+function drawMiniViewer() {
+  const box = document.getElementById('vwMiniBox');
+  const cnt = document.getElementById('vwMiniCount');
+  if (cnt) cnt.textContent = elements.length;
+  if (!box || box.classList.contains('collapsed')) return;
+
+  const b  = vwContentBounds();
+  const tl = toWorld(0, 0);
+  const br = toWorld(canvas.width, canvas.height);
+  let minX = Math.min(b.minX, tl.x), minY = Math.min(b.minY, tl.y);
+  let maxX = Math.max(b.maxX, br.x), maxY = Math.max(b.maxY, br.y);
+  const PAD = 30; minX -= PAD; minY -= PAD; maxX += PAD; maxY += PAD;
+  const cw = Math.max(1, maxX - minX), ch = Math.max(1, maxY - minY);
+  const ip = 8;
+  const s  = Math.min((VMM_W - ip*2) / cw, (VMM_H - ip*2) / ch);
+  const offX = (VMM_W - cw*s) / 2, offY = (VMM_H - ch*s) / 2;
+  _vmmView = { minX, minY, s, offX, offY };
+  const X = wx => offX + (wx - minX) * s;
+  const Y = wy => offY + (wy - minY) * s;
+
+  vmmCtx.clearRect(0, 0, VMM_W, VMM_H);
+  vmmCtx.fillStyle = '#eef0f5'; vmmCtx.fillRect(0, 0, VMM_W, VMM_H);
+
+  const lw = LAYOUT.canvas?.width || 1400, lh = LAYOUT.canvas?.height || 900;
+  vmmCtx.strokeStyle = 'rgba(0,0,0,.08)'; vmmCtx.lineWidth = 1;
+  vmmCtx.strokeRect(X(0), Y(0), lw*s, lh*s);
+
+  const sorted = [...elements].sort((a, b) => (a.zIndex??0) - (b.zIndex??0));
+  sorted.forEach(el => {
+    if (el.type === 'linha') {
+      const x2 = el.x2 ?? el.x + 150, y2 = el.y2 ?? el.y;
+      vmmCtx.strokeStyle = hexAlpha(el.color || '#6e6e73', .6); vmmCtx.lineWidth = 1;
+      vmmCtx.beginPath(); vmmCtx.moveTo(X(el.x), Y(el.y)); vmmCtx.lineTo(X(x2), Y(y2)); vmmCtx.stroke();
+      return;
+    }
+    const w = el.width  || (IS_FORMA(el.type) ? (el.type==='circulo'?120:200) : 60);
+    const h = el.height || (IS_FORMA(el.type) ? (el.type==='circulo'?120:140) : 60);
+    const rx = X(el.x), ry = Y(el.y), rw = Math.max(2, w*s), rh = Math.max(2, h*s);
+    const fill = vwElColor(el);
+    if (IS_FORMA(el.type)) {
+      vmmCtx.fillStyle = hexAlpha(fill, .2); vmmCtx.strokeStyle = hexAlpha(fill, .5); vmmCtx.lineWidth = .6;
+      vmmCtx.beginPath();
+      if (el.type === 'circulo') vmmCtx.ellipse(rx+rw/2, ry+rh/2, rw/2, rh/2, 0, 0, Math.PI*2);
+      else vmmCtx.rect(rx, ry, rw, rh);
+      vmmCtx.fill(); vmmCtx.stroke();
+    } else {
+      vmmCtx.fillStyle = fill;
+      vmmCtx.beginPath();
+      if (vmmCtx.roundRect) vmmCtx.roundRect(rx, ry, rw, rh, Math.min(2.5, rw/3));
+      else vmmCtx.rect(rx, ry, rw, rh);
+      vmmCtx.fill();
+    }
+  });
+
+  const vx = X(tl.x), vy = Y(tl.y), vw = (br.x - tl.x) * s, vh = (br.y - tl.y) * s;
+  vmmCtx.fillStyle   = 'rgba(0,113,227,.10)';
+  vmmCtx.strokeStyle = '#0071e3'; vmmCtx.lineWidth = 1.5;
+  vmmCtx.beginPath(); vmmCtx.rect(vx, vy, vw, vh); vmmCtx.fill(); vmmCtx.stroke();
+}
+
+function vmmCenterOn(e) {
+  if (!_vmmView) return;
+  const r = VMM.getBoundingClientRect();
+  const px = (e.clientX - r.left) * (VMM_W / r.width);
+  const py = (e.clientY - r.top)  * (VMM_H / r.height);
+  const { minX, minY, s, offX, offY } = _vmmView;
+  const wx = minX + (px - offX) / s, wy = minY + (py - offY) / s;
+  pan.x = canvas.width  / (2*zoom) - wx;
+  pan.y = canvas.height / (2*zoom) - wy;
+}
+VMM.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); _vmmDrag = true; vmmCenterOn(e); });
+window.addEventListener('mousemove', e => { if (_vmmDrag) vmmCenterOn(e); });
+window.addEventListener('mouseup',   () => { _vmmDrag = false; });
+
+function toggleMiniViewer() {
+  const box = document.getElementById('vwMiniBox');
+  box.classList.toggle('collapsed');
+  document.getElementById('vwMiniChevron').className =
+    box.classList.contains('collapsed') ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down';
+}
 
 // ── Hit test ───────────────────────────────────────────────────────────────────
 function hitTest(wx, wy) {

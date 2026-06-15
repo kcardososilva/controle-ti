@@ -1,0 +1,613 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Minhas Atividades{% endblock %}
+{% block page_title %}Minhas Atividades{% endblock %}
+{% block page_subtitle %}{% if is_proprio %}Suas preventivas agendadas a executar{% else %}Atividades atribuídas a {{ alvo_nome }}{% endif %}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'tecnico_desempenho' %}" class="btn btn-sm">
+    <i class="fa-solid fa-chart-line" aria-hidden="true"></i> Desempenho
+  </a>
+  <a href="{% url 'preventiva_plano' %}" class="btn btn-sm btn-primary">
+    <i class="fa-solid fa-calendar-plus" aria-hidden="true"></i> Plano de Agendamento
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.mat-page) {
+  --mat-primary:   var(--brand, #0071e3);
+  --mat-surface:   var(--bg-elevated, #fff);
+  --mat-page2:     var(--bg-page-2, #f5f5f7);
+  --mat-muted:     var(--bg-fill-tertiary, rgba(120,120,128,.08));
+  --mat-text:      var(--text-primary, #1d1d1f);
+  --mat-sub:       var(--text-tertiary, #6e6e73);
+  --mat-soft:      var(--text-quaternary, #86868b);
+  --mat-border:    var(--separator-hairline, rgba(0,0,0,.06));
+  --mat-border2:   var(--separator-non-opaque, rgba(0,0,0,.10));
+  --mat-hover:     var(--bg-hover, rgba(0,0,0,.04));
+  --mat-r-sm:      var(--radius-sm, 10px);
+  --mat-r-md:      var(--radius-md, 14px);
+  --mat-r-lg:      var(--radius-lg, 18px);
+  --mat-r-xl:      var(--radius-xl, 22px);
+  --mat-pill:      var(--radius-pill, 980px);
+  --mat-shadow:    var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05));
+  --mat-shadow-md: var(--shadow-md, 0 4px 12px rgba(0,0,0,.06));
+  --mat-tr:        var(--transition-fast, 160ms cubic-bezier(.32,.72,0,1));
+
+  /* urgency palette */
+  --mat-red:       #ef4444;
+  --mat-red-bg:    rgba(239,68,68,.10);
+  --mat-red-brd:   rgba(239,68,68,.26);
+  --mat-red-txt:   #b91c1c;
+  --mat-amber:     #f59e0b;
+  --mat-amber-bg:  rgba(245,158,11,.12);
+  --mat-amber-brd: rgba(245,158,11,.30);
+  --mat-amber-txt: #92400e;
+  --mat-blue:      #3b82f6;
+  --mat-blue-bg:   rgba(59,130,246,.11);
+  --mat-blue-brd:  rgba(59,130,246,.28);
+  --mat-blue-txt:  #1d4ed8;
+  --mat-green:     #10b981;
+  --mat-green-bg:  rgba(16,185,129,.11);
+  --mat-green-brd: rgba(16,185,129,.28);
+  --mat-green-txt: #047857;
+  --mat-gray:      #94a3b8;
+  --mat-gray-bg:   rgba(148,163,184,.14);
+  --mat-gray-txt:  #475569;
+}
+
+.mat-page, .mat-page * { box-sizing: border-box; min-width: 0; }
+
+.mat-page {
+  width: 100%; max-width: 84rem;
+  margin: 0 auto;
+  display: grid; gap: 1.15rem;
+  color: var(--mat-text);
+}
+
+/* ── HERO ──────────────────────────────────────────────────── */
+.mat-hero {
+  position: relative;
+  background: linear-gradient(135deg, #0f766e 0%, #0d9488 50%, #14b8a6 100%);
+  border-radius: var(--mat-r-xl);
+  padding: 1.75rem 2rem;
+  color: #fff;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(13,148,136,.28);
+}
+.mat-hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 85% 30%, rgba(255,255,255,.10) 0%, transparent 62%);
+  pointer-events: none;
+}
+.mat-hero-body {
+  position: relative;
+  display: flex; align-items: center; gap: 1.25rem;
+  flex-wrap: wrap;
+}
+.mat-hero-icon {
+  width: 3.4rem; height: 3.4rem;
+  display: grid; place-items: center;
+  border-radius: var(--mat-r-lg);
+  background: rgba(255,255,255,.18);
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+.mat-hero-title { font-size: clamp(1.05rem, 2vw, 1.4rem); font-weight: 700; line-height: 1.2; }
+.mat-hero-sub { margin-top: .3rem; font-size: .82rem; opacity: .82; }
+.mat-hero-stat {
+  margin-left: auto;
+  display: flex; align-items: center; gap: .5rem;
+  background: rgba(255,255,255,.15);
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: var(--mat-pill);
+  padding: .5rem 1rem;
+  font-size: .86rem; font-weight: 700;
+}
+.mat-hero-stat i { opacity: .85; }
+
+/* ── TECH SELECTOR ─────────────────────────────────────────── */
+.mat-select-card {
+  display: flex; align-items: center; gap: .9rem; flex-wrap: wrap;
+  padding: .85rem 1.25rem;
+  border-radius: var(--mat-r-xl);
+  border: 1px solid var(--mat-border);
+  background: var(--mat-surface);
+  box-shadow: var(--mat-shadow);
+}
+.mat-select-card label {
+  margin: 0; display: inline-flex; align-items: center; gap: .45rem;
+  color: var(--mat-sub); font-size: .72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.mat-select-card form { display: flex; align-items: center; gap: .6rem; flex: 1; min-width: 14rem; }
+.mat-select {
+  flex: 1; min-width: 12rem; height: 2.5rem;
+  border: 1px solid var(--mat-border2);
+  border-radius: var(--mat-r-sm);
+  background: var(--mat-surface); color: var(--mat-text);
+  padding: 0 .85rem; font-size: .88rem; font-family: inherit;
+  outline: none; appearance: auto;
+  transition: border-color var(--mat-tr), box-shadow var(--mat-tr);
+}
+.mat-select:focus {
+  border-color: var(--mat-primary);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.22));
+}
+
+/* ── KPI CARDS ─────────────────────────────────────────────── */
+.mat-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: .8rem;
+}
+.mat-kpi {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 1.1rem 1.2rem;
+  border-radius: var(--mat-r-xl);
+  border: 1px solid var(--mat-border);
+  background: var(--mat-surface);
+  box-shadow: var(--mat-shadow);
+  transition: box-shadow var(--mat-tr), transform var(--mat-tr);
+}
+.mat-kpi:hover { box-shadow: var(--mat-shadow-md); transform: translateY(-2px); }
+.mat-kpi-icon {
+  width: 2.9rem; height: 2.9rem;
+  display: grid; place-items: center;
+  border-radius: var(--mat-r-md);
+  font-size: 1.05rem;
+  flex-shrink: 0;
+}
+.mat-kpi-icon.k-default { background: rgba(13,148,136,.12); color: #0d9488; }
+.mat-kpi-icon.k-red     { background: var(--mat-red-bg);   color: var(--mat-red-txt); }
+.mat-kpi-icon.k-amber   { background: var(--mat-amber-bg); color: var(--mat-amber-txt); }
+.mat-kpi-icon.k-blue    { background: var(--mat-blue-bg);  color: var(--mat-blue-txt); }
+.mat-kpi-body { flex: 1; min-width: 0; }
+.mat-kpi-label {
+  color: var(--mat-sub); font-size: .68rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mat-kpi-value {
+  margin-top: .25rem;
+  font-size: clamp(1.4rem, 2.5vw, 1.9rem);
+  font-weight: 800; line-height: 1;
+  color: var(--mat-text);
+}
+.mat-kpi-hint { margin-top: .25rem; font-size: .7rem; color: var(--mat-soft); }
+
+/* ── SECTION HEADING ───────────────────────────────────────── */
+.mat-section-head {
+  display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap;
+  margin: .3rem .15rem -.1rem;
+}
+.mat-section-title {
+  font-size: 1.05rem; font-weight: 700; color: var(--mat-text);
+  letter-spacing: -.02em;
+}
+.mat-section-count { color: var(--mat-soft); font-size: .82rem; font-weight: 500; }
+
+/* ── TASK LIST ─────────────────────────────────────────────── */
+.mat-task-list { display: grid; gap: .8rem; }
+
+.mat-task {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 1.1rem;
+  padding: 1.05rem 1.25rem;
+  border-radius: var(--mat-r-lg);
+  border: 1px solid var(--mat-border);
+  background: var(--mat-surface);
+  box-shadow: var(--mat-shadow);
+  transition: box-shadow var(--mat-tr), transform var(--mat-tr), border-color var(--mat-tr);
+}
+.mat-task:hover {
+  box-shadow: var(--mat-shadow-md);
+  transform: translateY(-1px);
+  border-color: var(--mat-border2);
+}
+/* Left accent bar by urgency */
+.mat-task::before {
+  content: '';
+  position: absolute; left: 0; top: .9rem; bottom: .9rem;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--mat-gray);
+}
+.mat-task.t-vencida::before { background: var(--mat-red); }
+.mat-task.t-hoje::before    { background: var(--mat-amber); }
+.mat-task.t-semana::before  { background: var(--mat-blue); }
+.mat-task.t-vencida { border-color: var(--mat-red-brd); background: linear-gradient(0deg, var(--mat-red-bg), var(--mat-red-bg)), var(--mat-surface); }
+
+/* Equipment type avatar */
+.mat-task-avatar {
+  width: 2.9rem; height: 2.9rem;
+  display: grid; place-items: center;
+  border-radius: var(--mat-r-md);
+  background: var(--mat-muted);
+  color: var(--mat-sub);
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+.mat-task.t-vencida .mat-task-avatar { background: var(--mat-red-bg);   color: var(--mat-red-txt); }
+.mat-task.t-hoje    .mat-task-avatar { background: var(--mat-amber-bg); color: var(--mat-amber-txt); }
+.mat-task.t-semana  .mat-task-avatar { background: var(--mat-blue-bg);  color: var(--mat-blue-txt); }
+
+.mat-task-main { min-width: 0; }
+
+.mat-task-name {
+  font-weight: 700; font-size: .98rem; line-height: 1.25;
+  color: var(--mat-text);
+  overflow-wrap: anywhere;
+}
+.mat-task-meta {
+  margin-top: .35rem;
+  display: flex; flex-wrap: wrap; gap: .35rem .9rem;
+  color: var(--mat-sub); font-size: .78rem; line-height: 1.3;
+}
+.mat-task-meta span { display: inline-flex; align-items: center; gap: .35rem; }
+.mat-task-meta i { font-size: .72rem; color: var(--mat-soft); }
+
+.mat-task-prazo {
+  margin-top: .55rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
+}
+
+/* Prazo badge */
+.mat-badge {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: .76rem; font-weight: 700;
+  border-radius: 8px; padding: .3rem .6rem;
+  white-space: nowrap; line-height: 1;
+}
+.mat-badge.b-vencida { color: var(--mat-red-txt);   background: var(--mat-red-bg);   border: 1px solid var(--mat-red-brd); }
+.mat-badge.b-hoje    { color: var(--mat-amber-txt); background: var(--mat-amber-bg); border: 1px solid var(--mat-amber-brd); }
+.mat-badge.b-semana  { color: var(--mat-blue-txt);  background: var(--mat-blue-bg);  border: 1px solid var(--mat-blue-brd); }
+.mat-badge.b-futura  { color: var(--mat-gray-txt);  background: var(--mat-gray-bg);  border: 1px solid var(--mat-border2); }
+
+.mat-prazo-rel { font-size: .74rem; color: var(--mat-sub); font-weight: 500; }
+.mat-prazo-rel.is-late { color: var(--mat-red-txt); font-weight: 700; }
+
+/* Actions */
+.mat-task-actions { display: flex; align-items: center; gap: .5rem; flex-shrink: 0; }
+
+.mat-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .45rem;
+  height: 2.4rem; padding: 0 1.05rem;
+  border-radius: var(--mat-pill);
+  font-size: .82rem; font-weight: 600;
+  text-decoration: none; cursor: pointer; white-space: nowrap;
+  border: 1px solid transparent;
+  transition: background var(--mat-tr), color var(--mat-tr), border-color var(--mat-tr), transform var(--mat-tr);
+}
+.mat-btn:active { transform: scale(.97); }
+.mat-btn.primary { color: #fff; background: var(--mat-green); border-color: var(--mat-green); }
+.mat-btn.primary:hover { background: #0ea371; border-color: #0ea371; }
+.mat-btn.ghost { color: var(--mat-text); background: var(--mat-surface); border-color: var(--mat-border2); }
+.mat-btn.ghost:hover { background: var(--mat-hover); border-color: var(--mat-soft); }
+
+/* ── EMPTY STATE ───────────────────────────────────────────── */
+.mat-empty {
+  padding: 3.5rem 1.5rem; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: .85rem;
+  border-radius: var(--mat-r-xl);
+  border: 1px dashed var(--mat-border2);
+  background: var(--mat-surface);
+}
+.mat-empty-icon {
+  width: 4rem; height: 4rem;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--mat-green-bg);
+  font-size: 1.6rem; color: var(--mat-green-txt);
+}
+.mat-empty-title { color: var(--mat-text); font-size: 1.02rem; font-weight: 700; }
+.mat-empty-text  { color: var(--mat-sub); font-size: .88rem; max-width: 26rem; }
+.mat-empty-cta   { margin-top: .4rem; }
+
+/* ── RECENTES ──────────────────────────────────────────────── */
+.mat-recent-card {
+  border-radius: var(--mat-r-xl);
+  border: 1px solid var(--mat-border);
+  background: var(--mat-surface);
+  box-shadow: var(--mat-shadow);
+  overflow: hidden;
+}
+.mat-recent-head {
+  display: flex; align-items: center; gap: .55rem;
+  padding: .9rem 1.25rem;
+  border-bottom: 1px solid var(--mat-border);
+  color: var(--mat-sub); font-size: .74rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.mat-recent-item {
+  display: flex; align-items: center; gap: .85rem;
+  padding: .8rem 1.25rem;
+  border-bottom: 1px solid var(--mat-border);
+  transition: background var(--mat-tr);
+}
+.mat-recent-item:last-child { border-bottom: none; }
+.mat-recent-item:hover { background: var(--mat-hover); }
+.mat-recent-dot {
+  width: 2.1rem; height: 2.1rem;
+  display: grid; place-items: center; flex-shrink: 0;
+  border-radius: 50%;
+  font-size: .82rem;
+}
+.mat-recent-dot.ok  { background: var(--mat-green-bg); color: var(--mat-green-txt); }
+.mat-recent-dot.off { background: var(--mat-red-bg);   color: var(--mat-red-txt); }
+.mat-recent-info { flex: 1; min-width: 0; }
+.mat-recent-name { font-size: .86rem; font-weight: 600; color: var(--mat-text); overflow-wrap: anywhere; }
+.mat-recent-date { margin-top: .15rem; font-size: .74rem; color: var(--mat-soft); }
+.mat-chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .28rem .6rem; border-radius: var(--mat-pill);
+  font-size: .68rem; font-weight: 700; white-space: nowrap;
+  text-transform: uppercase; letter-spacing: .04em;
+  flex-shrink: 0;
+}
+.mat-chip.ok  { color: var(--mat-green-txt); background: var(--mat-green-bg); }
+.mat-chip.off { color: var(--mat-red-txt);   background: var(--mat-red-bg); }
+
+/* ── RESPONSIVE ───────────────────────────────────────────── */
+@media (max-width: 64rem) {
+  .mat-kpi-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+
+@media (max-width: 48rem) {
+  .mat-task {
+    grid-template-columns: auto 1fr;
+    gap: .85rem;
+  }
+  .mat-task-actions {
+    grid-column: 1 / -1;
+    margin-top: .25rem;
+  }
+  .mat-btn { flex: 1; }
+}
+
+@media (max-width: 40rem) {
+  .mat-hero { padding: 1.4rem 1.25rem; }
+  .mat-hero-stat { display: none; }
+  .mat-kpi-grid { grid-template-columns: 1fr 1fr; }
+  .mat-kpi { flex-direction: column; align-items: flex-start; gap: .5rem; }
+  .mat-kpi-icon { width: 2.3rem; height: 2.3rem; font-size: .9rem; }
+  .mat-task-avatar { width: 2.4rem; height: 2.4rem; font-size: .95rem; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mat-page">
+
+  <!-- Hero -->
+  <section class="mat-hero">
+    <div class="mat-hero-body">
+      <div class="mat-hero-icon">
+        <i class="fa-solid fa-list-check" aria-hidden="true"></i>
+      </div>
+      <div>
+        <div class="mat-hero-title">
+          {% if is_proprio %}Minhas Atividades{% else %}Atividades de {{ alvo_nome }}{% endif %}
+        </div>
+        <div class="mat-hero-sub">
+          {% if is_proprio %}
+            Preventivas agendadas atribuídas a você, ordenadas por prioridade
+          {% else %}
+            Preventivas agendadas atribuídas a {{ alvo_nome }}
+          {% endif %}
+        </div>
+      </div>
+      <div class="mat-hero-stat">
+        <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>
+        {{ kpi.total }} pendente{{ kpi.total|pluralize:"s" }}
+      </div>
+    </div>
+  </section>
+
+  <!-- Seletor de técnico (staff/superuser) -->
+  {% if pode_escolher %}
+    <section class="mat-select-card">
+      <label for="mat-tecnico">
+        <i class="fa-solid fa-user-gear" aria-hidden="true"></i> Técnico
+      </label>
+      <form method="get" action="{% url 'minhas_atividades' %}" id="mat-tecnico-form">
+        <select name="tecnico" id="mat-tecnico" class="mat-select">
+          {% for t in tecnicos %}
+            <option value="{{ t.id }}" {% if t.id == alvo.id %}selected{% endif %}>
+              {{ t.get_full_name|default:t.username }}{% if not t.get_full_name %} ({{ t.username }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+        <noscript>
+          <button type="submit" class="btn btn-sm btn-primary">
+            <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Ver
+          </button>
+        </noscript>
+      </form>
+    </section>
+  {% endif %}
+
+  <!-- KPIs -->
+  <section class="mat-kpi-grid">
+    <article class="mat-kpi">
+      <div class="mat-kpi-icon k-default">
+        <i class="fa-solid fa-clipboard-list" aria-hidden="true"></i>
+      </div>
+      <div class="mat-kpi-body">
+        <div class="mat-kpi-label">Total</div>
+        <div class="mat-kpi-value">{{ kpi.total }}</div>
+        <div class="mat-kpi-hint">Atividades pendentes</div>
+      </div>
+    </article>
+
+    <article class="mat-kpi">
+      <div class="mat-kpi-icon k-red">
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+      </div>
+      <div class="mat-kpi-body">
+        <div class="mat-kpi-label">Vencidas</div>
+        <div class="mat-kpi-value" style="color:var(--mat-red-txt);">{{ kpi.vencidas }}</div>
+        <div class="mat-kpi-hint">Prazo no passado</div>
+      </div>
+    </article>
+
+    <article class="mat-kpi">
+      <div class="mat-kpi-icon k-amber">
+        <i class="fa-solid fa-sun" aria-hidden="true"></i>
+      </div>
+      <div class="mat-kpi-body">
+        <div class="mat-kpi-label">Hoje</div>
+        <div class="mat-kpi-value" style="color:var(--mat-amber-txt);">{{ kpi.hoje }}</div>
+        <div class="mat-kpi-hint">Para executar hoje</div>
+      </div>
+    </article>
+
+    <article class="mat-kpi">
+      <div class="mat-kpi-icon k-blue">
+        <i class="fa-solid fa-calendar-week" aria-hidden="true"></i>
+      </div>
+      <div class="mat-kpi-body">
+        <div class="mat-kpi-label">Esta semana</div>
+        <div class="mat-kpi-value" style="color:var(--mat-blue-txt);">{{ kpi.semana }}</div>
+        <div class="mat-kpi-hint">Próximos 7 dias</div>
+      </div>
+    </article>
+  </section>
+
+  <!-- Lista de tarefas -->
+  {% if atividades %}
+    <div class="mat-section-head">
+      <span class="mat-section-title">A executar</span>
+      <span class="mat-section-count">{{ atividades|length }} atividade{{ atividades|length|pluralize:"s" }}</span>
+    </div>
+
+    <section class="mat-task-list">
+      {% for p in atividades %}
+        <article class="mat-task t-{{ p.classe_prazo }}">
+          <div class="mat-task-avatar">
+            <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>
+          </div>
+
+          <div class="mat-task-main">
+            <div class="mat-task-name">{{ p.equipamento.nome }}</div>
+
+            <div class="mat-task-meta">
+              {% if p.equipamento.numero_serie %}
+                <span><i class="fa-solid fa-barcode" aria-hidden="true"></i> NS: {{ p.equipamento.numero_serie }}</span>
+              {% endif %}
+              {% if p.equipamento.localidade %}
+                <span><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ p.equipamento.localidade.local }}</span>
+              {% endif %}
+              {% if p.equipamento.centro_custo %}
+                <span><i class="fa-solid fa-building" aria-hidden="true"></i> {{ p.equipamento.centro_custo.numero }} — {{ p.equipamento.centro_custo.departamento }}</span>
+              {% endif %}
+              {% if p.checklist_modelo %}
+                <span><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i> {{ p.checklist_modelo.nome }}</span>
+              {% endif %}
+            </div>
+
+            <div class="mat-task-prazo">
+              <span class="mat-badge b-{{ p.classe_prazo }}">
+                {% if p.classe_prazo == 'vencida' %}
+                  <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+                {% elif p.classe_prazo == 'hoje' %}
+                  <i class="fa-solid fa-sun" aria-hidden="true"></i>
+                {% elif p.classe_prazo == 'semana' %}
+                  <i class="fa-solid fa-calendar-check" aria-hidden="true"></i>
+                {% else %}
+                  <i class="fa-solid fa-calendar" aria-hidden="true"></i>
+                {% endif %}
+                {{ p.label_prazo }} · {{ p.data_agendamento|date:"d/m/Y" }}
+              </span>
+
+              {% if p.dias_agendamento < 0 %}
+                <span class="mat-prazo-rel is-late">
+                  <i class="fa-solid fa-clock" aria-hidden="true"></i>
+                  há {{ p.dias_agendamento|stringformat:"d"|slice:"1:" }} dia{{ p.dias_agendamento|stringformat:"d"|slice:"1:"|pluralize:"s" }}
+                </span>
+              {% elif p.dias_agendamento == 0 %}
+                <span class="mat-prazo-rel">Executar hoje</span>
+              {% else %}
+                <span class="mat-prazo-rel">em {{ p.dias_agendamento }} dia{{ p.dias_agendamento|pluralize:"s" }}</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="mat-task-actions">
+            <a href="{% url 'preventiva_exec' p.pk %}" class="mat-btn primary"
+               title="Executar preventiva" aria-label="Executar preventiva de {{ p.equipamento.nome }}">
+              <i class="fa-solid fa-play" aria-hidden="true"></i> Executar
+            </a>
+            <a href="{% url 'preventiva_detail' p.pk %}" class="mat-btn ghost"
+               title="Ver detalhes" aria-label="Detalhes de {{ p.equipamento.nome }}">
+              <i class="fa-solid fa-eye" aria-hidden="true"></i> Detalhes
+            </a>
+          </div>
+        </article>
+      {% endfor %}
+    </section>
+  {% else %}
+    <section class="mat-empty">
+      <div class="mat-empty-icon">
+        <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+      </div>
+      <div class="mat-empty-title">Tudo em dia!</div>
+      <div class="mat-empty-text">
+        {% if is_proprio %}
+          Nenhuma atividade pendente atribuída a você.
+        {% else %}
+          Nenhuma atividade pendente atribuída a {{ alvo_nome }}.
+        {% endif %}
+      </div>
+      <div class="mat-empty-cta">
+        <a href="{% url 'preventiva_plano' %}" class="btn btn-sm btn-primary">
+          <i class="fa-solid fa-calendar-plus" aria-hidden="true"></i> Plano de Agendamento
+        </a>
+      </div>
+    </section>
+  {% endif %}
+
+  <!-- Execuções recentes -->
+  {% if recentes %}
+    <section class="mat-recent-card">
+      <div class="mat-recent-head">
+        <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+        Execuções recentes
+      </div>
+      {% for e in recentes %}
+        <div class="mat-recent-item">
+          <div class="mat-recent-dot {% if e.no_prazo %}ok{% else %}off{% endif %}">
+            <i class="fa-solid {% if e.no_prazo %}fa-check{% else %}fa-clock{% endif %}" aria-hidden="true"></i>
+          </div>
+          <div class="mat-recent-info">
+            <div class="mat-recent-name">{{ e.preventiva.equipamento.nome }}</div>
+            <div class="mat-recent-date">{{ e.data_execucao|date:"d/m/Y" }}</div>
+          </div>
+          <span class="mat-chip {% if e.no_prazo %}ok{% else %}off{% endif %}">
+            {% if e.no_prazo %}No prazo{% else %}Fora do prazo{% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var sel = document.getElementById('mat-tecnico');
+  if (sel) {
+    sel.addEventListener('change', function () {
+      var form = document.getElementById('mat-tecnico-form');
+      if (form) form.submit();
+    });
+  }
+});
+</script>
+{% endblock %}

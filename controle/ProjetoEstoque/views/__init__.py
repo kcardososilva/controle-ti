@@ -154,6 +154,8 @@ from .preventivas import (
     preventiva_plano,
     preventiva_agendadas,
     preventiva_sincronizar_programacao,
+    tecnico_desempenho,
+    minhas_atividades,
 )
 
 # ── Licenças ─────────────────────────────────────────────────────────────────
@@ -171,6 +173,7 @@ from .licencas import (
 # ── Dashboards ───────────────────────────────────────────────────────────────
 from .dashboards import (
     dashboard,
+    dashboard_apresentacao_dados,
     cc_custos_dashboard,
     cc_custos_export_pdf,
     preventiva_dashboard,

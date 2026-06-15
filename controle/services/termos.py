@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from io import BytesIO
 from pathlib import Path
 
@@ -20,6 +22,45 @@ def _safe(value, default="-"):
         return default
     value = str(value).strip()
     return value if value else default
+
+
+def _normalizar(texto):
+    """Minúsculas sem acentos — para comparar rótulos do template de forma robusta."""
+    texto = (texto or "").strip().lower()
+    return "".join(
+        c for c in unicodedata.normalize("NFD", texto)
+        if unicodedata.category(c) != "Mn"
+    )
+
+
+def _slug_termo(value, maxlen=28):
+    """Converte um texto em um trecho seguro para a numeração do termo (sem acento, MAIÚSCULO)."""
+    s = unicodedata.normalize("NFD", str(value or ""))
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    s = re.sub(r"[^A-Za-z0-9]+", "_", s).strip("_").upper()
+    return s[:maxlen].strip("_")
+
+
+def _numero_termo_auto(tipo, hoje, nome_colaborador, colaborador):
+    """
+    Monta a numeração do termo no mesmo padrão de antes, porém SEM o ID do item:
+    {PREFIXO}-{AAAAMMDD}-{NOME_COLABORADOR}-{CENTRO_DE_CUSTO}.
+    """
+    prefixo = "ENT" if tipo == "entrega" else "DEV"
+    partes = [prefixo, hoje.strftime("%Y%m%d")]
+
+    nome_slug = _slug_termo(nome_colaborador) if nome_colaborador and nome_colaborador != "-" else ""
+    if nome_slug:
+        partes.append(nome_slug)
+
+    cc_obj = getattr(colaborador, "centro_custo", None)
+    cc_codigo = _safe(getattr(cc_obj, "numero", None), "")
+    if not cc_codigo or cc_codigo == "-":
+        cc_codigo = _slug_termo(getattr(cc_obj, "departamento", None))
+    if cc_codigo and cc_codigo != "-":
+        partes.append(str(cc_codigo))
+
+    return "-".join(partes)
 
 
 def _clear_paragraph(paragraph):
@@ -139,10 +180,16 @@ def _build_dados(item, tipo, form_data):
         f"Centro de Custo: {_safe(getattr(item.centro_custo, 'departamento', None))}"
     )
 
+    # Numeração: sem ID — usa nome do colaborador + centro de custo.
+    # O campo do formulário continua válido como sobrescrita manual.
+    numero_termo = _safe(form_data.get("numero_termo"), "")
+    if not numero_termo:
+        numero_termo = _numero_termo_auto(tipo, hoje, nome_colaborador, colaborador)
+
     return {
         "tipo": tipo,
         "data_hoje": hoje.strftime("%d/%m/%Y"),
-        "numero_termo": _safe(form_data.get("numero_termo"), ""),
+        "numero_termo": numero_termo,
         "numero_chamado": _safe(form_data.get("numero_chamado"), ""),
         "nome_colaborador": nome_colaborador,
         "email_colaborador": email_colaborador,
@@ -209,43 +256,66 @@ def _fill_signatures(doc, dados):
 
 
 def _fill_main_table(doc, dados):
+    """
+    Preenche a tabela do termo localizando cada linha pelo RÓTULO da 1ª célula,
+    em vez de índices fixos. Assim, editar o template (inserir/remover/reordenar
+    linhas, alterar rótulos ou adicionar páginas) não quebra a geração.
+
+    Quando há mais de uma linha com o mesmo rótulo (o template usa linhas de
+    cabeçalho + linha de digitação), preenche a linha de digitação — preferindo
+    a de mais colunas e, em empate, a primeira ainda não usada.
+    """
     if not doc.tables:
         return
 
     table = doc.tables[0]
+    rows = table.rows
 
-    # A estrutura dos templates enviados segue o padrão:
-    # linha 0 -> termo
-    # linha 1 -> chamado
-    # linha 3 -> descrição equipamento
-    # linha 4 -> série
-    # linha 6 -> acessórios
-    # linha 10 -> número da plaqueta
-    # linha 12 -> estabelecimento
-    # linha 13 -> observações
-    mapping = {
-        0: dados["numero_termo"],
-        1: dados["numero_chamado"],
-        3: dados["descricao_equipamento"],
-        4: dados["serie"],
-        6: dados["acessorios"],
-        10: dados["plaqueta"],
-        12: dados["estabelecimento"],
-        13: dados["observacoes"],
-    }
+    # (predicado sobre o rótulo normalizado, valor a inserir)
+    campos = [
+        (lambda t: "termo" in t and "chamado" not in t
+                   and ("uso do ti" in t or "responsab" in t or "entrega" in t or "devoluc" in t or " n" in t),
+         dados["numero_termo"]),
+        (lambda t: "chamado" in t, dados["numero_chamado"]),
+        (lambda t: "descric" in t and "equipamento" in t, dados["descricao_equipamento"]),
+        (lambda t: t == "serie" or t.startswith("serie"), dados["serie"]),
+        (lambda t: "acessorio" in t, dados["acessorios"]),
+        (lambda t: "plaqueta" in t, dados["plaqueta"]),
+        (lambda t: "estabelecimento" in t, dados["estabelecimento"]),
+        (lambda t: "observac" in t, dados["observacoes"]),
+    ]
 
-    for row_idx, value in mapping.items():
-        if row_idx < len(table.rows) and len(table.rows[row_idx].cells) > 1:
-            _set_cell(table.rows[row_idx].cells[1], value)
+    usados = set()
+    for predicado, valor in campos:
+        candidatos = []
+        for ri, row in enumerate(rows):
+            if ri in usados or len(row.cells) < 2:
+                continue
+            label = _normalizar(row.cells[0].text)
+            if label and predicado(label):
+                candidatos.append((ri, row))
+
+        if not candidatos:
+            continue
+
+        # linha de digitação = mais colunas; empate = primeira (menor índice)
+        ri, row = max(candidatos, key=lambda c: (len(c[1].cells), -c[0]))
+        _set_cell(row.cells[1], valor)
+        usados.add(ri)
 
 
 def _ajustar_layout_documento(doc):
     """
-    Ajustes de layout do documento para padrão formal:
-    - margens A4 adequadas
-    - texto justificado
-    - espaçamento entre linhas padronizado
-    - remoção de espaços excessivos antes/depois
+    Ajuste de layout NÃO destrutivo.
+
+    Antes, este método forçava alinhamento, espaçamento e recuo em TODOS os
+    parágrafos — o que sobrescrevia a formatação do template. Por isso, edições
+    feitas no modelo base (novas linhas, espaçamentos, quebras de página) não
+    apareciam no termo gerado. Agora preservamos a formatação do template e só
+    aplicamos ajustes seguros:
+      - margens A4;
+      - centraliza apenas o título;
+      - garante um tamanho de fonte mínimo onde o run não define nenhum.
     """
     for section in doc.sections:
         section.top_margin = 720000      # ~2 cm
@@ -256,24 +326,10 @@ def _ajustar_layout_documento(doc):
     for p in doc.paragraphs:
         texto = (p.text or "").strip()
 
-        # mantém centralizado apenas o que realmente deve ficar centralizado
+        # Mantém centralizado somente o título — restante segue o template.
         if texto.startswith("TERMO DE RESPONSABILIDADE") or texto.startswith("POLÍTICA"):
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        elif texto.startswith("Colaborador:") or texto.startswith("Assinatura:") or texto.startswith("Nome:") or texto.startswith("Data:"):
-            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        elif texto.startswith("Responsável pela Entrega") or texto.startswith("Responsável pelo Recebimento"):
-            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        else:
-            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-        fmt = p.paragraph_format
-        fmt.space_before = Pt(0)
-        fmt.space_after = Pt(4)
-        fmt.line_spacing_rule = WD_LINE_SPACING.MULTIPLE
-        fmt.line_spacing = 1.15
-        fmt.first_line_indent = Pt(0)
-
-        # Ajusta fonte dos runs sem destruir o estilo do template
         for run in p.runs:
             if run.font.size is None:
                 run.font.size = Pt(10.5)

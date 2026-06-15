@@ -1,0 +1,1048 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Desempenho dos Técnicos — Preventivas{% endblock %}
+{% block page_title %}Desempenho dos Técnicos{% endblock %}
+{% block page_subtitle %}Pontualidade e produtividade nas preventivas{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'minhas_atividades' %}" class="btn btn-secondary btn-sm">
+    <i class="fa-solid fa-list-check" aria-hidden="true"></i>
+    <span>Minhas Atividades</span>
+  </a>
+  <a href="{% url 'preventiva_plano' %}" class="btn btn-primary btn-sm">
+    <i class="fa-solid fa-calendar-days" aria-hidden="true"></i>
+    <span>Plano de Agendamento</span>
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* =========================================================
+   TÉCNICO · DESEMPENHO  (escopo .tdz-)
+   ========================================================= */
+:where(.tdz-page) {
+  --tdz-brand: var(--brand, #0071e3);
+  --tdz-brand-soft: var(--brand-soft, rgba(0,113,227,.10));
+  --tdz-text: var(--text-primary, #1d1d1f);
+  --tdz-muted: var(--text-tertiary, #6e6e73);
+  --tdz-soft: var(--text-quaternary, #86868b);
+  --tdz-surface: var(--bg-elevated, #fff);
+  --tdz-surface-2: var(--bg-page-2, #f5f5f7);
+  --tdz-border: var(--separator-hairline, rgba(0,0,0,.06));
+  --tdz-border-2: var(--separator-non-opaque, rgba(0,0,0,.10));
+  --tdz-success: var(--success, #34c759);
+  --tdz-success-soft: var(--success-soft, rgba(52,199,89,.12));
+  --tdz-warning: var(--warning, #ff9500);
+  --tdz-warning-soft: var(--warning-soft, rgba(255,149,0,.12));
+  --tdz-danger: var(--danger, #ff3b30);
+  --tdz-danger-soft: var(--danger-soft, rgba(255,59,48,.10));
+  --tdz-radius-md: var(--radius-md, 14px);
+  --tdz-radius-lg: var(--radius-lg, 18px);
+  --tdz-radius-xl: var(--radius-xl, 22px);
+  --tdz-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05));
+  --tdz-shadow-md: var(--shadow-md, 0 4px 12px rgba(0,0,0,.06));
+  --tdz-ease: var(--ease-apple, cubic-bezier(.32,.72,0,1));
+}
+
+.tdz-page, .tdz-page * { box-sizing: border-box; min-width: 0; }
+
+.tdz-page {
+  display: grid;
+  gap: 16px;
+  color: var(--tdz-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Filtro de período ---------- */
+.tdz-filter {
+  border: 1px solid var(--tdz-border);
+  border-radius: var(--tdz-radius-lg);
+  background: var(--tdz-surface);
+  box-shadow: var(--tdz-shadow-sm);
+  padding: 16px 18px;
+}
+
+.tdz-filter-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.tdz-field { display: flex; flex-direction: column; gap: 6px; }
+
+.tdz-field label {
+  margin: 0;
+  color: var(--tdz-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.tdz-field input[type="date"] {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid var(--tdz-border-2);
+  border-radius: var(--tdz-radius-md);
+  background: var(--tdz-surface);
+  color: var(--tdz-text);
+  font-size: 14px;
+}
+
+.tdz-filter-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.tdz-filter-actions .btn,
+.tdz-filter-actions .btn-primary { flex: 0 0 auto; }
+
+/* ---------- KPI grid ---------- */
+.tdz-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  gap: 14px;
+}
+
+.tdz-kpi {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--tdz-border);
+  border-radius: var(--tdz-radius-lg);
+  background: var(--tdz-surface);
+  box-shadow: var(--tdz-shadow-sm);
+  overflow: hidden;
+  transition: transform var(--tdz-ease) .24s, box-shadow var(--tdz-ease) .24s, border-color .16s;
+}
+.tdz-kpi:hover { transform: translateY(-2px); box-shadow: var(--tdz-shadow-md); border-color: var(--tdz-border-2); }
+
+.tdz-kpi::after {
+  content: "";
+  position: absolute;
+  right: -22px; top: -22px;
+  width: 78px; height: 78px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tdz-accent, var(--tdz-brand)) 13%, transparent);
+}
+
+.tdz-kpi-icon {
+  width: 46px; height: 46px;
+  flex: 0 0 46px;
+  display: grid; place-items: center;
+  border-radius: var(--tdz-radius-md);
+  background: color-mix(in srgb, var(--tdz-accent, var(--tdz-brand)) 13%, transparent);
+  color: var(--tdz-accent, var(--tdz-brand));
+  border: 1px solid color-mix(in srgb, var(--tdz-accent, var(--tdz-brand)) 22%, transparent);
+  font-size: 18px;
+  z-index: 1;
+}
+
+.tdz-kpi-info { z-index: 1; min-width: 0; }
+.tdz-kpi-label {
+  display: block;
+  color: var(--tdz-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.tdz-kpi-value {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 3.2vw, 1.85rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -.02em;
+}
+.tdz-kpi-sub {
+  display: block;
+  margin-top: 4px;
+  color: var(--tdz-muted);
+  font-size: 12px;
+}
+
+/* ---------- Layout principal: gauge + ranking ---------- */
+.tdz-main {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.tdz-panel {
+  border: 1px solid var(--tdz-border);
+  border-radius: var(--tdz-radius-lg);
+  background: var(--tdz-surface);
+  box-shadow: var(--tdz-shadow-sm);
+  overflow: hidden;
+}
+
+.tdz-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--tdz-border);
+}
+
+.tdz-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -.012em;
+}
+.tdz-panel-title i { color: var(--tdz-brand); font-size: 14px; }
+.tdz-panel-body { padding: 18px; }
+
+/* Gauge */
+.tdz-gauge-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  height: 100%;
+  justify-content: center;
+}
+.tdz-gauge {
+  position: relative;
+  width: 100%;
+  max-width: 260px;
+  margin-inline: auto;
+}
+.tdz-gauge-canvas-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 1.18;
+}
+.tdz-gauge-center {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 6%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.tdz-gauge-num {
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 8vw, 3.1rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -.03em;
+  color: var(--tdz-gauge-color, var(--tdz-brand));
+}
+.tdz-gauge-num small { font-size: .42em; font-weight: 600; margin-left: 2px; color: var(--tdz-muted); }
+.tdz-gauge-label {
+  color: var(--tdz-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.tdz-gauge-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--tdz-state-soft, var(--tdz-brand-soft));
+  color: var(--tdz-state-color, var(--tdz-brand));
+}
+.tdz-gauge-meta {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  max-width: 260px;
+}
+.tdz-gauge-meta div {
+  padding: 10px;
+  border-radius: var(--tdz-radius-md);
+  background: var(--tdz-surface-2);
+  text-align: center;
+}
+.tdz-gauge-meta b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+}
+.tdz-gauge-meta span {
+  display: block;
+  margin-top: 2px;
+  color: var(--tdz-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+/* ---------- Ranking de técnicos ---------- */
+.tdz-rank {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr));
+  gap: 14px;
+}
+
+.tdz-tech {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--tdz-border);
+  border-radius: var(--tdz-radius-lg);
+  background: var(--tdz-surface);
+  box-shadow: var(--tdz-shadow-sm);
+  transition: transform var(--tdz-ease) .24s, box-shadow var(--tdz-ease) .24s, border-color .16s;
+}
+.tdz-tech:hover { transform: translateY(-2px); box-shadow: var(--tdz-shadow-md); border-color: var(--tdz-border-2); }
+
+.tdz-tech.is-top {
+  border-color: color-mix(in srgb, #ffb800 45%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, #ffb800 8%, transparent), transparent 42%),
+    var(--tdz-surface);
+}
+
+.tdz-tech-head { display: flex; align-items: center; gap: 11px; }
+
+.tdz-avatar {
+  position: relative;
+  width: 42px; height: 42px;
+  flex: 0 0 42px;
+  display: grid; place-items: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--brand), var(--system-indigo, #5856d6));
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  text-transform: uppercase;
+}
+.tdz-tech.is-top .tdz-avatar { background: linear-gradient(135deg, #ffb800, #ff9500); }
+
+.tdz-medal {
+  position: absolute;
+  bottom: -4px; right: -4px;
+  width: 19px; height: 19px;
+  display: grid; place-items: center;
+  border-radius: 999px;
+  background: #ffb800;
+  color: #6b4a00;
+  border: 2px solid var(--tdz-surface);
+  font-size: 9px;
+}
+
+.tdz-tech-id { min-width: 0; flex: 1; }
+.tdz-tech-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -.014em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tdz-tech-user {
+  color: var(--tdz-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tdz-ranknum {
+  flex: 0 0 auto;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border-radius: 8px;
+  background: var(--tdz-surface-2);
+  color: var(--tdz-muted);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.tdz-tech.is-top .tdz-ranknum { background: color-mix(in srgb, #ffb800 22%, transparent); color: #946100; }
+
+.tdz-tech-exec {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.tdz-tech-exec b {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -.03em;
+}
+.tdz-tech-exec span { color: var(--tdz-muted); font-size: 12.5px; font-weight: 500; }
+
+.tdz-pont-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.tdz-pont-row > span { color: var(--tdz-muted); font-size: 12px; font-weight: 600; }
+.tdz-pont-val { font-weight: 700; font-size: 13px; }
+
+.tdz-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--tdz-surface-2);
+  overflow: hidden;
+}
+.tdz-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--tdz-bar-color, var(--tdz-brand));
+  transition: width .6s var(--tdz-ease);
+}
+.tdz-bar.is-empty { background: repeating-linear-gradient(45deg, var(--tdz-surface-2), var(--tdz-surface-2) 5px, transparent 5px, transparent 10px); }
+
+.tdz-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.tdz-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--tdz-surface-2);
+  color: var(--tdz-muted);
+}
+.tdz-chip i { font-size: 10px; }
+.tdz-chip.is-warn { background: var(--tdz-warning-soft); color: var(--tdz-warning); }
+.tdz-chip.is-danger { background: var(--tdz-danger-soft); color: var(--tdz-danger); }
+.tdz-chip.is-ok { background: var(--tdz-success-soft); color: var(--tdz-success); }
+
+/* ---------- Gráficos ---------- */
+.tdz-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.tdz-chart-box {
+  position: relative;
+  width: 100%;
+  height: 320px;
+  padding-top: 4px;
+}
+.tdz-chart-box.tall { height: 340px; }
+.tdz-nodata {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--tdz-muted);
+  font-weight: 600;
+  font-size: 13.5px;
+  text-align: center;
+  padding: 16px;
+}
+.tdz-nodata i { font-size: 22px; opacity: .6; }
+.tdz-nodata.show { display: flex; }
+
+.tdz-empty {
+  text-align: center;
+  padding: 28px 16px;
+  color: var(--tdz-muted);
+  font-weight: 500;
+}
+
+/* ---------- Responsividade ---------- */
+@media (max-width: 60rem) {
+  .tdz-main { grid-template-columns: 1fr; }
+  .tdz-charts { grid-template-columns: 1fr; }
+}
+@media (max-width: 30rem) {
+  .tdz-filter-actions { display: grid; grid-template-columns: 1fr; }
+  .tdz-filter-actions .btn,
+  .tdz-filter-actions .btn-primary { width: 100%; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+
+<div class="tdz-page">
+
+  <!-- Filtro de período -->
+  <section class="tdz-filter">
+    <form method="get" class="tdz-filter-form" autocomplete="off">
+      <div class="tdz-field">
+        <label for="tdz-inicio">Data Início</label>
+        <input type="date" id="tdz-inicio" name="inicio" value="{{ inicio|date:'Y-m-d' }}">
+      </div>
+      <div class="tdz-field">
+        <label for="tdz-fim">Data Fim</label>
+        <input type="date" id="tdz-fim" name="fim" value="{{ fim|date:'Y-m-d' }}">
+      </div>
+      <div class="tdz-field">
+        <label>Ações</label>
+        <div class="tdz-filter-actions">
+          <button type="submit" class="btn-primary btn-sm">
+            <i class="fa-solid fa-filter" aria-hidden="true"></i>
+            <span>Filtrar</span>
+          </button>
+          <a href="{{ request.path }}" class="btn btn-sm">
+            <i class="fa-solid fa-eraser" aria-hidden="true"></i>
+            <span>Limpar</span>
+          </a>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <!-- KPIs -->
+  <section class="tdz-kpis">
+    <div class="tdz-kpi" style="--tdz-accent: var(--tdz-brand);">
+      <div class="tdz-kpi-icon"><i class="fa-solid fa-clipboard-check"></i></div>
+      <div class="tdz-kpi-info">
+        <span class="tdz-kpi-label">Execuções</span>
+        <span class="tdz-kpi-value">{{ kpi.execucoes }}</span>
+        <span class="tdz-kpi-sub">{{ kpi.com_agenda }} com data agendada</span>
+      </div>
+    </div>
+
+    <div class="tdz-kpi" style="--tdz-accent: var(--tdz-success);">
+      <div class="tdz-kpi-icon"><i class="fa-solid fa-bullseye"></i></div>
+      <div class="tdz-kpi-info">
+        <span class="tdz-kpi-label">Pontualidade</span>
+        <span class="tdz-kpi-value">{% if kpi.pontualidade is None %}&mdash;{% else %}{{ kpi.pontualidade }}%{% endif %}</span>
+        <span class="tdz-kpi-sub">{{ kpi.no_prazo }} no prazo</span>
+      </div>
+    </div>
+
+    <div class="tdz-kpi" style="--tdz-accent: var(--tdz-brand);">
+      <div class="tdz-kpi-icon"><i class="fa-solid fa-list-check"></i></div>
+      <div class="tdz-kpi-info">
+        <span class="tdz-kpi-label">Pendentes</span>
+        <span class="tdz-kpi-value">{{ kpi.atribuidas }}</span>
+        <span class="tdz-kpi-sub">atribuídas a técnicos</span>
+      </div>
+    </div>
+
+    <div class="tdz-kpi" style="--tdz-accent: var(--tdz-danger);">
+      <div class="tdz-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <div class="tdz-kpi-info">
+        <span class="tdz-kpi-label">Atrasadas</span>
+        <span class="tdz-kpi-value">{{ kpi.atrasadas }}</span>
+        <span class="tdz-kpi-sub">vencidas e pendentes</span>
+      </div>
+    </div>
+
+    <div class="tdz-kpi" style="--tdz-accent: var(--system-indigo, #5856d6);">
+      <div class="tdz-kpi-icon"><i class="fa-solid fa-user-gear"></i></div>
+      <div class="tdz-kpi-info">
+        <span class="tdz-kpi-label">Técnicos</span>
+        <span class="tdz-kpi-value">{{ kpi.tecnicos }}</span>
+        <span class="tdz-kpi-sub">com atividade no período</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Medidor principal + Ranking -->
+  <section class="tdz-main">
+    <!-- Gauge de pontualidade global -->
+    <div class="tdz-panel">
+      <div class="tdz-panel-head">
+        <div class="tdz-panel-title">
+          <i class="fa-solid fa-gauge-high"></i>
+          <span>Pontualidade Global</span>
+        </div>
+      </div>
+      <div class="tdz-panel-body">
+        <div class="tdz-gauge-wrap" id="tdzGaugeWrap">
+          <div class="tdz-gauge">
+            <div class="tdz-gauge-canvas-box">
+              <canvas id="tdzGauge"></canvas>
+              <div class="tdz-gauge-center">
+                <div class="tdz-gauge-num" id="tdzGaugeNum">&mdash;</div>
+                <div class="tdz-gauge-label">no prazo / com agenda</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tdz-gauge-state" id="tdzGaugeState">
+            <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+            <span>Calculando...</span>
+          </div>
+
+          <div class="tdz-gauge-meta">
+            <div>
+              <b>{{ kpi.no_prazo }}</b>
+              <span>No prazo</span>
+            </div>
+            <div>
+              <b>{{ kpi.com_agenda }}</b>
+              <span>Com agenda</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ranking de técnicos -->
+    <div class="tdz-panel">
+      <div class="tdz-panel-head">
+        <div class="tdz-panel-title">
+          <i class="fa-solid fa-ranking-star"></i>
+          <span>Ranking de Técnicos</span>
+        </div>
+        <span class="tdz-chip"><i class="fa-solid fa-user-group"></i>{{ kpi.tecnicos }} técnico(s)</span>
+      </div>
+      <div class="tdz-panel-body">
+        {% if tecnicos %}
+          <div class="tdz-rank">
+            {% for t in tecnicos %}
+              <article class="tdz-tech {% if forloop.first %}is-top{% endif %}">
+                <div class="tdz-tech-head">
+                  <div class="tdz-avatar">
+                    {{ t.nome|default:t.username|default:'?'|slice:':1'|upper }}
+                    {% if forloop.first %}<span class="tdz-medal"><i class="fa-solid fa-crown"></i></span>{% endif %}
+                  </div>
+                  <div class="tdz-tech-id">
+                    <div class="tdz-tech-name">{{ t.nome|default:t.username }}</div>
+                    <div class="tdz-tech-user">@{{ t.username }}</div>
+                  </div>
+                  <div class="tdz-ranknum">{{ forloop.counter }}</div>
+                </div>
+
+                <div class="tdz-tech-exec">
+                  <b>{{ t.execucoes }}</b>
+                  <span>execuções</span>
+                </div>
+
+                <div>
+                  <div class="tdz-pont-row">
+                    <span>Pontualidade</span>
+                    <span class="tdz-pont-val"
+                          data-pont="{% if t.pontualidade is None %}-1{% else %}{{ t.pontualidade }}{% endif %}">
+                      {% if t.pontualidade is None %}s/ agenda{% else %}{{ t.pontualidade }}%{% endif %}
+                    </span>
+                  </div>
+                  <div class="tdz-bar {% if t.pontualidade is None %}is-empty{% endif %}">
+                    <i data-pont="{% if t.pontualidade is None %}-1{% else %}{{ t.pontualidade }}{% endif %}"></i>
+                  </div>
+                </div>
+
+                <div class="tdz-chips">
+                  <span class="tdz-chip {% if t.atribuidas %}is-ok{% endif %}">
+                    <i class="fa-solid fa-clock"></i>{{ t.atribuidas }} atribuída(s)
+                  </span>
+                  {% if t.atrasadas %}
+                    <span class="tdz-chip is-danger">
+                      <i class="fa-solid fa-triangle-exclamation"></i>{{ t.atrasadas }} atrasada(s)
+                    </span>
+                  {% else %}
+                    <span class="tdz-chip is-ok">
+                      <i class="fa-solid fa-check"></i>sem atrasos
+                    </span>
+                  {% endif %}
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="tdz-empty">
+            <i class="fa-solid fa-user-slash" style="font-size:24px;opacity:.5;display:block;margin-bottom:8px;"></i>
+            Nenhum técnico com atividade no período selecionado.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <!-- Gráficos por técnico -->
+  <section class="tdz-charts">
+    <div class="tdz-panel">
+      <div class="tdz-panel-head">
+        <div class="tdz-panel-title">
+          <i class="fa-solid fa-chart-bar"></i>
+          <span>Execuções por Técnico</span>
+        </div>
+      </div>
+      <div class="tdz-panel-body">
+        <div class="tdz-chart-box">
+          <canvas id="tdzChartExec"></canvas>
+          <div class="tdz-nodata" id="ndExec">
+            <i class="fa-regular fa-folder-open"></i>
+            <span>Sem dados no período</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tdz-panel">
+      <div class="tdz-panel-head">
+        <div class="tdz-panel-title">
+          <i class="fa-solid fa-bullseye"></i>
+          <span>Pontualidade por Técnico</span>
+        </div>
+      </div>
+      <div class="tdz-panel-body">
+        <div class="tdz-chart-box">
+          <canvas id="tdzChartPont"></canvas>
+          <div class="tdz-nodata" id="ndPont">
+            <i class="fa-regular fa-folder-open"></i>
+            <span>Sem agendamentos no período</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tdz-panel">
+    <div class="tdz-panel-head">
+      <div class="tdz-panel-title">
+        <i class="fa-solid fa-chart-line"></i>
+        <span>Evolução Mensal de Execuções</span>
+      </div>
+    </div>
+    <div class="tdz-panel-body">
+      <div class="tdz-chart-box tall">
+        <canvas id="tdzChartMes"></canvas>
+        <div class="tdz-nodata" id="ndMes">
+          <i class="fa-regular fa-folder-open"></i>
+          <span>Sem execuções registradas</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+{{ kpi.pontualidade|json_script:"tdz-pont-global" }}
+{{ chart_tec_labels|json_script:"tdz-tec-labels" }}
+{{ chart_tec_exec|json_script:"tdz-tec-exec" }}
+{{ chart_tec_pont|json_script:"tdz-tec-pont" }}
+{{ chart_tec_atrasadas|json_script:"tdz-tec-atrasadas" }}
+{{ mes_labels|json_script:"tdz-mes-labels" }}
+{{ mes_exec|json_script:"tdz-mes-exec" }}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const root = document.querySelector('.tdz-page');
+  if (!root) return;
+
+  const getVar = (name, fallback) => {
+    const v = getComputedStyle(root).getPropertyValue(name).trim();
+    return v || fallback;
+  };
+  const getJson = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    try { return JSON.parse(el.textContent); } catch (e) { return null; }
+  };
+  const sum = (arr) => (arr || []).reduce((a, v) => a + (Number(v) || 0), 0);
+  const hexToRgba = (color, a) => {
+    const c = (color || '').trim();
+    if (c.startsWith('#')) {
+      let h = c.slice(1);
+      if (h.length === 3) h = h.split('').map(x => x + x).join('');
+      const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+      if ([r, g, b].some(Number.isNaN)) return c;
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (m) { const p = m[1].split(',').map(s => s.trim()); return `rgba(${p[0]}, ${p[1]}, ${p[2]}, ${a})`; }
+    return c;
+  };
+
+  const COL = {
+    brand:   getVar('--tdz-brand', '#0071e3'),
+    success: getVar('--tdz-success', '#34c759'),
+    warning: getVar('--tdz-warning', '#ff9500'),
+    danger:  getVar('--tdz-danger', '#ff3b30'),
+    muted:   getVar('--tdz-muted', '#6e6e73'),
+    border:  getVar('--tdz-border-2', 'rgba(0,0,0,.10)'),
+    track:   getVar('--tdz-surface-2', '#f5f5f7'),
+  };
+
+  // Cor por nível de pontualidade
+  const pontColor = (p) => {
+    if (p === null || p === undefined || p < 0) return COL.muted;
+    if (p >= 90) return COL.success;
+    if (p >= 60) return COL.warning;
+    return COL.danger;
+  };
+  const pontSoft = (p) => {
+    if (p === null || p === undefined || p < 0) return getVar('--tdz-brand-soft', 'rgba(0,113,227,.10)');
+    if (p >= 90) return getVar('--tdz-success-soft', 'rgba(52,199,89,.12)');
+    if (p >= 60) return getVar('--tdz-warning-soft', 'rgba(255,149,0,.12)');
+    return getVar('--tdz-danger-soft', 'rgba(255,59,48,.10)');
+  };
+
+  if (window.Chart) {
+    Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif";
+    Chart.defaults.font.size = 12;
+  }
+
+  const charts = [];
+  const baseTooltip = {
+    backgroundColor: getVar('--tdz-text', '#1d1d1f'),
+    titleColor: '#fff', bodyColor: '#fff',
+    padding: 11, cornerRadius: 10, displayColors: false,
+  };
+
+  // ---------- Barras horizontais por técnico ----------
+  function paintBars(el, fill) {
+    const meta = el.chart.getDatasetMeta(0);
+    if (!meta || !meta.data) return;
+  }
+
+  function horizontalBar(canvasId, ndId, labels, data, colorFn, opts) {
+    opts = opts || {};
+    const canvas = document.getElementById(canvasId);
+    const nd = document.getElementById(ndId);
+    if (!canvas || !window.Chart) return;
+
+    const has = sum(data) > 0;
+    if (nd) nd.classList.toggle('show', !has);
+
+    const colors = (data || []).map((v, i) => colorFn(v, i));
+
+    const ch = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: labels.length ? labels : ['—'],
+        datasets: [{
+          label: opts.label || 'Valor',
+          data: data.length ? data : [0],
+          backgroundColor: colors.length ? colors.map(c => hexToRgba(c, 0.85)) : [COL.brand],
+          borderColor: colors.length ? colors : [COL.brand],
+          borderWidth: 1,
+          borderRadius: 7,
+          barPercentage: 0.74,
+          categoryPercentage: 0.8,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: {
+          legend: { display: false },
+          tooltip: Object.assign({}, baseTooltip, {
+            callbacks: { label: (ctx) => ' ' + ctx.raw + (opts.suffix || '') }
+          })
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            max: opts.max,
+            grid: { color: COL.border },
+            ticks: { color: COL.muted, precision: 0, callback: (v) => v + (opts.suffix || '') }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: COL.muted, autoSkip: false, font: { size: 11.5 } }
+          }
+        }
+      }
+    });
+    charts.push(ch);
+  }
+
+  // ---------- Gauge de pontualidade global ----------
+  function buildGauge() {
+    const canvas = document.getElementById('tdzGauge');
+    const numEl = document.getElementById('tdzGaugeNum');
+    const stateEl = document.getElementById('tdzGaugeState');
+    const wrap = document.getElementById('tdzGaugeWrap');
+    if (!canvas || !window.Chart) return;
+
+    const pont = getJson('tdz-pont-global'); // int ou null
+    const hasData = pont !== null && pont !== undefined;
+    const val = hasData ? Math.max(0, Math.min(100, Number(pont))) : 0;
+    const color = hasData ? pontColor(val) : COL.muted;
+
+    // Número central
+    if (numEl) {
+      numEl.innerHTML = hasData ? (val + '<small>%</small>') : '&mdash;';
+      numEl.style.setProperty('--tdz-gauge-color', color);
+      wrap.style.setProperty('--tdz-gauge-color', color);
+    }
+
+    // Estado textual + cor da pílula
+    if (stateEl) {
+      let txt, icon, scolor, ssoft;
+      if (!hasData) {
+        txt = 'Sem agendamentos no período';
+        icon = 'fa-circle-info';
+        scolor = COL.muted; ssoft = getVar('--tdz-brand-soft', 'rgba(0,113,227,.10)');
+      } else if (val >= 90) {
+        txt = 'Excelente pontualidade'; icon = 'fa-circle-check';
+        scolor = COL.success; ssoft = getVar('--tdz-success-soft', 'rgba(52,199,89,.12)');
+      } else if (val >= 60) {
+        txt = 'Pontualidade moderada'; icon = 'fa-triangle-exclamation';
+        scolor = COL.warning; ssoft = getVar('--tdz-warning-soft', 'rgba(255,149,0,.12)');
+      } else {
+        txt = 'Pontualidade baixa'; icon = 'fa-circle-exclamation';
+        scolor = COL.danger; ssoft = getVar('--tdz-danger-soft', 'rgba(255,59,48,.10)');
+      }
+      stateEl.querySelector('span').textContent = txt;
+      stateEl.querySelector('i').className = 'fa-solid ' + icon;
+      stateEl.style.setProperty('--tdz-state-color', scolor);
+      stateEl.style.setProperty('--tdz-state-soft', ssoft);
+    }
+
+    const ch = new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: ['No prazo', 'Restante'],
+        datasets: [{
+          data: hasData ? [val, 100 - val] : [0, 100],
+          backgroundColor: [color, COL.track],
+          borderWidth: 0,
+          circumference: 180,
+          rotation: -90,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '72%',
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        animation: { animateRotate: true, duration: 900 }
+      }
+    });
+    charts.push(ch);
+  }
+
+  // ---------- Linha mensal com gradiente ----------
+  function buildMonthly() {
+    const canvas = document.getElementById('tdzChartMes');
+    const nd = document.getElementById('ndMes');
+    if (!canvas || !window.Chart) return;
+
+    const labels = getJson('tdz-mes-labels') || [];
+    const data = getJson('tdz-mes-exec') || [];
+    const has = sum(data) > 0;
+    if (nd) nd.classList.toggle('show', !has);
+
+    const fillFn = (context) => {
+      const { ctx, chartArea } = context.chart;
+      if (!chartArea) return hexToRgba(COL.brand, 0.12);
+      const g = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+      g.addColorStop(0, hexToRgba(COL.brand, 0.32));
+      g.addColorStop(1, hexToRgba(COL.brand, 0.01));
+      return g;
+    };
+
+    const ch = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: labels.length ? labels : ['—'],
+        datasets: [{
+          label: 'Execuções',
+          data: data.length ? data : [0],
+          borderColor: COL.brand,
+          backgroundColor: fillFn,
+          tension: 0.35,
+          fill: true,
+          borderWidth: 2.5,
+          pointRadius: 3, pointHoverRadius: 6,
+          pointBackgroundColor: COL.brand, pointBorderColor: '#fff', pointBorderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: Object.assign({}, baseTooltip, {
+            callbacks: { label: (ctx) => ' ' + ctx.raw + ' execução(ões)' }
+          })
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: COL.border },
+            ticks: { color: COL.muted, precision: 0 }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: COL.muted, maxRotation: 0, autoSkipPadding: 14 }
+          }
+        }
+      }
+    });
+    charts.push(ch);
+  }
+
+  // ---------- Barras de pontualidade do ranking (DOM) ----------
+  function paintRankBars() {
+    root.querySelectorAll('.tdz-bar > i[data-pont]').forEach((bar) => {
+      const p = Number(bar.getAttribute('data-pont'));
+      if (p < 0) { bar.style.width = '0%'; return; }
+      bar.style.width = p + '%';
+      bar.style.setProperty('--tdz-bar-color', pontColor(p));
+    });
+    root.querySelectorAll('.tdz-pont-val[data-pont]').forEach((el) => {
+      const p = Number(el.getAttribute('data-pont'));
+      el.style.color = pontColor(p);
+    });
+  }
+
+  // ---------- Boot ----------
+  const tecLabels = getJson('tdz-tec-labels') || [];
+  const tecExec = getJson('tdz-tec-exec') || [];
+  const tecPont = getJson('tdz-tec-pont') || [];
+
+  buildGauge();
+  paintRankBars();
+
+  horizontalBar('tdzChartExec', 'ndExec', tecLabels, tecExec,
+    () => COL.brand, { label: 'Execuções' });
+
+  horizontalBar('tdzChartPont', 'ndPont', tecLabels, tecPont,
+    (v) => pontColor(v), { label: 'Pontualidade', suffix: '%', max: 100 });
+
+  buildMonthly();
+
+  // Re-tema (claro/escuro) — atualiza cores dos gráficos
+  function refreshTheme() {
+    COL.brand = getVar('--tdz-brand', '#0071e3');
+    COL.muted = getVar('--tdz-muted', '#6e6e73');
+    COL.border = getVar('--tdz-border-2', 'rgba(0,0,0,.10)');
+    COL.track = getVar('--tdz-surface-2', '#f5f5f7');
+    charts.forEach((ch) => {
+      if (ch.options.plugins && ch.options.plugins.tooltip) {
+        ch.options.plugins.tooltip.backgroundColor = getVar('--tdz-text', '#1d1d1f');
+      }
+      if (ch.options.scales) {
+        Object.values(ch.options.scales).forEach((sc) => {
+          if (sc.ticks) sc.ticks.color = COL.muted;
+          if (sc.grid && sc.grid.display !== false) sc.grid.color = COL.border;
+        });
+      }
+      ch.update('none');
+    });
+  }
+  const obs = new MutationObserver(refreshTheme);
+  obs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+})();
+</script>
+{% endblock %}

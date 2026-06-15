@@ -574,6 +574,49 @@
         gap: 0.35rem;
     }
 }
+
+/* ── Melhorias: evolução, donut, tabelas ─────────────────────────── */
+.chart-container.tall { height: clamp(320px, 42vh, 420px); }
+
+/* Painel de evolução com cabeçalho rico */
+.evo-head { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.evo-stats { display: flex; gap: 1.25rem; margin-left: auto; flex-wrap: wrap; }
+.evo-stat { display: flex; flex-direction: column; line-height: 1.1; }
+.evo-stat b { font-size: 1.02rem; font-weight: 900; color: var(--td-text); font-variant-numeric: tabular-nums; }
+.evo-stat small { font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--td-muted); }
+.evo-stat.up b { color: var(--td-danger); }
+.evo-stat.down b { color: var(--td-success); }
+.evo-legend { display: flex; gap: 1rem; flex-wrap: wrap; padding: 0 0.25rem 0.5rem; }
+.evo-legend span { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.76rem; font-weight: 700; color: var(--td-muted); }
+.evo-legend i { width: 14px; height: 10px; border-radius: 3px; display: inline-block; }
+
+/* Rodapé de totais nas tabelas */
+.td-table tfoot td {
+    padding: 0.875rem 1rem;
+    border-top: 2px solid var(--td-border-subtle);
+    font-weight: 900;
+    color: var(--td-text);
+    background: var(--td-surface-soft);
+}
+.td-table tfoot td strong { color: var(--td-primary); }
+
+/* Badge de ranking */
+.rank-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.6rem; height: 1.6rem; border-radius: 0.55rem;
+    background: var(--td-surface-muted); color: var(--td-muted);
+    font-weight: 900; font-size: 0.78rem; flex-shrink: 0;
+}
+.rank-badge.top1 { background: color-mix(in srgb, #ffb800 22%, transparent); color: #946100; }
+.rank-badge.top2 { background: color-mix(in srgb, #8e99a8 24%, transparent); color: #525a66; }
+.rank-badge.top3 { background: color-mix(in srgb, #cd7f32 24%, transparent); color: #8a5320; }
+.item-rank { display: flex; align-items: center; gap: 0.7rem; }
+
+/* Barra de participação no % por CC */
+.share-cell { min-width: 120px; }
+.share-wrap { display: flex; align-items: center; gap: 0.5rem; justify-content: flex-end; }
+.share-bar { flex: 1; max-width: 78px; height: 6px; border-radius: 999px; background: var(--td-surface-muted); overflow: hidden; }
+.share-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--td-primary); }
 </style>
 
 <div class="toner-dashboard">
@@ -696,6 +739,38 @@
             </div>
         </section>
 
+        <section class="panel">
+            <div class="panel-header">
+                <div class="evo-head">
+                    <div class="panel-title">
+                        <i class="fa fa-chart-line"></i>
+                        Evolução do Gasto de Toner
+                    </div>
+                    <div class="evo-stats">
+                        <div class="evo-stat">
+                            <b>R$ {{ mes_media|floatformat:2|intcomma }}</b>
+                            <small>Média mensal</small>
+                        </div>
+                        <div class="evo-stat" id="evoUltimo">
+                            <b>—</b>
+                            <small>Último mês</small>
+                        </div>
+                        <div class="evo-stat" id="evoVar">
+                            <b>—</b>
+                            <small>Variação m/m</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel-body">
+                <div class="chart-container tall">
+                    <canvas id="chart-month"></canvas>
+                    <div id="nd-month" class="nodata">Sem dados no período</div>
+                </div>
+            </div>
+        </section>
+
         <section class="dashboard-grid-main">
             <div class="panel">
                 <div class="panel-header">
@@ -751,15 +826,16 @@
             <div class="panel">
                 <div class="panel-header">
                     <div class="panel-title">
-                        <i class="fa fa-calendar"></i>
-                        Evolução Mensal
+                        <i class="fa fa-chart-pie"></i>
+                        Distribuição por Centro de Custo
                     </div>
+                    <span class="percent-pill">Participação</span>
                 </div>
 
                 <div class="panel-body">
                     <div class="chart-container small">
-                        <canvas id="chart-month"></canvas>
-                        <div id="nd-month" class="nodata">Sem dados no período</div>
+                        <canvas id="chart-cc-donut"></canvas>
+                        <div id="nd-donut" class="nodata">Sem dados no período</div>
                     </div>
                 </div>
             </div>
@@ -800,8 +876,11 @@
                                             R$ {{ l.gasto|floatformat:2|intcomma }}
                                         </strong>
                                     </td>
-                                    <td data-label="% Total" class="text-right">
-                                        <span class="percent-pill">{{ l.percentual|floatformat:2 }}%</span>
+                                    <td data-label="% Total" class="text-right share-cell">
+                                        <div class="share-wrap">
+                                            <div class="share-bar"><i style="width:{{ l.percentual|floatformat:0 }}%"></i></div>
+                                            <span class="percent-pill">{{ l.percentual|floatformat:2 }}%</span>
+                                        </div>
                                     </td>
                                     <td data-label="Ticket Médio" class="text-right">
                                         R$ {{ l.ticket|floatformat:2|intcomma }}
@@ -817,6 +896,18 @@
                                 </tr>
                             {% endfor %}
                         </tbody>
+                        {% if linhas %}
+                        <tfoot>
+                            <tr>
+                                <td data-label="Centro de Custo">Total geral</td>
+                                <td data-label="Quantidade" class="text-right">{{ kpi_total_qtd }}</td>
+                                <td data-label="Movimentações" class="text-right">{{ kpi_total_movimentos }}</td>
+                                <td data-label="Custo Total" class="text-right"><strong>R$ {{ kpi_total_gasto|floatformat:2|intcomma }}</strong></td>
+                                <td data-label="% Total" class="text-right">100%</td>
+                                <td data-label="Ticket Médio" class="text-right">R$ {{ kpi_ticket_medio|floatformat:2|intcomma }}</td>
+                            </tr>
+                        </tfoot>
+                        {% endif %}
                     </table>
                 </div>
             </div>
@@ -847,8 +938,13 @@
                             {% for item in top_itens %}
                                 <tr>
                                     <td data-label="Item">
-                                        <div class="item-name">{{ item.nome }}</div>
-                                        <div class="table-sub">S/N: {{ item.numero_serie }}</div>
+                                        <div class="item-rank">
+                                            <span class="rank-badge {% if forloop.counter == 1 %}top1{% elif forloop.counter == 2 %}top2{% elif forloop.counter == 3 %}top3{% endif %}">{{ forloop.counter }}</span>
+                                            <div>
+                                                <div class="item-name">{{ item.nome }}</div>
+                                                <div class="table-sub">S/N: {{ item.numero_serie }}</div>
+                                            </div>
+                                        </div>
                                     </td>
                                     <td data-label="Quantidade" class="text-right">{{ item.qtd }}</td>
                                     <td data-label="Movimentações" class="text-right">{{ item.movimentos }}</td>
@@ -891,6 +987,7 @@
 {{ mes_labels|default:"[]"|json_script:"toner-mes-labels" }}
 {{ mes_gasto|default:"[]"|json_script:"toner-mes-gasto" }}
 {{ mes_qtd|default:"[]"|json_script:"toner-mes-qtd" }}
+{{ mes_media|default:"0"|json_script:"toner-mes-media" }}
 
 <script>
 (function() {
@@ -932,8 +1029,16 @@
     const mesLabels = getJson('toner-mes-labels');
     const mesGasto = getJson('toner-mes-gasto');
     const mesQtd = getJson('toner-mes-qtd');
+    const mesMedia = Number(getJson('toner-mes-media')) || 0;
 
     const charts = [];
+
+    const DONUT_CORES = [
+        getVar('--td-primary', '#2563eb'), getVar('--td-purple', '#8b5cf6'),
+        getVar('--td-success', '#10b981'), getVar('--td-warning', '#f59e0b'),
+        getVar('--td-info', '#0ea5e9'), getVar('--td-danger', '#ef4444'),
+        '#14b8a6', '#a855f7', '#f97316', '#64748b'
+    ];
 
     function baseChartOptions(extra = {}) {
         const text = getVar('--td-muted', '#64748b');
@@ -1014,12 +1119,78 @@
                     categoryPercentage: 0.72
                 }]
             },
-            options: baseChartOptions({
-                scales: options.scales,
-                legend: false
-            })
+            options: Object.assign(
+                baseChartOptions({ scales: options.scales, legend: false }),
+                { indexAxis: options.indexAxis || 'x' }
+            )
         });
 
+        charts.push(chart);
+    }
+
+    function hexToRgba(color, a) {
+        const c = (color || '').trim();
+        if (c.startsWith('#')) {
+            let h = c.slice(1);
+            if (h.length === 3) h = h.split('').map(x => x + x).join('');
+            const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+            if ([r, g, b].some(Number.isNaN)) return c;
+            return `rgba(${r}, ${g}, ${b}, ${a})`;
+        }
+        const m = c.match(/rgba?\(([^)]+)\)/);
+        if (m) {
+            const p = m[1].split(',').map(s => s.trim());
+            return `rgba(${p[0]}, ${p[1]}, ${p[2]}, ${a})`;
+        }
+        return c;
+    }
+
+    function makeDonut() {
+        const canvas = document.getElementById('chart-cc-donut');
+        const nodata = document.getElementById('nd-donut');
+        if (!canvas) return;
+
+        const hasData = sumArr(ccData) > 0;
+        if (nodata) nodata.style.display = hasData ? 'none' : 'flex';
+
+        // Agrupa em Top 8 + "Outros"
+        let labels = ccLabels.slice();
+        let data = ccData.slice();
+        if (labels.length > 8) {
+            const resto = sumArr(data.slice(8));
+            labels = labels.slice(0, 8).concat(['Outros']);
+            data = data.slice(0, 8).concat([resto]);
+        }
+
+        const text = getVar('--td-muted', '#64748b');
+        const chart = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels: hasData ? labels : ['Sem dados'],
+                datasets: [{
+                    data: hasData ? data : [1],
+                    backgroundColor: hasData
+                        ? labels.map((_, i) => DONUT_CORES[i % DONUT_CORES.length])
+                        : [getVar('--td-surface-muted', '#e2e8f0')],
+                    borderWidth: 2,
+                    borderColor: getVar('--td-surface', '#ffffff'),
+                    hoverOffset: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '60%',
+                plugins: {
+                    legend: { position: 'right', labels: { color: text, usePointStyle: true, boxWidth: 8, padding: 12, font: { size: 11 } } },
+                    tooltip: {
+                        backgroundColor: getVar('--td-text', '#0f172a'),
+                        titleColor: '#fff', bodyColor: '#fff', padding: 12, cornerRadius: 10,
+                        callbacks: { label: (ctx) => ` ${ctx.label}: ${brl(ctx.raw)}` }
+                    }
+                }
+            }
+        });
         charts.push(chart);
     }
 
@@ -1030,10 +1201,47 @@
         if (!canvas) return;
 
         const hasData = sumArr(mesGasto) > 0 || sumArr(mesQtd) > 0;
+        if (nodata) nodata.style.display = hasData ? 'none' : 'flex';
 
-        if (nodata) {
-            nodata.style.display = hasData ? 'none' : 'flex';
+        // Estatísticas do cabeçalho: último mês + variação mês a mês
+        if (mesGasto.length) {
+            const ultimo = mesGasto[mesGasto.length - 1];
+            const elU = document.getElementById('evoUltimo');
+            if (elU) elU.querySelector('b').textContent = brl(ultimo);
+
+            const elV = document.getElementById('evoVar');
+            if (elV && mesGasto.length >= 2) {
+                const ant = mesGasto[mesGasto.length - 2];
+                const b = elV.querySelector('b');
+                if (ant > 0) {
+                    const pct = ((ultimo - ant) / ant) * 100;
+                    const up = pct >= 0;
+                    elV.classList.toggle('up', up);
+                    elV.classList.toggle('down', !up);
+                    b.textContent = (up ? '▲ ' : '▼ ') + Math.abs(pct).toFixed(1) + '%';
+                } else if (ultimo > 0) {
+                    elV.classList.add('up'); b.textContent = 'novo';
+                } else {
+                    b.textContent = '0%';
+                }
+            }
         }
+
+        const primary = getVar('--td-primary', '#2563eb');
+        const success = getVar('--td-success', '#10b981');
+        const muted = getVar('--td-muted', '#64748b');
+        const grid = getVar('--td-border-subtle', 'rgba(148, 163, 184, 0.25)');
+
+        const gastoFill = (context) => {
+            const { ctx, chartArea } = context.chart;
+            if (!chartArea) return hexToRgba(primary, 0.12);
+            const g = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+            g.addColorStop(0, hexToRgba(primary, 0.30));
+            g.addColorStop(1, hexToRgba(primary, 0.01));
+            return g;
+        };
+
+        const mediaLine = mesLabels.map(() => mesMedia);
 
         const chart = new Chart(canvas, {
             type: 'line',
@@ -1043,21 +1251,35 @@
                     {
                         label: 'Gasto',
                         data: mesGasto.length ? mesGasto : [0],
-                        borderColor: getVar('--td-primary', '#2563eb'),
-                        backgroundColor: getVar('--td-primary-soft', 'rgba(37, 99, 235, 0.14)'),
+                        borderColor: primary,
+                        backgroundColor: gastoFill,
                         tension: 0.35,
                         fill: true,
-                        yAxisID: 'y'
+                        yAxisID: 'y',
+                        borderWidth: 2.5,
+                        pointRadius: 3, pointHoverRadius: 6,
+                        pointBackgroundColor: primary, pointBorderColor: '#fff', pointBorderWidth: 2,
+                        order: 2
+                    },
+                    {
+                        label: 'Média do período',
+                        data: mediaLine,
+                        borderColor: muted,
+                        borderDash: [6, 5], borderWidth: 1.5,
+                        pointRadius: 0, pointHoverRadius: 0,
+                        fill: false, yAxisID: 'y', order: 1
                     },
                     {
                         label: 'Quantidade',
                         data: mesQtd.length ? mesQtd : [0],
-                        borderColor: getVar('--td-success', '#10b981'),
-                        backgroundColor: getVar('--td-success-bg', 'rgba(16, 185, 129, 0.12)'),
+                        borderColor: success,
+                        backgroundColor: success,
                         tension: 0.35,
                         fill: false,
                         yAxisID: 'y1',
-                        isQtd: true
+                        borderWidth: 2,
+                        pointRadius: 2, pointHoverRadius: 5,
+                        isQtd: true, order: 3
                     }
                 ]
             },
@@ -1065,27 +1287,18 @@
                 legend: true,
                 scales: {
                     y: {
-                        beginAtZero: true,
-                        position: 'left',
-                        grid: { color: getVar('--td-border-subtle', 'rgba(148, 163, 184, 0.25)') },
-                        ticks: {
-                            color: getVar('--td-muted', '#64748b'),
-                            callback: (value) => brl(value)
-                        }
+                        beginAtZero: true, position: 'left',
+                        grid: { color: grid },
+                        ticks: { color: muted, callback: (value) => brl(value) }
                     },
                     y1: {
-                        beginAtZero: true,
-                        position: 'right',
+                        beginAtZero: true, position: 'right',
                         grid: { display: false },
-                        ticks: {
-                            color: getVar('--td-muted', '#64748b')
-                        }
+                        ticks: { color: muted, precision: 0 }
                     },
                     x: {
                         grid: { display: false },
-                        ticks: {
-                            color: getVar('--td-muted', '#64748b')
-                        }
+                        ticks: { color: muted, maxRotation: 0, autoSkipPadding: 14 }
                     }
                 }
             })
@@ -1115,6 +1328,7 @@
         {
             label: 'Gasto',
             color: getVar('--td-success', '#10b981'),
+            indexAxis: 'y',
             scales: {
                 x: {
                     beginAtZero: true,
@@ -1131,10 +1345,6 @@
             }
         }
     );
-
-    if (charts[1]) {
-        charts[1].config.options.indexAxis = 'y';
-    }
 
     makeBarChart(
         'chart-items',
@@ -1144,6 +1354,7 @@
         {
             label: 'Gasto por Item',
             color: getVar('--td-purple', '#8b5cf6'),
+            indexAxis: 'y',
             scales: {
                 x: {
                     beginAtZero: true,
@@ -1161,10 +1372,7 @@
         }
     );
 
-    if (charts[2]) {
-        charts[2].config.options.indexAxis = 'y';
-    }
-
+    makeDonut();
     makeMonthlyChart();
 
     function refreshChartTheme() {

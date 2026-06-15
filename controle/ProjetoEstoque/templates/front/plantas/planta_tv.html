@@ -149,6 +149,65 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: #f5f5f7; fon
 .tv-root.light .tv-tooltip { background: rgba(245,245,247,.96); border-color: rgba(0,0,0,.1); color: #3a3a3c; box-shadow: 0 6px 24px rgba(0,0,0,.12); }
 .tv-root.light .tv-tooltip .tt-name { color: #1d1d1f; }
 .tv-root.light .tv-orbit-hint { background: rgba(255,255,255,.8); border-color: rgba(0,0,0,.1); color: rgba(0,0,0,.45); }
+
+/* ── Botão Tour (apresentação automática) ── */
+.tv-icon-btn.on { background: rgba(0,207,255,.18); border-color: #00cfff99; color: #00cfff; box-shadow: 0 0 12px #00cfff44; }
+.tv-root.light .tv-icon-btn.on { background: rgba(0,160,210,.14); border-color: #00a0d2; color: #007aaa; }
+
+/* ── Vinheta ambiente ── */
+.tv-vignette {
+  position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background: radial-gradient(ellipse 120% 90% at 50% 42%, transparent 55%, rgba(0,0,0,.42) 100%);
+  transition: opacity .4s ease;
+}
+.tv-root.light .tv-vignette { background: radial-gradient(ellipse 120% 90% at 50% 42%, transparent 60%, rgba(0,0,0,.10) 100%); }
+
+/* ── Stack de alertas de status (NOC) ── */
+.tv-alert-stack {
+  position: absolute; top: 12px; right: 14px; z-index: 30;
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+  pointer-events: none; max-width: 320px;
+}
+.tv-alert {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px 9px 12px; border-radius: 12px;
+  background: rgba(8,8,12,.86); backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,.1);
+  box-shadow: 0 8px 30px rgba(0,0,0,.5);
+  font-size: .76rem; color: #f5f5f7; white-space: nowrap;
+  animation: tvAlertIn .45s cubic-bezier(.2,.9,.3,1.2) both;
+  border-left-width: 3px;
+}
+.tv-alert.out { animation: tvAlertOut .5s ease forwards; }
+.tv-alert i { font-size: .9rem; flex-shrink: 0; }
+.tv-alert strong { display: block; font-weight: 700; font-size: .78rem; }
+.tv-alert span { display: block; font-size: .68rem; color: rgba(255,255,255,.55); }
+.tv-alert.down { border-left-color: #ff3b30; } .tv-alert.down i { color: #ff3b30; }
+.tv-alert.warn { border-left-color: #ff9500; } .tv-alert.warn i { color: #ff9500; }
+.tv-alert.up   { border-left-color: #34c759; } .tv-alert.up i   { color: #34c759; }
+.tv-root.light .tv-alert { background: rgba(255,255,255,.95); border-color: rgba(0,0,0,.08); color: #1d1d1f; box-shadow: 0 8px 30px rgba(0,0,0,.16); }
+.tv-root.light .tv-alert span { color: rgba(0,0,0,.5); }
+@keyframes tvAlertIn  { from { opacity:0; transform: translateX(40px) scale(.92); } to { opacity:1; transform:none; } }
+@keyframes tvAlertOut { to { opacity:0; transform: translateX(40px) scale(.92); } }
+
+/* ── Anel de saúde geral (rodapé) ── */
+.tv-health { display: flex; align-items: center; gap: 8px; }
+.tv-health-ring {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: conic-gradient(#34c759 0deg, rgba(255,255,255,.12) 0deg);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  transition: background .6s ease;
+}
+.tv-health-ring::after {
+  content: ''; width: 15px; height: 15px; border-radius: 50%;
+  background: #0a0a0b;
+}
+.tv-root.light .tv-health-ring::after { background: #f2f2f7; }
+.tv-health-txt { display: flex; flex-direction: column; line-height: 1.1; }
+.tv-health-txt b { font-size: .8rem; font-weight: 700; color: #f5f5f7; font-variant-numeric: tabular-nums; }
+.tv-health-txt small { font-size: .58rem; text-transform: uppercase; letter-spacing: .06em; color: rgba(255,255,255,.4); }
+.tv-root.light .tv-health-txt b { color: #1d1d1f; }
+.tv-root.light .tv-health-txt small { color: rgba(0,0,0,.45); }
 </style>
 </head>
 <body>
@@ -175,6 +234,9 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: #f5f5f7; fon
     <button class="tv-icon-btn" onclick="navigateElement(false)" title="Próximo elemento (Tab)">
       <i class="fa-solid fa-chevron-right"></i>
     </button>
+    <button class="tv-icon-btn" id="tvTourBtn" onclick="toggleTour()" title="Tour automático (T)">
+      <i class="fa-solid fa-play" id="tvTourIcon"></i>
+    </button>
     <div class="tv-sep"></div>
     <button class="tv-icon-btn" onclick="(()=>{const r=wrap.getBoundingClientRect();applyZoom(1/1.18,r.width/2,r.height/2);})()" title="Reduzir zoom (−)">
       <i class="fa-solid fa-minus"></i>
@@ -197,6 +259,8 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: #f5f5f7; fon
 
   <div class="tv-canvas-wrap" id="tvWrap">
     <canvas id="tvCanvas"></canvas>
+    <div class="tv-vignette"></div>
+    <div class="tv-alert-stack" id="tvAlerts"></div>
     <div class="tv-3d-badge" id="tv3dBadge"><i class="fa-solid fa-cube"></i> 3D · ISO</div>
     <div class="tv-orbit-hint" id="tvOrbitHint">
       <i class="fa-solid fa-hand-pointer"></i>&nbsp; Arraste = orbitar &nbsp;·&nbsp; Btn dir. = pan &nbsp;·&nbsp; ‹ › = navegar elementos &nbsp;·&nbsp; ← → ↑ ↓ = órbita fina &nbsp;·&nbsp; Espaço = auto-órbita
@@ -221,6 +285,11 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: #f5f5f7; fon
     <div class="tv-kpi"><div class="tv-kpi-dot paused"></div><span class="tv-kpi-count" id="tvKpiPaused">—</span><span class="tv-kpi-label">Pausado</span></div>
     <div class="tv-footer-sep"></div>
     <div class="tv-kpi"><div class="tv-kpi-dot none"></div><span class="tv-kpi-count" id="tvKpiNone">—</span><span class="tv-kpi-label">Sem PRTG</span></div>
+    <div class="tv-footer-sep"></div>
+    <div class="tv-health" title="Saúde geral = online ÷ monitorados">
+      <div class="tv-health-ring" id="tvHealthRing"></div>
+      <div class="tv-health-txt"><b id="tvHealthPct">—</b><small>Saúde</small></div>
+    </div>
     <div class="tv-ref" id="tvRef"><i class="fa-solid fa-rotate"></i> Aguardando...</div>
   </footer>
 
@@ -498,6 +567,33 @@ function drawEl2D(el) {
       ctx.font=`600 ${Math.max(7,8.5*zoom)}px -apple-system,sans-serif`;
       ctx.fillStyle=darkMode?'#e5e5ea':'#1d1d1f';ctx.textAlign='center';ctx.textBaseline='top';
       ctx.fillText(el.label.length>13?el.label.slice(0,12)+'…':el.label,cx,cy+r+4*zoom);
+    }
+    ctx.restore();return;
+  }
+
+  /* Access Point: ícone Wi-Fi dentro de um círculo + nome */
+  if(el.type==='access_point'){
+    const bw=(el.width||60)*zoom,bh=(el.height||60)*zoom;
+    const cx=sc.x+bw/2,cy=sc.y+bh/2,R=Math.min(bw,bh)*0.46;
+    const stCol=elStColor(el),st=elStKey(el);
+    ctx.save();
+    drawPulse2D({x:cx-R,y:cy-R},R*2,R*2,stCol,st);
+    if(st==='down'){ctx.shadowColor=stCol;ctx.shadowBlur=20*zoom;}
+    else if(st==='warning'){ctx.shadowColor=stCol;ctx.shadowBlur=12*zoom;}
+    else if(st==='up'){ctx.shadowColor=stCol;ctx.shadowBlur=7*zoom;}
+    else{ctx.shadowColor=darkMode?'rgba(0,0,0,.4)':'rgba(0,0,0,.12)';ctx.shadowBlur=6*zoom;}
+    ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);
+    ctx.fillStyle=darkMode?'#1c1c1e':'#fff';ctx.fill();
+    ctx.shadowColor='transparent';ctx.shadowBlur=0;
+    ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);
+    ctx.strokeStyle=hexAlpha(st!=='none'?stCol:color,0.5);ctx.lineWidth=1.5*zoom;ctx.stroke();
+    if(st!=='none'){ctx.beginPath();ctx.arc(cx,cy,R+2*zoom,0,Math.PI*2);ctx.strokeStyle=stCol;ctx.lineWidth=2*zoom;ctx.stroke();}
+    ctx.font=`${Math.max(12,R*1.15)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(cfg.emoji,cx,cy);
+    if(el.label&&zoom>0.3){
+      ctx.font=`600 ${Math.max(7,8.5*zoom)}px -apple-system,sans-serif`;
+      ctx.fillStyle=darkMode?'#e5e5ea':'#1d1d1f';ctx.textAlign='center';ctx.textBaseline='top';
+      ctx.fillText(el.label.length>14?el.label.slice(0,13)+'…':el.label,cx,cy+R+4*zoom);
     }
     ctx.restore();return;
   }
@@ -1169,6 +1265,21 @@ function updateKpis() {
   document.getElementById('tvKpiDown').textContent=down;
   document.getElementById('tvKpiPaused').textContent=paused;
   document.getElementById('tvKpiNone').textContent=none;
+
+  // Anel de saúde geral = online ÷ monitorados (up+warn+down)
+  const mon=up+warn+down;
+  const pct=mon?Math.round(up/mon*100):100;
+  const hp=document.getElementById('tvHealthPct');
+  if(hp)hp.textContent=mon?pct+'%':'—';
+  const ring=document.getElementById('tvHealthRing');
+  if(ring){
+    if(!mon){
+      ring.style.background='conic-gradient(rgba(255,255,255,.12) 360deg, rgba(255,255,255,.12) 0deg)';
+    }else{
+      const col=pct>=90?'#34c759':pct>=60?'#ff9500':'#ff3b30';
+      ring.style.background=`conic-gradient(${col} ${pct*3.6}deg, rgba(255,255,255,.12) 0deg)`;
+    }
+  }
 }
 
 async function fetchPrtg() {
@@ -1177,7 +1288,7 @@ async function fetchPrtg() {
     const r=await fetch(STATUS_URL,{credentials:"same-origin"});
     if(!r.ok)throw new Error();
     const d=await r.json();
-    if(d.ok){devicesMap=d.devices_map||{};updateKpis();}
+    if(d.ok){devicesMap=d.devices_map||{};updateKpis();detectStatusChanges();}
     const n=new Date();
     document.getElementById('tvRef').innerHTML=`<i class="fa-solid fa-rotate"></i> ${n.getHours().toString().padStart(2,'0')}:${n.getMinutes().toString().padStart(2,'0')}:${n.getSeconds().toString().padStart(2,'0')}`;
   }catch{}
@@ -1258,6 +1369,64 @@ wrap.addEventListener('touchend',e=>{
   if(Object.keys(_touches).length<2)_lastPinchDist=null;
   if(e.touches.length===0)_touchPan=null;
 },{passive:true});
+
+// ── Alertas de mudança de status (estilo NOC) ─────────────────────────────────
+let _prevStat = null;
+function detectStatusChanges(){
+  const cur = {};
+  navElements().forEach(el => { if(el.prtg_objid) cur[el.prtg_objid] = elStKey(el); });
+  if(_prevStat){
+    navElements().forEach(el => {
+      if(!el.prtg_objid) return;
+      const a = _prevStat[el.prtg_objid], b = cur[el.prtg_objid];
+      if(!a || !b || a === b) return;
+      const piorou    = (b === 'down') || (b === 'warning' && a !== 'down');
+      const recuperou = (b === 'up') && (a === 'down' || a === 'warning');
+      if(piorou || recuperou) pushAlert(el, b);
+    });
+  }
+  _prevStat = cur;
+}
+function pushAlert(el, to){
+  const stack = document.getElementById('tvAlerts'); if(!stack) return;
+  const cfg  = TIPO[el.type] || TIPO.switch;
+  const cls  = to === 'down' ? 'down' : to === 'warning' ? 'warn' : 'up';
+  const icon = to === 'down' ? 'fa-circle-xmark' : to === 'warning' ? 'fa-triangle-exclamation' : 'fa-circle-check';
+  const verb = to === 'down' ? 'ficou Offline' : to === 'warning' ? 'está Instável' : 'voltou Online';
+  const div = document.createElement('div');
+  div.className = 'tv-alert ' + cls;
+  div.innerHTML = `<i class="fa-solid ${icon}"></i><div><strong></strong><span></span></div>`;
+  div.querySelector('strong').textContent = el.label || cfg.label;
+  div.querySelector('span').textContent   = verb;
+  stack.appendChild(div);
+  while(stack.children.length > 4) stack.removeChild(stack.firstChild);
+  setTimeout(() => { div.classList.add('out'); setTimeout(() => div.remove(), 500); }, 8000);
+}
+
+// ── Tour cinematográfico (apresentação automática estilo kiosk) ───────────────
+let _tourOn = false, _tourCycle = null, _tourResume = null;
+function startTourCycle(){ clearInterval(_tourCycle); _tourCycle = setInterval(() => navigateElement(false), 5000); }
+function toggleTour(){
+  _tourOn = !_tourOn;
+  const b  = document.getElementById('tvTourBtn');
+  const ic = document.getElementById('tvTourIcon');
+  if(b)  b.classList.toggle('on', _tourOn);
+  if(ic) ic.className = _tourOn ? 'fa-solid fa-pause' : 'fa-solid fa-play';
+  if(_tourOn){ navigateElement(false); startTourCycle(); }
+  else { clearInterval(_tourCycle); _tourCycle = null; clearTimeout(_tourResume); _tourResume = null; }
+}
+function bumpTour(){
+  if(!_tourOn) return;
+  clearInterval(_tourCycle); _tourCycle = null;
+  clearTimeout(_tourResume);
+  _tourResume = setTimeout(() => { if(_tourOn) startTourCycle(); }, 12000);
+}
+wrap.addEventListener('mousedown', bumpTour);
+wrap.addEventListener('wheel', bumpTour, { passive: true });
+window.addEventListener('keydown', e => {
+  if(e.key === 't' || e.key === 'T'){ toggleTour(); return; }
+  bumpTour();
+});
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 function scheduleAutoOrbitResume(){

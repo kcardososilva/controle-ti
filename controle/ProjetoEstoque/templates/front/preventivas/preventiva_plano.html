@@ -6,6 +6,12 @@
 {% block page_subtitle %}Selecione equipamentos e defina a data de execução em lote{% endblock %}
 
 {% block header_actions %}
+  <a href="{% url 'tecnico_desempenho' %}" class="btn btn-sm">
+    <i class="fa fa-gauge-high" aria-hidden="true"></i> Desempenho
+  </a>
+  <a href="{% url 'minhas_atividades' %}" class="btn btn-sm">
+    <i class="fa fa-list-check" aria-hidden="true"></i> Minhas atividades
+  </a>
   <a href="{% url 'preventiva_agendadas' %}" class="btn btn-sm">
     <i class="fa fa-calendar-days" aria-hidden="true"></i> Agendadas
   </a>
@@ -232,6 +238,17 @@
   border-radius: 7px; padding: .2rem .55rem;
 }
 
+/* Chip do técnico responsável */
+.pl-tecnico-chip {
+  display: inline-flex; align-items: center; gap: .32rem;
+  font-size: .74rem; font-weight: 700;
+  color: var(--brand, #0071e3);
+  background: color-mix(in srgb, var(--brand, #0071e3) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand, #0071e3) 22%, transparent);
+  border-radius: 999px; padding: .2rem .6rem; white-space: nowrap;
+}
+.pl-tecnico-chip i { font-size: .68rem; opacity: .8; }
+
 /* Linha em destaque quando tem agendamento */
 .pl-table tbody tr.has-sched td:first-child {
   border-left: 3px solid rgba(16,185,129,.55);
@@ -319,11 +336,21 @@
           {% endfor %}
         </select>
       </div>
+      <div class="pl-field">
+        <label>Técnico</label>
+        <select name="tecnico" class="pl-control">
+          <option value="">Todos</option>
+          <option value="sem" {% if filter_tecnico == 'sem' %}selected{% endif %}>Sem técnico</option>
+          {% for t in tecnicos %}
+            <option value="{{ t.pk }}" {% if filter_tecnico|stringformat:'s' == t.pk|stringformat:'s' %}selected{% endif %}>{{ t.get_full_name|default:t.username }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="pl-filter-actions">
         <button type="submit" class="btn btn-primary btn-sm">
           <i class="fa fa-filter" aria-hidden="true"></i> Filtrar
         </button>
-        {% if filter_q or filter_status or filter_localidade or filter_checklist %}
+        {% if filter_q or filter_status or filter_localidade or filter_checklist or filter_tecnico %}
           <a href="{% url 'preventiva_plano' %}" class="btn btn-sm">
             <i class="fa fa-xmark" aria-hidden="true"></i> Limpar
           </a>
@@ -356,6 +383,17 @@
                class="pl-date-input" autocomplete="off">
       </div>
 
+      <!-- Técnico responsável -->
+      <div class="pl-date-wrap">
+        <label for="pl-tecnico-input">Técnico responsável</label>
+        <select name="tecnico_id" id="pl-tecnico-input" class="pl-date-input">
+          <option value="">— manter atual —</option>
+          {% for t in tecnicos %}
+            <option value="{{ t.pk }}">{{ t.get_full_name|default:t.username }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
       <!-- Botões -->
       <div class="pl-action-buttons">
         <button type="submit" name="acao" value="agendar" class="btn btn-primary btn-sm" id="pl-btn-agendar">
@@ -372,7 +410,7 @@
       <div class="pl-table-header">
         <span class="pl-table-title">
           <i class="fa fa-list-check" aria-hidden="true"></i>
-          {{ total }} equipamento{{ total|pluralize:"s" }}{% if filter_q or filter_status or filter_localidade or filter_checklist %} — filtro ativo{% endif %}
+          {{ total }} equipamento{{ total|pluralize:"s" }}{% if filter_q or filter_status or filter_localidade or filter_checklist or filter_tecnico %} — filtro ativo{% endif %}
         </span>
         {% if page_obj %}
           <label style="display:flex;align-items:center;gap:.45rem;font-size:.82rem;font-weight:600;cursor:pointer;user-select:none;color:var(--pl-sub);">
@@ -392,6 +430,7 @@
               <th>Última execução</th>
               <th>Próxima / Agendada</th>
               <th>Status</th>
+              <th>Técnico</th>
             </tr>
           </thead>
           <tbody>
@@ -438,13 +477,23 @@
                   {% endif %}
                 </td>
                 <td><span class="pl-pill {{ p.status_css }}">{{ p.status_label }}</span></td>
+                <td>
+                  {% if p.tecnico %}
+                    <span class="pl-tecnico-chip">
+                      <i class="fa fa-user-gear" aria-hidden="true"></i>
+                      {{ p.tecnico.get_full_name|default:p.tecnico.username }}
+                    </span>
+                  {% else %}
+                    <span style="color:var(--pl-sub);">—</span>
+                  {% endif %}
+                </td>
               </tr>
             {% empty %}
               <tr>
-                <td colspan="7">
+                <td colspan="8">
                   <div class="pl-empty">
                     <i class="fa fa-inbox" aria-hidden="true"></i>
-                    Nenhum equipamento encontrado{% if filter_q or filter_status or filter_localidade or filter_checklist %} para os filtros aplicados{% endif %}.
+                    Nenhum equipamento encontrado{% if filter_q or filter_status or filter_localidade or filter_checklist or filter_tecnico %} para os filtros aplicados{% endif %}.
                   </div>
                 </td>
               </tr>

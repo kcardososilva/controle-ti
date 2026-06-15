@@ -201,7 +201,30 @@
     <i class="fa fa-triangle-exclamation"></i>
     <span>NinjaOne não configurado. Adicione <strong>NINJA_BASE_URL</strong>, <strong>NINJA_CLIENT_ID</strong> e <strong>NINJA_CLIENT_SECRET</strong> ao arquivo <code>.env</code> e reinicie o servidor.</span>
   </div>
+
+  {% elif token_expirado %}
+  {# Token existe mas expirou e não tem refresh — precisa reconectar #}
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;
+              padding:.9rem 1.15rem;border-radius:var(--radius-xl);
+              background:color-mix(in srgb,var(--warning) 9%,var(--bg-elevated));
+              border:1.5px solid color-mix(in srgb,var(--warning) 32%,transparent);">
+    <div style="display:flex;align-items:center;gap:.65rem;flex:1;min-width:0;">
+      <i class="fa fa-clock-rotate-left" style="color:var(--warning);font-size:1.1rem;flex-shrink:0;"></i>
+      <div>
+        <strong style="font-size:.88rem;color:var(--warning);">Token expirado — reconexão necessária</strong>
+        <div style="font-size:.76rem;color:var(--text-tertiary);margin-top:.1rem;">
+          O token NinjaOne expirou em {{ ninja_token_info.expires_at|date:"d/m/Y H:i" }}.
+          Clique em <strong>Reconectar</strong> para fazer login novamente.
+        </div>
+      </div>
+    </div>
+    <a href="{% url 'ninja_oauth_start' %}" class="btn btn-primary" style="min-height:2.25rem;padding:0 1.1rem;white-space:nowrap;flex-shrink:0;">
+      <i class="fa fa-rotate-right"></i> Reconectar ao NinjaOne
+    </a>
+  </div>
+
   {% elif not autenticado %}
+  {# Nunca conectado #}
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;
               padding:.9rem 1.15rem;border-radius:var(--radius-xl);
               background:color-mix(in srgb,var(--brand) 8%,var(--bg-elevated));
@@ -211,7 +234,7 @@
       <div>
         <strong style="font-size:.88rem;">NinjaOne não conectado</strong>
         <div style="font-size:.76rem;color:var(--text-tertiary);margin-top:.1rem;">
-          Clique em <strong>Conectar ao NinjaOne</strong> para fazer login e autorizar o acesso. Você será redirecionado para a página de login do NinjaOne.
+          Clique em <strong>Conectar ao NinjaOne</strong> para fazer login e autorizar o acesso.
         </div>
       </div>
     </div>
@@ -219,7 +242,9 @@
       <i class="fa fa-plug"></i> Conectar ao NinjaOne
     </a>
   </div>
+
   {% else %}
+  {# Conectado e token válido #}
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;
               padding:.75rem 1.15rem;border-radius:var(--radius-xl);
               background:color-mix(in srgb,var(--success) 7%,var(--bg-elevated));
@@ -229,19 +254,24 @@
       NinjaOne conectado
       {% if ninja_token_info %}
         {% if ninja_token_info.has_refresh %}
-          &nbsp;·&nbsp; <span style="color:var(--text-tertiary);">Renovação automática ativa</span>
+          &nbsp;·&nbsp;<span style="color:var(--text-tertiary);">Renovação automática ativa</span>
         {% elif ninja_token_info.expires_at %}
-          &nbsp;·&nbsp; <span style="color:var(--text-tertiary);">Token expira em {{ ninja_token_info.expires_at|date:"d/m H:i" }}</span>
+          &nbsp;·&nbsp;<span style="color:var(--text-tertiary);">Token expira em {{ ninja_token_info.expires_at|date:"d/m H:i" }}</span>
         {% endif %}
       {% endif %}
     </span>
-    <form method="post" action="{% url 'ninja_oauth_revogar' %}" style="margin:0;">
-      {% csrf_token %}
-      <button type="submit" class="btn btn-light" style="min-height:1.9rem;padding:0 .8rem;font-size:.76rem;"
-              onclick="return confirm('Desconectar do NinjaOne?')">
-        <i class="fa fa-plug-circle-xmark"></i> Desconectar
-      </button>
-    </form>
+    <div style="display:flex;gap:.5rem;flex-shrink:0;">
+      <a href="{% url 'ninja_oauth_start' %}" class="btn btn-light" style="min-height:1.9rem;padding:0 .8rem;font-size:.76rem;">
+        <i class="fa fa-rotate-right"></i> Renovar token
+      </a>
+      <form method="post" action="{% url 'ninja_oauth_revogar' %}" style="margin:0;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-light" style="min-height:1.9rem;padding:0 .8rem;font-size:.76rem;"
+                onclick="return confirm('Desconectar do NinjaOne?')">
+          <i class="fa fa-plug-circle-xmark"></i> Desconectar
+        </button>
+      </form>
+    </div>
   </div>
   {% endif %}
 

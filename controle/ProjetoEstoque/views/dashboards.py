@@ -4,6 +4,7 @@ from datetime import date, timedelta, datetime
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
+from django.urls import reverse
 from django.template.loader import get_template
 from xhtml2pdf import pisa
 from django.db.models import Q, Count, Sum, F, Case, When, Value as V
@@ -131,102 +132,249 @@ def _process_chart_data(keys, queryset):
 # 2. VIEW PRINCIPAL
 # ==============================================================================
 
+# ==============================================================================
+# 2.1  APRESENTAÇÃO (DASHBOARD VISÃO GERAL — estilo slides com filtros)
+# ==============================================================================
+
+# Meses por periodicidade para custo mensal de licença
+_MESES_PERIODICIDADE = {
+    "mensal": 1, "trimestral": 3, "semestral": 6, "anual": 12, "trienal": 36, "contrato": 12,
+}
+
+# Rótulo + cor por status de equipamento (ordem de exibição)
+_STATUS_META = [
+    ("ativo",      "Em uso",     "#34c759"),
+    ("backup",     "Em estoque", "#5856d6"),
+    ("manutencao", "Manutenção", "#ff9500"),
+    ("defeito",    "Defeito",    "#ff3b30"),
+    ("pausado",    "Pausado",    "#8e8e93"),
+]
+
+
+def _fmt_brl(v, dec=0):
+    """Formata valor em Real (pt-BR) com separador de milhar."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        v = 0.0
+    s = f"{v:,.{dec}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return "R$ " + s
+
+
+def _dados_equipamentos(request):
+    qs = Item.objects.all()
+    loc = (request.GET.get("localidade") or "").strip()
+    cc  = (request.GET.get("centro_custo") or "").strip()
+    st  = (request.GET.get("status") or "").strip()
+    if loc.isdigit():
+        qs = qs.filter(localidade_id=int(loc))
+    if cc.isdigit():
+        qs = qs.filter(centro_custo_id=int(cc))
+    if st in dict(StatusItemChoices.choices):
+        qs = qs.filter(status=st)
+
+    total = qs.count()
+    by_status = dict(qs.values_list("status").annotate(c=Count("id")))
+    ativos  = by_status.get("ativo", 0)
+    backup  = by_status.get("backup", 0)
+    manut   = by_status.get("manutencao", 0)
+    defeito = by_status.get("defeito", 0)
+    valor_total = qs.aggregate(s=Sum("valor"))["s"] or Decimal("0")
+
+    # Distribuição por status (na ordem de _STATUS_META)
+    status_labels, status_data, status_colors = [], [], []
+    for key, lbl, col in _STATUS_META:
+        cnt = by_status.get(key, 0)
+        if cnt:
+            status_labels.append(lbl); status_data.append(cnt); status_colors.append(col)
+
+    def top(field, limit, label_null="Não definido"):
+        rows = qs.values(field).annotate(c=Count("id")).order_by("-c")[:limit]
+        return ([(r[field] or label_null) for r in rows], [r["c"] for r in rows])
+
+    sub_l, sub_d     = top("subtipo__nome", 7)
+    loc_l, loc_d     = top("localidade__local", 8)
+    marca_l, marca_d = top("marca", 7)
+
+    cc_rows = (
+        qs.exclude(centro_custo__isnull=True)
+          .values("centro_custo__numero", "centro_custo__departamento")
+          .annotate(v=Sum("valor"), c=Count("id"))
+          .order_by("-v")[:7]
+    )
+    cc_l = [f'{r["centro_custo__numero"]} · {r["centro_custo__departamento"]}' for r in cc_rows]
+    cc_v = [float(r["v"] or 0) for r in cc_rows]
+
+    # Aquisições por mês (12) via data_compra
+    keys, lbls = _generate_month_keys(12)
+    aq_qs = (
+        qs.filter(data_compra__isnull=False)
+          .annotate(m=TruncMonth("data_compra")).values("m").annotate(valor=Count("id"))
+    )
+    aq_data = _process_chart_data(keys, aq_qs)
+
+    # Movimentações filtradas pelo item
+    movqs = MovimentacaoItem.objects.all()
+    if loc.isdigit():
+        movqs = movqs.filter(item__localidade_id=int(loc))
+    if cc.isdigit():
+        movqs = movqs.filter(item__centro_custo_id=int(cc))
+    fy, fm = keys[0]
+    start = timezone.make_aware(timezone.datetime(fy, fm, 1))
+    movbase = movqs.filter(created_at__gte=start)
+
+    def movserie(tipo):
+        q = (movbase.filter(tipo_movimentacao=tipo)
+             .annotate(m=TruncMonth("created_at")).values("m").annotate(valor=Count("id")))
+        return _process_chart_data(keys, q)
+
+    mov = {
+        "entrada": movserie("entrada"),
+        "baixa":   movserie("baixa"),
+        "transf":  movserie("transferencia"),
+        "manut":   movserie("envio_manutencao"),
+    }
+
+    pct_uso = f"{round(ativos / total * 100)}% do parque" if total else "—"
+    kpis = [
+        {"label": "Total de Ativos",  "value": str(total),   "icon": "fa-database",            "color": "blue",   "sub": "equipamentos no escopo"},
+        {"label": "Em Uso",           "value": str(ativos),  "icon": "fa-circle-check",        "color": "green",  "sub": pct_uso},
+        {"label": "Em Estoque",       "value": str(backup),  "icon": "fa-boxes-stacked",       "color": "purple", "sub": "disponíveis como backup"},
+        {"label": "Em Manutenção",    "value": str(manut),   "icon": "fa-screwdriver-wrench",  "color": "orange", "sub": "em reparo no momento"},
+        {"label": "Críticos",         "value": str(defeito), "icon": "fa-triangle-exclamation","color": "red",    "sub": "com defeito registrado"},
+        {"label": "Valor do Parque",  "value": _fmt_brl(valor_total), "icon": "fa-coins",      "color": "teal",   "sub": "soma do valor de aquisição"},
+    ]
+
+    return {
+        "dataset": "equipamentos",
+        "titulo": "Parque de Equipamentos",
+        "kpis": kpis,
+        "charts": {
+            "status":       {"labels": status_labels, "data": status_data, "colors": status_colors},
+            "subtipo":      {"labels": sub_l, "data": sub_d},
+            "marca":        {"labels": marca_l, "data": marca_d},
+            "localidade":   {"labels": loc_l, "data": loc_d},
+            "centro_custo": {"labels": cc_l, "data": cc_v, "moeda": True},
+            "aquisicoes":   {"labels": lbls, "data": aq_data},
+            "mov":          {"labels": lbls, **mov},
+        },
+    }
+
+
+def _dados_licencas(request):
+    forn = (request.GET.get("fornecedor") or "").strip()
+    cc   = (request.GET.get("centro_custo") or "").strip()
+    per  = (request.GET.get("periodicidade") or "").strip()
+    pmb  = (request.GET.get("pmb") or "").strip().lower()
+
+    lic_qs = Licenca.objects.all()
+    if forn.isdigit():
+        lic_qs = lic_qs.filter(fornecedor_id=int(forn))
+    if pmb in ("sim", "nao"):
+        lic_qs = lic_qs.filter(pmb=pmb)
+
+    lotes = (
+        LicencaLote.objects
+        .select_related("licenca", "fornecedor", "centro_custo", "licenca__fornecedor")
+        .filter(licenca__in=lic_qs)
+    )
+    if cc.isdigit():
+        lotes = lotes.filter(centro_custo_id=int(cc))
+    if per:
+        lotes = lotes.filter(periodicidade=per)
+
+    total_seats = 0
+    disp = 0
+    custo_mensal = Decimal("0")
+    forn_cost, forn_seats, per_count, cc_cost = {}, {}, {}, {}
+    lic_ids = set()
+
+    for lote in lotes:
+        qtd = int(lote.quantidade_total or 0)
+        d   = int(lote.quantidade_disponivel or 0)
+        meses = _MESES_PERIODICIDADE.get(lote.periodicidade, 12) or 12
+        custo_ciclo = Decimal(lote.custo_ciclo or 0)
+        cm = (custo_ciclo / Decimal(meses)) if meses else Decimal("0")
+
+        total_seats += qtd
+        disp += d
+        custo_mensal += cm
+        lic_ids.add(lote.licenca_id)
+
+        if lote.fornecedor:
+            fn = lote.fornecedor.nome
+        elif lote.licenca and lote.licenca.fornecedor:
+            fn = lote.licenca.fornecedor.nome
+        else:
+            fn = "Indefinido"
+        forn_cost[fn]  = forn_cost.get(fn, Decimal("0")) + cm
+        forn_seats[fn] = forn_seats.get(fn, 0) + qtd
+
+        pl = lote.get_periodicidade_display()
+        per_count[pl] = per_count.get(pl, 0) + 1
+
+        if lote.centro_custo:
+            cl = f"{lote.centro_custo.numero} · {lote.centro_custo.departamento}"
+            cc_cost[cl] = cc_cost.get(cl, Decimal("0")) + cm
+
+    em_uso = max(0, total_seats - disp)
+    custo_anual = custo_mensal * Decimal("12")
+
+    def top_dict(d, n, as_float=True):
+        items = sorted(d.items(), key=lambda x: x[1], reverse=True)[:n]
+        return ([k for k, _ in items], [(float(v) if as_float else v) for _, v in items])
+
+    fc_l, fc_d = top_dict(forn_cost, 8)
+    fs_l, fs_d = top_dict(forn_seats, 8, as_float=False)
+    pc_l, pc_d = top_dict(per_count, 10, as_float=False)
+    ccc_l, ccc_d = top_dict(cc_cost, 8)
+
+    pct_ocup = f"{round(em_uso / total_seats * 100)}% de ocupação" if total_seats else "—"
+    kpis = [
+        {"label": "Licenças",        "value": str(len(lic_ids)), "icon": "fa-id-badge",     "color": "blue",   "sub": "produtos licenciados"},
+        {"label": "Assentos Totais", "value": str(total_seats),  "icon": "fa-chair",        "color": "purple", "sub": "posições adquiridas"},
+        {"label": "Em Uso",          "value": str(em_uso),       "icon": "fa-user-check",   "color": "green",  "sub": pct_ocup},
+        {"label": "Disponíveis",     "value": str(disp),         "icon": "fa-box-open",     "color": "teal",   "sub": "assentos livres"},
+        {"label": "Custo Mensal",    "value": _fmt_brl(custo_mensal), "icon": "fa-coins",   "color": "orange", "sub": "recorrência mensal"},
+        {"label": "Custo Anual",     "value": _fmt_brl(custo_anual),  "icon": "fa-calendar","color": "red",    "sub": "projeção 12 meses"},
+    ]
+
+    return {
+        "dataset": "licencas",
+        "titulo": "Licenças de Software",
+        "kpis": kpis,
+        "charts": {
+            "ocupacao":         {"labels": ["Em uso", "Disponível"], "data": [em_uso, disp], "colors": ["#0071e3", "#c7c7cc"]},
+            "custo_fornecedor": {"labels": fc_l, "data": fc_d, "moeda": True},
+            "seats_fornecedor": {"labels": fs_l, "data": fs_d},
+            "periodicidade":    {"labels": pc_l, "data": pc_d},
+            "custo_cc":         {"labels": ccc_l, "data": ccc_d, "moeda": True},
+        },
+    }
+
+
+@login_required
+def dashboard_apresentacao_dados(request):
+    """Retorna os dados agregados (equipamentos ou licenças) para o deck de apresentação."""
+    dataset = request.GET.get("dataset", "equipamentos")
+    try:
+        data = _dados_licencas(request) if dataset == "licencas" else _dados_equipamentos(request)
+    except Exception as exc:  # noqa: BLE001 — nunca derrubar a apresentação
+        return JsonResponse({"ok": False, "erro": str(exc)}, status=500)
+    return JsonResponse({"ok": True, **data})
+
+
 @login_required
 def dashboard(request):
-    """
-    Dashboard Enterprise - Refatorado para estabilidade total.
-    """
-    # --- Configuração de Tempo ---
-    month_keys, labels = _generate_month_keys(12)
-    
-    # Data de corte (início do período)
-    first_key = month_keys[0] # (Ano, Mes) mais antigo
-    start_date = timezone.datetime(year=first_key[0], month=first_key[1], day=1)
-    start_date = timezone.make_aware(start_date) # Adiciona timezone se necessário
-
-    # --- A. KPIs (Topo) ---
-    kpi = {
-        "total": Item.objects.count(),
-        "ativos": Item.objects.filter(status='ativo').count(),
-        "estoque": Item.objects.filter(status='backup').count(),
-        "manutencao": Item.objects.filter(status='manutencao').count(),
-        "problema": Item.objects.filter(status__in=['defeito', 'sucata', 'queimado']).count(),
-    }
-
-    # --- B. Gráfico de Movimentações (Linha do Tempo) ---
-    # Base: últimos 12 meses
-    mov_base = MovimentacaoItem.objects.filter(created_at__gte=start_date)
-
-    def get_mov_series(tipo_mov):
-        """Helper interno para buscar movimentações padronizadas"""
-        qs = (
-            mov_base.filter(tipo_movimentacao=tipo_mov)
-            .annotate(m=TruncMonth('created_at'))
-            .values('m')
-            .annotate(valor=Count('id')) # <--- PADRONIZAÇÃO: Nome sempre será 'valor'
-            .order_by('m')
-        )
-        return _process_chart_data(month_keys, qs)
-
-    series_mov = {
-        "entrada": get_mov_series('entrada'),
-        "baixa": get_mov_series('baixa'),
-        "transf": get_mov_series('transferencia'),
-        "manut": get_mov_series('envio_manutencao'), # Envios para manutenção
-    }
-
-    # --- C. Gráfico de Custos (Manutenção) ---
-    # Soma dos custos de manutenção nos últimos 12 meses
-    qs_custo = (
-        mov_base.filter(tipo_movimentacao__in=['envio_manutencao', 'retorno_manutencao'])
-        .annotate(m=TruncMonth('created_at'))
-        .values('m')
-        .annotate(valor=Sum('custo')) # <--- PADRONIZAÇÃO: Nome sempre será 'valor'
-        .order_by('m')
-    )
-    data_custo = _process_chart_data(month_keys, qs_custo)
-
-    # --- D. Preventivas (Status) ---
-    today = timezone.localdate()
-    prev_atrasadas = Preventiva.objects.filter(data_proxima__lt=today).count()
-    prev_em_dia = Preventiva.objects.filter(data_proxima__gte=today).count()
-    
-    # Próximas a vencer (Tabela)
-    prev_proximas = (
-        Preventiva.objects
-        .filter(data_proxima__gte=today)
-        .select_related('equipamento', 'checklist_modelo')
-        .order_by('data_proxima')[:5]
-    )
-
-    # --- E. Categorias (Barras) ---
-    # Função genérica para Top N
-    def get_top_category(field_name, limit=5):
-        qs = (
-            Item.objects.values(field_name)
-            .annotate(valor=Count('id')) # Padronizado
-            .order_by('-valor')[:limit]
-        )
-        # Trata valores nulos no nome
-        labels_cat = [item[field_name] or 'Não Definido' for item in qs]
-        data_cat = [item['valor'] for item in qs]
-        return labels_cat, data_cat
-
-    sub_labels, sub_data = get_top_category('subtipo__nome', 5)
-    loc_labels, loc_data = get_top_category('localidade__local', 8)
-
-    # --- Contexto Final ---
+    """Dashboard de Visão Geral — apresentação estilo slides com filtros (dados via AJAX)."""
     context = {
-        "kpi": kpi,
-        "labels": labels, # Eixo X (Jan/24, Fev/24...)
-        "series": series_mov,
-        "custo_data": data_custo,
-        "prev_status": [prev_em_dia, prev_atrasadas],
-        "prev_proximas": prev_proximas,
-        "cat_subtipo": {"labels": sub_labels, "data": sub_data},
-        "cat_local": {"labels": loc_labels, "data": loc_data},
+        "localidades":           Localidade.objects.order_by("local"),
+        "centros_custo":         CentroCusto.objects.order_by("numero"),
+        "fornecedores":          Fornecedor.objects.order_by("nome"),
+        "status_choices":        StatusItemChoices.choices,
+        "periodicidade_choices": PeriodicidadeChoices.choices,
+        "dados_url":             reverse("dashboard_apresentacao_dados"),
     }
-
     return render(request, "front/dashboards/dashboard.html", context)
 
 

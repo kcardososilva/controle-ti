@@ -28,8 +28,8 @@ from django.core.cache import cache
 logger = logging.getLogger(__name__)
 
 _TOKEN_CACHE_KEY  = "ninja_access_token_v3"
-_OAUTH_STATE_KEY  = "ninja_oauth_state"   # chave de cache para o state CSRF
-_SCOPE            = "monitoring"
+_OAUTH_STATE_KEY  = "ninja_oauth_state"
+_SCOPE            = "monitoring"   # offline_access nao suportado neste app
 
 
 def get_redirect_uri() -> str:

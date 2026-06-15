@@ -656,6 +656,55 @@ details.plt-panel[open] { box-shadow: var(--plt-shadow-sm); }
   .plt-hero-actions { grid-template-columns: 1fr; }
   .plt-grid  { grid-template-columns: 1fr; }
 }
+
+/* ── Toolbar acima do grid: busca + indicador ao vivo ── */
+.plt-grid-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.plt-search { position: relative; flex: 1; min-width: 220px; display: flex; align-items: center; }
+.plt-search > .plt-search-ic { position: absolute; left: 13px; color: var(--plt-muted); font-size: 13px; pointer-events: none; }
+.plt-search input {
+  width: 100%; height: 42px; padding: 0 38px 0 36px;
+  border: 1px solid var(--plt-border); border-radius: var(--plt-radius-xl, 14px);
+  background: var(--plt-bg); color: var(--plt-text); font-size: .86rem;
+  transition: border-color .2s, box-shadow .2s;
+}
+.plt-search input:focus { outline: none; border-color: var(--plt-brand); box-shadow: 0 0 0 3px var(--plt-brand-soft, rgba(0,113,227,.16)); }
+.plt-search-clear {
+  position: absolute; right: 8px; width: 26px; height: 26px; border: none; background: transparent;
+  color: var(--plt-muted); cursor: pointer; border-radius: 8px; display: none; align-items: center; justify-content: center;
+}
+.plt-search-clear:hover { background: var(--plt-bg-muted); }
+.plt-search.has-value .plt-search-clear { display: flex; }
+.plt-live {
+  display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
+  padding: 0 13px; height: 42px; border-radius: var(--plt-radius-xl, 14px);
+  border: 1px solid var(--plt-border); background: var(--plt-bg);
+  font-size: .76rem; font-weight: 600; color: var(--plt-muted); white-space: nowrap;
+}
+.plt-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #34c759; box-shadow: 0 0 6px #34c759; animation: pltLivePulse 1.6s ease-in-out infinite; }
+@keyframes pltLivePulse { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:.45;transform:scale(1.3);} }
+.plt-grid-empty {
+  padding: 44px 24px; text-align: center; color: var(--plt-muted); font-size: .9rem;
+  border: 1px dashed var(--plt-border); border-radius: var(--plt-radius-xl, 14px);
+}
+.plt-grid-empty i { margin-right: 6px; }
+
+/* ── Barra de status no topo do thumb + badge de saúde ── */
+.plt-card-statusbar { position: absolute; top: 0; left: 0; right: 0; height: 4px; z-index: 2; background: transparent; transition: background .4s ease; }
+.plt-card-statusbar.up   { background: linear-gradient(90deg,#34c759,#2faa4e); }
+.plt-card-statusbar.warn { background: linear-gradient(90deg,#ff9500,#ff7a00); }
+.plt-card-statusbar.down { background: linear-gradient(90deg,#ff3b30,#e02418); }
+.plt-card-health {
+  position: absolute; top: 10px; right: 10px; z-index: 3; display: none; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  background: rgba(8,8,12,.6); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.2);
+}
+.plt-card-health.show { display: inline-flex; }
+.plt-card-health .dot { width: 7px; height: 7px; border-radius: 50%; }
+.plt-card-health.down .dot { background: #ff3b30; box-shadow: 0 0 6px #ff3b30; }
+.plt-card-health.warn .dot { background: #ff9500; box-shadow: 0 0 6px #ff9500; }
+.plt-card-health.down { animation: pltHealthPulse 1.8s ease-in-out infinite; }
+@keyframes pltHealthPulse { 0%,100%{box-shadow:0 2px 8px rgba(0,0,0,.2);} 50%{box-shadow:0 2px 16px rgba(255,59,48,.6);} }
 </style>
 {% endblock %}
 
@@ -753,14 +802,35 @@ details.plt-panel[open] { box-shadow: var(--plt-shadow-sm); }
 
   <!-- Grid de Cards -->
   {% if plantas %}
+
+  <div class="plt-grid-toolbar">
+    <div class="plt-search">
+      <i class="fa-solid fa-magnifying-glass plt-search-ic"></i>
+      <input type="text" id="pltSearch" placeholder="Buscar planta por nome ou localidade..." autocomplete="off" aria-label="Buscar plantas">
+      <button type="button" id="pltSearchClear" class="plt-search-clear" title="Limpar busca"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    {% if prtg_ok %}
+    <div class="plt-live" id="pltLive" title="Status PRTG atualizado automaticamente a cada 30s">
+      <span class="plt-live-dot"></span> <span id="pltLiveTxt">monitorando ao vivo</span>
+    </div>
+    {% endif %}
+  </div>
+  <div class="plt-grid-empty" id="pltNoMatch" style="display:none">
+    <i class="fa-solid fa-magnifying-glass"></i> Nenhuma planta corresponde à busca.
+  </div>
+
   <div class="plt-grid">
     {% for planta in plantas %}
-    <div class="plt-card">
+    <div class="plt-card" data-search="{{ planta.nome|lower }} {{ planta.localidade|default:''|lower }}">
       <div class="plt-card-thumb">
         {% if planta.imagem_fundo %}
           <img src="{{ planta.imagem_fundo.url }}" alt="Fundo da planta {{ planta.nome }}">
         {% else %}
           <i class="fa-solid fa-map-location-dot"></i>
+        {% endif %}
+        {% if prtg_ok and planta.elementos_com_prtg %}
+        <div class="plt-card-statusbar" id="sb-{{ planta.pk }}"></div>
+        <div class="plt-card-health" id="health-{{ planta.pk }}"><span class="dot"></span><span class="txt"></span></div>
         {% endif %}
         <div class="plt-card-accent"></div>
       </div>
@@ -1018,6 +1088,35 @@ $(function () {
   }
 }());
 
+
+/* 4 · Busca rápida client-side (filtra cards por nome/localidade) */
+(function () {
+  var input = document.getElementById('pltSearch');
+  if (!input) return;
+  var box      = input.closest('.plt-search');
+  var clearBtn = document.getElementById('pltSearchClear');
+  var noMatch  = document.getElementById('pltNoMatch');
+  var cards    = Array.prototype.slice.call(document.querySelectorAll('.plt-grid .plt-card'));
+
+  function norm(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+
+  function apply() {
+    var q = norm(input.value.trim());
+    if (box) box.classList.toggle('has-value', input.value.length > 0);
+    var visible = 0;
+    cards.forEach(function (c) {
+      var hay  = norm(c.getAttribute('data-search') || c.textContent);
+      var show = !q || hay.indexOf(q) !== -1;
+      c.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    if (noMatch) noMatch.style.display = (visible === 0 && q) ? '' : 'none';
+  }
+
+  input.addEventListener('input', apply);
+  if (clearBtn) clearBtn.addEventListener('click', function () { input.value = ''; apply(); input.focus(); });
+}());
+
 }());
 </script>
 
@@ -1055,10 +1154,35 @@ async function carregarStatusCards() {
       if (down)   chips += `<span class="plt-status-chip down">${down} offline</span>`;
       if (paused) chips += `<span class="plt-status-chip paused">${paused} pausado</span>`;
       el.innerHTML = chips || '';
+
+      // Barra de status no topo do card (pior status manda)
+      const worst = down ? 'down' : warn ? 'warn' : (up || paused) ? 'up' : '';
+      const sb = document.getElementById(`sb-${plantId}`);
+      if (sb) sb.className = 'plt-card-statusbar' + (worst ? ' ' + worst : '');
+
+      // Badge de saúde — só destaca quando há problema
+      const hb = document.getElementById(`health-${plantId}`);
+      if (hb) {
+        const txt = hb.querySelector('.txt');
+        if (down)      { hb.className = 'plt-card-health show down'; if (txt) txt.textContent = `${down} offline`; }
+        else if (warn) { hb.className = 'plt-card-health show warn'; if (txt) txt.textContent = `${warn} instável`; }
+        else           { hb.className = 'plt-card-health'; }
+      }
+    }
+
+    // Indicador "ao vivo"
+    const liveTxt = document.getElementById('pltLiveTxt');
+    if (liveTxt) {
+      const n = new Date();
+      const hh = String(n.getHours()).padStart(2, '0');
+      const mm = String(n.getMinutes()).padStart(2, '0');
+      const ss = String(n.getSeconds()).padStart(2, '0');
+      liveTxt.textContent = `atualizado ${hh}:${mm}:${ss}`;
     }
   } catch (e) { /* PRTG status is non-critical on the list page */ }
 }
 carregarStatusCards();
+setInterval(carregarStatusCards, 30000);
 </script>
 {% endif %}
 {% endblock %}

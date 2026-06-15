@@ -15,7 +15,10 @@ def termo_entrega_form(request, pk):
     )
 
     initial = {
-        "numero_termo": f"ENT-{timezone.localdate().strftime('%Y%m%d')}-{item.pk}",
+        # Numeração gerada automaticamente a partir do colaborador + centro de
+        # custo no momento da geração (sem o ID do item). Campo opcional: se
+        # preenchido manualmente, sobrescreve a numeração automática.
+        "numero_termo": "",
         "acessorios": "",
         "observacoes": "",
         "responsavel_ti_nome": request.user.get_full_name() or request.user.username,
@@ -65,7 +68,9 @@ def termo_devolucao_form(request, pk):
 
     initial = {
         "colaborador": usuario_atual.pk if usuario_atual else None,
-        "numero_termo": f"DEV-{timezone.localdate().strftime('%Y%m%d')}-{item.pk}",
+        # Numeração automática por colaborador + centro de custo (sem ID).
+        # Opcional: se preenchido, sobrescreve a numeração automática.
+        "numero_termo": "",
         "acessorios": "",
         "observacoes": "",
         "responsavel_ti_nome": request.user.get_full_name() or request.user.username,

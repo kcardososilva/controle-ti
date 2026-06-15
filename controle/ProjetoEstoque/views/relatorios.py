@@ -743,19 +743,41 @@ def toner_cc_dashboard(request):
         .order_by("mes")
     )
 
+    # Série mensal CONTÍNUA: o TruncMonth omite meses sem baixa, o que distorce
+    # a "evolução do gasto". Preenchemos todos os meses do período com zero.
+    mensal_map = {}
+    for row in mensal_qs:
+        mes = row["mes"]
+        if not mes:
+            continue
+        mensal_map[(mes.year, mes.month)] = (
+            float(_money(row["gasto"])),
+            int(row["qtd"] or 0),
+        )
+
+    _MESES_PT = ["", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+                 "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
     mes_labels = []
     mes_gasto = []
     mes_qtd = []
 
-    for row in mensal_qs:
-        mes = row["mes"]
+    cursor = date(dt_ini.year, dt_ini.month, 1)
+    limite = date(dt_fim.year, dt_fim.month, 1)
+    guard = 0
+    while cursor <= limite and guard < 120:
+        g, q = mensal_map.get((cursor.year, cursor.month), (0.0, 0))
+        mes_labels.append(f"{_MESES_PT[cursor.month]}/{str(cursor.year)[2:]}")
+        mes_gasto.append(g)
+        mes_qtd.append(q)
+        cursor = (
+            date(cursor.year + 1, 1, 1)
+            if cursor.month == 12
+            else date(cursor.year, cursor.month + 1, 1)
+        )
+        guard += 1
 
-        if not mes:
-            continue
-
-        mes_labels.append(mes.strftime("%m/%Y"))
-        mes_gasto.append(float(_money(row["gasto"])))
-        mes_qtd.append(int(row["qtd"] or 0))
+    mes_media = round(sum(mes_gasto) / len(mes_gasto), 2) if mes_gasto else 0.0
 
     periodo_dias = (dt_fim - dt_ini).days + 1
     gasto_dia = (total_geral / Decimal(periodo_dias)) if periodo_dias > 0 else Decimal("0.00")
@@ -816,6 +838,7 @@ def toner_cc_dashboard(request):
         "mes_labels": mes_labels,
         "mes_gasto": mes_gasto,
         "mes_qtd": mes_qtd,
+        "mes_media": mes_media,
 
         "kpi_total_gasto": total_geral,
         "kpi_total_qtd": total_qtd,

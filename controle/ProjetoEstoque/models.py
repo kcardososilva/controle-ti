@@ -872,6 +872,16 @@ class Preventiva(AuditModel):
     equipamento = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="preventivas")
     checklist_modelo = models.ForeignKey(CheckListModelo, on_delete=models.SET_NULL, null=True, blank=True)
 
+    # Técnico responsável pela execução desta preventiva agendada.
+    tecnico = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="preventivas_atribuidas",
+        verbose_name="Técnico responsável",
+        help_text="Usuário (equipe de TI) responsável por executar esta atividade.",
+    )
+
     data_ultima = models.DateField(blank=True, null=True)
     data_proxima = models.DateField(blank=True, null=True)
     data_agendamento = models.DateField(blank=True, null=True, verbose_name="Data agendada",
@@ -898,14 +908,50 @@ class Preventiva(AuditModel):
 
     def _periodo_referencia(self) -> int:
         """
-        Usa a periodicidade do modelo; se zero/ausente, tenta usar 'data_limite_preventiva' do Item (dias).
+        Intervalo oficial da programação (dias).
+        Prioriza o intervalo específico do ATIVO (data_limite_preventiva), pois é
+        específico do equipamento; se ausente, usa o do modelo de checklist.
+        (Mesma ordem de prioridade usada nas listas — _intervalo_preventiva.)
         """
+        try:
+            item_intervalo = int(self.equipamento.data_limite_preventiva or 0)
+        except Exception:
+            item_intervalo = 0
+        if item_intervalo > 0:
+            return item_intervalo
         if self.checklist_modelo and self.checklist_modelo.intervalo_dias:
             return int(self.checklist_modelo.intervalo_dias)
-        try:
-            return int(self.equipamento.data_limite_preventiva or 0)
-        except Exception:
-            return 0
+        return 0
+
+    def sincronizar_data_proxima(self, hoje=None, salvar=True):
+        """
+        Recalcula e PERSISTE `data_proxima` como a DATA EFETIVA da próxima execução,
+        para que dashboards, alertas e e-mails (que consultam o campo) reflitam o
+        status real:
+          - agendamento explícito (data_agendamento) tem prioridade;
+          - senão, data_ultima + intervalo;
+          - senão, mantém data_proxima existente ou hoje (nunca executada).
+        Não altera preventivas pausadas (contagem congelada).
+        Retorna a data_proxima resultante.
+        """
+        if self.pausada:
+            return self.data_proxima
+        hoje = hoje or timezone.now().date()
+        dias = self._periodo_referencia()
+        if self.data_agendamento:
+            nova = self.data_agendamento
+        elif self.data_ultima and dias > 0:
+            nova = self.data_ultima + timedelta(days=dias)
+        elif self.data_proxima:
+            nova = self.data_proxima
+        else:
+            nova = hoje
+        if nova != self.data_proxima or self.dentro_do_prazo != (hoje <= nova):
+            self.data_proxima = nova
+            self.dentro_do_prazo = hoje <= nova
+            if salvar:
+                self.save(update_fields=["data_proxima", "dentro_do_prazo", "updated_at"])
+        return nova
 
     def recomputar_prazo(self, data_exec=None):
         """Recalcula data_proxima e dentro_do_prazo. Não age enquanto pausada."""
@@ -970,6 +1016,10 @@ class Preventiva(AuditModel):
         """
         hoje = timezone.now().date()
 
+        # Snapshot de desempenho (antes de limpar data_agendamento)
+        data_agendada_snap = self.data_agendamento
+        no_prazo_snap = (data_agendada_snap is None) or (hoje <= data_agendada_snap)
+
         # 1) cria a execução (histórico)
         execucao = PreventivaExecucao.objects.create(
             preventiva=self,
@@ -977,6 +1027,9 @@ class Preventiva(AuditModel):
             observacao=(observacao or ""),
             foto_antes=foto_antes,
             foto_depois=foto_depois,
+            tecnico=(self.tecnico or usuario),
+            data_agendada=data_agendada_snap,
+            no_prazo=no_prazo_snap,
             criado_por=usuario,
             atualizado_por=usuario,
         )
@@ -1024,6 +1077,25 @@ class PreventivaExecucao(AuditModel):
     observacao = models.TextField(blank=True, null=True)
     foto_antes  = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
     foto_depois = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
+
+    # Snapshot de desempenho: técnico responsável e data agendada no momento da
+    # execução (data_agendamento é limpo após executar). Permite medir pontualidade.
+    tecnico = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="execucoes_preventiva",
+        verbose_name="Técnico",
+    )
+    data_agendada = models.DateField(
+        null=True, blank=True,
+        verbose_name="Data agendada (no momento da execução)",
+    )
+    no_prazo = models.BooleanField(
+        default=True,
+        verbose_name="Executada no prazo",
+        help_text="True quando a execução ocorreu até a data agendada (ou sem agendamento).",
+    )
 
     class Meta:
         ordering = ["-data_execucao", "-created_at"]
@@ -1225,6 +1297,16 @@ class NinjaOAuthToken(models.Model):
         from django.utils import timezone
         return bool(self.access_token) and (
             self.expires_at is None or self.expires_at > timezone.now()
+        )
+
+    @property
+    def is_expired(self) -> bool:
+        """Token existe mas está expirado (sem refresh_token para renovar)."""
+        from django.utils import timezone
+        return (
+            bool(self.access_token) and
+            self.expires_at is not None and
+            self.expires_at <= timezone.now()
         )
 
 class NinjaDevice(AuditModel):

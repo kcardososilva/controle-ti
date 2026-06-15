@@ -7,6 +7,7 @@ urlpatterns = [
     # ── Home & Autenticação ──────────────────────────────────────────────────
     path("", views.sistema_noticias, name="home"),
     path("dashboard/", views.dashboard, name="dashboard"),
+    path("dashboard/dados/", views.dashboard_apresentacao_dados, name="dashboard_apresentacao_dados"),
     path("sobre/", views.sobre_plataforma, name="sobre_plataforma"),
     path("login/", auth_views.LoginView.as_view(template_name="login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(next_page="login"), name="logout"),
@@ -116,6 +117,8 @@ urlpatterns = [
     path("preventiva/<int:pk>/agendar/", views.preventiva_agendar, name="preventiva_agendar"),
     path("preventiva/plano/", views.preventiva_plano, name="preventiva_plano"),
     path("preventiva/agendadas/", views.preventiva_agendadas, name="preventiva_agendadas"),
+    path("preventiva/desempenho/", views.tecnico_desempenho, name="tecnico_desempenho"),
+    path("preventiva/minhas-atividades/", views.minhas_atividades, name="minhas_atividades"),
     # Checklists de preventiva
     path("preventiva/checklists/", views.checklist_list, name="checklist_list"),
     path("preventiva/checklists/novo/", views.checklist_form, name="checklist_create"),

@@ -34,16 +34,19 @@ def ninja_dashboard(request):
 
     # Info do token para exibir no dashboard
     ninja_token_info = None
+    token_expirado   = False
     try:
         from ProjetoEstoque.models import NinjaOAuthToken
         t = NinjaOAuthToken.get()
         if t.access_token:
             ninja_token_info = {
-                "expires_at":   t.expires_at,
-                "has_refresh":  bool(t.refresh_token),
-                "updated_at":   t.updated_at,
-                "is_valid":     t.is_valid,
+                "expires_at":  t.expires_at,
+                "has_refresh": bool(t.refresh_token),
+                "updated_at":  t.updated_at,
+                "is_valid":    t.is_valid,
+                "is_expired":  t.is_expired,
             }
+            token_expirado = t.is_expired and not t.refresh_token
     except Exception:
         pass
 
@@ -91,8 +94,9 @@ def ninja_dashboard(request):
     sem_match_online = qs.filter(is_online=True, item__isnull=True).order_by("display_name")[:10]
 
     context = {
-        "configurado":    configurado,
-        "autenticado":    autenticado,
+        "configurado":      configurado,
+        "autenticado":      autenticado,
+        "token_expirado":   token_expirado,
         "ninja_token_info": ninja_token_info,
         "hoje": hoje,
         "last_sync": last_sync,
