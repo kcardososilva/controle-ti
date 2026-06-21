@@ -102,6 +102,7 @@ from .equipamentos import (
     equipamento_excluir,
     importar_planilha,
     item_monitoracao,
+    monitoracao_relatorio,
 )
 
 # ── Locações ─────────────────────────────────────────────────────────────────
@@ -218,11 +219,11 @@ from .ninja import (
     ninja_dashboard,
     ninja_dispositivos,
     ninja_relatorio,
-    ninja_sync,
-    ninja_api_live,
-    ninja_oauth_start,
-    ninja_oauth_callback,
-    ninja_oauth_revogar,
+    ninja_nao_cadastrados,
+    ninja_login_validacao,
+    ninja_login_revalidar,
+    ninja_login_detalhe,
+    ninja_importar,
 )
 
 # ── Status Board ─────────────────────────────────────────────────────────────
@@ -247,5 +248,6 @@ from .plantas import (
     prtg_status_api,
     prtg_search_api,
     prtg_monitor,
+    prtg_monitor_export,
     item_search_api,
 )

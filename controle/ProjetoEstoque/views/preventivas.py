@@ -776,6 +776,8 @@ def preventiva_exec(request, pk):
                 observacao=(request.POST.get("observacao") or "").strip(),
                 foto_antes=request.FILES.get("foto_antes"),
                 foto_depois=request.FILES.get("foto_depois"),
+                foto_antes_2=request.FILES.get("foto_antes_2"),
+                foto_depois_2=request.FILES.get("foto_depois_2"),
                 tecnico=(preventiva.tecnico or request.user),
                 data_agendada=data_agendada_snap,
                 no_prazo=no_prazo_snap,
@@ -797,6 +799,8 @@ def preventiva_exec(request, pk):
 
             foto_antes = request.FILES.get("foto_antes")
             foto_depois = request.FILES.get("foto_depois")
+            foto_antes_2 = request.FILES.get("foto_antes_2")
+            foto_depois_2 = request.FILES.get("foto_depois_2")
 
             update_fields = [
                 "data_ultima",
@@ -814,6 +818,14 @@ def preventiva_exec(request, pk):
             if foto_depois:
                 preventiva.foto_depois = foto_depois
                 update_fields.append("foto_depois")
+
+            if foto_antes_2:
+                preventiva.foto_antes_2 = foto_antes_2
+                update_fields.append("foto_antes_2")
+
+            if foto_depois_2:
+                preventiva.foto_depois_2 = foto_depois_2
+                update_fields.append("foto_depois_2")
 
             preventiva.save(update_fields=update_fields)
 

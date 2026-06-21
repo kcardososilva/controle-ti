@@ -205,64 +205,10 @@ def equipamentos_exportar(request):
     )
     qs = _aplicar_filtros_itens(request, base_qs).order_by("id")
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Itens"
+    from collections import Counter
+    items = list(qs)
 
-    header = [
-        "#",
-        "ID",
-        "Nome",
-        "Número de Série",
-        "Marca",
-        "Modelo",
-        "Quantidade",
-        "Item de Consumo",
-        "PMB",
-        "Valor de Aquisição (R$)",
-        "Status",
-        "Fornecedor",
-        "Categoria",
-        "Subtipo",
-        "Localidade",
-        "Centro de Custo",
-        "Precisa Preventiva",
-        "Data Limite Preventiva (dias)",
-        "Data da Compra",
-        "Número do Pedido",
-        "Observações do Item",
-        "Locado",
-        "Tempo Locado (meses)",
-        "Valor Locação Mensal (R$)",
-        "Data de Entrada Locação",
-        "Contrato Locação",
-        "Observações da Locação",
-        "Fornecedor da Locação",
-        "Criado em",
-        "Criado por",
-        "Atualizado em",
-        "Atualizado por",
-    ]
-    ws.append(header)
-
-    # Estilo do cabeçalho
-    hfill = PatternFill("solid", fgColor="1D4ED8")
-    hfont = Font(color="FFFFFF", bold=True)
-    align_center = Alignment(horizontal="center", vertical="center")
-    thin = Side(style="thin", color="DDE3EE")
-    hborder = Border(left=thin, right=thin, top=thin, bottom=thin)
-
-    for col in range(1, len(header) + 1):
-        cell = ws.cell(row=1, column=col)
-        cell.fill = hfill
-        cell.font = hfont
-        cell.alignment = align_center
-        cell.border = hborder
-
-    numero_format = 'R$ #,##0.00'
-    data_format = 'DD/MM/YYYY'
-    data_hora_format = 'DD/MM/YYYY HH:MM'
-
+    # ── Helpers de formatação de texto ───────────────────────────────────────
     def _sim_nao(valor):
         return "Sim" if str(valor).lower() in ("sim", "true", "1") else "Não"
 
@@ -297,107 +243,255 @@ def equipamentos_exportar(request):
                     return str(valor)
         return str(obj)
 
-    for i, item in enumerate(qs, start=1):
-        locacao = getattr(item, "locacao", None)
+    # ── Agregados para o resumo executivo ────────────────────────────────────
+    total_itens = len(items)
+    valor_total = Decimal("0.00")
+    valor_loc_mensal = Decimal("0.00")
+    n_consumo = n_locados = n_preventiva = 0
+    por_status = Counter()
+    por_categoria = Counter()
+    valor_por_status = Counter()
+    for it in items:
+        valor_total += (it.valor or Decimal("0.00"))
+        if str(it.item_consumo).lower() == "sim":
+            n_consumo += 1
+        loc = getattr(it, "locacao", None)
+        if str(it.locado).lower() == "sim":
+            n_locados += 1
+        if loc and loc.valor_mensal:
+            valor_loc_mensal += loc.valor_mensal
+        if str(it.precisa_preventiva).lower() == "sim":
+            n_preventiva += 1
+        st = it.get_status_display() if hasattr(it, "get_status_display") else (it.status or "-")
+        por_status[st] += 1
+        valor_por_status[st] += float(it.valor or 0)
+        por_categoria[_texto_relacionado(it.categoria)] += 1
 
-        status_txt = item.get_status_display() if hasattr(item, "get_status_display") else (item.status or "-")
+    # ── Paleta / estilos profissionais ───────────────────────────────────────
+    BRAND_DARK, BRAND, SOFT, ZEBRA = "0A2540", "1D4ED8", "EEF2F7", "F4F7FB"
+    INK, MUTED = "1F2733", "5B6B7F"
+    hair = Side(style="thin", color="DCE3EC")
+    border = Border(left=hair, right=hair, top=hair, bottom=hair)
+    f_title = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
+    f_sub = Font(name="Calibri", size=10, italic=True, color=MUTED)
+    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    f_bold = Font(name="Calibri", size=10, bold=True, color=INK)
+    f_cell = Font(name="Calibri", size=10, color=INK)
+    fill_title = PatternFill("solid", fgColor=BRAND_DARK)
+    fill_sub = PatternFill("solid", fgColor=SOFT)
+    fill_header = PatternFill("solid", fgColor=BRAND)
+    fill_zebra = PatternFill("solid", fgColor=ZEBRA)
+    a_center = Alignment(horizontal="center", vertical="center")
+    a_left = Alignment(horizontal="left", vertical="center")
+    a_right = Alignment(horizontal="right", vertical="center")
+    a_left_ind = Alignment(horizontal="left", vertical="center", indent=1)
+    BRL = 'R$ #,##0.00'
+    data_format = 'DD/MM/YYYY'
+    data_hora_format = 'DD/MM/YYYY HH:MM'
+
+    def faixa_titulo(ws, ncols, titulo, subtitulo):
+        last = get_column_letter(ncols)
+        ws.merge_cells(f"A1:{last}1")
+        c = ws["A1"]; c.value = titulo; c.font = f_title; c.fill = fill_title
+        c.alignment = a_left_ind
+        ws.row_dimensions[1].height = 34
+        ws.merge_cells(f"A2:{last}2")
+        c2 = ws["A2"]; c2.value = subtitulo; c2.font = f_sub; c2.fill = fill_sub
+        c2.alignment = a_left_ind
+        ws.row_dimensions[2].height = 18
+        ws.sheet_view.showGridLines = False
+
+    def cabecalho_tabela(ws, row, headers, center_cols=()):
+        for ci, h in enumerate(headers, 1):
+            c = ws.cell(row=row, column=ci, value=h)
+            c.fill = fill_header; c.font = f_header; c.border = border
+            c.alignment = a_center if ci in center_cols else a_left
+        ws.row_dimensions[row].height = 22
+
+    def _status_fill(raw):
+        s = (raw or "").lower()
+        if s == "ativo":
+            return "E6F4EA"
+        if s in ("manutencao", "correcao"):
+            return "FFF3E0"
+        if s in ("defeito", "queimado"):
+            return "FDECEA"
+        return None
+
+    gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")
+    wb = Workbook()
+
+    # =========================================================================
+    # ABA 1 — RESUMO
+    # =========================================================================
+    wsr = wb.active
+    wsr.title = "Resumo"
+    faixa_titulo(wsr, 6, "INVENTÁRIO DE EQUIPAMENTOS",
+                 f"Santa Colomba Agropecuária  ·  Relatório gerado em {gerado}  ·  {total_itens} item(ns)")
+
+    kpis = [
+        ("TOTAL DE ITENS", total_itens, "334155", None),
+        ("VALOR DE AQUISIÇÃO", float(valor_total), "0A2540", BRL),
+        ("ITENS DE CONSUMO", n_consumo, "EA580C", None),
+        ("ITENS LOCADOS", n_locados, "7C3AED", None),
+        ("LOCAÇÃO MENSAL", float(valor_loc_mensal), "1E8E3E", BRL),
+        ("PRECISAM PREVENTIVA", n_preventiva, "D93025", None),
+    ]
+    rk = 4
+    for idx, (lbl, val, color, fmt) in enumerate(kpis):
+        col = idx + 1
+        cl = wsr.cell(row=rk, column=col, value=lbl)
+        cl.font = Font(name="Calibri", size=8, bold=True, color="FFFFFF")
+        cl.fill = PatternFill("solid", fgColor=color); cl.alignment = a_center; cl.border = border
+        cv = wsr.cell(row=rk + 1, column=col, value=val)
+        cv.font = Font(name="Calibri", size=15, bold=True, color=color)
+        cv.fill = PatternFill("solid", fgColor="F4F6F9"); cv.alignment = a_center; cv.border = border
+        if fmt:
+            cv.number_format = fmt
+    wsr.row_dimensions[rk].height = 16
+    wsr.row_dimensions[rk + 1].height = 28
+    for c in range(1, 7):
+        wsr.column_dimensions[get_column_letter(c)].width = 20
+
+    def _hcell(rr, col, val, align):
+        c = wsr.cell(row=rr, column=col, value=val)
+        c.fill = fill_header; c.font = f_header; c.border = border; c.alignment = align
+        return c
+
+    # Quebra por Status (Status | Qtd. | Valor de Aquisição)
+    r = rk + 3
+    _hcell(r, 1, "Status", a_left)
+    _hcell(r, 2, "Qtd.", a_center)
+    wsr.merge_cells(start_row=r, start_column=3, end_row=r, end_column=4)
+    _hcell(r, 3, "Valor de Aquisição", a_center)
+    _hcell(r, 4, None, a_center)
+    wsr.row_dimensions[r].height = 22
+    r += 1
+    for i, (st, qt) in enumerate(por_status.most_common()):
+        zebra = (i % 2 == 1)
+        c1 = wsr.cell(row=r, column=1, value=st)
+        c2 = wsr.cell(row=r, column=2, value=qt)
+        wsr.merge_cells(start_row=r, start_column=3, end_row=r, end_column=4)
+        c3 = wsr.cell(row=r, column=3, value=float(valor_por_status[st]))
+        c1.alignment, c2.alignment, c3.alignment = a_left, a_center, a_right
+        c3.number_format = BRL
+        for cc in (c1, c2, c3, wsr.cell(row=r, column=4)):
+            cc.border = border; cc.font = f_cell
+            if zebra:
+                cc.fill = fill_zebra
+        r += 1
+
+    # Quebra por Categoria (top 12) — Categoria (merge A:B) | Qtd. (C)
+    r += 1
+    wsr.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+    _hcell(r, 1, "Categoria (top 12)", a_left)
+    _hcell(r, 2, None, a_left)
+    _hcell(r, 3, "Qtd.", a_center)
+    wsr.row_dimensions[r].height = 22
+    r += 1
+    for i, (cat, qt) in enumerate(por_categoria.most_common(12)):
+        zebra = (i % 2 == 1)
+        wsr.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+        c1 = wsr.cell(row=r, column=1, value=cat)
+        c2 = wsr.cell(row=r, column=2)
+        c3 = wsr.cell(row=r, column=3, value=qt)
+        c1.alignment, c3.alignment = a_left, a_center
+        for cc in (c1, c2, c3):
+            cc.border = border; cc.font = f_cell
+            if zebra:
+                cc.fill = fill_zebra
+        r += 1
+
+    # =========================================================================
+    # ABA 2 — ITENS (detalhado)
+    # =========================================================================
+    ws = wb.create_sheet(title="Itens")
+    header = [
+        "#", "ID", "Nome", "Número de Série", "Marca", "Modelo", "Quantidade",
+        "Item de Consumo", "PMB", "Valor de Aquisição (R$)", "Status", "Fornecedor",
+        "Categoria", "Subtipo", "Localidade", "Centro de Custo", "Precisa Preventiva",
+        "Data Limite Preventiva (dias)", "Data da Compra", "Número do Pedido",
+        "Observações do Item", "Locado", "Tempo Locado (meses)", "Valor Locação Mensal (R$)",
+        "Data de Entrada Locação", "Contrato Locação", "Observações da Locação",
+        "Fornecedor da Locação", "Criado em", "Criado por", "Atualizado em", "Atualizado por",
+    ]
+    ncols = len(header)
+    faixa_titulo(ws, ncols, "EQUIPAMENTOS — DETALHADO",
+                 f"{total_itens} item(ns) exportado(s)  ·  gerado em {gerado}")
+    HEADER_ROW = 3
+    center_cols = {1, 2, 7, 8, 9, 11, 17, 18, 22, 23}
+    cabecalho_tabela(ws, HEADER_ROW, header, center_cols=center_cols)
+
+    row = HEADER_ROW + 1
+    for i, item in enumerate(items, start=1):
+        locacao = getattr(item, "locacao", None)
+        status_raw = item.status or ""
+        status_txt = item.get_status_display() if hasattr(item, "get_status_display") else (status_raw or "-")
         item_consumo_txt = item.get_item_consumo_display() if hasattr(item, "get_item_consumo_display") else _sim_nao(item.item_consumo)
         pmb_txt = item.get_pmb_display() if hasattr(item, "get_pmb_display") else _sim_nao(item.pmb)
-        preventiva_txt = (
-            item.get_precisa_preventiva_display()
-            if hasattr(item, "get_precisa_preventiva_display")
-            else _sim_nao(item.precisa_preventiva)
-        )
+        preventiva_txt = item.get_precisa_preventiva_display() if hasattr(item, "get_precisa_preventiva_display") else _sim_nao(item.precisa_preventiva)
         locado_txt = item.get_locado_display() if hasattr(item, "get_locado_display") else _sim_nao(item.locado)
-
         valor_item = item.valor if item.valor is not None else Decimal("0.00")
         valor_locacao = locacao.valor_mensal if (locacao and locacao.valor_mensal is not None) else Decimal("0.00")
 
-        criado_em = getattr(item, "criado_em", None)
-        criado_por = getattr(item, "criado_por", None)
-        atualizado_em = getattr(item, "atualizado_em", None)
-        atualizado_por = getattr(item, "atualizado_por", None)
-
-        row = [
-            i,
-            item.id,
-            item.nome or "",
-            item.numero_serie or "",
-            item.marca or "",
-            item.modelo or "",
-            item.quantidade or 0,
-            item_consumo_txt,
-            pmb_txt,
-            float(valor_item),
-            status_txt,
-            _texto_relacionado(item.fornecedor),
-            _texto_relacionado(item.categoria),
-            _texto_relacionado(item.subtipo),
-            _texto_relacionado(item.localidade, attr="local"),
-            _fmt_cc(item.centro_custo),
+        valores = [
+            i, item.id, item.nome or "", item.numero_serie or "", item.marca or "",
+            item.modelo or "", item.quantidade or 0, item_consumo_txt, pmb_txt,
+            float(valor_item), status_txt, _texto_relacionado(item.fornecedor),
+            _texto_relacionado(item.categoria), _texto_relacionado(item.subtipo),
+            _texto_relacionado(item.localidade, attr="local"), _fmt_cc(item.centro_custo),
             preventiva_txt,
             item.data_limite_preventiva if item.data_limite_preventiva is not None else "",
-            item.data_compra,
-            item.numero_pedido or "",
-            item.observacoes or "",
-            locado_txt,
+            item.data_compra, item.numero_pedido or "", item.observacoes or "", locado_txt,
             locacao.tempo_locado if locacao and locacao.tempo_locado is not None else "",
-            float(valor_locacao),
-            locacao.data_entrada if locacao else "",
+            float(valor_locacao), locacao.data_entrada if locacao else "",
             locacao.contrato if locacao and locacao.contrato else "",
             locacao.observacoes if locacao and locacao.observacoes else "",
             _texto_relacionado(locacao.fornecedor) if locacao else "-",
-            criado_em,
-            _texto_usuario_auditoria(criado_por),
-            atualizado_em,
-            _texto_usuario_auditoria(atualizado_por),
+            getattr(item, "criado_em", None), _texto_usuario_auditoria(getattr(item, "criado_por", None)),
+            getattr(item, "atualizado_em", None), _texto_usuario_auditoria(getattr(item, "atualizado_por", None)),
         ]
-        ws.append(row)
+        zebra = (i % 2 == 0)
+        st_fill = _status_fill(status_raw)
+        for ci, val in enumerate(valores, 1):
+            c = ws.cell(row=row, column=ci, value=val)
+            c.border = border
+            c.font = f_cell
+            c.alignment = a_center if ci in center_cols else a_left
+            if ci == 10 or ci == 24:
+                c.number_format = BRL
+                c.alignment = a_right
+            elif ci == 19 and val:
+                c.number_format = data_format
+            elif ci == 25 and val:
+                c.number_format = data_format
+            elif ci in (29, 31) and val:
+                c.number_format = data_hora_format
+            if ci == 11 and st_fill:
+                c.fill = PatternFill("solid", fgColor=st_fill)
+                c.font = f_bold
+                c.alignment = a_center
+            elif zebra:
+                c.fill = fill_zebra
+        row += 1
 
-    # Formatação
-    for r in range(2, ws.max_row + 1):
-        # Valor aquisição
-        ws.cell(row=r, column=10).number_format = numero_format
-        # Valor locação mensal
-        ws.cell(row=r, column=24).number_format = numero_format
+    ws.freeze_panes = f"A{HEADER_ROW + 1}"
 
-        # Data compra
-        if ws.cell(row=r, column=19).value:
-            ws.cell(row=r, column=19).number_format = data_format
-
-        # Data entrada locação
-        if ws.cell(row=r, column=25).value:
-            ws.cell(row=r, column=25).number_format = data_format
-
-        # Criado em
-        if ws.cell(row=r, column=29).value:
-            ws.cell(row=r, column=29).number_format = data_hora_format
-
-        # Atualizado em
-        if ws.cell(row=r, column=31).value:
-            ws.cell(row=r, column=31).number_format = data_hora_format
-
-    # Congelar cabeçalho
-    ws.freeze_panes = "A2"
-
-    # Auto ajuste de largura
+    # Largura automática a partir do cabeçalho + dados (ignora a faixa de título)
     widths = {}
-    for row in ws.iter_rows(values_only=True):
-        for idx, val in enumerate(row, start=1):
+    for r_ in ws.iter_rows(min_row=HEADER_ROW, values_only=True):
+        for idx, val in enumerate(r_, start=1):
             texto = str(val) if val is not None else ""
             widths[idx] = max(widths.get(idx, 0), len(texto))
-
     for idx, width in widths.items():
-        ws.column_dimensions[get_column_letter(idx)].width = min(max(width + 2, 12), 40)
+        ws.column_dimensions[get_column_letter(idx)].width = min(max(width + 2, 11), 42)
 
-    # Resposta
+    # ── Resposta ─────────────────────────────────────────────────────────────
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
-
     now = timezone.localtime().strftime("%Y%m%d-%H%M%S")
-    filename = f"itens_completos_{now}.xlsx"
-
+    filename = f"equipamentos_{now}.xlsx"
     response = HttpResponse(
         buffer.getvalue(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -783,6 +877,49 @@ def toner_cc_dashboard(request):
     gasto_dia = (total_geral / Decimal(periodo_dias)) if periodo_dias > 0 else Decimal("0.00")
     gasto_projetado_30d = gasto_dia * Decimal("30")
 
+    # ── Tempo médio entre baixas por centro de custo (cadência de consumo) ──
+    from collections import defaultdict as _dd
+    _datas_cc = _dd(list)
+    _nome_cc = {}
+    for _r in base_cc.values("cc_id", "cc_numero", "cc_departamento", "created_at").order_by("cc_id", "created_at"):
+        _cid = _r["cc_id"]
+        _datas_cc[_cid].append(_r["created_at"])
+        if _cid not in _nome_cc:
+            _nome_cc[_cid] = _cc_display(_r.get("cc_numero"), _r.get("cc_departamento"))
+
+    tempo_medio_cc = []
+    for _cid, _datas in _datas_cc.items():
+        _n = len(_datas)
+        if _n >= 2:
+            _span = (_datas[-1] - _datas[0]).days
+            _dias = round(_span / (_n - 1), 1)
+        else:
+            _dias = None
+        tempo_medio_cc.append({"cc": _nome_cc[_cid], "baixas": _n, "dias_medio": _dias})
+    tempo_medio_cc.sort(key=lambda x: (x["dias_medio"] is None, x["dias_medio"] if x["dias_medio"] is not None else 0))
+
+    # ── Dados para a exportação em imagem (resumo executivo) ──
+    resumo_export = {
+        "periodo": f"{dt_ini:%d/%m/%Y} — {dt_fim:%d/%m/%Y}",
+        "periodo_dias": periodo_dias,
+        "gerado_em": timezone.localtime().strftime("%d/%m/%Y %H:%M"),
+        "kpi": {
+            "gasto_total": float(total_geral),
+            "qtd": total_qtd,
+            "movimentos": total_movimentos,
+            "ticket_medio": float(ticket_medio),
+        },
+        "centros": [
+            {"cc": l["cc"], "qtd": l["qtd"], "gasto": float(l["gasto"]), "pct": float(l["percentual"])}
+            for l in linhas
+        ],
+        "itens": [
+            {"nome": it["nome"], "qtd": it["qtd"], "gasto": float(it["gasto"])}
+            for it in top_itens
+        ],
+        "tempo": tempo_medio_cc,
+    }
+
     if request.GET.get("export") == "1":
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         filename = f"dashboard_toner_{dt_ini:%Y%m%d}_{dt_fim:%Y%m%d}.csv"
@@ -850,6 +987,8 @@ def toner_cc_dashboard(request):
         "kpi_top_item_nome": top_item_nome,
         "kpi_gasto_dia": gasto_dia,
         "kpi_gasto_projetado_30d": gasto_projetado_30d,
+
+        "resumo_export": resumo_export,
     }
 
     return render(request, "front/dashboards/dashboard_toner.html", ctx)

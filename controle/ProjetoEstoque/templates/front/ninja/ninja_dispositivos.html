@@ -6,12 +6,16 @@
 {% block page_subtitle %}Mapeamento de máquinas, séries e vínculo com estoque{% endblock %}
 
 {% block header_actions %}
-<a href="{% url 'ninja_dashboard' %}" class="btn btn-light" style="min-height:2.25rem;padding:0 1rem;">
-  <i class="fa fa-arrow-left"></i> Dashboard
-</a>
-<a href="{% url 'ninja_relatorio' %}" class="btn btn-light" style="min-height:2.25rem;padding:0 1rem;">
-  <i class="fa fa-chart-bar"></i> Relatório de uso
-</a>
+<form method="post" action="{% url 'ninja_importar' %}" enctype="multipart/form-data" style="margin:0;display:inline-flex;align-items:center;">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="ninja_dispositivos">
+  <input type="file" name="arquivo_csv" id="njdCsv" accept=".csv" style="display:none"
+         onchange="if(this.files.length){document.getElementById('njdSubmit').click();}">
+  <button type="button" class="btn-primary btn-sm" onclick="document.getElementById('njdCsv').click()">
+    <i class="fa fa-file-import"></i> Importar CSV
+  </button>
+  <button type="submit" id="njdSubmit" style="display:none" aria-hidden="true"></button>
+</form>
 {% endblock %}
 
 {% block extra_css %}
@@ -107,6 +111,48 @@
   .njd-kpi-row { gap:.5rem; }
   .njd-stat { font-size:.75rem; padding:.25rem .6rem; }
 }
+
+/* ── Toggle Tabela/Galeria ─── */
+.njd-viewbtns { display:inline-flex; gap:.2rem; padding:.18rem; border-radius:var(--radius-pill); background:var(--bg-fill-secondary); }
+.njd-viewbtn {
+  border:0; cursor:pointer; background:transparent; color:var(--text-tertiary);
+  display:inline-flex; align-items:center; gap:.35rem; white-space:nowrap;
+  padding:.32rem .7rem; border-radius:var(--radius-pill);
+  font-size:.74rem; font-weight:700; transition:background var(--transition-fast), color var(--transition-fast);
+}
+.njd-viewbtn:hover { color:var(--text-primary); }
+.njd-viewbtn.active { background:var(--bg-elevated); color:var(--nj-brand); box-shadow:var(--shadow-xs); }
+
+/* ── Galeria ─── */
+.njd-gallery {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(15.5rem,1fr));
+  gap:.85rem; padding:1.1rem;
+}
+/* O atributo [hidden] precisa vencer o display:grid acima (senão a galeria
+   continua visível no modo Lista ao rolar a página). */
+.njd-gallery[hidden], #njdTableView[hidden] { display:none !important; }
+.njd-card {
+  display:grid; gap:.5rem; padding:.9rem 1rem;
+  background:var(--bg-elevated); border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-lg); box-shadow:var(--shadow-xs);
+  transition:box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+.njd-card:hover { box-shadow:var(--shadow-md); transform:translateY(-2px); }
+.njd-card-top { display:flex; align-items:center; gap:.5rem; }
+.njd-card-name { flex:1; min-width:0; font-weight:700; font-size:.92rem; letter-spacing:-.014em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.njd-card-row { display:flex; align-items:center; gap:.45rem; font-size:.79rem; color:var(--text-tertiary); min-width:0; }
+.njd-card-row > i { width:15px; text-align:center; color:var(--text-quaternary); flex-shrink:0; }
+.njd-card-row code { color:var(--text-secondary); letter-spacing:.03em; }
+.njd-card-foot { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.15rem; padding-top:.55rem; border-top:1px solid var(--separator-hairline); }
+
+/* ── Paginação ─── */
+.njd-pagination { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; padding:.85rem 1.15rem; border-top:1px solid var(--separator-hairline); }
+.njd-pg-info { font-size:.8rem; color:var(--text-tertiary); font-weight:600; }
+.njd-pg-links { display:flex; gap:.3rem; flex-wrap:wrap; }
+.njd-pg-link { display:inline-grid; place-items:center; min-width:2rem; height:2rem; padding:0 .55rem; border-radius:var(--radius-md); border:1px solid var(--separator-hairline); background:var(--bg-elevated); color:var(--text-secondary); font-size:.82rem; font-weight:700; text-decoration:none; transition:all var(--transition-fast); }
+.njd-pg-link:hover { border-color:var(--nj-brand); color:var(--nj-brand); }
+.njd-pg-link.active { background:var(--nj-brand); border-color:var(--nj-brand); color:#fff; }
+.njd-pg-link.disabled { opacity:.4; pointer-events:none; }
 </style>
 {% endblock %}
 
@@ -117,10 +163,13 @@
   <div class="njd-kpi-row">
     <span class="njd-stat"><span class="njd-stat-dot" style="background:var(--nj-brand);"></span> {{ resumo.total }} total</span>
     <span class="njd-stat"><span class="njd-stat-dot" style="background:var(--success);"></span> {{ resumo.online }} online</span>
-    <span class="njd-stat"><span class="njd-stat-dot" style="background:var(--text-quaternary);"></span> {{ resumo.total|add:resumo.online|add:"-"|add:resumo.online }} offline</span>
+    <span class="njd-stat"><span class="njd-stat-dot" style="background:var(--text-quaternary);"></span> {{ resumo.offline }} offline</span>
     <span class="njd-stat"><span class="njd-stat-dot" style="background:var(--brand);"></span> {{ resumo.matched }} vinculados</span>
     <span class="njd-stat"><span class="njd-stat-dot" style="background:var(--warning);"></span> {{ resumo.unmatched }} sem vínculo</span>
-    <span style="margin-left:auto;">
+    <span style="margin-left:auto;display:inline-flex;gap:.5rem;">
+      <a href="{% url 'ninja_nao_cadastrados' %}" class="btn btn-light" style="padding:0 .8rem;min-height:1.9rem;font-size:.78rem;">
+        <i class="fa fa-triangle-exclamation" style="color:var(--warning);"></i> Não cadastrados
+      </a>
       <a href="{% url 'ninja_relatorio' %}" class="btn btn-light" style="padding:0 .8rem;min-height:1.9rem;font-size:.78rem;">
         <i class="fa fa-chart-bar"></i> Relatório de uso
       </a>
@@ -129,11 +178,11 @@
 
   <!-- Filtro retratável -->
   <details class="njd-filter-details" id="njdFilter"
-    {% if f_q or f_status or f_match %}open{% endif %}>
+    {% if f_q or f_status or f_match or f_local or f_user or f_ordenar %}open{% endif %}>
     <summary class="njd-filter-summary">
       <i class="fa fa-filter" style="color:var(--brand);"></i>
       Filtros
-      {% if f_q or f_status or f_match %}
+      {% if f_q or f_status or f_match or f_local or f_user or f_ordenar %}
         <span style="font-size:.73rem;font-weight:600;color:var(--brand);padding:.18rem .5rem;background:var(--brand-soft);border-radius:var(--radius-pill);">Ativo</span>
       {% endif %}
       <i class="fa fa-chevron-down chevron"></i>
@@ -142,9 +191,9 @@
       <div class="njd-field">
         <label for="f_q">Busca</label>
         <input id="f_q" name="q" type="text" class="form-control"
-               value="{{ f_q }}" placeholder="Nome, série, usuário, IP...">
+               value="{{ f_q }}" placeholder="Nome, série, usuário, modelo, local...">
       </div>
-      <div class="njd-field" style="max-width:180px;">
+      <div class="njd-field" style="max-width:150px;">
         <label for="f_status">Status</label>
         <select id="f_status" name="status" class="form-control">
           <option value="">Todos</option>
@@ -152,13 +201,41 @@
           <option value="offline" {% if f_status == 'offline' %}selected{% endif %}>Offline</option>
         </select>
       </div>
-      <div class="njd-field" style="max-width:210px;">
+      <div class="njd-field" style="max-width:200px;">
         <label for="f_match">Vínculo</label>
         <select id="f_match" name="match" class="form-control">
           <option value="">Todos</option>
           <option value="matched"   {% if f_match == 'matched' %}selected{% endif %}>Vinculados ao estoque</option>
           <option value="unmatched" {% if f_match == 'unmatched' %}selected{% endif %}>Sem vínculo (com série)</option>
           <option value="sem_serie" {% if f_match == 'sem_serie' %}selected{% endif %}>Sem número de série</option>
+        </select>
+      </div>
+      <div class="njd-field" style="max-width:170px;">
+        <label for="f_local">Local / Site</label>
+        <select id="f_local" name="local" class="form-control">
+          <option value="">Todos</option>
+          {% for loc in opt_locais %}
+          <option value="{{ loc }}" {% if f_local == loc %}selected{% endif %}>{{ loc }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="njd-field" style="max-width:160px;">
+        <label for="f_user">Usuário logado</label>
+        <select id="f_user" name="user" class="form-control">
+          <option value="">Todos</option>
+          <option value="com" {% if f_user == 'com' %}selected{% endif %}>Com usuário</option>
+          <option value="sem" {% if f_user == 'sem' %}selected{% endif %}>Sem usuário</option>
+        </select>
+      </div>
+      <div class="njd-field" style="max-width:180px;">
+        <label for="f_ordenar">Ordenar por</label>
+        <select id="f_ordenar" name="ordenar" class="form-control">
+          <option value="">Status (online 1º)</option>
+          <option value="nome"     {% if f_ordenar == 'nome' %}selected{% endif %}>Nome (A–Z)</option>
+          <option value="-nome"    {% if f_ordenar == '-nome' %}selected{% endif %}>Nome (Z–A)</option>
+          <option value="-contato" {% if f_ordenar == '-contato' %}selected{% endif %}>Contato (recente)</option>
+          <option value="contato"  {% if f_ordenar == 'contato' %}selected{% endif %}>Contato (antigo)</option>
+          <option value="local"    {% if f_ordenar == 'local' %}selected{% endif %}>Local</option>
         </select>
       </div>
       <div class="njd-filter-actions">
@@ -176,16 +253,27 @@
   <div class="njd-table-card">
     <div class="njd-table-header">
       <span class="njd-table-title"><i class="fa fa-desktop" style="color:var(--nj-brand);margin-right:.4rem;"></i>Dispositivos</span>
+      <div class="njd-viewbtns" role="tablist" aria-label="Modo de visualização" style="margin-left:auto;">
+        <button type="button" class="njd-viewbtn" data-view="tabela" id="njdBtnTabela" role="tab">
+          <i class="fa fa-table-list"></i> Tabela
+        </button>
+        <button type="button" class="njd-viewbtn" data-view="galeria" id="njdBtnGaleria" role="tab">
+          <i class="fa fa-table-cells-large"></i> Galeria
+        </button>
+      </div>
+      <a href="?export=xlsx{% if qs_keep %}&{{ qs_keep }}{% endif %}" class="btn btn-sm" style="padding:0 .8rem;min-height:1.9rem;font-size:.78rem;"
+         title="Exportar a lista filtrada para Excel">
+        <i class="fa fa-file-excel" style="color:#1e8e3e;"></i> Excel
+      </a>
       <span class="njd-count">{{ total_filtrado }} encontrado(s)</span>
     </div>
-    <div class="njd-table-wrap">
+    <div class="njd-table-wrap" id="njdTableView">
       <table class="njd-table">
         <thead>
           <tr>
             <th></th>
             <th>Máquina</th>
             <th>Número de série</th>
-            <th>Sistema Operacional</th>
             <th>Vínculo no estoque</th>
             <th>Usuário logado</th>
             <th>Centro de Custo</th>
@@ -213,9 +301,6 @@
               {% else %}
                 <span class="njd-chip njd-chip-noserie"><i class="fa fa-question"></i> Sem série</span>
               {% endif %}
-            </td>
-            <td style="color:var(--text-secondary);font-size:.8rem;">
-              {{ dev.os_name|default:"—" }}
             </td>
             <td>
               {% if dev.item %}
@@ -257,7 +342,7 @@
           </tr>
           {% empty %}
           <tr>
-            <td colspan="9">
+            <td colspan="8">
               <div class="njd-empty">
                 <i class="fa fa-desktop"></i>
                 Nenhum dispositivo encontrado para os filtros aplicados.
@@ -268,6 +353,51 @@
         </tbody>
       </table>
     </div>
+
+    <!-- Visualização em galeria -->
+    <div class="njd-gallery" id="njdGalleryView" hidden>
+      {% for dev in dispositivos %}
+      <article class="njd-card">
+        <div class="njd-card-top">
+          {% if dev.is_online %}
+            <span class="njd-dot-on" title="Online"></span>
+          {% else %}
+            <span class="njd-dot-off" title="Offline"></span>
+          {% endif %}
+          <span class="njd-card-name" title="{{ dev.display_name }}">{{ dev.display_name }}</span>
+        </div>
+        <div class="njd-card-row"><i class="fa fa-barcode"></i>
+          {% if dev.serial_number %}<code style="font-size:.76rem;">{{ dev.serial_number }}</code>
+          {% else %}<span style="color:var(--text-quaternary);">Sem número de série</span>{% endif %}
+        </div>
+        {% if dev.model_name %}<div class="njd-card-row"><i class="fa fa-laptop"></i>{{ dev.model_name }}</div>{% endif %}
+        <div class="njd-card-row"><i class="fa fa-location-dot"></i>{{ dev.local|default:"—" }}</div>
+        <div class="njd-card-row"><i class="fa fa-user"></i>{{ dev.last_user|default:"—" }}</div>
+        <div class="njd-card-row"><i class="fa fa-clock"></i>
+          {% if dev.last_contact %}{{ dev.last_contact|date:"d/m/Y H:i" }}{% else %}—{% endif %}
+        </div>
+        <div class="njd-card-foot">
+          {% if dev.item %}
+            <a href="{% url 'equipamento_detalhe' dev.item.pk %}" class="njd-chip njd-chip-match">
+              <i class="fa fa-link" style="font-size:.62rem;"></i> {{ dev.item.nome|truncatechars:22 }}
+            </a>
+            {% if dev.item.centro_custo %}<span class="njd-chip njd-chip-noserie">{{ dev.item.centro_custo.departamento }}</span>{% endif %}
+          {% elif dev.serial_number %}
+            <span class="njd-chip njd-chip-nomatch"><i class="fa fa-link-slash" style="font-size:.62rem;"></i> Sem match</span>
+          {% else %}
+            <span class="njd-chip njd-chip-noserie">Sem série</span>
+          {% endif %}
+        </div>
+      </article>
+      {% empty %}
+      <div class="njd-empty" style="grid-column:1/-1;">
+        <i class="fa fa-desktop"></i>
+        Nenhum dispositivo encontrado para os filtros aplicados.
+      </div>
+      {% endfor %}
+    </div>
+
+    {% include 'front/ninja/_njd_pagination.html' %}
   </div>
 
 </div>
@@ -285,6 +415,28 @@
   const saved = localStorage.getItem('njd_filter_open');
   if (saved === '0' && !el.hasAttribute('open')) return;
   if (saved === '1' && !el.hasAttribute('open')) el.open = true;
+})();
+
+// Alternar visualização Tabela / Galeria (persistente)
+(function () {
+  const tv = document.getElementById('njdTableView');
+  const gv = document.getElementById('njdGalleryView');
+  const bt = document.getElementById('njdBtnTabela');
+  const bg = document.getElementById('njdBtnGaleria');
+  if (!tv || !gv || !bt || !bg) return;
+  function aplicar(view) {
+    const galeria = view === 'galeria';
+    tv.hidden = galeria;
+    gv.hidden = !galeria;
+    bt.classList.toggle('active', !galeria);
+    bg.classList.toggle('active', galeria);
+    bt.setAttribute('aria-selected', String(!galeria));
+    bg.setAttribute('aria-selected', String(galeria));
+    localStorage.setItem('njd_view', view);
+  }
+  bt.addEventListener('click', () => aplicar('tabela'));
+  bg.addEventListener('click', () => aplicar('galeria'));
+  aplicar(localStorage.getItem('njd_view') || 'tabela');
 })();
 </script>
 {% endblock %}

@@ -197,26 +197,58 @@ def _linha_ok(texto: str) -> str:
 # Alerta 1 — Preventivas próximas
 # ─────────────────────────────────────────────────────────────
 
+def _proxima_efetiva(preventiva, hoje):
+    """
+    Data efetiva da próxima preventiva — MESMA regra das telas de preventivas/
+    equipamentos: intervalo (Item.data_limite_preventiva → CheckListModelo.intervalo_dias)
+    a partir da última execução; se não houver, usa o campo data_proxima.
+    O campo data_proxima sozinho pode estar desatualizado, por isso não é usado direto.
+    Retorna date | None.
+    """
+    intervalo = 0
+    try:
+        intervalo = int(getattr(preventiva.equipamento, "data_limite_preventiva", 0) or 0)
+    except (TypeError, ValueError):
+        intervalo = 0
+    if intervalo <= 0 and preventiva.checklist_modelo:
+        try:
+            intervalo = int(preventiva.checklist_modelo.intervalo_dias or 0)
+        except (TypeError, ValueError):
+            intervalo = 0
+    if intervalo > 0 and preventiva.data_ultima:
+        return preventiva.data_ultima + timedelta(days=intervalo)
+    return preventiva.data_proxima
+
+
 def alerta_preventivas_proximas(dias: int = 7) -> bool:
     from ProjetoEstoque.models import Preventiva
 
     hoje = timezone.localdate()
-    limite = hoje + timedelta(days=dias)
 
-    qs = (
+    base = (
         Preventiva.objects
-        .filter(data_proxima__gte=hoje, data_proxima__lte=limite, pausada=False)
+        .filter(pausada=False)
         .select_related("equipamento", "equipamento__localidade", "checklist_modelo")
-        .order_by("data_proxima", "equipamento__nome")
     )
+    itens = []
+    for p in base:
+        proxima = _proxima_efetiva(p, hoje)
+        if not proxima:
+            continue
+        dias_rest = (proxima - hoje).days
+        if 0 <= dias_rest <= dias:
+            p.data_proxima = proxima  # data efetiva (em memória) para exibição
+            p.dias_rest = dias_rest
+            itens.append(p)
+    itens.sort(key=lambda p: (p.data_proxima, p.equipamento.nome))
 
-    if not qs.exists():
+    if not itens:
         logger.info("alerta_preventivas: nenhuma preventiva nos próximos %d dias.", dias)
         return False
 
     linhas = []
-    for p in qs:
-        dias_rest = (p.data_proxima - hoje).days
+    for p in itens:
+        dias_rest = p.dias_rest
         if dias_rest == 0:
             badge = _badge("VENCE HOJE", "#fee2e2", "#b91c1c")
         elif dias_rest <= 2:
@@ -237,7 +269,7 @@ def alerta_preventivas_proximas(dias: int = 7) -> bool:
         linhas,
     )
     total = len(linhas)
-    vencendo_hoje = sum(1 for p in qs if p.data_proxima == hoje)
+    vencendo_hoje = sum(1 for p in itens if p.data_proxima == hoje)
 
     intro = (
         f'<p style="margin:0 0 4px;color:#334155;font-size:14px;">'
@@ -256,7 +288,7 @@ def alerta_preventivas_proximas(dias: int = 7) -> bool:
         f"ALERTA — Preventivas nos próximos {dias} dias\nTotal: {total}\n\n"
         + "\n".join(
             f"- {p.equipamento.nome} | {p.equipamento.numero_serie or '—'} | Vence: {p.data_proxima.strftime('%d/%m/%Y')}"
-            for p in qs
+            for p in itens
         )
     )
 
@@ -654,7 +686,6 @@ def relatorio_diario(horas: int = 24) -> bool:
     agora = timezone.now()
     corte = agora - timedelta(hours=horas)
     hoje = timezone.localdate()
-    limite_7d = hoje + timedelta(days=7)
 
     # ── Queries ────────────────────────────────────────────────
 
@@ -707,27 +738,34 @@ def relatorio_diario(horas: int = 24) -> bool:
         .order_by("usuario__nome")
     )
 
-    prev_vencidas = (
+    # Data efetiva calculada (data_ultima + intervalo), igual às telas do sistema —
+    # o campo data_proxima sozinho pode estar desatualizado.
+    prev_vencidas = []
+    prev_proximas = []
+    for _p in (
         Preventiva.objects
-        .filter(data_proxima__lt=hoje, pausada=False)
+        .filter(pausada=False)
         .select_related("equipamento", "equipamento__localidade", "checklist_modelo")
-        .order_by("data_proxima")
-    )
-
-    prev_proximas = (
-        Preventiva.objects
-        .filter(data_proxima__gte=hoje, data_proxima__lte=limite_7d, pausada=False)
-        .select_related("equipamento", "equipamento__localidade", "checklist_modelo")
-        .order_by("data_proxima")
-    )
+    ):
+        _proxima = _proxima_efetiva(_p, hoje)
+        if not _proxima:
+            continue
+        _p.data_proxima = _proxima  # data efetiva (em memória)
+        _dias = (_proxima - hoje).days
+        if _dias < 0:
+            prev_vencidas.append(_p)
+        elif _dias <= 7:
+            prev_proximas.append(_p)
+    prev_vencidas.sort(key=lambda p: p.data_proxima)
+    prev_proximas.sort(key=lambda p: p.data_proxima)
 
     # ── Counts ─────────────────────────────────────────────────
     n_criticos = itens_criticos.count()
     n_baixas = baixas.count()
     n_movs = movimentacoes.count()
     n_licencas = licencas.count()
-    n_vencidas = prev_vencidas.count()
-    n_proximas = prev_proximas.count()
+    n_vencidas = len(prev_vencidas)
+    n_proximas = len(prev_proximas)
     n_sem_estoque = sum(1 for i in itens_criticos if (i.quantidade or 0) == 0)
 
     # ── KPI boxes ─────────────────────────────────────────────

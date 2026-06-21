@@ -24,7 +24,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logger = logging.getLogger(__name__)
 
 _CACHE_KEY_DEVICES = "prtg_devices_v2"
-_CACHE_KEY_PING    = "prtg_ping_sensors_v2"
+_CACHE_KEY_PING    = "prtg_ping_sensors_v3"  # v3: agora guarda uptimesince/downtime/uptime%
 _CACHE_TTL = 30  # segundos
 
 # Mapeamento texto de status → código numérico (fallback quando status_raw ausente)
@@ -48,6 +48,19 @@ _STATUS_MAP: dict[int, str] = {
     11: "not_licensed",
     12: "paused_until",
 }
+
+# Status "determinados" — os que informam a SAÚDE de conectividade (up/instável/down).
+_DETERMINATE: frozenset[int] = frozenset({3, 4, 5, 10})  # up, warning, down, unusual
+
+# Estados de PAUSA — monitoramento desligado/suspenso. São DEFINITIVOS (o admin/PRTG
+# pausou de propósito), diferente de unknown/collecting (que é "sem sinal").
+_PAUSED: frozenset[int] = frozenset({7, 8, 9, 12})  # by user, by dep, by sched, until
+
+# Status do ping que PODEM prevalecer sobre o device-level: os determinados + os de
+# pausa. unknown/collecting/no_probe ficam de fora (não dão informação real e não
+# devem rebaixar um device claramente "up"). Já um ping PAUSADO deve prevalecer: o
+# device-level às vezes agrega como "up" mesmo com o único sensor pausado.
+_PING_INFORMATIVO: frozenset[int] = _DETERMINATE | _PAUSED
 
 # Severidade de cada status para comparação (maior = pior)
 # down(5) > warning(4) > unusual(10) > unknown(1) > collecting/paused > up(3)
@@ -141,6 +154,22 @@ def _status_int(d: dict) -> int:
         return _TEXT_TO_INT.get(normalized, 0)
 
 
+def _to_float(v):
+    """Converte valor PRTG (string/num) em float, ou None se vazio/inválido."""
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (ValueError, TypeError):
+        return None
+
+
+def _uptime_pct(raw) -> float | None:
+    """PRTG envia uptime como inteiro ×10000 (999895 → 99.9895%)."""
+    f = _to_float(raw)
+    return round(f / 10000, 4) if f is not None else None
+
+
 def _is_ping_sensor(s: dict) -> bool:
     """Identifica se um sensor PRTG é de ping ou ICMP."""
     stype = str(s.get("sensortype", "")).lower()
@@ -168,16 +197,26 @@ def get_devices() -> list[dict]:
     return devices
 
 
-def get_ping_status_by_device() -> dict[int, int]:
+def get_ping_info_by_device() -> dict[int, dict]:
     """
-    Retorna {device_objid: ping_sensor_status_int} para todos os devices que
-    possuem sensor de ping ou ICMP cadastrado no PRTG.
+    Retorna {device_objid: info} para todos os devices que possuem sensor de
+    ping/ICMP cadastrado no PRTG, onde info inclui não só o status como os dados
+    REAIS de atividade do PRTG:
 
-    Permite detectar "ping down" mesmo quando o status de device-level ainda
-    aparece como "up" (situação comum quando o sensor de ping não é o sensor
-    raiz de dependência do device no PRTG).
+        {
+          "status":        int,          # status do sensor de ping
+          "uptimesince":   float|None,   # segundos no estado ATUAL (quando up)
+          "downtimesince": float|None,   # segundos no estado ATUAL (quando down)
+          "uptime_pct":    float|None,   # % de disponibilidade histórica (PRTG)
+          "lastdown_raw":  float|None,   # data serial PRTG da última queda
+          "lastup_raw":    float|None,   # data serial PRTG da última subida
+        }
 
-    Cache de 30s — mesma janela dos devices para consistência.
+    Esses campos permitem datar a transição de status pelo MOMENTO REAL reportado
+    pelo PRTG (e não pelo instante em que o coletor rodou), corrigindo o histórico.
+
+    Permite ainda detectar "ping down" mesmo quando o status de device-level ainda
+    aparece como "up". Cache de 30s — mesma janela dos devices.
     """
     cached = cache.get(_CACHE_KEY_PING)
     if cached is not None:
@@ -185,11 +224,12 @@ def get_ping_status_by_device() -> dict[int, int]:
 
     data = _prtg_get({
         "content": "sensors",
-        "columns": "objid,name,status,status_raw,parentid,parentid_raw,sensortype",
+        "columns": ("objid,name,status,status_raw,parentid,parentid_raw,sensortype,"
+                    "uptimesince_raw,downtimesince_raw,uptime_raw,lastdown_raw,lastup_raw"),
         "count":   "5000",
     })
 
-    result: dict[int, int] = {}
+    result: dict[int, dict] = {}
     for s in data.get("sensors", []):
         if not _is_ping_sensor(s):
             continue
@@ -200,12 +240,30 @@ def get_ping_status_by_device() -> dict[int, int]:
         if pid <= 0:
             continue
         st = _status_int(s)
-        # Guarda o pior status de ping encontrado para este device
-        if _SEVERITY.get(st, 0) > _SEVERITY.get(result.get(pid, 0), 0):
-            result[pid] = st
+        prev = result.get(pid)
+        if prev is not None:
+            cur_det, prev_det = st in _DETERMINATE, prev["status"] in _DETERMINATE
+            # Preferir sensor com status determinado; entre iguais, manter o pior.
+            if prev_det and not cur_det:
+                continue
+            if cur_det == prev_det and _SEVERITY.get(st, 0) <= _SEVERITY.get(prev["status"], 0):
+                continue
+        result[pid] = {
+            "status":        st,
+            "uptimesince":   _to_float(s.get("uptimesince_raw")),
+            "downtimesince": _to_float(s.get("downtimesince_raw")),
+            "uptime_pct":    _uptime_pct(s.get("uptime_raw")),
+            "lastdown_raw":  _to_float(s.get("lastdown_raw")),
+            "lastup_raw":    _to_float(s.get("lastup_raw")),
+        }
 
     cache.set(_CACHE_KEY_PING, result, _CACHE_TTL)
     return result
+
+
+def get_ping_status_by_device() -> dict[int, int]:
+    """Compat: {device_objid: ping_status_int}. Use get_ping_info_by_device()."""
+    return {oid: info["status"] for oid, info in get_ping_info_by_device().items()}
 
 
 def get_devices_map() -> dict[int, dict]:
@@ -221,7 +279,7 @@ def get_devices_map() -> dict[int, dict]:
       device_status — status de device-level bruto do PRTG
       ping_status   — status do sensor de ping (None se não encontrado)
     """
-    ping_by_device = get_ping_status_by_device()
+    ping_info = get_ping_info_by_device()
 
     result = {}
     for d in get_devices():
@@ -231,15 +289,31 @@ def get_devices_map() -> dict[int, dict]:
             continue
 
         device_status = _status_int(d)
-        ping_status   = ping_by_device.get(oid)  # None quando não há sensor de ping
+        pinfo         = ping_info.get(oid)
+        ping_status   = pinfo["status"] if pinfo else None  # None = sem sensor de ping
 
-        # Status efetivo = pior de (device, ping sensor)
-        if ping_status is not None and _SEVERITY.get(ping_status, 0) > _SEVERITY.get(device_status, 0):
+        # Status efetivo = pior de (device, ping sensor), mas o ping só prevalece
+        # se trouxer um status INFORMATIVO: determinado (up/down/warning) OU de pausa.
+        # - ping "unknown"/"collecting" é ignorado (não rebaixa um device "up");
+        # - ping PAUSADO prevalece (o device-level às vezes agrega como "up" mesmo
+        #   com o único sensor pausado → senão o device apareceria falsamente ativo).
+        if (ping_status is not None and ping_status in _PING_INFORMATIVO
+                and _SEVERITY.get(ping_status, 0) > _SEVERITY.get(device_status, 0)):
             effective = ping_status
         else:
             effective = device_status
 
         slug = _STATUS_MAP.get(effective, "unknown")
+
+        # "Há quanto tempo no estado atual" (segundos) — dado REAL do PRTG, usado
+        # para datar corretamente as transições gravadas no histórico.
+        since_seconds = None
+        if pinfo is not None:
+            if slug == "up":
+                since_seconds = pinfo["uptimesince"]
+            elif slug == "down":
+                since_seconds = pinfo["downtimesince"]
+
         result[oid] = {
             "objid":         oid,
             "name":          d.get("name", ""),
@@ -251,6 +325,9 @@ def get_devices_map() -> dict[int, dict]:
             "status_slug":   slug,
             "statustext":    d.get("statustext", ""),
             "css_color":     STATUS_CSS.get(slug, STATUS_CSS["unknown"]),
+            "since_seconds": since_seconds,                          # estado atual há N segundos
+            "uptime_pct":    pinfo["uptime_pct"] if pinfo else None, # % uptime histórico (PRTG)
+            "lastdown_raw":  pinfo["lastdown_raw"] if pinfo else None,
         }
     return result
 

@@ -296,6 +296,7 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: #f5f5f7; fon
 </div>
 
 {{ layout_json|json_script:"__layout_data" }}
+{% include 'front/plantas/_planta_icons.html' %}
 <script>
 const LAYOUT   = JSON.parse(document.getElementById('__layout_data').textContent);
 const PRTG_OK  = {{ prtg_ok|yesno:"true,false" }};
@@ -306,10 +307,14 @@ const TIPO = {
   camera:       { label:"Câmera",        emoji:"📷", color:"#ef4444" },
   access_point: { label:"Access Point",  emoji:"📡", color:"#0ea5e9" },
   switch:       { label:"Switch",        emoji:"🔀", color:"#2563eb" },
+  meraki:       { label:"Meraki",        emoji:"📶", color:"#67b346" },
+  starlink:     { label:"Starlink",      emoji:"🛰️", color:"#4361ee" },
+  caixa_emenda: { label:"Caixa de Emenda", emoji:"🔗", color:"#0891b2" },
   rack:         { label:"Rack",          emoji:"🗄️",  color:"#475569" },
   desktop:      { label:"Desktop",       emoji:"🖥️",  color:"#10b981" },
   impressora:   { label:"Impressora",    emoji:"🖨️",  color:"#f97316" },
   nobreak:      { label:"Nobreak",       emoji:"⚡",  color:"#f59e0b" },
+  fonte:        { label:"Fonte",         emoji:"🔌",  color:"#f59e0b" },
   servidor:     { label:"Servidor",      emoji:"☁️",  color:"#8b5cf6" },
   ponto_rede:   { label:"Ponto de Rede", emoji:"📍",  color:"#6366f1" },
   texto:        { label:"Texto",         emoji:"✏️",  color:"#e5e5ea" },
@@ -327,7 +332,7 @@ const ST_MAP   = { 3:"up", 4:"warning", 5:"down", 10:"warning",
                    1:"unknown", 2:"unknown", 6:"unknown", 11:"unknown",
                    7:"unknown", 9:"unknown", 12:"unknown", 8:"paused_dep" };
 const ST_LABEL = { up:"Online", warning:"Instável", down:"Offline", paused_dep:"Paus. por Dep.", unknown:"Desconhecido", none:"Sem PRTG" };
-const EL_H3D   = { servidor:82, rack:72, switch:52, nobreak:46, desktop:42, impressora:34, camera:34, access_point:40, ponto_rede:26 };
+const EL_H3D   = { servidor:82, rack:72, switch:52, meraki:44, starlink:54, caixa_emenda:50, nobreak:46, fonte:30, desktop:42, impressora:34, camera:34, access_point:40, ponto_rede:26 };
 
 // ── State ──────────────────────────────────────────────────────────────────────
 let elements    = JSON.parse(JSON.stringify(LAYOUT.elements    || []));
@@ -448,10 +453,32 @@ function orthoRoute(ax,ay,fe,bx,by,te) {
 }
 
 // Returns the full 2D world-space path for a connection (start, waypoints, end)
+/* Feixe: distribui em leque várias conexões na mesma borda (fibras lado a lado). */
+const FAN_GAP = 12;
+function anchorPtSpread(el, edge, cnId, side) {
+  const base = anchorPt(el, edge);
+  const sibs = [];
+  for (const c of connections) {
+    if (c.from === el.id && c.fromEdge === edge) sibs.push(c.id + '|from');
+    if (c.to   === el.id && c.toEdge   === edge) sibs.push(c.id + '|to');
+  }
+  if (sibs.length <= 1) return base;
+  sibs.sort();
+  const idx = sibs.indexOf(cnId + '|' + side);
+  if (idx < 0) return base;
+  const w = el.width || 60, h = el.height || 60;
+  const span = (edge === 'n' || edge === 's') ? w : h;
+  const gap  = Math.min(FAN_GAP, (span * 0.78) / sibs.length);
+  const off  = (idx - (sibs.length - 1) / 2) * gap;
+  return (edge === 'n' || edge === 's')
+    ? { ax: base.ax + off, ay: base.ay }
+    : { ax: base.ax, ay: base.ay + off };
+}
+
 function connPath2D(cn) {
   const a = elements.find(e=>e.id===cn.from), b = elements.find(e=>e.id===cn.to);
   if(!a||!b)return null;
-  const {ax,ay} = anchorPt(a,cn.fromEdge), {ax:bx,ay:by} = anchorPt(b,cn.toEdge);
+  const {ax,ay} = anchorPtSpread(a,cn.fromEdge,cn.id,'from'), {ax:bx,ay:by} = anchorPtSpread(b,cn.toEdge,cn.id,'to');
   const wps = cn.waypoints || orthoRoute(ax,ay,cn.fromEdge,bx,by,cn.toEdge);
   return {a, b, pts:[{x:ax,y:ay},...wps,{x:bx,y:by}]};
 }
@@ -498,6 +525,15 @@ function drawPulse2D(sc,w,h,col,st) {
     ctx.beginPath(); ctx.roundRect(sc.x-ex,sc.y-ex,w+ex*2,h+ex*2,8*zoom+ex); ctx.stroke();
     ctx.restore();
   }
+}
+
+/* Cor efetiva: switch, Access Point e Meraki assumem a cor do status PRTG. */
+function tvEffColor(el) {
+  if (el.type==='switch' || el.type==='access_point' || el.type==='meraki') {
+    const k = elStKey(el);
+    if (k && k!=='none') return ST_COLOR[k] || (TIPO[el.type]||TIPO.switch).color;
+  }
+  return el.color || (TIPO[el.type]||TIPO.switch).color;
 }
 
 function drawEl2D(el) {
@@ -585,11 +621,11 @@ function drawEl2D(el) {
     ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);
     ctx.fillStyle=darkMode?'#1c1c1e':'#fff';ctx.fill();
     ctx.shadowColor='transparent';ctx.shadowBlur=0;
+    const ec=tvEffColor(el);
     ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);
-    ctx.strokeStyle=hexAlpha(st!=='none'?stCol:color,0.5);ctx.lineWidth=1.5*zoom;ctx.stroke();
+    ctx.strokeStyle=hexAlpha(st!=='none'?stCol:ec,0.5);ctx.lineWidth=1.5*zoom;ctx.stroke();
     if(st!=='none'){ctx.beginPath();ctx.arc(cx,cy,R+2*zoom,0,Math.PI*2);ctx.strokeStyle=stCol;ctx.lineWidth=2*zoom;ctx.stroke();}
-    ctx.font=`${Math.max(12,R*1.15)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText(cfg.emoji,cx,cy);
+    plantaDrawIcon(ctx,'access_point',cx,cy,R*0.62,ec);
     if(el.label&&zoom>0.3){
       ctx.font=`600 ${Math.max(7,8.5*zoom)}px -apple-system,sans-serif`;
       ctx.fillStyle=darkMode?'#e5e5ea':'#1d1d1f';ctx.textAlign='center';ctx.textBaseline='top';
@@ -598,21 +634,39 @@ function drawEl2D(el) {
     ctx.restore();return;
   }
 
+  /* Fonte de energia — badge bare, sem quadrado (igual editor) */
+  if(el.type==='fonte'){
+    const fw=(el.width||40)*zoom,fh=(el.height||40)*zoom,fcx=sc.x+fw/2,fcy=sc.y+fh/2;
+    const FR=Math.min(fw,fh)*0.46,fcor=el.color||(TIPO.fonte?TIPO.fonte.color:'#f59e0b');
+    ctx.save();
+    ctx.shadowColor=hexAlpha(fcor,0.6);ctx.shadowBlur=12*zoom;
+    plantaDrawIcon(ctx,'fonte',fcx,fcy,FR,fcor);
+    ctx.shadowColor='transparent';ctx.shadowBlur=0;
+    if(el.label&&zoom>0.3){
+      ctx.font=`600 ${Math.max(7,8.5*zoom)}px -apple-system,sans-serif`;
+      ctx.fillStyle=darkMode?'#e5e5ea':'#1d1d1f';ctx.textAlign='center';ctx.textBaseline='top';
+      ctx.fillText(el.label.length>14?el.label.slice(0,13)+'…':el.label,fcx,fcy+FR+4*zoom);
+    }
+    ctx.restore();return;
+  }
+
+  /* Card de equipamento — COR ÚNICA (tom da cor efetiva) + ícone vetorial */
   const w=(el.width||60)*zoom,h=(el.height||60)*zoom,r=8*zoom;
-  const stCol=elStColor(el),st=elStKey(el);
+  const stCol=elStColor(el),st=elStKey(el),ec=tvEffColor(el);
   drawPulse2D(sc,w,h,stCol,st);
   ctx.save();
   if(st==='down'||st==='warning'||st==='paused_dep'){ctx.shadowColor=stCol;ctx.shadowBlur=(st==='down'?16:10)*zoom;}
   else if(st==='up'){ctx.shadowColor=stCol;ctx.shadowBlur=5*zoom;}
   else{ctx.shadowColor=darkMode?'rgba(0,0,0,.3)':'rgba(0,0,0,.1)';ctx.shadowBlur=6*zoom;}
   ctx.shadowOffsetY=2*zoom;
-  ctx.beginPath();ctx.roundRect(sc.x,sc.y,w,h,r);
-  ctx.fillStyle=darkMode?'#1c1c1e':'#fff';ctx.fill();
+  const cg=ctx.createLinearGradient(sc.x,sc.y,sc.x,sc.y+h);
+  cg.addColorStop(0,hexAlpha(ec,0.20));cg.addColorStop(1,hexAlpha(ec,0.10));
+  ctx.beginPath();ctx.roundRect(sc.x,sc.y,w,h,r);ctx.fillStyle=cg;ctx.fill();
   ctx.shadowColor='transparent';ctx.shadowBlur=0;ctx.shadowOffsetY=0;
-  ctx.beginPath();ctx.roundRect(sc.x,sc.y,3.5*zoom,h,[r,0,0,r]);ctx.fillStyle=color;ctx.fill();
-  ctx.beginPath();ctx.roundRect(sc.x,sc.y,w,3.5*zoom,[r,r,0,0]);ctx.fillStyle=stCol;ctx.fill();
-  ctx.beginPath();ctx.roundRect(sc.x,sc.y,w,h,r);ctx.strokeStyle=hexAlpha(stCol,.45);ctx.lineWidth=1.5*zoom;ctx.stroke();
-  ctx.font=`${Math.max(10,15*zoom)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(cfg.emoji,sc.x+w/2,sc.y+h*.4);
+  ctx.beginPath();ctx.roundRect(sc.x,sc.y,w,h,r);
+  ctx.strokeStyle=st!=='none'?hexAlpha(stCol,0.55):hexAlpha(ec,0.4);ctx.lineWidth=1.2*zoom;ctx.stroke();
+  if(st!=='none'){ctx.beginPath();ctx.roundRect(sc.x-1.5*zoom,sc.y-1.5*zoom,w+3*zoom,h+3*zoom,r+1.5*zoom);ctx.strokeStyle=stCol;ctx.lineWidth=2*zoom;ctx.stroke();}
+  plantaDrawIcon(ctx,el.type,sc.x+w/2,sc.y+h*0.42,Math.min(w,h)*0.34,ec);
   if(el.label&&zoom>0.3){
     ctx.font=`600 ${Math.max(7,8.5*zoom)}px -apple-system,sans-serif`;
     ctx.fillStyle=darkMode?'#e5e5ea':'#1d1d1f';ctx.textAlign='center';ctx.textBaseline='middle';
@@ -886,7 +940,7 @@ function drawPackets3D() {
 // ── 3D: Elements (isometric boxes) ────────────────────────────────────────────
 function drawEl3D(el) {
   if(IS_FORMA(el.type)||el.type==='texto')return;
-  const cfg=TIPO[el.type]||TIPO.switch, color=el.color||cfg.color;
+  const cfg=TIPO[el.type]||TIPO.switch, color=tvEffColor(el);
   const stCol=elStColor(el), st=elStKey(el);
   const bw=el.width||60, bd=el.height||60, bh=EL_H3D[el.type]||32;
   const wx=el.x, wy=el.y;

@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Registro de Login — {{ device.display_name }}{% endblock %}
+{% block page_title %}Registro de Login{% endblock %}
+{% block page_subtitle %}{{ device.display_name }}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'ninja_login_validacao' %}" class="btn btn-sm"><i class="fa fa-arrow-left"></i> Validação</a>
+  {% if device.item %}
+  <a href="{% url 'equipamento_detalhe' device.item.pk %}" class="btn btn-sm"><i class="fa fa-box"></i> Equipamento</a>
+  {% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.njld-page) { --nj-brand:#6528d8; --nj-brand-soft:color-mix(in srgb,#6528d8 11%,transparent); }
+.njld-page, .njld-page * { box-sizing:border-box; min-width:0; }
+.njld-page { display:grid; gap:1.1rem; }
+
+.njld-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:1.1rem; align-items:start; }
+@media (max-width:880px){ .njld-grid{ grid-template-columns:1fr; } }
+
+.njld-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden; }
+.njld-card-head { display:flex; align-items:center; gap:.5rem; padding:.8rem 1.1rem; border-bottom:1px solid var(--separator-hairline); font-size:.88rem; font-weight:700; }
+.njld-card-head i { color:var(--nj-brand); }
+.njld-card-body { padding:1.1rem; }
+
+/* Status atual em destaque */
+.njld-status { display:flex; align-items:center; gap:1rem; padding:1.1rem 1.2rem; border-radius:var(--radius-xl);
+  border:1px solid var(--bd); background:var(--bg); }
+.njld-status-ic { width:54px; height:54px; flex-shrink:0; display:grid; place-items:center; border-radius:14px; font-size:24px; color:#fff; background:var(--ic); }
+.njld-status-txt h2 { margin:0; font-size:1.2rem; font-weight:800; letter-spacing:-.02em; color:var(--ic); }
+.njld-status-txt p { margin:.2rem 0 0; font-size:.86rem; color:var(--text-secondary); line-height:1.5; }
+
+/* Comparação 3 colunas */
+.njld-cmp { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:.6rem; }
+.njld-cmp-box { padding:.8rem .9rem; border:1px solid var(--separator-hairline); border-radius:var(--radius-lg); background:var(--bg-fill-secondary); text-align:center; }
+.njld-cmp-box .lbl { font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); }
+.njld-cmp-box .val { font-size:.95rem; font-weight:700; margin-top:.25rem; word-break:break-word; }
+.njld-cmp-box .val.mono { font-family:var(--font-mono,ui-monospace,Consolas,monospace); font-size:.85rem; }
+.njld-cmp i.eq { font-size:1.1rem; color:var(--text-quaternary); }
+
+.njld-info { display:grid; grid-template-columns:1fr 1fr; gap:.7rem 1.2rem; }
+.njld-info .k { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
+.njld-info .v { font-size:.88rem; font-weight:600; margin-top:.1rem; }
+.njld-info a { color:var(--nj-brand); text-decoration:none; }
+
+/* Timeline histórico */
+.njld-timeline { position:relative; padding:.4rem .4rem .4rem 0; }
+.njld-tl { position:relative; padding:.2rem 0 1.1rem 1.7rem; border-left:2px solid var(--separator-hairline); margin-left:.6rem; }
+.njld-tl:last-child { border-left-color:transparent; padding-bottom:.2rem; }
+.njld-tl::before { content:""; position:absolute; left:-7px; top:.25rem; width:12px; height:12px; border-radius:99px; background:var(--d,#8e8e93); box-shadow:0 0 0 3px var(--bg-elevated); }
+.njld-tl-top { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+.njld-tl-date { font-size:.76rem; color:var(--text-tertiary); font-weight:600; }
+.njld-tl-detail { font-size:.84rem; color:var(--text-secondary); margin-top:.3rem; line-height:1.5; }
+.njld-tl-meta { font-size:.76rem; color:var(--text-tertiary); margin-top:.2rem; }
+.njld-tl-meta .mono { font-family:var(--font-mono,ui-monospace,Consolas,monospace); }
+
+.njld-badge { display:inline-flex; align-items:center; gap:.35rem; padding:.16rem .55rem; border-radius:var(--radius-pill); font-size:.72rem; font-weight:700; white-space:nowrap; }
+.njld-badge.confere { color:#1e8e3e; background:color-mix(in srgb,#34c759 16%,transparent); }
+.njld-badge.divergente { color:#d93025; background:color-mix(in srgb,#ff3b30 14%,transparent); }
+.njld-badge.sem_atribuicao { color:#b35a00; background:color-mix(in srgb,#ff9500 18%,transparent); }
+.njld-badge.sem_login { color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline); }
+
+.njld-empty { padding:2rem 1rem; text-align:center; color:var(--text-tertiary); font-size:.85rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="njld-page">
+
+  <!-- Status atual -->
+  <div class="njld-status"
+       style="
+       {% if atual.status == 'confere' %}--ic:#1e8e3e;--bg:color-mix(in srgb,#34c759 8%,transparent);--bd:color-mix(in srgb,#34c759 30%,transparent);
+       {% elif atual.status == 'divergente' %}--ic:#d93025;--bg:color-mix(in srgb,#ff3b30 8%,transparent);--bd:color-mix(in srgb,#ff3b30 30%,transparent);
+       {% elif atual.status == 'sem_atribuicao' %}--ic:#b35a00;--bg:color-mix(in srgb,#ff9500 10%,transparent);--bd:color-mix(in srgb,#ff9500 32%,transparent);
+       {% else %}--ic:#8e8e93;--bg:var(--bg-fill-secondary);--bd:var(--separator-hairline);{% endif %}">
+    <div class="njld-status-ic" style="--ic:
+       {% if atual.status == 'confere' %}#1e8e3e{% elif atual.status == 'divergente' %}#d93025{% elif atual.status == 'sem_atribuicao' %}#b35a00{% else %}#8e8e93{% endif %};">
+      {% if atual.status == 'confere' %}<i class="fa fa-circle-check"></i>
+      {% elif atual.status == 'divergente' %}<i class="fa fa-triangle-exclamation"></i>
+      {% elif atual.status == 'sem_atribuicao' %}<i class="fa fa-user-slash"></i>
+      {% else %}<i class="fa fa-circle-question"></i>{% endif %}
+    </div>
+    <div class="njld-status-txt">
+      <h2>{{ atual.status_label }}</h2>
+      <p>{{ atual.detalhe }}</p>
+    </div>
+  </div>
+
+  <div class="njld-grid">
+    <!-- Comparação + info -->
+    <div style="display:grid; gap:1.1rem;">
+      <article class="njld-card">
+        <div class="njld-card-head"><i class="fa fa-code-compare"></i> Comparação</div>
+        <div class="njld-card-body">
+          <div class="njld-cmp">
+            <div class="njld-cmp-box">
+              <div class="lbl">Login no dispositivo</div>
+              <div class="val mono">{{ atual.login|default:"—" }}</div>
+            </div>
+            <i class="fa {% if atual.status == 'confere' %}fa-equals{% else %}fa-not-equal{% endif %} eq"
+               style="color:{% if atual.status == 'confere' %}#1e8e3e{% elif atual.status == 'divergente' %}#d93025{% else %}var(--text-quaternary){% endif %};"></i>
+            <div class="njld-cmp-box">
+              <div class="lbl">Atribuído no sistema</div>
+              <div class="val">{{ atual.usuario_nome|default:"— ninguém —" }}</div>
+            </div>
+          </div>
+          {% if atual.detectado_nome and atual.status != 'confere' %}
+          <div style="margin-top:.85rem; padding:.7rem .9rem; border-radius:var(--radius-lg); background:var(--nj-brand-soft); font-size:.83rem; color:var(--text-secondary);">
+            <i class="fa fa-wand-magic-sparkles" style="color:var(--nj-brand);"></i>
+            Detecção: este login parece pertencer a <b style="color:var(--nj-brand);">{{ atual.detectado_nome }}</b>.
+          </div>
+          {% endif %}
+        </div>
+      </article>
+
+      <article class="njld-card">
+        <div class="njld-card-head"><i class="fa fa-circle-info"></i> Dispositivo</div>
+        <div class="njld-card-body">
+          <div class="njld-info">
+            <div><div class="k">Status</div><div class="v">{% if device.is_online %}<span style="color:#1e8e3e;">● Online</span>{% else %}<span style="color:var(--text-tertiary);">● Offline</span>{% endif %}</div></div>
+            <div><div class="k">Local / Site</div><div class="v">{{ device.local|default:"—" }}</div></div>
+            <div><div class="k">Número de série</div><div class="v" style="font-family:var(--font-mono,monospace);font-size:.82rem;">{{ device.serial_number|default:"—" }}</div></div>
+            <div><div class="k">Último contato</div><div class="v">{% if device.last_contact %}{{ device.last_contact|date:"d/m/Y H:i" }}{% else %}—{% endif %}</div></div>
+            <div style="grid-column:1/-1;"><div class="k">Equipamento vinculado</div><div class="v">{% if device.item %}<a href="{% url 'equipamento_detalhe' device.item.pk %}">{{ device.item.nome }}</a>{% if device.item.centro_custo %} · {{ device.item.centro_custo.departamento }}{% endif %}{% else %}— sem vínculo —{% endif %}</div></div>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <!-- Histórico -->
+    <article class="njld-card">
+      <div class="njld-card-head"><i class="fa fa-clock-rotate-left"></i> Histórico de validações <span style="margin-left:auto;font-weight:600;color:var(--text-tertiary);font-size:.78rem;">{{ total_registros }} registro(s)</span></div>
+      <div class="njld-card-body">
+        {% if registros %}
+        <div class="njld-timeline">
+          {% for reg in registros %}
+          <div class="njld-tl" style="--d:
+            {% if reg.status == 'confere' %}#34c759{% elif reg.status == 'divergente' %}#ff3b30{% elif reg.status == 'sem_atribuicao' %}#ff9500{% else %}#8e8e93{% endif %};">
+            <div class="njld-tl-top">
+              <span class="njld-badge {{ reg.status }}">{{ reg.get_status_display }}</span>
+              <span class="njld-tl-date">{{ reg.verificado_em|date:"d/m/Y H:i" }} · {{ reg.verificado_em|naturaltime }}</span>
+            </div>
+            <div class="njld-tl-detail">{{ reg.detalhe }}</div>
+            <div class="njld-tl-meta">
+              Login: <span class="mono">{{ reg.device_user|default:"—" }}</span>
+              {% if reg.usuario_sistema_nome %} · Atribuído: {{ reg.usuario_sistema_nome }}{% endif %}
+              {% if reg.usuario_detectado %} · Detectado: {{ reg.usuario_detectado }}{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="njld-empty">
+          <i class="fa fa-clock-rotate-left" style="font-size:1.4rem;display:block;margin-bottom:.5rem;color:var(--text-quaternary);"></i>
+          Nenhuma validação registrada ainda.<br>Clique em <b>Revalidar agora</b> na tela de Validação para gerar o histórico.
+        </div>
+        {% endif %}
+      </div>
+    </article>
+  </div>
+
+</div>
+{% endblock %}

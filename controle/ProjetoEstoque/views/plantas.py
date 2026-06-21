@@ -139,10 +139,14 @@ _TIPOS_ELEMENTOS = [
     ("camera",       "Câmera",       "#ef4444", "camera"),
     ("access_point", "Access Point", "#0ea5e9", "wifi"),
     ("switch",       "Switch",       "#2563eb", "network-wired"),
+    ("meraki",       "Meraki",       "#67b346", "cloud"),
+    ("starlink",     "Starlink",     "#4361ee", "satellite-dish"),
+    ("caixa_emenda", "Caixa de Emenda", "#0891b2", "circle-nodes"),
     ("rack",         "Rack",         "#475569", "server"),
     ("desktop",      "Desktop",      "#10b981", "desktop"),
     ("impressora",   "Impressora",   "#f97316", "print"),
     ("nobreak",      "Nobreak",      "#f59e0b", "bolt"),
+    ("fonte",        "Fonte",        "#f59e0b", "plug"),
     ("servidor",     "Servidor",     "#8b5cf6", "cloud"),
     ("ponto_rede",   "Ponto de Rede","#6366f1", "circle-dot"),
     ("texto",        "Texto",        "#1d1d1f", "font"),
@@ -568,6 +572,259 @@ def prtg_monitor(request):
         'prtg_ok': True,
         'status_url': reverse('prtg_status_api'),
     })
+
+
+# ── Classificação de site a partir do nome do dispositivo PRTG ────────────────
+# O grupo PRTG identifica o TIPO (Switch, AP, Servidor…); o SITE fica no nome,
+# seguindo a convenção <TIPO>-...-SC-<SITE>-... (ex.: SW-A-SC-KTL-ADM).
+def _prtg_site(name: str) -> str:
+    import re as _re
+    u = (name or "").upper()
+    toks = set(_re.split(r"[-_ .]+", u))
+    if "RDM" in toks or "RIO DO MEIO" in u or "RIODOMEIO" in u:
+        return "RDM"
+    if "MAMBAI" in u or "MAMBAÍ" in u:
+        return "Mambai"
+    if toks & {"PIN", "PNR", "PINHEIROS"} or "PINHEIRO" in u:
+        return "PIN"
+    if toks & {"KTL", "KLT"} or "KARITEL" in u or "SCKR" in u:
+        return "KTL"
+    return "Outros"
+
+
+def _prtg_status_label(slug: str):
+    """Retorna (rótulo, cor_hex) para o status efetivo do dispositivo."""
+    s = (slug or "").lower()
+    mapa = {
+        "up":      ("Online",   "34C759"),
+        "down":    ("Offline",  "FF3B30"),
+        "warning": ("Instável", "FF9500"),
+        "unusual": ("Instável", "FF9500"),
+    }
+    if s in mapa:
+        return mapa[s]
+    if s.startswith("paused"):
+        return ("Pausado", "8E8E93")
+    return ("Desconhecido", "9AA0A6")
+
+
+# ── Exportação Excel: todos os dispositivos PRTG por site ─────────────────────
+
+@login_required
+def prtg_monitor_export(request):
+    """
+    Exporta TODOS os dispositivos PRTG e seus status em uma planilha Excel
+    profissional, seccionada na mesma aba por site: KTL (Karitel), RDM (Rio do
+    Meio), PIN (Pinheiros), Mambaí e Outros.
+    """
+    import re as _re
+    from io import BytesIO
+    from django.http import HttpResponse
+    from django.utils import timezone
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    if not prtg_service.is_configured():
+        return redirect("prtg_monitor")
+
+    devices = list(prtg_service.get_devices_map().values())
+
+    # ── Correlação com o estoque por nome (mesma heurística do monitor) ───────
+    def _norm(s):
+        return _re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+    itens = list(
+        Item.objects.select_related("localidade")
+        .filter(status="ativo")
+        .values("nome", "localidade__local")
+    )
+    itens_por_norm = {}
+    for it in itens:
+        k = _norm(it["nome"])
+        if k and k not in itens_por_norm:
+            itens_por_norm[k] = it
+
+    def _find_item(dev_name):
+        n = _norm(dev_name)
+        if not n:
+            return None
+        if n in itens_por_norm:
+            return itens_por_norm[n]
+        for k, it in itens_por_norm.items():
+            if len(k) >= 4 and (k in n or n in k):
+                return it
+        return None
+
+    # ── Classificar dispositivos por site ────────────────────────────────────
+    SITES = [
+        ("KTL",    "Karitel",     "1D4ED8"),
+        ("RDM",    "Rio do Meio", "0D9488"),
+        ("PIN",    "Pinheiros",   "7C3AED"),
+        ("Mambai", "Mambaí",      "EA580C"),
+        ("Outros", "Outros",      "475569"),
+    ]
+    por_site = {key: [] for key, _, _ in SITES}
+    for dev in devices:
+        por_site[_prtg_site(dev.get("name"))].append(dev)
+    for key in por_site:
+        por_site[key].sort(key=lambda d: (d.get("name") or "").lower())
+
+    # ── Workbook ─────────────────────────────────────────────────────────────
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Monitor PRTG"
+    ws.sheet_view.showGridLines = False
+
+    COLS = ["Dispositivo", "IP / Host", "Tipo (Grupo PRTG)", "Status",
+            "Detalhe", "Item Vinculado", "Localidade"]
+    WIDTHS = [34, 18, 27, 13, 24, 30, 24]
+    NCOL = len(COLS)
+    last_col = get_column_letter(NCOL)
+    for i, w in enumerate(WIDTHS, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    thin = Side(style="thin", color="D9DEE6")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center")
+    left = Alignment(horizontal="left", vertical="center", wrap_text=False)
+
+    r = 1
+    # Título
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NCOL)
+    c = ws.cell(row=r, column=1, value="MONITOR PRTG — EQUIPAMENTOS E STATUS")
+    c.font = Font(bold=True, color="FFFFFF", size=18, name="Calibri")
+    c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    c.fill = PatternFill("solid", fgColor="0A2540")
+    ws.row_dimensions[r].height = 34
+    r += 1
+
+    # Subtítulo
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NCOL)
+    gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")
+    c = ws.cell(row=r, column=1,
+                value=f"Santa Colomba Agropecuária  ·  Gerado em {gerado}  ·  {len(devices)} dispositivos monitorados")
+    c.font = Font(color="5B6B7F", size=10, italic=True)
+    c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    c.fill = PatternFill("solid", fgColor="EEF2F7")
+    ws.row_dimensions[r].height = 18
+    r += 2
+
+    # ── Faixa de KPIs ────────────────────────────────────────────────────────
+    total = len(devices)
+    online = sum(1 for d in devices if d.get("status_slug") == "up")
+    offline = sum(1 for d in devices if d.get("status_slug") == "down")
+    instavel = sum(1 for d in devices if d.get("status_slug") in ("warning", "unusual"))
+    pausado = sum(1 for d in devices if str(d.get("status_slug") or "").startswith("paused"))
+    kpis = [
+        ("TOTAL", total, "334155"),
+        ("ONLINE", online, "1E8E3E"),
+        ("OFFLINE", offline, "D93025"),
+        ("INSTÁVEL", instavel, "E8830C"),
+        ("PAUSADO", pausado, "5F6B7A"),
+    ]
+    # distribui 5 KPIs em pares de colunas (cada KPI ocupa ao menos 1 coluna)
+    for idx, (lbl, val, color) in enumerate(kpis):
+        col = idx + 1
+        cl = ws.cell(row=r, column=col, value=lbl)
+        cl.font = Font(bold=True, color="FFFFFF", size=9)
+        cl.alignment = center
+        cl.fill = PatternFill("solid", fgColor=color)
+        cv = ws.cell(row=r + 1, column=col, value=val)
+        cv.font = Font(bold=True, color=color, size=20)
+        cv.alignment = center
+        cv.fill = PatternFill("solid", fgColor="F4F6F9")
+        cv.border = border
+        cl.border = border
+    ws.row_dimensions[r].height = 16
+    ws.row_dimensions[r + 1].height = 30
+    r += 3
+
+    freeze_row = r  # congela título + KPIs
+
+    # ── Seções por site ──────────────────────────────────────────────────────
+    for key, nome, color in SITES:
+        lista = por_site[key]
+        if key == "Outros" and not lista:
+            continue
+
+        on = sum(1 for d in lista if d.get("status_slug") == "up")
+        off = sum(1 for d in lista if d.get("status_slug") == "down")
+
+        # Cabeçalho da seção
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NCOL)
+        cs = ws.cell(row=r, column=1,
+                     value=f"  {nome.upper()}  —  {len(lista)} dispositivo(s)   •   {on} online   •   {off} offline")
+        cs.font = Font(bold=True, color="FFFFFF", size=12)
+        cs.alignment = Alignment(horizontal="left", vertical="center")
+        cs.fill = PatternFill("solid", fgColor=color)
+        ws.row_dimensions[r].height = 26
+        r += 1
+
+        # Cabeçalho da tabela
+        for ci, titulo in enumerate(COLS, start=1):
+            hc = ws.cell(row=r, column=ci, value=titulo)
+            hc.font = Font(bold=True, color="FFFFFF", size=10)
+            hc.alignment = center if titulo == "Status" else Alignment(horizontal="left", vertical="center")
+            hc.fill = PatternFill("solid", fgColor="334155")
+            hc.border = border
+        ws.row_dimensions[r].height = 20
+        r += 1
+
+        if not lista:
+            ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NCOL)
+            ec = ws.cell(row=r, column=1, value="Nenhum dispositivo classificado para este site.")
+            ec.font = Font(color="9AA0A6", italic=True)
+            ec.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+            ec.border = border
+            r += 1
+            r += 1  # espaçamento entre seções
+            continue
+
+        for i, dev in enumerate(lista):
+            it = _find_item(dev.get("name"))
+            label, scolor = _prtg_status_label(dev.get("status_slug"))
+            zebra = "FFFFFF" if i % 2 == 0 else "F6F8FB"
+            valores = [
+                dev.get("name") or "—",
+                dev.get("host") or "—",
+                dev.get("group") or "—",
+                label,
+                dev.get("statustext") or "—",
+                (it["nome"] if it else "—"),
+                (it["localidade__local"] if it and it.get("localidade__local") else "—"),
+            ]
+            for ci, val in enumerate(valores, start=1):
+                cc = ws.cell(row=r, column=ci, value=val)
+                cc.border = border
+                if ci == 4:  # Status — célula colorida
+                    cc.fill = PatternFill("solid", fgColor=scolor)
+                    cc.font = Font(bold=True, color="FFFFFF", size=10)
+                    cc.alignment = center
+                else:
+                    cc.fill = PatternFill("solid", fgColor=zebra)
+                    cc.font = Font(color="1F2733", size=10)
+                    cc.alignment = left
+                    if ci == 2:  # IP/Host monoespaçado
+                        cc.font = Font(color="334155", size=10, name="Consolas")
+            ws.row_dimensions[r].height = 18
+            r += 1
+
+        r += 1  # linha em branco entre seções
+
+    ws.freeze_panes = f"A{freeze_row}"
+
+    # ── Resposta ─────────────────────────────────────────────────────────────
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    nome_arq = f"monitor_prtg_{timezone.localtime():%Y%m%d_%H%M}.xlsx"
+    resp = HttpResponse(
+        bio.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp["Content-Disposition"] = f'attachment; filename="{nome_arq}"'
+    return resp
 
 
 # ── API: Buscar Items do sistema (autocomplete editor) ────────────────────────

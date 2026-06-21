@@ -1,0 +1,213 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Relatório de Monitoração — PRTG{% endblock %}
+{% block page_title %}Monitoração de Equipamentos{% endblock %}
+{% block page_subtitle %}Disponibilidade e eventos de status (PRTG) — {{ periodo_label|lower }}{% endblock %}
+
+{% block header_actions %}
+  <a href="?export=xlsx{% if periodo_dias != 30 %}&periodo={{ periodo_dias }}{% endif %}{% if f_status %}&status={{ f_status }}{% endif %}{% if f_q %}&q={{ f_q }}{% endif %}" class="btn btn-sm"><i class="fa fa-file-excel"></i> Exportar Excel</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.mon-page) { --mon-brand:#0071e3; --mon-brand-soft:color-mix(in srgb,#0071e3 10%,transparent); }
+.mon-page, .mon-page * { box-sizing:border-box; min-width:0; }
+.mon-page { display:grid; gap:1rem; }
+
+.mon-banner { display:flex; align-items:flex-start; gap:.8rem; padding:.85rem 1.1rem; border-radius:var(--radius-xl);
+  background:var(--mon-brand-soft); border:1px solid color-mix(in srgb,var(--mon-brand) 22%,transparent); }
+.mon-banner i { color:var(--mon-brand); font-size:1rem; margin-top:.1rem; }
+.mon-banner div { font-size:.84rem; color:var(--text-secondary); line-height:1.55; }
+.mon-banner b { color:var(--text-primary); }
+
+/* KPIs */
+.mon-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.8rem; }
+@media (max-width:680px){ .mon-kpis{ grid-template-columns:repeat(2,1fr);} }
+.mon-kpi { display:block; text-decoration:none; color:inherit; padding:.85rem 1rem; border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-xl); background:var(--bg-elevated); box-shadow:var(--shadow-xs); position:relative; overflow:hidden;
+  transition:box-shadow var(--transition-fast), transform var(--transition-fast); }
+.mon-kpi:hover { box-shadow:var(--shadow-md); transform:translateY(-2px); }
+.mon-kpi::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--k,var(--mon-brand)); }
+.mon-kpi.active { outline:2px solid var(--k); outline-offset:-2px; }
+.mon-kpi-v { font-size:1.7rem; font-weight:800; letter-spacing:-.035em; line-height:1; color:var(--k,var(--text-primary)); }
+.mon-kpi-l { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); margin-top:.4rem; }
+
+/* Filtros */
+.mon-filters { display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end; padding:.85rem 1.1rem;
+  background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); }
+.mon-field { display:flex; flex-direction:column; gap:.3rem; }
+.mon-field label { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
+
+/* Card + tabela */
+.mon-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden; }
+.mon-card-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.85rem 1.15rem; border-bottom:1px solid var(--separator-hairline); }
+.mon-card-title { font-size:.92rem; font-weight:700; letter-spacing:-.016em; }
+.mon-count { font-size:.8rem; color:var(--text-tertiary); font-weight:600; }
+.mon-wrap { width:100%; overflow-x:auto; }
+.mon-table { width:max-content; min-width:100%; border-collapse:collapse; }
+.mon-table th, .mon-table td { padding:.6rem 1rem; border-bottom:1px solid var(--separator-hairline); text-align:left; white-space:nowrap; vertical-align:middle; }
+.mon-table th { font-size:.67rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); font-weight:700; }
+.mon-table td { font-size:.83rem; color:var(--text-primary); }
+.mon-table tbody tr:last-child td { border-bottom:0; }
+.mon-table tbody tr:hover { background:var(--bg-hover); }
+.mon-link { color:var(--text-primary); text-decoration:none; font-weight:700; }
+.mon-link:hover { color:var(--mon-brand); }
+.mon-sub { font-size:.72rem; color:var(--text-tertiary); font-family:var(--font-mono,ui-monospace,Consolas,monospace); }
+
+.mon-badge { display:inline-flex; align-items:center; gap:.35rem; padding:.18rem .6rem; border-radius:var(--radius-pill); font-size:.73rem; font-weight:700; white-space:nowrap; }
+.mon-badge.up { color:#1e8e3e; background:color-mix(in srgb,#34c759 16%,transparent); }
+.mon-badge.down { color:#d93025; background:color-mix(in srgb,#ff3b30 14%,transparent); }
+.mon-badge.warning, .mon-badge.unusual { color:#b35a00; background:color-mix(in srgb,#ff9500 18%,transparent); }
+.mon-badge.none { color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline); }
+
+/* Barra de disponibilidade */
+.mon-bar { display:flex; align-items:center; gap:.55rem; min-width:160px; }
+.mon-bar-track { position:relative; flex:1; height:7px; border-radius:99px; background:var(--bg-fill-secondary); overflow:hidden; }
+.mon-bar-fill { position:absolute; left:0; top:0; bottom:0; border-radius:99px; }
+.mon-bar-val { font-size:.8rem; font-weight:700; min-width:46px; text-align:right; }
+.mon-quedas { font-weight:700; }
+.mon-quedas.zero { color:var(--text-tertiary); font-weight:600; }
+
+.mon-empty { display:grid; place-items:center; gap:.5rem; padding:2.5rem 1rem; text-align:center; color:var(--text-tertiary); font-size:.9rem; font-weight:600; }
+.mon-empty i { font-size:1.6rem; color:var(--text-quaternary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mon-page">
+
+  <div class="mon-banner">
+    <i class="fa fa-wave-square"></i>
+    <div>
+      Cada <b>mudança de status</b> reportada pelo PRTG é registrada como um evento no histórico de cada device.
+      Este relatório cobre <b>todos os equipamentos monitorados no PRTG</b> e consolida a <b>disponibilidade</b> (uptime),
+      o tempo offline e o número de <b>quedas</b> no período. Devices vinculados a um equipamento do estoque (nas
+      <b>plantas de rede</b>) aparecem com o nome do item e link para o detalhe.
+    </div>
+  </div>
+
+  <section class="mon-kpis">
+    <a class="mon-kpi {% if not f_status %}active{% endif %}" style="--k:var(--mon-brand)" href="?{% if periodo_dias != 30 %}periodo={{ periodo_dias }}{% endif %}">
+      <div class="mon-kpi-v">{{ resumo.total }}</div>
+      <div class="mon-kpi-l">Monitorados</div>
+    </a>
+    <a class="mon-kpi {% if f_status == 'online' %}active{% endif %}" style="--k:#1e8e3e" href="?status=online{% if periodo_dias != 30 %}&periodo={{ periodo_dias }}{% endif %}">
+      <div class="mon-kpi-v">{{ resumo.online }}</div>
+      <div class="mon-kpi-l">Online agora</div>
+    </a>
+    <a class="mon-kpi {% if f_status == 'offline' %}active{% endif %}" style="--k:#d93025" href="?status=offline{% if periodo_dias != 30 %}&periodo={{ periodo_dias }}{% endif %}">
+      <div class="mon-kpi-v">{{ resumo.offline }}</div>
+      <div class="mon-kpi-l">Offline agora</div>
+    </a>
+    <a class="mon-kpi {% if f_status == 'quedas' %}active{% endif %}" style="--k:#b35a00" href="?status=quedas{% if periodo_dias != 30 %}&periodo={{ periodo_dias }}{% endif %}">
+      <div class="mon-kpi-v">{{ resumo.total_quedas }}</div>
+      <div class="mon-kpi-l">Quedas no período</div>
+    </a>
+  </section>
+
+  <form method="get" class="mon-filters">
+    <div class="mon-field" style="flex:2; min-width:200px;">
+      <label for="q">Busca</label>
+      <input id="q" name="q" type="text" class="form-control" value="{{ f_q }}" placeholder="Equipamento, device, host/IP ou nº de série...">
+    </div>
+    <div class="mon-field" style="max-width:190px;">
+      <label for="periodo">Período</label>
+      <select id="periodo" name="periodo" class="form-control" onchange="this.form.submit()">
+        <option value="7"  {% if periodo_dias == 7 %}selected{% endif %}>Últimos 7 dias</option>
+        <option value="14" {% if periodo_dias == 14 %}selected{% endif %}>Últimos 14 dias</option>
+        <option value="30" {% if periodo_dias == 30 %}selected{% endif %}>Últimos 30 dias</option>
+        <option value="90" {% if periodo_dias == 90 %}selected{% endif %}>Últimos 90 dias</option>
+        <option value="0"  {% if periodo_dias == 0 %}selected{% endif %}>Histórico completo</option>
+      </select>
+    </div>
+    <div class="mon-field" style="max-width:180px;">
+      <label for="status">Status</label>
+      <select id="status" name="status" class="form-control">
+        <option value="">Todos</option>
+        <option value="offline" {% if f_status == 'offline' %}selected{% endif %}>Offline agora</option>
+        <option value="online"  {% if f_status == 'online' %}selected{% endif %}>Online agora</option>
+        <option value="quedas"  {% if f_status == 'quedas' %}selected{% endif %}>Com quedas</option>
+      </select>
+    </div>
+    <div style="display:flex; gap:.5rem;">
+      <button type="submit" class="btn btn-primary" style="padding:0 1rem;min-height:2.25rem;"><i class="fa fa-search"></i> Filtrar</button>
+      <a href="{% url 'monitoracao_relatorio' %}" class="btn btn-light" style="padding:0 1rem;min-height:2.25rem;"><i class="fa fa-xmark"></i> Limpar</a>
+    </div>
+  </form>
+
+  <div class="mon-card">
+    <div class="mon-card-head">
+      <span class="mon-card-title"><i class="fa fa-server" style="color:var(--mon-brand);margin-right:.4rem;"></i>Disponibilidade por equipamento</span>
+      <span class="mon-count">{{ total_filtrado }} equipamento(s) · {{ periodo_label|lower }}</span>
+    </div>
+    <div class="mon-wrap">
+      <table class="mon-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Equipamento / Device</th>
+            <th>Grupo / Localidade</th>
+            <th>Disponibilidade</th>
+            <th>Tempo offline</th>
+            <th>Quedas</th>
+            <th>Último evento</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in linhas %}
+          <tr>
+            <td>
+              <span class="mon-badge {{ r.status_atual|default:'none' }}">
+                {% if r.status_atual == 'up' %}<i class="fa fa-circle-check"></i>
+                {% elif r.status_atual == 'down' %}<i class="fa fa-circle-xmark"></i>
+                {% elif r.status_atual == 'warning' or r.status_atual == 'unusual' %}<i class="fa fa-triangle-exclamation"></i>
+                {% else %}<i class="fa fa-circle-question"></i>{% endif %}
+                {{ r.status_label }}
+              </span>
+              {% if r.estado_desde %}<div class="mon-sub" style="font-family:inherit;margin-top:.25rem;">{% if r.online %}online{% elif r.offline %}offline{% else %}neste estado{% endif %} desde {{ r.estado_desde|date:"d/m H:i" }}</div>{% endif %}
+            </td>
+            <td>
+              {% if r.item %}
+                <a href="{% url 'equipamento_detalhe' r.item.pk %}" class="mon-link">{{ r.titulo }}</a>
+              {% else %}
+                <span class="mon-link" style="cursor:default;">{{ r.titulo }}</span>
+              {% endif %}
+              {% if r.subtitulo %}<div class="mon-sub">{{ r.subtitulo }}</div>{% endif %}
+            </td>
+            <td>{{ r.localidade|default:"—" }}</td>
+            <td>
+              {% if r.pct_up is not None %}
+              <div class="mon-bar" title="Disponibilidade sobre {{ r.dias_observados }} dia(s) efetivamente monitorado(s)">
+                <div class="mon-bar-track">
+                  <div class="mon-bar-fill" style="width:{{ r.pct_up }}%;background:{% if r.pct_up >= 99 %}#34c759{% elif r.pct_up >= 95 %}#ff9500{% else %}#ff3b30{% endif %};"></div>
+                </div>
+                <span class="mon-bar-val" style="color:{% if r.pct_up >= 99 %}#1e8e3e{% elif r.pct_up >= 95 %}#b35a00{% else %}#d93025{% endif %};">{{ r.pct_up }}%</span>
+              </div>
+              <div class="mon-sub" style="font-family:inherit;">{{ r.dias_observados }}d observados{% if r.monitorado_desde %} · desde {{ r.monitorado_desde|date:"d/m/Y" }}{% endif %}</div>
+              {% else %}
+              <span style="color:var(--text-quaternary);">sem dados</span>
+              {% if r.monitorado_desde %}<div class="mon-sub" style="font-family:inherit;">desde {{ r.monitorado_desde|date:"d/m/Y" }}</div>{% endif %}
+              {% endif %}
+            </td>
+            <td>{% if r.dias_down %}{{ r.horas_down }} h{% else %}<span style="color:var(--text-tertiary);">—</span>{% endif %}</td>
+            <td><span class="mon-quedas {% if r.quedas == 0 %}zero{% endif %}" style="{% if r.quedas > 0 %}color:#d93025;{% endif %}">{{ r.quedas }}</span></td>
+            <td>{% if r.ultimo_evento %}<span title="{{ r.ultimo_evento|date:'d/m/Y H:i' }}">{{ r.ultimo_evento|naturaltime }}</span>{% else %}<span style="color:var(--text-quaternary);">—</span>{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="7">
+              <div class="mon-empty">
+                <i class="fa fa-wave-square"></i>
+                {% if f_status or f_q %}Nenhum equipamento para o filtro aplicado.{% else %}Nenhum device monitorado no PRTG. Verifique a integração (.env) e agende o coletor <b>monitorar_prtg</b>.{% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

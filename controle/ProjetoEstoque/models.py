@@ -26,7 +26,7 @@ class StatusUsuarioChoices(models.TextChoices):
     DESLIGADO = 'desligado', 'Desligado'
 
 class TipoMovimentacaoChoices(models.TextChoices):
-    TRANSFERENCIA = "transferencia", "Transferência"
+    TRANSFERENCIA = "transferencia", "Transferência de dispositivo"
     TRANSFERENCIA_EQUIPAMENTO = "transferencia_equipamento", "Transferência Equipamento"
     BAIXA = "baixa", "Baixa"
     ENTRADA = "entrada", "Entrada"
@@ -897,6 +897,9 @@ class Preventiva(AuditModel):
     # Mantemos como "última evidência" para compatibilidade
     foto_antes  = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
     foto_depois = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
+    # Evidências adicionais (opcionais) — segundo par antes/depois
+    foto_antes_2  = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
+    foto_depois_2 = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -1009,7 +1012,7 @@ class Preventiva(AuditModel):
         ])
 
     @transaction.atomic
-    def registrar_execucao(self, respostas_dict: dict, usuario=None, observacao=None, foto_antes=None, foto_depois=None):
+    def registrar_execucao(self, respostas_dict: dict, usuario=None, observacao=None, foto_antes=None, foto_depois=None, foto_antes_2=None, foto_depois_2=None):
         """
         Registra a execução sem sobrescrever históricos anteriores.
         respostas_dict: { pergunta_id: valor_string }
@@ -1027,6 +1030,8 @@ class Preventiva(AuditModel):
             observacao=(observacao or ""),
             foto_antes=foto_antes,
             foto_depois=foto_depois,
+            foto_antes_2=foto_antes_2,
+            foto_depois_2=foto_depois_2,
             tecnico=(self.tecnico or usuario),
             data_agendada=data_agendada_snap,
             no_prazo=no_prazo_snap,
@@ -1061,9 +1066,13 @@ class Preventiva(AuditModel):
             self.foto_antes = foto_antes
         if foto_depois:
             self.foto_depois = foto_depois
+        if foto_antes_2:
+            self.foto_antes_2 = foto_antes_2
+        if foto_depois_2:
+            self.foto_depois_2 = foto_depois_2
 
         self.recomputar_prazo(hoje)
-        self.save(update_fields=["data_ultima", "data_agendamento", "data_proxima", "dentro_do_prazo", "observacao", "foto_antes", "foto_depois", "updated_at"])
+        self.save(update_fields=["data_ultima", "data_agendamento", "data_proxima", "dentro_do_prazo", "observacao", "foto_antes", "foto_depois", "foto_antes_2", "foto_depois_2", "updated_at"])
 
 
 # --- NOVO: execuções de preventiva, com fotos por execução ---
@@ -1077,6 +1086,9 @@ class PreventivaExecucao(AuditModel):
     observacao = models.TextField(blank=True, null=True)
     foto_antes  = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
     foto_depois = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
+    # Evidências adicionais (opcionais) — segundo par antes/depois
+    foto_antes_2  = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
+    foto_depois_2 = models.ImageField(upload_to="preventivas/%Y/%m/", blank=True, null=True)
 
     # Snapshot de desempenho: técnico responsável e data agendada no momento da
     # execução (data_agendamento é limpo após executar). Permite medir pontualidade.
@@ -1236,83 +1248,55 @@ class ItemStatusHistorico(models.Model):
 # ========== HISTÓRICO DE CONECTIVIDADE PRTG DO ITEM ==========
 
 class ItemPRTGHistorico(models.Model):
-    """Registra cada mudança de status PRTG (conectividade de rede) de um equipamento.
+    """Histórico de status PRTG (conectividade de rede) de devices monitorados.
 
-    Populado automaticamente pela view item_monitoracao toda vez que o painel
-    é aberto: consulta o PRTG ao vivo e grava se o status mudou desde o último
-    registro. Diferente de ItemStatusHistorico (campo manual Item.status), este
-    modelo reflete o estado real de rede reportado pelo PRTG.
+    Registra cada MUDANÇA de status reportada pelo PRTG e cobre TODOS os devices
+    monitorados (não apenas os vinculados a um Item via planta): por isso a chave
+    de identificação é o `prtg_objid`, e o vínculo com um Item do estoque (`item`)
+    é OPCIONAL — pode ser nulo para devices de rede que ainda não estão cadastrados
+    como equipamento no estoque.
+
+    O carimbo `registrado_em` reflete, sempre que possível, o MOMENTO REAL da
+    transição reportado pelo PRTG (uptimesince/downtimesince), e não apenas o
+    instante em que o coletor rodou — por isso usa `default=timezone.now` (e não
+    `auto_now_add`), permitindo gravar o tempo real do evento.
     """
     item = models.ForeignKey(
         Item,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
         related_name='prtg_historico',
         verbose_name='Equipamento',
     )
-    prtg_objid      = models.IntegerField(verbose_name='PRTG ObjID')
+    prtg_objid      = models.IntegerField(db_index=True, verbose_name='PRTG ObjID')
+    device_nome     = models.CharField(max_length=255, blank=True, default='', verbose_name='Device (PRTG)')
+    device_host     = models.CharField(max_length=255, blank=True, default='', verbose_name='Host / IP')
+    device_grupo    = models.CharField(max_length=255, blank=True, default='', verbose_name='Grupo (PRTG)')
     status_anterior = models.CharField(max_length=20, blank=True, default='')
     status_novo     = models.CharField(max_length=20)
-    registrado_em   = models.DateTimeField(auto_now_add=True)
+    registrado_em   = models.DateTimeField(default=timezone.now, db_index=True)
 
     class Meta:
         ordering = ['-registrado_em']
-        verbose_name = 'Histórico PRTG do Item'
-        verbose_name_plural = 'Históricos PRTG dos Itens'
-        indexes = [models.Index(fields=['item', '-registrado_em'])]
+        verbose_name = 'Histórico PRTG'
+        verbose_name_plural = 'Históricos PRTG'
+        indexes = [
+            models.Index(fields=['item', '-registrado_em']),
+            models.Index(fields=['prtg_objid', '-registrado_em']),
+        ]
 
     def __str__(self):
-        return f"{self.item.nome}: {self.status_anterior or '(novo)'} → {self.status_novo} (PRTG)"
+        alvo = self.item.nome if self.item else (self.device_nome or f'objid {self.prtg_objid}')
+        return f"{alvo}: {self.status_anterior or '(novo)'} → {self.status_novo} (PRTG)"
 
 
 # ========== NINJAONE RMM ==========
 
-class NinjaOAuthToken(models.Model):
-    """
-    Armazena o token OAuth2 do NinjaOne obtido via Authorization Code flow.
-    Singleton (pk=1). Gerenciado pelas views ninja_oauth_start / ninja_oauth_callback.
-    """
-    access_token  = models.TextField(blank=True, verbose_name="Access Token")
-    refresh_token = models.TextField(blank=True, verbose_name="Refresh Token")
-    expires_at    = models.DateTimeField(null=True, blank=True, verbose_name="Expira em")
-    scope         = models.CharField(max_length=255, blank=True, verbose_name="Scopes")
-    updated_at    = models.DateTimeField(auto_now=True)
-    updated_by    = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
-    )
-
-    class Meta:
-        verbose_name = "Token OAuth NinjaOne"
-
-    def __str__(self):
-        status = "ativo" if self.access_token else "não autenticado"
-        return f"NinjaOne OAuth Token ({status})"
-
-    @classmethod
-    def get(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
-        return obj
-
-    @property
-    def is_valid(self) -> bool:
-        from django.utils import timezone
-        return bool(self.access_token) and (
-            self.expires_at is None or self.expires_at > timezone.now()
-        )
-
-    @property
-    def is_expired(self) -> bool:
-        """Token existe mas está expirado (sem refresh_token para renovar)."""
-        from django.utils import timezone
-        return (
-            bool(self.access_token) and
-            self.expires_at is not None and
-            self.expires_at <= timezone.now()
-        )
-
 class NinjaDevice(AuditModel):
-    """Cache dos dispositivos NinjaOne sincronizados via API. Vincula ao Item pelo número de série."""
+    """Dispositivos NinjaOne importados via planilha CSV (exportada do NinjaOne).
+    Vincula ao Item do estoque pelo número de série (BIOS) ou pelo nome do dispositivo."""
 
-    ninja_id = models.IntegerField(unique=True, verbose_name="ID NinjaOne", db_index=True)
+    ninja_id = models.IntegerField(unique=True, null=True, blank=True, verbose_name="ID NinjaOne", db_index=True)
     display_name = models.CharField(max_length=255, verbose_name="Nome do dispositivo")
     hostname = models.CharField(max_length=255, blank=True, verbose_name="Hostname / DNS")
     serial_number = models.CharField(max_length=100, blank=True, db_index=True, verbose_name="Número de série")
@@ -1333,8 +1317,9 @@ class NinjaDevice(AuditModel):
     is_online = models.BooleanField(default=False, verbose_name="Online agora")
     last_user = models.CharField(max_length=255, blank=True, verbose_name="Último usuário logado")
     organization_name = models.CharField(max_length=255, blank=True, verbose_name="Organização")
+    local = models.CharField(max_length=120, blank=True, db_index=True, verbose_name="Local / Site")
     node_class = models.CharField(max_length=60, blank=True, verbose_name="Tipo de dispositivo")
-    last_sync = models.DateTimeField(auto_now=True, verbose_name="Última sincronização")
+    last_sync = models.DateTimeField(auto_now=True, verbose_name="Última importação")
 
     class Meta:
         verbose_name = "Dispositivo NinjaOne"
@@ -1374,9 +1359,9 @@ class NinjaDevice(AuditModel):
 
 class NinjaDeviceSnapshot(models.Model):
     """
-    Snapshot periódico do estado de cada dispositivo NinjaOne.
+    Snapshot do estado de cada dispositivo NinjaOne, gravado a cada importação de CSV.
     Base de dados para o relatório de uso/tempo de atividade por máquina.
-    Populado pelo comando: python manage.py sync_ninja
+    Gerado automaticamente a cada importação (UI ou comando importar_ninja_csv).
     """
 
     device = models.ForeignKey(
@@ -1403,6 +1388,61 @@ class NinjaDeviceSnapshot(models.Model):
     def __str__(self):
         estado = "online" if self.is_online else "offline"
         return f"{self.device} — {self.timestamp:%d/%m %H:%M} ({estado})"
+
+
+class NinjaLoginRegistro(models.Model):
+    """
+    Histórico de validação de login de um dispositivo NinjaOne.
+
+    Compara o último usuário ativo no dispositivo (NinjaDevice.last_user) com o
+    colaborador atribuído ao item no sistema (última transferência de 'entrega'
+    não devolvida). Um novo registro é gravado sempre que o status/usuário muda,
+    formando o histórico exibido na tela de "Registro de Login".
+    """
+
+    STATUS_CONFERE = "confere"
+    STATUS_DIVERGENTE = "divergente"
+    STATUS_SEM_ATRIBUICAO = "sem_atribuicao"
+    STATUS_SEM_LOGIN = "sem_login"
+    STATUS_CHOICES = [
+        (STATUS_CONFERE, "Confere"),
+        (STATUS_DIVERGENTE, "Divergente"),
+        (STATUS_SEM_ATRIBUICAO, "Sem atribuição no sistema"),
+        (STATUS_SEM_LOGIN, "Sem login no dispositivo"),
+    ]
+
+    device = models.ForeignKey(
+        NinjaDevice,
+        on_delete=models.CASCADE,
+        related_name="login_registros",
+        verbose_name="Dispositivo",
+    )
+    verificado_em = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="Verificado em")
+    device_user = models.CharField(max_length=255, blank=True, verbose_name="Login no dispositivo")
+    usuario_sistema = models.ForeignKey(
+        "Usuario",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="ninja_login_registros",
+        verbose_name="Colaborador atribuído",
+    )
+    usuario_sistema_nome = models.CharField(max_length=150, blank=True, verbose_name="Colaborador atribuído (snapshot)")
+    usuario_detectado = models.CharField(max_length=150, blank=True, verbose_name="Colaborador detectado pelo login")
+    item_nome = models.CharField(max_length=200, blank=True, verbose_name="Item")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, db_index=True, verbose_name="Status")
+    detalhe = models.CharField(max_length=400, blank=True, verbose_name="Detalhe")
+
+    class Meta:
+        verbose_name = "Registro de login NinjaOne"
+        verbose_name_plural = "Registros de login NinjaOne"
+        ordering = ["-verificado_em", "-id"]
+        indexes = [
+            models.Index(fields=["device", "-verificado_em"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.device} — {self.get_status_display()} ({self.verificado_em:%d/%m/%Y %H:%M})"
 
 
 # ========== CONFIGURAÇÃO DO SISTEMA ==========

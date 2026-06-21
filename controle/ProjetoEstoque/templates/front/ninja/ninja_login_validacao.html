@@ -1,0 +1,213 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Validação de Login — NinjaOne{% endblock %}
+{% block page_title %}Validação de Login{% endblock %}
+{% block page_subtitle %}O último usuário ativo no dispositivo é o mesmo colaborador atribuído ao equipamento no sistema?{% endblock %}
+
+{% block header_actions %}
+  <a href="?export=xlsx{% if qs_keep %}&{{ qs_keep }}{% endif %}" class="btn btn-sm"><i class="fa fa-file-excel"></i> Exportar Excel</a>
+  <form method="post" action="{% url 'ninja_login_revalidar' %}" style="margin:0;display:inline-flex;">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="ninja_login_validacao">
+    <button type="submit" class="btn-primary btn-sm"><i class="fa fa-rotate"></i> Revalidar agora</button>
+  </form>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.njlv-page) { --nj-brand:#6528d8; --nj-brand-soft:color-mix(in srgb,#6528d8 11%,transparent); }
+.njlv-page, .njlv-page * { box-sizing:border-box; min-width:0; }
+.njlv-page { display:grid; gap:1rem; }
+
+.njlv-banner { display:flex; align-items:flex-start; gap:.85rem; padding:.9rem 1.15rem; border-radius:var(--radius-xl);
+  background:var(--nj-brand-soft); border:1px solid color-mix(in srgb,var(--nj-brand) 22%,transparent); }
+.njlv-banner i { color:var(--nj-brand); font-size:1.05rem; margin-top:.1rem; }
+.njlv-banner div { font-size:.85rem; color:var(--text-secondary); line-height:1.55; }
+.njlv-banner b { color:var(--text-primary); }
+.njlv-banner small { display:block; color:var(--text-tertiary); margin-top:.2rem; font-size:.78rem; }
+
+/* KPIs clicáveis (filtram) */
+.njlv-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.8rem; }
+@media (max-width:680px){ .njlv-kpis{ grid-template-columns:repeat(2,1fr);} }
+.njlv-kpi { display:block; text-decoration:none; color:inherit; padding:.85rem 1rem; border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-xl); background:var(--bg-elevated); box-shadow:var(--shadow-xs); position:relative; overflow:hidden;
+  transition:box-shadow var(--transition-fast), transform var(--transition-fast); }
+.njlv-kpi:hover { box-shadow:var(--shadow-md); transform:translateY(-2px); }
+.njlv-kpi::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--k); }
+.njlv-kpi.active { outline:2px solid var(--k); outline-offset:-2px; }
+.njlv-kpi-v { font-size:1.7rem; font-weight:800; letter-spacing:-.035em; line-height:1; color:var(--k); }
+.njlv-kpi-l { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); margin-top:.4rem; }
+
+/* Filtros */
+.njlv-filters { display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end; padding:.85rem 1.1rem;
+  background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); }
+.njlv-field { display:flex; flex-direction:column; gap:.3rem; flex:1; min-width:160px; }
+.njlv-field label { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
+
+/* Card + tabela */
+.njlv-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden; }
+.njlv-card-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.85rem 1.15rem; border-bottom:1px solid var(--separator-hairline); }
+.njlv-card-title { font-size:.92rem; font-weight:700; letter-spacing:-.016em; }
+.njlv-count { font-size:.8rem; color:var(--text-tertiary); font-weight:600; }
+.njlv-wrap { width:100%; overflow-x:auto; }
+.njlv-table { width:max-content; min-width:100%; border-collapse:collapse; }
+.njlv-table th, .njlv-table td { padding:.6rem 1rem; border-bottom:1px solid var(--separator-hairline); text-align:left; white-space:nowrap; vertical-align:middle; }
+.njlv-table th { font-size:.67rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); font-weight:700; }
+.njlv-table td { font-size:.83rem; color:var(--text-primary); }
+.njlv-table tbody tr:last-child td { border-bottom:0; }
+.njlv-table tbody tr:hover { background:var(--bg-hover); }
+.njlv-arrow { color:var(--text-quaternary); margin:0 .35rem; }
+.njlv-user { font-weight:600; }
+.njlv-detect { color:var(--nj-brand); font-weight:600; }
+.njlv-mono { font-family:var(--font-mono,ui-monospace,Consolas,monospace); font-size:.79rem; }
+.njlv-link { color:var(--text-primary); text-decoration:none; font-weight:700; }
+.njlv-link:hover { color:var(--nj-brand); }
+.njlv-hist { display:inline-flex; align-items:center; gap:.3rem; font-size:.76rem; color:var(--text-tertiary); }
+
+.njlv-badge { display:inline-flex; align-items:center; gap:.35rem; padding:.18rem .6rem; border-radius:var(--radius-pill); font-size:.73rem; font-weight:700; white-space:nowrap; }
+.njlv-badge.confere { color:#1e8e3e; background:color-mix(in srgb,#34c759 16%,transparent); }
+.njlv-badge.divergente { color:#d93025; background:color-mix(in srgb,#ff3b30 14%,transparent); }
+.njlv-badge.sem_atribuicao { color:#b35a00; background:color-mix(in srgb,#ff9500 18%,transparent); }
+.njlv-badge.sem_login { color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline); }
+
+.njlv-empty { display:grid; place-items:center; gap:.5rem; padding:2.5rem 1rem; text-align:center; color:var(--text-tertiary); font-size:.9rem; font-weight:600; }
+.njlv-empty i { font-size:1.6rem; color:var(--success); }
+
+/* Paginação */
+.njd-pagination { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; padding:.85rem 1.15rem; border-top:1px solid var(--separator-hairline); }
+.njd-pg-info { font-size:.8rem; color:var(--text-tertiary); font-weight:600; }
+.njd-pg-links { display:flex; gap:.3rem; flex-wrap:wrap; }
+.njd-pg-link { display:inline-grid; place-items:center; min-width:2rem; height:2rem; padding:0 .55rem; border-radius:var(--radius-md); border:1px solid var(--separator-hairline); background:var(--bg-elevated); color:var(--text-secondary); font-size:.82rem; font-weight:700; text-decoration:none; transition:all var(--transition-fast); }
+.njd-pg-link:hover { border-color:var(--nj-brand); color:var(--nj-brand); }
+.njd-pg-link.active { background:var(--nj-brand); border-color:var(--nj-brand); color:#fff; }
+.njd-pg-link.disabled { opacity:.4; pointer-events:none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="njlv-page">
+
+  <div class="njlv-banner">
+    <i class="fa fa-shield-halved"></i>
+    <div>
+      A <b>inteligência</b> compara o último usuário que efetuou login no dispositivo (dado do NinjaOne)
+      com o <b>colaborador atribuído</b> ao equipamento no sistema (última entrega registrada). Quando o login
+      não bate, tenta <b>detectar</b> de quem é o login entre os colaboradores cadastrados.
+      <small>
+        {% if ultima_validacao %}Última validação registrada {{ ultima_validacao|naturaltime }}. {% endif %}
+        Cada mudança de status é gravada no histórico de cada dispositivo.
+      </small>
+    </div>
+  </div>
+
+  <section class="njlv-kpis">
+    <a class="njlv-kpi {% if f_status == 'divergente' %}active{% endif %}" style="--k:#d93025" href="?status=divergente{% if f_data_ini %}&data_ini={{ f_data_ini }}{% endif %}{% if f_data_fim %}&data_fim={{ f_data_fim }}{% endif %}">
+      <div class="njlv-kpi-v">{{ kpi.divergente }}</div>
+      <div class="njlv-kpi-l">Divergentes</div>
+    </a>
+    <a class="njlv-kpi {% if f_status == 'confere' %}active{% endif %}" style="--k:#1e8e3e" href="?status=confere{% if f_data_ini %}&data_ini={{ f_data_ini }}{% endif %}{% if f_data_fim %}&data_fim={{ f_data_fim }}{% endif %}">
+      <div class="njlv-kpi-v">{{ kpi.confere }}</div>
+      <div class="njlv-kpi-l">Conferem</div>
+    </a>
+    <a class="njlv-kpi {% if f_status == 'sem_atribuicao' %}active{% endif %}" style="--k:#b35a00" href="?status=sem_atribuicao{% if f_data_ini %}&data_ini={{ f_data_ini }}{% endif %}{% if f_data_fim %}&data_fim={{ f_data_fim }}{% endif %}">
+      <div class="njlv-kpi-v">{{ kpi.sem_atribuicao }}</div>
+      <div class="njlv-kpi-l">Sem atribuição</div>
+    </a>
+    <a class="njlv-kpi {% if f_status == 'sem_login' %}active{% endif %}" style="--k:#8e8e93" href="?status=sem_login{% if f_data_ini %}&data_ini={{ f_data_ini }}{% endif %}{% if f_data_fim %}&data_fim={{ f_data_fim }}{% endif %}">
+      <div class="njlv-kpi-v">{{ kpi.sem_login }}</div>
+      <div class="njlv-kpi-l">Sem login</div>
+    </a>
+  </section>
+
+  <form method="get" class="njlv-filters">
+    <div class="njlv-field" style="flex:2;">
+      <label for="q">Busca</label>
+      <input id="q" name="q" type="text" class="form-control" value="{{ f_q }}" placeholder="Dispositivo, login ou colaborador...">
+    </div>
+    <div class="njlv-field" style="max-width:200px;">
+      <label for="status">Status</label>
+      <select id="status" name="status" class="form-control">
+        <option value="">Todos</option>
+        <option value="divergente"      {% if f_status == 'divergente' %}selected{% endif %}>Divergentes</option>
+        <option value="confere"         {% if f_status == 'confere' %}selected{% endif %}>Conferem</option>
+        <option value="sem_atribuicao"  {% if f_status == 'sem_atribuicao' %}selected{% endif %}>Sem atribuição</option>
+        <option value="sem_login"       {% if f_status == 'sem_login' %}selected{% endif %}>Sem login</option>
+      </select>
+    </div>
+    <div class="njlv-field" style="max-width:170px;">
+      <label for="data_ini">Último login — de</label>
+      <input id="data_ini" name="data_ini" type="date" class="form-control" value="{{ f_data_ini }}">
+    </div>
+    <div class="njlv-field" style="max-width:170px;">
+      <label for="data_fim">Último login — até</label>
+      <input id="data_fim" name="data_fim" type="date" class="form-control" value="{{ f_data_fim }}">
+    </div>
+    <div style="display:flex; gap:.5rem;">
+      <button type="submit" class="btn btn-primary" style="padding:0 1rem;min-height:2.25rem;"><i class="fa fa-search"></i> Filtrar</button>
+      <a href="{% url 'ninja_login_validacao' %}" class="btn btn-light" style="padding:0 1rem;min-height:2.25rem;"><i class="fa fa-xmark"></i> Limpar</a>
+    </div>
+  </form>
+
+  <div class="njlv-card">
+    <div class="njlv-card-head">
+      <span class="njlv-card-title"><i class="fa fa-user-shield" style="color:var(--nj-brand);margin-right:.4rem;"></i>Validação de logins</span>
+      <span class="njlv-count">{{ total_registros }} dispositivo(s)</span>
+    </div>
+    <div class="njlv-wrap">
+      <table class="njlv-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Dispositivo</th>
+            <th>Login no dispositivo</th>
+            <th>Último login</th>
+            <th>Atribuído no sistema</th>
+            <th>Detectado</th>
+            <th>Histórico</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in resultados %}
+          <tr>
+            <td><span class="njlv-badge {{ r.status }}">
+              {% if r.status == 'confere' %}<i class="fa fa-check"></i>
+              {% elif r.status == 'divergente' %}<i class="fa fa-triangle-exclamation"></i>
+              {% elif r.status == 'sem_atribuicao' %}<i class="fa fa-user-slash"></i>
+              {% else %}<i class="fa fa-circle-question"></i>{% endif %}
+              {{ r.status_label }}
+            </span></td>
+            <td><a href="{% url 'ninja_login_detalhe' r.device.pk %}" class="njlv-link">{{ r.device.display_name }}</a></td>
+            <td class="njlv-mono">{{ r.login|default:"—" }}</td>
+            <td>
+              {% if r.device.last_contact %}
+                <span class="njlv-mono" title="{{ r.device.last_contact|naturaltime }}">{{ r.device.last_contact|date:"d/m/Y H:i" }}</span>
+              {% else %}<span style="color:var(--text-quaternary);">—</span>{% endif %}
+            </td>
+            <td>{% if r.usuario_nome %}<span class="njlv-user">{{ r.usuario_nome }}</span>{% else %}<span style="color:var(--text-quaternary);">— sem atribuição —</span>{% endif %}</td>
+            <td>{% if r.detectado_nome %}<span class="njlv-detect">{{ r.detectado_nome }}</span>{% else %}<span style="color:var(--text-quaternary);">—</span>{% endif %}</td>
+            <td>
+              <a href="{% url 'ninja_login_detalhe' r.device.pk %}" class="njlv-hist">
+                <i class="fa fa-clock-rotate-left"></i> {{ r.hist }} registro{{ r.hist|pluralize }}
+              </a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="7">
+              <div class="njlv-empty">
+                <i class="fa fa-circle-check"></i>
+                {% if f_status or f_q %}Nenhum dispositivo para o filtro aplicado.{% else %}Nenhum dispositivo vinculado a item para validar. Importe a planilha e vincule os equipamentos.{% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% include 'front/ninja/_njd_pagination.html' %}
+  </div>
+
+</div>
+{% endblock %}

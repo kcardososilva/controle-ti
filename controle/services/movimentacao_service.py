@@ -279,14 +279,16 @@ class MovimentacaoEstoqueService:
         update_fields = []
 
         if mov.tipo_movimentacao == cls.ENVIO_MANUTENCAO:
+            # Enviar para manutenção NÃO dá baixa na quantidade: o equipamento
+            # continua sendo o mesmo ativo, apenas muda de status para "Manutenção".
             item.status = StatusItemChoices.MANUTENCAO
-            item.quantidade = max(0, (item.quantidade or 0) - (mov.quantidade or 1))
-            update_fields.extend(["status", "quantidade"])
+            update_fields.append("status")
 
         elif mov.tipo_movimentacao in {cls.RETORNO_MANUTENCAO, cls.RETORNO}:
+            # Retorno de manutenção mantém a quantidade inalterada (espelha o envio):
+            # apenas atualiza o status e, se informada, a localidade de destino.
             item.status = mov.status_retorno or StatusItemChoices.BACKUP
-            item.quantidade = (item.quantidade or 0) + (mov.quantidade or 1)
-            update_fields.extend(["status", "quantidade"])
+            update_fields.append("status")
 
             if mov.localidade_destino:
                 item.localidade = mov.localidade_destino
@@ -325,6 +327,18 @@ class MovimentacaoEstoqueService:
             if mov.status_transferencia:
                 item.status = mov.status_transferencia
                 update_fields.append("status")
+
+            # Renomear o equipamento direto na transferência (opcional).
+            # Só renomeia quando o campo veio preenchido e é diferente do atual;
+            # registra a alteração na observação da movimentação (auditoria).
+            novo_nome = (form.cleaned_data.get("novo_nome") or "").strip()
+            nome_atual = (item.nome or "").strip()
+            if novo_nome and novo_nome != nome_atual:
+                item.nome = novo_nome
+                update_fields.append("nome")
+                nota = f'Renomeado: "{nome_atual}" → "{novo_nome}".'
+                mov.observacao = f"{mov.observacao}\n{nota}".strip() if mov.observacao else nota
+                mov.save(update_fields=["observacao", "updated_at"])
 
         if update_fields:
             cls.preencher_auditoria(item, user, criando=False)

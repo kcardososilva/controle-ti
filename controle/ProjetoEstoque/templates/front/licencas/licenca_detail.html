@@ -695,6 +695,36 @@
   margin: 18px 0;
 }
 
+/* Medidor de ocupação de assentos */
+.lic-gauge { text-align: left; margin-top: 16px; }
+.lic-gauge-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px;
+}
+.lic-gauge-pct {
+  font-size: 1.25rem; font-weight: 700; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; color: var(--lic-success);
+}
+.lic-gauge-track {
+  height: 12px; border-radius: 999px; overflow: hidden;
+  background: var(--lic-fill-2); border: 1px solid var(--lic-border);
+}
+.lic-gauge-fill {
+  height: 100%; border-radius: 999px; min-width: 3px;
+  background: linear-gradient(90deg, var(--lic-success), color-mix(in srgb, var(--lic-success) 65%, var(--lic-brand)));
+  transition: width .6s var(--ease-apple, ease);
+}
+.lic-gauge.is-mid  .lic-gauge-pct { color: var(--lic-warning); }
+.lic-gauge.is-mid  .lic-gauge-fill { background: linear-gradient(90deg, var(--lic-warning), #ffb340); }
+.lic-gauge.is-high .lic-gauge-pct { color: var(--lic-danger); }
+.lic-gauge.is-high .lic-gauge-fill { background: linear-gradient(90deg, var(--lic-danger), #ff6961); }
+.lic-gauge-legend {
+  display: flex; justify-content: space-between; gap: 8px; margin-top: 10px;
+  font-size: .76rem; color: var(--lic-muted);
+}
+.lic-gauge-legend i { font-size: .55rem; vertical-align: middle; margin-right: 5px; color: var(--lic-success); }
+.lic-gauge.is-mid  .lic-gauge-legend i { color: var(--lic-warning); }
+.lic-gauge.is-high .lic-gauge-legend i { color: var(--lic-danger); }
+
 .lic-user-cell {
   display: flex;
   align-items: center;
@@ -804,7 +834,7 @@
         </a>
         <a href="{% url 'licenca_export_excel' obj.pk %}" class="lic-btn lic-btn-secondary" target="_blank">
           <i class="fa fa-file-excel"></i>
-          Excel
+          Exportar Excel
         </a>
         <a href="{% url 'licenca_lote_novo' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary">
           <i class="fa fa-plus"></i>
@@ -907,7 +937,21 @@
         <div class="lic-card-body">
           <span class="lic-kpi-label">Assentos em uso</span>
           <div class="lic-summary-number">{{ kpi.em_uso }}</div>
-          <div class="lic-muted">Licenças atualmente alocadas</div>
+          <div class="lic-muted">de {{ kpi.total }} licenças adquiridas</div>
+
+          <div class="lic-gauge {% if kpi.pct_uso >= 90 %}is-high{% elif kpi.pct_uso >= 70 %}is-mid{% endif %}">
+            <div class="lic-gauge-head">
+              <span class="lic-kpi-label">Ocupação</span>
+              <span class="lic-gauge-pct">{{ kpi.pct_uso }}%</span>
+            </div>
+            <div class="lic-gauge-track">
+              <div class="lic-gauge-fill" style="width: {{ kpi.pct_uso }}%"></div>
+            </div>
+            <div class="lic-gauge-legend">
+              <span><i class="fa fa-circle"></i>{{ kpi.em_uso }} em uso</span>
+              <span><i class="fa fa-circle" style="color:var(--lic-border-strong)"></i>{{ kpi.disponivel }} livres</span>
+            </div>
+          </div>
 
           <div class="lic-summary-divider"></div>
 

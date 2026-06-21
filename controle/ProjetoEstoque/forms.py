@@ -521,6 +521,19 @@ class MovimentacaoItemForm(forms.ModelForm):
         })
     )
 
+    # Renomear o equipamento direto na transferência de equipamento (opcional).
+    # Em branco mantém o nome atual; só renomeia quando preenchido e diferente.
+    novo_nome = forms.CharField(
+        required=False,
+        max_length=100,
+        label="Renomear equipamento",
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "maxlength": "100",
+            "placeholder": "Deixe em branco para manter o nome atual",
+        })
+    )
+
     class Meta:
         model = MovimentacaoItem
         fields = [
@@ -693,8 +706,7 @@ class MovimentacaoItemForm(forms.ModelForm):
             if not cleaned.get("localidade_destino"):
                 self.add_error("localidade_destino", "Informe a nova localidade.")
 
-            if not cleaned.get("centro_custo_destino"):
-                self.add_error("centro_custo_destino", "Informe o novo centro de custo.")
+            # Centro de custo NÃO é exigido aqui: o equipamento mantém o CC atual.
 
             if not cleaned.get("status_transferencia"):
                 self.add_error("status_transferencia", "Informe o novo status.")

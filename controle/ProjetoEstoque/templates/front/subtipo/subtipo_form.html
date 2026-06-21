@@ -1,116 +1,404 @@
 {% extends 'base.html' %}
+
 {% block title %}{% if editar %}Editar Subtipo{% else %}Novo Subtipo{% endif %}{% endblock %}
+{% block page_title %}{% if editar %}Editar Subtipo{% else %}Novo Subtipo{% endif %}{% endblock %}
+{% block page_subtitle %}Cadastro de subtipo de equipamento e sua categoria{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'subtipo_list' %}" class="btn btn-sm">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i>
+    Voltar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+:where(.sub-form-page, .select2-container, .select2-dropdown) {
+  --sub-primary:       var(--brand,               #0071e3);
+  --sub-primary-hover: var(--brand-hover,         #0077ed);
+  --sub-primary-soft:  var(--brand-soft,          rgba(0,113,227,.10));
+  --sub-surface:       var(--bg-elevated,         #ffffff);
+  --sub-muted-surface: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
+  --sub-hover:         var(--bg-hover,            rgba(0,0,0,.04));
+  --sub-text:          var(--text-primary,        #1d1d1f);
+  --sub-muted:         var(--text-tertiary,       #6e6e73);
+  --sub-soft:          var(--text-quaternary,     #86868b);
+  --sub-border:        var(--separator-hairline,  rgba(0,0,0,.06));
+  --sub-border2:       var(--separator-non-opaque,rgba(0,0,0,.10));
+  --sub-border-strong: var(--separator-strong,    rgba(0,0,0,.18));
+  --sub-danger:        var(--danger,              #ff3b30);
+  --sub-danger-soft:   var(--danger-soft,         rgba(255,59,48,.10));
+  --sub-radius-sm:     var(--radius-sm,           10px);
+  --sub-radius-md:     var(--radius-md,           14px);
+  --sub-radius-lg:     var(--radius-lg,           18px);
+  --sub-radius-xl:     var(--radius-xl,           22px);
+  --sub-radius-pill:   var(--radius-pill,         980px);
+  --sub-shadow-sm:     var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+  --sub-shadow-md:     var(--shadow-md,           0 4px 12px rgba(0,0,0,.06));
+  --sub-transition:    var(--transition-fast,     160ms ease);
+  --sub-control-h:     2.75rem;
+}
+
+.sub-form-page,
+.sub-form-page * { box-sizing: border-box; min-width: 0; }
+
+.sub-form-page {
+  width: min(100%, 840px);
+  margin: 0 auto;
+  color: var(--sub-text);
+}
+
+.sub-form-shell { display: grid; gap: 1rem; }
+
+/* ── Hero ── */
+.sub-form-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr);
+  gap: .875rem;
+  align-items: center;
+  padding: clamp(1rem,2.5vw,1.5rem);
+  border: 1px solid var(--sub-border);
+  border-radius: var(--sub-radius-xl);
+  background:
+    radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--sub-primary) 12%, transparent), transparent 16rem),
+    var(--sub-surface);
+  box-shadow: var(--sub-shadow-sm);
+}
+
+.sub-form-icon {
+  width: clamp(3rem,8vw,3.75rem);
+  height: clamp(3rem,8vw,3.75rem);
+  display: grid;
+  place-items: center;
+  border-radius: 1.15rem;
+  background: var(--sub-primary-soft);
+  color: var(--sub-primary);
+  border: 1px solid color-mix(in srgb, var(--sub-primary) 20%, transparent);
+  font-size: clamp(1.1rem,3vw,1.4rem);
+}
+
+.sub-form-title {
+  margin: 0;
+  color: var(--sub-text);
+  font-size: clamp(1.25rem,4vw,1.85rem);
+  font-weight: 650;
+  line-height: 1.08;
+  letter-spacing: -.035em;
+}
+
+.sub-form-subtitle {
+  margin-top: .38rem;
+  color: var(--sub-muted);
+  font-size: .9rem;
+  line-height: 1.45;
+}
+
+/* ── Form card ── */
+.sub-form-card {
+  overflow: hidden;
+  border: 1px solid var(--sub-border);
+  border-radius: var(--sub-radius-xl);
+  background: var(--sub-surface);
+  box-shadow: var(--sub-shadow-sm);
+}
+
+.sub-card-header {
+  padding: 1rem 1.125rem;
+  border-bottom: 1px solid var(--sub-border);
+  background: color-mix(in srgb, var(--sub-surface) 90%, var(--sub-muted-surface));
+}
+
+.sub-card-title {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  color: var(--sub-text);
+  font-size: .98rem;
+  font-weight: 650;
+}
+
+.sub-card-title i { color: var(--sub-primary); }
+.sub-card-subtitle { margin-top: .25rem; color: var(--sub-muted); font-size: .82rem; }
+
+.sub-card-body { padding: clamp(1rem,2.5vw,1.5rem); }
+
+/* ── Grid & Fields ── */
+.sub-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 1rem;
+}
+
+.sub-field { display: flex; flex-direction: column; gap: .42rem; }
+.sub-field-full { grid-column: 1 / -1; }
+
+.sub-field label {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  margin: 0;
+  color: var(--sub-muted);
+  font-size: .82rem;
+  font-weight: 650;
+}
+
+.sub-input-wrap { position: relative; }
+
+.sub-input-wrap .sub-ico {
+  position: absolute;
+  left: .85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--sub-soft);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.sub-form-page input,
+.sub-form-page select,
+.sub-form-page textarea {
+  width: 100%;
+  min-height: var(--sub-control-h);
+  padding: .68rem .85rem .68rem 2.45rem;
+  border: 1px solid var(--sub-border2);
+  border-radius: var(--sub-radius-sm);
+  background: var(--sub-surface);
+  color: var(--sub-text);
+  font-family: inherit;
+  font-size: .92rem;
+  outline: none;
+  transition: border-color var(--sub-transition), box-shadow var(--sub-transition);
+}
+
+.sub-form-page input:focus,
+.sub-form-page select:focus,
+.sub-form-page textarea:focus {
+  border-color: var(--sub-primary);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30));
+}
+
+.sub-form-page .errorlist {
+  display: grid;
+  gap: .25rem;
+  margin: .15rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--sub-danger);
+  font-size: .78rem;
+  font-weight: 650;
+}
+
+.sub-alert-error {
+  display: flex;
+  gap: .7rem;
+  align-items: flex-start;
+  padding: .9rem;
+  margin-bottom: 1rem;
+  border-radius: var(--sub-radius-md);
+  border: 1px solid color-mix(in srgb, var(--sub-danger) 22%, transparent);
+  background: var(--sub-danger-soft);
+  color: var(--sub-danger);
+  font-size: .88rem;
+  font-weight: 600;
+}
+
+/* ── Actions ── */
+.sub-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .75rem;
+  flex-wrap: wrap;
+  padding: 1rem clamp(1rem,2.5vw,1.5rem);
+  border-top: 1px solid var(--sub-border);
+  background: color-mix(in srgb, var(--sub-surface) 92%, var(--sub-muted-surface));
+}
+
+.sub-btn-primary, .sub-btn-secondary {
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  padding: .6rem 1.05rem;
+  border-radius: var(--sub-radius-pill);
+  border: 1px solid transparent;
+  font-size: .9rem;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--sub-transition), background var(--sub-transition), color var(--sub-transition);
+}
+
+.sub-btn-primary:hover, .sub-btn-secondary:hover { transform: translateY(-1px); }
+.sub-btn-primary { background: var(--sub-primary); color: #fff; }
+.sub-btn-primary:hover { background: var(--sub-primary-hover); color: #fff; }
+.sub-btn-secondary { background: transparent; color: var(--sub-text); border-color: var(--sub-border2); }
+.sub-btn-secondary:hover { background: var(--sub-hover); color: var(--sub-text); border-color: var(--sub-border-strong); }
+
+/* ── Select2 ── */
+.select2-container { width: 100% !important; }
+
+.select2-container .select2-selection--single {
+  min-height: var(--sub-control-h) !important;
+  border: 1px solid var(--sub-border2) !important;
+  border-radius: var(--sub-radius-sm) !important;
+  background: var(--sub-surface) !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  width: 100%;
+  padding-left: 2.45rem !important;
+  padding-right: 2rem !important;
+  color: var(--sub-text) !important;
+  font-size: .92rem;
+  line-height: 2.65rem !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 2.65rem !important;
+  right: .35rem !important;
+}
+
+.select2-container--open .select2-selection--single {
+  border-color: var(--sub-primary) !important;
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30)) !important;
+}
+
+.select2-dropdown {
+  z-index: 9999 !important;
+  overflow: hidden !important;
+  border: 1px solid var(--sub-border2) !important;
+  border-radius: var(--sub-radius-md) !important;
+  background: var(--sub-surface) !important;
+  box-shadow: var(--sub-shadow-md);
+}
+
+.select2-results__option { color: var(--sub-text) !important; }
+.select2-results__option--highlighted { background: var(--sub-primary) !important; color: #fff !important; }
+
+@media (max-width: 42rem) {
+  .sub-form-hero, .sub-grid { grid-template-columns: 1fr; }
+  .sub-actions { grid-template-columns: 1fr; display: grid; }
+  .sub-btn-primary, .sub-btn-secondary { width: 100%; }
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"/>
+<div class="sub-form-page">
+  <div class="sub-form-shell">
 
-<style>
-:root{--line:#e5e7eb;--ink:#172133;--soft:#f8fafc;--card:#fff;--shadow:0 20px 40px rgba(2,6,23,.07);--h:46px;--rad:12px;--padL:44px}
-*{box-sizing:border-box}
-.wrapper{max-width:900px;margin:22px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:24px}
-.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
-.form-grid{margin-top:14px;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
-.group{display:flex;flex-direction:column;min-width:0}
-.group label{font-weight:800;margin:0 0 6px;color:#0f172a}
+    <section class="sub-form-hero" aria-label="Formulário de subtipo">
+      <div class="sub-form-icon" aria-hidden="true">
+        <i class="fa fa-{% if editar %}pen{% else %}tags{% endif %}"></i>
+      </div>
+      <div>
+        <h2 class="sub-form-title">{% if editar %}Editar Subtipo{% else %}Novo Subtipo{% endif %}</h2>
+        <p class="sub-form-subtitle">Defina o nome do subtipo, a categoria à qual pertence e se é um item alocado.</p>
+      </div>
+    </section>
 
-/* wrapper com ícone */
-.filtro-icon-input{position:relative; min-width:0}
-.filtro-icon-input .ico{
-  position:absolute;left:12px;top:50%;transform:translateY(-50%);
-  color:#334155;pointer-events:none;width:20px;display:flex;justify-content:center
-}
-.ctrl{
-  width:100%;height:var(--h);
-  padding:8px 14px 8px var(--padL);
-  border:1px solid #d5deea;border-radius:var(--rad);
-  background:#fff;color:#111827;font-size:1rem;
-  outline:none;transition:border .15s, box-shadow .15s
-}
-.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd55}
+    <form method="post" novalidate class="sub-form-card">
+      {% csrf_token %}
 
-/* Select2 */
-.select2-container{width:100% !important}
-.select2-container--default .select2-selection--single{
-  height:var(--h); border:1px solid #d5deea; border-radius:var(--rad);
-  display:flex; align-items:center; padding-left:calc(var(--padL) - 12px);
-}
-.select2-container--default .select2-selection--single .select2-selection__rendered{
-  line-height:normal !important; padding-left:0 !important; color:#111827;
-}
-.select2-container--default .select2-selection--single .select2-selection__arrow{
-  height:var(--h) !important; right:10px !important;
-}
-
-.errorlist{margin:6px 0 0 0;color:#b91c1c;font-weight:700}
-.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
-.btn-primary{background:linear-gradient(90deg,#223259,#172133);color:#fff}
-.btn-secondary{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
-</style>
-
-<div class="wrapper">
-
-    
-  <form method="post" novalidate>
-    {% csrf_token %}
-    <a href="{% url 'subtipo_list' %}" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Voltar</a>
-    <div class="form-grid">
-      <div class="group">
-        <label for="{{ form.nome.id_for_label }}">Nome do Subtipo</label>
-        <div class="filtro-icon-input">
-          <span class="ico"><i class="fa fa-tag"></i></span>
-          {{ form.nome }}
+      <div class="sub-card-header">
+        <div class="sub-card-title">
+          <i class="fa fa-clipboard-list" aria-hidden="true"></i>
+          Dados do Subtipo
         </div>
-        {{ form.nome.errors }}
+        <div class="sub-card-subtitle">Subtipos ajudam a classificar e filtrar os equipamentos do parque.</div>
       </div>
 
-      <div class="group">
-        <label for="{{ form.alocado.id_for_label }}">É Alocado?</label>
-        <div class="filtro-icon-input">
-          <span class="ico"><i class="fa fa-check-circle"></i></span>
-          {{ form.alocado }}
+      <div class="sub-card-body">
+        {% if form.errors %}
+          <div class="sub-alert-error" role="alert">
+            <i class="fa fa-circle-exclamation" aria-hidden="true"></i>
+            <div>Verifique os campos destacados antes de salvar.</div>
+          </div>
+        {% endif %}
+
+        {% if form.non_field_errors %}
+          <div class="sub-alert-error" role="alert">
+            <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+            <div>{{ form.non_field_errors }}</div>
+          </div>
+        {% endif %}
+
+        <div class="sub-grid">
+          <div class="sub-field sub-field-full">
+            <label for="{{ form.nome.id_for_label }}">
+              <i class="fa fa-tag" aria-hidden="true"></i>
+              Nome do Subtipo
+            </label>
+            <div class="sub-input-wrap">
+              <span class="sub-ico"><i class="fa fa-tag" aria-hidden="true"></i></span>
+              {{ form.nome }}
+            </div>
+            {{ form.nome.errors }}
+          </div>
+
+          <div class="sub-field">
+            <label for="{{ form.categoria.id_for_label }}">
+              <i class="fa fa-layer-group" aria-hidden="true"></i>
+              Categoria
+            </label>
+            <div class="sub-input-wrap">
+              <span class="sub-ico"><i class="fa fa-layer-group" aria-hidden="true"></i></span>
+              {{ form.categoria }}
+            </div>
+            {{ form.categoria.errors }}
+          </div>
+
+          <div class="sub-field">
+            <label for="{{ form.alocado.id_for_label }}">
+              <i class="fa fa-circle-check" aria-hidden="true"></i>
+              É alocado?
+            </label>
+            <div class="sub-input-wrap">
+              <span class="sub-ico"><i class="fa fa-circle-check" aria-hidden="true"></i></span>
+              {{ form.alocado }}
+            </div>
+            {{ form.alocado.errors }}
+          </div>
         </div>
-        {{ form.alocado.errors }}
       </div>
 
-      <div class="group">
-        <label for="{{ form.categoria.id_for_label }}">Categoria</label>
-        <div class="filtro-icon-input">
-          <span class="ico"><i class="fa fa-layer-group"></i></span>
-          {{ form.categoria }}
-        </div>
-        {{ form.categoria.errors }}
+      <div class="sub-actions">
+        <a href="{% url 'subtipo_list' %}" class="sub-btn-secondary">
+          <i class="fa fa-arrow-left" aria-hidden="true"></i>
+          Cancelar
+        </a>
+        <button class="sub-btn-primary" type="submit">
+          <i class="fa fa-save" aria-hidden="true"></i>
+          {% if editar %}Atualizar{% else %}Salvar{% endif %}
+        </button>
       </div>
-    </div>
+    </form>
 
-    <div class="actions">
-      <button class="btn btn-primary" type="submit">
-        <i class="fa fa-save"></i> {% if editar %}Atualizar{% else %}Salvar{% endif %}
-      </button>
-    </div>
-  </form>
+  </div>
 </div>
+{% endblock %}
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
-  // Garante a classe .ctrl mesmo se o widget mudar
-  ['#id_nome','#id_alocado','#id_categoria'].forEach(sel=>{
-    const el=document.querySelector(sel); if(el && !el.classList.contains('ctrl')) el.classList.add('ctrl');
+  $(document).ready(function () {
+    const $cat = $('#{{ form.categoria.auto_id }}');
+    if ($cat.length) {
+      $cat.select2({
+        width: '100%',
+        placeholder: 'Selecione a categoria...',
+        language: {
+          noResults: () => 'Sem resultados',
+          searching: () => 'Buscando...'
+        }
+      });
+    }
   });
-
-  // Inicia Select2 nos selects (categoria e, se quiser, alocado)
-  const $cat = $('#id_categoria');
-  if ($cat.length) {
-    $cat.select2({
-      width:'100%',
-      placeholder:'Selecione a categoria',
-      language:{ noResults:()=> 'Sem resultados', searching:()=> 'Buscando...' }
-    });
-  }
-  // Opcional: alocado com select2 também
-  // $('#id_alocado').select2({ width:'100%' });
 </script>
 {% endblock %}

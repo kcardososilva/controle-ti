@@ -683,10 +683,10 @@
                                 Limpar
                             </a>
 
-                            <a id="exportLink" href="#" class="td-btn td-btn-success">
-                                <i class="fa fa-file-excel"></i>
-                                Exportar CSV
-                            </a>
+                            <button type="button" id="btnExportImg" class="td-btn td-btn-success" onclick="exportarImagem()">
+                                <i class="fa fa-image"></i>
+                                Exportar Imagem
+                            </button>
                         </div>
                     </div>
                 </form>
@@ -988,6 +988,7 @@
 {{ mes_gasto|default:"[]"|json_script:"toner-mes-gasto" }}
 {{ mes_qtd|default:"[]"|json_script:"toner-mes-qtd" }}
 {{ mes_media|default:"0"|json_script:"toner-mes-media" }}
+{{ resumo_export|json_script:"toner-resumo-export" }}
 
 <script>
 (function() {
@@ -1409,23 +1410,146 @@
         });
     }
 
-    const form = document.getElementById('filtrosForm');
-    const exportLink = document.getElementById('exportLink');
+    /* ── Exportação em IMAGEM (resumo executivo do consumo de toner) ───── */
+    var FONT = 'Inter, -apple-system, "Segoe UI", sans-serif';
+    var INK = '#1d1d1f', SUB = '#6e6e73', LINE = '#e6e6ea', BRAND = '#0071e3',
+        BG = '#ffffff', SOFT = '#f5f5f7', HEADBG = '#eef0f5', ZEBRA = '#fafafb';
 
-    function updateExportLink() {
-        if (!form || !exportLink) return;
+    function rrect(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
 
-        const params = new URLSearchParams(new FormData(form));
-        params.set('export', '1');
+    function drawSection(c, title, x, y, w, headers, fracs, rows) {
+        var rowH = 30, headH = 34;
+        c.fillStyle = BRAND; c.fillRect(x, y + 3, 3, 16);
+        c.fillStyle = INK; c.font = '800 15px ' + FONT; c.textAlign = 'left';
+        c.fillText(title, x + 12, y + 12);
+        y += 30;
 
-        exportLink.href = window.location.pathname + '?' + params.toString();
+        var cw = fracs.map(function (f) { return f * w; });
+        var xs = [], cx = x;
+        cw.forEach(function (width) { xs.push(cx); cx += width; });
+
+        rrect(c, x, y, w, headH, 8); c.fillStyle = HEADBG; c.fill();
+        c.font = '800 11px ' + FONT; c.fillStyle = SUB;
+        headers.forEach(function (hd, i) {
+            var right = i > 0;
+            c.textAlign = right ? 'right' : 'left';
+            c.fillText(String(hd).toUpperCase(), right ? xs[i] + cw[i] - 12 : xs[i] + 12, y + headH / 2);
+        });
+        y += headH;
+
+        if (!rows.length) {
+            c.font = '500 13px ' + FONT; c.fillStyle = SUB; c.textAlign = 'left';
+            c.fillText('Sem registros no período.', x + 12, y + rowH / 2);
+            return y + rowH;
+        }
+
+        rows.forEach(function (row, ri) {
+            if (ri % 2 === 1) { c.fillStyle = ZEBRA; c.fillRect(x, y, w, rowH); }
+            c.font = '600 13px ' + FONT;
+            row.forEach(function (cell, i) {
+                var right = i > 0;
+                c.textAlign = right ? 'right' : 'left';
+                c.fillStyle = (i === 0) ? INK : (i === headers.length - 1 ? INK : SUB);
+                var tx = right ? xs[i] + cw[i] - 12 : xs[i] + 12;
+                var txt = String(cell);
+                if (i === 0) {
+                    var maxw = cw[0] - 18;
+                    while (txt.length > 4 && c.measureText(txt).width > maxw) txt = txt.slice(0, -1);
+                    if (txt !== String(cell)) txt = txt.slice(0, -1) + '…';
+                }
+                c.fillText(txt, tx, y + rowH / 2);
+            });
+            c.strokeStyle = LINE; c.lineWidth = 1;
+            c.beginPath(); c.moveTo(x, y + rowH - 0.5); c.lineTo(x + w, y + rowH - 0.5); c.stroke();
+            y += rowH;
+        });
+        return y;
     }
 
-    if (form) {
-        form.addEventListener('change', updateExportLink);
-        form.addEventListener('input', updateExportLink);
-        updateExportLink();
-    }
+    window.exportarImagem = function exportarImagem() {
+        var R;
+        try { R = JSON.parse(document.getElementById('toner-resumo-export').textContent); }
+        catch (e) { R = null; }
+        if (!R) { alert('Sem dados para exportar.'); return; }
+
+        var brl = function (v) { return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+        var num = function (v) { return Number(v || 0).toLocaleString('pt-BR'); };
+
+        var centros = (R.centros || []).slice(0, 12);
+        var itens   = (R.itens   || []).slice(0, 12);
+        var tempos  = (R.tempo   || []).slice(0, 12);
+
+        var DPR = 2, W = 980, PAD = 44, secGap = 26;
+        var secBlock = function (rows) { return 30 + 34 + Math.max(1, rows.length) * 30; };
+        var H = PAD + 70 + 84 + 26
+              + secBlock(centros) + secGap
+              + secBlock(itens) + secGap
+              + secBlock(tempos) + 44;
+
+        var cv = document.createElement('canvas');
+        cv.width = W * DPR; cv.height = H * DPR;
+        var c = cv.getContext('2d');
+        c.scale(DPR, DPR);
+        c.textBaseline = 'middle';
+
+        c.fillStyle = BG; c.fillRect(0, 0, W, H);
+        var g = c.createLinearGradient(0, 0, W, 0); g.addColorStop(0, BRAND); g.addColorStop(1, '#5e5ce6');
+        c.fillStyle = g; c.fillRect(0, 0, W, 6);
+
+        var y = PAD;
+        c.textAlign = 'left'; c.fillStyle = INK; c.font = '800 26px ' + FONT;
+        c.fillText('Consumo de Toner — Resumo', PAD, y + 10);
+        c.fillStyle = SUB; c.font = '500 14px ' + FONT;
+        c.fillText('Período: ' + (R.periodo || '') + '  ·  ' + (R.periodo_dias || 0) + ' dia(s)', PAD, y + 36);
+        c.textAlign = 'right'; c.fillStyle = BRAND; c.font = '800 20px ' + FONT;
+        c.fillText('Zelo', W - PAD, y + 8);
+        c.fillStyle = SUB; c.font = '500 12px ' + FONT;
+        c.fillText('Santa Colomba', W - PAD, y + 30);
+        c.textAlign = 'left';
+        y += 70;
+
+        var kpis = [
+            { l: 'Gasto Total',    v: brl(R.kpi.gasto_total),    col: BRAND },
+            { l: 'Volume Baixado', v: num(R.kpi.qtd) + ' un.',   col: '#5e5ce6' },
+            { l: 'Movimentações',  v: num(R.kpi.movimentos),     col: '#ff9500' },
+            { l: 'Ticket Médio',   v: brl(R.kpi.ticket_medio),   col: '#34c759' }
+        ];
+        var kgap = 14, kw = (W - PAD * 2 - kgap * 3) / 4, kh = 84;
+        kpis.forEach(function (k, i) {
+            var kx = PAD + i * (kw + kgap);
+            c.save(); rrect(c, kx, y, kw, kh, 14); c.clip();
+            c.fillStyle = SOFT; c.fillRect(kx, y, kw, kh);
+            c.fillStyle = k.col; c.fillRect(kx, y, 5, kh);
+            c.restore();
+            c.textAlign = 'left'; c.fillStyle = INK; c.font = '800 21px ' + FONT;
+            c.fillText(k.v, kx + 16, y + 34);
+            c.fillStyle = SUB; c.font = '700 11px ' + FONT;
+            c.fillText(k.l.toUpperCase(), kx + 16, y + 58);
+        });
+        y += kh + 26;
+
+        y = drawSection(c, 'Gasto por Centro de Custo', PAD, y, W - PAD * 2,
+            ['Centro de Custo', 'Qtd', 'Gasto', '% do Total'], [0.50, 0.12, 0.23, 0.15],
+            centros.map(function (r) { return [r.cc, num(r.qtd), brl(r.gasto), (r.pct || 0).toFixed(1) + '%']; }));
+        y += secGap;
+
+        y = drawSection(c, 'Itens Mais Consumidos', PAD, y, W - PAD * 2,
+            ['Item', 'Qtd', 'Gasto'], [0.60, 0.18, 0.22],
+            itens.map(function (r) { return [r.nome, num(r.qtd), brl(r.gasto)]; }));
+        y += secGap;
+
+        y = drawSection(c, 'Tempo Médio entre Baixas por Centro de Custo', PAD, y, W - PAD * 2,
+            ['Centro de Custo', 'Baixas', 'Tempo Médio'], [0.58, 0.18, 0.24],
+            tempos.map(function (r) { return [r.cc, num(r.baixas), (r.dias_medio == null ? '—' : (r.dias_medio.toFixed(1) + ' dias'))]; }));
+
+        c.fillStyle = SUB; c.font = '500 12px ' + FONT; c.textAlign = 'left';
+        c.fillText('Gerado em ' + (R.gerado_em || '') + '  ·  Zelo · Santa Colomba Agropecuária', PAD, H - 22);
+
+        var a = document.createElement('a');
+        a.download = 'resumo_consumo_toner.png';
+        a.href = cv.toDataURL('image/png');
+        document.body.appendChild(a); a.click(); a.remove();
+    };
 })();
 </script>
 {% endblock %}

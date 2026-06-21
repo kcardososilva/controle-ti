@@ -92,4 +92,15 @@ def subtipo_delete(request, pk):
 @login_required
 def subtipo_detail(request, pk):
     obj = get_object_or_404(Subtipo.objects.select_related("categoria"), pk=pk)
-    return render(request, "front/subtipo/subtipo_detail.html", {"obj": obj})
+    itens_qs = (
+        obj.item_set.select_related("localidade")
+        .order_by("-created_at")
+        if hasattr(obj, "item_set") else None
+    )
+    itens = list(itens_qs[:30]) if itens_qs is not None else []
+    itens_count = itens_qs.count() if itens_qs is not None else 0
+    return render(request, "front/subtipo/subtipo_detail.html", {
+        "obj": obj,
+        "itens": itens,
+        "itens_count": itens_count,
+    })

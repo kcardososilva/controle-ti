@@ -1,97 +1,548 @@
 {% extends 'base.html' %}
-{% block title %}Detalhe do Subtipo{% endblock %}
+{% load static %}
+
+{% block title %}{{ obj.nome }} — Subtipo{% endblock %}
+{% block page_title %}Subtipo{% endblock %}
+{% block page_subtitle %}{{ obj.nome }}{% if obj.categoria %} · {{ obj.categoria.nome }}{% endif %}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'subtipo_list' %}" class="btn btn-sm">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i>
+    Voltar
+  </a>
+  <a href="{% url 'subtipo_update' obj.pk %}" class="btn-primary btn-sm">
+    <i class="fa fa-pen" aria-hidden="true"></i>
+    Editar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.sub-detail-page) {
+  --sub-primary:       var(--brand,               #0071e3);
+  --sub-primary-hover: var(--brand-hover,         #0077ed);
+  --sub-primary-soft:  var(--brand-soft,          rgba(0,113,227,.10));
+  --sub-surface:       var(--bg-elevated,         #ffffff);
+  --sub-muted-surface: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
+  --sub-muted-surface2:var(--bg-fill-secondary,   rgba(120,120,128,.12));
+  --sub-hover:         var(--bg-hover,            rgba(0,0,0,.04));
+  --sub-text:          var(--text-primary,        #1d1d1f);
+  --sub-muted:         var(--text-tertiary,       #6e6e73);
+  --sub-soft:          var(--text-quaternary,     #86868b);
+  --sub-border:        var(--separator-hairline,  rgba(0,0,0,.06));
+  --sub-border2:       var(--separator-non-opaque,rgba(0,0,0,.10));
+  --sub-border-strong: var(--separator-strong,    rgba(0,0,0,.18));
+  --sub-success:       var(--system-green,        #34c759);
+  --sub-success-soft:  var(--system-green-soft,   rgba(52,199,89,.12));
+  --sub-warning:       var(--system-orange,       #ff9500);
+  --sub-warning-soft:  var(--system-orange-soft,  rgba(255,149,0,.12));
+  --sub-danger:        var(--system-red,          #ff3b30);
+  --sub-danger-soft:   var(--system-red-soft,     rgba(255,59,48,.10));
+  --sub-info:          var(--system-indigo,       #5856d6);
+  --sub-info-soft:     var(--system-indigo-soft,  rgba(88,86,214,.10));
+  --sub-radius-sm:     var(--radius-sm,           10px);
+  --sub-radius-md:     var(--radius-md,           14px);
+  --sub-radius-lg:     var(--radius-lg,           18px);
+  --sub-radius-xl:     var(--radius-xl,           22px);
+  --sub-radius-pill:   var(--radius-pill,         980px);
+  --sub-shadow-sm:     var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+  --sub-shadow-md:     var(--shadow-md,           0 4px 12px rgba(0,0,0,.06));
+  --sub-transition:    var(--transition-fast,     160ms ease);
+}
+
+.sub-detail-page,
+.sub-detail-page * { box-sizing: border-box; min-width: 0; }
+
+.sub-detail-page {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+  color: var(--sub-text);
+}
+
+/* ── Breadcrumb ── */
+.sub-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .45rem;
+  color: var(--sub-muted);
+  font-size: .8rem;
+  font-weight: 600;
+}
+.sub-breadcrumb a { color: var(--sub-muted); text-decoration: none; }
+.sub-breadcrumb a:hover { color: var(--sub-primary); }
+.sub-breadcrumb i { color: var(--sub-soft); font-size: .65rem; }
+
+/* ── Hero ── */
+.sub-hero {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: clamp(1rem,2.5vw,1.5rem);
+  border: 1px solid var(--sub-border);
+  border-radius: var(--sub-radius-xl);
+  background:
+    radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--sub-primary) 14%, transparent), transparent 18rem),
+    var(--sub-surface);
+  box-shadow: var(--sub-shadow-sm);
+}
+
+.sub-hero-main { display: grid; grid-template-columns: auto minmax(0,1fr); gap: .875rem; align-items: center; }
+
+.sub-hero-icon {
+  width: clamp(3rem,8vw,3.75rem);
+  height: clamp(3rem,8vw,3.75rem);
+  display: grid;
+  place-items: center;
+  border-radius: 1.15rem;
+  background: var(--sub-primary-soft);
+  color: var(--sub-primary);
+  border: 1px solid color-mix(in srgb, var(--sub-primary) 20%, transparent);
+  font-size: clamp(1.1rem,3vw,1.4rem);
+}
+
+.sub-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  margin-bottom: .35rem;
+  padding: .22rem .55rem;
+  border-radius: var(--sub-radius-pill);
+  background: var(--sub-primary-soft);
+  color: var(--sub-primary);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.sub-title {
+  margin: 0;
+  color: var(--sub-text);
+  font-size: clamp(1.45rem,4vw,2.25rem);
+  line-height: 1.05;
+  font-weight: 650;
+  letter-spacing: -.04em;
+}
+
+.sub-subtitle { margin-top: .4rem; color: var(--sub-muted); font-size: .95rem; line-height: 1.45; }
+
+.sub-hero-actions { display: flex; flex-wrap: wrap; gap: .625rem; justify-content: flex-end; }
+
+/* ── Buttons ── */
+.sub-btn, .sub-btn-primary, .sub-btn-secondary, .sub-btn-danger {
+  min-height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .48rem;
+  padding: .55rem 1rem;
+  border-radius: var(--sub-radius-pill);
+  border: 1px solid transparent;
+  font-size: .88rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--sub-transition), background var(--sub-transition), color var(--sub-transition);
+}
+.sub-btn:hover, .sub-btn-primary:hover, .sub-btn-secondary:hover, .sub-btn-danger:hover { transform: translateY(-1px); }
+.sub-btn-primary { background: var(--sub-primary); color: #fff; }
+.sub-btn-primary:hover { background: var(--sub-primary-hover); color: #fff; }
+.sub-btn, .sub-btn-secondary { background: transparent; color: var(--sub-text); border-color: var(--sub-border2); }
+.sub-btn:hover, .sub-btn-secondary:hover { background: var(--sub-hover); border-color: var(--sub-border-strong); color: var(--sub-text); }
+.sub-btn-danger { background: var(--sub-danger); color: #fff; border: none; }
+.sub-btn-danger:hover { opacity: .9; }
+
+/* ── Main grid ── */
+.sub-main-grid {
+  display: grid;
+  grid-template-columns: minmax(16rem,19rem) minmax(0,1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.sub-stack { display: grid; gap: 1rem; }
+
+/* ── Cards ── */
+.sub-card {
+  overflow: hidden;
+  border: 1px solid var(--sub-border);
+  border-radius: var(--sub-radius-lg);
+  background: var(--sub-surface);
+  box-shadow: var(--sub-shadow-sm);
+}
+
+.sub-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .85rem;
+  padding: .95rem 1rem;
+  border-bottom: 1px solid var(--sub-border);
+  background: color-mix(in srgb, var(--sub-surface) 90%, var(--sub-muted-surface));
+}
+
+.sub-card-title {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  color: var(--sub-text);
+  font-size: .93rem;
+  font-weight: 650;
+}
+.sub-card-title i { color: var(--sub-primary); }
+
+.sub-card-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  min-height: 1.45rem;
+  padding: .15rem .55rem;
+  border-radius: var(--sub-radius-pill);
+  background: var(--sub-primary-soft);
+  color: var(--sub-primary);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.sub-card-body { padding: 1rem; }
+
+/* ── Info list ── */
+.sub-info-list { display: grid; gap: .95rem; }
+
+.sub-info-item label {
+  display: block;
+  margin-bottom: .25rem;
+  color: var(--sub-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.sub-info-value { color: var(--sub-text); font-size: .88rem; font-weight: 600; overflow-wrap: anywhere; }
+.sub-divider { border: 0; border-top: 1px solid var(--sub-border); }
+
+/* ── Badge ── */
+.sub-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 1.55rem;
+  padding: .22rem .6rem;
+  border-radius: var(--sub-radius-pill);
+  background: var(--sub-muted-surface);
+  color: var(--sub-muted);
+  font-size: .72rem;
+  font-weight: 650;
+}
+.sub-badge-success { color: var(--sub-success); background: var(--sub-success-soft); }
+.sub-badge-warning { color: var(--sub-warning); background: var(--sub-warning-soft); }
+.sub-badge-danger  { color: var(--sub-danger);  background: var(--sub-danger-soft); }
+.sub-badge-info    { color: var(--sub-info);    background: var(--sub-info-soft); }
+
+/* ── Table ── */
+.sub-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sub-table { width: max-content; min-width: 100%; border-collapse: collapse; }
+.sub-table th, .sub-table td {
+  padding: .85rem 1rem;
+  border-bottom: 1px solid var(--sub-border);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.sub-table th {
+  background: var(--sub-surface);
+  color: var(--sub-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.sub-table td { color: var(--sub-text); font-size: .84rem; font-weight: 500; }
+.sub-table tbody tr:last-child td { border-bottom: 0; }
+.sub-table tbody tr:hover td { background: var(--sub-hover); }
+
+.sub-item-cell { display: flex; align-items: center; gap: .68rem; }
+.sub-avatar {
+  width: 2.15rem;
+  height: 2.15rem;
+  flex: 0 0 2.15rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--sub-primary-soft);
+  color: var(--sub-primary);
+  border: 1px solid color-mix(in srgb, var(--sub-primary) 18%, transparent);
+  font-size: .78rem;
+}
+.sub-line-main { display: block; color: var(--sub-text); font-size: .84rem; font-weight: 650; overflow: hidden; text-overflow: ellipsis; }
+.sub-line-sub { display: block; margin-top: .18rem; color: var(--sub-muted); font-size: .74rem; }
+
+.sub-table-action {
+  width: 2.1rem;
+  height: 2.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--sub-radius-sm);
+  color: var(--sub-muted);
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+.sub-table-action:hover { color: var(--sub-primary); background: var(--sub-primary-soft); }
+
+.sub-empty { padding: 3rem 1rem; text-align: center; color: var(--sub-soft); font-size: .88rem; }
+.sub-empty i { display: block; margin-bottom: .7rem; font-size: 2rem; }
+
+/* ── Delete Modal ── */
+.sub-modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); backdrop-filter: blur(4px);
+  display: none; align-items: center; justify-content: center; z-index: 9999; padding: 1rem;
+}
+.sub-modal {
+  width: min(100%,420px);
+  border: 1px solid var(--sub-border2);
+  border-radius: var(--sub-radius-xl);
+  background: var(--sub-surface);
+  box-shadow: 0 20px 60px rgba(0,0,0,.20);
+  overflow: hidden;
+}
+.sub-modal-header { display: flex; align-items: center; gap: .75rem; padding: 1.25rem 1.25rem .85rem; }
+.sub-modal-icon {
+  width: 2.75rem; height: 2.75rem; flex: 0 0 2.75rem;
+  display: grid; place-items: center; border-radius: .95rem;
+  background: var(--sub-danger-soft); color: var(--sub-danger); font-size: 1.1rem;
+}
+.sub-modal-title { margin: 0; color: var(--sub-text); font-size: 1rem; font-weight: 700; }
+.sub-modal-body { padding: 0 1.25rem 1rem; color: var(--sub-muted); font-size: .88rem; line-height: 1.55; }
+.sub-modal-footer {
+  display: flex; justify-content: flex-end; gap: .625rem;
+  padding: .85rem 1.25rem 1.25rem; border-top: 1px solid var(--sub-border);
+  background: color-mix(in srgb, var(--sub-surface) 92%, var(--sub-muted-surface));
+}
+
+/* ── Responsive ── */
+@media (max-width: 72rem) { .sub-main-grid { grid-template-columns: 1fr; } }
+@media (max-width: 44rem) {
+  .sub-hero, .sub-hero-main { grid-template-columns: 1fr; }
+  .sub-hero-actions { justify-content: stretch; }
+  .sub-btn, .sub-btn-primary, .sub-btn-secondary { width: 100%; }
+  .sub-card-header { align-items: flex-start; flex-direction: column; }
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-<style>
-:root{--line:#e5e7eb;--ink:#172133;--soft:#f8fafc;--card:#fff;--shadow:0 20px 40px rgba(2,6,23,.07)}
-.wrapper{max-width:900px;margin:22px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:22px}
-.header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.header h2{margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
-.actions{display:flex;gap:10px}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
-.btn-edit{background:#223259;color:#fff}
-.btn-del{background:#ef4444;color:#fff}
-.btn-back{background:#f3f4f6;color:#172133;border:1px solid #d8dee9}
-.grid{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
-.card{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px}
-.label{font-weight:800;color:#0f172a}
-.value{color:#172133}
+<div class="sub-detail-page">
 
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9999}
-.modal{background:#fff;border-radius:14px;padding:22px 26px;max-width:480px;width:92%;box-shadow:0 10px 30px #0005}
-.modal h3{margin:0 0 8px;color:#0f172a}
-.modal p{margin:0 0 16px;color:#111827}
-.modal .row{display:flex;gap:10px;justify-content:flex-end}
-.btn-danger{background:#ef4444;color:#fff;border-radius:10px;padding:10px 16px;border:none;font-weight:800}
-.btn-light{background:#f3f4f6;color:#111827;border-radius:10px;padding:10px 16px;border:1px solid #e5e7eb;font-weight:800}
-</style>
+  <nav class="sub-breadcrumb" aria-label="Navegação estrutural">
+    <a href="{% url 'subtipo_list' %}">Subtipos</a>
+    <i class="fa fa-chevron-right" aria-hidden="true"></i>
+    <span>{{ obj.nome }}</span>
+  </nav>
 
-<div class="wrapper">
-   <h2 style="color: #0f172a;"><i class="fa fa-tag"></i> Detalhe do Subtipo</h2>
-    <div class="actions">
-      <a class="btn btn-back" href="{% url 'subtipo_list' %}"><i class="fa fa-arrow-left"></i> Voltar</a>
-      <a class="btn btn-edit" href="{% url 'subtipo_update' obj.pk %}"><i class="fa fa-pen"></i> Editar</a>
-      <button class="btn btn-del js-open-delete" data-url="{% url 'subtipo_delete' obj.pk %}" data-name="{{ obj.nome|escapejs }}"><i class="fa fa-trash"></i> Excluir</button>
+  <!-- Hero -->
+  <section class="sub-hero" aria-label="Subtipo selecionado">
+    <div class="sub-hero-main">
+      <div class="sub-hero-icon" aria-hidden="true"><i class="fa fa-tags"></i></div>
+      <div>
+        <span class="sub-eyebrow"><i class="fa fa-tag" aria-hidden="true"></i> Subtipo</span>
+        <h2 class="sub-title">{{ obj.nome }}</h2>
+        <p class="sub-subtitle">
+          {% if obj.categoria %}Categoria <strong>{{ obj.categoria.nome }}</strong> · {% endif %}
+          {{ itens_count }} equipamento{{ itens_count|pluralize:"s" }} vinculado{{ itens_count|pluralize:"s" }}.
+        </p>
+      </div>
     </div>
+    <div class="sub-hero-actions">
+      <a href="{% url 'subtipo_update' obj.pk %}" class="sub-btn-primary">
+        <i class="fa fa-pen" aria-hidden="true"></i>
+        Editar
+      </a>
+      <button class="sub-btn-danger" onclick="openDeleteModal('{{ obj.pk }}','{{ obj.nome|escapejs }}')">
+        <i class="fa fa-trash" aria-hidden="true"></i>
+        Excluir
+      </button>
+    </div>
+  </section>
 
-  <div class="grid">
-    <div class="card">
-      <div class="label">Nome</div>
-      <div class="value">{{ obj.nome }}</div>
-    </div>
-    <div class="card">
-      <div class="label">É Alocado?</div>
-      <div class="value">{{ obj.get_alocado_display }}</div>
-    </div>
-    <div class="card">
-      <div class="label">Categoria</div>
-      <div class="value">{{ obj.categoria.nome }}</div>
-    </div>
-    <div class="card">
-      <div class="label">Criado em</div>
-      <div class="value">{{ obj.created_at|date:"d/m/Y H:i" }}</div>
-    </div>
-    <div class="card">
-      <div class="label">Atualizado em</div>
-      <div class="value">{{ obj.updated_at|date:"d/m/Y H:i" }}</div>
-    </div>
+  <!-- Main grid -->
+  <div class="sub-main-grid">
+
+    <!-- Sidebar: Informações -->
+    <aside class="sub-card">
+      <div class="sub-card-header">
+        <div class="sub-card-title">
+          <i class="fa fa-circle-info" aria-hidden="true"></i>
+          Informações
+        </div>
+      </div>
+      <div class="sub-card-body">
+        <div class="sub-info-list">
+          <div class="sub-info-item">
+            <label>Nome do Subtipo</label>
+            <div class="sub-info-value">{{ obj.nome }}</div>
+          </div>
+
+          <div class="sub-info-item">
+            <label>Categoria</label>
+            <div class="sub-info-value">
+              {% if obj.categoria %}
+                <span class="sub-badge"><i class="fa fa-layer-group" aria-hidden="true"></i> {{ obj.categoria.nome }}</span>
+              {% else %}
+                <span style="color:var(--sub-soft);">Não informada</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="sub-info-item">
+            <label>É alocado?</label>
+            <div class="sub-info-value">
+              {% if obj.alocado == 'sim' %}
+                <span class="sub-badge sub-badge-success"><i class="fa fa-check" aria-hidden="true"></i> Sim</span>
+              {% else %}
+                <span class="sub-badge">Não</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <hr class="sub-divider">
+
+          <div class="sub-info-item">
+            <label>Criado em</label>
+            <div class="sub-info-value">{{ obj.created_at|date:"d/m/Y H:i"|default:"—" }}</div>
+          </div>
+
+          <div class="sub-info-item">
+            <label>Última atualização</label>
+            <div class="sub-info-value">{{ obj.updated_at|date:"d/m/Y H:i"|default:"—" }}</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Equipamentos vinculados -->
+    <section class="sub-stack">
+      <article class="sub-card">
+        <div class="sub-card-header">
+          <div class="sub-card-title">
+            <i class="fa fa-laptop" aria-hidden="true"></i>
+            Equipamentos deste subtipo
+            <span class="sub-card-count">{{ itens_count }}</span>
+          </div>
+        </div>
+
+        <div class="sub-table-wrap">
+          <table class="sub-table" aria-label="Equipamentos do subtipo {{ obj.nome }}">
+            <thead>
+              <tr>
+                <th>Equipamento</th>
+                <th>Localidade</th>
+                <th>Status</th>
+                <th style="text-align:right;">Ver</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in itens %}
+              <tr>
+                <td>
+                  <div class="sub-item-cell">
+                    <span class="sub-avatar" aria-hidden="true"><i class="fa fa-laptop"></i></span>
+                    <div>
+                      <span class="sub-line-main">{{ item.nome }}</span>
+                      {% if item.numero_serie %}<span class="sub-line-sub">{{ item.numero_serie }}</span>{% endif %}
+                    </div>
+                  </div>
+                </td>
+                <td>{{ item.localidade.local|default:"—" }}</td>
+                <td>
+                  {% if item.status == 'ativo' %}
+                    <span class="sub-badge sub-badge-success">Ativo</span>
+                  {% elif item.status == 'backup' %}
+                    <span class="sub-badge sub-badge-info">Backup</span>
+                  {% elif item.status == 'manutencao' %}
+                    <span class="sub-badge sub-badge-warning">Manutenção</span>
+                  {% elif item.status == 'defeito' or item.status == 'queimado' %}
+                    <span class="sub-badge sub-badge-danger">Defeito</span>
+                  {% else %}
+                    <span class="sub-badge">{{ item.get_status_display|default:item.status }}</span>
+                  {% endif %}
+                </td>
+                <td style="text-align:right;">
+                  <a href="{% url 'equipamento_detalhe' item.pk %}" class="sub-table-action"
+                     title="Ver equipamento" aria-label="Ver equipamento {{ item.nome }}">
+                    <i class="fa fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                  </a>
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="4">
+                  <div class="sub-empty">
+                    <i class="fa fa-boxes-stacked" aria-hidden="true"></i>
+                    Nenhum equipamento vinculado a este subtipo.
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if itens_count > 30 %}
+        <div style="padding:.7rem 1rem;border-top:1px solid var(--sub-border);background:color-mix(in srgb, var(--sub-surface) 92%, var(--sub-muted-surface));color:var(--sub-muted);font-size:.78rem;text-align:center;">
+          Exibindo os primeiros 30 registros de {{ itens_count }}.
+        </div>
+        {% endif %}
+      </article>
+    </section>
   </div>
+
 </div>
 
-<!-- Popup de exclusão -->
-<div id="confirmModal" class="modal-overlay" aria-hidden="true">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
-    <h3 id="confirmTitle"><i class="fa fa-trash"></i> Excluir Subtipo</h3>
-    <p id="confirmText"></p>
-    <form id="confirmForm" method="post" action="">
+<!-- Delete Modal -->
+<div id="deleteModal" class="sub-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="sub-modal">
+    <div class="sub-modal-header">
+      <div class="sub-modal-icon" aria-hidden="true"><i class="fa fa-triangle-exclamation"></i></div>
+      <h2 class="sub-modal-title" id="modalTitle">Confirmar exclusão</h2>
+    </div>
+    <div class="sub-modal-body" id="modalMsg"></div>
+    <form id="deleteForm" method="post" action="">
       {% csrf_token %}
-      <div class="row">
-        <button type="button" class="btn-light" id="btnCancel"><i class="fa fa-arrow-left"></i> Cancelar</button>
-        <button type="submit" class="btn-danger"><i class="fa fa-trash"></i> Confirmar</button>
+      <div class="sub-modal-footer">
+        <button type="button" class="sub-btn-secondary" onclick="closeDeleteModal()">Cancelar</button>
+        <button type="submit" class="sub-btn-danger">
+          <i class="fa fa-trash" aria-hidden="true"></i>
+          Excluir
+        </button>
       </div>
     </form>
   </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
-(function(){
-  const modal = document.getElementById('confirmModal');
-  const text  = document.getElementById('confirmText');
-  const form  = document.getElementById('confirmForm');
-  document.addEventListener('click', function(e){
-    const btn = e.target.closest('.js-open-delete');
-    if(btn){
-      e.preventDefault();
-      text.innerHTML = `Tem certeza que deseja excluir o subtipo <b>${btn.dataset.name||''}</b>?`;
-      form.action = btn.dataset.url;
-      modal.style.display = 'flex'; modal.setAttribute('aria-hidden','false');
-    }
-    if(e.target.id==='btnCancel' || e.target===modal){
-      modal.style.display = 'none'; modal.setAttribute('aria-hidden','true');
-    }
-  });
-  document.addEventListener('keydown', e => { if(e.key==='Escape'){ modal.style.display='none'; modal.setAttribute('aria-hidden','true'); }});
-})();
+  const modal   = document.getElementById('deleteModal');
+  const msg     = document.getElementById('modalMsg');
+  const delForm = document.getElementById('deleteForm');
+
+  function openDeleteModal(id, nome) {
+    msg.innerHTML = `Deseja realmente excluir o subtipo <strong>${nome}</strong>?<br><br>Essa ação é <strong>irreversível</strong>.`;
+    delForm.action = `/subtipos/${id}/excluir/`;
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+  function closeDeleteModal() {
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+  modal.addEventListener('click', e => { if (e.target === modal) closeDeleteModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDeleteModal(); });
 </script>
 {% endblock %}

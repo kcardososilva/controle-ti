@@ -385,296 +385,339 @@ def licenca_export_excel(request, pk):
     )
 
     cc_list = _get_dados_cc(licenca)
+    lotes = list(lotes_qs)
+    movs = list(movimentacoes_qs)
 
-    # =========================
-    # CRIA WORKBOOK
-    # =========================
+    # =========================================================================
+    # KPIs consolidados (mesma base do detalhe da licença)
+    # =========================================================================
+    qtd_total = sum(int(l.quantidade_total or 0) for l in lotes)
+    qtd_disp = sum(int(l.quantidade_disponivel or 0) for l in lotes)
+    qtd_em_uso = max(0, qtd_total - qtd_disp)
+    pct_uso = int((qtd_em_uso / qtd_total) * 100) if qtd_total > 0 else 0
+
+    investimento_total = Decimal("0.00")
+    gasto_mensal = Decimal("0.00")
+    gasto_anual = Decimal("0.00")
+    for l in lotes:
+        custos = _normalizar_custos_lote(l)
+        investimento_total += custos["anual_total"]
+        em_uso = max(0, int(l.quantidade_total or 0) - int(l.quantidade_disponivel or 0))
+        if em_uso > 0:
+            gasto_mensal += (custos["mensal_unit"] * Decimal(em_uso)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            gasto_anual += (custos["anual_unit"] * Decimal(em_uso)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    colaboradores_ativos = len({
+        m.usuario_id for m in movs if m.tipo == "atribuicao" and m.usuario_id
+    } - {
+        m.usuario_id for m in movs if m.tipo != "atribuicao" and m.usuario_id
+    })
+
+    # =========================================================================
+    # PALETA / ESTILOS PROFISSIONAIS
+    # =========================================================================
+    BRAND_DARK = "0A2540"   # faixa de título
+    BRAND = "1D4ED8"        # cabeçalhos de tabela
+    SOFT = "EEF2F7"         # subtítulo / faixas claras
+    ZEBRA = "F4F7FB"        # linhas alternadas
+    INK = "1F2733"
+    MUTED = "5B6B7F"
+    GREEN = "1E8E3E"
+    RED = "D93025"
+    GRAY = "6B7280"
+
+    hair = Side(style="thin", color="DCE3EC")
+    border = Border(left=hair, right=hair, top=hair, bottom=hair)
+    f_title = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
+    f_sub = Font(name="Calibri", size=10, italic=True, color=MUTED)
+    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    f_bold = Font(name="Calibri", size=10, bold=True, color=INK)
+    f_cell = Font(name="Calibri", size=10, color=INK)
+    fill_title = PatternFill("solid", fgColor=BRAND_DARK)
+    fill_sub = PatternFill("solid", fgColor=SOFT)
+    fill_header = PatternFill("solid", fgColor=BRAND)
+    fill_zebra = PatternFill("solid", fgColor=ZEBRA)
+    a_center = Alignment(horizontal="center", vertical="center")
+    a_left = Alignment(horizontal="left", vertical="center")
+    a_right = Alignment(horizontal="right", vertical="center")
+    a_left_ind = Alignment(horizontal="left", vertical="center", indent=1)
+    BRL = 'R$ #,##0.00'
+
+    def faixa_titulo(ws, ncols, titulo, subtitulo):
+        last = get_column_letter(ncols)
+        ws.merge_cells(f"A1:{last}1")
+        c = ws["A1"]
+        c.value = titulo
+        c.font = f_title
+        c.fill = fill_title
+        c.alignment = a_left_ind
+        ws.row_dimensions[1].height = 34
+        ws.merge_cells(f"A2:{last}2")
+        c2 = ws["A2"]
+        c2.value = subtitulo
+        c2.font = f_sub
+        c2.fill = fill_sub
+        c2.alignment = a_left_ind
+        ws.row_dimensions[2].height = 18
+        ws.sheet_view.showGridLines = False
+
+    def cabecalho_tabela(ws, row, headers, center_cols=()):
+        for ci, h in enumerate(headers, 1):
+            c = ws.cell(row=row, column=ci, value=h)
+            c.fill = fill_header
+            c.font = f_header
+            c.border = border
+            c.alignment = a_center if ci in center_cols else a_left
+        ws.row_dimensions[row].height = 22
+
+    gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")
+
     wb = Workbook()
 
-    # Estilos
-    header_fill = PatternFill("solid", fgColor="1F4E78")
-    header_font = Font(color="FFFFFF", bold=True)
-    title_font = Font(size=13, bold=True, color="1F1F1F")
-    bold_font = Font(bold=True)
-    thin_border = Border(
-        left=Side(style="thin", color="D9D9D9"),
-        right=Side(style="thin", color="D9D9D9"),
-        top=Side(style="thin", color="D9D9D9"),
-        bottom=Side(style="thin", color="D9D9D9"),
-    )
-    center_alignment = Alignment(horizontal="center", vertical="center")
-    left_alignment = Alignment(horizontal="left", vertical="center")
-    right_alignment = Alignment(horizontal="right", vertical="center")
+    # =========================================================================
+    # ABA 1 — RESUMO (capa executiva com KPIs)
+    # =========================================================================
+    wsr = wb.active
+    wsr.title = "Resumo"
+    faixa_titulo(wsr, 6, f"LICENÇA — {licenca.nome.upper()}",
+                 f"Santa Colomba Agropecuária  ·  Relatório gerado em {gerado}")
 
-    # =========================
-    # ABA 1 - HISTÓRICO USUÁRIOS
-    # =========================
-    ws1 = wb.active
-    ws1.title = "Usuarios e Alocacoes"
-
-    ws1["A1"] = f"Exportação de Licença - {licenca.nome}"
-    ws1["A1"].font = title_font
-
-    ws1["A2"] = "Fornecedor:"
-    ws1["A2"].font = bold_font
-    ws1["B2"] = licenca.fornecedor.nome if licenca.fornecedor else "-"
-
-    ws1["D2"] = "Centro de Custo Padrão:"
-    ws1["D2"].font = bold_font
-    ws1["E2"] = licenca.centro_custo.departamento if licenca.centro_custo else "-"
-
-    headers_ws1 = [
-        "Tipo de Ação",
-        "Colaborador",
-        "E-mail",
-        "Matrícula",
-        "Lote",
-        "Periodicidade do Lote",
-        "Centro de Custo Destino",
-        "Número CC",
-        "Custo Mensal",
-        "Custo Anual",
-        "Responsável Registro",
-        "Data",
-        "Hora",
+    # Bloco de informações
+    info = [
+        ("Fornecedor", licenca.fornecedor.nome if licenca.fornecedor else "—"),
+        ("Centro de Custo padrão", licenca.centro_custo.departamento if licenca.centro_custo else "—"),
+        ("Nº de lotes", len(lotes)),
+        ("Colaboradores com licença ativa", colaboradores_ativos),
     ]
+    r = 4
+    for label, val in info:
+        cl = wsr.cell(row=r, column=1, value=label)
+        cl.font = f_bold
+        cl.alignment = a_left
+        wsr.merge_cells(start_row=r, start_column=2, end_row=r, end_column=3)
+        cv = wsr.cell(row=r, column=2, value=val)
+        cv.font = f_cell
+        cv.alignment = a_left
+        r += 1
+    r += 1
 
-    start_row_ws1 = 4
-    for col_num, header in enumerate(headers_ws1, 1):
-        cell = ws1.cell(row=start_row_ws1, column=col_num, value=header)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.border = thin_border
-        cell.alignment = center_alignment
+    # KPIs (cartões 2 linhas: rótulo + valor)
+    kpis = [
+        ("ASSENTOS TOTAIS", qtd_total, "334155", None),
+        ("EM USO", qtd_em_uso, GREEN, None),
+        ("DISPONÍVEIS", qtd_disp, BRAND, None),
+        ("OCUPAÇÃO", pct_uso / 100, "7C3AED", "0%"),
+        ("INVESTIMENTO TOTAL", float(investimento_total), "0A2540", BRL),
+        ("GASTO MENSAL", float(gasto_mensal), "EA580C", BRL),
+    ]
+    for idx, (lbl, val, color, fmt) in enumerate(kpis):
+        col = idx + 1
+        cl = wsr.cell(row=r, column=col, value=lbl)
+        cl.font = Font(name="Calibri", size=8, bold=True, color="FFFFFF")
+        cl.fill = PatternFill("solid", fgColor=color)
+        cl.alignment = a_center
+        cl.border = border
+        cv = wsr.cell(row=r + 1, column=col, value=val)
+        cv.font = Font(name="Calibri", size=16, bold=True, color=color)
+        cv.fill = PatternFill("solid", fgColor="F4F6F9")
+        cv.alignment = a_center
+        cv.border = border
+        if fmt:
+            cv.number_format = fmt
+    wsr.row_dimensions[r].height = 16
+    wsr.row_dimensions[r + 1].height = 30
+    for c in range(1, 7):
+        wsr.column_dimensions[get_column_letter(c)].width = 20
 
-    row = start_row_ws1 + 1
-
-    for mov in movimentacoes_qs:
-        mensal = Decimal("0.00")
-        anual = Decimal("0.00")
-
+    # =========================================================================
+    # ABA 2 — USUÁRIOS E ALOCAÇÕES
+    # =========================================================================
+    ws1 = wb.create_sheet(title="Usuarios e Alocacoes")
+    headers_ws1 = [
+        "Ação", "Colaborador", "E-mail", "Matrícula", "Lote",
+        "Periodicidade", "Centro de Custo Destino", "Nº CC",
+        "Custo Mensal", "Custo Anual", "Responsável", "Data", "Hora",
+    ]
+    faixa_titulo(ws1, len(headers_ws1), f"USUÁRIOS E ALOCAÇÕES — {licenca.nome.upper()}",
+                 f"{len(movs)} movimentação(ões) registrada(s)")
+    hr = 4
+    cabecalho_tabela(ws1, hr, headers_ws1, center_cols=(1, 5, 6, 8, 9, 10, 12, 13))
+    row = hr + 1
+    tot_mensal_mov = Decimal("0.00")
+    tot_anual_mov = Decimal("0.00")
+    for i, mov in enumerate(movs):
+        mensal = anual = Decimal("0.00")
         if mov.lote:
             custos = _normalizar_custos_lote(mov.lote)
-            mensal = custos["mensal_unit"]
-            anual = custos["anual_unit"]
-
-        nome_usuario = mov.usuario.nome if mov.usuario else "-"
-        email_usuario = (mov.usuario.email or "-") if mov.usuario else "-"
-        matricula_usuario = (mov.usuario.matricula or "-") if mov.usuario else "-"
-
-        tipo_acao = "Saída" if mov.tipo == "atribuicao" else "Devolução"
-
-        ws1.cell(row=row, column=1, value=tipo_acao)
-        ws1.cell(row=row, column=2, value=nome_usuario)
-        ws1.cell(row=row, column=3, value=email_usuario)
-        ws1.cell(row=row, column=4, value=matricula_usuario)
-        ws1.cell(row=row, column=5, value=f"#{mov.lote.pk}" if mov.lote else "-")
-        ws1.cell(
-            row=row,
-            column=6,
-            value=mov.lote.get_periodicidade_display() if mov.lote else "-"
-        )
-        ws1.cell(
-            row=row,
-            column=7,
-            value=mov.centro_custo_destino.departamento if mov.centro_custo_destino else "-"
-        )
-        ws1.cell(
-            row=row,
-            column=8,
-            value=mov.centro_custo_destino.numero if mov.centro_custo_destino else "-"
-        )
-        ws1.cell(row=row, column=9, value=float(mensal))
-        ws1.cell(row=row, column=10, value=float(anual))
-        ws1.cell(
-            row=row,
-            column=11,
-            value=mov.criado_por.username if mov.criado_por else "-"
-        )
-        ws1.cell(
-            row=row,
-            column=12,
-            value=mov.created_at.strftime("%d/%m/%Y") if mov.created_at else "-"
-        )
-        ws1.cell(
-            row=row,
-            column=13,
-            value=mov.created_at.strftime("%H:%M") if mov.created_at else "-"
-        )
-
-        for col in range(1, 14):
-            cell = ws1.cell(row=row, column=col)
-            cell.border = thin_border
-            if col in [9, 10]:
-                cell.number_format = 'R$ #,##0.00'
-                cell.alignment = right_alignment
+            mensal, anual = custos["mensal_unit"], custos["anual_unit"]
+        is_saida = mov.tipo == "atribuicao"
+        valores = [
+            "Saída" if is_saida else "Devolução",
+            mov.usuario.nome if mov.usuario else "—",
+            (mov.usuario.email or "—") if mov.usuario else "—",
+            (mov.usuario.matricula or "—") if mov.usuario else "—",
+            f"#{mov.lote.pk}" if mov.lote else "—",
+            mov.lote.get_periodicidade_display() if mov.lote else "—",
+            mov.centro_custo_destino.departamento if mov.centro_custo_destino else "—",
+            mov.centro_custo_destino.numero if mov.centro_custo_destino else "—",
+            float(mensal), float(anual),
+            mov.criado_por.username if mov.criado_por else "—",
+            mov.created_at.strftime("%d/%m/%Y") if mov.created_at else "—",
+            mov.created_at.strftime("%H:%M") if mov.created_at else "—",
+        ]
+        zebra = (i % 2 == 1)
+        for ci, val in enumerate(valores, 1):
+            c = ws1.cell(row=row, column=ci, value=val)
+            c.border = border
+            c.font = f_cell
+            if ci == 1:  # badge de ação colorido
+                c.fill = PatternFill("solid", fgColor=GREEN if is_saida else GRAY)
+                c.font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+                c.alignment = a_center
+            elif ci in (9, 10):
+                c.number_format = BRL
+                c.alignment = a_right
+                if zebra:
+                    c.fill = fill_zebra
+            elif ci in (5, 6, 8, 12, 13):
+                c.alignment = a_center
+                if zebra:
+                    c.fill = fill_zebra
             else:
-                cell.alignment = left_alignment
-
+                c.alignment = a_left
+                if zebra:
+                    c.fill = fill_zebra
+        if is_saida:
+            tot_mensal_mov += mensal
+            tot_anual_mov += anual
         row += 1
+    # rodapé de totais
+    if movs:
+        ws1.merge_cells(start_row=row, start_column=1, end_row=row, end_column=8)
+        ct = ws1.cell(row=row, column=1, value="TOTAL (saídas ativas)")
+        ct.font = f_bold
+        ct.alignment = a_right
+        ct.fill = fill_sub
+        cm = ws1.cell(row=row, column=9, value=float(tot_mensal_mov))
+        ca = ws1.cell(row=row, column=10, value=float(tot_anual_mov))
+        for cc_ in (cm, ca):
+            cc_.font = f_bold
+            cc_.number_format = BRL
+            cc_.alignment = a_right
+            cc_.fill = fill_sub
+        for col in range(1, len(headers_ws1) + 1):
+            ws1.cell(row=row, column=col).border = border
+    widths_ws1 = [12, 28, 30, 14, 9, 15, 28, 10, 15, 15, 18, 12, 9]
+    for i, w in enumerate(widths_ws1, 1):
+        ws1.column_dimensions[get_column_letter(i)].width = w
+    ws1.freeze_panes = f"A{hr + 1}"
 
-    # Auto width aba 1
-    widths_ws1 = {
-        1: 16, 2: 28, 3: 30, 4: 22, 5: 12, 6: 18, 7: 28,
-        8: 14, 9: 16, 10: 16, 11: 20, 12: 14, 13: 10
-    }
-    for col_idx, width in widths_ws1.items():
-        ws1.column_dimensions[get_column_letter(col_idx)].width = width
-
-    ws1.freeze_panes = "A5"
-
-    # =========================
-    # ABA 2 - CENTROS DE CUSTO
-    # =========================
+    # =========================================================================
+    # ABA 3 — CENTROS DE CUSTO
+    # =========================================================================
     ws2 = wb.create_sheet(title="Centros de Custo")
-
-    ws2["A1"] = f"Centros de Custo - {licenca.nome}"
-    ws2["A1"].font = title_font
-
-    headers_ws2 = [
-        "Departamento / Centro de Custo",
-        "Qtd. Assentos",
-        "Gasto Consolidado",
-    ]
-
-    start_row_ws2 = 3
-    for col_num, header in enumerate(headers_ws2, 1):
-        cell = ws2.cell(row=start_row_ws2, column=col_num, value=header)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.border = thin_border
-        cell.alignment = center_alignment
-
-    row = start_row_ws2 + 1
+    headers_ws2 = ["Departamento / Centro de Custo", "Qtd. Assentos", "Gasto Consolidado"]
+    faixa_titulo(ws2, len(headers_ws2), f"CENTROS DE CUSTO — {licenca.nome.upper()}",
+                 "Distribuição de assentos e custo por centro de custo")
+    hr = 4
+    cabecalho_tabela(ws2, hr, headers_ws2, center_cols=(2, 3))
+    row = hr + 1
     total_assentos = 0
     total_gasto = Decimal("0.00")
-
-    for cc in cc_list:
+    for i, cc in enumerate(cc_list):
         qtd = cc.get("qtd", 0) or 0
         total = Decimal(cc.get("total", 0) or 0)
-
-        ws2.cell(row=row, column=1, value=cc.get("nome", "-"))
-        ws2.cell(row=row, column=2, value=qtd)
-        ws2.cell(row=row, column=3, value=float(total))
-
-        ws2.cell(row=row, column=1).alignment = left_alignment
-        ws2.cell(row=row, column=2).alignment = center_alignment
-        ws2.cell(row=row, column=3).alignment = right_alignment
-        ws2.cell(row=row, column=3).number_format = 'R$ #,##0.00'
-
-        for col in range(1, 4):
-            ws2.cell(row=row, column=col).border = thin_border
-
+        zebra = (i % 2 == 1)
+        c1 = ws2.cell(row=row, column=1, value=cc.get("nome", "—"))
+        c2 = ws2.cell(row=row, column=2, value=qtd)
+        c3 = ws2.cell(row=row, column=3, value=float(total))
+        c1.alignment, c2.alignment, c3.alignment = a_left, a_center, a_right
+        c3.number_format = BRL
+        for c in (c1, c2, c3):
+            c.border = border
+            c.font = f_cell
+            if zebra:
+                c.fill = fill_zebra
         total_assentos += qtd
         total_gasto += total
         row += 1
-
-    # Linha de total
-    ws2.cell(row=row, column=1, value="TOTAL")
-    ws2.cell(row=row, column=2, value=total_assentos)
-    ws2.cell(row=row, column=3, value=float(total_gasto))
-
-    for col in range(1, 4):
-        cell = ws2.cell(row=row, column=col)
-        cell.font = bold_font
-        cell.border = thin_border
-        if col == 1:
-            cell.alignment = left_alignment
-        elif col == 2:
-            cell.alignment = center_alignment
-        else:
-            cell.alignment = right_alignment
-            cell.number_format = 'R$ #,##0.00'
-
-    ws2.column_dimensions["A"].width = 38
+    c1 = ws2.cell(row=row, column=1, value="TOTAL")
+    c2 = ws2.cell(row=row, column=2, value=total_assentos)
+    c3 = ws2.cell(row=row, column=3, value=float(total_gasto))
+    c1.alignment, c2.alignment, c3.alignment = a_left, a_center, a_right
+    c3.number_format = BRL
+    for c in (c1, c2, c3):
+        c.font = f_bold
+        c.border = border
+        c.fill = fill_sub
+    ws2.column_dimensions["A"].width = 40
     ws2.column_dimensions["B"].width = 16
-    ws2.column_dimensions["C"].width = 20
-    ws2.freeze_panes = "A4"
+    ws2.column_dimensions["C"].width = 22
+    ws2.freeze_panes = f"A{hr + 1}"
 
-    # =========================
-    # ABA 3 - LOTES
-    # =========================
+    # =========================================================================
+    # ABA 4 — LOTES
+    # =========================================================================
     ws3 = wb.create_sheet(title="Lotes")
-
-    ws3["A1"] = f"Lotes da Licença - {licenca.nome}"
-    ws3["A1"].font = title_font
-
     headers_ws3 = [
-        "Lote",
-        "Data Compra",
-        "Pedido / NF",
-        "Periodicidade",
-        "Qtd. Total",
-        "Qtd. Disponível",
-        "Custo Ciclo / Licença",
-        "Custo Mensal / Licença",
-        "Custo Anual / Licença",
-        "Mensal do Lote",
-        "Anual do Lote",
+        "Lote", "Data Compra", "Pedido / NF", "Periodicidade",
+        "Qtd. Total", "Qtd. Disponível", "Custo Ciclo/Lic.",
+        "Mensal/Lic.", "Anual/Lic.", "Mensal do Lote", "Anual do Lote",
     ]
-
-    start_row_ws3 = 3
-    for col_num, header in enumerate(headers_ws3, 1):
-        cell = ws3.cell(row=start_row_ws3, column=col_num, value=header)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.border = thin_border
-        cell.alignment = center_alignment
-
-    row = start_row_ws3 + 1
-
-    for lote in lotes_qs:
+    faixa_titulo(ws3, len(headers_ws3), f"LOTES — {licenca.nome.upper()}",
+                 f"{len(lotes)} lote(s) · investimento anual total R$ {investimento_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    hr = 4
+    cabecalho_tabela(ws3, hr, headers_ws3, center_cols=(1, 4, 5, 6, 7, 8, 9, 10, 11))
+    row = hr + 1
+    for i, lote in enumerate(lotes):
         custos = _normalizar_custos_lote(lote)
-
-        ws3.cell(row=row, column=1, value=f"#{lote.pk}")
-        ws3.cell(row=row, column=2, value=lote.data_compra.strftime("%d/%m/%Y") if lote.data_compra else "-")
-        ws3.cell(row=row, column=3, value=lote.numero_pedido or "-")
-        ws3.cell(row=row, column=4, value=lote.get_periodicidade_display() if lote.periodicidade else "-")
-        ws3.cell(row=row, column=5, value=lote.quantidade_total or 0)
-        ws3.cell(row=row, column=6, value=lote.quantidade_disponivel or 0)
-        ws3.cell(row=row, column=7, value=float(custos["unitario_ciclo"]))
-        ws3.cell(row=row, column=8, value=float(custos["mensal_unit"]))
-        ws3.cell(row=row, column=9, value=float(custos["anual_unit"]))
-        ws3.cell(row=row, column=10, value=float(custos["mensal_total"]))
-        ws3.cell(row=row, column=11, value=float(custos["anual_total"]))
-
-        for col in range(1, 12):
-            cell = ws3.cell(row=row, column=col)
-            cell.border = thin_border
-            if col in [7, 8, 9, 10, 11]:
-                cell.number_format = 'R$ #,##0.00'
-                cell.alignment = right_alignment
-            elif col in [5, 6]:
-                cell.alignment = center_alignment
+        zebra = (i % 2 == 1)
+        valores = [
+            f"#{lote.pk}",
+            lote.data_compra.strftime("%d/%m/%Y") if lote.data_compra else "—",
+            lote.numero_pedido or "—",
+            lote.get_periodicidade_display() if lote.periodicidade else "—",
+            lote.quantidade_total or 0,
+            lote.quantidade_disponivel or 0,
+            float(custos["unitario_ciclo"]),
+            float(custos["mensal_unit"]),
+            float(custos["anual_unit"]),
+            float(custos["mensal_total"]),
+            float(custos["anual_total"]),
+        ]
+        for ci, val in enumerate(valores, 1):
+            c = ws3.cell(row=row, column=ci, value=val)
+            c.border = border
+            c.font = f_cell
+            if ci in (7, 8, 9, 10, 11):
+                c.number_format = BRL
+                c.alignment = a_right
+            elif ci in (1, 4, 5, 6):
+                c.alignment = a_center
             else:
-                cell.alignment = left_alignment
-
+                c.alignment = a_left
+            if zebra and ci not in ():
+                c.fill = fill_zebra
         row += 1
+    widths_ws3 = [10, 14, 18, 16, 12, 14, 16, 15, 15, 16, 16]
+    for i, w in enumerate(widths_ws3, 1):
+        ws3.column_dimensions[get_column_letter(i)].width = w
+    ws3.freeze_panes = f"A{hr + 1}"
 
-    widths_ws3 = {
-        1: 12, 2: 14, 3: 18, 4: 16, 5: 12, 6: 14,
-        7: 18, 8: 18, 9: 18, 10: 18, 11: 18
-    }
-    for col_idx, width in widths_ws3.items():
-        ws3.column_dimensions[get_column_letter(col_idx)].width = width
-
-    ws3.freeze_panes = "A4"
-
-    # =========================
+    # =========================================================================
     # RESPOSTA
-    # =========================
+    # =========================================================================
     output = BytesIO()
     wb.save(output)
     output.seek(0)
 
-    nome_arquivo = f"licenca_{licenca.pk}_{licenca.nome.replace(' ', '_')}.xlsx"
-
+    slug = licenca.nome.replace(" ", "_").replace("/", "-")
+    nome_arquivo = f"licenca_{licenca.pk}_{slug}_{timezone.localtime():%Y%m%d}.xlsx"
     response = HttpResponse(
         output.getvalue(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     response["Content-Disposition"] = f'attachment; filename="{nome_arquivo}"'
-
     return response
 
 # ============ MOVIMENTAÇÕES ============

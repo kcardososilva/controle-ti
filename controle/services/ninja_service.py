@@ -1,41 +1,29 @@
 """
-ninja_service.py — Proxy seguro para a API NinjaOne RMM.
+ninja_service.py — Importação de dispositivos NinjaOne via planilha CSV.
 
-Autenticacao: Authorization Code flow (nao client_credentials).
-O usuario realiza login UMA vez pelo botao 'Conectar NinjaOne' no dashboard.
-O token e armazenado no banco (NinjaOAuthToken pk=1).
-Refresh automatico via refresh_token quando disponivel.
+A integração via API/OAuth foi removida. Agora os dados vêm de uma planilha
+CSV exportada do NinjaOne e importada pelo usuário nas telas do módulo Ninja.
 
-Fluxo:
-  1. Usuario acessa /ninja/autorizar/
-  2. Redireciona para https://app.ninjarmm.com/ws/oauth/authorize
-  3. Usuario faz login no NinjaOne
-  4. NinjaOne redireciona para /ninja/oauth/callback/?code=XXXX
-  5. Django troca code por access_token + refresh_token
-  6. Tokens salvos em NinjaOAuthToken (pk=1)
-  7. sync_ninja usa o token armazenado automaticamente
+Função principal:
+    importar_csv(arquivo, user=None) -> dict   (estatísticas da importação)
 
-Redirect URI registrada no NinjaOne:
-  http://santa-colomba-karitel-qqprmnjdwc.dynamic-m.com:65300/ninja/oauth/callback/
+Relações inteligentes resolvidas na importação:
+    • Dispositivo ↔ Item do estoque  → por número de série (BIOS) e, em fallback,
+      pelo nome do dispositivo. Nunca DESvincula um item já vinculado se não houver
+      novo match (preserva ligações manuais).
+    • Dispositivo ↔ Local / Site      → campo `local` (Karitel, Pinheiros, ...).
+    • Dispositivo ↔ Usuário logado    → extrai o login (sem o domínio DOMÍNIO\\user).
+    • A cada importação grava um Snapshot (alimenta o Relatório de Uso).
 """
 
+import csv
+import io
 import logging
-from datetime import datetime, timedelta, timezone as tz
-
-from django.conf import settings
-from django.core.cache import cache
+import re
+import unicodedata
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
-
-_TOKEN_CACHE_KEY  = "ninja_access_token_v3"
-_OAUTH_STATE_KEY  = "ninja_oauth_state"
-_SCOPE            = "monitoring"   # offline_access nao suportado neste app
-
-
-def get_redirect_uri() -> str:
-    """Lê NINJA_REDIRECT_URI do .env. Fallback para localhost em dev."""
-    return getattr(settings, "NINJA_REDIRECT_URI",
-                   "http://localhost:8000/ninja/oauth/callback/")
 
 _INVALID_SERIALS = frozenset({
     "", "to be filled by o.e.m.", "not specified", "default string",
@@ -45,474 +33,253 @@ _INVALID_SERIALS = frozenset({
 
 
 # ─────────────────────────────────────────────────────────────
-# Configuracao
+# Helpers de parsing
 # ─────────────────────────────────────────────────────────────
 
-def _cfg() -> tuple[str, str, str]:
-    """Retorna (base_api_url, client_id, client_secret)."""
-    base = getattr(settings, "NINJA_BASE_URL", "").rstrip("/")
-    cid  = getattr(settings, "NINJA_CLIENT_ID", "")
-    sec  = getattr(settings, "NINJA_CLIENT_SECRET", "")
-    return base, cid, sec
-
-
-def is_configured() -> bool:
-    base, cid, sec = _cfg()
-    return bool(base and cid and sec)
-
-
-def is_authenticated() -> bool:
-    """Retorna True se ha um token valido armazenado."""
-    try:
-        from ProjetoEstoque.models import NinjaOAuthToken
-        return NinjaOAuthToken.get().is_valid
-    except Exception:
-        return False
-
-
-# ─────────────────────────────────────────────────────────────
-# Authorization URL (passo 1 do fluxo)
-# ─────────────────────────────────────────────────────────────
-
-def get_authorization_url() -> tuple[str, str]:
-    """
-    Gera (url_de_autorizacao, state).
-    O state deve ser salvo na sessao do usuario e validado no callback
-    para prevenir CSRF via OAuth (RFC 6749 §10.12).
-    """
-    import secrets
-    import urllib.parse
-
-    base, cid, _ = _cfg()
-    state = secrets.token_urlsafe(32)
-
-    params = urllib.parse.urlencode({
-        "client_id":     cid,
-        "response_type": "code",
-        "redirect_uri":  get_redirect_uri(),
-        "scope":         _SCOPE,
-        "state":         state,
-    })
-    return f"{base}/ws/oauth/authorize?{params}", state
-
-
-# ─────────────────────────────────────────────────────────────
-# Troca code por token (passo 5 do fluxo)
-# ─────────────────────────────────────────────────────────────
-
-def exchange_code_for_token(code: str, user=None) -> dict:
-    """
-    Troca o authorization code por access_token + refresh_token.
-    Salva os tokens no banco (NinjaOAuthToken pk=1).
-    Retorna dict com sucesso/erro.
-    """
-    import requests as req
-    from ProjetoEstoque.models import NinjaOAuthToken
-    from django.utils import timezone
-
-    base, cid, sec = _cfg()
-
-    try:
-        resp = req.post(
-            f"{base}/ws/oauth/token",
-            data={
-                "grant_type":   "authorization_code",
-                "client_id":    cid,
-                "client_secret": sec,
-                "code":         code,
-                "redirect_uri": get_redirect_uri(),
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as exc:
-        logger.error("ninja_service.exchange_code: falha — %s", exc)
-        return {"ok": False, "error": str(exc)}
-
-    access  = data.get("access_token", "")
-    refresh = data.get("refresh_token", "")
-    expires = data.get("expires_in", 3600)
-
-    if not access:
-        # Loga detalhes internamente, não expõe ao usuário
-        logger.error("ninja_service.exchange_code: resposta sem access_token — campos: %s", list(data.keys()))
-        return {"ok": False, "error": "Falha ao obter token de acesso. Verifique as credenciais no .env."}
-
-    token_obj = NinjaOAuthToken.get()
-    token_obj.access_token  = access
-    token_obj.refresh_token = refresh
-    token_obj.expires_at    = timezone.now() + timedelta(seconds=int(expires) - 60)
-    token_obj.scope         = data.get("scope", _SCOPE)
-    token_obj.updated_by    = user
-    token_obj.save()
-
-    # Atualiza cache imediatamente
-    cache.set(_TOKEN_CACHE_KEY, access, timeout=max(int(expires) - 60, 30))
-
-    logger.info(
-        "ninja_service: token autorizado. Expira em %ds. Refresh: %s",
-        expires, "sim" if refresh else "nao",
+def _strip_accents(s: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)
     )
-    return {"ok": True, "has_refresh": bool(refresh), "expires_in": expires}
 
 
-# ─────────────────────────────────────────────────────────────
-# Obtencao do token (uso interno)
-# ─────────────────────────────────────────────────────────────
-
-def _get_token() -> str | None:
-    """
-    Retorna access_token valido.
-    Ordem: cache -> banco (valido) -> refresh_token -> None
-    """
-    # 1. Cache em memoria (mais rapido)
-    cached = cache.get(_TOKEN_CACHE_KEY)
-    if cached:
-        return cached
-
-    try:
-        from ProjetoEstoque.models import NinjaOAuthToken
-        from django.utils import timezone
-
-        token_obj = NinjaOAuthToken.get()
-
-        # 2. Token no banco ainda valido
-        if token_obj.is_valid:
-            ttl = max(
-                int((token_obj.expires_at - timezone.now()).total_seconds()) - 30,
-                60,
-            ) if token_obj.expires_at else 3540
-            cache.set(_TOKEN_CACHE_KEY, token_obj.access_token, timeout=ttl)
-            return token_obj.access_token
-
-        # 3. Tenta refresh_token se disponivel
-        if token_obj.refresh_token:
-            return _refresh_access_token(token_obj)
-
-    except Exception as exc:
-        logger.error("ninja_service._get_token: erro — %s", exc)
-
-    logger.warning("ninja_service: nao autenticado — acesse /ninja/autorizar/ para conectar.")
-    return None
-
-
-def _refresh_access_token(token_obj) -> str | None:
-    """Usa o refresh_token para obter um novo access_token."""
-    import requests as req
-    from django.utils import timezone
-
-    base, cid, sec = _cfg()
-
-    try:
-        resp = req.post(
-            f"{base}/ws/oauth/token",
-            data={
-                "grant_type":    "refresh_token",
-                "client_id":     cid,
-                "client_secret": sec,
-                "refresh_token": token_obj.refresh_token,
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as exc:
-        logger.error("ninja_service._refresh: falha — %s", exc)
-        return None
-
-    access  = data.get("access_token", "")
-    refresh = data.get("refresh_token", token_obj.refresh_token)
-    expires = int(data.get("expires_in", 3600))
-
-    if not access:
-        return None
-
-    token_obj.access_token  = access
-    token_obj.refresh_token = refresh
-    token_obj.expires_at    = timezone.now() + timedelta(seconds=expires - 60)
-    token_obj.save(update_fields=["access_token", "refresh_token", "expires_at", "updated_at"])
-
-    cache.set(_TOKEN_CACHE_KEY, access, timeout=max(expires - 60, 30))
-    logger.info("ninja_service: token renovado via refresh_token.")
-    return access
-
-
-def invalidate_token():
-    cache.delete(_TOKEN_CACHE_KEY)
-
-
-def revoke_token(user=None):
-    """Remove os tokens do banco e limpa o cache."""
-    try:
-        from ProjetoEstoque.models import NinjaOAuthToken
-        token_obj = NinjaOAuthToken.get()
-        token_obj.access_token  = ""
-        token_obj.refresh_token = ""
-        token_obj.expires_at    = None
-        token_obj.updated_by    = user
-        token_obj.save()
-    except Exception as exc:
-        logger.error("ninja_service.revoke_token: %s", exc)
-    finally:
-        cache.delete(_TOKEN_CACHE_KEY)
-
-
-# ─────────────────────────────────────────────────────────────
-# HTTP helper
-# ─────────────────────────────────────────────────────────────
-
-def _api_get(path: str, params: dict | None = None) -> list | dict | None:
-    import requests
-
-    token = _get_token()
-    if not token:
-        return None
-
-    _, api_base, _ = ("", getattr(settings, "NINJA_BASE_URL", "").rstrip("/"), "")
-    url = f"{api_base}/api/v2{path}"
-    try:
-        resp = requests.get(
-            url,
-            headers={"Authorization": f"Bearer {token}"},
-            params=params or {},
-            timeout=15,
-        )
-        if resp.status_code == 401:
-            # Token expirou — tenta refresh uma vez
-            invalidate_token()
-            new_token = _get_token()
-            if not new_token:
-                return None
-            resp = requests.get(
-                url,
-                headers={"Authorization": f"Bearer {new_token}"},
-                params=params or {},
-                timeout=15,
-            )
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as exc:
-        logger.error("ninja_service._api_get %s: %s", path, exc)
-        return None
-
-
-# ─────────────────────────────────────────────────────────────
-# Paginacao
-# ─────────────────────────────────────────────────────────────
-
-def _paginate(path: str, page_size: int = 200) -> list[dict]:
-    results: list[dict] = []
-    after = None
-    while True:
-        params: dict = {"pageSize": page_size}
-        if after:
-            params["after"] = after
-        data = _api_get(path, params)
-        if data is None:
-            break
-        if isinstance(data, list):
-            results.extend(data)
-            break
-        if isinstance(data, dict):
-            items = data.get("devices") or data.get("data") or data.get("results") or []
-            results.extend(items)
-            cursor = data.get("cursor") or data.get("nextCursor")
-            if not cursor or not items:
-                break
-            after = cursor
-        else:
-            break
-    return results
-
-
-# ─────────────────────────────────────────────────────────────
-# Endpoints de dados
-# ─────────────────────────────────────────────────────────────
-
-def get_devices() -> list[dict]:
-    cached = cache.get("ninja_devices_v3")
-    if cached is not None:
-        return cached
-    devices = _paginate("/devices")
-    if devices:
-        cache.set("ninja_devices_v3", devices, 120)
-    return devices
-
-
-def get_device_system_info(device_id: int) -> dict:
-    for path in [
-        f"/device/{device_id}/windows/system-info",
-        f"/device/{device_id}/system-info",
-    ]:
-        data = _api_get(path)
-        if isinstance(data, dict) and data:
-            return data
-    data = _api_get(f"/device/{device_id}")
-    if isinstance(data, dict):
-        return data.get("system") or data.get("systemInfo") or {}
-    return {}
-
-
-def get_device_last_user(device_id: int) -> str:
-    data = _api_get(f"/device/{device_id}/last-logged-on-user")
-    if isinstance(data, dict):
-        user = (
-            data.get("lastLoggedOnUser") or
-            data.get("username") or
-            data.get("user") or ""
-        )
-        return _clean_user(str(user))
-    if isinstance(data, str):
-        return _clean_user(data)
-    return ""
-
-
-def invalidate_devices_cache():
-    cache.delete("ninja_devices_v3")
-
-
-# ─────────────────────────────────────────────────────────────
-# Parsing
-# ─────────────────────────────────────────────────────────────
-
-def _parse_timestamp(value) -> datetime | None:
-    if not value:
-        return None
-    if isinstance(value, (int, float)) and float(value) > 0:
-        try:
-            return datetime.fromtimestamp(float(value), tz=tz.utc)
-        except (ValueError, OSError):
-            return None
-    if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    return None
+def _norm_header(h: str) -> str:
+    """Normaliza um cabeçalho: minúsculo, sem acento, espaços colapsados."""
+    return " ".join(_strip_accents((h or "").strip().lower()).split())
 
 
 def _clean_serial(serial: str) -> str:
-    s = serial.strip()
+    s = (serial or "").strip()
     return "" if s.lower() in _INVALID_SERIALS else s
 
 
 def _clean_user(raw: str) -> str:
+    """Extrai o login do formato 'DOMINIO\\usuario' ou 'usuario (ttyS0)'."""
     u = (raw or "").strip()
     if not u or u.lower() in ("null", "none", "undefined"):
         return ""
     if "\\" in u:
         u = u.split("\\")[-1]
-    return u
+    # remove sufixos do tipo " (ttyS0)" / " (pts/0 / ...)"
+    if " (" in u:
+        u = u.split(" (")[0]
+    return u.strip()
 
 
-def _parse_device_basic(d: dict) -> dict:
-    refs     = d.get("references") or {}
-    org_ref  = refs.get("organization") or {}
-    org_name = org_ref.get("name") or ""
-    is_online = not d.get("offline", True)
-    hostname  = d.get("dnsName") or d.get("netbiosName") or d.get("systemName") or ""
-    display_name = d.get("displayName") or d.get("systemName") or f"Device #{d.get('id','?')}"
-    return {
-        "ninja_id":        d.get("id"),
-        "display_name":    display_name,
-        "hostname":        hostname,
-        "serial_number":   "",
-        "os_name":         "",
-        "manufacturer":    "",
-        "model_name":      "",
-        "processor":       "",
-        "total_memory_mb": None,
-        "ip_address":      "",
-        "last_contact":    _parse_timestamp(d.get("lastContact")),
-        "is_online":       is_online,
-        "last_user":       "",
-        "node_class":      d.get("nodeClass") or "",
-        "organization_name": org_name,
-        "org_id":          d.get("organizationId"),
-    }
+def _parse_bool_online(value: str) -> bool:
+    return (value or "").strip().lower() in ("true", "1", "online", "sim", "ativo")
 
 
-def _parse_system_info(raw: dict) -> dict:
-    data   = raw.get("system") or raw
-    serial = _clean_serial(
-        data.get("biosSerialNumber") or data.get("serialNumber") or
-        raw.get("serialNumber") or ""
-    )
-    mem_raw = data.get("totalPhysicalMemory") or data.get("physicalMemory") or 0
-    mem_mb  = int(mem_raw / (1024 * 1024)) if mem_raw > 1_000_000 else (int(mem_raw) if mem_raw > 0 else None)
-    ips    = data.get("ipAddresses") or raw.get("ipAddresses") or []
-    ip     = ips[0] if isinstance(ips, list) and ips else (data.get("ipAddress") or raw.get("ipAddress") or "")
-    os_name = (data.get("os") or {}).get("name") or data.get("osName") or raw.get("osName") or ""
-    return {
-        "serial_number":   serial,
-        "os_name":         os_name,
-        "manufacturer":    data.get("manufacturer") or "",
-        "model_name":      data.get("model") or data.get("name") or "",
-        "processor":       data.get("processorType") or data.get("processor") or "",
-        "total_memory_mb": mem_mb,
-        "ip_address":      ip,
-    }
+def _parse_timestamp(value):
+    if not value:
+        return None
+    v = str(value).strip()
+    if not v:
+        return None
+    try:
+        return datetime.fromisoformat(v.replace("Z", "+00:00"))
+    except ValueError:
+        for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z",
+                    "%d/%m/%Y %H:%M", "%d/%m/%Y %H:%M:%S"):
+            try:
+                return datetime.strptime(v, fmt)
+            except ValueError:
+                continue
+    return None
 
 
 # ─────────────────────────────────────────────────────────────
-# Sincronizacao
+# Mapeamento de colunas (robusto a acento / encoding)
 # ─────────────────────────────────────────────────────────────
 
-def sync_devices() -> dict:
+def _mapear_colunas(fieldnames) -> dict:
+    """Retorna {campo_logico: nome_original_da_coluna} a partir do cabeçalho."""
+    mapa = {}
+    for col in fieldnames or []:
+        n = _norm_header(col)
+        if "modelo" in n:
+            mapa.setdefault("model", col)
+        elif "serie" in n and "bios" in n:
+            mapa.setdefault("serial", col)
+        elif n == "dispositivo":
+            mapa.setdefault("display", col)
+        elif "organiza" in n:
+            mapa.setdefault("org", col)
+        elif n == "local":
+            mapa.setdefault("local", col)
+        elif "ultimo tempo de atividade" in n and "format" not in n:
+            mapa.setdefault("last_contact", col)
+        elif "ultimo login" in n:
+            mapa.setdefault("last_user", col)
+        elif "status" in n and "atividade" in n:
+            mapa.setdefault("status", col)
+    return mapa
+
+
+def _decode(arquivo) -> str:
+    """Lê o conteúdo do upload tentando utf-8-sig e, em fallback, cp1252."""
+    raw = arquivo.read()
+    if isinstance(raw, str):
+        return raw
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+# ─────────────────────────────────────────────────────────────
+# Importação
+# ─────────────────────────────────────────────────────────────
+
+def importar_csv(arquivo, user=None) -> dict:
     """
-    Sincroniza dispositivos NinjaOne -> NinjaDevice.
-    Requer autenticacao previa via /ninja/autorizar/.
+    Importa a planilha CSV do NinjaOne para NinjaDevice.
+    Retorna estatísticas: {ok, total, criados, atualizados, vinculados,
+                           sem_serie, nao_vinculados, locais, erro}.
     """
-    from ProjetoEstoque.models import NinjaDevice, Item
     from django.utils import timezone
+    from ProjetoEstoque.models import NinjaDevice, Item
 
-    if not is_authenticated():
-        logger.error("ninja_service.sync_devices: nao autenticado.")
-        return {"synced": 0, "matched": 0, "online": 0, "error": True,
-                "error_msg": "Nao autenticado. Acesse /ninja/autorizar/ primeiro."}
+    texto = _decode(arquivo)
+    # detecta delimitador (vírgula ou ponto-e-vírgula)
+    amostra = texto[:4096]
+    delim = ";" if amostra.count(";") > amostra.count(",") else ","
+    reader = csv.DictReader(io.StringIO(texto), delimiter=delim)
 
-    raw_devices = get_devices()
-    if not raw_devices:
-        return {"synced": 0, "matched": 0, "online": 0, "error": True,
-                "error_msg": "API nao retornou dispositivos."}
+    cols = _mapear_colunas(reader.fieldnames)
+    if "display" not in cols:
+        return {"ok": False, "erro": "Coluna 'Dispositivo' não encontrada no CSV. "
+                                     "Confirme que é a exportação de dispositivos do NinjaOne."}
 
-    synced = matched = online = 0
-    now = timezone.now()
+    def val(row, key):
+        c = cols.get(key)
+        return (row.get(c) or "").strip() if c else ""
 
-    for raw in raw_devices:
-        parsed   = _parse_device_basic(raw)
-        ninja_id = parsed.get("ninja_id")
-        if not ninja_id:
+    criados = atualizados = vinculados = sem_serie = total = 0
+    locais = {}
+    agora = timezone.now()
+
+    # 1) Lê e parseia todas as linhas da planilha.
+    parsed = []
+    for row in reader:
+        display = val(row, "display")
+        if not display:
+            continue
+        parsed.append({
+            "display": display,
+            "serial": _clean_serial(val(row, "serial")),
+            "last_user": _clean_user(val(row, "last_user")),
+            "is_online": _parse_bool_online(val(row, "status")),
+            "last_contact": _parse_timestamp(val(row, "last_contact")),
+            "local": val(row, "local"),
+            "model": val(row, "model"),
+            "org": val(row, "org"),
+        })
+
+    # 2) Ordena para que o dispositivo MAIS ATIVO reivindique o Item primeiro
+    #    (online e contato mais recente vêm antes). Como Item↔Dispositivo é 1-para-1,
+    #    quando a planilha tem a mesma série em 2 dispositivos, o ativo fica vinculado
+    #    e o duplicado fica sem vínculo — sem quebrar a importação.
+    from datetime import datetime as _dt, timezone as _tzmod
+    _MIN_TS = _dt.min.replace(tzinfo=_tzmod.utc)
+    parsed.sort(key=lambda r: (r["is_online"], r["last_contact"] or _MIN_TS), reverse=True)
+
+    itens_usados = set()  # item_id já reivindicado nesta importação
+
+    for r in parsed:
+        display = r["display"]
+        serial = r["serial"]
+        total += 1
+        if not serial:
+            sem_serie += 1
+        if r["local"]:
+            locais[r["local"]] = locais.get(r["local"], 0) + 1
+
+        obj = NinjaDevice.objects.filter(display_name=display).first()
+
+        # ── Relação inteligente Dispositivo ↔ Item (à prova de conflito 1-para-1) ──
+        candidate = None
+        if serial:
+            candidate = Item.objects.filter(numero_serie__iexact=serial).first()
+        if candidate is None:
+            candidate = Item.objects.filter(nome__iexact=display).first()
+        if candidate is not None:
+            ja_usado = candidate.pk in itens_usados
+            if not ja_usado:
+                conflito = NinjaDevice.objects.filter(item=candidate)
+                if obj is not None:
+                    conflito = conflito.exclude(pk=obj.pk)
+                ja_usado = conflito.exists()
+            if ja_usado:
+                candidate = None  # série/nome já pertence a outro dispositivo
+
+        defaults = {
+            "serial_number": serial,
+            "hostname": display,
+            "last_user": r["last_user"],
+            "is_online": r["is_online"],
+            "last_contact": r["last_contact"],
+            "local": r["local"],
+            "model_name": r["model"],
+            "organization_name": r["org"],
+        }
+
+        try:
+            if obj:
+                for k, v in defaults.items():
+                    setattr(obj, k, v)
+                if candidate is not None:
+                    obj.item = candidate
+                if hasattr(obj, "atualizado_por"):
+                    obj.atualizado_por = user
+                obj.save()
+                atualizados += 1
+                if obj.item_id:
+                    vinculados += 1
+                    itens_usados.add(obj.item_id)
+            else:
+                novo = NinjaDevice(display_name=display, item=candidate, **defaults)
+                if hasattr(novo, "criado_por"):
+                    novo.criado_por = user
+                    novo.atualizado_por = user
+                novo.save()
+                criados += 1
+                if novo.item_id:
+                    vinculados += 1
+                    itens_usados.add(novo.item_id)
+        except Exception as exc:  # noqa: BLE001 — uma linha problemática não derruba a importação
+            logger.error("importar_csv: falha ao gravar '%s': %s", display, exc)
+            total -= 1
             continue
 
-        sys_info_raw = get_device_system_info(ninja_id)
-        hw           = _parse_system_info(sys_info_raw) if sys_info_raw else {}
-        last_user    = get_device_last_user(ninja_id)
+    _take_snapshot(agora)
 
-        parsed.update({k: v for k, v in hw.items() if v})
-        if last_user:
-            parsed["last_user"] = last_user
+    # Valida os logins (último usuário do device × colaborador atribuído) e
+    # registra no histórico quando há mudança. Nunca derruba a importação.
+    validacao = {}
+    try:
+        validacao = registrar_validacao(user=user)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("importar_csv: falha ao validar logins: %s", exc)
 
-        serial = parsed.get("serial_number", "")
-        parsed.pop("org_id", None)
+    return {
+        "ok": True,
+        "erro": None,
+        "total": total,
+        "criados": criados,
+        "atualizados": atualizados,
+        "vinculados": vinculados,
+        "nao_vinculados": total - vinculados,
+        "sem_serie": sem_serie,
+        "locais": locais,
+        "validacao": validacao,
+    }
 
-        item = Item.objects.filter(numero_serie__iexact=serial).first() if serial else None
 
-        defaults = {k: v for k, v in parsed.items() if k != "ninja_id"}
-        defaults["item"] = item
-        NinjaDevice.objects.update_or_create(ninja_id=ninja_id, defaults=defaults)
-
-        synced += 1
-        if item:
-            matched += 1
-        if parsed.get("is_online"):
-            online += 1
-
-    _take_snapshot(now)
-    invalidate_devices_cache()
-    return {"synced": synced, "matched": matched, "online": online, "error": False}
-
+# ─────────────────────────────────────────────────────────────
+# Snapshot + status (alimentam dashboard e relatório)
+# ─────────────────────────────────────────────────────────────
 
 def _take_snapshot(timestamp=None) -> int:
     from ProjetoEstoque.models import NinjaDevice, NinjaDeviceSnapshot
@@ -529,23 +296,246 @@ def _take_snapshot(timestamp=None) -> int:
         )
         for device in NinjaDevice.objects.all()
     ]
-    NinjaDeviceSnapshot.objects.bulk_create(snapshots)
+    if snapshots:
+        NinjaDeviceSnapshot.objects.bulk_create(snapshots)
     return len(snapshots)
 
 
 def get_live_status() -> dict:
     from ProjetoEstoque.models import NinjaDevice
-    qs       = NinjaDevice.objects.select_related("item")
-    total    = qs.count()
-    online   = qs.filter(is_online=True).count()
-    matched  = qs.filter(item__isnull=False).count()
+    qs = NinjaDevice.objects.select_related("item")
+    total = qs.count()
+    online = qs.filter(is_online=True).count()
+    matched = qs.filter(item__isnull=False).count()
     com_user = qs.filter(is_online=True).exclude(last_user="").count()
     return {
-        "total":       total,
-        "online":      online,
-        "offline":     total - online,
-        "matched":     matched,
-        "com_user":    com_user,
-        "pct_online":  round(online  / total * 100) if total else 0,
+        "total": total,
+        "online": online,
+        "offline": total - online,
+        "matched": matched,
+        "com_user": com_user,
+        "pct_online": round(online / total * 100) if total else 0,
         "pct_matched": round(matched / total * 100) if total else 0,
     }
+
+
+# ═════════════════════════════════════════════════════════════
+# VALIDAÇÃO DE LOGIN
+# Compara o último usuário ativo do dispositivo (last_user) com o colaborador
+# atribuído ao item no sistema (última transferência de 'entrega' não devolvida).
+# ═════════════════════════════════════════════════════════════
+
+def _login_base(login: str) -> str:
+    """Normaliza o login: minúsculo, sem domínio e sem sufixos."""
+    u = (login or "").strip().lower()
+    if "\\" in u:
+        u = u.split("\\")[-1]
+    if " (" in u:
+        u = u.split(" (")[0]
+    return u.strip()
+
+
+def _login_tokens(login: str) -> set:
+    base = _strip_accents(_login_base(login))
+    return {p for p in re.split(r"[._\-\s]+", base) if len(p) >= 2}
+
+
+def _nome_tokens(nome: str) -> set:
+    return {t for t in _strip_accents((nome or "").lower()).split() if len(t) >= 2}
+
+
+def _resolver_usuarios_sistema(item_ids):
+    """
+    Para cada item, retorna o colaborador atualmente atribuído — a partir da
+    última transferência ('entrega' = atribuído; 'devolucao' = liberado).
+    {item_id: Usuario | None}
+    """
+    from ProjetoEstoque.models import MovimentacaoItem
+
+    estado = {}  # item_id -> (tipo_transferencia, usuario)
+    movs = (
+        MovimentacaoItem.objects
+        .filter(item_id__in=list(item_ids),
+                tipo_movimentacao="transferencia",
+                tipo_transferencia__in=["entrega", "devolucao"])
+        .select_related("usuario")
+        .order_by("item_id", "created_at", "id")
+    )
+    for m in movs:
+        estado[m.item_id] = (m.tipo_transferencia, m.usuario)
+    return {iid: (u if tipo == "entrega" else None) for iid, (tipo, u) in estado.items()}
+
+
+def _indexar_usuarios():
+    """Lista [(usuario, nome_tokens, email_local)] para casar logins."""
+    from ProjetoEstoque.models import Usuario
+    index = []
+    for u in Usuario.objects.all().only("id", "nome", "email"):
+        email_local = ""
+        if u.email and "@" in u.email:
+            email_local = u.email.split("@")[0].strip().lower()
+        index.append((u, _nome_tokens(u.nome), email_local))
+    return index
+
+
+def _login_casa_usuario(login: str, usuario) -> bool:
+    """True se o login do dispositivo corresponde ao colaborador informado."""
+    if usuario is None:
+        return False
+    base = _login_base(login)
+    if not base:
+        return False
+    if usuario.email and "@" in usuario.email:
+        local = usuario.email.split("@")[0].strip().lower()
+        if local and local.replace(".", "") == base.replace(".", ""):
+            return True
+    lt = _login_tokens(login)
+    return bool(lt) and lt <= _nome_tokens(usuario.nome)
+
+
+def _detectar_usuario(login: str, index):
+    """Tenta descobrir, entre os colaboradores, quem é o login do dispositivo."""
+    base = _login_base(login)
+    if not base:
+        return None
+    base_nodot = base.replace(".", "")
+    lt = _login_tokens(login)
+    melhor, melhor_score = None, 0
+    for usuario, tokens, email_local in index:
+        score = 0
+        if email_local and email_local.replace(".", "") == base_nodot:
+            score = 100
+        elif lt and lt <= tokens:
+            score = 50 + len(lt)
+        if score > melhor_score:
+            melhor, melhor_score = usuario, score
+    return melhor if melhor_score >= 50 else None
+
+
+def _classificar_device(device, usuario_sistema, index):
+    """
+    Retorna (status, detalhe, usuario_detectado) comparando o login do device
+    com o colaborador atribuído ao item.
+    """
+    from ProjetoEstoque.models import NinjaLoginRegistro as R
+
+    login = (device.last_user or "").strip()
+    detectado = _detectar_usuario(login, index) if login else None
+
+    if not login:
+        return R.STATUS_SEM_LOGIN, "Dispositivo sem usuário logado capturado.", None
+
+    if usuario_sistema is None:
+        if detectado:
+            det = f"Login '{login}' (≈ {detectado.nome}); item não atribuído a colaborador no sistema."
+        else:
+            det = f"Login '{login}'; item não atribuído a nenhum colaborador no sistema."
+        return R.STATUS_SEM_ATRIBUICAO, det, detectado
+
+    if _login_casa_usuario(login, usuario_sistema):
+        return R.STATUS_CONFERE, f"Login '{login}' confere com {usuario_sistema.nome}.", usuario_sistema
+
+    if detectado:
+        det = f"Em uso por '{login}' (≈ {detectado.nome}), mas o item está atribuído a {usuario_sistema.nome}."
+    else:
+        det = f"Login '{login}' diverge do colaborador atribuído ({usuario_sistema.nome})."
+    return R.STATUS_DIVERGENTE, det, detectado
+
+
+def avaliar_logins():
+    """
+    Avalia (sem gravar) o login de todos os dispositivos vinculados a um item.
+    Retorna lista de dicts ordenada por gravidade (divergente primeiro).
+    """
+    from ProjetoEstoque.models import NinjaDevice
+
+    devices = list(
+        NinjaDevice.objects.filter(item__isnull=False)
+        .select_related("item")
+        .order_by("display_name")
+    )
+    atribuidos = _resolver_usuarios_sistema([d.item_id for d in devices])
+    index = _indexar_usuarios()
+
+    ordem = {"divergente": 0, "sem_atribuicao": 1, "sem_login": 2, "confere": 3}
+    resultados = []
+    for d in devices:
+        usuario = atribuidos.get(d.item_id)
+        status, detalhe, detectado = _classificar_device(d, usuario, index)
+        resultados.append({
+            "device": d,
+            "login": (d.last_user or "").strip(),
+            "usuario": usuario,
+            "usuario_nome": usuario.nome if usuario else "",
+            "detectado": detectado,
+            "detectado_nome": detectado.nome if detectado else "",
+            "status": status,
+            "detalhe": detalhe,
+        })
+    resultados.sort(key=lambda r: (ordem.get(r["status"], 9), r["device"].display_name.lower()))
+    return resultados
+
+
+def avaliar_login_device(device):
+    """Avalia um único dispositivo (para a tela de detalhe)."""
+    index = _indexar_usuarios()
+    usuario = None
+    if device.item_id:
+        usuario = _resolver_usuarios_sistema([device.item_id]).get(device.item_id)
+    status, detalhe, detectado = _classificar_device(device, usuario, index)
+    return {
+        "device": device,
+        "login": (device.last_user or "").strip(),
+        "usuario": usuario,
+        "usuario_nome": usuario.nome if usuario else "",
+        "detectado": detectado,
+        "detectado_nome": detectado.nome if detectado else "",
+        "status": status,
+        "detalhe": detalhe,
+    }
+
+
+def registrar_validacao(user=None, resultados=None) -> dict:
+    """
+    Grava um NinjaLoginRegistro por dispositivo SEMPRE QUE o status/login/colaborador
+    muda em relação ao último registro (evita duplicar linhas idênticas no histórico).
+    Retorna estatísticas dos status atuais + nº de novos registros.
+    """
+    from ProjetoEstoque.models import NinjaLoginRegistro
+
+    if resultados is None:
+        resultados = avaliar_logins()
+
+    stats = {"total": 0, "confere": 0, "divergente": 0,
+             "sem_atribuicao": 0, "sem_login": 0, "novos_registros": 0}
+
+    for r in resultados:
+        stats["total"] += 1
+        stats[r["status"]] = stats.get(r["status"], 0) + 1
+        device = r["device"]
+        usuario_id = r["usuario"].id if r["usuario"] else None
+
+        ultimo = (
+            NinjaLoginRegistro.objects
+            .filter(device=device).order_by("-verificado_em", "-id").first()
+        )
+        mudou = (
+            ultimo is None
+            or ultimo.status != r["status"]
+            or (ultimo.device_user or "") != (r["login"] or "")
+            or (ultimo.usuario_sistema_id or None) != usuario_id
+        )
+        if mudou:
+            NinjaLoginRegistro.objects.create(
+                device=device,
+                device_user=r["login"],
+                usuario_sistema=r["usuario"],
+                usuario_sistema_nome=r["usuario_nome"],
+                usuario_detectado=r["detectado_nome"],
+                item_nome=(device.item.nome if device.item_id else ""),
+                status=r["status"],
+                detalhe=r["detalhe"][:400],
+            )
+            stats["novos_registros"] += 1
+
+    return stats

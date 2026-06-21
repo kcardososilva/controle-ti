@@ -21,15 +21,44 @@ def alertas_dashboard(request):
 
     hoje = timezone.localdate()
 
-    # 1. Preventivas nos próximos 7 dias
-    preventivas = (
+    # 1. Preventivas nos próximos 7 dias.
+    #    IMPORTANTE: a data efetiva da próxima preventiva é CALCULADA da mesma forma
+    #    que nas telas de preventivas/equipamentos (data_ultima + intervalo), e não lida
+    #    diretamente do campo data_proxima — que pode estar desatualizado. Sem isso o
+    #    alerta mostrava 0 enquanto o sistema apontava preventivas a vencer.
+    #    Intervalo: prioridade para Item.data_limite_preventiva → CheckListModelo.intervalo_dias.
+    _JANELA = 7
+    preventivas = []
+    for p in (
         Preventiva.objects
-        .filter(data_proxima__gte=hoje, data_proxima__lte=hoje + timedelta(days=7), pausada=False)
+        .filter(pausada=False)
         .select_related("equipamento", "equipamento__localidade", "checklist_modelo")
-        .order_by("data_proxima", "equipamento__nome")
-    )
-    for p in preventivas:
-        p.dias_rest = (p.data_proxima - hoje).days
+    ):
+        intervalo = 0
+        try:
+            intervalo = int(p.equipamento.data_limite_preventiva or 0)
+        except (TypeError, ValueError):
+            intervalo = 0
+        if intervalo <= 0 and p.checklist_modelo:
+            try:
+                intervalo = int(p.checklist_modelo.intervalo_dias or 0)
+            except (TypeError, ValueError):
+                intervalo = 0
+
+        if intervalo > 0 and p.data_ultima:
+            proxima = p.data_ultima + timedelta(days=intervalo)
+        else:
+            proxima = p.data_proxima
+
+        if not proxima:
+            continue
+        dias = (proxima - hoje).days
+        if 0 <= dias <= _JANELA:
+            p.data_proxima = proxima  # data efetiva (em memória) para exibição
+            p.dias_rest = dias
+            preventivas.append(p)
+
+    preventivas.sort(key=lambda p: (p.data_proxima, p.equipamento.nome))
 
     # 2. Itens de consumo com estoque crítico
     itens_criticos = (
@@ -64,10 +93,10 @@ def alertas_dashboard(request):
         "config_updated_at": config.updated_at,
         "config_atualizado_por": config.atualizado_por,
         "kpi": {
-            "preventivas": preventivas.count(),
+            "preventivas": len(preventivas),
             "estoque": itens_criticos.count(),
             "licencas": licencas_pendentes.count(),
-            "total": preventivas.count() + itens_criticos.count() + licencas_pendentes.count(),
+            "total": len(preventivas) + itens_criticos.count() + licencas_pendentes.count(),
         },
     }
     return render(request, "front/alertas/alertas_dashboard.html", context)

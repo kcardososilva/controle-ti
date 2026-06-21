@@ -542,6 +542,7 @@
 
 {% block extra_js %}
 {{ layout_json|json_script:"__layout_data" }}
+{% include 'front/plantas/_planta_icons.html' %}
 <script>
 const LAYOUT     = JSON.parse(document.getElementById('__layout_data').textContent);
 const PRTG_OK    = {{ prtg_ok|yesno:"true,false" }};
@@ -552,10 +553,14 @@ const TIPO = {
   camera:       { label:"Câmera",        emoji:"📷", color:"#ef4444" },
   access_point: { label:"Access Point",  emoji:"📡", color:"#0ea5e9" },
   switch:       { label:"Switch",        emoji:"🔀", color:"#2563eb" },
+  meraki:       { label:"Meraki",        emoji:"📶", color:"#67b346" },
+  starlink:     { label:"Starlink",      emoji:"🛰️", color:"#4361ee" },
+  caixa_emenda: { label:"Caixa de Emenda", emoji:"🔗", color:"#0891b2" },
   rack:         { label:"Rack",          emoji:"🗄️",  color:"#475569" },
   desktop:      { label:"Desktop",       emoji:"🖥️",  color:"#10b981" },
   impressora:   { label:"Impressora",    emoji:"🖨️",  color:"#f97316" },
   nobreak:      { label:"Nobreak",       emoji:"⚡",  color:"#f59e0b" },
+  fonte:        { label:"Fonte",         emoji:"🔌",  color:"#f59e0b" },
   servidor:     { label:"Servidor",      emoji:"☁️",  color:"#8b5cf6" },
   ponto_rede:   { label:"Ponto de Rede", emoji:"📍",  color:"#6366f1" },
   texto:        { label:"Texto",         emoji:"✏️",  color:"#1d1d1f" },
@@ -663,6 +668,14 @@ function elStKey(el) {
   return ST_MAP[parseInt(dev.status)] || "unknown";
 }
 function elStColor(el) { return ST_COLOR[elStKey(el)] || ST_COLOR.none; }
+/* Cor efetiva: switch, Access Point e Meraki assumem a cor do status PRTG. */
+function vwEffColor(el) {
+  if (el.type === 'switch' || el.type === 'access_point' || el.type === 'meraki') {
+    const k = elStKey(el);
+    if (k && k !== 'none') return ST_COLOR[k] || (TIPO[el.type] || TIPO.switch).color;
+  }
+  return el.color || (TIPO[el.type] || TIPO.switch).color;
+}
 
 // ── Background image ───────────────────────────────────────────────────────────
 const bgImg = new Image();
@@ -707,12 +720,34 @@ function computeOrthoRoute(ax, ay, fromEdge, bx, by, toEdge) {
   return [{x:p1x,y:p1y}, ...bends, {x:p2x,y:p2y}];
 }
 
+/* Feixe: distribui em leque várias conexões na mesma borda (fibras lado a lado). */
+const FAN_GAP = 12;
+function anchorSpread(el, edge, cnId, side) {
+  const base = anchorPoint(el, edge);
+  const sibs = [];
+  for (const c of connections) {
+    if (c.from === el.id && c.fromEdge === edge) sibs.push(c.id + '|from');
+    if (c.to   === el.id && c.toEdge   === edge) sibs.push(c.id + '|to');
+  }
+  if (sibs.length <= 1) return base;
+  sibs.sort();
+  const idx = sibs.indexOf(cnId + '|' + side);
+  if (idx < 0) return base;
+  const w = el.width || 60, h = el.height || 60;
+  const span = (edge === 'n' || edge === 's') ? w : h;
+  const gap  = Math.min(FAN_GAP, (span * 0.78) / sibs.length);
+  const off  = (idx - (sibs.length - 1) / 2) * gap;
+  return (edge === 'n' || edge === 's')
+    ? { ax: base.ax + off, ay: base.ay }
+    : { ax: base.ax, ay: base.ay + off };
+}
+
 function getConnectionPts(cn) {
   const a = elements.find(e => e.id === cn.from);
   const b = elements.find(e => e.id === cn.to);
   if (!a || !b) return [];
-  const {ax, ay}      = anchorPoint(a, cn.fromEdge);
-  const {ax:bx,ay:by} = anchorPoint(b, cn.toEdge);
+  const {ax, ay}      = anchorSpread(a, cn.fromEdge, cn.id, 'from');
+  const {ax:bx,ay:by} = anchorSpread(b, cn.toEdge,   cn.id, 'to');
   const wps = cn.waypoints || computeOrthoRoute(ax, ay, cn.fromEdge, bx, by, cn.toEdge);
   return [{x:ax,y:ay}, ...wps, {x:bx,y:by}];
 }
@@ -965,18 +1000,17 @@ function drawElement(el) {
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2);
     ctx.fillStyle = '#fff'; ctx.fill();
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
-    // anel
+    const ec = vwEffColor(el);
+    // anel (cor do status)
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2);
-    ctx.strokeStyle = isSel ? color : (st==='down'||st==='warning' ? hexAlpha(stCol, 0.6) : hexAlpha(color, 0.45));
+    ctx.strokeStyle = isSel ? ec : (st==='down'||st==='warning' ? hexAlpha(stCol, 0.6) : hexAlpha(ec, 0.5));
     ctx.lineWidth   = (isSel ? 2 : 1.5) * zoom; ctx.stroke();
     if (st !== 'none') {
       ctx.beginPath(); ctx.arc(cx, cy, R + 2*zoom, 0, Math.PI*2);
       ctx.strokeStyle = stCol; ctx.lineWidth = 2*zoom; ctx.stroke();
     }
-    // emoji dentro do círculo
-    ctx.font = `${Math.max(12, R*1.15)}px serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(cfg.emoji, cx, cy);
+    // ícone Wi-Fi vetorial (mesmo do editor), na cor do status
+    plantaDrawIcon(ctx, 'access_point', cx, cy, R * 0.62, ec);
     // nome abaixo do círculo
     const _lbl = elName(el);
     if (_lbl && zoom > 0.35) {
@@ -988,62 +1022,64 @@ function drawElement(el) {
     ctx.restore(); return;
   }
 
-  /* Equipment card */
+  /* Fonte de energia — badge pequeno e chamativo, SEM quadrado (igual editor) */
+  if (el.type === 'fonte') {
+    const fw = (el.width || 40) * zoom, fh = (el.height || 40) * zoom;
+    const fcx = sc.x + fw/2, fcy = sc.y + fh/2;
+    const FR  = Math.min(fw, fh) * 0.46;
+    const fcor = el.color || (TIPO.fonte ? TIPO.fonte.color : '#f59e0b');
+    ctx.save();
+    ctx.shadowColor = hexAlpha(fcor, 0.6); ctx.shadowBlur = 12*zoom;
+    plantaDrawIcon(ctx, 'fonte', fcx, fcy, FR, fcor);
+    ctx.shadowColor='transparent'; ctx.shadowBlur=0;
+    const _fl = elName(el);
+    if (_fl && zoom > 0.35) {
+      ctx.font = `600 ${Math.max(7,8.5*zoom)}px -apple-system,sans-serif`;
+      ctx.fillStyle="#1d1d1f"; ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.fillText(_fl.length>14?_fl.slice(0,13)+'…':_fl, fcx, fcy + FR + 4*zoom);
+    }
+    ctx.restore(); return;
+  }
+
+  /* Equipment card — COR ÚNICA (tom da cor efetiva) + ícone vetorial */
   const w     = (el.width  || 60) * zoom;
   const h     = (el.height || 60) * zoom;
   const r     = 8 * zoom;
   const stCol = elStColor(el);
   const st    = elStKey(el);
+  const ec    = vwEffColor(el);
 
-  /* Animated pulse rings — drawn before card so they appear behind it */
   drawPulseRings(sc, w, h, stCol, st);
-
   ctx.save();
 
-  /* Status neon glow shadow */
-  if (st==='down') {
-    ctx.shadowColor = stCol;
-    ctx.shadowBlur  = 28 * zoom;
-  } else if (st==='warning') {
-    ctx.shadowColor = stCol;
-    ctx.shadowBlur  = 20 * zoom;
-  } else if (st==='up') {
-    ctx.shadowColor = stCol;
-    ctx.shadowBlur  = 12 * zoom;
-  } else {
-    ctx.shadowColor = "rgba(0,0,0,.10)";
-    ctx.shadowBlur  = 8 * zoom;
-  }
+  /* Glow por status */
+  if (st==='down')        { ctx.shadowColor = stCol; ctx.shadowBlur = 28*zoom; }
+  else if (st==='warning'){ ctx.shadowColor = stCol; ctx.shadowBlur = 20*zoom; }
+  else if (st==='up')     { ctx.shadowColor = stCol; ctx.shadowBlur = 12*zoom; }
+  else                    { ctx.shadowColor = "rgba(0,0,0,.10)"; ctx.shadowBlur = 8*zoom; }
   ctx.shadowOffsetY = st==='none' ? 2*zoom : 0;
 
-  /* White card background */
+  /* Fundo de cor única (tom da cor efetiva) */
+  const cardGrad = ctx.createLinearGradient(sc.x, sc.y, sc.x, sc.y+h);
+  cardGrad.addColorStop(0, hexAlpha(ec, isSel ? 0.22 : 0.15));
+  cardGrad.addColorStop(1, hexAlpha(ec, isSel ? 0.10 : 0.07));
   ctx.beginPath(); ctx.roundRect(sc.x,sc.y,w,h,r);
-  ctx.fillStyle="#fff"; ctx.fill();
+  ctx.fillStyle = cardGrad; ctx.fill();
   ctx.shadowColor="transparent"; ctx.shadowBlur=0; ctx.shadowOffsetY=0;
 
-  /* Colored left bar (type color) */
-  ctx.beginPath(); ctx.roundRect(sc.x,sc.y,3.5*zoom,h,[r,0,0,r]);
-  ctx.fillStyle=color; ctx.fill();
-
-  /* Status top stripe */
-  ctx.beginPath(); ctx.roundRect(sc.x,sc.y,w,3.5*zoom,[r,r,0,0]);
-  ctx.fillStyle=stCol; ctx.fill();
-
-  /* Border */
+  /* Borda (cor única / status) */
   ctx.beginPath(); ctx.roundRect(sc.x,sc.y,w,h,r);
-  if (isSel) {
-    ctx.strokeStyle=color; ctx.lineWidth=2*zoom;
-  } else if (st==='down'||st==='warning') {
-    ctx.strokeStyle=hexAlpha(stCol,0.45); ctx.lineWidth=1.5*zoom;
-  } else {
-    ctx.strokeStyle="rgba(0,0,0,.07)"; ctx.lineWidth=1*zoom;
-  }
-  ctx.stroke();
+  ctx.strokeStyle = isSel ? ec : (st==='down'||st==='warning' ? hexAlpha(stCol,0.55) : hexAlpha(ec,0.4));
+  ctx.lineWidth = (isSel?2:1.2)*zoom; ctx.stroke();
 
-  /* Emoji icon */
-  const esz=Math.max(10,15*zoom);
-  ctx.font=`${esz}px serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText(cfg.emoji, sc.x+w/2, sc.y+h*0.4);
+  /* Anel de status externo */
+  if (st!=='none') {
+    ctx.beginPath(); ctx.roundRect(sc.x-1.5*zoom, sc.y-1.5*zoom, w+3*zoom, h+3*zoom, r+1.5*zoom);
+    ctx.strokeStyle = stCol; ctx.lineWidth = 2*zoom; ctx.stroke();
+  }
+
+  /* Ícone vetorial (mesmo do editor), na cor efetiva */
+  plantaDrawIcon(ctx, el.type, sc.x+w/2, sc.y+h*0.42, Math.min(w,h)*0.34, ec);
 
   /* Label */
   const _lbl = elName(el);

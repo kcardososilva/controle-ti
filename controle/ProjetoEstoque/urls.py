@@ -80,6 +80,7 @@ urlpatterns = [
     path("equipamentos/<int:pk>/termo/entrega/", views.termo_entrega_form, name="termo_entrega_form"),
     path("equipamentos/<int:pk>/termo/devolucao/", views.termo_devolucao_form, name="termo_devolucao_form"),
     path("equipamentos/<int:pk>/monitoracao/", views.item_monitoracao, name="item_monitoracao"),
+    path("monitoracao/relatorio/", views.monitoracao_relatorio, name="monitoracao_relatorio"),
 
     # ── Locações ────────────────────────────────────────────────────────────
     path("locacoes/", views.locacoes_list, name="locacoes_list"),
@@ -175,6 +176,7 @@ urlpatterns = [
     path("plantas/tv/gerenciar/",                         views.planta_tv_gerenciar,         name="planta_tv_gerenciar"),
     path("plantas/tv/gerenciar/acao/",                    views.planta_tv_gerenciar_acao,    name="planta_tv_gerenciar_acao"),
     path("plantas/monitor/",                              views.prtg_monitor,                name="prtg_monitor"),
+    path("plantas/monitor/exportar/",                     views.prtg_monitor_export,         name="prtg_monitor_export"),
 
     # ── Avisos & Relatórios ─────────────────────────────────────────────────
     path("avisos/contratos-a-vencer/", views.avisos_contratos_vencer, name="avisos_contratos_vencer"),
@@ -185,15 +187,15 @@ urlpatterns = [
     path("alertas/enviar/", views.alertas_enviar, name="alertas_enviar"),
     path("alertas/toggle/", views.alertas_toggle, name="alertas_toggle"),
 
-    # ── NinjaOne RMM ───────────────────────────────────────────────────────
+    # ── NinjaOne RMM (via importação de CSV) ───────────────────────────────
     path("ninja/",                    views.ninja_dashboard,     name="ninja_dashboard"),
     path("ninja/dispositivos/",       views.ninja_dispositivos,  name="ninja_dispositivos"),
+    path("ninja/nao-cadastrados/",    views.ninja_nao_cadastrados, name="ninja_nao_cadastrados"),
+    path("ninja/login-validacao/",    views.ninja_login_validacao, name="ninja_login_validacao"),
+    path("ninja/login-validacao/revalidar/", views.ninja_login_revalidar, name="ninja_login_revalidar"),
+    path("ninja/login/<int:pk>/",     views.ninja_login_detalhe, name="ninja_login_detalhe"),
     path("ninja/relatorio/",          views.ninja_relatorio,     name="ninja_relatorio"),
-    path("ninja/sync/",               views.ninja_sync,          name="ninja_sync"),
-    path("ninja/api/live/",           views.ninja_api_live,      name="ninja_api_live"),
-    path("ninja/autorizar/",          views.ninja_oauth_start,   name="ninja_oauth_start"),
-    path("ninja/oauth/callback/",     views.ninja_oauth_callback, name="ninja_oauth_callback"),
-    path("ninja/oauth/revogar/",      views.ninja_oauth_revogar, name="ninja_oauth_revogar"),
+    path("ninja/importar/",           views.ninja_importar,      name="ninja_importar"),
 
     # ── Inteligência de Sistema ─────────────────────────────────────────────
     path("inteligencia/", views.sistema_inteligencia_dashboard, name="sistema_inteligencia_dashboard"),

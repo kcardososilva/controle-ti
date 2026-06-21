@@ -6,6 +6,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#fbfbfd" id="themeColorMeta">
 
+  <script>
+    /* Aplica o tema salvo ANTES da primeira pintura — evita o flash branco
+       e o repaint de página inteira ao navegar entre telas no modo escuro. */
+    (function () {
+      try {
+        var t = localStorage.getItem('controleTI.theme');
+        var el = document.documentElement;
+        el.classList.add(t === 'dark' ? 'theme-dark' : 'theme-light');
+      } catch (e) {}
+    })();
+  </script>
+
   <title>{% block title %}Zelo — Santa Colomba{% endblock %}</title>
 
   <link rel="icon" type="image/svg+xml" href="{% static 'img/zelo-mark.svg' %}">
@@ -194,7 +206,12 @@
       scroll-behavior: smooth;
       -webkit-text-size-adjust: 100%;
       text-size-adjust: 100%;
+      background-color: #fbfbfd;
     }
+
+    /* Fundo raiz já no tema correto desde o primeiro frame (anti-flash) */
+    html.theme-dark { background-color: #000000; color-scheme: dark; }
+    html.theme-light { background-color: #fbfbfd; color-scheme: light; }
 
     body {
       width: 100%;
@@ -399,21 +416,17 @@
     }
 
     .brand-mark {
-      width: 38px;
-      height: 38px;
-      flex: 0 0 38px;
+      width: 34px;
+      height: 40px;
+      flex: 0 0 34px;
       display: grid;
       place-items: center;
-      border-radius: 11px;
-      overflow: hidden;
       position: relative;
-      transition: transform var(--transition-fast), box-shadow var(--transition-fast);
-      box-shadow: 0 3px 11px color-mix(in srgb, #5E5CE6 30%, transparent);
+      transition: transform var(--transition-fast);
     }
 
     .brand-mark:hover {
-      transform: translateY(-1px) scale(1.05);
-      box-shadow: 0 6px 18px color-mix(in srgb, #5E5CE6 42%, transparent);
+      transform: translateY(-1px) scale(1.06);
     }
 
     .brand-logo {
@@ -457,10 +470,11 @@
     }
 
     .brand-subtitle {
-      color: var(--text-tertiary);
-      font-size: 12px;
-      font-weight: 400;
-      letter-spacing: -0.005em;
+      color: var(--brand);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1750,6 +1764,18 @@
 </head>
 
 <body class="theme-light">
+  <script>
+    /* Espelha o tema no <body> antes da primeira pintura (as regras de estilo
+       do modo escuro são todas .theme-dark no body). */
+    (function () {
+      try {
+        if (localStorage.getItem('controleTI.theme') === 'dark') {
+          document.body.classList.remove('theme-light');
+          document.body.classList.add('theme-dark');
+        }
+      } catch (e) {}
+    })();
+  </script>
   <a href="#mainContent" class="skip-link">Ir para o conteúdo principal</a>
 
   <div class="app-shell" id="appShell">
@@ -1889,7 +1915,7 @@
           <div class="nav-group">
             <button
               type="button"
-              class="nav-button {% if 'planta_' in request.resolver_match.url_name or request.resolver_match.url_name == 'prtg_monitor' %}is-active{% endif %}"
+              class="nav-button {% if 'planta_' in request.resolver_match.url_name or request.resolver_match.url_name == 'prtg_monitor' or request.resolver_match.url_name == 'monitoracao_relatorio' %}is-active{% endif %}"
               data-submenu-target="sub-plantas"
               aria-expanded="false"
               aria-controls="sub-plantas"
@@ -1902,6 +1928,7 @@
               <div class="submenu-inner">
                 <a href="{% url 'planta_list' %}" class="sub-link {% if request.resolver_match.url_name == 'planta_list' %}is-active{% endif %}">Lista de Plantas</a>
                 <a href="{% url 'prtg_monitor' %}" class="sub-link {% if request.resolver_match.url_name == 'prtg_monitor' %}is-active{% endif %}">Monitor PRTG</a>
+                <a href="{% url 'monitoracao_relatorio' %}" class="sub-link {% if request.resolver_match.url_name == 'monitoracao_relatorio' %}is-active{% endif %}">Relatório de Monitoração</a>
                 <a href="{% url 'planta_tv_gerenciar' %}" class="sub-link {% if request.resolver_match.url_name == 'planta_tv_gerenciar' %}is-active{% endif %}">Gerenciar Acesso TV</a>
               </div>
             </div>
@@ -1925,6 +1952,8 @@
               <div class="submenu-inner">
                 <a href="{% url 'ninja_dashboard' %}" class="sub-link {% if request.resolver_match.url_name == 'ninja_dashboard' %}is-active{% endif %}">Dashboard</a>
                 <a href="{% url 'ninja_dispositivos' %}" class="sub-link {% if request.resolver_match.url_name == 'ninja_dispositivos' %}is-active{% endif %}">Dispositivos</a>
+                <a href="{% url 'ninja_nao_cadastrados' %}" class="sub-link {% if request.resolver_match.url_name == 'ninja_nao_cadastrados' %}is-active{% endif %}">Não Cadastrados</a>
+                <a href="{% url 'ninja_login_validacao' %}" class="sub-link {% if request.resolver_match.url_name == 'ninja_login_validacao' or request.resolver_match.url_name == 'ninja_login_detalhe' %}is-active{% endif %}">Validação de Login</a>
                 <a href="{% url 'ninja_relatorio' %}" class="sub-link {% if request.resolver_match.url_name == 'ninja_relatorio' %}is-active{% endif %}">Relatório de Uso</a>
               </div>
             </div>
@@ -2128,6 +2157,8 @@
 
         document.body.classList.toggle('theme-dark', selectedTheme === 'dark');
         document.body.classList.toggle('theme-light', selectedTheme === 'light');
+        document.documentElement.classList.toggle('theme-dark', selectedTheme === 'dark');
+        document.documentElement.classList.toggle('theme-light', selectedTheme === 'light');
 
         if (themeIcon) {
           themeIcon.className = selectedTheme === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';

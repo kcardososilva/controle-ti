@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Não cadastrados — NinjaOne{% endblock %}
+{% block page_title %}Itens não cadastrados{% endblock %}
+{% block page_subtitle %}Dispositivos vistos pelo NinjaOne que ainda não existem no estoque do sistema{% endblock %}
+
+{% block header_actions %}
+  <a href="?export=xlsx{% if qs_keep %}&{{ qs_keep }}{% endif %}" class="btn-primary btn-sm">
+    <i class="fa fa-file-excel"></i> Exportar Excel
+  </a>
+  <a href="?export=csv{% if qs_keep %}&{{ qs_keep }}{% endif %}" class="btn btn-sm">
+    <i class="fa fa-file-csv"></i> CSV
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.njnc-page) {
+  --nj-brand:#6528d8; --nj-brand-soft:color-mix(in srgb,#6528d8 11%,transparent);
+}
+.njnc-page, .njnc-page * { box-sizing:border-box; min-width:0; }
+.njnc-page { display:grid; gap:1rem; }
+
+/* Banner explicativo */
+.njnc-banner {
+  display:flex; align-items:flex-start; gap:.85rem;
+  padding:.95rem 1.15rem; border-radius:var(--radius-xl);
+  background:color-mix(in srgb,var(--warning) 9%,transparent);
+  border:1px solid color-mix(in srgb,var(--warning) 28%,transparent);
+}
+.njnc-banner i { color:var(--warning); font-size:1.1rem; margin-top:.1rem; }
+.njnc-banner div { font-size:.85rem; color:var(--text-secondary); line-height:1.55; }
+.njnc-banner strong { color:var(--text-primary); }
+
+/* KPIs */
+.njnc-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.8rem; }
+@media (max-width:620px){ .njnc-kpis{ grid-template-columns:1fr; } }
+.njnc-kpi { padding:.95rem 1.1rem; border:1px solid var(--separator-hairline); border-radius:var(--radius-xl);
+  background:var(--bg-elevated); box-shadow:var(--shadow-xs); position:relative; overflow:hidden; }
+.njnc-kpi::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--k,var(--nj-brand)); }
+.njnc-kpi-v { font-size:1.7rem; font-weight:800; letter-spacing:-.035em; line-height:1; color:var(--k,var(--text-primary)); }
+.njnc-kpi-l { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); margin-top:.4rem; }
+
+/* Chips por local */
+.njnc-locais { display:flex; flex-wrap:wrap; gap:.45rem; }
+.njnc-loc-chip { display:inline-flex; align-items:center; gap:.4rem; padding:.32rem .7rem; border-radius:var(--radius-pill);
+  background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline); font-size:.78rem; font-weight:600; color:var(--text-secondary); }
+.njnc-loc-chip b { color:var(--nj-brand); }
+
+/* Filtros */
+.njnc-filters { display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end;
+  padding:.9rem 1.1rem; background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); }
+.njnc-field { display:flex; flex-direction:column; gap:.3rem; flex:1; min-width:160px; }
+.njnc-field label { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
+
+/* Card + tabela */
+.njnc-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden; }
+.njnc-card-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.85rem 1.15rem; border-bottom:1px solid var(--separator-hairline); }
+.njnc-card-title { font-size:.92rem; font-weight:700; letter-spacing:-.016em; }
+.njnc-count { font-size:.8rem; color:var(--text-tertiary); font-weight:600; }
+.njnc-wrap { width:100%; overflow-x:auto; }
+.njnc-table { width:max-content; min-width:100%; border-collapse:collapse; }
+.njnc-table th, .njnc-table td { padding:.7rem 1rem; border-bottom:1px solid var(--separator-hairline); text-align:left; white-space:nowrap; vertical-align:middle; }
+.njnc-table th { font-size:.67rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); font-weight:700; }
+.njnc-table td { font-size:.83rem; color:var(--text-primary); }
+.njnc-table tbody tr:last-child td { border-bottom:0; }
+.njnc-table tbody tr:hover { background:var(--bg-hover); }
+.njnc-dot-on { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--success); box-shadow:0 0 0 2px color-mix(in srgb,var(--success) 30%,transparent); }
+.njnc-dot-off { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--text-quaternary); }
+.njnc-serie { font-family:var(--font-mono,ui-monospace,Consolas,monospace); font-size:.78rem; letter-spacing:.03em; color:var(--text-secondary); }
+.njnc-empty { display:grid; place-items:center; gap:.5rem; padding:2.5rem 1rem; text-align:center; color:var(--text-tertiary); font-size:.9rem; font-weight:600; }
+.njnc-empty i { font-size:1.6rem; color:var(--success); }
+
+/* Paginação */
+.njd-pagination { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; padding:.85rem 1.15rem; border-top:1px solid var(--separator-hairline); }
+.njd-pg-info { font-size:.8rem; color:var(--text-tertiary); font-weight:600; }
+.njd-pg-links { display:flex; gap:.3rem; flex-wrap:wrap; }
+.njd-pg-link { display:inline-grid; place-items:center; min-width:2rem; height:2rem; padding:0 .55rem; border-radius:var(--radius-md); border:1px solid var(--separator-hairline); background:var(--bg-elevated); color:var(--text-secondary); font-size:.82rem; font-weight:700; text-decoration:none; transition:all var(--transition-fast); }
+.njd-pg-link:hover { border-color:var(--nj-brand); color:var(--nj-brand); }
+.njd-pg-link.active { background:var(--nj-brand); border-color:var(--nj-brand); color:#fff; }
+.njd-pg-link.disabled { opacity:.4; pointer-events:none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="njnc-page">
+
+  <div class="njnc-banner">
+    <i class="fa fa-circle-info"></i>
+    <div>
+      Estes dispositivos foram <strong>importados do NinjaOne</strong> e possuem número de série,
+      mas <strong>nenhum equipamento do estoque</strong> tem essa série (ou nome) cadastrada.
+      Use esta lista para localizar máquinas em uso que ainda não foram registradas no sistema.
+    </div>
+  </div>
+
+  <section class="njnc-kpis">
+    <div class="njnc-kpi" style="--k:var(--warning)">
+      <div class="njnc-kpi-v">{{ total_nao_cad }}</div>
+      <div class="njnc-kpi-l">Não cadastrados</div>
+    </div>
+    <div class="njnc-kpi" style="--k:var(--success)">
+      <div class="njnc-kpi-v">{{ online_nao_cad }}</div>
+      <div class="njnc-kpi-l">Online agora</div>
+    </div>
+    <div class="njnc-kpi" style="--k:var(--nj-brand)">
+      <div class="njnc-kpi-v">{{ pct_nao_cad }}%</div>
+      <div class="njnc-kpi-l">do parque ({{ total_devices }} dispositivos)</div>
+    </div>
+  </section>
+
+  {% if por_local %}
+  <div class="njnc-locais">
+    {% for row in por_local %}
+      <span class="njnc-loc-chip"><i class="fa fa-location-dot" style="color:var(--text-quaternary)"></i> {{ row.local }} <b>{{ row.qtd }}</b></span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="get" class="njnc-filters">
+    <div class="njnc-field" style="flex:2;">
+      <label for="q">Busca</label>
+      <input id="q" name="q" type="text" class="form-control" value="{{ f_q }}" placeholder="Nome, série, modelo, usuário...">
+    </div>
+    <div class="njnc-field" style="max-width:200px;">
+      <label for="local">Local / Site</label>
+      <select id="local" name="local" class="form-control">
+        <option value="">Todos</option>
+        {% for loc in opt_locais %}
+        <option value="{{ loc }}" {% if f_local == loc %}selected{% endif %}>{{ loc }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="display:flex; gap:.5rem;">
+      <button type="submit" class="btn btn-primary" style="padding:0 1rem;min-height:2.25rem;"><i class="fa fa-search"></i> Filtrar</button>
+      <a href="{% url 'ninja_nao_cadastrados' %}" class="btn btn-light" style="padding:0 1rem;min-height:2.25rem;"><i class="fa fa-xmark"></i> Limpar</a>
+    </div>
+  </form>
+
+  <div class="njnc-card">
+    <div class="njnc-card-head">
+      <span class="njnc-card-title"><i class="fa fa-triangle-exclamation" style="color:var(--warning);margin-right:.4rem;"></i>Dispositivos sem cadastro no estoque</span>
+      <span class="njnc-count">{{ total_registros }} encontrado(s)</span>
+    </div>
+    <div class="njnc-wrap">
+      <table class="njnc-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Dispositivo</th>
+            <th>Número de série</th>
+            <th>Modelo</th>
+            <th>Local</th>
+            <th>Usuário logado</th>
+            <th>Último contato</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for dev in dispositivos %}
+          <tr>
+            <td style="width:24px;">{% if dev.is_online %}<span class="njnc-dot-on" title="Online"></span>{% else %}<span class="njnc-dot-off" title="Offline"></span>{% endif %}</td>
+            <td style="font-weight:700;">{{ dev.display_name }}</td>
+            <td><span class="njnc-serie">{{ dev.serial_number }}</span></td>
+            <td style="color:var(--text-tertiary);">{{ dev.model_name|default:"—" }}</td>
+            <td>{{ dev.local|default:"—" }}</td>
+            <td style="color:var(--text-secondary);">{{ dev.last_user|default:"—" }}</td>
+            <td style="color:var(--text-tertiary);font-size:.79rem;">{% if dev.last_contact %}{{ dev.last_contact|date:"d/m/Y H:i" }}{% else %}—{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="7">
+              <div class="njnc-empty">
+                <i class="fa fa-circle-check"></i>
+                {% if f_q or f_local %}Nenhum dispositivo para os filtros aplicados.{% else %}Todos os dispositivos importados já estão cadastrados no estoque. 🎉{% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% include 'front/ninja/_njd_pagination.html' %}
+  </div>
+
+</div>
+{% endblock %}

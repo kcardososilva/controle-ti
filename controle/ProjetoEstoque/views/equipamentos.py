@@ -594,19 +594,11 @@ def item_monitoracao(request, pk: int):
     agora  = timezone.now()
     inicio = agora - timedelta(days=dias) if dias > 0 else None
 
-    # ── Descobrir prtg_objid via layout das plantas ────────────────────────
-    prtg_objid = None
-    for planta in PlantaProjeto.objects.all():
-        for el in planta.layout.get('elements', []):
-            if el.get('item_id') == item.pk and el.get('prtg_objid'):
-                try:
-                    prtg_objid = int(el['prtg_objid'])
-                except (ValueError, TypeError):
-                    pass
-                if prtg_objid:
-                    break
-        if prtg_objid:
-            break
+    # ── Descobrir prtg_objid via layout das plantas (ou histórico) ─────────
+    from services.prtg_monitor_service import (
+        prtg_objid_do_item, registrar_evento, periodos_e_totais, _quando_transicao,
+    )
+    prtg_objid = prtg_objid_do_item(item.pk)
 
     if not prtg_objid:
         return JsonResponse({
@@ -629,16 +621,16 @@ def item_monitoracao(request, pk: int):
         dev = get_devices_map().get(prtg_objid)
         if dev:
             prtg_status_atual = dev['status_slug']
-            ultimo_prtg = (
-                ItemPRTGHistorico.objects.filter(item=item).order_by('-registrado_em').first()
+            # Grava o evento se o status mudou (fallback ao coletor agendado),
+            # datando pelo momento real da transição reportado pelo PRTG.
+            registrar_evento(
+                prtg_objid, prtg_status_atual,
+                quando=_quando_transicao(dev, agora),
+                device_nome=dev.get('name', ''),
+                device_host=dev.get('host', ''),
+                device_grupo=dev.get('group', ''),
+                item_id=item.pk,
             )
-            if ultimo_prtg is None or ultimo_prtg.status_novo != prtg_status_atual:
-                ItemPRTGHistorico.objects.create(
-                    item=item,
-                    prtg_objid=prtg_objid,
-                    status_anterior=ultimo_prtg.status_novo if ultimo_prtg else '',
-                    status_novo=prtg_status_atual,
-                )
             prtg_info = {
                 'objid':       prtg_objid,
                 'nome':        dev['name'],
@@ -647,61 +639,20 @@ def item_monitoracao(request, pk: int):
                 'statustext':  dev['statustext'],
                 'css_color':   dev['css_color'],
                 'ping_status': dev.get('ping_status'),
+                'uptime_pct':  dev.get('uptime_pct'),
             }
     except Exception:
         pass  # PRTG indisponível — mantém histórico já gravado
 
-    # ── Construir períodos contínuos ───────────────────────────────────────
-    prtg_qs = ItemPRTGHistorico.objects.filter(item=item)
-
-    if inicio is not None:
-        ult_ant = prtg_qs.filter(registrado_em__lt=inicio).order_by('-registrado_em').first()
-        if ult_ant:
-            entry_status = ult_ant.status_novo
-        else:
-            prim = prtg_qs.order_by('registrado_em').first()
-            entry_status = (prim.status_anterior or prim.status_novo) if prim else (prtg_status_atual or 'unknown')
-        evs  = list(prtg_qs.filter(registrado_em__gte=inicio, registrado_em__lte=agora).order_by('registrado_em'))
-        dt0  = inicio
-    else:
-        prim = prtg_qs.order_by('registrado_em').first()
-        if prim:
-            entry_status = prim.status_anterior or prim.status_novo
-            dt0          = prim.registrado_em
-        else:
-            entry_status = prtg_status_atual or 'unknown'
-            dt0          = agora
-        evs = list(prtg_qs.filter(registrado_em__lte=agora).order_by('registrado_em'))
-
-    periodos: list = []
-    cur_dt, cur_st = dt0, entry_status
-    for ev in evs:
-        fim = ev.registrado_em
-        if fim > cur_dt:
-            dur = (fim - cur_dt).total_seconds() / 86400
-            periodos.append({'status': cur_st,
-                             'inicio': cur_dt.strftime('%d/%m/%Y %H:%M'),
-                             'fim':    fim.strftime('%d/%m/%Y %H:%M'),
-                             'dias':   round(dur, 1), 'pct': 0})
-        cur_dt, cur_st = fim, ev.status_novo
-    if cur_dt < agora:
-        dur = (agora - cur_dt).total_seconds() / 86400
-        periodos.append({'status': cur_st,
-                         'inicio': cur_dt.strftime('%d/%m/%Y %H:%M'),
-                         'fim':    agora.strftime('%d/%m/%Y %H:%M'),
-                         'dias':   round(dur, 1), 'pct': 0})
-
-    total = sum(p['dias'] for p in periodos)
-    if total > 0:
-        for p in periodos:
-            p['pct'] = round(p['dias'] / total * 100, 2)
-
-    totais_dd: dict = defaultdict(float)
+    # ── Construir períodos contínuos (lógica compartilhada com o relatório) ──
+    periodos, totais_dd = periodos_e_totais(prtg_objid, inicio, agora)
     for p in periodos:
-        totais_dd[p['status']] += p['dias']
+        p['inicio'] = p['inicio'].strftime('%d/%m/%Y %H:%M')
+        p['fim']    = p['fim'].strftime('%d/%m/%Y %H:%M')
+        p['dias']   = round(p['dias'], 1)
 
     historico = []
-    for ev in prtg_qs.order_by('-registrado_em')[:100]:
+    for ev in ItemPRTGHistorico.objects.filter(prtg_objid=prtg_objid).order_by('-registrado_em')[:100]:
         historico.append({
             'status_anterior': ev.status_anterior,
             'status_novo':     ev.status_novo,
@@ -719,6 +670,183 @@ def item_monitoracao(request, pk: int):
         'totais':        dict(totais_dd),
         'historico':     historico,
     })
+
+
+# ─────────────────────────────────────────────────────────────
+# Relatório de monitoração (disponibilidade PRTG)
+# ─────────────────────────────────────────────────────────────
+
+_MON_STATUS_LABEL = {
+    "up": "Online", "down": "Offline", "warning": "Instável",
+    "unusual": "Instável", "collecting": "Coletando", "unknown": "Desconhecido",
+    "no_probe": "Sem probe", "paused_by_user": "Pausado", "paused_by_dep": "Pausado (dep.)",
+    "paused_by_sched": "Pausado", "paused_until": "Pausado", "not_licensed": "Sem licença",
+}
+
+
+def _monitoracao_xlsx(linhas, periodo_label):
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    BRAND_DARK, BRAND, SOFT, ZEBRA = "0B3D6E", "0071E3", "E5F0FB", "F4F9FE"
+    INK = "1F2733"
+    hair = Side(style="thin", color="CFE0F2")
+    border = Border(left=hair, right=hair, top=hair, bottom=hair)
+    f_title = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
+    f_sub = Font(name="Calibri", size=10, italic=True, color="5B6B7F")
+    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    f_cell = Font(name="Calibri", size=10, color=INK)
+    fill_title = PatternFill("solid", fgColor=BRAND_DARK)
+    fill_sub = PatternFill("solid", fgColor=SOFT)
+    fill_header = PatternFill("solid", fgColor=BRAND)
+    fill_zebra = PatternFill("solid", fgColor=ZEBRA)
+    a_center = Alignment(horizontal="center", vertical="center")
+    a_left = Alignment(horizontal="left", vertical="center")
+    a_left_ind = Alignment(horizontal="left", vertical="center", indent=1)
+    dt_fmt = "DD/MM/YYYY HH:MM"
+
+    STATUS_FILL = {
+        "up": ("E6F4EA", "1E8E3E"), "down": ("FCE8E6", "D93025"),
+        "warning": ("FEF1E0", "B35A00"), "unusual": ("FEF1E0", "B35A00"),
+    }
+
+    header = ["#", "Equipamento / Device", "Nº Série / Host", "Grupo / Localidade", "Status Atual",
+              "Disponibilidade %", "Dias Observados", "Tempo Online (dias)",
+              "Tempo Offline (h)", "Instável (dias)", "Quedas",
+              "Monitorado Desde", "Último Evento"]
+    ncols = len(header)
+    center_cols = {1, 5, 6, 7, 8, 9, 10, 11, 12, 13}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Monitoração PRTG"
+    ws.sheet_view.showGridLines = False
+
+    last = get_column_letter(ncols)
+    ws.merge_cells(f"A1:{last}1")
+    c = ws["A1"]; c.value = "RELATÓRIO DE MONITORAÇÃO — PRTG"; c.font = f_title; c.fill = fill_title; c.alignment = a_left_ind
+    ws.row_dimensions[1].height = 34
+    gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")
+    ws.merge_cells(f"A2:{last}2")
+    c2 = ws["A2"]
+    c2.value = f"Santa Colomba Agropecuária  ·  {periodo_label}  ·  {len(linhas)} equipamento(s)  ·  gerado em {gerado}"
+    c2.font = f_sub; c2.fill = fill_sub; c2.alignment = a_left_ind
+    ws.row_dimensions[2].height = 18
+
+    HEADER_ROW = 3
+    for ci, h in enumerate(header, 1):
+        cc = ws.cell(row=HEADER_ROW, column=ci, value=h)
+        cc.fill = fill_header; cc.font = f_header; cc.border = border
+        cc.alignment = a_center if ci in center_cols else a_left
+    ws.row_dimensions[HEADER_ROW].height = 26
+
+    row = HEADER_ROW + 1
+    for i, r in enumerate(linhas, start=1):
+        ult = r["ultimo_evento"]
+        if ult is not None:
+            ult = timezone.localtime(ult).replace(tzinfo=None)
+        desde = r["monitorado_desde"]
+        if desde is not None:
+            desde = timezone.localtime(desde).replace(tzinfo=None)
+        status_label = _MON_STATUS_LABEL.get(r["status_atual"], r["status_atual"] or "—")
+        valores = [i, r["titulo"], r["subtitulo"] or "", r["localidade"] or "", status_label,
+                   r["pct_up"] if r["pct_up"] is not None else "—",
+                   r["dias_observados"], r["dias_up"], r["horas_down"],
+                   r["dias_warning"], r["quedas"], desde, ult]
+        zebra = (i % 2 == 0)
+        for ci, val in enumerate(valores, 1):
+            cell = ws.cell(row=row, column=ci, value=val)
+            cell.border = border
+            cell.font = f_cell
+            cell.alignment = a_center if ci in center_cols else a_left
+            if ci in (12, 13) and val:
+                cell.number_format = dt_fmt
+                cell.alignment = a_center
+            if ci == 6 and isinstance(val, (int, float)):
+                cell.number_format = '0.0"%"'
+            if ci == 5:
+                bg, fg = STATUS_FILL.get(r["status_atual"], ("F0F0F2", "5B6B7F"))
+                cell.fill = PatternFill("solid", fgColor=bg)
+                cell.font = Font(name="Calibri", size=10, bold=True, color=fg)
+                cell.alignment = a_center
+            elif zebra:
+                cell.fill = fill_zebra
+        row += 1
+
+    ws.freeze_panes = f"A{HEADER_ROW + 1}"
+    ws.auto_filter.ref = f"A{HEADER_ROW}:{last}{max(row - 1, HEADER_ROW)}"
+
+    widths = {}
+    for r_ in ws.iter_rows(min_row=HEADER_ROW, values_only=True):
+        for idx, val in enumerate(r_, start=1):
+            widths[idx] = max(widths.get(idx, 0), len(str(val)) if val is not None else 0)
+    for idx, w in widths.items():
+        ws.column_dimensions[get_column_letter(idx)].width = min(max(w + 2, 11), 46)
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    now = timezone.localtime().strftime("%Y%m%d-%H%M%S")
+    resp = HttpResponse(
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp["Content-Disposition"] = f'attachment; filename="monitoracao_prtg_{now}.xlsx"'
+    return resp
+
+
+@login_required
+def monitoracao_relatorio(request):
+    """Relatório de disponibilidade (uptime/downtime) dos equipamentos monitorados no PRTG."""
+    from services.prtg_monitor_service import relatorio_monitoracao
+
+    try:
+        dias = int(request.GET.get("periodo", "30"))
+    except (ValueError, TypeError):
+        dias = 30
+    if dias not in (7, 14, 30, 90, 0):
+        dias = 30
+
+    linhas, resumo = relatorio_monitoracao(dias)
+
+    f_status = (request.GET.get("status") or "").strip()  # online | offline | quedas
+    q = (request.GET.get("q") or "").strip()
+    if f_status == "online":
+        linhas = [r for r in linhas if r["online"]]
+    elif f_status == "offline":
+        linhas = [r for r in linhas if r["offline"]]
+    elif f_status == "quedas":
+        linhas = [r for r in linhas if r["quedas"] > 0]
+    if q:
+        ql = q.lower()
+        linhas = [
+            r for r in linhas
+            if ql in (r["titulo"] or "").lower()
+            or ql in (r["subtitulo"] or "").lower()
+            or ql in (r["device_nome"] or "").lower()
+            or ql in (r["device_host"] or "").lower()
+        ]
+
+    for r in linhas:
+        r["status_label"] = _MON_STATUS_LABEL.get(r["status_atual"], r["status_atual"] or "—")
+
+    periodo_label = "Histórico completo" if dias == 0 else f"Últimos {dias} dias"
+
+    if request.GET.get("export") == "xlsx":
+        return _monitoracao_xlsx(linhas, periodo_label)
+
+    context = {
+        "linhas": linhas,
+        "resumo": resumo,
+        "periodo_dias": dias,
+        "periodo_label": periodo_label,
+        "f_status": f_status,
+        "f_q": q,
+        "total_filtrado": len(linhas),
+    }
+    return render(request, "front/equipamentos/monitoracao_relatorio.html", context)
 
 
 @login_required
