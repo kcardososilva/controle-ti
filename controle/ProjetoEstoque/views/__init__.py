@@ -245,6 +245,7 @@ from .quiosque import (
     quiosque_config_editar,
     quiosque_comando_novo,
     quiosque_revogar,
+    quiosque_excluir,
 )
 
 # ── Plantas / Mapa de Infraestrutura ─────────────────────────────────────────

@@ -11,23 +11,25 @@
 {% block extra_css %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-:where(.kq-mapa) { --kq-brand:#4f46e5; }
+:where(.kq-mapa) { --kq-brand:#4f46e5; --kq-h:calc(100vh - 210px); }
 .kq-mapa, .kq-mapa * { box-sizing:border-box; min-width:0; }
-.kq-mapa { display:grid; grid-template-columns:320px 1fr; gap:1rem; }
-@media (max-width:820px){ .kq-mapa{ grid-template-columns:1fr; } }
-.kq-side { display:flex; flex-direction:column; gap:.7rem; }
-.kq-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:.5rem; }
-.kq-stat { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-lg); padding:.6rem .7rem; text-align:center; }
+.kq-mapa { display:grid; grid-template-columns:288px 1fr; gap:1rem; align-items:stretch; }
+@media (max-width:820px){ .kq-mapa{ grid-template-columns:1fr; } :where(.kq-mapa){ --kq-h:62vh; } }
+.kq-side { display:flex; flex-direction:column; gap:.7rem; min-height:0; max-height:var(--kq-h); }
+.kq-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:.45rem; flex:0 0 auto; }
+.kq-stat { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-lg); padding:.55rem .4rem; text-align:center; }
 .kq-stat .v { font-size:1.3rem; font-weight:800; letter-spacing:-.03em; color:var(--k,var(--text-primary)); line-height:1; }
-.kq-stat .l { font-size:.64rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); margin-top:.35rem; }
-.kq-list { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden; max-height:560px; overflow-y:auto; }
+.kq-stat .l { font-size:.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-tertiary); margin-top:.3rem; }
+.kq-list-head { font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); padding:.1rem .15rem; flex:0 0 auto; }
+.kq-list { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden auto; flex:1 1 auto; min-height:0; }
 .kq-item { display:flex; align-items:center; gap:.6rem; padding:.6rem .85rem; border-bottom:1px solid var(--separator-hairline); cursor:pointer; text-decoration:none; color:inherit; }
 .kq-item:last-child { border-bottom:0; }
 .kq-item:hover { background:var(--bg-hover); }
+.kq-item.sel { background:var(--kq-brand-soft,color-mix(in srgb,#4f46e5 9%,transparent)); box-shadow:inset 3px 0 0 var(--kq-brand); }
 .kq-dot { width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
-.kq-item .nm { font-weight:700; font-size:.85rem; color:var(--text-primary); }
-.kq-item .sb { font-size:.72rem; color:var(--text-tertiary); }
-.kq-map { height:580px; width:100%; border-radius:var(--radius-xl); border:1px solid var(--separator-hairline); z-index:0; }
+.kq-item .nm { font-weight:700; font-size:.85rem; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kq-item .sb { font-size:.72rem; color:var(--text-tertiary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kq-map { height:var(--kq-h); min-height:420px; width:100%; border-radius:var(--radius-xl); border:1px solid var(--separator-hairline); box-shadow:var(--shadow-xs); z-index:0; }
 .kq-empty { display:grid; place-items:center; gap:.5rem; padding:3rem 1rem; text-align:center; color:var(--text-tertiary); font-weight:600; }
 .kq-empty i { font-size:1.6rem; color:var(--kq-brand); }
 </style>
@@ -43,11 +45,12 @@
       <div class="kq-stat" style="--k:#b35a00"><div class="v">{{ sem_local }}</div><div class="l">Sem GPS</div></div>
     </div>
 
+    <div class="kq-list-head">Dispositivos no mapa</div>
     <div class="kq-list" id="kqList">
       {% for p in pontos %}
       <a class="kq-item" href="{{ p.url }}" data-pk="{{ p.pk }}">
         <span class="kq-dot" style="background:{% if p.online %}#1e8e3e{% else %}#8e8e93{% endif %}"></span>
-        <span>
+        <span style="min-width:0;">
           <div class="nm">{{ p.nome }}</div>
           <div class="sb">{{ p.modelo }}{% if p.bateria is not None %} · {{ p.bateria }}%{% endif %} · {{ p.checkin }}</div>
         </span>
@@ -94,11 +97,21 @@
   else if (bounds.length === 1) { map.setView(bounds[0], 15); }
   else { map.setView([-16.6869, -49.2643], 4); }
 
-  // Clicar na lista foca o marcador
-  document.querySelectorAll('#kqList .kq-item').forEach(function(el){
+  // Garante o redimensionamento correto após o layout em grade assentar
+  setTimeout(function(){ map.invalidateSize(); }, 120);
+
+  // Clicar na lista foca o marcador e destaca o item
+  var itens = document.querySelectorAll('#kqList .kq-item');
+  itens.forEach(function(el){
     el.addEventListener('click', function(ev){
       var m = markers[el.getAttribute('data-pk')];
-      if (m) { ev.preventDefault(); map.setView(m.getLatLng(), 16); m.openPopup(); }
+      if (m) {
+        ev.preventDefault();
+        itens.forEach(function(o){ o.classList.remove('sel'); });
+        el.classList.add('sel');
+        map.setView(m.getLatLng(), 16);
+        m.openPopup();
+      }
     });
   });
 })();

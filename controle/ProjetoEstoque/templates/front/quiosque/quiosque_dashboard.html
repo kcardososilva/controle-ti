@@ -134,7 +134,7 @@
             <th>Rede</th>
             <th>Localização</th>
             <th>Último check-in</th>
-            <th>Equipamento</th>
+            <th>Nº de série</th>
             <th></th>
           </tr>
         </thead>
@@ -142,8 +142,9 @@
           {% for d in devices %}
           <tr>
             <td>
-              {% if d.online %}<span class="kq-badge on"><i class="fa fa-circle-check"></i> Online</span>
-              {% else %}<span class="kq-badge off"><i class="fa fa-circle"></i> Offline</span>{% endif %}
+              <span class="kq-badge {% if d.online %}on{% else %}off{% endif %}" data-status data-last="{% if d.ultimo_checkin %}{{ d.ultimo_checkin|date:'U' }}000{% else %}0{% endif %}">
+                {% if d.online %}<i class="fa fa-circle-check"></i> Online{% else %}<i class="fa fa-circle"></i> Offline{% endif %}
+              </span>
             </td>
             <td>
               <a href="{% url 'quiosque_detalhe' d.pk %}" class="kq-link">{{ d.apelido|default:d.modelo|default:"Quiosque" }}</a>
@@ -165,7 +166,15 @@
               {% else %}<span style="color:var(--text-quaternary);">— sem localização —</span>{% endif %}
             </td>
             <td>{% if d.ultimo_checkin %}<span title="{{ d.ultimo_checkin|date:'d/m/Y H:i' }}">{{ d.ultimo_checkin|naturaltime }}</span>{% else %}<span style="color:var(--text-quaternary);">nunca</span>{% endif %}</td>
-            <td>{% if d.item %}<a href="{% url 'equipamento_detalhe' d.item.pk %}" class="kq-link" style="font-weight:600;">{{ d.item.nome }}</a>{% else %}<span style="color:var(--text-quaternary);">—</span>{% endif %}</td>
+            <td>
+              {% if d.serial %}
+                {% if d.equip_serial %}
+                  <a href="{% url 'equipamento_detalhe' d.equip_serial.pk %}" class="kq-link" style="font-weight:600;color:var(--kq-brand);" title="Abrir {{ d.equip_serial.nome }}"><i class="fa fa-barcode"></i> {{ d.serial }}</a>
+                {% else %}
+                  <span class="kq-sub" title="Sem equipamento com este número de série cadastrado">{{ d.serial }}</span>
+                {% endif %}
+              {% else %}<span style="color:var(--text-quaternary);">—</span>{% endif %}
+            </td>
             <td><a href="{% url 'quiosque_detalhe' d.pk %}" class="btn btn-sm btn-light"><i class="fa fa-chevron-right"></i></a></td>
           </tr>
           {% empty %}
@@ -185,4 +194,30 @@
   </div>
 
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Status ao vivo: um aparelho que parou de enviar check-in vira "Offline" sozinho,
+// sem precisar recarregar a página (mesma regra do servidor: OFFLINE_APOS segundos).
+(function(){
+  var LIMITE = {{ offline_apos|default:900 }} * 1000;
+  function atualizar(){
+    var agora = Date.now();
+    document.querySelectorAll('[data-status]').forEach(function(el){
+      var last = parseInt(el.getAttribute('data-last'), 10) || 0;
+      var online = last > 0 && (agora - last) <= LIMITE;
+      var deveria = online ? 'on' : 'off';
+      if (el.classList.contains(deveria)) return;
+      el.classList.toggle('on', online);
+      el.classList.toggle('off', !online);
+      el.innerHTML = online
+        ? '<i class="fa fa-circle-check"></i> Online'
+        : '<i class="fa fa-circle"></i> Offline';
+    });
+  }
+  atualizar();
+  setInterval(atualizar, 30000);
+})();
+</script>
 {% endblock %}

@@ -212,6 +212,7 @@ urlpatterns = [
     path("quiosque/<int:pk>/config/",  views.quiosque_config_editar, name="quiosque_config_editar"),
     path("quiosque/<int:pk>/comando/", views.quiosque_comando_novo,  name="quiosque_comando_novo"),
     path("quiosque/<int:pk>/revogar/", views.quiosque_revogar,       name="quiosque_revogar"),
+    path("quiosque/<int:pk>/excluir/", views.quiosque_excluir,       name="quiosque_excluir"),
 
     # ── Inteligência de Sistema ─────────────────────────────────────────────
     path("inteligencia/", views.sistema_inteligencia_dashboard, name="sistema_inteligencia_dashboard"),

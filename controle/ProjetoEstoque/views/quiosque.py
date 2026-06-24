@@ -118,6 +118,23 @@ def kiosk_comando_ack(request, pk: int):
 # Dashboard interno (TI)
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _resolver_itens_por_serial(devices):
+    """Associa a cada device o Item do estoque cujo número de série bate com o
+    serial do aparelho. Anexa `d.equip_serial` (Item ou None) em cada device.
+    Uma única query para todos os seriais."""
+    from ProjetoEstoque.models import Item
+
+    seriais = {(d.serial or "").strip() for d in devices if (d.serial or "").strip()}
+    mapa = {}
+    if seriais:
+        for it in Item.objects.filter(numero_serie__in=seriais).only("pk", "nome", "numero_serie"):
+            mapa.setdefault((it.numero_serie or "").strip(), it)
+    for d in devices:
+        s = (d.serial or "").strip()
+        d.equip_serial = mapa.get(s) if s else None
+    return mapa
+
+
 @login_required
 def quiosque_dashboard(request):
     from ProjetoEstoque.models import KioskDevice, KioskMatricula
@@ -150,6 +167,7 @@ def quiosque_dashboard(request):
         ]
 
     devices.sort(key=lambda d: (d.online is False, (d.apelido or d.modelo or "").lower()))
+    _resolver_itens_por_serial(devices)
 
     return render(request, "front/quiosque/quiosque_dashboard.html", {
         "devices": devices,
@@ -157,6 +175,7 @@ def quiosque_dashboard(request):
         "f_status": f_status,
         "f_q": q,
         "total_filtrado": len(devices),
+        "offline_apos": KioskDevice.OFFLINE_APOS,
     })
 
 
@@ -165,6 +184,10 @@ def quiosque_detalhe(request, pk: int):
     from ProjetoEstoque.models import KioskDevice
 
     device = get_object_or_404(KioskDevice.objects.select_related("item"), pk=pk)
+
+    # Equipamento do estoque resolvido pelo número de série do aparelho.
+    _resolver_itens_por_serial([device])
+
     checkins = device.checkins.all()
     paginator = Paginator(checkins, 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
@@ -198,6 +221,7 @@ def quiosque_detalhe(request, pk: int):
         "total_checkins": paginator.count,
         "comandos": comandos,
         "mapa": mapa,
+        "offline_apos": KioskDevice.OFFLINE_APOS,
     })
 
 
@@ -327,5 +351,24 @@ def quiosque_revogar(request, pk: int):
         device.ativo = False
         device.save(update_fields=["ativo", "atualizado_em"])
         messages.success(request, f"Acesso do dispositivo “{device}” revogado.")
+        return redirect("quiosque_dashboard")
+    return redirect("quiosque_detalhe", pk=device.pk)
+
+
+@login_required
+def quiosque_excluir(request, pk: int):
+    """Exclui DEFINITIVAMENTE o dispositivo (e seu histórico). Exige a senha do
+    usuário logado como 2ª etapa de segurança."""
+    from ProjetoEstoque.models import KioskDevice
+
+    device = get_object_or_404(KioskDevice, pk=pk)
+    if request.method == "POST":
+        senha = request.POST.get("senha") or ""
+        if not request.user.check_password(senha):
+            messages.error(request, "Senha incorreta — o dispositivo NÃO foi excluído.")
+            return redirect("quiosque_detalhe", pk=device.pk)
+        nome = str(device)
+        device.delete()  # cascata: apaga check-ins e comandos; matrículas viram SET_NULL
+        messages.success(request, f"Dispositivo “{nome}” excluído definitivamente.")
         return redirect("quiosque_dashboard")
     return redirect("quiosque_detalhe", pk=device.pk)
