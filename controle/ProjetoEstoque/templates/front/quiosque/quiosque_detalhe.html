@@ -11,8 +11,10 @@
 {% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :where(.kq-det) { --kq-brand:#4f46e5; }
+.kq-map { height:340px; width:100%; border-radius:0 0 var(--radius-xl) var(--radius-xl); z-index:0; }
 .kq-det, .kq-det * { box-sizing:border-box; min-width:0; }
 .kq-det { display:grid; gap:1rem; }
 .kq-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:.8rem; }
@@ -61,6 +63,17 @@
     <div class="kq-box"><div class="l">RAM</div><div class="v">{% if device.ram_mb %}{{ device.ram_mb }} MB{% else %}—{% endif %}</div></div>
     <div class="kq-box"><div class="l">Equipamento vinculado</div><div class="v">{% if device.item %}<a href="{% url 'equipamento_detalhe' device.item.pk %}" style="color:var(--kq-brand);text-decoration:none;">{{ device.item.nome }}</a>{% else %}—{% endif %}</div></div>
   </div>
+
+  <!-- Mapa de localização -->
+  {% if mapa %}
+  <div class="kq-card">
+    <div class="kq-card-head">
+      <span class="kq-card-title"><i class="fa fa-location-dot" style="color:var(--kq-brand);margin-right:.4rem;"></i>Localização atual</span>
+      <a href="{% url 'quiosque_mapa' %}" class="kq-pill" style="text-decoration:none;color:var(--kq-brand);">Ver mapa geral</a>
+    </div>
+    <div id="kqMap" class="kq-map"></div>
+  </div>
+  {% endif %}
 
   <!-- Configuração atual + comandos -->
   <div class="kq-card">
@@ -125,7 +138,7 @@
   <div class="kq-card">
     <div class="kq-card-head">
       <span class="kq-card-title"><i class="fa fa-clock-rotate-left" style="color:var(--kq-brand);margin-right:.4rem;"></i>Histórico de check-ins</span>
-      <span class="kq-pill">{{ total_checkins }} registro(s)</span>
+      <span class="kq-pill">{{ total_checkins }} registro(s) · últimos 5 dias</span>
     </div>
     <div style="width:100%;overflow-x:auto;">
       <table class="kq-table">
@@ -133,7 +146,7 @@
         <tbody>
           {% for c in checkins %}
           <tr>
-            <td><span title="{{ c.registrado_em|date:'d/m/Y H:i:s' }}">{{ c.registrado_em|date:"d/m/Y H:i" }}</span></td>
+            <td><span title="Coletado: {{ c.quando|date:'d/m/Y H:i:s' }} · Recebido: {{ c.registrado_em|date:'d/m/Y H:i:s' }}">{{ c.quando|date:"d/m/Y H:i" }}</span></td>
             <td>{% if c.bateria is not None %}{{ c.bateria }}%{% if c.carregando %} <i class="fa fa-bolt" style="color:#1e8e3e;"></i>{% endif %}{% else %}—{% endif %}</td>
             <td>{{ c.rede|default:"—" }}</td>
             <td>{% if c.online %}<span style="color:#1e8e3e;">sim</span>{% else %}<span style="color:var(--text-tertiary);">não</span>{% endif %}</td>
@@ -155,4 +168,42 @@
   </div>
 
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if mapa %}
+{{ mapa|json_script:"__kqmap" }}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  var data = JSON.parse(document.getElementById('__kqmap').textContent);
+  if (!data || data.lat == null || data.lon == null) return;
+  var map = L.map('kqMap', { scrollWheelZoom:false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+  var cor = data.online ? '#1e8e3e' : '#8e8e93';
+  var trilha = data.trilha || [];
+  var pts = trilha.map(function(p){ return [p.lat, p.lon]; });
+  if (pts.length > 1) {
+    L.polyline(pts, { color: cor, weight: 3, opacity:.55, dashArray:'5,6' }).addTo(map);
+  }
+  trilha.forEach(function(p, i){
+    if (i === 0) return; // o ponto atual é destacado à parte
+    L.circleMarker([p.lat, p.lon], { radius:4, color:cor, weight:1, fillColor:cor, fillOpacity:.45 })
+      .addTo(map).bindPopup(p.quando + (p.bateria != null ? ' &middot; ' + p.bateria + '%' : ''));
+  });
+  if (data.precisao) {
+    L.circle([data.lat, data.lon], { radius:data.precisao, color:cor, weight:1, fillColor:cor, fillOpacity:.08 }).addTo(map);
+  }
+  L.circleMarker([data.lat, data.lon], { radius:9, color:'#fff', weight:2, fillColor:cor, fillOpacity:1 })
+    .addTo(map).bindPopup('<b>'+ data.nome +'</b><br>'+ (data.online ? 'Online' : 'Offline')).openPopup();
+  if (pts.length > 1) {
+    map.fitBounds(L.latLngBounds(pts.concat([[data.lat, data.lon]])).pad(0.25));
+  } else {
+    map.setView([data.lat, data.lon], 16);
+  }
+})();
+</script>
+{% endif %}
 {% endblock %}

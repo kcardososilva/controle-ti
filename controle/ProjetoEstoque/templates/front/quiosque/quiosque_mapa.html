@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+
+{% block title %}Mapa — Quiosque{% endblock %}
+{% block page_title %}Mapa dos dispositivos{% endblock %}
+{% block page_subtitle %}Localização atual dos celulares corporativos em modo quiosque{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'quiosque_dashboard' %}" class="btn btn-sm btn-light"><i class="fa fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:where(.kq-mapa) { --kq-brand:#4f46e5; }
+.kq-mapa, .kq-mapa * { box-sizing:border-box; min-width:0; }
+.kq-mapa { display:grid; grid-template-columns:320px 1fr; gap:1rem; }
+@media (max-width:820px){ .kq-mapa{ grid-template-columns:1fr; } }
+.kq-side { display:flex; flex-direction:column; gap:.7rem; }
+.kq-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:.5rem; }
+.kq-stat { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-lg); padding:.6rem .7rem; text-align:center; }
+.kq-stat .v { font-size:1.3rem; font-weight:800; letter-spacing:-.03em; color:var(--k,var(--text-primary)); line-height:1; }
+.kq-stat .l { font-size:.64rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); margin-top:.35rem; }
+.kq-list { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden; max-height:560px; overflow-y:auto; }
+.kq-item { display:flex; align-items:center; gap:.6rem; padding:.6rem .85rem; border-bottom:1px solid var(--separator-hairline); cursor:pointer; text-decoration:none; color:inherit; }
+.kq-item:last-child { border-bottom:0; }
+.kq-item:hover { background:var(--bg-hover); }
+.kq-dot { width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
+.kq-item .nm { font-weight:700; font-size:.85rem; color:var(--text-primary); }
+.kq-item .sb { font-size:.72rem; color:var(--text-tertiary); }
+.kq-map { height:580px; width:100%; border-radius:var(--radius-xl); border:1px solid var(--separator-hairline); z-index:0; }
+.kq-empty { display:grid; place-items:center; gap:.5rem; padding:3rem 1rem; text-align:center; color:var(--text-tertiary); font-weight:600; }
+.kq-empty i { font-size:1.6rem; color:var(--kq-brand); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kq-mapa">
+
+  <div class="kq-side">
+    <div class="kq-stats">
+      <div class="kq-stat" style="--k:var(--kq-brand)"><div class="v">{{ total }}</div><div class="l">No mapa</div></div>
+      <div class="kq-stat" style="--k:#1e8e3e"><div class="v">{{ online }}</div><div class="l">Online</div></div>
+      <div class="kq-stat" style="--k:#b35a00"><div class="v">{{ sem_local }}</div><div class="l">Sem GPS</div></div>
+    </div>
+
+    <div class="kq-list" id="kqList">
+      {% for p in pontos %}
+      <a class="kq-item" href="{{ p.url }}" data-pk="{{ p.pk }}">
+        <span class="kq-dot" style="background:{% if p.online %}#1e8e3e{% else %}#8e8e93{% endif %}"></span>
+        <span>
+          <div class="nm">{{ p.nome }}</div>
+          <div class="sb">{{ p.modelo }}{% if p.bateria is not None %} · {{ p.bateria }}%{% endif %} · {{ p.checkin }}</div>
+        </span>
+      </a>
+      {% empty %}
+      <div class="kq-empty"><i class="fa fa-location-dot"></i> Nenhum dispositivo com localização ainda.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div id="kqMap" class="kq-map"></div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ pontos|json_script:"__kqpontos" }}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  var pontos = JSON.parse(document.getElementById('__kqpontos').textContent) || [];
+  var map = L.map('kqMap');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+
+  var markers = {};
+  var bounds = [];
+  pontos.forEach(function(p){
+    if (p.lat == null || p.lon == null) return;
+    var cor = p.online ? '#1e8e3e' : '#8e8e93';
+    var m = L.circleMarker([p.lat, p.lon], { radius:9, color:'#fff', weight:2, fillColor:cor, fillOpacity:1 })
+      .addTo(map)
+      .bindPopup('<b>'+ p.nome +'</b><br>'+ p.modelo +'<br>'+
+                 (p.online ? 'Online' : 'Offline') +
+                 (p.bateria != null ? ' &middot; ' + p.bateria + '%' : '') +
+                 '<br><small>'+ p.checkin +'</small>' +
+                 '<br><a href="'+ p.url +'">Abrir dispositivo &rsaquo;</a>');
+    markers[p.pk] = m;
+    bounds.push([p.lat, p.lon]);
+  });
+
+  if (bounds.length > 1) { map.fitBounds(L.latLngBounds(bounds).pad(0.2)); }
+  else if (bounds.length === 1) { map.setView(bounds[0], 15); }
+  else { map.setView([-16.6869, -49.2643], 4); }
+
+  // Clicar na lista foca o marcador
+  document.querySelectorAll('#kqList .kq-item').forEach(function(el){
+    el.addEventListener('click', function(ev){
+      var m = markers[el.getAttribute('data-pk')];
+      if (m) { ev.preventDefault(); map.setView(m.getLatLng(), 16); m.openPopup(); }
+    });
+  });
+})();
+</script>
+{% endblock %}

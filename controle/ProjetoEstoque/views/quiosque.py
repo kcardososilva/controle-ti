@@ -20,6 +20,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
@@ -70,6 +71,8 @@ def kiosk_enroll(request):
     dados = _json_body(request)
     try:
         res = qs.enroll(codigo_matricula=dados.get("codigo_matricula", ""), dados=dados)
+    except qs.EnrollConflict as exc:
+        return JsonResponse({"ok": False, "erro": str(exc)}, status=409)
     except ValueError as exc:
         return JsonResponse({"ok": False, "erro": str(exc)}, status=400)
     except Exception:  # noqa: BLE001
@@ -167,12 +170,34 @@ def quiosque_detalhe(request, pk: int):
     page_obj = paginator.get_page(request.GET.get("page", 1))
     comandos = device.comandos.all()[:20]
 
+    # Trilha de localização (check-ins recentes com GPS) para o mapa do detalhe.
+    trilha = [
+        {
+            "lat": c.latitude,
+            "lon": c.longitude,
+            "quando": timezone.localtime(c.quando).strftime("%d/%m/%Y %H:%M"),
+            "bateria": c.bateria,
+        }
+        for c in device.checkins.filter(latitude__isnull=False, longitude__isnull=False)[:60]
+    ]
+    mapa = None
+    if device.tem_localizacao:
+        mapa = {
+            "nome": device.apelido or device.modelo or "Quiosque",
+            "lat": device.ultima_latitude,
+            "lon": device.ultima_longitude,
+            "precisao": device.ultima_precisao_m,
+            "online": device.online,
+            "trilha": trilha,
+        }
+
     return render(request, "front/quiosque/quiosque_detalhe.html", {
         "device": device,
         "page_obj": page_obj,
         "checkins": page_obj.object_list,
         "total_checkins": paginator.count,
         "comandos": comandos,
+        "mapa": mapa,
     })
 
 
@@ -198,6 +223,49 @@ def quiosque_matriculas(request):
 
 
 @login_required
+def quiosque_matricula_excluir(request, pk: int):
+    from ProjetoEstoque.models import KioskMatricula
+
+    matricula = get_object_or_404(KioskMatricula, pk=pk)
+    if request.method == "POST":
+        codigo = matricula.codigo
+        # Excluir o código não afeta o dispositivo já matriculado (FK SET_NULL).
+        matricula.delete()
+        messages.success(request, f"Matrícula {codigo} excluída.")
+    return redirect("quiosque_matriculas")
+
+
+@login_required
+def quiosque_mapa(request):
+    """Mapa com a localização atual de todos os dispositivos ativos."""
+    from ProjetoEstoque.models import KioskDevice
+
+    ativos = list(KioskDevice.objects.filter(ativo=True))
+    com_local = [d for d in ativos if d.tem_localizacao]
+    pontos = [
+        {
+            "pk": d.pk,
+            "nome": d.apelido or d.modelo or "Quiosque",
+            "modelo": f"{d.fabricante} {d.modelo}".strip(),
+            "lat": d.ultima_latitude,
+            "lon": d.ultima_longitude,
+            "online": d.online,
+            "bateria": d.ultima_bateria,
+            "rede": d.ultima_rede,
+            "checkin": timezone.localtime(d.ultimo_checkin).strftime("%d/%m/%Y %H:%M") if d.ultimo_checkin else "—",
+            "url": reverse("quiosque_detalhe", args=[d.pk]),
+        }
+        for d in com_local
+    ]
+    return render(request, "front/quiosque/quiosque_mapa.html", {
+        "pontos": pontos,
+        "total": len(pontos),
+        "online": sum(1 for d in com_local if d.online),
+        "sem_local": len(ativos) - len(com_local),
+    })
+
+
+@login_required
 def quiosque_config_editar(request, pk: int):
     from ProjetoEstoque.models import KioskDevice
 
@@ -208,7 +276,8 @@ def quiosque_config_editar(request, pk: int):
         device.wifi_only = request.POST.get("wifi_only") == "on"
         device.mensagem_quiosque = (request.POST.get("mensagem_quiosque") or "").strip()[:200]
         try:
-            device.intervalo_checkin_seg = max(60, int(request.POST.get("intervalo_checkin_seg") or 300))
+            # Mínimo 10s (tempo real, conforme contrato do app); app limita a [10, 60].
+            device.intervalo_checkin_seg = max(10, int(request.POST.get("intervalo_checkin_seg") or 300))
         except (TypeError, ValueError):
             device.intervalo_checkin_seg = 300
         # Apps permitidos: uma linha/pacote ou separados por vírgula

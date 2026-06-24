@@ -14,10 +14,24 @@ Segurança:
 import hashlib
 import secrets
 import string
+from datetime import datetime, timedelta
 
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.contrib.auth.hashers import make_password
 from django.core.exceptions import ValidationError
+from django.db.models.functions import Coalesce
+
+
+# Retenção da telemetria (check-ins) por aparelho — janela móvel em dias.
+# Após este prazo os dados antigos são sobrepostos pelos novos. A limpeza só roda
+# QUANDO o aparelho faz check-in; logo, um aparelho que parou de enviar conserva
+# todo o seu histórico (fica guardado como histórico do dispositivo).
+RETENCAO_DIAS = 5
+
+
+class EnrollConflict(Exception):
+    """Código de matrícula já vinculado a OUTRO aparelho (resposta HTTP 409)."""
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -83,8 +97,15 @@ def config_dict(device) -> dict:
 
 def enroll(*, codigo_matricula: str, dados: dict) -> dict:
     """
-    Matricula um novo device a partir de um código válido. Retorna um dict com o
-    device, o TOKEN PURO (única vez) e a config. Lança ValueError em erro de regra.
+    Matricula um aparelho a partir de um código de matrícula. A CHAVE do vínculo é o
+    `android_id` (estável por aparelho). Retorna {device, token (puro, 1x), config}.
+
+    Regras (contrato do app):
+      1. Código livre → vincula ao android_id; reaproveita/cria o registro do aparelho.
+      2. Código já usado pelo MESMO android_id → reuso, devolve o MESMO device_uuid.
+      3. Código usado por android_id DIFERENTE → EnrollConflict (HTTP 409).
+
+    Lança ValueError em erro de regra simples (400) e EnrollConflict em vínculo (409).
     """
     from ProjetoEstoque.models import KioskMatricula, KioskDevice
 
@@ -92,43 +113,60 @@ def enroll(*, codigo_matricula: str, dados: dict) -> dict:
     if not codigo:
         raise ValueError("Código de matrícula é obrigatório.")
 
-    matricula = KioskMatricula.objects.filter(codigo=codigo).first()
-    if matricula is None or not matricula.esta_valida():
-        raise ValueError("Código de matrícula inválido ou expirado.")
+    matricula = KioskMatricula.objects.select_related("device").filter(codigo=codigo).first()
+    if matricula is None:
+        raise ValueError("Código de matrícula inválido.")
 
     serial = (dados.get("serial") or "").strip()
     android_id = (dados.get("android_id") or "").strip()
 
-    # Reaproveita o device se o mesmo aparelho rematricular (mesmo serial/android_id)
-    device = None
-    if serial:
-        device = KioskDevice.objects.filter(serial=serial).first()
-    if device is None and android_id:
-        device = KioskDevice.objects.filter(android_id=android_id).first()
-    if device is None:
-        device = KioskDevice()
+    if matricula.usado:
+        vinc = matricula.device
+        if vinc is None:
+            raise ValueError("Código de matrícula já utilizado.")
+        # Mesmo aparelho rematriculando → reuso (preserva device_uuid e histórico)
+        if android_id and vinc.android_id and vinc.android_id == android_id:
+            device = vinc
+        elif not android_id and serial and vinc.serial and vinc.serial == serial:
+            device = vinc
+        else:
+            raise EnrollConflict("Código já vinculado a outro dispositivo.")
+    else:
+        if not matricula.esta_valida():
+            raise ValueError("Código de matrícula expirado.")
+        # Código livre: reaproveita o registro do MESMO aparelho (preserva histórico)
+        device = None
+        if android_id:
+            device = KioskDevice.objects.filter(android_id=android_id).first()
+        if device is None and serial:
+            device = KioskDevice.objects.filter(serial=serial).first()
+        if device is None:
+            device = KioskDevice()
 
+    # (Re)emite o token e atualiza a identificação do aparelho
     token = gerar_token()
     device.token_hash = hash_token(token)
-    device.serial = serial
-    device.android_id = android_id
-    device.fabricante = (dados.get("fabricante") or "")[:80]
-    device.modelo = (dados.get("modelo") or "")[:120]
-    device.android_versao = str(dados.get("android_versao") or "")[:20]
-    device.app_versao = str(dados.get("app_versao") or "")[:20]
-    try:
-        device.ram_mb = int(dados.get("ram_mb")) if dados.get("ram_mb") is not None else None
-    except (TypeError, ValueError):
-        device.ram_mb = None
+    if serial:
+        device.serial = serial
+    if android_id:
+        device.android_id = android_id
+    device.fabricante = (dados.get("fabricante") or device.fabricante or "")[:80]
+    device.modelo = (dados.get("modelo") or device.modelo or "")[:120]
+    device.android_versao = str(dados.get("android_versao") or device.android_versao or "")[:20]
+    device.app_versao = str(dados.get("app_versao") or device.app_versao or "")[:20]
+    ram = _i(dados.get("ram_mb"))
+    if ram is not None:
+        device.ram_mb = ram
     device.ativo = True
     if not device.apelido:
         device.apelido = device.modelo or "Quiosque"
     device.save()
 
-    matricula.usado = True
-    matricula.usado_em = timezone.now()
-    matricula.device = device
-    matricula.save(update_fields=["usado", "usado_em", "device"])
+    if not matricula.usado or matricula.device_id != device.pk:
+        matricula.usado = True
+        matricula.usado_em = timezone.now()
+        matricula.device = device
+        matricula.save(update_fields=["usado", "usado_em", "device"])
 
     return {"device": device, "token": token, "config": config_dict(device)}
 
@@ -170,10 +208,46 @@ def _i(v):
         return None
 
 
+def _parse_dt(v):
+    """Converte 'coletado_em' (ISO 8601 com fuso) para datetime aware. None se inválido."""
+    if not v:
+        return None
+    dt = v if isinstance(v, datetime) else parse_datetime(str(v))
+    if dt is None:
+        return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone.get_current_timezone())
+    return dt
+
+
+def prune_checkins(device) -> int:
+    """
+    Mantém apenas a janela móvel de RETENCAO_DIAS de telemetria do aparelho.
+
+    Roda no check-in: aparelhos ativos giram uma janela de 5 dias; um aparelho que
+    PAROU de enviar nunca é podado, então conserva todo o histórico já recebido.
+    """
+    from ProjetoEstoque.models import KioskCheckin
+
+    cutoff = timezone.now() - timedelta(days=RETENCAO_DIAS)
+    apagados, _ = (
+        KioskCheckin.objects
+        .filter(device=device)
+        .annotate(ts=Coalesce("coletado_em", "registrado_em"))
+        .filter(ts__lt=cutoff)
+        .delete()
+    )
+    return apagados
+
+
 def registrar_checkin(device, dados: dict) -> dict:
     """
     Grava um KioskCheckin, atualiza o estado mais recente do device e devolve a
-    resposta para o app: config (se versão mudou) e comandos pendentes.
+    resposta para o app: config (se a versão mudou) e comandos pendentes.
+
+    Suporta fila offline: o app pode enviar leituras com `coletado_em` no passado.
+    Cada leitura vira uma linha de histórico; o "estado atual" só é atualizado
+    quando a leitura é a mais recente já vista (não regride com dados antigos).
     """
     from ProjetoEstoque.models import KioskCheckin, KioskComando
 
@@ -184,24 +258,31 @@ def registrar_checkin(device, dados: dict) -> dict:
     rede = (dados.get("rede") or "")[:20]
     online = bool(dados.get("online", True))
     carregando = bool(dados.get("carregando", False))
+    coletado = _parse_dt(dados.get("coletado_em")) or timezone.now()
+    serial = (dados.get("serial") or "").strip()
 
     KioskCheckin.objects.create(
         device=device, latitude=lat, longitude=lon, precisao_m=prec,
         bateria=bat, carregando=carregando, rede=rede, online=online,
+        coletado_em=coletado,
     )
 
-    device.ultima_latitude = lat if lat is not None else device.ultima_latitude
-    device.ultima_longitude = lon if lon is not None else device.ultima_longitude
-    device.ultima_precisao_m = prec if prec is not None else device.ultima_precisao_m
-    device.ultima_bateria = bat if bat is not None else device.ultima_bateria
-    device.ultima_rede = rede or device.ultima_rede
-    device.ultimo_checkin = timezone.now()
-    if device.app_versao and dados.get("app_versao"):
+    eh_mais_recente = device.ultimo_checkin is None or coletado >= device.ultimo_checkin
+    if eh_mais_recente:
+        device.ultima_latitude = lat if lat is not None else device.ultima_latitude
+        device.ultima_longitude = lon if lon is not None else device.ultima_longitude
+        device.ultima_precisao_m = prec if prec is not None else device.ultima_precisao_m
+        device.ultima_bateria = bat if bat is not None else device.ultima_bateria
+        device.ultima_rede = rede or device.ultima_rede
+        device.ultimo_checkin = coletado
+        if serial and not device.serial:
+            device.serial = serial
+    if dados.get("app_versao"):
         device.app_versao = str(dados.get("app_versao"))[:20]
-    device.save(update_fields=[
-        "ultima_latitude", "ultima_longitude", "ultima_precisao_m", "ultima_bateria",
-        "ultima_rede", "ultimo_checkin", "app_versao", "atualizado_em",
-    ])
+    device.save()
+
+    # Retenção: janela móvel de 5 dias (só poda aparelhos que continuam enviando)
+    prune_checkins(device)
 
     # Comandos pendentes → marca como entregues
     pendentes = list(device.comandos.filter(status=KioskComando.Status.PENDENTE).order_by("criado_em"))

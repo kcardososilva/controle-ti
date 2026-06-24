@@ -240,6 +240,8 @@ from .quiosque import (
     quiosque_dashboard,
     quiosque_detalhe,
     quiosque_matriculas,
+    quiosque_matricula_excluir,
+    quiosque_mapa,
     quiosque_config_editar,
     quiosque_comando_novo,
     quiosque_revogar,

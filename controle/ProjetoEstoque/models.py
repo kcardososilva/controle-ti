@@ -1619,16 +1619,27 @@ class KioskCheckin(models.Model):
     carregando   = models.BooleanField(default=False)
     rede         = models.CharField(max_length=20, blank=True, default='')
     online       = models.BooleanField(default=True)
+    # Instante REAL da coleta no aparelho (ISO 8601 com fuso). Pode estar no passado
+    # quando o app entrega uma fila offline em rajada. registrado_em = chegada no servidor.
+    coletado_em   = models.DateTimeField(null=True, blank=True, db_index=True, verbose_name='Coletado em')
     registrado_em = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         ordering = ['-registrado_em']
         verbose_name = 'Check-in de Quiosque'
         verbose_name_plural = 'Check-ins de Quiosque'
-        indexes = [models.Index(fields=['device', '-registrado_em'])]
+        indexes = [
+            models.Index(fields=['device', '-registrado_em']),
+            models.Index(fields=['device', '-coletado_em']),
+        ]
 
     def __str__(self):
         return f"{self.device}: {self.registrado_em:%d/%m/%Y %H:%M}"
+
+    @property
+    def quando(self):
+        """Momento exibido no histórico: a coleta real, ou a chegada se não houver."""
+        return self.coletado_em or self.registrado_em
 
 
 class KioskComando(models.Model):

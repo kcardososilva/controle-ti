@@ -205,7 +205,9 @@ urlpatterns = [
 
     # ── Módulo Quiosque — Dashboard interno (TI) ────────────────────────────
     path("quiosque/",                  views.quiosque_dashboard,     name="quiosque_dashboard"),
+    path("quiosque/mapa/",             views.quiosque_mapa,          name="quiosque_mapa"),
     path("quiosque/matriculas/",       views.quiosque_matriculas,    name="quiosque_matriculas"),
+    path("quiosque/matriculas/<int:pk>/excluir/", views.quiosque_matricula_excluir, name="quiosque_matricula_excluir"),
     path("quiosque/<int:pk>/",         views.quiosque_detalhe,       name="quiosque_detalhe"),
     path("quiosque/<int:pk>/config/",  views.quiosque_config_editar, name="quiosque_config_editar"),
     path("quiosque/<int:pk>/comando/", views.quiosque_comando_novo,  name="quiosque_comando_novo"),

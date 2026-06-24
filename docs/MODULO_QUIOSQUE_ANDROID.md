@@ -131,13 +131,20 @@ Formato: JSON (UTF-8). Idioma das mensagens: pt-BR.
   }
 }
 ```
-**Erros:** `400` (código inválido/expirado), `409` (serial já matriculado).
+**Vínculo código ↔ aparelho — chave = `android_id`** (estável por aparelho):
+1. Código **livre** → vincula ao `android_id`; reaproveita/cria o registro do aparelho.
+2. Código já usado pelo **mesmo `android_id`** → reuso; devolve **o mesmo `device_uuid`** (preserva histórico).
+3. Código usado por **`android_id` diferente** → **HTTP 409**.
+
+**Erros:** `400` (código inválido/expirado/já utilizado), `409` (código já vinculado a outro aparelho).
 
 ### 4.3 `POST /checkin/` — telemetria periódica (heartbeat)
 Headers: `Authorization`, `X-Device-UUID`.
 **Request:**
 ```json
 {
+  "coletado_em": "2026-06-24T14:01:00-03:00",
+  "serial": "R58N12ABCDE",
   "latitude": -16.6786,
   "longitude": -49.2539,
   "precisao_m": 12.4,
@@ -157,6 +164,9 @@ Headers: `Authorization`, `X-Device-UUID`.
   "comandos": []
 }
 ```
+- **`coletado_em`** (ISO 8601 com fuso): instante REAL da coleta. Usado como a hora do dado; `registrado_em` (carimbado pelo servidor) = chegada.
+- **Fila offline:** o app pode enviar leituras antigas em rajada (cada uma com seu `coletado_em` no passado). Cada leitura vira uma linha de histórico; o "estado atual" do aparelho **não regride** com leituras antigas.
+- **Retenção:** o servidor mantém uma **janela móvel de 5 dias** de telemetria por aparelho (dados além disso são sobrepostos). A poda só ocorre quando o aparelho faz check-in — logo, um aparelho que **parou de enviar conserva todo o seu histórico**.
 - Se `config_versao` do servidor for maior que a enviada, ele devolve o objeto `config` atualizado (o app aplica e persiste).
 - `comandos` (Fase 2): lista de ações pendentes (ver 4.5).
 
