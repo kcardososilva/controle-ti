@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+
+{% block title %}Configurar — {{ device.apelido|default:device.modelo }}{% endblock %}
+{% block page_title %}Configurar dispositivo{% endblock %}
+{% block page_subtitle %}{{ device.apelido|default:device.modelo }} · as alterações são aplicadas no próximo check-in{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'quiosque_detalhe' device.pk %}" class="btn btn-sm btn-light"><i class="fa fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.kq-cfg) { --kq-brand:#4f46e5; }
+.kq-cfg, .kq-cfg * { box-sizing:border-box; min-width:0; }
+.kq-cfg { display:grid; gap:1rem; max-width:760px; }
+.kq-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); }
+.kq-card-body { padding:1.2rem 1.25rem; display:grid; gap:1.1rem; }
+.kq-field { display:flex; flex-direction:column; gap:.35rem; }
+.kq-field label { font-size:.74rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
+.kq-field .hint { font-size:.78rem; color:var(--text-tertiary); }
+.kq-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:1.1rem; }
+@media (max-width:560px){ .kq-grid2{ grid-template-columns:1fr; } }
+.kq-check { display:flex; align-items:center; gap:.55rem; font-weight:600; color:var(--text-primary); }
+.kq-actions { display:flex; gap:.6rem; justify-content:flex-end; }
+textarea.form-control { min-height:120px; font-family:var(--font-mono,ui-monospace,Consolas,monospace); font-size:.85rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<form method="post" class="kq-cfg">
+  {% csrf_token %}
+  <div class="kq-card"><div class="kq-card-body">
+
+    <div class="kq-field">
+      <label for="apelido">Apelido</label>
+      <input id="apelido" name="apelido" type="text" class="form-control" value="{{ device.apelido }}" placeholder="Ex.: Celular Portaria 01">
+    </div>
+
+    <div class="kq-grid2">
+      <div class="kq-field">
+        <label for="intervalo_checkin_seg">Intervalo de check-in (segundos)</label>
+        <input id="intervalo_checkin_seg" name="intervalo_checkin_seg" type="number" min="60" step="30" class="form-control" value="{{ device.intervalo_checkin_seg }}">
+        <span class="hint">Mínimo 60s. Recomendado 300s para economizar bateria/dados.</span>
+      </div>
+      <div class="kq-field">
+        <label>Conexão</label>
+        <label class="kq-check"><input type="checkbox" name="wifi_only" {% if device.wifi_only %}checked{% endif %}> Permitir apenas Wi-Fi</label>
+        <span class="hint">O app só transmite quando conectado ao Wi-Fi.</span>
+      </div>
+    </div>
+
+    <div class="kq-field">
+      <label for="apps_permitidos">Apps permitidos (pacotes Android)</label>
+      <textarea id="apps_permitidos" name="apps_permitidos" class="form-control" placeholder="com.android.camera2&#10;com.google.android.apps.photos&#10;br.com.app.permitido">{{ apps_texto }}</textarea>
+      <span class="hint">Um pacote por linha (ou separados por vírgula). Câmera e galeria já devem constar aqui. Estes são os únicos apps que abrem no modo quiosque.</span>
+    </div>
+
+    <div class="kq-field">
+      <label for="mensagem_quiosque">Mensagem do quiosque</label>
+      <input id="mensagem_quiosque" name="mensagem_quiosque" type="text" maxlength="200" class="form-control" value="{{ device.mensagem_quiosque }}" placeholder="Ex.: Equipamento Santa Colomba — uso corporativo">
+    </div>
+
+    <div class="kq-field">
+      <label for="admin_pin">PIN do TI {% if device.admin_pin_hash %}<span style="color:#1e8e3e;text-transform:none;font-weight:600;">· já definido</span>{% endif %}</label>
+      <input id="admin_pin" name="admin_pin" type="text" inputmode="numeric" autocomplete="off" class="form-control" placeholder="{% if device.admin_pin_hash %}Deixe em branco para manter o atual{% else %}Defina um PIN para liberar o controle do TI{% endif %}">
+      <span class="hint">Usado no app para sair do quiosque/abrir configurações. Guardado como hash (o app valida offline).</span>
+    </div>
+
+    <div class="kq-actions">
+      <a href="{% url 'quiosque_detalhe' device.pk %}" class="btn btn-light">Cancelar</a>
+      <button type="submit" class="btn btn-primary"><i class="fa fa-floppy-disk"></i> Salvar configuração</button>
+    </div>
+
+  </div></div>
+</form>
+{% endblock %}

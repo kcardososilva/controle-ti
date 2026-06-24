@@ -4,6 +4,9 @@
 > Especificação completa para construir, em **outra sessão do Claude Code**, um aplicativo Android em **modo quiosque** que coleta dados do aparelho e os envia, via integração HTTPS, para o **Sistema de Controle de TI (Django)** da Santa Colomba Agropecuária.
 > Ele é autocontido: traz a arquitetura, a stack, o contrato da API (request/response), o passo a passo do app e o que precisa existir no lado do servidor.
 
+> ✅ **Backend já implementado.** O lado servidor (Seções 4 e 9) **já existe e está testado** no sistema Django: models `KioskDevice`/`KioskCheckin`/`KioskMatricula`/`KioskComando`, endpoints `/api/quiosque/enroll|checkin|config|comando/<id>/ack`, autenticação por token e dashboard interno `/quiosque/`. O app Android só precisa **consumir** o contrato da Seção 4.
+> Observação de formato: as respostas da API vêm com um envelope — `enroll` retorna `{ "ok": true, "device_uuid", "token", "config" }`; `config` retorna `{ "ok": true, "config": {...} }`. Em erro: `{ "ok": false, "erro": "..." }` com HTTP 4xx/5xx.
+
 ---
 
 ## 0. Como usar este documento em uma nova sessão do Claude Code

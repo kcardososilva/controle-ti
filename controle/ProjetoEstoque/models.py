@@ -1,6 +1,7 @@
 from django.db import models, transaction
 from django.contrib.auth.models import User
 import datetime
+import uuid
 from django.core.validators import MinValueValidator
 from decimal import Decimal
 from django.utils import timezone
@@ -1512,3 +1513,154 @@ def _item_status_post_save(sender, instance, created, **kwargs):
             status_novo=instance.status,
             alterado_por=usuario,
         )
+
+
+# ========== MÓDULO QUIOSQUE (integração com app Android) ==========
+# Celulares corporativos em modo quiosque enviam telemetria para este sistema via
+# API HTTPS (/api/quiosque/...). Os dados vêm do DISPOSITIVO (não de um usuário
+# logado), por isso estes models NÃO estendem AuditModel. A identidade do device é
+# o device_uuid + token; o vínculo com um Item do estoque é opcional.
+
+class KioskMatricula(models.Model):
+    """Código de matrícula de uso único para o enrollment de um device quiosque.
+
+    Gerado pelo TI no dashboard e digitado no app no 1º acesso. Protege o enroll
+    para que nenhum aparelho se registre sozinho.
+    """
+    codigo      = models.CharField(max_length=16, unique=True, db_index=True, verbose_name='Código')
+    descricao   = models.CharField(max_length=120, blank=True, default='', verbose_name='Descrição')
+    usado       = models.BooleanField(default=False)
+    usado_em    = models.DateTimeField(null=True, blank=True)
+    device      = models.ForeignKey('KioskDevice', on_delete=models.SET_NULL, null=True, blank=True, related_name='matricula')
+    expira_em   = models.DateTimeField(null=True, blank=True, verbose_name='Expira em')
+    criado_por  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='kiosk_matriculas')
+    criado_em   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-criado_em']
+        verbose_name = 'Matrícula de Quiosque'
+        verbose_name_plural = 'Matrículas de Quiosque'
+
+    def __str__(self):
+        return f"{self.codigo} ({'usado' if self.usado else 'disponível'})"
+
+    def esta_valida(self) -> bool:
+        if self.usado:
+            return False
+        if self.expira_em and self.expira_em < timezone.now():
+            return False
+        return True
+
+
+class KioskDevice(models.Model):
+    """Celular corporativo em modo quiosque, integrado ao sistema."""
+    device_uuid   = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    token_hash    = models.CharField(max_length=64, db_index=True)  # sha256 do token (nunca o token puro)
+    serial        = models.CharField(max_length=120, blank=True, default='', db_index=True, verbose_name='Número de série')
+    android_id    = models.CharField(max_length=64, blank=True, default='', db_index=True)
+    apelido       = models.CharField(max_length=120, blank=True, default='', verbose_name='Apelido')
+    fabricante    = models.CharField(max_length=80, blank=True, default='')
+    modelo        = models.CharField(max_length=120, blank=True, default='')
+    android_versao = models.CharField(max_length=20, blank=True, default='', verbose_name='Versão Android')
+    app_versao    = models.CharField(max_length=20, blank=True, default='', verbose_name='Versão do app')
+    ram_mb        = models.IntegerField(null=True, blank=True, verbose_name='RAM (MB)')
+    item          = models.ForeignKey('Item', on_delete=models.SET_NULL, null=True, blank=True, related_name='kiosk_devices', verbose_name='Equipamento vinculado')
+    ativo         = models.BooleanField(default=True, verbose_name='Ativo')
+
+    # ── Configuração controlada pelo TI (enviada ao device) ──
+    wifi_only             = models.BooleanField(default=True, verbose_name='Somente Wi-Fi')
+    apps_permitidos       = models.JSONField(default=list, blank=True, verbose_name='Apps permitidos (packages)')
+    admin_pin_hash        = models.CharField(max_length=255, blank=True, default='', verbose_name='Hash do PIN do TI')
+    intervalo_checkin_seg = models.IntegerField(default=300, verbose_name='Intervalo de check-in (s)')
+    mensagem_quiosque     = models.CharField(max_length=200, blank=True, default='', verbose_name='Mensagem do quiosque')
+    config_versao         = models.IntegerField(default=1, verbose_name='Versão da configuração')
+
+    # ── Estado mais recente (atualizado a cada check-in) ──
+    ultima_latitude   = models.FloatField(null=True, blank=True)
+    ultima_longitude  = models.FloatField(null=True, blank=True)
+    ultima_precisao_m = models.FloatField(null=True, blank=True)
+    ultima_bateria    = models.IntegerField(null=True, blank=True)
+    ultima_rede       = models.CharField(max_length=20, blank=True, default='')
+    ultimo_checkin    = models.DateTimeField(null=True, blank=True)
+
+    criado_em     = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    # Janela (segundos) sem check-in para considerar o device offline
+    OFFLINE_APOS = 900
+
+    class Meta:
+        ordering = ['-ultimo_checkin', '-criado_em']
+        verbose_name = 'Dispositivo de Quiosque'
+        verbose_name_plural = 'Dispositivos de Quiosque'
+        indexes = [models.Index(fields=['ativo', '-ultimo_checkin'])]
+
+    def __str__(self):
+        return self.apelido or self.modelo or str(self.device_uuid)
+
+    @property
+    def online(self) -> bool:
+        if not self.ultimo_checkin:
+            return False
+        return (timezone.now() - self.ultimo_checkin).total_seconds() <= self.OFFLINE_APOS
+
+    @property
+    def tem_localizacao(self) -> bool:
+        return self.ultima_latitude is not None and self.ultima_longitude is not None
+
+
+class KioskCheckin(models.Model):
+    """Telemetria de um check-in (heartbeat) — base do histórico de atividade."""
+    device       = models.ForeignKey(KioskDevice, on_delete=models.CASCADE, related_name='checkins')
+    latitude     = models.FloatField(null=True, blank=True)
+    longitude    = models.FloatField(null=True, blank=True)
+    precisao_m   = models.FloatField(null=True, blank=True)
+    bateria      = models.IntegerField(null=True, blank=True)
+    carregando   = models.BooleanField(default=False)
+    rede         = models.CharField(max_length=20, blank=True, default='')
+    online       = models.BooleanField(default=True)
+    registrado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-registrado_em']
+        verbose_name = 'Check-in de Quiosque'
+        verbose_name_plural = 'Check-ins de Quiosque'
+        indexes = [models.Index(fields=['device', '-registrado_em'])]
+
+    def __str__(self):
+        return f"{self.device}: {self.registrado_em:%d/%m/%Y %H:%M}"
+
+
+class KioskComando(models.Model):
+    """Comando remoto enviado pelo TI ao device (entregue no próximo check-in)."""
+    class Tipo(models.TextChoices):
+        BLOQUEAR         = 'bloquear', 'Bloquear dispositivo'
+        DESBLOQUEAR      = 'desbloquear', 'Desbloquear dispositivo'
+        MENSAGEM         = 'mensagem', 'Exibir mensagem'
+        ATUALIZAR_CONFIG = 'atualizar_config', 'Atualizar configuração'
+        REINICIAR_APP    = 'reiniciar_app', 'Reiniciar aplicativo'
+
+    class Status(models.TextChoices):
+        PENDENTE  = 'pendente', 'Pendente'
+        ENTREGUE  = 'entregue', 'Entregue'
+        EXECUTADO = 'executado', 'Executado'
+        FALHOU    = 'falhou', 'Falhou'
+
+    device      = models.ForeignKey(KioskDevice, on_delete=models.CASCADE, related_name='comandos')
+    tipo        = models.CharField(max_length=20, choices=Tipo.choices)
+    payload     = models.JSONField(default=dict, blank=True)
+    status      = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDENTE, db_index=True)
+    detalhe     = models.CharField(max_length=255, blank=True, default='')
+    criado_por  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='kiosk_comandos')
+    criado_em   = models.DateTimeField(auto_now_add=True)
+    entregue_em = models.DateTimeField(null=True, blank=True)
+    finalizado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-criado_em']
+        verbose_name = 'Comando de Quiosque'
+        verbose_name_plural = 'Comandos de Quiosque'
+        indexes = [models.Index(fields=['device', 'status'])]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} → {self.device} ({self.status})"

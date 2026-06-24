@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ device.apelido|default:device.modelo }} — Quiosque{% endblock %}
+{% block page_title %}{{ device.apelido|default:device.modelo|default:"Dispositivo" }}{% endblock %}
+{% block page_subtitle %}Dispositivo de quiosque · {{ device.fabricante }} {{ device.modelo }}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'quiosque_config_editar' device.pk %}" class="btn btn-sm"><i class="fa fa-gear"></i> Configurar</a>
+  <a href="{% url 'quiosque_dashboard' %}" class="btn btn-sm btn-light"><i class="fa fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.kq-det) { --kq-brand:#4f46e5; }
+.kq-det, .kq-det * { box-sizing:border-box; min-width:0; }
+.kq-det { display:grid; gap:1rem; }
+.kq-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:.8rem; }
+.kq-box { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); padding:.85rem 1rem; box-shadow:var(--shadow-xs); }
+.kq-box .l { font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); font-weight:700; }
+.kq-box .v { font-size:1rem; font-weight:700; color:var(--text-primary); margin-top:.25rem; word-break:break-word; }
+.kq-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden; }
+.kq-card-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.85rem 1.15rem; border-bottom:1px solid var(--separator-hairline); }
+.kq-card-title { font-size:.92rem; font-weight:700; }
+.kq-card-body { padding:1rem 1.15rem; }
+.kq-badge { display:inline-flex; align-items:center; gap:.35rem; padding:.18rem .6rem; border-radius:var(--radius-pill); font-size:.73rem; font-weight:700; }
+.kq-badge.on { color:#1e8e3e; background:color-mix(in srgb,#34c759 16%,transparent); }
+.kq-badge.off { color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline); }
+.kq-table { width:100%; border-collapse:collapse; }
+.kq-table th, .kq-table td { padding:.55rem .9rem; border-bottom:1px solid var(--separator-hairline); text-align:left; font-size:.82rem; white-space:nowrap; }
+.kq-table th { font-size:.66rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); font-weight:700; }
+.kq-pill { display:inline-block; padding:.1rem .5rem; border-radius:var(--radius-pill); font-size:.72rem; font-weight:700; background:var(--bg-fill-secondary); color:var(--text-secondary); }
+.kq-actions { display:flex; gap:.6rem; flex-wrap:wrap; align-items:center; }
+.kq-pg { display:flex; gap:.3rem; justify-content:center; padding:.75rem; }
+.kq-pg a, .kq-pg span { padding:.3rem .6rem; border-radius:var(--radius-md); border:1px solid var(--separator-hairline); font-size:.8rem; font-weight:700; text-decoration:none; color:var(--text-secondary); }
+.kq-pg .cur { background:var(--kq-brand); color:#fff; border-color:var(--kq-brand); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kq-det">
+
+  <div class="kq-row">
+    <div class="kq-box"><div class="l">Status</div><div class="v">
+      {% if device.online %}<span class="kq-badge on"><i class="fa fa-circle-check"></i> Online</span>
+      {% else %}<span class="kq-badge off"><i class="fa fa-circle"></i> Offline</span>{% endif %}
+    </div></div>
+    <div class="kq-box"><div class="l">Bateria</div><div class="v">{% if device.ultima_bateria is not None %}{{ device.ultima_bateria }}%{% else %}—{% endif %}</div></div>
+    <div class="kq-box"><div class="l">Rede</div><div class="v">{{ device.ultima_rede|default:"—" }}</div></div>
+    <div class="kq-box"><div class="l">Último check-in</div><div class="v">{% if device.ultimo_checkin %}{{ device.ultimo_checkin|naturaltime }}{% else %}nunca{% endif %}</div></div>
+    <div class="kq-box"><div class="l">Localização</div><div class="v">
+      {% if device.tem_localizacao %}<a target="_blank" rel="noopener" style="color:var(--kq-brand);text-decoration:none;" href="https://www.google.com/maps?q={{ device.ultima_latitude }},{{ device.ultima_longitude }}"><i class="fa fa-location-dot"></i> Ver no mapa</a>{% else %}—{% endif %}
+    </div></div>
+  </div>
+
+  <div class="kq-row">
+    <div class="kq-box"><div class="l">Fabricante / Modelo</div><div class="v">{{ device.fabricante }} {{ device.modelo }}</div></div>
+    <div class="kq-box"><div class="l">Número de série</div><div class="v">{{ device.serial|default:"—" }}</div></div>
+    <div class="kq-box"><div class="l">Android</div><div class="v">{{ device.android_versao|default:"—" }}</div></div>
+    <div class="kq-box"><div class="l">Versão do app</div><div class="v">{{ device.app_versao|default:"—" }}</div></div>
+    <div class="kq-box"><div class="l">RAM</div><div class="v">{% if device.ram_mb %}{{ device.ram_mb }} MB{% else %}—{% endif %}</div></div>
+    <div class="kq-box"><div class="l">Equipamento vinculado</div><div class="v">{% if device.item %}<a href="{% url 'equipamento_detalhe' device.item.pk %}" style="color:var(--kq-brand);text-decoration:none;">{{ device.item.nome }}</a>{% else %}—{% endif %}</div></div>
+  </div>
+
+  <!-- Configuração atual + comandos -->
+  <div class="kq-card">
+    <div class="kq-card-head">
+      <span class="kq-card-title"><i class="fa fa-shield-halved" style="color:var(--kq-brand);margin-right:.4rem;"></i>Controle do TI</span>
+      <span class="kq-pill">config v{{ device.config_versao }}</span>
+    </div>
+    <div class="kq-card-body" style="display:grid; gap:.9rem;">
+      <div class="kq-row">
+        <div class="kq-box"><div class="l">Somente Wi-Fi</div><div class="v">{% if device.wifi_only %}Sim{% else %}Não{% endif %}</div></div>
+        <div class="kq-box"><div class="l">Intervalo de check-in</div><div class="v">{{ device.intervalo_checkin_seg }}s</div></div>
+        <div class="kq-box"><div class="l">PIN do TI</div><div class="v">{% if device.admin_pin_hash %}Definido{% else %}<span style="color:#b35a00;">Não definido</span>{% endif %}</div></div>
+        <div class="kq-box"><div class="l">Apps permitidos</div><div class="v">{{ device.apps_permitidos|length }}</div></div>
+      </div>
+      {% if device.apps_permitidos %}
+      <div>{% for a in device.apps_permitidos %}<span class="kq-pill" style="margin:.1rem;">{{ a }}</span>{% endfor %}</div>
+      {% endif %}
+
+      <div class="kq-actions">
+        <a href="{% url 'quiosque_config_editar' device.pk %}" class="btn btn-primary btn-sm"><i class="fa fa-gear"></i> Editar configuração</a>
+        <form method="post" action="{% url 'quiosque_comando_novo' device.pk %}" class="kq-actions" style="margin:0;">
+          {% csrf_token %}
+          <select name="tipo" class="form-control" style="max-width:230px;min-height:2.25rem;">
+            <option value="bloquear">Bloquear dispositivo</option>
+            <option value="desbloquear">Desbloquear dispositivo</option>
+            <option value="mensagem">Exibir mensagem</option>
+            <option value="atualizar_config">Atualizar configuração</option>
+            <option value="reiniciar_app">Reiniciar aplicativo</option>
+          </select>
+          <input type="text" name="mensagem" class="form-control" placeholder="Mensagem (se aplicável)" style="max-width:220px;min-height:2.25rem;">
+          <button type="submit" class="btn btn-light btn-sm"><i class="fa fa-paper-plane"></i> Enviar comando</button>
+        </form>
+        <form method="post" action="{% url 'quiosque_revogar' device.pk %}" style="margin:0;" onsubmit="return confirm('Revogar o acesso deste dispositivo? Ele precisará ser rematriculado.');">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm" style="color:#d93025;border-color:#f3c1bd;"><i class="fa fa-ban"></i> Revogar acesso</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comandos recentes -->
+  {% if comandos %}
+  <div class="kq-card">
+    <div class="kq-card-head"><span class="kq-card-title"><i class="fa fa-terminal" style="color:var(--kq-brand);margin-right:.4rem;"></i>Comandos recentes</span></div>
+    <table class="kq-table">
+      <thead><tr><th>Comando</th><th>Status</th><th>Criado</th><th>Detalhe</th></tr></thead>
+      <tbody>
+        {% for c in comandos %}
+        <tr>
+          <td>{{ c.get_tipo_display }}</td>
+          <td><span class="kq-pill">{{ c.get_status_display }}</span></td>
+          <td>{{ c.criado_em|naturaltime }}</td>
+          <td>{{ c.detalhe|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Histórico de check-ins -->
+  <div class="kq-card">
+    <div class="kq-card-head">
+      <span class="kq-card-title"><i class="fa fa-clock-rotate-left" style="color:var(--kq-brand);margin-right:.4rem;"></i>Histórico de check-ins</span>
+      <span class="kq-pill">{{ total_checkins }} registro(s)</span>
+    </div>
+    <div style="width:100%;overflow-x:auto;">
+      <table class="kq-table">
+        <thead><tr><th>Quando</th><th>Bateria</th><th>Rede</th><th>Online</th><th>Localização</th></tr></thead>
+        <tbody>
+          {% for c in checkins %}
+          <tr>
+            <td><span title="{{ c.registrado_em|date:'d/m/Y H:i:s' }}">{{ c.registrado_em|date:"d/m/Y H:i" }}</span></td>
+            <td>{% if c.bateria is not None %}{{ c.bateria }}%{% if c.carregando %} <i class="fa fa-bolt" style="color:#1e8e3e;"></i>{% endif %}{% else %}—{% endif %}</td>
+            <td>{{ c.rede|default:"—" }}</td>
+            <td>{% if c.online %}<span style="color:#1e8e3e;">sim</span>{% else %}<span style="color:var(--text-tertiary);">não</span>{% endif %}</td>
+            <td>{% if c.latitude is not None %}<a target="_blank" rel="noopener" style="color:var(--kq-brand);text-decoration:none;" href="https://www.google.com/maps?q={{ c.latitude }},{{ c.longitude }}">{{ c.latitude|floatformat:5 }}, {{ c.longitude|floatformat:5 }}</a>{% else %}—{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:1.5rem;">Nenhum check-in recebido ainda.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if page_obj.has_other_pages %}
+    <div class="kq-pg">
+      {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹</a>{% endif %}
+      <span class="cur">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+      {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">›</a>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

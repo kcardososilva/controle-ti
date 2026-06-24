@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Quiosque — Celulares Corporativos{% endblock %}
+{% block page_title %}Quiosque{% endblock %}
+{% block page_subtitle %}Celulares corporativos em modo quiosque — monitoramento e controle{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'quiosque_matriculas' %}" class="btn btn-sm"><i class="fa fa-id-card"></i> Matrículas{% if kpi.matriculas %} ({{ kpi.matriculas }}){% endif %}</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.kq-page) { --kq-brand:#4f46e5; --kq-brand-soft:color-mix(in srgb,#4f46e5 11%,transparent); }
+.kq-page, .kq-page * { box-sizing:border-box; min-width:0; }
+.kq-page { display:grid; gap:1rem; }
+
+.kq-banner { display:flex; align-items:flex-start; gap:.85rem; padding:.9rem 1.15rem; border-radius:var(--radius-xl);
+  background:var(--kq-brand-soft); border:1px solid color-mix(in srgb,var(--kq-brand) 22%,transparent); }
+.kq-banner i { color:var(--kq-brand); font-size:1.05rem; margin-top:.1rem; }
+.kq-banner div { font-size:.85rem; color:var(--text-secondary); line-height:1.55; }
+.kq-banner b { color:var(--text-primary); }
+
+.kq-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.8rem; }
+@media (max-width:680px){ .kq-kpis{ grid-template-columns:repeat(2,1fr);} }
+.kq-kpi { display:block; text-decoration:none; color:inherit; padding:.85rem 1rem; border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-xl); background:var(--bg-elevated); box-shadow:var(--shadow-xs); position:relative; overflow:hidden;
+  transition:box-shadow var(--transition-fast), transform var(--transition-fast); }
+.kq-kpi:hover { box-shadow:var(--shadow-md); transform:translateY(-2px); }
+.kq-kpi::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--k,var(--kq-brand)); }
+.kq-kpi.active { outline:2px solid var(--k); outline-offset:-2px; }
+.kq-kpi-v { font-size:1.7rem; font-weight:800; letter-spacing:-.035em; line-height:1; color:var(--k,var(--text-primary)); }
+.kq-kpi-l { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); margin-top:.4rem; }
+
+.kq-filters { display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end; padding:.85rem 1.1rem;
+  background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); }
+.kq-field { display:flex; flex-direction:column; gap:.3rem; }
+.kq-field label { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
+
+.kq-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden; }
+.kq-card-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.85rem 1.15rem; border-bottom:1px solid var(--separator-hairline); }
+.kq-card-title { font-size:.92rem; font-weight:700; letter-spacing:-.016em; }
+.kq-count { font-size:.8rem; color:var(--text-tertiary); font-weight:600; }
+.kq-wrap { width:100%; overflow-x:auto; }
+.kq-table { width:max-content; min-width:100%; border-collapse:collapse; }
+.kq-table th, .kq-table td { padding:.6rem 1rem; border-bottom:1px solid var(--separator-hairline); text-align:left; white-space:nowrap; vertical-align:middle; }
+.kq-table th { font-size:.67rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); font-weight:700; }
+.kq-table td { font-size:.83rem; color:var(--text-primary); }
+.kq-table tbody tr:last-child td { border-bottom:0; }
+.kq-table tbody tr:hover { background:var(--bg-hover); }
+.kq-link { color:var(--text-primary); text-decoration:none; font-weight:700; }
+.kq-link:hover { color:var(--kq-brand); }
+.kq-sub { font-size:.72rem; color:var(--text-tertiary); font-family:var(--font-mono,ui-monospace,Consolas,monospace); }
+
+.kq-badge { display:inline-flex; align-items:center; gap:.35rem; padding:.18rem .6rem; border-radius:var(--radius-pill); font-size:.73rem; font-weight:700; white-space:nowrap; }
+.kq-badge.on { color:#1e8e3e; background:color-mix(in srgb,#34c759 16%,transparent); }
+.kq-badge.off { color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline); }
+
+.kq-bat { display:inline-flex; align-items:center; gap:.35rem; font-weight:700; }
+.kq-bat.low { color:#d93025; }
+.kq-bat.mid { color:#b35a00; }
+.kq-bat.ok  { color:#1e8e3e; }
+
+.kq-empty { display:grid; place-items:center; gap:.5rem; padding:2.5rem 1rem; text-align:center; color:var(--text-tertiary); font-size:.9rem; font-weight:600; }
+.kq-empty i { font-size:1.6rem; color:var(--kq-brand); }
+.kq-empty a { color:var(--kq-brand); font-weight:700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kq-page">
+
+  <div class="kq-banner">
+    <i class="fa fa-mobile-screen-button"></i>
+    <div>
+      Celulares corporativos rodando o <b>app de quiosque</b> enviam a localização, bateria, rede e identificação
+      para este sistema via integração. Gere um <b>código de matrícula</b> para registrar um novo aparelho e
+      acompanhe aqui o status <b>online/offline</b>, a localização e os controles do TI.
+    </div>
+  </div>
+
+  <section class="kq-kpis">
+    <a class="kq-kpi {% if not f_status %}active{% endif %}" style="--k:var(--kq-brand)" href="?">
+      <div class="kq-kpi-v">{{ kpi.total }}</div>
+      <div class="kq-kpi-l">Dispositivos</div>
+    </a>
+    <a class="kq-kpi {% if f_status == 'online' %}active{% endif %}" style="--k:#1e8e3e" href="?status=online">
+      <div class="kq-kpi-v">{{ kpi.online }}</div>
+      <div class="kq-kpi-l">Online agora</div>
+    </a>
+    <a class="kq-kpi {% if f_status == 'offline' %}active{% endif %}" style="--k:#8e8e93" href="?status=offline">
+      <div class="kq-kpi-v">{{ kpi.offline }}</div>
+      <div class="kq-kpi-l">Offline</div>
+    </a>
+    <a class="kq-kpi {% if f_status == 'sem_local' %}active{% endif %}" style="--k:#b35a00" href="?status=sem_local">
+      <div class="kq-kpi-v">{{ kpi.sem_local }}</div>
+      <div class="kq-kpi-l">Sem localização</div>
+    </a>
+  </section>
+
+  <form method="get" class="kq-filters">
+    <div class="kq-field" style="flex:2; min-width:220px;">
+      <label for="q">Busca</label>
+      <input id="q" name="q" type="text" class="form-control" value="{{ f_q }}" placeholder="Apelido, modelo, série ou fabricante...">
+    </div>
+    <div class="kq-field" style="max-width:190px;">
+      <label for="status">Status</label>
+      <select id="status" name="status" class="form-control" onchange="this.form.submit()">
+        <option value="">Todos</option>
+        <option value="online"   {% if f_status == 'online' %}selected{% endif %}>Online agora</option>
+        <option value="offline"  {% if f_status == 'offline' %}selected{% endif %}>Offline</option>
+        <option value="sem_local"{% if f_status == 'sem_local' %}selected{% endif %}>Sem localização</option>
+      </select>
+    </div>
+    <div style="display:flex; gap:.5rem;">
+      <button type="submit" class="btn btn-primary" style="padding:0 1rem;min-height:2.25rem;"><i class="fa fa-search"></i> Filtrar</button>
+      <a href="{% url 'quiosque_dashboard' %}" class="btn btn-light" style="padding:0 1rem;min-height:2.25rem;"><i class="fa fa-xmark"></i> Limpar</a>
+    </div>
+  </form>
+
+  <div class="kq-card">
+    <div class="kq-card-head">
+      <span class="kq-card-title"><i class="fa fa-mobile-screen-button" style="color:var(--kq-brand);margin-right:.4rem;"></i>Dispositivos</span>
+      <span class="kq-count">{{ total_filtrado }} dispositivo(s)</span>
+    </div>
+    <div class="kq-wrap">
+      <table class="kq-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Dispositivo</th>
+            <th>Bateria</th>
+            <th>Rede</th>
+            <th>Localização</th>
+            <th>Último check-in</th>
+            <th>Equipamento</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in devices %}
+          <tr>
+            <td>
+              {% if d.online %}<span class="kq-badge on"><i class="fa fa-circle-check"></i> Online</span>
+              {% else %}<span class="kq-badge off"><i class="fa fa-circle"></i> Offline</span>{% endif %}
+            </td>
+            <td>
+              <a href="{% url 'quiosque_detalhe' d.pk %}" class="kq-link">{{ d.apelido|default:d.modelo|default:"Quiosque" }}</a>
+              <div class="kq-sub">{{ d.fabricante }} {{ d.modelo }}{% if d.serial %} · {{ d.serial }}{% endif %}</div>
+            </td>
+            <td>
+              {% if d.ultima_bateria is not None %}
+                <span class="kq-bat {% if d.ultima_bateria <= 20 %}low{% elif d.ultima_bateria <= 50 %}mid{% else %}ok{% endif %}">
+                  <i class="fa fa-battery-half"></i> {{ d.ultima_bateria }}%
+                </span>
+              {% else %}<span style="color:var(--text-quaternary);">—</span>{% endif %}
+            </td>
+            <td>{% if d.ultima_rede %}<i class="fa {% if d.ultima_rede == 'wifi' %}fa-wifi{% else %}fa-signal{% endif %}"></i> {{ d.ultima_rede }}{% else %}<span style="color:var(--text-quaternary);">—</span>{% endif %}</td>
+            <td>
+              {% if d.tem_localizacao %}
+                <a class="kq-link" style="font-weight:600;color:var(--kq-brand);" target="_blank" rel="noopener"
+                   href="https://www.google.com/maps?q={{ d.ultima_latitude }},{{ d.ultima_longitude }}">
+                   <i class="fa fa-location-dot"></i> Ver no mapa</a>
+              {% else %}<span style="color:var(--text-quaternary);">— sem localização —</span>{% endif %}
+            </td>
+            <td>{% if d.ultimo_checkin %}<span title="{{ d.ultimo_checkin|date:'d/m/Y H:i' }}">{{ d.ultimo_checkin|naturaltime }}</span>{% else %}<span style="color:var(--text-quaternary);">nunca</span>{% endif %}</td>
+            <td>{% if d.item %}<a href="{% url 'equipamento_detalhe' d.item.pk %}" class="kq-link" style="font-weight:600;">{{ d.item.nome }}</a>{% else %}<span style="color:var(--text-quaternary);">—</span>{% endif %}</td>
+            <td><a href="{% url 'quiosque_detalhe' d.pk %}" class="btn btn-sm btn-light"><i class="fa fa-chevron-right"></i></a></td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="8">
+              <div class="kq-empty">
+                <i class="fa fa-mobile-screen-button"></i>
+                {% if f_status or f_q %}Nenhum dispositivo para o filtro aplicado.
+                {% else %}Nenhum celular matriculado ainda. <a href="{% url 'quiosque_matriculas' %}">Gere um código de matrícula</a> e registre o aparelho no app.{% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

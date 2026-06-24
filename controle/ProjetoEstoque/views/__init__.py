@@ -229,6 +229,22 @@ from .ninja import (
 # ── Status Board ─────────────────────────────────────────────────────────────
 from .status_board import status_board
 
+# ── Módulo Quiosque (app Android) ─────────────────────────────────────────────
+from .quiosque import (
+    # API do dispositivo
+    kiosk_enroll,
+    kiosk_checkin,
+    kiosk_config,
+    kiosk_comando_ack,
+    # Dashboard interno
+    quiosque_dashboard,
+    quiosque_detalhe,
+    quiosque_matriculas,
+    quiosque_config_editar,
+    quiosque_comando_novo,
+    quiosque_revogar,
+)
+
 # ── Plantas / Mapa de Infraestrutura ─────────────────────────────────────────
 from .plantas import (
     planta_list,

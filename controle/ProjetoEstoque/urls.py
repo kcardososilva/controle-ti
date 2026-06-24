@@ -197,6 +197,20 @@ urlpatterns = [
     path("ninja/relatorio/",          views.ninja_relatorio,     name="ninja_relatorio"),
     path("ninja/importar/",           views.ninja_importar,      name="ninja_importar"),
 
+    # ── Módulo Quiosque — API do dispositivo (app Android) ──────────────────
+    path("api/quiosque/enroll/",              views.kiosk_enroll,       name="kiosk_enroll"),
+    path("api/quiosque/checkin/",             views.kiosk_checkin,      name="kiosk_checkin"),
+    path("api/quiosque/config/",              views.kiosk_config,       name="kiosk_config"),
+    path("api/quiosque/comando/<int:pk>/ack/", views.kiosk_comando_ack, name="kiosk_comando_ack"),
+
+    # ── Módulo Quiosque — Dashboard interno (TI) ────────────────────────────
+    path("quiosque/",                  views.quiosque_dashboard,     name="quiosque_dashboard"),
+    path("quiosque/matriculas/",       views.quiosque_matriculas,    name="quiosque_matriculas"),
+    path("quiosque/<int:pk>/",         views.quiosque_detalhe,       name="quiosque_detalhe"),
+    path("quiosque/<int:pk>/config/",  views.quiosque_config_editar, name="quiosque_config_editar"),
+    path("quiosque/<int:pk>/comando/", views.quiosque_comando_novo,  name="quiosque_comando_novo"),
+    path("quiosque/<int:pk>/revogar/", views.quiosque_revogar,       name="quiosque_revogar"),
+
     # ── Inteligência de Sistema ─────────────────────────────────────────────
     path("inteligencia/", views.sistema_inteligencia_dashboard, name="sistema_inteligencia_dashboard"),
     path("inteligencia/busca-global/", views.sistema_inteligencia_busca_global, name="sistema_inteligencia_busca_global"),
