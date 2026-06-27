@@ -1,0 +1,201 @@
+{% extends 'base.html' %}
+
+{% block title %}Acessos de Fornecedor{% endblock %}
+{% block page_title %}Acessos de Fornecedor{% endblock %}
+{% block page_subtitle %}Cadastre e gerencie os usuários que acessam o Portal do Fornecedor{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'fornecedor_list' %}" class="fac-btn fac-btn-light"><i class="fa-solid fa-arrow-left"></i> Fornecedores</a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+  :where(.fac-page) { display: grid; gap: 1.2rem; max-width: 70rem; }
+
+  /* Select2 alinhado ao visual do formulário */
+  .fac-page .select2-container { width: 100% !important; }
+  .fac-page .select2-container--default .select2-selection--single {
+    min-height: 2.7rem; height: 2.7rem; border-radius: 12px; padding: .2rem .3rem;
+    border: 1px solid var(--separator-non-opaque, rgba(0,0,0,.12)); background: var(--bg-page, #fff);
+  }
+  .fac-page .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 2.3rem; color: var(--text-primary); padding-left: .55rem; }
+  .fac-page .select2-container--default .select2-selection--single .select2-selection__arrow { height: 2.5rem; }
+
+  .fac-page .fac-kpis { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
+  .fac-page .fac-kpi { padding: 1rem 1.1rem; border-radius: 16px; background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm); }
+  .fac-page .fac-kpi-n { font-size: 1.7rem; font-weight: 850; letter-spacing: -.04em; }
+  .fac-page .fac-kpi-l { color: var(--text-tertiary); font-size: .8rem; font-weight: 600; margin-top: .15rem; }
+  .fac-page .fac-kpi.ok .fac-kpi-n { color: #34c759; }
+  .fac-page .fac-kpi.off .fac-kpi-n { color: #ff9500; }
+
+  .fac-page .fac-card { background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: 18px; box-shadow: var(--shadow-sm); }
+  .fac-page .fac-card-h { padding: 1rem 1.25rem; border-bottom: 1px solid var(--separator-hairline); font-weight: 800; letter-spacing: -.02em; display: flex; align-items: center; gap: .6rem; }
+  .fac-page .fac-card-b { padding: 1.25rem; }
+
+  .fac-page .fac-form-grid { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); align-items: end; }
+  .fac-page label { font-size: .76rem; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: .35rem; }
+  .fac-page input, .fac-page select {
+    width: 100%; min-height: 2.7rem; padding: .55rem .85rem; border-radius: 12px; font: inherit; color: var(--text-primary);
+    border: 1px solid var(--separator-non-opaque, rgba(0,0,0,.12)); background: var(--bg-page, #fff);
+  }
+  .fac-page .fac-hint { font-size: .74rem; color: var(--text-tertiary); margin-top: .3rem; }
+
+  .fac-page .fac-btn { display: inline-flex; align-items: center; gap: .5rem; padding: .6rem 1rem; border-radius: 980px; font-size: .85rem; font-weight: 700; border: 1px solid var(--separator-non-opaque, rgba(0,0,0,.12)); background: var(--bg-elevated); color: var(--text-primary); cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+  .fac-page .fac-btn:hover { background: var(--bg-hover, rgba(0,0,0,.04)); }
+  .fac-page .fac-btn-light { background: transparent; }
+  .fac-page .fac-btn-brand { background: var(--brand, #0071e3); border-color: var(--brand, #0071e3); color: #fff; }
+  .fac-page .fac-btn-brand:hover { background: var(--brand-hover, #0077ed); color: #fff; }
+  .fac-page .fac-btn-danger { color: #ff3b30; border-color: rgba(255,59,48,.3); }
+  .fac-page .fac-btn-danger:hover { background: rgba(255,59,48,.1); }
+  .fac-page .fac-btn-sm { padding: .42rem .7rem; font-size: .78rem; }
+
+  .fac-page .fac-search { position: relative; max-width: 22rem; }
+  .fac-page .fac-search i { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%); color: var(--text-quaternary); }
+  .fac-page .fac-search input { padding-left: 2.4rem; border-radius: 980px; }
+
+  .fac-page .fac-row { display: grid; grid-template-columns: 2.6rem 1.4fr 1fr auto; align-items: center; gap: 1rem; padding: .9rem 1.25rem; border-top: 1px solid var(--separator-hairline); }
+  .fac-page .fac-row:first-child { border-top: 0; }
+  .fac-page .fac-av { width: 2.6rem; height: 2.6rem; display: grid; place-items: center; border-radius: 999px; background: var(--brand-soft, rgba(0,113,227,.1)); color: var(--brand, #0071e3); font-weight: 800; }
+  .fac-page .fac-forn { font-weight: 800; letter-spacing: -.01em; }
+  .fac-page .fac-user { color: var(--text-tertiary); font-size: .8rem; margin-top: .1rem; }
+  .fac-page .fac-col-mid { font-size: .8rem; color: var(--text-tertiary); }
+  .fac-page .fac-badge { display: inline-flex; align-items: center; gap: .4rem; padding: .25rem .6rem; border-radius: 980px; font-size: .72rem; font-weight: 800; }
+  .fac-page .fac-badge.on { color: #34c759; background: rgba(52,199,89,.14); }
+  .fac-page .fac-badge.off { color: #ff9500; background: rgba(255,149,0,.14); }
+  .fac-page .fac-actions { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+  .fac-page details.fac-reset { position: relative; }
+  .fac-page details.fac-reset > summary { list-style: none; cursor: pointer; }
+  .fac-page details.fac-reset > summary::-webkit-details-marker { display: none; }
+  .fac-page .fac-pop { position: absolute; right: 0; top: 2.4rem; z-index: 5; width: 16rem; padding: .9rem; border-radius: 14px; background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-md); }
+  .fac-page .fac-empty { text-align: center; padding: 2.5rem 1rem; color: var(--text-tertiary); }
+  .fac-page .fac-empty i { font-size: 2rem; color: var(--text-quaternary); display: block; margin-bottom: .6rem; }
+
+  @media (max-width: 48rem) {
+    .fac-page .fac-row { grid-template-columns: 2.6rem 1fr; }
+    .fac-page .fac-col-mid { grid-column: 2; }
+    .fac-page .fac-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fac-page">
+
+  <section class="fac-kpis">
+    <div class="fac-kpi"><div class="fac-kpi-n">{{ kpi_total }}</div><div class="fac-kpi-l">Acessos cadastrados</div></div>
+    <div class="fac-kpi ok"><div class="fac-kpi-n">{{ kpi_ativos }}</div><div class="fac-kpi-l">Ativos</div></div>
+    <div class="fac-kpi off"><div class="fac-kpi-n">{{ kpi_suspensos }}</div><div class="fac-kpi-l">Suspensos</div></div>
+  </section>
+
+  <section class="fac-card">
+    <div class="fac-card-h"><i class="fa-solid fa-user-plus"></i> Novo acesso de fornecedor</div>
+    <div class="fac-card-b">
+      <form method="post" action="{% url 'fornecedor_acessos_list' %}">
+        {% csrf_token %}
+        <div class="fac-form-grid">
+          <div>
+            <label for="fornecedor">Fornecedor *</label>
+            <select id="fornecedor" name="fornecedor" required>
+              <option value="">Selecione…</option>
+              {% for f in fornecedores %}<option value="{{ f.id }}">{{ f.nome }}</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="username">Usuário *</label>
+            <input type="text" id="username" name="username" required placeholder="ex: routerlink ou sgomes" autocomplete="off">
+          </div>
+          <div>
+            <label for="email">E-mail</label>
+            <input type="email" id="email" name="email" placeholder="email@fornecedor.com">
+          </div>
+          <div>
+            <label for="senha">Senha</label>
+            <input type="text" id="senha" name="senha" minlength="6" placeholder="Mín. 6 (obrigatória p/ novo)" autocomplete="off">
+          </div>
+          <div>
+            <button type="submit" class="fac-btn fac-btn-brand" style="width:100%;"><i class="fa-solid fa-plus"></i> Criar / Vincular</button>
+          </div>
+        </div>
+        <p class="fac-hint"><i class="fa-solid fa-circle-info"></i> Se o usuário já existir, ele é <b>vinculado</b> a este fornecedor (senha opcional, em branco mantém a atual). O acesso fica restrito ao Portal do Fornecedor.</p>
+      </form>
+    </div>
+  </section>
+
+  <section class="fac-card">
+    <div class="fac-card-h" style="justify-content:space-between;">
+      <span><i class="fa-solid fa-id-badge"></i> Acessos cadastrados</span>
+      <form method="get" class="fac-search">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" name="q" value="{{ f_q }}" placeholder="Buscar usuário, e-mail ou fornecedor…">
+      </form>
+    </div>
+
+    {% if perfis %}
+    <div>
+      {% for p in perfis %}
+      <div class="fac-row">
+        <div class="fac-av">{{ p.fornecedor.nome|first|upper }}</div>
+        <div style="min-width:0;">
+          <div class="fac-forn">{{ p.fornecedor.nome }}</div>
+          <div class="fac-user"><i class="fa-solid fa-user"></i> {{ p.usuario.username }}{% if p.usuario.email %} · {{ p.usuario.email }}{% endif %}</div>
+        </div>
+        <div class="fac-col-mid">
+          {% if p.ativo %}<span class="fac-badge on"><i class="fa-solid fa-circle-check"></i> Ativo</span>{% else %}<span class="fac-badge off"><i class="fa-solid fa-circle-pause"></i> Suspenso</span>{% endif %}
+          <div style="margin-top:.35rem;">
+            {{ p.qtd_itens_calc }} equip. · último acesso: {{ p.usuario.last_login|date:"d/m/Y H:i"|default:"nunca" }}
+          </div>
+        </div>
+        <div class="fac-actions">
+          <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="toggle">
+            <button type="submit" class="fac-btn fac-btn-sm">{% if p.ativo %}<i class="fa-solid fa-ban"></i> Suspender{% else %}<i class="fa-solid fa-play"></i> Reativar{% endif %}</button>
+          </form>
+
+          <details class="fac-reset">
+            <summary class="fac-btn fac-btn-sm"><i class="fa-solid fa-key"></i> Senha</summary>
+            <div class="fac-pop">
+              <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;">
+                {% csrf_token %}
+                <input type="hidden" name="acao" value="reset">
+                <label for="s{{ p.pk }}">Nova senha</label>
+                <input type="text" id="s{{ p.pk }}" name="senha" minlength="6" required placeholder="Mín. 6 caracteres">
+                <button type="submit" class="fac-btn fac-btn-brand fac-btn-sm" style="width:100%; margin-top:.6rem;">Redefinir</button>
+              </form>
+            </div>
+          </details>
+
+          <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;" onsubmit="return confirm('Revogar o acesso de {{ p.usuario.username|escapejs }}? O login será desativado.');">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="revogar">
+            <button type="submit" class="fac-btn fac-btn-sm fac-btn-danger"><i class="fa-solid fa-trash"></i> Revogar</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="fac-empty">
+      <i class="fa-solid fa-user-slash"></i>
+      Nenhum acesso de fornecedor cadastrado{% if f_q %} para a busca aplicada{% endif %}.
+    </div>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+  $(function () {
+    $('#fornecedor').select2({
+      placeholder: 'Selecione o fornecedor…',
+      width: '100%',
+      dropdownParent: $('.fac-page')
+    });
+  });
+</script>
+{% endblock %}

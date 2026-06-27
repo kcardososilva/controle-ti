@@ -1,0 +1,347 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}OS #{{ ordem.pk }} — Portal do Fornecedor{% endblock %}
+{% block page_title %}Ordem de Manutenção #{{ ordem.pk }}{% endblock %}
+{% block page_subtitle %}{{ ordem.item.nome }}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'portal_manutencao_list' %}" class="pf-btn"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+  :where(.pf-md) { display: grid; gap: 1.1rem; max-width: 56rem; }
+  .pf-md .select2-container { width: 100% !important; }
+  .pf-md .select2-container--default .select2-selection--single {
+    min-height: 2.7rem; height: 2.7rem; border-radius: var(--radius-md);
+    border: 1px solid var(--separator-non-opaque); background: var(--bg-page);
+  }
+  .pf-md .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 2.5rem; color: var(--text-primary); }
+  .pf-md .select2-container--default .select2-selection--single .select2-selection__arrow { height: 2.5rem; }
+  .pf-md .pf-md-head {
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+    padding: 1.2rem 1.3rem; border-radius: var(--radius-lg);
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+  }
+  .pf-md .pf-md-ic { width: 3rem; height: 3rem; flex: 0 0 3rem; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--brand-soft); color: var(--brand); font-size: 1.2rem; }
+  .pf-md .pf-md-h-name { font-size: 1.15rem; font-weight: 850; letter-spacing: -.03em; }
+  .pf-md .pf-md-h-sub { color: var(--text-tertiary); font-size: .82rem; margin-top: .15rem; }
+
+  .pf-md .pf-sec-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; margin: .3rem 0 .1rem; }
+
+  .pf-md .pf-action {
+    padding: 1.2rem 1.3rem; border-radius: var(--radius-lg); border: 1px solid var(--separator-hairline);
+    background: var(--bg-elevated); box-shadow: var(--shadow-sm); display: grid; gap: .9rem;
+  }
+  .pf-md .pf-action h3 { font-size: .98rem; font-weight: 800; }
+  .pf-md .pf-action p { color: var(--text-tertiary); font-size: .85rem; line-height: 1.5; }
+  .pf-md .pf-action--info { background: var(--brand-soft); border-color: color-mix(in srgb, var(--brand) 18%, transparent); }
+  .pf-md .pf-action--done { background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 18%, transparent); }
+  .pf-md .pf-action--info p, .pf-md .pf-action--done p { color: var(--text-secondary); }
+
+  .pf-md textarea, .pf-md input, .pf-md select {
+    width: 100%; padding: .6rem .85rem; min-height: 2.7rem; border-radius: var(--radius-md);
+    border: 1px solid var(--separator-non-opaque); background: var(--bg-page); color: var(--text-primary); font: inherit;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .pf-md textarea:focus, .pf-md input:focus, .pf-md select:focus {
+    outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft);
+  }
+  .pf-md textarea { min-height: 4.5rem; resize: vertical; }
+  .pf-md label { font-size: .78rem; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: .35rem; }
+  .pf-md .pf-grid2 { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
+  .pf-md .pf-form-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+  .pf-md .pf-btn--danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .pf-md .pf-btn--danger:hover { filter: brightness(1.05); color: #fff; }
+  .pf-md .pf-btn--success { background: var(--success); border-color: var(--success); color: #fff; }
+  .pf-md .pf-btn--success:hover { filter: brightness(1.05); color: #fff; }
+  .pf-md .pf-divider { height: 1px; background: var(--separator-hairline); margin: .2rem 0; }
+
+  .pf-md .pf-diag { padding: .9rem 1.1rem; border-radius: var(--radius-md); background: var(--bg-fill-tertiary); font-size: .86rem; white-space: pre-line; }
+
+  .pf-md .pf-timeline { display: grid; }
+  .pf-md .pf-tl { display: grid; grid-template-columns: auto 1fr; gap: .9rem; padding: .9rem 1.1rem; border-top: 1px solid var(--separator-hairline); }
+  .pf-md .pf-tl:first-child { border-top: 0; }
+  .pf-md .pf-tl-dot { width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 999px; font-size: .72rem; background: var(--bg-fill-tertiary); color: var(--text-secondary); }
+  .pf-md .pf-tl-title { font-weight: 700; font-size: .88rem; }
+  .pf-md .pf-tl-meta { color: var(--text-tertiary); font-size: .76rem; margin-top: .12rem; }
+  .pf-md .pf-tl-obs { margin-top: .35rem; font-size: .82rem; color: var(--text-secondary); white-space: pre-line; }
+
+  .pf-md .pf-specs { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); }
+  .pf-md .pf-spec { padding: .85rem 1.1rem; border-top: 1px solid var(--separator-hairline); }
+  .pf-md .pf-spec:nth-child(-n+2) { border-top: 0; }
+  .pf-md .pf-spec-l { color: var(--text-quaternary); font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+  .pf-md .pf-spec-v { margin-top: .25rem; font-weight: 700; font-size: .9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-md">
+
+  <div class="pf-md-head">
+    <div class="pf-md-ic"><i class="fa-solid fa-screwdriver-wrench"></i></div>
+    <div style="flex:1; min-width:0;">
+      <div class="pf-md-h-name">{{ ordem.item.nome }}</div>
+      <div class="pf-md-h-sub">
+        OS #{{ ordem.pk }} · aberta em {{ ordem.created_at|date:"d/m/Y H:i" }}
+        {% if ordem.item.numero_serie %} · Série {{ ordem.item.numero_serie }}{% endif %}
+      </div>
+    </div>
+    <span class="pf-osc pf-osc--{{ ordem.status }}">{{ ordem.get_status_display }}</span>
+  </div>
+
+  {# ── Painel de ação contextual ───────────────────────────────────────── #}
+  {% if ordem.status == 'aguardando_recebimento' %}
+  <div class="pf-action">
+    <h3>Confirmar recebimento</h3>
+    <p>Confirme que o equipamento chegou às suas instalações para iniciar o atendimento.</p>
+    <form method="post" class="pf-form-actions">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="recebido">
+      <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-box-open"></i> Confirmar recebimento</button>
+    </form>
+  </div>
+
+  {% elif ordem.status == 'recebido' %}
+  <div class="pf-action">
+    <h3>Iniciar avaliação</h3>
+    <p>Inicie o diagnóstico técnico do equipamento.</p>
+    <form method="post" class="pf-form-actions">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="em_avaliacao">
+      <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-magnifying-glass"></i> Iniciar avaliação</button>
+    </form>
+  </div>
+
+  {% elif ordem.status == 'em_avaliacao' %}
+  <div class="pf-action">
+    <h3>Resultado da avaliação</h3>
+    <p>Informe o diagnóstico e escolha o desfecho: reparar ou trocar o equipamento.</p>
+    <form method="post">
+      {% csrf_token %}
+      <label for="diagnostico">Diagnóstico técnico</label>
+      <textarea id="diagnostico" name="diagnostico" placeholder="Descreva o problema encontrado…"></textarea>
+      <div class="pf-divider"></div>
+      <div class="pf-form-actions" style="margin-top:.6rem;">
+        <button type="submit" name="acao" value="em_reparo" class="pf-btn pf-btn--success"><i class="fa-solid fa-screwdriver-wrench"></i> Tem conserto — iniciar reparo</button>
+        <button type="submit" name="acao" value="sem_reparo" class="pf-btn pf-btn--danger"><i class="fa-solid fa-rotate"></i> Sem conserto — solicitar troca</button>
+      </div>
+    </form>
+  </div>
+
+  {% elif ordem.status == 'em_reparo' %}
+  <div class="pf-action">
+    <h3>Reparo em andamento</h3>
+    <p>Quando o reparo estiver concluído, marque abaixo. O equipamento será devolvido ao time de TI.</p>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="reparado">
+      <label for="observacao">Observação (opcional)</label>
+      <textarea id="observacao" name="observacao" placeholder="Ex: troca de fonte, limpeza interna…"></textarea>
+      <div class="pf-form-actions" style="margin-top:.7rem;">
+        <button type="submit" class="pf-btn pf-btn--success"><i class="fa-solid fa-circle-check"></i> Reparo concluído</button>
+      </div>
+    </form>
+  </div>
+
+  {% elif ordem.status == 'sem_reparo' %}
+  <div class="pf-action">
+    <h3>Cadastrar equipamento substituto</h3>
+    <p>Informe os dados do equipamento que entrará no lugar e o <b>contrato de substituição</b> (contrato, valor e data são obrigatórios). Ele entrará pendente e o time de TI fará o recebimento em estoque.</p>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="substituto_enviado">
+      <div class="pf-grid2">
+        <div>
+          <label for="nome">Nome / Identificação</label>
+          <input type="text" id="nome" name="nome" value="{{ ordem.item.nome }}" placeholder="Nome do equipamento">
+        </div>
+        <div>
+          <label for="numero_serie">Nº de Série</label>
+          <input type="text" id="numero_serie" name="numero_serie" placeholder="Série do substituto">
+        </div>
+        <div>
+          <label for="marca">Marca</label>
+          <input type="text" id="marca" name="marca" value="{{ ordem.item.marca|default:'' }}" placeholder="Marca">
+        </div>
+        <div>
+          <label for="modelo">Modelo</label>
+          <input type="text" id="modelo" name="modelo" value="{{ ordem.item.modelo|default:'' }}" placeholder="Modelo">
+        </div>
+        <div>
+          <label for="localidade_substituto">Localidade</label>
+          <select id="localidade_substituto" name="localidade_substituto" class="pf-select2">
+            <option value="">Manter a do equipamento</option>
+            {% for loc in localidades %}
+              <option value="{{ loc.id }}" {% if ordem.item.localidade_id == loc.id %}selected{% endif %}>{{ loc.local }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="pf-divider" style="margin:1rem 0 .2rem;"></div>
+      <p style="font-weight:700; font-size:.85rem; margin-bottom:.6rem;"><i class="fa-solid fa-file-contract"></i> Contrato de substituição</p>
+      <div class="pf-grid2">
+        <div style="grid-column:1 / -1;">
+          <label for="contrato">Contrato *</label>
+          <input type="text" id="contrato" name="contrato" required placeholder="Nº / referência do contrato de substituição">
+        </div>
+        <div>
+          <label for="locado">Regime *</label>
+          <select id="locado" name="locado" class="pf-select2" required>
+            <option value="nao">Compra (não locado)</option>
+            <option value="sim">Locação</option>
+          </select>
+        </div>
+        <div>
+          <label for="valor"><span data-valor-label>Valor (R$) *</span></label>
+          <input type="number" id="valor" name="valor" step="0.01" min="0" required placeholder="0,00">
+        </div>
+        <div>
+          <label for="data">Data *</label>
+          <input type="date" id="data" name="data" required>
+        </div>
+      </div>
+
+      <div class="pf-form-actions" style="margin-top:.8rem;">
+        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paper-plane"></i> Enviar substituto</button>
+      </div>
+    </form>
+  </div>
+
+  {% elif ordem.status == 'reparado' %}
+  <div class="pf-action">
+    <h3>Reparo concluído</h3>
+    <p>O reparo foi finalizado. Quando enviar o equipamento de volta, registre a devolução ao cliente. Em seguida o time de TI confirma o recebimento.</p>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="devolvido">
+      <div class="pf-grid2">
+        <div>
+          <label for="localidade_devolucao">Localidade de destino *</label>
+          <select id="localidade_devolucao" name="localidade_devolucao" class="pf-select2" required>
+            <option value="">Selecione a localidade…</option>
+            {% for loc in localidades %}
+              <option value="{{ loc.id }}" {% if ordem.item.localidade_id == loc.id %}selected{% endif %}>{{ loc.local }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="reparo_valor">Valor do reparo (R$) *</label>
+          <input type="number" id="reparo_valor" name="reparo_valor" step="0.01" min="0" required placeholder="0,00">
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label for="observacao">Observação (opcional)</label>
+          <input type="text" id="observacao" name="observacao" placeholder="Ex: troca de fonte, transportadora X, NF 123…">
+        </div>
+      </div>
+      <div class="pf-form-actions" style="margin-top:.7rem;">
+        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-truck-fast"></i> Devolver ao cliente</button>
+      </div>
+    </form>
+  </div>
+
+  {% elif ordem.status == 'devolvido' %}
+  <div class="pf-action pf-action--info">
+    <h3><i class="fa-solid fa-clock"></i> Devolvido — aguardando o time de TI</h3>
+    <p>O equipamento reparado foi devolvido ao cliente. O time de TI irá confirmar o recebimento para encerrar a ordem.</p>
+  </div>
+
+  {% elif ordem.status == 'substituto_enviado' %}
+  <div class="pf-action pf-action--info">
+    <h3><i class="fa-solid fa-clock"></i> Substituto enviado</h3>
+    <p>O equipamento substituto foi registrado. O time de TI fará o recebimento em estoque para encerrar a ordem.</p>
+    {% if ordem.item_substituto %}
+    <div class="pf-diag">
+      <b>Substituto:</b> {{ ordem.item_substituto.nome }}
+      {% if ordem.item_substituto.numero_serie %} · Série {{ ordem.item_substituto.numero_serie }}{% endif %}
+      {% if ordem.item_substituto.marca or ordem.item_substituto.modelo %} · {{ ordem.item_substituto.marca|default:'' }} {{ ordem.item_substituto.modelo|default:'' }}{% endif %}
+      <br><b>Contrato:</b> {{ ordem.substituto_contrato|default:'—' }}
+      · <b>Valor:</b> R$ {{ ordem.substituto_valor|default:'—' }}
+      · <b>Data:</b> {{ ordem.substituto_data|date:"d/m/Y"|default:'—' }}
+      · <b>Regime:</b> {% if ordem.substituto_locado == 'sim' %}Locação{% else %}Compra{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% elif ordem.status == 'concluido' %}
+  <div class="pf-action pf-action--done">
+    <h3><i class="fa-solid fa-circle-check"></i> Ordem concluída</h3>
+    <p>Esta ordem de manutenção foi finalizada{% if ordem.finalizada_em %} em {{ ordem.finalizada_em|date:"d/m/Y H:i" }}{% endif %}.</p>
+  </div>
+
+  {% else %}
+  <div class="pf-action">
+    <h3>Ordem {{ ordem.get_status_display|lower }}</h3>
+    <p>Nenhuma ação disponível para esta ordem no momento.</p>
+  </div>
+  {% endif %}
+
+  {# ── Diagnóstico registrado ──────────────────────────────────────────── #}
+  {% if ordem.diagnostico or ordem.reparo_valor %}
+  <div>
+    <div class="pf-sec-title">Diagnóstico e reparo</div>
+    <div class="pf-card" style="margin-top:.5rem;">
+      {% if ordem.diagnostico %}<div class="pf-diag">{{ ordem.diagnostico }}</div>{% endif %}
+      {% if ordem.reparo_valor %}<div class="pf-diag" style="margin-top:.5rem;"><i class="fa-solid fa-money-bill-wave" style="color:#34c759;"></i> <b>Valor do reparo realizado:</b> R$ {{ ordem.reparo_valor }}</div>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Dados do equipamento ────────────────────────────────────────────── #}
+  <div>
+    <div class="pf-sec-title">Equipamento</div>
+    <div class="pf-card" style="margin-top:.5rem;">
+      <div class="pf-specs">
+        <div class="pf-spec"><div class="pf-spec-l">Nome</div><div class="pf-spec-v">{{ ordem.item.nome }}</div></div>
+        <div class="pf-spec"><div class="pf-spec-l">Nº de Série</div><div class="pf-spec-v">{{ ordem.item.numero_serie|default:'—' }}</div></div>
+        <div class="pf-spec"><div class="pf-spec-l">Marca / Modelo</div><div class="pf-spec-v">{{ ordem.item.marca|default:'—' }} {{ ordem.item.modelo|default:'' }}</div></div>
+        <div class="pf-spec"><div class="pf-spec-l">Tipo</div><div class="pf-spec-v">{% if ordem.item.subtipo %}{{ ordem.item.subtipo.nome }}{% else %}—{% endif %}</div></div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Linha do tempo ──────────────────────────────────────────────────── #}
+  <div>
+    <div class="pf-sec-title">Linha do tempo</div>
+    <div class="pf-card" style="margin-top:.5rem;">
+      <div class="pf-timeline">
+        {% for ev in eventos %}
+        <div class="pf-tl">
+          <div class="pf-tl-dot"><i class="fa-solid fa-circle"></i></div>
+          <div>
+            <div class="pf-tl-title">{{ ev.get_status_display }}</div>
+            <div class="pf-tl-meta">{{ ev.created_at|date:"d/m/Y H:i" }}{% if ev.criado_por %} · {{ ev.criado_por.username }}{% endif %}</div>
+            {% if ev.observacao %}<div class="pf-tl-obs">{{ ev.observacao }}</div>{% endif %}
+          </div>
+        </div>
+        {% empty %}
+        <div class="pf-empty"><i class="fa-solid fa-clock-rotate-left"></i><p>Sem eventos registrados.</p></div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+  (function () {
+    var sel = document.getElementById('locado');
+    var lbl = document.querySelector('[data-valor-label]');
+    if (sel && lbl) {
+      var upd = function () { lbl.textContent = sel.value === 'sim' ? 'Valor mensal (R$) *' : 'Valor de aquisição (R$) *'; };
+      sel.addEventListener('change', upd); upd();
+    }
+  })();
+  $(function () {
+    $('.pf-select2').each(function () {
+      $(this).select2({ width: '100%', dropdownParent: $(this).closest('.pf-action') });
+    });
+  });
+</script>
+{% endblock %}

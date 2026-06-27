@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+
+{% block title %}Recebimentos de Manutenção{% endblock %}
+{% block page_title %}Recebimentos de Manutenção{% endblock %}
+{% block page_subtitle %}{{ qtd_pendentes }} ordem{{ qtd_pendentes|pluralize:"ns" }} aguardando o time de TI{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+  :where(.mr-page) { display: grid; gap: 1.4rem; max-width: 70rem; }
+  .mr-page .mr-sech { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: .5rem; display:flex; align-items:center; gap:.5rem; }
+  .mr-page .mr-card { background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg, 16px); box-shadow: var(--shadow-sm); padding: 1.1rem 1.25rem; margin-bottom: .8rem; }
+  .mr-page .mr-top { display: flex; align-items: flex-start; gap: .9rem; flex-wrap: wrap; }
+  .mr-page .mr-ic { width: 2.6rem; height: 2.6rem; flex: 0 0 2.6rem; display: grid; place-items: center; border-radius: .7rem; }
+  .mr-page .mr-ic.rep { background: rgba(0,113,227,.12); color: var(--brand, #0071e3); }
+  .mr-page .mr-ic.sub { background: rgba(255,149,0,.14); color: #ff9500; }
+  .mr-page .mr-name { font-weight: 800; letter-spacing: -.01em; }
+  .mr-page .mr-meta { color: var(--text-tertiary); font-size: .8rem; margin-top: .15rem; }
+  .mr-page .mr-tag { margin-left: auto; font-size: .72rem; font-weight: 800; padding: .25rem .6rem; border-radius: 980px; white-space: nowrap; }
+  .mr-page .mr-tag.rep { color: var(--brand, #0071e3); background: rgba(0,113,227,.12); }
+  .mr-page .mr-tag.sub { color: #ff9500; background: rgba(255,149,0,.14); }
+  .mr-page .mr-sub-box { margin-top: .8rem; padding: .8rem 1rem; border-radius: 12px; background: var(--bg-fill-tertiary, rgba(120,120,128,.08)); font-size: .85rem; line-height:1.5; }
+  .mr-page .mr-form { margin-top: .9rem; display: flex; align-items: flex-end; gap: .7rem; flex-wrap: wrap; }
+  .mr-page .mr-field { display: grid; gap: .35rem; }
+  .mr-page .mr-field label { font-size: .72rem; font-weight: 800; text-transform:uppercase; letter-spacing:.04em; color: var(--text-quaternary); }
+  .mr-page .mr-field select, .mr-page .mr-field input {
+    min-height: 2.6rem; padding: .5rem .8rem; border-radius: 10px; font: inherit; color: var(--text-primary);
+    border: 1px solid var(--separator-non-opaque, rgba(0,0,0,.12)); background: var(--bg-page, #fff);
+  }
+  .mr-page .mr-field--grow { flex: 1; min-width: 14rem; }
+  .mr-page .mr-field--grow input { width: 100%; }
+  .mr-page .btn-success { background: #34c759; border: 1px solid #34c759; color: #fff; }
+  .mr-page .btn-success:hover { filter: brightness(1.04); color: #fff; }
+  .mr-page .mr-detail-link { display:inline-flex; align-items:center; gap:.4rem; font-size:.82rem; font-weight:700; color: var(--brand, #0071e3); }
+
+  /* Filtros */
+  .mr-page .mr-filters { display:grid; grid-template-columns: 1.4fr 1fr 1fr auto; gap:.7rem; align-items:end; }
+  .mr-page .select2-container { width: 100% !important; }
+  .mr-page .select2-container--default .select2-selection--single { min-height:2.6rem; height:2.6rem; border-radius:10px; border:1px solid var(--separator-non-opaque, rgba(0,0,0,.12)); background: var(--bg-page,#fff); }
+  .mr-page .select2-container--default .select2-selection--single .select2-selection__rendered { line-height:2.45rem; color: var(--text-primary); }
+  .mr-page .select2-container--default .select2-selection--single .select2-selection__arrow { height:2.45rem; }
+
+  /* Tabela de histórico */
+  .mr-page .mr-tablewrap { overflow-x:auto; border-radius: var(--radius-lg,16px); border:1px solid var(--separator-hairline); }
+  .mr-page table { width:100%; border-collapse: collapse; min-width: 44rem; }
+  .mr-page thead th { text-align:left; font-size:.7rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color: var(--text-tertiary); padding:.8rem 1rem; border-bottom:1px solid var(--separator-hairline); white-space:nowrap; }
+  .mr-page tbody td { padding:.75rem 1rem; border-bottom:1px solid var(--separator-hairline); font-size:.85rem; }
+  .mr-page tbody tr:last-child td { border-bottom:0; }
+  .mr-page tbody tr:hover { background: var(--bg-hover, rgba(0,0,0,.03)); }
+  .mr-osc { display:inline-flex; align-items:center; gap:.35rem; padding:.22rem .55rem; border-radius:980px; font-size:.7rem; font-weight:800; white-space:nowrap; }
+  .mr-osc::before { content:""; width:.45rem; height:.45rem; border-radius:999px; background: currentColor; }
+  .mr-osc--aguardando_recebimento, .mr-osc--cancelado { color:#8e8e93; background: rgba(142,142,147,.16); }
+  .mr-osc--recebido, .mr-osc--em_avaliacao { color:#5ac8fa; background: rgba(90,200,250,.16); }
+  .mr-osc--em_reparo, .mr-osc--substituto_enviado { color:#ff9500; background: rgba(255,149,0,.16); }
+  .mr-osc--reparado { color:#0071e3; background: rgba(0,113,227,.14); }
+  .mr-osc--devolvido { color:#5856d6; background: rgba(88,86,214,.14); }
+  .mr-osc--sem_reparo { color:#ff3b30; background: rgba(255,59,48,.14); }
+  .mr-osc--concluido { color:#34c759; background: rgba(52,199,89,.16); }
+
+  .mr-page .mr-empty { text-align: center; padding: 2.2rem 1rem; color: var(--text-tertiary); }
+  .mr-page .mr-empty i { font-size: 1.8rem; color: var(--text-quaternary); display: block; margin-bottom: .5rem; }
+  .mr-page .mr-pager { display:flex; gap:.5rem; justify-content:center; padding-top:.7rem; }
+  .mr-page .mr-pager a, .mr-page .mr-pager span { min-width:2.3rem; min-height:2.3rem; display:inline-flex; align-items:center; justify-content:center; padding:0 .7rem; border-radius:980px; border:1px solid var(--separator-hairline); font-size:.82rem; font-weight:700; color: var(--text-secondary); }
+  .mr-page .mr-pager .is-current { background: var(--brand,#0071e3); border-color: var(--brand,#0071e3); color:#fff; }
+
+  @media (max-width: 48rem) {
+    .mr-page .mr-filters { grid-template-columns: 1fr 1fr; }
+    .mr-page .mr-filters .mr-field--grow { grid-column: 1 / -1; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mr-page">
+
+  <section>
+    <div class="mr-sech"><i class="fa-solid fa-bell" style="color:#ff9500;"></i> Pendentes de você</div>
+    {% if pendentes %}
+      {% for o in pendentes %}
+      <div class="mr-card">
+        <div class="mr-top">
+          {% if o.status == 'devolvido' %}<div class="mr-ic rep"><i class="fa-solid fa-arrow-rotate-left"></i></div>
+          {% else %}<div class="mr-ic sub"><i class="fa-solid fa-right-left"></i></div>{% endif %}
+          <div style="min-width:0;">
+            <div class="mr-name">{{ o.item.nome }}</div>
+            <div class="mr-meta">OS #{{ o.pk }} · {{ o.fornecedor.nome }}{% if o.item.numero_serie %} · Série {{ o.item.numero_serie }}{% endif %} · <a class="mr-detail-link" href="{% url 'manutencao_recebimento_detail' o.pk %}">ver detalhe</a></div>
+          </div>
+          {% if o.status == 'devolvido' %}<span class="mr-tag rep">Devolvido — confirmar recebimento</span>
+          {% else %}<span class="mr-tag sub">Substituto enviado</span>{% endif %}
+        </div>
+
+        {% if o.status == 'substituto_enviado' and o.item_substituto %}
+        <div class="mr-sub-box">
+          <i class="fa-solid fa-box"></i> <b>Substituto:</b> {{ o.item_substituto.nome }}
+          {% if o.item_substituto.numero_serie %} · Série {{ o.item_substituto.numero_serie }}{% endif %}
+          {% if o.item_substituto.marca or o.item_substituto.modelo %} · {{ o.item_substituto.marca|default:'' }} {{ o.item_substituto.modelo|default:'' }}{% endif %}
+          <br><b>Contrato:</b> {{ o.substituto_contrato|default:'—' }} · <b>Valor:</b> R$ {{ o.substituto_valor|default:'—' }} · <b>Data:</b> {{ o.substituto_data|date:"d/m/Y"|default:'—' }} · <b>Regime:</b> {% if o.substituto_locado == 'sim' %}Locação{% else %}Compra{% endif %}
+        </div>
+        {% endif %}
+        {% if o.diagnostico %}<div class="mr-sub-box"><i class="fa-solid fa-stethoscope"></i> <b>Diagnóstico:</b> {{ o.diagnostico }}</div>{% endif %}
+
+        <form method="post" action="{% url 'manutencao_recebimento_acao' o.pk %}" class="mr-form">
+          {% csrf_token %}
+          {% if o.status == 'devolvido' %}
+            <div class="mr-field">
+              <label for="sr{{ o.pk }}">Novo status do equipamento</label>
+              <select id="sr{{ o.pk }}" name="status_retorno">
+                {% for value, label in status_retorno_opcoes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="mr-field mr-field--grow">
+              <label for="obs{{ o.pk }}">Observação (opcional)</label>
+              <input type="text" id="obs{{ o.pk }}" name="observacao" placeholder="Ex: conferido e disponível em estoque">
+            </div>
+            <button type="submit" class="btn btn-success"><i class="fa-solid fa-check"></i> Confirmar retorno</button>
+          {% else %}
+            <div class="mr-field mr-field--grow">
+              <label for="obs{{ o.pk }}">Observação (opcional)</label>
+              <input type="text" id="obs{{ o.pk }}" name="observacao" placeholder="Ex: substituto recebido e conferido">
+            </div>
+            <button type="submit" class="btn btn-success"><i class="fa-solid fa-box-archive"></i> Receber em estoque</button>
+          {% endif %}
+        </form>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="mr-card mr-empty"><i class="fa-solid fa-circle-check"></i> Nenhum recebimento pendente. Tudo em dia!</div>
+    {% endif %}
+  </section>
+
+  <section>
+    <div class="mr-sech"><i class="fa-solid fa-clock-rotate-left"></i> Histórico de ordens</div>
+
+    <form method="get" class="mr-card" style="margin-bottom:.9rem;">
+      <div class="mr-filters">
+        <div class="mr-field mr-field--grow">
+          <label for="q">Buscar</label>
+          <input type="text" id="q" name="q" value="{{ f_q }}" placeholder="Equipamento, série ou chamado…">
+        </div>
+        <div class="mr-field">
+          <label for="fornecedor">Recebido por (fornecedor)</label>
+          <select id="fornecedor" name="fornecedor" class="mr-select2">
+            <option value="">Todos</option>
+            {% for f in fornecedores %}<option value="{{ f.id }}" {% if f_fornecedor == f.id|stringformat:'s' %}selected{% endif %}>{{ f.nome }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="mr-field">
+          <label for="status">Status</label>
+          <select id="status" name="status" class="mr-select2">
+            <option value="">Todos</option>
+            {% for value, label in status_choices %}<option value="{{ value }}" {% if f_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="mr-field">
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-filter"></i> Filtrar</button>
+          {% if tem_filtro %}<a href="{% url 'manutencao_recebimentos' %}" class="btn" style="margin-top:.4rem;">Limpar</a>{% endif %}
+        </div>
+      </div>
+    </form>
+
+    {% if page_obj.object_list %}
+    <div class="mr-tablewrap">
+      <table>
+        <thead>
+          <tr><th>OS</th><th>Equipamento</th><th>Fornecedor</th><th>Status</th><th>Aberta</th><th>Finalizada</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for o in page_obj.object_list %}
+          <tr>
+            <td>#{{ o.pk }}</td>
+            <td><b>{{ o.item.nome }}</b>{% if o.item.numero_serie %}<br><span style="color:var(--text-tertiary); font-size:.78rem;">Série {{ o.item.numero_serie }}</span>{% endif %}</td>
+            <td>{{ o.fornecedor.nome }}</td>
+            <td><span class="mr-osc mr-osc--{{ o.status }}">{{ o.get_status_display }}</span></td>
+            <td style="color:var(--text-tertiary);">{{ o.created_at|date:"d/m/Y" }}</td>
+            <td style="color:var(--text-tertiary);">{{ o.finalizada_em|date:"d/m/Y"|default:"—" }}</td>
+            <td style="text-align:right;"><a class="mr-detail-link" href="{% url 'manutencao_recebimento_detail' o.pk %}">Detalhe <i class="fa-solid fa-chevron-right" style="font-size:.7rem;"></i></a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="mr-pager">
+      {% if page_obj.has_previous %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.previous_page_number }}"><i class="fa-solid fa-chevron-left"></i></a>{% endif %}
+      <span class="is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+      {% if page_obj.has_next %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.next_page_number }}"><i class="fa-solid fa-chevron-right"></i></a>{% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="mr-card mr-empty"><i class="fa-solid fa-folder-open"></i> Nenhuma ordem encontrada{% if tem_filtro %} para os filtros aplicados{% endif %}.</div>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+  $(function () {
+    $('.mr-select2').select2({ width: '100%', placeholder: 'Todos' });
+  });
+</script>
+{% endblock %}

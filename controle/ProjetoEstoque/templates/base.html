@@ -126,7 +126,7 @@
 
       /* ---------- Layout ---------- */
       --sidebar-width: 17rem;
-      --sidebar-collapsed: 4.5rem;
+      --sidebar-collapsed: 3.9rem;
       --topbar-height: 3.75rem;
       --content-max: 96rem;
 
@@ -318,12 +318,21 @@
        ========================================================= */
 
     .app-shell {
+      position: relative;
       width: 100%;
       height: 100dvh;
       display: grid;
       grid-template-columns: minmax(0, 1fr);
       overflow: hidden;
       background: var(--bg-page);
+    }
+
+    /* No carregamento, o JS aplica o estado recolhido; este guard impede que a
+       transição do grid/rótulos dispare nesse primeiro instante (o menu aparece
+       recolhido instantaneamente). É removido após o 1º quadro pintado. */
+    .app-shell.no-anim,
+    .app-shell.no-anim * {
+      transition: none !important;
     }
 
     .main-shell {
@@ -510,6 +519,7 @@
 
     .nav-section {
       margin-bottom: 8px;
+      transition: margin-bottom 360ms var(--ease-apple);
     }
 
     .nav-label {
@@ -517,11 +527,17 @@
       align-items: center;
       gap: 8px;
       margin: 16px 12px 7px;
+      max-height: 60px;
+      overflow: hidden;
       color: var(--text-quaternary);
       font-size: 10.5px;
       font-weight: 700;
       letter-spacing: 0.07em;
       text-transform: uppercase;
+      transition:
+        max-height 360ms var(--ease-apple),
+        margin 360ms var(--ease-apple),
+        opacity 240ms var(--ease-apple);
     }
     .nav-label::after {
       content: "";
@@ -1678,41 +1694,97 @@
 
       .command-bar { display: flex; }
 
-      .app-shell.is-sidebar-collapsed .sidebar {
-        width: var(--sidebar-collapsed);
-        max-width: var(--sidebar-collapsed);
+      /* ── Recolhido: o menu vira um trilho estreito que EMPURRA o conteúdo
+         para a direita (não o cobre). Abrir/fechar anima a largura da COLUNA
+         do grid — uma única propriedade — então o conteúdo acompanha o deslize
+         de forma fluida nos dois sentidos e nada fica sobreposto. ──────────── */
+      .app-shell.is-sidebar-collapsed {
+        grid-template-columns: var(--sidebar-collapsed) minmax(0, 1fr);
+        /* Transição de FECHAMENTO (peek → recolhido). */
+        transition: grid-template-columns 440ms var(--ease-apple);
       }
 
+      .app-shell.is-sidebar-collapsed .sidebar {
+        position: relative;
+        width: 100%;
+        max-width: 100%;
+        box-shadow: none;
+      }
+
+      /* Conteúdo na 2ª coluna (o menu ocupa a 1ª, agora dentro do fluxo). */
+      .app-shell.is-sidebar-collapsed .main-shell {
+        grid-column: 2;
+      }
+
+      /* ── Peek (ponteiro perto / foco por teclado): a coluna do menu se alarga
+         e empurra o conteúdo; nada fica sobreposto. ───────────────────────── */
+      .app-shell.is-sidebar-collapsed.is-sidebar-peek {
+        grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+        /* Transição de ABERTURA: desacelera ao final (deslize premium). */
+        transition: grid-template-columns 460ms var(--ease-apple-out);
+      }
+
+      /* Sombra sutil na borda direita durante o peek, só para dar profundidade. */
+      .app-shell.is-sidebar-collapsed.is-sidebar-peek .sidebar {
+        box-shadow: 14px 0 30px -22px rgba(0, 0, 0, 0.22);
+      }
+
+      /* Marca e rodapé: fade in/out MANTENDO a altura reservada (opacity, não
+         display) — assim o conteúdo NÃO pula na vertical ao abrir/fechar. */
       .app-shell.is-sidebar-collapsed .brand-copy,
-      .app-shell.is-sidebar-collapsed .nav-label,
-      .app-shell.is-sidebar-collapsed .nav-text,
-      .app-shell.is-sidebar-collapsed .nav-arrow,
-      .app-shell.is-sidebar-collapsed .nav-badge,
-      .app-shell.is-sidebar-collapsed .submenu,
       .app-shell.is-sidebar-collapsed .sidebar-footer {
+        opacity: 0;
+        transition: opacity 180ms var(--ease-apple);
+      }
+
+      .app-shell.is-sidebar-collapsed.is-sidebar-peek .brand-copy,
+      .app-shell.is-sidebar-collapsed.is-sidebar-peek .sidebar-footer {
+        opacity: 1;
+        /* Surgem depois que o painel já começou a abrir, acompanhando o deslize. */
+        transition: opacity 260ms var(--ease-apple) 120ms;
+      }
+
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .sidebar-footer {
+        pointer-events: none;
+      }
+
+      /* ── Trilho recolhido: ícones CENTRALIZADOS e organizados ──────────────
+         Texto/contador/seta não ocupam largura (some o desalinhamento), e o
+         ícone fica centralizado no trilho. */
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-item,
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-button {
+        justify-content: center;
+        gap: 0;
+        padding-inline: 0;
+      }
+
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-text,
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-badge,
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-arrow {
         display: none;
       }
 
-      .app-shell.is-sidebar-collapsed .sidebar-brand {
-        justify-content: center;
-        padding-inline: 10px;
+      /* Submenus abertos ficam ocultos no trilho. */
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .submenu {
+        display: none;
       }
 
-      .app-shell.is-sidebar-collapsed .sidebar-nav {
-        padding-inline: 8px;
+      /* Título de seção some POR COMPLETO no trilho (max-height:0 + margens 0),
+         deixando os ícones uniformemente espaçados — "justo igual" entre si,
+         inclusive os itens que são o único da sua seção (Painéis Gerenciais,
+         Gestão de Pessoas, Tabelas de Apoio). A transição de max-height/margem
+         na base anima o "desdobrar" dos rótulos no peek, então NÃO há pulo. */
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-label {
+        max-height: 0;
+        margin-top: 0;
+        margin-bottom: 0;
+        opacity: 0;
       }
 
-      .app-shell.is-sidebar-collapsed .nav-item,
-      .app-shell.is-sidebar-collapsed .nav-button {
-        justify-content: center;
-        padding-inline: 8px;
-      }
-
-      .app-shell.is-sidebar-collapsed .nav-icon {
-        width: 32px;
-        height: 32px;
-        min-width: 32px;
-        font-size: 15px;
+      /* Sem o rótulo, a margem da seção encolhe para igualar o ritmo dos ícones,
+         removendo o "afastamento" dos itens solitários. */
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-section {
+        margin-bottom: 2px;
       }
 
       .topbar { padding-inline: 32px; }
@@ -1778,7 +1850,7 @@
   </script>
   <a href="#mainContent" class="skip-link">Ir para o conteúdo principal</a>
 
-  <div class="app-shell" id="appShell">
+  <div class="app-shell no-anim" id="appShell">
     <button type="button" class="overlay" id="overlay" aria-label="Fechar menu lateral"></button>
 
     <aside class="sidebar" id="sidebar" aria-label="Menu lateral principal">
@@ -1879,10 +1951,30 @@
             <span class="nav-text">Movimentações</span>
           </a>
 
-          <a href="{% url 'fornecedor_list' %}" class="nav-item {% if 'fornecedor' in request.resolver_match.url_name %}is-active{% endif %}" title="Fornecedores" style="--ic:#ff6482">
-            <i class="fa-solid fa-truck-ramp-box nav-icon" aria-hidden="true"></i>
-            <span class="nav-text">Fornecedores</span>
-          </a>
+          <div class="nav-group">
+            <button
+              type="button"
+              class="nav-button {% if 'fornecedor' in request.resolver_match.url_name or request.resolver_match.url_name == 'manutencao_recebimentos' %}is-active{% endif %}"
+              data-submenu-target="sub-fornecedores"
+              aria-expanded="false"
+              aria-controls="sub-fornecedores"
+              title="Fornecedores e Portal"
+              style="--ic:#ff6482">
+              <i class="fa-solid fa-truck-ramp-box nav-icon" aria-hidden="true"></i>
+              <span class="nav-text">Fornecedores</span>
+              <i class="fa-solid fa-chevron-down nav-arrow" aria-hidden="true"></i>
+            </button>
+
+            <div class="submenu" id="sub-fornecedores">
+              <div class="submenu-inner">
+                <a href="{% url 'fornecedor_list' %}" class="sub-link {% if 'fornecedor' in request.resolver_match.url_name and 'acesso' not in request.resolver_match.url_name %}is-active{% endif %}">Fornecedores</a>
+                {% if request.user.is_staff or request.user.is_superuser %}
+                <a href="{% url 'fornecedor_acessos_list' %}" class="sub-link {% if 'acesso' in request.resolver_match.url_name %}is-active{% endif %}">Acessos ao Portal</a>
+                {% endif %}
+                <a href="{% url 'manutencao_recebimentos' %}" class="sub-link {% if request.resolver_match.url_name == 'manutencao_recebimentos' %}is-active{% endif %}">Recebimentos Fornecedor</a>
+              </div>
+            </div>
+          </div>
 
           <div class="nav-group">
             <button
@@ -2132,8 +2224,23 @@
         sidebar: 'controleTI.sidebarCollapsed'
       };
 
+      // Preferência FIXADA do usuário no desktop (independe do "peek" no hover).
+      // Padrão: recolhido (menu fechado). Só fica aberto se o usuário fixar.
+      let sidebarPinnedCollapsed = true;
+
       function isDesktop() {
         return desktopQuery.matches;
+      }
+
+      // Reflete visualmente a preferência fixada (sem peek).
+      function applyPinnedSidebar() {
+        appShell.classList.remove('is-sidebar-peek');
+        if (isDesktop() && sidebarPinnedCollapsed) {
+          appShell.classList.add('is-sidebar-collapsed');
+        } else {
+          appShell.classList.remove('is-sidebar-collapsed');
+        }
+        updateSidebarAria();
       }
 
       function setThemeColor(theme) {
@@ -2145,7 +2252,7 @@
         if (!sidebarToggle) return;
 
         const expanded = isDesktop()
-          ? !appShell.classList.contains('is-sidebar-collapsed')
+          ? (!appShell.classList.contains('is-sidebar-collapsed') || appShell.classList.contains('is-sidebar-peek'))
           : sidebar.classList.contains('is-active');
 
         sidebarToggle.setAttribute('aria-expanded', String(expanded));
@@ -2167,11 +2274,14 @@
 
       function toggleSidebar() {
         if (isDesktop()) {
-          appShell.classList.toggle('is-sidebar-collapsed');
+          // Fixa/desafixa o menu. Clicar no ícone do menu alterna entre
+          // recolhido (padrão) e aberto-fixado.
+          sidebarPinnedCollapsed = !sidebarPinnedCollapsed;
           localStorage.setItem(
             storageKeys.sidebar,
-            appShell.classList.contains('is-sidebar-collapsed') ? 'true' : 'false'
+            sidebarPinnedCollapsed ? 'true' : 'false'
           );
+          applyPinnedSidebar();
         } else {
           sidebar.classList.contains('is-active') ? closeMobileSidebar() : openMobileSidebar();
         }
@@ -2219,9 +2329,15 @@
         if (!submenu) return;
 
         if (isDesktop() && appShell.classList.contains('is-sidebar-collapsed')) {
-          appShell.classList.remove('is-sidebar-collapsed');
-          localStorage.setItem(storageKeys.sidebar, 'false');
-          updateSidebarAria();
+          // Expande temporariamente (peek) para mostrar o submenu, sem
+          // desafixar o modo recolhido — volta a recolher ao tirar o mouse.
+          // Reutiliza a abertura com timers (cancela fechamento pendente).
+          if (typeof sidebar._openPeek === 'function') {
+            sidebar._openPeek();
+          } else {
+            appShell.classList.add('is-sidebar-peek');
+            updateSidebarAria();
+          }
         }
 
         const willOpen = !submenu.classList.contains('is-open');
@@ -2265,13 +2381,15 @@
 
         applyTheme(savedTheme || 'light');
 
-        if (isDesktop() && savedSidebar === 'true') {
-          appShell.classList.add('is-sidebar-collapsed');
-        } else {
-          appShell.classList.remove('is-sidebar-collapsed');
-        }
+        // Padrão recolhido: só fica aberto se o usuário tiver fixado (=== 'false').
+        sidebarPinnedCollapsed = (savedSidebar !== 'false');
+        applyPinnedSidebar();
 
-        updateSidebarAria();
+        // Libera as transições só depois que o estado inicial já foi pintado,
+        // para o menu aparecer recolhido SEM animar no carregamento da página.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => appShell.classList.remove('no-anim'));
+        });
       }
 
       function detectOSKey() {
@@ -2316,15 +2434,72 @@
 
         desktopQuery.addEventListener('change', () => {
           closeMobileSidebar();
+          // Reaplica a preferência fixada ao alternar entre desktop/mobile.
+          applyPinnedSidebar();
+        });
+      }
 
-          const savedSidebar = localStorage.getItem(storageKeys.sidebar);
-          if (isDesktop() && savedSidebar === 'true') {
-            appShell.classList.add('is-sidebar-collapsed');
-          } else if (!isDesktop()) {
-            appShell.classList.remove('is-sidebar-collapsed');
+      // Peek: no desktop, com o menu recolhido, aproximar o ponteiro abre o
+      // menu temporariamente; ao afastar, ele recolhe de novo. Não altera a
+      // preferência fixada (nem o localStorage).
+      //
+      // Usa "hover com intenção": um pequeno atraso para abrir evita que o menu
+      // se abra por acidente quando o ponteiro apenas passa pelo trilho; e um
+      // atraso para fechar evita o "piscar" se o ponteiro cruzar a borda por um
+      // instante. Foco por teclado também abre/fecha (acessibilidade), o que
+      // ainda corrige o caso em que o peek ficava preso aberto sem mouse.
+      function bindSidebarPeek() {
+        if (!sidebar) return;
+
+        let openTimer = null;
+        let closeTimer = null;
+
+        function clearOpen() { if (openTimer) { clearTimeout(openTimer); openTimer = null; } }
+        function clearClose() { if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; } }
+
+        function openPeek() {
+          clearOpen();
+          clearClose();
+          if (isDesktop() && sidebarPinnedCollapsed &&
+              !appShell.classList.contains('is-sidebar-peek')) {
+            appShell.classList.add('is-sidebar-peek');
+            updateSidebarAria();
           }
+        }
 
-          updateSidebarAria();
+        function closePeek() {
+          clearOpen();
+          clearClose();
+          if (appShell.classList.contains('is-sidebar-peek')) {
+            appShell.classList.remove('is-sidebar-peek');
+            updateSidebarAria();
+          }
+        }
+
+        // Expostas para que o clique em submenu reutilize a mesma lógica de timers.
+        sidebar._openPeek = openPeek;
+        sidebar._cancelClosePeek = clearClose;
+
+        sidebar.addEventListener('mouseenter', () => {
+          clearClose();
+          if (!(isDesktop() && sidebarPinnedCollapsed)) return;
+          clearOpen();
+          openTimer = setTimeout(openPeek, 130);
+        });
+
+        sidebar.addEventListener('mouseleave', () => {
+          clearOpen();
+          clearClose();
+          closeTimer = setTimeout(closePeek, 110);
+        });
+
+        // Teclado: ao focar um item do menu recolhido, abre; ao sair, fecha.
+        sidebar.addEventListener('focusin', () => {
+          if (isDesktop() && sidebarPinnedCollapsed) openPeek();
+        });
+
+        sidebar.addEventListener('focusout', (event) => {
+          if (!sidebar.contains(event.relatedTarget)) closePeek();
         });
       }
 
@@ -2333,6 +2508,7 @@
         bindSubmenus();
         bindMobileNavigationClose();
         bindGlobalEvents();
+        bindSidebarPeek();
         openActiveSubmenu();
         detectOSKey();
         handleCommandBar();

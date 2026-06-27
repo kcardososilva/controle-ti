@@ -263,6 +263,47 @@
 
 .pv-exec-body { padding: 1.25rem; }
 
+/* Apontamento de horas */
+.pv-appt-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: .75rem;
+  margin-bottom: 1.25rem;
+  padding: .9rem 1rem;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-md);
+  background: color-mix(in srgb, var(--pv-primary) 5%, var(--pv-surface));
+}
+
+.pv-appt-cell { display: grid; gap: .2rem; }
+.pv-appt-cell-k {
+  color: var(--pv-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.pv-appt-cell-v {
+  color: var(--pv-text);
+  font-size: .95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pv-appt-cell-v i { color: var(--pv-primary); margin-right: .3rem; font-size: .85rem; }
+
+.pv-exec-dur {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  margin-left: .5rem;
+  padding: .15rem .5rem;
+  border-radius: var(--pv-radius-pill);
+  background: var(--pv-primary-soft);
+  color: var(--pv-primary);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
 /* Photos */
 .pv-photo-grid {
   display: grid;
@@ -516,10 +557,15 @@
                   <i class="fa fa-circle-check"></i>
                 </div>
                 <div>
-                  <div class="pv-exec-date">{{ item.obj.data_execucao|date:"d/m/Y" }}</div>
+                  <div class="pv-exec-date">
+                    {{ item.obj.data_execucao|date:"d/m/Y" }}
+                    {% if item.obj.duracao_formatada %}
+                      <span class="pv-exec-dur"><i class="fa fa-stopwatch" aria-hidden="true"></i>{{ item.obj.duracao_formatada }}</span>
+                    {% endif %}
+                  </div>
                   <div class="pv-exec-by">
                     <i class="fa fa-user" aria-hidden="true"></i>
-                    {{ item.obj.criado_por.username|default:"Técnico" }} &bull; {{ item.obj.created_at|date:"H:i" }}
+                    {% if item.obj.tecnico %}{{ item.obj.tecnico.get_full_name|default:item.obj.tecnico.username }}{% elif item.obj.criado_por %}{{ item.obj.criado_por.username }}{% else %}Técnico{% endif %} &bull; {{ item.obj.created_at|date:"H:i" }}
                   </div>
                 </div>
               </div>
@@ -527,6 +573,27 @@
             </summary>
 
             <div class="pv-exec-body">
+
+              {% if item.obj.hora_inicio or item.obj.hora_fim or item.obj.duracao_formatada %}
+                <div class="pv-appt-strip">
+                  <div class="pv-appt-cell">
+                    <span class="pv-appt-cell-k">Data</span>
+                    <span class="pv-appt-cell-v"><i class="fa fa-calendar-day" aria-hidden="true"></i>{{ item.obj.data_execucao|date:"d/m/Y" }}</span>
+                  </div>
+                  <div class="pv-appt-cell">
+                    <span class="pv-appt-cell-k">Início</span>
+                    <span class="pv-appt-cell-v"><i class="fa fa-play" aria-hidden="true"></i>{{ item.obj.hora_inicio|time:"H:i"|default:"—" }}</span>
+                  </div>
+                  <div class="pv-appt-cell">
+                    <span class="pv-appt-cell-k">Término</span>
+                    <span class="pv-appt-cell-v"><i class="fa fa-flag-checkered" aria-hidden="true"></i>{{ item.obj.hora_fim|time:"H:i"|default:"—" }}</span>
+                  </div>
+                  <div class="pv-appt-cell">
+                    <span class="pv-appt-cell-k">Duração</span>
+                    <span class="pv-appt-cell-v"><i class="fa fa-stopwatch" aria-hidden="true"></i>{{ item.obj.duracao_formatada|default:"—" }}</span>
+                  </div>
+                </div>
+              {% endif %}
 
               {% if item.obj.foto_antes or item.obj.foto_depois or item.obj.foto_antes_2 or item.obj.foto_depois_2 %}
                 <div class="pv-photo-grid">

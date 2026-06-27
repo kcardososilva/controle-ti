@@ -6,6 +6,7 @@ from django.db import transaction
 
 from ProjetoEstoque.models import (
     Item,
+    ItemColaborador,
     ItemLote,
     LoteEstoque,
     MovimentacaoItem,
@@ -31,6 +32,70 @@ class MovimentacaoEstoqueService:
 
         if hasattr(obj, "atualizado_por"):
             obj.atualizado_por = user
+
+    @classmethod
+    def _sync_vinculo_compartilhado(cls, *, mov, item, user):
+        """
+        Abre/encerra o vínculo (ItemColaborador) de um equipamento COMPARTILHADO
+        de acordo com a transferência de dispositivo:
+
+        - entrega   → cria (ou reaproveita) o vínculo ativo do colaborador;
+        - devolução → encerra o vínculo ativo do colaborador selecionado.
+
+        Itens não-compartilhados não passam por aqui (mantêm o detentor único
+        derivado da última movimentação).
+        """
+        from django.utils import timezone
+
+        acao = mov.tipo_transferencia
+
+        if acao == "entrega":
+            if not mov.usuario_id:
+                return  # o formulário já exige o usuário na entrega
+
+            vinculo = (
+                ItemColaborador.objects
+                .filter(item=item, colaborador_id=mov.usuario_id, ativo=True)
+                .first()
+            )
+
+            if vinculo is None:
+                vinculo = ItemColaborador(
+                    item=item,
+                    colaborador_id=mov.usuario_id,
+                    ativo=True,
+                    data_vinculo=timezone.now(),
+                )
+
+            vinculo.movimentacao_entrega = mov
+            cls.preencher_auditoria(vinculo, user, criando=(vinculo.pk is None))
+            vinculo.save()
+
+        elif acao == "devolucao":
+            if not mov.usuario_id:
+                raise ValidationError(
+                    "Para devolver um equipamento compartilhado, selecione no campo "
+                    "“Usuário” qual colaborador está devolvendo o item."
+                )
+
+            vinculo = (
+                ItemColaborador.objects
+                .filter(item=item, colaborador_id=mov.usuario_id, ativo=True)
+                .first()
+            )
+
+            if vinculo is not None:
+                vinculo.ativo = False
+                vinculo.data_devolucao = timezone.now()
+                vinculo.movimentacao_devolucao = mov
+                cls.preencher_auditoria(vinculo, user, criando=False)
+                vinculo.save(update_fields=[
+                    "ativo",
+                    "data_devolucao",
+                    "movimentacao_devolucao",
+                    "updated_at",
+                    "atualizado_por",
+                ])
 
     @classmethod
     @transaction.atomic
@@ -255,6 +320,10 @@ class MovimentacaoEstoqueService:
         if (
             mov.tipo_movimentacao == cls.TRANSFERENCIA
             and mov.tipo_transferencia == "devolucao"
+            # Item compartilhado tem vários detentores: não dá para inferir um
+            # único usuário/CC da "última entrega". A escolha de quem devolve é
+            # feita explicitamente no formulário e tratada pelo vínculo.
+            and not item.compartilhado
         ):
             ultima_entrega = (
                 MovimentacaoItem.objects
@@ -272,6 +341,12 @@ class MovimentacaoEstoqueService:
                 _restore_cc = ultima_entrega.centro_custo_origem
                 mov.centro_custo_destino = ultima_entrega.centro_custo_origem
 
+                # Rastreabilidade: puxa automaticamente a pessoa a quem o item está
+                # vinculado (quem recebeu na última entrega), já que o formulário de
+                # devolução não pede o usuário. Mantém o que veio informado, se houver.
+                if not mov.usuario_id and ultima_entrega.usuario_id:
+                    mov.usuario = ultima_entrega.usuario
+
         cls.preencher_auditoria(mov, user, criando=True)
         mov.full_clean()
         mov.save()
@@ -284,6 +359,17 @@ class MovimentacaoEstoqueService:
             item.status = StatusItemChoices.MANUTENCAO
             update_fields.append("status")
 
+            # Abre a Ordem de Manutenção do Portal do Fornecedor quando há um
+            # fornecedor de manutenção definido (import tardio evita ciclo).
+            if mov.fornecedor_manutencao_id:
+                from services.ordem_manutencao_service import OrdemManutencaoService
+                OrdemManutencaoService.abrir(
+                    item=item,
+                    fornecedor=mov.fornecedor_manutencao,
+                    movimentacao=mov,
+                    user=user,
+                )
+
         elif mov.tipo_movimentacao in {cls.RETORNO_MANUTENCAO, cls.RETORNO}:
             # Retorno de manutenção mantém a quantidade inalterada (espelha o envio):
             # apenas atualiza o status e, se informada, a localidade de destino.
@@ -293,6 +379,31 @@ class MovimentacaoEstoqueService:
             if mov.localidade_destino:
                 item.localidade = mov.localidade_destino
                 update_fields.append("localidade")
+
+        elif mov.tipo_movimentacao == cls.TRANSFERENCIA and item.compartilhado:
+            # ── Equipamento COMPARTILHADO ──────────────────────────────────
+            # Pode ficar com vários colaboradores ao mesmo tempo. Não sobrescreve
+            # localidade/CC do item (ele é um ativo compartilhado, "casa fixa").
+            # A entrega abre um vínculo; a devolução encerra o do colaborador
+            # selecionado. O status do item só volta para Backup quando NÃO
+            # restar nenhum colaborador vinculado.
+            cls._sync_vinculo_compartilhado(mov=mov, item=item, user=user)
+
+            existe_vinculo_ativo = ItemColaborador.objects.filter(
+                item=item, ativo=True
+            ).exists()
+
+            if mov.tipo_transferencia == "entrega" and item.status == StatusItemChoices.BACKUP:
+                item.status = StatusItemChoices.ATIVO
+                update_fields.append("status")
+
+            elif (
+                mov.tipo_transferencia == "devolucao"
+                and not existe_vinculo_ativo
+                and item.status == StatusItemChoices.ATIVO
+            ):
+                item.status = StatusItemChoices.BACKUP
+                update_fields.append("status")
 
         elif mov.tipo_movimentacao == cls.TRANSFERENCIA:
             if mov.localidade_destino:
@@ -328,15 +439,28 @@ class MovimentacaoEstoqueService:
                 item.status = mov.status_transferencia
                 update_fields.append("status")
 
-            # Renomear o equipamento direto na transferência (opcional).
-            # Só renomeia quando o campo veio preenchido e é diferente do atual;
+            # Renomeação do equipamento na transferência de equipamento.
+            # Prioridade:
+            #   1) Se o operador preencheu "Renomear Equipamento", esse nome prevalece.
+            #   2) Caso contrário, ao marcar o equipamento como "Defeito", o nome passa
+            #      a ser igual ao modelo do equipamento (padronização dos itens com
+            #      defeito). Só aplica quando o modelo está preenchido.
+            # Em ambos os casos só renomeia quando o nome final difere do atual e
             # registra a alteração na observação da movimentação (auditoria).
             novo_nome = (form.cleaned_data.get("novo_nome") or "").strip()
             nome_atual = (item.nome or "").strip()
-            if novo_nome and novo_nome != nome_atual:
-                item.nome = novo_nome
+            modelo_atual = (item.modelo or "").strip()
+
+            nome_final = None
+            if novo_nome:
+                nome_final = novo_nome
+            elif mov.status_transferencia == StatusItemChoices.DEFEITO and modelo_atual:
+                nome_final = modelo_atual
+
+            if nome_final and nome_final != nome_atual:
+                item.nome = nome_final
                 update_fields.append("nome")
-                nota = f'Renomeado: "{nome_atual}" → "{novo_nome}".'
+                nota = f'Renomeado: "{nome_atual}" → "{nome_final}".'
                 mov.observacao = f"{mov.observacao}\n{nota}".strip() if mov.observacao else nota
                 mov.save(update_fields=["observacao", "updated_at"])
 

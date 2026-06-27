@@ -14,7 +14,7 @@ from xhtml2pdf import pisa
 
 from ..models import (
     MovimentacaoItem, TipoMovimentacaoChoices, StatusItemChoices,
-    ItemLote, Item,
+    ItemLote, Item, ItemColaborador,
 )
 from ..forms import MovimentacaoItemForm
 from services.movimentacao_service import MovimentacaoEstoqueService
@@ -310,6 +310,60 @@ def api_lotes_por_item(request):
     return JsonResponse({"results": results})
 
 
+@login_required
+def api_item_devolucao_info(request):
+    """Para a tela de devolução: informa quem está com o item (puxado da última
+    entrega) e para qual centro de custo ele voltará. Usado só para exibir um aviso
+    ao operador — a gravação real é feita pelo serviço de movimentação."""
+    item_id = request.GET.get("item_id")
+    if not item_id:
+        return JsonResponse({"ok": False})
+
+    item = Item.objects.filter(pk=item_id).only("id", "compartilhado").first()
+    compartilhado = bool(item and item.compartilhado)
+
+    # Item compartilhado: a devolução precisa que o operador escolha QUAL
+    # colaborador está devolvendo. Devolve a lista de vínculos ativos.
+    if compartilhado:
+        vinculos = [
+            {"id": v.colaborador_id, "nome": v.colaborador.nome}
+            for v in (
+                ItemColaborador.objects
+                .filter(item_id=item_id, ativo=True)
+                .select_related("colaborador")
+                .order_by("colaborador__nome")
+            )
+        ]
+        return JsonResponse({
+            "ok": True,
+            "compartilhado": True,
+            "tem_entrega": bool(vinculos),
+            "vinculos": vinculos,
+        })
+
+    ultima_entrega = (
+        MovimentacaoItem.objects
+        .filter(
+            item_id=item_id,
+            tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
+            tipo_transferencia="entrega",
+        )
+        .select_related("usuario", "centro_custo_origem")
+        .order_by("-created_at")
+        .first()
+    )
+
+    if ultima_entrega is None:
+        return JsonResponse({"ok": True, "compartilhado": False, "tem_entrega": False})
+
+    cc = ultima_entrega.centro_custo_origem
+    return JsonResponse({
+        "ok": True,
+        "compartilhado": False,
+        "tem_entrega": True,
+        "usuario": str(ultima_entrega.usuario) if ultima_entrega.usuario_id else None,
+        "centro_custo_origem": _centro_custo_label(cc) if cc else None,
+    })
 
 
 
@@ -521,8 +575,17 @@ def movimentacao_detail(request, pk):
         "subtipo": _safe_label(mov.item.subtipo, "nome", "descricao") if mov.item else None,
     }
 
+    # Integração com manutenção: OS aberta a partir desta movimentação (se houver)
+    ordem_manutencao = (
+        mov.ordens_manutencao
+        .select_related("fornecedor", "item_substituto")
+        .order_by("-created_at")
+        .first()
+    )
+
     context = {
         "mov": mov,
+        "ordem_manutencao": ordem_manutencao,
         "origem": origem,
         "destino": destino,
         "status_final": status_final,

@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+
+{% block title %}Acesso ao Portal — {{ fornecedor.nome }}{% endblock %}
+{% block page_title %}Acesso ao Portal do Fornecedor{% endblock %}
+{% block page_subtitle %}{{ fornecedor.nome }}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'fornecedor_detail' fornecedor.pk %}" class="btn btn-light"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  :where(.facc-page) { max-width: 46rem; display: grid; gap: 1.1rem; }
+  .facc-page .facc-card {
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 1.4rem 1.5rem;
+  }
+  .facc-page .facc-status {
+    display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; margin-bottom: 1rem;
+    padding: .9rem 1.1rem; border-radius: var(--radius-md); background: var(--bg-fill-tertiary, rgba(120,120,128,.08));
+  }
+  .facc-page .facc-badge { display: inline-flex; align-items: center; gap: .45rem; padding: .3rem .7rem; border-radius: 980px; font-size: .76rem; font-weight: 800; }
+  .facc-page .facc-badge.on  { color: #34c759; background: rgba(52,199,89,.14); }
+  .facc-page .facc-badge.off { color: #ff3b30; background: rgba(255,59,48,.12); }
+  .facc-page h2 { font-size: 1.05rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 1rem; }
+  .facc-page .facc-field { display: grid; gap: .4rem; margin-bottom: 1rem; }
+  .facc-page .facc-field label { font-size: .82rem; font-weight: 700; color: var(--text-secondary); }
+  .facc-page .facc-field input {
+    min-height: 2.8rem; padding: .6rem .9rem; border-radius: var(--radius-md);
+    border: 1px solid var(--separator-non-opaque, rgba(0,0,0,.12)); background: var(--bg-page, #fff); color: var(--text-primary);
+  }
+  .facc-page .facc-field input[readonly] { opacity: .7; }
+  .facc-page .facc-hint { font-size: .76rem; color: var(--text-tertiary); }
+  .facc-page .facc-actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: .5rem; }
+  .facc-page .btn-brand { background: var(--brand); border: 1px solid var(--brand); color: #fff; }
+  .facc-page .btn-brand:hover { background: var(--brand-hover); color: #fff; }
+  .facc-page .facc-note { display: flex; gap: .6rem; font-size: .82rem; color: var(--text-tertiary); }
+  .facc-page .facc-note i { color: var(--brand); margin-top: .15rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="facc-page">
+
+  {% if perfil %}
+  <div class="facc-card">
+    <div class="facc-status">
+      <div style="flex:1; min-width:0;">
+        <div style="font-weight:800;">{{ perfil.usuario.username }}</div>
+        <div style="font-size:.82rem; color:var(--text-tertiary);">{{ perfil.usuario.email|default:"sem e-mail cadastrado" }}</div>
+      </div>
+      {% if perfil.ativo %}
+        <span class="facc-badge on"><i class="fa-solid fa-circle-check"></i> Acesso ativo</span>
+      {% else %}
+        <span class="facc-badge off"><i class="fa-solid fa-circle-pause"></i> Acesso suspenso</span>
+      {% endif %}
+      <form method="post" style="margin:0;">
+        {% csrf_token %}
+        <input type="hidden" name="acao" value="toggle">
+        <button type="submit" class="btn {% if perfil.ativo %}btn-light{% else %}btn-brand{% endif %}">
+          {% if perfil.ativo %}<i class="fa-solid fa-ban"></i> Suspender{% else %}<i class="fa-solid fa-play"></i> Reativar{% endif %}
+        </button>
+      </form>
+    </div>
+
+    <h2>Redefinir senha / e-mail</h2>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="salvar">
+      <div class="facc-field">
+        <label>Usuário</label>
+        <input type="text" value="{{ perfil.usuario.username }}" readonly>
+      </div>
+      <div class="facc-field">
+        <label for="email">E-mail</label>
+        <input type="email" id="email" name="email" value="{{ perfil.usuario.email }}" placeholder="email@fornecedor.com">
+      </div>
+      <div class="facc-field">
+        <label for="senha">Nova senha</label>
+        <input type="text" id="senha" name="senha" placeholder="Deixe em branco para manter a senha atual" minlength="6">
+        <span class="facc-hint">Mínimo de 6 caracteres. Anote e repasse ao fornecedor por canal seguro.</span>
+      </div>
+      <div class="facc-actions">
+        <button type="submit" class="btn btn-brand"><i class="fa-solid fa-floppy-disk"></i> Salvar alterações</button>
+        <a href="{% url 'portal_home' %}" class="btn btn-light" target="_blank"><i class="fa-solid fa-up-right-from-square"></i> Abrir portal</a>
+      </div>
+    </form>
+  </div>
+
+  {% else %}
+  <div class="facc-card">
+    <h2>Criar acesso ao portal</h2>
+    <p class="facc-note" style="margin-bottom:1rem;">
+      <i class="fa-solid fa-circle-info"></i>
+      <span>O fornecedor poderá entrar no sistema e ver apenas os equipamentos vinculados a ele. Não terá acesso a nenhuma outra área. Se o usuário informado já existir, ele será <b>vinculado</b> a este fornecedor.</span>
+    </p>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="salvar">
+      <div class="facc-field">
+        <label for="username">Usuário <span style="color:#ff3b30">*</span></label>
+        <input type="text" id="username" name="username" required placeholder="ex: routerlink ou sgomes" autocomplete="off">
+      </div>
+      <div class="facc-field">
+        <label for="email">E-mail</label>
+        <input type="email" id="email" name="email" placeholder="email@fornecedor.com">
+      </div>
+      <div class="facc-field">
+        <label for="senha">Senha</label>
+        <input type="text" id="senha" name="senha" minlength="6" placeholder="Mín. 6 caracteres (obrigatória para usuário novo)" autocomplete="off">
+        <span class="facc-hint">Para um usuário que já existe, deixe em branco para manter a senha atual.</span>
+      </div>
+      <div class="facc-actions">
+        <button type="submit" class="btn btn-brand"><i class="fa-solid fa-user-plus"></i> Criar acesso</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="facc-note">
+    <i class="fa-solid fa-shield-halved"></i>
+    <span>O acesso é isolado: o login do fornecedor é restrito à área <code>/portal/</code> por middleware e só enxerga itens próprios ou enviados a ele para manutenção.</span>
+  </div>
+
+</div>
+{% endblock %}

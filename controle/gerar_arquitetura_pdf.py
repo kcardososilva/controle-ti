@@ -134,7 +134,7 @@ def h4(text):     return Paragraph(text, sH4)
 # ══════════════════════════════════════════════════════════════════════════════
 #  DOCUMENTO
 # ══════════════════════════════════════════════════════════════════════════════
-OUTPUT = r"C:\Users\kayque.silva\OneDrive - SANTA COLOMBA AGROPECUARIA LTDA\Área de Trabalho\Projeto Estoque\Projeto\controle\Arquitetura_Sistema_Estoque.pdf"
+OUTPUT = r"C:\Users\kayque.silva\OneDrive - SANTA COLOMBA AGROPECUARIA LTDA\Área de Trabalho\Projeto Estoque\Projeto\docs\Arquitetura_Sistema_Estoque.pdf"
 
 doc = SimpleDocTemplate(
     OUTPUT,

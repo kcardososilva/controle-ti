@@ -1,0 +1,101 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}Manutenção — Portal do Fornecedor{% endblock %}
+{% block page_title %}Manutenção{% endblock %}
+{% block page_subtitle %}{{ qtd_abertas }} ordem{{ qtd_abertas|pluralize:"ns" }} em aberto{% endblock %}
+
+{% block extra_css %}
+<style>
+  :where(.pf-os) { display: grid; gap: 1.4rem; }
+  .pf-os .pf-os-resumo { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); }
+  .pf-os .pf-os-rcard {
+    display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+    padding: .85rem 1rem; border-radius: var(--radius-md);
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+  }
+  .pf-os .pf-os-rnum { font-size: 1.4rem; font-weight: 850; letter-spacing: -.03em; }
+  .pf-os .pf-os-sech { font-size: .95rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: .15rem; }
+  .pf-os .pf-os-grid { display: grid; gap: .7rem; }
+  .pf-os .pf-os-row {
+    display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: .9rem;
+    padding: .95rem 1.1rem; border-radius: var(--radius-md); color: inherit;
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+    transition: transform .16s, box-shadow .16s, border-color .16s;
+  }
+  .pf-os .pf-os-row:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--brand) 20%, var(--separator-hairline)); }
+  .pf-os .pf-os-ic { width: 2.4rem; height: 2.4rem; flex: 0 0 2.4rem; display: grid; place-items: center; border-radius: .7rem; background: var(--brand-soft); color: var(--brand); }
+  .pf-os .pf-os-name { font-weight: 700; letter-spacing: -.01em; }
+  .pf-os .pf-os-meta { color: var(--text-tertiary); font-size: .77rem; margin-top: .12rem; }
+  .pf-os .pf-os-arrow { color: var(--text-quaternary); }
+
+  @media (max-width: 36rem) {
+    .pf-os .pf-os-row { grid-template-columns: auto 1fr auto; }
+    .pf-os .pf-os-row .pf-osc { grid-column: 2 / 3; justify-self: start; margin-top: .3rem; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-os">
+
+  {% if resumo_status %}
+  <section class="pf-os-resumo">
+    {% for r in resumo_status %}
+    <div class="pf-os-rcard">
+      <span class="pf-osc pf-osc--{{ r.slug }}">{{ r.label }}</span>
+      <span class="pf-os-rnum">{{ r.count }}</span>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section>
+    <div class="pf-os-sech">Em andamento</div>
+    {% if abertas %}
+    <div class="pf-os-grid">
+      {% for o in abertas %}
+      <a class="pf-os-row" href="{% url 'portal_manutencao_detail' o.pk %}">
+        <span class="pf-os-ic"><i class="fa-solid fa-screwdriver-wrench"></i></span>
+        <span>
+          <div class="pf-os-name">{{ o.item.nome }}</div>
+          <div class="pf-os-meta">OS #{{ o.pk }} · aberta em {{ o.created_at|date:"d/m/Y" }}{% if o.item.numero_serie %} · Série {{ o.item.numero_serie }}{% endif %}</div>
+        </span>
+        <span class="pf-osc pf-osc--{{ o.status }}">{{ o.get_status_display }}</span>
+        <i class="fa-solid fa-chevron-right pf-os-arrow"></i>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="pf-card pf-empty">
+      <i class="fa-solid fa-circle-check"></i>
+      <p>Nenhuma manutenção em aberto no momento.</p>
+      <p style="font-size:.82rem; max-width:34rem; margin:.5rem auto 0; line-height:1.5;">
+        Quando o time de TI enviar um equipamento para manutenção sob sua responsabilidade, ele
+        aparecerá aqui para você <b>confirmar o recebimento</b> e dar andamento — avaliar,
+        reparar ou solicitar a troca.
+      </p>
+    </div>
+    {% endif %}
+  </section>
+
+  {% if historico %}
+  <section>
+    <div class="pf-os-sech">Histórico</div>
+    <div class="pf-os-grid">
+      {% for o in historico %}
+      <a class="pf-os-row" href="{% url 'portal_manutencao_detail' o.pk %}">
+        <span class="pf-os-ic" style="background:var(--bg-fill-tertiary); color:var(--text-tertiary);"><i class="fa-solid fa-clock-rotate-left"></i></span>
+        <span>
+          <div class="pf-os-name">{{ o.item.nome }}</div>
+          <div class="pf-os-meta">OS #{{ o.pk }} · finalizada em {{ o.finalizada_em|date:"d/m/Y"|default:"—" }}</div>
+        </span>
+        <span class="pf-osc pf-osc--{{ o.status }}">{{ o.get_status_display }}</span>
+        <i class="fa-solid fa-chevron-right pf-os-arrow"></i>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}

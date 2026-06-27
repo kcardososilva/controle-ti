@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+
+{% block title %}OS #{{ ordem.pk }} — Manutenção{% endblock %}
+{% block page_title %}Ordem de Manutenção #{{ ordem.pk }}{% endblock %}
+{% block page_subtitle %}{{ ordem.item.nome }} · {{ ordem.fornecedor.nome }}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'manutencao_recebimentos' %}" class="btn"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  :where(.rd-page) { display: grid; gap: 1.1rem; max-width: 60rem; }
+  .rd-page .rd-card { background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg, 16px); box-shadow: var(--shadow-sm); }
+  .rd-page .rd-head { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; padding:1.2rem 1.3rem; }
+  .rd-page .rd-ic { width:3rem; height:3rem; flex:0 0 3rem; display:grid; place-items:center; border-radius:14px; background: rgba(255,149,0,.14); color:#ff9500; font-size:1.2rem; }
+  .rd-page .rd-h-name { font-size:1.15rem; font-weight:850; letter-spacing:-.03em; }
+  .rd-page .rd-h-sub { color: var(--text-tertiary); font-size:.84rem; margin-top:.12rem; }
+  .rd-page .rd-sec-title { font-size:1rem; font-weight:800; letter-spacing:-.02em; margin:.3rem 0 .1rem; }
+
+  .rd-osc { display:inline-flex; align-items:center; gap:.4rem; padding:.28rem .65rem; border-radius:980px; font-size:.74rem; font-weight:800; }
+  .rd-osc::before { content:""; width:.45rem; height:.45rem; border-radius:999px; background: currentColor; }
+  .rd-osc--aguardando_recebimento, .rd-osc--cancelado { color:#8e8e93; background: rgba(142,142,147,.16); }
+  .rd-osc--recebido, .rd-osc--em_avaliacao { color:#5ac8fa; background: rgba(90,200,250,.16); }
+  .rd-osc--em_reparo, .rd-osc--substituto_enviado { color:#ff9500; background: rgba(255,149,0,.16); }
+  .rd-osc--reparado { color:#0071e3; background: rgba(0,113,227,.14); }
+  .rd-osc--devolvido { color:#5856d6; background: rgba(88,86,214,.14); }
+  .rd-osc--sem_reparo { color:#ff3b30; background: rgba(255,59,48,.14); }
+  .rd-osc--concluido { color:#34c759; background: rgba(52,199,89,.16); }
+
+  .rd-page .rd-specs { display:grid; grid-template-columns: repeat(auto-fill, minmax(12rem,1fr)); }
+  .rd-page .rd-spec { padding:.85rem 1.1rem; border-top:1px solid var(--separator-hairline); }
+  .rd-page .rd-spec:nth-child(-n+2) { border-top:0; }
+  .rd-page .rd-spec-l { color: var(--text-quaternary); font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
+  .rd-page .rd-spec-v { margin-top:.25rem; font-weight:700; font-size:.9rem; overflow-wrap:anywhere; }
+
+  .rd-page .rd-box { padding:.95rem 1.15rem; border-radius:12px; background: var(--bg-fill-tertiary, rgba(120,120,128,.08)); font-size:.86rem; line-height:1.55; white-space:pre-line; }
+  .rd-page .rd-sub { padding:1.1rem 1.25rem; }
+  .rd-page .rd-sub-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(11rem,1fr)); gap:.7rem; margin-top:.6rem; }
+  .rd-page .rd-pill { padding:.6rem .8rem; border-radius:10px; border:1px solid var(--separator-hairline); }
+  .rd-page .rd-pill-l { font-size:.66rem; font-weight:800; text-transform:uppercase; color: var(--text-quaternary); letter-spacing:.04em; }
+  .rd-page .rd-pill-v { font-weight:700; margin-top:.15rem; }
+
+  .rd-page .rd-timeline { display:grid; }
+  .rd-page .rd-tl { display:grid; grid-template-columns:auto 1fr; gap:.9rem; padding:.9rem 1.2rem; border-top:1px solid var(--separator-hairline); }
+  .rd-page .rd-tl:first-child { border-top:0; }
+  .rd-page .rd-tl-dot { width:2rem; height:2rem; display:grid; place-items:center; border-radius:999px; font-size:.7rem; background: var(--bg-fill-tertiary, rgba(120,120,128,.1)); color: var(--text-secondary); }
+  .rd-page .rd-tl-title { font-weight:700; font-size:.88rem; }
+  .rd-page .rd-tl-meta { color: var(--text-tertiary); font-size:.76rem; margin-top:.12rem; }
+  .rd-page .rd-tl-obs { margin-top:.35rem; font-size:.82rem; color: var(--text-secondary); white-space:pre-line; }
+
+  .rd-page .rd-action { padding:1.2rem 1.3rem; border-radius: var(--radius-lg,16px); background: rgba(52,199,89,.08); border:1px solid rgba(52,199,89,.25); }
+  .rd-page .rd-action h3 { font-size:.98rem; font-weight:800; margin-bottom:.6rem; }
+  .rd-page .rd-form { display:flex; align-items:flex-end; gap:.7rem; flex-wrap:wrap; }
+  .rd-page .rd-field { display:grid; gap:.35rem; }
+  .rd-page .rd-field label { font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color: var(--text-quaternary); }
+  .rd-page .rd-field select, .rd-page .rd-field input { min-height:2.6rem; padding:.5rem .8rem; border-radius:10px; font:inherit; color:var(--text-primary); border:1px solid var(--separator-non-opaque, rgba(0,0,0,.12)); background:var(--bg-page,#fff); }
+  .rd-page .rd-field--grow { flex:1; min-width:14rem; } .rd-page .rd-field--grow input { width:100%; }
+  .rd-page .btn-success { background:#34c759; border:1px solid #34c759; color:#fff; } .rd-page .btn-success:hover { filter:brightness(1.04); color:#fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rd-page">
+
+  <div class="rd-card rd-head">
+    <div class="rd-ic"><i class="fa-solid fa-screwdriver-wrench"></i></div>
+    <div style="flex:1; min-width:0;">
+      <div class="rd-h-name">{{ ordem.item.nome }}</div>
+      <div class="rd-h-sub">OS #{{ ordem.pk }} · {{ ordem.fornecedor.nome }} · aberta em {{ ordem.created_at|date:"d/m/Y H:i" }}{% if ordem.finalizada_em %} · finalizada em {{ ordem.finalizada_em|date:"d/m/Y H:i" }}{% endif %}</div>
+    </div>
+    <span class="rd-osc rd-osc--{{ ordem.status }}">{{ ordem.get_status_display }}</span>
+  </div>
+
+  {% if pode_concluir %}
+  <div class="rd-action">
+    <h3><i class="fa-solid fa-circle-check"></i> Concluir esta ordem</h3>
+    <form method="post" action="{% url 'manutencao_recebimento_acao' ordem.pk %}" class="rd-form">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="detalhe">
+      {% if ordem.status == 'devolvido' %}
+        <div class="rd-field">
+          <label for="status_retorno">Novo status do equipamento</label>
+          <select id="status_retorno" name="status_retorno">
+            {% for value, label in status_retorno_opcoes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="rd-field rd-field--grow"><label for="obs">Observação</label><input type="text" id="obs" name="observacao" placeholder="Opcional"></div>
+        <button type="submit" class="btn btn-success"><i class="fa-solid fa-check"></i> Confirmar retorno</button>
+      {% else %}
+        <div class="rd-field rd-field--grow"><label for="obs">Observação</label><input type="text" id="obs" name="observacao" placeholder="Opcional"></div>
+        <button type="submit" class="btn btn-success"><i class="fa-solid fa-box-archive"></i> Receber substituto em estoque</button>
+      {% endif %}
+    </form>
+  </div>
+  {% endif %}
+
+  {% if ordem.diagnostico or ordem.reparo_valor %}
+  <div>
+    <div class="rd-sec-title">Diagnóstico e reparo</div>
+    <div class="rd-card" style="margin-top:.5rem; padding:1rem 1.2rem;">
+      {% if ordem.diagnostico %}<div class="rd-box">{{ ordem.diagnostico }}</div>{% endif %}
+      {% if ordem.reparo_valor %}<div class="rd-box" style="margin-top:.6rem;"><i class="fa-solid fa-money-bill-wave" style="color:#34c759;"></i> <b>Valor do reparo realizado:</b> R$ {{ ordem.reparo_valor }}</div>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div>
+    <div class="rd-sec-title">Equipamento</div>
+    <div class="rd-card" style="margin-top:.5rem;">
+      <div class="rd-specs">
+        <div class="rd-spec"><div class="rd-spec-l">Nome</div><div class="rd-spec-v">{{ ordem.item.nome }}</div></div>
+        <div class="rd-spec"><div class="rd-spec-l">Nº Série</div><div class="rd-spec-v">{{ ordem.item.numero_serie|default:'—' }}</div></div>
+        <div class="rd-spec"><div class="rd-spec-l">Marca / Modelo</div><div class="rd-spec-v">{{ ordem.item.marca|default:'—' }} {{ ordem.item.modelo|default:'' }}</div></div>
+        <div class="rd-spec"><div class="rd-spec-l">Status atual</div><div class="rd-spec-v">{{ ordem.item.get_status_display }}</div></div>
+        <div class="rd-spec"><div class="rd-spec-l">Localidade</div><div class="rd-spec-v">{% if ordem.item.localidade %}{{ ordem.item.localidade.local }}{% else %}—{% endif %}</div></div>
+        <div class="rd-spec"><div class="rd-spec-l">Chamado</div><div class="rd-spec-v">{{ ordem.chamado|default:'—' }}</div></div>
+      </div>
+    </div>
+  </div>
+
+  {% if ordem.item_substituto %}
+  <div>
+    <div class="rd-sec-title">Equipamento substituto e contrato</div>
+    <div class="rd-card rd-sub" style="margin-top:.5rem;">
+      <div><b>{{ ordem.item_substituto.nome }}</b>{% if ordem.item_substituto.numero_serie %} · Série {{ ordem.item_substituto.numero_serie }}{% endif %}{% if ordem.item_substituto.marca or ordem.item_substituto.modelo %} · {{ ordem.item_substituto.marca|default:'' }} {{ ordem.item_substituto.modelo|default:'' }}{% endif %}</div>
+      <div class="rd-sub-grid">
+        <div class="rd-pill"><div class="rd-pill-l">Contrato</div><div class="rd-pill-v">{{ ordem.substituto_contrato|default:'—' }}</div></div>
+        <div class="rd-pill"><div class="rd-pill-l">Valor</div><div class="rd-pill-v">R$ {{ ordem.substituto_valor|default:'—' }}</div></div>
+        <div class="rd-pill"><div class="rd-pill-l">Data</div><div class="rd-pill-v">{{ ordem.substituto_data|date:"d/m/Y"|default:'—' }}</div></div>
+        <div class="rd-pill"><div class="rd-pill-l">Regime</div><div class="rd-pill-v">{% if ordem.substituto_locado == 'sim' %}Locação{% else %}Compra{% endif %}</div></div>
+        <div class="rd-pill"><div class="rd-pill-l">Status</div><div class="rd-pill-v">{{ ordem.item_substituto.get_status_display }}</div></div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div>
+    <div class="rd-sec-title">Linha do tempo do processo</div>
+    <div class="rd-card" style="margin-top:.5rem;">
+      <div class="rd-timeline">
+        {% for ev in eventos %}
+        <div class="rd-tl">
+          <div class="rd-tl-dot"><i class="fa-solid fa-circle"></i></div>
+          <div>
+            <div class="rd-tl-title">{{ ev.get_status_display }}</div>
+            <div class="rd-tl-meta">{{ ev.created_at|date:"d/m/Y H:i" }}{% if ev.criado_por %} · {{ ev.criado_por.username }}{% endif %}</div>
+            {% if ev.observacao %}<div class="rd-tl-obs">{{ ev.observacao }}</div>{% endif %}
+          </div>
+        </div>
+        {% empty %}
+        <div style="padding:1.5rem; text-align:center; color:var(--text-tertiary);">Sem eventos registrados.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

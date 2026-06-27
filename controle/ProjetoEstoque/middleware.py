@@ -4,6 +4,24 @@ import time
 from django.core.cache import cache
 from django.shortcuts import redirect
 
+
+def _grupos_do_usuario(user):
+    """
+    Nomes dos grupos do usuário, cacheados por 60s.
+
+    Sem isto, TVAccessMiddleware e FornecedorAccessMiddleware rodariam um
+    `user.groups.filter(...).exists()` em TODA requisição autenticada
+    (2 queries por page-load). Com o cache, é no máximo 1 query por usuário
+    a cada 60s. Mudanças de grupo passam a valer em até 60s.
+    """
+    chave = f'grupos_usuario_{user.id}'
+    nomes = cache.get(chave)
+    if nomes is None:
+        nomes = list(user.groups.values_list('name', flat=True))
+        cache.set(chave, nomes, 60)
+    return nomes
+
+
 # (tentativas_mínimas, segundos_de_espera) — do mais restritivo ao menos
 _COOLDOWN = [(10, 600), (5, 60), (3, 10)]
 _LOGIN_PATH = '/login/'
@@ -134,4 +152,49 @@ class TVAccessMiddleware:
 
     @staticmethod
     def _is_tv_only(user) -> bool:
-        return user.groups.filter(name=_GRUPO_TV).exists()
+        return _GRUPO_TV in _grupos_do_usuario(user)
+
+
+# ─── Middleware: Portal do Fornecedor ─────────────────────────────────────────
+
+from ProjetoEstoque.models import GRUPO_FORNECEDOR  # noqa: E402
+
+_FORNECEDOR_PERMITIDO = re.compile(
+    r'^(/portal/'                   # área isolada do fornecedor
+    r'|/static/'                    # arquivos estáticos
+    r'|/media/'                     # uploads (fotos/termos do item)
+    r'|/login/'                     # login
+    r'|/logout/'                    # logout
+    r')'
+)
+
+
+class FornecedorAccessMiddleware:
+    """
+    Usuários do grupo 'Fornecedor' (Portal do Fornecedor) só podem acessar as
+    URLs sob /portal/. Qualquer outra rota é redirecionada para /portal/.
+    Usuários staff e superusuários não são afetados.
+
+    Espelha TVAccessMiddleware — é a 1ª das 3 camadas de isolamento
+    (middleware + @fornecedor_required + queryset filtrado).
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, 'user', None)
+        if (
+            user is not None
+            and user.is_authenticated
+            and not user.is_staff
+            and not user.is_superuser
+            and self._is_fornecedor(user)
+            and not _FORNECEDOR_PERMITIDO.match(request.path)
+        ):
+            return redirect('/portal/')
+        return self.get_response(request)
+
+    @staticmethod
+    def _is_fornecedor(user) -> bool:
+        return GRUPO_FORNECEDOR in _grupos_do_usuario(user)

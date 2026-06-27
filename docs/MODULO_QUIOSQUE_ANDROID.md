@@ -216,15 +216,19 @@ Objetivo: impedir que o usuário comum saia do quiosque ou acesse configuraçõe
 
 ---
 
-## 7. Apenas Wi-Fi (R4)
+## 7. Política de rede — flag `wifi_only` (R4)
 
-Duas camadas (defesa em profundidade):
+O comportamento é controlado **por dispositivo** pelo flag `wifi_only` enviado no `config` (default `true`):
 
-1. **Política (Device Owner):** desabilitar dados móveis/celular. Conforme a versão:
-   - `DevicePolicyManager.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS)`;
-   - quando suportado, `setGlobalSetting(admin, Settings.Global.MOBILE_DATA, "0")`;
-   - opção operacional mais simples: **provisionar aparelhos sem SIM / com dados desativados**.
-2. **Camada de rede (sempre):** antes de transmitir, checar `NetworkCapabilities.hasTransport(TRANSPORT_WIFI)`. Se não for Wi-Fi, **não envia** (enfileira para quando voltar ao Wi-Fi). Isso garante R4 mesmo onde a política do SO não cobrir 100%.
+- **`wifi_only = true`** — rede móvel bloqueada; o app só transmite no Wi-Fi e o atalho "Dados móveis" fica oculto. Duas camadas (defesa em profundidade):
+  1. **Política (Device Owner):** desabilitar dados móveis/celular. Conforme a versão:
+     - `DevicePolicyManager.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS)`;
+     - quando suportado, `setGlobalSetting(admin, Settings.Global.MOBILE_DATA, "0")`;
+     - opção operacional mais simples: **provisionar aparelhos sem SIM / com dados desativados**.
+  2. **Camada de rede:** antes de transmitir, checar `NetworkCapabilities.hasTransport(TRANSPORT_WIFI)`. Se não for Wi-Fi, **não envia** (enfileira para quando voltar ao Wi-Fi). Isso garante R4 mesmo onde a política do SO não cobrir 100%.
+- **`wifi_only = false`** — para aparelhos **com chip**: permite transmissão por dados móveis e exibe o atalho "Dados móveis", que abre a tela de rede/SIM do sistema (gerenciar chip, dados, roaming) liberando as Configurações temporariamente sob o Lock Task.
+
+A telemetria de check-in reporta o transporte em uso no campo `rede` (`"wifi"` / `"cellular"` / `"none"`) independentemente do flag.
 
 ```kotlin
 fun isWifi(ctx: Context): Boolean {

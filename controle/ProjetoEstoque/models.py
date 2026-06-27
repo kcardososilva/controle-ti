@@ -39,6 +39,20 @@ class TipoTransferenciaChoices(models.TextChoices):
     ENTREGA = "entrega", "Entrega"
     DEVOLUCAO = "devolucao", "Devolução"
 
+class StatusOrdemManutencaoChoices(models.TextChoices):
+    # Fluxo conduzido pelo fornecedor no Portal (ver OrdemManutencaoService):
+    #   aguardando → recebido → em_avaliacao → (em_reparo → reparado) | (sem_reparo → substituto_enviado) → concluido
+    AGUARDANDO_RECEBIMENTO = "aguardando_recebimento", "Aguardando recebimento"
+    RECEBIDO = "recebido", "Recebido pelo fornecedor"
+    EM_AVALIACAO = "em_avaliacao", "Em avaliação"
+    EM_REPARO = "em_reparo", "Em reparo"
+    REPARADO = "reparado", "Reparo concluído"
+    DEVOLVIDO = "devolvido", "Devolvido ao cliente — aguardando recebimento"
+    SEM_REPARO = "sem_reparo", "Sem reparo — troca"
+    SUBSTITUTO_ENVIADO = "substituto_enviado", "Substituto enviado — aguardando recebimento"
+    CONCLUIDO = "concluido", "Concluído"
+    CANCELADO = "cancelado", "Cancelado"
+
 class LocalidadeChoices(models.TextChoices):
     KARITEL = "Karitel", "Karitel"
     RIO_DO_MEIO = "Rio_do_Meio", "Rio do Meio"
@@ -93,6 +107,11 @@ class Localidade(AuditModel):
         return self.local
 
 
+# Nome do grupo Django que identifica usuários do Portal do Fornecedor.
+# Fonte única — importado pelo middleware, views, services e data migration.
+GRUPO_FORNECEDOR = "Fornecedor"
+
+
 class Fornecedor(AuditModel):
     nome = models.CharField(max_length=100)
     cnpj = models.CharField(max_length=18, unique=True)
@@ -100,6 +119,38 @@ class Fornecedor(AuditModel):
 
     def __str__(self):
         return f"{self.nome} ({self.cnpj})"
+
+
+class PerfilFornecedor(AuditModel):
+    """
+    Liga um usuário Django (login) a um Fornecedor, habilitando o acesso ao
+    Portal do Fornecedor (área isolada). O sandbox de acesso é garantido por
+    três camadas: grupo "Fornecedor" + FornecedorAccessMiddleware + queryset
+    sempre filtrado por este vínculo.
+    """
+    usuario = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="perfil_fornecedor",
+        verbose_name="Usuário de acesso",
+    )
+    fornecedor = models.ForeignKey(
+        Fornecedor,
+        on_delete=models.CASCADE,
+        related_name="perfis",
+        verbose_name="Fornecedor",
+    )
+    ativo = models.BooleanField(
+        default=True,
+        help_text="Desmarque para suspender o acesso sem excluir o usuário.",
+    )
+
+    class Meta:
+        verbose_name = "Perfil de Fornecedor"
+        verbose_name_plural = "Perfis de Fornecedor"
+
+    def __str__(self):
+        return f"{self.usuario.username} → {self.fornecedor.nome}"
 
 
 # ✅ Centro de Custo agora indica se é PMB
@@ -224,6 +275,16 @@ class Item(AuditModel):
         default=SimNaoChoices.NAO
     )
 
+    compartilhado = models.BooleanField(
+        default=False,
+        verbose_name="Pode ser compartilhado?",
+        help_text=(
+            "Se marcado, o equipamento pode ficar vinculado a vários colaboradores "
+            "ao mesmo tempo (cada um com seu termo de responsabilidade). "
+            "Se não, segue o fluxo padrão de detentor único."
+        ),
+    )
+
     class Meta:
         verbose_name = "Item / Equipamento"
         verbose_name_plural = "Itens / Equipamentos"
@@ -243,6 +304,10 @@ class Item(AuditModel):
     def eh_locado(self):
         return self.locado == SimNaoChoices.SIM
 
+    @property
+    def eh_compartilhado(self):
+        return bool(self.compartilhado)
+
     def clean(self):
         super().clean()
 
@@ -250,6 +315,9 @@ class Item(AuditModel):
 
         if self.item_consumo == SimNaoChoices.SIM and self.locado == SimNaoChoices.SIM:
             errors["item_consumo"] = "Item de consumo não pode ser cadastrado como locado."
+
+        if self.item_consumo == SimNaoChoices.SIM and self.compartilhado:
+            errors["compartilhado"] = "Item de consumo não pode ser marcado como compartilhado."
 
         if self.precisa_preventiva == SimNaoChoices.SIM and not self.data_limite_preventiva:
             errors["data_limite_preventiva"] = "Informe a periodicidade da preventiva."
@@ -317,6 +385,59 @@ class Locacao(AuditModel):
 
     def __str__(self):
         return f"Locação: {self.equipamento.nome} - {self.tempo_locado or 0} meses"
+
+
+class LocacaoPeriodo(AuditModel):
+    """
+    Período de cobrança de aluguel de um item locado. Abre quando o item fica
+    Ativo/Backup (contagem começa do 0) e fecha quando vai para Pausado/Defeito
+    (congela). Os períodos fechados viram histórico permanente; ao reativar,
+    um novo período começa do zero, preservando o histórico.
+    """
+    item = models.ForeignKey(
+        Item, on_delete=models.CASCADE, related_name="locacao_periodos"
+    )
+    valor_mensal = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    data_inicio = models.DateField()
+    data_fim = models.DateField(null=True, blank=True, help_text="Vazio = período em andamento")
+    motivo_fim = models.CharField(
+        max_length=20, blank=True, null=True,
+        help_text="Status que encerrou o período (pausado/defeito).",
+    )
+
+    class Meta:
+        ordering = ["-data_inicio", "-id"]
+        verbose_name = "Período de Locação"
+        verbose_name_plural = "Períodos de Locação"
+        indexes = [models.Index(fields=["item", "data_fim"])]
+
+    @property
+    def em_andamento(self) -> bool:
+        return self.data_fim is None
+
+    @property
+    def _fim_efetivo(self):
+        return self.data_fim or datetime.date.today()
+
+    @property
+    def meses(self) -> int:
+        """Meses cheios decorridos no período."""
+        delta = relativedelta(self._fim_efetivo, self.data_inicio)
+        return delta.years * 12 + delta.months
+
+    @property
+    def dias(self) -> int:
+        return (self._fim_efetivo - self.data_inicio).days
+
+    @property
+    def valor_acumulado(self):
+        return (self.valor_mensal or Decimal("0.00")) * self.meses
+
+    def __str__(self):
+        fim = self.data_fim.isoformat() if self.data_fim else "em andamento"
+        return f"Locação {self.item.nome}: {self.data_inicio} → {fim}"
 
 
 # ========== PLANTA DE LOCALIDADE ==========
@@ -833,6 +954,188 @@ class MovimentacaoItem(AuditModel):
     def __str__(self):
         return f"[{self.get_tipo_movimentacao_display()}] {self.item} x{self.quantidade}"
 
+
+class ItemColaborador(AuditModel):
+    """
+    Vínculo ATIVO entre um equipamento COMPARTILHADO e um colaborador.
+
+    Itens não-compartilhados continuam derivando o detentor da última
+    movimentação (não usam esta tabela). Para itens compartilhados, cada
+    entrega abre um vínculo e cada devolução o encerra (ativo=False),
+    permitindo que o mesmo equipamento fique com vários colaboradores ao
+    mesmo tempo, com rastreabilidade por termo (FK para a movimentação).
+    """
+    item = models.ForeignKey(
+        "Item",
+        on_delete=models.CASCADE,
+        related_name="vinculos_colaborador",
+        verbose_name="Equipamento",
+    )
+    colaborador = models.ForeignKey(
+        "Usuario",
+        on_delete=models.CASCADE,
+        related_name="itens_compartilhados",
+        verbose_name="Colaborador",
+    )
+    ativo = models.BooleanField(default=True, verbose_name="Vínculo ativo")
+    data_vinculo = models.DateTimeField(default=timezone.now, verbose_name="Vinculado em")
+    data_devolucao = models.DateTimeField(blank=True, null=True, verbose_name="Devolvido em")
+
+    movimentacao_entrega = models.ForeignKey(
+        "MovimentacaoItem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vinculos_abertos",
+        verbose_name="Movimentação de entrega",
+    )
+    movimentacao_devolucao = models.ForeignKey(
+        "MovimentacaoItem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vinculos_encerrados",
+        verbose_name="Movimentação de devolução",
+    )
+    observacao = models.TextField(blank=True, null=True, verbose_name="Observações")
+
+    class Meta:
+        verbose_name = "Vínculo de Equipamento Compartilhado"
+        verbose_name_plural = "Vínculos de Equipamentos Compartilhados"
+        ordering = ["-data_vinculo"]
+        indexes = [
+            models.Index(fields=["item", "ativo"]),
+            models.Index(fields=["colaborador", "ativo"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["item", "colaborador"],
+                condition=models.Q(ativo=True),
+                name="uniq_vinculo_ativo_item_colaborador",
+            ),
+        ]
+
+    def __str__(self):
+        estado = "ativo" if self.ativo else "encerrado"
+        return f"{self.item} ↔ {self.colaborador} ({estado})"
+
+
+# ----------------- ORDEM DE MANUTENÇÃO (Portal do Fornecedor) -----------------
+class OrdemManutencao(AuditModel):
+    """
+    Ordem de serviço de manutenção externa conduzida pelo fornecedor.
+    Criada automaticamente quando um item é enviado para manutenção com um
+    `fornecedor_manutencao` definido. O fornecedor avança o status pelo Portal;
+    o TI conclui (confirma o retorno do item reparado ou recebe o substituto).
+    Toda transição é gravada em OrdemManutencaoEvento (auditoria / timeline).
+    """
+    item = models.ForeignKey(
+        "Item",
+        on_delete=models.CASCADE,
+        related_name="ordens_manutencao",
+        verbose_name="Equipamento",
+    )
+    fornecedor = models.ForeignKey(
+        "Fornecedor",
+        on_delete=models.PROTECT,
+        related_name="ordens_manutencao",
+        verbose_name="Fornecedor responsável",
+    )
+    movimentacao_origem = models.ForeignKey(
+        "MovimentacaoItem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ordens_manutencao",
+        verbose_name="Movimentação de envio",
+    )
+    status = models.CharField(
+        max_length=30,
+        choices=StatusOrdemManutencaoChoices.choices,
+        default=StatusOrdemManutencaoChoices.AGUARDANDO_RECEBIMENTO,
+    )
+    diagnostico = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Diagnóstico do fornecedor",
+    )
+    item_substituto = models.ForeignKey(
+        "Item",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ordens_substituicao",
+        verbose_name="Equipamento substituto",
+    )
+    # Dados do contrato de substituição (informados pelo fornecedor na troca)
+    substituto_contrato = models.CharField(
+        max_length=200, blank=True, null=True, verbose_name="Contrato de substituição"
+    )
+    substituto_valor = models.DecimalField(
+        max_digits=12, decimal_places=2, blank=True, null=True, verbose_name="Valor da substituição"
+    )
+    substituto_data = models.DateField(
+        blank=True, null=True, verbose_name="Data da substituição"
+    )
+    substituto_locado = models.CharField(
+        max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO,
+        verbose_name="Substituto entra como locação?",
+    )
+    devolucao_localidade = models.ForeignKey(
+        "Localidade", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="ordens_devolucao",
+        verbose_name="Localidade de devolução",
+    )
+    reparo_valor = models.DecimalField(
+        max_digits=12, decimal_places=2, blank=True, null=True,
+        verbose_name="Valor do reparo realizado",
+    )
+    chamado = models.CharField(max_length=100, blank=True, null=True, verbose_name="Nº Chamado")
+    finalizada_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Ordem de Manutenção"
+        verbose_name_plural = "Ordens de Manutenção"
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["fornecedor"]),
+        ]
+
+    @property
+    def aberta(self) -> bool:
+        return self.status not in (
+            StatusOrdemManutencaoChoices.CONCLUIDO,
+            StatusOrdemManutencaoChoices.CANCELADO,
+        )
+
+    def __str__(self):
+        return f"OS #{self.pk} — {self.item} ({self.get_status_display()})"
+
+
+class OrdemManutencaoEvento(AuditModel):
+    """Linha do tempo de uma OrdemManutencao: cada transição vira um evento."""
+    ordem = models.ForeignKey(
+        OrdemManutencao,
+        on_delete=models.CASCADE,
+        related_name="eventos",
+    )
+    status = models.CharField(
+        max_length=30,
+        choices=StatusOrdemManutencaoChoices.choices,
+        verbose_name="Status registrado",
+    )
+    observacao = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        verbose_name = "Evento de Manutenção"
+        verbose_name_plural = "Eventos de Manutenção"
+
+    def __str__(self):
+        return f"OS #{self.ordem_id} → {self.get_status_display()}"
+
+
 # ----------------- CHECKLIST -----------------
 class CheckListModelo(AuditModel):
     nome = models.CharField(max_length=120)
@@ -1013,12 +1316,12 @@ class Preventiva(AuditModel):
         ])
 
     @transaction.atomic
-    def registrar_execucao(self, respostas_dict: dict, usuario=None, observacao=None, foto_antes=None, foto_depois=None, foto_antes_2=None, foto_depois_2=None):
+    def registrar_execucao(self, respostas_dict: dict, usuario=None, observacao=None, foto_antes=None, foto_depois=None, foto_antes_2=None, foto_depois_2=None, data_execucao=None, hora_inicio=None, hora_fim=None):
         """
         Registra a execução sem sobrescrever históricos anteriores.
         respostas_dict: { pergunta_id: valor_string }
         """
-        hoje = timezone.now().date()
+        hoje = data_execucao or timezone.now().date()
 
         # Snapshot de desempenho (antes de limpar data_agendamento)
         data_agendada_snap = self.data_agendamento
@@ -1036,6 +1339,8 @@ class Preventiva(AuditModel):
             tecnico=(self.tecnico or usuario),
             data_agendada=data_agendada_snap,
             no_prazo=no_prazo_snap,
+            hora_inicio=hora_inicio,
+            hora_fim=hora_fim,
             criado_por=usuario,
             atualizado_por=usuario,
         )
@@ -1110,6 +1415,23 @@ class PreventivaExecucao(AuditModel):
         help_text="True quando a execução ocorreu até a data agendada (ou sem agendamento).",
     )
 
+    # Apontamento de horas trabalhadas pelo técnico nesta execução.
+    hora_inicio = models.TimeField(
+        null=True, blank=True,
+        verbose_name="Hora de início",
+        help_text="Horário em que o técnico iniciou o serviço.",
+    )
+    hora_fim = models.TimeField(
+        null=True, blank=True,
+        verbose_name="Hora de término",
+        help_text="Horário em que o técnico concluiu o serviço.",
+    )
+    duracao_minutos = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="Duração (minutos)",
+        help_text="Tempo gasto na execução, em minutos. Calculado a partir de hora_inicio e hora_fim.",
+    )
+
     class Meta:
         ordering = ["-data_execucao", "-created_at"]
         verbose_name = "Execução de Preventiva"
@@ -1117,6 +1439,53 @@ class PreventivaExecucao(AuditModel):
 
     def __str__(self):
         return f"Execução {self.data_execucao:%d/%m/%Y} - {self.preventiva.equipamento.nome}"
+
+    @staticmethod
+    def calcular_duracao_minutos(hora_inicio, hora_fim):
+        """
+        Duração em minutos entre dois TimeField. Se a hora final for menor que a
+        inicial, assume que o serviço cruzou a meia-noite (+24h). Retorna None se
+        faltar uma das pontas.
+        """
+        if not hora_inicio or not hora_fim:
+            return None
+        ini = hora_inicio.hour * 60 + hora_inicio.minute
+        fim = hora_fim.hour * 60 + hora_fim.minute
+        delta = fim - ini
+        if delta < 0:
+            delta += 24 * 60  # cruzou a meia-noite
+        return delta
+
+    @property
+    def duracao_horas(self):
+        """Duração em horas decimais (ex.: 1.5) ou None."""
+        minutos = self.duracao_minutos
+        if minutos is None:
+            minutos = self.calcular_duracao_minutos(self.hora_inicio, self.hora_fim)
+        if minutos is None:
+            return None
+        return round(minutos / 60, 2)
+
+    @property
+    def duracao_formatada(self):
+        """Duração legível, ex.: '1h 30min', '2h', '45min' ou None."""
+        minutos = self.duracao_minutos
+        if minutos is None:
+            minutos = self.calcular_duracao_minutos(self.hora_inicio, self.hora_fim)
+        if minutos is None:
+            return None
+        horas, mins = divmod(int(minutos), 60)
+        if horas and mins:
+            return f"{horas}h {mins}min"
+        if horas:
+            return f"{horas}h"
+        return f"{mins}min"
+
+    def save(self, *args, **kwargs):
+        # Mantém duracao_minutos sempre coerente com as horas informadas.
+        if self.hora_inicio and self.hora_fim:
+            self.duracao_minutos = self.calcular_duracao_minutos(self.hora_inicio, self.hora_fim)
+        super().save(*args, **kwargs)
 
 
 # ACRESCENTA o vínculo da resposta à execução

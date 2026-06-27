@@ -135,6 +135,25 @@ def _resolver_itens_por_serial(devices):
     return mapa
 
 
+def _anexar_matricula(devices):
+    """Anexa a cada device a matrícula ATUAL (a mais recente usada no enrollment).
+    Mostra a descrição/código da matrícula para facilitar a identificação. Reflete
+    automaticamente a última matrícula recebida quando o aparelho é rematriculado."""
+    from ProjetoEstoque.models import KioskMatricula
+
+    ids = [d.pk for d in devices if d.pk]
+    mapa = {}
+    if ids:
+        # Ordenado por device + mais recente; o primeiro de cada device é o atual.
+        for m in (KioskMatricula.objects
+                  .filter(device_id__in=ids)
+                  .order_by("device_id", "-usado_em", "-criado_em")):
+            mapa.setdefault(m.device_id, m)
+    for d in devices:
+        d.matricula_atual = mapa.get(d.pk)
+    return mapa
+
+
 @login_required
 def quiosque_dashboard(request):
     from ProjetoEstoque.models import KioskDevice, KioskMatricula
@@ -168,6 +187,7 @@ def quiosque_dashboard(request):
 
     devices.sort(key=lambda d: (d.online is False, (d.apelido or d.modelo or "").lower()))
     _resolver_itens_por_serial(devices)
+    _anexar_matricula(devices)
 
     return render(request, "front/quiosque/quiosque_dashboard.html", {
         "devices": devices,
@@ -187,6 +207,8 @@ def quiosque_detalhe(request, pk: int):
 
     # Equipamento do estoque resolvido pelo número de série do aparelho.
     _resolver_itens_por_serial([device])
+    # Matrícula atual (descrição que identifica o aparelho).
+    _anexar_matricula([device])
 
     checkins = device.checkins.all()
     paginator = Paginator(checkins, 30)
@@ -300,8 +322,8 @@ def quiosque_config_editar(request, pk: int):
         device.wifi_only = request.POST.get("wifi_only") == "on"
         device.mensagem_quiosque = (request.POST.get("mensagem_quiosque") or "").strip()[:200]
         try:
-            # Mínimo 10s (tempo real, conforme contrato do app); app limita a [10, 60].
-            device.intervalo_checkin_seg = max(10, int(request.POST.get("intervalo_checkin_seg") or 300))
+            # Faixa aceita pelo app: [10, 300]s. 10s = tempo real; 300s = economia de bateria/dados.
+            device.intervalo_checkin_seg = min(300, max(10, int(request.POST.get("intervalo_checkin_seg") or 300)))
         except (TypeError, ValueError):
             device.intervalo_checkin_seg = 300
         # Apps permitidos: uma linha/pacote ou separados por vírgula

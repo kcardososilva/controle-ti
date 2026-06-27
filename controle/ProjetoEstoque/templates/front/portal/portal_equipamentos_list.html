@@ -1,0 +1,189 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}Equipamentos — Portal do Fornecedor{% endblock %}
+{% block page_title %}Equipamentos{% endblock %}
+{% block page_subtitle %}{{ total }} equipamento{{ total|pluralize }} encontrado{{ total|pluralize }}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'portal_equipamentos_export' %}{% if qs_keep %}?{{ qs_keep }}{% endif %}" class="pf-btn pf-btn--brand">
+    <i class="fa-solid fa-file-excel"></i> Exportar Excel
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+  :where(.pf-eq) { display: grid; gap: 1.1rem; }
+
+  .pf-eq .pf-filters {
+    display: grid; gap: .8rem; padding: 1rem 1.1rem; border-radius: var(--radius-lg);
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+  }
+  .pf-eq .pf-frow { display: grid; gap: .7rem; grid-template-columns: repeat(4, 1fr); }
+  .pf-eq .pf-field { display: grid; gap: .3rem; min-width: 0; }
+  .pf-eq .pf-field label { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--text-quaternary); }
+  .pf-eq .pf-control {
+    width: 100%; min-height: 2.55rem; padding: .5rem .85rem; border-radius: var(--radius-md);
+    border: 1px solid var(--separator-non-opaque); background: var(--bg-page); color: var(--text-primary); font: inherit;
+  }
+  .pf-eq .pf-filter-actions { display: flex; gap: .5rem; align-items: center; }
+
+  /* Select2 alinhado ao portal */
+  .pf-eq .select2-container { width: 100% !important; }
+  .pf-eq .select2-container--default .select2-selection--single {
+    min-height: 2.55rem; height: 2.55rem; border-radius: var(--radius-md);
+    border: 1px solid var(--separator-non-opaque); background: var(--bg-page);
+  }
+  .pf-eq .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 2.4rem; color: var(--text-primary); }
+  .pf-eq .select2-container--default .select2-selection--single .select2-selection__arrow { height: 2.4rem; }
+
+  .pf-eq .pf-tablewrap { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--separator-hairline); background: var(--bg-elevated); box-shadow: var(--shadow-sm); }
+  .pf-eq table { width: 100%; border-collapse: collapse; min-width: 46rem; }
+  .pf-eq thead th {
+    text-align: left; font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-tertiary); padding: .85rem 1rem; border-bottom: 1px solid var(--separator-hairline); white-space: nowrap;
+  }
+  .pf-eq tbody td { padding: .8rem 1rem; border-bottom: 1px solid var(--separator-hairline); font-size: .86rem; vertical-align: middle; }
+  .pf-eq tbody tr:last-child td { border-bottom: 0; }
+  .pf-eq tbody tr { transition: background .14s; }
+  .pf-eq tbody tr:hover { background: var(--bg-hover); }
+  .pf-eq .pf-td-name { font-weight: 700; color: var(--text-primary); }
+  .pf-eq .pf-td-name a { color: inherit; }
+  .pf-eq .pf-muted { color: var(--text-tertiary); }
+  .pf-eq .pf-td-link { text-align: right; }
+  .pf-eq .pf-td-link a { color: var(--brand); font-weight: 700; }
+
+  .pf-eq .pf-pager { display: flex; align-items: center; justify-content: center; gap: .5rem; padding-top: .3rem; }
+  .pf-eq .pf-pager a, .pf-eq .pf-pager span {
+    min-width: 2.3rem; min-height: 2.3rem; display: inline-flex; align-items: center; justify-content: center; padding: 0 .7rem;
+    border-radius: var(--radius-pill); border: 1px solid var(--separator-hairline); font-size: .82rem; font-weight: 700; color: var(--text-secondary);
+  }
+  .pf-eq .pf-pager .is-current { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+  @media (max-width: 60rem) { .pf-eq .pf-frow { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 34rem) { .pf-eq .pf-frow { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-eq">
+
+  <form method="get">
+    <div class="pf-filters">
+      <div class="pf-frow">
+        <div class="pf-field">
+          <label for="q">Nome</label>
+          <input type="text" id="q" name="q" class="pf-control" value="{{ f_q }}" placeholder="Nome do equipamento">
+        </div>
+        <div class="pf-field">
+          <label for="marca">Marca</label>
+          <input type="text" id="marca" name="marca" class="pf-control" value="{{ f_marca }}" placeholder="Marca">
+        </div>
+        <div class="pf-field">
+          <label for="modelo">Modelo</label>
+          <input type="text" id="modelo" name="modelo" class="pf-control" value="{{ f_modelo }}" placeholder="Modelo">
+        </div>
+        <div class="pf-field">
+          <label for="serie">Nº Série</label>
+          <input type="text" id="serie" name="serie" class="pf-control" value="{{ f_serie }}" placeholder="Número de série">
+        </div>
+      </div>
+      <div class="pf-frow">
+        <div class="pf-field">
+          <label for="status">Status</label>
+          <select id="status" name="status" class="pf-control pf-select2">
+            <option value="">Todos</option>
+            {% for value, label in status_choices %}
+              <option value="{{ value }}" {% if f_status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="pf-field">
+          <label for="localidade">Localidade</label>
+          <select id="localidade" name="localidade" class="pf-control pf-select2">
+            <option value="">Todas</option>
+            {% for loc in localidades %}
+              <option value="{{ loc.id }}" {% if f_localidade == loc.id|stringformat:'s' %}selected{% endif %}>{{ loc.local }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="pf-field">
+          <label for="categoria">Categoria</label>
+          <select id="categoria" name="categoria" class="pf-control pf-select2">
+            <option value="">Todas</option>
+            {% for cat in categorias %}
+              <option value="{{ cat.id }}" {% if f_categoria == cat.id|stringformat:'s' %}selected{% endif %}>{{ cat.nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="pf-field pf-filter-actions" style="align-self:end;">
+          <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-filter"></i> Filtrar</button>
+          {% if tem_filtro %}<a href="{% url 'portal_equipamentos_list' %}" class="pf-btn" title="Limpar filtros"><i class="fa-solid fa-xmark"></i></a>{% endif %}
+        </div>
+      </div>
+    </div>
+  </form>
+
+  {% if page_obj.object_list %}
+  <div class="pf-tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Equipamento</th>
+          <th>Nº Série</th>
+          <th>Marca / Modelo</th>
+          <th>Categoria / Tipo</th>
+          <th>Localidade</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in page_obj.object_list %}
+        <tr>
+          <td class="pf-td-name"><a href="{% url 'portal_equipamento_detail' item.pk %}">{{ item.nome }}</a></td>
+          <td class="pf-muted">{{ item.numero_serie|default:"—" }}</td>
+          <td>{% if item.marca or item.modelo %}{{ item.marca|default:'' }} {{ item.modelo|default:'' }}{% else %}<span class="pf-muted">—</span>{% endif %}</td>
+          <td>
+            {% if item.subtipo %}{% if item.subtipo.categoria %}{{ item.subtipo.categoria.nome }} · {% endif %}{{ item.subtipo.nome }}{% else %}<span class="pf-muted">—</span>{% endif %}
+          </td>
+          <td class="pf-muted">{% if item.localidade %}{{ item.localidade.local }}{% else %}—{% endif %}</td>
+          <td><span class="pf-chip pf-chip--{{ item.status }}">{{ item.get_status_display }}</span></td>
+          <td class="pf-td-link"><a href="{% url 'portal_equipamento_detail' item.pk %}">Ver <i class="fa-solid fa-chevron-right" style="font-size:.7rem;"></i></a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="pf-pager">
+    {% if page_obj.has_previous %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.previous_page_number }}"><i class="fa-solid fa-chevron-left"></i></a>{% endif %}
+    <span class="is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.next_page_number }}"><i class="fa-solid fa-chevron-right"></i></a>{% endif %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="pf-card pf-empty">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <p>Nenhum equipamento encontrado{% if tem_filtro %} para os filtros aplicados{% endif %}.</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+  $(function () {
+    $('.pf-select2').select2({
+      width: '100%',
+      minimumResultsForSearch: 6,
+      dropdownParent: $('.pf-eq')
+    });
+  });
+</script>
+{% endblock %}

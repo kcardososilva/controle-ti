@@ -899,6 +899,17 @@
             <div class="field-errors">{{ form.tipo_transferencia.errors }}</div>
           </div>
 
+          <div class="col-12 mov-form-group hidden" data-f="devolucao_info">
+            <div id="devolucaoInfo" style="display:flex; gap:.7rem; align-items:flex-start; padding:.85rem 1rem; border-radius:10px; background:rgba(79,70,229,.08); border:1px solid rgba(79,70,229,.25);">
+              <i class="fa fa-rotate-left" style="color:#4f46e5; margin-top:.18rem;"></i>
+              <div style="font-size:.86rem; line-height:1.55;">
+                <div id="devInfoLoading" style="display:none; color:var(--text-tertiary,#777);"><i class="fa fa-spinner fa-spin"></i> Verificando o vínculo atual do item…</div>
+                <div id="devInfoContent" style="display:none;"></div>
+                <div id="devInfoNone" style="display:none; color:#b35a00;">Sem entrega anterior registrada para este item — a devolução será gravada sem vínculo automático de pessoa/centro de custo.</div>
+              </div>
+            </div>
+          </div>
+
           <div class="col-6 mov-form-group hidden" data-f="usuario">
             <label for="id_usuario" id="label_usuario">
               Usuário Responsável <span class="required-mark">*</span>
@@ -1084,6 +1095,7 @@ $(document).ready(function() {
   const allDynamicFields = [
     'lote_entrada',
     'tipo_transferencia',
+    'devolucao_info',
     'usuario',
     'quantidade',
     'numero_pedido',
@@ -1180,9 +1192,12 @@ $(document).ready(function() {
       if (action === 'devolucao') {
         $('[data-f="usuario"]').addClass('hidden');
         $('[data-f="centro_custo_destino"]').addClass('hidden');
+        $('[data-f="devolucao_info"]').removeClass('hidden');
+        carregarInfoDevolucao();
       } else {
         $('[data-f="usuario"]').removeClass('hidden');
         $('[data-f="centro_custo_destino"]').removeClass('hidden');
+        $('[data-f="devolucao_info"]').addClass('hidden');
       }
     }
 
@@ -1190,8 +1205,81 @@ $(document).ready(function() {
     carregarLotesDoItem();
   }
 
+  // Mostra, na devolução, quem está com o item e para qual CC ele voltará.
+  function carregarInfoDevolucao() {
+    const itemId = $('#id_item').val();
+    const $loading = $('#devInfoLoading');
+    const $content = $('#devInfoContent');
+    const $none = $('#devInfoNone');
+    $content.hide().empty();
+    $none.hide();
+
+    if (!itemId) {
+      $loading.hide();
+      $content.html('<span style="color:var(--text-tertiary,#777);">Selecione o item para ver o vínculo atual.</span>').show();
+      return;
+    }
+
+    $loading.show();
+    $.ajax({
+      url: "{% url 'api_item_devolucao_info' %}",
+      data: { item_id: itemId },
+      success: function (resp) {
+        $loading.hide();
+        if (!resp || !resp.ok) { return; }
+
+        // ── Equipamento COMPARTILHADO ──────────────────────────────────
+        // A devolução precisa que o operador escolha QUAL colaborador está
+        // devolvendo: revela o campo "Usuário" e lista quem está com o item.
+        if (resp.compartilhado) {
+          $('[data-f="usuario"]').removeClass('hidden');
+          $('#label_usuario').html('<i class="fa fa-user"></i> Colaborador que está devolvendo <span style="color:#d00">*</span>');
+
+          if (!resp.tem_entrega || !resp.vinculos || !resp.vinculos.length) {
+            $content.html('<span style="color:#b35a00;">Nenhum colaborador vinculado a este equipamento compartilhado no momento.</span>').show();
+            return;
+          }
+
+          const nomes = resp.vinculos.map(function (v) {
+            return '<b>' + $('<div>').text(v.nome).html() + '</b>';
+          }).join(', ');
+
+          $content.html(
+            'Equipamento <b>compartilhado</b>, atualmente com: ' + nomes + '.<br>' +
+            'Selecione no campo <b>Usuário</b> quem está devolvendo (apenas esse vínculo será encerrado).'
+          ).show();
+          return;
+        }
+
+        if (!resp.tem_entrega) { $none.show(); return; }
+
+        const pessoa = resp.usuario
+          ? '<b>' + $('<div>').text(resp.usuario).html() + '</b>'
+          : '<span style="color:#b35a00;">não identificada</span>';
+        const cc = resp.centro_custo_origem
+          ? '<b>' + $('<div>').text(resp.centro_custo_origem).html() + '</b>'
+          : '<span style="color:#b35a00;">centro de custo original não registrado</span>';
+
+        $content.html(
+          'Item vinculado a ' + pessoa + '. Ao devolver, será registrado nesta pessoa ' +
+          'e voltará automaticamente para o centro de custo ' + cc + '.'
+        ).show();
+      },
+      error: function () {
+        $loading.hide();
+      }
+    });
+  }
+
   $('#id_tipo_movimentacao').on('change', updateLayout);
-  $('#id_item').on('change', carregarLotesDoItem);
+  $('#id_item').on('change', function () {
+    carregarLotesDoItem();
+    const type = $('#id_tipo_movimentacao').val();
+    const action = $('input[name="tipo_transferencia"]:checked').val();
+    if (type === 'transferencia' && action === 'devolucao') {
+      carregarInfoDevolucao();
+    }
+  });
   $('input[name="tipo_transferencia"]').on('change', updateLayout);
 
   updateLayout();

@@ -17,7 +17,7 @@ from ..models import (
     Usuario, CentroCusto, Localidade, Funcao,
     StatusUsuarioChoices, SimNaoChoices,
     MovimentacaoLicenca, MovimentacaoItem, LicencaLote,
-    TipoMovLicencaChoices,
+    TipoMovLicencaChoices, ItemColaborador,
 )
 from ..forms import UsuarioForm, ImportarUsuariosForm
 from services.usuario_import_service import UsuarioImportService
@@ -549,7 +549,59 @@ def _licencas_ativas_do_usuario(usuario):
     return licencas_ativas, total_lic_mensal, total_lic_anual
 
 
+def _anotar_custo_item(item):
+    """Calcula custo_calc / tipo_custo_calc (locação x aquisição) no item."""
+    custo_item = item.valor or Decimal("0.00")
+    tipo_custo = "aquisicao"
+
+    if getattr(item, "locado", "nao") == "sim":
+        try:
+            loc = item.locacao
+            if loc and loc.valor_mensal:
+                custo_item = loc.valor_mensal
+                tipo_custo = "locacao"
+        except Exception:
+            pass
+
+    item.custo_calc = custo_item
+    item.tipo_custo_calc = tipo_custo
+
+
 def _itens_ativos_do_usuario(usuario):
+    itens_ativos = []
+    itens_processados = set()
+
+    # 1) Itens COMPARTILHADOS: aparecem em TODOS os colaboradores com vínculo
+    #    ativo (não somem ao serem entregues a outra pessoa). O detentor vem
+    #    da tabela ItemColaborador, não da "última movimentação".
+    vinculos = (
+        ItemColaborador.objects
+        .filter(
+            colaborador=usuario,
+            ativo=True,
+            item__isnull=False,
+            item__compartilhado=True,
+        )
+        .select_related(
+            "item", "item__subtipo", "item__localidade", "item__centro_custo",
+            "movimentacao_entrega",
+        )
+        .order_by("item__nome")
+    )
+
+    for vinculo in vinculos:
+        item = vinculo.item
+        if item.pk in itens_processados:
+            continue
+        itens_processados.add(item.pk)
+
+        _anotar_custo_item(item)
+        item.ultima_movimentacao_usuario = vinculo.movimentacao_entrega
+        item.vinculo_compartilhado = vinculo
+        itens_ativos.append(item)
+
+    # 2) Itens NÃO compartilhados: detentor único derivado da última
+    #    movimentação (comportamento histórico, inalterado).
     movs_itens = (
         MovimentacaoItem.objects
         .select_related("item", "item__subtipo", "item__localidade", "item__centro_custo")
@@ -557,14 +609,18 @@ def _itens_ativos_do_usuario(usuario):
         .order_by("item_id", "-created_at", "-id")
     )
 
-    itens_ativos = []
-    itens_processados = set()
-
     for mov in movs_itens:
         if mov.item_id in itens_processados:
             continue
 
         itens_processados.add(mov.item_id)
+
+        item = mov.item
+
+        # Itens compartilhados já foram resolvidos pelos vínculos acima; nunca
+        # derivar posse deles pela última movimentação.
+        if item.compartilhado:
+            continue
 
         if mov.usuario_id != usuario.pk:
             continue
@@ -572,21 +628,7 @@ def _itens_ativos_do_usuario(usuario):
         if mov.tipo_movimentacao in ["baixa", "devolucao"]:
             continue
 
-        item = mov.item
-        custo_item = item.valor or Decimal("0.00")
-        tipo_custo = "aquisicao"
-
-        if getattr(item, "locado", "nao") == "sim":
-            try:
-                loc = item.locacao
-                if loc and loc.valor_mensal:
-                    custo_item = loc.valor_mensal
-                    tipo_custo = "locacao"
-            except Exception:
-                pass
-
-        item.custo_calc = custo_item
-        item.tipo_custo_calc = tipo_custo
+        _anotar_custo_item(item)
         item.ultima_movimentacao_usuario = mov
         itens_ativos.append(item)
 

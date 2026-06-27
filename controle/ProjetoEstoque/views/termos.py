@@ -15,12 +15,12 @@ def termo_entrega_form(request, pk):
     )
 
     initial = {
-        # Numeração gerada automaticamente a partir do colaborador + centro de
-        # custo no momento da geração (sem o ID do item). Campo opcional: se
-        # preenchido manualmente, sobrescreve a numeração automática.
+        # Numeração automática: {nº de série} - {solicitante} - {centro de custo}.
+        # Campo opcional: se preenchido manualmente, sobrescreve a numeração.
         "numero_termo": "",
         "acessorios": "",
         "observacoes": "",
+        "estabelecimento": "karitel",
         "responsavel_ti_nome": request.user.get_full_name() or request.user.username,
     }
 
@@ -68,11 +68,12 @@ def termo_devolucao_form(request, pk):
 
     initial = {
         "colaborador": usuario_atual.pk if usuario_atual else None,
-        # Numeração automática por colaborador + centro de custo (sem ID).
+        # Numeração automática: {nº de série} - {solicitante} - {centro de custo}.
         # Opcional: se preenchido, sobrescreve a numeração automática.
         "numero_termo": "",
         "acessorios": "",
         "observacoes": "",
+        "estabelecimento": "karitel",
         "responsavel_ti_nome": request.user.get_full_name() or request.user.username,
     }
 

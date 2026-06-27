@@ -50,6 +50,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # WhiteNoise serve os arquivos estaticos (CSS/JS/imagens) de forma
+    # comprimida e com cache no navegador, sem passar pela stack do Django.
+    # Deve vir logo apos o SecurityMiddleware.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -58,6 +62,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'ProjetoEstoque.middleware.LoginThrottleMiddleware',
     'ProjetoEstoque.middleware.TVAccessMiddleware',
+    'ProjetoEstoque.middleware.FornecedorAccessMiddleware',
 ]
 
 ROOT_URLCONF = 'controle.urls'
@@ -130,6 +135,17 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Armazenamento de arquivos: estaticos servidos via WhiteNoise (comprimidos +
+# cache). Sem manifesto, para nao quebrar referencias estaticas existentes.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

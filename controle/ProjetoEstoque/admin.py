@@ -5,7 +5,8 @@ from .models import (
     Item, Usuario, Locacao, Comentario, CicloManutencao, MovimentacaoItem,
     CheckListModelo, CheckListPergunta, Preventiva, PreventivaExecucao, PreventivaResposta,
     Licenca, MovimentacaoLicenca, LicencaLote, ItemLote, LoteEstoque,
-    PlantaProjeto,
+    PlantaProjeto, PerfilFornecedor, OrdemManutencao, OrdemManutencaoEvento,
+    LocacaoPeriodo, ItemColaborador,
 )
 
 # ---------------------------
@@ -71,6 +72,15 @@ class FornecedorAdmin(AuditAdminMixin):
     ordering = ("nome",)
 
 
+@admin.register(PerfilFornecedor)
+class PerfilFornecedorAdmin(AuditAdminMixin):
+    list_display = ("id", "usuario", "fornecedor", "ativo")
+    list_filter = ("ativo", "fornecedor")
+    search_fields = ("usuario__username", "usuario__email", "fornecedor__nome")
+    autocomplete_fields = ("usuario", "fornecedor")
+    list_select_related = ("usuario", "fornecedor")
+
+
 @admin.register(CentroCusto)
 class CentroCustoAdmin(AuditAdminMixin):
     list_display = ("id", "numero", "departamento", "pmb")
@@ -122,12 +132,12 @@ class ComentarioInline(admin.TabularInline):
 class ItemAdmin(AuditAdminMixin):
     list_display = (
         "id", "nome", "numero_serie", "status", "quantidade",
-        "centro_custo", "localidade", "subtipo", "fornecedor", "locado"
+        "centro_custo", "localidade", "subtipo", "fornecedor", "locado", "compartilhado"
     )
     # CORREÇÃO: Removido 'categoria' do filtro direto (use subtipo__categoria se precisar)
     list_filter = (
         "status", "pmb", "item_consumo", "subtipo",
-        "localidade", "centro_custo", "fornecedor", "locado"
+        "localidade", "centro_custo", "fornecedor", "locado", "compartilhado"
     )
     search_fields = ("nome", "numero_serie", "marca", "modelo", "numero_pedido")
     
@@ -137,6 +147,26 @@ class ItemAdmin(AuditAdminMixin):
     inlines = [LocacaoInline, ComentarioInline]
     list_select_related = ("centro_custo", "localidade", "subtipo", "fornecedor")
     ordering = ("nome",)
+
+
+@admin.register(ItemColaborador)
+class ItemColaboradorAdmin(AuditAdminMixin):
+    list_display = ("id", "item", "colaborador", "ativo", "data_vinculo", "data_devolucao")
+    list_filter = ("ativo",)
+    search_fields = ("item__nome", "item__numero_serie", "colaborador__nome", "colaborador__matricula")
+    autocomplete_fields = ("item", "colaborador")
+    list_select_related = ("item", "colaborador")
+    date_hierarchy = "data_vinculo"
+
+
+@admin.register(LocacaoPeriodo)
+class LocacaoPeriodoAdmin(AuditAdminMixin):
+    list_display = ("id", "item", "valor_mensal", "data_inicio", "data_fim", "motivo_fim")
+    list_filter = ("motivo_fim",)
+    search_fields = ("item__nome", "item__numero_serie")
+    autocomplete_fields = ("item",)
+    list_select_related = ("item",)
+    date_hierarchy = "data_inicio"
 
 
 @admin.register(Locacao)
@@ -167,6 +197,32 @@ class CicloManutencaoAdmin(AuditAdminMixin):
     search_fields = ("item__nome", "causa")
     autocomplete_fields = ("item",)
     list_select_related = ("item",)
+
+
+class OrdemManutencaoEventoInline(admin.TabularInline):
+    model = OrdemManutencaoEvento
+    extra = 0
+    fields = ("status", "observacao", "criado_por", "created_at")
+    readonly_fields = ("criado_por", "created_at")
+
+
+@admin.register(OrdemManutencao)
+class OrdemManutencaoAdmin(AuditAdminMixin):
+    list_display = ("id", "item", "fornecedor", "status", "item_substituto", "finalizada_em", "created_at")
+    list_filter = ("status", "fornecedor")
+    search_fields = ("item__nome", "item__numero_serie", "fornecedor__nome", "chamado")
+    autocomplete_fields = ("item", "fornecedor", "item_substituto", "movimentacao_origem")
+    list_select_related = ("item", "fornecedor", "item_substituto")
+    inlines = [OrdemManutencaoEventoInline]
+
+
+@admin.register(OrdemManutencaoEvento)
+class OrdemManutencaoEventoAdmin(AuditAdminMixin):
+    list_display = ("id", "ordem", "status", "criado_por", "created_at")
+    list_filter = ("status",)
+    search_fields = ("ordem__item__nome", "observacao")
+    autocomplete_fields = ("ordem",)
+    list_select_related = ("ordem", "criado_por")
 
 
 @admin.register(MovimentacaoItem)
@@ -243,7 +299,7 @@ class PreventivaRespostaInline(admin.TabularInline):
 
 @admin.register(PreventivaExecucao)
 class PreventivaExecucaoAdmin(AuditAdminMixin):
-    list_display = ("id", "preventiva_link", "data_execucao", "criado_por", "created_at")
+    list_display = ("id", "preventiva_link", "data_execucao", "hora_inicio", "hora_fim", "duracao_fmt", "criado_por", "created_at")
     list_filter = ("data_execucao",)
     search_fields = ("preventiva__equipamento__nome", "observacao")
     inlines = [PreventivaRespostaInline]
@@ -252,6 +308,10 @@ class PreventivaExecucaoAdmin(AuditAdminMixin):
     @admin.display(description="Preventiva / Equipamento")
     def preventiva_link(self, obj):
         return f"{obj.preventiva.equipamento.nome} ({obj.preventiva.id})"
+
+    @admin.display(description="Duração")
+    def duracao_fmt(self, obj):
+        return obj.duracao_formatada or "—"
 
 
 @admin.register(PreventivaResposta)

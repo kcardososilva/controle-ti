@@ -2,7 +2,8 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required, permission_required
+from django.contrib.auth.decorators import login_required, permission_required, user_passes_test
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 from django.db.models import Q, Count, Sum
 from django.db.models.functions import Coalesce
@@ -10,8 +11,19 @@ from django.core.paginator import Paginator
 from django.template.loader import get_template
 from xhtml2pdf import pisa
 
-from ..models import Fornecedor, Item, Licenca, LicencaLote, SimNaoChoices
+from ..models import (
+    Fornecedor, Item, Licenca, LicencaLote, SimNaoChoices,
+    PerfilFornecedor,
+)
 from ..forms import FornecedorForm
+
+
+# Provisionar logins de fornecedor é sensível — restrito a staff/superuser.
+def _eh_staff(u):
+    return u.is_active and (u.is_staff or u.is_superuser)
+
+
+staff_required = user_passes_test(_eh_staff)
 
 def _get_fornecedores_filtrados(request):
     q = request.GET.get("q", "").strip()
@@ -495,6 +507,146 @@ def fornecedor_detail(request, pk: int):
     }
 
     return render(request, "front/fornecedores/fornecedor_detail.html", context)
+
+
+# ── Acesso ao Portal do Fornecedor (por fornecedor) ───────────────────────────
+@login_required
+@staff_required
+def fornecedor_portal_acesso(request, pk: int):
+    """
+    Gerencia o login do Portal de um fornecedor específico: cria/vincula o
+    usuário, redefine senha/e-mail e suspende/reativa. Toda a regra fica no
+    FornecedorAcessoService.
+    """
+    from services.fornecedor_acesso_service import FornecedorAcessoService
+
+    fornecedor = get_object_or_404(Fornecedor, pk=pk)
+    perfil = (
+        PerfilFornecedor.objects
+        .filter(fornecedor=fornecedor)
+        .select_related("usuario")
+        .first()
+    )
+
+    if request.method == "POST":
+        acao = request.POST.get("acao", "salvar")
+        try:
+            if acao == "toggle" and perfil:
+                FornecedorAcessoService.definir_ativo(perfil, not perfil.ativo, request.user)
+                messages.success(request, "Acesso reativado." if perfil.ativo else "Acesso suspenso.")
+            elif perfil:
+                FornecedorAcessoService.atualizar_email(perfil, request.POST.get("email"))
+                senha = (request.POST.get("senha") or "").strip()
+                if senha:
+                    FornecedorAcessoService.resetar_senha(perfil, senha)
+                messages.success(request, "Acesso atualizado com sucesso.")
+            else:
+                FornecedorAcessoService.provisionar(
+                    fornecedor=fornecedor,
+                    username=request.POST.get("username"),
+                    email=request.POST.get("email"),
+                    senha=request.POST.get("senha"),
+                    user=request.user,
+                )
+                messages.success(request, "Acesso ao portal configurado com sucesso.")
+        except ValidationError as exc:
+            messages.error(request, "; ".join(exc.messages))
+        return redirect("fornecedor_portal_acesso", pk=pk)
+
+    context = {"fornecedor": fornecedor, "perfil": perfil}
+    return render(request, "front/fornecedores/fornecedor_portal_acesso.html", context)
+
+
+# ── Central de Acessos de Fornecedor (gestão global) ──────────────────────────
+@login_required
+@staff_required
+def fornecedor_acessos_list(request):
+    """Central para cadastrar e gerenciar todos os usuários-fornecedor."""
+    from services.fornecedor_acesso_service import FornecedorAcessoService
+
+    if request.method == "POST":
+        try:
+            fornecedor = get_object_or_404(Fornecedor, pk=request.POST.get("fornecedor"))
+            _, criado = FornecedorAcessoService.provisionar(
+                fornecedor=fornecedor,
+                username=request.POST.get("username"),
+                email=request.POST.get("email"),
+                senha=request.POST.get("senha"),
+                user=request.user,
+            )
+            messages.success(
+                request,
+                "Acesso criado com sucesso." if criado else "Usuário existente vinculado com sucesso.",
+            )
+        except ValidationError as exc:
+            messages.error(request, "; ".join(exc.messages))
+        return redirect("fornecedor_acessos_list")
+
+    q = (request.GET.get("q") or "").strip()
+    perfis = (
+        PerfilFornecedor.objects
+        .select_related("usuario", "fornecedor")
+        .order_by("fornecedor__nome", "usuario__username")
+    )
+    if q:
+        perfis = perfis.filter(
+            Q(usuario__username__icontains=q)
+            | Q(usuario__email__icontains=q)
+            | Q(fornecedor__nome__icontains=q)
+        )
+
+    perfis = list(perfis)
+    # Conta equipamentos visíveis por fornecedor (próprios) — leitura leve
+    cont_itens = {
+        row["fornecedor"]: row["n"]
+        for row in Item.objects.values("fornecedor").annotate(n=Count("id"))
+    }
+    for p in perfis:
+        p.qtd_itens_calc = cont_itens.get(p.fornecedor_id, 0)
+
+    total = len(perfis)
+    ativos = sum(1 for p in perfis if p.ativo)
+
+    context = {
+        "perfis": perfis,
+        "fornecedores": Fornecedor.objects.order_by("nome"),
+        "f_q": q,
+        "kpi_total": total,
+        "kpi_ativos": ativos,
+        "kpi_suspensos": total - ativos,
+    }
+    return render(request, "front/fornecedores/fornecedor_acessos.html", context)
+
+
+@login_required
+@staff_required
+def fornecedor_acesso_acao(request, pk: int):
+    """Ações por acesso: toggle (suspender/reativar), reset de senha, revogar."""
+    from services.fornecedor_acesso_service import FornecedorAcessoService
+
+    perfil = get_object_or_404(
+        PerfilFornecedor.objects.select_related("usuario", "fornecedor"), pk=pk
+    )
+    if request.method != "POST":
+        return redirect("fornecedor_acessos_list")
+
+    acao = request.POST.get("acao", "")
+    try:
+        if acao == "toggle":
+            FornecedorAcessoService.definir_ativo(perfil, not perfil.ativo, request.user)
+            messages.success(request, "Acesso reativado." if perfil.ativo else "Acesso suspenso.")
+        elif acao == "reset":
+            FornecedorAcessoService.resetar_senha(perfil, request.POST.get("senha"))
+            messages.success(request, f"Senha de '{perfil.usuario.username}' redefinida.")
+        elif acao == "revogar":
+            nome = perfil.usuario.username
+            FornecedorAcessoService.revogar(perfil)
+            messages.success(request, f"Acesso de '{nome}' revogado.")
+        else:
+            messages.error(request, "Ação inválida.")
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+    return redirect("fornecedor_acessos_list")
 
 
 # DELETE (POST via modal)

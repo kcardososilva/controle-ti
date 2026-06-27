@@ -64,6 +64,9 @@ from .fornecedores import (
     fornecedor_detail,
     fornecedor_delete,
     fornecedor_export_pdf,
+    fornecedor_portal_acesso,
+    fornecedor_acessos_list,
+    fornecedor_acesso_acao,
 )
 
 # ── Localidades ──────────────────────────────────────────────────────────────
@@ -130,6 +133,7 @@ from .movimentacoes import (
     movimentacao_delete,
     movimentacao_export_pdf,
     api_lotes_por_item,
+    api_item_devolucao_info,
 )
 
 # ── Ciclos de Manutenção ─────────────────────────────────────────────────────
@@ -157,6 +161,7 @@ from .preventivas import (
     preventiva_sincronizar_programacao,
     tecnico_desempenho,
     minhas_atividades,
+    apontamentos_horas_export,
 )
 
 # ── Licenças ─────────────────────────────────────────────────────────────────
@@ -246,6 +251,24 @@ from .quiosque import (
     quiosque_comando_novo,
     quiosque_revogar,
     quiosque_excluir,
+)
+
+# ── Portal do Fornecedor (área isolada) ──────────────────────────────────────
+from .portal_fornecedor import (
+    portal_home,
+    portal_equipamentos_list,
+    portal_equipamento_detail,
+    portal_equipamentos_export,
+    portal_manutencao_list,
+    portal_manutencao_detail,
+    portal_licencas_list,
+)
+
+# ── Manutenção externa — lado TI (recebimentos) ──────────────────────────────
+from .manutencao import (
+    manutencao_recebimentos,
+    manutencao_recebimento_detail,
+    manutencao_recebimento_acao,
 )
 
 # ── Plantas / Mapa de Infraestrutura ─────────────────────────────────────────

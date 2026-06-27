@@ -1,0 +1,166 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}{{ item.nome }} — Portal do Fornecedor{% endblock %}
+{% block page_title %}{{ item.nome }}{% endblock %}
+{% block page_subtitle %}Ficha do equipamento{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'portal_equipamentos_list' %}" class="pf-btn"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  :where(.pf-det) { display: grid; gap: 1.1rem; max-width: 60rem; }
+  .pf-det .pf-det-head {
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+    padding: 1.2rem 1.3rem; border-radius: var(--radius-lg);
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+  }
+  .pf-det .pf-det-ic {
+    width: 3rem; height: 3rem; flex: 0 0 3rem; display: grid; place-items: center; border-radius: var(--radius-md);
+    background: var(--brand-soft); color: var(--brand); font-size: 1.2rem;
+  }
+  .pf-det .pf-det-h-name { font-size: 1.2rem; font-weight: 850; letter-spacing: -.03em; }
+  .pf-det .pf-det-h-sub { color: var(--text-tertiary); font-size: .84rem; margin-top: .15rem; }
+
+  .pf-det .pf-specs { display: grid; gap: 0; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); }
+  .pf-det .pf-spec { padding: .9rem 1.1rem; border-top: 1px solid var(--separator-hairline); }
+  .pf-det .pf-spec-l { color: var(--text-quaternary); font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+  .pf-det .pf-spec-v { margin-top: .25rem; font-weight: 700; font-size: .92rem; overflow-wrap: anywhere; }
+
+  .pf-det .pf-sec-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; margin: .25rem 0 .1rem; }
+  .pf-det .pf-timeline { display: grid; gap: 0; }
+  .pf-det .pf-tl {
+    display: grid; grid-template-columns: auto 1fr; gap: .9rem; padding: 1rem 1.2rem;
+    border-top: 1px solid var(--separator-hairline);
+  }
+  .pf-det .pf-tl:first-child { border-top: 0; }
+  .pf-det .pf-tl-dot {
+    width: 2.2rem; height: 2.2rem; display: grid; place-items: center; border-radius: 999px; font-size: .8rem;
+    background: var(--bg-fill-tertiary); color: var(--text-secondary);
+  }
+  .pf-det .pf-tl-dot.is-envio { background: var(--warning-soft); color: var(--warning); }
+  .pf-det .pf-tl-dot.is-retorno { background: var(--success-soft); color: var(--success); }
+  .pf-det .pf-tl-title { font-weight: 700; font-size: .9rem; }
+  .pf-det .pf-tl-meta { color: var(--text-tertiary); font-size: .78rem; margin-top: .15rem; }
+  .pf-det .pf-tl-obs { margin-top: .4rem; font-size: .82rem; color: var(--text-secondary); white-space: pre-line; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-det">
+
+  <div class="pf-det-head">
+    <div class="pf-det-ic"><i class="fa-solid fa-display"></i></div>
+    <div style="min-width:0; flex:1;">
+      <div class="pf-det-h-name">{{ item.nome }}</div>
+      <div class="pf-det-h-sub">
+        {% if item.marca or item.modelo %}{{ item.marca|default:'' }} {{ item.modelo|default:'' }}{% else %}Equipamento{% endif %}
+      </div>
+    </div>
+    <span class="pf-chip pf-chip--{{ item.status }}">{{ item.get_status_display }}</span>
+  </div>
+
+  {% if os_aberta %}
+  <a href="{% url 'portal_manutencao_detail' os_aberta.pk %}"
+     style="display:flex; align-items:center; gap:1rem; padding:1rem 1.2rem; border-radius:var(--radius-lg);
+            background:var(--warning-soft); border:1px solid color-mix(in srgb, var(--warning) 22%, transparent); color:inherit;">
+    <span style="width:2.6rem; height:2.6rem; flex:0 0 2.6rem; display:grid; place-items:center; border-radius:.7rem; background:var(--warning); color:#fff;">
+      <i class="fa-solid fa-screwdriver-wrench"></i>
+    </span>
+    <span style="flex:1; min-width:0;">
+      <span style="display:block; font-weight:800;">Manutenção em andamento — OS #{{ os_aberta.pk }}</span>
+      <span style="display:block; color:var(--text-secondary); font-size:.84rem;">{{ os_aberta.get_status_display }} · clique para gerenciar</span>
+    </span>
+    <span class="pf-btn"><i class="fa-solid fa-arrow-right"></i> Gerenciar</span>
+  </a>
+  {% endif %}
+
+  <div class="pf-card">
+    <div class="pf-specs">
+      <div class="pf-spec"><div class="pf-spec-l">Nº de Série</div><div class="pf-spec-v">{{ item.numero_serie|default:'—' }}</div></div>
+      <div class="pf-spec"><div class="pf-spec-l">Marca</div><div class="pf-spec-v">{{ item.marca|default:'—' }}</div></div>
+      <div class="pf-spec"><div class="pf-spec-l">Modelo</div><div class="pf-spec-v">{{ item.modelo|default:'—' }}</div></div>
+      <div class="pf-spec"><div class="pf-spec-l">Categoria</div><div class="pf-spec-v">{% if item.subtipo and item.subtipo.categoria %}{{ item.subtipo.categoria.nome }}{% else %}—{% endif %}</div></div>
+      <div class="pf-spec"><div class="pf-spec-l">Tipo</div><div class="pf-spec-v">{% if item.subtipo %}{{ item.subtipo.nome }}{% else %}—{% endif %}</div></div>
+      <div class="pf-spec"><div class="pf-spec-l">Localidade</div><div class="pf-spec-v">{% if item.localidade %}{{ item.localidade.local }}{% else %}—{% endif %}</div></div>
+    </div>
+  </div>
+
+  {% if item.eh_locado %}
+  <div class="pf-sec-title">Locação</div>
+  <div class="pf-card" style="margin-top:.5rem; padding:1.1rem 1.2rem;">
+    <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+      <div style="flex:1; min-width:0;">
+        <div style="font-weight:800; font-size:1.05rem;">Total acumulado: R$ {{ loc_total|floatformat:2 }}</div>
+        <div style="color:var(--text-tertiary); font-size:.82rem; margin-top:.15rem;">
+          {% if loc_congelado %}
+            <i class="fa-solid fa-snowflake" style="color:#5856d6;"></i> Aluguel congelado (equipamento {{ item.get_status_display|lower }}). A contagem está pausada.
+          {% elif loc_atual %}
+            <i class="fa-solid fa-circle-play" style="color:#34c759;"></i> Contando desde {{ loc_atual.data_inicio|date:"d/m/Y" }} · {{ loc_atual.meses }} mês{{ loc_atual.meses|pluralize:"es" }} · R$ {{ loc_atual.valor_mensal|default:'0'|floatformat:2 }}/mês
+          {% else %}
+            Sem período de cobrança ativo.
+          {% endif %}
+        </div>
+      </div>
+      {% if loc_congelado %}<span class="pf-chip pf-chip--pausado">Congelado</span>{% elif loc_atual %}<span class="pf-chip pf-chip--ativo">Contando</span>{% endif %}
+    </div>
+
+    {% if loc_periodos %}
+    <div style="margin-top:1rem; overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; min-width:30rem;">
+        <thead>
+          <tr style="text-align:left; color:var(--text-tertiary); font-size:.7rem; text-transform:uppercase; letter-spacing:.04em;">
+            <th style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">Início</th>
+            <th style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">Fim</th>
+            <th style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">Meses</th>
+            <th style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">R$/mês</th>
+            <th style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">Acumulado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in loc_periodos %}
+          <tr style="font-size:.85rem;">
+            <td style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">{{ p.data_inicio|date:"d/m/Y" }}</td>
+            <td style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">{% if p.data_fim %}{{ p.data_fim|date:"d/m/Y" }}{% else %}<span style="color:#34c759; font-weight:700;">em andamento</span>{% endif %}</td>
+            <td style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">{{ p.meses }}</td>
+            <td style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">R$ {{ p.valor_mensal|default:'0'|floatformat:2 }}</td>
+            <td style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline); font-weight:700;">R$ {{ p.valor_acumulado|floatformat:2 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="pf-sec-title">Histórico de manutenção</div>
+  <div class="pf-card">
+    {% if manutencoes %}
+    <div class="pf-timeline">
+      {% for m in manutencoes %}
+      <div class="pf-tl">
+        <div class="pf-tl-dot {% if m.tipo_movimentacao == 'envio_manutencao' %}is-envio{% elif m.tipo_movimentacao == 'retorno_manutencao' %}is-retorno{% endif %}">
+          <i class="fa-solid {% if m.tipo_movimentacao == 'envio_manutencao' %}fa-arrow-right-from-bracket{% else %}fa-arrow-right-to-bracket{% endif %}"></i>
+        </div>
+        <div>
+          <div class="pf-tl-title">{{ m.get_tipo_movimentacao_display }}{% if m.status_retorno %} · {{ m.get_status_retorno_display }}{% endif %}</div>
+          <div class="pf-tl-meta">
+            {{ m.created_at|date:"d/m/Y H:i" }}{% if m.chamado %} · Chamado {{ m.chamado }}{% endif %}
+          </div>
+          {% if m.observacao %}<div class="pf-tl-obs">{{ m.observacao }}</div>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="pf-empty">
+      <i class="fa-solid fa-clock-rotate-left"></i>
+      <p>Nenhuma movimentação de manutenção registrada para este equipamento.</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

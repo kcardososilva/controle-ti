@@ -16,8 +16,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--arquivo",
             type=str,
-            default="dispositivos.xlsx",
-            help="Caminho do arquivo Excel (.xlsx). Padrão: dispositivos.xlsx",
+            default="../docs/dispositivos.xlsx",
+            help="Caminho do arquivo Excel (.xlsx). Padrão: ../docs/dispositivos.xlsx",
         )
         parser.add_argument(
             "--atualizar-sem-serie",

@@ -297,10 +297,22 @@ class ItemForm(forms.ModelForm):
         input_formats=["%Y-%m-%d", "%d/%m/%Y"],
     )
 
+    # Renderiza o BooleanField do modelo como um Select "Sim/Não", para manter
+    # o mesmo padrão visual dos campos "locado" e "item_consumo".
+    compartilhado = forms.TypedChoiceField(
+        required=False,
+        label="Pode ser compartilhado?",
+        choices=((False, "Não"), (True, "Sim")),
+        coerce=lambda v: v in (True, "True", "true", "1", 1),
+        empty_value=False,
+        widget=forms.Select(attrs={"class": "form-control"}),
+    )
+
     class Meta:
         model = Item
         fields = [
             "locado",
+            "compartilhado",
             "nome",
             "numero_serie",
             "marca",
@@ -372,6 +384,12 @@ class ItemForm(forms.ModelForm):
         if eh_consumo and eh_locado:
             self.add_error("item_consumo", "Item de consumo não pode ser cadastrado como locado.")
             self.add_error("locado", "Item locado deve ser um ativo/equipamento, não item de consumo.")
+
+        if eh_consumo and cleaned.get("compartilhado"):
+            self.add_error(
+                "compartilhado",
+                "Item de consumo não pode ser compartilhado (ele é controlado por estoque/lote).",
+            )
 
         if precisa_preventiva == SimNaoChoices.SIM and not data_limite_preventiva:
             self.add_error("data_limite_preventiva", "Informe a periodicidade da preventiva em dias.")
@@ -701,6 +719,22 @@ class MovimentacaoItemForm(forms.ModelForm):
 
                 if not cleaned.get("localidade_destino"):
                     self.add_error("localidade_destino", "Informe a localidade de destino.")
+
+                # O centro de custo do equipamento (CC proprietário) é o destino para
+                # onde a devolução vai retornar o item. Se o equipamento for entregue
+                # sem CC, a devolução não terá para onde voltar. Por isso, exige-se que
+                # o equipamento tenha um centro de custo definido antes da entrega.
+                # Itens compartilhados são isentos: eles não restauram CC na devolução
+                # (são ativos compartilhados por vários setores).
+                if item and not item.centro_custo_id and not item.compartilhado:
+                    self.add_error(
+                        None,
+                        f'O equipamento "{item.nome}" está sem centro de custo (CC '
+                        "proprietário). Defina o centro de custo do equipamento na tela "
+                        "de edição do equipamento antes de fazer a entrega — sem ele, ao "
+                        "ser devolvido o sistema não saberá para qual centro de custo "
+                        "retornar o item.",
+                    )
 
         elif tipo == "transferencia_equipamento":
             if not cleaned.get("localidade_destino"):

@@ -19,7 +19,7 @@ from ..models import (
     Item, Subtipo, Categoria, Localidade, CentroCusto, Fornecedor,
     Locacao, SimNaoChoices, StatusItemChoices, ItemLote,
     MovimentacaoItem, TipoMovimentacaoChoices, Preventiva, PlantaProjeto,
-    ItemStatusHistorico, ItemPRTGHistorico,
+    ItemStatusHistorico, ItemPRTGHistorico, ItemColaborador,
 )
 from ..forms import ItemForm, LocacaoForm, LoteEstoqueCreateForm
 from services.importador_planilha import ImportadorPlanilhaService
@@ -281,6 +281,7 @@ def _aplicar_filtros_itens(request, qs):
     """Aplica todos os filtros GET ao queryset de Item. Fonte única de verdade — usada pela listagem e pela exportação."""
     nome = request.GET.get("nome", "").strip()
     numero_serie = request.GET.get("numero_serie", "").strip()
+    modelo = request.GET.get("modelo", "").strip()
     subtipo = request.GET.get("subtipo", "").strip()
     status = request.GET.get("status", "").strip()
     fornecedor = request.GET.get("fornecedor", "").strip()
@@ -293,6 +294,8 @@ def _aplicar_filtros_itens(request, qs):
         qs = qs.filter(nome__icontains=nome)
     if numero_serie:
         qs = qs.filter(numero_serie__icontains=numero_serie)
+    if modelo:
+        qs = qs.filter(modelo__icontains=modelo)
     if subtipo:
         qs = qs.filter(subtipo_id=subtipo)
     if status:
@@ -987,6 +990,24 @@ def equipamento_detalhe(request, pk: int):
             ultimo_resp = f"Externo: {fornecedor_nome}"
 
     # =========================================================
+    # Colaboradores vinculados (somente itens COMPARTILHADOS)
+    # =========================================================
+    vinculos_compartilhados = []
+    if item.compartilhado:
+        vinculos_compartilhados = list(
+            ItemColaborador.objects
+            .filter(item=item, ativo=True)
+            .select_related(
+                "colaborador",
+                "colaborador__centro_custo",
+                "colaborador__funcao",
+                "colaborador__localidade",
+                "movimentacao_entrega",
+            )
+            .order_by("colaborador__nome")
+        )
+
+    # =========================================================
     # Locação / Financeiro
     # =========================================================
     locacao = _get_locacao(item)
@@ -1162,6 +1183,7 @@ def equipamento_detalhe(request, pk: int):
     _add_info(dados_item, "Item de Consumo", item.get_item_consumo_display() if hasattr(item, "get_item_consumo_display") else item.item_consumo, "fa-box")
     _add_info(dados_item, "PMB", item.get_pmb_display() if hasattr(item, "get_pmb_display") else item.pmb, "fa-shield-halved")
     _add_info(dados_item, "Locado", item.get_locado_display() if hasattr(item, "get_locado_display") else item.locado, "fa-file-contract")
+    _add_info(dados_item, "Compartilhável", "Sim" if item.compartilhado else "Não", "fa-people-arrows")
     _add_info(dados_item, "Preventiva", item.get_precisa_preventiva_display() if hasattr(item, "get_precisa_preventiva_display") else item.precisa_preventiva, "fa-screwdriver-wrench")
     _add_info(dados_item, "Periodicidade Preventiva", item.data_limite_preventiva, "fa-clock")
 
@@ -1227,15 +1249,25 @@ def equipamento_detalhe(request, pk: int):
     except Exception:
         pass
 
+    # Histórico de locação congelável (períodos de aluguel por status do item)
+    loc_periodos = list(item.locacao_periodos.all()) if item.eh_locado else []
+    loc_total_acumulado = sum((p.valor_acumulado for p in loc_periodos), Decimal("0.00"))
+    loc_periodo_atual = next((p for p in loc_periodos if p.em_andamento), None)
+
     context = {
         "item": item,
         "ultimo_resp": ultimo_resp,
+        "vinculos_compartilhados": vinculos_compartilhados,
         "movimentacoes": movimentacoes,
         "historico_manutencao": historico_manutencao,
         "preventivas": preventivas,
         "financeiro": financeiro,
         "status_saude": status_saude,
         "locacao": locacao,
+        "loc_periodos": loc_periodos,
+        "loc_total_acumulado": loc_total_acumulado,
+        "loc_periodo_atual": loc_periodo_atual,
+        "loc_congelado": item.eh_locado and loc_periodo_atual is None,
 
         "dados_item": dados_item,
         "dados_locacao": dados_locacao,

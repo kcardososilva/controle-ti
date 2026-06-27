@@ -1,0 +1,95 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}Licenças — Portal do Fornecedor{% endblock %}
+{% block page_title %}Licenças{% endblock %}
+{% block page_subtitle %}{{ total }} licença{{ total|pluralize }} vinculada{{ total|pluralize }} ao seu acesso{% endblock %}
+
+{% block extra_css %}
+<style>
+  :where(.pf-lic) { display: grid; gap: 1.1rem; }
+  .pf-lic .pf-filters {
+    display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
+    padding: .9rem 1rem; border-radius: var(--radius-lg);
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+  }
+  .pf-lic .pf-search { position: relative; flex: 1; min-width: 14rem; }
+  .pf-lic .pf-search i { position: absolute; left: .85rem; top: 50%; transform: translateY(-50%); color: var(--text-quaternary); }
+  .pf-lic .pf-search input {
+    width: 100%; min-height: 2.6rem; padding: .55rem .9rem .55rem 2.4rem; border-radius: var(--radius-pill);
+    border: 1px solid var(--separator-non-opaque); background: var(--bg-page); color: var(--text-primary);
+  }
+
+  .pf-lic .pf-grid { display: grid; gap: .85rem; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); }
+  .pf-lic .pf-lic-card {
+    display: grid; gap: .85rem; padding: 1.1rem 1.15rem; border-radius: var(--radius-lg);
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+  }
+  .pf-lic .pf-lic-top { display: flex; align-items: flex-start; gap: .8rem; }
+  .pf-lic .pf-lic-ic { width: 2.4rem; height: 2.4rem; flex: 0 0 2.4rem; display: grid; place-items: center; border-radius: .7rem; background: var(--warning-soft); color: var(--warning); }
+  .pf-lic .pf-lic-name { font-weight: 800; letter-spacing: -.02em; line-height: 1.2; }
+  .pf-lic .pf-lic-tag { font-size: .7rem; font-weight: 800; color: var(--text-tertiary); margin-top: .15rem; }
+  .pf-lic .pf-lic-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem; }
+  .pf-lic .pf-stat { padding: .55rem .6rem; border-radius: var(--radius-md); background: var(--bg-fill-tertiary); text-align: center; }
+  .pf-lic .pf-stat-n { font-size: 1.15rem; font-weight: 850; letter-spacing: -.03em; }
+  .pf-lic .pf-stat-l { font-size: .64rem; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .04em; margin-top: .1rem; }
+  .pf-lic .pf-pmb { display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .55rem; border-radius: var(--radius-pill); font-size: .68rem; font-weight: 800; color: var(--brand); background: var(--brand-soft); }
+
+  .pf-lic .pf-pager { display: flex; align-items: center; justify-content: center; gap: .5rem; padding-top: .5rem; }
+  .pf-lic .pf-pager a, .pf-lic .pf-pager span {
+    min-width: 2.3rem; min-height: 2.3rem; display: inline-flex; align-items: center; justify-content: center; padding: 0 .7rem;
+    border-radius: var(--radius-pill); border: 1px solid var(--separator-hairline); font-size: .82rem; font-weight: 700; color: var(--text-secondary);
+  }
+  .pf-lic .pf-pager .is-current { background: var(--brand); border-color: var(--brand); color: #fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-lic">
+
+  <form class="pf-filters" method="get">
+    <div class="pf-search">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="text" name="q" value="{{ f_q }}" placeholder="Buscar licença pelo nome…">
+    </div>
+    <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-filter"></i> Filtrar</button>
+    {% if f_q %}<a href="{% url 'portal_licencas_list' %}" class="pf-btn"><i class="fa-solid fa-xmark"></i> Limpar</a>{% endif %}
+  </form>
+
+  {% if page_obj.object_list %}
+  <div class="pf-grid">
+    {% for lic in page_obj.object_list %}
+    <div class="pf-lic-card">
+      <div class="pf-lic-top">
+        <span class="pf-lic-ic"><i class="fa-solid fa-key"></i></span>
+        <div style="flex:1; min-width:0;">
+          <div class="pf-lic-name">{{ lic.nome }}</div>
+          <div class="pf-lic-tag">{{ lic.qtd_lotes }} lote{{ lic.qtd_lotes|pluralize }}</div>
+        </div>
+        {% if lic.pmb == 'sim' %}<span class="pf-pmb"><i class="fa-solid fa-star"></i> PMB</span>{% endif %}
+      </div>
+      <div class="pf-lic-stats">
+        <div class="pf-stat"><div class="pf-stat-n">{{ lic.total_assentos }}</div><div class="pf-stat-l">Assentos</div></div>
+        <div class="pf-stat"><div class="pf-stat-n">{{ lic.saldo_disponivel }}</div><div class="pf-stat-l">Disponível</div></div>
+        <div class="pf-stat"><div class="pf-stat-n">{{ lic.qtd_lotes }}</div><div class="pf-stat-l">Lotes</div></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="pf-pager">
+    {% if page_obj.has_previous %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.previous_page_number }}"><i class="fa-solid fa-chevron-left"></i></a>{% endif %}
+    <span class="is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.next_page_number }}"><i class="fa-solid fa-chevron-right"></i></a>{% endif %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="pf-card pf-empty">
+    <i class="fa-solid fa-key"></i>
+    <p>Nenhuma licença vinculada{% if f_q %} para a busca aplicada{% endif %}.</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -50,8 +50,11 @@ urlpatterns = [
     path("fornecedores/", views.fornecedor_list, name="fornecedor_list"),
     path("fornecedores/novo/", views.fornecedor_create, name="fornecedor_create"),
     path("fornecedores/pdf/", views.fornecedor_export_pdf, name="fornecedor_export_pdf"),
+    path("fornecedores/acessos/", views.fornecedor_acessos_list, name="fornecedor_acessos_list"),
+    path("fornecedores/acessos/<int:pk>/acao/", views.fornecedor_acesso_acao, name="fornecedor_acesso_acao"),
     path("fornecedores/<int:pk>/", views.fornecedor_detail, name="fornecedor_detail"),
     path("fornecedores/<int:pk>/editar/", views.fornecedor_update, name="fornecedor_update"),
+    path("fornecedores/<int:pk>/acesso-portal/", views.fornecedor_portal_acesso, name="fornecedor_portal_acesso"),
     path("fornecedores/<int:pk>/excluir/", views.fornecedor_delete, name="fornecedor_delete"),
 
     # ── Usuários ────────────────────────────────────────────────────────────
@@ -99,6 +102,7 @@ urlpatterns = [
     path("movimentacoes/nova/", views.movimentacao_create, name="movimentacao_create"),
     path("movimentacoes/pdf/", views.movimentacao_export_pdf, name="movimentacao_export_pdf"),
     path("movimentacoes/api/lotes-por-item/", views.api_lotes_por_item, name="api_lotes_por_item"),
+    path("movimentacoes/api/item-devolucao-info/", views.api_item_devolucao_info, name="api_item_devolucao_info"),
     path("movimentacoes/<int:pk>/", views.movimentacao_detail, name="movimentacao_detail"),
     path("movimentacoes/<int:pk>/editar/", views.movimentacao_update, name="movimentacao_update"),
     path("movimentacoes/<int:pk>/excluir/", views.movimentacao_delete, name="movimentacao_delete"),
@@ -119,6 +123,7 @@ urlpatterns = [
     path("preventiva/plano/", views.preventiva_plano, name="preventiva_plano"),
     path("preventiva/agendadas/", views.preventiva_agendadas, name="preventiva_agendadas"),
     path("preventiva/desempenho/", views.tecnico_desempenho, name="tecnico_desempenho"),
+    path("preventiva/desempenho/apontamentos/exportar/", views.apontamentos_horas_export, name="apontamentos_horas_export"),
     path("preventiva/minhas-atividades/", views.minhas_atividades, name="minhas_atividades"),
     # Checklists de preventiva
     path("preventiva/checklists/", views.checklist_list, name="checklist_list"),
@@ -213,6 +218,20 @@ urlpatterns = [
     path("quiosque/<int:pk>/comando/", views.quiosque_comando_novo,  name="quiosque_comando_novo"),
     path("quiosque/<int:pk>/revogar/", views.quiosque_revogar,       name="quiosque_revogar"),
     path("quiosque/<int:pk>/excluir/", views.quiosque_excluir,       name="quiosque_excluir"),
+
+    # ── Portal do Fornecedor (área isolada) ─────────────────────────────────
+    path("portal/", views.portal_home, name="portal_home"),
+    path("portal/equipamentos/", views.portal_equipamentos_list, name="portal_equipamentos_list"),
+    path("portal/equipamentos/exportar/", views.portal_equipamentos_export, name="portal_equipamentos_export"),
+    path("portal/equipamentos/<int:pk>/", views.portal_equipamento_detail, name="portal_equipamento_detail"),
+    path("portal/manutencao/", views.portal_manutencao_list, name="portal_manutencao_list"),
+    path("portal/manutencao/<int:pk>/", views.portal_manutencao_detail, name="portal_manutencao_detail"),
+    path("portal/licencas/", views.portal_licencas_list, name="portal_licencas_list"),
+
+    # ── Manutenção externa — recebimentos (lado TI) ─────────────────────────
+    path("manutencao/recebimentos/", views.manutencao_recebimentos, name="manutencao_recebimentos"),
+    path("manutencao/recebimentos/<int:pk>/", views.manutencao_recebimento_detail, name="manutencao_recebimento_detail"),
+    path("manutencao/recebimentos/<int:pk>/concluir/", views.manutencao_recebimento_acao, name="manutencao_recebimento_acao"),
 
     # ── Inteligência de Sistema ─────────────────────────────────────────────
     path("inteligencia/", views.sistema_inteligencia_dashboard, name="sistema_inteligencia_dashboard"),

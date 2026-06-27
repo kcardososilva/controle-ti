@@ -620,7 +620,7 @@ def preventiva_detail(request, pk):
 
     exec_qs = (
         preventiva.execucoes
-        .select_related("criado_por")
+        .select_related("criado_por", "tecnico")
         .prefetch_related("respostas", "respostas__pergunta")
         .order_by("-data_execucao", "-id")
     )
@@ -709,6 +709,36 @@ def preventiva_exec(request, pk):
     if request.method == "POST":
         erros = []
         respostas_bulk = []
+        hoje = timezone.localdate()
+
+        # ── Apontamento de horas trabalhadas pelo técnico ─────────────────────
+        data_exec_str = (request.POST.get("data_execucao") or "").strip()
+        hora_ini_str = (request.POST.get("hora_inicio") or "").strip()
+        hora_fim_str = (request.POST.get("hora_fim") or "").strip()
+
+        data_exec = hoje
+        if data_exec_str:
+            try:
+                data_exec = datetime.strptime(data_exec_str, "%Y-%m-%d").date()
+            except ValueError:
+                erros.append("Data da execução inválida.")
+        if data_exec and data_exec > hoje:
+            erros.append("A data da execução não pode ser futura.")
+
+        hora_ini = hora_fim = None
+        if not hora_ini_str or not hora_fim_str:
+            erros.append("Informe a hora de início e a hora de término do serviço.")
+        else:
+            try:
+                hora_ini = datetime.strptime(hora_ini_str, "%H:%M").time()
+            except ValueError:
+                erros.append("Hora de início inválida.")
+            try:
+                hora_fim = datetime.strptime(hora_fim_str, "%H:%M").time()
+            except ValueError:
+                erros.append("Hora de término inválida.")
+            if hora_ini and hora_fim and PreventivaExecucao.calcular_duracao_minutos(hora_ini, hora_fim) == 0:
+                erros.append("A hora de término deve ser diferente da hora de início.")
 
         if not perguntas:
             erros.append("Este checklist não possui perguntas cadastradas.")
@@ -755,24 +785,33 @@ def preventiva_exec(request, pk):
         if erros:
             for erro in erros:
                 messages.error(request, erro)
+            _aplicar_status_preventiva(preventiva, hoje)
             return render(
                 request,
                 "front/preventivas/preventiva_exec.html",
-                {"preventiva": preventiva, "perguntas": perguntas},
+                {
+                    "preventiva": preventiva,
+                    "perguntas": perguntas,
+                    "today": hoje,
+                    "apontamento": {
+                        "data_execucao": data_exec_str,
+                        "hora_inicio": hora_ini_str,
+                        "hora_fim": hora_fim_str,
+                    },
+                },
             )
 
         with transaction.atomic():
-            hoje = timezone.localdate()
             intervalo, _origem = _intervalo_preventiva(preventiva.equipamento, preventiva.checklist_modelo)
-            proxima = hoje + timedelta(days=intervalo) if intervalo > 0 else None
+            proxima = data_exec + timedelta(days=intervalo) if intervalo > 0 else None
 
             # Snapshot de desempenho antes de limpar o agendamento
             data_agendada_snap = preventiva.data_agendamento
-            no_prazo_snap = (data_agendada_snap is None) or (hoje <= data_agendada_snap)
+            no_prazo_snap = (data_agendada_snap is None) or (data_exec <= data_agendada_snap)
 
             execucao = PreventivaExecucao.objects.create(
                 preventiva=preventiva,
-                data_execucao=hoje,
+                data_execucao=data_exec,
                 observacao=(request.POST.get("observacao") or "").strip(),
                 foto_antes=request.FILES.get("foto_antes"),
                 foto_depois=request.FILES.get("foto_depois"),
@@ -781,6 +820,8 @@ def preventiva_exec(request, pk):
                 tecnico=(preventiva.tecnico or request.user),
                 data_agendada=data_agendada_snap,
                 no_prazo=no_prazo_snap,
+                hora_inicio=hora_ini,
+                hora_fim=hora_fim,
                 criado_por=request.user,
                 atualizado_por=request.user,
             )
@@ -791,7 +832,7 @@ def preventiva_exec(request, pk):
             if respostas_bulk:
                 PreventivaResposta.objects.bulk_create(respostas_bulk)
 
-            preventiva.data_ultima = hoje
+            preventiva.data_ultima = data_exec
             preventiva.data_proxima = proxima
             preventiva.data_agendamento = None  # agendamento consumido pela execução
             preventiva.dentro_do_prazo = True if proxima is None else hoje <= proxima
@@ -829,7 +870,14 @@ def preventiva_exec(request, pk):
 
             preventiva.save(update_fields=update_fields)
 
-        messages.success(request, "Execução registrada e próxima preventiva reagendada com sucesso.")
+        duracao_txt = execucao.duracao_formatada
+        if duracao_txt:
+            messages.success(
+                request,
+                f"Execução registrada ({duracao_txt} de serviço) e próxima preventiva reagendada com sucesso.",
+            )
+        else:
+            messages.success(request, "Execução registrada e próxima preventiva reagendada com sucesso.")
         return redirect("preventiva_detail", pk=preventiva.pk)
 
     hoje = timezone.localdate()
@@ -1228,10 +1276,24 @@ _MESES_PT_PREV = ["", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
                   "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
 
 
+def _fmt_minutos(minutos) -> str:
+    """Formata uma quantidade de minutos como '1h 30min', '2h', '45min' ou '—'."""
+    if not minutos:
+        return "0min" if minutos == 0 else "—"
+    minutos = int(minutos)
+    horas, mins = divmod(minutos, 60)
+    if horas and mins:
+        return f"{horas}h {mins}min"
+    if horas:
+        return f"{horas}h"
+    return f"{mins}min"
+
+
 @login_required
 def tecnico_desempenho(request):
     """Medidores de desempenho dos técnicos quanto às atividades agendadas/executadas."""
     from django.contrib.auth import get_user_model
+    from django.db.models import Sum
     from django.db.models.functions import Coalesce, TruncMonth
 
     AuthUser = get_user_model()
@@ -1255,6 +1317,8 @@ def tecnico_desempenho(request):
             total=Count("id"),
             com_agenda=Count("id", filter=Q(data_agendada__isnull=False)),
             no_prazo=Count("id", filter=Q(data_agendada__isnull=False, no_prazo=True)),
+            minutos=Coalesce(Sum("duracao_minutos"), 0),
+            com_horas=Count("id", filter=Q(duracao_minutos__isnull=False)),
         )
         if row["tec"] is not None
     }
@@ -1288,11 +1352,14 @@ def tecnico_desempenho(request):
         execucoes = int(ex.get("total", 0))
         com_agenda = int(ex.get("com_agenda", 0))
         no_prazo = int(ex.get("no_prazo", 0))
+        minutos = int(ex.get("minutos", 0) or 0)
+        com_horas = int(ex.get("com_horas", 0))
         atribuidas = int(at.get("atribuidas", 0))
         atrasadas = int(at.get("atrasadas", 0))
         if execucoes == 0 and atribuidas == 0:
             continue
         pontualidade = round(no_prazo / com_agenda * 100) if com_agenda else None
+        media_min = round(minutos / com_horas) if com_horas else None
         tecnicos.append({
             "id": uid,
             "nome": u.get_full_name() or u.username,
@@ -1304,6 +1371,11 @@ def tecnico_desempenho(request):
             "atrasadas": atrasadas,
             "pendentes": max(0, atribuidas - atrasadas),
             "pontualidade": pontualidade,
+            "minutos": minutos,
+            "com_horas": com_horas,
+            "horas_dec": round(minutos / 60, 1),
+            "tempo_fmt": _fmt_minutos(minutos),
+            "media_fmt": _fmt_minutos(media_min) if media_min is not None else None,
         })
 
     tecnicos.sort(key=lambda t: (-t["execucoes"], -t["atribuidas"], t["nome"]))
@@ -1313,6 +1385,8 @@ def tecnico_desempenho(request):
     tot_no_prazo = sum(t["no_prazo"] for t in tecnicos)
     tot_atribuidas = sum(t["atribuidas"] for t in tecnicos)
     tot_atrasadas = sum(t["atrasadas"] for t in tecnicos)
+    tot_minutos = sum(t["minutos"] for t in tecnicos)
+    tot_com_horas = sum(t["com_horas"] for t in tecnicos)
     pont_global = round(tot_no_prazo / tot_com_agenda * 100) if tot_com_agenda else None
 
     mensal = {
@@ -1341,12 +1415,18 @@ def tecnico_desempenho(request):
             "atribuidas": tot_atribuidas,
             "atrasadas": tot_atrasadas,
             "tecnicos": len(tecnicos),
+            "minutos": tot_minutos,
+            "horas_dec": round(tot_minutos / 60, 1),
+            "tempo_fmt": _fmt_minutos(tot_minutos),
+            "com_horas": tot_com_horas,
+            "media_fmt": _fmt_minutos(round(tot_minutos / tot_com_horas)) if tot_com_horas else None,
         },
         "tecnicos": tecnicos,
         "chart_tec_labels": [t["nome"] for t in tecnicos],
         "chart_tec_exec": [t["execucoes"] for t in tecnicos],
         "chart_tec_pont": [t["pontualidade"] if t["pontualidade"] is not None else 0 for t in tecnicos],
         "chart_tec_atrasadas": [t["atrasadas"] for t in tecnicos],
+        "chart_tec_horas": [t["horas_dec"] for t in tecnicos],
         "mes_labels": mes_labels,
         "mes_exec": mes_exec,
     }
@@ -1418,3 +1498,240 @@ def minhas_atividades(request):
         "recentes": recentes,
     }
     return render(request, "front/preventivas/minhas_atividades.html", context)
+
+
+@login_required
+def apontamentos_horas_export(request):
+    """
+    Exporta (Excel) os apontamentos de horas das execuções de preventiva,
+    consolidados por técnico e detalhados por execução, no período filtrado.
+    Aceita ?inicio=YYYY-MM-DD&fim=YYYY-MM-DD&tecnico=<id>.
+    """
+    from io import BytesIO
+
+    from django.http import HttpResponse
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    hoje = timezone.localdate()
+    inicio = _parse_data_opt(request.GET.get("inicio"), date(hoje.year, 1, 1))
+    fim = _parse_data_opt(request.GET.get("fim"), hoje)
+    if inicio > fim:
+        inicio, fim = fim, inicio
+
+    tecnico_id = (request.GET.get("tecnico") or "").strip()
+
+    execs = (
+        PreventivaExecucao.objects
+        .filter(data_execucao__gte=inicio, data_execucao__lte=fim)
+        .select_related(
+            "preventiva",
+            "preventiva__equipamento",
+            "preventiva__equipamento__localidade",
+            "preventiva__checklist_modelo",
+            "tecnico",
+            "criado_por",
+        )
+        .order_by("data_execucao", "id")
+    )
+
+    if tecnico_id.isdigit():
+        _tid = int(tecnico_id)
+        execs = execs.filter(Q(tecnico_id=_tid) | Q(tecnico__isnull=True, criado_por_id=_tid))
+
+    def _nome_tecnico(ex):
+        u = ex.tecnico or ex.criado_por
+        if not u:
+            return "—"
+        return u.get_full_name() or u.username
+
+    # ── Estilos ──────────────────────────────────────────────────────────────
+    BRAND = "0071E3"
+    DARK = "0A2540"
+    GREEN = "047857"
+    GRAY = "8A8A8E"
+    thin = Side(style="thin", color="E5E7EB")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    f_title = Font(name="Calibri", size=15, bold=True, color="FFFFFF")
+    f_sub = Font(name="Calibri", size=9, color="FFFFFF")
+    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    f_cell = Font(name="Calibri", size=10, color="1D1D1F")
+    f_bold = Font(name="Calibri", size=10, bold=True, color="1D1D1F")
+    fill_title = PatternFill("solid", fgColor=DARK)
+    fill_sub = PatternFill("solid", fgColor="EEF2F7")
+    fill_header = PatternFill("solid", fgColor=BRAND)
+    fill_zebra = PatternFill("solid", fgColor="F7F9FC")
+    a_left = Alignment(horizontal="left", vertical="center", wrap_text=False)
+    a_center = Alignment(horizontal="center", vertical="center")
+    a_right = Alignment(horizontal="right", vertical="center")
+
+    def faixa_titulo(ws, ncols, titulo, subtitulo):
+        last = get_column_letter(ncols)
+        ws.merge_cells(f"A1:{last}1")
+        c1 = ws["A1"]
+        c1.value = titulo
+        c1.font = f_title
+        c1.fill = fill_title
+        c1.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        ws.row_dimensions[1].height = 30
+        ws.merge_cells(f"A2:{last}2")
+        c2 = ws["A2"]
+        c2.value = subtitulo
+        c2.font = Font(name="Calibri", size=9, color="334155")
+        c2.fill = fill_sub
+        c2.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        ws.row_dimensions[2].height = 18
+        ws.sheet_view.showGridLines = False
+
+    def cabecalho(ws, row, headers, center_cols=()):
+        for ci, h in enumerate(headers, 1):
+            c = ws.cell(row=row, column=ci, value=h)
+            c.fill = fill_header
+            c.font = f_header
+            c.border = border
+            c.alignment = a_center if ci in center_cols else a_left
+        ws.row_dimensions[row].height = 22
+
+    periodo_txt = f"{inicio:%d/%m/%Y} a {fim:%d/%m/%Y}"
+    gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")
+
+    # ── Agrega por técnico em Python ─────────────────────────────────────────
+    resumo = {}
+    detalhe = list(execs)
+    for ex in detalhe:
+        nome = _nome_tecnico(ex)
+        r = resumo.setdefault(nome, {"execucoes": 0, "com_horas": 0, "minutos": 0})
+        r["execucoes"] += 1
+        if ex.duracao_minutos:
+            r["com_horas"] += 1
+            r["minutos"] += int(ex.duracao_minutos)
+
+    wb = Workbook()
+
+    # =========================================================================
+    # ABA 1 — RESUMO POR TÉCNICO
+    # =========================================================================
+    ws1 = wb.active
+    ws1.title = "Resumo por Tecnico"
+    headers1 = ["Técnico", "Execuções", "Com apontamento", "Tempo total", "Horas (decimal)", "Média / execução"]
+    faixa_titulo(ws1, len(headers1),
+                 "APONTAMENTO DE HORAS — PREVENTIVAS",
+                 f"Santa Colomba Agropecuária  ·  Período {periodo_txt}  ·  Gerado em {gerado}")
+    hr = 4
+    cabecalho(ws1, hr, headers1, center_cols=(2, 3, 4, 5, 6))
+    row = hr + 1
+    tot_exec = tot_com = tot_min = 0
+    for i, (nome, r) in enumerate(sorted(resumo.items(), key=lambda kv: -kv[1]["minutos"])):
+        media = round(r["minutos"] / r["com_horas"]) if r["com_horas"] else 0
+        valores = [
+            nome,
+            r["execucoes"],
+            r["com_horas"],
+            _fmt_minutos(r["minutos"]),
+            round(r["minutos"] / 60, 2),
+            _fmt_minutos(media) if r["com_horas"] else "—",
+        ]
+        zebra = (i % 2 == 1)
+        for ci, val in enumerate(valores, 1):
+            c = ws1.cell(row=row, column=ci, value=val)
+            c.border = border
+            c.font = f_cell
+            c.alignment = a_left if ci == 1 else a_center
+            if ci == 5:
+                c.number_format = "0.00"
+            if zebra:
+                c.fill = fill_zebra
+        tot_exec += r["execucoes"]
+        tot_com += r["com_horas"]
+        tot_min += r["minutos"]
+        row += 1
+
+    # rodapé total
+    if resumo:
+        valores = ["TOTAL", tot_exec, tot_com, _fmt_minutos(tot_min), round(tot_min / 60, 2),
+                   _fmt_minutos(round(tot_min / tot_com)) if tot_com else "—"]
+        for ci, val in enumerate(valores, 1):
+            c = ws1.cell(row=row, column=ci, value=val)
+            c.font = f_bold
+            c.border = border
+            c.fill = fill_sub
+            c.alignment = a_left if ci == 1 else a_center
+            if ci == 5:
+                c.number_format = "0.00"
+    else:
+        ws1.merge_cells(start_row=row, start_column=1, end_row=row, end_column=len(headers1))
+        c = ws1.cell(row=row, column=1, value="Nenhum apontamento no período selecionado.")
+        c.font = f_cell
+        c.alignment = a_center
+
+    for i, w in enumerate([34, 12, 16, 16, 16, 18], 1):
+        ws1.column_dimensions[get_column_letter(i)].width = w
+    ws1.freeze_panes = f"A{hr + 1}"
+
+    # =========================================================================
+    # ABA 2 — APONTAMENTOS DETALHADOS
+    # =========================================================================
+    ws2 = wb.create_sheet(title="Apontamentos")
+    headers2 = [
+        "Data", "Técnico", "Equipamento", "Nº Série", "Localidade", "Checklist",
+        "Início", "Término", "Duração", "Horas (dec.)", "No prazo", "Observação",
+    ]
+    faixa_titulo(ws2, len(headers2),
+                 "APONTAMENTOS DETALHADOS",
+                 f"{len(detalhe)} execução(ões) no período {periodo_txt}")
+    hr = 4
+    cabecalho(ws2, hr, headers2, center_cols=(1, 7, 8, 9, 10, 11))
+    row = hr + 1
+    for i, ex in enumerate(detalhe):
+        eq = ex.preventiva.equipamento if ex.preventiva else None
+        horas_dec = ex.duracao_horas
+        valores = [
+            ex.data_execucao.strftime("%d/%m/%Y") if ex.data_execucao else "—",
+            _nome_tecnico(ex),
+            eq.nome if eq else "—",
+            (eq.numero_serie or "—") if eq else "—",
+            (eq.localidade.local if eq and eq.localidade else "—"),
+            ex.preventiva.checklist_modelo.nome if ex.preventiva and ex.preventiva.checklist_modelo else "—",
+            ex.hora_inicio.strftime("%H:%M") if ex.hora_inicio else "—",
+            ex.hora_fim.strftime("%H:%M") if ex.hora_fim else "—",
+            ex.duracao_formatada or "—",
+            horas_dec if horas_dec is not None else "—",
+            "Sim" if ex.no_prazo else "Não",
+            (ex.observacao or "").strip(),
+        ]
+        zebra = (i % 2 == 1)
+        for ci, val in enumerate(valores, 1):
+            c = ws2.cell(row=row, column=ci, value=val)
+            c.border = border
+            c.font = f_cell
+            if ci in (1, 7, 8, 9, 11):
+                c.alignment = a_center
+            elif ci == 10:
+                c.alignment = a_center
+                if isinstance(val, float):
+                    c.number_format = "0.00"
+            else:
+                c.alignment = a_left
+            if ci == 11:
+                c.font = Font(name="Calibri", size=10, bold=True,
+                              color=GREEN if ex.no_prazo else "B91C1C")
+            if zebra:
+                c.fill = fill_zebra
+        row += 1
+
+    for i, w in enumerate([12, 26, 30, 16, 22, 24, 9, 9, 13, 12, 10, 40], 1):
+        ws2.column_dimensions[get_column_letter(i)].width = w
+    ws2.freeze_panes = f"A{hr + 1}"
+
+    # ── Resposta ─────────────────────────────────────────────────────────────
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    nome_arquivo = f"apontamentos_horas_{inicio:%Y%m%d}_{fim:%Y%m%d}.xlsx"
+    response = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{nome_arquivo}"'
+    return response

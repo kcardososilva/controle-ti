@@ -1,0 +1,134 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}Painel — Portal do Fornecedor{% endblock %}
+{% block page_title %}Olá, {{ fornecedor.nome }}{% endblock %}
+{% block page_subtitle %}Visão geral dos seus equipamentos{% endblock %}
+
+{% block extra_css %}
+<style>
+  :where(.pf-home) { display: grid; gap: 1.25rem; }
+  .pf-home .pf-kpi-row {
+    display: grid; gap: .9rem;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  }
+  .pf-home .pf-kpi {
+    padding: 1.1rem 1.15rem; border-radius: var(--radius-lg); background: var(--bg-elevated);
+    border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+    display: grid; gap: .55rem; transition: transform .2s, box-shadow .2s;
+  }
+  .pf-home .pf-kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+  .pf-home .pf-kpi-top { display: flex; align-items: center; justify-content: space-between; }
+  .pf-home .pf-kpi-ic { width: 2.1rem; height: 2.1rem; display: grid; place-items: center; border-radius: .7rem; font-size: .95rem; }
+  .pf-home .pf-kpi-num { font-size: 1.9rem; font-weight: 850; letter-spacing: -.04em; line-height: 1; }
+  .pf-home .pf-kpi-lbl { color: var(--text-tertiary); font-size: .82rem; font-weight: 600; }
+  .pf-home .pf-kpi--total { background: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand) 70%, #5e5ce6)); border-color: transparent; color: #fff; }
+  .pf-home .pf-kpi--total .pf-kpi-lbl { color: rgba(255,255,255,.82); }
+  .pf-home .pf-kpi--total .pf-kpi-ic { background: rgba(255,255,255,.18); color: #fff; }
+
+  .pf-home .pf-ic-ativo { background: var(--success-soft); color: var(--success); }
+  .pf-home .pf-ic-manutencao { background: var(--warning-soft); color: var(--warning); }
+  .pf-home .pf-ic-defeito { background: var(--danger-soft); color: var(--danger); }
+  .pf-home .pf-ic-backup { background: var(--info-soft); color: var(--info); }
+  .pf-home .pf-ic-pausado { background: var(--gray-soft); color: var(--gray); }
+
+  .pf-home .pf-section-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: .25rem; }
+  .pf-home .pf-section-h h2 { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; }
+  .pf-home .pf-recent { display: grid; gap: .1rem; }
+  .pf-home .pf-recent-item {
+    display: flex; align-items: center; gap: .9rem; padding: .8rem 1rem; border-radius: var(--radius-md);
+    transition: background .15s; color: inherit;
+  }
+  .pf-home .pf-recent-item:hover { background: var(--bg-hover); }
+  .pf-home .pf-recent-item + .pf-recent-item { border-top: 1px solid var(--separator-hairline); border-radius: 0; }
+  .pf-home .pf-recent-name { font-weight: 700; font-size: .9rem; }
+  .pf-home .pf-recent-meta { color: var(--text-tertiary); font-size: .76rem; margin-top: .1rem; }
+  .pf-home .pf-recent-arrow { margin-left: auto; color: var(--text-quaternary); }
+
+  .pf-home .pf-mnt {
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+    padding: 1.1rem 1.25rem; border-radius: var(--radius-lg); color: inherit;
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+  }
+  .pf-home .pf-mnt.has-acao { background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 22%, transparent); }
+  .pf-home .pf-mnt-ic { width: 2.8rem; height: 2.8rem; flex: 0 0 2.8rem; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--warning-soft); color: var(--warning); font-size: 1.15rem; }
+  .pf-home .pf-mnt-ic.ok { background: var(--success-soft); color: var(--success); }
+  .pf-home .pf-mnt-title { font-weight: 800; letter-spacing: -.02em; }
+  .pf-home .pf-mnt-sub { color: var(--text-tertiary); font-size: .84rem; margin-top: .12rem; }
+  .pf-home .pf-mnt-cta { margin-left: auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-home">
+
+  <a class="pf-mnt {% if qtd_os_acao %}has-acao{% endif %}" href="{% url 'portal_manutencao_list' %}">
+    {% if qtd_os_acao %}
+      <span class="pf-mnt-ic"><i class="fa-solid fa-screwdriver-wrench"></i></span>
+      <div>
+        <div class="pf-mnt-title">{{ qtd_os_acao }} manutenção{{ qtd_os_acao|pluralize:"ões" }} aguardando você</div>
+        <div class="pf-mnt-sub">Há ordens que dependem de uma ação sua. Clique para tratar.</div>
+      </div>
+    {% else %}
+      <span class="pf-mnt-ic ok"><i class="fa-solid fa-circle-check"></i></span>
+      <div>
+        <div class="pf-mnt-title">Manutenção em dia</div>
+        <div class="pf-mnt-sub">{% if qtd_os_abertas %}{{ qtd_os_abertas }} ordem{{ qtd_os_abertas|pluralize }} em andamento, sem ação pendente sua.{% else %}Nenhuma ordem de manutenção aberta.{% endif %}</div>
+      </div>
+    {% endif %}
+    <span class="pf-btn pf-mnt-cta"><i class="fa-solid fa-arrow-right"></i> Manutenção</span>
+  </a>
+
+  <section class="pf-kpi-row">
+    <div class="pf-kpi pf-kpi--total">
+      <div class="pf-kpi-top">
+        <span class="pf-kpi-lbl">Total de equipamentos</span>
+        <span class="pf-kpi-ic"><i class="fa-solid fa-display"></i></span>
+      </div>
+      <div class="pf-kpi-num">{{ total_itens }}</div>
+    </div>
+
+    {% for c in status_cards %}
+    <a class="pf-kpi" href="{% url 'portal_equipamentos_list' %}?status={{ c.slug }}">
+      <div class="pf-kpi-top">
+        <span class="pf-kpi-lbl">{{ c.label }}</span>
+        <span class="pf-kpi-ic pf-ic-{{ c.slug }}">
+          <i class="fa-solid {% if c.slug == 'ativo' %}fa-circle-check{% elif c.slug == 'manutencao' %}fa-screwdriver-wrench{% elif c.slug == 'defeito' %}fa-triangle-exclamation{% elif c.slug == 'backup' %}fa-box-archive{% else %}fa-circle-pause{% endif %}"></i>
+        </span>
+      </div>
+      <div class="pf-kpi-num">{{ c.count }}</div>
+    </a>
+    {% endfor %}
+  </section>
+
+  <section class="pf-card" style="padding: 1.1rem 1.25rem;">
+    <div class="pf-section-h">
+      <h2>Atualizados recentemente</h2>
+      <a class="pf-btn" href="{% url 'portal_equipamentos_list' %}"><i class="fa-solid fa-list"></i> Ver todos</a>
+    </div>
+
+    {% if recentes %}
+    <div class="pf-recent">
+      {% for item in recentes %}
+      <a class="pf-recent-item" href="{% url 'portal_equipamento_detail' item.pk %}">
+        <span class="pf-chip pf-chip--{{ item.status }}">{{ item.get_status_display }}</span>
+        <span>
+          <div class="pf-recent-name">{{ item.nome }}</div>
+          <div class="pf-recent-meta">
+            {% if item.numero_serie %}Série {{ item.numero_serie }}{% else %}Sem nº de série{% endif %}
+            {% if item.localidade %} · {{ item.localidade.local }}{% endif %}
+          </div>
+        </span>
+        <i class="fa-solid fa-chevron-right pf-recent-arrow"></i>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="pf-empty">
+      <i class="fa-solid fa-box-open"></i>
+      <p>Nenhum equipamento vinculado ao seu acesso ainda.</p>
+    </div>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

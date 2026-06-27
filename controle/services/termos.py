@@ -1,3 +1,19 @@
+# -*- coding: utf-8 -*-
+"""
+Geração dos Termos de Responsabilidade (Entrega e Devolução).
+
+O documento é SEMPRE gerado a partir dos modelos base que ficam em
+``docs_templates/termos/`` — assim, qualquer atualização feita no documento base
+(texto, formatação, novas linhas) passa a valer automaticamente no termo gerado.
+
+O preenchimento localiza cada linha da tabela pelo RÓTULO da 1ª célula (não por
+índice fixo) e é robusto contra:
+  - linhas duplicadas (cabeçalho + digitação) — todas as ocorrências do mesmo
+    campo são tratadas, evitando que dados de exemplo do modelo permaneçam;
+  - células mescladas (ex.: bloco de "Observações:") — o rótulo é preservado e o
+    conteúdo residual é limpo.
+"""
+
 import re
 import unicodedata
 from io import BytesIO
@@ -6,9 +22,8 @@ from pathlib import Path
 from django.conf import settings
 from django.utils import timezone
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.shared import Pt
 from ProjetoEstoque.models import MovimentacaoItem
 
 
@@ -33,34 +48,31 @@ def _normalizar(texto):
     )
 
 
-def _slug_termo(value, maxlen=28):
-    """Converte um texto em um trecho seguro para a numeração do termo (sem acento, MAIÚSCULO)."""
-    s = unicodedata.normalize("NFD", str(value or ""))
-    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-    s = re.sub(r"[^A-Za-z0-9]+", "_", s).strip("_").upper()
-    return s[:maxlen].strip("_")
-
-
-def _numero_termo_auto(tipo, hoje, nome_colaborador, colaborador):
+def _numero_termo_auto(item, colaborador, nome_colaborador):
     """
-    Monta a numeração do termo no mesmo padrão de antes, porém SEM o ID do item:
-    {PREFIXO}-{AAAAMMDD}-{NOME_COLABORADOR}-{CENTRO_DE_CUSTO}.
+    Numeração automática do termo no formato pedido pelo TI:
+        {Nº DE SÉRIE} - {NOME DO SOLICITANTE} - {CENTRO DE CUSTO}
+
+    O nome do centro de custo vem por último. Usa o centro de custo do
+    colaborador e, na ausência dele, o do próprio equipamento.
     """
-    prefixo = "ENT" if tipo == "entrega" else "DEV"
-    partes = [prefixo, hoje.strftime("%Y%m%d")]
+    partes = []
 
-    nome_slug = _slug_termo(nome_colaborador) if nome_colaborador and nome_colaborador != "-" else ""
-    if nome_slug:
-        partes.append(nome_slug)
+    serie = _safe(getattr(item, "numero_serie", None), "")
+    if serie and serie != "-":
+        partes.append(serie)
 
-    cc_obj = getattr(colaborador, "centro_custo", None)
-    cc_codigo = _safe(getattr(cc_obj, "numero", None), "")
-    if not cc_codigo or cc_codigo == "-":
-        cc_codigo = _slug_termo(getattr(cc_obj, "departamento", None))
-    if cc_codigo and cc_codigo != "-":
-        partes.append(str(cc_codigo))
+    if nome_colaborador and nome_colaborador != "-":
+        partes.append(nome_colaborador)
 
-    return "-".join(partes)
+    cc_obj = getattr(colaborador, "centro_custo", None) or getattr(item, "centro_custo", None)
+    cc_nome = _safe(getattr(cc_obj, "departamento", None), "")
+    if not cc_nome or cc_nome == "-":
+        cc_nome = _safe(getattr(cc_obj, "numero", None), "")
+    if cc_nome and cc_nome != "-":
+        partes.append(cc_nome)
+
+    return " - ".join(partes)
 
 
 def _clear_paragraph(paragraph):
@@ -180,11 +192,11 @@ def _build_dados(item, tipo, form_data):
         f"Centro de Custo: {_safe(getattr(item.centro_custo, 'departamento', None))}"
     )
 
-    # Numeração: sem ID — usa nome do colaborador + centro de custo.
+    # Numeração: {Nº de série} - {nome do solicitante} - {centro de custo}.
     # O campo do formulário continua válido como sobrescrita manual.
     numero_termo = _safe(form_data.get("numero_termo"), "")
     if not numero_termo:
-        numero_termo = _numero_termo_auto(tipo, hoje, nome_colaborador, colaborador)
+        numero_termo = _numero_termo_auto(item, colaborador, nome_colaborador)
 
     return {
         "tipo": tipo,
@@ -199,7 +211,7 @@ def _build_dados(item, tipo, form_data):
         "descricao_equipamento": descricao,
         "serie": _safe(item.numero_serie),
         "acessorios": _safe(form_data.get("acessorios"), ""),
-        "plaqueta": _safe(getattr(item, "patrimonio", None)),
+        "plaqueta": _safe(getattr(item, "patrimonio", None), ""),
         "estabelecimento": _build_estabelecimento_line(form_data.get("estabelecimento")),
         "observacoes": _safe(form_data.get("observacoes"), ""),
         "responsavel_ti_nome": _safe(form_data.get("responsavel_ti_nome"), ""),
@@ -257,65 +269,85 @@ def _fill_signatures(doc, dados):
 
 def _fill_main_table(doc, dados):
     """
-    Preenche a tabela do termo localizando cada linha pelo RÓTULO da 1ª célula,
-    em vez de índices fixos. Assim, editar o template (inserir/remover/reordenar
-    linhas, alterar rótulos ou adicionar páginas) não quebra a geração.
+    Preenche a tabela do termo localizando cada linha pelo RÓTULO da 1ª célula.
 
-    Quando há mais de uma linha com o mesmo rótulo (o template usa linhas de
-    cabeçalho + linha de digitação), preenche a linha de digitação — preferindo
-    a de mais colunas e, em empate, a primeira ainda não usada.
+    Robustez contra dados de exemplo do modelo:
+      - cada CAMPO é preenchido apenas na 1ª linha correspondente; as demais
+        linhas com o mesmo rótulo têm o valor LIMPO (remove exemplos residuais);
+      - células mescladas (rótulo + valor juntos, como o bloco "Observações:")
+        são reescritas preservando o rótulo;
+      - células físicas mescladas são tratadas uma única vez.
     """
     if not doc.tables:
         return
 
     table = doc.tables[0]
-    rows = table.rows
 
-    # (predicado sobre o rótulo normalizado, valor a inserir)
+    # ordem importa: o predicado de "termo" exclui linhas de "chamado".
     campos = [
-        (lambda t: "termo" in t and "chamado" not in t
-                   and ("uso do ti" in t or "responsab" in t or "entrega" in t or "devoluc" in t or " n" in t),
-         dados["numero_termo"]),
+        (lambda t: "termo" in t and "chamado" not in t, dados["numero_termo"]),
         (lambda t: "chamado" in t, dados["numero_chamado"]),
-        (lambda t: "descric" in t and "equipamento" in t, dados["descricao_equipamento"]),
-        (lambda t: t == "serie" or t.startswith("serie"), dados["serie"]),
+        (lambda t: "descric" in t, dados["descricao_equipamento"]),
+        (lambda t: t.startswith("serie"), dados["serie"]),
         (lambda t: "acessorio" in t, dados["acessorios"]),
         (lambda t: "plaqueta" in t, dados["plaqueta"]),
         (lambda t: "estabelecimento" in t, dados["estabelecimento"]),
         (lambda t: "observac" in t, dados["observacoes"]),
     ]
 
-    usados = set()
-    for predicado, valor in campos:
-        candidatos = []
-        for ri, row in enumerate(rows):
-            if ri in usados or len(row.cells) < 2:
-                continue
-            label = _normalizar(row.cells[0].text)
-            if label and predicado(label):
-                candidatos.append((ri, row))
+    campo_preenchido = set()     # índices de campos cuja 1ª linha já recebeu valor
+    celulas_tratadas = []        # refs de <w:tc> já processadas (dedup de mesclagem)
 
-        if not candidatos:
+    def _ja_tratada(tc):
+        return any(tc is x for x in celulas_tratadas)
+
+    def _vazio(v):
+        return (not v) or str(v).strip() in ("", "-")
+
+    for row in table.rows:
+        cells = row.cells
+        if not cells:
             continue
 
-        # linha de digitação = mais colunas; empate = primeira (menor índice)
-        ri, row = max(candidatos, key=lambda c: (len(c[1].cells), -c[0]))
-        _set_cell(row.cells[1], valor)
-        usados.add(ri)
+        label_raw = cells[0].text or ""
+        label = _normalizar(label_raw)
+        if not label:
+            continue
+
+        idx = next((i for i, (pred, _) in enumerate(campos) if pred(label)), None)
+        if idx is None:
+            continue
+
+        valor = campos[idx][1]
+        # rótulo e valor na mesma célula física? (bloco mesclado de observações)
+        mesclada = len(cells) > 1 and cells[1]._tc is cells[0]._tc
+        c_val = cells[0] if mesclada else (cells[1] if len(cells) > 1 else cells[0])
+
+        if _ja_tratada(c_val._tc):
+            continue
+
+        primeira = idx not in campo_preenchido
+
+        if mesclada:
+            base = label_raw.split(":")[0].strip()
+            if primeira and not _vazio(valor):
+                _set_cell(c_val, f"{base}: {valor}")
+            elif primeira:
+                _set_cell(c_val, f"{base}:")
+            else:
+                _set_cell(c_val, "")
+        else:
+            _set_cell(c_val, "" if (_vazio(valor) or not primeira) else str(valor))
+
+        campo_preenchido.add(idx)
+        celulas_tratadas.append(c_val._tc)
 
 
 def _ajustar_layout_documento(doc):
     """
-    Ajuste de layout NÃO destrutivo.
-
-    Antes, este método forçava alinhamento, espaçamento e recuo em TODOS os
-    parágrafos — o que sobrescrevia a formatação do template. Por isso, edições
-    feitas no modelo base (novas linhas, espaçamentos, quebras de página) não
-    apareciam no termo gerado. Agora preservamos a formatação do template e só
-    aplicamos ajustes seguros:
-      - margens A4;
-      - centraliza apenas o título;
-      - garante um tamanho de fonte mínimo onde o run não define nenhum.
+    Ajuste de layout NÃO destrutivo: preserva a formatação do modelo base e só
+    aplica margens A4, centraliza o título e garante uma fonte mínima onde o run
+    não define nenhuma. Não sobrescreve a formatação do template.
     """
     for section in doc.sections:
         section.top_margin = 720000      # ~2 cm
@@ -326,7 +358,6 @@ def _ajustar_layout_documento(doc):
     for p in doc.paragraphs:
         texto = (p.text or "").strip()
 
-        # Mantém centralizado somente o título — restante segue o template.
         if texto.startswith("TERMO DE RESPONSABILIDADE") or texto.startswith("POLÍTICA"):
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
