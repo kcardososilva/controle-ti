@@ -557,6 +557,28 @@
     white-space: nowrap;
   }
 
+  .al-lote-line {
+    color: var(--text-secondary);
+    font-size: .76rem;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+
+  .al-lote-line + .al-lote-line {
+    margin-top: .15rem;
+  }
+
+  .al-lote-line strong {
+    color: var(--text-primary);
+    font-weight: 700;
+  }
+
+  .al-lote-line.is-zero,
+  .al-lote-line.is-zero strong {
+    color: var(--danger);
+  }
+
   .al-empty {
     display: grid;
     place-items: center;
@@ -660,6 +682,14 @@
 
       <form method="post" action="{% url 'alertas_enviar' %}">
         {% csrf_token %}
+        <input type="hidden" name="tipo" value="relatorio">
+        <button type="submit" class="al-btn al-btn-teal" title="Envia um único e-mail consolidado: estoque, baixas, movimentações, licenças e preventivas">
+          <i class="fa fa-file-lines" aria-hidden="true"></i> Relatório completo
+        </button>
+      </form>
+
+      <form method="post" action="{% url 'alertas_enviar' %}">
+        {% csrf_token %}
         <input type="hidden" name="tipo" value="todos">
         <button type="submit" class="al-btn al-btn-primary">
           <i class="fa fa-paper-plane" aria-hidden="true"></i> Enviar todos os alertas
@@ -709,12 +739,12 @@
       <div class="al-kpi-hint">Itens que requerem atenção</div>
     </article>
 
-    <article class="al-kpi {% if kpi.preventivas > 0 %}kpi-blue{% else %}kpi-ok{% endif %}">
+    <article class="al-kpi {% if kpi.preventivas_vencidas > 0 %}kpi-danger{% elif kpi.preventivas > 0 %}kpi-blue{% else %}kpi-ok{% endif %}">
       <div>
         <div class="al-kpi-label"><i class="fa fa-screwdriver-wrench" aria-hidden="true"></i> Preventivas</div>
         <div class="al-kpi-value">{{ kpi.preventivas }}</div>
       </div>
-      <div class="al-kpi-hint">Próximos 7 dias</div>
+      <div class="al-kpi-hint">{% if kpi.preventivas_vencidas %}{{ kpi.preventivas_vencidas }} vencida{{ kpi.preventivas_vencidas|pluralize:"s" }} · {% endif %}{{ kpi.preventivas_proximas }} nos próximos 7 dias</div>
     </article>
 
     <article class="al-kpi {% if kpi.estoque > 0 %}kpi-warn{% else %}kpi-ok{% endif %}">
@@ -766,8 +796,11 @@
     <div class="al-section-head">
       <div class="al-section-title" id="al-preventivas-title">
         <i class="fa fa-screwdriver-wrench" aria-hidden="true"></i>
-        Preventivas nos próximos 7 dias
-        <span class="al-section-badge {% if kpi.preventivas > 0 %}badge-blue{% else %}badge-ok{% endif %}">{{ kpi.preventivas }}</span>
+        Preventivas vencidas e próximas (7 dias)
+        {% if kpi.preventivas_vencidas %}
+          <span class="al-section-badge badge-danger">{{ kpi.preventivas_vencidas }} vencida{{ kpi.preventivas_vencidas|pluralize:"s" }}</span>
+        {% endif %}
+        <span class="al-section-badge {% if kpi.preventivas_proximas > 0 %}badge-blue{% else %}badge-ok{% endif %}">{{ kpi.preventivas_proximas }} próxima{{ kpi.preventivas_proximas|pluralize:"s" }}</span>
       </div>
     </div>
 
@@ -778,8 +811,8 @@
             <th>Equipamento</th>
             <th>Checklist</th>
             <th>Localidade</th>
-            <th>Próxima</th>
-            <th>Prazo</th>
+            <th>Data prevista</th>
+            <th>Situação</th>
           </tr>
         </thead>
         <tbody>
@@ -793,7 +826,9 @@
               <td>{{ p.equipamento.localidade.local|default:"—" }}</td>
               <td><strong>{{ p.data_proxima|date:"d/m/Y" }}</strong></td>
               <td>
-                {% if p.dias_rest == 0 %}
+                {% if p.dias_rest < 0 %}
+                  <span class="al-pill pill-red"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> {{ p.atraso }}d em atraso</span>
+                {% elif p.dias_rest == 0 %}
                   <span class="al-pill pill-red"><i class="fa fa-circle-exclamation" aria-hidden="true"></i> Vence hoje</span>
                 {% elif p.dias_rest <= 2 %}
                   <span class="al-pill pill-amber">{{ p.dias_rest }}d restante{{ p.dias_rest|pluralize:"s" }}</span>
@@ -807,7 +842,7 @@
               <td colspan="5">
                 <div class="al-empty">
                   <i class="fa fa-circle-check" aria-hidden="true"></i>
-                  Nenhuma preventiva nos próximos 7 dias.
+                  Nenhuma preventiva vencida ou nos próximos 7 dias.
                 </div>
               </td>
             </tr>
@@ -834,27 +869,46 @@
             <th>Subtipo</th>
             <th>Localidade</th>
             <th>Centro de Custo</th>
+            <th>Lotes (disp./entrada)</th>
             <th>Estoque atual</th>
           </tr>
         </thead>
         <tbody>
           {% for item in itens_criticos %}
             <tr>
-              <td><div class="al-main-text">{{ item.nome }}</div></td>
+              <td>
+                <div class="al-main-text">{{ item.nome }}</div>
+                {% if item.controla_lote %}<div class="al-sub-text"><i class="fa fa-layer-group" aria-hidden="true"></i> Controlado por lote</div>{% endif %}
+              </td>
               <td>{{ item.subtipo.nome|default:"—" }}</td>
               <td>{{ item.localidade.local|default:"—" }}</td>
               <td>{{ item.centro_custo.departamento|default:"—" }}</td>
               <td>
-                {% if item.quantidade == 0 or item.quantidade is None %}
+                {% if item.controla_lote %}
+                  {% if item.lotes_info %}
+                    {% for l in item.lotes_info %}
+                      <div class="al-lote-line {% if l.disponivel == 0 %}is-zero{% endif %}">
+                        <strong>NF {{ l.nf }}</strong> · {{ l.fornecedor }} — {{ l.disponivel }}/{{ l.entrada }} un.
+                      </div>
+                    {% endfor %}
+                  {% else %}
+                    <span class="al-pill pill-amber"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> Sem lote cadastrado</span>
+                  {% endif %}
+                {% else %}
+                  <span class="al-sub-text">Controle simples</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if item.estoque_efetivo == 0 %}
                   <span class="al-pill pill-red"><i class="fa fa-xmark" aria-hidden="true"></i> Sem estoque</span>
                 {% else %}
-                  <span class="al-pill pill-amber"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> {{ item.quantidade }} un.</span>
+                  <span class="al-pill pill-amber"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> {{ item.estoque_efetivo }} un.</span>
                 {% endif %}
               </td>
             </tr>
           {% empty %}
             <tr>
-              <td colspan="5">
+              <td colspan="6">
                 <div class="al-empty">
                   <i class="fa fa-circle-check" aria-hidden="true"></i>
                   Nenhum item de consumo com estoque crítico.

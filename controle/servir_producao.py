@@ -25,7 +25,7 @@ def main():
     from controle.wsgi import application
 
     host = os.environ.get("HOST", "0.0.0.0")
-    port = int(os.environ.get("PORT", "65300"))
+    port = int(os.environ.get("PORT", "8000"))
     threads = int(os.environ.get("THREADS", "8"))
 
     print("=" * 62)

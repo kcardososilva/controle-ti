@@ -39,7 +39,13 @@ S = StatusOrdemManutencaoChoices
 TRANSICOES = {
     S.AGUARDANDO_RECEBIMENTO: {S.RECEBIDO, S.CANCELADO},
     S.RECEBIDO:               {S.EM_AVALIACAO, S.CANCELADO},
-    S.EM_AVALIACAO:           {S.EM_REPARO, S.SEM_REPARO, S.CANCELADO},
+    # Após avaliar, o fornecedor envia o orçamento (aguardando_aprovacao) ou
+    # decide pela troca (sem_reparo).
+    S.EM_AVALIACAO:           {S.AGUARDANDO_APROVACAO, S.SEM_REPARO, S.CANCELADO},
+    # TI decide: aprova (segue p/ reparo) ou reprova (devolve com avaliação técnica).
+    S.AGUARDANDO_APROVACAO:   {S.APROVADO, S.REPROVADO, S.CANCELADO},
+    S.APROVADO:               {S.EM_REPARO, S.CANCELADO},
+    S.REPROVADO:              {S.DEVOLVIDO, S.CANCELADO},
     S.EM_REPARO:              {S.REPARADO, S.SEM_REPARO, S.CANCELADO},
     S.REPARADO:               {S.DEVOLVIDO, S.CANCELADO},
     S.DEVOLVIDO:              {S.CONCLUIDO},
@@ -51,15 +57,18 @@ TRANSICOES = {
 
 # Quem dispara cada transição de destino: "fornecedor" (portal) ou "ti" (interno).
 ATOR = {
-    S.RECEBIDO:           "fornecedor",
-    S.EM_AVALIACAO:       "fornecedor",
-    S.EM_REPARO:          "fornecedor",
-    S.SEM_REPARO:         "fornecedor",
-    S.REPARADO:           "fornecedor",
-    S.DEVOLVIDO:          "fornecedor",
-    S.SUBSTITUTO_ENVIADO: "fornecedor",
-    S.CONCLUIDO:          "ti",
-    S.CANCELADO:          "ti",
+    S.RECEBIDO:              "fornecedor",
+    S.EM_AVALIACAO:          "fornecedor",
+    S.AGUARDANDO_APROVACAO:  "fornecedor",
+    S.APROVADO:              "ti",
+    S.REPROVADO:             "ti",
+    S.EM_REPARO:             "fornecedor",
+    S.SEM_REPARO:            "fornecedor",
+    S.REPARADO:              "fornecedor",
+    S.DEVOLVIDO:             "fornecedor",
+    S.SUBSTITUTO_ENVIADO:    "fornecedor",
+    S.CONCLUIDO:             "ti",
+    S.CANCELADO:             "ti",
 }
 
 
@@ -136,11 +145,15 @@ class OrdemManutencaoService:
         # Efeitos colaterais rodam ANTES de gravar o novo status
         # (handlers leem `ordem.status` = estado de origem).
         handler = {
-            S.EM_REPARO:          cls._on_diagnostico,
-            S.SEM_REPARO:         cls._on_sem_reparo,
-            S.DEVOLVIDO:          cls._on_devolvido,
-            S.SUBSTITUTO_ENVIADO: cls._on_substituto_enviado,
-            S.CONCLUIDO:          cls._on_concluido,
+            S.AGUARDANDO_APROVACAO: cls._on_aguardando_aprovacao,
+            S.APROVADO:             cls._on_decisao_ti,
+            S.REPROVADO:            cls._on_decisao_ti,
+            S.EM_REPARO:            cls._on_diagnostico,
+            S.REPARADO:             cls._on_reparado,
+            S.SEM_REPARO:           cls._on_sem_reparo,
+            S.DEVOLVIDO:            cls._on_devolvido,
+            S.SUBSTITUTO_ENVIADO:   cls._on_substituto_enviado,
+            S.CONCLUIDO:            cls._on_concluido,
         }.get(novo_status)
         if handler:
             handler(ordem, user, extra)
@@ -167,7 +180,7 @@ class OrdemManutencaoService:
         try:
             return Decimal(s)
         except (InvalidOperation, ValueError):
-            raise ValidationError("Valor da substituição inválido.")
+            raise ValidationError("Valor informado inválido.")
 
     @staticmethod
     def _parse_data(v):
@@ -190,6 +203,34 @@ class OrdemManutencaoService:
         if diag:
             ordem.diagnostico = diag
 
+    @classmethod
+    def _on_aguardando_aprovacao(cls, ordem, user, extra):
+        """Fornecedor envia o orçamento do reparo ao TI para aprovação."""
+        cls._on_diagnostico(ordem, user, extra)
+        orcamento = cls._parse_valor(extra.get("valor_orcamento"))
+        if orcamento is None:
+            raise ValidationError("Informe o valor do orçamento do reparo.")
+        ordem.valor_orcamento = orcamento
+
+    @classmethod
+    def _on_decisao_ti(cls, ordem, user, extra):
+        """TI aprova ou reprova o orçamento (registra autor e data da decisão)."""
+        ordem.aprovado_por = user
+        ordem.decisao_em = timezone.now()
+
+    @classmethod
+    def _on_reparado(cls, ordem, user, extra):
+        """Fornecedor conclui o reparo: valor do conserto + valor total (extras)."""
+        conserto = cls._parse_valor(extra.get("valor_conserto"))
+        total = cls._parse_valor(extra.get("valor_total"))
+        if conserto is None:
+            conserto = ordem.valor_orcamento  # fallback: usa o orçamento aprovado
+        if conserto is None:
+            raise ValidationError("Informe o valor do conserto.")
+        ordem.valor_conserto = conserto
+        # O valor total inclui extras (película, capa, etc.) e nunca é menor que o conserto.
+        ordem.valor_total = total if total is not None else conserto
+
     @staticmethod
     def _loc_id(valor):
         return int(valor) if (valor and str(valor).isdigit()) else None
@@ -205,14 +246,28 @@ class OrdemManutencaoService:
 
     @classmethod
     def _on_devolvido(cls, ordem, user, extra):
-        # Na devolução do equipamento reparado, o fornecedor informa a localidade
-        # de destino e o valor do reparo realizado.
+        # Na devolução, o fornecedor informa a localidade de destino. O custo do
+        # retorno (reparo_valor, usado na movimentação de retorno) depende do caminho:
+        #   • vindo de REPARADO  → valor total (conserto + extras)
+        #   • vindo de REPROVADO → valor da avaliação técnica
         loc_id = cls._loc_id(extra.get("localidade_devolucao"))
         if loc_id:
             ordem.devolucao_localidade_id = loc_id
-        valor_reparo = cls._parse_valor(extra.get("reparo_valor"))
-        if valor_reparo is not None:
-            ordem.reparo_valor = valor_reparo
+
+        if ordem.status == S.REPROVADO:
+            avaliacao = cls._parse_valor(extra.get("valor_avaliacao_tecnica"))
+            if avaliacao is not None:
+                ordem.valor_avaliacao_tecnica = avaliacao
+            ordem.reparo_valor = ordem.valor_avaliacao_tecnica or Decimal("0.00")
+        else:
+            # Compatibilidade: aceita reparo_valor enviado direto; senão usa o total/conserto.
+            valor_reparo = cls._parse_valor(extra.get("reparo_valor"))
+            if valor_reparo is not None:
+                ordem.reparo_valor = valor_reparo
+            elif ordem.valor_total is not None:
+                ordem.reparo_valor = ordem.valor_total
+            elif ordem.valor_conserto is not None:
+                ordem.reparo_valor = ordem.valor_conserto
 
     @classmethod
     def _on_substituto_enviado(cls, ordem, user, extra):
@@ -287,9 +342,14 @@ class OrdemManutencaoService:
                 campos.append("localidade")
             cls._audit(antigo, user, criando=False)
             antigo.save(update_fields=campos)
-            obs = f"Equipamento reparado e devolvido ao TI. OS #{ordem.pk}."
-            if ordem.reparo_valor:
-                obs += f" Valor do reparo: R$ {ordem.reparo_valor}."
+            # Distingue o desfecho (reparado x reprovado/avaliação técnica) na auditoria.
+            if ordem.valor_avaliacao_tecnica and not ordem.valor_conserto:
+                obs = f"Equipamento devolvido SEM reparo (orçamento reprovado pelo TI). OS #{ordem.pk}."
+                obs += f" Avaliação técnica: R$ {ordem.valor_avaliacao_tecnica}."
+            else:
+                obs = f"Equipamento reparado e devolvido ao TI. OS #{ordem.pk}."
+                if ordem.reparo_valor:
+                    obs += f" Valor total: R$ {ordem.reparo_valor}."
             cls._mov_retorno(ordem, antigo, destino, obs, user, custo=ordem.reparo_valor)
 
         elif ordem.status == S.SUBSTITUTO_ENVIADO:

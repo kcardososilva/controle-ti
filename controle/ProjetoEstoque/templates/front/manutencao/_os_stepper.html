@@ -1,0 +1,49 @@
+{% comment %}
+  Stepper de macro-etapas da Ordem de Manutenção.
+  Compartilhado entre o detalhe do TI (recebimento_detail) e do Portal
+  (portal_manutencao_detail). Requer no contexto `ordem` com as propriedades
+  `etapa_macro` (int 0-5), `cancelada` (bool) e `ETAPAS_MACRO` (lista de rótulos).
+  Estilo próprio, escopado em .os-stepper — usa apenas tokens do base.
+{% endcomment %}
+<style>
+  .os-stepper { --os-done: var(--success, #34c759); --os-now: var(--brand, #0071e3); --os-pend: var(--separator-non-opaque, rgba(120,120,128,.3)); }
+  .os-stepper { display:flex; align-items:flex-start; gap:0; padding:1.05rem 1.1rem; background: var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius: var(--radius-lg,16px); box-shadow: var(--shadow-sm); overflow-x:auto; }
+  .os-step { flex:1 1 0; min-width:4.4rem; display:flex; flex-direction:column; align-items:center; text-align:center; position:relative; }
+  .os-step::before, .os-step::after { content:""; position:absolute; top:1.05rem; height:2px; background: var(--os-pend); }
+  .os-step::before { left:0; right:50%; }
+  .os-step::after  { left:50%; right:0; }
+  .os-step:first-child::before, .os-step:last-child::after { display:none; }
+  .os-step .os-dot { position:relative; z-index:1; width:2.1rem; height:2.1rem; display:grid; place-items:center; border-radius:999px; background: var(--bg-elevated); border:2px solid var(--os-pend); color: var(--text-quaternary); font-size:.78rem; transition: border-color .2s, background .2s, color .2s, box-shadow .2s; }
+  .os-step .os-lbl { margin-top:.45rem; font-size:.72rem; font-weight:700; color: var(--text-tertiary); letter-spacing:-.01em; line-height:1.2; }
+  /* concluídas */
+  .os-step.is-done::before, .os-step.is-done::after { background: var(--os-done); }
+  .os-step.is-done .os-dot { border-color: var(--os-done); background: var(--os-done); color:#fff; }
+  .os-step.is-done .os-lbl { color: var(--text-secondary); }
+  /* atual */
+  .os-step.is-current::before { background: var(--os-done); }
+  .os-step.is-current .os-dot { border-color: var(--os-now); color: var(--os-now); box-shadow: 0 0 0 4px color-mix(in srgb, var(--os-now) 16%, transparent); }
+  .os-step.is-current .os-lbl { color: var(--os-now); font-weight:800; }
+  /* cancelada */
+  .os-cancel { display:flex; align-items:center; gap:.6rem; padding:.95rem 1.15rem; border-radius: var(--radius-lg,16px); background: rgba(255,59,48,.1); border:1px solid rgba(255,59,48,.28); color:#ff3b30; font-weight:800; font-size:.9rem; }
+  @media (max-width: 30rem) { .os-stepper { padding:.9rem .6rem; } .os-step { min-width:3.7rem; } .os-step .os-lbl { font-size:.64rem; } }
+</style>
+
+{% if ordem.cancelada %}
+  <div class="os-cancel"><i class="fa-solid fa-ban"></i> Ordem cancelada</div>
+{% else %}
+  <div class="os-stepper" role="list" aria-label="Progresso da ordem de manutenção">
+    {% for etapa in ordem.ETAPAS_MACRO %}
+      <div class="os-step {% if forloop.counter0 < ordem.etapa_macro %}is-done{% elif forloop.counter0 == ordem.etapa_macro %}is-current{% else %}is-pending{% endif %}" role="listitem">
+        <div class="os-dot">
+          {% if forloop.counter0 < ordem.etapa_macro %}<i class="fa-solid fa-check"></i>
+          {% elif forloop.counter0 == 0 %}<i class="fa-solid fa-box-open"></i>
+          {% elif forloop.counter0 == 1 %}<i class="fa-solid fa-magnifying-glass"></i>
+          {% elif forloop.counter0 == 2 %}<i class="fa-solid fa-clipboard-check"></i>
+          {% elif forloop.counter0 == 3 %}<i class="fa-solid fa-screwdriver-wrench"></i>
+          {% else %}<i class="fa-solid fa-flag-checkered"></i>{% endif %}
+        </div>
+        <div class="os-lbl">{{ etapa }}</div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}

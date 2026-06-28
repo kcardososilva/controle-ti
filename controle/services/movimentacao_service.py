@@ -414,6 +414,15 @@ class MovimentacaoEstoqueService:
                 # Restaura o CC original do item (pode ser None se não tinha CC antes da entrega)
                 item.centro_custo = _restore_cc
                 update_fields.append("centro_custo")
+            elif (
+                mov.tipo_transferencia == "entrega"
+                and mov.usuario_id
+                and mov.usuario.centro_custo_id
+            ):
+                # Item segue o CC do detentor: ao entregar a um colaborador, o
+                # centro de custo do equipamento passa a ser o do colaborador.
+                item.centro_custo = mov.usuario.centro_custo
+                update_fields.append("centro_custo")
             elif mov.centro_custo_destino:
                 item.centro_custo = mov.centro_custo_destino
                 update_fields.append("centro_custo")
@@ -431,7 +440,11 @@ class MovimentacaoEstoqueService:
                 item.localidade = mov.localidade_destino
                 update_fields.append("localidade")
 
-            if mov.centro_custo_destino:
+            if mov.usuario_id and mov.usuario.centro_custo_id:
+                # Item segue o CC do detentor (mesmo critério da entrega).
+                item.centro_custo = mov.usuario.centro_custo
+                update_fields.append("centro_custo")
+            elif mov.centro_custo_destino:
                 item.centro_custo = mov.centro_custo_destino
                 update_fields.append("centro_custo")
 

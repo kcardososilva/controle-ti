@@ -220,80 +220,128 @@ def _proxima_efetiva(preventiva, hoje):
     return preventiva.data_proxima
 
 
-def alerta_preventivas_proximas(dias: int = 7) -> bool:
+def preventivas_relevantes(dias: int = 7):
+    """
+    Separa as preventivas em (vencidas, proximas) usando a data EFETIVA
+    (data_ultima + intervalo) — a MESMA regra das telas de preventivas/
+    equipamentos. Cada preventiva recebe, em memória:
+      · ``data_proxima`` (data efetiva)
+      · ``dias_rest``    (dias até o vencimento; negativo = em atraso)
+      · ``atraso``       (apenas nas vencidas: dias de atraso, positivo)
+    Retorna ``(vencidas, proximas)``:
+      · vencidas → dias_rest < 0
+      · proximas → 0 <= dias_rest <= dias
+    """
     from ProjetoEstoque.models import Preventiva
 
     hoje = timezone.localdate()
-
-    base = (
+    vencidas, proximas = [], []
+    for p in (
         Preventiva.objects
         .filter(pausada=False)
         .select_related("equipamento", "equipamento__localidade", "checklist_modelo")
-    )
-    itens = []
-    for p in base:
+    ):
         proxima = _proxima_efetiva(p, hoje)
         if not proxima:
             continue
-        dias_rest = (proxima - hoje).days
-        if 0 <= dias_rest <= dias:
-            p.data_proxima = proxima  # data efetiva (em memória) para exibição
-            p.dias_rest = dias_rest
-            itens.append(p)
-    itens.sort(key=lambda p: (p.data_proxima, p.equipamento.nome))
+        p.data_proxima = proxima
+        p.dias_rest = (proxima - hoje).days
+        if p.dias_rest < 0:
+            p.atraso = -p.dias_rest
+            vencidas.append(p)
+        elif p.dias_rest <= dias:
+            proximas.append(p)
+    vencidas.sort(key=lambda p: (p.data_proxima, p.equipamento.nome))
+    proximas.sort(key=lambda p: (p.data_proxima, p.equipamento.nome))
+    return vencidas, proximas
 
-    if not itens:
-        logger.info("alerta_preventivas: nenhuma preventiva nos próximos %d dias.", dias)
+
+def alerta_preventivas_proximas(dias: int = 7) -> bool:
+    hoje = timezone.localdate()
+    vencidas, proximas = preventivas_relevantes(dias)
+
+    if not vencidas and not proximas:
+        logger.info("alerta_preventivas: nenhuma preventiva vencida ou nos próximos %d dias.", dias)
         return False
 
-    linhas = []
-    for p in itens:
-        dias_rest = p.dias_rest
-        if dias_rest == 0:
-            badge = _badge("VENCE HOJE", "#fee2e2", "#b91c1c")
-        elif dias_rest <= 2:
-            badge = _badge(f"{dias_rest}d", "#fef3c7", "#b45309")
-        else:
-            badge = _badge(f"{dias_rest}d", "#dbeafe", "#1d4ed8")
-        linhas.append([
-            p.equipamento.nome,
-            p.equipamento.numero_serie or "—",
-            p.equipamento.localidade.local if p.equipamento.localidade else "—",
-            p.checklist_modelo.nome if p.checklist_modelo else "—",
-            p.data_proxima.strftime("%d/%m/%Y"),
-            badge,
-        ])
+    blocos = []
 
-    tabela = _tabela_html(
-        ["Equipamento", "Nº Série", "Localidade", "Checklist", "Próxima", "Prazo"],
-        linhas,
-    )
-    total = len(linhas)
-    vencendo_hoje = sum(1 for p in itens if p.data_proxima == hoje)
+    if vencidas:
+        linhas_v = []
+        for p in vencidas:
+            linhas_v.append([
+                p.equipamento.nome,
+                p.equipamento.numero_serie or "—",
+                p.equipamento.localidade.local if p.equipamento.localidade else "—",
+                p.checklist_modelo.nome if p.checklist_modelo else "—",
+                p.data_proxima.strftime("%d/%m/%Y"),
+                _badge(f"{p.atraso}d em atraso", "#fee2e2", "#b91c1c"),
+            ])
+        blocos.append(
+            f'<p style="margin:4px 0 4px;color:#991b1b;font-size:13px;font-weight:700;">'
+            f'Vencidas ({len(vencidas)})</p>'
+            + _tabela_html(
+                ["Equipamento", "Nº Série", "Localidade", "Checklist", "Data prevista", "Prazo"],
+                linhas_v,
+            )
+        )
+
+    if proximas:
+        linhas_p = []
+        for p in proximas:
+            dias_rest = p.dias_rest
+            if dias_rest == 0:
+                badge = _badge("VENCE HOJE", "#fee2e2", "#b91c1c")
+            elif dias_rest <= 2:
+                badge = _badge(f"{dias_rest}d", "#fef3c7", "#b45309")
+            else:
+                badge = _badge(f"{dias_rest}d", "#dbeafe", "#1d4ed8")
+            linhas_p.append([
+                p.equipamento.nome,
+                p.equipamento.numero_serie or "—",
+                p.equipamento.localidade.local if p.equipamento.localidade else "—",
+                p.checklist_modelo.nome if p.checklist_modelo else "—",
+                p.data_proxima.strftime("%d/%m/%Y"),
+                badge,
+            ])
+        blocos.append(
+            f'<p style="margin:{"16px" if vencidas else "4px"} 0 4px;color:#1d4ed8;'
+            f'font-size:13px;font-weight:700;">Próximas {dias} dias ({len(proximas)})</p>'
+            + _tabela_html(
+                ["Equipamento", "Nº Série", "Localidade", "Checklist", "Próxima", "Prazo"],
+                linhas_p,
+            )
+        )
+
+    n_venc = len(vencidas)
+    n_prox = len(proximas)
+    total = n_venc + n_prox
 
     intro = (
-        f'<p style="margin:0 0 4px;color:#334155;font-size:14px;">'
-        f'<strong>{total}</strong> preventiva(s) com vencimento nos próximos <strong>{dias} dias</strong>'
-        + (f' — incluindo <strong style="color:#b91c1c;">{vencendo_hoje} que vencem hoje</strong>' if vencendo_hoje else "")
+        '<p style="margin:0 0 4px;color:#334155;font-size:14px;">'
+        + (f'<strong style="color:#b91c1c;">{n_venc} vencida(s)</strong>' if n_venc else "")
+        + (" · " if n_venc and n_prox else "")
+        + (f'<strong>{n_prox}</strong> nos próximos <strong>{dias} dias</strong>' if n_prox else "")
         + ".</p>"
     )
 
-    corpo = _secao(f"Preventivas — próximos {dias} dias", "🛠️", "#1d4ed8", intro + tabela)
+    corpo = _secao(f"Preventivas — vencidas e próximos {dias} dias", "🛠️", "#1d4ed8", intro + "".join(blocos))
     html = _base_html(
-        f"Preventivas: {total} agendada(s) nos próximos {dias} dias",
+        f"Preventivas: {total} requer(em) atenção" + (f" · {n_venc} vencida(s)" if n_venc else ""),
         f"Alerta gerado em {hoje.strftime('%d/%m/%Y')}",
         corpo,
     )
     texto = (
-        f"ALERTA — Preventivas nos próximos {dias} dias\nTotal: {total}\n\n"
+        f"ALERTA — Preventivas ({n_venc} vencida(s), {n_prox} nos próximos {dias} dias)\n\n"
         + "\n".join(
-            f"- {p.equipamento.nome} | {p.equipamento.numero_serie or '—'} | Vence: {p.data_proxima.strftime('%d/%m/%Y')}"
-            for p in itens
+            f"- [{'VENCIDA' if p.dias_rest < 0 else 'PRÓXIMA'}] {p.equipamento.nome} | "
+            f"{p.equipamento.numero_serie or '—'} | {p.data_proxima.strftime('%d/%m/%Y')}"
+            for p in (vencidas + proximas)
         )
     )
 
     return _enviar(
-        f"[Controle TI] {total} preventiva(s) nos próximos {dias} dias",
+        f"[Controle TI] Preventivas: {n_venc} vencida(s), {n_prox} próxima(s)",
         texto, html,
     )
 
@@ -302,34 +350,97 @@ def alerta_preventivas_proximas(dias: int = 7) -> bool:
 # Alerta 2 — Estoque crítico
 # ─────────────────────────────────────────────────────────────
 
-def alerta_estoque_critico(limite_qtd: int = 2) -> bool:
+def itens_estoque_critico(limite_qtd: int = 2):
+    """
+    Itens de consumo abaixo do mínimo, com o estoque EFETIVO calculado a partir
+    dos LOTES quando o item é controlado por lote (soma de ``quantidade_disponivel``
+    dos vínculos Item×Lote); caso contrário usa o campo ``Item.quantidade``.
+
+    Cada item recebe, em memória:
+      · ``estoque_efetivo``  (int) — saldo real considerado no alerta
+      · ``controla_lote``    (bool)
+      · ``lotes_count``      (int) — nº de lotes vinculados
+      · ``lotes_disponivel`` (int) — soma disponível nos lotes
+      · ``lotes_info``       (list) — [{nf, fornecedor, disponivel, entrada}]
+    """
     from ProjetoEstoque.models import Item, SimNaoChoices
 
     qs = (
         Item.objects
-        .filter(item_consumo=SimNaoChoices.SIM, quantidade__lt=limite_qtd)
+        .filter(item_consumo=SimNaoChoices.SIM)
         .select_related("localidade", "centro_custo", "subtipo")
-        .order_by("quantidade", "nome")
+        .prefetch_related("vinculos_lote__lote__fornecedor")
+        .order_by("nome")
     )
+    criticos = []
+    for item in qs:
+        vinculos = list(item.vinculos_lote.all())
+        controla_lote = bool(getattr(item, "tem_lote", False)) or bool(vinculos)
+        lotes_disponivel = sum((v.quantidade_disponivel or 0) for v in vinculos)
+        estoque = lotes_disponivel if controla_lote else (item.quantidade or 0)
+        if estoque >= limite_qtd:
+            continue
+        item.estoque_efetivo = estoque
+        item.controla_lote = controla_lote
+        item.lotes_count = len(vinculos)
+        item.lotes_disponivel = lotes_disponivel
+        item.lotes_info = [
+            {
+                "nf": (v.lote.numero_nf if v.lote else None) or "—",
+                "fornecedor": (v.lote.fornecedor.nome if v.lote and v.lote.fornecedor else "—"),
+                "disponivel": v.quantidade_disponivel or 0,
+                "entrada": v.quantidade_entrada or 0,
+            }
+            for v in vinculos
+        ]
+        criticos.append(item)
+    criticos.sort(key=lambda i: (i.estoque_efetivo, (i.nome or "").lower()))
+    return criticos
 
-    if not qs.exists():
+
+def _lotes_celula(item) -> str:
+    """Célula HTML com o detalhamento dos lotes de um item (para os e-mails)."""
+    if not getattr(item, "controla_lote", False):
+        return '<span style="color:#94a3b8;font-size:12px;">Controle simples</span>'
+    info = getattr(item, "lotes_info", None)
+    if not info:
+        return _badge("Sem lote cadastrado", "#fef3c7", "#b45309")
+    partes = []
+    for l in info:
+        cor = "#b91c1c" if l["disponivel"] == 0 else "#334155"
+        partes.append(
+            f'<div style="font-size:11px;color:{cor};line-height:1.55;white-space:nowrap;">'
+            f'<strong>NF {l["nf"]}</strong> · {l["fornecedor"]} — {l["disponivel"]}/{l["entrada"]} un.</div>'
+        )
+    return "".join(partes)
+
+
+def alerta_estoque_critico(limite_qtd: int = 2) -> bool:
+    itens = itens_estoque_critico(limite_qtd)
+
+    if not itens:
         logger.info("alerta_estoque: nenhum item com estoque crítico.")
         return False
 
     linhas = []
-    for item in qs:
-        qtd = item.quantidade or 0
+    for item in itens:
+        qtd = item.estoque_efetivo
         badge = _badge("SEM ESTOQUE", "#fee2e2", "#b91c1c") if qtd == 0 else _badge(f"{qtd} un.", "#fef3c7", "#b45309")
         linhas.append([
             item.nome,
             item.subtipo.nome if item.subtipo else "—",
             item.localidade.local if item.localidade else "—",
             item.centro_custo.departamento if item.centro_custo else "—",
+            _lotes_celula(item),
             badge,
         ])
 
-    tabela = _tabela_html(["Item", "Subtipo", "Localidade", "Centro de Custo", "Estoque"], linhas)
-    sem_estoque = sum(1 for i in qs if (i.quantidade or 0) == 0)
+    tabela = _tabela_html(
+        ["Item", "Subtipo", "Localidade", "Centro de Custo", "Lotes (disp./entrada)", "Estoque"],
+        linhas,
+    )
+    sem_estoque = sum(1 for i in itens if i.estoque_efetivo == 0)
+    com_lote = sum(1 for i in itens if i.controla_lote)
     total = len(linhas)
     hoje = date.today()
 
@@ -337,6 +448,7 @@ def alerta_estoque_critico(limite_qtd: int = 2) -> bool:
         f'<p style="margin:0 0 4px;color:#334155;font-size:14px;">'
         f'<strong>{total}</strong> item(ns) abaixo do estoque mínimo'
         + (f' — <strong style="color:#b91c1c;">{sem_estoque} completamente sem estoque</strong>' if sem_estoque else "")
+        + (f' · {com_lote} controlado(s) por lote' if com_lote else "")
         + ".</p>"
     )
 
@@ -349,8 +461,9 @@ def alerta_estoque_critico(limite_qtd: int = 2) -> bool:
     texto = (
         f"ALERTA — Itens com estoque crítico (< {limite_qtd} unidades)\nTotal: {total}\n\n"
         + "\n".join(
-            f"- {i.nome} | Qtd: {i.quantidade or 0} | {i.localidade.local if i.localidade else '—'}"
-            for i in qs
+            f"- {i.nome} | Estoque: {i.estoque_efetivo} un."
+            + (f" (por lote: {i.lotes_disponivel} disp. em {i.lotes_count} lote(s))" if i.controla_lote else "")
+            for i in itens
         )
     )
 
@@ -679,8 +792,7 @@ def relatorio_diario(horas: int = 24) -> bool:
     Sempre envia, mesmo que tudo esteja OK (confirma que o sistema está rodando).
     """
     from ProjetoEstoque.models import (
-        Item, SimNaoChoices, MovimentacaoItem,
-        MovimentacaoLicenca, StatusUsuarioChoices, Preventiva,
+        MovimentacaoItem, MovimentacaoLicenca, StatusUsuarioChoices,
     )
 
     agora = timezone.now()
@@ -689,12 +801,8 @@ def relatorio_diario(horas: int = 24) -> bool:
 
     # ── Queries ────────────────────────────────────────────────
 
-    itens_criticos = (
-        Item.objects
-        .filter(item_consumo=SimNaoChoices.SIM, quantidade__lt=2)
-        .select_related("localidade", "centro_custo", "subtipo")
-        .order_by("quantidade", "nome")
-    )
+    # Estoque crítico considerando LOTES (mesma regra do alerta dedicado).
+    itens_criticos = itens_estoque_critico(2)
 
     baixas = (
         MovimentacaoItem.objects
@@ -738,35 +846,17 @@ def relatorio_diario(horas: int = 24) -> bool:
         .order_by("usuario__nome")
     )
 
-    # Data efetiva calculada (data_ultima + intervalo), igual às telas do sistema —
-    # o campo data_proxima sozinho pode estar desatualizado.
-    prev_vencidas = []
-    prev_proximas = []
-    for _p in (
-        Preventiva.objects
-        .filter(pausada=False)
-        .select_related("equipamento", "equipamento__localidade", "checklist_modelo")
-    ):
-        _proxima = _proxima_efetiva(_p, hoje)
-        if not _proxima:
-            continue
-        _p.data_proxima = _proxima  # data efetiva (em memória)
-        _dias = (_proxima - hoje).days
-        if _dias < 0:
-            prev_vencidas.append(_p)
-        elif _dias <= 7:
-            prev_proximas.append(_p)
-    prev_vencidas.sort(key=lambda p: p.data_proxima)
-    prev_proximas.sort(key=lambda p: p.data_proxima)
+    # Vencidas e próximas (data efetiva = data_ultima + intervalo), mesma regra das telas.
+    prev_vencidas, prev_proximas = preventivas_relevantes(7)
 
     # ── Counts ─────────────────────────────────────────────────
-    n_criticos = itens_criticos.count()
+    n_criticos = len(itens_criticos)
     n_baixas = baixas.count()
     n_movs = movimentacoes.count()
     n_licencas = licencas.count()
     n_vencidas = len(prev_vencidas)
     n_proximas = len(prev_proximas)
-    n_sem_estoque = sum(1 for i in itens_criticos if (i.quantidade or 0) == 0)
+    n_sem_estoque = sum(1 for i in itens_criticos if i.estoque_efetivo == 0)
 
     # ── KPI boxes ─────────────────────────────────────────────
     def _kpi(label: str, valor, cor: str, nota: str = "") -> str:
@@ -807,7 +897,7 @@ def relatorio_diario(horas: int = 24) -> bool:
     if n_criticos > 0:
         linhas_c = []
         for it in itens_criticos:
-            qtd = it.quantidade or 0
+            qtd = it.estoque_efetivo
             badge = (
                 _badge("SEM ESTOQUE", "#fee2e2", "#b91c1c") if qtd == 0
                 else _badge(f"{qtd} un.", "#fef3c7", "#b45309")
@@ -817,6 +907,7 @@ def relatorio_diario(horas: int = 24) -> bool:
                 it.subtipo.nome if it.subtipo else "—",
                 it.localidade.local if it.localidade else "—",
                 it.centro_custo.departamento if it.centro_custo else "—",
+                _lotes_celula(it),
                 badge,
             ])
         bloco_criticos = (
@@ -824,7 +915,7 @@ def relatorio_diario(horas: int = 24) -> bool:
             f'<strong>{n_criticos}</strong> item(ns) abaixo do mínimo recomendado'
             + (f' — <strong style="color:#b91c1c;">{n_sem_estoque} completamente sem estoque</strong>' if n_sem_estoque else "")
             + ".</p>"
-            + _tabela_html(["Item", "Subtipo", "Localidade", "Centro de Custo", "Estoque"], linhas_c)
+            + _tabela_html(["Item", "Subtipo", "Localidade", "Centro de Custo", "Lotes (disp./entrada)", "Estoque"], linhas_c)
         )
     else:
         bloco_criticos = _linha_ok("Todos os itens de consumo estão com estoque adequado.")

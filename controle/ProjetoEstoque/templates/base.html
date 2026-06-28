@@ -628,6 +628,7 @@
     .nav-text {
       flex: 1;
       min-width: 0;
+      max-width: 16rem;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -635,6 +636,7 @@
 
     .nav-badge {
       min-width: 18px;
+      max-width: 5rem;
       height: 18px;
       padding-inline: 6px;
       display: inline-grid;
@@ -655,6 +657,7 @@
 
     .nav-arrow {
       margin-left: auto;
+      max-width: 1.5rem;
       font-size: 10px;
       color: var(--text-quaternary);
       transition: transform var(--transition-base);
@@ -1700,8 +1703,8 @@
          de forma fluida nos dois sentidos e nada fica sobreposto. ──────────── */
       .app-shell.is-sidebar-collapsed {
         grid-template-columns: var(--sidebar-collapsed) minmax(0, 1fr);
-        /* Transição de FECHAMENTO (peek → recolhido). */
-        transition: grid-template-columns 440ms var(--ease-apple);
+        /* Transição de FECHAMENTO (peek → recolhido): recolhe pela lateral, calmo. */
+        transition: grid-template-columns 660ms var(--ease-apple);
       }
 
       .app-shell.is-sidebar-collapsed .sidebar {
@@ -1720,8 +1723,9 @@
          e empurra o conteúdo; nada fica sobreposto. ───────────────────────── */
       .app-shell.is-sidebar-collapsed.is-sidebar-peek {
         grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-        /* Transição de ABERTURA: desacelera ao final (deslize premium). */
-        transition: grid-template-columns 460ms var(--ease-apple-out);
+        /* Transição de ABERTURA: o painel "cresce" pela lateral e desacelera
+           suavemente ao final (easeOutExpo) — sensação de surgir, não de pular. */
+        transition: grid-template-columns 620ms cubic-bezier(0.16, 1, 0.3, 1);
       }
 
       /* Sombra sutil na borda direita durante o peek, só para dar profundidade. */
@@ -1734,14 +1738,14 @@
       .app-shell.is-sidebar-collapsed .brand-copy,
       .app-shell.is-sidebar-collapsed .sidebar-footer {
         opacity: 0;
-        transition: opacity 180ms var(--ease-apple);
+        transition: opacity 220ms var(--ease-apple);
       }
 
       .app-shell.is-sidebar-collapsed.is-sidebar-peek .brand-copy,
       .app-shell.is-sidebar-collapsed.is-sidebar-peek .sidebar-footer {
         opacity: 1;
         /* Surgem depois que o painel já começou a abrir, acompanhando o deslize. */
-        transition: opacity 260ms var(--ease-apple) 120ms;
+        transition: opacity 340ms var(--ease-apple) 160ms;
       }
 
       .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .sidebar-footer {
@@ -1749,8 +1753,19 @@
       }
 
       /* ── Trilho recolhido: ícones CENTRALIZADOS e organizados ──────────────
-         Texto/contador/seta não ocupam largura (some o desalinhamento), e o
-         ícone fica centralizado no trilho. */
+         Texto/contador/seta colapsam a largura (some o desalinhamento) e o
+         ícone fica centralizado no trilho. gap/padding TRANSICIONAM para que o
+         ícone deslize suavemente ao abrir/fechar, sem "pulo" brusco. */
+      .app-shell.is-sidebar-collapsed .nav-item,
+      .app-shell.is-sidebar-collapsed .nav-button {
+        transition:
+          color 120ms var(--ease-apple),
+          background 120ms var(--ease-apple),
+          box-shadow 160ms var(--ease-apple),
+          gap 360ms var(--ease-apple),
+          padding 360ms var(--ease-apple);
+      }
+
       .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-item,
       .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-button {
         justify-content: center;
@@ -1758,11 +1773,45 @@
         padding-inline: 0;
       }
 
+      /* Rótulos/contadores/setas: revelam-se de forma fluida (fade + slide +
+         largura) acompanhando a abertura do painel — em vez de aparecer "de
+         estalo" com display:none. Ao fechar, recolhem no mesmo movimento. */
+      .app-shell.is-sidebar-collapsed .nav-text,
+      .app-shell.is-sidebar-collapsed .nav-badge,
+      .app-shell.is-sidebar-collapsed .nav-arrow {
+        transition:
+          opacity 320ms var(--ease-apple-out),
+          transform 420ms var(--ease-apple-out),
+          max-width 420ms var(--ease-apple);
+      }
+
       .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-text,
       .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-badge,
       .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-arrow {
-        display: none;
+        max-width: 0;
+        opacity: 0;
+        margin-inline: 0;        /* zera o margin-left:auto da seta p/ NÃO desalinhar o ícone */
+        transform: translateX(-12px);
+        overflow: hidden;
+        pointer-events: none;
+        flex: 0 0 auto;          /* impede que o texto (flex:1) reserve largura no trilho */
       }
+
+      /* ── Revelação em CASCATA (só na abertura/peek) ─────────────────────────
+         Em vez de todo o conteúdo surgir de uma vez, cada seção do menu se
+         revela logo após a anterior — de cima para baixo — acompanhando o
+         crescimento do painel. Dá a sensação de o menu "surgir e crescer"
+         pela lateral, em vez de simplesmente piscar aberto.
+
+         O delay vive APENAS no estado de peek e só em elementos sem transição
+         crítica de hover (texto/contador/seta/rótulo), nunca no .nav-item em si
+         — assim o destaque ao passar o mouse continua instantâneo. Ao fechar
+         (estado :not(.is-sidebar-peek)) não há delay: o menu recolhe junto,
+         rápido e fluido. */
+      .app-shell.is-sidebar-collapsed.is-sidebar-peek .nav-section:nth-of-type(1) :is(.nav-text, .nav-badge, .nav-arrow, .nav-label) { transition-delay: 50ms; }
+      .app-shell.is-sidebar-collapsed.is-sidebar-peek .nav-section:nth-of-type(2) :is(.nav-text, .nav-badge, .nav-arrow, .nav-label) { transition-delay: 105ms; }
+      .app-shell.is-sidebar-collapsed.is-sidebar-peek .nav-section:nth-of-type(3) :is(.nav-text, .nav-badge, .nav-arrow, .nav-label) { transition-delay: 160ms; }
+      .app-shell.is-sidebar-collapsed.is-sidebar-peek .nav-section:nth-of-type(4) :is(.nav-text, .nav-badge, .nav-arrow, .nav-label) { transition-delay: 215ms; }
 
       /* Submenus abertos ficam ocultos no trilho. */
       .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .submenu {
@@ -1818,6 +1867,37 @@
       .stats-grid {
         grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
       }
+    }
+
+    /* =========================================================
+       DENSIDADE ADAPTATIVA — notebooks e telas médias
+       Em telas de 1024–1600px o respiro generoso do desktop fazia
+       tudo "parecer grande". Aqui compactamos paddings, títulos e
+       gaps para o layout caber melhor, SEM tocar no mobile (<64rem),
+       que mantém suas próprias regras. Vem por último para vencer
+       no cascade as @media de min-width acima.
+       ========================================================= */
+    @media (min-width: 64rem) and (max-width: 100rem) {
+      .main-scroll { padding: 26px 30px; }
+
+      .page-header { margin-bottom: 22px; gap: 12px; }
+      .page-heading { font-size: clamp(24px, 2.6vw, 32px); }
+      .page-description { font-size: clamp(14px, 1.2vw, 16px); margin-top: 6px; }
+
+      .bento-grid,
+      .cards-grid,
+      .dashboard-grid,
+      .kpi-grid,
+      .stats-grid { gap: 14px; }
+    }
+
+    /* Notebooks de baixa altura (≈768–820px): topbar e respiros verticais
+       mais enxutos para sobrar área útil sem rolagem desnecessária. */
+    @media (min-width: 64rem) and (max-height: 820px) {
+      :root { --topbar-height: 3.2rem; }
+      .main-scroll { padding-top: 18px; padding-bottom: 20px; }
+      .page-header { margin-bottom: 16px; }
+      .topbar-title { font-size: 15.5px; }
     }
 
     @media (prefers-reduced-motion: reduce) {

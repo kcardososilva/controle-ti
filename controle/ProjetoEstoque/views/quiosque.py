@@ -322,8 +322,8 @@ def quiosque_config_editar(request, pk: int):
         device.wifi_only = request.POST.get("wifi_only") == "on"
         device.mensagem_quiosque = (request.POST.get("mensagem_quiosque") or "").strip()[:200]
         try:
-            # Faixa aceita pelo app: [10, 300]s. 10s = tempo real; 300s = economia de bateria/dados.
-            device.intervalo_checkin_seg = min(300, max(10, int(request.POST.get("intervalo_checkin_seg") or 300)))
+            # Faixa aceita pelo app: [5, 300]s. 5s = tempo real; 300s = economia de bateria/dados.
+            device.intervalo_checkin_seg = min(300, max(5, int(request.POST.get("intervalo_checkin_seg") or 300)))
         except (TypeError, ValueError):
             device.intervalo_checkin_seg = 300
         # Apps permitidos: uma linha/pacote ou separados por vírgula

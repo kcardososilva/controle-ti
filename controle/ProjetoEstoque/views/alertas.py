@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Exists, OuterRef
@@ -11,62 +9,25 @@ from django.utils import timezone
 def alertas_dashboard(request):
     from ProjetoEstoque.models import (
         ConfiguracaoSistema,
-        Item,
         MovimentacaoLicenca,
-        Preventiva,
-        SimNaoChoices,
         StatusUsuarioChoices,
     )
-    config = ConfiguracaoSistema.get()
+    from services.email_alertas import itens_estoque_critico, preventivas_relevantes
 
+    config = ConfiguracaoSistema.get()
     hoje = timezone.localdate()
 
-    # 1. Preventivas nos próximos 7 dias.
-    #    IMPORTANTE: a data efetiva da próxima preventiva é CALCULADA da mesma forma
-    #    que nas telas de preventivas/equipamentos (data_ultima + intervalo), e não lida
-    #    diretamente do campo data_proxima — que pode estar desatualizado. Sem isso o
-    #    alerta mostrava 0 enquanto o sistema apontava preventivas a vencer.
-    #    Intervalo: prioridade para Item.data_limite_preventiva → CheckListModelo.intervalo_dias.
-    _JANELA = 7
-    preventivas = []
-    for p in (
-        Preventiva.objects
-        .filter(pausada=False)
-        .select_related("equipamento", "equipamento__localidade", "checklist_modelo")
-    ):
-        intervalo = 0
-        try:
-            intervalo = int(p.equipamento.data_limite_preventiva or 0)
-        except (TypeError, ValueError):
-            intervalo = 0
-        if intervalo <= 0 and p.checklist_modelo:
-            try:
-                intervalo = int(p.checklist_modelo.intervalo_dias or 0)
-            except (TypeError, ValueError):
-                intervalo = 0
+    # 1. Preventivas — vencidas + próximas 7 dias.
+    #    A data efetiva é CALCULADA (data_ultima + intervalo), a MESMA regra das telas
+    #    de preventivas/equipamentos e dos e-mails — o campo data_proxima sozinho pode
+    #    estar desatualizado. As vencidas (em atraso) também são exibidas, pois são as
+    #    mais críticas e antes ficavam de fora do painel.
+    prev_vencidas, prev_proximas = preventivas_relevantes(7)
+    preventivas = prev_vencidas + prev_proximas
 
-        if intervalo > 0 and p.data_ultima:
-            proxima = p.data_ultima + timedelta(days=intervalo)
-        else:
-            proxima = p.data_proxima
-
-        if not proxima:
-            continue
-        dias = (proxima - hoje).days
-        if 0 <= dias <= _JANELA:
-            p.data_proxima = proxima  # data efetiva (em memória) para exibição
-            p.dias_rest = dias
-            preventivas.append(p)
-
-    preventivas.sort(key=lambda p: (p.data_proxima, p.equipamento.nome))
-
-    # 2. Itens de consumo com estoque crítico
-    itens_criticos = (
-        Item.objects
-        .filter(item_consumo=SimNaoChoices.SIM, quantidade__lt=2)
-        .select_related("localidade", "centro_custo", "subtipo")
-        .order_by("quantidade", "nome")
-    )
+    # 2. Itens de consumo com estoque crítico — saldo EFETIVO por lote quando aplicável
+    #    (soma de ItemLote.quantidade_disponivel); senão usa Item.quantidade.
+    itens_criticos = itens_estoque_critico(2)
 
     # 3. Licenças de usuários desligados sem devolução
     mov_devolucao_posterior = MovimentacaoLicenca.objects.filter(
@@ -83,9 +44,12 @@ def alertas_dashboard(request):
         .select_related("usuario", "lote", "lote__licenca", "usuario__funcao", "usuario__centro_custo")
         .order_by("usuario__nome")
     )
+    n_licencas = licencas_pendentes.count()
 
     context = {
         "preventivas": preventivas,
+        "preventivas_vencidas": prev_vencidas,
+        "preventivas_proximas": prev_proximas,
         "itens_criticos": itens_criticos,
         "licencas_pendentes": licencas_pendentes,
         "hoje": hoje,
@@ -94,9 +58,11 @@ def alertas_dashboard(request):
         "config_atualizado_por": config.atualizado_por,
         "kpi": {
             "preventivas": len(preventivas),
-            "estoque": itens_criticos.count(),
-            "licencas": licencas_pendentes.count(),
-            "total": len(preventivas) + itens_criticos.count() + licencas_pendentes.count(),
+            "preventivas_vencidas": len(prev_vencidas),
+            "preventivas_proximas": len(prev_proximas),
+            "estoque": len(itens_criticos),
+            "licencas": n_licencas,
+            "total": len(preventivas) + len(itens_criticos) + n_licencas,
         },
     }
     return render(request, "front/alertas/alertas_dashboard.html", context)
@@ -113,11 +79,16 @@ def alertas_enviar(request):
         alerta_estoque_critico,
         alerta_licencas_desligados,
         alerta_preventivas_proximas,
+        relatorio_diario,
     )
 
     resultados = {}
 
     try:
+        # Relatório consolidado completo (estoque + baixas + movimentações +
+        # licenças + preventivas vencidas/próximas) em um único e-mail.
+        if tipo in ("relatorio", "diario"):
+            resultados["relatorio"] = relatorio_diario(horas=24)
         if tipo in ("preventivas", "todos"):
             resultados["preventivas"] = alerta_preventivas_proximas(dias=7)
         if tipo in ("estoque", "todos"):

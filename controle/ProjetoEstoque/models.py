@@ -41,10 +41,16 @@ class TipoTransferenciaChoices(models.TextChoices):
 
 class StatusOrdemManutencaoChoices(models.TextChoices):
     # Fluxo conduzido pelo fornecedor no Portal (ver OrdemManutencaoService):
-    #   aguardando → recebido → em_avaliacao → (em_reparo → reparado) | (sem_reparo → substituto_enviado) → concluido
+    #   aguardando → recebido → em_avaliacao
+    #     → aguardando_aprovacao → (TI) aprovado → em_reparo → reparado → devolvido → (TI) concluido
+    #                            → (TI) reprovado → devolvido (avaliação técnica) → (TI) concluido
+    #     → sem_reparo → substituto_enviado → (TI) concluido
     AGUARDANDO_RECEBIMENTO = "aguardando_recebimento", "Aguardando recebimento"
     RECEBIDO = "recebido", "Recebido pelo fornecedor"
     EM_AVALIACAO = "em_avaliacao", "Em avaliação"
+    AGUARDANDO_APROVACAO = "aguardando_aprovacao", "Aguardando aprovação do TI"
+    APROVADO = "aprovado", "Reparo aprovado"
+    REPROVADO = "reprovado", "Reparo reprovado"
     EM_REPARO = "em_reparo", "Em reparo"
     REPARADO = "reparado", "Reparo concluído"
     DEVOLVIDO = "devolvido", "Devolvido ao cliente — aguardando recebimento"
@@ -1090,6 +1096,33 @@ class OrdemManutencao(AuditModel):
         max_digits=12, decimal_places=2, blank=True, null=True,
         verbose_name="Valor do reparo realizado",
     )
+    # ── Fluxo de aprovação de reparo ───────────────────────────────────────
+    # O fornecedor envia o ORÇAMENTO (valor do conserto) antes de reparar; o TI
+    # aprova ou reprova. Aprovado → conserta e informa valor do conserto + valor
+    # total (pode incluir película/capa/etc., por isso ≥ conserto). Reprovado →
+    # informa valor de avaliação técnica e devolve ao cliente.
+    valor_orcamento = models.DecimalField(
+        max_digits=12, decimal_places=2, blank=True, null=True,
+        verbose_name="Orçamento do reparo (proposto)",
+    )
+    valor_conserto = models.DecimalField(
+        max_digits=12, decimal_places=2, blank=True, null=True,
+        verbose_name="Valor do conserto",
+    )
+    valor_total = models.DecimalField(
+        max_digits=12, decimal_places=2, blank=True, null=True,
+        verbose_name="Valor total (conserto + extras)",
+    )
+    valor_avaliacao_tecnica = models.DecimalField(
+        max_digits=12, decimal_places=2, blank=True, null=True,
+        verbose_name="Valor da avaliação técnica",
+    )
+    aprovado_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="ordens_manutencao_decididas",
+        verbose_name="Decisão do TI por",
+    )
+    decisao_em = models.DateTimeField(null=True, blank=True, verbose_name="Data da decisão do TI")
     chamado = models.CharField(max_length=100, blank=True, null=True, verbose_name="Nº Chamado")
     finalizada_em = models.DateTimeField(null=True, blank=True)
 
@@ -1108,6 +1141,26 @@ class OrdemManutencao(AuditModel):
             StatusOrdemManutencaoChoices.CONCLUIDO,
             StatusOrdemManutencaoChoices.CANCELADO,
         )
+
+    # Macro-etapas para o stepper visual (detalhe TI e Portal).
+    ETAPAS_MACRO = ["Recebimento", "Avaliação", "Aprovação", "Reparo / Troca", "Concluído"]
+
+    @property
+    def etapa_macro(self) -> int:
+        """Índice (0-4) da macro-etapa atual no fluxo, para o stepper visual.
+        Agrupa os 13 status nas 5 etapas de `ETAPAS_MACRO`. Não consulta o banco."""
+        return {
+            "aguardando_recebimento": 0,
+            "recebido": 1, "em_avaliacao": 1,
+            "aguardando_aprovacao": 2, "aprovado": 2, "reprovado": 2,
+            "em_reparo": 3, "reparado": 3, "sem_reparo": 3,
+            "substituto_enviado": 3, "devolvido": 3,
+            "concluido": 5, "cancelado": 4,
+        }.get(self.status, 0)
+
+    @property
+    def cancelada(self) -> bool:
+        return self.status == StatusOrdemManutencaoChoices.CANCELADO
 
     def __str__(self):
         return f"OS #{self.pk} — {self.item} ({self.get_status_display()})"
@@ -1134,6 +1187,41 @@ class OrdemManutencaoEvento(AuditModel):
 
     def __str__(self):
         return f"OS #{self.ordem_id} → {self.get_status_display()}"
+
+
+class OrdemManutencaoAnexo(AuditModel):
+    """
+    Nota fiscal (ou documento) anexada a uma Ordem de Manutenção. Tanto o
+    fornecedor quanto o TI podem anexar quantas quiserem.
+    """
+    class OrigemAnexo(models.TextChoices):
+        FORNECEDOR = "fornecedor", "Fornecedor"
+        TI = "ti", "TI"
+
+    ordem = models.ForeignKey(
+        OrdemManutencao,
+        on_delete=models.CASCADE,
+        related_name="anexos",
+    )
+    arquivo = models.FileField(upload_to="manutencao/nf/%Y/%m/", verbose_name="Arquivo")
+    origem = models.CharField(
+        max_length=12, choices=OrigemAnexo.choices, default=OrigemAnexo.TI,
+        verbose_name="Origem",
+    )
+    descricao = models.CharField(max_length=200, blank=True, default="", verbose_name="Descrição")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Anexo de Manutenção"
+        verbose_name_plural = "Anexos de Manutenção"
+
+    def __str__(self):
+        return f"NF OS #{self.ordem_id} ({self.get_origem_display()})"
+
+    @property
+    def nome_arquivo(self):
+        import os
+        return os.path.basename(self.arquivo.name) if self.arquivo else ""
 
 
 # ----------------- CHECKLIST -----------------

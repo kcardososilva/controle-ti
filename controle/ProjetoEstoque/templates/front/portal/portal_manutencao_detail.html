@@ -73,6 +73,17 @@
   .pf-md .pf-spec:nth-child(-n+2) { border-top: 0; }
   .pf-md .pf-spec-l { color: var(--text-quaternary); font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
   .pf-md .pf-spec-v { margin-top: .25rem; font-weight: 700; font-size: .9rem; }
+
+  /* Notas fiscais — item + selo de origem (quem anexou) */
+  .pf-md .pf-anx { display: grid; grid-template-columns: 2rem 1fr; gap: .8rem; align-items: start; padding: .6rem 0; border-top: 1px solid var(--separator-hairline); }
+  .pf-md .pf-anx:first-of-type { border-top: 0; }
+  .pf-md .pf-anx-ic { width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 999px; background: var(--bg-fill-tertiary); color: var(--brand); font-size: .8rem; }
+  .pf-md .pf-anx-name { font-weight: 700; font-size: .88rem; overflow-wrap: anywhere; }
+  .pf-md .pf-anx-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; margin-top: .25rem; color: var(--text-tertiary); font-size: .76rem; }
+  .pf-md .pf-orig { display: inline-flex; align-items: center; gap: .3rem; padding: .12rem .5rem; border-radius: 999px; font-size: .68rem; font-weight: 800; letter-spacing: .02em; }
+  .pf-md .pf-orig--fornecedor { color: var(--brand); background: var(--brand-soft); }
+  .pf-md .pf-orig--ti { color: #5856d6; background: rgba(88,86,214,.14); }
+  .pf-md .pf-anx-who { font-weight: 700; color: var(--text-secondary); }
 </style>
 {% endblock %}
 
@@ -90,6 +101,20 @@
     </div>
     <span class="pf-osc pf-osc--{{ ordem.status }}">{{ ordem.get_status_display }}</span>
   </div>
+
+  {# ── Progresso da ordem ──────────────────────────────────────────────── #}
+  {% include "front/manutencao/_os_stepper.html" %}
+
+  {# ── Observação do envio (registrada pelo TI) ────────────────────────── #}
+  {% if ordem.movimentacao_origem.observacao or ordem.chamado %}
+  <div class="pf-action pf-action--info">
+    <h3><i class="fa-solid fa-comment-dots"></i> Observação do envio (TI)</h3>
+    {% if ordem.movimentacao_origem.observacao %}
+      <div class="pf-diag" style="background:transparent; padding:0;">{{ ordem.movimentacao_origem.observacao }}</div>
+    {% endif %}
+    {% if ordem.chamado %}<p><b>Chamado:</b> {{ ordem.chamado }}</p>{% endif %}
+  </div>
+  {% endif %}
 
   {# ── Painel de ação contextual ───────────────────────────────────────── #}
   {% if ordem.status == 'aguardando_recebimento' %}
@@ -117,15 +142,70 @@
   {% elif ordem.status == 'em_avaliacao' %}
   <div class="pf-action">
     <h3>Resultado da avaliação</h3>
-    <p>Informe o diagnóstico e escolha o desfecho: reparar ou trocar o equipamento.</p>
+    <p>Informe o diagnóstico. Havendo conserto, envie o <b>orçamento</b> para o TI aprovar antes do reparo. Sem conserto, solicite a troca.</p>
     <form method="post">
       {% csrf_token %}
       <label for="diagnostico">Diagnóstico técnico</label>
       <textarea id="diagnostico" name="diagnostico" placeholder="Descreva o problema encontrado…"></textarea>
-      <div class="pf-divider"></div>
-      <div class="pf-form-actions" style="margin-top:.6rem;">
-        <button type="submit" name="acao" value="em_reparo" class="pf-btn pf-btn--success"><i class="fa-solid fa-screwdriver-wrench"></i> Tem conserto — iniciar reparo</button>
+      <div class="pf-grid2" style="margin-top:.6rem;">
+        <div>
+          <label for="valor_orcamento">Valor do conserto — orçamento (R$)</label>
+          <input type="number" id="valor_orcamento" name="valor_orcamento" step="0.01" min="0" placeholder="0,00">
+        </div>
+      </div>
+      <div class="pf-form-actions" style="margin-top:.7rem;">
+        <button type="submit" name="acao" value="aguardando_aprovacao" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paper-plane"></i> Enviar orçamento p/ aprovação</button>
         <button type="submit" name="acao" value="sem_reparo" class="pf-btn pf-btn--danger"><i class="fa-solid fa-rotate"></i> Sem conserto — solicitar troca</button>
+      </div>
+    </form>
+  </div>
+
+  {% elif ordem.status == 'aguardando_aprovacao' %}
+  <div class="pf-action pf-action--info">
+    <h3><i class="fa-solid fa-clock"></i> Aguardando aprovação do TI</h3>
+    <p>O orçamento foi enviado. Quando o TI aprovar, você poderá iniciar o reparo; se reprovar, registre a avaliação técnica e devolva ao cliente.</p>
+    <div class="pf-diag"><i class="fa-solid fa-file-invoice-dollar"></i> <b>Orçamento enviado:</b> R$ {{ ordem.valor_orcamento|default:'—' }}</div>
+  </div>
+
+  {% elif ordem.status == 'aprovado' %}
+  <div class="pf-action pf-action--done">
+    <h3><i class="fa-solid fa-circle-check"></i> Reparo aprovado pelo TI</h3>
+    <p>Orçamento aprovado{% if ordem.aprovado_por %} por {{ ordem.aprovado_por.username }}{% endif %}{% if ordem.decisao_em %} em {{ ordem.decisao_em|date:"d/m/Y H:i" }}{% endif %}. Inicie o reparo.</p>
+    <form method="post" class="pf-form-actions">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="em_reparo">
+      <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-screwdriver-wrench"></i> Iniciar reparo</button>
+    </form>
+  </div>
+
+  {% elif ordem.status == 'reprovado' %}
+  <div class="pf-action">
+    <h3>Orçamento reprovado — devolver ao cliente</h3>
+    <p>O TI reprovou o reparo{% if ordem.aprovado_por %} ({{ ordem.aprovado_por.username }}){% endif %}. Informe o valor da <b>avaliação técnica</b> e devolva o equipamento ao cliente.</p>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="devolvido">
+      <div class="pf-grid2">
+        <div>
+          <label for="valor_avaliacao_tecnica">Valor da avaliação técnica (R$) *</label>
+          <input type="number" id="valor_avaliacao_tecnica" name="valor_avaliacao_tecnica" step="0.01" min="0" required placeholder="0,00">
+        </div>
+        <div>
+          <label for="localidade_devolucao">Localidade de destino *</label>
+          <select id="localidade_devolucao" name="localidade_devolucao" class="pf-select2" required>
+            <option value="">Selecione a localidade…</option>
+            {% for loc in localidades %}
+              <option value="{{ loc.id }}" {% if ordem.item.localidade_id == loc.id %}selected{% endif %}>{{ loc.local }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label for="observacao">Observação (opcional)</label>
+          <input type="text" id="observacao" name="observacao" placeholder="Ex: transportadora, NF…">
+        </div>
+      </div>
+      <div class="pf-form-actions" style="margin-top:.7rem;">
+        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-truck-fast"></i> Devolver ao cliente</button>
       </div>
     </form>
   </div>
@@ -133,12 +213,20 @@
   {% elif ordem.status == 'em_reparo' %}
   <div class="pf-action">
     <h3>Reparo em andamento</h3>
-    <p>Quando o reparo estiver concluído, marque abaixo. O equipamento será devolvido ao time de TI.</p>
+    <p>O valor do conserto já foi enviado no orçamento{% if ordem.valor_orcamento %} (<b>R$ {{ ordem.valor_orcamento }}</b>){% endif %}. Ao concluir, informe apenas o <b>valor total</b> — ele pode incluir película, capa e outros extras, por isso pode ser maior que o conserto.</p>
     <form method="post">
       {% csrf_token %}
       <input type="hidden" name="acao" value="reparado">
-      <label for="observacao">Observação (opcional)</label>
-      <textarea id="observacao" name="observacao" placeholder="Ex: troca de fonte, limpeza interna…"></textarea>
+      <div class="pf-grid2">
+        <div>
+          <label for="valor_total">Valor total (R$) *</label>
+          <input type="number" id="valor_total" name="valor_total" step="0.01" min="0" required placeholder="0,00">
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label for="observacao">Observações</label>
+          <textarea id="observacao" name="observacao" placeholder="Observações do reparo"></textarea>
+        </div>
+      </div>
       <div class="pf-form-actions" style="margin-top:.7rem;">
         <button type="submit" class="pf-btn pf-btn--success"><i class="fa-solid fa-circle-check"></i> Reparo concluído</button>
       </div>
@@ -227,13 +315,9 @@
             {% endfor %}
           </select>
         </div>
-        <div>
-          <label for="reparo_valor">Valor do reparo (R$) *</label>
-          <input type="number" id="reparo_valor" name="reparo_valor" step="0.01" min="0" required placeholder="0,00">
-        </div>
         <div style="grid-column:1 / -1;">
           <label for="observacao">Observação (opcional)</label>
-          <input type="text" id="observacao" name="observacao" placeholder="Ex: troca de fonte, transportadora X, NF 123…">
+          <input type="text" id="observacao" name="observacao" placeholder="Ex: transportadora X, NF 123…">
         </div>
       </div>
       <div class="pf-form-actions" style="margin-top:.7rem;">
@@ -278,16 +362,56 @@
   </div>
   {% endif %}
 
-  {# ── Diagnóstico registrado ──────────────────────────────────────────── #}
-  {% if ordem.diagnostico or ordem.reparo_valor %}
+  {# ── Diagnóstico e valores ───────────────────────────────────────────── #}
+  {% if ordem.diagnostico or ordem.valor_orcamento or ordem.valor_conserto or ordem.valor_total or ordem.valor_avaliacao_tecnica %}
   <div>
-    <div class="pf-sec-title">Diagnóstico e reparo</div>
+    <div class="pf-sec-title">Diagnóstico e valores</div>
     <div class="pf-card" style="margin-top:.5rem;">
       {% if ordem.diagnostico %}<div class="pf-diag">{{ ordem.diagnostico }}</div>{% endif %}
-      {% if ordem.reparo_valor %}<div class="pf-diag" style="margin-top:.5rem;"><i class="fa-solid fa-money-bill-wave" style="color:#34c759;"></i> <b>Valor do reparo realizado:</b> R$ {{ ordem.reparo_valor }}</div>{% endif %}
+      <div class="pf-specs">
+        {% if ordem.valor_orcamento %}<div class="pf-spec"><div class="pf-spec-l">Orçamento</div><div class="pf-spec-v">R$ {{ ordem.valor_orcamento }}</div></div>{% endif %}
+        {% if ordem.valor_conserto %}<div class="pf-spec"><div class="pf-spec-l">Conserto</div><div class="pf-spec-v">R$ {{ ordem.valor_conserto }}</div></div>{% endif %}
+        {% if ordem.valor_total %}<div class="pf-spec"><div class="pf-spec-l">Total (c/ extras)</div><div class="pf-spec-v">R$ {{ ordem.valor_total }}</div></div>{% endif %}
+        {% if ordem.valor_avaliacao_tecnica %}<div class="pf-spec"><div class="pf-spec-l">Avaliação técnica</div><div class="pf-spec-v">R$ {{ ordem.valor_avaliacao_tecnica }}</div></div>{% endif %}
+      </div>
+      {% if ordem.aprovado_por %}
+      <div class="pf-diag" style="margin-top:.5rem;"><i class="fa-solid fa-user-check" style="color:var(--brand);"></i> <b>Decisão do TI:</b> {{ ordem.aprovado_por.username }}{% if ordem.decisao_em %} · {{ ordem.decisao_em|date:"d/m/Y H:i" }}{% endif %}</div>
+      {% endif %}
     </div>
   </div>
   {% endif %}
+
+  {# ── Notas fiscais ───────────────────────────────────────────────────── #}
+  <div>
+    <div class="pf-sec-title">Notas fiscais</div>
+    <div class="pf-card" style="margin-top:.5rem; padding:1rem 1.1rem;">
+      {% for a in anexos %}
+        <div class="pf-anx">
+          <div class="pf-anx-ic"><i class="fa-solid fa-file-invoice"></i></div>
+          <div style="min-width:0;">
+            <div class="pf-anx-name"><a href="{{ a.arquivo.url }}" target="_blank" rel="noopener">{{ a.nome_arquivo }}</a></div>
+            <div class="pf-anx-meta">
+              <span class="pf-orig pf-orig--{{ a.origem }}"><i class="fa-solid {% if a.origem == 'ti' %}fa-headset{% else %}fa-truck-field{% endif %}"></i> {{ a.get_origem_display }}</span>
+              {% if a.criado_por %}<span class="pf-anx-who">{{ a.criado_por.get_full_name|default:a.criado_por.username }}</span>{% endif %}
+              <span>· {{ a.created_at|date:"d/m/Y H:i" }}</span>
+              {% if a.descricao %}<span>· {{ a.descricao }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+      {% empty %}
+        <p style="color:var(--text-tertiary); font-size:.85rem; margin:0;">Nenhuma nota fiscal anexada ainda.</p>
+      {% endfor %}
+      <form method="post" enctype="multipart/form-data" style="margin-top:.8rem; display:grid; gap:.6rem;">
+        {% csrf_token %}
+        <input type="hidden" name="acao" value="anexar_nf">
+        <div class="pf-grid2">
+          <div><label for="nf">Anexar NF (pode selecionar várias)</label><input type="file" id="nf" name="nf" multiple></div>
+          <div><label for="descricao">Descrição (opcional)</label><input type="text" id="descricao" name="descricao" placeholder="Ex: NF de peça"></div>
+        </div>
+        <div class="pf-form-actions"><button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paperclip"></i> Anexar NF</button></div>
+      </form>
+    </div>
+  </div>
 
   {# ── Dados do equipamento ────────────────────────────────────────────── #}
   <div>

@@ -28,6 +28,7 @@ from ..models import (
     Localidade,
     Licenca,
     OrdemManutencao,
+    OrdemManutencaoAnexo,
     StatusItemChoices,
     StatusOrdemManutencaoChoices,
     TipoMovimentacaoChoices,
@@ -416,15 +417,37 @@ def portal_manutencao_list(request):
 def portal_manutencao_detail(request, pk: int):
     """Detalhe da OS + ações de transição do fornecedor."""
     ordem = get_object_or_404(
-        OrdemManutencao.objects.select_related("item", "item__subtipo", "item_substituto", "fornecedor"),
+        OrdemManutencao.objects.select_related(
+            "item", "item__subtipo", "item_substituto", "fornecedor", "movimentacao_origem",
+        ),
         pk=pk,
         fornecedor=request.fornecedor,
     )
 
     if request.method == "POST":
-        # import tardio evita ciclo (service importa models do app)
+        acao = request.POST.get("acao", "")
+
+        # ── Upload de Nota Fiscal (o fornecedor pode anexar quantas quiser) ──
+        if acao == "anexar_nf":
+            arquivos = request.FILES.getlist("nf")
+            if not arquivos:
+                messages.error(request, "Selecione ao menos um arquivo de NF.")
+            else:
+                descricao = request.POST.get("descricao", "").strip()
+                for arq in arquivos:
+                    OrdemManutencaoAnexo.objects.create(
+                        ordem=ordem,
+                        arquivo=arq,
+                        origem=OrdemManutencaoAnexo.OrigemAnexo.FORNECEDOR,
+                        descricao=descricao,
+                        criado_por=request.user,
+                        atualizado_por=request.user,
+                    )
+                messages.success(request, f"{len(arquivos)} nota(s) fiscal(is) anexada(s).")
+            return redirect("portal_manutencao_detail", pk=pk)
+
+        # ── Transição de status conduzida pelo fornecedor ────────────────────
         from services.ordem_manutencao_service import OrdemManutencaoService
-        novo_status = request.POST.get("acao", "")
         extra = {
             "diagnostico": request.POST.get("diagnostico", ""),
             "nome": request.POST.get("nome", ""),
@@ -438,11 +461,15 @@ def portal_manutencao_detail(request, pk: int):
             "localidade_devolucao": request.POST.get("localidade_devolucao", ""),
             "localidade_substituto": request.POST.get("localidade_substituto", ""),
             "reparo_valor": request.POST.get("reparo_valor", ""),
+            "valor_orcamento": request.POST.get("valor_orcamento", ""),
+            "valor_conserto": request.POST.get("valor_conserto", ""),
+            "valor_total": request.POST.get("valor_total", ""),
+            "valor_avaliacao_tecnica": request.POST.get("valor_avaliacao_tecnica", ""),
         }
         try:
             OrdemManutencaoService.transicionar(
                 ordem=ordem,
-                novo_status=novo_status,
+                novo_status=acao,
                 user=request.user,
                 observacao=request.POST.get("observacao", ""),
                 ator="fornecedor",
@@ -454,11 +481,13 @@ def portal_manutencao_detail(request, pk: int):
         return redirect("portal_manutencao_detail", pk=pk)
 
     eventos = ordem.eventos.select_related("criado_por").all()
+    anexos = ordem.anexos.select_related("criado_por").all()
 
     context = {
         "fornecedor": request.fornecedor,
         "ordem": ordem,
         "eventos": eventos,
+        "anexos": anexos,
         "localidades": Localidade.objects.order_by("local"),
         "active_nav": "manutencao",
     }

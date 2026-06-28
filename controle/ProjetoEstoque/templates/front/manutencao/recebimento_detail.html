@@ -22,6 +22,9 @@
   .rd-osc::before { content:""; width:.45rem; height:.45rem; border-radius:999px; background: currentColor; }
   .rd-osc--aguardando_recebimento, .rd-osc--cancelado { color:#8e8e93; background: rgba(142,142,147,.16); }
   .rd-osc--recebido, .rd-osc--em_avaliacao { color:#5ac8fa; background: rgba(90,200,250,.16); }
+  .rd-osc--aguardando_aprovacao { color:#ff9500; background: rgba(255,149,0,.16); }
+  .rd-osc--aprovado { color:#34c759; background: rgba(52,199,89,.16); }
+  .rd-osc--reprovado { color:#ff3b30; background: rgba(255,59,48,.14); }
   .rd-osc--em_reparo, .rd-osc--substituto_enviado { color:#ff9500; background: rgba(255,149,0,.16); }
   .rd-osc--reparado { color:#0071e3; background: rgba(0,113,227,.14); }
   .rd-osc--devolvido { color:#5856d6; background: rgba(88,86,214,.14); }
@@ -40,6 +43,17 @@
   .rd-page .rd-pill { padding:.6rem .8rem; border-radius:10px; border:1px solid var(--separator-hairline); }
   .rd-page .rd-pill-l { font-size:.66rem; font-weight:800; text-transform:uppercase; color: var(--text-quaternary); letter-spacing:.04em; }
   .rd-page .rd-pill-v { font-weight:700; margin-top:.15rem; }
+
+  /* Notas fiscais — item + selo de origem (quem anexou) */
+  .rd-page .rd-anx { display:grid; grid-template-columns:2rem 1fr; gap:.7rem; align-items:start; padding:.6rem 0; }
+  .rd-page .rd-anx + .rd-anx { border-top:1px solid var(--separator-hairline); }
+  .rd-page .rd-anx-ic { width:2rem; height:2rem; display:grid; place-items:center; border-radius:999px; background: var(--bg-fill-tertiary, rgba(120,120,128,.1)); color:#0071e3; font-size:.8rem; }
+  .rd-page .rd-anx-name { font-weight:700; font-size:.88rem; overflow-wrap:anywhere; }
+  .rd-page .rd-anx-meta { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem .5rem; margin-top:.25rem; color: var(--text-tertiary); font-size:.76rem; }
+  .rd-page .rd-orig { display:inline-flex; align-items:center; gap:.3rem; padding:.12rem .5rem; border-radius:999px; font-size:.68rem; font-weight:800; letter-spacing:.02em; }
+  .rd-page .rd-orig--fornecedor { color: var(--brand,#0071e3); background: rgba(0,113,227,.12); }
+  .rd-page .rd-orig--ti { color:#5856d6; background: rgba(88,86,214,.14); }
+  .rd-page .rd-anx-who { font-weight:700; color: var(--text-secondary); }
 
   .rd-page .rd-timeline { display:grid; }
   .rd-page .rd-tl { display:grid; grid-template-columns:auto 1fr; gap:.9rem; padding:.9rem 1.2rem; border-top:1px solid var(--separator-hairline); }
@@ -72,6 +86,26 @@
     <span class="rd-osc rd-osc--{{ ordem.status }}">{{ ordem.get_status_display }}</span>
   </div>
 
+  {# ── Progresso da ordem ──────────────────────────────────────────────── #}
+  {% include "front/manutencao/_os_stepper.html" %}
+
+  {% if pode_aprovar %}
+  <div class="rd-action" style="background: rgba(255,149,0,.08); border-color: rgba(255,149,0,.28);">
+    <h3><i class="fa-solid fa-file-invoice-dollar"></i> Aprovar orçamento do reparo</h3>
+    <p style="margin-bottom:.7rem; color:var(--text-secondary); font-size:.88rem;">
+      O fornecedor enviou um orçamento de <b>R$ {{ ordem.valor_orcamento|default:'—' }}</b>{% if ordem.diagnostico %} — diagnóstico: {{ ordem.diagnostico }}{% endif %}.
+      Aprovar libera o reparo; reprovar devolve o equipamento ao cliente com avaliação técnica.
+    </p>
+    <form method="post" action="{% url 'manutencao_recebimento_acao' ordem.pk %}" class="rd-form">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="detalhe">
+      <div class="rd-field rd-field--grow"><label for="obs_ap">Observação</label><input type="text" id="obs_ap" name="observacao" placeholder="Opcional"></div>
+      <button type="submit" name="acao" value="aprovado" class="btn btn-success"><i class="fa-solid fa-check"></i> Aprovar reparo</button>
+      <button type="submit" name="acao" value="reprovado" class="btn" style="background:#ff3b30;border-color:#ff3b30;color:#fff;"><i class="fa-solid fa-xmark"></i> Reprovar</button>
+    </form>
+  </div>
+  {% endif %}
+
   {% if pode_concluir %}
   <div class="rd-action">
     <h3><i class="fa-solid fa-circle-check"></i> Concluir esta ordem</h3>
@@ -95,15 +129,51 @@
   </div>
   {% endif %}
 
-  {% if ordem.diagnostico or ordem.reparo_valor %}
+  {% if ordem.diagnostico or ordem.valor_orcamento or ordem.valor_conserto or ordem.valor_total or ordem.valor_avaliacao_tecnica %}
   <div>
-    <div class="rd-sec-title">Diagnóstico e reparo</div>
+    <div class="rd-sec-title">Diagnóstico e valores</div>
     <div class="rd-card" style="margin-top:.5rem; padding:1rem 1.2rem;">
       {% if ordem.diagnostico %}<div class="rd-box">{{ ordem.diagnostico }}</div>{% endif %}
-      {% if ordem.reparo_valor %}<div class="rd-box" style="margin-top:.6rem;"><i class="fa-solid fa-money-bill-wave" style="color:#34c759;"></i> <b>Valor do reparo realizado:</b> R$ {{ ordem.reparo_valor }}</div>{% endif %}
+      <div class="rd-sub-grid">
+        {% if ordem.valor_orcamento %}<div class="rd-pill"><div class="rd-pill-l">Orçamento</div><div class="rd-pill-v">R$ {{ ordem.valor_orcamento }}</div></div>{% endif %}
+        {% if ordem.valor_conserto %}<div class="rd-pill"><div class="rd-pill-l">Conserto</div><div class="rd-pill-v">R$ {{ ordem.valor_conserto }}</div></div>{% endif %}
+        {% if ordem.valor_total %}<div class="rd-pill"><div class="rd-pill-l">Total (c/ extras)</div><div class="rd-pill-v">R$ {{ ordem.valor_total }}</div></div>{% endif %}
+        {% if ordem.valor_avaliacao_tecnica %}<div class="rd-pill"><div class="rd-pill-l">Avaliação técnica</div><div class="rd-pill-v">R$ {{ ordem.valor_avaliacao_tecnica }}</div></div>{% endif %}
+      </div>
+      {% if ordem.aprovado_por %}<div class="rd-box" style="margin-top:.6rem;"><i class="fa-solid fa-user-check" style="color:#0071e3;"></i> <b>Decisão do TI:</b> {{ ordem.aprovado_por.username }}{% if ordem.decisao_em %} · {{ ordem.decisao_em|date:"d/m/Y H:i" }}{% endif %}</div>{% endif %}
     </div>
   </div>
   {% endif %}
+
+  <div>
+    <div class="rd-sec-title">Notas fiscais</div>
+    <div class="rd-card" style="margin-top:.5rem; padding:1rem 1.2rem;">
+      {% for a in anexos %}
+        <div class="rd-anx">
+          <div class="rd-anx-ic"><i class="fa-solid fa-file-invoice"></i></div>
+          <div style="min-width:0;">
+            <div class="rd-anx-name"><a href="{{ a.arquivo.url }}" target="_blank" rel="noopener">{{ a.nome_arquivo }}</a></div>
+            <div class="rd-anx-meta">
+              <span class="rd-orig rd-orig--{{ a.origem }}"><i class="fa-solid {% if a.origem == 'ti' %}fa-headset{% else %}fa-truck-field{% endif %}"></i> {{ a.get_origem_display }}</span>
+              {% if a.criado_por %}<span class="rd-anx-who">{{ a.criado_por.get_full_name|default:a.criado_por.username }}</span>{% endif %}
+              <span>· {{ a.created_at|date:"d/m/Y H:i" }}</span>
+              {% if a.descricao %}<span>· {{ a.descricao }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+      {% empty %}
+        <p style="color:var(--text-tertiary); font-size:.85rem; margin:0;">Nenhuma nota fiscal anexada ainda.</p>
+      {% endfor %}
+      <form method="post" action="{% url 'manutencao_recebimento_acao' ordem.pk %}" enctype="multipart/form-data" class="rd-form" style="margin-top:.8rem;">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="detalhe">
+        <input type="hidden" name="acao" value="anexar_nf">
+        <div class="rd-field rd-field--grow"><label for="nf">Anexar NF (pode selecionar várias)</label><input type="file" id="nf" name="nf" multiple></div>
+        <div class="rd-field rd-field--grow"><label for="desc_nf">Descrição</label><input type="text" id="desc_nf" name="descricao" placeholder="Opcional"></div>
+        <button type="submit" class="btn"><i class="fa-solid fa-paperclip"></i> Anexar NF</button>
+      </form>
+    </div>
+  </div>
 
   <div>
     <div class="rd-sec-title">Equipamento</div>

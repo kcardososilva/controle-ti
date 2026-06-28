@@ -165,8 +165,9 @@ Headers: `Authorization`, `X-Device-UUID`.
 }
 ```
 - **`coletado_em`** (ISO 8601 com fuso): instante REAL da coleta. Usado como a hora do dado; `registrado_em` (carimbado pelo servidor) = chegada.
+- **Frequência (`intervalo_checkin_seg`):** faixa aceita **[5, 300]s** (o app faz clamp no dispositivo). `5s` = tempo real (recomenda-se manter a conexão HTTP viva / keep-alive); `300s` = economia de bateria/dados. O servidor é a fonte da verdade: se mandar um valor maior, ele prevalece.
 - **Fila offline:** o app pode enviar leituras antigas em rajada (cada uma com seu `coletado_em` no passado). Cada leitura vira uma linha de histórico; o "estado atual" do aparelho **não regride** com leituras antigas.
-- **Retenção:** o servidor mantém uma **janela móvel de 5 dias** de telemetria por aparelho (dados além disso são sobrepostos). A poda só ocorre quando o aparelho faz check-in — logo, um aparelho que **parou de enviar conserva todo o seu histórico**.
+- **Retenção:** o servidor mantém uma **janela móvel de 5 dias** de telemetria por aparelho (dados além disso são sobrepostos). A poda roda **de forma amostrada** nos check-ins (não a cada heartbeat, para manter a resposta leve em alta frequência); um aparelho que **parou de enviar conserva todo o seu histórico**.
 - Se `config_versao` do servidor for maior que a enviada, ele devolve o objeto `config` atualizado (o app aplica e persiste).
 - `comandos` (Fase 2): lista de ações pendentes (ver 4.5).
 

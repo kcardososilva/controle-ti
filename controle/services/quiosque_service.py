@@ -12,10 +12,12 @@ Segurança:
   - O código de matrícula é de uso único e protege o enroll.
 """
 import hashlib
+import random
 import secrets
 import string
 from datetime import datetime, timedelta
 
+from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.contrib.auth.hashers import make_password
@@ -28,6 +30,12 @@ from django.db.models.functions import Coalesce
 # QUANDO o aparelho faz check-in; logo, um aparelho que parou de enviar conserva
 # todo o seu histórico (fica guardado como histórico do dispositivo).
 RETENCAO_DIAS = 5
+
+# Probabilidade de rodar a poda em cada check-in. A poda é uma janela de 5 dias e
+# NÃO precisa rodar a cada heartbeat — com o app em ~5s isso seria um DELETE-scan
+# contínuo. Rodando de forma amostrada (~1 a cada 50 check-ins) a tabela continua
+# limitada à janela e a resposta do check-in fica leve em alta frequência.
+_PRUNE_PROB = 0.02
 
 
 class EnrollConflict(Exception):
@@ -261,38 +269,43 @@ def registrar_checkin(device, dados: dict) -> dict:
     coletado = _parse_dt(dados.get("coletado_em")) or timezone.now()
     serial = (dados.get("serial") or "").strip()
 
-    KioskCheckin.objects.create(
-        device=device, latitude=lat, longitude=lon, precisao_m=prec,
-        bateria=bat, carregando=carregando, rede=rede, online=online,
-        coletado_em=coletado,
-    )
+    # Tudo num único bloco atômico: a 5s de intervalo isso reduz commits/locks no
+    # SQLite (1 transação por check-in em vez de várias autocommit em série).
+    with transaction.atomic():
+        KioskCheckin.objects.create(
+            device=device, latitude=lat, longitude=lon, precisao_m=prec,
+            bateria=bat, carregando=carregando, rede=rede, online=online,
+            coletado_em=coletado,
+        )
 
-    eh_mais_recente = device.ultimo_checkin is None or coletado >= device.ultimo_checkin
-    if eh_mais_recente:
-        device.ultima_latitude = lat if lat is not None else device.ultima_latitude
-        device.ultima_longitude = lon if lon is not None else device.ultima_longitude
-        device.ultima_precisao_m = prec if prec is not None else device.ultima_precisao_m
-        device.ultima_bateria = bat if bat is not None else device.ultima_bateria
-        device.ultima_rede = rede or device.ultima_rede
-        device.ultimo_checkin = coletado
-        if serial and not device.serial:
-            device.serial = serial
-    if dados.get("app_versao"):
-        device.app_versao = str(dados.get("app_versao"))[:20]
-    device.save()
+        eh_mais_recente = device.ultimo_checkin is None or coletado >= device.ultimo_checkin
+        if eh_mais_recente:
+            device.ultima_latitude = lat if lat is not None else device.ultima_latitude
+            device.ultima_longitude = lon if lon is not None else device.ultima_longitude
+            device.ultima_precisao_m = prec if prec is not None else device.ultima_precisao_m
+            device.ultima_bateria = bat if bat is not None else device.ultima_bateria
+            device.ultima_rede = rede or device.ultima_rede
+            device.ultimo_checkin = coletado
+            if serial and not device.serial:
+                device.serial = serial
+        if dados.get("app_versao"):
+            device.app_versao = str(dados.get("app_versao"))[:20]
+        device.save()
 
-    # Retenção: janela móvel de 5 dias (só poda aparelhos que continuam enviando)
-    prune_checkins(device)
+        # Retenção: janela móvel de 5 dias, podada de forma amostrada (ver _PRUNE_PROB)
+        # — não roda a cada heartbeat para manter a resposta leve em alta frequência.
+        if random.random() < _PRUNE_PROB:
+            prune_checkins(device)
 
-    # Comandos pendentes → marca como entregues
-    pendentes = list(device.comandos.filter(status=KioskComando.Status.PENDENTE).order_by("criado_em"))
-    comandos = [{"id": c.id, "tipo": c.tipo, "payload": c.payload or {}} for c in pendentes]
-    if pendentes:
-        agora = timezone.now()
-        for c in pendentes:
-            c.status = KioskComando.Status.ENTREGUE
-            c.entregue_em = agora
-        KioskComando.objects.bulk_update(pendentes, ["status", "entregue_em"])
+        # Comandos pendentes → marca como entregues
+        pendentes = list(device.comandos.filter(status=KioskComando.Status.PENDENTE).order_by("criado_em"))
+        comandos = [{"id": c.id, "tipo": c.tipo, "payload": c.payload or {}} for c in pendentes]
+        if pendentes:
+            agora = timezone.now()
+            for c in pendentes:
+                c.status = KioskComando.Status.ENTREGUE
+                c.entregue_em = agora
+            KioskComando.objects.bulk_update(pendentes, ["status", "entregue_em"])
 
     # Config só vai de volta se o device estiver desatualizado
     try:

@@ -17,14 +17,17 @@ from django.shortcuts import render, redirect, get_object_or_404
 from ..models import (
     Fornecedor,
     OrdemManutencao,
+    OrdemManutencaoAnexo,
     StatusItemChoices,
     StatusOrdemManutencaoChoices,
 )
 
 S = StatusOrdemManutencaoChoices
 
-# TI age quando o fornecedor já devolveu o reparado (DEVOLVIDO) ou enviou o substituto.
-_PENDENTES_TI = [S.DEVOLVIDO, S.SUBSTITUTO_ENVIADO]
+# TI precisa agir: aprovar/reprovar orçamento, ou receber o reparado/substituto.
+_PENDENTES_TI = [S.AGUARDANDO_APROVACAO, S.DEVOLVIDO, S.SUBSTITUTO_ENVIADO]
+# Estados em que a ação do TI é "concluir" a ordem (receber item de volta).
+_CONCLUIVEIS_TI = [S.DEVOLVIDO, S.SUBSTITUTO_ENVIADO]
 
 _STATUS_RETORNO_OPCOES = [
     (StatusItemChoices.BACKUP.value, StatusItemChoices.BACKUP.label),
@@ -86,18 +89,24 @@ def manutencao_recebimento_detail(request, pk: int):
     ordem = get_object_or_404(
         OrdemManutencao.objects.select_related(
             "item", "item__subtipo", "item__localidade", "item_substituto", "fornecedor",
-            "movimentacao_origem",
+            "movimentacao_origem", "aprovado_por",
         ),
         pk=pk,
     )
     eventos = ordem.eventos.select_related("criado_por").all()
+    anexos = ordem.anexos.select_related("criado_por").all()
     context = {
         "ordem": ordem,
         "eventos": eventos,
-        "pode_concluir": ordem.status in _PENDENTES_TI,
+        "anexos": anexos,
+        "pode_aprovar": ordem.status == S.AGUARDANDO_APROVACAO,
+        "pode_concluir": ordem.status in _CONCLUIVEIS_TI,
         "status_retorno_opcoes": _STATUS_RETORNO_OPCOES,
     }
     return render(request, "front/manutencao/recebimento_detail.html", context)
+
+
+_ACOES_TI_VALIDAS = {S.APROVADO, S.REPROVADO, S.CONCLUIDO}
 
 
 @login_required
@@ -106,29 +115,60 @@ def manutencao_recebimento_acao(request, pk: int):
     if request.method != "POST":
         return redirect("manutencao_recebimentos")
 
+    destino = request.POST.get("next") or "manutencao_recebimentos"
+    acao = request.POST.get("acao", "")
+
+    def _voltar():
+        if destino == "detalhe":
+            return redirect("manutencao_recebimento_detail", pk=pk)
+        return redirect("manutencao_recebimentos")
+
+    # ── Upload de Nota Fiscal pelo TI (pode anexar quantas quiser) ──────────
+    if acao == "anexar_nf":
+        arquivos = request.FILES.getlist("nf")
+        if not arquivos:
+            messages.error(request, "Selecione ao menos um arquivo de NF.")
+        else:
+            descricao = request.POST.get("descricao", "").strip()
+            for arq in arquivos:
+                OrdemManutencaoAnexo.objects.create(
+                    ordem=ordem,
+                    arquivo=arq,
+                    origem=OrdemManutencaoAnexo.OrigemAnexo.TI,
+                    descricao=descricao,
+                    criado_por=request.user,
+                    atualizado_por=request.user,
+                )
+            messages.success(request, f"{len(arquivos)} nota(s) fiscal(is) anexada(s).")
+        return _voltar()
+
+    # ── Transição conduzida pelo TI (aprovar / reprovar / concluir) ─────────
     # import tardio evita ciclo (service importa models do app)
     from services.ordem_manutencao_service import OrdemManutencaoService
+
+    novo_status = acao if acao in {str(s) for s in _ACOES_TI_VALIDAS} else S.CONCLUIDO
 
     extra = {}
     status_retorno = request.POST.get("status_retorno")
     if status_retorno:
         extra["status_retorno"] = status_retorno
 
-    destino = request.POST.get("next") or "manutencao_recebimentos"
-
     try:
         OrdemManutencaoService.transicionar(
             ordem=ordem,
-            novo_status=S.CONCLUIDO,
+            novo_status=novo_status,
             user=request.user,
             observacao=request.POST.get("observacao", ""),
             ator="ti",
             **extra,
         )
-        messages.success(request, f"OS #{ordem.pk} concluída com sucesso.")
+        _msg = {
+            str(S.APROVADO): f"Orçamento da OS #{ordem.pk} aprovado.",
+            str(S.REPROVADO): f"Orçamento da OS #{ordem.pk} reprovado.",
+            str(S.CONCLUIDO): f"OS #{ordem.pk} concluída com sucesso.",
+        }.get(str(novo_status), "Status atualizado com sucesso.")
+        messages.success(request, _msg)
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
 
-    if destino == "detalhe":
-        return redirect("manutencao_recebimento_detail", pk=pk)
-    return redirect("manutencao_recebimentos")
+    return _voltar()
