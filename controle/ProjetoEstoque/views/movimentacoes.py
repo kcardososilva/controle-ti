@@ -108,19 +108,6 @@ def movimentacao_list(request):
     kpi_top_item_nome = top_mover_data["item__nome"] if top_mover_data else "-"
     kpi_top_item_qtd = top_mover_data["total"] if top_mover_data else 0
 
-    # ranking dos usuários que mais realizam movimentações
-    ranking_usuarios = (
-        qs.filter(criado_por__isnull=False)
-        .values(
-            "criado_por__id",
-            "criado_por__username",
-            "criado_por__first_name",
-            "criado_por__last_name",
-        )
-        .annotate(total=Count("id"))
-        .order_by("-total", "criado_por__username")[:8]
-    )
-
     try:
         per_page = int(request.GET.get("pp", 20))
     except ValueError:
@@ -149,8 +136,6 @@ def movimentacao_list(request):
         "f_ini": request.GET.get("data_inicio", ""),
         "f_fim": request.GET.get("data_fim", ""),
         "tipos_choices": TipoMovimentacaoChoices.choices,
-
-        "ranking_usuarios": ranking_usuarios,
 
         "kpi": {
             "hoje": kpi_hoje,

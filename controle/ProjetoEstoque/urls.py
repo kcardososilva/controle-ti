@@ -11,6 +11,7 @@ urlpatterns = [
     path("sobre/", views.sobre_plataforma, name="sobre_plataforma"),
     path("login/", auth_views.LoginView.as_view(template_name="login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(next_page="login"), name="logout"),
+    path("perfil/", views.admin_perfil, name="admin_perfil"),
 
     # ── Categorias ──────────────────────────────────────────────────────────
     path("categorias/", views.categorias_list, name="categorias_list"),

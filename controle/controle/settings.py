@@ -67,17 +67,32 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'controle.urls'
 
+# Loaders de template:
+#  • Produção (DEBUG=False) → cached.Loader: cada template é compilado UMA vez e
+#    reusado da memória. Como as páginas têm muito CSS inline, isso elimina o
+#    re-parse a cada requisição (ganho grande de render).
+#  • Dev (DEBUG=True) → loaders simples, para o auto-reload de template continuar.
+# APP_DIRS e 'loaders' são mutuamente exclusivos: por isso APP_DIRS sai e a lista
+# de loaders assume o mesmo papel — filesystem (DIRS) + app_directories
+# (templates dos apps, incluindo o admin).
+_TEMPLATE_LOADERS = [
+    'django.template.loaders.filesystem.Loader',
+    'django.template.loaders.app_directories.Loader',
+]
+if not DEBUG:
+    _TEMPLATE_LOADERS = [('django.template.loaders.cached.Loader', _TEMPLATE_LOADERS)]
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [os.path.join(BASE_DIR, 'templates')],
-        'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
             ],
+            'loaders': _TEMPLATE_LOADERS,
         },
     },
 ]

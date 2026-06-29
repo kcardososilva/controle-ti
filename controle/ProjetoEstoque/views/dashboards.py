@@ -621,152 +621,11 @@ def _get_meses_ciclo(periodicidade_str):
     if 'ANU' in p: return 12
     return 1
 
-def _get_cc_custos_data(request):
-    """
-    Função Helper: Processa todos os cálculos de custo por Centro de Custo.
-    Retorna o dicionário de contexto para ser usado na View Web ou no PDF.
-    """
-    hoje = timezone.localdate()
-    dt_ini = _parse_date(request.GET.get("inicio"), hoje.replace(day=1))
-    dt_fim = _parse_date(request.GET.get("fim"), hoje)
+# NOTA: a função `_get_cc_custos_data` viva é a definição mais abaixo neste
+# módulo (usa `_calcular_custo_mensal_unitario_lote` + quantize). Uma versão
+# duplicada/antiga existia aqui e era SOBRESCRITA por aquela — removida para
+# evitar edição no lugar errado.
 
-    totals = {}
-
-    def get_acc(cc_id):
-        if not cc_id: return None
-        if cc_id not in totals:
-            totals[cc_id] = {
-                "cc_obj": None,
-                "qtd_usuarios": 0,
-                "qtd_itens": 0,
-                "qtd_licencas": 0,
-                "custo_locacao": Decimal("0.00"),
-                "custo_licencas": Decimal("0.00"),
-                "custo_baixas": Decimal("0.00"),
-            }
-        return totals[cc_id]
-
-    # 1. Locação (Hardware)
-    locacoes = Locacao.objects.select_related("equipamento__centro_custo").filter(
-        equipamento__status='ativo', valor_mensal__gt=0, equipamento__centro_custo__isnull=False
-    )
-    for loc in locacoes:
-        acc = get_acc(loc.equipamento.centro_custo.id)
-        if acc: acc["custo_locacao"] += (loc.valor_mensal or Decimal(0))
-
-    # 2. Licenças (Software - Unitário)
-    movs_lic = MovimentacaoLicenca.objects.select_related(
-        "licenca", "usuario__centro_custo", "centro_custo_destino", "lote"
-    ).filter(usuario__isnull=False).order_by("licenca_id", "usuario_id", "created_at")
-
-    estado_atual_lic = { (m.licenca_id, m.usuario_id): m for m in movs_lic }
-
-    for (lid, uid), mov in estado_atual_lic.items():
-        if mov.tipo == TipoMovLicencaChoices.ATRIBUICAO:
-            cc_id = None
-            if mov.usuario and mov.usuario.centro_custo:
-                cc_id = mov.usuario.centro_custo.id
-            elif mov.centro_custo_destino:
-                cc_id = mov.centro_custo_destino.id
-            elif mov.licenca.centro_custo:
-                cc_id = mov.licenca.centro_custo.id
-            
-            acc = get_acc(cc_id)
-            if acc:
-                lote = mov.lote
-                custo_mensal_unit = Decimal("0.00")
-                if lote:
-                    c_ciclo = lote.custo_ciclo or Decimal(0)
-                    meses = _get_meses_ciclo(lote.periodicidade)
-                    if meses > 0: custo_mensal_unit = (c_ciclo / Decimal(meses))
-                else:
-                    custo_mensal_unit = mov.licenca.custo or Decimal(0) # Fallback
-
-                acc["custo_licencas"] += custo_mensal_unit
-                acc["qtd_licencas"] += 1
-
-    # 3. Baixas (Pontual)
-    baixas = MovimentacaoItem.objects.filter(
-        tipo_movimentacao=TipoMovimentacaoChoices.BAIXA,
-        created_at__date__gte=dt_ini, created_at__date__lte=dt_fim
-    ).select_related("item__centro_custo", "centro_custo_origem")
-
-    for b in baixas:
-        cc_id = b.centro_custo_origem.id if b.centro_custo_origem else (b.item.centro_custo.id if b.item.centro_custo else None)
-        acc = get_acc(cc_id)
-        if acc:
-            val = b.custo if b.custo is not None else (b.item.valor or Decimal(0)) * (b.quantidade or 1)
-            acc["custo_baixas"] += val
-
-    # 4. Metadados (Nomes, Contagens)
-    cc_ids = list(totals.keys())
-    ccs_objs = CentroCusto.objects.filter(id__in=cc_ids)
-    for cc in ccs_objs:
-        if cc.id in totals: totals[cc.id]["cc_obj"] = cc
-
-    users_agg = Usuario.objects.filter(centro_custo_id__in=cc_ids, status='ativo').values('centro_custo_id').annotate(n=Count('id'))
-    for u in users_agg: 
-        if u['centro_custo_id'] in totals: totals[u['centro_custo_id']]['qtd_usuarios'] = u['n']
-
-    itens_agg = Item.objects.filter(centro_custo_id__in=cc_ids, status='ativo').values('centro_custo_id').annotate(n=Count('id'))
-    for i in itens_agg:
-        if i['centro_custo_id'] in totals: totals[i['centro_custo_id']]['qtd_itens'] = i['n']
-
-    # 5. Consolidação
-    linhas = []
-    total_geral_itens = Decimal(0)
-    total_geral_lics = Decimal(0)
-    total_geral_baixas = Decimal(0)
-
-    for cc_id, dados in totals.items():
-        if not dados["cc_obj"]: continue
-
-        c_itens = dados["custo_locacao"]
-        c_lics = dados["custo_licencas"]
-        c_baixas = dados["custo_baixas"]
-        total_mensal = c_itens + c_lics
-        total_impacto = total_mensal + c_baixas
-
-        total_geral_itens += c_itens
-        total_geral_lics += c_lics
-        total_geral_baixas += c_baixas
-
-        linhas.append({
-            "cc": dados["cc_obj"],
-            "usuarios": dados["qtd_usuarios"],
-            "itens": dados["qtd_itens"],
-            "licencas": dados["qtd_licencas"],
-            "custo_itens": c_itens,
-            "custo_licencas": c_lics,
-            "baixas": c_baixas,
-            "total_mensal": total_mensal,
-            "total_impacto": total_impacto
-        })
-
-    linhas.sort(key=lambda x: x["total_impacto"], reverse=True)
-
-    # Dados de Gráfico
-    chart_labels = [f"{l['cc'].numero}" for l in linhas[:10]]
-    chart_itens = [float(l['custo_itens']) for l in linhas[:10]]
-    chart_lics = [float(l['custo_licencas']) for l in linhas[:10]]
-
-    return {
-        "dt_ini": dt_ini,
-        "dt_fim": dt_fim,
-        "linhas": linhas,
-        
-        # KPIs
-        "kpi_cc_count": len(linhas),
-        "kpi_total_mensal": total_geral_itens + total_geral_lics,
-        "kpi_total_baixas": total_geral_baixas,
-        "kpi_top_cc": linhas[0]['cc'].departamento if linhas else "-",
-        
-        # Charts (apenas para Web)
-        "js_labels": chart_labels,
-        "js_itens": chart_itens,
-        "js_lics": chart_lics,
-        "js_mix_values": [float(total_geral_itens), float(total_geral_lics)]
-    }
 
 @login_required
 def cc_custos_dashboard(request):
@@ -894,12 +753,17 @@ def cc_custos_dashboard(request):
             created_at__date__gte=dt_ini,
             created_at__date__lte=dt_fim
         )
-        .select_related("item__centro_custo", "centro_custo_origem")
+        .select_related("item__centro_custo", "centro_custo_origem", "centro_custo_destino")
     )
 
     for b in baixas:
+        # A baixa é atribuída ao CC de DESTINO (o setor para onde o item foi
+        # baixado/consumido). Cai para a origem e depois para o CC do item se o
+        # destino não existir.
         cc_id = None
-        if b.centro_custo_origem:
+        if b.centro_custo_destino:
+            cc_id = b.centro_custo_destino.id
+        elif b.centro_custo_origem:
             cc_id = b.centro_custo_origem.id
         elif b.item.centro_custo:
             cc_id = b.item.centro_custo.id
@@ -1158,12 +1022,15 @@ def _get_cc_custos_data(request):
             created_at__date__gte=dt_ini,
             created_at__date__lte=dt_fim,
         )
-        .select_related("item__centro_custo", "centro_custo_origem")
+        .select_related("item__centro_custo", "centro_custo_origem", "centro_custo_destino")
     )
 
     for baixa in baixas:
+        # Baixa atribuída ao CC de DESTINO (setor consumidor); fallback origem → item.
         cc_id = None
-        if baixa.centro_custo_origem:
+        if baixa.centro_custo_destino:
+            cc_id = baixa.centro_custo_destino.id
+        elif baixa.centro_custo_origem:
             cc_id = baixa.centro_custo_origem.id
         elif baixa.item and baixa.item.centro_custo:
             cc_id = baixa.item.centro_custo.id

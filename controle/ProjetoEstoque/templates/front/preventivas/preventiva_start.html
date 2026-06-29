@@ -416,19 +416,33 @@
   $(document).ready(function() {
     const config = {
       width: '100%',
+      placeholder: 'Selecione...',
+      allowClear: false,
       language: {
         noResults: function() { return 'Nenhum resultado encontrado'; },
         searching: function() { return 'Buscando...'; }
       }
     };
 
-    $('#{{ form.item.auto_id }}, #{{ form.checklist_modelo.auto_id }}').addClass('pv-control').select2(config);
+    const $item = $('#{{ form.item.auto_id }}');
+    const $check = $('#{{ form.checklist_modelo.auto_id }}');
 
-    if ($('#{{ form.item.auto_id }}').val()) {
-      setTimeout(function() { $('#{{ form.checklist_modelo.auto_id }}').select2('open'); }, 250);
-    }
+    $item.addClass('pv-control').select2(config);
+    $check.addClass('pv-control').select2(config);
 
-    $('#startForm').on('submit', function() {
+    // Nenhum campo abre/foca sozinho ao carregar a tela — isso evita o
+    // comportamento de "campo ativo automaticamente" que confundia o usuário.
+
+    $('#startForm').on('submit', function(e) {
+      // Validação inteligente: bloqueia o envio se faltar ativo ou checklist,
+      // destacando o primeiro campo pendente em vez de só recarregar a página.
+      const semItem  = !$item.val();
+      const semCheck = !$check.val();
+      if (semItem || semCheck) {
+        e.preventDefault();
+        (semItem ? $item : $check).select2('open');
+        return;
+      }
       const btn = document.getElementById('btnSubmit');
       btn.disabled = true;
       btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Iniciando...';

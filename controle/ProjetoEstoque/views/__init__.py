@@ -216,6 +216,9 @@ from .inteligencia import (
 # ── Home / Sobre ─────────────────────────────────────────────────────────────
 from .home import sobre_plataforma
 
+# ── Administrador do Sistema (perfil do usuário logado) ──────────────────────
+from .admin_perfil import admin_perfil
+
 # ── Alertas ──────────────────────────────────────────────────────────────────
 from .alertas import alertas_dashboard, alertas_enviar, alertas_toggle
 
