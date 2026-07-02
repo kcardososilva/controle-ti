@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load humanize %}
+{% load humanize l10n %}
 
 {% block title %}{{ device.apelido|default:device.modelo }} — Quiosque{% endblock %}
 {% block page_title %}{{ device.apelido|default:device.modelo|default:"Dispositivo" }}{% endblock %}
@@ -76,6 +76,23 @@
 .kq-pg a, .kq-pg span { padding:.3rem .6rem; border-radius:var(--radius-md); border:1px solid var(--separator-hairline); font-size:.8rem; font-weight:700; text-decoration:none; color:var(--text-secondary); }
 .kq-pg .cur { background:var(--kq-brand); color:#fff; border-color:var(--kq-brand); }
 
+/* Localização clicável (linha da tabela → ponto exato no mapa) */
+.kq-loc { display:inline-flex; align-items:center; gap:.35rem; padding:.18rem .55rem; border:1px solid var(--separator-hairline); background:var(--bg-fill-secondary); border-radius:var(--radius-pill); color:var(--kq-brand); font:inherit; font-size:.78rem; font-weight:700; font-variant-numeric:tabular-nums; cursor:pointer; transition:background .15s,border-color .15s,color .15s; }
+.kq-loc:hover { background:color-mix(in srgb,var(--kq-brand) 12%,transparent); border-color:color-mix(in srgb,var(--kq-brand) 32%,transparent); }
+.kq-loc:focus-visible { outline:2px solid var(--kq-brand); outline-offset:1px; }
+.kq-loc.is-active { background:var(--kq-brand); color:#fff; border-color:var(--kq-brand); }
+.kq-loc i { font-size:.72rem; }
+.kq-loc-ext { margin-left:.4rem; color:var(--text-tertiary); font-size:.74rem; text-decoration:none; }
+.kq-loc-ext:hover { color:var(--kq-brand); }
+.kq-table tr.is-active-row td { background:color-mix(in srgb,var(--kq-brand) 7%,transparent); }
+.kq-reset { display:inline-flex; align-items:center; gap:.3rem; border:0; cursor:pointer; color:var(--kq-brand); background:color-mix(in srgb,var(--kq-brand) 10%,transparent); }
+.kq-reset[hidden] { display:none; }
+
+/* Marcador de FOCO no mapa — pino pulsante sobre o ponto exato selecionado */
+.kq-focus-pin { display:grid; place-items:center; background:transparent; border:0; }
+.kq-focus-dot { width:14px; height:14px; border-radius:50%; background:var(--kq-brand); border:2px solid #fff; box-shadow:0 0 0 0 color-mix(in srgb,var(--kq-brand) 55%,transparent); animation:kqPulse 1.7s ease-out infinite; }
+@keyframes kqPulse { 0%{ box-shadow:0 0 0 0 color-mix(in srgb,var(--kq-brand) 50%,transparent); } 70%{ box-shadow:0 0 0 13px transparent; } 100%{ box-shadow:0 0 0 0 transparent; } }
+
 /* Modal de exclusão (2ª etapa: senha do sistema) */
 .kq-modal { --kq-brand:#4f46e5; --kq-danger:#d93025;
   position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:1rem;
@@ -118,9 +135,14 @@
       <div class="kq-card">
         <div class="kq-card-head">
           <span class="kq-card-title"><i class="fa fa-location-dot"></i>Localização atual</span>
-          {% if device.tem_localizacao %}
-          <a href="{% url 'quiosque_mapa' %}" class="kq-pill" style="text-decoration:none;color:var(--kq-brand);">Ver mapa geral</a>
-          {% endif %}
+          <div style="display:flex;align-items:center;gap:.4rem;">
+            {% if mapa %}
+            <button type="button" id="kqReset" class="kq-pill kq-reset" hidden><i class="fa fa-arrows-to-dot"></i> Visão geral</button>
+            {% endif %}
+            {% if device.tem_localizacao %}
+            <a href="{% url 'quiosque_mapa' %}" class="kq-pill" style="text-decoration:none;color:var(--kq-brand);">Ver mapa geral</a>
+            {% endif %}
+          </div>
         </div>
         {% if mapa %}
           <div id="kqMap" class="kq-map"></div>
@@ -137,18 +159,19 @@
         </div>
         <div style="width:100%;overflow-x:auto;">
           <table class="kq-table">
-            <thead><tr><th>Quando</th><th>Bateria</th><th>Rede</th><th>Online</th><th>Localização</th></tr></thead>
+            <thead><tr><th>Quando</th><th>Bateria</th><th>Rede</th><th>Wi-Fi (SSID)</th><th>Online</th><th>Localização</th></tr></thead>
             <tbody>
               {% for c in checkins %}
               <tr>
                 <td><span title="Coletado: {{ c.quando|date:'d/m/Y H:i:s' }} · Recebido: {{ c.registrado_em|date:'d/m/Y H:i:s' }}">{{ c.quando|date:"d/m/Y H:i" }}</span></td>
                 <td>{% if c.bateria is not None %}{{ c.bateria }}%{% if c.carregando %} <i class="fa fa-bolt" style="color:#1e8e3e;"></i>{% endif %}{% else %}—{% endif %}</td>
                 <td>{{ c.rede|default:"—" }}</td>
+                <td>{{ c.ssid|default:"—" }}</td>
                 <td>{% if c.online %}<span style="color:#1e8e3e;">sim</span>{% else %}<span style="color:var(--text-tertiary);">não</span>{% endif %}</td>
-                <td>{% if c.latitude is not None %}<a target="_blank" rel="noopener" style="color:var(--kq-brand);text-decoration:none;" href="https://www.google.com/maps?q={{ c.latitude }},{{ c.longitude }}">{{ c.latitude|floatformat:5 }}, {{ c.longitude|floatformat:5 }}</a>{% else %}—{% endif %}</td>
+                <td>{% if c.latitude is not None %}<button type="button" class="kq-loc" data-cid="{{ c.pk }}" aria-pressed="false" title="Mostrar este ponto exato no mapa acima"><i class="fa fa-location-crosshairs"></i><span>{{ c.latitude|floatformat:5 }}, {{ c.longitude|floatformat:5 }}</span></button><a class="kq-loc-ext" target="_blank" rel="noopener" href="https://www.google.com/maps?q={{ c.latitude|unlocalize }},{{ c.longitude|unlocalize }}" title="Abrir no Google Maps"><i class="fa fa-up-right-from-square"></i></a>{% else %}—{% endif %}</td>
               </tr>
               {% empty %}
-              <tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:1.5rem;">Nenhum check-in recebido ainda.</td></tr>
+              <tr><td colspan="6" style="text-align:center;color:var(--text-tertiary);padding:1.5rem;">Nenhum check-in recebido ainda.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -203,6 +226,7 @@
                 {% if device.equip_serial %}<a href="{% url 'equipamento_detalhe' device.equip_serial.pk %}" title="Abrir {{ device.equip_serial.nome }}"><i class="fa fa-barcode"></i> {{ device.serial }}</a>{% else %}{{ device.serial }}{% endif %}
               {% else %}—{% endif %}
             </span></div>
+            <div class="kq-prop"><span class="l">MAC Wi-Fi</span><span class="v" style="font-variant-numeric:tabular-nums;">{{ device.mac|default:"—" }}</span></div>
             <div class="kq-prop"><span class="l">Android</span><span class="v">{{ device.android_versao|default:"—" }}</span></div>
             <div class="kq-prop"><span class="l">Versão do app</span><span class="v">{{ device.app_versao|default:"—" }}</span></div>
             <div class="kq-prop"><span class="l">RAM</span><span class="v">{% if device.ram_mb %}{{ device.ram_mb }} MB{% else %}—{% endif %}</span></div>
@@ -294,36 +318,98 @@
 {% block extra_js %}
 {% if mapa %}
 {{ mapa|json_script:"__kqmap" }}
+{{ geo_pagina|json_script:"__kqgeo" }}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (function(){
   var data = JSON.parse(document.getElementById('__kqmap').textContent);
+  var geo = {};
+  try { geo = JSON.parse(document.getElementById('__kqgeo').textContent) || {}; } catch (e) {}
   if (!data || data.lat == null || data.lon == null) return;
-  var map = L.map('kqMap', { scrollWheelZoom:false });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '&copy; OpenStreetMap'
-  }).addTo(map);
+
+  // Camadas base: satélite (Esri, PADRÃO) + mapa de ruas (OSM). O satélite ajuda
+  // a conferir visualmente o ponto físico exato registrado pelo GPS.
+  // maxNativeZoom evita o placeholder "Map data not yet available": acima desse
+  // nível a Esri não tem imagem (áreas rurais), então o Leaflet faz upscale do
+  // tile nativo em vez de pedir um tile inexistente.
+  var ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'&copy; OpenStreetMap' });
+  var sat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:19, maxNativeZoom:17, attribution:'Tiles &copy; Esri' });
+  var map = L.map('kqMap', { scrollWheelZoom:false, layers:[sat] });
+  L.control.layers({ 'Satélite':sat, 'Mapa':ruas }, null, { position:'topright' }).addTo(map);
+  L.control.scale({ imperial:false }).addTo(map);
+
   var cor = data.online ? '#1e8e3e' : '#8e8e93';
-  var trilha = data.trilha || [];
+  var trilha = data.trilha || [];                 // cronológico: antigo → recente
   var pts = trilha.map(function(p){ return [p.lat, p.lon]; });
+
+  // Traço de rota com gradiente de opacidade (fraco no início, forte no fim) para
+  // deixar claro o SENTIDO do deslocamento. Junções arredondadas e smoothFactor
+  // baixo preservam a forma real do caminho percorrido.
   if (pts.length > 1) {
-    L.polyline(pts, { color: cor, weight: 3, opacity:.55, dashArray:'5,6' }).addTo(map);
+    for (var s = 1; s < pts.length; s++) {
+      var op = 0.22 + 0.5 * (s / (pts.length - 1));   // 0.22 (início) → 0.72 (fim)
+      L.polyline([pts[s-1], pts[s]], {
+        color: cor, weight: 3, opacity: op, lineJoin: 'round', lineCap: 'round', smoothFactor: 0.5
+      }).addTo(map);
+    }
+    // Marcador de ORIGEM (onde o trajeto começa) — junto ao destino dá o sentido.
+    L.circleMarker(pts[0], { radius:5, color:'#fff', weight:2, fillColor:cor, fillOpacity:.85 })
+      .addTo(map).bindPopup('<b>Início do trajeto</b><br>' + trilha[0].quando);
   }
+
+  // Pontos intermediários (origem e mais recente já têm marcador próprio).
   trilha.forEach(function(p, i){
-    if (i === 0) return; // o ponto atual é destacado à parte
-    L.circleMarker([p.lat, p.lon], { radius:4, color:cor, weight:1, fillColor:cor, fillOpacity:.45 })
-      .addTo(map).bindPopup(p.quando + (p.bateria != null ? ' &middot; ' + p.bateria + '%' : ''));
+    if (i === 0 || i === trilha.length - 1) return;
+    L.circleMarker([p.lat, p.lon], { radius:3.5, color:cor, weight:1, fillColor:cor, fillOpacity:.5 })
+      .addTo(map).bindPopup(p.quando
+        + (p.bateria != null ? ' &middot; ' + p.bateria + '%' : '')
+        + (p.precisao != null ? ' &middot; ±' + Math.round(p.precisao) + ' m' : ''));
   });
   if (data.precisao) {
     L.circle([data.lat, data.lon], { radius:data.precisao, color:cor, weight:1, fillColor:cor, fillOpacity:.08 }).addTo(map);
   }
-  L.circleMarker([data.lat, data.lon], { radius:9, color:'#fff', weight:2, fillColor:cor, fillOpacity:1 })
-    .addTo(map).bindPopup('<b>'+ data.nome +'</b><br>'+ (data.online ? 'Online' : 'Offline')).openPopup();
-  if (pts.length > 1) {
-    map.fitBounds(L.latLngBounds(pts.concat([[data.lat, data.lon]])).pad(0.25));
-  } else {
-    map.setView([data.lat, data.lon], 16);
-  }
+  var atual = L.circleMarker([data.lat, data.lon], { radius:9, color:'#fff', weight:2, fillColor:cor, fillOpacity:1 })
+    .addTo(map).bindPopup('<b>'+ data.nome +'</b><br>'+ (data.online ? 'Online' : 'Offline') + ' &middot; posição atual');
+
+  var homeBounds = pts.length > 1 ? L.latLngBounds(pts.concat([[data.lat, data.lon]])).pad(0.25) : null;
+  function home(){ if (homeBounds) map.fitBounds(homeBounds); else map.setView([data.lat, data.lon], 17); }
+  home();
+  atual.openPopup();
+
+  // ── Marcador de FOCO: o ponto EXATO do check-in selecionado na tabela ──
+  var focusIcon = L.divIcon({ className:'kq-focus-pin', html:'<span class="kq-focus-dot"></span>', iconSize:[28,28], iconAnchor:[14,14] });
+  var fMarker = null, fCircle = null;
+  var resetBtn = document.getElementById('kqReset');
+
+  window.__kqFocar = function(cid){
+    var p = geo[cid];
+    if (!p || p.lat == null || p.lon == null) return;
+    var ll = [p.lat, p.lon];
+    if (fMarker) { fMarker.setLatLng(ll); } else { fMarker = L.marker(ll, { icon:focusIcon, zIndexOffset:1000 }).addTo(map); }
+    if (fCircle) { map.removeLayer(fCircle); fCircle = null; }
+    if (p.precisao) { fCircle = L.circle(ll, { radius:p.precisao, color:'#4f46e5', weight:1, fillColor:'#4f46e5', fillOpacity:.10 }).addTo(map); }
+    var extra = [];
+    if (p.bateria != null) extra.push(p.bateria + '%');
+    if (p.rede) extra.push(p.rede);
+    if (p.precisao != null) extra.push('±' + Math.round(p.precisao) + ' m');
+    fMarker.bindPopup('<b>'+ p.quando +'</b>' + (extra.length ? '<br>' + extra.join(' &middot; ') : ''), { offset:[0,-4] }).openPopup();
+    map.flyTo(ll, Math.max(map.getZoom(), 18), { duration:.7 });
+    if (resetBtn) resetBtn.hidden = false;
+  };
+
+  window.__kqReset = function(){
+    if (fMarker) { map.removeLayer(fMarker); fMarker = null; }
+    if (fCircle) { map.removeLayer(fCircle); fCircle = null; }
+    document.querySelectorAll('.kq-loc.is-active').forEach(function(b){
+      b.classList.remove('is-active'); b.setAttribute('aria-pressed','false');
+      var tr = b.closest('tr'); if (tr) tr.classList.remove('is-active-row');
+    });
+    if (resetBtn) resetBtn.hidden = true;
+    home();
+    atual.openPopup();
+  };
+  if (resetBtn) resetBtn.addEventListener('click', window.__kqReset);
+
   setTimeout(function(){ map.invalidateSize(); }, 120);
 })();
 </script>
@@ -359,6 +445,32 @@
   btn.addEventListener('click', open);
   modal.addEventListener('click', function(ev){ if (ev.target === modal || ev.target.hasAttribute('data-close')) close(); });
   document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape' && !modal.hidden) close(); });
+})();
+
+// Clique na localização da tabela → foca o ponto EXATO no mapa acima.
+(function(){
+  var botoes = document.querySelectorAll('.kq-loc');
+  if (!botoes.length) return;
+  botoes.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var cid = btn.getAttribute('data-cid');
+      if (!cid || typeof window.__kqFocar !== 'function') return;
+      document.querySelectorAll('.kq-loc.is-active').forEach(function(b){
+        b.classList.remove('is-active'); b.setAttribute('aria-pressed','false');
+        var t = b.closest('tr'); if (t) t.classList.remove('is-active-row');
+      });
+      btn.classList.add('is-active'); btn.setAttribute('aria-pressed','true');
+      var tr = btn.closest('tr'); if (tr) tr.classList.add('is-active-row');
+      var mapEl = document.getElementById('kqMap');
+      var r = mapEl ? mapEl.getBoundingClientRect() : null;
+      if (r && (r.top < 8 || r.bottom > window.innerHeight)) {
+        mapEl.scrollIntoView({ behavior:'smooth', block:'center' });
+        setTimeout(function(){ window.__kqFocar(cid); }, 360);
+      } else {
+        window.__kqFocar(cid);
+      }
+    });
+  });
 })();
 </script>
 {% endblock %}

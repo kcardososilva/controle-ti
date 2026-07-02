@@ -268,6 +268,12 @@ def registrar_checkin(device, dados: dict) -> dict:
     carregando = bool(dados.get("carregando", False))
     coletado = _parse_dt(dados.get("coletado_em")) or timezone.now()
     serial = (dados.get("serial") or "").strip()
+    # ssid = estado do momento (vai na linha do check-in); mac = identidade estável (vai no device).
+    # Ambos opcionais/anuláveis: o app pode mandar null (emulador/sem Wi-Fi). Nunca exigir.
+    ssid = (dados.get("ssid") or None)
+    if ssid:
+        ssid = str(ssid)[:64]
+    mac = (dados.get("mac") or "").strip()[:17] or None
 
     # Tudo num único bloco atômico: a 5s de intervalo isso reduz commits/locks no
     # SQLite (1 transação por check-in em vez de várias autocommit em série).
@@ -275,7 +281,7 @@ def registrar_checkin(device, dados: dict) -> dict:
         KioskCheckin.objects.create(
             device=device, latitude=lat, longitude=lon, precisao_m=prec,
             bateria=bat, carregando=carregando, rede=rede, online=online,
-            coletado_em=coletado,
+            ssid=ssid, coletado_em=coletado,
         )
 
         eh_mais_recente = device.ultimo_checkin is None or coletado >= device.ultimo_checkin
@@ -288,6 +294,10 @@ def registrar_checkin(device, dados: dict) -> dict:
             device.ultimo_checkin = coletado
             if serial and not device.serial:
                 device.serial = serial
+        # MAC: identidade estável do aparelho → atualiza só quando chega valor não-nulo
+        # (não sobrescreve um MAC bom com null vindo de um check-in sem Device Owner).
+        if mac and device.mac != mac:
+            device.mac = mac
         if dados.get("app_versao"):
             device.app_versao = str(dados.get("app_versao"))[:20]
         device.save()
@@ -331,3 +341,88 @@ def registrar_ack_comando(device, comando_id, status: str, detalhe: str = "") ->
     c.finalizado_em = timezone.now()
     c.save(update_fields=["status", "detalhe", "finalizado_em"])
     return True
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Trilha de localização (traço de rota no mapa do detalhe)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Precisão (m) acima da qual um fix é considerado ruim e fica FORA do traço de
+# rota. Fixes por Wi-Fi/torre chegam com precisao_m alta e esticam a linha para
+# longe; descartá-los deixa o traço fiel ao caminho real percorrido.
+TRILHA_PRECISAO_MAX_M = 80.0
+# Velocidade (km/h) impossível entre dois pontos → descarta o ponto como glitch
+# de GPS ("teletransporte"). Só vale para saltos com distância relevante.
+TRILHA_VEL_MAX_KMH = 160.0
+TRILHA_SALTO_MIN_M = 100.0
+# Máximo de pontos recentes considerados no traço (janela de rota mais recente).
+TRILHA_MAX_PONTOS = 150
+
+
+def _haversine_m(lat1, lon1, lat2, lon2) -> float:
+    """Distância em metros entre duas coordenadas (fórmula de haversine)."""
+    from math import radians, sin, cos, asin, sqrt
+    raio = 6371000.0
+    dphi = radians(lat2 - lat1)
+    dlmb = radians(lon2 - lon1)
+    a = sin(dphi / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlmb / 2) ** 2
+    return 2 * raio * asin(sqrt(a))
+
+
+def montar_trilha(device, max_pontos: int = TRILHA_MAX_PONTOS) -> list:
+    """
+    Monta o traço de deslocamento do device para o mapa do detalhe, priorizando a
+    PRECISÃO do caminho:
+
+      1. Ordena pelo horário REAL de coleta (coletado_em), não pela chegada ao
+         servidor — corrige a forma da rota quando o app entrega uma fila offline
+         em rajada (registrado_em fora de ordem).
+      2. Descarta fixes ruins (precisao_m acima do limite) que jogam o traço longe.
+      3. Remove saltos impossíveis (velocidade acima do limite) — glitches de GPS.
+
+    Devolve a lista em ordem CRONOLÓGICA (antigo → recente):
+    [{id, lat, lon, precisao, quando, bateria, online}].
+    """
+    from ProjetoEstoque.models import KioskCheckin
+
+    base = list(
+        KioskCheckin.objects
+        .filter(device=device, latitude__isnull=False, longitude__isnull=False)
+        .annotate(ts=Coalesce("coletado_em", "registrado_em"))
+        .order_by("-ts")[:max_pontos]
+    )
+    base.reverse()  # cronológico ascendente (antigo → recente)
+
+    def _construir(filtrar_precisao: bool) -> list:
+        pontos, prev = [], None
+        for c in base:
+            if filtrar_precisao and c.precisao_m is not None and c.precisao_m > TRILHA_PRECISAO_MAX_M:
+                continue
+            ts = c.coletado_em or c.registrado_em
+            if prev is not None:
+                dist = _haversine_m(prev["lat"], prev["lon"], c.latitude, c.longitude)
+                dt = (ts - prev["_ts"]).total_seconds()
+                if dt > 0 and dist > TRILHA_SALTO_MIN_M and (dist / dt) * 3.6 > TRILHA_VEL_MAX_KMH:
+                    continue  # salto impossível → descarta como glitch de GPS
+            ponto = {
+                "id": c.pk,
+                "lat": c.latitude,
+                "lon": c.longitude,
+                "precisao": c.precisao_m,
+                "quando": timezone.localtime(ts).strftime("%d/%m/%Y %H:%M"),
+                "bateria": c.bateria,
+                "online": c.online,
+                "_ts": ts,
+            }
+            pontos.append(ponto)
+            prev = ponto
+        for p in pontos:
+            p.pop("_ts", None)
+        return pontos
+
+    trilha = _construir(filtrar_precisao=True)
+    # Se o filtro de precisão zerou o traço (device cujo GPS é sempre ruim), refaz
+    # sem ele para ainda assim mostrar algum caminho.
+    if len(trilha) < 2:
+        trilha = _construir(filtrar_precisao=False)
+    return trilha

@@ -183,6 +183,7 @@ def quiosque_dashboard(request):
             d for d in devices
             if ql in (d.apelido or "").lower() or ql in (d.modelo or "").lower()
             or ql in (d.serial or "").lower() or ql in (d.fabricante or "").lower()
+            or ql in (d.mac or "").lower()
         ]
 
     devices.sort(key=lambda d: (d.online is False, (d.apelido or d.modelo or "").lower()))
@@ -215,16 +216,29 @@ def quiosque_detalhe(request, pk: int):
     page_obj = paginator.get_page(request.GET.get("page", 1))
     comandos = device.comandos.all()[:20]
 
-    # Trilha de localização (check-ins recentes com GPS) para o mapa do detalhe.
-    trilha = [
-        {
+    # Traço de rota (deslocamento) para o mapa do detalhe. A montagem fica no
+    # service: ordena por horário real de coleta, descarta fixes de GPS ruins e
+    # saltos impossíveis — deixando o caminho fiel ao percorrido (ordem antigo→recente).
+    trilha = qs.montar_trilha(device)
+
+    # Geolocalização dos check-ins exibidos NESTA página da tabela. Permite focar
+    # o ponto EXATO no mapa ao clicar na linha (chaveado pelo id do check-in).
+    # Serializado via json_script no template → sempre com ponto decimal, sem o
+    # problema de localização pt-BR (vírgula) que quebraria o parseFloat no JS.
+    geo_pagina = {
+        c.pk: {
             "lat": c.latitude,
             "lon": c.longitude,
-            "quando": timezone.localtime(c.quando).strftime("%d/%m/%Y %H:%M"),
+            "precisao": c.precisao_m,
+            "quando": timezone.localtime(c.quando).strftime("%d/%m/%Y %H:%M:%S"),
             "bateria": c.bateria,
+            "rede": c.rede,
+            "online": c.online,
         }
-        for c in device.checkins.filter(latitude__isnull=False, longitude__isnull=False)[:60]
-    ]
+        for c in page_obj.object_list
+        if c.latitude is not None and c.longitude is not None
+    }
+
     mapa = None
     if device.tem_localizacao:
         mapa = {
@@ -243,6 +257,7 @@ def quiosque_detalhe(request, pk: int):
         "total_checkins": paginator.count,
         "comandos": comandos,
         "mapa": mapa,
+        "geo_pagina": geo_pagina,
         "offline_apos": KioskDevice.OFFLINE_APOS,
     })
 

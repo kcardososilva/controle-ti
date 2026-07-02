@@ -2015,6 +2015,7 @@ class KioskDevice(models.Model):
     token_hash    = models.CharField(max_length=64, db_index=True)  # sha256 do token (nunca o token puro)
     serial        = models.CharField(max_length=120, blank=True, default='', db_index=True, verbose_name='Número de série')
     android_id    = models.CharField(max_length=64, blank=True, default='', db_index=True)
+    mac           = models.CharField(max_length=17, null=True, blank=True, verbose_name='MAC Wi-Fi')  # Identidade estável (Device Owner); null em emulador/sem DO
     apelido       = models.CharField(max_length=120, blank=True, default='', verbose_name='Apelido')
     fabricante    = models.CharField(max_length=80, blank=True, default='')
     modelo        = models.CharField(max_length=120, blank=True, default='')
@@ -2075,6 +2076,7 @@ class KioskCheckin(models.Model):
     bateria      = models.IntegerField(null=True, blank=True)
     carregando   = models.BooleanField(default=False)
     rede         = models.CharField(max_length=20, blank=True, default='')
+    ssid         = models.CharField(max_length=64, null=True, blank=True, verbose_name='SSID')  # Rede Wi-Fi no instante do check-in; null fora de Wi-Fi/sem localização
     online       = models.BooleanField(default=True)
     # Instante REAL da coleta no aparelho (ISO 8601 com fuso). Pode estar no passado
     # quando o app entrega uma fila offline em rajada. registrado_em = chegada no servidor.

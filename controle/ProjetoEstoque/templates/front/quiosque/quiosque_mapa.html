@@ -72,10 +72,15 @@
 <script>
 (function(){
   var pontos = JSON.parse(document.getElementById('__kqpontos').textContent) || [];
-  var map = L.map('kqMap');
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '&copy; OpenStreetMap'
-  }).addTo(map);
+
+  // Camadas base: satélite (Esri, PADRÃO) + mapa de ruas (OSM). maxNativeZoom
+  // evita o placeholder "Map data not yet available" em zoom alto onde a Esri não
+  // tem imagem (áreas rurais) — o Leaflet faz upscale do tile nativo.
+  var ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'&copy; OpenStreetMap' });
+  var sat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:19, maxNativeZoom:17, attribution:'Tiles &copy; Esri' });
+  var map = L.map('kqMap', { layers:[sat] });
+  L.control.layers({ 'Satélite':sat, 'Mapa':ruas }, null, { position:'topright' }).addTo(map);
+  L.control.scale({ imperial:false }).addTo(map);
 
   var markers = {};
   var bounds = [];
