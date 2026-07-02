@@ -2033,6 +2033,12 @@ class KioskDevice(models.Model):
     mensagem_quiosque     = models.CharField(max_length=200, blank=True, default='', verbose_name='Mensagem do quiosque')
     config_versao         = models.IntegerField(default=1, verbose_name='Versão da configuração')
 
+    # ── Inventário de apps do aparelho (recebido no check-in só quando muda) ──
+    # apps_hash = impressão digital da lista (dedup); apps_atualizado_em = quando o
+    # inventário foi substituído pela última vez. A lista em si fica em KioskDeviceApp.
+    apps_hash          = models.CharField(max_length=64, blank=True, default='', verbose_name='Hash do inventário de apps')
+    apps_atualizado_em = models.DateTimeField(null=True, blank=True, verbose_name='Inventário de apps atualizado em')
+
     # ── Estado mais recente (atualizado a cada check-in) ──
     ultima_latitude   = models.FloatField(null=True, blank=True)
     ultima_longitude  = models.FloatField(null=True, blank=True)
@@ -2134,3 +2140,30 @@ class KioskComando(models.Model):
 
     def __str__(self):
         return f"{self.get_tipo_display()} → {self.device} ({self.status})"
+
+
+class KioskDeviceApp(models.Model):
+    """App abrível instalado no aparelho — inventário enviado no check-in.
+
+    O app envia a lista completa dos apps com ícone de launcher (os únicos que podem
+    virar atalho no modo quiosque), e **só quando ela muda**. O servidor substitui o
+    conjunto inteiro do device. O TI marca quais ficam liberados → viram
+    `KioskDevice.apps_permitidos`. A CHAVE é o `pkg`; o `nome` é só exibição (varia
+    com o idioma do aparelho e não deve ser usado em lógica).
+    """
+    device   = models.ForeignKey(KioskDevice, on_delete=models.CASCADE, related_name='apps')
+    pkg      = models.CharField(max_length=255, verbose_name='Pacote')
+    nome     = models.CharField(max_length=255, blank=True, default='', verbose_name='Nome')
+    sistema  = models.BooleanField(default=False, verbose_name='App de sistema')
+    visto_em = models.DateTimeField(auto_now=True, verbose_name='Visto em')
+
+    class Meta:
+        # Não-sistema primeiro (os que o TI costuma liberar), depois nome/pacote.
+        ordering = ['sistema', 'nome', 'pkg']
+        verbose_name = 'App de Dispositivo de Quiosque'
+        verbose_name_plural = 'Apps de Dispositivos de Quiosque'
+        unique_together = ('device', 'pkg')
+        indexes = [models.Index(fields=['device', 'sistema'])]
+
+    def __str__(self):
+        return f"{self.nome or self.pkg} ({self.device})"

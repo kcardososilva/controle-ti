@@ -170,6 +170,7 @@ Headers: `Authorization`, `X-Device-UUID`.
 - **Retenção:** o servidor mantém uma **janela móvel de 5 dias** de telemetria por aparelho (dados além disso são sobrepostos). A poda roda **de forma amostrada** nos check-ins (não a cada heartbeat, para manter a resposta leve em alta frequência); um aparelho que **parou de enviar conserva todo o seu histórico**.
 - Se `config_versao` do servidor for maior que a enviada, ele devolve o objeto `config` atualizado (o app aplica e persiste).
 - `comandos` (Fase 2): lista de ações pendentes (ver 4.5).
+- **Inventário de apps (opcional, aditivo):** o app pode incluir `apps_instalados` (array de `{pkg, nome, sistema}`, apps abríveis) + `apps_hash` (SHA-256 hex da lista) **só quando a lista muda**. O servidor **substitui** o inventário do device (`KioskDeviceApp`) e guarda o hash para deduplicar. **Ausência dos campos ≠ zero apps** — o inventário guardado é preservado; lista vazia é ignorada. Este inventário só habilita a **exibição** de apps já instalados: o TI marca os liberados no painel `/quiosque/<pk>/config/`, que viram `config.apps_permitidos` (chave = `pkg`).
 
 ### 4.4 `GET /config/` — puxar configuração atual
 Headers: `Authorization`, `X-Device-UUID`.
@@ -270,6 +271,7 @@ fun isWifi(ctx: Context): Boolean {
 - `KioskCheckin`: FK `device`, `latitude`, `longitude`, `precisao_m`, `bateria`, `carregando`, `rede`, `online`, `registrado_em`.
 - `KioskMatricula`: `codigo`, `usado`, `expira_em`, `criado_por` (gera o código de enroll).
 - `KioskComando` *(Fase 2)*: FK `device`, `tipo`, `payload` (JSON), `status`, datas.
+- `KioskDeviceApp`: FK `device`, `pkg` (chave), `nome`, `sistema`, `visto_em` — inventário de apps abríveis do aparelho (`unique_together` device+pkg). `KioskDevice` guarda `apps_hash` + `apps_atualizado_em`.
 
 **Auth de dispositivo (isolada do login do site):**
 - Decorator `@kiosk_token_required` que lê `Authorization: Bearer` + `X-Device-UUID`, resolve o `KioskDevice` por hash do token e injeta `request.kiosk_device`. **Nunca** usar `@login_required` nesses endpoints.

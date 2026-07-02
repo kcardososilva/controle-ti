@@ -1276,6 +1276,11 @@ def licencas_dashboard(request):
     cc_id = (request.GET.get("centro_custo") or "").strip()
     periodicidade = (request.GET.get("periodicidade") or "").strip()
     pmb = (request.GET.get("pmb") or "").strip().lower()
+    # Filtro PMB por COLABORADOR: "pertence ao PMB" = campo próprio do usuário
+    # (Usuario.pmb) E o Centro de Custo do usuário também marcado como PMB
+    # (centro_custo.pmb). Restringe a consulta ao custo das licenças atribuídas a
+    # essas pessoas. É distinto do filtro `pmb` acima (que é a flag da Licenca).
+    pmb_pessoa = (request.GET.get("pmb_pessoa") or "").strip().lower()
 
     dt_ini = _parse_date_opt(request.GET.get("inicio"))
     dt_fim = _parse_date_opt(request.GET.get("fim"))
@@ -1311,9 +1316,15 @@ def licencas_dashboard(request):
     movs_ativas = (
         MovimentacaoLicenca.objects
         .filter(licenca_id__in=licenca_ids, usuario__isnull=False)
-        .select_related("usuario__centro_custo", "centro_custo_destino")
+        .select_related("usuario__centro_custo", "usuario__funcao", "centro_custo_destino")
         .order_by("licenca_id", "usuario_id", "created_at")
     )
+
+    # Filtro PMB (colaborador): pessoa PMB = Usuario.pmb='sim' E centro de custo PMB.
+    if pmb_pessoa == "sim":
+        movs_ativas = movs_ativas.filter(usuario__pmb="sim", usuario__centro_custo__pmb="sim")
+    elif pmb_pessoa == "nao":
+        movs_ativas = movs_ativas.exclude(usuario__pmb="sim", usuario__centro_custo__pmb="sim")
 
     estado_usuario = {}
     for m in movs_ativas:
@@ -1335,12 +1346,19 @@ def licencas_dashboard(request):
 
     kpi_total_licencas = len(licencas_list)
     kpi_assentos_em_uso = 0
-    kpi_assentos_totais = 0
+    kpi_seats_total = 0
     kpi_custo_mensal = Decimal("0.00")
+    # Com o filtro PMB (colaborador) ativo, a consulta passa a mostrar SÓ o custo
+    # dos assentos atribuídos a pessoas PMB (sem a parcela de estoque).
+    pmb_pessoa_ativo = pmb_pessoa in ("sim", "nao")
 
     cc_costs = {}
     forn_costs = {}
     per_counts = {}
+    # Metadados por licença (só das que entram na consulta) p/ montar a visão por
+    # colaborador (janela "Colaboradores"). custo_mensal_unit = custo médio mensal
+    # por assento, o mesmo valor atribuído a cada pessoa que detém a licença.
+    licenca_meta = {}
 
     linhas_tabela = []
     lotes_detalhes = []
@@ -1366,6 +1384,10 @@ def licencas_dashboard(request):
         l_custo_anual_total_licenca = Decimal("0.00")
         l_periodicidades = set()
         soma_custo_mensal_de_todos_lotes = Decimal("0.00")
+        # Buffers commitados só se a licença permanecer na consulta (com o filtro
+        # PMB, licenças sem nenhuma pessoa PMB são descartadas mais abaixo).
+        lotes_buf = []
+        per_labels_buf = []
 
         for lote in lotes_da_lic:
             qtd = int(lote.quantidade_total or 0)
@@ -1429,12 +1451,11 @@ def licencas_dashboard(request):
             soma_custo_mensal_de_todos_lotes += custo_mensal_lote_total
 
             l_periodicidades.add(lote.get_periodicidade_display())
-            kpi_assentos_totais += qtd
 
             p_label = lote.get_periodicidade_display()
-            per_counts[p_label] = per_counts.get(p_label, 0) + 1
+            per_labels_buf.append(p_label)
 
-            lotes_detalhes.append({
+            lotes_buf.append({
                 "licenca": lic.nome,
                 "lote": getattr(lote, "numero_lote", None) or f"Lote #{lote.id}",
                 "pedido": getattr(lote, "pedido", None),
@@ -1459,7 +1480,31 @@ def licencas_dashboard(request):
 
         ccs_ativos = uso_map_cc.get(lic.id, [])
         qtd_ativos = len(ccs_ativos)
-        qtd_estoque = max(0, l_qtd_total - qtd_ativos)
+
+        if pmb_pessoa_ativo:
+            # Consulta focada nas PESSOAS PMB: sem parcela de estoque e sem
+            # licenças que não tenham nenhuma pessoa PMB atribuída.
+            if qtd_ativos == 0:
+                continue
+            qtd_estoque = 0
+            custo_mensal_exibido = (custo_medio_unitario * Decimal(qtd_ativos)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            custo_anual_exibido = (custo_mensal_exibido * Decimal("12")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            total_exibido = qtd_ativos
+        else:
+            qtd_estoque = max(0, l_qtd_total - qtd_ativos)
+            custo_mensal_exibido = l_custo_mensal_total_licenca
+            custo_anual_exibido = l_custo_anual_total_licenca
+            total_exibido = l_qtd_total
+
+        # A licença entra na consulta: commita os buffers acumulados no laço de lotes.
+        lotes_detalhes.extend(lotes_buf)
+        for p_label in per_labels_buf:
+            per_counts[p_label] = per_counts.get(p_label, 0) + 1
+        kpi_seats_total += total_exibido
 
         kpi_assentos_em_uso += qtd_ativos
 
@@ -1477,23 +1522,83 @@ def licencas_dashboard(request):
                 custo_medio_unitario * Decimal(qtd_estoque)
             )
 
-        kpi_custo_mensal += l_custo_mensal_total_licenca
+        kpi_custo_mensal += custo_mensal_exibido
 
         f_nome = lic.fornecedor.nome if lic.fornecedor else "Indefinido"
-        forn_costs[f_nome] = forn_costs.get(f_nome, Decimal("0.00")) + l_custo_mensal_total_licenca
+        forn_costs[f_nome] = forn_costs.get(f_nome, Decimal("0.00")) + custo_mensal_exibido
 
         per_display = ", ".join(sorted(l_periodicidades)) if l_periodicidades else "-"
+
+        licenca_meta[lic.id] = {
+            "nome": lic.nome,
+            "fornecedor": lic.fornecedor.nome if lic.fornecedor else "-",
+            "periodicidade": per_display,
+            "custo_mensal_unit": custo_medio_unitario,
+        }
 
         linhas_tabela.append({
             "obj": lic,
             "periodicidade_display": per_display,
-            "custo_mensal_total": l_custo_mensal_total_licenca,
-            "custo_anual_total": l_custo_anual_total_licenca,
+            "custo_mensal_total": custo_mensal_exibido,
+            "custo_anual_total": custo_anual_exibido,
             "custo_mensal_unit_medio": custo_medio_unitario,
             "ativos": qtd_ativos,
-            "total": l_qtd_total,
+            "total": total_exibido,
             "estoque": qtd_estoque,
         })
+
+    # ── Visão por Colaborador (janela "Colaboradores") ──────────────────────────
+    # Reúne, por colaborador, as licenças que ele detém (última movimentação =
+    # atribuição), respeitando TODOS os filtros ativos. O custo de cada licença é o
+    # custo médio mensal por assento (mesma base usada nos custos por CC).
+    colaboradores_map = {}
+    for (lid, uid), mov in estado_usuario.items():
+        if mov.tipo != "atribuicao":
+            continue
+        meta = licenca_meta.get(lid)
+        if not meta or mov.usuario is None:
+            continue
+        entry = colaboradores_map.get(uid)
+        if entry is None:
+            u = mov.usuario
+            cc = u.centro_custo
+            entry = {
+                "nome": u.nome,
+                "matricula": u.matricula or "",
+                "cc": f"{cc.numero} - {cc.departamento}" if cc else "—",
+                "cargo": u.funcao.nome if u.funcao else "",
+                "pmb": (u.pmb == "sim" and cc is not None and cc.pmb == "sim"),
+                "licencas": [],
+                "total_mensal": Decimal("0.00"),
+            }
+            colaboradores_map[uid] = entry
+        custo_m = meta["custo_mensal_unit"]
+        entry["licencas"].append({
+            "nome": meta["nome"],
+            "fornecedor": meta["fornecedor"],
+            "periodicidade": meta["periodicidade"],
+            "custo_mensal": float(custo_m),
+            "custo_anual": float(custo_m * Decimal("12")),
+        })
+        entry["total_mensal"] += custo_m
+
+    colaboradores = []
+    for c in sorted(colaboradores_map.values(), key=lambda x: x["total_mensal"], reverse=True):
+        c["licencas"].sort(key=lambda l: l["custo_mensal"], reverse=True)
+        colaboradores.append({
+            "nome": c["nome"],
+            "matricula": c["matricula"],
+            "cc": c["cc"],
+            "cargo": c["cargo"],
+            "pmb": c["pmb"],
+            "qtd_licencas": len(c["licencas"]),
+            "total_mensal": float(c["total_mensal"]),
+            "total_anual": float(c["total_mensal"] * Decimal("12")),
+            "licencas": c["licencas"],
+        })
+
+    kpi_colaboradores = len(colaboradores)
+    colaboradores_total_mensal = sum((Decimal(str(c["total_mensal"])) for c in colaboradores), Decimal("0.00"))
 
     sorted_cc = sorted(cc_costs.items(), key=lambda x: x[1], reverse=True)
     periodicidade_choices = LicencaLote._meta.get_field("periodicidade").choices
@@ -1504,6 +1609,8 @@ def licencas_dashboard(request):
         "f_cc": cc_id,
         "f_per": periodicidade,
         "f_pmb": pmb,
+        "f_pmb_pessoa": pmb_pessoa,
+        "pmb_pessoa_ativo": pmb_pessoa_ativo,
         "dt_ini": dt_ini,
         "dt_fim": dt_fim,
 
@@ -1513,12 +1620,16 @@ def licencas_dashboard(request):
 
         "kpi_total": kpi_total_licencas,
         "kpi_assentos": kpi_assentos_em_uso,
-        "kpi_disp": kpi_assentos_totais - kpi_assentos_em_uso,
+        "kpi_disp": kpi_seats_total - kpi_assentos_em_uso,
         "kpi_custo_mensal": kpi_custo_mensal.quantize(Decimal("0.01")),
         "kpi_custo_anual": (kpi_custo_mensal * Decimal("12")).quantize(Decimal("0.01")),
+        "kpi_colaboradores": kpi_colaboradores,
 
         "linhas": linhas_tabela,
         "lotes_rows": lotes_detalhes,
+
+        "colaboradores": colaboradores,
+        "colaboradores_total_mensal": colaboradores_total_mensal.quantize(Decimal("0.01")),
 
         "cc_list": [{"label": k, "val": v} for k, v in sorted_cc],
         "chart_forn_labels": list(forn_costs.keys()),

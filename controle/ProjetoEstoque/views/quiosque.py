@@ -341,9 +341,17 @@ def quiosque_config_editar(request, pk: int):
             device.intervalo_checkin_seg = min(300, max(5, int(request.POST.get("intervalo_checkin_seg") or 300)))
         except (TypeError, ValueError):
             device.intervalo_checkin_seg = 300
-        # Apps permitidos: uma linha/pacote ou separados por vírgula
-        raw = (request.POST.get("apps_permitidos") or "")
-        apps = [a.strip() for a in raw.replace(",", "\n").splitlines() if a.strip()]
+        # Apps permitidos = marcados no inventário (checkbox) + pacotes extras
+        # digitados (avançado). A chave é o package name; deduplica preservando a
+        # ordem (marcados primeiro). Guarda o `pkg`, nunca o nome amigável.
+        marcados = request.POST.getlist("app_pkg")
+        raw = (request.POST.get("apps_extra") or "")
+        manuais = [a.strip() for a in raw.replace(",", "\n").splitlines() if a.strip()]
+        apps = []
+        for p in marcados + manuais:
+            p = p.strip()[:255]
+            if p and p not in apps:
+                apps.append(p)
         device.apps_permitidos = apps
         device.config_versao = (device.config_versao or 1) + 1
         device.save()
@@ -355,9 +363,22 @@ def quiosque_config_editar(request, pk: int):
         messages.success(request, "Configuração atualizada. Será aplicada no próximo check-in do dispositivo.")
         return redirect("quiosque_detalhe", pk=device.pk)
 
+    # Inventário recebido do aparelho + estado de liberação de cada app (checkbox).
+    permitidos = list(device.apps_permitidos or [])
+    perm_set = set(permitidos)
+    inventario = list(device.apps.all())
+    for a in inventario:
+        a.liberado = a.pkg in perm_set
+    inv_pkgs = {a.pkg for a in inventario}
+    # Pacotes liberados que NÃO constam do inventário (manuais/avançado) — vão no
+    # textarea para não serem perdidos ao salvar.
+    extras = [p for p in permitidos if p not in inv_pkgs]
+
     return render(request, "front/quiosque/quiosque_config.html", {
         "device": device,
-        "apps_texto": "\n".join(device.apps_permitidos or []),
+        "inventario": inventario,
+        "inventario_total": len(inventario),
+        "apps_extra_texto": "\n".join(extras),
     })
 
 

@@ -23,6 +23,23 @@
 .kq-check { display:flex; align-items:center; gap:.55rem; font-weight:600; color:var(--text-primary); }
 .kq-actions { display:flex; gap:.6rem; justify-content:flex-end; }
 textarea.form-control { min-height:120px; font-family:var(--font-mono,ui-monospace,Consolas,monospace); font-size:.85rem; }
+
+/* Inventário de apps → checkbox de liberação */
+.kq-appbar { display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; }
+.kq-appbar .form-control { flex:1 1 220px; min-width:0; }
+.kq-appcount { font-size:.78rem; color:var(--text-tertiary); font-weight:600; white-space:nowrap; }
+.kq-appcount b { color:var(--kq-brand); }
+.kq-applist { display:grid; gap:.3rem; max-height:340px; overflow-y:auto; padding:.5rem; border:1px solid var(--separator-hairline); border-radius:var(--radius-lg); background:var(--bg-fill-secondary); }
+.kq-app { display:flex; align-items:center; gap:.6rem; padding:.45rem .55rem; border-radius:var(--radius-md); cursor:pointer; }
+.kq-app:hover { background:var(--bg-elevated); }
+.kq-app input { flex:0 0 auto; width:1.05rem; height:1.05rem; accent-color:var(--kq-brand); }
+.kq-app-info { display:flex; flex-direction:column; gap:.1rem; min-width:0; }
+.kq-app-nome { font-size:.86rem; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:.4rem; }
+.kq-app-pkg { font-size:.72rem; color:var(--text-tertiary); font-family:var(--font-mono,ui-monospace,Consolas,monospace); word-break:break-all; }
+.kq-app-sys { font-size:.6rem; text-transform:uppercase; letter-spacing:.04em; font-weight:700; color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline); border-radius:var(--radius-pill); padding:.05rem .4rem; }
+.kq-app.is-hidden { display:none; }
+.kq-app-empty { display:flex; gap:.6rem; align-items:flex-start; font-size:.82rem; color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px dashed var(--separator-hairline); border-radius:var(--radius-lg); padding:.8rem .9rem; line-height:1.5; }
+.kq-app-empty i { color:var(--kq-brand); margin-top:.15rem; }
 </style>
 {% endblock %}
 
@@ -50,9 +67,37 @@ textarea.form-control { min-height:120px; font-family:var(--font-mono,ui-monospa
     </div>
 
     <div class="kq-field">
-      <label for="apps_permitidos">Apps permitidos (pacotes Android)</label>
-      <textarea id="apps_permitidos" name="apps_permitidos" class="form-control" placeholder="com.android.camera2&#10;com.google.android.apps.photos&#10;br.com.app.permitido">{{ apps_texto }}</textarea>
-      <span class="hint">Um pacote por linha (ou separados por vírgula). Câmera e galeria já devem constar aqui. Estes são os únicos apps que abrem no modo quiosque.</span>
+      <label>Apps liberados no quiosque</label>
+      <span class="hint">Marque os apps que o colaborador pode abrir. A liberação é remota — aplicada no próximo check-in, sem reinstalar o app. Estes são os únicos apps que abrem no modo quiosque.</span>
+
+      {% if inventario %}
+      <div class="kq-appbar">
+        <input type="search" id="kqAppSearch" class="form-control" placeholder="Filtrar por nome ou pacote…" autocomplete="off">
+        <span class="kq-appcount"><b id="kqAppSel">0</b> de {{ inventario_total }} liberado(s)</span>
+      </div>
+      <div class="kq-applist" id="kqAppList">
+        {% for a in inventario %}
+        <label class="kq-app" data-search="{{ a.nome|lower }} {{ a.pkg|lower }}">
+          <input type="checkbox" name="app_pkg" value="{{ a.pkg }}"{% if a.liberado %} checked{% endif %}>
+          <span class="kq-app-info">
+            <span class="kq-app-nome">{{ a.nome|default:a.pkg }}{% if a.sistema %} <span class="kq-app-sys">sistema</span>{% endif %}</span>
+            <span class="kq-app-pkg">{{ a.pkg }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="kq-app-empty">
+        <i class="fa fa-hourglass-half"></i>
+        <span>Inventário de apps ainda não recebido deste aparelho. O app o envia automaticamente quando a lista muda (em até ~5 min). Enquanto isso, você pode liberar pacotes manualmente abaixo.</span>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="kq-field">
+      <label for="apps_extra">Outros pacotes (avançado)</label>
+      <textarea id="apps_extra" name="apps_extra" class="form-control" placeholder="com.android.camera2&#10;br.com.app.permitido">{{ apps_extra_texto }}</textarea>
+      <span class="hint">Um pacote por linha (ou separados por vírgula). Use para liberar apps que ainda não apareceram no inventário. Liberar um pacote que não está instalado no aparelho simplesmente não aparece na tela.</span>
     </div>
 
     <div class="kq-field">
@@ -73,4 +118,31 @@ textarea.form-control { min-height:120px; font-family:var(--font-mono,ui-monospa
 
   </div></div>
 </form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Filtro de busca + contador de apps liberados no inventário do aparelho.
+(function(){
+  var list = document.getElementById('kqAppList');
+  if (!list) return;
+  var search = document.getElementById('kqAppSearch');
+  var selEl  = document.getElementById('kqAppSel');
+  var apps   = Array.prototype.slice.call(list.querySelectorAll('.kq-app'));
+
+  function contar(){
+    if (selEl) selEl.textContent = apps.filter(function(a){ return a.querySelector('input').checked; }).length;
+  }
+  function filtrar(){
+    var q = (search.value || '').trim().toLowerCase();
+    apps.forEach(function(a){
+      var hit = !q || (a.getAttribute('data-search') || '').indexOf(q) !== -1;
+      a.classList.toggle('is-hidden', !hit);
+    });
+  }
+  if (search) search.addEventListener('input', filtrar);
+  list.addEventListener('change', contar);
+  contar();
+})();
+</script>
 {% endblock %}

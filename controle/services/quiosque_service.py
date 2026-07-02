@@ -228,6 +228,68 @@ def _parse_dt(v):
     return dt
 
 
+# Inventário de apps: limites defensivos (o payload vem do device — não confiável).
+_APPS_MAX      = 500   # teto de itens aceitos por inventário (folga sobre ~40–120)
+_APPS_PKG_MAX  = 255
+_APPS_NOME_MAX = 255
+
+
+def _persistir_inventario(device, apps, apps_hash) -> bool:
+    """
+    Substitui o inventário de apps do device pela lista recebida no check-in.
+
+    Contrato (ver docs/INFORME): o inventário vem no `/checkin/` **só quando muda**.
+
+      • Ausência de `apps_instalados` ≠ "zero apps" → é "sem novidade": NÃO mexe no
+        inventário guardado (a maioria dos check-ins não traz a lista).
+      • Lista presente é sempre real e não-vazia; uma lista vazia é ignorada (o app
+        nunca envia vazio — proteção extra contra apagar o inventário por engano).
+      • Deduplica pelo `apps_hash`: se igual ao guardado, é reenvio (at-least-once)
+        da fila offline → ignora.
+      • Dados não-confiáveis: valida tipos, limita tamanhos e descarta itens
+        malformados. A chave é o `pkg` (o `nome` é só exibição).
+
+    Devolve True se o inventário foi de fato substituído (o chamador salva o device).
+    """
+    from ProjetoEstoque.models import KioskDeviceApp
+
+    if not isinstance(apps, list) or not apps:
+        return False
+
+    novo_hash = str(apps_hash)[:64] if apps_hash else ''
+    # Reenvio do mesmo inventário (garantia at-least-once da fila) → nada mudou.
+    if novo_hash and device.apps_hash and novo_hash == device.apps_hash:
+        return False
+
+    registros, vistos = [], set()
+    for it in apps:
+        if not isinstance(it, dict):
+            continue
+        pkg = str(it.get('pkg') or '').strip()[:_APPS_PKG_MAX]
+        if not pkg or pkg in vistos:
+            continue
+        vistos.add(pkg)
+        registros.append(KioskDeviceApp(
+            device=device,
+            pkg=pkg,
+            nome=str(it.get('nome') or '')[:_APPS_NOME_MAX],
+            sistema=bool(it.get('sistema', False)),
+        ))
+        if len(registros) >= _APPS_MAX:
+            break
+
+    # Lista veio, mas toda malformada → não apaga o inventário válido já guardado.
+    if not registros:
+        return False
+
+    # A lista completa vem inteira: substituição total é a mais simples e correta.
+    device.apps.all().delete()
+    KioskDeviceApp.objects.bulk_create(registros)
+    device.apps_hash = novo_hash
+    device.apps_atualizado_em = timezone.now()
+    return True
+
+
 def prune_checkins(device) -> int:
     """
     Mantém apenas a janela móvel de RETENCAO_DIAS de telemetria do aparelho.
@@ -298,6 +360,9 @@ def registrar_checkin(device, dados: dict) -> dict:
         # (não sobrescreve um MAC bom com null vindo de um check-in sem Device Owner).
         if mac and device.mac != mac:
             device.mac = mac
+        # Inventário de apps: presente só nos ciclos em que a lista mudou. Ausência
+        # não altera o inventário guardado (ver _persistir_inventario).
+        _persistir_inventario(device, dados.get("apps_instalados"), dados.get("apps_hash"))
         if dados.get("app_versao"):
             device.app_versao = str(dados.get("app_versao"))[:20]
         device.save()
