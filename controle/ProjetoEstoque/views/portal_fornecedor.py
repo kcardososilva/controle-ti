@@ -446,6 +446,22 @@ def portal_manutencao_detail(request, pk: int):
                 messages.success(request, f"{len(arquivos)} nota(s) fiscal(is) anexada(s).")
             return redirect("portal_manutencao_detail", pk=pk)
 
+        # ── Exclusão de Nota Fiscal (correção de erro) ───────────────────────
+        # O fornecedor só pode excluir NF que ele mesmo anexou (origem=fornecedor).
+        if acao == "excluir_nf":
+            anexo = ordem.anexos.filter(
+                pk=request.POST.get("anexo_id"),
+                origem=OrdemManutencaoAnexo.OrigemAnexo.FORNECEDOR,
+            ).first()
+            if not anexo:
+                messages.error(request, "Nota fiscal não encontrada ou não pode ser excluída por você.")
+            else:
+                if anexo.arquivo:
+                    anexo.arquivo.delete(save=False)  # remove o arquivo físico também
+                anexo.delete()
+                messages.success(request, "Nota fiscal excluída.")
+            return redirect("portal_manutencao_detail", pk=pk)
+
         # ── Transição de status conduzida pelo fornecedor ────────────────────
         from services.ordem_manutencao_service import OrdemManutencaoService
         extra = {
@@ -465,6 +481,8 @@ def portal_manutencao_detail(request, pk: int):
             "valor_conserto": request.POST.get("valor_conserto", ""),
             "valor_total": request.POST.get("valor_total", ""),
             "valor_avaliacao_tecnica": request.POST.get("valor_avaliacao_tecnica", ""),
+            "tem_garantia": request.POST.get("tem_garantia", ""),
+            "garantia_dias": request.POST.get("garantia_dias", ""),
         }
         try:
             OrdemManutencaoService.transicionar(

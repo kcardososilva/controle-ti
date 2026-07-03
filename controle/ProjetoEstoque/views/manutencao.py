@@ -142,6 +142,19 @@ def manutencao_recebimento_acao(request, pk: int):
             messages.success(request, f"{len(arquivos)} nota(s) fiscal(is) anexada(s).")
         return _voltar()
 
+    # ── Exclusão de Nota Fiscal (correção de erro) ──────────────────────────
+    # O TI pode excluir qualquer NF da OS (do fornecedor ou dele mesmo).
+    if acao == "excluir_nf":
+        anexo = ordem.anexos.filter(pk=request.POST.get("anexo_id")).first()
+        if not anexo:
+            messages.error(request, "Nota fiscal não encontrada.")
+        else:
+            if anexo.arquivo:
+                anexo.arquivo.delete(save=False)  # remove o arquivo físico também
+            anexo.delete()
+            messages.success(request, "Nota fiscal excluída.")
+        return _voltar()
+
     # ── Transição conduzida pelo TI (aprovar / reprovar / concluir) ─────────
     # import tardio evita ciclo (service importa models do app)
     from services.ordem_manutencao_service import OrdemManutencaoService

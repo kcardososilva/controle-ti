@@ -45,7 +45,7 @@
   .rd-page .rd-pill-v { font-weight:700; margin-top:.15rem; }
 
   /* Notas fiscais — item + selo de origem (quem anexou) */
-  .rd-page .rd-anx { display:grid; grid-template-columns:2rem 1fr; gap:.7rem; align-items:start; padding:.6rem 0; }
+  .rd-page .rd-anx { display:grid; grid-template-columns:2rem 1fr auto; gap:.7rem; align-items:start; padding:.6rem 0; }
   .rd-page .rd-anx + .rd-anx { border-top:1px solid var(--separator-hairline); }
   .rd-page .rd-anx-ic { width:2rem; height:2rem; display:grid; place-items:center; border-radius:999px; background: var(--bg-fill-tertiary, rgba(120,120,128,.1)); color:#0071e3; font-size:.8rem; }
   .rd-page .rd-anx-name { font-weight:700; font-size:.88rem; overflow-wrap:anywhere; }
@@ -54,6 +54,18 @@
   .rd-page .rd-orig--fornecedor { color: var(--brand,#0071e3); background: rgba(0,113,227,.12); }
   .rd-page .rd-orig--ti { color:#5856d6; background: rgba(88,86,214,.14); }
   .rd-page .rd-anx-who { font-weight:700; color: var(--text-secondary); }
+  .rd-page .rd-anx-del { width:2rem; height:2rem; display:grid; place-items:center; align-self:center; border-radius:8px; border:1px solid var(--separator-hairline); background:transparent; color: var(--text-tertiary); cursor:pointer; transition:color .15s, border-color .15s, background .15s; }
+  .rd-page .rd-anx-del:hover { color:#ff3b30; border-color:#ff3b30; background: rgba(255,59,48,.08); }
+
+  /* Garantia do reparo/troca */
+  .rd-page .rd-gar-head { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem .8rem; }
+  .rd-page .rd-gar-badge { display:inline-flex; align-items:center; gap:.4rem; padding:.28rem .7rem; border-radius:999px; font-size:.78rem; font-weight:800; }
+  .rd-page .rd-gar-prazo { color: var(--text-tertiary); font-size:.8rem; font-weight:700; }
+  .rd-page .rd-gar-body { margin-top:.6rem; font-size:.86rem; color: var(--text-secondary); line-height:1.5; }
+  .rd-page .rd-gar--vigente .rd-gar-badge { color:#34c759; background: rgba(52,199,89,.16); }
+  .rd-page .rd-gar--expirada .rd-gar-badge { color:#ff3b30; background: rgba(255,59,48,.14); }
+  .rd-page .rd-gar--aguardando_inicio .rd-gar-badge { color:#0071e3; background: rgba(0,113,227,.12); }
+  .rd-page .rd-gar--sem_garantia .rd-gar-badge { color:#8e8e93; background: rgba(142,142,147,.16); }
 
   .rd-page .rd-timeline { display:grid; }
   .rd-page .rd-tl { display:grid; grid-template-columns:auto 1fr; gap:.9rem; padding:.9rem 1.2rem; border-top:1px solid var(--separator-hairline); }
@@ -109,6 +121,12 @@
   {% if pode_concluir %}
   <div class="rd-action">
     <h3><i class="fa-solid fa-circle-check"></i> Concluir esta ordem</h3>
+    {% if ordem.tem_garantia_reparo %}
+    <p style="margin-bottom:.7rem; color:var(--text-secondary); font-size:.88rem;">
+      <i class="fa-solid fa-shield-halved" style="color:#34c759;"></i>
+      Ao confirmar o recebimento, a garantia de <b>{{ ordem.garantia_dias }} dia{{ ordem.garantia_dias|pluralize }}</b> passa a valer a partir de hoje.
+    </p>
+    {% endif %}
     <form method="post" action="{% url 'manutencao_recebimento_acao' ordem.pk %}" class="rd-form">
       {% csrf_token %}
       <input type="hidden" name="next" value="detalhe">
@@ -145,6 +163,32 @@
   </div>
   {% endif %}
 
+  {% if ordem.garantia_relevante %}
+  <div>
+    <div class="rd-sec-title">Garantia do reparo</div>
+    <div class="rd-card rd-gar rd-gar--{{ ordem.garantia_status }}" style="margin-top:.5rem; padding:1rem 1.2rem;">
+      <div class="rd-gar-head">
+        <span class="rd-gar-badge">
+          <i class="fa-solid {% if ordem.garantia_status == 'vigente' %}fa-shield-halved{% elif ordem.garantia_status == 'expirada' %}fa-calendar-xmark{% elif ordem.garantia_status == 'aguardando_inicio' %}fa-hourglass-half{% else %}fa-ban{% endif %}"></i>
+          {{ ordem.garantia_status_display }}
+        </span>
+        {% if ordem.tem_garantia_reparo %}<span class="rd-gar-prazo">Prazo contratado: {{ ordem.garantia_dias }} dia{{ ordem.garantia_dias|pluralize }}</span>{% endif %}
+      </div>
+      <div class="rd-gar-body">
+        {% if ordem.garantia_status == 'aguardando_inicio' %}
+          A contagem inicia automaticamente quando você confirmar o recebimento do equipamento.
+        {% elif ordem.garantia_status == 'vigente' %}
+          Válida até <b>{{ ordem.garantia_fim|date:"d/m/Y" }}</b> — faltam <b>{{ ordem.garantia_dias_restantes }} dia{{ ordem.garantia_dias_restantes|pluralize }}</b>. Início em {{ ordem.garantia_inicio|date:"d/m/Y" }}.
+        {% elif ordem.garantia_status == 'expirada' %}
+          Expirou em <b>{{ ordem.garantia_fim|date:"d/m/Y" }}</b>. O equipamento não está mais na garantia deste reparo. Início em {{ ordem.garantia_inicio|date:"d/m/Y" }}.
+        {% else %}
+          O fornecedor informou que este serviço <b>não possui garantia de reparo</b>.
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <div>
     <div class="rd-sec-title">Notas fiscais</div>
     <div class="rd-card" style="margin-top:.5rem; padding:1rem 1.2rem;">
@@ -160,6 +204,13 @@
               {% if a.descricao %}<span>· {{ a.descricao }}</span>{% endif %}
             </div>
           </div>
+          <form method="post" action="{% url 'manutencao_recebimento_acao' ordem.pk %}" onsubmit="return confirm('Excluir esta nota fiscal? Esta ação não pode ser desfeita.');">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="detalhe">
+            <input type="hidden" name="acao" value="excluir_nf">
+            <input type="hidden" name="anexo_id" value="{{ a.id }}">
+            <button type="submit" class="rd-anx-del" title="Excluir NF"><i class="fa-solid fa-trash-can"></i></button>
+          </form>
         </div>
       {% empty %}
         <p style="color:var(--text-tertiary); font-size:.85rem; margin:0;">Nenhuma nota fiscal anexada ainda.</p>

@@ -13,7 +13,7 @@ Regras:
     ficam no service — nunca na view (CLAUDE.md regra 2).
 """
 import logging
-from datetime import date as _date
+from datetime import date as _date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
@@ -196,6 +196,25 @@ class OrdemManutencaoService:
             except Exception:
                 raise ValidationError("Data da substituição inválida.")
 
+    @staticmethod
+    def _parse_garantia(extra):
+        """Lê (tem_garantia, garantia_dias) do form do fornecedor.
+
+        Se marcar que TEM garantia, o prazo em dias é obrigatório e > 0. A
+        contagem só começa depois, quando o TI confirma o recebimento.
+        """
+        tem = SimNaoChoices.SIM if (extra.get("tem_garantia") == "sim") else SimNaoChoices.NAO
+        if tem != SimNaoChoices.SIM:
+            return SimNaoChoices.NAO, None
+        raw = (extra.get("garantia_dias") or "").strip()
+        try:
+            dias = int(raw)
+        except (TypeError, ValueError):
+            raise ValidationError("Informe o prazo de garantia em dias.")
+        if dias <= 0:
+            raise ValidationError("O prazo de garantia deve ser maior que zero.")
+        return SimNaoChoices.SIM, dias
+
     # ── Handlers de efeito colateral ───────────────────────────────────────
     @classmethod
     def _on_diagnostico(cls, ordem, user, extra):
@@ -230,6 +249,8 @@ class OrdemManutencaoService:
         ordem.valor_conserto = conserto
         # O valor total inclui extras (película, capa, etc.) e nunca é menor que o conserto.
         ordem.valor_total = total if total is not None else conserto
+        # Garantia do reparo (a contagem só inicia na confirmação do TI).
+        ordem.tem_garantia, ordem.garantia_dias = cls._parse_garantia(extra)
 
     @staticmethod
     def _loc_id(valor):
@@ -287,6 +308,8 @@ class OrdemManutencaoService:
         ordem.substituto_valor = valor
         ordem.substituto_data = data
         ordem.substituto_locado = locado
+        # Garantia da troca (a contagem só inicia na confirmação do TI).
+        ordem.tem_garantia, ordem.garantia_dias = cls._parse_garantia(extra)
 
         antigo = ordem.item
         regime = "Locação" if locado == SimNaoChoices.SIM else "Compra"
@@ -329,8 +352,23 @@ class OrdemManutencaoService:
             locacao.save()
 
     @classmethod
+    def _iniciar_garantia(cls, ordem):
+        """Inicia a contagem da garantia na confirmação de recebimento pelo TI.
+
+        A partir daqui o item está na garantia do reparo/troca; quando
+        `garantia_fim` for ultrapassado, deixa de estar coberto.
+        """
+        if ordem.tem_garantia == SimNaoChoices.SIM and ordem.garantia_dias:
+            inicio = timezone.localdate()
+            ordem.garantia_inicio = inicio
+            ordem.garantia_fim = inicio + timedelta(days=ordem.garantia_dias)
+
+    @classmethod
     def _on_concluido(cls, ordem, user, extra):
         antigo = ordem.item
+
+        # A garantia do reparo/troca passa a valer no recebimento pelo TI.
+        cls._iniciar_garantia(ordem)
 
         if ordem.status == S.DEVOLVIDO:
             destino = extra.get("status_retorno") or StatusItemChoices.BACKUP

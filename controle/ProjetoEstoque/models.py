@@ -1123,6 +1123,24 @@ class OrdemManutencao(AuditModel):
         verbose_name="Decisão do TI por",
     )
     decisao_em = models.DateTimeField(null=True, blank=True, verbose_name="Data da decisão do TI")
+    # ── Garantia do reparo / troca ─────────────────────────────────────────
+    # O fornecedor informa, ao concluir o reparo ou enviar o substituto, se o
+    # serviço tem garantia e por quantos dias. A CONTAGEM só começa quando o TI
+    # confirma o recebimento (garantia_inicio é gravado em _on_concluido). Ao
+    # expirar (garantia_fim < hoje), o item deixa de estar na garantia do reparo.
+    tem_garantia = models.CharField(
+        max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO,
+        verbose_name="Reparo/troca com garantia?",
+    )
+    garantia_dias = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Prazo de garantia (dias)",
+    )
+    garantia_inicio = models.DateField(
+        null=True, blank=True, verbose_name="Início da garantia (recebimento do TI)",
+    )
+    garantia_fim = models.DateField(
+        null=True, blank=True, verbose_name="Fim da garantia",
+    )
     chamado = models.CharField(max_length=100, blank=True, null=True, verbose_name="Nº Chamado")
     finalizada_em = models.DateTimeField(null=True, blank=True)
 
@@ -1161,6 +1179,63 @@ class OrdemManutencao(AuditModel):
     @property
     def cancelada(self) -> bool:
         return self.status == StatusOrdemManutencaoChoices.CANCELADO
+
+    # ── Garantia do reparo / troca ─────────────────────────────────────────
+    #: Status em que a garantia já foi (ou pode ter sido) definida pelo fornecedor.
+    _GARANTIA_STATUS_RELEVANTES = (
+        StatusOrdemManutencaoChoices.REPARADO,
+        StatusOrdemManutencaoChoices.DEVOLVIDO,
+        StatusOrdemManutencaoChoices.SUBSTITUTO_ENVIADO,
+        StatusOrdemManutencaoChoices.CONCLUIDO,
+    )
+
+    @property
+    def tem_garantia_reparo(self) -> bool:
+        return self.tem_garantia == SimNaoChoices.SIM
+
+    @property
+    def garantia_relevante(self) -> bool:
+        """A OS já passou por reparo/troca — faz sentido exibir a garantia."""
+        return self.status in self._GARANTIA_STATUS_RELEVANTES
+
+    @property
+    def garantia_iniciada(self) -> bool:
+        return self.garantia_inicio is not None
+
+    @property
+    def garantia_dias_restantes(self):
+        """Dias até o fim da garantia (negativo = expirada). None se não iniciada."""
+        if not self.garantia_fim:
+            return None
+        return (self.garantia_fim - timezone.localdate()).days
+
+    @property
+    def garantia_vigente(self) -> bool:
+        d = self.garantia_dias_restantes
+        return d is not None and d >= 0
+
+    @property
+    def garantia_expirada(self) -> bool:
+        d = self.garantia_dias_restantes
+        return d is not None and d < 0
+
+    @property
+    def garantia_status(self) -> str:
+        """'sem_garantia' | 'aguardando_inicio' | 'vigente' | 'expirada'."""
+        if not self.tem_garantia_reparo:
+            return "sem_garantia"
+        if not self.garantia_iniciada:
+            return "aguardando_inicio"
+        return "expirada" if self.garantia_expirada else "vigente"
+
+    @property
+    def garantia_status_display(self) -> str:
+        return {
+            "sem_garantia": "Sem garantia de reparo",
+            "aguardando_inicio": "Garantia inicia na confirmação do TI",
+            "vigente": "Em garantia",
+            "expirada": "Garantia expirada",
+        }[self.garantia_status]
 
     def __str__(self):
         return f"OS #{self.pk} — {self.item} ({self.get_status_display()})"
