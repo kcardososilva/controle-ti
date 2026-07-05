@@ -1111,10 +1111,12 @@ def usuario_dashboard(request):
         reverse=True
     )[:10]
 
-    usuarios_mais_antigos = sorted(
-        [u for u in usuarios_enriquecidos if u["dias_empresa"] > 0],
-        key=lambda x: x["dias_empresa"],
-        reverse=True
+    novos_colaboradores = sorted(
+        [
+            u for u in usuarios_enriquecidos
+            if u["usuario"].data_inicio and not u["usuario_desligado"]
+        ],
+        key=lambda x: x["dias_empresa"]
     )[:10]
 
     usuarios_com_mais_ativos = sorted(
@@ -1197,7 +1199,7 @@ def usuario_dashboard(request):
             "total_pmb": total_pmb,
         },
         "usuarios_mais_custosos": usuarios_mais_custosos,
-        "usuarios_mais_antigos": usuarios_mais_antigos,
+        "novos_colaboradores": novos_colaboradores,
         "usuarios_com_mais_ativos": usuarios_com_mais_ativos,
         "desligados_com_pendencias": desligados_com_pendencias,
         "top_consolidado": top_consolidado,

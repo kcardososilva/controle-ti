@@ -16,6 +16,7 @@ from ..forms import (
     PreventivaStartForm,
 )
 from ..models import (
+    GRUPO_FORNECEDOR,
     CheckListModelo,
     CheckListPergunta,
     Item,
@@ -1222,7 +1223,7 @@ def preventiva_plano(request):
         "filter_tecnico": tecnico_filter,
         "localidades": Localidade.objects.order_by("local"),
         "checklists": CheckListModelo.objects.order_by("nome"),
-        "tecnicos": AuthUser.objects.filter(is_active=True).order_by("first_name", "last_name", "username"),
+        "tecnicos": AuthUser.objects.filter(is_active=True).exclude(groups__name=GRUPO_FORNECEDOR).order_by("first_name", "last_name", "username"),
         "total": len(rows),
     }
     return render(request, "front/preventivas/preventiva_plano.html", context)
@@ -1337,9 +1338,12 @@ def tecnico_desempenho(request):
         )
     }
 
-    ids = set(por_exec) | set(por_atrib) | set(
-        AuthUser.objects.filter(is_active=True).values_list("id", flat=True)
+    fornecedor_ids = set(
+        AuthUser.objects.filter(groups__name=GRUPO_FORNECEDOR).values_list("id", flat=True)
     )
+    ids = (set(por_exec) | set(por_atrib) | set(
+        AuthUser.objects.filter(is_active=True).values_list("id", flat=True)
+    )) - fornecedor_ids
     users = {u.id: u for u in AuthUser.objects.filter(id__in=ids)}
 
     tecnicos = []
@@ -1492,7 +1496,7 @@ def minhas_atividades(request):
         "alvo_nome": alvo.get_full_name() or alvo.username,
         "is_proprio": (alvo == request.user),
         "pode_escolher": pode_escolher,
-        "tecnicos": AuthUser.objects.filter(is_active=True).order_by("first_name", "last_name", "username") if pode_escolher else [],
+        "tecnicos": AuthUser.objects.filter(is_active=True).exclude(groups__name=GRUPO_FORNECEDOR).order_by("first_name", "last_name", "username") if pode_escolher else [],
         "atividades": atividades,
         "kpi": kpi,
         "recentes": recentes,

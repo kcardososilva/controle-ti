@@ -69,6 +69,8 @@ def manutencao_recebimentos(request):
     context = {
         "pendentes": pendentes,
         "qtd_pendentes": pendentes.count(),
+        "qtd_aprovacao": pendentes.filter(status=S.AGUARDANDO_APROVACAO).count(),
+        "qtd_receber": pendentes.filter(status__in=_CONCLUIVEIS_TI).count(),
         "page_obj": page_obj,
         "total": paginator.count,
         "fornecedores": Fornecedor.objects.order_by("nome"),

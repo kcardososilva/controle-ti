@@ -2,926 +2,325 @@
 {% load static humanize %}
 
 {% block title %}Detalhe da Movimentação #{{ mov.pk }}{% endblock %}
-
-
 {% block page_title %}Detalhe da Movimentação{% endblock %}
-{% block page_subtitle %}Rastreabilidade operacional, item, fluxo, lote, documentos e auditoria.{% endblock %}
+{% block page_subtitle %}Rastreabilidade da operação, item, fluxo, lote, documentos e auditoria{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span>Patrimônio &amp; TI</span>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'movimentacao_list' %}">Movimentações</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">#{{ mov.pk }}</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'movimentacao_list' %}" class="btn btn-sm">
+  <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Voltar
+</a>
+{% if mov.termo_pdf %}
+<a href="{{ mov.termo_pdf.url }}" target="_blank" rel="noopener" class="btn btn-sm">
+  <i class="fa-solid fa-print" aria-hidden="true"></i> Imprimir Termo
+</a>
+{% endif %}
+{% if mov.item %}
+<a href="{% url 'equipamento_detalhe' mov.item.pk %}" class="btn-primary btn-sm">
+  <i class="fa-solid fa-cube" aria-hidden="true"></i> Ficha do Item
+</a>
+{% endif %}
+{% endblock %}
+
 {% block extra_css %}
 <style>
-/* =========================================================
-   MOVIMENTAÇÃO DETAIL - INTEGRADO AO BASE.HTML
-   Layout responsivo + color switcher + dark mode + glass
-   ========================================================= */
-
+/* ===================================================================
+   Detalhe da Movimentação — padrão Zelo (tokens do base.html)
+   Sem glass/blur, sem gradiente, sem pílula, sem hex chumbado.
+   =================================================================== */
 :where(.mov-detail-page) {
-  --md-primary: var(--brand, #0071e3);
-  --md-primary-hover: var(--brand-hover, #0077ed);
-  --md-primary-soft: var(--brand-soft, rgba(0, 113, 227, 0.10));
-
-  --md-surface: var(--bg-elevated, #ffffff);
-  --md-surface-soft: var(--bg-fill-tertiary, rgba(120, 120, 128, 0.08));
-  --md-surface-muted: var(--bg-fill-secondary, rgba(120, 120, 128, 0.12));
-
-  --md-text: var(--text-primary, #1d1d1f);
-  --md-muted: var(--text-tertiary, #6e6e73);
-  --md-soft: var(--text-quaternary, #86868b);
-
-  --md-border: var(--separator-hairline, rgba(0, 0, 0, 0.06));
-  --md-border-subtle: var(--separator-hairline, rgba(0, 0, 0, 0.06));
-  --md-border-strong: var(--separator-non-opaque, rgba(0, 0, 0, 0.10));
-
-  --md-success: var(--success, #34c759);
-  --md-success-bg: var(--success-soft, rgba(52, 199, 89, 0.12));
-
-  --md-warning: var(--warning, #ff9500);
-  --md-warning-bg: var(--warning-soft, rgba(255, 149, 0, 0.12));
-
-  --md-danger: var(--danger, #ff3b30);
-  --md-danger-bg: var(--danger-soft, rgba(255, 59, 48, 0.10));
-
-  --md-info: var(--info, #5ac8fa);
-  --md-info-bg: var(--info-soft, rgba(90, 200, 250, 0.12));
-
-  --md-purple: #8b5cf6;
-  --md-purple-bg: color-mix(in srgb, #8b5cf6 14%, transparent);
-
-  --md-radius-sm: var(--radius-sm, 10px);
-  --md-radius-md: var(--radius-md, 14px);
-  --md-radius-lg: var(--radius-lg, 18px);
-  --md-radius-xl: var(--radius-xl, 22px);
-
-  --md-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.05));
-  --md-shadow-md: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.06));
-
-  --md-transition: var(--transition-fast, 160ms cubic-bezier(0.32, 0.72, 0, 1));
+  --md-primary:      var(--brand);
+  --md-primary-hover:var(--brand-hover);
+  --md-primary-soft: var(--brand-soft);
+  --md-surface:      var(--bg-elevated);
+  --md-surface-soft: var(--bg-fill-tertiary);
+  --md-surface-muted:var(--bg-fill-secondary);
+  --md-text:         var(--text-primary);
+  --md-text-2:       var(--text-secondary);
+  --md-muted:        var(--text-tertiary);
+  --md-soft:         var(--text-quaternary);
+  --md-border:       var(--separator-hairline);
+  --md-border-strong:var(--separator-non-opaque);
+  --md-success:      var(--success);   --md-success-bg: var(--success-soft);
+  --md-warning:      var(--warning);   --md-warning-bg: var(--warning-soft);
+  --md-danger:       var(--danger);    --md-danger-bg:  var(--danger-soft);
+  --md-radius-sm:    var(--radius-sm);
+  --md-radius-md:    var(--radius-md);
+  --md-radius-lg:    var(--radius-lg);
+  --md-shadow-xs:    var(--shadow-xs);
+  --md-shadow-md:    var(--shadow-md);
+  --md-transition:   var(--transition-fast);
 }
 
-.mov-detail-page,
-.mov-detail-page * {
-  box-sizing: border-box;
-  min-width: 0;
-}
+.mov-detail-page, .mov-detail-page * { box-sizing: border-box; min-width: 0; }
+.mov-detail-page { width: 100%; max-width: 1440px; margin: 0 auto; color: var(--md-text); }
+.mov-detail-shell { display: grid; gap: 16px; }
 
-.mov-detail-page {
-  width: 100%;
-  max-width: 1480px;
-  margin: 0 auto;
-  padding: 0;
-  color: var(--md-text);
-}
-
-.mov-detail-shell {
-  display: grid;
-  gap: 1rem;
-}
-
-/* =========================================================
-   HERO
-   ========================================================= */
-
+/* ── Identidade ─────────────────────────────────────────────────── */
 .mov-detail-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1rem;
-  align-items: center;
-  padding: clamp(1rem, 2.5vw, 1.5rem);
-  border: 1px solid var(--md-border);
-  border-radius: var(--md-radius-xl);
-  background:
-    linear-gradient(135deg, var(--brand-softer, rgba(0, 113, 227, 0.05)), transparent 44%),
-    var(--md-surface);
-  box-shadow: var(--md-shadow-sm);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-}
-
-.hero-main {
-  display: grid;
   grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
   align-items: center;
-  gap: 0.875rem;
+  padding: 16px 18px;
+  border: 1px solid var(--md-border);
+  border-radius: var(--md-radius-lg);
+  background: var(--md-surface);
+  box-shadow: var(--md-shadow-xs);
 }
-
 .hero-icon {
-  width: clamp(3rem, 9vw, 4rem);
-  height: clamp(3rem, 9vw, 4rem);
-  display: grid;
-  place-items: center;
-  border-radius: 1.2rem;
-  background: color-mix(in srgb, var(--md-primary) 14%, transparent);
-  color: var(--md-primary);
-  border: 1px solid color-mix(in srgb, var(--md-primary) 24%, transparent);
-  font-size: clamp(1.2rem, 4vw, 1.6rem);
+  width: 48px; height: 48px;
+  display: grid; place-items: center;
+  border-radius: var(--md-radius-md);
+  background: var(--md-surface-soft);
+  color: var(--md-text-2);
+  font-size: 19px;
+  flex-shrink: 0;
 }
-
 .hero-title h1 {
   margin: 0;
   color: var(--md-text);
-  font-size: clamp(1.25rem, 4vw, 1.95rem);
-  font-weight: 600;
-  line-height: 1.1;
+  font-size: clamp(19px, 2.2vw, 24px);
+  font-weight: 650; line-height: 1.12; letter-spacing: -0.02em;
   overflow-wrap: anywhere;
 }
+.hero-title h1 span { color: var(--md-muted); font-weight: 600; }
+.hero-item-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 5px; color: var(--md-primary); font-size: 13px; font-weight: 500; text-decoration: none; }
+.hero-item-link:hover { color: var(--md-primary-hover); }
+.hero-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 
-.hero-title span {
-  display: block;
-  margin-top: 0.45rem;
-  color: var(--md-muted);
-  font-size: 0.92rem;
-  line-height: 1.45;
-}
-
-.hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.625rem;
-}
-
-/* =========================================================
-   BOTÕES / BADGES
-   ========================================================= */
-
-.md-btn {
-  min-height: 2.65rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0 1rem;
-  border-radius: var(--radius-pill, 999px);
-  font-weight: 600;
-  font-size: 0.9rem;
-  text-decoration: none;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition:
-    transform var(--md-transition),
-    background var(--md-transition),
-    border-color var(--md-transition),
-    color var(--md-transition),
-    box-shadow var(--md-transition);
-  white-space: nowrap;
-}
-
-.md-btn:hover {
-  transform: translateY(-1px);
-}
-
-.md-btn-primary {
-  background: var(--md-primary);
-  color: #fff;
-  box-shadow: var(--md-shadow-sm);
-}
-
-.md-btn-primary:hover {
-  background: var(--md-primary-hover);
-}
-
-.md-btn-secondary {
-  background: var(--md-surface);
-  border-color: var(--md-border-subtle);
-  color: var(--md-muted);
-}
-
-.md-btn-secondary:hover {
-  color: var(--md-text);
-  background: var(--md-surface-muted);
-  border-color: color-mix(in srgb, var(--md-primary) 22%, var(--md-border-subtle));
-}
-
+/* ── Badges ─────────────────────────────────────────────────────── */
 .md-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.38rem 0.72rem;
-  border-radius: 999px;
-  font-size: 0.76rem;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 9px; border-radius: var(--radius-xs);
+  font-size: 11.5px; font-weight: 600; line-height: 1.2; white-space: nowrap;
+  background: var(--md-surface-soft); color: var(--md-text-2);
 }
+.md-badge::before { content: ""; width: 6px; height: 6px; border-radius: 999px; display: block; background: currentColor; }
+.md-badge.no-dot::before { display: none; }
+.st-green  { background: var(--md-success-bg); color: var(--md-success); }
+.st-blue   { background: var(--md-primary-soft); color: var(--md-primary); }
+.st-orange { background: var(--md-warning-bg); color: var(--md-warning); }
+.st-red    { background: var(--md-danger-bg);  color: var(--md-danger); }
+.st-gray   { background: var(--md-surface-muted); color: var(--md-muted); }
 
-.md-badge::before {
-  content: "";
-  width: 0.42rem;
-  height: 0.42rem;
-  border-radius: 999px;
-  display: block;
-}
-
-.st-green {
-  background: var(--md-success-bg);
-  color: var(--md-success);
-}
-.st-green::before {
-  background: var(--md-success);
-}
-
-.st-blue {
-  background: var(--md-info-bg);
-  color: var(--md-info);
-}
-.st-blue::before {
-  background: var(--md-info);
-}
-
-.st-orange {
-  background: var(--md-warning-bg);
-  color: var(--md-warning);
-}
-.st-orange::before {
-  background: var(--md-warning);
-}
-
-.st-red {
-  background: var(--md-danger-bg);
-  color: var(--md-danger);
-}
-.st-red::before {
-  background: var(--md-danger);
-}
-
-.st-gray {
-  background: color-mix(in srgb, var(--md-muted) 12%, transparent);
-  color: var(--md-muted);
-}
-.st-gray::before {
-  background: var(--md-muted);
-}
-
-/* =========================================================
-   KPIS
-   ========================================================= */
-
-.kpi-grid {
+/* ── Metric strip ───────────────────────────────────────────────── */
+.md-metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
-  gap: 1rem;
-}
-
-.kpi-card {
-  display: flex;
-  align-items: center;
-  gap: 0.875rem;
-  padding: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1px;
+  background: var(--md-border);
   border: 1px solid var(--md-border);
   border-radius: var(--md-radius-lg);
-  background:
-    linear-gradient(135deg, var(--brand-softer, rgba(0, 113, 227, 0.05)), transparent 44%),
-    var(--md-surface);
-  box-shadow: var(--md-shadow-sm);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-}
-
-.kpi-icon {
-  width: 3rem;
-  height: 3rem;
-  flex: 0 0 3rem;
-  display: grid;
-  place-items: center;
-  border-radius: var(--md-radius-md);
-  background: color-mix(in srgb, var(--md-primary) 13%, transparent);
-  color: var(--md-primary);
-  border: 1px solid color-mix(in srgb, var(--md-primary) 22%, transparent);
-}
-
-.kpi-label {
-  display: block;
-  color: var(--md-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.kpi-value {
-  display: block;
-  margin-top: 0.25rem;
-  color: var(--md-text);
-  font-size: clamp(1.1rem, 3vw, 1.45rem);
-  font-weight: 600;
-  line-height: 1.15;
-  overflow-wrap: anywhere;
-}
-
-.kpi-sub {
-  display: block;
-  margin-top: 0.25rem;
-  color: var(--md-muted);
-  font-size: 0.75rem;
-  line-height: 1.35;
-}
-
-/* =========================================================
-   LAYOUT
-   ========================================================= */
-
-.detail-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(300px, 0.9fr);
-  gap: 1rem;
-  align-items: start;
-}
-
-.detail-column {
-  display: grid;
-  gap: 1rem;
-}
-
-.md-card {
-  border: 1px solid var(--md-border);
-  border-radius: var(--md-radius-lg);
-  background:
-    linear-gradient(135deg, var(--brand-softer, rgba(0, 113, 227, 0.05)), transparent 44%),
-    var(--md-surface);
-  box-shadow: var(--md-shadow-sm);
   overflow: hidden;
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: var(--md-shadow-xs);
 }
+.md-metric { background: var(--md-surface); padding: 14px 16px; display: flex; flex-direction: column; }
+.md-metric-l { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--md-muted); }
+.md-metric-l i { font-size: 11px; color: var(--md-soft); }
+.md-metric-v { margin-top: 9px; font-size: 22px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.06; color: var(--md-text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.md-metric-v.sm { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+.md-metric-s { margin-top: 5px; font-size: 11px; color: var(--md-soft); line-height: 1.35; }
 
-.md-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.875rem;
-  padding: 1rem 1.125rem;
-  border-bottom: 1px solid var(--md-border-subtle);
-  background: color-mix(in srgb, var(--md-surface) 88%, transparent);
-}
+/* ── Layout ─────────────────────────────────────────────────────── */
+.detail-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 0.92fr); gap: 16px; align-items: start; }
+.detail-column { display: grid; gap: 16px; }
+@media (max-width: 1120px) { .detail-layout { grid-template-columns: 1fr; } }
 
-.md-card-title {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  color: var(--md-text);
-  font-size: 0.96rem;
-  font-weight: 600;
-}
+/* ── Cards ──────────────────────────────────────────────────────── */
+.md-card { border: 1px solid var(--md-border); border-radius: var(--md-radius-lg); background: var(--md-surface); box-shadow: var(--md-shadow-xs); overflow: hidden; }
+.md-card--warn { border-left: 3px solid var(--md-warning); }
+.md-card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--md-border); }
+.md-card-title { display: flex; align-items: center; gap: 8px; color: var(--md-text); font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
+.md-card-title i { color: var(--md-muted); font-size: 13px; }
+.md-card-body { padding: 16px; }
+.md-card-foot-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; color: var(--md-primary); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+.md-card-foot-link:hover { color: var(--md-primary-hover); }
 
-.md-card-title i {
-  color: var(--md-primary);
-}
-
-.md-card-body {
-  padding: 1.125rem;
-}
-
-/* =========================================================
-   INFO GRID
-   ========================================================= */
-
+/* ── Info grid (spec-sheet) ─────────────────────────────────────── */
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
-  gap: 0.875rem;
-}
-
-.info-item {
-  min-width: 0;
-  padding: 0.875rem;
-  border: 1px solid var(--md-border-subtle);
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  gap: 1px;
+  background: var(--md-border);
+  border: 1px solid var(--md-border);
   border-radius: var(--md-radius-md);
-  background: color-mix(in srgb, var(--md-surface-soft) 88%, transparent);
+  overflow: hidden;
 }
+.info-item { background: var(--md-surface); padding: 12px 14px; min-width: 0; }
+.info-label { display: flex; align-items: center; gap: 6px; color: var(--md-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
+.info-label i { color: var(--md-soft); font-size: 11px; }
+.info-value { color: var(--md-text); font-size: 13.5px; font-weight: 600; line-height: 1.42; overflow-wrap: anywhere; }
+.info-sub { margin-top: 4px; color: var(--md-muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.info-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.value-link { color: var(--md-primary); text-decoration: none; }
+.value-link:hover { color: var(--md-primary-hover); text-decoration: underline; }
 
-.info-label {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  color: var(--md-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.42rem;
-}
-
-.info-label i {
-  color: var(--md-primary);
-}
-
-.info-value {
-  color: var(--md-text);
-  font-size: 0.95rem;
-  font-weight: 800;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.info-sub {
-  margin-top: 0.3rem;
-  color: var(--md-muted);
-  font-size: 0.78rem;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.value-link {
-  color: var(--md-primary);
-  text-decoration: none;
-}
-
-.value-link:hover {
-  text-decoration: underline;
-}
-
-/* =========================================================
-   USUÁRIO / AVATAR
-   ========================================================= */
-
-.user-box {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
+/* ── Usuário ────────────────────────────────────────────────────── */
+.user-box { display: flex; align-items: center; gap: 10px; }
 .user-avatar {
-  width: 2.35rem;
-  height: 2.35rem;
-  flex: 0 0 2.35rem;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-pill, 999px);
-  background: color-mix(in srgb, var(--md-primary) 13%, transparent);
-  color: var(--md-primary);
-  border: 1px solid color-mix(in srgb, var(--md-primary) 22%, transparent);
-  font-size: 0.82rem;
-  font-weight: 600;
-  text-transform: uppercase;
+  width: 34px; height: 34px; flex: 0 0 34px;
+  display: grid; place-items: center; border-radius: 50%;
+  background: var(--md-primary-soft); color: var(--md-primary);
+  font-size: 13px; font-weight: 700; text-transform: uppercase;
 }
+.user-name { color: var(--md-text); font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.user-sub  { color: var(--md-muted); font-size: 11.5px; line-height: 1.35; }
 
-.user-name {
-  color: var(--md-text);
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.user-sub {
-  color: var(--md-muted);
-  font-size: 0.76rem;
-  line-height: 1.35;
-}
-
-/* =========================================================
-   FLUXO
-   ========================================================= */
-
+/* ── Fluxo ──────────────────────────────────────────────────────── */
 .flow-viz {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 3rem minmax(0, 1fr);
+  display: grid; grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
   align-items: stretch;
-  border: 1px solid var(--md-border-subtle);
-  border-radius: var(--md-radius-lg);
-  overflow: hidden;
-  background: color-mix(in srgb, var(--md-surface-soft) 90%, transparent);
+  border: 1px solid var(--md-border); border-radius: var(--md-radius-md); overflow: hidden;
+  background: var(--md-surface);
 }
+.flow-step { padding: 14px; min-width: 0; }
+.flow-step.destino { background: var(--md-surface-soft); }
+.flow-arrow { display: grid; place-items: center; color: var(--md-soft); background: var(--md-surface-soft); border-left: 1px solid var(--md-border); border-right: 1px solid var(--md-border); }
+.flow-label { color: var(--md-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+.flow-label.is-destino { color: var(--md-primary); }
+.flow-data { display: flex; align-items: flex-start; gap: 8px; color: var(--md-text); font-size: 13.5px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.flow-data i { margin-top: 2px; color: var(--md-soft); flex: 0 0 auto; }
+.flow-detail { margin-top: 5px; padding-left: 22px; color: var(--md-muted); font-size: 12px; line-height: 1.42; overflow-wrap: anywhere; }
 
-.flow-step {
-  padding: 1rem;
-  min-width: 0;
-}
+/* ── Lote / progresso ───────────────────────────────────────────── */
+.lote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 1px; background: var(--md-border); border: 1px solid var(--md-border); border-radius: var(--md-radius-md); overflow: hidden; }
+.lote-progress-box { margin-top: 14px; padding: 13px; border: 1px solid var(--md-border); border-radius: var(--md-radius-md); background: var(--md-surface-soft); }
+.progress-head { display: flex; justify-content: space-between; gap: 12px; color: var(--md-muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.progress-track { width: 100%; height: 6px; margin-top: 8px; border-radius: 999px; background: var(--md-surface-muted); overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 999px; background: var(--md-success); }
+.progress-fill.warn { background: var(--md-warning); }
+.progress-fill.crit { background: var(--md-danger); }
 
-.flow-step.destino {
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--md-primary) 8%, transparent), transparent 48%),
-    color-mix(in srgb, var(--md-surface) 88%, transparent);
-}
-
-.flow-arrow {
-  display: grid;
-  place-items: center;
-  color: var(--md-muted);
-  background: color-mix(in srgb, var(--md-surface) 88%, transparent);
-  border-left: 1px solid var(--md-border-subtle);
-  border-right: 1px solid var(--md-border-subtle);
-}
-
-.flow-label {
-  color: var(--md-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.6rem;
-}
-
-.flow-data {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  color: var(--md-text);
-  font-size: 0.94rem;
-  font-weight: 600;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.flow-data i {
-  margin-top: 0.2rem;
-  color: var(--md-primary);
-  flex: 0 0 auto;
-}
-
-.flow-detail {
-  margin-top: 0.35rem;
-  padding-left: 1.45rem;
-  color: var(--md-muted);
-  font-size: 0.82rem;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-/* =========================================================
-   LOTE
-   ========================================================= */
-
-.lote-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
-  gap: 0.875rem;
-}
-
-.lote-progress-box {
-  margin-top: 1rem;
-  padding: 0.875rem;
-  border: 1px solid var(--md-border-subtle);
-  border-radius: var(--md-radius-md);
-  background: color-mix(in srgb, var(--md-surface-soft) 86%, transparent);
-}
-
-.progress-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  color: var(--md-muted);
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.progress-track {
-  width: 100%;
-  height: 0.55rem;
-  margin-top: 0.6rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--md-muted) 18%, transparent);
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--md-success);
-}
-
-.progress-fill.warn {
-  background: var(--md-warning);
-}
-
-.progress-fill.crit {
-  background: var(--md-danger);
-}
-
-/* =========================================================
-   OBS / DOC / AUDITORIA
-   ========================================================= */
-
-.obs-box,
-.audit-box,
-.doc-box {
-  border: 1px solid var(--md-border-subtle);
-  border-radius: var(--md-radius-md);
-  background: color-mix(in srgb, var(--md-surface-soft) 88%, transparent);
-}
-
+/* ── Obs / auditoria / documento ────────────────────────────────── */
 .obs-box {
-  padding: 0.95rem;
-  color: var(--md-text);
-  font-size: 0.9rem;
-  line-height: 1.65;
-  overflow-wrap: anywhere;
+  padding: 13px 14px; border: 1px solid var(--md-border); border-radius: var(--md-radius-md);
+  background: var(--md-surface-soft); color: var(--md-text-2);
+  font-size: 13px; line-height: 1.6; overflow-wrap: anywhere;
 }
+.audit-list { display: grid; gap: 12px; }
+.audit-row { display: grid; gap: 2px; }
+.audit-row .k { color: var(--md-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+.audit-row .v { color: var(--md-text); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
 
-.audit-box {
-  padding: 0.95rem;
-  color: var(--md-muted);
-  font-size: 0.82rem;
-  line-height: 1.75;
+.doc-box { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--md-border); border-radius: var(--md-radius-md); background: var(--md-surface-soft); }
+.doc-info { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.doc-icon { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border-radius: var(--md-radius-sm); background: var(--md-danger-bg); color: var(--md-danger); font-size: 15px; }
+.doc-title { color: var(--md-text); font-size: 13px; font-weight: 600; }
+.doc-sub { color: var(--md-muted); font-size: 11.5px; }
+
+/* ── Responsivo ─────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .mov-detail-hero { grid-template-columns: 1fr; }
+  .flow-viz { grid-template-columns: 1fr; }
+  .flow-arrow { min-height: 40px; border-left: none; border-right: none; border-top: 1px solid var(--md-border); border-bottom: 1px solid var(--md-border); }
+  .flow-arrow i { transform: rotate(90deg); }
+  .flow-detail { padding-left: 0; }
+  .doc-box { align-items: stretch; flex-direction: column; }
 }
-
-.audit-box strong {
-  color: var(--md-text);
-}
-
-.audit-divider {
-  margin: 0.75rem 0;
-  border-top: 1px solid var(--md-border-subtle);
-}
-
-.doc-box {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.875rem;
-  padding: 0.875rem;
-}
-
-.doc-info {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.doc-icon {
-  width: 2.55rem;
-  height: 2.55rem;
-  flex: 0 0 2.55rem;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-pill, 999px);
-  background: var(--md-danger-bg);
-  color: var(--md-danger);
-}
-
-.doc-title {
-  color: var(--md-text);
-  font-weight: 600;
-}
-
-.doc-sub {
-  color: var(--md-muted);
-  font-size: 0.78rem;
-}
-
-/* =========================================================
-   EMPTY
-   ========================================================= */
-
-.empty-note {
-  color: var(--md-muted);
-  font-size: 0.9rem;
-  line-height: 1.45;
-}
-
-/* =========================================================
-   RESPONSIVO
-   ========================================================= */
-
-@media (max-width: 1180px) {
-  .detail-layout {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 760px) {
-  .mov-detail-page {
-    padding: 0;
-  }
-
-  .mov-detail-hero {
-    grid-template-columns: 1fr;
-  }
-
-  .hero-main {
-    grid-template-columns: 1fr;
-  }
-
-  .hero-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-    justify-content: stretch;
-  }
-
-  .md-btn {
-    width: 100%;
-  }
-
-  .flow-viz {
-    grid-template-columns: 1fr;
-  }
-
-  .flow-arrow {
-    min-height: 2.75rem;
-    border-left: none;
-    border-right: none;
-    border-top: 1px solid var(--md-border-subtle);
-    border-bottom: 1px solid var(--md-border-subtle);
-  }
-
-  .flow-arrow i {
-    transform: rotate(90deg);
-  }
-
-  .flow-detail {
-    padding-left: 0;
-  }
-
-  .md-card-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .doc-box {
-    align-items: stretch;
-    flex-direction: column;
-  }
-}
-
-@media (max-width: 380px) {
-  .mov-detail-hero,
-  .md-card-body,
-  .md-card-header {
-    padding: 0.8rem;
-  }
-
-  .hero-title h1 {
-    font-size: 1.15rem;
-  }
-
-  .info-item {
-    padding: 0.75rem;
-  }
+@media (max-width: 400px) {
+  .mov-detail-hero, .md-card-body, .md-card-header { padding: 13px; }
 }
 </style>
 {% endblock %}
 
 {% block content %}
-
-
 <div class="mov-detail-page">
   <div class="mov-detail-shell">
 
+    {# ── Identidade ── #}
     <section class="mov-detail-hero">
-      <div class="hero-main">
-        <div class="hero-icon">
-          {% if mov.tipo_movimentacao == "entrada" %}
-            <i class="fa fa-arrow-down"></i>
-          {% elif mov.tipo_movimentacao == "baixa" %}
-            <i class="fa fa-arrow-up"></i>
-          {% elif "manutencao" in mov.tipo_movimentacao %}
-            <i class="fa fa-screwdriver-wrench"></i>
-          {% else %}
-            <i class="fa fa-arrow-right-arrow-left"></i>
-          {% endif %}
-        </div>
-
-        <div class="hero-title">
-          <h1>Movimentação <span style="color:var(--md-primary);">#{{ mov.pk }}</span></h1>
-          <span>
-            Detalhamento operacional da movimentação, fluxo, lote, item, custos, documentos e auditoria.
-          </span>
-
-          <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.75rem;">
-            <span class="md-badge {{ impacto.class }}">{{ impacto.texto }}</span>
-            <span class="md-badge st-gray">
-              {{ mov.created_at|date:"d/m/Y H:i" }}
-            </span>
-          </div>
-        </div>
+      <div class="hero-icon" aria-hidden="true">
+        {% if mov.tipo_movimentacao == "entrada" %}<i class="fa-solid fa-arrow-down"></i>
+        {% elif mov.tipo_movimentacao == "baixa" %}<i class="fa-solid fa-arrow-up"></i>
+        {% elif "manutencao" in mov.tipo_movimentacao %}<i class="fa-solid fa-screwdriver-wrench"></i>
+        {% else %}<i class="fa-solid fa-arrow-right-arrow-left"></i>{% endif %}
       </div>
-
-      <div class="hero-actions">
-        {% if mov.termo_pdf %}
-          <a href="{{ mov.termo_pdf.url }}" target="_blank" class="md-btn md-btn-secondary">
-            <i class="fa fa-print"></i>
-            Imprimir Termo
+      <div class="hero-title">
+        <h1>Movimentação <span>#{{ mov.pk }}</span></h1>
+        {% if mov.item %}
+          <a href="{% url 'equipamento_detalhe' mov.item.pk %}" class="hero-item-link">
+            <i class="fa-solid fa-cube" aria-hidden="true"></i> {{ mov.item.nome }}
           </a>
         {% endif %}
-
-        <a href="{% url 'movimentacao_list' %}" class="md-btn md-btn-primary">
-          <i class="fa fa-arrow-left"></i>
-          Voltar
-        </a>
+        <div class="hero-chips">
+          <span class="md-badge {{ impacto.class }}">{{ impacto.texto }}</span>
+          <span class="md-badge st-gray no-dot"><i class="fa-solid fa-tag" aria-hidden="true"></i> {{ mov.get_tipo_movimentacao_display }}</span>
+          <span class="md-badge st-gray no-dot"><i class="fa-solid fa-clock" aria-hidden="true"></i> {{ mov.created_at|date:"d/m/Y H:i" }}</span>
+        </div>
       </div>
     </section>
 
-    <section class="kpi-grid">
-      <div class="kpi-card">
-        <div class="kpi-icon">
-          <i class="fa fa-layer-group"></i>
-        </div>
-        <div>
-          <span class="kpi-label">Quantidade</span>
-          <span class="kpi-value">{{ mov.quantidade|default:"1" }}</span>
-          <span class="kpi-sub">Quantidade movimentada</span>
-        </div>
+    {# ── Métricas ── #}
+    <section class="md-metrics">
+      <div class="md-metric">
+        <span class="md-metric-l"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Quantidade</span>
+        <span class="md-metric-v">{{ mov.quantidade|default:"1" }}</span>
+        <span class="md-metric-s">Unidades movimentadas</span>
       </div>
-
-      <div class="kpi-card">
-        <div class="kpi-icon">
-          <i class="fa fa-coins"></i>
-        </div>
-        <div>
-          <span class="kpi-label">Custo</span>
-          <span class="kpi-value">
-            {% if mov.custo %}
-              R$ {{ mov.custo|floatformat:2|intcomma }}
-            {% else %}
-              —
-            {% endif %}
-          </span>
-          <span class="kpi-sub">Custo total da operação</span>
-        </div>
+      <div class="md-metric">
+        <span class="md-metric-l"><i class="fa-solid fa-coins" aria-hidden="true"></i> Custo</span>
+        <span class="md-metric-v">{% if mov.custo %}R$ {{ mov.custo|floatformat:2|intcomma }}{% else %}—{% endif %}</span>
+        <span class="md-metric-s">Custo total da operação</span>
       </div>
-
-      <div class="kpi-card">
-        <div class="kpi-icon">
-          <i class="fa fa-circle-check"></i>
-        </div>
-        <div>
-          <span class="kpi-label">Status Final</span>
-          <span class="kpi-value">{{ status_final }}</span>
-          <span class="kpi-sub">Situação interpretada após o movimento</span>
-        </div>
+      <div class="md-metric">
+        <span class="md-metric-l"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Status Final</span>
+        <span class="md-metric-v sm">{{ status_final }}</span>
+        <span class="md-metric-s">Situação após o movimento</span>
       </div>
-
-      <div class="kpi-card">
-        <div class="kpi-icon">
-          <i class="fa fa-clock-rotate-left"></i>
-        </div>
-        <div>
-          <span class="kpi-label">Histórico do Item</span>
-          <span class="kpi-value">{{ stats.total_movs }}</span>
-          <span class="kpi-sub">Movimentações vinculadas ao item</span>
-        </div>
+      <div class="md-metric">
+        <span class="md-metric-l"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Histórico do Item</span>
+        <span class="md-metric-v">{{ stats.total_movs }}</span>
+        <span class="md-metric-s">Movimentações vinculadas</span>
       </div>
     </section>
 
     <section class="detail-layout">
 
+      {# ── Coluna principal ── #}
       <div class="detail-column">
 
         <div class="md-card">
           <div class="md-card-header">
-            <div class="md-card-title">
-              <i class="fa fa-clipboard-list"></i>
-              Dados da Operação
-            </div>
+            <div class="md-card-title"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Dados da Operação</div>
             <span class="md-badge {{ impacto.class }}">{{ mov.get_tipo_movimentacao_display }}</span>
           </div>
-
           <div class="md-card-body">
             <div class="info-grid">
               <div class="info-item">
-                <div class="info-label">
-                  <i class="fa fa-cube"></i>
-                  Item
-                </div>
-
+                <div class="info-label"><i class="fa-solid fa-cube" aria-hidden="true"></i> Item</div>
                 <div class="info-value">
-                  <a href="{% url 'equipamento_detalhe' mov.item.pk %}" class="value-link">
-                    {{ mov.item.nome }}
-                  </a>
+                  {% if mov.item %}<a href="{% url 'equipamento_detalhe' mov.item.pk %}" class="value-link">{{ mov.item.nome }}</a>{% else %}—{% endif %}
                 </div>
-
-                <div class="info-sub">
-                  S/N: {{ mov.item.numero_serie|default:"Não informado" }}
-                </div>
+                <div class="info-sub info-mono">S/N: {{ mov.item.numero_serie|default:"Não informado" }}</div>
               </div>
 
               <div class="info-item">
-                <div class="info-label">
-                  <i class="fa fa-tags"></i>
-                  Tipo
-                </div>
-
-                <div class="info-value">
-                  {{ mov.get_tipo_movimentacao_display }}
-                </div>
-
+                <div class="info-label"><i class="fa-solid fa-tags" aria-hidden="true"></i> Tipo</div>
+                <div class="info-value">{{ mov.get_tipo_movimentacao_display }}</div>
                 {% if mov.tipo_transferencia %}
-                  <div class="info-sub">
-                    Ação: {{ mov.get_tipo_transferencia_display }}
-                  </div>
+                  <div class="info-sub">Ação: {{ mov.get_tipo_transferencia_display }}</div>
                 {% endif %}
               </div>
 
               <div class="info-item">
-                <div class="info-label">
-                  <i class="fa fa-user-gear"></i>
-                  Registrada por
-                </div>
-
+                <div class="info-label"><i class="fa-solid fa-user-gear" aria-hidden="true"></i> Registrada por</div>
                 {% if mov.criado_por %}
                   <div class="user-box">
-                    <div class="user-avatar">
-                      {% if mov.criado_por.first_name %}
-                        {{ mov.criado_por.first_name|slice:":1"|upper }}
-                      {% else %}
-                        {{ mov.criado_por.username|slice:":1"|upper }}
-                      {% endif %}
-                    </div>
-
+                    <div class="user-avatar">{% if mov.criado_por.first_name %}{{ mov.criado_por.first_name|slice:":1"|upper }}{% else %}{{ mov.criado_por.username|slice:":1"|upper }}{% endif %}</div>
                     <div>
-                      <div class="user-name">
-                        {% if mov.criado_por.first_name or mov.criado_por.last_name %}
-                          {{ mov.criado_por.first_name }} {{ mov.criado_por.last_name }}
-                        {% else %}
-                          {{ mov.criado_por.username }}
-                        {% endif %}
-                      </div>
+                      <div class="user-name">{% if mov.criado_por.first_name or mov.criado_por.last_name %}{{ mov.criado_por.first_name }} {{ mov.criado_por.last_name }}{% else %}{{ mov.criado_por.username }}{% endif %}</div>
                       <div class="user-sub">Usuário do sistema</div>
                     </div>
                   </div>
@@ -932,37 +331,22 @@
 
               {% if mov.usuario %}
                 <div class="info-item">
-                  <div class="info-label">
-                    <i class="fa fa-user-check"></i>
-                    Solicitante / Usuário
-                  </div>
-
-                  <div class="info-value">
-                    {{ mov.usuario.nome|default:mov.usuario }}
-                  </div>
-
-                  {% if mov.usuario.email %}
-                    <div class="info-sub">{{ mov.usuario.email }}</div>
-                  {% endif %}
+                  <div class="info-label"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Solicitante / Usuário</div>
+                  <div class="info-value">{{ mov.usuario.nome|default:mov.usuario }}</div>
+                  {% if mov.usuario.email %}<div class="info-sub">{{ mov.usuario.email }}</div>{% endif %}
                 </div>
               {% endif %}
 
               {% if mov.numero_pedido %}
                 <div class="info-item">
-                  <div class="info-label">
-                    <i class="fa fa-file-invoice"></i>
-                    Nº Pedido / NF
-                  </div>
-                  <div class="info-value">{{ mov.numero_pedido }}</div>
+                  <div class="info-label"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Nº Pedido / NF</div>
+                  <div class="info-value info-mono">{{ mov.numero_pedido }}</div>
                 </div>
               {% endif %}
 
               {% if mov.chamado %}
                 <div class="info-item">
-                  <div class="info-label">
-                    <i class="fa fa-ticket"></i>
-                    Chamado
-                  </div>
+                  <div class="info-label"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Chamado</div>
                   <div class="info-value">{{ mov.chamado }}</div>
                 </div>
               {% endif %}
@@ -972,48 +356,22 @@
 
         <div class="md-card">
           <div class="md-card-header">
-            <div class="md-card-title">
-              <i class="fa fa-route"></i>
-              Fluxo de Movimentação
-            </div>
+            <div class="md-card-title"><i class="fa-solid fa-route" aria-hidden="true"></i> Fluxo de Movimentação</div>
           </div>
-
           <div class="md-card-body">
             <div class="flow-viz">
               <div class="flow-step">
                 <div class="flow-label">Origem</div>
-
-                <div class="flow-data">
-                  <i class="fa fa-location-dot"></i>
-                  {{ origem.loc }}
-                </div>
-
-                <div class="flow-detail">
-                  {{ origem.cc }}
-                </div>
+                <div class="flow-data"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ origem.loc }}</div>
+                <div class="flow-detail">{{ origem.cc }}</div>
               </div>
-
-              <div class="flow-arrow">
-                <i class="fa fa-arrow-right"></i>
-              </div>
-
+              <div class="flow-arrow" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></div>
               <div class="flow-step destino">
-                <div class="flow-label" style="color:var(--md-primary);">Destino</div>
-
-                <div class="flow-data">
-                  <i class="fa fa-location-dot"></i>
-                  {{ destino.loc }}
-                </div>
-
-                <div class="flow-detail">
-                  {{ destino.cc }}
-                </div>
-
+                <div class="flow-label is-destino">Destino</div>
+                <div class="flow-data"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ destino.loc }}</div>
+                <div class="flow-detail">{{ destino.cc }}</div>
                 {% if mov.fornecedor_manutencao %}
-                  <div class="flow-detail" style="margin-top:0.5rem;">
-                    <i class="fa fa-truck"></i>
-                    Fornecedor manutenção: {{ mov.fornecedor_manutencao.nome|default:mov.fornecedor_manutencao }}
-                  </div>
+                  <div class="flow-detail" style="margin-top:.5rem;"><i class="fa-solid fa-truck" aria-hidden="true"></i> Fornecedor manutenção: {{ mov.fornecedor_manutencao.nome|default:mov.fornecedor_manutencao }}</div>
                 {% endif %}
               </div>
             </div>
@@ -1021,40 +379,36 @@
         </div>
 
         {% if ordem_manutencao %}
-          <div class="md-card" style="border-left:3px solid #ff9500;">
+          <div class="md-card md-card--warn">
             <div class="md-card-header">
-              <div class="md-card-title">
-                <i class="fa fa-screwdriver-wrench"></i>
-                Ordem de Manutenção
-              </div>
+              <div class="md-card-title"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> Ordem de Manutenção</div>
               <span class="md-badge st-orange">OS #{{ ordem_manutencao.pk }}</span>
             </div>
             <div class="md-card-body">
               <div class="info-grid">
                 <div class="info-item">
-                  <div class="info-label">Status atual</div>
+                  <div class="info-label"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Status atual</div>
                   <div class="info-value">{{ ordem_manutencao.get_status_display }}</div>
                 </div>
                 <div class="info-item">
-                  <div class="info-label">Fornecedor responsável</div>
+                  <div class="info-label"><i class="fa-solid fa-truck" aria-hidden="true"></i> Fornecedor responsável</div>
                   <div class="info-value">{{ ordem_manutencao.fornecedor.nome }}</div>
                 </div>
                 {% if ordem_manutencao.item_substituto %}
                 <div class="info-item">
-                  <div class="info-label">Equipamento substituto</div>
+                  <div class="info-label"><i class="fa-solid fa-right-left" aria-hidden="true"></i> Equipamento substituto</div>
                   <div class="info-value">{{ ordem_manutencao.item_substituto.nome }}</div>
                 </div>
                 {% endif %}
                 {% if ordem_manutencao.substituto_contrato %}
                 <div class="info-item">
-                  <div class="info-label">Contrato de substituição</div>
+                  <div class="info-label"><i class="fa-solid fa-file-signature" aria-hidden="true"></i> Contrato de substituição</div>
                   <div class="info-value">{{ ordem_manutencao.substituto_contrato }}{% if ordem_manutencao.substituto_valor %} · R$ {{ ordem_manutencao.substituto_valor|floatformat:2|intcomma }}{% endif %}{% if ordem_manutencao.substituto_data %} · {{ ordem_manutencao.substituto_data|date:"d/m/Y" }}{% endif %}</div>
                 </div>
                 {% endif %}
               </div>
-              <a href="{% url 'manutencao_recebimento_detail' ordem_manutencao.pk %}" class="md-btn md-btn-secondary" style="margin-top:0.9rem;">
-                <i class="fa fa-arrow-up-right-from-square"></i>
-                Acompanhar processo de manutenção
+              <a href="{% url 'manutencao_recebimento_detail' ordem_manutencao.pk %}" class="md-card-foot-link">
+                Acompanhar processo de manutenção <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
               </a>
             </div>
           </div>
@@ -1063,58 +417,26 @@
         {% if lote_info %}
           <div class="md-card">
             <div class="md-card-header">
-              <div class="md-card-title">
-                <i class="fa fa-boxes-stacked"></i>
-                Lote Vinculado
-              </div>
-
+              <div class="md-card-title"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i> Lote Vinculado</div>
               <span class="md-badge st-blue">NF {{ lote_info.numero_nf|default:"—" }}</span>
             </div>
-
             <div class="md-card-body">
               <div class="lote-grid">
                 <div class="info-item">
-                  <div class="info-label">
-                    <i class="fa fa-file-invoice"></i>
-                    Número NF
-                  </div>
-                  <div class="info-value">{{ lote_info.numero_nf|default:"—" }}</div>
+                  <div class="info-label"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Número NF</div>
+                  <div class="info-value info-mono">{{ lote_info.numero_nf|default:"—" }}</div>
                 </div>
-
                 <div class="info-item">
-                  <div class="info-label">
-                    <i class="fa fa-calendar-days"></i>
-                    Entrada do Lote
-                  </div>
-                  <div class="info-value">
-                    {% if lote_info.data_entrada %}
-                      {{ lote_info.data_entrada|date:"d/m/Y" }}
-                    {% else %}
-                      —
-                    {% endif %}
-                  </div>
+                  <div class="info-label"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i> Entrada do Lote</div>
+                  <div class="info-value">{% if lote_info.data_entrada %}{{ lote_info.data_entrada|date:"d/m/Y" }}{% else %}—{% endif %}</div>
                 </div>
-
                 <div class="info-item">
-                  <div class="info-label">
-                    <i class="fa fa-truck"></i>
-                    Fornecedor
-                  </div>
+                  <div class="info-label"><i class="fa-solid fa-truck" aria-hidden="true"></i> Fornecedor</div>
                   <div class="info-value">{{ lote_info.fornecedor|default:"—" }}</div>
                 </div>
-
                 <div class="info-item">
-                  <div class="info-label">
-                    <i class="fa fa-coins"></i>
-                    Custo Unitário
-                  </div>
-                  <div class="info-value">
-                    {% if lote_info.custo_unitario %}
-                      R$ {{ lote_info.custo_unitario|floatformat:2|intcomma }}
-                    {% else %}
-                      —
-                    {% endif %}
-                  </div>
+                  <div class="info-label"><i class="fa-solid fa-coins" aria-hidden="true"></i> Custo Unitário</div>
+                  <div class="info-value">{% if lote_info.custo_unitario %}R$ {{ lote_info.custo_unitario|floatformat:2|intcomma }}{% else %}—{% endif %}</div>
                 </div>
               </div>
 
@@ -1122,25 +444,16 @@
                 <div class="lote-progress-box">
                   <div class="progress-head">
                     <span>Saldo do lote para este item</span>
-                    <span>
-                      {{ lote_info.quantidade_disponivel }}/{{ lote_info.quantidade_entrada }}
-                      — {{ lote_info.percentual_saldo }}%
-                    </span>
+                    <span>{{ lote_info.quantidade_disponivel }}/{{ lote_info.quantidade_entrada }} · {{ lote_info.percentual_saldo }}%</span>
                   </div>
-
                   <div class="progress-track">
-                    <div
-                      class="progress-fill {% if lote_info.percentual_saldo <= 20 %}crit{% elif lote_info.percentual_saldo <= 50 %}warn{% endif %}"
-                      style="width: {{ lote_info.percentual_saldo }}%;">
-                    </div>
+                    <div class="progress-fill {% if lote_info.percentual_saldo <= 20 %}crit{% elif lote_info.percentual_saldo <= 50 %}warn{% endif %}" style="width: {{ lote_info.percentual_saldo }}%;"></div>
                   </div>
                 </div>
               {% endif %}
 
               {% if lote_info.observacao_tecnica %}
-                <div class="obs-box" style="margin-top:1rem;">
-                  {{ lote_info.observacao_tecnica|linebreaksbr }}
-                </div>
+                <div class="obs-box" style="margin-top:14px;">{{ lote_info.observacao_tecnica|linebreaksbr }}</div>
               {% endif %}
             </div>
           </div>
@@ -1148,77 +461,49 @@
 
         <div class="md-card">
           <div class="md-card-header">
-            <div class="md-card-title">
-              <i class="fa fa-note-sticky"></i>
-              Observações
-            </div>
+            <div class="md-card-title"><i class="fa-solid fa-note-sticky" aria-hidden="true"></i> Observações</div>
           </div>
-
           <div class="md-card-body">
-            <div class="obs-box">
-              {{ mov.observacao|default:"Nenhuma observação registrada."|linebreaksbr }}
-            </div>
+            <div class="obs-box">{{ mov.observacao|default:"Nenhuma observação registrada."|linebreaksbr }}</div>
           </div>
         </div>
 
       </div>
 
+      {# ── Coluna lateral ── #}
       <aside class="detail-column">
 
         <div class="md-card">
           <div class="md-card-header">
-            <div class="md-card-title">
-              <i class="fa fa-cube"></i>
-              Contexto do Item
-            </div>
+            <div class="md-card-title"><i class="fa-solid fa-cube" aria-hidden="true"></i> Contexto do Item</div>
           </div>
-
           <div class="md-card-body">
             <div class="info-grid">
               <div class="info-item">
-                <div class="info-label">
-                  <i class="fa fa-circle-check"></i>
-                  Status Atual
-                </div>
+                <div class="info-label"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Status Atual</div>
                 <div class="info-value">{{ item_info.status_atual }}</div>
               </div>
-
               {% if item_info.quantidade_atual is not None %}
                 <div class="info-item">
-                  <div class="info-label">
-                    <i class="fa fa-layer-group"></i>
-                    Estoque Atual
-                  </div>
+                  <div class="info-label"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Estoque Atual</div>
                   <div class="info-value">{{ item_info.quantidade_atual }}</div>
                 </div>
               {% endif %}
-
               {% if item_info.localidade %}
                 <div class="info-item">
-                  <div class="info-label">
-                    <i class="fa fa-location-dot"></i>
-                    Localidade Atual
-                  </div>
+                  <div class="info-label"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> Localidade Atual</div>
                   <div class="info-value">{{ item_info.localidade }}</div>
                 </div>
               {% endif %}
-
               {% if item_info.centro_custo %}
                 <div class="info-item">
-                  <div class="info-label">
-                    <i class="fa fa-building"></i>
-                    Centro de Custo Atual
-                  </div>
+                  <div class="info-label"><i class="fa-solid fa-building" aria-hidden="true"></i> Centro de Custo Atual</div>
                   <div class="info-value">{{ item_info.centro_custo }}</div>
                 </div>
               {% endif %}
-
               {% if item_info.fornecedor %}
                 <div class="info-item">
-                  <div class="info-label">
-                    <i class="fa fa-truck-field"></i>
-                    Fornecedor
-                  </div>
+                  <div class="info-label"><i class="fa-solid fa-truck-field" aria-hidden="true"></i> Fornecedor</div>
                   <div class="info-value">{{ item_info.fornecedor }}</div>
                 </div>
               {% endif %}
@@ -1228,69 +513,44 @@
 
         <div class="md-card">
           <div class="md-card-header">
-            <div class="md-card-title">
-              <i class="fa fa-clock-rotate-left"></i>
-              Histórico Relacionado
-            </div>
+            <div class="md-card-title"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Histórico Relacionado</div>
           </div>
-
           <div class="md-card-body">
             <div class="info-grid">
               <div class="info-item">
-                <div class="info-label">
-                  <i class="fa fa-list"></i>
-                  Total de Movimentações
-                </div>
+                <div class="info-label"><i class="fa-solid fa-list" aria-hidden="true"></i> Total de Movimentações</div>
                 <div class="info-value">{{ stats.total_movs }}</div>
               </div>
-
               <div class="info-item">
-                <div class="info-label">
-                  <i class="fa fa-backward"></i>
-                  Última Antes Desta
-                </div>
-
-                <div class="info-value">
-                  {% if stats.ultima_data %}
-                    {{ stats.ultima_data|date:"d/m/Y H:i" }}
-                  {% else %}
-                    Primeiro registro
-                  {% endif %}
-                </div>
-
-                {% if stats.ultima_tipo %}
-                  <div class="info-sub">{{ stats.ultima_tipo }}</div>
-                {% endif %}
+                <div class="info-label"><i class="fa-solid fa-backward" aria-hidden="true"></i> Última Antes Desta</div>
+                <div class="info-value">{% if stats.ultima_data %}{{ stats.ultima_data|date:"d/m/Y H:i" }}{% else %}Primeiro registro{% endif %}</div>
+                {% if stats.ultima_tipo %}<div class="info-sub">{{ stats.ultima_tipo }}</div>{% endif %}
               </div>
             </div>
+            {% if mov.item %}
+              <a href="{% url 'equipamento_detalhe' mov.item.pk %}#historico" class="md-card-foot-link">
+                Ver histórico completo do item <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+              </a>
+            {% endif %}
           </div>
         </div>
 
         {% if mov.termo_pdf %}
           <div class="md-card">
             <div class="md-card-header">
-              <div class="md-card-title">
-                <i class="fa fa-file-pdf"></i>
-                Documentação
-              </div>
+              <div class="md-card-title"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Documentação</div>
             </div>
-
             <div class="md-card-body">
               <div class="doc-box">
                 <div class="doc-info">
-                  <div class="doc-icon">
-                    <i class="fa fa-file-pdf"></i>
-                  </div>
-
+                  <div class="doc-icon" aria-hidden="true"><i class="fa-solid fa-file-pdf"></i></div>
                   <div>
                     <div class="doc-title">Termo Assinado</div>
-                    <div class="doc-sub">Arquivo PDF vinculado à movimentação</div>
+                    <div class="doc-sub">PDF vinculado à movimentação</div>
                   </div>
                 </div>
-
-                <a href="{{ mov.termo_pdf.url }}" target="_blank" class="md-btn md-btn-secondary">
-                  <i class="fa fa-download"></i>
-                  Baixar
+                <a href="{{ mov.termo_pdf.url }}" target="_blank" rel="noopener" class="btn btn-sm">
+                  <i class="fa-solid fa-download" aria-hidden="true"></i> Baixar
                 </a>
               </div>
             </div>
@@ -1299,40 +559,24 @@
 
         <div class="md-card">
           <div class="md-card-header">
-            <div class="md-card-title">
-              <i class="fa fa-fingerprint"></i>
-              Auditoria
-            </div>
+            <div class="md-card-title"><i class="fa-solid fa-fingerprint" aria-hidden="true"></i> Auditoria</div>
           </div>
-
           <div class="md-card-body">
-            <div class="audit-box">
-              <div>
-                <strong>Registrado por:</strong><br>
-                {% if mov.criado_por %}
-                  {% if mov.criado_por.first_name or mov.criado_por.last_name %}
-                    {{ mov.criado_por.first_name }} {{ mov.criado_por.last_name }}
-                  {% else %}
-                    {{ mov.criado_por.username }}
-                  {% endif %}
-                {% else %}
-                  Sistema
-                {% endif %}
+            <div class="audit-list">
+              <div class="audit-row">
+                <span class="k">Registrado por</span>
+                <span class="v">
+                  {% if mov.criado_por %}{% if mov.criado_por.first_name or mov.criado_por.last_name %}{{ mov.criado_por.first_name }} {{ mov.criado_por.last_name }}{% else %}{{ mov.criado_por.username }}{% endif %}{% else %}Sistema{% endif %}
+                </span>
               </div>
-
-              <div class="audit-divider"></div>
-
-              <div>
-                <strong>Data de criação:</strong><br>
-                {{ mov.created_at|date:"d/m/Y H:i:s" }}
+              <div class="audit-row">
+                <span class="k">Data de criação</span>
+                <span class="v">{{ mov.created_at|date:"d/m/Y H:i:s" }}</span>
               </div>
-
               {% if mov.updated_at and mov.updated_at != mov.created_at %}
-                <div class="audit-divider"></div>
-
-                <div>
-                  <strong>Última atualização:</strong><br>
-                  {{ mov.updated_at|date:"d/m/Y H:i:s" }}
+                <div class="audit-row">
+                  <span class="k">Última atualização</span>
+                  <span class="v">{{ mov.updated_at|date:"d/m/Y H:i:s" }}</span>
                 </div>
               {% endif %}
             </div>

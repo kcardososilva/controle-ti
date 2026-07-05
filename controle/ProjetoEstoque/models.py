@@ -2011,6 +2011,86 @@ class ConfiguracaoSistema(models.Model):
         return obj
 
 
+# ── Segurança: trilha de eventos de autenticação (ISO 27001 A.8.15 / A.8.16) ──
+class TipoEventoSegurancaChoices(models.TextChoices):
+    LOGIN_OK      = "login_ok", "Login bem-sucedido"
+    LOGIN_FALHA   = "login_falha", "Falha de login"
+    LOGOUT        = "logout", "Logout"
+    ACESSO_NEGADO = "acesso_negado", "Acesso negado"
+
+
+class RegistroSeguranca(models.Model):
+    """
+    Trilha de eventos de autenticação para monitoramento de segurança
+    (ISO 27001 A.8.15 Registro / A.8.16 Monitoramento).
+
+    Gravado automaticamente por signals (services/seguranca_service.py). Não
+    estende AuditModel: é gerado pelo sistema e imutável (somente-leitura no
+    admin). `suspeito=True` sinaliza anomalia (rajada de falhas ou login logo
+    após várias falhas) e dispara alerta por e-mail.
+    """
+    tipo = models.CharField(max_length=20, choices=TipoEventoSegurancaChoices.choices)
+    username = models.CharField(max_length=254, blank=True, help_text="Usuário informado na tentativa")
+    usuario = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="eventos_seguranca",
+    )
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=400, blank=True)
+    caminho = models.CharField(max_length=200, blank=True)
+    suspeito = models.BooleanField(default=False)
+    detalhe = models.CharField(max_length=200, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-criado_em"]
+        verbose_name = "Registro de segurança"
+        verbose_name_plural = "Registros de segurança"
+        indexes = [
+            models.Index(fields=["tipo", "criado_em"]),
+            models.Index(fields=["username", "criado_em"]),
+            models.Index(fields=["ip", "criado_em"]),
+            models.Index(fields=["suspeito", "criado_em"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} · {self.username or '—'} · {self.criado_em:%d/%m/%Y %H:%M}"
+
+
+# ── Novidades do sistema (changelog: o que foi implementado/atualizado/corrigido) ──
+class TipoNovidadeChoices(models.TextChoices):
+    NOVO     = "novo", "Novo"
+    MELHORIA = "melhoria", "Melhoria"
+    CORRECAO = "correcao", "Correção"
+
+
+class NovidadeSistema(AuditModel):
+    """
+    Changelog do sistema: novidades de atualização (novo recurso, melhoria ou
+    correção). Gerenciado no admin e exibido na tela de perfil. Diferente do
+    feed de atividade operacional (SistemaNoticiasService) — aqui são as
+    mudanças do próprio sistema.
+    """
+    versao = models.CharField(max_length=20, blank=True, help_text="Ex.: 4.1.0")
+    data = models.DateField(default=timezone.localdate, help_text="Data da atualização")
+    tipo = models.CharField(
+        max_length=12, choices=TipoNovidadeChoices.choices,
+        default=TipoNovidadeChoices.NOVO,
+    )
+    titulo = models.CharField(max_length=140)
+    descricao = models.TextField(blank=True)
+    ativo = models.BooleanField(default=True, help_text="Desmarque para ocultar sem excluir")
+
+    class Meta:
+        ordering = ["-data", "-id"]
+        verbose_name = "Novidade do sistema"
+        verbose_name_plural = "Novidades do sistema"
+        indexes = [models.Index(fields=["ativo", "-data"])]
+
+    def __str__(self):
+        return f"[{self.get_tipo_display()}] {self.titulo}"
+
+
 # ── Signals: rastrear mudanças de status automaticamente ──────────────────────
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver

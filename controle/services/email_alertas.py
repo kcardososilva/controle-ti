@@ -777,6 +777,180 @@ def alerta_baixa_estoque(mov, *, qtd_restante: int | None = None) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────
+# Alerta 6 — Alarme PRTG (equipamento offline / instável em tempo real)
+# ─────────────────────────────────────────────────────────────
+
+_PRTG_LABEL = {
+    "up": "Online", "down": "Offline", "warning": "Instável",
+    "unusual": "Incomum", "unknown": "Desconhecido", "collecting": "Coletando",
+}
+_PRTG_BADGE = {
+    "down": ("#fee2e2", "#b91c1c"),
+    "warning": ("#fef3c7", "#b45309"),
+    "unusual": ("#fef3c7", "#b45309"),
+    "up": ("#dcfce7", "#15803d"),
+}
+
+
+def _prtg_label(slug: str) -> str:
+    return _PRTG_LABEL.get(slug, (slug or "—").replace("_", " ").title())
+
+
+def _prtg_badge(slug: str) -> str:
+    bg, fg = _PRTG_BADGE.get(slug, ("#f1f5f9", "#475569"))
+    return _badge(_prtg_label(slug), bg, fg)
+
+
+def _fmt_dt(dt) -> str:
+    if not dt:
+        return "—"
+    try:
+        return timezone.localtime(dt).strftime("%d/%m/%Y às %H:%M")
+    except Exception:
+        return "—"
+
+
+def _prtg_linha(a: dict, status_forcado: str | None = None) -> list[str]:
+    local = a.get("item_localidade") or a.get("grupo") or "—"
+    return [
+        f'<strong>{a.get("nome") or "—"}</strong>',
+        a.get("host") or "—",
+        local,
+        _prtg_badge(status_forcado or a.get("status")),
+        _fmt_dt(a.get("desde")),
+        a.get("item_nome") or "—",
+    ]
+
+
+def alerta_prtg_transicoes(alarmes, recuperados=None) -> bool:
+    """
+    Envia UM e-mail consolidado com os equipamentos que entraram em alarme
+    (offline/instável) e, opcionalmente, os que se recuperaram — detecção em
+    tempo real pelo coletor `monitorar_prtg`.
+
+    Cada item de `alarmes`/`recuperados` é um dict:
+      {nome, host, grupo, status, status_anterior, statustext, desde(datetime),
+       item_nome, item_localidade}
+    """
+    alarmes = list(alarmes or [])
+    recuperados = list(recuperados or [])
+    if not alarmes and not recuperados:
+        return False
+
+    _sev = {"down": 0, "warning": 1, "unusual": 1}
+    alarmes.sort(key=lambda a: (_sev.get(a.get("status"), 2), (a.get("nome") or "").lower()))
+    recuperados.sort(key=lambda a: (a.get("nome") or "").lower())
+
+    n_alarme = len(alarmes)
+    n_offline = sum(1 for a in alarmes if a.get("status") == "down")
+    n_rec = len(recuperados)
+    agora = timezone.localtime()
+    cabecalho = ["Equipamento", "Host / IP", "Localidade / Grupo", "Status", "Desde", "Item vinculado"]
+
+    secoes = []
+    if alarmes:
+        intro = (
+            f'<p style="margin:0 0 4px;color:#334155;font-size:14px;">'
+            f'<strong style="color:#b91c1c;">{n_alarme}</strong> equipamento(s) entrou(aram) em estado de alarme'
+            + (f' — <strong style="color:#b91c1c;">{n_offline} offline</strong>' if n_offline else "")
+            + ".</p>"
+        )
+        secoes.append(_secao(
+            "Equipamentos em alarme", "🚨", "#b91c1c",
+            intro + _tabela_html(cabecalho, [_prtg_linha(a) for a in alarmes]),
+        ))
+
+    if recuperados:
+        intro = (
+            f'<p style="margin:0 0 4px;color:#334155;font-size:14px;">'
+            f'<strong style="color:#15803d;">{n_rec}</strong> equipamento(s) voltou(aram) ao normal.</p>'
+        )
+        secoes.append(_secao(
+            "Recuperados", "✅", "#15803d",
+            intro + _tabela_html(cabecalho, [_prtg_linha(a, "up") for a in recuperados]),
+        ))
+
+    if alarmes:
+        titulo = f"PRTG: {n_alarme} equipamento(s) em alarme"
+        assunto = f"[Controle TI] PRTG: {n_alarme} em alarme" + (f" · {n_offline} offline" if n_offline else "")
+        if recuperados:
+            assunto += f" · {n_rec} recuperado(s)"
+    else:
+        titulo = f"PRTG: {n_rec} equipamento(s) recuperado(s)"
+        assunto = f"[Controle TI] PRTG: {n_rec} equipamento(s) recuperado(s)"
+
+    html = _base_html(titulo, f"Detecção automática · {agora.strftime('%d/%m/%Y às %H:%M')}", "".join(secoes))
+
+    linhas_txt = [f"ALARME PRTG — {agora.strftime('%d/%m/%Y %H:%M')}", ""]
+    for a in alarmes:
+        linhas_txt.append(
+            f"- [{_prtg_label(a.get('status')).upper()}] {a.get('nome')} | {a.get('host') or '—'} | "
+            f"desde {_fmt_dt(a.get('desde'))}" + (f" | Item: {a.get('item_nome')}" if a.get("item_nome") else "")
+        )
+    if recuperados:
+        linhas_txt += ["", "RECUPERADOS", ""]
+        for a in recuperados:
+            linhas_txt.append(
+                f"- [ONLINE] {a.get('nome')} | {a.get('host') or '—'} | desde {_fmt_dt(a.get('desde'))}"
+            )
+    texto = "\n".join(linhas_txt)
+
+    return _enviar(assunto, texto, html)
+
+
+# ─────────────────────────────────────────────────────────────
+# Segurança — acesso suspeito (ISO 27001 A.8.16)
+# ─────────────────────────────────────────────────────────────
+
+def alerta_acesso_suspeito(evento) -> bool:
+    """
+    Alerta de acesso suspeito à aplicação (ISO 27001 A.8.16 Monitoramento):
+    rajada de falhas de login ou login bem-sucedido logo após várias falhas.
+    `evento` é um RegistroSeguranca (disparado por services/seguranca_service.py).
+    """
+    if evento is None:
+        return False
+
+    agora = timezone.localtime(evento.criado_em) if evento.criado_em else timezone.localtime()
+    tipo_txt = evento.get_tipo_display()
+    # Login bem-sucedido após rajada de falhas é mais grave que só falhas.
+    critico = (evento.tipo == "login_ok")
+    cor = "#b91c1c" if critico else "#c2410c"
+    emoji = "⛔" if critico else "⚠️"
+
+    linhas = [
+        ["Evento", tipo_txt],
+        ["Usuário", evento.username or "—"],
+        ["Origem (IP)", evento.ip or "—"],
+        ["Detalhe", evento.detalhe or "—"],
+        ["Caminho", evento.caminho or "—"],
+        ["Data/hora", agora.strftime("%d/%m/%Y %H:%M:%S")],
+        ["Agente", (evento.user_agent or "—")[:160]],
+    ]
+    intro = (
+        f'<p style="margin:0 0 10px;color:#334155;font-size:14px;">'
+        f'Atividade de autenticação sinalizada como '
+        f'<strong style="color:{cor};">suspeita</strong>. Revise em '
+        f'<em>Registros de segurança</em> (admin) e, se não reconhecer, troque a '
+        f'senha da conta e bloqueie a origem.</p>'
+    )
+    secao = _secao("Acesso suspeito", emoji, cor, intro + _tabela_html(["Campo", "Valor"], linhas))
+    titulo = "Acesso suspeito detectado"
+    assunto = f"[Controle TI] Segurança: acesso suspeito · {evento.username or 'desconhecido'}"
+    html = _base_html(titulo, f"Monitoramento · {agora.strftime('%d/%m/%Y às %H:%M')}", secao)
+
+    texto = (
+        f"ACESSO SUSPEITO — {agora.strftime('%d/%m/%Y %H:%M')}\n\n"
+        f"Evento: {tipo_txt}\n"
+        f"Usuario: {evento.username or '—'}\n"
+        f"IP: {evento.ip or '—'}\n"
+        f"Detalhe: {evento.detalhe or '—'}\n"
+        f"Caminho: {evento.caminho or '—'}\n"
+    )
+    return _enviar(assunto, texto, html)
+
+
+# ─────────────────────────────────────────────────────────────
 # Relatório Diário Consolidado
 # ─────────────────────────────────────────────────────────────
 

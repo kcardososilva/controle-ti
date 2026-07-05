@@ -56,10 +56,36 @@ def planta_list(request):
 
     # Evaluate queryset once; build PRTG IDs map for client-side status display
     plantas_list = list(qs)
-    prtg_ids_map = {
-        str(p.pk): [str(e["prtg_objid"]) for e in p.layout.get("elements", []) if e.get("prtg_objid")]
-        for p in plantas_list
-    }
+    prtg_ids_map = {}
+    previews_map = {}
+    _tipos_ocultos = {"texto", "forma"}
+    for p in plantas_list:
+        elements = p.layout.get("elements", []) or []
+        connections = p.layout.get("connections", []) or []
+        prtg_ids_map[str(p.pk)] = [
+            str(e["prtg_objid"]) for e in elements if e.get("prtg_objid")
+        ]
+        # Mini-mapa: só nós de dispositivos posicionados (exclui textos/formas)
+        nodes = [
+            {
+                "id": str(e.get("id", "")),
+                "x":  e.get("x", 0),
+                "y":  e.get("y", 0),
+                "o":  str(e["prtg_objid"]) if e.get("prtg_objid") else None,
+            }
+            for e in elements
+            if e.get("type") not in _tipos_ocultos
+            and isinstance(e.get("x"), (int, float))
+            and isinstance(e.get("y"), (int, float))
+        ]
+        if nodes:
+            _ids = {n["id"] for n in nodes}
+            links = [
+                [str(c.get("from", "")), str(c.get("to", ""))]
+                for c in connections
+                if str(c.get("from", "")) in _ids and str(c.get("to", "")) in _ids
+            ]
+            previews_map[str(p.pk)] = {"n": nodes, "l": links}
 
     return render(request, "front/plantas/planta_list.html", {
         "plantas":         plantas_list,
@@ -71,6 +97,7 @@ def planta_list(request):
         "total_sem_prtg":  total_sem_prtg,
         "prtg_ok":         prtg_service.is_configured(),
         "prtg_ids_json":   prtg_ids_map,
+        "previews_json":   previews_map,
     })
 
 
@@ -185,7 +212,7 @@ _ALLOWED_EL_KEYS = {
     "item_id", "prtg_objid", "ip", "observacoes", "fontSize",
     "fontFamily", "fontBold", "fontItalic",
     "fillOpacity", "borderWidth", "borderColor", "borderStyle", "cornerRadius", "fillType",
-    "zIndex", "locked", "rotation", "groupId",
+    "shapeKind", "zIndex", "locked", "rotation", "groupId",
 }
 _ALLOWED_CN_KEYS = {
     "id", "from", "fromEdge", "to", "toEdge", "type", "label",

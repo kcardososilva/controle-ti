@@ -598,10 +598,21 @@ const canvas = document.getElementById("vwCanvas");
 const ctx    = canvas.getContext("2d");
 let _fitDone = false;
 
+/* Dimensões lógicas (px CSS) + densidade de pixels — backing store em px
+   físicos para nitidez retina; toda a matemática usa VW/VH (lógico). */
+let VW = 0, VH = 0, DPR = 1;
+
 function resizeCanvas() {
   const r = wrap.getBoundingClientRect();
-  canvas.width  = r.width;
-  canvas.height = r.height;
+  DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  VW  = Math.max(1, Math.round(r.width));
+  VH  = Math.max(1, Math.round(r.height));
+  canvas.width        = Math.round(VW * DPR);
+  canvas.height       = Math.round(VH * DPR);
+  canvas.style.width  = VW + 'px';
+  canvas.style.height = VH + 'px';
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   if (!_fitDone && r.width > 0 && r.height > 0) { _fitDone = true; fitCanvas(); }
 }
 new ResizeObserver(resizeCanvas).observe(wrap);
@@ -610,14 +621,14 @@ function fitCanvas() {
   const cw = LAYOUT.canvas?.width  || 1400;
   const ch = LAYOUT.canvas?.height || 900;
   const m  = 36;
-  zoom = Math.min((canvas.width  - m*2) / cw, (canvas.height - m*2) / ch, 1);
-  pan.x = (canvas.width  / zoom - cw) / 2;
-  pan.y = (canvas.height / zoom - ch) / 2;
+  zoom = Math.min((VW  - m*2) / cw, (VH - m*2) / ch, 1);
+  pan.x = (VW  / zoom - cw) / 2;
+  pan.y = (VH / zoom - ch) / 2;
   updZoom();
 }
 
 function ajustarZoom(delta) {
-  const cx = canvas.width/2, cy = canvas.height/2;
+  const cx = VW/2, cy = VH/2;
   const wx = cx/zoom - pan.x, wy = cy/zoom - pan.y;
   zoom = Math.max(0.1, Math.min(4, zoom + delta));
   pan.x = cx/zoom - wx; pan.y = cy/zoom - wy;
@@ -640,6 +651,22 @@ function hexAlpha(hex,a) {
 }
 function elCenter(el) { return { cx:el.x+(el.width||60)/2, cy:el.y+(el.height||60)/2 }; }
 const IS_FORMA = t => t==='quadro' || t==='circulo' || t==='linha';
+/* Path da forma conforme shapeKind (coords de tela; usa o ctx global) */
+function shapePathV(kind, x, y, w, h, r) {
+  ctx.beginPath();
+  if (kind === 'diamond') {
+    ctx.moveTo(x+w/2, y); ctx.lineTo(x+w, y+h/2); ctx.lineTo(x+w/2, y+h); ctx.lineTo(x, y+h/2); ctx.closePath();
+  } else if (kind === 'triangle') {
+    ctx.moveTo(x+w/2, y); ctx.lineTo(x+w, y+h); ctx.lineTo(x, y+h); ctx.closePath();
+  } else if (kind === 'hexagon') {
+    ctx.moveTo(x+w*0.25, y); ctx.lineTo(x+w*0.75, y); ctx.lineTo(x+w, y+h/2);
+    ctx.lineTo(x+w*0.75, y+h); ctx.lineTo(x+w*0.25, y+h); ctx.lineTo(x, y+h/2); ctx.closePath();
+  } else if (kind === 'rect') {
+    ctx.rect(x, y, w, h);
+  } else {
+    ctx.roundRect(x, y, w, h, r);
+  }
+}
 function anchorPoint(el, edge) {
   const w = el.width  || (el.type==='circulo'?120 : IS_FORMA(el.type)?200 : 60);
   const h = el.height || (el.type==='circulo'?120 : IS_FORMA(el.type)?140 : 60);
@@ -685,8 +712,8 @@ if (LAYOUT.canvas?.bgImage) bgImg.src = LAYOUT.canvas.bgImage;
 function drawGrid() {
   const step = 32*zoom, ox = (pan.x*zoom)%step, oy = (pan.y*zoom)%step;
   ctx.strokeStyle = "rgba(0,0,0,.032)"; ctx.lineWidth = 1;
-  for (let x=ox; x<canvas.width;  x+=step) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
-  for (let y=oy; y<canvas.height; y+=step) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y);  ctx.stroke(); }
+  for (let x=ox; x<VW;  x+=step) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,VH); ctx.stroke(); }
+  for (let y=oy; y<VH; y+=step) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(VW,y);  ctx.stroke(); }
 }
 
 function drawBg() {
@@ -882,21 +909,28 @@ function drawElement(el) {
     const op      = el.fillOpacity ?? 0.08;
     const bCor    = el.borderColor || color;
     const bw      = (el.borderWidth ?? 2) * zoom;
-    const bStyle  = el.borderStyle || 'dashed';
+    const bStyle  = el.borderStyle || 'solid';
     const bDash   = isSel ? [] : (bStyle === 'solid' ? [] : bStyle === 'dotted' ? [3*zoom,3*zoom] : [6*zoom,4*zoom]);
-    const bAlpha  = isSel ? bCor : hexAlpha(bCor, 0.55);
+    const bAlpha  = isSel ? bCor : hexAlpha(bCor, 0.80);
     ctx.save();
     if (el.type === 'quadro') {
-      const r = (el.cornerRadius ?? 8) * zoom;
-      ctx.beginPath(); ctx.roundRect(sc.x,sc.y,w,h,r);
+      const kind = el.shapeKind || 'rounded';
+      const r = (kind==='rect' ? 0 : (el.cornerRadius ?? 8)) * zoom;
+      shapePathV(kind, sc.x, sc.y, w, h, r);
       ctx.fillStyle = hexAlpha(color,op); ctx.fill();
       ctx.strokeStyle = bAlpha;
       ctx.lineWidth = isSel ? bw*1.8 : bw;
       ctx.setLineDash(bDash); ctx.stroke(); ctx.setLineDash([]);
       if (el.label && zoom>0.35) {
         ctx.font=`700 ${Math.max(8,12*zoom)}px -apple-system,sans-serif`;
-        ctx.fillStyle=color; ctx.textAlign='left'; ctx.textBaseline='top';
-        ctx.fillText(el.label,sc.x+8*zoom,sc.y+8*zoom);
+        ctx.fillStyle=color;
+        if (kind==='diamond'||kind==='triangle'||kind==='hexagon') {
+          ctx.textAlign='center'; ctx.textBaseline='middle';
+          ctx.fillText(el.label, sc.x+w/2, sc.y+h/2 + (kind==='triangle'?h*0.18:0));
+        } else {
+          ctx.textAlign='left'; ctx.textBaseline='top';
+          ctx.fillText(el.label,sc.x+8*zoom,sc.y+8*zoom);
+        }
       }
     } else {
       const cx=sc.x+w/2, cy=sc.y+h/2;
@@ -1095,7 +1129,8 @@ function drawElement(el) {
 }
 
 function draw() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);   // nitidez retina (1 unidade = DPR px)
+  ctx.clearRect(0,0,VW,VH);
   drawGrid();
   drawBg();
   const sorted = [...elements].sort((a,b)=>(a.zIndex??0)-(b.zIndex??0));
@@ -1157,7 +1192,7 @@ function drawMiniViewer() {
 
   const b  = vwContentBounds();
   const tl = toWorld(0, 0);
-  const br = toWorld(canvas.width, canvas.height);
+  const br = toWorld(VW, VH);
   let minX = Math.min(b.minX, tl.x), minY = Math.min(b.minY, tl.y);
   let maxX = Math.max(b.maxX, br.x), maxY = Math.max(b.maxY, br.y);
   const PAD = 30; minX -= PAD; minY -= PAD; maxX += PAD; maxY += PAD;
@@ -1216,8 +1251,8 @@ function vmmCenterOn(e) {
   const py = (e.clientY - r.top)  * (VMM_H / r.height);
   const { minX, minY, s, offX, offY } = _vmmView;
   const wx = minX + (px - offX) / s, wy = minY + (py - offY) / s;
-  pan.x = canvas.width  / (2*zoom) - wx;
-  pan.y = canvas.height / (2*zoom) - wy;
+  pan.x = VW  / (2*zoom) - wx;
+  pan.y = VH / (2*zoom) - wy;
 }
 VMM.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); _vmmDrag = true; vmmCenterOn(e); });
 window.addEventListener('mousemove', e => { if (_vmmDrag) vmmCenterOn(e); });
@@ -1332,8 +1367,8 @@ function focarElemento(id) {
   const el = elements.find(e=>e.id===id);
   if (!el) return;
   const w = el.width||60, h = el.height||60;
-  pan.x = canvas.width/zoom/2 - el.x - w/2;
-  pan.y = canvas.height/zoom/2 - el.y - h/2;
+  pan.x = VW/zoom/2 - el.x - w/2;
+  pan.y = VH/zoom/2 - el.y - h/2;
   selectedEl = el;
   document.querySelectorAll('.vw-sb-item').forEach(i => {
     i.classList.toggle('active', i.dataset.elId === id);

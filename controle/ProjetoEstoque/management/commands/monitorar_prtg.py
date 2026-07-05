@@ -38,3 +38,9 @@ class Command(BaseCommand):
             f"{stats['vinculados']} vinculado(s) a equipamento(s), "
             f"{stats['eventos']} evento(s) novo(s) registrado(s)."
         ))
+        if stats.get("alarmes") or stats.get("recuperados"):
+            self.stdout.write(
+                f"  Transições: {stats.get('alarmes', 0)} alarme(s), "
+                f"{stats.get('recuperados', 0)} recuperado(s) · "
+                f"e-mail {'enviado' if stats.get('email_enviado') else 'não enviado'}."
+            )

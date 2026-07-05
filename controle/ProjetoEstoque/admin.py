@@ -6,7 +6,7 @@ from .models import (
     CheckListModelo, CheckListPergunta, Preventiva, PreventivaExecucao, PreventivaResposta,
     Licenca, MovimentacaoLicenca, LicencaLote, ItemLote, LoteEstoque,
     PlantaProjeto, PerfilFornecedor, OrdemManutencao, OrdemManutencaoEvento,
-    LocacaoPeriodo, ItemColaborador,
+    LocacaoPeriodo, ItemColaborador, RegistroSeguranca, NovidadeSistema,
 )
 
 # ---------------------------
@@ -437,5 +437,45 @@ class PlantaProjetoAdmin(AuditAdminMixin):
             "description": "Selecione os usuários do grupo 'Visualizador TV' que podem ver esta planta no modo TV.",
             "fields": ("visualizadores_tv",),
         }),
+        ("Auditoria", {"fields": ("criado_por", "atualizado_por", "created_at", "updated_at"), "classes": ("collapse",)}),
+    )
+
+
+# ---------------------------
+# Segurança — trilha de autenticação (ISO 27001 A.8.15/A.8.16)
+# ---------------------------
+@admin.register(RegistroSeguranca)
+class RegistroSegurancaAdmin(admin.ModelAdmin):
+    """Somente-leitura: evidência de eventos de autenticação para revisão."""
+    list_display  = ("criado_em", "tipo", "username", "ip", "suspeito", "detalhe")
+    list_filter   = ("tipo", "suspeito", "criado_em")
+    search_fields = ("username", "ip", "user_agent", "caminho")
+    date_hierarchy = "criado_em"
+    list_per_page = 50
+    readonly_fields = (
+        "tipo", "username", "usuario", "ip", "user_agent",
+        "caminho", "suspeito", "detalhe", "criado_em",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False  # visualização apenas — registros são imutáveis
+
+
+# ---------------------------
+# Novidades do sistema (changelog)
+# ---------------------------
+@admin.register(NovidadeSistema)
+class NovidadeSistemaAdmin(AuditAdminMixin):
+    list_display  = ("data", "tipo", "versao", "titulo", "ativo")
+    list_filter   = ("tipo", "ativo", "data")
+    search_fields = ("titulo", "descricao", "versao")
+    list_editable = ("ativo",)
+    date_hierarchy = "data"
+    fieldsets = (
+        (None, {"fields": ("tipo", "titulo", "descricao")}),
+        ("Publicação", {"fields": ("versao", "data", "ativo")}),
         ("Auditoria", {"fields": ("criado_por", "atualizado_por", "created_at", "updated_at"), "classes": ("collapse",)}),
     )

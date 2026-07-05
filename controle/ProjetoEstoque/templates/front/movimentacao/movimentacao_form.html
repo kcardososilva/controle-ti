@@ -1,647 +1,550 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Nova Movimentação{% endblock %}
+{% block title %}{% if form.instance.pk %}Editar Movimentação{% else %}Nova Movimentação{% endif %}{% endblock %}
 
+{% block page_title %}{% if form.instance.pk %}Editar Movimentação{% else %}Nova Movimentação{% endif %}{% endblock %}
+{% block page_subtitle %}Entrada, baixa, transferência e manutenção de ativos.{% endblock %}
 
-{% block page_title %}Nova Movimentação{% endblock %}
-{% block page_subtitle %}Registro de entrada, baixa, transferência e manutenção de ativos.{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span>Patrimônio &amp; TI</span>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'movimentacao_list' %}">Movimentações</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{% if form.instance.pk %}Editar{% else %}Nova{% endif %}</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'movimentacao_list' %}" class="btn btn-sm">
+  <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Voltar
+</a>
+{% endblock %}
+
 {% block extra_css %}
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
 /* =========================================================
-   MOVIMENTAÇÃO FORM - LAYOUT INTEGRADO AO BASE.HTML
-   Apenas layout. Sem alteração de regra de negócio.
+   MOVIMENTAÇÃO — FORMULÁRIO (padrão Zelo, tokens do base.html)
+   Apenas apresentação. Nenhuma regra de negócio alterada.
+   Classes referenciadas por JS mantidas: radio-group / radio-option /
+   radio-tile / hidden / required-mark / field-errors / hint-text /
+   hint-inline / form-control — e todos os IDs e data-f.
    ========================================================= */
 
-:where(.mov-form-page, .select2-container, .select2-dropdown) {
-  --mf-primary: var(--brand, #0071e3);
-  --mf-primary-hover: var(--brand-hover, #0077ed);
-  --mf-primary-soft: var(--brand-soft, rgba(0, 113, 227, 0.10));
+:where(.mvf-page, .select2-container, .select2-dropdown) {
+  --mvf-brand: var(--brand);
+  --mvf-brand-hover: var(--brand-hover);
 
-  --mf-surface: var(--bg-elevated, #ffffff);
-  --mf-surface-soft: var(--bg-fill-tertiary, rgba(120, 120, 128, 0.08));
-  --mf-surface-muted: var(--bg-fill-secondary, rgba(120, 120, 128, 0.12));
+  --mvf-surface: var(--bg-elevated);
+  --mvf-surface-soft: var(--bg-fill-tertiary);
+  --mvf-surface-muted: var(--bg-fill-secondary);
 
-  --mf-text: var(--text-primary, #1d1d1f);
-  --mf-muted: var(--text-tertiary, #6e6e73);
-  --mf-soft: var(--text-quaternary, #86868b);
+  --mvf-text: var(--text-primary);
+  --mvf-muted: var(--text-tertiary);
+  --mvf-soft: var(--text-quaternary);
 
-  --mf-border: var(--separator-hairline, rgba(0, 0, 0, 0.06));
-  --mf-border-subtle: var(--separator-hairline, rgba(0, 0, 0, 0.06));
-  --mf-border-strong: var(--separator-non-opaque, rgba(0, 0, 0, 0.10));
+  --mvf-hair: var(--separator-hairline);
+  --mvf-line: var(--separator-non-opaque);
 
-  --mf-danger: var(--danger, #ff3b30);
-  --mf-danger-bg: var(--danger-soft, rgba(255, 59, 48, 0.10));
+  --mvf-danger: var(--danger);
+  --mvf-success: var(--success);
+  --mvf-warning: var(--warning);
 
-  --mf-success: var(--success, #34c759);
-  --mf-success-bg: var(--success-soft, rgba(52, 199, 89, 0.12));
+  --mvf-radius-sm: var(--radius-sm);
+  --mvf-radius-md: var(--radius-md);
+  --mvf-radius-lg: var(--radius-lg);
 
-  --mf-warning: var(--warning, #ff9500);
-  --mf-warning-bg: var(--warning-soft, rgba(255, 149, 0, 0.12));
+  --mvf-shadow-sm: var(--shadow-sm);
+  --mvf-shadow-md: var(--shadow-md);
 
-  --mf-radius-sm: var(--radius-sm, 10px);
-  --mf-radius-md: var(--radius-md, 14px);
-  --mf-radius-lg: var(--radius-lg, 18px);
-  --mf-radius-xl: var(--radius-xl, 22px);
-
-  --mf-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.05));
-  --mf-shadow-md: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.06));
-
-  --mf-input-h: 2.75rem;
-  --mf-transition: var(--transition-fast, 160ms cubic-bezier(0.32, 0.72, 0, 1));
+  --mvf-input-h: 2.6rem;
+  --mvf-t: var(--transition-fast);
 }
 
-.mov-form-page,
-.mov-form-page * {
-  box-sizing: border-box;
-  min-width: 0;
-}
+.mvf-page,
+.mvf-page * { box-sizing: border-box; min-width: 0; }
 
-.mov-form-page {
+.mvf-page {
   width: 100%;
-  max-width: 1180px;
+  max-width: 1160px;
   margin: 0 auto;
-  padding: 0;
-  color: var(--mf-text);
+  color: var(--mvf-text);
 }
 
-.mov-form-shell {
-  width: 100%;
+/* ---- Layout: formulário + guia lateral ---------------------------- */
+.mvf-layout {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 1rem;
+  align-items: start;
 }
 
 /* =========================================================
-   FORM CARD
+   CARD DO FORMULÁRIO
    ========================================================= */
-
-.mov-form-card {
+.mvf-card {
   width: 100%;
-  max-width: 100%;
-  border: 1px solid var(--mf-border);
-  border-radius: var(--mf-radius-lg);
-  background: var(--mf-surface);
-  box-shadow: var(--mf-shadow-sm);
+  border: 1px solid var(--mvf-hair);
+  border-radius: var(--mvf-radius-lg);
+  background: var(--mvf-surface);
+  box-shadow: var(--mvf-shadow-sm);
   overflow: hidden;
 }
 
-.mov-card-header {
+.mvf-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.875rem;
-  padding: clamp(1rem, 2vw, 1.35rem) clamp(0.875rem, 2vw, 1.5rem);
-  border-bottom: 1px solid var(--mf-border-subtle);
+  gap: 0.8rem;
+  padding: clamp(1rem, 2vw, 1.25rem) clamp(1rem, 2vw, 1.4rem);
+  border-bottom: 1px solid var(--mvf-hair);
 }
 
-.mov-card-title {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  color: var(--mf-text);
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.mov-card-title i {
+.mvf-head-ic {
   width: 2.4rem;
   height: 2.4rem;
   flex: 0 0 2.4rem;
   display: grid;
   place-items: center;
-  border-radius: 0.9rem;
-  background: color-mix(in srgb, var(--mf-primary) 13%, transparent);
-  color: var(--mf-primary);
-  border: 1px solid color-mix(in srgb, var(--mf-primary) 20%, transparent);
+  border-radius: var(--mvf-radius-md);
+  background: var(--mvf-surface-soft);
+  color: var(--mvf-muted);
+  font-size: 1rem;
 }
 
-.mov-card-subtitle {
-  margin-top: 0.3rem;
-  color: var(--mf-muted);
+.mvf-head-txt { min-width: 0; }
+.mvf-head-txt h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--mvf-text);
+}
+.mvf-head-txt p {
+  margin: 0.2rem 0 0;
   font-size: 0.82rem;
-  font-weight: 400;
   line-height: 1.4;
+  color: var(--mvf-muted);
 }
 
-.mov-card-body {
-  padding: clamp(0.875rem, 2.5vw, 1.5rem);
-}
+.mvf-body { padding: clamp(1rem, 2.4vw, 1.5rem); }
 
 /* =========================================================
-   GRID
+   GRID DE CAMPOS
    ========================================================= */
-
 .mov-grid {
-  width: 100%;
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(12, minmax(0, 1fr));
 }
-
 .col-12 { grid-column: span 12; }
-.col-6 { grid-column: span 6; }
-.col-4 { grid-column: span 4; }
-
-.mov-section-box {
-  grid-column: span 12;
-  padding: clamp(1rem, 2vw, 1.25rem);
-  border: 1px solid var(--mf-border-strong);
-  border-radius: var(--mf-radius-md);
-  background: var(--mf-surface-soft);
-}
-
-.mov-section-title {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  margin-bottom: 1rem;
-  color: var(--mf-text);
-  font-size: 0.96rem;
-  font-weight: 600;
-}
-
-.mov-section-title i {
-  width: 2rem;
-  height: 2rem;
-  flex: 0 0 2rem;
-  display: grid;
-  place-items: center;
-  border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--mf-primary) 13%, transparent);
-  color: var(--mf-primary);
-  border: 1px solid color-mix(in srgb, var(--mf-primary) 20%, transparent);
-}
-
-.mov-form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  min-width: 0;
-}
-
-.mov-form-group label {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--mf-muted);
-  font-size: 0.82rem;
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-.required-mark {
-  color: var(--mf-danger);
-  margin-left: 0.1rem;
-}
+.col-6  { grid-column: span 6; }
+.col-4  { grid-column: span 4; }
 
 .mov-divider {
   grid-column: span 12;
   height: 1px;
-  background: var(--mf-border-subtle);
-  margin: 0.25rem 0;
+  background: var(--mvf-hair);
+  margin: 0.15rem 0;
 }
+
+/* Bloco de seção (ex.: dados do novo lote) */
+.mov-section-box {
+  grid-column: span 12;
+  padding: clamp(0.9rem, 2vw, 1.2rem);
+  border: 1px solid var(--mvf-hair);
+  border-radius: var(--mvf-radius-md);
+  background: var(--mvf-surface-soft);
+}
+.mov-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--mvf-text);
+}
+.mov-section-title i { color: var(--mvf-muted); font-size: 0.9rem; }
+
+.mov-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+}
+.mov-form-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--mvf-muted);
+}
+.required-mark { color: var(--mvf-danger); }
+.hint-inline { color: var(--mvf-soft); font-weight: 400; font-size: 0.92em; }
 
 .hint-text {
-  color: var(--mf-muted);
-  font-size: 0.76rem;
-  line-height: 1.35;
   display: flex;
   align-items: flex-start;
-  gap: 0.35rem;
+  gap: 0.4rem;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--mvf-muted);
   overflow-wrap: anywhere;
 }
-
-.hint-text i {
-  margin-top: 0.1rem;
-  color: var(--mf-primary);
-}
+.hint-text i { margin-top: 0.12rem; color: var(--mvf-soft); }
 
 /* =========================================================
    INPUTS
    ========================================================= */
-
-.mov-form-page .form-control,
-.mov-form-page input[type="text"],
-.mov-form-page input[type="number"],
-.mov-form-page input[type="date"],
-.mov-form-page input[type="file"],
-.mov-form-page select,
-.mov-form-page textarea {
+.mvf-page .form-control,
+.mvf-page input[type="text"],
+.mvf-page input[type="number"],
+.mvf-page input[type="date"],
+.mvf-page input[type="file"],
+.mvf-page select,
+.mvf-page textarea {
   width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  min-height: var(--mf-input-h);
-  padding: 0.68rem 0.8rem;
-  border-radius: 12px;
-  border: 1px solid var(--mf-border-strong);
-  background: var(--mf-surface);
-  color: var(--mf-text);
-  font-size: 0.92rem;
-  font-family: var(--font-sans, inherit);
+  min-height: var(--mvf-input-h);
+  padding: 0.62rem 0.75rem;
+  border-radius: var(--mvf-radius-sm);
+  border: 1px solid var(--mvf-line);
+  background: var(--mvf-surface);
+  color: var(--mvf-text);
+  font-size: 0.9rem;
+  font-family: inherit;
   outline: none;
-  transition:
-    border-color var(--mf-transition),
-    box-shadow var(--mf-transition),
-    background var(--mf-transition);
+  transition: border-color var(--mvf-t), box-shadow var(--mvf-t);
 }
-
-.mov-form-page .form-control:focus,
-.mov-form-page input:focus,
-.mov-form-page select:focus,
-.mov-form-page textarea:focus {
-  border-color: var(--mf-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mf-primary) 18%, transparent);
-  background: var(--mf-surface);
+.mvf-page .form-control:focus,
+.mvf-page input:focus,
+.mvf-page select:focus,
+.mvf-page textarea:focus {
+  border-color: var(--mvf-brand);
+  box-shadow: 0 0 0 4px var(--brand-ring);
 }
-
-.mov-form-page textarea,
-.mov-form-page textarea.form-control {
-  min-height: 6.5rem;
+.mvf-page textarea,
+.mvf-page textarea.form-control {
+  min-height: 6rem;
   height: auto;
   resize: vertical;
   line-height: 1.45;
 }
-
-.mov-form-page input[type="file"] {
-  padding-top: 0.58rem;
-}
+.mvf-page input[type="file"] { padding-top: 0.55rem; }
 
 /* =========================================================
-   SELECT2
+   SELECT2 (dropdown vive no <body>: regras não escopadas)
    ========================================================= */
-
-.select2-container {
-  width: 100% !important;
-  max-width: 100% !important;
-}
+.select2-container { width: 100% !important; max-width: 100% !important; }
 
 .select2-container .select2-selection--single {
-  min-height: var(--mf-input-h) !important;
-  border: 1px solid var(--mf-border-strong) !important;
-  border-radius: 12px !important;
-  background-color: var(--mf-surface) !important;
+  min-height: var(--mvf-input-h) !important;
+  border: 1px solid var(--mvf-line) !important;
+  border-radius: var(--mvf-radius-sm) !important;
+  background-color: var(--mvf-surface) !important;
   display: flex !important;
   align-items: center !important;
-  transition:
-    border-color var(--mf-transition),
-    box-shadow var(--mf-transition),
-    background var(--mf-transition);
+  transition: border-color var(--mvf-t), box-shadow var(--mvf-t);
 }
-
 .select2-container--focus .select2-selection--single,
 .select2-container--open .select2-selection--single {
-  border-color: var(--mf-primary) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mf-primary) 18%, transparent) !important;
-  background: var(--mf-surface) !important;
+  border-color: var(--mvf-brand) !important;
+  box-shadow: 0 0 0 4px var(--brand-ring) !important;
 }
-
 .select2-container--default .select2-selection--single .select2-selection__rendered {
-  width: 100%;
-  padding-left: 0.8rem !important;
+  padding-left: 0.75rem !important;
   padding-right: 2rem !important;
-  color: var(--mf-text) !important;
-  font-size: 0.92rem;
-  line-height: 2.65rem !important;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--mvf-text) !important;
+  font-size: 0.9rem;
+  line-height: 2.5rem !important;
 }
-
 .select2-container--default .select2-selection--single .select2-selection__placeholder {
-  color: var(--mf-muted) !important;
+  color: var(--mvf-muted) !important;
 }
-
 .select2-container--default .select2-selection--single .select2-selection__arrow {
-  height: 2.65rem !important;
-  right: 0.4rem !important;
+  height: 2.5rem !important;
+  right: 0.35rem !important;
 }
-
 .select2-dropdown {
   z-index: 9999 !important;
-  background: var(--mf-surface) !important;
-  color: var(--mf-text) !important;
-  border: 1px solid var(--mf-border-subtle) !important;
-  border-radius: var(--mf-radius-md) !important;
+  background: var(--mvf-surface) !important;
+  color: var(--mvf-text) !important;
+  border: 1px solid var(--mvf-line) !important;
+  border-radius: var(--mvf-radius-md) !important;
   overflow: hidden !important;
-  box-shadow: var(--mf-shadow-md);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: var(--mvf-shadow-md);
 }
-
 .select2-search__field {
-  background: var(--mf-surface-soft) !important;
-  color: var(--mf-text) !important;
-  border: 1px solid var(--mf-border-subtle) !important;
-  border-radius: 0.625rem !important;
+  background: var(--mvf-surface-soft) !important;
+  color: var(--mvf-text) !important;
+  border: 1px solid var(--mvf-hair) !important;
+  border-radius: var(--mvf-radius-sm) !important;
   outline: none !important;
 }
-
-.select2-results__option {
-  color: var(--mf-text) !important;
-}
-
+.select2-results__option { color: var(--mvf-text) !important; }
 .select2-results__option--highlighted {
-  background: var(--mf-primary) !important;
+  background: var(--mvf-brand) !important;
   color: #fff !important;
 }
-
 .select2-results__option[aria-selected=true] {
-  background: color-mix(in srgb, var(--mf-primary) 15%, transparent) !important;
-  color: var(--mf-primary) !important;
+  background: color-mix(in srgb, var(--mvf-brand) 12%, transparent) !important;
+  color: var(--mvf-brand) !important;
 }
 
 /* =========================================================
    RADIO TILES
    ========================================================= */
-
 .radio-group {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 0.7rem;
 }
-
-.radio-option {
-  position: relative;
-  cursor: pointer;
-}
-
-.radio-option input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
+.radio-option { position: relative; cursor: pointer; }
+.radio-option input { position: absolute; opacity: 0; width: 0; height: 0; }
 .radio-tile {
-  min-height: var(--mf-input-h);
+  min-height: var(--mvf-input-h);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.55rem;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--mf-border-strong);
-  border-radius: 12px;
-  background: var(--mf-surface);
-  color: var(--mf-muted);
-  font-size: 0.9rem;
+  gap: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--mvf-line);
+  border-radius: var(--mvf-radius-sm);
+  background: var(--mvf-surface);
+  color: var(--mvf-muted);
+  font-size: 0.88rem;
   font-weight: 600;
-  transition:
-    border-color var(--mf-transition),
-    box-shadow var(--mf-transition),
-    background var(--mf-transition),
-    color var(--mf-transition),
-    transform var(--mf-transition);
+  transition: border-color var(--mvf-t), color var(--mvf-t), background var(--mvf-t);
 }
-
-.radio-tile:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--mf-primary) 24%, var(--mf-border-subtle));
-  color: var(--mf-text);
+.radio-tile i { color: var(--mvf-soft); }
+.radio-option:hover .radio-tile {
+  border-color: var(--mvf-brand);
+  color: var(--mvf-text);
 }
-
 .radio-option input:checked + .radio-tile {
-  background: color-mix(in srgb, var(--mf-primary) 13%, transparent);
-  border-color: var(--mf-primary);
-  color: var(--mf-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mf-primary) 12%, transparent);
+  background: color-mix(in srgb, var(--mvf-brand) 8%, transparent);
+  border-color: var(--mvf-brand);
+  color: var(--mvf-brand);
 }
+.radio-option input:checked + .radio-tile i { color: var(--mvf-brand); }
+.radio-option input:focus-visible + .radio-tile {
+  box-shadow: 0 0 0 4px var(--brand-ring);
+}
+
+/* =========================================================
+   NOTA DE DEVOLUÇÃO
+   ========================================================= */
+.mvf-note {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.85rem 1rem;
+  border-radius: var(--mvf-radius-md);
+  background: var(--mvf-surface-soft);
+  border: 1px solid var(--mvf-hair);
+  border-left: 3px solid var(--mvf-brand);
+}
+.mvf-note > i { color: var(--mvf-brand); margin-top: 0.15rem; flex: 0 0 auto; }
+.mvf-note .mvf-note-body { font-size: 0.84rem; line-height: 1.5; color: var(--mvf-text); }
 
 /* =========================================================
    ALERTAS / ERROS
    ========================================================= */
-
 .alert-error {
   display: flex;
   align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.875rem;
+  gap: 0.65rem;
+  padding: 0.8rem 0.9rem;
   margin-bottom: 1rem;
-  border-radius: var(--mf-radius-md);
-  background: var(--mf-danger-bg);
-  border: 1px solid color-mix(in srgb, var(--mf-danger) 24%, transparent);
-  color: var(--mf-danger);
-  font-size: 0.88rem;
-  font-weight: 750;
+  border-radius: var(--mvf-radius-md);
+  background: color-mix(in srgb, var(--mvf-danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mvf-danger) 22%, transparent);
+  color: var(--mvf-danger);
+  font-size: 0.86rem;
+  font-weight: 600;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
-
-.alert-error i {
-  margin-top: 0.15rem;
-  flex: 0 0 auto;
-}
+.alert-error i { margin-top: 0.12rem; flex: 0 0 auto; }
 
 .field-errors,
-.mov-form-page .errorlist {
-  color: var(--mf-danger);
-  font-size: 0.78rem;
+.mvf-page .errorlist {
+  margin: 0.1rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--mvf-danger);
+  font-size: 0.76rem;
   font-weight: 600;
   line-height: 1.35;
-  margin-top: 0.1rem;
-  list-style: none;
-  padding: 0;
 }
-
-/* Sem erros o Django renderiza vazio — evita reservar um gap extra abaixo de cada campo. */
 .field-errors:empty { display: none; }
 
-.hint-inline {
-  color: var(--mf-soft);
-  font-weight: 400;
-  font-size: 0.92em;
-}
-
 /* =========================================================
-   FOOTER / AÇÕES
+   RODAPÉ / AÇÕES
    ========================================================= */
-
-.mov-card-footer {
+.mvf-foot {
   position: sticky;
   bottom: 0;
   z-index: 5;
   display: flex;
   justify-content: flex-end;
-  gap: 0.75rem;
-  padding: 1rem clamp(0.875rem, 2.5vw, 1.5rem);
-  border-top: 1px solid var(--mf-border-subtle);
-  background: color-mix(in srgb, var(--mf-surface) 82%, transparent);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  gap: 0.65rem;
+  padding: 0.9rem clamp(1rem, 2.4vw, 1.4rem);
+  border-top: 1px solid var(--mvf-hair);
+  background: var(--mvf-surface);
 }
 
-.mov-btn {
-  min-height: 2.65rem;
-  display: inline-flex;
+.hidden { display: none !important; }
+
+/* =========================================================
+   GUIA LATERAL (aditivo, atualizado por JS)
+   ========================================================= */
+.mvf-aside {
+  position: sticky;
+  top: 1rem;
+  border: 1px solid var(--mvf-hair);
+  border-radius: var(--mvf-radius-lg);
+  background: var(--mvf-surface);
+  box-shadow: var(--mvf-shadow-sm);
+  overflow: hidden;
+}
+.mvf-aside-head {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0 1.1rem;
-  border-radius: var(--radius-pill, 999px);
+  gap: 0.6rem;
+  padding: 0.9rem 1.1rem;
+  border-bottom: 1px solid var(--mvf-hair);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mvf-muted);
+}
+.mvf-aside-head i { color: var(--mvf-soft); }
+.mvf-aside-body { padding: 1.1rem; }
+
+.mvf-guia-top { display: flex; align-items: flex-start; gap: 0.7rem; }
+.mvf-guia-ic {
+  width: 2.4rem;
+  height: 2.4rem;
+  flex: 0 0 2.4rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--mvf-radius-md);
+  background: color-mix(in srgb, var(--mvf-brand) 9%, transparent);
+  color: var(--mvf-brand);
+  font-size: 1rem;
+}
+.mvf-guia-title {
+  margin: 0.15rem 0 0.2rem;
+  font-size: 0.94rem;
   font-weight: 600;
-  font-size: 0.9rem;
-  text-decoration: none;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition:
-    transform var(--mf-transition),
-    background var(--mf-transition),
-    border-color var(--mf-transition),
-    color var(--mf-transition),
-    box-shadow var(--mf-transition);
-  white-space: nowrap;
+  color: var(--mvf-text);
+}
+.mvf-guia-desc {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--mvf-muted);
 }
 
-.mov-btn:hover {
-  transform: translateY(-1px);
+.mvf-guia-sep {
+  height: 1px;
+  background: var(--mvf-hair);
+  margin: 1rem 0 0.9rem;
 }
-
-.mov-btn-primary {
-  background: var(--mf-primary);
-  color: #fff;
-  box-shadow: var(--mf-shadow-sm);
+.mvf-guia-steps-lbl {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mvf-soft);
+  margin-bottom: 0.6rem;
 }
-
-.mov-btn-primary:hover {
-  background: var(--mf-primary-hover);
+.mvf-guia-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+.mvf-guia-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  font-size: 0.83rem;
+  line-height: 1.4;
+  color: var(--mvf-text);
 }
-
-.mov-btn-secondary {
-  background: var(--mf-surface);
-  border-color: var(--mf-border-subtle);
-  color: var(--mf-muted);
-}
-
-.mov-btn-secondary:hover {
-  color: var(--mf-text);
-  background: var(--mf-surface-muted);
-  border-color: color-mix(in srgb, var(--mf-primary) 22%, var(--mf-border-subtle));
-}
-
-.hidden {
-  display: none !important;
+.mvf-guia-steps li .mvf-step-n {
+  flex: 0 0 1.35rem;
+  width: 1.35rem;
+  height: 1.35rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--mvf-surface-soft);
+  color: var(--mvf-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-top: 0.05rem;
 }
 
 /* =========================================================
    RESPONSIVO
    ========================================================= */
-
-@media (max-width: 900px) {
-  .col-6,
-  .col-4 {
-    grid-column: span 12;
-  }
+@media (max-width: 980px) {
+  .mvf-layout { grid-template-columns: 1fr; }
+  .mvf-aside { position: static; order: -1; }
 }
-
+@media (max-width: 900px) {
+  .col-6, .col-4 { grid-column: span 12; }
+}
 @media (max-width: 640px) {
-  .mov-form-page {
-    padding: 0;
-  }
-
-  .mov-card-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .mov-card-body {
-    padding: 0.75rem;
-  }
-
-  .mov-section-box {
-    padding: 0.8rem;
-    border-radius: 1rem;
-  }
-
-  .mov-grid {
-    gap: 0.85rem;
-  }
-
-  .radio-group {
-    grid-template-columns: 1fr;
-  }
-
-  .mov-card-footer {
+  .mvf-body { padding: 0.9rem; }
+  .mov-section-box { padding: 0.85rem; }
+  .radio-group { grid-template-columns: 1fr; }
+  .mvf-foot {
     position: static;
     display: grid;
     grid-template-columns: 1fr;
-    padding: 0.85rem;
+    gap: 0.55rem;
   }
-
-  .mov-btn {
-    width: 100%;
-  }
+  .mvf-foot .btn,
+  .mvf-foot .btn-primary { width: 100%; }
 }
-
-@media (max-width: 360px) {
-  .mov-form-page {
-    padding: 0.375rem;
-  }
-
-  .mov-section-box {
-    padding: 0.7rem;
-  }
-
-  .hint-text {
-    font-size: 0.75rem;
-  }
-
-  .mov-form-group label {
-    font-size: 0.78rem;
-  }
-
-  .mov-form-page .form-control,
-  .mov-form-page input,
-  .mov-form-page select,
-  .mov-form-page textarea {
-    font-size: 0.86rem;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition: none !important;
-  }
+  *, *::before, *::after { transition: none !important; }
 }
 </style>
 {% endblock %}
 
 {% block content %}
+<div class="mvf-page">
+  <div class="mvf-layout">
 
-
-<div class="mov-form-page">
-  <div class="mov-form-shell">
-
-    <form id="movForm" method="post" enctype="multipart/form-data" class="mov-form-card">
+    <!-- ============================ FORM ============================ -->
+    <form id="movForm" method="post" enctype="multipart/form-data" class="mvf-card">
       {% csrf_token %}
 
-      <div class="mov-card-header">
-        <div>
-          <div class="mov-card-title">
-            <i class="fa fa-dolly"></i>
-            <div>Registro de Movimentação</div>
-          </div>
-
-          <div class="mov-card-subtitle">
-            Preencha o tipo de movimentação e informe apenas os dados necessários para o fluxo selecionado.
-          </div>
+      <div class="mvf-head">
+        <div class="mvf-head-ic"><i class="fa-solid fa-dolly" aria-hidden="true"></i></div>
+        <div class="mvf-head-txt">
+          <h2>Registro de Movimentação</h2>
+          <p>Escolha o tipo e informe apenas os dados do fluxo selecionado.</p>
         </div>
       </div>
 
-      <div class="mov-card-body">
+      <div class="mvf-body">
 
         {% if form.errors %}
           <div class="alert-error">
-            <i class="fa fa-circle-exclamation"></i>
+            <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
             <div>Verifique os campos destacados abaixo antes de confirmar a movimentação.</div>
           </div>
         {% endif %}
 
         {% if form.non_field_errors %}
           <div class="alert-error">
-            <i class="fa fa-triangle-exclamation"></i>
+            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
             <div>{{ form.non_field_errors }}</div>
           </div>
         {% endif %}
@@ -668,7 +571,7 @@
 
           <div class="mov-section-box hidden" data-f="lote_entrada">
             <div class="mov-section-title">
-              <i class="fa fa-boxes-stacked"></i>
+              <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i>
               Dados do Novo Lote
             </div>
 
@@ -727,7 +630,7 @@
             </label>
             {{ form.lote }}
             <div class="hint-text">
-              <i class="fa fa-info-circle"></i>
+              <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
               Na baixa, selecione o lote pelo saldo e centro de custo exibidos.
             </div>
             <div class="field-errors">{{ form.lote.errors }}</div>
@@ -747,7 +650,7 @@
                     {% if radio.data.selected %}checked{% endif %}
                   >
                   <div class="radio-tile">
-                    <i class="fa {% if radio.data.value == 'entrega' %}fa-user-check{% else %}fa-rotate-left{% endif %}"></i>
+                    <i class="fa-solid {% if radio.data.value == 'entrega' %}fa-user-check{% else %}fa-rotate-left{% endif %}" aria-hidden="true"></i>
                     {{ radio.choice_label }}
                   </div>
                 </label>
@@ -758,12 +661,12 @@
           </div>
 
           <div class="col-12 mov-form-group hidden" data-f="devolucao_info">
-            <div id="devolucaoInfo" style="display:flex; gap:.7rem; align-items:flex-start; padding:.85rem 1rem; border-radius:10px; background:rgba(79,70,229,.08); border:1px solid rgba(79,70,229,.25);">
-              <i class="fa fa-rotate-left" style="color:#4f46e5; margin-top:.18rem;"></i>
-              <div style="font-size:.86rem; line-height:1.55;">
-                <div id="devInfoLoading" style="display:none; color:var(--text-tertiary,#777);"><i class="fa fa-spinner fa-spin"></i> Verificando o vínculo atual do item…</div>
+            <div id="devolucaoInfo" class="mvf-note">
+              <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+              <div class="mvf-note-body">
+                <div id="devInfoLoading" style="display:none;"><i class="fa-solid fa-spinner fa-spin"></i> Verificando o vínculo atual do item…</div>
                 <div id="devInfoContent" style="display:none;"></div>
-                <div id="devInfoNone" style="display:none; color:#b35a00;">Sem entrega anterior registrada para este item — a devolução será gravada sem vínculo automático de pessoa/centro de custo.</div>
+                <div id="devInfoNone" style="display:none;">Sem entrega anterior registrada para este item — a devolução será gravada sem vínculo automático de pessoa/centro de custo.</div>
               </div>
             </div>
           </div>
@@ -790,7 +693,7 @@
             </label>
             {{ form.centro_custo_destino }}
             <div class="hint-text" id="hint_centro_custo">
-              <i class="fa fa-info-circle"></i>
+              <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
               Se vazio na entrega, usa o do usuário.
             </div>
             <div class="field-errors">{{ form.centro_custo_destino.errors }}</div>
@@ -810,7 +713,7 @@
             </label>
             {{ form.novo_nome }}
             <div class="hint-text" id="hint_novo_nome">
-              <i class="fa fa-info-circle"></i>
+              <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
               Em branco mantém o nome atual. Preencha para renomear o equipamento nesta transferência.
             </div>
             <div class="field-errors">{{ form.novo_nome.errors }}</div>
@@ -871,22 +774,40 @@
         </div>
       </div>
 
-      <div class="mov-card-footer">
-        <a href="{% url 'movimentacao_list' %}" class="mov-btn mov-btn-secondary">
-          <i class="fa fa-arrow-left"></i>
+      <div class="mvf-foot">
+        <a href="{% url 'movimentacao_list' %}" class="btn">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
           Cancelar
         </a>
-
-        <button type="submit" class="mov-btn mov-btn-primary" id="btnSave">
-          <i class="fa fa-check"></i>
-          Confirmar
+        <button type="submit" class="btn-primary" id="btnSave">
+          <i class="fa-solid fa-check" aria-hidden="true"></i>
+          {% if form.instance.pk %}Salvar alterações{% else %}Confirmar{% endif %}
         </button>
       </div>
     </form>
+
+    <!-- ============================ GUIA ============================ -->
+    <aside class="mvf-aside" aria-live="polite">
+      <div class="mvf-aside-head">
+        <i class="fa-solid fa-compass" aria-hidden="true"></i>
+        Guia da operação
+      </div>
+      <div class="mvf-aside-body">
+        <div class="mvf-guia-top">
+          <div class="mvf-guia-ic"><i class="fa-solid fa-hand-pointer" id="mvfGuiaIcon" aria-hidden="true"></i></div>
+          <div>
+            <p class="mvf-guia-title" id="mvfGuiaTitle">Selecione o tipo</p>
+            <p class="mvf-guia-desc" id="mvfGuiaDesc">Escolha o tipo de movimentação para ver os campos necessários e o passo a passo desta operação.</p>
+          </div>
+        </div>
+        <div class="mvf-guia-sep" id="mvfGuiaSep" style="display:none;"></div>
+        <div class="mvf-guia-steps-lbl" id="mvfGuiaStepsLbl" style="display:none;">Passo a passo</div>
+        <ol class="mvf-guia-steps" id="mvfGuiaSteps"></ol>
+      </div>
+    </aside>
+
   </div>
 </div>
-
-
 {% endblock %}
 
 {% block extra_js %}
@@ -1149,5 +1070,102 @@ $(document).ready(function() {
   });
 });
 </script>
-{% endblock %}
 
+<!-- Guia de fluxo — aditivo, apenas apresentação (não altera a lógica acima) -->
+<script>
+$(function () {
+  const GUIA = {
+    '': {
+      icon: 'fa-hand-pointer',
+      title: 'Selecione o tipo',
+      desc: 'Escolha o tipo de movimentação para ver os campos necessários e o passo a passo desta operação.',
+      steps: []
+    },
+    'entrada': {
+      icon: 'fa-arrow-down-to-line',
+      title: 'Entrada de estoque',
+      desc: 'Registra um novo lote no estoque a partir de uma nota fiscal, com fornecedor, quantidade e custo.',
+      steps: ['Selecione o item', 'Preencha os dados do lote (NF, quantidade, custo)', 'Defina localidade e centro de custo', 'Adicione observações']
+    },
+    'baixa': {
+      icon: 'fa-arrow-up-from-bracket',
+      title: 'Baixa de estoque',
+      desc: 'Consome saldo de um lote existente, apropriando o custo ao centro de custo escolhido.',
+      steps: ['Selecione o item', 'Escolha o lote pelo saldo', 'Informe solicitante e quantidade', 'Defina localidade e centro de custo', 'Justifique nas observações']
+    },
+    'transferencia': {
+      icon: 'fa-people-arrows',
+      title: 'Transferência de dispositivo',
+      desc: 'Entrega ou devolução de um ativo vinculado a um colaborador, com termo de responsabilidade.',
+      steps: ['Selecione o item', 'Escolha a ação (entrega ou devolução)', 'Anexe o termo em PDF', 'Confirme os dados']
+    },
+    'transferencia_equipamento': {
+      icon: 'fa-right-left',
+      title: 'Transferência de equipamento',
+      desc: 'Move o equipamento de localidade e atualiza o status, mantendo o centro de custo atual.',
+      steps: ['Selecione o item', 'Informe a nova localidade', 'Defina o novo status', 'Renomeie se necessário (opcional)']
+    },
+    'envio_manutencao': {
+      icon: 'fa-screwdriver-wrench',
+      title: 'Envio para manutenção',
+      desc: 'Envia o ativo a um fornecedor para reparo. O retorno é tratado pelo fluxo de aprovação de manutenção.',
+      steps: ['Selecione o item', 'Escolha o fornecedor', 'Informe o nº do chamado', 'Descreva o problema nas observações']
+    },
+    'outros': {
+      icon: 'fa-ellipsis',
+      title: 'Outros',
+      desc: 'Movimentação avulsa que não se enquadra nos tipos padrão.',
+      steps: ['Selecione o item', 'Preencha os campos exibidos']
+    }
+  };
+
+  const DEVOLUCAO = {
+    icon: 'fa-rotate-left',
+    title: 'Devolução de dispositivo',
+    desc: 'Encerra o vínculo do ativo com o colaborador e retorna ao centro de custo de origem.',
+    steps: ['Selecione o item', 'Anexe o termo em PDF', 'Confira o vínculo atual exibido', 'Confirme a devolução']
+  };
+
+  const $ic = $('#mvfGuiaIcon');
+  const $title = $('#mvfGuiaTitle');
+  const $desc = $('#mvfGuiaDesc');
+  const $sep = $('#mvfGuiaSep');
+  const $stepsLbl = $('#mvfGuiaStepsLbl');
+  const $steps = $('#mvfGuiaSteps');
+
+  function renderGuia() {
+    const type = $('#id_tipo_movimentacao').val() || '';
+    const action = $('input[name="tipo_transferencia"]:checked').val();
+
+    let g = GUIA[type] || GUIA[''];
+    if (type === 'transferencia' && action === 'devolucao') {
+      g = DEVOLUCAO;
+    }
+
+    $ic.attr('class', 'fa-solid ' + g.icon);
+    $title.text(g.title);
+    $desc.text(g.desc);
+
+    $steps.empty();
+    if (g.steps && g.steps.length) {
+      g.steps.forEach(function (s, i) {
+        $('<li>')
+          .append($('<span class="mvf-step-n">').text(i + 1))
+          .append($('<span>').text(s))
+          .appendTo($steps);
+      });
+      $sep.show();
+      $stepsLbl.show();
+    } else {
+      $sep.hide();
+      $stepsLbl.hide();
+    }
+  }
+
+  // Ouve os mesmos eventos do fluxo principal — de forma aditiva.
+  $('#id_tipo_movimentacao').on('change', renderGuia);
+  $('input[name="tipo_transferencia"]').on('change', renderGuia);
+  renderGuia();
+});
+</script>
+{% endblock %}

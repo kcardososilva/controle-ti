@@ -264,6 +264,7 @@ def quiosque_detalhe(request, pk: int):
 
 @login_required
 def quiosque_matriculas(request):
+    from django.db.models import Q
     from ProjetoEstoque.models import KioskMatricula
 
     if request.method == "POST":
@@ -276,10 +277,17 @@ def quiosque_matriculas(request):
         messages.success(request, f"Código de matrícula gerado: {m.codigo}")
         return redirect("quiosque_matriculas")
 
+    agora = timezone.now()
+    # "Disponível" = não usada E ainda válida (sem expiração ou ainda dentro do prazo);
+    # "Expirada" = não usada mas fora do prazo. Contagens reais (não limitadas aos 100 exibidos).
+    validas = Q(expira_em__isnull=True) | Q(expira_em__gt=agora)
     matriculas = KioskMatricula.objects.select_related("device", "criado_por").all()[:100]
     return render(request, "front/quiosque/quiosque_matriculas.html", {
         "matriculas": matriculas,
-        "disponiveis": KioskMatricula.objects.filter(usado=False).count(),
+        "total": KioskMatricula.objects.count(),
+        "disponiveis": KioskMatricula.objects.filter(usado=False).filter(validas).count(),
+        "usadas": KioskMatricula.objects.filter(usado=True).count(),
+        "expiradas": KioskMatricula.objects.filter(usado=False, expira_em__lte=agora).count(),
     })
 
 

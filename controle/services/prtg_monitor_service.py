@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 STATUS_DOWN = frozenset({"down"})
 # Slugs considerados "instável" (atenção, mas ainda responde)
 STATUS_WARNING = frozenset({"warning", "unusual"})
+# Estados de ALARME (disparam notificação por e-mail ao entrar neles)
+STATUS_ALARME = STATUS_DOWN | STATUS_WARNING
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -101,11 +103,13 @@ def prtg_objid_do_item(item_id) -> int | None:
 
 def registrar_evento(prtg_objid, status_novo, *, quando=None,
                      device_nome="", device_host="", device_grupo="",
-                     item_id=None) -> bool:
+                     item_id=None):
     """
     Grava um ItemPRTGHistorico para o device SOMENTE quando o status muda em
     relação ao último registro do mesmo objid (evita inflar o histórico com
-    leituras idênticas). Retorna True se um novo evento foi gravado.
+    leituras idênticas). Retorna a instância criada (`ItemPRTGHistorico`) quando
+    um novo evento é gravado, ou ``None`` quando nada muda — continua sendo
+    "truthy" para quem usa ``if registrar_evento(...):``.
 
     `quando` (datetime) define o carimbo do evento — passe o MOMENTO REAL da
     transição reportado pelo PRTG. É limitado para nunca ser anterior ao último
@@ -137,7 +141,7 @@ def registrar_evento(prtg_objid, status_novo, *, quando=None,
             ultimo.save(update_fields=[
                 "registrado_em", "item_id", "device_nome", "device_host", "device_grupo",
             ])
-        return False
+        return None
 
     agora = timezone.now()
     ts = quando or agora
@@ -147,7 +151,7 @@ def registrar_evento(prtg_objid, status_novo, *, quando=None,
     if ultimo is not None and ts <= ultimo.registrado_em:
         ts = agora
 
-    ItemPRTGHistorico.objects.create(
+    return ItemPRTGHistorico.objects.create(
         prtg_objid=prtg_objid,
         item_id=item_id,
         device_nome=device_nome or "",
@@ -157,7 +161,6 @@ def registrar_evento(prtg_objid, status_novo, *, quando=None,
         status_novo=status_novo,
         registrado_em=ts,
     )
-    return True
 
 
 def _quando_transicao(dev, agora):
@@ -175,10 +178,45 @@ def _quando_transicao(dev, agora):
     return agora - timedelta(seconds=since)
 
 
-def coletar_status(devices_map=None) -> dict:
+def _evento_notificacao(ev, dev) -> dict:
+    """Monta um dict simples (sem modelos) descrevendo uma transição, para o
+    e-mail de alarme. Resolve nome/localidade do Item vinculado quando houver."""
+    item_nome = ""
+    item_localidade = ""
+    if getattr(ev, "item_id", None):
+        try:
+            from ProjetoEstoque.models import Item
+            it = Item.objects.filter(pk=ev.item_id).select_related("localidade").first()
+            if it:
+                item_nome = it.nome or ""
+                item_localidade = it.localidade.local if it.localidade else ""
+        except Exception:  # noqa: BLE001 — nome do item é opcional
+            pass
+    dev = dev or {}
+    return {
+        "objid": ev.prtg_objid,
+        "nome": ev.device_nome or dev.get("name") or f"Device {ev.prtg_objid}",
+        "host": ev.device_host or dev.get("host") or "",
+        "grupo": ev.device_grupo or dev.get("group") or "",
+        "status": ev.status_novo,
+        "status_anterior": ev.status_anterior,
+        "statustext": dev.get("statustext") or "",
+        "desde": ev.registrado_em,
+        "item_nome": item_nome,
+        "item_localidade": item_localidade,
+    }
+
+
+def coletar_status(devices_map=None, *, notificar: bool = True) -> dict:
     """
     Consulta o PRTG (uma vez) e registra as mudanças de status de TODOS os devices
     monitorados. Pensado para rodar periodicamente (Agendador do Windows).
+
+    Quando ``notificar`` é True, dispara UM e-mail consolidado sempre que houver
+    transições para estado de alarme (offline/instável) ou recuperações — apenas
+    para transições REAIS (nunca na primeira observação/seed de cada device, para
+    não gerar avalanche de e-mails na primeira coleta).
+
     Retorna estatísticas da coleta.
     """
     from django.utils import timezone
@@ -187,7 +225,10 @@ def coletar_status(devices_map=None) -> dict:
     stats = {
         "ok": True, "erro": None,
         "devices": 0, "eventos": 0, "vinculados": 0,
+        "alarmes": 0, "recuperados": 0, "email_enviado": False,
     }
+    alarmes: list[dict] = []
+    recuperados: list[dict] = []
 
     if not is_configured():
         stats["ok"] = False
@@ -227,8 +268,27 @@ def coletar_status(devices_map=None) -> dict:
             )
             if criado:
                 stats["eventos"] += 1
+                ant = criado.status_anterior
+                novo = criado.status_novo
+                # Só transições REAIS (ant != "" descarta o seed inicial de cada device).
+                if ant:
+                    if novo in STATUS_ALARME and ant not in STATUS_ALARME:
+                        alarmes.append(_evento_notificacao(criado, dev))
+                    elif novo == "up" and ant in STATUS_ALARME:
+                        recuperados.append(_evento_notificacao(criado, dev))
         except Exception as exc:  # noqa: BLE001 — um device não derruba a coleta
             logger.error("coletar_status: falha ao registrar objid %s — %s", objid, exc)
+
+    stats["alarmes"] = len(alarmes)
+    stats["recuperados"] = len(recuperados)
+
+    # Notificação consolidada (nunca derruba a coleta se o e-mail falhar).
+    if notificar and (alarmes or recuperados):
+        try:
+            from services.email_alertas import alerta_prtg_transicoes
+            stats["email_enviado"] = alerta_prtg_transicoes(alarmes, recuperados)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("coletar_status: falha ao enviar e-mail de alarme — %s", exc)
 
     return stats
 

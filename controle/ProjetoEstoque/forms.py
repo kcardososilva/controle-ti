@@ -606,6 +606,22 @@ class MovimentacaoItemForm(forms.ModelForm):
         for field in self.fields.values():
             field.required = False
 
+        # "Retorno de Manutenção" foi descontinuado como lançamento manual:
+        # o retorno agora é tratado pelo fluxo de aprovação de manutenção.
+        # Removemos a opção do seletor, mantendo-a apenas quando se está editando
+        # uma movimentação que já é desse tipo (para não quebrar registros antigos).
+        editando_retorno = bool(
+            self.instance
+            and self.instance.pk
+            and self.instance.tipo_movimentacao == TipoMovimentacaoChoices.RETORNO_MANUTENCAO
+        )
+        if not editando_retorno:
+            self.fields["tipo_movimentacao"].choices = [
+                choice
+                for choice in self.fields["tipo_movimentacao"].choices
+                if choice[0] != TipoMovimentacaoChoices.RETORNO_MANUTENCAO
+            ]
+
         self.fields["lote"].queryset = (
             LoteEstoque.objects
             .none()

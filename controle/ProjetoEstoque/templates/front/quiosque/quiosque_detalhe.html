@@ -5,191 +5,256 @@
 {% block page_title %}{{ device.apelido|default:device.modelo|default:"Dispositivo" }}{% endblock %}
 {% block page_subtitle %}{% if device.matricula_atual %}{{ device.matricula_atual.descricao|default:device.matricula_atual.codigo }} · {% endif %}{{ device.fabricante }} {{ device.modelo }}{% endblock %}
 
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'quiosque_dashboard' %}">Quiosque</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{{ device.apelido|default:device.modelo|default:"Dispositivo" }}</span>
+</nav>
+{% endblock %}
+
 {% block header_actions %}
-  <a href="{% url 'quiosque_config_editar' device.pk %}" class="btn btn-sm"><i class="fa fa-gear"></i> Configurar</a>
-  <a href="{% url 'quiosque_dashboard' %}" class="btn btn-sm btn-light"><i class="fa fa-arrow-left"></i> Voltar</a>
+  <a href="{% url 'quiosque_config_editar' device.pk %}" class="btn btn-sm"><i class="fa-solid fa-gear"></i> Configurar</a>
+  <a href="{% url 'quiosque_dashboard' %}" class="btn btn-sm"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
 {% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-:where(.kq-det) { --kq-brand:#4f46e5; --kq-danger:#d93025; }
+:where(.kq-det) { --kq-brand:var(--brand); --kq-danger:var(--danger); }
 .kq-det, .kq-det * { box-sizing:border-box; min-width:0; }
-.kq-det { display:grid; gap:1rem; }
+.kq-det { display:grid; gap:16px; }
 
-/* Faixa de estado (cartões-chave) */
-.kq-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.7rem; }
-.kq-stat { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); padding:.8rem 1rem; box-shadow:var(--shadow-xs); }
-.kq-stat .l { font-size:.66rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); font-weight:700; }
-.kq-stat .v { font-size:1.05rem; font-weight:800; letter-spacing:-.02em; color:var(--text-primary); margin-top:.3rem; display:flex; align-items:center; gap:.4rem; }
+/* ── barra-resumo do dispositivo ──────────────────────────────────── */
+.kq-hero { display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:16px 18px;
+  background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-lg); box-shadow:var(--shadow-xs); }
+.kq-hero-id { display:flex; align-items:center; gap:13px; min-width:0; flex:1; }
+.kq-hero-ic { width:46px; height:46px; flex:0 0 46px; border-radius:11px; display:grid; place-items:center;
+  background:var(--brand-soft); color:var(--brand); border:1px solid color-mix(in srgb,var(--brand) 18%,transparent); font-size:19px; }
+.kq-hero-main { min-width:0; }
+.kq-hero-name { font-size:17px; font-weight:700; letter-spacing:-.02em; color:var(--text-primary); line-height:1.2; }
+.kq-hero-sub { margin-top:2px; font-size:12.5px; color:var(--text-tertiary); }
+.kq-hero-sub .mono { font-family:var(--font-mono); }
+.kq-hero-stats { display:flex; align-items:stretch; gap:0; flex-wrap:wrap; }
+.kq-hs { padding:2px 18px; border-left:1px solid var(--separator-hairline); }
+.kq-hs:first-child { border-left:0; padding-left:4px; }
+.kq-hs-l { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
+.kq-hs-v { margin-top:5px; font-size:14px; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:6px; font-variant-numeric:tabular-nums; }
+@media (max-width:640px){
+  .kq-hero-id { flex:1 1 100%; }
+  .kq-hero-stats { width:100%; display:grid; grid-template-columns:1fr 1fr; gap:12px 0; }
+  .kq-hs { border-left:0; padding:0 4px; }
+  .kq-hs:nth-child(even) { border-left:1px solid var(--separator-hairline); padding-left:14px; }
+}
 
-/* Layout principal: conteúdo + barra lateral */
-.kq-grid { display:grid; grid-template-columns:1.55fr 1fr; gap:1rem; align-items:start; }
+/* ── grade principal ──────────────────────────────────────────────── */
+.kq-grid { display:grid; grid-template-columns:1.6fr 1fr; gap:16px; align-items:start; }
 @media (max-width:900px){ .kq-grid{ grid-template-columns:1fr; } }
-.kq-col { display:grid; gap:1rem; min-width:0; }
+.kq-col { display:grid; gap:16px; min-width:0; }
 
-.kq-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden; }
-.kq-card-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.8rem 1.1rem; border-bottom:1px solid var(--separator-hairline); }
-.kq-card-title { font-size:.9rem; font-weight:700; letter-spacing:-.01em; }
-.kq-card-title i { color:var(--kq-brand); margin-right:.45rem; }
-.kq-card-body { padding:1rem 1.1rem; display:grid; gap:.9rem; }
+.kq-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-lg); box-shadow:var(--shadow-xs); overflow:hidden; }
+.kq-card-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; border-bottom:1px solid var(--separator-hairline); }
+.kq-card-title { display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:600; letter-spacing:-.01em; color:var(--text-primary); }
+.kq-card-title i { color:var(--text-tertiary); font-size:13px; }
+.kq-card-body { padding:14px 16px; display:grid; gap:14px; }
 
-.kq-map { height:330px; width:100%; z-index:0; }
+.kq-map { height:340px; width:100%; z-index:0; }
 
-/* Lista de propriedades (identificação) */
-.kq-props { display:grid; gap:0; }
-.kq-prop { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; padding:.55rem 0; border-bottom:1px solid var(--separator-hairline); }
+/* ── status / chips ───────────────────────────────────────────────── */
+.kq-status { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; white-space:nowrap; }
+.kq-status i { font-size:10px; }
+.kq-status.on { color:var(--success); }
+.kq-status.off { color:var(--text-tertiary); }
+.kq-chip { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:99px; font-size:11.5px; font-weight:600;
+  background:var(--bg-fill-tertiary); color:var(--text-secondary); }
+.kq-pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:11px; font-weight:600; background:var(--bg-fill-tertiary); color:var(--text-secondary); }
+
+/* ── lista de propriedades ────────────────────────────────────────── */
+.kq-props { display:grid; }
+.kq-prop { display:flex; align-items:baseline; justify-content:space-between; gap:14px; padding:9px 0; border-bottom:1px solid var(--separator-hairline); }
 .kq-prop:last-child { border-bottom:0; }
-.kq-prop .l { font-size:.74rem; color:var(--text-tertiary); font-weight:600; flex:0 0 auto; }
-.kq-prop .v { font-size:.84rem; font-weight:700; color:var(--text-primary); text-align:right; word-break:break-word; }
-.kq-prop .v a { color:var(--kq-brand); text-decoration:none; }
+.kq-prop .l { font-size:12.5px; color:var(--text-tertiary); flex:0 0 auto; }
+.kq-prop .v { font-size:12.5px; font-weight:500; color:var(--text-primary); text-align:right; word-break:break-word; }
+.kq-prop .v a { color:var(--brand); text-decoration:none; font-weight:500; }
 .kq-prop .v a:hover { text-decoration:underline; }
+.kq-prop .v.mono { font-family:var(--font-mono); font-weight:450; }
 
-.kq-badge { display:inline-flex; align-items:center; gap:.35rem; padding:.18rem .6rem; border-radius:var(--radius-pill); font-size:.73rem; font-weight:700; }
-.kq-badge.on { color:#1e8e3e; background:color-mix(in srgb,#34c759 16%,transparent); }
-.kq-badge.off { color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline); }
-.kq-pill { display:inline-block; padding:.1rem .5rem; border-radius:var(--radius-pill); font-size:.72rem; font-weight:700; background:var(--bg-fill-secondary); color:var(--text-secondary); }
+/* ── config do TI ─────────────────────────────────────────────────── */
+.kq-cfg { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+.kq-cfg .b { background:var(--bg-page-2); border:1px solid var(--separator-hairline); border-radius:var(--radius-sm); padding:8px 11px; }
+.kq-cfg .l { font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-tertiary); font-weight:600; }
+.kq-cfg .v { font-size:14px; font-weight:600; color:var(--text-primary); margin-top:3px; }
+.kq-cfg .v.warn { color:var(--warning); }
+.kq-apps { display:flex; flex-wrap:wrap; gap:5px; }
+.kq-app { font-family:var(--font-mono); font-size:11px; padding:2px 8px; border-radius:6px; background:var(--bg-fill-tertiary); color:var(--text-secondary); }
+.kq-sub-note { font-size:11.5px; color:var(--text-tertiary); }
+.kq-sub-note i { margin-right:4px; }
 
-.kq-cfg { display:grid; grid-template-columns:repeat(2,1fr); gap:.55rem; }
-.kq-cfg .b { background:var(--bg-fill-secondary); border-radius:var(--radius-lg); padding:.5rem .65rem; }
-.kq-cfg .l { font-size:.64rem; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); font-weight:700; }
-.kq-cfg .v { font-size:.86rem; font-weight:800; color:var(--text-primary); margin-top:.2rem; }
+.kq-form { display:grid; gap:8px; }
+.kq-form label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
+.kq-form .form-control { min-height:38px; }
 
-.kq-apps { display:flex; flex-wrap:wrap; gap:.3rem; }
+/* ── zona de perigo ───────────────────────────────────────────────── */
+.kq-danger { border-color:color-mix(in srgb,var(--danger) 26%,var(--separator-hairline)); }
+.kq-danger .kq-card-head { border-bottom-color:color-mix(in srgb,var(--danger) 18%,var(--separator-hairline)); }
+.kq-danger .kq-card-title i { color:var(--danger); }
+.kq-danger-row { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+.kq-danger-row .t { font-size:12.5px; color:var(--text-tertiary); line-height:1.45; flex:1; min-width:180px; }
+.kq-danger-row .t b { color:var(--text-primary); font-weight:600; }
+.kq-btn-danger-soft { color:var(--danger); border:1px solid color-mix(in srgb,var(--danger) 34%,transparent); background:transparent; }
+.kq-btn-danger-soft:hover { background:var(--danger-soft); border-color:var(--danger); }
 
-.kq-form { display:grid; gap:.5rem; }
-.kq-form .form-control { min-height:2.25rem; }
+/* ── tabelas (check-ins, comandos) ────────────────────────────────── */
+.kq-scroll { width:100%; overflow-x:auto; }
+.kq-table { width:100%; border-collapse:collapse; min-width:640px; }
+.kq-table thead th { position:sticky; top:0; background:var(--bg-elevated); padding:9px 14px; text-align:left;
+  font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); font-weight:600;
+  border-bottom:1px solid var(--separator-hairline); white-space:nowrap; }
+.kq-table tbody td { padding:9px 14px; border-bottom:1px solid var(--separator-hairline); font-size:12.5px; color:var(--text-primary); white-space:nowrap; vertical-align:middle; }
+.kq-table tbody tr:last-child td { border-bottom:0; }
+.kq-table tbody tr:hover { background:var(--bg-hover); }
+.kq-yes { color:var(--success); font-weight:600; }
+.kq-no { color:var(--text-tertiary); }
+.kq-muted { color:var(--text-quaternary); }
 
-.kq-danger { border-color:color-mix(in srgb,var(--kq-danger) 30%,var(--separator-hairline)); }
-.kq-danger .kq-card-head { border-bottom-color:color-mix(in srgb,var(--kq-danger) 22%,var(--separator-hairline)); }
-.kq-danger .kq-card-title i { color:var(--kq-danger); }
-.kq-danger-row { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
-.kq-danger-row .t { font-size:.8rem; color:var(--text-secondary); }
-.kq-danger-row .t b { color:var(--text-primary); }
-.btn-danger { color:#fff; background:var(--kq-danger); border-color:var(--kq-danger); }
-.btn-danger-soft { color:var(--kq-danger); border:1px solid color-mix(in srgb,var(--kq-danger) 35%,transparent); background:transparent; }
+.kq-pg { display:flex; gap:6px; justify-content:center; align-items:center; padding:12px; }
+.kq-pg a, .kq-pg span { min-width:30px; height:30px; padding:0 9px; display:inline-grid; place-items:center; border-radius:var(--radius-sm);
+  border:1px solid var(--separator-non-opaque); font-size:12.5px; font-weight:500; text-decoration:none; color:var(--text-secondary); }
+.kq-pg a:hover { background:var(--bg-hover); }
+.kq-pg .cur { background:var(--brand); color:#fff; border-color:var(--brand); }
 
-.kq-table { width:100%; border-collapse:collapse; }
-.kq-table th, .kq-table td { padding:.55rem .9rem; border-bottom:1px solid var(--separator-hairline); text-align:left; font-size:.82rem; white-space:nowrap; }
-.kq-table th { font-size:.66rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); font-weight:700; }
-.kq-pg { display:flex; gap:.3rem; justify-content:center; padding:.75rem; }
-.kq-pg a, .kq-pg span { padding:.3rem .6rem; border-radius:var(--radius-md); border:1px solid var(--separator-hairline); font-size:.8rem; font-weight:700; text-decoration:none; color:var(--text-secondary); }
-.kq-pg .cur { background:var(--kq-brand); color:#fff; border-color:var(--kq-brand); }
-
-/* Localização clicável (linha da tabela → ponto exato no mapa) */
-.kq-loc { display:inline-flex; align-items:center; gap:.35rem; padding:.18rem .55rem; border:1px solid var(--separator-hairline); background:var(--bg-fill-secondary); border-radius:var(--radius-pill); color:var(--kq-brand); font:inherit; font-size:.78rem; font-weight:700; font-variant-numeric:tabular-nums; cursor:pointer; transition:background .15s,border-color .15s,color .15s; }
-.kq-loc:hover { background:color-mix(in srgb,var(--kq-brand) 12%,transparent); border-color:color-mix(in srgb,var(--kq-brand) 32%,transparent); }
-.kq-loc:focus-visible { outline:2px solid var(--kq-brand); outline-offset:1px; }
-.kq-loc.is-active { background:var(--kq-brand); color:#fff; border-color:var(--kq-brand); }
-.kq-loc i { font-size:.72rem; }
-.kq-loc-ext { margin-left:.4rem; color:var(--text-tertiary); font-size:.74rem; text-decoration:none; }
-.kq-loc-ext:hover { color:var(--kq-brand); }
-.kq-table tr.is-active-row td { background:color-mix(in srgb,var(--kq-brand) 7%,transparent); }
-.kq-reset { display:inline-flex; align-items:center; gap:.3rem; border:0; cursor:pointer; color:var(--kq-brand); background:color-mix(in srgb,var(--kq-brand) 10%,transparent); }
+/* ── localização clicável (linha → ponto exato no mapa) ───────────── */
+.kq-loc { display:inline-flex; align-items:center; gap:6px; padding:3px 9px; border:1px solid var(--separator-non-opaque);
+  background:var(--bg-elevated); border-radius:99px; color:var(--brand); font:inherit; font-size:12px; font-weight:600;
+  font-variant-numeric:tabular-nums; cursor:pointer; transition:background var(--transition-fast),border-color var(--transition-fast); }
+.kq-loc:hover { background:var(--brand-soft); border-color:color-mix(in srgb,var(--brand) 30%,transparent); }
+.kq-loc:focus-visible { outline:2px solid var(--brand); outline-offset:1px; }
+.kq-loc.is-active { background:var(--brand); color:#fff; border-color:var(--brand); }
+.kq-loc i { font-size:11px; }
+.kq-loc-ext { margin-left:8px; color:var(--text-tertiary); font-size:12px; text-decoration:none; }
+.kq-loc-ext:hover { color:var(--brand); }
+.kq-table tr.is-active-row td { background:var(--brand-soft); }
+.kq-reset { display:inline-flex; align-items:center; gap:6px; border:0; cursor:pointer; color:var(--brand);
+  background:var(--brand-soft); padding:4px 10px; border-radius:99px; font-size:12px; font-weight:600; }
 .kq-reset[hidden] { display:none; }
 
-/* Marcador de FOCO no mapa — pino pulsante sobre o ponto exato selecionado */
+/* Marcador de FOCO no mapa — pino pulsante sobre o ponto selecionado */
 .kq-focus-pin { display:grid; place-items:center; background:transparent; border:0; }
-.kq-focus-dot { width:14px; height:14px; border-radius:50%; background:var(--kq-brand); border:2px solid #fff; box-shadow:0 0 0 0 color-mix(in srgb,var(--kq-brand) 55%,transparent); animation:kqPulse 1.7s ease-out infinite; }
-@keyframes kqPulse { 0%{ box-shadow:0 0 0 0 color-mix(in srgb,var(--kq-brand) 50%,transparent); } 70%{ box-shadow:0 0 0 13px transparent; } 100%{ box-shadow:0 0 0 0 transparent; } }
+.kq-focus-dot { width:14px; height:14px; border-radius:50%; background:var(--brand); border:2px solid #fff;
+  box-shadow:0 0 0 0 color-mix(in srgb,var(--brand) 55%,transparent); animation:kqPulse 1.7s ease-out infinite; }
+@keyframes kqPulse { 0%{ box-shadow:0 0 0 0 color-mix(in srgb,var(--brand) 50%,transparent); } 70%{ box-shadow:0 0 0 13px transparent; } 100%{ box-shadow:0 0 0 0 transparent; } }
 
-/* Modal de exclusão (2ª etapa: senha do sistema) */
-.kq-modal { --kq-brand:#4f46e5; --kq-danger:#d93025;
-  position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:1rem;
-  background:color-mix(in srgb,#000 45%,transparent); backdrop-filter:blur(2px); }
+/* ── modal de exclusão (2ª etapa: senha do sistema) ───────────────── */
+.kq-modal { position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:16px;
+  background:rgba(0,0,0,.45); backdrop-filter:blur(3px); }
 .kq-modal[hidden] { display:none; }
-.kq-modal-box { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl);
-  box-shadow:var(--shadow-lg,0 20px 60px rgba(0,0,0,.3)); width:100%; max-width:420px; padding:1.3rem; display:grid; gap:.85rem; }
-.kq-modal-box h3 { margin:0; font-size:1.02rem; font-weight:800; display:flex; align-items:center; gap:.5rem; }
-.kq-modal-box h3 i { color:var(--kq-danger); }
-.kq-modal-box p { margin:0; font-size:.84rem; color:var(--text-secondary); line-height:1.5; }
-.kq-modal-actions { display:flex; gap:.5rem; justify-content:flex-end; margin-top:.3rem; }
+.kq-modal-box { background:var(--bg-elevated); border:1px solid var(--separator-non-opaque); border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-xl); width:100%; max-width:430px; padding:20px; display:grid; gap:12px; }
+.kq-modal-box h3 { margin:0; font-size:16px; font-weight:700; display:flex; align-items:center; gap:9px; color:var(--text-primary); }
+.kq-modal-box h3 i { color:var(--danger); }
+.kq-modal-box p { margin:0; font-size:13px; color:var(--text-secondary); line-height:1.5; }
+.kq-modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="kq-det">
 
-  <!-- Faixa de estado -->
-  <section class="kq-stats">
-    <div class="kq-stat">
-      <div class="l">Status</div>
-      <div class="v">
-        <span class="kq-badge {% if device.online %}on{% else %}off{% endif %}" data-status
-              data-last="{% if device.ultimo_checkin %}{{ device.ultimo_checkin|date:'U' }}000{% else %}0{% endif %}">
-          {% if device.online %}<i class="fa fa-circle-check"></i> Online{% else %}<i class="fa fa-circle"></i> Offline{% endif %}
-        </span>
+  <!-- resumo do dispositivo -->
+  <section class="kq-hero">
+    <div class="kq-hero-id">
+      <span class="kq-hero-ic"><i class="fa-solid fa-mobile-screen-button"></i></span>
+      <div class="kq-hero-main">
+        <div class="kq-hero-name">{{ device.apelido|default:device.modelo|default:"Dispositivo" }}</div>
+        <div class="kq-hero-sub">{{ device.fabricante }} {{ device.modelo }}{% if device.serial %} · <span class="mono">{{ device.serial }}</span>{% endif %}</div>
       </div>
     </div>
-    <div class="kq-stat"><div class="l">Bateria</div><div class="v">{% if device.ultima_bateria is not None %}<i class="fa fa-battery-half" style="color:var(--text-tertiary);"></i> {{ device.ultima_bateria }}%{% else %}—{% endif %}</div></div>
-    <div class="kq-stat"><div class="l">Rede</div><div class="v">{% if device.ultima_rede %}<i class="fa {% if device.ultima_rede == 'wifi' %}fa-wifi{% else %}fa-signal{% endif %}" style="color:var(--text-tertiary);"></i> {{ device.ultima_rede }}{% else %}—{% endif %}</div></div>
-    <div class="kq-stat"><div class="l">Último check-in</div><div class="v">{% if device.ultimo_checkin %}{{ device.ultimo_checkin|naturaltime }}{% else %}nunca{% endif %}</div></div>
+    <div class="kq-hero-stats">
+      <div class="kq-hs">
+        <div class="kq-hs-l">Status</div>
+        <div class="kq-hs-v">
+          <span class="kq-status {% if device.online %}on{% else %}off{% endif %}" data-status data-last="{% if device.ultimo_checkin %}{{ device.ultimo_checkin|date:'U' }}000{% else %}0{% endif %}">
+            {% if device.online %}<i class="fa-solid fa-circle-check"></i> Online{% else %}<i class="fa-solid fa-circle"></i> Offline{% endif %}
+          </span>
+        </div>
+      </div>
+      <div class="kq-hs">
+        <div class="kq-hs-l">Bateria</div>
+        <div class="kq-hs-v">{% if device.ultima_bateria is not None %}<i class="fa-solid fa-battery-half" style="color:var(--text-tertiary)"></i> {{ device.ultima_bateria }}%{% else %}<span class="kq-muted">—</span>{% endif %}</div>
+      </div>
+      <div class="kq-hs">
+        <div class="kq-hs-l">Rede</div>
+        <div class="kq-hs-v">{% if device.ultima_rede %}<i class="fa-solid {% if device.ultima_rede == 'wifi' %}fa-wifi{% else %}fa-signal{% endif %}" style="color:var(--text-tertiary)"></i> {{ device.ultima_rede }}{% else %}<span class="kq-muted">—</span>{% endif %}</div>
+      </div>
+      <div class="kq-hs">
+        <div class="kq-hs-l">Último check-in</div>
+        <div class="kq-hs-v">{% if device.ultimo_checkin %}<span title="{{ device.ultimo_checkin|date:'d/m/Y H:i' }}">{{ device.ultimo_checkin|naturaltime }}</span>{% else %}<span class="kq-muted">nunca</span>{% endif %}</div>
+      </div>
+    </div>
   </section>
 
   <div class="kq-grid">
 
-    <!-- Coluna principal -->
+    <!-- coluna principal -->
     <div class="kq-col">
 
-      <!-- Mapa de localização -->
+      <!-- mapa -->
       <div class="kq-card">
         <div class="kq-card-head">
-          <span class="kq-card-title"><i class="fa fa-location-dot"></i>Localização atual</span>
-          <div style="display:flex;align-items:center;gap:.4rem;">
-            {% if mapa %}
-            <button type="button" id="kqReset" class="kq-pill kq-reset" hidden><i class="fa fa-arrows-to-dot"></i> Visão geral</button>
-            {% endif %}
-            {% if device.tem_localizacao %}
-            <a href="{% url 'quiosque_mapa' %}" class="kq-pill" style="text-decoration:none;color:var(--kq-brand);">Ver mapa geral</a>
-            {% endif %}
+          <span class="kq-card-title"><i class="fa-solid fa-location-dot"></i>Localização atual</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            {% if mapa %}<button type="button" id="kqReset" class="kq-reset" hidden><i class="fa-solid fa-arrows-to-dot"></i> Visão geral</button>{% endif %}
+            {% if device.tem_localizacao %}<a href="{% url 'quiosque_mapa' %}" class="kq-pill" style="text-decoration:none;color:var(--brand);">Mapa geral</a>{% endif %}
           </div>
         </div>
         {% if mapa %}
           <div id="kqMap" class="kq-map"></div>
         {% else %}
-          <div class="kq-card-body"><div style="text-align:center;color:var(--text-tertiary);padding:1.5rem 0;font-weight:600;"><i class="fa fa-location-crosshairs" style="font-size:1.4rem;color:var(--kq-brand);"></i><br>Sem localização recebida ainda.</div></div>
+          <div class="kq-card-body"><div style="text-align:center;color:var(--text-tertiary);padding:22px 0;font-size:13px;"><i class="fa-solid fa-location-crosshairs" style="font-size:22px;color:var(--text-quaternary);display:block;margin-bottom:8px;"></i>Sem localização recebida ainda.</div></div>
         {% endif %}
       </div>
 
-      <!-- Histórico de check-ins -->
+      <!-- check-ins -->
       <div class="kq-card">
         <div class="kq-card-head">
-          <span class="kq-card-title"><i class="fa fa-clock-rotate-left"></i>Histórico de check-ins</span>
+          <span class="kq-card-title"><i class="fa-solid fa-clock-rotate-left"></i>Histórico de check-ins</span>
           <span class="kq-pill">{{ total_checkins }} registro(s) · últimos 5 dias</span>
         </div>
-        <div style="width:100%;overflow-x:auto;">
+        <div class="kq-scroll">
           <table class="kq-table">
             <thead><tr><th>Quando</th><th>Bateria</th><th>Rede</th><th>Wi-Fi (SSID)</th><th>Online</th><th>Localização</th></tr></thead>
             <tbody>
               {% for c in checkins %}
               <tr>
                 <td><span title="Coletado: {{ c.quando|date:'d/m/Y H:i:s' }} · Recebido: {{ c.registrado_em|date:'d/m/Y H:i:s' }}">{{ c.quando|date:"d/m/Y H:i" }}</span></td>
-                <td>{% if c.bateria is not None %}{{ c.bateria }}%{% if c.carregando %} <i class="fa fa-bolt" style="color:#1e8e3e;"></i>{% endif %}{% else %}—{% endif %}</td>
+                <td>{% if c.bateria is not None %}{{ c.bateria }}%{% if c.carregando %} <i class="fa-solid fa-bolt" style="color:var(--success);"></i>{% endif %}{% else %}<span class="kq-muted">—</span>{% endif %}</td>
                 <td>{{ c.rede|default:"—" }}</td>
                 <td>{{ c.ssid|default:"—" }}</td>
-                <td>{% if c.online %}<span style="color:#1e8e3e;">sim</span>{% else %}<span style="color:var(--text-tertiary);">não</span>{% endif %}</td>
-                <td>{% if c.latitude is not None %}<button type="button" class="kq-loc" data-cid="{{ c.pk }}" aria-pressed="false" title="Mostrar este ponto exato no mapa acima"><i class="fa fa-location-crosshairs"></i><span>{{ c.latitude|floatformat:5 }}, {{ c.longitude|floatformat:5 }}</span></button><a class="kq-loc-ext" target="_blank" rel="noopener" href="https://www.google.com/maps?q={{ c.latitude|unlocalize }},{{ c.longitude|unlocalize }}" title="Abrir no Google Maps"><i class="fa fa-up-right-from-square"></i></a>{% else %}—{% endif %}</td>
+                <td>{% if c.online %}<span class="kq-yes">sim</span>{% else %}<span class="kq-no">não</span>{% endif %}</td>
+                <td>{% if c.latitude is not None %}<button type="button" class="kq-loc" data-cid="{{ c.pk }}" aria-pressed="false" title="Mostrar este ponto exato no mapa acima"><i class="fa-solid fa-location-crosshairs"></i><span>{{ c.latitude|floatformat:5 }}, {{ c.longitude|floatformat:5 }}</span></button><a class="kq-loc-ext" target="_blank" rel="noopener" href="https://www.google.com/maps?q={{ c.latitude|unlocalize }},{{ c.longitude|unlocalize }}" title="Abrir no Google Maps"><i class="fa-solid fa-up-right-from-square"></i></a>{% else %}<span class="kq-muted">—</span>{% endif %}</td>
               </tr>
               {% empty %}
-              <tr><td colspan="6" style="text-align:center;color:var(--text-tertiary);padding:1.5rem;">Nenhum check-in recebido ainda.</td></tr>
+              <tr><td colspan="6" style="text-align:center;color:var(--text-tertiary);padding:22px;">Nenhum check-in recebido ainda.</td></tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
         {% if page_obj.has_other_pages %}
         <div class="kq-pg">
-          {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹</a>{% endif %}
+          {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" aria-label="Anterior">‹</a>{% endif %}
           <span class="cur">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-          {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">›</a>{% endif %}
+          {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" aria-label="Próxima">›</a>{% endif %}
         </div>
         {% endif %}
       </div>
 
-      <!-- Comandos recentes -->
+      <!-- comandos -->
       {% if comandos %}
       <div class="kq-card">
-        <div class="kq-card-head"><span class="kq-card-title"><i class="fa fa-terminal"></i>Comandos recentes</span></div>
-        <div style="width:100%;overflow-x:auto;">
+        <div class="kq-card-head"><span class="kq-card-title"><i class="fa-solid fa-terminal"></i>Comandos recentes</span></div>
+        <div class="kq-scroll">
           <table class="kq-table">
             <thead><tr><th>Comando</th><th>Status</th><th>Criado</th><th>Detalhe</th></tr></thead>
             <tbody>
@@ -209,61 +274,51 @@
 
     </div>
 
-    <!-- Barra lateral -->
+    <!-- barra lateral -->
     <div class="kq-col">
 
-      <!-- Identificação do aparelho -->
+      <!-- identificação -->
       <div class="kq-card">
-        <div class="kq-card-head"><span class="kq-card-title"><i class="fa fa-mobile-screen-button"></i>Identificação</span></div>
+        <div class="kq-card-head"><span class="kq-card-title"><i class="fa-solid fa-circle-info"></i>Identificação</span></div>
         <div class="kq-card-body">
           <div class="kq-props">
-            <div class="kq-prop"><span class="l">Matrícula</span><span class="v">
-              {% if device.matricula_atual %}{{ device.matricula_atual.descricao|default:"—" }} <span class="kq-pill" title="Código da matrícula">{{ device.matricula_atual.codigo }}</span>{% else %}—{% endif %}
-            </span></div>
+            <div class="kq-prop"><span class="l">Matrícula</span><span class="v">{% if device.matricula_atual %}{{ device.matricula_atual.descricao|default:"—" }} <span class="kq-pill" title="Código">{{ device.matricula_atual.codigo }}</span>{% else %}—{% endif %}</span></div>
             <div class="kq-prop"><span class="l">Fabricante / Modelo</span><span class="v">{{ device.fabricante }} {{ device.modelo|default:"—" }}</span></div>
-            <div class="kq-prop"><span class="l">Número de série</span><span class="v">
-              {% if device.serial %}
-                {% if device.equip_serial %}<a href="{% url 'equipamento_detalhe' device.equip_serial.pk %}" title="Abrir {{ device.equip_serial.nome }}"><i class="fa fa-barcode"></i> {{ device.serial }}</a>{% else %}{{ device.serial }}{% endif %}
-              {% else %}—{% endif %}
-            </span></div>
-            <div class="kq-prop"><span class="l">MAC Wi-Fi</span><span class="v" style="font-variant-numeric:tabular-nums;">{{ device.mac|default:"—" }}</span></div>
+            <div class="kq-prop"><span class="l">Número de série</span><span class="v mono">{% if device.serial %}{% if device.equip_serial %}<a href="{% url 'equipamento_detalhe' device.equip_serial.pk %}" title="Abrir {{ device.equip_serial.nome }}">{{ device.serial }}</a>{% else %}{{ device.serial }}{% endif %}{% else %}—{% endif %}</span></div>
+            <div class="kq-prop"><span class="l">MAC Wi-Fi</span><span class="v mono">{{ device.mac|default:"—" }}</span></div>
             <div class="kq-prop"><span class="l">Android</span><span class="v">{{ device.android_versao|default:"—" }}</span></div>
             <div class="kq-prop"><span class="l">Versão do app</span><span class="v">{{ device.app_versao|default:"—" }}</span></div>
             <div class="kq-prop"><span class="l">RAM</span><span class="v">{% if device.ram_mb %}{{ device.ram_mb }} MB{% else %}—{% endif %}</span></div>
-            <div class="kq-prop"><span class="l">Equipamento vinculado</span><span class="v">
-              {% if device.item %}<a href="{% url 'equipamento_detalhe' device.item.pk %}">{{ device.item.nome }}</a>
-              {% elif device.equip_serial %}<a href="{% url 'equipamento_detalhe' device.equip_serial.pk %}">{{ device.equip_serial.nome }}</a>
-              {% else %}—{% endif %}
-            </span></div>
+            <div class="kq-prop"><span class="l">Equipamento vinculado</span><span class="v">{% if device.item %}<a href="{% url 'equipamento_detalhe' device.item.pk %}">{{ device.item.nome }}</a>{% elif device.equip_serial %}<a href="{% url 'equipamento_detalhe' device.equip_serial.pk %}">{{ device.equip_serial.nome }}</a>{% else %}—{% endif %}</span></div>
           </div>
         </div>
       </div>
 
-      <!-- Controle do TI -->
+      <!-- controle do TI -->
       <div class="kq-card">
         <div class="kq-card-head">
-          <span class="kq-card-title"><i class="fa fa-shield-halved"></i>Controle do TI</span>
+          <span class="kq-card-title"><i class="fa-solid fa-shield-halved"></i>Controle do TI</span>
           <span class="kq-pill">config v{{ device.config_versao }}</span>
         </div>
         <div class="kq-card-body">
           <div class="kq-cfg">
             <div class="b"><div class="l">Somente Wi-Fi</div><div class="v">{% if device.wifi_only %}Sim{% else %}Não{% endif %}</div></div>
             <div class="b"><div class="l">Check-in</div><div class="v">{{ device.intervalo_checkin_seg }}s</div></div>
-            <div class="b"><div class="l">PIN do TI</div><div class="v">{% if device.admin_pin_hash %}Definido{% else %}<span style="color:#b35a00;">Não def.</span>{% endif %}</div></div>
+            <div class="b"><div class="l">PIN do TI</div><div class="v {% if not device.admin_pin_hash %}warn{% endif %}">{% if device.admin_pin_hash %}Definido{% else %}Não def.{% endif %}</div></div>
             <div class="b"><div class="l">Apps</div><div class="v">{{ device.apps_permitidos|length }}</div></div>
           </div>
           {% if device.apps_permitidos %}
-          <div class="kq-apps">{% for a in device.apps_permitidos %}<span class="kq-pill">{{ a }}</span>{% endfor %}</div>
+          <div class="kq-apps">{% for a in device.apps_permitidos %}<span class="kq-app">{{ a }}</span>{% endfor %}</div>
           {% endif %}
           {% if device.apps_atualizado_em %}
-          <div style="font-size:.74rem;color:var(--text-tertiary);"><i class="fa fa-mobile-screen" style="margin-right:.3rem;"></i>{{ device.apps.count }} app(s) no aparelho · inventário {{ device.apps_atualizado_em|naturaltime }}</div>
+          <div class="kq-sub-note"><i class="fa-solid fa-mobile-screen"></i>{{ device.apps.count }} app(s) no aparelho · inventário {{ device.apps_atualizado_em|naturaltime }}</div>
           {% endif %}
 
-          <a href="{% url 'quiosque_config_editar' device.pk %}" class="btn btn-primary btn-sm" style="justify-self:start;"><i class="fa fa-gear"></i> Editar configuração</a>
+          <a href="{% url 'quiosque_config_editar' device.pk %}" class="btn btn-primary btn-sm" style="justify-self:start;"><i class="fa-solid fa-gear"></i> Editar configuração</a>
 
           <form method="post" action="{% url 'quiosque_comando_novo' device.pk %}" class="kq-form">
             {% csrf_token %}
-            <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);">Enviar comando</label>
+            <label>Enviar comando</label>
             <select name="tipo" class="form-control">
               <option value="bloquear">Bloquear dispositivo</option>
               <option value="desbloquear">Desbloquear dispositivo</option>
@@ -272,25 +327,25 @@
               <option value="reiniciar_app">Reiniciar aplicativo</option>
             </select>
             <input type="text" name="mensagem" class="form-control" placeholder="Mensagem (se aplicável)">
-            <button type="submit" class="btn btn-light btn-sm" style="justify-self:start;"><i class="fa fa-paper-plane"></i> Enviar comando</button>
+            <button type="submit" class="btn btn-sm" style="justify-self:start;"><i class="fa-solid fa-paper-plane"></i> Enviar comando</button>
           </form>
         </div>
       </div>
 
-      <!-- Zona de perigo -->
+      <!-- zona de perigo -->
       <div class="kq-card kq-danger">
-        <div class="kq-card-head"><span class="kq-card-title"><i class="fa fa-triangle-exclamation"></i>Zona de perigo</span></div>
+        <div class="kq-card-head"><span class="kq-card-title"><i class="fa-solid fa-triangle-exclamation"></i>Zona de perigo</span></div>
         <div class="kq-card-body">
           <div class="kq-danger-row">
             <div class="t"><b>Revogar acesso</b><br>Desativa o aparelho; ele precisará ser rematriculado. O histórico é mantido.</div>
             <form method="post" action="{% url 'quiosque_revogar' device.pk %}" style="margin:0;" onsubmit="return confirm('Revogar o acesso deste dispositivo? Ele precisará ser rematriculado.');">
               {% csrf_token %}
-              <button type="submit" class="btn btn-sm btn-danger-soft"><i class="fa fa-ban"></i> Revogar</button>
+              <button type="submit" class="btn btn-sm kq-btn-danger-soft"><i class="fa-solid fa-ban"></i> Revogar</button>
             </form>
           </div>
-          <div class="kq-danger-row" style="border-top:1px solid var(--separator-hairline);padding-top:.85rem;">
+          <div class="kq-danger-row" style="border-top:1px solid var(--separator-hairline);padding-top:14px;">
             <div class="t"><b>Excluir dispositivo</b><br>Apaga o aparelho e <b>todo o histórico</b> definitivamente. Pede a senha do sistema.</div>
-            <button type="button" class="btn btn-sm btn-danger" id="kqDelBtn"><i class="fa fa-trash"></i> Excluir</button>
+            <button type="button" class="btn btn-sm btn-danger" id="kqDelBtn"><i class="fa-solid fa-trash"></i> Excluir</button>
           </div>
         </div>
       </div>
@@ -300,18 +355,18 @@
 
 </div>
 
-<!-- Modal de exclusão (2ª etapa de segurança: senha do sistema) -->
+<!-- modal de exclusão (2ª etapa: senha do sistema) -->
 <div class="kq-modal" id="kqDelModal" hidden>
   <div class="kq-modal-box">
-    <h3><i class="fa fa-triangle-exclamation"></i> Excluir dispositivo</h3>
+    <h3><i class="fa-solid fa-triangle-exclamation"></i> Excluir dispositivo</h3>
     <p>Você está prestes a excluir <b>“{{ device.apelido|default:device.modelo|default:'este dispositivo' }}”</b> e todo o seu histórico de check-ins. Esta ação <b>não pode ser desfeita</b>.</p>
     <p>Para confirmar, digite a <b>senha do seu usuário</b> do sistema.</p>
     <form method="post" action="{% url 'quiosque_excluir' device.pk %}" class="kq-form">
       {% csrf_token %}
       <input type="password" name="senha" class="form-control" placeholder="Senha do sistema" autocomplete="current-password" required autofocus>
       <div class="kq-modal-actions">
-        <button type="button" class="btn btn-light btn-sm" data-close>Cancelar</button>
-        <button type="submit" class="btn btn-sm btn-danger"><i class="fa fa-trash"></i> Excluir definitivamente</button>
+        <button type="button" class="btn btn-sm" data-close>Cancelar</button>
+        <button type="submit" class="btn btn-sm btn-danger"><i class="fa-solid fa-trash"></i> Excluir definitivamente</button>
       </div>
     </form>
   </div>
@@ -330,37 +385,29 @@
   try { geo = JSON.parse(document.getElementById('__kqgeo').textContent) || {}; } catch (e) {}
   if (!data || data.lat == null || data.lon == null) return;
 
-  // Camadas base: satélite (Esri, PADRÃO) + mapa de ruas (OSM). O satélite ajuda
-  // a conferir visualmente o ponto físico exato registrado pelo GPS.
-  // maxNativeZoom evita o placeholder "Map data not yet available": acima desse
-  // nível a Esri não tem imagem (áreas rurais), então o Leaflet faz upscale do
-  // tile nativo em vez de pedir um tile inexistente.
+  // Camadas base: satélite (Esri, PADRÃO) + mapa de ruas (OSM). maxNativeZoom evita
+  // o placeholder "Map data not yet available" onde a Esri não tem imagem (rural).
   var ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'&copy; OpenStreetMap' });
   var sat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:19, maxNativeZoom:17, attribution:'Tiles &copy; Esri' });
   var map = L.map('kqMap', { scrollWheelZoom:false, layers:[sat] });
   L.control.layers({ 'Satélite':sat, 'Mapa':ruas }, null, { position:'topright' }).addTo(map);
   L.control.scale({ imperial:false }).addTo(map);
 
-  var cor = data.online ? '#1e8e3e' : '#8e8e93';
+  var cor = data.online ? '#34c759' : '#8e8e93';
   var trilha = data.trilha || [];                 // cronológico: antigo → recente
   var pts = trilha.map(function(p){ return [p.lat, p.lon]; });
 
   // Traço de rota com gradiente de opacidade (fraco no início, forte no fim) para
-  // deixar claro o SENTIDO do deslocamento. Junções arredondadas e smoothFactor
-  // baixo preservam a forma real do caminho percorrido.
+  // deixar claro o SENTIDO do deslocamento.
   if (pts.length > 1) {
     for (var s = 1; s < pts.length; s++) {
       var op = 0.22 + 0.5 * (s / (pts.length - 1));   // 0.22 (início) → 0.72 (fim)
-      L.polyline([pts[s-1], pts[s]], {
-        color: cor, weight: 3, opacity: op, lineJoin: 'round', lineCap: 'round', smoothFactor: 0.5
-      }).addTo(map);
+      L.polyline([pts[s-1], pts[s]], { color: cor, weight: 3, opacity: op, lineJoin: 'round', lineCap: 'round', smoothFactor: 0.5 }).addTo(map);
     }
-    // Marcador de ORIGEM (onde o trajeto começa) — junto ao destino dá o sentido.
     L.circleMarker(pts[0], { radius:5, color:'#fff', weight:2, fillColor:cor, fillOpacity:.85 })
       .addTo(map).bindPopup('<b>Início do trajeto</b><br>' + trilha[0].quando);
   }
 
-  // Pontos intermediários (origem e mais recente já têm marcador próprio).
   trilha.forEach(function(p, i){
     if (i === 0 || i === trilha.length - 1) return;
     L.circleMarker([p.lat, p.lon], { radius:3.5, color:cor, weight:1, fillColor:cor, fillOpacity:.5 })
@@ -390,7 +437,7 @@
     var ll = [p.lat, p.lon];
     if (fMarker) { fMarker.setLatLng(ll); } else { fMarker = L.marker(ll, { icon:focusIcon, zIndexOffset:1000 }).addTo(map); }
     if (fCircle) { map.removeLayer(fCircle); fCircle = null; }
-    if (p.precisao) { fCircle = L.circle(ll, { radius:p.precisao, color:'#4f46e5', weight:1, fillColor:'#4f46e5', fillOpacity:.10 }).addTo(map); }
+    if (p.precisao) { fCircle = L.circle(ll, { radius:p.precisao, color:'#0071e3', weight:1, fillColor:'#0071e3', fillOpacity:.10 }).addTo(map); }
     var extra = [];
     if (p.bateria != null) extra.push(p.bateria + '%');
     if (p.rede) extra.push(p.rede);
@@ -430,8 +477,8 @@
       el.classList.toggle('on', online);
       el.classList.toggle('off', !online);
       el.innerHTML = online
-        ? '<i class="fa fa-circle-check"></i> Online'
-        : '<i class="fa fa-circle"></i> Offline';
+        ? '<i class="fa-solid fa-circle-check"></i> Online'
+        : '<i class="fa-solid fa-circle"></i> Offline';
     });
   }
   atualizar();

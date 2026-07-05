@@ -27,6 +27,7 @@ def _get_movimentacao_qs(request):
     """
     q = (request.GET.get("q") or "").strip()
     tipo = (request.GET.get("tipo") or "").strip()
+    grupo = (request.GET.get("grupo") or "").strip()
     usuario_q = (request.GET.get("usuario") or "").strip()
     numero_serie = (request.GET.get("numero_serie") or "").strip()
     centro_custo = (request.GET.get("centro_custo") or "").strip()
@@ -48,6 +49,12 @@ def _get_movimentacao_qs(request):
         qs = qs.filter(item__nome__icontains=q)
     if tipo:
         qs = qs.filter(tipo_movimentacao=tipo)
+    # Filtro por grupo (usado pelas células de indicador clicáveis): agrupa
+    # subtipos relacionados sem alterar a semântica exata do filtro "tipo".
+    if grupo == "transferencia":
+        qs = qs.filter(tipo_movimentacao__in=["transferencia", "transferencia_equipamento"])
+    elif grupo == "manutencao":
+        qs = qs.filter(tipo_movimentacao__in=["envio_manutencao", "retorno_manutencao"])
     if usuario_q:
         qs = qs.filter(usuario__nome__icontains=usuario_q)
     if numero_serie:
@@ -130,11 +137,13 @@ def movimentacao_list(request):
 
         "f_q": request.GET.get("q", ""),
         "f_tipo": request.GET.get("tipo", ""),
+        "f_grupo": request.GET.get("grupo", ""),
         "f_user": request.GET.get("usuario", ""),
         "f_serie": request.GET.get("numero_serie", ""),
         "f_cc": request.GET.get("centro_custo", ""),
         "f_ini": request.GET.get("data_inicio", ""),
         "f_fim": request.GET.get("data_fim", ""),
+        "today_iso": hoje.isoformat(),
         "tipos_choices": TipoMovimentacaoChoices.choices,
 
         "kpi": {
@@ -195,7 +204,7 @@ def movimentacao_export_pdf(request):
         }
     }
 
-    template_path = "front/movimentacao_pdf.html"
+    template_path = "front/movimentacao/movimentacao_pdf.html"
     template = get_template(template_path)
     html = template.render(context)
 

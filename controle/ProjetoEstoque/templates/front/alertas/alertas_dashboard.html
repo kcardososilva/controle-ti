@@ -1,819 +1,265 @@
 {% extends 'base.html' %}
-{% load static humanize %}
 
 {% block title %}Central de Alertas{% endblock %}
 {% block page_title %}Central de Alertas{% endblock %}
 {% block page_subtitle %}Preventivas, estoque crítico e licenças de colaboradores desligados{% endblock %}
 
-{% block content %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span>Monitoramento</span>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Central de Alertas</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+<form method="post" action="{% url 'alertas_toggle' %}" style="margin:0">
+  {% csrf_token %}
+  {% if alertas_ativos %}
+    <button type="submit" class="al-btn al-btn-on" title="Clique para desativar os alertas de e-mail">
+      <i class="fa-solid fa-bell" aria-hidden="true"></i> Alertas ativos
+    </button>
+  {% else %}
+    <button type="submit" class="al-btn al-btn-off" title="Clique para reativar os alertas de e-mail">
+      <i class="fa-solid fa-bell-slash" aria-hidden="true"></i> Alertas desativados
+    </button>
+  {% endif %}
+</form>
+<form method="post" action="{% url 'alertas_enviar' %}" style="margin:0">
+  {% csrf_token %}
+  <input type="hidden" name="tipo" value="todos">
+  <button type="submit" class="al-btn al-btn-primary">
+    <i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Enviar todos
+  </button>
+</form>
+{% endblock %}
+
+{% block extra_css %}
 <style>
-  /* =========================================================
-     CENTRAL DE ALERTAS · Ajuste visual para base.html
-     Escopo isolado para não conflitar com componentes globais
-     ========================================================= */
-
-  .al-page,
-  .al-page * {
-    box-sizing: border-box;
-    min-width: 0;
-  }
-
-  .al-page {
-    width: 100%;
-    max-width: 92rem;
-    margin: 0 auto;
-    display: grid;
-    gap: 1.25rem;
-    color: var(--text-primary);
-  }
-
-  .al-surface {
-    position: relative;
-    overflow: hidden;
-    border: 1px solid var(--separator-hairline);
-    background: var(--bg-elevated);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-xs);
-    transition:
-      border-color var(--transition-fast),
-      box-shadow var(--transition-base),
-      transform var(--transition-fast),
-      background var(--transition-fast);
-  }
-
-  @supports (backdrop-filter: blur(18px)) {
-    .al-surface {
-      background: var(--bg-vibrancy-strong);
-      backdrop-filter: blur(22px) saturate(180%);
-      -webkit-backdrop-filter: blur(22px) saturate(180%);
-    }
-  }
-
-  .al-surface:hover {
-    border-color: var(--separator-strong);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .al-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 1.2rem;
-    align-items: center;
-    padding: clamp(1rem, 2.2vw, 1.5rem);
-  }
-
-  .al-hero::after {
-    content: "";
-    position: absolute;
-    right: -4.5rem;
-    top: -5.5rem;
-    width: 13rem;
-    height: 13rem;
-    border-radius: 999px;
-    background: var(--brand-soft);
-    pointer-events: none;
-  }
-
-  .al-hero-main,
-  .al-hero-actions {
-    position: relative;
-    z-index: 1;
-  }
-
-  .al-eyebrow {
-    width: fit-content;
-    display: inline-flex;
-    align-items: center;
-    gap: .45rem;
-    margin-bottom: .65rem;
-    padding: .28rem .68rem;
-    border-radius: var(--radius-pill);
-    color: var(--brand);
-    background: var(--brand-soft);
-    border: 1px solid color-mix(in srgb, var(--brand) 18%, transparent);
-    font-size: .72rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: .055em;
-  }
-
-  .al-title {
-    margin: 0;
-    color: var(--text-primary);
-    font-family: var(--font-display);
-    font-size: clamp(1.55rem, 3vw, 2.35rem);
-    font-weight: 700;
-    line-height: 1.06;
-    letter-spacing: -0.04em;
-  }
-
-  .al-sub {
-    max-width: 48rem;
-    margin: .5rem 0 0;
-    color: var(--text-tertiary);
-    font-size: clamp(.92rem, 1.4vw, 1.05rem);
-    line-height: 1.45;
-    letter-spacing: -0.012em;
-  }
-
-  .al-hero-actions {
-    display: flex;
-    gap: .65rem;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-
-  .al-kpi-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: .9rem;
-  }
-
-  .al-kpi {
-    position: relative;
-    min-height: 8.6rem;
-    display: grid;
-    align-content: space-between;
-    gap: .75rem;
-    padding: 1rem;
-    border-radius: var(--radius-xl);
-    border: 1px solid var(--separator-hairline);
-    background: var(--bg-elevated);
-    overflow: hidden;
-    box-shadow: var(--shadow-xs);
-    transition:
-      transform var(--transition-base),
-      border-color var(--transition-fast),
-      box-shadow var(--transition-base),
-      background var(--transition-fast);
-  }
-
-  @supports (backdrop-filter: blur(18px)) {
-    .al-kpi {
-      background: var(--bg-vibrancy-strong);
-      backdrop-filter: blur(18px) saturate(170%);
-      -webkit-backdrop-filter: blur(18px) saturate(170%);
-    }
-  }
-
-  .al-kpi::before {
-    content: "";
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 4px;
-    background: var(--kpi-color, var(--separator-hairline));
-  }
-
-  .al-kpi::after {
-    content: "";
-    position: absolute;
-    right: -1.8rem;
-    top: -1.8rem;
-    width: 5.8rem;
-    height: 5.8rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--kpi-color, var(--brand)) 12%, transparent);
-    pointer-events: none;
-  }
-
-  .al-kpi:hover {
-    transform: translateY(-2px);
-    border-color: color-mix(in srgb, var(--kpi-color, var(--brand)) 26%, var(--separator-hairline));
-    box-shadow: var(--shadow-sm);
-  }
-
-  .al-kpi-label,
-  .al-kpi-value,
-  .al-kpi-hint {
-    position: relative;
-    z-index: 1;
-  }
-
-  .al-kpi-label {
-    display: flex;
-    align-items: center;
-    gap: .45rem;
-    color: var(--text-tertiary);
-    font-size: .7rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: .055em;
-  }
-
-  .al-kpi-label i {
-    color: var(--kpi-color, var(--brand));
-  }
-
-  .al-kpi-value {
-    margin-top: .45rem;
-    color: var(--kpi-color, var(--text-primary));
-    font-family: var(--font-display);
-    font-size: clamp(1.65rem, 2.5vw, 2.25rem);
-    font-weight: 700;
-    line-height: 1;
-    letter-spacing: -0.04em;
-  }
-
-  .al-kpi-hint {
-    color: var(--text-quaternary);
-    font-size: .76rem;
-    font-weight: 600;
-    line-height: 1.35;
-  }
-
-  .kpi-danger { --kpi-color: var(--danger); }
-  .kpi-warn { --kpi-color: var(--warning); }
-  .kpi-blue { --kpi-color: var(--brand); }
-  .kpi-ok { --kpi-color: var(--success); }
-
-  .al-action-bar {
-    display: flex;
-    gap: .7rem;
-    flex-wrap: wrap;
-    align-items: center;
-    padding: 1rem 1.15rem;
-  }
-
-  .al-action-label {
-    color: var(--text-tertiary);
-    font-size: .8rem;
-    font-weight: 700;
-    margin-right: .25rem;
-  }
-
-  .al-action-bar form,
-  .al-hero-actions form {
-    margin: 0;
-    padding: 0;
-  }
-
-  .al-btn {
-    min-height: 2.55rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: .5rem;
-    padding: .7rem 1rem;
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--separator-non-opaque);
-    color: var(--text-primary);
-    background: var(--bg-fill-tertiary);
-    font-size: .84rem;
-    font-weight: 700;
-    line-height: 1;
-    cursor: pointer;
-    text-decoration: none;
-    transition:
-      transform var(--transition-fast),
-      border-color var(--transition-fast),
-      background var(--transition-fast),
-      color var(--transition-fast),
-      box-shadow var(--transition-fast);
-    white-space: nowrap;
-  }
-
-  .al-btn:hover {
-    transform: translateY(-1px);
-    border-color: var(--separator-strong);
-    background: var(--bg-hover);
-    box-shadow: var(--shadow-xs);
-  }
-
-  .al-btn:active {
-    transform: scale(.97);
-  }
-
-  .al-btn-primary {
-    color: #ffffff;
-    background: var(--brand);
-    border-color: var(--brand);
-    box-shadow: var(--shadow-brand);
-  }
-
-  .al-btn-primary:hover {
-    color: #ffffff;
-    background: var(--brand-hover);
-    border-color: var(--brand-hover);
-    box-shadow: var(--shadow-brand);
-  }
-
-  .al-btn-danger {
-    color: var(--danger);
-    background: var(--danger-soft);
-    border-color: color-mix(in srgb, var(--danger) 22%, transparent);
-  }
-
-  .al-btn-warn {
-    color: var(--warning);
-    background: var(--warning-soft);
-    border-color: color-mix(in srgb, var(--warning) 22%, transparent);
-  }
-
-  .al-btn-teal {
-    color: var(--info);
-    background: var(--info-soft);
-    border-color: color-mix(in srgb, var(--info) 22%, transparent);
-  }
-
-  /* ── Toggle de alertas ──────────────────────────── */
-  .al-toggle-banner {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-    padding: .85rem 1.15rem;
-    border-radius: var(--radius-xl);
-    border: 1.5px solid;
-    font-size: .87rem;
-    font-weight: 600;
-    line-height: 1.4;
-  }
-
-  .al-toggle-banner.active {
-    background: color-mix(in srgb, var(--success) 8%, var(--bg-elevated));
-    border-color: color-mix(in srgb, var(--success) 28%, transparent);
-    color: var(--text-primary);
-  }
-
-  .al-toggle-banner.inactive {
-    background: color-mix(in srgb, var(--warning) 10%, var(--bg-elevated));
-    border-color: color-mix(in srgb, var(--warning) 35%, transparent);
-    color: var(--text-primary);
-  }
-
-  .al-toggle-icon {
-    flex-shrink: 0;
-    width: 2.4rem;
-    height: 2.4rem;
-    border-radius: var(--radius-md);
-    display: grid;
-    place-items: center;
-    font-size: 1.05rem;
-  }
-
-  .active .al-toggle-icon { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success); }
-  .inactive .al-toggle-icon { background: color-mix(in srgb, var(--warning) 22%, transparent); color: var(--warning); }
-
-  .al-toggle-text { flex: 1; min-width: 0; }
-  .al-toggle-text strong { display: block; font-size: .9rem; font-weight: 800; letter-spacing: -.014em; }
-  .active .al-toggle-text strong { color: var(--success); }
-  .inactive .al-toggle-text strong { color: var(--warning); }
-
-  .al-toggle-text span {
-    font-size: .78rem;
-    font-weight: 500;
-    color: var(--text-tertiary);
-  }
-
-  .al-btn-toggle-on {
-    color: var(--success);
-    background: color-mix(in srgb, var(--success) 12%, var(--bg-elevated));
-    border-color: color-mix(in srgb, var(--success) 28%, transparent);
-  }
-
-  .al-btn-toggle-on:hover {
-    background: color-mix(in srgb, var(--success) 18%, var(--bg-elevated));
-    border-color: color-mix(in srgb, var(--success) 45%, transparent);
-    color: var(--success);
-  }
-
-  .al-btn-toggle-off {
-    color: var(--warning);
-    background: color-mix(in srgb, var(--warning) 12%, var(--bg-elevated));
-    border-color: color-mix(in srgb, var(--warning) 30%, transparent);
-  }
-
-  .al-btn-toggle-off:hover {
-    background: color-mix(in srgb, var(--warning) 20%, var(--bg-elevated));
-    border-color: color-mix(in srgb, var(--warning) 50%, transparent);
-    color: var(--warning);
-  }
-
-  /* Faixa de aviso global quando desativado */
-  .al-disabled-warning {
-    display: flex;
-    align-items: center;
-    gap: .7rem;
-    padding: .9rem 1.15rem;
-    border-radius: var(--radius-xl);
-    background: color-mix(in srgb, var(--warning) 12%, var(--bg-elevated));
-    border: 1.5px dashed color-mix(in srgb, var(--warning) 45%, transparent);
-    color: var(--warning);
-    font-size: .86rem;
-    font-weight: 700;
-    letter-spacing: -.01em;
-  }
-
-  .al-disabled-warning i { font-size: 1.1rem; flex-shrink: 0; }
-
-  .al-section {
-    overflow: hidden;
-  }
-
-  .al-section-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 1rem 1.15rem;
-    border-bottom: 1px solid var(--separator-hairline);
-    background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
-  }
-
-  .al-section-title {
-    display: flex;
-    align-items: center;
-    gap: .6rem;
-    color: var(--text-primary);
-    font-size: .95rem;
-    font-weight: 700;
-    letter-spacing: -0.016em;
-    flex-wrap: wrap;
-  }
-
-  .al-section-title > i {
-    color: var(--section-color, var(--brand));
-  }
-
-  .al-section-badge {
-    min-width: 1.55rem;
-    min-height: 1.55rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: .15rem .5rem;
-    border-radius: var(--radius-pill);
-    font-size: .72rem;
-    font-weight: 800;
-    line-height: 1;
-  }
-
-  .al-page .badge-danger,
-  .al-page .pill-red {
-    color: var(--danger);
-    background: var(--danger-soft);
-    border: 1px solid color-mix(in srgb, var(--danger) 18%, transparent);
-  }
-
-  .al-page .badge-warn,
-  .al-page .pill-amber {
-    color: var(--warning);
-    background: var(--warning-soft);
-    border: 1px solid color-mix(in srgb, var(--warning) 18%, transparent);
-  }
-
-  .al-page .badge-blue,
-  .al-page .pill-blue {
-    color: var(--brand);
-    background: var(--brand-soft);
-    border: 1px solid color-mix(in srgb, var(--brand) 18%, transparent);
-  }
-
-  .al-page .badge-ok,
-  .al-page .pill-green {
-    color: var(--success);
-    background: var(--success-soft);
-    border: 1px solid color-mix(in srgb, var(--success) 18%, transparent);
-  }
-
-  .al-table-wrap {
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .al-table {
-    width: max-content;
-    min-width: 100%;
-    border-collapse: collapse;
-  }
-
-  .al-table th,
-  .al-table td {
-    padding: .9rem 1rem;
-    border-bottom: 1px solid var(--separator-hairline);
-    vertical-align: middle;
-    text-align: left;
-    white-space: nowrap;
-  }
-
-  .al-table th {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: var(--bg-elevated);
-    color: var(--text-tertiary);
-    font-size: .68rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .055em;
-  }
-
-  .al-table td {
-    color: var(--text-primary);
-    font-size: .84rem;
-    font-weight: 500;
-  }
-
-  .al-table tbody tr {
-    transition: background var(--transition-fast);
-  }
-
-  .al-table tbody tr:hover {
-    background: var(--bg-hover);
-  }
-
-  .al-table tbody tr:last-child td {
-    border-bottom: none;
-  }
-
-  .al-main-text {
-    color: var(--text-primary);
-    font-weight: 700;
-    line-height: 1.25;
-    letter-spacing: -0.014em;
-    white-space: normal;
-  }
-
-  .al-sub-text {
-    margin-top: .22rem;
-    color: var(--text-tertiary);
-    font-size: .75rem;
-    line-height: 1.35;
-    white-space: normal;
-  }
-
-  .al-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: .35rem;
-    padding: .32rem .64rem;
-    border-radius: var(--radius-pill);
-    font-size: .69rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: .025em;
-    white-space: nowrap;
-  }
-
-  .al-lote-line {
-    color: var(--text-secondary);
-    font-size: .76rem;
-    font-weight: 600;
-    line-height: 1.5;
-    white-space: nowrap;
-  }
-
-  .al-lote-line + .al-lote-line {
-    margin-top: .15rem;
-  }
-
-  .al-lote-line strong {
-    color: var(--text-primary);
-    font-weight: 700;
-  }
-
-  .al-lote-line.is-zero,
-  .al-lote-line.is-zero strong {
-    color: var(--danger);
-  }
-
-  .al-empty {
-    display: grid;
-    place-items: center;
-    gap: .5rem;
-    padding: 2.5rem 1rem;
-    text-align: center;
-    color: var(--text-tertiary);
-    font-size: .9rem;
-    font-weight: 600;
-  }
-
-  .al-empty i {
-    color: var(--success);
-    font-size: 1.5rem;
-  }
-
-  body.theme-dark .al-table th {
-    background: var(--bg-elevated-2);
-  }
-
-  body.theme-dark .al-surface,
-  body.theme-dark .al-kpi {
-    border-color: var(--separator-non-opaque);
-  }
-
-  @media (max-width: 56rem) {
-    .al-kpi-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .al-hero {
-      grid-template-columns: 1fr;
-    }
-
-    .al-hero-actions {
-      justify-content: flex-start;
-    }
-
-    .al-btn,
-    .al-action-bar form,
-    .al-action-bar button {
-      width: 100%;
-    }
-
-    .al-action-bar {
-      display: grid;
-      grid-template-columns: 1fr;
-    }
-  }
-
-  @media (max-width: 36rem) {
-    .al-page {
-      gap: 1rem;
-    }
-
-    .al-kpi-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .al-hero,
-    .al-action-bar,
-    .al-section-head {
-      padding: 1rem;
-    }
-
-    .al-title {
-      font-size: 1.45rem;
-    }
-  }
+:where(.al-page) {
+  --al-brand:    var(--brand, #0071e3);
+  --al-brand-hover: var(--brand-hover, #0077ed);
+  --al-bg:       var(--bg-elevated, #ffffff);
+  --al-bg-soft:  var(--bg-fill-tertiary, rgba(120,120,128,.08));
+  --al-bg-muted: var(--bg-fill-secondary, rgba(120,120,128,.12));
+  --al-text:     var(--text-primary, #1d1d1f);
+  --al-muted:    var(--text-tertiary, #6e6e73);
+  --al-soft:     var(--text-quaternary, #86868b);
+  --al-border:   var(--separator-hairline, rgba(0,0,0,.08));
+  --al-border-2: var(--separator-non-opaque, rgba(0,0,0,.14));
+  --al-success:  var(--success, #34c759);
+  --al-warning:  var(--warning, #ff9500);
+  --al-danger:   var(--danger, #ff3b30);
+  --al-radius-sm: var(--radius-sm, 9px);
+  --al-radius-md: var(--radius-md, 12px);
+  --al-radius-pill: var(--radius-pill, 980px);
+  --al-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04));
+  --al-trans:    150ms cubic-bezier(.32,.72,0,1);
+}
+
+.al-page, .al-page * { box-sizing: border-box; min-width: 0; }
+.al-page { width: 100%; max-width: 1440px; margin-inline: auto; color: var(--al-text); display: grid; gap: 16px; }
+
+/* ── Buttons ── */
+.al-btn {
+  min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 0 14px; border: 1px solid var(--al-border-2); border-radius: var(--al-radius-sm);
+  background: var(--al-bg); color: var(--al-text); font-size: 13px; font-weight: 500;
+  cursor: pointer; text-decoration: none; white-space: nowrap;
+  transition: background var(--al-trans), border-color var(--al-trans), color var(--al-trans);
+}
+.al-btn:hover { background: var(--al-bg-soft); }
+.al-btn:active { transform: scale(.98); }
+.al-btn-primary { background: var(--al-brand); border-color: var(--al-brand); color: #fff; }
+.al-btn-primary:hover { background: var(--al-brand-hover); border-color: var(--al-brand-hover); color: #fff; }
+.al-btn-on  { color: var(--al-success); border-color: color-mix(in srgb, var(--al-success) 30%, transparent); }
+.al-btn-on:hover  { background: color-mix(in srgb, var(--al-success) 10%, transparent); color: var(--al-success); }
+.al-btn-off { color: var(--al-warning); border-color: color-mix(in srgb, var(--al-warning) 34%, transparent); }
+.al-btn-off:hover { background: color-mix(in srgb, var(--al-warning) 12%, transparent); color: var(--al-warning); }
+.al-btn i { font-size: 12px; }
+
+/* ── Status dos alertas (compacto) ── */
+.al-status {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; border-radius: var(--al-radius-md);
+  border: 1px solid var(--al-border); background: var(--al-bg);
+}
+.al-status.is-off { border-color: color-mix(in srgb, var(--al-warning) 32%, transparent); background: color-mix(in srgb, var(--al-warning) 6%, transparent); }
+.al-status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--al-success); }
+.al-status.is-off .al-status-dot { background: var(--al-warning); }
+.al-status-txt { flex: 1; min-width: 0; font-size: 13px; }
+.al-status-txt strong { display: block; font-size: 13.5px; font-weight: 600; color: var(--al-text); letter-spacing: -0.01em; }
+.al-status-txt span { color: var(--al-muted); }
+
+/* ── Faixa de métricas ── */
+.al-metrics {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--al-border); border: 1px solid var(--al-border);
+  border-radius: var(--al-radius-md); overflow: hidden;
+}
+.al-metric { background: var(--al-bg); padding: 13px 16px; display: flex; flex-direction: column; gap: 5px; }
+.al-metric-label { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: var(--al-muted); }
+.al-metric-label i { font-size: 11px; color: var(--al-soft); width: 13px; text-align: center; }
+.al-metric-value { font-family: var(--font-display); font-size: 22px; font-weight: 600; letter-spacing: -0.02em; color: var(--al-text); line-height: 1.05; }
+.al-metric-hint { font-size: 11.5px; color: var(--al-muted); line-height: 1.3; }
+.al-metric.is-danger .al-metric-value { color: var(--al-danger); }
+.al-metric.is-warn   .al-metric-value { color: var(--al-warning); }
+
+/* ── Toolbar de envio específico ── */
+.al-sendbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.al-sendbar-label { font-size: 12.5px; font-weight: 500; color: var(--al-muted); margin-right: 2px; }
+.al-sendbar form { margin: 0; }
+.al-btn-tint-blue  { color: var(--al-brand);   border-color: color-mix(in srgb, var(--al-brand) 26%, transparent); }
+.al-btn-tint-blue:hover  { background: color-mix(in srgb, var(--al-brand) 10%, transparent); color: var(--al-brand); }
+.al-btn-tint-warn  { color: var(--al-warning); border-color: color-mix(in srgb, var(--al-warning) 30%, transparent); }
+.al-btn-tint-warn:hover  { background: color-mix(in srgb, var(--al-warning) 12%, transparent); color: var(--al-warning); }
+.al-btn-tint-danger{ color: var(--al-danger);  border-color: color-mix(in srgb, var(--al-danger) 26%, transparent); }
+.al-btn-tint-danger:hover{ background: color-mix(in srgb, var(--al-danger) 10%, transparent); color: var(--al-danger); }
+
+/* ── Seções ── */
+.al-section { border: 1px solid var(--al-border); border-radius: var(--al-radius-md); background: var(--al-bg); overflow: hidden; }
+.al-section-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--al-border); }
+.al-section-title { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--al-text); letter-spacing: -0.01em; flex-wrap: wrap; }
+.al-section-title > i { color: var(--al-soft); font-size: 12px; }
+.al-section-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; padding: 1px 8px; border-radius: var(--al-radius-pill);
+  font-size: 11px; font-weight: 600;
+}
+.al-page .badge-danger { color: var(--al-danger);  background: color-mix(in srgb, var(--al-danger) 12%, transparent); }
+.al-page .badge-warn   { color: var(--al-warning); background: color-mix(in srgb, var(--al-warning) 14%, transparent); }
+.al-page .badge-blue   { color: var(--al-brand);   background: color-mix(in srgb, var(--al-brand) 12%, transparent); }
+.al-page .badge-ok     { color: var(--al-muted);   background: var(--al-bg-muted); }
+
+/* ── Tabela ── */
+.al-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.al-table { width: max-content; min-width: 100%; border-collapse: collapse; }
+.al-table th, .al-table td { padding: 11px 16px; border-bottom: 1px solid var(--al-border); vertical-align: middle; text-align: left; white-space: nowrap; }
+.al-table th {
+  position: sticky; top: 0; z-index: 2; background: var(--al-bg);
+  color: var(--al-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+}
+.al-table td { color: var(--al-text); font-size: 13px; font-weight: 400; }
+.al-table tbody tr { transition: background var(--al-trans); }
+.al-table tbody tr:hover { background: var(--al-bg-soft); }
+.al-table tbody tr:last-child td { border-bottom: none; }
+
+.al-main-text { color: var(--al-text); font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; white-space: normal; }
+.al-sub-text { margin-top: 2px; color: var(--al-muted); font-size: 11.5px; line-height: 1.35; white-space: normal; }
+
+.al-pill {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 3px 9px; border-radius: var(--al-radius-pill); font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.al-page .pill-red   { color: var(--al-danger);  background: color-mix(in srgb, var(--al-danger) 12%, transparent); }
+.al-page .pill-amber { color: var(--al-warning); background: color-mix(in srgb, var(--al-warning) 14%, transparent); }
+.al-page .pill-blue  { color: var(--al-brand);   background: color-mix(in srgb, var(--al-brand) 12%, transparent); }
+
+.al-lote-line { color: var(--al-muted); font-size: 12px; font-weight: 500; line-height: 1.5; white-space: nowrap; }
+.al-lote-line + .al-lote-line { margin-top: 2px; }
+.al-lote-line strong { color: var(--al-text); font-weight: 600; }
+.al-lote-line.is-zero, .al-lote-line.is-zero strong { color: var(--al-danger); }
+
+.al-empty { display: grid; place-items: center; gap: 6px; padding: 40px 16px; text-align: center; color: var(--al-muted); font-size: 13px; }
+.al-empty i { color: var(--al-success); font-size: 20px; }
+
+@media (max-width: 720px) {
+  .al-metrics { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 460px) {
+  .al-metrics { grid-template-columns: 1fr; }
+}
 </style>
+{% endblock %}
 
+{% block content %}
 <div class="al-page">
 
-  {% if not alertas_ativos %}
-  <div class="al-disabled-warning" role="alert">
-    <i class="fa fa-ban" aria-hidden="true"></i>
-    <span>Alertas de e-mail <strong>desativados</strong> — nenhuma notificação automática será enviada. Reative quando estiver em produção.</span>
-  </div>
-  {% endif %}
-
-  <section class="al-hero al-surface" aria-label="Resumo da central de alertas">
-    <div class="al-hero-main">
-      <div class="al-eyebrow"><i class="fa fa-bell" aria-hidden="true"></i> Alertas & Monitoramento</div>
-      <h1 class="al-title">Central de Alertas</h1>
-      <p class="al-sub">Preventivas próximas, estoque crítico e licenças de colaboradores desligados.</p>
-    </div>
-
-    <div class="al-hero-actions">
-      <form method="post" action="{% url 'alertas_toggle' %}">
-        {% csrf_token %}
-        {% if alertas_ativos %}
-          <button type="submit" class="al-btn al-btn-toggle-on" title="Clique para desativar os alertas de e-mail">
-            <i class="fa fa-bell" aria-hidden="true"></i> Alertas ativos
-          </button>
-        {% else %}
-          <button type="submit" class="al-btn al-btn-toggle-off" title="Clique para reativar os alertas de e-mail">
-            <i class="fa fa-bell-slash" aria-hidden="true"></i> Alertas desativados
-          </button>
-        {% endif %}
-      </form>
-
-      <form method="post" action="{% url 'alertas_enviar' %}">
-        {% csrf_token %}
-        <input type="hidden" name="tipo" value="relatorio">
-        <button type="submit" class="al-btn al-btn-teal" title="Envia um único e-mail consolidado: estoque, baixas, movimentações, licenças e preventivas">
-          <i class="fa fa-file-lines" aria-hidden="true"></i> Relatório completo
-        </button>
-      </form>
-
-      <form method="post" action="{% url 'alertas_enviar' %}">
-        {% csrf_token %}
-        <input type="hidden" name="tipo" value="todos">
-        <button type="submit" class="al-btn al-btn-primary">
-          <i class="fa fa-paper-plane" aria-hidden="true"></i> Enviar todos os alertas
-        </button>
-      </form>
-    </div>
-  </section>
-
-  <!-- Painel de estado dos alertas -->
-  <div class="al-toggle-banner {% if alertas_ativos %}active{% else %}inactive{% endif %}" aria-live="polite">
-    <div class="al-toggle-icon">
-      {% if alertas_ativos %}
-        <i class="fa fa-circle-check" aria-hidden="true"></i>
-      {% else %}
-        <i class="fa fa-circle-xmark" aria-hidden="true"></i>
-      {% endif %}
-    </div>
-    <div class="al-toggle-text">
+  <!-- Status dos alertas -->
+  <div class="al-status {% if not alertas_ativos %}is-off{% endif %}" aria-live="polite">
+    <span class="al-status-dot"></span>
+    <div class="al-status-txt">
       {% if alertas_ativos %}
         <strong>Envio de e-mails ativo</strong>
-        <span>Todos os alertas automáticos e notificações transacionais estão habilitados.{% if config_atualizado_por %} Ativado por {{ config_atualizado_por.get_full_name|default:config_atualizado_por.username }}.{% endif %}</span>
+        <span>Alertas automáticos e notificações transacionais habilitados.{% if config_atualizado_por %} Ativado por {{ config_atualizado_por.get_full_name|default:config_atualizado_por.username }}.{% endif %}</span>
       {% else %}
         <strong>Envio de e-mails desativado</strong>
         <span>Nenhuma notificação será enviada enquanto estiver desativado. Use durante testes para evitar envios acidentais.{% if config_atualizado_por %} Desativado por {{ config_atualizado_por.get_full_name|default:config_atualizado_por.username }}.{% endif %}</span>
       {% endif %}
     </div>
-    <form method="post" action="{% url 'alertas_toggle' %}" style="margin:0;">
+    <form method="post" action="{% url 'alertas_toggle' %}" style="margin:0">
       {% csrf_token %}
       {% if alertas_ativos %}
-        <button type="submit" class="al-btn al-btn-toggle-off" style="white-space:nowrap;">
-          <i class="fa fa-bell-slash" aria-hidden="true"></i> Desativar alertas
-        </button>
+        <button type="submit" class="al-btn al-btn-off"><i class="fa-solid fa-bell-slash" aria-hidden="true"></i> Desativar</button>
       {% else %}
-        <button type="submit" class="al-btn al-btn-toggle-on" style="white-space:nowrap;">
-          <i class="fa fa-bell" aria-hidden="true"></i> Reativar alertas
-        </button>
+        <button type="submit" class="al-btn al-btn-on"><i class="fa-solid fa-bell" aria-hidden="true"></i> Reativar</button>
       {% endif %}
     </form>
   </div>
 
-  <section class="al-kpi-grid" aria-label="Indicadores de alertas">
-    <article class="al-kpi {% if kpi.total > 0 %}kpi-danger{% else %}kpi-ok{% endif %}">
-      <div>
-        <div class="al-kpi-label"><i class="fa fa-circle-exclamation" aria-hidden="true"></i> Total de alertas</div>
-        <div class="al-kpi-value">{{ kpi.total }}</div>
-      </div>
-      <div class="al-kpi-hint">Itens que requerem atenção</div>
-    </article>
+  <!-- Métricas -->
+  <div class="al-metrics">
+    <div class="al-metric {% if kpi.total > 0 %}is-danger{% endif %}">
+      <span class="al-metric-label"><i class="fa-solid fa-circle-exclamation"></i> Total de alertas</span>
+      <span class="al-metric-value">{{ kpi.total }}</span>
+      <span class="al-metric-hint">Itens que requerem atenção</span>
+    </div>
+    <div class="al-metric {% if kpi.preventivas_vencidas > 0 %}is-danger{% elif kpi.preventivas > 0 %}{% endif %}">
+      <span class="al-metric-label"><i class="fa-solid fa-screwdriver-wrench"></i> Preventivas</span>
+      <span class="al-metric-value">{{ kpi.preventivas }}</span>
+      <span class="al-metric-hint">{% if kpi.preventivas_vencidas %}{{ kpi.preventivas_vencidas }} vencida{{ kpi.preventivas_vencidas|pluralize:"s" }} · {% endif %}{{ kpi.preventivas_proximas }} nos próximos 7 dias</span>
+    </div>
+    <div class="al-metric {% if kpi.estoque > 0 %}is-warn{% endif %}">
+      <span class="al-metric-label"><i class="fa-solid fa-boxes-stacked"></i> Estoque crítico</span>
+      <span class="al-metric-value">{{ kpi.estoque }}</span>
+      <span class="al-metric-hint">Itens de consumo &lt; 2 un.</span>
+    </div>
+    <div class="al-metric {% if kpi.licencas > 0 %}is-danger{% endif %}">
+      <span class="al-metric-label"><i class="fa-solid fa-key"></i> Licenças pendentes</span>
+      <span class="al-metric-value">{{ kpi.licencas }}</span>
+      <span class="al-metric-hint">Colaboradores desligados</span>
+    </div>
+  </div>
 
-    <article class="al-kpi {% if kpi.preventivas_vencidas > 0 %}kpi-danger{% elif kpi.preventivas > 0 %}kpi-blue{% else %}kpi-ok{% endif %}">
-      <div>
-        <div class="al-kpi-label"><i class="fa fa-screwdriver-wrench" aria-hidden="true"></i> Preventivas</div>
-        <div class="al-kpi-value">{{ kpi.preventivas }}</div>
-      </div>
-      <div class="al-kpi-hint">{% if kpi.preventivas_vencidas %}{{ kpi.preventivas_vencidas }} vencida{{ kpi.preventivas_vencidas|pluralize:"s" }} · {% endif %}{{ kpi.preventivas_proximas }} nos próximos 7 dias</div>
-    </article>
-
-    <article class="al-kpi {% if kpi.estoque > 0 %}kpi-warn{% else %}kpi-ok{% endif %}">
-      <div>
-        <div class="al-kpi-label"><i class="fa fa-boxes-stacked" aria-hidden="true"></i> Estoque crítico</div>
-        <div class="al-kpi-value">{{ kpi.estoque }}</div>
-      </div>
-      <div class="al-kpi-hint">Itens de consumo &lt; 2 un.</div>
-    </article>
-
-    <article class="al-kpi {% if kpi.licencas > 0 %}kpi-danger{% else %}kpi-ok{% endif %}">
-      <div>
-        <div class="al-kpi-label"><i class="fa fa-key" aria-hidden="true"></i> Licenças pendentes</div>
-        <div class="al-kpi-value">{{ kpi.licencas }}</div>
-      </div>
-      <div class="al-kpi-hint">Usuários desligados</div>
-    </article>
-  </section>
-
-  <section class="al-action-bar al-surface" aria-label="Envio de alertas específicos">
-    <span class="al-action-label">Enviar alerta específico:</span>
-
+  <!-- Envio específico -->
+  <div class="al-sendbar">
+    <span class="al-sendbar-label">Enviar:</span>
     <form method="post" action="{% url 'alertas_enviar' %}">
-      {% csrf_token %}
-      <input type="hidden" name="tipo" value="preventivas">
-      <button type="submit" class="al-btn al-btn-teal">
-        <i class="fa fa-screwdriver-wrench" aria-hidden="true"></i> Preventivas
+      {% csrf_token %}<input type="hidden" name="tipo" value="relatorio">
+      <button type="submit" class="al-btn al-btn-tint-blue" title="Um único e-mail consolidado: estoque, baixas, movimentações, licenças e preventivas">
+        <i class="fa-solid fa-file-lines"></i> Relatório completo
       </button>
     </form>
-
     <form method="post" action="{% url 'alertas_enviar' %}">
-      {% csrf_token %}
-      <input type="hidden" name="tipo" value="estoque">
-      <button type="submit" class="al-btn al-btn-warn">
-        <i class="fa fa-boxes-stacked" aria-hidden="true"></i> Estoque crítico
-      </button>
+      {% csrf_token %}<input type="hidden" name="tipo" value="preventivas">
+      <button type="submit" class="al-btn al-btn-tint-blue"><i class="fa-solid fa-screwdriver-wrench"></i> Preventivas</button>
     </form>
-
     <form method="post" action="{% url 'alertas_enviar' %}">
-      {% csrf_token %}
-      <input type="hidden" name="tipo" value="licencas">
-      <button type="submit" class="al-btn al-btn-danger">
-        <i class="fa fa-key" aria-hidden="true"></i> Licenças desligados
-      </button>
+      {% csrf_token %}<input type="hidden" name="tipo" value="estoque">
+      <button type="submit" class="al-btn al-btn-tint-warn"><i class="fa-solid fa-boxes-stacked"></i> Estoque crítico</button>
     </form>
-  </section>
+    <form method="post" action="{% url 'alertas_enviar' %}">
+      {% csrf_token %}<input type="hidden" name="tipo" value="licencas">
+      <button type="submit" class="al-btn al-btn-tint-danger"><i class="fa-solid fa-key"></i> Licenças desligados</button>
+    </form>
+  </div>
 
-  <section class="al-section al-surface" style="--section-color: var(--brand);" aria-labelledby="al-preventivas-title">
+  <!-- Preventivas -->
+  <section class="al-section" aria-labelledby="al-preventivas-title">
     <div class="al-section-head">
       <div class="al-section-title" id="al-preventivas-title">
-        <i class="fa fa-screwdriver-wrench" aria-hidden="true"></i>
+        <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>
         Preventivas vencidas e próximas (7 dias)
-        {% if kpi.preventivas_vencidas %}
-          <span class="al-section-badge badge-danger">{{ kpi.preventivas_vencidas }} vencida{{ kpi.preventivas_vencidas|pluralize:"s" }}</span>
-        {% endif %}
+        {% if kpi.preventivas_vencidas %}<span class="al-section-badge badge-danger">{{ kpi.preventivas_vencidas }} vencida{{ kpi.preventivas_vencidas|pluralize:"s" }}</span>{% endif %}
         <span class="al-section-badge {% if kpi.preventivas_proximas > 0 %}badge-blue{% else %}badge-ok{% endif %}">{{ kpi.preventivas_proximas }} próxima{{ kpi.preventivas_proximas|pluralize:"s" }}</span>
       </div>
     </div>
-
     <div class="al-table-wrap">
       <table class="al-table">
         <thead>
-          <tr>
-            <th>Equipamento</th>
-            <th>Checklist</th>
-            <th>Localidade</th>
-            <th>Data prevista</th>
-            <th>Situação</th>
-          </tr>
+          <tr><th>Equipamento</th><th>Checklist</th><th>Localidade</th><th>Data prevista</th><th>Situação</th></tr>
         </thead>
         <tbody>
           {% for p in preventivas %}
@@ -827,9 +273,9 @@
               <td><strong>{{ p.data_proxima|date:"d/m/Y" }}</strong></td>
               <td>
                 {% if p.dias_rest < 0 %}
-                  <span class="al-pill pill-red"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> {{ p.atraso }}d em atraso</span>
+                  <span class="al-pill pill-red"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> {{ p.atraso }}d em atraso</span>
                 {% elif p.dias_rest == 0 %}
-                  <span class="al-pill pill-red"><i class="fa fa-circle-exclamation" aria-hidden="true"></i> Vence hoje</span>
+                  <span class="al-pill pill-red"><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Vence hoje</span>
                 {% elif p.dias_rest <= 2 %}
                   <span class="al-pill pill-amber">{{ p.dias_rest }}d restante{{ p.dias_rest|pluralize:"s" }}</span>
                 {% else %}
@@ -838,47 +284,33 @@
               </td>
             </tr>
           {% empty %}
-            <tr>
-              <td colspan="5">
-                <div class="al-empty">
-                  <i class="fa fa-circle-check" aria-hidden="true"></i>
-                  Nenhuma preventiva vencida ou nos próximos 7 dias.
-                </div>
-              </td>
-            </tr>
+            <tr><td colspan="5"><div class="al-empty"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Nenhuma preventiva vencida ou nos próximos 7 dias.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   </section>
 
-  <section class="al-section al-surface" style="--section-color: var(--warning);" aria-labelledby="al-estoque-title">
+  <!-- Estoque crítico -->
+  <section class="al-section" aria-labelledby="al-estoque-title">
     <div class="al-section-head">
       <div class="al-section-title" id="al-estoque-title">
-        <i class="fa fa-boxes-stacked" aria-hidden="true"></i>
+        <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i>
         Itens de consumo com estoque crítico
         <span class="al-section-badge {% if kpi.estoque > 0 %}badge-warn{% else %}badge-ok{% endif %}">{{ kpi.estoque }}</span>
       </div>
     </div>
-
     <div class="al-table-wrap">
       <table class="al-table">
         <thead>
-          <tr>
-            <th>Item</th>
-            <th>Subtipo</th>
-            <th>Localidade</th>
-            <th>Centro de Custo</th>
-            <th>Lotes (disp./entrada)</th>
-            <th>Estoque atual</th>
-          </tr>
+          <tr><th>Item</th><th>Subtipo</th><th>Localidade</th><th>Centro de Custo</th><th>Lotes (disp./entrada)</th><th>Estoque atual</th></tr>
         </thead>
         <tbody>
           {% for item in itens_criticos %}
             <tr>
               <td>
                 <div class="al-main-text">{{ item.nome }}</div>
-                {% if item.controla_lote %}<div class="al-sub-text"><i class="fa fa-layer-group" aria-hidden="true"></i> Controlado por lote</div>{% endif %}
+                {% if item.controla_lote %}<div class="al-sub-text"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Controlado por lote</div>{% endif %}
               </td>
               <td>{{ item.subtipo.nome|default:"—" }}</td>
               <td>{{ item.localidade.local|default:"—" }}</td>
@@ -887,12 +319,10 @@
                 {% if item.controla_lote %}
                   {% if item.lotes_info %}
                     {% for l in item.lotes_info %}
-                      <div class="al-lote-line {% if l.disponivel == 0 %}is-zero{% endif %}">
-                        <strong>NF {{ l.nf }}</strong> · {{ l.fornecedor }} — {{ l.disponivel }}/{{ l.entrada }} un.
-                      </div>
+                      <div class="al-lote-line {% if l.disponivel == 0 %}is-zero{% endif %}"><strong>NF {{ l.nf }}</strong> · {{ l.fornecedor }} — {{ l.disponivel }}/{{ l.entrada }} un.</div>
                     {% endfor %}
                   {% else %}
-                    <span class="al-pill pill-amber"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> Sem lote cadastrado</span>
+                    <span class="al-pill pill-amber"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Sem lote cadastrado</span>
                   {% endif %}
                 {% else %}
                   <span class="al-sub-text">Controle simples</span>
@@ -900,47 +330,33 @@
               </td>
               <td>
                 {% if item.estoque_efetivo == 0 %}
-                  <span class="al-pill pill-red"><i class="fa fa-xmark" aria-hidden="true"></i> Sem estoque</span>
+                  <span class="al-pill pill-red"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Sem estoque</span>
                 {% else %}
-                  <span class="al-pill pill-amber"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> {{ item.estoque_efetivo }} un.</span>
+                  <span class="al-pill pill-amber"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> {{ item.estoque_efetivo }} un.</span>
                 {% endif %}
               </td>
             </tr>
           {% empty %}
-            <tr>
-              <td colspan="6">
-                <div class="al-empty">
-                  <i class="fa fa-circle-check" aria-hidden="true"></i>
-                  Nenhum item de consumo com estoque crítico.
-                </div>
-              </td>
-            </tr>
+            <tr><td colspan="6"><div class="al-empty"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Nenhum item de consumo com estoque crítico.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   </section>
 
-  <section class="al-section al-surface" style="--section-color: var(--danger);" aria-labelledby="al-licencas-title">
+  <!-- Licenças -->
+  <section class="al-section" aria-labelledby="al-licencas-title">
     <div class="al-section-head">
       <div class="al-section-title" id="al-licencas-title">
-        <i class="fa fa-key" aria-hidden="true"></i>
+        <i class="fa-solid fa-key" aria-hidden="true"></i>
         Licenças de colaboradores desligados
         <span class="al-section-badge {% if kpi.licencas > 0 %}badge-danger{% else %}badge-ok{% endif %}">{{ kpi.licencas }}</span>
       </div>
     </div>
-
     <div class="al-table-wrap">
       <table class="al-table">
         <thead>
-          <tr>
-            <th>Colaborador</th>
-            <th>Função</th>
-            <th>Centro de Custo</th>
-            <th>Licença</th>
-            <th>Data Desligamento</th>
-            <th>Status</th>
-          </tr>
+          <tr><th>Colaborador</th><th>Função</th><th>Centro de Custo</th><th>Licença</th><th>Data Desligamento</th><th>Status</th></tr>
         </thead>
         <tbody>
           {% for mov in licencas_pendentes %}
@@ -953,17 +369,10 @@
               <td>{{ mov.usuario.centro_custo.departamento|default:"—" }}</td>
               <td>{{ mov.lote.licenca.nome|default:"—" }}</td>
               <td>{{ mov.usuario.data_termino|date:"d/m/Y"|default:"—" }}</td>
-              <td><span class="al-pill pill-red"><i class="fa fa-circle-exclamation" aria-hidden="true"></i> Pendente devolução</span></td>
+              <td><span class="al-pill pill-red"><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Pendente devolução</span></td>
             </tr>
           {% empty %}
-            <tr>
-              <td colspan="6">
-                <div class="al-empty">
-                  <i class="fa fa-circle-check" aria-hidden="true"></i>
-                  Nenhuma licença pendente de colaborador desligado.
-                </div>
-              </td>
-            </tr>
+            <tr><td colspan="6"><div class="al-empty"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Nenhuma licença pendente de colaborador desligado.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>

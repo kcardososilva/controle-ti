@@ -5,7 +5,7 @@ from . import views
 urlpatterns = [
 
     # ── Home & Autenticação ──────────────────────────────────────────────────
-    path("", views.sistema_noticias, name="home"),
+    path("", views.dashboard, name="home"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("dashboard/dados/", views.dashboard_apresentacao_dados, name="dashboard_apresentacao_dados"),
     path("sobre/", views.sobre_plataforma, name="sobre_plataforma"),
@@ -150,6 +150,7 @@ urlpatterns = [
 
     # ── Dashboards ──────────────────────────────────────────────────────────
     path("dashboards/custos-cc/", views.cc_custos_dashboard, name="cc_custos_dashboard"),
+    path("dashboards/custos-cc/detalhe/", views.cc_custos_detalhe, name="cc_custos_detalhe"),
     path("dashboards/custos-diretoria/", views.custos_diretoria_dashboard, name="custos_diretoria_dashboard"),
     path("dashboards/custos-diretoria/detalhe/", views.custos_diretoria_detalhe, name="custos_diretoria_detalhe"),
     path("dashboards/custos-cc/pdf/", views.cc_custos_export_pdf, name="cc_custos_export_pdf"),

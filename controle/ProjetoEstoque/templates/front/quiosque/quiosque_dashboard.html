@@ -1,194 +1,243 @@
 {% extends 'base.html' %}
-{% load humanize %}
+{% load humanize l10n %}
 
 {% block title %}Quiosque — Celulares Corporativos{% endblock %}
 {% block page_title %}Quiosque{% endblock %}
 {% block page_subtitle %}Celulares corporativos em modo quiosque — monitoramento e controle{% endblock %}
 
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Quiosque</span>
+</nav>
+{% endblock %}
+
 {% block header_actions %}
-  <a href="{% url 'quiosque_mapa' %}" class="btn btn-sm"><i class="fa fa-map-location-dot"></i> Mapa</a>
-  <a href="{% url 'quiosque_matriculas' %}" class="btn btn-sm"><i class="fa fa-id-card"></i> Matrículas{% if kpi.matriculas %} ({{ kpi.matriculas }}){% endif %}</a>
+  <a href="{% url 'quiosque_mapa' %}" class="btn btn-sm"><i class="fa-solid fa-map-location-dot"></i> Mapa</a>
+  <a href="{% url 'quiosque_matriculas' %}" class="btn btn-primary btn-sm"><i class="fa-solid fa-id-card"></i> Matrículas{% if kpi.matriculas %} <span class="kq-actcount">{{ kpi.matriculas }}</span>{% endif %}</a>
 {% endblock %}
 
 {% block extra_css %}
 <style>
-:where(.kq-page) { --kq-brand:#4f46e5; --kq-brand-soft:color-mix(in srgb,#4f46e5 11%,transparent); }
 .kq-page, .kq-page * { box-sizing:border-box; min-width:0; }
-.kq-page { display:grid; gap:1rem; }
+.kq-page { display:grid; gap:16px; }
 
-.kq-banner { display:flex; align-items:flex-start; gap:.85rem; padding:.9rem 1.15rem; border-radius:var(--radius-xl);
-  background:var(--kq-brand-soft); border:1px solid color-mix(in srgb,var(--kq-brand) 22%,transparent); }
-.kq-banner i { color:var(--kq-brand); font-size:1.05rem; margin-top:.1rem; }
-.kq-banner div { font-size:.85rem; color:var(--text-secondary); line-height:1.55; }
-.kq-banner b { color:var(--text-primary); }
+/* ── nota contextual (discreta, sem caixa colorida) ───────────────── */
+.kq-note { display:flex; align-items:center; gap:10px; padding:10px 14px; border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-md); background:var(--bg-page-2); color:var(--text-tertiary); font-size:12.5px; line-height:1.45; }
+.kq-note i { color:var(--text-quaternary); font-size:13px; flex:0 0 auto; }
+.kq-note a { color:var(--brand); font-weight:600; }
 
-.kq-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.8rem; }
-@media (max-width:680px){ .kq-kpis{ grid-template-columns:repeat(2,1fr);} }
-.kq-kpi { display:block; text-decoration:none; color:inherit; padding:.85rem 1rem; border:1px solid var(--separator-hairline);
-  border-radius:var(--radius-xl); background:var(--bg-elevated); box-shadow:var(--shadow-xs); position:relative; overflow:hidden;
-  transition:box-shadow var(--transition-fast), transform var(--transition-fast); }
-.kq-kpi:hover { box-shadow:var(--shadow-md); transform:translateY(-2px); }
-.kq-kpi::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--k,var(--kq-brand)); }
-.kq-kpi.active { outline:2px solid var(--k); outline-offset:-2px; }
-.kq-kpi-v { font-size:1.7rem; font-weight:800; letter-spacing:-.035em; line-height:1; color:var(--k,var(--text-primary)); }
-.kq-kpi-l { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); margin-top:.4rem; }
+.kq-actcount { display:inline-grid; place-items:center; min-width:18px; height:18px; padding:0 5px; margin-left:2px;
+  border-radius:99px; background:rgba(255,255,255,.22); color:#fff; font-size:11px; font-weight:700; font-variant-numeric:tabular-nums; }
 
-.kq-filters { display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end; padding:.85rem 1.1rem;
-  background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); }
-.kq-field { display:flex; flex-direction:column; gap:.3rem; }
-.kq-field label { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
+/* ── metric strip (células = filtros de status) ───────────────────── */
+.kq-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:1px;
+  background:var(--separator-hairline); border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow-xs); }
+@media (max-width:960px){ .kq-metrics{ grid-template-columns:repeat(3,1fr);} }
+@media (max-width:560px){ .kq-metrics{ grid-template-columns:repeat(2,1fr);} }
+.kq-metric { position:relative; display:block; padding:14px 16px; background:var(--bg-elevated);
+  text-decoration:none; color:inherit; transition:background var(--transition-fast); }
+.kq-metric:hover { background:var(--bg-hover); }
+.kq-metric.is-active { background:var(--brand-soft); }
+.kq-metric.is-active::after { content:""; position:absolute; left:0; right:0; bottom:0; height:2px; background:var(--brand); }
+.kq-metric-l { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:600; letter-spacing:.02em; color:var(--text-tertiary); }
+.kq-metric-l .mdot { width:7px; height:7px; border-radius:99px; }
+.kq-metric-v { margin-top:8px; font-size:24px; font-weight:700; letter-spacing:-.035em; line-height:1;
+  color:var(--text-primary); font-variant-numeric:tabular-nums; }
 
-.kq-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden; }
-.kq-card-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.85rem 1.15rem; border-bottom:1px solid var(--separator-hairline); }
-.kq-card-title { font-size:.92rem; font-weight:700; letter-spacing:-.016em; }
-.kq-count { font-size:.8rem; color:var(--text-tertiary); font-weight:600; }
-.kq-wrap { width:100%; overflow-x:auto; }
-.kq-table { width:max-content; min-width:100%; border-collapse:collapse; }
-.kq-table th, .kq-table td { padding:.6rem 1rem; border-bottom:1px solid var(--separator-hairline); text-align:left; white-space:nowrap; vertical-align:middle; }
-.kq-table th { font-size:.67rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); font-weight:700; }
-.kq-table td { font-size:.83rem; color:var(--text-primary); }
-.kq-table tbody tr:last-child td { border-bottom:0; }
+/* ── toolbar de busca ─────────────────────────────────────────────── */
+.kq-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.kq-search { display:flex; align-items:center; gap:9px; height:38px; padding:0 12px; flex:1; min-width:230px;
+  border-radius:var(--radius-md); background:var(--bg-elevated); border:1px solid var(--separator-non-opaque);
+  transition:border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.kq-search:focus-within { border-color:var(--brand); box-shadow:0 0 0 4px var(--brand-ring); }
+.kq-search i { color:var(--text-tertiary); font-size:13px; }
+.kq-search input { flex:1; min-width:0; border:0; background:none; outline:none; font-size:14px; color:var(--text-primary); }
+.kq-search input::placeholder { color:var(--text-quaternary); }
+
+/* ── card + tabela ────────────────────────────────────────────────── */
+.kq-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-lg); box-shadow:var(--shadow-xs); overflow:hidden; }
+.kq-card-head { display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:12px 16px; border-bottom:1px solid var(--separator-hairline); }
+.kq-card-title { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; letter-spacing:-.01em; color:var(--text-primary); }
+.kq-card-title i { color:var(--text-tertiary); font-size:13px; }
+.kq-count { font-size:12px; color:var(--text-tertiary); font-weight:500; }
+
+.kq-scroll { width:100%; overflow-x:auto; }
+.kq-table { width:100%; border-collapse:collapse; min-width:900px; }
+.kq-table thead th { position:sticky; top:0; z-index:1; background:var(--bg-elevated); padding:10px 14px; text-align:left;
+  font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--text-tertiary);
+  border-bottom:1px solid var(--separator-hairline); white-space:nowrap; }
+.kq-table tbody td { padding:11px 14px; border-bottom:1px solid var(--separator-hairline);
+  font-size:13px; color:var(--text-primary); vertical-align:middle; white-space:nowrap; }
+.kq-table tbody tr { transition:background var(--transition-fast); }
+.kq-table tbody tr[data-href] { cursor:pointer; }
 .kq-table tbody tr:hover { background:var(--bg-hover); }
-.kq-link { color:var(--text-primary); text-decoration:none; font-weight:700; }
-.kq-link:hover { color:var(--kq-brand); }
-.kq-sub { font-size:.72rem; color:var(--text-tertiary); font-family:var(--font-mono,ui-monospace,Consolas,monospace); }
-.kq-mat { display:inline-flex; align-items:center; gap:.3rem; margin-top:.25rem; padding:.1rem .5rem; border-radius:var(--radius-pill);
-  font-size:.71rem; font-weight:700; color:var(--kq-brand); background:var(--kq-brand-soft); max-width:100%; }
-.kq-mat i { font-size:.66rem; }
+.kq-table tbody tr:last-child td { border-bottom:0; }
+
+.kq-dev { display:flex; align-items:center; gap:11px; min-width:220px; }
+.kq-dev-ic { width:34px; height:34px; flex:0 0 34px; border-radius:8px; display:grid; place-items:center;
+  background:var(--bg-fill-tertiary); border:1px solid var(--separator-hairline); color:var(--text-secondary); font-size:14px; }
+.kq-dev-main { min-width:0; }
+.kq-dev-name { font-size:13px; font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:30ch; }
+.kq-dev-name:hover { color:var(--brand); }
+.kq-dev-sub { margin-top:1px; font-size:11px; color:var(--text-tertiary); font-family:var(--font-mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:34ch; }
+.kq-mat { display:inline-flex; align-items:center; gap:5px; margin-top:5px; padding:2px 8px; max-width:100%;
+  border-radius:99px; font-size:11px; font-weight:600; color:var(--brand); background:var(--brand-soft); }
+.kq-mat i { font-size:10px; }
 .kq-mat span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-.kq-badge { display:inline-flex; align-items:center; gap:.35rem; padding:.18rem .6rem; border-radius:var(--radius-pill); font-size:.73rem; font-weight:700; white-space:nowrap; }
-.kq-badge.on { color:#1e8e3e; background:color-mix(in srgb,#34c759 16%,transparent); }
-.kq-badge.off { color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline); }
+.kq-status { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; white-space:nowrap; }
+.kq-status i { font-size:10px; }
+.kq-status.on { color:var(--success); }
+.kq-status.off { color:var(--text-tertiary); }
 
-.kq-bat { display:inline-flex; align-items:center; gap:.35rem; font-weight:700; }
-.kq-bat.low { color:#d93025; }
-.kq-bat.mid { color:#b35a00; }
-.kq-bat.ok  { color:#1e8e3e; }
+.kq-bat { display:inline-flex; align-items:center; gap:5px; font-weight:600; font-size:12.5px; font-variant-numeric:tabular-nums; }
+.kq-bat i { font-size:12px; }
+.kq-bat.low { color:var(--danger); }
+.kq-bat.mid { color:var(--warning); }
+.kq-bat.ok  { color:var(--text-secondary); }
 
-.kq-empty { display:grid; place-items:center; gap:.5rem; padding:2.5rem 1rem; text-align:center; color:var(--text-tertiary); font-size:.9rem; font-weight:600; }
-.kq-empty i { font-size:1.6rem; color:var(--kq-brand); }
-.kq-empty a { color:var(--kq-brand); font-weight:700; }
+.kq-net { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-secondary); }
+.kq-net i { color:var(--text-tertiary); font-size:12px; }
+.kq-muted { color:var(--text-quaternary); }
+.kq-linklike { display:inline-flex; align-items:center; gap:6px; color:var(--brand); font-weight:500; font-size:12.5px; text-decoration:none; }
+.kq-linklike:hover { color:var(--brand-hover); text-decoration:underline; }
+.kq-serial { font-family:var(--font-mono); font-size:12px; color:var(--text-tertiary); }
+
+.kq-rowbtn { width:30px; height:30px; border-radius:var(--radius-sm); display:inline-grid; place-items:center;
+  color:var(--text-tertiary); border:1px solid var(--separator-non-opaque); background:var(--bg-elevated); transition:all var(--transition-fast); }
+.kq-rowbtn:hover { color:var(--brand); border-color:var(--brand); background:var(--brand-soft); }
+
+.kq-empty { display:grid; place-items:center; gap:10px; padding:48px 16px; text-align:center; color:var(--text-tertiary); font-size:13px; }
+.kq-empty i { font-size:26px; color:var(--text-quaternary); }
+.kq-empty a { color:var(--brand); font-weight:600; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="kq-page">
 
-  <div class="kq-banner">
-    <i class="fa fa-mobile-screen-button"></i>
-    <div>
-      Celulares corporativos rodando o <b>app de quiosque</b> enviam a localização, bateria, rede e identificação
-      para este sistema via integração. Gere um <b>código de matrícula</b> para registrar um novo aparelho e
-      acompanhe aqui o status <b>online/offline</b>, a localização e os controles do TI.
-    </div>
+  <div class="kq-note">
+    <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+    <span>Aparelhos com o app de quiosque enviam localização, bateria e rede automaticamente.
+      Gere um <a href="{% url 'quiosque_matriculas' %}">código de matrícula</a> para registrar um novo aparelho.</span>
   </div>
 
-  <section class="kq-kpis">
-    <a class="kq-kpi {% if not f_status %}active{% endif %}" style="--k:var(--kq-brand)" href="?">
-      <div class="kq-kpi-v">{{ kpi.total }}</div>
-      <div class="kq-kpi-l">Dispositivos</div>
+  <!-- metric strip: cada célula filtra por status -->
+  <section class="kq-metrics" aria-label="Indicadores dos dispositivos">
+    <a class="kq-metric {% if not f_status %}is-active{% endif %}" href="?{% if f_q %}q={{ f_q|urlencode }}{% endif %}">
+      <div class="kq-metric-l"><span class="mdot" style="background:var(--brand)"></span>Total</div>
+      <div class="kq-metric-v">{{ kpi.total }}</div>
     </a>
-    <a class="kq-kpi {% if f_status == 'online' %}active{% endif %}" style="--k:#1e8e3e" href="?status=online">
-      <div class="kq-kpi-v">{{ kpi.online }}</div>
-      <div class="kq-kpi-l">Online agora</div>
+    <a class="kq-metric {% if f_status == 'online' %}is-active{% endif %}" href="?status=online{% if f_q %}&q={{ f_q|urlencode }}{% endif %}">
+      <div class="kq-metric-l"><span class="mdot" style="background:var(--success)"></span>Online agora</div>
+      <div class="kq-metric-v">{{ kpi.online }}</div>
     </a>
-    <a class="kq-kpi {% if f_status == 'offline' %}active{% endif %}" style="--k:#8e8e93" href="?status=offline">
-      <div class="kq-kpi-v">{{ kpi.offline }}</div>
-      <div class="kq-kpi-l">Offline</div>
+    <a class="kq-metric {% if f_status == 'offline' %}is-active{% endif %}" href="?status=offline{% if f_q %}&q={{ f_q|urlencode }}{% endif %}">
+      <div class="kq-metric-l"><span class="mdot" style="background:var(--text-quaternary)"></span>Offline</div>
+      <div class="kq-metric-v">{{ kpi.offline }}</div>
     </a>
-    <a class="kq-kpi {% if f_status == 'sem_local' %}active{% endif %}" style="--k:#b35a00" href="?status=sem_local">
-      <div class="kq-kpi-v">{{ kpi.sem_local }}</div>
-      <div class="kq-kpi-l">Sem localização</div>
+    <a class="kq-metric {% if f_status == 'sem_local' %}is-active{% endif %}" href="?status=sem_local{% if f_q %}&q={{ f_q|urlencode }}{% endif %}">
+      <div class="kq-metric-l"><span class="mdot" style="background:var(--warning)"></span>Sem localização</div>
+      <div class="kq-metric-v">{{ kpi.sem_local }}</div>
+    </a>
+    <a class="kq-metric" href="{% url 'quiosque_matriculas' %}">
+      <div class="kq-metric-l"><span class="mdot" style="background:var(--info)"></span>Matrículas livres</div>
+      <div class="kq-metric-v">{{ kpi.matriculas }}</div>
     </a>
   </section>
 
-  <form method="get" class="kq-filters">
-    <div class="kq-field" style="flex:2; min-width:220px;">
-      <label for="q">Busca</label>
-      <input id="q" name="q" type="text" class="form-control" value="{{ f_q }}" placeholder="Apelido, modelo, série, fabricante ou MAC...">
-    </div>
-    <div class="kq-field" style="max-width:190px;">
-      <label for="status">Status</label>
-      <select id="status" name="status" class="form-control" onchange="this.form.submit()">
-        <option value="">Todos</option>
-        <option value="online"   {% if f_status == 'online' %}selected{% endif %}>Online agora</option>
-        <option value="offline"  {% if f_status == 'offline' %}selected{% endif %}>Offline</option>
-        <option value="sem_local"{% if f_status == 'sem_local' %}selected{% endif %}>Sem localização</option>
-      </select>
-    </div>
-    <div style="display:flex; gap:.5rem;">
-      <button type="submit" class="btn btn-primary" style="padding:0 1rem;min-height:2.25rem;"><i class="fa fa-search"></i> Filtrar</button>
-      <a href="{% url 'quiosque_dashboard' %}" class="btn btn-light" style="padding:0 1rem;min-height:2.25rem;"><i class="fa fa-xmark"></i> Limpar</a>
-    </div>
+  <!-- busca -->
+  <form method="get" class="kq-toolbar" role="search">
+    {% if f_status %}<input type="hidden" name="status" value="{{ f_status }}">{% endif %}
+    <label class="kq-search">
+      <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+      <input name="q" type="text" value="{{ f_q }}" placeholder="Buscar por apelido, modelo, série, fabricante ou MAC…" aria-label="Buscar dispositivos">
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
+    {% if f_q or f_status %}<a href="{% url 'quiosque_dashboard' %}" class="btn btn-sm"><i class="fa-solid fa-xmark"></i> Limpar</a>{% endif %}
   </form>
 
+  <!-- tabela -->
   <div class="kq-card">
     <div class="kq-card-head">
-      <span class="kq-card-title"><i class="fa fa-mobile-screen-button" style="color:var(--kq-brand);margin-right:.4rem;"></i>Dispositivos</span>
+      <span class="kq-card-title"><i class="fa-solid fa-mobile-screen-button"></i>Dispositivos</span>
       <span class="kq-count">{{ total_filtrado }} dispositivo(s)</span>
     </div>
-    <div class="kq-wrap">
+    <div class="kq-scroll">
       <table class="kq-table">
         <thead>
           <tr>
-            <th>Status</th>
             <th>Dispositivo</th>
+            <th>Status</th>
             <th>Bateria</th>
             <th>Rede</th>
             <th>Localização</th>
             <th>Último check-in</th>
             <th>Nº de série</th>
-            <th></th>
+            <th aria-label="Ações"></th>
           </tr>
         </thead>
         <tbody>
           {% for d in devices %}
-          <tr>
+          <tr data-href="{% url 'quiosque_detalhe' d.pk %}">
             <td>
-              <span class="kq-badge {% if d.online %}on{% else %}off{% endif %}" data-status data-last="{% if d.ultimo_checkin %}{{ d.ultimo_checkin|date:'U' }}000{% else %}0{% endif %}">
-                {% if d.online %}<i class="fa fa-circle-check"></i> Online{% else %}<i class="fa fa-circle"></i> Offline{% endif %}
-              </span>
+              <div class="kq-dev">
+                <span class="kq-dev-ic"><i class="fa-solid fa-mobile-screen-button"></i></span>
+                <div class="kq-dev-main">
+                  <a href="{% url 'quiosque_detalhe' d.pk %}" class="kq-dev-name">{{ d.apelido|default:d.modelo|default:"Quiosque" }}</a>
+                  <div class="kq-dev-sub">{{ d.fabricante }} {{ d.modelo }}{% if d.mac %} · {{ d.mac }}{% endif %}</div>
+                  {% if d.matricula_atual %}<div class="kq-mat" title="Matrícula: {{ d.matricula_atual.codigo }}"><i class="fa-solid fa-id-card"></i> <span>{{ d.matricula_atual.descricao|default:d.matricula_atual.codigo }}</span></div>{% endif %}
+                </div>
+              </div>
             </td>
             <td>
-              <a href="{% url 'quiosque_detalhe' d.pk %}" class="kq-link">{{ d.apelido|default:d.modelo|default:"Quiosque" }}</a>
-              <div class="kq-sub">{{ d.fabricante }} {{ d.modelo }}{% if d.serial %} · {{ d.serial }}{% endif %}{% if d.mac %} · {{ d.mac }}{% endif %}</div>
-              {% if d.matricula_atual %}<div class="kq-mat" title="Matrícula: {{ d.matricula_atual.codigo }}"><i class="fa fa-id-card"></i> <span>{{ d.matricula_atual.descricao|default:d.matricula_atual.codigo }}</span></div>{% endif %}
+              <span class="kq-status {% if d.online %}on{% else %}off{% endif %}" data-status data-last="{% if d.ultimo_checkin %}{{ d.ultimo_checkin|date:'U' }}000{% else %}0{% endif %}">
+                {% if d.online %}<i class="fa-solid fa-circle-check"></i> Online{% else %}<i class="fa-solid fa-circle"></i> Offline{% endif %}
+              </span>
             </td>
             <td>
               {% if d.ultima_bateria is not None %}
                 <span class="kq-bat {% if d.ultima_bateria <= 20 %}low{% elif d.ultima_bateria <= 50 %}mid{% else %}ok{% endif %}">
-                  <i class="fa fa-battery-half"></i> {{ d.ultima_bateria }}%
+                  <i class="fa-solid fa-battery-half"></i> {{ d.ultima_bateria }}%
                 </span>
-              {% else %}<span style="color:var(--text-quaternary);">—</span>{% endif %}
+              {% else %}<span class="kq-muted">—</span>{% endif %}
             </td>
-            <td>{% if d.ultima_rede %}<i class="fa {% if d.ultima_rede == 'wifi' %}fa-wifi{% else %}fa-signal{% endif %}"></i> {{ d.ultima_rede }}{% else %}<span style="color:var(--text-quaternary);">—</span>{% endif %}</td>
+            <td>
+              {% if d.ultima_rede %}<span class="kq-net"><i class="fa-solid {% if d.ultima_rede == 'wifi' %}fa-wifi{% else %}fa-signal{% endif %}"></i> {{ d.ultima_rede }}</span>
+              {% else %}<span class="kq-muted">—</span>{% endif %}
+            </td>
             <td>
               {% if d.tem_localizacao %}
-                <a class="kq-link" style="font-weight:600;color:var(--kq-brand);" target="_blank" rel="noopener"
-                   href="https://www.google.com/maps?q={{ d.ultima_latitude }},{{ d.ultima_longitude }}">
-                   <i class="fa fa-location-dot"></i> Ver no mapa</a>
-              {% else %}<span style="color:var(--text-quaternary);">— sem localização —</span>{% endif %}
+                <a class="kq-linklike" target="_blank" rel="noopener" href="https://www.google.com/maps?q={{ d.ultima_latitude|unlocalize }},{{ d.ultima_longitude|unlocalize }}"><i class="fa-solid fa-location-dot"></i> Ver no mapa</a>
+              {% else %}<span class="kq-muted">— sem GPS —</span>{% endif %}
             </td>
-            <td>{% if d.ultimo_checkin %}<span title="{{ d.ultimo_checkin|date:'d/m/Y H:i' }}">{{ d.ultimo_checkin|naturaltime }}</span>{% else %}<span style="color:var(--text-quaternary);">nunca</span>{% endif %}</td>
+            <td>
+              {% if d.ultimo_checkin %}<span title="{{ d.ultimo_checkin|date:'d/m/Y H:i' }}">{{ d.ultimo_checkin|naturaltime }}</span>
+              {% else %}<span class="kq-muted">nunca</span>{% endif %}
+            </td>
             <td>
               {% if d.serial %}
-                {% if d.equip_serial %}
-                  <a href="{% url 'equipamento_detalhe' d.equip_serial.pk %}" class="kq-link" style="font-weight:600;color:var(--kq-brand);" title="Abrir {{ d.equip_serial.nome }}"><i class="fa fa-barcode"></i> {{ d.serial }}</a>
-                {% else %}
-                  <span class="kq-sub" title="Sem equipamento com este número de série cadastrado">{{ d.serial }}</span>
-                {% endif %}
-              {% else %}<span style="color:var(--text-quaternary);">—</span>{% endif %}
+                {% if d.equip_serial %}<a href="{% url 'equipamento_detalhe' d.equip_serial.pk %}" class="kq-linklike" title="Abrir {{ d.equip_serial.nome }}"><i class="fa-solid fa-barcode"></i> {{ d.serial }}</a>
+                {% else %}<span class="kq-serial" title="Sem equipamento com este número de série">{{ d.serial }}</span>{% endif %}
+              {% else %}<span class="kq-muted">—</span>{% endif %}
             </td>
-            <td><a href="{% url 'quiosque_detalhe' d.pk %}" class="btn btn-sm btn-light"><i class="fa fa-chevron-right"></i></a></td>
+            <td style="text-align:right;">
+              <a href="{% url 'quiosque_detalhe' d.pk %}" class="kq-rowbtn" aria-label="Abrir dispositivo"><i class="fa-solid fa-chevron-right"></i></a>
+            </td>
           </tr>
           {% empty %}
           <tr>
             <td colspan="8">
               <div class="kq-empty">
-                <i class="fa fa-mobile-screen-button"></i>
-                {% if f_status or f_q %}Nenhum dispositivo para o filtro aplicado.
-                {% else %}Nenhum celular matriculado ainda. <a href="{% url 'quiosque_matriculas' %}">Gere um código de matrícula</a> e registre o aparelho no app.{% endif %}
+                <i class="fa-solid fa-mobile-screen-button"></i>
+                {% if f_status or f_q %}<span>Nenhum dispositivo para o filtro aplicado.</span>
+                {% else %}<span>Nenhum celular matriculado ainda. <a href="{% url 'quiosque_matriculas' %}">Gere um código de matrícula</a> e registre o aparelho no app.</span>{% endif %}
               </div>
             </td>
           </tr>
@@ -203,8 +252,18 @@
 
 {% block extra_js %}
 <script>
+// Linha clicável → abre o dispositivo (ignora cliques em links/botões internos).
+(function(){
+  document.querySelectorAll('.kq-table tr[data-href]').forEach(function(tr){
+    tr.addEventListener('click', function(ev){
+      if (ev.target.closest('a,button')) return;
+      window.location.href = tr.getAttribute('data-href');
+    });
+  });
+})();
+
 // Status ao vivo: um aparelho que parou de enviar check-in vira "Offline" sozinho,
-// sem precisar recarregar a página (mesma regra do servidor: OFFLINE_APOS segundos).
+// sem recarregar a página (mesma regra do servidor: OFFLINE_APOS segundos).
 (function(){
   var LIMITE = {{ offline_apos|default:900 }} * 1000;
   function atualizar(){
@@ -217,8 +276,8 @@
       el.classList.toggle('on', online);
       el.classList.toggle('off', !online);
       el.innerHTML = online
-        ? '<i class="fa fa-circle-check"></i> Online'
-        : '<i class="fa fa-circle"></i> Offline';
+        ? '<i class="fa-solid fa-circle-check"></i> Online'
+        : '<i class="fa-solid fa-circle"></i> Offline';
     });
   }
   atualizar();

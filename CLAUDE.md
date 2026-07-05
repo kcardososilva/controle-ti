@@ -6,6 +6,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Sistema de Controle de TI para Santa Colomba Agropecuária. Gerencia equipamentos (itens), licenças de software, colaboradores (usuários), movimentações de estoque, preventivas (manutenção), plantas de infraestrutura (mapa visual com integração PRTG), e emite alertas por e-mail. Interface 100% em português (pt-BR).
 
+## Método de Trabalho (postura em toda solicitação)
+
+Antes de implementar **qualquer** solicitação, agir como um engenheiro que conhece o sistema inteiro (front, back, segurança e desempenho) — não como um executor cego:
+
+1. **Questionar a solicitação.** Se o pedido tem falha lógica, risco, ou existe uma abordagem melhor, dizer isso **antes** de codar. Não implementar no automático.
+2. **Identificar impacto sistêmico.** Apontar bugs, efeitos colaterais em models/migrations/services/templates, quebra de contrato de API AJAX, regressão de segurança ou de desempenho.
+3. **Recomendar, não só listar.** Propor a melhor abordagem respeitando as "Architecture Rules" no fim deste arquivo.
+4. **Ser direto.** Implementação direta, sem explicações longas; toda a UI em pt-BR.
+
+As quatro perspectivas são responsabilidade do **mesmo** agente (não é preciso um time separado):
+
+- **Front** — tokens CSS de `base.html`, escopo `:where(.prefix-page)` (nunca `:root`), Canvas/animações vanilla JS.
+- **Back** — lógica em `services/` (nunca em forms/views), registrar view em `views/__init__.py`, migrations backwards-safe.
+- **Segurança** — credenciais PRTG nunca no browser, `@login_required`, `json_script` (nunca `|safe`), isolamento do Portal do Fornecedor.
+- **Desempenho** — evitar N+1 (`select_related`/`prefetch_related`), respeitar o cache PRTG de 30s, produção com Waitress + WhiteNoise + SQLite WAL.
+
+## Skills e Agentes (acionar sob demanda)
+
+Para o dia a dia, preferir o **agente principal guiado por este CLAUDE.md** — é o caminho mais barato em tokens. Acionar skills/agentes só quando a tarefa realmente pede:
+
+| Quando | Usar |
+|---|---|
+| Revisar bugs / simplificação do diff atual | `/code-review` |
+| Auditoria de segurança da branch | `/security-review` |
+| Confirmar que a mudança funciona de verdade (rodar o fluxo) | `/verify` |
+| Subir/rodar o app para ver a mudança | `/run` |
+| Limpar/simplificar código alterado (sem caçar bug) | `/simplify` |
+
+- **Agentes especialistas** (ex.: segurança, desempenho) rodam **sob demanda** e são coordenados pelo agente principal — não disparam a cada mensagem, e não conversam livremente entre si.
+- Um time de agentes "sempre ligado" custa **mais** tokens, não menos: cada agente parte do zero e re-lê o contexto. Só delegar quando o ganho justifica.
+- Ao concluir mudanças não triviais, oferecer/rodar `/code-review` — e `/security-review` quando a mudança tocar credenciais, autenticação, Portal do Fornecedor ou PRTG.
+
 ## Running the Application
 
 All commands must be run from the `controle/` directory (where `manage.py` lives):
@@ -34,6 +66,9 @@ python manage.py agendar_relatorio executar             # run digest immediately
 
 # Spreadsheet import
 python manage.py importar_itens_planilha <caminho.xlsx>
+
+# PRTG history collector (device-centric por prtg_objid; ideal em Task Scheduler)
+python manage.py monitorar_prtg   # coleta status PRTG e registra mudanças no histórico
 ```
 
 ### Environment Variables
@@ -109,7 +144,13 @@ controle/                        ← Django project root (manage.py lives here)
 │   │   ├── funcoes.py           ← Job function CRUD
 │   │   ├── ciclos.py            ← Cycle CRUD
 │   │   ├── comentarios.py       ← Comments CRUD
-│   │   └── termos.py            ← PDF term generation views
+│   │   ├── termos.py            ← PDF term generation views
+│   │   ├── manutencao.py        ← Ordens de manutenção (fluxo de reparo + aprovação, NF dos 2 lados)
+│   │   ├── portal_fornecedor.py ← Portal do Fornecedor (área isolada /portal/ p/ fornecedores externos)
+│   │   ├── quiosque.py          ← Módulo Quiosque (KioskDevice/Checkin/Matrícula/Comando + API do app Android)
+│   │   ├── ninja.py             ← Módulo NinjaOne RMM (via importação de CSV; sem API/OAuth)
+│   │   ├── status_board.py      ← Painel de status consolidado (agrega PRTG de todas as plantas; modo TV)
+│   │   └── admin_perfil.py      ← Perfil do administrador (dados, senha, info do sistema — SISTEMA_VERSAO)
 │   ├── templates/front/         ← All HTML templates
 │   │   ├── base.html            ← Main layout with CSS token variables
 │   │   ├── home.html            ← Home with 3D particle network animation
@@ -135,10 +176,11 @@ controle/                        ← Django project root (manage.py lives here)
 │   │   ├── inteligencia/        ← Sistema de Inteligência templates
 │   │   ├── noticias/            ← News/notifications templates
 │   │   └── <other domains>/
-│   ├── migrations/              ← 71 migrations applied (last: 0071_corrigir_diretor_marcos_oliveira)
+│   ├── migrations/              ← 103 migrations applied (last: 0103_ordemmanutencao_garantia_dias_and_more)
 │   └── management/commands/
 │       ├── enviar_alertas.py
 │       ├── agendar_relatorio.py
+│       ├── monitorar_prtg.py    ← Coletor agendado de histórico PRTG (device-centric por prtg_objid)
 │       └── importar_itens_planilha.py
 ├── services/                    ← Business logic and integrations (outside the app)
 │   ├── email_alertas.py         ← All e-mail alert functions
@@ -468,7 +510,7 @@ FontAwesome icons are loaded by `base.html`. Select2 is loaded globally and shou
 4. **`Fornecedor.nome` is the supplier name field** — there is no `nome_fantasia`.
 5. **New views must be added to `views/__init__.py`** before they can be referenced in `urls.py`.
 6. **Template CSS must not leak.** Use `:where(.prefix-page)` scoping, not bare selectors or `:root` overrides.
-7. **SQLite in dev; migrations must be backwards-safe** (no dropping columns without a transition period). Currently at migration `0071`.
+7. **SQLite in dev; migrations must be backwards-safe** (no dropping columns without a transition period). Currently at migration `0103`. **Produção roda de máquina/pasta separada com DB próprio — toda mudança de model exige aplicar o `migrate` também lá.**
 8. **Windows Task Scheduler (`schtasks`) is the scheduling mechanism** — no Celery, no Django-Q, no cron (Linux). Use the `agendar_relatorio` management command to register tasks.
 9. **AJAX views return `JsonResponse`** and must still be decorated with `@login_required`. Add them to `views/__init__.py` and `urls.py` following the same pattern as `custos_diretoria_detalhe`.
 10. **Hierarchy data comes from spreadsheet import** — never set `diretor`, `gestor`, etc. manually in the UI. Use `usuario_import_service.py` to reimport from the HR spreadsheet.

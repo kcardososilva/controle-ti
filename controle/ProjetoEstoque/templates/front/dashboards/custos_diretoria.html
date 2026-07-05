@@ -11,9 +11,19 @@
   </a>
 {% endblock %}
 
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span>Dashboards</span>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Custos por Diretoria</span>
+</nav>
+{% endblock %}
+
 {% block extra_css %}
 <style>
-:where(.cdir-page) {
+:where(.cdir-page, .cdir-drawer, .cdir-overlay) {
   --c-brand:     var(--brand,              #0071e3);
   --c-soft:      var(--brand-soft,         rgba(0,113,227,.10));
   --c-surface:   var(--bg-elevated,        #fff);
@@ -60,9 +70,10 @@
   box-shadow: var(--c-shadow);
 }
 .cdir-kpi-icon {
-  width: 40px; height: 40px; flex: 0 0 auto;
+  width: 38px; height: 38px; flex: 0 0 auto;
   display: grid; place-items: center;
-  border-radius: 12px; font-size: 17px;
+  border-radius: 11px; font-size: 15px;
+  background: var(--c-fill); color: var(--c-muted);
 }
 .cdir-kpi-body { display: flex; flex-direction: column; gap: 2px; }
 .cdir-kpi-value { font-size: 22px; font-weight: 700; line-height: 1; }
@@ -104,7 +115,7 @@
   font-size: 13px; font-weight: 700; color: var(--c-text);
   display: flex; align-items: center; gap: 8px;
 }
-.cdir-card-title i { color: var(--c-brand); font-size: 13px; }
+.cdir-card-title i { color: var(--c-muted); font-size: 13px; }
 
 .cdir-card-body { padding: 20px; }
 
@@ -394,7 +405,7 @@
   {# ── KPIs ── #}
   <div class="cdir-kpi-row">
     <div class="cdir-kpi">
-      <div class="cdir-kpi-icon" style="background:var(--c-soft);color:var(--c-brand);">
+      <div class="cdir-kpi-icon">
         <i class="fa-solid fa-sitemap"></i>
       </div>
       <div class="cdir-kpi-body">
@@ -404,7 +415,7 @@
     </div>
 
     <div class="cdir-kpi">
-      <div class="cdir-kpi-icon" style="background:rgba(52,199,89,.12);color:var(--c-green);">
+      <div class="cdir-kpi-icon">
         <i class="fa-solid fa-users"></i>
       </div>
       <div class="cdir-kpi-body">
@@ -414,7 +425,7 @@
     </div>
 
     <div class="cdir-kpi">
-      <div class="cdir-kpi-icon" style="background:rgba(88,86,214,.10);color:var(--c-purple);">
+      <div class="cdir-kpi-icon">
         <i class="fa-solid fa-key"></i>
       </div>
       <div class="cdir-kpi-body">
@@ -424,7 +435,7 @@
     </div>
 
     <div class="cdir-kpi">
-      <div class="cdir-kpi-icon" style="background:rgba(255,149,0,.12);color:var(--c-orange);">
+      <div class="cdir-kpi-icon">
         <i class="fa-solid fa-boxes-stacked"></i>
       </div>
       <div class="cdir-kpi-body">
@@ -434,7 +445,7 @@
     </div>
 
     <div class="cdir-kpi">
-      <div class="cdir-kpi-icon" style="background:rgba(90,200,250,.12);color:#5ac8fa;">
+      <div class="cdir-kpi-icon">
         <i class="fa-solid fa-computer"></i>
       </div>
       <div class="cdir-kpi-body">
@@ -444,7 +455,7 @@
     </div>
 
     <div class="cdir-kpi">
-      <div class="cdir-kpi-icon" style="background:rgba(255,59,48,.10);color:var(--c-red);">
+      <div class="cdir-kpi-icon">
         <i class="fa-solid fa-wallet"></i>
       </div>
       <div class="cdir-kpi-body">
@@ -769,8 +780,17 @@ var drawerBody = document.getElementById('cdirBody');
 var loading    = document.getElementById('cdirLoading');
 var content    = document.getElementById('cdirContent');
 var campo      = '{{ campo_grupo }}';
-var _scrollY   = 0;
 var _closeTimer = null;
+
+// Fix de posicionamento: .main-container aplica transform (animação de entrada
+// com fill-mode), o que ancoraria o position:fixed nele e faria o drawer rolar
+// junto com a página. Movemos overlay + drawer para o <body>.
+if (overlay && overlay.parentNode !== document.body) document.body.appendChild(overlay);
+if (drawer && drawer.parentNode !== document.body) document.body.appendChild(drawer);
+
+// O scroll da página ocorre no #mainContent (.main-scroll); o body tem
+// overflow:hidden. Travamos o scroll no contêiner correto (sem jump).
+var scroller = document.getElementById('mainContent') || document.scrollingElement || document.body;
 
 function fmtBRL(v) {
   return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -780,20 +800,8 @@ function esc(s) {
 }
 function isMobile() { return window.matchMedia('(max-width:559px)').matches; }
 
-function lockScroll() {
-  _scrollY = window.scrollY;
-  document.body.style.cssText += ';position:fixed;top:-' + _scrollY + 'px;left:0;right:0;overflow-y:scroll;';
-}
-function unlockScroll() {
-  var s = document.body.style.cssText;
-  document.body.style.cssText = s
-    .replace(/position\s*:[^;]+;/gi, '')
-    .replace(/top\s*:[^;]+;/gi, '')
-    .replace(/left\s*:[^;]+;/gi, '')
-    .replace(/right\s*:[^;]+;/gi, '')
-    .replace(/overflow-y\s*:[^;]+;/gi, '');
-  window.scrollTo(0, _scrollY);
-}
+function lockScroll() { if (scroller) scroller.style.overflow = 'hidden'; }
+function unlockScroll() { if (scroller) scroller.style.overflow = ''; }
 
 function openDrawer(nome, color) {
   clearTimeout(_closeTimer);

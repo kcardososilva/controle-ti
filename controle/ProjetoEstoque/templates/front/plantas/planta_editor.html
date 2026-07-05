@@ -408,6 +408,32 @@
   border-radius: 6px; padding: 1px 6px; font-size: .67rem; cursor: pointer;
 }
 
+/* ── Escala e medição ─────────────────────────────────────────────── */
+.pe-escala-pop {
+  position: fixed; z-index: 2500; top: 96px; right: 24px; width: 258px;
+  background: var(--pe-bg); border: 1px solid var(--pe-border2); border-radius: 14px;
+  box-shadow: 0 14px 44px rgba(0,0,0,.20); padding: 13px; display: none; font-size: .78rem;
+}
+.pe-escala-h { display: flex; align-items: center; gap: 8px; font-weight: 800; margin-bottom: 10px; }
+.pe-escala-h .pe-escala-val { margin-left: auto; font-weight: 700; color: var(--pe-brand); font-size: .74rem; }
+.pe-escala-pop .pe-tool-btn { width: 100%; justify-content: center; margin-top: 7px; }
+.pe-escala-row2 { display: flex; align-items: center; gap: 6px; margin-top: 9px; }
+.pe-escala-row2 input {
+  width: 66px; height: 28px; border: 1px solid var(--pe-border2);
+  border-radius: 7px; padding: 0 7px; font-size: .78rem; background: transparent;
+  color: var(--text-primary,#1d1d1f);
+}
+.pe-escala-hint { font-size: .68rem; color: var(--pe-muted); margin-top: 9px; line-height: 1.45; }
+#calibMetrosBox { display: none; flex-direction: column; gap: 4px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pe-border); }
+.pe-medir-badge {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+  background: rgba(13,148,136,.96); color: #fff; border-radius: 9px; padding: 4px 12px;
+  font-size: .74rem; font-weight: 700; display: none; align-items: center; gap: 8px; z-index: 6;
+  box-shadow: 0 4px 16px rgba(13,148,136,.35);
+}
+.pe-medir-badge.visible { display: flex; }
+.pe-medir-badge button { background: rgba(255,255,255,.22); border: none; color: #fff; border-radius: 6px; padding: 1px 7px; font-size: .67rem; cursor: pointer; }
+
 /* ── Minimapa (navegador) ─────────────────────────────────────────── */
 .pe-minimap {
   position: absolute; left: 10px; bottom: 10px; z-index: 11;
@@ -551,6 +577,9 @@
       <button class="pe-tool-btn" onclick="fitToScreen()" title="Ajustar à Tela (F)">
         <i class="fa-solid fa-expand"></i>
       </button>
+      <button class="pe-tool-btn" id="btnEscala" onclick="toggleEscalaPopover()" title="Escala e medição">
+        <i class="fa-solid fa-ruler-combined"></i> <span class="pe-tool-label">Escala</span>
+      </button>
       <button class="pe-tool-btn" onclick="exportarPNG()" title="Exportar como PNG">
         <i class="fa-solid fa-file-image"></i> <span class="pe-tool-label">PNG</span>
       </button>
@@ -574,6 +603,12 @@
       <button class="pe-tool-btn" onclick="alinhar('top')"     title="Alinhar ao Topo"><i class="fa-solid fa-arrow-up"></i>T</button>
       <button class="pe-tool-btn" onclick="alinhar('centerV')" title="Centralizar V"><i class="fa-solid fa-arrows-up-down"></i></button>
       <button class="pe-tool-btn" onclick="alinhar('bottom')"  title="Alinhar à Base"><i class="fa-solid fa-arrow-down"></i>B</button>
+    </div>
+    <!-- Distribuir (visível quando 3+ selecionados) -->
+    <div class="pe-toolbar-group" id="distribGroup" style="display:none">
+      <div class="pe-toolbar-sep"></div>
+      <button class="pe-tool-btn" onclick="distribuir('h')" title="Distribuir horizontalmente (espaçamento igual)"><i class="fa-solid fa-arrows-left-right"></i>H</button>
+      <button class="pe-tool-btn" onclick="distribuir('v')" title="Distribuir verticalmente (espaçamento igual)"><i class="fa-solid fa-arrows-up-down"></i>V</button>
     </div>
     <div class="pe-toolbar-sep"></div>
     <div class="pe-toolbar-group">
@@ -623,6 +658,39 @@
     </div>
   </div>
 
+  <!-- Popover de Escala e Medição -->
+  <div class="pe-escala-pop" id="escalaPopover">
+    <div class="pe-escala-h">
+      <i class="fa-solid fa-ruler-combined" style="color:var(--pe-brand)"></i> Escala
+      <span class="pe-escala-val" id="escalaAtual">não definida</span>
+    </div>
+    <button class="pe-tool-btn" onclick="iniciarCalibracao()">
+      <i class="fa-solid fa-ruler"></i> Calibrar (desenhar referência)
+    </button>
+    <div class="pe-escala-row2">
+      <span>1&nbsp;metro&nbsp;=</span>
+      <input type="number" id="escalaPxInput" min="0.1" step="0.1" placeholder="px"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();aplicarEscalaManual();}">
+      <span>px</span>
+      <button class="pe-tool-btn" style="width:auto;margin:0;padding:0 10px" onclick="aplicarEscalaManual()">OK</button>
+    </div>
+    <div id="calibMetrosBox">
+      <label style="font-weight:700">Comprimento real da referência:</label>
+      <div class="pe-escala-row2" style="margin-top:2px">
+        <input type="number" id="calibMetros" min="0.01" step="0.01" placeholder="metros"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();aplicarCalibracao();}">
+        <span>m</span>
+        <button class="pe-tool-btn" style="width:auto;margin:0;padding:0 10px" onclick="aplicarCalibracao()">Definir escala</button>
+      </div>
+    </div>
+    <button class="pe-tool-btn" id="btnMedir" onclick="toggleMedir()">
+      <i class="fa-solid fa-ruler-horizontal"></i> Medir distância
+    </button>
+    <div class="pe-escala-hint">
+      Calibre desenhando uma linha sobre algo de medida conhecida (ex.: uma parede de 10&nbsp;m) e informe o valor. Depois, a ferramenta <b>Medir</b> mostra distâncias reais e a régua aparece no canto.
+    </div>
+  </div>
+
   <!-- Overlay paleta mobile -->
   <div class="pe-palette-overlay" id="paletteOverlay" onclick="fecharPaletteMobile()"></div>
 
@@ -644,11 +712,41 @@
         <div class="pe-palette-dot" style="background:#8b5cf6"><i class="fa-regular fa-circle"></i></div>
         <span>Círculo / Zona</span>
       </div>
+      <div class="pe-palette-item" data-tipo="quadro" data-cor="#0891b2" data-shape="rect"
+           draggable="true" ondragstart="paletteDragStart(event)"
+           onclick="addFromPalette('quadro','#0891b2','Área',{shapeKind:'rect'})">
+        <div class="pe-palette-dot" style="background:#0891b2"><i class="fa-solid fa-square"></i></div>
+        <span>Retângulo</span>
+      </div>
+      <div class="pe-palette-item" data-tipo="quadro" data-cor="#e11d48" data-shape="diamond"
+           draggable="true" ondragstart="paletteDragStart(event)"
+           onclick="addFromPalette('quadro','#e11d48','',{shapeKind:'diamond'})">
+        <div class="pe-palette-dot" style="background:#e11d48"><i class="fa-solid fa-diamond"></i></div>
+        <span>Losango</span>
+      </div>
+      <div class="pe-palette-item" data-tipo="quadro" data-cor="#f59e0b" data-shape="triangle"
+           draggable="true" ondragstart="paletteDragStart(event)"
+           onclick="addFromPalette('quadro','#f59e0b','',{shapeKind:'triangle'})">
+        <div class="pe-palette-dot" style="background:#f59e0b"><i class="fa-solid fa-caret-up"></i></div>
+        <span>Triângulo</span>
+      </div>
+      <div class="pe-palette-item" data-tipo="quadro" data-cor="#7c3aed" data-shape="hexagon"
+           draggable="true" ondragstart="paletteDragStart(event)"
+           onclick="addFromPalette('quadro','#7c3aed','',{shapeKind:'hexagon'})">
+        <div class="pe-palette-dot" style="background:#7c3aed"><i class="fa-solid fa-draw-polygon"></i></div>
+        <span>Hexágono</span>
+      </div>
       <div class="pe-palette-item" data-tipo="linha" data-cor="#64748b"
            draggable="true" ondragstart="paletteDragStart(event)"
            onclick="addFromPalette('linha','#64748b','')">
         <div class="pe-palette-dot" style="background:#64748b"><i class="fa-solid fa-minus"></i></div>
         <span>Linha / Divisória</span>
+      </div>
+      <div class="pe-palette-item" data-tipo="linha" data-cor="#334155" data-arrow="1"
+           draggable="true" ondragstart="paletteDragStart(event)"
+           onclick="addFromPalette('linha','#334155','',{arrowEnd:true})">
+        <div class="pe-palette-dot" style="background:#334155"><i class="fa-solid fa-arrow-right"></i></div>
+        <span>Seta</span>
       </div>
 
       <div class="pe-palette-sep"></div>
@@ -702,6 +800,13 @@
         <i class="fa-solid fa-draw-polygon"></i>
         <span id="modeLabel">Clique no 1º elemento</span>
         <button onclick="sairModoLinha()">Cancelar (Esc)</button>
+      </div>
+
+      <!-- Indicador de medição / calibração -->
+      <div class="pe-medir-badge" id="medirBadge">
+        <i class="fa-solid fa-ruler"></i>
+        <span id="medirLabel">Medir</span>
+        <button onclick="sairMedir()">Sair (Esc)</button>
       </div>
 
       <!-- Zoom -->
@@ -843,15 +948,27 @@
           </div>
           <label style="margin-top:4px">Estilo da Borda</label>
           <select id="propBorderStyle" onchange="updateProp('borderStyle',this.value)">
-            <option value="dashed">Tracejada (padrão)</option>
-            <option value="solid">Sólida</option>
+            <option value="solid">Sólida (padrão)</option>
+            <option value="dashed">Tracejada</option>
             <option value="dotted">Pontilhada</option>
+          </select>
+        </div>
+
+        <!-- Formato da forma (apenas quadro) -->
+        <div class="pe-field" id="fieldShapeKind" style="display:none">
+          <label>Formato</label>
+          <select id="propShapeKind" onchange="updateProp('shapeKind',this.value)">
+            <option value="rounded">Retângulo arredondado</option>
+            <option value="rect">Retângulo</option>
+            <option value="diamond">Losango</option>
+            <option value="triangle">Triângulo</option>
+            <option value="hexagon">Hexágono</option>
           </select>
         </div>
 
         <!-- Tamanho (para formas) -->
         <div class="pe-field" id="fieldSize" style="display:none">
-          <label>Tamanho</label>
+          <label>Tamanho <span id="sizeMetersHint" style="float:right;color:var(--pe-brand);font-weight:600"></span></label>
           <div class="pe-field-row">
             <div class="pe-field">
               <label>Largura</label>
@@ -1195,6 +1312,13 @@ let modoLinha      = null;
 let lineStart      = null;
 let linePreviewMx  = null, linePreviewMy = null;
 
+// Escala e medição (escala guardada em state.canvas.scale.pxPerMeter)
+let modoMedir      = false;  // ferramenta de medição/calibração ativa
+let medirCalibrar  = false;  // se true, os 2 pontos definem a escala
+let medirPts       = [];     // pontos clicados (coords de mundo)
+let medirPreview   = null;   // ponto atual do mouse (mundo) durante a medição
+let calibDist      = 0;      // distância (px-mundo) da referência aguardando metros
+
 // Hover / seleção de conexão
 let hoverId        = null;
 let hoverCnId      = null;
@@ -1228,6 +1352,11 @@ const canvas     = document.getElementById('plantaCanvas');
 const ctx        = canvas.getContext('2d');
 const canvasWrap = document.getElementById('canvasWrap');
 
+/* Dimensões LÓGICAS da viewport (px CSS) e densidade de pixels.
+   O backing store do canvas é escalado por DPR para nitidez retina;
+   toda a matemática de render/coordenadas usa VW/VH (lógico). */
+let VW = 0, VH = 0, DPR = 1;
+
 /* ================================================================
    INICIALIZAÇÃO
    ================================================================ */
@@ -1252,12 +1381,24 @@ function init() {
     }
   });
   resizeCanvas();
+  // Abre já enquadrado no conteúdo existente (nunca ampliando além de 100%),
+  // para o usuário ver o projeto inteiro sem precisar dar zoom out manual.
+  if (state.elements.length) fitToScreen(1);
+  atualizarEscalaUI();
   pushUndo();
 }
 function resizeCanvas() {
   const r = canvasWrap.getBoundingClientRect();
-  canvas.width  = r.width;
-  canvas.height = r.height;
+  DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  VW  = Math.max(1, Math.round(r.width));
+  VH  = Math.max(1, Math.round(r.height));
+  // Backing store em pixels físicos → nitidez retina; CSS mantém tamanho lógico
+  canvas.width        = Math.round(VW * DPR);
+  canvas.height       = Math.round(VH * DPR);
+  canvas.style.width  = VW + 'px';
+  canvas.style.height = VH + 'px';
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   render();
 }
 new ResizeObserver(resizeCanvas).observe(canvasWrap);
@@ -1279,15 +1420,15 @@ function elFont(el, baseSize, weight) {
 // Tela → Mundo
 function toWorld(cx, cy) {
   return {
-    x: (cx - panX - canvas.width/2)  / zoom + state.canvas.width/2,
-    y: (cy - panY - canvas.height/2) / zoom + state.canvas.height/2,
+    x: (cx - panX - VW/2)  / zoom + state.canvas.width/2,
+    y: (cy - panY - VH/2) / zoom + state.canvas.height/2,
   };
 }
 // Mundo → Tela
 function toScreen(wx, wy) {
   return {
-    x: (wx - state.canvas.width/2)  * zoom + panX + canvas.width/2,
-    y: (wy - state.canvas.height/2) * zoom + panY + canvas.height/2,
+    x: (wx - state.canvas.width/2)  * zoom + panX + VW/2,
+    y: (wy - state.canvas.height/2) * zoom + panY + VH/2,
   };
 }
 
@@ -1295,16 +1436,18 @@ function toScreen(wx, wy) {
    RENDERIZAÇÃO
    ================================================================ */
 function render() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Base: 1 unidade lógica = DPR pixels físicos (nitidez retina em toda a cena)
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, VW, VH);
   ctx.save();
 
   // Fundo pontilhado
   ctx.fillStyle = '#eff0f5';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, VW, VH);
   drawGrid();
 
   // Transformação global
-  ctx.translate(panX + canvas.width/2, panY + canvas.height/2);
+  ctx.translate(panX + VW/2, panY + VH/2);
   ctx.scale(zoom, zoom);
   ctx.translate(-state.canvas.width/2, -state.canvas.height/2);
 
@@ -1373,6 +1516,10 @@ function render() {
   // Smart guides (em cima de tudo, coordenadas de tela)
   drawGuides();
 
+  // Escala e medição (overlays em coordenadas de tela)
+  drawMedicao();
+  drawScaleBar();
+
   // Minimapa + estado de onboarding
   drawMinimap();
   updateOnboard();
@@ -1380,12 +1527,12 @@ function render() {
 
 function drawGrid() {
   const step = 30 * zoom;
-  const ox = ((panX + canvas.width/2) % step + step) % step;
-  const oy = ((panY + canvas.height/2) % step + step) % step;
+  const ox = ((panX + VW/2) % step + step) % step;
+  const oy = ((panY + VH/2) % step + step) % step;
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,.10)';
-  for (let x = ox; x < canvas.width; x += step) {
-    for (let y = oy; y < canvas.height; y += step) {
+  for (let x = ox; x < VW; x += step) {
+    for (let y = oy; y < VH; y += step) {
       ctx.beginPath();
       ctx.arc(x, y, Math.max(0.8, 1.2 * Math.min(zoom, 1)), 0, Math.PI * 2);
       ctx.fill();
@@ -1393,6 +1540,24 @@ function drawGrid() {
   }
   ctx.restore();
 }
+
+/* Constrói o path da forma conforme o formato (shapeKind) no ctx atual */
+function shapePath(kind, x, y, w, h, r) {
+  ctx.beginPath();
+  if (kind === 'diamond') {
+    ctx.moveTo(x+w/2, y); ctx.lineTo(x+w, y+h/2); ctx.lineTo(x+w/2, y+h); ctx.lineTo(x, y+h/2); ctx.closePath();
+  } else if (kind === 'triangle') {
+    ctx.moveTo(x+w/2, y); ctx.lineTo(x+w, y+h); ctx.lineTo(x, y+h); ctx.closePath();
+  } else if (kind === 'hexagon') {
+    ctx.moveTo(x+w*0.25, y); ctx.lineTo(x+w*0.75, y); ctx.lineTo(x+w, y+h/2);
+    ctx.lineTo(x+w*0.75, y+h); ctx.lineTo(x+w*0.25, y+h); ctx.lineTo(x, y+h/2); ctx.closePath();
+  } else if (kind === 'rect') {
+    ctx.rect(x, y, w, h);
+  } else { // rounded (padrão)
+    ctx.roundRect(x, y, w, h, r);
+  }
+}
+const SHAPE_CENTERED = k => k === 'diamond' || k === 'triangle' || k === 'hexagon';
 
 /* ── Formas (Quadro / Círculo) ───────────────────────────────────── */
 function drawElementShape(el) {
@@ -1403,13 +1568,13 @@ function drawElementShape(el) {
   const isSel     = selectionIds.has(el.id);
   const isHov     = hoverId === el.id;
   const isLock    = !!el.locked;
-  // borderStyle: 'solid' | 'dashed' | 'dotted' | null (default = dashed when not sel)
-  const bStyle    = el.borderStyle || 'dashed';
+  // borderStyle: 'solid' | 'dashed' | 'dotted' | null (default = solid)
+  const bStyle    = el.borderStyle || 'solid';
   const getBorderDash = () => {
     if (isSel) return [];
-    if (bStyle === 'solid')  return [];
+    if (bStyle === 'dashed') return [6/zoom, 3/zoom];
     if (bStyle === 'dotted') return [2/zoom, 4/zoom];
-    return [6/zoom, 3/zoom]; // dashed (default)
+    return []; // solid (default)
   };
 
   ctx.save();
@@ -1424,7 +1589,8 @@ function drawElementShape(el) {
   }
 
   if (el.type === 'quadro') {
-    const rawR = el.cornerRadius ?? 10;
+    const kind = el.shapeKind || 'rounded';
+    const rawR = kind === 'rect' ? 0 : (el.cornerRadius ?? 10);
     const r  = rawR / zoom;
     const w  = el.width  || 200;
     const h  = el.height || 140;
@@ -1434,41 +1600,30 @@ function drawElementShape(el) {
     ctx.shadowBlur    = (isSel ? 18 : 10) / zoom;
     ctx.shadowOffsetY = 4 / zoom;
 
-    // Fill — sólido quando opacidade > 0.45, gradiente caso contrário
-    if (opacity >= 0.45) {
-      ctx.fillStyle = hexAlpha(cor, opacity);
-    } else {
-      const grad = ctx.createLinearGradient(el.x, el.y, el.x, el.y + h);
-      grad.addColorStop(0, hexAlpha(cor, Math.min(opacity * 2.2, 0.38)));
-      grad.addColorStop(1, hexAlpha(cor, opacity));
-      ctx.fillStyle = grad;
-    }
-    ctx.beginPath(); ctx.roundRect(el.x, el.y, w, h, r); ctx.fill();
+    // Fill — cor única e plana (sem gradiente / sem barra de título)
+    ctx.fillStyle = hexAlpha(cor, opacity);
+    shapePath(kind, el.x, el.y, w, h, r); ctx.fill();
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
     // Borda
-    ctx.strokeStyle = isSel ? borderCor : hexAlpha(borderCor, isHov ? 0.85 : 0.55);
+    ctx.strokeStyle = isSel ? borderCor : hexAlpha(borderCor, isHov ? 0.95 : 0.80);
     ctx.lineWidth   = (isSel ? bw * 1.8 : bw);
     ctx.setLineDash(getBorderDash());
-    ctx.beginPath(); ctx.roundRect(el.x, el.y, w, h, r); ctx.stroke();
+    shapePath(kind, el.x, el.y, w, h, r); ctx.stroke();
     ctx.setLineDash([]);
 
-    // Barra de título colorida no topo
-    const barH = Math.max(4/zoom, h * 0.055);
-    const bg = ctx.createLinearGradient(el.x, el.y, el.x + w, el.y);
-    bg.addColorStop(0, hexAlpha(cor, isSel ? 0.90 : 0.60));
-    bg.addColorStop(1, hexAlpha(cor, isSel ? 0.70 : 0.35));
-    ctx.beginPath(); ctx.roundRect(el.x, el.y, w, barH, [r, r, 0, 0]);
-    ctx.fillStyle = bg; ctx.fill();
-
-    // Label
+    // Label — texto simples (topo para retângulos, centro para polígonos)
     if (el.label) {
       ctx.font = elFont(el, 13, '800');
-      ctx.fillStyle    = isSel ? cor : hexAlpha(cor, .90);
-      ctx.textAlign    = 'left';
-      ctx.textBaseline = 'top';
-      const pad = 10/zoom;
-      ctx.fillText(el.label, el.x + pad, el.y + barH + pad * 0.6);
+      ctx.fillStyle    = isSel ? cor : hexAlpha(cor, .95);
+      if (SHAPE_CENTERED(kind)) {
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(el.label, el.x + w/2, el.y + h/2 + (kind==='triangle' ? h*0.18 : 0));
+      } else {
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        const pad = 10/zoom;
+        ctx.fillText(el.label, el.x + pad, el.y + pad);
+      }
     }
     if (isSel) drawSelectionOutline(el.x, el.y, w, h, r, cor);
     if (isLock) { ctx.font=`${9/zoom}px serif`; ctx.textAlign='right'; ctx.textBaseline='top'; ctx.fillText('🔒',el.x+w-5/zoom,el.y+5/zoom); }
@@ -1483,18 +1638,12 @@ function drawElementShape(el) {
     ctx.shadowBlur    = (isSel ? 18 : 10) / zoom;
     ctx.shadowOffsetY = 4 / zoom;
 
-    if (opacity >= 0.45) {
-      ctx.fillStyle = hexAlpha(cor, opacity);
-    } else {
-      const rad = ctx.createRadialGradient(cx - w/6, cy - h/6, 0, cx, cy, Math.max(w,h)/1.8);
-      rad.addColorStop(0, hexAlpha(cor, Math.min(opacity * 2.5, 0.40)));
-      rad.addColorStop(1, hexAlpha(cor, opacity));
-      ctx.fillStyle = rad;
-    }
+    // Fill — cor única e plana (sem gradiente radial)
+    ctx.fillStyle = hexAlpha(cor, opacity);
     ctx.beginPath(); ctx.ellipse(cx, cy, w/2, h/2, 0, 0, Math.PI*2); ctx.fill();
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
-    ctx.strokeStyle = isSel ? borderCor : hexAlpha(borderCor, isHov ? 0.85 : 0.55);
+    ctx.strokeStyle = isSel ? borderCor : hexAlpha(borderCor, isHov ? 0.95 : 0.80);
     ctx.lineWidth   = isSel ? bw * 1.8 : bw;
     ctx.setLineDash(getBorderDash());
     ctx.beginPath(); ctx.ellipse(cx, cy, w/2, h/2, 0, 0, Math.PI*2); ctx.stroke();
@@ -2325,7 +2474,7 @@ function drawResizeHandles(el) {
     const x2 = el.x2 ?? el.x+150, y2 = el.y2 ?? el.y;
     for (const [wx, wy] of [[el.x, el.y], [x2, y2]]) {
       const sc = toScreen(wx, wy);
-      ctx.save(); ctx.resetTransform();
+      ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       ctx.beginPath(); ctx.arc(sc.x, sc.y, HS/2 + 2, 0, Math.PI*2);
       ctx.fillStyle = '#fff';
       ctx.strokeStyle = el.color || '#6e6e73';
@@ -2339,7 +2488,7 @@ function drawResizeHandles(el) {
     const { wx, wy } = handlePos(el, name);
     const sc = toScreen(wx, wy);
     ctx.save();
-    ctx.resetTransform();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.fillStyle = '#fff';
     ctx.strokeStyle = el.color || '#0071e3';
     ctx.lineWidth = 1.5;
@@ -2409,7 +2558,7 @@ function drawAnchorHintsSutil(el) {
     const {ax, ay} = anchorPoint(el, edge);
     const sc = toScreen(ax, ay);
     ctx.save();
-    ctx.resetTransform();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.beginPath();
     ctx.arc(sc.x, sc.y, 4, 0, Math.PI*2);
     ctx.fillStyle   = 'rgba(0,113,227,0.18)';
@@ -2425,7 +2574,7 @@ function drawAnchorHints(el, activeEdge) {
     const {ax, ay} = anchorPoint(el, edge);
     const sc = toScreen(ax, ay);
     ctx.save();
-    ctx.resetTransform();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.beginPath();
     ctx.arc(sc.x, sc.y, edge === activeEdge ? 7 : 6, 0, Math.PI*2);
     ctx.fillStyle  = edge === activeEdge ? '#0071e3' : '#fff';
@@ -2580,7 +2729,7 @@ function drawConnection(cn) {
   if (isSel) {
     const sc = toScreen(mx, my);
     ctx.save();
-    ctx.resetTransform();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.font = '600 11px -apple-system,sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const badge = '× Delete para excluir  |  Duplo-clique para auto-rotear';
@@ -2617,7 +2766,7 @@ function drawRubberBand() {
   if (!rubberBand) return;
   const {x0,y0,x1,y1} = rubberBand;
   ctx.save();
-  ctx.resetTransform();
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.strokeStyle = '#0071e3';
   ctx.fillStyle   = 'rgba(0,113,227,.06)';
   ctx.lineWidth   = 1.5;
@@ -2806,6 +2955,12 @@ canvas.addEventListener('mousedown', e => {
   const cy = e.clientY - rect.top;
   const { x: wx, y: wy } = toWorld(cx, cy);
 
+  /* ── Modo Medição / Calibração ── */
+  if (modoMedir && e.button === 0) {
+    registrarPontoMedicao(wx, wy);
+    return;
+  }
+
   /* ── Modo Linha ── */
   if (modoLinha) {
     const hit = hitTestElement(wx, wy);
@@ -2972,6 +3127,13 @@ canvas.addEventListener('mousemove', e => {
   const cy = e.clientY - rect.top;
   const { x: wx, y: wy } = toWorld(cx, cy);
   linePreviewMx = wx; linePreviewMy = wy;
+
+  /* Modo Medição — preview do segmento ativo */
+  if (modoMedir && medirPts.length === 1) {
+    medirPreview = { x: wx, y: wy };
+    render();
+    return;
+  }
 
   /* Drag endpoint de conexão */
   if (draggingCnEndpoint) { render(); return; }
@@ -3161,12 +3323,12 @@ canvas.addEventListener('wheel', e => {
   const rect = canvas.getBoundingClientRect();
   const cx = e.clientX - rect.left;
   const cy = e.clientY - rect.top;
-  const wx = (cx - panX - canvas.width/2) / zoom + state.canvas.width/2;
-  const wy = (cy - panY - canvas.height/2) / zoom + state.canvas.height/2;
+  const wx = (cx - panX - VW/2) / zoom + state.canvas.width/2;
+  const wy = (cy - panY - VH/2) / zoom + state.canvas.height/2;
   const factor = e.deltaY < 0 ? 1.1 : 0.9;
   zoom = Math.max(0.15, Math.min(4, zoom * factor));
-  panX = cx - canvas.width/2  - (wx - state.canvas.width/2)  * zoom;
-  panY = cy - canvas.height/2 - (wy - state.canvas.height/2) * zoom;
+  panX = cx - VW/2  - (wx - state.canvas.width/2)  * zoom;
+  panY = cy - VH/2 - (wy - state.canvas.height/2) * zoom;
   document.getElementById('zoomLabel').textContent = Math.round(zoom*100)+'%';
   render();
 }, { passive: false });
@@ -3231,7 +3393,8 @@ document.addEventListener('keydown', e => {
   const inp = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
 
   if (e.key === 'Escape') {
-    if (modoLinha) sairModoLinha();
+    if (modoMedir) sairMedir();
+    else if (modoLinha) sairModoLinha();
     else { limparSelecao(); selectedCnId = null; fecharPainel(); fecharCtx(); render(); }
   }
 
@@ -3331,14 +3494,19 @@ function cursorForHandle(name) {
 /* ================================================================
    ADICIONAR ELEMENTOS
    ================================================================ */
-function addFromPalette(tipo, cor, label) {
-  const x = state.canvas.width/2  + (Math.random()-.5)*220 - (IS_FORMA(tipo) ? 100 : 30);
-  const y = state.canvas.height/2 + (Math.random()-.5)*180 - (IS_FORMA(tipo) ? 70  : 30);
-  adicionarElemento(tipo, cor, label, x, y);
+function addFromPalette(tipo, cor, label, extra) {
+  // Novo elemento aparece no centro da área visível (não no centro fixo do mundo),
+  // para acompanhar onde o usuário está construindo — sem precisar "achar" o item.
+  const c = toWorld(VW/2, VH/2);
+  const halfW = IS_FORMA(tipo) ? (tipo==='circulo'?60:100) : 30;
+  const halfH = IS_FORMA(tipo) ? (tipo==='circulo'?60:70)  : 30;
+  const x = c.x - halfW + (Math.random()-.5)*30;
+  const y = c.y - halfH + (Math.random()-.5)*30;
+  adicionarElemento(tipo, cor, label, x, y, extra);
   fecharPaletteMobile();
 }
 
-function adicionarElemento(tipo, cor, label, x, y) {
+function adicionarElemento(tipo, cor, label, x, y, extra) {
   const isLinha = tipo === 'linha';
   const w = isLinha ? 0 : (IS_FORMA(tipo) ? (tipo==='circulo'?120:200) : (tipo==='camera'?56 : tipo==='fonte'?40 : 60));
   const h = isLinha ? 0 : (IS_FORMA(tipo) ? (tipo==='circulo'?120:140) : (tipo==='camera'?56 : tipo==='fonte'?40 : 60));
@@ -3348,9 +3516,11 @@ function adicionarElemento(tipo, cor, label, x, y) {
     id: 'e' + Date.now() + Math.random().toString(36).slice(2,6),
     type: tipo, label: label, x, y, width: w, height: h, zIndex: nextZ,
     color: cor, item_id: null, prtg_objid: null, ip: '', observacoes: '',
-    fillOpacity: IS_FORMA(tipo) && !isLinha ? 0.08 : undefined,
+    fillOpacity: IS_FORMA(tipo) && !isLinha ? 0.12 : undefined,
+    borderStyle: IS_FORMA(tipo) && !isLinha ? 'solid' : undefined,
   };
   if (isLinha) { el.x2 = x + 150; el.y2 = y; el.strokeWidth = 2; el.dash = 'solid'; el.arrowEnd = false; }
+  if (extra) Object.assign(el, extra);
   state.elements.push(el);
   selectionIds.clear(); selectionIds.add(el.id);
   atualizarPainel(el); updateSelBar();
@@ -3359,14 +3529,18 @@ function adicionarElemento(tipo, cor, label, x, y) {
 
 /* Drag da paleta */
 function paletteDragStart(e) {
-  paletteDrag = { tipo: e.currentTarget.dataset.tipo, cor: e.currentTarget.dataset.cor,
-                  label: TIPOS[e.currentTarget.dataset.tipo]?.label || '' };
+  const d = e.currentTarget.dataset;
+  const extra = {};
+  if (d.shape) extra.shapeKind = d.shape;
+  if (d.arrow) extra.arrowEnd  = true;
+  paletteDrag = { tipo: d.tipo, cor: d.cor,
+                  label: TIPOS[d.tipo]?.label || '', extra };
 }
 function paletteDrop(e) {
   if (!paletteDrag) return;
   const rect = canvas.getBoundingClientRect();
   const { x: wx, y: wy } = toWorld(e.clientX-rect.left, e.clientY-rect.top);
-  adicionarElemento(paletteDrag.tipo, paletteDrag.cor, paletteDrag.label, wx, wy);
+  adicionarElemento(paletteDrag.tipo, paletteDrag.cor, paletteDrag.label, wx, wy, paletteDrag.extra);
   paletteDrag = null;
 }
 
@@ -3396,6 +3570,7 @@ function updateSelBar() {
     bar.classList.remove('visible');
     alignGroup.style.display = 'none';
   }
+  document.getElementById('distribGroup').style.display = (n >= 3) ? '' : 'none';
 }
 
 /* ================================================================
@@ -3472,7 +3647,8 @@ function atualizarPainel(el) {
   document.getElementById('fieldOpacity').style.display = isArea ? '' : 'none';
   document.getElementById('fieldBorda').style.display   = isArea ? '' : 'none';
   document.getElementById('fieldSize').style.display    = isArea ? '' : 'none';
-  document.getElementById('fieldRadius').style.display  = (el.type === 'quadro') ? '' : 'none';
+  document.getElementById('fieldShapeKind').style.display = (el.type === 'quadro') ? '' : 'none';
+  document.getElementById('fieldRadius').style.display  = (el.type === 'quadro' && (el.shapeKind || 'rounded') === 'rounded') ? '' : 'none';
   document.getElementById('fieldItem').style.display    = isForma ? 'none' : '';
   document.getElementById('fieldPrtg').style.display    = isForma ? 'none' : '';
   document.getElementById('fieldIp').style.display      = isForma ? 'none' : '';
@@ -3508,6 +3684,7 @@ function atualizarPainel(el) {
     document.getElementById('propOpacity').value = el.fillOpacity ?? 0.12;
     updatePropSizeFields(el);
     if (el.type === 'quadro') {
+      document.getElementById('propShapeKind').value = el.shapeKind || 'rounded';
       const rv = el.cornerRadius ?? 10;
       document.getElementById('propRadius').value = rv;
       document.getElementById('radiusVal').textContent = rv;
@@ -3520,7 +3697,7 @@ function atualizarPainel(el) {
       const bw2 = el.borderWidth ?? 2;
       document.getElementById('propBorderWidth').value     = bw2;
       document.getElementById('borderWidthVal').textContent = bw2;
-      document.getElementById('propBorderStyle').value     = el.borderStyle || 'dashed';
+      document.getElementById('propBorderStyle').value     = el.borderStyle || 'solid';
     }
   } else {
     document.getElementById('propIp').value  = el.ip || '';
@@ -3554,6 +3731,9 @@ function updatePropSizeFields(elArg) {
   if (!el) return;
   document.getElementById('propWidth').value  = Math.round(el.width  || 60);
   document.getElementById('propHeight').value = Math.round(el.height || 60);
+  const hint = document.getElementById('sizeMetersHint');
+  if (hint) hint.textContent = escalaPxPorMetro() > 0
+    ? (fmtMedida(el.width || 60) + ' × ' + fmtMedida(el.height || 60)) : '';
 }
 function fecharPainel() {
   document.getElementById('propsEmpty').style.display = '';
@@ -3567,6 +3747,9 @@ function updateProp(campo, valor) {
     if (el) el[campo] = valor;
   });
   if (campo === 'color') document.getElementById('propColorHex').textContent = valor;
+  if (campo === 'shapeKind') {
+    document.getElementById('fieldRadius').style.display = (valor === 'rounded') ? '' : 'none';
+  }
   agendarSave(); render();
 }
 function excluirSelecionado() { excluirSelecao(); }
@@ -4099,7 +4282,7 @@ function moverSelecao(dx, dy) {
   render(); agendarSave();
 }
 
-function fitToScreen() {
+function fitToScreen(maxZoom = 3) {
   if (!state.elements.length) { zoom=1; panX=0; panY=0; document.getElementById('zoomLabel').textContent='100%'; render(); return; }
   const pad = 60;
   const xs = state.elements.flatMap(e => e.type==='linha' ? [e.x, e.x2??e.x+150] : [e.x]);
@@ -4107,9 +4290,9 @@ function fitToScreen() {
   const xe = state.elements.flatMap(e => e.type==='linha' ? [e.x, e.x2??e.x+150] : [e.x+(e.width||60)]);
   const ye = state.elements.flatMap(e => e.type==='linha' ? [e.y, e.y2??e.y]      : [e.y+(e.height||60)]);
   const minX=Math.min(...xs), minY=Math.min(...ys), maxX=Math.max(...xe), maxY=Math.max(...ye);
-  const zx = (canvas.width  - pad*2) / Math.max(1, maxX - minX);
-  const zy = (canvas.height - pad*2) / Math.max(1, maxY - minY);
-  zoom = Math.max(0.15, Math.min(3, Math.min(zx, zy)));
+  const zx = (VW - pad*2) / Math.max(1, maxX - minX);
+  const zy = (VH - pad*2) / Math.max(1, maxY - minY);
+  zoom = Math.max(0.15, Math.min(maxZoom, Math.min(zx, zy)));
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
   panX = -(cx - state.canvas.width/2)  * zoom;
   panY = -(cy - state.canvas.height/2) * zoom;
@@ -4176,6 +4359,191 @@ function alinhar(tipo) {
     if (tipo==='centerV') el.y = cY - h/2;
   });
   pushUndo(); agendarSave(); render();
+}
+
+/* Distribuir com espaçamento igual entre as bordas (mantém 1º e último fixos) */
+function distribuir(eixo) {
+  const els = state.elements.filter(e => selectionIds.has(e.id) && e.type !== 'linha');
+  if (els.length < 3) return;
+  if (eixo === 'h') {
+    els.sort((a,b) => a.x - b.x);
+    const start = els[0].x;
+    const end   = els[els.length-1].x + (els[els.length-1].width || 60);
+    const soma  = els.reduce((s,e) => s + (e.width || 60), 0);
+    const gap   = (end - start - soma) / (els.length - 1);
+    let cur = start;
+    els.forEach(el => { el.x = Math.round(cur); cur += (el.width || 60) + gap; });
+  } else {
+    els.sort((a,b) => a.y - b.y);
+    const start = els[0].y;
+    const end   = els[els.length-1].y + (els[els.length-1].height || 60);
+    const soma  = els.reduce((s,e) => s + (e.height || 60), 0);
+    const gap   = (end - start - soma) / (els.length - 1);
+    let cur = start;
+    els.forEach(el => { el.y = Math.round(cur); cur += (el.height || 60) + gap; });
+  }
+  pushUndo(); agendarSave(); render();
+}
+
+/* ================================================================
+   ESCALA E MEDIÇÃO
+   ================================================================ */
+function escalaPxPorMetro() {
+  return (state.canvas && state.canvas.scale && state.canvas.scale.pxPerMeter) || 0;
+}
+function fmtMedida(worldDist) {
+  const ppm = escalaPxPorMetro();
+  if (ppm > 0) {
+    const m = worldDist / ppm;
+    if (m >= 1000) return (m/1000).toFixed(2).replace('.',',') + ' km';
+    if (m < 1)     return Math.round(m*100) + ' cm';
+    return m.toFixed(2).replace('.',',') + ' m';
+  }
+  return Math.round(worldDist) + ' px';
+}
+function toggleEscalaPopover() {
+  const p = document.getElementById('escalaPopover');
+  const mostrar = getComputedStyle(p).display === 'none';
+  p.style.display = mostrar ? 'block' : 'none';
+  if (mostrar) { atualizarEscalaUI(); }
+  else if (calibDist > 0) { calibDist = 0; medirPts = []; atualizarEscalaUI(); render(); }
+}
+function atualizarEscalaUI() {
+  const ppm = escalaPxPorMetro();
+  const lbl = document.getElementById('escalaAtual');
+  if (lbl) lbl.textContent = ppm > 0 ? (ppm.toFixed(1).replace('.',',') + ' px/m') : 'não definida';
+  const inp = document.getElementById('escalaPxInput');
+  if (inp && ppm > 0 && document.activeElement !== inp) inp.value = ppm.toFixed(1);
+  const box = document.getElementById('calibMetrosBox');
+  if (box) box.style.display = (calibDist > 0) ? 'flex' : 'none';
+  const btnM = document.getElementById('btnMedir');
+  if (btnM) btnM.classList.toggle('active', modoMedir && !medirCalibrar);
+}
+function setEscala(pxPerMeter) {
+  if (!(pxPerMeter > 0)) return;
+  if (!state.canvas) state.canvas = { width:1400, height:900 };
+  state.canvas.scale = { pxPerMeter: pxPerMeter };
+  agendarSave(); atualizarEscalaUI(); render();
+}
+function aplicarEscalaManual() {
+  const v = parseFloat(document.getElementById('escalaPxInput').value);
+  if (v > 0) { setEscala(v); mostrarToast('Escala definida'); }
+}
+function mostrarBadgeMedir(txt) {
+  document.getElementById('medirLabel').textContent = txt;
+  document.getElementById('medirBadge').classList.add('visible');
+}
+function esconderBadgeMedir() {
+  document.getElementById('medirBadge').classList.remove('visible');
+}
+function iniciarCalibracao() {
+  modoMedir = true; medirCalibrar = true; medirPts = []; medirPreview = null; calibDist = 0;
+  document.getElementById('calibMetrosBox').style.display = 'none';
+  mostrarBadgeMedir('Calibração: clique 2 pontos de distância conhecida');
+  canvas.style.cursor = 'crosshair';
+  atualizarEscalaUI(); render();
+}
+function toggleMedir() {
+  if (modoMedir && !medirCalibrar) { sairMedir(); return; }
+  modoMedir = true; medirCalibrar = false; medirPts = []; medirPreview = null; calibDist = 0;
+  mostrarBadgeMedir('Medir: clique 2 pontos. Esc para sair');
+  canvas.style.cursor = 'crosshair';
+  document.getElementById('escalaPopover').style.display = 'none';
+  atualizarEscalaUI(); render();
+}
+function sairMedir() {
+  modoMedir = false; medirCalibrar = false;
+  if (calibDist === 0) medirPts = [];   // mantém o segmento se ainda aguarda os metros
+  medirPreview = null;
+  esconderBadgeMedir();
+  canvas.style.cursor = 'default';
+  atualizarEscalaUI(); render();
+}
+function registrarPontoMedicao(wx, wy) {
+  if (medirPts.length >= 2) { medirPts = []; calibDist = 0; }
+  medirPts.push({ x: wx, y: wy });
+  if (medirPts.length === 2 && medirCalibrar) {
+    const a = medirPts[0], b = medirPts[1];
+    calibDist = Math.hypot(b.x-a.x, b.y-a.y);
+    modoMedir = false; medirCalibrar = false;
+    esconderBadgeMedir();
+    canvas.style.cursor = 'default';
+    document.getElementById('escalaPopover').style.display = 'block';
+    setTimeout(() => { const c = document.getElementById('calibMetros'); if (c) c.focus(); }, 30);
+  }
+  atualizarEscalaUI(); render();
+}
+function aplicarCalibracao() {
+  const m = parseFloat(document.getElementById('calibMetros').value);
+  if (m > 0 && calibDist > 0) {
+    setEscala(calibDist / m);
+    mostrarToast('Escala calibrada com sucesso!');
+  }
+  calibDist = 0; medirPts = [];
+  document.getElementById('calibMetros').value = '';
+  atualizarEscalaUI(); render();
+}
+
+/* Overlay: segmento de medição + rótulo (coords de tela) */
+function drawMedicao() {
+  if (!medirPts.length) return;
+  ctx.save();
+  const teal = '#0d9488';
+  const pts = medirPts.map(p => toScreen(p.x, p.y));
+  let previewSc = null;
+  if (modoMedir && medirPts.length === 1 && medirPreview) previewSc = toScreen(medirPreview.x, medirPreview.y);
+  const seg = previewSc ? [pts[0], previewSc] : pts.slice(0, 2);
+  if (seg.length === 2) {
+    ctx.strokeStyle = teal; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+    ctx.beginPath(); ctx.moveTo(seg[0].x, seg[0].y); ctx.lineTo(seg[1].x, seg[1].y); ctx.stroke();
+    ctx.setLineDash([]);
+    seg.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fillStyle = teal; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke(); });
+    const wa = medirPts[0];
+    const wb = previewSc ? medirPreview : medirPts[1];
+    const wd = Math.hypot(wb.x - wa.x, wb.y - wa.y);
+    const txt = fmtMedida(wd);
+    const mx = (seg[0].x + seg[1].x) / 2, my = (seg[0].y + seg[1].y) / 2;
+    ctx.font = '700 12px -apple-system,system-ui,sans-serif';
+    const tw = ctx.measureText(txt).width + 14;
+    ctx.fillStyle = teal;
+    ctx.beginPath(); ctx.roundRect(mx - tw/2, my - 24, tw, 20, 6); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(txt, mx, my - 14);
+  } else {
+    const p = seg[0];
+    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fillStyle = teal; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* Overlay: régua/barra de escala (canto inferior direito) */
+function drawScaleBar() {
+  const ppm = escalaPxPorMetro();
+  if (ppm <= 0) return;
+  ctx.save();
+  const pxPerMeterScreen = ppm * zoom;
+  if (!(pxPerMeterScreen > 0) || !isFinite(pxPerMeterScreen)) { ctx.restore(); return; }
+  const targetPx = 120;
+  const bruto = targetPx / pxPerMeterScreen;
+  const pow = Math.pow(10, Math.floor(Math.log10(bruto)));
+  const cand = [1, 2, 5, 10].map(m => m * pow);
+  const metros = cand.reduce((best, c) =>
+    Math.abs(c*pxPerMeterScreen - targetPx) < Math.abs(best*pxPerMeterScreen - targetPx) ? c : best, cand[0]);
+  const barPx = metros * pxPerMeterScreen;
+  const x = VW - barPx - 26, y = VH - 22;
+  ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(x - 12, y - 20, barPx + 24, 32, 8); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = '#1d1d1f'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 5); ctx.lineTo(x, y + 2);
+  ctx.moveTo(x, y); ctx.lineTo(x + barPx, y);
+  ctx.moveTo(x + barPx, y - 5); ctx.lineTo(x + barPx, y + 2);
+  ctx.stroke();
+  const lbl = metros >= 1000 ? (metros/1000) + ' km' : metros + ' m';
+  ctx.fillStyle = '#1d1d1f'; ctx.font = '700 11px -apple-system,system-ui,sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  ctx.fillText(lbl, x + barPx/2, y - 6);
+  ctx.restore();
 }
 
 /* ================================================================
@@ -4396,7 +4764,7 @@ function computeGuides() {
 function drawGuides() {
   if (!dragGuides.length) return;
   ctx.save();
-  ctx.resetTransform();
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
   // Linhas de alinhamento (vermelho)
   ctx.strokeStyle = 'rgba(255,59,48,.8)';
@@ -4405,10 +4773,10 @@ function drawGuides() {
   dragGuides.filter(g => g.type === 'v' || g.type === 'h').forEach(g => {
     if (g.type === 'v') {
       const sc = toScreen(g.pos, 0);
-      ctx.beginPath(); ctx.moveTo(sc.x, 0); ctx.lineTo(sc.x, canvas.height); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sc.x, 0); ctx.lineTo(sc.x, VH); ctx.stroke();
     } else {
       const sc = toScreen(0, g.pos);
-      ctx.beginPath(); ctx.moveTo(0, sc.y); ctx.lineTo(canvas.width, sc.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, sc.y); ctx.lineTo(VW, sc.y); ctx.stroke();
     }
   });
   ctx.setLineDash([]);
@@ -4496,7 +4864,7 @@ function drawMinimap() {
   // Limites = conteúdo unido à área visível atual (mantém o viewport sempre dentro)
   const b  = contentBounds();
   const tl = toWorld(0, 0);
-  const br = toWorld(canvas.width, canvas.height);
+  const br = toWorld(VW, VH);
   let minX = Math.min(b.minX, tl.x), minY = Math.min(b.minY, tl.y);
   let maxX = Math.max(b.maxX, br.x), maxY = Math.max(b.maxY, br.y);
   const PAD = 30;
@@ -4593,7 +4961,7 @@ function updateOnboard() {
 
 const MODELOS = {
   rack: (cx, cy) => {
-    const area   = { t:'quadro', l:'Sala de Rack', x:cx-200, y:cy-160, ex:{ width:400, height:320, color:'#475569', fillOpacity:0.07 } };
+    const area   = { t:'quadro', l:'Sala de Rack', x:cx-200, y:cy-160, ex:{ width:400, height:320, color:'#475569', fillOpacity:0.12, borderStyle:'solid' } };
     const switchEl = { t:'switch',  l:'Switch Core', x:cx-120, y:cy-110 };
     const rack     = { t:'rack',    l:'Rack 42U',    x:cx-30,  y:cy-20  };
     const nobreak  = { t:'nobreak', l:'Nobreak',     x:cx+90,  y:cy+70  };
@@ -4621,7 +4989,7 @@ const MODELOS = {
              names:{sw, c1, c2, c3, c4} };
   },
   vazio: (cx, cy) => {
-    const area = { t:'quadro', l:'Nova Área', x:cx-200, y:cy-130, ex:{ width:400, height:260, color:'#8b5cf6', fillOpacity:0.07 } };
+    const area = { t:'quadro', l:'Nova Área', x:cx-200, y:cy-130, ex:{ width:400, height:260, color:'#8b5cf6', fillOpacity:0.12, borderStyle:'solid' } };
     return { els:[area], links:[], names:{} };
   },
 };

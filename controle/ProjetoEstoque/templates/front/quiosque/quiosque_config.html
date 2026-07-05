@@ -4,76 +4,147 @@
 {% block page_title %}Configurar dispositivo{% endblock %}
 {% block page_subtitle %}{{ device.apelido|default:device.modelo }} · as alterações são aplicadas no próximo check-in{% endblock %}
 
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'quiosque_dashboard' %}">Quiosque</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'quiosque_detalhe' device.pk %}">{{ device.apelido|default:device.modelo|default:"Dispositivo" }}</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Configurar</span>
+</nav>
+{% endblock %}
+
 {% block header_actions %}
-  <a href="{% url 'quiosque_detalhe' device.pk %}" class="btn btn-sm btn-light"><i class="fa fa-arrow-left"></i> Voltar</a>
+  <a href="{% url 'quiosque_detalhe' device.pk %}" class="btn btn-sm"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
 {% endblock %}
 
 {% block extra_css %}
 <style>
-:where(.kq-cfg) { --kq-brand:#4f46e5; }
 .kq-cfg, .kq-cfg * { box-sizing:border-box; min-width:0; }
-.kq-cfg { display:grid; gap:1rem; max-width:760px; }
-.kq-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); }
-.kq-card-body { padding:1.2rem 1.25rem; display:grid; gap:1.1rem; }
-.kq-field { display:flex; flex-direction:column; gap:.35rem; }
-.kq-field label { font-size:.74rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
-.kq-field .hint { font-size:.78rem; color:var(--text-tertiary); }
-.kq-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:1.1rem; }
-@media (max-width:560px){ .kq-grid2{ grid-template-columns:1fr; } }
-.kq-check { display:flex; align-items:center; gap:.55rem; font-weight:600; color:var(--text-primary); }
-.kq-actions { display:flex; gap:.6rem; justify-content:flex-end; }
-textarea.form-control { min-height:120px; font-family:var(--font-mono,ui-monospace,Consolas,monospace); font-size:.85rem; }
+.kq-cfg { display:grid; gap:16px; max-width:820px; margin:0 auto; }
 
-/* Inventário de apps → checkbox de liberação */
-.kq-appbar { display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; }
-.kq-appbar .form-control { flex:1 1 220px; min-width:0; }
-.kq-appcount { font-size:.78rem; color:var(--text-tertiary); font-weight:600; white-space:nowrap; }
-.kq-appcount b { color:var(--kq-brand); }
-.kq-applist { display:grid; gap:.3rem; max-height:340px; overflow-y:auto; padding:.5rem; border:1px solid var(--separator-hairline); border-radius:var(--radius-lg); background:var(--bg-fill-secondary); }
-.kq-app { display:flex; align-items:center; gap:.6rem; padding:.45rem .55rem; border-radius:var(--radius-md); cursor:pointer; }
+.kq-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-lg); box-shadow:var(--shadow-xs); overflow:hidden; }
+.kq-card-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; border-bottom:1px solid var(--separator-hairline); }
+.kq-card-title { display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:600; letter-spacing:-.01em; color:var(--text-primary); }
+.kq-card-title i { color:var(--text-tertiary); font-size:13px; }
+.kq-card-sub { font-size:12px; color:var(--text-tertiary); font-weight:500; }
+.kq-card-sub b { color:var(--brand); font-variant-numeric:tabular-nums; }
+.kq-card-body { padding:16px; display:grid; gap:16px; }
+
+.kq-field { display:grid; gap:6px; }
+.kq-field > label { font-size:12.5px; font-weight:600; color:var(--text-secondary); }
+.kq-field .hint { font-size:12px; color:var(--text-tertiary); line-height:1.5; }
+.kq-field .form-control { min-height:38px; }
+.kq-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media (max-width:560px){ .kq-grid2{ grid-template-columns:1fr; } }
+.kq-ok-chip { display:inline-flex; align-items:center; gap:4px; margin-left:6px; padding:1px 8px; border-radius:99px;
+  font-size:11px; font-weight:600; text-transform:none; letter-spacing:0; color:var(--success); background:var(--success-soft); }
+
+/* toggle (apenas Wi-Fi) como linha selecionável */
+.kq-toggle { display:flex; align-items:flex-start; gap:11px; padding:11px 13px; border:1px solid var(--separator-non-opaque);
+  border-radius:var(--radius-md); background:var(--bg-elevated); cursor:pointer; transition:border-color var(--transition-fast), background var(--transition-fast); }
+.kq-toggle:hover { border-color:var(--separator-strong); }
+.kq-toggle:has(input:checked) { border-color:color-mix(in srgb,var(--brand) 32%,transparent); background:var(--brand-soft); }
+.kq-toggle input { flex:0 0 auto; width:17px; height:17px; margin-top:1px; accent-color:var(--brand); cursor:pointer; }
+.kq-toggle-txt { display:grid; gap:3px; }
+.kq-toggle-txt b { font-size:13px; font-weight:600; color:var(--text-primary); }
+
+textarea.form-control { min-height:110px; font-family:var(--font-mono); font-size:12.5px; line-height:1.6; }
+
+/* inventário de apps */
+.kq-appbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.kq-appsearch { display:flex; align-items:center; gap:8px; height:36px; padding:0 11px; flex:1 1 220px; min-width:0;
+  border-radius:var(--radius-md); background:var(--bg-elevated); border:1px solid var(--separator-non-opaque);
+  transition:border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.kq-appsearch:focus-within { border-color:var(--brand); box-shadow:0 0 0 3px var(--brand-ring); }
+.kq-appsearch i { color:var(--text-tertiary); font-size:12px; }
+.kq-appsearch input { flex:1; min-width:0; border:0; background:none; outline:none; font-size:13px; color:var(--text-primary); }
+.kq-appbtns { display:flex; gap:6px; }
+.kq-appbtn { height:30px; padding:0 11px; border-radius:var(--radius-sm); border:1px solid var(--separator-non-opaque);
+  background:var(--bg-elevated); color:var(--text-secondary); font-size:12px; font-weight:500; cursor:pointer; transition:all var(--transition-fast); }
+.kq-appbtn:hover { background:var(--bg-hover); border-color:var(--separator-strong); color:var(--text-primary); }
+
+.kq-applist { display:grid; gap:3px; max-height:340px; overflow-y:auto; padding:6px; margin-top:2px;
+  border:1px solid var(--separator-hairline); border-radius:var(--radius-md); background:var(--bg-page-2); }
+.kq-app { display:flex; align-items:center; gap:11px; padding:8px 10px; border-radius:var(--radius-sm); cursor:pointer;
+  border:1px solid transparent; transition:background var(--transition-fast), border-color var(--transition-fast); }
 .kq-app:hover { background:var(--bg-elevated); }
-.kq-app input { flex:0 0 auto; width:1.05rem; height:1.05rem; accent-color:var(--kq-brand); }
-.kq-app-info { display:flex; flex-direction:column; gap:.1rem; min-width:0; }
-.kq-app-nome { font-size:.86rem; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:.4rem; }
-.kq-app-pkg { font-size:.72rem; color:var(--text-tertiary); font-family:var(--font-mono,ui-monospace,Consolas,monospace); word-break:break-all; }
-.kq-app-sys { font-size:.6rem; text-transform:uppercase; letter-spacing:.04em; font-weight:700; color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px solid var(--separator-hairline); border-radius:var(--radius-pill); padding:.05rem .4rem; }
+.kq-app:has(input:checked) { background:var(--bg-elevated); border-color:var(--separator-hairline); }
+.kq-app input { flex:0 0 auto; width:17px; height:17px; accent-color:var(--brand); cursor:pointer; }
+.kq-app-info { display:grid; gap:2px; min-width:0; }
+.kq-app-nome { font-size:13px; font-weight:500; color:var(--text-primary); display:flex; align-items:center; gap:7px; }
+.kq-app-pkg { font-size:11px; color:var(--text-tertiary); font-family:var(--font-mono); word-break:break-all; }
+.kq-app-sys { font-size:9.5px; text-transform:uppercase; letter-spacing:.04em; font-weight:600; color:var(--text-tertiary);
+  background:var(--bg-fill-tertiary); border-radius:99px; padding:1px 7px; }
 .kq-app.is-hidden { display:none; }
-.kq-app-empty { display:flex; gap:.6rem; align-items:flex-start; font-size:.82rem; color:var(--text-tertiary); background:var(--bg-fill-secondary); border:1px dashed var(--separator-hairline); border-radius:var(--radius-lg); padding:.8rem .9rem; line-height:1.5; }
-.kq-app-empty i { color:var(--kq-brand); margin-top:.15rem; }
+.kq-app-empty { display:flex; gap:10px; align-items:flex-start; font-size:12.5px; color:var(--text-tertiary); background:var(--bg-page-2);
+  border:1px dashed var(--separator-non-opaque); border-radius:var(--radius-md); padding:12px 14px; line-height:1.55; }
+.kq-app-empty i { color:var(--text-quaternary); margin-top:2px; }
+
+/* barra de salvar fixa */
+.kq-savebar { position:sticky; bottom:16px; z-index:5; display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+  margin-top:2px; padding:12px 16px; background:var(--bg-elevated); border:1px solid var(--separator-non-opaque);
+  border-radius:var(--radius-lg); box-shadow:var(--shadow-md); }
+.kq-savehint { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-tertiary); }
+.kq-savehint i { color:var(--text-quaternary); }
+.kq-saveactions { display:flex; gap:8px; }
 </style>
 {% endblock %}
 
 {% block content %}
 <form method="post" class="kq-cfg">
   {% csrf_token %}
-  <div class="kq-card"><div class="kq-card-body">
 
-    <div class="kq-field">
-      <label for="apelido">Apelido</label>
-      <input id="apelido" name="apelido" type="text" class="form-control" value="{{ device.apelido }}" placeholder="Ex.: Celular Portaria 01">
-    </div>
-
-    <div class="kq-grid2">
+  <!-- identificação & conexão -->
+  <div class="kq-card">
+    <div class="kq-card-head"><span class="kq-card-title"><i class="fa-solid fa-sliders"></i>Identificação &amp; conexão</span></div>
+    <div class="kq-card-body">
       <div class="kq-field">
-        <label for="intervalo_checkin_seg">Intervalo de check-in (segundos)</label>
-        <input id="intervalo_checkin_seg" name="intervalo_checkin_seg" type="number" min="5" max="300" step="5" class="form-control" value="{{ device.intervalo_checkin_seg }}">
-        <span class="hint">Use 5s para acompanhar ao vivo; 300s economiza bateria/dados. O app aceita de 5 a 300s (valores fora da faixa são ajustados no dispositivo).</span>
+        <label for="apelido">Apelido</label>
+        <input id="apelido" name="apelido" type="text" class="form-control" value="{{ device.apelido }}" placeholder="Ex.: Celular Portaria 01">
       </div>
-      <div class="kq-field">
-        <label>Conexão</label>
-        <label class="kq-check"><input type="checkbox" name="wifi_only" {% if device.wifi_only %}checked{% endif %}> Permitir apenas Wi-Fi</label>
-        <span class="hint">Marcado: o app só transmite no Wi-Fi e bloqueia a rede móvel. Desmarque para aparelhos com chip — libera dados móveis e o atalho "Dados móveis" no quiosque.</span>
+
+      <div class="kq-grid2">
+        <div class="kq-field">
+          <label for="intervalo_checkin_seg">Intervalo de check-in (segundos)</label>
+          <input id="intervalo_checkin_seg" name="intervalo_checkin_seg" type="number" min="5" max="300" step="5" class="form-control" value="{{ device.intervalo_checkin_seg }}">
+          <span class="hint">5s acompanha ao vivo; 300s economiza bateria/dados. O app aceita de 5 a 300s.</span>
+        </div>
+        <div class="kq-field">
+          <label>Conexão</label>
+          <label class="kq-toggle">
+            <input type="checkbox" name="wifi_only" {% if device.wifi_only %}checked{% endif %}>
+            <span class="kq-toggle-txt">
+              <b>Permitir apenas Wi-Fi</b>
+              <span class="hint">Marcado: só transmite no Wi-Fi e bloqueia a rede móvel. Desmarque para aparelhos com chip.</span>
+            </span>
+          </label>
+        </div>
       </div>
     </div>
+  </div>
 
-    <div class="kq-field">
-      <label>Apps liberados no quiosque</label>
-      <span class="hint">Marque os apps que o colaborador pode abrir. A liberação é remota — aplicada no próximo check-in, sem reinstalar o app. Estes são os únicos apps que abrem no modo quiosque.</span>
+  <!-- apps liberados -->
+  <div class="kq-card">
+    <div class="kq-card-head">
+      <span class="kq-card-title"><i class="fa-solid fa-shield-halved"></i>Apps liberados no quiosque</span>
+      {% if inventario %}<span class="kq-card-sub"><b id="kqAppSel">0</b> de {{ inventario_total }} liberado(s)</span>{% endif %}
+    </div>
+    <div class="kq-card-body">
+      <span class="hint" style="font-size:12px;color:var(--text-tertiary);line-height:1.5;">Marque os apps que o colaborador pode abrir. A liberação é remota — aplicada no próximo check-in, sem reinstalar. Estes são os únicos apps que abrem no modo quiosque.</span>
 
       {% if inventario %}
       <div class="kq-appbar">
-        <input type="search" id="kqAppSearch" class="form-control" placeholder="Filtrar por nome ou pacote…" autocomplete="off">
-        <span class="kq-appcount"><b id="kqAppSel">0</b> de {{ inventario_total }} liberado(s)</span>
+        <label class="kq-appsearch">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input type="search" id="kqAppSearch" placeholder="Filtrar por nome ou pacote…" autocomplete="off" aria-label="Filtrar apps">
+        </label>
+        <div class="kq-appbtns">
+          <button type="button" class="kq-appbtn" id="kqAppAll">Marcar visíveis</button>
+          <button type="button" class="kq-appbtn" id="kqAppNone">Limpar visíveis</button>
+        </div>
       </div>
       <div class="kq-applist" id="kqAppList">
         {% for a in inventario %}
@@ -88,41 +159,51 @@ textarea.form-control { min-height:120px; font-family:var(--font-mono,ui-monospa
       </div>
       {% else %}
       <div class="kq-app-empty">
-        <i class="fa fa-hourglass-half"></i>
+        <i class="fa-solid fa-hourglass-half"></i>
         <span>Inventário de apps ainda não recebido deste aparelho. O app o envia automaticamente quando a lista muda (em até ~5 min). Enquanto isso, você pode liberar pacotes manualmente abaixo.</span>
       </div>
       {% endif %}
-    </div>
 
-    <div class="kq-field">
-      <label for="apps_extra">Outros pacotes (avançado)</label>
-      <textarea id="apps_extra" name="apps_extra" class="form-control" placeholder="com.android.camera2&#10;br.com.app.permitido">{{ apps_extra_texto }}</textarea>
-      <span class="hint">Um pacote por linha (ou separados por vírgula). Use para liberar apps que ainda não apareceram no inventário. Liberar um pacote que não está instalado no aparelho simplesmente não aparece na tela.</span>
+      <div class="kq-field">
+        <label for="apps_extra">Outros pacotes (avançado)</label>
+        <textarea id="apps_extra" name="apps_extra" class="form-control" placeholder="com.android.camera2&#10;br.com.app.permitido">{{ apps_extra_texto }}</textarea>
+        <span class="hint">Um pacote por linha (ou separados por vírgula). Use para liberar apps que ainda não apareceram no inventário. Liberar um pacote não instalado simplesmente não aparece na tela.</span>
+      </div>
     </div>
+  </div>
 
-    <div class="kq-field">
-      <label for="mensagem_quiosque">Mensagem do quiosque</label>
-      <input id="mensagem_quiosque" name="mensagem_quiosque" type="text" maxlength="200" class="form-control" value="{{ device.mensagem_quiosque }}" placeholder="Ex.: Equipamento Santa Colomba — uso corporativo">
+  <!-- quiosque & segurança -->
+  <div class="kq-card">
+    <div class="kq-card-head"><span class="kq-card-title"><i class="fa-solid fa-lock"></i>Quiosque &amp; segurança</span></div>
+    <div class="kq-card-body">
+      <div class="kq-field">
+        <label for="mensagem_quiosque">Mensagem do quiosque</label>
+        <input id="mensagem_quiosque" name="mensagem_quiosque" type="text" maxlength="200" class="form-control" value="{{ device.mensagem_quiosque }}" placeholder="Ex.: Equipamento Santa Colomba — uso corporativo">
+      </div>
+
+      <div class="kq-field">
+        <label for="admin_pin">PIN do TI {% if device.admin_pin_hash %}<span class="kq-ok-chip"><i class="fa-solid fa-check"></i> já definido</span>{% endif %}</label>
+        <input id="admin_pin" name="admin_pin" type="text" inputmode="numeric" autocomplete="off" class="form-control" placeholder="{% if device.admin_pin_hash %}Deixe em branco para manter o atual{% else %}Defina um PIN para liberar o controle do TI{% endif %}">
+        <span class="hint">Usado no app para sair do quiosque / abrir configurações. Guardado como hash (o app valida offline).</span>
+      </div>
     </div>
+  </div>
 
-    <div class="kq-field">
-      <label for="admin_pin">PIN do TI {% if device.admin_pin_hash %}<span style="color:#1e8e3e;text-transform:none;font-weight:600;">· já definido</span>{% endif %}</label>
-      <input id="admin_pin" name="admin_pin" type="text" inputmode="numeric" autocomplete="off" class="form-control" placeholder="{% if device.admin_pin_hash %}Deixe em branco para manter o atual{% else %}Defina um PIN para liberar o controle do TI{% endif %}">
-      <span class="hint">Usado no app para sair do quiosque/abrir configurações. Guardado como hash (o app valida offline).</span>
+  <!-- salvar (fixo) -->
+  <div class="kq-savebar">
+    <span class="kq-savehint"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Aplicado no próximo check-in do dispositivo.</span>
+    <div class="kq-saveactions">
+      <a href="{% url 'quiosque_detalhe' device.pk %}" class="btn btn-sm">Cancelar</a>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-floppy-disk"></i> Salvar configuração</button>
     </div>
+  </div>
 
-    <div class="kq-actions">
-      <a href="{% url 'quiosque_detalhe' device.pk %}" class="btn btn-light">Cancelar</a>
-      <button type="submit" class="btn btn-primary"><i class="fa fa-floppy-disk"></i> Salvar configuração</button>
-    </div>
-
-  </div></div>
 </form>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-// Filtro de busca + contador de apps liberados no inventário do aparelho.
+// Filtro de busca + contador + marcar/limpar visíveis no inventário do aparelho.
 (function(){
   var list = document.getElementById('kqAppList');
   if (!list) return;
@@ -140,8 +221,19 @@ textarea.form-control { min-height:120px; font-family:var(--font-mono,ui-monospa
       a.classList.toggle('is-hidden', !hit);
     });
   }
+  function marcarVisiveis(valor){
+    apps.forEach(function(a){
+      if (a.classList.contains('is-hidden')) return;   // respeita o filtro
+      a.querySelector('input').checked = valor;
+    });
+    contar();
+  }
   if (search) search.addEventListener('input', filtrar);
   list.addEventListener('change', contar);
+  var bAll = document.getElementById('kqAppAll');
+  var bNone = document.getElementById('kqAppNone');
+  if (bAll) bAll.addEventListener('click', function(){ marcarVisiveis(true); });
+  if (bNone) bNone.addEventListener('click', function(){ marcarVisiveis(false); });
   contar();
 })();
 </script>

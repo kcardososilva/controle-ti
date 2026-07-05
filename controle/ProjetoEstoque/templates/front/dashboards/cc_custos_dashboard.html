@@ -1,140 +1,279 @@
 {% extends "base.html" %}
 {% load humanize %}
-{% block title %}Custos por Centro de Custo | Gestão Enterprise{% endblock %}
+
+{% block title %}Custos por Setor{% endblock %}
+{% block page_title %}Custos por Setor{% endblock %}
+{% block page_subtitle %}Recorrente mensal (hardware + software) e perdas por centro de custo{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+    <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+    <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+    <span>Dashboards</span>
+    <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+    <span class="crumb-current" aria-current="page">Custos por Setor</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+<button type="button" id="btnPdf" class="btn btn-primary" title="Exportar relatório em PDF">
+    <i class="fa fa-file-pdf" aria-hidden="true"></i> PDF
+</button>
+{% endblock %}
 
 {% block content %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <style>
-:where(.cc-cost-page) {
-  --bg-body: var(--bg-page);
+:where(.cc-cost-page, .select2-container, .select2-dropdown) {
   --bg-card: var(--bg-elevated);
   --text-main: var(--text-primary);
   --text-sec: var(--text-tertiary);
   --border: var(--separator-hairline);
   --border-strong: var(--separator-non-opaque);
   --primary: var(--brand);
-  --success: var(--success);
-  --warning: var(--warning);
-  --danger: var(--danger);
-  --info: var(--info);
   --radius: var(--radius-lg);
   --shadow: var(--shadow-sm);
+  --pmb: #0d9488;          /* teal — segmento PMB */
+  --pmb-soft: color-mix(in srgb, #0d9488 12%, transparent);
+  --faz: var(--brand);     /* azul — Fazenda (fora do PMB) */
+  --faz-soft: color-mix(in srgb, var(--brand) 10%, transparent);
 }
 .cc-cost-page,
 .cc-cost-page * { box-sizing:border-box; min-width:0; }
-.cc-cost-page { width:100%; max-width:1500px; margin-inline:auto; display:grid; gap:18px; color:var(--text-main); }
-.cc-cost-page .page-header { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; margin:0; padding:22px 24px; border:1px solid var(--border); border-radius:var(--radius-xl); background:linear-gradient(135deg, var(--brand-softer), transparent 48%), var(--bg-card); box-shadow:var(--shadow); }
-.cc-cost-page .page-title h2 { margin:0; display:flex; align-items:center; gap:10px; color:var(--text-main); font-family:var(--font-display); font-size:clamp(1.35rem,3vw,2rem); font-weight:700; letter-spacing:-.035em; }
-.cc-cost-page .period-badge { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:var(--radius-pill); color:var(--primary); background:var(--brand-soft); border:1px solid color-mix(in srgb, var(--primary) 18%, transparent); font-weight:650; white-space:nowrap; }
-.cc-cost-page .filters-card,
-.cc-cost-page .content-card,
-.cc-cost-page .kpi-card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow); overflow:hidden; }
-.cc-cost-page .filters-card { padding:20px; }
-.cc-cost-page .filters-form { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(180px,100%),1fr)); gap:16px; align-items:end; }
-.cc-cost-page label,
-.cc-cost-page .form-group label { display:block; margin-bottom:6px; color:var(--text-sec); font-size:.78rem; font-weight:750; text-transform:uppercase; letter-spacing:.04em; }
-.cc-cost-page .form-control { width:100%; min-height:42px; padding:8px 12px; border:1px solid var(--border-strong); border-radius:12px; background:var(--bg-card); color:var(--text-main); outline:none; }
-.cc-cost-page .form-control:focus { border-color:var(--primary); box-shadow:0 0 0 4px var(--brand-ring); }
-.cc-cost-page .btn { min-height:42px; padding:8px 16px; border-radius:var(--radius-pill); border:1px solid transparent; display:inline-flex; align-items:center; justify-content:center; gap:8px; color:var(--text-main); font-weight:650; text-decoration:none; cursor:pointer; transition:transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast); }
-.cc-cost-page .btn:hover { transform:translateY(-1px); }
+.cc-cost-page { width:100%; max-width:1500px; margin-inline:auto; display:grid; gap:16px; color:var(--text-main); }
+
+/* Botão PDF no header (topbar) — id único p/ não vazar */
+#btnPdf { min-height:36px; padding:7px 14px; border-radius:var(--radius-pill); border:1px solid var(--brand); background:var(--brand); color:#fff; display:inline-flex; align-items:center; gap:8px; font-weight:600; cursor:pointer; }
+#btnPdf:hover { background:var(--brand-hover); border-color:var(--brand-hover); }
+
+/* ── Toolbar de filtros — compacta, linha única ─────────────────── */
+.cc-cost-page .toolbar { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow); padding:14px 16px; }
+.cc-cost-page .filters-form { display:grid; grid-template-columns:140px 140px minmax(210px,1.6fr) 170px auto; gap:12px; align-items:end; }
+.cc-cost-page label { display:block; margin-bottom:6px; color:var(--text-sec); font-size:.7rem; font-weight:650; text-transform:uppercase; letter-spacing:.04em; }
+.cc-cost-page .form-control { width:100%; min-height:40px; padding:8px 12px; border:1px solid var(--border-strong); border-radius:10px; background:var(--bg-card); color:var(--text-main); outline:none; font-size:.9rem; }
+.cc-cost-page .form-control:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--brand-ring); }
+.cc-cost-page .fg-actions { display:flex; gap:8px; }
+.cc-cost-page .btn { min-height:40px; padding:8px 14px; border-radius:10px; border:1px solid transparent; display:inline-flex; align-items:center; justify-content:center; gap:8px; color:var(--text-main); font-weight:600; text-decoration:none; cursor:pointer; white-space:nowrap; transition:background var(--transition-fast), border-color var(--transition-fast); }
 .cc-cost-page .btn-primary { background:var(--primary); border-color:var(--primary); color:#fff; }
-.cc-cost-page .btn-danger { background:var(--danger); border-color:var(--danger); color:#fff; }
+.cc-cost-page .btn-primary:hover { background:var(--brand-hover); border-color:var(--brand-hover); }
 .cc-cost-page .btn-light { background:var(--bg-card); border-color:var(--border-strong); color:var(--text-sec); }
 .cc-cost-page .btn-light:hover { background:var(--bg-hover); color:var(--text-main); }
-.cc-cost-page .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr)); gap:16px; margin:0; }
-.cc-cost-page .kpi-card { padding:20px; position:relative; }
-.cc-cost-page .kpi-card::before { content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--primary); }
-.cc-cost-page .kpi-card.blue::before { background:var(--primary); }
-.cc-cost-page .kpi-card.green::before { background:var(--success); }
-.cc-cost-page .kpi-card.red::before { background:var(--danger); }
-.cc-cost-page .kpi-card.orange::before { background:var(--warning); }
-.cc-cost-page .kpi-label { color:var(--text-sec); font-size:.73rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
-.cc-cost-page .kpi-val { color:var(--text-main); font-size:clamp(1.35rem,3vw,1.85rem); font-weight:800; line-height:1.12; overflow-wrap:anywhere; }
-.cc-cost-page .kpi-sub { color:var(--text-sec); font-size:.84rem; margin-top:5px; }
-.cc-cost-page .dashboard-grid { display:grid; grid-template-columns:minmax(0,2fr) minmax(300px,1fr); gap:18px; margin:0; }
-.cc-cost-page .content-card { display:flex; flex-direction:column; }
-.cc-cost-page .card-header { padding:16px 20px; border-bottom:1px solid var(--border); background:color-mix(in srgb, var(--bg-card) 92%, var(--primary) 2%); display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.cc-cost-page .card-title { display:flex; align-items:center; gap:8px; color:var(--text-main); font-size:1rem; font-weight:800; }
-.cc-cost-page .card-body { padding:20px; position:relative; }
+.cc-cost-page .form-hint { margin:10px 2px 0; color:var(--text-sec); font-size:.76rem; line-height:1.4; }
+
+/* Select2 — herda os tokens; só neste template (page-scoped) */
+.select2-container { width:100% !important; }
+.select2-container .select2-selection--single { min-height:40px !important; border:1px solid var(--separator-non-opaque) !important; border-radius:10px !important; background-color:var(--bg-elevated) !important; display:flex !important; align-items:center !important; }
+.select2-container--default.select2-container--focus .select2-selection--single { border-color:var(--brand) !important; box-shadow:0 0 0 3px var(--brand-ring) !important; }
+.select2-container--default .select2-selection--single .select2-selection__rendered { color:var(--text-primary) !important; font-size:.9rem; padding-left:12px; line-height:38px !important; }
+.select2-container--default .select2-selection--single .select2-selection__placeholder { color:var(--text-quaternary) !important; }
+.select2-container--default .select2-selection--single .select2-selection__arrow { height:38px !important; }
+.select2-dropdown { z-index:9999 !important; background:var(--bg-elevated) !important; color:var(--text-primary) !important; border:1px solid var(--separator-non-opaque) !important; border-radius:12px !important; overflow:hidden !important; box-shadow:var(--shadow-md); }
+.select2-search--dropdown .select2-search__field { border:1px solid var(--separator-non-opaque) !important; border-radius:8px !important; background:var(--bg-elevated) !important; color:var(--text-primary) !important; }
+.select2-results__option { color:var(--text-primary) !important; font-size:.9rem; }
+.select2-results__option--highlighted { background:var(--brand) !important; color:#fff !important; }
+.select2-results__option[aria-selected=true] { background:var(--brand-soft) !important; color:var(--brand) !important; }
+
+/* ── KPIs — neutros, sóbrios (sem barras coloridas) ─────────────── */
+.cc-cost-page .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr)); gap:14px; }
+.cc-cost-page .kpi-card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow); padding:18px 20px; }
+.cc-cost-page .kpi-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+.cc-cost-page .kpi-label { color:var(--text-sec); font-size:.72rem; font-weight:650; text-transform:uppercase; letter-spacing:.05em; }
+.cc-cost-page .kpi-ico { width:30px; height:30px; flex:0 0 auto; border-radius:9px; display:grid; place-items:center; background:var(--bg-fill-tertiary); color:var(--text-sec); font-size:.82rem; }
+.cc-cost-page .kpi-val { color:var(--text-main); font-size:clamp(1.3rem,2.6vw,1.7rem); font-weight:700; letter-spacing:-.02em; line-height:1.12; overflow-wrap:anywhere; }
+.cc-cost-page .kpi-val.neg { color:var(--danger); }
+.cc-cost-page .kpi-sub { color:var(--text-sec); font-size:.8rem; margin-top:6px; }
+
+/* ── Cards genéricos ────────────────────────────────────────────── */
+.cc-cost-page .content-card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow); overflow:hidden; display:flex; flex-direction:column; }
+.cc-cost-page .card-header { padding:15px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.cc-cost-page .card-title { display:flex; align-items:center; gap:9px; color:var(--text-main); font-size:.95rem; font-weight:700; }
+.cc-cost-page .card-title i { color:var(--text-sec); font-size:.9rem; }
+.cc-cost-page .card-hint { color:var(--text-sec); font-size:.76rem; font-weight:500; }
+.cc-cost-page .card-body { padding:18px 20px; position:relative; }
+
+/* Barra segmentada PMB × Fazenda */
+.cc-cost-page .seg-bar { display:flex; width:100%; height:24px; border-radius:var(--radius-pill); overflow:hidden; background:var(--bg-fill-tertiary); }
+.cc-cost-page .seg { height:100%; transition:width .5s ease; min-width:0; }
+.cc-cost-page .seg-pmb { background:var(--pmb); }
+.cc-cost-page .seg-faz { background:var(--faz); }
+.cc-cost-page .seg-legend { display:flex; flex-wrap:wrap; gap:24px; margin-top:14px; }
+.cc-cost-page .lg { display:flex; align-items:center; gap:8px; font-size:.9rem; color:var(--text-sec); }
+.cc-cost-page .lg b { color:var(--text-main); font-weight:700; }
+.cc-cost-page .lg em { font-style:normal; color:var(--text-sec); font-weight:600; }
+.cc-cost-page .dot { width:11px; height:11px; border-radius:4px; flex:0 0 auto; }
+.cc-cost-page .dot-pmb { background:var(--pmb); }
+.cc-cost-page .dot-faz { background:var(--faz); }
+
+/* Gráficos */
+.cc-cost-page .charts-grid { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(300px,1fr); gap:16px; }
 .cc-cost-page .chart-container { height:320px; position:relative; }
-.cc-cost-page .nodata { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--text-sec); font-weight:700; background:color-mix(in srgb, var(--bg-card) 78%, transparent); }
-.cc-cost-page .table-responsive { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; border:0; border-radius:0; }
-.cc-cost-page .table { width:100%; min-width:1100px; border-collapse:collapse; white-space:nowrap; }
-.cc-cost-page .table th { background:color-mix(in srgb, var(--bg-card) 90%, var(--primary) 3%); color:var(--text-sec); font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:13px 16px; border-bottom:1px solid var(--border); text-align:left; }
-.cc-cost-page .table td { padding:13px 16px; border-bottom:1px solid var(--border); color:var(--text-main); vertical-align:middle; }
-.cc-cost-page .table tr:hover { background:color-mix(in srgb, var(--primary) 4%, transparent); }
-.cc-cost-page .tright { text-align:right; } .cc-cost-page .tcenter { text-align:center; } .cc-cost-page .fw-bold { font-weight:800; }
+.cc-cost-page .nodata { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--text-sec); font-weight:650; }
+
+/* Tabela */
+.cc-cost-page .table-responsive { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.cc-cost-page .table { width:100%; min-width:1120px; border-collapse:collapse; white-space:nowrap; }
+.cc-cost-page .table th { background:var(--bg-fill-tertiary); color:var(--text-sec); font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; padding:12px 16px; border-bottom:1px solid var(--border); text-align:left; }
+.cc-cost-page .table td { padding:12px 16px; border-bottom:1px solid var(--border); color:var(--text-main); vertical-align:middle; }
+.cc-cost-page .table tbody tr[data-cc], .cc-cost-page .table tbody tr[data-cc] { cursor:pointer; }
+.cc-cost-page .table tbody tr[data-cc]:hover { background:color-mix(in srgb, var(--primary) 5%, transparent); }
+.cc-cost-page .table tbody tr[data-cc]:focus-visible { outline:2px solid var(--brand); outline-offset:-2px; }
+.cc-cost-page .table tr:hover { background:color-mix(in srgb, var(--primary) 3%, transparent); }
+.cc-cost-page .row-hint { display:inline-flex; align-items:center; gap:4px; margin-left:8px; font-size:.68rem; font-weight:600; color:var(--text-sec); opacity:0; transition:opacity .18s; vertical-align:middle; }
+.cc-cost-page .table tbody tr[data-cc]:hover .row-hint { opacity:1; }
+@media (hover:none){ .cc-cost-page .row-hint { display:none; } }
+.cc-cost-page .tright { text-align:right; } .cc-cost-page .tcenter { text-align:center; } .cc-cost-page .fw-bold { font-weight:700; }
 .cc-cost-page .text-primary { color:var(--primary); } .cc-cost-page .text-danger { color:var(--danger); } .cc-cost-page .text-success { color:var(--success); } .cc-cost-page .text-sec { color:var(--text-sec); } .cc-cost-page .text-main { color:var(--text-main); }
-@media (max-width: 1024px){ .cc-cost-page .dashboard-grid{ grid-template-columns:1fr; } }
-@media (max-width: 768px){ .cc-cost-page .filters-form > div[style*="grid-column"]{ grid-column:auto !important; } .cc-cost-page .filters-form > div[style*="display:flex"]{ display:grid !important; grid-template-columns:1fr; } .cc-cost-page .btn{ width:100%; } .cc-cost-page .page-header{ align-items:flex-start; } }
+.cc-cost-page .tag { display:inline-flex; align-items:center; padding:3px 10px; border-radius:var(--radius-pill); font-size:.72rem; font-weight:700; letter-spacing:.01em; }
+.cc-cost-page .tag-pmb { color:var(--pmb); background:var(--pmb-soft); border:1px solid color-mix(in srgb, var(--pmb) 28%, transparent); }
+.cc-cost-page .tag-faz { color:var(--faz); background:var(--faz-soft); border:1px solid color-mix(in srgb, var(--faz) 26%, transparent); }
+.cc-cost-page .filter-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:var(--radius-pill); font-size:.76rem; font-weight:650; color:var(--text-sec); background:var(--bg-fill-tertiary); border:1px solid var(--border-strong); }
+
+@media (max-width: 1024px){ .cc-cost-page .charts-grid{ grid-template-columns:1fr; } }
+@media (max-width: 900px){ .cc-cost-page .filters-form{ grid-template-columns:1fr 1fr; } .cc-cost-page .filters-form > div:nth-child(3){ grid-column:1 / -1; } .cc-cost-page .fg-actions{ grid-column:1 / -1; } }
+@media (max-width: 520px){ .cc-cost-page .filters-form{ grid-template-columns:1fr; } .cc-cost-page .btn{ flex:1; } }
+
+/* ══ Drawer de detalhe do centro de custo (prefixo .ccd-) ══════════ */
+.ccd-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:1000; opacity:0; pointer-events:none; transition:opacity .28s ease; -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }
+.ccd-overlay.is-open { opacity:1; pointer-events:auto; }
+.ccd-drawer { position:fixed; top:0; right:0; width:min(560px,94vw); height:100dvh; background:var(--bg-elevated); z-index:1001; transform:translateX(calc(100% + 6px)); transition:transform .34s cubic-bezier(.32,.72,0,1); display:flex; flex-direction:column; box-shadow:-6px 0 48px rgba(0,0,0,.20); overflow:hidden; will-change:transform; }
+.ccd-drawer.is-open { transform:translateX(0); }
+.ccd-handle { display:none; width:36px; height:4px; border-radius:2px; background:var(--separator-non-opaque); margin:10px auto 2px; flex:0 0 auto; touch-action:none; }
+@media (max-width:559px){
+  .ccd-drawer { top:auto; bottom:0; left:0; right:0; width:100%; height:auto; max-height:90dvh; border-radius:20px 20px 0 0; transform:translateY(calc(100% + 6px)); box-shadow:0 -6px 48px rgba(0,0,0,.2); padding-bottom:env(safe-area-inset-bottom,0px); }
+  .ccd-drawer.is-open { transform:translateY(0); }
+  .ccd-handle { display:block; }
+}
+.ccd-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:16px 18px; border-bottom:1px solid var(--separator-hairline); background:var(--bg-fill-tertiary); flex:0 0 auto; }
+.ccd-head-title { min-width:0; }
+.ccd-head-num { font-size:1.05rem; font-weight:750; color:var(--text-primary); letter-spacing:-.02em; }
+.ccd-head-dep { font-size:.82rem; color:var(--text-tertiary); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:330px; }
+.ccd-head-right { display:flex; align-items:center; gap:12px; flex:0 0 auto; }
+.ccd-head-total { text-align:right; }
+.ccd-head-total b { display:block; font-size:1.05rem; font-weight:750; color:var(--brand); font-variant-numeric:tabular-nums; }
+.ccd-head-total span { font-size:.62rem; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
+.ccd-close { width:32px; height:32px; border:none; background:var(--separator-hairline); border-radius:50%; cursor:pointer; display:grid; place-items:center; color:var(--text-tertiary); font-size:.85rem; flex:0 0 auto; transition:background .16s, color .16s; }
+.ccd-close:hover { background:var(--separator-non-opaque); color:var(--text-primary); }
+.ccd-body { flex:1 1 auto; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:16px 18px; display:flex; flex-direction:column; gap:14px; }
+.ccd-loading { display:flex; align-items:center; justify-content:center; gap:10px; padding:60px 20px; color:var(--text-tertiary); font-size:.85rem; }
+.ccd-tag { display:inline-flex; align-items:center; padding:2px 9px; border-radius:999px; font-size:.66rem; font-weight:700; margin-top:6px; }
+.ccd-tag-pmb { color:#0d9488; background:color-mix(in srgb,#0d9488 12%,transparent); }
+.ccd-tag-faz { color:var(--brand); background:var(--brand-soft); }
+.ccd-resumo { display:flex; gap:12px; padding:14px 16px; border-radius:var(--radius-md); background:var(--bg-fill-tertiary); border:1px solid var(--separator-hairline); }
+.ccd-resumo-ico { width:30px; height:30px; flex:0 0 auto; display:grid; place-items:center; border-radius:9px; background:var(--brand-soft); color:var(--brand); font-size:.85rem; }
+.ccd-resumo-txt { font-size:.82rem; line-height:1.6; color:var(--text-secondary); }
+.ccd-resumo-txt strong { color:var(--text-primary); font-weight:700; }
+.ccd-kpis { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+.ccd-kpi { display:flex; flex-direction:column; gap:2px; padding:11px 13px; border-radius:var(--radius-md); border:1px solid var(--separator-hairline); background:var(--bg-elevated); }
+.ccd-kpi b { font-size:1rem; font-weight:750; color:var(--kc, var(--text-primary)); font-variant-numeric:tabular-nums; }
+.ccd-kpi span { font-size:.64rem; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.03em; }
+.ccd-sec { border:1px solid var(--separator-hairline); border-radius:var(--radius-md); overflow:hidden; }
+.ccd-sec-h { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 14px; background:var(--bg-fill-tertiary); border-bottom:1px solid var(--separator-hairline); font-size:.78rem; font-weight:700; color:var(--text-primary); }
+.ccd-sec-h .l { display:flex; align-items:center; gap:8px; min-width:0; }
+.ccd-sec-h i { color:var(--sc, var(--brand)); font-size:.8rem; }
+.ccd-sec-h .tot { color:var(--text-tertiary); font-weight:650; font-variant-numeric:tabular-nums; flex:0 0 auto; white-space:nowrap; }
+.ccd-row { display:flex; align-items:center; gap:10px; padding:8px 14px; border-bottom:1px solid var(--separator-hairline); font-size:.8rem; }
+.ccd-row:last-child { border-bottom:none; }
+.ccd-row .nm { flex:1; min-width:0; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ccd-row .mt { font-size:.72rem; color:var(--text-tertiary); flex:0 0 auto; }
+.ccd-row .vl { font-weight:700; color:var(--text-primary); flex:0 0 auto; text-align:right; min-width:92px; font-variant-numeric:tabular-nums; }
+.ccd-row .vl.neg { color:var(--danger); }
+.ccd-more { padding:8px 14px; font-size:.72rem; color:var(--text-tertiary); font-style:italic; }
+.ccd-empty { padding:36px 20px; text-align:center; color:var(--text-tertiary); font-size:.85rem; }
+.ccd-empty i { font-size:2rem; opacity:.35; display:block; margin-bottom:8px; }
+.ccd-chips { display:flex; flex-wrap:wrap; gap:6px; padding:12px 14px; }
+.ccd-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px; background:var(--bg-fill-tertiary); border:1px solid var(--separator-hairline); font-size:.74rem; color:var(--text-secondary); }
+.ccd-chip small { color:var(--text-tertiary); }
 </style>
 
 <div class="cc-cost-page">
-    
-    <div class="page-header">
-        <div class="page-title">
-            <h2><i class="fa fa-building-columns" style="color:var(--primary)"></i> Custos por Centro de Custo</h2>
-        </div>
-        <div class="period-badge">
-            <i class="fa fa-calendar"></i> 
-            {{ dt_ini|date:"d/m/Y" }} a {{ dt_fim|date:"d/m/Y" }}
-        </div>
-    </div>
 
-    <div class="filters-card">
+    <div class="toolbar">
         <form method="get" class="filters-form" autocomplete="off">
-            <div style="grid-column: span 2;">
-                <label>Período de Baixas (Inicio)</label>
+            <div>
+                <label>Início</label>
                 <input type="date" name="inicio" class="form-control" value="{{ dt_ini|date:'Y-m-d' }}">
             </div>
-            <div style="grid-column: span 2;">
-                <label>Período de Baixas (Fim)</label>
+            <div>
+                <label>Fim</label>
                 <input type="date" name="fim" class="form-control" value="{{ dt_fim|date:'Y-m-d' }}">
             </div>
-            <div style="display:flex; gap:10px;">
-                <button type="submit" class="btn btn-primary" style="flex:1">
+            <div>
+                <label>Centro de custo</label>
+                <select name="centro_custo" id="ccSelect" class="form-control">
+                    <option value="">Todos os setores</option>
+                    {% for c in centros_custo %}
+                    <option value="{{ c.id }}" {% if centro_custo_sel == c.id|stringformat:'s' %}selected{% endif %}>{{ c.numero }} · {{ c.departamento }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Segmento</label>
+                <select name="pmb" id="pmbSelect" class="form-control">
+                    <option value=""    {% if not pmb_filtro %}selected{% endif %}>Todos</option>
+                    <option value="sim" {% if pmb_filtro == 'sim' %}selected{% endif %}>PMB</option>
+                    <option value="nao" {% if pmb_filtro == 'nao' %}selected{% endif %}>Fazenda</option>
+                </select>
+            </div>
+            <div class="fg-actions">
+                <button type="submit" class="btn btn-primary">
                     <i class="fa fa-filter"></i> Filtrar
                 </button>
-                
-                <button type="button" id="btnPdf" class="btn btn-danger" style="flex:1">
-                    <i class="fa fa-file-pdf"></i> PDF
-                </button>
-
-                <a href="{{ request.path }}" class="btn btn-light" style="flex:1">
+                <a href="{{ request.path }}" class="btn btn-light" title="Limpar filtros">
                     <i class="fa fa-eraser"></i>
                 </a>
             </div>
         </form>
+        <p class="form-hint">O período (Início/Fim) filtra apenas as <strong>baixas/perdas</strong>. Locação e licenças são sempre o valor mensal recorrente atual.</p>
     </div>
 
     <div class="kpi-grid">
-        <div class="kpi-card blue">
-            <div class="kpi-label">Total Recorrente (Mensal)</div>
+        <div class="kpi-card">
+            <div class="kpi-top"><span class="kpi-label">Recorrente Mensal</span><span class="kpi-ico"><i class="fa fa-arrows-rotate"></i></span></div>
             <div class="kpi-val">R$ {{ kpi_total_mensal|floatformat:2 }}</div>
-            <div class="kpi-sub">Locação + Licenças</div>
+            <div class="kpi-sub">Locação + licenças</div>
         </div>
-        <div class="kpi-card red">
-            <div class="kpi-label">Perdas / Baixas (Período)</div>
-            <div class="kpi-val">R$ {{ kpi_total_baixas|floatformat:2 }}</div>
-            <div class="kpi-sub">Custo pontual</div>
+        <div class="kpi-card">
+            <div class="kpi-top"><span class="kpi-label">Perdas / Baixas</span><span class="kpi-ico"><i class="fa fa-arrow-trend-down"></i></span></div>
+            <div class="kpi-val neg">R$ {{ kpi_total_baixas|floatformat:2 }}</div>
+            <div class="kpi-sub">Custo pontual no período</div>
         </div>
-        <div class="kpi-card orange">
-            <div class="kpi-label">Maior Ofensor (Custo)</div>
-            <div class="kpi-val" style="font-size:1.4rem; margin-top:5px">{{ kpi_top_cc }}</div>
+        <div class="kpi-card">
+            <div class="kpi-top"><span class="kpi-label">Maior Ofensor</span><span class="kpi-ico"><i class="fa fa-chart-line"></i></span></div>
+            <div class="kpi-val" style="font-size:1.3rem">{{ kpi_top_cc }}</div>
             <div class="kpi-sub">Centro de custo mais caro</div>
         </div>
-        <div class="kpi-card green">
-            <div class="kpi-label">CCs com Custo</div>
+        <div class="kpi-card">
+            <div class="kpi-top"><span class="kpi-label">Setores com Custo</span><span class="kpi-ico"><i class="fa fa-building"></i></span></div>
             <div class="kpi-val">{{ kpi_cc_count }}</div>
-            <div class="kpi-sub">Setores monitorados</div>
+            <div class="kpi-sub">No filtro selecionado</div>
         </div>
     </div>
 
-    <div class="dashboard-grid">
+    <div class="content-card">
+        <div class="card-header">
+            <div class="card-title"><i class="fa fa-layer-group"></i> Recorrente Mensal — PMB × Fazenda</div>
+            <span class="card-hint">visão geral · independe do filtro</span>
+        </div>
+        <div class="card-body">
+            <div class="seg-bar" id="pmbBar" role="img" aria-label="Proporção de custo recorrente PMB versus Fazenda">
+                <div class="seg seg-pmb" id="segPmb"></div>
+                <div class="seg seg-faz" id="segFaz"></div>
+            </div>
+            <div class="seg-legend">
+                <div class="lg"><span class="dot dot-pmb"></span> PMB <b>R$ {{ total_pmb|floatformat:2 }}</b> <em id="pmbPct"></em></div>
+                <div class="lg"><span class="dot dot-faz"></span> Fazenda <b>R$ {{ total_nao_pmb|floatformat:2 }}</b> <em id="fazPct"></em></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="charts-grid">
         <div class="content-card">
             <div class="card-header">
-                <div class="card-title"><i class="fa fa-chart-column" style="color:var(--primary)"></i> Composição Mensal (Top 10)</div>
+                <div class="card-title"><i class="fa fa-chart-column"></i> Composição Mensal (Top 10)</div>
             </div>
             <div class="card-body chart-container">
                 <canvas id="barChart"></canvas>
@@ -144,7 +283,7 @@
 
         <div class="content-card">
             <div class="card-header">
-                <div class="card-title"><i class="fa fa-chart-pie" style="color:var(--success)"></i> Recorrente: Hardware vs Software</div>
+                <div class="card-title"><i class="fa fa-chart-pie"></i> Hardware vs Software</div>
             </div>
             <div class="card-body chart-container">
                 <canvas id="pieChart"></canvas>
@@ -155,41 +294,47 @@
 
     <div class="content-card">
         <div class="card-header">
-            <div class="card-title"><i class="fa fa-list" style="color:var(--info)"></i> Detalhamento Analítico</div>
+            <div class="card-title"><i class="fa fa-list"></i> Detalhamento Analítico</div>
+            {% if pmb_filtro == 'sim' %}<span class="filter-chip"><i class="fa fa-filter"></i> Somente PMB</span>
+            {% elif pmb_filtro == 'nao' %}<span class="filter-chip"><i class="fa fa-filter"></i> Somente Fazenda</span>{% endif %}
         </div>
         <div class="table-responsive">
             <table class="table">
                 <thead>
                     <tr>
                         <th>Centro de Custo</th>
+                        <th class="tcenter">Segmento</th>
                         <th class="tcenter">Colaboradores</th>
                         <th class="tcenter">Locados</th>
                         <th class="tcenter">Licenças</th>
-                        <th class="tright" style="color:var(--primary)">Locação (R$)</th>
-                        <th class="tright" style="color:var(--success)">Licenças Mensais (R$)</th>
-                        <th class="tright fw-bold" style="background:var(--brand-softer)">Total Mensal</th>
-                        <th class="tright text-danger">Baixas/Perdas</th>
+                        <th class="tright">Locação (R$)</th>
+                        <th class="tright">Licenças Mensais (R$)</th>
+                        <th class="tright fw-bold">Total Mensal</th>
+                        <th class="tright">Baixas/Perdas</th>
                         <th class="tright fw-bold">Impacto Total</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for l in linhas %}
-                    <tr>
+                    <tr data-cc="{{ l.cc.id }}" tabindex="0" role="button" aria-label="Ver detalhes de {{ l.cc.numero }} {{ l.cc.departamento }}">
                         <td>
-                            <span class="fw-bold text-main">{{ l.cc.numero }}</span><br>
+                            <span class="fw-bold text-main">{{ l.cc.numero }}</span><span class="row-hint"><i class="fa fa-circle-info"></i> detalhes</span><br>
                             <span class="text-sec" style="font-size:0.8rem">{{ l.cc.departamento }}</span>
+                        </td>
+                        <td class="tcenter">
+                            {% if l.is_pmb %}<span class="tag tag-pmb">PMB</span>{% else %}<span class="tag tag-faz">Fazenda</span>{% endif %}
                         </td>
                         <td class="tcenter">{{ l.usuarios }}</td>
                         <td class="tcenter">{{ l.itens }}</td>
                         <td class="tcenter">{{ l.licencas }}</td>
                         <td class="tright text-primary">R$ {{ l.custo_itens|floatformat:2 }}</td>
                         <td class="tright text-success">R$ {{ l.custo_licencas|floatformat:2 }}</td>
-                        <td class="tright fw-bold" style="background:var(--brand-softer)">R$ {{ l.total_mensal|floatformat:2 }}</td>
+                        <td class="tright fw-bold">R$ {{ l.total_mensal|floatformat:2 }}</td>
                         <td class="tright text-danger">R$ {{ l.baixas|floatformat:2 }}</td>
                         <td class="tright fw-bold">R$ {{ l.total_impacto|floatformat:2 }}</td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="9" class="tcenter" style="padding:20px; color:var(--text-sec)">Nenhum custo registrado para o período.</td></tr>
+                    <tr><td colspan="10" class="tcenter" style="padding:20px; color:var(--text-sec)">Nenhum custo registrado para o filtro selecionado.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -197,26 +342,69 @@
     </div>
 </div>
 
+<div id="ccdOverlay" class="ccd-overlay" aria-hidden="true"></div>
+<div id="ccdDrawer" class="ccd-drawer" role="dialog" aria-modal="true" aria-label="Detalhamento do centro de custo">
+    <div id="ccdHandle" class="ccd-handle" aria-hidden="true"></div>
+    <div class="ccd-head">
+        <div class="ccd-head-title">
+            <div class="ccd-head-num" id="ccdNum">—</div>
+            <div class="ccd-head-dep" id="ccdDep"></div>
+            <span id="ccdTag"></span>
+        </div>
+        <div class="ccd-head-right">
+            <div class="ccd-head-total"><b id="ccdTotal">—</b><span>Impacto total</span></div>
+            <button id="ccdClose" class="ccd-close" aria-label="Fechar detalhes"><i class="fa fa-xmark"></i></button>
+        </div>
+    </div>
+    <div class="ccd-body" id="ccdBody">
+        <div class="ccd-loading" id="ccdLoading"><i class="fa fa-spinner fa-spin"></i>&nbsp;Carregando detalhes...</div>
+        <div id="ccdContent" style="display:none; flex-direction:column; gap:14px;"></div>
+    </div>
+</div>
+
 {{ js_labels|default:"[]"|json_script:"js-labels" }}
 {{ js_itens|default:"[]"|json_script:"js-itens" }}
 {{ js_lics|default:"[]"|json_script:"js-lics" }}
 {{ js_mix_values|default:"[]"|json_script:"js-mix" }}
+{{ js_pmb_values|default:"[]"|json_script:"js-pmb" }}
 
 <script>
     const getJSON = (id) => JSON.parse(document.getElementById(id).textContent || '[]');
-    const brl = (v) => "R$ " + v.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+    const brl = (v) => "R$ " + Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     const sum = (arr) => arr.reduce((a,b) => a + (Number(b)||0), 0);
 
     Chart.defaults.font.family = "'Inter', sans-serif";
     Chart.defaults.color = '#64748b';
     Chart.defaults.plugins.tooltip.backgroundColor = '#0f172a';
-    Chart.defaults.plugins.tooltip.callbacks.label = (ctx) => ` ${ctx.dataset.label}: ${brl(ctx.raw)}`;
+    Chart.defaults.plugins.tooltip.callbacks.label = (ctx) => ` ${ctx.dataset.label || ctx.label}: ${brl(ctx.raw)}`;
 
     const labels = getJSON('js-labels');
     const dItens = getJSON('js-itens');
-    const dLics = getJSON('js-lics');
-    const dMix = getJSON('js-mix');
+    const dLics  = getJSON('js-lics');
+    const dMix   = getJSON('js-mix');
+    const dPmb   = getJSON('js-pmb');
 
+    // Select2 nos dois seletores (busca no de centro de custo)
+    if (window.jQuery) {
+        jQuery('#ccSelect').select2({ width:'100%', placeholder:'Todos os setores', allowClear:true });
+        jQuery('#pmbSelect').select2({ width:'100%', minimumResultsForSearch: Infinity });
+    }
+
+    // ---- Barra segmentada PMB × Fazenda ----
+    (function(){
+        const vPmb = Number(dPmb[0] || 0);
+        const vFaz = Number(dPmb[1] || 0);
+        const tot = vPmb + vFaz;
+        const pPmb = tot > 0 ? (vPmb / tot * 100) : 0;
+        const pFaz = tot > 0 ? (100 - pPmb) : 0;
+        document.getElementById('segPmb').style.width = pPmb.toFixed(1) + '%';
+        document.getElementById('segFaz').style.width = pFaz.toFixed(1) + '%';
+        const fmtPct = (p) => tot > 0 ? '(' + p.toFixed(1).replace('.', ',') + '%)' : '—';
+        document.getElementById('pmbPct').textContent = fmtPct(pPmb);
+        document.getElementById('fazPct').textContent = fmtPct(pFaz);
+    })();
+
+    // ---- Barra: composição mensal por setor ----
     if (sum(dItens) + sum(dLics) === 0) {
         document.getElementById('nd-bar').style.display = 'flex';
     } else {
@@ -234,16 +422,13 @@
                 maintainAspectRatio: false,
                 scales: {
                     x: { stacked: true, grid: { display: false } },
-                    y: {
-                        stacked: true,
-                        grid: { color: '#f1f5f9' },
-                        ticks: { callback: (v) => v.toLocaleString('pt-BR') }
-                    }
+                    y: { stacked: true, grid: { color: 'rgba(120,120,128,.14)' }, ticks: { callback: (v) => v.toLocaleString('pt-BR') } }
                 }
             }
         });
     }
 
+    // ---- Doughnut: hardware vs software ----
     if (sum(dMix) === 0) {
         document.getElementById('nd-pie').style.display = 'flex';
     } else {
@@ -251,31 +436,187 @@
             type: 'doughnut',
             data: {
                 labels: ['Locação (Hardware)', 'Licenças (Software)'],
-                datasets: [{
-                    data: dMix,
-                    backgroundColor: ['#2563eb', '#10b981'],
-                    borderWidth: 0
-                }]
+                datasets: [{ data: dMix, backgroundColor: ['#2563eb', '#10b981'], borderWidth: 0 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 12 } }
-                }
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } }
             }
         });
     }
 
+    // ---- PDF (preserva filtros ativos) ----
     document.getElementById('btnPdf').addEventListener('click', function() {
         const ini = document.querySelector('input[name="inicio"]').value;
         const fim = document.querySelector('input[name="fim"]').value;
-
+        const pmb = document.querySelector('select[name="pmb"]').value;
+        const cc  = document.querySelector('select[name="centro_custo"]').value;
         let url = "{% url 'cc_custos_export_pdf' %}?";
         if (ini) url += `inicio=${ini}&`;
         if (fim) url += `fim=${fim}&`;
-
+        if (pmb) url += `pmb=${pmb}&`;
+        if (cc)  url += `centro_custo=${cc}&`;
         window.open(url, '_blank');
     });
+</script>
+
+<script>
+/* ══ Drawer de detalhe por centro de custo ══ */
+(function () {
+'use strict';
+var overlay = document.getElementById('ccdOverlay');
+var drawer  = document.getElementById('ccdDrawer');
+var dbody   = document.getElementById('ccdBody');
+var loading = document.getElementById('ccdLoading');
+var content = document.getElementById('ccdContent');
+var DET_URL = "{% url 'cc_custos_detalhe' %}";
+var _closeTimer = null;
+
+// O drawer é position:fixed, mas .main-container aplica transform (animação de
+// entrada com fill-mode both), o que cria um containing block e faria o drawer
+// ancorar nele — rolando junto com a página. Movemos overlay + drawer para o
+// <body> para garantir posicionamento relativo à viewport.
+if (overlay && overlay.parentNode !== document.body) document.body.appendChild(overlay);
+if (drawer && drawer.parentNode !== document.body) document.body.appendChild(drawer);
+
+// Nesta shell o scroll da página ocorre no #mainContent (.main-scroll); o body
+// tem overflow:hidden. Travamos o scroll no contêiner correto (sem jump).
+var scroller = document.getElementById('mainContent') || document.scrollingElement || document.body;
+
+function fmtBRL(v){ return 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function isMobile(){ return window.matchMedia('(max-width:559px)').matches; }
+function plural(n, s, p){ return n === 1 ? s : (p || s + 's'); }
+
+function lockScroll(){ if (scroller) scroller.style.overflow = 'hidden'; }
+function unlockScroll(){ if (scroller) scroller.style.overflow = ''; }
+
+function openDrawer(ccId){
+  clearTimeout(_closeTimer);
+  content.style.display = 'none'; loading.style.display = 'flex';
+  document.getElementById('ccdNum').textContent = 'Carregando…';
+  document.getElementById('ccdDep').textContent = '';
+  document.getElementById('ccdTag').innerHTML = '';
+  document.getElementById('ccdTotal').textContent = '';
+  if (dbody) dbody.scrollTop = 0;
+  lockScroll();
+  overlay.classList.add('is-open');
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){ drawer.classList.add('is-open'); }); });
+  var ini = (document.querySelector('input[name="inicio"]') || {}).value || '';
+  var fim = (document.querySelector('input[name="fim"]') || {}).value || '';
+  var url = DET_URL + '?cc=' + encodeURIComponent(ccId) + (ini ? '&inicio=' + ini : '') + (fim ? '&fim=' + fim : '');
+  fetch(url, {headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(function(r){ if(!r.ok) throw new Error('http'); return r.json(); })
+    .then(render)
+    .catch(function(){
+      loading.style.display = 'none';
+      content.innerHTML = '<div class="ccd-empty"><i class="fa fa-triangle-exclamation"></i>Não foi possível carregar os detalhes.</div>';
+      content.style.display = 'flex';
+    });
+}
+
+function closeDrawer(){
+  drawer.classList.remove('is-open');
+  overlay.classList.remove('is-open');
+  unlockScroll();
+  _closeTimer = setTimeout(function(){ content.innerHTML=''; content.style.display='none'; loading.style.display='flex'; }, 360);
+}
+
+function buildResumo(d){
+  var t = d.totais, p = [], custos = [];
+  p.push('O centro de custo <strong>' + esc(d.cc.numero) + ' · ' + esc(d.cc.departamento) + '</strong> (' + (d.cc.is_pmb ? 'PMB' : 'Fazenda') + ') tem <strong>' + t.qtd_colaboradores + ' ' + plural(t.qtd_colaboradores,'colaborador','colaboradores') + ' ativo' + (t.qtd_colaboradores!==1?'s':'') + '</strong>');
+  if (t.custo_locacao > 0) custos.push('<strong>' + fmtBRL(t.custo_locacao) + '/mês</strong> em locação (' + d.qtd_locacao_total + ' ' + plural(d.qtd_locacao_total,'equipamento') + ')');
+  if (t.custo_licencas > 0) custos.push('<strong>' + fmtBRL(t.custo_licencas) + '/mês</strong> em ' + d.licencas.length + ' ' + plural(d.licencas.length,'licença','licenças'));
+  if (custos.length) p.push('O recorrente é composto por ' + custos.join(' e ') + ', somando <strong>' + fmtBRL(t.total_mensal) + '/mês</strong>');
+  else p.push('Não há custo recorrente mensal registrado');
+  if (t.custo_baixas > 0) p.push('Houve ainda <strong>' + fmtBRL(t.custo_baixas) + '</strong> em ' + t.qtd_baixas + ' ' + plural(t.qtd_baixas,'baixa/perda','baixas/perdas') + ' no período de ' + d.periodo.inicio + ' a ' + d.periodo.fim);
+  return p.join('. ') + '.';
+}
+function secRow(nm, mt, vl, neg){
+  return '<div class="ccd-row"><span class="nm">' + nm + '</span>' + (mt ? '<span class="mt">' + mt + '</span>' : '') + '<span class="vl' + (neg?' neg':'') + '">' + vl + '</span></div>';
+}
+function section(icon, color, title, tot, inner){
+  return '<div class="ccd-sec"><div class="ccd-sec-h"><span class="l"><i class="' + icon + '" style="--sc:' + color + '"></i>' + esc(title) + '</span>' + (tot!=null ? '<span class="tot">' + tot + '</span>' : '') + '</div>' + inner + '</div>';
+}
+
+function render(d){
+  loading.style.display = 'none';
+  var t = d.totais;
+  document.getElementById('ccdNum').textContent = d.cc.numero;
+  document.getElementById('ccdDep').textContent = d.cc.departamento;
+  document.getElementById('ccdTag').innerHTML = d.cc.is_pmb
+    ? '<span class="ccd-tag ccd-tag-pmb">PMB</span>'
+    : '<span class="ccd-tag ccd-tag-faz">Fazenda</span>';
+  document.getElementById('ccdTotal').textContent = fmtBRL(t.total_impacto);
+
+  var h = '';
+  h += '<div class="ccd-resumo"><div class="ccd-resumo-ico"><i class="fa fa-lightbulb"></i></div><div class="ccd-resumo-txt">' + buildResumo(d) + '</div></div>';
+  h += '<div class="ccd-kpis">' +
+       '<div class="ccd-kpi" style="--kc:var(--brand)"><b>' + fmtBRL(t.total_mensal)   + '</b><span>Recorrente / mês</span></div>' +
+       '<div class="ccd-kpi"><b>'                                + fmtBRL(t.custo_locacao)  + '</b><span>Locação / mês</span></div>' +
+       '<div class="ccd-kpi" style="--kc:#0d9488"><b>'          + fmtBRL(t.custo_licencas) + '</b><span>Licenças / mês</span></div>' +
+       '<div class="ccd-kpi" style="--kc:var(--danger)"><b>'    + fmtBRL(t.custo_baixas)   + '</b><span>Baixas no período</span></div>' +
+       '</div>';
+
+  if (d.locacao && d.locacao.length){
+    var b = '';
+    d.locacao.forEach(function(it){ b += secRow(esc(it.nome), esc(it.tipo), fmtBRL(it.valor) + '/mês'); });
+    if (d.qtd_locacao_total > d.locacao.length) b += '<div class="ccd-more">+ ' + (d.qtd_locacao_total - d.locacao.length) + ' equipamentos não listados</div>';
+    h += section('fa fa-computer', 'var(--brand)', 'Locação de Hardware (' + d.qtd_locacao_total + ')', fmtBRL(t.custo_locacao) + '/mês', b);
+  }
+  if (d.licencas && d.licencas.length){
+    var b2 = '';
+    d.licencas.forEach(function(l){ b2 += secRow(esc(l.nome), l.qtd_usuarios + ' ' + plural(l.qtd_usuarios,'atribuição','atribuições'), fmtBRL(l.subtotal) + '/mês'); });
+    h += section('fa fa-key', '#0d9488', 'Licenças de Software (' + d.licencas.length + ')', fmtBRL(t.custo_licencas) + '/mês', b2);
+  }
+  if (d.baixas && d.baixas.length){
+    var b3 = '';
+    d.baixas.forEach(function(x){ b3 += secRow(esc(x.item), x.data, fmtBRL(x.custo), true); });
+    if (t.qtd_baixas > d.baixas.length) b3 += '<div class="ccd-more">+ ' + (t.qtd_baixas - d.baixas.length) + ' baixas não listadas</div>';
+    h += section('fa fa-arrow-trend-down', 'var(--danger)', 'Baixas / Perdas (' + t.qtd_baixas + ')', fmtBRL(t.custo_baixas), b3);
+  }
+  if (d.colaboradores && d.colaboradores.length){
+    var c = '<div class="ccd-chips">';
+    d.colaboradores.forEach(function(u){ c += '<span class="ccd-chip">' + esc(u.nome) + (u.funcao ? ' <small>· ' + esc(u.funcao) + '</small>' : '') + '</span>'; });
+    c += '</div>';
+    if (d.qtd_colab_total > d.colaboradores.length) c += '<div class="ccd-more">+ ' + (d.qtd_colab_total - d.colaboradores.length) + ' colaboradores</div>';
+    h += section('fa fa-users', 'var(--text-tertiary)', 'Colaboradores ativos (' + t.qtd_colaboradores + ')', null, c);
+  }
+  if (!(d.locacao||[]).length && !(d.licencas||[]).length && !(d.baixas||[]).length){
+    h += '<div class="ccd-empty"><i class="fa fa-chart-simple"></i>Nenhum custo detalhado para este centro de custo.</div>';
+  }
+
+  content.innerHTML = h;
+  content.style.display = 'flex';
+}
+
+document.getElementById('ccdClose').addEventListener('click', closeDrawer);
+overlay.addEventListener('click', closeDrawer);
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && drawer.classList.contains('is-open')) closeDrawer(); });
+document.querySelectorAll('.cc-cost-page .table tbody tr[data-cc]').forEach(function(tr){
+  var openIt = function(){ openDrawer(tr.getAttribute('data-cc')); };
+  tr.addEventListener('click', openIt);
+  tr.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openIt(); } });
+});
+
+/* swipe para dispensar */
+var sw = { x:0, y:0, active:false, axis:null };
+drawer.addEventListener('touchstart', function(e){ if (e.touches.length!==1) return; sw.x=e.touches[0].clientX; sw.y=e.touches[0].clientY; sw.active=true; sw.axis=null; drawer.style.transition='none'; }, {passive:true});
+drawer.addEventListener('touchmove', function(e){
+  if (!sw.active || e.touches.length!==1) return;
+  var dx = e.touches[0].clientX - sw.x, dy = e.touches[0].clientY - sw.y;
+  if (!sw.axis){ if (Math.abs(dx)<6 && Math.abs(dy)<6) return; sw.axis = Math.abs(dy)>Math.abs(dx) ? 'y' : 'x'; }
+  if (isMobile() && sw.axis==='y'){ if (dy<0) return; if (dbody && dbody.scrollTop>2) return; drawer.style.transform='translateY('+dy+'px)'; }
+  else if (!isMobile() && sw.axis==='x'){ if (dx<0) return; drawer.style.transform='translateX('+dx+'px)'; }
+}, {passive:true});
+drawer.addEventListener('touchend', function(e){
+  if (!sw.active) return; sw.active=false; drawer.style.transition='';
+  var ct = e.changedTouches[0] || {};
+  var dx = (ct.clientX||sw.x) - sw.x, dy = (ct.clientY||sw.y) - sw.y, mob = isMobile();
+  if (sw.axis && (mob ? dy : dx) > (mob ? 70 : 90)) closeDrawer();
+  else drawer.style.transform = mob ? 'translateY(0)' : 'translateX(0)';
+}, {passive:true});
+})();
 </script>
 {% endblock %}

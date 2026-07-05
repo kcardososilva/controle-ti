@@ -4,34 +4,70 @@
 {% block page_title %}Mapa dos dispositivos{% endblock %}
 {% block page_subtitle %}Localização atual dos celulares corporativos em modo quiosque{% endblock %}
 
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'quiosque_dashboard' %}">Quiosque</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Mapa</span>
+</nav>
+{% endblock %}
+
 {% block header_actions %}
-  <a href="{% url 'quiosque_dashboard' %}" class="btn btn-sm btn-light"><i class="fa fa-arrow-left"></i> Voltar</a>
+  <a href="{% url 'quiosque_dashboard' %}" class="btn btn-sm"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
 {% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-:where(.kq-mapa) { --kq-brand:#4f46e5; --kq-h:calc(100vh - 210px); }
+:where(.kq-mapa) { --kq-h:calc(100dvh - 232px); }
 .kq-mapa, .kq-mapa * { box-sizing:border-box; min-width:0; }
-.kq-mapa { display:grid; grid-template-columns:288px 1fr; gap:1rem; align-items:stretch; }
-@media (max-width:820px){ .kq-mapa{ grid-template-columns:1fr; } :where(.kq-mapa){ --kq-h:62vh; } }
-.kq-side { display:flex; flex-direction:column; gap:.7rem; min-height:0; max-height:var(--kq-h); }
-.kq-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:.45rem; flex:0 0 auto; }
-.kq-stat { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-lg); padding:.55rem .4rem; text-align:center; }
-.kq-stat .v { font-size:1.3rem; font-weight:800; letter-spacing:-.03em; color:var(--k,var(--text-primary)); line-height:1; }
-.kq-stat .l { font-size:.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-tertiary); margin-top:.3rem; }
-.kq-list-head { font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); padding:.1rem .15rem; flex:0 0 auto; }
-.kq-list { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden auto; flex:1 1 auto; min-height:0; }
-.kq-item { display:flex; align-items:center; gap:.6rem; padding:.6rem .85rem; border-bottom:1px solid var(--separator-hairline); cursor:pointer; text-decoration:none; color:inherit; }
+.kq-mapa { display:grid; grid-template-columns:300px 1fr; gap:16px; align-items:stretch; }
+@media (max-width:820px){ .kq-mapa{ grid-template-columns:1fr; } :where(.kq-mapa){ --kq-h:60vh; } }
+
+.kq-side { display:flex; flex-direction:column; gap:10px; min-height:0; max-height:var(--kq-h); }
+
+.kq-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--separator-hairline);
+  border:1px solid var(--separator-hairline); border-radius:var(--radius-md); overflow:hidden; flex:0 0 auto; }
+.kq-metric { background:var(--bg-elevated); padding:10px 8px; text-align:center; }
+.kq-metric .v { font-size:20px; font-weight:700; letter-spacing:-.03em; line-height:1; color:var(--text-primary); font-variant-numeric:tabular-nums; }
+.kq-metric .l { display:flex; align-items:center; justify-content:center; gap:5px; margin-top:5px; font-size:10px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.02em; color:var(--text-tertiary); }
+.kq-metric .l .mdot { width:6px; height:6px; border-radius:99px; }
+
+.kq-search { display:flex; align-items:center; gap:8px; height:36px; padding:0 11px; flex:0 0 auto;
+  border-radius:var(--radius-md); background:var(--bg-elevated); border:1px solid var(--separator-non-opaque);
+  transition:border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.kq-search:focus-within { border-color:var(--brand); box-shadow:0 0 0 3px var(--brand-ring); }
+.kq-search i { color:var(--text-tertiary); font-size:12px; }
+.kq-search input { flex:1; min-width:0; border:0; background:none; outline:none; font-size:13px; color:var(--text-primary); }
+
+.kq-list-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:2px 2px; flex:0 0 auto; }
+.kq-list-head .t { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); }
+.kq-fitall { border:0; background:none; cursor:pointer; color:var(--brand); font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:5px; }
+.kq-fitall:hover { color:var(--brand-hover); }
+
+.kq-list { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-xs); overflow:hidden auto; flex:1 1 auto; min-height:120px; }
+.kq-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid var(--separator-hairline); cursor:pointer; text-decoration:none; color:inherit; }
 .kq-item:last-child { border-bottom:0; }
 .kq-item:hover { background:var(--bg-hover); }
-.kq-item.sel { background:var(--kq-brand-soft,color-mix(in srgb,#4f46e5 9%,transparent)); box-shadow:inset 3px 0 0 var(--kq-brand); }
+.kq-item.sel { background:var(--brand-soft); box-shadow:inset 3px 0 0 var(--brand); }
+.kq-item.hidden { display:none; }
 .kq-dot { width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
-.kq-item .nm { font-weight:700; font-size:.85rem; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.kq-item .sb { font-size:.72rem; color:var(--text-tertiary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.kq-map { height:var(--kq-h); min-height:420px; width:100%; border-radius:var(--radius-xl); border:1px solid var(--separator-hairline); box-shadow:var(--shadow-xs); z-index:0; }
-.kq-empty { display:grid; place-items:center; gap:.5rem; padding:3rem 1rem; text-align:center; color:var(--text-tertiary); font-weight:600; }
-.kq-empty i { font-size:1.6rem; color:var(--kq-brand); }
+.kq-item-main { min-width:0; flex:1; }
+.kq-item .nm { font-weight:600; font-size:13px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kq-item .sb { font-size:11.5px; color:var(--text-tertiary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+.kq-open { width:26px; height:26px; flex:0 0 26px; display:grid; place-items:center; border-radius:var(--radius-sm);
+  color:var(--text-tertiary); border:1px solid transparent; }
+.kq-open:hover { color:var(--brand); background:var(--brand-soft); }
+.kq-list-empty { padding:16px; text-align:center; color:var(--text-tertiary); font-size:12.5px; }
+
+.kq-map { height:var(--kq-h); min-height:420px; width:100%; border-radius:var(--radius-lg); border:1px solid var(--separator-hairline); box-shadow:var(--shadow-xs); z-index:0; }
+
+.kq-empty { display:grid; place-items:center; gap:10px; padding:36px 16px; text-align:center; color:var(--text-tertiary); font-size:13px; }
+.kq-empty i { font-size:24px; color:var(--text-quaternary); }
 </style>
 {% endblock %}
 
@@ -39,25 +75,38 @@
 <div class="kq-mapa">
 
   <div class="kq-side">
-    <div class="kq-stats">
-      <div class="kq-stat" style="--k:var(--kq-brand)"><div class="v">{{ total }}</div><div class="l">No mapa</div></div>
-      <div class="kq-stat" style="--k:#1e8e3e"><div class="v">{{ online }}</div><div class="l">Online</div></div>
-      <div class="kq-stat" style="--k:#b35a00"><div class="v">{{ sem_local }}</div><div class="l">Sem GPS</div></div>
+    <div class="kq-metrics">
+      <div class="kq-metric"><div class="v">{{ total }}</div><div class="l"><span class="mdot" style="background:var(--brand)"></span>No mapa</div></div>
+      <div class="kq-metric"><div class="v">{{ online }}</div><div class="l"><span class="mdot" style="background:var(--success)"></span>Online</div></div>
+      <div class="kq-metric"><div class="v">{{ sem_local }}</div><div class="l"><span class="mdot" style="background:var(--warning)"></span>Sem GPS</div></div>
     </div>
 
-    <div class="kq-list-head">Dispositivos no mapa</div>
+    {% if pontos %}
+    <label class="kq-search">
+      <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+      <input type="text" id="kqFilter" placeholder="Filtrar dispositivos…" aria-label="Filtrar dispositivos na lista">
+    </label>
+    {% endif %}
+
+    <div class="kq-list-head">
+      <span class="t">Dispositivos no mapa</span>
+      {% if pontos %}<button type="button" class="kq-fitall" id="kqFitAll"><i class="fa-solid fa-expand"></i> Ver todos</button>{% endif %}
+    </div>
+
     <div class="kq-list" id="kqList">
       {% for p in pontos %}
-      <a class="kq-item" href="{{ p.url }}" data-pk="{{ p.pk }}">
-        <span class="kq-dot" style="background:{% if p.online %}#1e8e3e{% else %}#8e8e93{% endif %}"></span>
-        <span style="min-width:0;">
-          <div class="nm">{{ p.nome }}</div>
-          <div class="sb">{{ p.modelo }}{% if p.bateria is not None %} · {{ p.bateria }}%{% endif %} · {{ p.checkin }}</div>
+      <a class="kq-item" href="{{ p.url }}" data-pk="{{ p.pk }}" data-name="{{ p.nome|lower }} {{ p.modelo|lower }}">
+        <span class="kq-dot" style="background:{% if p.online %}var(--success){% else %}var(--text-quaternary){% endif %}"></span>
+        <span class="kq-item-main">
+          <span class="nm">{{ p.nome }}</span>
+          <span class="sb">{{ p.modelo }}{% if p.bateria is not None %} · {{ p.bateria }}%{% endif %} · {{ p.checkin }}</span>
         </span>
+        <span class="kq-open" title="Abrir dispositivo"><i class="fa-solid fa-chevron-right"></i></span>
       </a>
       {% empty %}
-      <div class="kq-empty"><i class="fa fa-location-dot"></i> Nenhum dispositivo com localização ainda.</div>
+      <div class="kq-empty"><i class="fa-solid fa-location-dot"></i> Nenhum dispositivo com localização ainda.</div>
       {% endfor %}
+      <div class="kq-list-empty" id="kqNoMatch" hidden>Nenhum dispositivo corresponde ao filtro.</div>
     </div>
   </div>
 
@@ -73,9 +122,6 @@
 (function(){
   var pontos = JSON.parse(document.getElementById('__kqpontos').textContent) || [];
 
-  // Camadas base: satélite (Esri, PADRÃO) + mapa de ruas (OSM). maxNativeZoom
-  // evita o placeholder "Map data not yet available" em zoom alto onde a Esri não
-  // tem imagem (áreas rurais) — o Leaflet faz upscale do tile nativo.
   var ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'&copy; OpenStreetMap' });
   var sat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:19, maxNativeZoom:17, attribution:'Tiles &copy; Esri' });
   var map = L.map('kqMap', { layers:[sat] });
@@ -86,7 +132,7 @@
   var bounds = [];
   pontos.forEach(function(p){
     if (p.lat == null || p.lon == null) return;
-    var cor = p.online ? '#1e8e3e' : '#8e8e93';
+    var cor = p.online ? '#34c759' : '#8e8e93';
     var m = L.circleMarker([p.lat, p.lon], { radius:9, color:'#fff', weight:2, fillColor:cor, fillOpacity:1 })
       .addTo(map)
       .bindPopup('<b>'+ p.nome +'</b><br>'+ p.modelo +'<br>'+
@@ -98,17 +144,19 @@
     bounds.push([p.lat, p.lon]);
   });
 
-  if (bounds.length > 1) { map.fitBounds(L.latLngBounds(bounds).pad(0.2)); }
-  else if (bounds.length === 1) { map.setView(bounds[0], 15); }
-  else { map.setView([-16.6869, -49.2643], 4); }
-
-  // Garante o redimensionamento correto após o layout em grade assentar
+  function fitAll(){
+    if (bounds.length > 1) { map.fitBounds(L.latLngBounds(bounds).pad(0.2)); }
+    else if (bounds.length === 1) { map.setView(bounds[0], 15); }
+    else { map.setView([-16.6869, -49.2643], 4); }
+  }
+  fitAll();
   setTimeout(function(){ map.invalidateSize(); }, 120);
 
-  // Clicar na lista foca o marcador e destaca o item
+  // Clicar na lista foca o marcador e destaca o item (chevron abre o detalhe).
   var itens = document.querySelectorAll('#kqList .kq-item');
   itens.forEach(function(el){
     el.addEventListener('click', function(ev){
+      if (ev.target.closest('.kq-open')) return;   // chevron → segue o href (abre detalhe)
       var m = markers[el.getAttribute('data-pk')];
       if (m) {
         ev.preventDefault();
@@ -118,6 +166,28 @@
         m.openPopup();
       }
     });
+  });
+
+  // "Ver todos" → reenquadra o mapa em todos os pontos.
+  var fitBtn = document.getElementById('kqFitAll');
+  if (fitBtn) fitBtn.addEventListener('click', function(){
+    itens.forEach(function(o){ o.classList.remove('sel'); });
+    map.closePopup();
+    fitAll();
+  });
+
+  // Filtro client-side da lista lateral.
+  var filtro = document.getElementById('kqFilter');
+  var semMatch = document.getElementById('kqNoMatch');
+  if (filtro) filtro.addEventListener('input', function(){
+    var q = filtro.value.trim().toLowerCase();
+    var visiveis = 0;
+    itens.forEach(function(el){
+      var hit = !q || (el.getAttribute('data-name') || '').indexOf(q) !== -1;
+      el.classList.toggle('hidden', !hit);
+      if (hit) visiveis++;
+    });
+    if (semMatch) semMatch.hidden = visiveis > 0;
   });
 })();
 </script>

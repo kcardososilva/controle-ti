@@ -5,47 +5,131 @@
 {% block page_title %}Matrículas de Quiosque{% endblock %}
 {% block page_subtitle %}Códigos de uso único para registrar novos celulares no app{% endblock %}
 
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'quiosque_dashboard' %}">Quiosque</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Matrículas</span>
+</nav>
+{% endblock %}
+
 {% block header_actions %}
-  <a href="{% url 'quiosque_dashboard' %}" class="btn btn-sm btn-light"><i class="fa fa-arrow-left"></i> Voltar</a>
+  <a href="{% url 'quiosque_dashboard' %}" class="btn btn-sm"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
 {% endblock %}
 
 {% block extra_css %}
 <style>
-:where(.kq-mat) { --kq-brand:#4f46e5; }
 .kq-mat, .kq-mat * { box-sizing:border-box; min-width:0; }
-.kq-mat { display:grid; gap:1rem; }
-.kq-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); overflow:hidden; }
-.kq-card-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.85rem 1.15rem; border-bottom:1px solid var(--separator-hairline); }
-.kq-card-title { font-size:.92rem; font-weight:700; }
-.kq-card-body { padding:1.1rem 1.15rem; }
-.kq-form { display:flex; gap:.7rem; flex-wrap:wrap; align-items:flex-end; }
-.kq-field { display:flex; flex-direction:column; gap:.3rem; }
-.kq-field label { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
-.kq-table { width:100%; border-collapse:collapse; }
-.kq-table th, .kq-table td { padding:.6rem .9rem; border-bottom:1px solid var(--separator-hairline); text-align:left; font-size:.83rem; white-space:nowrap; }
-.kq-table th { font-size:.66rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); font-weight:700; }
-.kq-code { font-family:var(--font-mono,ui-monospace,Consolas,monospace); font-weight:800; letter-spacing:.06em; font-size:.95rem; color:var(--kq-brand); }
-.kq-pill { display:inline-block; padding:.12rem .55rem; border-radius:var(--radius-pill); font-size:.72rem; font-weight:700; }
-.kq-pill.ok { color:#1e8e3e; background:color-mix(in srgb,#34c759 16%,transparent); }
-.kq-pill.used { color:var(--text-tertiary); background:var(--bg-fill-secondary); }
-.kq-hint { font-size:.8rem; color:var(--text-secondary); margin-top:.5rem; }
+.kq-mat { display:grid; gap:16px; }
+
+/* ── metric strip ─────────────────────────────────────────────────── */
+.kq-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px;
+  background:var(--separator-hairline); border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow-xs); }
+@media (max-width:560px){ .kq-metrics{ grid-template-columns:repeat(2,1fr);} }
+.kq-metric { background:var(--bg-elevated); padding:14px 16px; }
+.kq-metric-l { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:600; letter-spacing:.02em; color:var(--text-tertiary); }
+.kq-metric-l .mdot { width:7px; height:7px; border-radius:99px; }
+.kq-metric-v { margin-top:8px; font-size:24px; font-weight:700; letter-spacing:-.035em; line-height:1; color:var(--text-primary); font-variant-numeric:tabular-nums; }
+
+/* ── card ─────────────────────────────────────────────────────────── */
+.kq-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-lg); box-shadow:var(--shadow-xs); overflow:hidden; }
+.kq-card-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; border-bottom:1px solid var(--separator-hairline); }
+.kq-card-title { display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:600; letter-spacing:-.01em; color:var(--text-primary); }
+.kq-card-title i { color:var(--text-tertiary); font-size:13px; }
+.kq-card-sub { font-size:12px; color:var(--text-tertiary); font-weight:500; }
+.kq-card-body { padding:16px; }
+
+/* ── formulário de geração ────────────────────────────────────────── */
+.kq-form { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+.kq-field { display:flex; flex-direction:column; gap:6px; }
+.kq-field label { font-size:12px; font-weight:500; color:var(--text-secondary); }
+.kq-form .form-control { min-height:38px; }
+.kq-hint { display:flex; align-items:flex-start; gap:8px; margin-top:14px; padding:10px 12px;
+  border:1px solid var(--separator-hairline); border-radius:var(--radius-md); background:var(--bg-page-2);
+  font-size:12.5px; color:var(--text-tertiary); line-height:1.5; }
+.kq-hint i { color:var(--text-quaternary); margin-top:2px; }
+.kq-hint b { color:var(--text-secondary); font-weight:600; }
+
+/* ── tabela ───────────────────────────────────────────────────────── */
+.kq-scroll { width:100%; overflow-x:auto; }
+.kq-table { width:100%; border-collapse:collapse; min-width:760px; }
+.kq-table thead th { position:sticky; top:0; background:var(--bg-elevated); padding:10px 14px; text-align:left;
+  font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); font-weight:600;
+  border-bottom:1px solid var(--separator-hairline); white-space:nowrap; }
+.kq-table tbody td { padding:11px 14px; border-bottom:1px solid var(--separator-hairline); font-size:12.5px; color:var(--text-primary); white-space:nowrap; vertical-align:middle; }
+.kq-table tbody tr:last-child td { border-bottom:0; }
+.kq-table tbody tr:hover { background:var(--bg-hover); }
+
+.kq-codewrap { display:inline-flex; align-items:center; gap:8px; }
+.kq-code { font-family:var(--font-mono); font-weight:600; letter-spacing:.06em; font-size:14px; color:var(--text-primary); }
+.kq-copy { width:26px; height:26px; flex:0 0 26px; display:inline-grid; place-items:center; border-radius:var(--radius-sm);
+  border:1px solid var(--separator-non-opaque); background:var(--bg-elevated); color:var(--text-tertiary); font-size:11px; cursor:pointer; transition:all var(--transition-fast); }
+.kq-copy:hover { color:var(--brand); border-color:var(--brand); background:var(--brand-soft); }
+.kq-copy.done { color:var(--success); border-color:color-mix(in srgb,var(--success) 40%,transparent); background:var(--success-soft); }
+
+.kq-pill { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:99px; font-size:11.5px; font-weight:600; }
+.kq-pill::before { content:""; width:6px; height:6px; border-radius:99px; }
+.kq-pill.ok { color:var(--success); background:var(--success-soft); }
+.kq-pill.ok::before { background:var(--success); }
+.kq-pill.used { color:var(--text-tertiary); background:var(--bg-fill-tertiary); }
+.kq-pill.used::before { background:var(--text-quaternary); }
+.kq-pill.exp { color:var(--warning); background:var(--warning-soft); }
+.kq-pill.exp::before { background:var(--warning); }
+
+.kq-devlink { color:var(--brand); text-decoration:none; font-weight:500; }
+.kq-devlink:hover { text-decoration:underline; }
+.kq-muted { color:var(--text-quaternary); }
+.kq-when { color:var(--text-secondary); }
+
+.kq-del { width:30px; height:30px; display:inline-grid; place-items:center; border-radius:var(--radius-sm);
+  border:1px solid var(--separator-non-opaque); background:var(--bg-elevated); color:var(--text-tertiary); cursor:pointer; transition:all var(--transition-fast); }
+.kq-del:hover { color:var(--danger); border-color:color-mix(in srgb,var(--danger) 40%,transparent); background:var(--danger-soft); }
+
+.kq-empty { display:grid; place-items:center; gap:10px; padding:44px 16px; text-align:center; color:var(--text-tertiary); font-size:13px; }
+.kq-empty i { font-size:24px; color:var(--text-quaternary); }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="kq-mat">
 
+  <!-- métricas -->
+  <section class="kq-metrics" aria-label="Resumo das matrículas">
+    <div class="kq-metric">
+      <div class="kq-metric-l"><span class="mdot" style="background:var(--brand)"></span>Total geradas</div>
+      <div class="kq-metric-v">{{ total }}</div>
+    </div>
+    <div class="kq-metric">
+      <div class="kq-metric-l"><span class="mdot" style="background:var(--success)"></span>Disponíveis</div>
+      <div class="kq-metric-v">{{ disponiveis }}</div>
+    </div>
+    <div class="kq-metric">
+      <div class="kq-metric-l"><span class="mdot" style="background:var(--text-quaternary)"></span>Usadas</div>
+      <div class="kq-metric-v">{{ usadas }}</div>
+    </div>
+    <div class="kq-metric">
+      <div class="kq-metric-l"><span class="mdot" style="background:var(--warning)"></span>Expiradas</div>
+      <div class="kq-metric-v">{{ expiradas }}</div>
+    </div>
+  </section>
+
+  <!-- gerar novo código -->
   <div class="kq-card">
-    <div class="kq-card-head"><span class="kq-card-title"><i class="fa fa-plus" style="color:var(--kq-brand);margin-right:.4rem;"></i>Gerar novo código</span>
-      <span style="font-size:.8rem;color:var(--text-tertiary);font-weight:600;">{{ disponiveis }} disponível(is)</span></div>
+    <div class="kq-card-head">
+      <span class="kq-card-title"><i class="fa-solid fa-plus"></i>Gerar novo código</span>
+      <span class="kq-card-sub">{{ disponiveis }} disponível(is)</span>
+    </div>
     <div class="kq-card-body">
       <form method="post" class="kq-form">
         {% csrf_token %}
         <div class="kq-field" style="flex:2; min-width:240px;">
           <label for="descricao">Descrição (opcional)</label>
-          <input id="descricao" name="descricao" type="text" class="form-control" placeholder="Ex.: Celular portaria, Tablet recepção...">
+          <input id="descricao" name="descricao" type="text" class="form-control" placeholder="Ex.: Celular portaria, Tablet recepção…">
         </div>
-        <div class="kq-field" style="max-width:200px;">
+        <div class="kq-field" style="min-width:170px;">
           <label for="validade_horas">Validade</label>
           <select id="validade_horas" name="validade_horas" class="form-control">
             <option value="24">24 horas</option>
@@ -54,36 +138,61 @@
             <option value="0">Sem expiração</option>
           </select>
         </div>
-        <button type="submit" class="btn btn-primary" style="padding:0 1.2rem;min-height:2.4rem;"><i class="fa fa-id-card"></i> Gerar código</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-id-card"></i> Gerar código</button>
       </form>
-      <div class="kq-hint"><i class="fa fa-circle-info"></i> O código é de <b>uso único</b>: digite-o no app do quiosque ao registrar o aparelho. Após o registro, ele é marcado como usado.</div>
+      <div class="kq-hint">
+        <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+        <span>O código é de <b>uso único</b>: digite-o no app do quiosque ao registrar o aparelho. Após o registro, ele é marcado como usado.</span>
+      </div>
     </div>
   </div>
 
+  <!-- códigos gerados -->
   <div class="kq-card">
-    <div class="kq-card-head"><span class="kq-card-title"><i class="fa fa-id-card" style="color:var(--kq-brand);margin-right:.4rem;"></i>Códigos gerados</span></div>
-    <div style="width:100%;overflow-x:auto;">
+    <div class="kq-card-head">
+      <span class="kq-card-title"><i class="fa-solid fa-id-card"></i>Códigos gerados</span>
+      <span class="kq-card-sub">últimos 100</span>
+    </div>
+    <div class="kq-scroll">
       <table class="kq-table">
-        <thead><tr><th>Código</th><th>Descrição</th><th>Status</th><th>Dispositivo</th><th>Expira</th><th>Gerado</th><th></th></tr></thead>
+        <thead>
+          <tr><th>Código</th><th>Descrição</th><th>Status</th><th>Dispositivo</th><th>Expira</th><th>Gerado</th><th aria-label="Ações"></th></tr>
+        </thead>
         <tbody>
           {% for m in matriculas %}
           <tr>
-            <td><span class="kq-code">{{ m.codigo }}</span></td>
+            <td>
+              <span class="kq-codewrap">
+                <span class="kq-code">{{ m.codigo }}</span>
+                <button type="button" class="kq-copy" data-copy="{{ m.codigo }}" title="Copiar código" aria-label="Copiar código {{ m.codigo }}"><i class="fa-regular fa-copy"></i></button>
+              </span>
+            </td>
             <td>{{ m.descricao|default:"—" }}</td>
-            <td>{% if m.usado %}<span class="kq-pill used">Usado</span>{% elif not m.esta_valida %}<span class="kq-pill used">Expirado</span>{% else %}<span class="kq-pill ok">Disponível</span>{% endif %}</td>
-            <td>{% if m.device %}<a href="{% url 'quiosque_detalhe' m.device.pk %}" style="color:var(--kq-brand);text-decoration:none;font-weight:600;">{{ m.device }}</a>{% else %}—{% endif %}</td>
-            <td>{% if m.expira_em %}{{ m.expira_em|date:"d/m/Y H:i" }}{% else %}<span style="color:var(--text-tertiary);">—</span>{% endif %}</td>
-            <td>{{ m.criado_em|naturaltime }}</td>
+            <td>
+              {% if m.usado %}<span class="kq-pill used">Usado</span>
+              {% elif not m.esta_valida %}<span class="kq-pill exp">Expirado</span>
+              {% else %}<span class="kq-pill ok">Disponível</span>{% endif %}
+            </td>
+            <td>{% if m.device %}<a href="{% url 'quiosque_detalhe' m.device.pk %}" class="kq-devlink">{{ m.device }}</a>{% else %}<span class="kq-muted">—</span>{% endif %}</td>
+            <td>{% if m.expira_em %}<span class="kq-when">{{ m.expira_em|date:"d/m/Y H:i" }}</span>{% else %}<span class="kq-muted">sem expiração</span>{% endif %}</td>
+            <td><span class="kq-when" title="{{ m.criado_em|date:'d/m/Y H:i' }}">{{ m.criado_em|naturaltime }}</span></td>
             <td style="text-align:right;">
               <form method="post" action="{% url 'quiosque_matricula_excluir' m.pk %}" style="margin:0;"
                     onsubmit="return confirm('Excluir a matrícula {{ m.codigo }}? {% if m.device %}O dispositivo já matriculado NÃO é afetado.{% else %}Esta ação não pode ser desfeita.{% endif %}');">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-sm" title="Excluir matrícula" style="color:#d93025;border-color:#f3c1bd;"><i class="fa fa-trash"></i></button>
+                <button type="submit" class="kq-del" title="Excluir matrícula" aria-label="Excluir matrícula {{ m.codigo }}"><i class="fa-solid fa-trash"></i></button>
               </form>
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:1.5rem;">Nenhum código gerado ainda.</td></tr>
+          <tr>
+            <td colspan="7">
+              <div class="kq-empty">
+                <i class="fa-solid fa-id-card"></i>
+                <span>Nenhum código gerado ainda. Use o formulário acima para criar o primeiro.</span>
+              </div>
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
@@ -91,4 +200,30 @@
   </div>
 
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Copiar código para a área de transferência (com feedback visual breve).
+(function(){
+  document.querySelectorAll('.kq-copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var code = btn.getAttribute('data-copy') || '';
+      var done = function(){
+        btn.classList.add('done');
+        btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+        setTimeout(function(){ btn.classList.remove('done'); btn.innerHTML = '<i class="fa-regular fa-copy"></i>'; }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).then(done).catch(function(){});
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = code; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}

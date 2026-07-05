@@ -6,6 +6,8 @@ Acessível pelo nome no topbar (profile-chip). Permite ao administrador:
   • trocar a senha (com validação do Django, mantendo a sessão ativa);
   • consultar informações do sistema (versão e contagens gerais).
 """
+from datetime import timedelta
+
 import django
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
@@ -23,10 +25,12 @@ from ..models import (
     Fornecedor,
     OrdemManutencao,
     MovimentacaoItem,
+    RegistroSeguranca,
+    NovidadeSistema,
     StatusOrdemManutencaoChoices,
 )
 
-SISTEMA_VERSAO = "4.0.0"
+SISTEMA_VERSAO = "4.1.0"
 
 
 @login_required
@@ -94,8 +98,54 @@ def admin_perfil(request):
             .exclude(status__in=[SOM.CONCLUIDO, SOM.CANCELADO]).count(),
     }
 
+    # ── Segurança da conta (novidade: monitoramento de autenticação A.8.16) ──
+    is_admin = bool(user.is_staff or user.is_superuser)
+    desde_30 = agora - timedelta(days=30)
+    desde_7 = agora - timedelta(days=7)
+
+    meus_acessos = list(
+        RegistroSeguranca.objects
+        .filter(usuario=user, tipo__in=["login_ok", "login_falha"])
+        .order_by("-criado_em")[:6]
+    )
+    ultimo_ip = next(
+        (a.ip for a in meus_acessos if a.tipo == "login_ok" and a.ip), None
+    )
+
+    seg_sistema = None
+    if is_admin:
+        base = RegistroSeguranca.objects
+        seg_sistema = {
+            "suspeitos_30d": base.filter(suspeito=True, criado_em__gte=desde_30).count(),
+            "falhas_7d": base.filter(tipo="login_falha", criado_em__gte=desde_7).count(),
+            "logins_7d": base.filter(tipo="login_ok", criado_em__gte=desde_7).count(),
+            "recentes_suspeitos": list(
+                base.filter(suspeito=True)
+                .select_related("usuario")
+                .order_by("-criado_em")[:5]
+            ),
+        }
+
+    seguranca = {
+        "is_admin": is_admin,
+        "meus_acessos": meus_acessos,
+        "ultimo_ip": ultimo_ip,
+        "sistema": seg_sistema,
+        # Postura de segurança (chips): estado atual dos controles.
+        "mfa_ativo": False,                 # ainda não implementado (A.8.5)
+        "senha_politica": True,             # AUTH_PASSWORD_VALIDATORS ativos
+        "monitoramento_ativo": True,        # RegistroSeguranca ativo (A.8.16)
+    }
+
+    # ── Novidades do sistema (changelog: implementado/atualizado/corrigido) ──
+    novidades = list(
+        NovidadeSistema.objects.filter(ativo=True).order_by("-data", "-id")[:6]
+    )
+
     return render(request, "front/admin/admin_perfil.html", {
         "perfil": user,
         "sistema": sistema,
         "minhas_mov": minhas_mov,
+        "seguranca": seguranca,
+        "novidades": novidades,
     })

@@ -24,3 +24,7 @@ class ProjetoestoqueConfig(AppConfig):
 
         # Conecta os signals (histórico de locação por status do item)
         from . import signals  # noqa: F401
+
+        # Conecta o monitoramento de segurança (ISO 27001 A.8.15/A.8.16):
+        # login/logout/falha → RegistroSeguranca + alerta de acesso suspeito.
+        from services import seguranca_service  # noqa: F401

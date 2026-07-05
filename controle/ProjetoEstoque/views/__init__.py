@@ -181,6 +181,7 @@ from .dashboards import (
     dashboard,
     dashboard_apresentacao_dados,
     cc_custos_dashboard,
+    cc_custos_detalhe,
     cc_custos_export_pdf,
     preventiva_dashboard,
     custos_diretoria_dashboard,
