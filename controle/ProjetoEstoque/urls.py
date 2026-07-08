@@ -228,7 +228,13 @@ urlpatterns = [
     path("portal/equipamentos/<int:pk>/", views.portal_equipamento_detail, name="portal_equipamento_detail"),
     path("portal/manutencao/", views.portal_manutencao_list, name="portal_manutencao_list"),
     path("portal/manutencao/<int:pk>/", views.portal_manutencao_detail, name="portal_manutencao_detail"),
+    path("portal/troca-antecipada/", views.portal_troca_antecipada_list, name="portal_troca_antecipada_list"),
+    path("portal/troca-antecipada/nova/", views.portal_troca_antecipada_nova, name="portal_troca_antecipada_nova"),
+    path("portal/notificacoes/marcar-lidas/", views.portal_notificacoes_marcar_lidas, name="portal_notificacoes_marcar_lidas"),
     path("portal/licencas/", views.portal_licencas_list, name="portal_licencas_list"),
+
+    # ── Notificações (sino do topo) ─────────────────────────────────────────
+    path("notificacoes/marcar-lidas/", views.notificacoes_marcar_lidas, name="notificacoes_marcar_lidas"),
 
     # ── Manutenção externa — recebimentos (lado TI) ─────────────────────────
     path("manutencao/recebimentos/", views.manutencao_recebimentos, name="manutencao_recebimentos"),

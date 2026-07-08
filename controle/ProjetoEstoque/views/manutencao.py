@@ -24,8 +24,15 @@ from ..models import (
 
 S = StatusOrdemManutencaoChoices
 
-# TI precisa agir: aprovar/reprovar orçamento, ou receber o reparado/substituto.
-_PENDENTES_TI = [S.AGUARDANDO_APROVACAO, S.DEVOLVIDO, S.SUBSTITUTO_ENVIADO]
+# TI precisa agir: aprovar/reprovar orçamento, receber o reparado/substituto,
+# receber e armazenar p/ descarte um equipamento devolvido, aprovar/recusar um
+# pedido de descarte local, ou, na troca antecipada, receber o substituto e enviar
+# o defeituoso. (sem_condicoes = vez do fornecedor devolver.)
+_PENDENTES_TI = [
+    S.AGUARDANDO_APROVACAO, S.DEVOLVIDO, S.SUBSTITUTO_ENVIADO,
+    S.DEVOLVIDO_DESCARTE, S.DESCARTE_LOCAL_SOLICITADO,
+    S.TROCA_ANT_SUBSTITUTO_ENVIADO, S.TROCA_ANT_SUBSTITUTO_RECEBIDO,
+]
 # Estados em que a ação do TI é "concluir" a ordem (receber item de volta).
 _CONCLUIVEIS_TI = [S.DEVOLVIDO, S.SUBSTITUTO_ENVIADO]
 
@@ -37,7 +44,7 @@ _STATUS_RETORNO_OPCOES = [
 
 @login_required
 def manutencao_recebimentos(request):
-    base = OrdemManutencao.objects.select_related("item", "item_substituto", "fornecedor")
+    base = OrdemManutencao.objects.select_related("item", "item_substituto", "fornecedor", "devolucao_localidade")
 
     f_fornecedor = (request.GET.get("fornecedor") or "").strip()
     f_status = (request.GET.get("status") or "").strip()
@@ -71,6 +78,11 @@ def manutencao_recebimentos(request):
         "qtd_pendentes": pendentes.count(),
         "qtd_aprovacao": pendentes.filter(status=S.AGUARDANDO_APROVACAO).count(),
         "qtd_receber": pendentes.filter(status__in=_CONCLUIVEIS_TI).count(),
+        "qtd_descartar": pendentes.filter(status=S.DEVOLVIDO_DESCARTE).count(),
+        "qtd_descarte_local": pendentes.filter(status=S.DESCARTE_LOCAL_SOLICITADO).count(),
+        "qtd_troca_antecipada": pendentes.filter(
+            status__in=[S.TROCA_ANT_SUBSTITUTO_ENVIADO, S.TROCA_ANT_SUBSTITUTO_RECEBIDO]
+        ).count(),
         "page_obj": page_obj,
         "total": paginator.count,
         "fornecedores": Fornecedor.objects.order_by("nome"),
@@ -91,7 +103,7 @@ def manutencao_recebimento_detail(request, pk: int):
     ordem = get_object_or_404(
         OrdemManutencao.objects.select_related(
             "item", "item__subtipo", "item__localidade", "item_substituto", "fornecedor",
-            "movimentacao_origem", "aprovado_por",
+            "movimentacao_origem", "aprovado_por", "devolucao_localidade",
         ),
         pk=pk,
     )
@@ -103,12 +115,22 @@ def manutencao_recebimento_detail(request, pk: int):
         "anexos": anexos,
         "pode_aprovar": ordem.status == S.AGUARDANDO_APROVACAO,
         "pode_concluir": ordem.status in _CONCLUIVEIS_TI,
+        "pode_descartar": ordem.status == S.DEVOLVIDO_DESCARTE,
+        "pode_aprovar_descarte_local": ordem.status == S.DESCARTE_LOCAL_SOLICITADO,
+        "pode_receber_substituto_ant": ordem.status == S.TROCA_ANT_SUBSTITUTO_ENVIADO,
+        "pode_enviar_defeituoso_ant": ordem.status == S.TROCA_ANT_SUBSTITUTO_RECEBIDO,
         "status_retorno_opcoes": _STATUS_RETORNO_OPCOES,
     }
     return render(request, "front/manutencao/recebimento_detail.html", context)
 
 
-_ACOES_TI_VALIDAS = {S.APROVADO, S.REPROVADO, S.CONCLUIDO}
+# Ações que o TI pode disparar. DESCARTE_LOCAL_APROVADO = aprovar o pedido de
+# descarte local; SEM_CONDICOES = recusar o descarte local (exigir devolução).
+_ACOES_TI_VALIDAS = {
+    S.APROVADO, S.REPROVADO, S.CONCLUIDO, S.DESCARTADO,
+    S.DESCARTE_LOCAL_APROVADO, S.SEM_CONDICOES,
+    S.TROCA_ANT_SUBSTITUTO_RECEBIDO, S.TROCA_ANT_DEFEITUOSO_ENVIADO,
+}
 
 
 @login_required
@@ -181,6 +203,11 @@ def manutencao_recebimento_acao(request, pk: int):
             str(S.APROVADO): f"Orçamento da OS #{ordem.pk} aprovado.",
             str(S.REPROVADO): f"Orçamento da OS #{ordem.pk} reprovado.",
             str(S.CONCLUIDO): f"OS #{ordem.pk} concluída com sucesso.",
+            str(S.DESCARTADO): f"Equipamento da OS #{ordem.pk} descartado.",
+            str(S.DESCARTE_LOCAL_APROVADO): f"Descarte local da OS #{ordem.pk} aprovado. Aguardando o fornecedor confirmar.",
+            str(S.SEM_CONDICOES): f"Descarte local da OS #{ordem.pk} recusado. O equipamento deve ser devolvido para descarte interno.",
+            str(S.TROCA_ANT_SUBSTITUTO_RECEBIDO): f"Substituto da OS #{ordem.pk} recebido em estoque. Envie o equipamento defeituoso (prioritário).",
+            str(S.TROCA_ANT_DEFEITUOSO_ENVIADO): f"Equipamento defeituoso da OS #{ordem.pk} enviado ao fornecedor.",
         }.get(str(novo_status), "Status atualizado com sucesso.")
         messages.success(request, _msg)
     except ValidationError as exc:

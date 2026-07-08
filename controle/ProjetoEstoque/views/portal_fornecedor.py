@@ -125,10 +125,11 @@ def portal_home(request):
     # Resumo de manutenção do fornecedor
     SOM = StatusOrdemManutencaoChoices
     os_qs = OrdemManutencao.objects.filter(fornecedor=request.fornecedor)
-    qtd_os_abertas = os_qs.exclude(status__in=[SOM.CONCLUIDO, SOM.CANCELADO]).count()
+    qtd_os_abertas = os_qs.exclude(status__in=[SOM.CONCLUIDO, SOM.CANCELADO, SOM.DESCARTADO]).count()
     qtd_os_acao = os_qs.filter(status__in=[
         SOM.AGUARDANDO_RECEBIMENTO, SOM.RECEBIDO, SOM.EM_AVALIACAO,
         SOM.EM_REPARO, SOM.REPARADO, SOM.SEM_REPARO,
+        SOM.SEM_CONDICOES, SOM.DESCARTE_LOCAL_APROVADO,
     ]).count()
 
     context = {
@@ -249,7 +250,7 @@ def _portal_itens_xlsx(itens, fornecedor):
     STATUS_FILL = {
         "ativo": ("E6F4EA", "1E8E3E"), "manutencao": ("FEF1E0", "B35A00"),
         "defeito": ("FCE8E6", "D93025"), "backup": ("E5F0FB", "0B5BB5"),
-        "pausado": ("F0F0F2", "5B6B7F"),
+        "pausado": ("F0F0F2", "5B6B7F"), "descarte": ("E8EAEE", "475569"),
     }
 
     header = ["#", "Equipamento", "Nº Série", "Marca", "Modelo", "Categoria", "Tipo", "Localidade", "Status"]
@@ -350,6 +351,7 @@ def portal_equipamento_detail(request, pk: int):
         .exclude(status__in=[
             StatusOrdemManutencaoChoices.CONCLUIDO,
             StatusOrdemManutencaoChoices.CANCELADO,
+            StatusOrdemManutencaoChoices.DESCARTADO,
         ])
         .order_by("-created_at")
         .first()
@@ -374,12 +376,35 @@ def portal_equipamento_detail(request, pk: int):
     return render(request, "front/portal/portal_equipamento_detail.html", context)
 
 
+def _portal_manutencao_nav(ordem):
+    """Aba do menu que fica ativa no detalhe da OS (troca antecipada tem aba própria)."""
+    return "troca_antecipada" if ordem.troca_antecipada else "manutencao"
+
+
 # ─── Manutenção (Ordens de Serviço conduzidas pelo fornecedor) ────────────────
 
 _OS_ABERTAS_EXCLUI = [
     StatusOrdemManutencaoChoices.CONCLUIDO,
     StatusOrdemManutencaoChoices.CANCELADO,
+    StatusOrdemManutencaoChoices.DESCARTADO,
 ]
+
+
+# Status em que a próxima ação é do FORNECEDOR (para destacar "pendentes de você").
+_FORNECEDOR_ACAO_STATUS = {
+    StatusOrdemManutencaoChoices.AGUARDANDO_RECEBIMENTO,
+    StatusOrdemManutencaoChoices.RECEBIDO,
+    StatusOrdemManutencaoChoices.EM_AVALIACAO,
+    StatusOrdemManutencaoChoices.APROVADO,
+    StatusOrdemManutencaoChoices.REPROVADO,
+    StatusOrdemManutencaoChoices.EM_REPARO,
+    StatusOrdemManutencaoChoices.REPARADO,
+    StatusOrdemManutencaoChoices.SEM_REPARO,
+    StatusOrdemManutencaoChoices.SEM_CONDICOES,
+    StatusOrdemManutencaoChoices.DESCARTE_LOCAL_APROVADO,
+    StatusOrdemManutencaoChoices.TROCA_ANT_DEFEITUOSO_ENVIADO,
+    StatusOrdemManutencaoChoices.TROCA_ANT_DEFEITUOSO_RECEBIDO,
+}
 
 
 @fornecedor_required
@@ -390,8 +415,15 @@ def portal_manutencao_list(request):
         .filter(fornecedor=request.fornecedor)
         .select_related("item", "item_substituto")
     )
-    abertas = base.exclude(status__in=_OS_ABERTAS_EXCLUI)
-    historico = base.filter(status__in=_OS_ABERTAS_EXCLUI)[:50]
+    abertas = list(base.exclude(status__in=_OS_ABERTAS_EXCLUI))
+    historico = list(base.filter(status__in=_OS_ABERTAS_EXCLUI)[:50])
+
+    # Marca as OS que aguardam a ação do fornecedor (a coluna prioritária da tela).
+    qtd_acao = 0
+    for o in abertas:
+        o.precisa_acao = o.status in _FORNECEDOR_ACAO_STATUS
+        if o.precisa_acao:
+            qtd_acao += 1
 
     # Resumo por status (somente os que têm ordens) — melhora a visão geral.
     counts = {row["status"]: row["n"] for row in base.values("status").annotate(n=Count("id"))}
@@ -405,7 +437,8 @@ def portal_manutencao_list(request):
         "fornecedor": request.fornecedor,
         "abertas": abertas,
         "historico": historico,
-        "qtd_abertas": abertas.count(),
+        "qtd_abertas": len(abertas),
+        "qtd_acao": qtd_acao,
         "resumo_status": resumo_status,
         "total_os": base.count(),
         "active_nav": "manutencao",
@@ -419,6 +452,7 @@ def portal_manutencao_detail(request, pk: int):
     ordem = get_object_or_404(
         OrdemManutencao.objects.select_related(
             "item", "item__subtipo", "item_substituto", "fornecedor", "movimentacao_origem",
+            "devolucao_localidade",
         ),
         pk=pk,
         fornecedor=request.fornecedor,
@@ -474,6 +508,7 @@ def portal_manutencao_detail(request, pk: int):
             "valor": request.POST.get("valor", ""),
             "data": request.POST.get("data", ""),
             "locado": request.POST.get("locado", ""),
+            "tempo_contrato_meses": request.POST.get("tempo_contrato_meses", ""),
             "localidade_devolucao": request.POST.get("localidade_devolucao", ""),
             "localidade_substituto": request.POST.get("localidade_substituto", ""),
             "reparo_valor": request.POST.get("reparo_valor", ""),
@@ -507,9 +542,123 @@ def portal_manutencao_detail(request, pk: int):
         "eventos": eventos,
         "anexos": anexos,
         "localidades": Localidade.objects.order_by("local"),
-        "active_nav": "manutencao",
+        "active_nav": _portal_manutencao_nav(ordem),
     }
     return render(request, "front/portal/portal_manutencao_detail.html", context)
+
+
+# ─── Troca antecipada de equipamento ──────────────────────────────────────────
+
+# Estágios abertos da troca antecipada (para métricas/telas).
+_TROCA_ANT_ABERTAS = [
+    StatusOrdemManutencaoChoices.TROCA_ANT_SUBSTITUTO_ENVIADO,
+    StatusOrdemManutencaoChoices.TROCA_ANT_SUBSTITUTO_RECEBIDO,
+    StatusOrdemManutencaoChoices.TROCA_ANT_DEFEITUOSO_ENVIADO,
+    StatusOrdemManutencaoChoices.TROCA_ANT_DEFEITUOSO_RECEBIDO,
+]
+
+
+def _itens_elegiveis_troca(fornecedor):
+    """Equipamentos elegíveis para troca antecipada: do fornecedor, com status
+    DEFEITO e sem outra ordem de manutenção aberta."""
+    com_os_aberta = (
+        OrdemManutencao.objects
+        .filter(fornecedor=fornecedor)
+        .exclude(status__in=_OS_ABERTAS_EXCLUI)
+        .values_list("item_id", flat=True)
+    )
+    return (
+        itens_do_fornecedor(fornecedor)
+        .filter(status=StatusItemChoices.DEFEITO)
+        .exclude(pk__in=list(com_os_aberta))
+        .select_related("subtipo", "localidade")
+        .order_by("nome")
+    )
+
+
+@fornecedor_required
+def portal_troca_antecipada_list(request):
+    """Tela dedicada da Troca Antecipada — acompanha em detalhe os processos em
+    andamento e o histórico, com o estágio de cada troca."""
+    base = (
+        OrdemManutencao.objects
+        .filter(fornecedor=request.fornecedor, troca_antecipada=True)
+        .select_related("item", "item_substituto")
+        .order_by("-created_at")
+    )
+    andamento = base.exclude(status__in=_OS_ABERTAS_EXCLUI)
+    historico = base.filter(status__in=_OS_ABERTAS_EXCLUI)[:50]
+
+    counts = {row["status"]: row["n"] for row in base.values("status").annotate(n=Count("id"))}
+    context = {
+        "fornecedor": request.fornecedor,
+        "andamento": andamento,
+        "historico": historico,
+        "qtd_andamento": andamento.count(),
+        "qtd_total": base.count(),
+        "qtd_elegiveis": _itens_elegiveis_troca(request.fornecedor).count(),
+        "counts": counts,
+        "active_nav": "troca_antecipada",
+    }
+    return render(request, "front/portal/portal_troca_antecipada_list.html", context)
+
+
+@fornecedor_required
+def portal_troca_antecipada_nova(request):
+    """Abre uma troca antecipada: o fornecedor manda um substituto ANTES de o
+    equipamento defeituoso ser enviado, para não deixá-lo parado. Só equipamentos
+    com status DEFEITO. Form: seleciona o item + dados do substituto + data de
+    contrato do equipamento."""
+    from services.ordem_manutencao_service import OrdemManutencaoService
+
+    if request.method == "POST":
+        item_id = (request.POST.get("item_defeituoso") or "").strip()
+        # Só itens elegíveis (DEFEITO, sem OS aberta) podem ser escolhidos.
+        item = (
+            _itens_elegiveis_troca(request.fornecedor).filter(pk=item_id).first()
+            if item_id.isdigit() else None
+        )
+        if item is None:
+            messages.error(request, "Selecione um equipamento válido (com status Defeito) para substituir.")
+        else:
+            try:
+                ordem = OrdemManutencaoService.abrir_troca_antecipada(
+                    item_defeituoso=item,
+                    fornecedor=request.fornecedor,
+                    user=request.user,
+                    sub_nome=request.POST.get("sub_nome", ""),
+                    sub_serie=request.POST.get("sub_serie", ""),
+                    sub_marca=request.POST.get("sub_marca", ""),
+                    sub_modelo=request.POST.get("sub_modelo", ""),
+                    sub_data_contrato=request.POST.get("sub_data_contrato", ""),
+                )
+                messages.success(
+                    request,
+                    f"Troca antecipada aberta (OS #{ordem.pk}). Substituto a caminho da fazenda.",
+                )
+                return redirect("portal_manutencao_detail", pk=ordem.pk)
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+
+    context = {
+        "fornecedor": request.fornecedor,
+        "itens": _itens_elegiveis_troca(request.fornecedor),
+        "active_nav": "troca_antecipada",
+    }
+    return render(request, "front/portal/portal_troca_antecipada_nova.html", context)
+
+
+# ─── Notificações do fornecedor (sino do Portal) ──────────────────────────────
+
+@fornecedor_required
+def portal_notificacoes_marcar_lidas(request):
+    """Marca como lidas as notificações do fornecedor (ao abrir o sino do Portal)."""
+    from django.http import JsonResponse
+    if request.method != "POST":
+        return JsonResponse({"ok": False}, status=405)
+    from ..models import Notificacao
+    Notificacao.objects.filter(fornecedor=request.fornecedor, lida_fornecedor=False).update(lida_fornecedor=True)
+    return JsonResponse({"ok": True})
 
 
 # ─── Licenças (somente leitura) ───────────────────────────────────────────────

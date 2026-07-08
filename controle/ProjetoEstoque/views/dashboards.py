@@ -148,6 +148,7 @@ _STATUS_META = [
     ("manutencao", "Manutenção", "#ff9500"),
     ("defeito",    "Defeito",    "#ff3b30"),
     ("pausado",    "Pausado",    "#8e8e93"),
+    ("descarte",   "Descarte",   "#475569"),
 ]
 
 

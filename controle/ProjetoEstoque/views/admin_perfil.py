@@ -95,7 +95,7 @@ def admin_perfil(request):
         "centros_custo": CentroCusto.objects.count(),
         "fornecedores": Fornecedor.objects.count(),
         "os_abertas": OrdemManutencao.objects
-            .exclude(status__in=[SOM.CONCLUIDO, SOM.CANCELADO]).count(),
+            .exclude(status__in=[SOM.CONCLUIDO, SOM.CANCELADO, SOM.DESCARTADO]).count(),
     }
 
     # ── Segurança da conta (novidade: monitoramento de autenticação A.8.16) ──

@@ -2,35 +2,78 @@
 
 {% block title %}Manutenção — Portal do Fornecedor{% endblock %}
 {% block page_title %}Manutenção{% endblock %}
-{% block page_subtitle %}{{ qtd_abertas }} ordem{{ qtd_abertas|pluralize:"ns" }} em aberto{% endblock %}
+{% block page_subtitle %}{{ qtd_abertas }} ordem{{ qtd_abertas|pluralize:"ns" }} em aberto{% if qtd_acao %} · {{ qtd_acao }} aguardando você{% endif %}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'portal_troca_antecipada_nova' %}" class="pf-btn pf-btn--brand"><i class="fa-solid fa-right-left"></i> Nova troca antecipada</a>
+{% endblock %}
 
 {% block extra_css %}
 <style>
-  :where(.pf-os) { display: grid; gap: 1.4rem; }
-  .pf-os .pf-os-resumo { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); }
-  .pf-os .pf-os-rcard {
-    display: flex; align-items: center; justify-content: space-between; gap: .6rem;
-    padding: .85rem 1rem; border-radius: var(--radius-md);
+  :where(.pf-os) { display: grid; gap: 1.6rem; }
+
+  /* Faixa de métricas */
+  .pf-os .pf-mh { display: grid; gap: .8rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pf-os .pf-stat {
+    position: relative; padding: 1.1rem 1.2rem; border-radius: var(--radius-lg);
     background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+    overflow: hidden;
   }
-  .pf-os .pf-os-rnum { font-size: 1.4rem; font-weight: 850; letter-spacing: -.03em; }
-  .pf-os .pf-os-sech { font-size: .95rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: .15rem; }
-  .pf-os .pf-os-grid { display: grid; gap: .7rem; }
-  .pf-os .pf-os-row {
-    display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: .9rem;
-    padding: .95rem 1.1rem; border-radius: var(--radius-md); color: inherit;
+  .pf-os .pf-stat--accent { border-color: color-mix(in srgb, var(--brand) 40%, transparent); background: color-mix(in srgb, var(--brand) 6%, var(--bg-elevated)); }
+  .pf-os .pf-stat-top { display: flex; align-items: center; gap: .55rem; color: var(--text-tertiary); font-size: .78rem; font-weight: 700; }
+  .pf-os .pf-stat-top i { color: var(--text-quaternary); }
+  .pf-os .pf-stat--accent .pf-stat-top,
+  .pf-os .pf-stat--accent .pf-stat-top i { color: var(--brand); }
+  .pf-os .pf-stat-n { font-size: 2rem; font-weight: 850; letter-spacing: -.04em; margin-top: .3rem; line-height: 1; }
+  .pf-os .pf-stat--accent .pf-stat-n { color: var(--brand); }
+
+  /* Chips de resumo por status */
+  .pf-os .pf-chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .pf-os .pf-chip-count {
+    display: inline-flex; align-items: center; gap: .45rem; padding: .3rem .7rem; border-radius: var(--radius-pill);
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); font-size: .76rem; font-weight: 700; color: var(--text-secondary);
+  }
+  .pf-os .pf-chip-count b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+  /* Seções */
+  .pf-os .pf-sech { display: flex; align-items: center; gap: .55rem; font-size: .98rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: .85rem; }
+  .pf-os .pf-sech i { color: var(--text-tertiary); font-size: .9rem; }
+  .pf-os .pf-sech .pf-sech-c { font-size: .72rem; font-weight: 700; color: var(--text-tertiary); background: var(--bg-fill-tertiary); padding: .1rem .5rem; border-radius: 999px; }
+
+  /* Cartões de OS */
+  .pf-os .pf-grid { display: grid; gap: .8rem; }
+  .pf-os .pf-card2 {
+    display: block; text-decoration: none; color: inherit; padding: 1.05rem 1.15rem; border-radius: var(--radius-lg);
     background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
     transition: transform .16s, box-shadow .16s, border-color .16s;
   }
-  .pf-os .pf-os-row:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--brand) 20%, var(--separator-hairline)); }
-  .pf-os .pf-os-ic { width: 2.4rem; height: 2.4rem; flex: 0 0 2.4rem; display: grid; place-items: center; border-radius: .7rem; background: var(--brand-soft); color: var(--brand); }
-  .pf-os .pf-os-name { font-weight: 700; letter-spacing: -.01em; }
-  .pf-os .pf-os-meta { color: var(--text-tertiary); font-size: .77rem; margin-top: .12rem; }
-  .pf-os .pf-os-arrow { color: var(--text-quaternary); }
+  .pf-os .pf-card2:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--brand) 24%, var(--separator-hairline)); }
+  .pf-os .pf-card2.is-acao { border-left: 3px solid var(--brand); }
+  .pf-os .pf-top { display: flex; align-items: center; gap: .85rem; }
+  .pf-os .pf-ic { width: 2.5rem; height: 2.5rem; flex: 0 0 2.5rem; display: grid; place-items: center; border-radius: .75rem; background: var(--brand-soft); color: var(--brand); font-size: .95rem; }
+  .pf-os .pf-ic--hist { background: var(--bg-fill-tertiary); color: var(--text-tertiary); }
+  .pf-os .pf-info { min-width: 0; flex: 1; }
+  .pf-os .pf-name { font-weight: 800; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pf-os .pf-meta { color: var(--text-tertiary); font-size: .77rem; margin-top: .15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pf-os .pf-right { display: flex; align-items: center; gap: .7rem; flex: 0 0 auto; }
+  .pf-os .pf-arrow { color: var(--text-quaternary); font-size: .8rem; }
 
-  @media (max-width: 36rem) {
-    .pf-os .pf-os-row { grid-template-columns: auto 1fr auto; }
-    .pf-os .pf-os-row .pf-osc { grid-column: 2 / 3; justify-self: start; margin-top: .3rem; }
+  /* Selo "aguarda você" */
+  .pf-os .pf-acao {
+    display: inline-flex; align-items: center; gap: .35rem; padding: .22rem .6rem; border-radius: var(--radius-pill);
+    font-size: .7rem; font-weight: 800; color: var(--brand); background: var(--brand-soft); white-space: nowrap;
+  }
+
+  /* Barra de progresso */
+  .pf-os .pf-progline { display: flex; align-items: center; gap: .7rem; margin-top: .85rem; }
+  .pf-os .pf-prog { flex: 1; height: 6px; border-radius: 999px; background: var(--bg-fill-tertiary); overflow: hidden; }
+  .pf-os .pf-prog > span { display: block; height: 100%; border-radius: 999px; background: var(--brand); transition: width .3s; }
+  .pf-os .pf-prog--done > span { background: var(--success); }
+  .pf-os .pf-progtxt { font-size: .72rem; font-weight: 700; color: var(--text-tertiary); white-space: nowrap; }
+
+  @media (max-width: 40rem) {
+    .pf-os .pf-mh { grid-template-columns: 1fr; }
+    .pf-os .pf-right .pf-arrow { display: none; }
   }
 </style>
 {% endblock %}
@@ -38,30 +81,56 @@
 {% block content %}
 <div class="pf-os">
 
-  {% if resumo_status %}
-  <section class="pf-os-resumo">
-    {% for r in resumo_status %}
-    <div class="pf-os-rcard">
-      <span class="pf-osc pf-osc--{{ r.slug }}">{{ r.label }}</span>
-      <span class="pf-os-rnum">{{ r.count }}</span>
+  {# ── Métricas ─────────────────────────────────────────────────────────── #}
+  <section class="pf-mh">
+    <div class="pf-stat">
+      <div class="pf-stat-top"><i class="fa-solid fa-screwdriver-wrench"></i> Em aberto</div>
+      <div class="pf-stat-n">{{ qtd_abertas }}</div>
     </div>
+    <div class="pf-stat {% if qtd_acao %}pf-stat--accent{% endif %}">
+      <div class="pf-stat-top"><i class="fa-solid fa-bell"></i> Aguardando você</div>
+      <div class="pf-stat-n">{{ qtd_acao }}</div>
+    </div>
+    <div class="pf-stat">
+      <div class="pf-stat-top"><i class="fa-solid fa-layer-group"></i> Total de ordens</div>
+      <div class="pf-stat-n">{{ total_os }}</div>
+    </div>
+  </section>
+
+  {% if resumo_status %}
+  <section class="pf-chips">
+    {% for r in resumo_status %}
+      <span class="pf-chip-count"><span class="pf-osc pf-osc--{{ r.slug }}">{{ r.label }}</span> <b>{{ r.count }}</b></span>
     {% endfor %}
   </section>
   {% endif %}
 
+  {# ── Em andamento ─────────────────────────────────────────────────────── #}
   <section>
-    <div class="pf-os-sech">Em andamento</div>
+    <div class="pf-sech"><i class="fa-solid fa-arrows-rotate"></i> Em andamento {% if qtd_abertas %}<span class="pf-sech-c">{{ qtd_abertas }}</span>{% endif %}</div>
     {% if abertas %}
-    <div class="pf-os-grid">
+    <div class="pf-grid">
       {% for o in abertas %}
-      <a class="pf-os-row" href="{% url 'portal_manutencao_detail' o.pk %}">
-        <span class="pf-os-ic"><i class="fa-solid fa-screwdriver-wrench"></i></span>
-        <span>
-          <div class="pf-os-name">{{ o.item.nome }}</div>
-          <div class="pf-os-meta">OS #{{ o.pk }} · aberta em {{ o.created_at|date:"d/m/Y" }}{% if o.item.numero_serie %} · Série {{ o.item.numero_serie }}{% endif %}</div>
-        </span>
-        <span class="pf-osc pf-osc--{{ o.status }}">{{ o.get_status_display }}</span>
-        <i class="fa-solid fa-chevron-right pf-os-arrow"></i>
+      <a class="pf-card2 {% if o.precisa_acao %}is-acao{% endif %}" href="{% url 'portal_manutencao_detail' o.pk %}">
+        <div class="pf-top">
+          <span class="pf-ic"><i class="fa-solid {% if o.troca_antecipada %}fa-right-left{% else %}fa-screwdriver-wrench{% endif %}"></i></span>
+          <span class="pf-info">
+            <div class="pf-name">{{ o.item.nome }}</div>
+            <div class="pf-meta">OS #{{ o.pk }} · {% if o.troca_antecipada %}Troca antecipada · {% endif %}aberta em {{ o.created_at|date:"d/m/Y" }}{% if o.item.numero_serie %} · Série {{ o.item.numero_serie }}{% endif %}{% if o.troca_antecipada and o.item_substituto %} · Substituto: {{ o.item_substituto.nome }}{% endif %}</div>
+          </span>
+          <span class="pf-right">
+            {% if o.precisa_acao %}<span class="pf-acao"><i class="fa-solid fa-circle-arrow-right"></i> Aguarda você</span>{% endif %}
+            <span class="pf-osc pf-osc--{{ o.status }}">{{ o.get_status_display }}</span>
+            <i class="fa-solid fa-chevron-right pf-arrow"></i>
+          </span>
+        </div>
+        <div class="pf-progline">
+          <div class="pf-prog"><span style="width: {% widthratio o.etapa_macro 5 100 %}%"></span></div>
+          <span class="pf-progtxt">
+            {% for etapa in o.ETAPAS_MACRO %}{% if forloop.counter0 == o.etapa_macro %}{{ etapa }}{% endif %}{% endfor %}
+            {% if o.etapa_macro >= 5 %}Concluído{% endif %}
+          </span>
+        </div>
       </a>
       {% endfor %}
     </div>
@@ -78,19 +147,24 @@
     {% endif %}
   </section>
 
+  {# ── Histórico ────────────────────────────────────────────────────────── #}
   {% if historico %}
   <section>
-    <div class="pf-os-sech">Histórico</div>
-    <div class="pf-os-grid">
+    <div class="pf-sech"><i class="fa-solid fa-clock-rotate-left"></i> Histórico</div>
+    <div class="pf-grid">
       {% for o in historico %}
-      <a class="pf-os-row" href="{% url 'portal_manutencao_detail' o.pk %}">
-        <span class="pf-os-ic" style="background:var(--bg-fill-tertiary); color:var(--text-tertiary);"><i class="fa-solid fa-clock-rotate-left"></i></span>
-        <span>
-          <div class="pf-os-name">{{ o.item.nome }}</div>
-          <div class="pf-os-meta">OS #{{ o.pk }} · finalizada em {{ o.finalizada_em|date:"d/m/Y"|default:"—" }}</div>
-        </span>
-        <span class="pf-osc pf-osc--{{ o.status }}">{{ o.get_status_display }}</span>
-        <i class="fa-solid fa-chevron-right pf-os-arrow"></i>
+      <a class="pf-card2" href="{% url 'portal_manutencao_detail' o.pk %}">
+        <div class="pf-top">
+          <span class="pf-ic pf-ic--hist"><i class="fa-solid fa-clock-rotate-left"></i></span>
+          <span class="pf-info">
+            <div class="pf-name">{{ o.item.nome }}</div>
+            <div class="pf-meta">OS #{{ o.pk }} · {% if o.troca_antecipada %}Troca antecipada · {% endif %}finalizada em {{ o.finalizada_em|date:"d/m/Y"|default:"—" }}</div>
+          </span>
+          <span class="pf-right">
+            <span class="pf-osc pf-osc--{{ o.status }}">{{ o.get_status_display }}</span>
+            <i class="fa-solid fa-chevron-right pf-arrow"></i>
+          </span>
+        </div>
       </a>
       {% endfor %}
     </div>

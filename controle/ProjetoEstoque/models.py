@@ -21,6 +21,7 @@ class StatusItemChoices(models.TextChoices):
     MANUTENCAO = 'manutencao', 'Manutenção'
     DEFEITO = 'defeito', 'Defeito'
     PAUSADO = 'pausado', 'Pausado'
+    DESCARTE = 'descarte', 'Descarte'
 
 class StatusUsuarioChoices(models.TextChoices):
     ATIVO = 'ativo', 'Ativo'
@@ -45,6 +46,16 @@ class StatusOrdemManutencaoChoices(models.TextChoices):
     #     → aguardando_aprovacao → (TI) aprovado → em_reparo → reparado → devolvido → (TI) concluido
     #                            → (TI) reprovado → devolvido (avaliação técnica) → (TI) concluido
     #     → sem_reparo → substituto_enviado → (TI) concluido
+    #     → sem_condicoes (motivo + valor) → (forn.) devolvido_descarte → (TI) descartado
+    #     → descarte_local_solicitado (motivo + valor) → (TI) descarte_local_aprovado → (fornecedor) descartado
+    #                                                  → (TI) sem_condicoes (recusa: devolver p/ o TI descartar)
+    #
+    # Troca antecipada (troca_antecipada=True; fornecedor abre pelo Portal p/ evitar
+    # equipamento defeituoso parado): troca_ant_sub_enviado (substituto a caminho)
+    #   → (TI) troca_ant_sub_recebido (recebe o substituto, ativa em estoque)
+    #   → (TI) troca_ant_def_enviado (envia o defeituoso → MANUTENCAO)
+    #   → (forn.) troca_ant_def_recebido (recebe o defeituoso → PAUSADO)
+    #   → (forn.) concluido (envia a proposta de reparo)
     AGUARDANDO_RECEBIMENTO = "aguardando_recebimento", "Aguardando recebimento"
     RECEBIDO = "recebido", "Recebido pelo fornecedor"
     EM_AVALIACAO = "em_avaliacao", "Em avaliação"
@@ -56,6 +67,16 @@ class StatusOrdemManutencaoChoices(models.TextChoices):
     DEVOLVIDO = "devolvido", "Devolvido ao cliente — aguardando recebimento"
     SEM_REPARO = "sem_reparo", "Sem reparo — troca"
     SUBSTITUTO_ENVIADO = "substituto_enviado", "Substituto enviado — aguardando recebimento"
+    SEM_CONDICOES = "sem_condicoes", "Sem condições de reparo — aguardando devolução"
+    DEVOLVIDO_DESCARTE = "devolvido_descarte", "Devolvido para descarte — aguardando recebimento do TI"
+    DESCARTE_LOCAL_SOLICITADO = "descarte_local_solicitado", "Descarte local solicitado — aguardando aprovação do TI"
+    DESCARTE_LOCAL_APROVADO = "descarte_local_aprovado", "Descarte local aprovado — aguardando o fornecedor"
+    DESCARTADO = "descartado", "Descartado"
+    # Troca antecipada de equipamento (substituto chega antes de enviar o defeituoso)
+    TROCA_ANT_SUBSTITUTO_ENVIADO = "troca_ant_sub_enviado", "Troca antecipada — substituto a caminho"
+    TROCA_ANT_SUBSTITUTO_RECEBIDO = "troca_ant_sub_recebido", "Troca antecipada — substituto recebido, enviar o defeituoso"
+    TROCA_ANT_DEFEITUOSO_ENVIADO = "troca_ant_def_enviado", "Troca antecipada — defeituoso enviado ao fornecedor"
+    TROCA_ANT_DEFEITUOSO_RECEBIDO = "troca_ant_def_recebido", "Troca antecipada — defeituoso recebido, aguardando proposta"
     CONCLUIDO = "concluido", "Concluído"
     CANCELADO = "cancelado", "Cancelado"
 
@@ -1087,6 +1108,15 @@ class OrdemManutencao(AuditModel):
         max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO,
         verbose_name="Substituto entra como locação?",
     )
+    # Tempo do contrato de locação do substituto (meses). Alimenta Locacao.tempo_locado,
+    # de onde os dashboards derivam vencimento do contrato. Só faz sentido quando a
+    # troca entra como locação (substituto_locado = "sim").
+    substituto_tempo_meses = models.PositiveIntegerField(
+        blank=True, null=True, verbose_name="Tempo de contrato (meses)",
+    )
+    # Nota: "sem condições de reparo" (descarte) reaproveita os campos existentes —
+    # o motivo vai em `diagnostico` e o valor em `valor_avaliacao_tecnica` (mesmo
+    # campo do fluxo de reprovação, que também é um desfecho sem reparo).
     devolucao_localidade = models.ForeignKey(
         "Localidade", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="ordens_devolucao",
@@ -1142,6 +1172,10 @@ class OrdemManutencao(AuditModel):
         null=True, blank=True, verbose_name="Fim da garantia",
     )
     chamado = models.CharField(max_length=100, blank=True, null=True, verbose_name="Nº Chamado")
+    # Troca antecipada: o fornecedor manda o substituto ANTES de o defeituoso ser
+    # enviado, para não deixar o equipamento com defeito parado. Muda o fluxo e o
+    # stepper (ver ETAPAS_MACRO / etapa_macro e o OrdemManutencaoService).
+    troca_antecipada = models.BooleanField(default=False, verbose_name="Troca antecipada")
     finalizada_em = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -1158,22 +1192,39 @@ class OrdemManutencao(AuditModel):
         return self.status not in (
             StatusOrdemManutencaoChoices.CONCLUIDO,
             StatusOrdemManutencaoChoices.CANCELADO,
+            StatusOrdemManutencaoChoices.DESCARTADO,
         )
 
-    # Macro-etapas para o stepper visual (detalhe TI e Portal).
-    ETAPAS_MACRO = ["Recebimento", "Avaliação", "Aprovação", "Reparo / Troca", "Concluído"]
+    # Macro-etapas para o stepper visual (detalhe TI e Portal). São 5 rótulos; o
+    # fluxo de troca antecipada usa um conjunto próprio (mesma quantidade de etapas).
+    ETAPAS_MACRO_NORMAL = ["Recebimento", "Avaliação", "Aprovação", "Reparo / Troca", "Concluído"]
+    ETAPAS_MACRO_ANTECIPADA = ["Substituto a caminho", "Substituto recebido", "Defeituoso enviado", "Fornecedor recebeu", "Concluído"]
+
+    @property
+    def ETAPAS_MACRO(self):
+        return self.ETAPAS_MACRO_ANTECIPADA if self.troca_antecipada else self.ETAPAS_MACRO_NORMAL
 
     @property
     def etapa_macro(self) -> int:
-        """Índice (0-4) da macro-etapa atual no fluxo, para o stepper visual.
-        Agrupa os 13 status nas 5 etapas de `ETAPAS_MACRO`. Não consulta o banco."""
+        """Índice (0-5) da macro-etapa atual no fluxo, para o stepper visual.
+        Agrupa os status nas 5 etapas de `ETAPAS_MACRO`. Não consulta o banco."""
+        if self.troca_antecipada:
+            return {
+                "troca_ant_sub_enviado": 0,
+                "troca_ant_sub_recebido": 1,
+                "troca_ant_def_enviado": 2,
+                "troca_ant_def_recebido": 3,
+                "concluido": 5, "cancelado": 4,
+            }.get(self.status, 0)
         return {
             "aguardando_recebimento": 0,
             "recebido": 1, "em_avaliacao": 1,
             "aguardando_aprovacao": 2, "aprovado": 2, "reprovado": 2,
             "em_reparo": 3, "reparado": 3, "sem_reparo": 3,
-            "substituto_enviado": 3, "devolvido": 3,
-            "concluido": 5, "cancelado": 4,
+            "substituto_enviado": 3, "devolvido": 3, "sem_condicoes": 3,
+            "devolvido_descarte": 3,
+            "descarte_local_solicitado": 3, "descarte_local_aprovado": 3,
+            "concluido": 5, "descartado": 5, "cancelado": 4,
         }.get(self.status, 0)
 
     @property
@@ -2009,6 +2060,41 @@ class ConfiguracaoSistema(models.Model):
     def get(cls):
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+
+
+class Notificacao(models.Model):
+    """Notificação exibida no sino do topo. Criada em eventos do sistema — hoje,
+    cada movimentação de manutenção entre fornecedor e TI.
+
+    Uma mesma notificação pode ser vista por dois públicos com estados de leitura
+    independentes: o time interno/TI (sino de base.html, campo `lida`) e o
+    fornecedor dono da OS (sino do Portal, campo `lida_fornecedor`). `fornecedor`
+    define de qual fornecedor é a notificação (o Portal só mostra as dele)."""
+    titulo = models.CharField(max_length=200)
+    mensagem = models.TextField(blank=True)
+    url = models.CharField(max_length=300, blank=True)
+    portal_url = models.CharField(max_length=300, blank=True, help_text="Link usado no sino do Portal do Fornecedor")
+    icone = models.CharField(max_length=40, default="fa-bell")
+    categoria = models.CharField(max_length=40, default="geral")
+    fornecedor = models.ForeignKey(
+        "Fornecedor", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="notificacoes",
+    )
+    lida = models.BooleanField(default=False, verbose_name="Lida (interno/TI)")
+    lida_fornecedor = models.BooleanField(default=False, verbose_name="Lida (fornecedor)")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Notificação"
+        verbose_name_plural = "Notificações"
+        indexes = [
+            models.Index(fields=["lida", "-created_at"]),
+            models.Index(fields=["fornecedor", "lida_fornecedor", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return self.titulo
 
 
 # ── Segurança: trilha de eventos de autenticação (ISO 27001 A.8.15 / A.8.16) ──

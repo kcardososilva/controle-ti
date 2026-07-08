@@ -265,6 +265,9 @@ from .portal_fornecedor import (
     portal_equipamentos_export,
     portal_manutencao_list,
     portal_manutencao_detail,
+    portal_troca_antecipada_list,
+    portal_troca_antecipada_nova,
+    portal_notificacoes_marcar_lidas,
     portal_licencas_list,
 )
 
@@ -274,6 +277,9 @@ from .manutencao import (
     manutencao_recebimento_detail,
     manutencao_recebimento_acao,
 )
+
+# ── Notificações internas (sino do topo) ─────────────────────────────────────
+from .notificacoes import notificacoes_marcar_lidas
 
 # ── Plantas / Mapa de Infraestrutura ─────────────────────────────────────────
 from .plantas import (

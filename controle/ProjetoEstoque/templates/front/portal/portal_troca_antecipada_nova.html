@@ -1,0 +1,120 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}Nova troca antecipada — Portal do Fornecedor{% endblock %}
+{% block page_title %}Troca antecipada de equipamento{% endblock %}
+{% block page_subtitle %}Envie um substituto antes de o defeituoso sair — sem deixar o equipamento parado{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'portal_troca_antecipada_list' %}" class="pf-btn"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+  :where(.pf-ta) { display: grid; gap: 1.1rem; max-width: 52rem; }
+  .pf-ta .select2-container { width: 100% !important; }
+  .pf-ta .select2-container--default .select2-selection--single {
+    min-height: 2.7rem; height: 2.7rem; border-radius: var(--radius-md);
+    border: 1px solid var(--separator-non-opaque); background: var(--bg-page);
+  }
+  .pf-ta .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 2.5rem; color: var(--text-primary); }
+  .pf-ta .select2-container--default .select2-selection--single .select2-selection__arrow { height: 2.5rem; }
+
+  .pf-ta .pf-steps { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .pf-ta .pf-step { display: inline-flex; align-items: center; gap: .5rem; padding: .5rem .8rem; border-radius: 999px; background: var(--bg-fill-tertiary); color: var(--text-secondary); font-size: .8rem; font-weight: 700; }
+  .pf-ta .pf-step b { color: var(--brand); }
+
+  .pf-ta .pf-card2 { padding: 1.2rem 1.3rem; border-radius: var(--radius-lg); border: 1px solid var(--separator-hairline); background: var(--bg-elevated); box-shadow: var(--shadow-sm); }
+  .pf-ta .pf-sec-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: .2rem; }
+  .pf-ta .pf-sec-sub { color: var(--text-tertiary); font-size: .84rem; margin-bottom: 1rem; line-height: 1.5; }
+  .pf-ta label { font-size: .78rem; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: .35rem; }
+  .pf-ta input, .pf-ta select {
+    width: 100%; padding: .6rem .85rem; min-height: 2.7rem; border-radius: var(--radius-md);
+    border: 1px solid var(--separator-non-opaque); background: var(--bg-page); color: var(--text-primary); font: inherit;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .pf-ta input:focus, .pf-ta select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+  .pf-ta .pf-grid2 { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
+  .pf-ta .pf-hint { color: var(--text-tertiary); font-size: .78rem; margin-top: .4rem; }
+  .pf-ta .pf-form-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .3rem; }
+  .pf-ta .pf-empty { text-align: center; padding: 2rem 1rem; color: var(--text-tertiary); }
+  .pf-ta .pf-empty i { font-size: 1.6rem; display: block; margin-bottom: .5rem; color: var(--text-quaternary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-ta">
+
+  <div class="pf-steps">
+    <span class="pf-step"><b>1</b> Você envia o substituto</span>
+    <span class="pf-step"><b>2</b> TI recebe e ativa</span>
+    <span class="pf-step"><b>3</b> TI envia o defeituoso</span>
+    <span class="pf-step"><b>4</b> Você recebe e envia a proposta</span>
+  </div>
+
+  {% if itens %}
+  <form method="post" class="pf-card2" style="display:grid; gap:1.4rem;">
+    {% csrf_token %}
+
+    <div>
+      <div class="pf-sec-title">1 · Equipamento a substituir</div>
+      <div class="pf-sec-sub">Selecione o equipamento a ser trocado. Só aparecem equipamentos sob sua responsabilidade, <b>com status Defeito</b> e sem outra ordem de manutenção aberta.</div>
+      <label for="item_defeituoso">Equipamento com defeito *</label>
+      <select id="item_defeituoso" name="item_defeituoso" class="pf-select2" required>
+        <option value="">Selecione o equipamento…</option>
+        {% for it in itens %}
+          <option value="{{ it.id }}">{{ it.nome }}{% if it.numero_serie %} · Série {{ it.numero_serie }}{% endif %}{% if it.localidade %} · {{ it.localidade.local }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <div class="pf-sec-title">2 · Equipamento substituto (que você está enviando)</div>
+      <div class="pf-sec-sub">Informe o modelo e o número de série do equipamento que está a caminho. Ele entra no inventário assim que o TI confirmar o recebimento, herdando localidade, centro de custo e regime (locação/compra) do equipamento substituído.</div>
+      <div class="pf-grid2">
+        <div>
+          <label for="sub_nome">Modelo / Identificação *</label>
+          <input type="text" id="sub_nome" name="sub_nome" required placeholder="Ex: Roteador RB4011">
+        </div>
+        <div>
+          <label for="sub_serie">Número de série *</label>
+          <input type="text" id="sub_serie" name="sub_serie" required placeholder="Série do substituto">
+        </div>
+        <div>
+          <label for="sub_marca">Marca</label>
+          <input type="text" id="sub_marca" name="sub_marca" placeholder="Ex: Mikrotik">
+        </div>
+        <div>
+          <label for="sub_modelo">Modelo (detalhe)</label>
+          <input type="text" id="sub_modelo" name="sub_modelo" placeholder="Ex: RB4011iGS+">
+        </div>
+        <div>
+          <label for="sub_data_contrato">Data de contrato do equipamento *</label>
+          <input type="date" id="sub_data_contrato" name="sub_data_contrato" required>
+        </div>
+      </div>
+      <div class="pf-hint"><i class="fa-solid fa-circle-info"></i> A data de contrato passa a valer como data de entrada da locação do substituto (quando locado). O defeituoso continua em operação até o TI receber este substituto e, então, enviar o equipamento com defeito de forma prioritária.</div>
+    </div>
+
+    <div class="pf-form-actions">
+      <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-truck-fast"></i> Abrir troca antecipada</button>
+      <a href="{% url 'portal_manutencao_list' %}" class="pf-btn">Cancelar</a>
+    </div>
+  </form>
+  {% else %}
+  <div class="pf-card2 pf-empty">
+    <i class="fa-solid fa-box-open"></i>
+    <p>Nenhum equipamento com status <b>Defeito</b> disponível para troca antecipada. Só é possível abrir uma troca para equipamentos marcados como Defeito e sem outra ordem de manutenção aberta.</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+  $(function () { $('.pf-select2').select2({ width: '100%', placeholder: 'Selecione o equipamento…' }); });
+</script>
+{% endblock %}

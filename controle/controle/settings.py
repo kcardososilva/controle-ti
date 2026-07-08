@@ -91,6 +91,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'ProjetoEstoque.context_processors.notificacoes',
             ],
             'loaders': _TEMPLATE_LOADERS,
         },
@@ -106,7 +107,12 @@ WSGI_APPLICATION = 'controle.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        # Caminho do banco. Por padrão fica em BASE_DIR/db.sqlite3, mas quando o
+        # projeto está numa pasta sincronizada (OneDrive/Dropbox) o SQLite pode
+        # falhar com "attempt to write a readonly database" enquanto o serviço de
+        # sincronização trava o arquivo. Defina DJANGO_DB_PATH com um caminho
+        # LOCAL (fora do OneDrive) para evitar isso — ex.: C:\ProjetoEstoque\db.sqlite3.
+        'NAME': os.environ.get('DJANGO_DB_PATH') or (BASE_DIR / 'db.sqlite3'),
         'OPTIONS': {
             'timeout': 20,
         },
@@ -175,6 +181,15 @@ ALERTA_EMAIL = os.environ.get('ALERTA_EMAIL', '')
 ALERTA_EMAILS = [
     e.strip()
     for e in os.environ.get('ALERTA_EMAILS', '').split(',')
+    if e.strip()
+]
+
+# Destinatário(s) das notificações de movimentação de manutenção (fornecedor ↔ TI).
+# Em TESTES aponta para kayque.silva@santacolomba.com.br; em produção defina
+# TI_EMAILS no .env (ex.: TI_EMAILS=ti@santacolomba.com.br).
+TI_EMAILS = [
+    e.strip()
+    for e in os.environ.get('TI_EMAILS', 'kayque.silva@santacolomba.com.br').split(',')
     if e.strip()
 ]
 

@@ -83,6 +83,8 @@ a.mr-metric:hover { background: var(--bg-hover); }
 .mr-tag::before { content: ""; width: .42rem; height: .42rem; border-radius: 50%; background: currentColor; }
 .mr-tag.rep { --c: var(--brand); }
 .mr-tag.sub { --c: var(--warning); }
+.mr-tag.desc { --c: var(--danger); }
+.mr-tag.local { --c: var(--warning); }
 
 .mr-sub-box {
   margin-top: .8rem; padding: .8rem 1rem; border-radius: var(--radius-sm);
@@ -133,11 +135,11 @@ a.mr-metric:hover { background: var(--bg-hover); }
 /* ---- Badge de status (semântico por token) ---- */
 .mr-osc { display: inline-flex; align-items: center; gap: .4rem; padding: .24rem .6rem; border-radius: 999px; font-size: .72rem; font-weight: 600; white-space: nowrap; color: var(--c, var(--text-tertiary)); background: color-mix(in srgb, var(--c, var(--text-tertiary)) 12%, transparent); }
 .mr-osc::before { content: ""; width: .42rem; height: .42rem; border-radius: 50%; background: currentColor; }
-.mr-osc--aguardando_recebimento, .mr-osc--cancelado { --c: var(--text-tertiary); }
-.mr-osc--recebido, .mr-osc--em_avaliacao, .mr-osc--reparado, .mr-osc--devolvido { --c: var(--brand); }
-.mr-osc--aguardando_aprovacao, .mr-osc--em_reparo, .mr-osc--substituto_enviado { --c: var(--warning); }
+.mr-osc--aguardando_recebimento, .mr-osc--cancelado, .mr-osc--descartado { --c: var(--text-tertiary); }
+.mr-osc--recebido, .mr-osc--em_avaliacao, .mr-osc--reparado, .mr-osc--devolvido, .mr-osc--devolvido_descarte, .mr-osc--descarte_local_aprovado, .mr-osc--troca_ant_def_enviado, .mr-osc--troca_ant_def_recebido { --c: var(--brand); }
+.mr-osc--aguardando_aprovacao, .mr-osc--em_reparo, .mr-osc--substituto_enviado, .mr-osc--descarte_local_solicitado, .mr-osc--troca_ant_sub_enviado, .mr-osc--troca_ant_sub_recebido { --c: var(--warning); }
 .mr-osc--aprovado, .mr-osc--concluido { --c: var(--success); }
-.mr-osc--reprovado, .mr-osc--sem_reparo { --c: var(--danger); }
+.mr-osc--reprovado, .mr-osc--sem_reparo, .mr-osc--sem_condicoes { --c: var(--danger); }
 
 /* ---- Vazio / paginação ---- */
 .mr-empty { text-align: center; padding: 2.4rem 1rem; color: var(--text-tertiary); }
@@ -195,6 +197,11 @@ a.mr-metric:hover { background: var(--bg-hover); }
         <div class="mr-top">
           <div class="mr-ic">
             {% if o.status == 'devolvido' %}<i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i>
+            {% elif o.status == 'devolvido_descarte' %}<i class="fa-solid fa-box-archive" aria-hidden="true"></i>
+            {% elif o.status == 'troca_ant_sub_enviado' %}<i class="fa-solid fa-truck-ramp-box" aria-hidden="true"></i>
+            {% elif o.status == 'troca_ant_sub_recebido' %}<i class="fa-solid fa-truck-fast" aria-hidden="true"></i>
+            {% elif o.status == 'descarte_local_solicitado' %}<i class="fa-solid fa-trash-arrow-up" aria-hidden="true"></i>
+            {% elif o.status == 'aguardando_aprovacao' %}<i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i>
             {% else %}<i class="fa-solid fa-right-left" aria-hidden="true"></i>{% endif %}
           </div>
           <div style="min-width:0;">
@@ -205,6 +212,11 @@ a.mr-metric:hover { background: var(--bg-hover); }
             </div>
           </div>
           {% if o.status == 'devolvido' %}<span class="mr-tag rep">Devolvido — confirmar recebimento</span>
+          {% elif o.status == 'devolvido_descarte' %}<span class="mr-tag rep">Devolvido — receber e descartar</span>
+          {% elif o.status == 'troca_ant_sub_enviado' %}<span class="mr-tag sub">Troca antecipada — receber substituto</span>
+          {% elif o.status == 'troca_ant_sub_recebido' %}<span class="mr-tag sub">Troca antecipada — enviar o defeituoso</span>
+          {% elif o.status == 'descarte_local_solicitado' %}<span class="mr-tag local">Descarte local — aprovar</span>
+          {% elif o.status == 'aguardando_aprovacao' %}<span class="mr-tag sub">Aguardando sua aprovação</span>
           {% else %}<span class="mr-tag sub">Substituto enviado</span>{% endif %}
         </div>
 
@@ -213,12 +225,49 @@ a.mr-metric:hover { background: var(--bg-hover); }
           <i class="fa-solid fa-box" aria-hidden="true"></i> <b>Substituto:</b> {{ o.item_substituto.nome }}
           {% if o.item_substituto.numero_serie %} · Série {{ o.item_substituto.numero_serie }}{% endif %}
           {% if o.item_substituto.marca or o.item_substituto.modelo %} · {{ o.item_substituto.marca|default:'' }} {{ o.item_substituto.modelo|default:'' }}{% endif %}
-          <br><b>Contrato:</b> {{ o.substituto_contrato|default:'—' }} · <b>Valor:</b> R$ {{ o.substituto_valor|default:'—' }} · <b>Data:</b> {{ o.substituto_data|date:"d/m/Y"|default:'—' }} · <b>Regime:</b> {% if o.substituto_locado == 'sim' %}Locação{% else %}Compra{% endif %}
+          <br><b>Contrato:</b> {{ o.substituto_contrato|default:'—' }} · <b>Valor:</b> R$ {{ o.substituto_valor|default:'—' }} · <b>Data:</b> {{ o.substituto_data|date:"d/m/Y"|default:'—' }} · <b>Regime:</b> {% if o.substituto_locado == 'sim' %}Locação{% else %}Compra{% endif %}{% if o.substituto_locado == 'sim' and o.substituto_tempo_meses %} · <b>Contrato:</b> {{ o.substituto_tempo_meses }} {{ o.substituto_tempo_meses|pluralize:"mês,meses" }}{% endif %}
         </div>
         {% endif %}
-        {% if o.diagnostico %}<div class="mr-sub-box"><i class="fa-solid fa-stethoscope" aria-hidden="true"></i> <b>Diagnóstico:</b> {{ o.diagnostico }}</div>{% endif %}
+        {% if o.status == 'troca_ant_sub_enviado' or o.status == 'troca_ant_sub_recebido' %}
+        <div class="mr-sub-box">
+          <i class="fa-solid fa-right-left" aria-hidden="true"></i> <b>Troca antecipada.</b>
+          {% if o.item_substituto %} <b>Substituto:</b> {{ o.item_substituto.nome }}{% if o.item_substituto.numero_serie %} · Série {{ o.item_substituto.numero_serie }}{% endif %}.{% endif %}
+          {% if o.status == 'troca_ant_sub_enviado' %} Receba e ative o substituto em estoque.{% else %} <b>Prioritário:</b> envie o equipamento defeituoso ao fornecedor.{% endif %}
+        </div>
+        {% endif %}
+        {% if o.status == 'devolvido_descarte' %}
+        <div class="mr-sub-box">
+          <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> <b>Sem condições de reparo — devolvido para descarte.</b>
+          {% if o.devolucao_localidade %} <b>Destino:</b> {{ o.devolucao_localidade.local }}.{% endif %}
+          {% if o.diagnostico %} <b>Motivo:</b> {{ o.diagnostico }}.{% endif %}
+          {% if o.valor_avaliacao_tecnica %} <b>Valor informado:</b> R$ {{ o.valor_avaliacao_tecnica }}.{% endif %}
+        </div>
+        {% elif o.status == 'descarte_local_solicitado' %}
+        <div class="mr-sub-box">
+          <i class="fa-solid fa-location-dot" aria-hidden="true"></i> <b>Descarte local solicitado.</b> O fornecedor pediu para descartar o equipamento no próprio local.
+          {% if o.diagnostico %} <b>Motivo:</b> {{ o.diagnostico }}.{% endif %}
+          {% if o.valor_avaliacao_tecnica %} <b>Valor informado:</b> R$ {{ o.valor_avaliacao_tecnica }}.{% endif %}
+        </div>
+        {% elif o.diagnostico %}<div class="mr-sub-box"><i class="fa-solid fa-stethoscope" aria-hidden="true"></i> <b>Diagnóstico:</b> {{ o.diagnostico }}</div>{% endif %}
 
-        <form method="post" action="{% url 'manutencao_recebimento_acao' o.pk %}" class="mr-form">
+        {% if o.status == 'aguardando_aprovacao' %}
+        <div class="mr-form">
+          <a href="{% url 'manutencao_recebimento_detail' o.pk %}" class="btn-primary"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Analisar orçamento</a>
+        </div>
+        {% elif o.status == 'descarte_local_solicitado' %}
+        <div class="mr-form">
+          <a href="{% url 'manutencao_recebimento_detail' o.pk %}" class="btn-primary"><i class="fa-solid fa-gavel" aria-hidden="true"></i> Analisar pedido de descarte local</a>
+        </div>
+        {% elif o.status == 'troca_ant_sub_enviado' %}
+        <div class="mr-form">
+          <a href="{% url 'manutencao_recebimento_detail' o.pk %}" class="btn-primary"><i class="fa-solid fa-box-archive" aria-hidden="true"></i> Receber substituto</a>
+        </div>
+        {% elif o.status == 'troca_ant_sub_recebido' %}
+        <div class="mr-form">
+          <a href="{% url 'manutencao_recebimento_detail' o.pk %}" class="btn-primary"><i class="fa-solid fa-truck-fast" aria-hidden="true"></i> Enviar defeituoso</a>
+        </div>
+        {% else %}
+        <form method="post" action="{% url 'manutencao_recebimento_acao' o.pk %}" class="mr-form"{% if o.status == 'devolvido_descarte' %} onsubmit="return confirm('Confirmar o recebimento e armazenar este equipamento para descarte? Esta ação encerra a ordem.');"{% endif %}>
           {% csrf_token %}
           {% if o.status == 'devolvido' %}
             <div class="mr-field">
@@ -232,6 +281,13 @@ a.mr-metric:hover { background: var(--bg-hover); }
               <input type="text" id="obs{{ o.pk }}" name="observacao" placeholder="Ex: conferido e disponível em estoque">
             </div>
             <button type="submit" class="btn-primary"><i class="fa-solid fa-check" aria-hidden="true"></i> Confirmar retorno</button>
+          {% elif o.status == 'devolvido_descarte' %}
+            <input type="hidden" name="acao" value="descartado">
+            <div class="mr-field mr-field--grow">
+              <label for="obs{{ o.pk }}">Observação (opcional)</label>
+              <input type="text" id="obs{{ o.pk }}" name="observacao" placeholder="Ex: recebido e armazenado conforme política de e-lixo">
+            </div>
+            <button type="submit" class="btn-danger"><i class="fa-solid fa-box-archive" aria-hidden="true"></i> Receber e descartar</button>
           {% else %}
             <div class="mr-field mr-field--grow">
               <label for="obs{{ o.pk }}">Observação (opcional)</label>
@@ -240,6 +296,7 @@ a.mr-metric:hover { background: var(--bg-hover); }
             <button type="submit" class="btn-primary"><i class="fa-solid fa-box-archive" aria-hidden="true"></i> Receber em estoque</button>
           {% endif %}
         </form>
+        {% endif %}
       </div>
       {% endfor %}
     {% else %}

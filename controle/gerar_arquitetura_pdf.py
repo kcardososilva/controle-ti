@@ -478,7 +478,7 @@ story.append(make_table(
         ("numero_serie",          "CharField(100)",       "Número de série (nullable)"),
         ("marca",                 "CharField(100)",       "Fabricante"),
         ("modelo",                "CharField(100)",       "Modelo do equipamento"),
-        ("status",                "StatusItemChoices",    "ATIVO | BACKUP | MANUTENCAO | DEFEITO | PAUSADO"),
+        ("status",                "StatusItemChoices",    "ATIVO | BACKUP | MANUTENCAO | DEFEITO | PAUSADO | DESCARTE"),
         ("quantidade",            "PositiveIntegerField", "Quantidade em estoque (default=1)"),
         ("valor",                 "DecimalField(10,2)",   "Valor unitário de compra (nullable)"),
         ("data_compra",           "DateField",            "Data de aquisição (nullable)"),

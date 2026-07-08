@@ -316,6 +316,8 @@ def equipamentos_exportar(request):
             return "FFF3E0"
         if s in ("defeito", "queimado"):
             return "FDECEA"
+        if s == "descarte":
+            return "E8EAEE"
         return None
 
     gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")

@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 DESTINATARIOS: list[str] = getattr(settings, "ALERTA_EMAILS", [settings.ALERTA_EMAIL])
 REMETENTE: str = settings.EMAIL_HOST_USER
 
+# Destinatário das notificações de movimentação de manutenção (fornecedor ↔ TI).
+TI_EMAILS: list[str] = getattr(settings, "TI_EMAILS", ["ti@santacolomba.com.br"])
+
 _TIPO_LABELS = {
     "transferencia": "Transferência",
     "transferencia_equipamento": "Transferência de Equipamento",
@@ -185,6 +188,71 @@ def _linha_vazia(texto: str = "Nenhum registro encontrado.") -> str:
     return (
         f'<p style="margin:6px 0 0;color:#94a3b8;font-size:13px;font-style:italic;">{texto}</p>'
     )
+
+
+# ─────────────────────────────────────────────────────────────
+# Movimentação de manutenção (fornecedor ↔ TI) — transacional
+# ─────────────────────────────────────────────────────────────
+
+def alerta_movimentacao_manutencao(ordem_pk: int, novo_status: str, ator: str = "") -> bool:
+    """Avisa o time de TI (TI_EMAILS) a cada movimentação de uma ordem de
+    manutenção entre fornecedor e TI. Respeita o toggle global de e-mails
+    (ConfiguracaoSistema.alertas_email_ativos) via `_enviar`."""
+    from ProjetoEstoque.models import OrdemManutencao, StatusOrdemManutencaoChoices
+
+    ordem = (
+        OrdemManutencao.objects
+        .select_related("item", "fornecedor", "item_substituto")
+        .filter(pk=ordem_pk)
+        .first()
+    )
+    if not ordem:
+        return False
+
+    status_label = dict(StatusOrdemManutencaoChoices.choices).get(str(novo_status), str(novo_status))
+    item_nome = ordem.item.nome if ordem.item else "Equipamento"
+    serie = ordem.item.numero_serie if (ordem.item and ordem.item.numero_serie) else "—"
+    forn = ordem.fornecedor.nome if ordem.fornecedor else "—"
+    origem = "Fornecedor" if ator == "fornecedor" else ("TI" if ator == "ti" else "Sistema")
+    tipo_os = "Troca antecipada" if ordem.troca_antecipada else "Manutenção"
+    quando = timezone.localtime(ordem.updated_at if hasattr(ordem, "updated_at") else timezone.now()).strftime("%d/%m/%Y %H:%M")
+
+    linhas = [
+        ["Ordem", f"OS #{ordem.pk} · {tipo_os}"],
+        ["Equipamento", f"{item_nome} · Série {serie}"],
+        ["Fornecedor", forn],
+        ["Novo status", status_label],
+        ["Ação por", origem],
+        ["Data/hora", quando],
+    ]
+    if ordem.chamado:
+        linhas.append(["Chamado", ordem.chamado])
+
+    corpo = _secao(
+        "Movimentação de manutenção",
+        "🔧", "#1e3a8a",
+        _tabela_html(["Campo", "Detalhe"], linhas),
+    )
+    corpo += (
+        '<p style="margin:18px 0 0;color:#64748b;font-size:12px;">'
+        'Acesse o sistema em <b>Manutenção → Recebimentos</b> para acompanhar a ordem.'
+        '</p>'
+    )
+    html = _base_html(
+        f"OS #{ordem.pk} — {status_label}",
+        f"{tipo_os} · {item_nome} · {forn}",
+        corpo,
+    )
+    texto = (
+        f"Movimentação de manutenção — OS #{ordem.pk} ({tipo_os})\n"
+        f"Equipamento: {item_nome} (Série {serie})\n"
+        f"Fornecedor: {forn}\n"
+        f"Novo status: {status_label}\n"
+        f"Ação por: {origem}\n"
+        f"Data/hora: {quando}\n"
+    )
+    assunto = f"[Manutenção] OS #{ordem.pk} — {status_label}"
+    return _enviar(assunto, texto, html, destinatarios=TI_EMAILS)
 
 
 def _linha_ok(texto: str) -> str:

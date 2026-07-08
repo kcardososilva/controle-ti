@@ -324,6 +324,7 @@ def preventiva_sincronizar_programacao(request):
         StatusItemChoices.BACKUP,
         StatusItemChoices.MANUTENCAO,
         StatusItemChoices.DEFEITO,
+        StatusItemChoices.DESCARTE,
     }
 
     criadas = 0

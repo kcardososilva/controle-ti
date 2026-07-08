@@ -1032,6 +1032,31 @@
       box-shadow: 0 0 0 2px var(--bg-page);
     }
 
+    /* Painel de notificações (sino) */
+    .notif-wrap { position: relative; }
+    .notif-panel {
+      position: absolute; top: calc(100% + 10px); right: 0; width: 22rem; max-width: 92vw;
+      background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
+      border-radius: var(--radius-lg); box-shadow: 0 16px 44px rgba(0,0,0,.20);
+      z-index: 1200; overflow: hidden;
+    }
+    .notif-panel[hidden] { display: none; }
+    .notif-head { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding: .8rem 1rem; border-bottom: 1px solid var(--separator-hairline); font-size: .85rem; font-weight: 700; color: var(--text-primary); }
+    .notif-clear { border: none; background: transparent; color: var(--brand); font-size: .74rem; font-weight: 700; cursor: pointer; padding: 0; }
+    .notif-clear:hover { text-decoration: underline; }
+    .notif-list { max-height: 26rem; overflow-y: auto; }
+    .notif-item { display: flex; gap: .7rem; padding: .75rem 1rem; text-decoration: none; color: inherit; border-bottom: 1px solid var(--separator-hairline); transition: background var(--transition-fast); }
+    .notif-item:last-child { border-bottom: 0; }
+    .notif-item:hover { background: var(--bg-fill-tertiary); }
+    .notif-item.is-unread { background: color-mix(in srgb, var(--brand) 7%, transparent); }
+    .notif-ic { width: 2rem; height: 2rem; flex: 0 0 2rem; display: grid; place-items: center; border-radius: 999px; background: var(--brand-soft); color: var(--brand); font-size: .78rem; }
+    .notif-body { display: grid; min-width: 0; gap: .1rem; }
+    .notif-title { font-size: .82rem; font-weight: 700; color: var(--text-primary); }
+    .notif-msg { font-size: .78rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .notif-time { font-size: .7rem; color: var(--text-tertiary); }
+    .notif-empty { padding: 2rem 1rem; text-align: center; color: var(--text-tertiary); }
+    .notif-empty i { font-size: 1.4rem; color: var(--text-quaternary); }
+
     .profile-chip {
       display: none;
       align-items: center;
@@ -2292,10 +2317,32 @@
             {% block header_actions %}{% endblock %}
           </div>
 
-          <button type="button" class="icon-button" id="notificationButton" aria-label="Notificações" title="Notificações">
-            <i class="fa-regular fa-bell" aria-hidden="true"></i>
-            <span class="badge-dot" aria-hidden="true"></span>
-          </button>
+          <div class="notif-wrap" id="notifWrap">
+            <button type="button" class="icon-button" id="notificationButton" aria-label="Notificações" title="Notificações" aria-haspopup="true" aria-expanded="false">
+              <i class="fa-regular fa-bell" aria-hidden="true"></i>
+              {% if notificacoes_nao_lidas %}<span class="badge-dot" id="notifDot" aria-hidden="true"></span>{% endif %}
+            </button>
+            <div class="notif-panel" id="notifPanel" role="menu" hidden>
+              <div class="notif-head">
+                <span>Notificações</span>
+                {% if notificacoes_recentes %}<button type="button" class="notif-clear" id="notifClear">Marcar todas como lidas</button>{% endif %}
+              </div>
+              <div class="notif-list">
+                {% for n in notificacoes_recentes %}
+                  <a href="{{ n.link|default:'#' }}" class="notif-item {% if n.nao_lida %}is-unread{% endif %}">
+                    <span class="notif-ic"><i class="fa-solid {{ n.icone|default:'fa-bell' }}" aria-hidden="true"></i></span>
+                    <span class="notif-body">
+                      <span class="notif-title">{{ n.titulo }}</span>
+                      {% if n.mensagem %}<span class="notif-msg">{{ n.mensagem }}</span>{% endif %}
+                      <span class="notif-time">{{ n.created_at|date:"d/m/Y H:i" }}</span>
+                    </span>
+                  </a>
+                {% empty %}
+                  <div class="notif-empty"><i class="fa-regular fa-bell-slash" aria-hidden="true"></i><p style="margin:.3rem 0 0;">Nenhuma notificação.</p></div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
 
           <button type="button" class="icon-button" id="themeToggle" aria-label="Alternar entre modo claro e escuro" title="Alternar tema">
             <i class="fa-solid fa-moon" id="themeIcon" aria-hidden="true"></i>
@@ -2649,6 +2696,59 @@
         openActiveSubmenu();
         detectOSKey();
         handleCommandBar();
+      });
+    })();
+  </script>
+
+  <script>
+    // Sino de notificações: abre o painel e marca como lidas ao abrir.
+    (function () {
+      var wrap = document.getElementById('notifWrap');
+      var btn = document.getElementById('notificationButton');
+      var panel = document.getElementById('notifPanel');
+      var clearBtn = document.getElementById('notifClear');
+      if (!wrap || !btn || !panel) return;
+
+      function csrf() {
+        var el = document.querySelector('input[name=csrfmiddlewaretoken]');
+        if (el) return el.value;
+        var m = document.cookie.match(/csrftoken=([^;]+)/);
+        return m ? m[1] : '';
+      }
+      function markRead() {
+        fetch("{% url 'notificacoes_marcar_lidas' %}", {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrf() },
+        }).then(function () {
+          var dot = document.getElementById('notifDot');
+          if (dot) dot.remove();
+          panel.querySelectorAll('.notif-item.is-unread').forEach(function (el) {
+            el.classList.remove('is-unread');
+          });
+        }).catch(function () {});
+      }
+      function open() {
+        panel.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+        if (document.getElementById('notifDot')) markRead();
+      }
+      function close() {
+        panel.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+      }
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        panel.hidden ? open() : close();
+      });
+      document.addEventListener('click', function (e) {
+        if (!wrap.contains(e.target)) close();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') close();
+      });
+      if (clearBtn) clearBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        markRead();
       });
     })();
   </script>

@@ -1356,6 +1356,7 @@ def item_update(request, pk):
             StatusItemChoices.BACKUP,
             StatusItemChoices.MANUTENCAO,
             StatusItemChoices.DEFEITO,
+            StatusItemChoices.DESCARTE,
         }
 
         if form_valido and locacao_valida and lote_valido:
