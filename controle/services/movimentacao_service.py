@@ -206,6 +206,19 @@ class MovimentacaoEstoqueService:
             "centro_custo",
         ])
 
+        # E-mail de entrada — foco em estoque (canal "entrada_estoque",
+        # configurável no gerenciador de notificações).
+        _mov_ref = mov
+
+        def _enviar_email_entrada():
+            try:
+                from services.email_alertas import alerta_entrada_estoque
+                alerta_entrada_estoque(_mov_ref)
+            except Exception as exc:
+                logger.warning("email entrada: falha ao enviar: %s", exc)
+
+        transaction.on_commit(_enviar_email_entrada)
+
         return mov
 
     @classmethod
@@ -268,15 +281,18 @@ class MovimentacaoEstoqueService:
             "quantidade",
         ])
 
-        # E-mails de baixa: (1) foco em estoque, (2) dados da movimentação
+        # E-mail de baixa — foco em estoque (canal "baixa_estoque", configurável
+        # no gerenciador de notificações). Não chama `alerta_movimentacao` aqui:
+        # para baixa ela caía sempre na lista crua do .env (canal "movimentacao_
+        # transacional" é dinâmico e ignora customização), duplicando o aviso
+        # deste mesmo evento para os mesmos destinatários.
         _mov_ref = mov
         _qtd_restante = item.quantidade
 
         def _enviar_email_baixa():
             try:
-                from services.email_alertas import alerta_baixa_estoque, alerta_movimentacao
+                from services.email_alertas import alerta_baixa_estoque
                 alerta_baixa_estoque(_mov_ref, qtd_restante=_qtd_restante)
-                alerta_movimentacao(_mov_ref)
             except Exception as exc:
                 logger.warning("email baixa: falha ao enviar: %s", exc)
 
@@ -485,11 +501,13 @@ class MovimentacaoEstoqueService:
 
             item.save(update_fields=list(set(update_fields)))
 
-        # E-mail ao entregar ou devolver item (roda após commit da transação)
+        # E-mail ao entregar/devolver item ou transferir equipamento (roda após
+        # commit da transação) — canais "movimentacao_transacional" e
+        # "transferencia_equipamento", ambos configuráveis no gerenciador.
         if (
             mov.tipo_movimentacao == cls.TRANSFERENCIA
             and getattr(mov, "tipo_transferencia", None) in ("entrega", "devolucao")
-        ):
+        ) or mov.tipo_movimentacao == cls.TRANSFERENCIA_EQUIPAMENTO:
             _mov_ref = mov
 
             def _enviar_email_movimentacao():

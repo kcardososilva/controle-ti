@@ -626,10 +626,9 @@ def portal_troca_antecipada_nova(request):
                     item_defeituoso=item,
                     fornecedor=request.fornecedor,
                     user=request.user,
-                    sub_nome=request.POST.get("sub_nome", ""),
+                    sub_modelo=request.POST.get("sub_modelo", ""),
                     sub_serie=request.POST.get("sub_serie", ""),
                     sub_marca=request.POST.get("sub_marca", ""),
-                    sub_modelo=request.POST.get("sub_modelo", ""),
                     sub_data_contrato=request.POST.get("sub_data_contrato", ""),
                 )
                 messages.success(
@@ -646,6 +645,18 @@ def portal_troca_antecipada_nova(request):
         "active_nav": "troca_antecipada",
     }
     return render(request, "front/portal/portal_troca_antecipada_nova.html", context)
+
+
+# ─── Central de Ajuda ─────────────────────────────────────────────────────────
+
+@fornecedor_required
+def portal_ajuda(request):
+    """Central de ajuda do Portal — guia de uso para o fornecedor."""
+    context = {
+        "fornecedor": request.fornecedor,
+        "active_nav": "ajuda",
+    }
+    return render(request, "front/portal/portal_ajuda.html", context)
 
 
 # ─── Notificações do fornecedor (sino do Portal) ──────────────────────────────

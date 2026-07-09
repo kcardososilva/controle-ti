@@ -13,7 +13,7 @@ ou pelo atalho:  iniciar_servidor.bat
 Variaveis de ambiente opcionais (com os padroes atuais):
     HOST     -> 0.0.0.0
     PORT     -> 65300
-    THREADS  -> 8
+    THREADS  -> 4
 """
 import os
 
@@ -26,7 +26,7 @@ def main():
 
     host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "8000"))
-    threads = int(os.environ.get("THREADS", "8"))
+    threads = int(os.environ.get("THREADS", "4"))
 
     print("=" * 62)
     print("  Sistema de Controle de TI - Servidor de Producao (Waitress)")

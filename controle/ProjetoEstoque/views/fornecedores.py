@@ -534,6 +534,15 @@ def fornecedor_portal_acesso(request, pk: int):
             if acao == "toggle" and perfil:
                 FornecedorAcessoService.definir_ativo(perfil, not perfil.ativo, request.user)
                 messages.success(request, "Acesso reativado." if perfil.ativo else "Acesso suspenso.")
+            elif acao == "toggle_notificacao" and perfil:
+                FornecedorAcessoService.definir_notificacao_defeito(
+                    perfil, not perfil.notificar_defeito_email, request.user
+                )
+                messages.success(
+                    request,
+                    "Notificação de Defeito ativada." if perfil.notificar_defeito_email
+                    else "Notificação de Defeito desativada.",
+                )
             elif perfil:
                 FornecedorAcessoService.atualizar_email(perfil, request.POST.get("email"))
                 senha = (request.POST.get("senha") or "").strip()
@@ -635,6 +644,15 @@ def fornecedor_acesso_acao(request, pk: int):
         if acao == "toggle":
             FornecedorAcessoService.definir_ativo(perfil, not perfil.ativo, request.user)
             messages.success(request, "Acesso reativado." if perfil.ativo else "Acesso suspenso.")
+        elif acao == "toggle_notificacao":
+            FornecedorAcessoService.definir_notificacao_defeito(
+                perfil, not perfil.notificar_defeito_email, request.user
+            )
+            messages.success(
+                request,
+                f"Notificação de Defeito de '{perfil.usuario.username}' "
+                + ("ativada." if perfil.notificar_defeito_email else "desativada."),
+            )
         elif acao == "reset":
             FornecedorAcessoService.resetar_senha(perfil, request.POST.get("senha"))
             messages.success(request, f"Senha de '{perfil.usuario.username}' redefinida.")

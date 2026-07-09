@@ -171,6 +171,11 @@ class PerfilFornecedor(AuditModel):
         default=True,
         help_text="Desmarque para suspender o acesso sem excluir o usuário.",
     )
+    notificar_defeito_email = models.BooleanField(
+        default=True,
+        verbose_name="Notificar por e-mail (equipamento em Defeito)",
+        help_text="Quando ativo, este login recebe um e-mail sempre que um equipamento do fornecedor for marcado como Defeito.",
+    )
 
     class Meta:
         verbose_name = "Perfil de Fornecedor"
@@ -2060,6 +2065,68 @@ class ConfiguracaoSistema(models.Model):
     def get(cls):
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+
+
+class CanalNotificacao(models.Model):
+    """Registro central de cada TIPO de e-mail de alerta/notificação do sistema
+    (um por função em services/email_alertas.py). Permite ao TI, sem mexer em
+    código, ativar/desativar cada notificação individualmente e — quando o
+    destinatário é uma lista fixa — redirecioná-la. O catálogo (nome/descrição/
+    categoria/origem) é definido em código (`email_alertas.CATALOGO_NOTIFICACOES`)
+    e sincronizado nesta tabela a cada acesso ao painel; só os campos de ESTADO
+    (`ativo`, `destinatarios_customizados`, contadores) persistem por instalação.
+    Novas notificações adicionadas ao catálogo aparecem aqui automaticamente."""
+
+    class TipoDestinatarios(models.TextChoices):
+        FIXO = "fixo", "Lista fixa (editável aqui)"
+        DINAMICO = "dinamico", "Definido em outra tela do sistema"
+
+    codigo = models.SlugField(max_length=60, unique=True)
+    nome = models.CharField(max_length=150)
+    descricao = models.CharField(max_length=255, blank=True, default="")
+    categoria = models.CharField(max_length=60, blank=True, default="")
+    icone = models.CharField(max_length=40, blank=True, default="fa-bell")
+    tipo_destinatarios = models.CharField(
+        max_length=10, choices=TipoDestinatarios.choices, default=TipoDestinatarios.FIXO,
+    )
+    destino_gerenciado_em = models.CharField(max_length=255, blank=True, default="")
+    origem_disparo = models.CharField(max_length=255, blank=True, default="")
+
+    ativo = models.BooleanField(default=True, verbose_name="Notificação ativa")
+    destinatarios_customizados_ativo = models.BooleanField(
+        default=False,
+        verbose_name="Usa lista customizada",
+        help_text=(
+            "Quando ativo, `destinatarios_customizados` é a lista definitiva (mesmo vazia — "
+            "nesse caso ninguém recebe). Quando inativo, usa o padrão do sistema (.env). "
+            "Ativado automaticamente ao editar a lista ou remover uma pessoa individualmente."
+        ),
+    )
+    destinatarios_customizados = models.TextField(
+        blank=True, default="",
+        verbose_name="Destinatários customizados",
+        help_text="E-mails separados por vírgula. Vazio = usa o padrão do sistema (.env).",
+    )
+
+    ultimo_envio = models.DateTimeField(null=True, blank=True)
+    total_envios = models.PositiveIntegerField(default=0)
+
+    updated_at = models.DateTimeField(auto_now=True)
+    atualizado_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+        verbose_name="Atualizado por",
+    )
+
+    class Meta:
+        ordering = ["categoria", "nome"]
+        verbose_name = "Canal de Notificação"
+        verbose_name_plural = "Canais de Notificação"
+
+    def __str__(self):
+        return self.nome
+
+    def destinatarios_lista(self) -> list[str]:
+        return [e.strip() for e in self.destinatarios_customizados.split(",") if e.strip()]
 
 
 class Notificacao(models.Model):

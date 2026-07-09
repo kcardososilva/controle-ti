@@ -296,43 +296,83 @@
 }
 
 /* =========================================================
-   RADIO TILES
+   RADIO TILES — ação da transferência (Entrega / Devolução)
    ========================================================= */
 .radio-group {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.7rem;
 }
-.radio-option { position: relative; cursor: pointer; }
+.radio-option { position: relative; cursor: pointer; display: block; }
 .radio-option input { position: absolute; opacity: 0; width: 0; height: 0; }
 .radio-tile {
-  min-height: var(--mvf-input-h);
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.65rem 0.8rem;
-  border: 1px solid var(--mvf-line);
-  border-radius: var(--mvf-radius-sm);
+  gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  border: 1.5px solid var(--mvf-line);
+  border-radius: var(--mvf-radius-md);
   background: var(--mvf-surface);
+  transition: border-color var(--mvf-t), background var(--mvf-t), box-shadow var(--mvf-t);
+}
+.radio-tile-ic {
+  width: 2.3rem;
+  height: 2.3rem;
+  flex: 0 0 2.3rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--mvf-radius-sm);
+  background: var(--mvf-surface-soft);
   color: var(--mvf-muted);
-  font-size: 0.88rem;
-  font-weight: 600;
-  transition: border-color var(--mvf-t), color var(--mvf-t), background var(--mvf-t);
+  font-size: 1rem;
+  transition: background var(--mvf-t), color var(--mvf-t);
 }
-.radio-tile i { color: var(--mvf-soft); }
-.radio-option:hover .radio-tile {
-  border-color: var(--mvf-brand);
+.radio-tile-txt { min-width: 0; }
+.radio-tile-txt strong {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
   color: var(--mvf-text);
+  line-height: 1.25;
 }
+.radio-tile-txt span {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--mvf-muted);
+}
+.radio-tile-dot {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  border: 2px solid var(--mvf-line);
+  position: relative;
+  transition: border-color var(--mvf-t);
+}
+.radio-tile-dot::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: var(--mvf-brand);
+  transform: scale(0);
+  transition: transform var(--mvf-t);
+}
+.radio-option:hover .radio-tile { border-color: var(--mvf-brand); }
 .radio-option input:checked + .radio-tile {
-  background: color-mix(in srgb, var(--mvf-brand) 8%, transparent);
+  background: color-mix(in srgb, var(--mvf-brand) 6%, transparent);
   border-color: var(--mvf-brand);
-  color: var(--mvf-brand);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
-.radio-option input:checked + .radio-tile i { color: var(--mvf-brand); }
-.radio-option input:focus-visible + .radio-tile {
-  box-shadow: 0 0 0 4px var(--brand-ring);
+.radio-option input:checked + .radio-tile .radio-tile-ic { background: var(--mvf-brand); color: #fff; }
+.radio-option input:checked + .radio-tile .radio-tile-dot { border-color: var(--mvf-brand); }
+.radio-option input:checked + .radio-tile .radio-tile-dot::after { transform: scale(1); }
+.radio-option input:focus-visible + .radio-tile { box-shadow: 0 0 0 4px var(--brand-ring); }
+@media (max-width: 460px) {
+  .radio-tile-txt span { display: none; }
 }
 
 /* =========================================================
@@ -641,6 +681,7 @@
 
             <div class="radio-group">
               {% for radio in form.tipo_transferencia %}
+                {% if radio.data.value %}
                 <label class="radio-option" for="{{ radio.id_for_label }}">
                   <input
                     type="radio"
@@ -650,10 +691,17 @@
                     {% if radio.data.selected %}checked{% endif %}
                   >
                   <div class="radio-tile">
-                    <i class="fa-solid {% if radio.data.value == 'entrega' %}fa-user-check{% else %}fa-rotate-left{% endif %}" aria-hidden="true"></i>
-                    {{ radio.choice_label }}
+                    <div class="radio-tile-ic">
+                      <i class="fa-solid {% if radio.data.value == 'entrega' %}fa-user-check{% else %}fa-rotate-left{% endif %}" aria-hidden="true"></i>
+                    </div>
+                    <div class="radio-tile-txt">
+                      <strong>{{ radio.choice_label }}</strong>
+                      <span>{% if radio.data.value == 'entrega' %}Vincula o equipamento a um colaborador{% else %}Encerra o vínculo e retorna ao estoque{% endif %}</span>
+                    </div>
+                    <span class="radio-tile-dot" aria-hidden="true"></span>
                   </div>
                 </label>
+                {% endif %}
               {% endfor %}
             </div>
 

@@ -33,6 +33,212 @@ REMETENTE: str = settings.EMAIL_HOST_USER
 # Destinatário das notificações de movimentação de manutenção (fornecedor ↔ TI).
 TI_EMAILS: list[str] = getattr(settings, "TI_EMAILS", ["ti@santacolomba.com.br"])
 
+# ─────────────────────────────────────────────────────────────
+# Catálogo de notificações — fonte da verdade para o painel
+# "Central de Alertas → Configurar Notificações". Cada função de e-mail deste
+# módulo que chama `_enviar(..., codigo=...)` deve ter uma entrada aqui.
+# Adicionar uma notificação nova ao sistema = adicionar uma linha aqui; o
+# painel se atualiza sozinho no próximo acesso (via `sincronizar_catalogo`).
+# ─────────────────────────────────────────────────────────────
+
+CATALOGO_NOTIFICACOES: list[dict] = [
+    dict(
+        codigo="relatorio_diario", nome="Relatório diário consolidado", categoria="Relatórios",
+        descricao="Um e-mail por dia com estoque crítico, baixas, movimentações, licenças e preventivas.",
+        icone="fa-file-lines", tipo_destinatarios="fixo",
+        origem_disparo="Agendado (Task Scheduler) via 'agendar_relatorio' ou manage.py enviar_alertas --tipo diario",
+    ),
+    dict(
+        codigo="preventivas_proximas", nome="Preventivas vencidas / próximas", categoria="Preventivas",
+        descricao="Preventivas vencidas ou nos próximos 7 dias.",
+        icone="fa-screwdriver-wrench", tipo_destinatarios="fixo",
+        origem_disparo="Manual (Central de Alertas) ou manage.py enviar_alertas --tipo preventivas",
+    ),
+    dict(
+        codigo="estoque_critico", nome="Estoque crítico", categoria="Estoque",
+        descricao="Itens de consumo abaixo do estoque mínimo (menos de 2 unidades).",
+        icone="fa-boxes-stacked", tipo_destinatarios="fixo",
+        origem_disparo="Manual (Central de Alertas) ou manage.py enviar_alertas --tipo estoque",
+    ),
+    dict(
+        codigo="licencas_desligados", nome="Licenças de colaboradores desligados", categoria="Licenças",
+        descricao="Licenças ainda atribuídas a colaboradores desligados, sem devolução.",
+        icone="fa-key", tipo_destinatarios="fixo",
+        origem_disparo="Manual (Central de Alertas) ou manage.py enviar_alertas --tipo licencas",
+    ),
+    dict(
+        codigo="movimentacao_transacional", nome="Movimentação de estoque (entrega / devolução)", categoria="Estoque",
+        descricao="Confirmação por e-mail a cada entrega, devolução ou transferência registrada.",
+        icone="fa-arrow-right-arrow-left", tipo_destinatarios="dinamico",
+        destino_gerenciado_em="E-mail do colaborador envolvido, somado à lista padrão do sistema (.env)",
+        origem_disparo="Transacional — a cada movimentação registrada (services/movimentacao_service.py)",
+    ),
+    dict(
+        codigo="baixa_estoque", nome="Baixa de estoque", categoria="Estoque",
+        descricao="Detalhe de custo, fornecedor e NF a cada baixa de item de consumo.",
+        icone="fa-box-open", tipo_destinatarios="fixo",
+        origem_disparo="Transacional — a cada baixa registrada (services/movimentacao_service.py)",
+    ),
+    dict(
+        codigo="entrada_estoque", nome="Entrada de estoque", categoria="Estoque",
+        descricao="Novo lote recebido: quantidade, custo, fornecedor e NF.",
+        icone="fa-box", tipo_destinatarios="fixo",
+        origem_disparo="Transacional — a cada entrada registrada (services/movimentacao_service.py)",
+    ),
+    dict(
+        codigo="transferencia_equipamento", nome="Transferência de Equipamento", categoria="Estoque",
+        descricao="Equipamento transferido entre localidades/centros de custo (fora do fluxo de entrega a colaborador).",
+        icone="fa-truck-arrow-right", tipo_destinatarios="dinamico",
+        destino_gerenciado_em="E-mail do colaborador vinculado à transferência (se houver), somado à lista padrão do sistema (.env)",
+        origem_disparo="Transacional — a cada transferência de equipamento registrada (services/movimentacao_service.py)",
+    ),
+    dict(
+        codigo="manutencao_movimentacao", nome="Movimentação de manutenção (fornecedor ↔ TI)", categoria="Manutenção",
+        descricao="Avisa o time de TI a cada mudança de status de uma ordem de manutenção.",
+        icone="fa-truck-ramp-box", tipo_destinatarios="fixo",
+        origem_disparo="Transacional — a cada transição de OS (services/ordem_manutencao_service.py)",
+    ),
+    dict(
+        codigo="item_defeito", nome="Equipamento em Defeito (aviso ao fornecedor)", categoria="Portal do Fornecedor",
+        descricao="Avisa o(s) login(s) do fornecedor quando um equipamento dele é marcado como Defeito.",
+        icone="fa-triangle-exclamation", tipo_destinatarios="dinamico",
+        destino_gerenciado_em="Fornecedores → Acesso ao Portal (toggle por login de acesso)",
+        origem_disparo="Signal — Item.post_save ao transicionar status para Defeito",
+    ),
+    dict(
+        codigo="prtg_transicoes", nome="Alarme PRTG (offline / instável)", categoria="Monitoramento",
+        descricao="Equipamentos que entraram ou saíram de estado de alarme no PRTG.",
+        icone="fa-tower-broadcast", tipo_destinatarios="fixo",
+        origem_disparo="Agendado — manage.py monitorar_prtg (Task Scheduler)",
+    ),
+    dict(
+        codigo="acesso_suspeito", nome="Acesso suspeito (segurança)", categoria="Segurança",
+        descricao="Rajada de falhas de login ou login bem-sucedido após várias tentativas.",
+        icone="fa-shield-halved", tipo_destinatarios="fixo",
+        origem_disparo="Signal — monitoramento de autenticação (ISO 27001 A.8.16)",
+    ),
+]
+
+
+def sincronizar_catalogo_notificacoes():
+    """Garante que toda notificação do CATALOGO_NOTIFICACOES tenha uma linha em
+    CanalNotificacao — cria as que faltam e realinha os campos descritivos
+    (nome/descrição/categoria/ícone/origem) sem tocar no estado por instalação
+    (ativo, destinatarios_customizados, contadores). Chamado no painel de
+    configuração; idempotente e barato (poucas linhas)."""
+    from ProjetoEstoque.models import CanalNotificacao
+
+    existentes = {c.codigo: c for c in CanalNotificacao.objects.all()}
+    for meta in CATALOGO_NOTIFICACOES:
+        obj = existentes.get(meta["codigo"])
+        if obj is None:
+            CanalNotificacao.objects.create(**meta)
+            continue
+        mudou = False
+        for campo, valor in meta.items():
+            if campo == "codigo":
+                continue
+            if getattr(obj, campo) != valor:
+                setattr(obj, campo, valor)
+                mudou = True
+        if mudou:
+            obj.save()
+
+    codigos = [m["codigo"] for m in CATALOGO_NOTIFICACOES]
+    return CanalNotificacao.objects.filter(codigo__in=codigos)
+
+
+def _destinatarios_padrao(codigo: str) -> list[str]:
+    """Lista padrão (sem override) usada por cada canal — mesma fonte que
+    `_enviar()` usaria na ausência de `destinatarios_customizados`. Central
+    para o painel poder mostrar o destinatário REAL, sem duplicar a regra."""
+    if codigo == "manutencao_movimentacao":
+        return list(TI_EMAILS)
+    return list(DESTINATARIOS)
+
+
+# Canais "dinâmicos" cuja parte dinâmica é só um e-mail ADICIONADO por cima de
+# uma lista-base (o colaborador/usuário do evento) — a lista-base em si é tão
+# editável (adicionar/remover por e-mail) quanto a de um canal 'fixo'. Only
+# `item_defeito` é dinâmico "de verdade" (destinatários = PerfilFornecedor,
+# sem lista-base nenhuma) e por isso fica de fora desta lista.
+_CANAIS_BASE_EDITAVEL_DINAMICOS = {"movimentacao_transacional", "transferencia_equipamento"}
+
+
+def _base_efetiva(codigo: str) -> list[str]:
+    """Lista-base efetiva de um canal (customizada, se ativa; senão o padrão do
+    sistema) — usada tanto para MONTAR o e-mail (`alerta_movimentacao`) quanto
+    para EXIBIR no painel (`resolver_destinatarios_atuais`), para as duas nunca
+    divergirem. Em canais com parte dinâmica (movimentacao_transacional,
+    transferencia_equipamento), esta é só a base: o e-mail do evento (ex.:
+    colaborador) é sempre adicionado por cima, nunca substituído por ela."""
+    from ProjetoEstoque.models import CanalNotificacao
+    canal = CanalNotificacao.objects.filter(codigo=codigo).first()
+    if canal is not None and canal.destinatarios_customizados_ativo:
+        return canal.destinatarios_lista()
+    return _destinatarios_padrao(codigo)
+
+
+def resolver_destinatarios_atuais(canal) -> tuple[list[dict], str]:
+    """Resolve, em tempo real, QUEM recebe um canal hoje — para o painel exibir
+    pessoas de verdade em vez de um campo de texto que pode estar 'vazio mas na
+    verdade usando o padrão do .env', ou um link vago para 'outra tela'.
+
+    Retorna (pessoas, nota):
+      pessoas: [{"nome": str, "email": str, "contexto": str|None, "removivel": bool,
+                 "remove_kind": "email"|"perfil"|None, "remove_id": str|int|None}, ...]
+      nota:    explicação complementar (origem da lista / o que varia por evento)
+
+    `remove_kind`/`remove_id` dizem ao template QUAL ação de desvincular usar por
+    pessoa: "email" (remover da lista-base, identificado pelo próprio e-mail) ou
+    "perfil" (desativar a notificação daquele PerfilFornecedor, identificado por pk).
+    """
+    from ProjetoEstoque.models import CanalNotificacao
+
+    eh_fixo = canal.tipo_destinatarios == CanalNotificacao.TipoDestinatarios.FIXO
+    eh_dinamico_com_base = canal.codigo in _CANAIS_BASE_EDITAVEL_DINAMICOS
+
+    if eh_fixo or eh_dinamico_com_base:
+        if canal.destinatarios_customizados_ativo:
+            emails = canal.destinatarios_lista()
+            nota = (
+                "Lista customizada — substitui o padrão do sistema."
+                if emails else
+                "Lista customizada esvaziada — nenhum destinatário (este canal não enviará)."
+            )
+        else:
+            emails = _destinatarios_padrao(canal.codigo)
+            nota = "Padrão do sistema (definido no .env)."
+        if eh_dinamico_com_base:
+            nota += " + o e-mail do colaborador/responsável envolvido em cada evento (adicionado automaticamente, não listado aqui)."
+        return (
+            [{"nome": e, "email": e, "contexto": None, "removivel": True, "remove_kind": "email", "remove_id": e} for e in emails],
+            nota,
+        )
+
+    if canal.codigo == "item_defeito":
+        from ProjetoEstoque.models import PerfilFornecedor
+        perfis = (
+            PerfilFornecedor.objects
+            .filter(ativo=True, notificar_defeito_email=True)
+            .exclude(usuario__email="")
+            .select_related("usuario", "fornecedor")
+            .order_by("fornecedor__nome", "usuario__username")
+        )
+        pessoas = [
+            {
+                "nome": p.usuario.get_full_name() or p.usuario.username,
+                "email": p.usuario.email,
+                "contexto": p.fornecedor.nome if p.fornecedor else None,
+                "removivel": True, "remove_kind": "perfil", "remove_id": p.pk,
+            }
+            for p in perfis
+        ]
+        return pessoas, "Logins do Portal do Fornecedor com a notificação de Defeito ativada (Fornecedores → Acesso ao Portal)."
+
+    return [], "Destinatários resolvidos individualmente a cada evento."
+
+
 _TIPO_LABELS = {
     "transferencia": "Transferência",
     "transferencia_equipamento": "Transferência de Equipamento",
@@ -56,11 +262,36 @@ def _alertas_habilitados() -> bool:
         return True
 
 
-def _enviar(assunto: str, texto: str, html: str, destinatarios: list[str] | None = None) -> bool:
+def _enviar(
+    assunto: str, texto: str, html: str,
+    destinatarios: list[str] | None = None, *, codigo: str = "",
+) -> bool:
+    """Envia o e-mail. `codigo` identifica o canal em CanalNotificacao (opcional,
+    mas todo alerta novo deveria ter um — ver CATALOGO_NOTIFICACOES): se o canal
+    estiver desativado pelo TI, suprime o envio; se for do tipo 'fixo' e tiver
+    `destinatarios_customizados_ativo=True`, a lista customizada substitui
+    `destinatarios` por completo — mesmo vazia (ninguém removido é reintroduzido
+    silenciosamente pelo padrão do .env)."""
     if not _alertas_habilitados():
         logger.info("email_alertas: envio suprimido — alertas desativados nas configurações do sistema.")
         return False
+
+    canal = None
+    if codigo:
+        from ProjetoEstoque.models import CanalNotificacao
+        canal = CanalNotificacao.objects.filter(codigo=codigo).first()
+        if canal is not None and not canal.ativo:
+            logger.info("email_alertas: envio suprimido — canal '%s' desativado pelo TI.", codigo)
+            return False
+
     alvos = destinatarios or DESTINATARIOS
+    if (
+        canal is not None
+        and canal.tipo_destinatarios == canal.TipoDestinatarios.FIXO
+        and canal.destinatarios_customizados_ativo
+    ):
+        alvos = canal.destinatarios_lista()
+
     if not alvos:
         logger.warning("email_alertas: nenhum destinatário configurado.")
         return False
@@ -74,6 +305,11 @@ def _enviar(assunto: str, texto: str, html: str, destinatarios: list[str] | None
         msg.attach_alternative(html, "text/html")
         msg.send(fail_silently=False)
         logger.info("email_alertas: '%s' enviado para %s", assunto, alvos)
+        if canal is not None:
+            from django.db.models import F
+            type(canal).objects.filter(pk=canal.pk).update(
+                ultimo_envio=timezone.now(), total_envios=F("total_envios") + 1,
+            )
         return True
     except Exception as exc:
         logger.error("email_alertas: falha ao enviar '%s': %s", assunto, exc)
@@ -252,7 +488,78 @@ def alerta_movimentacao_manutencao(ordem_pk: int, novo_status: str, ator: str = 
         f"Data/hora: {quando}\n"
     )
     assunto = f"[Manutenção] OS #{ordem.pk} — {status_label}"
-    return _enviar(assunto, texto, html, destinatarios=TI_EMAILS)
+    return _enviar(assunto, texto, html, destinatarios=TI_EMAILS, codigo="manutencao_movimentacao")
+
+
+# ─────────────────────────────────────────────────────────────
+# Item em Defeito — aviso ao fornecedor (destinatários configuráveis)
+# ─────────────────────────────────────────────────────────────
+
+def alerta_item_defeito(item_pk: int) -> bool:
+    """Avisa o fornecedor responsável quando um equipamento dele é marcado como
+    Defeito. Destinatários: logins do Portal (`PerfilFornecedor`) do fornecedor
+    do item, ativos, com `notificar_defeito_email=True` — configurável pelo TI
+    em Fornecedores → Acesso ao Portal. Sem destinatário configurado, não envia
+    (não é erro). Respeita o toggle global via `_enviar`."""
+    from ProjetoEstoque.models import Item, PerfilFornecedor
+
+    item = (
+        Item.objects
+        .select_related("fornecedor", "localidade", "subtipo")
+        .filter(pk=item_pk)
+        .first()
+    )
+    if not item or not item.fornecedor_id:
+        return False
+
+    emails = list(
+        PerfilFornecedor.objects
+        .filter(fornecedor_id=item.fornecedor_id, ativo=True, notificar_defeito_email=True)
+        .exclude(usuario__email="")
+        .values_list("usuario__email", flat=True)
+        .distinct()
+    )
+    if not emails:
+        return False
+
+    serie = item.numero_serie or "—"
+    marca_modelo = " ".join(p for p in [item.marca, item.modelo] if p) or "—"
+    local = item.localidade.local if item.localidade else "—"
+    quando = timezone.localtime(item.updated_at).strftime("%d/%m/%Y %H:%M")
+
+    linhas = [
+        ["Equipamento", item.nome],
+        ["Nº de série", serie],
+        ["Marca / Modelo", marca_modelo],
+        ["Localidade", local],
+        ["Status", "Defeito"],
+        ["Data/hora", quando],
+    ]
+    corpo = _secao(
+        "Equipamento em Defeito",
+        "⚠️", "#b91c1c",
+        _tabela_html(["Campo", "Detalhe"], linhas),
+    )
+    corpo += (
+        '<p style="margin:18px 0 0;color:#64748b;font-size:12px;">'
+        'Acesse o Portal do Fornecedor para iniciar a manutenção ou solicitar uma troca antecipada.'
+        '</p>'
+    )
+    html = _base_html(
+        f"{item.nome} — Defeito",
+        f"{item.fornecedor.nome} · Série {serie}",
+        corpo,
+    )
+    texto = (
+        f"Equipamento em Defeito — {item.nome}\n"
+        f"Nº de série: {serie}\n"
+        f"Marca/Modelo: {marca_modelo}\n"
+        f"Localidade: {local}\n"
+        f"Data/hora: {quando}\n"
+        f"Acesse o Portal do Fornecedor para iniciar a manutenção ou solicitar uma troca antecipada.\n"
+    )
+    assunto = f"[Defeito] {item.nome} — ação necessária"
+    return _enviar(assunto, texto, html, destinatarios=emails, codigo="item_defeito")
 
 
 def _linha_ok(texto: str) -> str:
@@ -410,7 +717,7 @@ def alerta_preventivas_proximas(dias: int = 7) -> bool:
 
     return _enviar(
         f"[Controle TI] Preventivas: {n_venc} vencida(s), {n_prox} próxima(s)",
-        texto, html,
+        texto, html, codigo="preventivas_proximas",
     )
 
 
@@ -535,7 +842,7 @@ def alerta_estoque_critico(limite_qtd: int = 2) -> bool:
         )
     )
 
-    return _enviar(f"[Controle TI] {total} item(ns) com estoque crítico", texto, html)
+    return _enviar(f"[Controle TI] {total} item(ns) com estoque crítico", texto, html, codigo="estoque_critico")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -607,7 +914,7 @@ def alerta_licencas_desligados() -> bool:
 
     return _enviar(
         f"[Controle TI] {total} licença(s) pendente(s) de colaboradores desligados",
-        texto, html,
+        texto, html, codigo="licencas_desligados",
     )
 
 
@@ -618,7 +925,7 @@ def alerta_licencas_desligados() -> bool:
 def alerta_movimentacao(mov) -> bool:
     """
     Envia e-mail de notificação imediata para qualquer movimentação registrada.
-    Suporta: entrega, devolução e baixa.
+    Suporta: entrega, devolução, baixa e transferência de equipamento.
     """
     item = mov.item
     usuario = mov.usuario
@@ -628,6 +935,7 @@ def alerta_movimentacao(mov) -> bool:
 
     eh_baixa = tipo == "baixa"
     eh_devolucao = tipo_transferencia == "devolucao"
+    eh_transf_equip = tipo == "transferencia_equipamento"
     tipo_label = _TIPO_LABELS.get(tipo, tipo)
 
     if eh_baixa:
@@ -638,10 +946,23 @@ def alerta_movimentacao(mov) -> bool:
         titulo_banner, subtipo_label = "Transferência", " — Devolução"
         banner_bg, banner_border = "#fffbeb", "#f59e0b"
         banner_title_color, banner_sub_color = "#92400e", "#b45309"
+    elif eh_transf_equip:
+        titulo_banner, subtipo_label = "Transferência de Equipamento", ""
+        banner_bg, banner_border = "#eef2ff", "#6366f1"
+        banner_title_color, banner_sub_color = "#4338ca", "#4f46e5"
     else:
         titulo_banner, subtipo_label = "Transferência", " — Entrega ao colaborador"
         banner_bg, banner_border = "#eff6ff", "#3b82f6"
         banner_title_color, banner_sub_color = "#1e40af", "#3b82f6"
+
+    # codigo do canal — definido cedo pois a lista-base de destinatários
+    # (`_base_efetiva`) já depende dele, antes de montar o e-mail.
+    if eh_baixa:
+        codigo = "baixa_estoque"
+    elif eh_transf_equip:
+        codigo = "transferencia_equipamento"
+    else:
+        codigo = "movimentacao_transacional"
 
     localidade_dest = mov.localidade_destino.local if mov.localidade_destino else "—"
     cc_dest = mov.centro_custo_destino.departamento if mov.centro_custo_destino else "—"
@@ -658,7 +979,12 @@ def alerta_movimentacao(mov) -> bool:
     obs = mov.observacao or "—"
 
     if usuario and not eh_baixa:
-        secao_colaborador_titulo = "Colaborador (devolução)" if eh_devolucao else "Colaborador Destino"
+        if eh_devolucao:
+            secao_colaborador_titulo = "Colaborador (devolução)"
+        elif eh_transf_equip:
+            secao_colaborador_titulo = "Colaborador Vinculado"
+        else:
+            secao_colaborador_titulo = "Colaborador Destino"
         colaborador_nome = usuario.nome or usuario.email or "—"
         colaborador_funcao = usuario.funcao.nome if usuario.funcao else "—"
         colaborador_cc = usuario.centro_custo.departamento if usuario.centro_custo else "—"
@@ -720,7 +1046,11 @@ def alerta_movimentacao(mov) -> bool:
         f"Registrado por: {registrado_nome}\nObservação: {obs}"
     )
 
-    destinatarios = list(DESTINATARIOS)
+    # Lista-base respeita customização do painel mesmo neste canal "dinâmico" —
+    # o e-mail do colaborador/evento é sempre ADICIONADO por cima, nunca a
+    # substitui (é por isso que o painel consegue oferecer adicionar/remover
+    # pessoas aqui sem quebrar o e-mail dirigido ao colaborador da movimentação).
+    destinatarios = _base_efetiva(codigo)
     if colaborador_email and colaborador_email not in destinatarios:
         destinatarios.append(colaborador_email)
 
@@ -728,10 +1058,72 @@ def alerta_movimentacao(mov) -> bool:
         assunto = f"[Controle TI] Baixa registrada: {item.nome} — {mov.quantidade or 0} un."
     elif eh_devolucao:
         assunto = f"[Controle TI] Devolução: {item.nome} — {usuario.nome if usuario else '—'}"
+    elif eh_transf_equip:
+        assunto = f"[Controle TI] Transferência de equipamento: {item.nome}"
     else:
         assunto = f"[Controle TI] Entrega: {item.nome} — {usuario.nome if usuario else '—'}"
 
-    return _enviar(assunto, texto, html, destinatarios=destinatarios)
+    return _enviar(assunto, texto, html, destinatarios=destinatarios, codigo=codigo)
+
+
+# ─────────────────────────────────────────────────────────────
+# Alerta — Entrada de estoque (novo lote / recebimento)
+# ─────────────────────────────────────────────────────────────
+
+def alerta_entrada_estoque(mov) -> bool:
+    """Avisa quando uma nova ENTRADA de estoque (recebimento de lote) é
+    registrada. Canal 'entrada_estoque' (lista fixa, configurável no
+    gerenciador de notificações — mesmo padrão de estoque_critico/baixa_estoque)."""
+    item = mov.item
+    lote = mov.lote
+    registrado_por = getattr(mov, "criado_por", None)
+
+    quantidade = mov.quantidade or 0
+    custo_unitario = lote.custo_unitario if lote else None
+    fornecedor = lote.fornecedor.nome if lote and lote.fornecedor else "—"
+    nf = lote.numero_nf if lote else "—"
+
+    localidade_dest = mov.localidade_destino.local if mov.localidade_destino else "—"
+    cc_dest = mov.centro_custo_destino.departamento if mov.centro_custo_destino else "—"
+    registrado_nome = (
+        registrado_por.get_full_name() or registrado_por.username
+        if registrado_por else "Sistema"
+    )
+    data_mov = (
+        timezone.localtime(mov.created_at).strftime("%d/%m/%Y às %H:%M")
+        if mov.created_at else "—"
+    )
+    obs = mov.observacao or "—"
+
+    linhas = [
+        ["Item", item.nome],
+        ["Quantidade recebida", f"+ {quantidade} un."],
+        ["Custo unitário", _fmt_brl(custo_unitario)],
+        ["Custo total", _fmt_brl(mov.custo)],
+        ["Fornecedor", fornecedor],
+        ["Nº NF / Pedido", nf],
+        ["Localidade", f"{localidade_dest} · {cc_dest}"],
+        ["Registrado por", registrado_nome],
+        ["Data/hora", data_mov],
+        ["Observação", obs],
+    ]
+    corpo = _secao("Nova entrada de estoque", "📥", "#15803d", _tabela_html(["Campo", "Detalhe"], linhas))
+    html = _base_html(
+        f"Entrada de estoque — {item.nome}",
+        f"+ {quantidade} un. · {fornecedor} · {data_mov}",
+        corpo,
+    )
+    texto = (
+        f"ENTRADA DE ESTOQUE\nItem: {item.nome}\nQuantidade: + {quantidade} un.\n"
+        f"Custo unitário: {_fmt_brl(custo_unitario)}\nCusto total: {_fmt_brl(mov.custo)}\n"
+        f"Fornecedor: {fornecedor}\nNF: {nf}\nLocalidade: {localidade_dest} · {cc_dest}\n"
+        f"Registrado por: {registrado_nome}\nData: {data_mov}\nObservação: {obs}"
+    )
+
+    return _enviar(
+        f"[Controle TI] Entrada de estoque: {item.nome} — {quantidade} un.",
+        texto, html, codigo="entrada_estoque",
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -840,7 +1232,7 @@ def alerta_baixa_estoque(mov, *, qtd_restante: int | None = None) -> bool:
 
     return _enviar(
         f"[Controle TI] Baixa de estoque: {item.nome} — {quantidade} un.",
-        texto, html,
+        texto, html, codigo="baixa_estoque",
     )
 
 
@@ -963,7 +1355,7 @@ def alerta_prtg_transicoes(alarmes, recuperados=None) -> bool:
             )
     texto = "\n".join(linhas_txt)
 
-    return _enviar(assunto, texto, html)
+    return _enviar(assunto, texto, html, codigo="prtg_transicoes")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1015,7 +1407,7 @@ def alerta_acesso_suspeito(evento) -> bool:
         f"Detalhe: {evento.detalhe or '—'}\n"
         f"Caminho: {evento.caminho or '—'}\n"
     )
-    return _enviar(assunto, texto, html)
+    return _enviar(assunto, texto, html, codigo="acesso_suspeito")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1351,7 +1743,7 @@ def relatorio_diario(horas: int = 24) -> bool:
 
     return _enviar(
         f"[Controle TI] Relatório Diário — {hoje.strftime('%d/%m/%Y')}",
-        texto, html,
+        texto, html, codigo="relatorio_diario",
     )
 
 

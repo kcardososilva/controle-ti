@@ -94,6 +94,15 @@ class FornecedorAcessoService:
         return perfil
 
     @staticmethod
+    def definir_notificacao_defeito(perfil, valor, user=None):
+        """Liga/desliga o e-mail de 'equipamento em Defeito' para este login."""
+        perfil.notificar_defeito_email = bool(valor)
+        if user is not None:
+            perfil.atualizado_por = user
+        perfil.save(update_fields=["notificar_defeito_email", "atualizado_por", "updated_at"])
+        return perfil
+
+    @staticmethod
     def resetar_senha(perfil, senha):
         senha = (senha or "").strip()
         if not senha or len(senha) < _SENHA_MIN:

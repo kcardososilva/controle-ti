@@ -193,6 +193,11 @@ urlpatterns = [
     path("alertas/", views.alertas_dashboard, name="alertas_dashboard"),
     path("alertas/enviar/", views.alertas_enviar, name="alertas_enviar"),
     path("alertas/toggle/", views.alertas_toggle, name="alertas_toggle"),
+    path("alertas/notificacoes/", views.alertas_notificacoes, name="alertas_notificacoes"),
+    path("alertas/notificacoes/<int:pk>/toggle/", views.alertas_notificacao_toggle, name="alertas_notificacao_toggle"),
+    path("alertas/notificacoes/<int:pk>/destinatarios/", views.alertas_notificacao_destinatarios, name="alertas_notificacao_destinatarios"),
+    path("alertas/notificacoes/<int:pk>/remover-email/", views.alertas_notificacao_remover_email, name="alertas_notificacao_remover_email"),
+    path("alertas/notificacoes/<int:pk>/desvincular/<int:perfil_id>/", views.alertas_notificacao_desvincular_perfil, name="alertas_notificacao_desvincular_perfil"),
 
     # ── NinjaOne RMM (via importação de CSV) ───────────────────────────────
     path("ninja/",                    views.ninja_dashboard,     name="ninja_dashboard"),
@@ -232,12 +237,14 @@ urlpatterns = [
     path("portal/troca-antecipada/nova/", views.portal_troca_antecipada_nova, name="portal_troca_antecipada_nova"),
     path("portal/notificacoes/marcar-lidas/", views.portal_notificacoes_marcar_lidas, name="portal_notificacoes_marcar_lidas"),
     path("portal/licencas/", views.portal_licencas_list, name="portal_licencas_list"),
+    path("portal/ajuda/", views.portal_ajuda, name="portal_ajuda"),
 
     # ── Notificações (sino do topo) ─────────────────────────────────────────
     path("notificacoes/marcar-lidas/", views.notificacoes_marcar_lidas, name="notificacoes_marcar_lidas"),
 
     # ── Manutenção externa — recebimentos (lado TI) ─────────────────────────
     path("manutencao/recebimentos/", views.manutencao_recebimentos, name="manutencao_recebimentos"),
+    path("manutencao/recebimentos/ajuda/", views.manutencao_recebimentos_ajuda, name="manutencao_recebimentos_ajuda"),
     path("manutencao/recebimentos/<int:pk>/", views.manutencao_recebimento_detail, name="manutencao_recebimento_detail"),
     path("manutencao/recebimentos/<int:pk>/concluir/", views.manutencao_recebimento_acao, name="manutencao_recebimento_acao"),
 

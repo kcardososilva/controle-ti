@@ -153,11 +153,17 @@ class ImportadorPlanilhaService:
 
         numeros_serie_planilha = set()
 
-        with transaction.atomic():
-            for idx, row in df.iterrows():
-                linha_excel = idx + 2
+        for idx, row in df.iterrows():
+            linha_excel = idx + 2
 
-                try:
+            try:
+                # Uma transação por linha (savepoint curto): mantém o import
+                # resiliente a erro pontual sem quebrar as linhas seguintes e evita
+                # segurar o lock de escrita do SQLite pela duração do arquivo
+                # inteiro — cada linha libera o lock assim que termina, permitindo
+                # que outras escritas do sistema (movimentações, preventivas etc.)
+                # intercalem em vez de esperar todo o import terminar.
+                with transaction.atomic():
                     resultado_linha = self._processar_linha(
                         row=row,
                         columns=df.columns,
@@ -165,22 +171,22 @@ class ImportadorPlanilhaService:
                         numeros_serie_planilha=numeros_serie_planilha,
                     )
 
-                    if resultado_linha["acao"] == "criado":
-                        criados.append(resultado_linha["item"])
+                if resultado_linha["acao"] == "criado":
+                    criados.append(resultado_linha["item"])
 
-                    elif resultado_linha["acao"] == "atualizado":
-                        atualizados.append(resultado_linha["item"])
+                elif resultado_linha["acao"] == "atualizado":
+                    atualizados.append(resultado_linha["item"])
 
-                    elif resultado_linha["acao"] == "ignorado":
-                        ignorados.append(resultado_linha["item"])
-                        erros.append(f"Linha {linha_excel}: {resultado_linha['item']['motivo']}")
+                elif resultado_linha["acao"] == "ignorado":
+                    ignorados.append(resultado_linha["item"])
+                    erros.append(f"Linha {linha_excel}: {resultado_linha['item']['motivo']}")
 
-                except Exception as exc:
-                    ignorados.append({
-                        "linha": linha_excel,
-                        "motivo": str(exc),
-                    })
-                    erros.append(f"Linha {linha_excel}: {exc}")
+            except Exception as exc:
+                ignorados.append({
+                    "linha": linha_excel,
+                    "motivo": str(exc),
+                })
+                erros.append(f"Linha {linha_excel}: {exc}")
 
         return {
             "criados": criados,

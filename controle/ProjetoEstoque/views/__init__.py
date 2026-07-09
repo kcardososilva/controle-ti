@@ -221,7 +221,11 @@ from .home import sobre_plataforma
 from .admin_perfil import admin_perfil
 
 # ── Alertas ──────────────────────────────────────────────────────────────────
-from .alertas import alertas_dashboard, alertas_enviar, alertas_toggle
+from .alertas import (
+    alertas_dashboard, alertas_enviar, alertas_toggle,
+    alertas_notificacoes, alertas_notificacao_toggle, alertas_notificacao_destinatarios,
+    alertas_notificacao_remover_email, alertas_notificacao_desvincular_perfil,
+)
 
 # ── NinjaOne RMM ──────────────────────────────────────────────────────────────
 from .ninja import (
@@ -269,6 +273,7 @@ from .portal_fornecedor import (
     portal_troca_antecipada_nova,
     portal_notificacoes_marcar_lidas,
     portal_licencas_list,
+    portal_ajuda,
 )
 
 # ── Manutenção externa — lado TI (recebimentos) ──────────────────────────────
@@ -276,6 +281,7 @@ from .manutencao import (
     manutencao_recebimentos,
     manutencao_recebimento_detail,
     manutencao_recebimento_acao,
+    manutencao_recebimentos_ajuda,
 )
 
 # ── Notificações internas (sino do topo) ─────────────────────────────────────

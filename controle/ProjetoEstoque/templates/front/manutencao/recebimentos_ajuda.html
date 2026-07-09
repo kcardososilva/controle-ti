@@ -1,0 +1,453 @@
+{% extends 'base.html' %}
+
+{% block title %}Central de Ajuda — Recebimentos de Manutenção{% endblock %}
+{% block page_title %}Central de Ajuda{% endblock %}
+{% block page_subtitle %}Recebimentos de Manutenção — guia de uso para o TI{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'manutencao_recebimentos' %}">Recebimentos</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Central de Ajuda</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'manutencao_recebimentos' %}" class="btn btn-sm"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.rah-page) {
+  --rah-hair: var(--separator-hairline);
+  --rah-line: var(--separator-non-opaque);
+  --rah-surface: var(--bg-elevated);
+  --rah-soft: var(--bg-fill-tertiary);
+  --rah-toc-w: 15.5rem;
+}
+.rah-page { display: grid; gap: 0; max-width: 78rem; }
+.rah-page * { box-sizing: border-box; }
+
+/* ---- Cabeçalho / busca ---- */
+.rah-hero {
+  background: var(--rah-surface); border: 1px solid var(--rah-hair); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm); padding: 1.5rem 1.7rem; margin-bottom: 1.4rem;
+  display: grid; gap: 1rem;
+}
+.rah-hero-top { display: flex; align-items: flex-start; gap: 1rem; flex-wrap: wrap; justify-content: space-between; }
+.rah-hero h2 { font-size: 1.15rem; font-weight: 700; letter-spacing: -.02em; color: var(--text-primary); margin-bottom: .35rem; }
+.rah-hero p { color: var(--text-secondary); font-size: .9rem; line-height: 1.6; max-width: 46rem; }
+.rah-search { position: relative; flex: 0 0 auto; width: 20rem; max-width: 100%; }
+.rah-search i { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%); color: var(--text-quaternary); font-size: .85rem; }
+.rah-search input {
+  width: 100%; padding: .62rem .9rem .62rem 2.2rem; border-radius: var(--radius-pill);
+  border: 1px solid var(--rah-line); background: var(--rah-soft); color: var(--text-primary); font-size: .85rem;
+}
+.rah-search input:focus { outline: none; border-color: var(--brand); background: var(--rah-surface); box-shadow: 0 0 0 3px var(--brand-soft); }
+
+/* ---- Layout: TOC + conteúdo ---- */
+.rah-shell { display: grid; grid-template-columns: var(--rah-toc-w) minmax(0, 1fr); gap: 1.6rem; align-items: start; }
+.rah-toc {
+  position: sticky; top: 1rem; display: grid; gap: .1rem; padding: .6rem;
+  background: var(--rah-surface); border: 1px solid var(--rah-hair); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+}
+.rah-toc-item {
+  display: flex; align-items: center; gap: .55rem; padding: .5rem .65rem; border-radius: var(--radius-sm);
+  color: var(--text-secondary); font-size: .82rem; font-weight: 600; transition: background .15s, color .15s;
+}
+.rah-toc-item i { width: 1rem; text-align: center; color: var(--text-quaternary); font-size: .78rem; }
+.rah-toc-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.rah-toc-item.is-active { background: var(--brand-soft); color: var(--brand); }
+.rah-toc-item.is-active i { color: var(--brand); }
+
+.rah-main { display: grid; gap: 1.4rem; min-width: 0; }
+.rah-section {
+  background: var(--rah-surface); border: 1px solid var(--rah-hair); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm); padding: 1.5rem 1.7rem; scroll-margin-top: 1rem;
+}
+.rah-section h3 { font-size: 1rem; font-weight: 700; letter-spacing: -.01em; color: var(--text-primary); display: flex; align-items: center; gap: .55rem; margin-bottom: .3rem; }
+.rah-section h3 i { color: var(--brand); font-size: .92rem; }
+.rah-section > p.rah-lead { color: var(--text-tertiary); font-size: .84rem; margin-bottom: 1.1rem; max-width: 44rem; }
+
+/* ---- Linha do tempo (fluxo) ---- */
+.rah-flow { display: flex; gap: 0; overflow-x: auto; padding: .6rem .1rem 1rem; }
+.rah-flow-step { flex: 1 1 0; min-width: 8.5rem; position: relative; text-align: center; padding: 0 .6rem; }
+.rah-flow-step::before, .rah-flow-step::after { content: ""; position: absolute; top: 1.1rem; height: 2px; background: var(--rah-line); }
+.rah-flow-step::before { left: 0; right: 50%; }
+.rah-flow-step::after { left: 50%; right: 0; }
+.rah-flow-step:first-child::before, .rah-flow-step:last-child::after { display: none; }
+.rah-flow-dot {
+  position: relative; z-index: 1; width: 2.2rem; height: 2.2rem; margin: 0 auto; display: grid; place-items: center;
+  border-radius: 999px; background: var(--brand-soft); border: 2px solid var(--brand); color: var(--brand); font-weight: 800; font-size: .82rem;
+}
+.rah-flow-lbl { margin-top: .55rem; font-size: .78rem; font-weight: 700; color: var(--text-primary); }
+.rah-flow-desc { margin-top: .2rem; font-size: .72rem; color: var(--text-tertiary); line-height: 1.4; }
+
+.rah-branch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .8rem; margin-top: .3rem; }
+.rah-branch { border: 1px solid var(--rah-hair); border-left: 3px solid var(--warning); border-radius: var(--radius-md); padding: .9rem 1rem; background: var(--rah-soft); }
+.rah-branch.is-brand { border-left-color: var(--brand); }
+.rah-branch strong { display: block; font-size: .82rem; color: var(--text-primary); margin-bottom: .3rem; }
+.rah-branch span { font-size: .78rem; color: var(--text-tertiary); line-height: 1.5; }
+
+/* ---- Cards de ação ---- */
+.rah-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(15.5rem, 1fr)); gap: .9rem; }
+.rah-action { border: 1px solid var(--rah-hair); border-radius: var(--radius-md); padding: 1rem 1.1rem; }
+.rah-action-ic { width: 2.2rem; height: 2.2rem; display: grid; place-items: center; border-radius: var(--radius-sm); background: var(--brand-soft); color: var(--brand); font-size: .92rem; margin-bottom: .6rem; }
+.rah-action h4 { font-size: .86rem; font-weight: 700; color: var(--text-primary); margin-bottom: .3rem; }
+.rah-action p { font-size: .78rem; color: var(--text-tertiary); line-height: 1.5; }
+
+/* ---- Casos de uso (accordion nativo) ---- */
+.rah-usecase { border: 1px solid var(--rah-hair); border-radius: var(--radius-md); overflow: hidden; margin-bottom: .7rem; }
+.rah-usecase:last-child { margin-bottom: 0; }
+.rah-usecase summary {
+  list-style: none; cursor: pointer; padding: .9rem 1.1rem; display: flex; align-items: center; gap: .7rem;
+  font-size: .87rem; font-weight: 700; color: var(--text-primary); background: var(--rah-soft);
+}
+.rah-usecase summary::-webkit-details-marker { display: none; }
+.rah-usecase summary .rah-uc-n { width: 1.6rem; height: 1.6rem; flex: 0 0 1.6rem; display: grid; place-items: center; border-radius: 999px; background: var(--brand); color: #fff; font-size: .74rem; font-weight: 800; }
+.rah-usecase summary i.rah-uc-chev { margin-left: auto; color: var(--text-quaternary); transition: transform .2s; }
+.rah-usecase[open] summary i.rah-uc-chev { transform: rotate(180deg); }
+.rah-uc-body { padding: 1rem 1.2rem 1.2rem 3.1rem; }
+.rah-uc-body ol { display: grid; gap: .6rem; counter-reset: uc; }
+.rah-uc-body li { list-style: none; counter-increment: uc; position: relative; padding-left: 1.6rem; font-size: .84rem; color: var(--text-secondary); line-height: 1.55; }
+.rah-uc-body li::before { content: counter(uc); position: absolute; left: 0; top: .05rem; width: 1.15rem; height: 1.15rem; display: grid; place-items: center; border-radius: 999px; background: var(--brand-soft); color: var(--brand); font-size: .68rem; font-weight: 800; }
+.rah-uc-body li strong { color: var(--text-primary); }
+
+/* ---- Glossário de status ---- */
+.rah-gloss { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: .7rem; align-items: stretch; }
+.rah-gloss-item { display: flex; flex-direction: column; align-items: flex-start; gap: .55rem; padding: .85rem .9rem; border: 1px solid var(--rah-hair); border-radius: var(--radius-md); }
+.rah-osc { display: inline-flex; align-items: flex-start; gap: .35rem; max-width: 100%; padding: .3rem .65rem; border-radius: 999px; font-size: .68rem; font-weight: 800; line-height: 1.35; white-space: normal; text-align: left; }
+.rah-osc::before { content: ""; flex: 0 0 auto; width: .4rem; height: .4rem; margin-top: .28rem; border-radius: 999px; background: currentColor; }
+.rah-gloss-item p { margin: 0; font-size: .76rem; color: var(--text-tertiary); line-height: 1.5; }
+.c-gray { color: var(--gray); background: var(--gray-soft); }
+.c-info { color: var(--info); background: var(--info-soft); }
+.c-warning { color: var(--warning); background: var(--warning-soft); }
+.c-success { color: var(--success); background: var(--success-soft); }
+.c-danger { color: var(--danger); background: var(--danger-soft); }
+.c-brand { color: var(--brand); background: var(--brand-soft); }
+.c-purple { color: #5856d6; background: rgba(88,86,214,.14); }
+
+/* ---- Callout de custo ---- */
+.rah-callout { display: flex; gap: .9rem; padding: 1rem 1.1rem; border-radius: var(--radius-md); background: var(--rah-soft); border-left: 3px solid var(--brand); }
+.rah-callout i { color: var(--brand); font-size: 1.1rem; margin-top: .1rem; }
+.rah-callout p { font-size: .82rem; color: var(--text-secondary); line-height: 1.6; }
+.rah-callout strong { color: var(--text-primary); }
+
+/* ---- FAQ ---- */
+.rah-faq { border: 1px solid var(--rah-hair); border-radius: var(--radius-md); overflow: hidden; margin-bottom: .55rem; }
+.rah-faq:last-child { margin-bottom: 0; }
+.rah-faq summary { list-style: none; cursor: pointer; padding: .85rem 1.1rem; font-size: .85rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: .6rem; }
+.rah-faq summary::-webkit-details-marker { display: none; }
+.rah-faq summary::before { content: "\f068"; font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: .68rem; color: var(--brand); background: var(--brand-soft); width: 1.3rem; height: 1.3rem; border-radius: 999px; display: grid; place-items: center; flex: 0 0 auto; }
+.rah-faq[open] summary::before { content: "\f067"; }
+.rah-faq p { padding: 0 1.1rem 1rem 2.7rem; font-size: .82rem; color: var(--text-secondary); line-height: 1.6; }
+
+.rah-empty-search { display: none; text-align: center; padding: 2rem 1rem; color: var(--text-tertiary); font-size: .85rem; }
+.rah-empty-search.is-visible { display: block; }
+
+@media (max-width: 62rem) {
+  .rah-shell { grid-template-columns: 1fr; }
+  .rah-toc { position: static; display: flex; overflow-x: auto; gap: .3rem; }
+  .rah-toc-item { flex: 0 0 auto; white-space: nowrap; }
+  .rah-search { width: 100%; }
+  .rah-hero-top { flex-direction: column; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rah-page">
+  <div class="rah-hero">
+    <div class="rah-hero-top">
+      <div>
+        <h2>Como funciona o recebimento de manutenção externa</h2>
+        <p>Esta tela reúne as ordens de manutenção (OS) abertas pelos fornecedores no Portal — reparo, descarte
+        e troca antecipada — em um só lugar. Aqui você acompanha cada etapa, aprova orçamentos e confirma o que
+        volta para o estoque. Use o índice ao lado ou a busca abaixo para encontrar rapidamente o que precisa.</p>
+      </div>
+      <div class="rah-search">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="text" id="rahSearch" placeholder="Buscar por ação, status ou dúvida…" autocomplete="off">
+      </div>
+    </div>
+  </div>
+
+  <div class="rah-shell">
+    <nav class="rah-toc" aria-label="Sumário da ajuda">
+      <a href="#visao-geral" class="rah-toc-item"><i class="fa-solid fa-circle-info"></i><span>Visão geral</span></a>
+      <a href="#fluxos" class="rah-toc-item"><i class="fa-solid fa-timeline"></i><span>Fluxos possíveis</span></a>
+      <a href="#acoes" class="rah-toc-item"><i class="fa-solid fa-hand-pointer"></i><span>Ações do TI</span></a>
+      <a href="#casos-de-uso" class="rah-toc-item"><i class="fa-solid fa-list-check"></i><span>Passo a passo</span></a>
+      <a href="#glossario" class="rah-toc-item"><i class="fa-solid fa-tags"></i><span>Status da OS</span></a>
+      <a href="#custos" class="rah-toc-item"><i class="fa-solid fa-sack-dollar"></i><span>Custo de manutenção</span></a>
+      <a href="#faq" class="rah-toc-item"><i class="fa-solid fa-circle-question"></i><span>Perguntas frequentes</span></a>
+    </nav>
+
+    <div class="rah-main">
+
+      <section class="rah-section" id="visao-geral">
+        <h3><i class="fa-solid fa-circle-info"></i> Visão geral</h3>
+        <p class="rah-lead">O que esta tela representa dentro do processo de manutenção.</p>
+        <p style="font-size:.86rem;color:var(--text-secondary);line-height:1.7;max-width:42rem;">
+          Quando um equipamento vai para manutenção, o registro correspondente (a "OS") é conduzido pelo
+          fornecedor dentro do Portal dele — ele avalia o defeito, envia orçamento, executa o reparo e devolve
+          o equipamento. O papel do TI aqui é o de <strong>ponto de controle</strong>: aprovar (ou reprovar)
+          o valor antes do reparo começar, e confirmar o recebimento físico de tudo o que retorna — seja o
+          equipamento reparado, um substituto, ou um item destinado a descarte. Nenhuma OS avança sem essas
+          confirmações, e cada uma fica registrada no histórico do equipamento.
+        </p>
+      </section>
+
+      <section class="rah-section" id="fluxos">
+        <h3><i class="fa-solid fa-timeline"></i> Os fluxos possíveis</h3>
+        <p class="rah-lead">Toda OS segue um destes três caminhos, sempre nesta ordem de macro-etapas.</p>
+
+        <div data-kw="fluxo padrao reparo avaliacao aprovacao orcamento">
+          <strong style="font-size:.85rem;color:var(--text-primary);">Reparo padrão</strong>
+          <div class="rah-flow">
+            <div class="rah-flow-step"><div class="rah-flow-dot">1</div><div class="rah-flow-lbl">Recebimento</div><div class="rah-flow-desc">Fornecedor recebe o equipamento enviado.</div></div>
+            <div class="rah-flow-step"><div class="rah-flow-dot">2</div><div class="rah-flow-lbl">Avaliação</div><div class="rah-flow-desc">Diagnóstico do defeito e valor do orçamento.</div></div>
+            <div class="rah-flow-step"><div class="rah-flow-dot">3</div><div class="rah-flow-lbl">Aprovação</div><div class="rah-flow-desc">TI aprova ou reprova o orçamento.</div></div>
+            <div class="rah-flow-step"><div class="rah-flow-dot">4</div><div class="rah-flow-lbl">Reparo / Troca</div><div class="rah-flow-desc">Conserto executado e devolvido.</div></div>
+            <div class="rah-flow-step"><div class="rah-flow-dot">5</div><div class="rah-flow-lbl">Concluído</div><div class="rah-flow-desc">TI recebe de volta e encerra a OS.</div></div>
+          </div>
+        </div>
+
+        <div data-kw="troca antecipada substituto defeituoso" style="margin-top:1.3rem;">
+          <strong style="font-size:.85rem;color:var(--text-primary);">Troca antecipada</strong>
+          <div class="rah-flow">
+            <div class="rah-flow-step"><div class="rah-flow-dot">1</div><div class="rah-flow-lbl">Substituto a caminho</div><div class="rah-flow-desc">Fornecedor manda o substituto primeiro.</div></div>
+            <div class="rah-flow-step"><div class="rah-flow-dot">2</div><div class="rah-flow-lbl">Substituto recebido</div><div class="rah-flow-desc">TI confirma e ativa o substituto no estoque.</div></div>
+            <div class="rah-flow-step"><div class="rah-flow-dot">3</div><div class="rah-flow-lbl">Defeituoso enviado</div><div class="rah-flow-desc">Só então o TI envia o defeituoso ao fornecedor.</div></div>
+            <div class="rah-flow-step"><div class="rah-flow-dot">4</div><div class="rah-flow-lbl">Fornecedor recebeu</div><div class="rah-flow-desc">Fornecedor recebe e envia a proposta de reparo.</div></div>
+            <div class="rah-flow-step"><div class="rah-flow-dot">5</div><div class="rah-flow-lbl">Concluído</div><div class="rah-flow-desc">Proposta registrada, OS encerrada.</div></div>
+          </div>
+        </div>
+
+        <div data-kw="descarte devolvido descartado descarte local" style="margin-top:1.3rem;">
+          <strong style="font-size:.85rem;color:var(--text-primary);">Descarte — duas variações a partir da etapa "Reparo / Troca"</strong>
+          <div class="rah-branch-grid">
+            <div class="rah-branch">
+              <strong>Descarte físico</strong>
+              <span>O fornecedor não tem condições de reparo, devolve o equipamento fisicamente e o TI o recebe já como descarte.</span>
+            </div>
+            <div class="rah-branch is-brand">
+              <strong>Descarte local</strong>
+              <span>O fornecedor pede para descartar o equipamento no local dele (sem devolver). O TI aprova — ou recusa, exigindo a devolução física.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="rah-section" id="acoes">
+        <h3><i class="fa-solid fa-hand-pointer"></i> Ações que o TI pode tomar</h3>
+        <p class="rah-lead">Disponíveis no detalhe de cada OS, de acordo com o status atual.</p>
+        <div class="rah-actions">
+          <div class="rah-action" data-kw="aprovar orcamento reprovar">
+            <div class="rah-action-ic"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+            <h4>Aprovar / reprovar orçamento</h4>
+            <p>Quando a OS chega em "Aguardando aprovação", o TI decide se o valor do reparo é aceito antes do fornecedor começar o serviço.</p>
+          </div>
+          <div class="rah-action" data-kw="receber reparado concluir">
+            <div class="rah-action-ic"><i class="fa-solid fa-box-open"></i></div>
+            <h4>Confirmar recebimento</h4>
+            <p>Ao chegar o equipamento reparado (ou o substituto), o TI confirma o recebimento físico e a OS é concluída.</p>
+          </div>
+          <div class="rah-action" data-kw="troca antecipada receber substituto enviar defeituoso">
+            <div class="rah-action-ic"><i class="fa-solid fa-right-left"></i></div>
+            <h4>Receber substituto / enviar defeituoso</h4>
+            <p>Na troca antecipada, o TI confirma o substituto recebido e só depois libera o envio do equipamento defeituoso.</p>
+          </div>
+          <div class="rah-action" data-kw="descarte local aprovar recusar">
+            <div class="rah-action-ic"><i class="fa-solid fa-dumpster"></i></div>
+            <h4>Aprovar / recusar descarte local</h4>
+            <p>Decide se aceita que o fornecedor descarte no local dele ou se exige a devolução do equipamento para descarte interno.</p>
+          </div>
+          <div class="rah-action" data-kw="nota fiscal nf anexar excluir">
+            <div class="rah-action-ic"><i class="fa-solid fa-paperclip"></i></div>
+            <h4>Anexar / excluir Nota Fiscal</h4>
+            <p>O TI pode anexar quantas NFs forem necessárias, e excluir qualquer uma (inclusive as do fornecedor) em caso de erro.</p>
+          </div>
+          <div class="rah-action" data-kw="historico filtro busca fornecedor status">
+            <div class="rah-action-ic"><i class="fa-solid fa-filter"></i></div>
+            <h4>Consultar o histórico</h4>
+            <p>A lista completa de OS pode ser filtrada por fornecedor, status ou pela busca por equipamento/chamado.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="rah-section" id="casos-de-uso">
+        <h3><i class="fa-solid fa-list-check"></i> Passo a passo dos casos mais comuns</h3>
+        <p class="rah-lead">Clique em um caso para ver a sequência completa.</p>
+
+        <details class="rah-usecase" data-kw="reparo padrao aprovar orcamento receber">
+          <summary><span class="rah-uc-n">1</span> Acompanhar um reparo padrão do início ao fim <i class="fa-solid fa-chevron-down rah-uc-chev"></i></summary>
+          <div class="rah-uc-body">
+            <ol>
+              <li>O equipamento aparece em <strong>Recebimentos</strong> assim que o fornecedor registra o recebimento e inicia a avaliação.</li>
+              <li>Quando o status muda para <strong>Aguardando aprovação do TI</strong>, a OS aparece na caixa de pendências — abra o detalhe para ver o diagnóstico e o valor.</li>
+              <li>Clique em <strong>Aprovar</strong> (o reparo segue) ou <strong>Reprovar</strong> (o fornecedor reavalia sem prosseguir com o conserto).</li>
+              <li>O fornecedor executa o reparo e devolve o equipamento — a OS muda para <strong>Devolvido</strong>.</li>
+              <li>Confirme o recebimento físico em <strong>Concluir</strong>, escolhendo se o equipamento volta como <strong>Ativo</strong> ou <strong>Backup</strong>.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="rah-usecase" data-kw="troca antecipada substituto defeituoso enviar receber">
+          <summary><span class="rah-uc-n">2</span> Conduzir uma troca antecipada <i class="fa-solid fa-chevron-down rah-uc-chev"></i></summary>
+          <div class="rah-uc-body">
+            <ol>
+              <li>O fornecedor abre a troca antecipada no Portal dele e envia um substituto antes mesmo de receber o defeituoso — a OS chega como <strong>Substituto a caminho</strong>.</li>
+              <li>Quando o substituto chega fisicamente, confirme em <strong>Receber substituto</strong> — ele é ativado no estoque automaticamente.</li>
+              <li>Só depois disso, envie o equipamento com defeito ao fornecedor em <strong>Enviar defeituoso</strong> — isso evita deixar o equipamento com problema parado à espera do substituto.</li>
+              <li>O fornecedor confirma o recebimento do defeituoso e envia a proposta de reparo — a OS é concluída automaticamente e o valor da proposta entra no histórico de custo do equipamento trocado.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="rah-usecase" data-kw="descarte fisico devolvido descartado">
+          <summary><span class="rah-uc-n">3</span> Receber um equipamento sem condições de reparo (descarte físico) <i class="fa-solid fa-chevron-down rah-uc-chev"></i></summary>
+          <div class="rah-uc-body">
+            <ol>
+              <li>O fornecedor avalia o equipamento e conclui que não há condições de reparo, informando o motivo — a OS muda para <strong>Devolvido para descarte</strong>.</li>
+              <li>Quando o equipamento físico chega, confirme o recebimento — a OS é concluída com o status <strong>Descartado</strong>.</li>
+              <li>O equipamento passa a constar como descarte no estoque interno, mantendo o histórico completo da OS para consulta futura.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="rah-usecase" data-kw="descarte local aprovar recusar">
+          <summary><span class="rah-uc-n">4</span> Decidir sobre um pedido de descarte local <i class="fa-solid fa-chevron-down rah-uc-chev"></i></summary>
+          <div class="rah-uc-body">
+            <ol>
+              <li>O fornecedor solicita descartar o equipamento no local dele, sem devolvê-lo — a OS chega como <strong>Descarte local solicitado</strong>, com motivo e valor de referência.</li>
+              <li>Se você concordar, clique em <strong>Aprovar descarte local</strong> — o fornecedor recebe a confirmação e formaliza o descarte do lado dele.</li>
+              <li>Se preferir receber o equipamento de volta, clique em <strong>Recusar</strong> — a OS volta para o fluxo de devolução física, exigindo o envio do equipamento para descarte interno.</li>
+            </ol>
+          </div>
+        </details>
+      </section>
+
+      <section class="rah-section" id="glossario">
+        <h3><i class="fa-solid fa-tags"></i> Glossário de status da OS</h3>
+        <p class="rah-lead">A cor de cada selo é a mesma usada em toda a tela de recebimentos.</p>
+        <div class="rah-gloss">
+          <div class="rah-gloss-item" data-kw="aguardando recebimento"><span class="rah-osc c-gray">Aguardando recebimento</span><p>O fornecedor ainda não confirmou o recebimento do equipamento enviado.</p></div>
+          <div class="rah-gloss-item" data-kw="recebido em avaliacao"><span class="rah-osc c-info">Recebido / Em avaliação</span><p>Fornecedor está diagnosticando o defeito para montar o orçamento.</p></div>
+          <div class="rah-gloss-item" data-kw="aguardando aprovacao"><span class="rah-osc c-warning">Aguardando aprovação</span><p>Falta o TI aprovar ou reprovar o valor do orçamento.</p></div>
+          <div class="rah-gloss-item" data-kw="aprovado"><span class="rah-osc c-success">Reparo aprovado</span><p>TI liberou o valor — o fornecedor pode iniciar o conserto.</p></div>
+          <div class="rah-gloss-item" data-kw="reprovado"><span class="rah-osc c-danger">Reparo reprovado</span><p>TI recusou o valor proposto; o fornecedor reavalia o caso.</p></div>
+          <div class="rah-gloss-item" data-kw="em reparo"><span class="rah-osc c-warning">Em reparo</span><p>Conserto em execução no fornecedor.</p></div>
+          <div class="rah-gloss-item" data-kw="reparado"><span class="rah-osc c-brand">Reparo concluído</span><p>Fornecedor terminou o conserto e prepara a devolução.</p></div>
+          <div class="rah-gloss-item" data-kw="devolvido"><span class="rah-osc c-purple">Devolvido</span><p>Equipamento a caminho de volta — falta o TI confirmar o recebimento.</p></div>
+          <div class="rah-gloss-item" data-kw="sem reparo substituto enviado"><span class="rah-osc c-warning">Substituto enviado</span><p>Sem condições de reparo — o fornecedor enviou um substituto no lugar.</p></div>
+          <div class="rah-gloss-item" data-kw="sem condicoes"><span class="rah-osc c-danger">Sem condições de reparo</span><p>Fornecedor não pode consertar; aguarda devolução para descarte.</p></div>
+          <div class="rah-gloss-item" data-kw="devolvido descarte"><span class="rah-osc c-warning">Devolvido para descarte</span><p>Equipamento a caminho de volta para ser descartado internamente.</p></div>
+          <div class="rah-gloss-item" data-kw="descarte local solicitado"><span class="rah-osc c-warning">Descarte local solicitado</span><p>Fornecedor pediu para descartar sem devolver — aguarda decisão do TI.</p></div>
+          <div class="rah-gloss-item" data-kw="descarte local aprovado"><span class="rah-osc c-brand">Descarte local aprovado</span><p>TI aceitou — aguarda a confirmação do descarte pelo fornecedor.</p></div>
+          <div class="rah-gloss-item" data-kw="descartado"><span class="rah-osc c-gray">Descartado</span><p>Processo de descarte encerrado.</p></div>
+          <div class="rah-gloss-item" data-kw="troca antecipada substituto enviado"><span class="rah-osc c-warning">Troca antecipada — substituto a caminho</span><p>Fornecedor enviou o substituto antes do defeituoso.</p></div>
+          <div class="rah-gloss-item" data-kw="troca antecipada substituto recebido"><span class="rah-osc c-warning">Troca antecipada — substituto recebido</span><p>TI já recebeu o substituto; falta enviar o defeituoso.</p></div>
+          <div class="rah-gloss-item" data-kw="troca antecipada defeituoso enviado"><span class="rah-osc c-warning">Troca antecipada — defeituoso enviado</span><p>TI enviou o equipamento com defeito ao fornecedor.</p></div>
+          <div class="rah-gloss-item" data-kw="troca antecipada defeituoso recebido"><span class="rah-osc c-brand">Troca antecipada — defeituoso recebido</span><p>Fornecedor recebeu; falta apenas enviar a proposta de reparo.</p></div>
+          <div class="rah-gloss-item" data-kw="concluido"><span class="rah-osc c-success">Concluído</span><p>OS encerrada com sucesso, em qualquer um dos fluxos.</p></div>
+          <div class="rah-gloss-item" data-kw="cancelado"><span class="rah-osc c-gray">Cancelado</span><p>OS cancelada antes de ser concluída.</p></div>
+        </div>
+      </section>
+
+      <section class="rah-section" id="custos">
+        <h3><i class="fa-solid fa-sack-dollar"></i> Onde o custo de manutenção aparece</h3>
+        <p class="rah-lead">O valor só entra no histórico do equipamento no momento certo do fluxo.</p>
+        <div class="rah-callout" data-kw="custo valor historico ficha equipamento gasto">
+          <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+          <p>
+            O <strong>valor gasto com manutenção</strong> exibido na ficha do equipamento é somado a partir dos
+            envios e retornos de manutenção registrados — não do orçamento em si. No reparo padrão, o valor entra
+            quando o TI confirma o recebimento do equipamento devolvido (etapa <strong>Concluído</strong>). Na
+            troca antecipada, entra quando o fornecedor envia a proposta de reparo do equipamento trocado. Se uma
+            OS ainda está em andamento, o valor final normalmente ainda não aparece na ficha — isso é esperado.
+          </p>
+        </div>
+      </section>
+
+      <section class="rah-section" id="faq">
+        <h3><i class="fa-solid fa-circle-question"></i> Perguntas frequentes</h3>
+
+        <details class="rah-faq" data-kw="pendente aparecer aprovacao">
+          <summary>Por que uma OS não aparece nas pendências?</summary>
+          <p>Só entram na caixa de pendências as OS que exigem uma ação do TI agora: aguardando aprovação,
+          equipamento devolvido/substituto para receber, pedido de descarte local ou etapas da troca antecipada
+          que cabem ao TI. As demais estão em andamento do lado do fornecedor e aparecem apenas no histórico.</p>
+        </details>
+
+        <details class="rah-faq" data-kw="reprovar orcamento acontece depois">
+          <summary>O que acontece depois de reprovar um orçamento?</summary>
+          <p>O fornecedor é notificado do status <strong>Reprovado</strong> e reavalia o caso — pode reduzir o
+          valor, propor substituição (sem reparo) ou declarar que não há condições de reparo.</p>
+        </details>
+
+        <details class="rah-faq" data-kw="ativo backup diferenca receber">
+          <summary>Qual a diferença entre receber como "Ativo" e como "Backup"?</summary>
+          <p>Ao confirmar o recebimento, o TI escolhe o status de destino do equipamento no estoque: <strong>Ativo</strong>
+          se ele volta a operar imediatamente, ou <strong>Backup</strong> se ficará reservado, sem uso ativo no momento.</p>
+        </details>
+
+        <details class="rah-faq" data-kw="anexar excluir nota fiscal quem pode">
+          <summary>Quem pode anexar ou excluir uma Nota Fiscal?</summary>
+          <p>Fornecedor e TI podem anexar quantas notas fiscais forem necessárias. Já a exclusão tem uma regra de
+          segurança: o fornecedor só exclui as próprias NFs; o TI pode excluir qualquer NF da OS, para corrigir
+          erros de anexo.</p>
+        </details>
+
+        <details class="rah-faq" data-kw="cancelada">
+          <summary>Uma OS cancelada pode ser reaberta?</summary>
+          <p>Não. Uma OS cancelada é encerrada definitivamente. Caso o equipamento precise de manutenção novamente,
+          uma nova OS deve ser aberta pelo fornecedor no Portal.</p>
+        </details>
+      </section>
+
+      <p class="rah-empty-search" id="rahEmptySearch">Nenhum resultado para essa busca. Tente outro termo.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  // Realce do item ativo no sumário conforme a rolagem (scrollspy leve).
+  var toc = document.querySelectorAll('.rah-toc-item');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('.rah-section'));
+  if ('IntersectionObserver' in window && sections.length) {
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var id = entry.target.id;
+        toc.forEach(function (a) { a.classList.toggle('is-active', a.getAttribute('href') === '#' + id); });
+      });
+    }, { rootMargin: '-15% 0px -70% 0px' });
+    sections.forEach(function (s) { obs.observe(s); });
+  }
+
+  // Busca: filtra blocos com data-kw e casos de uso / FAQ pelo texto visível.
+  var input = document.getElementById('rahSearch');
+  var empty = document.getElementById('rahEmptySearch');
+  if (!input) return;
+  var searchable = Array.prototype.slice.call(document.querySelectorAll('[data-kw]'));
+  input.addEventListener('input', function () {
+    var term = input.value.trim().toLowerCase();
+    var anyVisible = false;
+    searchable.forEach(function (el) {
+      var kw = (el.getAttribute('data-kw') + ' ' + el.textContent).toLowerCase();
+      var match = !term || kw.indexOf(term) !== -1;
+      el.style.display = match ? '' : 'none';
+      if (match) anyVisible = true;
+      if (match && term && el.tagName === 'DETAILS') el.open = true;
+    });
+    empty.classList.toggle('is-visible', term.length > 0 && !anyVisible);
+  });
+})();
+</script>
+{% endblock %}

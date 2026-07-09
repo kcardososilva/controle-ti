@@ -98,6 +98,12 @@ def manutencao_recebimentos(request):
 
 
 @login_required
+def manutencao_recebimentos_ajuda(request):
+    """Central de ajuda do módulo de recebimentos — guia de uso para o TI."""
+    return render(request, "front/manutencao/recebimentos_ajuda.html", {})
+
+
+@login_required
 def manutencao_recebimento_detail(request, pk: int):
     """Detalhe da OS — acompanha o processo de manutenção feito pelo fornecedor."""
     ordem = get_object_or_404(

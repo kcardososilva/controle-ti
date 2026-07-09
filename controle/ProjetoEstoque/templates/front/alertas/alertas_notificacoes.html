@@ -1,0 +1,312 @@
+{% extends 'base.html' %}
+
+{% block title %}Configurar Notificações{% endblock %}
+{% block page_title %}Configurar Notificações{% endblock %}
+{% block page_subtitle %}Quem recebe, para onde vai e o que está ativo em cada notificação do sistema{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'alertas_dashboard' %}">Central de Alertas</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Notificações</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'alertas_dashboard' %}" class="al-btn"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Central de Alertas</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.al-page) {
+  --al-brand:    var(--brand, #0071e3);
+  --al-brand-hover: var(--brand-hover, #0077ed);
+  --al-bg:       var(--bg-elevated, #ffffff);
+  --al-bg-soft:  var(--bg-fill-tertiary, rgba(120,120,128,.08));
+  --al-bg-muted: var(--bg-fill-secondary, rgba(120,120,128,.12));
+  --al-text:     var(--text-primary, #1d1d1f);
+  --al-muted:    var(--text-tertiary, #6e6e73);
+  --al-soft:     var(--text-quaternary, #86868b);
+  --al-border:   var(--separator-hairline, rgba(0,0,0,.08));
+  --al-border-2: var(--separator-non-opaque, rgba(0,0,0,.14));
+  --al-success:  var(--success, #34c759);
+  --al-warning:  var(--warning, #ff9500);
+  --al-danger:   var(--danger, #ff3b30);
+  --al-radius-sm: var(--radius-sm, 9px);
+  --al-radius-md: var(--radius-md, 12px);
+  --al-radius-pill: var(--radius-pill, 980px);
+  --al-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04));
+  --al-trans:    150ms cubic-bezier(.32,.72,0,1);
+}
+
+.al-page, .al-page * { box-sizing: border-box; min-width: 0; }
+.al-page { width: 100%; max-width: 1120px; margin-inline: auto; color: var(--al-text); display: grid; gap: 16px; }
+
+/* ── Buttons (mesmo padrão da Central de Alertas) ── */
+.al-btn {
+  min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 0 14px; border: 1px solid var(--al-border-2); border-radius: var(--al-radius-sm);
+  background: var(--al-bg); color: var(--al-text); font-size: 13px; font-weight: 500;
+  cursor: pointer; text-decoration: none; white-space: nowrap;
+  transition: background var(--al-trans), border-color var(--al-trans), color var(--al-trans);
+}
+.al-btn:hover { background: var(--al-bg-soft); }
+.al-btn:active { transform: scale(.98); }
+.al-btn i { font-size: 12px; }
+.al-btn-sm { min-height: 28px; padding: 0 10px; font-size: 12px; }
+.al-btn-on  { color: var(--al-success); border-color: color-mix(in srgb, var(--al-success) 30%, transparent); }
+.al-btn-on:hover  { background: color-mix(in srgb, var(--al-success) 10%, transparent); color: var(--al-success); }
+.al-btn-off { color: var(--al-warning); border-color: color-mix(in srgb, var(--al-warning) 34%, transparent); }
+.al-btn-off:hover { background: color-mix(in srgb, var(--al-warning) 12%, transparent); color: var(--al-warning); }
+.al-btn-brand { background: var(--al-brand); border-color: var(--al-brand); color: #fff; }
+.al-btn-brand:hover { background: var(--al-brand-hover); border-color: var(--al-brand-hover); color: #fff; }
+
+/* ── Faixa de métricas ── */
+.al-metrics {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--al-border); border: 1px solid var(--al-border);
+  border-radius: var(--al-radius-md); overflow: hidden;
+}
+.al-metric { background: var(--al-bg); padding: 13px 16px; display: flex; flex-direction: column; gap: 5px; }
+.al-metric-label { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: var(--al-muted); }
+.al-metric-label i { font-size: 11px; color: var(--al-soft); width: 13px; text-align: center; }
+.al-metric-value { font-family: var(--font-display); font-size: 22px; font-weight: 600; letter-spacing: -0.02em; color: var(--al-text); line-height: 1.05; }
+.al-metric-hint { font-size: 11.5px; color: var(--al-muted); line-height: 1.3; }
+.al-metric.is-danger .al-metric-value { color: var(--al-danger); }
+.al-metric.is-ok .al-metric-value { color: var(--al-success); }
+
+/* ── Faixa de status (interruptor mestre) ── */
+.al-masterbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 11px 16px; border-radius: var(--al-radius-md);
+  border: 1px solid var(--al-border); background: var(--al-bg-soft); font-size: 12.5px; color: var(--al-muted);
+}
+.al-masterbar i { color: var(--al-brand); }
+.al-masterbar strong { color: var(--al-text); font-weight: 600; }
+.al-masterbar a { color: var(--al-brand); text-decoration: none; font-weight: 600; margin-left: auto; white-space: nowrap; }
+.al-masterbar a:hover { text-decoration: underline; }
+
+/* ── Categoria ── */
+.al-cat { border: 1px solid var(--al-border); border-radius: var(--al-radius-md); background: var(--al-bg); overflow: hidden; }
+.al-cat-head {
+  display: flex; align-items: center; gap: 9px; padding: 12px 16px;
+  border-bottom: 1px solid var(--al-border); font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--al-muted);
+}
+.al-cat-head .al-cat-count {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 20px; padding: 1px 7px;
+  border-radius: var(--al-radius-pill); background: var(--al-bg-muted); color: var(--al-muted);
+  font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: normal;
+}
+
+/* ── Linha de canal ── */
+.al-canal { padding: 14px 16px; border-bottom: 1px solid var(--al-border); display: grid; gap: 10px; }
+.al-canal:last-child { border-bottom: none; }
+.al-canal-top { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.al-canal-icon {
+  width: 34px; height: 34px; border-radius: var(--al-radius-sm); flex-shrink: 0;
+  display: grid; place-items: center; background: var(--al-bg-soft); color: var(--al-brand); font-size: 14px;
+}
+.al-canal-info { flex: 1; min-width: 220px; }
+.al-canal-nome { font-size: 13.5px; font-weight: 600; color: var(--al-text); letter-spacing: -0.01em; }
+.al-canal-desc { font-size: 12px; color: var(--al-muted); margin-top: 2px; line-height: 1.4; }
+.al-canal-meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--al-soft); }
+.al-canal-meta span i { margin-right: 4px; }
+.al-canal-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.al-badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: var(--al-radius-pill);
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.al-badge.on  { color: var(--al-success); background: color-mix(in srgb, var(--al-success) 12%, transparent); }
+.al-badge.off { color: var(--al-danger);  background: color-mix(in srgb, var(--al-danger) 10%, transparent); }
+.al-badge.people { color: var(--al-brand); background: color-mix(in srgb, var(--al-brand) 11%, transparent); }
+
+/* ── Quem recebe agora (destinatários resolvidos em tempo real) ── */
+.al-pessoas-wrap { padding-left: 46px; display: grid; gap: 6px; }
+.al-pessoas-label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; font-weight: 700; color: var(--al-soft); text-transform: uppercase; letter-spacing: .04em; }
+.al-pessoas-label i { color: var(--al-soft); }
+.al-pessoas { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.al-pessoas.is-empty { color: var(--al-danger); font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: normal; }
+.al-pessoa {
+  display: inline-flex; align-items: center; gap: 2px; padding: 4px 4px 4px 10px; border-radius: var(--al-radius-pill);
+  background: var(--al-bg-soft); border: 1px solid var(--al-border); font-size: 12px; font-weight: 500; color: var(--al-text);
+}
+.al-pessoa .ctx { color: var(--al-muted); font-weight: 400; font-size: 11px; }
+.al-pessoa-rm-form { margin: 0; display: inline-flex; }
+.al-pessoa-rm {
+  width: 18px; height: 18px; margin-left: 2px; border: none; border-radius: 50%; flex-shrink: 0;
+  display: grid; place-items: center; background: transparent; color: var(--al-soft); cursor: pointer;
+  font-size: 10px; padding: 0; transition: background var(--al-trans), color var(--al-trans);
+}
+.al-pessoa-rm:hover { background: color-mix(in srgb, var(--al-danger) 16%, transparent); color: var(--al-danger); }
+.al-pessoas-mais { font-size: 11.5px; color: var(--al-muted); font-weight: 500; }
+.al-pessoas-nota { font-size: 11px; color: var(--al-soft); }
+
+.al-canal-dest { padding-left: 46px; }
+.al-canal-dest form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.al-canal-dest input[type="text"] {
+  flex: 1; min-width: 220px; min-height: 32px; padding: 6px 10px; border-radius: var(--al-radius-sm);
+  border: 1px solid var(--al-border-2); background: var(--al-bg); color: var(--al-text); font-size: 12.5px;
+}
+.al-canal-dest input[type="text"]:focus { outline: none; border-color: var(--al-brand); }
+.al-canal-dest .al-hint { width: 100%; font-size: 11px; color: var(--al-soft); margin-top: 3px; }
+.al-canal-dyn {
+  margin-left: 46px; display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--al-muted);
+  padding: 7px 10px; border-radius: var(--al-radius-sm); background: var(--al-bg-soft);
+}
+.al-canal-dyn i { color: var(--al-brand); }
+.al-canal-dyn a { color: var(--al-brand); font-weight: 600; text-decoration: none; }
+.al-canal-dyn a:hover { text-decoration: underline; }
+.al-canal.is-off .al-canal-nome { color: var(--al-muted); }
+.al-canal.is-off .al-canal-icon { color: var(--al-soft); }
+
+@media (max-width: 640px) {
+  .al-metrics { grid-template-columns: repeat(2, 1fr); }
+  .al-canal-dest, .al-canal-dyn, .al-pessoas-wrap { padding-left: 0; margin-left: 0; }
+  .al-canal-actions { width: 100%; justify-content: space-between; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="al-page">
+
+  <div class="al-masterbar">
+    <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+    {% if alertas_ativos %}
+      <span><strong>Interruptor mestre ativo</strong> — os canais abaixo são o controle fino de cada notificação individualmente.</span>
+    {% else %}
+      <span><strong>Interruptor mestre desativado</strong> — nenhuma notificação é enviada, mesmo com os canais abaixo ativos.</span>
+    {% endif %}
+    <a href="{% url 'alertas_dashboard' %}">Gerenciar interruptor mestre <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+  </div>
+
+  <div class="al-metrics">
+    <div class="al-metric">
+      <span class="al-metric-label"><i class="fa-solid fa-bell"></i> Notificações</span>
+      <span class="al-metric-value">{{ kpi.total }}</span>
+      <span class="al-metric-hint">Módulos cadastrados no sistema</span>
+    </div>
+    <div class="al-metric is-ok">
+      <span class="al-metric-label"><i class="fa-solid fa-circle-check"></i> Ativas</span>
+      <span class="al-metric-value">{{ kpi.ativos }}</span>
+      <span class="al-metric-hint">Enviando normalmente</span>
+    </div>
+    <div class="al-metric {% if kpi.inativos > 0 %}is-danger{% endif %}">
+      <span class="al-metric-label"><i class="fa-solid fa-bell-slash"></i> Desativadas</span>
+      <span class="al-metric-value">{{ kpi.inativos }}</span>
+      <span class="al-metric-hint">Não enviam nenhum e-mail</span>
+    </div>
+    <div class="al-metric">
+      <span class="al-metric-label"><i class="fa-solid fa-paper-plane"></i> Enviados</span>
+      <span class="al-metric-value">{{ kpi.envios }}</span>
+      <span class="al-metric-hint">Total histórico (todos os canais)</span>
+    </div>
+  </div>
+
+  {% for categoria, canais in categorias %}
+  <section class="al-cat" aria-labelledby="al-cat-{{ forloop.counter }}">
+    <div class="al-cat-head" id="al-cat-{{ forloop.counter }}">
+      {{ categoria }}
+      <span class="al-cat-count">{{ canais|length }}</span>
+    </div>
+
+    {% for canal in canais %}
+    <div class="al-canal {% if not canal.ativo %}is-off{% endif %}">
+      <div class="al-canal-top">
+        <div class="al-canal-icon"><i class="fa-solid {{ canal.icone|default:'fa-bell' }}" aria-hidden="true"></i></div>
+        <div class="al-canal-info">
+          <div class="al-canal-nome">{{ canal.nome }}</div>
+          {% if canal.descricao %}<div class="al-canal-desc">{{ canal.descricao }}</div>{% endif %}
+          <div class="al-canal-meta">
+            {% if canal.origem_disparo %}<span><i class="fa-solid fa-diagram-project" aria-hidden="true"></i>{{ canal.origem_disparo }}</span>{% endif %}
+            {% if canal.ultimo_envio %}
+              <span><i class="fa-regular fa-clock" aria-hidden="true"></i>Último envio: {{ canal.ultimo_envio|date:"d/m/Y H:i" }}</span>
+            {% else %}
+              <span><i class="fa-regular fa-clock" aria-hidden="true"></i>Nunca enviado</span>
+            {% endif %}
+            <span><i class="fa-solid fa-hashtag" aria-hidden="true"></i>{{ canal.total_envios }} envio{{ canal.total_envios|pluralize:"s" }}</span>
+          </div>
+        </div>
+        <div class="al-canal-actions">
+          {% if canal.pessoas_total > 0 %}
+            <span class="al-badge people" title="Pessoas que recebem este canal agora"><i class="fa-solid fa-users" aria-hidden="true"></i> {{ canal.pessoas_total }}</span>
+          {% endif %}
+          {% if canal.ativo %}
+            <span class="al-badge on"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Ativa</span>
+          {% else %}
+            <span class="al-badge off"><i class="fa-solid fa-circle-pause" aria-hidden="true"></i> Desativada</span>
+          {% endif %}
+          <form method="post" action="{% url 'alertas_notificacao_toggle' canal.pk %}" style="margin:0;">
+            {% csrf_token %}
+            <button type="submit" class="al-btn al-btn-sm {% if canal.ativo %}al-btn-off{% else %}al-btn-on{% endif %}">
+              {% if canal.ativo %}<i class="fa-solid fa-bell-slash" aria-hidden="true"></i> Desativar{% else %}<i class="fa-solid fa-bell" aria-hidden="true"></i> Ativar{% endif %}
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="al-pessoas-wrap">
+        <div class="al-pessoas-label">
+          <i class="fa-solid fa-user-group" aria-hidden="true"></i> Quem recebe agora
+          {% if canal.ativo and canal.pessoas_total == 0 %}
+            <span class="al-badge off"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Ninguém configurado — ativo, mas não envia</span>
+          {% endif %}
+        </div>
+        {% if canal.pessoas_total > 0 %}
+        <div class="al-pessoas">
+          {% for p in canal.pessoas|slice:":15" %}
+            <span class="al-pessoa">
+              <span title="{{ p.email }}">
+                {% if p.nome != p.email %}{{ p.nome }} <span class="ctx">&lt;{{ p.email }}&gt;</span>{% else %}{{ p.email }}{% endif %}
+                {% if p.contexto %}<span class="ctx">· {{ p.contexto }}</span>{% endif %}
+              </span>
+              {% if p.removivel %}
+                {% if p.remove_kind == "email" %}
+                <form method="post" action="{% url 'alertas_notificacao_remover_email' canal.pk %}" class="al-pessoa-rm-form" onsubmit="return confirm('Remover {{ p.email|escapejs }} desta notificação?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="email" value="{{ p.remove_id }}">
+                  <button type="submit" class="al-pessoa-rm" title="Remover {{ p.email }}" aria-label="Remover {{ p.email }}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </form>
+                {% elif p.remove_kind == "perfil" %}
+                <form method="post" action="{% url 'alertas_notificacao_desvincular_perfil' canal.pk p.remove_id %}" class="al-pessoa-rm-form" onsubmit="return confirm('Desvincular {{ p.nome|escapejs }} desta notificação?');">
+                  {% csrf_token %}
+                  <button type="submit" class="al-pessoa-rm" title="Desvincular {{ p.nome }}" aria-label="Desvincular {{ p.nome }}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </form>
+                {% endif %}
+              {% endif %}
+            </span>
+          {% endfor %}
+          {% if canal.pessoas_total > 15 %}<span class="al-pessoas-mais">+ {{ canal.pessoas_total|add:"-15" }} pessoa(s)</span>{% endif %}
+        </div>
+        {% else %}
+        <div class="al-pessoas is-empty"><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Nenhum destinatário resolvido no momento.</div>
+        {% endif %}
+        {% if canal.pessoas_nota %}<div class="al-pessoas-nota">{{ canal.pessoas_nota }}</div>{% endif %}
+      </div>
+
+      {% if canal.codigo == "item_defeito" %}
+      <div class="al-canal-dyn">
+        <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+        <span>Gerenciar em <a href="{% url 'fornecedor_acessos_list' %}">Fornecedores → Acesso ao Portal</a>.</span>
+      </div>
+      {% else %}
+      <div class="al-canal-dest">
+        <form method="post" action="{% url 'alertas_notificacao_destinatarios' canal.pk %}">
+          {% csrf_token %}
+          <input type="text" name="destinatarios" value="{{ canal.destinatarios_customizados }}" placeholder="Padrão do sistema (definido no .env) — informe e-mails separados por vírgula para redirecionar">
+          <button type="submit" class="al-btn al-btn-sm"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Salvar</button>
+          <span class="al-hint">Deixe em branco para usar o padrão do sistema.</span>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endfor %}
+
+</div>
+{% endblock %}

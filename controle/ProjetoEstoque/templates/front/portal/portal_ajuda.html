@@ -1,0 +1,389 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}Central de Ajuda — Portal do Fornecedor{% endblock %}
+{% block page_title %}Central de Ajuda{% endblock %}
+{% block page_subtitle %}Como usar o Portal do Fornecedor{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'portal_home' %}" class="pf-btn pf-btn--sm"><i class="fa-solid fa-arrow-left"></i> Painel</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.pah-page) {
+  --pah-toc-w: 15.5rem;
+}
+.pah-page { display: grid; gap: 0; max-width: 78rem; }
+.pah-page * { box-sizing: border-box; }
+
+.pf-btn--sm { padding: .45rem .8rem; font-size: .78rem; }
+
+/* ---- Cabeçalho / busca ---- */
+.pah-hero {
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm); padding: 1.5rem 1.7rem; margin-bottom: 1.4rem; display: grid; gap: 1rem;
+}
+.pah-hero-top { display: flex; align-items: flex-start; gap: 1rem; flex-wrap: wrap; justify-content: space-between; }
+.pah-hero h2 { font-size: 1.15rem; font-weight: 700; letter-spacing: -.02em; color: var(--text-primary); margin-bottom: .35rem; }
+.pah-hero p { color: var(--text-secondary); font-size: .9rem; line-height: 1.6; max-width: 46rem; }
+.pah-search { position: relative; flex: 0 0 auto; width: 20rem; max-width: 100%; }
+.pah-search i { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%); color: var(--text-quaternary); font-size: .85rem; }
+.pah-search input {
+  width: 100%; padding: .62rem .9rem .62rem 2.2rem; border-radius: var(--radius-pill);
+  border: 1px solid var(--separator-non-opaque); background: var(--bg-fill-tertiary); color: var(--text-primary); font-size: .85rem;
+}
+.pah-search input:focus { outline: none; border-color: var(--brand); background: var(--bg-elevated); box-shadow: 0 0 0 3px var(--brand-soft); }
+
+/* ---- Layout: TOC + conteúdo ---- */
+.pah-shell { display: grid; grid-template-columns: var(--pah-toc-w) minmax(0, 1fr); gap: 1.6rem; align-items: start; }
+.pah-toc {
+  position: sticky; top: 1rem; display: grid; gap: .1rem; padding: .6rem;
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+}
+.pah-toc-item {
+  display: flex; align-items: center; gap: .55rem; padding: .5rem .65rem; border-radius: var(--radius-sm);
+  color: var(--text-secondary); font-size: .82rem; font-weight: 600; transition: background .15s, color .15s;
+}
+.pah-toc-item i { width: 1rem; text-align: center; color: var(--text-quaternary); font-size: .78rem; }
+.pah-toc-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.pah-toc-item.is-active { background: var(--brand-soft); color: var(--brand); }
+.pah-toc-item.is-active i { color: var(--brand); }
+
+.pah-main { display: grid; gap: 1.4rem; min-width: 0; }
+.pah-section {
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm); padding: 1.5rem 1.7rem; scroll-margin-top: 1rem;
+}
+.pah-section h3 { font-size: 1rem; font-weight: 700; letter-spacing: -.01em; color: var(--text-primary); display: flex; align-items: center; gap: .55rem; margin-bottom: .3rem; }
+.pah-section h3 i { color: var(--brand); font-size: .92rem; }
+.pah-section > p.pah-lead { color: var(--text-tertiary); font-size: .84rem; margin-bottom: 1.1rem; max-width: 44rem; }
+
+/* ---- Módulos ---- */
+.pah-modules { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .9rem; }
+.pah-module { border: 1px solid var(--separator-hairline); border-radius: var(--radius-md); padding: 1.1rem 1.2rem; text-decoration: none; color: inherit; transition: border-color .15s, transform .15s; display: block; }
+.pah-module:hover { border-color: var(--brand); transform: translateY(-1px); }
+.pah-module-ic { width: 2.3rem; height: 2.3rem; display: grid; place-items: center; border-radius: var(--radius-sm); background: var(--brand-soft); color: var(--brand); font-size: .95rem; margin-bottom: .65rem; }
+.pah-module h4 { font-size: .88rem; font-weight: 700; color: var(--text-primary); margin-bottom: .3rem; }
+.pah-module p { font-size: .78rem; color: var(--text-tertiary); line-height: 1.5; }
+
+/* ---- Linha do tempo (fluxo) ---- */
+.pah-flow { display: flex; gap: 0; overflow-x: auto; padding: .6rem .1rem 1rem; }
+.pah-flow-step { flex: 1 1 0; min-width: 8.5rem; position: relative; text-align: center; padding: 0 .6rem; }
+.pah-flow-step::before, .pah-flow-step::after { content: ""; position: absolute; top: 1.1rem; height: 2px; background: var(--separator-non-opaque); }
+.pah-flow-step::before { left: 0; right: 50%; }
+.pah-flow-step::after { left: 50%; right: 0; }
+.pah-flow-step:first-child::before, .pah-flow-step:last-child::after { display: none; }
+.pah-flow-dot {
+  position: relative; z-index: 1; width: 2.2rem; height: 2.2rem; margin: 0 auto; display: grid; place-items: center;
+  border-radius: 999px; background: var(--brand-soft); border: 2px solid var(--brand); color: var(--brand); font-weight: 800; font-size: .82rem;
+}
+.pah-flow-lbl { margin-top: .55rem; font-size: .78rem; font-weight: 700; color: var(--text-primary); }
+.pah-flow-desc { margin-top: .2rem; font-size: .72rem; color: var(--text-tertiary); line-height: 1.4; }
+
+.pah-note { display: flex; gap: .8rem; padding: .9rem 1.05rem; border-radius: var(--radius-md); background: var(--bg-fill-tertiary); border-left: 3px solid var(--brand); margin-top: .5rem; }
+.pah-note i { color: var(--brand); font-size: 1rem; margin-top: .1rem; }
+.pah-note p { font-size: .81rem; color: var(--text-secondary); line-height: 1.6; }
+.pah-note strong { color: var(--text-primary); }
+
+/* ---- Casos de uso (accordion nativo) ---- */
+.pah-usecase { border: 1px solid var(--separator-hairline); border-radius: var(--radius-md); overflow: hidden; margin-bottom: .7rem; }
+.pah-usecase:last-child { margin-bottom: 0; }
+.pah-usecase summary {
+  list-style: none; cursor: pointer; padding: .9rem 1.1rem; display: flex; align-items: center; gap: .7rem;
+  font-size: .87rem; font-weight: 700; color: var(--text-primary); background: var(--bg-fill-tertiary);
+}
+.pah-usecase summary::-webkit-details-marker { display: none; }
+.pah-usecase summary .pah-uc-n { width: 1.6rem; height: 1.6rem; flex: 0 0 1.6rem; display: grid; place-items: center; border-radius: 999px; background: var(--brand); color: #fff; font-size: .74rem; font-weight: 800; }
+.pah-usecase summary i.pah-uc-chev { margin-left: auto; color: var(--text-quaternary); transition: transform .2s; }
+.pah-usecase[open] summary i.pah-uc-chev { transform: rotate(180deg); }
+.pah-uc-body { padding: 1rem 1.2rem 1.2rem 3.1rem; }
+.pah-uc-body ol { display: grid; gap: .6rem; counter-reset: uc; }
+.pah-uc-body li { list-style: none; counter-increment: uc; position: relative; padding-left: 1.6rem; font-size: .84rem; color: var(--text-secondary); line-height: 1.55; }
+.pah-uc-body li::before { content: counter(uc); position: absolute; left: 0; top: .05rem; width: 1.15rem; height: 1.15rem; display: grid; place-items: center; border-radius: 999px; background: var(--brand-soft); color: var(--brand); font-size: .68rem; font-weight: 800; }
+.pah-uc-body li strong { color: var(--text-primary); }
+
+/* ---- Glossário de status (reaproveita as cores reais .pf-osc do Portal) ---- */
+.pah-gloss { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: .7rem; align-items: stretch; }
+.pah-gloss-item { display: flex; flex-direction: column; align-items: flex-start; gap: .55rem; padding: .85rem .9rem; border: 1px solid var(--separator-hairline); border-radius: var(--radius-md); }
+.pah-gloss-item .pf-osc { max-width: 100%; white-space: normal; text-align: left; line-height: 1.35; align-items: flex-start; padding: .3rem .65rem; }
+.pah-gloss-item .pf-osc::before { flex: 0 0 auto; margin-top: .28rem; }
+.pah-gloss-item p { margin: 0; font-size: .76rem; color: var(--text-tertiary); line-height: 1.5; }
+
+/* ---- FAQ ---- */
+.pah-faq { border: 1px solid var(--separator-hairline); border-radius: var(--radius-md); overflow: hidden; margin-bottom: .55rem; }
+.pah-faq:last-child { margin-bottom: 0; }
+.pah-faq summary { list-style: none; cursor: pointer; padding: .85rem 1.1rem; font-size: .85rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: .6rem; }
+.pah-faq summary::-webkit-details-marker { display: none; }
+.pah-faq summary::before { content: "\f068"; font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: .68rem; color: var(--brand); background: var(--brand-soft); width: 1.3rem; height: 1.3rem; border-radius: 999px; display: grid; place-items: center; flex: 0 0 auto; }
+.pah-faq[open] summary::before { content: "\f067"; }
+.pah-faq p { padding: 0 1.1rem 1rem 2.7rem; font-size: .82rem; color: var(--text-secondary); line-height: 1.6; }
+
+.pah-empty-search { display: none; text-align: center; padding: 2rem 1rem; color: var(--text-tertiary); font-size: .85rem; }
+.pah-empty-search.is-visible { display: block; }
+
+@media (max-width: 62rem) {
+  .pah-shell { grid-template-columns: 1fr; }
+  .pah-toc { position: static; display: flex; overflow-x: auto; gap: .3rem; }
+  .pah-toc-item { flex: 0 0 auto; white-space: nowrap; }
+  .pah-search { width: 100%; }
+  .pah-hero-top { flex-direction: column; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pah-page">
+  <div class="pah-hero">
+    <div class="pah-hero-top">
+      <div>
+        <h2>Bem-vindo ao Portal do Fornecedor</h2>
+        <p>Aqui você acompanha os equipamentos sob sua responsabilidade, conduz os reparos e trocas antecipadas e
+        consulta as licenças vinculadas ao seu contrato — tudo sem precisar trocar e-mails com o TI para saber em
+        que pé está cada processo. Use o índice ao lado ou a busca abaixo para ir direto ao que precisa.</p>
+      </div>
+      <div class="pah-search">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="text" id="pahSearch" placeholder="Buscar por módulo, status ou dúvida…" autocomplete="off">
+      </div>
+    </div>
+  </div>
+
+  <div class="pah-shell">
+    <nav class="pah-toc" aria-label="Sumário da ajuda">
+      <a href="#modulos" class="pah-toc-item"><i class="fa-solid fa-table-cells-large"></i><span>Módulos do Portal</span></a>
+      <a href="#manutencao" class="pah-toc-item"><i class="fa-solid fa-screwdriver-wrench"></i><span>Manutenção</span></a>
+      <a href="#troca-antecipada" class="pah-toc-item"><i class="fa-solid fa-right-left"></i><span>Troca Antecipada</span></a>
+      <a href="#passo-a-passo" class="pah-toc-item"><i class="fa-solid fa-list-check"></i><span>Passo a passo</span></a>
+      <a href="#glossario" class="pah-toc-item"><i class="fa-solid fa-tags"></i><span>Status da OS</span></a>
+      <a href="#faq" class="pah-toc-item"><i class="fa-solid fa-circle-question"></i><span>Perguntas frequentes</span></a>
+    </nav>
+
+    <div class="pah-main">
+
+      <section class="pah-section" id="modulos">
+        <h3><i class="fa-solid fa-table-cells-large"></i> Módulos do Portal</h3>
+        <p class="pah-lead">O que você encontra em cada área do menu lateral.</p>
+        <div class="pah-modules">
+          <a href="{% url 'portal_home' %}" class="pah-module" data-kw="painel kpi resumo">
+            <div class="pah-module-ic"><i class="fa-solid fa-gauge-high"></i></div>
+            <h4>Painel</h4>
+            <p>Resumo dos seus equipamentos por status e das ordens de manutenção que precisam da sua atenção.</p>
+          </a>
+          <a href="{% url 'portal_equipamentos_list' %}" class="pah-module" data-kw="equipamentos lista buscar exportar">
+            <div class="pah-module-ic"><i class="fa-solid fa-display"></i></div>
+            <h4>Equipamentos</h4>
+            <p>Todos os equipamentos sob sua responsabilidade, com busca, filtros e exportação para Excel.</p>
+          </a>
+          <a href="{% url 'portal_manutencao_list' %}" class="pah-module" data-kw="manutencao ordem servico os reparo">
+            <div class="pah-module-ic"><i class="fa-solid fa-screwdriver-wrench"></i></div>
+            <h4>Manutenção</h4>
+            <p>Ordens de manutenção abertas e histórico — diagnóstico, orçamento, reparo e devolução.</p>
+          </a>
+          <a href="{% url 'portal_troca_antecipada_list' %}" class="pah-module" data-kw="troca antecipada substituto">
+            <div class="pah-module-ic"><i class="fa-solid fa-right-left"></i></div>
+            <h4>Troca Antecipada</h4>
+            <p>Envie um substituto antes de receber o equipamento com defeito, sem deixá-lo parado.</p>
+          </a>
+          <a href="{% url 'portal_licencas_list' %}" class="pah-module" data-kw="licencas software assentos">
+            <div class="pah-module-ic"><i class="fa-solid fa-key"></i></div>
+            <h4>Licenças</h4>
+            <p>Consulta somente leitura das licenças de software vinculadas ao seu fornecimento.</p>
+          </a>
+        </div>
+      </section>
+
+      <section class="pah-section" id="manutencao">
+        <h3><i class="fa-solid fa-screwdriver-wrench"></i> Como funciona uma manutenção</h3>
+        <p class="pah-lead">Da chegada do equipamento até a devolução — o que você faz em cada etapa.</p>
+        <div class="pah-flow" data-kw="recebimento avaliacao aprovacao orcamento reparo devolvido">
+          <div class="pah-flow-step"><div class="pah-flow-dot">1</div><div class="pah-flow-lbl">Recebimento</div><div class="pah-flow-desc">Confirme que o equipamento chegou.</div></div>
+          <div class="pah-flow-step"><div class="pah-flow-dot">2</div><div class="pah-flow-lbl">Avaliação</div><div class="pah-flow-desc">Registre o diagnóstico e o valor do orçamento.</div></div>
+          <div class="pah-flow-step"><div class="pah-flow-dot">3</div><div class="pah-flow-lbl">Aprovação</div><div class="pah-flow-desc">Aguarde o TI aprovar (ou reprovar) o valor.</div></div>
+          <div class="pah-flow-step"><div class="pah-flow-dot">4</div><div class="pah-flow-lbl">Reparo</div><div class="pah-flow-desc">Execute o conserto e devolva o equipamento.</div></div>
+          <div class="pah-flow-step"><div class="pah-flow-dot">5</div><div class="pah-flow-lbl">Concluído</div><div class="pah-flow-desc">TI confirma o recebimento e encerra a OS.</div></div>
+        </div>
+        <div class="pah-note" data-kw="reprovado orcamento negado o que fazer">
+          <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          <p><strong>Se o orçamento for reprovado</strong>, você não perde o processo: pode reenviar um novo valor
+          para aprovação, ou devolver o equipamento ao TI informando o valor da avaliação técnica — sem custo de
+          reparo, apenas o diagnóstico realizado.</p>
+        </div>
+        <div class="pah-note" data-kw="sem conserto sem condicoes descarte local">
+          <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+          <p>Se, na avaliação, o equipamento <strong>não tiver conserto</strong>, você pode propor uma troca (envio
+          de substituto) ou declarar que não há condições de reparo — devolvendo para descarte ou solicitando
+          descartar no seu próprio local, mediante aprovação do TI.</p>
+        </div>
+      </section>
+
+      <section class="pah-section" id="troca-antecipada">
+        <h3><i class="fa-solid fa-right-left"></i> Como funciona a troca antecipada</h3>
+        <p class="pah-lead">Pensada para não deixar um equipamento com defeito parado enquanto aguarda o reparo.</p>
+        <div class="pah-flow" data-kw="substituto defeituoso enviar receber proposta">
+          <div class="pah-flow-step"><div class="pah-flow-dot">1</div><div class="pah-flow-lbl">Você envia o substituto</div><div class="pah-flow-desc">Antes mesmo de receber o defeituoso.</div></div>
+          <div class="pah-flow-step"><div class="pah-flow-dot">2</div><div class="pah-flow-lbl">TI recebe e ativa</div><div class="pah-flow-desc">Substituto entra em uso na fazenda.</div></div>
+          <div class="pah-flow-step"><div class="pah-flow-dot">3</div><div class="pah-flow-lbl">TI envia o defeituoso</div><div class="pah-flow-desc">Só depois do substituto confirmado.</div></div>
+          <div class="pah-flow-step"><div class="pah-flow-dot">4</div><div class="pah-flow-lbl">Você recebe e avalia</div><div class="pah-flow-desc">Confirme o recebimento do defeituoso.</div></div>
+          <div class="pah-flow-step"><div class="pah-flow-dot">5</div><div class="pah-flow-lbl">Envie a proposta</div><div class="pah-flow-desc">Valor do reparo encerra a troca.</div></div>
+        </div>
+        <div class="pah-note" data-kw="elegivel defeito requisito quem pode abrir">
+          <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+          <p>Só pode ser aberta para equipamentos com status <strong>Defeito</strong> e que não tenham nenhuma
+          outra ordem de manutenção em andamento. O nome do equipamento substituto é definido automaticamente
+          a partir do <strong>Modelo</strong> informado — não é preciso digitar um nome separado.</p>
+        </div>
+      </section>
+
+      <section class="pah-section" id="passo-a-passo">
+        <h3><i class="fa-solid fa-list-check"></i> Passo a passo dos casos mais comuns</h3>
+        <p class="pah-lead">Clique em um caso para ver a sequência completa de telas e botões.</p>
+
+        <details class="pah-usecase" data-kw="receber diagnostico orcamento enviar">
+          <summary><span class="pah-uc-n">1</span> Confirmar o recebimento e enviar um orçamento <i class="fa-solid fa-chevron-down pah-uc-chev"></i></summary>
+          <div class="pah-uc-body">
+            <ol>
+              <li>Abra a OS em <strong>Manutenção</strong> e clique em <strong>Confirmar recebimento</strong> assim que o equipamento chegar.</li>
+              <li>Clique em <strong>Iniciar avaliação</strong> para começar o diagnóstico.</li>
+              <li>Preencha o diagnóstico técnico e o valor do conserto, depois clique em <strong>Enviar orçamento p/ aprovação</strong>.</li>
+              <li>Aguarde a decisão do TI — você será notificado pelo sino do Portal assim que houver resposta.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="pah-usecase" data-kw="reprovado reenviar novo valor devolver avaliacao tecnica">
+          <summary><span class="pah-uc-n">2</span> O que fazer quando o orçamento é reprovado <i class="fa-solid fa-chevron-down pah-uc-chev"></i></summary>
+          <div class="pah-uc-body">
+            <ol>
+              <li>Abra a OS reprovada — as duas opções aparecem lado a lado na tela.</li>
+              <li>Para tentar de novo: ajuste o diagnóstico se necessário, informe o <strong>novo valor</strong> e clique em <strong>Reenviar orçamento p/ aprovação</strong>.</li>
+              <li>Para encerrar sem reparo: informe o <strong>valor da avaliação técnica</strong> e a localidade de destino, depois clique em <strong>Devolver ao TI</strong>.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="pah-usecase" data-kw="troca antecipada abrir nova modelo">
+          <summary><span class="pah-uc-n">3</span> Abrir uma troca antecipada <i class="fa-solid fa-chevron-down pah-uc-chev"></i></summary>
+          <div class="pah-uc-body">
+            <ol>
+              <li>Vá em <strong>Troca Antecipada</strong> e clique em abrir uma nova troca.</li>
+              <li>Selecione o equipamento com defeito que será substituído (só aparecem os elegíveis).</li>
+              <li>Informe o <strong>Modelo</strong>, série e marca do substituto — o nome do item é preenchido automaticamente com o modelo.</li>
+              <li>Envie o substituto para a fazenda; acompanhe o andamento pela mesma tela até a conclusão.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="pah-usecase" data-kw="nota fiscal nf anexar excluir upload">
+          <summary><span class="pah-uc-n">4</span> Anexar a Nota Fiscal de uma OS <i class="fa-solid fa-chevron-down pah-uc-chev"></i></summary>
+          <div class="pah-uc-body">
+            <ol>
+              <li>No detalhe da OS, role até a seção de anexos.</li>
+              <li>Selecione o arquivo (ou vários) e, se quiser, uma breve descrição.</li>
+              <li>Clique em anexar — você pode enviar quantas notas fiscais forem necessárias, e excluir as que você mesmo anexou em caso de erro.</li>
+            </ol>
+          </div>
+        </details>
+      </section>
+
+      <section class="pah-section" id="glossario">
+        <h3><i class="fa-solid fa-tags"></i> Glossário de status da OS</h3>
+        <p class="pah-lead">A cor de cada selo é a mesma que aparece nas listas de Manutenção e Troca Antecipada.</p>
+        <div class="pah-gloss">
+          <div class="pah-gloss-item" data-kw="aguardando recebimento"><span class="pf-osc pf-osc--aguardando_recebimento">Aguardando recebimento</span><p>Falta você confirmar que o equipamento chegou.</p></div>
+          <div class="pah-gloss-item" data-kw="recebido em avaliacao"><span class="pf-osc pf-osc--em_avaliacao">Recebido / Em avaliação</span><p>Você está diagnosticando o equipamento.</p></div>
+          <div class="pah-gloss-item" data-kw="aguardando aprovacao"><span class="pf-osc pf-osc--aguardando_aprovacao">Aguardando aprovação</span><p>Orçamento enviado — aguardando decisão do TI.</p></div>
+          <div class="pah-gloss-item" data-kw="aprovado"><span class="pf-osc pf-osc--aprovado">Reparo aprovado</span><p>Pode iniciar o conserto.</p></div>
+          <div class="pah-gloss-item" data-kw="reprovado"><span class="pf-osc pf-osc--reprovado">Reparo reprovado</span><p>Reenvie um novo valor ou devolva com avaliação técnica.</p></div>
+          <div class="pah-gloss-item" data-kw="em reparo"><span class="pf-osc pf-osc--em_reparo">Em reparo</span><p>Conserto em andamento.</p></div>
+          <div class="pah-gloss-item" data-kw="reparado"><span class="pf-osc pf-osc--reparado">Reparo concluído</span><p>Prepare a devolução ao cliente.</p></div>
+          <div class="pah-gloss-item" data-kw="devolvido"><span class="pf-osc pf-osc--devolvido">Devolvido</span><p>Equipamento a caminho — aguardando o TI confirmar.</p></div>
+          <div class="pah-gloss-item" data-kw="sem reparo substituto enviado"><span class="pf-osc pf-osc--substituto_enviado">Substituto enviado</span><p>Sem conserto — substituto a caminho no lugar.</p></div>
+          <div class="pah-gloss-item" data-kw="sem condicoes"><span class="pf-osc pf-osc--sem_condicoes">Sem condições de reparo</span><p>Aguardando você devolver para descarte.</p></div>
+          <div class="pah-gloss-item" data-kw="devolvido descarte"><span class="pf-osc pf-osc--devolvido_descarte">Devolvido para descarte</span><p>Equipamento a caminho para descarte interno.</p></div>
+          <div class="pah-gloss-item" data-kw="descarte local solicitado"><span class="pf-osc pf-osc--descarte_local_solicitado">Descarte local solicitado</span><p>Aguardando o TI aprovar ou recusar.</p></div>
+          <div class="pah-gloss-item" data-kw="descarte local aprovado"><span class="pf-osc pf-osc--descarte_local_aprovado">Descarte local aprovado</span><p>Pode descartar e confirmar na OS.</p></div>
+          <div class="pah-gloss-item" data-kw="descartado"><span class="pf-osc pf-osc--descartado">Descartado</span><p>Processo encerrado.</p></div>
+          <div class="pah-gloss-item" data-kw="troca antecipada substituto enviado"><span class="pf-osc pf-osc--troca_ant_sub_enviado">Troca antecipada — substituto a caminho</span><p>Você enviou o substituto.</p></div>
+          <div class="pah-gloss-item" data-kw="troca antecipada substituto recebido"><span class="pf-osc pf-osc--troca_ant_sub_recebido">Troca antecipada — substituto recebido</span><p>TI recebeu; aguarde o envio do defeituoso.</p></div>
+          <div class="pah-gloss-item" data-kw="troca antecipada defeituoso enviado"><span class="pf-osc pf-osc--troca_ant_def_enviado">Troca antecipada — defeituoso enviado</span><p>Falta você confirmar o recebimento.</p></div>
+          <div class="pah-gloss-item" data-kw="troca antecipada defeituoso recebido"><span class="pf-osc pf-osc--troca_ant_def_recebido">Troca antecipada — defeituoso recebido</span><p>Falta enviar a proposta de reparo.</p></div>
+          <div class="pah-gloss-item" data-kw="concluido"><span class="pf-osc pf-osc--concluido">Concluído</span><p>OS encerrada com sucesso.</p></div>
+          <div class="pah-gloss-item" data-kw="cancelado"><span class="pf-osc pf-osc--cancelado">Cancelado</span><p>OS cancelada antes de ser concluída.</p></div>
+        </div>
+      </section>
+
+      <section class="pah-section" id="faq">
+        <h3><i class="fa-solid fa-circle-question"></i> Perguntas frequentes</h3>
+
+        <details class="pah-faq" data-kw="notificacao sino aviso">
+          <summary>Como sei que uma OS precisa da minha atenção?</summary>
+          <p>O sino no topo do Portal avisa quando o TI aprova, reprova ou movimenta uma OS. Além disso, o Painel
+          mostra quantas ordens estão aguardando alguma ação sua.</p>
+        </details>
+
+        <details class="pah-faq" data-kw="equipamento nao aparece lista">
+          <summary>Por que um equipamento não aparece na minha lista?</summary>
+          <p>Só aparecem os equipamentos fornecidos por você ou enviados para manutenção sob sua responsabilidade.
+          Se um equipamento não aparece, confirme com o TI se ele está de fato vinculado ao seu cadastro.</p>
+        </details>
+
+        <details class="pah-faq" data-kw="troca antecipada nao consigo abrir">
+          <summary>Por que não consigo abrir uma troca antecipada para um equipamento?</summary>
+          <p>A troca antecipada só fica disponível para equipamentos com status <strong>Defeito</strong> que não
+          tenham nenhuma outra ordem de manutenção em andamento. Se o equipamento já estiver em outro processo,
+          finalize-o antes de abrir a troca.</p>
+        </details>
+
+        <details class="pah-faq" data-kw="licencas editar somente leitura">
+          <summary>Posso editar as licenças exibidas no Portal?</summary>
+          <p>Não — a tela de Licenças é somente consulta, para acompanhar quantidade contratada e saldo disponível.
+          Qualquer alteração é feita internamente pelo TI.</p>
+        </details>
+
+        <details class="pah-faq" data-kw="cancelada reabrir">
+          <summary>Uma OS cancelada pode ser reaberta?</summary>
+          <p>Não. Caso o equipamento precise de manutenção novamente, é necessário abrir um novo processo.</p>
+        </details>
+      </section>
+
+      <p class="pah-empty-search" id="pahEmptySearch">Nenhum resultado para essa busca. Tente outro termo.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var toc = document.querySelectorAll('.pah-toc-item');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('.pah-section'));
+  if ('IntersectionObserver' in window && sections.length) {
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var id = entry.target.id;
+        toc.forEach(function (a) { a.classList.toggle('is-active', a.getAttribute('href') === '#' + id); });
+      });
+    }, { rootMargin: '-15% 0px -70% 0px' });
+    sections.forEach(function (s) { obs.observe(s); });
+  }
+
+  var input = document.getElementById('pahSearch');
+  var empty = document.getElementById('pahEmptySearch');
+  if (!input) return;
+  var searchable = Array.prototype.slice.call(document.querySelectorAll('[data-kw]'));
+  input.addEventListener('input', function () {
+    var term = input.value.trim().toLowerCase();
+    var anyVisible = false;
+    searchable.forEach(function (el) {
+      var kw = (el.getAttribute('data-kw') + ' ' + el.textContent).toLowerCase();
+      var match = !term || kw.indexOf(term) !== -1;
+      el.style.display = match ? '' : 'none';
+      if (match) anyVisible = true;
+      if (match && term && el.tagName === 'DETAILS') el.open = true;
+    });
+    empty.classList.toggle('is-visible', term.length > 0 && !anyVisible);
+  });
+})();
+</script>
+{% endblock %}

@@ -209,7 +209,7 @@ class OrdemManutencaoService:
     @classmethod
     @transaction.atomic
     def abrir_troca_antecipada(cls, *, item_defeituoso, fornecedor, user,
-                               sub_nome, sub_serie="", sub_marca="", sub_modelo="",
+                               sub_modelo, sub_serie="", sub_marca="",
                                sub_data_contrato=None):
         """
         Abre uma OS de troca antecipada: o fornecedor manda um substituto ANTES
@@ -219,13 +219,15 @@ class OrdemManutencaoService:
         substituto já em estoque como PAUSADO (em trânsito p/ a fazenda),
         herdando categoria/subtipo/localidade/centro de custo/regime do
         defeituoso. Ele é ativado (BACKUP) quando o TI confirmar o recebimento.
+        `sub_modelo` também é usado como nome/identificação do item (o sistema
+        não pede um nome separado do fornecedor).
         `sub_data_contrato` = data de contrato do equipamento (vira a data de
         entrada da locação do substituto, quando locado).
         """
         if fornecedor is None:
             raise ValidationError("Fornecedor inválido.")
-        if not (sub_nome or "").strip():
-            raise ValidationError("Informe o modelo/identificação do equipamento substituto.")
+        if not (sub_modelo or "").strip():
+            raise ValidationError("Informe o modelo do equipamento substituto.")
         if item_defeituoso.status != StatusItemChoices.DEFEITO:
             raise ValidationError(
                 "A troca antecipada só é permitida para equipamentos com status Defeito."
@@ -244,11 +246,12 @@ class OrdemManutencaoService:
                 f"Já existe uma ordem de manutenção aberta (OS #{existente.pk}) para este equipamento."
             )
 
+        modelo_substituto = (sub_modelo or "").strip() or item_defeituoso.modelo
         substituto = Item(
-            nome=(sub_nome or "").strip() or item_defeituoso.nome,
+            nome=modelo_substituto,
             numero_serie=(sub_serie or "").strip() or None,
             marca=(sub_marca or "").strip() or item_defeituoso.marca,
-            modelo=(sub_modelo or "").strip() or item_defeituoso.modelo,
+            modelo=modelo_substituto,
             status=StatusItemChoices.PAUSADO,  # a caminho — ativado no recebimento
             fornecedor=fornecedor,
             categoria=item_defeituoso.categoria,
@@ -769,6 +772,14 @@ class OrdemManutencaoService:
                 raise ValidationError("Informe o valor da proposta de reparo.")
             ordem.valor_orcamento = orcamento
             cls._on_diagnostico(ordem, user, extra)
+            # Registra o valor da proposta como gasto de manutenção do equipamento
+            # trocado — sem esta movimentação o custo não aparece no histórico do
+            # item nem entra no somatório de `custo_manutencao` da tela de detalhe.
+            cls._mov_retorno(
+                ordem, antigo, antigo.status,
+                f"Proposta de reparo recebida do fornecedor (troca antecipada). OS #{ordem.pk}. Valor: R$ {orcamento}.",
+                user, custo=orcamento,
+            )
 
     # ── Movimentações de auditoria ─────────────────────────────────────────
     @classmethod

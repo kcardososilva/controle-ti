@@ -2,7 +2,7 @@
 
 {% block title %}Nova troca antecipada — Portal do Fornecedor{% endblock %}
 {% block page_title %}Troca antecipada de equipamento{% endblock %}
-{% block page_subtitle %}Envie um substituto antes de o defeituoso sair — sem deixar o equipamento parado{% endblock %}
+{% block page_subtitle %}Envie o substituto antes de o defeituoso sair — sem deixar o equipamento parado{% endblock %}
 
 {% block header_actions %}
   <a href="{% url 'portal_troca_antecipada_list' %}" class="pf-btn"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
@@ -11,7 +11,13 @@
 {% block extra_css %}
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-  :where(.pf-ta) { display: grid; gap: 1.1rem; max-width: 52rem; }
+  :where(.pf-ta) { display: grid; gap: 1.4rem; max-width: 46rem; }
+  .pf-ta.pf-ta--layout { max-width: 66rem; display: grid; grid-template-columns: minmax(0, 1fr) 19rem; gap: 1.6rem; align-items: start; }
+  .pf-ta .pf-ta-main { display: grid; gap: 1.4rem; min-width: 0; }
+  @media (max-width: 62rem) {
+    .pf-ta.pf-ta--layout { grid-template-columns: 1fr; }
+    .pf-ta .pf-ta-aside { order: -1; }
+  }
   .pf-ta .select2-container { width: 100% !important; }
   .pf-ta .select2-container--default .select2-selection--single {
     min-height: 2.7rem; height: 2.7rem; border-radius: var(--radius-md);
@@ -20,13 +26,37 @@
   .pf-ta .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 2.5rem; color: var(--text-primary); }
   .pf-ta .select2-container--default .select2-selection--single .select2-selection__arrow { height: 2.5rem; }
 
-  .pf-ta .pf-steps { display: flex; flex-wrap: wrap; gap: .5rem; }
-  .pf-ta .pf-step { display: inline-flex; align-items: center; gap: .5rem; padding: .5rem .8rem; border-radius: 999px; background: var(--bg-fill-tertiary); color: var(--text-secondary); font-size: .8rem; font-weight: 700; }
-  .pf-ta .pf-step b { color: var(--brand); }
+  /* Processo — mesma linguagem de dots+linha usada na lista de troca antecipada */
+  .pf-ta .pf-flow {
+    display: flex; align-items: flex-start; gap: 0; padding: 1.15rem 1rem;
+    border-radius: var(--radius-lg); background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
+  }
+  .pf-ta .pf-fstep { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; min-width: 4.5rem; }
+  .pf-ta .pf-fstep::before, .pf-ta .pf-fstep::after { content: ""; position: absolute; top: .95rem; height: 2px; background: var(--separator-non-opaque); }
+  .pf-ta .pf-fstep::before { left: 0; right: 50%; }
+  .pf-ta .pf-fstep::after { left: 50%; right: 0; }
+  .pf-ta .pf-fstep:first-child::before, .pf-ta .pf-fstep:last-child::after { display: none; }
+  .pf-ta .pf-fdot {
+    position: relative; z-index: 1; width: 1.9rem; height: 1.9rem; display: grid; place-items: center;
+    border-radius: 999px; background: var(--bg-page); border: 2px solid var(--separator-non-opaque);
+    color: var(--text-tertiary); font-size: .78rem; font-weight: 800;
+  }
+  .pf-ta .pf-fstep:first-child .pf-fdot { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+  .pf-ta .pf-flbl { margin-top: .5rem; font-size: .72rem; font-weight: 700; color: var(--text-tertiary); line-height: 1.3; max-width: 7.5rem; }
+  .pf-ta .pf-fstep:first-child .pf-flbl { color: var(--text-primary); }
 
-  .pf-ta .pf-card2 { padding: 1.2rem 1.3rem; border-radius: var(--radius-lg); border: 1px solid var(--separator-hairline); background: var(--bg-elevated); box-shadow: var(--shadow-sm); }
-  .pf-ta .pf-sec-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: .2rem; }
-  .pf-ta .pf-sec-sub { color: var(--text-tertiary); font-size: .84rem; margin-bottom: 1rem; line-height: 1.5; }
+  /* Card do formulário */
+  .pf-ta .pf-card2 { padding: 1.5rem 1.6rem; border-radius: var(--radius-lg); border: 1px solid var(--separator-hairline); background: var(--bg-elevated); box-shadow: var(--shadow-sm); }
+  .pf-ta .pf-sec { display: grid; gap: 1rem; }
+  .pf-ta .pf-sec + .pf-sec { margin-top: 1.7rem; padding-top: 1.7rem; border-top: 1px solid var(--separator-hairline); }
+  .pf-ta .pf-sec-head { display: flex; align-items: flex-start; gap: .85rem; }
+  .pf-ta .pf-sec-n {
+    flex: 0 0 1.7rem; width: 1.7rem; height: 1.7rem; display: grid; place-items: center;
+    border-radius: 999px; background: var(--bg-fill-tertiary); color: var(--text-secondary); font-size: .78rem; font-weight: 800;
+  }
+  .pf-ta .pf-sec-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; }
+  .pf-ta .pf-sec-sub { color: var(--text-tertiary); font-size: .83rem; margin-top: .2rem; line-height: 1.55; }
+
   .pf-ta label { font-size: .78rem; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: .35rem; }
   .pf-ta input, .pf-ta select {
     width: 100%; padding: .6rem .85rem; min-height: 2.7rem; border-radius: var(--radius-md);
@@ -34,47 +64,79 @@
     transition: border-color .15s, box-shadow .15s;
   }
   .pf-ta input:focus, .pf-ta select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
-  .pf-ta .pf-grid2 { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
-  .pf-ta .pf-hint { color: var(--text-tertiary); font-size: .78rem; margin-top: .4rem; }
-  .pf-ta .pf-form-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .3rem; }
-  .pf-ta .pf-empty { text-align: center; padding: 2rem 1rem; color: var(--text-tertiary); }
-  .pf-ta .pf-empty i { font-size: 1.6rem; display: block; margin-bottom: .5rem; color: var(--text-quaternary); }
+  .pf-ta .pf-grid2 { display: grid; gap: .9rem; grid-template-columns: repeat(2, 1fr); }
+  .pf-ta .pf-grid2 .pf-span2 { grid-column: 1 / -1; }
+  @media (max-width: 34rem) { .pf-ta .pf-grid2 { grid-template-columns: 1fr; } }
+
+  .pf-ta .pf-note { display: flex; gap: .65rem; padding: .85rem 1rem; border-radius: var(--radius-md); background: var(--bg-fill-tertiary); font-size: .8rem; color: var(--text-secondary); line-height: 1.55; }
+  .pf-ta .pf-note i { color: var(--text-tertiary); margin-top: .15rem; }
+
+  .pf-ta .pf-form-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .5rem; }
+
+  .pf-ta .pf-empty { text-align: center; padding: 2.6rem 1rem; color: var(--text-tertiary); }
+  .pf-ta .pf-empty i { font-size: 1.8rem; display: block; margin-bottom: .6rem; color: var(--text-quaternary); }
+
+  /* Card explicativo do processo, ao lado do formulário */
+  .pf-ta .pf-info { position: sticky; top: 1.4rem; border-left: 3px solid var(--brand); padding: 1.35rem 1.5rem; }
+  .pf-ta .pf-info-eyebrow { font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--text-quaternary); margin-bottom: .35rem; }
+  .pf-ta .pf-info-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: .9rem; }
+  .pf-ta .pf-info p { font-size: .83rem; color: var(--text-secondary); line-height: 1.65; }
+  .pf-ta .pf-info p + p { margin-top: .8rem; }
+  .pf-ta .pf-info p b { color: var(--text-primary); font-weight: 700; }
+  .pf-ta .pf-info-foot { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid var(--separator-hairline); font-size: .78rem; color: var(--text-tertiary); line-height: 1.5; }
+
+  @media (max-width: 30rem) {
+    .pf-ta .pf-flbl { display: none; }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="pf-ta">
+<div class="pf-ta pf-ta--layout">
+ <div class="pf-ta-main">
 
-  <div class="pf-steps">
-    <span class="pf-step"><b>1</b> Você envia o substituto</span>
-    <span class="pf-step"><b>2</b> TI recebe e ativa</span>
-    <span class="pf-step"><b>3</b> TI envia o defeituoso</span>
-    <span class="pf-step"><b>4</b> Você recebe e envia a proposta</span>
+  <div class="pf-flow" role="list" aria-label="Etapas da troca antecipada">
+    <div class="pf-fstep" role="listitem"><div class="pf-fdot">1</div><div class="pf-flbl">Você envia o substituto</div></div>
+    <div class="pf-fstep" role="listitem"><div class="pf-fdot">2</div><div class="pf-flbl">TI recebe e ativa</div></div>
+    <div class="pf-fstep" role="listitem"><div class="pf-fdot">3</div><div class="pf-flbl">TI envia o defeituoso</div></div>
+    <div class="pf-fstep" role="listitem"><div class="pf-fdot">4</div><div class="pf-flbl">Você recebe e propõe o reparo</div></div>
   </div>
 
   {% if itens %}
-  <form method="post" class="pf-card2" style="display:grid; gap:1.4rem;">
+  <form method="post" class="pf-card2">
     {% csrf_token %}
 
-    <div>
-      <div class="pf-sec-title">1 · Equipamento a substituir</div>
-      <div class="pf-sec-sub">Selecione o equipamento a ser trocado. Só aparecem equipamentos sob sua responsabilidade, <b>com status Defeito</b> e sem outra ordem de manutenção aberta.</div>
-      <label for="item_defeituoso">Equipamento com defeito *</label>
-      <select id="item_defeituoso" name="item_defeituoso" class="pf-select2" required>
-        <option value="">Selecione o equipamento…</option>
-        {% for it in itens %}
-          <option value="{{ it.id }}">{{ it.nome }}{% if it.numero_serie %} · Série {{ it.numero_serie }}{% endif %}{% if it.localidade %} · {{ it.localidade.local }}{% endif %}</option>
-        {% endfor %}
-      </select>
+    <div class="pf-sec">
+      <div class="pf-sec-head">
+        <span class="pf-sec-n">1</span>
+        <div>
+          <div class="pf-sec-title">Equipamento a substituir</div>
+          <div class="pf-sec-sub">Só aparecem equipamentos sob sua responsabilidade com status <b>Defeito</b> e sem outra ordem de manutenção aberta.</div>
+        </div>
+      </div>
+      <div>
+        <label for="item_defeituoso">Equipamento com defeito *</label>
+        <select id="item_defeituoso" name="item_defeituoso" class="pf-select2" required>
+          <option value="">Selecione o equipamento…</option>
+          {% for it in itens %}
+            <option value="{{ it.id }}">{{ it.nome }}{% if it.numero_serie %} · Série {{ it.numero_serie }}{% endif %}{% if it.localidade %} · {{ it.localidade.local }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
     </div>
 
-    <div>
-      <div class="pf-sec-title">2 · Equipamento substituto (que você está enviando)</div>
-      <div class="pf-sec-sub">Informe o modelo e o número de série do equipamento que está a caminho. Ele entra no inventário assim que o TI confirmar o recebimento, herdando localidade, centro de custo e regime (locação/compra) do equipamento substituído.</div>
-      <div class="pf-grid2">
+    <div class="pf-sec">
+      <div class="pf-sec-head">
+        <span class="pf-sec-n">2</span>
         <div>
-          <label for="sub_nome">Modelo / Identificação *</label>
-          <input type="text" id="sub_nome" name="sub_nome" required placeholder="Ex: Roteador RB4011">
+          <div class="pf-sec-title">Equipamento substituto</div>
+          <div class="pf-sec-sub">Dados do equipamento que está a caminho. Ele entra no inventário assim que o TI confirmar o recebimento, herdando localidade, centro de custo e regime (locação/compra) do equipamento substituído.</div>
+        </div>
+      </div>
+      <div class="pf-grid2">
+        <div class="pf-span2">
+          <label for="sub_modelo">Modelo *</label>
+          <input type="text" id="sub_modelo" name="sub_modelo" required placeholder="Ex: Roteador Mikrotik RB4011">
         </div>
         <div>
           <label for="sub_serie">Número de série *</label>
@@ -84,16 +146,15 @@
           <label for="sub_marca">Marca</label>
           <input type="text" id="sub_marca" name="sub_marca" placeholder="Ex: Mikrotik">
         </div>
-        <div>
-          <label for="sub_modelo">Modelo (detalhe)</label>
-          <input type="text" id="sub_modelo" name="sub_modelo" placeholder="Ex: RB4011iGS+">
-        </div>
-        <div>
+        <div class="pf-span2">
           <label for="sub_data_contrato">Data de contrato do equipamento *</label>
           <input type="date" id="sub_data_contrato" name="sub_data_contrato" required>
         </div>
       </div>
-      <div class="pf-hint"><i class="fa-solid fa-circle-info"></i> A data de contrato passa a valer como data de entrada da locação do substituto (quando locado). O defeituoso continua em operação até o TI receber este substituto e, então, enviar o equipamento com defeito de forma prioritária.</div>
+      <div class="pf-note">
+        <i class="fa-solid fa-circle-info"></i>
+        <span>A data de contrato vira a data de entrada da locação do substituto (quando locado). O defeituoso segue em operação até o TI confirmar o recebimento deste substituto — só então ele é enviado, de forma prioritária.</span>
+      </div>
     </div>
 
     <div class="pf-form-actions">
@@ -104,9 +165,26 @@
   {% else %}
   <div class="pf-card2 pf-empty">
     <i class="fa-solid fa-box-open"></i>
-    <p>Nenhum equipamento com status <b>Defeito</b> disponível para troca antecipada. Só é possível abrir uma troca para equipamentos marcados como Defeito e sem outra ordem de manutenção aberta.</p>
+    <p>Nenhum equipamento com status <b>Defeito</b> disponível para troca antecipada.</p>
+    <p style="font-size:.82rem; max-width:32rem; margin:.5rem auto 0; line-height:1.5;">
+      Só é possível abrir uma troca para equipamentos marcados como Defeito e sem outra ordem de manutenção aberta.
+    </p>
   </div>
   {% endif %}
+
+ </div>
+
+ <aside class="pf-ta-aside">
+   <div class="pf-card2 pf-info">
+     <div class="pf-info-eyebrow">Como funciona</div>
+     <div class="pf-info-title">Por que adiantar o substituto</div>
+     <p>Sem a troca antecipada, o equipamento com defeito fica parado na fazenda até o reparo ser combinado. Adiantando o substituto, a operação não para — o defeituoso só sai depois que o novo já chegou.</p>
+     <p>O substituto entra no sistema como <b>Pausado</b> assim que a troca é aberta. Ele passa a valer como equipamento em uso quando o TI confirma o recebimento na fazenda — e é só a partir daí que o defeituoso é enviado para vocês, com prioridade.</p>
+     <p>O modelo informado aqui é o que identifica o equipamento no estoque; não é preciso preencher um nome separado.</p>
+     <p>Cada equipamento aceita uma troca em aberto por vez — se já houver uma ordem pendente para ele, ele não aparece na lista de seleção.</p>
+     <div class="pf-info-foot">Para acompanhar o andamento de uma troca já aberta, use a lista de Troca Antecipada.</div>
+   </div>
+ </aside>
 
 </div>
 {% endblock %}

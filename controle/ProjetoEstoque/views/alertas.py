@@ -8,14 +8,21 @@ from django.utils import timezone
 @login_required
 def alertas_dashboard(request):
     from ProjetoEstoque.models import (
+        CanalNotificacao,
         ConfiguracaoSistema,
         MovimentacaoLicenca,
         StatusUsuarioChoices,
     )
-    from services.email_alertas import itens_estoque_critico, preventivas_relevantes
+    from services.email_alertas import itens_estoque_critico, preventivas_relevantes, sincronizar_catalogo_notificacoes
 
     config = ConfiguracaoSistema.get()
     hoje = timezone.localdate()
+
+    # Card de acesso ao painel de notificações (corpo da página) — contagem ao
+    # vivo, por isso sincroniza o catálogo aqui também (idempotente e barato).
+    sincronizar_catalogo_notificacoes()
+    canais_total = CanalNotificacao.objects.count()
+    canais_ativos = CanalNotificacao.objects.filter(ativo=True).count()
 
     # 1. Preventivas — vencidas + próximas 7 dias.
     #    A data efetiva é CALCULADA (data_ultima + intervalo), a MESMA regra das telas
@@ -63,6 +70,11 @@ def alertas_dashboard(request):
             "estoque": len(itens_criticos),
             "licencas": n_licencas,
             "total": len(preventivas) + len(itens_criticos) + n_licencas,
+        },
+        "canais_kpi": {
+            "total": canais_total,
+            "ativos": canais_ativos,
+            "inativos": canais_total - canais_ativos,
         },
     }
     return render(request, "front/alertas/alertas_dashboard.html", context)
@@ -138,3 +150,168 @@ def alertas_toggle(request):
         )
 
     return redirect("alertas_dashboard")
+
+
+@login_required
+def alertas_notificacoes(request):
+    """Painel de controle central de TODAS as notificações por e-mail do sistema:
+    ativar/desativar cada uma individualmente e, para as de lista fixa,
+    redirecionar destinatários — sem mexer em código. O catálogo é sincronizado
+    a cada acesso (novas notificações adicionadas ao código aparecem sozinhas)."""
+    from ProjetoEstoque.models import CanalNotificacao, ConfiguracaoSistema
+    from services.email_alertas import sincronizar_catalogo_notificacoes, resolver_destinatarios_atuais
+
+    sincronizar_catalogo_notificacoes()
+    config = ConfiguracaoSistema.get()
+
+    canais = list(CanalNotificacao.objects.all().order_by("categoria", "nome"))
+    categorias = {}
+    for c in canais:
+        pessoas, nota = resolver_destinatarios_atuais(c)
+        c.pessoas = pessoas
+        c.pessoas_nota = nota
+        c.pessoas_total = len(pessoas)
+        categorias.setdefault(c.categoria or "Outros", []).append(c)
+
+    total = len(canais)
+    ativos = sum(1 for c in canais if c.ativo)
+    envios = sum(c.total_envios for c in canais)
+
+    context = {
+        "alertas_ativos": config.alertas_email_ativos,
+        "categorias": sorted(categorias.items(), key=lambda kv: kv[0]),
+        "kpi": {
+            "total": total,
+            "ativos": ativos,
+            "inativos": total - ativos,
+            "envios": envios,
+        },
+    }
+    return render(request, "front/alertas/alertas_notificacoes.html", context)
+
+
+@login_required
+def alertas_notificacao_toggle(request, pk):
+    if request.method != "POST":
+        return redirect("alertas_notificacoes")
+
+    from ProjetoEstoque.models import CanalNotificacao
+
+    canal = CanalNotificacao.objects.filter(pk=pk).first()
+    if canal is None:
+        messages.error(request, "Notificação não encontrada.")
+        return redirect("alertas_notificacoes")
+
+    canal.ativo = not canal.ativo
+    canal.atualizado_por = request.user
+    canal.save(update_fields=["ativo", "atualizado_por", "updated_at"])
+
+    if canal.ativo:
+        messages.success(request, f"Notificação '{canal.nome}' ativada.")
+    else:
+        messages.warning(request, f"Notificação '{canal.nome}' desativada. Nenhum e-mail será enviado por este canal.")
+
+    return redirect("alertas_notificacoes")
+
+
+@login_required
+def alertas_notificacao_destinatarios(request, pk):
+    if request.method != "POST":
+        return redirect("alertas_notificacoes")
+
+    from ProjetoEstoque.models import CanalNotificacao
+
+    canal = CanalNotificacao.objects.filter(pk=pk).first()
+    if canal is None:
+        messages.error(request, "Notificação não encontrada.")
+        return redirect("alertas_notificacoes")
+
+    if canal.codigo == "item_defeito":
+        messages.error(request, "Esta notificação tem destinatários definidos por login — gerencie em Fornecedores → Acesso ao Portal.")
+        return redirect("alertas_notificacoes")
+
+    destinatarios = request.POST.get("destinatarios", "").strip()
+    canal.destinatarios_customizados = destinatarios
+    canal.destinatarios_customizados_ativo = bool(destinatarios)
+    canal.atualizado_por = request.user
+    canal.save(update_fields=["destinatarios_customizados", "destinatarios_customizados_ativo", "atualizado_por", "updated_at"])
+
+    if destinatarios:
+        messages.success(request, f"Destinatários de '{canal.nome}' atualizados.")
+    else:
+        messages.success(request, f"'{canal.nome}' voltou a usar os destinatários padrão do sistema.")
+
+    return redirect("alertas_notificacoes")
+
+
+@login_required
+def alertas_notificacao_remover_email(request, pk):
+    """Desvincula UM e-mail da lista-base de um canal com um clique — sem exigir
+    reescrever a lista inteira. Funciona tanto para canais de lista fixa quanto
+    para os "dinâmicos com base" (movimentacao_transacional, transferencia_
+    equipamento — a parte dinâmica deles é só o e-mail do evento, sempre
+    adicionado por cima, nunca afetado por esta remoção). Na primeira remoção,
+    'congela' a lista efetiva atual (customizada ou padrão do .env) menos o
+    e-mail removido, e marca `destinatarios_customizados_ativo=True` — mesmo
+    que o resultado fique vazio, para não reintroduzir o padrão silenciosamente."""
+    if request.method != "POST":
+        return redirect("alertas_notificacoes")
+
+    from ProjetoEstoque.models import CanalNotificacao
+    from services.email_alertas import resolver_destinatarios_atuais
+
+    canal = CanalNotificacao.objects.filter(pk=pk).first()
+    if canal is None:
+        messages.error(request, "Notificação não encontrada.")
+        return redirect("alertas_notificacoes")
+
+    if canal.codigo == "item_defeito":
+        messages.error(request, "Esta notificação tem destinatários definidos por login — use o botão de desvincular do próprio card.")
+        return redirect("alertas_notificacoes")
+
+    alvo = request.POST.get("email", "").strip().lower()
+    if not alvo:
+        return redirect("alertas_notificacoes")
+
+    pessoas, _ = resolver_destinatarios_atuais(canal)
+    restantes = [p["email"] for p in pessoas if p["email"].strip().lower() != alvo]
+
+    canal.destinatarios_customizados = ", ".join(restantes)
+    canal.destinatarios_customizados_ativo = True
+    canal.atualizado_por = request.user
+    canal.save(update_fields=["destinatarios_customizados", "destinatarios_customizados_ativo", "atualizado_por", "updated_at"])
+
+    if restantes:
+        messages.success(request, f"'{alvo}' removido de '{canal.nome}'.")
+    else:
+        messages.warning(request, f"'{alvo}' removido de '{canal.nome}'. Nenhum destinatário restante — este canal não enviará até que alguém seja adicionado.")
+
+    return redirect("alertas_notificacoes")
+
+
+@login_required
+def alertas_notificacao_desvincular_perfil(request, pk, perfil_id):
+    """Desvincula um login do Portal do Fornecedor da notificação de 'Defeito'
+    (canal item_defeito) com um clique — reaproveita o mesmo toggle já usado em
+    Fornecedores → Acesso ao Portal, sem precisar navegar até lá."""
+    if request.method != "POST":
+        return redirect("alertas_notificacoes")
+
+    from ProjetoEstoque.models import CanalNotificacao, PerfilFornecedor
+    from services.fornecedor_acesso_service import FornecedorAcessoService
+
+    canal = CanalNotificacao.objects.filter(pk=pk).first()
+    if canal is None or canal.codigo != "item_defeito":
+        messages.error(request, "Esta notificação não pode ser desvinculada por aqui.")
+        return redirect("alertas_notificacoes")
+
+    perfil = PerfilFornecedor.objects.filter(pk=perfil_id).select_related("usuario", "fornecedor").first()
+    if perfil is None:
+        messages.error(request, "Login do fornecedor não encontrado.")
+        return redirect("alertas_notificacoes")
+
+    FornecedorAcessoService.definir_notificacao_defeito(perfil, False, request.user)
+    nome = perfil.usuario.get_full_name() or perfil.usuario.username
+    messages.success(request, f"'{nome}' ({perfil.fornecedor.nome}) não receberá mais avisos de Defeito.")
+
+    return redirect("alertas_notificacoes")
