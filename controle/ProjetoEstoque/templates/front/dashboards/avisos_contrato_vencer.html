@@ -1,464 +1,440 @@
 {% extends 'base.html' %}
 {% load humanize %}
 
-{% block title %}Avisos - Contratos a Vencer{% endblock %}
+{% block title %}Contratos a Vencer{% endblock %}
+{% block page_title %}Contratos a Vencer{% endblock %}
+{% block page_subtitle %}Ranking de itens locados com contrato vencido ou a vencer nos próximos {{ kpi.dias_alerta }} dias{% endblock %}
 
-{% block content %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span>Dashboards</span>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Contratos a Vencer</span>
+</nav>
+{% endblock %}
 
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-:where(.contracts-alert-page) {
-  --ca-primary: var(--brand);
-  --ca-primary-hover: var(--brand-hover);
-  --ca-surface: var(--bg-elevated);
-  --ca-surface-strong: var(--bg-vibrancy-strong);
-  --ca-surface-soft: var(--bg-fill-tertiary);
-  --ca-text: var(--text-primary);
-  --ca-muted: var(--text-tertiary);
-  --ca-soft: var(--text-quaternary);
-  --ca-border: var(--separator-hairline);
-  --ca-border-strong: var(--separator-non-opaque);
-  --ca-success: var(--success);
-  --ca-success-soft: var(--success-soft);
-  --ca-warning: var(--warning);
-  --ca-warning-soft: var(--warning-soft);
-  --ca-danger: var(--danger);
-  --ca-danger-soft: var(--danger-soft);
-  --ca-purple: var(--system-purple, #af52de);
-  --ca-radius-lg: var(--radius-lg);
-  --ca-radius-xl: var(--radius-xl);
-  --ca-radius-pill: var(--radius-pill);
-  --ca-shadow: var(--shadow-sm);
+:where(.cve-page) {
+  --cve-purple: var(--system-purple, #af52de);
+}
+.cve-page,
+.cve-page * { box-sizing: border-box; min-width: 0; }
+.cve-page { width: 100%; max-width: 92rem; margin: 0 auto; display: grid; gap: 1.1rem; }
+
+/* ── KPI compacto ─────────────────────────────────────────────────────── */
+.cve-kpi-row {
+  display: flex; flex-wrap: wrap; gap: .6rem;
+  padding: .8rem .95rem;
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-xl); box-shadow: var(--shadow-xs);
+}
+.cve-stat {
+  display: inline-flex; align-items: center; gap: .45rem;
+  padding: .3rem .75rem; border-radius: var(--radius-pill);
+  font-size: .8rem; font-weight: 700; white-space: nowrap;
+  background: var(--bg-fill-secondary); color: var(--text-secondary);
+  border: 1px solid var(--separator-hairline);
+}
+.cve-stat-danger { color: var(--danger); background: var(--danger-soft); border-color: transparent; }
+.cve-stat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.cve-export-btn { margin-left: auto; }
+
+/* ── Filtro retrátil ──────────────────────────────────────────────────── */
+.cve-filter-details { --filter-open: 0; }
+.cve-filter-summary {
+  list-style: none; display: flex; align-items: center; gap: .6rem;
+  padding: .75rem 1.1rem; cursor: pointer; user-select: none;
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-xl); box-shadow: var(--shadow-xs);
+  font-size: .84rem; font-weight: 700; color: var(--text-primary);
+}
+.cve-filter-summary::-webkit-details-marker { display: none; }
+.cve-filter-summary i.chevron { margin-left: auto; color: var(--text-tertiary); transition: transform .2s; }
+.cve-filter-details[open] .cve-filter-summary i.chevron { transform: rotate(180deg); }
+.cve-filter-badge {
+  font-size: .72rem; font-weight: 700; color: var(--brand);
+  padding: .18rem .55rem; background: var(--brand-soft); border-radius: var(--radius-pill);
+}
+.cve-filter-body {
+  display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end;
+  padding: .9rem 1.1rem .85rem;
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
+  border-top: none; border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+.cve-field { display: flex; flex-direction: column; gap: .35rem; flex: 1; min-width: 170px; }
+.cve-field label { font-size: .73rem; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .045em; }
+.cve-field input, .cve-field select {
+  min-height: 38px; border: 1px solid var(--separator-non-opaque); border-radius: var(--radius-sm);
+  padding: 0 12px; color: var(--text-primary); background: var(--bg-elevated); outline: none; font-size: .86rem;
+}
+.cve-field input:focus, .cve-field select:focus { border-color: var(--brand); box-shadow: 0 0 0 4px var(--brand-ring); }
+.cve-filter-actions { display: flex; gap: .5rem; align-self: flex-end; flex-wrap: wrap; }
+
+/* ── Select2 (temas claro/escuro seguem os tokens do sistema) ────────── */
+.select2-container { width: 100% !important; }
+.select2-container .select2-selection--single {
+  min-height: 38px !important; height: 38px !important; display: flex !important; align-items: center !important;
+  border: 1px solid var(--separator-non-opaque) !important; border-radius: var(--radius-sm) !important;
+  background: var(--bg-elevated) !important;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast) !important;
+}
+.select2-container--default.select2-container--focus .select2-selection--single,
+.select2-container--default.select2-container--open .select2-selection--single {
+  border-color: var(--brand) !important; box-shadow: 0 0 0 4px var(--brand-ring) !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  padding-left: 12px !important; padding-right: 30px !important; color: var(--text-primary) !important;
+  line-height: 36px !important; font-size: .86rem !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__placeholder { color: var(--text-quaternary) !important; }
+.select2-container--default .select2-selection--single .select2-selection__arrow { height: 36px !important; right: 6px !important; }
+.select2-container--default .select2-selection--single .select2-selection__clear { color: var(--text-tertiary) !important; margin-right: 4px; }
+.select2-dropdown {
+  z-index: 10000 !important; overflow: hidden !important;
+  border: 1px solid var(--separator-non-opaque) !important; border-radius: var(--radius-md) !important;
+  background: var(--bg-elevated) !important; color: var(--text-primary) !important; box-shadow: var(--shadow-md) !important;
+}
+.select2-search--dropdown { padding: 8px !important; background: var(--bg-elevated) !important; }
+.select2-search__field {
+  border: 1px solid var(--separator-non-opaque) !important; border-radius: var(--radius-sm) !important;
+  background: var(--bg-elevated) !important; color: var(--text-primary) !important; outline: none !important; padding: 6px 10px !important;
+}
+.select2-results__option { color: var(--text-primary) !important; font-size: .86rem !important; }
+.select2-results__option--highlighted { background: var(--brand) !important; color: #fff !important; }
+.select2-results__option[aria-selected="true"] { background: var(--brand-soft) !important; color: var(--brand) !important; }
+.select2-results__message { color: var(--text-tertiary) !important; }
+
+/* ── Chips de filtros ativos ─────────────────────────────────────────── */
+.cve-chips { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; padding: 0 .2rem; }
+.cve-chips-label { font-size: .78rem; color: var(--text-tertiary); font-weight: 600; margin-right: .1rem; }
+.cve-chip {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .28rem .3rem .28rem .65rem; border-radius: var(--radius-pill);
+  background: var(--brand-soft); color: var(--brand); font-size: .76rem; font-weight: 700;
+}
+.cve-chip-x {
+  display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%;
+  border: 0; background: transparent; color: inherit; cursor: pointer; font-size: .85rem; line-height: 1; opacity: .75;
+}
+.cve-chip-x:hover { opacity: 1; background: color-mix(in srgb, var(--brand) 18%, transparent); }
+.cve-chip-clear { font-size: .76rem; font-weight: 700; color: var(--text-tertiary); text-decoration: none; }
+.cve-chip-clear:hover { color: var(--text-primary); text-decoration: underline; }
+
+/* ── Cards de seção / tabela ──────────────────────────────────────────── */
+.cve-section {
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-xl); box-shadow: var(--shadow-xs); overflow: hidden;
+}
+.cve-section-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: .85rem 1.15rem; border-bottom: 1px solid var(--separator-hairline);
+}
+.cve-section-title { display: inline-flex; align-items: center; gap: .5rem; font-size: .92rem; font-weight: 700; color: var(--text-primary); letter-spacing: -.016em; }
+.cve-count { font-size: .8rem; color: var(--text-tertiary); font-weight: 600; }
+
+.cve-table-wrap { position: relative; width: 100%; overflow-x: auto; }
+.cve-table-wrap::after {
+  content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 32px;
+  background: linear-gradient(to right, transparent, var(--bg-elevated) 85%);
+  opacity: 0; transition: opacity .2s; pointer-events: none;
+}
+.cve-table-wrap.cve-scrollable::after { opacity: 1; }
+.cve-table { width: max-content; min-width: 100%; border-collapse: collapse; }
+.cve-table th, .cve-table td { padding: .75rem 1rem; border-bottom: 1px solid var(--separator-hairline); vertical-align: middle; text-align: left; }
+.cve-table th { background: var(--bg-elevated); color: var(--text-tertiary); font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+.cve-table td { color: var(--text-primary); font-size: .84rem; }
+.cve-table tbody tr { transition: background var(--transition-fast); }
+.cve-table tbody tr:hover { background: var(--bg-hover); }
+.cve-table tbody tr:last-child td { border-bottom: none; }
+
+/* Colunas # e Item fixas ao rolar horizontalmente (mantém a identificação do item sempre visível) */
+.cve-table th:nth-child(1), .cve-table td:nth-child(1) { position: sticky; left: 0; z-index: 2; width: 52px; min-width: 52px; background: var(--bg-elevated); }
+.cve-table th:nth-child(2), .cve-table td:nth-child(2) { position: sticky; left: 52px; z-index: 2; background: var(--bg-elevated); box-shadow: 1px 0 0 var(--separator-hairline); }
+.cve-table tbody tr:hover td:nth-child(1), .cve-table tbody tr:hover td:nth-child(2) { background: var(--bg-hover); }
+
+.cve-rank { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; font-weight: 800; font-size: .76rem; color: var(--brand); background: var(--brand-soft); }
+.cve-item-name { font-weight: 700; letter-spacing: -.012em; white-space: nowrap; }
+.cve-item-sub { margin-top: .15rem; font-size: .74rem; color: var(--text-tertiary); white-space: nowrap; }
+.cve-muted { color: var(--text-quaternary); font-size: .8rem; }
+
+.cve-login { display: flex; align-items: center; gap: .5rem; white-space: nowrap; }
+.cve-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-quaternary); }
+.cve-dot.is-on { background: var(--success); box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 30%, transparent); }
+.cve-login-name { font-weight: 700; font-size: .82rem; }
+.cve-login-sub { font-size: .72rem; color: var(--text-tertiary); }
+
+.cve-venc-date { font-weight: 700; white-space: nowrap; }
+.cve-venc-sub { font-size: .72rem; color: var(--text-tertiary); white-space: nowrap; margin: .1rem 0 .35rem; }
+.cve-money { color: var(--brand); font-weight: 800; white-space: nowrap; }
+
+.cve-status-badge, .cve-deadline-badge { display: inline-flex; align-items: center; justify-content: center; padding: 4px 9px; border-radius: 999px; font-size: .68rem; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
+.cve-status-ativo, .cve-status-backup { color: var(--success); background: var(--success-soft); }
+.cve-status-manutencao { color: var(--warning); background: var(--warning-soft); }
+.cve-status-defeito, .cve-status-queimado { color: var(--danger); background: var(--danger-soft); }
+.cve-status-pausado { color: var(--cve-purple); background: color-mix(in srgb, var(--cve-purple) 12%, transparent); }
+.cve-deadline-vencido { color: var(--danger); background: var(--danger-soft); }
+.cve-deadline-critico { color: var(--warning); background: var(--warning-soft); }
+.cve-deadline-alerta { color: var(--warning); background: var(--warning-soft); }
+
+.cve-empty { text-align: center; padding: 2.2rem 1rem; color: var(--text-tertiary); font-weight: 600; font-size: .88rem; }
+.cve-empty i { display: block; margin-bottom: .4rem; font-size: 1.3rem; color: var(--success); }
+
+/* ── Responsivo: abaixo de 760px a tabela vira cards empilhados ──────── */
+@media (max-width: 760px) {
+  .cve-table-wrap { overflow-x: visible; }
+  .cve-table-wrap::after { display: none; }
+  .cve-table { width: 100%; min-width: 0; }
+  .cve-table thead { display: none; }
+  .cve-table, .cve-table tbody, .cve-table tr { display: block; width: 100%; }
+  .cve-table tbody tr {
+    display: grid; grid-template-columns: 1fr 1fr; gap: .6rem 1rem;
+    padding: 1rem 1.05rem; border-bottom: 8px solid var(--bg-fill-secondary);
+  }
+  .cve-table tbody tr:last-child { border-bottom: 0; }
+  .cve-table td {
+    display: block; border: 0; padding: 0; white-space: normal;
+    position: static !important; background: transparent !important; box-shadow: none !important;
+  }
+  .cve-table td[data-label]::before {
+    content: attr(data-label); display: block; margin-bottom: .2rem;
+    font-size: .64rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-tertiary);
+  }
+  .cve-table td:nth-child(1):not(.cve-empty) { display: none; }
+  .cve-table td:nth-child(2),
+  .cve-table td:nth-child(5),
+  .cve-table td:nth-child(8),
+  .cve-table td:nth-child(9),
+  .cve-table td.cve-empty { grid-column: 1 / -1; }
+  .cve-table td:nth-child(2)::before { display: none; }
+  .cve-table td:nth-child(8) { padding-top: .55rem; margin-top: .1rem; border-top: 1px dashed var(--separator-hairline); }
+  .cve-table td:nth-child(8)::before { display: none; }
+  .cve-table td:nth-child(9) { padding-top: .1rem; }
+  .cve-table .cve-money { font-size: 1rem; }
+  .cve-table .cve-item-name, .cve-table .cve-item-sub,
+  .cve-table .cve-venc-date, .cve-table .cve-venc-sub,
+  .cve-table .cve-login { white-space: normal; }
+  .cve-empty { padding: 1.6rem 1rem; }
 }
 
-.contracts-alert-page,
-.contracts-alert-page * { box-sizing: border-box; min-width: 0; }
-
-.contracts-alert-page {
-  width: 100%;
-  max-width: 1600px;
-  margin-inline: auto;
-  color: var(--ca-text);
-  display: grid;
-  gap: 18px;
-}
-
-.contracts-alert-page .page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: clamp(18px, 2.5vw, 26px);
-  border-radius: var(--ca-radius-xl);
-  border: 1px solid var(--ca-border);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--ca-primary) 9%, transparent), transparent 46%), var(--ca-surface);
-  box-shadow: var(--ca-shadow);
-}
-
-.contracts-alert-page .header-left h1 {
-  margin: 0;
-  color: var(--ca-text);
-  font-family: var(--font-display);
-  font-size: clamp(1.35rem, 3vw, 2.1rem);
-  font-weight: 700;
-  letter-spacing: -0.035em;
-  line-height: 1.08;
-}
-
-.contracts-alert-page .header-left p {
-  margin: 8px 0 0;
-  color: var(--ca-muted);
-  font-size: clamp(.9rem, 1.4vw, 1rem);
-  line-height: 1.45;
-}
-
-.contracts-alert-page .btn {
-  min-height: 38px;
-  padding: 8px 16px;
-  border-radius: var(--ca-radius-pill);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid transparent;
-  color: var(--ca-text);
-  font-size: .9rem;
-  font-weight: 650;
-  text-decoration: none;
-  cursor: pointer;
-  transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.contracts-alert-page .btn:hover { transform: translateY(-1px); }
-.contracts-alert-page .btn-white { background: var(--ca-surface); border-color: var(--ca-border-strong); color: var(--ca-text); }
-.contracts-alert-page .btn-white:hover { background: var(--bg-hover); border-color: var(--separator-strong); }
-.contracts-alert-page .btn-primary { background: var(--ca-primary); color: #fff; border-color: var(--ca-primary); }
-.contracts-alert-page .btn-primary:hover { background: var(--ca-primary-hover); border-color: var(--ca-primary-hover); box-shadow: var(--shadow-brand); }
-
-.contracts-alert-page .kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
-  gap: 16px;
-}
-
-.contracts-alert-page .kpi-card,
-.contracts-alert-page .filter-card,
-.contracts-alert-page .section-card {
-  position: relative;
-  overflow: hidden;
-  border-radius: var(--ca-radius-lg);
-  border: 1px solid var(--ca-border);
-  background: var(--ca-surface);
-  box-shadow: var(--ca-shadow);
-}
-
-.contracts-alert-page .kpi-card { padding: 20px; }
-.contracts-alert-page .kpi-card::after {
-  content: "";
-  position: absolute;
-  width: 72px;
-  height: 72px;
-  right: -24px;
-  top: -24px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--kpi-color, var(--ca-primary)) 13%, transparent);
-}
-.contracts-alert-page .kpi-blue { --kpi-color: var(--ca-primary); }
-.contracts-alert-page .kpi-green { --kpi-color: var(--ca-success); }
-.contracts-alert-page .kpi-orange { --kpi-color: var(--ca-warning); }
-.contracts-alert-page .kpi-red { --kpi-color: var(--ca-danger); }
-
-.contracts-alert-page .kpi-label {
-  color: var(--ca-muted);
-  font-size: .73rem;
-  font-weight: 750;
-  text-transform: uppercase;
-  letter-spacing: .055em;
-  margin-bottom: 8px;
-}
-.contracts-alert-page .kpi-value { color: var(--ca-text); font-size: clamp(1.35rem, 3vw, 1.85rem); font-weight: 800; line-height: 1.1; }
-.contracts-alert-page .kpi-sub { margin-top: 7px; color: var(--ca-soft); font-size: .82rem; }
-
-.contracts-alert-page .filter-card,
-.contracts-alert-page .section-card { margin-top: 0; }
-.contracts-alert-page .card-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--ca-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  background: color-mix(in srgb, var(--ca-surface) 88%, var(--ca-primary) 2%);
-}
-.contracts-alert-page .card-title { display: inline-flex; align-items: center; gap: 10px; color: var(--ca-text); font-weight: 800; }
-.contracts-alert-page .section-count { display:inline-flex; align-items:center; min-height:24px; padding:3px 10px; border-radius:999px; color:var(--ca-muted); background:var(--ca-surface-soft); font-size:.78rem; font-weight:700; }
-.contracts-alert-page .filter-body { padding: 18px 20px; }
-.contracts-alert-page .filter-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap:14px; }
-.contracts-alert-page .field label { display:block; margin-bottom:6px; color:var(--ca-muted); font-size:.74rem; font-weight:750; text-transform:uppercase; letter-spacing:.04em; }
-.contracts-alert-page .field input,
-.contracts-alert-page .field select { width:100%; min-height:42px; border:1px solid var(--ca-border-strong); border-radius:12px; padding:0 12px; color:var(--ca-text); background:var(--ca-surface); outline:none; }
-.contracts-alert-page .field input:focus,
-.contracts-alert-page .field select:focus { border-color:var(--ca-primary); box-shadow:0 0 0 4px var(--brand-ring); }
-.contracts-alert-page .filter-actions { margin-top:16px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; }
-
-.contracts-alert-page .table-responsive { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; border:0; border-radius:0; }
-.contracts-alert-page table { width:100%; min-width:1180px; border-collapse:collapse; }
-.contracts-alert-page th { background: color-mix(in srgb, var(--ca-surface) 88%, var(--ca-primary) 2%); color:var(--ca-muted); font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:13px 16px; border-bottom:1px solid var(--ca-border); text-align:left; white-space:nowrap; }
-.contracts-alert-page td { padding:13px 16px; border-bottom:1px solid var(--ca-border); color:var(--ca-text); vertical-align:middle; font-size:.9rem; }
-.contracts-alert-page tbody tr:hover { background: color-mix(in srgb, var(--ca-primary) 4%, transparent); }
-.contracts-alert-page tbody tr:last-child td { border-bottom:0; }
-.contracts-alert-page .rank-badge { width:34px; height:34px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; font-weight:800; color:var(--ca-primary); background:var(--brand-soft); }
-.contracts-alert-page .status-badge,
-.contracts-alert-page .deadline-badge { display:inline-flex; align-items:center; justify-content:center; padding:5px 10px; border-radius:999px; font-size:.72rem; font-weight:800; text-transform:uppercase; white-space:nowrap; }
-.contracts-alert-page .status-ativo,
-.contracts-alert-page .status-backup { color:var(--ca-success); background:var(--ca-success-soft); }
-.contracts-alert-page .status-manutencao { color:var(--ca-warning); background:var(--ca-warning-soft); }
-.contracts-alert-page .status-defeito,
-.contracts-alert-page .status-queimado { color:var(--ca-danger); background:var(--ca-danger-soft); }
-.contracts-alert-page .status-pausado { color:var(--ca-purple); background:color-mix(in srgb, var(--ca-purple) 12%, transparent); }
-.contracts-alert-page .deadline-vencido { color:var(--ca-danger); background:var(--ca-danger-soft); }
-.contracts-alert-page .deadline-critico { color:var(--ca-warning); background:var(--ca-warning-soft); }
-.contracts-alert-page .deadline-alerta { color:var(--ca-warning); background:var(--warning-soft); }
-.contracts-alert-page .money { color:var(--ca-primary); font-weight:800; }
-.contracts-alert-page .empty-state { text-align:center; padding:38px 20px; color:var(--ca-muted); font-weight:650; }
-
-@media (max-width: 768px) {
-  .contracts-alert-page .page-header { align-items:flex-start; }
-  .contracts-alert-page .filter-actions,
-  .contracts-alert-page .filter-actions > div { display:grid !important; grid-template-columns:1fr; width:100%; }
-  .contracts-alert-page .btn { width:100%; }
+@media (max-width: 640px) {
+  .cve-kpi-row { gap: .45rem; }
+  .cve-stat { font-size: .74rem; padding: .25rem .6rem; }
+  .cve-export-btn { margin-left: 0; width: 100%; }
+  .cve-filter-actions, .cve-filter-actions > div { width: 100%; }
+  .cve-table tbody tr { grid-template-columns: 1fr; }
 }
 </style>
+{% endblock %}
 
-<div class="contracts-alert-page">
+{% block content %}
+<div class="cve-page">
 
-  <div class="page-header">
-    <div class="header-left">
-      <h1>Central de Avisos - Contratos a Vencer</h1>
-      <p>Ranking de itens locados com contrato próximo do vencimento ou já vencido.</p>
-    </div>
-
-    <div>
-      <a href="javascript:history.back()" class="btn btn-white">
-        <i class="fa fa-arrow-left"></i> Voltar
-      </a>
-    </div>
+  <div class="cve-kpi-row">
+    <span class="cve-stat"><span class="cve-stat-dot" style="background:var(--brand);"></span>{{ kpi.total_alertas }} em alerta</span>
+    <span class="cve-stat"><span class="cve-stat-dot" style="background:var(--success);"></span>{{ kpi.total_operacionais }} operacionais</span>
+    <span class="cve-stat"><span class="cve-stat-dot" style="background:var(--cve-purple);"></span>{{ kpi.total_pausados }} pausados</span>
+    <span class="cve-stat cve-stat-danger"><span class="cve-stat-dot" style="background:var(--danger);"></span>{{ kpi.vencidos }} vencidos</span>
+    <a href="{% url 'avisos_contratos_vencer_export_excel' %}?{{ request.GET.urlencode }}" class="btn-primary btn-sm cve-export-btn">
+      <i class="fa fa-file-excel"></i> Exportar Excel
+    </a>
   </div>
 
-  <div class="kpi-grid">
-    <div class="kpi-card kpi-blue">
-      <div class="kpi-label">Total em Alerta</div>
-      <div class="kpi-value">{{ kpi.total_alertas }}</div>
-      <div class="kpi-sub">Janela de {{ kpi.dias_alerta }} dias</div>
-    </div>
-
-    <div class="kpi-card kpi-green">
-      <div class="kpi-label">Ranking Operacional</div>
-      <div class="kpi-value">{{ kpi.total_operacionais }}</div>
-      <div class="kpi-sub">Ativo, backup, manutenção e defeito</div>
-    </div>
-
-    <div class="kpi-card kpi-orange">
-      <div class="kpi-label">Pausados</div>
-      <div class="kpi-value">{{ kpi.total_pausados }}</div>
-      <div class="kpi-sub">Itens com contrato em pausa operacional</div>
-    </div>
-
-    <div class="kpi-card kpi-red">
-      <div class="kpi-label">Já Vencidos</div>
-      <div class="kpi-value">{{ kpi.vencidos }}</div>
-      <div class="kpi-sub">Exigem tratativa imediata</div>
-    </div>
-  </div>
-
-  <div class="filter-card">
-    <div class="card-header">
-      <div class="card-title">
-        <i class="fa fa-filter"></i> Filtros
+  <details class="cve-filter-details" id="cveFilter" {% if filtros_ativos %}open{% endif %}>
+    <summary class="cve-filter-summary">
+      <i class="fa fa-filter" style="color:var(--brand);"></i>
+      Filtros
+      {% if filtros_ativos %}<span class="cve-filter-badge">{{ filtros_ativos }} ativo{{ filtros_ativos|pluralize }}</span>{% endif %}
+      <i class="fa fa-chevron-down chevron"></i>
+    </summary>
+    <form method="get" action="" class="cve-filter-body" id="cveFilterForm">
+      <div class="cve-field">
+        <label for="cve_nome">Nome</label>
+        <input id="cve_nome" type="text" name="nome" value="{{ filtros.nome }}" placeholder="Nome do item" data-autosubmit>
       </div>
-    </div>
-
-    <div class="filter-body">
-      <form method="get">
-        <div class="filter-grid">
-          <div class="field">
-            <label>Nome</label>
-            <input type="text" name="nome" value="{{ filtros.nome }}" placeholder="Nome do item">
-          </div>
-
-          <div class="field">
-            <label>Número de Série</label>
-            <input type="text" name="ns" value="{{ filtros.ns }}" placeholder="NS">
-          </div>
-
-          <div class="field">
-            <label>Subtipo</label>
-            <select name="subtipo">
-              <option value="">Todos</option>
-              {% for s in subtipoes|default:subtipos %}
-                <option value="{{ s.id }}" {% if filtros.subtipo == s.id|stringformat:"s" %}selected{% endif %}>{{ s.nome }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="field">
-            <label>Status</label>
-            <select name="status">
-              <option value="">Todos</option>
-              {% for st in status_opcoes %}
-                <option value="{{ st }}" {% if filtros.status == st %}selected{% endif %}>{{ st|title }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="field">
-            <label>Fornecedor</label>
-            <select name="fornecedor">
-              <option value="">Todos</option>
-              {% for f in fornecedores %}
-                <option value="{{ f.id }}" {% if filtros.fornecedor == f.id|stringformat:"s" %}selected{% endif %}>{{ f.nome }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-
-        <div class="filter-actions">
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <a href="{% url 'avisos_contratos_vencer_export_excel' %}?nome={{ filtros.nome }}&ns={{ filtros.ns }}&subtipo={{ filtros.subtipo }}&status={{ filtros.status }}&fornecedor={{ filtros.fornecedor }}" class="btn btn-primary">
-                <i class="fa fa-file-excel"></i> Excel
-            </a>
-
-            <a href="javascript:history.back()" class="btn btn-white">
-                <i class="fa fa-arrow-left"></i> Voltar
-            </a>
-            </div>
-          <button type="submit" class="btn btn-primary">
-            <i class="fa fa-magnifying-glass"></i> Filtrar
-          </button>
-          <a href="{% url 'avisos_contratos_vencer' %}" class="btn btn-white">
-            <i class="fa fa-rotate-left"></i> Limpar
-          </a>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div class="section-card">
-    <div class="card-header">
-      <div class="card-title">
-        <i class="fa fa-triangle-exclamation" style="color:var(--ca-warning);"></i>
-        Ranking Operacional
+      <div class="cve-field">
+        <label for="cve_ns">Número de Série</label>
+        <input id="cve_ns" type="text" name="ns" value="{{ filtros.ns }}" placeholder="NS" data-autosubmit>
       </div>
-      <span class="section-count">{{ ranking_operacional|length }}</span>
-    </div>
-
-    <div class="table-responsive">
-      <table>
-        <thead>
-          <tr>
-            <th>Rank</th>
-            <th>Item</th>
-            <th>NS</th>
-            <th>Subtipo</th>
-            <th>Status</th>
-            <th>Fornecedor</th>
-            <th>Data Entrada</th>
-            <th>Prazo</th>
-            <th>Vencimento</th>
-            <th>Dias Restantes</th>
-            <th style="text-align:right;">Valor Mensal</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in ranking_operacional %}
-          <tr>
-            <td><span class="rank-badge">{{ forloop.counter }}</span></td>
-            <td>
-              <div style="font-weight:700;">{{ item.nome }}</div>
-              {% if item.centro_custo %}
-                <div style="font-size:12px; color:var(--ca-muted);">{{ item.centro_custo.departamento }}</div>
-              {% endif %}
-            </td>
-            <td>{{ item.numero_serie|default:"-" }}</td>
-            <td>{{ item.subtipo.nome|default:"-" }}</td>
-            <td>
-              <span class="status-badge status-{{ item.status|lower }}">
-                {{ item.status }}
-              </span>
-            </td>
-            <td>{{ item.fornecedor.nome|default:"-" }}</td>
-            <td>{{ item.locacao.data_entrada|date:"d/m/Y" }}</td>
-            <td>{{ item.locacao.tempo_locado }} mês(es)</td>
-            <td>{{ item.data_vencimento_contrato|date:"d/m/Y" }}</td>
-            <td>
-              {% if item.dias_restantes_contrato < 0 %}
-                <span class="deadline-badge deadline-vencido">
-                  {{ item.dias_restantes_contrato|add:"0" }} dia(s)
-                </span>
-              {% elif item.dias_restantes_contrato <= 15 %}
-                <span class="deadline-badge deadline-critico">
-                  {{ item.dias_restantes_contrato }} dia(s)
-                </span>
-              {% else %}
-                <span class="deadline-badge deadline-alerta">
-                  {{ item.dias_restantes_contrato }} dia(s)
-                </span>
-              {% endif %}
-            </td>
-            <td style="text-align:right;" class="money">
-              R$ {{ item.valor_mensal_calc|floatformat:2|intcomma }}
-            </td>
-          </tr>
-          {% empty %}
-          <tr>
-            <td colspan="11" class="empty-state">
-              Nenhum item operacional em alerta de vencimento.
-            </td>
-          </tr>
+      <div class="cve-field">
+        <label for="cve_subtipo">Subtipo</label>
+        <select id="cve_subtipo" name="subtipo" data-autosubmit class="cve-select2" data-placeholder="Todos">
+          <option value=""></option>
+          {% for s in subtipos %}
+            <option value="{{ s.id }}" {% if filtros.subtipo == s.id|stringformat:"s" %}selected{% endif %}>{{ s.nome }}</option>
           {% endfor %}
-        </tbody>
-      </table>
+        </select>
+      </div>
+      <div class="cve-field">
+        <label for="cve_status">Status</label>
+        <select id="cve_status" name="status" data-autosubmit class="cve-select2" data-placeholder="Todos">
+          <option value=""></option>
+          {% for st in status_opcoes %}
+            <option value="{{ st }}" {% if filtros.status == st %}selected{% endif %}>{{ st|title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="cve-field">
+        <label for="cve_fornecedor">Fornecedor</label>
+        <select id="cve_fornecedor" name="fornecedor" data-autosubmit class="cve-select2" data-placeholder="Todos">
+          <option value=""></option>
+          {% for f in fornecedores %}
+            <option value="{{ f.id }}" {% if filtros.fornecedor == f.id|stringformat:"s" %}selected{% endif %}>{{ f.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="cve-field">
+        <label for="cve_localidade">Localidade</label>
+        <select id="cve_localidade" name="localidade" data-autosubmit class="cve-select2" data-placeholder="Todas">
+          <option value=""></option>
+          {% for l in localidades %}
+            <option value="{{ l.id }}" {% if filtros.localidade == l.id|stringformat:"s" %}selected{% endif %}>{{ l.local }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="cve-filter-actions">
+        <button type="submit" class="btn-primary btn-sm"><i class="fa fa-magnifying-glass"></i> Filtrar</button>
+        <a href="{% url 'avisos_contratos_vencer' %}" class="btn-secondary btn-sm"><i class="fa fa-xmark"></i> Limpar</a>
+      </div>
+    </form>
+  </details>
+
+  <div class="cve-chips" id="cveChips" hidden>
+    <span class="cve-chips-label">Filtros ativos:</span>
+    <span id="cveChipsList"></span>
+    <a href="{% url 'avisos_contratos_vencer' %}" class="cve-chip-clear">Limpar tudo</a>
+  </div>
+
+  <div class="cve-section">
+    <div class="cve-section-header">
+      <span class="cve-section-title"><i class="fa fa-triangle-exclamation" style="color:var(--warning);"></i>Ranking Operacional</span>
+      <span class="cve-count">{{ ranking_operacional|length }}</span>
+    </div>
+    <div class="cve-table-wrap">
+      {% include 'front/dashboards/_avisos_contrato_tabela.html' with itens=ranking_operacional empty_icon='fa-circle-check' empty_msg='Nenhum item operacional em alerta de vencimento.' %}
     </div>
   </div>
 
-  <div class="section-card">
-    <div class="card-header">
-      <div class="card-title">
-        <i class="fa fa-pause-circle" style="color:var(--ca-purple);"></i>
-        Ranking de Itens Pausados
-      </div>
-      <span class="section-count">{{ ranking_pausados|length }}</span>
+  <div class="cve-section">
+    <div class="cve-section-header">
+      <span class="cve-section-title"><i class="fa fa-pause-circle" style="color:var(--cve-purple);"></i>Ranking de Itens Pausados</span>
+      <span class="cve-count">{{ ranking_pausados|length }}</span>
     </div>
-
-    <div class="table-responsive">
-      <table>
-        <thead>
-          <tr>
-            <th>Rank</th>
-            <th>Item</th>
-            <th>NS</th>
-            <th>Subtipo</th>
-            <th>Status</th>
-            <th>Fornecedor</th>
-            <th>Data Entrada</th>
-            <th>Prazo</th>
-            <th>Vencimento</th>
-            <th>Dias Restantes</th>
-            <th style="text-align:right;">Valor Mensal</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in ranking_pausados %}
-          <tr>
-            <td><span class="rank-badge">{{ forloop.counter }}</span></td>
-            <td>
-              <div style="font-weight:700;">{{ item.nome }}</div>
-              {% if item.centro_custo %}
-                <div style="font-size:12px; color:var(--ca-muted);">{{ item.centro_custo.departamento }}</div>
-              {% endif %}
-            </td>
-            <td>{{ item.numero_serie|default:"-" }}</td>
-            <td>{{ item.subtipo.nome|default:"-" }}</td>
-            <td>
-              <span class="status-badge status-{{ item.status|lower }}">
-                {{ item.status }}
-              </span>
-            </td>
-            <td>{{ item.fornecedor.nome|default:"-" }}</td>
-            <td>{{ item.locacao.data_entrada|date:"d/m/Y" }}</td>
-            <td>{{ item.locacao.tempo_locado }} mês(es)</td>
-            <td>{{ item.data_vencimento_contrato|date:"d/m/Y" }}</td>
-            <td>
-              {% if item.dias_restantes_contrato < 0 %}
-                <span class="deadline-badge deadline-vencido">
-                  {{ item.dias_restantes_contrato }} dia(s)
-                </span>
-              {% elif item.dias_restantes_contrato <= 15 %}
-                <span class="deadline-badge deadline-critico">
-                  {{ item.dias_restantes_contrato }} dia(s)
-                </span>
-              {% else %}
-                <span class="deadline-badge deadline-alerta">
-                  {{ item.dias_restantes_contrato }} dia(s)
-                </span>
-              {% endif %}
-            </td>
-            <td style="text-align:right;" class="money">
-              R$ {{ item.valor_mensal_calc|floatformat:2|intcomma }}
-            </td>
-          </tr>
-          {% empty %}
-          <tr>
-            <td colspan="11" class="empty-state">
-              Nenhum item pausado em alerta de vencimento.
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="cve-table-wrap">
+      {% include 'front/dashboards/_avisos_contrato_tabela.html' with itens=ranking_pausados empty_icon='fa-circle-check' empty_msg='Nenhum item pausado em alerta de vencimento.' %}
     </div>
   </div>
 
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+// Persistir estado do filtro retrátil
+(function () {
+  const el = document.getElementById('cveFilter');
+  if (!el) return;
+  el.addEventListener('toggle', () =>
+    localStorage.setItem('cve_filter_open', el.open ? '1' : '0')
+  );
+  const saved = localStorage.getItem('cve_filter_open');
+  if (saved === '0' && !el.hasAttribute('open')) return;
+  if (saved === '1' && !el.hasAttribute('open')) el.open = true;
+})();
+
+// Select2 nos selects do filtro (mesmo tema claro/escuro do sistema via tokens CSS)
+(function () {
+  if (!window.jQuery) return;
+  jQuery('.cve-select2').select2({
+    width: '100%',
+    allowClear: true,
+    placeholder: function () { return jQuery(this).data('placeholder') || 'Todos'; },
+    language: {
+      noResults: () => 'Nenhum resultado encontrado',
+      searching: () => 'Buscando...'
+    }
+  });
+})();
+
+// Auto-submit inteligente: selects (nativo e select2) imediatos, texto com debounce
+(function () {
+  const form = document.getElementById('cveFilterForm');
+  if (!form) return;
+  form.querySelectorAll('select[data-autosubmit]').forEach(function (el) {
+    el.addEventListener('change', function () { form.submit(); });
+  });
+  let timer = null;
+  form.querySelectorAll('input[data-autosubmit]').forEach(function (el) {
+    el.addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () { form.submit(); }, 650);
+    });
+  });
+})();
+
+// Indicador de scroll horizontal nas tabelas (mostra que há mais colunas à direita)
+(function () {
+  document.querySelectorAll('.cve-table-wrap').forEach(function (wrap) {
+    function update() {
+      const hasMore = wrap.scrollWidth - wrap.clientWidth - wrap.scrollLeft > 4;
+      wrap.classList.toggle('cve-scrollable', hasMore);
+    }
+    wrap.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    update();
+  });
+})();
+
+// Chips de filtros ativos, com remoção individual
+(function () {
+  const wrap = document.getElementById('cveChips');
+  const list = document.getElementById('cveChipsList');
+  if (!wrap || !list) return;
+
+  const labels = { nome: 'Nome', ns: 'Série', subtipo: 'Subtipo', status: 'Status', fornecedor: 'Fornecedor', localidade: 'Localidade' };
+  const params = new URLSearchParams(location.search);
+  let any = false;
+
+  Object.keys(labels).forEach(function (key) {
+    const val = params.get(key);
+    if (!val) return;
+    any = true;
+
+    let text = val;
+    const sel = document.querySelector('select[name="' + key + '"]');
+    if (sel) {
+      const opt = sel.querySelector('option[value="' + CSS.escape(val) + '"]');
+      if (opt) text = opt.textContent.trim();
+    }
+
+    const chip = document.createElement('span');
+    chip.className = 'cve-chip';
+
+    const label = document.createElement('span');
+    label.textContent = labels[key] + ': ' + text;
+    chip.appendChild(label);
+
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'cve-chip-x';
+    x.setAttribute('aria-label', 'Remover filtro ' + labels[key]);
+    x.textContent = '×';
+    x.addEventListener('click', function () {
+      const p = new URLSearchParams(location.search);
+      p.delete(key);
+      location.search = p.toString();
+    });
+    chip.appendChild(x);
+
+    list.appendChild(chip);
+  });
+
+  wrap.hidden = !any;
+})();
+</script>
 {% endblock %}

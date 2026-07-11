@@ -27,6 +27,7 @@ from ProjetoEstoque.models import (
     MovimentacaoItem,
     OrdemManutencao,
     OrdemManutencaoEvento,
+    OrdemManutencaoOrcamento,
     SimNaoChoices,
     StatusItemChoices,
     StatusOrdemManutencaoChoices,
@@ -134,7 +135,7 @@ class OrdemManutencaoService:
 
     # ── Notificação interna (sino) + e-mail ao TI ──────────────────────────
     @classmethod
-    def _notificar(cls, ordem, novo_status, ator, user):
+    def _notificar(cls, ordem, novo_status, ator, user, observacao=""):
         """A cada movimentação de manutenção (fornecedor ↔ TI): cria a notificação
         interna do sino e agenda o e-mail ao time de TI. Resiliente — nunca quebra
         a transição; o e-mail respeita o toggle global e roda após o commit."""
@@ -161,12 +162,12 @@ class OrdemManutencaoService:
         except Exception:
             logger.exception("Falha ao criar notificação da OS %s", getattr(ordem, "pk", "?"))
 
-        pk, _status, _ator = ordem.pk, str(novo_status), ator
+        pk, _status, _ator, _obs = ordem.pk, str(novo_status), ator, (observacao or "").strip()
 
         def _mail():
             try:
                 from services.email_alertas import alerta_movimentacao_manutencao
-                alerta_movimentacao_manutencao(pk, _status, _ator)
+                alerta_movimentacao_manutencao(pk, _status, _ator, observacao=_obs)
             except Exception:
                 logger.exception("Falha ao enviar e-mail da OS %s", pk)
 
@@ -313,7 +314,11 @@ class OrdemManutencaoService:
             raise ValidationError("Esta ação não é permitida para o seu perfil.")
 
         # Efeitos colaterais rodam ANTES de gravar o novo status
-        # (handlers leem `ordem.status` = estado de origem).
+        # (handlers leem `ordem.status` = estado de origem). Para handlers que
+        # precisam saber o DESTINO da transição (ex.: decidir orçamento), o
+        # destino e a observação são injetados no dict `extra` sob chaves
+        # prefixadas (`_novo_status`, `_observacao`) para não colidir com
+        # campos de formulário reais.
         handler = {
             S.AGUARDANDO_APROVACAO: cls._on_aguardando_aprovacao,
             S.APROVADO:             cls._on_decisao_ti,
@@ -335,7 +340,10 @@ class OrdemManutencaoService:
             S.CONCLUIDO:            cls._on_concluido,
         }.get(novo_status)
         if handler:
-            handler(ordem, user, extra)
+            extra_ctx = dict(extra)
+            extra_ctx["_novo_status"] = novo_status
+            extra_ctx["_observacao"] = observacao
+            handler(ordem, user, extra_ctx)
 
         ordem.status = novo_status
         if novo_status in (S.CONCLUIDO, S.CANCELADO, S.DESCARTADO):
@@ -344,7 +352,7 @@ class OrdemManutencaoService:
         ordem.save()
 
         cls._registrar_evento(ordem, novo_status, observacao, user)
-        cls._notificar(ordem, novo_status, ator, user)
+        cls._notificar(ordem, novo_status, ator, user, observacao=observacao)
         return ordem
 
     # ── Parsers ────────────────────────────────────────────────────────────
@@ -426,6 +434,16 @@ class OrdemManutencaoService:
         if orcamento is None:
             raise ValidationError("Informe o valor do orçamento do reparo.")
         ordem.valor_orcamento = orcamento
+
+        # Cria um novo registro de orçamento no histórico versionado.
+        numero = ordem.orcamentos.count() + 1
+        OrdemManutencaoOrcamento.objects.create(
+            ordem=ordem,
+            numero=numero,
+            valor=orcamento,
+            status=OrdemManutencaoOrcamento.StatusOrcamentoChoices.PROPOSTO,
+        )
+
         # Novo ciclo de aprovação (inclusive revisão após reprovação): limpa a
         # decisão anterior do TI. O histórico fica na timeline de eventos.
         ordem.aprovado_por = None
@@ -433,9 +451,29 @@ class OrdemManutencaoService:
 
     @classmethod
     def _on_decisao_ti(cls, ordem, user, extra):
-        """TI aprova ou reprova o orçamento (registra autor e data da decisão)."""
+        """TI aprova ou reprova o orçamento (registra autor e data da decisão).
+        Atualiza o status do último orçamento no histórico.
+
+        IMPORTANTE: não usar `ordem.status` aqui — neste ponto ele ainda é o
+        estado de ORIGEM (sempre `aguardando_aprovacao`, já que é o único
+        caminho válido para chegar em aprovado/reprovado). O destino real da
+        transição vem em `extra['_novo_status']` (injetado por `transicionar`).
+        """
         ordem.aprovado_por = user
         ordem.decisao_em = timezone.now()
+
+        destino = extra.get("_novo_status")
+        ultimo_orcamento = ordem.orcamentos.last()
+        if ultimo_orcamento:
+            if destino == S.APROVADO:
+                ultimo_orcamento.status = OrdemManutencaoOrcamento.StatusOrcamentoChoices.APROVADO
+                ultimo_orcamento.motivo_rejeicao = None
+            elif destino == S.REPROVADO:
+                ultimo_orcamento.status = OrdemManutencaoOrcamento.StatusOrcamentoChoices.REPROVADO
+                motivo = (extra.get("_observacao") or "").strip()
+                if motivo:
+                    ultimo_orcamento.motivo_rejeicao = motivo
+            ultimo_orcamento.save(update_fields=["status", "motivo_rejeicao"])
 
     @classmethod
     def _on_reparado(cls, ordem, user, extra):

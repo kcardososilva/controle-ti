@@ -428,14 +428,12 @@ class LocacaoForm(forms.ModelForm):
             "valor_mensal",
             "data_entrada",
             "contrato",
-            "observacoes",
         ]
 
         widgets = {
             "tempo_locado": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
             "valor_mensal": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "min": "0"}),
             "contrato": forms.TextInput(attrs={"class": "form-control"}),
-            "observacoes": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
         }
 
     def __init__(self, *args, **kwargs):

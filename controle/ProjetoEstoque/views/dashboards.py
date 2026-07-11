@@ -19,7 +19,7 @@ from ..models import (
     MovimentacaoItem, Preventiva, PreventivaExecucao,
     CentroCusto, Fornecedor, Localidade, Usuario, StatusItemChoices,
     PeriodicidadeChoices, TipoMovLicencaChoices, TipoMovimentacaoChoices,
-    Locacao, CheckListModelo,
+    Locacao, CheckListModelo, OrdemManutencao, StatusOrdemManutencaoChoices,
 )
 
 def _month_key(dt):
@@ -354,12 +354,131 @@ def _dados_licencas(request):
     }
 
 
+_OM_STATUS_META = [
+    ("andamento",  "Em andamento", "#ff9500"),
+    ("concluida",  "Concluída",    "#34c759"),
+    ("cancelada",  "Cancelada",    "#8e8e93"),
+    ("descartada", "Descartada",   "#ff3b30"),
+]
+
+
+def _dados_manutencao(request):
+    forn = (request.GET.get("fornecedor") or "").strip()
+    cc   = (request.GET.get("centro_custo") or "").strip()
+    st   = (request.GET.get("status") or "").strip()
+
+    qs = OrdemManutencao.objects.select_related("fornecedor", "item", "item__centro_custo")
+    if forn.isdigit():
+        qs = qs.filter(fornecedor_id=int(forn))
+    if cc.isdigit():
+        qs = qs.filter(item__centro_custo_id=int(cc))
+
+    ordens = list(qs)
+    if st == "andamento":
+        ordens = [o for o in ordens if o.aberta]
+    elif st == "concluida":
+        ordens = [o for o in ordens if o.status == StatusOrdemManutencaoChoices.CONCLUIDO]
+    elif st == "cancelada":
+        ordens = [o for o in ordens if o.status in (
+            StatusOrdemManutencaoChoices.CANCELADO, StatusOrdemManutencaoChoices.DESCARTADO)]
+
+    total = len(ordens)
+    by_grupo = {
+        "andamento":  sum(1 for o in ordens if o.aberta),
+        "concluida":  sum(1 for o in ordens if o.status == StatusOrdemManutencaoChoices.CONCLUIDO),
+        "cancelada":  sum(1 for o in ordens if o.status == StatusOrdemManutencaoChoices.CANCELADO),
+        "descartada": sum(1 for o in ordens if o.status == StatusOrdemManutencaoChoices.DESCARTADO),
+    }
+    em_garantia = sum(1 for o in ordens if o.garantia_vigente)
+
+    concluidas = [o for o in ordens if o.status == StatusOrdemManutencaoChoices.CONCLUIDO]
+    custo_total = Decimal("0.00")
+    forn_cost, cc_cost = {}, {}
+    for o in concluidas:
+        v = o.valor_manutencao
+        if not v:
+            continue
+        custo_total += v
+        fn = o.fornecedor.nome if o.fornecedor else "Indefinido"
+        forn_cost[fn] = forn_cost.get(fn, Decimal("0")) + v
+        if o.item and o.item.centro_custo:
+            cl = f"{o.item.centro_custo.numero} · {o.item.centro_custo.departamento}"
+            cc_cost[cl] = cc_cost.get(cl, Decimal("0")) + v
+    qtd_com_custo = sum(1 for o in concluidas if o.valor_manutencao)
+    ticket_medio = (custo_total / qtd_com_custo) if qtd_com_custo else Decimal("0.00")
+
+    def top_dict(d, n):
+        items = sorted(d.items(), key=lambda x: x[1], reverse=True)[:n]
+        return ([k for k, _ in items], [float(v) for _, v in items])
+
+    fc_l, fc_d = top_dict(forn_cost, 8)
+    ccm_l, ccm_d = top_dict(cc_cost, 8)
+
+    status_labels, status_data, status_colors = [], [], []
+    for key, lbl, col in _OM_STATUS_META:
+        cnt = by_grupo.get(key, 0)
+        if cnt:
+            status_labels.append(lbl); status_data.append(cnt); status_colors.append(col)
+
+    # Séries mensais (12 meses) — abertura por created_at, custo por finalizada_em
+    keys, lbls = _generate_month_keys(12)
+
+    def _mes_key(dt):
+        local_dt = timezone.localtime(dt) if timezone.is_aware(dt) else dt
+        return (local_dt.year, local_dt.month)
+
+    abertura_map = {}
+    for o in ordens:
+        if not o.created_at:
+            continue
+        k = _mes_key(o.created_at)
+        abertura_map[k] = abertura_map.get(k, 0) + 1
+    abertura_data = [abertura_map.get(k, 0) for k in keys]
+
+    custo_mensal_map = {}
+    for o in concluidas:
+        v = o.valor_manutencao
+        if not v or not o.finalizada_em:
+            continue
+        k = _mes_key(o.finalizada_em)
+        custo_mensal_map[k] = custo_mensal_map.get(k, Decimal("0")) + v
+    custo_mensal_data = [float(custo_mensal_map.get(k, Decimal("0"))) for k in keys]
+
+    pct_andamento = f"{round(by_grupo['andamento'] / total * 100)}% do total" if total else "—"
+    kpis = [
+        {"label": "Total de OS",     "value": str(total),                 "icon": "fa-screwdriver-wrench", "color": "blue",   "sub": "ordens no escopo"},
+        {"label": "Em Andamento",    "value": str(by_grupo["andamento"]), "icon": "fa-truck-fast",         "color": "orange", "sub": pct_andamento},
+        {"label": "Concluídas",      "value": str(by_grupo["concluida"]), "icon": "fa-circle-check",       "color": "green",  "sub": "finalizadas pelo fornecedor"},
+        {"label": "Em Garantia",     "value": str(em_garantia),           "icon": "fa-shield-halved",      "color": "purple", "sub": "reparo/troca vigente"},
+        {"label": "Custo Total",     "value": _fmt_brl(custo_total),      "icon": "fa-coins",              "color": "teal",   "sub": "concluídas com valor apurado"},
+        {"label": "Ticket Médio",    "value": _fmt_brl(ticket_medio),     "icon": "fa-receipt",            "color": "red",    "sub": "custo médio por OS concluída"},
+    ]
+
+    return {
+        "dataset": "manutencao",
+        "titulo": "Manutenção de Equipamentos",
+        "kpis": kpis,
+        "charts": {
+            "status":       {"labels": status_labels, "data": status_data, "colors": status_colors},
+            "fornecedor":   {"labels": fc_l, "data": fc_d, "moeda": True},
+            "abertura":     {"labels": lbls, "data": abertura_data},
+            "custo_mensal": {"labels": lbls, "data": custo_mensal_data, "moeda": True},
+            "centro_custo": {"labels": ccm_l, "data": ccm_d, "moeda": True},
+        },
+    }
+
+
 @login_required
 def dashboard_apresentacao_dados(request):
-    """Retorna os dados agregados (equipamentos ou licenças) para o deck de apresentação."""
+    """Retorna os dados agregados (equipamentos, licenças ou manutenção) para o deck de apresentação."""
     dataset = request.GET.get("dataset", "equipamentos")
     try:
-        data = _dados_licencas(request) if dataset == "licencas" else _dados_equipamentos(request)
+        if dataset == "licencas":
+            data = _dados_licencas(request)
+        elif dataset == "manutencao":
+            data = _dados_manutencao(request)
+        else:
+            data = _dados_equipamentos(request)
     except Exception as exc:  # noqa: BLE001 — nunca derrubar a apresentação
         return JsonResponse({"ok": False, "erro": str(exc)}, status=500)
     return JsonResponse({"ok": True, **data})

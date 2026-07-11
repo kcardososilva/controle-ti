@@ -1182,6 +1182,16 @@ class OrdemManutencao(AuditModel):
     # stepper (ver ETAPAS_MACRO / etapa_macro e o OrdemManutencaoService).
     troca_antecipada = models.BooleanField(default=False, verbose_name="Troca antecipada")
     finalizada_em = models.DateTimeField(null=True, blank=True)
+    # Lote de Manutenção ao qual esta OS foi agrupada (fatura/documento consolidado
+    # montado pelo fornecedor no Portal). Uma OS entra em, no máximo, 1 lote — ver
+    # `pode_entrar_em_lote`. SET_NULL: excluir o lote não apaga o histórico da OS.
+    lote_manutencao = models.ForeignKey(
+        "LoteManutencao",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="ordens",
+        verbose_name="Lote de manutenção",
+    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -1293,6 +1303,42 @@ class OrdemManutencao(AuditModel):
             "expirada": "Garantia expirada",
         }[self.garantia_status]
 
+    # ── Custo final e elegibilidade para Lote de Manutenção ─────────────────
+    @property
+    def valor_manutencao(self):
+        """
+        Custo final e definitivo desta OS. Não existe um único campo de valor
+        porque o desfecho do fluxo muda qual campo é o relevante — este método
+        resolve isso na ordem correta. Usado no histórico do Portal/TI e no
+        cálculo de `LoteManutencao.valor_total`. Retorna None se a OS ainda
+        não tem custo apurado.
+
+        Prioridade:
+          1. reparo_valor            — reparo concluído OU devolução sem reparo (reprovado)
+          2. substituto_valor        — troca padrão (equipamento substituído)
+          3. valor_orcamento         — troca antecipada concluída (proposta do fornecedor)
+          4. valor_avaliacao_tecnica — descarte (local ou via TI), sem os campos acima
+        """
+        if self.reparo_valor is not None:
+            return self.reparo_valor
+        if self.substituto_valor is not None:
+            return self.substituto_valor
+        if self.troca_antecipada and self.valor_orcamento is not None:
+            return self.valor_orcamento
+        if self.valor_avaliacao_tecnica is not None:
+            return self.valor_avaliacao_tecnica
+        return None
+
+    @property
+    def pode_entrar_em_lote(self) -> bool:
+        """Elegível para um Lote de Manutenção: OS concluída, com custo já
+        apurado e ainda não incluída em nenhum lote (evita cobrança em duplicidade)."""
+        return (
+            self.status == StatusOrdemManutencaoChoices.CONCLUIDO
+            and self.lote_manutencao_id is None
+            and self.valor_manutencao is not None
+        )
+
     def __str__(self):
         return f"OS #{self.pk} — {self.item} ({self.get_status_display()})"
 
@@ -1353,6 +1399,201 @@ class OrdemManutencaoAnexo(AuditModel):
     def nome_arquivo(self):
         import os
         return os.path.basename(self.arquivo.name) if self.arquivo else ""
+
+
+class OrdemManutencaoOrcamento(AuditModel):
+    """
+    Histórico versionado de propostas de orçamento. Cada vez que o fornecedor
+    envia um orçamento (proposta), cria-se um novo registro. O TI pode aprovar
+    ou reprovar, passando a ordem para um novo status.
+
+    Fluxo de status:
+      • PROPOSTO → enviado pelo fornecedor, aguardando decisão do TI
+      • APROVADO → TI aprovou, pode iniciar o reparo
+      • REPROVADO → TI reprovou, fornecedor pode reenvidar novo orçamento ou devolver
+    """
+    class StatusOrcamentoChoices(models.TextChoices):
+        PROPOSTO = "proposto", "Enviado para análise"
+        APROVADO = "aprovado", "Aprovado"
+        REPROVADO = "reprovado", "Reprovado"
+
+    ordem = models.ForeignKey(
+        OrdemManutencao,
+        on_delete=models.CASCADE,
+        related_name="orcamentos",
+        verbose_name="Ordem de Manutenção",
+    )
+    numero = models.PositiveIntegerField(
+        verbose_name="Número da proposta",
+        help_text="1, 2, 3... (auto-incrementado por ordem de criação)",
+    )
+    valor = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        verbose_name="Valor proposto",
+    )
+    status = models.CharField(
+        max_length=12,
+        choices=StatusOrcamentoChoices.choices,
+        default=StatusOrcamentoChoices.PROPOSTO,
+        verbose_name="Status da proposta",
+    )
+    motivo_rejeicao = models.TextField(
+        blank=True, null=True,
+        verbose_name="Motivo da rejeição (se reprovado)",
+    )
+
+    class Meta:
+        ordering = ["numero"]
+        verbose_name = "Orçamento de Manutenção"
+        verbose_name_plural = "Orçamentos de Manutenção"
+        indexes = [
+            models.Index(fields=["ordem", "numero"]),
+        ]
+
+    def __str__(self):
+        return f"OS #{self.ordem_id} — Proposta {self.numero} (R$ {self.valor})"
+
+    def is_proposta_atual(self):
+        """Retorna True se esta é a proposta atualmente em análise pelo TI."""
+        ordem = self.ordem
+        if ordem.status not in (
+            StatusOrdemManutencaoChoices.AGUARDANDO_APROVACAO,
+            StatusOrdemManutencaoChoices.REPROVADO,
+        ):
+            return False
+        return self.numero == ordem.orcamentos.count()
+
+    def get_status_contexto(self):
+        """Retorna o label inteligente do status, contextualizando o fluxo.
+
+        O status gravado (`self.status`) já reflete a decisão real do TI
+        (ver `OrdemManutencaoService._on_decisao_ti`) — por isso aprovado e
+        reprovado são verificados diretamente, sem depender de
+        `is_proposta_atual()`. Essa checagem só entra para diferenciar, entre
+        as propostas ainda PROPOSTAS, qual está em análise agora.
+        """
+        if self.status == self.StatusOrcamentoChoices.APROVADO:
+            return "Aprovada — reparo autorizado"
+        elif self.status == self.StatusOrcamentoChoices.REPROVADO:
+            return "Reprovada — reenvio necessário"
+        elif self.status == self.StatusOrcamentoChoices.PROPOSTO:
+            if self.is_proposta_atual():
+                return "Em análise do TI"
+            else:
+                return "Substituída por novo orçamento"
+        return self.get_status_display()
+
+    def get_badge_status(self):
+        """Retorna um dict com classe CSS e ícone para renderização de badge.
+
+        Mesma ordem de verificação de `get_status_contexto()`: o status
+        decidido (aprovado/reprovado) é definitivo e não deve ser
+        reavaliado por `is_proposta_atual()`.
+        """
+        if self.status == self.StatusOrcamentoChoices.APROVADO:
+            return {
+                "class": "pf-orc-aprovado",
+                "icon": "fa-check-circle",
+                "label": "Aprovada",
+                "context": "Reparo autorizado"
+            }
+        elif self.status == self.StatusOrcamentoChoices.REPROVADO:
+            return {
+                "class": "pf-orc-reprovado",
+                "icon": "fa-xmark-circle",
+                "label": "Reprovada",
+                "context": "Reenvio necessário"
+            }
+        elif self.status == self.StatusOrcamentoChoices.PROPOSTO:
+            if self.is_proposta_atual():
+                return {
+                    "class": "pf-orc-proposto-atual",
+                    "icon": "fa-hourglass-half",
+                    "label": "Em análise",
+                    "context": "Aguardando TI"
+                }
+            else:
+                return {
+                    "class": "pf-orc-substituido",
+                    "icon": "fa-file-lines",
+                    "label": "Substituída",
+                    "context": "Sem decisão — sobreposta por nova proposta"
+                }
+        return {
+            "class": "pf-orc-unknown",
+            "icon": "fa-question-circle",
+            "label": "Desconhecido",
+            "context": ""
+        }
+
+    def get_status_emoji(self):
+        """Retorna emoji representativo do status (alternativa aos ícones)."""
+        if self.status == self.StatusOrcamentoChoices.PROPOSTO and self.is_proposta_atual():
+            return "⏳"
+        elif self.status == self.StatusOrcamentoChoices.PROPOSTO:
+            return "📋"
+        elif self.status == self.StatusOrcamentoChoices.APROVADO:
+            return "✅"
+        elif self.status == self.StatusOrcamentoChoices.REPROVADO:
+            return "❌"
+        return "•"
+
+    def is_resubmissao(self):
+        """Retorna True se esta não é a primeira proposta (número > 1)."""
+        return self.numero > 1
+
+    def is_rejeicao_clara(self):
+        """Retorna True se esta proposta foi claramente reprovada."""
+        return self.status == self.StatusOrcamentoChoices.REPROVADO and self.motivo_rejeicao
+
+
+class LoteManutencao(AuditModel):
+    """
+    Agrupamento de Ordens de Manutenção já concluídas em um único documento
+    (lote/fatura), montado pelo fornecedor a partir de uma seleção no Portal.
+    Consolida quantidade e valor total das ordens incluídas — visível tanto
+    pelo fornecedor (Portal) quanto pelo TI (painel interno).
+
+    Uma OS pertence a, no máximo, um lote: a seleção no Portal só oferece OS's
+    com `pode_entrar_em_lote = True` (concluídas, com custo apurado, ainda sem
+    lote), o que evita cobrança em duplicidade. O valor total NÃO é
+    armazenado — é somado em tempo real a partir de `OrdemManutencao.valor_manutencao`
+    das ordens vinculadas (`valor_total`), garantindo que o lote sempre reflita
+    o dado mais atual mesmo que uma OS seja corrigida depois.
+    """
+    nome = models.CharField(max_length=150, verbose_name="Nome do lote")
+    data = models.DateField(verbose_name="Data do lote")
+    fornecedor = models.ForeignKey(
+        "Fornecedor",
+        on_delete=models.PROTECT,
+        related_name="lotes_manutencao",
+        verbose_name="Fornecedor",
+    )
+
+    class Meta:
+        ordering = ["-data", "-created_at"]
+        verbose_name = "Lote de Manutenção"
+        verbose_name_plural = "Lotes de Manutenção"
+        indexes = [
+            models.Index(fields=["fornecedor", "data"]),
+        ]
+
+    def __str__(self):
+        return f"{self.nome} — {self.fornecedor.nome} ({self.data:%d/%m/%Y})"
+
+    @property
+    def quantidade_ordens(self) -> int:
+        return len(self.ordens.all())
+
+    @property
+    def valor_total(self):
+        from decimal import Decimal
+        total = Decimal("0.00")
+        for ordem in self.ordens.all():
+            valor = ordem.valor_manutencao
+            if valor:
+                total += valor
+        return total
 
 
 # ----------------- CHECKLIST -----------------
@@ -2475,3 +2716,37 @@ class KioskDeviceApp(models.Model):
 
     def __str__(self):
         return f"{self.nome or self.pkg} ({self.device})"
+
+
+class KioskInstaladorLink(models.Model):
+    """Link de instalação do APK do app Quiosque, com token opaco e validade curta.
+
+    O .apk em si NÃO fica no banco nem no /media/ (servido sem autenticação) —
+    fica numa pasta protegida no servidor (settings.KIOSK_APK_DIR). Só o hash do
+    token é persistido; o token puro só existe uma vez, na resposta da geração do
+    link (e no QR Code) — mesmo princípio do token de device e do PIN do TI.
+    Quem baixa é o celular escaneando o QR, sem sessão logada; por isso a
+    proteção é o token com validade curta, não @login_required.
+    """
+    token_hash         = models.CharField(max_length=64, unique=True, db_index=True)
+    nome_arquivo        = models.CharField(max_length=255, verbose_name='Arquivo')
+    expira_em           = models.DateTimeField(verbose_name='Expira em')
+    revogado            = models.BooleanField(default=False)
+    downloads           = models.PositiveIntegerField(default=0)
+    ultimo_download_em  = models.DateTimeField(null=True, blank=True)
+    ultimo_download_ip  = models.GenericIPAddressField(null=True, blank=True)
+    criado_por          = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='kiosk_instaladores')
+    criado_em           = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-criado_em']
+        verbose_name = 'Link de Instalador de Quiosque'
+        verbose_name_plural = 'Links de Instalador de Quiosque'
+
+    def __str__(self):
+        return f"Instalador {self.nome_arquivo} ({'revogado' if self.revogado else 'ativo'})"
+
+    def esta_valido(self) -> bool:
+        if self.revogado:
+            return False
+        return self.expira_em > timezone.now()

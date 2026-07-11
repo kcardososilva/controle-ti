@@ -430,10 +430,16 @@ def _linha_vazia(texto: str = "Nenhum registro encontrado.") -> str:
 # Movimentação de manutenção (fornecedor ↔ TI) — transacional
 # ─────────────────────────────────────────────────────────────
 
-def alerta_movimentacao_manutencao(ordem_pk: int, novo_status: str, ator: str = "") -> bool:
+def alerta_movimentacao_manutencao(ordem_pk: int, novo_status: str, ator: str = "", observacao: str = "") -> bool:
     """Avisa o time de TI (TI_EMAILS) a cada movimentação de uma ordem de
-    manutenção entre fornecedor e TI. Respeita o toggle global de e-mails
-    (ConfiguracaoSistema.alertas_email_ativos) via `_enviar`."""
+    manutenção entre fornecedor e TI (Portal do Fornecedor). Respeita o
+    toggle global de e-mails (ConfiguracaoSistema.alertas_email_ativos) via
+    `_enviar`.
+
+    O corpo é montado de forma incremental: valores monetários e observações
+    só aparecem quando o fluxo já os produziu até este ponto (ex.: valor do
+    conserto só existe depois do reparo) — evita linhas vazias/redundantes e
+    mantém o e-mail relevante para quem está lendo naquele momento."""
     from ProjetoEstoque.models import OrdemManutencao, StatusOrdemManutencaoChoices
 
     ordem = (
@@ -445,13 +451,17 @@ def alerta_movimentacao_manutencao(ordem_pk: int, novo_status: str, ator: str = 
     if not ordem:
         return False
 
-    status_label = dict(StatusOrdemManutencaoChoices.choices).get(str(novo_status), str(novo_status))
+    novo_status = str(novo_status)
+    status_label = dict(StatusOrdemManutencaoChoices.choices).get(novo_status, novo_status)
     item_nome = ordem.item.nome if ordem.item else "Equipamento"
     serie = ordem.item.numero_serie if (ordem.item and ordem.item.numero_serie) else "—"
     forn = ordem.fornecedor.nome if ordem.fornecedor else "—"
     origem = "Fornecedor" if ator == "fornecedor" else ("TI" if ator == "ti" else "Sistema")
     tipo_os = "Troca antecipada" if ordem.troca_antecipada else "Manutenção"
     quando = timezone.localtime(ordem.updated_at if hasattr(ordem, "updated_at") else timezone.now()).strftime("%d/%m/%Y %H:%M")
+    observacao = (observacao or "").strip()
+    eh_reprovacao = novo_status == str(StatusOrdemManutencaoChoices.REPROVADO)
+    eh_aprovacao = novo_status == str(StatusOrdemManutencaoChoices.APROVADO)
 
     linhas = [
         ["Ordem", f"OS #{ordem.pk} · {tipo_os}"],
@@ -469,6 +479,58 @@ def alerta_movimentacao_manutencao(ordem_pk: int, novo_status: str, ator: str = 
         "🔧", "#1e3a8a",
         _tabela_html(["Campo", "Detalhe"], linhas),
     )
+
+    # ── Valores envolvidos — só os campos que o fluxo já preencheu até aqui.
+    valores = []
+    if ordem.valor_orcamento is not None:
+        rotulo = "Orçamento reprovado" if eh_reprovacao else "Orçamento aprovado" if eh_aprovacao else "Orçamento proposto"
+        valores.append([rotulo, _fmt_brl(ordem.valor_orcamento)])
+    if ordem.valor_conserto is not None:
+        valores.append(["Valor do conserto", _fmt_brl(ordem.valor_conserto)])
+    if ordem.valor_total is not None and ordem.valor_total != ordem.valor_conserto:
+        valores.append(["Valor total (conserto + extras)", _fmt_brl(ordem.valor_total)])
+    if ordem.valor_avaliacao_tecnica is not None:
+        valores.append(["Avaliação técnica", _fmt_brl(ordem.valor_avaliacao_tecnica)])
+    if ordem.substituto_valor is not None:
+        rotulo_sub = "Valor da substituição"
+        if ordem.substituto_contrato:
+            rotulo_sub += f" ({ordem.substituto_contrato})"
+        valores.append([rotulo_sub, _fmt_brl(ordem.substituto_valor)])
+    if ordem.reparo_valor is not None:
+        valores.append(["Valor considerado no retorno", _fmt_brl(ordem.reparo_valor)])
+
+    if valores:
+        corpo += _secao("Valores envolvidos", "💰", "#166534", _tabela_html(["Item", "Valor"], valores))
+
+    # ── Observações — a nota desta atualização ganha destaque no tom do
+    # status (reprovação em vermelho, demais em azul neutro); o diagnóstico
+    # técnico só aparece quando traz informação nova (evita repetir o texto).
+    obs_bloco = ""
+    if observacao:
+        cor = "#b91c1c" if eh_reprovacao else "#1e40af"
+        bg = "#fef2f2" if eh_reprovacao else "#eff6ff"
+        rotulo_obs = "Motivo da reprovação" if eh_reprovacao else "Observação registrada"
+        obs_bloco += (
+            f'<div style="padding:12px 14px;border-radius:8px;background:{bg};border-left:3px solid {cor};">'
+            f'<p style="margin:0 0 3px;color:{cor};font-size:11px;font-weight:800;'
+            f'text-transform:uppercase;letter-spacing:.04em;">{rotulo_obs}</p>'
+            f'<p style="margin:0;color:#334155;font-size:13px;line-height:1.5;">{observacao}</p>'
+            f'</div>'
+        )
+    diagnostico = (ordem.diagnostico or "").strip()
+    if diagnostico and diagnostico != observacao:
+        if obs_bloco:
+            obs_bloco += '<div style="height:8px;"></div>'
+        obs_bloco += (
+            f'<div style="padding:12px 14px;border-radius:8px;background:#f8fafc;border-left:3px solid #94a3b8;">'
+            f'<p style="margin:0 0 3px;color:#475569;font-size:11px;font-weight:800;'
+            f'text-transform:uppercase;letter-spacing:.04em;">Diagnóstico do fornecedor</p>'
+            f'<p style="margin:0;color:#334155;font-size:13px;line-height:1.5;">{diagnostico}</p>'
+            f'</div>'
+        )
+    if obs_bloco:
+        corpo += _secao("Observações", "📝", "#475569", obs_bloco)
+
     corpo += (
         '<p style="margin:18px 0 0;color:#64748b;font-size:12px;">'
         'Acesse o sistema em <b>Manutenção → Recebimentos</b> para acompanhar a ordem.'
@@ -479,14 +541,26 @@ def alerta_movimentacao_manutencao(ordem_pk: int, novo_status: str, ator: str = 
         f"{tipo_os} · {item_nome} · {forn}",
         corpo,
     )
-    texto = (
-        f"Movimentação de manutenção — OS #{ordem.pk} ({tipo_os})\n"
-        f"Equipamento: {item_nome} (Série {serie})\n"
-        f"Fornecedor: {forn}\n"
-        f"Novo status: {status_label}\n"
-        f"Ação por: {origem}\n"
-        f"Data/hora: {quando}\n"
-    )
+
+    texto_linhas = [
+        f"Movimentação de manutenção — OS #{ordem.pk} ({tipo_os})",
+        f"Equipamento: {item_nome} (Série {serie})",
+        f"Fornecedor: {forn}",
+        f"Novo status: {status_label}",
+        f"Ação por: {origem}",
+        f"Data/hora: {quando}",
+    ]
+    if valores:
+        texto_linhas.append("")
+        texto_linhas.append("Valores envolvidos:")
+        texto_linhas.extend(f"  {rotulo}: {valor}" for rotulo, valor in valores)
+    if observacao:
+        texto_linhas.append("")
+        texto_linhas.append(f"{'Motivo da reprovação' if eh_reprovacao else 'Observação'}: {observacao}")
+    if diagnostico and diagnostico != observacao:
+        texto_linhas.append(f"Diagnóstico do fornecedor: {diagnostico}")
+    texto = "\n".join(texto_linhas) + "\n"
+
     assunto = f"[Manutenção] OS #{ordem.pk} — {status_label}"
     return _enviar(assunto, texto, html, destinatarios=TI_EMAILS, codigo="manutencao_movimentacao")
 

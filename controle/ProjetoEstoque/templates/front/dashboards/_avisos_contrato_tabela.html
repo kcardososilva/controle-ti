@@ -1,0 +1,70 @@
+{% load humanize %}
+<table class="cve-table">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Item</th>
+      <th>Subtipo</th>
+      <th>Localidade</th>
+      <th>Responsável / Login</th>
+      <th>Status</th>
+      <th>Fornecedor</th>
+      <th>Vencimento</th>
+      <th style="text-align:right;">Valor Mensal</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in itens %}
+    <tr>
+      <td data-label="#"><span class="cve-rank">{{ forloop.counter }}</span></td>
+      <td data-label="Item">
+        <div class="cve-item-name">{{ item.nome }}</div>
+        <div class="cve-item-sub">
+          {{ item.numero_serie|default:"S/N" }}
+          {% if item.centro_custo %} · {{ item.centro_custo.departamento }}{% endif %}
+        </div>
+      </td>
+      <td data-label="Subtipo">{{ item.subtipo.nome|default:"—" }}</td>
+      <td data-label="Localidade">{{ item.localidade.local|default:"—" }}</td>
+      <td data-label="Responsável / Login">
+        {% if item.ninja_login %}
+        <div class="cve-login">
+          <span class="cve-dot {% if item.ninja_online %}is-on{% endif %}"></span>
+          <div>
+            <div class="cve-login-name">{{ item.ninja_login }}</div>
+            <div class="cve-login-sub">
+              {% if item.ninja_online %}Online agora{% else %}Últ. contato {{ item.ninja_last_contact|naturaltime|default:"—" }}{% endif %}
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <span class="cve-muted">Sem dado Ninja</span>
+        {% endif %}
+      </td>
+      <td data-label="Status">
+        <span class="cve-status-badge cve-status-{{ item.status|lower }}">{{ item.status }}</span>
+      </td>
+      <td data-label="Fornecedor">{{ item.fornecedor.nome|default:"—" }}</td>
+      <td data-label="Vencimento">
+        <div class="cve-venc-date">{{ item.data_vencimento_contrato|date:"d/m/Y" }}</div>
+        <div class="cve-venc-sub">Entrada {{ item.locacao.data_entrada|date:"d/m/Y" }} · {{ item.locacao.tempo_locado }} mês(es)</div>
+        {% if item.dias_restantes_contrato < 0 %}
+          <span class="cve-deadline-badge cve-deadline-vencido">{{ item.dias_restantes_contrato }} dia(s)</span>
+        {% elif item.dias_restantes_contrato <= 15 %}
+          <span class="cve-deadline-badge cve-deadline-critico">{{ item.dias_restantes_contrato }} dia(s)</span>
+        {% else %}
+          <span class="cve-deadline-badge cve-deadline-alerta">{{ item.dias_restantes_contrato }} dia(s)</span>
+        {% endif %}
+      </td>
+      <td data-label="Valor Mensal" style="text-align:right;" class="cve-money">R$ {{ item.valor_mensal_calc|floatformat:2|intcomma }}</td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="9" class="cve-empty">
+        <i class="fa {{ empty_icon|default:'fa-circle-check' }}"></i>
+        {{ empty_msg|default:"Nenhum item em alerta de vencimento." }}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

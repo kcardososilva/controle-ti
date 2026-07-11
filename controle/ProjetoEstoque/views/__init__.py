@@ -249,11 +249,15 @@ from .quiosque import (
     kiosk_checkin,
     kiosk_config,
     kiosk_comando_ack,
+    kiosk_instalador_download,
     # Dashboard interno
     quiosque_dashboard,
     quiosque_detalhe,
     quiosque_matriculas,
     quiosque_matricula_excluir,
+    quiosque_matricula_renomear,
+    quiosque_instalador_gerar,
+    quiosque_instalador_revogar,
     quiosque_mapa,
     quiosque_config_editar,
     quiosque_comando_novo,
@@ -269,6 +273,9 @@ from .portal_fornecedor import (
     portal_equipamentos_export,
     portal_manutencao_list,
     portal_manutencao_detail,
+    portal_lote_manutencao_criar,
+    portal_lotes_manutencao_list,
+    portal_lote_manutencao_detail,
     portal_troca_antecipada_list,
     portal_troca_antecipada_nova,
     portal_notificacoes_marcar_lidas,
@@ -282,6 +289,9 @@ from .manutencao import (
     manutencao_recebimento_detail,
     manutencao_recebimento_acao,
     manutencao_recebimentos_ajuda,
+    manutencao_lotes_list,
+    manutencao_lote_detail,
+    manutencao_lote_excluir,
 )
 
 # ── Notificações internas (sino do topo) ─────────────────────────────────────

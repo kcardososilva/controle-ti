@@ -495,37 +495,52 @@ class UsuarioImportService:
         wb = load_workbook(self.arquivo, data_only=True)
         abas = selecionar_abas(wb, self.modo_importacao, self.nome_aba)
 
-        with transaction.atomic():
-            for nome_aba in abas:
-                ws = wb[nome_aba]
-                self.resultado.abas_processadas.append(nome_aba)
+        for nome_aba in abas:
+            ws = wb[nome_aba]
+            self.resultado.abas_processadas.append(nome_aba)
 
-                headers = self._mapear_headers(ws)
+            headers = self._mapear_headers(ws)
 
-                if "nome" not in headers:
-                    self.resultado.erros.append(
-                        f"Aba '{nome_aba}' ignorada: coluna Nome não encontrada."
-                    )
-                    continue
+            if "nome" not in headers:
+                self.resultado.erros.append(
+                    f"Aba '{nome_aba}' ignorada: coluna Nome não encontrada."
+                )
+                continue
 
-                # Passagem 1: carrega todas as linhas em memória.
-                # Necessário para construir o índice de nomes antes de processar.
-                linhas = []
-                for row_idx in range(2, ws.max_row + 1):
-                    dados = self._ler_linha(ws, row_idx, headers)
-                    if any(dados.values()):
-                        linhas.append((row_idx, dados))
+            # Passagem 1: carrega todas as linhas em memória.
+            # Necessário para construir o índice de nomes antes de processar.
+            linhas = []
+            for row_idx in range(2, ws.max_row + 1):
+                dados = self._ler_linha(ws, row_idx, headers)
+                if any(dados.values()):
+                    linhas.append((row_idx, dados))
 
-                # Índice nome_completo → dados_da_linha, usado para resolver a
-                # cadeia hierárquica (Gestor → Diretor → Diretor Geral).
-                indice_nomes = self._construir_indice_nomes(linhas)
+            # Índice nome_completo → dados_da_linha, usado para resolver a
+            # cadeia hierárquica (Gestor → Diretor → Diretor Geral). Construído
+            # inteiramente a partir da planilha em memória — não depende de
+            # nenhuma linha já ter sido gravada no banco, então processar cada
+            # linha em sua própria transação não afeta a resolução da hierarquia.
+            indice_nomes = self._construir_indice_nomes(linhas)
 
-                # Passagem 2: processa cada linha com hierarquia completamente resolvida.
-                for row_idx, dados in linhas:
-                    self._processar_linha(nome_aba, row_idx, dados, indice_nomes)
+            # Passagem 2: processa cada linha com hierarquia completamente resolvida.
+            # Uma transação por linha (savepoint curto): mantém o import resiliente
+            # a erro pontual sem abortar as linhas seguintes e evita segurar o lock
+            # de escrita do SQLite pela duração da planilha inteira — mesmo padrão
+            # de importador_planilha.py (import de equipamentos).
+            for row_idx, dados in linhas:
+                try:
+                    with transaction.atomic():
+                        self._processar_linha(nome_aba, row_idx, dados, indice_nomes)
+                except Exception as exc:
+                    self.resultado.erros.append(f"Aba '{nome_aba}', linha {row_idx}: {exc}")
+                    self.resultado.ignorados.append({
+                        "aba": nome_aba,
+                        "linha": row_idx,
+                        "motivo": str(exc),
+                    })
 
-            if self.desligar_ausentes:
-                self._desligar_ausentes()
+        if self.desligar_ausentes:
+            self._desligar_ausentes()
 
         return self.resultado.as_dict()
 
@@ -932,16 +947,23 @@ class UsuarioImportService:
             if presente_por_matricula or presente_por_nome:
                 continue
 
-            usuario.status = self.status_desligado
-            usuario.data_termino = timezone.localdate()
+            try:
+                with transaction.atomic():
+                    usuario.status = self.status_desligado
+                    usuario.data_termino = timezone.localdate()
 
-            update_fields = ["status", "data_termino"]
+                    update_fields = ["status", "data_termino"]
 
-            if hasattr(usuario, "atualizado_por"):
-                usuario.atualizado_por = self.user
-                update_fields.append("atualizado_por")
+                    if hasattr(usuario, "atualizado_por"):
+                        usuario.atualizado_por = self.user
+                        update_fields.append("atualizado_por")
 
-            usuario.save(update_fields=update_fields)
+                    usuario.save(update_fields=update_fields)
+            except Exception as exc:
+                self.resultado.erros.append(
+                    f"Desligamento automático de '{usuario.nome}': {exc}"
+                )
+                continue
 
             self.resultado.desligados.append({
                 "aba": "ausente",

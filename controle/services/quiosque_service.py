@@ -16,7 +16,9 @@ import random
 import secrets
 import string
 from datetime import datetime, timedelta
+from pathlib import Path
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -81,6 +83,137 @@ def definir_pin(device, pin: str) -> None:
     device.admin_pin_hash = make_password(str(pin)) if pin else ""
     device.config_versao = (device.config_versao or 1) + 1
     device.save(update_fields=["admin_pin_hash", "config_versao", "atualizado_em"])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Instalador do app (.apk) — pasta protegida + link de download com token
+# ──────────────────────────────────────────────────────────────────────────────
+# O TI copia o .apk diretamente para settings.KIOSK_APK_DIR (fora do /media/,
+# que é servido sem autenticação). A tela de matrículas detecta o arquivo e
+# permite gerar um link de download com token de validade curta — o mesmo
+# princípio de segurança do código de matrícula, aplicado ao instalador.
+
+_APK_LINK_MIN_MINUTOS = 5
+_APK_LINK_MAX_MINUTOS = 240  # 4h — teto de segurança mesmo que o cliente peça mais
+
+
+def apk_dir() -> Path:
+    """Pasta protegida do instalador. Cria se ainda não existir."""
+    destino = Path(getattr(settings, "KIOSK_APK_DIR", None) or (Path(settings.BASE_DIR) / "kiosk_apk"))
+    destino.mkdir(parents=True, exist_ok=True)
+    return destino
+
+
+def apk_atual() -> dict | None:
+    """Resolve o instalador atual: o .apk mais recente (por data de modificação)
+    na pasta protegida. None se nenhum .apk foi copiado ainda."""
+    candidatos = sorted(
+        (p for p in apk_dir().iterdir() if p.is_file() and p.suffix.lower() == ".apk"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidatos:
+        return None
+    p = candidatos[0]
+    st = p.stat()
+    return {
+        "nome": p.name,
+        "tamanho": st.st_size,
+        "modificado_em": timezone.make_aware(datetime.fromtimestamp(st.st_mtime)),
+    }
+
+
+def caminho_instalador(nome_arquivo: str) -> Path | None:
+    """Resolve o caminho físico de um instalador dentro da pasta protegida.
+
+    Valida que o nome não tem separador de caminho e que o arquivo resolvido
+    continua DENTRO da pasta protegida — defesa contra path traversal mesmo que
+    `nome_arquivo` venha corrompido de algum jeito."""
+    if not nome_arquivo or nome_arquivo != Path(nome_arquivo).name:
+        return None
+    base = apk_dir().resolve()
+    caminho = (base / nome_arquivo).resolve()
+    if caminho.parent != base or not caminho.is_file():
+        return None
+    return caminho
+
+
+def gerar_qrcode_data_uri(conteudo: str, tamanho_px: int = 260) -> str:
+    """PNG do QR Code do conteúdo informado, como data URI (embutível direto em
+    <img src="...">). Usa o gerador de QR já embutido no reportlab (dependência
+    já existente no projeto para os PDFs) — evita adicionar uma lib nova só
+    para isto."""
+    import base64
+    import io
+
+    from reportlab.graphics import renderPM
+    from reportlab.graphics.barcode.qr import QrCodeWidget
+    from reportlab.graphics.shapes import Drawing
+
+    qr = QrCodeWidget(conteudo)
+    x0, y0, x1, y1 = qr.getBounds()
+    largura, altura = (x1 - x0), (y1 - y0)
+    desenho = Drawing(tamanho_px, tamanho_px, transform=[tamanho_px / largura, 0, 0, tamanho_px / altura, 0, 0])
+    desenho.add(qr)
+    buf = io.BytesIO()
+    renderPM.drawToFile(desenho, buf, fmt="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def gerar_link_instalador(*, validade_minutos: int, user, request) -> dict:
+    """Gera um link de instalação de uso temporário para o .apk atual.
+
+    O token puro só existe nesta resposta (o banco guarda apenas o hash) — por
+    isso o QR Code e a URL devem ser exibidos uma única vez, no momento da
+    geração. Lança ValueError se não houver nenhum .apk na pasta protegida.
+    """
+    from django.urls import reverse
+
+    from ProjetoEstoque.models import KioskInstaladorLink
+
+    atual = apk_atual()
+    if atual is None:
+        raise ValueError("Nenhum instalador (.apk) encontrado na pasta do servidor.")
+
+    validade_minutos = min(max(int(validade_minutos or 30), _APK_LINK_MIN_MINUTOS), _APK_LINK_MAX_MINUTOS)
+    token = secrets.token_urlsafe(32)
+    link = KioskInstaladorLink.objects.create(
+        token_hash=hash_token(token),
+        nome_arquivo=atual["nome"],
+        expira_em=timezone.now() + timedelta(minutes=validade_minutos),
+        criado_por=user,
+    )
+    url_absoluta = request.build_absolute_uri(reverse("kiosk_instalador_download", args=[token]))
+    return {
+        "link": link,
+        "url": url_absoluta,
+        "qr_base64": gerar_qrcode_data_uri(url_absoluta),
+        "validade_minutos": validade_minutos,
+    }
+
+
+def resolver_instalador(token: str):
+    """Resolve um KioskInstaladorLink válido (não revogado, não expirado) a
+    partir do token puro da URL. Varre só os links atualmente válidos (poucos,
+    validade curta) e compara em tempo constante — mesmo padrão do token de
+    device. None se inválido/expirado/revogado."""
+    from ProjetoEstoque.models import KioskInstaladorLink
+
+    if not token:
+        return None
+    alvo = hash_token(token)
+    for link in KioskInstaladorLink.objects.filter(revogado=False, expira_em__gt=timezone.now()):
+        if secrets.compare_digest(link.token_hash, alvo):
+            return link
+    return None
+
+
+def registrar_download_instalador(link, ip: str | None) -> None:
+    """Contabiliza um download do instalador (auditoria — quem/quando/de onde)."""
+    link.downloads = (link.downloads or 0) + 1
+    link.ultimo_download_em = timezone.now()
+    link.ultimo_download_ip = ip or None
+    link.save(update_fields=["downloads", "ultimo_download_em", "ultimo_download_ip"])
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -602,6 +602,15 @@ def toner_cc_dashboard(request):
     filtro_cc = request.GET.get("cc", "").strip()
     filtro_usuario = request.GET.get("usuario", "").strip()
 
+    try:
+        filtro_cc_id = int(filtro_cc)
+    except (TypeError, ValueError):
+        filtro_cc_id = None
+
+    centros_opcoes = CentroCusto.objects.order_by("numero", "departamento").only(
+        "id", "numero", "departamento"
+    )
+
     dec14_2 = DecimalField(max_digits=14, decimal_places=2)
 
     qtd_dec = Cast(
@@ -640,6 +649,29 @@ def toner_cc_dashboard(request):
             "lote",
         )
         .annotate(custo_calc=custo_total_expr)
+        # Centro de custo de consumo (canônico): 1º destino da baixa,
+        # 2º origem, 3º centro atual do item. Usado tanto para agrupar
+        # quanto para filtrar — evita divergência entre o CC selecionado
+        # no filtro e o CC exibido nas tabelas/gráficos.
+        .annotate(
+            cc_id=Coalesce(
+                F("centro_custo_destino_id"),
+                F("centro_custo_origem_id"),
+                F("item__centro_custo_id"),
+            ),
+            cc_numero=Case(
+                When(centro_custo_destino__isnull=False, then=F("centro_custo_destino__numero")),
+                When(centro_custo_origem__isnull=False, then=F("centro_custo_origem__numero")),
+                default=F("item__centro_custo__numero"),
+                output_field=CharField(),
+            ),
+            cc_departamento=Case(
+                When(centro_custo_destino__isnull=False, then=F("centro_custo_destino__departamento")),
+                When(centro_custo_origem__isnull=False, then=F("centro_custo_origem__departamento")),
+                default=F("item__centro_custo__departamento"),
+                output_field=CharField(),
+            ),
+        )
     )
 
     if filtro_item:
@@ -650,15 +682,8 @@ def toner_cc_dashboard(request):
             | Q(item__marca__icontains=filtro_item)
         )
 
-    if filtro_cc:
-        base = base.filter(
-            Q(centro_custo_destino__numero__icontains=filtro_cc)
-            | Q(centro_custo_destino__departamento__icontains=filtro_cc)
-            | Q(centro_custo_origem__numero__icontains=filtro_cc)
-            | Q(centro_custo_origem__departamento__icontains=filtro_cc)
-            | Q(item__centro_custo__numero__icontains=filtro_cc)
-            | Q(item__centro_custo__departamento__icontains=filtro_cc)
-        )
+    if filtro_cc_id:
+        base = base.filter(cc_id=filtro_cc_id)
 
     if filtro_usuario:
         base = base.filter(
@@ -669,30 +694,8 @@ def toner_cc_dashboard(request):
             | Q(criado_por__last_name__icontains=filtro_usuario)
         )
 
-    # Centro de custo de consumo:
-    # 1º destino da baixa, 2º origem, 3º centro atual do item.
-    base_cc = base.annotate(
-        cc_id=Coalesce(
-            F("centro_custo_destino_id"),
-            F("centro_custo_origem_id"),
-            F("item__centro_custo_id"),
-        ),
-        cc_numero=Case(
-            When(centro_custo_destino__isnull=False, then=F("centro_custo_destino__numero")),
-            When(centro_custo_origem__isnull=False, then=F("centro_custo_origem__numero")),
-            default=F("item__centro_custo__numero"),
-            output_field=CharField(),
-        ),
-        cc_departamento=Case(
-            When(centro_custo_destino__isnull=False, then=F("centro_custo_destino__departamento")),
-            When(centro_custo_origem__isnull=False, then=F("centro_custo_origem__departamento")),
-            default=F("item__centro_custo__departamento"),
-            output_field=CharField(),
-        ),
-    )
-
     por_cc_qs = (
-        base_cc
+        base
         .values("cc_id", "cc_numero", "cc_departamento")
         .annotate(
             qtd=Coalesce(Sum("quantidade"), V(0)),
@@ -735,11 +738,13 @@ def toner_cc_dashboard(request):
         total_movimentos += movimentos
 
         linhas.append({
+            "cc_id": row.get("cc_id"),
             "cc": cc_nome,
             "qtd": qtd,
             "movimentos": movimentos,
             "gasto": gasto,
             "ticket": (gasto / qtd) if qtd > 0 else Decimal("0.00"),
+            "gasto_medio_baixa": (gasto / (movimentos - 1)) if movimentos > 1 else None,
             "percentual": Decimal("0.00"),
         })
 
@@ -879,32 +884,41 @@ def toner_cc_dashboard(request):
     gasto_dia = (total_geral / Decimal(periodo_dias)) if periodo_dias > 0 else Decimal("0.00")
     gasto_projetado_30d = gasto_dia * Decimal("30")
 
-    # ── Tempo médio entre baixas por centro de custo (cadência de consumo) ──
+    # ── Cadência de consumo por centro de custo: tempo médio e gasto médio
+    # entre uma baixa e outra (intervalos = nº de baixas - 1). ──
     from collections import defaultdict as _dd
     _datas_cc = _dd(list)
-    _nome_cc = {}
-    for _r in base_cc.values("cc_id", "cc_numero", "cc_departamento", "created_at").order_by("cc_id", "created_at"):
-        _cid = _r["cc_id"]
-        _datas_cc[_cid].append(_r["created_at"])
-        if _cid not in _nome_cc:
-            _nome_cc[_cid] = _cc_display(_r.get("cc_numero"), _r.get("cc_departamento"))
+    for _r in base.values("cc_id", "created_at").order_by("cc_id", "created_at"):
+        _datas_cc[_r["cc_id"]].append(_r["created_at"])
 
-    tempo_medio_cc = []
+    _dias_medio_por_cc = {}
     for _cid, _datas in _datas_cc.items():
         _n = len(_datas)
         if _n >= 2:
             _span = (_datas[-1] - _datas[0]).days
-            _dias = round(_span / (_n - 1), 1)
+            _dias_medio_por_cc[_cid] = round(_span / (_n - 1), 1)
         else:
-            _dias = None
-        tempo_medio_cc.append({"cc": _nome_cc[_cid], "baixas": _n, "dias_medio": _dias})
-    tempo_medio_cc.sort(key=lambda x: (x["dias_medio"] is None, x["dias_medio"] if x["dias_medio"] is not None else 0))
+            _dias_medio_por_cc[_cid] = None
+
+    for linha in linhas:
+        linha["dias_medio_baixa"] = _dias_medio_por_cc.get(linha["cc_id"])
+
+    filtro_cc_nome = None
+    if filtro_cc_id:
+        _cc_sel = CentroCusto.objects.filter(id=filtro_cc_id).values("numero", "departamento").first()
+        if _cc_sel:
+            filtro_cc_nome = _cc_display(_cc_sel["numero"], _cc_sel["departamento"])
 
     # ── Dados para a exportação em imagem (resumo executivo) ──
     resumo_export = {
         "periodo": f"{dt_ini:%d/%m/%Y} — {dt_fim:%d/%m/%Y}",
         "periodo_dias": periodo_dias,
         "gerado_em": timezone.localtime().strftime("%d/%m/%Y %H:%M"),
+        "filtros": {
+            "item": filtro_item or None,
+            "cc": filtro_cc_nome,
+            "usuario": filtro_usuario or None,
+        },
         "kpi": {
             "gasto_total": float(total_geral),
             "qtd": total_qtd,
@@ -912,14 +926,21 @@ def toner_cc_dashboard(request):
             "ticket_medio": float(ticket_medio),
         },
         "centros": [
-            {"cc": l["cc"], "qtd": l["qtd"], "gasto": float(l["gasto"]), "pct": float(l["percentual"])}
+            {
+                "cc": l["cc"],
+                "qtd": l["qtd"],
+                "movimentos": l["movimentos"],
+                "gasto": float(l["gasto"]),
+                "pct": float(l["percentual"]),
+                "dias_medio": l["dias_medio_baixa"],
+                "gasto_medio": float(l["gasto_medio_baixa"]) if l["gasto_medio_baixa"] is not None else None,
+            }
             for l in linhas
         ],
         "itens": [
             {"nome": it["nome"], "qtd": it["qtd"], "gasto": float(it["gasto"])}
             for it in top_itens
         ],
-        "tempo": tempo_medio_cc,
     }
 
     if request.GET.get("export") == "1":
@@ -960,7 +981,10 @@ def toner_cc_dashboard(request):
         "periodo_dias": periodo_dias,
         "f_item": filtro_item,
         "f_cc": filtro_cc,
+        "f_cc_id": filtro_cc_id,
         "f_usuario": filtro_usuario,
+        "centros_opcoes": centros_opcoes,
+        "filtros_ativos_count": sum([bool(filtro_item), bool(filtro_cc_id), bool(filtro_usuario)]),
 
         "linhas": linhas,
         "top_itens": top_itens,
@@ -1642,6 +1666,25 @@ def licencas_dashboard(request):
 
     return render(request, "front/dashboards/licencas_dashboard.html", context)
 
+def _anexar_info_ninja(item):
+    """
+    Anexa ao item (in-memory, não persiste) os dados de login coletados via
+    NinjaOne — usuário logado agora (ou último visto) e o instante do último
+    contato do agente. Usado para identificar rapidamente quem está com o
+    equipamento na tela/planilha de contratos a vencer.
+    Requer que `item` tenha vindo de um queryset com select_related("ninja_device").
+    """
+    ninja = getattr(item, "ninja_device", None)
+    if ninja and (ninja.last_user or ninja.last_contact):
+        item.ninja_login = ninja.last_user or ""
+        item.ninja_online = bool(ninja.is_online)
+        item.ninja_last_contact = ninja.last_contact
+    else:
+        item.ninja_login = ""
+        item.ninja_online = False
+        item.ninja_last_contact = None
+
+
 @login_required
 def avisos_contratos_vencer(request):
     """
@@ -1670,6 +1713,7 @@ def avisos_contratos_vencer(request):
     f_subtipo = (request.GET.get("subtipo") or "").strip()
     f_status = (request.GET.get("status") or "").strip()
     f_fornecedor = (request.GET.get("fornecedor") or "").strip()
+    f_localidade = (request.GET.get("localidade") or "").strip()
 
     qs = (
         Item.objects
@@ -1685,6 +1729,7 @@ def avisos_contratos_vencer(request):
             "centro_custo",
             "localidade",
             "locacao",
+            "ninja_device",
         )
         .order_by("nome")
     )
@@ -1703,6 +1748,9 @@ def avisos_contratos_vencer(request):
 
     if f_fornecedor:
         qs = qs.filter(fornecedor_id=f_fornecedor)
+
+    if f_localidade:
+        qs = qs.filter(localidade_id=f_localidade)
 
     itens_alerta = []
 
@@ -1723,6 +1771,7 @@ def avisos_contratos_vencer(request):
             item.data_vencimento_contrato = data_vencimento
             item.dias_restantes_contrato = dias_restantes
             item.valor_mensal_calc = loc.valor_mensal or 0
+            _anexar_info_ninja(item)
             itens_alerta.append(item)
 
     # Ordenação do ranking:
@@ -1753,6 +1802,7 @@ def avisos_contratos_vencer(request):
 
     subtipos = Subtipo.objects.order_by("nome")
     fornecedores = Fornecedor.objects.order_by("nome")
+    localidades = Localidade.objects.order_by("local")
 
     # status disponíveis na própria base filtrada
     status_opcoes = (
@@ -1763,19 +1813,25 @@ def avisos_contratos_vencer(request):
         .order_by("status")
     )
 
+    filtros = {
+        "nome": f_nome,
+        "ns": f_ns,
+        "subtipo": f_subtipo,
+        "status": f_status,
+        "fornecedor": f_fornecedor,
+        "localidade": f_localidade,
+    }
+    filtros_ativos = sum(1 for v in filtros.values() if v)
+
     context = {
         "ranking_operacional": ranking_operacional,
         "ranking_pausados": ranking_pausados,
         "subtipos": subtipos,
         "fornecedores": fornecedores,
+        "localidades": localidades,
         "status_opcoes": status_opcoes,
-        "filtros": {
-            "nome": f_nome,
-            "ns": f_ns,
-            "subtipo": f_subtipo,
-            "status": f_status,
-            "fornecedor": f_fornecedor,
-        },
+        "filtros": filtros,
+        "filtros_ativos": filtros_ativos,
         "kpi": {
             "total_alertas": total_alertas,
             "total_operacionais": total_operacionais,
@@ -1809,6 +1865,7 @@ def avisos_contratos_vencer_export_excel(request):
     f_subtipo = (request.GET.get("subtipo") or "").strip()
     f_status = (request.GET.get("status") or "").strip()
     f_fornecedor = (request.GET.get("fornecedor") or "").strip()
+    f_localidade = (request.GET.get("localidade") or "").strip()
 
     qs = (
         Item.objects
@@ -1824,6 +1881,7 @@ def avisos_contratos_vencer_export_excel(request):
             "centro_custo",
             "localidade",
             "locacao",
+            "ninja_device",
         )
         .order_by("nome")
     )
@@ -1843,6 +1901,9 @@ def avisos_contratos_vencer_export_excel(request):
     if f_fornecedor:
         qs = qs.filter(fornecedor_id=f_fornecedor)
 
+    if f_localidade:
+        qs = qs.filter(localidade_id=f_localidade)
+
     itens_alerta = []
 
     for item in qs:
@@ -1861,6 +1922,7 @@ def avisos_contratos_vencer_export_excel(request):
             item.data_vencimento_contrato = data_vencimento
             item.dias_restantes_contrato = dias_restantes
             item.valor_mensal_calc = loc.valor_mensal or 0
+            _anexar_info_ninja(item)
             itens_alerta.append(item)
 
     itens_alerta.sort(
@@ -1975,6 +2037,9 @@ def avisos_contratos_vencer_export_excel(request):
             "Usuário Atual",
             "Username Atual",
             "E-mail Usuário Atual",
+            "Login Ninja (atual/último)",
+            "Status Ninja",
+            "Último Contato Ninja",
         ]
 
         start_row = 4
@@ -2014,8 +2079,11 @@ def avisos_contratos_vencer_export_excel(request):
             ws.cell(row=row, column=21, value=usuario_atual["nome"])
             ws.cell(row=row, column=22, value=usuario_atual["username"])
             ws.cell(row=row, column=23, value=usuario_atual["email"])
+            ws.cell(row=row, column=24, value=item.ninja_login or "-")
+            ws.cell(row=row, column=25, value="Online agora" if item.ninja_online else ("Offline" if item.ninja_login else "-"))
+            ws.cell(row=row, column=26, value=item.ninja_last_contact.strftime("%d/%m/%Y %H:%M") if item.ninja_last_contact else "-")
 
-            for col in range(1, 24):
+            for col in range(1, 27):
                 cell = ws.cell(row=row, column=col)
                 cell.border = thin_border
 
@@ -2032,7 +2100,7 @@ def avisos_contratos_vencer_export_excel(request):
         widths = {
             1: 10, 2: 18, 3: 28, 4: 22, 5: 16, 6: 18, 7: 18, 8: 16, 9: 26,
             10: 24, 11: 20, 12: 14, 13: 10, 14: 14, 15: 18, 16: 14, 17: 18,
-            18: 14, 19: 24, 20: 28, 21: 24, 22: 18, 23: 28
+            18: 14, 19: 24, 20: 28, 21: 24, 22: 18, 23: 28, 24: 22, 25: 16, 26: 20,
         }
 
         for col_idx, width in widths.items():
@@ -2077,6 +2145,7 @@ def avisos_contratos_vencer_export_excel(request):
         ("Filtro Subtipo", f_subtipo or "-"),
         ("Filtro Status", f_status or "-"),
         ("Filtro Fornecedor", f_fornecedor or "-"),
+        ("Filtro Localidade", f_localidade or "-"),
     ]
 
     row = 3

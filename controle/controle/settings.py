@@ -18,6 +18,14 @@ load_dotenv(BASE_DIR / ".env")
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# Pasta protegida onde o TI copia o instalador (.apk) do app Quiosque. NÃO fica em
+# MEDIA_ROOT — /media/ é servido sem autenticação (django.views.static.serve) e
+# qualquer pessoa com a URL acessaria o arquivo. O download do .apk só é liberado
+# pela view kiosk_instalador_download, com link de token e validade curta (ver
+# services/quiosque_service.py). Defina KIOSK_APK_DIR no .env para usar outro
+# caminho (ex.: fora do OneDrive, como o DJANGO_DB_PATH).
+KIOSK_APK_DIR = os.environ.get('KIOSK_APK_DIR') or os.path.join(BASE_DIR, 'kiosk_apk')
+
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
     raise RuntimeError(

@@ -578,6 +578,41 @@
   font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
 }
 
+/* Dados fiscais do lote (fornecedor, NF, entrada) */
+.ad-lote-fiscal {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-fill-tertiary);
+  border: 1px dashed var(--separator-hairline);
+}
+.ad-lote-fiscal-title {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--text-tertiary); font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;
+}
+.ad-lote-fiscal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+.ad-lote-fiscal-grid div { min-width: 0; }
+.ad-lote-fiscal-grid span { display: block; color: var(--text-tertiary); font-size: 10px; }
+.ad-lote-fiscal-grid strong { display: block; margin-top: 2px; color: var(--text-primary); font-size: 12.5px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* Custo total do lote — valor fixo da aquisição, não se altera com o consumo */
+.ad-lote-total {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-soft);
+  border: 1px solid color-mix(in srgb, var(--brand) 28%, transparent);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+}
+.ad-lote-total-label { display: flex; align-items: center; gap: 7px; color: var(--brand); font-size: 12px; font-weight: 600; }
+.ad-lote-total-tag {
+  font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+  color: var(--text-tertiary); background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
+  padding: 2px 6px; border-radius: 999px;
+}
+.ad-lote-total-value { color: var(--text-primary); font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
 /* ── Notas / pós-contrato ───────────────────────────────────────────── */
 .ad-note-box {
   padding: 12px 14px;
@@ -833,6 +868,8 @@
 @media (max-width: 640px) {
   .ad-hero-main { grid-template-columns: 1fr; }
   .ad-lote-values { grid-template-columns: 1fr; }
+  .ad-lote-fiscal-grid { grid-template-columns: 1fr; }
+  .ad-lote-total { flex-direction: column; align-items: flex-start; }
 }
 @media (max-width: 420px) {
   .ad-card-body, .ad-hero { padding: 13px; }
@@ -1629,11 +1666,30 @@
                   {% elif lote_card.status_lote == 'critico' %}<span class="ad-badge ad-badge-danger"><span class="dot"></span>Crítico</span>
                   {% else %}<span class="ad-badge ad-badge-neutral">Zerado</span>{% endif %}
                 </div>
+
+                <div class="ad-lote-fiscal">
+                  <div class="ad-lote-fiscal-title"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Dados Fiscais</div>
+                  <div class="ad-lote-fiscal-grid">
+                    <div><span>Fornecedor</span><strong>{{ lote_card.lote.fornecedor.nome|default:"—" }}</strong></div>
+                    <div><span>CNPJ</span><strong>{{ lote_card.lote.fornecedor.cnpj|default:"—" }}</strong></div>
+                    <div><span>Nº da NF</span><strong>{{ lote_card.lote.numero_nf|default:"—" }}</strong></div>
+                    <div><span>Data de Entrada</span><strong>{{ lote_card.lote.data_entrada|date:"d/m/Y"|default:"—" }}</strong></div>
+                  </div>
+                </div>
+
+                <div class="ad-lote-total">
+                  <div class="ad-lote-total-label">
+                    <i class="fa-solid fa-sack-dollar" aria-hidden="true"></i> Custo Total do Lote
+                    <span class="ad-lote-total-tag" title="Valor pago na aquisição do lote — não muda com o consumo do estoque">valor fixo da aquisição</span>
+                  </div>
+                  <div class="ad-lote-total-value">R$ {{ lote_card.valor_total|floatformat:2|intcomma }}</div>
+                </div>
+
                 <div class="ad-lote-values">
                   <div class="ad-lote-mini"><span>Entrada</span><strong>{{ lote_card.quantidade_entrada }}</strong></div>
                   <div class="ad-lote-mini"><span>Disponível</span><strong>{{ lote_card.quantidade_disponivel }}</strong></div>
                   <div class="ad-lote-mini"><span>Custo Unit.</span><strong>R$ {{ lote_card.custo_unitario|floatformat:2|intcomma }}</strong></div>
-                  <div class="ad-lote-mini"><span>Saldo R$</span><strong>R$ {{ lote_card.valor_disponivel|floatformat:2|intcomma }}</strong></div>
+                  <div class="ad-lote-mini"><span>Saldo Disponível (R$)</span><strong>R$ {{ lote_card.valor_disponivel|floatformat:2|intcomma }}</strong></div>
                 </div>
                 <div class="ad-progress-text">
                   <span>Saldo do lote</span><span>{{ lote_card.percentual_saldo }}%</span>

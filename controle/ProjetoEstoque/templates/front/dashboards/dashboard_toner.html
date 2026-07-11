@@ -5,6 +5,9 @@
 
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <style>
 :where(.toner-dashboard) {
@@ -611,6 +614,82 @@
 .share-wrap { display: flex; align-items: center; gap: 0.5rem; justify-content: flex-end; }
 .share-bar { flex: 1; max-width: 78px; height: 6px; border-radius: 999px; background: var(--td-surface-muted); overflow: hidden; }
 .share-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--td-primary); }
+
+/* ── Filtros: badge de ativos + presets rápidos de período ─────────── */
+.filters-badge {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.3rem 0.65rem; border-radius: 999px;
+    background: color-mix(in srgb, var(--td-primary) 12%, transparent);
+    color: var(--td-primary); font-size: 0.74rem; font-weight: 850;
+    white-space: nowrap;
+}
+
+.quick-range {
+    display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+    margin-bottom: 0.9rem;
+}
+
+.quick-range span {
+    color: var(--td-muted); font-size: 0.76rem; font-weight: 850;
+    text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.15rem;
+}
+
+.qr-chip {
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid var(--td-border-subtle);
+    background: var(--td-surface-muted);
+    color: var(--td-muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background var(--td-transition), color var(--td-transition), border-color var(--td-transition);
+}
+
+.qr-chip:hover {
+    background: color-mix(in srgb, var(--td-primary) 12%, transparent);
+    color: var(--td-primary);
+    border-color: color-mix(in srgb, var(--td-primary) 30%, var(--td-border-subtle));
+}
+
+/* Select2 — herda os tokens do dashboard (page-scoped) */
+.toner-dashboard .select2-container { width: 100% !important; }
+.toner-dashboard .select2-container .select2-selection--single {
+    min-height: var(--td-control-h) !important;
+    display: flex !important;
+    align-items: center !important;
+    border: 1px solid var(--td-border-subtle) !important;
+    border-radius: var(--td-radius-sm) !important;
+    background: color-mix(in srgb, var(--td-surface) 86%, transparent) !important;
+}
+.toner-dashboard .select2-container--default.select2-container--focus .select2-selection--single,
+.toner-dashboard .select2-container--default .select2-selection--single:focus {
+    border-color: var(--td-primary) !important;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--td-primary) 18%, transparent) !important;
+}
+.toner-dashboard .select2-container--default .select2-selection--single .select2-selection__rendered {
+    color: var(--td-text) !important; font-size: 0.92rem; padding-left: 0.8rem; line-height: calc(var(--td-control-h) - 2px) !important;
+}
+.toner-dashboard .select2-container--default .select2-selection--single .select2-selection__placeholder { color: var(--td-muted) !important; }
+.toner-dashboard .select2-container--default .select2-selection--single .select2-selection__arrow { height: var(--td-control-h) !important; }
+.select2-dropdown {
+    z-index: 9999 !important;
+    background: var(--td-surface, #fff) !important;
+    color: var(--td-text, #1d1d1f) !important;
+    border: 1px solid var(--td-border-subtle) !important;
+    border-radius: var(--td-radius-md) !important;
+    overflow: hidden !important;
+    box-shadow: var(--td-shadow-md);
+}
+.select2-search--dropdown .select2-search__field {
+    border: 1px solid var(--td-border-subtle) !important;
+    border-radius: 8px !important;
+    background: var(--td-surface, #fff) !important;
+    color: var(--td-text, #1d1d1f) !important;
+}
+.select2-results__option { color: var(--td-text, #1d1d1f) !important; font-size: 0.9rem; }
+.select2-results__option--highlighted { background: var(--td-primary, #0071e3) !important; color: #fff !important; }
+.select2-results__option[aria-selected="true"] { background: var(--td-primary-soft, rgba(0,113,227,0.12)) !important; color: var(--td-primary, #0071e3) !important; }
 </style>
 
 <div class="toner-dashboard">
@@ -637,16 +716,38 @@
         </section>
 
         <section class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <i class="fa fa-sliders"></i>
+                    Filtros
+                </div>
+                {% if f_item or f_cc_id or f_usuario %}
+                    <span class="filters-badge">
+                        <i class="fa fa-filter"></i>
+                        {{ filtros_ativos_count }} filtro{{ filtros_ativos_count|pluralize }} ativo{{ filtros_ativos_count|pluralize }}
+                    </span>
+                {% endif %}
+            </div>
+
             <div class="panel-body">
+                <div class="quick-range">
+                    <span>Período rápido:</span>
+                    <button type="button" class="qr-chip" onclick="aplicarPeriodo(7)">7 dias</button>
+                    <button type="button" class="qr-chip" onclick="aplicarPeriodo(30)">30 dias</button>
+                    <button type="button" class="qr-chip" onclick="aplicarPeriodo(90)">90 dias</button>
+                    <button type="button" class="qr-chip" onclick="aplicarMesAtual()">Mês atual</button>
+                    <button type="button" class="qr-chip" onclick="aplicarAnoAtual()">Ano atual</button>
+                </div>
+
                 <form method="get" class="filters-grid" id="filtrosForm" autocomplete="off">
                     <div class="form-group col-2">
                         <label>Data Início</label>
-                        <input type="date" class="form-control" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}">
+                        <input type="date" class="form-control" id="filtroInicio" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}">
                     </div>
 
                     <div class="form-group col-2">
                         <label>Data Fim</label>
-                        <input type="date" class="form-control" name="fim" value="{{ dt_fim|date:'Y-m-d' }}">
+                        <input type="date" class="form-control" id="filtroFim" name="fim" value="{{ dt_fim|date:'Y-m-d' }}">
                     </div>
 
                     <div class="form-group col-3">
@@ -656,7 +757,12 @@
 
                     <div class="form-group col-2">
                         <label>Centro de Custo</label>
-                        <input type="text" class="form-control" name="cc" value="{{ f_cc }}" placeholder="Código ou setor">
+                        <select class="form-control" id="filtroCC" name="cc">
+                            <option value="">Todos os centros</option>
+                            {% for cc in centros_opcoes %}
+                                <option value="{{ cc.id }}" {% if f_cc_id == cc.id %}selected{% endif %}>{{ cc.numero }} — {{ cc.departamento }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
 
                     <div class="form-group col-3">
@@ -841,6 +947,10 @@
                     <i class="fa fa-list-ul"></i>
                     Detalhamento por Centro de Custo
                 </div>
+                <span class="table-sub" style="margin:0;" title="Intervalo médio (dias e R$) entre uma baixa de toner e a próxima, no mesmo centro de custo — indicador de cadência de reposição.">
+                    <i class="fa fa-circle-info"></i>
+                    Cadência de reposição: tempo e gasto médio entre baixas
+                </span>
             </div>
 
             <div class="panel-body">
@@ -854,6 +964,8 @@
                                 <th class="text-right">Custo Total</th>
                                 <th class="text-right">% Total</th>
                                 <th class="text-right">Ticket Médio</th>
+                                <th class="text-right">Tempo Médio entre Baixas</th>
+                                <th class="text-right">Gasto Médio entre Baixas</th>
                             </tr>
                         </thead>
 
@@ -879,10 +991,16 @@
                                     <td data-label="Ticket Médio" class="text-right">
                                         R$ {{ l.ticket|floatformat:2|intcomma }}
                                     </td>
+                                    <td data-label="Tempo Médio entre Baixas" class="text-right">
+                                        {% if l.dias_medio_baixa is not None %}{{ l.dias_medio_baixa|floatformat:1 }} dia(s){% else %}—{% endif %}
+                                    </td>
+                                    <td data-label="Gasto Médio entre Baixas" class="text-right">
+                                        {% if l.gasto_medio_baixa is not None %}R$ {{ l.gasto_medio_baixa|floatformat:2|intcomma }}{% else %}—{% endif %}
+                                    </td>
                                 </tr>
                             {% empty %}
                                 <tr>
-                                    <td colspan="6">
+                                    <td colspan="8">
                                         <div class="empty-state">
                                             Nenhum registro encontrado para o período informado.
                                         </div>
@@ -899,6 +1017,8 @@
                                 <td data-label="Custo Total" class="text-right"><strong>R$ {{ kpi_total_gasto|floatformat:2|intcomma }}</strong></td>
                                 <td data-label="% Total" class="text-right">100%</td>
                                 <td data-label="Ticket Médio" class="text-right">R$ {{ kpi_ticket_medio|floatformat:2|intcomma }}</td>
+                                <td data-label="Tempo Médio entre Baixas" class="text-right">—</td>
+                                <td data-label="Gasto Médio entre Baixas" class="text-right">—</td>
                             </tr>
                         </tfoot>
                         {% endif %}
@@ -1404,6 +1524,44 @@
         });
     }
 
+    /* ── Filtros: presets de período + select2 do centro de custo ──────── */
+    function toISODate(d) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function setPeriodoESubmeter(ini, fim) {
+        document.getElementById('filtroInicio').value = toISODate(ini);
+        document.getElementById('filtroFim').value = toISODate(fim);
+        document.getElementById('filtrosForm').submit();
+    }
+
+    window.aplicarPeriodo = function aplicarPeriodo(dias) {
+        const fim = new Date();
+        const ini = new Date();
+        ini.setDate(fim.getDate() - (dias - 1));
+        setPeriodoESubmeter(ini, fim);
+    };
+
+    window.aplicarMesAtual = function aplicarMesAtual() {
+        const fim = new Date();
+        const ini = new Date(fim.getFullYear(), fim.getMonth(), 1);
+        setPeriodoESubmeter(ini, fim);
+    };
+
+    window.aplicarAnoAtual = function aplicarAnoAtual() {
+        const fim = new Date();
+        const ini = new Date(fim.getFullYear(), 0, 1);
+        setPeriodoESubmeter(ini, fim);
+    };
+
+    if (window.jQuery) {
+        jQuery('#filtroCC').select2({
+            width: '100%',
+            placeholder: 'Todos os centros',
+            allowClear: true
+        });
+    }
+
     /* ── Exportação em IMAGEM (resumo executivo do consumo de toner) ───── */
     var FONT = 'Inter, -apple-system, "Segoe UI", sans-serif';
     var INK = '#1d1d1f', SUB = '#6e6e73', LINE = '#e6e6ea', BRAND = '#0071e3',
@@ -1471,14 +1629,18 @@
 
         var centros = (R.centros || []).slice(0, 12);
         var itens   = (R.itens   || []).slice(0, 12);
-        var tempos  = (R.tempo   || []).slice(0, 12);
+        var f       = R.filtros || {};
+        var filtrosPartes = [];
+        if (f.item) filtrosPartes.push('Item: ' + f.item);
+        if (f.cc) filtrosPartes.push('CC: ' + f.cc);
+        if (f.usuario) filtrosPartes.push('Usuário: ' + f.usuario);
+        var filtrosTxt = filtrosPartes.length ? filtrosPartes.join('  ·  ') : 'Nenhum filtro aplicado — todos os registros do período';
 
         var DPR = 2, W = 980, PAD = 44, secGap = 26;
         var secBlock = function (rows) { return 30 + 34 + Math.max(1, rows.length) * 30; };
-        var H = PAD + 70 + 84 + 26
+        var H = PAD + 88 + 84 + 26
               + secBlock(centros) + secGap
-              + secBlock(itens) + secGap
-              + secBlock(tempos) + 44;
+              + secBlock(itens) + 44;
 
         var cv = document.createElement('canvas');
         cv.width = W * DPR; cv.height = H * DPR;
@@ -1495,12 +1657,14 @@
         c.fillText('Consumo de Toner — Resumo', PAD, y + 10);
         c.fillStyle = SUB; c.font = '500 14px ' + FONT;
         c.fillText('Período: ' + (R.periodo || '') + '  ·  ' + (R.periodo_dias || 0) + ' dia(s)', PAD, y + 36);
+        c.font = '500 12px ' + FONT;
+        c.fillText('Filtros: ' + filtrosTxt, PAD, y + 56);
         c.textAlign = 'right'; c.fillStyle = BRAND; c.font = '800 20px ' + FONT;
         c.fillText('Zelo', W - PAD, y + 8);
         c.fillStyle = SUB; c.font = '500 12px ' + FONT;
         c.fillText('Santa Colomba', W - PAD, y + 30);
         c.textAlign = 'left';
-        y += 70;
+        y += 88;
 
         var kpis = [
             { l: 'Gasto Total',    v: brl(R.kpi.gasto_total),    col: BRAND },
@@ -1522,19 +1686,21 @@
         });
         y += kh + 26;
 
-        y = drawSection(c, 'Gasto por Centro de Custo', PAD, y, W - PAD * 2,
-            ['Centro de Custo', 'Qtd', 'Gasto', '% do Total'], [0.50, 0.12, 0.23, 0.15],
-            centros.map(function (r) { return [r.cc, num(r.qtd), brl(r.gasto), (r.pct || 0).toFixed(1) + '%']; }));
+        y = drawSection(c, 'Gasto por Centro de Custo — cadência de reposição', PAD, y, W - PAD * 2,
+            ['Centro de Custo', 'Qtd', 'Gasto', '% Total', 'Tempo Médio', 'Gasto Médio entre Baixas'],
+            [0.28, 0.08, 0.16, 0.11, 0.16, 0.21],
+            centros.map(function (r) {
+                return [
+                    r.cc, num(r.qtd), brl(r.gasto), (r.pct || 0).toFixed(1) + '%',
+                    (r.dias_medio == null ? '—' : (r.dias_medio.toFixed(1) + ' d')),
+                    (r.gasto_medio == null ? '—' : brl(r.gasto_medio))
+                ];
+            }));
         y += secGap;
 
         y = drawSection(c, 'Itens Mais Consumidos', PAD, y, W - PAD * 2,
             ['Item', 'Qtd', 'Gasto'], [0.60, 0.18, 0.22],
             itens.map(function (r) { return [r.nome, num(r.qtd), brl(r.gasto)]; }));
-        y += secGap;
-
-        y = drawSection(c, 'Tempo Médio entre Baixas por Centro de Custo', PAD, y, W - PAD * 2,
-            ['Centro de Custo', 'Baixas', 'Tempo Médio'], [0.58, 0.18, 0.24],
-            tempos.map(function (r) { return [r.cc, num(r.baixas), (r.dias_medio == null ? '—' : (r.dias_medio.toFixed(1) + ' dias'))]; }));
 
         c.fillStyle = SUB; c.font = '500 12px ' + FONT; c.textAlign = 'left';
         c.fillText('Gerado em ' + (R.gerado_em || '') + '  ·  Zelo · Santa Colomba Agropecuária', PAD, H - 22);

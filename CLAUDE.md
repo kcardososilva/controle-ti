@@ -88,6 +88,7 @@ ALERTA_EMAIL=...
 PRTG_URL=https://<prtg-host>
 PRTG_USER=...
 PRTG_PASSHASH=...
+KIOSK_APK_DIR=...  # opcional — pasta do instalador (.apk) do app Quiosque; default controle/kiosk_apk/
 ```
 
 ### Production Server
@@ -215,6 +216,7 @@ All models extend `AuditModel` which adds `criado_por`, `atualizado_por`, `creat
 | `Locacao` | Equipment rental/leasing contract attached to an `Item`. Field `valor_mensal` = monthly fee used in cost dashboards. |
 | `PlantaProjeto` | Mapa visual de infraestrutura. Campo `layout` (JSONField) armazena `{elements:[], connections:[]}`. Campos computados: `total_elementos`, `elementos_com_prtg`. |
 | `PlantaLayoutHistorico` | Histórico de versões do layout de uma planta (FK → `PlantaProjeto`). |
+| `KioskMatricula` / `KioskDevice` / `KioskInstaladorLink` | Módulo Quiosque (app Android): código de matrícula de uso único, celular corporativo integrado, e link de download do instalador (.apk) com token opaco e validade curta — o arquivo em si fica em `settings.KIOSK_APK_DIR` (fora do `/media/`, que é servido sem autenticação). |
 
 ### Hierarchy Model — `Usuario` fields
 
@@ -500,7 +502,7 @@ function isoProj(wx, wy, wz) {
 2. `custo_movimentacoes` — `MovimentacaoItem.custo` for movements linked to users in the directorship.
 3. `custo_itens` — `Locacao.valor_mensal` (monthly rental fee) for items in cost centers associated with the directorship. **This is NOT `Item.valor` (acquisition cost).**
 
-FontAwesome icons are loaded by `base.html`. Select2 is loaded globally and should be initialized in `{% block extra_js %}` when a form uses dropdowns. Chart.js 4.4.3 is loaded from CDN in dashboards that need charts.
+FontAwesome icons are loaded by `base.html`. Select2 **não** é global — cada página que usa dropdowns carrega jQuery + Select2 via CDN no próprio `{% block extra_css %}`/`{% block extra_js %}` (ver `avisos_contrato_vencer.html` ou `equipamentos_list.html` como referência) e inicializa com `width: '100%'` para funcionar mesmo dentro de um `<details>` retrátil fechado. Chart.js 4.4.3 é carregado via CDN nos dashboards que precisam de gráficos.
 
 ## Architecture Rules
 
@@ -518,3 +520,4 @@ FontAwesome icons are loaded by `base.html`. Select2 is loaded globally and shou
 12. **PRTG credentials never reach the browser.** Toda chamada ao PRTG passa por `prtg_service.py` no servidor. O frontend acessa apenas `/plantas/prtg/status/` (`@login_required`).
 13. **Status efetivo PRTG = pior entre device-level e ping sensor.** Nunca assumir que o status de device-level do PRTG reflete corretamente o ping. Usar `prtg_service.get_devices_map()` que já faz a resolução.
 14. **`layout_json` no contexto de plantas deve ser o dict Python** (não `json.dumps()`). O filtro `{{ layout_json|json_script:"id" }}` serializa corretamente; `|safe` é XSS e está proibido.
+15. **Nunca adicionar/alterar itens de navegação — navbar lateral (`base.html`) ou `{% block header_actions %}` (topbar) — sem autorização explícita do usuário nessa mensagem.** Ações de página (ex.: "Exportar Excel") vão no **corpo** da página (ex.: dentro do `kpi-row`/card, com `margin-left:auto`), nunca na topbar/navbar por conta própria. Só adicionar link de navbar quando o usuário pedir isso especificamente.

@@ -215,11 +215,19 @@ urlpatterns = [
     path("api/quiosque/config/",              views.kiosk_config,       name="kiosk_config"),
     path("api/quiosque/comando/<int:pk>/ack/", views.kiosk_comando_ack, name="kiosk_comando_ack"),
 
+    # Download do instalador (.apk): rota pública de propósito (protegida por
+    # token de validade curta, não por login) — quem baixa é o celular ainda
+    # sem o app, escaneando o QR Code gerado em /quiosque/matriculas/.
+    path("quiosque/instalador/baixar/<str:token>/", views.kiosk_instalador_download, name="kiosk_instalador_download"),
+
     # ── Módulo Quiosque — Dashboard interno (TI) ────────────────────────────
     path("quiosque/",                  views.quiosque_dashboard,     name="quiosque_dashboard"),
     path("quiosque/mapa/",             views.quiosque_mapa,          name="quiosque_mapa"),
     path("quiosque/matriculas/",       views.quiosque_matriculas,    name="quiosque_matriculas"),
-    path("quiosque/matriculas/<int:pk>/excluir/", views.quiosque_matricula_excluir, name="quiosque_matricula_excluir"),
+    path("quiosque/matriculas/<int:pk>/excluir/",   views.quiosque_matricula_excluir,  name="quiosque_matricula_excluir"),
+    path("quiosque/matriculas/<int:pk>/renomear/",  views.quiosque_matricula_renomear, name="quiosque_matricula_renomear"),
+    path("quiosque/instalador/gerar/",              views.quiosque_instalador_gerar,   name="quiosque_instalador_gerar"),
+    path("quiosque/instalador/<int:pk>/revogar/",   views.quiosque_instalador_revogar, name="quiosque_instalador_revogar"),
     path("quiosque/<int:pk>/",         views.quiosque_detalhe,       name="quiosque_detalhe"),
     path("quiosque/<int:pk>/config/",  views.quiosque_config_editar, name="quiosque_config_editar"),
     path("quiosque/<int:pk>/comando/", views.quiosque_comando_novo,  name="quiosque_comando_novo"),
@@ -232,6 +240,9 @@ urlpatterns = [
     path("portal/equipamentos/exportar/", views.portal_equipamentos_export, name="portal_equipamentos_export"),
     path("portal/equipamentos/<int:pk>/", views.portal_equipamento_detail, name="portal_equipamento_detail"),
     path("portal/manutencao/", views.portal_manutencao_list, name="portal_manutencao_list"),
+    path("portal/manutencao/lotes/", views.portal_lotes_manutencao_list, name="portal_lotes_manutencao_list"),
+    path("portal/manutencao/lotes/novo/", views.portal_lote_manutencao_criar, name="portal_lote_manutencao_criar"),
+    path("portal/manutencao/lotes/<int:pk>/", views.portal_lote_manutencao_detail, name="portal_lote_manutencao_detail"),
     path("portal/manutencao/<int:pk>/", views.portal_manutencao_detail, name="portal_manutencao_detail"),
     path("portal/troca-antecipada/", views.portal_troca_antecipada_list, name="portal_troca_antecipada_list"),
     path("portal/troca-antecipada/nova/", views.portal_troca_antecipada_nova, name="portal_troca_antecipada_nova"),
@@ -247,6 +258,9 @@ urlpatterns = [
     path("manutencao/recebimentos/ajuda/", views.manutencao_recebimentos_ajuda, name="manutencao_recebimentos_ajuda"),
     path("manutencao/recebimentos/<int:pk>/", views.manutencao_recebimento_detail, name="manutencao_recebimento_detail"),
     path("manutencao/recebimentos/<int:pk>/concluir/", views.manutencao_recebimento_acao, name="manutencao_recebimento_acao"),
+    path("manutencao/lotes/", views.manutencao_lotes_list, name="manutencao_lotes_list"),
+    path("manutencao/lotes/<int:pk>/", views.manutencao_lote_detail, name="manutencao_lote_detail"),
+    path("manutencao/lotes/<int:pk>/excluir/", views.manutencao_lote_excluir, name="manutencao_lote_excluir"),
 
     # ── Inteligência de Sistema ─────────────────────────────────────────────
     path("inteligencia/", views.sistema_inteligencia_dashboard, name="sistema_inteligencia_dashboard"),

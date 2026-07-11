@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Visão Geral — Apresentação{% endblock %}
 {% block page_title %}Visão Geral{% endblock %}
-{% block page_subtitle %}Apresentação executiva de equipamentos e licenças{% endblock %}
+{% block page_subtitle %}Apresentação executiva de equipamentos, licenças e manutenção{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -94,10 +94,14 @@
 .pres-legend-row b { margin-left:auto; font-variant-numeric:tabular-nums; }
 
 /* Capa */
-.pres-cover { background:
-  radial-gradient(1100px 460px at 12% -8%, color-mix(in srgb, var(--pr-brand) 18%, transparent), transparent 60%),
-  radial-gradient(900px 440px at 108% 120%, color-mix(in srgb, var(--pr-purple) 16%, transparent), transparent 55%),
-  var(--pr-bg); }
+.pres-cover {
+  position:absolute; inset:0; padding:clamp(20px,3.2vw,46px);
+  display:flex; flex-direction:column; gap:16px;
+  background:
+    radial-gradient(1100px 460px at 12% -8%, color-mix(in srgb, var(--pr-brand) 18%, transparent), transparent 60%),
+    radial-gradient(900px 440px at 108% 120%, color-mix(in srgb, var(--pr-purple) 16%, transparent), transparent 55%),
+    var(--pr-bg);
+}
 .pres-cover-head { display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
 .pres-chip {
   display:inline-flex; align-items:center; gap:7px; align-self:flex-start;
@@ -155,7 +159,15 @@
   .pres-kpis { grid-template-columns:repeat(2,1fr); }
   .pres-sbody { flex-direction:column; }
   .pres-side { width:100%; }
-  .pres-stage { aspect-ratio:auto; height:auto; min-height:520px; }
+
+  /* Abaixo de 860px o slide vira um cartão de altura natural — sem crossfade
+     absoluto — para não cortar KPIs/gráficos dentro de uma caixa com altura
+     fixa (o modelo "stage 16:9" foi pensado para o modo Apresentar em tela cheia). */
+  .pres-stage { aspect-ratio:auto; height:auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+  .pres-slide { position:static; opacity:1; transform:none; transition:none; display:none; }
+  .pres-slide.active { display:flex; }
+  .pres-cover { position:static; padding:0; }
+  .pres-chartbox { flex:none; height:min(60vw,300px); min-height:220px; }
 }
 @media (max-width:560px){
   .pres-seg { width:100%; }
@@ -164,6 +176,10 @@
 }
 @media (max-width:430px){
   .pres-kpis { grid-template-columns:1fr; }
+}
+@media (max-width:380px){
+  .pres-btn-label { display:none; }
+  .pres-btn { padding:0 10px; }
 }
 </style>
 {% endblock %}
@@ -179,6 +195,9 @@
       </button>
       <button id="dsLic" onclick="setDataset('licencas')">
         <i class="fa-solid fa-id-badge"></i> Licenças
+      </button>
+      <button id="dsManut" onclick="setDataset('manutencao')">
+        <i class="fa-solid fa-screwdriver-wrench"></i> Manutenção
       </button>
     </div>
 
@@ -214,10 +233,28 @@
       </select>
     </div>
 
+    <!-- Filtros: Manutenção -->
+    <div class="pres-filters" data-ds="manutencao" hidden>
+      <select id="fManutForn" onchange="recarregar()">
+        <option value="">Todos os fornecedores</option>
+        {% for f in fornecedores %}<option value="{{ f.pk }}">{{ f.nome }}</option>{% endfor %}
+      </select>
+      <select id="fManutCC" onchange="recarregar()">
+        <option value="">Todos os centros de custo</option>
+        {% for c in centros_custo %}<option value="{{ c.pk }}">{{ c.numero }} · {{ c.departamento }}</option>{% endfor %}
+      </select>
+      <select id="fManutStatus" onchange="recarregar()">
+        <option value="">Todos os status</option>
+        <option value="andamento">Em andamento</option>
+        <option value="concluida">Concluídas</option>
+        <option value="cancelada">Canceladas/Descartadas</option>
+      </select>
+    </div>
+
     <div class="pres-control-actions">
-      <button class="pres-btn" onclick="limparFiltros()" title="Limpar filtros"><i class="fa-solid fa-eraser"></i></button>
-      <button class="pres-btn" id="btnAuto" onclick="toggleAuto()" title="Reprodução automática"><i class="fa-solid fa-play" id="autoIcon"></i> Auto</button>
-      <button class="pres-btn primary" onclick="apresentar()" title="Apresentar em tela cheia (F)"><i class="fa-solid fa-expand"></i> Apresentar</button>
+      <button class="pres-btn" onclick="limparFiltros()" title="Limpar filtros" aria-label="Limpar filtros"><i class="fa-solid fa-eraser"></i></button>
+      <button class="pres-btn" id="btnAuto" onclick="toggleAuto()" title="Reprodução automática" aria-label="Reprodução automática"><i class="fa-solid fa-play" id="autoIcon"></i> <span class="pres-btn-label">Auto</span></button>
+      <button class="pres-btn primary" onclick="apresentar()" title="Apresentar em tela cheia (F)" aria-label="Apresentar em tela cheia"><i class="fa-solid fa-expand"></i> <span class="pres-btn-label">Apresentar</span></button>
     </div>
   </div>
 
@@ -267,6 +304,7 @@ function setDataset(ds){
   dataset = ds;
   el('#dsEquip').classList.toggle('active', ds==='equipamentos');
   el('#dsLic').classList.toggle('active', ds==='licencas');
+  el('#dsManut').classList.toggle('active', ds==='manutencao');
   document.querySelectorAll('.pres-filters').forEach(f => { f.hidden = (f.dataset.ds !== ds); });
   recarregar();
 }
@@ -277,6 +315,8 @@ function leituraFiltros(){
   const add = (key, id) => { const v = el('#'+id)?.value; if (v) p.set(key, v); };
   if (dataset === 'equipamentos'){
     add('localidade','fEquipLocalidade'); add('centro_custo','fEquipCC'); add('status','fEquipStatus');
+  } else if (dataset === 'manutencao'){
+    add('fornecedor','fManutForn'); add('centro_custo','fManutCC'); add('status','fManutStatus');
   } else {
     add('fornecedor','fLicForn'); add('centro_custo','fLicCC'); add('periodicidade','fLicPer');
   }
@@ -286,6 +326,8 @@ function leituraFiltros(){
 function resumoFiltros(){
   const sels = dataset==='equipamentos'
     ? ['fEquipLocalidade','fEquipCC','fEquipStatus']
+    : dataset==='manutencao'
+    ? ['fManutForn','fManutCC','fManutStatus']
     : ['fLicForn','fLicCC','fLicPer'];
   const parts = [];
   sels.forEach(id => { const s = el('#'+id); if (s && s.value) parts.push(s.options[s.selectedIndex].text); });
@@ -317,7 +359,9 @@ function buildDeck(d){
   destroyCharts();
   const stage = el('#presStage');
   stage.innerHTML = '';
-  const slides = (d.dataset === 'licencas') ? slidesLicencas(d) : slidesEquip(d);
+  const slides = (d.dataset === 'licencas') ? slidesLicencas(d)
+    : (d.dataset === 'manutencao') ? slidesManutencao(d)
+    : slidesEquip(d);
   totalSlides = slides.length;
 
   slides.forEach((s, i) => {
@@ -344,7 +388,9 @@ function shead(num, total, title, sub){
   </div>`;
 }
 function coverSlide(d, total){
-  const chip = d.dataset==='licencas' ? 'Licenças de Software' : 'Parque de Equipamentos';
+  const chip = d.dataset==='licencas' ? 'Licenças de Software'
+    : d.dataset==='manutencao' ? 'Manutenção de Equipamentos'
+    : 'Parque de Equipamentos';
   const kpis = d.kpis.map(k => `
     <div class="pres-kpi ${k.color}">
       <i class="fa-solid ${k.icon} pres-kpi-ic"></i>
@@ -353,7 +399,7 @@ function coverSlide(d, total){
       ${k.sub?`<div class="pres-kpi-s">${k.sub}</div>`:''}
     </div>`).join('');
   return { html: `
-    <div class="pres-cover" style="position:absolute;inset:0;padding:clamp(20px,3.2vw,46px);display:flex;flex-direction:column;gap:16px">
+    <div class="pres-cover">
       <div class="pres-cover-head">
         <span class="pres-chip"><i class="fa-solid fa-chart-line"></i> ${chip}</span>
         <div class="pres-cover-title">${d.titulo}</div>
@@ -443,6 +489,31 @@ function slidesLicencas(d){
   return out;
 }
 
+/* ── Slides: Manutenção ──────────────────────────────────────────── */
+function slidesManutencao(d){
+  const c = d.charts;
+  const T = 6;
+  const out = [];
+  out.push(coverSlide(d, T));
+
+  out.push(slideWithChart(2, T, 'Status das Ordens', 'Situação atual das manutenções', c.status, (cv, ch) =>
+    makeDonut(cv, ch.labels, ch.data, ch.colors), legendHtml(c.status, c.status.colors)));
+
+  out.push(slideWithChart(3, T, 'Custo por Fornecedor', 'Total gasto em manutenções concluídas (R$)', c.fornecedor, (cv, ch) =>
+    makeBar(cv, ch.labels, ch.data, PAL.orange, true)));
+
+  out.push(slideWithChart(4, T, 'Ordens Abertas — últimos 12 meses', 'Volume de manutenções acionadas por mês', c.abertura, (cv, ch) =>
+    makeLine(cv, ch.labels, [{ label:'Ordens abertas', data:ch.data, color:PAL.blue, fill:true }])));
+
+  out.push(slideWithChart(5, T, 'Custo Mensal — últimos 12 meses', 'Manutenções concluídas com valor apurado (R$)', c.custo_mensal, (cv, ch) =>
+    makeLine(cv, ch.labels, [{ label:'Custo', data:ch.data, color:PAL.teal, fill:true }], true)));
+
+  out.push(slideWithChart(6, T, 'Custo por Centro de Custo', 'Manutenções concluídas alocadas por CC (R$)', c.centro_custo, (cv, ch) =>
+    makeBar(cv, ch.labels, ch.data, PAL.purple, true)));
+
+  return out;
+}
+
 /* helper: cria slide com gráfico (ou vazio) */
 let _cid = 0;
 function slideWithChart(num, total, title, sub, chartData, renderFn, sideHtml){
@@ -484,7 +555,7 @@ function makeBar(cv, labels, data, color, moeda){
       scales:{ x:{ ticks:{ callback:(v)=> moeda?fmtBRL(v):fmtNum(v) }, grid:{ color:'rgba(0,0,0,.05)' } }, y:{ grid:{ display:false } } } }
   });
 }
-function makeLine(cv, labels, series){
+function makeLine(cv, labels, series, moeda){
   baseFont();
   return new Chart(cv, {
     type:'line',
@@ -494,8 +565,11 @@ function makeLine(cv, labels, series){
       fill: !!s.fill, borderDash: s.dash?[5,4]:[], tension:.34, pointRadius:2, borderWidth:2.5,
     })) },
     options:{ responsive:true, maintainAspectRatio:false, interaction:{ mode:'index', intersect:false },
-      plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:8, padding:16 } } },
-      scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'rgba(0,0,0,.05)' }, beginAtZero:true, ticks:{ precision:0 } } } }
+      plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:8, padding:16 } },
+        tooltip:{ callbacks:{ label:(x)=> ` ${x.dataset.label}: ${moeda?fmtBRL(x.parsed.y):fmtNum(x.parsed.y)}` } } },
+      scales:{ x:{ grid:{ display:false } },
+        y:{ grid:{ color:'rgba(0,0,0,.05)' }, beginAtZero:true,
+            ticks: moeda ? { callback:(v)=>fmtBRL(v) } : { precision:0 } } } }
   });
 }
 function hexA(hex, a){ try { const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return `rgba(${r},${g},${b},${a})`; } catch(e){ return hex; } }
@@ -521,6 +595,10 @@ function goTo(i){
   });
   document.querySelectorAll('#presDots .pres-dot').forEach((d, idx) => d.classList.toggle('active', idx === current));
   el('#presCounter').textContent = (current+1) + ' / ' + totalSlides;
+  // Em mobile os slides inativos ficam display:none — o canvas do Chart.js pode
+  // ter sido criado com 0×0 se o slide ainda não estava visível nesse instante.
+  // Forçar resize() ao trocar de slide garante que o gráfico ganhe as dimensões reais.
+  requestAnimationFrame(() => { deckCharts.forEach(c => { try { c.resize(); } catch(e){} }); });
 }
 function goRel(delta){ goTo(current + delta); bumpAuto(); }
 
@@ -541,6 +619,19 @@ function apresentar(){
   if (!document.fullscreenElement){ deck.requestFullscreen?.().catch(()=>{}); }
   else { document.exitFullscreen?.(); }
 }
+
+/* ── Swipe (mobile) ────────────────────────────────────────────── */
+let _touchX = null, _touchY = null;
+el('#presStage').addEventListener('touchstart', (e) => {
+  const t = e.touches[0]; _touchX = t.clientX; _touchY = t.clientY;
+}, { passive:true });
+el('#presStage').addEventListener('touchend', (e) => {
+  if (_touchX === null) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - _touchX, dy = t.clientY - _touchY;
+  _touchX = null;
+  if (Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy) * 1.4) goRel(dx < 0 ? 1 : -1);
+}, { passive:true });
 
 /* ── Teclado ───────────────────────────────────────────────────── */
 document.addEventListener('keydown', (e) => {

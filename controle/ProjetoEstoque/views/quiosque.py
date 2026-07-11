@@ -114,6 +114,37 @@ def kiosk_comando_ack(request, pk: int):
     return JsonResponse({"ok": ok}, status=200 if ok else 404)
 
 
+def kiosk_instalador_download(request, token):
+    """GET /quiosque/instalador/baixar/<token>/ — download do .apk.
+
+    Rota PÚBLICA de propósito: quem baixa é o celular ainda sem o app instalado,
+    escaneando o QR Code, sem sessão logada no sistema. A proteção é o token
+    (opaco, validade curta, revogável), não @login_required — mesmo modelo do
+    código de matrícula em kiosk_enroll. Resposta sempre genérica (404) para
+    token inválido, expirado ou revogado, para não dar pista a quem tentar
+    adivinhar tokens.
+    """
+    from django.http import FileResponse, Http404
+
+    if request.method != "GET":
+        raise Http404()
+
+    link = qs.resolver_instalador(token)
+    if link is None:
+        raise Http404()
+    caminho = qs.caminho_instalador(link.nome_arquivo)
+    if caminho is None:
+        raise Http404()
+
+    qs.registrar_download_instalador(link, request.META.get("REMOTE_ADDR"))
+    return FileResponse(
+        open(caminho, "rb"),
+        as_attachment=True,
+        filename=link.nome_arquivo,
+        content_type="application/vnd.android.package-archive",
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Dashboard interno (TI)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -265,7 +296,7 @@ def quiosque_detalhe(request, pk: int):
 @login_required
 def quiosque_matriculas(request):
     from django.db.models import Q
-    from ProjetoEstoque.models import KioskMatricula
+    from ProjetoEstoque.models import KioskMatricula, KioskInstaladorLink
 
     if request.method == "POST":
         descricao = (request.POST.get("descricao") or "").strip()
@@ -288,6 +319,9 @@ def quiosque_matriculas(request):
         "disponiveis": KioskMatricula.objects.filter(usado=False).filter(validas).count(),
         "usadas": KioskMatricula.objects.filter(usado=True).count(),
         "expiradas": KioskMatricula.objects.filter(usado=False, expira_em__lte=agora).count(),
+        "apk": qs.apk_atual(),
+        "apk_dir_display": str(qs.apk_dir()),
+        "instaladores": KioskInstaladorLink.objects.select_related("criado_por").all()[:15],
     })
 
 
@@ -301,6 +335,62 @@ def quiosque_matricula_excluir(request, pk: int):
         # Excluir o código não afeta o dispositivo já matriculado (FK SET_NULL).
         matricula.delete()
         messages.success(request, f"Matrícula {codigo} excluída.")
+    return redirect("quiosque_matriculas")
+
+
+@login_required
+def quiosque_matricula_renomear(request, pk: int):
+    """Edita a descrição (nome de identificação) de uma matrícula já gerada."""
+    from ProjetoEstoque.models import KioskMatricula
+
+    matricula = get_object_or_404(KioskMatricula, pk=pk)
+    if request.method == "POST":
+        matricula.descricao = (request.POST.get("descricao") or "").strip()[:120]
+        matricula.save(update_fields=["descricao"])
+        messages.success(request, "Descrição da matrícula atualizada.")
+    return redirect("quiosque_matriculas")
+
+
+@login_required
+def quiosque_instalador_gerar(request):
+    """POST AJAX — gera um link de instalação (token de validade curta) do .apk
+    atual, com QR Code embutido na resposta. Ver kiosk_instalador_download para
+    o outro lado (rota pública que o celular acessa)."""
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "erro": "Método não permitido."}, status=405)
+
+    try:
+        validade = int(request.POST.get("validade_minutos") or 30)
+    except (TypeError, ValueError):
+        validade = 30
+
+    try:
+        resultado = qs.gerar_link_instalador(validade_minutos=validade, user=request.user, request=request)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "erro": str(exc)}, status=400)
+
+    link = resultado["link"]
+    return JsonResponse({
+        "ok": True,
+        "url": resultado["url"],
+        "qr_base64": resultado["qr_base64"],
+        "nome_arquivo": link.nome_arquivo,
+        "expira_em": timezone.localtime(link.expira_em).strftime("%d/%m/%Y %H:%M"),
+        "validade_minutos": resultado["validade_minutos"],
+    })
+
+
+@login_required
+def quiosque_instalador_revogar(request, pk: int):
+    """Revoga antecipadamente um link de instalação (ex.: gerado por engano ou
+    após concluir o provisionamento dos aparelhos)."""
+    from ProjetoEstoque.models import KioskInstaladorLink
+
+    link = get_object_or_404(KioskInstaladorLink, pk=pk)
+    if request.method == "POST":
+        link.revogado = True
+        link.save(update_fields=["revogado"])
+        messages.success(request, "Link de instalação revogado.")
     return redirect("quiosque_matriculas")
 
 

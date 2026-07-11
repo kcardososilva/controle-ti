@@ -16,6 +16,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 
 from ..models import (
     Fornecedor,
+    LoteManutencao,
     OrdemManutencao,
     OrdemManutencaoAnexo,
     StatusItemChoices,
@@ -128,6 +129,61 @@ def manutencao_recebimento_detail(request, pk: int):
         "status_retorno_opcoes": _STATUS_RETORNO_OPCOES,
     }
     return render(request, "front/manutencao/recebimento_detail.html", context)
+
+
+# ─── Lotes de Manutenção (visão do TI — todos os fornecedores) ────────────────
+
+@login_required
+def manutencao_lotes_list(request):
+    """Lista todos os Lotes de Manutenção já criados pelos fornecedores no
+    Portal. Mesmo documento que o fornecedor vê — o TI só tem visão de todos
+    os fornecedores e a opção de desfazer um lote criado por engano."""
+    lotes = (
+        LoteManutencao.objects
+        .select_related("fornecedor", "criado_por")
+        .prefetch_related("ordens")
+        .order_by("-data", "-created_at")
+    )
+
+    f_fornecedor = (request.GET.get("fornecedor") or "").strip()
+    if f_fornecedor.isdigit():
+        lotes = lotes.filter(fornecedor_id=int(f_fornecedor))
+
+    context = {
+        "lotes": lotes,
+        "fornecedores": Fornecedor.objects.order_by("nome"),
+        "f_fornecedor": f_fornecedor,
+        "tem_filtro": bool(f_fornecedor),
+    }
+    return render(request, "front/manutencao/lotes_list.html", context)
+
+
+@login_required
+def manutencao_lote_detail(request, pk: int):
+    """Documento do lote — mesma estrutura vista pelo fornecedor no Portal."""
+    lote = get_object_or_404(
+        LoteManutencao.objects.select_related("fornecedor", "criado_por"), pk=pk,
+    )
+    ordens = list(lote.ordens.select_related("item").order_by("-finalizada_em"))
+    for o in ordens:
+        o.valor_calc = o.valor_manutencao
+    context = {"lote": lote, "ordens": ordens}
+    return render(request, "front/manutencao/lote_detail.html", context)
+
+
+@login_required
+def manutencao_lote_excluir(request, pk: int):
+    """Desfaz um lote: as OS's voltam a ficar disponíveis (sem lote) para o
+    fornecedor recriá-lo corretamente; a exclusão nunca apaga as ordens em si,
+    só o documento de agrupamento."""
+    if request.method != "POST":
+        return redirect("manutencao_lotes_list")
+    lote = get_object_or_404(LoteManutencao, pk=pk)
+    nome = lote.nome
+    lote.ordens.update(lote_manutencao=None)
+    lote.delete()
+    messages.success(request, f'Lote "{nome}" excluído — as ordens voltaram a ficar disponíveis para um novo lote.')
+    return redirect("manutencao_lotes_list")
 
 
 # Ações que o TI pode disparar. DESCARTE_LOCAL_APROVADO = aprovar o pedido de

@@ -1,0 +1,113 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}{{ lote.nome }} — Lote de Manutenção{% endblock %}
+{% block page_title %}{{ lote.nome }}{% endblock %}
+{% block page_subtitle %}Lote de manutenção · {{ lote.data|date:"d/m/Y" }}{% endblock %}
+
+{% block header_actions %}
+  <button type="button" class="pf-btn no-print" onclick="window.print()"><i class="fa-solid fa-print"></i> Imprimir</button>
+  <a href="{% url 'portal_lotes_manutencao_list' %}" class="pf-btn no-print"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  :where(.pf-ld) { display: grid; gap: 1.2rem; }
+
+  .pf-ld .pf-doc-head {
+    display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    padding: 1.3rem 1.4rem; border-radius: var(--radius-lg); background: var(--bg-elevated);
+    border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+  }
+  .pf-ld .pf-doc-item-l { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--text-quaternary); }
+  .pf-ld .pf-doc-item-v { margin-top: .3rem; font-weight: 700; font-size: 1rem; }
+  .pf-ld .pf-doc-item-v.is-brand { color: var(--brand); }
+  .pf-ld .pf-doc-item-v.is-success { color: var(--success); font-size: 1.3rem; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+
+  .pf-ld .pf-sec-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; margin: .2rem 0 .1rem; }
+
+  .pf-ld .pf-itens { display: grid; gap: .7rem; }
+  .pf-ld .pf-item-card {
+    display: grid; gap: .5rem; padding: 1rem 1.15rem; border-radius: var(--radius-md);
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
+  }
+  .pf-ld .pf-item-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .pf-ld .pf-item-name { font-weight: 800; letter-spacing: -.01em; }
+  .pf-ld .pf-item-meta { color: var(--text-tertiary); font-size: .78rem; margin-top: .18rem; }
+  .pf-ld .pf-item-valor { font-weight: 800; font-size: 1rem; color: var(--success); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pf-ld .pf-item-diag { font-size: .82rem; color: var(--text-secondary); line-height: 1.5; padding-top: .4rem; border-top: 1px solid var(--separator-hairline); }
+  .pf-ld .pf-item-link { font-size: .74rem; font-weight: 700; color: var(--brand); }
+
+  .pf-ld .pf-doc-total {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+    padding: 1.1rem 1.3rem; border-radius: var(--radius-lg); background: color-mix(in srgb, var(--success) 6%, var(--bg-elevated));
+    border: 1px solid color-mix(in srgb, var(--success) 22%, var(--separator-hairline));
+  }
+  .pf-ld .pf-doc-total-l { font-weight: 700; color: var(--text-secondary); }
+  .pf-ld .pf-doc-total-v { font-size: 1.5rem; font-weight: 850; color: var(--success); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+
+  @media print {
+    .pf-sidebar, .pf-topbar, .no-print { display: none !important; }
+    .pf-main-inner, .pf-content { padding: 0 !important; }
+    .pf-ld .pf-item-card, .pf-ld .pf-doc-head, .pf-ld .pf-doc-total { box-shadow: none !important; border-color: #d0d0d0 !important; }
+    body { background: #fff !important; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-ld">
+
+  <div class="pf-doc-head">
+    <div>
+      <div class="pf-doc-item-l">Fornecedor</div>
+      <div class="pf-doc-item-v">{{ lote.fornecedor.nome }}</div>
+    </div>
+    <div>
+      <div class="pf-doc-item-l">Data do lote</div>
+      <div class="pf-doc-item-v">{{ lote.data|date:"d/m/Y" }}</div>
+    </div>
+    <div>
+      <div class="pf-doc-item-l">Ordens incluídas</div>
+      <div class="pf-doc-item-v is-brand">{{ lote.quantidade_ordens }}</div>
+    </div>
+    <div>
+      <div class="pf-doc-item-l">Criado em</div>
+      <div class="pf-doc-item-v">{{ lote.created_at|date:"d/m/Y H:i" }}{% if lote.criado_por %} · {{ lote.criado_por.get_full_name|default:lote.criado_por.username }}{% endif %}</div>
+    </div>
+    <div>
+      <div class="pf-doc-item-l">Valor total do lote</div>
+      <div class="pf-doc-item-v is-success">R$ {{ lote.valor_total }}</div>
+    </div>
+  </div>
+
+  <div class="pf-sec-title">Ordens de manutenção do lote</div>
+  <div class="pf-itens">
+    {% for o in ordens %}
+    <div class="pf-item-card">
+      <div class="pf-item-top">
+        <div>
+          <div class="pf-item-name">{{ o.item.nome }}{% if o.item.modelo %} <span style="font-weight:500;color:var(--text-tertiary);">· {{ o.item.modelo }}</span>{% endif %}</div>
+          <div class="pf-item-meta">
+            OS #{{ o.pk }} · {% if o.item.numero_serie %}Série {{ o.item.numero_serie }} · {% endif %}finalizada em {{ o.finalizada_em|date:"d/m/Y"|default:"—" }}
+            {% if o.tem_garantia_reparo %} · garantia de {{ o.garantia_dias }} dia{{ o.garantia_dias|pluralize }}{% endif %}
+          </div>
+        </div>
+        <span class="pf-item-valor">R$ {{ o.valor_calc|default:"0,00" }}</span>
+      </div>
+      {% if o.diagnostico %}
+      <div class="pf-item-diag"><i class="fa-solid fa-file-lines" style="opacity:.6;" aria-hidden="true"></i> {{ o.diagnostico }}</div>
+      {% endif %}
+      <a href="{% url 'portal_manutencao_detail' o.pk %}" class="pf-item-link no-print"><i class="fa-solid fa-arrow-up-right-from-square"></i> Ver ordem completa</a>
+    </div>
+    {% empty %}
+    <p style="color:var(--text-tertiary); font-size:.86rem;">Este lote não tem ordens vinculadas.</p>
+    {% endfor %}
+  </div>
+
+  <div class="pf-doc-total">
+    <span class="pf-doc-total-l">Total do lote "{{ lote.nome }}"</span>
+    <span class="pf-doc-total-v">R$ {{ lote.valor_total }}</span>
+  </div>
+
+</div>
+{% endblock %}

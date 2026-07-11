@@ -9,6 +9,7 @@ Camadas de isolamento (defesa em profundidade — ver CLAUDE.md):
 v1: somente visão de equipamentos + status.
 Fluxo de manutenção e licenças entram em fases seguintes.
 """
+from datetime import date as _date
 from decimal import Decimal
 from functools import wraps
 
@@ -27,6 +28,7 @@ from ..models import (
     Categoria,
     Localidade,
     Licenca,
+    LoteManutencao,
     OrdemManutencao,
     OrdemManutencaoAnexo,
     StatusItemChoices,
@@ -407,16 +409,61 @@ _FORNECEDOR_ACAO_STATUS = {
 }
 
 
+def _parse_data_filtro(valor):
+    """Lê uma data de filtro (input type=date, formato ISO yyyy-mm-dd). Silenciosa
+    em valor ausente/ inválido — filtro por data nunca deve derrubar a tela."""
+    valor = (valor or "").strip()
+    if not valor:
+        return None
+    try:
+        return _date.fromisoformat(valor)
+    except ValueError:
+        return None
+
+
 @fornecedor_required
 def portal_manutencao_list(request):
-    """Fila de ordens de manutenção do fornecedor (abertas + histórico)."""
+    """Fila de ordens de manutenção do fornecedor (abertas + histórico).
+
+    O histórico aceita filtros (nome, modelo, nº de série, período) — pensado
+    para o fornecedor localizar rapidamente OS's antigas na hora de montar um
+    Lote de Manutenção. As "em aberto" não são filtradas: são poucas e o
+    fornecedor precisa vê-las todas para agir."""
     base = (
         OrdemManutencao.objects
         .filter(fornecedor=request.fornecedor)
         .select_related("item", "item_substituto")
     )
     abertas = list(base.exclude(status__in=_OS_ABERTAS_EXCLUI))
-    historico = list(base.filter(status__in=_OS_ABERTAS_EXCLUI)[:50])
+
+    # ── Filtros do histórico ────────────────────────────────────────────────
+    f_nome = (request.GET.get("nome") or "").strip()
+    f_modelo = (request.GET.get("modelo") or "").strip()
+    f_ns = (request.GET.get("ns") or "").strip()
+    f_data_de = _parse_data_filtro(request.GET.get("data_de"))
+    f_data_ate = _parse_data_filtro(request.GET.get("data_ate"))
+
+    historico_qs = base.filter(status__in=_OS_ABERTAS_EXCLUI)
+    if f_nome:
+        historico_qs = historico_qs.filter(item__nome__icontains=f_nome)
+    if f_modelo:
+        historico_qs = historico_qs.filter(item__modelo__icontains=f_modelo)
+    if f_ns:
+        historico_qs = historico_qs.filter(item__numero_serie__icontains=f_ns)
+    if f_data_de:
+        historico_qs = historico_qs.filter(finalizada_em__date__gte=f_data_de)
+    if f_data_ate:
+        historico_qs = historico_qs.filter(finalizada_em__date__lte=f_data_ate)
+    historico_qs = historico_qs.order_by("-finalizada_em", "-created_at")
+
+    paginator = Paginator(historico_qs, 15)
+    historico_page = paginator.get_page(request.GET.get("page", 1))
+    for o in historico_page:
+        o.valor_calc = o.valor_manutencao
+
+    get_copy = request.GET.copy()
+    get_copy.pop("page", None)
+    qs_keep = get_copy.urlencode()
 
     # Marca as OS que aguardam a ação do fornecedor (a coluna prioritária da tela).
     qtd_acao = 0
@@ -433,17 +480,118 @@ def portal_manutencao_list(request):
         if counts.get(s.value, 0)
     ]
 
+    qtd_disponiveis_lote = base.filter(
+        status=StatusOrdemManutencaoChoices.CONCLUIDO, lote_manutencao__isnull=True,
+    ).count()
+
     context = {
         "fornecedor": request.fornecedor,
         "abertas": abertas,
-        "historico": historico,
+        "historico_page": historico_page,
         "qtd_abertas": len(abertas),
         "qtd_acao": qtd_acao,
         "resumo_status": resumo_status,
         "total_os": base.count(),
         "active_nav": "manutencao",
+        "f_nome": f_nome,
+        "f_modelo": f_modelo,
+        "f_ns": f_ns,
+        "f_data_de": request.GET.get("data_de", ""),
+        "f_data_ate": request.GET.get("data_ate", ""),
+        "tem_filtro": any([f_nome, f_modelo, f_ns, f_data_de, f_data_ate]),
+        "qs_keep": qs_keep,
+        "qtd_disponiveis_lote": qtd_disponiveis_lote,
     }
     return render(request, "front/portal/portal_manutencao_list.html", context)
+
+
+# ─── Lotes de Manutenção (agrupamento de OS's concluídas em um documento) ─────
+
+@fornecedor_required
+def portal_lote_manutencao_criar(request):
+    """Cria um Lote de Manutenção a partir da seleção feita no histórico da
+    tela de Manutenção (checkboxes). Reaplica as mesmas regras de elegibilidade
+    da seleção (concluída, do próprio fornecedor, ainda sem lote) no servidor —
+    nunca confia apenas no que veio marcado no formulário."""
+    if request.method != "POST":
+        return redirect("portal_manutencao_list")
+
+    nome = (request.POST.get("nome") or "").strip()
+    data_lote = _parse_data_filtro(request.POST.get("data")) or timezone.localdate()
+    ids = request.POST.getlist("ordens")
+
+    if not nome:
+        messages.error(request, "Informe um nome para o lote.")
+        return redirect("portal_manutencao_list")
+    if not ids:
+        messages.error(request, "Selecione ao menos uma ordem de manutenção concluída para criar o lote.")
+        return redirect("portal_manutencao_list")
+
+    ordens = list(
+        OrdemManutencao.objects.filter(
+            pk__in=ids,
+            fornecedor=request.fornecedor,
+            status=StatusOrdemManutencaoChoices.CONCLUIDO,
+            lote_manutencao__isnull=True,
+        )
+    )
+    if not ordens:
+        messages.error(
+            request,
+            "As ordens selecionadas não estão mais disponíveis para um lote "
+            "(já concluídas em outro lote, ou o status mudou nesse meio-tempo).",
+        )
+        return redirect("portal_manutencao_list")
+
+    lote = LoteManutencao(nome=nome, data=data_lote, fornecedor=request.fornecedor)
+    lote.criado_por = request.user
+    lote.atualizado_por = request.user
+    lote.save()
+    OrdemManutencao.objects.filter(pk__in=[o.pk for o in ordens]).update(lote_manutencao=lote)
+
+    ignoradas = len(ids) - len(ordens)
+    msg = f'Lote "{lote.nome}" criado com {len(ordens)} ordem(ns).'
+    if ignoradas:
+        msg += f" {ignoradas} selecionada(s) não puderam entrar (fora de elegibilidade nesse meio-tempo)."
+    messages.success(request, msg)
+    return redirect("portal_lote_manutencao_detail", pk=lote.pk)
+
+
+@fornecedor_required
+def portal_lotes_manutencao_list(request):
+    """Lista os Lotes de Manutenção já criados por este fornecedor."""
+    lotes = (
+        LoteManutencao.objects
+        .filter(fornecedor=request.fornecedor)
+        .prefetch_related("ordens")
+        .order_by("-data", "-created_at")
+    )
+    context = {
+        "fornecedor": request.fornecedor,
+        "lotes": lotes,
+        "active_nav": "lotes_manutencao",
+    }
+    return render(request, "front/portal/portal_lotes_manutencao_list.html", context)
+
+
+@fornecedor_required
+def portal_lote_manutencao_detail(request, pk: int):
+    """Documento do lote: cabeçalho (nome, data, valor total) + itemização de
+    cada OS incluída, com o detalhamento que sustenta o custo somado."""
+    lote = get_object_or_404(
+        LoteManutencao.objects.select_related("fornecedor", "criado_por"),
+        pk=pk, fornecedor=request.fornecedor,
+    )
+    ordens = list(lote.ordens.select_related("item").order_by("-finalizada_em"))
+    for o in ordens:
+        o.valor_calc = o.valor_manutencao
+    context = {
+        "fornecedor": request.fornecedor,
+        "lote": lote,
+        "ordens": ordens,
+        "active_nav": "lotes_manutencao",
+    }
+    return render(request, "front/portal/portal_lote_manutencao_detail.html", context)
 
 
 @fornecedor_required

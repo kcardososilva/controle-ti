@@ -90,6 +90,42 @@
 
 .kq-empty { display:grid; place-items:center; gap:10px; padding:44px 16px; text-align:center; color:var(--text-tertiary); font-size:13px; }
 .kq-empty i { font-size:24px; color:var(--text-quaternary); }
+
+.kq-edit { width:26px; height:26px; flex:0 0 26px; display:inline-grid; place-items:center; border-radius:var(--radius-sm);
+  border:1px solid var(--separator-non-opaque); background:var(--bg-elevated); color:var(--text-tertiary); font-size:11px; cursor:pointer; transition:all var(--transition-fast); margin-left:8px; vertical-align:middle; }
+.kq-edit:hover { color:var(--brand); border-color:var(--brand); background:var(--brand-soft); }
+
+/* ── instalador do app (.apk) ────────────────────────────────────────── */
+.kq-apk-info { display:flex; align-items:center; gap:12px; }
+.kq-apk-ic { width:42px; height:42px; flex:0 0 42px; display:grid; place-items:center; border-radius:var(--radius-md);
+  background:var(--brand-soft); color:var(--brand); font-size:17px; }
+.kq-apk-name { font-size:13.5px; font-weight:600; color:var(--text-primary); word-break:break-all; }
+.kq-apk-sub { font-size:12px; color:var(--text-tertiary); margin-top:2px; }
+.kq-apk-empty { display:grid; place-items:center; gap:8px; padding:28px 16px; text-align:center; color:var(--text-tertiary); font-size:12.5px; }
+.kq-apk-empty i { font-size:22px; color:var(--text-quaternary); }
+.kq-apk-path { display:inline-block; margin-top:2px; padding:6px 10px; border-radius:var(--radius-sm); background:var(--bg-page-2);
+  border:1px solid var(--separator-hairline); font-family:var(--font-mono); font-size:11.5px; color:var(--text-secondary); word-break:break-all; }
+
+/* ── modal (renomear matrícula / QR de instalação) ───────────────────── */
+.kq-modal { position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:16px;
+  background:rgba(0,0,0,.45); backdrop-filter:blur(3px); }
+.kq-modal[hidden] { display:none; }
+.kq-modal-box { background:var(--bg-elevated); border:1px solid var(--separator-non-opaque); border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-xl); width:100%; max-width:430px; padding:20px; display:grid; gap:12px; }
+.kq-modal-box h3 { margin:0; font-size:16px; font-weight:700; display:flex; align-items:center; gap:9px; color:var(--text-primary); }
+.kq-modal-box h3 i { color:var(--brand); }
+.kq-modal-box p { margin:0; font-size:13px; color:var(--text-secondary); line-height:1.5; }
+.kq-modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
+
+.kq-modal-box.kq-qr-box { max-width:380px; text-align:center; }
+.kq-modal-box.kq-qr-box h3 { justify-content:center; }
+.kq-modal-box.kq-qr-box h3 i { color:var(--brand); }
+.kq-qr-img { width:220px; height:220px; margin:0 auto; border-radius:var(--radius-md); border:1px solid var(--separator-hairline); display:block; }
+.kq-qr-link { display:flex; align-items:center; gap:8px; margin-top:2px; padding:8px 10px; border-radius:var(--radius-sm);
+  background:var(--bg-page-2); border:1px solid var(--separator-hairline); text-align:left; }
+.kq-qr-link span { flex:1; min-width:0; font-family:var(--font-mono); font-size:11.5px; color:var(--text-secondary);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.kq-qr-expira { font-size:12px; color:var(--text-tertiary); margin:0; }
 </style>
 {% endblock %}
 
@@ -115,6 +151,48 @@
       <div class="kq-metric-v">{{ expiradas }}</div>
     </div>
   </section>
+
+  <!-- instalador do app -->
+  <div class="kq-card">
+    <div class="kq-card-head">
+      <span class="kq-card-title"><i class="fa-solid fa-mobile-screen-button"></i>Instalador do App</span>
+      {% if apk %}<span class="kq-card-sub">arquivo detectado na pasta</span>{% endif %}
+    </div>
+    <div class="kq-card-body">
+      {% if apk %}
+        <div class="kq-apk-info">
+          <div class="kq-apk-ic"><i class="fa-solid fa-file-arrow-down"></i></div>
+          <div>
+            <div class="kq-apk-name">{{ apk.nome }}</div>
+            <div class="kq-apk-sub">{{ apk.tamanho|filesizeformat }} · atualizado <span title="{{ apk.modificado_em|date:'d/m/Y H:i' }}">{{ apk.modificado_em|naturaltime }}</span></div>
+          </div>
+        </div>
+        <form method="post" id="kqApkForm" class="kq-form" style="margin-top:14px;">
+          {% csrf_token %}
+          <div class="kq-field" style="min-width:170px;">
+            <label for="validade_minutos">Validade do link</label>
+            <select id="validade_minutos" name="validade_minutos" class="form-control">
+              <option value="15">15 minutos</option>
+              <option value="30" selected>30 minutos</option>
+              <option value="60">1 hora</option>
+              <option value="240">4 horas</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary" id="kqApkBtn"><i class="fa-solid fa-qrcode"></i> Gerar link e QR Code</button>
+        </form>
+        <div class="kq-hint">
+          <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+          <span>O link e o QR Code só são exibidos <b>uma vez</b>, nesta tela. Qualquer pessoa com o link (ou o QR Code) consegue baixar o instalador enquanto ele for válido — compartilhe só com quem for instalar o app agora, e revogue quando terminar.</span>
+        </div>
+      {% else %}
+        <div class="kq-apk-empty">
+          <i class="fa-solid fa-folder-open"></i>
+          <span>Nenhum instalador (.apk) encontrado.<br>Copie o arquivo do app para a pasta do servidor:</span>
+          <span class="kq-apk-path">{{ apk_dir_display }}</span>
+        </div>
+      {% endif %}
+    </div>
+  </div>
 
   <!-- gerar novo código -->
   <div class="kq-card">
@@ -167,7 +245,13 @@
                 <button type="button" class="kq-copy" data-copy="{{ m.codigo }}" title="Copiar código" aria-label="Copiar código {{ m.codigo }}"><i class="fa-regular fa-copy"></i></button>
               </span>
             </td>
-            <td>{{ m.descricao|default:"—" }}</td>
+            <td>
+              {{ m.descricao|default:"—" }}
+              <button type="button" class="kq-edit" data-rename
+                      data-url="{% url 'quiosque_matricula_renomear' m.pk %}"
+                      data-descricao="{{ m.descricao }}"
+                      title="Renomear" aria-label="Renomear matrícula {{ m.codigo }}"><i class="fa-solid fa-pen"></i></button>
+            </td>
             <td>
               {% if m.usado %}<span class="kq-pill used">Usado</span>
               {% elif not m.esta_valida %}<span class="kq-pill exp">Expirado</span>
@@ -199,6 +283,80 @@
     </div>
   </div>
 
+  {% if instaladores %}
+  <!-- links de instalação gerados -->
+  <div class="kq-card">
+    <div class="kq-card-head">
+      <span class="kq-card-title"><i class="fa-solid fa-link"></i>Links de instalação gerados</span>
+      <span class="kq-card-sub">últimos 15</span>
+    </div>
+    <div class="kq-scroll">
+      <table class="kq-table">
+        <thead>
+          <tr><th>Arquivo</th><th>Status</th><th>Downloads</th><th>Gerado por</th><th>Expira</th><th aria-label="Ações"></th></tr>
+        </thead>
+        <tbody>
+          {% for l in instaladores %}
+          <tr>
+            <td>{{ l.nome_arquivo }}</td>
+            <td>
+              {% if l.revogado %}<span class="kq-pill used">Revogado</span>
+              {% elif not l.esta_valido %}<span class="kq-pill exp">Expirado</span>
+              {% else %}<span class="kq-pill ok">Ativo</span>{% endif %}
+            </td>
+            <td>{{ l.downloads }}</td>
+            <td>{{ l.criado_por|default:"—" }}</td>
+            <td><span class="kq-when">{{ l.expira_em|date:"d/m/Y H:i" }}</span></td>
+            <td style="text-align:right;">
+              {% if not l.revogado and l.esta_valido %}
+              <form method="post" action="{% url 'quiosque_instalador_revogar' l.pk %}" style="margin:0;"
+                    onsubmit="return confirm('Revogar este link de instalação? Quem ainda não baixou não conseguirá mais usá-lo.');">
+                {% csrf_token %}
+                <button type="submit" class="kq-del" title="Revogar link" aria-label="Revogar link do instalador"><i class="fa-solid fa-ban"></i></button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- renomear matrícula -->
+<div class="kq-modal" id="kqRenameModal" hidden>
+  <div class="kq-modal-box">
+    <h3><i class="fa-solid fa-pen"></i> Renomear matrícula</h3>
+    <form method="post" id="kqRenameForm" class="kq-form">
+      {% csrf_token %}
+      <input type="text" name="descricao" id="kqRenameInput" class="form-control" maxlength="120"
+             placeholder="Ex.: Celular portaria" style="flex:1; min-width:220px;">
+      <div class="kq-modal-actions">
+        <button type="button" class="btn btn-sm" data-close>Cancelar</button>
+        <button type="submit" class="btn btn-sm btn-primary"><i class="fa-solid fa-check"></i> Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- QR Code do link de instalação -->
+<div class="kq-modal" id="kqQrModal" hidden>
+  <div class="kq-modal-box kq-qr-box">
+    <h3><i class="fa-solid fa-qrcode"></i> Link de instalação</h3>
+    <p>Aponte a câmera do celular para o QR Code para baixar o app.</p>
+    <img id="kqQrImg" class="kq-qr-img" src="" alt="QR Code de instalação do app">
+    <div class="kq-qr-link">
+      <span id="kqQrUrl"></span>
+      <button type="button" class="kq-copy" id="kqQrCopy" data-copy="" title="Copiar link" aria-label="Copiar link de instalação"><i class="fa-regular fa-copy"></i></button>
+    </div>
+    <p class="kq-qr-expira" id="kqQrExpira"></p>
+    <div class="kq-modal-actions" style="justify-content:center;">
+      <button type="button" class="btn btn-sm" data-close>Fechar</button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -223,6 +381,78 @@
         document.body.removeChild(ta);
       }
     });
+  });
+})();
+
+// Modais (renomear matrícula / QR do instalador): relocados para <body> e com
+// scroll travado no #mainContent — o container do conteúdo tem transform (via
+// animação de entrada), o que ancora position:fixed nele em vez da viewport.
+(function(){
+  var scroller = document.getElementById('mainContent') || document.scrollingElement || document.body;
+  var modais = ['kqRenameModal', 'kqQrModal'].map(function(id){ return document.getElementById(id); }).filter(Boolean);
+  modais.forEach(function(modal){
+    if (modal.parentNode !== document.body) document.body.appendChild(modal);
+    new MutationObserver(function(){ scroller.style.overflow = modal.hidden ? '' : 'hidden'; })
+      .observe(modal, { attributes: true, attributeFilter: ['hidden'] });
+    modal.addEventListener('click', function(ev){
+      if (ev.target === modal || ev.target.closest('[data-close]')) modal.hidden = true;
+    });
+  });
+  document.addEventListener('keydown', function(ev){
+    if (ev.key !== 'Escape') return;
+    modais.forEach(function(modal){ if (!modal.hidden) modal.hidden = true; });
+  });
+})();
+
+// Renomear matrícula (modal com um campo).
+(function(){
+  var modal = document.getElementById('kqRenameModal');
+  var form = document.getElementById('kqRenameForm');
+  var input = document.getElementById('kqRenameInput');
+  if (!modal || !form || !input) return;
+  document.querySelectorAll('[data-rename]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      form.action = btn.getAttribute('data-url');
+      input.value = btn.getAttribute('data-descricao') || '';
+      modal.hidden = false;
+      setTimeout(function(){ input.focus(); input.select(); }, 30);
+    });
+  });
+})();
+
+// Instalador do app: gera o link + QR Code via AJAX e exibe no modal.
+(function(){
+  var form = document.getElementById('kqApkForm');
+  if (!form) return;
+  var btn = document.getElementById('kqApkBtn');
+  var modal = document.getElementById('kqQrModal');
+  var img = document.getElementById('kqQrImg');
+  var urlSpan = document.getElementById('kqQrUrl');
+  var copyBtn = document.getElementById('kqQrCopy');
+  var expiraP = document.getElementById('kqQrExpira');
+
+  form.addEventListener('submit', function(ev){
+    ev.preventDefault();
+    var textoOriginal = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando…';
+
+    fetch("{% url 'quiosque_instalador_gerar' %}", {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: new FormData(form),
+    })
+      .then(function(resp){ return resp.json(); })
+      .then(function(data){
+        if (!data.ok) throw new Error(data.erro || 'Falha ao gerar o link de instalação.');
+        img.src = data.qr_base64;
+        urlSpan.textContent = data.url;
+        if (copyBtn) copyBtn.setAttribute('data-copy', data.url);
+        expiraP.textContent = 'Válido até ' + data.expira_em + ' (' + data.validade_minutos + ' min)';
+        modal.hidden = false;
+      })
+      .catch(function(err){ alert(err.message || 'Falha ao gerar o link de instalação.'); })
+      .finally(function(){ btn.disabled = false; btn.innerHTML = textoOriginal; });
   });
 })();
 </script>
