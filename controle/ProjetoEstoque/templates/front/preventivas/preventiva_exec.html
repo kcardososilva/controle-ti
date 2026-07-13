@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Executar Preventiva — {{ preventiva.equipamento.nome }}{% endblock %}
-{% block page_title %}Executar Preventiva{% endblock %}
-{% block page_subtitle %}{{ preventiva.equipamento.nome }} · {{ preventiva.checklist_modelo.nome }}{% endblock %}
+{% block title %}{% if execucao %}Editar Execução{% else %}Executar Preventiva{% endif %} — {{ preventiva.equipamento.nome }}{% endblock %}
+{% block page_title %}{% if execucao %}Editar Execução{% else %}Executar Preventiva{% endif %}{% endblock %}
+{% block page_subtitle %}{{ preventiva.equipamento.nome }} · {{ preventiva.checklist_modelo.nome }}{% if execucao %} · Execução de {{ execucao.data_execucao|date:"d/m/Y" }}{% endif %}{% endblock %}
 
 {% block header_actions %}
   <a href="javascript:history.back()" class="btn btn-sm">
@@ -508,31 +508,33 @@
             </div>
           </div>
 
-          {% with t=p.tipo_resposta|lower %}
+          {% with t=p.tipo_resposta|lower valor_atual=p.valor_atual %}
             {% if t == "booleano" or t == "sim_nao" or t == "sn" %}
               <div class="pv-radio-grid">
                 <label class="pv-radio sim">
-                  <input type="radio" name="r_{{ p.id }}" value="sim" {% if p.obrigatorio == 'sim' %}required{% endif %}>
+                  <input type="radio" name="r_{{ p.id }}" value="sim" {% if valor_atual == 'sim' %}checked{% endif %} {% if p.obrigatorio == 'sim' %}required{% endif %}>
                   <span class="pv-radio-face"><i class="fa fa-check" aria-hidden="true"></i> Conforme</span>
                 </label>
                 <label class="pv-radio nao">
-                  <input type="radio" name="r_{{ p.id }}" value="nao">
+                  <input type="radio" name="r_{{ p.id }}" value="nao" {% if valor_atual == 'nao' %}checked{% endif %}>
                   <span class="pv-radio-face"><i class="fa fa-xmark" aria-hidden="true"></i> Não conforme</span>
                 </label>
               </div>
             {% elif t == "numero" or t == "inteiro" or t == "decimal" %}
               <input type="text" inputmode="decimal" name="r_{{ p.id }}"
+                     value="{{ valor_atual|default:'' }}"
                      placeholder="Informe o valor medido..."
                      {% if p.obrigatorio == 'sim' %}required{% endif %}>
             {% elif t == "escolha" or t == "opcao" or t == "choice" %}
               <select name="r_{{ p.id }}" class="pv-control select2-choice" {% if p.obrigatorio == 'sim' %}required{% endif %}>
                 <option value="">Selecione uma opção...</option>
                 {% for opt in p.opcoes_list %}
-                  <option value="{{ opt }}">{{ opt }}</option>
+                  <option value="{{ opt }}" {% if valor_atual == opt %}selected{% endif %}>{{ opt }}</option>
                 {% endfor %}
               </select>
             {% else %}
               <input type="text" name="r_{{ p.id }}"
+                     value="{{ valor_atual|default:'' }}"
                      placeholder="Digite sua resposta..."
                      {% if p.obrigatorio == 'sim' %}required{% endif %}>
             {% endif %}
@@ -555,11 +557,12 @@
           <label class="pv-upload-box">
             <input type="file" name="foto_antes" accept="image/*" hidden
                    onchange="pvPreviewImage(this, 'img-antes')">
-            <span class="pv-upload-placeholder">
+            <span class="pv-upload-placeholder" {% if execucao.foto_antes %}style="display:none;"{% endif %}>
               <i class="fa fa-camera" aria-hidden="true"></i>
               <span>Adicionar evidência inicial</span>
             </span>
-            <img id="img-antes" alt="Preview foto antes">
+            <img id="img-antes" alt="Preview foto antes"
+                 {% if execucao.foto_antes %}src="{{ execucao.foto_antes.url }}" style="display:block;"{% endif %}>
           </label>
         </div>
         <div>
@@ -567,11 +570,12 @@
           <label class="pv-upload-box">
             <input type="file" name="foto_depois" accept="image/*" hidden
                    onchange="pvPreviewImage(this, 'img-depois')">
-            <span class="pv-upload-placeholder">
+            <span class="pv-upload-placeholder" {% if execucao.foto_depois %}style="display:none;"{% endif %}>
               <i class="fa fa-camera-retro" aria-hidden="true"></i>
               <span>Adicionar evidência final</span>
             </span>
-            <img id="img-depois" alt="Preview foto depois">
+            <img id="img-depois" alt="Preview foto depois"
+                 {% if execucao.foto_depois %}src="{{ execucao.foto_depois.url }}" style="display:block;"{% endif %}>
           </label>
         </div>
         <div>
@@ -579,11 +583,12 @@
           <label class="pv-upload-box">
             <input type="file" name="foto_antes_2" accept="image/*" hidden
                    onchange="pvPreviewImage(this, 'img-antes-2')">
-            <span class="pv-upload-placeholder">
+            <span class="pv-upload-placeholder" {% if execucao.foto_antes_2 %}style="display:none;"{% endif %}>
               <i class="fa fa-camera" aria-hidden="true"></i>
               <span>Adicionar 2ª evidência inicial</span>
             </span>
-            <img id="img-antes-2" alt="Preview segunda foto antes">
+            <img id="img-antes-2" alt="Preview segunda foto antes"
+                 {% if execucao.foto_antes_2 %}src="{{ execucao.foto_antes_2.url }}" style="display:block;"{% endif %}>
           </label>
         </div>
         <div>
@@ -591,20 +596,27 @@
           <label class="pv-upload-box">
             <input type="file" name="foto_depois_2" accept="image/*" hidden
                    onchange="pvPreviewImage(this, 'img-depois-2')">
-            <span class="pv-upload-placeholder">
+            <span class="pv-upload-placeholder" {% if execucao.foto_depois_2 %}style="display:none;"{% endif %}>
               <i class="fa fa-camera-retro" aria-hidden="true"></i>
               <span>Adicionar 2ª evidência final</span>
             </span>
-            <img id="img-depois-2" alt="Preview segunda foto depois">
+            <img id="img-depois-2" alt="Preview segunda foto depois"
+                 {% if execucao.foto_depois_2 %}src="{{ execucao.foto_depois_2.url }}" style="display:block;"{% endif %}>
           </label>
         </div>
       </div>
+      {% if execucao %}
+        <p style="margin:.85rem 0 0;color:var(--pv-muted);font-size:.78rem;">
+          <i class="fa fa-circle-info" aria-hidden="true"></i>
+          Enviar uma nova foto substitui a evidência atual. Se não enviar, a foto existente é mantida.
+        </p>
+      {% endif %}
     </section>
 
     <section class="pv-obs-card" style="margin-top:1rem;" aria-label="Observações técnicas">
       <span class="pv-obs-title">Observações gerais</span>
       <textarea name="observacao"
-                placeholder="Registre anomalias, serviços executados, peças trocadas, condição do ativo ou recomendações técnicas..."></textarea>
+                placeholder="Registre anomalias, serviços executados, peças trocadas, condição do ativo ou recomendações técnicas...">{{ execucao.observacao|default:"" }}</textarea>
     </section>
 
     <section class="pv-appt-card" aria-label="Apontamento de horas">
@@ -662,7 +674,7 @@
         <i class="fa fa-arrow-left" aria-hidden="true"></i> Cancelar
       </a>
       <button type="submit" class="pv-btn-primary" id="btnSave">
-        <i class="fa fa-save" aria-hidden="true"></i> Finalizar execução
+        <i class="fa fa-save" aria-hidden="true"></i> {% if execucao %}Salvar alterações{% else %}Finalizar execução{% endif %}
       </button>
     </div>
   </form>

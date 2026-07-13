@@ -1,0 +1,329 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+{% block page_title %}{{ titulo }}{% endblock %}
+{% block page_subtitle %}
+{% if tipo == "envio" %}Itens em remessa, aguardando despacho para manutenção no fornecedor{% else %}Itens locados em remessa, aguardando devolução por fim de contrato{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'equipamentos_list' %}">Equipamentos</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{{ titulo }}</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'equipamentos_list' %}" class="btn btn-sm"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Equipamentos</a>
+  <a href="{% if tipo == 'envio' %}{% url 'separacao_devolucao_list' %}{% else %}{% url 'separacao_envio_list' %}{% endif %}" class="btn btn-sm btn-outline">
+    <i class="fa-solid fa-arrow-right-arrow-left" aria-hidden="true"></i>
+    {% if tipo == "envio" %}Ver Devolução{% else %}Ver Envio{% endif %}
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.sep-page) {
+  --sep-brand: var(--brand);
+  --sep-surface: var(--bg-elevated);
+  --sep-surface-soft: var(--bg-fill-tertiary);
+  --sep-text: var(--text-primary);
+  --sep-muted: var(--text-tertiary);
+  --sep-hair: var(--separator-hairline);
+  --sep-line: var(--separator-non-opaque);
+}
+.sep-page, .sep-page * { box-sizing: border-box; min-width: 0; }
+.sep-page { display: grid; gap: 1.1rem; color: var(--sep-text); }
+
+.sep-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px,100%),1fr)); gap: .8rem; }
+.sep-kpi { padding: 1rem 1.15rem; background: var(--sep-surface); border: 1px solid var(--sep-hair); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.sep-kpi-label { font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--sep-muted); }
+.sep-kpi-value { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; margin-top: .2rem; }
+
+.sep-card { background: var(--sep-surface); border: 1px solid var(--sep-hair); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+.sep-card-head { display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding: 1rem 1.2rem; border-bottom: 1px solid var(--sep-hair); }
+.sep-card-head h2 { margin: 0; font-size: .98rem; font-weight: 700; }
+.sep-card-body { padding: 1.1rem 1.2rem; }
+
+.sep-toolbar { display: flex; align-items: flex-end; gap: .7rem; flex-wrap: wrap; margin-bottom: 1rem; padding: .9rem 1rem; background: var(--sep-surface-soft); border: 1px solid var(--sep-hair); border-radius: var(--radius-md); }
+.sep-field { display: flex; flex-direction: column; gap: .3rem; min-width: 12rem; flex: 1 1 12rem; }
+.sep-field label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--sep-muted); }
+.sep-field input, .sep-field select {
+  height: 2.4rem; padding: 0 .7rem; border-radius: var(--radius-sm); border: 1px solid var(--sep-line);
+  background: var(--sep-surface); color: var(--sep-text); font-size: .86rem; font-family: inherit;
+}
+
+.sep-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+.sep-table th { text-align: left; padding: .6rem .7rem; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--sep-muted); border-bottom: 1px solid var(--sep-hair); }
+.sep-table td { padding: .65rem .7rem; border-bottom: 1px solid var(--sep-hair); vertical-align: middle; }
+.sep-table tr:last-child td { border-bottom: none; }
+.sep-table .sep-item-nome { font-weight: 600; }
+.sep-table .sep-actions { display: flex; gap: .4rem; justify-content: flex-end; white-space: nowrap; }
+
+.sep-lotes-grid { display: grid; gap: .8rem; }
+.sep-lote-card { padding: 1rem 1.15rem; border-radius: var(--radius-lg); background: var(--sep-surface); border: 1px solid var(--sep-hair); box-shadow: var(--shadow-sm); display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.sep-lote-ic { width: 2.5rem; height: 2.5rem; flex: 0 0 2.5rem; display: grid; place-items: center; border-radius: .75rem; background: var(--sep-surface-soft); color: var(--sep-muted); }
+.sep-lote-info { min-width: 0; flex: 1; }
+.sep-lote-nome { font-weight: 700; letter-spacing: -.01em; }
+.sep-lote-meta { color: var(--sep-muted); font-size: .8rem; margin-top: .15rem; }
+.sep-lote-actions { display: flex; gap: .5rem; flex: 0 0 auto; }
+
+.sep-chip { display: inline-flex; align-items: center; gap: .35rem; padding: .22rem .6rem; border-radius: var(--radius-pill); font-size: .72rem; font-weight: 800; }
+.sep-chip::before { content: ""; width: .4rem; height: .4rem; border-radius: 999px; background: currentColor; }
+.sep-chip--aberto { color: var(--warning); background: var(--warning-soft); }
+.sep-chip--enviado { color: var(--success); background: var(--success-soft); }
+
+.sep-empty { display: grid; place-items: center; gap: .6rem; padding: 2.6rem 1rem; text-align: center; color: var(--sep-muted); }
+.sep-empty i { font-size: 1.5rem; color: var(--text-quaternary); }
+
+.sep-badge { display: inline-flex; align-items: center; gap: .3rem; margin-top: .3rem; padding: .15rem .5rem; border-radius: var(--radius-pill); font-size: .68rem; font-weight: 800; }
+.sep-badge--danger { color: var(--danger); background: var(--danger-soft); }
+.sep-badge--warning { color: var(--warning); background: var(--warning-soft); }
+.sep-badge--ok { color: var(--success); background: var(--success-soft); }
+
+@media (max-width: 720px) {
+  .sep-table thead { display: none; }
+  .sep-table, .sep-table tbody, .sep-table tr, .sep-table td { display: block; width: 100%; }
+  .sep-table tr { border-bottom: 1px solid var(--sep-hair); padding: .6rem 0; }
+  .sep-table td { border-bottom: none; padding: .25rem .2rem; }
+  .sep-table .sep-actions { justify-content: flex-start; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sep-page">
+
+  <div class="sep-kpis">
+    <div class="sep-kpi"><div class="sep-kpi-label">Itens soltos</div><div class="sep-kpi-value">{{ kpi.soltos }}</div></div>
+    <div class="sep-kpi"><div class="sep-kpi-label">Itens em lote</div><div class="sep-kpi-value">{{ kpi.em_lote }}</div></div>
+    <div class="sep-kpi"><div class="sep-kpi-label">Lotes abertos</div><div class="sep-kpi-value">{{ kpi.lotes_abertos }}</div></div>
+  </div>
+
+  <form method="get" class="sep-toolbar">
+    <div class="sep-field">
+      <label for="sep-q">Buscar</label>
+      <input type="text" id="sep-q" name="q" value="{{ q }}" placeholder="Nome do item ou do lote...">
+    </div>
+    <button type="submit" class="btn btn-sm"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Buscar</button>
+    {% if q %}<a href="{% url rota_list %}" class="btn btn-sm btn-outline">Limpar</a>{% endif %}
+  </form>
+
+  <div class="sep-card">
+    <div class="sep-card-head">
+      <h2><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i> Itens soltos</h2>
+    </div>
+    <div class="sep-card-body">
+      {% if soltos %}
+      <form method="post" action="{% url 'separacao_lote_create' %}" id="formNovoLote">
+        {% csrf_token %}
+        <input type="hidden" name="tipo" value="{{ tipo }}">
+
+        <div class="sep-toolbar">
+          <div class="sep-field">
+            <label for="lote-nome">Nome do novo lote</label>
+            <input type="text" id="lote-nome" name="nome" placeholder="Ex.: Lote Notebooks Julho/26">
+          </div>
+          <div class="sep-field">
+            <label for="lote-fornecedor">Fornecedor do lote</label>
+            <select id="lote-fornecedor" name="fornecedor">
+              <option value="">Selecione...</option>
+              {% for f in fornecedores %}<option value="{{ f.id }}">{{ f.nome }}</option>{% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-sm btn-primary" id="btnCriarLote" disabled>
+            <i class="fa-solid fa-layer-group" aria-hidden="true"></i> Criar lote com selecionados
+          </button>
+          <button type="submit" class="btn btn-sm btn-outline" id="btnGerarDocFiscal" disabled
+                  formaction="{% url 'documento_fiscal_gerar' %}"
+                  formnovalidate
+                  title="Gera um PDF (fornecedor, modelo e nº de série) e envia por e-mail ao setor Fiscal">
+            <i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Gerar Documento Fiscal
+          </button>
+        </div>
+
+        <div style="overflow-x:auto;">
+          <table class="sep-table">
+            <thead>
+              <tr>
+                <th style="width:2rem;"><input type="checkbox" id="sepSelAll" aria-label="Selecionar todos"></th>
+                <th>Item</th>
+                <th>Fornecedor</th>
+                <th>Em remessa desde</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in soltos %}
+              <tr>
+                <td><input type="checkbox" name="separacao_ids" value="{{ s.id }}" class="sepChk" data-fornecedor="{{ s.fornecedor_id }}"></td>
+                <td>
+                  <button type="button" class="sep-info-trigger sep-item-nome" data-sepid="{{ s.id }}" title="Ver detalhes do equipamento">
+                    <i class="fa-solid fa-circle-info" aria-hidden="true"></i> {{ s.item.nome }}
+                  </button>
+                  {% if s.item.numero_serie %}<div class="sep-lote-meta">Nº série: {{ s.item.numero_serie }}</div>{% endif %}
+                  {% if s.badge_contrato %}<div class="sep-badge sep-badge--{{ s.badge_contrato.css }}">{{ s.badge_contrato.label }}</div>{% endif %}
+                </td>
+                <td>{{ s.fornecedor.nome }}</td>
+                <td>{{ s.created_at|date:"d/m/Y H:i" }}</td>
+                <td>
+                  <div class="sep-actions">
+                    <button type="submit" form="formEnviar{{ s.id }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Enviar</button>
+                    <button type="submit" form="formRemover{{ s.id }}" class="btn btn-sm btn-danger" onclick="return confirm('Remover este item da remessa?');"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </form>
+
+      {% for s in soltos %}
+      <form id="formEnviar{{ s.id }}" method="post" action="{% url 'separacao_item_enviar' s.id %}" style="display:none;">{% csrf_token %}</form>
+      <form id="formRemover{{ s.id }}" method="post" action="{% url 'separacao_item_remover' s.id %}" style="display:none;">{% csrf_token %}</form>
+      {% endfor %}
+
+      {% else %}
+      <div class="sep-empty">
+        <i class="fa-solid fa-box-open" aria-hidden="true"></i>
+        <p>Nenhum item solto nesta remessa{% if q %} para a busca aplicada{% endif %}. Use o módulo de Movimentações para colocar um item em remessa.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="sep-card">
+    <div class="sep-card-head">
+      <h2><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Lotes</h2>
+    </div>
+    <div class="sep-card-body">
+      {% if lotes %}
+      <div class="sep-lotes-grid">
+        {% for l in lotes %}
+        <div class="sep-lote-card">
+          <span class="sep-lote-ic"><i class="fa-solid fa-boxes-packing" aria-hidden="true"></i></span>
+          <span class="sep-lote-info">
+            <div class="sep-lote-nome">{{ l.nome }}</div>
+            <div class="sep-lote-meta">
+              {{ l.fornecedor.nome }} · {{ l.quantidade_itens }} item{{ l.quantidade_itens|pluralize }}
+              <span class="sep-chip sep-chip--{{ l.status }}">{{ l.get_status_display }}</span>
+            </div>
+          </span>
+          <span class="sep-lote-actions">
+            <a href="{% url 'separacao_lote_detail' l.pk %}" class="btn btn-sm btn-outline"><i class="fa-solid fa-eye" aria-hidden="true"></i> Ver</a>
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="sep-empty">
+        <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+        <p>Nenhum lote criado ainda{% if q %} para a busca aplicada{% endif %}.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="sep-card">
+    <div class="sep-card-head">
+      <h2><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Documentos Fiscais Gerados</h2>
+    </div>
+    <div class="sep-card-body">
+      {% if documentos %}
+      <div style="overflow-x:auto;">
+        <table class="sep-table">
+          <thead>
+            <tr>
+              <th>Documento</th>
+              <th>Itens</th>
+              <th>Gerado em</th>
+              <th>E-mail ao Fiscal</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in documentos %}
+            <tr>
+              <td class="sep-item-nome">{{ d.numero }}</td>
+              <td>{{ d.itens.count }} item{{ d.itens.count|pluralize }}</td>
+              <td>{{ d.created_at|date:"d/m/Y H:i" }}</td>
+              <td>
+                {% if d.email_enviado %}
+                <span class="sep-chip sep-chip--enviado">Enviado</span>
+                {% else %}
+                <span class="sep-chip sep-chip--aberto">Não enviado</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="sep-actions">
+                  <a href="{% url 'documento_fiscal_pdf_view' d.pk %}" target="_blank" class="btn btn-sm btn-outline">
+                    <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Baixar PDF
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="sep-empty">
+        <i class="fa-solid fa-file-invoice" aria-hidden="true"></i>
+        <p>Nenhum documento fiscal gerado ainda.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+{% include "front/equipamentos/_separacao_info_drawer.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var selectAll = document.getElementById('sepSelAll');
+  var btnCriarLote = document.getElementById('btnCriarLote');
+  var btnGerarDocFiscal = document.getElementById('btnGerarDocFiscal');
+  var fornecedorSelect = document.getElementById('lote-fornecedor');
+
+  function checkboxes() { return Array.prototype.slice.call(document.querySelectorAll('.sepChk')); }
+
+  function atualizarBotao() {
+    var marcados = checkboxes().filter(function (c) { return c.checked; });
+    var nome = document.getElementById('lote-nome').value.trim();
+    var fornecedor = fornecedorSelect.value;
+    btnCriarLote.disabled = !(marcados.length && nome && fornecedor);
+    btnGerarDocFiscal.disabled = !marcados.length;
+  }
+
+  // Ao marcar o primeiro item, sugere o fornecedor dele (todos precisam ser do mesmo).
+  checkboxes().forEach(function (chk) {
+    chk.addEventListener('change', function () {
+      var marcados = checkboxes().filter(function (c) { return c.checked; });
+      if (marcados.length === 1) {
+        fornecedorSelect.value = marcados[0].dataset.fornecedor;
+      }
+      atualizarBotao();
+    });
+  });
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      checkboxes().forEach(function (c) { c.checked = selectAll.checked; });
+      var marcados = checkboxes().filter(function (c) { return c.checked; });
+      if (marcados.length) { fornecedorSelect.value = marcados[0].dataset.fornecedor; }
+      atualizarBotao();
+    });
+  }
+
+  document.getElementById('lote-nome').addEventListener('input', atualizarBotao);
+  fornecedorSelect.addEventListener('change', atualizarBotao);
+})();
+</script>
+{% endblock %}

@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -171,6 +172,35 @@ def _aplicar_status_preventiva(preventiva: Preventiva, hoje: date | None = None)
     return preventiva
 
 
+def _pode_editar_execucao(execucao: "PreventivaExecucao", user) -> bool:
+    """
+    Só o técnico que executou pode editar/excluir a execução. Segue a mesma
+    regra de identidade usada no bloqueio de conflito de horário: técnico
+    explícito se houver, senão quem criou o registro (execuções antigas sem
+    `tecnico` preenchido).
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if execucao.tecnico_id:
+        return execucao.tecnico_id == user.id
+    return execucao.criado_por_id == user.id
+
+
+def _recalcular_agregados_preventiva(preventiva: Preventiva) -> None:
+    """
+    Recalcula `data_ultima`/`data_proxima`/`dentro_do_prazo` da Preventiva a
+    partir do histórico real de execuções restantes.
+
+    Necessário após editar ou excluir uma `PreventivaExecucao`, pois ela pode
+    não ser a mais recente — `preventiva.data_ultima` não pode continuar
+    refletindo um registro que foi alterado/apagado.
+    """
+    ultima = preventiva.execucoes.order_by("-data_execucao", "-id").first()
+    preventiva.data_ultima = ultima.data_execucao if ultima else None
+    preventiva.recomputar_prazo()  # usa preventiva.data_ultima (já atualizado acima)
+    preventiva.save(update_fields=["data_ultima", "data_proxima", "dentro_do_prazo", "updated_at"])
+
+
 # =========================================================
 # CHECKLIST - LISTAGEM
 # =========================================================
@@ -325,6 +355,7 @@ def preventiva_sincronizar_programacao(request):
         StatusItemChoices.MANUTENCAO,
         StatusItemChoices.DEFEITO,
         StatusItemChoices.DESCARTE,
+        StatusItemChoices.DEVOLVIDO,
     }
 
     criadas = 0
@@ -659,7 +690,11 @@ def preventiva_detail(request, pk):
                 "respondido_em": resposta_obj.created_at if resposta_obj else None,
             })
 
-        execucoes_data.append({"obj": execucao, "linhas": linhas})
+        execucoes_data.append({
+            "obj": execucao,
+            "linhas": linhas,
+            "pode_editar": _pode_editar_execucao(execucao, request.user),
+        })
 
     hoje = timezone.localdate()
     _aplicar_status_preventiva(preventiva, hoje)
@@ -712,6 +747,7 @@ def preventiva_exec(request, pk):
         erros = []
         respostas_bulk = []
         hoje = timezone.localdate()
+        tecnico_alvo = preventiva.tecnico or request.user
 
         # ── Apontamento de horas trabalhadas pelo técnico ─────────────────────
         data_exec_str = (request.POST.get("data_execucao") or "").strip()
@@ -741,6 +777,35 @@ def preventiva_exec(request, pk):
                 erros.append("Hora de término inválida.")
             if hora_ini and hora_fim and PreventivaExecucao.calcular_duracao_minutos(hora_ini, hora_fim) == 0:
                 erros.append("A hora de término deve ser diferente da hora de início.")
+
+        # ── Conflito de horário: mesmo técnico não pode ter 2 execuções ao
+        # mesmo tempo, no mesmo dia ─────────────────────────────────────────
+        if hora_ini and hora_fim and hora_fim > hora_ini:
+            conflito = (
+                PreventivaExecucao.objects
+                .filter(data_execucao=data_exec)
+                .filter(Q(tecnico=tecnico_alvo) | Q(tecnico__isnull=True, criado_por=tecnico_alvo))
+                .exclude(hora_inicio__isnull=True)
+                .exclude(hora_fim__isnull=True)
+                .filter(hora_inicio__lt=hora_fim, hora_fim__gt=hora_ini)
+                .select_related("preventiva__equipamento")
+                .order_by("hora_inicio")
+                .first()
+            )
+            if conflito:
+                nome_tec = tecnico_alvo.get_full_name() or tecnico_alvo.username
+                erros.append(
+                    f"Conflito de horário: {nome_tec} já tem uma execução registrada em "
+                    f"{data_exec:%d/%m/%Y} das {conflito.hora_inicio:%H:%M} às "
+                    f"{conflito.hora_fim:%H:%M} ({conflito.preventiva.equipamento.nome}). "
+                    f"Escolha um horário livre, por exemplo a partir das {conflito.hora_fim:%H:%M}."
+                )
+        elif hora_ini and hora_fim and hora_fim < hora_ini:
+            messages.warning(
+                request,
+                "Horário cruzando a meia-noite: verifique manualmente se não há "
+                "conflito com outra execução do mesmo técnico.",
+            )
 
         if not perguntas:
             erros.append("Este checklist não possui perguntas cadastradas.")
@@ -819,7 +884,7 @@ def preventiva_exec(request, pk):
                 foto_depois=request.FILES.get("foto_depois"),
                 foto_antes_2=request.FILES.get("foto_antes_2"),
                 foto_depois_2=request.FILES.get("foto_depois_2"),
-                tecnico=(preventiva.tecnico or request.user),
+                tecnico=tecnico_alvo,
                 data_agendada=data_agendada_snap,
                 no_prazo=no_prazo_snap,
                 hora_inicio=hora_ini,
@@ -892,6 +957,260 @@ def preventiva_exec(request, pk):
     )
 
 
+# =========================================================
+# PREVENTIVA - EXECUÇÃO: EDIÇÃO / EXCLUSÃO
+# (restrito ao técnico que executou — ver _pode_editar_execucao)
+# =========================================================
+@login_required
+def preventiva_execucao_editar(request, execucao_pk):
+    execucao = get_object_or_404(
+        PreventivaExecucao.objects.select_related(
+            "preventiva",
+            "preventiva__equipamento",
+            "preventiva__equipamento__localidade",
+            "preventiva__equipamento__centro_custo",
+            "preventiva__checklist_modelo",
+            "tecnico",
+            "criado_por",
+        ),
+        pk=execucao_pk,
+    )
+    preventiva = execucao.preventiva
+
+    if not _pode_editar_execucao(execucao, request.user):
+        messages.error(request, "Apenas o técnico que executou esta preventiva pode editá-la.")
+        return redirect("preventiva_detail", pk=preventiva.pk)
+
+    perguntas = list(
+        CheckListPergunta.objects
+        .filter(checklist_modelo=preventiva.checklist_modelo)
+        .order_by("ordem", "id")
+    )
+    _preparar_opcoes_perguntas(perguntas)
+
+    respostas_map = {r.pergunta_id: r.resposta for r in execucao.respostas.all()}
+    for pergunta in perguntas:
+        pergunta.valor_atual = respostas_map.get(pergunta.id, "")
+
+    if request.method == "POST":
+        erros = []
+        hoje = timezone.localdate()
+        tecnico_alvo = execucao.tecnico or execucao.criado_por or request.user
+
+        data_exec_str = (request.POST.get("data_execucao") or "").strip()
+        hora_ini_str = (request.POST.get("hora_inicio") or "").strip()
+        hora_fim_str = (request.POST.get("hora_fim") or "").strip()
+
+        data_exec = execucao.data_execucao
+        if data_exec_str:
+            try:
+                data_exec = datetime.strptime(data_exec_str, "%Y-%m-%d").date()
+            except ValueError:
+                erros.append("Data da execução inválida.")
+        if data_exec and data_exec > hoje:
+            erros.append("A data da execução não pode ser futura.")
+
+        hora_ini = hora_fim = None
+        if not hora_ini_str or not hora_fim_str:
+            erros.append("Informe a hora de início e a hora de término do serviço.")
+        else:
+            try:
+                hora_ini = datetime.strptime(hora_ini_str, "%H:%M").time()
+            except ValueError:
+                erros.append("Hora de início inválida.")
+            try:
+                hora_fim = datetime.strptime(hora_fim_str, "%H:%M").time()
+            except ValueError:
+                erros.append("Hora de término inválida.")
+            if hora_ini and hora_fim and PreventivaExecucao.calcular_duracao_minutos(hora_ini, hora_fim) == 0:
+                erros.append("A hora de término deve ser diferente da hora de início.")
+
+        # ── Conflito de horário (mesma regra do registro, excluindo a própria
+        # execução sendo editada) ────────────────────────────────────────────
+        if hora_ini and hora_fim and hora_fim > hora_ini:
+            conflito = (
+                PreventivaExecucao.objects
+                .filter(data_execucao=data_exec)
+                .filter(Q(tecnico=tecnico_alvo) | Q(tecnico__isnull=True, criado_por=tecnico_alvo))
+                .exclude(pk=execucao.pk)
+                .exclude(hora_inicio__isnull=True)
+                .exclude(hora_fim__isnull=True)
+                .filter(hora_inicio__lt=hora_fim, hora_fim__gt=hora_ini)
+                .select_related("preventiva__equipamento")
+                .order_by("hora_inicio")
+                .first()
+            )
+            if conflito:
+                nome_tec = tecnico_alvo.get_full_name() or tecnico_alvo.username
+                erros.append(
+                    f"Conflito de horário: {nome_tec} já tem outra execução registrada em "
+                    f"{data_exec:%d/%m/%Y} das {conflito.hora_inicio:%H:%M} às "
+                    f"{conflito.hora_fim:%H:%M} ({conflito.preventiva.equipamento.nome}). "
+                    f"Escolha um horário livre, por exemplo a partir das {conflito.hora_fim:%H:%M}."
+                )
+        elif hora_ini and hora_fim and hora_fim < hora_ini:
+            messages.warning(
+                request,
+                "Horário cruzando a meia-noite: verifique manualmente se não há "
+                "conflito com outra execução do mesmo técnico.",
+            )
+
+        if not perguntas:
+            erros.append("Este checklist não possui perguntas cadastradas.")
+
+        # Preenche já a observação no objeto em memória (não persistida ainda),
+        # para que uma eventual re-exibição por erro mostre o que foi digitado.
+        execucao.observacao = (request.POST.get("observacao") or "").strip()
+
+        respostas_valores = {}
+        for pergunta in perguntas:
+            field_name = f"r_{pergunta.id}"
+            raw_val = (request.POST.get(field_name) or "").strip()
+            tipo = str(pergunta.tipo_resposta or "").lower()
+
+            if pergunta.obrigatorio == SimNaoChoices.SIM and not raw_val:
+                erros.append(f"A pergunta '{pergunta.texto_pergunta}' é obrigatória.")
+                continue
+
+            if not raw_val:
+                continue
+
+            if tipo in {"numero", "inteiro", "decimal"}:
+                try:
+                    raw_val = _normalizar_decimal(raw_val)
+                except ValueError:
+                    erros.append(f"Valor numérico inválido na pergunta '{pergunta.texto_pergunta}'.")
+                    continue
+
+            if tipo in {"booleano", "sim_nao", "sn"} and raw_val not in {"sim", "nao"}:
+                erros.append(f"Resposta inválida na pergunta '{pergunta.texto_pergunta}'.")
+                continue
+
+            if tipo in {"escolha", "opcao", "choice"}:
+                opcoes_validas = getattr(pergunta, "opcoes_list", [])
+                if opcoes_validas and raw_val not in opcoes_validas:
+                    erros.append(f"Opção inválida na pergunta '{pergunta.texto_pergunta}'.")
+                    continue
+
+            respostas_valores[pergunta.id] = raw_val
+
+        if erros:
+            for erro in erros:
+                messages.error(request, erro)
+            for pergunta in perguntas:
+                pergunta.valor_atual = respostas_valores.get(pergunta.id, "")
+            _aplicar_status_preventiva(preventiva, hoje)
+            return render(
+                request,
+                "front/preventivas/preventiva_exec.html",
+                {
+                    "preventiva": preventiva,
+                    "perguntas": perguntas,
+                    "today": hoje,
+                    "execucao": execucao,
+                    "apontamento": {
+                        "data_execucao": data_exec_str,
+                        "hora_inicio": hora_ini_str,
+                        "hora_fim": hora_fim_str,
+                    },
+                },
+            )
+
+        with transaction.atomic():
+            execucao.data_execucao = data_exec
+            execucao.hora_inicio = hora_ini
+            execucao.hora_fim = hora_fim
+            # observacao já foi setada acima (antes da checagem de erros)
+            if execucao.data_agendada:
+                execucao.no_prazo = data_exec <= execucao.data_agendada
+
+            for campo in ("foto_antes", "foto_depois", "foto_antes_2", "foto_depois_2"):
+                arquivo = request.FILES.get(campo)
+                if arquivo:
+                    setattr(execucao, campo, arquivo)
+
+            execucao.atualizado_por = request.user
+            execucao.save()
+
+            existentes = {r.pergunta_id: r for r in execucao.respostas.all()}
+            for pergunta in perguntas:
+                valor = respostas_valores.get(pergunta.id)
+                resposta_obj = existentes.get(pergunta.id)
+                if resposta_obj is not None:
+                    if valor is None:
+                        resposta_obj.delete()
+                    elif resposta_obj.resposta != valor:
+                        resposta_obj.resposta = valor
+                        resposta_obj.atualizado_por = request.user
+                        resposta_obj.save(update_fields=["resposta", "atualizado_por", "updated_at"])
+                elif valor is not None:
+                    PreventivaResposta.objects.create(
+                        preventiva=preventiva,
+                        execucao=execucao,
+                        pergunta=pergunta,
+                        resposta=valor,
+                        criado_por=request.user,
+                        atualizado_por=request.user,
+                    )
+
+            _recalcular_agregados_preventiva(preventiva)
+
+        messages.success(request, "Execução atualizada com sucesso.")
+        return redirect("preventiva_detail", pk=preventiva.pk)
+
+    hoje = timezone.localdate()
+    _aplicar_status_preventiva(preventiva, hoje)
+    return render(
+        request,
+        "front/preventivas/preventiva_exec.html",
+        {
+            "preventiva": preventiva,
+            "perguntas": perguntas,
+            "today": hoje,
+            "execucao": execucao,
+            "apontamento": {
+                "data_execucao": execucao.data_execucao.isoformat(),
+                "hora_inicio": execucao.hora_inicio.strftime("%H:%M") if execucao.hora_inicio else "",
+                "hora_fim": execucao.hora_fim.strftime("%H:%M") if execucao.hora_fim else "",
+            },
+        },
+    )
+
+
+@login_required
+def preventiva_execucao_excluir(request, execucao_pk):
+    execucao = get_object_or_404(
+        PreventivaExecucao.objects.select_related(
+            "preventiva", "preventiva__equipamento", "tecnico", "criado_por",
+        ),
+        pk=execucao_pk,
+    )
+    preventiva = execucao.preventiva
+
+    if not _pode_editar_execucao(execucao, request.user):
+        messages.error(request, "Apenas o técnico que executou esta preventiva pode excluí-la.")
+        return redirect("preventiva_detail", pk=preventiva.pk)
+
+    if request.method == "POST":
+        senha = request.POST.get("senha") or ""
+        if not request.user.check_password(senha):
+            messages.error(request, "Senha incorreta. A execução não foi excluída.")
+            return redirect("preventiva_execucao_excluir", execucao_pk=execucao.pk)
+
+        with transaction.atomic():
+            execucao.delete()
+            _recalcular_agregados_preventiva(preventiva)
+
+        messages.success(request, "Execução excluída com sucesso.")
+        return redirect("preventiva_detail", pk=preventiva.pk)
+
+    return render(
+        request,
+        "front/preventivas/preventiva_execucao_excluir.html",
+        {"execucao": execucao, "preventiva": preventiva},
+    )
+
+
 @login_required
 def preventiva_agendadas(request):
     """
@@ -947,7 +1266,7 @@ def preventiva_agendadas(request):
     elif periodo_filter == "hoje":
         qs = qs.filter(data_agendamento=hoje)
     elif periodo_filter == "semana":
-        qs = qs.filter(data_agendamento__lte=hoje + timedelta(days=7))
+        qs = qs.filter(data_agendamento__gte=hoje, data_agendamento__lte=hoje + timedelta(days=7))
 
     qs = qs.order_by("data_agendamento", "equipamento__nome")
 
@@ -1330,7 +1649,7 @@ def tecnico_desempenho(request):
         row["tecnico_id"]: row
         for row in (
             Preventiva.objects
-            .filter(tecnico__isnull=False, data_agendamento__isnull=False)
+            .filter(tecnico__isnull=False, data_agendamento__isnull=False, pausada=False)
             .values("tecnico_id")
             .annotate(
                 atribuidas=Count("id"),
@@ -1459,7 +1778,7 @@ def minhas_atividades(request):
 
     base = (
         Preventiva.objects
-        .filter(tecnico=alvo, data_agendamento__isnull=False)
+        .filter(tecnico=alvo, data_agendamento__isnull=False, pausada=False)
         .select_related("equipamento", "equipamento__localidade", "equipamento__centro_custo", "checklist_modelo")
         .order_by("data_agendamento", "equipamento__nome")
     )
@@ -1503,6 +1822,68 @@ def minhas_atividades(request):
         "recentes": recentes,
     }
     return render(request, "front/preventivas/minhas_atividades.html", context)
+
+
+_DIAS_SEMANA_PT = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira",
+                   "Sexta-feira", "Sábado", "Domingo"]
+
+
+@login_required
+def preventiva_minha_agenda(request):
+    """
+    Agenda pessoal de execuções do usuário logado, agrupada por dia/hora.
+    Estritamente pessoal: sempre request.user, sem seleção de outro técnico.
+    """
+    hoje = timezone.localdate()
+    fim = _parse_data_opt(request.GET.get("fim"), hoje)
+    inicio = _parse_data_opt(request.GET.get("inicio"), fim - timedelta(days=30))
+    if inicio > fim:
+        inicio, fim = fim, inicio
+
+    execs = list(
+        PreventivaExecucao.objects
+        .filter(Q(tecnico=request.user) | Q(tecnico__isnull=True, criado_por=request.user))
+        .filter(data_execucao__gte=inicio, data_execucao__lte=fim)
+        .select_related(
+            "preventiva", "preventiva__equipamento",
+            "preventiva__equipamento__localidade", "preventiva__checklist_modelo",
+        )
+        .order_by("-data_execucao", "hora_inicio", "id")
+    )
+
+    por_dia = defaultdict(list)
+    for execucao in execs:
+        por_dia[execucao.data_execucao].append(execucao)
+
+    dias = []
+    for data_dia in sorted(por_dia.keys(), reverse=True):
+        itens = por_dia[data_dia]
+        minutos = sum(e.duracao_minutos or 0 for e in itens)
+        dias.append({
+            "data": data_dia,
+            "dia_semana": _DIAS_SEMANA_PT[data_dia.weekday()],
+            "execucoes": itens,
+            "total_execucoes": len(itens),
+            "total_fmt": _fmt_minutos(minutos),
+        })
+
+    total_minutos = sum(e.duracao_minutos or 0 for e in execs)
+    com_agenda = sum(1 for e in execs if e.data_agendada)
+    no_prazo = sum(1 for e in execs if e.data_agendada and e.no_prazo)
+
+    context = {
+        "inicio": inicio,
+        "fim": fim,
+        "hoje": hoje,
+        "dias": dias,
+        "kpi": {
+            "total_execucoes": len(execs),
+            "dias_com_atividade": len(dias),
+            "tempo_total_fmt": _fmt_minutos(total_minutos),
+            "pontualidade": round(no_prazo / com_agenda * 100) if com_agenda else None,
+        },
+    }
+    return render(request, "front/preventivas/preventiva_minha_agenda.html", context)
 
 
 @login_required

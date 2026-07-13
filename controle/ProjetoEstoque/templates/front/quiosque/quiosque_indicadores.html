@@ -1,0 +1,463 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Indicadores do Quiosque{% endblock %}
+{% block page_title %}Indicadores do Quiosque{% endblock %}
+{% block page_subtitle %}Visão consolidada da frota — saúde, adoção do provisionamento e composição do parque{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'quiosque_dashboard' %}">Quiosque</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Indicadores</span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+<style>
+:where(.kqi-page), :where(.kqi-page) * { box-sizing:border-box; min-width:0; }
+.kqi-page { display:grid; gap:18px; }
+
+/* ── grid utilitário (12 colunas) ─────────────────────────────────── */
+.kqi-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:16px; }
+.kqi-grid .s-4 { grid-column:span 4; } .kqi-grid .s-6 { grid-column:span 6; }
+.kqi-grid .s-8 { grid-column:span 8; } .kqi-grid .s-12 { grid-column:span 12; }
+@media (max-width:1100px){ .kqi-grid .s-4, .kqi-grid .s-6, .kqi-grid .s-8 { grid-column:span 12; } }
+
+/* ── hero: resumo inteligente ─────────────────────────────────────── */
+.kqi-hero { display:flex; align-items:flex-start; gap:16px; padding:22px 24px; border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-xl); background:linear-gradient(135deg, var(--brand-soft), transparent 55%), var(--bg-elevated);
+  box-shadow:var(--shadow-sm); }
+.kqi-hero-ic { flex:0 0 auto; width:44px; height:44px; border-radius:12px; display:grid; place-items:center;
+  background:var(--brand); color:#fff; font-size:18px; box-shadow:var(--shadow-sm); }
+.kqi-hero-body { flex:1; min-width:0; }
+.kqi-hero-title { font-size:13px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:6px; }
+.kqi-hero-text { font-size:14.5px; line-height:1.6; color:var(--text-primary); }
+.kqi-hero-meta { margin-top:12px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.kqi-hero-time { font-size:12px; color:var(--text-tertiary); }
+.kqi-print-btn { display:inline-flex; align-items:center; gap:7px; height:32px; padding:0 14px; border-radius:var(--radius-pill);
+  border:1px solid var(--separator-non-opaque); background:var(--bg-elevated); color:var(--text-secondary); font-size:12.5px;
+  font-weight:600; cursor:pointer; transition:all var(--transition-fast); }
+.kqi-print-btn:hover { color:var(--brand); border-color:var(--brand); background:var(--brand-soft); }
+
+/* ── KPI cards ─────────────────────────────────────────────────────── */
+.kqi-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; }
+.kqi-kpi { position:relative; padding:16px 18px; overflow:hidden; background:var(--bg-elevated); border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-lg); box-shadow:var(--shadow-xs); }
+.kqi-kpi::before { content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--separator-hairline); }
+.kqi-kpi.c-brand::before { background:var(--brand); } .kqi-kpi.c-success::before { background:var(--success); }
+.kqi-kpi.c-warning::before { background:var(--warning); } .kqi-kpi.c-danger::before { background:var(--danger); }
+.kqi-kpi.c-info::before { background:var(--info); }
+.kqi-kpi-l { font-size:12px; font-weight:700; color:var(--text-tertiary); }
+.kqi-kpi-v { margin-top:6px; font-size:26px; font-weight:700; letter-spacing:-.03em; line-height:1; color:var(--text-primary); font-variant-numeric:tabular-nums; }
+.kqi-kpi-sub { margin-top:5px; font-size:11.5px; color:var(--text-quaternary); }
+.kqi-kpi-ic { position:absolute; right:16px; top:50%; transform:translateY(-50%); font-size:22px; opacity:.14; color:var(--text-primary); }
+
+/* ── cards de gráfico / tabela ─────────────────────────────────────── */
+.kqi-card { background:var(--bg-elevated); border:1px solid var(--separator-hairline); border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-xs); padding:18px; display:flex; flex-direction:column; }
+.kqi-card-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px;
+  padding-bottom:12px; border-bottom:1px solid var(--separator-hairline); }
+.kqi-card-title { display:flex; align-items:center; gap:9px; font-size:13.5px; font-weight:700; color:var(--text-primary); }
+.kqi-card-title i { color:var(--text-tertiary); font-size:13px; }
+.kqi-card-note { font-size:11px; color:var(--text-quaternary); }
+.kqi-chart { position:relative; height:280px; width:100%; }
+.kqi-chart.h-short { height:220px; }
+.kqi-nodata { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary);
+  font-size:12.5px; font-weight:600; background:color-mix(in srgb, var(--bg-elevated) 82%, transparent); }
+
+/* ── mini-stats (matrículas / instalador / comandos) ───────────────── */
+.kqi-mini-row { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--separator-hairline);
+  border:1px solid var(--separator-hairline); border-radius:var(--radius-md); overflow:hidden; }
+@media (max-width:720px){ .kqi-mini-row { grid-template-columns:repeat(2,1fr); } }
+.kqi-mini { padding:12px 14px; background:var(--bg-elevated); }
+.kqi-mini-l { font-size:10.5px; font-weight:600; letter-spacing:.03em; text-transform:uppercase; color:var(--text-tertiary); }
+.kqi-mini-v { margin-top:5px; font-size:19px; font-weight:700; color:var(--text-primary); font-variant-numeric:tabular-nums; }
+
+/* ── tabelas ───────────────────────────────────────────────────────── */
+.kqi-scroll { width:100%; overflow-x:auto; }
+.kqi-table { width:100%; border-collapse:collapse; min-width:520px; }
+.kqi-table thead th { text-align:left; padding:9px 12px; font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--text-tertiary); border-bottom:1px solid var(--separator-hairline); white-space:nowrap; }
+.kqi-table tbody td { padding:10px 12px; border-bottom:1px solid var(--separator-hairline); font-size:12.8px; color:var(--text-primary); vertical-align:middle; }
+.kqi-table tbody tr:last-child td { border-bottom:0; }
+.kqi-table tbody tr:hover { background:var(--bg-hover); }
+.kqi-badge { display:inline-flex; align-items:center; padding:3px 9px; margin:1px 3px 1px 0; border-radius:999px; font-size:10.8px; font-weight:700; }
+.kqi-badge.off { background:var(--bg-fill-tertiary); color:var(--text-tertiary); }
+.kqi-badge.bat { background:var(--danger-soft); color:var(--danger); }
+.kqi-badge.arm { background:var(--warning-soft); color:var(--warning); }
+.kqi-badge.ram { background:var(--warning-soft); color:var(--warning); }
+.kqi-empty { padding:36px 16px; text-align:center; color:var(--text-tertiary); font-size:13px; }
+.kqi-empty i { display:block; font-size:24px; color:var(--success); margin-bottom:8px; }
+.kqi-linklike { color:var(--brand); text-decoration:none; font-weight:600; }
+.kqi-linklike:hover { text-decoration:underline; }
+.kqi-count-pill { font-size:12px; color:var(--text-tertiary); font-weight:500; }
+
+@media print {
+  .kqi-print-btn, .breadcrumbs { display:none !important; }
+  .kqi-card, .kqi-hero { box-shadow:none; border:1px solid #ccc; break-inside:avoid; }
+  .kqi-chart { height:220px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kqi-page">
+
+  <!-- Resumo executivo -->
+  <div class="kqi-hero">
+    <div class="kqi-hero-ic"><i class="fa-solid fa-chart-line" aria-hidden="true"></i></div>
+    <div class="kqi-hero-body">
+      <div class="kqi-hero-title">Resumo Executivo</div>
+      <div class="kqi-hero-text">{{ resumo }}</div>
+      <div class="kqi-hero-meta">
+        <span class="kqi-hero-time"><i class="fa-solid fa-clock" aria-hidden="true"></i> Atualizado em {{ gerado_em|date:"d/m/Y H:i" }}</span>
+        <button type="button" class="kqi-print-btn" onclick="window.print()"><i class="fa-solid fa-print"></i> Imprimir / PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kqi-kpis">
+    <div class="kqi-kpi c-brand">
+      <div class="kqi-kpi-l">Frota Ativa</div>
+      <div class="kqi-kpi-v">{{ total }}</div>
+      <i class="fa-solid fa-mobile-screen-button kqi-kpi-ic"></i>
+    </div>
+    <div class="kqi-kpi c-success">
+      <div class="kqi-kpi-l">Online Agora</div>
+      <div class="kqi-kpi-v">{{ online }}</div>
+      <div class="kqi-kpi-sub">{{ pct_online }}% da frota</div>
+      <i class="fa-solid fa-circle-check kqi-kpi-ic"></i>
+    </div>
+    <div class="kqi-kpi c-info">
+      <div class="kqi-kpi-l">Ativos (24h)</div>
+      <div class="kqi-kpi-v">{{ ativos_24h }}</div>
+      <div class="kqi-kpi-sub">{{ pct_24h }}% enviaram telemetria</div>
+      <i class="fa-solid fa-tower-broadcast kqi-kpi-ic"></i>
+    </div>
+    <div class="kqi-kpi {% if atencao %}c-danger{% else %}c-success{% endif %}">
+      <div class="kqi-kpi-l">Precisam de Atenção</div>
+      <div class="kqi-kpi-v">{{ atencao|length }}</div>
+      <i class="fa-solid fa-triangle-exclamation kqi-kpi-ic"></i>
+    </div>
+    <div class="kqi-kpi c-danger">
+      <div class="kqi-kpi-l">Bateria Crítica</div>
+      <div class="kqi-kpi-v">{{ bateria_critica }}</div>
+      <div class="kqi-kpi-sub">≤ 20%</div>
+      <i class="fa-solid fa-battery-quarter kqi-kpi-ic"></i>
+    </div>
+    <div class="kqi-kpi c-warning">
+      <div class="kqi-kpi-l">Armazenamento Crítico</div>
+      <div class="kqi-kpi-v">{{ armazenamento_critico }}</div>
+      {% if com_telemetria_memoria %}
+      <div class="kqi-kpi-sub">&lt; 1 GB livre · {{ com_telemetria_memoria }}/{{ total }} com dado</div>
+      {% else %}
+      <div class="kqi-kpi-sub" title="Nenhum aparelho da frota enviou esse dado ainda — requer app Quiosque atualizado (v1.5.1+)">sem dados na frota (app desatualizado)</div>
+      {% endif %}
+      <i class="fa-solid fa-hard-drive kqi-kpi-ic"></i>
+    </div>
+    <div class="kqi-kpi c-info">
+      <div class="kqi-kpi-l">Vinculados ao Estoque</div>
+      <div class="kqi-kpi-v">{{ vinculados }}</div>
+      <div class="kqi-kpi-sub">{{ pct_vinculados }}% da frota</div>
+      <i class="fa-solid fa-barcode kqi-kpi-ic"></i>
+    </div>
+    <div class="kqi-kpi">
+      <div class="kqi-kpi-l">Sem Localização</div>
+      <div class="kqi-kpi-v">{{ sem_localizacao }}</div>
+      <i class="fa-solid fa-location-crosshairs kqi-kpi-ic"></i>
+    </div>
+  </div>
+
+  <!-- Crescimento da frota + atividade recente -->
+  <div class="kqi-grid">
+    <div class="kqi-card s-8">
+      <div class="kqi-card-head">
+        <span class="kqi-card-title"><i class="fa-solid fa-chart-area"></i> Crescimento da Frota (12 meses)</span>
+        <span class="kqi-card-note">Dispositivos matriculados × códigos gerados</span>
+      </div>
+      <div class="kqi-chart">
+        <canvas id="chGrowth"></canvas>
+        <div id="nd-growth" class="kqi-nodata">Sem histórico suficiente</div>
+      </div>
+    </div>
+    <div class="kqi-card s-4">
+      <div class="kqi-card-head">
+        <span class="kqi-card-title"><i class="fa-solid fa-signal"></i> Atividade Recente</span>
+        <span class="kqi-card-note">Últimos {{ retencao_dias }} dias</span>
+      </div>
+      <div class="kqi-chart">
+        <canvas id="chAtividade"></canvas>
+        <div id="nd-atividade" class="kqi-nodata">Sem check-ins no período</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Composição do parque -->
+  <div class="kqi-grid">
+    <div class="kqi-card s-4">
+      <div class="kqi-card-head"><span class="kqi-card-title"><i class="fa-solid fa-industry"></i> Fabricantes</span></div>
+      <div class="kqi-chart h-short">
+        <canvas id="chFab"></canvas>
+        <div id="nd-fab" class="kqi-nodata">Sem dados</div>
+      </div>
+    </div>
+    <div class="kqi-card s-4">
+      <div class="kqi-card-head">
+        <span class="kqi-card-title"><i class="fa-brands fa-android"></i> Versões do Android</span>
+        <span class="kqi-card-note">Fragmentação</span>
+      </div>
+      <div class="kqi-chart h-short">
+        <canvas id="chAndroid"></canvas>
+        <div id="nd-android" class="kqi-nodata">Sem dados</div>
+      </div>
+    </div>
+    <div class="kqi-card s-4">
+      <div class="kqi-card-head">
+        <span class="kqi-card-title"><i class="fa-solid fa-code-branch"></i> Versões do App</span>
+        <span class="kqi-card-note">Adesão à atualização</span>
+      </div>
+      <div class="kqi-chart h-short">
+        <canvas id="chAppVer"></canvas>
+        <div id="nd-appver" class="kqi-nodata">Sem dados</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rede + cobertura -->
+  <div class="kqi-grid">
+    <div class="kqi-card s-4">
+      <div class="kqi-card-head">
+        <span class="kqi-card-title"><i class="fa-solid fa-wifi"></i> Rede</span>
+        <span class="kqi-card-note">Últimos {{ retencao_dias }} dias</span>
+      </div>
+      <div class="kqi-chart h-short">
+        <canvas id="chRede"></canvas>
+        <div id="nd-rede" class="kqi-nodata">Sem check-ins no período</div>
+      </div>
+    </div>
+    <div class="kqi-card s-8">
+      <div class="kqi-card-head">
+        <span class="kqi-card-title"><i class="fa-solid fa-map-location-dot"></i> Cobertura por Localidade</span>
+        <span class="kqi-card-note">Cruzado com o estoque pelo nº de série</span>
+      </div>
+      <div class="kqi-chart h-short">
+        <canvas id="chCobertura"></canvas>
+        <div id="nd-cobertura" class="kqi-nodata">Sem dados</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mini-stats: matrículas / instalador / comandos -->
+  <div class="kqi-grid">
+    <div class="kqi-card s-4">
+      <div class="kqi-card-head"><span class="kqi-card-title"><i class="fa-solid fa-id-card"></i> Matrículas</span></div>
+      <div class="kqi-mini-row">
+        <div class="kqi-mini"><div class="kqi-mini-l">Geradas</div><div class="kqi-mini-v">{{ mat_total }}</div></div>
+        <div class="kqi-mini"><div class="kqi-mini-l">Usadas</div><div class="kqi-mini-v">{{ mat_usadas }}</div></div>
+        <div class="kqi-mini"><div class="kqi-mini-l">Disponíveis</div><div class="kqi-mini-v">{{ mat_disponiveis }}</div></div>
+        <div class="kqi-mini"><div class="kqi-mini-l">Expiradas</div><div class="kqi-mini-v">{{ mat_expiradas }}</div></div>
+      </div>
+      <div class="kqi-card-note" style="margin-top:10px;">Taxa de conversão: <strong>{{ mat_taxa_conversao }}%</strong></div>
+    </div>
+    <div class="kqi-card s-4">
+      <div class="kqi-card-head"><span class="kqi-card-title"><i class="fa-solid fa-download"></i> Instalador (.apk)</span></div>
+      <div class="kqi-mini-row">
+        <div class="kqi-mini"><div class="kqi-mini-l">Links gerados</div><div class="kqi-mini-v">{{ inst_total }}</div></div>
+        <div class="kqi-mini"><div class="kqi-mini-l">Downloads</div><div class="kqi-mini-v">{{ inst_downloads }}</div></div>
+        <div class="kqi-mini"><div class="kqi-mini-l">Válidos</div><div class="kqi-mini-v">{{ inst_validos }}</div></div>
+        <div class="kqi-mini"><div class="kqi-mini-l">Revogados</div><div class="kqi-mini-v">{{ inst_revogados }}</div></div>
+      </div>
+    </div>
+    <div class="kqi-card s-4">
+      <div class="kqi-card-head"><span class="kqi-card-title"><i class="fa-solid fa-satellite-dish"></i> Comandos Remotos</span></div>
+      <div class="kqi-mini-row">
+        <div class="kqi-mini"><div class="kqi-mini-l">Pendentes</div><div class="kqi-mini-v">{{ comandos_status.pendente|default:0 }}</div></div>
+        <div class="kqi-mini"><div class="kqi-mini-l">Entregues</div><div class="kqi-mini-v">{{ comandos_status.entregue|default:0 }}</div></div>
+        <div class="kqi-mini"><div class="kqi-mini-l">Executados</div><div class="kqi-mini-v">{{ comandos_status.executado|default:0 }}</div></div>
+        <div class="kqi-mini"><div class="kqi-mini-l">Falharam</div><div class="kqi-mini-v">{{ comandos_status.falhou|default:0 }}</div></div>
+      </div>
+      <div class="kqi-card-note" style="margin-top:10px;">{{ comandos_total }} comando(s) emitido(s) no total</div>
+    </div>
+  </div>
+
+  <!-- Tabelas: atenção + top modelos -->
+  <div class="kqi-grid">
+    <div class="kqi-card s-8">
+      <div class="kqi-card-head">
+        <span class="kqi-card-title" style="color:var(--danger)"><i class="fa-solid fa-fire"></i> Precisam de Atenção</span>
+        <span class="kqi-count-pill">{{ atencao|length }} dispositivo(s)</span>
+      </div>
+      <div class="kqi-scroll">
+        <table class="kqi-table">
+          <thead><tr><th>Dispositivo</th><th>Motivo(s)</th><th>Último check-in</th><th aria-label="Ação"></th></tr></thead>
+          <tbody>
+            {% for a in atencao %}
+            <tr>
+              <td>
+                <a href="{% url 'quiosque_detalhe' a.device.pk %}" class="kqi-linklike">{{ a.device.apelido|default:a.device.modelo|default:"Quiosque" }}</a>
+              </td>
+              <td>
+                {% for m in a.motivos %}
+                  <span class="kqi-badge {% if 'Offline' in m or 'conectou' in m %}off{% elif 'Bateria' in m %}bat{% elif 'Armazenamento' in m %}arm{% else %}ram{% endif %}">{{ m }}</span>
+                {% endfor %}
+              </td>
+              <td>{% if a.device.ultimo_checkin %}{{ a.device.ultimo_checkin|naturaltime }}{% else %}<span style="color:var(--text-quaternary)">nunca</span>{% endif %}</td>
+              <td style="text-align:right;"><a href="{% url 'quiosque_detalhe' a.device.pk %}" class="kqi-linklike"><i class="fa-solid fa-chevron-right"></i></a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4"><div class="kqi-empty"><i class="fa-solid fa-circle-check"></i>Nenhum dispositivo em estado crítico.</div></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="kqi-card s-4">
+      <div class="kqi-card-head">
+        <span class="kqi-card-title"><i class="fa-solid fa-ranking-star"></i> Top Modelos</span>
+      </div>
+      <div class="kqi-scroll">
+        <table class="kqi-table">
+          <thead><tr><th>Modelo</th><th style="text-align:right;">Qtd.</th></tr></thead>
+          <tbody>
+            {% for nome, qtd in top_modelos %}
+            <tr><td>{{ nome }}</td><td style="text-align:right;">{{ qtd }}</td></tr>
+            {% empty %}
+            <tr><td colspan="2"><div class="kqi-empty">Sem dispositivos matriculados.</div></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{{ labels_meses|default:"[]"|json_script:"kqi-labels-meses" }}
+{{ devices_serie|default:"[]"|json_script:"kqi-devices-serie" }}
+{{ matriculas_serie|default:"[]"|json_script:"kqi-matriculas-serie" }}
+{{ dias_labels|default:"[]"|json_script:"kqi-dias-labels" }}
+{{ checkins_por_dia|default:"[]"|json_script:"kqi-checkins-dia" }}
+{{ fab_labels|default:"[]"|json_script:"kqi-fab-labels" }}
+{{ fab_dados|default:"[]"|json_script:"kqi-fab-dados" }}
+{{ android_labels|default:"[]"|json_script:"kqi-android-labels" }}
+{{ android_dados|default:"[]"|json_script:"kqi-android-dados" }}
+{{ appver_labels|default:"[]"|json_script:"kqi-appver-labels" }}
+{{ appver_dados|default:"[]"|json_script:"kqi-appver-dados" }}
+{{ rede_labels|default:"[]"|json_script:"kqi-rede-labels" }}
+{{ rede_dados|default:"[]"|json_script:"kqi-rede-dados" }}
+{{ cobertura_top|default:"[]"|json_script:"kqi-cobertura" }}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  const getJson = (id) => JSON.parse(document.getElementById(id).textContent || '[]');
+  const sumArr = (arr) => arr.reduce((a, b) => a + (Number(b) || 0), 0);
+  const showEl = (id, visible) => { const el = document.getElementById(id); if (el) el.style.display = visible ? 'flex' : 'none'; };
+  const PALETTE = ['#0071E3', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#0ea5e9', '#ec4899', '#64748b', '#14b8a6', '#f97316'];
+
+  Chart.defaults.font.family = "'Inter', -apple-system, sans-serif";
+  Chart.defaults.color = '#64748b';
+  Chart.defaults.plugins.tooltip.backgroundColor = '#1e293b';
+  Chart.defaults.plugins.tooltip.padding = 10;
+  Chart.defaults.plugins.tooltip.cornerRadius = 8;
+
+  /* Crescimento da frota (linha) */
+  (function(){
+    const labels = getJson('kqi-labels-meses');
+    const devicesSerie = getJson('kqi-devices-serie');
+    const matSerie = getJson('kqi-matriculas-serie');
+    showEl('nd-growth', (sumArr(devicesSerie) + sumArr(matSerie)) === 0);
+    const ctx = document.getElementById('chGrowth');
+    if (!ctx) return;
+    new Chart(ctx, {
+      type: 'line',
+      data: { labels: labels, datasets: [
+        { label: 'Dispositivos matriculados', data: devicesSerie, borderColor: PALETTE[0], backgroundColor: 'rgba(0,113,227,0.08)', borderWidth: 2, tension: .35, fill: true, pointRadius: 2 },
+        { label: 'Códigos gerados', data: matSerie, borderColor: PALETTE[1], borderWidth: 2, borderDash: [5,5], tension: .35, fill: false, pointRadius: 2 },
+      ] },
+      options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8 } } },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { borderDash: [2,2] } } } }
+    });
+  })();
+
+  /* Atividade recente (barra) */
+  (function(){
+    const labels = getJson('kqi-dias-labels');
+    const dados = getJson('kqi-checkins-dia');
+    showEl('nd-atividade', sumArr(dados) === 0);
+    const ctx = document.getElementById('chAtividade');
+    if (!ctx) return;
+    new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [{ label: 'Check-ins', data: dados, backgroundColor: PALETTE[0], borderRadius: 5 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { borderDash: [2,2] } } } } });
+  })();
+
+  /* Fabricantes (donut) */
+  (function(){
+    const labels = getJson('kqi-fab-labels');
+    const dados = getJson('kqi-fab-dados');
+    showEl('nd-fab', sumArr(dados) === 0);
+    const ctx = document.getElementById('chFab');
+    if (!ctx) return;
+    new Chart(ctx, { type: 'doughnut', data: { labels: labels, datasets: [{ data: dados, backgroundColor: PALETTE, borderWidth: 2, borderColor: '#fff' }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 10.5 } } } } } });
+  })();
+
+  /* Versões do Android (barra horizontal) */
+  (function(){
+    const labels = getJson('kqi-android-labels');
+    const dados = getJson('kqi-android-dados');
+    showEl('nd-android', sumArr(dados) === 0);
+    const ctx = document.getElementById('chAndroid');
+    if (!ctx) return;
+    new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [{ data: dados, backgroundColor: PALETTE[1], borderRadius: 4, barThickness: 16 }] },
+      options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, grid: { borderDash: [2,2] } }, y: { grid: { display: false } } } } });
+  })();
+
+  /* Versões do App (barra horizontal) */
+  (function(){
+    const labels = getJson('kqi-appver-labels');
+    const dados = getJson('kqi-appver-dados');
+    showEl('nd-appver', sumArr(dados) === 0);
+    const ctx = document.getElementById('chAppVer');
+    if (!ctx) return;
+    new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [{ data: dados, backgroundColor: PALETTE[2], borderRadius: 4, barThickness: 16 }] },
+      options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, grid: { borderDash: [2,2] } }, y: { grid: { display: false } } } } });
+  })();
+
+  /* Rede (pizza) */
+  (function(){
+    const labels = getJson('kqi-rede-labels').map(l => l === 'wifi' ? 'Wi-Fi' : (l === 'cellular' ? 'Dados móveis' : l));
+    const dados = getJson('kqi-rede-dados');
+    showEl('nd-rede', sumArr(dados) === 0);
+    const ctx = document.getElementById('chRede');
+    if (!ctx) return;
+    new Chart(ctx, { type: 'pie', data: { labels: labels, datasets: [{ data: dados, backgroundColor: [PALETTE[0], PALETTE[5], PALETTE[7]], borderWidth: 2, borderColor: '#fff' }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 10.5 } } } } } });
+  })();
+
+  /* Cobertura por localidade (barra horizontal) */
+  (function(){
+    const pares = getJson('kqi-cobertura');
+    const labels = pares.map(p => p[0]);
+    const dados = pares.map(p => p[1]);
+    showEl('nd-cobertura', sumArr(dados) === 0);
+    const ctx = document.getElementById('chCobertura');
+    if (!ctx) return;
+    new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [{ data: dados, backgroundColor: PALETTE[4], borderRadius: 4, barThickness: 16 }] },
+      options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, grid: { borderDash: [2,2] } }, y: { grid: { display: false } } } } });
+  })();
+})();
+</script>
+{% endblock %}

@@ -108,6 +108,18 @@ urlpatterns = [
     path("movimentacoes/<int:pk>/editar/", views.movimentacao_update, name="movimentacao_update"),
     path("movimentacoes/<int:pk>/excluir/", views.movimentacao_delete, name="movimentacao_delete"),
 
+    # ── Separação de Itens (Envio / Devolução) ──────────────────────────────
+    path("separacao/envio/", views.separacao_envio_list, name="separacao_envio_list"),
+    path("separacao/devolucao/", views.separacao_devolucao_list, name="separacao_devolucao_list"),
+    path("separacao/lote/novo/", views.separacao_lote_create, name="separacao_lote_create"),
+    path("separacao/lote/<int:pk>/", views.separacao_lote_detail, name="separacao_lote_detail"),
+    path("separacao/lote/<int:pk>/excluir/", views.separacao_lote_excluir, name="separacao_lote_excluir"),
+    path("separacao/lote/<int:pk>/enviar/", views.separacao_lote_enviar, name="separacao_lote_enviar"),
+    path("separacao/item/<int:pk>/remover/", views.separacao_item_remover, name="separacao_item_remover"),
+    path("separacao/item/<int:pk>/enviar/", views.separacao_item_enviar, name="separacao_item_enviar"),
+    path("separacao/documento-fiscal/gerar/", views.documento_fiscal_gerar, name="documento_fiscal_gerar"),
+    path("separacao/documento-fiscal/<int:pk>/pdf/", views.documento_fiscal_pdf_view, name="documento_fiscal_pdf_view"),
+
     # ── Ciclos de Manutenção ────────────────────────────────────────────────
     path("ciclos/", views.ciclos_list, name="ciclos_list"),
     path("ciclos/novo/<int:item_pk>/", views.ciclo_create, name="ciclo_create"),
@@ -120,12 +132,15 @@ urlpatterns = [
     path("preventiva/item/<int:item_id>/iniciar/", views.preventiva_start, name="preventiva_start_item"),
     path("preventiva/<int:pk>/", views.preventiva_detail, name="preventiva_detail"),
     path("preventiva/<int:pk>/executar/", views.preventiva_exec, name="preventiva_exec"),
+    path("preventiva/execucao/<int:execucao_pk>/editar/", views.preventiva_execucao_editar, name="preventiva_execucao_editar"),
+    path("preventiva/execucao/<int:execucao_pk>/excluir/", views.preventiva_execucao_excluir, name="preventiva_execucao_excluir"),
     path("preventiva/<int:pk>/agendar/", views.preventiva_agendar, name="preventiva_agendar"),
     path("preventiva/plano/", views.preventiva_plano, name="preventiva_plano"),
     path("preventiva/agendadas/", views.preventiva_agendadas, name="preventiva_agendadas"),
     path("preventiva/desempenho/", views.tecnico_desempenho, name="tecnico_desempenho"),
     path("preventiva/desempenho/apontamentos/exportar/", views.apontamentos_horas_export, name="apontamentos_horas_export"),
     path("preventiva/minhas-atividades/", views.minhas_atividades, name="minhas_atividades"),
+    path("preventiva/minha-agenda/", views.preventiva_minha_agenda, name="preventiva_minha_agenda"),
     # Checklists de preventiva
     path("preventiva/checklists/", views.checklist_list, name="checklist_list"),
     path("preventiva/checklists/novo/", views.checklist_form, name="checklist_create"),
@@ -159,6 +174,7 @@ urlpatterns = [
     path("dashboards/toner/exportar-excel/", views.toner_cc_export_excel, name="toner_cc_export_excel"),
     path("dashboards/licencas/", views.licencas_dashboard, name="licencas_dashboard"),
     path("dashboards/preventivas/", views.preventiva_dashboard, name="preventiva_dashboard"),
+    path("dashboards/preventivas/exportar/", views.preventiva_dashboard_export, name="preventiva_dashboard_export"),
     path("preventiva/sincronizar-programacao/", views.preventiva_sincronizar_programacao, name="preventiva_sincronizar_programacao"),
 
     # ── Status Board ───────────────────────────────────────────────────────
@@ -222,11 +238,14 @@ urlpatterns = [
 
     # ── Módulo Quiosque — Dashboard interno (TI) ────────────────────────────
     path("quiosque/",                  views.quiosque_dashboard,     name="quiosque_dashboard"),
+    path("quiosque/indicadores/",      views.quiosque_indicadores,   name="quiosque_indicadores"),
     path("quiosque/mapa/",             views.quiosque_mapa,          name="quiosque_mapa"),
     path("quiosque/matriculas/",       views.quiosque_matriculas,    name="quiosque_matriculas"),
     path("quiosque/matriculas/<int:pk>/excluir/",   views.quiosque_matricula_excluir,  name="quiosque_matricula_excluir"),
     path("quiosque/matriculas/<int:pk>/renomear/",  views.quiosque_matricula_renomear, name="quiosque_matricula_renomear"),
+    path("quiosque/matriculas/<int:pk>/qrcode/",    views.quiosque_matricula_qrcode,   name="quiosque_matricula_qrcode"),
     path("quiosque/instalador/gerar/",              views.quiosque_instalador_gerar,   name="quiosque_instalador_gerar"),
+    path("quiosque/instalador/<int:pk>/status/",    views.quiosque_instalador_status,  name="quiosque_instalador_status"),
     path("quiosque/instalador/<int:pk>/revogar/",   views.quiosque_instalador_revogar, name="quiosque_instalador_revogar"),
     path("quiosque/<int:pk>/",         views.quiosque_detalhe,       name="quiosque_detalhe"),
     path("quiosque/<int:pk>/config/",  views.quiosque_config_editar, name="quiosque_config_editar"),
@@ -246,6 +265,9 @@ urlpatterns = [
     path("portal/manutencao/<int:pk>/", views.portal_manutencao_detail, name="portal_manutencao_detail"),
     path("portal/troca-antecipada/", views.portal_troca_antecipada_list, name="portal_troca_antecipada_list"),
     path("portal/troca-antecipada/nova/", views.portal_troca_antecipada_nova, name="portal_troca_antecipada_nova"),
+    path("portal/separacao/envio/", views.portal_separacao_envio_list, name="portal_separacao_envio_list"),
+    path("portal/separacao/devolucao/", views.portal_separacao_devolucao_list, name="portal_separacao_devolucao_list"),
+    path("portal/separacao/lote/<int:pk>/", views.portal_separacao_lote_detail, name="portal_separacao_lote_detail"),
     path("portal/notificacoes/marcar-lidas/", views.portal_notificacoes_marcar_lidas, name="portal_notificacoes_marcar_lidas"),
     path("portal/licencas/", views.portal_licencas_list, name="portal_licencas_list"),
     path("portal/ajuda/", views.portal_ajuda, name="portal_ajuda"),

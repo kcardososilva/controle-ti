@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ lote.nome }} — {{ titulo }}{% endblock %}
+{% block page_title %}{{ lote.nome }}{% endblock %}
+{% block page_subtitle %}{{ lote.fornecedor.nome }} · {{ titulo }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url rota_list %}">{{ titulo }}</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{{ lote.nome }}</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url rota_list %}" class="btn btn-sm"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.sepd-page) {
+  --sepd-surface: var(--bg-elevated);
+  --sepd-surface-soft: var(--bg-fill-tertiary);
+  --sepd-text: var(--text-primary);
+  --sepd-muted: var(--text-tertiary);
+  --sepd-hair: var(--separator-hairline);
+}
+.sepd-page, .sepd-page * { box-sizing: border-box; min-width: 0; }
+.sepd-page { display: grid; gap: 1.1rem; color: var(--sepd-text); }
+
+.sepd-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  padding: 1rem 1.2rem; background: var(--sepd-surface); border: 1px solid var(--sepd-hair); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.sepd-head-info { display: flex; align-items: center; gap: .8rem; }
+.sepd-meta { color: var(--sepd-muted); font-size: .85rem; }
+.sepd-actions { display: flex; gap: .55rem; flex-wrap: wrap; }
+
+.sep-chip { display: inline-flex; align-items: center; gap: .35rem; padding: .22rem .6rem; border-radius: var(--radius-pill); font-size: .72rem; font-weight: 800; }
+.sep-chip::before { content: ""; width: .4rem; height: .4rem; border-radius: 999px; background: currentColor; }
+.sep-chip--aberto { color: var(--warning); background: var(--warning-soft); }
+.sep-chip--enviado { color: var(--success); background: var(--success-soft); }
+
+.sepd-card { background: var(--sepd-surface); border: 1px solid var(--sepd-hair); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+.sepd-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+.sepd-table th { text-align: left; padding: .7rem 1rem; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--sepd-muted); border-bottom: 1px solid var(--sepd-hair); }
+.sepd-table td { padding: .7rem 1rem; border-bottom: 1px solid var(--sepd-hair); vertical-align: middle; }
+.sepd-table tr:last-child td { border-bottom: none; }
+.sepd-table .sepd-actions-cell { display: flex; gap: .4rem; justify-content: flex-end; white-space: nowrap; }
+
+.sepd-empty { display: grid; place-items: center; gap: .6rem; padding: 2.6rem 1rem; text-align: center; color: var(--sepd-muted); }
+
+.sep-info-trigger { background: none; border: none; padding: 0; margin: 0; font: inherit; font-weight: 700; color: var(--sepd-text); cursor: pointer; text-align: left; display: inline-flex; align-items: center; gap: .4rem; }
+.sep-info-trigger:hover { color: var(--brand); text-decoration: underline; }
+.sep-info-trigger i { font-size: .76rem; color: var(--sepd-muted); }
+
+.sep-badge { display: inline-flex; align-items: center; gap: .3rem; margin-top: .3rem; padding: .15rem .5rem; border-radius: var(--radius-pill); font-size: .68rem; font-weight: 800; }
+.sep-badge--danger { color: var(--danger); background: var(--danger-soft); }
+.sep-badge--warning { color: var(--warning); background: var(--warning-soft); }
+.sep-badge--ok { color: var(--success); background: var(--success-soft); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sepd-page">
+
+  <div class="sepd-head">
+    <div class="sepd-head-info">
+      <span class="sep-chip sep-chip--{{ lote.status }}">{{ lote.get_status_display }}</span>
+      <span class="sepd-meta">Criado em {{ lote.created_at|date:"d/m/Y H:i" }}{% if lote.criado_por %} por {{ lote.criado_por.get_full_name|default:lote.criado_por.username }}{% endif %}</span>
+    </div>
+    <div class="sepd-actions">
+      {% if lote.status == "aberto" %}
+      <form method="post" action="{% url 'separacao_lote_enviar' lote.pk %}" onsubmit="return confirm('Despachar todos os itens abertos deste lote agora?');">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-primary"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Enviar lote inteiro</button>
+      </form>
+      <form method="post" action="{% url 'separacao_lote_excluir' lote.pk %}" onsubmit="return confirm('Desfazer este lote? Os itens voltam a ficar soltos na remessa.');">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-danger"><i class="fa-solid fa-trash" aria-hidden="true"></i> Desfazer lote</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{% url 'documento_fiscal_gerar' %}">
+        {% csrf_token %}
+        <input type="hidden" name="lote_id" value="{{ lote.pk }}">
+        <button type="submit" class="btn btn-sm btn-outline" title="Gera um PDF (fornecedor, modelo e nº de série) e envia por e-mail ao setor Fiscal">
+          <i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Gerar Documento Fiscal do Lote
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="sepd-card">
+    {% if itens %}
+    <div style="overflow-x:auto;">
+      <table class="sepd-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Status</th>
+            <th>Despachado em</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in itens %}
+          <tr>
+            <td>
+              <button type="button" class="sep-info-trigger" data-sepid="{{ i.id }}" title="Ver detalhes do equipamento">
+                <i class="fa-solid fa-circle-info" aria-hidden="true"></i> {{ i.item.nome }}
+              </button>
+              {% if i.item.numero_serie %}<div class="sepd-meta">Nº série: {{ i.item.numero_serie }}</div>{% endif %}
+              {% if i.badge_contrato %}<div class="sep-badge sep-badge--{{ i.badge_contrato.css }}">{{ i.badge_contrato.label }}</div>{% endif %}
+            </td>
+            <td><span class="sep-chip sep-chip--{{ i.status }}">{{ i.get_status_display }}</span></td>
+            <td>{{ i.enviado_em|date:"d/m/Y H:i"|default:"—" }}</td>
+            <td>
+              {% if i.status == "aberto" %}
+              <div class="sepd-actions-cell">
+                <form method="post" action="{% url 'separacao_item_enviar' i.id %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-outline"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Enviar</button>
+                </form>
+                <form method="post" action="{% url 'separacao_item_remover' i.id %}" onsubmit="return confirm('Remover este item da remessa?');">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-danger"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </form>
+              </div>
+              {% elif i.movimentacao_despacho_id %}
+              <a href="{% url 'movimentacao_detail' i.movimentacao_despacho_id %}" class="btn btn-sm btn-outline"><i class="fa-solid fa-eye" aria-hidden="true"></i> Ver movimentação</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="sepd-empty">
+      <i class="fa-solid fa-box-open" aria-hidden="true"></i>
+      <p>Este lote não tem itens.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if documentos %}
+  <div class="sepd-card">
+    <div style="overflow-x:auto;">
+      <table class="sepd-table">
+        <thead>
+          <tr>
+            <th>Documento Fiscal</th>
+            <th>Itens</th>
+            <th>Gerado em</th>
+            <th>E-mail ao Fiscal</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in documentos %}
+          <tr>
+            <td>{{ d.numero }}</td>
+            <td>{{ d.itens.count }} item{{ d.itens.count|pluralize }}</td>
+            <td>{{ d.created_at|date:"d/m/Y H:i" }}</td>
+            <td>
+              {% if d.email_enviado %}
+              <span class="sep-chip sep-chip--enviado">Enviado</span>
+              {% else %}
+              <span class="sep-chip sep-chip--aberto">Não enviado</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{% url 'documento_fiscal_pdf_view' d.pk %}" target="_blank" class="btn btn-sm btn-outline">
+                <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Baixar PDF
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+{% include "front/equipamentos/_separacao_info_drawer.html" %}
+{% endblock %}

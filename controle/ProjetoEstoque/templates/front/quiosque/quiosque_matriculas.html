@@ -79,6 +79,13 @@
 .kq-pill.exp { color:var(--warning); background:var(--warning-soft); }
 .kq-pill.exp::before { background:var(--warning); }
 
+.kq-qrbtn { border:0; cursor:pointer; font-family:inherit; }
+.kq-qrbtn-new { animation:kq-pulse 1.6s ease-in-out 3; }
+@keyframes kq-pulse { 0%,100%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--success) 45%, transparent); } 50%{ box-shadow:0 0 0 5px color-mix(in srgb, var(--success) 0%, transparent); } }
+.kq-qr-mini { width:24px; height:24px; flex:0 0 24px; display:inline-grid; place-items:center; margin-left:8px; border-radius:var(--radius-sm);
+  border:1px solid var(--separator-non-opaque); background:var(--bg-elevated); color:var(--text-tertiary); font-size:11px; cursor:pointer; transition:all var(--transition-fast); vertical-align:middle; }
+.kq-qr-mini:hover { color:var(--brand); border-color:var(--brand); background:var(--brand-soft); }
+
 .kq-devlink { color:var(--brand); text-decoration:none; font-weight:500; }
 .kq-devlink:hover { text-decoration:underline; }
 .kq-muted { color:var(--text-quaternary); }
@@ -179,6 +186,7 @@
             </select>
           </div>
           <button type="submit" class="btn btn-primary" id="kqApkBtn"><i class="fa-solid fa-qrcode"></i> Gerar link e QR Code</button>
+          <button type="button" class="btn btn-sm" id="kqApkViewBtn"><i class="fa-solid fa-eye"></i> Visualizar QR Code</button>
         </form>
         <div class="kq-hint">
           <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
@@ -255,7 +263,20 @@
             <td>
               {% if m.usado %}<span class="kq-pill used">Usado</span>
               {% elif not m.esta_valida %}<span class="kq-pill exp">Expirado</span>
-              {% else %}<span class="kq-pill ok">Disponível</span>{% endif %}
+              {% elif m.pk == novo_pk %}
+                <button type="button" class="kq-pill ok kq-qrbtn kq-qrbtn-new" data-qr
+                        data-url="{% url 'quiosque_matricula_qrcode' m.pk %}"
+                        title="Ver o QR Code deste código">
+                  <i class="fa-solid fa-qrcode"></i> QR Code Gerado
+                </button>
+              {% else %}
+                <span class="kq-pill ok">Disponível</span>
+                <button type="button" class="kq-qr-mini" data-qr
+                        data-url="{% url 'quiosque_matricula_qrcode' m.pk %}"
+                        title="Ver QR Code deste código" aria-label="Ver QR Code do código {{ m.codigo }}">
+                  <i class="fa-solid fa-qrcode"></i>
+                </button>
+              {% endif %}
             </td>
             <td>{% if m.device %}<a href="{% url 'quiosque_detalhe' m.device.pk %}" class="kq-devlink">{{ m.device }}</a>{% else %}<span class="kq-muted">—</span>{% endif %}</td>
             <td>{% if m.expira_em %}<span class="kq-when">{{ m.expira_em|date:"d/m/Y H:i" }}</span>{% else %}<span class="kq-muted">sem expiração</span>{% endif %}</td>
@@ -358,6 +379,23 @@
     </div>
   </div>
 </div>
+
+<!-- QR Code do código de matrícula -->
+<div class="kq-modal" id="kqMatQrModal" hidden>
+  <div class="kq-modal-box kq-qr-box">
+    <h3><i class="fa-solid fa-id-card"></i> Código de matrícula</h3>
+    <p>Aponte a câmera do celular para o QR Code (ou digite o código) no app do quiosque para registrar o aparelho.</p>
+    <img id="kqMatQrImg" class="kq-qr-img" src="" alt="QR Code do código de matrícula">
+    <div class="kq-qr-link">
+      <span id="kqMatQrCodigo"></span>
+      <button type="button" class="kq-copy" id="kqMatQrCopy" data-copy="" title="Copiar código" aria-label="Copiar código de matrícula"><i class="fa-regular fa-copy"></i></button>
+    </div>
+    <p class="kq-qr-expira" id="kqMatQrExpira"></p>
+    <div class="kq-modal-actions" style="justify-content:center;">
+      <button type="button" class="btn btn-sm" data-close>Fechar</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -389,7 +427,7 @@
 // animação de entrada), o que ancora position:fixed nele em vez da viewport.
 (function(){
   var scroller = document.getElementById('mainContent') || document.scrollingElement || document.body;
-  var modais = ['kqRenameModal', 'kqQrModal'].map(function(id){ return document.getElementById(id); }).filter(Boolean);
+  var modais = ['kqRenameModal', 'kqQrModal', 'kqMatQrModal'].map(function(id){ return document.getElementById(id); }).filter(Boolean);
   modais.forEach(function(modal){
     if (modal.parentNode !== document.body) document.body.appendChild(modal);
     new MutationObserver(function(){ scroller.style.overflow = modal.hidden ? '' : 'hidden'; })
@@ -420,10 +458,18 @@
   });
 })();
 
-// Instalador do app: gera o link + QR Code via AJAX e exibe no modal.
+// Instalador do app: gera o link + QR Code via AJAX e exibe no modal. O botão
+// "Visualizar QR Code" reabre o último QR gerado NESTE navegador (sessionStorage)
+// sem precisar gerar um link novo — o servidor nunca guarda a URL/token em si
+// (só o hash, ver KioskInstaladorLink), então o que fica salvo é exatamente o
+// que o navegador já recebeu na tela; ao reabrir, confirmamos com o servidor
+// (via pk) se aquele link ainda está válido antes de reexibir.
 (function(){
+  var STORAGE_KEY = 'kqUltimoInstalador';
   var form = document.getElementById('kqApkForm');
-  if (!form) return;
+  var viewBtn = document.getElementById('kqApkViewBtn');
+  if (!form && !viewBtn) return;
+
   var btn = document.getElementById('kqApkBtn');
   var modal = document.getElementById('kqQrModal');
   var img = document.getElementById('kqQrImg');
@@ -431,28 +477,102 @@
   var copyBtn = document.getElementById('kqQrCopy');
   var expiraP = document.getElementById('kqQrExpira');
 
-  form.addEventListener('submit', function(ev){
-    ev.preventDefault();
-    var textoOriginal = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando…';
+  function salvarUltimo(dados){
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(dados)); } catch (e) {}
+  }
 
-    fetch("{% url 'quiosque_instalador_gerar' %}", {
-      method: 'POST',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      body: new FormData(form),
-    })
-      .then(function(resp){ return resp.json(); })
-      .then(function(data){
-        if (!data.ok) throw new Error(data.erro || 'Falha ao gerar o link de instalação.');
-        img.src = data.qr_base64;
-        urlSpan.textContent = data.url;
-        if (copyBtn) copyBtn.setAttribute('data-copy', data.url);
-        expiraP.textContent = 'Válido até ' + data.expira_em + ' (' + data.validade_minutos + ' min)';
-        modal.hidden = false;
+  if (form) {
+    form.addEventListener('submit', function(ev){
+      ev.preventDefault();
+      var textoOriginal = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando…';
+
+      fetch("{% url 'quiosque_instalador_gerar' %}", {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: new FormData(form),
       })
-      .catch(function(err){ alert(err.message || 'Falha ao gerar o link de instalação.'); })
-      .finally(function(){ btn.disabled = false; btn.innerHTML = textoOriginal; });
+        .then(function(resp){ return resp.json(); })
+        .then(function(data){
+          if (!data.ok) throw new Error(data.erro || 'Falha ao gerar o link de instalação.');
+          img.src = data.qr_base64;
+          urlSpan.textContent = data.url;
+          if (copyBtn) copyBtn.setAttribute('data-copy', data.url);
+          expiraP.textContent = 'Válido até ' + data.expira_em + ' (' + data.validade_minutos + ' min)';
+          modal.hidden = false;
+          salvarUltimo({ pk: data.pk, url: data.url, qr_base64: data.qr_base64 });
+        })
+        .catch(function(err){ alert(err.message || 'Falha ao gerar o link de instalação.'); })
+        .finally(function(){ btn.disabled = false; btn.innerHTML = textoOriginal; });
+    });
+  }
+
+  if (viewBtn) {
+    viewBtn.addEventListener('click', function(){
+      var raw, dados;
+      try { raw = sessionStorage.getItem(STORAGE_KEY); } catch (e) { raw = null; }
+      try { dados = raw ? JSON.parse(raw) : null; } catch (e) { dados = null; }
+
+      if (!dados || !dados.pk) {
+        alert('Nenhum QR Code foi gerado nesta sessão do navegador. Clique em "Gerar link e QR Code" para criar um.');
+        return;
+      }
+
+      var textoOriginal = viewBtn.innerHTML;
+      viewBtn.disabled = true;
+      viewBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verificando…';
+
+      fetch("/quiosque/instalador/" + dados.pk + "/status/", { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(resp){ return resp.json(); })
+        .then(function(status){
+          if (!status.ok || !status.valido) {
+            try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) {}
+            alert('O último QR Code gerado já ' + (status.revogado ? 'foi revogado' : 'expirou') + '. Gere um novo link e QR Code.');
+            return;
+          }
+          img.src = dados.qr_base64;
+          urlSpan.textContent = dados.url;
+          if (copyBtn) copyBtn.setAttribute('data-copy', dados.url);
+          expiraP.textContent = 'Válido até ' + status.expira_em + ' (último QR gerado nesta sessão)';
+          modal.hidden = false;
+        })
+        .catch(function(){ alert('Não foi possível verificar o QR Code agora. Tente novamente.'); })
+        .finally(function(){ viewBtn.disabled = false; viewBtn.innerHTML = textoOriginal; });
+    });
+  }
+})();
+
+// QR Code do código de matrícula: busca sob demanda (o servidor recusa se o
+// código já tiver sido usado/expirado nesse meio-tempo) e exibe no popup.
+(function(){
+  var modal = document.getElementById('kqMatQrModal');
+  var img = document.getElementById('kqMatQrImg');
+  var codigoSpan = document.getElementById('kqMatQrCodigo');
+  var copyBtn = document.getElementById('kqMatQrCopy');
+  var expiraP = document.getElementById('kqMatQrExpira');
+  if (!modal) return;
+
+  document.querySelectorAll('[data-qr]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var url = btn.getAttribute('data-url');
+      if (!url) return;
+      var textoOriginal = btn.innerHTML;
+      btn.disabled = true;
+
+      fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(resp){ return resp.json(); })
+        .then(function(data){
+          if (!data.ok) throw new Error(data.erro || 'Falha ao gerar o QR Code.');
+          img.src = data.qr_base64;
+          codigoSpan.textContent = data.codigo + (data.descricao ? ' — ' + data.descricao : '');
+          if (copyBtn) copyBtn.setAttribute('data-copy', data.codigo);
+          expiraP.textContent = data.expira_em ? ('Válido até ' + data.expira_em) : 'Sem expiração — válido até ser usado';
+          modal.hidden = false;
+        })
+        .catch(function(err){ alert(err.message || 'Falha ao gerar o QR Code.'); })
+        .finally(function(){ btn.disabled = false; btn.innerHTML = textoOriginal; });
+    });
   });
 })();
 </script>

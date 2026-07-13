@@ -81,6 +81,18 @@
 .kq-prop .v a:hover { text-decoration:underline; }
 .kq-prop .v.mono { font-family:var(--font-mono); font-weight:450; }
 
+/* ── barras de memória / armazenamento ────────────────────────────── */
+.kq-meter + .kq-meter { margin-top:14px; }
+.kq-meter-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:7px; flex-wrap:wrap; }
+.kq-meter-l { font-size:12.5px; font-weight:600; color:var(--text-primary); }
+.kq-meter-v { font-size:12px; color:var(--text-tertiary); display:inline-flex; align-items:center; gap:6px; font-variant-numeric:tabular-nums; }
+.kq-meter-track { height:8px; border-radius:99px; background:var(--bg-fill-tertiary); overflow:hidden; }
+.kq-meter-track > i { display:block; height:100%; border-radius:99px; background:var(--brand); transition:width .3s ease; }
+.kq-meter-track > i.is-warn { background:var(--warning); }
+.kq-meter-track > i.is-danger { background:var(--danger); }
+.kq-pill-warn { color:var(--warning); }
+.kq-pill-danger { color:var(--danger); }
+
 /* ── config do TI ─────────────────────────────────────────────────── */
 .kq-cfg { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
 .kq-cfg .b { background:var(--bg-page-2); border:1px solid var(--separator-hairline); border-radius:var(--radius-sm); padding:8px 11px; }
@@ -91,6 +103,7 @@
 .kq-app { font-family:var(--font-mono); font-size:11px; padding:2px 8px; border-radius:6px; background:var(--bg-fill-tertiary); color:var(--text-secondary); }
 .kq-sub-note { font-size:11.5px; color:var(--text-tertiary); }
 .kq-sub-note i { margin-right:4px; }
+.kq-sub-note.is-warn { color:var(--warning); }
 
 .kq-form { display:grid; gap:8px; }
 .kq-form label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary); }
@@ -288,9 +301,48 @@
             <div class="kq-prop"><span class="l">MAC Wi-Fi</span><span class="v mono">{{ device.mac|default:"—" }}</span></div>
             <div class="kq-prop"><span class="l">Android</span><span class="v">{{ device.android_versao|default:"—" }}</span></div>
             <div class="kq-prop"><span class="l">Versão do app</span><span class="v">{{ device.app_versao|default:"—" }}</span></div>
-            <div class="kq-prop"><span class="l">RAM</span><span class="v">{% if device.ram_mb %}{{ device.ram_mb }} MB{% else %}—{% endif %}</span></div>
             <div class="kq-prop"><span class="l">Equipamento vinculado</span><span class="v">{% if device.item %}<a href="{% url 'equipamento_detalhe' device.item.pk %}">{{ device.item.nome }}</a>{% elif device.equip_serial %}<a href="{% url 'equipamento_detalhe' device.equip_serial.pk %}">{{ device.equip_serial.nome }}</a>{% else %}—{% endif %}</span></div>
           </div>
+        </div>
+      </div>
+
+      <!-- memória e armazenamento -->
+      <div class="kq-card">
+        <div class="kq-card-head"><span class="kq-card-title"><i class="fa-solid fa-microchip"></i>Memória e Armazenamento</span></div>
+        <div class="kq-card-body">
+          <div class="kq-meter">
+            <div class="kq-meter-head">
+              <span class="kq-meter-l">RAM</span>
+              <span class="kq-meter-v">
+                {% if device.ram_usada_mb is not None and device.ram_total_mb %}{{ device.ram_usada_mb }} / {{ device.ram_total_mb }} MB usada{% elif device.ram_mb %}{{ device.ram_mb }} MB{% else %}—{% endif %}
+                {% if device.ram_pouca %}<span class="kq-pill kq-pill-danger" title="Sinalizado pelo Android — MemoryInfo.lowMemory">pouca RAM</span>{% endif %}
+              </span>
+            </div>
+            {% if ram_pct is not None %}
+            <div class="kq-meter-track"><i class="{% if device.ram_pouca %}is-danger{% endif %}" style="width:{{ ram_pct }}%"></i></div>
+            {% endif %}
+          </div>
+
+          <div class="kq-meter">
+            <div class="kq-meter-head">
+              <span class="kq-meter-l">Armazenamento interno</span>
+              <span class="kq-meter-v">
+                {% if armazenamento_livre_gb is not None and armazenamento_total_gb %}{{ armazenamento_livre_gb }} GB livre de {{ armazenamento_total_gb }} GB{% else %}—{% endif %}
+                {% if armazenamento_nivel == "danger" %}<span class="kq-pill kq-pill-danger" title="Menos de 1 GB livre">crítico</span>{% elif armazenamento_nivel == "warn" %}<span class="kq-pill kq-pill-warn" title="Menos de 2 GB livre">atenção</span>{% endif %}
+              </span>
+            </div>
+            {% if armazenamento_pct is not None %}
+            <div class="kq-meter-track"><i class="{% if armazenamento_nivel == "danger" %}is-danger{% elif armazenamento_nivel == "warn" %}is-warn{% endif %}" style="width:{{ armazenamento_pct }}%"></i></div>
+            {% endif %}
+          </div>
+
+          {% if ram_pct is None and armazenamento_pct is None %}
+            {% if device.ultimo_checkin %}
+            <div class="kq-sub-note is-warn"><i class="fa-solid fa-triangle-exclamation"></i>Aparelho já ativo mas nunca enviou esses dados — indica um app Quiosque desatualizado (versão anterior ao suporte a memória/armazenamento). Atualize o app neste aparelho para habilitar o monitoramento.</div>
+            {% else %}
+            <div class="kq-sub-note"><i class="fa-solid fa-circle-info"></i>Aguardando o primeiro check-in do aparelho.</div>
+            {% endif %}
+          {% endif %}
         </div>
       </div>
 

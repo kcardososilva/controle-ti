@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Documento Fiscal de Remessa {{ documento.numero }}</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 1.4cm;
+
+            @frame footer_frame {
+                -pdf-frame-content: footerContent;
+                bottom: 0cm;
+                margin-left: 1.4cm;
+                margin-right: 1.4cm;
+                height: 1cm;
+            }
+        }
+
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            font-size: 10px;
+            color: #1d1d1f;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container { width: 100%; }
+
+        .header-table {
+            width: 100%;
+            border: 2px solid #1d1d1f;
+            margin-bottom: 12px;
+        }
+
+        .header-cell { padding: 10px 14px; }
+
+        .header-title {
+            font-size: 19px;
+            text-transform: uppercase;
+            color: #1d1d1f;
+            font-weight: bold;
+            letter-spacing: 0.02em;
+        }
+
+        .header-subtitle {
+            margin-top: 3px;
+            font-size: 10px;
+            color: #424245;
+        }
+
+        .header-doc {
+            width: 34%;
+            border-left: 2px solid #1d1d1f;
+            text-align: right;
+            font-size: 9px;
+            color: #424245;
+            line-height: 1.55;
+        }
+
+        .header-doc .numero {
+            font-size: 15px;
+            font-weight: bold;
+            color: #1d1d1f;
+        }
+
+        .aviso-bar {
+            background-color: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-left: 4px solid #1e3a8a;
+            padding: 8px 10px;
+            margin-bottom: 12px;
+            font-size: 9.5px;
+            color: #1e3a8a;
+            line-height: 1.5;
+        }
+
+        table.main-table {
+            width: 100%;
+            border-collapse: collapse;
+            repeat-header: yes;
+            margin-bottom: 14px;
+        }
+
+        table.main-table th {
+            background-color: #1d1d1f;
+            color: #ffffff;
+            border: 1px solid #1d1d1f;
+            padding: 6px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 8.5px;
+            text-transform: uppercase;
+        }
+
+        table.main-table td {
+            border: 1px solid #d2d2d7;
+            padding: 6px;
+            vertical-align: top;
+            color: #1d1d1f;
+            line-height: 1.4;
+        }
+
+        tr.even { background-color: #f5f5f7; }
+
+        .item-name { font-weight: bold; color: #1d1d1f; }
+
+        .section-title {
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            color: #1d1d1f;
+            margin: 0 0 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #d2d2d7;
+        }
+
+        .disclaimer {
+            margin-top: 10px;
+            padding: 8px 10px;
+            border: 1px dashed #d2d2d7;
+            background: #f9fafb;
+            font-size: 8px;
+            color: #6e6e73;
+            line-height: 1.5;
+        }
+
+        .empty-box { text-align: center; padding: 20px; color: #6e6e73; }
+
+        #footerContent {
+            text-align: center;
+            font-size: 8px;
+            color: #6e6e73;
+            padding-top: 5px;
+            border-top: 1px solid #d1d5db;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <table class="header-table">
+            <tr>
+                <td class="header-cell">
+                    <div class="header-title">Documento Fiscal de Remessa</div>
+                    <div class="header-subtitle">{{ titulo }} — aviso interno ao setor Fiscal</div>
+                </td>
+                <td class="header-cell header-doc">
+                    <div class="numero">{{ documento.numero }}</div>
+                    Emitido em {{ documento.created_at|date:"d/m/Y H:i" }}<br>
+                    Por {{ documento.criado_por.get_full_name|default:documento.criado_por.username|default:"—" }}
+                </td>
+            </tr>
+        </table>
+
+        <div class="aviso-bar">
+            {% if documento.tipo == "envio" %}
+            Os equipamentos abaixo estão sendo <strong>enviados ao fornecedor</strong> para manutenção.
+            {% else %}
+            Os equipamentos abaixo estão sendo <strong>devolvidos ao fornecedor</strong> por fim de contrato de locação.
+            {% endif %}
+        </div>
+
+        {% if itens_locados %}
+        <div class="section-title">Itens Locados — vinculados a contrato de Locação</div>
+        <table class="main-table">
+            <thead>
+                <tr>
+                    <th width="28%">Fornecedor</th>
+                    <th width="22%">Subtipo</th>
+                    <th width="25%">Modelo</th>
+                    <th width="25%">Nº de Série</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in itens_locados %}
+                <tr class="{% cycle 'odd' 'even' %}">
+                    <td class="item-name">{{ i.fornecedor.nome }}</td>
+                    <td>{{ i.item.subtipo|default:"—" }}</td>
+                    <td>{{ i.item.modelo|default:"—" }}</td>
+                    <td>{{ i.item.numero_serie|default:"—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        {% if itens_proprios %}
+        <div class="section-title">Itens Próprios — não locados</div>
+        <table class="main-table">
+            <thead>
+                <tr>
+                    <th width="22%">Fornecedor</th>
+                    <th width="18%">Subtipo</th>
+                    <th width="20%">Modelo</th>
+                    <th width="20%">Nº de Série</th>
+                    <th width="20%">Valor do Equipamento</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in itens_proprios %}
+                <tr class="{% cycle 'odd' 'even' %}">
+                    <td class="item-name">{{ i.fornecedor.nome }}</td>
+                    <td>{{ i.item.subtipo|default:"—" }}</td>
+                    <td>{{ i.item.modelo|default:"—" }}</td>
+                    <td>{{ i.item.numero_serie|default:"—" }}</td>
+                    <td>{{ i.valor_fmt }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        {% if not itens_locados and not itens_proprios %}
+        <div class="empty-box">Nenhum item neste documento.</div>
+        {% endif %}
+
+        <div class="disclaimer">
+            Este documento é um aviso interno de controle de remessa e não substitui a Nota Fiscal
+            Eletrônica (NF-e) emitida pelo fornecedor. Gerado automaticamente pelo Controle de TI —
+            Santa Colomba Agropecuária.
+        </div>
+
+        <div id="footerContent">
+            Documento {{ documento.numero }} · Página <pdf:pagenumber> de <pdf:pagecount>
+        </div>
+    </div>
+</body>
+</html>

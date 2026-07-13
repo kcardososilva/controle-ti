@@ -643,6 +643,11 @@ class MovimentacaoItemForm(forms.ModelForm):
 
         self.fields["lote"].label_from_instance = self._label_lote
 
+        # Reaproveitado por 4 tipos (envio_manutencao, separacao_envio,
+        # separacao_devolucao, devolucao_locacao): rótulo genérico em vez do
+        # nome de campo do banco ("Fornecedor Manutenção").
+        self.fields["fornecedor_manutencao"].label = "Fornecedor"
+
     def _label_lote(self, lote):
         item_lote = (
             ItemLote.objects
@@ -766,6 +771,21 @@ class MovimentacaoItemForm(forms.ModelForm):
         elif tipo in ("retorno_manutencao", "retorno"):
             if not cleaned.get("localidade_destino"):
                 self.add_error("localidade_destino", "Informe onde o item será guardado.")
+
+        elif tipo in ("separacao_envio", "separacao_devolucao"):
+            if not cleaned.get("fornecedor_manutencao"):
+                self.add_error("fornecedor_manutencao", "Informe o fornecedor de destino da separação.")
+
+        elif tipo == "devolucao_locacao":
+            if not cleaned.get("fornecedor_manutencao"):
+                self.add_error("fornecedor_manutencao", "Informe o fornecedor (locadora) de destino.")
+
+            if item and str(item.locado) != "sim":
+                self.add_error(
+                    None,
+                    f'O equipamento "{item.nome}" não está marcado como locado — a '
+                    "devolução de locação só se aplica a itens com contrato de Locação.",
+                )
 
         return cleaned
     

@@ -20,6 +20,7 @@ from ..models import (
     Locacao, SimNaoChoices, StatusItemChoices, ItemLote,
     MovimentacaoItem, TipoMovimentacaoChoices, Preventiva, PlantaProjeto,
     ItemStatusHistorico, ItemPRTGHistorico, ItemColaborador,
+    SeparacaoItem, StatusSeparacaoChoices, TipoSeparacaoChoices,
 )
 from ..forms import ItemForm, LocacaoForm, LoteEstoqueCreateForm
 from services.importador_planilha import ImportadorPlanilhaService
@@ -478,6 +479,13 @@ def equipamentos_list(request):
             )
 
         return JsonResponse(data)
+
+    context["sep_envio_count"] = SeparacaoItem.objects.filter(
+        tipo=TipoSeparacaoChoices.ENVIO, status=StatusSeparacaoChoices.ABERTO,
+    ).count()
+    context["sep_devolucao_count"] = SeparacaoItem.objects.filter(
+        tipo=TipoSeparacaoChoices.DEVOLUCAO, status=StatusSeparacaoChoices.ABERTO,
+    ).count()
 
     return render(request, "front/equipamentos/equipamentos_list.html", context)
 
@@ -1357,6 +1365,7 @@ def item_update(request, pk):
             StatusItemChoices.MANUTENCAO,
             StatusItemChoices.DEFEITO,
             StatusItemChoices.DESCARTE,
+            StatusItemChoices.DEVOLVIDO,
         }
 
         if form_valido and locacao_valida and lote_valido:

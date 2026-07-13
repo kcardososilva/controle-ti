@@ -24,6 +24,9 @@ class MovimentacaoEstoqueService:
     ENVIO_MANUTENCAO = "envio_manutencao"
     RETORNO_MANUTENCAO = "retorno_manutencao"
     RETORNO = "retorno"
+    SEPARACAO_ENVIO = "separacao_envio"
+    SEPARACAO_DEVOLUCAO = "separacao_devolucao"
+    DEVOLUCAO_LOCACAO = "devolucao_locacao"
 
     @staticmethod
     def preencher_auditoria(obj, user, criando=True):
@@ -318,6 +321,9 @@ class MovimentacaoEstoqueService:
             cls.ENVIO_MANUTENCAO,
             cls.RETORNO_MANUTENCAO,
             cls.RETORNO,
+            cls.SEPARACAO_ENVIO,
+            cls.SEPARACAO_DEVOLUCAO,
+            cls.DEVOLUCAO_LOCACAO,
         }:
             mov.usuario = None
 
@@ -385,6 +391,36 @@ class MovimentacaoEstoqueService:
                     movimentacao=mov,
                     user=user,
                 )
+
+        elif mov.tipo_movimentacao in {cls.SEPARACAO_ENVIO, cls.SEPARACAO_DEVOLUCAO}:
+            # Área de estágio (ver SeparacaoItem): NÃO altera status, localidade
+            # nem centro de custo do item — só registra que ele está fisicamente
+            # separado, aguardando despacho real (envio_manutencao ou
+            # devolucao_locacao), disparado depois pela tela de Separação.
+            from ProjetoEstoque.models import TipoSeparacaoChoices
+            from services.separacao_service import SeparacaoService
+
+            tipo_sep = (
+                TipoSeparacaoChoices.ENVIO
+                if mov.tipo_movimentacao == cls.SEPARACAO_ENVIO
+                else TipoSeparacaoChoices.DEVOLUCAO
+            )
+            SeparacaoService.estagiar(
+                item=item,
+                tipo=tipo_sep,
+                fornecedor=mov.fornecedor_manutencao,
+                observacao=mov.observacao,
+                mov=mov,
+                user=user,
+            )
+
+        elif mov.tipo_movimentacao == cls.DEVOLUCAO_LOCACAO:
+            # Devolução definitiva do item locado à locadora — o congelamento do
+            # período de cobrança (LocacaoPeriodo) acontece sozinho via o signal
+            # já existente (services/locacao_service.py), que trata "devolvido"
+            # como status congelante.
+            item.status = StatusItemChoices.DEVOLVIDO
+            update_fields.append("status")
 
         elif mov.tipo_movimentacao in {cls.RETORNO_MANUTENCAO, cls.RETORNO}:
             # Retorno de manutenção mantém a quantidade inalterada (espelha o envio):

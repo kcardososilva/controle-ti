@@ -117,6 +117,13 @@ CATALOGO_NOTIFICACOES: list[dict] = [
         icone="fa-shield-halved", tipo_destinatarios="fixo",
         origem_disparo="Signal — monitoramento de autenticação (ISO 27001 A.8.16)",
     ),
+    dict(
+        codigo="documento_fiscal_remessa", nome="Aviso ao Fiscal — Remessa de Equipamento", categoria="Remessa",
+        descricao="E-mail ao setor Fiscal com PDF anexo (fornecedor, modelo, nº de série) ao gerar um "
+        "documento fiscal de envio ou devolução de equipamento ao fornecedor.",
+        icone="fa-file-invoice", tipo_destinatarios="fixo",
+        origem_disparo="Manual — botão 'Gerar Documento Fiscal' nas telas de Remessa",
+    ),
 ]
 
 
@@ -265,13 +272,15 @@ def _alertas_habilitados() -> bool:
 def _enviar(
     assunto: str, texto: str, html: str,
     destinatarios: list[str] | None = None, *, codigo: str = "",
+    anexos: list[tuple[str, bytes, str]] | None = None,
 ) -> bool:
     """Envia o e-mail. `codigo` identifica o canal em CanalNotificacao (opcional,
     mas todo alerta novo deveria ter um — ver CATALOGO_NOTIFICACOES): se o canal
     estiver desativado pelo TI, suprime o envio; se for do tipo 'fixo' e tiver
     `destinatarios_customizados_ativo=True`, a lista customizada substitui
     `destinatarios` por completo — mesmo vazia (ninguém removido é reintroduzido
-    silenciosamente pelo padrão do .env)."""
+    silenciosamente pelo padrão do .env). `anexos`: lista opcional de
+    (nome_arquivo, conteudo, mimetype) anexados ao e-mail."""
     if not _alertas_habilitados():
         logger.info("email_alertas: envio suprimido — alertas desativados nas configurações do sistema.")
         return False
@@ -303,6 +312,8 @@ def _enviar(
             to=alvos,
         )
         msg.attach_alternative(html, "text/html")
+        for nome_arquivo, conteudo, mimetype in (anexos or []):
+            msg.attach(nome_arquivo, conteudo, mimetype)
         msg.send(fail_silently=False)
         logger.info("email_alertas: '%s' enviado para %s", assunto, alvos)
         if canal is not None:
@@ -634,6 +645,99 @@ def alerta_item_defeito(item_pk: int) -> bool:
     )
     assunto = f"[Defeito] {item.nome} — ação necessária"
     return _enviar(assunto, texto, html, destinatarios=emails, codigo="item_defeito")
+
+
+# ─────────────────────────────────────────────────────────────
+# Documento Fiscal de Remessa — aviso ao Fiscal (destinatários configuráveis)
+# ─────────────────────────────────────────────────────────────
+
+def alerta_documento_fiscal_remessa(documento, pdf_bytes: bytes) -> tuple[bool, list[str]]:
+    """Avisa o setor Fiscal (e-mail configurável em `/alertas/notificacoes/`, canal
+    'documento_fiscal_remessa') que equipamento(s) estão indo ao fornecedor
+    (Envio) ou voltando (Devolução), com o Documento Fiscal de Remessa (PDF, um
+    aviso interno de controle — não é a NF-e real do fornecedor) anexado.
+    Retorna (enviado, destinatarios) — os destinatários são resolvidos ANTES do
+    envio (via `_base_efetiva`, mesma fonte usada pelo painel) para que o
+    chamador possa registrar o snapshot mesmo se o canal estiver desativado."""
+    from ProjetoEstoque.models import TipoSeparacaoChoices
+    from services.documento_fiscal_service import DocumentoFiscalService
+
+    itens = list(
+        documento.itens
+        .select_related("item", "item__subtipo", "item__subtipo__categoria", "fornecedor")
+        .order_by("item__nome")
+    )
+    destinatarios = _base_efetiva("documento_fiscal_remessa")
+    if not itens:
+        return False, destinatarios
+
+    eh_envio = documento.tipo == TipoSeparacaoChoices.ENVIO
+    tipo_label = "Envio ao Fornecedor" if eh_envio else "Devolução ao Fornecedor"
+    acao = "enviado(s) ao" if eh_envio else "devolvido(s) ao"
+
+    itens_locados, itens_proprios = DocumentoFiscalService.separar_itens(itens)
+
+    def _subtipo(i):
+        return str(i.item.subtipo) if i.item.subtipo_id else "—"
+
+    blocos_html = ""
+    blocos_texto = []
+    if itens_locados:
+        linhas = [
+            [i.fornecedor.nome, _subtipo(i), i.item.modelo or "—", i.item.numero_serie or "—"]
+            for i in itens_locados
+        ]
+        blocos_html += _secao(
+            "Itens Locados", "🔑", "#1e3a8a",
+            _tabela_html(["Fornecedor", "Subtipo", "Modelo", "Nº de Série"], linhas),
+        )
+        blocos_texto.append("Itens Locados:")
+        blocos_texto.extend(
+            f"  - {i.fornecedor.nome} | Subtipo: {_subtipo(i)} | Modelo: {i.item.modelo or '—'} | "
+            f"Nº Série: {i.item.numero_serie or '—'}"
+            for i in itens_locados
+        )
+    if itens_proprios:
+        linhas = [
+            [i.fornecedor.nome, _subtipo(i), i.item.modelo or "—", i.item.numero_serie or "—", i.valor_fmt]
+            for i in itens_proprios
+        ]
+        blocos_html += _secao(
+            "Itens Próprios", "📦", "#1e3a8a",
+            _tabela_html(["Fornecedor", "Subtipo", "Modelo", "Nº de Série", "Valor do Equipamento"], linhas),
+        )
+        if blocos_texto:
+            blocos_texto.append("")
+        blocos_texto.append("Itens Próprios:")
+        blocos_texto.extend(
+            f"  - {i.fornecedor.nome} | Subtipo: {_subtipo(i)} | Modelo: {i.item.modelo or '—'} | "
+            f"Nº Série: {i.item.numero_serie or '—'} | Valor: {i.valor_fmt}"
+            for i in itens_proprios
+        )
+
+    intro = (
+        f'<p style="margin:0 0 10px;color:#334155;font-size:13px;">'
+        f'O(s) equipamento(s) abaixo está(ão) sendo {acao} fornecedor. '
+        f'Documento {documento.numero} anexo (PDF) para os registros do setor Fiscal.</p>'
+    )
+    corpo = _secao(f"Aviso Fiscal — {tipo_label}", "🧾", "#1e3a8a", intro) + blocos_html
+    html = _base_html(
+        f"Documento Fiscal {documento.numero}",
+        f"{tipo_label} · {len(itens)} equipamento(s)",
+        corpo,
+    )
+    texto = (
+        f"Aviso Fiscal — {tipo_label} — Documento {documento.numero}\n\n"
+        + "\n".join(blocos_texto)
+    )
+    assunto = f"[Fiscal] {tipo_label} — Documento {documento.numero}"
+    anexos = [(f"documento_fiscal_{documento.numero}.pdf", pdf_bytes, "application/pdf")]
+
+    enviado = _enviar(
+        assunto, texto, html, destinatarios=destinatarios,
+        codigo="documento_fiscal_remessa", anexos=anexos,
+    )
+    return enviado, destinatarios
 
 
 def _linha_ok(texto: str) -> str:
@@ -1344,14 +1448,40 @@ def _fmt_dt(dt) -> str:
         return "—"
 
 
-def _prtg_linha(a: dict, status_forcado: str | None = None) -> list[str]:
+def _fmt_decorrido(dt, agora) -> str:
+    """'há 2h15min' / 'há 3d' desde `dt` — deixa o horário da queda acionável
+    sem exigir que quem lê o e-mail faça a conta de cabeça."""
+    if not dt:
+        return ""
+    total_min = int((agora - dt).total_seconds() // 60)
+    if total_min < 1:
+        return "há instantes"
+    dias, resto_min = divmod(total_min, 1440)
+    horas, minutos = divmod(resto_min, 60)
+    partes = []
+    if dias:
+        partes.append(f"{dias}d")
+    if horas:
+        partes.append(f"{horas}h")
+    if minutos or not partes:
+        partes.append(f"{minutos}min")
+    return "há " + "".join(partes)
+
+
+def _prtg_linha(a: dict, status_forcado: str | None = None, agora=None) -> list[str]:
     local = a.get("item_localidade") or a.get("grupo") or "—"
+    desde_dt = a.get("desde")
+    desde_txt = _fmt_dt(desde_dt)
+    if agora and desde_dt:
+        decorrido = _fmt_decorrido(desde_dt, agora)
+        if decorrido:
+            desde_txt += f'<br><span style="color:#94a3b8;font-size:11px;">{decorrido}</span>'
     return [
         f'<strong>{a.get("nome") or "—"}</strong>',
         a.get("host") or "—",
         local,
         _prtg_badge(status_forcado or a.get("status")),
-        _fmt_dt(a.get("desde")),
+        desde_txt,
         a.get("item_nome") or "—",
     ]
 
@@ -1391,7 +1521,7 @@ def alerta_prtg_transicoes(alarmes, recuperados=None) -> bool:
         )
         secoes.append(_secao(
             "Equipamentos em alarme", "🚨", "#b91c1c",
-            intro + _tabela_html(cabecalho, [_prtg_linha(a) for a in alarmes]),
+            intro + _tabela_html(cabecalho, [_prtg_linha(a, agora=agora) for a in alarmes]),
         ))
 
     if recuperados:
@@ -1401,7 +1531,7 @@ def alerta_prtg_transicoes(alarmes, recuperados=None) -> bool:
         )
         secoes.append(_secao(
             "Recuperados", "✅", "#15803d",
-            intro + _tabela_html(cabecalho, [_prtg_linha(a, "up") for a in recuperados]),
+            intro + _tabela_html(cabecalho, [_prtg_linha(a, "up", agora=agora) for a in recuperados]),
         ))
 
     if alarmes:
@@ -1417,9 +1547,11 @@ def alerta_prtg_transicoes(alarmes, recuperados=None) -> bool:
 
     linhas_txt = [f"ALARME PRTG — {agora.strftime('%d/%m/%Y %H:%M')}", ""]
     for a in alarmes:
+        decorrido = _fmt_decorrido(a.get("desde"), agora)
         linhas_txt.append(
             f"- [{_prtg_label(a.get('status')).upper()}] {a.get('nome')} | {a.get('host') or '—'} | "
-            f"desde {_fmt_dt(a.get('desde'))}" + (f" | Item: {a.get('item_nome')}" if a.get("item_nome") else "")
+            f"desde {_fmt_dt(a.get('desde'))}" + (f" ({decorrido})" if decorrido else "")
+            + (f" | Item: {a.get('item_nome')}" if a.get("item_nome") else "")
         )
     if recuperados:
         linhas_txt += ["", "RECUPERADOS", ""]

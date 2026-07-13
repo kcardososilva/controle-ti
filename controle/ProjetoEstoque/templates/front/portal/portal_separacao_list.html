@@ -1,0 +1,89 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}{{ titulo }} — Portal do Fornecedor{% endblock %}
+{% block page_title %}{{ titulo }}{% endblock %}
+{% block page_subtitle %}
+{% if tipo == "envio" %}Equipamentos em remessa organizados por Santa Colomba, aguardando envio para manutenção{% else %}Equipamentos locados em remessa, aguardando devolução por fim de contrato{% endif %}
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'portal_home' %}" class="pf-btn"><i class="fa-solid fa-arrow-left"></i> Painel</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  :where(.pf-sep) { display: grid; gap: 1.2rem; }
+  .pf-sep .pf-sec-title { font-size: .82rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--text-tertiary); }
+  .pf-sep .pf-grid { display: grid; gap: .8rem; }
+  .pf-sep .pf-card2 {
+    display: flex; align-items: center; gap: .9rem; padding: 1rem 1.15rem; border-radius: var(--radius-lg);
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+  }
+  .pf-sep .pf-card2.is-link { text-decoration: none; color: inherit; transition: transform .16s, box-shadow .16s, border-color .16s; }
+  .pf-sep .pf-card2.is-link:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--brand) 24%, var(--separator-hairline)); }
+  .pf-sep .pf-ic { width: 2.5rem; height: 2.5rem; flex: 0 0 2.5rem; display: grid; place-items: center; border-radius: .75rem; background: var(--brand-soft); color: var(--brand); font-size: .95rem; }
+  .pf-sep .pf-info { min-width: 0; flex: 1; }
+  .pf-sep .pf-name { font-weight: 800; letter-spacing: -.01em; font-size: .95rem; }
+  .pf-sep .pf-meta { color: var(--text-tertiary); font-size: .8rem; margin-top: .18rem; }
+  .pf-sep .pf-arrow { color: var(--text-quaternary); font-size: .8rem; flex: 0 0 auto; }
+  .pf-sep .pf-empty { display: grid; place-items: center; gap: .6rem; padding: 2.6rem 1rem; text-align: center; color: var(--text-tertiary); background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg); }
+  .pf-sep .pf-empty i { font-size: 1.5rem; color: var(--text-quaternary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-sep">
+
+  <div>
+    <div class="pf-sec-title">Itens soltos</div>
+    <div class="pf-grid" style="margin-top:.6rem;">
+      {% for s in soltos %}
+      <div class="pf-card2">
+        <span class="pf-ic"><i class="fa-solid {% if tipo == 'envio' %}fa-box-archive{% else %}fa-box-open{% endif %}"></i></span>
+        <span class="pf-info">
+          <div class="pf-name">{{ s.item.nome }}</div>
+          <div class="pf-meta">
+            {% if s.item.numero_serie %}Nº série {{ s.item.numero_serie }} · {% endif %}
+            nesta remessa desde {{ s.created_at|date:"d/m/Y" }}
+          </div>
+          {% if s.badge_contrato %}
+          <div style="margin-top:.4rem;">
+            <span class="pf-chip pf-chip--{% if s.badge_contrato.css == 'danger' %}defeito{% elif s.badge_contrato.css == 'warning' %}manutencao{% else %}ativo{% endif %}">{{ s.badge_contrato.label }}</span>
+          </div>
+          {% endif %}
+        </span>
+        <span class="pf-chip pf-chip--{% if s.status == 'enviado' %}ativo{% else %}manutencao{% endif %}">{{ s.get_status_display }}</span>
+      </div>
+      {% empty %}
+      <div class="pf-empty">
+        <i class="fa-solid {% if tipo == 'envio' %}fa-box-archive{% else %}fa-box-open{% endif %}"></i>
+        <p>Nenhum item solto nesta área no momento.</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    <div class="pf-sec-title">Lotes</div>
+    <div class="pf-grid" style="margin-top:.6rem;">
+      {% for l in lotes %}
+      <a class="pf-card2 is-link" href="{% url 'portal_separacao_lote_detail' l.pk %}">
+        <span class="pf-ic"><i class="fa-solid fa-boxes-packing"></i></span>
+        <span class="pf-info">
+          <div class="pf-name">{{ l.nome }}</div>
+          <div class="pf-meta">{{ l.quantidade_itens }} item{{ l.quantidade_itens|pluralize }} · criado em {{ l.created_at|date:"d/m/Y" }}</div>
+        </span>
+        <span class="pf-chip pf-chip--{% if l.status == 'enviado' %}ativo{% else %}manutencao{% endif %}">{{ l.get_status_display }}</span>
+        <i class="fa-solid fa-chevron-right pf-arrow"></i>
+      </a>
+      {% empty %}
+      <div class="pf-empty">
+        <i class="fa-solid fa-boxes-packing"></i>
+        <p>Nenhum lote criado ainda.</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

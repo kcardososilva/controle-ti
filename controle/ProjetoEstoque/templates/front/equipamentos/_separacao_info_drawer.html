@@ -1,0 +1,178 @@
+{# Drawer de detalhe do equipamento — reutilizado por separacao_list.html e
+   separacao_lote_detail.html. Espera `itens_info` no contexto (dict id -> info,
+   gerado por SeparacaoService.info_equipamento). Botões que abrem o drawer
+   devem ter classe "sep-info-trigger" e atributo data-sepid="{{ s.id }}". #}
+<style>
+:where(.sep-drawer, .sep-drw-overlay) {
+  --sepdrw-surface: var(--bg-elevated);
+  --sepdrw-hair: var(--separator-hairline);
+  --sepdrw-text: var(--text-primary);
+  --sepdrw-muted: var(--text-tertiary);
+}
+.sep-info-trigger {
+  background: none; border: none; padding: 0; margin: 0; font: inherit;
+  color: var(--sepdrw-text); font-weight: 600; cursor: pointer; text-align: left;
+  display: inline-flex; align-items: center; gap: .4rem;
+}
+.sep-info-trigger:hover { color: var(--brand); text-decoration: underline; }
+.sep-info-trigger i { font-size: .76rem; color: var(--sepdrw-muted); }
+
+.sep-drw-overlay {
+  position: fixed; inset: 0; z-index: 900; background: rgba(0,0,0,.32);
+  opacity: 0; transition: opacity .2s ease; pointer-events: none;
+}
+.sep-drw-overlay.is-open { opacity: 1; pointer-events: auto; }
+
+.sep-drawer {
+  position: fixed; top: 0; right: 0; height: 100dvh; width: min(26rem, 92vw);
+  background: var(--sepdrw-surface); border-left: 1px solid var(--sepdrw-hair);
+  box-shadow: -12px 0 32px rgba(0,0,0,.16);
+  transform: translateX(100%); transition: transform .24s cubic-bezier(.32,.72,0,1);
+  z-index: 901; display: flex; flex-direction: column;
+}
+.sep-drawer.is-open { transform: translateX(0); }
+.sep-drw-handle { display: none; }
+
+@media (max-width: 640px) {
+  .sep-drawer {
+    top: auto; bottom: 0; left: 0; right: 0; width: 100%; height: auto; max-height: 88dvh;
+    border-left: none; border-top: 1px solid var(--sepdrw-hair);
+    border-radius: 1.1rem 1.1rem 0 0; transform: translateY(100%); padding-top: .3rem;
+  }
+  .sep-drawer.is-open { transform: translateY(0); }
+  .sep-drw-handle { display: block; width: 2.4rem; height: .28rem; border-radius: 999px; background: var(--sepdrw-hair); margin: .5rem auto .2rem; }
+}
+
+.sep-drw-header { display: flex; align-items: flex-start; justify-content: space-between; gap: .8rem; padding: 1rem 1.2rem; border-bottom: 1px solid var(--sepdrw-hair); }
+.sep-drw-title { display: flex; flex-direction: column; gap: .35rem; font-weight: 800; font-size: 1rem; color: var(--sepdrw-text); }
+.sep-drw-status { display: inline-flex; align-self: flex-start; padding: .2rem .55rem; border-radius: 999px; font-size: .7rem; font-weight: 800; background: var(--bg-fill-tertiary); color: var(--sepdrw-muted); }
+.sep-drw-status--defeito { background: var(--danger-soft); color: var(--danger); }
+.sep-drw-status--manutencao { background: var(--warning-soft); color: var(--warning); }
+.sep-drw-status--ativo, .sep-drw-status--backup { background: var(--success-soft); color: var(--success); }
+.sep-drw-status--devolvido, .sep-drw-status--pausado, .sep-drw-status--descarte { background: var(--bg-fill-tertiary); color: var(--sepdrw-muted); }
+.sep-drw-close { width: 2.2rem; height: 2.2rem; border-radius: 999px; border: none; background: var(--bg-fill-tertiary); color: var(--sepdrw-muted); display: grid; place-items: center; flex: 0 0 auto; cursor: pointer; }
+.sep-drw-close:hover { background: var(--separator-non-opaque); color: var(--sepdrw-text); }
+
+.sep-drw-body { padding: .4rem 1.2rem 1.4rem; overflow-y: auto; }
+.sep-drw-section { padding: .7rem 0; border-bottom: 1px solid var(--sepdrw-hair); }
+.sep-drw-section:last-child { border-bottom: none; }
+.sep-drw-section-title { font-size: .76rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--sepdrw-muted); margin-bottom: .5rem; display: flex; align-items: center; gap: .4rem; }
+.sep-drw-row { display: flex; justify-content: space-between; gap: .8rem; padding: .3rem 0; font-size: .85rem; }
+.sep-drw-k { color: var(--sepdrw-muted); flex: 0 0 auto; }
+.sep-drw-v { font-weight: 600; text-align: right; color: var(--sepdrw-text); }
+.sep-drw-v.is-danger { color: var(--danger); }
+.sep-drw-empty { padding: 1.5rem 0; text-align: center; color: var(--sepdrw-muted); font-size: .85rem; }
+</style>
+
+<div class="sep-drw-overlay" id="sepDrwOverlay" hidden></div>
+<aside class="sep-drawer" id="sepDrawer" role="dialog" aria-modal="true" aria-label="Detalhe do equipamento">
+  <div class="sep-drw-handle" aria-hidden="true"></div>
+  <div class="sep-drw-header">
+    <div class="sep-drw-title">
+      <span id="sepDrwNome">—</span>
+      <span id="sepDrwStatus" class="sep-drw-status"></span>
+    </div>
+    <button type="button" class="sep-drw-close" id="sepDrwClose" aria-label="Fechar"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+  </div>
+  <div class="sep-drw-body" id="sepDrwBody"></div>
+</aside>
+
+{{ itens_info|json_script:"sepInfoData" }}
+<script>
+(function () {
+  var DATA = JSON.parse(document.getElementById('sepInfoData').textContent);
+  var overlay = document.getElementById('sepDrwOverlay');
+  var drawer = document.getElementById('sepDrawer');
+  var body = document.getElementById('sepDrwBody');
+  var nomeEl = document.getElementById('sepDrwNome');
+  var statusEl = document.getElementById('sepDrwStatus');
+
+  // App shell (base.html): .main-container tem transform (fill-mode both) e o
+  // scroll real acontece em #mainContent, não na window/body — por isso o
+  // overlay/drawer precisam ir para o <body> e o scroll travado é o do
+  // #mainContent (ver memória "Fixed overlay na app shell").
+  if (overlay.parentNode !== document.body) document.body.appendChild(overlay);
+  if (drawer.parentNode !== document.body) document.body.appendChild(drawer);
+  var scroller = document.getElementById('mainContent') || document.scrollingElement || document.body;
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = (s === null || s === undefined) ? '' : String(s);
+    return d.innerHTML;
+  }
+
+  function row(label, value, cls) {
+    if (!value) return '';
+    return '<div class="sep-drw-row"><span class="sep-drw-k">' + esc(label) + '</span><span class="sep-drw-v' + (cls ? ' ' + cls : '') + '">' + esc(value) + '</span></div>';
+  }
+
+  function render(info) {
+    nomeEl.textContent = info.nome || '—';
+    statusEl.textContent = info.status || '';
+    statusEl.className = 'sep-drw-status sep-drw-status--' + (info.status_slug || '');
+
+    var html = '<div class="sep-drw-section">';
+    html += row('Marca / Modelo', [info.marca, info.modelo].filter(Boolean).join(' · '));
+    html += row('Nº de série', info.numero_serie);
+    html += row('Categoria', info.categoria);
+    html += row('Subtipo', info.subtipo);
+    html += row('Localidade', info.localidade);
+    html += row('Centro de custo', info.centro_custo);
+    html += '</div>';
+
+    if (info.locacao) {
+      var loc = info.locacao;
+      html += '<div class="sep-drw-section">';
+      html += '<div class="sep-drw-section-title"><i class="fa-solid fa-file-contract" aria-hidden="true"></i> Contrato de Locação</div>';
+      html += row('Locadora', loc.fornecedor);
+      html += row('Entrada', loc.data_entrada);
+      html += row('Prazo contratado', loc.tempo_locado ? (loc.tempo_locado + ' meses') : '');
+      html += row('Valor mensal', loc.valor_mensal ? ('R$ ' + loc.valor_mensal) : '');
+      html += row('Vencimento', loc.data_vencimento ? (loc.data_vencimento + (loc.contrato_vencido ? ' (vencido)' : '')) : '', loc.contrato_vencido ? 'is-danger' : '');
+      html += '</div>';
+    }
+
+    html += '<div class="sep-drw-section">';
+    html += '<div class="sep-drw-section-title"><i class="fa-solid fa-truck-ramp-box" aria-hidden="true"></i> Remessa</div>';
+    html += row('Fornecedor da remessa', info.fornecedor_remessa);
+    html += row('Observação', info.observacao);
+    html += row('Colocado em remessa', (info.criado_em || '') + (info.criado_por ? (' · ' + info.criado_por) : ''));
+    html += '</div>';
+
+    body.innerHTML = html || '<div class="sep-drw-empty">Sem informações adicionais.</div>';
+  }
+
+  function lockScroll() { scroller.style.overflow = 'hidden'; }
+  function unlockScroll() { scroller.style.overflow = ''; }
+
+  function openDrawer(id) {
+    var info = DATA[String(id)];
+    if (!info) return;
+    render(info);
+    overlay.hidden = false;
+    requestAnimationFrame(function () {
+      drawer.classList.add('is-open');
+      overlay.classList.add('is-open');
+    });
+    lockScroll();
+  }
+
+  function closeDrawer() {
+    drawer.classList.remove('is-open');
+    overlay.classList.remove('is-open');
+    unlockScroll();
+    setTimeout(function () { overlay.hidden = true; }, 240);
+  }
+
+  document.getElementById('sepDrwClose').addEventListener('click', closeDrawer);
+  overlay.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && drawer.classList.contains('is-open')) closeDrawer();
+  });
+  document.querySelectorAll('.sep-info-trigger').forEach(function (btn) {
+    btn.addEventListener('click', function () { openDrawer(btn.dataset.sepid); });
+  });
+
+  window.openSepInfoDrawer = openDrawer;
+})();
+</script>

@@ -543,6 +543,164 @@ def _align_series_date(stamps, qs_month_count, field_name="c"):
 def preventiva_dashboard(request):
     """
     Dashboard de Preventivas.
+
+    Fonte única de verdade: `_get_preventiva_dashboard_data` (a mesma usada
+    no export Excel), garantindo que tela e planilha nunca divirjam.
+    """
+    ctx = _get_preventiva_dashboard_data(request, limit_vencidas=50)
+    return render(request, "front/dashboards/preventiva_dashboard.html", ctx)
+
+
+@login_required
+def preventiva_dashboard_export(request):
+    """Exportação Excel do Dashboard de Preventivas, com os mesmos filtros da tela."""
+    from io import BytesIO
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    ctx = _get_preventiva_dashboard_data(request, limit_vencidas=None)
+
+    BRAND = "0071E3"
+    DARK = "0A2540"
+    thin = Side(style="thin", color="E5E7EB")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    f_title = Font(name="Calibri", size=15, bold=True, color="FFFFFF")
+    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    f_cell = Font(name="Calibri", size=10, color="1D1D1F")
+    fill_title = PatternFill("solid", fgColor=DARK)
+    fill_sub = PatternFill("solid", fgColor="EEF2F7")
+    fill_header = PatternFill("solid", fgColor=BRAND)
+    fill_zebra = PatternFill("solid", fgColor="F7F9FC")
+    a_left = Alignment(horizontal="left", vertical="center")
+    a_center = Alignment(horizontal="center", vertical="center")
+
+    def faixa_titulo(ws, ncols, titulo, subtitulo):
+        last = get_column_letter(ncols)
+        ws.merge_cells(f"A1:{last}1")
+        c1 = ws["A1"]
+        c1.value = titulo
+        c1.font = f_title
+        c1.fill = fill_title
+        c1.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        ws.row_dimensions[1].height = 30
+        ws.merge_cells(f"A2:{last}2")
+        c2 = ws["A2"]
+        c2.value = subtitulo
+        c2.font = Font(name="Calibri", size=9, color="334155")
+        c2.fill = fill_sub
+        c2.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        ws.row_dimensions[2].height = 18
+        ws.sheet_view.showGridLines = False
+
+    def cabecalho(ws, row, headers, center_cols=()):
+        for ci, h in enumerate(headers, 1):
+            c = ws.cell(row=row, column=ci, value=h)
+            c.fill = fill_header
+            c.font = f_header
+            c.border = border
+            c.alignment = a_center if ci in center_cols else a_left
+        ws.row_dimensions[row].height = 22
+
+    def linhas(ws, hr, valores_list, center_cols=(), col_widths=None):
+        row = hr + 1
+        for i, valores in enumerate(valores_list):
+            zebra = (i % 2 == 1)
+            for ci, val in enumerate(valores, 1):
+                c = ws.cell(row=row, column=ci, value=val)
+                c.border = border
+                c.font = f_cell
+                c.alignment = a_center if ci in center_cols else a_left
+                if zebra:
+                    c.fill = fill_zebra
+            row += 1
+        if col_widths:
+            for i, w in enumerate(col_widths, 1):
+                ws.column_dimensions[get_column_letter(i)].width = w
+        ws.freeze_panes = f"A{hr + 1}"
+
+    periodo_txt = f"{ctx['dt_ini']:%d/%m/%Y} a {ctx['dt_fim']:%d/%m/%Y}"
+    gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")
+
+    wb = Workbook()
+
+    # ── Aba 1: Resumo ────────────────────────────────────────────────────
+    ws1 = wb.active
+    ws1.title = "Resumo"
+    faixa_titulo(ws1, 2, "DASHBOARD DE PREVENTIVAS",
+                 f"Santa Colomba Agropecuária  ·  Período {periodo_txt}  ·  Gerado em {gerado}")
+    resumo_kv = [
+        ("Total de Ativos", ctx["total"]),
+        ("Em Dia", ctx["ok_count"]),
+        ("Vencidas", ctx["vencidas_count"]),
+        ("Sem Agenda", ctx["sem_agenda_count"]),
+        ("Executadas (Mês)", ctx["executadas_mes"]),
+        ("Com Data Agendada", ctx["agendadas_count"]),
+    ]
+    hr = 4
+    cabecalho(ws1, hr, ["Indicador", "Valor"], center_cols=(2,))
+    linhas(ws1, hr, resumo_kv, center_cols=(2,), col_widths=[28, 14])
+
+    # ── Aba 2: Vencidas ──────────────────────────────────────────────────
+    ws2 = wb.create_sheet("Vencidas")
+    faixa_titulo(ws2, 5, "PREVENTIVAS VENCIDAS", f"{len(ctx['vencidas'])} preventiva(s)")
+    hr = 4
+    cabecalho(ws2, hr, ["Equipamento", "Localidade", "Checklist", "Próxima (Calc.)", "Dias em Atraso"], center_cols=(4, 5))
+    valores = [
+        [p.equipamento.nome, p.equipamento.localidade.local if p.equipamento.localidade else "—",
+         p.checklist_modelo.nome if p.checklist_modelo else "—",
+         p.proxima_calc.strftime("%d/%m/%Y") if p.proxima_calc else "—",
+         p.dias_atraso if p.dias_atraso is not None else "—"]
+        for p in ctx["vencidas"]
+    ]
+    linhas(ws2, hr, valores, center_cols=(4, 5), col_widths=[32, 22, 26, 16, 14])
+
+    # ── Aba 3: Próximos 30 dias ──────────────────────────────────────────
+    ws3 = wb.create_sheet("Proximos 30 Dias")
+    faixa_titulo(ws3, 5, "PRÓXIMAS PREVENTIVAS (30 DIAS)", f"{len(ctx['proximas'])} preventiva(s)")
+    hr = 4
+    cabecalho(ws3, hr, ["Equipamento", "Localidade", "Checklist", "Próxima (Calc.)", "Dias Restantes"], center_cols=(4, 5))
+    valores = [
+        [p.equipamento.nome, p.equipamento.localidade.local if p.equipamento.localidade else "—",
+         p.checklist_modelo.nome if p.checklist_modelo else "—",
+         p.proxima_calc.strftime("%d/%m/%Y") if p.proxima_calc else "—",
+         p.dias_faltam]
+        for p in ctx["proximas"]
+    ]
+    linhas(ws3, hr, valores, center_cols=(4, 5), col_widths=[32, 22, 26, 16, 14])
+
+    # ── Aba 4/5/6: agregados ─────────────────────────────────────────────
+    def aba_agregado(nome_aba, titulo, dados, chave_nome):
+        ws = wb.create_sheet(nome_aba)
+        faixa_titulo(ws, 5, titulo, f"{len(dados)} grupo(s)")
+        hr = 4
+        cabecalho(ws, hr, ["Grupo", "Total", "Ok", "Vencidas", "Sem Agenda"], center_cols=(2, 3, 4, 5))
+        valores = [
+            [d.get(chave_nome) or "—", d["total"], d["ok"], d["vencidas"], d["sem_agenda"]]
+            for d in dados
+        ]
+        linhas(ws, hr, valores, center_cols=(2, 3, 4, 5), col_widths=[30, 10, 10, 12, 14])
+
+    aba_agregado("Por Checklist", "PREVENTIVAS POR CHECKLIST", ctx["agg_chk"], "checklist_modelo__nome")
+    aba_agregado("Por Localidade", "PREVENTIVAS POR LOCALIDADE", ctx["agg_loc"], "equipamento__localidade__local")
+    aba_agregado("Por Subtipo", "PREVENTIVAS POR SUBTIPO", ctx["agg_sub"], "equipamento__subtipo__nome")
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    nome_arquivo = f"dashboard_preventivas_{ctx['dt_ini']:%Y%m%d}_{ctx['dt_fim']:%Y%m%d}.xlsx"
+    response = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{nome_arquivo}"'
+    return response
+
+
+def _get_preventiva_dashboard_data(request, limit_vencidas=50):
+    """
+    Fonte única de verdade dos dados do Dashboard de Preventivas (tela e export).
     Usa _aplicar_status_preventiva para calcular proxima_calc = data_ultima + intervalo
     dinamicamente, evitando dependência de data_proxima gravada no banco.
     """
@@ -622,7 +780,7 @@ def preventiva_dashboard(request):
     vencidas = sorted(
         [p for p in all_preventivas if p.status_visual == "vencida"],
         key=lambda p: p.proxima_calc or date.max,
-    )[:50]
+    )[:limit_vencidas]
     for p in vencidas:
         p.dias_atraso = abs(p.dias_restantes) if p.dias_restantes is not None else None
 
@@ -720,7 +878,7 @@ def preventiva_dashboard(request):
         chk_rates=chk_rates,
         today=today,
     )
-    return render(request, "front/dashboards/preventiva_dashboard.html", ctx)
+    return ctx
 
 # ---- helpers de data ----
 def _parse_date(date_str, default):

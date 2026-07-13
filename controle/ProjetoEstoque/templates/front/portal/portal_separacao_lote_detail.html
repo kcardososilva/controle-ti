@@ -1,0 +1,98 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}{{ lote.nome }} — {{ titulo }}{% endblock %}
+{% block page_title %}{{ lote.nome }}{% endblock %}
+{% block page_subtitle %}{{ titulo }}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% if lote.tipo == 'envio' %}{% url 'portal_separacao_envio_list' %}{% else %}{% url 'portal_separacao_devolucao_list' %}{% endif %}" class="pf-btn">
+    <i class="fa-solid fa-arrow-left"></i> Voltar
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  :where(.pf-sepd) { display: grid; gap: 1.2rem; }
+  .pf-sepd .pf-doc-head {
+    display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    padding: 1.3rem 1.4rem; border-radius: var(--radius-lg); background: var(--bg-elevated);
+    border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+  }
+  .pf-sepd .pf-doc-item-l { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--text-quaternary); }
+  .pf-sepd .pf-doc-item-v { margin-top: .3rem; font-weight: 700; font-size: 1rem; }
+  .pf-sepd .pf-doc-item-v.is-brand { color: var(--brand); }
+  .pf-sepd .pf-sec-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; margin: .2rem 0 .1rem; }
+  .pf-sepd .pf-itens { display: grid; gap: .8rem; }
+  .pf-sepd .pf-item-card {
+    display: grid; gap: .6rem; padding: 1.1rem 1.2rem; border-radius: var(--radius-md);
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
+  }
+  .pf-sepd .pf-item-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .pf-sepd .pf-item-name { font-weight: 800; letter-spacing: -.01em; }
+  .pf-sepd .pf-item-meta { color: var(--text-tertiary); font-size: .78rem; margin-top: .18rem; }
+  .pf-sepd .pf-item-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem,1fr)); gap: .5rem .9rem; padding-top: .5rem; border-top: 1px solid var(--separator-hairline); }
+  .pf-sepd .pf-fact-l { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--text-quaternary); }
+  .pf-sepd .pf-fact-v { font-size: .84rem; font-weight: 600; margin-top: .1rem; }
+  .pf-sepd .pf-item-os { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; padding-top: .5rem; border-top: 1px solid var(--separator-hairline); }
+  .pf-sepd .pf-item-os-link { font-size: .78rem; font-weight: 700; color: var(--brand); }
+  .pf-sepd .pf-empty-hint { color: var(--text-tertiary); font-size: .86rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-sepd">
+
+  <div class="pf-doc-head">
+    <div>
+      <div class="pf-doc-item-l">Tipo</div>
+      <div class="pf-doc-item-v is-brand">
+        <i class="fa-solid {% if lote.tipo == 'envio' %}fa-box-archive{% else %}fa-box-open{% endif %}"></i>
+        {{ titulo }}
+      </div>
+    </div>
+    <div>
+      <div class="pf-doc-item-l">Status do lote</div>
+      <div class="pf-doc-item-v">{{ lote.get_status_display }}</div>
+    </div>
+    <div>
+      <div class="pf-doc-item-l">Itens no lote</div>
+      <div class="pf-doc-item-v">{{ lote.quantidade_itens }}</div>
+    </div>
+    <div>
+      <div class="pf-doc-item-l">Criado em</div>
+      <div class="pf-doc-item-v">{{ lote.created_at|date:"d/m/Y H:i" }}</div>
+    </div>
+  </div>
+
+  <div class="pf-sec-title">Itens do lote</div>
+  <div class="pf-itens">
+    {% for i in itens %}
+    <div class="pf-item-card">
+      <div class="pf-item-top">
+        <div>
+          <div class="pf-item-name">{{ i.item.nome }}{% if i.info.marca or i.info.modelo %} <span style="font-weight:500;color:var(--text-tertiary);">· {{ i.info.marca }} {{ i.info.modelo }}</span>{% endif %}</div>
+          <div class="pf-item-meta">{% if i.item.numero_serie %}Nº série {{ i.item.numero_serie }} · {% endif %}entrou nesta remessa em {{ i.created_at|date:"d/m/Y" }}</div>
+        </div>
+        <span class="pf-chip pf-chip--{% if i.status == 'enviado' %}ativo{% else %}manutencao{% endif %}">{{ i.get_status_display }}</span>
+      </div>
+
+      <div class="pf-item-facts">
+        {% if i.info.categoria %}<div><div class="pf-fact-l">Categoria</div><div class="pf-fact-v">{{ i.info.categoria }}{% if i.info.subtipo %} · {{ i.info.subtipo }}{% endif %}</div></div>{% endif %}
+        {% if i.info.localidade %}<div><div class="pf-fact-l">Localidade</div><div class="pf-fact-v">{{ i.info.localidade }}</div></div>{% endif %}
+        {% if i.badge_contrato %}<div><div class="pf-fact-l">Contrato de Locação</div><div class="pf-fact-v"><span class="pf-chip pf-chip--{% if i.badge_contrato.css == 'danger' %}defeito{% elif i.badge_contrato.css == 'warning' %}manutencao{% else %}ativo{% endif %}">{{ i.badge_contrato.label }}</span></div></div>{% endif %}
+      </div>
+
+      {% if i.ordem %}
+      <div class="pf-item-os">
+        <span class="pf-osc pf-osc--{{ i.ordem.status }}">{{ i.ordem.get_status_display }}</span>
+        <a href="{% url 'portal_manutencao_detail' i.ordem.pk %}" class="pf-item-os-link"><i class="fa-solid fa-arrow-up-right-from-square"></i> Ver Ordem de Manutenção #{{ i.ordem.pk }}</a>
+      </div>
+      {% endif %}
+    </div>
+    {% empty %}
+    <p class="pf-empty-hint">Este lote não tem itens.</p>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}

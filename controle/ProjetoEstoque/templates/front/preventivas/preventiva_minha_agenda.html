@@ -1,0 +1,355 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Minha Agenda{% endblock %}
+{% block page_title %}Minha Agenda{% endblock %}
+{% block page_subtitle %}Suas execuções de preventiva por dia e horário{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'minhas_atividades' %}" class="btn btn-sm">
+    <i class="fa-solid fa-list-check" aria-hidden="true"></i> Minhas Atividades
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.pma-page) {
+  --pma-primary:   var(--brand, #0071e3);
+  --pma-surface:   var(--bg-elevated, #fff);
+  --pma-muted:     var(--bg-fill-tertiary, rgba(120,120,128,.08));
+  --pma-text:      var(--text-primary, #1d1d1f);
+  --pma-sub:       var(--text-tertiary, #6e6e73);
+  --pma-soft:      var(--text-quaternary, #86868b);
+  --pma-border:    var(--separator-hairline, rgba(0,0,0,.06));
+  --pma-border2:   var(--separator-non-opaque, rgba(0,0,0,.10));
+  --pma-hover:     var(--bg-hover, rgba(0,0,0,.04));
+  --pma-r-sm:      var(--radius-sm, 10px);
+  --pma-r-md:      var(--radius-md, 14px);
+  --pma-r-lg:      var(--radius-lg, 18px);
+  --pma-r-xl:      var(--radius-xl, 22px);
+  --pma-pill:      var(--radius-pill, 980px);
+  --pma-shadow:    var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05));
+  --pma-tr:        var(--transition-fast, 160ms cubic-bezier(.32,.72,0,1));
+
+  --pma-green:     #10b981;
+  --pma-green-bg:  rgba(16,185,129,.11);
+  --pma-green-txt: #047857;
+  --pma-red:       #ef4444;
+  --pma-red-bg:    rgba(239,68,68,.10);
+  --pma-red-txt:   #b91c1c;
+}
+
+.pma-page, .pma-page * { box-sizing: border-box; min-width: 0; }
+
+.pma-page {
+  width: 100%; max-width: 64rem;
+  margin: 0 auto;
+  display: grid; gap: 1.15rem;
+  color: var(--pma-text);
+}
+
+/* ── HERO ──────────────────────────────────────────────────── */
+.pma-hero {
+  position: relative;
+  background: linear-gradient(135deg, #0f766e 0%, #0d9488 50%, #14b8a6 100%);
+  border-radius: var(--pma-r-xl);
+  padding: 1.75rem 2rem;
+  color: #fff;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(13,148,136,.28);
+}
+.pma-hero-body { position: relative; display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+.pma-hero-icon {
+  width: 3.4rem; height: 3.4rem;
+  display: grid; place-items: center;
+  border-radius: var(--pma-r-lg);
+  background: rgba(255,255,255,.18);
+  font-size: 1.4rem; flex-shrink: 0;
+}
+.pma-hero-title { font-size: clamp(1.05rem, 2vw, 1.4rem); font-weight: 700; line-height: 1.2; }
+.pma-hero-sub { margin-top: .3rem; font-size: .82rem; opacity: .82; }
+
+/* ── PERIOD PRESETS ────────────────────────────────────────── */
+.pma-period-card {
+  display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+  padding: .85rem 1.25rem;
+  border-radius: var(--pma-r-xl);
+  border: 1px solid var(--pma-border);
+  background: var(--pma-surface);
+  box-shadow: var(--pma-shadow);
+}
+.pma-period-label {
+  color: var(--pma-sub); font-size: .72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em;
+  display: inline-flex; align-items: center; gap: .4rem;
+}
+.pma-period-chip {
+  display: inline-flex; align-items: center;
+  height: 2.1rem; padding: 0 .9rem;
+  border-radius: var(--pma-pill);
+  font-size: .8rem; font-weight: 600;
+  border: 1px solid var(--pma-border2);
+  background: var(--pma-surface); color: var(--pma-text);
+  text-decoration: none;
+  transition: background var(--pma-tr), border-color var(--pma-tr);
+}
+.pma-period-chip:hover { background: var(--pma-hover); }
+.pma-period-chip.active { background: var(--pma-primary); color: #fff; border-color: var(--pma-primary); }
+.pma-period-range { margin-left: auto; color: var(--pma-soft); font-size: .78rem; }
+
+/* ── KPI CARDS ─────────────────────────────────────────────── */
+.pma-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: .8rem; }
+.pma-kpi {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 1.1rem 1.2rem;
+  border-radius: var(--pma-r-xl);
+  border: 1px solid var(--pma-border);
+  background: var(--pma-surface);
+  box-shadow: var(--pma-shadow);
+}
+.pma-kpi-icon {
+  width: 2.9rem; height: 2.9rem;
+  display: grid; place-items: center;
+  border-radius: var(--pma-r-md);
+  font-size: 1.05rem; flex-shrink: 0;
+  background: rgba(13,148,136,.12); color: #0d9488;
+}
+.pma-kpi-body { flex: 1; min-width: 0; }
+.pma-kpi-label {
+  color: var(--pma-sub); font-size: .68rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em;
+}
+.pma-kpi-value { margin-top: .25rem; font-size: clamp(1.25rem, 2.5vw, 1.6rem); font-weight: 800; line-height: 1; color: var(--pma-text); }
+
+/* ── DAY GROUPS ────────────────────────────────────────────── */
+.pma-day { display: grid; gap: .6rem; }
+.pma-day-head {
+  display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap;
+  margin: .2rem .15rem;
+}
+.pma-day-title { font-size: 1rem; font-weight: 700; color: var(--pma-text); letter-spacing: -.01em; }
+.pma-day-sub { color: var(--pma-soft); font-size: .8rem; }
+.pma-day-total { margin-left: auto; color: var(--pma-sub); font-size: .8rem; font-weight: 600; }
+
+.pma-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 1.1rem;
+  padding: .95rem 1.2rem;
+  border-radius: var(--pma-r-lg);
+  border: 1px solid var(--pma-border);
+  background: var(--pma-surface);
+  box-shadow: var(--pma-shadow);
+}
+.pma-item-time {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 4.6rem; flex-shrink: 0;
+  padding: .5rem .3rem;
+  border-radius: var(--pma-r-md);
+  background: var(--pma-muted);
+  color: var(--pma-text);
+  font-weight: 700; font-size: .82rem; line-height: 1.3;
+  text-align: center;
+}
+.pma-item-time small { font-weight: 500; color: var(--pma-soft); font-size: .68rem; }
+.pma-item-main { min-width: 0; }
+.pma-item-name { font-weight: 700; font-size: .96rem; color: var(--pma-text); overflow-wrap: anywhere; }
+.pma-item-meta {
+  margin-top: .3rem;
+  display: flex; flex-wrap: wrap; gap: .35rem .9rem;
+  color: var(--pma-sub); font-size: .78rem;
+}
+.pma-item-meta span { display: inline-flex; align-items: center; gap: .35rem; }
+.pma-item-meta i { font-size: .72rem; color: var(--pma-soft); }
+.pma-item-actions { display: flex; align-items: center; gap: .5rem; flex-shrink: 0; }
+
+.pma-chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .3rem .65rem; border-radius: var(--pma-pill);
+  font-size: .7rem; font-weight: 700; white-space: nowrap;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.pma-chip.ok  { color: var(--pma-green-txt); background: var(--pma-green-bg); }
+.pma-chip.off { color: var(--pma-red-txt);   background: var(--pma-red-bg); }
+
+.pma-link {
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  height: 2.2rem; padding: 0 .9rem;
+  border-radius: var(--pma-pill);
+  font-size: .78rem; font-weight: 600;
+  text-decoration: none; white-space: nowrap;
+  color: var(--pma-text); background: var(--pma-surface);
+  border: 1px solid var(--pma-border2);
+  transition: background var(--pma-tr), border-color var(--pma-tr);
+}
+.pma-link:hover { background: var(--pma-hover); }
+
+/* ── EMPTY STATE ───────────────────────────────────────────── */
+.pma-empty {
+  padding: 3.5rem 1.5rem; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: .85rem;
+  border-radius: var(--pma-r-xl);
+  border: 1px dashed var(--pma-border2);
+  background: var(--pma-surface);
+}
+.pma-empty-icon {
+  width: 4rem; height: 4rem;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--pma-muted);
+  font-size: 1.6rem; color: var(--pma-soft);
+}
+.pma-empty-title { color: var(--pma-text); font-size: 1.02rem; font-weight: 700; }
+.pma-empty-text  { color: var(--pma-sub); font-size: .88rem; max-width: 26rem; }
+
+/* ── RESPONSIVE ───────────────────────────────────────────── */
+@media (max-width: 48rem) {
+  .pma-kpi-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .pma-item { grid-template-columns: auto 1fr; }
+  .pma-item-actions { grid-column: 1 / -1; margin-top: .25rem; }
+  .pma-link { flex: 1; }
+}
+@media (max-width: 40rem) {
+  .pma-hero { padding: 1.4rem 1.25rem; }
+  .pma-period-range { display: none; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pma-page">
+
+  <!-- Hero -->
+  <section class="pma-hero">
+    <div class="pma-hero-body">
+      <div class="pma-hero-icon">
+        <i class="fa-solid fa-calendar-days" aria-hidden="true"></i>
+      </div>
+      <div>
+        <div class="pma-hero-title">Minha Agenda</div>
+        <div class="pma-hero-sub">Execuções de preventiva que você realizou, por dia e horário</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Presets de período -->
+  <section class="pma-period-card">
+    <span class="pma-period-label"><i class="fa-solid fa-filter" aria-hidden="true"></i> Período</span>
+    <a href="?inicio={{ hoje|date:'Y-m-d' }}&fim={{ hoje|date:'Y-m-d' }}" class="pma-period-chip {% if inicio == hoje and fim == hoje %}active{% endif %}">Hoje</a>
+    <a href="?fim={{ hoje|date:'Y-m-d' }}" data-days="7" class="pma-period-chip js-period">Últimos 7 dias</a>
+    <a href="?fim={{ hoje|date:'Y-m-d' }}" data-days="30" class="pma-period-chip js-period">Últimos 30 dias</a>
+    <a href="?fim={{ hoje|date:'Y-m-d' }}" data-days="90" class="pma-period-chip js-period">Últimos 90 dias</a>
+    <span class="pma-period-range">{{ inicio|date:"d/m/Y" }} — {{ fim|date:"d/m/Y" }}</span>
+  </section>
+
+  <!-- KPIs -->
+  <section class="pma-kpi-grid">
+    <article class="pma-kpi">
+      <div class="pma-kpi-icon"><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i></div>
+      <div class="pma-kpi-body">
+        <div class="pma-kpi-label">Execuções</div>
+        <div class="pma-kpi-value">{{ kpi.total_execucoes }}</div>
+      </div>
+    </article>
+    <article class="pma-kpi">
+      <div class="pma-kpi-icon"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i></div>
+      <div class="pma-kpi-body">
+        <div class="pma-kpi-label">Dias com atividade</div>
+        <div class="pma-kpi-value">{{ kpi.dias_com_atividade }}</div>
+      </div>
+    </article>
+    <article class="pma-kpi">
+      <div class="pma-kpi-icon"><i class="fa-solid fa-clock" aria-hidden="true"></i></div>
+      <div class="pma-kpi-body">
+        <div class="pma-kpi-label">Tempo total</div>
+        <div class="pma-kpi-value">{{ kpi.tempo_total_fmt|default:"—" }}</div>
+      </div>
+    </article>
+    <article class="pma-kpi">
+      <div class="pma-kpi-icon"><i class="fa-solid fa-bullseye" aria-hidden="true"></i></div>
+      <div class="pma-kpi-body">
+        <div class="pma-kpi-label">Pontualidade</div>
+        <div class="pma-kpi-value">{% if kpi.pontualidade is not None %}{{ kpi.pontualidade }}%{% else %}—{% endif %}</div>
+      </div>
+    </article>
+  </section>
+
+  <!-- Agenda por dia -->
+  {% if dias %}
+    {% for grupo in dias %}
+      <div class="pma-day">
+        <div class="pma-day-head">
+          <span class="pma-day-title">{{ grupo.data|date:"d/m/Y" }}</span>
+          <span class="pma-day-sub">{{ grupo.dia_semana }}</span>
+          <span class="pma-day-total">{{ grupo.total_execucoes }} execução{{ grupo.total_execucoes|pluralize:"s" }} · {{ grupo.total_fmt }}</span>
+        </div>
+
+        {% for e in grupo.execucoes %}
+          <article class="pma-item">
+            <div class="pma-item-time">
+              {% if e.hora_inicio and e.hora_fim %}
+                {{ e.hora_inicio|time:"H:i" }}<small>até {{ e.hora_fim|time:"H:i" }}</small>
+              {% else %}
+                <small>Sem horário</small>
+              {% endif %}
+            </div>
+
+            <div class="pma-item-main">
+              <div class="pma-item-name">{{ e.preventiva.equipamento.nome }}</div>
+              <div class="pma-item-meta">
+                {% if e.preventiva.checklist_modelo %}
+                  <span><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i> {{ e.preventiva.checklist_modelo.nome }}</span>
+                {% endif %}
+                {% if e.preventiva.equipamento.localidade %}
+                  <span><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ e.preventiva.equipamento.localidade.local }}</span>
+                {% endif %}
+                {% if e.duracao_formatada %}
+                  <span><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> {{ e.duracao_formatada }}</span>
+                {% endif %}
+                {% if e.data_agendada %}
+                  <span class="pma-chip {% if e.no_prazo %}ok{% else %}off{% endif %}">
+                    {% if e.no_prazo %}No prazo{% else %}Fora do prazo{% endif %}
+                  </span>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="pma-item-actions">
+              <a href="{% url 'preventiva_detail' e.preventiva_id %}" class="pma-link" title="Ver detalhes da preventiva">
+                <i class="fa-solid fa-eye" aria-hidden="true"></i> Detalhes
+              </a>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <section class="pma-empty">
+      <div class="pma-empty-icon">
+        <i class="fa-solid fa-calendar-xmark" aria-hidden="true"></i>
+      </div>
+      <div class="pma-empty-title">Nenhuma execução no período</div>
+      <div class="pma-empty-text">Você ainda não registrou execuções de preventiva entre {{ inicio|date:"d/m/Y" }} e {{ fim|date:"d/m/Y" }}.</div>
+    </section>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var hoje = new Date('{{ hoje|date:"Y-m-d" }}T00:00:00');
+  document.querySelectorAll('.js-period').forEach(function (el) {
+    var days = parseInt(el.getAttribute('data-days'), 10);
+    var inicio = new Date(hoje);
+    inicio.setDate(inicio.getDate() - (days - 1));
+    var iso = inicio.toISOString().slice(0, 10);
+    el.href = '?inicio=' + iso + '&fim=' + '{{ hoje|date:"Y-m-d" }}';
+    if ('{{ inicio|date:"Y-m-d" }}' === iso && '{{ fim|date:"Y-m-d" }}' === '{{ hoje|date:"Y-m-d" }}') {
+      el.classList.add('active');
+    }
+  });
+});
+</script>
+{% endblock %}

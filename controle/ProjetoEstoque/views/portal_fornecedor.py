@@ -29,11 +29,15 @@ from ..models import (
     Localidade,
     Licenca,
     LoteManutencao,
+    LoteSeparacao,
     OrdemManutencao,
     OrdemManutencaoAnexo,
+    SeparacaoItem,
     StatusItemChoices,
     StatusOrdemManutencaoChoices,
+    StatusSeparacaoChoices,
     TipoMovimentacaoChoices,
+    TipoSeparacaoChoices,
 )
 
 
@@ -73,6 +77,8 @@ def itens_do_fornecedor(fornecedor):
       • itens fornecidos por ele (Item.fornecedor)
       • itens enviados para manutenção sob sua responsabilidade
         (MovimentacaoItem.fornecedor_manutencao em um envio_manutencao)
+      • itens em remessa (Envio/Devolução) endereçados a ele
+        (SeparacaoItem.fornecedor)
     Toda view do portal DEVE partir desta função — nunca de Item.objects.all().
     """
     return (
@@ -83,6 +89,7 @@ def itens_do_fornecedor(fornecedor):
                 movimentacoes__tipo_movimentacao=TipoMovimentacaoChoices.ENVIO_MANUTENCAO,
                 movimentacoes__fornecedor_manutencao=fornecedor,
             )
+            | Q(separacoes__fornecedor=fornecedor)
         )
         .distinct()
     )
@@ -592,6 +599,93 @@ def portal_lote_manutencao_detail(request, pk: int):
         "active_nav": "lotes_manutencao",
     }
     return render(request, "front/portal/portal_lote_manutencao_detail.html", context)
+
+
+_PORTAL_SEP_TITULOS = {
+    TipoSeparacaoChoices.ENVIO: "Remessa para Envio",
+    TipoSeparacaoChoices.DEVOLUCAO: "Remessa para Devolução",
+}
+
+
+def _portal_separacao_list(request, tipo):
+    """Visão somente-leitura: quem cria/organiza/despacha a remessa é sempre o
+    time interno (ver ProjetoEstoque/views/separacoes.py) — o fornecedor só
+    acompanha o que já foi endereçado a ele."""
+    from services.separacao_service import SeparacaoService
+
+    soltos = (
+        SeparacaoItem.objects
+        .filter(fornecedor=request.fornecedor, tipo=tipo, lote__isnull=True)
+        .exclude(status=StatusSeparacaoChoices.CANCELADO)
+        .select_related("item", "item__locacao")
+        .order_by("-created_at")
+    )
+    lotes = (
+        LoteSeparacao.objects
+        .filter(fornecedor=request.fornecedor, tipo=tipo)
+        .prefetch_related("itens")
+        .order_by("-created_at")
+    )
+    soltos = list(soltos)
+    for s in soltos:
+        s.badge_contrato = SeparacaoService.badge_contrato(s.item)
+
+    return {
+        "fornecedor": request.fornecedor,
+        "tipo": tipo,
+        "titulo": _PORTAL_SEP_TITULOS[tipo],
+        "soltos": soltos,
+        "lotes": lotes,
+        "active_nav": "separacao_envio" if tipo == TipoSeparacaoChoices.ENVIO else "separacao_devolucao",
+    }
+
+
+@fornecedor_required
+def portal_separacao_envio_list(request):
+    context = _portal_separacao_list(request, TipoSeparacaoChoices.ENVIO)
+    return render(request, "front/portal/portal_separacao_list.html", context)
+
+
+@fornecedor_required
+def portal_separacao_devolucao_list(request):
+    context = _portal_separacao_list(request, TipoSeparacaoChoices.DEVOLUCAO)
+    return render(request, "front/portal/portal_separacao_list.html", context)
+
+
+@fornecedor_required
+def portal_separacao_lote_detail(request, pk: int):
+    """Documento completo do lote: dados do equipamento, contrato de Locação
+    (na Devolução) e, quando já despachado para manutenção, a Ordem de
+    Manutenção correspondente — tudo em um único lugar para o fornecedor."""
+    from services.separacao_service import SeparacaoService
+
+    lote = get_object_or_404(
+        LoteSeparacao.objects.select_related("fornecedor"),
+        pk=pk, fornecedor=request.fornecedor,
+    )
+    itens = list(
+        lote.itens
+        .select_related(
+            "item", "item__categoria", "item__subtipo", "item__localidade",
+            "item__centro_custo", "item__locacao", "movimentacao_despacho",
+        )
+        .order_by("-created_at")
+    )
+    for i in itens:
+        i.info = SeparacaoService.info_equipamento(i)
+        i.badge_contrato = SeparacaoService.badge_contrato(i.item)
+        i.ordem = None
+        if i.movimentacao_despacho_id:
+            i.ordem = i.movimentacao_despacho.ordens_manutencao.first()
+
+    context = {
+        "fornecedor": request.fornecedor,
+        "lote": lote,
+        "itens": itens,
+        "titulo": _PORTAL_SEP_TITULOS.get(lote.tipo, "Remessa"),
+        "active_nav": "separacao_envio" if lote.tipo == TipoSeparacaoChoices.ENVIO else "separacao_devolucao",
+    }
+    return render(request, "front/portal/portal_separacao_lote_detail.html", context)
 
 
 @fornecedor_required

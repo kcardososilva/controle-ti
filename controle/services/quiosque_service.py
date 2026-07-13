@@ -15,7 +15,7 @@ import hashlib
 import random
 import secrets
 import string
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from pathlib import Path
 
 from django.conf import settings
@@ -362,9 +362,21 @@ def _parse_dt(v):
 
 
 # Inventário de apps: limites defensivos (o payload vem do device — não confiável).
-_APPS_MAX      = 500   # teto de itens aceitos por inventário (folga sobre ~40–120)
-_APPS_PKG_MAX  = 255
-_APPS_NOME_MAX = 255
+_APPS_MAX        = 500   # teto de itens aceitos por inventário (folga sobre ~40–120)
+_APPS_PKG_MAX    = 255
+_APPS_NOME_MAX   = 255
+_APPS_VERSAO_MAX = 100
+
+
+def _parse_dt_ms(v):
+    """Converte epoch ms (int) para datetime aware. None se inválido/ausente."""
+    ms = _i(v)
+    if ms is None:
+        return None
+    try:
+        return datetime.fromtimestamp(ms / 1000, tz=dt_timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def _persistir_inventario(device, apps, apps_hash) -> bool:
@@ -407,6 +419,9 @@ def _persistir_inventario(device, apps, apps_hash) -> bool:
             pkg=pkg,
             nome=str(it.get('nome') or '')[:_APPS_NOME_MAX],
             sistema=bool(it.get('sistema', False)),
+            versao=str(it.get('versao') or '')[:_APPS_VERSAO_MAX],
+            versao_codigo=_i(it.get('versao_codigo')) or 0,
+            atualizado_em=_parse_dt_ms(it.get('atualizado_em_ms')),
         ))
         if len(registros) >= _APPS_MAX:
             break
@@ -489,6 +504,28 @@ def registrar_checkin(device, dados: dict) -> dict:
             device.ultimo_checkin = coletado
             if serial and not device.serial:
                 device.serial = serial
+            # Memória/armazenamento: snapshot do check-in mais recente (não histórico —
+            # ver INFORME_SERVIDOR_MEMORIA_DISCO §1.3). Vêm em TODO check-in do app.
+            ram_total = _i(dados.get("ram_total_mb"))
+            if ram_total is not None:
+                device.ram_total_mb = ram_total
+            ram_livre = _i(dados.get("ram_livre_mb"))
+            if ram_livre is not None:
+                device.ram_livre_mb = ram_livre
+            ram_usada = _i(dados.get("ram_usada_mb"))
+            if ram_usada is not None:
+                device.ram_usada_mb = ram_usada
+            if "ram_pouca" in dados:
+                device.ram_pouca = bool(dados.get("ram_pouca"))
+            arm_total = _i(dados.get("armazenamento_total_mb"))
+            if arm_total is not None:
+                device.armazenamento_total_mb = arm_total
+            arm_livre = _i(dados.get("armazenamento_livre_mb"))
+            if arm_livre is not None:
+                device.armazenamento_livre_mb = arm_livre
+            arm_usado = _i(dados.get("armazenamento_usado_mb"))
+            if arm_usado is not None:
+                device.armazenamento_usado_mb = arm_usado
         # MAC: identidade estável do aparelho → atualiza só quando chega valor não-nulo
         # (não sobrescreve um MAC bom com null vindo de um check-in sem Device Owner).
         if mac and device.mac != mac:
@@ -624,3 +661,253 @@ def montar_trilha(device, max_pontos: int = TRILHA_MAX_PONTOS) -> list:
     if len(trilha) < 2:
         trilha = _construir(filtrar_precisao=False)
     return trilha
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Painel Gerencial (indicadores para apresentação — RH / gestão de TI)
+# ──────────────────────────────────────────────────────────────────────────────
+# Métricas construídas só a partir do que é persistido de forma confiável:
+# KioskCheckin tem retenção móvel de RETENCAO_DIAS (ver prune_checkins) — por
+# isso "atividade recente" cobre só essa janela. As demais séries usam
+# `criado_em` de KioskDevice/KioskMatricula/KioskInstaladorLink/KioskComando,
+# que nunca é podado, e por isso servem para tendências de 12 meses.
+
+_ATENCAO_BATERIA_PCT = 20
+_ATENCAO_ARMAZENAMENTO_MB = 1024
+
+
+def _top_n(valores, n=6, rotulo_outros="Outros"):
+    """Conta ocorrências e agrupa o rabo da distribuição em 'Outros' — usado
+    nos gráficos de composição da frota (fabricante, versão do Android/app)."""
+    from collections import Counter
+
+    contagem = Counter(v for v in valores if v)
+    top = contagem.most_common(n)
+    restante = sum(contagem.values()) - sum(v for _, v in top)
+    labels = [k for k, _ in top]
+    dados = [v for _, v in top]
+    if restante > 0:
+        labels.append(rotulo_outros)
+        dados.append(restante)
+    return labels, dados
+
+
+def _meses_stamps(n=12):
+    now = timezone.localtime()
+    y, m = now.year, now.month
+    out = []
+    for _ in range(n):
+        out.append((y, m))
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    return list(reversed(out))
+
+
+def _meses_labels_pt(stamps):
+    nomes = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+    return [f"{nomes[m - 1]}/{str(y)[-2:]}" for (y, m) in stamps]
+
+
+def _alinhar_serie_mensal(stamps, queryset_mensal):
+    """queryset_mensal: `.values('m').annotate(c=Count(...))`, 'm' vindo de TruncMonth."""
+    m2v = {}
+    for row in queryset_mensal:
+        dt = row["m"]
+        if dt is None:
+            continue
+        local = timezone.localtime(dt) if timezone.is_aware(dt) else dt
+        m2v[(local.year, local.month)] = int(row["c"] or 0)
+    return [m2v.get((y, m), 0) for (y, m) in stamps]
+
+
+def montar_indicadores_gerenciais() -> dict:
+    """
+    Fonte única de dados do Painel Gerencial do Quiosque (`/quiosque/indicadores/`):
+    saúde da frota, adoção do provisionamento e composição do parque, cruzando
+    com Item/Localidade quando o número de série bate — para apresentação à
+    gestão (RH e TI), sem o detalhe operacional de cada aparelho (esse fica em
+    `quiosque_dashboard`).
+    """
+    from collections import Counter
+
+    from django.db.models import Count, Q, Sum
+    from django.db.models.functions import TruncDate, TruncMonth
+
+    from ProjetoEstoque.models import (
+        Item, KioskCheckin, KioskComando, KioskDevice, KioskInstaladorLink, KioskMatricula,
+    )
+
+    agora = timezone.now()
+    devices = list(KioskDevice.objects.filter(ativo=True))
+    total = len(devices)
+
+    online = sum(1 for d in devices if d.online)
+    ativos_24h = sum(
+        1 for d in devices
+        if d.ultimo_checkin and (agora - d.ultimo_checkin).total_seconds() <= 86400
+    )
+    sem_localizacao = sum(1 for d in devices if not d.tem_localizacao)
+    bateria_critica = sum(1 for d in devices if d.ultima_bateria is not None and d.ultima_bateria <= _ATENCAO_BATERIA_PCT)
+    armazenamento_critico = sum(
+        1 for d in devices
+        if d.armazenamento_livre_mb is not None and d.armazenamento_livre_mb < _ATENCAO_ARMAZENAMENTO_MB
+    )
+    ram_critica = sum(1 for d in devices if d.ram_pouca)
+    # Telemetria de memória/armazenamento só existe em builds do app a partir da
+    # v1.5.1 (ver INFORME_SERVIDOR_MEMORIA_DISCO_E_VERSAO_APPS.md) — sem isto, os
+    # dois contadores acima ficam sempre em 0 mesmo com a frota inteira sem dado
+    # nenhum, o que pareceria "tudo certo" num painel gerencial. Expor a cobertura
+    # real evita essa falsa sensação de saúde.
+    com_telemetria_memoria = sum(1 for d in devices if d.armazenamento_livre_mb is not None)
+
+    pct_online = round(online / total * 100) if total else 0
+    pct_24h = round(ativos_24h / total * 100) if total else 0
+
+    # -------- Aparelhos que precisam de atenção (offline, bateria, armazenamento, RAM) --------
+    atencao = []
+    for d in devices:
+        motivos = []
+        if not d.online:
+            dias = (agora - d.ultimo_checkin).days if d.ultimo_checkin else None
+            motivos.append(f"Offline há {dias} dia(s)" if dias is not None else "Nunca conectou")
+        if d.ultima_bateria is not None and d.ultima_bateria <= _ATENCAO_BATERIA_PCT:
+            motivos.append(f"Bateria em {d.ultima_bateria}%")
+        if d.armazenamento_livre_mb is not None and d.armazenamento_livre_mb < _ATENCAO_ARMAZENAMENTO_MB:
+            motivos.append("Armazenamento crítico")
+        if d.ram_pouca:
+            motivos.append("Pouca RAM")
+        if motivos:
+            atencao.append({"device": d, "motivos": motivos})
+    atencao.sort(key=lambda a: (a["device"].online, -len(a["motivos"])))
+    atencao = atencao[:20]
+
+    # -------- Composição do parque --------
+    fab_labels, fab_dados = _top_n([d.fabricante for d in devices], 6)
+    android_labels, android_dados = _top_n([d.android_versao for d in devices], 8)
+    appver_labels, appver_dados = _top_n([d.app_versao for d in devices], 8)
+
+    modelos_counter = Counter(
+        f"{(d.fabricante or '—').strip()} {(d.modelo or '—').strip()}".strip()
+        for d in devices
+    )
+    top_modelos = modelos_counter.most_common(10)
+
+    # -------- Cobertura por localidade (cruza com Item pelo nº de série) --------
+    seriais = [(d.serial or "").strip() for d in devices if (d.serial or "").strip()]
+    itens_por_serial = {}
+    if seriais:
+        itens_por_serial = {
+            it.numero_serie: it
+            for it in Item.objects.filter(numero_serie__in=seriais).select_related("localidade")
+        }
+    cobertura = Counter()
+    vinculados = 0
+    for d in devices:
+        it = itens_por_serial.get((d.serial or "").strip())
+        if it:
+            vinculados += 1
+            cobertura[it.localidade.local if it.localidade else "Sem localidade"] += 1
+        else:
+            cobertura["Sem vínculo no estoque"] += 1
+    cobertura_top = cobertura.most_common(8)
+    pct_vinculados = round(vinculados / total * 100) if total else 0
+
+    # -------- Matrículas (provisionamento) --------
+    validas_q = Q(expira_em__isnull=True) | Q(expira_em__gt=agora)
+    mat_total = KioskMatricula.objects.count()
+    mat_usadas = KioskMatricula.objects.filter(usado=True).count()
+    mat_disponiveis = KioskMatricula.objects.filter(usado=False).filter(validas_q).count()
+    mat_expiradas = mat_total - mat_usadas - mat_disponiveis
+    mat_taxa_conversao = round(mat_usadas / mat_total * 100, 1) if mat_total else 0.0
+
+    # -------- Instaladores (auto-atendimento de provisionamento) --------
+    inst_total = KioskInstaladorLink.objects.count()
+    inst_downloads = KioskInstaladorLink.objects.aggregate(s=Sum("downloads"))["s"] or 0
+    inst_validos = KioskInstaladorLink.objects.filter(revogado=False, expira_em__gt=agora).count()
+    inst_revogados = KioskInstaladorLink.objects.filter(revogado=True).count()
+
+    # -------- Comandos remotos (canal de controle) --------
+    comandos_status = dict(KioskComando.objects.values("status").annotate(c=Count("id")).values_list("status", "c"))
+    comandos_total = sum(comandos_status.values())
+
+    # -------- Crescimento da frota (12 meses) — criado_em nunca é podado --------
+    stamps = _meses_stamps(12)
+    labels_meses = _meses_labels_pt(stamps)
+    inicio_janela = timezone.make_aware(datetime(stamps[0][0], stamps[0][1], 1))
+    devices_serie = _alinhar_serie_mensal(
+        stamps,
+        KioskDevice.objects.filter(criado_em__gte=inicio_janela)
+        .annotate(m=TruncMonth("criado_em")).values("m").annotate(c=Count("id")),
+    )
+    matriculas_serie = _alinhar_serie_mensal(
+        stamps,
+        KioskMatricula.objects.filter(criado_em__gte=inicio_janela)
+        .annotate(m=TruncMonth("criado_em")).values("m").annotate(c=Count("id")),
+    )
+
+    # -------- Atividade recente (janela real de retenção do check-in) --------
+    inicio_atividade = agora - timedelta(days=RETENCAO_DIAS)
+    checkins_recentes = KioskCheckin.objects.filter(registrado_em__gte=inicio_atividade)
+    dias_stamps = [(agora - timedelta(days=i)).date() for i in range(RETENCAO_DIAS - 1, -1, -1)]
+    dias_labels = [d.strftime("%d/%m") for d in dias_stamps]
+    checkins_por_dia_map = {
+        row["d"]: row["c"]
+        for row in checkins_recentes.annotate(d=TruncDate("registrado_em")).values("d").annotate(c=Count("id"))
+    }
+    checkins_por_dia = [checkins_por_dia_map.get(d, 0) for d in dias_stamps]
+
+    rede_rows = list(checkins_recentes.exclude(rede="").values("rede").annotate(c=Count("id")))
+    rede_labels = [r["rede"] for r in rede_rows]
+    rede_dados = [r["c"] for r in rede_rows]
+
+    # -------- Resumo inteligente (linguagem natural, gerado a partir dos KPIs) --------
+    partes = [f"A frota tem {total} aparelho(s) ativo(s), com {online} ({pct_online}%) online neste momento."]
+    partes.append(f"{ativos_24h} aparelho(s) ({pct_24h}%) enviaram telemetria nas últimas 24 horas.")
+    if atencao:
+        partes.append(f"{len(atencao)} aparelho(s) precisam de atenção — offline, bateria ou armazenamento críticos.")
+    else:
+        partes.append("Nenhum aparelho está em estado crítico no momento.")
+    if mat_total:
+        partes.append(f"Das {mat_total} matrícula(s) geradas, {mat_usadas} ({mat_taxa_conversao}%) já provisionaram um aparelho.")
+    if total:
+        partes.append(f"{vinculados} aparelho(s) ({pct_vinculados}%) estão vinculados a um equipamento do estoque pelo número de série.")
+    resumo = " ".join(partes)
+
+    return {
+        "total": total,
+        "online": online,
+        "pct_online": pct_online,
+        "ativos_24h": ativos_24h,
+        "pct_24h": pct_24h,
+        "sem_localizacao": sem_localizacao,
+        "bateria_critica": bateria_critica,
+        "armazenamento_critico": armazenamento_critico,
+        "ram_critica": ram_critica,
+        "com_telemetria_memoria": com_telemetria_memoria,
+        "vinculados": vinculados,
+        "pct_vinculados": pct_vinculados,
+        "atencao": atencao,
+
+        "fab_labels": fab_labels, "fab_dados": fab_dados,
+        "android_labels": android_labels, "android_dados": android_dados,
+        "appver_labels": appver_labels, "appver_dados": appver_dados,
+        "top_modelos": top_modelos,
+        "cobertura_top": cobertura_top,
+
+        "mat_total": mat_total, "mat_usadas": mat_usadas, "mat_disponiveis": mat_disponiveis,
+        "mat_expiradas": mat_expiradas, "mat_taxa_conversao": mat_taxa_conversao,
+
+        "inst_total": inst_total, "inst_downloads": inst_downloads,
+        "inst_validos": inst_validos, "inst_revogados": inst_revogados,
+
+        "comandos_total": comandos_total, "comandos_status": comandos_status,
+
+        "labels_meses": labels_meses, "devices_serie": devices_serie, "matriculas_serie": matriculas_serie,
+        "dias_labels": dias_labels, "checkins_por_dia": checkins_por_dia,
+        "rede_labels": rede_labels, "rede_dados": rede_dados,
+        "retencao_dias": RETENCAO_DIAS,
+
+        "resumo": resumo,
+        "gerado_em": agora,
+    }

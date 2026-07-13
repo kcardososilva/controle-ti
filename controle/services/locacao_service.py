@@ -17,10 +17,11 @@ from ProjetoEstoque.models import Locacao, LocacaoPeriodo
 logger = logging.getLogger(__name__)
 
 # Em manutenção o aluguel NÃO congela (o equipamento segue locado, só está sendo
-# reparado). Congela quando Pausado (item substituído também vira Pausado) ou
-# Descarte (equipamento descartado — o aluguel encerra em definitivo).
+# reparado). Congela quando Pausado (item substituído também vira Pausado),
+# Descarte (equipamento descartado — o aluguel encerra em definitivo) ou
+# Devolvido (fim de contrato de Locação — o equipamento saiu em definitivo).
 ATIVOS = {"ativo", "backup", "manutencao"}
-CONGELADOS = {"pausado", "descarte"}
+CONGELADOS = {"pausado", "descarte", "devolvido"}
 
 
 def _hoje():

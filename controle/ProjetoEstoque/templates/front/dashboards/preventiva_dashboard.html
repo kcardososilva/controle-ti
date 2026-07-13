@@ -89,6 +89,15 @@
             <a href="{% url 'preventiva_agendadas' %}" class="btn btn-outline" style="font-size:.82rem;">
                 <i class="fa fa-calendar-check"></i> Ver Agendadas
             </a>
+            <a href="{% url 'minhas_atividades' %}" class="btn btn-outline" style="font-size:.82rem;">
+                <i class="fa fa-list-check"></i> Minhas Atividades
+            </a>
+            <a href="{% url 'preventiva_minha_agenda' %}" class="btn btn-outline" style="font-size:.82rem;">
+                <i class="fa fa-calendar-days"></i> Minha Agenda
+            </a>
+            <a href="{% url 'tecnico_desempenho' %}" class="btn btn-outline" style="font-size:.82rem;">
+                <i class="fa fa-chart-line"></i> Desempenho do Técnico
+            </a>
             <div class="period-badge">
                 <i class="fa fa-calendar-alt"></i>
                 <span>{{ dt_ini|date:"d/m/Y" }} — {{ dt_fim|date:"d/m/Y" }}</span>
@@ -143,7 +152,7 @@
                 <a href="{{ request.path }}" class="btn btn-outline">
                     <i class="fa fa-eraser"></i> Limpar
                 </a>
-                <a id="exportLink" href="#" class="btn btn-success">
+                <a href="{% url 'preventiva_dashboard_export' %}?{{ request.GET.urlencode }}" class="btn btn-success">
                     <i class="fa fa-file-excel"></i> Excel
                 </a>
             </div>
@@ -165,11 +174,6 @@
             <div class="kpi-label">Vencidas</div>
             <div class="kpi-value">{{ vencidas_count|default:0 }}</div>
             <i class="fa fa-exclamation-triangle kpi-icon" style="color:var(--danger-color)"></i>
-        </div>
-        <div class="kpi-card orange">
-            <div class="kpi-label">Sem Agenda</div>
-            <div class="kpi-value">{{ sem_agenda_count|default:0 }}</div>
-            <i class="fa fa-calendar-minus kpi-icon" style="color:var(--warning-color)"></i>
         </div>
         <div class="kpi-card blue">
             <div class="kpi-label">Executadas (Mês)</div>
@@ -225,7 +229,7 @@
                     <tbody>
                         {% for p in vencidas %}
                         <tr>
-                            <td><strong>{{ p.data_proxima|date:"d/m/Y" }}</strong></td>
+                            <td><strong>{{ p.proxima_calc|date:"d/m/Y" }}</strong></td>
                             <td><span class="status-badge danger">{{ p.dias_atraso }} dias</span></td>
                             <td>{{ p.equipamento.nome }}<br><small style="color:var(--text-secondary); font-size:.78rem;">{{ p.checklist_modelo.nome|default:"-" }}</small></td>
                             <td>{{ p.equipamento.localidade.local|default:"-" }}</td>
@@ -262,7 +266,7 @@
                     <tbody>
                         {% for p in proximas %}
                         <tr>
-                            <td><strong>{{ p.data_proxima|date:"d/m/Y" }}</strong></td>
+                            <td><strong>{{ p.proxima_calc|date:"d/m/Y" }}</strong></td>
                             <td><span class="status-badge ok">{{ p.dias_faltam }} dias</span></td>
                             <td>{{ p.equipamento.nome }}</td>
                             <td>{{ p.equipamento.localidade.local|default:"-" }}</td>
@@ -310,6 +314,72 @@
         </div>
     </div>
 
+    <div class="charts-grid">
+        <div class="dashboard-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fa fa-location-dot" style="color:var(--brand-color)"></i> Visão por Localidade</div>
+            </div>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Localidade</th>
+                            <th style="text-align:center">Total</th>
+                            <th style="text-align:center">Ok</th>
+                            <th style="text-align:center">Vencidas</th>
+                            <th style="text-align:center">Sem Agenda</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in agg_loc %}
+                        <tr>
+                            <td style="font-weight:600"><a href="?local={{ r.equipamento__localidade__local|urlencode }}">{{ r.equipamento__localidade__local|default:"—" }}</a></td>
+                            <td style="text-align:center">{{ r.total }}</td>
+                            <td style="text-align:center"><span style="color:var(--success-color)">{{ r.ok }}</span></td>
+                            <td style="text-align:center"><span style="color:var(--danger-color)">{{ r.vencidas }}</span></td>
+                            <td style="text-align:center">{{ r.sem_agenda }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" style="text-align:center">Sem dados.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="dashboard-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fa fa-layer-group" style="color:var(--brand-color)"></i> Visão por Subtipo</div>
+            </div>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Subtipo</th>
+                            <th style="text-align:center">Total</th>
+                            <th style="text-align:center">Ok</th>
+                            <th style="text-align:center">Vencidas</th>
+                            <th style="text-align:center">Sem Agenda</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in agg_sub %}
+                        <tr>
+                            <td style="font-weight:600"><a href="?subtipo={{ r.equipamento__subtipo__nome|urlencode }}">{{ r.equipamento__subtipo__nome|default:"—" }}</a></td>
+                            <td style="text-align:center">{{ r.total }}</td>
+                            <td style="text-align:center"><span style="color:var(--success-color)">{{ r.ok }}</span></td>
+                            <td style="text-align:center"><span style="color:var(--danger-color)">{{ r.vencidas }}</span></td>
+                            <td style="text-align:center">{{ r.sem_agenda }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" style="text-align:center">Sem dados.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 {{ serie_labels|default:"[]"|json_script:"serie-labels" }}
@@ -319,22 +389,7 @@
 {{ chk_rates|default:"[]"|json_script:"chk-rates" }}
 
 <script>
-    /* 1. Exportação Excel */
-    (function() {
-        const form = document.getElementById('dashFilters');
-        const link = document.getElementById('exportLink');
-        
-        function updateExportLink() {
-            const params = new URLSearchParams(new FormData(form));
-            params.set('export', '1');
-            link.href = window.location.pathname + '?' + params.toString();
-        }
-        
-        form.addEventListener('change', updateExportLink);
-        updateExportLink(); // Inicializa
-    })();
-
-    /* 2. Helpers */
+    /* Helpers */
     const getJson = (id) => JSON.parse(document.getElementById(id).textContent || '[]');
     const sumArr = (arr) => arr.reduce((a, b) => a + (Number(b) || 0), 0);
     const showEl = (id, visible) => { 
@@ -349,7 +404,7 @@
     Chart.defaults.plugins.tooltip.padding = 10;
     Chart.defaults.plugins.tooltip.cornerRadius = 8;
 
-    /* 3. Gráfico de Série (Linha) */
+    /* Gráfico de Série (Linha) */
     (function() {
         const labels = getJson('serie-labels');
         const dataExec = getJson('serie-exec');
@@ -405,7 +460,7 @@
         });
     })();
 
-    /* 4. Gráfico de Adesão (Barra) */
+    /* Gráfico de Adesão (Barra) */
     (function() {
         const labels = getJson('chk-labels');
         const rates = getJson('chk-rates');

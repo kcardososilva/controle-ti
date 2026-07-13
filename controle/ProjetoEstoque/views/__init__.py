@@ -136,6 +136,20 @@ from .movimentacoes import (
     api_item_devolucao_info,
 )
 
+# ── Separação de Itens (Envio / Devolução) ───────────────────────────────────
+from .separacoes import (
+    separacao_envio_list,
+    separacao_devolucao_list,
+    separacao_lote_create,
+    separacao_lote_detail,
+    separacao_lote_excluir,
+    separacao_lote_enviar,
+    separacao_item_remover,
+    separacao_item_enviar,
+    documento_fiscal_gerar,
+    documento_fiscal_pdf_view,
+)
+
 # ── Ciclos de Manutenção ─────────────────────────────────────────────────────
 from .ciclos import (
     ciclos_list,
@@ -154,6 +168,8 @@ from .preventivas import (
     preventiva_list,
     preventiva_start,
     preventiva_exec,
+    preventiva_execucao_editar,
+    preventiva_execucao_excluir,
     preventiva_detail,
     preventiva_agendar,
     preventiva_plano,
@@ -161,6 +177,7 @@ from .preventivas import (
     preventiva_sincronizar_programacao,
     tecnico_desempenho,
     minhas_atividades,
+    preventiva_minha_agenda,
     apontamentos_horas_export,
 )
 
@@ -184,6 +201,7 @@ from .dashboards import (
     cc_custos_detalhe,
     cc_custos_export_pdf,
     preventiva_dashboard,
+    preventiva_dashboard_export,
     custos_diretoria_dashboard,
     custos_diretoria_detalhe,
 )
@@ -252,11 +270,14 @@ from .quiosque import (
     kiosk_instalador_download,
     # Dashboard interno
     quiosque_dashboard,
+    quiosque_indicadores,
     quiosque_detalhe,
     quiosque_matriculas,
     quiosque_matricula_excluir,
     quiosque_matricula_renomear,
+    quiosque_matricula_qrcode,
     quiosque_instalador_gerar,
+    quiosque_instalador_status,
     quiosque_instalador_revogar,
     quiosque_mapa,
     quiosque_config_editar,
@@ -281,6 +302,9 @@ from .portal_fornecedor import (
     portal_notificacoes_marcar_lidas,
     portal_licencas_list,
     portal_ajuda,
+    portal_separacao_envio_list,
+    portal_separacao_devolucao_list,
+    portal_separacao_lote_detail,
 )
 
 # ── Manutenção externa — lado TI (recebimentos) ──────────────────────────────

@@ -281,6 +281,29 @@ def quiosque_detalhe(request, pk: int):
             "trilha": trilha,
         }
 
+    # Percentuais/limiares para as barras de RAM e armazenamento (display-only,
+    # mesmo padrão de p.atrasado/p.atencao calculados na view para preventivas).
+    # ram_pouca já vem pronto do Android (MemoryInfo.lowMemory) — não recalculamos
+    # limiar de RAM aqui. Para armazenamento não há sinal do SO, então usamos o
+    # limiar sugerido no informe do app (crítico <1GB livre, atenção <2GB livre).
+    ram_pct = None
+    if device.ram_total_mb and device.ram_usada_mb is not None:
+        ram_pct = min(100, round(device.ram_usada_mb / device.ram_total_mb * 100))
+
+    armazenamento_pct = None
+    armazenamento_nivel = ""
+    armazenamento_livre_gb = None
+    armazenamento_total_gb = None
+    if device.armazenamento_total_mb and device.armazenamento_usado_mb is not None:
+        armazenamento_pct = min(100, round(device.armazenamento_usado_mb / device.armazenamento_total_mb * 100))
+        armazenamento_total_gb = round(device.armazenamento_total_mb / 1024, 1)
+    if device.armazenamento_livre_mb is not None:
+        armazenamento_livre_gb = round(device.armazenamento_livre_mb / 1024, 1)
+        if device.armazenamento_livre_mb < 1024:
+            armazenamento_nivel = "danger"
+        elif device.armazenamento_livre_mb < 2048:
+            armazenamento_nivel = "warn"
+
     return render(request, "front/quiosque/quiosque_detalhe.html", {
         "device": device,
         "page_obj": page_obj,
@@ -290,7 +313,21 @@ def quiosque_detalhe(request, pk: int):
         "mapa": mapa,
         "geo_pagina": geo_pagina,
         "offline_apos": KioskDevice.OFFLINE_APOS,
+        "ram_pct": ram_pct,
+        "armazenamento_pct": armazenamento_pct,
+        "armazenamento_nivel": armazenamento_nivel,
+        "armazenamento_livre_gb": armazenamento_livre_gb,
+        "armazenamento_total_gb": armazenamento_total_gb,
     })
+
+
+@login_required
+def quiosque_indicadores(request):
+    """Painel gerencial do módulo Quiosque — indicadores consolidados da frota
+    para apresentação (RH / gestão de TI): saúde dos aparelhos, adoção do
+    provisionamento e composição do parque. Retrato executivo, sem filtro ou
+    paginação (o detalhe operacional de cada aparelho fica em quiosque_dashboard)."""
+    return render(request, "front/quiosque/quiosque_indicadores.html", qs.montar_indicadores_gerenciais())
 
 
 @login_required
@@ -306,13 +343,21 @@ def quiosque_matriculas(request):
             validade = 72
         m = qs.criar_matricula(descricao=descricao, validade_horas=validade, user=request.user)
         messages.success(request, f"Código de matrícula gerado: {m.codigo}")
-        return redirect("quiosque_matriculas")
+        return redirect(f"{reverse('quiosque_matriculas')}?novo={m.pk}")
 
     agora = timezone.now()
     # "Disponível" = não usada E ainda válida (sem expiração ou ainda dentro do prazo);
     # "Expirada" = não usada mas fora do prazo. Contagens reais (não limitadas aos 100 exibidos).
     validas = Q(expira_em__isnull=True) | Q(expira_em__gt=agora)
     matriculas = KioskMatricula.objects.select_related("device", "criado_por").all()[:100]
+
+    # Código recém-gerado nesta navegação (?novo=<pk>, setado no redirect acima):
+    # usado só para destacar o botão do QR Code na tabela — não altera nenhuma regra.
+    try:
+        novo_pk = int(request.GET.get("novo") or 0) or None
+    except (TypeError, ValueError):
+        novo_pk = None
+
     return render(request, "front/quiosque/quiosque_matriculas.html", {
         "matriculas": matriculas,
         "total": KioskMatricula.objects.count(),
@@ -322,6 +367,7 @@ def quiosque_matriculas(request):
         "apk": qs.apk_atual(),
         "apk_dir_display": str(qs.apk_dir()),
         "instaladores": KioskInstaladorLink.objects.select_related("criado_por").all()[:15],
+        "novo_pk": novo_pk,
     })
 
 
@@ -352,6 +398,30 @@ def quiosque_matricula_renomear(request, pk: int):
 
 
 @login_required
+def quiosque_matricula_qrcode(request, pk: int):
+    """AJAX GET — QR Code do código de matrícula, para escanear no app em vez de
+    digitar os 8 caracteres na mão. Só é gerado enquanto o código ainda estiver
+    disponível (não usado e não expirado): um QR de código morto induziria o
+    operador a distribuir algo que o app vai recusar no enroll."""
+    from ProjetoEstoque.models import KioskMatricula
+
+    matricula = get_object_or_404(KioskMatricula, pk=pk)
+    if matricula.usado or not matricula.esta_valida():
+        return JsonResponse({
+            "ok": False,
+            "erro": "Este código já foi usado ou expirou. Gere um novo código para obter um QR válido.",
+        }, status=400)
+
+    return JsonResponse({
+        "ok": True,
+        "codigo": matricula.codigo,
+        "descricao": matricula.descricao,
+        "qr_base64": qs.gerar_qrcode_data_uri(matricula.codigo),
+        "expira_em": timezone.localtime(matricula.expira_em).strftime("%d/%m/%Y %H:%M") if matricula.expira_em else None,
+    })
+
+
+@login_required
 def quiosque_instalador_gerar(request):
     """POST AJAX — gera um link de instalação (token de validade curta) do .apk
     atual, com QR Code embutido na resposta. Ver kiosk_instalador_download para
@@ -372,11 +442,30 @@ def quiosque_instalador_gerar(request):
     link = resultado["link"]
     return JsonResponse({
         "ok": True,
+        "pk": link.pk,
         "url": resultado["url"],
         "qr_base64": resultado["qr_base64"],
         "nome_arquivo": link.nome_arquivo,
         "expira_em": timezone.localtime(link.expira_em).strftime("%d/%m/%Y %H:%M"),
         "validade_minutos": resultado["validade_minutos"],
+    })
+
+
+@login_required
+def quiosque_instalador_status(request, pk: int):
+    """AJAX GET — confere se um link de instalador já gerado ainda está válido
+    (não expirou e não foi revogado). Nunca devolve a URL/token: o servidor só
+    guarda o hash do token (ver KioskInstaladorLink) — o link e o QR Code em si
+    ficam apenas no sessionStorage do navegador que os gerou (botão "Visualizar
+    QR Code"), este endpoint só confirma se aquele QR ainda pode ser usado."""
+    from ProjetoEstoque.models import KioskInstaladorLink
+
+    link = get_object_or_404(KioskInstaladorLink, pk=pk)
+    return JsonResponse({
+        "ok": True,
+        "valido": link.esta_valido(),
+        "revogado": link.revogado,
+        "expira_em": timezone.localtime(link.expira_em).strftime("%d/%m/%Y %H:%M"),
     })
 
 

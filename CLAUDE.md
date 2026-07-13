@@ -67,8 +67,15 @@ python manage.py agendar_relatorio executar             # run digest immediately
 # Spreadsheet import
 python manage.py importar_itens_planilha <caminho.xlsx>
 
-# PRTG history collector (device-centric por prtg_objid; ideal em Task Scheduler)
-python manage.py monitorar_prtg   # coleta status PRTG e registra mudanças no histórico
+# PRTG history collector (device-centric por prtg_objid) — SEM esta tarefa agendada,
+# o histórico nunca é atualizado e o alerta de equipamento offline/instável NUNCA dispara.
+python manage.py monitorar_prtg          # roda a coleta uma vez (chamado pela tarefa agendada)
+
+# PRTG collector scheduler (Windows Task Scheduler)
+python manage.py agendar_prtg criar --intervalo 5   # register task every 5 min (needs Admin terminal)
+python manage.py agendar_prtg listar                 # check task status
+python manage.py agendar_prtg remover                # unregister task
+python manage.py agendar_prtg executar                # run collection immediately (for testing)
 ```
 
 ### Environment Variables
@@ -336,6 +343,15 @@ Prioridade: `status_raw` (int/float) → `int(float(status))` → mapeamento de 
 - `refreshStatus()` chama `/plantas/prtg/status/` a cada 30s e redesenha o canvas.
 - `detectarMudancas(prev, newMap)` dispara toasts somente após a **segunda** carga (flag `_firstLoad`) para evitar alertas falsos na abertura da página.
 - O campo `dev.ping_status` é exibido separadamente no drawer do elemento quando disponível.
+
+### Alarme por e-mail — dependências para funcionar
+
+O alerta `prtg_transicoes` (equipamento offline/instável) só dispara se **todas** estas condições forem verdadeiras — se o e-mail parar de chegar, checar nesta ordem:
+
+1. **Tarefa `ControleEstoque_MonitorarPRTG` registrada e rodando no Task Scheduler** (`python manage.py agendar_prtg listar`) — sem ela, `ItemPRTGHistorico` nunca recebe eventos novos e nenhuma transição é detectada. Diferente do relatório diário, esta tarefa **não** se auto-registra; precisa ser criada uma vez em produção (`agendar_prtg criar`, terminal Administrador).
+2. **`ConfiguracaoSistema.alertas_email_ativos = True`** (`/alertas/notificacoes/`) — chave-mestra que suprime *todos* os e-mails do sistema quando desligada, silenciosamente (só loga `INFO`).
+3. **Canal `prtg_transicoes` ativo** no mesmo painel (`CanalNotificacao.total_envios` mostra se já disparou alguma vez).
+4. A transição precisa ser **real** (`status_anterior` preenchido) — a primeira observação de cada device (seed, ex.: após a tarefa ficar parada por semanas e o histórico ser reconstruído) nunca gera alarme, mesmo que o device já esteja offline naquele momento. Isso é proposital (evita avalanche de e-mails), mas significa checar manualmente `ItemPRTGHistorico`/o relatório de monitoração após um "reset" de histórico.
 
 ## Preventivas — Lógica de Saúde
 

@@ -22,6 +22,7 @@ class StatusItemChoices(models.TextChoices):
     DEFEITO = 'defeito', 'Defeito'
     PAUSADO = 'pausado', 'Pausado'
     DESCARTE = 'descarte', 'Descarte'
+    DEVOLVIDO = 'devolvido', 'Devolvido (Locação)'
 
 class StatusUsuarioChoices(models.TextChoices):
     ATIVO = 'ativo', 'Ativo'
@@ -34,6 +35,9 @@ class TipoMovimentacaoChoices(models.TextChoices):
     ENTRADA = "entrada", "Entrada"
     ENVIO_MANUTENCAO = "envio_manutencao", "Envio para Manutenção"
     RETORNO_MANUTENCAO = "retorno_manutencao", "Retorno de Manutenção"
+    SEPARACAO_ENVIO = "separacao_envio", "Remessa para Envio"
+    SEPARACAO_DEVOLUCAO = "separacao_devolucao", "Remessa para Devolução"
+    DEVOLUCAO_LOCACAO = "devolucao_locacao", "Devolução de Locação"
     OUTROS = "outros", "Outros"
 
 class TipoTransferenciaChoices(models.TextChoices):
@@ -1596,6 +1600,183 @@ class LoteManutencao(AuditModel):
         return total
 
 
+class TipoSeparacaoChoices(models.TextChoices):
+    ENVIO = "envio", "Remessa para Envio"
+    DEVOLUCAO = "devolucao", "Remessa para Devolução"
+
+
+class StatusSeparacaoChoices(models.TextChoices):
+    ABERTO = "aberto", "Em separação"
+    ENVIADO = "enviado", "Enviado"
+    CANCELADO = "cancelado", "Removido da separação"
+
+
+class LoteSeparacao(AuditModel):
+    """
+    Agrupamento nomeado de itens em separação (Envio ou Devolução) para despacho
+    conjunto. Espelha `LoteManutencao`, mas para a etapa ANTERIOR à movimentação
+    real — reúne itens já marcados como "em separação" (ver `SeparacaoItem`) antes
+    de virarem, de fato, um envio para manutenção ou uma devolução de locação.
+    """
+    nome = models.CharField(max_length=150, verbose_name="Nome do lote")
+    tipo = models.CharField(max_length=10, choices=TipoSeparacaoChoices.choices, verbose_name="Tipo")
+    fornecedor = models.ForeignKey(
+        "Fornecedor",
+        on_delete=models.PROTECT,
+        related_name="lotes_separacao",
+        verbose_name="Fornecedor",
+    )
+    status = models.CharField(
+        max_length=12,
+        choices=StatusSeparacaoChoices.choices,
+        default=StatusSeparacaoChoices.ABERTO,
+        db_index=True,
+    )
+    observacoes = models.TextField(blank=True, null=True)
+    enviado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Lote de Remessa"
+        verbose_name_plural = "Lotes de Remessa"
+        indexes = [
+            models.Index(fields=["tipo", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.nome} — {self.fornecedor.nome}"
+
+    @property
+    def quantidade_itens(self) -> int:
+        return len(self.itens.all())
+
+    @property
+    def quantidade_abertos(self) -> int:
+        return sum(1 for i in self.itens.all() if i.status == StatusSeparacaoChoices.ABERTO)
+
+
+class SeparacaoItem(AuditModel):
+    """
+    Marca um Item como fisicamente separado (aguardando envio ao fornecedor para
+    manutenção, ou aguardando devolução por fim de contrato de Locação),
+    independente do `Item.status` atual. É uma etapa de organização anterior à
+    movimentação real: o despacho (ver `services/separacao_service.py`) sempre
+    passa pelo `MovimentacaoEstoqueService`, que aplica as regras de negócio de
+    verdade (mudança de status, abertura de Ordem de Manutenção, etc.).
+
+    Só pode existir UM registro `aberto` por item por vez (`uniq_item_separacao_
+    aberta`) — itens enviados/cancelados não bloqueiam uma nova separação futura.
+    """
+    item = models.ForeignKey(
+        "Item",
+        on_delete=models.CASCADE,
+        related_name="separacoes",
+        verbose_name="Equipamento",
+    )
+    tipo = models.CharField(max_length=10, choices=TipoSeparacaoChoices.choices, verbose_name="Tipo")
+    lote = models.ForeignKey(
+        LoteSeparacao,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="itens",
+        verbose_name="Lote de separação",
+    )
+    fornecedor = models.ForeignKey(
+        "Fornecedor",
+        on_delete=models.PROTECT,
+        related_name="itens_separados",
+        verbose_name="Fornecedor",
+    )
+    status = models.CharField(
+        max_length=12,
+        choices=StatusSeparacaoChoices.choices,
+        default=StatusSeparacaoChoices.ABERTO,
+        db_index=True,
+    )
+    observacoes = models.TextField(blank=True, null=True)
+    enviado_em = models.DateTimeField(null=True, blank=True)
+    # Movimentação que colocou o item nesta área de separação.
+    movimentacao_entrada = models.ForeignKey(
+        "MovimentacaoItem",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="+",
+        verbose_name="Movimentação de entrada em separação",
+    )
+    # Movimentação real de despacho (envio_manutencao ou devolucao_locacao),
+    # gerada quando o item sai desta área de separação.
+    movimentacao_despacho = models.ForeignKey(
+        "MovimentacaoItem",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="+",
+        verbose_name="Movimentação de despacho",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Item em Remessa"
+        verbose_name_plural = "Itens em Remessa"
+        indexes = [
+            models.Index(fields=["tipo", "status"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["item"],
+                condition=models.Q(status="aberto"),
+                name="uniq_item_separacao_aberta",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.item.nome} — {self.get_tipo_display()} ({self.get_status_display()})"
+
+
+class DocumentoFiscalRemessa(AuditModel):
+    """
+    Aviso interno de controle (estilo nota fiscal) gerado a partir de itens em
+    Remessa, para avisar o setor Fiscal por e-mail que equipamento(s) estão
+    indo (Envio) ou voltando (Devolução) ao fornecedor. NÃO é a Nota Fiscal
+    Eletrônica real do fornecedor — não tem CFOP/tributos, apenas identifica
+    o equipamento (fornecedor, modelo, nº de série) para o controle interno.
+
+    O PDF não é persistido em disco (evita expor pelo /media/, que é servido
+    sem autenticação) — é gerado sob demanda a partir de `itens` tanto para o
+    e-mail quanto para novo download (ver `services/documento_fiscal_service.py`).
+    """
+    tipo = models.CharField(max_length=10, choices=TipoSeparacaoChoices.choices, verbose_name="Tipo")
+    lote = models.ForeignKey(
+        LoteSeparacao,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="documentos_fiscais",
+        verbose_name="Lote de origem",
+    )
+    itens = models.ManyToManyField(
+        SeparacaoItem,
+        related_name="documentos_fiscais",
+        verbose_name="Itens do documento",
+    )
+    email_enviado = models.BooleanField(default=False, verbose_name="E-mail enviado ao Fiscal")
+    destinatarios_envio = models.TextField(
+        blank=True, default="",
+        verbose_name="Destinatários no momento do envio",
+        help_text="Snapshot dos e-mails para quem foi enviado (separados por vírgula).",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Documento Fiscal de Remessa"
+        verbose_name_plural = "Documentos Fiscais de Remessa"
+
+    def __str__(self):
+        return f"{self.numero} — {self.get_tipo_display()}"
+
+    @property
+    def numero(self) -> str:
+        return f"DF-{self.pk:05d}" if self.pk else "DF-#####"
+
+
 # ----------------- CHECKLIST -----------------
 class CheckListModelo(AuditModel):
     nome = models.CharField(max_length=120)
@@ -2596,6 +2777,17 @@ class KioskDevice(models.Model):
     ultima_rede       = models.CharField(max_length=20, blank=True, default='')
     ultimo_checkin    = models.DateTimeField(null=True, blank=True)
 
+    # ── Memória e armazenamento (snapshot do último check-in — não é histórico;
+    # o app manda esses 7 campos em TODO check-in, a cada ~5s, então guardar linha
+    # por linha infla demais o KioskCheckin). Ver INFORME_SERVIDOR_MEMORIA_DISCO.
+    ram_total_mb            = models.PositiveIntegerField(null=True, blank=True, verbose_name='RAM total (MB)')
+    ram_livre_mb            = models.PositiveIntegerField(null=True, blank=True, verbose_name='RAM livre (MB)')
+    ram_usada_mb            = models.PositiveIntegerField(null=True, blank=True, verbose_name='RAM usada (MB)')
+    ram_pouca               = models.BooleanField(default=False, verbose_name='Pouca RAM (sinalizado pelo Android)')
+    armazenamento_total_mb  = models.PositiveIntegerField(null=True, blank=True, verbose_name='Armazenamento total (MB)')
+    armazenamento_livre_mb  = models.PositiveIntegerField(null=True, blank=True, verbose_name='Armazenamento livre (MB)')
+    armazenamento_usado_mb  = models.PositiveIntegerField(null=True, blank=True, verbose_name='Armazenamento usado (MB)')
+
     criado_em     = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
 
@@ -2700,11 +2892,14 @@ class KioskDeviceApp(models.Model):
     `KioskDevice.apps_permitidos`. A CHAVE é o `pkg`; o `nome` é só exibição (varia
     com o idioma do aparelho e não deve ser usado em lógica).
     """
-    device   = models.ForeignKey(KioskDevice, on_delete=models.CASCADE, related_name='apps')
-    pkg      = models.CharField(max_length=255, verbose_name='Pacote')
-    nome     = models.CharField(max_length=255, blank=True, default='', verbose_name='Nome')
-    sistema  = models.BooleanField(default=False, verbose_name='App de sistema')
-    visto_em = models.DateTimeField(auto_now=True, verbose_name='Visto em')
+    device        = models.ForeignKey(KioskDevice, on_delete=models.CASCADE, related_name='apps')
+    pkg           = models.CharField(max_length=255, verbose_name='Pacote')
+    nome          = models.CharField(max_length=255, blank=True, default='', verbose_name='Nome')
+    sistema       = models.BooleanField(default=False, verbose_name='App de sistema')
+    versao        = models.CharField(max_length=100, blank=True, default='', verbose_name='Versão')
+    versao_codigo = models.BigIntegerField(default=0, verbose_name='Código da versão')
+    atualizado_em = models.DateTimeField(null=True, blank=True, verbose_name='Atualizado em (no aparelho)')
+    visto_em      = models.DateTimeField(auto_now=True, verbose_name='Visto em')
 
     class Meta:
         # Não-sistema primeiro (os que o TI costuma liberar), depois nome/pacote.
