@@ -1,0 +1,518 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}Diagrama de Casos de Uso — Manutenção{% endblock %}
+{% block page_title %}Diagrama de Casos de Uso — Manutenção{% endblock %}
+{% block page_subtitle %}Todos os processos, atores e decisões do fluxo de manutenção, ponta a ponta{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'portal_ajuda' %}" class="pf-btn pf-btn--sm"><i class="fa-solid fa-arrow-left"></i> Central de Ajuda</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.ucd-page) { --ucd-toc-w: 14.5rem; }
+.ucd-page { display: grid; gap: 0; max-width: 82rem; }
+.ucd-page * { box-sizing: border-box; }
+.pf-btn--sm { padding: .45rem .8rem; font-size: .78rem; }
+
+/* ---- Intro / legenda ---- */
+.ucd-hero {
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm); padding: 1.4rem 1.6rem; margin-bottom: 1.2rem; display: grid; gap: 1rem;
+}
+.ucd-hero p { color: var(--text-secondary); font-size: .87rem; line-height: 1.65; max-width: 54rem; }
+.ucd-hero p strong { color: var(--text-primary); }
+
+.ucd-legend { display: flex; flex-wrap: wrap; gap: .6rem 1.1rem; padding-top: .2rem; border-top: 1px solid var(--separator-hairline); margin-top: .2rem; }
+.ucd-legend-item { display: flex; align-items: center; gap: .5rem; font-size: .78rem; color: var(--text-secondary); }
+.ucd-legend-swatch { width: 1.9rem; height: 1.15rem; border-radius: 999px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
+.ucd-legend-swatch--fornecedor { background: var(--brand-soft); border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent); }
+.ucd-legend-swatch--ti { background: var(--info-soft); border: 1px solid color-mix(in srgb, var(--info) 45%, transparent); }
+.ucd-legend-swatch--auto { background: var(--bg-fill-tertiary); border: 1px solid var(--separator-non-opaque); }
+.ucd-legend-line { width: 1.9rem; height: 0; border-top: 2px solid var(--text-quaternary); flex: 0 0 auto; position: relative; }
+.ucd-legend-line::after { content: ""; position: absolute; right: -1px; top: -3px; border: 4px solid transparent; border-left-color: var(--text-quaternary); }
+.ucd-legend-loop { color: var(--warning); font-weight: 800; font-size: .85rem; }
+
+/* ---- TOC ---- */
+.ucd-shell { display: grid; grid-template-columns: var(--ucd-toc-w) minmax(0, 1fr); gap: 1.6rem; align-items: start; }
+.ucd-toc {
+  position: sticky; top: 1rem; display: grid; gap: .1rem; padding: .6rem;
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+}
+.ucd-toc-item {
+  display: flex; align-items: center; gap: .55rem; padding: .5rem .65rem; border-radius: var(--radius-sm);
+  color: var(--text-secondary); font-size: .8rem; font-weight: 600; transition: background .15s, color .15s;
+}
+.ucd-toc-item .ucd-toc-n {
+  width: 1.3rem; height: 1.3rem; flex: 0 0 auto; border-radius: 999px; background: var(--bg-fill-tertiary);
+  color: var(--text-tertiary); font-size: .68rem; font-weight: 800; display: grid; place-items: center;
+}
+.ucd-toc-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.ucd-main { display: grid; gap: 1.3rem; min-width: 0; }
+
+/* ---- Pacote (fronteira do sistema por fase) ---- */
+.ucd-package {
+  background: var(--bg-elevated); border: 1.5px dashed var(--separator-non-opaque); border-radius: var(--radius-lg);
+  padding: 1.5rem 1.6rem 1.6rem; scroll-margin-top: 1rem; position: relative;
+}
+.ucd-package-tab {
+  display: inline-flex; align-items: center; gap: .5rem; padding: .4rem .9rem; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--text-primary); color: var(--bg-elevated); font-size: .8rem; font-weight: 800; letter-spacing: .01em;
+  position: absolute; top: -.05rem; left: 1.3rem; transform: translateY(-100%);
+}
+.ucd-package-tab i { color: var(--bg-elevated); opacity: .85; }
+.ucd-package-desc { color: var(--text-tertiary); font-size: .82rem; line-height: 1.55; max-width: 46rem; margin: .1rem 0 1.2rem; }
+
+/* ---- Diagrama (ovais + setas) ---- */
+.ucd-diagram { position: relative; }
+.ucd-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.ucd-flow-line { stroke: var(--text-quaternary); stroke-width: 1.6; fill: none; }
+
+.ucd-ovals { display: grid; gap: .85rem; position: relative; z-index: 1; }
+.ucd-row { display: grid; grid-template-columns: 1fr 1fr; gap: .85rem; }
+@media (max-width: 46rem) { .ucd-row { grid-template-columns: 1fr; } }
+
+/* ---- Colunas paralelas (2 sub-fluxos independentes no mesmo pacote) ---- */
+.ucd-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1.8rem; }
+.ucd-cols .ucd-diagram { padding-top: .1rem; }
+.ucd-cols .ucd-diagram + .ucd-diagram { border-left: 1px dashed var(--separator-non-opaque); padding-left: 1.6rem; }
+.ucd-subhead { font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--text-quaternary); margin-bottom: .6rem; display: flex; align-items: center; gap: .4rem; }
+@media (max-width: 50rem) {
+  .ucd-cols { grid-template-columns: 1fr; gap: 1.6rem 0; }
+  .ucd-cols .ucd-diagram + .ucd-diagram { border-left: none; padding-left: 0; border-top: 1px dashed var(--separator-non-opaque); padding-top: 1.4rem; }
+}
+
+.ucd-uc {
+  border-radius: 999px; padding: .7rem 1.2rem; display: flex; flex-direction: column; gap: .3rem;
+  border: 1px solid transparent; transition: transform .15s, box-shadow .15s;
+}
+.ucd-uc:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.ucd-uc--fornecedor { background: var(--brand-soft); border-color: color-mix(in srgb, var(--brand) 30%, transparent); }
+.ucd-uc--ti { background: var(--info-soft); border-color: color-mix(in srgb, var(--info) 30%, transparent); }
+
+.ucd-uc-actor { display: inline-flex; align-items: center; gap: .35rem; font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; align-self: flex-start; }
+.ucd-uc--fornecedor .ucd-uc-actor { color: var(--brand); }
+.ucd-uc--ti .ucd-uc-actor { color: var(--info); }
+.ucd-uc-label { display: flex; align-items: flex-start; gap: .5rem; font-size: .87rem; font-weight: 700; color: var(--text-primary); line-height: 1.4; }
+.ucd-uc-label i { margin-top: .2rem; font-size: .8rem; color: var(--text-tertiary); flex: 0 0 auto; }
+.ucd-uc-hint { font-size: .74rem; color: var(--text-tertiary); line-height: 1.5; padding-left: 1.3rem; }
+.ucd-uc-auto {
+  display: inline-flex; align-self: flex-start; align-items: center; gap: .3rem; margin-top: .1rem;
+  padding: .15rem .55rem; border-radius: 999px; background: var(--bg-fill-tertiary); color: var(--text-tertiary);
+  font-size: .66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em;
+}
+.ucd-uc-loop {
+  display: flex; align-items: flex-start; gap: .4rem; font-size: .74rem; color: var(--warning); line-height: 1.5;
+  padding-left: 1.3rem; font-weight: 600;
+}
+.ucd-uc-loop i { margin-top: .15rem; }
+
+/* ---- Ações transversais (cards, fora do fluxo linear) ---- */
+.ucd-cross-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: .9rem; }
+.ucd-cross-card { border: 1px solid var(--separator-hairline); border-radius: var(--radius-md); padding: 1.1rem 1.2rem; display: grid; gap: .5rem; }
+.ucd-cross-head { display: flex; align-items: center; gap: .6rem; }
+.ucd-cross-ic { width: 2.1rem; height: 2.1rem; flex: 0 0 auto; display: grid; place-items: center; border-radius: var(--radius-sm); font-size: .9rem; }
+.ucd-cross-card--fornecedor .ucd-cross-ic { background: var(--brand-soft); color: var(--brand); }
+.ucd-cross-card--ti .ucd-cross-ic { background: var(--info-soft); color: var(--info); }
+.ucd-cross-card h4 { font-size: .88rem; font-weight: 800; color: var(--text-primary); }
+.ucd-cross-card .ucd-cross-actor { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: var(--text-tertiary); }
+.ucd-cross-card p { font-size: .8rem; color: var(--text-secondary); line-height: 1.55; margin: 0; }
+.ucd-cross-card p.ucd-cross-scope { color: var(--text-tertiary); font-size: .76rem; }
+.ucd-cross-card p.ucd-cross-scope strong { color: var(--text-secondary); }
+
+@media (max-width: 62rem) {
+  .ucd-shell { grid-template-columns: 1fr; }
+  .ucd-toc { position: static; display: flex; overflow-x: auto; gap: .3rem; }
+  .ucd-toc-item { flex: 0 0 auto; white-space: nowrap; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ucd-page">
+  <div class="ucd-hero">
+    <p>
+      Este diagrama mostra <strong>todos os casos de uso</strong> do módulo de Manutenção — quem faz o quê
+      (<strong>Fornecedor</strong> pelo Portal ou <strong>TI</strong> internamente), em que ordem, e o que acontece
+      quando uma proposta é <strong>aprovada</strong> ou <strong>reprovada</strong>. Ele reflete exatamente as regras
+      aplicadas pelo sistema — nada aqui é apenas ilustrativo.
+    </p>
+    <div class="ucd-legend">
+      <div class="ucd-legend-item"><span class="ucd-legend-swatch ucd-legend-swatch--fornecedor"></span> Caso de uso do Fornecedor</div>
+      <div class="ucd-legend-item"><span class="ucd-legend-swatch ucd-legend-swatch--ti"></span> Caso de uso do TI</div>
+      <div class="ucd-legend-item"><span class="ucd-legend-swatch ucd-legend-swatch--auto"><i class="fa-solid fa-gears" style="font-size:.6rem;color:var(--text-tertiary);"></i></span> Selo "Automático" = o sistema conclui sozinho</div>
+      <div class="ucd-legend-item"><span class="ucd-legend-line"></span> Sequência do processo</div>
+      <div class="ucd-legend-item"><span class="ucd-legend-loop"><i class="fa-solid fa-rotate-left"></i></span> Reenvio após reprovação (nova proposta)</div>
+    </div>
+  </div>
+
+  <div class="ucd-shell">
+    <nav class="ucd-toc" aria-label="Sumário do diagrama">
+      <a href="#grp-recebimento" class="ucd-toc-item"><span class="ucd-toc-n">1</span><span>Recebimento</span></a>
+      <a href="#grp-reparo" class="ucd-toc-item"><span class="ucd-toc-n">2</span><span>Reparo padrão</span></a>
+      <a href="#grp-troca" class="ucd-toc-item"><span class="ucd-toc-n">3</span><span>Troca (locado)</span></a>
+      <a href="#grp-descarte" class="ucd-toc-item"><span class="ucd-toc-n">4</span><span>Sem conserto / Descarte</span></a>
+      <a href="#grp-troca-antecipada" class="ucd-toc-item"><span class="ucd-toc-n">5</span><span>Troca Antecipada</span></a>
+      <a href="#grp-transversais" class="ucd-toc-item"><span class="ucd-toc-n">6</span><span>Ações transversais</span></a>
+    </nav>
+
+    <div class="ucd-main">
+
+      <!-- ═══ 1 · RECEBIMENTO ═══ -->
+      <section class="ucd-package" id="grp-recebimento">
+        <div class="ucd-package-tab"><i class="fa-solid fa-box-open"></i> 1 · Abertura e Recebimento</div>
+        <p class="ucd-package-desc">O TI registra o envio do equipamento para o fornecedor; o fornecedor confirma a chegada e inicia o diagnóstico técnico.</p>
+        <div class="ucd-diagram">
+          <svg class="ucd-lines"></svg>
+          <div class="ucd-ovals">
+            <div class="ucd-uc ucd-uc--ti" data-uc="a1">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-paper-plane"></i> Enviar equipamento para manutenção</span>
+              <span class="ucd-uc-auto"><i class="fa-solid fa-gears"></i> Automático — criado ao registrar a movimentação de envio</span>
+            </div>
+            <div class="ucd-uc ucd-uc--fornecedor" data-uc="a2" data-flow-from="a1">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-box-open"></i> Confirmar recebimento</span>
+            </div>
+            <div class="ucd-uc ucd-uc--fornecedor" data-uc="a3" data-flow-from="a2">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-magnifying-glass"></i> Iniciar avaliação técnica</span>
+              <span class="ucd-uc-hint">A partir daqui, o fornecedor decide entre 4 caminhos: reparo padrão, troca, sem condições de reparo ou descarte local (grupos 2 a 4).</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ 2 · REPARO PADRÃO ═══ -->
+      <section class="ucd-package" id="grp-reparo">
+        <div class="ucd-package-tab"><i class="fa-solid fa-screwdriver-wrench"></i> 2 · Reparo padrão</div>
+        <p class="ucd-package-desc">Todo orçamento de reparo passa pela aprovação do TI antes de o conserto começar — inclusive quando é reenviado após uma reprovação.</p>
+        <div class="ucd-diagram">
+          <svg class="ucd-lines"></svg>
+          <div class="ucd-ovals">
+            <div class="ucd-uc ucd-uc--fornecedor" data-uc="b1">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-file-invoice-dollar"></i> Enviar orçamento de reparo</span>
+            </div>
+            <div class="ucd-row">
+              <div class="ucd-uc ucd-uc--ti" data-uc="b2" data-flow-from="b1">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-check"></i> Aprovar orçamento</span>
+              </div>
+              <div class="ucd-uc ucd-uc--ti" data-uc="b3" data-flow-from="b1">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-xmark"></i> Reprovar orçamento</span>
+                <span class="ucd-uc-loop"><i class="fa-solid fa-rotate-left"></i> Reenvio cria uma nova proposta (Proposta 2, 3…) → volta para "Enviar orçamento"</span>
+                <span class="ucd-uc-hint">Ou, em vez de reenviar, encerra direto em "Devolver equipamento ao TI" (abaixo), com a avaliação técnica.</span>
+              </div>
+            </div>
+            <div class="ucd-uc ucd-uc--fornecedor" data-uc="b4" data-flow-from="b2">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-screwdriver-wrench"></i> Executar o reparo e informar o valor final</span>
+            </div>
+            <div class="ucd-uc ucd-uc--fornecedor" data-uc="b5" data-flow-from="b4">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-truck-ramp-box"></i> Devolver equipamento ao TI</span>
+              <span class="ucd-uc-hint">Com reparo concluído — ou, vindo direto da reprovação (acima), só com a avaliação técnica.</span>
+            </div>
+            <div class="ucd-uc ucd-uc--ti" data-uc="b6" data-flow-from="b5">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-circle-check"></i> Confirmar recebimento e concluir a OS</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ 3 · TROCA (EQUIPAMENTO LOCADO) ═══ -->
+      <section class="ucd-package" id="grp-troca">
+        <div class="ucd-package-tab"><i class="fa-solid fa-right-left"></i> 3 · Troca — equipamento locado</div>
+        <p class="ucd-package-desc">
+          Quando não há conserto, o equipamento locado é substituído — o que gera <strong>duas cobranças
+          independentes</strong>, cada uma com sua própria aprovação: o contrato do novo equipamento, e a cobrança
+          pelo equipamento danificado em si (o locador cobra por ele mesmo sem conserto). A OS só conclui depois que
+          <strong>ambas</strong> forem aprovadas.
+        </p>
+        <div class="ucd-diagram">
+          <svg class="ucd-lines"></svg>
+          <div class="ucd-ovals">
+            <div class="ucd-uc ucd-uc--fornecedor" data-uc="c1">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-ban"></i> Sem conserto — propor troca</span>
+              <span class="ucd-uc-hint">Também pode ser declarado no meio do reparo, se o defeito for maior que o previsto.</span>
+            </div>
+            <div class="ucd-uc ucd-uc--fornecedor" data-uc="c2" data-flow-from="c1">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-file-contract"></i> Propor contrato do substituto</span>
+              <span class="ucd-uc-hint">Modelo, número de série, valor e regime (locação/compra) — o TI avalia o equipamento oferecido, não só o preço.</span>
+            </div>
+            <div class="ucd-row">
+              <div class="ucd-uc ucd-uc--ti" data-uc="c3" data-flow-from="c2">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-check"></i> Aprovar contrato do substituto</span>
+              </div>
+              <div class="ucd-uc ucd-uc--ti" data-uc="c4" data-flow-from="c2">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-xmark"></i> Reprovar contrato</span>
+                <span class="ucd-uc-loop"><i class="fa-solid fa-rotate-left"></i> Reenvio → volta para "Propor contrato do substituto"</span>
+              </div>
+            </div>
+            <div class="ucd-uc ucd-uc--fornecedor" data-uc="c5" data-flow-from="c3">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-dolly"></i> Enviar substituto + propor cobrança pelo dano</span>
+              <span class="ucd-uc-hint">Envio físico do equipamento já aprovado, mais o valor cobrado pelo equipamento danificado — uma proposta à parte.</span>
+            </div>
+            <div class="ucd-row">
+              <div class="ucd-uc ucd-uc--ti" data-uc="c6" data-flow-from="c5">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-check"></i> Aprovar cobrança pelo dano</span>
+                <span class="ucd-uc-auto"><i class="fa-solid fa-gears"></i> Automático — conclui a OS ao aprovar</span>
+              </div>
+              <div class="ucd-uc ucd-uc--ti" data-uc="c7" data-flow-from="c5">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-xmark"></i> Reprovar cobrança pelo dano</span>
+                <span class="ucd-uc-loop"><i class="fa-solid fa-rotate-left"></i> Reenvio revisa só o valor — o substituto físico não é reenviado</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ 4 · SEM CONSERTO / DESCARTE ═══ -->
+      <section class="ucd-package" id="grp-descarte">
+        <div class="ucd-package-tab"><i class="fa-solid fa-dumpster"></i> 4 · Sem condições de reparo / Descarte</div>
+        <p class="ucd-package-desc">Sem substituto envolvido: o equipamento é descartado. Dois caminhos independentes — devolver para o TI descartar, ou descartar no próprio local — cada um com sua própria aprovação.</p>
+        <div class="ucd-cols">
+          <div class="ucd-diagram">
+            <div class="ucd-subhead"><i class="fa-solid fa-truck-ramp-box"></i> Via devolução ao TI</div>
+            <svg class="ucd-lines"></svg>
+            <div class="ucd-ovals">
+              <div class="ucd-uc ucd-uc--fornecedor" data-uc="d1">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-circle-exclamation"></i> Declarar sem condições de reparo</span>
+                <span class="ucd-uc-hint">Devolve para o TI descartar — propõe motivo e valor da avaliação.</span>
+              </div>
+              <div class="ucd-row">
+                <div class="ucd-uc ucd-uc--ti" data-uc="d2" data-flow-from="d1">
+                  <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                  <span class="ucd-uc-label"><i class="fa-solid fa-check"></i> Aprovar avaliação</span>
+                </div>
+                <div class="ucd-uc ucd-uc--ti" data-uc="d3" data-flow-from="d1">
+                  <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                  <span class="ucd-uc-label"><i class="fa-solid fa-xmark"></i> Reprovar avaliação</span>
+                  <span class="ucd-uc-loop"><i class="fa-solid fa-rotate-left"></i> Reenvio → volta para "Declarar sem condições"</span>
+                </div>
+              </div>
+              <div class="ucd-uc ucd-uc--fornecedor" data-uc="d4" data-flow-from="d2">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-truck-ramp-box"></i> Devolver equipamento para descarte</span>
+                <span class="ucd-uc-hint">Também recebe o caso de "Recusar o local, aceitar o valor", na coluna ao lado.</span>
+              </div>
+              <div class="ucd-uc ucd-uc--ti" data-uc="d5" data-flow-from="d4">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-box-archive"></i> Confirmar recebimento e descartar</span>
+              </div>
+            </div>
+          </div>
+          <div class="ucd-diagram">
+            <div class="ucd-subhead"><i class="fa-solid fa-warehouse"></i> Via descarte no local</div>
+            <svg class="ucd-lines"></svg>
+            <div class="ucd-ovals">
+              <div class="ucd-uc ucd-uc--fornecedor" data-uc="d6">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-warehouse"></i> Solicitar descarte no próprio local</span>
+                <span class="ucd-uc-hint">Não devolve o equipamento — propõe motivo e valor, pede autorização para descartar aí mesmo.</span>
+              </div>
+              <div class="ucd-row">
+                <div class="ucd-uc ucd-uc--ti" data-uc="d7" data-flow-from="d6">
+                  <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                  <span class="ucd-uc-label"><i class="fa-solid fa-check"></i> Aprovar descarte local</span>
+                </div>
+                <div class="ucd-uc ucd-uc--ti" data-uc="d8" data-flow-from="d6">
+                  <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                  <span class="ucd-uc-label"><i class="fa-solid fa-truck-fast"></i> Recusar o local, aceitar o valor</span>
+                  <span class="ucd-uc-hint">Exige devolução física → converge para "Devolver equipamento para descarte", na coluna ao lado.</span>
+                </div>
+              </div>
+              <div class="ucd-uc ucd-uc--fornecedor" data-uc="d9" data-flow-from="d7">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-trash-can"></i> Confirmar descarte realizado no local</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ 5 · TROCA ANTECIPADA ═══ -->
+      <section class="ucd-package" id="grp-troca-antecipada">
+        <div class="ucd-package-tab"><i class="fa-solid fa-shuffle"></i> 5 · Troca Antecipada</div>
+        <p class="ucd-package-desc">Fluxo independente, aberto direto na tela de Troca Antecipada — o substituto é enviado ANTES de o defeituoso sair da fazenda, para não deixar o equipamento parado.</p>
+        <div class="ucd-diagram">
+          <svg class="ucd-lines"></svg>
+          <div class="ucd-ovals">
+            <div class="ucd-uc ucd-uc--fornecedor" data-uc="e1">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-dolly"></i> Abrir troca antecipada (enviar substituto)</span>
+              <span class="ucd-uc-hint">Só para equipamentos com status Defeito e sem nenhuma outra OS em aberto.</span>
+            </div>
+            <div class="ucd-uc ucd-uc--ti" data-uc="e2" data-flow-from="e1">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-box-open"></i> Receber o substituto</span>
+            </div>
+            <div class="ucd-uc ucd-uc--ti" data-uc="e3" data-flow-from="e2">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-truck-fast"></i> Enviar o equipamento defeituoso</span>
+            </div>
+            <div class="ucd-uc ucd-uc--fornecedor" data-uc="e4" data-flow-from="e3">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-box-open"></i> Confirmar recebimento do defeituoso</span>
+            </div>
+            <div class="ucd-uc ucd-uc--fornecedor" data-uc="e5" data-flow-from="e4">
+              <span class="ucd-uc-actor"><i class="fa-solid fa-user"></i> Fornecedor</span>
+              <span class="ucd-uc-label"><i class="fa-solid fa-file-invoice-dollar"></i> Enviar proposta de reparo</span>
+            </div>
+            <div class="ucd-row">
+              <div class="ucd-uc ucd-uc--ti" data-uc="e6" data-flow-from="e5">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-check"></i> Aprovar proposta</span>
+                <span class="ucd-uc-auto"><i class="fa-solid fa-gears"></i> Automático — conclui a OS ao aprovar</span>
+              </div>
+              <div class="ucd-uc ucd-uc--ti" data-uc="e7" data-flow-from="e5">
+                <span class="ucd-uc-actor"><i class="fa-solid fa-user-gear"></i> TI</span>
+                <span class="ucd-uc-label"><i class="fa-solid fa-xmark"></i> Reprovar proposta</span>
+                <span class="ucd-uc-loop"><i class="fa-solid fa-rotate-left"></i> Reenvio → volta para "Enviar proposta de reparo"</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ 6 · AÇÕES TRANSVERSAIS ═══ -->
+      <section class="ucd-package" id="grp-transversais">
+        <div class="ucd-package-tab"><i class="fa-solid fa-shapes"></i> 6 · Ações transversais</div>
+        <p class="ucd-package-desc">Não pertencem a um único caminho — podem ocorrer em vários pontos do fluxo, conforme o escopo de cada uma.</p>
+        <div class="ucd-cross-grid">
+          <div class="ucd-cross-card ucd-cross-card--ti">
+            <div class="ucd-cross-head">
+              <div class="ucd-cross-ic"><i class="fa-solid fa-ban"></i></div>
+              <div><h4>Cancelar ordem</h4><span class="ucd-cross-actor">TI</span></div>
+            </div>
+            <p>Encerra a OS antes da conclusão, sem gerar movimentação de custo.</p>
+            <p class="ucd-cross-scope"><strong>Escopo:</strong> qualquer etapa em andamento — a única ação possível a partir de praticamente todos os status.</p>
+          </div>
+          <div class="ucd-cross-card ucd-cross-card--fornecedor">
+            <div class="ucd-cross-head">
+              <div class="ucd-cross-ic"><i class="fa-solid fa-rotate-left"></i></div>
+              <div><h4>Desfazer envio (corrigir e reenviar)</h4><span class="ucd-cross-actor">Fornecedor</span></div>
+            </div>
+            <p>Diferente do reenvio após reprovação: aqui o TI ainda <strong>não decidiu nada</strong>. A proposta enviada é apagada e o formulário anterior reabre — útil quando o fornecedor percebe um valor errado assim que envia.</p>
+            <p class="ucd-cross-scope"><strong>Escopo:</strong> Enviar orçamento de reparo, Propor contrato do substituto, Declarar sem condições, Solicitar descarte local, Enviar proposta (Troca Antecipada) — enquanto aguardam o TI.</p>
+          </div>
+          <div class="ucd-cross-card ucd-cross-card--fornecedor">
+            <div class="ucd-cross-head">
+              <div class="ucd-cross-ic"><i class="fa-solid fa-boxes-packing"></i></div>
+              <div><h4>Montar lote de envio</h4><span class="ucd-cross-actor">Fornecedor</span></div>
+            </div>
+            <p>Organiza trocas antecipadas, cadastro de equipamento novo e devoluções de reparo num único envio ao TI, com a nota fiscal já anexada.</p>
+            <p class="ucd-cross-scope"><strong>Escopo:</strong> independente da OS — o lote de envio é seu próprio processo (Portal → Lotes de Envio).</p>
+          </div>
+          <div class="ucd-cross-card ucd-cross-card--fornecedor">
+            <div class="ucd-cross-head">
+              <div class="ucd-cross-ic"><i class="fa-solid fa-paperclip"></i></div>
+              <div><h4>Anexar nota fiscal</h4><span class="ucd-cross-actor">Fornecedor</span></div>
+            </div>
+            <p>Comprova a movimentação financeira do processo — quantos anexos forem necessários.</p>
+            <p class="ucd-cross-scope"><strong>Escopo:</strong> qualquer etapa da OS, do recebimento à conclusão.</p>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var svgns = 'http://www.w3.org/2000/svg';
+  var diagrams = Array.prototype.slice.call(document.querySelectorAll('.ucd-diagram'));
+  diagrams.forEach(function (d, i) { d.dataset.idx = String(i); });
+
+  // O fluxo dentro de cada .ucd-diagram é sempre de cima para baixo (a ordem no
+  // DOM já garante que toda origem de data-flow-from está ACIMA do destino — os
+  // laços de reenvio são texto, não seta). Por isso a âncora é sempre a base do
+  // caso de origem e o topo do caso de destino: nada de "aresta mais próxima"
+  // por eixo dominante, que produzia linhas horizontais cortando a coluna
+  // quando origem/destino estavam lado a lado (ex.: par Aprovar/Reprovar).
+  function anchorBottom(el, containerRect) {
+    var r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2 - containerRect.left, y: r.bottom - containerRect.top };
+  }
+  function anchorTop(el, containerRect) {
+    var r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2 - containerRect.left, y: r.top - containerRect.top };
+  }
+
+  function drawDiagram(diagram) {
+    var svg = diagram.querySelector('.ucd-lines');
+    if (!svg) return;
+    var rect = diagram.getBoundingClientRect();
+    svg.setAttribute('width', rect.width);
+    svg.setAttribute('height', rect.height);
+    svg.innerHTML = '';
+
+    var markerId = 'ucdArrow-' + diagram.dataset.idx;
+    var defs = document.createElementNS(svgns, 'defs');
+    var marker = document.createElementNS(svgns, 'marker');
+    marker.setAttribute('id', markerId);
+    marker.setAttribute('viewBox', '0 0 10 10');
+    marker.setAttribute('refX', '8');
+    marker.setAttribute('refY', '5');
+    marker.setAttribute('markerWidth', '6.5');
+    marker.setAttribute('markerHeight', '6.5');
+    marker.setAttribute('orient', 'auto-start-reverse');
+    var arrowPath = document.createElementNS(svgns, 'path');
+    arrowPath.setAttribute('d', 'M0,0 L10,5 L0,10 z');
+    arrowPath.setAttribute('fill', 'var(--text-quaternary)');
+    marker.appendChild(arrowPath);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+
+    var ucs = diagram.querySelectorAll('.ucd-uc[data-uc]');
+    var map = {};
+    ucs.forEach(function (el) { map[el.dataset.uc] = el; });
+
+    ucs.forEach(function (el) {
+      var froms = (el.dataset.flowFrom || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      froms.forEach(function (fromId) {
+        var fromEl = map[fromId];
+        if (!fromEl) return;
+        var p1 = anchorBottom(fromEl, rect);
+        var p2 = anchorTop(el, rect);
+        var midY = (p1.y + p2.y) / 2;
+        var d = 'M ' + p1.x.toFixed(1) + ' ' + p1.y.toFixed(1)
+          + ' C ' + p1.x.toFixed(1) + ' ' + midY.toFixed(1)
+          + ', ' + p2.x.toFixed(1) + ' ' + midY.toFixed(1)
+          + ', ' + p2.x.toFixed(1) + ' ' + p2.y.toFixed(1);
+        var path = document.createElementNS(svgns, 'path');
+        path.setAttribute('d', d);
+        path.setAttribute('class', 'ucd-flow-line');
+        path.setAttribute('marker-end', 'url(#' + markerId + ')');
+        svg.appendChild(path);
+      });
+    });
+  }
+
+  function redrawAll() { diagrams.forEach(drawDiagram); }
+
+  redrawAll();
+  window.addEventListener('resize', redrawAll);
+  if (document.fonts && document.fonts.ready) { document.fonts.ready.then(redrawAll); }
+  if ('ResizeObserver' in window) {
+    var ro = new ResizeObserver(function () { redrawAll(); });
+    diagrams.forEach(function (d) { ro.observe(d); });
+  }
+})();
+</script>
+{% endblock %}

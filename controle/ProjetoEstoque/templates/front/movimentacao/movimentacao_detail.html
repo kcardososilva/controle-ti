@@ -141,6 +141,7 @@
 /* ── Cards ──────────────────────────────────────────────────────── */
 .md-card { border: 1px solid var(--md-border); border-radius: var(--md-radius-lg); background: var(--md-surface); box-shadow: var(--md-shadow-xs); overflow: hidden; }
 .md-card--warn { border-left: 3px solid var(--md-warning); }
+.md-card--danger { border-left: 3px solid var(--md-danger); }
 .md-card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--md-border); }
 .md-card-title { display: flex; align-items: center; gap: 8px; color: var(--md-text); font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
 .md-card-title i { color: var(--md-muted); font-size: 13px; }
@@ -255,12 +256,31 @@
           </a>
         {% endif %}
         <div class="hero-chips">
+          {% if mov.revertida %}
+            <span class="md-badge st-red"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Revertida</span>
+          {% endif %}
           <span class="md-badge {{ impacto.class }}">{{ impacto.texto }}</span>
           <span class="md-badge st-gray no-dot"><i class="fa-solid fa-tag" aria-hidden="true"></i> {{ mov.get_tipo_movimentacao_display }}</span>
           <span class="md-badge st-gray no-dot"><i class="fa-solid fa-clock" aria-hidden="true"></i> {{ mov.created_at|date:"d/m/Y H:i" }}</span>
         </div>
       </div>
     </section>
+
+    {% if mov.revertida %}
+      <div class="md-card md-card--danger">
+        <div class="md-card-header">
+          <div class="md-card-title"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Movimentação revertida</div>
+        </div>
+        <div class="md-card-body">
+          <div class="info-value" style="font-weight:500;">
+            O efeito desta movimentação no estoque foi desfeito
+            {% if mov.revertida_em %}em {{ mov.revertida_em|date:"d/m/Y H:i" }}{% endif %}
+            {% if mov.revertida_por %}por {{ mov.revertida_por.get_full_name|default:mov.revertida_por.username }}{% endif %}.
+            O registro é mantido apenas como histórico — ele não conta mais para o saldo atual do item.
+          </div>
+        </div>
+      </div>
+    {% endif %}
 
     {# ── Métricas ── #}
     <section class="md-metrics">
@@ -370,7 +390,7 @@
                 <div class="flow-label is-destino">Destino</div>
                 <div class="flow-data"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ destino.loc }}</div>
                 <div class="flow-detail">{{ destino.cc }}</div>
-                {% if mov.fornecedor_manutencao %}
+                {% if mov.fornecedor_manutencao and mov.tipo_movimentacao != 'retorno_manutencao' %}
                   <div class="flow-detail" style="margin-top:.5rem;"><i class="fa-solid fa-truck" aria-hidden="true"></i> Fornecedor manutenção: {{ mov.fornecedor_manutencao.nome|default:mov.fornecedor_manutencao }}</div>
                 {% endif %}
               </div>

@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
 
 from ProjetoEstoque.models import (
     Item,
@@ -314,8 +315,15 @@ class MovimentacaoEstoqueService:
         )
 
         mov.item = item
-        mov.localidade_origem = item.localidade
-        mov.centro_custo_origem = item.centro_custo
+        # Retorno de manutenção com fornecedor: a origem real é o fornecedor (ver
+        # `fornecedor_manutencao`), não a localidade/CC do item — que, como o envio
+        # nunca a altera, ainda seria a localidade "de casa", não a de onde o
+        # equipamento está de fato voltando.
+        if mov.tipo_movimentacao == cls.RETORNO_MANUTENCAO and mov.fornecedor_manutencao_id:
+            pass
+        else:
+            mov.localidade_origem = item.localidade
+            mov.centro_custo_origem = item.centro_custo
 
         if mov.tipo_movimentacao in {
             cls.ENVIO_MANUTENCAO,
@@ -556,3 +564,142 @@ class MovimentacaoEstoqueService:
             transaction.on_commit(_enviar_email_movimentacao)
 
         return mov
+
+    # ── Reversão ─────────────────────────────────────────────────────────
+    # Só Entrada e Baixa são revertidas por aqui: são os únicos tipos cujo
+    # efeito é puramente um contador de estoque (item.quantidade / ItemLote.
+    # quantidade_disponivel), então a reversão é mecânica e sem ambiguidade.
+    # Transferência, envio/retorno de manutenção, separação e devolução de
+    # locação já têm fluxo próprio de cancelamento (Portal do Fornecedor /
+    # Locação) — desfazê-los aqui arriscaria dessincronizar esses fluxos.
+    REVERTIVEIS = {ENTRADA, BAIXA}
+
+    @classmethod
+    @transaction.atomic
+    def reverter(cls, *, movimentacao_id, user):
+        """
+        Desfaz o efeito de estoque de uma movimentação de Entrada ou Baixa.
+        A movimentação NUNCA é apagada nem gera uma nova movimentação
+        "espelho" — só é marcada como `revertida`, preservando o registro de
+        que a operação aconteceu e foi desfeita depois.
+
+        Só a movimentação mais recente (não revertida) do item pode ser
+        revertida: é a única forma de garantir que a reversão restaura
+        exatamente o estado anterior, sem invalidar algo que aconteceu
+        depois dela.
+        """
+        mov = (
+            MovimentacaoItem.objects
+            .select_for_update()
+            .select_related("item")
+            .get(pk=movimentacao_id)
+        )
+
+        if mov.revertida:
+            raise ValidationError("Esta movimentação já foi revertida.")
+
+        if mov.tipo_movimentacao not in cls.REVERTIVEIS:
+            raise ValidationError(
+                "Só é possível reverter movimentações de Entrada ou Baixa de estoque."
+            )
+
+        item = Item.objects.select_for_update().get(pk=mov.item_id)
+
+        ultima_mov = (
+            MovimentacaoItem.objects
+            .filter(item=item, revertida=False)
+            .order_by("-created_at", "-id")
+            .first()
+        )
+
+        if ultima_mov is None or ultima_mov.pk != mov.pk:
+            raise ValidationError(
+                "Só é possível reverter a movimentação mais recente deste item — "
+                "existem movimentações mais novas registradas para ele."
+            )
+
+        if mov.tipo_movimentacao == cls.ENTRADA:
+            cls._reverter_entrada(mov=mov, item=item, user=user)
+        else:
+            cls._reverter_baixa(mov=mov, item=item, user=user)
+
+        mov.revertida = True
+        mov.revertida_em = timezone.now()
+        mov.revertida_por = user
+        mov.save(update_fields=["revertida", "revertida_em", "revertida_por", "updated_at"])
+
+        return mov
+
+    @classmethod
+    def _reverter_entrada(cls, *, mov, item, user):
+        item_lote = (
+            ItemLote.objects
+            .select_for_update()
+            .filter(item=item, lote_id=mov.lote_id)
+            .first()
+        )
+
+        if item_lote is None:
+            raise ValidationError("O lote desta entrada não existe mais — não é possível reverter.")
+
+        if item_lote.quantidade_disponivel != item_lote.quantidade_entrada:
+            raise ValidationError(
+                "Este lote já teve saída de estoque — não é possível reverter a entrada."
+            )
+
+        if (item.quantidade or 0) < mov.quantidade:
+            raise ValidationError("Saldo do item inconsistente — reversão bloqueada.")
+
+        item_lote.quantidade_disponivel = 0
+        cls.preencher_auditoria(item_lote, user, criando=False)
+        item_lote.full_clean()
+        item_lote.save()
+
+        item.quantidade = (item.quantidade or 0) - mov.quantidade
+        update_fields = ["quantidade"]
+
+        # Restaura localidade/CC ao estado anterior à entrada — capturado em
+        # `mov.localidade_origem`/`centro_custo_origem` no momento do registro.
+        if mov.localidade_origem_id:
+            item.localidade = mov.localidade_origem
+            update_fields.append("localidade")
+
+        if mov.centro_custo_origem_id:
+            item.centro_custo = mov.centro_custo_origem
+            update_fields.append("centro_custo")
+
+        cls.preencher_auditoria(item, user, criando=False)
+        if hasattr(item, "atualizado_por"):
+            update_fields.append("atualizado_por")
+        item.save(update_fields=list(set(update_fields)))
+
+    @classmethod
+    def _reverter_baixa(cls, *, mov, item, user):
+        item_lote = (
+            ItemLote.objects
+            .select_for_update()
+            .filter(item=item, lote_id=mov.lote_id)
+            .first()
+        )
+
+        if item_lote is None:
+            raise ValidationError("O lote desta baixa não existe mais — não é possível reverter.")
+
+        nova_disponivel = item_lote.quantidade_disponivel + mov.quantidade
+
+        if nova_disponivel > item_lote.quantidade_entrada:
+            raise ValidationError("Saldo do lote inconsistente — reversão bloqueada.")
+
+        item_lote.quantidade_disponivel = nova_disponivel
+        cls.preencher_auditoria(item_lote, user, criando=False)
+        item_lote.full_clean()
+        item_lote.save()
+
+        item.quantidade = (item.quantidade or 0) + mov.quantidade
+        cls.preencher_auditoria(item, user, criando=False)
+        item.save(update_fields=[
+            "quantidade",
+            "atualizado_por",
+        ] if hasattr(item, "atualizado_por") else [
+            "quantidade",
+        ])

@@ -172,6 +172,11 @@
           <div>
             <div class="kq-apk-name">{{ apk.nome }}</div>
             <div class="kq-apk-sub">{{ apk.tamanho|filesizeformat }} · atualizado <span title="{{ apk.modificado_em|date:'d/m/Y H:i' }}">{{ apk.modificado_em|naturaltime }}</span></div>
+            {% if versao_registrada %}
+              <div class="kq-apk-sub"><i class="fa-solid fa-circle-check" style="color:var(--success);"></i> Auto-atualização ativa — versão {{ versao_registrada.version_name|default:versao_registrada.version_code }} (code {{ versao_registrada.version_code }})</div>
+            {% else %}
+              <div class="kq-apk-sub"><i class="fa-solid fa-circle-exclamation" style="color:var(--warning);"></i> Auto-atualização não configurada para esta build</div>
+            {% endif %}
           </div>
         </div>
         <form method="post" id="kqApkForm" class="kq-form" style="margin-top:14px;">
@@ -194,11 +199,18 @@
         </div>
       {% else %}
         <div class="kq-apk-empty">
-          <i class="fa-solid fa-folder-open"></i>
-          <span>Nenhum instalador (.apk) encontrado.<br>Copie o arquivo do app para a pasta do servidor:</span>
-          <span class="kq-apk-path">{{ apk_dir_display }}</span>
+          <i class="fa-solid fa-mobile-screen-button"></i>
+          <span>Nenhum instalador (.apk) enviado ainda.</span>
         </div>
       {% endif %}
+
+      <button type="button" class="btn {% if apk %}btn-sm{% else %}btn-primary{% endif %}" id="kqApkOpenUploadBtn" style="margin-top:14px;">
+        <i class="fa-solid fa-upload"></i> {% if apk %}Enviar nova versão do app{% else %}Enviar instalador (.apk){% endif %}
+      </button>
+      <div class="kq-hint">
+        <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+        <span>O arquivo enviado substitui automaticamente a versão anterior na pasta do servidor — não é preciso copiá-lo manualmente em <span class="kq-apk-path" style="margin-top:0;">{{ apk_dir_display }}</span>.</span>
+      </div>
     </div>
   </div>
 
@@ -347,6 +359,37 @@
 
 </div>
 
+<!-- upload/substituição do instalador (.apk) -->
+<div class="kq-modal" id="kqApkUploadModal" hidden>
+  <div class="kq-modal-box">
+    <h3><i class="fa-solid fa-upload"></i> Enviar instalador do app</h3>
+    <form method="post" action="{% url 'quiosque_apk_upload' %}" enctype="multipart/form-data" id="kqApkUploadForm" style="display:grid; gap:12px;">
+      {% csrf_token %}
+      <div class="kq-field">
+        <label for="kqApkFile">Arquivo (.apk)</label>
+        <input type="file" name="apk" id="kqApkFile" accept=".apk" class="form-control" required>
+      </div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        <div class="kq-field" style="flex:1; min-width:120px;">
+          <label for="kqApkVersionCode">Version code</label>
+          <input type="number" name="version_code" id="kqApkVersionCode" class="form-control" min="1" placeholder="Ex.: 9">
+        </div>
+        <div class="kq-field" style="flex:1; min-width:120px;">
+          <label for="kqApkVersionName">Version name</label>
+          <input type="text" name="version_name" id="kqApkVersionName" class="form-control" maxlength="20" placeholder="Ex.: 1.6.0">
+        </div>
+      </div>
+      <p style="margin:0; font-size:12px; color:var(--text-tertiary); line-height:1.5;">
+        Version code/name são opcionais, mas <b>necessários para a auto-atualização</b> dos aparelhos já matriculados (Device Owner) — sem eles, o instalador é substituído mas a frota em campo não recebe a atualização sozinha.
+      </p>
+      <div class="kq-modal-actions">
+        <button type="button" class="btn btn-sm" data-close>Cancelar</button>
+        <button type="submit" class="btn btn-sm btn-primary" id="kqApkUploadSubmit"><i class="fa-solid fa-upload"></i> Enviar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- renomear matrícula -->
 <div class="kq-modal" id="kqRenameModal" hidden>
   <div class="kq-modal-box">
@@ -427,7 +470,7 @@
 // animação de entrada), o que ancora position:fixed nele em vez da viewport.
 (function(){
   var scroller = document.getElementById('mainContent') || document.scrollingElement || document.body;
-  var modais = ['kqRenameModal', 'kqQrModal', 'kqMatQrModal'].map(function(id){ return document.getElementById(id); }).filter(Boolean);
+  var modais = ['kqApkUploadModal', 'kqRenameModal', 'kqQrModal', 'kqMatQrModal'].map(function(id){ return document.getElementById(id); }).filter(Boolean);
   modais.forEach(function(modal){
     if (modal.parentNode !== document.body) document.body.appendChild(modal);
     new MutationObserver(function(){ scroller.style.overflow = modal.hidden ? '' : 'hidden'; })
@@ -455,6 +498,37 @@
       modal.hidden = false;
       setTimeout(function(){ input.focus(); input.select(); }, 30);
     });
+  });
+})();
+
+// Upload do instalador (.apk): o botão abre um modal com o arquivo + version
+// code/name (opcionais). Envio via submit normal (multipart, não fetch) —
+// o arquivo pode ser grande, então evitamos carregá-lo inteiro em memória JS.
+(function(){
+  var openBtn = document.getElementById('kqApkOpenUploadBtn');
+  var modal = document.getElementById('kqApkUploadModal');
+  var form = document.getElementById('kqApkUploadForm');
+  var fileInput = document.getElementById('kqApkFile');
+  var submitBtn = document.getElementById('kqApkUploadSubmit');
+  if (!openBtn || !modal || !form || !fileInput || !submitBtn) return;
+
+  var apkJaExiste = {% if apk %}true{% else %}false{% endif %};
+
+  openBtn.addEventListener('click', function(){
+    modal.hidden = false;
+    setTimeout(function(){ fileInput.focus(); }, 30);
+  });
+
+  form.addEventListener('submit', function(ev){
+    if (!fileInput.files.length) return;
+    var nome = fileInput.files[0].name;
+    var pergunta = apkJaExiste
+      ? 'Enviar "' + nome + '" como novo instalador? Isso substitui a versão atual.'
+      : 'Enviar "' + nome + '" como instalador do app?';
+    if (!confirm(pergunta)) { ev.preventDefault(); return; }
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando…';
   });
 })();
 

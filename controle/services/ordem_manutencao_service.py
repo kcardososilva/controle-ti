@@ -3,8 +3,20 @@ OrdemManutencaoService — máquina de estados da manutenção externa (Portal d
 
 Fluxo:
     aguardando_recebimento → recebido → em_avaliacao
-        ├─ em_reparo → reparado ──────────────→ (TI) concluido
-        └─ sem_reparo → substituto_enviado ───→ (TI) concluido
+        ├─ aguardando_aprovacao → (TI) aprovado → em_reparo → reparado ──→ (TI) concluido
+        ├─ sem_reparo → troca_aguardando_aprovacao → (TI) troca_aprovada
+        │     → substituto_enviado (+ cobrança pelo equip. danificado)
+        │     → (TI) troca_dano_aprovada ────────────────────────────────→ (TI) concluido
+        │     → (TI) troca_dano_reprovada → (forn.) substituto_enviado (reenvio da cobrança)
+        ├─ sem_condicoes → (TI) descarte_avaliacao_aprovada → devolvido_descarte → (TI) descartado
+        └─ descarte_local_solicitado → (TI) descarte_local_aprovado → descartado
+
+    Toda proposta de valor (reparo, troca, cobrança por dano ou descarte) só
+    avança mediante aprovação do TI — histórico versionado em
+    OrdemManutencaoOrcamento. Mesmo sem conserto, o equipamento locado
+    substituído gera DUAS cobranças distintas: o contrato do substituto
+    (troca_aguardando_aprovacao) e a cobrança pelo equipamento danificado em si
+    (substituto_enviado) — a OS só conclui depois que AMBAS forem aprovadas.
 
 Regras:
   • Toda transição passa por `transicionar()` — valida o caminho e o ator.
@@ -56,23 +68,52 @@ TRANSICOES = {
     S.EM_REPARO:              {S.REPARADO, S.SEM_REPARO, S.CANCELADO},
     S.REPARADO:               {S.DEVOLVIDO, S.CANCELADO},
     S.DEVOLVIDO:              {S.CONCLUIDO},
-    S.SEM_REPARO:             {S.SUBSTITUTO_ENVIADO, S.CANCELADO},
-    S.SUBSTITUTO_ENVIADO:     {S.CONCLUIDO},
-    # Sem condições de reparo: o fornecedor devolve o equipamento à fazenda
-    # (devolvido_descarte) e o TI confirma o recebimento, armazenando p/ descarte.
-    S.SEM_CONDICOES:          {S.DEVOLVIDO_DESCARTE, S.CANCELADO},
+    # Troca (equipamento locado — o TI vai pagar o contrato do substituto): o
+    # fornecedor propõe contrato/valor/regime/modelo/série e o TI precisa aprovar
+    # ANTES de o substituto virar Item de verdade — mesmo gate do orçamento de
+    # reparo. O modelo/série já entram nesta proposta para o TI avaliar o
+    # equipamento oferecido, não só o preço.
+    S.SEM_REPARO:             {S.TROCA_AGUARDANDO_APROVACAO, S.CANCELADO},
+    S.TROCA_AGUARDANDO_APROVACAO: {S.TROCA_APROVADA, S.TROCA_REPROVADA, S.CANCELADO},
+    S.TROCA_APROVADA:         {S.SUBSTITUTO_ENVIADO, S.CANCELADO},
+    # Reprovado: fornecedor revisa o contrato e reenvia (volta a sem_reparo).
+    S.TROCA_REPROVADA:        {S.SEM_REPARO, S.CANCELADO},
+    # Ao confirmar o envio físico do substituto, o fornecedor TAMBÉM propõe a
+    # cobrança pelo equipamento danificado em si (o locador cobra pelo
+    # equipamento não devolvido em condições, mesmo sem conserto) — é um
+    # orçamento SEPARADO do contrato do substituto, e a OS só pode ser concluída
+    # depois que o TI aprovar esse valor.
+    S.SUBSTITUTO_ENVIADO:     {S.TROCA_DANO_APROVADA, S.TROCA_DANO_REPROVADA, S.CANCELADO},
+    S.TROCA_DANO_APROVADA:    {S.CONCLUIDO, S.CANCELADO},
+    # Reprovado: fornecedor revisa o valor cobrado e reenvia (o substituto físico
+    # já foi enviado — não é recriado, só o valor da cobrança é atualizado).
+    S.TROCA_DANO_REPROVADA:   {S.SUBSTITUTO_ENVIADO, S.CANCELADO},
+    # Sem condições de reparo: o fornecedor propõe motivo+valor da avaliação; o TI
+    # aprova (fornecedor devolve à fazenda p/ descarte) ou reprova (fornecedor
+    # revisa e reenvia, voltando a sem_condicoes).
+    S.SEM_CONDICOES:          {S.DESCARTE_AVALIACAO_APROVADA, S.DESCARTE_AVALIACAO_REPROVADA, S.CANCELADO},
+    S.DESCARTE_AVALIACAO_APROVADA:  {S.DEVOLVIDO_DESCARTE, S.CANCELADO},
+    S.DESCARTE_AVALIACAO_REPROVADA: {S.SEM_CONDICOES, S.CANCELADO},
     S.DEVOLVIDO_DESCARTE:     {S.DESCARTADO, S.CANCELADO},
-    # Descarte local: fornecedor solicita descartar no próprio local; o TI aprova
-    # (→ fornecedor confirma o descarte) ou recusa (→ sem_condicoes: devolver p/
-    # o TI receber e descartar).
-    S.DESCARTE_LOCAL_SOLICITADO: {S.DESCARTE_LOCAL_APROVADO, S.SEM_CONDICOES, S.CANCELADO},
+    # Descarte local: fornecedor propõe motivo+valor e solicita descartar no
+    # próprio local; o TI aprova o descarte local, OU recusa o LOCAL mas já
+    # aceita o valor avaliado (→ descarte_avaliacao_aprovada, segue direto p/
+    # devolvido_descarte — não há um 3º "reprovar o valor" nesta tela: se o TI
+    # não concorda com o valor, cancela e trata pela observação/contato direto).
+    S.DESCARTE_LOCAL_SOLICITADO: {S.DESCARTE_LOCAL_APROVADO, S.DESCARTE_AVALIACAO_APROVADA, S.CANCELADO},
     S.DESCARTE_LOCAL_APROVADO:   {S.DESCARTADO, S.CANCELADO},
     # Troca antecipada: substituto a caminho → TI recebe → TI envia o defeituoso →
-    # fornecedor recebe o defeituoso → fornecedor envia a proposta e conclui.
+    # fornecedor recebe o defeituoso → fornecedor envia a proposta de reparo, que
+    # precisa da aprovação do TI (mesmo gate do fluxo normal de reparo) antes de
+    # concluir. Reprovado só permite reenvio — não existe "devolvido" aqui porque
+    # o defeituoso já ficou parado no fornecedor, não retorna fisicamente ao TI.
     S.TROCA_ANT_SUBSTITUTO_ENVIADO:  {S.TROCA_ANT_SUBSTITUTO_RECEBIDO, S.CANCELADO},
     S.TROCA_ANT_SUBSTITUTO_RECEBIDO: {S.TROCA_ANT_DEFEITUOSO_ENVIADO, S.CANCELADO},
     S.TROCA_ANT_DEFEITUOSO_ENVIADO:  {S.TROCA_ANT_DEFEITUOSO_RECEBIDO, S.CANCELADO},
-    S.TROCA_ANT_DEFEITUOSO_RECEBIDO: {S.CONCLUIDO, S.CANCELADO},
+    S.TROCA_ANT_DEFEITUOSO_RECEBIDO: {S.TROCA_ANT_AGUARDANDO_APROVACAO, S.CANCELADO},
+    S.TROCA_ANT_AGUARDANDO_APROVACAO: {S.TROCA_ANT_APROVADO, S.TROCA_ANT_REPROVADO, S.CANCELADO},
+    S.TROCA_ANT_APROVADO:            {S.CONCLUIDO, S.CANCELADO},
+    S.TROCA_ANT_REPROVADO:           {S.TROCA_ANT_AGUARDANDO_APROVACAO, S.CANCELADO},
     S.DESCARTADO:             set(),
     S.CONCLUIDO:              set(),
     S.CANCELADO:              set(),
@@ -89,14 +130,24 @@ ATOR = {
     S.SEM_REPARO:            "fornecedor",
     S.REPARADO:              "fornecedor",
     S.DEVOLVIDO:             "fornecedor",
-    S.SUBSTITUTO_ENVIADO:    "fornecedor",
+    S.TROCA_AGUARDANDO_APROVACAO: "fornecedor",  # fornecedor propõe o contrato do substituto
+    S.TROCA_APROVADA:            "ti",           # TI aprova o contrato/valor
+    S.TROCA_REPROVADA:           "ti",           # TI reprova o contrato/valor
+    S.SUBSTITUTO_ENVIADO:    "fornecedor",  # envio físico + cobrança pelo dano (1ª vez ou reenvio)
+    S.TROCA_DANO_APROVADA:   "ti",           # TI aprova a cobrança pelo equipamento danificado
+    S.TROCA_DANO_REPROVADA:  "ti",           # TI reprova a cobrança pelo equipamento danificado
     S.SEM_CONDICOES:         "fornecedor",
+    S.DESCARTE_AVALIACAO_APROVADA:  "ti",  # TI aprova o valor da avaliação de descarte
+    S.DESCARTE_AVALIACAO_REPROVADA: "ti",  # TI reprova o valor da avaliação de descarte
     S.DEVOLVIDO_DESCARTE:    "fornecedor",
     S.DESCARTE_LOCAL_SOLICITADO: "fornecedor",
     S.DESCARTE_LOCAL_APROVADO:   "ti",
     S.TROCA_ANT_SUBSTITUTO_RECEBIDO: "ti",         # TI recebe o substituto
     S.TROCA_ANT_DEFEITUOSO_ENVIADO:  "ti",         # TI envia o defeituoso
     S.TROCA_ANT_DEFEITUOSO_RECEBIDO: "fornecedor", # fornecedor recebe o defeituoso
+    S.TROCA_ANT_AGUARDANDO_APROVACAO: "fornecedor", # fornecedor envia a proposta de reparo
+    S.TROCA_ANT_APROVADO:             "ti",          # TI aprova a proposta
+    S.TROCA_ANT_REPROVADO:            "ti",          # TI reprova a proposta
     S.DESCARTADO:            "ti",
     S.CONCLUIDO:             "ti",
     S.CANCELADO:             "ti",
@@ -104,15 +155,31 @@ ATOR = {
 
 # Override de ator por aresta (origem, destino), quando o mesmo destino pode ser
 # alcançado por atores diferentes conforme a origem. Tem prioridade sobre ATOR.
-#   • descartado: normalmente o TI confirma (via sem_condicoes); no fluxo de
+#   • descartado: normalmente o TI confirma (via devolvido_descarte); no fluxo de
 #     descarte local é o FORNECEDOR quem confirma (após o TI aprovar).
-#   • sem_condicoes: normalmente o fornecedor declara (via em_avaliacao); quando
-#     o TI recusa um descarte local ele empurra p/ sem_condicoes (devolução).
+#   • descarte_avaliacao_aprovada: normalmente é decisão do TI a partir de
+#     sem_condicoes (já coberto por ATOR); a mesma aprovação também é alcançada
+#     quando o TI recusa um pedido de descarte LOCAL (aceitando o valor, mas
+#     exigindo devolução) — o ator continua sendo o TI nos dois casos, então não
+#     precisaria de override; mantido explícito por clareza.
 EDGE_ATOR = {
-    (S.DESCARTE_LOCAL_APROVADO, S.DESCARTADO):        "fornecedor",
-    (S.DESCARTE_LOCAL_SOLICITADO, S.SEM_CONDICOES):   "ti",
-    # Troca antecipada: quem conclui (envia a proposta) é o FORNECEDOR, não o TI.
-    (S.TROCA_ANT_DEFEITUOSO_RECEBIDO, S.CONCLUIDO):   "fornecedor",
+    (S.DESCARTE_LOCAL_APROVADO, S.DESCARTADO):             "fornecedor",
+    (S.DESCARTE_LOCAL_SOLICITADO, S.DESCARTE_AVALIACAO_APROVADA): "ti",
+}
+
+# Estados de "aguardando decisão do TI" em que o PRÓPRIO fornecedor pode desfazer
+# o envio (voltar ao estágio anterior do formulário) sem depender do TI reprovar
+# primeiro — ex.: digitou o valor errado e quer corrigir na hora. Restrito a
+# transições cujo ÚNICO efeito colateral é gravar campos na própria `ordem` e
+# criar um registro em OrdemManutencaoOrcamento (sempre PROPOSTO, nunca
+# decidido ainda — seguro apagar). NÃO inclui `substituto_enviado`: no primeiro
+# envio essa transição também cria o Item/Locacao do substituto, e desfazer
+# isso com segurança exigiria distinguir 1º envio de reenvio e limpar registros
+# de estoque reais — risco desnecessário para o ganho (o reenvio já é simples:
+# um único valor, via troca_dano_reprovada).
+DESFAZAVEIS = {
+    S.AGUARDANDO_APROVACAO, S.TROCA_AGUARDANDO_APROVACAO, S.SEM_CONDICOES,
+    S.DESCARTE_LOCAL_SOLICITADO, S.TROCA_ANT_AGUARDANDO_APROVACAO,
 }
 
 
@@ -173,6 +240,20 @@ class OrdemManutencaoService:
 
         transaction.on_commit(_mail)
 
+    # ── Consulta: OS normal (não-troca-antecipada) aberta ───────────────────
+    @classmethod
+    def ordem_aberta(cls, item):
+        """A Ordem de Manutenção não-terminal aberta para este item, ou None.
+        Reaproveitada para bloquear reenvio duplicado e para travar alteração
+        manual de status enquanto o equipamento está com o fornecedor."""
+        return (
+            OrdemManutencao.objects
+            .filter(item=item)
+            .exclude(status__in=[S.CONCLUIDO, S.CANCELADO, S.DESCARTADO])
+            .order_by("-created_at")
+            .first()
+        )
+
     # ── Abertura (gatilho do envio para manutenção) ────────────────────────
     @classmethod
     def abrir(cls, *, item, fornecedor, movimentacao=None, user=None):
@@ -183,12 +264,7 @@ class OrdemManutencaoService:
         if fornecedor is None:
             return None
 
-        existente = (
-            OrdemManutencao.objects
-            .filter(item=item)
-            .exclude(status__in=[S.CONCLUIDO, S.CANCELADO, S.DESCARTADO])
-            .first()
-        )
+        existente = cls.ordem_aberta(item)
         if existente:
             return existente
 
@@ -260,6 +336,7 @@ class OrdemManutencaoService:
             localidade_id=item_defeituoso.localidade_id,
             centro_custo=item_defeituoso.centro_custo,
             locado=item_defeituoso.locado,
+            pmb=item_defeituoso.pmb,
             observacoes=(
                 f"Substituto (troca antecipada) do equipamento '{item_defeituoso.nome}'"
                 + (f" — série {item_defeituoso.numero_serie}" if item_defeituoso.numero_serie else "")
@@ -296,6 +373,51 @@ class OrdemManutencaoService:
     def transicoes_validas(cls, ordem):
         return TRANSICOES.get(ordem.status, set())
 
+    @classmethod
+    def pode_desfazer(cls, ordem):
+        return str(ordem.status) in {str(s) for s in DESFAZAVEIS}
+
+    # ── Desfazer envio (voltar ao formulário anterior) ─────────────────────
+    @classmethod
+    @transaction.atomic
+    def desfazer_ultima_proposta(cls, *, ordem, user):
+        """O fornecedor volta ao estágio ANTERIOR do formulário — não é uma
+        navegação de tela, é desfazer de verdade o envio que ele acabou de
+        fazer (ex.: mandou o orçamento com o valor errado). Só é permitido
+        enquanto a proposta ainda está PROPOSTO (o TI não decidiu nada ainda —
+        garantido pelo próprio status atual estar em DESFAZAVEIS). Reaproveita
+        `OrdemManutencaoEvento` (já gravado a cada transição) para saber
+        exatamente de onde a ordem veio — sem precisar de um mapa estático
+        origem→destino, que teria que diferenciar 1º envio de reenvio."""
+        ordem = OrdemManutencao.objects.select_for_update().get(pk=ordem.pk)
+
+        if not cls.pode_desfazer(ordem):
+            raise ValidationError("Não é possível desfazer o envio nesta etapa.")
+
+        eventos_recentes = list(ordem.eventos.order_by("-created_at", "-id")[:2])
+        if len(eventos_recentes) < 2:
+            raise ValidationError("Não há uma etapa anterior para retornar.")
+        status_anterior = eventos_recentes[1].status
+
+        # Remove a proposta que acabou de ser enviada (ainda PROPOSTO — nenhuma
+        # decisão do TI foi tomada) para não deixar um registro órfão no
+        # histórico; o próximo envio correto ocupa o mesmo número.
+        ultimo_orcamento = ordem.orcamentos.last()
+        if (ultimo_orcamento
+                and ultimo_orcamento.status == OrdemManutencaoOrcamento.StatusOrcamentoChoices.PROPOSTO):
+            ultimo_orcamento.delete()
+
+        ordem.status = status_anterior
+        cls._audit(ordem, user, criando=False)
+        ordem.save()
+
+        cls._registrar_evento(
+            ordem, status_anterior,
+            "Envio desfeito pelo fornecedor — formulário reaberto para correção.", user,
+        )
+        cls._notificar(ordem, status_anterior, "fornecedor", user)
+        return ordem
+
     # ── Transição ──────────────────────────────────────────────────────────
     @classmethod
     @transaction.atomic
@@ -326,7 +448,16 @@ class OrdemManutencaoService:
             S.EM_REPARO:            cls._on_diagnostico,
             S.REPARADO:             cls._on_reparado,
             S.SEM_REPARO:           cls._on_sem_reparo,
+            # Troca: fornecedor propõe o contrato do substituto, TI aprova/reprova
+            # (mesmo gate de orçamento do reparo, reaproveitando _on_decisao_ti).
+            S.TROCA_AGUARDANDO_APROVACAO: cls._on_troca_aguardando_aprovacao,
+            S.TROCA_APROVADA:             cls._on_decisao_ti,
+            S.TROCA_REPROVADA:            cls._on_decisao_ti,
+            S.TROCA_DANO_APROVADA:        cls._on_decisao_ti,
+            S.TROCA_DANO_REPROVADA:       cls._on_decisao_ti,
             S.SEM_CONDICOES:        cls._on_sem_condicoes,
+            S.DESCARTE_AVALIACAO_APROVADA:  cls._on_decisao_ti,
+            S.DESCARTE_AVALIACAO_REPROVADA: cls._on_decisao_ti,
             S.DEVOLVIDO_DESCARTE:   cls._on_devolvido_descarte,
             S.DESCARTE_LOCAL_SOLICITADO: cls._on_descarte_local_solicitado,
             S.DESCARTE_LOCAL_APROVADO:   cls._on_descarte_local_aprovado,
@@ -336,6 +467,11 @@ class OrdemManutencaoService:
             S.TROCA_ANT_SUBSTITUTO_RECEBIDO: cls._on_troca_ant_substituto_recebido,
             S.TROCA_ANT_DEFEITUOSO_ENVIADO:  cls._on_troca_ant_defeituoso_enviado,
             S.TROCA_ANT_DEFEITUOSO_RECEBIDO: cls._on_troca_ant_defeituoso_recebido,
+            # Gate de aprovação da proposta de reparo da troca antecipada — reaproveita
+            # os MESMOS handlers do fluxo normal de reparo (só o destino difere).
+            S.TROCA_ANT_AGUARDANDO_APROVACAO: cls._on_aguardando_aprovacao,
+            S.TROCA_ANT_APROVADO:             cls._on_decisao_ti,
+            S.TROCA_ANT_REPROVADO:            cls._on_decisao_ti,
             S.CANCELADO:            cls._on_cancelado,
             S.CONCLUIDO:            cls._on_concluido,
         }.get(novo_status)
@@ -451,12 +587,16 @@ class OrdemManutencaoService:
 
     @classmethod
     def _on_decisao_ti(cls, ordem, user, extra):
-        """TI aprova ou reprova o orçamento (registra autor e data da decisão).
-        Atualiza o status do último orçamento no histórico.
+        """TI aprova ou reprova a proposta em análise (registra autor e data da
+        decisão). Atualiza o status do último orçamento no histórico. Reaproveitado
+        por TODOS os gates de aprovação do sistema — reparo, troca antecipada,
+        troca (contrato do substituto) e descarte (via TI ou local) — evitando
+        duplicar a mesma lógica de decisão 4 vezes.
 
         IMPORTANTE: não usar `ordem.status` aqui — neste ponto ele ainda é o
-        estado de ORIGEM (sempre `aguardando_aprovacao`, já que é o único
-        caminho válido para chegar em aprovado/reprovado). O destino real da
+        estado de ORIGEM (aguardando_aprovacao / troca_ant_aguardando_aprovacao /
+        troca_aguardando_aprovacao / sem_condicoes / descarte_local_solicitado,
+        os únicos caminhos válidos para chegar nesses destinos). O destino real da
         transição vem em `extra['_novo_status']` (injetado por `transicionar`).
         """
         ordem.aprovado_por = user
@@ -465,15 +605,44 @@ class OrdemManutencaoService:
         destino = extra.get("_novo_status")
         ultimo_orcamento = ordem.orcamentos.last()
         if ultimo_orcamento:
-            if destino == S.APROVADO:
+            if destino in (S.APROVADO, S.TROCA_ANT_APROVADO, S.TROCA_APROVADA,
+                           S.TROCA_DANO_APROVADA,
+                           S.DESCARTE_AVALIACAO_APROVADA, S.DESCARTE_LOCAL_APROVADO):
                 ultimo_orcamento.status = OrdemManutencaoOrcamento.StatusOrcamentoChoices.APROVADO
                 ultimo_orcamento.motivo_rejeicao = None
-            elif destino == S.REPROVADO:
+            elif destino in (S.REPROVADO, S.TROCA_ANT_REPROVADO, S.TROCA_REPROVADA,
+                             S.TROCA_DANO_REPROVADA,
+                             S.DESCARTE_AVALIACAO_REPROVADA):
                 ultimo_orcamento.status = OrdemManutencaoOrcamento.StatusOrcamentoChoices.REPROVADO
                 motivo = (extra.get("_observacao") or "").strip()
                 if motivo:
                     ultimo_orcamento.motivo_rejeicao = motivo
             ultimo_orcamento.save(update_fields=["status", "motivo_rejeicao"])
+
+    @classmethod
+    @transaction.atomic
+    def aprovar_e_concluir_troca_antecipada(cls, *, ordem, user, observacao=""):
+        """Orquestra os 2 hops do gate de aprovação da troca antecipada num só
+        clique do TI: aprova a proposta de reparo e já conclui a ordem. Reaproveita
+        `transicionar()` para cada hop (2 eventos na timeline, mesma auditoria de
+        sempre) — não duplica nenhuma regra de negócio."""
+        cls.transicionar(ordem=ordem, novo_status=S.TROCA_ANT_APROVADO, user=user,
+                         observacao=observacao, ator="ti")
+        return cls.transicionar(ordem=ordem, novo_status=S.CONCLUIDO, user=user,
+                                observacao=observacao, ator="ti")
+
+    @classmethod
+    @transaction.atomic
+    def aprovar_e_concluir_troca_danificado(cls, *, ordem, user, observacao=""):
+        """Orquestra os 2 hops do gate de aprovação da cobrança pelo equipamento
+        danificado num só clique do TI: aprova o valor e já conclui a ordem
+        (ativa o substituto em estoque). Mesmo padrão de
+        `aprovar_e_concluir_troca_antecipada` — 2 eventos na timeline, mesma
+        auditoria de sempre."""
+        cls.transicionar(ordem=ordem, novo_status=S.TROCA_DANO_APROVADA, user=user,
+                         observacao=observacao, ator="ti")
+        return cls.transicionar(ordem=ordem, novo_status=S.CONCLUIDO, user=user,
+                                observacao=observacao, ator="ti")
 
     @classmethod
     def _on_reparado(cls, ordem, user, extra):
@@ -504,32 +673,92 @@ class OrdemManutencaoService:
         item.save(update_fields=["status", "atualizado_por", "updated_at"])
 
     @classmethod
-    def _registrar_avaliacao_descarte(cls, ordem, extra):
-        """Grava o motivo (diagnóstico) e o valor da avaliação do descarte.
-        Reaproveita os campos da avaliação: o motivo vai em `diagnostico` e o
-        valor em `valor_avaliacao_tecnica` (mesmo campo do fluxo de reprovação,
-        que também é um desfecho sem reparo). Tolera reenvio vazio: se o form não
-        trouxer os dados (ex.: o TI recusando um descarte local já preenchido),
-        mantém o que já estava gravado."""
-        motivo = (extra.get("diagnostico") or "").strip() or (ordem.diagnostico or "").strip()
+    def _on_troca_aguardando_aprovacao(cls, ordem, user, extra):
+        """Fornecedor propõe o CONTRATO do equipamento substituto (troca sem
+        reparo) para aprovação do TI — o equipamento original é locado, então o
+        TI passa a pagar esse novo contrato; ele precisa aprovar o valor/regime
+        ANTES de o substituto virar Item de verdade. Modelo e número de série do
+        substituto já são exigidos NESTA proposta (não só no envio físico), para
+        o TI avaliar o equipamento oferecido — não só o preço — antes de decidir.
+        Mesmo mecanismo do orçamento de reparo (histórico versionado em
+        OrdemManutencaoOrcamento), inclusive no reenvio após reprovação (zera a
+        decisão anterior do TI)."""
+        cls._on_diagnostico(ordem, user, extra)
+        contrato = (extra.get("contrato") or "").strip()
+        valor = cls._parse_valor(extra.get("valor"))
+        data = cls._parse_data(extra.get("data"))
+        modelo = (extra.get("modelo") or "").strip()
+        numero_serie = (extra.get("numero_serie") or "").strip()
+        if not contrato or valor is None or data is None:
+            raise ValidationError("Informe o contrato, o valor e a data da substituição.")
+        if not modelo:
+            raise ValidationError("Informe o modelo do equipamento substituto.")
+        if not numero_serie:
+            raise ValidationError("Informe o número de série do equipamento substituto.")
+
+        locado = SimNaoChoices.SIM if (extra.get("locado") == "sim") else SimNaoChoices.NAO
+        tempo_meses = None
+        if locado == SimNaoChoices.SIM:
+            tempo_meses = cls._parse_meses(extra.get("tempo_contrato_meses"))
+            if tempo_meses is None:
+                raise ValidationError("Informe o tempo do contrato de locação em meses.")
+
+        ordem.substituto_contrato = contrato
+        ordem.substituto_valor = valor
+        ordem.substituto_data = data
+        ordem.substituto_locado = locado
+        ordem.substituto_tempo_meses = tempo_meses
+        ordem.substituto_modelo = modelo
+        ordem.substituto_numero_serie = numero_serie
+        ordem.tem_garantia, ordem.garantia_dias = cls._parse_garantia(extra)
+
+        numero = ordem.orcamentos.count() + 1
+        OrdemManutencaoOrcamento.objects.create(
+            ordem=ordem,
+            numero=numero,
+            tipo=OrdemManutencaoOrcamento.TipoOrcamento.TROCA,
+            valor=valor,
+            status=OrdemManutencaoOrcamento.StatusOrcamentoChoices.PROPOSTO,
+        )
+        ordem.aprovado_por = None
+        ordem.decisao_em = None
+
+    @classmethod
+    def _registrar_avaliacao_descarte(cls, ordem, extra, tipo):
+        """Grava o motivo (diagnóstico) e o valor da avaliação do descarte, e cria
+        um novo registro no histórico versionado de orçamentos — aguardando a
+        decisão do TI (aprovação ou reprovação), tanto na primeira proposta
+        quanto no reenvio após uma reprovação. Reaproveita os campos existentes:
+        o motivo vai em `diagnostico` e o valor em `valor_avaliacao_tecnica`
+        (mesmo campo usado pelo desfecho de reprovação de reparo, que também é
+        um desfecho sem reparo)."""
+        motivo = (extra.get("diagnostico") or "").strip()
         if not motivo:
             raise ValidationError("Informe o diagnóstico técnico (motivo do descarte).")
-        ordem.diagnostico = motivo
         valor = cls._parse_valor(extra.get("valor_orcamento"))
         if valor is None:
-            valor = ordem.valor_avaliacao_tecnica
-        if valor is None:
             raise ValidationError("Informe o valor da avaliação para o descarte.")
+        ordem.diagnostico = motivo
         ordem.valor_avaliacao_tecnica = valor
+
+        numero = ordem.orcamentos.count() + 1
+        OrdemManutencaoOrcamento.objects.create(
+            ordem=ordem,
+            numero=numero,
+            tipo=tipo,
+            valor=valor,
+            status=OrdemManutencaoOrcamento.StatusOrcamentoChoices.PROPOSTO,
+        )
+        ordem.aprovado_por = None
+        ordem.decisao_em = None
 
     @classmethod
     def _on_sem_condicoes(cls, ordem, user, extra):
-        """Fornecedor declara que o equipamento não tem condições de reparo. O
-        próximo passo é o fornecedor DEVOLVER o equipamento à fazenda
-        (devolvido_descarte) para o TI receber e descartar. Também é o destino
-        quando o TI RECUSA um descarte local — aí os campos já estão preenchidos
-        (o helper tolera reenvio vazio)."""
-        cls._registrar_avaliacao_descarte(ordem, extra)
+        """Fornecedor declara que o equipamento não tem condições de reparo e
+        propõe o valor da avaliação técnica. O TI precisa aprovar esse valor
+        antes de o fornecedor poder devolver o equipamento à fazenda para
+        descarte — mesmo quando esta é uma REVISÃO após reprovação anterior."""
+        cls._registrar_avaliacao_descarte(ordem, extra, tipo=OrdemManutencaoOrcamento.TipoOrcamento.DESCARTE)
 
     @classmethod
     def _on_devolvido_descarte(cls, ordem, user, extra):
@@ -544,9 +773,9 @@ class OrdemManutencaoService:
     @classmethod
     def _on_descarte_local_solicitado(cls, ordem, user, extra):
         """Fornecedor declara sem condições de reparo e SOLICITA descartar no
-        próprio local (sem devolver ao TI). Fica aguardando a aprovação do TI.
-        Usa os mesmos campos da avaliação (motivo + valor)."""
-        cls._registrar_avaliacao_descarte(ordem, extra)
+        próprio local (sem devolver ao TI), propondo o valor da avaliação
+        técnica. Fica aguardando a aprovação do TI."""
+        cls._registrar_avaliacao_descarte(ordem, extra, tipo=OrdemManutencaoOrcamento.TipoOrcamento.DESCARTE_LOCAL)
 
     @classmethod
     def _on_descarte_local_aprovado(cls, ordem, user, extra):
@@ -582,7 +811,8 @@ class OrdemManutencaoService:
         if ordem.valor_avaliacao_tecnica:
             obs += f" Valor informado: R$ {ordem.valor_avaliacao_tecnica}."
         cls._mov_retorno(ordem, item, StatusItemChoices.DESCARTE, obs, user,
-                         custo=ordem.valor_avaliacao_tecnica)
+                         custo=ordem.valor_avaliacao_tecnica,
+                         localidade_destino=item.localidade, centro_custo_destino=item.centro_custo)
 
     @classmethod
     def _on_devolvido(cls, ordem, user, extra):
@@ -610,43 +840,65 @@ class OrdemManutencaoService:
                 ordem.reparo_valor = ordem.valor_conserto
 
     @classmethod
+    def _registrar_cobranca_danificado(cls, ordem, extra):
+        """Grava e versiona a cobrança pelo equipamento DANIFICADO em si — mesmo
+        sem conserto, o locador cobra pelo equipamento não devolvido em
+        condições, à parte do contrato do novo substituto. Reaproveita
+        `valor_avaliacao_tecnica` (mesmo campo usado pelo desfecho de reprovação
+        de reparo e pelos descartes — sempre um valor de avaliação sem reparo),
+        tanto na primeira proposta quanto no reenvio após reprovação."""
+        valor = cls._parse_valor(extra.get("valor_equipamento_danificado"))
+        if valor is None:
+            raise ValidationError("Informe o valor cobrado pelo equipamento danificado.")
+        ordem.valor_avaliacao_tecnica = valor
+
+        numero = ordem.orcamentos.count() + 1
+        OrdemManutencaoOrcamento.objects.create(
+            ordem=ordem,
+            numero=numero,
+            tipo=OrdemManutencaoOrcamento.TipoOrcamento.TROCA_DANIFICADO,
+            valor=valor,
+            status=OrdemManutencaoOrcamento.StatusOrcamentoChoices.PROPOSTO,
+        )
+        ordem.aprovado_por = None
+        ordem.decisao_em = None
+
+    @classmethod
     def _on_substituto_enviado(cls, ordem, user, extra):
+        """Fornecedor confirma o ENVIO FÍSICO do substituto já aprovado pelo TI
+        em troca_aguardando_aprovacao — contrato, valor, regime, modelo e série
+        já estão gravados na ordem (aprovados, não re-editáveis aqui); só faltam
+        dados complementares de identificação (nome/marca/localidade) e a
+        cobrança pelo equipamento DANIFICADO, que é um orçamento à parte,
+        proposto agora e sujeito a uma nova aprovação do TI antes de concluir.
+
+        Reenvio (vindo de troca_dano_reprovada): o substituto físico e o Item já
+        foram criados na primeira chamada — só revisa e reenvia o valor cobrado
+        pelo dano, sem recriar nada."""
         cls._on_diagnostico(ordem, user, extra)
 
-        # Dados do contrato de substituição (obrigatórios)
-        contrato = (extra.get("contrato") or "").strip()
-        valor = cls._parse_valor(extra.get("valor"))
-        data = cls._parse_data(extra.get("data"))
-        if not contrato or valor is None or data is None:
-            raise ValidationError("Informe o contrato, o valor e a data da substituição.")
+        if ordem.status == S.TROCA_DANO_REPROVADA:
+            cls._registrar_cobranca_danificado(ordem, extra)
+            return
 
-        # Locação: o fornecedor informa se o substituto entra como locação ou compra.
-        locado = SimNaoChoices.SIM if (extra.get("locado") == "sim") else SimNaoChoices.NAO
-
-        # Tempo de contrato em meses — obrigatório só quando a troca é locação
-        # (alimenta Locacao.tempo_locado → vencimento do contrato nos dashboards).
-        tempo_meses = None
-        if locado == SimNaoChoices.SIM:
-            tempo_meses = cls._parse_meses(extra.get("tempo_contrato_meses"))
-            if tempo_meses is None:
-                raise ValidationError("Informe o tempo do contrato de locação em meses.")
-
-        ordem.substituto_contrato = contrato
-        ordem.substituto_valor = valor
-        ordem.substituto_data = data
-        ordem.substituto_locado = locado
-        ordem.substituto_tempo_meses = tempo_meses
-        # Garantia da troca (a contagem só inicia na confirmação do TI).
-        ordem.tem_garantia, ordem.garantia_dias = cls._parse_garantia(extra)
+        contrato = ordem.substituto_contrato
+        valor = ordem.substituto_valor
+        data = ordem.substituto_data
+        locado = ordem.substituto_locado
+        tempo_meses = ordem.substituto_tempo_meses
+        if not contrato or valor is None or data is None or not ordem.substituto_modelo:
+            raise ValidationError(
+                "O contrato de substituição ainda não foi aprovado pelo TI."
+            )
 
         antigo = ordem.item
         regime = "Locação" if locado == SimNaoChoices.SIM else "Compra"
         loc_sub_id = cls._loc_id(extra.get("localidade_substituto")) or antigo.localidade_id
         substituto = Item(
             nome=(extra.get("nome") or antigo.nome),
-            numero_serie=(extra.get("numero_serie") or "").strip() or None,
+            numero_serie=(ordem.substituto_numero_serie or "").strip() or None,
             marca=(extra.get("marca") or antigo.marca),
-            modelo=(extra.get("modelo") or antigo.modelo),
+            modelo=ordem.substituto_modelo,
             status=StatusItemChoices.PAUSADO,
             fornecedor=ordem.fornecedor,
             categoria=antigo.categoria,
@@ -679,6 +931,8 @@ class OrdemManutencaoService:
             )
             cls._audit(locacao, user, criando=True)
             locacao.save()
+
+        cls._registrar_cobranca_danificado(ordem, extra)
 
     # ── Troca antecipada ───────────────────────────────────────────────────
     @classmethod
@@ -784,15 +1038,23 @@ class OrdemManutencaoService:
                 obs = f"Equipamento reparado e devolvido ao TI. OS #{ordem.pk}."
                 if ordem.reparo_valor:
                     obs += f" Valor total: R$ {ordem.reparo_valor}."
-            cls._mov_retorno(ordem, antigo, destino, obs, user, custo=ordem.reparo_valor)
+            cls._mov_retorno(ordem, antigo, destino, obs, user, custo=ordem.reparo_valor,
+                             localidade_destino=antigo.localidade, centro_custo_destino=antigo.centro_custo)
 
-        elif ordem.status == S.SUBSTITUTO_ENVIADO:
+        elif ordem.status == S.TROCA_DANO_APROVADA:
             # Item substituído volta ao fornecedor → PAUSADO (congela o aluguel).
+            # O custo aqui é a cobrança pelo equipamento danificado (já aprovada
+            # pelo TI) — separada do contrato do substituto, que fica registrado
+            # na Locacao/valor de aquisição do item substituto.
             antigo.status = StatusItemChoices.PAUSADO
             cls._audit(antigo, user, criando=False)
             antigo.save(update_fields=["status", "atualizado_por", "updated_at"])
-            cls._mov_retorno(ordem, antigo, StatusItemChoices.PAUSADO,
-                             f"Equipamento sem reparo — substituído e devolvido ao fornecedor. OS #{ordem.pk}.", user)
+            obs = f"Equipamento sem reparo — substituído e devolvido ao fornecedor. OS #{ordem.pk}."
+            if ordem.valor_avaliacao_tecnica:
+                obs += f" Cobrança pelo equipamento danificado: R$ {ordem.valor_avaliacao_tecnica}."
+            cls._mov_retorno(ordem, antigo, StatusItemChoices.PAUSADO, obs, user,
+                             custo=ordem.valor_avaliacao_tecnica,
+                             localidade_destino=antigo.localidade, centro_custo_destino=antigo.centro_custo)
 
             sub = ordem.item_substituto
             if sub:
@@ -801,33 +1063,35 @@ class OrdemManutencaoService:
                 sub.save(update_fields=["status", "atualizado_por", "updated_at"])
                 cls._mov_entrada_substituto(ordem, sub, user)
 
-        elif ordem.status == S.TROCA_ANT_DEFEITUOSO_RECEBIDO:
-            # Troca antecipada: o fornecedor envia a proposta de reparo e encerra.
-            # O defeituoso já está PAUSADO no estoque do fornecedor e o substituto
-            # já está ativo na fazenda — sem mudança de status de item aqui.
-            orcamento = cls._parse_valor(extra.get("valor_orcamento"))
-            if orcamento is None:
-                raise ValidationError("Informe o valor da proposta de reparo.")
-            ordem.valor_orcamento = orcamento
-            cls._on_diagnostico(ordem, user, extra)
-            # Registra o valor da proposta como gasto de manutenção do equipamento
-            # trocado — sem esta movimentação o custo não aparece no histórico do
-            # item nem entra no somatório de `custo_manutencao` da tela de detalhe.
+        elif ordem.status == S.TROCA_ANT_APROVADO:
+            # Troca antecipada: o TI aprovou a proposta de reparo — encerra a OS.
+            # O valor/diagnóstico já foram gravados em _on_aguardando_aprovacao (o
+            # fornecedor os informou ao enviar a proposta); aqui só registra o gasto
+            # de manutenção do equipamento trocado — sem esta movimentação o custo
+            # não aparece no histórico do item nem no somatório de `custo_manutencao`
+            # da tela de detalhe. O defeituoso já está PAUSADO no estoque do
+            # fornecedor e o substituto já está ativo na fazenda — sem mudança de
+            # status de item aqui.
             cls._mov_retorno(
                 ordem, antigo, antigo.status,
-                f"Proposta de reparo recebida do fornecedor (troca antecipada). OS #{ordem.pk}. Valor: R$ {orcamento}.",
-                user, custo=orcamento,
+                f"Proposta de reparo aprovada pelo TI (troca antecipada). OS #{ordem.pk}. Valor: R$ {ordem.valor_orcamento}.",
+                user, custo=ordem.valor_orcamento,
+                localidade_destino=antigo.localidade, centro_custo_destino=antigo.centro_custo,
             )
 
     # ── Movimentações de auditoria ─────────────────────────────────────────
     @classmethod
-    def _mov_retorno(cls, ordem, item, status_retorno, observacao, user, custo=None):
+    def _mov_retorno(cls, ordem, item, status_retorno, observacao, user, custo=None,
+                     localidade_destino=None, centro_custo_destino=None):
+        # Fluxo real: Fornecedor → localidade/CC de destino (já aplicados ao item
+        # antes desta chamada). A origem é o fornecedor (ver `fornecedor_manutencao`)
+        # — nunca a localidade do item, que aqui já reflete o pós-devolução.
         mov = MovimentacaoItem(
             tipo_movimentacao=TipoMovimentacaoChoices.RETORNO_MANUTENCAO,
             item=item,
             quantidade=item.quantidade or 1,
-            localidade_origem=item.localidade,
-            centro_custo_origem=item.centro_custo,
+            localidade_destino=localidade_destino,
+            centro_custo_destino=centro_custo_destino,
             fornecedor_manutencao=ordem.fornecedor,
             status_retorno=status_retorno,
             chamado=ordem.chamado,

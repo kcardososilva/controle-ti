@@ -18,9 +18,11 @@ from django.utils import timezone
 from ..models import (
     Item, Subtipo, Categoria, Localidade, CentroCusto, Fornecedor,
     Locacao, SimNaoChoices, StatusItemChoices, ItemLote,
-    MovimentacaoItem, TipoMovimentacaoChoices, Preventiva, PlantaProjeto,
+    MovimentacaoItem, TipoMovimentacaoChoices, TipoTransferenciaChoices,
+    Preventiva, PlantaProjeto,
     ItemStatusHistorico, ItemPRTGHistorico, ItemColaborador,
     SeparacaoItem, StatusSeparacaoChoices, TipoSeparacaoChoices,
+    OrdemManutencao, CicloManutencao,
 )
 from ..forms import ItemForm, LocacaoForm, LoteEstoqueCreateForm
 from services.importador_planilha import ImportadorPlanilhaService
@@ -424,6 +426,9 @@ def _build_queryset_and_context(request):
 
     status_choices = Item._meta.get_field("status").choices
 
+    from services.lote_envio_fornecedor_service import LoteEnvioFornecedorService
+    ids_devolver = LoteEnvioFornecedorService.itens_aguardando_devolucao_ids(itens)
+
     context = {
         "itens": itens,
         "page_obj": page_obj,
@@ -436,6 +441,7 @@ def _build_queryset_and_context(request):
         "kpis": kpis,
         "tipo_item": request.GET.get("tipo_item", ""),
         "estoque": request.GET.get("estoque", ""),
+        "ids_devolver": ids_devolver,
     }
 
     return context
@@ -872,14 +878,18 @@ def equipamento_qr(request, pk: int):
 
 @login_required
 def equipamento_detalhe(request, pk: int):
+    # `Item.all_objects` (não o `Item.objects` filtrado): um item excluído
+    # (soft delete) precisa continuar acessível pela ficha — é o destino dos
+    # links "Ficha do Item" a partir do histórico de movimentações/OS/preventivas.
     item = get_object_or_404(
-        Item.objects.select_related(
+        Item.all_objects.select_related(
             "subtipo",
             "localidade",
             "centro_custo",
             "fornecedor",
             "criado_por",
             "atualizado_por",
+            "excluido_por",
         ),
         pk=pk,
     )
@@ -985,7 +995,14 @@ def equipamento_detalhe(request, pk: int):
 
     ultima_mov = movimentacoes.first()
     if ultima_mov:
-        if ultima_mov.usuario:
+        # Na devolução, o serviço preenche `usuario` com quem devolveu (só
+        # para rastreabilidade/auditoria) — não representa posse atual, senão
+        # o item continuaria aparecendo com o colaborador logo após devolvido.
+        eh_devolucao = (
+            ultima_mov.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA
+            and ultima_mov.tipo_transferencia == TipoTransferenciaChoices.DEVOLUCAO
+        )
+        if ultima_mov.usuario and not eh_devolucao:
             ultimo_resp = f"Usuário: {ultima_mov.usuario.nome}"
         elif ultima_mov.centro_custo_destino:
             cc_nome = _str_fk(ultima_mov.centro_custo_destino, "departamento", "nome")
@@ -1262,12 +1279,38 @@ def equipamento_detalhe(request, pk: int):
     loc_total_acumulado = sum((p.valor_acumulado for p in loc_periodos), Decimal("0.00"))
     loc_periodo_atual = next((p for p in loc_periodos if p.em_andamento), None)
 
+    # Troca antecipada já em andamento (OS aberta ou rascunho no lote de envio do
+    # fornecedor) — evita o fornecedor mandar um substituto duplicado por engano.
+    # `ordem_troca` (o objeto, não só um booleano) permite distinguir a janela
+    # "substituto já recebido, falta devolver o defeituoso" (troca_ant_sub_recebido)
+    # com um aviso específico, em vez do badge genérico.
+    troca_pendente = False
+    ordem_troca = None
+    if item.status == StatusItemChoices.DEFEITO:
+        from services.lote_envio_fornecedor_service import LoteEnvioFornecedorService
+        ordem_troca = LoteEnvioFornecedorService.ordem_troca_aberta(item)
+        troca_pendente = bool(ordem_troca) or LoteEnvioFornecedorService.item_tem_troca_pendente(item)
+
+    # Histórico completo de Ordens de Manutenção (Portal do Fornecedor) — inclui
+    # orçamentos aprovados/reprovados (reparo, troca e descarte) e o equipamento
+    # substituto, quando houver, para o histórico do item ficar informativo.
+    ordens_manutencao = (
+        OrdemManutencao.objects
+        .filter(item=item)
+        .select_related("fornecedor", "item_substituto", "devolucao_localidade", "aprovado_por")
+        .prefetch_related("orcamentos")
+        .order_by("-created_at")
+    )
+
     context = {
         "item": item,
+        "troca_pendente": troca_pendente,
+        "ordem_troca": ordem_troca,
         "ultimo_resp": ultimo_resp,
         "vinculos_compartilhados": vinculos_compartilhados,
         "movimentacoes": movimentacoes,
         "historico_manutencao": historico_manutencao,
+        "ordens_manutencao": ordens_manutencao,
         "preventivas": preventivas,
         "financeiro": financeiro,
         "status_saude": status_saude,
@@ -1515,8 +1558,53 @@ def item_update(request, pk):
 @login_required
 @permission_required("ProjetoEstoque.delete_item", raise_exception=True)
 def equipamento_excluir(request, pk: int):
+    """
+    Exclusão lógica (soft delete). `MovimentacaoItem`, `OrdemManutencao`,
+    `CicloManutencao`, `Preventiva` e `Locacao` usam on_delete=CASCADE em
+    Item, e `ItemLote` usa PROTECT — um delete físico apagaria todo esse
+    histórico (ou seria bloqueado por ele). Em vez disso, o item é marcado
+    como excluído: `ItemManager` já filtra `excluido=True` de todas as
+    listagens, dashboards e seletores de formulário automaticamente, sem
+    tocar em nenhum outro ponto do sistema. O histórico e a ficha do item
+    (via link direto) continuam acessíveis normalmente.
+    """
     item = get_object_or_404(Item, pk=pk)
-    item.delete()
-    messages.success(request, "Item excluído com sucesso.")
+
+    if item.excluido:
+        messages.info(request, f"O equipamento '{item.nome}' já está excluído.")
+        return redirect("equipamentos_list")
+
+    item.excluido = True
+    item.excluido_em = timezone.now()
+    item.excluido_por = request.user
+    item.save(update_fields=["excluido", "excluido_em", "excluido_por"])
+
+    messages.success(
+        request,
+        f"Equipamento '{item.nome}' excluído. Ele não aparece mais nas listagens, "
+        "mas todo o histórico vinculado (movimentações, ordens de manutenção, "
+        "preventivas, locações e lotes) foi preservado. É possível restaurá-lo "
+        "pela ficha do item ou pela administração do sistema."
+    )
     return redirect("equipamentos_list")
+
+
+@require_POST
+@login_required
+@permission_required("ProjetoEstoque.delete_item", raise_exception=True)
+def equipamento_restaurar(request, pk: int):
+    """Desfaz a exclusão lógica feita em `equipamento_excluir`."""
+    item = get_object_or_404(Item.all_objects, pk=pk)
+
+    if not item.excluido:
+        messages.info(request, f"O equipamento '{item.nome}' não está excluído.")
+        return redirect("equipamento_detalhe", pk=item.pk)
+
+    item.excluido = False
+    item.excluido_em = None
+    item.excluido_por = None
+    item.save(update_fields=["excluido", "excluido_em", "excluido_por"])
+
+    messages.success(request, f"Equipamento '{item.nome}' restaurado com sucesso.")
+    return redirect("equipamento_detalhe", pk=item.pk)
 

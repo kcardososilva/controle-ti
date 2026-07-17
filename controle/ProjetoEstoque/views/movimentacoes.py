@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
+from django.views.decorators.http import require_POST
 from django.http import HttpResponse, JsonResponse
 from django.db.models import Q, Count
 from django.core.paginator import Paginator
@@ -13,7 +14,7 @@ from django.utils import timezone
 from xhtml2pdf import pisa
 
 from ..models import (
-    MovimentacaoItem, TipoMovimentacaoChoices, StatusItemChoices,
+    MovimentacaoItem, TipoMovimentacaoChoices, TipoTransferenciaChoices, StatusItemChoices,
     ItemLote, Item, ItemColaborador,
 )
 from ..forms import MovimentacaoItemForm
@@ -87,6 +88,7 @@ def movimentacao_list(request):
             "localidade_destino",
             "fornecedor_manutencao",
             "lote",
+            "lote__fornecedor",
         )
         .order_by("-created_at")
     )
@@ -444,6 +446,7 @@ def movimentacao_detail(request, pk):
             "item__fornecedor",
             "usuario",
             "criado_por",
+            "revertida_por",
             "localidade_origem",
             "localidade_destino",
             "centro_custo_origem",
@@ -455,10 +458,19 @@ def movimentacao_detail(request, pk):
         pk=pk,
     )
 
-    origem = {
-        "loc": _localidade_label(mov.localidade_origem),
-        "cc": _centro_custo_label(mov.centro_custo_origem),
-    }
+    if mov.tipo_movimentacao == "retorno_manutencao" and mov.fornecedor_manutencao_id:
+        # Devolução do fornecedor: a origem real é o fornecedor, não uma
+        # localidade/CC do TI (o item nunca teve a localidade alterada durante
+        # o envio, então ela sempre representaria "casa", não "de onde voltou").
+        origem = {
+            "loc": _fornecedor_label(mov.fornecedor_manutencao),
+            "cc": "Fornecedor de manutenção",
+        }
+    else:
+        origem = {
+            "loc": _localidade_label(mov.localidade_origem),
+            "cc": _centro_custo_label(mov.centro_custo_origem),
+        }
 
     destino = {
         "loc": _localidade_label(mov.localidade_destino),
@@ -599,6 +611,7 @@ def movimentacao_detail(request, pk):
     return render(request, "front/movimentacao/movimentacao_detail.html", context)
 
 
+@login_required
 def movimentacao_update(request, pk):
     mov = get_object_or_404(MovimentacaoItem, pk=pk)
     form = MovimentacaoItemForm(request.POST or None, request.FILES or None, instance=mov)
@@ -606,7 +619,7 @@ def movimentacao_update(request, pk):
         mov = form.save(commit=False)
         mov.atualizado_por = request.user
         mov.save()
-        return redirect('movimentacoes_list')
+        return redirect('movimentacao_list')
     return render(request, 'front/movimentacao/movimentacao_form.html', {'form': form})
 
 @login_required
@@ -615,5 +628,132 @@ def movimentacao_delete(request, pk):
     mov = get_object_or_404(MovimentacaoItem, pk=pk)
     if request.method == 'POST':
         mov.delete()
-        return redirect('movimentacoes_list')
+        return redirect('movimentacao_list')
     return render(request, 'front/movimentacao/movimentacao_confirm_delete.html', {'obj': mov})
+
+
+@require_POST
+@login_required
+@permission_required("ProjetoEstoque.change_movimentacaoitem", raise_exception=True)
+def movimentacao_reverter(request, pk):
+    """
+    Reverte uma movimentação de Entrada ou Baixa: restaura o estoque
+    (item.quantidade / ItemLote.quantidade_disponivel) ao estado anterior,
+    sem apagar a movimentação nem criar um novo registro — ela só é marcada
+    como revertida (ver `MovimentacaoEstoqueService.reverter`).
+    """
+    try:
+        mov = MovimentacaoEstoqueService.reverter(movimentacao_id=pk, user=request.user)
+        messages.success(
+            request,
+            f"Movimentação de {mov.get_tipo_movimentacao_display().lower()} revertida. "
+            "O estoque foi restaurado ao estado anterior."
+        )
+    except ValidationError as e:
+        mensagens = e.messages if hasattr(e, "messages") else [str(e)]
+        messages.error(request, " ".join(mensagens))
+    except MovimentacaoItem.DoesNotExist:
+        messages.error(request, "Movimentação não encontrada.")
+
+    next_url = request.POST.get("next")
+    if next_url:
+        return redirect(next_url)
+    return redirect("movimentacao_list")
+
+
+@login_required
+def repositorio_termos(request):
+    """
+    Repositório operacional dos termos de responsabilidade (entrega/devolução):
+    lista filtrável dos termos já assinados/anexados e painel de pendências
+    (transferências sem PDF anexado, que precisam de acompanhamento). O PDF em
+    si já é coletado no fluxo normal de transferência
+    (`MovimentacaoItemForm.termo_pdf`) — esta tela apenas indexa/monitora.
+    """
+    q = (request.GET.get("q") or "").strip()
+    f_tipo = (request.GET.get("tipo_transferencia") or "").strip()
+    f_subtipo = (request.GET.get("subtipo") or "").strip()
+    f_fornecedor = (request.GET.get("fornecedor") or "").strip()
+    f_ini = (request.GET.get("data_inicio") or "").strip()
+    f_fim = (request.GET.get("data_fim") or "").strip()
+
+    transferencias_qs = (
+        MovimentacaoItem.objects
+        .filter(tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA)
+        .select_related("item", "item__subtipo", "item__fornecedor", "usuario")
+    )
+
+    # Opções de filtro restritas ao universo real de transferências (evita
+    # listar subtipos/fornecedores sem nenhum termo no repositório).
+    subtipos_opcoes = (
+        transferencias_qs.exclude(item__subtipo__isnull=True)
+        .values("item__subtipo_id", "item__subtipo__nome")
+        .distinct().order_by("item__subtipo__nome")
+    )
+    fornecedores_opcoes = (
+        transferencias_qs.exclude(item__fornecedor__isnull=True)
+        .values("item__fornecedor_id", "item__fornecedor__nome")
+        .distinct().order_by("item__fornecedor__nome")
+    )
+
+    base_qs = transferencias_qs
+    if q:
+        base_qs = base_qs.filter(
+            Q(usuario__nome__icontains=q)
+            | Q(item__nome__icontains=q)
+            | Q(item__numero_serie__icontains=q)
+        )
+    if f_tipo:
+        base_qs = base_qs.filter(tipo_transferencia=f_tipo)
+    if f_subtipo:
+        base_qs = base_qs.filter(item__subtipo_id=f_subtipo)
+    if f_fornecedor:
+        base_qs = base_qs.filter(item__fornecedor_id=f_fornecedor)
+    if f_ini:
+        base_qs = base_qs.filter(created_at__date__gte=f_ini)
+    if f_fim:
+        base_qs = base_qs.filter(created_at__date__lte=f_fim)
+
+    termos_qs = base_qs.exclude(termo_pdf__isnull=True).exclude(termo_pdf="").order_by("-created_at")
+    pendentes_qs = base_qs.filter(Q(termo_pdf__isnull=True) | Q(termo_pdf="")).order_by("-created_at")
+
+    contagens = termos_qs.aggregate(
+        total=Count("id"),
+        entregas=Count("id", filter=Q(tipo_transferencia="entrega")),
+        devolucoes=Count("id", filter=Q(tipo_transferencia="devolucao")),
+    )
+    colaboradores_unicos = termos_qs.exclude(usuario__isnull=True).values("usuario_id").distinct().count()
+    fornecedores_unicos = termos_qs.exclude(item__fornecedor__isnull=True).values("item__fornecedor_id").distinct().count()
+    pendentes_count = pendentes_qs.count()
+
+    paginator = Paginator(termos_qs, 20)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    get_copy = request.GET.copy()
+    if "page" in get_copy:
+        del get_copy["page"]
+    qs_keep = get_copy.urlencode()
+
+    context = {
+        "page_obj": page_obj,
+        "qs_keep": qs_keep,
+        "pendentes": pendentes_qs[:8],
+        "f_q": q,
+        "f_tipo": f_tipo,
+        "f_subtipo": f_subtipo,
+        "f_fornecedor": f_fornecedor,
+        "f_ini": f_ini,
+        "f_fim": f_fim,
+        "tipo_transferencia_choices": TipoTransferenciaChoices.choices,
+        "subtipos_opcoes": subtipos_opcoes,
+        "fornecedores_opcoes": fornecedores_opcoes,
+        "kpi": {
+            "total_termos": contagens["total"],
+            "entregas": contagens["entregas"],
+            "devolucoes": contagens["devolucoes"],
+            "colaboradores": colaboradores_unicos,
+            "fornecedores": fornecedores_unicos,
+            "pendentes": pendentes_count,
+        },
+    }
+    return render(request, "front/movimentacao/repositorio_termos.html", context)

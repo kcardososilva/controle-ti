@@ -1,12 +1,10 @@
 {% extends 'front/portal/portal_base.html' %}
-{% load l10n %}
 
 {% block title %}Manutenção — Portal do Fornecedor{% endblock %}
 {% block page_title %}Manutenção{% endblock %}
 {% block page_subtitle %}{{ qtd_abertas }} ordem{{ qtd_abertas|pluralize:"ns" }} em aberto{% if qtd_acao %} · {{ qtd_acao }} aguardando você{% endif %}{% endblock %}
 
 {% block header_actions %}
-  <a href="{% url 'portal_lotes_manutencao_list' %}" class="pf-btn"><i class="fa-solid fa-boxes-packing"></i> Lotes de manutenção</a>
   <a href="{% url 'portal_troca_antecipada_nova' %}" class="pf-btn pf-btn--brand"><i class="fa-solid fa-right-left"></i> Nova troca antecipada</a>
 {% endblock %}
 
@@ -15,18 +13,19 @@
   :where(.pf-os) { display: grid; gap: 1.6rem; }
 
   /* Faixa de métricas */
-  .pf-os .pf-mh { display: grid; gap: .8rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pf-os .pf-mh { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
   .pf-os .pf-stat {
-    position: relative; padding: 1.1rem 1.2rem; border-radius: var(--radius-lg);
+    position: relative; display: flex; align-items: center; gap: .7rem; min-height: 4rem; padding: .8rem 1rem; border-radius: var(--radius-md);
     background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
     overflow: hidden;
   }
   .pf-os .pf-stat--accent { border-color: color-mix(in srgb, var(--brand) 40%, transparent); background: color-mix(in srgb, var(--brand) 6%, var(--bg-elevated)); }
-  .pf-os .pf-stat-top { display: flex; align-items: center; gap: .55rem; color: var(--text-tertiary); font-size: .78rem; font-weight: 700; }
-  .pf-os .pf-stat-top i { color: var(--text-quaternary); }
-  .pf-os .pf-stat--accent .pf-stat-top,
-  .pf-os .pf-stat--accent .pf-stat-top i { color: var(--brand); }
-  .pf-os .pf-stat-n { font-size: 2rem; font-weight: 850; letter-spacing: -.04em; margin-top: .3rem; line-height: 1; }
+  .pf-os .pf-stat-ic { flex: 0 0 auto; width: 1.9rem; height: 1.9rem; display: grid; place-items: center; border-radius: 8px; background: var(--bg-fill-tertiary); color: var(--text-tertiary); font-size: .82rem; }
+  .pf-os .pf-stat--accent .pf-stat-ic { background: var(--brand-soft); color: var(--brand); }
+  .pf-os .pf-stat-body { min-width: 0; }
+  .pf-os .pf-stat-top { color: var(--text-tertiary); font-size: .74rem; font-weight: 600; letter-spacing: -.006em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pf-os .pf-stat--accent .pf-stat-top { color: var(--brand); }
+  .pf-os .pf-stat-n { font-size: 1.35rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; font-variant-numeric: tabular-nums; }
   .pf-os .pf-stat--accent .pf-stat-n { color: var(--brand); }
 
   /* Chips de resumo por status */
@@ -64,25 +63,8 @@
   .pf-os .pf-right { display: flex; align-items: center; gap: .7rem; flex: 0 0 auto; }
   .pf-os .pf-arrow { color: var(--text-quaternary); font-size: .8rem; }
 
-  /* Checkbox de seleção p/ lote */
-  .pf-os .pf-check {
-    flex: 0 0 auto; width: 1.35rem; height: 1.35rem; display: grid; place-items: center;
-    border-radius: 6px; border: 1.5px solid var(--separator-non-opaque); background: var(--bg-page);
-    cursor: pointer; transition: border-color .15s, background .15s;
-  }
-  .pf-os .pf-check input { position: absolute; opacity: 0; width: 0; height: 0; }
-  .pf-os .pf-check i { font-size: .68rem; color: transparent; transition: color .1s; }
-  .pf-os .pf-check:has(input:checked) { background: var(--brand); border-color: var(--brand); }
-  .pf-os .pf-check:has(input:checked) i { color: #fff; }
-  .pf-os .pf-check:has(input:focus-visible) { outline: 2px solid var(--brand); outline-offset: 2px; }
-
-  /* Valor + selo de lote existente */
+  /* Valor da manutenção no histórico */
   .pf-os .pf-valor-tag { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text-primary); font-size: .84rem; white-space: nowrap; }
-  .pf-os .pf-lote-tag {
-    display: inline-flex; align-items: center; gap: .32rem; padding: .16rem .55rem; border-radius: var(--radius-pill);
-    font-size: .68rem; font-weight: 700; color: var(--text-tertiary); background: var(--bg-fill-tertiary); white-space: nowrap;
-  }
-  .pf-os .pf-lote-tag:hover { color: var(--brand); }
 
   /* Selo "aguarda você" */
   .pf-os .pf-acao {
@@ -123,19 +105,6 @@
   .pf-os .pf-fchip a { color: var(--brand); opacity: .7; }
   .pf-os .pf-fchip a:hover { opacity: 1; }
 
-  /* Barra de ação em massa (criação de lote) */
-  .pf-os .pf-lotebar {
-    position: sticky; bottom: 1rem; z-index: 5; display: none; align-items: flex-end; gap: .8rem; flex-wrap: wrap;
-    margin-top: .9rem; padding: .9rem 1.1rem; border-radius: var(--radius-lg);
-    background: var(--bg-elevated); border: 1px solid color-mix(in srgb, var(--brand) 35%, var(--separator-hairline));
-    box-shadow: var(--shadow-lg);
-  }
-  .pf-os .pf-lotebar.is-visible { display: flex; }
-  .pf-os .pf-lb-info { display: flex; flex-direction: column; gap: .1rem; margin-right: auto; }
-  .pf-os .pf-lb-count { font-weight: 800; font-size: .88rem; }
-  .pf-os .pf-lb-valor { font-size: .78rem; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-  .pf-os .pf-lb-valor b { color: var(--success); }
-
   /* Paginação */
   .pf-os .pf-pagenav { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: .5rem; }
   .pf-os .pf-pagenav a { display: grid; place-items: center; width: 2.2rem; height: 2.2rem; border-radius: var(--radius-sm); border: 1px solid var(--separator-hairline); color: var(--text-secondary); background: var(--bg-elevated); }
@@ -147,8 +116,6 @@
     .pf-os .pf-right .pf-arrow { display: none; }
     .pf-os .pf-filtro { flex-direction: column; align-items: stretch; }
     .pf-os .pf-ffield input { width: 100%; }
-    .pf-os .pf-lotebar { flex-direction: column; align-items: stretch; }
-    .pf-os .pf-lb-info { margin-right: 0; }
   }
 </style>
 {% endblock %}
@@ -159,16 +126,25 @@
   {# ── Métricas ─────────────────────────────────────────────────────────── #}
   <section class="pf-mh">
     <div class="pf-stat">
-      <div class="pf-stat-top"><i class="fa-solid fa-screwdriver-wrench"></i> Em aberto</div>
-      <div class="pf-stat-n">{{ qtd_abertas }}</div>
+      <span class="pf-stat-ic"><i class="fa-solid fa-screwdriver-wrench"></i></span>
+      <div class="pf-stat-body">
+        <div class="pf-stat-n">{{ qtd_abertas }}</div>
+        <div class="pf-stat-top">Em aberto</div>
+      </div>
     </div>
     <div class="pf-stat {% if qtd_acao %}pf-stat--accent{% endif %}">
-      <div class="pf-stat-top"><i class="fa-solid fa-bell"></i> Aguardando você</div>
-      <div class="pf-stat-n">{{ qtd_acao }}</div>
+      <span class="pf-stat-ic"><i class="fa-solid fa-bell"></i></span>
+      <div class="pf-stat-body">
+        <div class="pf-stat-n">{{ qtd_acao }}</div>
+        <div class="pf-stat-top">Aguardando você</div>
+      </div>
     </div>
     <div class="pf-stat">
-      <div class="pf-stat-top"><i class="fa-solid fa-layer-group"></i> Total de ordens</div>
-      <div class="pf-stat-n">{{ total_os }}</div>
+      <span class="pf-stat-ic"><i class="fa-solid fa-layer-group"></i></span>
+      <div class="pf-stat-body">
+        <div class="pf-stat-n">{{ total_os }}</div>
+        <div class="pf-stat-top">Total de ordens</div>
+      </div>
     </div>
   </section>
 
@@ -227,8 +203,6 @@
     <div class="pf-sech">
       <i class="fa-solid fa-clock-rotate-left"></i> Histórico
       {% if historico_page.paginator.count %}<span class="pf-sech-c">{{ historico_page.paginator.count }}</span>{% endif %}
-      <span class="pf-sech-spacer"></span>
-      {% if qtd_disponiveis_lote %}<span class="pf-sech-hint"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> {{ qtd_disponiveis_lote }} concluída{{ qtd_disponiveis_lote|pluralize }} sem lote — marque abaixo para agrupar</span>{% endif %}
     </div>
 
     {# — Filtro (busca) — #}
@@ -269,52 +243,24 @@
     {% endif %}
 
     {% if historico_page %}
-    <form method="post" action="{% url 'portal_lote_manutencao_criar' %}" id="loteForm">
-      {% csrf_token %}
-      <div class="pf-grid">
-        {% for o in historico_page %}
-        <div class="pf-card2" data-href="{% url 'portal_manutencao_detail' o.pk %}">
-          <div class="pf-top">
-            {% if o.pode_entrar_em_lote %}
-            <label class="pf-check">
-              <input type="checkbox" name="ordens" value="{{ o.pk }}" class="pf-lote-check" data-valor="{{ o.valor_calc|default_if_none:0|unlocalize }}">
-              <i class="fa-solid fa-check" aria-hidden="true"></i>
-            </label>
-            {% endif %}
-            <span class="pf-ic pf-ic--hist"><i class="fa-solid fa-clock-rotate-left"></i></span>
-            <span class="pf-info">
-              <div class="pf-name">{{ o.item.nome }}{% if o.item.modelo %} <span style="font-weight:500;color:var(--text-tertiary);">· {{ o.item.modelo }}</span>{% endif %}</div>
-              <div class="pf-meta">OS #{{ o.pk }} · {% if o.troca_antecipada %}Troca antecipada · {% endif %}finalizada em {{ o.finalizada_em|date:"d/m/Y"|default:"—" }}{% if o.item.numero_serie %} · Série {{ o.item.numero_serie }}{% endif %}</div>
-            </span>
-            <span class="pf-right">
-              {% if o.valor_calc %}<span class="pf-valor-tag">R$ {{ o.valor_calc }}</span>{% endif %}
-              {% if o.lote_manutencao_id %}
-                <a href="{% url 'portal_lote_manutencao_detail' o.lote_manutencao_id %}" class="pf-lote-tag"><i class="fa-solid fa-boxes-packing"></i> {{ o.lote_manutencao.nome }}</a>
-              {% endif %}
-              <span class="pf-osc pf-osc--{{ o.status }}">{{ o.get_status_display }}</span>
-              <i class="fa-solid fa-chevron-right pf-arrow"></i>
-            </span>
-          </div>
+    <div class="pf-grid">
+      {% for o in historico_page %}
+      <div class="pf-card2" data-href="{% url 'portal_manutencao_detail' o.pk %}">
+        <div class="pf-top">
+          <span class="pf-ic pf-ic--hist"><i class="fa-solid fa-clock-rotate-left"></i></span>
+          <span class="pf-info">
+            <div class="pf-name">{{ o.item.nome }}{% if o.item.modelo %} <span style="font-weight:500;color:var(--text-tertiary);">· {{ o.item.modelo }}</span>{% endif %}</div>
+            <div class="pf-meta">OS #{{ o.pk }} · {% if o.troca_antecipada %}Troca antecipada · {% endif %}finalizada em {{ o.finalizada_em|date:"d/m/Y"|default:"—" }}{% if o.item.numero_serie %} · Série {{ o.item.numero_serie }}{% endif %}</div>
+          </span>
+          <span class="pf-right">
+            {% if o.valor_calc %}<span class="pf-valor-tag">R$ {{ o.valor_calc }}</span>{% endif %}
+            <span class="pf-osc pf-osc--{{ o.status }}">{{ o.get_status_display }}</span>
+            <i class="fa-solid fa-chevron-right pf-arrow"></i>
+          </span>
         </div>
-        {% endfor %}
       </div>
-
-      <div class="pf-lotebar" id="loteBar">
-        <div class="pf-lb-info">
-          <span class="pf-lb-count" id="loteBarCount">0 selecionadas</span>
-          <span class="pf-lb-valor">Total: <b id="loteBarValor">R$ 0,00</b></span>
-        </div>
-        <div class="pf-ffield pf-ffield--nome">
-          <label for="lote_nome">Nome do lote</label>
-          <input type="text" id="lote_nome" name="nome" placeholder="Ex: Lote julho/2026" required>
-        </div>
-        <div class="pf-ffield pf-ffield--data">
-          <label for="lote_data">Data</label>
-          <input type="date" id="lote_data" name="data" value="{% now 'Y-m-d' %}" required>
-        </div>
-        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-boxes-packing"></i> Criar lote</button>
-      </div>
-    </form>
+      {% endfor %}
+    </div>
 
     {% if historico_page.paginator.num_pages > 1 %}
     <div class="pf-pagenav">
@@ -343,34 +289,5 @@
       window.location.href = el.getAttribute('data-href');
     });
   });
-
-  // Barra de ação em massa: some/aparece e soma o valor conforme a seleção.
-  (function () {
-    var checks = document.querySelectorAll('.pf-lote-check');
-    var bar = document.getElementById('loteBar');
-    if (!checks.length || !bar) return;
-    var countEl = document.getElementById('loteBarCount');
-    var valorEl = document.getElementById('loteBarValor');
-    var nomeInput = document.getElementById('lote_nome');
-
-    function fmtBRL(v) {
-      return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    }
-    function atualizar() {
-      var marcados = Array.prototype.filter.call(checks, function (c) { return c.checked; });
-      var total = marcados.reduce(function (acc, c) { return acc + (parseFloat(c.dataset.valor) || 0); }, 0);
-      countEl.textContent = marcados.length + (marcados.length === 1 ? ' selecionada' : ' selecionadas');
-      valorEl.textContent = fmtBRL(total);
-      bar.classList.toggle('is-visible', marcados.length > 0);
-      var card = null;
-      checks.forEach(function (c) {
-        card = c.closest('.pf-card2');
-        if (card) card.classList.toggle('is-selected', c.checked);
-      });
-      if (marcados.length > 0) nomeInput.setAttribute('required', 'required');
-    }
-    checks.forEach(function (c) { c.addEventListener('change', atualizar); });
-    atualizar();
-  })();
 </script>
 {% endblock %}

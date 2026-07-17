@@ -46,7 +46,9 @@
 
     <div class="mov-gc-flow">
         <span class="mov-gc-flow-tag">
-            {% if mov.centro_custo_origem %}{{ mov.centro_custo_origem.numero|default:"CC Origem" }}
+            {% if mov.tipo_movimentacao == 'entrada' and mov.lote.fornecedor %}{{ mov.lote.fornecedor.nome|default:"Fornecedor" }}
+            {% elif mov.tipo_movimentacao == 'retorno_manutencao' and mov.fornecedor_manutencao %}{{ mov.fornecedor_manutencao.nome|default:"Fornecedor" }}
+            {% elif mov.centro_custo_origem %}{{ mov.centro_custo_origem.numero|default:"CC Origem" }}
             {% elif mov.localidade_origem %}{{ mov.localidade_origem.local|default:"Origem" }}
             {% else %}—{% endif %}
         </span>
@@ -54,7 +56,7 @@
         <span class="mov-gc-flow-tag destino">
             {% if mov.centro_custo_destino %}{{ mov.centro_custo_destino.departamento|default:"CC Destino" }}
             {% elif mov.localidade_destino %}{{ mov.localidade_destino.local|default:"Destino" }}
-            {% elif mov.fornecedor_manutencao %}{{ mov.fornecedor_manutencao.nome|default:"Fornecedor" }}
+            {% elif mov.fornecedor_manutencao and mov.tipo_movimentacao != 'retorno_manutencao' %}{{ mov.fornecedor_manutencao.nome|default:"Fornecedor" }}
             {% else %}—{% endif %}
         </span>
     </div>
@@ -77,7 +79,24 @@
                 </span>
             {% else %}<span style="color:var(--mv-muted)">—</span>{% endif %}
         </div>
-        <span class="mov-gc-date">{{ mov.created_at|date:"d/m/Y" }}</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+            <span class="mov-gc-date">{{ mov.created_at|date:"d/m/Y" }}</span>
+            {% if mov.revertida %}
+            <span class="mv-icon-btn is-disabled" style="width:26px;height:26px;" title="Revertida em {{ mov.revertida_em|date:'d/m/Y H:i' }}" aria-label="Movimentação já revertida">
+                <i class="fa fa-rotate-left" aria-hidden="true"></i>
+            </span>
+            {% elif mov.tipo_movimentacao == 'entrada' or mov.tipo_movimentacao == 'baixa' %}
+            <button type="button" class="mv-icon-btn mv-icon-danger" style="width:26px;height:26px;" title="Reverter movimentação"
+                aria-label="Reverter movimentação de {{ mov.item.nome }}"
+                data-url="{% url 'movimentacao_reverter' mov.pk %}"
+                data-nome="{{ mov.item.nome|escapejs }}"
+                data-tipo="{{ mov.get_tipo_movimentacao_display|escapejs }}"
+                data-qtd="{{ mov.quantidade }}"
+                onclick="event.stopPropagation(); openRevertModalFromButton(this);">
+                <i class="fa fa-rotate-left" aria-hidden="true"></i>
+            </button>
+            {% endif %}
+        </div>
     </div>
 </div>
 {% empty %}

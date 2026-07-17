@@ -66,6 +66,34 @@
 
 .ad-shell { display: grid; gap: 16px; }
 
+/* Aviso "Devolver ao fornecedor" — substituto da troca antecipada já recebido,
+   defeituoso ainda não enviado de volta. */
+.ad-devolver-banner {
+  display: flex; align-items: center; gap: 1rem; padding: 1rem 1.2rem;
+  border-radius: var(--ad-radius-lg); background: color-mix(in srgb, var(--ad-danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ad-danger) 24%, transparent); color: inherit; text-decoration: none;
+}
+.ad-devolver-banner .ad-devolver-ic {
+  width: 2.6rem; height: 2.6rem; flex: 0 0 2.6rem; display: grid; place-items: center;
+  border-radius: .7rem; background: var(--ad-danger); color: #fff; font-size: 1.05rem;
+}
+.ad-devolver-banner .ad-devolver-title { display: block; font-weight: 800; }
+.ad-devolver-banner .ad-devolver-sub { display: block; color: var(--text-secondary); font-size: .84rem; margin-top: .1rem; }
+
+/* Aviso "Equipamento excluído" — soft delete: some das listagens, histórico preservado. */
+.ad-excluido-banner {
+  display: flex; align-items: center; gap: 1rem; padding: 1rem 1.2rem;
+  border-radius: var(--ad-radius-lg); background: color-mix(in srgb, var(--ad-danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ad-danger) 24%, transparent);
+}
+.ad-excluido-banner .ad-devolver-ic {
+  width: 2.6rem; height: 2.6rem; flex: 0 0 2.6rem; display: grid; place-items: center;
+  border-radius: .7rem; background: var(--ad-danger); color: #fff; font-size: 1.05rem;
+}
+.ad-excluido-banner .ad-devolver-title { display: block; font-weight: 800; }
+.ad-excluido-banner .ad-devolver-sub { display: block; color: var(--text-secondary); font-size: .84rem; margin-top: .1rem; }
+.ad-excluido-banner form { flex-shrink: 0; }
+
 /* ── Identidade ─────────────────────────────────────────────────────── */
 .ad-hero {
   display: grid;
@@ -881,6 +909,25 @@
 <div class="asset-detail-page">
   <div class="ad-shell">
 
+    {% if item.excluido %}
+    <div class="ad-excluido-banner">
+      <span class="ad-devolver-ic"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></span>
+      <span style="flex:1; min-width:0;">
+        <span class="ad-devolver-title">Equipamento excluído</span>
+        <span class="ad-devolver-sub">
+          Removido das listagens em {{ item.excluido_em|date:"d/m/Y H:i" }}{% if item.excluido_por %} por {{ item.excluido_por.get_full_name|default:item.excluido_por.username }}{% endif %}.
+          O histórico (movimentações, ordens de manutenção, preventivas, locações e lotes) foi preservado.
+        </span>
+      </span>
+      <form method="post" action="{% url 'equipamento_restaurar' item.id %}" onsubmit="return confirm('Restaurar este equipamento? Ele volta a aparecer nas listagens e seletores.');">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm">
+          <i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Restaurar
+        </button>
+      </form>
+    </div>
+    {% endif %}
+
     {# ─────────────────────── IDENTIDADE ─────────────────────── #}
     <section class="ad-hero">
       <div class="ad-hero-main">
@@ -898,9 +945,21 @@
           <h1>{{ item.nome }}</h1>
 
           <div class="ad-subtitle">
+            {% if item.excluido %}
+              <span class="ad-badge ad-badge-danger">
+                <span class="dot"></span>Excluído
+              </span>
+            {% endif %}
+
             {% if item.status %}
               <span class="ad-badge {% if item.status == 'ativo' %}ad-badge-success{% elif item.status == 'manutencao' or item.status == 'correcao' %}ad-badge-warning{% elif item.status == 'defeito' or item.status == 'queimado' %}ad-badge-danger{% else %}ad-badge-neutral{% endif %}">
                 <span class="dot"></span>{{ item.get_status_display|default:item.status|capfirst }}
+              </span>
+            {% endif %}
+
+            {% if troca_pendente and not ordem_troca.status == 'troca_ant_sub_recebido' %}
+              <span class="ad-badge ad-badge-warning" title="Já existe uma troca antecipada em andamento (ou em rascunho) para este equipamento — não é necessário enviar outro substituto.">
+                <i class="fa-solid fa-right-left" aria-hidden="true"></i>Troca antecipada em andamento
               </span>
             {% endif %}
 
@@ -952,6 +1011,17 @@
         </a>
       </div>
     </section>
+
+    {% if ordem_troca.status == 'troca_ant_sub_recebido' %}
+    <a href="{% url 'manutencao_recebimento_detail' ordem_troca.pk %}" class="ad-devolver-banner">
+      <span class="ad-devolver-ic"><i class="fa-solid fa-truck-ramp-box" aria-hidden="true"></i></span>
+      <span style="flex:1; min-width:0;">
+        <span class="ad-devolver-title">Devolver ao fornecedor — OS #{{ ordem_troca.pk }}</span>
+        <span class="ad-devolver-sub">O substituto já foi recebido e ativado; falta enviar este equipamento defeituoso de volta ao fornecedor.</span>
+      </span>
+      <span class="btn btn-sm"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Gerenciar</span>
+    </a>
+    {% endif %}
 
     {# ─────────────────────── MÉTRICAS ─────────────────────── #}
     <section class="ad-metrics">
@@ -1064,7 +1134,7 @@
       <button class="ad-tab-btn" data-tab="historico" role="tab" aria-selected="false">
         <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Histórico
       </button>
-      {% if preventivas or item.precisa_preventiva == 'sim' or historico_manutencao %}
+      {% if preventivas or item.precisa_preventiva == 'sim' or historico_manutencao or ordens_manutencao %}
       <button class="ad-tab-btn" data-tab="manutencao" role="tab" aria-selected="false">
         <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> Manutenção
       </button>
@@ -1147,6 +1217,8 @@
               <div class="ad-card-title"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Histórico de Locação</div>
               {% if loc_congelado %}
                 <span class="ad-badge ad-badge-warning"><i class="fa-solid fa-snowflake" aria-hidden="true"></i> Congelado</span>
+              {% elif loc_periodo_atual.aguardando_inicio %}
+                <span class="ad-badge ad-badge-warning"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> Aguardando início</span>
               {% elif loc_periodo_atual %}
                 <span class="ad-badge ad-badge-success"><span class="dot"></span> Contando</span>
               {% endif %}
@@ -1159,6 +1231,8 @@
               <p class="ad-simple-sub" style="margin:8px 0 12px;">
                 {% if loc_congelado %}
                   Aluguel congelado — o equipamento está {{ item.get_status_display|lower }}. A contagem fica como histórico e recomeça do zero se voltar a Ativo/Backup.
+                {% elif loc_periodo_atual.aguardando_inicio %}
+                  Cobrança inicia em {{ loc_periodo_atual.data_inicio|date:"d/m/Y" }} — ainda não começou.
                 {% elif loc_periodo_atual %}
                   Contando desde {{ loc_periodo_atual.data_inicio|date:"d/m/Y" }} ({{ loc_periodo_atual.meses }} mês{{ loc_periodo_atual.meses|pluralize:"es" }}).
                 {% else %}
@@ -1180,11 +1254,15 @@
                   <tbody>
                     {% for p in loc_periodos %}
                     <tr>
-                      <td>{{ p.data_inicio|date:"d/m/Y" }}</td>
-                      <td>{% if p.data_fim %}{{ p.data_fim|date:"d/m/Y" }}{% if p.motivo_fim %} <span style="color:var(--text-tertiary);">({{ p.motivo_fim|capfirst }})</span>{% endif %}{% else %}<span style="color:var(--success);font-weight:700;">em andamento</span>{% endif %}</td>
-                      <td class="num">{{ p.meses }}</td>
+                      <td>{{ p.data_inicio|date:"d/m/Y" }}{% if p.aguardando_inicio %} <span style="color:var(--text-tertiary);">(futuro)</span>{% endif %}</td>
+                      <td>
+                        {% if p.data_fim %}{{ p.data_fim|date:"d/m/Y" }}{% if p.motivo_fim %} <span style="color:var(--text-tertiary);">({{ p.motivo_fim|capfirst }})</span>{% endif %}
+                        {% elif p.aguardando_inicio %}<span style="color:var(--warning);font-weight:700;">aguarda início</span>
+                        {% else %}<span style="color:var(--success);font-weight:700;">em andamento</span>{% endif %}
+                      </td>
+                      <td class="num">{% if p.aguardando_inicio %}—{% else %}{{ p.meses }}{% endif %}</td>
                       <td class="num">R$ {{ p.valor_mensal|default:'0'|floatformat:2|intcomma }}</td>
-                      <td class="num strong">R$ {{ p.valor_acumulado|floatformat:2|intcomma }}</td>
+                      <td class="num strong">{% if p.aguardando_inicio %}—{% else %}R$ {{ p.valor_acumulado|floatformat:2|intcomma }}{% endif %}</td>
                     </tr>
                     {% endfor %}
                   </tbody>
@@ -1376,6 +1454,11 @@
                       {% else %}{{ mov.get_tipo_movimentacao_display }}
                       {% endif %}
                     </span>
+                    {% if mov.revertida %}
+                      <span class="ad-badge ad-badge-danger" title="Revertida em {{ mov.revertida_em|date:'d/m/Y H:i' }}">
+                        <i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Revertida
+                      </span>
+                    {% endif %}
                     <span class="ad-timeline-date">{{ mov.created_at|date:"d/m/Y H:i" }}</span>
                   </div>
                   <div class="ad-timeline-body">
@@ -1405,7 +1488,7 @@
     </div>
 
     {# ─────────────────────── TAB: MANUTENÇÃO ─────────────────────── #}
-    {% if preventivas or item.precisa_preventiva == 'sim' or historico_manutencao %}
+    {% if preventivas or item.precisa_preventiva == 'sim' or historico_manutencao or ordens_manutencao %}
     <div id="tab-manutencao" class="ad-tab-panel" role="tabpanel">
       <div class="ad-tab-2col">
         <div class="ad-col">
@@ -1506,6 +1589,47 @@
               <div class="ad-empty">
                 <i class="fa-solid fa-circle-check" style="color:var(--success)" aria-hidden="true"></i>
                 <div>Nenhum registro de manutenção externa.</div>
+              </div>
+            </div>
+          </section>
+          {% endif %}
+
+          {% if ordens_manutencao %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Ordens de Manutenção</div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-simple-list">
+                {% for os in ordens_manutencao %}
+                  <div class="ad-simple-item">
+                    <div class="ad-simple-top">
+                      <div>
+                        <div class="ad-simple-title">OS #{{ os.pk }} — {{ os.fornecedor.nome }}</div>
+                        <div class="ad-simple-sub">{{ os.created_at|date:"d/m/Y H:i" }}{% if os.finalizada_em %} · finalizada em {{ os.finalizada_em|date:"d/m/Y H:i" }}{% endif %}</div>
+                      </div>
+                      <a href="{% url 'manutencao_recebimento_detail' os.pk %}" class="ad-badge {% if os.status == 'concluido' %}ad-badge-success{% elif os.status == 'cancelado' or os.status == 'descartado' %}ad-badge-neutral{% elif 'reprovad' in os.status %}ad-badge-danger{% else %}ad-badge-warning{% endif %}" title="Ver detalhe da OS">{{ os.get_status_display }}</a>
+                    </div>
+                    {% if os.diagnostico %}<div class="ad-simple-sub"><b>Motivo:</b> {{ os.diagnostico }}</div>{% endif %}
+                    {% if os.item_substituto %}
+                    <div class="ad-simple-sub">
+                      <b>Substituto:</b> {{ os.item_substituto.nome }}{% if os.item_substituto.numero_serie %} · Série {{ os.item_substituto.numero_serie }}{% endif %}
+                      · <a href="{% url 'equipamento_detalhe' os.item_substituto.pk %}">ver equipamento</a>
+                      {% if os.substituto_valor %} · R$ {{ os.substituto_valor|floatformat:2|intcomma }} ({% if os.substituto_locado == 'sim' %}locação{% else %}compra{% endif %}){% endif %}
+                    </div>
+                    {% endif %}
+                    {% if os.orcamentos.all %}
+                    <div class="ad-simple-sub" style="margin-top:4px;">
+                      <b>Histórico de orçamentos:</b>
+                      {% for orc in os.orcamentos.all %}
+                        <span class="ad-badge {% if orc.status == 'aprovado' %}ad-badge-success{% elif orc.status == 'reprovado' %}ad-badge-danger{% else %}ad-badge-neutral{% endif %}" style="margin:2px 3px 0 0;" title="{{ orc.get_tipo_display }}{% if orc.motivo_rejeicao %} — {{ orc.motivo_rejeicao }}{% endif %}">
+                          #{{ orc.numero }} R$ {{ orc.valor|floatformat:2 }} ({{ orc.get_status_display }})
+                        </span>
+                      {% endfor %}
+                    </div>
+                    {% endif %}
+                  </div>
+                {% endfor %}
               </div>
             </div>
           </section>

@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator
-from ..models import CicloManutencao, Item
+from ..models import CicloManutencao, Item, StatusItemChoices
 from ..forms import CicloManutencaoForm
 
 
@@ -28,9 +28,15 @@ def ciclo_create(request, item_pk: int):
 
     form = CicloManutencaoForm(request.POST or None)
     if form.is_valid():
+        # Checa o status do item, não só ciclos abertos: o mesmo status
+        # MANUTENCAO também é usado pelo fluxo novo (OS do Portal do
+        # Fornecedor) — sem essa checagem seria possível iniciar um Ciclo
+        # interno duplicado por cima de uma OS externa já aberta. Mantém
+        # também a checagem original (ciclo aberto sem status coerente,
+        # dado legado) como segunda rede de proteção.
         ciclo_aberto = CicloManutencao.objects.filter(item=item, data_fim__isnull=True).exists()
-        if ciclo_aberto:
-            messages.error(request, f"O item '{item.nome}' já possui um ciclo de manutenção em andamento.")
+        if item.status == StatusItemChoices.MANUTENCAO or ciclo_aberto:
+            messages.error(request, f"O item '{item.nome}' já está em manutenção.")
         else:
             ciclo = form.save(commit=False)
             ciclo.item = item

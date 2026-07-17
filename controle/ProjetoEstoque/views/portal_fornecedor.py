@@ -28,12 +28,13 @@ from ..models import (
     Categoria,
     Localidade,
     Licenca,
-    LoteManutencao,
+    LoteEnvioFornecedor,
     LoteSeparacao,
     OrdemManutencao,
     OrdemManutencaoAnexo,
     SeparacaoItem,
     StatusItemChoices,
+    StatusLoteEnvioFornecedorChoices,
     StatusOrdemManutencaoChoices,
     StatusSeparacaoChoices,
     TipoMovimentacaoChoices,
@@ -208,6 +209,9 @@ def portal_equipamentos_list(request):
     get_copy.pop("page", None)
     qs_keep = get_copy.urlencode()
 
+    from services.lote_envio_fornecedor_service import LoteEnvioFornecedorService
+    ids_devolver = LoteEnvioFornecedorService.itens_aguardando_devolucao_ids(list(page_obj))
+
     context = {
         "fornecedor": request.fornecedor,
         "page_obj": page_obj,
@@ -224,6 +228,7 @@ def portal_equipamentos_list(request):
         "localidades": localidades,
         "categorias": categorias,
         "qs_keep": qs_keep,
+        "ids_devolver": ids_devolver,
         "active_nav": "equipamentos",
     }
     return render(request, "front/portal/portal_equipamentos_list.html", context)
@@ -366,16 +371,35 @@ def portal_equipamento_detail(request, pk: int):
         .first()
     )
 
+    # Histórico completo de OS deste item sob responsabilidade do fornecedor —
+    # inclui orçamentos (reparo/troca/descarte) e o substituto, quando houver.
+    ordens_manutencao = (
+        OrdemManutencao.objects
+        .filter(item=item, fornecedor=request.fornecedor)
+        .select_related("item_substituto")
+        .prefetch_related("orcamentos")
+        .order_by("-created_at")
+    )
+
     # Histórico de locação (congelável por status) — registro do fornecedor.
     loc_periodos = list(item.locacao_periodos.all()) if item.eh_locado else []
     loc_total = sum((p.valor_acumulado for p in loc_periodos), Decimal("0.00"))
     loc_atual = next((p for p in loc_periodos if p.em_andamento), None)
+
+    # Troca antecipada já em andamento (OS aberta ou rascunho no lote de envio) —
+    # evita o fornecedor mandar um substituto duplicado por engano.
+    troca_pendente = False
+    if item.status == StatusItemChoices.DEFEITO:
+        from services.lote_envio_fornecedor_service import LoteEnvioFornecedorService
+        troca_pendente = LoteEnvioFornecedorService.item_tem_troca_pendente(item)
 
     context = {
         "fornecedor": request.fornecedor,
         "item": item,
         "manutencoes": manutencoes,
         "os_aberta": os_aberta,
+        "ordens_manutencao": ordens_manutencao,
+        "troca_pendente": troca_pendente,
         "loc_periodos": loc_periodos,
         "loc_total": loc_total,
         "loc_atual": loc_atual,
@@ -409,7 +433,11 @@ _FORNECEDOR_ACAO_STATUS = {
     StatusOrdemManutencaoChoices.EM_REPARO,
     StatusOrdemManutencaoChoices.REPARADO,
     StatusOrdemManutencaoChoices.SEM_REPARO,
-    StatusOrdemManutencaoChoices.SEM_CONDICOES,
+    StatusOrdemManutencaoChoices.TROCA_APROVADA,
+    StatusOrdemManutencaoChoices.TROCA_REPROVADA,
+    StatusOrdemManutencaoChoices.TROCA_DANO_REPROVADA,
+    StatusOrdemManutencaoChoices.DESCARTE_AVALIACAO_APROVADA,
+    StatusOrdemManutencaoChoices.DESCARTE_AVALIACAO_REPROVADA,
     StatusOrdemManutencaoChoices.DESCARTE_LOCAL_APROVADO,
     StatusOrdemManutencaoChoices.TROCA_ANT_DEFEITUOSO_ENVIADO,
     StatusOrdemManutencaoChoices.TROCA_ANT_DEFEITUOSO_RECEBIDO,
@@ -487,10 +515,6 @@ def portal_manutencao_list(request):
         if counts.get(s.value, 0)
     ]
 
-    qtd_disponiveis_lote = base.filter(
-        status=StatusOrdemManutencaoChoices.CONCLUIDO, lote_manutencao__isnull=True,
-    ).count()
-
     context = {
         "fornecedor": request.fornecedor,
         "abertas": abertas,
@@ -507,98 +531,8 @@ def portal_manutencao_list(request):
         "f_data_ate": request.GET.get("data_ate", ""),
         "tem_filtro": any([f_nome, f_modelo, f_ns, f_data_de, f_data_ate]),
         "qs_keep": qs_keep,
-        "qtd_disponiveis_lote": qtd_disponiveis_lote,
     }
     return render(request, "front/portal/portal_manutencao_list.html", context)
-
-
-# ─── Lotes de Manutenção (agrupamento de OS's concluídas em um documento) ─────
-
-@fornecedor_required
-def portal_lote_manutencao_criar(request):
-    """Cria um Lote de Manutenção a partir da seleção feita no histórico da
-    tela de Manutenção (checkboxes). Reaplica as mesmas regras de elegibilidade
-    da seleção (concluída, do próprio fornecedor, ainda sem lote) no servidor —
-    nunca confia apenas no que veio marcado no formulário."""
-    if request.method != "POST":
-        return redirect("portal_manutencao_list")
-
-    nome = (request.POST.get("nome") or "").strip()
-    data_lote = _parse_data_filtro(request.POST.get("data")) or timezone.localdate()
-    ids = request.POST.getlist("ordens")
-
-    if not nome:
-        messages.error(request, "Informe um nome para o lote.")
-        return redirect("portal_manutencao_list")
-    if not ids:
-        messages.error(request, "Selecione ao menos uma ordem de manutenção concluída para criar o lote.")
-        return redirect("portal_manutencao_list")
-
-    ordens = list(
-        OrdemManutencao.objects.filter(
-            pk__in=ids,
-            fornecedor=request.fornecedor,
-            status=StatusOrdemManutencaoChoices.CONCLUIDO,
-            lote_manutencao__isnull=True,
-        )
-    )
-    if not ordens:
-        messages.error(
-            request,
-            "As ordens selecionadas não estão mais disponíveis para um lote "
-            "(já concluídas em outro lote, ou o status mudou nesse meio-tempo).",
-        )
-        return redirect("portal_manutencao_list")
-
-    lote = LoteManutencao(nome=nome, data=data_lote, fornecedor=request.fornecedor)
-    lote.criado_por = request.user
-    lote.atualizado_por = request.user
-    lote.save()
-    OrdemManutencao.objects.filter(pk__in=[o.pk for o in ordens]).update(lote_manutencao=lote)
-
-    ignoradas = len(ids) - len(ordens)
-    msg = f'Lote "{lote.nome}" criado com {len(ordens)} ordem(ns).'
-    if ignoradas:
-        msg += f" {ignoradas} selecionada(s) não puderam entrar (fora de elegibilidade nesse meio-tempo)."
-    messages.success(request, msg)
-    return redirect("portal_lote_manutencao_detail", pk=lote.pk)
-
-
-@fornecedor_required
-def portal_lotes_manutencao_list(request):
-    """Lista os Lotes de Manutenção já criados por este fornecedor."""
-    lotes = (
-        LoteManutencao.objects
-        .filter(fornecedor=request.fornecedor)
-        .prefetch_related("ordens")
-        .order_by("-data", "-created_at")
-    )
-    context = {
-        "fornecedor": request.fornecedor,
-        "lotes": lotes,
-        "active_nav": "lotes_manutencao",
-    }
-    return render(request, "front/portal/portal_lotes_manutencao_list.html", context)
-
-
-@fornecedor_required
-def portal_lote_manutencao_detail(request, pk: int):
-    """Documento do lote: cabeçalho (nome, data, valor total) + itemização de
-    cada OS incluída, com o detalhamento que sustenta o custo somado."""
-    lote = get_object_or_404(
-        LoteManutencao.objects.select_related("fornecedor", "criado_por"),
-        pk=pk, fornecedor=request.fornecedor,
-    )
-    ordens = list(lote.ordens.select_related("item").order_by("-finalizada_em"))
-    for o in ordens:
-        o.valor_calc = o.valor_manutencao
-    context = {
-        "fornecedor": request.fornecedor,
-        "lote": lote,
-        "ordens": ordens,
-        "active_nav": "lotes_manutencao",
-    }
-    return render(request, "front/portal/portal_lote_manutencao_detail.html", context)
 
 
 _PORTAL_SEP_TITULOS = {
@@ -663,6 +597,37 @@ def portal_separacao_lote_detail(request, pk: int):
         LoteSeparacao.objects.select_related("fornecedor"),
         pk=pk, fornecedor=request.fornecedor,
     )
+
+    if request.method == "POST" and request.POST.get("acao") == "confirmar_recebimento_lote":
+        from services.ordem_manutencao_service import OrdemManutencaoService
+
+        if lote.tipo != TipoSeparacaoChoices.ENVIO:
+            messages.error(request, "Esta ação só se aplica a remessas de envio.")
+        else:
+            pendentes = list(
+                SeparacaoItem.objects.filter(lote=lote)
+                .select_related("movimentacao_despacho")
+            )
+            confirmados = 0
+            for sep in pendentes:
+                if not sep.movimentacao_despacho_id:
+                    continue
+                ordem = sep.movimentacao_despacho.ordens_manutencao.first()
+                if ordem and ordem.status == StatusOrdemManutencaoChoices.AGUARDANDO_RECEBIMENTO:
+                    try:
+                        OrdemManutencaoService.transicionar(
+                            ordem=ordem, novo_status=StatusOrdemManutencaoChoices.RECEBIDO,
+                            user=request.user, ator="fornecedor",
+                        )
+                        confirmados += 1
+                    except ValidationError:
+                        pass
+            if confirmados:
+                messages.success(request, f"{confirmados} equipamento(s) confirmado(s) como recebido(s).")
+            else:
+                messages.error(request, "Não há itens desta remessa aguardando confirmação de recebimento.")
+        return redirect("portal_separacao_lote_detail", pk=lote.pk)
+
     itens = list(
         lote.itens
         .select_related(
@@ -671,17 +636,21 @@ def portal_separacao_lote_detail(request, pk: int):
         )
         .order_by("-created_at")
     )
+    qtd_aguardando_recebimento = 0
     for i in itens:
         i.info = SeparacaoService.info_equipamento(i)
         i.badge_contrato = SeparacaoService.badge_contrato(i.item)
         i.ordem = None
         if i.movimentacao_despacho_id:
             i.ordem = i.movimentacao_despacho.ordens_manutencao.first()
+        if i.ordem and i.ordem.status == StatusOrdemManutencaoChoices.AGUARDANDO_RECEBIMENTO:
+            qtd_aguardando_recebimento += 1
 
     context = {
         "fornecedor": request.fornecedor,
         "lote": lote,
         "itens": itens,
+        "qtd_aguardando_recebimento": qtd_aguardando_recebimento,
         "titulo": _PORTAL_SEP_TITULOS.get(lote.tipo, "Remessa"),
         "active_nav": "separacao_envio" if lote.tipo == TipoSeparacaoChoices.ENVIO else "separacao_devolucao",
     }
@@ -738,6 +707,48 @@ def portal_manutencao_detail(request, pk: int):
                 messages.success(request, "Nota fiscal excluída.")
             return redirect("portal_manutencao_detail", pk=pk)
 
+        # ── Desfazer o último envio (voltar ao formulário anterior) ─────────
+        # Não é navegação: reverte de verdade o status da OS para o estágio
+        # anterior e apaga a proposta que ainda não foi decidida pelo TI, para
+        # o fornecedor corrigir e reenviar (ex.: digitou o valor errado).
+        if acao == "desfazer":
+            from services.ordem_manutencao_service import OrdemManutencaoService
+
+            try:
+                OrdemManutencaoService.desfazer_ultima_proposta(ordem=ordem, user=request.user)
+                messages.success(request, "Envio desfeito — o formulário anterior foi reaberto para correção.")
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+            return redirect("portal_manutencao_detail", pk=pk)
+
+        # ── Separar o retorno do reparo concluído em um Lote de Envio ────────
+        # (mesmo mecanismo já usado para troca antecipada/equipamento novo —
+        # NF, múltiplos itens, envio em lote. Não é uma transição de status:
+        # a OS só vira DEVOLVIDO quando o lote for de fato enviado.)
+        if acao == "separar_lote":
+            from services.lote_envio_fornecedor_service import LoteEnvioFornecedorService
+
+            lote_id = (request.POST.get("lote_id") or "").strip()
+            try:
+                item_lote = LoteEnvioFornecedorService.adicionar_item_reparo_concluido(
+                    fornecedor=request.fornecedor,
+                    user=request.user,
+                    ordem=ordem,
+                    localidade_devolucao_id=request.POST.get("localidade_devolucao"),
+                    valor_avaliacao_tecnica=request.POST.get("valor_avaliacao_tecnica", ""),
+                    lote_id=(lote_id if lote_id.isdigit() else None),
+                    lote_nome_novo=request.POST.get("lote_nome_novo", ""),
+                )
+                messages.success(
+                    request,
+                    f'Equipamento separado no lote "{item_lote.lote.nome}" — '
+                    f"anexe a NF e envie ao TI quando estiver pronto.",
+                )
+                return redirect("portal_lote_envio_detail", pk=item_lote.lote_id)
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+                return redirect("portal_manutencao_detail", pk=pk)
+
         # ── Transição de status conduzida pelo fornecedor ────────────────────
         from services.ordem_manutencao_service import OrdemManutencaoService
         extra = {
@@ -758,6 +769,7 @@ def portal_manutencao_detail(request, pk: int):
             "valor_conserto": request.POST.get("valor_conserto", ""),
             "valor_total": request.POST.get("valor_total", ""),
             "valor_avaliacao_tecnica": request.POST.get("valor_avaliacao_tecnica", ""),
+            "valor_equipamento_danificado": request.POST.get("valor_equipamento_danificado", ""),
             "tem_garantia": request.POST.get("tem_garantia", ""),
             "garantia_dias": request.POST.get("garantia_dias", ""),
         }
@@ -775,6 +787,9 @@ def portal_manutencao_detail(request, pk: int):
             messages.error(request, "; ".join(exc.messages))
         return redirect("portal_manutencao_detail", pk=pk)
 
+    from services.lote_envio_fornecedor_service import LoteEnvioFornecedorService
+    from services.ordem_manutencao_service import OrdemManutencaoService
+
     eventos = ordem.eventos.select_related("criado_por").all()
     anexos = ordem.anexos.select_related("criado_por").all()
 
@@ -785,6 +800,12 @@ def portal_manutencao_detail(request, pk: int):
         "anexos": anexos,
         "localidades": Localidade.objects.order_by("local"),
         "active_nav": _portal_manutencao_nav(ordem),
+        "pode_separar_lote": LoteEnvioFornecedorService.ordem_elegivel_para_retorno(ordem),
+        "rascunho_lote_atual": LoteEnvioFornecedorService.rascunho_retorno_ativo(ordem),
+        "lotes_abertos": LoteEnvioFornecedorService.lotes_abertos(request.fornecedor),
+        # Desfazer o envio (voltar ao formulário anterior) — só nas propostas
+        # ainda aguardando decisão do TI (ver DESFAZAVEIS no service).
+        "pode_desfazer": OrdemManutencaoService.pode_desfazer(ordem),
     }
     return render(request, "front/portal/portal_manutencao_detail.html", context)
 
@@ -802,17 +823,26 @@ _TROCA_ANT_ABERTAS = [
 
 def _itens_elegiveis_troca(fornecedor):
     """Equipamentos elegíveis para troca antecipada: do fornecedor, com status
-    DEFEITO e sem outra ordem de manutenção aberta."""
+    DEFEITO, sem outra ordem de manutenção aberta e sem rascunho pendente no
+    lote de envio (evita duplicar a troca por engano)."""
+    from ..models import LoteEnvioFornecedorItem, StatusItemLoteEnvioChoices
+
     com_os_aberta = (
         OrdemManutencao.objects
         .filter(fornecedor=fornecedor)
         .exclude(status__in=_OS_ABERTAS_EXCLUI)
         .values_list("item_id", flat=True)
     )
+    com_rascunho = (
+        LoteEnvioFornecedorItem.objects
+        .filter(lote__fornecedor=fornecedor, status=StatusItemLoteEnvioChoices.RASCUNHO)
+        .values_list("item_defeituoso_id", flat=True)
+    )
     return (
         itens_do_fornecedor(fornecedor)
         .filter(status=StatusItemChoices.DEFEITO)
         .exclude(pk__in=list(com_os_aberta))
+        .exclude(pk__in=list(com_rascunho))
         .select_related("subtipo", "localidade")
         .order_by("nome")
     )
@@ -847,15 +877,16 @@ def portal_troca_antecipada_list(request):
 
 @fornecedor_required
 def portal_troca_antecipada_nova(request):
-    """Abre uma troca antecipada: o fornecedor manda um substituto ANTES de o
-    equipamento defeituoso ser enviado, para não deixá-lo parado. Só equipamentos
-    com status DEFEITO. Form: seleciona o item + dados do substituto + data de
-    contrato do equipamento."""
-    from services.ordem_manutencao_service import OrdemManutencaoService
+    """Monta o RASCUNHO de uma troca antecipada dentro do Lote de Envio do
+    fornecedor (a caixinha ao lado do form) — nenhuma OrdemManutencao/Item é
+    criada ainda. O fornecedor só abre a troca de fato (`abrir_troca_antecipada`)
+    quando clicar em "Enviar" no lote (ver `portal_lote_envio_fornecedor.py`).
+    Só equipamentos com status DEFEITO e sem troca já pendente."""
+    from services.lote_envio_fornecedor_service import LoteEnvioFornecedorService
 
     if request.method == "POST":
         item_id = (request.POST.get("item_defeituoso") or "").strip()
-        # Só itens elegíveis (DEFEITO, sem OS aberta) podem ser escolhidos.
+        # Só itens elegíveis (DEFEITO, sem OS aberta e sem rascunho) podem ser escolhidos.
         item = (
             _itens_elegiveis_troca(request.fornecedor).filter(pk=item_id).first()
             if item_id.isdigit() else None
@@ -863,27 +894,46 @@ def portal_troca_antecipada_nova(request):
         if item is None:
             messages.error(request, "Selecione um equipamento válido (com status Defeito) para substituir.")
         else:
+            lote_id = (request.POST.get("lote_id") or "").strip()
             try:
-                ordem = OrdemManutencaoService.abrir_troca_antecipada(
-                    item_defeituoso=item,
+                item_lote = LoteEnvioFornecedorService.adicionar_item_troca_antecipada(
                     fornecedor=request.fornecedor,
                     user=request.user,
+                    item_defeituoso=item,
                     sub_modelo=request.POST.get("sub_modelo", ""),
                     sub_serie=request.POST.get("sub_serie", ""),
                     sub_marca=request.POST.get("sub_marca", ""),
                     sub_data_contrato=request.POST.get("sub_data_contrato", ""),
+                    lote_id=(lote_id if lote_id.isdigit() else None),
+                    lote_nome_novo=request.POST.get("lote_nome_novo", ""),
                 )
                 messages.success(
                     request,
-                    f"Troca antecipada aberta (OS #{ordem.pk}). Substituto a caminho da fazenda.",
+                    f"\"{item.nome}\" adicionado ao lote de envio. Quando quiser, envie o item ou o lote inteiro ao TI.",
                 )
-                return redirect("portal_manutencao_detail", pk=ordem.pk)
+                lote_origem = (request.GET.get("lote") or "").strip()
+                if lote_origem.isdigit():
+                    return redirect("portal_lote_envio_detail", pk=item_lote.lote_id)
+                return redirect("portal_troca_antecipada_nova")
             except ValidationError as exc:
                 messages.error(request, "; ".join(exc.messages))
 
+    lote_preselect_id = (request.GET.get("lote") or "").strip()
+    lote_preselect = None
+    if lote_preselect_id.isdigit():
+        lote_preselect = (
+            LoteEnvioFornecedor.objects
+            .filter(pk=lote_preselect_id, fornecedor=request.fornecedor, status=StatusLoteEnvioFornecedorChoices.ABERTO)
+            .first()
+        )
+    lotes_abertos = list(
+        LoteEnvioFornecedorService.lotes_abertos(request.fornecedor).prefetch_related("itens", "anexos")
+    )
     context = {
         "fornecedor": request.fornecedor,
         "itens": _itens_elegiveis_troca(request.fornecedor),
+        "lotes_abertos": lotes_abertos,
+        "lote_preselect": lote_preselect,
         "active_nav": "troca_antecipada",
     }
     return render(request, "front/portal/portal_troca_antecipada_nova.html", context)
@@ -899,6 +949,17 @@ def portal_ajuda(request):
         "active_nav": "ajuda",
     }
     return render(request, "front/portal/portal_ajuda.html", context)
+
+
+@fornecedor_required
+def portal_ajuda_diagrama(request):
+    """Diagrama de casos de uso do módulo de Manutenção — todos os processos,
+    atores (Fornecedor/TI) e decisões, espelhando OrdemManutencaoService."""
+    context = {
+        "fornecedor": request.fornecedor,
+        "active_nav": "ajuda",
+    }
+    return render(request, "front/portal/portal_ajuda_diagrama.html", context)
 
 
 # ─── Notificações do fornecedor (sino do Portal) ──────────────────────────────

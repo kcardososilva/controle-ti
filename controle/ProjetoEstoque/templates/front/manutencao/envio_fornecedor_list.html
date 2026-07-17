@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block title %}Lotes de Envio (Fornecedor){% endblock %}
+{% block page_title %}Lotes de Envio (Fornecedor){% endblock %}
+{% block page_subtitle %}Trocas antecipadas, cadastro de equipamento novo e retorno de reparos enviados pelos fornecedores no Portal{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'manutencao_recebimentos' %}">Manutenção</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Lotes de Envio</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'manutencao_recebimentos' %}" class="btn btn-sm"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Recebimentos</a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+:where(.ef-page) { display: grid; gap: 1.1rem; }
+.ef-page .select2-container { width: 100% !important; }
+.ef-page .select2-container--default .select2-selection--single {
+  min-height: 2.4rem; height: 2.4rem; border-radius: var(--radius-sm);
+  border: 1px solid var(--separator-non-opaque); background: var(--bg-elevated);
+}
+.ef-page .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 2.3rem; color: var(--text-primary); }
+.ef-page .select2-container--default .select2-selection--single .select2-selection__arrow { height: 2.3rem; }
+
+.ef-form { display: flex; align-items: flex-end; gap: .7rem; flex-wrap: wrap; padding: 1rem 1.1rem;
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.ef-field { display: flex; flex-direction: column; gap: .35rem; min-width: 14rem; }
+.ef-field label { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-tertiary); }
+
+.ef-grid { display: grid; gap: .8rem; }
+.ef-card {
+  display: block; text-decoration: none; color: inherit; padding: 1.1rem 1.2rem; border-radius: var(--radius-lg);
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-xs);
+  transition: transform .16s, box-shadow .16s, border-color .16s;
+}
+.ef-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--brand) 24%, var(--separator-hairline)); }
+.ef-top { display: flex; align-items: center; gap: .9rem; }
+.ef-ic { width: 2.6rem; height: 2.6rem; flex: 0 0 2.6rem; display: grid; place-items: center; border-radius: .8rem; background: var(--bg-fill-tertiary); color: var(--text-secondary); font-size: 1rem; }
+.ef-info { min-width: 0; flex: 1; }
+.ef-name { font-weight: 700; letter-spacing: -.01em; font-size: 1rem; }
+.ef-meta { color: var(--text-tertiary); font-size: .8rem; margin-top: .18rem; }
+.ef-right { display: flex; align-items: center; gap: 1rem; flex: 0 0 auto; }
+.ef-status { font-size: .72rem; font-weight: 700; padding: .28rem .65rem; border-radius: 999px; white-space: nowrap; }
+.ef-status--enviado { background: var(--success-soft); color: var(--success); }
+.ef-status--cancelado { background: var(--bg-fill-tertiary); color: var(--text-tertiary); }
+.ef-arrow { color: var(--text-quaternary); font-size: .8rem; }
+
+.ef-empty { display: grid; place-items: center; gap: .6rem; padding: 3rem 1rem; text-align: center; color: var(--text-tertiary);
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg); }
+.ef-empty i { font-size: 1.5rem; color: var(--text-quaternary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ef-page">
+
+  <form method="get" class="ef-form">
+    <div class="ef-field">
+      <label for="fornecedor">Fornecedor</label>
+      <select id="fornecedor" name="fornecedor" class="ef-select2">
+        <option value="">Todos</option>
+        {% for f in fornecedores %}<option value="{{ f.id }}" {% if f_fornecedor == f.id|stringformat:'s' %}selected{% endif %}>{{ f.nome }}</option>{% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-filter" aria-hidden="true"></i> Filtrar</button>
+    {% if tem_filtro %}<a href="{% url 'envio_fornecedor_list' %}" class="btn btn-sm">Limpar</a>{% endif %}
+  </form>
+
+  {% if lotes %}
+  <div class="ef-grid">
+    {% for l in lotes %}
+    <a class="ef-card" href="{% url 'envio_fornecedor_detail' l.pk %}">
+      <div class="ef-top">
+        <span class="ef-ic"><i class="fa-solid fa-dolly" aria-hidden="true"></i></span>
+        <span class="ef-info">
+          <div class="ef-name">{{ l.nome }}</div>
+          <div class="ef-meta">{{ l.fornecedor.nome }} · {{ l.quantidade_itens }} ite{{ l.quantidade_itens|pluralize:"m,ns" }} · enviado em {{ l.enviado_em|date:"d/m/Y H:i"|default:"—" }}</div>
+        </span>
+        <span class="ef-right">
+          <span class="ef-status ef-status--{{ l.status }}">{{ l.get_status_display }}</span>
+          <i class="fa-solid fa-chevron-right ef-arrow" aria-hidden="true"></i>
+        </span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="ef-empty">
+    <i class="fa-solid fa-dolly" aria-hidden="true"></i>
+    <p>{% if tem_filtro %}Nenhum lote encontrado para o filtro aplicado.{% else %}Nenhum lote de envio recebido ainda.{% endif %}</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+  $(function () { $('.ef-select2').select2({ width: '100%', placeholder: 'Todos' }); });
+</script>
+{% endblock %}

@@ -141,9 +141,9 @@ a.mr-metric:hover { background: var(--bg-hover); }
 .mr-osc::before { content: ""; width: .42rem; height: .42rem; border-radius: 50%; background: currentColor; }
 .mr-osc--aguardando_recebimento, .mr-osc--cancelado, .mr-osc--descartado { --c: var(--text-tertiary); }
 .mr-osc--recebido, .mr-osc--em_avaliacao, .mr-osc--reparado, .mr-osc--devolvido, .mr-osc--devolvido_descarte, .mr-osc--descarte_local_aprovado, .mr-osc--troca_ant_def_enviado, .mr-osc--troca_ant_def_recebido { --c: var(--brand); }
-.mr-osc--aguardando_aprovacao, .mr-osc--em_reparo, .mr-osc--substituto_enviado, .mr-osc--descarte_local_solicitado, .mr-osc--troca_ant_sub_enviado, .mr-osc--troca_ant_sub_recebido { --c: var(--warning); }
-.mr-osc--aprovado, .mr-osc--concluido { --c: var(--success); }
-.mr-osc--reprovado, .mr-osc--sem_reparo, .mr-osc--sem_condicoes { --c: var(--danger); }
+.mr-osc--aguardando_aprovacao, .mr-osc--em_reparo, .mr-osc--substituto_enviado, .mr-osc--descarte_local_solicitado, .mr-osc--troca_ant_sub_enviado, .mr-osc--troca_ant_sub_recebido, .mr-osc--troca_ant_aguardando_aprovacao { --c: var(--warning); }
+.mr-osc--aprovado, .mr-osc--concluido, .mr-osc--troca_ant_aprovado, .mr-osc--troca_aprovada, .mr-osc--troca_dano_aprovada, .mr-osc--descarte_avaliacao_aprovada { --c: var(--success); }
+.mr-osc--reprovado, .mr-osc--sem_reparo, .mr-osc--sem_condicoes, .mr-osc--troca_ant_reprovado, .mr-osc--troca_reprovada, .mr-osc--troca_dano_reprovada, .mr-osc--descarte_avaliacao_reprovada { --c: var(--danger); }
 
 /* ---- Vazio / paginação ---- */
 .mr-empty { text-align: center; padding: 2.4rem 1rem; color: var(--text-tertiary); }
@@ -205,7 +205,8 @@ a.mr-metric:hover { background: var(--bg-hover); }
             {% elif o.status == 'troca_ant_sub_enviado' %}<i class="fa-solid fa-truck-ramp-box" aria-hidden="true"></i>
             {% elif o.status == 'troca_ant_sub_recebido' %}<i class="fa-solid fa-truck-fast" aria-hidden="true"></i>
             {% elif o.status == 'descarte_local_solicitado' %}<i class="fa-solid fa-trash-arrow-up" aria-hidden="true"></i>
-            {% elif o.status == 'aguardando_aprovacao' %}<i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i>
+            {% elif o.status == 'aguardando_aprovacao' or o.status == 'troca_aguardando_aprovacao' or o.status == 'substituto_enviado' %}<i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i>
+            {% elif o.status == 'sem_condicoes' %}<i class="fa-solid fa-dumpster" aria-hidden="true"></i>
             {% else %}<i class="fa-solid fa-right-left" aria-hidden="true"></i>{% endif %}
           </div>
           <div style="min-width:0;">
@@ -221,6 +222,9 @@ a.mr-metric:hover { background: var(--bg-hover); }
           {% elif o.status == 'troca_ant_sub_recebido' %}<span class="mr-tag sub">Troca antecipada — enviar o defeituoso</span>
           {% elif o.status == 'descarte_local_solicitado' %}<span class="mr-tag local">Descarte local — aprovar</span>
           {% elif o.status == 'aguardando_aprovacao' %}<span class="mr-tag sub">Aguardando sua aprovação</span>
+          {% elif o.status == 'troca_aguardando_aprovacao' %}<span class="mr-tag sub">Contrato da troca — aguardando sua aprovação</span>
+          {% elif o.status == 'sem_condicoes' %}<span class="mr-tag local">Avaliação de descarte — aprovar</span>
+          {% elif o.status == 'substituto_enviado' %}<span class="mr-tag sub">Cobrança pelo dano — aguardando sua aprovação</span>
           {% else %}<span class="mr-tag sub">Substituto enviado</span>{% endif %}
         </div>
 
@@ -230,6 +234,7 @@ a.mr-metric:hover { background: var(--bg-hover); }
           {% if o.item_substituto.numero_serie %} · Série {{ o.item_substituto.numero_serie }}{% endif %}
           {% if o.item_substituto.marca or o.item_substituto.modelo %} · {{ o.item_substituto.marca|default:'' }} {{ o.item_substituto.modelo|default:'' }}{% endif %}
           <br><b>Contrato:</b> {{ o.substituto_contrato|default:'—' }} · <b>Valor:</b> R$ {{ o.substituto_valor|default:'—' }} · <b>Data:</b> {{ o.substituto_data|date:"d/m/Y"|default:'—' }} · <b>Regime:</b> {% if o.substituto_locado == 'sim' %}Locação{% else %}Compra{% endif %}{% if o.substituto_locado == 'sim' and o.substituto_tempo_meses %} · <b>Contrato:</b> {{ o.substituto_tempo_meses }} {{ o.substituto_tempo_meses|pluralize:"mês,meses" }}{% endif %}
+          {% if o.valor_avaliacao_tecnica %}<br><b>Cobrança pelo equipamento danificado:</b> R$ {{ o.valor_avaliacao_tecnica }}{% endif %}
         </div>
         {% endif %}
         {% if o.status == 'troca_ant_sub_enviado' or o.status == 'troca_ant_sub_recebido' %}
@@ -252,11 +257,31 @@ a.mr-metric:hover { background: var(--bg-hover); }
           {% if o.diagnostico %} <b>Motivo:</b> {{ o.diagnostico }}.{% endif %}
           {% if o.valor_avaliacao_tecnica %} <b>Valor informado:</b> R$ {{ o.valor_avaliacao_tecnica }}.{% endif %}
         </div>
+        {% elif o.status == 'sem_condicoes' %}
+        <div class="mr-sub-box">
+          <i class="fa-solid fa-dumpster" aria-hidden="true"></i> <b>Sem condições de reparo — avaliação para descarte.</b>
+          {% if o.diagnostico %} <b>Motivo:</b> {{ o.diagnostico }}.{% endif %}
+          {% if o.valor_avaliacao_tecnica %} <b>Valor proposto:</b> R$ {{ o.valor_avaliacao_tecnica }}.{% endif %}
+        </div>
+        {% elif o.status == 'troca_aguardando_aprovacao' %}
+        <div class="mr-sub-box">
+          <i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> <b>Sem conserto — contrato do substituto proposto.</b>
+          <b>Valor:</b> R$ {{ o.substituto_valor|default:'—' }} · <b>Regime:</b> {% if o.substituto_locado == 'sim' %}Locação{% else %}Compra{% endif %}
+          {% if o.diagnostico %} · <b>Diagnóstico:</b> {{ o.diagnostico }}{% endif %}
+        </div>
         {% elif o.diagnostico %}<div class="mr-sub-box"><i class="fa-solid fa-stethoscope" aria-hidden="true"></i> <b>Diagnóstico:</b> {{ o.diagnostico }}</div>{% endif %}
 
         {% if o.status == 'aguardando_aprovacao' %}
         <div class="mr-form">
           <a href="{% url 'manutencao_recebimento_detail' o.pk %}" class="btn-primary"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Analisar orçamento</a>
+        </div>
+        {% elif o.status == 'troca_aguardando_aprovacao' %}
+        <div class="mr-form">
+          <a href="{% url 'manutencao_recebimento_detail' o.pk %}" class="btn-primary"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Analisar contrato da troca</a>
+        </div>
+        {% elif o.status == 'sem_condicoes' %}
+        <div class="mr-form">
+          <a href="{% url 'manutencao_recebimento_detail' o.pk %}" class="btn-primary"><i class="fa-solid fa-dumpster" aria-hidden="true"></i> Analisar avaliação de descarte</a>
         </div>
         {% elif o.status == 'descarte_local_solicitado' %}
         <div class="mr-form">
@@ -269,6 +294,10 @@ a.mr-metric:hover { background: var(--bg-hover); }
         {% elif o.status == 'troca_ant_sub_recebido' %}
         <div class="mr-form">
           <a href="{% url 'manutencao_recebimento_detail' o.pk %}" class="btn-primary"><i class="fa-solid fa-truck-fast" aria-hidden="true"></i> Enviar defeituoso</a>
+        </div>
+        {% elif o.status == 'substituto_enviado' %}
+        <div class="mr-form">
+          <a href="{% url 'manutencao_recebimento_detail' o.pk %}" class="btn-primary"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Analisar cobrança pelo dano</a>
         </div>
         {% else %}
         <form method="post" action="{% url 'manutencao_recebimento_acao' o.pk %}" class="mr-form"{% if o.status == 'devolvido_descarte' %} onsubmit="return confirm('Confirmar o recebimento e armazenar este equipamento para descarte? Esta ação encerra a ordem.');"{% endif %}>

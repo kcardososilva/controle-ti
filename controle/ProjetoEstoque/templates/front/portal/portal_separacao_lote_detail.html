@@ -5,9 +5,19 @@
 {% block page_subtitle %}{{ titulo }}{% endblock %}
 
 {% block header_actions %}
-  <a href="{% if lote.tipo == 'envio' %}{% url 'portal_separacao_envio_list' %}{% else %}{% url 'portal_separacao_devolucao_list' %}{% endif %}" class="pf-btn">
+  <a href="{% if lote.tipo == 'envio' %}{% url 'portal_separacao_envio_list' %}{% else %}{% url 'portal_separacao_devolucao_list' %}{% endif %}" class="pf-btn" data-voltar>
     <i class="fa-solid fa-arrow-left"></i> Voltar
   </a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="pf-breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'portal_home' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Painel</a>
+  <i class="fa-solid fa-chevron-right pf-crumb-sep" aria-hidden="true"></i>
+  <a href="{% if lote.tipo == 'envio' %}{% url 'portal_separacao_envio_list' %}{% else %}{% url 'portal_separacao_devolucao_list' %}{% endif %}">{{ titulo }}</a>
+  <i class="fa-solid fa-chevron-right pf-crumb-sep" aria-hidden="true"></i>
+  <span class="pf-crumb-current" aria-current="page">{{ lote.nome }}</span>
+</nav>
 {% endblock %}
 
 {% block extra_css %}
@@ -36,6 +46,9 @@
   .pf-sepd .pf-item-os { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; padding-top: .5rem; border-top: 1px solid var(--separator-hairline); }
   .pf-sepd .pf-item-os-link { font-size: .78rem; font-weight: 700; color: var(--brand); }
   .pf-sepd .pf-empty-hint { color: var(--text-tertiary); font-size: .86rem; }
+  .pf-sepd .pf-actions-bar { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; padding: 1rem 1.2rem;
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+  .pf-sepd .pf-actions-bar-hint { font-size: .78rem; color: var(--text-tertiary); flex-basis: 100%; }
 </style>
 {% endblock %}
 
@@ -63,6 +76,15 @@
       <div class="pf-doc-item-v">{{ lote.created_at|date:"d/m/Y H:i" }}</div>
     </div>
   </div>
+
+  {% if qtd_aguardando_recebimento %}
+  <form method="post" class="pf-actions-bar" onsubmit="return confirm('Confirmar o recebimento de todos os equipamentos desta remessa que ainda estão aguardando confirmação?');">
+    {% csrf_token %}
+    <input type="hidden" name="acao" value="confirmar_recebimento_lote">
+    <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-check-double"></i> Confirmar recebimento de todos os itens</button>
+    <span class="pf-actions-bar-hint">{{ qtd_aguardando_recebimento }} equipamento(s) desta remessa aguardando a sua confirmação de recebimento.</span>
+  </form>
+  {% endif %}
 
   <div class="pf-sec-title">Itens do lote</div>
   <div class="pf-itens">

@@ -11,7 +11,8 @@ from .models import (
     StatusItemChoices, TipoMovimentacaoChoices, TipoTransferenciaChoices,
     LocalidadeChoices, CheckListModelo, CheckListPergunta, Preventiva,
     TipoRespostaChoices, SimNaoChoices, Licenca, MovimentacaoLicenca,
-    TipoMovLicencaChoices, LicencaLote, LoteEstoque, ItemLote, PlantaProjeto
+    TipoMovLicencaChoices, LicencaLote, LoteEstoque, ItemLote, PlantaProjeto,
+    OrdemManutencao, StatusOrdemManutencaoChoices,
 )
 
 BASE_CTRL_CSS = {
@@ -405,6 +406,24 @@ class ItemForm(forms.ModelForm):
             cleaned["data_compra"] = None
             cleaned["numero_pedido"] = None
 
+        # Enquanto o equipamento está em manutenção (status=MANUTENCAO, seja via
+        # OS do Portal do Fornecedor ou via Ciclo de Manutenção interno), o
+        # status não pode ser alterado manualmente por aqui — só pelo fluxo de
+        # retorno legítimo (conclusão da OS ou encerramento do Ciclo), que já
+        # grava o novo status diretamente e não passa por este form.
+        if (
+            self.instance
+            and self.instance.pk
+            and self.instance.status == StatusItemChoices.MANUTENCAO
+            and cleaned.get("status") != StatusItemChoices.MANUTENCAO
+        ):
+            self.add_error(
+                "status",
+                "Este equipamento está em manutenção — o status não pode ser "
+                "alterado manualmente. Conclua a Ordem de Manutenção ou encerre "
+                "o Ciclo de Manutenção para liberá-lo.",
+            )
+
         return cleaned
 
 
@@ -664,6 +683,52 @@ class MovimentacaoItemForm(forms.ModelForm):
 
         return f"NF {lote.numero_nf} | Saldo: {saldo} | CC: {centro_custo} | {lote.data_entrada:%d/%m/%Y}"
 
+    def _checar_manutencao_duplicada(self, item):
+        """Bloqueia reenviar um item que já está em manutenção — evita
+        duplicidade quando o item já está fisicamente parado (com o
+        fornecedor, via OS do Portal, OU internamente, via Ciclo de
+        Manutenção — dois mecanismos independentes que levam ao mesmo
+        `status=MANUTENCAO`; checar o status cobre os dois)."""
+        if not item:
+            return
+        if item.status != StatusItemChoices.MANUTENCAO:
+            return
+        from services.ordem_manutencao_service import OrdemManutencaoService
+        ordem_aberta = OrdemManutencaoService.ordem_aberta(item)
+        # Erro não-vinculado ao campo "item" (None em vez de "item"): usar
+        # add_error("item", ...) removeria "item" de cleaned_data, e o
+        # model.clean() de MovimentacaoItem re-adicionaria um "Selecione o
+        # item." confuso por cima desta mensagem (item_id ficaria vazio na
+        # instância construída pelo ModelForm).
+        if ordem_aberta:
+            self.add_error(
+                None,
+                f'O equipamento "{item.nome}" já está em manutenção externa '
+                f"(OS #{ordem_aberta.pk} — {ordem_aberta.get_status_display()}). "
+                "Não é possível enviá-lo novamente enquanto essa ordem estiver aberta.",
+            )
+        else:
+            self.add_error(
+                None,
+                f'O equipamento "{item.nome}" já está em manutenção (ciclo interno '
+                "em andamento). Encerre o ciclo atual antes de enviá-lo novamente.",
+            )
+
+    def _checar_item_bloqueado_por_manutencao(self, item, tipo):
+        """Uma vez em manutenção (status=MANUTENCAO), o item está fisicamente
+        fora de uso — nenhuma outra movimentação que mexa em status/posse
+        (entrega/devolução, transferência de equipamento, devolução de
+        locação) faz sentido até ele voltar pelo fluxo de retorno legítimo
+        (conclusão da OS ou encerramento do Ciclo)."""
+        if not item or item.status != StatusItemChoices.MANUTENCAO:
+            return
+        self.add_error(
+            None,
+            f'O equipamento "{item.nome}" está em manutenção e não pode ser '
+            "movimentado até retornar (conclua a Ordem de Manutenção ou encerre "
+            "o Ciclo de Manutenção correspondente).",
+        )
+
     def clean(self):
         cleaned = super().clean()
 
@@ -724,6 +789,7 @@ class MovimentacaoItemForm(forms.ModelForm):
                 self.add_error("observacao", "Justifique a baixa nas observações.")
 
         elif tipo == "transferencia":
+            self._checar_item_bloqueado_por_manutencao(item, tipo)
             acao = cleaned.get("tipo_transferencia")
 
             if not acao:
@@ -756,6 +822,7 @@ class MovimentacaoItemForm(forms.ModelForm):
                     )
 
         elif tipo == "transferencia_equipamento":
+            self._checar_item_bloqueado_por_manutencao(item, tipo)
             if not cleaned.get("localidade_destino"):
                 self.add_error("localidade_destino", "Informe a nova localidade.")
 
@@ -767,6 +834,9 @@ class MovimentacaoItemForm(forms.ModelForm):
         elif tipo == "envio_manutencao":
             if not cleaned.get("observacao"):
                 self.add_error("observacao", "Descreva o problema nas observações.")
+            if not cleaned.get("fornecedor_manutencao"):
+                self.add_error("fornecedor_manutencao", "Informe o fornecedor para onde o equipamento será enviado.")
+            self._checar_manutencao_duplicada(item)
 
         elif tipo in ("retorno_manutencao", "retorno"):
             if not cleaned.get("localidade_destino"):
@@ -775,8 +845,11 @@ class MovimentacaoItemForm(forms.ModelForm):
         elif tipo in ("separacao_envio", "separacao_devolucao"):
             if not cleaned.get("fornecedor_manutencao"):
                 self.add_error("fornecedor_manutencao", "Informe o fornecedor de destino da separação.")
+            if tipo == "separacao_envio":
+                self._checar_manutencao_duplicada(item)
 
         elif tipo == "devolucao_locacao":
+            self._checar_item_bloqueado_por_manutencao(item, tipo)
             if not cleaned.get("fornecedor_manutencao"):
                 self.add_error("fornecedor_manutencao", "Informe o fornecedor (locadora) de destino.")
 

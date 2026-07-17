@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator
 from django.db.models import Q
-from ..models import Localidade, LocalidadeChoices, Item, Usuario
+from ..models import Localidade, LocalidadeChoices, Item, Usuario, PlantaProjeto
 from ..forms import LocalidadeForm
 
 
@@ -71,6 +71,24 @@ def localidade_update(request, pk):
 def localidade_delete(request, pk):
     obj = get_object_or_404(Localidade, pk=pk)
     if request.method == "POST":
+        itens_count = Item.objects.filter(localidade=obj).count()
+        usuarios_count = Usuario.objects.filter(localidade=obj).count()
+        plantas_count = PlantaProjeto.objects.filter(localidade=obj).count()
+        if itens_count or usuarios_count or plantas_count:
+            partes = []
+            if itens_count:
+                partes.append(f"{itens_count} equipamento(s)")
+            if usuarios_count:
+                partes.append(f"{usuarios_count} colaborador(es)")
+            if plantas_count:
+                partes.append(f"{plantas_count} planta(s) de infraestrutura")
+            messages.error(
+                request,
+                f"Não é possível excluir a localidade '{obj.local}': há "
+                f"{', '.join(partes)} vinculados a ela. Transfira-os para outra "
+                "localidade antes de excluir."
+            )
+            return redirect("localidade_list")
         nome = obj.local
         obj.delete()
         messages.success(request, f"Localidade '{nome}' excluída.")

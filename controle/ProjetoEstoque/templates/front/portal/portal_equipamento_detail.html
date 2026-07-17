@@ -5,7 +5,17 @@
 {% block page_subtitle %}Ficha do equipamento{% endblock %}
 
 {% block header_actions %}
-  <a href="{% url 'portal_equipamentos_list' %}" class="pf-btn"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+  <a href="{% url 'portal_equipamentos_list' %}" class="pf-btn" data-voltar><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="pf-breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'portal_home' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Painel</a>
+  <i class="fa-solid fa-chevron-right pf-crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'portal_equipamentos_list' %}">Equipamentos</a>
+  <i class="fa-solid fa-chevron-right pf-crumb-sep" aria-hidden="true"></i>
+  <span class="pf-crumb-current" aria-current="page">{{ item.nome }}</span>
+</nav>
 {% endblock %}
 
 {% block extra_css %}
@@ -20,8 +30,37 @@
     width: 3rem; height: 3rem; flex: 0 0 3rem; display: grid; place-items: center; border-radius: var(--radius-md);
     background: var(--brand-soft); color: var(--brand); font-size: 1.2rem;
   }
-  .pf-det .pf-det-h-name { font-size: 1.2rem; font-weight: 850; letter-spacing: -.03em; }
+  .pf-det .pf-det-h-name { font-size: 1.15rem; font-weight: 700; letter-spacing: -.02em; }
   .pf-det .pf-det-h-sub { color: var(--text-tertiary); font-size: .84rem; margin-top: .15rem; }
+
+  /* Banner de aviso (OS aberta / troca pendente) */
+  .pf-det .pf-banner {
+    display: flex; align-items: center; gap: 1rem; padding: .9rem 1.1rem; border-radius: var(--radius-md);
+    background: var(--warning-soft); border: 1px solid color-mix(in srgb, var(--warning) 22%, transparent); color: inherit;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  a.pf-banner:hover { border-color: color-mix(in srgb, var(--warning) 40%, transparent); box-shadow: var(--shadow-sm); }
+  .pf-det .pf-banner-ic {
+    width: 2.4rem; height: 2.4rem; flex: 0 0 2.4rem; display: grid; place-items: center;
+    border-radius: 8px; background: var(--warning); color: #fff; font-size: .95rem;
+  }
+  .pf-det .pf-banner-body { flex: 1; min-width: 0; }
+  .pf-det .pf-banner-title { display: block; font-weight: 700; font-size: .9rem; }
+  .pf-det .pf-banner-sub { display: block; color: var(--text-secondary); font-size: .82rem; margin-top: .1rem; }
+
+  /* Locação */
+  .pf-det .pf-loc-total { font-weight: 700; font-size: 1rem; }
+  .pf-det .pf-loc-sub { color: var(--text-tertiary); font-size: .82rem; margin-top: .15rem; }
+  .pf-det .pf-loc-table-wrap { margin-top: .9rem; overflow-x: auto; }
+  .pf-det .pf-loc-table { width: 100%; border-collapse: collapse; min-width: 30rem; font-size: .84rem; }
+  .pf-det .pf-loc-table th {
+    text-align: left; color: var(--text-tertiary); font-size: .68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; padding: .5rem .6rem; border-bottom: 1px solid var(--separator-hairline);
+  }
+  .pf-det .pf-loc-table td { padding: .5rem .6rem; border-bottom: 1px solid var(--separator-hairline); }
+  .pf-det .pf-loc-table tr:last-child td { border-bottom: 0; }
+  .pf-det .pf-loc-table td.is-strong { font-weight: 700; }
+  .pf-det .pf-loc-em-andamento { color: var(--success); font-weight: 700; }
 
   .pf-det .pf-specs { display: grid; gap: 0; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); }
   .pf-det .pf-spec { padding: .9rem 1.1rem; border-top: 1px solid var(--separator-hairline); }
@@ -59,21 +98,32 @@
       </div>
     </div>
     <span class="pf-chip pf-chip--{{ item.status }}">{{ item.get_status_display }}</span>
+    {% if troca_pendente %}
+    <span class="pf-chip pf-chip--manutencao" title="Já existe uma troca antecipada em andamento (ou em rascunho) para este equipamento.">
+      <i class="fa-solid fa-right-left"></i> Troca antecipada em andamento
+    </span>
+    {% endif %}
   </div>
 
   {% if os_aberta %}
-  <a href="{% url 'portal_manutencao_detail' os_aberta.pk %}"
-     style="display:flex; align-items:center; gap:1rem; padding:1rem 1.2rem; border-radius:var(--radius-lg);
-            background:var(--warning-soft); border:1px solid color-mix(in srgb, var(--warning) 22%, transparent); color:inherit;">
-    <span style="width:2.6rem; height:2.6rem; flex:0 0 2.6rem; display:grid; place-items:center; border-radius:.7rem; background:var(--warning); color:#fff;">
-      <i class="fa-solid fa-screwdriver-wrench"></i>
-    </span>
-    <span style="flex:1; min-width:0;">
-      <span style="display:block; font-weight:800;">Manutenção em andamento — OS #{{ os_aberta.pk }}</span>
-      <span style="display:block; color:var(--text-secondary); font-size:.84rem;">{{ os_aberta.get_status_display }} · clique para gerenciar</span>
+  <a href="{% url 'portal_manutencao_detail' os_aberta.pk %}" class="pf-banner">
+    <span class="pf-banner-ic"><i class="fa-solid fa-screwdriver-wrench"></i></span>
+    <span class="pf-banner-body">
+      <span class="pf-banner-title">
+        {% if os_aberta.troca_antecipada %}Troca antecipada em andamento{% else %}Manutenção em andamento{% endif %} — OS #{{ os_aberta.pk }}
+      </span>
+      <span class="pf-banner-sub">{{ os_aberta.get_status_display }} · clique para gerenciar</span>
     </span>
     <span class="pf-btn"><i class="fa-solid fa-arrow-right"></i> Gerenciar</span>
   </a>
+  {% elif troca_pendente %}
+  <div class="pf-banner">
+    <span class="pf-banner-ic"><i class="fa-solid fa-truck-ramp-box"></i></span>
+    <span class="pf-banner-body">
+      <span class="pf-banner-title">Troca antecipada em rascunho</span>
+      <span class="pf-banner-sub">Este equipamento já está em um lote de envio aguardando o clique de "Enviar" — não é necessário criar outra troca.</span>
+    </span>
+  </div>
   {% endif %}
 
   <div class="pf-card">
@@ -92,12 +142,12 @@
   <div class="pf-card" style="margin-top:.5rem; padding:1.1rem 1.2rem;">
     <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
       <div style="flex:1; min-width:0;">
-        <div style="font-weight:800; font-size:1.05rem;">Total acumulado: R$ {{ loc_total|floatformat:2 }}</div>
-        <div style="color:var(--text-tertiary); font-size:.82rem; margin-top:.15rem;">
+        <div class="pf-loc-total">Total acumulado: R$ {{ loc_total|floatformat:2 }}</div>
+        <div class="pf-loc-sub">
           {% if loc_congelado %}
             <i class="fa-solid fa-snowflake" style="color:#5856d6;"></i> Aluguel congelado (equipamento {{ item.get_status_display|lower }}). A contagem está pausada.
           {% elif loc_atual %}
-            <i class="fa-solid fa-circle-play" style="color:#34c759;"></i> Contando desde {{ loc_atual.data_inicio|date:"d/m/Y" }} · {{ loc_atual.meses }} mês{{ loc_atual.meses|pluralize:"es" }} · R$ {{ loc_atual.valor_mensal|default:'0'|floatformat:2 }}/mês
+            <i class="fa-solid fa-circle-play" style="color:var(--success);"></i> Contando desde {{ loc_atual.data_inicio|date:"d/m/Y" }} · {{ loc_atual.meses }} mês{{ loc_atual.meses|pluralize:"es" }} · R$ {{ loc_atual.valor_mensal|default:'0'|floatformat:2 }}/mês
           {% else %}
             Sem período de cobrança ativo.
           {% endif %}
@@ -107,31 +157,62 @@
     </div>
 
     {% if loc_periodos %}
-    <div style="margin-top:1rem; overflow-x:auto;">
-      <table style="width:100%; border-collapse:collapse; min-width:30rem;">
+    <div class="pf-loc-table-wrap">
+      <table class="pf-loc-table">
         <thead>
-          <tr style="text-align:left; color:var(--text-tertiary); font-size:.7rem; text-transform:uppercase; letter-spacing:.04em;">
-            <th style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">Início</th>
-            <th style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">Fim</th>
-            <th style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">Meses</th>
-            <th style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">R$/mês</th>
-            <th style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">Acumulado</th>
+          <tr>
+            <th>Início</th>
+            <th>Fim</th>
+            <th>Meses</th>
+            <th>R$/mês</th>
+            <th>Acumulado</th>
           </tr>
         </thead>
         <tbody>
           {% for p in loc_periodos %}
-          <tr style="font-size:.85rem;">
-            <td style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">{{ p.data_inicio|date:"d/m/Y" }}</td>
-            <td style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">{% if p.data_fim %}{{ p.data_fim|date:"d/m/Y" }}{% else %}<span style="color:#34c759; font-weight:700;">em andamento</span>{% endif %}</td>
-            <td style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">{{ p.meses }}</td>
-            <td style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline);">R$ {{ p.valor_mensal|default:'0'|floatformat:2 }}</td>
-            <td style="padding:.5rem .6rem; border-bottom:1px solid var(--separator-hairline); font-weight:700;">R$ {{ p.valor_acumulado|floatformat:2 }}</td>
+          <tr>
+            <td>{{ p.data_inicio|date:"d/m/Y" }}</td>
+            <td>{% if p.data_fim %}{{ p.data_fim|date:"d/m/Y" }}{% else %}<span class="pf-loc-em-andamento">em andamento</span>{% endif %}</td>
+            <td>{{ p.meses }}</td>
+            <td>R$ {{ p.valor_mensal|default:'0'|floatformat:2 }}</td>
+            <td class="is-strong">R$ {{ p.valor_acumulado|floatformat:2 }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
     {% endif %}
+  </div>
+  {% endif %}
+
+  {% if ordens_manutencao %}
+  <div class="pf-sec-title">Ordens de Manutenção</div>
+  <div class="pf-card" style="padding:1rem 1.2rem; display:grid; gap:.9rem;">
+    {% for os in ordens_manutencao %}
+    <div{% if not forloop.last %} style="padding-bottom:.9rem; border-bottom:1px solid var(--separator-hairline);"{% endif %}>
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:.6rem;">
+        <div>
+          <a href="{% url 'portal_manutencao_detail' os.pk %}" style="font-weight:700;">OS #{{ os.pk }}</a>
+          <div style="color:var(--text-tertiary); font-size:.8rem;">{{ os.created_at|date:"d/m/Y H:i" }}{% if os.finalizada_em %} · finalizada em {{ os.finalizada_em|date:"d/m/Y H:i" }}{% endif %}</div>
+        </div>
+        <span class="pf-osc pf-osc--{{ os.status }}">{{ os.get_status_display }}</span>
+      </div>
+      {% if os.diagnostico %}<div style="font-size:.83rem; margin-top:.4rem;"><b>Motivo:</b> {{ os.diagnostico }}</div>{% endif %}
+      {% if os.item_substituto %}
+      <div style="font-size:.83rem; margin-top:.3rem;">
+        <b>Substituto:</b> {{ os.item_substituto.nome }}{% if os.item_substituto.numero_serie %} · Série {{ os.item_substituto.numero_serie }}{% endif %}
+        {% if os.substituto_valor %} · R$ {{ os.substituto_valor }} ({% if os.substituto_locado == 'sim' %}locação{% else %}compra{% endif %}){% endif %}
+      </div>
+      {% endif %}
+      {% if os.orcamentos.all %}
+      <div style="margin-top:.4rem; display:flex; flex-wrap:wrap; gap:.35rem;">
+        {% for orc in os.orcamentos.all %}
+        <span class="pf-osc pf-osc--{{ orc.status }}" title="{{ orc.get_tipo_display }}{% if orc.motivo_rejeicao %} — {{ orc.motivo_rejeicao }}{% endif %}">#{{ orc.numero }} R$ {{ orc.valor }} · {{ orc.get_status_display }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
   </div>
   {% endif %}
 

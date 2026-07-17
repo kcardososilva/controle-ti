@@ -18,6 +18,7 @@ from ..models import (
     StatusUsuarioChoices, SimNaoChoices,
     MovimentacaoLicenca, MovimentacaoItem, LicencaLote,
     TipoMovLicencaChoices, ItemColaborador,
+    TipoMovimentacaoChoices, TipoTransferenciaChoices,
 )
 from ..forms import UsuarioForm, ImportarUsuariosForm
 from services.usuario_import_service import UsuarioImportService
@@ -625,7 +626,13 @@ def _itens_ativos_do_usuario(usuario):
         if mov.usuario_id != usuario.pk:
             continue
 
-        if mov.tipo_movimentacao in ["baixa", "devolucao"]:
+        if mov.tipo_movimentacao == TipoMovimentacaoChoices.BAIXA:
+            continue
+
+        if (
+            mov.tipo_movimentacao == TipoMovimentacaoChoices.TRANSFERENCIA
+            and mov.tipo_transferencia == TipoTransferenciaChoices.DEVOLUCAO
+        ):
             continue
 
         _anotar_custo_item(item)
@@ -922,7 +929,13 @@ def usuario_dashboard(request):
             continue
 
         tipo_mov = str(getattr(mov, "tipo_movimentacao", "") or "").lower()
-        if tipo_mov in ["baixa", "devolucao"]:
+        if tipo_mov == TipoMovimentacaoChoices.BAIXA:
+            continue
+
+        if (
+            tipo_mov == TipoMovimentacaoChoices.TRANSFERENCIA
+            and mov.tipo_transferencia == TipoTransferenciaChoices.DEVOLUCAO
+        ):
             continue
 
         if mov.usuario_id not in user_metrics:

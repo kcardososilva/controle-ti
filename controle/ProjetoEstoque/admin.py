@@ -132,21 +132,40 @@ class ComentarioInline(admin.TabularInline):
 class ItemAdmin(AuditAdminMixin):
     list_display = (
         "id", "nome", "numero_serie", "status", "quantidade",
-        "centro_custo", "localidade", "subtipo", "fornecedor", "locado", "compartilhado"
+        "centro_custo", "localidade", "subtipo", "fornecedor", "locado", "compartilhado",
+        "excluido",
     )
     # CORREÇÃO: Removido 'categoria' do filtro direto (use subtipo__categoria se precisar)
     list_filter = (
         "status", "pmb", "item_consumo", "subtipo",
-        "localidade", "centro_custo", "fornecedor", "locado", "compartilhado"
+        "localidade", "centro_custo", "fornecedor", "locado", "compartilhado", "excluido",
     )
     search_fields = ("nome", "numero_serie", "marca", "modelo", "numero_pedido")
-    
+
     # Fornecedor continua aqui, pois pertence ao Item
     autocomplete_fields = ("centro_custo", "localidade", "subtipo", "fornecedor")
-    
+
     inlines = [LocacaoInline, ComentarioInline]
     list_select_related = ("centro_custo", "localidade", "subtipo", "fornecedor")
     ordering = ("nome",)
+    readonly_fields = AuditAdminMixin.readonly_fields + ("excluido_em", "excluido_por")
+    actions = ["restaurar_selecionados"]
+
+    def get_queryset(self, request):
+        # `Item.objects` (default manager) já esconde itens excluídos (soft
+        # delete) — no admin, staff precisa enxergá-los para poder restaurar.
+        qs = Item.all_objects.get_queryset()
+        ordering = self.get_ordering(request)
+        if ordering:
+            qs = qs.order_by(*ordering)
+        return qs
+
+    @admin.action(description="Restaurar equipamentos selecionados (desfaz exclusão lógica)")
+    def restaurar_selecionados(self, request, queryset):
+        atualizados = queryset.filter(excluido=True).update(
+            excluido=False, excluido_em=None, excluido_por=None,
+        )
+        self.message_user(request, f"{atualizados} equipamento(s) restaurado(s).")
 
 
 @admin.register(ItemColaborador)
@@ -304,6 +323,7 @@ class PreventivaExecucaoAdmin(AuditAdminMixin):
     search_fields = ("preventiva__equipamento__nome", "observacao")
     inlines = [PreventivaRespostaInline]
     date_hierarchy = "data_execucao"
+    filter_horizontal = ("tecnicos_auxiliares",)
 
     @admin.display(description="Preventiva / Equipamento")
     def preventiva_link(self, obj):

@@ -5,7 +5,17 @@
 {% block page_subtitle %}{{ ordem.item.nome }}{% endblock %}
 
 {% block header_actions %}
-  <a href="{% url 'portal_manutencao_list' %}" class="pf-btn"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+  <a href="{% url 'portal_manutencao_list' %}" class="pf-btn" data-voltar><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="pf-breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'portal_home' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Painel</a>
+  <i class="fa-solid fa-chevron-right pf-crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'portal_manutencao_list' %}">Manutenção</a>
+  <i class="fa-solid fa-chevron-right pf-crumb-sep" aria-hidden="true"></i>
+  <span class="pf-crumb-current" aria-current="page">OS #{{ ordem.pk }}</span>
+</nav>
 {% endblock %}
 
 {% block extra_css %}
@@ -29,7 +39,7 @@
     background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
   }
   .pf-md .pf-md-ic { width: 3rem; height: 3rem; flex: 0 0 3rem; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--brand-soft); color: var(--brand); font-size: 1.2rem; }
-  .pf-md .pf-md-h-name { font-size: 1.15rem; font-weight: 850; letter-spacing: -.03em; }
+  .pf-md .pf-md-h-name { font-size: 1.15rem; font-weight: 700; letter-spacing: -.02em; }
   .pf-md .pf-md-h-sub { color: var(--text-tertiary); font-size: .82rem; margin-top: .15rem; }
 
   .pf-md .pf-sec-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; margin: .3rem 0 .1rem; }
@@ -260,6 +270,22 @@
   <div class="pf-body">
   <div class="pf-main">
 
+  <div style="text-align:right; margin:-.3rem 0 -.2rem;">
+    {% if pode_desfazer %}
+    <form method="post" style="display:inline;" onsubmit="return confirm('Desfazer este envio? O formulário anterior será reaberto para você corrigir e reenviar.');">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="desfazer">
+      <button type="submit" style="font-size:.78rem; color:var(--text-tertiary); background:none; border:none; padding:0; cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; gap:.35rem;" onmouseover="this.style.color='var(--text-secondary)'" onmouseout="this.style.color='var(--text-tertiary)'">
+        <i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Desfazer envio — corrigir e reenviar
+      </button>
+    </form>
+    {% else %}
+    <a href="{% url 'portal_manutencao_list' %}" style="font-size:.78rem; color:var(--text-tertiary); text-decoration:none; display:inline-flex; align-items:center; gap:.35rem;" onmouseover="this.style.color='var(--text-secondary)'" onmouseout="this.style.color='var(--text-tertiary)'">
+      <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Voltar
+    </a>
+    {% endif %}
+  </div>
+
   {# ── Painel de ação contextual ───────────────────────────────────────── #}
   {% if ordem.status == 'aguardando_recebimento' %}
   <div class="pf-action">
@@ -365,13 +391,14 @@
     </form>
   </div>
 
-  {# Opção 2: Devolver ao TI #}
+  {# Opção 2: Separar para envio ao TI (Lote de Envio — NF, múltiplos itens) #}
+  {% if pode_separar_lote %}
   <div class="pf-action">
-    <h3><i class="fa-solid fa-truck-fast"></i> Devolver ao TI</h3>
-    <p>Se preferir encerrar sem reparo, devolva o equipamento informando o valor da avaliação técnica.</p>
+    <h3><i class="fa-solid fa-dolly"></i> Separar para envio ao TI</h3>
+    <p>Se preferir encerrar sem reparo, informe o valor da avaliação técnica e separe o equipamento em um lote de envio — anexe a NF e envie ao TI quando estiver pronto.</p>
     <form method="post">
       {% csrf_token %}
-      <input type="hidden" name="acao" value="devolvido">
+      <input type="hidden" name="acao" value="separar_lote">
 
       <div class="pf-form-section">
         <h4><i class="fa-solid fa-receipt"></i> Avaliação técnica</h4>
@@ -383,32 +410,19 @@
         </div>
       </div>
 
-      <div class="pf-form-section">
-        <h4><i class="fa-solid fa-location-dot"></i> Destino da devolução</h4>
-        <div class="pf-grid2">
-          <div>
-            <label for="localidade_devolucao">Localidade de destino *</label>
-            <select id="localidade_devolucao" name="localidade_devolucao" class="pf-select2" required>
-              <option value="">Selecione a localidade…</option>
-              {% for loc in localidades %}
-                <option value="{{ loc.id }}" {% if ordem.item.localidade_id == loc.id %}selected{% endif %}>{{ loc.local }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-        <div class="pf-grid2" style="margin-top:.7rem;">
-          <div style="grid-column:1 / -1;">
-            <label for="observacao">Observação (opcional)</label>
-            <input type="text" id="observacao" name="observacao" placeholder="Ex: transportadora, NF…">
-          </div>
-        </div>
-      </div>
+      {% include "front/portal/_portal_separar_lote_campos.html" %}
 
       <div class="pf-form-actions" style="margin-top:.9rem;">
-        <button type="submit" class="pf-btn"><i class="fa-solid fa-truck-fast"></i> Devolver ao TI</button>
+        <button type="submit" class="pf-btn"><i class="fa-solid fa-dolly"></i> Separar para envio</button>
       </div>
     </form>
   </div>
+  {% else %}
+  <div class="pf-action pf-action--info">
+    <h3><i class="fa-solid fa-dolly"></i> Já separado para envio</h3>
+    <p>Este equipamento já foi separado no lote <a href="{% url 'portal_lote_envio_detail' rascunho_lote_atual.lote_id %}"><b>"{{ rascunho_lote_atual.lote.nome }}"</b></a>. Anexe a NF e envie por lá quando estiver pronto.</p>
+  </div>
+  {% endif %}
 
   {% elif ordem.status == 'em_reparo' %}
   <div class="pf-action">
@@ -461,38 +475,14 @@
 
   {% elif ordem.status == 'sem_reparo' %}
   <div class="pf-action">
-    <h3>Cadastrar equipamento substituto</h3>
-    <p>Informe os dados do equipamento que entrará no lugar e o <b>contrato de substituição</b> (contrato, valor e data são obrigatórios). Ele entrará pendente e o time de TI fará o recebimento em estoque.</p>
+    <h3>Propor contrato do equipamento substituto</h3>
+    <p>Este equipamento é locado — o TI vai pagar o contrato do substituto, por isso ele precisa <b>aprovar o valor e o modelo antes</b> de você enviar o equipamento físico. Informe o contrato de substituição e a identificação do equipamento (contrato, valor, data, modelo e nº de série são obrigatórios); os demais dados (nome, marca, localidade…) só serão pedidos depois da aprovação.</p>
     <form method="post">
       {% csrf_token %}
-      <input type="hidden" name="acao" value="substituto_enviado">
-      <div class="pf-grid2">
-        <div>
-          <label for="nome">Nome / Identificação</label>
-          <input type="text" id="nome" name="nome" value="{{ ordem.item.nome }}" placeholder="Nome do equipamento">
-        </div>
-        <div>
-          <label for="numero_serie">Nº de Série</label>
-          <input type="text" id="numero_serie" name="numero_serie" placeholder="Série do substituto">
-        </div>
-        <div>
-          <label for="marca">Marca</label>
-          <input type="text" id="marca" name="marca" value="{{ ordem.item.marca|default:'' }}" placeholder="Marca">
-        </div>
-        <div>
-          <label for="modelo">Modelo</label>
-          <input type="text" id="modelo" name="modelo" value="{{ ordem.item.modelo|default:'' }}" placeholder="Modelo">
-        </div>
-        <div>
-          <label for="localidade_substituto">Localidade</label>
-          <select id="localidade_substituto" name="localidade_substituto" class="pf-select2">
-            <option value="">Manter a do equipamento</option>
-            {% for loc in localidades %}
-              <option value="{{ loc.id }}" {% if ordem.item.localidade_id == loc.id %}selected{% endif %}>{{ loc.local }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
+      <input type="hidden" name="acao" value="troca_aguardando_aprovacao">
+
+      <label for="diagnostico_sr">Diagnóstico técnico</label>
+      <textarea id="diagnostico_sr" name="diagnostico" placeholder="Descreva o motivo da troca…">{{ ordem.diagnostico|default:'' }}</textarea>
 
       <div class="pf-divider" style="margin:1rem 0 .2rem;"></div>
       <p style="font-weight:700; font-size:.85rem; margin-bottom:.6rem;"><i class="fa-solid fa-file-contract"></i> Contrato de substituição</p>
@@ -523,6 +513,19 @@
       </div>
 
       <div class="pf-divider" style="margin:1rem 0 .2rem;"></div>
+      <p style="font-weight:700; font-size:.85rem; margin-bottom:.6rem;"><i class="fa-solid fa-cube"></i> Equipamento substituto oferecido</p>
+      <div class="pf-grid2">
+        <div>
+          <label for="modelo_sr">Modelo *</label>
+          <input type="text" id="modelo_sr" name="modelo" required placeholder="Modelo do equipamento substituto">
+        </div>
+        <div>
+          <label for="numero_serie_sr">Nº de Série *</label>
+          <input type="text" id="numero_serie_sr" name="numero_serie" required placeholder="Série do substituto">
+        </div>
+      </div>
+
+      <div class="pf-divider" style="margin:1rem 0 .2rem;"></div>
       <p style="font-weight:700; font-size:.85rem; margin-bottom:.6rem;"><i class="fa-solid fa-shield-halved"></i> Garantia da troca</p>
       <label style="margin-bottom:.5rem;">A troca tem garantia?</label>
       <div class="pf-seg" role="radiogroup" aria-label="Troca tem garantia?">
@@ -548,7 +551,110 @@
       </div>
 
       <div class="pf-form-actions" style="margin-top:1rem;">
-        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paper-plane"></i> Enviar substituto</button>
+        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paper-plane"></i> Enviar contrato para aprovação</button>
+      </div>
+    </form>
+  </div>
+
+  {% elif ordem.status == 'troca_aguardando_aprovacao' %}
+  <div class="pf-action pf-action--info">
+    <h3><i class="fa-solid fa-clock"></i> Contrato aguardando aprovação do TI</h3>
+    <p>O contrato do equipamento substituto foi enviado. Quando o TI aprovar, você poderá enviar o substituto; se reprovar, você poderá revisar e reenviar o contrato.</p>
+    <div class="pf-diag"><i class="fa-solid fa-file-invoice-dollar"></i> <b>Valor proposto:</b> R$ {{ ordem.substituto_valor|default:'—' }} · <b>Regime:</b> {% if ordem.substituto_locado == 'sim' %}Locação{% else %}Compra{% endif %} · <b>Modelo:</b> {{ ordem.substituto_modelo|default:'—' }} · <b>Série:</b> {{ ordem.substituto_numero_serie|default:'—' }}</div>
+  </div>
+
+  {% elif ordem.status == 'troca_reprovada' %}
+  <div class="pf-action pf-action--warning">
+    <h3><i class="fa-solid fa-circle-exclamation"></i> Contrato reprovado</h3>
+    <p>O TI reprovou o contrato do equipamento substituto. Ajuste os termos e reenvie para uma nova análise.</p>
+    {% if ordem.orcamentos.last.motivo_rejeicao %}
+    <div class="pf-orc-motivo">
+      <strong>Motivo da rejeição:</strong><br>{{ ordem.orcamentos.last.motivo_rejeicao }}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="pf-action">
+    <h3><i class="fa-solid fa-rotate-right"></i> Reenviar novo contrato</h3>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="troca_aguardando_aprovacao">
+      <label for="diagnostico_tr_rev">Diagnóstico técnico</label>
+      <textarea id="diagnostico_tr_rev" name="diagnostico" placeholder="Ajuste o diagnóstico, se necessário…">{{ ordem.diagnostico|default:'' }}</textarea>
+      <div class="pf-grid2" style="margin-top:.7rem;">
+        <div style="grid-column:1 / -1;">
+          <label for="contrato_rev">Contrato *</label>
+          <input type="text" id="contrato_rev" name="contrato" required value="{{ ordem.substituto_contrato|default:'' }}" placeholder="Nº / referência do contrato de substituição">
+        </div>
+        <div>
+          <label for="locado_rev">Regime *</label>
+          <select id="locado_rev" name="locado" class="pf-select2" required>
+            <option value="nao" {% if ordem.substituto_locado != 'sim' %}selected{% endif %}>Compra (não locado)</option>
+            <option value="sim" {% if ordem.substituto_locado == 'sim' %}selected{% endif %}>Locação</option>
+          </select>
+        </div>
+        <div>
+          <label for="valor_rev">Valor (R$) *</label>
+          <input type="number" id="valor_rev" name="valor" step="0.01" min="0" required value="{{ ordem.substituto_valor|default:'' }}" placeholder="0,00">
+        </div>
+        <div>
+          <label for="data_rev">Data *</label>
+          <input type="date" id="data_rev" name="data" required value="{{ ordem.substituto_data|date:'Y-m-d'|default:'' }}">
+        </div>
+        <div id="tempo_meses_wrap_rev" data-loc-only {% if ordem.substituto_locado != 'sim' %}hidden{% endif %}>
+          <label for="tempo_contrato_meses_rev">Tempo de contrato (meses) *</label>
+          <input type="number" id="tempo_contrato_meses_rev" name="tempo_contrato_meses" min="1" step="1" value="{{ ordem.substituto_tempo_meses|default:'' }}" placeholder="Ex: 12">
+        </div>
+        <div>
+          <label for="modelo_sr_rev">Modelo *</label>
+          <input type="text" id="modelo_sr_rev" name="modelo" required value="{{ ordem.substituto_modelo|default:'' }}" placeholder="Modelo do equipamento substituto">
+        </div>
+        <div>
+          <label for="numero_serie_sr_rev">Nº de Série *</label>
+          <input type="text" id="numero_serie_sr_rev" name="numero_serie" required value="{{ ordem.substituto_numero_serie|default:'' }}" placeholder="Série do substituto">
+        </div>
+      </div>
+      <div class="pf-form-actions" style="margin-top:1rem;">
+        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paper-plane"></i> Reenviar para aprovação</button>
+      </div>
+    </form>
+  </div>
+
+  {% elif ordem.status == 'troca_aprovada' %}
+  <div class="pf-action pf-action--done">
+    <h3><i class="fa-solid fa-circle-check"></i> Contrato aprovado pelo TI</h3>
+    <p>Contrato aprovado{% if ordem.aprovado_por %} por {{ ordem.aprovado_por.username }}{% endif %}{% if ordem.decisao_em %} em {{ ordem.decisao_em|date:"d/m/Y H:i" }}{% endif %}. Confirme o envio do substituto e informe o valor cobrado pelo equipamento danificado — mesmo sem conserto, o locador cobra pelo equipamento não devolvido em condições; este valor é uma proposta à parte e também precisa de aprovação do TI antes de a ordem ser concluída.</p>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="substituto_enviado">
+      <div class="pf-grid2">
+        <div>
+          <label for="marca">Marca</label>
+          <input type="text" id="marca" name="marca" value="{{ ordem.item.marca|default:'' }}" placeholder="Marca">
+        </div>
+        <div>
+          <label for="localidade_substituto">Localidade</label>
+          <select id="localidade_substituto" name="localidade_substituto" class="pf-select2">
+            <option value="">Manter a do equipamento</option>
+            {% for loc in localidades %}
+              <option value="{{ loc.id }}" {% if ordem.item.localidade_id == loc.id %}selected{% endif %}>{{ loc.local }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="pf-diag" style="margin-top:.8rem;"><i class="fa-solid fa-file-invoice-dollar"></i> <b>Contrato aprovado:</b> R$ {{ ordem.substituto_valor|default:'—' }} · {% if ordem.substituto_locado == 'sim' %}Locação{% else %}Compra{% endif %} · {{ ordem.substituto_contrato|default:'—' }} · <b>Modelo:</b> {{ ordem.substituto_modelo|default:'—' }} · <b>Série:</b> {{ ordem.substituto_numero_serie|default:'—' }}</div>
+
+      <div class="pf-divider" style="margin:1rem 0 .2rem;"></div>
+      <p style="font-weight:700; font-size:.85rem; margin-bottom:.6rem;"><i class="fa-solid fa-file-invoice-dollar"></i> Cobrança pelo equipamento danificado</p>
+      <div class="pf-grid2">
+        <div>
+          <label for="valor_equipamento_danificado">Valor cobrado (R$) *</label>
+          <input type="number" id="valor_equipamento_danificado" name="valor_equipamento_danificado" step="0.01" min="0" required placeholder="0,00">
+        </div>
+      </div>
+
+      <div class="pf-form-actions" style="margin-top:1rem;">
+        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paper-plane"></i> Enviar substituto e cobrança</button>
       </div>
     </form>
   </div>
@@ -556,29 +662,21 @@
   {% elif ordem.status == 'reparado' %}
   <div class="pf-action">
     <h3>Reparo concluído</h3>
-    <p>O reparo foi finalizado. Quando enviar o equipamento de volta, registre a devolução ao cliente. Em seguida o time de TI confirma o recebimento.</p>
+    {% if pode_separar_lote %}
+    <p>Separe o equipamento em um lote de envio — anexe a NF e envie ao TI quando estiver pronto.</p>
     <form method="post">
       {% csrf_token %}
-      <input type="hidden" name="acao" value="devolvido">
-      <div class="pf-grid2">
-        <div>
-          <label for="localidade_devolucao">Localidade de destino *</label>
-          <select id="localidade_devolucao" name="localidade_devolucao" class="pf-select2" required>
-            <option value="">Selecione a localidade…</option>
-            {% for loc in localidades %}
-              <option value="{{ loc.id }}" {% if ordem.item.localidade_id == loc.id %}selected{% endif %}>{{ loc.local }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div style="grid-column:1 / -1;">
-          <label for="observacao">Observação (opcional)</label>
-          <input type="text" id="observacao" name="observacao" placeholder="Ex: transportadora X, NF 123…">
-        </div>
-      </div>
+      <input type="hidden" name="acao" value="separar_lote">
+
+      {% include "front/portal/_portal_separar_lote_campos.html" %}
+
       <div class="pf-form-actions" style="margin-top:.7rem;">
-        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-truck-fast"></i> Devolver ao cliente</button>
+        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-dolly"></i> Separar para envio</button>
       </div>
     </form>
+    {% else %}
+    <p>Este equipamento já foi separado no lote <a href="{% url 'portal_lote_envio_detail' rascunho_lote_atual.lote_id %}"><b>"{{ rascunho_lote_atual.lote.nome }}"</b></a>. Anexe a NF e envie por lá quando estiver pronto.</p>
+    {% endif %}
   </div>
 
   {% elif ordem.status == 'devolvido' %}
@@ -589,8 +687,8 @@
 
   {% elif ordem.status == 'substituto_enviado' %}
   <div class="pf-action pf-action--info">
-    <h3><i class="fa-solid fa-clock"></i> Substituto enviado</h3>
-    <p>O equipamento substituto foi registrado. O time de TI fará o recebimento em estoque para encerrar a ordem.</p>
+    <h3><i class="fa-solid fa-clock"></i> Substituto enviado — cobrança pelo dano aguardando aprovação</h3>
+    <p>O equipamento substituto foi registrado. Falta o TI decidir sobre a cobrança pelo equipamento danificado antes de a ordem ser concluída e o substituto entrar em estoque.</p>
     {% if ordem.item_substituto %}
     <div class="pf-diag">
       <b>Substituto:</b> {{ ordem.item_substituto.nome }}
@@ -603,12 +701,78 @@
       {% if ordem.substituto_locado == 'sim' and ordem.substituto_tempo_meses %} · <b>Contrato:</b> {{ ordem.substituto_tempo_meses }} {{ ordem.substituto_tempo_meses|pluralize:"mês,meses" }}{% endif %}
     </div>
     {% endif %}
+    <div class="pf-diag" style="margin-top:.6rem;"><i class="fa-solid fa-file-invoice-dollar"></i> <b>Cobrança pelo equipamento danificado:</b> R$ {{ ordem.valor_avaliacao_tecnica|default:'—' }}</div>
+  </div>
+
+  {% elif ordem.status == 'troca_dano_reprovada' %}
+  <div class="pf-action pf-action--warning">
+    <h3><i class="fa-solid fa-circle-exclamation"></i> Cobrança pelo dano reprovada</h3>
+    <p>O TI reprovou o valor cobrado pelo equipamento danificado. Ajuste o valor e reenvie para uma nova análise — o substituto já enviado não precisa ser reenviado.</p>
+    {% if ordem.orcamentos.last.motivo_rejeicao %}
+    <div class="pf-orc-motivo">
+      <strong>Motivo da rejeição:</strong><br>{{ ordem.orcamentos.last.motivo_rejeicao }}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="pf-action">
+    <h3><i class="fa-solid fa-rotate-right"></i> Reenviar novo valor</h3>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="substituto_enviado">
+      <div class="pf-grid2">
+        <div>
+          <label for="valor_equipamento_danificado_rev">Novo valor cobrado (R$) *</label>
+          <input type="number" id="valor_equipamento_danificado_rev" name="valor_equipamento_danificado" step="0.01" min="0" required placeholder="0,00">
+        </div>
+      </div>
+      <div class="pf-form-actions" style="margin-top:1rem;">
+        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paper-plane"></i> Reenviar para aprovação</button>
+      </div>
+    </form>
   </div>
 
   {% elif ordem.status == 'sem_condicoes' %}
+  <div class="pf-action pf-action--info">
+    <h3><i class="fa-solid fa-clock"></i> Avaliação de descarte aguardando aprovação do TI</h3>
+    <p>Você declarou que o equipamento não tem condições de reparo e propôs o valor da avaliação técnica. O TI precisa aprovar antes de você devolver o equipamento para descarte.</p>
+    <div class="pf-diag"><i class="fa-solid fa-file-invoice-dollar"></i> <b>Valor proposto:</b> R$ {{ ordem.valor_avaliacao_tecnica|default:'—' }}</div>
+  </div>
+
+  {% elif ordem.status == 'descarte_avaliacao_reprovada' %}
+  <div class="pf-action pf-action--warning">
+    <h3><i class="fa-solid fa-circle-exclamation"></i> Avaliação reprovada</h3>
+    <p>O TI reprovou o valor da avaliação de descarte. Ajuste o diagnóstico/valor e reenvie para uma nova análise.</p>
+    {% if ordem.orcamentos.last.motivo_rejeicao %}
+    <div class="pf-orc-motivo">
+      <strong>Motivo da rejeição:</strong><br>{{ ordem.orcamentos.last.motivo_rejeicao }}
+    </div>
+    {% endif %}
+  </div>
+
   <div class="pf-action">
-    <h3>Sem condições de reparo — devolver para descarte</h3>
-    <p>Você declarou que o equipamento não tem condições de reparo. Envie-o de volta à fazenda para que o TI receba e faça o descarte. Informe a localidade de destino.</p>
+    <h3><i class="fa-solid fa-rotate-right"></i> Reenviar nova avaliação</h3>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="sem_condicoes">
+      <label for="diagnostico_da_rev">Diagnóstico técnico</label>
+      <textarea id="diagnostico_da_rev" name="diagnostico" placeholder="Ajuste o diagnóstico, se necessário…">{{ ordem.diagnostico|default:'' }}</textarea>
+      <div class="pf-grid2" style="margin-top:.7rem;">
+        <div>
+          <label for="valor_orcamento_da_rev">Novo valor da avaliação (R$) *</label>
+          <input type="number" id="valor_orcamento_da_rev" name="valor_orcamento" step="0.01" min="0" required placeholder="0,00">
+        </div>
+      </div>
+      <div class="pf-form-actions" style="margin-top:1rem;">
+        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paper-plane"></i> Reenviar para aprovação</button>
+      </div>
+    </form>
+  </div>
+
+  {% elif ordem.status == 'descarte_avaliacao_aprovada' %}
+  <div class="pf-action pf-action--done">
+    <h3><i class="fa-solid fa-circle-check"></i> Avaliação aprovada — devolver para descarte</h3>
+    <p>O TI aprovou o valor da avaliação{% if ordem.aprovado_por %} ({{ ordem.aprovado_por.username }}){% endif %}{% if ordem.decisao_em %} em {{ ordem.decisao_em|date:"d/m/Y H:i" }}{% endif %}. Envie o equipamento de volta à fazenda para que o TI receba e faça o descarte. Informe a localidade de destino.</p>
     <form method="post">
       {% csrf_token %}
       <input type="hidden" name="acao" value="devolvido_descarte">
@@ -689,10 +853,10 @@
   {% elif ordem.status == 'troca_ant_def_recebido' %}
   <div class="pf-action">
     <h3>Enviar proposta de reparo</h3>
-    <p>O equipamento defeituoso está no seu estoque (Pausado). Informe o diagnóstico e o valor da proposta de reparo para encerrar a troca.</p>
+    <p>O equipamento defeituoso está no seu estoque (Pausado). Informe o diagnóstico e o valor da proposta de reparo — o TI ainda precisa aprovar antes de encerrar a troca.</p>
     <form method="post">
       {% csrf_token %}
-      <input type="hidden" name="acao" value="concluido">
+      <input type="hidden" name="acao" value="troca_ant_aguardando_aprovacao">
       <label for="diagnostico">Diagnóstico técnico</label>
       <textarea id="diagnostico" name="diagnostico" placeholder="Descreva o problema encontrado…"></textarea>
       <div class="pf-grid2" style="margin-top:.7rem;">
@@ -702,7 +866,44 @@
         </div>
       </div>
       <div class="pf-form-actions" style="margin-top:1rem;">
-        <button type="submit" class="pf-btn pf-btn--success"><i class="fa-solid fa-paper-plane"></i> Enviar proposta e concluir</button>
+        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paper-plane"></i> Enviar proposta para aprovação</button>
+      </div>
+    </form>
+  </div>
+
+  {% elif ordem.status == 'troca_ant_aguardando_aprovacao' %}
+  <div class="pf-action pf-action--info">
+    <h3><i class="fa-solid fa-clock"></i> Aguardando aprovação do TI</h3>
+    <p>A proposta de reparo foi enviada. Quando o TI aprovar, a troca é concluída automaticamente; se reprovar, você poderá reenviar um novo valor.</p>
+    <div class="pf-diag"><i class="fa-solid fa-file-invoice-dollar"></i> <b>Proposta enviada:</b> R$ {{ ordem.valor_orcamento|default:'—' }}</div>
+  </div>
+
+  {% elif ordem.status == 'troca_ant_reprovado' %}
+  <div class="pf-action pf-action--warning">
+    <h3><i class="fa-solid fa-circle-exclamation"></i> Proposta reprovada</h3>
+    <p>O TI reprovou a proposta de reparo. Ajuste o diagnóstico/valor e reenvie para uma nova análise.</p>
+    {% if ordem.orcamentos.last.motivo_rejeicao %}
+    <div class="pf-orc-motivo">
+      <strong>Motivo da rejeição:</strong><br>{{ ordem.orcamentos.last.motivo_rejeicao }}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="pf-action">
+    <h3><i class="fa-solid fa-rotate-right"></i> Reenviar nova proposta</h3>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="troca_ant_aguardando_aprovacao">
+      <label for="diagnostico_rev_ta">Diagnóstico técnico</label>
+      <textarea id="diagnostico_rev_ta" name="diagnostico" placeholder="Ajuste o diagnóstico, se necessário…">{{ ordem.diagnostico|default:'' }}</textarea>
+      <div class="pf-grid2" style="margin-top:.7rem;">
+        <div>
+          <label for="valor_orcamento_rev_ta">Novo valor da proposta (R$) *</label>
+          <input type="number" id="valor_orcamento_rev_ta" name="valor_orcamento" step="0.01" min="0" required placeholder="0,00">
+        </div>
+      </div>
+      <div class="pf-form-actions" style="margin-top:1rem;">
+        <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paper-plane"></i> Reenviar para aprovação</button>
       </div>
     </form>
   </div>
@@ -935,6 +1136,16 @@
       }
     }
     if ($loc.length) { $loc.on('change', syncRegime); syncRegime(); }
+
+    // Lote de destino (retorno de reparo): mostra o campo de nome só quando
+    // "+ Criar novo lote" está selecionado.
+    var $loteSel = $('#lote_id');
+    var $loteNovoWrap = $('#wrap_lote_novo');
+    function syncLote() {
+      if (!$loteSel.length || !$loteNovoWrap.length) return;
+      $loteNovoWrap.prop('hidden', $loteSel.val() !== 'novo');
+    }
+    if ($loteSel.length) { $loteSel.on('change', syncLote); syncLote(); }
   });
 </script>
 {% endblock %}

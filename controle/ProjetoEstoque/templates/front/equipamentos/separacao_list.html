@@ -56,6 +56,25 @@
   background: var(--sep-surface); color: var(--sep-text); font-size: .86rem; font-family: inherit;
 }
 
+/* Painéis de agrupamento (ponto 1): "criar novo lote" x "adicionar a lote
+   existente" ficam visualmente separados, cada um com sua própria ação — evita
+   o usuário confundir qual botão pertence a qual seletor. */
+.sep-lote-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(19rem,100%),1fr)); gap: .8rem; margin-bottom: 1rem; }
+.sep-lote-panel { padding: .95rem 1rem; background: var(--sep-surface-soft); border: 1px solid var(--sep-hair); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: .6rem; }
+.sep-lote-panel-head { display: flex; align-items: center; gap: .5rem; font-size: .82rem; font-weight: 700; color: var(--sep-text); }
+.sep-lote-panel-head i { color: var(--sep-brand); }
+.sep-lote-panel-sub { font-size: .75rem; color: var(--sep-muted); margin-top: -.3rem; }
+.sep-sel-count { display: inline-flex; align-items: center; gap: .3rem; padding: .1rem .55rem; border-radius: var(--radius-pill); font-size: .72rem; font-weight: 800; color: var(--sep-brand); background: var(--brand-soft); margin-left: auto; }
+.sep-sel-count.is-zero { color: var(--sep-muted); background: var(--sep-surface); border: 1px solid var(--sep-line); }
+/* .sep-field foi feito p/ o .sep-toolbar (flex-direction: row) — "flex: 1 1
+   12rem" ali é largura mínima. Dentro do .sep-lote-panel (flex-direction:
+   column) a MESMA regra vira flex-basis no eixo vertical, esticando os campos
+   e desorganizando o painel. Reset explícito para altura natural aqui. */
+.sep-lote-panel .sep-field { min-width: 0; flex: none; width: 100%; }
+.sep-lote-warn { display: none; align-items: flex-start; gap: .45rem; padding: .55rem .7rem; border-radius: var(--radius-sm); background: var(--danger-soft); color: var(--danger); font-size: .76rem; font-weight: 600; line-height: 1.4; }
+.sep-lote-warn.is-visible { display: flex; }
+.sep-lote-panel button[type="submit"] { align-self: flex-start; }
+
 .sep-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
 .sep-table th { text-align: left; padding: .6rem .7rem; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--sep-muted); border-bottom: 1px solid var(--sep-hair); }
 .sep-table td { padding: .65rem .7rem; border-bottom: 1px solid var(--sep-hair); vertical-align: middle; }
@@ -68,7 +87,8 @@
 .sep-lote-ic { width: 2.5rem; height: 2.5rem; flex: 0 0 2.5rem; display: grid; place-items: center; border-radius: .75rem; background: var(--sep-surface-soft); color: var(--sep-muted); }
 .sep-lote-info { min-width: 0; flex: 1; }
 .sep-lote-nome { font-weight: 700; letter-spacing: -.01em; }
-.sep-lote-meta { color: var(--sep-muted); font-size: .8rem; margin-top: .15rem; }
+.sep-lote-meta { color: var(--sep-muted); font-size: .8rem; margin-top: .15rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.sep-lote-progresso { font-weight: 700; color: var(--text-secondary); }
 .sep-lote-actions { display: flex; gap: .5rem; flex: 0 0 auto; }
 
 .sep-chip { display: inline-flex; align-items: center; gap: .35rem; padding: .22rem .6rem; border-radius: var(--radius-pill); font-size: .72rem; font-weight: 800; }
@@ -122,21 +142,57 @@
         {% csrf_token %}
         <input type="hidden" name="tipo" value="{{ tipo }}">
 
+        <div class="sep-lote-panels">
+          <div class="sep-lote-panel">
+            <div class="sep-lote-panel-head">
+              <i class="fa-solid fa-layer-group" aria-hidden="true"></i> Criar novo lote
+              <span class="sep-sel-count is-zero" id="selCountNovo">0 selecionados</span>
+            </div>
+            <div class="sep-lote-panel-sub">Marque os itens na tabela abaixo e dê um nome ao lote.</div>
+            <div class="sep-field">
+              <label for="lote-nome">Nome do novo lote</label>
+              <input type="text" id="lote-nome" name="nome" placeholder="Ex.: Lote Notebooks Julho/26">
+            </div>
+            <div class="sep-field">
+              <label for="lote-fornecedor">Fornecedor do lote</label>
+              <select id="lote-fornecedor" name="fornecedor">
+                <option value="">Selecione...</option>
+                {% for f in fornecedores %}<option value="{{ f.id }}">{{ f.nome }}</option>{% endfor %}
+              </select>
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary" id="btnCriarLote" disabled>
+              <i class="fa-solid fa-layer-group" aria-hidden="true"></i> Criar lote com selecionados
+            </button>
+          </div>
+
+          {% if lotes_abertos %}
+          <div class="sep-lote-panel">
+            <div class="sep-lote-panel-head">
+              <i class="fa-solid fa-link" aria-hidden="true"></i> Adicionar a um lote existente
+              <span class="sep-sel-count is-zero" id="selCountExistente">0 selecionados</span>
+            </div>
+            <div class="sep-lote-panel-sub">Os itens marcados entram direto no lote escolhido abaixo — precisam ser do mesmo fornecedor do lote.</div>
+            <div class="sep-field">
+              <label for="lote-existente">Lote de destino</label>
+              <select id="lote-existente" name="lote_id">
+                <option value="">Selecione o lote...</option>
+                {% for l in lotes_abertos %}<option value="{{ l.pk }}" data-fornecedor="{{ l.fornecedor_id }}" data-fornecedor-nome="{{ l.fornecedor.nome }}">{{ l.nome }} — {{ l.fornecedor.nome }} ({{ l.quantidade_itens }} item{{ l.quantidade_itens|pluralize }})</option>{% endfor %}
+              </select>
+            </div>
+            <div class="sep-lote-warn" id="loteWarnFornecedor">
+              <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+              <span>Um ou mais itens marcados são de um fornecedor diferente do lote escolhido — remova-os da seleção ou escolha outro lote.</span>
+            </div>
+            <button type="submit" class="btn btn-sm btn-outline" id="btnAdicionarLote" disabled
+                    formaction="{% url 'separacao_lote_vincular_soltos' %}"
+                    formnovalidate>
+              <i class="fa-solid fa-link" aria-hidden="true"></i> Adicionar ao lote selecionado
+            </button>
+          </div>
+          {% endif %}
+        </div>
+
         <div class="sep-toolbar">
-          <div class="sep-field">
-            <label for="lote-nome">Nome do novo lote</label>
-            <input type="text" id="lote-nome" name="nome" placeholder="Ex.: Lote Notebooks Julho/26">
-          </div>
-          <div class="sep-field">
-            <label for="lote-fornecedor">Fornecedor do lote</label>
-            <select id="lote-fornecedor" name="fornecedor">
-              <option value="">Selecione...</option>
-              {% for f in fornecedores %}<option value="{{ f.id }}">{{ f.nome }}</option>{% endfor %}
-            </select>
-          </div>
-          <button type="submit" class="btn btn-sm btn-primary" id="btnCriarLote" disabled>
-            <i class="fa-solid fa-layer-group" aria-hidden="true"></i> Criar lote com selecionados
-          </button>
           <button type="submit" class="btn btn-sm btn-outline" id="btnGerarDocFiscal" disabled
                   formaction="{% url 'documento_fiscal_gerar' %}"
                   formnovalidate
@@ -211,6 +267,7 @@
             <div class="sep-lote-meta">
               {{ l.fornecedor.nome }} · {{ l.quantidade_itens }} item{{ l.quantidade_itens|pluralize }}
               <span class="sep-chip sep-chip--{{ l.status }}">{{ l.get_status_display }}</span>
+              {% if l.qtd_despachados %}<span class="sep-lote-progresso">{{ l.qtd_recebidos }} de {{ l.qtd_despachados }} recebido{{ l.qtd_despachados|pluralize }}</span>{% endif %}
             </div>
           </span>
           <span class="sep-lote-actions">
@@ -290,9 +347,20 @@
   var selectAll = document.getElementById('sepSelAll');
   var btnCriarLote = document.getElementById('btnCriarLote');
   var btnGerarDocFiscal = document.getElementById('btnGerarDocFiscal');
+  var btnAdicionarLote = document.getElementById('btnAdicionarLote');
+  var loteExistenteSelect = document.getElementById('lote-existente');
   var fornecedorSelect = document.getElementById('lote-fornecedor');
+  var selCountNovo = document.getElementById('selCountNovo');
+  var selCountExistente = document.getElementById('selCountExistente');
+  var loteWarnFornecedor = document.getElementById('loteWarnFornecedor');
 
   function checkboxes() { return Array.prototype.slice.call(document.querySelectorAll('.sepChk')); }
+
+  function atualizarContador(el, qtd) {
+    if (!el) { return; }
+    el.textContent = qtd + (qtd === 1 ? ' selecionado' : ' selecionados');
+    el.classList.toggle('is-zero', qtd === 0);
+  }
 
   function atualizarBotao() {
     var marcados = checkboxes().filter(function (c) { return c.checked; });
@@ -300,6 +368,19 @@
     var fornecedor = fornecedorSelect.value;
     btnCriarLote.disabled = !(marcados.length && nome && fornecedor);
     btnGerarDocFiscal.disabled = !marcados.length;
+    atualizarContador(selCountNovo, marcados.length);
+    atualizarContador(selCountExistente, marcados.length);
+
+    if (btnAdicionarLote) {
+      var loteFornecedor = loteExistenteSelect.value
+        ? loteExistenteSelect.options[loteExistenteSelect.selectedIndex].dataset.fornecedor
+        : '';
+      var temDivergencia = !!loteFornecedor && marcados.some(function (c) {
+        return c.dataset.fornecedor !== loteFornecedor;
+      });
+      loteWarnFornecedor.classList.toggle('is-visible', temDivergencia);
+      btnAdicionarLote.disabled = !(marcados.length && loteExistenteSelect.value) || temDivergencia;
+    }
   }
 
   // Ao marcar o primeiro item, sugere o fornecedor dele (todos precisam ser do mesmo).
@@ -324,6 +405,7 @@
 
   document.getElementById('lote-nome').addEventListener('input', atualizarBotao);
   fornecedorSelect.addEventListener('change', atualizarBotao);
+  if (loteExistenteSelect) { loteExistenteSelect.addEventListener('change', atualizarBotao); }
 })();
 </script>
 {% endblock %}

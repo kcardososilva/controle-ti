@@ -103,6 +103,7 @@ from .equipamentos import (
     equipamento_qr,
     item_update,
     equipamento_excluir,
+    equipamento_restaurar,
     importar_planilha,
     item_monitoracao,
     monitoracao_relatorio,
@@ -131,9 +132,11 @@ from .movimentacoes import (
     movimentacao_detail,
     movimentacao_update,
     movimentacao_delete,
+    movimentacao_reverter,
     movimentacao_export_pdf,
     api_lotes_por_item,
     api_item_devolucao_info,
+    repositorio_termos,
 )
 
 # ── Separação de Itens (Envio / Devolução) ───────────────────────────────────
@@ -141,11 +144,14 @@ from .separacoes import (
     separacao_envio_list,
     separacao_devolucao_list,
     separacao_lote_create,
+    separacao_lote_vincular_soltos,
     separacao_lote_detail,
     separacao_lote_excluir,
     separacao_lote_enviar,
+    separacao_lote_item_adicionar,
     separacao_item_remover,
     separacao_item_enviar,
+    separacao_lote_item_desvincular,
     documento_fiscal_gerar,
     documento_fiscal_pdf_view,
 )
@@ -267,6 +273,7 @@ from .quiosque import (
     kiosk_checkin,
     kiosk_config,
     kiosk_comando_ack,
+    kiosk_atualizacao_apk,
     kiosk_instalador_download,
     # Dashboard interno
     quiosque_dashboard,
@@ -276,6 +283,7 @@ from .quiosque import (
     quiosque_matricula_excluir,
     quiosque_matricula_renomear,
     quiosque_matricula_qrcode,
+    quiosque_apk_upload,
     quiosque_instalador_gerar,
     quiosque_instalador_status,
     quiosque_instalador_revogar,
@@ -294,17 +302,26 @@ from .portal_fornecedor import (
     portal_equipamentos_export,
     portal_manutencao_list,
     portal_manutencao_detail,
-    portal_lote_manutencao_criar,
-    portal_lotes_manutencao_list,
-    portal_lote_manutencao_detail,
     portal_troca_antecipada_list,
     portal_troca_antecipada_nova,
     portal_notificacoes_marcar_lidas,
     portal_licencas_list,
     portal_ajuda,
+    portal_ajuda_diagrama,
     portal_separacao_envio_list,
     portal_separacao_devolucao_list,
     portal_separacao_lote_detail,
+)
+
+# ── Portal do Fornecedor — Lotes de Envio (troca antecipada / equipamento novo) ─
+from .portal_lote_envio_fornecedor import (
+    portal_lote_envio_list,
+    portal_lote_envio_detail,
+    portal_lote_envio_item_enviar,
+    portal_lote_envio_item_excluir,
+    portal_lote_envio_item_editar,
+    portal_lote_envio_item_equipamento_novo,
+    portal_lote_envio_item_reparo_concluido,
 )
 
 # ── Manutenção externa — lado TI (recebimentos) ──────────────────────────────
@@ -313,9 +330,11 @@ from .manutencao import (
     manutencao_recebimento_detail,
     manutencao_recebimento_acao,
     manutencao_recebimentos_ajuda,
-    manutencao_lotes_list,
-    manutencao_lote_detail,
-    manutencao_lote_excluir,
+    envio_fornecedor_list,
+    envio_fornecedor_detail,
+    envio_fornecedor_item_confirmar,
+    envio_fornecedor_confirmar_lote,
+    manutencao_painel,
 )
 
 # ── Notificações internas (sino do topo) ─────────────────────────────────────

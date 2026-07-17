@@ -1,0 +1,312 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}{{ lote.nome }} — Lote de Envio{% endblock %}
+{% block page_title %}{{ lote.nome }}{% endblock %}
+{% block page_subtitle %}Lote de envio · {{ lote.get_status_display }}{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'portal_lote_envio_list' %}" class="pf-btn" data-voltar><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="pf-breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'portal_home' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Painel</a>
+  <i class="fa-solid fa-chevron-right pf-crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'portal_lote_envio_list' %}">Lotes de Envio</a>
+  <i class="fa-solid fa-chevron-right pf-crumb-sep" aria-hidden="true"></i>
+  <span class="pf-crumb-current" aria-current="page">{{ lote.nome }}</span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+  :where(.pf-le) { display: grid; gap: 1.2rem; }
+
+  .pf-le .pf-doc-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+    padding: 1.2rem 1.3rem; border-radius: var(--radius-lg); background: var(--bg-elevated);
+    border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+  }
+  .pf-le .pf-doc-meta { color: var(--text-tertiary); font-size: .82rem; margin-top: .25rem; }
+  .pf-le .pf-status { font-size: .74rem; font-weight: 700; padding: .3rem .7rem; border-radius: 999px; }
+  .pf-le .pf-status--aberto { background: var(--warning-soft); color: var(--warning); }
+  .pf-le .pf-status--enviado { background: var(--success-soft); color: var(--success); }
+  .pf-le .pf-status--cancelado { background: var(--gray-soft); color: var(--gray); }
+
+  .pf-le .pf-rename { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  .pf-le .pf-rename input { padding: .45rem .7rem; border-radius: var(--radius-md); border: 1px solid var(--separator-non-opaque); background: var(--bg-page); color: var(--text-primary); font: inherit; min-width: 12rem; }
+
+  .pf-le .pf-sec-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; margin: .2rem 0 .1rem; }
+
+  .pf-le .pf-itens { display: grid; gap: .8rem; }
+  .pf-le .pf-item-card { display: grid; gap: .6rem; padding: 1.1rem 1.2rem; border-radius: var(--radius-md); background: var(--bg-elevated); border: 1px solid var(--separator-hairline); }
+  .pf-le .pf-item-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .pf-le .pf-item-tipo { display: inline-flex; align-items: center; gap: .35rem; font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--brand); }
+  .pf-le .pf-item-name { font-weight: 800; letter-spacing: -.01em; margin-top: .2rem; }
+  .pf-le .pf-item-meta { color: var(--text-tertiary); font-size: .78rem; margin-top: .18rem; }
+  .pf-le .pf-item-status { font-size: .7rem; font-weight: 700; padding: .25rem .6rem; border-radius: 999px; white-space: nowrap; }
+  .pf-le .pf-item-status--rascunho { background: var(--warning-soft); color: var(--warning); }
+  .pf-le .pf-item-status--enviado { background: var(--brand-soft); color: var(--brand); }
+  .pf-le .pf-item-status--recebido { background: var(--success-soft); color: var(--success); }
+  .pf-le .pf-item-status--cancelado { background: var(--gray-soft); color: var(--gray); }
+  .pf-le .pf-item-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .pf-le .pf-item-actions form { display: inline; }
+
+  .pf-le details.pf-edit > summary { cursor: pointer; font-size: .82rem; font-weight: 700; color: var(--brand); list-style: none; }
+  .pf-le details.pf-edit > summary::-webkit-details-marker { display: none; }
+  .pf-le details.pf-edit[open] > summary { margin-bottom: .6rem; }
+  .pf-le .pf-edit-form { display: grid; gap: .6rem; padding-top: .5rem; border-top: 1px solid var(--separator-hairline); }
+  .pf-le .pf-grid2 { display: grid; gap: .7rem; grid-template-columns: repeat(2, 1fr); }
+  .pf-le .pf-grid2 .pf-span2 { grid-column: 1 / -1; }
+  @media (max-width: 34rem) { .pf-le .pf-grid2 { grid-template-columns: 1fr; } }
+  .pf-le label { font-size: .74rem; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: .3rem; }
+  .pf-le input, .pf-le select { width: 100%; padding: .5rem .7rem; min-height: 2.4rem; border-radius: var(--radius-md); border: 1px solid var(--separator-non-opaque); background: var(--bg-page); color: var(--text-primary); font: inherit; }
+  .pf-le .select2-container { width: 100% !important; }
+
+  .pf-le .pf-anx { display: grid; grid-template-columns: 2rem 1fr auto; gap: .8rem; align-items: start; padding: .6rem 0; border-top: 1px solid var(--separator-hairline); }
+  .pf-le .pf-anx:first-of-type { border-top: 0; }
+  .pf-le .pf-anx-ic { width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 999px; background: var(--bg-fill-tertiary); color: var(--brand); font-size: .8rem; }
+  .pf-le .pf-anx-name { font-weight: 700; font-size: .88rem; overflow-wrap: anywhere; }
+  .pf-le .pf-anx-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; margin-top: .25rem; color: var(--text-tertiary); font-size: .76rem; }
+  .pf-le .pf-anx-del { width: 2rem; height: 2rem; display: grid; place-items: center; align-self: center; border-radius: 8px; border: 1px solid var(--separator-hairline); background: transparent; color: var(--text-tertiary); cursor: pointer; }
+  .pf-le .pf-anx-del:hover { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+
+  .pf-le .pf-empty { text-align: center; padding: 2rem 1rem; color: var(--text-tertiary); }
+  .pf-le .pf-form-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .3rem; }
+  .pf-le .pf-item-link { font-size: .74rem; font-weight: 700; color: var(--brand); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-le">
+
+  <div class="pf-doc-head">
+    <div>
+      <form method="post" class="pf-rename">
+        {% csrf_token %}
+        <input type="hidden" name="acao" value="renomear">
+        <input type="text" name="nome" value="{{ lote.nome }}" {% if lote.status != 'aberto' %}disabled{% endif %}>
+        {% if lote.status == 'aberto' %}<button type="submit" class="pf-btn"><i class="fa-solid fa-pen"></i> Renomear</button>{% endif %}
+      </form>
+      <div class="pf-doc-meta">Criado em {{ lote.created_at|date:"d/m/Y H:i" }}{% if lote.enviado_em %} · enviado em {{ lote.enviado_em|date:"d/m/Y H:i" }}{% endif %}</div>
+    </div>
+    <span class="pf-status pf-status--{{ lote.status }}">{{ lote.get_status_display }}</span>
+  </div>
+
+  {% if lote.status == 'aberto' %}
+  <div class="pf-form-actions">
+    <a href="{% url 'portal_lote_envio_item_equipamento_novo' %}?lote={{ lote.pk }}" class="pf-btn"><i class="fa-solid fa-plus"></i> Adicionar equipamento novo</a>
+    <a href="{% url 'portal_troca_antecipada_nova' %}?lote={{ lote.pk }}" class="pf-btn"><i class="fa-solid fa-plus"></i> Adicionar troca antecipada</a>
+    <a href="{% url 'portal_lote_envio_item_reparo_concluido' %}?lote={{ lote.pk }}" class="pf-btn"><i class="fa-solid fa-plus"></i> Adicionar retorno de reparo</a>
+    {% if itens %}
+    <form method="post" onsubmit="return confirm('Enviar todo o lote ao TI? Os itens em rascunho vão virar processos reais (troca antecipada / cadastro de equipamento).');">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="enviar_lote">
+      <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paper-plane"></i> Enviar lote inteiro ao TI</button>
+    </form>
+    {% endif %}
+    <form method="post" onsubmit="return confirm('Excluir este lote? Só é possível enquanto nada foi enviado.');">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="excluir_lote">
+      <button type="submit" class="pf-btn"><i class="fa-solid fa-trash-can"></i> Excluir lote</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="pf-sec-title">Itens do lote ({{ itens|length }})</div>
+  <div class="pf-itens">
+    {% for il in itens %}
+    <div class="pf-item-card">
+      <div class="pf-item-top">
+        <div style="min-width:0;">
+          <div class="pf-item-tipo">
+            {% if il.tipo == 'troca_antecipada' %}<i class="fa-solid fa-right-left"></i> Troca antecipada{% elif il.tipo == 'equipamento_novo' %}<i class="fa-solid fa-box"></i> Equipamento novo{% else %}<i class="fa-solid fa-dolly"></i> Reparo concluído{% endif %}
+          </div>
+          {% if il.tipo == 'troca_antecipada' %}
+          <div class="pf-item-name">Substituto p/ {{ il.item_defeituoso.nome }}{% if il.item_defeituoso.numero_serie %} <span style="font-weight:500;color:var(--text-tertiary);">· Série {{ il.item_defeituoso.numero_serie }}</span>{% endif %}</div>
+          <div class="pf-item-meta">Substituto: {{ il.sub_modelo }}{% if il.sub_serie %} · Série {{ il.sub_serie }}{% endif %}{% if il.sub_marca %} · {{ il.sub_marca }}{% endif %}</div>
+          {% elif il.tipo == 'equipamento_novo' %}
+          <div class="pf-item-name">{{ il.novo_nome }}{% if il.novo_modelo %} <span style="font-weight:500;color:var(--text-tertiary);">· {{ il.novo_modelo }}</span>{% endif %}</div>
+          <div class="pf-item-meta">{% if il.novo_numero_serie %}Série {{ il.novo_numero_serie }} · {% endif %}{{ il.novo_categoria.nome|default:"—" }} / {{ il.novo_subtipo.nome|default:"—" }} · {{ il.novo_localidade.local|default:"—" }}</div>
+          {% else %}
+          <div class="pf-item-name">{{ il.ordem.item.nome }} <span style="font-weight:500;color:var(--text-tertiary);">· OS #{{ il.ordem_id }}</span></div>
+          <div class="pf-item-meta">{% if il.ordem.item.numero_serie %}Série {{ il.ordem.item.numero_serie }} · {% endif %}Devolver em {{ il.localidade_devolucao.local|default:"—" }}</div>
+          {% endif %}
+        </div>
+        {% if il.ordem_id %}
+        <span class="pf-osc pf-osc--{{ il.ordem.status }}" title="Status atual da ordem de manutenção">{{ il.ordem.get_status_display }}</span>
+        {% else %}
+        <span class="pf-item-status pf-item-status--{{ il.status }}">{{ il.get_status_display }}</span>
+        {% endif %}
+      </div>
+
+      {% if il.status == 'rascunho' %}
+      <div class="pf-item-actions">
+        <form method="post" action="{% url 'portal_lote_envio_item_enviar' il.pk %}" onsubmit="return confirm('Enviar este item ao TI?');">
+          {% csrf_token %}
+          <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paper-plane"></i> Enviar item</button>
+        </form>
+        <form method="post" action="{% url 'portal_lote_envio_item_excluir' il.pk %}" onsubmit="return confirm('Remover este item do lote?');">
+          {% csrf_token %}
+          <button type="submit" class="pf-btn"><i class="fa-solid fa-trash-can"></i> Excluir</button>
+        </form>
+      </div>
+
+      {% if il.tipo != 'reparo_concluido' %}
+      <details class="pf-edit">
+        <summary><i class="fa-solid fa-pen"></i> Editar item</summary>
+        <form method="post" action="{% url 'portal_lote_envio_item_editar' il.pk %}" class="pf-edit-form">
+          {% csrf_token %}
+          {% if il.tipo == 'troca_antecipada' %}
+          <div class="pf-grid2">
+            <div class="pf-span2"><label>Modelo do substituto *</label><input type="text" name="sub_modelo" value="{{ il.sub_modelo }}" required></div>
+            <div><label>Número de série</label><input type="text" name="sub_serie" value="{{ il.sub_serie }}"></div>
+            <div><label>Marca</label><input type="text" name="sub_marca" value="{{ il.sub_marca }}"></div>
+            <div class="pf-span2"><label>Data de contrato</label><input type="date" name="sub_data_contrato" value="{{ il.sub_data_contrato|date:'Y-m-d' }}"></div>
+          </div>
+          {% else %}
+          <div class="pf-grid2">
+            <div class="pf-span2"><label>Nome/Modelo *</label><input type="text" name="novo_nome" value="{{ il.novo_nome }}" required></div>
+            <div><label>Número de série</label><input type="text" name="novo_numero_serie" value="{{ il.novo_numero_serie }}"></div>
+            <div><label>Marca</label><input type="text" name="novo_marca" value="{{ il.novo_marca }}"></div>
+            <div><label>Modelo</label><input type="text" name="novo_modelo" value="{{ il.novo_modelo }}"></div>
+            <div>
+              <label>Categoria *</label>
+              <select name="novo_categoria" class="pf-select2" required>
+                {% for c in categorias %}<option value="{{ c.id }}" {% if il.novo_categoria_id == c.id %}selected{% endif %}>{{ c.nome }}</option>{% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>Subtipo *</label>
+              <select name="novo_subtipo" class="pf-select2" required>
+                {% for s in subtipos %}<option value="{{ s.id }}" {% if il.novo_subtipo_id == s.id %}selected{% endif %}>{{ s.nome }}</option>{% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>Localidade *</label>
+              <select name="novo_localidade" class="pf-select2" required>
+                {% for l in localidades %}<option value="{{ l.id }}" {% if il.novo_localidade_id == l.id %}selected{% endif %}>{{ l.local }}</option>{% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>Centro de custo</label>
+              <select name="novo_centro_custo" class="pf-select2">
+                <option value="">—</option>
+                {% for cc in centros_custo %}<option value="{{ cc.id }}" {% if il.novo_centro_custo_id == cc.id %}selected{% endif %}>{{ cc.numero }} — {{ cc.departamento }}</option>{% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>Regime</label>
+              <select name="novo_locado" class="pf-locado-toggle">
+                <option value="nao" {% if il.novo_locado == 'nao' %}selected{% endif %}>Compra</option>
+                <option value="sim" {% if il.novo_locado == 'sim' %}selected{% endif %}>Locação</option>
+              </select>
+            </div>
+            <div>
+              <label>PMB?</label>
+              <select name="novo_pmb">
+                <option value="nao" {% if il.novo_pmb == 'nao' %}selected{% endif %}>Não</option>
+                <option value="sim" {% if il.novo_pmb == 'sim' %}selected{% endif %}>Sim</option>
+              </select>
+            </div>
+            <div><label class="pf-valor-label">{% if il.novo_locado == 'sim' %}Valor do Aluguel *{% else %}Valor de Compra *{% endif %}</label><input type="number" step="0.01" min="0" name="novo_valor" value="{{ il.novo_valor|default:'' }}" required></div>
+            <div><label>Contrato</label><input type="text" name="novo_contrato" value="{{ il.novo_contrato }}"></div>
+            <div><label>Tempo de contrato (meses)</label><input type="number" min="1" name="novo_tempo_contrato_meses" value="{{ il.novo_tempo_contrato_meses|default:'' }}"></div>
+            <div class="pf-span2 pf-cobranca-wrap" {% if il.novo_locado != 'sim' %}hidden{% endif %}>
+              <label>O aluguel será cobrado somente a partir do próximo ano?</label>
+              <select name="novo_cobranca_proximo_ano">
+                <option value="nao" {% if il.novo_cobranca_proximo_ano == 'nao' %}selected{% endif %}>Não — cobrar desde já</option>
+                <option value="sim" {% if il.novo_cobranca_proximo_ano == 'sim' %}selected{% endif %}>Sim — só a partir de 1º de janeiro do ano seguinte</option>
+              </select>
+            </div>
+          </div>
+          {% endif %}
+          <div class="pf-form-actions"><button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-floppy-disk"></i> Salvar alterações</button></div>
+        </form>
+      </details>
+      {% endif %}
+
+      {% elif il.ordem_id %}
+      <a href="{% url 'portal_manutencao_detail' il.ordem_id %}" class="pf-item-link"><i class="fa-solid fa-arrow-up-right-from-square"></i> Ver ordem de manutenção #{{ il.ordem_id }}</a>
+
+      {% elif il.status == 'enviado' %}
+      <div class="pf-item-meta"><i class="fa-solid fa-clock"></i> Enviado em {{ il.enviado_em|date:"d/m/Y H:i" }} — aguardando o TI confirmar o recebimento.</div>
+
+      {% elif il.status == 'recebido' %}
+      <div class="pf-item-meta"><i class="fa-solid fa-circle-check"></i> Recebido pelo TI em {{ il.recebido_em|date:"d/m/Y H:i" }}{% if il.item_resultado %} — equipamento ativo como <b>{{ il.item_resultado.get_status_display }}</b>{% endif %}.</div>
+      {% endif %}
+    </div>
+    {% empty %}
+    <div class="pf-item-card pf-empty">
+      <p>Nenhum item neste lote ainda.</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div>
+    <div class="pf-sec-title">Notas fiscais</div>
+    <div class="pf-card" style="margin-top:.5rem; padding:1rem 1.1rem;">
+      {% for a in anexos %}
+        <div class="pf-anx">
+          <div class="pf-anx-ic"><i class="fa-solid fa-file-invoice"></i></div>
+          <div style="min-width:0;">
+            <div class="pf-anx-name"><a href="{{ a.arquivo.url }}" target="_blank" rel="noopener">{{ a.nome_arquivo }}</a></div>
+            <div class="pf-anx-meta">
+              {% if a.criado_por %}<span>{{ a.criado_por.get_full_name|default:a.criado_por.username }}</span>{% endif %}
+              <span>· {{ a.created_at|date:"d/m/Y H:i" }}</span>
+              {% if a.descricao %}<span>· {{ a.descricao }}</span>{% endif %}
+            </div>
+          </div>
+          <form method="post" onsubmit="return confirm('Excluir esta nota fiscal? Esta ação não pode ser desfeita.');">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="excluir_nf">
+            <input type="hidden" name="anexo_id" value="{{ a.id }}">
+            <button type="submit" class="pf-anx-del" title="Excluir NF"><i class="fa-solid fa-trash-can"></i></button>
+          </form>
+        </div>
+      {% empty %}
+        <p style="color:var(--text-tertiary); font-size:.85rem; margin:0;">Nenhuma nota fiscal anexada ainda.</p>
+      {% endfor %}
+      {% if lote.status == 'aberto' or lote.status == 'enviado' %}
+      <form method="post" enctype="multipart/form-data" style="margin-top:.8rem; display:grid; gap:.6rem;">
+        {% csrf_token %}
+        <input type="hidden" name="acao" value="anexar_nf">
+        <div class="pf-grid2">
+          <div><label for="nf">Anexar NF (pode selecionar várias)</label><input type="file" id="nf" name="nf" multiple></div>
+          <div><label for="descricao">Descrição (opcional)</label><input type="text" id="descricao" name="descricao" placeholder="Ex: NF do substituto"></div>
+        </div>
+        <div class="pf-form-actions"><button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-paperclip"></i> Anexar NF</button></div>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+  $(function () {
+    $('details.pf-edit').each(function () {
+      $(this).on('toggle', function () {
+        if (this.open) { $(this).find('.pf-select2').select2({ width: '100%', dropdownParent: $(this) }); }
+      });
+    });
+
+    function syncRegime(select) {
+      var form = select.closest('.pf-edit-form');
+      var locado = select.value === 'sim';
+      var label = form.querySelector('.pf-valor-label');
+      if (label) label.textContent = locado ? 'Valor do Aluguel *' : 'Valor de Compra *';
+      var cobranca = form.querySelector('.pf-cobranca-wrap');
+      if (cobranca) cobranca.hidden = !locado;
+    }
+    document.querySelectorAll('.pf-locado-toggle').forEach(function (sel) {
+      sel.addEventListener('change', function () { syncRegime(sel); });
+    });
+  });
+</script>
+{% endblock %}

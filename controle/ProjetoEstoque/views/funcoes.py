@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
-from ..models import Funcao
+from ..models import Funcao, Usuario
 from ..forms import FuncaoForm
 
 
@@ -57,6 +57,14 @@ def funcao_form(request, pk=None):
 @require_POST
 def funcao_delete(request, pk):
     obj = get_object_or_404(Funcao, pk=pk)
+    usuarios_count = Usuario.objects.filter(funcao=obj).count()
+    if usuarios_count:
+        messages.error(
+            request,
+            f"Não é possível excluir a função '{obj.nome}': há {usuarios_count} "
+            "colaborador(es) vinculado(s) a ela. Altere a função deles antes de excluir."
+        )
+        return redirect("funcoes_list")
     obj.delete()
     messages.success(request, "Função removida.")
     return redirect("funcoes_list")

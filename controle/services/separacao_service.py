@@ -102,6 +102,65 @@ class SeparacaoService:
         return separacao
 
     @staticmethod
+    def _recalcular_status_lote(*, lote, user):
+        """Reflete no lote o que já aconteceu com os itens: só passa a ENVIADO
+        quando não sobra item ABERTO e pelo menos um já foi de fato despachado
+        (nunca por só remover/cancelar tudo). Chamado após qualquer ação que
+        mude o status de um item de um lote — despacho individual, despacho em
+        lote, ou remoção — pra nunca deixar o lote preso em "Em separação"
+        mesmo com tudo já resolvido."""
+        if lote is None or lote.status != StatusSeparacaoChoices.ABERTO:
+            return
+        if lote.itens.filter(status=StatusSeparacaoChoices.ABERTO).exists():
+            return
+        if not lote.itens.filter(status=StatusSeparacaoChoices.ENVIADO).exists():
+            return
+        lote.status = StatusSeparacaoChoices.ENVIADO
+        lote.enviado_em = timezone.now()
+        lote.atualizado_por = user
+        lote.save(update_fields=["status", "enviado_em", "atualizado_por", "updated_at"])
+
+    @staticmethod
+    def vincular_item(*, lote, separacao, user):
+        """Move um item ainda solto (sem lote) para dentro de um lote aberto já
+        existente — mesma validação de compatibilidade (tipo/fornecedor) de
+        `criar_lote`, só que contra um lote que já existe."""
+        if lote.status != StatusSeparacaoChoices.ABERTO:
+            raise ValidationError("Este lote já foi despachado — não é mais possível adicionar itens.")
+        if separacao.status != StatusSeparacaoChoices.ABERTO or separacao.lote_id:
+            raise ValidationError(
+                f'O item "{separacao.item.nome}" não está disponível para entrar em um lote.'
+            )
+        if separacao.tipo != lote.tipo:
+            raise ValidationError(f'O item "{separacao.item.nome}" não é do mesmo tipo de remessa do lote.')
+        if separacao.fornecedor_id != lote.fornecedor_id:
+            raise ValidationError(f'O item "{separacao.item.nome}" é de um fornecedor diferente do lote.')
+
+        separacao.lote = lote
+        separacao.atualizado_por = user
+        separacao.save(update_fields=["lote", "atualizado_por", "updated_at"])
+        return separacao
+
+    @staticmethod
+    def desvincular_item(*, separacao, user):
+        """Tira o item do lote sem cancelar a remessa — ele volta a ficar solto
+        (arrependimento de agrupamento, diferente de `remover_item`, que cancela
+        a remessa por completo)."""
+        if not separacao.lote_id:
+            raise ValidationError("Este item já não está em nenhum lote.")
+        if separacao.lote.status != StatusSeparacaoChoices.ABERTO:
+            raise ValidationError("Este lote já foi despachado — não é mais possível remover itens.")
+        if separacao.status != StatusSeparacaoChoices.ABERTO:
+            raise ValidationError(f'O item "{separacao.item.nome}" já não está mais em remessa aberta.')
+
+        lote = separacao.lote
+        separacao.lote = None
+        separacao.atualizado_por = user
+        separacao.save(update_fields=["lote", "atualizado_por", "updated_at"])
+        SeparacaoService._recalcular_status_lote(lote=lote, user=user)
+        return separacao
+
+    @staticmethod
     def remover_item(*, separacao, user):
         """Tira o item da remessa sem despachar (arrependimento)."""
         if separacao.status != StatusSeparacaoChoices.ABERTO:
@@ -110,6 +169,8 @@ class SeparacaoService:
         separacao.status = StatusSeparacaoChoices.CANCELADO
         separacao.atualizado_por = user
         separacao.save(update_fields=["status", "atualizado_por", "updated_at"])
+        if separacao.lote_id:
+            SeparacaoService._recalcular_status_lote(lote=separacao.lote, user=user)
         return separacao
 
     @staticmethod
@@ -267,6 +328,8 @@ class SeparacaoService:
         separacao.save(update_fields=[
             "status", "enviado_em", "movimentacao_despacho", "atualizado_por", "updated_at",
         ])
+        if separacao.lote_id:
+            SeparacaoService._recalcular_status_lote(lote=separacao.lote, user=user)
 
         rotulo = "envio" if separacao.tipo == TipoSeparacaoChoices.ENVIO else "devolução"
         lista_portal = (
@@ -301,9 +364,7 @@ class SeparacaoService:
 
         for sep in abertos:
             cls.despachar_item(separacao=sep, user=user)
-
-        if not lote.itens.filter(status=StatusSeparacaoChoices.ABERTO).exists():
-            lote.status = StatusSeparacaoChoices.ENVIADO
-            lote.enviado_em = timezone.now()
-            lote.atualizado_por = user
-            lote.save(update_fields=["status", "enviado_em", "atualizado_por", "updated_at"])
+        # `despachar_item` já chama `_recalcular_status_lote` a cada item —
+        # mantido aqui como no-op de segurança (idempotente) caso a lista de
+        # itens do lote mude no meio da transação.
+        cls._recalcular_status_lote(lote=lote, user=user)

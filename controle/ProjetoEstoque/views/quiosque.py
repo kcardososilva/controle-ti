@@ -92,7 +92,7 @@ def kiosk_checkin(request):
     """POST /api/quiosque/checkin/ — telemetria periódica (heartbeat)."""
     if request.method != "POST":
         return JsonResponse({"ok": False, "erro": "Método não permitido."}, status=405)
-    resp = qs.registrar_checkin(request.kiosk_device, _json_body(request))
+    resp = qs.registrar_checkin(request.kiosk_device, _json_body(request), request)
     return JsonResponse(resp)
 
 
@@ -112,6 +112,29 @@ def kiosk_comando_ack(request, pk: int):
         request.kiosk_device, pk, dados.get("status", "executado"), dados.get("detalhe", "")
     )
     return JsonResponse({"ok": ok}, status=200 if ok else 404)
+
+
+@kiosk_token_required
+def kiosk_atualizacao_apk(request):
+    """GET /api/quiosque/atualizacao/apk/ — download do .apk atual para
+    auto-atualização de um aparelho JÁ matriculado (Device Owner).
+
+    Diferente de `kiosk_instalador_download`: aquela é a rota de provisionamento
+    manual por QR Code (aparelho novo, sem token, token opaco de curta duração);
+    esta é para a frota já em campo, autenticada do mesmo jeito que o /checkin/
+    (Bearer + X-Device-UUID) — sem necessidade de emitir mais um token por download.
+    """
+    from django.http import FileResponse
+
+    atual = qs.apk_atual()
+    if atual is None:
+        return JsonResponse({"ok": False, "erro": "Nenhum instalador disponível."}, status=404)
+    caminho = qs.apk_dir() / atual["nome"]
+    return FileResponse(
+        open(caminho, "rb"),
+        content_type="application/vnd.android.package-archive",
+        filename=atual["nome"],
+    )
 
 
 def kiosk_instalador_download(request, token):
@@ -366,6 +389,7 @@ def quiosque_matriculas(request):
         "expiradas": KioskMatricula.objects.filter(usado=False, expira_em__lte=agora).count(),
         "apk": qs.apk_atual(),
         "apk_dir_display": str(qs.apk_dir()),
+        "versao_registrada": qs.versao_apk_registrada(),
         "instaladores": KioskInstaladorLink.objects.select_related("criado_por").all()[:15],
         "novo_pk": novo_pk,
     })
@@ -419,6 +443,56 @@ def quiosque_matricula_qrcode(request, pk: int):
         "qr_base64": qs.gerar_qrcode_data_uri(matricula.codigo),
         "expira_em": timezone.localtime(matricula.expira_em).strftime("%d/%m/%Y %H:%M") if matricula.expira_em else None,
     })
+
+
+@login_required
+def quiosque_apk_upload(request):
+    """POST — upload do instalador (.apk) direto pela tela, substituindo o
+    arquivo anterior na pasta protegida (`KIOSK_APK_DIR`). Dispensa copiar o
+    arquivo manualmente no servidor a cada nova versão do app. Se
+    `version_code`/`version_name` forem informados, já registra a versão nesse
+    mesmo passo, habilitando a auto-atualização (Device Owner) dos aparelhos já
+    matriculados sem precisar rodar o management command à parte."""
+    if request.method != "POST":
+        return redirect("quiosque_matriculas")
+
+    arquivo = request.FILES.get("apk")
+    if arquivo is None:
+        messages.error(request, "Selecione o arquivo .apk para enviar.")
+        return redirect("quiosque_matriculas")
+
+    version_code_raw = (request.POST.get("version_code") or "").strip()
+    version_name = (request.POST.get("version_name") or "").strip()
+    version_code = None
+    if version_code_raw:
+        try:
+            version_code = int(version_code_raw)
+            if version_code <= 0:
+                raise ValueError
+        except ValueError:
+            messages.error(request, "O código da versão (version_code) precisa ser um número inteiro positivo.")
+            return redirect("quiosque_matriculas")
+
+    try:
+        qs.salvar_apk_upload(arquivo, version_code=version_code, version_name=version_name)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("quiosque_matriculas")
+
+    if version_code:
+        messages.success(
+            request,
+            f"Instalador “{arquivo.name}” enviado (versão {version_name or version_code}) e substituiu a "
+            "anterior. Auto-atualização habilitada para os aparelhos já matriculados."
+        )
+    else:
+        messages.success(
+            request,
+            f"Instalador “{arquivo.name}” enviado e substituiu a versão anterior. Informe o código da "
+            "versão (version_code) para habilitar a auto-atualização dos aparelhos já matriculados — ou "
+            "rode depois “python manage.py assinar_apk_quiosque <version_code> <version_name>”."
+        )
+    return redirect("quiosque_matriculas")
 
 
 @login_required

@@ -186,6 +186,78 @@ def _pode_editar_execucao(execucao: "PreventivaExecucao", user) -> bool:
     return execucao.criado_por_id == user.id
 
 
+def _tecnicos_disponiveis(excluir_id=None):
+    """Usuários ativos da equipe de TI (fora do grupo Fornecedor), para
+    seleção de técnico responsável/auxiliares. Compartilhado pelas telas de
+    execução, edição e planos de agendamento."""
+    from django.contrib.auth import get_user_model
+    AuthUser = get_user_model()
+    qs = (
+        AuthUser.objects
+        .filter(is_active=True)
+        .exclude(groups__name=GRUPO_FORNECEDOR)
+        .order_by("first_name", "last_name", "username")
+    )
+    if excluir_id:
+        qs = qs.exclude(pk=excluir_id)
+    return qs
+
+
+def _resolver_tecnicos_auxiliares(request, tecnico_principal):
+    """
+    Valida a lista de técnicos auxiliares enviada no POST (preventivas
+    realizadas em dupla): precisam ser usuários ativos da equipe de TI e
+    diferentes do técnico principal da execução. Retorna (auxiliares, erros).
+    """
+    from django.contrib.auth import get_user_model
+    AuthUser = get_user_model()
+
+    ids_raw = request.POST.getlist("tecnicos_auxiliares")
+    ids = {int(i) for i in ids_raw if str(i).isdigit()}
+    if tecnico_principal:
+        ids.discard(tecnico_principal.id)
+
+    if not ids:
+        return [], []
+
+    auxiliares = list(
+        AuthUser.objects
+        .filter(pk__in=ids, is_active=True)
+        .exclude(groups__name=GRUPO_FORNECEDOR)
+    )
+    encontrados = {u.id for u in auxiliares}
+    erros = ["Um ou mais técnicos auxiliares selecionados são inválidos."] if (ids - encontrados) else []
+    return auxiliares, erros
+
+
+def _conflito_horario(tecnico, data_exec, hora_ini, hora_fim, excluir_pk=None):
+    """
+    Localiza uma PreventivaExecucao conflitante (mesmo técnico, mesmo dia,
+    horário sobreposto). Considera o técnico como responsável principal
+    (ou execução legada sem `tecnico`, via `criado_por`) e também como
+    auxiliar de outra execução — em ambos os papéis ele está fisicamente
+    ocupado naquele horário.
+    """
+    qs = (
+        PreventivaExecucao.objects
+        .filter(data_execucao=data_exec)
+        .filter(
+            Q(tecnico=tecnico)
+            | Q(tecnico__isnull=True, criado_por=tecnico)
+            | Q(tecnicos_auxiliares=tecnico)
+        )
+        .exclude(hora_inicio__isnull=True)
+        .exclude(hora_fim__isnull=True)
+        .filter(hora_inicio__lt=hora_fim, hora_fim__gt=hora_ini)
+        .select_related("preventiva__equipamento")
+        .order_by("hora_inicio")
+        .distinct()
+    )
+    if excluir_pk:
+        qs = qs.exclude(pk=excluir_pk)
+    return qs.first()
+
+
 def _recalcular_agregados_preventiva(preventiva: Preventiva) -> None:
     """
     Recalcula `data_ultima`/`data_proxima`/`dentro_do_prazo` da Preventiva a
@@ -654,7 +726,7 @@ def preventiva_detail(request, pk):
     exec_qs = (
         preventiva.execucoes
         .select_related("criado_por", "tecnico")
-        .prefetch_related("respostas", "respostas__pergunta")
+        .prefetch_related("respostas", "respostas__pergunta", "tecnicos_auxiliares")
         .order_by("-data_execucao", "-id")
     )
 
@@ -749,6 +821,11 @@ def preventiva_exec(request, pk):
         hoje = timezone.localdate()
         tecnico_alvo = preventiva.tecnico or request.user
 
+        # ── Preventiva executada em dupla: técnico(s) auxiliar(es) que
+        # estiveram junto e cujas horas também devem ser contabilizadas ──────
+        auxiliares, erros_aux = _resolver_tecnicos_auxiliares(request, tecnico_alvo)
+        erros.extend(erros_aux)
+
         # ── Apontamento de horas trabalhadas pelo técnico ─────────────────────
         data_exec_str = (request.POST.get("data_execucao") or "").strip()
         hora_ini_str = (request.POST.get("hora_inicio") or "").strip()
@@ -778,28 +855,19 @@ def preventiva_exec(request, pk):
             if hora_ini and hora_fim and PreventivaExecucao.calcular_duracao_minutos(hora_ini, hora_fim) == 0:
                 erros.append("A hora de término deve ser diferente da hora de início.")
 
-        # ── Conflito de horário: mesmo técnico não pode ter 2 execuções ao
-        # mesmo tempo, no mesmo dia ─────────────────────────────────────────
+        # ── Conflito de horário: nem o técnico principal nem os auxiliares
+        # podem ter 2 execuções ao mesmo tempo, no mesmo dia ────────────────
         if hora_ini and hora_fim and hora_fim > hora_ini:
-            conflito = (
-                PreventivaExecucao.objects
-                .filter(data_execucao=data_exec)
-                .filter(Q(tecnico=tecnico_alvo) | Q(tecnico__isnull=True, criado_por=tecnico_alvo))
-                .exclude(hora_inicio__isnull=True)
-                .exclude(hora_fim__isnull=True)
-                .filter(hora_inicio__lt=hora_fim, hora_fim__gt=hora_ini)
-                .select_related("preventiva__equipamento")
-                .order_by("hora_inicio")
-                .first()
-            )
-            if conflito:
-                nome_tec = tecnico_alvo.get_full_name() or tecnico_alvo.username
-                erros.append(
-                    f"Conflito de horário: {nome_tec} já tem uma execução registrada em "
-                    f"{data_exec:%d/%m/%Y} das {conflito.hora_inicio:%H:%M} às "
-                    f"{conflito.hora_fim:%H:%M} ({conflito.preventiva.equipamento.nome}). "
-                    f"Escolha um horário livre, por exemplo a partir das {conflito.hora_fim:%H:%M}."
-                )
+            for tec in [tecnico_alvo, *auxiliares]:
+                conflito = _conflito_horario(tec, data_exec, hora_ini, hora_fim)
+                if conflito:
+                    nome_tec = tec.get_full_name() or tec.username
+                    erros.append(
+                        f"Conflito de horário: {nome_tec} já tem uma execução registrada em "
+                        f"{data_exec:%d/%m/%Y} das {conflito.hora_inicio:%H:%M} às "
+                        f"{conflito.hora_fim:%H:%M} ({conflito.preventiva.equipamento.nome}). "
+                        f"Escolha um horário livre, por exemplo a partir das {conflito.hora_fim:%H:%M}."
+                    )
         elif hora_ini and hora_fim and hora_fim < hora_ini:
             messages.warning(
                 request,
@@ -865,6 +933,8 @@ def preventiva_exec(request, pk):
                         "hora_inicio": hora_ini_str,
                         "hora_fim": hora_fim_str,
                     },
+                    "tecnicos_disponiveis": _tecnicos_disponiveis(excluir_id=tecnico_alvo.id),
+                    "tecnicos_auxiliares_ids": [t.id for t in auxiliares],
                 },
             )
 
@@ -892,6 +962,9 @@ def preventiva_exec(request, pk):
                 criado_por=request.user,
                 atualizado_por=request.user,
             )
+
+            if auxiliares:
+                execucao.tecnicos_auxiliares.set(auxiliares)
 
             for resposta in respostas_bulk:
                 resposta.execucao = execucao
@@ -938,13 +1011,17 @@ def preventiva_exec(request, pk):
             preventiva.save(update_fields=update_fields)
 
         duracao_txt = execucao.duracao_formatada
+        sufixo_aux = ""
+        if auxiliares:
+            nomes_aux = ", ".join(a.get_full_name() or a.username for a in auxiliares)
+            sufixo_aux = f" Horas também contabilizadas para: {nomes_aux}."
         if duracao_txt:
             messages.success(
                 request,
-                f"Execução registrada ({duracao_txt} de serviço) e próxima preventiva reagendada com sucesso.",
+                f"Execução registrada ({duracao_txt} de serviço) e próxima preventiva reagendada com sucesso.{sufixo_aux}",
             )
         else:
-            messages.success(request, "Execução registrada e próxima preventiva reagendada com sucesso.")
+            messages.success(request, f"Execução registrada e próxima preventiva reagendada com sucesso.{sufixo_aux}")
         return redirect("preventiva_detail", pk=preventiva.pk)
 
     hoje = timezone.localdate()
@@ -953,7 +1030,13 @@ def preventiva_exec(request, pk):
     return render(
         request,
         "front/preventivas/preventiva_exec.html",
-        {"preventiva": preventiva, "perguntas": perguntas, "today": hoje},
+        {
+            "preventiva": preventiva,
+            "perguntas": perguntas,
+            "today": hoje,
+            "tecnicos_disponiveis": _tecnicos_disponiveis(excluir_id=(preventiva.tecnico_id or request.user.id)),
+            "tecnicos_auxiliares_ids": [],
+        },
     )
 
 
@@ -997,6 +1080,9 @@ def preventiva_execucao_editar(request, execucao_pk):
         hoje = timezone.localdate()
         tecnico_alvo = execucao.tecnico or execucao.criado_por or request.user
 
+        auxiliares, erros_aux = _resolver_tecnicos_auxiliares(request, tecnico_alvo)
+        erros.extend(erros_aux)
+
         data_exec_str = (request.POST.get("data_execucao") or "").strip()
         hora_ini_str = (request.POST.get("hora_inicio") or "").strip()
         hora_fim_str = (request.POST.get("hora_fim") or "").strip()
@@ -1026,28 +1112,19 @@ def preventiva_execucao_editar(request, execucao_pk):
                 erros.append("A hora de término deve ser diferente da hora de início.")
 
         # ── Conflito de horário (mesma regra do registro, excluindo a própria
-        # execução sendo editada) ────────────────────────────────────────────
+        # execução sendo editada; nem o técnico principal nem os auxiliares
+        # podem ter outra execução no mesmo horário) ─────────────────────────
         if hora_ini and hora_fim and hora_fim > hora_ini:
-            conflito = (
-                PreventivaExecucao.objects
-                .filter(data_execucao=data_exec)
-                .filter(Q(tecnico=tecnico_alvo) | Q(tecnico__isnull=True, criado_por=tecnico_alvo))
-                .exclude(pk=execucao.pk)
-                .exclude(hora_inicio__isnull=True)
-                .exclude(hora_fim__isnull=True)
-                .filter(hora_inicio__lt=hora_fim, hora_fim__gt=hora_ini)
-                .select_related("preventiva__equipamento")
-                .order_by("hora_inicio")
-                .first()
-            )
-            if conflito:
-                nome_tec = tecnico_alvo.get_full_name() or tecnico_alvo.username
-                erros.append(
-                    f"Conflito de horário: {nome_tec} já tem outra execução registrada em "
-                    f"{data_exec:%d/%m/%Y} das {conflito.hora_inicio:%H:%M} às "
-                    f"{conflito.hora_fim:%H:%M} ({conflito.preventiva.equipamento.nome}). "
-                    f"Escolha um horário livre, por exemplo a partir das {conflito.hora_fim:%H:%M}."
-                )
+            for tec in [tecnico_alvo, *auxiliares]:
+                conflito = _conflito_horario(tec, data_exec, hora_ini, hora_fim, excluir_pk=execucao.pk)
+                if conflito:
+                    nome_tec = tec.get_full_name() or tec.username
+                    erros.append(
+                        f"Conflito de horário: {nome_tec} já tem outra execução registrada em "
+                        f"{data_exec:%d/%m/%Y} das {conflito.hora_inicio:%H:%M} às "
+                        f"{conflito.hora_fim:%H:%M} ({conflito.preventiva.equipamento.nome}). "
+                        f"Escolha um horário livre, por exemplo a partir das {conflito.hora_fim:%H:%M}."
+                    )
         elif hora_ini and hora_fim and hora_fim < hora_ini:
             messages.warning(
                 request,
@@ -1113,6 +1190,8 @@ def preventiva_execucao_editar(request, execucao_pk):
                         "hora_inicio": hora_ini_str,
                         "hora_fim": hora_fim_str,
                     },
+                    "tecnicos_disponiveis": _tecnicos_disponiveis(excluir_id=tecnico_alvo.id),
+                    "tecnicos_auxiliares_ids": [t.id for t in auxiliares],
                 },
             )
 
@@ -1131,6 +1210,7 @@ def preventiva_execucao_editar(request, execucao_pk):
 
             execucao.atualizado_por = request.user
             execucao.save()
+            execucao.tecnicos_auxiliares.set(auxiliares)
 
             existentes = {r.pergunta_id: r for r in execucao.respostas.all()}
             for pergunta in perguntas:
@@ -1173,6 +1253,10 @@ def preventiva_execucao_editar(request, execucao_pk):
                 "hora_inicio": execucao.hora_inicio.strftime("%H:%M") if execucao.hora_inicio else "",
                 "hora_fim": execucao.hora_fim.strftime("%H:%M") if execucao.hora_fim else "",
             },
+            "tecnicos_disponiveis": _tecnicos_disponiveis(
+                excluir_id=(execucao.tecnico_id or execucao.criado_por_id or request.user.id)
+            ),
+            "tecnicos_auxiliares_ids": list(execucao.tecnicos_auxiliares.values_list("id", flat=True)),
         },
     )
 
@@ -1658,6 +1742,23 @@ def tecnico_desempenho(request):
         )
     }
 
+    # Participações como técnico AUXILIAR (preventivas em dupla): contam para
+    # as execuções e as horas do colega, sem afetar pontualidade/atribuições
+    # (que seguem ligadas apenas ao técnico oficialmente responsável).
+    por_aux = {
+        row["tecnicos_auxiliares"]: row
+        for row in (
+            PreventivaExecucao.objects
+            .filter(data_execucao__gte=inicio, data_execucao__lte=fim, tecnicos_auxiliares__isnull=False)
+            .values("tecnicos_auxiliares")
+            .annotate(
+                total=Count("id", distinct=True),
+                minutos=Coalesce(Sum("duracao_minutos"), 0),
+                com_horas=Count("id", filter=Q(duracao_minutos__isnull=False), distinct=True),
+            )
+        )
+    }
+
     fornecedor_ids = set(
         AuthUser.objects.filter(groups__name=GRUPO_FORNECEDOR).values_list("id", flat=True)
     )
@@ -1673,13 +1774,18 @@ def tecnico_desempenho(request):
             continue
         ex = por_exec.get(uid, {})
         at = por_atrib.get(uid, {})
-        execucoes = int(ex.get("total", 0))
+        aux = por_aux.get(uid, {})
+        execucoes_proprias = int(ex.get("total", 0))
         com_agenda = int(ex.get("com_agenda", 0))
         no_prazo = int(ex.get("no_prazo", 0))
-        minutos = int(ex.get("minutos", 0) or 0)
-        com_horas = int(ex.get("com_horas", 0))
+        minutos_proprios = int(ex.get("minutos", 0) or 0)
+        com_horas = int(ex.get("com_horas", 0)) + int(aux.get("com_horas", 0))
         atribuidas = int(at.get("atribuidas", 0))
         atrasadas = int(at.get("atrasadas", 0))
+        execucoes_auxiliar = int(aux.get("total", 0))
+        minutos_auxiliar = int(aux.get("minutos", 0) or 0)
+        execucoes = execucoes_proprias + execucoes_auxiliar
+        minutos = minutos_proprios + minutos_auxiliar
         if execucoes == 0 and atribuidas == 0:
             continue
         pontualidade = round(no_prazo / com_agenda * 100) if com_agenda else None
@@ -1689,6 +1795,7 @@ def tecnico_desempenho(request):
             "nome": u.get_full_name() or u.username,
             "username": u.username,
             "execucoes": execucoes,
+            "execucoes_auxiliar": execucoes_auxiliar,
             "com_agenda": com_agenda,
             "no_prazo": no_prazo,
             "atribuidas": atribuidas,
@@ -1696,6 +1803,7 @@ def tecnico_desempenho(request):
             "pendentes": max(0, atribuidas - atrasadas),
             "pontualidade": pontualidade,
             "minutos": minutos,
+            "minutos_auxiliar": minutos_auxiliar,
             "com_horas": com_horas,
             "horas_dec": round(minutos / 60, 1),
             "tempo_fmt": _fmt_minutos(minutos),
@@ -1805,10 +1913,13 @@ def minhas_atividades(request):
 
     recentes = list(
         PreventivaExecucao.objects
-        .filter(Q(tecnico=alvo) | Q(tecnico__isnull=True, criado_por=alvo))
+        .filter(Q(tecnico=alvo) | Q(tecnico__isnull=True, criado_por=alvo) | Q(tecnicos_auxiliares=alvo))
         .select_related("preventiva", "preventiva__equipamento")
-        .order_by("-data_execucao", "-id")[:8]
+        .order_by("-data_execucao", "-id")
+        .distinct()[:8]
     )
+    for e in recentes:
+        e.papel_auxiliar = (e.tecnico_id != alvo.id) and not (e.tecnico_id is None and e.criado_por_id == alvo.id)
 
     context = {
         "today": hoje,
@@ -1842,14 +1953,23 @@ def preventiva_minha_agenda(request):
 
     execs = list(
         PreventivaExecucao.objects
-        .filter(Q(tecnico=request.user) | Q(tecnico__isnull=True, criado_por=request.user))
+        .filter(
+            Q(tecnico=request.user)
+            | Q(tecnico__isnull=True, criado_por=request.user)
+            | Q(tecnicos_auxiliares=request.user)
+        )
         .filter(data_execucao__gte=inicio, data_execucao__lte=fim)
         .select_related(
             "preventiva", "preventiva__equipamento",
             "preventiva__equipamento__localidade", "preventiva__checklist_modelo",
         )
         .order_by("-data_execucao", "hora_inicio", "id")
+        .distinct()
     )
+    for execucao in execs:
+        execucao.papel_auxiliar = (execucao.tecnico_id != request.user.id) and not (
+            execucao.tecnico_id is None and execucao.criado_por_id == request.user.id
+        )
 
     por_dia = defaultdict(list)
     for execucao in execs:
@@ -1919,18 +2039,24 @@ def apontamentos_horas_export(request):
             "tecnico",
             "criado_por",
         )
+        .prefetch_related("tecnicos_auxiliares")
         .order_by("data_execucao", "id")
     )
 
     if tecnico_id.isdigit():
         _tid = int(tecnico_id)
-        execs = execs.filter(Q(tecnico_id=_tid) | Q(tecnico__isnull=True, criado_por_id=_tid))
+        execs = execs.filter(
+            Q(tecnico_id=_tid) | Q(tecnico__isnull=True, criado_por_id=_tid) | Q(tecnicos_auxiliares=_tid)
+        ).distinct()
 
     def _nome_tecnico(ex):
         u = ex.tecnico or ex.criado_por
         if not u:
             return "—"
         return u.get_full_name() or u.username
+
+    def _nomes_auxiliares(ex):
+        return ", ".join(a.get_full_name() or a.username for a in ex.tecnicos_auxiliares.all())
 
     # ── Estilos ──────────────────────────────────────────────────────────────
     BRAND = "0071E3"
@@ -1982,7 +2108,8 @@ def apontamentos_horas_export(request):
     periodo_txt = f"{inicio:%d/%m/%Y} a {fim:%d/%m/%Y}"
     gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")
 
-    # ── Agrega por técnico em Python ─────────────────────────────────────────
+    # ── Agrega por técnico em Python (inclui participações como auxiliar,
+    # já que as horas trabalhadas em dupla contam para os dois técnicos) ─────
     resumo = {}
     detalhe = list(execs)
     for ex in detalhe:
@@ -1992,6 +2119,14 @@ def apontamentos_horas_export(request):
         if ex.duracao_minutos:
             r["com_horas"] += 1
             r["minutos"] += int(ex.duracao_minutos)
+
+        for auxiliar in ex.tecnicos_auxiliares.all():
+            nome_aux = auxiliar.get_full_name() or auxiliar.username
+            r_aux = resumo.setdefault(nome_aux, {"execucoes": 0, "com_horas": 0, "minutos": 0})
+            r_aux["execucoes"] += 1
+            if ex.duracao_minutos:
+                r_aux["com_horas"] += 1
+                r_aux["minutos"] += int(ex.duracao_minutos)
 
     wb = Workbook()
 
@@ -2062,6 +2197,7 @@ def apontamentos_horas_export(request):
     headers2 = [
         "Data", "Técnico", "Equipamento", "Nº Série", "Localidade", "Checklist",
         "Início", "Término", "Duração", "Horas (dec.)", "No prazo", "Observação",
+        "Auxiliar(es)",
     ]
     faixa_titulo(ws2, len(headers2),
                  "APONTAMENTOS DETALHADOS",
@@ -2085,6 +2221,7 @@ def apontamentos_horas_export(request):
             horas_dec if horas_dec is not None else "—",
             "Sim" if ex.no_prazo else "Não",
             (ex.observacao or "").strip(),
+            _nomes_auxiliares(ex) or "—",
         ]
         zebra = (i % 2 == 1)
         for ci, val in enumerate(valores, 1):
@@ -2106,7 +2243,7 @@ def apontamentos_horas_export(request):
                 c.fill = fill_zebra
         row += 1
 
-    for i, w in enumerate([12, 26, 30, 16, 22, 24, 9, 9, 13, 12, 10, 40], 1):
+    for i, w in enumerate([12, 26, 30, 16, 22, 24, 9, 9, 13, 12, 10, 40, 26], 1):
         ws2.column_dimensions[get_column_letter(i)].width = w
     ws2.freeze_panes = f"A{hr + 1}"
 

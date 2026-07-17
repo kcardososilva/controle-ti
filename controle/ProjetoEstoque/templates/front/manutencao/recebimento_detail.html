@@ -56,9 +56,9 @@
 .rd-osc::before { content: ""; width: .45rem; height: .45rem; border-radius: 50%; background: currentColor; }
 .rd-osc--aguardando_recebimento, .rd-osc--cancelado, .rd-osc--descartado { --c: var(--text-tertiary); }
 .rd-osc--recebido, .rd-osc--em_avaliacao, .rd-osc--reparado, .rd-osc--devolvido, .rd-osc--devolvido_descarte, .rd-osc--descarte_local_aprovado, .rd-osc--troca_ant_def_enviado, .rd-osc--troca_ant_def_recebido { --c: var(--brand); }
-.rd-osc--aguardando_aprovacao, .rd-osc--em_reparo, .rd-osc--substituto_enviado, .rd-osc--descarte_local_solicitado, .rd-osc--troca_ant_sub_enviado, .rd-osc--troca_ant_sub_recebido { --c: var(--warning); }
-.rd-osc--aprovado, .rd-osc--concluido { --c: var(--success); }
-.rd-osc--reprovado, .rd-osc--sem_reparo, .rd-osc--sem_condicoes { --c: var(--danger); }
+.rd-osc--aguardando_aprovacao, .rd-osc--em_reparo, .rd-osc--substituto_enviado, .rd-osc--descarte_local_solicitado, .rd-osc--troca_ant_sub_enviado, .rd-osc--troca_ant_sub_recebido, .rd-osc--troca_ant_aguardando_aprovacao, .rd-osc--troca_aguardando_aprovacao, .rd-osc--sem_condicoes { --c: var(--warning); }
+.rd-osc--aprovado, .rd-osc--concluido, .rd-osc--troca_ant_aprovado, .rd-osc--troca_aprovada, .rd-osc--descarte_avaliacao_aprovada, .rd-osc--troca_dano_aprovada { --c: var(--success); }
+.rd-osc--reprovado, .rd-osc--sem_reparo, .rd-osc--troca_ant_reprovado, .rd-osc--troca_reprovada, .rd-osc--descarte_avaliacao_reprovada, .rd-osc--troca_dano_reprovada { --c: var(--danger); }
 
 /* ---- Faixa de fatos ---- */
 .rd-metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 1px; background: var(--rd-hair); border: 1px solid var(--rd-hair); border-radius: var(--radius-md); overflow: hidden; }
@@ -244,19 +244,14 @@
     <form method="post" action="{% url 'manutencao_recebimento_acao' ordem.pk %}" class="rd-form">
       {% csrf_token %}
       <input type="hidden" name="next" value="detalhe">
-      {% if ordem.status == 'devolvido' %}
-        <div class="rd-field">
-          <label for="status_retorno">Novo status do equipamento</label>
-          <select id="status_retorno" name="status_retorno">
-            {% for value, label in status_retorno_opcoes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-          </select>
-        </div>
-        <div class="rd-field rd-field--grow"><label for="obs">Observação</label><input type="text" id="obs" name="observacao" placeholder="Opcional"></div>
-        <button type="submit" class="btn-primary"><i class="fa-solid fa-check" aria-hidden="true"></i> Confirmar retorno</button>
-      {% else %}
-        <div class="rd-field rd-field--grow"><label for="obs">Observação</label><input type="text" id="obs" name="observacao" placeholder="Opcional"></div>
-        <button type="submit" class="btn-primary"><i class="fa-solid fa-box-archive" aria-hidden="true"></i> Receber substituto em estoque</button>
-      {% endif %}
+      <div class="rd-field">
+        <label for="status_retorno">Novo status do equipamento</label>
+        <select id="status_retorno" name="status_retorno">
+          {% for value, label in status_retorno_opcoes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="rd-field rd-field--grow"><label for="obs">Observação</label><input type="text" id="obs" name="observacao" placeholder="Opcional"></div>
+      <button type="submit" class="btn-primary"><i class="fa-solid fa-check" aria-hidden="true"></i> Confirmar retorno</button>
     </form>
   </div>
   {% endif %}
@@ -285,14 +280,76 @@
     <p>
       O fornecedor declarou que o equipamento <b>não tem condições de reparo</b> e solicitou <b>descartá-lo no próprio local</b>, sem devolvê-lo ao TI{% if ordem.valor_avaliacao_tecnica %} — valor informado: <b>R$ {{ ordem.valor_avaliacao_tecnica }}</b>{% endif %}.
       {% if ordem.diagnostico %} Motivo: {{ ordem.diagnostico }}.{% endif %}
-      <b>Aprovar</b> autoriza o fornecedor a realizar o descarte (o equipamento vira <b>Descarte</b> quando ele confirmar). <b>Recusar</b> exige a devolução para descarte interno.
+      <b>Aprovar descarte local</b> autoriza o fornecedor a realizar o descarte no próprio local (o equipamento vira <b>Descarte</b> quando ele confirmar). <b>Aceitar valor, exigir devolução</b> concorda com o valor avaliado mas exige que o equipamento volte fisicamente para o TI descartar.
     </p>
     <form method="post" action="{% url 'manutencao_recebimento_acao' ordem.pk %}" class="rd-form">
       {% csrf_token %}
       <input type="hidden" name="next" value="detalhe">
       <div class="rd-field rd-field--grow"><label for="obs_dl">Observação</label><input type="text" id="obs_dl" name="observacao" placeholder="Opcional"></div>
       <button type="submit" name="acao" value="descarte_local_aprovado" class="btn-primary"><i class="fa-solid fa-check" aria-hidden="true"></i> Aprovar descarte local</button>
-      <button type="submit" name="acao" value="sem_condicoes" class="btn-danger" onclick="return confirm('Recusar o descarte local? O fornecedor deverá devolver o equipamento para descarte interno pelo TI.');"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Recusar (exigir devolução)</button>
+      <button type="submit" name="acao" value="descarte_avaliacao_aprovada" class="btn-danger" onclick="return confirm('Recusar o descarte local? O fornecedor deverá devolver o equipamento para descarte interno pelo TI. O valor avaliado é considerado aceito.');"><i class="fa-solid fa-truck-fast" aria-hidden="true"></i> Aceitar valor, exigir devolução</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if pode_aprovar_troca %}
+  <div class="rd-action">
+    <h3><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Aprovar contrato do equipamento substituto</h3>
+    <p>
+      O equipamento <b>{{ ordem.item.nome }}</b> não tem conserto — o fornecedor propôs o contrato do substituto que vai entrar no lugar dele{% if ordem.item.locado == 'sim' %}, <b>sob locação</b>: o TI passa a pagar este novo contrato mensal{% endif %}.
+      {% if ordem.diagnostico %} Diagnóstico: {{ ordem.diagnostico }}.{% endif %}
+      Aprovar libera o envio físico do substituto; reprovar permite ao fornecedor revisar e reenviar o contrato.
+    </p>
+    <div class="rd-sub-grid" style="margin-bottom:.9rem;">
+      <div class="rd-pill"><div class="rd-pill-l">Valor</div><div class="rd-pill-v">R$ {{ ordem.substituto_valor|default:'—' }}</div></div>
+      <div class="rd-pill"><div class="rd-pill-l">Regime</div><div class="rd-pill-v">{% if ordem.substituto_locado == 'sim' %}Locação{% else %}Compra{% endif %}</div></div>
+      {% if ordem.substituto_locado == 'sim' %}<div class="rd-pill"><div class="rd-pill-l">Tempo de contrato</div><div class="rd-pill-v">{% if ordem.substituto_tempo_meses %}{{ ordem.substituto_tempo_meses }} {{ ordem.substituto_tempo_meses|pluralize:"mês,meses" }}{% else %}—{% endif %}</div></div>{% endif %}
+      <div class="rd-pill"><div class="rd-pill-l">Contrato</div><div class="rd-pill-v">{{ ordem.substituto_contrato|default:'—' }}</div></div>
+      <div class="rd-pill"><div class="rd-pill-l">Modelo oferecido</div><div class="rd-pill-v">{{ ordem.substituto_modelo|default:'—' }}</div></div>
+      <div class="rd-pill"><div class="rd-pill-l">Nº de Série</div><div class="rd-pill-v">{{ ordem.substituto_numero_serie|default:'—' }}</div></div>
+    </div>
+    <form method="post" action="{% url 'manutencao_recebimento_acao' ordem.pk %}" class="rd-form">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="detalhe">
+      <div class="rd-field rd-field--grow"><label for="obs_tr">Observação</label><input type="text" id="obs_tr" name="observacao" placeholder="Opcional"></div>
+      <button type="submit" name="acao" value="troca_aprovada" class="btn-primary"><i class="fa-solid fa-check" aria-hidden="true"></i> Aprovar contrato</button>
+      <button type="submit" name="acao" value="troca_reprovada" class="btn-danger"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Reprovar</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if pode_decidir_dano_substituicao %}
+  <div class="rd-action" style="border-left-color: var(--warning);">
+    <h3><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Aprovar cobrança pelo equipamento danificado</h3>
+    <p>
+      O fornecedor enviou o equipamento substituto{% if ordem.item_substituto %} — <b>{{ ordem.item_substituto.nome }}</b>{% if ordem.item_substituto.numero_serie %} · Série {{ ordem.item_substituto.numero_serie }}{% endif %}{% endif %}
+      e propôs <b>R$ {{ ordem.valor_avaliacao_tecnica|default:'—' }}</b> de cobrança pelo equipamento <b>{{ ordem.item.nome }}</b> danificado — mesmo sem conserto, o locador cobra pelo equipamento não devolvido em condições, separado do contrato do substituto.
+      Aprovar já <b>conclui a ordem</b> (ativa o substituto em estoque); reprovar permite ao fornecedor revisar e reenviar o valor.
+    </p>
+    <form method="post" action="{% url 'manutencao_recebimento_acao' ordem.pk %}" class="rd-form">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="detalhe">
+      <div class="rd-field rd-field--grow"><label for="obs_dano">Observação</label><input type="text" id="obs_dano" name="observacao" placeholder="Opcional"></div>
+      <button type="submit" name="acao" value="aprovar_dano_substituicao" class="btn-primary"><i class="fa-solid fa-check" aria-hidden="true"></i> Aprovar e concluir</button>
+      <button type="submit" name="acao" value="troca_dano_reprovada" class="btn-danger"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Reprovar</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if pode_aprovar_descarte %}
+  <div class="rd-action" style="border-left-color: var(--danger);">
+    <h3><i class="fa-solid fa-dumpster" aria-hidden="true"></i> Aprovar avaliação de descarte</h3>
+    <p>
+      O fornecedor declarou que o equipamento <b>{{ ordem.item.nome }}</b> não tem condições de reparo e propôs o valor da avaliação técnica{% if ordem.valor_avaliacao_tecnica %}: <b>R$ {{ ordem.valor_avaliacao_tecnica }}</b>{% endif %}.
+      {% if ordem.diagnostico %} Motivo: {{ ordem.diagnostico }}.{% endif %}
+      Aprovar libera o fornecedor para devolver o equipamento ao TI para descarte; reprovar permite revisar e reenviar o valor.
+    </p>
+    <form method="post" action="{% url 'manutencao_recebimento_acao' ordem.pk %}" class="rd-form">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="detalhe">
+      <div class="rd-field rd-field--grow"><label for="obs_da">Observação</label><input type="text" id="obs_da" name="observacao" placeholder="Opcional"></div>
+      <button type="submit" name="acao" value="descarte_avaliacao_aprovada" class="btn-primary"><i class="fa-solid fa-check" aria-hidden="true"></i> Aprovar avaliação</button>
+      <button type="submit" name="acao" value="descarte_avaliacao_reprovada" class="btn-danger"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Reprovar</button>
     </form>
   </div>
   {% endif %}
@@ -332,6 +389,23 @@
       <input type="hidden" name="acao" value="troca_ant_def_enviado">
       <div class="rd-field rd-field--grow"><label for="obs_def">Observação</label><input type="text" id="obs_def" name="observacao" placeholder="Ex: enviado via transportadora X"></div>
       <button type="submit" class="btn-primary"><i class="fa-solid fa-truck-fast" aria-hidden="true"></i> Enviar defeituoso</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if pode_aprovar_troca_antecipada %}
+  <div class="rd-action">
+    <h3><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Aprovar proposta de reparo (troca antecipada)</h3>
+    <p>
+      O fornecedor enviou uma proposta de <b>R$ {{ ordem.valor_orcamento|default:'—' }}</b>{% if ordem.diagnostico %} — diagnóstico: {{ ordem.diagnostico }}{% endif %} para o equipamento <b>{{ ordem.item.nome }}</b>.
+      Aprovar já conclui a ordem; reprovar permite ao fornecedor reenviar uma nova proposta.
+    </p>
+    <form method="post" action="{% url 'manutencao_recebimento_acao' ordem.pk %}" class="rd-form">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="detalhe">
+      <div class="rd-field rd-field--grow"><label for="obs_ta">Observação</label><input type="text" id="obs_ta" name="observacao" placeholder="Opcional"></div>
+      <button type="submit" name="acao" value="aprovar_troca_ant" class="btn-primary"><i class="fa-solid fa-check" aria-hidden="true"></i> Aprovar e concluir</button>
+      <button type="submit" name="acao" value="troca_ant_reprovado" class="btn-danger"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Reprovar</button>
     </form>
   </div>
   {% endif %}
@@ -451,6 +525,7 @@
         <div class="rd-pill"><div class="rd-pill-l">Regime</div><div class="rd-pill-v">{% if ordem.substituto_locado == 'sim' %}Locação{% else %}Compra{% endif %}</div></div>
         {% if ordem.substituto_locado == 'sim' %}<div class="rd-pill"><div class="rd-pill-l">Tempo de contrato</div><div class="rd-pill-v">{% if ordem.substituto_tempo_meses %}{{ ordem.substituto_tempo_meses }} {{ ordem.substituto_tempo_meses|pluralize:"mês,meses" }}{% else %}—{% endif %}</div></div>{% endif %}
         <div class="rd-pill"><div class="rd-pill-l">Status</div><div class="rd-pill-v">{{ ordem.item_substituto.get_status_display }}</div></div>
+        {% if ordem.valor_avaliacao_tecnica %}<div class="rd-pill"><div class="rd-pill-l">Cobrança pelo dano</div><div class="rd-pill-v">R$ {{ ordem.valor_avaliacao_tecnica }}</div></div>{% endif %}
       </div>
     </div>
   </div>

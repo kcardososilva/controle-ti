@@ -1541,7 +1541,7 @@ body.theme-dark .eq-modal-icon.eq-info {
             <a href="{% url 'separacao_envio_list' %}" class="eq-sep-card">
                 <span class="eq-sep-ic"><i class="fa-solid fa-box-archive" aria-hidden="true"></i></span>
                 <span class="eq-sep-info">
-                    <div class="eq-sep-title">Remessa para Envio</div>
+                    <div class="eq-sep-title">Remessa para Envio ao Fornecedor</div>
                     <div class="eq-sep-sub">Itens separados aguardando despacho para manutenção</div>
                 </span>
                 {% if sep_envio_count %}<span class="eq-sep-badge">{{ sep_envio_count }}</span>{% endif %}
@@ -1549,7 +1549,7 @@ body.theme-dark .eq-modal-icon.eq-info {
             <a href="{% url 'separacao_devolucao_list' %}" class="eq-sep-card">
                 <span class="eq-sep-ic"><i class="fa-solid fa-box-open" aria-hidden="true"></i></span>
                 <span class="eq-sep-info">
-                    <div class="eq-sep-title">Remessa para Devolução</div>
+                    <div class="eq-sep-title">Remessa para Devolução ao Fornecedor</div>
                     <div class="eq-sep-sub">Itens locados aguardando devolução por fim de contrato</div>
                 </span>
                 {% if sep_devolucao_count %}<span class="eq-sep-badge">{{ sep_devolucao_count }}</span>{% endif %}
@@ -2181,22 +2181,44 @@ body.theme-dark .eq-modal-icon.eq-info {
         }
     }
 
+    const mainScroller = document.getElementById('mainContent') || document.scrollingElement || document.body;
+
+    function lockShellScroll() {
+        mainScroller.style.overflow = 'hidden';
+    }
+
+    function unlockShellScroll() {
+        mainScroller.style.overflow = '';
+    }
+
     window.openDeleteModalFromButton = function(button) {
         const nome = button.dataset.nome || 'este equipamento';
         const url = button.dataset.url || '';
 
+        // `.main-container` tem animation com transform (fill-mode: both), o que
+        // vira containing block de qualquer position:fixed dentro dela. Reparentar
+        // para <body> garante que o overlay cubra a viewport de verdade.
+        if (dom.deleteModal.parentNode !== document.body) {
+            document.body.appendChild(dom.deleteModal);
+        }
+
         dom.deleteMessage.innerHTML =
-            `Tem certeza que deseja remover o equipamento <strong>${escapeHtml(nome)}</strong> do sistema?`;
+            `Tem certeza que deseja excluir o equipamento <strong>${escapeHtml(nome)}</strong>? ` +
+            `Ele deixará de aparecer nas listagens, mas todo o histórico vinculado ` +
+            `(movimentações, ordens de manutenção, preventivas, locações e lotes) será preservado ` +
+            `e a exclusão pode ser desfeita depois.`;
 
         dom.deleteForm.action = url;
 
         dom.deleteModal.classList.add('is-open');
         dom.deleteModal.setAttribute('aria-hidden', 'false');
+        lockShellScroll();
     };
 
     window.closeDeleteModal = function() {
         dom.deleteModal.classList.remove('is-open');
         dom.deleteModal.setAttribute('aria-hidden', 'true');
+        unlockShellScroll();
     };
 
     window.refreshList  = refreshList;

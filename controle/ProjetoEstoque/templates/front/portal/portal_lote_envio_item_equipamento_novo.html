@@ -1,0 +1,225 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}Cadastrar equipamento novo — Portal do Fornecedor{% endblock %}
+{% block page_title %}Cadastrar equipamento novo{% endblock %}
+{% block page_subtitle %}O equipamento fica em rascunho no seu lote de envio até você enviar ao TI{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'portal_lote_envio_list' %}" class="pf-btn" data-voltar><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="pf-breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'portal_home' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Painel</a>
+  <i class="fa-solid fa-chevron-right pf-crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'portal_lote_envio_list' %}">Lotes de Envio</a>
+  <i class="fa-solid fa-chevron-right pf-crumb-sep" aria-hidden="true"></i>
+  <span class="pf-crumb-current" aria-current="page">Cadastrar equipamento novo</span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+  :where(.pf-en) { display: grid; gap: 1.4rem; max-width: 46rem; }
+  .pf-en .select2-container { width: 100% !important; }
+  .pf-en .select2-container--default .select2-selection--single {
+    min-height: 2.7rem; height: 2.7rem; border-radius: var(--radius-md);
+    border: 1px solid var(--separator-non-opaque); background: var(--bg-page);
+  }
+  .pf-en .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 2.5rem; color: var(--text-primary); }
+  .pf-en .select2-container--default .select2-selection--single .select2-selection__arrow { height: 2.5rem; }
+
+  .pf-en .pf-card2 { padding: 1.5rem 1.6rem; border-radius: var(--radius-lg); border: 1px solid var(--separator-hairline); background: var(--bg-elevated); box-shadow: var(--shadow-sm); }
+  .pf-en .pf-sec { display: grid; gap: 1rem; }
+  .pf-en .pf-sec + .pf-sec { margin-top: 1.7rem; padding-top: 1.7rem; border-top: 1px solid var(--separator-hairline); }
+  .pf-en .pf-sec-head { display: flex; align-items: flex-start; gap: .85rem; }
+  .pf-en .pf-sec-n {
+    flex: 0 0 1.7rem; width: 1.7rem; height: 1.7rem; display: grid; place-items: center;
+    border-radius: 999px; background: var(--bg-fill-tertiary); color: var(--text-secondary); font-size: .78rem; font-weight: 800;
+  }
+  .pf-en .pf-sec-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; }
+  .pf-en .pf-sec-sub { color: var(--text-tertiary); font-size: .83rem; margin-top: .2rem; line-height: 1.55; }
+  .pf-en .pf-grid2 { display: grid; gap: .9rem; grid-template-columns: repeat(2, 1fr); }
+  .pf-en .pf-grid2 .pf-span2 { grid-column: 1 / -1; }
+  @media (max-width: 34rem) { .pf-en .pf-grid2 { grid-template-columns: 1fr; } }
+  .pf-en label { font-size: .78rem; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: .35rem; }
+  .pf-en input, .pf-en select {
+    width: 100%; padding: .6rem .85rem; min-height: 2.7rem; border-radius: var(--radius-md);
+    border: 1px solid var(--separator-non-opaque); background: var(--bg-page); color: var(--text-primary); font: inherit;
+  }
+  .pf-en .pf-form-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }
+  .pf-en .pf-note { display: flex; gap: .65rem; padding: .85rem 1rem; border-radius: var(--radius-md); background: var(--bg-fill-tertiary); font-size: .8rem; color: var(--text-secondary); line-height: 1.55; }
+  .pf-en .pf-note i { color: var(--text-tertiary); margin-top: .15rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-en">
+  <form method="post" class="pf-card2">
+    {% csrf_token %}
+
+    <div class="pf-sec">
+      <div class="pf-sec-head">
+        <span class="pf-sec-n">1</span>
+        <div>
+          <div class="pf-sec-title">Lote de destino</div>
+          <div class="pf-sec-sub">Em qual lote de envio este equipamento deve entrar — você pode escolher um lote já aberto ou criar um novo agora.</div>
+        </div>
+      </div>
+      <div class="pf-grid2">
+        <div class="pf-span2">
+          <label>Criar um novo lote ou vincular a um existente *</label>
+          <select name="lote_id" id="lote_id">
+            {% for l in lotes_abertos %}
+              <option value="{{ l.pk }}" {% if lote_preselect and lote_preselect.pk == l.pk %}selected{% endif %}>{{ l.nome }} ({{ l.quantidade_itens }} item{{ l.quantidade_itens|pluralize }})</option>
+            {% endfor %}
+            <option value="novo" {% if not lote_preselect %}selected{% endif %}>+ Criar novo lote</option>
+          </select>
+        </div>
+        <div class="pf-span2" id="wrap_lote_novo" hidden>
+          <label>Nome do novo lote</label>
+          <input type="text" name="lote_nome_novo" id="lote_nome_novo" placeholder="Ex: Remessa de outubro">
+        </div>
+      </div>
+    </div>
+
+    <div class="pf-sec">
+      <div class="pf-sec-head">
+        <span class="pf-sec-n">2</span>
+        <div>
+          <div class="pf-sec-title">Identificação do equipamento</div>
+          <div class="pf-sec-sub">Dados que identificam o equipamento no inventário.</div>
+        </div>
+      </div>
+      <div class="pf-grid2">
+        <div class="pf-span2"><label>Nome/Modelo *</label><input type="text" name="novo_nome" required placeholder="Ex: Notebook Dell Latitude 5440"></div>
+        <div><label>Número de série</label><input type="text" name="novo_numero_serie"></div>
+        <div><label>Marca</label><input type="text" name="novo_marca"></div>
+        <div class="pf-span2"><label>Modelo</label><input type="text" name="novo_modelo"></div>
+      </div>
+    </div>
+
+    <div class="pf-sec">
+      <div class="pf-sec-head">
+        <span class="pf-sec-n">3</span>
+        <div>
+          <div class="pf-sec-title">Classificação e destino</div>
+          <div class="pf-sec-sub">Onde o equipamento vai ficar e a qual centro de custo pertence.</div>
+        </div>
+      </div>
+      <div class="pf-grid2">
+        <div>
+          <label>Categoria *</label>
+          <select name="novo_categoria" class="pf-select2" required>
+            <option value="">Selecione…</option>
+            {% for c in categorias %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Subtipo *</label>
+          <select name="novo_subtipo" class="pf-select2" required>
+            <option value="">Selecione…</option>
+            {% for s in subtipos %}<option value="{{ s.id }}">{{ s.nome }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Localidade *</label>
+          <select name="novo_localidade" class="pf-select2" required>
+            <option value="">Selecione…</option>
+            {% for l in localidades %}<option value="{{ l.id }}">{{ l.local }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Centro de custo</label>
+          <select name="novo_centro_custo" class="pf-select2">
+            <option value="">—</option>
+            {% for cc in centros_custo %}<option value="{{ cc.id }}">{{ cc.numero }} — {{ cc.departamento }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>PMB?</label>
+          <select name="novo_pmb">
+            <option value="nao">Não</option>
+            <option value="sim">Sim</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="pf-sec">
+      <div class="pf-sec-head">
+        <span class="pf-sec-n">4</span>
+        <div>
+          <div class="pf-sec-title">Regime e valores</div>
+          <div class="pf-sec-sub">Compra ou locação, e as condições do contrato quando locado.</div>
+        </div>
+      </div>
+      <div class="pf-grid2">
+        <div>
+          <label>Regime</label>
+          <select name="novo_locado" id="novo_locado">
+            <option value="nao">Compra</option>
+            <option value="sim">Locação</option>
+          </select>
+        </div>
+        <div><label id="lbl_novo_valor">Valor de Compra *</label><input type="number" step="0.01" min="0" name="novo_valor" required placeholder="0,00"></div>
+        <div><label>Contrato</label><input type="text" name="novo_contrato" placeholder="Nº do contrato (se locação)"></div>
+        <div><label>Tempo de contrato (meses)</label><input type="number" min="1" name="novo_tempo_contrato_meses" placeholder="Obrigatório se locação"></div>
+        <div class="pf-span2" id="wrap_cobranca" hidden>
+          <label>O aluguel será cobrado somente a partir do próximo ano?</label>
+          <select name="novo_cobranca_proximo_ano">
+            <option value="nao">Não — cobrar desde já (a partir do cadastro)</option>
+            <option value="sim">Sim — só a partir de 1º de janeiro do ano seguinte</option>
+          </select>
+        </div>
+      </div>
+      <div class="pf-note">
+        <i class="fa-solid fa-circle-info"></i>
+        <span>Quando <b>Não</b>, a contagem do aluguel começa hoje, na data deste cadastro. Quando <b>Sim</b>, começa em 1º de janeiro do ano seguinte à data em que o TI confirmar o recebimento do equipamento.</span>
+      </div>
+    </div>
+
+    <div class="pf-note">
+      <i class="fa-solid fa-circle-info"></i>
+      <span>O equipamento entra no inventário como <b>Pausado</b> (a caminho) assim que você enviar o lote — ele passa a valer como equipamento em uso quando o TI confirmar o recebimento.</span>
+    </div>
+
+    <div class="pf-form-actions">
+      <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-plus"></i> Adicionar ao lote de envio</button>
+      <a href="{% url 'portal_lote_envio_list' %}" class="pf-btn" data-voltar>Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+  $(function () { $('.pf-select2').select2({ width: '100%' }); });
+
+  (function () {
+    var sel = document.getElementById('novo_locado');
+    var lbl = document.getElementById('lbl_novo_valor');
+    var wrap = document.getElementById('wrap_cobranca');
+    function sync() {
+      var locado = sel.value === 'sim';
+      lbl.textContent = locado ? 'Valor do Aluguel *' : 'Valor de Compra *';
+      wrap.hidden = !locado;
+    }
+    sel.addEventListener('change', sync);
+    sync();
+  })();
+
+  (function () {
+    var loteSel = document.getElementById('lote_id');
+    var loteNovoWrap = document.getElementById('wrap_lote_novo');
+    function syncLote() {
+      loteNovoWrap.hidden = loteSel.value !== 'novo';
+    }
+    loteSel.addEventListener('change', syncLote);
+    syncLote();
+  })();
+</script>
+{% endblock %}

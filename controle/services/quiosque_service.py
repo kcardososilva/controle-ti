@@ -11,7 +11,9 @@ Segurança:
     o PIN offline comparando o hash recebido na config.
   - O código de matrícula é de uso único e protege o enroll.
 """
+import base64
 import hashlib
+import json
 import random
 import secrets
 import string
@@ -138,6 +140,53 @@ def caminho_instalador(nome_arquivo: str) -> Path | None:
     return caminho
 
 
+# Teto de sanidade para o upload pela tela — bem acima do tamanho normal de um
+# APK (dezenas de MB); existe só para não deixar um upload arbitrariamente
+# grande encher o disco do servidor.
+_APK_UPLOAD_MAX_MB = 400
+
+
+def salvar_apk_upload(arquivo, *, version_code: int | None = None, version_name: str = "") -> dict:
+    """Salva um novo instalador (.apk) enviado pela tela de Matrículas, na pasta
+    protegida (`KIOSK_APK_DIR`) — dispensa copiar o arquivo manualmente no
+    servidor. A versão nova SOBREPÕE a(s) anterior(es): remove todo `.apk` já
+    existente na pasta antes de gravar o novo, então `apk_atual()` sempre resolve
+    para o arquivo recém-enviado.
+
+    Sempre remove o sidecar de versão (`atualizacao.json`, ver
+    `registrar_versao_apk_atual`): ele foi calculado para o arquivo antigo e
+    ficaria órfão. Se `version_code` for informado, já registra a versão nova no
+    mesmo passo — dispensando rodar o comando `assinar_apk_quiosque` à parte. Sem
+    `version_code`, o .apk fica publicado e a auto-atualização (Device Owner)
+    simplesmente fica ausente até a versão ser registrada (aqui de novo, ou pelo
+    comando) — não quebra o check-in (ver `atualizacao_disponivel`).
+
+    Lança ValueError em nome/tamanho inválido (400 na view).
+    """
+    nome = Path(getattr(arquivo, "name", "") or "").name
+    if not nome or not nome.lower().endswith(".apk"):
+        raise ValueError("O arquivo precisa ter extensão .apk.")
+    if arquivo.size > _APK_UPLOAD_MAX_MB * 1024 * 1024:
+        raise ValueError(f"Arquivo maior que o limite de {_APK_UPLOAD_MAX_MB}MB.")
+
+    destino_dir = apk_dir()
+    for antigo in destino_dir.iterdir():
+        if antigo.is_file() and antigo.suffix.lower() == ".apk":
+            antigo.unlink()
+    sidecar = destino_dir / _ATUALIZACAO_SIDECAR
+    if sidecar.is_file():
+        sidecar.unlink()
+
+    with open(destino_dir / nome, "wb") as destino:
+        for pedaco in arquivo.chunks():
+            destino.write(pedaco)
+
+    if version_code:
+        registrar_versao_apk_atual(version_code=version_code, version_name=version_name)
+
+    return apk_atual()
+
+
 def gerar_qrcode_data_uri(conteudo: str, tamanho_px: int = 260) -> str:
     """PNG do QR Code do conteúdo informado, como data URI (embutível direto em
     <img src="...">). Usa o gerador de QR já embutido no reportlab (dependência
@@ -214,6 +263,98 @@ def registrar_download_instalador(link, ip: str | None) -> None:
     link.ultimo_download_em = timezone.now()
     link.ultimo_download_ip = ip or None
     link.save(update_fields=["downloads", "ultimo_download_em", "ultimo_download_ip"])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Auto-atualização do .apk (Device Owner) — sha256 + campo `atualizacao`
+# ──────────────────────────────────────────────────────────────────────────────
+# O app já matriculado se auto-instala uma build nova sozinho (Device Owner).
+# A API de produção roda em HTTP puro (sem TLS), mas isso NÃO exige assinatura
+# própria do transporte: o .apk publicado já é assinado com a keystore de
+# release do app, e o PRÓPRIO ANDROID recusa instalar uma "atualização" que não
+# esteja assinada com a mesma chave do app já instalado — verificação feita pelo
+# SO no `PackageInstaller.commit()`, que nenhuma interceptação em trânsito
+# contorna. O `sha256` abaixo serve só para o app detectar download
+# incompleto/corrompido antes de instalar — checagem de integridade de
+# transporte, não uma camada de segurança adicional (ver INFORME do time Android
+# sobre auto-atualização do APK do quiosque).
+
+_ATUALIZACAO_SIDECAR = "atualizacao.json"
+
+
+def registrar_versao_apk_atual(*, version_code: int, version_name: str) -> dict:
+    """Calcula o sha256 do .apk hoje publicado em KIOSK_APK_DIR e grava o
+    resultado num sidecar JSON ao lado do arquivo — é o que o /checkin/ lê para
+    oferecer auto-atualização. Chamado automaticamente pelo upload da tela de
+    Matrículas quando `version_code` é informado; para quem preferir copiar o
+    .apk manualmente na pasta do servidor, rodar depois o management command
+    `assinar_apk_quiosque`. Sem isso, os aparelhos em campo continuam vendo a
+    versão anterior como a mais recente (não quebra nada — só não dispara a
+    auto-atualização)."""
+    atual = apk_atual()
+    if atual is None:
+        raise ValueError("Nenhum instalador (.apk) encontrado na pasta do servidor.")
+
+    dados_apk = (apk_dir() / atual["nome"]).read_bytes()
+    info = {
+        "version_code": int(version_code),
+        "version_name": str(version_name)[:20],
+        "sha256": hashlib.sha256(dados_apk).hexdigest(),
+        "apk_nome": atual["nome"],
+    }
+    (apk_dir() / _ATUALIZACAO_SIDECAR).write_text(json.dumps(info), encoding="utf-8")
+    return info
+
+
+def _ler_sidecar_atualizacao() -> dict | None:
+    """Lê o sidecar de versão (`atualizacao.json`) e valida que ainda corresponde
+    ao .apk atualmente publicado. None se ausente, corrompido, ou órfão (aponta
+    para um arquivo que não é mais o atual — ex.: .apk substituído sem registrar
+    a versão de novo)."""
+    caminho = apk_dir() / _ATUALIZACAO_SIDECAR
+    if not caminho.is_file():
+        return None
+    try:
+        info = json.loads(caminho.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
+    atual = apk_atual()
+    if atual is None or atual["nome"] != info.get("apk_nome"):
+        return None
+    return info
+
+
+def versao_apk_registrada() -> dict | None:
+    """Versão (version_code/version_name) atualmente registrada para
+    auto-atualização — para exibição na tela de Matrículas (indica se a frota já
+    matriculada vai receber esta build sozinha ou não)."""
+    info = _ler_sidecar_atualizacao()
+    if info is None:
+        return None
+    return {"version_code": info["version_code"], "version_name": info["version_name"]}
+
+
+def atualizacao_disponivel(request) -> dict | None:
+    """Objeto `atualizacao` devolvido em todo /checkin/: sempre a versão mais
+    recente publicada — o app já compara sozinho contra a própria versão
+    instalada, então o servidor nunca precisa rastrear em qual versão cada
+    aparelho está (mesmo princípio já usado para config_versao/config).
+
+    None se a versão ainda não foi registrada, ou se o .apk foi trocado sem
+    registrar de novo (ver `_ler_sidecar_atualizacao`)."""
+    info = _ler_sidecar_atualizacao()
+    if info is None:
+        return None
+
+    from django.urls import reverse
+
+    return {
+        "version_code": info["version_code"],
+        "version_name": info["version_name"],
+        "url": request.build_absolute_uri(reverse("kiosk_atualizacao_apk")),
+        "sha256": info["sha256"],
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -458,7 +599,7 @@ def prune_checkins(device) -> int:
     return apagados
 
 
-def registrar_checkin(device, dados: dict) -> dict:
+def registrar_checkin(device, dados: dict, request=None) -> dict:
     """
     Grava um KioskCheckin, atualiza o estado mais recente do device e devolve a
     resposta para o app: config (se a versão mudou) e comandos pendentes.
@@ -467,7 +608,7 @@ def registrar_checkin(device, dados: dict) -> dict:
     Cada leitura vira uma linha de histórico; o "estado atual" só é atualizado
     quando a leitura é a mais recente já vista (não regride com dados antigos).
     """
-    from ProjetoEstoque.models import KioskCheckin, KioskComando
+    from ProjetoEstoque.models import KioskCheckin, KioskComando, KioskDevice
 
     lat = _f(dados.get("latitude"))
     lon = _f(dados.get("longitude"))
@@ -535,6 +676,22 @@ def registrar_checkin(device, dados: dict) -> dict:
         _persistir_inventario(device, dados.get("apps_instalados"), dados.get("apps_hash"))
         if dados.get("app_versao"):
             device.app_versao = str(dados.get("app_versao"))[:20]
+        # versionCode do app rodando agora + status da auto-atualização — reportados em
+        # TODO check-in (ver INFORME sobre auto-atualização §1.4). São só para exibição
+        # no painel (selo de conformidade); NUNCA influenciam o que o servidor devolve em
+        # `atualizacao` (ver atualizacao_disponivel — sempre a versão mais recente, o
+        # cliente decide). Validado contra as choices do model: dado vindo do device não
+        # é confiável, um valor desconhecido simplesmente não atualiza o status guardado.
+        app_versao_codigo = _i(dados.get("app_versao_codigo"))
+        if app_versao_codigo is not None:
+            device.app_versao_codigo = app_versao_codigo
+        atualizacao_status = (dados.get("atualizacao_status") or "").strip()
+        if atualizacao_status in KioskDevice.AtualizacaoStatus.values:
+            device.atualizacao_status = atualizacao_status
+            device.atualizacao_motivo = (
+                str(dados.get("atualizacao_motivo") or "")[:255]
+                if atualizacao_status == KioskDevice.AtualizacaoStatus.BLOQUEADA else ""
+            )
         device.save()
 
         # Retenção: janela móvel de 5 dias, podada de forma amostrada (ver _PRUNE_PROB)
@@ -559,7 +716,15 @@ def registrar_checkin(device, dados: dict) -> dict:
         cfg_device = None
     config = config_dict(device) if (cfg_device is None or cfg_device < device.config_versao) else None
 
-    return {"ok": True, "config_versao": device.config_versao, "config": config, "comandos": comandos}
+    atualizacao = atualizacao_disponivel(request) if request is not None else None
+
+    return {
+        "ok": True,
+        "config_versao": device.config_versao,
+        "config": config,
+        "comandos": comandos,
+        "atualizacao": atualizacao,
+    }
 
 
 def registrar_ack_comando(device, comando_id, status: str, detalhe: str = "") -> bool:

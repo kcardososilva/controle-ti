@@ -41,6 +41,15 @@
 .sep-chip--aberto { color: var(--warning); background: var(--warning-soft); }
 .sep-chip--enviado { color: var(--success); background: var(--success-soft); }
 
+/* Status real da Ordem de Manutenção vinculada (quando já despachado) */
+.sepd-osc { display: inline-flex; align-items: center; gap: .4rem; padding: .24rem .6rem; border-radius: 999px; font-size: .72rem; font-weight: 600; white-space: nowrap; color: var(--c, var(--text-tertiary)); background: color-mix(in srgb, var(--c, var(--text-tertiary)) 12%, transparent); }
+.sepd-osc::before { content: ""; width: .42rem; height: .42rem; border-radius: 50%; background: currentColor; }
+.sepd-osc--aguardando_recebimento, .sepd-osc--cancelado, .sepd-osc--descartado { --c: var(--text-tertiary); }
+.sepd-osc--recebido, .sepd-osc--em_avaliacao, .sepd-osc--reparado, .sepd-osc--devolvido, .sepd-osc--devolvido_descarte, .sepd-osc--descarte_local_aprovado, .sepd-osc--troca_ant_def_enviado, .sepd-osc--troca_ant_def_recebido { --c: var(--brand); }
+.sepd-osc--aguardando_aprovacao, .sepd-osc--em_reparo, .sepd-osc--substituto_enviado, .sepd-osc--descarte_local_solicitado, .sepd-osc--troca_ant_sub_enviado, .sepd-osc--troca_ant_sub_recebido, .sepd-osc--troca_ant_aguardando_aprovacao { --c: var(--warning); }
+.sepd-osc--aprovado, .sepd-osc--concluido, .sepd-osc--troca_ant_aprovado { --c: var(--success); }
+.sepd-osc--reprovado, .sepd-osc--sem_reparo, .sepd-osc--sem_condicoes, .sepd-osc--troca_ant_reprovado { --c: var(--danger); }
+
 .sepd-card { background: var(--sepd-surface); border: 1px solid var(--sepd-hair); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
 .sepd-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
 .sepd-table th { text-align: left; padding: .7rem 1rem; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--sepd-muted); border-bottom: 1px solid var(--sepd-hair); }
@@ -49,10 +58,6 @@
 .sepd-table .sepd-actions-cell { display: flex; gap: .4rem; justify-content: flex-end; white-space: nowrap; }
 
 .sepd-empty { display: grid; place-items: center; gap: .6rem; padding: 2.6rem 1rem; text-align: center; color: var(--sepd-muted); }
-
-.sep-info-trigger { background: none; border: none; padding: 0; margin: 0; font: inherit; font-weight: 700; color: var(--sepd-text); cursor: pointer; text-align: left; display: inline-flex; align-items: center; gap: .4rem; }
-.sep-info-trigger:hover { color: var(--brand); text-decoration: underline; }
-.sep-info-trigger i { font-size: .76rem; color: var(--sepd-muted); }
 
 .sep-badge { display: inline-flex; align-items: center; gap: .3rem; margin-top: .3rem; padding: .15rem .5rem; border-radius: var(--radius-pill); font-size: .68rem; font-weight: 800; }
 .sep-badge--danger { color: var(--danger); background: var(--danger-soft); }
@@ -90,6 +95,29 @@
     </div>
   </div>
 
+  {% if lote.status == "aberto" %}
+  <div class="sepd-card">
+    <div style="padding:1rem 1.2rem; border-bottom:1px solid var(--sepd-hair); font-weight:700;">Adicionar item ao lote</div>
+    <div style="padding:1rem 1.2rem;">
+      {% if candidatos %}
+      <form method="post" action="{% url 'separacao_lote_item_adicionar' lote.pk %}" style="display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end;">
+        {% csrf_token %}
+        <div class="sepd-meta" style="display:flex; flex-direction:column; gap:.3rem; min-width:16rem; flex:1 1 16rem;">
+          <label for="add-item-select" style="font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">Item solto ({{ lote.fornecedor.nome }})</label>
+          <select id="add-item-select" name="separacao_id" required style="height:2.4rem; padding:0 .7rem; border-radius:var(--radius-sm); border:1px solid var(--sepd-hair); background:var(--sepd-surface); color:var(--sepd-text); font-size:.86rem;">
+            <option value="">Selecione...</option>
+            {% for c in candidatos %}<option value="{{ c.id }}">{{ c.item.nome }}{% if c.item.numero_serie %} — Nº série {{ c.item.numero_serie }}{% endif %}</option>{% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Adicionar ao lote</button>
+      </form>
+      {% else %}
+      <p class="sepd-meta">Nenhum item solto disponível para {{ lote.fornecedor.nome }} nesta remessa no momento.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="sepd-card">
     {% if itens %}
     <div style="overflow-x:auto;">
@@ -106,26 +134,32 @@
           {% for i in itens %}
           <tr>
             <td>
-              <button type="button" class="sep-info-trigger" data-sepid="{{ i.id }}" title="Ver detalhes do equipamento">
-                <i class="fa-solid fa-circle-info" aria-hidden="true"></i> {{ i.item.nome }}
-              </button>
+              {{ i.item.nome }}
               {% if i.item.numero_serie %}<div class="sepd-meta">Nº série: {{ i.item.numero_serie }}</div>{% endif %}
               {% if i.badge_contrato %}<div class="sep-badge sep-badge--{{ i.badge_contrato.css }}">{{ i.badge_contrato.label }}</div>{% endif %}
             </td>
-            <td><span class="sep-chip sep-chip--{{ i.status }}">{{ i.get_status_display }}</span></td>
+            <td>
+              {% if i.ordem %}
+              <span class="sepd-osc sepd-osc--{{ i.ordem.status }}" title="Status atual da ordem de manutenção">{{ i.ordem.get_status_display }}</span>
+              {% else %}
+              <span class="sep-chip sep-chip--{{ i.status }}">{{ i.get_status_display }}</span>
+              {% endif %}
+            </td>
             <td>{{ i.enviado_em|date:"d/m/Y H:i"|default:"—" }}</td>
             <td>
-              {% if i.status == "aberto" %}
+              {% if i.status == "aberto" and lote.status == "aberto" %}
               <div class="sepd-actions-cell">
                 <form method="post" action="{% url 'separacao_item_enviar' i.id %}">
                   {% csrf_token %}
                   <button type="submit" class="btn btn-sm btn-outline"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Enviar</button>
                 </form>
-                <form method="post" action="{% url 'separacao_item_remover' i.id %}" onsubmit="return confirm('Remover este item da remessa?');">
+                <form method="post" action="{% url 'separacao_lote_item_desvincular' i.id %}" onsubmit="return confirm('Remover este item do lote? Ele volta para os itens soltos da remessa.');">
                   {% csrf_token %}
-                  <button type="submit" class="btn btn-sm btn-danger"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                  <button type="submit" class="btn btn-sm btn-danger" title="Remover do lote (volta para soltos)"><i class="fa-solid fa-link-slash" aria-hidden="true"></i></button>
                 </form>
               </div>
+              {% elif i.ordem %}
+              <a href="{% url 'manutencao_recebimento_detail' i.ordem.pk %}" class="btn btn-sm btn-outline"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Ver OS</a>
               {% elif i.movimentacao_despacho_id %}
               <a href="{% url 'movimentacao_detail' i.movimentacao_despacho_id %}" class="btn btn-sm btn-outline"><i class="fa-solid fa-eye" aria-hidden="true"></i> Ver movimentação</a>
               {% endif %}
@@ -184,5 +218,4 @@
 
 </div>
 
-{% include "front/equipamentos/_separacao_info_drawer.html" %}
 {% endblock %}

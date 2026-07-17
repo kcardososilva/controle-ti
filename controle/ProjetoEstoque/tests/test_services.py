@@ -6,6 +6,8 @@ Cobertura:
   - MovimentacaoLicencaForm:    atribuição duplicada de licença
   - MovimentacaoEstoqueService: retorno de manutenção com status específico
   - get_usuario_atual_item:     lógica de entrega/devolução
+  - _itens_ativos_do_usuario:   devolução desvincula item do colaborador
+  - equipamento_detalhe:        "Detentor atual" não mostra quem devolveu
 """
 
 from datetime import date
@@ -14,7 +16,8 @@ from unittest.mock import MagicMock
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, Client
+from django.urls import reverse
 
 from ProjetoEstoque.models import (
     CentroCusto,
@@ -329,3 +332,97 @@ class GetUsuarioAtualItemTest(TestCase):
             quantidade=1,
         )
         self.assertIsNone(get_usuario_atual_item(self.item))
+
+
+# ---------------------------------------------------------------------------
+# 5. _itens_ativos_do_usuario — devolução deve desvincular o item do colaborador
+# ---------------------------------------------------------------------------
+
+class ItensAtivosDoUsuarioTest(TestCase):
+    """
+    Regressão: uma "Transferência de dispositivo" com tipo_transferencia=
+    devolução não deve mais listar o item entre os itens ativos do
+    colaborador (ver views.usuarios._itens_ativos_do_usuario).
+    """
+
+    def setUp(self):
+        self.item = make_item()
+        self.colaborador = make_usuario("João da Silva")
+
+    def _entrega(self):
+        return MovimentacaoItem.objects.create(
+            tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
+            tipo_transferencia=TipoTransferenciaChoices.ENTREGA,
+            item=self.item,
+            usuario=self.colaborador,
+            quantidade=1,
+        )
+
+    def _devolucao(self):
+        return MovimentacaoItem.objects.create(
+            tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
+            tipo_transferencia=TipoTransferenciaChoices.DEVOLUCAO,
+            item=self.item,
+            usuario=self.colaborador,
+            quantidade=1,
+        )
+
+    def test_apos_entrega_item_aparece_ativo(self):
+        from ProjetoEstoque.views.usuarios import _itens_ativos_do_usuario
+
+        self._entrega()
+        itens = _itens_ativos_do_usuario(self.colaborador)
+        self.assertIn(self.item, itens)
+
+    def test_apos_devolucao_item_nao_aparece_mais_ativo(self):
+        from ProjetoEstoque.views.usuarios import _itens_ativos_do_usuario
+
+        self._entrega()
+        self._devolucao()
+        itens = _itens_ativos_do_usuario(self.colaborador)
+        self.assertNotIn(self.item, itens)
+
+
+# ---------------------------------------------------------------------------
+# 6. equipamento_detalhe — "Detentor atual" não deve mostrar o colaborador
+#    que acabou de devolver o item (mov.usuario é preenchido só para
+#    auditoria na devolução, ver movimentacao_service.py)
+# ---------------------------------------------------------------------------
+
+class EquipamentoDetalheDetentorAtualTest(TestCase):
+    def setUp(self):
+        self.django_user = make_user("detentor_user")
+        self.client = Client()
+        self.client.force_login(self.django_user)
+
+        self.item = make_item()
+        self.colaborador = make_usuario("Maria Devolvente")
+
+    def _entrega(self):
+        return MovimentacaoItem.objects.create(
+            tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
+            tipo_transferencia=TipoTransferenciaChoices.ENTREGA,
+            item=self.item,
+            usuario=self.colaborador,
+            quantidade=1,
+        )
+
+    def _devolucao(self):
+        return MovimentacaoItem.objects.create(
+            tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
+            tipo_transferencia=TipoTransferenciaChoices.DEVOLUCAO,
+            item=self.item,
+            usuario=self.colaborador,
+            quantidade=1,
+        )
+
+    def test_apos_entrega_detentor_mostra_colaborador(self):
+        self._entrega()
+        response = self.client.get(reverse("equipamento_detalhe", args=[self.item.pk]))
+        self.assertIn(self.colaborador.nome, response.context["ultimo_resp"])
+
+    def test_apos_devolucao_detentor_nao_mostra_colaborador(self):
+        self._entrega()
+        self._devolucao()
+        response = self.client.get(reverse("equipamento_detalhe", args=[self.item.pk]))
+        self.assertNotIn(self.colaborador.nome, response.context["ultimo_resp"])

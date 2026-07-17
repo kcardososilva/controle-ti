@@ -59,13 +59,20 @@ def congelar(item, user=None):
 
 
 def descongelar(item, user=None):
-    """Abre um novo período (conta do 0). Não duplica se já houver um aberto."""
+    """Abre um novo período (conta do 0). Não duplica se já houver um aberto.
+
+    `item._locacao_data_inicio_override`, quando setado explicitamente ANTES do
+    `item.save()` (ver `LoteEnvioFornecedorService.confirmar_equipamento_novo`),
+    substitui a data de início padrão (hoje) — usado para equipamento novo do
+    fornecedor cuja cobrança de aluguel só deve começar em 1º de janeiro do ano
+    seguinte, ou na data em que o fornecedor cadastrou o item."""
     if _periodo_aberto(item):
         return None
+    data_inicio = getattr(item, "_locacao_data_inicio_override", None) or _hoje()
     periodo = LocacaoPeriodo(
         item=item,
         valor_mensal=_valor_mensal(item),
-        data_inicio=_hoje(),
+        data_inicio=data_inicio,
     )
     if user is not None:
         periodo.criado_por = user

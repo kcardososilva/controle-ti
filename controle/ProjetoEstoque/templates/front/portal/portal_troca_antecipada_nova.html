@@ -5,7 +5,17 @@
 {% block page_subtitle %}Envie o substituto antes de o defeituoso sair — sem deixar o equipamento parado{% endblock %}
 
 {% block header_actions %}
-  <a href="{% url 'portal_troca_antecipada_list' %}" class="pf-btn"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+  <a href="{% url 'portal_troca_antecipada_list' %}" class="pf-btn" data-voltar><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="pf-breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'portal_home' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Painel</a>
+  <i class="fa-solid fa-chevron-right pf-crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'portal_troca_antecipada_list' %}">Troca Antecipada</a>
+  <i class="fa-solid fa-chevron-right pf-crumb-sep" aria-hidden="true"></i>
+  <span class="pf-crumb-current" aria-current="page">Nova troca antecipada</span>
+</nav>
 {% endblock %}
 
 {% block extra_css %}
@@ -88,6 +98,26 @@
   @media (max-width: 30rem) {
     .pf-ta .pf-flbl { display: none; }
   }
+
+  /* Caixinha do lote aberto (rascunho) — itens já adicionados */
+  .pf-ta .pf-box { padding: 1.2rem 1.3rem; }
+  .pf-ta .pf-box-title { font-size: .92rem; font-weight: 800; letter-spacing: -.01em; display: flex; align-items: center; gap: .5rem; margin-bottom: .2rem; }
+  .pf-ta .pf-box-sub { font-size: .78rem; color: var(--text-tertiary); margin-bottom: .9rem; }
+  .pf-ta .pf-box-item { display: flex; align-items: flex-start; justify-content: space-between; gap: .6rem; padding: .6rem 0; border-top: 1px solid var(--separator-hairline); }
+  .pf-ta .pf-box-item:first-of-type { border-top: 0; }
+  .pf-ta .pf-box-item-name { font-weight: 700; font-size: .82rem; }
+  .pf-ta .pf-box-item-meta { font-size: .72rem; color: var(--text-tertiary); margin-top: .1rem; }
+  .pf-ta .pf-box-del { flex: 0 0 auto; width: 1.7rem; height: 1.7rem; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--separator-hairline); background: transparent; color: var(--text-tertiary); cursor: pointer; }
+  .pf-ta .pf-box-del:hover { color: var(--danger); border-color: var(--danger); }
+  .pf-ta .pf-box-foot { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--separator-hairline); display: grid; gap: .5rem; }
+
+  /* Selo "rascunho" — reforça que nada é enviado ao salvar o formulário */
+  .pf-ta .pf-eyebrow {
+    display: inline-flex; align-items: center; gap: .45rem; align-self: flex-start; padding: .35rem .75rem;
+    border-radius: var(--radius-pill); background: var(--warning-soft); color: var(--warning);
+    font-size: .72rem; font-weight: 800; letter-spacing: -.01em;
+  }
+  .pf-ta .pf-sec-title i { color: var(--brand); margin-right: .45rem; font-size: .88em; }
 </style>
 {% endblock %}
 
@@ -106,11 +136,38 @@
   <form method="post" class="pf-card2">
     {% csrf_token %}
 
+    <span class="pf-eyebrow"><i class="fa-solid fa-pencil"></i> Fica em rascunho — nada é enviado ao TI ao salvar</span>
+
     <div class="pf-sec">
       <div class="pf-sec-head">
         <span class="pf-sec-n">1</span>
         <div>
-          <div class="pf-sec-title">Equipamento a substituir</div>
+          <div class="pf-sec-title"><i class="fa-solid fa-dolly"></i>Lote de destino</div>
+          <div class="pf-sec-sub">Em qual lote de envio esta troca deve entrar — escolha um lote já aberto ou crie um novo agora.</div>
+        </div>
+      </div>
+      <div class="pf-grid2">
+        <div class="pf-span2">
+          <label for="lote_id">Lote *</label>
+          <select id="lote_id" name="lote_id">
+            {% for l in lotes_abertos %}
+              <option value="{{ l.pk }}" {% if lote_preselect and lote_preselect.pk == l.pk %}selected{% endif %}>{{ l.nome }} ({{ l.quantidade_itens }} item{{ l.quantidade_itens|pluralize }})</option>
+            {% endfor %}
+            <option value="novo" {% if not lote_preselect %}selected{% endif %}>+ Criar novo lote</option>
+          </select>
+        </div>
+        <div class="pf-span2" id="wrap_lote_novo" hidden>
+          <label for="lote_nome_novo">Nome do novo lote</label>
+          <input type="text" id="lote_nome_novo" name="lote_nome_novo" placeholder="Ex: Remessa de outubro">
+        </div>
+      </div>
+    </div>
+
+    <div class="pf-sec">
+      <div class="pf-sec-head">
+        <span class="pf-sec-n">2</span>
+        <div>
+          <div class="pf-sec-title"><i class="fa-solid fa-triangle-exclamation"></i>Equipamento a substituir</div>
           <div class="pf-sec-sub">Só aparecem equipamentos sob sua responsabilidade com status <b>Defeito</b> e sem outra ordem de manutenção aberta.</div>
         </div>
       </div>
@@ -127,9 +184,9 @@
 
     <div class="pf-sec">
       <div class="pf-sec-head">
-        <span class="pf-sec-n">2</span>
+        <span class="pf-sec-n">3</span>
         <div>
-          <div class="pf-sec-title">Equipamento substituto</div>
+          <div class="pf-sec-title"><i class="fa-solid fa-truck-fast"></i>Equipamento substituto</div>
           <div class="pf-sec-sub">Dados do equipamento que está a caminho. Ele entra no inventário assim que o TI confirmar o recebimento, herdando localidade, centro de custo e regime (locação/compra) do equipamento substituído.</div>
         </div>
       </div>
@@ -139,12 +196,12 @@
           <input type="text" id="sub_modelo" name="sub_modelo" required placeholder="Ex: Roteador Mikrotik RB4011">
         </div>
         <div>
-          <label for="sub_serie">Número de série *</label>
-          <input type="text" id="sub_serie" name="sub_serie" required placeholder="Série do substituto">
-        </div>
-        <div>
           <label for="sub_marca">Marca</label>
           <input type="text" id="sub_marca" name="sub_marca" placeholder="Ex: Mikrotik">
+        </div>
+        <div>
+          <label for="sub_serie">Número de série *</label>
+          <input type="text" id="sub_serie" name="sub_serie" required placeholder="Série do substituto">
         </div>
         <div class="pf-span2">
           <label for="sub_data_contrato">Data de contrato do equipamento *</label>
@@ -158,8 +215,8 @@
     </div>
 
     <div class="pf-form-actions">
-      <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-truck-fast"></i> Abrir troca antecipada</button>
-      <a href="{% url 'portal_manutencao_list' %}" class="pf-btn">Cancelar</a>
+      <button type="submit" class="pf-btn pf-btn--brand"><i class="fa-solid fa-floppy-disk"></i> Salvar no lote de envio</button>
+      <a href="{% url 'portal_manutencao_list' %}" class="pf-btn" data-voltar>Cancelar</a>
     </div>
   </form>
   {% else %}
@@ -175,11 +232,41 @@
  </div>
 
  <aside class="pf-ta-aside">
+   {% for lote in lotes_abertos %}
+   {% if lote.itens.all %}
+   <div class="pf-card2 pf-box">
+     <div class="pf-box-title"><i class="fa-solid fa-dolly"></i> {{ lote.nome }}</div>
+     <div class="pf-box-sub">{{ lote.itens.all|length }} ite{{ lote.itens.all|length|pluralize:"m,ns" }} neste lote — nada foi enviado ainda.</div>
+     {% for il in lote.itens.all %}
+       {% if il.status == 'rascunho' %}
+       <div class="pf-box-item">
+         <div>
+           {% if il.tipo == 'troca_antecipada' %}
+           <div class="pf-box-item-name"><i class="fa-solid fa-right-left" style="opacity:.6;"></i> {{ il.sub_modelo }}</div>
+           <div class="pf-box-item-meta">Substitui {{ il.item_defeituoso.nome }}</div>
+           {% else %}
+           <div class="pf-box-item-name"><i class="fa-solid fa-box" style="opacity:.6;"></i> {{ il.novo_nome }}</div>
+           <div class="pf-box-item-meta">Equipamento novo</div>
+           {% endif %}
+         </div>
+         <form method="post" action="{% url 'portal_lote_envio_item_excluir' il.pk %}" onsubmit="return confirm('Remover este item do lote?');">
+           {% csrf_token %}
+           <button type="submit" class="pf-box-del" title="Remover"><i class="fa-solid fa-trash-can"></i></button>
+         </form>
+       </div>
+       {% endif %}
+     {% endfor %}
+     <div class="pf-box-foot">
+       <a href="{% url 'portal_lote_envio_detail' lote.pk %}" class="pf-btn pf-btn--brand"><i class="fa-solid fa-arrow-right"></i> Ver lote, anexar NF e enviar</a>
+     </div>
+   </div>
+   {% endif %}
+   {% endfor %}
    <div class="pf-card2 pf-info">
      <div class="pf-info-eyebrow">Como funciona</div>
      <div class="pf-info-title">Por que adiantar o substituto</div>
      <p>Sem a troca antecipada, o equipamento com defeito fica parado na fazenda até o reparo ser combinado. Adiantando o substituto, a operação não para — o defeituoso só sai depois que o novo já chegou.</p>
-     <p>O substituto entra no sistema como <b>Pausado</b> assim que a troca é aberta. Ele passa a valer como equipamento em uso quando o TI confirma o recebimento na fazenda — e é só a partir daí que o defeituoso é enviado para vocês, com prioridade.</p>
+     <p>Ao salvar, o item fica em <b>rascunho</b> no seu lote de envio — nada é enviado ainda. Anexe a NF e clique em "Enviar" no lote quando estiver pronto. Só a partir do envio o substituto entra no sistema como <b>Pausado</b>; ele passa a valer como equipamento em uso quando o TI confirma o recebimento na fazenda, e é só então que o defeituoso é enviado para vocês, com prioridade.</p>
      <p>O modelo informado aqui é o que identifica o equipamento no estoque; não é preciso preencher um nome separado.</p>
      <p>Cada equipamento aceita uma troca em aberto por vez — se já houver uma ordem pendente para ele, ele não aparece na lista de seleção.</p>
      <div class="pf-info-foot">Para acompanhar o andamento de uma troca já aberta, use a lista de Troca Antecipada.</div>
@@ -194,5 +281,16 @@
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
   $(function () { $('.pf-select2').select2({ width: '100%', placeholder: 'Selecione o equipamento…' }); });
+
+  (function () {
+    var loteSel = document.getElementById('lote_id');
+    var loteNovoWrap = document.getElementById('wrap_lote_novo');
+    if (!loteSel) return;
+    function syncLote() {
+      loteNovoWrap.hidden = loteSel.value !== 'novo';
+    }
+    loteSel.addEventListener('change', syncLote);
+    syncLote();
+  })();
 </script>
 {% endblock %}

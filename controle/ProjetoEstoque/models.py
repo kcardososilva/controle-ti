@@ -49,17 +49,27 @@ class StatusOrdemManutencaoChoices(models.TextChoices):
     #   aguardando → recebido → em_avaliacao
     #     → aguardando_aprovacao → (TI) aprovado → em_reparo → reparado → devolvido → (TI) concluido
     #                            → (TI) reprovado → devolvido (avaliação técnica) → (TI) concluido
-    #     → sem_reparo → substituto_enviado → (TI) concluido
-    #     → sem_condicoes (motivo + valor) → (forn.) devolvido_descarte → (TI) descartado
+    #     → sem_reparo (contrato do substituto: valor/regime/data/modelo/série) → troca_aguardando_aprovacao
+    #         → (TI) troca_aprovada → (forn.) substituto_enviado (+ cobrança pelo equipamento
+    #             danificado) → (TI) troca_dano_aprovada → concluido
+    #                        → (TI) troca_dano_reprovada → (forn.) substituto_enviado (reenvio da cobrança)
+    #         → (TI) troca_reprovada → (forn.) sem_reparo (reenvio de contrato revisado)
+    #     → sem_condicoes (motivo + valor) → descarte_avaliacao_aprovada|reprovada
+    #         → (TI) descarte_avaliacao_aprovada → (forn.) devolvido_descarte → (TI) descartado
+    #         → (TI) descarte_avaliacao_reprovada → (forn.) sem_condicoes (reenvio de valor revisado)
     #     → descarte_local_solicitado (motivo + valor) → (TI) descarte_local_aprovado → (fornecedor) descartado
-    #                                                  → (TI) sem_condicoes (recusa: devolver p/ o TI descartar)
+    #                                                  → (TI) descarte_avaliacao_aprovada (recusa o LOCAL, mas já
+    #                                                    aceita o valor — segue direto p/ devolvido_descarte)
+    # Toda proposta de valor (reparo, troca ou descarte) vira um registro versionado
+    # em OrdemManutencaoOrcamento — aprovar/reprovar é sempre decisão do TI.
     #
     # Troca antecipada (troca_antecipada=True; fornecedor abre pelo Portal p/ evitar
     # equipamento defeituoso parado): troca_ant_sub_enviado (substituto a caminho)
     #   → (TI) troca_ant_sub_recebido (recebe o substituto, ativa em estoque)
     #   → (TI) troca_ant_def_enviado (envia o defeituoso → MANUTENCAO)
     #   → (forn.) troca_ant_def_recebido (recebe o defeituoso → PAUSADO)
-    #   → (forn.) concluido (envia a proposta de reparo)
+    #   → (forn.) troca_ant_aguardando_aprovacao (envia a proposta de reparo)
+    #   → (TI) troca_ant_aprovado → concluido | troca_ant_reprovado → (forn.) troca_ant_aguardando_aprovacao (reenvio)
     AGUARDANDO_RECEBIMENTO = "aguardando_recebimento", "Aguardando recebimento"
     RECEBIDO = "recebido", "Recebido pelo fornecedor"
     EM_AVALIACAO = "em_avaliacao", "Em avaliação"
@@ -70,8 +80,15 @@ class StatusOrdemManutencaoChoices(models.TextChoices):
     REPARADO = "reparado", "Reparo concluído"
     DEVOLVIDO = "devolvido", "Devolvido ao cliente — aguardando recebimento"
     SEM_REPARO = "sem_reparo", "Sem reparo — troca"
-    SUBSTITUTO_ENVIADO = "substituto_enviado", "Substituto enviado — aguardando recebimento"
+    TROCA_AGUARDANDO_APROVACAO = "troca_aguardando_aprovacao", "Troca — contrato do substituto aguardando aprovação do TI"
+    TROCA_APROVADA = "troca_aprovada", "Troca — contrato aprovado pelo TI"
+    TROCA_REPROVADA = "troca_reprovada", "Troca — contrato reprovado pelo TI"
+    SUBSTITUTO_ENVIADO = "substituto_enviado", "Substituto enviado — aguardando aprovação da cobrança pelo dano"
+    TROCA_DANO_APROVADA = "troca_dano_aprovada", "Troca — cobrança pelo equipamento danificado aprovada"
+    TROCA_DANO_REPROVADA = "troca_dano_reprovada", "Troca — cobrança pelo equipamento danificado reprovada"
     SEM_CONDICOES = "sem_condicoes", "Sem condições de reparo — aguardando devolução"
+    DESCARTE_AVALIACAO_APROVADA = "descarte_avaliacao_aprovada", "Descarte — avaliação aprovada pelo TI"
+    DESCARTE_AVALIACAO_REPROVADA = "descarte_avaliacao_reprovada", "Descarte — avaliação reprovada pelo TI"
     DEVOLVIDO_DESCARTE = "devolvido_descarte", "Devolvido para descarte — aguardando recebimento do TI"
     DESCARTE_LOCAL_SOLICITADO = "descarte_local_solicitado", "Descarte local solicitado — aguardando aprovação do TI"
     DESCARTE_LOCAL_APROVADO = "descarte_local_aprovado", "Descarte local aprovado — aguardando o fornecedor"
@@ -81,6 +98,9 @@ class StatusOrdemManutencaoChoices(models.TextChoices):
     TROCA_ANT_SUBSTITUTO_RECEBIDO = "troca_ant_sub_recebido", "Troca antecipada — substituto recebido, enviar o defeituoso"
     TROCA_ANT_DEFEITUOSO_ENVIADO = "troca_ant_def_enviado", "Troca antecipada — defeituoso enviado ao fornecedor"
     TROCA_ANT_DEFEITUOSO_RECEBIDO = "troca_ant_def_recebido", "Troca antecipada — defeituoso recebido, aguardando proposta"
+    TROCA_ANT_AGUARDANDO_APROVACAO = "troca_ant_aguardando_aprovacao", "Troca antecipada — proposta aguardando aprovação do TI"
+    TROCA_ANT_APROVADO = "troca_ant_aprovado", "Troca antecipada — proposta aprovada"
+    TROCA_ANT_REPROVADO = "troca_ant_reprovado", "Troca antecipada — proposta reprovada"
     CONCLUIDO = "concluido", "Concluído"
     CANCELADO = "cancelado", "Cancelado"
 
@@ -216,6 +236,20 @@ class Funcao(AuditModel):
 
 
 # ========== ITEM (Equipamento) ==========
+class ItemManager(models.Manager):
+    """
+    Manager padrão: nunca retorna itens excluídos (soft delete). Isso filtra
+    automaticamente listagens, dashboards, exports e seletores de formulário
+    (tudo que usa `Item.objects`) sem precisar tocar em cada view/form.
+
+    FKs para Item (MovimentacaoItem.item, OrdemManutencao.item, etc.) e o
+    Django Admin usam `Item.all_objects` (base manager, ver Meta abaixo) —
+    o histórico ligado a um item excluído continua 100% acessível.
+    """
+    def get_queryset(self):
+        return super().get_queryset().filter(excluido=False)
+
+
 class Item(AuditModel):
     nome = models.CharField(max_length=100)
     numero_serie = models.CharField(max_length=100, blank=True, null=True)
@@ -321,15 +355,42 @@ class Item(AuditModel):
         ),
     )
 
+    # ── Exclusão lógica (soft delete) ──────────────────────────────────
+    # Um delete físico apagaria (CASCADE) todo o histórico de movimentações,
+    # OS de manutenção, ciclos e preventivas — ou seria bloqueado (PROTECT)
+    # por lotes vinculados. Excluir aqui só marca o item como excluído: ele
+    # some das listagens/dashboards/seletores (via `ItemManager`), mas a
+    # linha e todo o histórico ligado a ela permanecem intactos.
+    excluido = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Excluído",
+        help_text="Item removido das listagens e seletores. Histórico vinculado é preservado.",
+    )
+    excluido_em = models.DateTimeField(null=True, blank=True, verbose_name="Excluído em")
+    excluido_por = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Excluído por",
+    )
+
+    objects = ItemManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = "Item / Equipamento"
         verbose_name_plural = "Itens / Equipamentos"
+        base_manager_name = "all_objects"
         indexes = [
             models.Index(fields=["nome"]),
             models.Index(fields=["status"]),
             models.Index(fields=["item_consumo"]),
             models.Index(fields=["localidade"]),
             models.Index(fields=["centro_custo"]),
+            models.Index(fields=["excluido"]),
         ]
 
     @property
@@ -454,17 +515,26 @@ class LocacaoPeriodo(AuditModel):
         return self.data_fim is None
 
     @property
+    def aguardando_inicio(self) -> bool:
+        """True quando a cobrança ainda não começou (data_inicio no futuro)."""
+        return self.data_inicio > datetime.date.today()
+
+    @property
     def _fim_efetivo(self):
         return self.data_fim or datetime.date.today()
 
     @property
     def meses(self) -> int:
-        """Meses cheios decorridos no período."""
+        """Meses cheios decorridos no período. 0 se ainda não começou."""
+        if self.aguardando_inicio:
+            return 0
         delta = relativedelta(self._fim_efetivo, self.data_inicio)
         return delta.years * 12 + delta.months
 
     @property
     def dias(self) -> int:
+        if self.aguardando_inicio:
+            return 0
         return (self._fim_efetivo - self.data_inicio).days
 
     @property
@@ -965,6 +1035,21 @@ class MovimentacaoItem(AuditModel):
         verbose_name="Termo de Responsabilidade"
     )
 
+    # ── Reversão ────────────────────────────────────────────────────────
+    # A movimentação nunca é apagada — reverter só desfaz o efeito no
+    # estoque/item e marca estes campos, preservando o registro de que a
+    # operação aconteceu (e foi depois revertida).
+    revertida = models.BooleanField(default=False, db_index=True, verbose_name="Revertida")
+    revertida_em = models.DateTimeField(null=True, blank=True, verbose_name="Revertida em")
+    revertida_por = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Revertida por",
+    )
+
     class Meta:
         verbose_name = "Movimentação de Item"
         verbose_name_plural = "Movimentações de Itens"
@@ -1113,6 +1198,16 @@ class OrdemManutencao(AuditModel):
     substituto_data = models.DateField(
         blank=True, null=True, verbose_name="Data da substituição"
     )
+    # Identificação do equipamento substituto — já exigida na PROPOSTA do contrato
+    # (antes da aprovação do TI), para que o TI possa avaliar o modelo oferecido
+    # antes de aprovar o valor/regime. Número de série é o do equipamento físico
+    # já separado pelo fornecedor para o envio.
+    substituto_modelo = models.CharField(
+        max_length=200, blank=True, null=True, verbose_name="Modelo do substituto"
+    )
+    substituto_numero_serie = models.CharField(
+        max_length=200, blank=True, null=True, verbose_name="Nº de série do substituto"
+    )
     substituto_locado = models.CharField(
         max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO,
         verbose_name="Substituto entra como locação?",
@@ -1186,9 +1281,11 @@ class OrdemManutencao(AuditModel):
     # stepper (ver ETAPAS_MACRO / etapa_macro e o OrdemManutencaoService).
     troca_antecipada = models.BooleanField(default=False, verbose_name="Troca antecipada")
     finalizada_em = models.DateTimeField(null=True, blank=True)
-    # Lote de Manutenção ao qual esta OS foi agrupada (fatura/documento consolidado
-    # montado pelo fornecedor no Portal). Uma OS entra em, no máximo, 1 lote — ver
-    # `pode_entrar_em_lote`. SET_NULL: excluir o lote não apaga o histórico da OS.
+    # Lote de Manutenção (fatura/documento consolidado): funcionalidade
+    # descontinuada (as telas de criação/listagem foram removidas — ver Lote de
+    # Envio, que cobre o mesmo caso de uso com NF/rastreio). Campo mantido só
+    # para não perder o vínculo de lotes já existentes; SET_NULL preserva o
+    # histórico da OS caso o lote seja excluído diretamente no banco/admin.
     lote_manutencao = models.ForeignKey(
         "LoteManutencao",
         on_delete=models.SET_NULL,
@@ -1233,6 +1330,9 @@ class OrdemManutencao(AuditModel):
                 "troca_ant_sub_recebido": 1,
                 "troca_ant_def_enviado": 2,
                 "troca_ant_def_recebido": 3,
+                "troca_ant_aguardando_aprovacao": 3,
+                "troca_ant_aprovado": 3,
+                "troca_ant_reprovado": 3,
                 "concluido": 5, "cancelado": 4,
             }.get(self.status, 0)
         return {
@@ -1240,7 +1340,10 @@ class OrdemManutencao(AuditModel):
             "recebido": 1, "em_avaliacao": 1,
             "aguardando_aprovacao": 2, "aprovado": 2, "reprovado": 2,
             "em_reparo": 3, "reparado": 3, "sem_reparo": 3,
-            "substituto_enviado": 3, "devolvido": 3, "sem_condicoes": 3,
+            "troca_aguardando_aprovacao": 3, "troca_aprovada": 3, "troca_reprovada": 3,
+            "substituto_enviado": 3, "troca_dano_aprovada": 3, "troca_dano_reprovada": 3,
+            "devolvido": 3, "sem_condicoes": 3,
+            "descarte_avaliacao_aprovada": 3, "descarte_avaliacao_reprovada": 3,
             "devolvido_descarte": 3,
             "descarte_local_solicitado": 3, "descarte_local_aprovado": 3,
             "concluido": 5, "descartado": 5, "cancelado": 4,
@@ -1307,41 +1410,35 @@ class OrdemManutencao(AuditModel):
             "expirada": "Garantia expirada",
         }[self.garantia_status]
 
-    # ── Custo final e elegibilidade para Lote de Manutenção ─────────────────
+    # ── Custo final da OS ────────────────────────────────────────────────────
     @property
     def valor_manutencao(self):
         """
         Custo final e definitivo desta OS. Não existe um único campo de valor
         porque o desfecho do fluxo muda qual campo é o relevante — este método
-        resolve isso na ordem correta. Usado no histórico do Portal/TI e no
-        cálculo de `LoteManutencao.valor_total`. Retorna None se a OS ainda
-        não tem custo apurado.
+        resolve isso na ordem correta. Usado no histórico do Portal/TI. Retorna
+        None se a OS ainda não tem custo apurado.
 
         Prioridade:
           1. reparo_valor            — reparo concluído OU devolução sem reparo (reprovado)
-          2. substituto_valor        — troca padrão (equipamento substituído)
+          2. substituto_valor        — troca padrão (equipamento substituído); soma
+             valor_avaliacao_tecnica quando também houver cobrança aprovada pelo
+             equipamento danificado (os dois custos compõem esta OS de troca)
           3. valor_orcamento         — troca antecipada concluída (proposta do fornecedor)
           4. valor_avaliacao_tecnica — descarte (local ou via TI), sem os campos acima
         """
         if self.reparo_valor is not None:
             return self.reparo_valor
         if self.substituto_valor is not None:
-            return self.substituto_valor
+            total = self.substituto_valor
+            if self.valor_avaliacao_tecnica is not None:
+                total += self.valor_avaliacao_tecnica
+            return total
         if self.troca_antecipada and self.valor_orcamento is not None:
             return self.valor_orcamento
         if self.valor_avaliacao_tecnica is not None:
             return self.valor_avaliacao_tecnica
         return None
-
-    @property
-    def pode_entrar_em_lote(self) -> bool:
-        """Elegível para um Lote de Manutenção: OS concluída, com custo já
-        apurado e ainda não incluída em nenhum lote (evita cobrança em duplicidade)."""
-        return (
-            self.status == StatusOrdemManutencaoChoices.CONCLUIDO
-            and self.lote_manutencao_id is None
-            and self.valor_manutencao is not None
-        )
 
     def __str__(self):
         return f"OS #{self.pk} — {self.item} ({self.get_status_display()})"
@@ -1421,11 +1518,25 @@ class OrdemManutencaoOrcamento(AuditModel):
         APROVADO = "aprovado", "Aprovado"
         REPROVADO = "reprovado", "Reprovado"
 
+    class TipoOrcamento(models.TextChoices):
+        REPARO = "reparo", "Orçamento de reparo"
+        TROCA = "troca", "Contrato do equipamento substituto (troca)"
+        TROCA_DANIFICADO = "troca_danificado", "Cobrança pelo equipamento danificado (troca)"
+        DESCARTE = "descarte", "Avaliação de descarte (devolução ao TI)"
+        DESCARTE_LOCAL = "descarte_local", "Avaliação de descarte local"
+
     ordem = models.ForeignKey(
         OrdemManutencao,
         on_delete=models.CASCADE,
         related_name="orcamentos",
         verbose_name="Ordem de Manutenção",
+    )
+    tipo = models.CharField(
+        max_length=20,
+        choices=TipoOrcamento.choices,
+        default=TipoOrcamento.REPARO,
+        verbose_name="Tipo de avaliação",
+        help_text="De qual desfecho esta proposta faz parte (reparo, troca ou descarte).",
     )
     numero = models.PositiveIntegerField(
         verbose_name="Número da proposta",
@@ -1463,6 +1574,15 @@ class OrdemManutencaoOrcamento(AuditModel):
         if ordem.status not in (
             StatusOrdemManutencaoChoices.AGUARDANDO_APROVACAO,
             StatusOrdemManutencaoChoices.REPROVADO,
+            StatusOrdemManutencaoChoices.TROCA_ANT_AGUARDANDO_APROVACAO,
+            StatusOrdemManutencaoChoices.TROCA_ANT_REPROVADO,
+            StatusOrdemManutencaoChoices.TROCA_AGUARDANDO_APROVACAO,
+            StatusOrdemManutencaoChoices.TROCA_REPROVADA,
+            StatusOrdemManutencaoChoices.SUBSTITUTO_ENVIADO,
+            StatusOrdemManutencaoChoices.TROCA_DANO_REPROVADA,
+            StatusOrdemManutencaoChoices.SEM_CONDICOES,
+            StatusOrdemManutencaoChoices.DESCARTE_AVALIACAO_REPROVADA,
+            StatusOrdemManutencaoChoices.DESCARTE_LOCAL_SOLICITADO,
         ):
             return False
         return self.numero == ordem.orcamentos.count()
@@ -1554,16 +1674,11 @@ class OrdemManutencaoOrcamento(AuditModel):
 class LoteManutencao(AuditModel):
     """
     Agrupamento de Ordens de Manutenção já concluídas em um único documento
-    (lote/fatura), montado pelo fornecedor a partir de uma seleção no Portal.
-    Consolida quantidade e valor total das ordens incluídas — visível tanto
-    pelo fornecedor (Portal) quanto pelo TI (painel interno).
-
-    Uma OS pertence a, no máximo, um lote: a seleção no Portal só oferece OS's
-    com `pode_entrar_em_lote = True` (concluídas, com custo apurado, ainda sem
-    lote), o que evita cobrança em duplicidade. O valor total NÃO é
-    armazenado — é somado em tempo real a partir de `OrdemManutencao.valor_manutencao`
-    das ordens vinculadas (`valor_total`), garantindo que o lote sempre reflita
-    o dado mais atual mesmo que uma OS seja corrigida depois.
+    (lote/fatura). Modelo mantido só por compatibilidade com dados já
+    existentes — as telas de criação/listagem (Portal e TI) foram removidas;
+    o caso de uso (retorno de reparo concluído ao TI) hoje é coberto pelo
+    Lote de Envio (`LoteEnvioFornecedor`, tipo `reparo_concluido`), que tem
+    NF e rastreio de status. Não criar novos registros deste modelo.
     """
     nome = models.CharField(max_length=150, verbose_name="Nome do lote")
     data = models.DateField(verbose_name="Data do lote")
@@ -1598,6 +1713,238 @@ class LoteManutencao(AuditModel):
             if valor:
                 total += valor
         return total
+
+
+class StatusLoteEnvioFornecedorChoices(models.TextChoices):
+    ABERTO = "aberto", "Em organização"
+    ENVIADO = "enviado", "Enviado ao TI"
+    CANCELADO = "cancelado", "Cancelado"
+
+
+class TipoItemLoteEnvioChoices(models.TextChoices):
+    TROCA_ANTECIPADA = "troca_antecipada", "Troca antecipada"
+    EQUIPAMENTO_NOVO = "equipamento_novo", "Equipamento novo"
+    REPARO_CONCLUIDO = "reparo_concluido", "Reparo concluído"
+
+
+class StatusItemLoteEnvioChoices(models.TextChoices):
+    RASCUNHO = "rascunho", "Em organização (rascunho)"
+    ENVIADO = "enviado", "Enviado ao TI"
+    RECEBIDO = "recebido", "Recebido pelo TI"
+    CANCELADO = "cancelado", "Cancelado"
+
+
+class LoteEnvioFornecedor(AuditModel):
+    """
+    "Carrinho" que o próprio fornecedor monta no Portal para organizar o envio de
+    trocas antecipadas e cadastro de equipamento novo ao TI — direção oposta à de
+    `LoteSeparacao` (que só o TI cria). Um fornecedor pode ter vários lotes ABERTOS
+    simultâneos (ex.: remessas físicas separadas); os itens dentro dele ficam em
+    RASCUNHO (ver `LoteEnvioFornecedorItem`) até o fornecedor enviar — só nesse
+    momento eles viram, de fato, uma OrdemManutencao/Item real no sistema.
+    """
+    nome = models.CharField(max_length=150, verbose_name="Nome do lote")
+    fornecedor = models.ForeignKey(
+        "Fornecedor",
+        on_delete=models.PROTECT,
+        related_name="lotes_envio",
+        verbose_name="Fornecedor",
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=StatusLoteEnvioFornecedorChoices.choices,
+        default=StatusLoteEnvioFornecedorChoices.ABERTO,
+        db_index=True,
+    )
+    observacoes = models.TextField(blank=True, null=True)
+    enviado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Lote de Envio do Fornecedor"
+        verbose_name_plural = "Lotes de Envio do Fornecedor"
+        indexes = [
+            models.Index(fields=["fornecedor", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.nome} — {self.fornecedor.nome}"
+
+    @property
+    def quantidade_itens(self) -> int:
+        return len(self.itens.exclude(status=StatusItemLoteEnvioChoices.CANCELADO))
+
+    @property
+    def quantidade_rascunho(self) -> int:
+        return sum(1 for i in self.itens.all() if i.status == StatusItemLoteEnvioChoices.RASCUNHO)
+
+
+class LoteEnvioFornecedorItem(AuditModel):
+    """
+    Linha do `LoteEnvioFornecedor`. Enquanto `status=RASCUNHO` é só dado bruto de
+    formulário — nenhuma transição real acontece ainda. Só no envio (ver
+    `services/lote_envio_fornecedor_service.py::LoteEnvioFornecedorService.enviar_item`)
+    é que a linha vira, de fato: uma troca antecipada real (`OrdemManutencao`, via
+    `OrdemManutencaoService.abrir_troca_antecipada`), um `Item` novo (PAUSADO), ou
+    — no caso REPARO_CONCLUIDO — a transição da OS de reparo já existente
+    (`ordem`) para `DEVOLVIDO` (a OS já existe desde a criação do rascunho; só o
+    estado dela ainda não mudou).
+    """
+    lote = models.ForeignKey(
+        LoteEnvioFornecedor,
+        on_delete=models.CASCADE,
+        related_name="itens",
+        verbose_name="Lote de envio",
+    )
+    tipo = models.CharField(max_length=20, choices=TipoItemLoteEnvioChoices.choices, verbose_name="Tipo")
+    status = models.CharField(
+        max_length=10,
+        choices=StatusItemLoteEnvioChoices.choices,
+        default=StatusItemLoteEnvioChoices.RASCUNHO,
+        db_index=True,
+    )
+    # ── Caso TROCA_ANTECIPADA (rascunho dos dados do formulário já existente) ──
+    item_defeituoso = models.ForeignKey(
+        "Item",
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name="rascunhos_troca_antecipada",
+        verbose_name="Equipamento com defeito",
+    )
+    sub_modelo = models.CharField(max_length=200, blank=True, default="", verbose_name="Modelo do substituto")
+    sub_serie = models.CharField(max_length=200, blank=True, default="", verbose_name="Série do substituto")
+    sub_marca = models.CharField(max_length=200, blank=True, default="", verbose_name="Marca do substituto")
+    sub_data_contrato = models.DateField(null=True, blank=True, verbose_name="Data de contrato do equipamento")
+    # ── Caso EQUIPAMENTO_NOVO (rascunho de um cadastro de item) ─────────────────
+    novo_nome = models.CharField(max_length=200, blank=True, default="", verbose_name="Nome/Modelo")
+    novo_numero_serie = models.CharField(max_length=200, blank=True, default="", verbose_name="Número de série")
+    novo_marca = models.CharField(max_length=200, blank=True, default="", verbose_name="Marca")
+    novo_modelo = models.CharField(max_length=200, blank=True, default="", verbose_name="Modelo")
+    novo_categoria = models.ForeignKey(
+        "Categoria", on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name="Categoria",
+    )
+    novo_subtipo = models.ForeignKey(
+        "Subtipo", on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name="Subtipo",
+    )
+    novo_localidade = models.ForeignKey(
+        "Localidade", on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name="Localidade",
+    )
+    novo_centro_custo = models.ForeignKey(
+        "CentroCusto", on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name="Centro de custo",
+    )
+    novo_locado = models.CharField(
+        max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO, verbose_name="Entra como locação?",
+    )
+    novo_pmb = models.CharField(
+        max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO, verbose_name="PMB?",
+    )
+    novo_valor = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="Valor")
+    novo_contrato = models.CharField(max_length=200, blank=True, default="", verbose_name="Contrato")
+    novo_tempo_contrato_meses = models.PositiveIntegerField(null=True, blank=True, verbose_name="Tempo de contrato (meses)")
+    novo_cobranca_proximo_ano = models.CharField(
+        max_length=3, choices=SimNaoChoices.choices, default=SimNaoChoices.NAO,
+        verbose_name="Cobrança do aluguel só a partir do próximo ano?",
+        help_text=(
+            "Se Sim, o período de locação começa em 1º de janeiro do ano seguinte à "
+            "confirmação de recebimento pelo TI. Se Não, começa na data em que o "
+            "fornecedor cadastrou o equipamento neste lote."
+        ),
+    )
+    # ── Caso REPARO_CONCLUIDO (retorno de uma OS de reparo normal já existente) ─
+    localidade_devolucao = models.ForeignKey(
+        "Localidade",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="+",
+        verbose_name="Localidade de devolução",
+    )
+    valor_avaliacao_tecnica = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name="Valor da avaliação técnica",
+        help_text="Só se aplica quando a OS foi reprovada (devolução sem reparo).",
+    )
+    # ── Resultado da materialização (preenchido só no envio, exceto em
+    # REPARO_CONCLUIDO onde a OS já existe e é setada na criação) ──────────────
+    ordem = models.ForeignKey(
+        "OrdemManutencao",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="+",
+        verbose_name="Ordem de manutenção gerada",
+    )
+    item_resultado = models.ForeignKey(
+        "Item",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="+",
+        verbose_name="Equipamento gerado",
+    )
+    enviado_em = models.DateTimeField(null=True, blank=True)
+    recebido_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Item do Lote de Envio"
+        verbose_name_plural = "Itens do Lote de Envio"
+        indexes = [
+            models.Index(fields=["tipo", "status"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["item_defeituoso"],
+                condition=models.Q(status="rascunho", tipo="troca_antecipada"),
+                name="uniq_item_defeituoso_rascunho_aberto",
+            ),
+            models.UniqueConstraint(
+                fields=["ordem"],
+                condition=models.Q(status="rascunho", tipo="reparo_concluido"),
+                name="uniq_ordem_reparo_rascunho_aberto",
+            ),
+        ]
+
+    def __str__(self):
+        if self.item_defeituoso_id:
+            alvo = self.item_defeituoso.nome
+        elif self.tipo == TipoItemLoteEnvioChoices.REPARO_CONCLUIDO and self.ordem_id:
+            alvo = self.ordem.item.nome
+        else:
+            alvo = self.novo_nome or "Equipamento novo"
+        return f"{self.get_tipo_display()} — {alvo}"
+
+
+class LoteEnvioFornecedorAnexo(AuditModel):
+    """
+    NF (ou outro documento) anexada a um `LoteEnvioFornecedor`. Espelha
+    `OrdemManutencaoAnexo`: tanto o fornecedor quanto o TI podem anexar/excluir.
+    """
+    class OrigemAnexo(models.TextChoices):
+        FORNECEDOR = "fornecedor", "Fornecedor"
+        TI = "ti", "TI"
+
+    lote = models.ForeignKey(
+        LoteEnvioFornecedor,
+        on_delete=models.CASCADE,
+        related_name="anexos",
+    )
+    arquivo = models.FileField(upload_to="lote_envio_fornecedor/nf/%Y/%m/", verbose_name="Arquivo")
+    origem = models.CharField(
+        max_length=12, choices=OrigemAnexo.choices, default=OrigemAnexo.FORNECEDOR,
+        verbose_name="Origem",
+    )
+    descricao = models.CharField(max_length=200, blank=True, default="", verbose_name="Descrição")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Anexo do Lote de Envio"
+        verbose_name_plural = "Anexos do Lote de Envio"
+
+    def __str__(self):
+        return f"NF Lote #{self.lote_id} ({self.get_origem_display()})"
+
+    @property
+    def nome_arquivo(self):
+        import os
+        return os.path.basename(self.arquivo.name) if self.arquivo else ""
 
 
 class TipoSeparacaoChoices(models.TextChoices):
@@ -2054,6 +2401,18 @@ class PreventivaExecucao(AuditModel):
         default=True,
         verbose_name="Executada no prazo",
         help_text="True quando a execução ocorreu até a data agendada (ou sem agendamento).",
+    )
+
+    # Preventivas realizadas em dupla: o técnico principal registra o
+    # formulário e atribui o(s) colega(s) que estiveram com ele no serviço,
+    # para que as horas trabalhadas também sejam contabilizadas para eles
+    # (mesmo período hora_inicio/hora_fim da execução — trabalho simultâneo).
+    tecnicos_auxiliares = models.ManyToManyField(
+        User,
+        blank=True,
+        related_name="execucoes_preventiva_auxiliar",
+        verbose_name="Técnicos auxiliares",
+        help_text="Outros técnicos que participaram desta execução junto com o responsável.",
     )
 
     # Apontamento de horas trabalhadas pelo técnico nesta execução.
@@ -2741,6 +3100,13 @@ class KioskMatricula(models.Model):
 
 class KioskDevice(models.Model):
     """Celular corporativo em modo quiosque, integrado ao sistema."""
+
+    class AtualizacaoStatus(models.TextChoices):
+        EM_DIA     = 'em_dia', 'Em dia'
+        BAIXANDO   = 'baixando', 'Baixando'
+        INSTALANDO = 'instalando', 'Instalando'
+        BLOQUEADA  = 'bloqueada', 'Bloqueada'
+
     device_uuid   = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     token_hash    = models.CharField(max_length=64, db_index=True)  # sha256 do token (nunca o token puro)
     serial        = models.CharField(max_length=120, blank=True, default='', db_index=True, verbose_name='Número de série')
@@ -2751,6 +3117,13 @@ class KioskDevice(models.Model):
     modelo        = models.CharField(max_length=120, blank=True, default='')
     android_versao = models.CharField(max_length=20, blank=True, default='', verbose_name='Versão Android')
     app_versao    = models.CharField(max_length=20, blank=True, default='', verbose_name='Versão do app')
+    # versionCode do app rodando agora no aparelho — reportado em TODO check-in (ao contrário do
+    # app_versao do /enroll/, que fica congelado na versão da 1ª matrícula). Numérico e sempre
+    # crescente: melhor campo para comparar contra `atualizacao.version_code` (ver
+    # services/quiosque_service.py) e montar o selo de conformidade por aparelho no painel.
+    app_versao_codigo   = models.PositiveIntegerField(null=True, blank=True, verbose_name='Código da versão do app')
+    atualizacao_status  = models.CharField(max_length=12, choices=AtualizacaoStatus.choices, blank=True, default='', verbose_name='Status da auto-atualização')
+    atualizacao_motivo  = models.CharField(max_length=255, blank=True, default='', verbose_name='Motivo do bloqueio da atualização')
     ram_mb        = models.IntegerField(null=True, blank=True, verbose_name='RAM (MB)')
     item          = models.ForeignKey('Item', on_delete=models.SET_NULL, null=True, blank=True, related_name='kiosk_devices', verbose_name='Equipamento vinculado')
     ativo         = models.BooleanField(default=True, verbose_name='Ativo')

@@ -23,7 +23,7 @@
    Prefixo .mv-  ·  escopo :where(.mov-page, .select2-*)
    Aliases --mv-* mapeiam para tokens (usados por inline styles dos partials).
    =================================================================== */
-:where(.mov-page, .select2-container, .select2-dropdown) {
+:where(.mov-page, #revertModal, .select2-container, .select2-dropdown) {
     --mv-primary:      var(--brand);
     --mv-primary-hover:var(--brand-hover);
     --mv-primary-soft: var(--brand-soft);
@@ -85,10 +85,13 @@
 .mv-toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* ── Botões (sóbrios, raio-sm — sem pílula/translate) ────────────── */
-.mov-page .btn,
-.mov-page .btn-primary,
-.mov-page .btn-light,
-.mov-page .btn-danger {
+/* :is(.mov-page, #revertModal) — o modal de reversão é reparentado para
+   <body> ao abrir (foge do transform residual de .main-container), então
+   precisa continuar casando com estas regras fora de .mov-page. */
+:is(.mov-page, #revertModal) .btn,
+:is(.mov-page, #revertModal) .btn-primary,
+:is(.mov-page, #revertModal) .btn-light,
+:is(.mov-page, #revertModal) .btn-danger {
     min-height: var(--mv-control-h);
     padding: 0 16px;
     border-radius: var(--mv-radius-sm);
@@ -106,21 +109,21 @@
     transition: background var(--mv-transition), border-color var(--mv-transition),
                 color var(--mv-transition), box-shadow var(--mv-transition), transform var(--mv-transition);
 }
-.mov-page .btn:active,
-.mov-page .btn-primary:active,
-.mov-page .btn-light:active,
-.mov-page .btn-danger:active { transform: scale(.98); }
+:is(.mov-page, #revertModal) .btn:active,
+:is(.mov-page, #revertModal) .btn-primary:active,
+:is(.mov-page, #revertModal) .btn-light:active,
+:is(.mov-page, #revertModal) .btn-danger:active { transform: scale(.98); }
 
-.mov-page .btn-primary { background: var(--mv-primary); border-color: var(--mv-primary); color: #fff; box-shadow: var(--mv-shadow-xs); }
-.mov-page .btn-primary:hover { background: var(--mv-primary-hover); border-color: var(--mv-primary-hover); }
+:is(.mov-page, #revertModal) .btn-primary { background: var(--mv-primary); border-color: var(--mv-primary); color: #fff; box-shadow: var(--mv-shadow-xs); }
+:is(.mov-page, #revertModal) .btn-primary:hover { background: var(--mv-primary-hover); border-color: var(--mv-primary-hover); }
 
-.mov-page .btn,
-.mov-page .btn-light { background: transparent; border-color: var(--mv-border-strong); color: var(--mv-text); }
-.mov-page .btn:hover,
-.mov-page .btn-light:hover { background: var(--mv-hover); border-color: var(--separator-strong); }
+:is(.mov-page, #revertModal) .btn,
+:is(.mov-page, #revertModal) .btn-light { background: transparent; border-color: var(--mv-border-strong); color: var(--mv-text); }
+:is(.mov-page, #revertModal) .btn:hover,
+:is(.mov-page, #revertModal) .btn-light:hover { background: var(--mv-hover); border-color: var(--separator-strong); }
 
-.mov-page .btn-danger { background: transparent; border-color: color-mix(in srgb, var(--mv-danger) 30%, transparent); color: var(--mv-danger); }
-.mov-page .btn-danger:hover { background: var(--mv-danger); border-color: var(--mv-danger); color: #fff; }
+:is(.mov-page, #revertModal) .btn-danger { background: transparent; border-color: color-mix(in srgb, var(--mv-danger) 30%, transparent); color: var(--mv-danger); }
+:is(.mov-page, #revertModal) .btn-danger:hover { background: var(--mv-danger); border-color: var(--mv-danger); color: #fff; }
 
 /* Ação em linha (ver detalhe) — quadrado neutro → brand no hover */
 .mv-icon-btn {
@@ -134,6 +137,44 @@
     transition: background var(--mv-transition), color var(--mv-transition), border-color var(--mv-transition);
 }
 .mv-icon-btn:hover { background: var(--mv-primary-soft); color: var(--mv-primary); border-color: color-mix(in srgb, var(--mv-primary) 30%, transparent); }
+.mv-icon-btn + .mv-icon-btn { margin-left: 6px; }
+.mv-icon-btn.mv-icon-danger:hover { background: var(--mv-danger-bg); color: var(--mv-danger); border-color: color-mix(in srgb, var(--mv-danger) 30%, transparent); }
+.mv-icon-btn.is-disabled { opacity: .45; cursor: default; }
+.mv-icon-btn.is-disabled:hover { background: transparent; color: var(--mv-muted); border-color: var(--mv-border-strong); }
+
+/* ── Modal de confirmação (reverter movimentação) ────────────────── */
+.mv-modal-overlay {
+    position: fixed; inset: 0; z-index: 9999;
+    display: none; align-items: center; justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, .38);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    opacity: 0; transition: opacity var(--mv-transition);
+}
+.mv-modal-overlay.is-open { display: flex; opacity: 1; }
+.mv-modal {
+    width: min(100%, 460px);
+    max-height: calc(100dvh - 40px);
+    overflow-y: auto;
+    padding: 24px;
+    border: 1px solid var(--mv-border-strong);
+    border-radius: var(--mv-radius-lg);
+    background: var(--mv-surface);
+    color: var(--mv-text);
+    box-shadow: var(--mv-shadow-md);
+    transform: translateY(6px) scale(.98);
+    transition: transform var(--mv-transition);
+}
+.mv-modal-overlay.is-open .mv-modal { transform: translateY(0) scale(1); }
+.mv-modal-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.mv-modal-icon {
+    width: 42px; height: 42px; flex: 0 0 42px;
+    display: grid; place-items: center; border-radius: 999px;
+    background: var(--mv-danger-bg); color: var(--mv-danger); font-size: 17px;
+}
+.mv-modal-title { margin: 0; color: var(--mv-text); font-size: 18px; font-weight: 650; letter-spacing: -0.018em; }
+.mv-modal-text { color: var(--mv-muted); font-size: 14px; line-height: 1.5; }
+.mv-modal-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
 
 /* ── Faixa de indicadores (metric strip · clicável = filtro) ─────── */
 .mv-metrics {
@@ -453,6 +494,9 @@
                 <span class="mv-count" id="movCount">{{ total }} registro{{ total|pluralize }}</span>
             </div>
             <div class="mv-toolbar-actions">
+                <a href="{% url 'repositorio_termos' %}" class="btn btn-light" title="Consultar termos de responsabilidade assinados">
+                    <i class="fa fa-folder-open" style="color:var(--mv-primary)"></i> Repositório de Termos
+                </a>
                 <button type="button" id="btnPdf" class="btn btn-light" title="Exportar resultado em PDF">
                     <i class="fa fa-file-pdf" style="color:var(--mv-danger)"></i> Exportar PDF
                 </button>
@@ -620,6 +664,27 @@
 
     </div>
 </div>
+
+<div id="revertModal" class="mv-modal-overlay" aria-hidden="true">
+    <div class="mv-modal" role="dialog" aria-modal="true" aria-labelledby="revertModalTitle">
+        <div class="mv-modal-header">
+            <div class="mv-modal-icon" aria-hidden="true">
+                <i class="fa fa-rotate-left"></i>
+            </div>
+            <h2 class="mv-modal-title" id="revertModalTitle">Reverter Movimentação</h2>
+        </div>
+
+        <p id="revertMessage" class="mv-modal-text">...</p>
+
+        <form id="revertForm" method="post" action="">
+            {% csrf_token %}
+            <div class="mv-modal-actions">
+                <button type="button" class="btn btn-light" onclick="closeRevertModal()">Cancelar</button>
+                <button type="submit" class="btn btn-danger">Sim, Reverter</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -752,6 +817,66 @@ function _movBindGallery() {
         });
     });
 }
+
+/* ── Modal de confirmação: reverter movimentação (2 etapas) ──────── */
+(function () {
+    var modal = document.getElementById('revertModal');
+    var message = document.getElementById('revertMessage');
+    var form = document.getElementById('revertForm');
+    if (!modal || !form) return;
+
+    var scroller = document.getElementById('mainContent') || document.scrollingElement || document.body;
+
+    function lockScroll() { scroller.style.overflow = 'hidden'; }
+    function unlockScroll() { scroller.style.overflow = ''; }
+
+    function escapeHtml(value) {
+        var div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    window.openRevertModalFromButton = function (button) {
+        var nome = button.dataset.nome || 'este item';
+        var tipo = (button.dataset.tipo || '').toLowerCase();
+        var qtd = button.dataset.qtd || '';
+
+        // `.main-container` (base.html) tem animation com transform residual
+        // (fill-mode: both), que vira containing block de qualquer position:fixed
+        // dentro dela — reparentar para <body> garante que o overlay cubra a
+        // viewport de verdade em vez de "descer" ancorado ao conteúdo.
+        if (modal.parentNode !== document.body) {
+            document.body.appendChild(modal);
+        }
+
+        message.innerHTML =
+            'Tem certeza que deseja reverter esta movimentação de <strong>' + escapeHtml(tipo) + '</strong> ' +
+            '(' + escapeHtml(qtd) + ' un.) do item <strong>' + escapeHtml(nome) + '</strong>? ' +
+            'O estoque volta ao estado anterior e nenhuma nova movimentação é registrada — ' +
+            'a operação original fica marcada como revertida.';
+
+        form.action = button.dataset.url || '';
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+        lockScroll();
+    };
+
+    window.closeRevertModal = function () {
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+        unlockScroll();
+    };
+
+    modal.addEventListener('click', function (event) {
+        if (event.target === modal) window.closeRevertModal();
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && modal.classList.contains('is-open')) {
+            window.closeRevertModal();
+        }
+    });
+})();
 
 /* Init */
 (function () {

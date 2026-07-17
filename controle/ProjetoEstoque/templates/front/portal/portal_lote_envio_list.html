@@ -1,0 +1,111 @@
+{% extends 'front/portal/portal_base.html' %}
+
+{% block title %}Lotes de Envio — Portal do Fornecedor{% endblock %}
+{% block page_title %}Lotes de Envio{% endblock %}
+{% block page_subtitle %}Organize trocas antecipadas e cadastro de equipamento novo antes de enviar ao TI{% endblock %}
+
+{% block extra_css %}
+<style>
+  :where(.pf-le) { display: grid; gap: 1.2rem; }
+  .pf-le .pf-actions {
+    display: grid; gap: .9rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  }
+  .pf-le .pf-action-card {
+    display: flex; align-items: center; gap: .9rem; text-decoration: none; color: inherit;
+    padding: 1.1rem 1.2rem; border-radius: var(--radius-lg); background: var(--bg-elevated);
+    border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+    transition: transform .16s, box-shadow .16s, border-color .16s;
+  }
+  .pf-le .pf-action-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--brand) 24%, var(--separator-hairline)); }
+  .pf-le .pf-action-ic { width: 2.6rem; height: 2.6rem; flex: 0 0 2.6rem; display: grid; place-items: center; border-radius: .8rem; background: var(--brand-soft); color: var(--brand); font-size: 1.1rem; }
+  .pf-le .pf-action-title { font-weight: 800; letter-spacing: -.01em; }
+  .pf-le .pf-action-sub { color: var(--text-tertiary); font-size: .8rem; margin-top: .15rem; }
+  .pf-le .pf-action-arrow { margin-left: auto; color: var(--text-quaternary); }
+  .pf-le .pf-grid { display: grid; gap: .8rem; }
+  .pf-le .pf-card2 {
+    display: block; text-decoration: none; color: inherit; padding: 1.1rem 1.2rem; border-radius: var(--radius-lg);
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+    transition: transform .16s, box-shadow .16s, border-color .16s;
+  }
+  .pf-le .pf-card2:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--brand) 24%, var(--separator-hairline)); }
+  .pf-le .pf-top { display: flex; align-items: center; gap: .9rem; }
+  .pf-le .pf-ic { width: 2.6rem; height: 2.6rem; flex: 0 0 2.6rem; display: grid; place-items: center; border-radius: .8rem; background: var(--brand-soft); color: var(--brand); font-size: 1rem; }
+  .pf-le .pf-info { min-width: 0; flex: 1; }
+  .pf-le .pf-name { font-weight: 800; letter-spacing: -.01em; font-size: 1rem; }
+  .pf-le .pf-meta { color: var(--text-tertiary); font-size: .8rem; margin-top: .18rem; }
+  .pf-le .pf-right { display: flex; align-items: center; gap: 1rem; flex: 0 0 auto; }
+  .pf-le .pf-status { font-size: .72rem; font-weight: 700; padding: .28rem .65rem; border-radius: 999px; }
+  .pf-le .pf-status--aberto { background: var(--warning-soft); color: var(--warning); }
+  .pf-le .pf-status--enviado { background: var(--success-soft); color: var(--success); }
+  .pf-le .pf-status--cancelado { background: var(--gray-soft); color: var(--gray); }
+  .pf-le .pf-arrow { color: var(--text-quaternary); font-size: .8rem; }
+  .pf-le .pf-empty { display: grid; place-items: center; gap: .7rem; padding: 3.2rem 1rem; text-align: center; color: var(--text-tertiary); background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg); }
+  .pf-le .pf-empty i { font-size: 1.6rem; color: var(--text-quaternary); }
+  .pf-le button.pf-action-card { width: 100%; text-align: left; cursor: pointer; font: inherit; background: var(--bg-elevated); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pf-le">
+
+  <div class="pf-actions">
+    <form method="post" style="display:contents;">
+      {% csrf_token %}
+      <button type="submit" name="acao" value="criar_lote" class="pf-action-card">
+        <span class="pf-action-ic"><i class="fa-solid fa-layer-group"></i></span>
+        <span>
+          <span class="pf-action-title">Criar novo lote</span>
+          <span class="pf-action-sub" style="display:block;">Comece um lote vazio e adicione os equipamentos depois</span>
+        </span>
+        <i class="fa-solid fa-chevron-right pf-action-arrow"></i>
+      </button>
+    </form>
+    <a class="pf-action-card" href="{% url 'portal_troca_antecipada_nova' %}">
+      <span class="pf-action-ic"><i class="fa-solid fa-truck-fast"></i></span>
+      <span>
+        <span class="pf-action-title">Troca antecipada</span>
+        <span class="pf-action-sub" style="display:block;">Envie um substituto antes do defeituoso sair</span>
+      </span>
+      <i class="fa-solid fa-chevron-right pf-action-arrow"></i>
+    </a>
+    <a class="pf-action-card" href="{% url 'portal_lote_envio_item_equipamento_novo' %}">
+      <span class="pf-action-ic"><i class="fa-solid fa-plus"></i></span>
+      <span>
+        <span class="pf-action-title">Cadastrar equipamento novo</span>
+        <span class="pf-action-sub" style="display:block;">Adicione um equipamento novo ao lote de envio</span>
+      </span>
+      <i class="fa-solid fa-chevron-right pf-action-arrow"></i>
+    </a>
+  </div>
+
+  {% if lotes %}
+  <div class="pf-grid">
+    {% for l in lotes %}
+    <a class="pf-card2" href="{% url 'portal_lote_envio_detail' l.pk %}">
+      <div class="pf-top">
+        <span class="pf-ic"><i class="fa-solid fa-dolly"></i></span>
+        <span class="pf-info">
+          <div class="pf-name">{{ l.nome }}</div>
+          <div class="pf-meta">{{ l.quantidade_itens }} ite{{ l.quantidade_itens|pluralize:"m,ns" }} · criado em {{ l.created_at|date:"d/m/Y H:i" }}</div>
+        </span>
+        <span class="pf-right">
+          <span class="pf-status pf-status--{{ l.status }}">{{ l.get_status_display }}</span>
+          <i class="fa-solid fa-chevron-right pf-arrow"></i>
+        </span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="pf-empty">
+    <i class="fa-solid fa-dolly"></i>
+    <p>Nenhum lote de envio criado ainda.</p>
+    <p style="font-size:.82rem; max-width:32rem; line-height:1.5;">
+      Abra uma <a href="{% url 'portal_troca_antecipada_nova' %}">troca antecipada</a> ou
+      <a href="{% url 'portal_lote_envio_item_equipamento_novo' %}">cadastre um equipamento novo</a>
+      para começar a organizar um lote de envio ao TI.
+    </p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

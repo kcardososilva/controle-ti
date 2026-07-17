@@ -17,7 +17,9 @@ from ..models import (
     DocumentoFiscalRemessa,
     Fornecedor,
     LoteSeparacao,
+    OrdemManutencao,
     SeparacaoItem,
+    StatusOrdemManutencaoChoices,
     StatusSeparacaoChoices,
     TipoSeparacaoChoices,
 )
@@ -61,6 +63,28 @@ def _separacao_list_context(request, tipo):
     soltos = list(soltos)
     lotes = list(lotes)
 
+    # Resumo de progresso por lote (só faz sentido p/ Envio — Devolução não abre
+    # Ordem de Manutenção): quantos itens já despachados avançaram além do
+    # recebimento inicial pelo fornecedor, numa única query p/ evitar N+1.
+    if tipo == TipoSeparacaoChoices.ENVIO and lotes:
+        mov_ids = [
+            i.movimentacao_despacho_id
+            for l in lotes for i in l.itens.all()
+            if i.movimentacao_despacho_id
+        ]
+        ordens_status = dict(
+            OrdemManutencao.objects.filter(movimentacao_origem_id__in=mov_ids)
+            .values_list("movimentacao_origem_id", "status")
+        ) if mov_ids else {}
+        for l in lotes:
+            despachados = [i for i in l.itens.all() if i.movimentacao_despacho_id]
+            l.qtd_despachados = len(despachados)
+            l.qtd_recebidos = sum(
+                1 for i in despachados
+                if ordens_status.get(i.movimentacao_despacho_id) not in
+                (None, StatusOrdemManutencaoChoices.AGUARDANDO_RECEBIMENTO)
+            )
+
     itens_info = {}
     for s in soltos:
         s.badge_contrato = SeparacaoService.badge_contrato(s.item)
@@ -79,6 +103,7 @@ def _separacao_list_context(request, tipo):
         "rota_list": _ROTAS_LIST[tipo],
         "soltos": soltos,
         "lotes": lotes,
+        "lotes_abertos": [l for l in lotes if l.status == StatusSeparacaoChoices.ABERTO],
         "itens_info": itens_info,
         "documentos": documentos,
         "fornecedores": Fornecedor.objects.order_by("nome"),
@@ -141,6 +166,45 @@ def separacao_lote_create(request):
 
 
 @login_required
+def separacao_lote_vincular_soltos(request):
+    """Adiciona itens soltos selecionados (na lista de Remessa) a um lote já
+    existente — alternativa a `separacao_lote_create` (que sempre cria um
+    lote novo)."""
+    if request.method != "POST":
+        return redirect("separacao_envio_list")
+
+    tipo = request.POST.get("tipo") or TipoSeparacaoChoices.ENVIO
+    rota_volta = _ROTAS_LIST.get(tipo, "separacao_envio_list")
+    lote_id = request.POST.get("lote_id")
+    separacao_ids = request.POST.getlist("separacao_ids")
+
+    lote = LoteSeparacao.objects.filter(pk=lote_id).first()
+    if not lote:
+        messages.error(request, "Selecione um lote existente para adicionar os itens.")
+        return redirect(rota_volta)
+
+    separacoes = list(SeparacaoItem.objects.filter(pk__in=separacao_ids).select_related("item"))
+    if not separacoes:
+        messages.error(request, "Selecione ao menos um item para adicionar ao lote.")
+        return redirect(rota_volta)
+
+    adicionados = 0
+    erros = []
+    for sep in separacoes:
+        try:
+            SeparacaoService.vincular_item(lote=lote, separacao=sep, user=request.user)
+            adicionados += 1
+        except ValidationError as exc:
+            erros.append("; ".join(exc.messages))
+
+    if adicionados:
+        messages.success(request, f'{adicionados} item(ns) adicionados ao lote "{lote.nome}".')
+    if erros:
+        messages.error(request, " ".join(erros))
+    return redirect("separacao_lote_detail", pk=lote.pk)
+
+
+@login_required
 def separacao_lote_detail(request, pk):
     lote = get_object_or_404(
         LoteSeparacao.objects.select_related("fornecedor", "criado_por"), pk=pk,
@@ -149,27 +213,84 @@ def separacao_lote_detail(request, pk):
         lote.itens
         .select_related(
             "item", "item__categoria", "item__subtipo", "item__localidade",
-            "item__centro_custo", "item__locacao", "criado_por",
+            "item__centro_custo", "item__locacao", "criado_por", "movimentacao_despacho",
         )
         .order_by("-created_at")
     )
 
-    itens_info = {}
+    # Status real de progresso: resolve a Ordem de Manutenção de cada item já
+    # despachado (via a movimentação que a abriu), em uma única query — evita
+    # que o chip fique travado em "Enviado" mesmo com a OS já avançando.
+    mov_ids = [i.movimentacao_despacho_id for i in itens if i.movimentacao_despacho_id]
+    ordens_por_mov = {
+        o.movimentacao_origem_id: o
+        for o in OrdemManutencao.objects.filter(movimentacao_origem_id__in=mov_ids)
+    } if mov_ids else {}
+
     for i in itens:
         i.badge_contrato = SeparacaoService.badge_contrato(i.item)
-        itens_info[str(i.id)] = SeparacaoService.info_equipamento(i)
+        i.ordem = ordens_por_mov.get(i.movimentacao_despacho_id)
 
     documentos = list(lote.documentos_fiscais.order_by("-created_at"))
+
+    # Candidatos a entrar no lote: soltos compatíveis (mesmo tipo/fornecedor),
+    # só faz sentido oferecer enquanto o lote ainda está aberto.
+    candidatos = []
+    if lote.status == StatusSeparacaoChoices.ABERTO:
+        candidatos = list(
+            SeparacaoItem.objects.filter(
+                tipo=lote.tipo, fornecedor_id=lote.fornecedor_id,
+                status=StatusSeparacaoChoices.ABERTO, lote__isnull=True,
+            ).select_related("item").order_by("item__nome")
+        )
 
     context = {
         "lote": lote,
         "itens": itens,
-        "itens_info": itens_info,
+        "candidatos": candidatos,
         "documentos": documentos,
         "rota_list": _ROTAS_LIST.get(lote.tipo, "separacao_envio_list"),
         "titulo": _TITULOS.get(lote.tipo, "Remessa"),
     }
     return render(request, "front/equipamentos/separacao_lote_detail.html", context)
+
+
+@login_required
+def separacao_lote_item_adicionar(request, pk):
+    lote = get_object_or_404(LoteSeparacao, pk=pk)
+    if request.method != "POST":
+        return redirect("separacao_lote_detail", pk=pk)
+
+    separacao = SeparacaoItem.objects.filter(
+        pk=request.POST.get("separacao_id")
+    ).select_related("item").first()
+    if not separacao:
+        messages.error(request, "Selecione um item para adicionar ao lote.")
+        return redirect("separacao_lote_detail", pk=pk)
+
+    try:
+        SeparacaoService.vincular_item(lote=lote, separacao=separacao, user=request.user)
+        messages.success(request, f'"{separacao.item.nome}" adicionado ao lote.')
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+    return redirect("separacao_lote_detail", pk=pk)
+
+
+@login_required
+def separacao_lote_item_desvincular(request, pk):
+    separacao = get_object_or_404(SeparacaoItem.objects.select_related("item", "lote"), pk=pk)
+    lote_pk = separacao.lote_id
+    rota_volta = _ROTAS_LIST.get(separacao.tipo, "separacao_envio_list")
+    if request.method != "POST":
+        return redirect("separacao_lote_detail", pk=lote_pk) if lote_pk else redirect(rota_volta)
+
+    try:
+        SeparacaoService.desvincular_item(separacao=separacao, user=request.user)
+        messages.success(request, f'"{separacao.item.nome}" removido do lote — voltou para itens soltos.')
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+
+    return redirect("separacao_lote_detail", pk=lote_pk) if lote_pk else redirect(rota_volta)
 
 
 @login_required

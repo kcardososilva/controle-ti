@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ lote.nome }} — Lote de Envio{% endblock %}
+{% block page_title %}{{ lote.nome }}{% endblock %}
+{% block page_subtitle %}{{ lote.fornecedor.nome }} · Lote de envio · {{ lote.get_status_display }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'manutencao_recebimentos' %}">Manutenção</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'envio_fornecedor_list' %}">Lotes de Envio</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{{ lote.nome }}</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'envio_fornecedor_list' %}" class="btn btn-sm"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.ef-det) { display: grid; gap: 1.2rem; }
+
+.ef-det .ef-doc-head {
+  display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  padding: 1.3rem 1.4rem; border-radius: var(--radius-lg); background: var(--bg-elevated);
+  border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-xs);
+}
+.ef-det .ef-doc-item-l { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-tertiary); }
+.ef-det .ef-doc-item-v { margin-top: .3rem; font-weight: 700; font-size: 1rem; }
+.ef-det .ef-doc-item-v.is-brand { color: var(--brand); }
+
+.ef-det .ef-sec-title { font-size: 1rem; font-weight: 700; letter-spacing: -.02em; margin: .2rem 0 .1rem; }
+
+.ef-det .ef-itens { display: grid; gap: .7rem; }
+.ef-det .ef-item-card { display: grid; gap: .6rem; padding: 1rem 1.15rem; border-radius: var(--radius-md); background: var(--bg-elevated); border: 1px solid var(--separator-hairline); }
+.ef-det .ef-item-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.ef-det .ef-item-tipo { display: inline-flex; align-items: center; gap: .35rem; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--brand); }
+.ef-det .ef-item-name { font-weight: 700; letter-spacing: -.01em; margin-top: .2rem; }
+.ef-det .ef-item-meta { color: var(--text-tertiary); font-size: .78rem; margin-top: .18rem; }
+.ef-det .ef-item-status { font-size: .7rem; font-weight: 700; padding: .25rem .6rem; border-radius: 999px; white-space: nowrap; }
+.ef-det .ef-item-status--enviado { background: var(--warning-soft); color: var(--warning); }
+.ef-det .ef-item-status--recebido { background: var(--success-soft); color: var(--success); }
+.ef-det .ef-item-status--cancelado { background: var(--bg-fill-tertiary); color: var(--text-tertiary); }
+.ef-det .ef-item-link { font-size: .74rem; font-weight: 600; color: var(--brand); }
+.ef-det .ef-item-form { display: flex; align-items: flex-end; gap: .6rem; flex-wrap: wrap; padding-top: .5rem; border-top: 1px solid var(--separator-hairline); }
+.ef-det .ef-item-form label { font-size: .72rem; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: .3rem; }
+.ef-det .ef-item-form select { padding: .4rem .6rem; border-radius: var(--radius-sm); border: 1px solid var(--separator-non-opaque); background: var(--bg-page); }
+
+.ef-det .ef-anx { display: grid; grid-template-columns: 2rem 1fr; gap: .8rem; align-items: start; padding: .6rem 0; border-top: 1px solid var(--separator-hairline); }
+.ef-det .ef-anx:first-of-type { border-top: 0; }
+.ef-det .ef-anx-ic { width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 999px; background: var(--bg-fill-tertiary); color: var(--brand); font-size: .8rem; }
+.ef-det .ef-anx-name { font-weight: 600; font-size: .88rem; overflow-wrap: anywhere; }
+.ef-det .ef-anx-meta { color: var(--text-tertiary); font-size: .76rem; margin-top: .2rem; }
+
+/* Chip com o status REAL da OS de troca antecipada (não o item_lote genérico) */
+.ef-det .ef-osc { display: inline-flex; align-items: center; gap: .4rem; padding: .25rem .6rem; border-radius: 999px; font-size: .7rem; font-weight: 700; white-space: nowrap; }
+.ef-det .ef-osc::before { content: ""; width: .45rem; height: .45rem; border-radius: 999px; background: currentColor; }
+.ef-det .ef-osc--troca_ant_sub_enviado,
+.ef-det .ef-osc--troca_ant_def_enviado,
+.ef-det .ef-osc--troca_ant_aguardando_aprovacao,
+.ef-det .ef-osc--devolvido,
+.ef-det .ef-osc--reprovado { color: var(--warning); background: var(--warning-soft); }
+.ef-det .ef-osc--troca_ant_sub_recebido { color: var(--danger); background: var(--danger-soft); }
+.ef-det .ef-osc--troca_ant_def_recebido { color: var(--brand); background: var(--brand-soft); }
+.ef-det .ef-osc--troca_ant_aprovado,
+.ef-det .ef-osc--concluido { color: var(--success); background: var(--success-soft); }
+.ef-det .ef-osc--troca_ant_reprovado,
+.ef-det .ef-osc--cancelado { color: var(--text-tertiary); background: var(--bg-fill-tertiary); }
+
+/* Barra de ação em lote */
+.ef-actions-bar { display: flex; align-items: flex-end; gap: .8rem; flex-wrap: wrap; padding: 1rem 1.1rem;
+  background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.ef-actions-bar .ef-field { display: flex; flex-direction: column; gap: .35rem; min-width: 12rem; }
+.ef-actions-bar .ef-field label { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-tertiary); }
+.ef-actions-bar .ef-field select { padding: .5rem .7rem; border-radius: var(--radius-sm); border: 1px solid var(--separator-non-opaque); background: var(--bg-page); }
+.ef-actions-bar-hint { font-size: .78rem; color: var(--text-tertiary); flex-basis: 100%; }
+
+/* Histórico consolidado */
+.ef-det .ef-hist { display: grid; gap: 0; }
+.ef-det .ef-hist-item { display: grid; grid-template-columns: 2rem 1fr; gap: .8rem; padding: .7rem 0; border-top: 1px solid var(--separator-hairline); }
+.ef-det .ef-hist-item:first-child { border-top: 0; }
+.ef-det .ef-hist-ic { width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 999px; background: var(--bg-fill-tertiary); color: var(--brand); font-size: .78rem; }
+.ef-det .ef-hist-title { font-weight: 700; font-size: .86rem; }
+.ef-det .ef-hist-meta { color: var(--text-tertiary); font-size: .76rem; margin-top: .15rem; }
+.ef-det .ef-hist-obs { color: var(--text-secondary); font-size: .8rem; margin-top: .25rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ef-det">
+
+  <div class="ef-doc-head">
+    <div>
+      <div class="ef-doc-item-l">Fornecedor</div>
+      <div class="ef-doc-item-v">{{ lote.fornecedor.nome }}</div>
+    </div>
+    <div>
+      <div class="ef-doc-item-l">Status</div>
+      <div class="ef-doc-item-v is-brand">{{ lote.get_status_display }}</div>
+    </div>
+    <div>
+      <div class="ef-doc-item-l">Itens</div>
+      <div class="ef-doc-item-v">{{ itens|length }}</div>
+    </div>
+    <div>
+      <div class="ef-doc-item-l">Enviado em</div>
+      <div class="ef-doc-item-v">{{ lote.enviado_em|date:"d/m/Y H:i"|default:"—" }}</div>
+    </div>
+  </div>
+
+  {% if tem_pendente_confirmacao %}
+  <form method="post" action="{% url 'envio_fornecedor_confirmar_lote' lote.pk %}" class="ef-actions-bar" onsubmit="return confirm('Confirmar o recebimento de todos os itens já enviados que estão aguardando a confirmação inicial do TI?');">
+    {% csrf_token %}
+    <div class="ef-field">
+      <label for="sr_lote">Status padrão do equipamento</label>
+      <select id="sr_lote" name="status_retorno">
+        {% for value, label in status_retorno_opcoes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-check-double" aria-hidden="true"></i> Confirmar recebimento de todos os itens</button>
+    <span class="ef-actions-bar-hint">Só avança itens que estão exatamente aguardando esta confirmação inicial — itens em etapas seguintes (ex. aprovação de orçamento) continuam exigindo ação individual.</span>
+  </form>
+  {% endif %}
+
+  <div class="ef-sec-title">Itens do lote</div>
+  <div class="ef-itens">
+    {% for il in itens %}
+    <div class="ef-item-card">
+      <div class="ef-item-top">
+        <div style="min-width:0;">
+          <div class="ef-item-tipo">
+            {% if il.tipo == 'troca_antecipada' %}<i class="fa-solid fa-right-left" aria-hidden="true"></i> Troca antecipada{% elif il.tipo == 'equipamento_novo' %}<i class="fa-solid fa-box" aria-hidden="true"></i> Equipamento novo{% else %}<i class="fa-solid fa-dolly" aria-hidden="true"></i> Reparo concluído{% endif %}
+          </div>
+          {% if il.tipo == 'troca_antecipada' %}
+          <div class="ef-item-name">Substituto p/ {{ il.item_defeituoso.nome }}{% if il.item_defeituoso.numero_serie %} <span style="font-weight:500;color:var(--text-tertiary);">· Série {{ il.item_defeituoso.numero_serie }}</span>{% endif %}</div>
+          <div class="ef-item-meta">Substituto: {{ il.sub_modelo }}{% if il.sub_serie %} · Série {{ il.sub_serie }}{% endif %}{% if il.sub_marca %} · {{ il.sub_marca }}{% endif %}</div>
+          {% elif il.tipo == 'equipamento_novo' %}
+          <div class="ef-item-name">{{ il.novo_nome }}{% if il.novo_modelo %} <span style="font-weight:500;color:var(--text-tertiary);">· {{ il.novo_modelo }}</span>{% endif %}</div>
+          <div class="ef-item-meta">{% if il.novo_numero_serie %}Série {{ il.novo_numero_serie }} · {% endif %}{{ il.novo_categoria.nome|default:"—" }} / {{ il.novo_subtipo.nome|default:"—" }} · {{ il.novo_localidade.local|default:"—" }}{% if il.novo_valor %} · R$ {{ il.novo_valor }}{% endif %}</div>
+          {% else %}
+          <div class="ef-item-name">{{ il.ordem.item.nome }} <span style="font-weight:500;color:var(--text-tertiary);">· OS #{{ il.ordem_id }}</span></div>
+          <div class="ef-item-meta">{% if il.ordem.item.numero_serie %}Série {{ il.ordem.item.numero_serie }} · {% endif %}Devolver em {{ il.localidade_devolucao.local|default:"—" }}</div>
+          {% endif %}
+        </div>
+        {% if il.ordem_id %}
+        <span class="ef-osc ef-osc--{{ il.ordem.status }}">{{ il.ordem.get_status_display }}</span>
+        {% else %}
+        <span class="ef-item-status ef-item-status--{{ il.status }}">{{ il.get_status_display }}</span>
+        {% endif %}
+      </div>
+
+      {% if il.tipo == 'troca_antecipada' and il.ordem_id %}
+      <a href="{% url 'manutencao_recebimento_detail' il.ordem_id %}" class="ef-item-link"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Ver ordem de manutenção #{{ il.ordem_id }} (recebimento do substituto/defeituoso)</a>
+
+      {% elif il.status == 'enviado' and il.tipo != 'troca_antecipada' %}
+      {% if il.ordem_id %}
+      <a href="{% url 'manutencao_recebimento_detail' il.ordem_id %}" class="ef-item-link"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Ver ordem de manutenção #{{ il.ordem_id }}</a>
+      {% endif %}
+      <form method="post" action="{% url 'envio_fornecedor_item_confirmar' il.pk %}" class="ef-item-form" onsubmit="return confirm('Confirmar o recebimento deste equipamento?');">
+        {% csrf_token %}
+        <div>
+          <label for="sr_{{ il.pk }}">Status do equipamento</label>
+          <select id="sr_{{ il.pk }}" name="status_retorno">
+            {% for value, label in status_retorno_opcoes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-box-archive" aria-hidden="true"></i> Confirmar recebimento</button>
+      </form>
+
+      {% elif il.status == 'recebido' %}
+      <div class="ef-item-meta"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Recebido em {{ il.recebido_em|date:"d/m/Y H:i" }}{% if il.item_resultado %} — equipamento #{{ il.item_resultado.pk }} ativo como <b>{{ il.item_resultado.get_status_display }}</b>{% endif %}.</div>
+      {% endif %}
+    </div>
+    {% empty %}
+    <p style="color:var(--text-tertiary); font-size:.86rem;">Este lote não tem itens.</p>
+    {% endfor %}
+  </div>
+
+  <div class="ef-sec-title">Notas fiscais</div>
+  <div class="ef-item-card">
+    {% for a in anexos %}
+      <div class="ef-anx">
+        <div class="ef-anx-ic"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i></div>
+        <div style="min-width:0;">
+          <div class="ef-anx-name"><a href="{{ a.arquivo.url }}" target="_blank" rel="noopener">{{ a.nome_arquivo }}</a></div>
+          <div class="ef-anx-meta">
+            {{ a.get_origem_display }}{% if a.criado_por %} · {{ a.criado_por.get_full_name|default:a.criado_por.username }}{% endif %} · {{ a.created_at|date:"d/m/Y H:i" }}
+            {% if a.descricao %} · {{ a.descricao }}{% endif %}
+          </div>
+        </div>
+      </div>
+    {% empty %}
+      <p style="color:var(--text-tertiary); font-size:.85rem; margin:0;">Nenhuma nota fiscal anexada.</p>
+    {% endfor %}
+  </div>
+
+  <div class="ef-sec-title">Histórico</div>
+  <div class="ef-item-card ef-hist">
+    {% for h in historico %}
+      <div class="ef-hist-item">
+        <div class="ef-hist-ic"><i class="fa-solid {{ h.icone }}" aria-hidden="true"></i></div>
+        <div style="min-width:0;">
+          <div class="ef-hist-title">{{ h.titulo }}</div>
+          <div class="ef-hist-meta">{{ h.quando|date:"d/m/Y H:i" }}{% if h.autor %} · {{ h.autor }}{% endif %}</div>
+          {% if h.detalhe %}<div class="ef-hist-obs">{{ h.detalhe }}</div>{% endif %}
+        </div>
+      </div>
+    {% empty %}
+      <p style="color:var(--text-tertiary); font-size:.85rem; margin:0;">Sem histórico ainda.</p>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}
