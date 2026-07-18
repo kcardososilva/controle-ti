@@ -597,6 +597,12 @@ def quiosque_config_editar(request, pk: int):
         device.apelido = (request.POST.get("apelido") or "").strip()[:120]
         device.wifi_only = request.POST.get("wifi_only") == "on"
         device.mensagem_quiosque = (request.POST.get("mensagem_quiosque") or "").strip()[:200]
+        device.telemetria_wifi = request.POST.get("telemetria_wifi") == "on"
+        # wifi_ssid/wifi_senha (rede provisionada pelo servidor) ficam de fora do
+        # painel de propósito: exigiria o TI guardar a senha real da rede aqui, e a
+        # infraestrutura de Wi-Fi da empresa usa autenticação/cadastro no Meraki —
+        # incompatível com esse modelo. Sem SSID configurado, o app nunca provisiona
+        # nem mexe na rede do aparelho (ver INFORME §4.1); só a telemetria é usada.
         try:
             # Faixa aceita pelo app: [5, 300]s. 5s = tempo real; 300s = economia de bateria/dados.
             device.intervalo_checkin_seg = min(300, max(5, int(request.POST.get("intervalo_checkin_seg") or 300)))

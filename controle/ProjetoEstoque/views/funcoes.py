@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator
+from django.db.models import Count, Q
 from django.views.decorators.http import require_POST
 from ..models import Funcao, Usuario
 from ..forms import FuncaoForm
@@ -10,9 +11,32 @@ from ..forms import FuncaoForm
 @login_required
 def funcao_list(request):
     q = (request.GET.get("q") or "").strip()
-    qs = Funcao.objects.all().order_by("nome")
+    ordenar = request.GET.get("ord") or "nome"
+
+    base = Funcao.objects.annotate(
+        num_ativos=Count("usuario", filter=~Q(usuario__status="desligado")),
+        num_desligados=Count("usuario", filter=Q(usuario__status="desligado")),
+        num_total=Count("usuario"),
+    )
+
+    kpi_total = base.count()
+    kpi_em_uso = base.filter(num_total__gt=0).count()
+    kpi = {
+        "total": kpi_total,
+        "em_uso": kpi_em_uso,
+        "sem_uso": kpi_total - kpi_em_uso,
+        "colaboradores": Usuario.objects.exclude(status="desligado")
+                                        .filter(funcao__isnull=False).count(),
+    }
+
+    qs = base
     if q:
         qs = qs.filter(nome__icontains=q)
+    if ordenar == "uso":
+        qs = qs.order_by("-num_ativos", "nome")
+    else:
+        ordenar = "nome"
+        qs = qs.order_by("nome")
     total = qs.count()
 
     paginator = Paginator(qs, 25)
@@ -25,6 +49,8 @@ def funcao_list(request):
         "funcoes": page_obj.object_list,
         "page_obj": page_obj,
         "total": total,
+        "kpi": kpi,
+        "ordenar": ordenar,
         "qs_keep": get_copy.urlencode(),
         "q": q,
     })

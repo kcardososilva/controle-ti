@@ -1,154 +1,287 @@
 {% extends 'base.html' %}
+
 {% block title %}Funções{% endblock %}
-{% block content %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+{% block page_title %}Funções{% endblock %}
+{% block page_subtitle %}Cadastro de funções (cargos) atribuídas aos colaboradores{% endblock %}
 
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Funções</span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}
 <style>
-:root{
-  --bg:#f5f7fb; --card:#fff; --ink:#0b1220; --muted:#64748b; --line:#e5e7eb;
-  --shadow:0 20px 40px rgba(2,6,23,.07);
-  --h:48px; --rad:12px; --padL:44px;
-  --primary:#1d4ed8; --primary2:#223259;
+:where(.fn-page) {
+  --fn-surface: var(--bg-elevated);
+  --fn-soft: var(--bg-fill-tertiary);
+  --fn-text: var(--text-primary);
+  --fn-muted: var(--text-tertiary);
+  --fn-hair: var(--separator-hairline);
+  --fn-line: var(--separator-non-opaque);
 }
-*{box-sizing:border-box}
-body{background:var(--bg);}
-.page{max-width:1200px;margin:22px auto;padding:0 14px}
-.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:18px 16px}
+.fn-page, .fn-page * { box-sizing: border-box; min-width: 0; }
+.fn-page { display: grid; gap: 1.1rem; color: var(--fn-text); }
 
-/* topo */
-.top-actions{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-.header-left{display:flex;gap:10px;align-items:center;color:var(--muted)}
-.header-left .badge{
-  display:inline-flex;align-items:center;gap:8px;
-  background:#eef2ff;color:#1e3a8a;border-radius:999px;padding:6px 12px;font-weight:800
-}
-.btn{
-  border:none;border-radius:12px;padding:10px 16px;font-weight:800;cursor:pointer;
-  display:inline-flex;align-items:center;gap:8px;text-decoration:none
-}
-.btn-add{
-  background:linear-gradient(135deg, var(--primary2) 0%, var(--primary) 100%);
-  color:#fff; box-shadow:0 8px 18px rgba(29,78,216,.15);
-}
-.btn-light{background:#fff;border:1.5px solid #dbe6f1;color:#334155}
+/* ── KPIs ─────────────────────────────────────────────── */
+.fn-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px,100%),1fr)); gap: .8rem; }
+.fn-kpi { display: flex; align-items: center; gap: .85rem; padding: .95rem 1.1rem; background: var(--fn-surface); border: 1px solid var(--fn-hair); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.fn-kpi-ic { width: 2.4rem; height: 2.4rem; flex: 0 0 2.4rem; display: grid; place-items: center; border-radius: .7rem; background: var(--fn-soft); color: var(--fn-muted); font-size: .95rem; }
+.fn-kpi--brand .fn-kpi-ic { background: var(--brand-soft); color: var(--brand); }
+.fn-kpi-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fn-muted); }
+.fn-kpi-value { font-size: 1.45rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
 
-/* filtros */
-.filters{
-  display:grid;
-  grid-template-columns:minmax(320px,1fr) auto;
-  grid-template-areas:"q actions";
-  gap:12px; align-items:end; margin-bottom:14px
-}
-@media (max-width:720px){ .filters{grid-template-columns:1fr; grid-template-areas:"q" "actions"} }
-.group{display:flex;flex-direction:column;min-width:0}
-.group label{font-weight:900;margin-bottom:6px;color:var(--ink)}
-.filtro-icon-input{position:relative;min-width:0}
-.filtro-icon-input .ico{
-  position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#334155;pointer-events:none
-}
-.ctrl{
-  width:100%;height:var(--h);
-  padding:8px 14px 8px var(--padL);
-  border:1px solid #d5deea;border-radius:12px;background:#fff;color:#111827;font-size:1rem;outline:none;
-  transition:border .15s, box-shadow .15s;
-  appearance:none; -webkit-appearance:none;
-}
-.ctrl:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #93c5fd55}
+/* ── Card ─────────────────────────────────────────────── */
+.fn-card { background: var(--fn-surface); border: 1px solid var(--fn-hair); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+.fn-card-head { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; padding: .95rem 1.2rem; border-bottom: 1px solid var(--fn-hair); }
+.fn-card-head h2 { margin: 0; font-size: .98rem; font-weight: 700; display: flex; align-items: center; gap: .5rem; }
+.fn-count { display: inline-flex; align-items: center; padding: .12rem .55rem; border-radius: var(--radius-pill); font-size: .72rem; font-weight: 700; color: var(--fn-muted); background: var(--fn-soft); }
+.fn-head-actions { margin-left: auto; }
 
-/* tabela espaçada */
-.table-wrap{width:100%;overflow:auto}
-.table{width:100%;min-width:720px;border-collapse:separate;border-spacing:0 10px}
-thead th{
-  position:sticky;top:0;z-index:2;
-  background:linear-gradient(180deg,#18284a 0%, #21439f 100%);color:#fff;
-  padding:12px;border:none;text-align:left;font-weight:900
+/* ── Toolbar (busca + ordenação) ──────────────────────── */
+.fn-toolbar { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding: .8rem 1.2rem; border-bottom: 1px solid var(--fn-hair); background: var(--fn-soft); }
+.fn-search { position: relative; flex: 1 1 15rem; max-width: 26rem; }
+.fn-search i { position: absolute; left: .75rem; top: 50%; transform: translateY(-50%); font-size: .8rem; color: var(--fn-muted); pointer-events: none; }
+.fn-search input {
+  width: 100%; height: 2.35rem; padding: 0 .75rem 0 2.2rem;
+  border: 1px solid var(--fn-line); border-radius: var(--radius-sm);
+  background: var(--fn-surface); color: var(--fn-text); font-size: .86rem; font-family: inherit;
+  transition: border-color .15s, box-shadow .15s;
 }
-tbody tr{transition:transform .08s ease}
-tbody tr:hover{transform:translateY(-1px)}
-tbody td{
-  background:#fff; border-top:1px solid var(--line); border-bottom:1px solid var(--line);
-  padding:12px; color:var(--ink)
+.fn-search input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-ring); }
+.fn-ord { display: flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--fn-muted); }
+.fn-ord select {
+  height: 2.35rem; padding: 0 .6rem; border: 1px solid var(--fn-line); border-radius: var(--radius-sm);
+  background: var(--fn-surface); color: var(--fn-text); font-size: .84rem; font-family: inherit; cursor: pointer;
 }
-tbody td:first-child{
-  border-left:1px solid var(--line); border-top-left-radius:12px; border-bottom-left-radius:12px;
+.fn-filter-note { font-size: .78rem; color: var(--fn-muted); }
+.fn-filter-note a { color: var(--brand); text-decoration: none; font-weight: 600; }
+
+/* ── Tabela ───────────────────────────────────────────── */
+.fn-table-wrap { overflow-x: auto; }
+.fn-table { width: 100%; border-collapse: collapse; font-size: .87rem; }
+.fn-table th { text-align: left; padding: .6rem 1.2rem; font-size: .71rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fn-muted); border-bottom: 1px solid var(--fn-hair); white-space: nowrap; }
+.fn-table td { padding: .7rem 1.2rem; border-bottom: 1px solid var(--fn-hair); vertical-align: middle; }
+.fn-table tbody tr { transition: background-color .12s; }
+.fn-table tbody tr:hover { background: var(--fn-soft); }
+.fn-table tbody tr:last-child td { border-bottom: none; }
+
+.fn-nome { display: flex; align-items: center; gap: .7rem; }
+.fn-nome-ic { width: 2.1rem; height: 2.1rem; flex: 0 0 2.1rem; display: grid; place-items: center; border-radius: .6rem; background: var(--fn-soft); color: var(--fn-muted); font-size: .8rem; }
+.fn-nome-txt { font-weight: 600; letter-spacing: -.01em; }
+
+.fn-chip { display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .6rem; border-radius: var(--radius-pill); font-size: .74rem; font-weight: 700; color: var(--brand); background: var(--brand-soft); white-space: nowrap; }
+.fn-chip::before { content: ""; width: .38rem; height: .38rem; border-radius: 999px; background: currentColor; }
+.fn-chip--zero { color: var(--fn-muted); background: var(--fn-soft); border: 1px solid var(--fn-line); }
+.fn-chip-extra { font-size: .74rem; color: var(--fn-muted); margin-left: .4rem; white-space: nowrap; }
+
+.fn-data { color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.fn-actions { display: flex; gap: .3rem; justify-content: flex-end; white-space: nowrap; }
+.fn-act {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.05rem; height: 2.05rem; border-radius: var(--radius-sm);
+  border: 1px solid transparent; background: transparent; color: var(--fn-muted);
+  font-size: .82rem; cursor: pointer; text-decoration: none;
+  transition: background-color .12s, color .12s, border-color .12s;
 }
-tbody td:last-child{
-  border-right:1px solid var(--line); border-top-right-radius:12px; border-bottom-right-radius:12px;
+.fn-act:hover { background: var(--fn-surface); border-color: var(--fn-line); color: var(--fn-text); }
+.fn-act--danger:hover { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
+.fn-act:disabled { opacity: .35; cursor: not-allowed; }
+.fn-act:disabled:hover { background: transparent; border-color: transparent; color: var(--fn-muted); }
+
+/* ── Estado vazio ─────────────────────────────────────── */
+.fn-empty { display: grid; place-items: center; gap: .55rem; padding: 3rem 1rem; text-align: center; color: var(--fn-muted); }
+.fn-empty i { font-size: 1.6rem; color: var(--text-quaternary); }
+.fn-empty strong { color: var(--fn-text); font-weight: 600; }
+.fn-empty p { margin: 0; font-size: .84rem; }
+
+/* ── Paginação ────────────────────────────────────────── */
+.fn-foot { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; padding: .8rem 1.2rem; border-top: 1px solid var(--fn-hair); }
+.fn-foot-info { font-size: .8rem; color: var(--fn-muted); }
+.fn-foot-nav { display: flex; gap: .4rem; }
+
+@media (max-width: 640px) {
+  .fn-table th:nth-child(3), .fn-table td:nth-child(3) { display: none; }
+  .fn-table th, .fn-table td { padding-left: .9rem; padding-right: .9rem; }
+  .fn-head-actions { margin-left: 0; width: 100%; }
+  .fn-head-actions .btn { width: 100%; justify-content: center; }
 }
-.icon-btn{
-  background:#fff;border:1.3px solid #dbe3ef;color:#1f2937;border-radius:12px;
-  padding:8px 10px;margin:0 3px;font-size:.98rem;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none
-}
-.icon-btn:hover{background:#f8fbff;border-color:#bcd6ff}
 </style>
+{% endblock %}
 
-<div class="page">
-  <div class="panel">
-    <div class="top-actions">
-      <div class="header-left">
-        <span class="badge"><i class="fa fa-briefcase"></i> {{ total }} função{{ total|pluralize:",ões" }}</span>
-        {% if q %}<small style="font-weight:700;color:var(--muted)">Filtro: "{{ q }}"</small>{% endif %}
-      </div>
+{% block content %}
+<div class="fn-page">
+
+  <div class="fn-kpis">
+    <div class="fn-kpi fn-kpi--brand">
+      <div class="fn-kpi-ic"><i class="fa-solid fa-briefcase" aria-hidden="true"></i></div>
       <div>
-        <a class="btn btn-add" href="{% url 'funcao_create' %}">
-          <i class="fa fa-plus"></i> Nova Função
+        <div class="fn-kpi-label">Funções cadastradas</div>
+        <div class="fn-kpi-value">{{ kpi.total }}</div>
+      </div>
+    </div>
+    <div class="fn-kpi">
+      <div class="fn-kpi-ic"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></div>
+      <div>
+        <div class="fn-kpi-label">Em uso</div>
+        <div class="fn-kpi-value">{{ kpi.em_uso }}</div>
+      </div>
+    </div>
+    <div class="fn-kpi">
+      <div class="fn-kpi-ic"><i class="fa-solid fa-circle-minus" aria-hidden="true"></i></div>
+      <div>
+        <div class="fn-kpi-label">Sem colaborador</div>
+        <div class="fn-kpi-value">{{ kpi.sem_uso }}</div>
+      </div>
+    </div>
+    <div class="fn-kpi">
+      <div class="fn-kpi-ic"><i class="fa-solid fa-users" aria-hidden="true"></i></div>
+      <div>
+        <div class="fn-kpi-label">Colaboradores com função</div>
+        <div class="fn-kpi-value">{{ kpi.colaboradores }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fn-card">
+    <div class="fn-card-head">
+      <h2>
+        Todas as funções
+        <span class="fn-count">{{ total }}</span>
+      </h2>
+      <div class="fn-head-actions">
+        <a class="btn btn-sm btn-primary" href="{% url 'funcao_create' %}">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i> Nova Função
         </a>
       </div>
     </div>
 
-    <form class="filters" method="get" autocomplete="off">
-      <div class="group" style="grid-area:q">
-        <label>Buscar por nome</label>
-        <div class="filtro-icon-input">
-          <span class="ico"><i class="fa fa-search"></i></span>
-          <input type="text" name="q" class="ctrl" placeholder="Ex.: Técnico de TI" value="{{ q|default:'' }}">
-        </div>
+    <form class="fn-toolbar" method="get" autocomplete="off" id="fnFiltros">
+      <div class="fn-search">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="text" name="q" value="{{ q|default:'' }}" placeholder="Buscar função pelo nome..." aria-label="Buscar função pelo nome">
       </div>
-      <div class="group" style="grid-area:actions; display:flex; gap:10px; justify-content:flex-end">
-        <button class="btn btn-light" type="submit"><i class="fa fa-filter"></i> Filtrar</button>
-        <a class="btn btn-light" href="{% url 'funcoes_list' %}"><i class="fa fa-eraser"></i> Limpar</a>
-      </div>
+      <label class="fn-ord">
+        Ordenar por
+        <select name="ord" aria-label="Ordenação">
+          <option value="nome" {% if ordenar == "nome" %}selected{% endif %}>Nome (A–Z)</option>
+          <option value="uso" {% if ordenar == "uso" %}selected{% endif %}>Mais colaboradores</option>
+        </select>
+      </label>
+      <button type="submit" class="btn btn-sm btn-outline">Aplicar</button>
+      {% if q %}
+      <span class="fn-filter-note">
+        Filtrando por “{{ q }}” · <a href="{% url 'funcoes_list' %}">limpar</a>
+      </span>
+      {% endif %}
     </form>
 
-    <div class="table-wrap">
-      <table class="table">
+    {% if funcoes %}
+    <div class="fn-table-wrap">
+      <table class="fn-table">
         <thead>
           <tr>
-            <th style="width:80px">#</th>
-            <th>Nome da Função</th>
-            <th style="width:220px">Ações</th>
+            <th>Função</th>
+            <th>Colaboradores</th>
+            <th>Atualizada em</th>
+            <th style="text-align:right">Ações</th>
           </tr>
         </thead>
         <tbody>
           {% for f in funcoes %}
-            <tr>
-              <td><strong>{{ forloop.counter }}</strong></td>
-              <td>{{ f.nome }}</td>
-              <td style="white-space:nowrap">
-                <a class="icon-btn" href="{% url 'funcao_edit' f.pk %}"><i class="fa fa-pen"></i> Editar</a>
-                <form method="post" action="{% url 'funcao_delete' f.pk %}" style="display:inline" onsubmit="return confirm('Excluir esta função?');">
+          <tr>
+            <td>
+              <div class="fn-nome">
+                <span class="fn-nome-ic"><i class="fa-solid fa-briefcase" aria-hidden="true"></i></span>
+                <span class="fn-nome-txt">{{ f.nome }}</span>
+              </div>
+            </td>
+            <td>
+              {% if f.num_ativos %}
+                <span class="fn-chip">{{ f.num_ativos }} ativo{{ f.num_ativos|pluralize }}</span>
+              {% else %}
+                <span class="fn-chip fn-chip--zero">Sem colaboradores</span>
+              {% endif %}
+              {% if f.num_desligados %}
+                <span class="fn-chip-extra">+{{ f.num_desligados }} desligado{{ f.num_desligados|pluralize }}</span>
+              {% endif %}
+            </td>
+            <td class="fn-data">{{ f.updated_at|date:"d/m/Y" }}</td>
+            <td>
+              <div class="fn-actions">
+                <a class="fn-act" href="{% url 'funcao_edit' f.pk %}" title="Editar função" aria-label="Editar {{ f.nome }}">
+                  <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                </a>
+                {% if f.num_total %}
+                <button class="fn-act" type="button" disabled
+                        title="Não é possível excluir: há {{ f.num_total }} colaborador{{ f.num_total|pluralize:'es' }} vinculado{{ f.num_total|pluralize }} a esta função">
+                  <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                </button>
+                {% else %}
+                <form method="post" action="{% url 'funcao_delete' f.pk %}" style="display:inline"
+                      onsubmit="return confirm('Excluir a função “{{ f.nome|escapejs }}”? Esta ação não pode ser desfeita.');">
                   {% csrf_token %}
-                  <button class="icon-btn" type="submit"><i class="fa fa-trash"></i> Excluir</button>
+                  <button class="fn-act fn-act--danger" type="submit" title="Excluir função" aria-label="Excluir {{ f.nome }}">
+                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                  </button>
                 </form>
-              </td>
-            </tr>
-          {% empty %}
-            <tr>
-              <td colspan="3" style="text-align:center;color:var(--muted);padding:18px">Nenhuma função cadastrada.</td>
-            </tr>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+    {% else %}
+    <div class="fn-empty">
+      <i class="fa-solid fa-briefcase" aria-hidden="true"></i>
+      {% if q %}
+        <strong>Nenhum resultado para “{{ q }}”</strong>
+        <p>Verifique a grafia ou <a href="{% url 'funcoes_list' %}">limpe o filtro</a> para ver todas as funções.</p>
+      {% else %}
+        <strong>Nenhuma função cadastrada</strong>
+        <p>Cadastre a primeira função para poder atribuí-la aos colaboradores.</p>
+        <a class="btn btn-sm btn-primary" href="{% url 'funcao_create' %}">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i> Nova Função
+        </a>
+      {% endif %}
+    </div>
+    {% endif %}
+
     {% if page_obj.has_other_pages %}
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;gap:12px;flex-wrap:wrap">
-      <span style="color:var(--muted);font-size:.9rem">Página <strong>{{ page_obj.number }}</strong> de <strong>{{ page_obj.paginator.num_pages }}</strong> · {{ total }} registro{{ total|pluralize:"s" }}</span>
-      <div style="display:flex;gap:8px">
-        {% if page_obj.has_previous %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.previous_page_number }}" class="btn btn-light"><i class="fa fa-chevron-left"></i> Anterior</a>{% endif %}
-        {% if page_obj.has_next %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.next_page_number }}" class="btn btn-light">Próxima <i class="fa fa-chevron-right"></i></a>{% endif %}
+    <div class="fn-foot">
+      <span class="fn-foot-info">
+        Página <strong>{{ page_obj.number }}</strong> de <strong>{{ page_obj.paginator.num_pages }}</strong> · {{ total }} registro{{ total|pluralize }}
+      </span>
+      <div class="fn-foot-nav">
+        {% if page_obj.has_previous %}
+        <a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.previous_page_number }}" class="btn btn-sm btn-outline">
+          <i class="fa-solid fa-chevron-left" aria-hidden="true"></i> Anterior
+        </a>
+        {% endif %}
+        {% if page_obj.has_next %}
+        <a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.next_page_number }}" class="btn btn-sm btn-outline">
+          Próxima <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+        </a>
+        {% endif %}
       </div>
     </div>
     {% endif %}
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var form = document.getElementById('fnFiltros');
+  if (!form) return;
+  var ord = form.querySelector('select[name="ord"]');
+  if (ord) ord.addEventListener('change', function () { form.submit(); });
+})();
+</script>
 {% endblock %}

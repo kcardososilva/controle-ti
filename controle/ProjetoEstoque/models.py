@@ -3136,6 +3136,25 @@ class KioskDevice(models.Model):
     mensagem_quiosque     = models.CharField(max_length=200, blank=True, default='', verbose_name='Mensagem do quiosque')
     config_versao         = models.IntegerField(default=1, verbose_name='Versão da configuração')
 
+    # ── Telemetria de sinal Wi-Fi (opt-in por aparelho, v1.6.0+) ──
+    telemetria_wifi = models.BooleanField(default=False, verbose_name='Telemetria de sinal Wi-Fi')
+
+    # ── Rede Wi-Fi provisionada pelo servidor (v1.7.0+) — o app cria/assume a
+    # rede como dona, com MAC aleatório desligado desde a criação. wifi_senha
+    # fica em texto puro (ao contrário de admin_pin_hash) porque o app PRECISA
+    # do valor real para configurar a rede no Android — não há como recuperar
+    # de um hash. SSID vazio = sem rede provisionada configurada para o device.
+    wifi_ssid  = models.CharField(max_length=64, blank=True, default='', verbose_name='SSID da rede provisionada')
+    wifi_senha = models.CharField(max_length=128, blank=True, default='', verbose_name='Senha da rede provisionada')
+
+    # ── Verificação de MAC (v1.7.0+) — snapshot do último check-in (mesmo
+    # padrão de atualizacao_status/atualizacao_motivo): texto descritivo, não
+    # histórico linha a linha. `ultima_mac_em_uso` comparado a `mac` é o que
+    # confirma se o MAC de fábrica realmente está em uso na conexão atual.
+    ultima_mac_em_uso      = models.CharField(max_length=17, null=True, blank=True, verbose_name='MAC em uso (última leitura)')
+    wifi_mac_politica      = models.CharField(max_length=255, blank=True, default='', verbose_name='Política de MAC (última leitura)')
+    wifi_rede_provisionada = models.CharField(max_length=255, blank=True, default='', verbose_name='Provisionamento de rede (última leitura)')
+
     # ── Inventário de apps do aparelho (recebido no check-in só quando muda) ──
     # apps_hash = impressão digital da lista (dedup); apps_atualizado_em = quando o
     # inventário foi substituído pela última vez. A lista em si fica em KioskDeviceApp.
@@ -3197,7 +3216,18 @@ class KioskCheckin(models.Model):
     carregando   = models.BooleanField(default=False)
     rede         = models.CharField(max_length=20, blank=True, default='')
     ssid         = models.CharField(max_length=64, null=True, blank=True, verbose_name='SSID')  # Rede Wi-Fi no instante do check-in; null fora de Wi-Fi/sem localização
+    mac_em_uso   = models.CharField(max_length=17, null=True, blank=True, verbose_name='MAC em uso')  # MAC visto pelo roteador nesta conexão; comparar com device.mac indica se o MAC aleatório ainda está ativo
     online       = models.BooleanField(default=True)
+
+    # ── Telemetria de sinal Wi-Fi (opt-in — só vem quando device.telemetria_wifi
+    # está ligada). Fica no check-in (histórico), não no device, porque o
+    # diagnóstico de instabilidade exige ver a série ao longo do tempo, não só
+    # o último valor (ver INFORME_SERVIDOR_WIFI_TELEMETRIA §2.2).
+    wifi_rssi_dbm         = models.IntegerField(null=True, blank=True, verbose_name='RSSI Wi-Fi (dBm)')
+    wifi_nivel            = models.IntegerField(null=True, blank=True, verbose_name='Nível de sinal (0-4)')
+    wifi_velocidade_mbps  = models.IntegerField(null=True, blank=True, verbose_name='Velocidade do link (Mbps)')
+    wifi_frequencia_mhz   = models.IntegerField(null=True, blank=True, verbose_name='Frequência do canal (MHz)')
+    wifi_banda_ghz        = models.CharField(max_length=4, null=True, blank=True, verbose_name='Banda (GHz)')
     # Instante REAL da coleta no aparelho (ISO 8601 com fuso). Pode estar no passado
     # quando o app entrega uma fila offline em rajada. registrado_em = chegada no servidor.
     coletado_em   = models.DateTimeField(null=True, blank=True, db_index=True, verbose_name='Coletado em')

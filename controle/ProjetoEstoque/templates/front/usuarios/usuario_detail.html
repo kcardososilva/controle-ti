@@ -1,1558 +1,637 @@
 {% extends 'base.html' %}
-{% load static humanize %}
+{% load humanize %}
 
-{% block title %}Detalhe do Funcionário{% endblock %}
-{% block page_title %}Detalhe do Funcionário{% endblock %}
-{% block page_subtitle %}Visão executiva de dados, vínculos, licenças, equipamentos e histórico do colaborador{% endblock %}
+{% block title %}{{ obj.nome }} — Funcionário{% endblock %}
+{% block page_title %}{{ obj.nome }}{% endblock %}
+{% block page_subtitle %}{{ obj.funcao.nome|default:"Sem função cadastrada" }}{% if obj.centro_custo %} · {{ obj.centro_custo.departamento }} ({{ obj.centro_custo.numero }}){% endif %}{% endblock %}
 
-{% block header_actions %}
-  <a href="{% url 'usuario_list' %}" class="btn-secondary btn-sm">
-    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
-    Voltar
-  </a>
-  <a href="{% url 'usuario_update' obj.pk %}" class="btn-primary btn-sm">
-    <i class="fa-solid fa-pen" aria-hidden="true"></i>
-    Editar
-  </a>
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'usuario_list' %}">Funcionários</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{{ obj.nome }}</span>
+</nav>
 {% endblock %}
 
 {% block extra_css %}
 <style>
-  /*
-    Tela: Detalhe do Funcionário
-    Padrão visual integrado ao base.html.
-    Não redefine fonte, ícones ou variáveis globais.
-  */
+  .ud-page, .ud-page * { box-sizing: border-box; min-width: 0; }
+  .ud-page { display: grid; gap: 16px; color: var(--text-primary); }
 
-  .ud-page,
-  .ud-page * {
-    box-sizing: border-box;
-    min-width: 0;
-  }
-
-  .ud-page {
-    width: 100%;
-    max-width: 1500px;
-    margin-inline: auto;
-    color: var(--text-primary);
-  }
-
-  .ud-shell {
-    display: grid;
-    gap: 18px;
-  }
-
-  .ud-hero,
-  .ud-card,
-  .ud-offboarding {
-    width: 100%;
+  /* ── barra de identidade ── */
+  .ud-idbar {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 14px 18px;
+    background: var(--bg-elevated);
     border: 1px solid var(--separator-hairline);
-    border-radius: var(--radius-2xl);
-    background:
-      radial-gradient(circle at top left, var(--brand-softer), transparent 34%),
-      var(--bg-elevated);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xs);
+  }
+
+  .ud-idbar-id { display: flex; align-items: center; gap: 13px; min-width: 0; flex: 1; }
+
+  .ud-idbar-ic {
+    width: 44px; height: 44px; flex: 0 0 44px;
+    display: grid; place-items: center;
+    border-radius: 11px;
+    border: 1px solid color-mix(in srgb, var(--brand) 18%, transparent);
+    background: var(--brand-soft);
+    color: var(--brand);
+    font-size: 17px;
+  }
+
+  .ud-idbar-main { min-width: 0; }
+
+  .ud-idbar-name {
+    display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+    font-size: 16px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.25;
+    color: var(--text-primary); overflow-wrap: anywhere;
+  }
+
+  .ud-idbar-sub {
+    margin-top: 3px; font-size: 12.5px; color: var(--text-tertiary);
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  }
+
+  .ud-idbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ── badge de status ── */
+  .ud-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 9px; border-radius: 99px;
+    font-size: 11.5px; font-weight: 600; line-height: 1.5; white-space: nowrap;
+  }
+  .ud-badge::before { content: ""; width: 6px; height: 6px; border-radius: 99px; background: currentColor; }
+  .ud-badge-success { color: var(--success); background: var(--success-soft); }
+  .ud-badge-danger  { color: var(--danger);  background: var(--danger-soft); }
+  .ud-badge-neutral { color: var(--text-tertiary); background: var(--bg-fill-tertiary); }
+  .ud-badge-warning { color: var(--warning); background: var(--warning-soft); }
+
+  /* ── faixa de métricas ── */
+  .ud-metrics {
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px;
+    background: var(--separator-hairline);
+    border: 1px solid var(--separator-hairline);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-xs);
+  }
+  @media (max-width: 760px) { .ud-metrics { grid-template-columns: repeat(2, 1fr); } }
+
+  .ud-metric { background: var(--bg-elevated); padding: 13px 16px; }
+  .ud-metric-l {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10.5px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .ud-metric-l i { font-size: 11px; color: var(--text-quaternary); }
+  .ud-metric-v {
+    margin-top: 7px; font-size: 21px; font-weight: 700; letter-spacing: -.03em; line-height: 1;
+    color: var(--text-primary); font-variant-numeric: tabular-nums;
+  }
+  .ud-metric-v.is-brand   { color: var(--brand); }
+  .ud-metric-v.is-danger  { color: var(--danger); }
+  .ud-metric-v.is-warning { color: var(--warning); }
+  .ud-metric-sub { margin-top: 4px; font-size: 11px; color: var(--text-tertiary); }
+
+  /* ── grade principal ── */
+  .ud-grid { display: grid; grid-template-columns: 1.7fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 980px) { .ud-grid { grid-template-columns: 1fr; } }
+  .ud-col { display: grid; gap: 16px; min-width: 0; }
+
+  /* ── cards ── */
+  .ud-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--separator-hairline);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-xs);
     overflow: hidden;
   }
-
-  body.theme-dark .ud-hero,
-  body.theme-dark .ud-card,
-  body.theme-dark .ud-offboarding {
-    border-color: var(--separator-non-opaque);
-    background:
-      radial-gradient(circle at top left, var(--brand-softer), transparent 34%),
-      var(--bg-elevated);
+  .ud-card-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 16px; border-bottom: 1px solid var(--separator-hairline);
   }
-
-  .ud-hero {
-    padding: clamp(18px, 2.8vw, 28px);
-  }
-
-  .ud-hero-top {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 18px;
-    align-items: start;
-  }
-
-  .ud-identity {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 16px;
-  }
-
-  .ud-avatar {
-    width: clamp(58px, 8vw, 74px);
-    height: clamp(58px, 8vw, 74px);
-    display: grid;
-    place-items: center;
-    flex: 0 0 auto;
-    border-radius: 22px;
-    border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
-    background: linear-gradient(135deg, var(--brand-soft), var(--bg-fill-tertiary));
-    color: var(--brand);
-    font-family: var(--font-display);
-    font-size: clamp(24px, 4vw, 32px);
-    font-weight: 700;
-    letter-spacing: -0.04em;
-  }
-
-  .ud-title-wrap {
-    display: grid;
-    gap: 8px;
-  }
-
-  .ud-title {
-    margin: 0;
-    color: var(--text-primary);
-    font-family: var(--font-display);
-    font-size: clamp(26px, 4vw, 42px);
-    line-height: 1.04;
-    font-weight: 650;
-    letter-spacing: -0.04em;
-    overflow-wrap: anywhere;
-  }
-
-  .ud-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    color: var(--text-tertiary);
-    font-size: 13px;
-  }
-
-  .ud-meta-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    min-height: 28px;
-    padding: 5px 10px;
-    border-radius: var(--radius-pill);
-    background: var(--bg-fill-tertiary);
-    color: var(--text-secondary);
-    line-height: 1;
-  }
-
-  .ud-meta-item i {
-    color: var(--brand);
-    font-size: 12px;
-  }
-
-  .ud-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 10px;
-  }
-
-  .ud-btn {
-    min-height: 38px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    padding: 8px 16px;
-    border: 1px solid transparent;
-    border-radius: var(--radius-pill);
-    color: var(--text-primary);
-    background: transparent;
-    font-size: 14px;
-    font-weight: 500;
-    letter-spacing: -0.014em;
-    line-height: 1;
-    white-space: nowrap;
-    text-decoration: none;
-    cursor: pointer;
-    transition:
-      transform var(--transition-fast),
-      color var(--transition-fast),
-      background var(--transition-fast),
-      border-color var(--transition-fast),
-      box-shadow var(--transition-fast);
-  }
-
-  .ud-btn:hover {
-    transform: translateY(-1px);
-  }
-
-  .ud-btn:active {
-    transform: scale(.98);
-  }
-
-  .ud-btn-primary {
-    color: #fff;
-    background: var(--brand);
-    border-color: var(--brand);
-  }
-
-  .ud-btn-primary:hover {
-    color: #fff;
-    background: var(--brand-hover);
-    border-color: var(--brand-hover);
-    box-shadow: var(--shadow-brand);
-  }
-
-  .ud-btn-outline {
-    color: var(--text-primary);
-    background: transparent;
-    border-color: var(--separator-non-opaque);
-  }
-
-  .ud-btn-outline:hover {
-    color: var(--text-primary);
-    background: var(--bg-hover);
-    border-color: var(--separator-strong);
-  }
-
-  .ud-btn-danger {
-    color: #fff;
-    background: var(--danger);
-    border-color: var(--danger);
-  }
-
-  .ud-btn-danger:hover {
-    color: #fff;
-    background: #ff5147;
-    border-color: #ff5147;
-  }
-
-  .ud-btn-compact {
-    min-height: 34px;
-    padding: 7px 12px;
-    font-size: 13px;
-  }
-
-  .ud-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 26px;
-    padding: 5px 10px;
-    border-radius: var(--radius-pill);
-    border: 1px solid transparent;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1;
-    white-space: nowrap;
-  }
-
-  .ud-badge::before {
-    content: "";
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
-    background: currentColor;
-  }
-
-  .ud-badge-success {
-    color: var(--success);
-    background: var(--success-soft);
-  }
-
-  .ud-badge-danger {
-    color: var(--danger);
-    background: var(--danger-soft);
-  }
-
-  .ud-badge-neutral {
-    color: var(--text-tertiary);
-    background: var(--bg-fill-tertiary);
-  }
-
-  .ud-badge-warning {
-    color: var(--warning);
-    background: var(--warning-soft);
-  }
-
-  .ud-info-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
-    margin-top: 22px;
-    padding-top: 20px;
-    border-top: 1px solid var(--separator-hairline);
-  }
-
-  .ud-info-box {
-    min-height: 98px;
-    padding: 14px;
-    border: 1px solid var(--separator-hairline);
-    border-radius: var(--radius-lg);
-    background: var(--bg-fill-tertiary);
-  }
-
-  .ud-info-label {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    margin-bottom: 8px;
-    color: var(--text-tertiary);
-    font-size: 11px;
-    font-weight: 650;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-  }
-
-  .ud-info-label i {
-    color: var(--brand);
-  }
-
-  .ud-info-value {
-    color: var(--text-primary);
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 1.42;
-    overflow-wrap: anywhere;
-  }
-
-  /* ── Hierarquia organizacional ── */
-  .ud-hierarquia {
-    margin-top: 20px;
-    padding-top: 20px;
-    border-top: 1px solid var(--separator-hairline);
-  }
-
-  .ud-hierarquia-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 14px;
-    color: var(--text-tertiary);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: .05em;
-    text-transform: uppercase;
-  }
-
-  .ud-hierarquia-title i { color: var(--brand); }
-
-  .ud-hierarquia-flow {
-    display: flex;
-    align-items: stretch;
-    gap: 0;
-    flex-wrap: wrap;
-  }
-
-  .ud-hier-card {
-    flex: 1;
-    min-width: 110px;
-    position: relative;
-    padding: 14px 16px;
-    border: 1px solid var(--separator-hairline);
-    border-radius: var(--radius-md);
-    background: var(--bg-fill-tertiary);
-    transition: box-shadow 120ms ease;
-  }
-
-  .ud-hier-card:not(:last-child) {
-    border-right: none;
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-  }
-
-  .ud-hier-card:not(:first-child) {
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
-  }
-
-  .ud-hier-card.is-active {
-    background: var(--brand-soft, rgba(0,113,227,.08));
-    border-color: var(--brand);
-    z-index: 1;
-  }
-
-  /* Card ativo nunca fica desbotado, mesmo que o campo seja vazio */
-  .ud-hier-card.is-active.is-empty {
-    opacity: 1;
-  }
-
-  .ud-hier-card.is-active.is-empty .ud-hier-name::after {
-    background: var(--brand);
-    opacity: .28;
-  }
-
-  .ud-hier-card.is-empty {
-    opacity: .52;
-  }
-
-  /* Skeleton bar para campos hierárquicos não preenchidos */
-  .ud-hier-card.is-empty .ud-hier-name {
-    position: relative;
-    min-height: 16px;
-    color: transparent;
-    user-select: none;
-    pointer-events: none;
-  }
-
-  .ud-hier-card.is-empty .ud-hier-name::after {
-    content: "";
-    position: absolute;
-    top: 4px;
-    left: 0;
-    display: block;
-    height: 9px;
-    width: min(74%, 86px);
-    border-radius: 3px;
-    background: var(--text-tertiary, #6e6e73);
-    opacity: .22;
-  }
-
-  .ud-hier-role {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 6px;
-    color: var(--text-tertiary);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-  }
-
-  .ud-hier-role i { color: var(--brand); font-size: 11px; }
-
-  .ud-hier-name {
-    color: var(--text-primary);
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-  }
-
-  .ud-hier-arrow {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    align-self: center;
-    flex: 0 0 auto;
-    width: 28px;
-    color: var(--text-quaternary, #86868b);
-    font-size: 13px;
-  }
-
-  .ud-kpi-grid {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 14px;
-  }
-
-  .ud-kpi-card {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    min-height: 118px;
-    padding: 18px;
-    border: 1px solid var(--separator-hairline);
-    border-radius: var(--radius-xl);
-    background: var(--bg-elevated);
-    overflow: hidden;
-  }
-
-  body.theme-dark .ud-kpi-card {
-    border-color: var(--separator-non-opaque);
-  }
-
-  .ud-kpi-card::after {
-    content: "";
-    position: absolute;
-    right: -28px;
-    top: -28px;
-    width: 94px;
-    height: 94px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--ud-kpi-color, var(--brand)) 13%, transparent);
-    pointer-events: none;
-  }
-
-  .ud-kpi-icon {
-    width: 48px;
-    height: 48px;
-    flex: 0 0 48px;
-    display: grid;
-    place-items: center;
-    border-radius: 16px;
-    border: 1px solid color-mix(in srgb, var(--ud-kpi-color, var(--brand)) 22%, transparent);
-    background: color-mix(in srgb, var(--ud-kpi-color, var(--brand)) 11%, transparent);
-    color: var(--ud-kpi-color, var(--brand));
-    font-size: 17px;
-    z-index: 1;
-  }
-
-  .ud-kpi-content {
-    z-index: 1;
-    display: grid;
-    gap: 3px;
-  }
-
-  .ud-kpi-label {
-    color: var(--text-tertiary);
-    font-size: 11px;
-    font-weight: 650;
-    letter-spacing: .05em;
-    text-transform: uppercase;
-  }
-
-  .ud-kpi-value {
-    color: var(--text-primary);
-    font-family: var(--font-display);
-    font-size: clamp(19px, 2.6vw, 25px);
-    font-weight: 650;
-    line-height: 1.15;
-    letter-spacing: -0.03em;
-  }
-
-  .ud-kpi-sub {
-    color: var(--text-tertiary);
-    font-size: 12px;
-    line-height: 1.35;
-  }
-
-  .ud-offboarding {
-    padding: 18px;
-    border-color: color-mix(in srgb, var(--warning) 30%, var(--separator-hairline));
-    background:
-      radial-gradient(circle at top left, var(--warning-soft), transparent 36%),
-      var(--bg-elevated);
-  }
-
-  .ud-offboarding-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 16px;
-    align-items: center;
-  }
-
-  .ud-countdown {
-    display: flex;
-    gap: 14px;
-    align-items: center;
-  }
-
-  .ud-countdown-circle {
-    width: 64px;
-    height: 64px;
-    flex: 0 0 64px;
-    display: grid;
-    place-items: center;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--warning) 26%, transparent);
-    background: var(--warning-soft);
-    color: var(--warning);
-    font-family: var(--font-display);
-    font-size: 24px;
-    font-weight: 700;
-  }
-
-  .ud-countdown-title {
-    color: var(--text-primary);
-    font-size: 15px;
-    font-weight: 650;
-  }
-
-  .ud-countdown-sub {
-    margin-top: 4px;
-    color: var(--text-tertiary);
-    font-size: 13px;
-    line-height: 1.45;
-  }
-
-  .ud-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    padding: 18px 20px;
-    border-bottom: 1px solid var(--separator-hairline);
-    background: var(--bg-fill-tertiary);
-  }
-
   .ud-card-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--text-primary);
-    font-size: 15px;
-    font-weight: 650;
-    letter-spacing: -0.015em;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13.5px; font-weight: 600; letter-spacing: -.01em; color: var(--text-primary);
   }
+  .ud-card-title i { color: var(--text-tertiary); font-size: 13px; }
+  .ud-card-body { padding: 14px 16px; }
 
-  .ud-card-title i {
-    color: var(--brand);
+  /* ── lista de propriedades ── */
+  .ud-props { display: grid; }
+  .ud-prop {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+    padding: 9px 0; border-bottom: 1px solid var(--separator-hairline);
   }
+  .ud-prop:last-child { border-bottom: 0; }
+  .ud-prop .l { font-size: 12.5px; color: var(--text-tertiary); flex: 0 0 auto; }
+  .ud-prop .v { font-size: 12.5px; font-weight: 500; color: var(--text-primary); text-align: right; word-break: break-word; }
 
-  .ud-table-wrap {
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+  /* ── trilha de hierarquia ── */
+  .ud-hier { display: flex; flex-wrap: wrap; }
+  .ud-hier-seg {
+    flex: 1 1 auto; min-width: 96px;
+    padding: 8px 12px; border-left: 1px solid var(--separator-hairline);
   }
-
-  .ud-table {
-    width: 100%;
-    border-collapse: collapse;
-    text-align: left;
+  .ud-hier-seg:first-child { border-left: 0; padding-left: 2px; }
+  .ud-hier-seg.is-active { background: var(--brand-soft); border-radius: var(--radius-sm); }
+  .ud-hier-l {
+    font-size: 10px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--text-tertiary);
   }
+  .ud-hier-v {
+    margin-top: 4px; font-size: 12.5px; font-weight: 600; color: var(--text-primary);
+    line-height: 1.3; overflow-wrap: anywhere;
+  }
+  .ud-hier-v.is-empty { color: var(--text-quaternary); font-weight: 500; }
 
-  .ud-table th {
-    padding: 14px 18px;
+  /* ── desligamento ── */
+  .ud-card.is-warning { border-color: color-mix(in srgb, var(--warning) 26%, var(--separator-hairline)); }
+  .ud-card.is-warning .ud-card-head { border-bottom-color: color-mix(in srgb, var(--warning) 18%, var(--separator-hairline)); }
+  .ud-card.is-warning .ud-card-title i { color: var(--warning); }
+  .ud-offboard-note { font-size: 12.5px; color: var(--text-secondary); line-height: 1.55; }
+  .ud-offboard-note strong { color: var(--text-primary); font-weight: 650; }
+  .ud-offboard-actions { margin-top: 12px; }
+
+  /* ── tabelas ── */
+  .ud-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .ud-table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  .ud-table thead th {
+    padding: 9px 14px; text-align: left; white-space: nowrap;
+    font-size: 10.5px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--text-tertiary); background: var(--bg-elevated);
     border-bottom: 1px solid var(--separator-hairline);
-    background: var(--bg-elevated);
-    color: var(--text-tertiary);
-    font-size: 11px;
-    font-weight: 650;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-    white-space: nowrap;
   }
-
-  .ud-table td {
-    padding: 15px 18px;
+  .ud-table tbody td {
+    padding: 11px 14px; vertical-align: middle;
+    font-size: 13px; color: var(--text-primary);
     border-bottom: 1px solid var(--separator-hairline);
-    color: var(--text-primary);
-    font-size: 13.5px;
-    vertical-align: middle;
   }
+  .ud-table tbody tr:last-child td { border-bottom: 0; }
+  .ud-table tbody tr:hover { background: var(--bg-hover); }
 
-  .ud-table tbody tr:hover {
-    background: var(--bg-hover);
-  }
+  .ud-item-main { font-size: 13px; font-weight: 600; color: var(--text-primary); line-height: 1.35; overflow-wrap: anywhere; }
+  .ud-item-main a { color: inherit; text-decoration: none; }
+  .ud-item-main a:hover { color: var(--brand); }
+  .ud-item-sub { margin-top: 2px; font-size: 11.5px; color: var(--text-tertiary); overflow-wrap: anywhere; }
 
-  .ud-table tr:last-child td {
-    border-bottom: 0;
+  .ud-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; border-radius: 99px;
+    font-size: 11px; font-weight: 600;
+    background: var(--bg-fill-tertiary); color: var(--text-secondary);
   }
+  .ud-tag.is-brand { background: var(--brand-soft); color: var(--brand); }
 
-  .ud-item-main {
-    color: var(--text-primary);
-    font-size: 13.5px;
-    font-weight: 650;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
+  .ud-row-btn {
+    min-height: 28px; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    padding: 0 10px; border-radius: var(--radius-sm);
+    border: 1px solid var(--separator-non-opaque);
+    background: transparent; color: var(--text-secondary);
+    font-size: 12px; font-weight: 500; line-height: 1; cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
   }
+  .ud-row-btn:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 35%, transparent); background: var(--brand-soft); }
+  .ud-row-btn.is-danger:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: var(--danger-soft); }
 
-  .ud-item-main a {
-    color: inherit;
-    text-decoration: none;
+  .ud-foot-totals {
+    display: flex; justify-content: flex-end; gap: 18px; flex-wrap: wrap;
+    padding: 10px 16px; border-top: 1px solid var(--separator-hairline);
+    background: var(--bg-page-2);
+    font-size: 12px; color: var(--text-tertiary);
   }
-
-  .ud-item-main a:hover {
-    color: var(--brand);
-  }
-
-  .ud-item-sub {
-    margin-top: 3px;
-    color: var(--text-tertiary);
-    font-size: 12px;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-  }
-
-  .ud-row-action {
-    min-height: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 6px 11px;
-    border: 1px solid color-mix(in srgb, var(--danger) 22%, transparent);
-    border-radius: var(--radius-pill);
-    background: var(--danger-soft);
-    color: var(--danger);
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1;
-    cursor: pointer;
-    transition:
-      color var(--transition-fast),
-      background var(--transition-fast),
-      transform var(--transition-fast);
-  }
-
-  .ud-row-action:hover {
-    color: #fff;
-    background: var(--danger);
-    transform: translateY(-1px);
-  }
-
-  .ud-row-action-view {
-    color: var(--text-primary);
-    background: transparent;
-    border-color: var(--separator-non-opaque);
-  }
-
-  .ud-row-action-view:hover {
-    color: #fff;
-    background: var(--brand);
-    border-color: var(--brand);
-  }
-
-  .ud-footer-totals {
-    display: flex;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 12px;
-    padding: 16px 20px;
-    border-top: 1px solid var(--separator-hairline);
-    background: var(--bg-fill-tertiary);
-    color: var(--text-tertiary);
-    font-size: 13px;
-  }
-
-  .ud-total strong {
-    margin-left: 5px;
-    color: var(--text-primary);
-    font-weight: 650;
-  }
-
-  .ud-history-list {
-    display: grid;
-    gap: 10px;
-    padding: 16px;
-  }
-
-  .ud-history-item {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 12px;
-    align-items: center;
-    padding: 14px;
-    border: 1px solid var(--separator-hairline);
-    border-radius: var(--radius-lg);
-    background: var(--bg-fill-tertiary);
-  }
-
-  .ud-history-icon {
-    width: 38px;
-    height: 38px;
-    display: grid;
-    place-items: center;
-    border-radius: 13px;
-    background: var(--brand-soft);
-    color: var(--brand);
-  }
-
-  .ud-history-date {
-    color: var(--text-tertiary);
-    font-size: 12px;
-    white-space: nowrap;
-  }
+  .ud-foot-totals strong { margin-left: 5px; color: var(--text-primary); font-weight: 650; font-variant-numeric: tabular-nums; }
 
   .ud-empty {
-    padding: 38px 18px;
-    color: var(--text-tertiary);
-    text-align: center;
+    display: grid; place-items: center; gap: 8px; padding: 34px 16px; text-align: center;
+    color: var(--text-tertiary); font-size: 12.5px;
   }
+  .ud-empty i { font-size: 22px; color: var(--text-quaternary); }
 
-  .ud-empty i {
-    display: block;
-    margin-bottom: 10px;
-    color: var(--text-quaternary);
-    font-size: 26px;
+  /* ── modal ── */
+  .ud-modal {
+    position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 16px;
+    background: rgba(0, 0, 0, .45); backdrop-filter: blur(3px);
   }
-
-  .ud-modal-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 18px;
-    background: rgba(0, 0, 0, .42);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    opacity: 0;
-    transition: opacity var(--transition-base);
-  }
-
-  .ud-modal-overlay.is-open {
-    display: flex;
-    opacity: 1;
-  }
-
+  .ud-modal[hidden] { display: none; }
   .ud-modal-box {
-    width: min(100%, 520px);
-    padding: 22px;
-    border: 1px solid var(--separator-non-opaque);
-    border-radius: var(--radius-2xl);
-    background: var(--bg-vibrancy-strong);
-    color: var(--text-primary);
-    box-shadow: var(--shadow-xl);
-  }
-
-  @supports (backdrop-filter: blur(30px)) {
-    .ud-modal-box {
-      backdrop-filter: blur(30px) saturate(180%);
-      -webkit-backdrop-filter: blur(30px) saturate(180%);
-    }
-  }
-
-  .ud-modal-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
-    color: var(--text-primary);
-    font-size: 16px;
-    font-weight: 650;
-  }
-
-  .ud-modal-icon {
-    width: 42px;
-    height: 42px;
-    display: grid;
-    place-items: center;
-    border-radius: 999px;
-    background: var(--danger-soft);
-    color: var(--danger);
-  }
-
-  .ud-modal-body {
-    color: var(--text-tertiary);
-    font-size: 14px;
-    line-height: 1.55;
-  }
-
-  .ud-password-field {
-    display: grid;
-    gap: 7px;
-    margin-top: 16px;
-  }
-
-  .ud-password-field label {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: 650;
-    letter-spacing: .02em;
-    text-transform: uppercase;
-  }
-
-  .ud-password-field input {
-    width: 100%;
-    min-height: 42px;
-    padding: 10px 14px;
-    border: 1px solid var(--separator-non-opaque);
-    border-radius: 14px;
+    width: 100%; max-width: 440px; padding: 20px; display: grid; gap: 12px;
     background: var(--bg-elevated);
-    color: var(--text-primary);
-    outline: none;
+    border: 1px solid var(--separator-non-opaque);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl, var(--shadow-md));
   }
+  .ud-modal-box h3 { margin: 0; display: flex; align-items: center; gap: 9px; font-size: 15.5px; font-weight: 650; color: var(--text-primary); }
+  .ud-modal-box h3 i { color: var(--danger); }
+  .ud-modal-box p { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+  .ud-modal-field { display: grid; gap: 6px; }
+  .ud-modal-field label { font-size: 11px; font-weight: 650; letter-spacing: .03em; text-transform: uppercase; color: var(--text-tertiary); }
+  .ud-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
 
-  .ud-password-field input:focus {
-    border-color: var(--brand);
-    box-shadow: 0 0 0 4px var(--brand-ring);
-  }
-
-  .ud-modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 18px;
-  }
-
-  @media (max-width: 1180px) {
-    .ud-info-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .ud-kpi-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .ud-offboarding-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-
-  @media (max-width: 760px) {
-    .ud-hero-top,
-    .ud-identity {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .ud-avatar {
-      width: 62px;
-      height: 62px;
-    }
-
-    .ud-actions {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      justify-content: stretch;
-    }
-
-    .ud-btn {
-      width: 100%;
-    }
-
-    .ud-info-grid,
-    .ud-kpi-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .ud-table,
-    .ud-table thead,
-    .ud-table tbody,
-    .ud-table tr,
-    .ud-table td {
-      display: block;
-      width: 100%;
-    }
-
-    .ud-table thead {
-      display: none;
-    }
-
-    .ud-table tbody {
-      display: grid;
-      gap: 12px;
-      padding: 12px;
-    }
-
-    .ud-table tbody tr {
-      padding: 14px;
-      border: 1px solid var(--separator-hairline);
-      border-radius: var(--radius-lg);
-      background: var(--bg-elevated);
-    }
-
-    .ud-table td {
-      display: grid;
-      grid-template-columns: minmax(118px, .35fr) minmax(0, 1fr);
-      gap: 10px;
-      padding: 10px 0;
-      border-bottom: 1px solid var(--separator-hairline);
-      text-align: left !important;
-      white-space: normal;
-    }
-
-    .ud-table td:last-child {
-      border-bottom: 0;
-      padding-bottom: 0;
-    }
-
-    .ud-table td::before {
-      content: attr(data-label);
-      color: var(--text-tertiary);
-      font-size: 11px;
-      font-weight: 650;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-    }
-
-    .ud-history-item {
-      grid-template-columns: auto minmax(0, 1fr);
-    }
-
-    .ud-history-date {
-      grid-column: 2;
-    }
-
-    .ud-modal-footer {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-
-  @media (max-width: 440px) {
-    .ud-hero,
-    .ud-offboarding {
-      border-radius: var(--radius-xl);
-      padding: 16px;
-    }
-
-    .ud-card {
-      border-radius: var(--radius-xl);
-    }
-
-    .ud-card-header {
-      align-items: flex-start;
-      flex-direction: column;
-      padding: 16px;
-    }
-
-    .ud-table td {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 5px;
-    }
-
-    .ud-footer-totals {
-      justify-content: flex-start;
-    }
+  @media (max-width: 560px) {
+    .ud-idbar { flex-direction: column; align-items: stretch; }
+    .ud-idbar-actions { justify-content: stretch; }
+    .ud-idbar-actions .btn { flex: 1; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="ud-page">
-  <div class="ud-shell">
 
-    <section class="ud-hero" aria-labelledby="usuarioTitulo">
-      <div class="ud-hero-top">
-        <div class="ud-identity">
-          <div class="ud-avatar" aria-hidden="true">
-            {{ obj.nome|slice:":1"|upper }}
-          </div>
-
-          <div class="ud-title-wrap">
-            <h1 class="ud-title" id="usuarioTitulo">{{ obj.nome }}</h1>
-
-            <div class="ud-meta">
-              <span class="ud-meta-item">
-                <i class="fa-solid fa-id-card" aria-hidden="true"></i>
-                Matrícula: {{ obj.matricula|default:"Não informada" }}
-              </span>
-
-              <span class="ud-meta-item">
-                <i class="fa-solid fa-envelope" aria-hidden="true"></i>
-                {{ obj.email|default:"Sem e-mail" }}
-              </span>
-
-              {% if obj.status == 'ativo' %}
-                <span class="ud-badge ud-badge-success">Ativo</span>
-              {% elif obj.status == 'desligado' or obj.status == 'inativo' %}
-                <span class="ud-badge ud-badge-danger">{{ obj.get_status_display }}</span>
-              {% else %}
-                <span class="ud-badge ud-badge-neutral">{{ obj.get_status_display }}</span>
-              {% endif %}
-            </div>
-          </div>
+  <!-- identidade + ações -->
+  <section class="ud-idbar" aria-label="Identificação do funcionário">
+    <div class="ud-idbar-id">
+      <span class="ud-idbar-ic" aria-hidden="true"><i class="fa-solid fa-user"></i></span>
+      <div class="ud-idbar-main">
+        <div class="ud-idbar-name">
+          {{ obj.nome }}
+          {% if obj.status == 'ativo' %}
+            <span class="ud-badge ud-badge-success">Ativo</span>
+          {% elif obj.status == 'desligado' or obj.status == 'inativo' %}
+            <span class="ud-badge ud-badge-danger">{{ obj.get_status_display }}</span>
+          {% else %}
+            <span class="ud-badge ud-badge-neutral">{{ obj.get_status_display }}</span>
+          {% endif %}
         </div>
-
-        <div class="ud-actions">
-          <a href="{% url 'usuario_list' %}" class="ud-btn ud-btn-outline">
-            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
-            Voltar
-          </a>
-
-          <a href="{% url 'usuario_update' obj.pk %}" class="ud-btn ud-btn-primary">
-            <i class="fa-solid fa-pen" aria-hidden="true"></i>
-            Editar
-          </a>
+        <div class="ud-idbar-sub">
+          <i class="fa-solid fa-id-card" aria-hidden="true"></i> {{ obj.matricula|default:"Matrícula não informada" }}
+          <span aria-hidden="true">·</span>
+          <i class="fa-solid fa-envelope" aria-hidden="true"></i> {{ obj.email|default:"sem e-mail" }}
         </div>
       </div>
+    </div>
 
-      <div class="ud-info-grid" aria-label="Informações cadastrais">
-        <div class="ud-info-box">
-          <div class="ud-info-label">
-            <i class="fa-solid fa-building" aria-hidden="true"></i>
-            Centro de Custo
-          </div>
-          <div class="ud-info-value">
-            {% if obj.centro_custo %}
-              {{ obj.centro_custo.departamento }} ({{ obj.centro_custo.numero }})
-            {% else %}
-              —
-            {% endif %}
-          </div>
-        </div>
+    <div class="ud-idbar-actions">
+      <a href="{% url 'usuario_list' %}" class="btn btn-sm">
+        <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Voltar
+      </a>
+      <a href="{% url 'usuario_update' obj.pk %}" class="btn btn-primary btn-sm">
+        <i class="fa-solid fa-pen" aria-hidden="true"></i> Editar
+      </a>
+    </div>
+  </section>
 
-        <div class="ud-info-box">
-          <div class="ud-info-label">
-            <i class="fa-solid fa-briefcase" aria-hidden="true"></i>
-            Função
-          </div>
-          <div class="ud-info-value">{{ obj.funcao.nome|default:"—" }}</div>
-        </div>
-
-        <div class="ud-info-box">
-          <div class="ud-info-label">
-            <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
-            Localidade
-          </div>
-          <div class="ud-info-value">{{ obj.localidade.local|default:"—" }}</div>
-        </div>
-
-        <div class="ud-info-box">
-          <div class="ud-info-label">
-            <i class="fa-solid fa-calendar-day" aria-hidden="true"></i>
-            Admissão / Término
-          </div>
-          <div class="ud-info-value">
-            {{ obj.data_inicio|date:"d/m/Y"|default:"—" }}
-            {% if obj.data_termino %}
-              · Término: {{ obj.data_termino|date:"d/m/Y" }}
-            {% endif %}
-          </div>
-        </div>
-      </div>
-
-      {% if obj.diretor_geral or obj.diretor or obj.gestor or obj.coordenador or obj.supervisor or obj.responsavel %}
-      <div class="ud-hierarquia">
-        <div class="ud-hierarquia-title">
-          <i class="fa-solid fa-sitemap" aria-hidden="true"></i>
-          Hierarquia Organizacional
-        </div>
-        <div class="ud-hierarquia-flow">
-
-          <div class="ud-hier-card{% if not obj.diretor_geral %} is-empty{% endif %}">
-            <div class="ud-hier-role">
-              <i class="fa-solid fa-crown" aria-hidden="true"></i>
-              Diretor Geral
-            </div>
-            <div class="ud-hier-name">{{ obj.diretor_geral }}</div>
-          </div>
-
-          <div class="ud-hier-arrow" aria-hidden="true">
-            <i class="fa-solid fa-chevron-right"></i>
-          </div>
-
-          <div class="ud-hier-card{% if not obj.diretor %} is-empty{% endif %}">
-            <div class="ud-hier-role">
-              <i class="fa-solid fa-user-tie" aria-hidden="true"></i>
-              Diretor
-            </div>
-            <div class="ud-hier-name">{{ obj.diretor }}</div>
-          </div>
-
-          <div class="ud-hier-arrow" aria-hidden="true">
-            <i class="fa-solid fa-chevron-right"></i>
-          </div>
-
-          <div class="ud-hier-card{% if not obj.gestor %} is-empty{% endif %}">
-            <div class="ud-hier-role">
-              <i class="fa-solid fa-user-gear" aria-hidden="true"></i>
-              Gestor
-            </div>
-            <div class="ud-hier-name">{{ obj.gestor }}</div>
-          </div>
-
-          <div class="ud-hier-arrow" aria-hidden="true">
-            <i class="fa-solid fa-chevron-right"></i>
-          </div>
-
-          <div class="ud-hier-card{% if not obj.coordenador %} is-empty{% endif %}">
-            <div class="ud-hier-role">
-              <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
-              Coordenador
-            </div>
-            <div class="ud-hier-name">{{ obj.coordenador }}</div>
-          </div>
-
-          <div class="ud-hier-arrow" aria-hidden="true">
-            <i class="fa-solid fa-chevron-right"></i>
-          </div>
-
-          <div class="ud-hier-card{% if not obj.supervisor %} is-empty{% endif %}">
-            <div class="ud-hier-role">
-              <i class="fa-solid fa-user-check" aria-hidden="true"></i>
-              Supervisor
-            </div>
-            <div class="ud-hier-name">{{ obj.supervisor }}</div>
-          </div>
-
-          <div class="ud-hier-arrow" aria-hidden="true">
-            <i class="fa-solid fa-chevron-right"></i>
-          </div>
-
-          <div class="ud-hier-card is-active{% if not obj.responsavel %} is-empty{% endif %}">
-            <div class="ud-hier-role">
-              <i class="fa-solid fa-star" aria-hidden="true"></i>
-              Responsável Direto
-            </div>
-            <div class="ud-hier-name">{{ obj.responsavel }}</div>
-          </div>
-
-        </div>
-      </div>
+  <!-- métricas -->
+  <section class="ud-metrics" aria-label="Indicadores do funcionário">
+    <div class="ud-metric">
+      <div class="ud-metric-l"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Burn Rate Mensal</div>
+      <div class="ud-metric-v is-brand">R$ {{ kpi.burn_rate_total|floatformat:2|intcomma }}</div>
+      <div class="ud-metric-sub">Licenças + locações</div>
+    </div>
+    <div class="ud-metric">
+      <div class="ud-metric-l"><i class="fa-solid fa-certificate" aria-hidden="true"></i> Licenças Ativas</div>
+      <div class="ud-metric-v">{{ kpi.licencas_qtd }}</div>
+      <div class="ud-metric-sub">Softwares atribuídos</div>
+    </div>
+    <div class="ud-metric">
+      <div class="ud-metric-l"><i class="fa-solid fa-laptop" aria-hidden="true"></i> Equipamentos</div>
+      <div class="ud-metric-v">{{ kpi.itens_qtd }}</div>
+      <div class="ud-metric-sub">Ativos em posse</div>
+    </div>
+    <div class="ud-metric">
+      <div class="ud-metric-l"><i class="fa-solid fa-coins" aria-hidden="true"></i> Custo Anual Soft</div>
+      <div class="ud-metric-v">R$ {{ kpi.custo_anual_lic|floatformat:2|intcomma }}</div>
+      <div class="ud-metric-sub">Projeção anual</div>
+    </div>
+    <div class="ud-metric">
+      <div class="ud-metric-l"><i class="fa-solid fa-user-clock" aria-hidden="true"></i> Prazo Licenças</div>
+      {% if dias_restantes_licencas is not None %}
+        <div class="ud-metric-v {% if prazo_vencido_licencas %}is-danger{% elif dias_restantes_licencas <= 7 %}is-warning{% endif %}">{{ dias_restantes_licencas }}d</div>
+      {% else %}
+        <div class="ud-metric-v">—</div>
       {% endif %}
-    </section>
+      <div class="ud-metric-sub">30 dias após desligamento</div>
+    </div>
+  </section>
 
-    <section class="ud-kpi-grid" aria-label="Indicadores do funcionário">
-      <div class="ud-kpi-card" style="--ud-kpi-color: var(--brand);">
-        <div class="ud-kpi-icon">
-          <i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
-        </div>
-        <div class="ud-kpi-content">
-          <span class="ud-kpi-label">Burn Rate Mensal</span>
-          <span class="ud-kpi-value">R$ {{ kpi.burn_rate_total|floatformat:2|intcomma }}</span>
-          <span class="ud-kpi-sub">Licenças + locações</span>
-        </div>
-      </div>
+  <div class="ud-grid">
 
-      <div class="ud-kpi-card" style="--ud-kpi-color: var(--info);">
-        <div class="ud-kpi-icon">
-          <i class="fa-solid fa-certificate" aria-hidden="true"></i>
-        </div>
-        <div class="ud-kpi-content">
-          <span class="ud-kpi-label">Licenças Ativas</span>
-          <span class="ud-kpi-value">{{ kpi.licencas_qtd }}</span>
-          <span class="ud-kpi-sub">Softwares atribuídos</span>
-        </div>
-      </div>
+    <!-- coluna principal -->
+    <div class="ud-col">
 
-      <div class="ud-kpi-card" style="--ud-kpi-color: var(--warning);">
-        <div class="ud-kpi-icon">
-          <i class="fa-solid fa-laptop" aria-hidden="true"></i>
-        </div>
-        <div class="ud-kpi-content">
-          <span class="ud-kpi-label">Equipamentos</span>
-          <span class="ud-kpi-value">{{ kpi.itens_qtd }}</span>
-          <span class="ud-kpi-sub">Ativos em posse</span>
-        </div>
-      </div>
-
-      <div class="ud-kpi-card" style="--ud-kpi-color: var(--success);">
-        <div class="ud-kpi-icon">
-          <i class="fa-solid fa-coins" aria-hidden="true"></i>
-        </div>
-        <div class="ud-kpi-content">
-          <span class="ud-kpi-label">Custo Anual Soft</span>
-          <span class="ud-kpi-value">R$ {{ kpi.custo_anual_lic|floatformat:2|intcomma }}</span>
-          <span class="ud-kpi-sub">Projeção anual</span>
-        </div>
-      </div>
-
-      <div class="ud-kpi-card" style="--ud-kpi-color: var(--danger);">
-        <div class="ud-kpi-icon">
-          <i class="fa-solid fa-user-clock" aria-hidden="true"></i>
-        </div>
-        <div class="ud-kpi-content">
-          <span class="ud-kpi-label">Prazo Licenças</span>
-          <span class="ud-kpi-value">
-            {% if dias_restantes_licencas is not None %}
-              {{ dias_restantes_licencas }}d
-            {% else %}
-              —
-            {% endif %}
-          </span>
-          <span class="ud-kpi-sub">30 dias após desligamento</span>
-        </div>
-      </div>
-    </section>
-
-    {% if usuario_desligado %}
-      <section class="ud-offboarding" aria-labelledby="offboardingTitulo">
-        <div class="ud-offboarding-grid">
-          <div class="ud-countdown">
-            <div class="ud-countdown-circle" aria-hidden="true">
-              {% if dias_restantes_licencas is not None %}
-                {{ dias_restantes_licencas }}
-              {% else %}
-                —
-              {% endif %}
-            </div>
-
-            <div>
-              <div class="ud-countdown-title" id="offboardingTitulo">
-                Controle de licenças após desligamento
-              </div>
-
-              <div class="ud-countdown-sub">
-                Funcionário desligado em
-                <strong>{{ data_desligamento|date:"d/m/Y"|default:"data não informada" }}</strong>.
-                {% if prazo_final_licencas %}
-                  Prazo final para remoção das licenças:
-                  <strong>{{ prazo_final_licencas|date:"d/m/Y" }}</strong>.
-                {% endif %}
-                {% if prazo_vencido_licencas %}
-                  O prazo de 30 dias está vencido. Recomenda-se remover todas as licenças vinculadas.
-                {% endif %}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            {% if kpi.licencas_qtd > 0 %}
-              <button type="button" class="ud-btn ud-btn-danger" onclick="openRemoveAllModal()">
-                <i class="fa-solid fa-user-xmark" aria-hidden="true"></i>
-                Remover Todas as Licenças
-              </button>
-            {% else %}
-              <span class="ud-badge ud-badge-success">Sem licenças pendentes</span>
-            {% endif %}
-          </div>
-        </div>
-      </section>
-    {% endif %}
-
-    <section class="ud-card" aria-labelledby="licencasTitulo">
-      <div class="ud-card-header">
-        <div class="ud-card-title" id="licencasTitulo">
-          <i class="fa-solid fa-certificate" aria-hidden="true"></i>
-          Licenças de Software
+      <!-- licenças -->
+      <div class="ud-card">
+        <div class="ud-card-head">
+          <span class="ud-card-title"><i class="fa-solid fa-certificate" aria-hidden="true"></i> Licenças de Software</span>
+          <span class="ud-tag">{{ kpi.licencas_qtd }} ativa{{ kpi.licencas_qtd|pluralize }}</span>
         </div>
 
-        <span class="ud-badge ud-badge-neutral">{{ kpi.licencas_qtd }} Ativas</span>
-      </div>
-
-      <div class="ud-table-wrap">
-        <table class="ud-table">
-          <thead>
-            <tr>
-              <th>Licença</th>
-              <th>Lote / Origem</th>
-              <th>Periodicidade</th>
-              <th>Data Atribuição</th>
-              <th style="text-align:right;">Custo Mensal</th>
-              <th style="text-align:right;">Custo Anual</th>
-              <th style="text-align:right;">Ações</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {% for lic in licencas_ativas %}
+        <div class="ud-scroll">
+          <table class="ud-table">
+            <thead>
               <tr>
-                <td data-label="Licença">
-                  <div class="ud-item-main">
-                    <a href="{% url 'licenca_detail' lic.licenca.pk %}">
-                      {{ lic.licenca.nome }}
-                    </a>
-                  </div>
-                  <div class="ud-item-sub">
-                    Fornecedor:
-                    {% if lic.licenca.fornecedor %}
-                      {{ lic.licenca.fornecedor.nome|default:lic.licenca.fornecedor }}
+                <th>Licença</th>
+                <th>Lote / Origem</th>
+                <th>Periodicidade</th>
+                <th>Atribuição</th>
+                <th style="text-align:right;">Mensal</th>
+                <th style="text-align:right;">Anual</th>
+                <th style="text-align:right;">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for lic in licencas_ativas %}
+                <tr>
+                  <td>
+                    <div class="ud-item-main">
+                      <a href="{% url 'licenca_detail' lic.licenca.pk %}">{{ lic.licenca.nome }}</a>
+                    </div>
+                    <div class="ud-item-sub">
+                      {% if lic.licenca.fornecedor %}{{ lic.licenca.fornecedor.nome|default:lic.licenca.fornecedor }}{% else %}Fornecedor não informado{% endif %}
+                    </div>
+                  </td>
+                  <td>
+                    {% if lic.lote %}<span class="ud-tag">Lote #{{ lic.lote.pk }}</span>{% else %}<span class="ud-tag">Legado</span>{% endif %}
+                  </td>
+                  <td>{{ lic.periodicidade_label|default:"—" }}</td>
+                  <td>{{ lic.data_atribuicao|date:"d/m/Y" }}</td>
+                  <td style="text-align:right;">R$ {{ lic.custo_mensal|floatformat:2|intcomma }}</td>
+                  <td style="text-align:right;">R$ {{ lic.custo_anual|floatformat:2|intcomma }}</td>
+                  <td style="text-align:right;">
+                    <form
+                      action="{% url 'licenca_devolver_rapido' obj.pk lic.licenca.pk %}"
+                      method="post"
+                      onsubmit="return confirm('Confirmar devolução desta licença ao estoque?');"
+                      style="display:inline;">
+                      {% csrf_token %}
+                      <button type="submit" class="ud-row-btn" title="Devolver ao estoque">
+                        <i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i> Devolver
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="7">
+                    <div class="ud-empty">
+                      <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
+                      Nenhuma licença atribuída a este funcionário.
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if kpi.licencas_qtd > 0 %}
+          <div class="ud-foot-totals">
+            <span>Mensal: <strong>R$ {{ kpi.custo_mensal_lic|floatformat:2|intcomma }}</strong></span>
+            <span>Anual: <strong>R$ {{ kpi.custo_anual_lic|floatformat:2|intcomma }}</strong></span>
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- equipamentos -->
+      <div class="ud-card">
+        <div class="ud-card-head">
+          <span class="ud-card-title"><i class="fa-solid fa-laptop" aria-hidden="true"></i> Equipamentos / Ativos</span>
+          <span class="ud-tag">{{ kpi.itens_qtd }} {% if kpi.itens_qtd == 1 %}item{% else %}itens{% endif %}</span>
+        </div>
+
+        <div class="ud-scroll">
+          <table class="ud-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Nº Série</th>
+                <th>Tipo</th>
+                <th>Modelo de Custo</th>
+                <th style="text-align:right;">Valor</th>
+                <th style="text-align:right;">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in itens_ativos %}
+                <tr>
+                  <td>
+                    <div class="ud-item-main">
+                      {{ item.nome }}
+                      {% if item.compartilhado %}
+                        <span class="ud-tag is-brand" title="Equipamento compartilhado entre vários colaboradores">
+                          <i class="fa-solid fa-people-arrows" aria-hidden="true"></i> Compartilhado
+                        </span>
+                      {% endif %}
+                    </div>
+                    <div class="ud-item-sub">{{ item.marca|default:"" }} {{ item.modelo|default:"" }}</div>
+                  </td>
+                  <td class="ud-item-sub" style="font-family:var(--font-mono);">{{ item.numero_serie|default:"—" }}</td>
+                  <td>{{ item.subtipo.nome|default:"—" }}</td>
+                  <td>
+                    {% if item.tipo_custo_calc == 'locacao' %}
+                      <span class="ud-tag">Locação</span>
                     {% else %}
-                      —
+                      <span class="ud-tag">Aquisição</span>
                     {% endif %}
-                  </div>
-                </td>
+                  </td>
+                  <td style="text-align:right;">
+                    R$ {{ item.custo_calc|floatformat:2|intcomma }}{% if item.tipo_custo_calc == 'locacao' %}<span class="ud-item-sub">/mês</span>{% endif %}
+                  </td>
+                  <td style="text-align:right;">
+                    <a href="{% url 'equipamento_detalhe' item.pk %}" class="ud-row-btn" title="Visualizar equipamento">
+                      <i class="fa-solid fa-eye" aria-hidden="true"></i> Ver
+                    </a>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="6">
+                    <div class="ud-empty">
+                      <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
+                      Nenhum equipamento vinculado.
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
 
-                <td data-label="Lote / Origem">
-                  {% if lic.lote %}
-                    <span class="ud-badge ud-badge-neutral">Lote #{{ lic.lote.pk }}</span>
-                  {% else %}
-                    <span class="ud-badge ud-badge-neutral">Legado</span>
-                  {% endif %}
-                </td>
-
-                <td data-label="Periodicidade">
-                  {{ lic.periodicidade_label|default:"—" }}
-                </td>
-
-                <td data-label="Atribuição">
-                  {{ lic.data_atribuicao|date:"d/m/Y" }}
-                </td>
-
-                <td data-label="Custo Mensal" style="text-align:right;">
-                  R$ {{ lic.custo_mensal|floatformat:2|intcomma }}
-                </td>
-
-                <td data-label="Custo Anual" style="text-align:right;">
-                  R$ {{ lic.custo_anual|floatformat:2|intcomma }}
-                </td>
-
-                <td data-label="Ações" style="text-align:right;">
-                  <form
-                    action="{% url 'licenca_devolver_rapido' obj.pk lic.licenca.pk %}"
-                    method="post"
-                    onsubmit="return confirm('Confirmar devolução desta licença ao estoque?');"
-                    style="display:inline;">
-                    {% csrf_token %}
-                    <button type="submit" class="ud-row-action" title="Devolver ao estoque">
-                      <i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i>
-                      Devolver
-                    </button>
-                  </form>
-                </td>
-              </tr>
-            {% empty %}
-              <tr>
-                <td colspan="7">
-                  <div class="ud-empty">
-                    <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
-                    Nenhuma licença atribuída a este funcionário.
-                  </div>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        {% if kpi.itens_qtd > 0 %}
+          <div class="ud-foot-totals">
+            <span>Mensal Locação: <strong>R$ {{ kpi.custo_mensal_loc|floatformat:2|intcomma }}</strong></span>
+            <span>Total Aquisição: <strong>R$ {{ kpi.total_aquisicao|floatformat:2|intcomma }}</strong></span>
+          </div>
+        {% endif %}
       </div>
 
-      {% if kpi.licencas_qtd > 0 %}
-        <div class="ud-footer-totals">
-          <div class="ud-total">Mensal Soft: <strong>R$ {{ kpi.custo_mensal_lic|floatformat:2|intcomma }}</strong></div>
-          <div class="ud-total">Anual Soft: <strong>R$ {{ kpi.custo_anual_lic|floatformat:2|intcomma }}</strong></div>
+      <!-- histórico -->
+      <div class="ud-card">
+        <div class="ud-card-head">
+          <span class="ud-card-title"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Histórico de Licenças</span>
+          <span class="ud-tag">Últimos 20 registros</span>
+        </div>
+
+        <div class="ud-scroll">
+          <table class="ud-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Movimento</th>
+                <th>Licença</th>
+                <th>Lote</th>
+                <th>Operador</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for h in historico_licencas %}
+                <tr>
+                  <td style="white-space:nowrap;">{{ h.created_at|date:"d/m/Y H:i" }}</td>
+                  <td>
+                    {% if h.tipo == 'atribuicao' %}
+                      <span class="ud-tag is-brand"><i class="fa-solid fa-plus" aria-hidden="true"></i> {{ h.get_tipo_display|default:h.tipo }}</span>
+                    {% else %}
+                      <span class="ud-tag"><i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i> {{ h.get_tipo_display|default:h.tipo }}</span>
+                    {% endif %}
+                  </td>
+                  <td class="ud-item-main">{{ h.licenca.nome }}</td>
+                  <td>{% if h.lote %}Lote #{{ h.lote.pk }}{% else %}—{% endif %}</td>
+                  <td>{{ h.criado_por|default:"—" }}</td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="5">
+                    <div class="ud-empty">
+                      <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                      Nenhum histórico de licença registrado para este funcionário.
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- coluna lateral -->
+    <div class="ud-col">
+
+      <!-- identificação -->
+      <div class="ud-card">
+        <div class="ud-card-head">
+          <span class="ud-card-title"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Identificação</span>
+        </div>
+        <div class="ud-card-body">
+          <div class="ud-props">
+            <div class="ud-prop"><span class="l">Matrícula</span><span class="v">{{ obj.matricula|default:"—" }}</span></div>
+            <div class="ud-prop"><span class="l">E-mail</span><span class="v">{{ obj.email|default:"—" }}</span></div>
+            <div class="ud-prop"><span class="l">Centro de Custo</span><span class="v">{% if obj.centro_custo %}{{ obj.centro_custo.departamento }} ({{ obj.centro_custo.numero }}){% else %}—{% endif %}</span></div>
+            <div class="ud-prop"><span class="l">Função</span><span class="v">{{ obj.funcao.nome|default:"—" }}</span></div>
+            <div class="ud-prop"><span class="l">Localidade</span><span class="v">{{ obj.localidade.local|default:"—" }}</span></div>
+            <div class="ud-prop"><span class="l">Admissão</span><span class="v">{{ obj.data_inicio|date:"d/m/Y"|default:"—" }}</span></div>
+            {% if obj.data_termino %}
+              <div class="ud-prop"><span class="l">Término</span><span class="v">{{ obj.data_termino|date:"d/m/Y" }}</span></div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- hierarquia -->
+      {% if obj.diretor_geral or obj.diretor or obj.gestor or obj.coordenador or obj.supervisor or obj.responsavel %}
+        <div class="ud-card">
+          <div class="ud-card-head">
+            <span class="ud-card-title"><i class="fa-solid fa-sitemap" aria-hidden="true"></i> Hierarquia Organizacional</span>
+          </div>
+          <div class="ud-card-body">
+            <div class="ud-hier">
+              <div class="ud-hier-seg">
+                <div class="ud-hier-l">Diretor Geral</div>
+                <div class="ud-hier-v{% if not obj.diretor_geral %} is-empty{% endif %}">{{ obj.diretor_geral|default:"—" }}</div>
+              </div>
+              <div class="ud-hier-seg">
+                <div class="ud-hier-l">Diretor</div>
+                <div class="ud-hier-v{% if not obj.diretor %} is-empty{% endif %}">{{ obj.diretor|default:"—" }}</div>
+              </div>
+              <div class="ud-hier-seg">
+                <div class="ud-hier-l">Gestor</div>
+                <div class="ud-hier-v{% if not obj.gestor %} is-empty{% endif %}">{{ obj.gestor|default:"—" }}</div>
+              </div>
+              <div class="ud-hier-seg">
+                <div class="ud-hier-l">Coordenador</div>
+                <div class="ud-hier-v{% if not obj.coordenador %} is-empty{% endif %}">{{ obj.coordenador|default:"—" }}</div>
+              </div>
+              <div class="ud-hier-seg">
+                <div class="ud-hier-l">Supervisor</div>
+                <div class="ud-hier-v{% if not obj.supervisor %} is-empty{% endif %}">{{ obj.supervisor|default:"—" }}</div>
+              </div>
+              <div class="ud-hier-seg is-active">
+                <div class="ud-hier-l">Responsável Direto</div>
+                <div class="ud-hier-v{% if not obj.responsavel %} is-empty{% endif %}">{{ obj.responsavel|default:"—" }}</div>
+              </div>
+            </div>
+          </div>
         </div>
       {% endif %}
-    </section>
 
-    <section class="ud-card" aria-labelledby="equipamentosTitulo">
-      <div class="ud-card-header">
-        <div class="ud-card-title" id="equipamentosTitulo">
-          <i class="fa-solid fa-laptop" aria-hidden="true"></i>
-          Equipamentos / Ativos
-        </div>
-
-        <span class="ud-badge ud-badge-neutral">{{ kpi.itens_qtd }} Itens</span>
-      </div>
-
-      <div class="ud-table-wrap">
-        <table class="ud-table">
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>Nº Série</th>
-              <th>Tipo</th>
-              <th>Modelo de Custo</th>
-              <th style="text-align:right;">Valor</th>
-              <th style="text-align:right;">Ações</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {% for item in itens_ativos %}
-              <tr>
-                <td data-label="Item">
-                  <div class="ud-item-main">
-                    {{ item.nome }}
-                    {% if item.compartilhado %}
-                      <span class="ud-badge" style="background:color-mix(in srgb,#6366f1 14%,transparent);color:#4f46e5;font-size:.62rem;vertical-align:middle;" title="Equipamento compartilhado entre vários colaboradores">
-                        <i class="fa fa-people-arrows" aria-hidden="true"></i> Compartilhado
-                      </span>
-                    {% endif %}
-                  </div>
-                  <div class="ud-item-sub">{{ item.marca|default:"" }} {{ item.modelo|default:"" }}</div>
-                </td>
-
-                <td data-label="Nº Série">
-                  {{ item.numero_serie|default:"—" }}
-                </td>
-
-                <td data-label="Tipo">
-                  {{ item.subtipo.nome|default:"—" }}
-                </td>
-
-                <td data-label="Modelo de Custo">
-                  {% if item.tipo_custo_calc == 'locacao' %}
-                    <span class="ud-badge ud-badge-neutral">Locação</span>
-                  {% else %}
-                    <span class="ud-badge ud-badge-neutral">Aquisição</span>
-                  {% endif %}
-                </td>
-
-                <td data-label="Valor" style="text-align:right;">
-                  R$ {{ item.custo_calc|floatformat:2|intcomma }}
-                  {% if item.tipo_custo_calc == 'locacao' %}
-                    <span class="ud-item-sub">/mês</span>
-                  {% endif %}
-                </td>
-
-                <td data-label="Ações" style="text-align:right;">
-                  <a href="{% url 'equipamento_detalhe' item.pk %}" class="ud-row-action ud-row-action-view" title="Visualizar equipamento">
-                    <i class="fa-solid fa-eye" aria-hidden="true"></i>
-                    Ver
-                  </a>
-                </td>
-              </tr>
-            {% empty %}
-              <tr>
-                <td colspan="6">
-                  <div class="ud-empty">
-                    <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
-                    Nenhum equipamento vinculado.
-                  </div>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      {% if kpi.itens_qtd > 0 %}
-        <div class="ud-footer-totals">
-          <div class="ud-total">Mensal Locação: <strong>R$ {{ kpi.custo_mensal_loc|floatformat:2|intcomma }}</strong></div>
-          <div class="ud-total">Total Aquisição: <strong>R$ {{ kpi.total_aquisicao|floatformat:2|intcomma }}</strong></div>
-        </div>
-      {% endif %}
-    </section>
-
-    <section class="ud-card" aria-labelledby="historicoTitulo">
-      <div class="ud-card-header">
-        <div class="ud-card-title" id="historicoTitulo">
-          <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
-          Histórico de Licenças
-        </div>
-
-        <span class="ud-badge ud-badge-neutral">Últimos 20 registros</span>
-      </div>
-
-      <div class="ud-history-list">
-        {% for h in historico_licencas %}
-          <div class="ud-history-item">
-            <div class="ud-history-icon" aria-hidden="true">
-              {% if h.tipo == 'atribuicao' %}
-                <i class="fa-solid fa-plus"></i>
-              {% else %}
-                <i class="fa-solid fa-arrow-rotate-left"></i>
+      <!-- desligamento -->
+      {% if usuario_desligado %}
+        <div class="ud-card is-warning">
+          <div class="ud-card-head">
+            <span class="ud-card-title"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Desligamento</span>
+          </div>
+          <div class="ud-card-body">
+            <div class="ud-offboard-note">
+              Desligado em <strong>{{ data_desligamento|date:"d/m/Y"|default:"data não informada" }}</strong>.
+              {% if prazo_final_licencas %}
+                Prazo final para remoção das licenças: <strong>{{ prazo_final_licencas|date:"d/m/Y" }}</strong>.
+              {% endif %}
+              {% if prazo_vencido_licencas %}
+                O prazo de 30 dias está vencido — recomenda-se remover as licenças vinculadas.
               {% endif %}
             </div>
 
-            <div>
-              <div class="ud-item-main">
-                {{ h.licenca.nome }}
-              </div>
-
-              <div class="ud-item-sub">
-                Movimento: {{ h.get_tipo_display|default:h.tipo }}
-                {% if h.lote %}
-                  · Lote #{{ h.lote.pk }}
-                {% endif %}
-                {% if h.criado_por %}
-                  · Operador: {{ h.criado_por }}
-                {% endif %}
-              </div>
-            </div>
-
-            <div class="ud-history-date">
-              {{ h.created_at|date:"d/m/Y H:i" }}
+            <div class="ud-offboard-actions">
+              {% if kpi.licencas_qtd > 0 %}
+                <button type="button" class="btn btn-sm btn-danger" onclick="openRemoveAllModal()">
+                  <i class="fa-solid fa-user-xmark" aria-hidden="true"></i> Remover Todas as Licenças
+                </button>
+              {% else %}
+                <span class="ud-badge ud-badge-success">Sem licenças pendentes</span>
+              {% endif %}
             </div>
           </div>
-        {% empty %}
-          <div class="ud-empty">
-            <i class="fa-regular fa-clock" aria-hidden="true"></i>
-            Nenhum histórico de licença registrado para este funcionário.
-          </div>
-        {% endfor %}
-      </div>
-    </section>
+        </div>
+      {% endif %}
 
+    </div>
   </div>
+
 </div>
 
-<div id="removeAllModal" class="ud-modal-overlay" aria-hidden="true">
+<!-- modal de remoção em massa -->
+<div class="ud-modal" id="removeAllModal" hidden aria-hidden="true">
   <div class="ud-modal-box" role="dialog" aria-modal="true" aria-labelledby="removeAllModalTitle">
-    <div class="ud-modal-header" id="removeAllModalTitle">
-      <div class="ud-modal-icon" aria-hidden="true">
-        <i class="fa-solid fa-triangle-exclamation"></i>
-      </div>
-      Confirmação de Remoção em Massa
-    </div>
-
-    <div class="ud-modal-body">
+    <h3 id="removeAllModalTitle"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Confirmação de Remoção em Massa</h3>
+    <p>
       Esta ação removerá todas as licenças ativas vinculadas ao funcionário
       <strong>{{ obj.nome }}</strong> e registrará a devolução no histórico de movimentações.
-      <br><br>
       Para confirmar, informe a senha do usuário logado no sistema.
-    </div>
+    </p>
 
     <form method="post" action="{% url 'usuario_remover_todas_licencas' obj.pk %}">
       {% csrf_token %}
-
-      <div class="ud-password-field">
+      <div class="ud-modal-field">
         <label for="senha_confirmacao">Senha de confirmação</label>
         <input
           type="password"
           name="senha_confirmacao"
           id="senha_confirmacao"
+          class="form-control"
           autocomplete="current-password"
           required
           placeholder="Digite sua senha">
       </div>
 
-      <div class="ud-modal-footer">
-        <button type="button" class="ud-btn ud-btn-outline" onclick="closeRemoveAllModal()">
-          Cancelar
-        </button>
-
-        <button type="submit" class="ud-btn ud-btn-danger">
-          <i class="fa-solid fa-user-xmark" aria-hidden="true"></i>
-          Remover Todas
+      <div class="ud-modal-actions">
+        <button type="button" class="btn btn-sm" onclick="closeRemoveAllModal()">Cancelar</button>
+        <button type="submit" class="btn btn-sm btn-danger">
+          <i class="fa-solid fa-user-xmark" aria-hidden="true"></i> Remover Todas
         </button>
       </div>
     </form>
@@ -1571,18 +650,18 @@
     window.openRemoveAllModal = function openRemoveAllModal() {
       if (!removeAllModal) return;
 
-      removeAllModal.classList.add('is-open');
+      removeAllModal.hidden = false;
       removeAllModal.setAttribute('aria-hidden', 'false');
 
       setTimeout(() => {
         senhaConfirmacao?.focus();
-      }, 120);
+      }, 60);
     };
 
     window.closeRemoveAllModal = function closeRemoveAllModal() {
       if (!removeAllModal) return;
 
-      removeAllModal.classList.remove('is-open');
+      removeAllModal.hidden = true;
       removeAllModal.setAttribute('aria-hidden', 'true');
 
       if (senhaConfirmacao) {
@@ -1597,7 +676,7 @@
     });
 
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && removeAllModal?.classList.contains('is-open')) {
+      if (event.key === 'Escape' && removeAllModal && !removeAllModal.hidden) {
         window.closeRemoveAllModal();
       }
     });

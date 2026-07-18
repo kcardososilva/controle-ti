@@ -370,6 +370,12 @@ def config_dict(device) -> dict:
         "admin_pin_hash": device.admin_pin_hash or "",
         "mensagem_quiosque": device.mensagem_quiosque or "",
         "config_versao": device.config_versao,
+        "telemetria_wifi": device.telemetria_wifi,
+        # None (não string vazia) quando não configurado — ver INFORME §4.1:
+        # wifi_ssid vazio = "sem rede provisionada"; o app trata ausência/null
+        # da mesma forma (não tenta provisionar nada).
+        "wifi_ssid": device.wifi_ssid or None,
+        "wifi_senha": device.wifi_senha or None,
     }
 
 
@@ -625,6 +631,23 @@ def registrar_checkin(device, dados: dict, request=None) -> dict:
     if ssid:
         ssid = str(ssid)[:64]
     mac = (dados.get("mac") or "").strip()[:17] or None
+    # mac_em_uso: MAC visto pelo roteador AGORA (v1.7.0, sempre presente). Ausente
+    # do payload (build antiga) e null (fora de Wi-Fi/OEM mascara) são o mesmo
+    # caso aqui: não há leitura para comparar contra `mac`.
+    mac_em_uso = (dados.get("mac_em_uso") or "").strip()[:17] or None
+
+    # Telemetria de sinal Wi-Fi: opt-in (só chega quando device.telemetria_wifi
+    # está ligada) — ver INFORME_SERVIDOR_WIFI_TELEMETRIA §2.1. AUSENTE do
+    # payload ≠ presente com null: ausente = _i()/etc devolvem None do mesmo
+    # jeito que um valor null explícito, então não dá para distinguir os dois
+    # casos aqui — e não precisa: em ambos não há leitura de sinal para gravar.
+    wifi_rssi = _i(dados.get("wifi_rssi_dbm"))
+    wifi_nivel = _i(dados.get("wifi_nivel"))
+    wifi_velocidade = _i(dados.get("wifi_velocidade_mbps"))
+    wifi_frequencia = _i(dados.get("wifi_frequencia_mhz"))
+    wifi_banda = (dados.get("wifi_banda_ghz") or None)
+    if wifi_banda:
+        wifi_banda = str(wifi_banda)[:4]
 
     # Tudo num único bloco atômico: a 5s de intervalo isso reduz commits/locks no
     # SQLite (1 transação por check-in em vez de várias autocommit em série).
@@ -632,7 +655,10 @@ def registrar_checkin(device, dados: dict, request=None) -> dict:
         KioskCheckin.objects.create(
             device=device, latitude=lat, longitude=lon, precisao_m=prec,
             bateria=bat, carregando=carregando, rede=rede, online=online,
-            ssid=ssid, coletado_em=coletado,
+            ssid=ssid, mac_em_uso=mac_em_uso, coletado_em=coletado,
+            wifi_rssi_dbm=wifi_rssi, wifi_nivel=wifi_nivel,
+            wifi_velocidade_mbps=wifi_velocidade, wifi_frequencia_mhz=wifi_frequencia,
+            wifi_banda_ghz=wifi_banda,
         )
 
         eh_mais_recente = device.ultimo_checkin is None or coletado >= device.ultimo_checkin
@@ -671,6 +697,18 @@ def registrar_checkin(device, dados: dict, request=None) -> dict:
         # (não sobrescreve um MAC bom com null vindo de um check-in sem Device Owner).
         if mac and device.mac != mac:
             device.mac = mac
+        # Verificação de MAC (v1.7.0) — snapshot do estado mais recente, mesmo padrão
+        # de atualizacao_status. `ultima_mac_em_uso` só é sobrescrito com leitura real
+        # (null = fora de Wi-Fi/OEM mascarando, não "MAC ausente"); os textos de
+        # política ficam de fora quando o app não os manda (build antiga).
+        if mac_em_uso:
+            device.ultima_mac_em_uso = mac_em_uso
+        wifi_mac_politica = dados.get("wifi_mac_politica")
+        if wifi_mac_politica is not None:
+            device.wifi_mac_politica = str(wifi_mac_politica)[:255]
+        wifi_rede_provisionada = dados.get("wifi_rede_provisionada")
+        if wifi_rede_provisionada is not None:
+            device.wifi_rede_provisionada = str(wifi_rede_provisionada)[:255]
         # Inventário de apps: presente só nos ciclos em que a lista mudou. Ausência
         # não altera o inventário guardado (ver _persistir_inventario).
         _persistir_inventario(device, dados.get("apps_instalados"), dados.get("apps_hash"))
