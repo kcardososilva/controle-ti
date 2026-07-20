@@ -16,7 +16,9 @@ def sobre_plataforma(request):
 
     total_itens = Item.objects.count()
     total_ativos = Item.objects.filter(status=StatusItemChoices.ATIVO).count()
-    total_backup = Item.objects.filter(status=StatusItemChoices.BACKUP).count()
+    total_backup = Item.objects.filter(
+        status__in=[StatusItemChoices.BACKUP, StatusItemChoices.ESTOQUE]
+    ).count()
     total_manut = Item.objects.filter(status=StatusItemChoices.MANUTENCAO).count()
     total_defeito = Item.objects.filter(status=StatusItemChoices.DEFEITO).count()
 

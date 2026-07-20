@@ -159,6 +159,44 @@
   box-shadow:0 0 0 0 color-mix(in srgb,var(--brand) 55%,transparent); animation:kqPulse 1.7s ease-out infinite; }
 @keyframes kqPulse { 0%{ box-shadow:0 0 0 0 color-mix(in srgb,var(--brand) 50%,transparent); } 70%{ box-shadow:0 0 0 13px transparent; } 100%{ box-shadow:0 0 0 0 transparent; } }
 
+/* ── mapa: indicador "ao vivo" + atualizar agora + legenda de amostragem ─── */
+.kq-live { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--success); white-space:nowrap; }
+.kq-live i { font-size:6px; animation:kqLiveBlink 2s ease-in-out infinite; }
+@keyframes kqLiveBlink { 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+.kq-live.is-stale { color:var(--text-tertiary); }
+.kq-live.is-stale i { animation:none; opacity:.5; }
+.kq-iconbtn { width:26px; height:26px; display:inline-grid; place-items:center; border-radius:99px; border:1px solid var(--separator-non-opaque);
+  background:var(--bg-elevated); color:var(--text-tertiary); cursor:pointer; font-size:11px; transition:transform var(--transition-fast),color var(--transition-fast),border-color var(--transition-fast); }
+.kq-iconbtn:hover { color:var(--brand); border-color:color-mix(in srgb,var(--brand) 30%,transparent); }
+.kq-iconbtn.is-spin i { animation:kqSpin .7s linear; }
+@keyframes kqSpin { from{ transform:rotate(0); } to{ transform:rotate(360deg); } }
+.kq-map-info { display:flex; flex-wrap:wrap; gap:4px 14px; padding:9px 16px; border-top:1px solid var(--separator-hairline);
+  font-size:11.5px; color:var(--text-tertiary); background:var(--bg-page-2); }
+.kq-map-info span { display:inline-flex; align-items:center; gap:6px; }
+.kq-map-info i { font-size:10.5px; color:var(--text-quaternary); }
+.kq-map-info b { color:var(--text-secondary); font-weight:600; font-variant-numeric:tabular-nums; }
+
+/* ── filtro de histórico por dia (chips) ──────────────────────────────────── */
+.kq-days { display:flex; flex-wrap:wrap; gap:7px; padding-bottom:14px; }
+.kq-day-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:99px; border:1px solid var(--separator-non-opaque);
+  background:var(--bg-elevated); color:var(--text-secondary); font-size:12px; font-weight:600; text-decoration:none;
+  transition:background var(--transition-fast),border-color var(--transition-fast),color var(--transition-fast); }
+.kq-day-chip:hover { border-color:color-mix(in srgb,var(--brand) 30%,transparent); color:var(--brand); }
+.kq-day-chip .n { font-size:10.5px; font-weight:700; padding:1px 6px; border-radius:99px; background:var(--bg-fill-tertiary); color:var(--text-tertiary); }
+.kq-day-chip.is-active { background:var(--brand); border-color:var(--brand); color:#fff; }
+.kq-day-chip.is-active .n { background:rgba(255,255,255,.24); color:#fff; }
+
+/* ── resumo inteligente do dia filtrado ───────────────────────────────────── */
+.kq-resumo-dia { display:grid; gap:10px; padding:14px 16px; margin-bottom:14px; border-radius:var(--radius-md);
+  background:var(--brand-soft); border:1px solid color-mix(in srgb,var(--brand) 16%,transparent); }
+.kq-resumo-texto { font-size:12.5px; line-height:1.55; color:var(--text-primary); }
+.kq-resumo-stats { display:flex; flex-wrap:wrap; gap:8px; }
+.kq-resumo-stat { display:flex; flex-direction:column; gap:2px; padding:7px 12px; border-radius:var(--radius-sm); background:var(--bg-elevated); min-width:92px; }
+.kq-resumo-stat .l { font-size:9.5px; text-transform:uppercase; letter-spacing:.04em; font-weight:600; color:var(--text-tertiary); }
+.kq-resumo-stat .v { font-size:14px; font-weight:700; color:var(--text-primary); font-variant-numeric:tabular-nums; }
+.kq-resumo-vazio { padding:12px 16px; margin-bottom:14px; border-radius:var(--radius-md); background:var(--bg-page-2);
+  color:var(--text-tertiary); font-size:12.5px; text-align:center; }
+
 /* ── modal de exclusão (2ª etapa: senha do sistema) ───────────────── */
 .kq-modal { position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:16px;
   background:rgba(0,0,0,.45); backdrop-filter:blur(3px); }
@@ -195,15 +233,15 @@
       </div>
       <div class="kq-hs">
         <div class="kq-hs-l">Bateria</div>
-        <div class="kq-hs-v">{% if device.ultima_bateria is not None %}<i class="fa-solid fa-battery-half" style="color:var(--text-tertiary)"></i> {{ device.ultima_bateria }}%{% else %}<span class="kq-muted">—</span>{% endif %}</div>
+        <div class="kq-hs-v" id="kqHeroBateria">{% if device.ultima_bateria is not None %}<i class="fa-solid fa-battery-half" style="color:var(--text-tertiary)"></i> {{ device.ultima_bateria }}%{% else %}<span class="kq-muted">—</span>{% endif %}</div>
       </div>
       <div class="kq-hs">
         <div class="kq-hs-l">Rede</div>
-        <div class="kq-hs-v">{% if device.ultima_rede %}<i class="fa-solid {% if device.ultima_rede == 'wifi' %}fa-wifi{% else %}fa-signal{% endif %}" style="color:var(--text-tertiary)"></i> {{ device.ultima_rede }}{% else %}<span class="kq-muted">—</span>{% endif %}</div>
+        <div class="kq-hs-v" id="kqHeroRede">{% if device.ultima_rede %}<i class="fa-solid {% if device.ultima_rede == 'wifi' %}fa-wifi{% else %}fa-signal{% endif %}" style="color:var(--text-tertiary)"></i> {{ device.ultima_rede }}{% else %}<span class="kq-muted">—</span>{% endif %}</div>
       </div>
       <div class="kq-hs">
         <div class="kq-hs-l">Último check-in</div>
-        <div class="kq-hs-v">{% if device.ultimo_checkin %}<span title="{{ device.ultimo_checkin|date:'d/m/Y H:i' }}">{{ device.ultimo_checkin|naturaltime }}</span>{% else %}<span class="kq-muted">nunca</span>{% endif %}</div>
+        <div class="kq-hs-v" id="kqHeroUltimoCheckin">{% if device.ultimo_checkin %}<span title="{{ device.ultimo_checkin|date:'d/m/Y H:i' }}">{{ device.ultimo_checkin|naturaltime }}</span>{% else %}<span class="kq-muted">nunca</span>{% endif %}</div>
       </div>
     </div>
   </section>
@@ -216,14 +254,25 @@
       <!-- mapa -->
       <div class="kq-card">
         <div class="kq-card-head">
-          <span class="kq-card-title"><i class="fa-solid fa-location-dot"></i>Localização atual</span>
+          <span class="kq-card-title"><i class="fa-solid fa-location-dot"></i>{% if dia_selecionado %}Trajeto de {{ dia_selecionado|date:"d/m/Y" }}{% else %}Localização atual{% endif %}</span>
           <div style="display:flex;align-items:center;gap:8px;">
+            {% if pode_atualizar_ao_vivo and mapa %}
+              <span class="kq-live" id="kqLiveTick" title="A posição se atualiza sozinha, sem recarregar a página"><i class="fa-solid fa-circle"></i> <span id="kqLiveTickTxt">ao vivo</span></span>
+              <button type="button" id="kqRefreshNow" class="kq-iconbtn" title="Atualizar agora"><i class="fa-solid fa-rotate"></i></button>
+            {% endif %}
             {% if mapa %}<button type="button" id="kqReset" class="kq-reset" hidden><i class="fa-solid fa-arrows-to-dot"></i> Visão geral</button>{% endif %}
             {% if device.tem_localizacao %}<a href="{% url 'quiosque_mapa' %}" class="kq-pill" style="text-decoration:none;color:var(--brand);">Mapa geral</a>{% endif %}
           </div>
         </div>
         {% if mapa %}
           <div id="kqMap" class="kq-map"></div>
+          <div class="kq-map-info" id="kqMapInfo">
+            <span><i class="fa-solid fa-route"></i> <b id="kqMapInfoPontos">{{ mapa.trilha|length }}</b>&nbsp;ponto(s) no traço{% if not dia_selecionado %} <span class="kq-muted">(mais recentes)</span>{% endif %}</span>
+            {% if resumo_dia and resumo_dia.distancia_km %}<span><i class="fa-solid fa-ruler"></i> <b>{{ resumo_dia.distancia_km|floatformat:2 }}</b>&nbsp;km percorridos</span>{% endif %}
+            <span id="kqMapInfoAtualizado">{% if pode_atualizar_ao_vivo %}<i class="fa-solid fa-clock"></i> atualizado agora{% endif %}</span>
+          </div>
+        {% elif dia_selecionado %}
+          <div class="kq-card-body"><div style="text-align:center;color:var(--text-tertiary);padding:22px 0;font-size:13px;"><i class="fa-solid fa-location-crosshairs" style="font-size:22px;color:var(--text-quaternary);display:block;margin-bottom:8px;"></i>Sem localização registrada em {{ dia_selecionado|date:"d/m/Y" }}.</div></div>
         {% else %}
           <div class="kq-card-body"><div style="text-align:center;color:var(--text-tertiary);padding:22px 0;font-size:13px;"><i class="fa-solid fa-location-crosshairs" style="font-size:22px;color:var(--text-quaternary);display:block;margin-bottom:8px;"></i>Sem localização recebida ainda.</div></div>
         {% endif %}
@@ -233,8 +282,38 @@
       <div class="kq-card">
         <div class="kq-card-head">
           <span class="kq-card-title"><i class="fa-solid fa-clock-rotate-left"></i>Histórico de check-ins</span>
-          <span class="kq-pill">{{ total_checkins }} registro(s) · últimos 5 dias</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="kq-pill">{{ total_checkins }} registro(s) · {% if dia_selecionado %}{{ dia_selecionado|date:"d/m/Y" }}{% else %}últimos {{ retencao_dias }} dias{% endif %}</span>
+            <a class="btn btn-sm" href="{% url 'quiosque_checkins_exportar' device.pk %}{% if dia_selecionado %}?dia={{ dia_selecionado|date:'Y-m-d' }}{% endif %}" title="Exportar este histórico em Excel"><i class="fa-solid fa-file-excel"></i> Exportar Excel</a>
+          </div>
         </div>
+        {% if dias_disponiveis %}
+        <div class="kq-card-body" style="padding-bottom:0;">
+          <div class="kq-days">
+            <a class="kq-day-chip{% if not dia_selecionado %} is-active{% endif %}" href="{% url 'quiosque_detalhe' device.pk %}"><i class="fa-solid fa-layer-group"></i> Todos ({{ retencao_dias }} dias)</a>
+            {% for d in dias_disponiveis %}
+            <a class="kq-day-chip{% if dia_selecionado == d.data %} is-active{% endif %}" href="?dia={{ d.data|date:'Y-m-d' }}">{{ d.label }} <span class="n">{{ d.total }}</span></a>
+            {% endfor %}
+          </div>
+          {% if resumo_dia %}
+            {% if resumo_dia.total_checkins %}
+            <div class="kq-resumo-dia">
+              <div class="kq-resumo-texto"><i class="fa-solid fa-wand-magic-sparkles" style="color:var(--brand);margin-right:6px;"></i>{{ resumo_dia.resumo_texto }}</div>
+              <div class="kq-resumo-stats">
+                <div class="kq-resumo-stat"><span class="l">Primeiro</span><span class="v">{{ resumo_dia.primeiro_checkin|date:"H:i" }}</span></div>
+                <div class="kq-resumo-stat"><span class="l">Último</span><span class="v">{{ resumo_dia.ultimo_checkin|date:"H:i" }}</span></div>
+                <div class="kq-resumo-stat"><span class="l">Duração</span><span class="v">{{ resumo_dia.duracao_label }}</span></div>
+                <div class="kq-resumo-stat"><span class="l">Percurso</span><span class="v">{{ resumo_dia.distancia_km|floatformat:2 }} km</span></div>
+                <div class="kq-resumo-stat"><span class="l">Online</span><span class="v">{{ resumo_dia.pct_online }}%</span></div>
+                {% if resumo_dia.bateria_final is not None %}<div class="kq-resumo-stat"><span class="l">Bateria</span><span class="v">{% if resumo_dia.bateria_inicial != resumo_dia.bateria_final %}{{ resumo_dia.bateria_inicial }}→{{ resumo_dia.bateria_final }}%{% else %}{{ resumo_dia.bateria_final }}%{% endif %}</span></div>{% endif %}
+              </div>
+            </div>
+            {% else %}
+            <div class="kq-resumo-vazio"><i class="fa-solid fa-circle-info"></i> {{ resumo_dia.resumo_texto }}</div>
+            {% endif %}
+          {% endif %}
+        </div>
+        {% endif %}
         <div class="kq-scroll">
           <table class="kq-table">
             <thead><tr><th>Quando</th><th>Bateria</th><th>Rede</th><th>Wi-Fi (SSID)</th>{% if device.telemetria_wifi %}<th>Sinal Wi-Fi</th>{% endif %}<th>Online</th><th>Localização</th></tr></thead>
@@ -259,9 +338,9 @@
         </div>
         {% if page_obj.has_other_pages %}
         <div class="kq-pg">
-          {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" aria-label="Anterior">‹</a>{% endif %}
+          {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}{% if dia_selecionado %}&dia={{ dia_selecionado|date:'Y-m-d' }}{% endif %}" aria-label="Anterior">‹</a>{% endif %}
           <span class="cur">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-          {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" aria-label="Próxima">›</a>{% endif %}
+          {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}{% if dia_selecionado %}&dia={{ dia_selecionado|date:'Y-m-d' }}{% endif %}" aria-label="Próxima">›</a>{% endif %}
         </div>
         {% endif %}
       </div>
@@ -466,38 +545,67 @@
   L.control.layers({ 'Satélite':sat, 'Mapa':ruas }, null, { position:'topright' }).addTo(map);
   L.control.scale({ imperial:false }).addTo(map);
 
-  var cor = data.online ? '#34c759' : '#8e8e93';
-  var trilha = data.trilha || [];                 // cronológico: antigo → recente
-  var pts = trilha.map(function(p){ return [p.lat, p.lon]; });
+  // Camadas dinâmicas (redesenhadas a cada atualização, ao vivo ou manual) —
+  // agrupadas em LayerGroups para poder limpar e redesenhar sem acumular
+  // marcadores fantasmas de rodadas anteriores.
+  var trilhaLayer = L.layerGroup().addTo(map);
+  var atualLayer = L.layerGroup().addTo(map);
+  var atual = null;       // referência ao marcador de posição/último ponto (para popup/flyTo)
+  var homeBounds = null;
 
-  // Traço de rota com gradiente de opacidade (fraco no início, forte no fim) para
-  // deixar claro o SENTIDO do deslocamento.
-  if (pts.length > 1) {
-    for (var s = 1; s < pts.length; s++) {
-      var op = 0.22 + 0.5 * (s / (pts.length - 1));   // 0.22 (início) → 0.72 (fim)
-      L.polyline([pts[s-1], pts[s]], { color: cor, weight: 3, opacity: op, lineJoin: 'round', lineCap: 'round', smoothFactor: 0.5 }).addTo(map);
+  function home(){ if (homeBounds) map.fitBounds(homeBounds); else if (atual) map.setView(atual.getLatLng(), 17); }
+
+  // Desenha o traço (polilinha com gradiente indicando o sentido do trajeto +
+  // pontos intermediários) e o marcador de posição/último ponto — chamada no
+  // carregamento inicial e a cada atualização (ao vivo ou manual).
+  function render(d, ajustarCamera){
+    trilhaLayer.clearLayers();
+    atualLayer.clearLayers();
+
+    var cor = d.online ? '#34c759' : '#8e8e93';
+    var trilha = d.trilha || [];   // cronológico: antigo → recente
+    var pts = trilha.map(function(p){ return [p.lat, p.lon]; });
+
+    if (pts.length > 1) {
+      for (var s = 1; s < pts.length; s++) {
+        var op = 0.22 + 0.5 * (s / (pts.length - 1));   // 0.22 (início) → 0.72 (fim)
+        L.polyline([pts[s-1], pts[s]], { color: cor, weight: 3, opacity: op, lineJoin: 'round', lineCap: 'round', smoothFactor: 0.5 }).addTo(trilhaLayer);
+      }
+      L.circleMarker(pts[0], { radius:5, color:'#fff', weight:2, fillColor:cor, fillOpacity:.85 })
+        .addTo(trilhaLayer).bindPopup('<b>Início do trajeto</b><br>' + (trilha[0].quando_inicio || trilha[0].quando));
     }
-    L.circleMarker(pts[0], { radius:5, color:'#fff', weight:2, fillColor:cor, fillOpacity:.85 })
-      .addTo(map).bindPopup('<b>Início do trajeto</b><br>' + trilha[0].quando);
+    // Pontos "parado" (ver `_colapsar_paradas` no service) representam várias
+    // leituras no mesmo lugar (jitter de GPS/Wi-Fi com o aparelho fisicamente
+    // parado, ex.: tablet de ponto fixo) já reduzidas a UM ponto — por isso
+    // aparecem maiores/com anel, para diferenciar de um waypoint de trajeto real.
+    trilha.forEach(function(p, i){
+      if (i === 0 || i === trilha.length - 1) return;
+      var extra = (p.bateria != null ? ' &middot; ' + p.bateria + '%' : '')
+        + (p.precisao != null ? ' &middot; ±' + Math.round(p.precisao) + ' m' : '');
+      if (p.parado) {
+        L.circleMarker([p.lat, p.lon], { radius:6, color:cor, weight:2, fillColor:'#fff', fillOpacity:.9 })
+          .addTo(trilhaLayer).bindPopup('<b>Parado aqui</b><br>' + p.quando_inicio + ' – ' + p.quando
+            + '<br><small>' + p.pontos_originais + ' leitura(s) nesta posição</small>' + extra);
+      } else {
+        L.circleMarker([p.lat, p.lon], { radius:3.5, color:cor, weight:1, fillColor:cor, fillOpacity:.5 })
+          .addTo(trilhaLayer).bindPopup(p.quando + extra);
+      }
+    });
+    if (d.precisao) {
+      L.circle([d.lat, d.lon], { radius:d.precisao, color:cor, weight:1, fillColor:cor, fillOpacity:.08 }).addTo(atualLayer);
+    }
+    var rotulo = d.historico ? 'última posição do dia' : 'posição atual';
+    atual = L.circleMarker([d.lat, d.lon], { radius:9, color:'#fff', weight:2, fillColor:cor, fillOpacity:1 })
+      .addTo(atualLayer).bindPopup('<b>'+ d.nome +'</b><br>'+ (d.online ? 'Online' : 'Offline') + ' &middot; ' + rotulo);
+
+    homeBounds = pts.length > 1 ? L.latLngBounds(pts.concat([[d.lat, d.lon]])).pad(0.25) : null;
+    if (ajustarCamera) { home(); atual.openPopup(); }
+
+    var infoPontos = document.getElementById('kqMapInfoPontos');
+    if (infoPontos) infoPontos.textContent = trilha.length;
   }
 
-  trilha.forEach(function(p, i){
-    if (i === 0 || i === trilha.length - 1) return;
-    L.circleMarker([p.lat, p.lon], { radius:3.5, color:cor, weight:1, fillColor:cor, fillOpacity:.5 })
-      .addTo(map).bindPopup(p.quando
-        + (p.bateria != null ? ' &middot; ' + p.bateria + '%' : '')
-        + (p.precisao != null ? ' &middot; ±' + Math.round(p.precisao) + ' m' : ''));
-  });
-  if (data.precisao) {
-    L.circle([data.lat, data.lon], { radius:data.precisao, color:cor, weight:1, fillColor:cor, fillOpacity:.08 }).addTo(map);
-  }
-  var atual = L.circleMarker([data.lat, data.lon], { radius:9, color:'#fff', weight:2, fillColor:cor, fillOpacity:1 })
-    .addTo(map).bindPopup('<b>'+ data.nome +'</b><br>'+ (data.online ? 'Online' : 'Offline') + ' &middot; posição atual');
-
-  var homeBounds = pts.length > 1 ? L.latLngBounds(pts.concat([[data.lat, data.lon]])).pad(0.25) : null;
-  function home(){ if (homeBounds) map.fitBounds(homeBounds); else map.setView([data.lat, data.lon], 17); }
-  home();
-  atual.openPopup();
+  render(data, true);
 
   // ── Marcador de FOCO: o ponto EXATO do check-in selecionado na tabela ──
   var focusIcon = L.divIcon({ className:'kq-focus-pin', html:'<span class="kq-focus-dot"></span>', iconSize:[28,28], iconAnchor:[14,14] });
@@ -529,11 +637,93 @@
     });
     if (resetBtn) resetBtn.hidden = true;
     home();
-    atual.openPopup();
+    if (atual) atual.openPopup();
   };
   if (resetBtn) resetBtn.addEventListener('click', window.__kqReset);
 
   setTimeout(function(){ map.invalidateSize(); }, 120);
+
+  {% if pode_atualizar_ao_vivo %}
+  // ── Atualização ao vivo: sonda o servidor periodicamente e redesenha o
+  // traço/posição sem recarregar a página — é o que faz este "minimapa" deixar
+  // de ser uma foto estática do carregamento e passar a refletir novos
+  // check-ins enquanto a tela estiver aberta. Nunca move a câmera sozinha
+  // (não atrapalha quem está navegando/dando zoom no mapa); só realinha
+  // quando o usuário aciona "Visão geral"/"Atualizar agora" explicitamente.
+  (function(){
+    var INTERVALO_MS = 25000;
+    var pollUrl = "{% url 'quiosque_mapa_atualizar' device.pk %}{% if dia_selecionado %}?dia={{ dia_selecionado|date:'Y-m-d' }}{% endif %}";
+    var tick = document.getElementById('kqLiveTick');
+    var tickTxt = document.getElementById('kqLiveTickTxt');
+    var infoAtualizado = document.getElementById('kqMapInfoAtualizado');
+    var refreshBtn = document.getElementById('kqRefreshNow');
+    var statusEl = document.querySelector('[data-status]');
+    var bateriaEl = document.getElementById('kqHeroBateria');
+    var redeEl = document.getElementById('kqHeroRede');
+    var ultimoEl = document.getElementById('kqHeroUltimoCheckin');
+    var ultimaAtualizacaoMs = Date.now();
+    var intervalId = null;
+
+    function segundosDesdeAtualizacao(){ return Math.max(0, Math.round((Date.now() - ultimaAtualizacaoMs) / 1000)); }
+
+    function atualizarTickTexto(){
+      if (!tickTxt) return;
+      var s = segundosDesdeAtualizacao();
+      tickTxt.textContent = s < 5 ? 'ao vivo' : ('atualizado há ' + (s < 60 ? s + 's' : Math.round(s / 60) + 'min'));
+      if (infoAtualizado) infoAtualizado.innerHTML = '<i class="fa-solid fa-clock"></i> ' + tickTxt.textContent;
+    }
+
+    function marcarFalha(){ if (tick) tick.classList.add('is-stale'); }
+    function marcarOk(){ if (tick) tick.classList.remove('is-stale'); }
+
+    function aplicar(json){
+      if (!json || !json.ok) { marcarFalha(); return; }
+      marcarOk();
+      ultimaAtualizacaoMs = Date.now();
+      atualizarTickTexto();
+
+      if (json.mapa && json.mapa.lat != null) {
+        render(json.mapa, false);
+      }
+      if (statusEl && json.ultimo_checkin_ts_ms) {
+        statusEl.setAttribute('data-last', String(json.ultimo_checkin_ts_ms));
+      }
+      if (bateriaEl) {
+        bateriaEl.innerHTML = (json.bateria != null)
+          ? '<i class="fa-solid fa-battery-half" style="color:var(--text-tertiary)"></i> ' + json.bateria + '%'
+          : '<span class="kq-muted">—</span>';
+      }
+      if (redeEl) {
+        var icone = json.rede === 'wifi' ? 'fa-wifi' : 'fa-signal';
+        redeEl.innerHTML = json.rede
+          ? '<i class="fa-solid ' + icone + '" style="color:var(--text-tertiary)"></i> ' + json.rede
+          : '<span class="kq-muted">—</span>';
+      }
+      if (ultimoEl && json.ultimo_checkin_label) {
+        ultimoEl.innerHTML = '<span title="' + json.ultimo_checkin_label + '">' + json.ultimo_checkin_label + '</span>';
+      }
+    }
+
+    function sondar(manual){
+      if (manual && refreshBtn) refreshBtn.classList.add('is-spin');
+      fetch(pollUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(aplicar)
+        .catch(marcarFalha)
+        .finally(function(){ if (manual && refreshBtn) setTimeout(function(){ refreshBtn.classList.remove('is-spin'); }, 400); });
+    }
+
+    function iniciar(){ if (!intervalId) intervalId = setInterval(function(){ sondar(false); }, INTERVALO_MS); }
+    function parar(){ if (intervalId) { clearInterval(intervalId); intervalId = null; } }
+
+    setInterval(atualizarTickTexto, 1000);
+    iniciar();
+    if (refreshBtn) refreshBtn.addEventListener('click', function(){ sondar(true); });
+    document.addEventListener('visibilitychange', function(){
+      if (document.hidden) { parar(); } else { iniciar(); sondar(false); }
+    });
+  })();
+  {% endif %}
 })();
 </script>
 {% endif %}

@@ -1,0 +1,211 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ item.descricao }} — Requisições{% endblock %}
+{% block page_title %}Detalhe do Item{% endblock %}
+{% block page_subtitle %}Solicitações de Compra{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'requisicoes_kanban' %}">Solicitações de Compra</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{{ item.descricao }}</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'requisicoes_kanban' %}" class="btn btn-sm"><i class="fa fa-arrow-left" aria-hidden="true"></i> Voltar ao Quadro</a>
+  {% if pode_editar %}
+    <a href="{% url 'requisicao_item_update' item.pk %}" class="btn btn-sm"><i class="fa fa-pen" aria-hidden="true"></i> Editar</a>
+    <a href="{% url 'requisicao_item_delete' item.pk %}" class="btn btn-sm btn-outline"><i class="fa fa-trash" aria-hidden="true"></i> Excluir</a>
+  {% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.kan-detail-page) {
+  --kan-primary:    var(--brand,               #0071e3);
+  --kan-primary-soft: var(--brand-soft,        rgba(0,113,227,.10));
+  --kan-surface:    var(--bg-elevated,         #ffffff);
+  --kan-muted-surf: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
+  --kan-text:       var(--text-primary,        #1d1d1f);
+  --kan-muted:      var(--text-tertiary,       #6e6e73);
+  --kan-border:     var(--separator-hairline,  rgba(0,0,0,.06));
+  --kan-border2:    var(--separator-non-opaque,rgba(0,0,0,.10));
+  --kan-success:    var(--system-green,        #34c759);
+  --kan-success-soft: var(--system-green-soft, rgba(52,199,89,.12));
+  --kan-warning:    var(--warning,             #ff9500);
+  --kan-warning-soft: var(--warning-soft,      rgba(255,149,0,.12));
+  --kan-danger:     var(--danger,              #ff3b30);
+  --kan-danger-soft:var(--danger-soft,         rgba(255,59,48,.10));
+  --kan-radius-sm:  var(--radius-sm,           10px);
+  --kan-radius-md:  var(--radius-md,           14px);
+  --kan-radius-lg:  var(--radius-lg,           18px);
+  --kan-radius-xl:  var(--radius-xl,           22px);
+  --kan-radius-pill:var(--radius-pill,         980px);
+  --kan-shadow-sm:  var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+  --kan-transition: var(--transition-fast,     160ms ease);
+}
+.kan-detail-page, .kan-detail-page * { box-sizing: border-box; min-width: 0; }
+.kan-detail-page { width: min(100%, 780px); margin: 0 auto; display: grid; gap: 1rem; color: var(--kan-text); }
+
+.kan-d-card { border: 1px solid var(--kan-border); border-radius: var(--kan-radius-xl); background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); overflow: hidden; }
+.kan-d-header { padding: 1.1rem 1.25rem; border-bottom: 1px solid var(--kan-border); }
+.kan-d-title { margin: 0 0 .5rem; font-size: 1.2rem; font-weight: 700; letter-spacing: -.02em; }
+.kan-d-badges { display: flex; flex-wrap: wrap; gap: .4rem; }
+.kan-d-body { padding: 1.1rem 1.25rem; }
+
+.kan-d-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: .9rem 1.5rem; }
+.kan-d-item { display: grid; gap: .2rem; }
+.kan-d-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--kan-muted); }
+.kan-d-value { font-size: .92rem; font-weight: 600; }
+.kan-d-value a { color: var(--kan-primary); text-decoration: none; }
+.kan-d-value a:hover { text-decoration: underline; }
+
+.kan-badge { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .6rem; border-radius: var(--kan-radius-pill); font-size: .72rem; font-weight: 650; background: var(--kan-muted-surf); color: var(--kan-muted); }
+.kan-badge-primary { background: var(--kan-primary-soft); color: var(--kan-primary); }
+.kan-badge-success { background: var(--kan-success-soft); color: var(--kan-success); }
+.kan-badge-warning { background: var(--kan-warning-soft); color: var(--kan-warning); }
+.kan-badge-danger { background: var(--kan-danger-soft); color: var(--kan-danger); }
+
+.kan-d-justificativa { margin-top: 1rem; padding: .85rem 1rem; border-radius: var(--kan-radius-md); background: var(--kan-muted-surf); font-size: .86rem; color: var(--kan-text); line-height: 1.5; }
+
+/* Comentários */
+.kan-com-list { display: grid; gap: .75rem; margin-bottom: 1rem; }
+.kan-com { padding: .8rem 1rem; border-radius: var(--kan-radius-md); background: var(--kan-muted-surf); }
+.kan-com-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; margin-bottom: .3rem; font-size: .78rem; color: var(--kan-muted); }
+.kan-com-autor { font-weight: 650; color: var(--kan-text); }
+.kan-com-texto { font-size: .88rem; line-height: 1.5; }
+.kan-com-del { background: none; border: none; color: var(--kan-danger); cursor: pointer; font-size: .78rem; padding: 0; }
+.kan-com-empty { color: var(--kan-muted); font-size: .86rem; padding: .5rem 0 1rem; }
+
+.kan-com-form textarea { width: 100%; min-height: 4.5rem; padding: .6rem .8rem; border: 1px solid var(--kan-border2); border-radius: var(--kan-radius-sm); background: var(--kan-surface); color: var(--kan-text); font-family: inherit; font-size: .88rem; }
+.kan-com-form { display: grid; gap: .6rem; }
+.kan-btn-primary { align-self: flex-end; min-height: 2.3rem; display: inline-flex; align-items: center; gap: .45rem; padding: .5rem 1.1rem; border-radius: var(--kan-radius-pill); border: none; background: var(--kan-primary); color: #fff; font-size: .86rem; font-weight: 650; cursor: pointer; }
+
+@media (max-width: 36rem) { .kan-d-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kan-detail-page">
+
+  <div class="kan-d-card">
+    <div class="kan-d-header">
+      <h2 class="kan-d-title">{{ item.descricao }}</h2>
+      <div class="kan-d-badges">
+        <span class="kan-badge {% if item.tipo == 'estoque' %}kan-badge-success{% else %}kan-badge-primary{% endif %}">{{ item.get_tipo_display }}</span>
+        <span class="kan-badge">{{ item.categoria }}</span>
+        <span class="kan-badge">{{ coluna_titulo }}</span>
+        {% if item.status == 'pausado' %}<span class="kan-badge kan-badge-warning">Item Pausado</span>{% endif %}
+        {% if item.status == 'reprovado' %}<span class="kan-badge kan-badge-danger">Item Reprovado</span>{% endif %}
+        {% if item.status == 'retirado' %}<span class="kan-badge kan-badge-success">Item Retirado</span>{% endif %}
+      </div>
+    </div>
+    <div class="kan-d-body">
+      {% if pode_retirar or pode_desfazer_retirada %}
+      <div style="margin-bottom:1rem;display:flex;gap:.6rem;flex-wrap:wrap;">
+        {% if pode_retirar and item.tipo == 'compra' and item.item_vinculado_id %}
+        <a href="{% url 'requisicao_item_receber_compra' item.pk %}" class="kan-btn-primary" style="background:var(--kan-success);"><i class="fa fa-box-open" aria-hidden="true"></i> Receber Compra e Dar Entrada no Estoque</a>
+        {% elif pode_retirar %}
+        <form method="post" action="{% url 'requisicao_item_acao' item.pk %}">
+          {% csrf_token %}<input type="hidden" name="acao" value="retirar">
+          <button type="submit" class="kan-btn-primary" style="background:var(--kan-success);"><i class="fa fa-box-open" aria-hidden="true"></i> Marcar como Retirado</button>
+        </form>
+        {% endif %}
+        {% if pode_desfazer_retirada %}
+        <form method="post" action="{% url 'requisicao_item_acao' item.pk %}">
+          {% csrf_token %}<input type="hidden" name="acao" value="desfazer_retirada">
+          <button type="submit" class="kan-btn-primary" style="background:transparent;color:var(--kan-text);border:1px solid var(--kan-border2);"><i class="fa fa-rotate-left" aria-hidden="true"></i> Desfazer Retirada</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+      <div class="kan-d-grid">
+        <div class="kan-d-item">
+          <span class="kan-d-label">Código</span>
+          <span class="kan-d-value">{{ item.codigo|default:"— (ainda é só uma ideia)" }}</span>
+        </div>
+        <div class="kan-d-item">
+          <span class="kan-d-label">Quantidade</span>
+          <span class="kan-d-value">{{ item.quantidade }}</span>
+        </div>
+        <div class="kan-d-item">
+          <span class="kan-d-label">Status do Item</span>
+          <span class="kan-d-value"><span class="kan-badge {{ item_badge_class }}">{{ item.get_status_display }}</span></span>
+        </div>
+        {% if estagio_data %}
+        <div class="kan-d-item">
+          <span class="kan-d-label">{{ estagio_rotulo }}</span>
+          <span class="kan-d-value">{{ estagio_data|date:"d/m/Y H:i" }}</span>
+        </div>
+        {% endif %}
+        <div class="kan-d-item">
+          <span class="kan-d-label">Requisição</span>
+          <span class="kan-d-value">
+            {% if item.requisicao_id %}
+              <a href="{% url 'requisicao_detail' item.requisicao_id %}">{{ item.requisicao.numero_datasul|default:"Ver requisição" }} ({{ item.requisicao.get_status_display }})</a>
+            {% else %}
+              — ainda solto no quadro
+            {% endif %}
+          </span>
+        </div>
+        {% if item.item_vinculado_id %}
+        <div class="kan-d-item">
+          <span class="kan-d-label">Vinculado ao estoque</span>
+          <span class="kan-d-value">{{ item.item_vinculado.nome }} · {{ item.quantidade_disponivel_lote }} disponível</span>
+        </div>
+        {% endif %}
+        <div class="kan-d-item">
+          <span class="kan-d-label">Criado por</span>
+          <span class="kan-d-value">{% if item.criado_por %}{{ item.criado_por.get_full_name|default:item.criado_por.username }}{% else %}—{% endif %} em {{ item.created_at|date:"d/m/Y H:i" }}</span>
+        </div>
+        {% if item.retirado_em %}
+        <div class="kan-d-item">
+          <span class="kan-d-label">Retirado</span>
+          <span class="kan-d-value">{% if item.retirado_por %}{{ item.retirado_por.get_full_name|default:item.retirado_por.username }}{% else %}—{% endif %} em {{ item.retirado_em|date:"d/m/Y H:i" }}</span>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if item.justificativa %}
+      <div class="kan-d-justificativa"><strong>Justificativa:</strong> {{ item.justificativa }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="kan-d-card">
+    <div class="kan-d-header">
+      <h2 class="kan-d-title" style="font-size:1rem;"><i class="fa fa-comments" aria-hidden="true"></i> Comentários</h2>
+    </div>
+    <div class="kan-d-body">
+      <div class="kan-com-list">
+        {% for c in comentarios %}
+        <div class="kan-com">
+          <div class="kan-com-head">
+            <span><span class="kan-com-autor">{% if c.criado_por %}{{ c.criado_por.get_full_name|default:c.criado_por.username }}{% else %}—{% endif %}</span> · {{ c.created_at|date:"d/m/Y H:i" }}</span>
+            {% if c.pode_excluir %}
+              <form method="post" action="{% url 'requisicao_comentario_excluir' c.pk %}" onsubmit="return confirm('Excluir este comentário?');">
+                {% csrf_token %}
+                <button type="submit" class="kan-com-del"><i class="fa fa-trash" aria-hidden="true"></i> Excluir</button>
+              </form>
+            {% endif %}
+          </div>
+          <div class="kan-com-texto">{{ c.texto|linebreaksbr }}</div>
+        </div>
+        {% empty %}
+        <div class="kan-com-empty">Nenhum comentário ainda.</div>
+        {% endfor %}
+      </div>
+
+      <form method="post" action="{% url 'requisicao_item_comentar' item.pk %}" class="kan-com-form">
+        {% csrf_token %}
+        {{ comentario_form.texto }}
+        <button type="submit" class="kan-btn-primary"><i class="fa fa-paper-plane" aria-hidden="true"></i> Comentar</button>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -116,22 +116,37 @@ class MovimentacaoEstoqueService:
 
     @classmethod
     def _registrar_entrada(cls, *, form, user):
+        """Adapta o `MovimentacaoItemForm` (tela de Movimentações) pro núcleo
+        `registrar_entrada()` — mantém as duas chamadas (form da tela e
+        chamada direta, ex.: recebimento de compra via Requisição) na mesma
+        lógica de negócio, sem duplicar efeitos colaterais (lote, e-mail...)."""
+        return cls.registrar_entrada(
+            item=form.cleaned_data["item"],
+            fornecedor=form.cleaned_data["lote_fornecedor"],
+            data_entrada=form.cleaned_data["lote_data_entrada"],
+            numero_nf=form.cleaned_data["lote_numero_nf"],
+            quantidade=form.cleaned_data["lote_quantidade"],
+            custo_unitario=form.cleaned_data["lote_custo_unitario"],
+            observacao_lote=form.cleaned_data.get("lote_observacao_tecnica"),
+            localidade_destino=form.cleaned_data["localidade_destino"],
+            centro_custo_destino=form.cleaned_data["centro_custo_destino"],
+            observacao=form.cleaned_data.get("observacao"),
+            user=user,
+        )
+
+    @classmethod
+    def registrar_entrada(cls, *, item, fornecedor, data_entrada, numero_nf, quantidade,
+                           custo_unitario, observacao_lote, localidade_destino,
+                           centro_custo_destino, observacao, user):
+        """Núcleo da Entrada de estoque — cria o `LoteEstoque`/`ItemLote`, a
+        `MovimentacaoItem` e atualiza o `Item`. Chamado tanto pelo form da
+        tela de Movimentações (`_registrar_entrada`) quanto diretamente por
+        outros fluxos (ex.: `RequisicaoService.finalizar_compra_estoque`)."""
         item = (
             Item.objects
             .select_for_update()
-            .get(pk=form.cleaned_data["item"].pk)
+            .get(pk=item.pk)
         )
-
-        fornecedor = form.cleaned_data["lote_fornecedor"]
-        data_entrada = form.cleaned_data["lote_data_entrada"]
-        numero_nf = form.cleaned_data["lote_numero_nf"]
-        quantidade = form.cleaned_data["lote_quantidade"]
-        custo_unitario = form.cleaned_data["lote_custo_unitario"]
-        observacao_lote = form.cleaned_data.get("lote_observacao_tecnica")
-
-        localidade_destino = form.cleaned_data["localidade_destino"]
-        centro_custo_destino = form.cleaned_data["centro_custo_destino"]
-        observacao = form.cleaned_data.get("observacao")
 
         lote = LoteEstoque(
             fornecedor=fornecedor,

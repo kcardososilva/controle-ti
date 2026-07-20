@@ -1,0 +1,296 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{% if modo == 'editar' %}Editar Item{% else %}Novo Item{% endif %} — Requisições{% endblock %}
+{% block page_title %}{% if modo == 'editar' %}Editar Item{% else %}Nova Ideia / Item{% endif %}{% endblock %}
+{% block page_subtitle %}Solicitações de Compra{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'requisicoes_kanban' %}">Solicitações de Compra</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{% if modo == 'editar' %}Editar Item{% else %}Novo Item{% endif %}</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'requisicoes_kanban' %}" class="btn btn-sm"><i class="fa fa-arrow-left" aria-hidden="true"></i> Voltar ao Quadro</a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'vendor/select2.min.css' %}" rel="stylesheet">
+<style>
+:where(.kan-form-page, .select2-container, .select2-dropdown) {
+  --kan-primary:       var(--brand,               #0071e3);
+  --kan-primary-hover: var(--brand-hover,         #0077ed);
+  --kan-primary-soft:  var(--brand-soft,          rgba(0,113,227,.10));
+  --kan-surface:       var(--bg-elevated,         #ffffff);
+  --kan-muted-surface: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
+  --kan-hover:         var(--bg-hover,            rgba(0,0,0,.04));
+  --kan-text:          var(--text-primary,        #1d1d1f);
+  --kan-muted:         var(--text-tertiary,       #6e6e73);
+  --kan-border:        var(--separator-hairline,  rgba(0,0,0,.06));
+  --kan-border2:       var(--separator-non-opaque,rgba(0,0,0,.10));
+  --kan-border-strong: var(--separator-strong,    rgba(0,0,0,.18));
+  --kan-danger:        var(--danger,              #ff3b30);
+  --kan-danger-soft:   var(--danger-soft,         rgba(255,59,48,.10));
+  --kan-radius-sm:     var(--radius-sm,           10px);
+  --kan-radius-md:     var(--radius-md,           14px);
+  --kan-radius-lg:     var(--radius-lg,           18px);
+  --kan-radius-xl:     var(--radius-xl,           22px);
+  --kan-radius-pill:   var(--radius-pill,         980px);
+  --kan-shadow-sm:     var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+  --kan-shadow-md:     var(--shadow-md,           0 4px 12px rgba(0,0,0,.06));
+  --kan-transition:    var(--transition-fast,     160ms ease);
+  --kan-control-h:     2.75rem;
+}
+.kan-form-page, .kan-form-page * { box-sizing: border-box; min-width: 0; }
+.kan-form-page { width: min(100%, 780px); margin: 0 auto; color: var(--kan-text); display: grid; gap: 1rem; }
+
+.kan-form-card { overflow: hidden; border: 1px solid var(--kan-border); border-radius: var(--kan-radius-xl); background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); }
+.kan-card-header { padding: 1rem 1.125rem; border-bottom: 1px solid var(--kan-border); background: color-mix(in srgb, var(--kan-surface) 90%, var(--kan-muted-surface)); }
+.kan-card-title { display: flex; align-items: center; gap: .6rem; font-size: .98rem; font-weight: 650; }
+.kan-card-title i { color: var(--kan-primary); }
+.kan-card-subtitle { margin-top: .25rem; color: var(--kan-muted); font-size: .82rem; }
+.kan-card-body { padding: clamp(1rem,2.5vw,1.5rem); }
+
+.kan-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1rem; }
+.kan-field { display: flex; flex-direction: column; gap: .4rem; }
+.kan-field-full { grid-column: 1 / -1; }
+.kan-field label { display: flex; align-items: center; gap: .35rem; color: var(--kan-muted); font-size: .82rem; font-weight: 650; }
+
+.kan-form-page input, .kan-form-page select, .kan-form-page textarea {
+  width: 100%; min-height: var(--kan-control-h); padding: .68rem .85rem; border: 1px solid var(--kan-border2);
+  border-radius: var(--kan-radius-sm); background: var(--kan-surface); color: var(--kan-text);
+  font-family: inherit; font-size: .92rem; outline: none;
+  transition: border-color var(--kan-transition), box-shadow var(--kan-transition);
+}
+.kan-form-page textarea { min-height: 5.5rem; padding-top: .6rem; }
+.kan-form-page input:focus, .kan-form-page select:focus, .kan-form-page textarea:focus {
+  border-color: var(--kan-primary); box-shadow: 0 0 0 2px var(--kan-primary-soft);
+}
+.kan-form-page .errorlist { display: grid; gap: .25rem; margin: .15rem 0 0; padding: 0; list-style: none; color: var(--kan-danger); font-size: .78rem; font-weight: 650; }
+.kan-alert-error { display: flex; gap: .7rem; align-items: flex-start; padding: .9rem; margin-bottom: 1rem; border-radius: var(--kan-radius-md); border: 1px solid color-mix(in srgb, var(--kan-danger) 22%, transparent); background: var(--kan-danger-soft); color: var(--kan-danger); font-size: .88rem; font-weight: 600; }
+.kan-hint { margin-top: .3rem; color: var(--kan-muted); font-size: .76rem; }
+
+.kan-actions { display: flex; justify-content: flex-end; gap: .75rem; flex-wrap: wrap; padding: 1rem clamp(1rem,2.5vw,1.5rem); border-top: 1px solid var(--kan-border); background: color-mix(in srgb, var(--kan-surface) 92%, var(--kan-muted-surface)); }
+.kan-btn-primary, .kan-btn-secondary {
+  min-height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  padding: .6rem 1.05rem; border-radius: var(--kan-radius-pill); border: 1px solid transparent;
+  font-size: .9rem; font-weight: 650; text-decoration: none; cursor: pointer; white-space: nowrap;
+  transition: transform var(--kan-transition), background var(--kan-transition);
+}
+.kan-btn-primary:hover, .kan-btn-secondary:hover { transform: translateY(-1px); }
+.kan-btn-primary { background: var(--kan-primary); color: #fff; }
+.kan-btn-primary:hover { background: var(--kan-primary-hover); color: #fff; }
+.kan-btn-secondary { background: transparent; color: var(--kan-text); border-color: var(--kan-border2); }
+.kan-btn-secondary:hover { background: var(--kan-hover); border-color: var(--kan-border-strong); }
+
+.kan-field[hidden] { display: none; }
+
+.select2-container { width: 100% !important; }
+.select2-container .select2-selection--single { min-height: var(--kan-control-h) !important; border: 1px solid var(--kan-border2) !important; border-radius: var(--kan-radius-sm) !important; background: var(--kan-surface) !important; display: flex !important; align-items: center !important; }
+.select2-container--default .select2-selection--single .select2-selection__rendered { width: 100%; padding-left: .85rem !important; color: var(--kan-text) !important; font-size: .92rem; line-height: 2.65rem !important; }
+.select2-container--open .select2-selection--single,
+.select2-container--focus .select2-selection--single { border-color: var(--kan-primary) !important; box-shadow: 0 0 0 2px var(--kan-primary-soft) !important; }
+.select2-dropdown { z-index: 9999 !important; border: 1px solid var(--kan-border2) !important; border-radius: var(--kan-radius-md) !important; background: var(--kan-surface) !important; box-shadow: var(--kan-shadow-md); }
+.select2-results__option { color: var(--kan-text) !important; }
+.select2-results__option--highlighted { background: var(--kan-primary) !important; color: #fff !important; }
+
+@media (max-width: 42rem) { .kan-grid { grid-template-columns: 1fr; } .kan-actions { display: grid; } .kan-btn-primary, .kan-btn-secondary { width: 100%; } }
+</style>
+{% endblock %}
+
+{% block content %}
+{# Espera `mapa_ns` no contexto: dict numero_serie (normalizado) -> id do Item, #}
+{# usado no JS abaixo pra vincular automaticamente "item_vinculado" quando o  #}
+{# código bate com o número de série de um item já controlado por lote.      #}
+{{ mapa_ns|json_script:"kanMapaNumeroSerie" }}
+<div class="kan-form-page">
+  <form method="post" novalidate class="kan-form-card">
+    {% csrf_token %}
+    <div class="kan-card-header">
+      <div class="kan-card-title"><i class="fa fa-{% if modo == 'editar' %}pen{% else %}lightbulb{% endif %}" aria-hidden="true"></i> Dados do Item</div>
+      <div class="kan-card-subtitle">Sem código, o item entra como ideia no Backlog. Preencha o código quando estiver pronto para agrupar numa requisição.</div>
+    </div>
+
+    <div class="kan-card-body">
+      {% if form.non_field_errors %}
+        <div class="kan-alert-error" role="alert"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> <div>{{ form.non_field_errors }}</div></div>
+      {% endif %}
+
+      <div class="kan-grid">
+        <div class="kan-field kan-field-full">
+          <label for="{{ form.item_padrao.id_for_label }}">{{ form.item_padrao.label }}</label>
+          {{ form.item_padrao }}
+          <span class="kan-hint" id="kanHintItemPadrao">{{ form.item_padrao.help_text }} Não encontrou o item aqui? <a href="{% url 'itens_padrao_list' %}" target="_blank">gerencie o catálogo</a>.</span>
+          <span class="kan-hint" id="kanCatalogoResumo" role="status" hidden></span>
+          {{ form.item_padrao.errors }}
+        </div>
+
+        <div class="kan-field">
+          <label for="{{ form.tipo.id_for_label }}">Tipo</label>
+          {{ form.tipo }}
+          {{ form.tipo.errors }}
+        </div>
+        <div class="kan-field">
+          <label for="{{ form.quantidade.id_for_label }}">Quantidade</label>
+          {{ form.quantidade }}
+          {{ form.quantidade.errors }}
+        </div>
+
+        <div class="kan-field" id="kanCampoCategoria">
+          <label for="{{ form.categoria.id_for_label }}">Categoria</label>
+          {{ form.categoria }}
+          {{ form.categoria.errors }}
+        </div>
+        <div class="kan-field" id="kanCampoCodigo">
+          <label for="{{ form.codigo.id_for_label }}">Código (Datasul)</label>
+          {{ form.codigo }}
+          <span class="kan-hint">Deixe em branco se ainda é só uma ideia.</span>
+          {{ form.codigo.errors }}
+        </div>
+
+        <div class="kan-field kan-field-full" id="kanCampoDescricao">
+          <label for="{{ form.descricao.id_for_label }}">Descrição</label>
+          {{ form.descricao }}
+          {{ form.descricao.errors }}
+        </div>
+
+        <div class="kan-field kan-field-full">
+          <label for="{{ form.item_vinculado.id_for_label }}">Vincular a item de estoque (opcional)</label>
+          {{ form.item_vinculado }}
+          <span class="kan-hint">Só itens já controlados por lote (toner, bateria, fita...) aparecem aqui — mostra a quantidade disponível no card.</span>
+          {{ form.item_vinculado.errors }}
+        </div>
+
+        <div class="kan-field kan-field-full">
+          <label for="{{ form.justificativa.id_for_label }}">Justificativa (opcional)</label>
+          {{ form.justificativa }}
+          {{ form.justificativa.errors }}
+        </div>
+      </div>
+    </div>
+
+    <div class="kan-actions">
+      <a href="{% if item %}{% url 'requisicao_item_detail' item.pk %}{% else %}{% url 'requisicoes_kanban' %}{% endif %}" class="kan-btn-secondary">
+        <i class="fa fa-arrow-left" aria-hidden="true"></i> Cancelar
+      </a>
+      <button class="kan-btn-primary" type="submit">
+        <i class="fa fa-save" aria-hidden="true"></i> {% if modo == 'editar' %}Atualizar{% else %}Salvar{% endif %}
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{# jQuery e Select2 servidos localmente (static/vendor/) — CDN externo quebrava #}
+{# a página inteira quando bloqueado na rede: sem Select2 E sem autopreenchimento. #}
+<script src="{% static 'vendor/jquery-3.7.1.min.js' %}"></script>
+<script src="{% static 'vendor/select2.min.js' %}"></script>
+<script>
+(function () {
+  'use strict';
+
+  var selPadrao   = document.getElementById('{{ form.item_padrao.auto_id }}');
+  var inpCodigo   = document.getElementById('{{ form.codigo.auto_id }}');
+  var inpDesc     = document.getElementById('{{ form.descricao.auto_id }}');
+  var selCat      = document.getElementById('{{ form.categoria.auto_id }}');
+  var campoCat    = document.getElementById('kanCampoCategoria');
+  var campoCod    = document.getElementById('kanCampoCodigo');
+  var campoDesc   = document.getElementById('kanCampoDescricao');
+  var resumo      = document.getElementById('kanCatalogoResumo');
+  var hintPadrao  = document.getElementById('kanHintItemPadrao');
+  var selVinculado = document.getElementById('{{ form.item_vinculado.auto_id }}');
+
+  var mapaNS = {};
+  try {
+    var mapaNSEl = document.getElementById('kanMapaNumeroSerie');
+    if (mapaNSEl) mapaNS = JSON.parse(mapaNSEl.textContent) || {};
+  } catch (e) { mapaNS = {}; }
+
+  // Vincula automaticamente "item_vinculado" quando o código digitado/vindo
+  // do catálogo bate com o número de série de um item já controlado por
+  // lote. Só roda em mudança real do usuário e nunca sobrescreve uma
+  // escolha já feita (manual ou anterior) em item_vinculado.
+  function vincularPorNumeroSerie() {
+    if (!selVinculado || selVinculado.value) return;
+    var codigo = (inpCodigo.value || '').trim().toUpperCase();
+    if (!codigo) return;
+    var pk = mapaNS[codigo];
+    if (!pk) return;
+    var opt = selVinculado.querySelector('option[value="' + pk + '"]');
+    if (!opt) return;
+    selVinculado.value = String(pk);
+    if (window.jQuery && jQuery.fn.select2) jQuery(selVinculado).trigger('change');
+  }
+
+  function opcaoSelecionada() {
+    return selPadrao.value ? selPadrao.options[selPadrao.selectedIndex] : null;
+  }
+
+  // Copia código/descrição/categoria do catálogo pros campos do form.
+  // Só roda em mudança real do usuário — nunca no load, pra não sobrescrever
+  // valores já salvos ao editar um item existente.
+  function autopreencher() {
+    var opt = opcaoSelecionada();
+    if (!opt) return;
+    if (opt.getAttribute('data-codigo'))    inpCodigo.value = opt.getAttribute('data-codigo');
+    if (opt.getAttribute('data-descricao')) inpDesc.value   = opt.getAttribute('data-descricao');
+    var catId = opt.getAttribute('data-categoria');
+    if (catId) {
+      selCat.value = catId;
+      if (window.jQuery && jQuery.fn.select2) jQuery(selCat).trigger('change');
+    }
+  }
+
+  // Com item do catálogo ativo, esconde só os campos que ficaram de fato
+  // preenchidos (um campo obrigatório vazio escondido travaria o submit) e
+  // mostra o resumo do que foi preenchido. Limpar a seleção devolve os
+  // campos com os valores preservados pra edição manual.
+  function sincronizar() {
+    var ativo = !!selPadrao.value;
+    campoCod.hidden  = ativo && !!inpCodigo.value.trim();
+    campoDesc.hidden = ativo && !!inpDesc.value.trim();
+    campoCat.hidden  = ativo && !!selCat.value;
+
+    hintPadrao.hidden = ativo;
+    if (ativo) {
+      var catLabel = selCat.value ? selCat.options[selCat.selectedIndex].textContent.trim() : '';
+      var partes = [];
+      if (inpCodigo.value.trim()) partes.push('código ' + inpCodigo.value.trim());
+      if (catLabel) partes.push('categoria ' + catLabel);
+      if (inpDesc.value.trim()) partes.push('descrição');
+      resumo.textContent = 'Preenchido pelo catálogo: ' + partes.join(', ') +
+        '. Para ajustar manualmente, limpe a seleção acima (×).';
+    }
+    resumo.hidden = !ativo;
+  }
+
+  function aoMudar() { autopreencher(); sincronizar(); vincularPorNumeroSerie(); }
+
+  // Vínculo nativo: garante autopreenchimento e ocultação mesmo se o
+  // Select2 falhar por qualquer motivo (o form degrada pra <select> comum).
+  selPadrao.addEventListener('change', aoMudar);
+
+  // Digitação manual do código (sem passar pelo catálogo) também tenta o
+  // vínculo automático por número de série.
+  inpCodigo.addEventListener('input', vincularPorNumeroSerie);
+
+  if (window.jQuery && jQuery.fn.select2) {
+    jQuery('#{{ form.tipo.auto_id }}').select2({ width: '100%', minimumResultsForSearch: Infinity, language: { noResults: function () { return 'Sem resultados'; } } });
+    jQuery('#{{ form.categoria.auto_id }}').select2({ width: '100%', placeholder: 'Selecione a categoria...', language: { noResults: function () { return 'Sem resultados'; }, searching: function () { return 'Buscando...'; } } });
+    jQuery('#{{ form.item_vinculado.auto_id }}').select2({ width: '100%', placeholder: 'Sem vínculo (cadastro livre)', allowClear: true, language: { noResults: function () { return 'Sem resultados'; }, searching: function () { return 'Buscando...'; } } });
+    jQuery(selPadrao).select2({ width: '100%', placeholder: 'Buscar por código ou descrição...', allowClear: true, language: { noResults: function () { return 'Nenhum item padrão encontrado'; }, searching: function () { return 'Buscando...'; } } });
+    // Select2 dispara 'change' via jQuery — não alcança o listener nativo
+    // acima, então vincula aqui também (aoMudar é idempotente).
+    jQuery(selPadrao).on('change', aoMudar);
+  }
+
+  sincronizar();
+})();
+</script>
+{% endblock %}

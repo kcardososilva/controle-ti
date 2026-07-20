@@ -1,0 +1,289 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ requisicao.numero_datasul|default:"Requisição" }} — Requisições{% endblock %}
+{% block page_title %}Requisição{% endblock %}
+{% block page_subtitle %}Solicitações de Compra{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'requisicoes_kanban' %}">Solicitações de Compra</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'requisicoes_list' %}">Requisições</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{{ requisicao }}</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'requisicoes_kanban' %}" class="btn btn-sm"><i class="fa fa-arrow-left" aria-hidden="true"></i> Voltar ao Quadro</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.kan-req-page) {
+  --kan-primary:    var(--brand,               #0071e3);
+  --kan-primary-soft: var(--brand-soft,        rgba(0,113,227,.10));
+  --kan-surface:    var(--bg-elevated,         #ffffff);
+  --kan-muted-surf: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
+  --kan-text:       var(--text-primary,        #1d1d1f);
+  --kan-muted:      var(--text-tertiary,       #6e6e73);
+  --kan-border:     var(--separator-hairline,  rgba(0,0,0,.06));
+  --kan-border2:    var(--separator-non-opaque,rgba(0,0,0,.10));
+  --kan-success:    var(--system-green,        #34c759);
+  --kan-success-soft: var(--system-green-soft, rgba(52,199,89,.12));
+  --kan-warning:    var(--warning,             #ff9500);
+  --kan-warning-soft: var(--warning-soft,      rgba(255,149,0,.12));
+  --kan-danger:     var(--danger,              #ff3b30);
+  --kan-danger-soft:var(--danger-soft,         rgba(255,59,48,.10));
+  --kan-radius-sm:  var(--radius-sm,           10px);
+  --kan-radius-md:  var(--radius-md,           14px);
+  --kan-radius-lg:  var(--radius-lg,           18px);
+  --kan-radius-xl:  var(--radius-xl,           22px);
+  --kan-radius-pill:var(--radius-pill,         980px);
+  --kan-shadow-sm:  var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+  --kan-transition: var(--transition-fast,     160ms ease);
+}
+.kan-req-page, .kan-req-page * { box-sizing: border-box; min-width: 0; }
+.kan-req-page { display: grid; gap: 1rem; color: var(--kan-text); }
+
+.kan-d-card { border: 1px solid var(--kan-border); border-radius: var(--kan-radius-xl); background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); overflow: hidden; }
+.kan-d-header { padding: 1.1rem 1.25rem; border-bottom: 1px solid var(--kan-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .6rem; }
+.kan-d-title { margin: 0 0 .4rem; font-size: 1.2rem; font-weight: 700; letter-spacing: -.02em; }
+.kan-d-badges { display: flex; flex-wrap: wrap; gap: .4rem; }
+.kan-d-body { padding: 1.1rem 1.25rem; }
+
+.kan-badge { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .6rem; border-radius: var(--kan-radius-pill); font-size: .72rem; font-weight: 650; background: var(--kan-muted-surf); color: var(--kan-muted); }
+.kan-badge-primary { background: var(--kan-primary-soft); color: var(--kan-primary); }
+.kan-badge-success { background: var(--kan-success-soft); color: var(--kan-success); }
+.kan-badge-warning { background: var(--kan-warning-soft); color: var(--kan-warning); }
+.kan-badge-danger { background: var(--kan-danger-soft); color: var(--kan-danger); }
+
+.kan-d-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: .9rem 1.5rem; margin-bottom: 1rem; }
+.kan-d-item { display: grid; gap: .2rem; }
+.kan-d-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--kan-muted); }
+.kan-d-value { font-size: .9rem; font-weight: 600; }
+
+.kan-numeros-form { display: flex; flex-wrap: wrap; gap: .6rem; align-items: end; padding-top: .5rem; border-top: 1px solid var(--kan-border); margin-top: .25rem; }
+.kan-field { display: flex; flex-direction: column; gap: .3rem; flex: 1 1 12rem; }
+.kan-field label { font-size: .72rem; font-weight: 700; color: var(--kan-muted); text-transform: uppercase; letter-spacing: .04em; }
+.kan-req-page input { min-height: 2.3rem; padding: .5rem .75rem; border: 1px solid var(--kan-border2); border-radius: var(--kan-radius-sm); background: var(--kan-surface); color: var(--kan-text); font-family: inherit; font-size: .86rem; }
+
+.kan-actions-card .kan-d-body { display: flex; flex-wrap: wrap; gap: .6rem; }
+.kan-btn, .kan-btn-primary, .kan-btn-danger, .kan-btn-secondary, .kan-btn-success, .kan-btn-warning {
+  min-height: 2.35rem; display: inline-flex; align-items: center; gap: .45rem; padding: .55rem 1rem;
+  border-radius: var(--kan-radius-pill); border: 1px solid transparent; font-size: .86rem; font-weight: 650;
+  cursor: pointer; text-decoration: none; transition: transform var(--kan-transition), background var(--kan-transition);
+}
+.kan-btn:hover, .kan-btn-primary:hover, .kan-btn-danger:hover, .kan-btn-secondary:hover,
+.kan-btn-success:hover, .kan-btn-warning:hover { transform: translateY(-1px); }
+.kan-btn-primary { background: var(--kan-primary); color: #fff; }
+.kan-btn-danger { background: var(--kan-danger); color: #fff; }
+.kan-btn-secondary, .kan-btn { background: transparent; color: var(--kan-text); border-color: var(--kan-border2); }
+.kan-btn-success { background: var(--kan-success); color: #fff; }
+.kan-btn-warning { background: var(--kan-warning); color: #fff; }
+
+.kan-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+.kan-table th { text-align: left; padding: .6rem .7rem; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--kan-muted); border-bottom: 1px solid var(--kan-border); }
+.kan-table td { padding: .65rem .7rem; border-bottom: 1px solid var(--kan-border); vertical-align: middle; }
+.kan-table tr:last-child td { border-bottom: none; }
+.kan-table a { color: var(--kan-primary); text-decoration: none; font-weight: 650; }
+.kan-table a:hover { text-decoration: underline; }
+
+.kan-info-note { padding: .85rem 1rem; border-radius: var(--kan-radius-md); background: var(--kan-muted-surf); color: var(--kan-muted); font-size: .86rem; line-height: 1.5; }
+.kan-info-note-success { background: var(--kan-success-soft); color: var(--kan-success); font-weight: 600; }
+
+.kan-actions-group { display: flex; flex-wrap: wrap; gap: .6rem; }
+.kan-actions-group + .kan-actions-group { margin-top: .9rem; padding-top: .9rem; border-top: 1px dashed var(--kan-border2); }
+.kan-actions-label { flex-basis: 100%; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--kan-muted); margin-bottom: -.15rem; }
+
+.kan-table td.kan-td-status { white-space: nowrap; }
+.kan-td-data { color: var(--kan-muted); font-size: .8rem; white-space: nowrap; }
+
+@media (min-width: 64rem) and (max-width: 100rem) {
+  .kan-req-page { gap: .75rem; }
+  .kan-d-header, .kan-d-body { padding: .9rem 1.05rem; }
+}
+@media (max-width: 36rem) { .kan-d-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kan-req-page">
+
+  <div class="kan-d-card">
+    <div class="kan-d-header">
+      <div>
+        <h2 class="kan-d-title">{{ requisicao }}</h2>
+        <div class="kan-d-badges">
+          <span class="kan-badge {% if requisicao.tipo == 'estoque' %}kan-badge-success{% else %}kan-badge-primary{% endif %}">{{ requisicao.get_tipo_display }}</span>
+          <span class="kan-badge {{ badge_class }}">{{ requisicao.get_status_display }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="kan-d-body">
+      <div class="kan-d-grid">
+        <div class="kan-d-item">
+          <span class="kan-d-label">Criado por</span>
+          <span class="kan-d-value">{% if requisicao.criado_por %}{{ requisicao.criado_por.get_full_name|default:requisicao.criado_por.username }}{% else %}—{% endif %} em {{ requisicao.created_at|date:"d/m/Y H:i" }}</span>
+        </div>
+        <div class="kan-d-item">
+          <span class="kan-d-label">Itens no grupo</span>
+          <span class="kan-d-value">{{ itens|length }}</span>
+        </div>
+        {% if requisicao.solicitada_em %}
+        <div class="kan-d-item">
+          <span class="kan-d-label">Solicitada em</span>
+          <span class="kan-d-value">{{ requisicao.solicitada_em|date:"d/m/Y H:i" }}</span>
+        </div>
+        {% endif %}
+        {% if requisicao.enviada_em %}
+        <div class="kan-d-item">
+          <span class="kan-d-label">Enviada para aprovação em</span>
+          <span class="kan-d-value">{{ requisicao.enviada_em|date:"d/m/Y H:i" }}</span>
+        </div>
+        {% endif %}
+        {% if requisicao.decidida_em %}
+        <div class="kan-d-item">
+          <span class="kan-d-label">{% if requisicao.status == 'nao_aprovada' %}Reprovada em{% else %}Aprovada em{% endif %}</span>
+          <span class="kan-d-value">{{ requisicao.decidida_em|date:"d/m/Y H:i" }}{% if requisicao.decidida_por %} por {{ requisicao.decidida_por.get_full_name|default:requisicao.decidida_por.username }}{% endif %}</span>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if pode_gerenciar %}
+      <form method="post" action="{% url 'requisicao_acao' requisicao.pk %}" class="kan-numeros-form">
+        {% csrf_token %}
+        <input type="hidden" name="acao" value="definir_numeros">
+        <div class="kan-field">
+          <label for="{{ numeros_form.numero_datasul.id_for_label }}">Número Datasul</label>
+          {{ numeros_form.numero_datasul }}
+        </div>
+        <div class="kan-field">
+          <label for="{{ numeros_form.numero_paradigma.id_for_label }}">Número Paradigma</label>
+          {{ numeros_form.numero_paradigma }}
+        </div>
+        <button type="submit" class="kan-btn-secondary"><i class="fa fa-save" aria-hidden="true"></i> Salvar números</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if mostrar_card_acoes %}
+  <div class="kan-d-card kan-actions-card">
+    <div class="kan-d-header"><h2 class="kan-d-title" style="font-size:1rem;">Ações</h2></div>
+    <div class="kan-d-body">
+
+      {% if mostrar_avancar %}
+      <div class="kan-actions-group">
+        <span class="kan-actions-label">Avançar</span>
+
+        {% if mostrar_solicitar %}
+        <form method="post" action="{% url 'requisicao_acao' requisicao.pk %}">
+          {% csrf_token %}<input type="hidden" name="acao" value="solicitar">
+          <button type="submit" class="kan-btn-secondary"><i class="fa fa-clipboard-check" aria-hidden="true"></i> Marcar como Solicitada</button>
+        </form>
+        {% endif %}
+
+        {% if mostrar_enviar_aprovacao %}
+        <form method="post" action="{% url 'requisicao_acao' requisicao.pk %}">
+          {% csrf_token %}<input type="hidden" name="acao" value="enviar_aprovacao">
+          <button type="submit" class="kan-btn-primary"><i class="fa fa-paper-plane" aria-hidden="true"></i> Enviar para Aprovação</button>
+        </form>
+        {% if not requisicao.numero_datasul %}
+        <span class="kan-info-note" style="padding:.4rem .75rem;font-size:.78rem;"><i class="fa fa-circle-info" aria-hidden="true"></i> Sem número Datasul informado — preencha acima antes de enviar, se já existir.</span>
+        {% endif %}
+        {% endif %}
+
+        {% if mostrar_aprovar_reprovar %}
+        <form method="post" action="{% url 'requisicao_acao' requisicao.pk %}">
+          {% csrf_token %}<input type="hidden" name="acao" value="aprovar">
+          <button type="submit" class="kan-btn-success"><i class="fa fa-check" aria-hidden="true"></i> Aprovar</button>
+        </form>
+        <form method="post" action="{% url 'requisicao_acao' requisicao.pk %}">
+          {% csrf_token %}<input type="hidden" name="acao" value="reprovar">
+          <button type="submit" class="kan-btn-danger"><i class="fa fa-xmark" aria-hidden="true"></i> Reprovar</button>
+        </form>
+        {% endif %}
+
+        {% if mostrar_retirar_todos %}
+        <form method="post" action="{% url 'requisicao_acao' requisicao.pk %}" onsubmit="return confirm('Marcar TODOS os itens desta requisição como retirados no almoxarifado?');">
+          {% csrf_token %}<input type="hidden" name="acao" value="retirar">
+          <button type="submit" class="kan-btn-success"><i class="fa fa-box-open" aria-hidden="true"></i> Marcar Requisição como Retirada</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if mostrar_encerrar %}
+      <div class="kan-actions-group">
+        <span class="kan-actions-label">Encerrar / pausar</span>
+
+        {% if mostrar_excluir %}
+        <form method="post" action="{% url 'requisicao_acao' requisicao.pk %}" onsubmit="return confirm('Excluir esta requisição? Os itens voltam soltos ao quadro.');">
+          {% csrf_token %}<input type="hidden" name="acao" value="excluir">
+          <button type="submit" class="kan-btn-danger"><i class="fa fa-trash" aria-hidden="true"></i> Excluir Requisição</button>
+        </form>
+        {% endif %}
+
+        {% if mostrar_pausar_erro %}
+        <form method="post" action="{% url 'requisicao_acao' requisicao.pk %}">
+          {% csrf_token %}<input type="hidden" name="acao" value="pausar">
+          <button type="submit" class="kan-btn-warning"><i class="fa fa-pause" aria-hidden="true"></i> Pausar</button>
+        </form>
+        <form method="post" action="{% url 'requisicao_acao' requisicao.pk %}">
+          {% csrf_token %}<input type="hidden" name="acao" value="marcar_erro">
+          <button type="submit" class="kan-btn"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> Marcar com Erro</button>
+        </form>
+        {% endif %}
+
+        {% if mostrar_retomar %}
+        <form method="post" action="{% url 'requisicao_acao' requisicao.pk %}">
+          {% csrf_token %}<input type="hidden" name="acao" value="retomar">
+          <button type="submit" class="kan-btn-primary"><i class="fa fa-play" aria-hidden="true"></i> Retomar</button>
+        </form>
+        {% endif %}
+
+        <form method="post" action="{% url 'requisicao_acao' requisicao.pk %}" onsubmit="return confirm('Cancelar esta requisição? Os itens serão marcados como reprovados.');">
+          {% csrf_token %}<input type="hidden" name="acao" value="cancelar">
+          <button type="submit" class="kan-btn-danger"><i class="fa fa-ban" aria-hidden="true"></i> Cancelar</button>
+        </form>
+      </div>
+      {% endif %}
+
+      {% if requisicao.status == "nao_aprovada" or requisicao.status == "cancelada" %}
+        <div class="kan-info-note">Esta requisição está encerrada e não permite mais ações.</div>
+      {% endif %}
+      {% if requisicao.status == "aprovada" and not itens_pendentes_retirada %}
+        <div class="kan-info-note kan-info-note-success"><i class="fa fa-check" aria-hidden="true"></i> Todos os itens desta requisição já foram retirados no almoxarifado.</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="kan-d-card">
+    <div class="kan-d-header"><h2 class="kan-d-title" style="font-size:1rem;">Itens ({{ itens|length }})</h2></div>
+    <div class="kan-d-body" style="padding:0;overflow-x:auto;">
+      <table class="kan-table">
+        <thead>
+          <tr><th>Descrição</th><th>Categoria</th><th>Qtd</th><th>Status</th><th>Data</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for item in itens %}
+          <tr>
+            <td>{{ item.descricao }}{% if item.codigo %} <span class="kan-td-data">· {{ item.codigo }}</span>{% endif %}</td>
+            <td>{{ item.categoria }}</td>
+            <td>{{ item.quantidade }}</td>
+            <td class="kan-td-status"><span class="kan-badge {{ item.badge_class }}">{{ item.get_status_display }}</span></td>
+            <td class="kan-td-data">{% if item.estagio_data %}{{ item.estagio_rotulo }}<br>{{ item.estagio_data|date:"d/m/Y H:i" }}{% else %}—{% endif %}</td>
+            <td style="text-align:right;"><a href="{% url 'requisicao_item_detail' item.pk %}">Ver <i class="fa fa-chevron-right" aria-hidden="true"></i></a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

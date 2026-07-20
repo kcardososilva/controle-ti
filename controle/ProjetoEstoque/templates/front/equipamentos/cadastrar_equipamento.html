@@ -1033,6 +1033,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const aquisicaoOnlyFields = document.querySelectorAll('.js-aquisicao-only');
     const flowTitle = document.getElementById('ifFlowTitle');
     const flowDesc = document.getElementById('ifFlowDesc');
+    const statusField = document.getElementById('{{ form.status.auto_id }}');
 
     function escapeAttr(value) {
         return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -1184,6 +1185,32 @@ document.addEventListener('DOMContentLoaded', function () {
         flowDesc.textContent = 'Preencha os dados mestres, classificação, localização e aquisição do item.';
     }
 
+    function syncStatusOptions(consumo) {
+        if (!statusField) return;
+
+        const optBackup = statusField.querySelector('option[value="backup"]');
+        const optEstoque = statusField.querySelector('option[value="estoque"]');
+        if (!optBackup || !optEstoque) return;
+
+        // "Backup" é spare de equipamento; "Estoque" é o status equivalente
+        // para item de consumo (toner, cabo...) — nunca faz sentido oferecer
+        // os dois juntos. Ao trocar a natureza do item, o valor selecionado
+        // migra junto para não deixar o formulário com um status que não se
+        // aplica mais a esse tipo de item.
+        optBackup.hidden = consumo;
+        optBackup.disabled = consumo;
+        optEstoque.hidden = !consumo;
+        optEstoque.disabled = !consumo;
+
+        if (consumo && statusField.value === 'backup') {
+            statusField.value = 'estoque';
+        } else if (!consumo && statusField.value === 'estoque') {
+            statusField.value = 'backup';
+        }
+
+        syncSelect2(statusField);
+    }
+
     function updateFormState(sourceName) {
         let locado = readBooleanField(fieldNames.locado, fieldIds.locado);
         let consumo = readBooleanField(fieldNames.consumo, fieldIds.consumo);
@@ -1216,6 +1243,7 @@ document.addEventListener('DOMContentLoaded', function () {
         itemOnlyFields.forEach((group) => toggleFieldGroup(group, !consumo));
         aquisicaoOnlyFields.forEach((group) => toggleFieldGroup(group, showAquisicao));
         toggleFieldGroup(grpPreventiva, preventiva);
+        syncStatusOptions(consumo);
 
         updateFlowCard(showLocado, showLote, preventiva);
     }

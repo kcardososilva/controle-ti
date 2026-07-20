@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+
+{% block title %}Requisições{% endblock %}
+{% block page_title %}Requisições{% endblock %}
+{% block page_subtitle %}Solicitações de Compra{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'requisicoes_kanban' %}">Solicitações de Compra</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Requisições</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'requisicoes_kanban' %}" class="btn btn-sm"><i class="fa fa-table-columns" aria-hidden="true"></i> Ver Quadro</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.kan-list-page) {
+  --kan-primary:    var(--brand,               #0071e3);
+  --kan-primary-soft: var(--brand-soft,        rgba(0,113,227,.10));
+  --kan-surface:    var(--bg-elevated,         #ffffff);
+  --kan-muted-surf: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
+  --kan-hover:      var(--bg-hover,            rgba(0,0,0,.04));
+  --kan-text:       var(--text-primary,        #1d1d1f);
+  --kan-muted:      var(--text-tertiary,       #6e6e73);
+  --kan-soft:       var(--text-quaternary,     #86868b);
+  --kan-border:     var(--separator-hairline,  rgba(0,0,0,.06));
+  --kan-border2:    var(--separator-non-opaque,rgba(0,0,0,.10));
+  --kan-success:    var(--system-green,        #34c759);
+  --kan-success-soft: var(--system-green-soft, rgba(52,199,89,.12));
+  --kan-warning:    var(--warning,             #ff9500);
+  --kan-warning-soft: var(--warning-soft,      rgba(255,149,0,.12));
+  --kan-danger:     var(--danger,              #ff3b30);
+  --kan-danger-soft:var(--danger-soft,         rgba(255,59,48,.10));
+  --kan-radius-sm:  var(--radius-sm,           10px);
+  --kan-radius-lg:  var(--radius-lg,           18px);
+  --kan-radius-pill:var(--radius-pill,         980px);
+  --kan-shadow-sm:  var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+  --kan-transition: var(--transition-fast,     160ms ease);
+}
+.kan-list-page, .kan-list-page * { box-sizing: border-box; min-width: 0; }
+.kan-list-page { display: grid; gap: 1rem; color: var(--kan-text); }
+
+.kan-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 1rem; align-items: end; padding: 1rem; border: 1px solid var(--kan-border); border-radius: var(--kan-radius-lg); background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); }
+.kan-filter-grid { display: grid; grid-template-columns: minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr); gap: .75rem; }
+.kan-field label { display: block; margin-bottom: .35rem; color: var(--kan-muted); font-size: .76rem; font-weight: 600; }
+.kan-list-page input[type="text"], .kan-list-page select { width: 100%; min-height: 2.4rem; padding: .55rem .8rem; border: 1px solid var(--kan-border2); border-radius: var(--kan-radius-sm); background: var(--kan-surface); color: var(--kan-text); font-family: inherit; font-size: .86rem; }
+.kan-actions-row { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: flex-end; align-items: center; }
+.kan-btn, .kan-btn-primary, .kan-btn-secondary { min-height: 2.3rem; display: inline-flex; align-items: center; justify-content: center; gap: .45rem; padding: .5rem 1rem; border-radius: var(--kan-radius-pill); border: 1px solid transparent; font-size: .84rem; font-weight: 600; text-decoration: none; cursor: pointer; }
+.kan-btn-primary { background: var(--kan-primary); color: #fff; }
+.kan-btn-secondary, .kan-btn { background: transparent; color: var(--kan-text); border-color: var(--kan-border2); }
+.kan-btn-secondary:hover, .kan-btn:hover { background: var(--kan-hover); }
+
+.kan-table-card { overflow: hidden; border: 1px solid var(--kan-border); border-radius: var(--kan-radius-lg); background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); }
+.kan-table-wrap { width: 100%; overflow-x: auto; }
+.kan-table { width: max-content; min-width: 100%; border-collapse: collapse; }
+.kan-table th, .kan-table td { padding: .8rem 1rem; border-bottom: 1px solid var(--kan-border); text-align: left; white-space: nowrap; }
+.kan-table th { color: var(--kan-muted); font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.kan-table td { font-size: .86rem; }
+.kan-table tbody tr:last-child td { border-bottom: 0; }
+.kan-table tbody tr:hover td { background: var(--kan-hover); }
+.kan-name-link { color: var(--kan-text); font-weight: 650; text-decoration: none; }
+.kan-name-link:hover { color: var(--kan-primary); }
+.kan-badge { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .6rem; border-radius: var(--kan-radius-pill); font-size: .72rem; font-weight: 650; background: var(--kan-muted-surf); color: var(--kan-muted); }
+.kan-badge-primary { background: var(--kan-primary-soft); color: var(--kan-primary); }
+.kan-badge-success { background: var(--kan-success-soft); color: var(--kan-success); }
+.kan-badge-warning { background: var(--kan-warning-soft); color: var(--kan-warning); }
+.kan-badge-danger { background: var(--kan-danger-soft); color: var(--kan-danger); }
+.kan-empty { display: inline-flex; flex-direction: column; align-items: center; gap: .6rem; padding: 2.5rem 1rem; color: var(--kan-soft); font-size: .9rem; }
+
+@media (max-width: 52rem) { .kan-toolbar { grid-template-columns: 1fr; } .kan-filter-grid { grid-template-columns: 1fr; } .kan-actions-row { justify-content: stretch; } .kan-btn, .kan-btn-primary, .kan-btn-secondary { width: 100%; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kan-list-page">
+
+  <section class="kan-toolbar" aria-label="Filtros">
+    <form method="get" id="reqFilterForm" autocomplete="off">
+      <div class="kan-filter-grid">
+        <div class="kan-field">
+          <label for="id_q">Pesquisar</label>
+          <input id="id_q" type="text" name="q" value="{{ q|default:'' }}" placeholder="Buscar por número Datasul...">
+        </div>
+        <div class="kan-field">
+          <label for="id_status">Status</label>
+          <select id="id_status" name="status">
+            <option value="">Todos</option>
+            {% for v, lbl in status_choices %}<option value="{{ v }}" {% if f_status == v %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="kan-field">
+          <label for="id_tipo">Tipo</label>
+          <select id="id_tipo" name="tipo">
+            <option value="">Todos</option>
+            {% for v, lbl in tipo_choices %}<option value="{{ v }}" {% if f_tipo == v %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+    </form>
+    <div class="kan-actions-row">
+      <a href="{% url 'requisicoes_list' %}" class="kan-btn-secondary"><i class="fa fa-eraser" aria-hidden="true"></i> Limpar</a>
+      <button type="submit" form="reqFilterForm" class="kan-btn-primary"><i class="fa fa-filter" aria-hidden="true"></i> Filtrar</button>
+    </div>
+  </section>
+
+  <div class="kan-table-card">
+    <div class="kan-table-wrap">
+      <table class="kan-table">
+        <thead>
+          <tr><th>Número Datasul</th><th>Tipo</th><th>Status</th><th>Itens</th><th>Criado por</th><th>Criado em</th><th>Finalizada em</th></tr>
+        </thead>
+        <tbody>
+          {% for req in requisicoes %}
+          <tr>
+            <td><a href="{% url 'requisicao_detail' req.pk %}" class="kan-name-link">{{ req.numero_datasul|default:"Rascunho" }}</a></td>
+            <td><span class="kan-badge">{{ req.get_tipo_display }}</span></td>
+            <td><span class="kan-badge {{ req.badge_class }}">{{ req.get_status_display }}</span></td>
+            <td>{{ req.itens_count }}</td>
+            <td>{% if req.criado_por %}{{ req.criado_por.get_full_name|default:req.criado_por.username }}{% else %}—{% endif %}</td>
+            <td>{{ req.created_at|date:"d/m/Y H:i" }}</td>
+            <td>{% if req.esta_finalizada %}<span class="kan-badge kan-badge-success"><i class="fa fa-box-open" aria-hidden="true"></i> {{ req.finalizada_em|date:"d/m/Y H:i" }}</span>{% else %}—{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7"><div class="kan-empty"><i class="fa fa-folder-open" aria-hidden="true"></i> Nenhuma requisição encontrada.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if page_obj.has_other_pages %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem;border-top:1px solid var(--kan-border);flex-wrap:wrap;gap:.75rem">
+      <span style="color:var(--kan-muted);font-size:.82rem">Página <strong>{{ page_obj.number }}</strong> de <strong>{{ page_obj.paginator.num_pages }}</strong></span>
+      <div style="display:flex;gap:.5rem">
+        {% if page_obj.has_previous %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.previous_page_number }}" class="kan-btn-secondary">Anterior</a>{% endif %}
+        {% if page_obj.has_next %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.next_page_number }}" class="kan-btn-secondary">Próxima</a>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

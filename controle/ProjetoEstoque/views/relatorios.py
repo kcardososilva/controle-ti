@@ -27,6 +27,7 @@ from ..models import (
     CentroCusto, Fornecedor, Localidade, Subtipo,
     StatusItemChoices, SimNaoChoices, PeriodicidadeChoices,
     TipoMovLicencaChoices, ItemLote,
+    RequisicaoItem, StatusItemSolicitacaoChoices, TipoRequisicaoChoices,
 )
 
 from .equipamentos import _aplicar_filtros_itens
@@ -1700,7 +1701,7 @@ def avisos_contratos_vencer(request):
     DIAS_ALERTA = 60  # ajuste conforme sua operação
 
     # Ajuste estes nomes conforme os valores reais do seu StatusItemChoices
-    STATUS_OPERACIONAIS = ["ativo", "backup", "manutencao", "defeito", "queimado"]
+    STATUS_OPERACIONAIS = ["ativo", "backup", "estoque", "manutencao", "defeito", "queimado"]
     STATUS_PAUSADO = "pausado"
 
     hoje = date.today()
@@ -1852,7 +1853,7 @@ def avisos_contratos_vencer_export_excel(request):
     """
 
     DIAS_ALERTA = 60
-    STATUS_OPERACIONAIS = ["ativo", "backup", "manutencao", "defeito", "queimado"]
+    STATUS_OPERACIONAIS = ["ativo", "backup", "estoque", "manutencao", "defeito", "queimado"]
     STATUS_PAUSADO = "pausado"
 
     hoje = date.today()
@@ -2168,6 +2169,249 @@ def avisos_contratos_vencer_export_excel(request):
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     response["Content-Disposition"] = 'attachment; filename="avisos_contratos_vencer.xlsx"'
+    return response
+
+
+@login_required
+def requisicoes_export_excel(request):
+    """Exporta os itens do quadro de Requisições, respeitando os mesmos
+    filtros de `requisicao_itens_list` (status/tipo/categoria/busca).
+
+    Layout em 2 abas — "Resumo" (KPIs + quebras por tipo/status/categoria,
+    pra leitura rápida sem abrir a aba de detalhe) e "Itens" (tabela
+    completa, ordenada por relevância operacional: Tipo → Categoria →
+    Descrição, com o status colorido igual ao badge do quadro) — mesmo
+    padrão visual usado em `equipamentos_exportar`.
+    """
+    from collections import Counter
+
+    from services.requisicao_service import COLUNA_LABELS, coluna_kanban
+
+    f_status = (request.GET.get("status") or "").strip()
+    f_tipo = (request.GET.get("tipo") or "").strip()
+    f_categoria = (request.GET.get("categoria") or "").strip()
+    q = (request.GET.get("q") or "").strip()
+
+    qs = (
+        RequisicaoItem.objects
+        .select_related("requisicao", "categoria", "item_vinculado", "criado_por")
+        .order_by("tipo", "categoria__nome", "descricao")
+    )
+    if f_status:
+        qs = qs.filter(status=f_status)
+    if f_tipo:
+        qs = qs.filter(tipo=f_tipo)
+    if f_categoria:
+        qs = qs.filter(categoria_id=f_categoria)
+    if q:
+        qs = qs.filter(Q(descricao__icontains=q) | Q(codigo__icontains=q))
+
+    itens = list(qs)
+
+    # ── Paleta / estilos profissionais (mesma identidade do export de Equipamentos) ──
+    BRAND_DARK, BRAND, SOFT, ZEBRA = "0A2540", "1D4ED8", "EEF2F7", "F4F7FB"
+    INK, MUTED = "1F2733", "5B6B7F"
+    hair = Side(style="thin", color="DCE3EC")
+    border = Border(left=hair, right=hair, top=hair, bottom=hair)
+    f_title = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
+    f_sub = Font(name="Calibri", size=10, italic=True, color=MUTED)
+    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    f_bold = Font(name="Calibri", size=10, bold=True, color=INK)
+    f_cell = Font(name="Calibri", size=10, color=INK)
+    fill_title = PatternFill("solid", fgColor=BRAND_DARK)
+    fill_sub = PatternFill("solid", fgColor=SOFT)
+    fill_header = PatternFill("solid", fgColor=BRAND)
+    fill_zebra = PatternFill("solid", fgColor=ZEBRA)
+    a_center = Alignment(horizontal="center", vertical="center")
+    a_left = Alignment(horizontal="left", vertical="center")
+    a_left_ind = Alignment(horizontal="left", vertical="center", indent=1)
+    data_hora_format = 'DD/MM/YYYY HH:MM'
+
+    # Cores de status — mesma linguagem dos badges do quadro (kan-badge-*).
+    _STATUS_FILL = {
+        StatusItemSolicitacaoChoices.SOLICITADO: "FFF3E0",
+        StatusItemSolicitacaoChoices.PAUSADO: "FFF3E0",
+        StatusItemSolicitacaoChoices.REPROVADO: "FDECEA",
+        StatusItemSolicitacaoChoices.RETIRADO: "E6F4EA",
+        StatusItemSolicitacaoChoices.NAO_SOLICITADO: "E8F0FE",
+    }
+
+    def faixa_titulo(ws, ncols, titulo, subtitulo):
+        last = get_column_letter(ncols)
+        ws.merge_cells(f"A1:{last}1")
+        c = ws["A1"]; c.value = titulo; c.font = f_title; c.fill = fill_title
+        c.alignment = a_left_ind
+        ws.row_dimensions[1].height = 34
+        ws.merge_cells(f"A2:{last}2")
+        c2 = ws["A2"]; c2.value = subtitulo; c2.font = f_sub; c2.fill = fill_sub
+        c2.alignment = a_left_ind
+        ws.row_dimensions[2].height = 18
+        ws.sheet_view.showGridLines = False
+
+    def cabecalho_tabela(ws, row, headers, center_cols=()):
+        for ci, h in enumerate(headers, 1):
+            c = ws.cell(row=row, column=ci, value=h)
+            c.fill = fill_header; c.font = f_header; c.border = border
+            c.alignment = a_center if ci in center_cols else a_left
+        ws.row_dimensions[row].height = 22
+
+    gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")
+    filtros_txt = " · ".join(
+        f"{lbl}: {val}" for lbl, val in [
+            ("Status", dict(StatusItemSolicitacaoChoices.choices).get(f_status)),
+            ("Tipo", dict(TipoRequisicaoChoices.choices).get(f_tipo)),
+            ("Busca", q or None),
+        ] if val
+    ) or "Sem filtros aplicados"
+
+    wb = Workbook()
+
+    # =========================================================================
+    # ABA 1 — RESUMO
+    # =========================================================================
+    wsr = wb.active
+    wsr.title = "Resumo"
+    faixa_titulo(wsr, 6, "REQUISIÇÕES — ITENS DO QUADRO",
+                 f"Santa Colomba Agropecuária  ·  Gerado em {gerado}  ·  {filtros_txt}")
+
+    qtd_total = sum(i.quantidade for i in itens)
+    n_compra = sum(1 for i in itens if i.tipo == TipoRequisicaoChoices.COMPRA)
+    n_estoque = sum(1 for i in itens if i.tipo == TipoRequisicaoChoices.ESTOQUE)
+    n_retirados = sum(1 for i in itens if i.status == StatusItemSolicitacaoChoices.RETIRADO)
+
+    kpis = [
+        ("TOTAL DE ITENS", len(itens), "334155", None),
+        ("QUANTIDADE TOTAL", qtd_total, "0A2540", None),
+        ("ITENS DE COMPRA", n_compra, "EA580C", None),
+        ("ITENS DE ESTOQUE", n_estoque, "0EA5E9", None),
+        ("RETIRADOS", n_retirados, "1E8E3E", None),
+    ]
+    rk = 4
+    for idx, (lbl, val, color, fmt) in enumerate(kpis):
+        col = idx + 1
+        cl = wsr.cell(row=rk, column=col, value=lbl)
+        cl.font = Font(name="Calibri", size=8, bold=True, color="FFFFFF")
+        cl.fill = PatternFill("solid", fgColor=color); cl.alignment = a_center; cl.border = border
+        cv = wsr.cell(row=rk + 1, column=col, value=val)
+        cv.font = Font(name="Calibri", size=15, bold=True, color=color)
+        cv.fill = PatternFill("solid", fgColor="F4F6F9"); cv.alignment = a_center; cv.border = border
+        if fmt:
+            cv.number_format = fmt
+    wsr.row_dimensions[rk].height = 16
+    wsr.row_dimensions[rk + 1].height = 28
+    for c in range(1, 7):
+        wsr.column_dimensions[get_column_letter(c)].width = 20
+
+    def _hcell(rr, col, val, align):
+        c = wsr.cell(row=rr, column=col, value=val)
+        c.fill = fill_header; c.font = f_header; c.border = border; c.alignment = align
+        return c
+
+    # Quebra por Status (Status | Qtd. de itens)
+    por_status = Counter(i.get_status_display() for i in itens)
+    r = rk + 3
+    _hcell(r, 1, "Status", a_left)
+    _hcell(r, 2, "Qtd. de itens", a_center)
+    wsr.row_dimensions[r].height = 22
+    r += 1
+    for i, (st, qt) in enumerate(por_status.most_common()):
+        zebra = (i % 2 == 1)
+        c1 = wsr.cell(row=r, column=1, value=st)
+        c2 = wsr.cell(row=r, column=2, value=qt)
+        c1.alignment, c2.alignment = a_left, a_center
+        for cc in (c1, c2):
+            cc.border = border; cc.font = f_cell
+            if zebra:
+                cc.fill = fill_zebra
+        r += 1
+
+    # Quebra por Categoria — Categoria | Qtd. de itens
+    r += 1
+    por_categoria = Counter(str(i.categoria) for i in itens)
+    _hcell(r, 1, "Categoria", a_left)
+    _hcell(r, 2, "Qtd. de itens", a_center)
+    wsr.row_dimensions[r].height = 22
+    r += 1
+    for i, (cat, qt) in enumerate(por_categoria.most_common(15)):
+        zebra = (i % 2 == 1)
+        c1 = wsr.cell(row=r, column=1, value=cat)
+        c2 = wsr.cell(row=r, column=2, value=qt)
+        c1.alignment, c2.alignment = a_left, a_center
+        for cc in (c1, c2):
+            cc.border = border; cc.font = f_cell
+            if zebra:
+                cc.fill = fill_zebra
+        r += 1
+
+    # =========================================================================
+    # ABA 2 — ITENS (detalhado)
+    # =========================================================================
+    ws = wb.create_sheet(title="Itens")
+    header = [
+        "#", "Tipo", "Categoria", "Descrição", "Código", "Quantidade", "Status",
+        "Coluna do Quadro", "Requisição (Datasul)", "Status da Requisição",
+        "Requisitante", "Criado em",
+    ]
+    ncols = len(header)
+    faixa_titulo(ws, ncols, "REQUISIÇÕES — ITENS (DETALHADO)",
+                 f"{len(itens)} item(ns) exportado(s)  ·  gerado em {gerado}  ·  {filtros_txt}")
+    HEADER_ROW = 3
+    center_cols = {1, 2, 6, 7, 9, 10}
+    cabecalho_tabela(ws, HEADER_ROW, header, center_cols=center_cols)
+
+    row = HEADER_ROW + 1
+    for i, item in enumerate(itens, start=1):
+        valores = [
+            i,
+            item.get_tipo_display(),
+            str(item.categoria),
+            item.descricao,
+            item.codigo or "-",
+            item.quantidade,
+            item.get_status_display(),
+            COLUNA_LABELS[coluna_kanban(item)],
+            item.requisicao.numero_datasul if item.requisicao_id else "-",
+            item.requisicao.get_status_display() if item.requisicao_id else "-",
+            (item.criado_por.get_full_name() or item.criado_por.username) if item.criado_por_id else "-",
+            timezone.localtime(item.created_at).replace(tzinfo=None),
+        ]
+        zebra = (i % 2 == 0)
+        st_fill = _STATUS_FILL.get(item.status)
+        for ci, val in enumerate(valores, 1):
+            c = ws.cell(row=row, column=ci, value=val)
+            c.border = border
+            c.font = f_cell
+            c.alignment = a_center if ci in center_cols else a_left
+            if ci == 12:
+                c.number_format = data_hora_format
+            if ci == 7 and st_fill:
+                c.fill = PatternFill("solid", fgColor=st_fill)
+                c.font = f_bold
+                c.alignment = a_center
+            elif zebra:
+                c.fill = fill_zebra
+        row += 1
+
+    ws.freeze_panes = f"A{HEADER_ROW + 1}"
+
+    widths = {}
+    for r_ in ws.iter_rows(min_row=HEADER_ROW, values_only=True):
+        for idx, val in enumerate(r_, start=1):
+            texto = str(val) if val is not None else ""
+            widths[idx] = max(widths.get(idx, 0), len(texto))
+    for idx, width in widths.items():
+        ws.column_dimensions[get_column_letter(idx)].width = min(max(width + 2, 10), 42)
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    now = timezone.localtime().strftime("%Y%m%d-%H%M%S")
+    response = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f'attachment; filename="requisicoes_itens_{now}.xlsx"'
     return response
 
 

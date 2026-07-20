@@ -124,6 +124,21 @@ CATALOGO_NOTIFICACOES: list[dict] = [
         icone="fa-file-invoice", tipo_destinatarios="fixo",
         origem_disparo="Manual — botão 'Gerar Documento Fiscal' nas telas de Remessa",
     ),
+    dict(
+        codigo="requisicao_enviada_aprovacao", nome="Requisição enviada para aprovação", categoria="Requisições",
+        descricao="Avisa o aprovador definido aqui (destinatário customizado) sempre que uma requisição de "
+        "Compra ou Estoque é enviada para aprovação, com a lista de itens.",
+        icone="fa-paper-plane", tipo_destinatarios="fixo",
+        origem_disparo="Transacional — ao enviar para aprovação (quadro Kanban ou tela de detalhe da requisição)",
+    ),
+    dict(
+        codigo="requisicao_itens_retirados", nome="Itens de requisição retirados", categoria="Requisições",
+        descricao="Avisa que um ou mais itens de uma requisição (Compra ou Estoque) foram retirados no "
+        "almoxarifado — individualmente ou a requisição inteira de uma vez.",
+        icone="fa-box-open", tipo_destinatarios="dinamico",
+        destino_gerenciado_em="E-mail de quem criou a requisição, somado à lista padrão do sistema (.env)",
+        origem_disparo="Transacional — ao marcar item(ns) como retirado no quadro Kanban de Requisições",
+    ),
 ]
 
 
@@ -169,7 +184,9 @@ def _destinatarios_padrao(codigo: str) -> list[str]:
 # editável (adicionar/remover por e-mail) quanto a de um canal 'fixo'. Only
 # `item_defeito` é dinâmico "de verdade" (destinatários = PerfilFornecedor,
 # sem lista-base nenhuma) e por isso fica de fora desta lista.
-_CANAIS_BASE_EDITAVEL_DINAMICOS = {"movimentacao_transacional", "transferencia_equipamento"}
+_CANAIS_BASE_EDITAVEL_DINAMICOS = {
+    "movimentacao_transacional", "transferencia_equipamento", "requisicao_itens_retirados",
+}
 
 
 def _base_efetiva(codigo: str) -> list[str]:
@@ -1614,6 +1631,100 @@ def alerta_acesso_suspeito(evento) -> bool:
         f"Caminho: {evento.caminho or '—'}\n"
     )
     return _enviar(assunto, texto, html, codigo="acesso_suspeito")
+
+
+# ─────────────────────────────────────────────────────────────
+# Requisições (Kanban de Solicitações de Compra/Estoque)
+# ─────────────────────────────────────────────────────────────
+
+def alerta_requisicao_enviada_aprovacao(requisicao_pk: int) -> bool:
+    """Avisa o aprovador (destinatário customizado do canal, definido no painel
+    de notificações) que uma requisição foi enviada para aprovação, com a lista
+    de itens agrupados nela."""
+    from ProjetoEstoque.models import Requisicao
+
+    req = Requisicao.objects.select_related("criado_por").prefetch_related("itens__categoria").filter(pk=requisicao_pk).first()
+    if req is None:
+        return False
+    itens = list(req.itens.all())
+    if not itens:
+        return False
+
+    numero = req.numero_datasul or f"#{req.pk}"
+    solicitante = (
+        (req.criado_por.get_full_name() or req.criado_por.username) if req.criado_por else "—"
+    )
+    linhas = [
+        [item.descricao, item.codigo or "—", item.categoria.nome if item.categoria_id else "—", str(item.quantidade)]
+        for item in itens
+    ]
+    intro = (
+        f'<p style="margin:0 0 10px;color:#334155;font-size:14px;">'
+        f'A requisição <strong>{numero}</strong> ({req.get_tipo_display()}) foi enviada para '
+        f'aprovação por <strong>{solicitante}</strong> e está aguardando decisão.</p>'
+    )
+    secao = _secao(
+        "Requisição aguardando aprovação", "📝", "#1d4ed8",
+        intro + _tabela_html(["Item", "Código", "Categoria", "Qtd"], linhas),
+    )
+    html = _base_html(
+        f"Requisição {numero} aguardando aprovação",
+        f"{len(itens)} item(ns) · {req.get_tipo_display()}",
+        secao,
+    )
+    texto = (
+        f"REQUISIÇÃO AGUARDANDO APROVAÇÃO — {numero}\n\n"
+        f"Tipo: {req.get_tipo_display()}\nSolicitante: {solicitante}\n\n"
+        + "\n".join(f"- {i.descricao} (cód. {i.codigo or '—'}) x{i.quantidade}" for i in itens)
+    )
+    return _enviar(
+        f"[Controle TI] Requisição {numero} aguardando aprovação",
+        texto, html, codigo="requisicao_enviada_aprovacao",
+    )
+
+
+def alerta_requisicao_itens_retirados(requisicao_pk: int, item_pks: list[int]) -> bool:
+    """Avisa que um ou mais itens de uma requisição foram retirados no
+    almoxarifado (compra recebida ou saída de estoque) — dispara tanto para
+    retirada individual de um item quanto para a requisição inteira de uma vez."""
+    from ProjetoEstoque.models import Requisicao, RequisicaoItem
+
+    req = Requisicao.objects.select_related("criado_por").filter(pk=requisicao_pk).first()
+    if req is None:
+        return False
+    itens = list(RequisicaoItem.objects.select_related("categoria").filter(pk__in=item_pks))
+    if not itens:
+        return False
+
+    numero = req.numero_datasul or f"#{req.pk}"
+    linhas = [
+        [item.descricao, item.codigo or "—", item.categoria.nome if item.categoria_id else "—", str(item.quantidade)]
+        for item in itens
+    ]
+    intro = (
+        f'<p style="margin:0 0 10px;color:#334155;font-size:14px;">'
+        f'{len(itens)} item(ns) da requisição <strong>{numero}</strong> ({req.get_tipo_display()}) '
+        f'foram retirados no almoxarifado.</p>'
+    )
+    secao = _secao(
+        "Itens retirados no almoxarifado", "📦", "#15803d",
+        intro + _tabela_html(["Item", "Código", "Categoria", "Qtd"], linhas),
+    )
+    html = _base_html(f"Itens retirados — {numero}", f"{len(itens)} item(ns) · {req.get_tipo_display()}", secao)
+    texto = (
+        f"ITENS RETIRADOS — {numero}\n\n"
+        + "\n".join(f"- {i.descricao} (cód. {i.codigo or '—'}) x{i.quantidade}" for i in itens)
+    )
+
+    destinatarios = _base_efetiva("requisicao_itens_retirados")
+    solicitante_email = req.criado_por.email if req.criado_por_id else ""
+    if solicitante_email and solicitante_email not in destinatarios:
+        destinatarios.append(solicitante_email)
+
+    return _enviar(
+        f"[Controle TI] Itens retirados — {numero}",
+        texto, html, destinatarios=destinatarios, codigo="requisicao_itens_retirados",
+    )
 
 
 # ─────────────────────────────────────────────────────────────

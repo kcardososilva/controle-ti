@@ -18,6 +18,7 @@ class SimNaoChoices(models.TextChoices):
 class StatusItemChoices(models.TextChoices):
     ATIVO = 'ativo', 'Ativo'
     BACKUP = 'backup', 'Backup'
+    ESTOQUE = 'estoque', 'Estoque'
     MANUTENCAO = 'manutencao', 'Manutenção'
     DEFEITO = 'defeito', 'Defeito'
     PAUSADO = 'pausado', 'Pausado'
@@ -3348,3 +3349,154 @@ class KioskInstaladorLink(models.Model):
         if self.revogado:
             return False
         return self.expira_em > timezone.now()
+
+
+# ========== SOLICITAÇÕES DE COMPRA (KANBAN) ==========
+# Rastreio interno do fluxo Datasul (requisição → aprovação do gestor) →
+# Paradigma (compra). Sem integração real com esses sistemas externos — os
+# números de requisição/compra são digitados manualmente quando já existem lá.
+# Ver `services/requisicao_service.py` para as regras de transição de status.
+
+class TipoRequisicaoChoices(models.TextChoices):
+    COMPRA = "compra", "Compra"
+    ESTOQUE = "estoque", "Estoque"
+
+
+class StatusRequisicaoChoices(models.TextChoices):
+    RASCUNHO = "rascunho", "Rascunho"
+    SOLICITADA = "solicitada", "Solicitada"
+    ENVIADA_APROVACAO = "enviada_aprovacao", "Enviada para Aprovação"
+    APROVADA = "aprovada", "Aprovada"
+    NAO_APROVADA = "nao_aprovada", "Não Aprovada"
+    PAUSADA = "pausada", "Pausada"
+    COM_ERRO = "com_erro", "Com Erro"
+    CANCELADA = "cancelada", "Cancelada"
+
+
+class StatusItemSolicitacaoChoices(models.TextChoices):
+    NAO_CADASTRADO = "nao_cadastrado", "Item não cadastrado"
+    NAO_SOLICITADO = "nao_solicitado", "Item não solicitado"
+    SOLICITADO = "solicitado", "Item Solicitado"
+    PAUSADO = "pausado", "Item pausado"
+    REPROVADO = "reprovado", "Item reprovado"
+    RETIRADO = "retirado", "Item Retirado"
+
+
+class Requisicao(AuditModel):
+    """
+    Agrupamento de RequisicaoItem enviados juntos para aprovação — espelha uma
+    requisição real do Datasul. Só existe (com PK) a partir do momento em que
+    o usuário agrupa itens soltos; itens ainda soltos (ideia/rascunho solto)
+    têm `RequisicaoItem.requisicao = None`.
+    """
+    tipo = models.CharField(max_length=10, choices=TipoRequisicaoChoices.choices, verbose_name="Tipo")
+    status = models.CharField(max_length=20, choices=StatusRequisicaoChoices.choices,
+                               default=StatusRequisicaoChoices.RASCUNHO, db_index=True)
+    numero_datasul = models.CharField(max_length=30, blank=True, null=True, db_index=True,
+        verbose_name="Número da Requisição (Datasul)",
+        help_text="Preenchido manualmente quando a requisição já existir no Datasul. Sem integração automática.")
+    numero_paradigma = models.CharField(max_length=30, blank=True, null=True, verbose_name="Número no Paradigma")
+    observacoes = models.TextField(blank=True, null=True)
+    status_anterior_pausa = models.CharField(max_length=20, choices=StatusRequisicaoChoices.choices,
+        blank=True, null=True, verbose_name="Status antes de pausar")
+    solicitada_em = models.DateTimeField(null=True, blank=True, verbose_name="Solicitada em")
+    enviada_em = models.DateTimeField(null=True, blank=True)
+    decidida_em = models.DateTimeField(null=True, blank=True, verbose_name="Aprovada/Reprovada em")
+    decidida_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="requisicoes_decididas", verbose_name="Aprovada/Reprovada por")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Requisição"
+        verbose_name_plural = "Requisições"
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["tipo", "status"]),
+            models.Index(fields=["numero_datasul"]),
+        ]
+
+    def __str__(self):
+        return self.numero_datasul or f"Requisição #{self.pk} ({self.get_status_display()})"
+
+
+class RequisicaoItem(AuditModel):
+    """Card individual do Kanban de Requisições. Ver `services/requisicao_service.py`
+    (`coluna_kanban`) para como o status deste item + o status da `requisicao`
+    (quando houver) determinam em qual coluna o card aparece."""
+    requisicao = models.ForeignKey(Requisicao, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="itens", verbose_name="Requisição")
+    tipo = models.CharField(max_length=10, choices=TipoRequisicaoChoices.choices, verbose_name="Tipo")
+    categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT, related_name="itens_requisicao",
+        verbose_name="Categoria")
+    item_vinculado = models.ForeignKey(Item, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="requisicoes_kanban", verbose_name="Item / Equipamento (opcional)",
+        help_text="Vincula a um item já controlado por lote (mostra quantidade disponível). Deixe em branco para cadastro livre.")
+    codigo = models.CharField(max_length=60, blank=True, null=True, verbose_name="Código",
+        help_text="Código no Datasul, se já existir. Pode ficar em branco enquanto é só uma ideia.")
+    descricao = models.CharField(max_length=255, verbose_name="Descrição")
+    quantidade = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)])
+    status = models.CharField(max_length=15, choices=StatusItemSolicitacaoChoices.choices,
+        default=StatusItemSolicitacaoChoices.NAO_CADASTRADO, db_index=True)
+    justificativa = models.TextField(blank=True, null=True, verbose_name="Justificativa / motivo do pedido")
+    retirado_em = models.DateTimeField(null=True, blank=True, verbose_name="Retirado em")
+    retirado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="itens_requisicao_retirados", verbose_name="Retirado por")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Item de Requisição"
+        verbose_name_plural = "Itens de Requisição"
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["requisicao", "status"]),
+            models.Index(fields=["tipo", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.descricao} ({self.get_status_display()})"
+
+    @property
+    def quantidade_disponivel_lote(self):
+        if not self.item_vinculado_id:
+            return None
+        from django.db.models import Sum
+        return self.item_vinculado.vinculos_lote.aggregate(t=Sum("quantidade_disponivel"))["t"] or 0
+
+
+class ComentarioRequisicaoItem(AuditModel):
+    """Comentário sobre um `RequisicaoItem`. Modelo dedicado (não reaproveita
+    `Comentario`, que é hardcoded para `Item`) — mesma convenção de comentário
+    específico por domínio já usada no projeto."""
+    requisicao_item = models.ForeignKey(RequisicaoItem, on_delete=models.CASCADE,
+        related_name="comentarios", verbose_name="Item de Requisição")
+    texto = models.TextField()
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Comentário do Item de Requisição"
+        verbose_name_plural = "Comentários do Item de Requisição"
+
+    def __str__(self):
+        return f"Comentário sobre {self.requisicao_item.descricao}"
+
+
+class ItemPadraoDatasul(AuditModel):
+    """Catálogo de itens padronizados com código do Datasul, mantido pelo TI —
+    usado só como atalho de preenchimento no formulário de `RequisicaoItem`
+    (`codigo`/`descricao` são copiados na hora, sem FK persistida: apagar ou
+    editar um item padrão depois não afeta requisições já criadas)."""
+    codigo = models.CharField(max_length=60, unique=True, verbose_name="Código (Datasul)")
+    descricao = models.CharField(max_length=255, verbose_name="Descrição")
+    categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT,
+        related_name="itens_padrao_datasul", verbose_name="Categoria")
+    ativo = models.BooleanField(default=True, verbose_name="Ativo",
+        help_text="Itens inativos somem do seletor do formulário, mas continuam no catálogo.")
+
+    class Meta:
+        ordering = ["descricao"]
+        verbose_name = "Item Padrão (Datasul)"
+        verbose_name_plural = "Itens Padrão (Datasul)"
+        indexes = [models.Index(fields=["ativo"])]
+
+    def __str__(self):
+        return f"{self.codigo} — {self.descricao}"

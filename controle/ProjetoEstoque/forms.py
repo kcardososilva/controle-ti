@@ -13,6 +13,7 @@ from .models import (
     TipoRespostaChoices, SimNaoChoices, Licenca, MovimentacaoLicenca,
     TipoMovLicencaChoices, LicencaLote, LoteEstoque, ItemLote, PlantaProjeto,
     OrdemManutencao, StatusOrdemManutencaoChoices,
+    Requisicao, RequisicaoItem, ComentarioRequisicaoItem, ItemPadraoDatasul,
 )
 
 BASE_CTRL_CSS = {
@@ -34,7 +35,7 @@ class SubtipoForm(forms.ModelForm):
         widgets = {
             "nome": forms.TextInput(attrs={"class": "ctrl", "placeholder": "Ex.: Notebook, Monitor, Headset…"}),
             "alocado": forms.Select(attrs={"class": "ctrl"}),
-            "categoria": forms.Select(attrs={"class": "ctrl", "data-select2": "1"}),
+            "categoria": forms.Select(attrs={"class": "ctrl"}),
         }
 
 
@@ -1282,7 +1283,7 @@ class PlantaProjetoForm(forms.ModelForm):
                 "class": "ctrl", "placeholder": "Ex: Karitel - Sala Técnica"
             }),
             "localidade": forms.Select(attrs={
-                "class": "ctrl", "data-select2": "1"
+                "class": "ctrl"
             }),
             "descricao": forms.Textarea(attrs={
                 "class": "ctrl", "rows": 3,
@@ -1302,3 +1303,151 @@ class PlantaProjetoForm(forms.ModelForm):
             if img.size > 10 * 1024 * 1024:
                 raise ValidationError("Imagem excede o limite de 10 MB.")
         return img
+
+
+# ================== REQUISIÇÕES (KANBAN) ==================
+class ItemPadraoSelectWidget(forms.Select):
+    """<select> com data-atributos (código/descrição/categoria) por opção —
+    usados só no cliente pra autopreencher o formulário; sem AJAX porque o
+    catálogo é pequeno o bastante pra vir todo no HTML (mesmo padrão de
+    categoria/item_vinculado neste form)."""
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        if value:
+            obj = self._cache().get(str(value.value if hasattr(value, "value") else value))
+            if obj:
+                option["attrs"]["data-codigo"] = obj.codigo
+                option["attrs"]["data-descricao"] = obj.descricao
+                option["attrs"]["data-categoria"] = obj.categoria_id
+        return option
+
+    def _cache(self):
+        # Sem filtro de `ativo` aqui de propósito: o widget só descreve as
+        # opções que o campo já decidiu renderizar (via queryset do field);
+        # um item padrão desativado, mas ainda referenciado pela edição de um
+        # item existente, também precisa dos data-atributos.
+        if not hasattr(self, "_itens_cache"):
+            self._itens_cache = {str(o.pk): o for o in ItemPadraoDatasul.objects.all()}
+        return self._itens_cache
+
+
+class RequisicaoItemForm(forms.ModelForm):
+    item_padrao = forms.ModelChoiceField(
+        queryset=ItemPadraoDatasul.objects.filter(ativo=True).select_related("categoria").order_by("descricao"),
+        required=False, label="Selecionar item padrão (Datasul)",
+        widget=ItemPadraoSelectWidget(attrs={"class": "ctrl"}),
+        help_text="Opcional — preenche código, descrição e categoria automaticamente. Não achou? Preencha os campos abaixo manualmente.",
+    )
+
+    class Meta:
+        model = RequisicaoItem
+        fields = ["tipo", "categoria", "item_vinculado", "codigo", "descricao", "quantidade", "justificativa"]
+        widgets = {
+            "tipo": forms.Select(attrs={"class": "ctrl"}),
+            "categoria": forms.Select(attrs={"class": "ctrl"}),
+            "item_vinculado": forms.Select(attrs={"class": "ctrl"}),
+            "codigo": forms.TextInput(attrs={"class": "ctrl", "placeholder": "Código no Datasul (se já existir)"}),
+            "descricao": forms.TextInput(attrs={"class": "ctrl", "placeholder": "Ex.: Toner Impressora Setor A"}),
+            "quantidade": forms.NumberInput(attrs={"class": "ctrl", "min": 1}),
+            "justificativa": forms.Textarea(attrs={"class": "ctrl", "rows": 3}),
+        }
+
+    field_order = ["item_padrao", "tipo", "categoria", "item_vinculado", "codigo", "descricao", "quantidade", "justificativa"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["item_vinculado"].queryset = Item.objects.filter(tem_lote=True).order_by("nome")
+        self.fields["item_vinculado"].required = False
+        self.fields["codigo"].required = False
+        self.fields["justificativa"].required = False
+
+        # Reabre a seleção do item padrão ao editar um item que foi criado a
+        # partir do catálogo (casado pelo código salvo) — sem isso o seletor
+        # volta em branco toda vez que a tela é reaberta, dando a impressão
+        # de que a vinculação com o catálogo se perdeu, mesmo o código
+        # continuando salvo no item.
+        if self.instance.pk and self.instance.codigo:
+            match = ItemPadraoDatasul.objects.filter(codigo=self.instance.codigo).first()
+            if match:
+                if not match.ativo:
+                    self.fields["item_padrao"].queryset = (
+                        self.fields["item_padrao"].queryset | ItemPadraoDatasul.objects.filter(pk=match.pk)
+                    )
+                self.initial["item_padrao"] = match.pk
+
+
+class ItemPadraoDatasulForm(forms.ModelForm):
+    class Meta:
+        model = ItemPadraoDatasul
+        fields = ["codigo", "descricao", "categoria", "ativo"]
+        widgets = {
+            "codigo": forms.TextInput(attrs={"class": "ctrl", "placeholder": "Ex.: 10023456"}),
+            "descricao": forms.TextInput(attrs={"class": "ctrl", "placeholder": "Ex.: Toner HP 105A Preto"}),
+            "categoria": forms.Select(attrs={"class": "ctrl"}),
+            "ativo": forms.CheckboxInput(attrs={"class": "ctrl-check"}),
+        }
+
+
+class ItemPadraoImportForm(forms.Form):
+    arquivo = forms.FileField(
+        label="Planilha (.xlsx)",
+        help_text="Colunas obrigatórias: Código, Descrição, Categoria (a categoria já precisa existir no sistema).",
+        widget=forms.ClearableFileInput(attrs={"class": "ctrl", "accept": ".xlsx"}),
+    )
+
+
+class ComentarioRequisicaoItemForm(forms.ModelForm):
+    class Meta:
+        model = ComentarioRequisicaoItem
+        fields = ["texto"]
+        widgets = {
+            "texto": forms.Textarea(attrs={"class": "ctrl", "rows": 2, "placeholder": "Escreva um comentário..."}),
+        }
+
+
+class RequisicaoNumerosForm(forms.ModelForm):
+    class Meta:
+        model = Requisicao
+        fields = ["numero_datasul", "numero_paradigma"]
+        widgets = {
+            "numero_datasul": forms.TextInput(attrs={"class": "ctrl", "placeholder": "Ex.: REQ-5510"}),
+            "numero_paradigma": forms.TextInput(attrs={"class": "ctrl", "placeholder": "Número no Paradigma"}),
+        }
+
+
+class RequisicaoReceberCompraForm(forms.Form):
+    """Recebimento de uma compra vinculada a um item de estoque — mesmos
+    dados exigidos pela Entrada em Movimentações (menos a quantidade, que
+    aqui é sempre a solicitada na requisição, não reeditável)."""
+    fornecedor = forms.ModelChoiceField(
+        queryset=Fornecedor.objects.order_by("nome"),
+        label="Fornecedor",
+        widget=forms.Select(attrs={"class": "ctrl"}),
+    )
+    numero_nf = forms.CharField(
+        label="Número da NF",
+        widget=forms.TextInput(attrs={"class": "ctrl", "placeholder": "Ex.: 123456"}),
+    )
+    custo_unitario = forms.DecimalField(
+        label="Custo Unitário",
+        min_value=Decimal("0.01"),
+        max_digits=12,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={"class": "ctrl", "step": "0.01", "min": "0.01"}),
+    )
+    localidade_destino = forms.ModelChoiceField(
+        queryset=Localidade.objects.order_by("local"),
+        label="Localidade",
+        widget=forms.Select(attrs={"class": "ctrl"}),
+    )
+    centro_custo_destino = forms.ModelChoiceField(
+        queryset=CentroCusto.objects.order_by("numero"),
+        label="Centro de Custo",
+        widget=forms.Select(attrs={"class": "ctrl"}),
+    )
+    observacao = forms.CharField(
+        required=False,
+        label="Observação (opcional)",
+        widget=forms.Textarea(attrs={"class": "ctrl", "rows": 3}),
+    )

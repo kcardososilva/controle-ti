@@ -424,6 +424,7 @@ def preventiva_sincronizar_programacao(request):
     _STATUS_PAUSANTES = {
         StatusItemChoices.PAUSADO,
         StatusItemChoices.BACKUP,
+        StatusItemChoices.ESTOQUE,
         StatusItemChoices.MANUTENCAO,
         StatusItemChoices.DEFEITO,
         StatusItemChoices.DESCARTE,

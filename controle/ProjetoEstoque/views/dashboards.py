@@ -176,6 +176,9 @@ def _dados_equipamentos(request):
 
     total = qs.count()
     by_status = dict(qs.values_list("status").annotate(c=Count("id")))
+    # "Estoque" é o status equivalente a "Backup" para item de consumo (ver
+    # StatusItemChoices) — soma no mesmo balde pra não sumir da contagem/gráfico.
+    by_status["backup"] = by_status.get("backup", 0) + by_status.pop("estoque", 0)
     ativos  = by_status.get("ativo", 0)
     backup  = by_status.get("backup", 0)
     manut   = by_status.get("manutencao", 0)

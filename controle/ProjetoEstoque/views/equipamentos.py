@@ -412,7 +412,7 @@ def _build_queryset_and_context(request):
     kpis = {
         "total": filtered_total,
         "ativos": qs.filter(status="ativo").count(),
-        "backup": qs.filter(status="backup").count(),
+        "backup": qs.filter(status__in=["backup", "estoque"]).count(),
         "manutencao": qs.filter(status__in=["manutencao", "correcao"]).count(),
         "defeito": qs.filter(status__in=["defeito", "queimado"]).count(),
         "consumo": qs.filter(item_consumo="sim").count(),
@@ -1405,6 +1405,7 @@ def item_update(request, pk):
         _STATUS_PAUSANTES = {
             StatusItemChoices.PAUSADO,
             StatusItemChoices.BACKUP,
+            StatusItemChoices.ESTOQUE,
             StatusItemChoices.MANUTENCAO,
             StatusItemChoices.DEFEITO,
             StatusItemChoices.DESCARTE,
@@ -1431,7 +1432,15 @@ def item_update(request, pk):
                         lote_editado.save()
 
                         item_editado.tem_lote = True
-                        item_editado.quantidade = lote_editado.quantidade
+                        # NÃO usar lote_editado.quantidade aqui: esse é só o
+                        # total do lote sendo editado (o mais recente) — um
+                        # item com vários lotes teria a contribuição dos
+                        # demais apagada. O valor definitivo é recalculado
+                        # abaixo, depois de ajustar o ItemLote, como soma de
+                        # `quantidade_disponivel` de TODOS os lotes do item.
+                        # Placeholder até lá (campo não é nullable): mantém o
+                        # valor atual do item.
+                        item_editado.quantidade = item.quantidade
                         item_editado.valor = lote_editado.custo_unitario
                         item_editado.fornecedor = lote_editado.fornecedor
                         item_editado.numero_pedido = lote_editado.numero_nf
@@ -1498,6 +1507,18 @@ def item_update(request, pk):
                             preencher_auditoria(novo_item_lote, request.user, criando=True)
                             novo_item_lote.full_clean()
                             novo_item_lote.save()
+
+                        # Estoque real do item = soma disponível de TODOS os
+                        # lotes (não só o que acabou de ser editado/criado) —
+                        # evita o item ficar com quantidade menor que a soma
+                        # dos lotes quando ele tem mais de um.
+                        total_disponivel = item_editado.vinculos_lote.aggregate(
+                            t=Sum("quantidade_disponivel")
+                        )["t"] or 0
+                        item_editado.quantidade = total_disponivel
+                        item_editado.save(update_fields=[
+                            "quantidade", "atualizado_por",
+                        ] if hasattr(item_editado, "atualizado_por") else ["quantidade"])
 
                     if eh_locado:
                         locacao_editada = locacao_form.save(commit=False)

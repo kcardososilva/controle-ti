@@ -222,6 +222,7 @@ from .relatorios import (
     licencas_dashboard,
     avisos_contratos_vencer,
     avisos_contratos_vencer_export_excel,
+    requisicoes_export_excel,
 )
 
 # ── Termos ───────────────────────────────────────────────────────────────────
@@ -279,11 +280,14 @@ from .quiosque import (
     quiosque_dashboard,
     quiosque_indicadores,
     quiosque_detalhe,
+    quiosque_mapa_atualizar,
+    quiosque_checkins_exportar,
     quiosque_matriculas,
     quiosque_matricula_excluir,
     quiosque_matricula_renomear,
     quiosque_matricula_qrcode,
     quiosque_apk_upload,
+    quiosque_apk_versao_anterior_baixar,
     quiosque_instalador_gerar,
     quiosque_instalador_status,
     quiosque_instalador_revogar,
@@ -361,4 +365,29 @@ from .plantas import (
     prtg_monitor,
     prtg_monitor_export,
     item_search_api,
+)
+
+# ── Solicitações de Compra (Kanban) ───────────────────────────────────────────
+from .requisicoes import (
+    requisicoes_kanban,
+    requisicao_item_mover,
+    requisicao_item_create,
+    requisicao_item_update,
+    requisicao_item_delete,
+    requisicao_item_detail,
+    requisicao_item_acao,
+    requisicao_item_receber_compra,
+    requisicao_item_comentar,
+    requisicao_comentario_excluir,
+    requisicao_create_from_itens,
+    requisicao_detail,
+    requisicao_acao,
+    requisicoes_list,
+    requisicao_itens_list,
+    requisicoes_dashboard,
+    itens_padrao_list,
+    itens_padrao_create,
+    itens_padrao_update,
+    itens_padrao_delete,
+    itens_padrao_importar,
 )

@@ -1,0 +1,473 @@
+{% extends 'base.html' %}
+
+{% block title %}Solicitações de Compra{% endblock %}
+{% block page_title %}Solicitações de Compra{% endblock %}
+{% block page_subtitle %}Quadro Kanban — Datasul (aprovação) → Almoxarifado{% endblock %}
+
+{% block extra_css %}
+<style>
+:where(.kan-page) {
+  --kan-primary:       var(--brand,               #0071e3);
+  --kan-primary-hover: var(--brand-hover,         #0077ed);
+  --kan-primary-soft:  var(--brand-soft,          rgba(0,113,227,.10));
+  --kan-surface:       var(--bg-elevated,         #ffffff);
+  --kan-muted-surface: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
+  --kan-hover:         var(--bg-hover,            rgba(0,0,0,.04));
+  --kan-text:          var(--text-primary,        #1d1d1f);
+  --kan-muted:         var(--text-tertiary,       #6e6e73);
+  --kan-soft:          var(--text-quaternary,     #86868b);
+  --kan-border:        var(--separator-hairline,  rgba(0,0,0,.06));
+  --kan-border2:       var(--separator-non-opaque,rgba(0,0,0,.10));
+  --kan-success:       var(--system-green,        #34c759);
+  --kan-success-soft:  var(--system-green-soft,   rgba(52,199,89,.12));
+  --kan-warning:       var(--warning,             #ff9500);
+  --kan-warning-soft:  var(--warning-soft,        rgba(255,149,0,.12));
+  --kan-danger:        var(--danger,              #ff3b30);
+  --kan-danger-soft:   var(--danger-soft,         rgba(255,59,48,.10));
+  --kan-estoque:       var(--system-teal, #30b0c7);
+  --kan-estoque-soft:  var(--system-teal-soft, rgba(48,176,199,.12));
+  --kan-radius-sm:     var(--radius-sm,           10px);
+  --kan-radius-md:     var(--radius-md,           14px);
+  --kan-radius-lg:     var(--radius-lg,           18px);
+  --kan-radius-pill:   var(--radius-pill,         980px);
+  --kan-shadow-sm:     var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+  --kan-shadow-md:     var(--shadow-md,           0 4px 12px rgba(0,0,0,.06));
+  --kan-transition:    var(--transition-fast,     160ms ease);
+  --kan-col-w:         17.5rem;
+}
+
+.kan-page, .kan-page * { box-sizing: border-box; min-width: 0; }
+.kan-page { display: grid; gap: .75rem; color: var(--kan-text); font-size: .92rem; }
+
+/* ── Barra de informação (sem ícone/gradiente — só o essencial) ── */
+.kan-info-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .9rem;
+  padding: .55rem .9rem; border: 1px solid var(--kan-border); border-radius: var(--kan-radius-md);
+  background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); font-size: .82rem;
+}
+.kan-info-count { font-weight: 650; color: var(--kan-text); white-space: nowrap; }
+.kan-info-sep { color: var(--kan-border2); }
+.kan-info-bar a { color: var(--kan-muted); text-decoration: none; font-weight: 600; white-space: nowrap; }
+.kan-info-bar a:hover { color: var(--kan-primary); }
+/* Ícone com cor semântica própria (ex.: Excel = verde da marca) — o texto do
+   link continua neutro/discreto; só o ícone carrega a cor de identificação,
+   igual à convenção já usada nos ícones da navbar lateral (--ic). */
+.kan-info-bar a i { margin-right: .35rem; color: var(--info-ic, var(--kan-muted)); }
+/* .kan-btn-primary dentro da info-bar herdaria a cor mudada de ".kan-info-bar a"
+   (mesma especificidade + ordem de cascata) e ficaria com texto cinza sobre
+   fundo azul — reforça a cor branca aqui pra não perder contraste/vida. */
+.kan-info-bar .kan-btn-primary,
+.kan-info-bar .kan-btn-primary:hover { margin-left: auto; color: #fff; }
+
+/* ── Toolbar (filtros) ── */
+.kan-toolbar {
+  display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .75rem; align-items: end;
+  padding: .75rem .9rem; border: 1px solid var(--kan-border); border-radius: var(--kan-radius-md);
+  background: var(--kan-surface); box-shadow: var(--kan-shadow-sm);
+}
+.kan-filter-grid { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1fr); gap: .6rem; }
+.kan-field label { display: block; margin-bottom: .25rem; color: var(--kan-muted); font-size: .72rem; font-weight: 600; }
+.kan-page input[type="text"], .kan-page input[type="search"], .kan-page select, .kan-page textarea {
+  width: 100%; min-height: 2.15rem; padding: .4rem .65rem; border: 1px solid var(--kan-border2);
+  border-radius: var(--kan-radius-sm); background: var(--kan-surface); color: var(--kan-text);
+  font-family: inherit; font-size: .82rem; outline: none;
+  transition: border-color var(--kan-transition), box-shadow var(--kan-transition);
+}
+.kan-page input:focus, .kan-page select:focus {
+  border-color: var(--kan-primary); box-shadow: 0 0 0 3px var(--brand-ring, rgba(0,113,227,.25));
+}
+.kan-actions-row { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: flex-end; align-items: center; }
+
+.kan-btn, .kan-btn-primary, .kan-btn-secondary {
+  min-height: 2.1rem; display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  padding: .4rem .85rem; border-radius: var(--kan-radius-pill); border: 1px solid transparent;
+  font-size: .78rem; font-weight: 600; text-decoration: none; cursor: pointer; white-space: nowrap;
+  transition: background var(--kan-transition), border-color var(--kan-transition);
+}
+.kan-btn-primary { background: var(--kan-primary); color: #fff; }
+.kan-btn-primary:hover { background: var(--kan-primary-hover); color: #fff; }
+.kan-btn-secondary, .kan-btn { background: transparent; color: var(--kan-text); border-color: var(--kan-border2); }
+.kan-btn-secondary:hover, .kan-btn:hover { background: var(--kan-hover); }
+.kan-btn:disabled, .kan-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Selection bar ── */
+.kan-selection-bar {
+  display: flex; align-items: center; gap: .7rem; padding: .55rem .9rem;
+  border: 1px solid var(--kan-primary); border-radius: var(--kan-radius-md);
+  background: var(--kan-primary-soft); color: var(--kan-primary); font-size: .82rem; font-weight: 650;
+}
+.kan-selection-bar[hidden] { display: none; }
+.kan-selection-bar form { margin-left: auto; display: flex; gap: .5rem; align-items: center; }
+
+/* ── Board ── */
+.kan-board-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: .3rem; transition: opacity 120ms ease; }
+.kan-board-wrap.is-loading { opacity: .55; pointer-events: none; }
+.kan-card.is-moving { opacity: .6; pointer-events: none; }
+.kan-board { display: flex; gap: .75rem; min-width: max-content; align-items: flex-start; }
+.kan-col {
+  width: var(--kan-col-w); flex: 0 0 var(--kan-col-w); display: flex; flex-direction: column;
+  border: 1px solid var(--kan-border); border-radius: var(--kan-radius-md);
+  background: var(--kan-muted-surface); max-height: 76vh;
+}
+.kan-col-head {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  padding: .6rem .75rem; border-bottom: 1px solid var(--kan-border);
+}
+.kan-col-head h2 { margin: 0; font-size: .76rem; font-weight: 700; letter-spacing: -.01em; }
+.kan-col-count {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 1.3rem; height: 1.3rem;
+  padding: 0 .35rem; border-radius: var(--kan-radius-pill); background: var(--kan-surface);
+  border: 1px solid var(--kan-border2); font-size: .68rem; font-weight: 700; color: var(--kan-muted);
+}
+.kan-col-body { flex: 1; overflow-y: auto; padding: .55rem; display: flex; flex-direction: column; gap: .5rem; }
+.kan-col-body.is-dragover { background: var(--kan-primary-soft); }
+.kan-col-empty { padding: 1.1rem .5rem; text-align: center; color: var(--kan-soft); font-size: .74rem; }
+
+/* ── Card ── */
+.kan-card {
+  position: relative; padding: .65rem .75rem .6rem .8rem; border-radius: var(--kan-radius-sm);
+  background: var(--kan-surface); border: 1px solid var(--kan-border); border-left: 3px solid var(--kan-primary);
+  box-shadow: var(--kan-shadow-sm); cursor: grab; text-decoration: none; color: inherit; display: block;
+}
+.kan-card:hover { box-shadow: var(--kan-shadow-md); }
+.kan-card:active { cursor: grabbing; }
+.kan-card[draggable="false"] { cursor: default; }
+.kan-card.is-dragging { opacity: .45; }
+.kan-card-estoque { border-left-color: var(--kan-estoque); }
+.kan-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-bottom: .4rem; }
+.kan-card-title { margin: 0 0 .3rem; font-size: .82rem; font-weight: 650; color: var(--kan-text); line-height: 1.3; }
+.kan-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; font-size: .68rem; color: var(--kan-muted); }
+.kan-card-author { display: flex; align-items: center; gap: .3rem; margin-top: .35rem; font-size: .68rem; color: var(--kan-soft); }
+.kan-card-stage { margin-top: .4rem; padding-top: .35rem; border-top: 1px dashed var(--kan-border2); font-size: .68rem; color: var(--kan-soft); }
+.kan-card-select { position: absolute; top: .55rem; right: .55rem; width: 1rem; height: 1rem; }
+
+.kan-badge {
+  display: inline-flex; align-items: center; gap: .25rem; padding: .12rem .45rem;
+  border-radius: var(--kan-radius-pill); font-size: .64rem; font-weight: 650; white-space: nowrap;
+  background: var(--kan-muted-surface); color: var(--kan-muted); border: 1px solid var(--kan-border2);
+}
+.kan-badge-primary { background: var(--kan-primary-soft); color: var(--kan-primary); border-color: transparent; }
+.kan-badge-estoque { background: var(--kan-estoque-soft); color: var(--kan-estoque); border-color: transparent; }
+.kan-badge-warning { background: var(--kan-warning-soft); color: var(--kan-warning); border-color: transparent; }
+.kan-badge-danger { background: var(--kan-danger-soft); color: var(--kan-danger); border-color: transparent; }
+.kan-badge-success { background: var(--kan-success-soft); color: var(--kan-success); border-color: transparent; }
+
+/* ── Densidade adaptativa — notebooks (mesma faixa usada no resto do app) ── */
+@media (min-width: 64rem) and (max-width: 100rem) {
+  .kan-page { gap: .6rem; font-size: .88rem; }
+  :where(.kan-page) { --kan-col-w: 15.5rem; }
+  .kan-info-bar, .kan-toolbar { padding: .5rem .75rem; }
+  .kan-col-body { max-height: none; }
+  .kan-col { max-height: 70vh; }
+}
+@media (min-width: 64rem) and (max-height: 820px) {
+  .kan-col { max-height: 64vh; }
+}
+
+@media (max-width: 52rem) {
+  .kan-toolbar { grid-template-columns: 1fr; }
+  .kan-filter-grid { grid-template-columns: 1fr; }
+  .kan-actions-row { justify-content: stretch; }
+  .kan-btn, .kan-btn-primary, .kan-btn-secondary { width: 100%; }
+  .kan-info-bar { justify-content: space-between; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kan-page *, .kan-page *::before, .kan-page *::after { transition: none !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kan-page">
+
+  <section class="kan-info-bar" aria-label="Resumo">
+    <span class="kan-info-count">{{ total_itens }} item{{ total_itens|pluralize:"ns" }} no quadro</span>
+    <span class="kan-info-sep">·</span>
+    <a href="{% url 'requisicoes_list' %}" style="--info-ic:#475569"><i class="fa fa-folder-open" aria-hidden="true"></i>Requisições</a>
+    <a href="{% url 'requisicao_itens_list' %}" style="--info-ic:#4338ca"><i class="fa fa-list" aria-hidden="true"></i>Itens Solicitados</a>
+    <a href="{% url 'itens_padrao_list' %}" style="--info-ic:#0f766e"><i class="fa fa-barcode" aria-hidden="true"></i>Itens Padrão (Datasul)</a>
+    <a href="{% url 'requisicoes_dashboard' %}" style="--info-ic:#7c3aed"><i class="fa fa-chart-pie" aria-hidden="true"></i>Dashboard</a>
+    <a href="{% url 'requisicoes_export_excel' %}?{{ request.GET.urlencode }}" style="--info-ic:#217346"><i class="fa fa-file-excel" aria-hidden="true"></i>Exportar</a>
+    <a href="{% url 'requisicao_item_create' %}" class="kan-btn-primary"><i class="fa fa-plus" aria-hidden="true"></i>Incluir Item</a>
+  </section>
+
+  <section class="kan-toolbar" aria-label="Filtros">
+    <form method="get" id="kanFilterForm" autocomplete="off">
+      <div class="kan-filter-grid">
+        <div class="kan-field">
+          <label for="id_q">Pesquisar</label>
+          <input id="id_q" type="text" name="q" value="{{ q|default:'' }}" placeholder="Buscar por descrição ou código...">
+        </div>
+        <div class="kan-field">
+          <label for="id_tipo">Tipo</label>
+          <select id="id_tipo" name="tipo">
+            <option value="">Todos os tipos</option>
+            {% for v, lbl in tipo_choices %}
+              <option value="{{ v }}" {% if f_tipo == v %}selected{% endif %}>{{ lbl }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="kan-field">
+          <label for="id_categoria">Categoria</label>
+          <select id="id_categoria" name="categoria">
+            <option value="">Todas as categorias</option>
+            {% for c in categorias %}
+              <option value="{{ c.id }}" {% if f_categoria == c.id|stringformat:"s" %}selected{% endif %}>{{ c.nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="kan-field">
+          <label for="id_requisitante">Requisitante</label>
+          <select id="id_requisitante" name="requisitante">
+            <option value="">Todos os requisitantes</option>
+            {% for u in requisitantes %}
+              <option value="{{ u.id }}" {% if f_requisitante == u.id|stringformat:"s" %}selected{% endif %}>{{ u.get_full_name|default:u.username }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      {% if mostrar_antigos %}<input type="hidden" name="mostrar_antigos" value="1">{% endif %}
+    </form>
+    <div class="kan-actions-row">
+      {% if not mostrar_antigos %}
+        <a href="?{{ request.GET.urlencode }}&mostrar_antigos=1" class="kan-btn-secondary"><i class="fa fa-clock-rotate-left" aria-hidden="true"></i> Mostrar antigos</a>
+      {% endif %}
+      <a href="{% url 'requisicoes_kanban' %}" class="kan-btn-secondary"><i class="fa fa-eraser" aria-hidden="true"></i> Limpar</a>
+      <button type="submit" form="kanFilterForm" class="kan-btn-primary"><i class="fa fa-filter" aria-hidden="true"></i> Filtrar</button>
+    </div>
+  </section>
+
+  <section class="kan-selection-bar" id="kanSelectionBar" hidden>
+    <i class="fa fa-layer-group" aria-hidden="true"></i>
+    <span id="kanSelectionCount">0 itens selecionados</span>
+    <form method="post" action="{% url 'requisicao_create_from_itens' %}" id="kanAgruparForm">
+      {% csrf_token %}
+      <input type="hidden" name="tipo" id="kanAgruparTipo">
+      <button type="button" class="kan-btn-secondary" id="kanLimparSelecao">Limpar</button>
+      <button type="submit" class="kan-btn-primary"><i class="fa fa-object-group" aria-hidden="true"></i> Agrupar em Requisição</button>
+    </form>
+  </section>
+
+  <div class="kan-board-wrap">
+    <div class="kan-board">
+      {% for coluna in colunas %}
+      <div class="kan-col">
+        <div class="kan-col-head">
+          <h2>{{ coluna.titulo }}</h2>
+          <span class="kan-col-count">{{ coluna.total }}</span>
+        </div>
+        <div class="kan-col-body" data-coluna="{{ coluna.chave }}">
+          {% for item in coluna.itens %}
+          <div class="kan-card kan-card-{{ item.tipo }}" draggable="{% if coluna.chave == 'recebidos' %}false{% else %}true{% endif %}" data-item-id="{{ item.pk }}">
+            {% if item.elegivel_agrupar %}
+              <input type="checkbox" class="kan-card-select" data-tipo="{{ item.tipo }}" data-item-id="{{ item.pk }}" title="Selecionar para agrupar (só itens do mesmo tipo)" aria-label="Selecionar {{ item.descricao }} para agrupar">
+            {% endif %}
+            <div class="kan-card-head">
+              <span class="kan-badge {% if item.tipo == 'estoque' %}kan-badge-estoque{% else %}kan-badge-primary{% endif %}">
+                {{ item.get_tipo_display }}
+              </span>
+              <span class="kan-badge">{{ item.categoria }}</span>
+            </div>
+            <a href="{% url 'requisicao_item_detail' item.pk %}" style="text-decoration:none;color:inherit;">
+              <h3 class="kan-card-title">{{ item.descricao }}</h3>
+            </a>
+            <div class="kan-card-meta">
+              <span class="kan-badge">Qtd: {{ item.quantidade }}</span>
+              {% if item.codigo %}<span class="kan-badge">Cód: {{ item.codigo }}</span>{% endif %}
+              {% if item.requisicao.numero_datasul %}<span class="kan-badge kan-badge-primary">{{ item.requisicao.numero_datasul }}</span>{% endif %}
+              {% if item.status == 'pausado' %}<span class="kan-badge kan-badge-warning">Pausado</span>{% endif %}
+              {% if item.status == 'reprovado' %}<span class="kan-badge kan-badge-danger">Reprovado</span>{% endif %}
+              {% if item.status == 'retirado' %}<span class="kan-badge kan-badge-success">Retirado</span>{% endif %}
+              {% if item.quantidade_disponivel_lote is not None %}
+                <span class="kan-badge kan-badge-success" title="Disponível em estoque"><i class="fa fa-warehouse" aria-hidden="true"></i> {{ item.quantidade_disponivel_lote }}</span>
+              {% endif %}
+              {% if item.comentarios_count %}<span class="kan-badge"><i class="fa fa-comment" aria-hidden="true"></i> {{ item.comentarios_count }}</span>{% endif %}
+            </div>
+            <div class="kan-card-author"><i class="fa fa-user" aria-hidden="true"></i> {% if item.criado_por %}{{ item.criado_por.get_full_name|default:item.criado_por.username }}{% else %}—{% endif %}</div>
+            {% if item.estagio_data %}
+            <div class="kan-card-stage"><i class="fa fa-clock" aria-hidden="true"></i> {{ item.estagio_rotulo }} {{ item.estagio_data|date:"d/m/Y" }}</div>
+            {% endif %}
+          </div>
+          {% empty %}
+          <div class="kan-col-empty">Nenhum item aqui.</div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const CSRF_TOKEN = "{{ csrf_token }}";
+
+  // ── Toast simples (sem lib externa) ──────────────────────────────────
+  function mostrarToast(mensagem) {
+    let host = document.getElementById('kanToastHost');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'kanToastHost';
+      host.style.cssText = 'position:fixed;bottom:1.25rem;right:1.25rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;';
+      document.body.appendChild(host);
+    }
+    const el = document.createElement('div');
+    el.textContent = mensagem;
+    el.style.cssText = 'background:var(--danger,#ff3b30);color:#fff;padding:.65rem .95rem;border-radius:10px;font-size:.82rem;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:22rem;';
+    host.appendChild(el);
+    setTimeout(() => el.remove(), 5000);
+  }
+
+  // ── Seleção pra agrupar em Requisição (só itens do mesmo tipo) ───────
+  // bar/countEl/tipoInput/formAgrupar ficam FORA do board-wrap — sobrevivem
+  // à atualização parcial abaixo; só os checkboxes (dentro dos cards)
+  // precisam ser re-vinculados a cada atualização do board.
+  const bar = document.getElementById('kanSelectionBar');
+  const countEl = document.getElementById('kanSelectionCount');
+  const tipoInput = document.getElementById('kanAgruparTipo');
+  const formAgrupar = document.getElementById('kanAgruparForm');
+
+  function atualizarSelecao(checkboxes) {
+    const marcados = checkboxes.filter(c => c.checked);
+    if (marcados.length === 0) {
+      bar.hidden = true;
+      checkboxes.forEach(c => c.disabled = false);
+      return;
+    }
+    const tipo = marcados[0].dataset.tipo;
+    tipoInput.value = tipo;
+    checkboxes.forEach(c => { if (!c.checked) c.disabled = (c.dataset.tipo !== tipo); });
+    bar.hidden = false;
+    countEl.textContent = `${marcados.length} item${marcados.length > 1 ? 's' : ''} selecionado${marcados.length > 1 ? 's' : ''}`;
+
+    formAgrupar.querySelectorAll('input[name="item_ids"]').forEach(i => i.remove());
+    marcados.forEach(c => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'item_ids';
+      input.value = c.dataset.itemId;
+      formAgrupar.appendChild(input);
+    });
+  }
+
+  function inicializarSelecao() {
+    const checkboxes = Array.from(document.querySelectorAll('.kan-card-select'));
+    checkboxes.forEach(c => c.addEventListener('change', () => atualizarSelecao(checkboxes)));
+    return checkboxes;
+  }
+
+  document.getElementById('kanLimparSelecao')?.addEventListener('click', () => {
+    const checkboxes = Array.from(document.querySelectorAll('.kan-card-select'));
+    checkboxes.forEach(c => { c.checked = false; c.disabled = false; });
+    atualizarSelecao(checkboxes);
+  });
+
+  // ── Drag and drop nativo (HTML5), sem lib externa ────────────────────
+  // O quadro é um Kanban livre: qualquer card pode ir para qualquer coluna;
+  // o servidor decide o que essa movimentação significa (ou recusa, se
+  // quebrar uma regra real — ex. reabrir algo encerrado em definitivo).
+  // `inicializarBoard` é reexecutável: depois de mover um card com sucesso
+  // só o HTML do board é atualizado (ver `atualizarBoard`), então os
+  // listeners precisam ser vinculados de novo nos elementos recriados.
+  function inicializarBoard() {
+    document.querySelectorAll('.kan-card').forEach(card => {
+      card.addEventListener('dragstart', e => {
+        // Clique no checkbox de seleção não deve virar um arrasto — senão
+        // o checkbox nunca marca (o navegador prioriza o drag).
+        if (e.target && e.target.closest && e.target.closest('.kan-card-select')) {
+          e.preventDefault();
+          return;
+        }
+        card.classList.add('is-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        const colunaAtual = card.closest('.kan-col-body')?.dataset.coluna || '';
+        e.dataTransfer.setData('text/plain', JSON.stringify({
+          id: card.dataset.itemId,
+          colunaConhecida: colunaAtual,
+        }));
+      });
+      card.addEventListener('dragend', () => card.classList.remove('is-dragging'));
+    });
+
+    document.querySelectorAll('.kan-col-body').forEach(col => {
+      col.addEventListener('dragover', e => {
+        e.preventDefault();
+        col.classList.add('is-dragover');
+      });
+      col.addEventListener('dragleave', () => col.classList.remove('is-dragover'));
+      col.addEventListener('drop', async e => {
+        e.preventDefault();
+        col.classList.remove('is-dragover');
+        let payload;
+        try { payload = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (err) { return; }
+        const card = document.querySelector(`.kan-card[data-item-id="${payload.id}"]`);
+        if (!card || card.classList.contains('is-moving')) return;
+        const origem = card.closest('.kan-col-body');
+        if (origem === col) return;
+
+        col.appendChild(card); // move otimista
+        card.classList.add('is-moving');
+        card.draggable = false;
+
+        try {
+          const r = await fetch(`/requisicoes/item/${payload.id}/mover/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+            body: JSON.stringify({ coluna_destino: col.dataset.coluna, coluna_conhecida: payload.colunaConhecida }),
+          });
+          const data = await r.json();
+          if (!data.ok) {
+            origem.appendChild(card);
+            card.classList.remove('is-moving');
+            card.draggable = true;
+            mostrarToast(data.erro || 'Não foi possível mover este item.');
+          } else {
+            await atualizarBoard();
+          }
+        } catch (err) {
+          origem.appendChild(card);
+          card.classList.remove('is-moving');
+          card.draggable = true;
+          mostrarToast('Falha de conexão ao mover o item.');
+        }
+      });
+    });
+  }
+
+  // ── Atualização parcial do board após mover um card ───────────────────
+  // Evita recarregar a página inteira (perde posição de scroll, pisca a
+  // tela): busca a mesma URL (com os filtros atuais) e troca só o HTML do
+  // board, já vindo correto do servidor — sem duplicar em JS a lógica de
+  // badges/coluna/status. Qualquer falha cai no reload de página inteira,
+  // que é exatamente o comportamento que já existia antes desta mudança.
+  async function atualizarBoard() {
+    const wrap = document.querySelector('.kan-board-wrap');
+    if (!wrap) { location.reload(); return; }
+    wrap.classList.add('is-loading');
+    try {
+      const r = await fetch(window.location.href);
+      if (!r.ok) throw new Error('http ' + r.status);
+      const html = await r.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const novoWrap = doc.querySelector('.kan-board-wrap');
+      if (!novoWrap) throw new Error('board-wrap ausente na resposta');
+      wrap.replaceWith(novoWrap);
+      inicializarBoard();
+      inicializarSelecao();
+      // A seleção pra agrupar não sobrevive a um card sendo movido — os
+      // checkboxes voltam frescos (desmarcados) do HTML recém-buscado.
+      bar.hidden = true;
+      formAgrupar.querySelectorAll('input[name="item_ids"]').forEach(i => i.remove());
+    } catch (err) {
+      location.reload();
+    }
+  }
+
+  inicializarBoard();
+  inicializarSelecao();
+})();
+</script>
+{% endblock %}

@@ -204,12 +204,13 @@
         </div>
       {% endif %}
 
-      <button type="button" class="btn {% if apk %}btn-sm{% else %}btn-primary{% endif %}" id="kqApkOpenUploadBtn" style="margin-top:14px;">
-        <i class="fa-solid fa-upload"></i> {% if apk %}Enviar nova versão do app{% else %}Enviar instalador (.apk){% endif %}
-      </button>
-      <div class="kq-hint">
-        <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
-        <span>O arquivo enviado substitui automaticamente a versão anterior na pasta do servidor — não é preciso copiá-lo manualmente em <span class="kq-apk-path" style="margin-top:0;">{{ apk_dir_display }}</span>.</span>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+        <button type="button" class="btn {% if apk %}btn-sm{% else %}btn-primary{% endif %}" id="kqApkOpenUploadBtn">
+          <i class="fa-solid fa-upload"></i> {% if apk %}Enviar nova versão do app{% else %}Enviar instalador (.apk){% endif %}
+        </button>
+        <button type="button" class="btn btn-sm" id="kqVersoesOpenBtn">
+          <i class="fa-solid fa-clock-rotate-left"></i> Versões anteriores{% if versoes_anteriores %} ({{ versoes_anteriores|length }}){% endif %}
+        </button>
       </div>
     </div>
   </div>
@@ -390,6 +391,49 @@
   </div>
 </div>
 
+<!-- versões anteriores do instalador (.apk) -->
+<div class="kq-modal" id="kqVersoesModal" hidden>
+  <div class="kq-modal-box" style="max-width:600px;">
+    <h3><i class="fa-solid fa-clock-rotate-left"></i> Versões anteriores do app</h3>
+    <p>Toda vez que uma nova versão é enviada, a build substituída é arquivada aqui — em vez de apagada — para o caso de ser preciso reverter.</p>
+    {% if versoes_anteriores %}
+    <div class="kq-scroll" style="max-height:340px; overflow-y:auto;">
+      <table class="kq-table">
+        <thead>
+          <tr><th>Arquivo</th><th>Versão</th><th>Tamanho</th><th>Arquivado</th><th aria-label="Baixar"></th></tr>
+        </thead>
+        <tbody>
+          {% for v in versoes_anteriores %}
+          <tr>
+            <td style="white-space:normal; word-break:break-all;">{{ v.nome }}</td>
+            <td>
+              {% if v.versao %}
+                {{ v.versao.version_name|default:v.versao.version_code }}
+                {% if v.versao.version_code %}<span class="kq-pill">code {{ v.versao.version_code }}</span>{% endif %}
+              {% else %}<span class="kq-muted">—</span>{% endif %}
+            </td>
+            <td>{{ v.tamanho|filesizeformat }}</td>
+            <td><span class="kq-when" title="{{ v.modificado_em|date:'d/m/Y H:i' }}">{{ v.modificado_em|naturaltime }}</span></td>
+            <td style="text-align:right;">
+              <a class="btn btn-sm" href="{% url 'quiosque_apk_versao_anterior_baixar' v.nome %}" title="Baixar esta versão"><i class="fa-solid fa-download"></i></a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="kq-apk-empty">
+      <i class="fa-solid fa-box-archive"></i>
+      <span>Nenhuma versão anterior arquivada ainda — aparece aqui assim que um novo instalador substituir o atual.</span>
+    </div>
+    {% endif %}
+    <div class="kq-modal-actions">
+      <button type="button" class="btn btn-sm" data-close>Fechar</button>
+    </div>
+  </div>
+</div>
+
 <!-- renomear matrícula -->
 <div class="kq-modal" id="kqRenameModal" hidden>
   <div class="kq-modal-box">
@@ -470,7 +514,7 @@
 // animação de entrada), o que ancora position:fixed nele em vez da viewport.
 (function(){
   var scroller = document.getElementById('mainContent') || document.scrollingElement || document.body;
-  var modais = ['kqApkUploadModal', 'kqRenameModal', 'kqQrModal', 'kqMatQrModal'].map(function(id){ return document.getElementById(id); }).filter(Boolean);
+  var modais = ['kqApkUploadModal', 'kqVersoesModal', 'kqRenameModal', 'kqQrModal', 'kqMatQrModal'].map(function(id){ return document.getElementById(id); }).filter(Boolean);
   modais.forEach(function(modal){
     if (modal.parentNode !== document.body) document.body.appendChild(modal);
     new MutationObserver(function(){ scroller.style.overflow = modal.hidden ? '' : 'hidden'; })
@@ -530,6 +574,15 @@
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando…';
   });
+})();
+
+// Versões anteriores do instalador: abre o modal com a lista já renderizada
+// pelo servidor (sem AJAX — a lista é pequena e já vem pronta no contexto).
+(function(){
+  var openBtn = document.getElementById('kqVersoesOpenBtn');
+  var modal = document.getElementById('kqVersoesModal');
+  if (!openBtn || !modal) return;
+  openBtn.addEventListener('click', function(){ modal.hidden = false; });
 })();
 
 // Instalador do app: gera o link + QR Code via AJAX e exibe no modal. O botão

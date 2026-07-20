@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if modo == 'editar' %}Editar Item Padrão{% else %}Novo Item Padrão{% endif %} — Requisições{% endblock %}
+{% block page_title %}{% if modo == 'editar' %}Editar Item Padrão{% else %}Novo Item Padrão{% endif %}{% endblock %}
+{% block page_subtitle %}Catálogo de itens com código Datasul{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'requisicoes_kanban' %}">Solicitações de Compra</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'itens_padrao_list' %}">Itens Padrão (Datasul)</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{% if modo == 'editar' %}Editar{% else %}Novo{% endif %}</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'itens_padrao_list' %}" class="btn btn-sm"><i class="fa fa-arrow-left" aria-hidden="true"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+:where(.kan-form-page, .select2-container, .select2-dropdown) {
+  --kan-primary:       var(--brand,               #0071e3);
+  --kan-primary-hover: var(--brand-hover,         #0077ed);
+  --kan-surface:       var(--bg-elevated,         #ffffff);
+  --kan-muted-surface: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
+  --kan-hover:         var(--bg-hover,            rgba(0,0,0,.04));
+  --kan-text:          var(--text-primary,        #1d1d1f);
+  --kan-muted:         var(--text-tertiary,       #6e6e73);
+  --kan-border:        var(--separator-hairline,  rgba(0,0,0,.06));
+  --kan-border2:       var(--separator-non-opaque,rgba(0,0,0,.10));
+  --kan-danger:        var(--danger,              #ff3b30);
+  --kan-danger-soft:   var(--danger-soft,         rgba(255,59,48,.10));
+  --kan-radius-sm:     var(--radius-sm,           10px);
+  --kan-radius-md:     var(--radius-md,           14px);
+  --kan-radius-xl:     var(--radius-xl,           22px);
+  --kan-radius-pill:   var(--radius-pill,         980px);
+  --kan-shadow-sm:     var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+  --kan-transition:    var(--transition-fast,     160ms ease);
+  --kan-control-h:     2.75rem;
+}
+.kan-form-page, .kan-form-page * { box-sizing: border-box; min-width: 0; }
+.kan-form-page { width: min(100%, 640px); margin: 0 auto; color: var(--kan-text); display: grid; gap: 1rem; }
+
+.kan-form-card { overflow: hidden; border: 1px solid var(--kan-border); border-radius: var(--kan-radius-xl); background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); }
+.kan-card-body { padding: clamp(1rem,2.5vw,1.5rem); }
+.kan-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1rem; }
+.kan-field { display: flex; flex-direction: column; gap: .4rem; }
+.kan-field-full { grid-column: 1 / -1; }
+.kan-field label { display: flex; align-items: center; gap: .35rem; color: var(--kan-muted); font-size: .82rem; font-weight: 650; }
+.kan-field-check { flex-direction: row; align-items: center; gap: .5rem; }
+
+.kan-form-page input, .kan-form-page select { width: 100%; min-height: var(--kan-control-h); padding: .68rem .85rem; border: 1px solid var(--kan-border2); border-radius: var(--kan-radius-sm); background: var(--kan-surface); color: var(--kan-text); font-family: inherit; font-size: .92rem; outline: none; }
+.kan-form-page input[type="checkbox"] { width: auto; min-height: 0; }
+.kan-form-page .errorlist { display: grid; gap: .25rem; margin: .15rem 0 0; padding: 0; list-style: none; color: var(--kan-danger); font-size: .78rem; font-weight: 650; }
+
+.kan-actions { display: flex; justify-content: flex-end; gap: .75rem; flex-wrap: wrap; padding: 1rem clamp(1rem,2.5vw,1.5rem); border-top: 1px solid var(--kan-border); }
+.kan-btn-primary, .kan-btn-secondary { min-height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; padding: .6rem 1.05rem; border-radius: var(--kan-radius-pill); border: 1px solid transparent; font-size: .9rem; font-weight: 650; text-decoration: none; cursor: pointer; }
+.kan-btn-primary { background: var(--kan-primary); color: #fff; }
+.kan-btn-secondary { background: transparent; color: var(--kan-text); border-color: var(--kan-border2); }
+.kan-btn-secondary:hover { background: var(--kan-hover); }
+
+.select2-container { width: 100% !important; }
+.select2-container .select2-selection--single { min-height: var(--kan-control-h) !important; border: 1px solid var(--kan-border2) !important; border-radius: var(--kan-radius-sm) !important; background: var(--kan-surface) !important; display: flex !important; align-items: center !important; }
+.select2-container--default .select2-selection--single .select2-selection__rendered { width: 100%; padding-left: .85rem !important; color: var(--kan-text) !important; font-size: .92rem; line-height: 2.65rem !important; }
+.select2-container--open .select2-selection--single { border-color: var(--kan-primary) !important; }
+
+@media (max-width: 42rem) { .kan-grid { grid-template-columns: 1fr; } .kan-actions { display: grid; } .kan-btn-primary, .kan-btn-secondary { width: 100%; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kan-form-page">
+  <form method="post" novalidate class="kan-form-card">
+    {% csrf_token %}
+    <div class="kan-card-body">
+      {% if form.non_field_errors %}<div class="kan-alert-error">{{ form.non_field_errors }}</div>{% endif %}
+      <div class="kan-grid">
+        <div class="kan-field">
+          <label for="{{ form.codigo.id_for_label }}">Código (Datasul)</label>
+          {{ form.codigo }}
+          {{ form.codigo.errors }}
+        </div>
+        <div class="kan-field">
+          <label for="{{ form.categoria.id_for_label }}">Categoria</label>
+          {{ form.categoria }}
+          {{ form.categoria.errors }}
+        </div>
+        <div class="kan-field kan-field-full">
+          <label for="{{ form.descricao.id_for_label }}">Descrição</label>
+          {{ form.descricao }}
+          {{ form.descricao.errors }}
+        </div>
+        <div class="kan-field kan-field-check kan-field-full">
+          {{ form.ativo }}
+          <label for="{{ form.ativo.id_for_label }}" style="margin:0;">Ativo (aparece no seletor do formulário de itens)</label>
+        </div>
+      </div>
+    </div>
+    <div class="kan-actions">
+      <a href="{% url 'itens_padrao_list' %}" class="kan-btn-secondary"><i class="fa fa-arrow-left" aria-hidden="true"></i> Cancelar</a>
+      <button class="kan-btn-primary" type="submit"><i class="fa fa-save" aria-hidden="true"></i> {% if modo == 'editar' %}Atualizar{% else %}Salvar{% endif %}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+  $(document).ready(function () {
+    $('#{{ form.categoria.auto_id }}').select2({ width: '100%', placeholder: 'Selecione a categoria...', language: { noResults: () => 'Sem resultados', searching: () => 'Buscando...' } });
+  });
+</script>
+{% endblock %}

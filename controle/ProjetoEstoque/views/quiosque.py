@@ -13,18 +13,37 @@ Dois grupos de views:
 Toda a regra de negócio fica em services/quiosque_service.py.
 """
 import json
+from datetime import date
 from functools import wraps
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from services import quiosque_service as qs
+
+
+def _parse_dia_param(raw: str) -> "date | None":
+    """Converte `?dia=YYYY-MM-DD` num `date`, só se estiver dentro da janela de
+    retenção do histórico (RETENCAO_DIAS). Qualquer entrada inválida/fora da
+    janela é ignorada silenciosamente (cai para a visão padrão) — os links da
+    própria tela nunca geram um valor fora do range, então isto só protege
+    contra URL editada manualmente."""
+    if not raw:
+        return None
+    try:
+        dia = date.fromisoformat(raw)
+    except (TypeError, ValueError):
+        return None
+    hoje = timezone.localdate()
+    if dia > hoje or (hoje - dia).days >= qs.RETENCAO_DIAS:
+        return None
+    return dia
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -208,6 +227,136 @@ def _anexar_matricula(devices):
     return mapa
 
 
+# ─────────────────────────────────────────────────────────────
+# Exportação do histórico de check-ins (Excel)
+# ─────────────────────────────────────────────────────────────
+
+# Teto de linhas do relatório — defesa contra um device configurado com
+# intervalo de check-in muito baixo (mínimo aceito: 5s) gerando dezenas de
+# milhares de linhas numa janela de 5 dias e travando a geração do arquivo.
+_CHECKINS_XLSX_MAX_LINHAS = 20000
+
+
+def _checkins_xlsx(device, checkins: list, periodo_label: str, dia):
+    """Gera o .xlsx do histórico de check-ins de UM dispositivo, no mesmo
+    padrão visual do relatório de monitoração PRTG (`_monitoracao_xlsx` em
+    equipamentos.py) — mantém a identidade visual dos relatórios do sistema."""
+    from datetime import datetime as _datetime
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    BRAND_DARK, BRAND, SOFT, ZEBRA = "0B3D6E", "0071E3", "E5F0FB", "F4F9FE"
+    INK = "1F2733"
+    hair = Side(style="thin", color="CFE0F2")
+    border = Border(left=hair, right=hair, top=hair, bottom=hair)
+    f_title = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
+    f_sub = Font(name="Calibri", size=10, italic=True, color="5B6B7F")
+    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    f_cell = Font(name="Calibri", size=10, color=INK)
+    fill_title = PatternFill("solid", fgColor=BRAND_DARK)
+    fill_sub = PatternFill("solid", fgColor=SOFT)
+    fill_header = PatternFill("solid", fgColor=BRAND)
+    fill_zebra = PatternFill("solid", fgColor=ZEBRA)
+    a_center = Alignment(horizontal="center", vertical="center")
+    a_left = Alignment(horizontal="left", vertical="center")
+    a_left_ind = Alignment(horizontal="left", vertical="center", indent=1)
+    dt_fmt = "DD/MM/YYYY HH:MM:SS"
+
+    telemetria_wifi = bool(device.telemetria_wifi)
+    header = ["#", "Coletado em", "Recebido em", "Bateria %", "Carregando", "Rede", "Wi-Fi (SSID)"]
+    if telemetria_wifi:
+        header += ["RSSI Wi-Fi (dBm)", "Nível sinal (0-4)", "Velocidade (Mbps)", "Banda (GHz)"]
+    header += ["Online", "Latitude", "Longitude", "Precisão (m)"]
+    ncols = len(header)
+    center_cols = {1, 4, 5, 8, 9, 10, 11} if telemetria_wifi else {1, 4, 5, 8}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Check-ins"
+    ws.sheet_view.showGridLines = False
+
+    last = get_column_letter(ncols)
+    ws.merge_cells(f"A1:{last}1")
+    c = ws["A1"]
+    c.value = "HISTÓRICO DE CHECK-INS — QUIOSQUE"
+    c.font = f_title; c.fill = fill_title; c.alignment = a_left_ind
+    ws.row_dimensions[1].height = 34
+
+    gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")
+    nome_device = device.apelido or device.modelo or "Dispositivo"
+    ws.merge_cells(f"A2:{last}2")
+    c2 = ws["A2"]
+    c2.value = f"{nome_device}  ·  {periodo_label}  ·  {len(checkins)} registro(s)  ·  gerado em {gerado}"
+    c2.font = f_sub; c2.fill = fill_sub; c2.alignment = a_left_ind
+    ws.row_dimensions[2].height = 18
+
+    HEADER_ROW = 3
+    for ci, h in enumerate(header, 1):
+        cc = ws.cell(row=HEADER_ROW, column=ci, value=h)
+        cc.fill = fill_header; cc.font = f_header; cc.border = border
+        cc.alignment = a_center if ci in center_cols else a_left
+    ws.row_dimensions[HEADER_ROW].height = 26
+
+    row = HEADER_ROW + 1
+    for i, c_ in enumerate(checkins, start=1):
+        coletado = timezone.localtime(c_.quando).replace(tzinfo=None)
+        recebido = timezone.localtime(c_.registrado_em).replace(tzinfo=None)
+        valores = [i, coletado, recebido,
+                   c_.bateria if c_.bateria is not None else "—",
+                   "Sim" if c_.carregando else "Não",
+                   c_.rede or "—", c_.ssid or "—"]
+        if telemetria_wifi:
+            valores += [
+                c_.wifi_rssi_dbm if c_.wifi_rssi_dbm is not None else "—",
+                c_.wifi_nivel if c_.wifi_nivel is not None else "—",
+                c_.wifi_velocidade_mbps if c_.wifi_velocidade_mbps is not None else "—",
+                c_.wifi_banda_ghz or "—",
+            ]
+        valores += [
+            "Sim" if c_.online else "Não",
+            c_.latitude if c_.latitude is not None else "—",
+            c_.longitude if c_.longitude is not None else "—",
+            round(c_.precisao_m) if c_.precisao_m is not None else "—",
+        ]
+        zebra = (i % 2 == 0)
+        for ci, val in enumerate(valores, 1):
+            cell = ws.cell(row=row, column=ci, value=val)
+            cell.border = border
+            cell.font = f_cell
+            cell.alignment = a_center if ci in center_cols else a_left
+            if ci in (2, 3) and isinstance(val, _datetime):
+                cell.number_format = dt_fmt
+                cell.alignment = a_center
+            elif zebra:
+                cell.fill = fill_zebra
+        row += 1
+
+    ws.freeze_panes = f"A{HEADER_ROW + 1}"
+    ws.auto_filter.ref = f"A{HEADER_ROW}:{last}{max(row - 1, HEADER_ROW)}"
+
+    widths = {}
+    for r_ in ws.iter_rows(min_row=HEADER_ROW, values_only=True):
+        for idx, val in enumerate(r_, start=1):
+            widths[idx] = max(widths.get(idx, 0), len(str(val)) if val is not None else 0)
+    for idx, w in widths.items():
+        ws.column_dimensions[get_column_letter(idx)].width = min(max(w + 2, 11), 30)
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    now = timezone.localtime().strftime("%Y%m%d-%H%M%S")
+    slug = "".join(ch if ch.isalnum() else "-" for ch in nome_device.lower()).strip("-") or "dispositivo"
+    sufixo_dia = f"_{dia.isoformat()}" if dia else ""
+    resp = HttpResponse(
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp["Content-Disposition"] = f'attachment; filename="checkins_{slug}{sufixo_dia}_{now}.xlsx"'
+    return resp
+
+
 @login_required
 def quiosque_dashboard(request):
     from ProjetoEstoque.models import KioskDevice, KioskMatricula
@@ -265,7 +414,23 @@ def quiosque_detalhe(request, pk: int):
     # Matrícula atual (descrição que identifica o aparelho).
     _anexar_matricula([device])
 
-    checkins = device.checkins.all()
+    dias_disponiveis = qs.dias_disponiveis_checkin(device)
+    dia_selecionado = _parse_dia_param(request.GET.get("dia"))
+
+    # Ordenado pelo instante REAL de coleta (coletado_em), não pela chegada ao
+    # servidor (Meta.ordering = -registrado_em): quando o app entrega uma fila
+    # offline em rajada, vários check-ins chegam quase juntos e a ordem de
+    # chegada não reflete a ordem real dos eventos — mesmo problema já corrigido
+    # para o traço do mapa em `montar_trilha`. Sem isso, a tabela mostraria os
+    # horários (coluna "Quando" = mesma coalescência) fora de ordem cronológica.
+    from django.db.models.functions import Coalesce
+
+    checkins = device.checkins.annotate(_quando=Coalesce("coletado_em", "registrado_em"))
+    if dia_selecionado:
+        inicio, fim = qs.intervalo_dia_local(dia_selecionado)
+        checkins = checkins.filter(_quando__gte=inicio, _quando__lt=fim)
+    checkins = checkins.order_by("-_quando")
+
     paginator = Paginator(checkins, 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
     comandos = device.comandos.all()[:20]
@@ -273,7 +438,15 @@ def quiosque_detalhe(request, pk: int):
     # Traço de rota (deslocamento) para o mapa do detalhe. A montagem fica no
     # service: ordena por horário real de coleta, descarta fixes de GPS ruins e
     # saltos impossíveis — deixando o caminho fiel ao percorrido (ordem antigo→recente).
-    trilha = qs.montar_trilha(device)
+    # Com um dia selecionado, cobre o dia inteiro (não só a janela recente).
+    trilha = qs.montar_trilha(device, dia=dia_selecionado)
+    mapa = qs.montar_mapa_dict(device, trilha, dia=dia_selecionado)
+    # "Ao vivo" só faz sentido enquanto o dia em exibição ainda pode receber
+    # novos check-ins (sem filtro, ou filtrando o próprio dia de hoje) — um dia
+    # passado é histórico fechado, não precisa (nem deve) ficar sondando o servidor.
+    pode_atualizar_ao_vivo = dia_selecionado is None or dia_selecionado == timezone.localdate()
+
+    resumo_dia = qs.montar_resumo_dia(device, dia_selecionado, trilha) if dia_selecionado else None
 
     # Geolocalização dos check-ins exibidos NESTA página da tabela. Permite focar
     # o ponto EXATO no mapa ao clicar na linha (chaveado pelo id do check-in).
@@ -292,17 +465,6 @@ def quiosque_detalhe(request, pk: int):
         for c in page_obj.object_list
         if c.latitude is not None and c.longitude is not None
     }
-
-    mapa = None
-    if device.tem_localizacao:
-        mapa = {
-            "nome": device.apelido or device.modelo or "Quiosque",
-            "lat": device.ultima_latitude,
-            "lon": device.ultima_longitude,
-            "precisao": device.ultima_precisao_m,
-            "online": device.online,
-            "trilha": trilha,
-        }
 
     # Percentuais/limiares para as barras de RAM e armazenamento (display-only,
     # mesmo padrão de p.atrasado/p.atencao calculados na view para preventivas).
@@ -341,7 +503,63 @@ def quiosque_detalhe(request, pk: int):
         "armazenamento_nivel": armazenamento_nivel,
         "armazenamento_livre_gb": armazenamento_livre_gb,
         "armazenamento_total_gb": armazenamento_total_gb,
+        "dias_disponiveis": dias_disponiveis,
+        "dia_selecionado": dia_selecionado,
+        "resumo_dia": resumo_dia,
+        "pode_atualizar_ao_vivo": pode_atualizar_ao_vivo,
+        "retencao_dias": qs.RETENCAO_DIAS,
     })
+
+
+@login_required
+def quiosque_mapa_atualizar(request, pk: int):
+    """AJAX GET — snapshot atual do device para atualizar a tela de detalhe SEM
+    reload: status/bateria/rede/último check-in (barra-resumo) + posição/traço
+    do mapa. É o que faz o "minimapa" do detalhe deixar de ser uma foto estática
+    do carregamento da página e passar a refletir novos check-ins que cheguem
+    enquanto a tela estiver aberta (polling no template, ver quiosque_detalhe.html).
+    Respeita o mesmo filtro de dia da página (`?dia=`); histórico de um dia
+    passado não muda, então o template nem chama este endpoint nesse caso."""
+    from ProjetoEstoque.models import KioskDevice
+
+    device = get_object_or_404(KioskDevice, pk=pk)
+    dia = _parse_dia_param(request.GET.get("dia"))
+
+    trilha = qs.montar_trilha(device, dia=dia)
+    mapa = qs.montar_mapa_dict(device, trilha, dia=dia)
+
+    return JsonResponse({
+        "ok": True,
+        "online": device.online,
+        "bateria": device.ultima_bateria,
+        "rede": device.ultima_rede,
+        "ultimo_checkin_label": timezone.localtime(device.ultimo_checkin).strftime("%d/%m/%Y %H:%M") if device.ultimo_checkin else None,
+        "ultimo_checkin_ts_ms": int(device.ultimo_checkin.timestamp() * 1000) if device.ultimo_checkin else 0,
+        "mapa": mapa,
+    })
+
+
+@login_required
+def quiosque_checkins_exportar(request, pk: int):
+    """GET — exporta o histórico de check-ins do dispositivo em Excel. Respeita
+    o filtro de dia (`?dia=`) quando presente; sem filtro, exporta a janela
+    completa de retenção (RETENCAO_DIAS)."""
+    from django.db.models.functions import Coalesce
+    from ProjetoEstoque.models import KioskDevice
+
+    device = get_object_or_404(KioskDevice, pk=pk)
+    dia = _parse_dia_param(request.GET.get("dia"))
+
+    checkins = device.checkins.annotate(_quando=Coalesce("coletado_em", "registrado_em"))
+    if dia:
+        inicio, fim = qs.intervalo_dia_local(dia)
+        checkins = checkins.filter(_quando__gte=inicio, _quando__lt=fim)
+        periodo_label = f"Dia {dia.strftime('%d/%m/%Y')}"
+    else:
+        periodo_label = f"Últimos {qs.RETENCAO_DIAS} dias"
+    checkins = list(checkins.order_by("-_quando")[:_CHECKINS_XLSX_MAX_LINHAS])
+
+    return _checkins_xlsx(device, checkins, periodo_label, dia)
 
 
 @login_required
@@ -388,9 +606,9 @@ def quiosque_matriculas(request):
         "usadas": KioskMatricula.objects.filter(usado=True).count(),
         "expiradas": KioskMatricula.objects.filter(usado=False, expira_em__lte=agora).count(),
         "apk": qs.apk_atual(),
-        "apk_dir_display": str(qs.apk_dir()),
         "versao_registrada": qs.versao_apk_registrada(),
         "instaladores": KioskInstaladorLink.objects.select_related("criado_por").all()[:15],
+        "versoes_anteriores": qs.versoes_anteriores(),
         "novo_pk": novo_pk,
     })
 
@@ -493,6 +711,25 @@ def quiosque_apk_upload(request):
             "rode depois “python manage.py assinar_apk_quiosque <version_code> <version_name>”."
         )
     return redirect("quiosque_matriculas")
+
+
+@login_required
+def quiosque_apk_versao_anterior_baixar(request, nome_arquivo: str):
+    """GET — baixa um instalador (.apk) arquivado em `versoes_anteriores/`
+    (substituído por um upload mais recente na tela de Matrículas). Acesso
+    interno do TI autenticado — diferente do link público de provisionamento
+    (`kiosk_instalador_download`), que usa token opaco para o celular sem sessão."""
+    from django.http import FileResponse, Http404
+
+    caminho = qs.caminho_versao_anterior(nome_arquivo)
+    if caminho is None:
+        raise Http404()
+    return FileResponse(
+        open(caminho, "rb"),
+        as_attachment=True,
+        filename=caminho.name,
+        content_type="application/vnd.android.package-archive",
+    )
 
 
 @login_required

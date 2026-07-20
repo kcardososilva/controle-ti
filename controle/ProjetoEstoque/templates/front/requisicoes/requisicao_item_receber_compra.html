@@ -1,0 +1,213 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Receber Compra — Requisições{% endblock %}
+{% block page_title %}Receber Compra{% endblock %}
+{% block page_subtitle %}Solicitações de Compra{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'requisicoes_kanban' %}">Solicitações de Compra</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'requisicao_item_detail' item.pk %}">{{ item.descricao }}</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Receber Compra</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'requisicao_item_detail' item.pk %}" class="btn btn-sm"><i class="fa fa-arrow-left" aria-hidden="true"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'vendor/select2.min.css' %}" rel="stylesheet">
+<style>
+:where(.kan-form-page, .select2-container, .select2-dropdown) {
+  --kan-primary:       var(--brand,               #0071e3);
+  --kan-primary-hover: var(--brand-hover,         #0077ed);
+  --kan-primary-soft:  var(--brand-soft,          rgba(0,113,227,.10));
+  --kan-surface:       var(--bg-elevated,         #ffffff);
+  --kan-muted-surface: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
+  --kan-hover:         var(--bg-hover,            rgba(0,0,0,.04));
+  --kan-text:          var(--text-primary,        #1d1d1f);
+  --kan-muted:         var(--text-tertiary,       #6e6e73);
+  --kan-border:        var(--separator-hairline,  rgba(0,0,0,.06));
+  --kan-border2:       var(--separator-non-opaque,rgba(0,0,0,.10));
+  --kan-border-strong: var(--separator-strong,    rgba(0,0,0,.18));
+  --kan-danger:        var(--danger,              #ff3b30);
+  --kan-danger-soft:   var(--danger-soft,         rgba(255,59,48,.10));
+  --kan-radius-sm:     var(--radius-sm,           10px);
+  --kan-radius-md:     var(--radius-md,           14px);
+  --kan-radius-lg:     var(--radius-lg,           18px);
+  --kan-radius-xl:     var(--radius-xl,           22px);
+  --kan-radius-pill:   var(--radius-pill,         980px);
+  --kan-shadow-sm:     var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+  --kan-shadow-md:     var(--shadow-md,           0 4px 12px rgba(0,0,0,.06));
+  --kan-transition:    var(--transition-fast,     160ms ease);
+  --kan-control-h:     2.75rem;
+}
+.kan-form-page, .kan-form-page * { box-sizing: border-box; min-width: 0; }
+.kan-form-page { width: min(100%, 780px); margin: 0 auto; color: var(--kan-text); display: grid; gap: 1rem; }
+
+.kan-form-card { overflow: hidden; border: 1px solid var(--kan-border); border-radius: var(--kan-radius-xl); background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); }
+.kan-card-header { padding: 1rem 1.125rem; border-bottom: 1px solid var(--kan-border); background: color-mix(in srgb, var(--kan-surface) 90%, var(--kan-muted-surface)); }
+.kan-card-title { display: flex; align-items: center; gap: .6rem; font-size: .98rem; font-weight: 650; }
+.kan-card-title i { color: var(--kan-primary); }
+.kan-card-subtitle { margin-top: .25rem; color: var(--kan-muted); font-size: .82rem; }
+.kan-card-body { padding: clamp(1rem,2.5vw,1.5rem); }
+
+.kan-resumo-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: .8rem 1.2rem; padding: .9rem 1rem; border-radius: var(--kan-radius-md); background: var(--kan-muted-surface); margin-bottom: 1.1rem; }
+.kan-resumo-item { display: grid; gap: .2rem; }
+.kan-resumo-label { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--kan-muted); }
+.kan-resumo-value { font-size: .88rem; font-weight: 650; }
+
+.kan-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1rem; }
+.kan-field { display: flex; flex-direction: column; gap: .4rem; }
+.kan-field-full { grid-column: 1 / -1; }
+.kan-field label { display: flex; align-items: center; gap: .35rem; color: var(--kan-muted); font-size: .82rem; font-weight: 650; }
+
+.kan-form-page input, .kan-form-page select, .kan-form-page textarea {
+  width: 100%; min-height: var(--kan-control-h); padding: .68rem .85rem; border: 1px solid var(--kan-border2);
+  border-radius: var(--kan-radius-sm); background: var(--kan-surface); color: var(--kan-text);
+  font-family: inherit; font-size: .92rem; outline: none;
+  transition: border-color var(--kan-transition), box-shadow var(--kan-transition);
+}
+.kan-form-page textarea { min-height: 5.5rem; padding-top: .6rem; }
+.kan-form-page input:focus, .kan-form-page select:focus, .kan-form-page textarea:focus {
+  border-color: var(--kan-primary); box-shadow: 0 0 0 2px var(--kan-primary-soft);
+}
+.kan-form-page .errorlist { display: grid; gap: .25rem; margin: .15rem 0 0; padding: 0; list-style: none; color: var(--kan-danger); font-size: .78rem; font-weight: 650; }
+.kan-alert-error { display: flex; gap: .7rem; align-items: flex-start; padding: .9rem; margin-bottom: 1rem; border-radius: var(--kan-radius-md); border: 1px solid color-mix(in srgb, var(--kan-danger) 22%, transparent); background: var(--kan-danger-soft); color: var(--kan-danger); font-size: .88rem; font-weight: 600; }
+.kan-hint { margin-top: .3rem; color: var(--kan-muted); font-size: .76rem; }
+
+.kan-actions { display: flex; justify-content: flex-end; gap: .75rem; flex-wrap: wrap; padding: 1rem clamp(1rem,2.5vw,1.5rem); border-top: 1px solid var(--kan-border); background: color-mix(in srgb, var(--kan-surface) 92%, var(--kan-muted-surface)); }
+.kan-btn-primary, .kan-btn-secondary {
+  min-height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  padding: .6rem 1.05rem; border-radius: var(--kan-radius-pill); border: 1px solid transparent;
+  font-size: .9rem; font-weight: 650; text-decoration: none; cursor: pointer; white-space: nowrap;
+  transition: transform var(--kan-transition), background var(--kan-transition);
+}
+.kan-btn-primary:hover, .kan-btn-secondary:hover { transform: translateY(-1px); }
+.kan-btn-primary { background: var(--kan-primary); color: #fff; }
+.kan-btn-primary:hover { background: var(--kan-primary-hover); color: #fff; }
+.kan-btn-secondary { background: transparent; color: var(--kan-text); border-color: var(--kan-border2); }
+.kan-btn-secondary:hover { background: var(--kan-hover); border-color: var(--kan-border-strong); }
+
+.select2-container { width: 100% !important; }
+.select2-container .select2-selection--single { min-height: var(--kan-control-h) !important; border: 1px solid var(--kan-border2) !important; border-radius: var(--kan-radius-sm) !important; background: var(--kan-surface) !important; display: flex !important; align-items: center !important; }
+.select2-container--default .select2-selection--single .select2-selection__rendered { width: 100%; padding-left: .85rem !important; color: var(--kan-text) !important; font-size: .92rem; line-height: 2.65rem !important; }
+.select2-container--open .select2-selection--single,
+.select2-container--focus .select2-selection--single { border-color: var(--kan-primary) !important; box-shadow: 0 0 0 2px var(--kan-primary-soft) !important; }
+.select2-dropdown { z-index: 9999 !important; border: 1px solid var(--kan-border2) !important; border-radius: var(--kan-radius-md) !important; background: var(--kan-surface) !important; box-shadow: var(--kan-shadow-md); }
+.select2-results__option { color: var(--kan-text) !important; }
+.select2-results__option--highlighted { background: var(--kan-primary) !important; color: #fff !important; }
+
+@media (max-width: 42rem) { .kan-grid, .kan-resumo-grid { grid-template-columns: 1fr; } .kan-actions { display: grid; } .kan-btn-primary, .kan-btn-secondary { width: 100%; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kan-form-page">
+  <form method="post" novalidate class="kan-form-card">
+    {% csrf_token %}
+    <div class="kan-card-header">
+      <div class="kan-card-title"><i class="fa fa-box-open" aria-hidden="true"></i> Receber Compra e Dar Entrada no Estoque</div>
+      <div class="kan-card-subtitle">Registra a entrada real do item no estoque (mesmo lançamento de Movimentações → Entrada) e marca este item da requisição como retirado.</div>
+    </div>
+
+    <div class="kan-card-body">
+      {% if form.non_field_errors %}
+        <div class="kan-alert-error" role="alert"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> <div>{{ form.non_field_errors }}</div></div>
+      {% endif %}
+
+      <div class="kan-resumo-grid">
+        <div class="kan-resumo-item">
+          <span class="kan-resumo-label">Item vinculado ao estoque</span>
+          <span class="kan-resumo-value">{{ item.item_vinculado.nome }}</span>
+        </div>
+        <div class="kan-resumo-item">
+          <span class="kan-resumo-label">Quantidade a entrar</span>
+          <span class="kan-resumo-value">{{ item.quantidade }} — definida na solicitação</span>
+        </div>
+        <div class="kan-resumo-item">
+          <span class="kan-resumo-label">Disponível hoje em estoque</span>
+          <span class="kan-resumo-value">{{ item.quantidade_disponivel_lote|default:0 }}</span>
+        </div>
+      </div>
+
+      <div class="kan-grid">
+        <div class="kan-field">
+          <label for="{{ form.fornecedor.id_for_label }}">{{ form.fornecedor.label }}</label>
+          {{ form.fornecedor }}
+          {{ form.fornecedor.errors }}
+        </div>
+        <div class="kan-field">
+          <label for="{{ form.numero_nf.id_for_label }}">{{ form.numero_nf.label }}</label>
+          {{ form.numero_nf }}
+          {{ form.numero_nf.errors }}
+        </div>
+
+        <div class="kan-field">
+          <label for="{{ form.custo_unitario.id_for_label }}">{{ form.custo_unitario.label }}</label>
+          {{ form.custo_unitario }}
+          {{ form.custo_unitario.errors }}
+        </div>
+        <div class="kan-field">
+          <label for="{{ form.localidade_destino.id_for_label }}">{{ form.localidade_destino.label }}</label>
+          {{ form.localidade_destino }}
+          {{ form.localidade_destino.errors }}
+        </div>
+
+        <div class="kan-field">
+          <label for="{{ form.centro_custo_destino.id_for_label }}">{{ form.centro_custo_destino.label }}</label>
+          {{ form.centro_custo_destino }}
+          {{ form.centro_custo_destino.errors }}
+        </div>
+
+        <div class="kan-field kan-field-full">
+          <label for="{{ form.observacao.id_for_label }}">{{ form.observacao.label }}</label>
+          {{ form.observacao }}
+          {{ form.observacao.errors }}
+        </div>
+      </div>
+    </div>
+
+    <div class="kan-actions">
+      <a href="{% url 'requisicao_item_detail' item.pk %}" class="kan-btn-secondary">
+        <i class="fa fa-arrow-left" aria-hidden="true"></i> Cancelar
+      </a>
+      <button class="kan-btn-primary" type="submit">
+        <i class="fa fa-check" aria-hidden="true"></i> Confirmar Recebimento
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{# jQuery e Select2 servidos localmente (static/vendor/) — mesmo padrão do #}
+{# formulário de novo item de requisição, sem dependência de CDN externo.   #}
+<script src="{% static 'vendor/jquery-3.7.1.min.js' %}"></script>
+<script src="{% static 'vendor/select2.min.js' %}"></script>
+<script>
+(function () {
+  'use strict';
+  if (!window.jQuery || !jQuery.fn.select2) return;
+
+  jQuery('#{{ form.fornecedor.auto_id }}').select2({
+    width: '100%', placeholder: 'Selecione o fornecedor...',
+    language: { noResults: function () { return 'Nenhum fornecedor encontrado'; }, searching: function () { return 'Buscando...'; } },
+  });
+  jQuery('#{{ form.localidade_destino.auto_id }}').select2({
+    width: '100%', placeholder: 'Selecione a localidade...',
+    language: { noResults: function () { return 'Nenhuma localidade encontrada'; }, searching: function () { return 'Buscando...'; } },
+  });
+  jQuery('#{{ form.centro_custo_destino.auto_id }}').select2({
+    width: '100%', placeholder: 'Selecione o centro de custo...',
+    language: { noResults: function () { return 'Nenhum centro de custo encontrado'; }, searching: function () { return 'Buscando...'; } },
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,366 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard de Requisições{% endblock %}
+{% block page_title %}Dashboard de Requisições{% endblock %}
+{% block page_subtitle %}Itens e tipos mais solicitados{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'requisicoes_kanban' %}">Solicitações de Compra</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Dashboard</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'requisicoes_kanban' %}" class="btn btn-sm"><i class="fa fa-table-columns" aria-hidden="true"></i> Ver Quadro</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Escopo por prefixo — tokens do base.html, nunca hex solto/:root. */
+:where(.rqd-page) {
+  --rqd-border:   var(--separator-hairline);
+  --rqd-border-2: var(--separator-non-opaque);
+  --rqd-purple-soft: color-mix(in srgb, var(--system-purple) 14%, transparent);
+}
+.rqd-page, .rqd-page * { box-sizing: border-box; min-width: 0; }
+.rqd-page { display: grid; gap: 16px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+/* ── Toolbar de filtros — inline, sem painel colapsável ── */
+.rqd-toolbar { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; padding: 14px 16px; border: 1px solid var(--rqd-border); border-radius: var(--radius-lg); background: var(--bg-elevated); box-shadow: var(--shadow-xs); }
+.rqd-toolbar form { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; flex: 1; }
+.rqd-field { display: flex; flex-direction: column; gap: 6px; min-width: 9.5rem; }
+.rqd-field label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+.rqd-toolbar-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+
+/* ── Metric strip — hairlines (gap:1px), sem cards 3D/tilt/gradiente ── */
+.rqd-metrics { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 1px; background: var(--rqd-border); border: 1px solid var(--rqd-border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-xs); }
+@media (max-width: 900px) { .rqd-metrics { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (max-width: 560px) { .rqd-metrics { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+.rqd-metric { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--bg-elevated); transition: background var(--transition-fast); }
+.rqd-metric:hover { background: var(--bg-hover); }
+.rqd-metric-icon { flex-shrink: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 12px; background: var(--tone-soft, var(--bg-fill-tertiary)); color: var(--tone, var(--text-tertiary)); }
+.rqd-metric-body { min-width: 0; }
+.rqd-metric-value { display: block; font-size: 20px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; color: var(--text-primary); }
+.rqd-metric-label { margin-top: 2px; font-size: 11px; font-weight: 500; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Card genérico ── */
+.rqd-card { background: var(--bg-elevated); border: 1px solid var(--rqd-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); overflow: hidden; display: flex; flex-direction: column; }
+.rqd-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--rqd-border); }
+.rqd-card-title { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+.rqd-card-title i { color: var(--text-tertiary); font-size: 13px; }
+.rqd-card-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--text-tertiary); }
+.rqd-card-tag .dot { width: 7px; height: 7px; border-radius: 99px; background: var(--tone); }
+.rqd-card-body { padding: 8px 10px; }
+/* borda de acento à esquerda — único sinal de cor "grande" do card, com propósito (identifica a categoria) */
+.rqd-card-accent { border-left: 3px solid var(--tone); }
+
+/* ── Ranking (itens mais pedidos) ── */
+.rqd-rank { list-style: none; margin: 0; padding: 0; }
+.rqd-rank li { display: grid; grid-template-columns: 1.4rem minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 7px 8px; border-radius: var(--radius-sm); }
+.rqd-rank li:hover { background: var(--bg-hover); }
+.rqd-rank-pos { font-size: 11px; font-weight: 700; color: var(--text-quaternary); text-align: center; }
+.rqd-rank-name { font-size: 13px; font-weight: 500; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rqd-rank-sub { font-size: 11px; color: var(--text-tertiary); }
+.rqd-rank-qtd { font-size: 13px; font-weight: 700; color: var(--tone); white-space: nowrap; }
+
+/* ── Tabela densa ── */
+.rqd-scroll { width: 100%; overflow-x: auto; }
+.rqd-table { width: 100%; border-collapse: collapse; min-width: 300px; }
+.rqd-table th { text-align: left; padding: 8px 10px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-tertiary); font-weight: 600; border-bottom: 1px solid var(--rqd-border); white-space: nowrap; }
+.rqd-table td { padding: 9px 10px; border-bottom: 1px solid var(--rqd-border); font-size: 13px; color: var(--text-primary); }
+.rqd-table tbody tr:last-child td { border-bottom: 0; }
+.rqd-table tbody tr:hover td { background: var(--bg-hover); }
+.rqd-table .num { text-align: right; }
+
+/* ── Distribuição de status — lista com barra proporcional (sem donut) ── */
+.rqd-status-list { display: grid; gap: 10px; padding: 4px 6px; }
+.rqd-status-row { display: grid; grid-template-columns: 9px minmax(0,1fr) auto; align-items: center; gap: 9px; }
+.rqd-status-dot { width: 9px; height: 9px; border-radius: 99px; background: var(--tone); }
+.rqd-status-label { font-size: 12.5px; font-weight: 500; color: var(--text-primary); }
+.rqd-status-count { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); }
+.rqd-status-track { grid-column: 2 / -1; height: 5px; border-radius: 99px; background: var(--bg-fill-tertiary); overflow: hidden; }
+.rqd-status-bar { display: block; height: 100%; border-radius: 99px; background: var(--tone); }
+
+/* ── Tons semânticos (só tokens do base.html) ── */
+.t-brand   { --tone: var(--brand);          --tone-soft: var(--brand-soft); }
+.t-indigo  { --tone: var(--system-indigo);  --tone-soft: var(--system-indigo-soft); }
+.t-info    { --tone: var(--info);           --tone-soft: var(--info-soft); }
+.t-purple  { --tone: var(--system-purple);  --tone-soft: var(--rqd-purple-soft); }
+.t-success { --tone: var(--success);        --tone-soft: var(--success-soft); }
+.t-warning { --tone: var(--warning);        --tone-soft: var(--warning-soft); }
+.t-danger  { --tone: var(--danger);         --tone-soft: var(--danger-soft); }
+.t-primary { --tone: var(--brand);          --tone-soft: var(--brand-soft); }
+.t-neutral { --tone: var(--text-quaternary);--tone-soft: var(--bg-fill-tertiary); }
+
+.rqd-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+.rqd-grid-2 { display: grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1fr); gap: 14px; }
+.rqd-chart-box { position: relative; height: 220px; padding: 12px 16px; }
+.rqd-empty { display: grid; place-items: center; gap: 8px; padding: 32px 16px; text-align: center; color: var(--text-tertiary); font-size: 13px; }
+.rqd-empty i { font-size: 22px; color: var(--text-quaternary); }
+
+@media (max-width: 900px) { .rqd-grid-3 { grid-template-columns: 1fr; } .rqd-grid-2 { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .rqd-toolbar { flex-direction: column; align-items: stretch; } .rqd-toolbar-actions { margin-left: 0; justify-content: stretch; } .rqd-toolbar-actions .btn { flex: 1; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rqd-page">
+
+  <section class="rqd-toolbar" aria-label="Filtros">
+    <form method="get" id="rqdFilterForm" autocomplete="off">
+      <div class="rqd-field">
+        <label for="id_inicio">Início</label>
+        <input id="id_inicio" type="date" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}">
+      </div>
+      <div class="rqd-field">
+        <label for="id_fim">Fim</label>
+        <input id="id_fim" type="date" name="fim" value="{{ dt_fim|date:'Y-m-d' }}">
+      </div>
+      <div class="rqd-field">
+        <label for="id_tipo">Tipo</label>
+        <select id="id_tipo" name="tipo">
+          <option value="">Todos os tipos</option>
+          {% for v, lbl in tipo_choices %}
+            <option value="{{ v }}" {% if f_tipo == v %}selected{% endif %}>{{ lbl }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="rqd-field">
+        <label for="id_categoria">Categoria</label>
+        <select id="id_categoria" name="categoria">
+          <option value="">Todas as categorias</option>
+          {% for c in categorias %}
+            <option value="{{ c.id }}" {% if f_categoria == c.id|stringformat:"s" %}selected{% endif %}>{{ c.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </form>
+    <div class="rqd-toolbar-actions">
+      <a href="{% url 'requisicoes_dashboard' %}" class="btn btn-outline btn-sm"><i class="fa fa-eraser" aria-hidden="true"></i> Limpar</a>
+      <button type="submit" form="rqdFilterForm" class="btn btn-primary btn-sm"><i class="fa fa-filter" aria-hidden="true"></i> Filtrar</button>
+    </div>
+  </section>
+
+  <section class="rqd-metrics" aria-label="Indicadores">
+    <div class="rqd-metric t-brand">
+      <span class="rqd-metric-icon"><i class="fa fa-folder-open" aria-hidden="true"></i></span>
+      <span class="rqd-metric-body"><span class="rqd-metric-value">{{ total_requisicoes }}</span><span class="rqd-metric-label">Requisições no período</span></span>
+    </div>
+    <div class="rqd-metric t-indigo">
+      <span class="rqd-metric-icon"><i class="fa fa-list" aria-hidden="true"></i></span>
+      <span class="rqd-metric-body"><span class="rqd-metric-value">{{ total_itens }}</span><span class="rqd-metric-label">Itens solicitados</span></span>
+    </div>
+    <div class="rqd-metric t-info">
+      <span class="rqd-metric-icon"><i class="fa fa-cubes" aria-hidden="true"></i></span>
+      <span class="rqd-metric-body"><span class="rqd-metric-value">{{ quantidade_total }}</span><span class="rqd-metric-label">Quantidade total pedida</span></span>
+    </div>
+    <div class="rqd-metric t-purple">
+      <span class="rqd-metric-icon"><i class="fa fa-scale-balanced" aria-hidden="true"></i></span>
+      <span class="rqd-metric-body"><span class="rqd-metric-value">{{ ticket_medio }}</span><span class="rqd-metric-label">Itens por requisição</span></span>
+    </div>
+    <div class="rqd-metric t-success">
+      <span class="rqd-metric-icon"><i class="fa fa-circle-check" aria-hidden="true"></i></span>
+      <span class="rqd-metric-body"><span class="rqd-metric-value">{{ taxa_aprovacao }}%</span><span class="rqd-metric-label">Taxa de aprovação</span></span>
+    </div>
+  </section>
+
+  <section class="rqd-grid-3" aria-label="Itens mais solicitados">
+    <div class="rqd-card rqd-card-accent t-brand">
+      <div class="rqd-card-head">
+        <div class="rqd-card-title"><i class="fa fa-ranking-star" aria-hidden="true"></i> Itens Mais Pedidos</div>
+        <span class="rqd-card-tag"><span class="dot"></span>Geral</span>
+      </div>
+      <div class="rqd-card-body">
+        {% if top_geral %}
+        <ol class="rqd-rank">
+          {% for it in top_geral %}
+          <li>
+            <span class="rqd-rank-pos">{{ forloop.counter }}</span>
+            <span>
+              <div class="rqd-rank-name" title="{{ it.descricao }}">{{ it.descricao }}</div>
+              <div class="rqd-rank-sub">{% if it.codigo %}Cód. {{ it.codigo }} · {% endif %}{{ it.pedidos }} pedido{{ it.pedidos|pluralize }}</div>
+            </span>
+            <span class="rqd-rank-qtd">{{ it.qtd_total }}</span>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <div class="rqd-empty"><i class="fa fa-inbox" aria-hidden="true"></i>Nenhum item no período.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="rqd-card rqd-card-accent t-info">
+      <div class="rqd-card-head">
+        <div class="rqd-card-title"><i class="fa fa-warehouse" aria-hidden="true"></i> Mais Solicitados — Estoque</div>
+        <span class="rqd-card-tag"><span class="dot"></span>Estoque</span>
+      </div>
+      <div class="rqd-card-body">
+        {% if top_estoque %}
+        <ol class="rqd-rank">
+          {% for it in top_estoque %}
+          <li>
+            <span class="rqd-rank-pos">{{ forloop.counter }}</span>
+            <span>
+              <div class="rqd-rank-name" title="{{ it.descricao }}">{{ it.descricao }}</div>
+              <div class="rqd-rank-sub">{% if it.codigo %}Cód. {{ it.codigo }} · {% endif %}{{ it.pedidos }} pedido{{ it.pedidos|pluralize }}</div>
+            </span>
+            <span class="rqd-rank-qtd">{{ it.qtd_total }}</span>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <div class="rqd-empty"><i class="fa fa-inbox" aria-hidden="true"></i>Nenhum item de estoque no período.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="rqd-card rqd-card-accent t-warning">
+      <div class="rqd-card-head">
+        <div class="rqd-card-title"><i class="fa fa-cart-shopping" aria-hidden="true"></i> Mais Solicitados — Compra</div>
+        <span class="rqd-card-tag"><span class="dot"></span>Compra</span>
+      </div>
+      <div class="rqd-card-body">
+        {% if top_compra %}
+        <ol class="rqd-rank">
+          {% for it in top_compra %}
+          <li>
+            <span class="rqd-rank-pos">{{ forloop.counter }}</span>
+            <span>
+              <div class="rqd-rank-name" title="{{ it.descricao }}">{{ it.descricao }}</div>
+              <div class="rqd-rank-sub">{% if it.codigo %}Cód. {{ it.codigo }} · {% endif %}{{ it.pedidos }} pedido{{ it.pedidos|pluralize }}</div>
+            </span>
+            <span class="rqd-rank-qtd">{{ it.qtd_total }}</span>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <div class="rqd-empty"><i class="fa fa-inbox" aria-hidden="true"></i>Nenhum item de compra no período.</div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="rqd-grid-2" aria-label="Evolução e status">
+    <div class="rqd-card">
+      <div class="rqd-card-head">
+        <div class="rqd-card-title"><i class="fa fa-chart-line" aria-hidden="true"></i> Evolução Mensal — Quantidade Solicitada</div>
+      </div>
+      <div class="rqd-chart-box"><canvas id="rqdEvolChart"></canvas></div>
+    </div>
+    <div class="rqd-card">
+      <div class="rqd-card-head">
+        <div class="rqd-card-title"><i class="fa fa-list-check" aria-hidden="true"></i> Status das Requisições</div>
+      </div>
+      <div class="rqd-card-body">
+        {% if status_dist %}
+        <div class="rqd-status-list">
+          {% for s in status_dist %}
+          <div class="rqd-status-row t-{{ s.tone }}">
+            <span class="rqd-status-dot"></span>
+            <span class="rqd-status-label">{{ s.label }}</span>
+            <span class="rqd-status-count">{{ s.n }} · {{ s.pct }}%</span>
+            <span class="rqd-status-track"><span class="rqd-status-bar" style="width:{{ s.pct }}%"></span></span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="rqd-empty"><i class="fa fa-inbox" aria-hidden="true"></i>Nenhuma requisição no período.</div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="rqd-grid-2" aria-label="Requisitantes e categorias">
+    <div class="rqd-card">
+      <div class="rqd-card-head">
+        <div class="rqd-card-title"><i class="fa fa-users" aria-hidden="true"></i> Requisitantes Mais Ativos</div>
+      </div>
+      <div class="rqd-scroll">
+        <table class="rqd-table">
+          <thead><tr><th>Requisitante</th><th class="num">Qtd. pedida</th></tr></thead>
+          <tbody>
+            {% for r in top_requisitantes %}
+            <tr><td>{{ r.nome }}</td><td class="num">{{ r.qtd }}</td></tr>
+            {% empty %}
+            <tr><td colspan="2"><div class="rqd-empty">Sem dados no período.</div></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="rqd-card">
+      <div class="rqd-card-head">
+        <div class="rqd-card-title"><i class="fa fa-layer-group" aria-hidden="true"></i> Categorias Mais Solicitadas</div>
+      </div>
+      <div class="rqd-scroll">
+        <table class="rqd-table">
+          <thead><tr><th>Categoria</th><th class="num">Qtd. pedida</th></tr></thead>
+          <tbody>
+            {% for cat, qtd in top_categorias %}
+            <tr><td>{{ cat }}</td><td class="num">{{ qtd }}</td></tr>
+            {% empty %}
+            <tr><td colspan="2"><div class="rqd-empty">Sem dados no período.</div></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+{{ mes_labels|default:"[]"|json_script:"rqd-mes-labels" }}
+{{ mes_qtd|default:"[]"|json_script:"rqd-mes-qtd" }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+<script>
+(function () {
+  const getJson = (id) => JSON.parse(document.getElementById(id).textContent || '[]');
+  const tok = (name) => getComputedStyle(document.body).getPropertyValue(name).trim();
+
+  Chart.defaults.font.family = "-apple-system, 'Inter', sans-serif";
+  Chart.defaults.font.size = 11;
+  Chart.defaults.color = tok('--text-tertiary') || '#6e6e73';
+
+  const brand = tok('--brand') || '#0071e3';
+  const gridColor = tok('--separator-hairline') || 'rgba(0,0,0,.06)';
+
+  const ctx = document.getElementById('rqdEvolChart');
+  if (ctx) {
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: getJson('rqd-mes-labels'),
+        datasets: [{
+          data: getJson('rqd-mes-qtd'),
+          borderColor: brand,
+          backgroundColor: brand + '1a',
+          borderWidth: 2,
+          tension: .3,
+          fill: true,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          pointBackgroundColor: brand,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { displayColors: false } },
+        scales: {
+          x: { grid: { display: false }, border: { display: false } },
+          y: { beginAtZero: true, grid: { color: gridColor }, border: { display: false }, ticks: { precision: 0 } },
+        },
+      },
+    });
+  }
+})();
+</script>
+{% endblock %}

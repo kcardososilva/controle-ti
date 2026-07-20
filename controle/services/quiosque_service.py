@@ -17,7 +17,7 @@ import json
 import random
 import secrets
 import string
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 from pathlib import Path
 
 from django.conf import settings
@@ -98,10 +98,25 @@ def definir_pin(device, pin: str) -> None:
 _APK_LINK_MIN_MINUTOS = 5
 _APK_LINK_MAX_MINUTOS = 240  # 4h — teto de segurança mesmo que o cliente peça mais
 
+# Quantas arquivagens (uploads substituídos) ficam retidas em versoes_anteriores/.
+# Além disso, a mais antiga é apagada a cada novo upload — evita crescimento sem
+# limite da pasta protegida (mesmo princípio de RETENCAO_DIAS para check-ins).
+_VERSOES_ANTERIORES_MAX = 10
+
 
 def apk_dir() -> Path:
     """Pasta protegida do instalador. Cria se ainda não existir."""
     destino = Path(getattr(settings, "KIOSK_APK_DIR", None) or (Path(settings.BASE_DIR) / "kiosk_apk"))
+    destino.mkdir(parents=True, exist_ok=True)
+    return destino
+
+
+def apk_versoes_dir() -> Path:
+    """Subpasta onde as versões substituídas do instalador ficam arquivadas (em
+    vez de apagadas) — permite recuperar um .apk anterior se a build nova
+    apresentar problema. Fica dentro da mesma pasta protegida (`KIOSK_APK_DIR`),
+    fora do alcance do `apk_atual()` (que só olha o nível raiz)."""
+    destino = apk_dir() / "versoes_anteriores"
     destino.mkdir(parents=True, exist_ok=True)
     return destino
 
@@ -149,14 +164,13 @@ _APK_UPLOAD_MAX_MB = 400
 def salvar_apk_upload(arquivo, *, version_code: int | None = None, version_name: str = "") -> dict:
     """Salva um novo instalador (.apk) enviado pela tela de Matrículas, na pasta
     protegida (`KIOSK_APK_DIR`) — dispensa copiar o arquivo manualmente no
-    servidor. A versão nova SOBREPÕE a(s) anterior(es): remove todo `.apk` já
-    existente na pasta antes de gravar o novo, então `apk_atual()` sempre resolve
-    para o arquivo recém-enviado.
+    servidor. A versão nova SOBREPÕE a(s) anterior(es) na raiz da pasta, mas a(s)
+    antiga(s) não é(são) apagada(s): vai(ão) para `versoes_anteriores/` (ver
+    `_arquivar_apk_atual`), então `apk_atual()` sempre resolve para o arquivo
+    recém-enviado e a build anterior continua disponível para download.
 
-    Sempre remove o sidecar de versão (`atualizacao.json`, ver
-    `registrar_versao_apk_atual`): ele foi calculado para o arquivo antigo e
-    ficaria órfão. Se `version_code` for informado, já registra a versão nova no
-    mesmo passo — dispensando rodar o comando `assinar_apk_quiosque` à parte. Sem
+    Se `version_code` for informado, já registra a versão nova no mesmo passo —
+    dispensando rodar o comando `assinar_apk_quiosque` à parte. Sem
     `version_code`, o .apk fica publicado e a auto-atualização (Device Owner)
     simplesmente fica ausente até a versão ser registrada (aqui de novo, ou pelo
     comando) — não quebra o check-in (ver `atualizacao_disponivel`).
@@ -170,12 +184,7 @@ def salvar_apk_upload(arquivo, *, version_code: int | None = None, version_name:
         raise ValueError(f"Arquivo maior que o limite de {_APK_UPLOAD_MAX_MB}MB.")
 
     destino_dir = apk_dir()
-    for antigo in destino_dir.iterdir():
-        if antigo.is_file() and antigo.suffix.lower() == ".apk":
-            antigo.unlink()
-    sidecar = destino_dir / _ATUALIZACAO_SIDECAR
-    if sidecar.is_file():
-        sidecar.unlink()
+    _arquivar_apk_atual(destino_dir)
 
     with open(destino_dir / nome, "wb") as destino:
         for pedaco in arquivo.chunks():
@@ -185,6 +194,105 @@ def salvar_apk_upload(arquivo, *, version_code: int | None = None, version_name:
         registrar_versao_apk_atual(version_code=version_code, version_name=version_name)
 
     return apk_atual()
+
+
+def _arquivar_apk_atual(destino_dir: Path) -> None:
+    """Move o(s) .apk hoje publicado(s) — e o sidecar de versão correspondente,
+    se houver — para `versoes_anteriores/`, prefixando o nome com a data/hora do
+    arquivamento (evita colisão de nomes e preserva a ordem cronológica). Poda a
+    arquivagem mais antiga além de `_VERSOES_ANTERIORES_MAX`."""
+    antigos = [p for p in destino_dir.iterdir() if p.is_file() and p.suffix.lower() == ".apk"]
+    if not antigos:
+        return
+
+    sidecar = destino_dir / _ATUALIZACAO_SIDECAR
+    info_sidecar = None
+    if sidecar.is_file():
+        try:
+            info_sidecar = json.loads(sidecar.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            info_sidecar = None
+
+    versoes_dir = apk_versoes_dir()
+    prefixo = timezone.now().strftime("%Y%m%d-%H%M%S")
+    for antigo in antigos:
+        # Duas arquivagens no mesmo segundo (dois uploads em sequência rápida)
+        # teriam o mesmo prefixo — sem o desempate abaixo, a segunda SOBRESCREVERIA
+        # o arquivo da primeira (Path.replace troca silenciosamente o destino).
+        arquivado = versoes_dir / f"{prefixo}__{antigo.name}"
+        sufixo = 1
+        while arquivado.exists():
+            sufixo += 1
+            arquivado = versoes_dir / f"{prefixo}-{sufixo}__{antigo.name}"
+        antigo.replace(arquivado)
+        if info_sidecar and info_sidecar.get("apk_nome") == antigo.name:
+            (versoes_dir / f"{arquivado.name}.json").write_text(json.dumps(info_sidecar), encoding="utf-8")
+    if sidecar.is_file():
+        sidecar.unlink()
+
+    _podar_versoes_anteriores()
+
+
+def _podar_versoes_anteriores() -> None:
+    """Mantém só as `_VERSOES_ANTERIORES_MAX` arquivagens mais recentes — apaga
+    o excedente mais antigo (.apk + sidecar de versão, se houver)."""
+    versoes_dir = apk_versoes_dir()
+    apks = sorted(
+        (p for p in versoes_dir.iterdir() if p.is_file() and p.suffix.lower() == ".apk"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for excedente in apks[_VERSOES_ANTERIORES_MAX:]:
+        excedente.unlink(missing_ok=True)
+        sidecar_excedente = versoes_dir / f"{excedente.name}.json"
+        if sidecar_excedente.is_file():
+            sidecar_excedente.unlink()
+
+
+def versoes_anteriores() -> list[dict]:
+    """Lista os instaladores (.apk) arquivados em `versoes_anteriores/` — versões
+    substituídas por um upload mais recente na tela de Matrículas — da mais
+    recente para a mais antiga. Cada item traz nome/tamanho/data e, quando o
+    sidecar foi preservado, a versão (`version_code`/`version_name`) que estava
+    registrada quando aquele .apk foi substituído."""
+    versoes_dir = apk_versoes_dir()
+    candidatos = sorted(
+        (p for p in versoes_dir.iterdir() if p.is_file() and p.suffix.lower() == ".apk"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    resultado = []
+    for p in candidatos:
+        st = p.stat()
+        versao = None
+        sidecar = versoes_dir / f"{p.name}.json"
+        if sidecar.is_file():
+            try:
+                info = json.loads(sidecar.read_text(encoding="utf-8"))
+                versao = {"version_code": info.get("version_code"), "version_name": info.get("version_name")}
+            except (ValueError, OSError):
+                versao = None
+        resultado.append({
+            "nome": p.name,
+            "tamanho": st.st_size,
+            "modificado_em": timezone.make_aware(datetime.fromtimestamp(st.st_mtime)),
+            "versao": versao,
+        })
+    return resultado
+
+
+def caminho_versao_anterior(nome_arquivo: str) -> Path | None:
+    """Resolve o caminho físico de um instalador arquivado (versão anterior)
+    dentro de `versoes_anteriores/`. Mesma defesa contra path traversal de
+    `caminho_instalador`: nome sem separador de caminho e resultado confirmado
+    DENTRO da subpasta de arquivamento."""
+    if not nome_arquivo or nome_arquivo != Path(nome_arquivo).name:
+        return None
+    base = apk_versoes_dir().resolve()
+    caminho = (base / nome_arquivo).resolve()
+    if caminho.parent != base or not caminho.is_file():
+        return None
+    return caminho
 
 
 def gerar_qrcode_data_uri(conteudo: str, tamanho_px: int = 260) -> str:
@@ -793,8 +901,19 @@ TRILHA_PRECISAO_MAX_M = 80.0
 # de GPS ("teletransporte"). Só vale para saltos com distância relevante.
 TRILHA_VEL_MAX_KMH = 160.0
 TRILHA_SALTO_MIN_M = 100.0
-# Máximo de pontos recentes considerados no traço (janela de rota mais recente).
+# Máximo de pontos recentes considerados no traço padrão (janela de rota mais
+# recente, sem filtro de dia — mantém o mapa do detalhe leve).
 TRILHA_MAX_PONTOS = 150
+# Ao filtrar UM dia específico o traço deve cobrir o dia inteiro (não só uma
+# janela recente) — teto maior, e decimado (ver _decimar_trilha) se precisar.
+TRILHA_DIA_MAX_PONTOS = 600
+# Teto de segurança na leitura bruta de um único dia (defesa contra um device
+# mal configurado com intervalo de check-in no mínimo de 5s: 86400/5 = 17280).
+TRILHA_DIA_FETCH_MAX = 20000
+# Limiares iniciais de decimação (distância/tempo mínimos entre pontos mantidos
+# do traço de um dia) — crescem geometricamente até caber em TRILHA_DIA_MAX_PONTOS.
+TRILHA_DECIM_MIN_M = 12.0
+TRILHA_DECIM_MIN_S = 20.0
 
 
 def _haversine_m(lat1, lon1, lat2, lon2) -> float:
@@ -807,7 +926,146 @@ def _haversine_m(lat1, lon1, lat2, lon2) -> float:
     return 2 * raio * asin(sqrt(a))
 
 
-def montar_trilha(device, max_pontos: int = TRILHA_MAX_PONTOS) -> list:
+def intervalo_dia_local(dia: date) -> tuple:
+    """[início, fim) de um dia de calendário no fuso local, como datetimes aware
+    (para filtrar campos DateTimeField sem depender de TruncDate em cada query)."""
+    tz = timezone.get_current_timezone()
+    inicio = timezone.make_aware(datetime.combine(dia, datetime.min.time()), tz)
+    return inicio, inicio + timedelta(days=1)
+
+
+_DIAS_SEMANA_PT = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
+
+
+def _rotulo_dia(dia: date, hoje: date | None = None) -> str:
+    hoje = hoje or timezone.localdate()
+    delta = (hoje - dia).days
+    if delta == 0:
+        return "Hoje"
+    if delta == 1:
+        return "Ontem"
+    return f"{_DIAS_SEMANA_PT[dia.weekday()]}, {dia.strftime('%d/%m')}"
+
+
+def dias_disponiveis_checkin(device) -> list:
+    """Dias (dentro da janela de retenção de RETENCAO_DIAS) com pelo menos um
+    check-in — alimenta os filtros de "histórico por dia" na tela de detalhe.
+    Mais recente primeiro. [{data, label, total}]."""
+    from django.db.models import Count
+    from django.db.models.functions import TruncDate
+    from ProjetoEstoque.models import KioskCheckin
+
+    cutoff = timezone.now() - timedelta(days=RETENCAO_DIAS)
+    hoje = timezone.localdate()
+    linhas = (
+        KioskCheckin.objects
+        .filter(device=device)
+        .annotate(ts=Coalesce("coletado_em", "registrado_em"))
+        .filter(ts__gte=cutoff)
+        .annotate(d=TruncDate("ts"))
+        .values("d")
+        .annotate(total=Count("id"))
+        .order_by("-d")
+    )
+    return [
+        {"data": row["d"], "label": _rotulo_dia(row["d"], hoje), "total": row["total"]}
+        for row in linhas
+        if row["d"] is not None
+    ][:RETENCAO_DIAS]
+
+
+def _decimar_trilha(pontos: list, alvo: int) -> list:
+    """Reduz um traço muito denso (ex.: device configurado com check-in a cada
+    5s) a no máximo `alvo` pontos, preservando a FORMA do trajeto: descarta um
+    ponto só quando está muito perto (distância E tempo) do último ponto
+    mantido — o dispositivo parado gera muitos pontos redundantes; em
+    movimento, os pontos ficam naturalmente mais espaçados e são preservados.
+    Primeiro e último ponto do dia são sempre mantidos (partida/chegada exatas
+    para o resumo do dia)."""
+    if len(pontos) <= alvo:
+        return pontos
+    min_m, min_s = TRILHA_DECIM_MIN_M, TRILHA_DECIM_MIN_S
+    mantidos = pontos
+    for _ in range(8):  # crescimento geométrico converge em poucas iterações
+        mantidos = [pontos[0]]
+        for p in pontos[1:-1]:
+            ult = mantidos[-1]
+            dist = _haversine_m(ult["lat"], ult["lon"], p["lat"], p["lon"])
+            dt = (p["_ts"] - ult["_ts"]).total_seconds()
+            if dist >= min_m or dt >= min_s:
+                mantidos.append(p)
+        mantidos.append(pontos[-1])
+        if len(mantidos) <= alvo:
+            break
+        min_m *= 1.7
+        min_s *= 1.7
+    return mantidos
+
+
+# Raio (m) dentro do qual leituras consecutivas são consideradas "o mesmo
+# lugar" — ruído normal de GPS/Wi-Fi mesmo com o aparelho parado (ex.: tablet
+# de ponto fixado na parede). Sem isso, um device que NUNCA se move ainda gera
+# dezenas de leituras espalhadas num raio de poucos metros, e a polilinha do
+# traço — que conecta cada leitura na ordem cronológica — vira um emaranhado
+# de linhas cruzadas sem direção nenhuma (visualmente parece "andou muito" sem
+# ter andado nada). Também inflava a distância percorrida no resumo do dia,
+# somando ruído como se fosse deslocamento real.
+STAY_RADIUS_M = 35.0
+# Só colapsa em "parado" quando há pelo menos N leituras seguidas na mesma
+# área — 1-2 pontos próximos é normal (não formam a "teia") e ficam como estão.
+STAY_MIN_PONTOS = 3
+
+
+def _colapsar_paradas(pontos: list) -> list:
+    """Reduz sequências de leituras que ficam dentro de STAY_RADIUS_M de onde
+    a sequência começou a UM ponto representativo (centróide), marcado com
+    `parado=True`. A ANCORAGEM no primeiro ponto da sequência (não no ponto
+    anterior) evita que uma deriva lenta e cumulativa — vários passos pequenos
+    de ruído, cada um dentro do raio do anterior — escape do raio real de
+    "parado" e seja tratada como uma sequência só; qualquer leitura que se
+    afaste mais de STAY_RADIUS_M de onde a sequência começou fecha o cluster
+    atual e abre um novo (evidência real de deslocamento).
+
+    Preserva a ordem cronológica. Não mexe em sequências menores que
+    STAY_MIN_PONTOS (ficam como pontos individuais — não há "teia" a resolver)."""
+    if len(pontos) < STAY_MIN_PONTOS + 1:
+        return pontos
+
+    def _centro(cluster: list) -> dict:
+        n = len(cluster)
+        precisoes = [p["precisao"] for p in cluster if p["precisao"] is not None]
+        return {
+            "id": cluster[-1]["id"],
+            "lat": sum(p["lat"] for p in cluster) / n,
+            "lon": sum(p["lon"] for p in cluster) / n,
+            "precisao": max(precisoes) if precisoes else None,
+            "quando": cluster[-1]["quando"],
+            "quando_inicio": cluster[0]["quando"],
+            "bateria": cluster[-1]["bateria"],
+            "online": cluster[-1]["online"],
+            "_ts": cluster[-1]["_ts"],
+            "parado": True,
+            "pontos_originais": n,
+        }
+
+    resultado, cluster, ancora = [], [pontos[0]], pontos[0]
+    for p in pontos[1:]:
+        if _haversine_m(ancora["lat"], ancora["lon"], p["lat"], p["lon"]) <= STAY_RADIUS_M:
+            cluster.append(p)
+            continue
+        resultado.append(_centro(cluster) if len(cluster) >= STAY_MIN_PONTOS else cluster)
+        cluster, ancora = [p], p
+    resultado.append(_centro(cluster) if len(cluster) >= STAY_MIN_PONTOS else cluster)
+
+    # `resultado` mistura clusters colapsados (dict único) com trechos que
+    # ficaram como lista de pontos individuais — achata tudo numa lista plana.
+    achatado = []
+    for item in resultado:
+        achatado.extend(item) if isinstance(item, list) else achatado.append(item)
+    return achatado
+
+
+def montar_trilha(device, max_pontos: int = TRILHA_MAX_PONTOS, dia: date | None = None) -> list:
     """
     Monta o traço de deslocamento do device para o mapa do detalhe, priorizando a
     PRECISÃO do caminho:
@@ -818,18 +1076,28 @@ def montar_trilha(device, max_pontos: int = TRILHA_MAX_PONTOS) -> list:
       2. Descarta fixes ruins (precisao_m acima do limite) que jogam o traço longe.
       3. Remove saltos impossíveis (velocidade acima do limite) — glitches de GPS.
 
+    Sem `dia`: janela recente limitada a `max_pontos` (traço "ao vivo", mais leve).
+    Com `dia`: cobre o dia inteiro (00:00–23:59 no fuso local), decimado (ver
+    `_decimar_trilha`) se ultrapassar TRILHA_DIA_MAX_PONTOS.
+
     Devolve a lista em ordem CRONOLÓGICA (antigo → recente):
     [{id, lat, lon, precisao, quando, bateria, online}].
     """
     from ProjetoEstoque.models import KioskCheckin
 
-    base = list(
+    query = (
         KioskCheckin.objects
         .filter(device=device, latitude__isnull=False, longitude__isnull=False)
         .annotate(ts=Coalesce("coletado_em", "registrado_em"))
-        .order_by("-ts")[:max_pontos]
     )
-    base.reverse()  # cronológico ascendente (antigo → recente)
+    decimar_para = None
+    if dia is not None:
+        inicio, fim = intervalo_dia_local(dia)
+        base = list(query.filter(ts__gte=inicio, ts__lt=fim).order_by("ts")[:TRILHA_DIA_FETCH_MAX])
+        decimar_para = TRILHA_DIA_MAX_PONTOS
+    else:
+        base = list(query.order_by("-ts")[:max_pontos])
+        base.reverse()  # cronológico ascendente (antigo → recente)
 
     def _construir(filtrar_precisao: bool) -> list:
         pontos, prev = [], None
@@ -854,8 +1122,6 @@ def montar_trilha(device, max_pontos: int = TRILHA_MAX_PONTOS) -> list:
             }
             pontos.append(ponto)
             prev = ponto
-        for p in pontos:
-            p.pop("_ts", None)
         return pontos
 
     trilha = _construir(filtrar_precisao=True)
@@ -863,7 +1129,122 @@ def montar_trilha(device, max_pontos: int = TRILHA_MAX_PONTOS) -> list:
     # sem ele para ainda assim mostrar algum caminho.
     if len(trilha) < 2:
         trilha = _construir(filtrar_precisao=False)
+
+    # Colapsa "paradas" (ruído de GPS/Wi-Fi com o aparelho fisicamente parado)
+    # ANTES da decimação: um device parado gera muitos pontos no mesmo lugar, e
+    # é exatamente esse volume que faria a decimação (pensada para trajetos
+    # longos de verdade) cortar pontos do jeito errado.
+    trilha = _colapsar_paradas(trilha)
+
+    if decimar_para and len(trilha) > decimar_para:
+        trilha = _decimar_trilha(trilha, decimar_para)
+
+    for p in trilha:
+        p.pop("_ts", None)
     return trilha
+
+
+def montar_mapa_dict(device, trilha: list, dia: date | None = None) -> dict | None:
+    """Monta o dict de mapa consumido pelo template/AJAX do detalhe.
+
+    - SEM filtro de dia: o pino de posição usa os campos brutos mais recentes
+      do device (`ultima_latitude`/`ultima_longitude`/`ultima_precisao_m`) —
+      sempre o ÚLTIMO fix relatado, mesmo que sua precisão seja pior que o
+      filtro de qualidade do traço (TRILHA_PRECISAO_MAX_M). Antes o pino usava
+      o último ponto do traço já filtrado e podia "travar" numa posição antiga
+      sempre que os fixes mais novos ficassem um pouco acima do limiar de
+      precisão — dando a impressão de que "o mapa não atualiza". O traço
+      (polilinha) continua vindo de `montar_trilha`, já limpo de glitches.
+    - COM filtro de dia: é histórico, não existe "posição atual" — o pino
+      mostra o último ponto do TRAÇO DAQUELE DIA. Sem fallback para os campos
+      globais do device (que refletem o dia mais recente, não o dia filtrado —
+      usar esse fallback mostraria uma posição de outro dia, confundindo quem
+      está olhando um dia passado).
+    """
+    nome = device.apelido or device.modelo or "Quiosque"
+    if dia is not None:
+        if not trilha:
+            return None
+        ultimo = trilha[-1]
+        return {
+            "nome": nome, "lat": ultimo["lat"], "lon": ultimo["lon"], "precisao": ultimo["precisao"],
+            "online": device.online, "trilha": trilha, "historico": True,
+        }
+
+    if not device.tem_localizacao:
+        return None
+    return {
+        "nome": nome, "lat": device.ultima_latitude, "lon": device.ultima_longitude,
+        "precisao": device.ultima_precisao_m, "online": device.online,
+        "trilha": trilha, "historico": False,
+    }
+
+
+def montar_resumo_dia(device, dia: date, trilha: list) -> dict:
+    """Resumo em linguagem natural + estatísticas do dia filtrado no detalhe do
+    dispositivo — traça o percurso e cruza telemetria (bateria/rede/online) dos
+    check-ins REAIS daquele dia (não a versão decimada usada no traço do mapa),
+    para números fiéis mesmo quando o traço precisou ser reduzido."""
+    from collections import Counter
+    from ProjetoEstoque.models import KioskCheckin
+
+    label = _rotulo_dia(dia)
+    inicio, fim = intervalo_dia_local(dia)
+    checkins_dia = list(
+        KioskCheckin.objects
+        .filter(device=device)
+        .annotate(ts=Coalesce("coletado_em", "registrado_em"))
+        .filter(ts__gte=inicio, ts__lt=fim)
+        .order_by("ts")
+    )
+    total = len(checkins_dia)
+    if not total:
+        return {
+            "total_checkins": 0, "label": label,
+            "resumo_texto": f"Nenhum check-in registrado em {label.lower()}.",
+        }
+
+    primeiro, ultimo = checkins_dia[0], checkins_dia[-1]
+    baterias = [c.bateria for c in checkins_dia if c.bateria is not None]
+    redes = Counter(c.rede for c in checkins_dia if c.rede)
+    rede_top = redes.most_common(1)[0][0] if redes else None
+    online_count = sum(1 for c in checkins_dia if c.online)
+    pct_online = round(online_count / total * 100)
+
+    distancia_km = 0.0
+    for a, b in zip(trilha, trilha[1:]):
+        distancia_km += _haversine_m(a["lat"], a["lon"], b["lat"], b["lon"])
+    distancia_km = round(distancia_km / 1000, 2)
+
+    p_local, u_local = timezone.localtime(primeiro.quando), timezone.localtime(ultimo.quando)
+    duracao_min = max(0, round((ultimo.quando - primeiro.quando).total_seconds() / 60))
+    horas, minutos = divmod(duracao_min, 60)
+    duracao_label = f"{horas}h{minutos:02d}min" if horas else f"{minutos}min"
+
+    partes = [f"{total} check-in(s) em {label.lower()}, entre {p_local:%H:%M} e {u_local:%H:%M} ({duracao_label})."]
+    if distancia_km >= 0.05:
+        partes.append(f"Percorreu aproximadamente {distancia_km:.2f} km no traço registrado.")
+    if baterias:
+        if len(baterias) >= 2 and baterias[0] != baterias[-1]:
+            partes.append(f"Bateria variou de {baterias[0]}% para {baterias[-1]}%.")
+        else:
+            partes.append(f"Bateria em torno de {baterias[-1]}%.")
+    partes.append(f"Esteve online em {pct_online}% dos check-ins" + (f", majoritariamente via {rede_top}." if rede_top else "."))
+
+    return {
+        "total_checkins": total,
+        "label": label,
+        "primeiro_checkin": p_local,
+        "ultimo_checkin": u_local,
+        "duracao_label": duracao_label,
+        "bateria_inicial": baterias[0] if baterias else None,
+        "bateria_final": baterias[-1] if baterias else None,
+        "rede_predominante": rede_top,
+        "pct_online": pct_online,
+        "pontos_no_traco": len(trilha),
+        "distancia_km": distancia_km,
+        "resumo_texto": " ".join(partes),
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
