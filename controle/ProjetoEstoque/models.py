@@ -338,6 +338,13 @@ class Item(AuditModel):
 
     data_compra = models.DateField(blank=True, null=True)
     numero_pedido = models.CharField(max_length=100, blank=True, null=True)
+    numero_nf = models.CharField(
+        max_length=60,
+        blank=True,
+        null=True,
+        verbose_name="Número da NF",
+        help_text="Nota fiscal do item — válido tanto para item próprio quanto locado."
+    )
     observacoes = models.TextField(blank=True, null=True)
 
     locado = models.CharField(

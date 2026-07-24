@@ -87,6 +87,16 @@ class ImportadorPlanilhaService:
                 "PEDIDO",
                 "Pedido",
             ],
+            # Cabeçalhos com "da"/"DO ITEM": deliberadamente diferentes dos aceitos por
+            # "LOTE NUMERO NF" ("Número NF", "NF", "Nota Fiscal") para não colidir com a coluna do lote.
+            "NUMERO NF": [
+                "NUMERO DA NF",
+                "NÚMERO DA NF",
+                "Número da NF",
+                "Numero da NF",
+                "NF DO ITEM",
+                "NF Item",
+            ],
 
             # Locação
             "DATA ENTRADA": ["DATA ENTRADA", "Data Entrada", "Data de Entrada"],
@@ -290,6 +300,10 @@ class ImportadorPlanilhaService:
             self._get_value(row, columns, self.aliases["NUMERO PEDIDO"])
         )
 
+        numero_nf = self._clean_text(
+            self._get_value(row, columns, self.aliases["NUMERO NF"])
+        )
+
         data_entrada_locacao = self._to_date(
             self._get_value(row, columns, self.aliases["DATA ENTRADA"])
         )
@@ -330,6 +344,7 @@ class ImportadorPlanilhaService:
         item.data_limite_preventiva = periodicidade
         item.locado = locado
         item.observacoes = observacoes_item
+        item.numero_nf = numero_nf
 
         self._preencher_auditoria(item, criando=criando)
 

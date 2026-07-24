@@ -413,7 +413,7 @@ def equipamentos_exportar(request):
         "#", "ID", "Nome", "Número de Série", "Marca", "Modelo", "Quantidade",
         "Item de Consumo", "PMB", "Valor de Aquisição (R$)", "Status", "Fornecedor",
         "Categoria", "Subtipo", "Localidade", "Centro de Custo", "Precisa Preventiva",
-        "Data Limite Preventiva (dias)", "Data da Compra", "Número do Pedido",
+        "Data Limite Preventiva (dias)", "Data da Compra", "Número do Pedido", "Número da NF",
         "Observações do Item", "Locado", "Tempo Locado (meses)", "Valor Locação Mensal (R$)",
         "Data de Entrada Locação", "Contrato Locação", "Observações da Locação",
         "Fornecedor da Locação", "Criado em", "Criado por", "Atualizado em", "Atualizado por",
@@ -422,7 +422,7 @@ def equipamentos_exportar(request):
     faixa_titulo(ws, ncols, "EQUIPAMENTOS — DETALHADO",
                  f"{total_itens} item(ns) exportado(s)  ·  gerado em {gerado}")
     HEADER_ROW = 3
-    center_cols = {1, 2, 7, 8, 9, 11, 17, 18, 22, 23}
+    center_cols = {1, 2, 7, 8, 9, 11, 17, 18, 23, 24}
     cabecalho_tabela(ws, HEADER_ROW, header, center_cols=center_cols)
 
     row = HEADER_ROW + 1
@@ -445,7 +445,7 @@ def equipamentos_exportar(request):
             _texto_relacionado(item.localidade, attr="local"), _fmt_cc(item.centro_custo),
             preventiva_txt,
             item.data_limite_preventiva if item.data_limite_preventiva is not None else "",
-            item.data_compra, item.numero_pedido or "", item.observacoes or "", locado_txt,
+            item.data_compra, item.numero_pedido or "", item.numero_nf or "", item.observacoes or "", locado_txt,
             locacao.tempo_locado if locacao and locacao.tempo_locado is not None else "",
             float(valor_locacao), locacao.data_entrada if locacao else "",
             locacao.contrato if locacao and locacao.contrato else "",
@@ -461,14 +461,14 @@ def equipamentos_exportar(request):
             c.border = border
             c.font = f_cell
             c.alignment = a_center if ci in center_cols else a_left
-            if ci == 10 or ci == 24:
+            if ci == 10 or ci == 25:
                 c.number_format = BRL
                 c.alignment = a_right
             elif ci == 19 and val:
                 c.number_format = data_format
-            elif ci == 25 and val:
+            elif ci == 26 and val:
                 c.number_format = data_format
-            elif ci in (29, 31) and val:
+            elif ci in (30, 32) and val:
                 c.number_format = data_hora_format
             if ci == 11 and st_fill:
                 c.fill = PatternFill("solid", fgColor=st_fill)

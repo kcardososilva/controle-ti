@@ -140,7 +140,7 @@ class ItemAdmin(AuditAdminMixin):
         "status", "pmb", "item_consumo", "subtipo",
         "localidade", "centro_custo", "fornecedor", "locado", "compartilhado", "excluido",
     )
-    search_fields = ("nome", "numero_serie", "marca", "modelo", "numero_pedido")
+    search_fields = ("nome", "numero_serie", "marca", "modelo", "numero_pedido", "numero_nf")
 
     # Fornecedor continua aqui, pois pertence ao Item
     autocomplete_fields = ("centro_custo", "localidade", "subtipo", "fornecedor")

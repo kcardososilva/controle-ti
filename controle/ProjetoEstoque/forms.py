@@ -332,6 +332,7 @@ class ItemForm(forms.ModelForm):
             "valor",
             "data_compra",
             "numero_pedido",
+            "numero_nf",
             "observacoes",
         ]
 
@@ -353,6 +354,7 @@ class ItemForm(forms.ModelForm):
             "data_limite_preventiva": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
             "valor": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "min": "0"}),
             "numero_pedido": forms.TextInput(attrs={"class": "form-control"}),
+            "numero_nf": forms.TextInput(attrs={"class": "form-control"}),
             "observacoes": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
 
@@ -363,6 +365,7 @@ class ItemForm(forms.ModelForm):
         self.fields["valor"].required = False
         self.fields["data_compra"].required = False
         self.fields["numero_pedido"].required = False
+        self.fields["numero_nf"].required = False
         self.fields["fornecedor"].required = False
         self.fields["data_limite_preventiva"].required = False
 

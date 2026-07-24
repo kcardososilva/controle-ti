@@ -1202,7 +1202,8 @@ def equipamento_detalhe(request, pk: int):
         "fa-building"
     )
     _add_info(dados_item, "Fornecedor Principal", _str_fk(item.fornecedor, "nome", "razao_social"), "fa-truck-field")
-    _add_info(dados_item, "Número Pedido / NF", item.numero_pedido, "fa-file-invoice", mono=True)
+    _add_info(dados_item, "Número do Pedido", item.numero_pedido, "fa-file-invoice", mono=True)
+    _add_info(dados_item, "Número da NF", item.numero_nf, "fa-file-invoice", mono=True)
     _add_info(dados_item, "Data de Compra", item.data_compra, "fa-calendar-days")
     _add_info(dados_item, "Valor Unitário", item.valor, "fa-coins")
     _add_info(dados_item, "Item de Consumo", item.get_item_consumo_display() if hasattr(item, "get_item_consumo_display") else item.item_consumo, "fa-box")
