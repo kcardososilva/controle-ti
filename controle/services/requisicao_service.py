@@ -82,6 +82,12 @@ _COLUNA_FLUXO_STATUS = {v: k for k, v in _FLUXO_COLUNA.items()}
 _REQ_PAUSAVEL = {StatusRequisicaoChoices.PAUSADA, StatusRequisicaoChoices.COM_ERRO}
 _REQ_ENCERRA = _REQ_PAUSAVEL | {StatusRequisicaoChoices.NAO_APROVADA, StatusRequisicaoChoices.CANCELADA}
 
+#: Requisição ainda pode ganhar novos itens enquanto não for enviada pro
+#: processo de aprovação de verdade (`ENVIADA_APROVACAO` em diante) —
+#: "Solicitada" é só uma marcação interna (nada foi submetido externamente
+#: ainda), por isso conta como aberta. Ver `vincular_item_a_requisicao`.
+STATUS_ABERTOS_A_NOVOS_ITENS = {StatusRequisicaoChoices.RASCUNHO, StatusRequisicaoChoices.SOLICITADA}
+
 
 def coluna_kanban(item: "RequisicaoItem") -> str:
     """Bucket do card no board — função pura, sem efeitos colaterais."""
@@ -246,8 +252,11 @@ class RequisicaoService:
 
     @staticmethod
     def vincular_item_a_requisicao(*, requisicao, item, user):
-        if requisicao.status != StatusRequisicaoChoices.RASCUNHO:
-            raise ValidationError("Só é possível adicionar itens a uma requisição ainda em rascunho.")
+        if requisicao.status not in STATUS_ABERTOS_A_NOVOS_ITENS:
+            raise ValidationError(
+                "Só é possível adicionar itens a uma requisição que ainda não foi enviada para aprovação "
+                "(rascunho ou solicitada)."
+            )
         if item.requisicao_id:
             raise ValidationError(f'O item "{item.descricao}" já pertence a uma requisição.')
         if item.status != StatusItemSolicitacaoChoices.NAO_SOLICITADO:
@@ -264,6 +273,24 @@ class RequisicaoService:
         item.atualizado_por = user
         item.save(update_fields=["requisicao", "atualizado_por", "updated_at"])
         return item
+
+    @staticmethod
+    @transaction.atomic
+    def vincular_itens_a_requisicao(*, requisicao, item_ids, user):
+        """Versão em lote de `vincular_item_a_requisicao` — usada tanto pelo
+        board (agrupar cards selecionados numa requisição já existente)
+        quanto pela tela de detalhe (anexar itens soltos à requisição aberta)."""
+        item_ids = list(dict.fromkeys(item_ids))  # remove duplicatas, preserva ordem
+        requisicao = Requisicao.objects.select_for_update().get(pk=requisicao.pk)
+        itens = list(RequisicaoItem.objects.select_for_update().filter(pk__in=item_ids))
+        if not itens:
+            raise ValidationError("Selecione ao menos um item para adicionar a esta requisição.")
+        if len(itens) != len(item_ids):
+            raise ValidationError("Um ou mais itens selecionados não foram encontrados.")
+
+        for item in itens:
+            RequisicaoService.vincular_item_a_requisicao(requisicao=requisicao, item=item, user=user)
+        return itens
 
     @staticmethod
     def desvincular_item(*, item, user):

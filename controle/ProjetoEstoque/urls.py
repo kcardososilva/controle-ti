@@ -326,6 +326,7 @@ urlpatterns = [
     path("requisicoes/comentario/<int:pk>/excluir/", views.requisicao_comentario_excluir, name="requisicao_comentario_excluir"),
     path("requisicoes/<int:pk>/", views.requisicao_detail, name="requisicao_detail"),
     path("requisicoes/<int:pk>/acao/", views.requisicao_acao, name="requisicao_acao"),
+    path("requisicoes/<int:pk>/vincular-itens/", views.requisicao_vincular_itens, name="requisicao_vincular_itens"),
     path("requisicoes/catalogo/", views.itens_padrao_list, name="itens_padrao_list"),
     path("requisicoes/catalogo/novo/", views.itens_padrao_create, name="itens_padrao_create"),
     path("requisicoes/catalogo/importar/", views.itens_padrao_importar, name="itens_padrao_importar"),

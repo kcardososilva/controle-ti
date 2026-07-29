@@ -381,6 +381,7 @@ from .requisicoes import (
     requisicao_comentario_excluir,
     requisicao_create_from_itens,
     requisicao_detail,
+    requisicao_vincular_itens,
     requisicao_acao,
     requisicoes_list,
     requisicao_itens_list,

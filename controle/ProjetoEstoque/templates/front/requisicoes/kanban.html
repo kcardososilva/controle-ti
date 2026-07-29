@@ -92,12 +92,25 @@
 
 /* ── Selection bar ── */
 .kan-selection-bar {
-  display: flex; align-items: center; gap: .7rem; padding: .55rem .9rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .7rem; padding: .55rem .9rem;
   border: 1px solid var(--kan-primary); border-radius: var(--kan-radius-md);
   background: var(--kan-primary-soft); color: var(--kan-primary); font-size: .82rem; font-weight: 650;
 }
 .kan-selection-bar[hidden] { display: none; }
-.kan-selection-bar form { margin-left: auto; display: flex; gap: .5rem; align-items: center; }
+/* form/select/botões precisam de flex-wrap + flex-shrink:0 nos botões —
+   sem isso, o reset global `.kan-page * { min-width:0 }` deixa os botões
+   encolherem além do texto (que usa white-space:nowrap) e o texto vaza pra
+   fora da caixa, sobrepondo o botão vizinho, em vez de simplesmente quebrar
+   linha. */
+.kan-selection-bar form {
+  margin-left: auto; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+}
+.kan-selection-bar form select { width: auto; flex: 1 1 11rem; max-width: 16rem; }
+.kan-selection-bar form button { flex-shrink: 0; }
+@media (max-width: 30rem) {
+  .kan-selection-bar form { width: 100%; }
+  .kan-selection-bar form select { flex-basis: 100%; max-width: none; }
+}
 
 /* ── Board ── */
 .kan-board-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: .3rem; transition: opacity 120ms ease; }
@@ -243,8 +256,14 @@
     <form method="post" action="{% url 'requisicao_create_from_itens' %}" id="kanAgruparForm">
       {% csrf_token %}
       <input type="hidden" name="tipo" id="kanAgruparTipo">
+      <select name="requisicao_id" id="kanAgruparRequisicao" title="Escolha uma requisição em rascunho para adicionar os itens, ou deixe em branco para criar uma nova">
+        <option value="">— Criar nova requisição —</option>
+        {% for r in requisicoes_abertas %}
+          <option value="{{ r.pk }}" data-tipo="{{ r.tipo }}">{{ r }} · {{ r.itens_count }} item{{ r.itens_count|pluralize }}</option>
+        {% endfor %}
+      </select>
       <button type="button" class="kan-btn-secondary" id="kanLimparSelecao">Limpar</button>
-      <button type="submit" class="kan-btn-primary"><i class="fa fa-object-group" aria-hidden="true"></i> Agrupar em Requisição</button>
+      <button type="submit" class="kan-btn-primary" id="kanAgruparSubmit"><i class="fa fa-object-group" aria-hidden="true"></i> Agrupar em Requisição</button>
     </form>
   </section>
 
@@ -329,6 +348,34 @@
   const countEl = document.getElementById('kanSelectionCount');
   const tipoInput = document.getElementById('kanAgruparTipo');
   const formAgrupar = document.getElementById('kanAgruparForm');
+  const reqSelect = document.getElementById('kanAgruparRequisicao');
+  const submitBtn = document.getElementById('kanAgruparSubmit');
+
+  // Só mostra, no seletor de requisição existente, as opções do mesmo tipo
+  // dos itens marcados — igual à regra dos checkboxes (nunca mistura Compra
+  // e Estoque numa requisição). Se a opção escolhida deixar de valer (tipo
+  // mudou), volta pra "criar nova" em vez de submeter algo inválido.
+  function filtrarRequisicoesPorTipo(tipo) {
+    if (!reqSelect) return;
+    Array.from(reqSelect.options).forEach(opt => {
+      if (!opt.value) return; // "— Criar nova requisição —" sempre disponível
+      const combina = opt.dataset.tipo === tipo;
+      opt.hidden = !combina;
+      opt.disabled = !combina;
+    });
+    if (reqSelect.selectedOptions[0]?.disabled) reqSelect.value = '';
+    atualizarRotuloBotao();
+  }
+
+  function atualizarRotuloBotao() {
+    if (!submitBtn) return;
+    const criarNova = !reqSelect || !reqSelect.value;
+    submitBtn.innerHTML = criarNova
+      ? '<i class="fa fa-object-group" aria-hidden="true"></i> Agrupar em Nova Requisição'
+      : '<i class="fa fa-layer-group" aria-hidden="true"></i> Adicionar à Requisição Selecionada';
+  }
+
+  reqSelect?.addEventListener('change', atualizarRotuloBotao);
 
   function atualizarSelecao(checkboxes) {
     const marcados = checkboxes.filter(c => c.checked);
@@ -340,6 +387,7 @@
     const tipo = marcados[0].dataset.tipo;
     tipoInput.value = tipo;
     checkboxes.forEach(c => { if (!c.checked) c.disabled = (c.dataset.tipo !== tipo); });
+    filtrarRequisicoesPorTipo(tipo);
     bar.hidden = false;
     countEl.textContent = `${marcados.length} item${marcados.length > 1 ? 's' : ''} selecionado${marcados.length > 1 ? 's' : ''}`;
 
@@ -362,6 +410,7 @@
   document.getElementById('kanLimparSelecao')?.addEventListener('click', () => {
     const checkboxes = Array.from(document.querySelectorAll('.kan-card-select'));
     checkboxes.forEach(c => { c.checked = false; c.disabled = false; });
+    if (reqSelect) reqSelect.value = '';
     atualizarSelecao(checkboxes);
   });
 
@@ -461,6 +510,8 @@
       // checkboxes voltam frescos (desmarcados) do HTML recém-buscado.
       bar.hidden = true;
       formAgrupar.querySelectorAll('input[name="item_ids"]').forEach(i => i.remove());
+      if (reqSelect) reqSelect.value = '';
+      atualizarRotuloBotao();
     } catch (err) {
       location.reload();
     }

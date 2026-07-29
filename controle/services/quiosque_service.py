@@ -491,6 +491,7 @@ def config_dict(device) -> dict:
         "permite_reiniciar": device.permite_reiniciar,
         "permite_desligar": device.permite_desligar,
         "limpeza_cache_automatica": device.limpeza_cache_automatica,
+        "permite_limpar_apps_terceiros": device.permite_limpar_apps_terceiros,
     }
 
 

@@ -3171,6 +3171,15 @@ class KioskDevice(models.Model):
     limpeza_cache_automatica = models.BooleanField(
         default=False, verbose_name='Limpeza automática de cache do app',
     )
+    # Libera "Forçar parada"/"Limpar armazenamento"/"Limpar cache" na tela nativa
+    # "Informações do app" (aberta via toque longo num ícone do grid do quiosque) para
+    # QUALQUER app liberado (apps_permitidos). O Android não deixa separar as 3 ações —
+    # é uma única restrição (DISALLOW_APPS_CONTROL), tudo ou nada. "Limpar
+    # armazenamento" apaga TODOS os dados do app (login, config etc.), não só o cache.
+    # Ver INFORME_SERVIDOR_CACHE_E_ENERGIA.md §7.
+    permite_limpar_apps_terceiros = models.BooleanField(
+        default=False, verbose_name='Permite limpar cache/dados dos apps liberados (tela nativa)',
+    )
 
     # ── Cache/dados do PRÓPRIO app Quiosque (snapshot do último check-in — mesmo
     # padrão de ram_total_mb/armazenamento_total_mb: vêm em TODO check-in, então

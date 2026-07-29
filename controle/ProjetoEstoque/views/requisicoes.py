@@ -50,6 +50,7 @@ from services.requisicao_service import (
     COLUNA_ORDEM,
     COLUNA_PAUSADOS,
     COLUNA_RECEBIDOS,
+    STATUS_ABERTOS_A_NOVOS_ITENS,
     RequisicaoService,
     coluna_kanban,
     estagio_kanban,
@@ -139,10 +140,20 @@ def requisicoes_kanban(request):
         pk__in=RequisicaoItem.objects.exclude(criado_por_id__isnull=True).values_list("criado_por_id", flat=True).distinct()
     ).order_by("first_name", "last_name", "username")
 
+    # Requisições ainda abertas a novos itens (rascunho ou solicitada — ver
+    # `STATUS_ABERTOS_A_NOVOS_ITENS`); oferecidas no board como alternativa a
+    # criar uma requisição nova ao agrupar.
+    requisicoes_abertas = list(
+        Requisicao.objects.filter(status__in=STATUS_ABERTOS_A_NOVOS_ITENS)
+        .annotate(itens_count=Count("itens"))
+        .order_by("-created_at")
+    )
+
     return render(request, "front/requisicoes/kanban.html", {
         "colunas": colunas,
         "categorias": Categoria.objects.order_by("nome"),
         "requisitantes": requisitantes,
+        "requisicoes_abertas": requisicoes_abertas,
         "f_tipo": f_tipo,
         "f_categoria": f_categoria,
         "f_requisitante": f_requisitante,
@@ -385,9 +396,23 @@ def requisicao_create_from_itens(request):
 
     item_ids = request.POST.getlist("item_ids")
     tipo = request.POST.get("tipo")
+    requisicao_id = (request.POST.get("requisicao_id") or "").strip()
     if not item_ids:
         messages.error(request, "Selecione ao menos um item para agrupar em uma requisição.")
         return redirect("requisicoes_kanban")
+
+    # Com requisicao_id: os itens vão para uma requisição já existente (ainda
+    # em rascunho). Sem requisicao_id: comportamento original — cria uma
+    # requisição nova em rascunho com os itens selecionados.
+    if requisicao_id:
+        requisicao = get_object_or_404(Requisicao, pk=requisicao_id)
+        try:
+            RequisicaoService.vincular_itens_a_requisicao(requisicao=requisicao, item_ids=item_ids, user=request.user)
+        except ValidationError as e:
+            messages.error(request, "; ".join(e.messages))
+            return redirect("requisicoes_kanban")
+        messages.success(request, "Item(ns) adicionado(s) à requisição existente.")
+        return redirect("requisicao_detail", pk=requisicao.pk)
 
     try:
         requisicao = RequisicaoService.criar_requisicao_de_itens(item_ids=item_ids, tipo=tipo, user=request.user)
@@ -449,6 +474,21 @@ def requisicao_detail(request, pk):
         StatusRequisicaoChoices.ENVIADA_APROVACAO, StatusRequisicaoChoices.APROVADA,
     )
 
+    # Itens ainda soltos (sem requisição) do mesmo tipo, elegíveis a serem
+    # anexados aqui — só faz sentido oferecer isso enquanto a requisição
+    # ainda está aberta a novos itens (ver `STATUS_ABERTOS_A_NOVOS_ITENS`)
+    # e só pra quem pode gerenciar a requisição.
+    mostrar_adicionar_soltos = pode_gerenciar and status in STATUS_ABERTOS_A_NOVOS_ITENS
+    itens_soltos_disponiveis = []
+    if mostrar_adicionar_soltos:
+        itens_soltos_disponiveis = list(
+            RequisicaoItem.objects.filter(
+                requisicao__isnull=True,
+                tipo=requisicao.tipo,
+                status=StatusItemSolicitacaoChoices.NAO_SOLICITADO,
+            ).select_related("categoria", "criado_por").order_by("-created_at")
+        )
+
     return render(request, "front/requisicoes/requisicao_detail.html", {
         "requisicao": requisicao,
         "itens": itens,
@@ -457,6 +497,8 @@ def requisicao_detail(request, pk):
         "itens_pendentes_retirada": itens_pendentes_retirada,
         "badge_class": status_badge_class(requisicao.status),
         "mostrar_card_acoes": mostrar_card_acoes,
+        "mostrar_adicionar_soltos": mostrar_adicionar_soltos,
+        "itens_soltos_disponiveis": itens_soltos_disponiveis,
         "mostrar_avancar": mostrar_avancar,
         "mostrar_solicitar": mostrar_solicitar,
         "mostrar_enviar_aprovacao": mostrar_enviar_aprovacao,
@@ -467,6 +509,30 @@ def requisicao_detail(request, pk):
         "mostrar_pausar_erro": mostrar_pausar_erro,
         "mostrar_retomar": mostrar_retomar,
     })
+
+
+@login_required
+@require_POST
+def requisicao_vincular_itens(request, pk):
+    """Anexa itens ainda soltos (selecionados na própria tela de detalhe) a
+    esta requisição — só permitido enquanto ela está em rascunho, mesma regra
+    de `RequisicaoService.vincular_item_a_requisicao`."""
+    requisicao = get_object_or_404(Requisicao, pk=pk)
+    if not _pode_gerenciar_requisicao(requisicao, request.user):
+        messages.error(request, "Apenas quem criou esta requisição pode adicionar itens a ela.")
+        return redirect("requisicao_detail", pk=pk)
+
+    item_ids = request.POST.getlist("item_ids")
+    if not item_ids:
+        messages.error(request, "Selecione ao menos um item solto para adicionar a esta requisição.")
+        return redirect("requisicao_detail", pk=pk)
+
+    try:
+        itens = RequisicaoService.vincular_itens_a_requisicao(requisicao=requisicao, item_ids=item_ids, user=request.user)
+        messages.success(request, f"{len(itens)} item(ns) adicionado(s) à requisição.")
+    except ValidationError as e:
+        messages.error(request, "; ".join(e.messages))
+    return redirect("requisicao_detail", pk=pk)
 
 
 @login_required

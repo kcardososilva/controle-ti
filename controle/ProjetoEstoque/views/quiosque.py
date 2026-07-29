@@ -841,6 +841,7 @@ def quiosque_config_editar(request, pk: int):
         device.permite_reiniciar = request.POST.get("permite_reiniciar") == "on"
         device.permite_desligar = request.POST.get("permite_desligar") == "on"
         device.limpeza_cache_automatica = request.POST.get("limpeza_cache_automatica") == "on"
+        device.permite_limpar_apps_terceiros = request.POST.get("permite_limpar_apps_terceiros") == "on"
         # wifi_ssid/wifi_senha (rede provisionada pelo servidor) ficam de fora do
         # painel de propósito: exigiria o TI guardar a senha real da rede aqui, e a
         # infraestrutura de Wi-Fi da empresa usa autenticação/cadastro no Meraki —
