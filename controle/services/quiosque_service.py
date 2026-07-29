@@ -484,6 +484,13 @@ def config_dict(device) -> dict:
         # da mesma forma (não tenta provisionar nada).
         "wifi_ssid": device.wifi_ssid or None,
         "wifi_senha": device.wifi_senha or None,
+        # Gates locais da tela "Gerência do TI" (v1.7.1+, ver
+        # INFORME_SERVIDOR_CACHE_E_ENERGIA.md) — padrão False já garantido pelo
+        # model; aparelho com app antigo que ignora estes campos simplesmente não
+        # libera nada de novo (nenhuma regressão de segurança).
+        "permite_reiniciar": device.permite_reiniciar,
+        "permite_desligar": device.permite_desligar,
+        "limpeza_cache_automatica": device.limpeza_cache_automatica,
     }
 
 
@@ -801,6 +808,14 @@ def registrar_checkin(device, dados: dict, request=None) -> dict:
             arm_usado = _i(dados.get("armazenamento_usado_mb"))
             if arm_usado is not None:
                 device.armazenamento_usado_mb = arm_usado
+            # Cache/dados do PRÓPRIO app Quiosque — mesmo padrão de snapshot acima
+            # (sempre presentes no payload, ver INFORME_SERVIDOR_CACHE_E_ENERGIA §2).
+            cache_app = _i(dados.get("cache_app_mb"))
+            if cache_app is not None:
+                device.cache_app_mb = cache_app
+            dados_app = _i(dados.get("dados_app_mb"))
+            if dados_app is not None:
+                device.dados_app_mb = dados_app
         # MAC: identidade estável do aparelho → atualiza só quando chega valor não-nulo
         # (não sobrescreve um MAC bom com null vindo de um check-in sem Device Owner).
         if mac and device.mac != mac:
@@ -938,13 +953,17 @@ _DIAS_SEMANA_PT = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feir
 
 
 def _rotulo_dia(dia: date, hoje: date | None = None) -> str:
+    """Rótulo do chip de filtro por dia. Sempre inclui a data (dd/mm) — inclusive em
+    "Hoje"/"Ontem" — para o dia exato da coleta ficar explícito em qualquer botão,
+    sem depender só do rótulo relativo."""
     hoje = hoje or timezone.localdate()
     delta = (hoje - dia).days
+    data_fmt = dia.strftime('%d/%m')
     if delta == 0:
-        return "Hoje"
+        return f"Hoje, {data_fmt}"
     if delta == 1:
-        return "Ontem"
-    return f"{_DIAS_SEMANA_PT[dia.weekday()]}, {dia.strftime('%d/%m')}"
+        return f"Ontem, {data_fmt}"
+    return f"{_DIAS_SEMANA_PT[dia.weekday()]}, {data_fmt}"
 
 
 def dias_disponiveis_checkin(device) -> list:

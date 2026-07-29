@@ -6,8 +6,19 @@ custo do colaborador que o detém. Quando um item NÃO compartilhado está sob p
 de um colaborador cujo CC difere do CC cadastrado no item, o item é reatribuído ao
 CC do detentor.
 
-O detentor atual é a última movimentação de transferência (entrega/equipamento)
-do item para um usuário, desde que não tenha sido devolvida.
+O detentor atual é resolvido pela ÚLTIMA movimentação de transferência
+(entrega/equipamento) do item, seja ela qual for:
+- Se essa última movimentação foi uma ENTREGA a um colaborador (não devolução),
+  o item segue o CC ATUAL desse colaborador (cobre o caso de o colaborador ter
+  mudado de CC depois da entrega).
+- Se essa última movimentação foi uma DEVOLUÇÃO ou uma transferência direta
+  entre centros de custo (sem colaborador associado), o item não tem detentor
+  e segue o `centro_custo_destino` gravado nessa própria movimentação.
+
+Importante: a devolução SEMPRE grava `usuario=None` (ninguém é "detentor" de uma
+devolução). Por isso a consulta abaixo NÃO filtra por `usuario__isnull=False` —
+fazer isso faria a devolução ser ignorada e o item ficar "preso" para sempre ao
+colaborador anterior à devolução (bug corrigido em 2026-07-28).
 
 Uso:
     python manage.py reconciliar_cc_itens --dry-run   # apenas relatório
@@ -41,7 +52,6 @@ class Command(BaseCommand):
             MovimentacaoItem.objects
             .filter(
                 item_id=OuterRef("pk"),
-                usuario__isnull=False,
                 tipo_movimentacao__in=[
                     TipoMovimentacaoChoices.TRANSFERENCIA,
                     TipoMovimentacaoChoices.TRANSFERENCIA_EQUIPAMENTO,
@@ -56,6 +66,7 @@ class Command(BaseCommand):
             .annotate(
                 det_usuario_id=Subquery(vinculo.values("usuario_id")[:1]),
                 det_tipo_transf=Subquery(vinculo.values("tipo_transferencia")[:1]),
+                det_cc_destino_id=Subquery(vinculo.values("centro_custo_destino_id")[:1]),
             )
             .select_related("centro_custo")
         )
@@ -68,17 +79,17 @@ class Command(BaseCommand):
             .exclude(centro_custo__isnull=True)
             .values_list("pk", "centro_custo_id")
         )
-        nome_cc = {}  # cache para relatório
 
         alteracoes = []
         for item in itens:
             uid = item.det_usuario_id
-            if not uid:
-                continue
-            # Detentor que devolveu o item não conta como detentor atual.
-            if item.det_tipo_transf == TipoTransferenciaChoices.DEVOLUCAO:
-                continue
-            novo_cc_id = cc_por_usuario.get(uid)
+            if uid and item.det_tipo_transf != TipoTransferenciaChoices.DEVOLUCAO:
+                # Última movimentação foi uma entrega vigente: segue o CC atual do colaborador.
+                novo_cc_id = cc_por_usuario.get(uid)
+            else:
+                # Sem detentor (devolvido ou transferido direto entre CCs): segue o
+                # centro_custo_destino já gravado na própria movimentação de retorno.
+                novo_cc_id = item.det_cc_destino_id
             if not novo_cc_id:
                 continue
             if item.centro_custo_id == novo_cc_id:
@@ -102,7 +113,12 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.WARNING(f"{len(alteracoes)} item(ns) a reatribuir:"))
         for item, antigo, novo in alteracoes:
-            self.stdout.write(f"  - {item.nome[:40]:40}  {_rotulo(antigo)}  ->  {_rotulo(novo)}")
+            ns = item.numero_serie or "—"
+            modelo = item.modelo or "—"
+            self.stdout.write(
+                f"  - {item.nome[:30]:30}  NS:{ns[:18]:18}  Modelo:{modelo[:18]:18}  "
+                f"{_rotulo(antigo)}  ->  {_rotulo(novo)}"
+            )
 
         if dry_run:
             self.stdout.write(self.style.NOTICE("\n[dry-run] Nenhuma alteração gravada."))

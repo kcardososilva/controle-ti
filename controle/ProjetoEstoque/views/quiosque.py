@@ -835,6 +835,12 @@ def quiosque_config_editar(request, pk: int):
         device.wifi_only = request.POST.get("wifi_only") == "on"
         device.mensagem_quiosque = (request.POST.get("mensagem_quiosque") or "").strip()[:200]
         device.telemetria_wifi = request.POST.get("telemetria_wifi") == "on"
+        # Gates locais da tela "Gerência do TI" no aparelho — ver
+        # INFORME_SERVIDOR_CACHE_E_ENERGIA.md. São permissões (o app decide se
+        # mostra/libera o botão), nunca um comando remoto de ação imediata.
+        device.permite_reiniciar = request.POST.get("permite_reiniciar") == "on"
+        device.permite_desligar = request.POST.get("permite_desligar") == "on"
+        device.limpeza_cache_automatica = request.POST.get("limpeza_cache_automatica") == "on"
         # wifi_ssid/wifi_senha (rede provisionada pelo servidor) ficam de fora do
         # painel de propósito: exigiria o TI guardar a senha real da rede aqui, e a
         # infraestrutura de Wi-Fi da empresa usa autenticação/cadastro no Meraki —

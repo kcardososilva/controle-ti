@@ -41,6 +41,17 @@
 @media (max-width:560px){ .kq-grid2{ grid-template-columns:1fr; } }
 .kq-ok-chip { display:inline-flex; align-items:center; gap:4px; margin-left:6px; padding:1px 8px; border-radius:99px;
   font-size:11px; font-weight:600; text-transform:none; letter-spacing:0; color:var(--success); background:var(--success-soft); }
+.kq-pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:11px; font-weight:600; background:var(--bg-fill-tertiary); color:var(--text-secondary); vertical-align:middle; }
+.kq-pill-warn { color:var(--warning); }
+
+/* nota de contexto (gate local / best-effort) dentro de um card */
+.kq-note { display:flex; gap:9px; align-items:flex-start; padding:10px 12px; border-radius:var(--radius-md);
+  background:var(--info-soft); font-size:12px; line-height:1.55; color:var(--text-secondary); }
+.kq-note i { color:var(--brand); font-size:13px; margin-top:1px; flex:0 0 auto; }
+.kq-note.is-warn { background:var(--warning-soft); }
+.kq-note.is-warn i { color:var(--warning); }
+.kq-toggle-usage { font-size:11.5px; color:var(--text-tertiary); margin-top:1px; }
+.kq-toggle-usage b { color:var(--text-secondary); font-weight:600; font-variant-numeric:tabular-nums; }
 
 /* toggle (apenas Wi-Fi) como linha selecionável */
 .kq-toggle { display:flex; align-items:flex-start; gap:11px; padding:11px 13px; border:1px solid var(--separator-non-opaque);
@@ -135,6 +146,50 @@ textarea.form-control { min-height:110px; font-family:var(--font-mono); font-siz
         <span class="kq-toggle-txt">
           <b>Telemetria de sinal Wi-Fi</b>
           <span class="hint">Coleta RSSI, nível, velocidade e banda a cada check-in — use para diagnosticar se a instabilidade é do aparelho ou da infraestrutura da loja.</span>
+        </span>
+      </label>
+    </div>
+  </div>
+
+  <!-- ações no aparelho (gerência do TI) -->
+  <div class="kq-card">
+    <div class="kq-card-head"><span class="kq-card-title"><i class="fa-solid fa-power-off"></i>Ações no aparelho</span></div>
+    <div class="kq-card-body">
+      <div class="kq-note">
+        <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+        <span>Estes campos são <b>permissões</b>, não comandos remotos: eles liberam (ou não) o botão na tela "Gerência do TI" do próprio aparelho — já protegida por PIN. Quem aciona é sempre alguém na frente do celular; o servidor não consegue mandar "reiniciar agora" remotamente.</span>
+      </div>
+
+      <div class="kq-grid2">
+        <label class="kq-toggle">
+          <input type="checkbox" name="permite_reiniciar" {% if device.permite_reiniciar %}checked{% endif %}>
+          <span class="kq-toggle-txt">
+            <b>Permitir reiniciar</b>
+            <span class="hint">Libera o botão "Reiniciar aparelho" no app. Ação confiável — reboot silencioso via Device Owner.</span>
+          </span>
+        </label>
+        <label class="kq-toggle">
+          <input type="checkbox" name="permite_desligar" {% if device.permite_desligar %}checked{% endif %}>
+          <span class="kq-toggle-txt">
+            <b>Permitir desligar <span class="kq-pill kq-pill-warn" style="font-size:9.5px;">best-effort</span></b>
+            <span class="hint">Libera o botão "Desligar aparelho". O Android não tem API pública para um Device Owner desligar sem root — na maioria dos aparelhos de fábrica a tentativa falha e o app orienta a usar Reiniciar.</span>
+          </span>
+        </label>
+      </div>
+
+      <div class="kq-note is-warn">
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+        <span>Ligar <b>qualquer um dos dois</b> campos acima também libera o menu nativo do <b>botão físico de energia</b> do aparelho (segurar o botão) — e por esse caminho o "Desligar" funciona de verdade, sem a limitação acima. O Android não separa Reiniciar/Desligar nesse menu: os dois vêm juntos, mesmo marcando só um dos campos aqui.</span>
+      </div>
+
+      <label class="kq-toggle">
+        <input type="checkbox" name="limpeza_cache_automatica" {% if device.limpeza_cache_automatica %}checked{% endif %}>
+        <span class="kq-toggle-txt">
+          <b>Limpeza automática de cache do app</b>
+          <span class="hint">O app limpa o próprio cache sozinho a cada aplicação de políticas (boot/retomada do quiosque) — sem o TI precisar abrir a tela. Não afeta outros apps instalados.</span>
+          {% if device.cache_app_mb is not None or device.dados_app_mb is not None %}
+          <span class="kq-toggle-usage">Uso atual do app: <b>{{ device.cache_app_mb|default:"—" }} MB</b> de cache · <b>{{ device.dados_app_mb|default:"—" }} MB</b> de dados (último check-in)</span>
+          {% endif %}
         </span>
       </label>
     </div>

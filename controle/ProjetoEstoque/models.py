@@ -3147,6 +3147,38 @@ class KioskDevice(models.Model):
     # ── Telemetria de sinal Wi-Fi (opt-in por aparelho, v1.6.0+) ──
     telemetria_wifi = models.BooleanField(default=False, verbose_name='Telemetria de sinal Wi-Fi')
 
+    # ── Gates locais da tela "Gerência do TI" no aparelho (v1.7.1+) — são
+    # PERMISSÕES, não comandos remotos: o servidor só libera/bloqueia a ação no
+    # próprio aparelho; quem aciona é sempre alguém na frente do celular (tela já
+    # protegida por PIN). Padrão SEGURO = False (nenhum aparelho ganha uma ação
+    # disruptiva nova por omissão — mesmo cuidado de telemetria_wifi). Ver
+    # INFORME_SERVIDOR_CACHE_E_ENERGIA.md.
+    permite_reiniciar = models.BooleanField(
+        default=False, verbose_name='Permite reiniciar (botão no app)',
+    )
+    # Best-effort: Android não tem API pública de Device Owner para desligar por
+    # completo (exige permissão de assinatura android.permission.SHUTDOWN) — na
+    # maioria dos aparelhos de fábrica sem root a tentativa via app falha com
+    # SecurityException. Ligar este campo (OU permite_reiniciar) TAMBÉM libera o
+    # menu nativo do botão físico de energia (Reiniciar/Desligar juntos — o
+    # Android não separa os dois nesse menu); esse caminho funciona de verdade.
+    permite_desligar = models.BooleanField(
+        default=False, verbose_name='Permite desligar (botão no app, best-effort)',
+    )
+    # Quando True, o app limpa o PRÓPRIO cache sozinho a cada aplicação de
+    # políticas (boot/retomada do quiosque) — sem o TI precisar abrir a tela.
+    # Não afeta outros apps instalados (sem API pública para isso — ver informe §3).
+    limpeza_cache_automatica = models.BooleanField(
+        default=False, verbose_name='Limpeza automática de cache do app',
+    )
+
+    # ── Cache/dados do PRÓPRIO app Quiosque (snapshot do último check-in — mesmo
+    # padrão de ram_total_mb/armazenamento_total_mb: vêm em TODO check-in, então
+    # não valem como histórico linha a linha no KioskCheckin). Não inclui outros
+    # apps instalados (ver INFORME_SERVIDOR_CACHE_E_ENERGIA.md §3).
+    cache_app_mb = models.PositiveIntegerField(null=True, blank=True, verbose_name='Cache do app (MB)')
+    dados_app_mb = models.PositiveIntegerField(null=True, blank=True, verbose_name='Dados do app (MB)')
+
     # ── Rede Wi-Fi provisionada pelo servidor (v1.7.0+) — o app cria/assume a
     # rede como dona, com MAC aleatório desligado desde a criação. wifi_senha
     # fica em texto puro (ao contrário de admin_pin_hash) porque o app PRECISA
