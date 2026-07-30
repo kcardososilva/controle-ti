@@ -210,6 +210,8 @@ from .dashboards import (
     preventiva_dashboard_export,
     custos_diretoria_dashboard,
     custos_diretoria_detalhe,
+    validacao_custos_planilha,
+    validacao_custos_export_excel,
 )
 
 

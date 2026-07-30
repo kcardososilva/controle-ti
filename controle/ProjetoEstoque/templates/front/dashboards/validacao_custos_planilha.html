@@ -1,0 +1,425 @@
+{% load static %}<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Validação de Custos por Centro de Custo — Painel</title>
+<link href="{% static 'vendor/select2.min.css' %}" rel="stylesheet">
+<style>
+:root{
+  --vc-green:#217346;
+  --vc-green-dark:#14532d;
+  --vc-green-soft:#e8f3ec;
+  --vc-blue:#0f6cbd;
+  --vc-ink:#1f2328;
+  --vc-ink-soft:#57606a;
+  --vc-grid:#d0d7de;
+  --vc-grid-strong:#8c959f;
+  --vc-band:#f7f8fa;
+  --vc-toolbar:#f3f2f1;
+  --vc-red:#b91c1c;
+  --vc-red-soft:#fdecec;
+  --vc-amber:#9a6700;
+  --vc-amber-soft:#fff6e5;
+  --vc-radius:6px;
+  --vc-shadow:0 1px 2px rgba(0,0,0,.06), 0 1px 8px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --vc-ink:#e6edf3; --vc-ink-soft:#9198a1; --vc-grid:#30363d; --vc-grid-strong:#4b535d;
+    --vc-band:#161b22; --vc-toolbar:#0d1117; --vc-green-soft:#0f2b1c; --vc-red-soft:#2b1414;
+    --vc-amber-soft:#2b2210;
+  }
+}
+*,*::before,*::after{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:#fff;color:var(--vc-ink);font-family:"Segoe UI","Calibri",-apple-system,BlinkMacSystemFont,Arial,sans-serif;}
+@media (prefers-color-scheme: dark){ html,body{ background:#0d1117; } }
+body{font-size:13px;line-height:1.4;}
+a{color:var(--vc-blue);text-decoration:none;}
+table{border-collapse:collapse;}
+.tabular{font-variant-numeric:tabular-nums;}
+
+/* ── Top bar ── */
+.vc-topbar{
+  display:flex;align-items:center;gap:14px;
+  padding:12px 20px;background:var(--vc-green);color:#fff;
+}
+.vc-back{color:#fff;opacity:.85;font-size:.82rem;white-space:nowrap;}
+.vc-back:hover{opacity:1;text-decoration:underline;}
+.vc-topbar-title{font-size:1.02rem;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.vc-topbar-sub{font-size:.72rem;opacity:.85;white-space:nowrap;}
+.vc-btn-export{
+  display:inline-flex;align-items:center;gap:6px;
+  background:#fff;color:var(--vc-green-dark);font-weight:700;font-size:.78rem;
+  padding:7px 14px;border-radius:var(--vc-radius);border:1px solid rgba(0,0,0,.08);
+  white-space:nowrap;
+}
+.vc-btn-export:hover{background:#f0f7f2;text-decoration:none;}
+
+/* ── Filter ribbon ── */
+.vc-ribbon{
+  background:var(--vc-toolbar);border-bottom:1px solid var(--vc-grid);
+  padding:12px 20px;
+}
+.vc-ribbon form{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;}
+.vc-field{display:flex;flex-direction:column;gap:4px;min-width:170px;}
+.vc-field.grow{flex:1;min-width:220px;}
+.vc-field label{font-size:.68rem;font-weight:700;color:var(--vc-ink-soft);text-transform:uppercase;letter-spacing:.03em;}
+.vc-field select:not([multiple]){
+  height:32px;border:1px solid var(--vc-grid-strong);border-radius:4px;padding:0 8px;
+  background:#fff;color:var(--vc-ink);font-size:.8rem;font-family:inherit;
+}
+.vc-checks{display:flex;gap:12px;align-items:center;height:32px;}
+.vc-checks label{display:flex;align-items:center;gap:5px;font-size:.78rem;font-weight:600;color:var(--vc-ink);white-space:nowrap;cursor:pointer;}
+.vc-actions{display:flex;gap:8px;}
+.vc-btn{
+  height:32px;padding:0 16px;border-radius:4px;border:1px solid var(--vc-green);
+  background:var(--vc-green);color:#fff;font-weight:700;font-size:.8rem;cursor:pointer;
+}
+.vc-btn:hover{background:var(--vc-green-dark);}
+.vc-btn-ghost{
+  height:32px;padding:0 14px;border-radius:4px;border:1px solid var(--vc-grid-strong);
+  background:transparent;color:var(--vc-ink-soft);font-weight:600;font-size:.8rem;
+  display:inline-flex;align-items:center;
+}
+.vc-btn-ghost:hover{background:var(--vc-band);text-decoration:none;}
+.vc-note{padding:0 20px;margin:10px 0 0;font-size:.72rem;color:var(--vc-ink-soft);}
+
+/* ── KPI strip ── */
+.vc-kpis{
+  display:grid;grid-template-columns:repeat(6,1fr);gap:1px;
+  background:var(--vc-grid);border-bottom:1px solid var(--vc-grid);
+}
+.vc-kpi{background:#fff;padding:12px 16px;}
+@media (prefers-color-scheme: dark){ .vc-kpi{ background:#0d1117; } }
+.vc-kpi-label{font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--vc-ink-soft);font-weight:700;}
+.vc-kpi-val{font-size:1.12rem;font-weight:700;margin-top:2px;}
+.vc-kpi-val.warn{color:var(--vc-red);}
+
+/* ── Content shell ── */
+.vc-content{padding:18px 20px 40px;}
+.vc-block{background:#fff;border:1px solid var(--vc-grid);border-radius:var(--vc-radius);box-shadow:var(--vc-shadow);margin-bottom:22px;overflow:hidden;}
+@media (prefers-color-scheme: dark){ .vc-block{ background:#0d1117; } }
+.vc-block-head{
+  display:flex;align-items:baseline;gap:8px;
+  padding:11px 16px;border-bottom:1px solid var(--vc-grid);background:var(--vc-green-soft);
+}
+.vc-block-head h2{font-size:.86rem;margin:0;color:var(--vc-green-dark);}
+@media (prefers-color-scheme: dark){ .vc-block-head h2{ color:#4ade80; } }
+.vc-block-head .vc-hint{font-size:.7rem;color:var(--vc-ink-soft);}
+
+/* ── Sheet grid ── */
+.vc-sheet-wrap{overflow-x:auto;}
+.vc-sheet{width:100%;min-width:1320px;}
+.vc-sheet th,.vc-sheet td{border:1px solid var(--vc-grid);padding:6px 9px;font-size:.79rem;white-space:nowrap;}
+.vc-colletters th{
+  background:var(--vc-band);color:var(--vc-ink-soft);font-weight:600;font-size:.66rem;
+  text-align:center;height:18px;padding:2px 4px;position:sticky;top:0;z-index:3;
+}
+.vc-sheet thead tr.vc-headrow th{
+  position:sticky;top:18px;z-index:3;background:#eef1f4;color:var(--vc-ink);
+  font-weight:700;text-align:left;
+}
+@media (prefers-color-scheme: dark){
+  .vc-colletters th{ background:#161b22; }
+  .vc-sheet thead tr.vc-headrow th{ background:#161b22; }
+}
+.vc-sheet .num{width:34px;text-align:center;color:var(--vc-ink-soft);background:var(--vc-band);font-weight:600;}
+.vc-sheet .tright{text-align:right;}
+.vc-sheet tbody tr:nth-child(even):not(.vc-grouphead){background:var(--vc-band);}
+.vc-sheet tbody tr:hover:not(.vc-grouphead){background:#eaf3fd;}
+@media (prefers-color-scheme: dark){ .vc-sheet tbody tr:hover:not(.vc-grouphead){ background:#132033; } }
+
+.vc-grouphead{background:#dceee2!important;cursor:pointer;user-select:none;}
+@media (prefers-color-scheme: dark){ .vc-grouphead{ background:#12331f!important; } }
+.vc-grouphead td{font-weight:700;color:var(--vc-green-dark);border-top:2px solid var(--vc-grid-strong);}
+@media (prefers-color-scheme: dark){ .vc-grouphead td{ color:#4ade80; } }
+.vc-grouphead .chev{display:inline-block;width:12px;transition:transform .15s;}
+.vc-grouphead.is-collapsed .chev{transform:rotate(-90deg);}
+tr.vc-row-hidden{display:none;}
+
+.pmb-tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:.68rem;font-weight:700;}
+.pmb-tag.pmb{background:#e0f0ff;color:#0f6cbd;}
+.pmb-tag.faz{background:#eef2f0;color:#4b535d;}
+@media (prefers-color-scheme: dark){
+  .pmb-tag.pmb{background:#0f2a42;color:#7cc4ff;}
+  .pmb-tag.faz{background:#1c2128;color:#9198a1;}
+}
+.diverge-flag{color:var(--vc-red);font-weight:700;font-size:.72rem;}
+.tipo-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:700;}
+.tipo-badge.locacao{background:#e0f0ff;color:#0f6cbd;}
+.tipo-badge.licenca{background:#fff1da;color:#9a6700;}
+.tipo-badge.patrimonio{background:var(--vc-green-soft);color:var(--vc-green-dark);}
+@media (prefers-color-scheme: dark){
+  .tipo-badge.locacao{background:#0f2a42;color:#7cc4ff;}
+  .tipo-badge.licenca{background:#2b2210;color:#e3b341;}
+  .tipo-badge.patrimonio{background:#0f2b1c;color:#4ade80;}
+}
+
+.vc-grandtotal td{border-top:3px double var(--vc-grid-strong);font-weight:700;background:var(--vc-toolbar);}
+
+/* ── Resumo por CC (pivot) ── */
+.vc-pivot{width:100%;}
+.vc-pivot th,.vc-pivot td{border:1px solid var(--vc-grid);padding:7px 10px;font-size:.8rem;}
+.vc-pivot thead th{background:#eef1f4;text-align:left;font-weight:700;position:sticky;top:0;}
+@media (prefers-color-scheme: dark){ .vc-pivot thead th{ background:#161b22; } }
+.vc-pivot tbody tr:nth-child(even){background:var(--vc-band);}
+.vc-pivot .tright{text-align:right;}
+.vc-pivot tfoot td{border-top:3px double var(--vc-grid-strong);font-weight:700;background:var(--vc-toolbar);}
+.vc-empty{padding:30px 16px;text-align:center;color:var(--vc-ink-soft);font-size:.85rem;}
+
+.vc-footer{padding:10px 20px 30px;font-size:.7rem;color:var(--vc-ink-soft);}
+
+/* Select2 tuning para caber no ribbon */
+.select2-container{font-family:inherit;font-size:.8rem;}
+.select2-container .select2-selection--multiple{min-height:32px;border-color:var(--vc-grid-strong)!important;}
+</style>
+</head>
+<body class="vc-page">
+
+  <div class="vc-topbar">
+    <a class="vc-back" href="{% url 'dashboard' %}">&larr; Voltar ao sistema</a>
+    <div class="vc-topbar-title">Validação de Custos por Centro de Custo</div>
+    <div class="vc-topbar-sub">Gerado em {{ gerado_em|date:"d/m/Y H:i" }}</div>
+    <a class="vc-btn-export" href="{% url 'validacao_custos_export_excel' %}?{{ querystring }}">⬇ Exportar Excel</a>
+  </div>
+
+  <div class="vc-ribbon">
+    <form method="get" action="{% url 'validacao_custos_planilha' %}">
+      <div class="vc-field grow">
+        <label for="fSubtipo">Subtipo (um ou vários)</label>
+        <select id="fSubtipo" name="subtipo" multiple class="select2-filter">
+          {% regroup subtipos_opts by categoria as subtipo_grupos %}
+          {% for grupo in subtipo_grupos %}
+          <optgroup label="{{ grupo.grouper.nome }}">
+            {% for s in grupo.list %}
+            <option value="{{ s.id }}" {% if s.id in subtipo_ids %}selected{% endif %}>{{ s.nome }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="vc-field grow">
+        <label for="fCC">Centro de Custo (um ou vários)</label>
+        <select id="fCC" name="centro_custo" multiple class="select2-filter">
+          {% for cc in ccs_opts %}
+          <option value="{{ cc.id }}" {% if cc.id in cc_ids %}selected{% endif %}>{{ cc.numero }} - {{ cc.departamento }} {% if cc.pmb_efetivo == 'sim' %}(PMB){% else %}(Fazenda){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="vc-field grow">
+        <label for="fFornecedor">Fornecedor (um ou vários)</label>
+        <select id="fFornecedor" name="fornecedor" multiple class="select2-filter">
+          {% for f in fornecedores_opts %}
+          <option value="{{ f.id }}" {% if f.id in fornecedor_ids %}selected{% endif %}>{{ f.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="vc-field">
+        <label for="fPmb">PMB</label>
+        <select id="fPmb" name="pmb">
+          <option value="" {% if not pmb_filtro %}selected{% endif %}>Todos</option>
+          <option value="sim" {% if pmb_filtro == 'sim' %}selected{% endif %}>Somente PMB</option>
+          <option value="nao" {% if pmb_filtro == 'nao' %}selected{% endif %}>Somente Fazenda</option>
+        </select>
+      </div>
+
+      <div class="vc-field">
+        <label>Tipo de Custo</label>
+        <div class="vc-checks">
+          <label><input type="checkbox" name="tipo_custo" value="locacao" {% if 'locacao' in tipos_sel %}checked{% endif %}> Locação</label>
+          <label><input type="checkbox" name="tipo_custo" value="licenca" {% if 'licenca' in tipos_sel %}checked{% endif %}> Licença</label>
+          <label><input type="checkbox" name="tipo_custo" value="patrimonio" {% if 'patrimonio' in tipos_sel %}checked{% endif %}> Patrimônio</label>
+        </div>
+      </div>
+
+      <div class="vc-field">
+        <label>Status do Equipamento</label>
+        <div class="vc-checks">
+          {% for valor, rotulo in status_opts %}
+          <label><input type="checkbox" name="status" value="{{ valor }}" {% if valor in status_sel %}checked{% endif %}> {{ rotulo }}</label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="vc-actions">
+        <button type="submit" class="vc-btn">Aplicar Filtros</button>
+        <a class="vc-btn-ghost" href="{% url 'validacao_custos_planilha' %}">Limpar</a>
+      </div>
+    </form>
+  </div>
+  <p class="vc-note">Licenças não possuem subtipo próprio — ao filtrar por subtipo, as linhas de licença ficam ocultas do relatório. Fornecedor considera o fornecedor da locação (Locação), do equipamento (Patrimônio) ou da licença (Licença), conforme a linha. Sem marcar nada, Status mostra só equipamento Ativo (padrão anterior); marque outros status para ver também Backup/Manutenção/Defeito/etc. — não afeta linhas de Licença (sempre "Atribuída").</p>
+
+  <div class="vc-kpis">
+    <div class="vc-kpi"><div class="vc-kpi-label">Linhas</div><div class="vc-kpi-val tabular">{{ kpi_total_linhas }}</div></div>
+    <div class="vc-kpi"><div class="vc-kpi-label">Centros de Custo</div><div class="vc-kpi-val tabular">{{ kpi_total_cc }} <span style="font-size:.62rem;color:var(--vc-ink-soft);font-weight:600;">({{ kpi_cc_pmb }} PMB / {{ kpi_cc_fazenda }} Fazenda)</span></div></div>
+    <div class="vc-kpi"><div class="vc-kpi-label">Custo Locação (mês)</div><div class="vc-kpi-val tabular">R$ {{ kpi_total_locacao|floatformat:2 }}</div></div>
+    <div class="vc-kpi"><div class="vc-kpi-label">Custo Licença (mês)</div><div class="vc-kpi-val tabular">R$ {{ kpi_total_licenca|floatformat:2 }}</div></div>
+    <div class="vc-kpi"><div class="vc-kpi-label">Custo Patrimônio</div><div class="vc-kpi-val tabular">R$ {{ kpi_total_patrimonio|floatformat:2 }}</div></div>
+    <div class="vc-kpi"><div class="vc-kpi-label">Divergências PMB</div><div class="vc-kpi-val tabular {% if kpi_divergencias_pmb > 0 %}warn{% endif %}">{{ kpi_divergencias_pmb }}</div></div>
+  </div>
+
+  <div class="vc-content">
+
+    <!-- ================= Resumo por Centro de Custo (pivot) ================= -->
+    <div class="vc-block">
+      <div class="vc-block-head">
+        <h2>Resumo por Centro de Custo</h2>
+        <span class="vc-hint">— soma dos custos abaixo, um por CC (ordenado do maior para o menor)</span>
+      </div>
+      {% if resumo_cc %}
+      <div class="vc-sheet-wrap">
+      <table class="vc-pivot">
+        <thead>
+          <tr>
+            <th>Centro de Custo</th>
+            <th>PMB</th>
+            <th class="tright">Linhas</th>
+            <th class="tright">Locação (R$)</th>
+            <th class="tright">Licença (R$)</th>
+            <th class="tright">Total Mensal (R$)</th>
+            <th class="tright">Patrimônio (R$)</th>
+            <th class="tright">Total Geral (R$)</th>
+            <th class="tright">Divergências</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in resumo_cc %}
+          <tr>
+            <td>{{ r.cc.numero }} - {{ r.cc.departamento }}</td>
+            <td>{% if r.cc.pmb_efetivo == 'sim' %}<span class="pmb-tag pmb">PMB</span>{% else %}<span class="pmb-tag faz">Fazenda</span>{% endif %}</td>
+            <td class="tright tabular">{{ r.qtd }}</td>
+            <td class="tright tabular">R$ {{ r.custo_locacao|floatformat:2 }}</td>
+            <td class="tright tabular">R$ {{ r.custo_licenca|floatformat:2 }}</td>
+            <td class="tright tabular">R$ {{ r.total_mensal|floatformat:2 }}</td>
+            <td class="tright tabular">R$ {{ r.custo_patrimonio|floatformat:2 }}</td>
+            <td class="tright tabular" style="font-weight:700;">R$ {{ r.total_geral|floatformat:2 }}</td>
+            <td class="tright tabular">{% if r.divergencias %}<span class="diverge-flag">{{ r.divergencias }} ⚠</span>{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3">Total Geral</td>
+            <td class="tright tabular">R$ {{ kpi_total_locacao|floatformat:2 }}</td>
+            <td class="tright tabular">R$ {{ kpi_total_licenca|floatformat:2 }}</td>
+            <td class="tright tabular">R$ {{ kpi_total_mensal|floatformat:2 }}</td>
+            <td class="tright tabular">R$ {{ kpi_total_patrimonio|floatformat:2 }}</td>
+            <td class="tright tabular">R$ {{ kpi_total_geral|floatformat:2 }}</td>
+            <td class="tright tabular">{{ kpi_divergencias_pmb }}</td>
+          </tr>
+        </tfoot>
+      </table>
+      </div>
+      {% else %}
+      <div class="vc-empty">Nenhum registro encontrado com os filtros aplicados.</div>
+      {% endif %}
+    </div>
+
+    <!-- ================= Detalhamento linha a linha (agrupado por CC) ================= -->
+    <div class="vc-block">
+      <div class="vc-block-head">
+        <h2>Detalhamento</h2>
+        <span class="vc-hint">— clique no cabeçalho de um Centro de Custo para recolher/expandir o grupo</span>
+      </div>
+      {% if grupos %}
+      <div class="vc-sheet-wrap">
+      <table class="vc-sheet" id="vcSheet">
+        <thead>
+          <tr class="vc-colletters">
+            <th>&nbsp;</th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th><th>H</th><th>I</th><th>J</th><th>K</th><th>L</th><th>M</th>
+          </tr>
+          <tr class="vc-headrow">
+            <th class="num">#</th>
+            <th>Tipo de Custo</th>
+            <th>Centro de Custo</th>
+            <th>PMB</th>
+            <th>Subtipo</th>
+            <th>Descrição</th>
+            <th>Marca / Modelo</th>
+            <th>Fornecedor</th>
+            <th>Nº de Série</th>
+            <th>Colaborador / Responsável</th>
+            <th>Localização</th>
+            <th>Status</th>
+            <th>Recorrência</th>
+            <th class="tright">Valor (R$)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for grupo in grupos %}
+          <tr class="vc-grouphead" data-group="cc-{{ grupo.resumo.cc.id }}">
+            <td class="num"><span class="chev">▾</span></td>
+            <td colspan="9">{{ grupo.resumo.cc.numero }} - {{ grupo.resumo.cc.departamento }}
+              {% if grupo.resumo.cc.pmb_efetivo == 'sim' %}<span class="pmb-tag pmb">PMB</span>{% else %}<span class="pmb-tag faz">Fazenda</span>{% endif %}
+              <span style="font-weight:400;color:var(--vc-ink-soft);">({{ grupo.resumo.qtd }} linha{{ grupo.resumo.qtd|pluralize }})</span>
+            </td>
+            <td class="tright">Mensal: R$ {{ grupo.resumo.total_mensal|floatformat:2 }}</td>
+            <td class="tright" colspan="2">Patrimônio: R$ {{ grupo.resumo.custo_patrimonio|floatformat:2 }}</td>
+            <td class="tright">Total: R$ {{ grupo.resumo.total_geral|floatformat:2 }}</td>
+          </tr>
+          {% for l in grupo.linhas %}
+          <tr data-group-member="cc-{{ grupo.resumo.cc.id }}">
+            <td class="num tabular">{{ l.linha_num }}</td>
+            <td><span class="tipo-badge {{ l.tipo_custo }}">{{ l.tipo_label }}</span></td>
+            <td>{{ l.cc.numero }} - {{ l.cc.departamento }}</td>
+            <td>
+              {% if l.pmb_cc == 'sim' %}<span class="pmb-tag pmb">PMB</span>{% else %}<span class="pmb-tag faz">Fazenda</span>{% endif %}
+              {% if l.diverge_pmb %}<span class="diverge-flag" title="Cadastro do item/licença diverge: consta como {% if l.pmb_origem == 'sim' %}PMB{% else %}Fazenda{% endif %}">⚠</span>{% endif %}
+            </td>
+            <td>{% if l.subtipo %}{{ l.subtipo.nome }}{% else %}—{% endif %}</td>
+            <td>{{ l.descricao }}</td>
+            <td>{{ l.marca_modelo }}</td>
+            <td>{{ l.fornecedor_nome }}</td>
+            <td>{{ l.numero_serie }}</td>
+            <td>{{ l.colaborador }}</td>
+            <td>{{ l.localidade }}</td>
+            <td>{{ l.status }}</td>
+            <td>{{ l.recorrencia }}</td>
+            <td class="tright tabular">R$ {{ l.valor|floatformat:2 }}</td>
+          </tr>
+          {% endfor %}
+          {% endfor %}
+          <tr class="vc-grandtotal">
+            <td colspan="13" style="text-align:right;">TOTAL GERAL ({{ kpi_total_linhas }} linhas)</td>
+            <td class="tright tabular">R$ {{ kpi_total_geral|floatformat:2 }}</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <div class="vc-empty">Nenhum registro encontrado com os filtros aplicados.</div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <div class="vc-footer">
+    Fonte: Locação (Locacao.valor_mensal) · Licença (custo mensal por assento do lote) · Custo Patrimônio (valor de aquisição de ativos próprios ativos, não locados).
+    PMB comparado é o do Centro de Custo × PMB do próprio item/licença — divergências indicam cadastro a revisar.
+  </div>
+
+<script src="{% static 'vendor/jquery-3.7.1.min.js' %}"></script>
+<script src="{% static 'vendor/select2.min.js' %}"></script>
+<script>
+(function(){
+  if (window.jQuery && jQuery.fn.select2) {
+    jQuery('.select2-filter').select2({ width: '100%', placeholder: 'Todos', allowClear: true });
+  }
+
+  document.querySelectorAll('.vc-grouphead').forEach(function(head){
+    head.addEventListener('click', function(){
+      var key = head.getAttribute('data-group');
+      var collapsed = head.classList.toggle('is-collapsed');
+      document.querySelectorAll('[data-group-member="' + key + '"]').forEach(function(row){
+        row.classList.toggle('vc-row-hidden', collapsed);
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

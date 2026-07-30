@@ -2018,8 +2018,16 @@ def apontamentos_horas_export(request):
 
     from django.http import HttpResponse
     from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.styles import Alignment, Font
     from openpyxl.utils import get_column_letter
+
+    from services.excel_theme import (
+        BORDA as border, FONT_TITULO as f_title, FONT_SUBTITULO as f_sub,
+        FONT_HEADER as f_header, FONT_CELL as f_cell, FONT_CELL_BOLD as f_bold,
+        FILL_TITULO as fill_title, FILL_SUBTITULO as fill_sub,
+        FILL_HEADER as fill_header, FILL_ZEBRA as fill_zebra,
+        ALIGN_LEFT as a_left, ALIGN_CENTER as a_center, ALIGN_RIGHT as a_right, FONTE,
+    )
 
     hoje = timezone.localdate()
     inicio = _parse_data_opt(request.GET.get("inicio"), date(hoje.year, 1, 1))
@@ -2059,25 +2067,9 @@ def apontamentos_horas_export(request):
     def _nomes_auxiliares(ex):
         return ", ".join(a.get_full_name() or a.username for a in ex.tecnicos_auxiliares.all())
 
-    # ── Estilos ──────────────────────────────────────────────────────────────
-    BRAND = "0071E3"
-    DARK = "0A2540"
+    # ── Estilos (tema oficial da empresa) ───────────────────────────────────
     GREEN = "047857"
     GRAY = "8A8A8E"
-    thin = Side(style="thin", color="E5E7EB")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    f_title = Font(name="Calibri", size=15, bold=True, color="FFFFFF")
-    f_sub = Font(name="Calibri", size=9, color="FFFFFF")
-    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-    f_cell = Font(name="Calibri", size=10, color="1D1D1F")
-    f_bold = Font(name="Calibri", size=10, bold=True, color="1D1D1F")
-    fill_title = PatternFill("solid", fgColor=DARK)
-    fill_sub = PatternFill("solid", fgColor="EEF2F7")
-    fill_header = PatternFill("solid", fgColor=BRAND)
-    fill_zebra = PatternFill("solid", fgColor="F7F9FC")
-    a_left = Alignment(horizontal="left", vertical="center", wrap_text=False)
-    a_center = Alignment(horizontal="center", vertical="center")
-    a_right = Alignment(horizontal="right", vertical="center")
 
     def faixa_titulo(ws, ncols, titulo, subtitulo):
         last = get_column_letter(ncols)
@@ -2091,7 +2083,7 @@ def apontamentos_horas_export(request):
         ws.merge_cells(f"A2:{last}2")
         c2 = ws["A2"]
         c2.value = subtitulo
-        c2.font = Font(name="Calibri", size=9, color="334155")
+        c2.font = f_sub
         c2.fill = fill_sub
         c2.alignment = Alignment(horizontal="left", vertical="center", indent=1)
         ws.row_dimensions[2].height = 18
@@ -2238,7 +2230,7 @@ def apontamentos_horas_export(request):
             else:
                 c.alignment = a_left
             if ci == 11:
-                c.font = Font(name="Calibri", size=10, bold=True,
+                c.font = Font(name=FONTE, size=10, bold=True,
                               color=GREEN if ex.no_prazo else "B91C1C")
             if zebra:
                 c.fill = fill_zebra

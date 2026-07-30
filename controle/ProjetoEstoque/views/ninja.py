@@ -31,6 +31,33 @@ _LOGIN_STATUS_LABEL = {
 }
 
 
+def _sem_cadastro(qs):
+    """
+    Filtra `qs` (NinjaDevice) para os dispositivos REALMENTE sem cadastro no
+    estoque — não basta checar `item__isnull=True`: quando a mesma série
+    aparece em 2 registros de dispositivo do Ninja (device renomeado/duplicado
+    no RMM), a importação só vincula o `item` FK a UM deles (regra 1-para-1 em
+    `ninja_service.importar`); o outro fica com `item=None` mesmo já existindo
+    um Item cadastrado com aquela série/nome. Sem este segundo check contra
+    Item, esses casos apareciam como "não cadastrado" por engano.
+    """
+    from django.db.models import Exists, OuterRef
+
+    from ProjetoEstoque.models import Item
+
+    item_por_serial = Item.objects.filter(numero_serie__iexact=OuterRef("serial_number"))
+    item_por_nome = Item.objects.filter(nome__iexact=OuterRef("display_name"))
+
+    return (
+        qs.filter(item__isnull=True, serial_number__gt="")
+        .annotate(
+            _tem_item_por_serial=Exists(item_por_serial),
+            _tem_item_por_nome=Exists(item_por_nome),
+        )
+        .filter(_tem_item_por_serial=False, _tem_item_por_nome=False)
+    )
+
+
 # ─────────────────────────────────────────────────────────────
 # Exportação Excel (.xlsx) — planilha profissional de dispositivos
 # ─────────────────────────────────────────────────────────────
@@ -38,25 +65,16 @@ _LOGIN_STATUS_LABEL = {
 def _dispositivos_xlsx(qs, titulo, subtitulo, filename_prefix="ninja_dispositivos"):
     from io import BytesIO
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.styles import Font, PatternFill
     from openpyxl.utils import get_column_letter
 
-    BRAND_DARK, BRAND, SOFT, ZEBRA = "3A1480", "6528D8", "EEE9FB", "F6F3FC"
-    INK = "1F2733"
-    hair = Side(style="thin", color="DDD6F3")
-    border = Border(left=hair, right=hair, top=hair, bottom=hair)
-    f_title = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
-    f_sub = Font(name="Calibri", size=10, italic=True, color="5B6B7F")
-    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-    f_cell = Font(name="Calibri", size=10, color=INK)
-    fill_title = PatternFill("solid", fgColor=BRAND_DARK)
-    fill_sub = PatternFill("solid", fgColor=SOFT)
-    fill_header = PatternFill("solid", fgColor=BRAND)
-    fill_zebra = PatternFill("solid", fgColor=ZEBRA)
-    a_center = Alignment(horizontal="center", vertical="center")
-    a_left = Alignment(horizontal="left", vertical="center")
-    a_left_ind = Alignment(horizontal="left", vertical="center", indent=1)
-    dt_fmt = "DD/MM/YYYY HH:MM"
+    from services.excel_theme import (
+        BORDA as border, FONT_TITULO as f_title, FONT_SUBTITULO as f_sub,
+        FONT_HEADER as f_header, FONT_CELL as f_cell, FILL_TITULO as fill_title,
+        FILL_SUBTITULO as fill_sub, FILL_HEADER as fill_header, FILL_ZEBRA as fill_zebra,
+        ALIGN_CENTER as a_center, ALIGN_LEFT as a_left, ALIGN_LEFT_IND as a_left_ind,
+        DATETIME_FMT as dt_fmt, FONTE,
+    )
 
     header = ["#", "Dispositivo", "Número de Série", "Modelo", "Local", "Organização",
               "Usuário Logado", "Status", "Vínculo no Estoque", "Centro de Custo", "Último Contato"]
@@ -106,7 +124,7 @@ def _dispositivos_xlsx(qs, titulo, subtitulo, filename_prefix="ninja_dispositivo
                 cell.alignment = a_center
             if ci == 8:
                 cell.fill = PatternFill("solid", fgColor="E6F4EA" if d.is_online else "F0F0F2")
-                cell.font = Font(name="Calibri", size=10, bold=True,
+                cell.font = Font(name=FONTE, size=10, bold=True,
                                  color="1E8E3E" if d.is_online else "5B6B7F")
                 cell.alignment = a_center
             elif zebra:
@@ -139,25 +157,16 @@ def _validacao_xlsx(resultados, titulo, subtitulo, filename_prefix="ninja_valida
     """Planilha profissional (.xlsx) da Validação de Login."""
     from io import BytesIO
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.styles import Font, PatternFill
     from openpyxl.utils import get_column_letter
 
-    BRAND_DARK, BRAND, SOFT, ZEBRA = "3A1480", "6528D8", "EEE9FB", "F6F3FC"
-    INK = "1F2733"
-    hair = Side(style="thin", color="DDD6F3")
-    border = Border(left=hair, right=hair, top=hair, bottom=hair)
-    f_title = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
-    f_sub = Font(name="Calibri", size=10, italic=True, color="5B6B7F")
-    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-    f_cell = Font(name="Calibri", size=10, color=INK)
-    fill_title = PatternFill("solid", fgColor=BRAND_DARK)
-    fill_sub = PatternFill("solid", fgColor=SOFT)
-    fill_header = PatternFill("solid", fgColor=BRAND)
-    fill_zebra = PatternFill("solid", fgColor=ZEBRA)
-    a_center = Alignment(horizontal="center", vertical="center")
-    a_left = Alignment(horizontal="left", vertical="center")
-    a_left_ind = Alignment(horizontal="left", vertical="center", indent=1)
-    dt_fmt = "DD/MM/YYYY HH:MM"
+    from services.excel_theme import (
+        BORDA as border, FONT_TITULO as f_title, FONT_SUBTITULO as f_sub,
+        FONT_HEADER as f_header, FONT_CELL as f_cell, FILL_TITULO as fill_title,
+        FILL_SUBTITULO as fill_sub, FILL_HEADER as fill_header, FILL_ZEBRA as fill_zebra,
+        ALIGN_CENTER as a_center, ALIGN_LEFT as a_left, ALIGN_LEFT_IND as a_left_ind,
+        DATETIME_FMT as dt_fmt, FONTE, MARROM_CAFE as INK,
+    )
 
     STATUS_FILL = {
         "confere": ("E6F4EA", "1E8E3E"),
@@ -213,7 +222,7 @@ def _validacao_xlsx(resultados, titulo, subtitulo, filename_prefix="ninja_valida
             if ci == 2:
                 bg, fg = STATUS_FILL.get(r["status"], ("FFFFFF", INK))
                 cell.fill = PatternFill("solid", fgColor=bg)
-                cell.font = Font(name="Calibri", size=10, bold=True, color=fg)
+                cell.font = Font(name=FONTE, size=10, bold=True, color=fg)
                 cell.alignment = a_center
             elif zebra:
                 cell.fill = fill_zebra
@@ -255,7 +264,7 @@ def ninja_dashboard(request):
     total = qs.count()
     online = qs.filter(is_online=True).count()
     matched = qs.filter(item__isnull=False).count()
-    unmatched = qs.filter(item__isnull=True, serial_number__gt="").count()
+    unmatched = _sem_cadastro(qs).count()
     sem_serie = qs.filter(serial_number="").count()
     com_user = qs.filter(is_online=True).exclude(last_user="").count()
 
@@ -285,7 +294,7 @@ def ninja_dashboard(request):
         row["offline"] = row["qtd"] - row["online"]
 
     online_com_user = qs.filter(is_online=True).exclude(last_user="").order_by("display_name")[:12]
-    sem_match_online = qs.filter(is_online=True, item__isnull=True, serial_number__gt="").order_by("display_name")[:8]
+    sem_match_online = _sem_cadastro(qs.filter(is_online=True)).order_by("display_name")[:8]
 
     snapshots_hoje = NinjaDeviceSnapshot.objects.filter(timestamp__date=hoje).count()
     last_import = qs.order_by("-last_sync").values_list("last_sync", flat=True).first()
@@ -364,7 +373,7 @@ def ninja_dispositivos(request):
     if f_match == "matched":
         qs = qs.filter(item__isnull=False)
     elif f_match == "unmatched":
-        qs = qs.filter(item__isnull=True, serial_number__gt="")
+        qs = _sem_cadastro(qs)
     elif f_match == "sem_serie":
         qs = qs.filter(serial_number="")
 
@@ -402,7 +411,7 @@ def ninja_dispositivos(request):
         "online": _bonline,
         "offline": _btotal - _bonline,
         "matched": base.filter(item__isnull=False).count(),
-        "unmatched": base.filter(item__isnull=True, serial_number__gt="").count(),
+        "unmatched": _sem_cadastro(base).count(),
     }
 
     total_filtrado = qs.count()
@@ -554,7 +563,7 @@ def ninja_nao_cadastrados(request):
     q = (request.GET.get("q") or "").strip()
     f_local = (request.GET.get("local") or "").strip()
 
-    universo = NinjaDevice.objects.filter(item__isnull=True, serial_number__gt="")
+    universo = _sem_cadastro(NinjaDevice.objects.all())
 
     qs = universo
     if q:

@@ -21,6 +21,7 @@ from ..models import (
     PeriodicidadeChoices, TipoMovLicencaChoices, TipoMovimentacaoChoices,
     Locacao, CheckListModelo, OrdemManutencao, StatusOrdemManutencaoChoices,
 )
+from services.validacao_custos_service import montar_dados_validacao_custos
 
 def _month_key(dt):
     """YYYY-MM para indexação."""
@@ -560,24 +561,17 @@ def preventiva_dashboard_export(request):
     from io import BytesIO
 
     from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.styles import Alignment
     from openpyxl.utils import get_column_letter
 
-    ctx = _get_preventiva_dashboard_data(request, limit_vencidas=None)
+    from services.excel_theme import (
+        FONT_TITULO as f_title, FONT_HEADER as f_header, FONT_CELL as f_cell,
+        FONT_SUBTITULO as f_sub, FILL_TITULO as fill_title, FILL_SUBTITULO as fill_sub,
+        FILL_HEADER as fill_header, FILL_ZEBRA as fill_zebra, BORDA as border,
+        ALIGN_LEFT as a_left, ALIGN_CENTER as a_center,
+    )
 
-    BRAND = "0071E3"
-    DARK = "0A2540"
-    thin = Side(style="thin", color="E5E7EB")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    f_title = Font(name="Calibri", size=15, bold=True, color="FFFFFF")
-    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-    f_cell = Font(name="Calibri", size=10, color="1D1D1F")
-    fill_title = PatternFill("solid", fgColor=DARK)
-    fill_sub = PatternFill("solid", fgColor="EEF2F7")
-    fill_header = PatternFill("solid", fgColor=BRAND)
-    fill_zebra = PatternFill("solid", fgColor="F7F9FC")
-    a_left = Alignment(horizontal="left", vertical="center")
-    a_center = Alignment(horizontal="center", vertical="center")
+    ctx = _get_preventiva_dashboard_data(request, limit_vencidas=None)
 
     def faixa_titulo(ws, ncols, titulo, subtitulo):
         last = get_column_letter(ncols)
@@ -591,7 +585,7 @@ def preventiva_dashboard_export(request):
         ws.merge_cells(f"A2:{last}2")
         c2 = ws["A2"]
         c2.value = subtitulo
-        c2.font = Font(name="Calibri", size=9, color="334155")
+        c2.font = f_sub
         c2.fill = fill_sub
         c2.alignment = Alignment(horizontal="left", vertical="center", indent=1)
         ws.row_dimensions[2].height = 18
@@ -1741,3 +1735,139 @@ def custos_diretoria_detalhe(request):
         "itens": itens,
         "qtd_itens_total": qtd_itens,
     })
+
+
+# ================================================================================
+# Validação de Custos por Centro de Custo / PMB (painel estilo planilha)
+# ================================================================================
+
+@login_required
+def validacao_custos_planilha(request):
+    """
+    Painel gerencial "estilo planilha" (não usa o layout padrão do sistema) para
+    validar, linha a linha, o custo de cada equipamento locado, licença atribuída
+    e ativo próprio (patrimônio) por Centro de Custo — cruzando com a flag PMB.
+
+    Toda a agregação vive em `services/validacao_custos_service.py`.
+    """
+    ctx = montar_dados_validacao_custos(request)
+    return render(request, "front/dashboards/validacao_custos_planilha.html", ctx)
+
+
+@login_required
+def validacao_custos_export_excel(request):
+    """Exporta a mesma visão de `validacao_custos_planilha` para .xlsx, respeitando os filtros."""
+    from openpyxl import Workbook
+
+    from services.excel_theme import (
+        ajustar_larguras, criar_tabela, estilizar_cabecalho, FONT_CELL,
+        FONT_DESTAQUE_TEXTO, FONT_SUBTOTAL, FILL_SUBTOTAL, MONEY_FMT, BORDA,
+    )
+
+    dados = montar_dados_validacao_custos(request)
+
+    wb = Workbook()
+
+    # ---------------- Aba 1: Detalhamento (agrupado por CC, com outline) ----------------
+    ws = wb.active
+    ws.title = "Detalhamento"
+    ws.sheet_properties.outlinePr.summaryBelow = False
+
+    headers = [
+        "Tipo de Custo", "Centro de Custo", "PMB (CC)", "PMB (Origem)", "Divergência PMB",
+        "Subtipo", "Descrição", "Marca / Modelo", "Fornecedor", "Nº de Série",
+        "Colaborador / Responsável", "Localização", "Status", "Recorrência", "Valor (R$)",
+    ]
+    ws.append(headers)
+    estilizar_cabecalho(ws, 1, len(headers))
+
+    row_idx = 1
+    for grupo in dados["grupos"]:
+        r = grupo["resumo"]
+        row_idx += 1
+        ws.append([
+            f"{r['cc'].numero} - {r['cc'].departamento}", "", "", "", "", "", "", "", "", "", "", "", "",
+            "Subtotal do CC",
+            float(r["total_geral"]),
+        ])
+        for col in range(1, len(headers) + 1):
+            ws.cell(row=row_idx, column=col).fill = FILL_SUBTOTAL
+            ws.cell(row=row_idx, column=col).font = FONT_SUBTOTAL
+            ws.cell(row=row_idx, column=col).border = BORDA
+        ws.cell(row=row_idx, column=len(headers)).number_format = MONEY_FMT
+
+        for l in grupo["linhas"]:
+            row_idx += 1
+            ws.append([
+                l["tipo_label"],
+                f"{l['cc'].numero} - {l['cc'].departamento}",
+                "PMB" if r["cc"].pmb_efetivo == "sim" else "Fazenda",
+                "PMB" if l["pmb_origem"] == "sim" else "Fazenda",
+                "SIM" if l["diverge_pmb"] else "",
+                l["subtipo"].nome if l["subtipo"] else "-",
+                l["descricao"],
+                l["marca_modelo"],
+                l["fornecedor_nome"],
+                l["numero_serie"],
+                l["colaborador"],
+                l["localidade"],
+                l["status"],
+                l["recorrencia"],
+                float(l["valor"]),
+            ])
+            ws.row_dimensions[row_idx].outline_level = 1
+            for col in range(1, len(headers) + 1):
+                ws.cell(row=row_idx, column=col).border = BORDA
+                ws.cell(row=row_idx, column=col).font = FONT_CELL
+            ws.cell(row=row_idx, column=len(headers)).number_format = MONEY_FMT
+            if l["diverge_pmb"]:
+                ws.cell(row=row_idx, column=5).font = FONT_DESTAQUE_TEXTO
+
+    last_row = ws.max_row
+    if last_row >= 2:
+        criar_tabela(ws, "tb_validacao_custos", 1, last_row, len(headers))
+
+    ajustar_larguras(ws, [16, 26, 10, 12, 14, 16, 30, 22, 22, 18, 26, 18, 14, 12, 16])
+    ws.freeze_panes = "A2"
+
+    # ---------------- Aba 2: Resumo por Centro de Custo ----------------
+    ws2 = wb.create_sheet("Resumo por CC")
+    resumo_headers = [
+        "Centro de Custo", "PMB", "Qtd. Linhas", "Custo Locação (R$)",
+        "Custo Licença (R$)", "Total Mensal (R$)", "Custo Patrimônio (R$)",
+        "Total Geral (R$)", "Divergências PMB",
+    ]
+    ws2.append(resumo_headers)
+    estilizar_cabecalho(ws2, 1, len(resumo_headers))
+
+    for r in dados["resumo_cc"]:
+        ws2.append([
+            f"{r['cc'].numero} - {r['cc'].departamento}",
+            "PMB" if r["cc"].pmb_efetivo == "sim" else "Fazenda",
+            r["qtd"],
+            float(r["custo_locacao"]),
+            float(r["custo_licenca"]),
+            float(r["total_mensal"]),
+            float(r["custo_patrimonio"]),
+            float(r["total_geral"]),
+            r["divergencias"],
+        ])
+
+    last_row2 = ws2.max_row
+    for row in range(2, last_row2 + 1):
+        for col in (4, 5, 6, 7, 8):
+            ws2.cell(row=row, column=col).number_format = MONEY_FMT
+        for col in range(1, len(resumo_headers) + 1):
+            ws2.cell(row=row, column=col).border = BORDA
+            ws2.cell(row=row, column=col).font = FONT_CELL
+
+    if last_row2 >= 2:
+        criar_tabela(ws2, "tb_resumo_cc", 1, last_row2, len(resumo_headers))
+
+    ajustar_larguras(ws2, [26, 10, 12, 18, 18, 16, 20, 16, 16])
+    ws2.freeze_panes = "A2"
+
+    resp = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    resp["Content-Disposition"] = f'attachment; filename="validacao_custos_{dados["gerado_em"]:%Y%m%d_%H%M}.xlsx"'
+    wb.save(resp)
+    return resp

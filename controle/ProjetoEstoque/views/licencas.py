@@ -414,34 +414,21 @@ def licenca_export_excel(request, pk):
     })
 
     # =========================================================================
-    # PALETA / ESTILOS PROFISSIONAIS
+    # PALETA / ESTILOS PROFISSIONAIS (tema oficial da empresa)
     # =========================================================================
-    BRAND_DARK = "0A2540"   # faixa de título
-    BRAND = "1D4ED8"        # cabeçalhos de tabela
-    SOFT = "EEF2F7"         # subtítulo / faixas claras
-    ZEBRA = "F4F7FB"        # linhas alternadas
-    INK = "1F2733"
-    MUTED = "5B6B7F"
+    from services.excel_theme import (
+        BORDA as border, FONT_TITULO as f_title, FONT_SUBTITULO as f_sub,
+        FONT_HEADER as f_header, FONT_CELL_BOLD as f_bold, FONT_CELL as f_cell,
+        FILL_TITULO as fill_title, FILL_SUBTITULO as fill_sub,
+        FILL_HEADER as fill_header, FILL_ZEBRA as fill_zebra,
+        ALIGN_CENTER as a_center, ALIGN_LEFT as a_left, ALIGN_RIGHT as a_right,
+        ALIGN_LEFT_IND as a_left_ind, MONEY_FMT as BRL,
+        AZUL_ABUNDANCIA, AZUL_VASTIDAO, VERDE_VITAL, MARROM_CAFE, LARANJA_SOLAR,
+    )
+
     GREEN = "1E8E3E"
     RED = "D93025"
     GRAY = "6B7280"
-
-    hair = Side(style="thin", color="DCE3EC")
-    border = Border(left=hair, right=hair, top=hair, bottom=hair)
-    f_title = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
-    f_sub = Font(name="Calibri", size=10, italic=True, color=MUTED)
-    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-    f_bold = Font(name="Calibri", size=10, bold=True, color=INK)
-    f_cell = Font(name="Calibri", size=10, color=INK)
-    fill_title = PatternFill("solid", fgColor=BRAND_DARK)
-    fill_sub = PatternFill("solid", fgColor=SOFT)
-    fill_header = PatternFill("solid", fgColor=BRAND)
-    fill_zebra = PatternFill("solid", fgColor=ZEBRA)
-    a_center = Alignment(horizontal="center", vertical="center")
-    a_left = Alignment(horizontal="left", vertical="center")
-    a_right = Alignment(horizontal="right", vertical="center")
-    a_left_ind = Alignment(horizontal="left", vertical="center", indent=1)
-    BRL = 'R$ #,##0.00'
 
     def faixa_titulo(ws, ncols, titulo, subtitulo):
         last = get_column_letter(ncols)
@@ -503,12 +490,12 @@ def licenca_export_excel(request, pk):
 
     # KPIs (cartões 2 linhas: rótulo + valor)
     kpis = [
-        ("ASSENTOS TOTAIS", qtd_total, "334155", None),
-        ("EM USO", qtd_em_uso, GREEN, None),
-        ("DISPONÍVEIS", qtd_disp, BRAND, None),
-        ("OCUPAÇÃO", pct_uso / 100, "7C3AED", "0%"),
-        ("INVESTIMENTO TOTAL", float(investimento_total), "0A2540", BRL),
-        ("GASTO MENSAL", float(gasto_mensal), "EA580C", BRL),
+        ("ASSENTOS TOTAIS", qtd_total, AZUL_ABUNDANCIA, None),
+        ("EM USO", qtd_em_uso, VERDE_VITAL, None),
+        ("DISPONÍVEIS", qtd_disp, AZUL_VASTIDAO, None),
+        ("OCUPAÇÃO", pct_uso / 100, LARANJA_SOLAR, "0%"),
+        ("INVESTIMENTO TOTAL", float(investimento_total), MARROM_CAFE, BRL),
+        ("GASTO MENSAL", float(gasto_mensal), AZUL_ABUNDANCIA, BRL),
     ]
     for idx, (lbl, val, color, fmt) in enumerate(kpis):
         col = idx + 1

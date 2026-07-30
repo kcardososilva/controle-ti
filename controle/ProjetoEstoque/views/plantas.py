@@ -649,8 +649,15 @@ def prtg_monitor_export(request):
     from django.http import HttpResponse
     from django.utils import timezone
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.styles import Font, Alignment, PatternFill
     from openpyxl.utils import get_column_letter
+
+    from services.excel_theme import (
+        BORDA as border, FONT_TITULO as font_titulo, FONT_SUBTITULO as font_subtitulo,
+        FILL_TITULO as fill_titulo, FILL_SUBTITULO as fill_subtitulo,
+        FILL_HEADER as fill_secao_header, ALIGN_CENTER as center, ALIGN_LEFT as left,
+        AZUL_ABUNDANCIA, AZUL_VASTIDAO, VERDE_VITAL, LARANJA_SOLAR, MARROM_CAFE, FONTE,
+    )
 
     if not prtg_service.is_configured():
         return redirect("prtg_monitor")
@@ -685,11 +692,11 @@ def prtg_monitor_export(request):
 
     # ── Classificar dispositivos por site ────────────────────────────────────
     SITES = [
-        ("KTL",    "Karitel",     "1D4ED8"),
-        ("RDM",    "Rio do Meio", "0D9488"),
-        ("PIN",    "Pinheiros",   "7C3AED"),
-        ("Mambai", "Mambaí",      "EA580C"),
-        ("Outros", "Outros",      "475569"),
+        ("KTL",    "Karitel",     AZUL_ABUNDANCIA),
+        ("RDM",    "Rio do Meio", AZUL_VASTIDAO),
+        ("PIN",    "Pinheiros",   VERDE_VITAL),
+        ("Mambai", "Mambaí",      LARANJA_SOLAR),
+        ("Outros", "Outros",      MARROM_CAFE),
     ]
     por_site = {key: [] for key, _, _ in SITES}
     for dev in devices:
@@ -711,18 +718,13 @@ def prtg_monitor_export(request):
     for i, w in enumerate(WIDTHS, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
-    thin = Side(style="thin", color="D9DEE6")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    center = Alignment(horizontal="center", vertical="center")
-    left = Alignment(horizontal="left", vertical="center", wrap_text=False)
-
     r = 1
     # Título
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NCOL)
     c = ws.cell(row=r, column=1, value="MONITOR PRTG — EQUIPAMENTOS E STATUS")
-    c.font = Font(bold=True, color="FFFFFF", size=18, name="Calibri")
+    c.font = font_titulo
     c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
-    c.fill = PatternFill("solid", fgColor="0A2540")
+    c.fill = fill_titulo
     ws.row_dimensions[r].height = 34
     r += 1
 
@@ -731,9 +733,9 @@ def prtg_monitor_export(request):
     gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")
     c = ws.cell(row=r, column=1,
                 value=f"Santa Colomba Agropecuária  ·  Gerado em {gerado}  ·  {len(devices)} dispositivos monitorados")
-    c.font = Font(color="5B6B7F", size=10, italic=True)
+    c.font = font_subtitulo
     c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
-    c.fill = PatternFill("solid", fgColor="EEF2F7")
+    c.fill = fill_subtitulo
     ws.row_dimensions[r].height = 18
     r += 2
 
@@ -782,7 +784,7 @@ def prtg_monitor_export(request):
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NCOL)
         cs = ws.cell(row=r, column=1,
                      value=f"  {nome.upper()}  —  {len(lista)} dispositivo(s)   •   {on} online   •   {off} offline")
-        cs.font = Font(bold=True, color="FFFFFF", size=12)
+        cs.font = Font(name=FONTE, bold=True, color="FFFFFF", size=12)
         cs.alignment = Alignment(horizontal="left", vertical="center")
         cs.fill = PatternFill("solid", fgColor=color)
         ws.row_dimensions[r].height = 26
@@ -791,9 +793,9 @@ def prtg_monitor_export(request):
         # Cabeçalho da tabela
         for ci, titulo in enumerate(COLS, start=1):
             hc = ws.cell(row=r, column=ci, value=titulo)
-            hc.font = Font(bold=True, color="FFFFFF", size=10)
+            hc.font = Font(name=FONTE, bold=True, color="FFFFFF", size=10)
             hc.alignment = center if titulo == "Status" else Alignment(horizontal="left", vertical="center")
-            hc.fill = PatternFill("solid", fgColor="334155")
+            hc.fill = fill_secao_header
             hc.border = border
         ws.row_dimensions[r].height = 20
         r += 1
@@ -830,7 +832,7 @@ def prtg_monitor_export(request):
                     cc.alignment = center
                 else:
                     cc.fill = PatternFill("solid", fgColor=zebra)
-                    cc.font = Font(color="1F2733", size=10)
+                    cc.font = Font(name=FONTE, color=MARROM_CAFE, size=10)
                     cc.alignment = left
                     if ci == 2:  # IP/Host monoespaçado
                         cc.font = Font(color="334155", size=10, name="Consolas")

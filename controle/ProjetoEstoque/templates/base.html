@@ -387,6 +387,12 @@
     }
     .overlay.is-active { opacity: 1; pointer-events: auto; }
 
+    /* O sidebar é sempre escuro — "dock" fixo, independente do tema
+       claro/escuro do site (só o conteúdo das páginas troca de tema).
+       Em vez de recolorir cada componente filho um a um, redefinimos AQUI
+       os tokens de texto/superfície que eles já consomem (--text-primary,
+       --bg-fill-*, --separator-*, --bg-hover...) — nav-label, nav-badge,
+       nav-arrow, sub-link, system-status etc. herdam automaticamente. */
     .sidebar {
       position: fixed;
       inset: 0 auto 0 0;
@@ -402,16 +408,22 @@
         width var(--transition-slow),
         box-shadow var(--transition-base);
       will-change: transform;
-      background: var(--bg-page-2);
-      border-right: 1px solid var(--separator-non-opaque);
-    }
 
-    @supports (backdrop-filter: blur(40px)) {
-      .sidebar {
-        background: var(--bg-vibrancy);
-        backdrop-filter: blur(40px) saturate(180%);
-        -webkit-backdrop-filter: blur(40px) saturate(180%);
-      }
+      --text-primary: #f5f5f7;
+      --text-secondary: #d2d2d7;
+      --text-tertiary: #a1a1a6;
+      --text-quaternary: #7d818e;
+      --separator-hairline: rgba(255, 255, 255, 0.07);
+      --separator-non-opaque: rgba(255, 255, 255, 0.12);
+      --bg-fill-tertiary: rgba(255, 255, 255, 0.06);
+      --bg-fill-secondary: rgba(255, 255, 255, 0.10);
+      --bg-hover: rgba(255, 255, 255, 0.07);
+      --bg-pressed: rgba(255, 255, 255, 0.12);
+      --brand-soft: rgba(41, 151, 255, 0.16);
+
+      background: #14161f;
+      border-right: 1px solid var(--separator-non-opaque);
+      box-shadow: 6px 0 24px -16px rgba(0, 0, 0, 0.55);
     }
 
     .sidebar.is-active {
@@ -593,39 +605,48 @@
       color: #ffffff;
     }
 
-    /* Ícone com "tile" arredondado, tintado pela cor do item (--ic) */
+    /* Badge com "tile" arredondado, tintado pela cor do item (--ic) — ícone
+       em outline (stroke), nunca preenchido: cor cheia no traço, fundo do
+       badge é a mesma cor a ~16% de opacidade. Vale tanto pro <svg> outline
+       (itens com ícone customizado) quanto pro <i> do Font Awesome (itens
+       que ainda não têm um outline dedicado) — ambos usam .nav-icon como
+       badge de 32×32; o glifo em si fica menor, centralizado. */
     .nav-icon {
-      width: 27px;
-      height: 27px;
-      min-width: 27px;
+      width: 32px;
+      height: 32px;
+      min-width: 32px;
       display: grid;
       place-items: center;
-      border-radius: 7px;
-      font-size: 12.5px;
-      color: #ffffff;
-      background: var(--ic, #8e8e93);
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.18),
-        inset 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+      border-radius: 8px;
+      font-size: 14px;
+      color: var(--ic, #8e8e93);
+      background: color-mix(in srgb, var(--ic, #8e8e93) 16%, transparent);
       transition:
         transform 140ms var(--ease-apple),
-        box-shadow 160ms var(--ease-apple),
-        filter 140ms var(--ease-apple);
+        background 140ms var(--ease-apple),
+        color 140ms var(--ease-apple);
+    }
+
+    .nav-icon svg {
+      width: 17px;
+      height: 17px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
 
     .nav-item:hover .nav-icon,
     .nav-button:hover .nav-icon {
       transform: translateY(-1px);
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.22),
-        0 3px 8px -2px color-mix(in srgb, var(--ic, #8e8e93) 55%, transparent);
+      background: color-mix(in srgb, var(--ic, #8e8e93) 24%, transparent);
     }
 
     .nav-item.is-active .nav-icon,
     .nav-button.is-active .nav-icon {
       color: #ffffff;
-      background: rgba(255, 255, 255, 0.22);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.18);
     }
 
     .nav-text {
@@ -1898,6 +1919,39 @@
         margin-bottom: 2px;
       }
 
+      /* ── Trilho recolhido: ícones monocromáticos ──────────────────────────
+         O fundo escuro já é permanente (regra base de .sidebar, vale pro
+         sidebar inteiro — recolhido, aberto por peek ou fixado aberto).
+         Só o TRILHO ESTREITO (sem peek) fica com ícones neutros, sem o tile
+         colorido por --ic — menos ruído quando recolhido; a cor de cada
+         item só aparece ao abrir (peek/fixado). Item ativo sempre com o
+         tile azul, recolhido ou aberto. */
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-icon {
+        background: transparent;
+        color: #868da8;
+        box-shadow: none;
+      }
+
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-item:hover .nav-icon,
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-button:hover .nav-icon {
+        color: #e4e6f2;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-item.is-active,
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-button.is-active {
+        background: transparent;
+        box-shadow: none;
+      }
+
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-item.is-active .nav-icon,
+      .app-shell.is-sidebar-collapsed:not(.is-sidebar-peek) .nav-button.is-active .nav-icon {
+        background: var(--brand);
+        color: #ffffff;
+        box-shadow: 0 3px 10px -2px rgba(10, 132, 255, 0.6);
+      }
+
       .topbar { padding-inline: 32px; }
       .main-scroll { padding: 40px; }
     }
@@ -2005,6 +2059,22 @@
       } catch (e) {}
     })();
   </script>
+
+  <!-- Sprite de ícones outline do menu lateral (stroke 2px, sem fill) — cada
+       item usa <svg><use href="#ic-..."></use></svg>; ver .nav-icon svg. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="ic-pie" viewBox="0 0 24 24"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></symbol>
+    <symbol id="ic-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="ic-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
+    <symbol id="ic-key" viewBox="0 0 24 24"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></symbol>
+    <symbol id="ic-sync" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+    <symbol id="ic-cart" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></symbol>
+    <symbol id="ic-truck" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></symbol>
+    <symbol id="ic-briefcase" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></symbol>
+    <symbol id="ic-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></symbol>
+    <symbol id="ic-network" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></symbol>
+  </svg>
+
   <a href="#mainContent" class="skip-link">Ir para o conteúdo principal</a>
 
   <div class="app-shell no-anim" id="appShell">
@@ -2033,13 +2103,13 @@
           <div class="nav-group">
             <button
               type="button"
-              class="nav-button {% if 'dashboard' in request.resolver_match.url_name or request.resolver_match.url_name == 'sistema_noticias' or request.resolver_match.url_name == 'sistema_inteligencia_dashboard' or request.resolver_match.url_name == 'avisos_contratos_vencer' %}is-active{% endif %}"
+              class="nav-button {% if 'dashboard' in request.resolver_match.url_name or request.resolver_match.url_name == 'sistema_noticias' or request.resolver_match.url_name == 'sistema_inteligencia_dashboard' or request.resolver_match.url_name == 'avisos_contratos_vencer' or 'validacao_custos' in request.resolver_match.url_name %}is-active{% endif %}"
               data-submenu-target="sub-dash"
               aria-expanded="false"
               aria-controls="sub-dash"
               title="Painéis gerenciais"
-              style="--ic:#5e5ce6">
-              <i class="fa-solid fa-chart-pie nav-icon" aria-hidden="true"></i>
+              style="--ic:#a855f7">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#ic-pie"></use></svg></span>
               <span class="nav-text">Painéis Gerenciais</span>
               <i class="fa-solid fa-chevron-down nav-arrow" aria-hidden="true"></i>
             </button>
@@ -2055,8 +2125,9 @@
                 <!--<a href="{% url 'sistema_noticias' %}" class="sub-link {% if request.resolver_match.url_name == 'sistema_noticias' %}is-active{% endif %}">Notícias</a>
                 <a href="{% url 'sistema_inteligencia_dashboard' %}" class="sub-link {% if request.resolver_match.url_name == 'sistema_inteligencia_dashboard' %}is-active{% endif %}">Auditoria de Dados</a>-->
                 
-                <a href="{% url 'cc_custos_dashboard' %}" class="sub-link {% if request.resolver_match.url_name == 'cc_custos_dashboard' %}is-active{% endif %}">Custos por Setor</a>
-                <a href="{% url 'custos_diretoria_dashboard' %}" class="sub-link {% if request.resolver_match.url_name == 'custos_diretoria_dashboard' %}is-active{% endif %}">Custos por Diretoria</a>
+                <!--<a href="{% url 'cc_custos_dashboard' %}" class="sub-link {% if request.resolver_match.url_name == 'cc_custos_dashboard' %}is-active{% endif %}">Custos por Setor</a>
+                <a href="{% url 'custos_diretoria_dashboard' %}" class="sub-link {% if request.resolver_match.url_name == 'custos_diretoria_dashboard' %}is-active{% endif %}">Custos por Diretoria</a>-->
+                <a href="{% url 'validacao_custos_planilha' %}" class="sub-link {% if request.resolver_match.url_name == 'validacao_custos_planilha' %}is-active{% endif %}">Validação de Custos (Planilha)</a>
                 <a href="{% url 'licencas_dashboard' %}" class="sub-link {% if request.resolver_match.url_name == 'licencas_dashboard' %}is-active{% endif %}">Licenças</a>
                 <a href="{% url 'dashboard_toner' %}" class="sub-link {% if request.resolver_match.url_name == 'dashboard_toner' %}is-active{% endif %}">Consumo Toner</a>
                 
@@ -2078,8 +2149,8 @@
               aria-expanded="false"
               aria-controls="sub-pessoas"
               title="Gestão de pessoas"
-              style="--ic:#32ade6">
-              <i class="fa-solid fa-users nav-icon" aria-hidden="true"></i>
+              style="--ic:#3b82f6">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#ic-users"></use></svg></span>
               <span class="nav-text">Gestão de Pessoas</span>
               <i class="fa-solid fa-chevron-down nav-arrow" aria-hidden="true"></i>
             </button>
@@ -2098,23 +2169,23 @@
         <section class="nav-section" aria-labelledby="nav-patrimonio">
           <div class="nav-label" id="nav-patrimonio">Patrimônio & TI</div>
 
-          <a href="{% url 'equipamentos_list' %}" class="nav-item {% if 'equipamento' in request.resolver_match.url_name %}is-active{% endif %}" title="Ativos e equipamentos" style="--ic:#0a84ff">
-            <i class="fa-solid fa-display nav-icon" aria-hidden="true"></i>
+          <a href="{% url 'equipamentos_list' %}" class="nav-item {% if 'equipamento' in request.resolver_match.url_name %}is-active{% endif %}" title="Ativos e equipamentos" style="--ic:#0ea5e9">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#ic-monitor"></use></svg></span>
             <span class="nav-text">Ativos / Equipamentos</span>
           </a>
 
-          <a href="{% url 'licenca_list' %}" class="nav-item {% if 'licenca_' in request.resolver_match.url_name and 'dashboard' not in request.resolver_match.url_name %}is-active{% endif %}" title="Licenças de software" style="--ic:#ff9f0a">
-            <i class="fa-solid fa-key nav-icon" aria-hidden="true"></i>
+          <a href="{% url 'licenca_list' %}" class="nav-item {% if 'licenca_' in request.resolver_match.url_name and 'dashboard' not in request.resolver_match.url_name %}is-active{% endif %}" title="Licenças de software" style="--ic:#f59e0b">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#ic-key"></use></svg></span>
             <span class="nav-text">Licenças de Software</span>
           </a>
 
-          <a href="{% url 'movimentacao_list' %}" class="nav-item {% if 'movimentacao' in request.resolver_match.url_name %}is-active{% endif %}" title="Movimentações" style="--ic:#bf5af2">
-            <i class="fa-solid fa-arrow-right-arrow-left nav-icon" aria-hidden="true"></i>
+          <a href="{% url 'movimentacao_list' %}" class="nav-item {% if 'movimentacao' in request.resolver_match.url_name %}is-active{% endif %}" title="Movimentações" style="--ic:#a855f7">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#ic-sync"></use></svg></span>
             <span class="nav-text">Movimentações</span>
           </a>
 
-          <a href="{% url 'requisicoes_kanban' %}" class="nav-item {% if 'requisi' in request.resolver_match.url_name or 'itens_padrao' in request.resolver_match.url_name %}is-active{% endif %}" title="Requisições" style="--ic:#ffd60a">
-            <i class="fa-solid fa-cart-shopping nav-icon" aria-hidden="true"></i>
+          <a href="{% url 'requisicoes_kanban' %}" class="nav-item {% if 'requisi' in request.resolver_match.url_name or 'itens_padrao' in request.resolver_match.url_name %}is-active{% endif %}" title="Requisições" style="--ic:#2f8fef">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#ic-cart"></use></svg></span>
             <span class="nav-text">Requisições</span>
           </a>
 
@@ -2126,8 +2197,8 @@
               aria-expanded="false"
               aria-controls="sub-fornecedores"
               title="Fornecedores e Portal"
-              style="--ic:#ff375f">
-              <i class="fa-solid fa-truck-ramp-box nav-icon" aria-hidden="true"></i>
+              style="--ic:#ec4899">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#ic-truck"></use></svg></span>
               <span class="nav-text">Fornecedores</span>
               <i class="fa-solid fa-chevron-down nav-arrow" aria-hidden="true"></i>
             </button>
@@ -2150,8 +2221,8 @@
               aria-expanded="false"
               aria-controls="sub-manutencao-corretiva"
               title="Manutenção corretiva (reparo externo, orçamento, troca)"
-              style="--ic:#5ac8fa">
-              <i class="fa-solid fa-toolbox nav-icon" aria-hidden="true"></i>
+              style="--ic:#22d3ee">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#ic-briefcase"></use></svg></span>
               <span class="nav-text">Manutenção</span>
               <i class="fa-solid fa-chevron-down nav-arrow" aria-hidden="true"></i>
             </button>
@@ -2175,8 +2246,8 @@
               aria-expanded="false"
               aria-controls="sub-manutencao"
               title="Manutenção preventiva"
-              style="--ic:#00c7be">
-              <i class="fa-solid fa-screwdriver-wrench nav-icon" aria-hidden="true"></i>
+              style="--ic:#14b8a6">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#ic-wrench"></use></svg></span>
               <span class="nav-text">Manutenção Preventiva</span>
               <i class="fa-solid fa-chevron-down nav-arrow" aria-hidden="true"></i>
             </button>
@@ -2202,8 +2273,8 @@
               data-submenu-target="sub-plantas"
               aria-expanded="false"
               aria-controls="sub-plantas"
-              title="Plantas de infraestrutura" style="--ic:#30d158">
-              <i class="fa-solid fa-map-location-dot nav-icon" aria-hidden="true"></i>
+              title="Plantas de infraestrutura" style="--ic:#22c55e">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#ic-network"></use></svg></span>
               <span class="nav-text">Plantas de Rede</span>
               <i class="fa-solid fa-chevron-down nav-arrow" aria-hidden="true"></i>
             </button>
@@ -2266,8 +2337,8 @@
           </div>
 
           {% else %}
-          <a href="{% url 'planta_list' %}" class="nav-item {% if 'planta_' in request.resolver_match.url_name %}is-active{% endif %}" title="Plantas de infraestrutura" style="--ic:#30d158">
-            <i class="fa-solid fa-map-location-dot nav-icon" aria-hidden="true"></i>
+          <a href="{% url 'planta_list' %}" class="nav-item {% if 'planta_' in request.resolver_match.url_name %}is-active{% endif %}" title="Plantas de infraestrutura" style="--ic:#22c55e">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#ic-network"></use></svg></span>
             <span class="nav-text">Plantas de Rede</span>
           </a>
           <a href="{% url 'ninja_dashboard' %}" class="nav-item {% if 'ninja' in request.resolver_match.url_name %}is-active{% endif %}" title="NinjaOne RMM" style="--ic:#ff453a">

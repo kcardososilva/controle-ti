@@ -11,6 +11,7 @@ from ProjetoEstoque.models import (
     ItemLote,
     LoteEstoque,
     MovimentacaoItem,
+    SimNaoChoices,
     StatusItemChoices,
 )
 
@@ -28,6 +29,18 @@ class MovimentacaoEstoqueService:
     SEPARACAO_ENVIO = "separacao_envio"
     SEPARACAO_DEVOLUCAO = "separacao_devolucao"
     DEVOLUCAO_LOCACAO = "devolucao_locacao"
+
+    @staticmethod
+    def pmb_por_centro_custo(centro_custo):
+        """
+        PMB efetivo pelo nome do Centro de Custo: departamento contém "Tabaco"
+        => PMB; qualquer outro (inclusive TI, ou sem CC) => Fazenda. Usado para
+        manter `Item.pmb` sincronizado automaticamente sempre que o CC do item
+        muda numa movimentação (entrega, devolução, transferência de equipamento,
+        entrada, reversão de entrada).
+        """
+        nome = (getattr(centro_custo, "departamento", "") or "").lower()
+        return SimNaoChoices.SIM if "tabaco" in nome else SimNaoChoices.NAO
 
     @staticmethod
     def preencher_auditoria(obj, user, criando=True):
@@ -201,6 +214,7 @@ class MovimentacaoEstoqueService:
         item.data_compra = data_entrada
         item.localidade = localidade_destino
         item.centro_custo = centro_custo_destino
+        item.pmb = cls.pmb_por_centro_custo(centro_custo_destino)
 
         cls.preencher_auditoria(item, user, criando=False)
         item.full_clean()
@@ -213,6 +227,7 @@ class MovimentacaoEstoqueService:
             "data_compra",
             "localidade",
             "centro_custo",
+            "pmb",
             "atualizado_por",
         ] if hasattr(item, "atualizado_por") else [
             "tem_lote",
@@ -223,6 +238,7 @@ class MovimentacaoEstoqueService:
             "data_compra",
             "localidade",
             "centro_custo",
+            "pmb",
         ])
 
         # E-mail de entrada — foco em estoque (canal "entrada_estoque",
@@ -552,6 +568,15 @@ class MovimentacaoEstoqueService:
                 mov.observacao = f"{mov.observacao}\n{nota}".strip() if mov.observacao else nota
                 mov.save(update_fields=["observacao", "updated_at"])
 
+        # Sempre que a movimentação mudou o CC do item (entrega, devolução,
+        # transferência de equipamento), recalcula o PMB automaticamente pelo
+        # nome do novo CC — nunca setado manualmente na tela.
+        if "centro_custo" in update_fields:
+            novo_pmb = cls.pmb_por_centro_custo(item.centro_custo)
+            if item.pmb != novo_pmb:
+                item.pmb = novo_pmb
+                update_fields.append("pmb")
+
         if update_fields:
             cls.preencher_auditoria(item, user, criando=False)
 
@@ -681,7 +706,8 @@ class MovimentacaoEstoqueService:
 
         if mov.centro_custo_origem_id:
             item.centro_custo = mov.centro_custo_origem
-            update_fields.append("centro_custo")
+            item.pmb = cls.pmb_por_centro_custo(mov.centro_custo_origem)
+            update_fields.extend(["centro_custo", "pmb"])
 
         cls.preencher_auditoria(item, user, criando=False)
         if hasattr(item, "atualizado_por"):

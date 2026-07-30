@@ -87,16 +87,13 @@ def toner_cc_export_excel(request):
         .order_by("centro_custo_destino__numero", "centro_custo_destino__departamento")
     )
 
+    from services.excel_theme import FILL_HEADER as header_fill, FONT_HEADER as header_font
+    from services.excel_theme import FONT_CELL_BOLD, BORDA as border, MONEY_FMT
+
     # --- planilha ---
     wb = Workbook()
     ws1 = wb.active
     ws1.title = "Resumo por CC"
-
-    # estilos
-    header_fill = PatternFill(start_color="E8F0FE", end_color="E8F0FE", fill_type="solid")
-    header_font = Font(bold=True, color="001e3a")
-    thin = Side(style="thin", color="DDDDDD")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
     # cabeçalho
     ws1.append(["Período", f"{dt_ini.strftime('%d/%m/%Y')} a {dt_fim.strftime('%d/%m/%Y')}"])
@@ -130,7 +127,7 @@ def toner_cc_export_excel(request):
         ws1.cell(row=r, column=4, value=itens_d)
         ws1.cell(row=r, column=5, value=qtd)
         c6 = ws1.cell(row=r, column=6, value=float(val))
-        c6.number_format = 'R$ #,##0.00'
+        c6.number_format = MONEY_FMT
 
         for c in range(1, 7):
             ws1.cell(row=r, column=c).border = border
@@ -141,10 +138,10 @@ def toner_cc_export_excel(request):
 
     # totalizador
     ws1.append(["", "", "", "Totais:", total_qtd_geral, float(total_valor_geral)])
-    ws1.cell(row=r, column=4).font = Font(bold=True)
-    ws1.cell(row=r, column=5).font = Font(bold=True)
-    ws1.cell(row=r, column=6).font = Font(bold=True)
-    ws1.cell(row=r, column=6).number_format = 'R$ #,##0.00'
+    ws1.cell(row=r, column=4).font = FONT_CELL_BOLD
+    ws1.cell(row=r, column=5).font = FONT_CELL_BOLD
+    ws1.cell(row=r, column=6).font = FONT_CELL_BOLD
+    ws1.cell(row=r, column=6).number_format = MONEY_FMT
     for c in range(1, 7):
         ws1.cell(row=r, column=c).border = border
 
@@ -178,9 +175,9 @@ def toner_cc_export_excel(request):
         ws2.cell(row=r, column=5, value=getattr(m.item.subtipo, "nome", "") if m.item_id and m.item.subtipo_id else "-")
         ws2.cell(row=r, column=6, value=int(m.quantidade or 0))
         c7 = ws2.cell(row=r, column=7, value=float(valor_unit))
-        c7.number_format = 'R$ #,##0.00'
+        c7.number_format = MONEY_FMT
         c8 = ws2.cell(row=r, column=8, value=float(val_total))
-        c8.number_format = 'R$ #,##0.00'
+        c8.number_format = MONEY_FMT
 
         for c in range(1, 9):
             ws2.cell(row=r, column=c).border = border
@@ -268,27 +265,16 @@ def equipamentos_exportar(request):
         valor_por_status[st] += float(it.valor or 0)
         por_categoria[_texto_relacionado(it.categoria)] += 1
 
-    # ── Paleta / estilos profissionais ───────────────────────────────────────
-    BRAND_DARK, BRAND, SOFT, ZEBRA = "0A2540", "1D4ED8", "EEF2F7", "F4F7FB"
-    INK, MUTED = "1F2733", "5B6B7F"
-    hair = Side(style="thin", color="DCE3EC")
-    border = Border(left=hair, right=hair, top=hair, bottom=hair)
-    f_title = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
-    f_sub = Font(name="Calibri", size=10, italic=True, color=MUTED)
-    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-    f_bold = Font(name="Calibri", size=10, bold=True, color=INK)
-    f_cell = Font(name="Calibri", size=10, color=INK)
-    fill_title = PatternFill("solid", fgColor=BRAND_DARK)
-    fill_sub = PatternFill("solid", fgColor=SOFT)
-    fill_header = PatternFill("solid", fgColor=BRAND)
-    fill_zebra = PatternFill("solid", fgColor=ZEBRA)
-    a_center = Alignment(horizontal="center", vertical="center")
-    a_left = Alignment(horizontal="left", vertical="center")
-    a_right = Alignment(horizontal="right", vertical="center")
-    a_left_ind = Alignment(horizontal="left", vertical="center", indent=1)
-    BRL = 'R$ #,##0.00'
-    data_format = 'DD/MM/YYYY'
-    data_hora_format = 'DD/MM/YYYY HH:MM'
+    # ── Paleta / estilos profissionais (tema oficial da empresa) ─────────────
+    from services.excel_theme import (
+        BORDA as border, FONT_TITULO as f_title, FONT_SUBTITULO as f_sub,
+        FONT_HEADER as f_header, FONT_CELL_BOLD as f_bold, FONT_CELL as f_cell,
+        FILL_TITULO as fill_title, FILL_SUBTITULO as fill_sub,
+        FILL_HEADER as fill_header, FILL_ZEBRA as fill_zebra,
+        ALIGN_CENTER as a_center, ALIGN_LEFT as a_left, ALIGN_RIGHT as a_right,
+        ALIGN_LEFT_IND as a_left_ind, MONEY_FMT as BRL, DATE_FMT as data_format,
+        DATETIME_FMT as data_hora_format,
+    )
 
     def faixa_titulo(ws, ncols, titulo, subtitulo):
         last = get_column_letter(ncols)
@@ -1192,13 +1178,11 @@ def custo_cc_export_excel(request):
     ]
     ws.append(headers)
 
-    # estilos
-    header_fill = PatternFill("solid", fgColor="FF1D4ED8")
-    header_font = Font(color="FFFFFFFF", bold=True)
-    thin = Side(style="thin", color="FFCBD5E1")
-    border_all = Border(left=thin, right=thin, top=thin, bottom=thin)
-    int_fmt = "#,##0"
-    money_fmt = "[$R$-pt-BR] #,##0.00"
+    # estilos (tema oficial da empresa)
+    from services.excel_theme import (
+        FILL_HEADER as header_fill, FONT_HEADER as header_font,
+        BORDA as border_all, INT_FMT as int_fmt, MONEY_FMT as money_fmt,
+    )
 
     for c in range(1, len(headers) + 1):
         cell = ws.cell(row=1, column=c)
@@ -1949,21 +1933,13 @@ def avisos_contratos_vencer_export_excel(request):
     # =========================
     wb = Workbook()
 
-    header_fill = PatternFill("solid", fgColor="1F4E78")
-    header_font = Font(color="FFFFFF", bold=True)
-    title_font = Font(size=13, bold=True, color="1F1F1F")
-    bold_font = Font(bold=True)
-
-    thin_border = Border(
-        left=Side(style="thin", color="D9D9D9"),
-        right=Side(style="thin", color="D9D9D9"),
-        top=Side(style="thin", color="D9D9D9"),
-        bottom=Side(style="thin", color="D9D9D9"),
+    from services.excel_theme import (
+        FILL_HEADER as header_fill, FONT_HEADER as header_font,
+        FONT_CELL_BOLD as bold_font, BORDA as thin_border,
+        ALIGN_LEFT as left_alignment, ALIGN_CENTER as center_alignment,
+        ALIGN_RIGHT as right_alignment, MARROM_CAFE, FONTE,
     )
-
-    left_alignment = Alignment(horizontal="left", vertical="center")
-    center_alignment = Alignment(horizontal="center", vertical="center")
-    right_alignment = Alignment(horizontal="right", vertical="center")
+    title_font = Font(name=FONTE, size=13, bold=True, color=f"FF{MARROM_CAFE}")
 
     def get_usuario_atual(item):
         """
@@ -2208,24 +2184,15 @@ def requisicoes_export_excel(request):
 
     itens = list(qs)
 
-    # ── Paleta / estilos profissionais (mesma identidade do export de Equipamentos) ──
-    BRAND_DARK, BRAND, SOFT, ZEBRA = "0A2540", "1D4ED8", "EEF2F7", "F4F7FB"
-    INK, MUTED = "1F2733", "5B6B7F"
-    hair = Side(style="thin", color="DCE3EC")
-    border = Border(left=hair, right=hair, top=hair, bottom=hair)
-    f_title = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
-    f_sub = Font(name="Calibri", size=10, italic=True, color=MUTED)
-    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-    f_bold = Font(name="Calibri", size=10, bold=True, color=INK)
-    f_cell = Font(name="Calibri", size=10, color=INK)
-    fill_title = PatternFill("solid", fgColor=BRAND_DARK)
-    fill_sub = PatternFill("solid", fgColor=SOFT)
-    fill_header = PatternFill("solid", fgColor=BRAND)
-    fill_zebra = PatternFill("solid", fgColor=ZEBRA)
-    a_center = Alignment(horizontal="center", vertical="center")
-    a_left = Alignment(horizontal="left", vertical="center")
-    a_left_ind = Alignment(horizontal="left", vertical="center", indent=1)
-    data_hora_format = 'DD/MM/YYYY HH:MM'
+    # ── Paleta / estilos profissionais (tema oficial da empresa) ─────────────
+    from services.excel_theme import (
+        BORDA as border, FONT_TITULO as f_title, FONT_SUBTITULO as f_sub,
+        FONT_HEADER as f_header, FONT_CELL_BOLD as f_bold, FONT_CELL as f_cell,
+        FILL_TITULO as fill_title, FILL_SUBTITULO as fill_sub,
+        FILL_HEADER as fill_header, FILL_ZEBRA as fill_zebra,
+        ALIGN_CENTER as a_center, ALIGN_LEFT as a_left,
+        ALIGN_LEFT_IND as a_left_ind, DATETIME_FMT as data_hora_format,
+    )
 
     # Cores de status — mesma linguagem dos badges do quadro (kan-badge-*).
     _STATUS_FILL = {

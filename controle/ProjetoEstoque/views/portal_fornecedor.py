@@ -244,22 +244,15 @@ def portal_equipamentos_export(request):
 def _portal_itens_xlsx(itens, fornecedor):
     from io import BytesIO
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.styles import Font, PatternFill
     from openpyxl.utils import get_column_letter
 
-    BRAND_DARK, BRAND, SOFT, ZEBRA, INK = "0B3D6E", "0071E3", "E5F0FB", "F4F9FE", "1F2733"
-    hair = Side(style="thin", color="CFE0F2")
-    border = Border(left=hair, right=hair, top=hair, bottom=hair)
-    f_title = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
-    f_sub = Font(name="Calibri", size=10, italic=True, color="5B6B7F")
-    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-    f_cell = Font(name="Calibri", size=10, color=INK)
-    fill_title = PatternFill("solid", fgColor=BRAND_DARK)
-    fill_sub = PatternFill("solid", fgColor=SOFT)
-    fill_header = PatternFill("solid", fgColor=BRAND)
-    fill_zebra = PatternFill("solid", fgColor=ZEBRA)
-    a_center = Alignment(horizontal="center", vertical="center")
-    a_left = Alignment(horizontal="left", vertical="center", indent=1)
+    from services.excel_theme import (
+        BORDA as border, FONT_TITULO as f_title, FONT_SUBTITULO as f_sub,
+        FONT_HEADER as f_header, FONT_CELL as f_cell, FILL_TITULO as fill_title,
+        FILL_SUBTITULO as fill_sub, FILL_HEADER as fill_header, FILL_ZEBRA as fill_zebra,
+        ALIGN_CENTER as a_center, ALIGN_LEFT_IND as a_left, FONTE,
+    )
 
     STATUS_FILL = {
         "ativo": ("E6F4EA", "1E8E3E"), "manutencao": ("FEF1E0", "B35A00"),
@@ -309,7 +302,7 @@ def _portal_itens_xlsx(itens, fornecedor):
             if ci == 9:
                 bg, fg = STATUS_FILL.get(it.status, ("F0F0F2", "5B6B7F"))
                 cell.fill = PatternFill("solid", fgColor=bg)
-                cell.font = Font(name="Calibri", size=10, bold=True, color=fg)
+                cell.font = Font(name=FONTE, size=10, bold=True, color=fg)
                 cell.alignment = a_center
             elif zebra:
                 cell.fill = fill_zebra

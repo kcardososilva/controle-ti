@@ -244,24 +244,14 @@ def _checkins_xlsx(device, checkins: list, periodo_label: str, dia):
     from datetime import datetime as _datetime
     from io import BytesIO
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
     from openpyxl.utils import get_column_letter
 
-    BRAND_DARK, BRAND, SOFT, ZEBRA = "0B3D6E", "0071E3", "E5F0FB", "F4F9FE"
-    INK = "1F2733"
-    hair = Side(style="thin", color="CFE0F2")
-    border = Border(left=hair, right=hair, top=hair, bottom=hair)
-    f_title = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
-    f_sub = Font(name="Calibri", size=10, italic=True, color="5B6B7F")
-    f_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-    f_cell = Font(name="Calibri", size=10, color=INK)
-    fill_title = PatternFill("solid", fgColor=BRAND_DARK)
-    fill_sub = PatternFill("solid", fgColor=SOFT)
-    fill_header = PatternFill("solid", fgColor=BRAND)
-    fill_zebra = PatternFill("solid", fgColor=ZEBRA)
-    a_center = Alignment(horizontal="center", vertical="center")
-    a_left = Alignment(horizontal="left", vertical="center")
-    a_left_ind = Alignment(horizontal="left", vertical="center", indent=1)
+    from services.excel_theme import (
+        BORDA as border, FONT_TITULO as f_title, FONT_SUBTITULO as f_sub,
+        FONT_HEADER as f_header, FONT_CELL as f_cell, FILL_TITULO as fill_title,
+        FILL_SUBTITULO as fill_sub, FILL_HEADER as fill_header, FILL_ZEBRA as fill_zebra,
+        ALIGN_CENTER as a_center, ALIGN_LEFT as a_left, ALIGN_LEFT_IND as a_left_ind,
+    )
     dt_fmt = "DD/MM/YYYY HH:MM:SS"
 
     telemetria_wifi = bool(device.telemetria_wifi)
