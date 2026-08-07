@@ -2087,6 +2087,35 @@ class SeparacaoItem(AuditModel):
         return f"{self.item.nome} — {self.get_tipo_display()} ({self.get_status_display()})"
 
 
+class SeparacaoItemAnexo(AuditModel):
+    """
+    Nota fiscal (ou outro documento) anexada a um item em Remessa — espelha
+    `OrdemManutencaoAnexo`/`LoteEnvioFornecedorAnexo`. Pode haver mais de uma
+    por item (ex.: NF do envio ao fornecedor e, depois, NF da devolução).
+    """
+    separacao = models.ForeignKey(
+        SeparacaoItem,
+        on_delete=models.CASCADE,
+        related_name="anexos_nf",
+        verbose_name="Item em remessa",
+    )
+    arquivo = models.FileField(upload_to="separacao/nf/%Y/%m/", verbose_name="Arquivo")
+    descricao = models.CharField(max_length=200, blank=True, default="", verbose_name="Descrição")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Nota Fiscal da Remessa"
+        verbose_name_plural = "Notas Fiscais da Remessa"
+
+    def __str__(self):
+        return f"NF — {self.separacao.item.nome}"
+
+    @property
+    def nome_arquivo(self):
+        import os
+        return os.path.basename(self.arquivo.name) if self.arquivo else ""
+
+
 class DocumentoFiscalRemessa(AuditModel):
     """
     Aviso interno de controle (estilo nota fiscal) gerado a partir de itens em
@@ -2192,6 +2221,9 @@ class Preventiva(AuditModel):
     pausada = models.BooleanField(default=False, verbose_name="Preventiva pausada")
     data_pausada = models.DateField(blank=True, null=True, verbose_name="Data de início da pausa")
     dias_restantes_pausa = models.IntegerField(blank=True, null=True, verbose_name="Dias restantes congelados na pausa")
+    # Âncora da contagem quando o item volta a "ativo": a partir desta data o
+    # intervalo recomeça do zero (regra de negócio: item parado não acumula uso).
+    data_reativacao = models.DateField(blank=True, null=True, verbose_name="Última reativação do equipamento")
 
     observacao = models.TextField(blank=True, null=True)
     # Mantemos como "última evidência" para compatibilidade
@@ -2226,6 +2258,16 @@ class Preventiva(AuditModel):
             return int(self.checklist_modelo.intervalo_dias)
         return 0
 
+    def base_contagem(self):
+        """
+        Âncora oficial da contagem do intervalo: a data mais recente entre a
+        última execução e a última reativação do equipamento. Usada por TODOS
+        os cálculos de "próxima preventiva" (telas, dashboard e e-mails) para
+        que a contagem recomece quando o item volta a operar.
+        """
+        datas = [d for d in (self.data_ultima, self.data_reativacao) if d]
+        return max(datas) if datas else None
+
     def sincronizar_data_proxima(self, hoje=None, salvar=True):
         """
         Recalcula e PERSISTE `data_proxima` como a DATA EFETIVA da próxima execução,
@@ -2241,10 +2283,11 @@ class Preventiva(AuditModel):
             return self.data_proxima
         hoje = hoje or timezone.now().date()
         dias = self._periodo_referencia()
+        base = self.base_contagem()
         if self.data_agendamento:
             nova = self.data_agendamento
-        elif self.data_ultima and dias > 0:
-            nova = self.data_ultima + timedelta(days=dias)
+        elif base and dias > 0:
+            nova = base + timedelta(days=dias)
         elif self.data_proxima:
             nova = self.data_proxima
         else:
@@ -2260,7 +2303,7 @@ class Preventiva(AuditModel):
         """Recalcula data_proxima e dentro_do_prazo. Não age enquanto pausada."""
         if self.pausada:
             return
-        base = data_exec or self.data_ultima or timezone.now().date()
+        base = data_exec or self.base_contagem() or timezone.now().date()
         dias = self._periodo_referencia()
         self.data_proxima = (base + timedelta(days=dias)) if dias > 0 else None
         if self.data_proxima:
@@ -2291,23 +2334,30 @@ class Preventiva(AuditModel):
 
     def retomar(self):
         """
-        Retoma a contagem a partir de hoje com os dias restantes que foram congelados.
-        Chamado quando o equipamento volta ao status 'ativo'.
+        Retoma a contagem quando o equipamento volta ao status 'ativo'.
+
+        Regra de negócio: a contagem RECOMEÇA na reativação — o intervalo
+        completo passa a contar a partir de hoje (item parado não acumula uso).
+        Um agendamento explícito (data_agendamento) continua tendo prioridade.
+        Sem intervalo configurado, usa os dias congelados na pausa como fallback.
         """
         if not self.pausada:
             return
         hoje = timezone.now().date()
         self.pausada = False
-        if self.dias_restantes_pausa is not None:
+        self.data_reativacao = hoje
+        dias = self._periodo_referencia()
+        if self.data_agendamento:
+            self.data_proxima = self.data_agendamento
+        elif dias > 0:
+            self.data_proxima = hoje + timedelta(days=dias)
+        elif self.dias_restantes_pausa is not None:
             self.data_proxima = hoje + timedelta(days=self.dias_restantes_pausa)
-            self.dentro_do_prazo = hoje <= self.data_proxima
-        else:
-            # Sem data congelada — recalcula normalmente a partir de hoje
-            self.recomputar_prazo(hoje)
+        self.dentro_do_prazo = True if not self.data_proxima else hoje <= self.data_proxima
         self.data_pausada = None
         self.dias_restantes_pausa = None
         self.save(update_fields=[
-            "pausada", "data_pausada", "dias_restantes_pausa",
+            "pausada", "data_reativacao", "data_pausada", "dias_restantes_pausa",
             "data_proxima", "dentro_do_prazo", "updated_at",
         ])
 
@@ -2375,6 +2425,26 @@ class Preventiva(AuditModel):
 
         self.recomputar_prazo(hoje)
         self.save(update_fields=["data_ultima", "data_agendamento", "data_proxima", "dentro_do_prazo", "observacao", "foto_antes", "foto_depois", "foto_antes_2", "foto_depois_2", "updated_at"])
+
+
+def sincronizar_preventivas_com_status(item) -> tuple[int, int]:
+    """
+    Pausa/retoma as preventivas do item conforme o status atual dele.
+    Regra de negócio: contagem de preventiva só corre para item ATIVO —
+    backup, defeito, manutenção, pausado etc. congelam a contagem, e a
+    volta a ativo reinicia o intervalo (ver Preventiva.retomar).
+    Retorna (pausadas, retomadas).
+    """
+    pausante = item.status != StatusItemChoices.ATIVO
+    pausadas = retomadas = 0
+    for prev in item.preventivas.all():
+        if pausante and not prev.pausada:
+            prev.pausar()
+            pausadas += 1
+        elif not pausante and prev.pausada:
+            prev.retomar()
+            retomadas += 1
+    return pausadas, retomadas
 
 
 # --- NOVO: execuções de preventiva, com fotos por execução ---

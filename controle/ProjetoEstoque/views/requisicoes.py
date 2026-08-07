@@ -17,7 +17,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db.models import Count, Max, Q, Sum
+from django.db.models import Case, Count, Max, Q, Sum, When
 from django.db.models.functions import TruncMonth
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -44,6 +44,7 @@ from ..models import (
     StatusRequisicaoChoices,
     TipoRequisicaoChoices,
 )
+from services.busca_fts import buscar_item_padrao_ids, buscar_requisicao_item_ids
 from services.requisicao_service import (
     COLUNA_APROVADOS,
     COLUNA_LABELS,
@@ -63,6 +64,24 @@ from services.requisicao_service import (
 # export) — só pra não deixar o board crescendo pra sempre com histórico morto.
 _DIAS_OCULTAR_ENCERRADOS = 90
 _COLUNAS_HISTORICO = (COLUNA_RECEBIDOS, COLUNA_PAUSADOS)
+
+
+def _aplicar_busca_descricao_codigo(qs, q, buscar_ids):
+    """Filtra `qs` (RequisicaoItem ou ItemPadraoDatasul) por `q` combinando
+    busca por relevância (FTS5, campo "descricao") com icontains em "codigo"
+    — o código Datasul é buscado por fragmento no meio da string (ex.:
+    últimos dígitos), que o FTS5 (prefixo de token) não cobre, ver
+    services/busca_fts.py. Se o índice FTS estiver indisponível (`None`),
+    cai no icontains de sempre nos dois campos."""
+    ids_fts = buscar_ids(q)
+    if ids_fts is None:
+        return qs.filter(Q(descricao__icontains=q) | Q(codigo__icontains=q))
+    ids_codigo = list(qs.filter(codigo__icontains=q).values_list("id", flat=True))
+    ids_relevantes = ids_fts + [pk for pk in ids_codigo if pk not in ids_fts]
+    if not ids_relevantes:
+        return qs.none()
+    ordem_relevancia = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(ids_relevantes)])
+    return qs.filter(pk__in=ids_relevantes).order_by(ordem_relevancia)
 
 
 def _pode_editar_requisicao_item(item, user) -> bool:
@@ -695,7 +714,7 @@ def requisicao_itens_list(request):
     if f_categoria:
         qs = qs.filter(categoria_id=f_categoria)
     if q:
-        qs = qs.filter(Q(descricao__icontains=q) | Q(codigo__icontains=q))
+        qs = _aplicar_busca_descricao_codigo(qs, q, buscar_requisicao_item_ids)
 
     paginator = Paginator(qs, 25)
     page_obj = paginator.get_page(request.GET.get("page", 1))
@@ -875,7 +894,7 @@ def itens_padrao_list(request):
 
     qs = ItemPadraoDatasul.objects.select_related("categoria").order_by("descricao")
     if q:
-        qs = qs.filter(Q(descricao__icontains=q) | Q(codigo__icontains=q))
+        qs = _aplicar_busca_descricao_codigo(qs, q, buscar_item_padrao_ids)
     if f_categoria:
         qs = qs.filter(categoria_id=f_categoria)
     if f_ativo == "1":

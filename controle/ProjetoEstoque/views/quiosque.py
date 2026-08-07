@@ -13,6 +13,7 @@ Dois grupos de views:
 Toda a regra de negócio fica em services/quiosque_service.py.
 """
 import json
+import unicodedata
 from datetime import date
 from functools import wraps
 
@@ -44,6 +45,15 @@ def _parse_dia_param(raw: str) -> "date | None":
     if dia > hoje or (hoje - dia).days >= qs.RETENCAO_DIAS:
         return None
     return dia
+
+
+def _sem_acento(value: str) -> str:
+    """Normaliza pra busca acento-insensível (mesmo padrão usado em todo o
+    projeto, ex.: sistema_inteligencia_service.normalizar). Usado no filtro
+    Python do dashboard do Quiosque — tabela pequena o bastante (~20
+    dispositivos) pra não justificar um índice FTS5 dedicado."""
+    value = unicodedata.normalize("NFKD", value or "")
+    return "".join(c for c in value if not unicodedata.combining(c)).lower()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -371,12 +381,12 @@ def quiosque_dashboard(request):
     elif f_status == "sem_local":
         devices = [d for d in devices if not d.tem_localizacao]
     if q:
-        ql = q.lower()
+        ql = _sem_acento(q)
         devices = [
             d for d in devices
-            if ql in (d.apelido or "").lower() or ql in (d.modelo or "").lower()
-            or ql in (d.serial or "").lower() or ql in (d.fabricante or "").lower()
-            or ql in (d.mac or "").lower()
+            if ql in _sem_acento(d.apelido or "") or ql in _sem_acento(d.modelo or "")
+            or ql in _sem_acento(d.serial or "") or ql in _sem_acento(d.fabricante or "")
+            or ql in _sem_acento(d.mac or "")
         ]
 
     devices.sort(key=lambda d: (d.online is False, (d.apelido or d.modelo or "").lower()))

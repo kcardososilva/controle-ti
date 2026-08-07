@@ -60,6 +60,7 @@ urlpatterns = [
 
     # ── Usuários ────────────────────────────────────────────────────────────
     path("usuarios/", views.usuario_list, name="usuario_list"),
+    path("usuarios/exportar-excel/", views.usuario_export_excel, name="usuario_export_excel"),
     path("usuarios/cadastrar/", views.usuario_create, name="usuario_create"),
     path("usuarios/importar/", views.usuario_importar, name="usuario_importar"),
     path("usuarios/dashboard/", views.usuario_dashboard, name="usuario_dashboard"),
@@ -123,6 +124,8 @@ urlpatterns = [
     path("separacao/item/<int:pk>/remover/", views.separacao_item_remover, name="separacao_item_remover"),
     path("separacao/item/<int:pk>/enviar/", views.separacao_item_enviar, name="separacao_item_enviar"),
     path("separacao/item/<int:pk>/desvincular/", views.separacao_lote_item_desvincular, name="separacao_lote_item_desvincular"),
+    path("separacao/item/<int:pk>/nota-fiscal/anexar/", views.separacao_item_nota_fiscal_anexar, name="separacao_item_nota_fiscal_anexar"),
+    path("separacao/nota-fiscal/<int:pk>/excluir/", views.separacao_nota_fiscal_excluir, name="separacao_nota_fiscal_excluir"),
     path("separacao/documento-fiscal/gerar/", views.documento_fiscal_gerar, name="documento_fiscal_gerar"),
     path("separacao/documento-fiscal/<int:pk>/pdf/", views.documento_fiscal_pdf_view, name="documento_fiscal_pdf_view"),
 
@@ -330,6 +333,7 @@ urlpatterns = [
     path("requisicoes/<int:pk>/acao/", views.requisicao_acao, name="requisicao_acao"),
     path("requisicoes/<int:pk>/vincular-itens/", views.requisicao_vincular_itens, name="requisicao_vincular_itens"),
     path("requisicoes/catalogo/", views.itens_padrao_list, name="itens_padrao_list"),
+    path("requisicoes/catalogo/exportar-excel/", views.itens_padrao_export_excel, name="itens_padrao_export_excel"),
     path("requisicoes/catalogo/novo/", views.itens_padrao_create, name="itens_padrao_create"),
     path("requisicoes/catalogo/importar/", views.itens_padrao_importar, name="itens_padrao_importar"),
     path("requisicoes/catalogo/<int:pk>/editar/", views.itens_padrao_update, name="itens_padrao_update"),

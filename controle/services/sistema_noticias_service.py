@@ -190,7 +190,11 @@ class SistemaNoticiasService:
         total_licencas = Licenca.objects.count()
         total_lotes_licenca = LicencaLote.objects.count()
 
-        preventivas_vencidas = Preventiva.objects.filter(data_proxima__lt=self.today).count()
+        # Só conta vencidas de itens em operação (contagem suspensa fora de "ativo")
+        preventivas_vencidas = Preventiva.objects.filter(
+            data_proxima__lt=self.today, pausada=False,
+            equipamento__status=StatusItemChoices.ATIVO,
+        ).count()
         preventivas_programadas = Preventiva.objects.count()
 
         ultimos_7 = self.today - timedelta(days=7)

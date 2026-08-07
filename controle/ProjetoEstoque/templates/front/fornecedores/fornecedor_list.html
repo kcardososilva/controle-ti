@@ -3,655 +3,454 @@
 
 {% block title %}Fornecedores{% endblock %}
 {% block page_title %}Fornecedores{% endblock %}
-{% block page_subtitle %}Gestão de parceiros, contratos, custos e base vinculada.{% endblock %}
+{% block page_subtitle %}Parceiros, contratos e custos consolidados{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Fornecedores</span>
+</nav>
+{% endblock %}
 
 {% block extra_css %}
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
 /* =========================================================
-   FORNECEDOR LIST - INTEGRADO AO BASE.HTML
-   Apple Design Language + dark mode + tokens globais
+   FORNECEDORES — LISTA
+   Padrão Zelo: tokens do base.html, sem gradiente/vibrancy/pílula.
+   Ver docs/PADRAO_LAYOUT_UI.md — prefixo .fn-  ·  escopo :where(.fn-page)
    ========================================================= */
+:where(.fn-page) {
+  --fn-brand: var(--brand, #0071e3);
+  --fn-brand-hover: var(--brand-hover, #0077ed);
+  --fn-brand-soft: var(--brand-soft, rgba(0, 113, 227, .10));
+  --fn-ring: var(--brand-ring, rgba(0, 113, 227, .30));
 
-:where(.forn-page, .select2-container, .select2-dropdown) {
-  --fn-primary: var(--brand, #0071e3);
-  --fn-primary-hover: var(--brand-hover, #0077ed);
-  --fn-primary-soft: var(--brand-soft, rgba(0, 113, 227, 0.10));
-  --fn-primary-softer: var(--brand-softer, rgba(0, 113, 227, 0.05));
-
-  --fn-surface: var(--bg-elevated, #ffffff);
-  --fn-surface-soft: var(--bg-fill-tertiary, rgba(120, 120, 128, 0.08));
-  --fn-surface-muted: var(--bg-fill-secondary, rgba(120, 120, 128, 0.12));
+  --fn-bg: var(--bg-elevated, #ffffff);
+  --fn-bg-soft: var(--bg-fill-tertiary, rgba(120, 120, 128, .08));
+  --fn-hover: var(--bg-hover, rgba(0, 0, 0, .04));
 
   --fn-text: var(--text-primary, #1d1d1f);
   --fn-muted: var(--text-tertiary, #6e6e73);
   --fn-soft: var(--text-quaternary, #86868b);
 
-  --fn-border: var(--separator-hairline, rgba(0, 0, 0, 0.06));
-  --fn-border-strong: var(--separator-non-opaque, rgba(0, 0, 0, 0.10));
+  --fn-border: var(--separator-hairline, rgba(0, 0, 0, .06));
+  --fn-border-2: var(--separator-non-opaque, rgba(0, 0, 0, .10));
+  --fn-border-strong: var(--separator-strong, rgba(0, 0, 0, .18));
 
   --fn-success: var(--success, #34c759);
-  --fn-success-bg: var(--success-soft, rgba(52, 199, 89, 0.12));
-  --fn-warning: var(--warning, #ff9500);
-  --fn-warning-bg: var(--warning-soft, rgba(255, 149, 0, 0.12));
+  --fn-success-bg: var(--success-soft, rgba(52, 199, 89, .12));
   --fn-danger: var(--danger, #ff3b30);
-  --fn-danger-bg: var(--danger-soft, rgba(255, 59, 48, 0.10));
-  --fn-info: var(--info, #5ac8fa);
-  --fn-info-bg: var(--info-soft, rgba(90, 200, 250, 0.12));
-  --fn-purple: var(--system-purple, #af52de);
-  --fn-purple-bg: rgba(175, 82, 222, 0.12);
+  --fn-danger-bg: var(--danger-soft, rgba(255, 59, 48, .10));
 
   --fn-radius-sm: var(--radius-sm, 10px);
   --fn-radius-md: var(--radius-md, 14px);
   --fn-radius-lg: var(--radius-lg, 18px);
-  --fn-radius-xl: var(--radius-xl, 22px);
-  --fn-radius-pill: var(--radius-pill, 980px);
 
-  --fn-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.05));
-  --fn-shadow-md: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.06));
-  --fn-transition: var(--transition-fast, 160ms cubic-bezier(0.32, 0.72, 0, 1));
-  --fn-control-h: 2.25rem;
+  --fn-shadow-xs: var(--shadow-xs, 0 1px 1px rgba(0, 0, 0, .04));
+  --fn-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, .05), 0 2px 8px rgba(0, 0, 0, .04));
+  --fn-shadow-md: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .04));
+
+  --fn-control-h: 38px;
+  --fn-transition: 160ms var(--ease-apple, cubic-bezier(.32, .72, 0, 1));
 }
 
-.forn-page,
-.forn-page * {
-  box-sizing: border-box;
-  min-width: 0;
-}
+.fn-page, .fn-page * { box-sizing: border-box; min-width: 0; }
 
-.forn-page {
+.fn-page {
   width: 100%;
-  max-width: 1560px;
-  margin: 0 auto;
-  padding: 0;
+  max-width: 1680px;
+  margin-inline: auto;
   color: var(--fn-text);
-  font-family: inherit;
 }
 
-.forn-shell {
-  display: grid;
-  gap: 0.8rem;
-}
+.fn-shell { display: grid; gap: 16px; }
 
-/* HEADER */
-.forn-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.75rem;
-  align-items: center;
-  padding: clamp(0.55rem, 1.2vw, 0.8rem) clamp(0.65rem, 1.4vw, 0.95rem);
-  border: 1px solid var(--fn-border);
-  border-radius: var(--fn-radius-md);
-  background:
-    linear-gradient(135deg, var(--fn-primary-softer), transparent 48%),
-    var(--fn-surface);
-  box-shadow: var(--fn-shadow-sm);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-}
-
-.forn-title-wrap {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0.65rem;
-}
-
-.forn-title-icon {
-  width: clamp(2rem, 3.5vw, 2.4rem);
-  height: clamp(2rem, 3.5vw, 2.4rem);
-  display: grid;
-  place-items: center;
-  border-radius: 0.8rem;
-  background: color-mix(in srgb, var(--fn-primary) 14%, transparent);
-  color: var(--fn-primary);
-  border: 1px solid color-mix(in srgb, var(--fn-primary) 22%, transparent);
-  font-size: clamp(0.9rem, 1.8vw, 1.1rem);
-}
-
-.forn-title {
-  margin: 0;
-  color: var(--fn-text);
-  font-size: clamp(1.05rem, 2vw, 1.3rem);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.06;
-  overflow-wrap: anywhere;
-}
-
-.forn-subtitle {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.28rem;
-  color: var(--fn-muted);
-  font-size: 0.8rem;
-  line-height: 1.35;
-}
-
-.forn-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.22rem 0.6rem;
-  border-radius: var(--fn-radius-pill);
-  background: var(--fn-primary-soft);
-  color: var(--fn-primary);
-  border: 1px solid color-mix(in srgb, var(--fn-primary) 18%, transparent);
-  font-size: 0.72rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.forn-header-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 0.625rem;
-  flex-wrap: wrap;
-}
-
-/* BUTTONS */
-.forn-btn {
-  min-height: var(--fn-control-h);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0 1rem;
-  border-radius: var(--fn-radius-pill);
-  font-size: 0.9rem;
-  font-weight: 600;
-  letter-spacing: -0.014em;
-  text-decoration: none;
-  border: 1px solid transparent;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    transform var(--fn-transition),
-    background var(--fn-transition),
-    border-color var(--fn-transition),
-    color var(--fn-transition),
-    box-shadow var(--fn-transition);
-}
-
-.forn-btn:hover { transform: translateY(-1px); }
-.forn-btn:active { transform: scale(0.98); }
-
-.forn-btn-primary {
-  color: #fff;
-  background: var(--fn-primary);
-  border-color: var(--fn-primary);
-  box-shadow: var(--shadow-brand, 0 4px 14px rgba(0, 113, 227, 0.25));
-}
-
-.forn-btn-primary:hover {
-  color: #fff;
-  background: var(--fn-primary-hover);
-  border-color: var(--fn-primary-hover);
-}
-
-.forn-btn-secondary {
-  color: var(--fn-text);
-  background: var(--fn-surface);
-  border-color: var(--fn-border-strong);
-}
-
-.forn-btn-secondary:hover {
-  color: var(--fn-text);
-  background: var(--fn-surface-soft);
-  border-color: var(--fn-border-strong);
-}
-
-.forn-btn-danger {
-  color: var(--fn-danger);
-  background: var(--fn-danger-bg);
-  border-color: color-mix(in srgb, var(--fn-danger) 20%, transparent);
-}
-
-.forn-btn-danger:hover {
-  color: #fff;
-  background: var(--fn-danger);
-  border-color: var(--fn-danger);
-}
-
-.forn-btn-icon {
-  width: 2.35rem;
-  height: 2.35rem;
-  padding: 0;
-  border-radius: 999px;
-}
-
-/* KPIS */
-.forn-dashboard {
-  display: grid;
-  gap: 1rem;
-}
-
-.forn-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.7rem;
-}
-
-.forn-kpi-card {
-  position: relative;
-  min-height: 4.6rem;
+/* ── Toolbar ─────────────────────────────────────────────────────── */
+.fn-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.7rem 0.85rem;
-  overflow: hidden;
-  border: 1px solid var(--fn-border);
-  border-radius: var(--fn-radius-lg);
-  background:
-    linear-gradient(135deg, var(--fn-primary-softer), transparent 50%),
-    var(--fn-surface);
-  box-shadow: var(--fn-shadow-sm);
-  transition:
-    transform var(--fn-transition),
-    border-color var(--fn-transition),
-    box-shadow var(--fn-transition);
-}
-
-.forn-kpi-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--fn-border-strong);
-  box-shadow: var(--fn-shadow-md);
-}
-
-.forn-kpi-content { min-width: 0; }
-
-.forn-kpi-label {
-  display: block;
-  color: var(--fn-muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-}
-
-.forn-kpi-value {
-  display: block;
-  margin-top: 0.22rem;
-  color: var(--fn-text);
-  font-size: clamp(1.05rem, 1.9vw, 1.3rem);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-  overflow-wrap: anywhere;
-}
-
-.forn-kpi-sub {
-  display: block;
-  margin-top: 0.22rem;
-  color: var(--fn-muted);
-  font-size: 0.7rem;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-
-.forn-kpi-icon {
-  width: 2.3rem;
-  height: 2.3rem;
-  flex: 0 0 2.3rem;
-  display: grid;
-  place-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border: 1px solid var(--fn-border-2);
   border-radius: var(--fn-radius-md);
-  background: var(--fn-primary-soft);
-  color: var(--fn-primary);
-  border: 1px solid color-mix(in srgb, var(--fn-primary) 20%, transparent);
-  font-size: 0.95rem;
+  background: var(--fn-bg);
+  box-shadow: var(--fn-shadow-xs);
 }
 
-.forn-kpi-green .forn-kpi-icon { background: var(--fn-success-bg); color: var(--fn-success); border-color: color-mix(in srgb, var(--fn-success) 20%, transparent); }
-.forn-kpi-orange .forn-kpi-icon { background: var(--fn-warning-bg); color: var(--fn-warning); border-color: color-mix(in srgb, var(--fn-warning) 20%, transparent); }
-.forn-kpi-purple .forn-kpi-icon { background: var(--fn-purple-bg); color: var(--fn-purple); border-color: color-mix(in srgb, var(--fn-purple) 20%, transparent); }
-
-/* TOOLBAR */
-.forn-toolbar {
-  padding: clamp(0.5rem, 1.1vw, 0.7rem) clamp(0.6rem, 1.3vw, 0.8rem);
-  border: 1px solid var(--fn-border);
-  border-radius: var(--fn-radius-md);
-  background: var(--fn-surface);
-  box-shadow: var(--fn-shadow-sm);
+.fn-result-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fn-muted);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.fn-result-count::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--fn-soft);
 }
 
-.forn-filter-form {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(170px, 210px) auto;
-  gap: 0.7rem;
-  align-items: end;
+.fn-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 260px;
 }
 
-.forn-search-wrap {
-  position: relative;
-  min-width: 0;
-}
-
-.forn-search-wrap i {
+.fn-search-wrap { position: relative; min-width: 220px; flex: 1; max-width: 320px; }
+.fn-search-wrap i {
   position: absolute;
-  left: 0.9rem;
+  left: 13px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--fn-soft);
+  font-size: 13px;
   pointer-events: none;
 }
+.fn-search-wrap input { padding-left: 34px !important; padding-right: 30px !important; }
 
-.forn-control,
-.forn-page input[type="text"],
-.forn-page select {
-  width: 100%;
+.fn-search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fn-soft);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background var(--fn-transition), color var(--fn-transition);
+}
+.fn-search-clear:hover { background: var(--fn-bg-soft); color: var(--fn-muted); }
+.fn-search-wrap.has-value .fn-search-clear { display: flex; }
+
+/* ── Filtro estilo Excel (dropdown de checkbox por coluna) ──────────── */
+.fn-filter-dropdown { position: relative; }
+
+.fn-filter-btn {
   min-height: var(--fn-control-h);
-  padding: 0.42rem 0.85rem;
-  border: 1px solid var(--fn-border-strong);
-  border-radius: var(--fn-radius-pill);
-  background: var(--fn-surface);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--fn-border-2);
+  border-radius: var(--fn-radius-sm);
+  background: var(--fn-bg);
   color: var(--fn-text);
-  font-family: inherit;
-  font-size: 0.86rem;
-  outline: none;
-  transition:
-    border-color var(--fn-transition),
-    box-shadow var(--fn-transition),
-    background var(--fn-transition);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--fn-transition), border-color var(--fn-transition), color var(--fn-transition);
 }
-
-.forn-search-wrap .forn-control {
-  padding-left: 2.45rem;
+.fn-filter-btn:hover { border-color: var(--fn-border-strong); }
+.fn-filter-btn i { font-size: 11px; color: var(--fn-soft); }
+.fn-filter-btn.is-active {
+  background: var(--fn-brand-soft);
+  border-color: color-mix(in srgb, var(--fn-brand) 24%, transparent);
+  color: var(--fn-brand);
 }
+.fn-filter-btn.is-active i { color: var(--fn-brand); }
+.fn-filter-caret { transition: transform var(--fn-transition); }
+.fn-filter-btn[aria-expanded="true"] .fn-filter-caret { transform: rotate(180deg); }
 
-.forn-control:focus,
-.forn-page input[type="text"]:focus,
-.forn-page select:focus {
-  border-color: var(--fn-primary);
-  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, 0.30));
-  background: var(--fn-surface);
+.fn-filter-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 220px;
+  border: 1px solid var(--fn-border-2);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg);
+  box-shadow: var(--fn-shadow-md);
+  overflow: hidden;
 }
+.fn-filter-panel[hidden] { display: none; }
 
-.forn-actions {
+.fn-filter-options { padding: 6px; display: grid; gap: 2px; }
+
+.fn-filter-option {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 0.625rem;
-  flex-wrap: wrap;
-}
-
-/* SELECT2 */
-.select2-container { width: 100% !important; max-width: 100% !important; }
-.select2-container .select2-selection--single {
-  min-height: var(--fn-control-h) !important;
-  border: 1px solid var(--fn-border-strong) !important;
-  border-radius: var(--fn-radius-pill) !important;
-  background: var(--fn-surface) !important;
-  display: flex !important;
-  align-items: center !important;
-}
-.select2-container--focus .select2-selection--single,
-.select2-container--open .select2-selection--single {
-  border-color: var(--fn-primary) !important;
-  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, 0.30)) !important;
-}
-.select2-container--default .select2-selection--single .select2-selection__rendered {
-  width: 100%;
-  padding-left: 0.85rem !important;
-  padding-right: 2rem !important;
-  color: var(--fn-text) !important;
-  font-size: 0.86rem;
-  line-height: 2.15rem !important;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.select2-container--default .select2-selection--single .select2-selection__arrow {
-  height: 2.15rem !important;
-  right: 0.5rem !important;
-}
-.select2-dropdown {
-  z-index: 9999 !important;
-  overflow: hidden !important;
-  border: 1px solid var(--fn-border-strong) !important;
-  border-radius: var(--fn-radius-md) !important;
-  background: var(--fn-surface) !important;
-  color: var(--fn-text) !important;
-  box-shadow: var(--fn-shadow-md);
-}
-.select2-results__option { color: var(--fn-text) !important; }
-.select2-results__option--highlighted { background: var(--fn-primary) !important; color: #fff !important; }
-.select2-results__option[aria-selected=true] { background: var(--fn-primary-soft) !important; color: var(--fn-primary) !important; }
-
-/* CARDS */
-.forn-cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
-  gap: 0.8rem;
-}
-
-.forn-card {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--fn-border);
-  border-radius: var(--fn-radius-lg);
-  background: var(--fn-surface);
-  box-shadow: var(--fn-shadow-sm);
-  transition:
-    transform var(--fn-transition),
-    border-color var(--fn-transition),
-    box-shadow var(--fn-transition);
-}
-
-.forn-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--fn-border-strong);
-  box-shadow: var(--fn-shadow-md);
-}
-
-.forn-card-header {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.7rem;
-  align-items: start;
-  padding: 0.75rem 0.85rem;
-  border-bottom: 1px solid var(--fn-border);
-  background: color-mix(in srgb, var(--fn-surface) 92%, var(--fn-primary) 3%);
-}
-
-.forn-card-icon {
-  width: 2.3rem;
-  height: 2.3rem;
-  display: grid;
-  place-items: center;
-  border-radius: var(--fn-radius-md);
-  background: var(--fn-primary-soft);
-  color: var(--fn-primary);
-  border: 1px solid color-mix(in srgb, var(--fn-primary) 20%, transparent);
-  font-size: 0.95rem;
-}
-
-.forn-name {
-  color: var(--fn-text);
-  font-size: 0.9rem;
-  font-weight: 800;
-  line-height: 1.22;
-  overflow-wrap: anywhere;
-}
-
-.forn-cnpj {
-  margin-top: 0.2rem;
-  color: var(--fn-muted);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.74rem;
-  overflow-wrap: anywhere;
-}
-
-.forn-card-body {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem;
-  padding: 0.8rem 0.85rem;
-}
-
-.forn-metric {
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--fn-border);
+  gap: 9px;
+  padding: 8px 8px;
   border-radius: var(--fn-radius-sm);
-  background: var(--fn-surface-soft);
+  cursor: pointer;
+  transition: background var(--fn-transition);
 }
+.fn-filter-option:hover { background: var(--fn-bg-soft); }
+.fn-filter-option input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--fn-brand); cursor: pointer; }
 
-.forn-metric-full {
-  grid-column: 1 / -1;
-  background: linear-gradient(135deg, var(--fn-primary-soft), transparent 78%), var(--fn-surface-soft);
-  border-color: color-mix(in srgb, var(--fn-primary) 18%, transparent);
-}
-
-.forn-metric-label {
-  color: var(--fn-muted);
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  line-height: 1.35;
-}
-
-.forn-metric-value {
-  margin-top: 0.22rem;
-  color: var(--fn-text);
-  font-size: 0.85rem;
-  font-weight: 800;
-  line-height: 1.28;
-  overflow-wrap: anywhere;
-}
-
-.forn-metric-value.green { color: var(--fn-success); }
-.forn-metric-value.purple { color: var(--fn-purple); }
-.forn-metric-value.blue { color: var(--fn-primary); }
-
-.forn-card-footer {
+.fn-filter-panel-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  margin-top: auto;
-  padding: 0.6rem 0.85rem;
+  gap: 8px;
+  padding: 8px;
   border-top: 1px solid var(--fn-border);
-  background: var(--fn-surface);
+  background: var(--fn-bg-soft);
 }
 
-.forn-badge {
-  display: inline-flex;
+.fn-filter-clear {
+  border: 0;
+  background: transparent;
+  color: var(--fn-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.fn-filter-clear:hover { color: var(--fn-text); }
+
+.fn-filter-apply {
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--fn-brand);
+  border-radius: var(--fn-radius-sm);
+  background: var(--fn-brand);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fn-filter-apply:hover { background: var(--fn-brand-hover); border-color: var(--fn-brand-hover); }
+
+.fn-toolbar-actions {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  min-height: 1.55rem;
-  padding: 0.25rem 0.68rem;
-  border-radius: var(--fn-radius-pill);
-  font-size: 0.72rem;
-  font-weight: 800;
-  line-height: 1.2;
+  gap: 10px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.fn-divider {
+  width: 1px;
+  align-self: stretch;
+  min-height: 22px;
+  background: var(--fn-border-2);
+}
+@media (max-width: 720px) { .fn-divider { display: none; } }
+
+/* ── Metric strip ────────────────────────────────────────────────── */
+.fn-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1px;
+  background: var(--fn-border);
+  border: 1px solid var(--fn-border-2);
+  border-radius: var(--fn-radius-lg);
+  overflow: hidden;
+  box-shadow: var(--fn-shadow-xs);
+}
+
+.fn-metric { background: var(--fn-bg); padding: 14px 16px; }
+
+.fn-metric-l {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--fn-muted);
+}
+.fn-metric-l i { font-size: 11px; color: var(--fn-soft); }
+
+.fn-metric-v {
+  margin-top: 9px;
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  line-height: 1.05;
+  color: var(--fn-text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.fn-metric-s {
+  margin-top: 6px;
+  color: var(--fn-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.forn-badge-success { background: var(--fn-success-bg); color: var(--fn-success); }
-.forn-badge-danger { background: var(--fn-danger-bg); color: var(--fn-danger); }
-.forn-badge-info { background: var(--fn-info-bg); color: #0090d4; }
-body.theme-dark .forn-badge-info { color: var(--fn-info); }
-
-.forn-card-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.45rem;
+/* ── Tabela ──────────────────────────────────────────────────────── */
+.fn-table-card {
+  border: 1px solid var(--fn-border-2);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg);
+  box-shadow: var(--fn-shadow-xs);
+  overflow: hidden;
 }
 
-.forn-empty-state {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: clamp(2.5rem, 6vw, 4rem) 1rem;
-  border: 1px solid var(--fn-border);
-  border-radius: var(--fn-radius-lg);
-  background: var(--fn-surface);
-  box-shadow: var(--fn-shadow-sm);
+.fn-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+.fn-table { width: 100%; border-collapse: collapse; min-width: 900px; }
+
+.fn-table thead th {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--fn-border-2);
+  background: var(--fn-bg);
   color: var(--fn-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
 }
+.fn-table th.fn-num, .fn-table td.fn-num { text-align: right; }
+.fn-table th.fn-center, .fn-table td.fn-center { text-align: center; }
 
-.forn-empty-state i {
-  display: block;
-  margin-bottom: 0.875rem;
-  color: var(--fn-soft);
-  font-size: 2.25rem;
-}
-
-.forn-empty-state h3 {
-  margin: 0 0 0.35rem;
+.fn-table tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--fn-border);
   color: var(--fn-text);
-  font-size: 1rem;
-  font-weight: 800;
+  font-size: 13px;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
 }
 
-/* PAGINATION */
-.forn-pagination {
-  display: flex;
-  justify-content: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  margin-top: 0.75rem;
+.fn-table tbody tr { cursor: pointer; transition: background var(--fn-transition); }
+.fn-table tbody tr:hover { background: var(--fn-hover); }
+.fn-table tbody tr:last-child td { border-bottom: none; }
+
+.fn-supplier-cell { display: flex; align-items: center; gap: 12px; min-width: 240px; }
+
+.fn-ic {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--fn-radius-sm);
+  background: var(--fn-bg-soft);
+  color: var(--fn-muted);
+  border: 1px solid var(--fn-border);
+  font-size: 13px;
 }
 
-.forn-page-link {
-  min-width: 2.35rem;
-  height: 2.35rem;
-  padding: 0 0.7rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--fn-radius-pill);
-  background: var(--fn-surface);
-  border: 1px solid var(--fn-border-strong);
-  color: var(--fn-text);
+.fn-name { color: var(--fn-text); font-size: 13.5px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.fn-cnpj { margin-top: 2px; color: var(--fn-muted); font-family: var(--font-mono); font-size: 11.5px; letter-spacing: -.01em; }
+
+.fn-count-main { color: var(--fn-text); font-weight: 600; }
+.fn-count-sub { margin-top: 2px; color: var(--fn-muted); font-size: 11.5px; }
+
+.fn-cost { color: var(--fn-text); font-weight: 600; }
+
+.fn-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+.fn-status .sdot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+.fn-status.ok { color: var(--fn-success); }
+.fn-status.ok .sdot { background: var(--fn-success); }
+.fn-status.off { color: var(--fn-muted); }
+.fn-status.off .sdot { background: var(--fn-soft); }
+body.theme-dark .fn-status.ok { color: var(--fn-success); }
+
+.fn-actions-cell { display: flex; justify-content: flex-end; gap: 7px; }
+
+.fn-icon-action {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--fn-border-2);
+  background: transparent;
+  color: var(--fn-muted);
   text-decoration: none;
-  font-size: 0.86rem;
-  font-weight: 700;
-  transition:
-    transform var(--fn-transition),
-    background var(--fn-transition),
-    border-color var(--fn-transition),
-    color var(--fn-transition);
+  cursor: pointer;
+  font-size: 12.5px;
+  transition: background var(--fn-transition), border-color var(--fn-transition), color var(--fn-transition);
+}
+.fn-icon-action:hover { background: var(--fn-brand-soft); border-color: color-mix(in srgb, var(--fn-brand) 24%, transparent); color: var(--fn-brand); }
+
+.fn-empty-state {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  padding: 56px 16px;
+  text-align: center;
+  color: var(--fn-muted);
+  font-size: 13px;
+}
+.fn-empty-state i { font-size: 26px; color: var(--fn-soft); }
+.fn-empty-state strong { color: var(--fn-text); font-size: 14px; }
+
+/* ── Rodapé / paginação ──────────────────────────────────────────── */
+.fn-list-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-top: 1px solid var(--fn-border);
+  background: var(--fn-bg);
 }
 
-.forn-page-link:hover {
-  transform: translateY(-1px);
-  background: var(--fn-surface-soft);
-  color: var(--fn-text);
-}
+.fn-pagination-info { color: var(--fn-muted); font-size: 12.5px; }
+.fn-pagination-info strong { color: var(--fn-text); font-weight: 600; }
 
-.forn-page-link.is-active {
-  background: var(--fn-primary);
-  border-color: var(--fn-primary);
-  color: #fff;
-}
-
-@media (max-width: 1280px) {
-  .forn-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
+.fn-pagination-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 @media (max-width: 860px) {
-  .forn-header { grid-template-columns: 1fr; align-items: stretch; }
-  .forn-title-wrap { grid-template-columns: 1fr; }
-  .forn-header-actions { justify-content: stretch; display: grid; grid-template-columns: 1fr; }
-  .forn-header-actions .forn-btn { width: 100%; }
-  .forn-filter-form { grid-template-columns: 1fr; }
-  .forn-actions { justify-content: stretch; display: grid; grid-template-columns: 1fr; }
-  .forn-actions .forn-btn { width: 100%; }
+  .fn-toolbar { flex-direction: column; align-items: stretch; }
+  .fn-toolbar-actions { margin-left: 0; justify-content: stretch; }
+  .fn-toolbar-actions > a { flex: 1; }
+  .fn-filters { min-width: 0; }
+  .fn-search-wrap { max-width: none; }
+}
+
+@media (max-width: 380px) {
+  .fn-filter-panel { width: calc(100vw - 32px); }
 }
 
 @media (max-width: 640px) {
-  .forn-kpi-grid { grid-template-columns: 1fr; }
-  .forn-card-body { grid-template-columns: 1fr; }
-  .forn-card-footer { align-items: stretch; flex-direction: column; }
-  .forn-card-actions { width: 100%; justify-content: flex-end; }
+  .fn-table, .fn-table thead, .fn-table tbody, .fn-table tr, .fn-table td { display: block; width: 100%; min-width: 0; }
+  .fn-table { min-width: 0; }
+  .fn-table thead { display: none; }
+  .fn-table tbody { display: grid; gap: 10px; padding: 12px; }
+  .fn-table tbody tr {
+    border: 1px solid var(--fn-border-2);
+    border-radius: var(--fn-radius-md);
+    background: var(--fn-bg);
+    overflow: hidden;
+  }
+  .fn-table tbody td { padding: 10px 12px; border-bottom: 1px solid var(--fn-border); }
+  .fn-table tbody tr td:last-child { border-bottom: none; }
+  .fn-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    color: var(--fn-muted);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .fn-table th.fn-num, .fn-table td.fn-num,
+  .fn-table th.fn-center, .fn-table td.fn-center { text-align: left; }
+  .fn-actions-cell { justify-content: flex-start; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -661,241 +460,310 @@ body.theme-dark .forn-badge-info { color: var(--fn-info); }
 {% endblock %}
 
 {% block content %}
-<div class="forn-page">
-  <div class="forn-shell">
+<div class="fn-page">
+  <div class="fn-shell">
 
-    <section class="forn-header">
-      <div class="forn-title-wrap">
-        <div class="forn-title-icon">
-          <i class="fa-solid fa-truck-ramp-box"></i>
-        </div>
-        <div>
-          <h1 class="forn-title">Fornecedores</h1>
-          <div class="forn-subtitle">
-            <span>Controle executivo de parceiros, contratos, custos, ativos e licenças vinculadas.</span>
-            <span class="forn-pill"><i class="fa-solid fa-layer-group"></i>{{ kpi_total_itens }} itens / {{ kpi_total_licencas }} licenças</span>
-          </div>
-        </div>
-      </div>
+    <section class="fn-toolbar" aria-label="Ações e filtros">
+      <div class="fn-result-count">{{ total }} fornecedor{{ total|pluralize }}</div>
 
-      <div class="forn-header-actions">
-        <a href="{% url 'fornecedor_export_pdf' %}?{{ qs_keep }}" target="_blank" class="forn-btn forn-btn-danger">
-          <i class="fa-solid fa-file-pdf"></i>
-          Exportar PDF
-        </a>
-        <a href="{% url 'fornecedor_create' %}" class="forn-btn forn-btn-primary">
-          <i class="fa-solid fa-plus"></i>
-          Novo Fornecedor
-        </a>
-      </div>
-    </section>
-
-    <section class="forn-dashboard">
-      <div class="forn-kpi-grid">
-        <div class="forn-kpi-card">
-          <div class="forn-kpi-content">
-            <span class="forn-kpi-label">Custo Total Mensal</span>
-            <span class="forn-kpi-value">R$ {{ kpi_custo_mensal_total|floatformat:2|intcomma }}</span>
-            <span class="forn-kpi-sub">Itens locados + licenças</span>
-          </div>
-          <div class="forn-kpi-icon"><i class="fa-solid fa-coins"></i></div>
-        </div>
-
-        <div class="forn-kpi-card forn-kpi-green">
-          <div class="forn-kpi-content">
-            <span class="forn-kpi-label">Custo Total Anual</span>
-            <span class="forn-kpi-value">R$ {{ kpi_custo_anual_total|floatformat:2|intcomma }}</span>
-            <span class="forn-kpi-sub">Itens + licenças anualizadas</span>
-          </div>
-          <div class="forn-kpi-icon"><i class="fa-solid fa-chart-line"></i></div>
-        </div>
-
-        <div class="forn-kpi-card forn-kpi-purple">
-          <div class="forn-kpi-content">
-            <span class="forn-kpi-label">Base Ativa</span>
-            <span class="forn-kpi-value">{{ kpi_total_itens }} / {{ kpi_total_licencas }}</span>
-            <span class="forn-kpi-sub">Itens e licenças dos fornecedores filtrados</span>
-          </div>
-          <div class="forn-kpi-icon"><i class="fa-solid fa-layer-group"></i></div>
-        </div>
-
-        <div class="forn-kpi-card forn-kpi-orange">
-          <div class="forn-kpi-content">
-            <span class="forn-kpi-label">Maior Parceiro</span>
-            <span class="forn-kpi-value">R$ {{ kpi_top_val|floatformat:2|intcomma }}</span>
-            <span class="forn-kpi-sub">{{ kpi_top_forn.nome|default:"-"|truncatechars:32 }}</span>
-          </div>
-          <div class="forn-kpi-icon"><i class="fa-solid fa-trophy"></i></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="forn-toolbar">
-      <form method="get" id="searchForm" class="forn-filter-form" autocomplete="off">
-        <div class="forn-search-wrap">
-          <i class="fa-solid fa-magnifying-glass"></i>
-          <input type="text" name="q" value="{{ f_q }}" class="forn-control" placeholder="Pesquisar fornecedor ou CNPJ...">
-        </div>
-
-        <div>
-          <select name="tem_contrato" class="select2-filter" aria-label="Filtrar por contrato">
-            <option value="">Contrato: Todos</option>
-            <option value="sim" {% if f_contrato == 'sim' %}selected{% endif %}>Com Contrato</option>
-            <option value="nao" {% if f_contrato == 'nao' %}selected{% endif %}>Sem Contrato</option>
-          </select>
-        </div>
-
-        <div class="forn-actions">
-          <button type="submit" class="forn-btn forn-btn-primary">
-            <i class="fa-solid fa-filter"></i>
-            Filtrar
+      <form method="get" id="searchForm" class="fn-filters" autocomplete="off">
+        <div class="fn-search-wrap{% if f_q %} has-value{% endif %}" id="fnSearchWrap">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input type="text" name="q" id="fnSearchInput" value="{{ f_q }}" placeholder="Buscar por nome ou CNPJ...">
+          <button type="button" class="fn-search-clear" id="fnSearchClear" title="Limpar busca" aria-label="Limpar busca">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
           </button>
-          <a href="{% url 'fornecedor_list' %}" class="forn-btn forn-btn-secondary">
-            <i class="fa-solid fa-eraser"></i>
-            Limpar
-          </a>
         </div>
+
+        <input type="hidden" name="tem_contrato" id="fnContratoHidden" value="{{ f_contrato }}">
+
+        <div class="fn-filter-dropdown" id="fnContratoFilter">
+          <button type="button"
+                  class="fn-filter-btn{% if f_contrato %} is-active{% endif %}"
+                  id="fnContratoBtn"
+                  aria-haspopup="true"
+                  aria-expanded="false">
+            <i class="fa-solid fa-filter" aria-hidden="true"></i>
+            <span id="fnContratoLabel">{% if f_contrato == 'sim' %}Contrato: Ativo{% elif f_contrato == 'nao' %}Contrato: Sem{% else %}Contrato{% endif %}</span>
+            <i class="fa-solid fa-chevron-down fn-filter-caret" aria-hidden="true"></i>
+          </button>
+
+          <div class="fn-filter-panel" id="fnContratoPanel" role="menu" aria-label="Filtrar por contrato" hidden>
+            <div class="fn-filter-options">
+              <label class="fn-filter-option">
+                <input type="checkbox" id="fnOptSim" {% if f_contrato != 'nao' %}checked{% endif %}>
+                <span class="fn-status ok"><span class="sdot" aria-hidden="true"></span>Com contrato</span>
+              </label>
+              <label class="fn-filter-option">
+                <input type="checkbox" id="fnOptNao" {% if f_contrato != 'sim' %}checked{% endif %}>
+                <span class="fn-status off"><span class="sdot" aria-hidden="true"></span>Sem contrato</span>
+              </label>
+            </div>
+            <div class="fn-filter-panel-footer">
+              <button type="button" class="fn-filter-clear" id="fnContratoClear">Limpar</button>
+              <button type="button" class="fn-filter-apply" id="fnContratoApply">Aplicar</button>
+            </div>
+          </div>
+        </div>
+
+        {% if f_q or f_contrato %}
+          <a href="{% url 'fornecedor_list' %}" class="btn btn-sm" title="Limpar todos os filtros">
+            <i class="fa-solid fa-eraser" aria-hidden="true"></i> Limpar tudo
+          </a>
+        {% endif %}
       </form>
+
+      <div class="fn-toolbar-actions">
+        <a href="{% url 'fornecedor_export_pdf' %}?{{ qs_keep }}" target="_blank" class="btn btn-sm" title="Exportar relatório em PDF">
+          <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Exportar PDF
+        </a>
+        <span class="fn-divider" aria-hidden="true"></span>
+        <a href="{% url 'fornecedor_create' %}" class="btn-primary btn-sm">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i> Novo Fornecedor
+        </a>
+      </div>
     </section>
 
-    <section class="forn-cards-grid">
-      {% for f in fornecedores %}
-        <article class="forn-card">
-          <div class="forn-card-header">
-            <div class="forn-card-icon"><i class="fa-solid fa-building"></i></div>
-            <div>
-              <div class="forn-name" title="{{ f.nome }}">{{ f.nome }}</div>
-              <div class="forn-cnpj">{{ f.cnpj|default:"CNPJ não informado" }}</div>
-            </div>
-          </div>
+    <section class="fn-metrics" aria-label="Indicadores de fornecedores">
+      <div class="fn-metric">
+        <div class="fn-metric-l"><i class="fa-solid fa-coins" aria-hidden="true"></i>Custo Mensal</div>
+        <div class="fn-metric-v">R$ {{ kpi_custo_mensal_total|floatformat:2|intcomma }}</div>
+        <div class="fn-metric-s">Itens locados + licenças</div>
+      </div>
 
-          <div class="forn-card-body">
-            <div class="forn-metric">
-              <div class="forn-metric-label">Itens</div>
-              <div class="forn-metric-value">{{ f.qtd_total_itens_calc }}</div>
-            </div>
+      <div class="fn-metric">
+        <div class="fn-metric-l"><i class="fa-solid fa-chart-line" aria-hidden="true"></i>Custo Anual</div>
+        <div class="fn-metric-v">R$ {{ kpi_custo_anual_total|floatformat:2|intcomma }}</div>
+        <div class="fn-metric-s">Itens + licenças anualizadas</div>
+      </div>
 
-            <div class="forn-metric">
-              <div class="forn-metric-label">Licenças</div>
-              <div class="forn-metric-value">{{ f.qtd_licencas_calc }}</div>
-            </div>
+      <div class="fn-metric">
+        <div class="fn-metric-l"><i class="fa-solid fa-layer-group" aria-hidden="true"></i>Base Ativa</div>
+        <div class="fn-metric-v">{{ kpi_total_itens }} / {{ kpi_total_licencas }}</div>
+        <div class="fn-metric-s">Itens e licenças vinculados</div>
+      </div>
 
-            <div class="forn-metric">
-              <div class="forn-metric-label">Itens Locados</div>
-              <div class="forn-metric-value">{{ f.qtd_locados_calc }}</div>
-            </div>
+      <div class="fn-metric">
+        <div class="fn-metric-l"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>Custo Médio</div>
+        <div class="fn-metric-v">R$ {{ kpi_media|floatformat:2|intcomma }}</div>
+        <div class="fn-metric-s">Por fornecedor / mês</div>
+      </div>
 
-            <div class="forn-metric">
-              <div class="forn-metric-label">Lotes de Licença</div>
-              <div class="forn-metric-value">{{ f.qtd_lotes_calc }}</div>
-            </div>
-
-            <div class="forn-metric">
-              <div class="forn-metric-label">Custo Mensal Itens</div>
-              <div class="forn-metric-value green">R$ {{ f.custo_mensal_itens_calc|floatformat:2|intcomma }}</div>
-            </div>
-
-            <div class="forn-metric">
-              <div class="forn-metric-label">Custo Mensal Licenças</div>
-              <div class="forn-metric-value purple">R$ {{ f.custo_mensal_licencas_calc|floatformat:2|intcomma }}</div>
-            </div>
-
-            <div class="forn-metric">
-              <div class="forn-metric-label">Valor Total Itens</div>
-              <div class="forn-metric-value">R$ {{ f.valor_total_itens_calc|floatformat:2|intcomma }}</div>
-            </div>
-
-            <div class="forn-metric">
-              <div class="forn-metric-label">Custo Anual Licenças</div>
-              <div class="forn-metric-value">R$ {{ f.custo_anual_licencas_calc|floatformat:2|intcomma }}</div>
-            </div>
-
-            <div class="forn-metric forn-metric-full">
-              <div class="forn-metric-label">Total Consolidado do Fornecedor</div>
-              <div class="forn-metric-value blue">Mensal: R$ {{ f.custo_total_mensal_calc|floatformat:2|intcomma }}</div>
-              <div class="forn-metric-value" style="font-size:0.82rem; margin-top:0.25rem;">Anual: R$ {{ f.custo_total_anual_calc|floatformat:2|intcomma }}</div>
-            </div>
-          </div>
-
-          <div class="forn-card-footer">
-            <div>
-              {% if f.contrato %}
-                <span class="forn-badge forn-badge-success"><i class="fa-solid fa-file-contract"></i>Contrato Ativo</span>
-              {% else %}
-                <span class="forn-badge forn-badge-danger"><i class="fa-solid fa-circle-exclamation"></i>Sem Contrato</span>
-              {% endif %}
-            </div>
-
-            <div class="forn-card-actions">
-              <a href="{% url 'fornecedor_detail' f.pk %}" class="forn-btn forn-btn-secondary forn-btn-icon" title="Detalhes" aria-label="Ver detalhes de {{ f.nome }}">
-                <i class="fa-solid fa-eye"></i>
-              </a>
-              <a href="{% url 'fornecedor_update' f.pk %}" class="forn-btn forn-btn-secondary forn-btn-icon" title="Editar" aria-label="Editar {{ f.nome }}">
-                <i class="fa-solid fa-pen"></i>
-              </a>
-            </div>
-          </div>
-        </article>
-      {% empty %}
-        <div class="forn-empty-state">
-          <i class="fa-solid fa-folder-open"></i>
-          <h3>Nenhum fornecedor encontrado</h3>
-          <p>Altere os filtros ou cadastre um novo fornecedor.</p>
-        </div>
-      {% endfor %}
+      <div class="fn-metric">
+        <div class="fn-metric-l"><i class="fa-solid fa-trophy" aria-hidden="true"></i>Maior Parceiro</div>
+        <div class="fn-metric-v">R$ {{ kpi_top_val|floatformat:2|intcomma }}</div>
+        <div class="fn-metric-s">{{ kpi_top_forn.nome|default:"—"|truncatechars:28 }}</div>
+      </div>
     </section>
 
-    {% if page_obj.has_other_pages %}
-      <nav class="forn-pagination" aria-label="Paginação de fornecedores">
-        {% if page_obj.has_previous %}
-          <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="forn-page-link" aria-label="Página anterior">
-            <i class="fa-solid fa-chevron-left"></i>
-          </a>
-        {% endif %}
+    <section class="fn-table-card">
+      <div class="fn-scroll">
+        <table class="fn-table">
+          <thead>
+            <tr>
+              <th scope="col">Fornecedor</th>
+              <th scope="col">Itens</th>
+              <th scope="col">Licenças</th>
+              <th scope="col" class="fn-num">Custo Mensal</th>
+              <th scope="col" class="fn-num">Custo Anual</th>
+              <th scope="col">Contrato</th>
+              <th scope="col" class="fn-num">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in fornecedores %}
+            <tr data-href="{% url 'fornecedor_detail' f.pk %}">
+              <td data-label="Fornecedor">
+                <div class="fn-supplier-cell">
+                  <div class="fn-ic" aria-hidden="true"><i class="fa-solid fa-truck-field"></i></div>
+                  <div>
+                    <div class="fn-name">{{ f.nome }}</div>
+                    <div class="fn-cnpj">{{ f.cnpj|default:"CNPJ não informado" }}</div>
+                  </div>
+                </div>
+              </td>
 
-        {% for num in paginator.page_range %}
-          {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
-            {% if num == page_obj.number %}
-              <span class="forn-page-link is-active" aria-current="page">{{ num }}</span>
+              <td data-label="Itens">
+                <div class="fn-count-main">{{ f.qtd_total_itens_calc }}</div>
+                {% if f.qtd_locados_calc %}
+                  <div class="fn-count-sub">{{ f.qtd_locados_calc }} locado{{ f.qtd_locados_calc|pluralize }}</div>
+                {% endif %}
+              </td>
+
+              <td data-label="Licenças">
+                <div class="fn-count-main">{{ f.qtd_licencas_calc }}</div>
+                {% if f.qtd_lotes_calc %}
+                  <div class="fn-count-sub">{{ f.qtd_lotes_calc }} lote{{ f.qtd_lotes_calc|pluralize }}</div>
+                {% endif %}
+              </td>
+
+              <td data-label="Custo Mensal" class="fn-num">
+                <span class="fn-cost">R$ {{ f.custo_total_mensal_calc|floatformat:2|intcomma }}</span>
+              </td>
+
+              <td data-label="Custo Anual" class="fn-num">
+                <span class="fn-cost">R$ {{ f.custo_total_anual_calc|floatformat:2|intcomma }}</span>
+              </td>
+
+              <td data-label="Contrato">
+                {% if f.contrato %}
+                  <span class="fn-status ok"><span class="sdot" aria-hidden="true"></span>Ativo</span>
+                {% else %}
+                  <span class="fn-status off"><span class="sdot" aria-hidden="true"></span>Sem contrato</span>
+                {% endif %}
+              </td>
+
+              <td data-label="Ações" class="fn-num">
+                <div class="fn-actions-cell">
+                  <a href="{% url 'fornecedor_detail' f.pk %}" class="fn-icon-action" title="Detalhes" aria-label="Ver detalhes de {{ f.nome }}" onclick="event.stopPropagation()">
+                    <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                  </a>
+                  <a href="{% url 'fornecedor_update' f.pk %}" class="fn-icon-action" title="Editar" aria-label="Editar {{ f.nome }}" onclick="event.stopPropagation()">
+                    <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="7">
+                <div class="fn-empty-state">
+                  <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
+                  <strong>Nenhum fornecedor encontrado</strong>
+                  <span>Ajuste os filtros ou cadastre um novo fornecedor.</span>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="fn-list-footer">
+        {% if page_obj.has_other_pages %}
+          <div class="fn-pagination-info">
+            Página <strong>{{ page_obj.number }}</strong> de <strong>{{ paginator.num_pages }}</strong> · {{ total }} registro{{ total|pluralize }}
+          </div>
+
+          <div class="fn-pagination-actions">
+            {% if page_obj.has_previous %}
+              <a class="btn btn-sm" href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}">
+                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i> Anterior
+              </a>
             {% else %}
-              <a href="?page={{ num }}&{{ qs_keep }}" class="forn-page-link">{{ num }}</a>
+              <span class="btn btn-sm" style="opacity:.45; pointer-events:none;">
+                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i> Anterior
+              </span>
             {% endif %}
-          {% endif %}
-        {% endfor %}
 
-        {% if page_obj.has_next %}
-          <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="forn-page-link" aria-label="Próxima página">
-            <i class="fa-solid fa-chevron-right"></i>
-          </a>
+            {% if page_obj.has_next %}
+              <a class="btn btn-sm" href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}">
+                Próxima <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+              </a>
+            {% else %}
+              <span class="btn btn-sm" style="opacity:.45; pointer-events:none;">
+                Próxima <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+              </span>
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="fn-pagination-info">
+            <strong>{{ total }}</strong> registro{{ total|pluralize }}
+          </div>
         {% endif %}
-      </nav>
-    {% endif %}
+      </div>
+    </section>
 
   </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
-$(document).ready(function() {
-  $('.select2-filter').select2({
-    minimumResultsForSearch: Infinity,
-    width: '100%'
+(function () {
+  var form = document.getElementById('searchForm');
+
+  // ── Busca por nome/CNPJ — debounced, robusta a digitação, colar e autofill ──
+  var searchInput = document.getElementById('fnSearchInput');
+  var searchWrap = document.getElementById('fnSearchWrap');
+  var searchClear = document.getElementById('fnSearchClear');
+
+  function toggleClearBtn() {
+    searchWrap.classList.toggle('has-value', searchInput.value.length > 0);
+  }
+  toggleClearBtn();
+
+  var searchTimeout = null;
+  searchInput.addEventListener('input', function () {
+    toggleClearBtn();
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(function () { form.submit(); }, 500);
   });
 
-  $('.select2-filter').on('change', function() {
-    $('#searchForm').submit();
+  searchClear.addEventListener('click', function () {
+    searchInput.value = '';
+    toggleClearBtn();
+    form.submit();
   });
 
-  let timeout = null;
-  $('.forn-control[name="q"]').on('keyup', function() {
-    clearTimeout(timeout);
-    timeout = setTimeout(function() {
-      $('#searchForm').submit();
-    }, 500);
+  // ── Filtro de Contrato — dropdown estilo Excel (checkbox por valor) ──────
+  var contratoBtn = document.getElementById('fnContratoBtn');
+  var contratoPanel = document.getElementById('fnContratoPanel');
+  var contratoHidden = document.getElementById('fnContratoHidden');
+  var contratoLabel = document.getElementById('fnContratoLabel');
+  var optSim = document.getElementById('fnOptSim');
+  var optNao = document.getElementById('fnOptNao');
+
+  function openContratoPanel() {
+    contratoPanel.hidden = false;
+    contratoBtn.setAttribute('aria-expanded', 'true');
+  }
+  function closeContratoPanel() {
+    contratoPanel.hidden = true;
+    contratoBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  contratoBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (contratoPanel.hidden) openContratoPanel(); else closeContratoPanel();
   });
-});
+
+  document.addEventListener('click', function (e) {
+    if (!contratoPanel.hidden && !e.target.closest('#fnContratoFilter')) closeContratoPanel();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !contratoPanel.hidden) closeContratoPanel();
+  });
+
+  document.getElementById('fnContratoApply').addEventListener('click', function () {
+    // Excel: os dois marcados (ou nenhum) = sem filtro; só um marcado = filtra por ele.
+    var value = '';
+    if (optSim.checked && !optNao.checked) value = 'sim';
+    else if (!optSim.checked && optNao.checked) value = 'nao';
+
+    contratoHidden.value = value;
+    contratoBtn.classList.toggle('is-active', value !== '');
+    contratoLabel.textContent = value === 'sim' ? 'Contrato: Ativo' : value === 'nao' ? 'Contrato: Sem' : 'Contrato';
+    closeContratoPanel();
+    form.submit();
+  });
+
+  document.getElementById('fnContratoClear').addEventListener('click', function () {
+    optSim.checked = true;
+    optNao.checked = true;
+    contratoHidden.value = '';
+    closeContratoPanel();
+    form.submit();
+  });
+
+  // ── Linha da tabela navega para o detalhe (ignora cliques em links/botões) ──
+  document.querySelectorAll('.fn-table tr[data-href]').forEach(function (tr) {
+    tr.addEventListener('click', function (e) {
+      if (e.target.closest('a,button')) return;
+      window.location.href = tr.getAttribute('data-href');
+    });
+  });
+})();
 </script>
 {% endblock %}

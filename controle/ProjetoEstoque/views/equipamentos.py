@@ -27,6 +27,8 @@ from ..models import (
 from ..forms import ItemForm, LocacaoForm, LoteEstoqueCreateForm
 from services.importador_planilha import ImportadorPlanilhaService
 from services.item_create_service import ItemCreateService
+from services.movimentacao_service import MovimentacaoEstoqueService
+from services.busca_fts import buscar_item_ids
 
 def adicionar_erros_validacao_no_form(form, erro):
     if hasattr(erro, "message_dict"):
@@ -294,7 +296,12 @@ def _aplicar_filtros_itens(request, qs):
     estoque = request.GET.get("estoque", "").strip()
 
     if nome:
-        qs = qs.filter(nome__icontains=nome)
+        ids_relevantes = buscar_item_ids(nome)
+        if ids_relevantes is None:
+            # Índice FTS indisponível — cai de volta para o filtro de sempre.
+            qs = qs.filter(nome__icontains=nome)
+        else:
+            qs = qs.filter(pk__in=ids_relevantes)
     if numero_serie:
         qs = qs.filter(numero_serie__icontains=numero_serie)
     if modelo:
@@ -1076,11 +1083,17 @@ def equipamento_detalhe(request, pk: int):
             financeiro["tco"] = financeiro["custo_total_empresa"]
 
             if tempo_locado_meses > 0:
-                total_dias = int(tempo_locado_meses) * 30
-                dt_fim = dt_inicio + timedelta(days=total_dias)
+                # Usa `locacao.data_vencimento` (relativedelta em meses de calendário) —
+                # a mesma fonte de verdade do campo "Vencimento do Contrato" na ficha
+                # técnica e da tela "Contratos a Vencer". Um cálculo próprio aqui com
+                # `meses * 30 dias` diverge (meses têm 28-31 dias) e já fez este card
+                # mostrar "dias restantes" para um contrato que a outra tela já dava
+                # como vencido.
+                dt_fim = locacao.data_vencimento
                 financeiro["data_fim"] = dt_fim
 
-                financeiro["vida_util_perc"] = min(100, max(0, int((dias_corridos / total_dias) * 100)))
+                total_dias = (dt_fim - dt_inicio).days
+                financeiro["vida_util_perc"] = min(100, max(0, int((dias_corridos / total_dias) * 100))) if total_dias > 0 else 100
 
                 restante = (dt_fim - today).days
                 if restante < 0:
@@ -1128,47 +1141,37 @@ def equipamento_detalhe(request, pk: int):
     # =========================================================
     # Preventivas
     # =========================================================
-    preventivas = (
+    from .preventivas import _aplicar_status_preventiva
+
+    preventivas = list(
         Preventiva.objects
         .filter(equipamento=item)
-        .select_related("checklist_modelo")
+        .select_related("checklist_modelo", "equipamento")
         .order_by("data_proxima")
     )
 
-    _JANELA_ATENCAO = 7
+    # Mesma regra das telas de preventivas: intervalo do item → checklist,
+    # âncora = última execução ou reativação, agendamento sobrepõe, e a
+    # contagem fica suspensa quando o item não está Ativo.
     status_saude = "ok" if not preventivas else "sem_data"
     for p in preventivas:
-        # Prioridade: data_limite_preventiva do item → intervalo_dias do checklist
-        intervalo = 0
-        try:
-            intervalo = int(item.data_limite_preventiva or 0)
-        except (TypeError, ValueError):
-            pass
-        if intervalo <= 0 and p.checklist_modelo:
-            try:
-                intervalo = int(p.checklist_modelo.intervalo_dias or 0)
-            except (TypeError, ValueError):
-                pass
+        _aplicar_status_preventiva(p, today)
+        p.suspensa = p.status_visual == "pausada"
+        p.atrasado = p.status_visual == "vencida"
+        p.atencao  = p.status_visual == "atencao"
+        if p.suspensa:
+            continue
+        if p.atrasado:
+            status_saude = "critical"
+        elif p.atencao and status_saude not in ("critical",):
+            status_saude = "atencao"
+        elif p.status_visual == "ok" and status_saude == "sem_data":
+            status_saude = "ok"
 
-        # Calcula a data efetiva da próxima preventiva
-        if intervalo > 0 and p.data_ultima:
-            p.proxima_calc = p.data_ultima + timedelta(days=intervalo)
-        else:
-            p.proxima_calc = p.data_proxima
-
-        if p.proxima_calc:
-            dias = (p.proxima_calc - today).days
-            p.atrasado = dias < 0
-            p.atencao  = 0 <= dias <= _JANELA_ATENCAO
-            if p.atrasado:
-                status_saude = "critical"
-            elif p.atencao and status_saude not in ("critical",):
-                status_saude = "atencao"
-            elif not p.atrasado and not p.atencao and status_saude == "sem_data":
-                status_saude = "ok"
-        else:
-            p.atrasado = False
-            p.atencao  = False
+    # Item fora de operação (todas as preventivas suspensas): não conta dias
+    # nem reporta vencidas — a contagem inicia quando ele voltar a Ativo.
+    if preventivas and all(p.suspensa for p in preventivas):
+        status_saude = "suspensa"
 
     # =========================================================
     # Ficha técnica dinâmica
@@ -1408,6 +1411,7 @@ def item_update(request, pk):
             try:
                 with transaction.atomic():
                     status_anterior = item.status
+                    compartilhado_anterior = item.compartilhado
                     item_editado = form.save(commit=False)
 
                     preencher_auditoria(item_editado, request.user, criando=False)
@@ -1455,6 +1459,11 @@ def item_update(request, pk):
 
                     item_editado.full_clean()
                     item_editado.save()
+
+                    if not compartilhado_anterior and item_editado.compartilhado:
+                        MovimentacaoEstoqueService.sincronizar_vinculo_ao_tornar_compartilhado(
+                            item=item_editado, user=request.user
+                        )
 
                     if status_anterior != item_editado.status:
                         preventivas = item_editado.preventivas.all()

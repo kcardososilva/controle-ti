@@ -42,6 +42,7 @@ from .subtipos import (
 # ── Usuários ────────────────────────────────────────────────────────────────
 from .usuarios import (
     usuario_list,
+    usuario_export_excel,
     usuario_detail,
     usuario_create,
     usuario_update,
@@ -152,6 +153,8 @@ from .separacoes import (
     separacao_item_remover,
     separacao_item_enviar,
     separacao_lote_item_desvincular,
+    separacao_item_nota_fiscal_anexar,
+    separacao_nota_fiscal_excluir,
     documento_fiscal_gerar,
     documento_fiscal_pdf_view,
 )
@@ -225,6 +228,7 @@ from .relatorios import (
     avisos_contratos_vencer,
     avisos_contratos_vencer_export_excel,
     requisicoes_export_excel,
+    itens_padrao_export_excel,
 )
 
 # ── Termos ───────────────────────────────────────────────────────────────────

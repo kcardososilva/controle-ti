@@ -28,9 +28,12 @@ from ..models import (
     StatusItemChoices, SimNaoChoices, PeriodicidadeChoices,
     TipoMovLicencaChoices, ItemLote,
     RequisicaoItem, StatusItemSolicitacaoChoices, TipoRequisicaoChoices,
+    ItemPadraoDatasul, Categoria,
 )
+from services.busca_fts import buscar_item_padrao_ids
 
 from .equipamentos import _aplicar_filtros_itens
+from .requisicoes import _aplicar_busca_descricao_codigo
 
 
 @login_required
@@ -2379,6 +2382,124 @@ def requisicoes_export_excel(request):
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     response["Content-Disposition"] = f'attachment; filename="requisicoes_itens_{now}.xlsx"'
+    return response
+
+
+@login_required
+def itens_padrao_export_excel(request):
+    """Exporta o catálogo de Itens Padrão (Datasul), respeitando os mesmos
+    filtros de `itens_padrao_list` (busca/categoria/situação). Aba única,
+    sem "Resumo" — planilha pensada para impressão direta (cabeçalho
+    repetido em cada página, ajustada à largura)."""
+    q = (request.GET.get("q") or "").strip()
+    f_categoria = (request.GET.get("categoria") or "").strip()
+    f_ativo = request.GET.get("ativo", "1")
+
+    qs = ItemPadraoDatasul.objects.select_related("categoria").order_by("descricao")
+    if q:
+        qs = _aplicar_busca_descricao_codigo(qs, q, buscar_item_padrao_ids)
+    if f_categoria:
+        qs = qs.filter(categoria_id=f_categoria)
+    if f_ativo == "1":
+        qs = qs.filter(ativo=True)
+    elif f_ativo == "0":
+        qs = qs.filter(ativo=False)
+
+    itens = list(qs)
+
+    from services.excel_theme import (
+        BORDA as border, FONT_TITULO as f_title, FONT_SUBTITULO as f_sub,
+        FONT_HEADER as f_header, FONT_CELL_BOLD as f_bold, FONT_CELL as f_cell,
+        FILL_TITULO as fill_title, FILL_SUBTITULO as fill_sub,
+        FILL_HEADER as fill_header, FILL_ZEBRA as fill_zebra,
+        ALIGN_CENTER as a_center, ALIGN_LEFT as a_left, ALIGN_LEFT_IND as a_left_ind,
+    )
+
+    gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")
+    categoria_nome = (
+        Categoria.objects.filter(pk=f_categoria).values_list("nome", flat=True).first()
+        if f_categoria else None
+    )
+    filtros_txt = " · ".join(
+        f"{lbl}: {val}" for lbl, val in [
+            ("Categoria", categoria_nome),
+            ("Situação", {"1": "Ativos", "0": "Inativos"}.get(f_ativo)),
+            ("Busca", q or None),
+        ] if val
+    ) or "Sem filtros aplicados"
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Itens Padrão"
+
+    header = ["#", "Código", "Descrição", "Categoria", "Situação"]
+    ncols = len(header)
+    center_cols = {1, 5}
+
+    last = get_column_letter(ncols)
+    ws.merge_cells(f"A1:{last}1")
+    c = ws["A1"]; c.value = "ITENS PADRÃO (DATASUL) — CATÁLOGO"; c.font = f_title; c.fill = fill_title
+    c.alignment = a_left_ind
+    ws.row_dimensions[1].height = 34
+    ws.merge_cells(f"A2:{last}2")
+    c2 = ws["A2"]
+    c2.value = f"Santa Colomba Agropecuária  ·  {len(itens)} item(ns)  ·  Gerado em {gerado}  ·  {filtros_txt}"
+    c2.font = f_sub; c2.fill = fill_sub; c2.alignment = a_left_ind
+    ws.row_dimensions[2].height = 18
+    ws.sheet_view.showGridLines = False
+
+    HEADER_ROW = 3
+    for ci, h in enumerate(header, 1):
+        cc = ws.cell(row=HEADER_ROW, column=ci, value=h)
+        cc.fill = fill_header; cc.font = f_header; cc.border = border
+        cc.alignment = a_center if ci in center_cols else a_left
+    ws.row_dimensions[HEADER_ROW].height = 22
+
+    row = HEADER_ROW + 1
+    for i, obj in enumerate(itens, start=1):
+        valores = [i, obj.codigo, obj.descricao, str(obj.categoria), "Ativo" if obj.ativo else "Inativo"]
+        zebra = (i % 2 == 0)
+        for ci, val in enumerate(valores, 1):
+            cc = ws.cell(row=row, column=ci, value=val)
+            cc.border = border
+            cc.font = f_cell
+            cc.alignment = a_center if ci in center_cols else a_left
+            if ci == 5:
+                cc.fill = PatternFill("solid", fgColor="E6F4EA" if obj.ativo else "F1F1F1")
+                cc.font = f_bold
+                cc.alignment = a_center
+            elif zebra:
+                cc.fill = fill_zebra
+        row += 1
+
+    ws.freeze_panes = f"A{HEADER_ROW + 1}"
+
+    widths = {}
+    for r_ in ws.iter_rows(min_row=HEADER_ROW, values_only=True):
+        for idx, val in enumerate(r_, start=1):
+            texto = str(val) if val is not None else ""
+            widths[idx] = max(widths.get(idx, 0), len(texto))
+    for idx, width in widths.items():
+        ws.column_dimensions[get_column_letter(idx)].width = min(max(width + 2, 10), 42)
+
+    # Planilha pensada pra impressão: cabeçalho repetido em cada página e
+    # conteúdo ajustado à largura de uma folha.
+    ws.print_title_rows = f"{HEADER_ROW}:{HEADER_ROW}"
+    ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    now = timezone.localtime().strftime("%Y%m%d-%H%M%S")
+    response = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f'attachment; filename="itens_padrao_datasul_{now}.xlsx"'
     return response
 
 

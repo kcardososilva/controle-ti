@@ -115,6 +115,58 @@ class MovimentacaoEstoqueService:
                 ])
 
     @classmethod
+    def sincronizar_vinculo_ao_tornar_compartilhado(cls, *, item, user):
+        """
+        Ao marcar um equipamento como COMPARTILHADO que já tinha um detentor
+        único (posse derivada só da última movimentação — regime antigo, sem
+        registro em `ItemColaborador`), abre o vínculo formal para esse
+        colaborador.
+
+        Sem isso, no instante em que `item.compartilhado` vira True, o
+        detentor que já estava com o equipamento desaparece do card
+        "Colaboradores Vinculados" (equipamento_detalhe) e da lista de itens
+        na própria tela do colaborador — ambos passam a ler exclusivamente de
+        `ItemColaborador` (ver `_sync_vinculo_compartilhado`) e esse
+        colaborador nunca teve uma linha lá. Ao vincular um segundo
+        colaborador depois, dava a impressão de que o primeiro tinha sido
+        "removido".
+
+        Idempotente (get-or-create pelo vínculo ativo item+colaborador). Usa a
+        data da própria entrega histórica como `data_vinculo` — não "agora" —
+        para o card "Desde ..." continuar correto.
+        """
+        ultima_transferencia = (
+            MovimentacaoItem.objects
+            .filter(item=item, tipo_movimentacao=cls.TRANSFERENCIA)
+            .order_by("-created_at", "-id")
+            .first()
+        )
+
+        if not (
+            ultima_transferencia
+            and ultima_transferencia.tipo_transferencia == "entrega"
+            and ultima_transferencia.usuario_id
+        ):
+            return
+
+        ja_vinculado = ItemColaborador.objects.filter(
+            item=item, colaborador_id=ultima_transferencia.usuario_id, ativo=True,
+        ).exists()
+
+        if ja_vinculado:
+            return
+
+        vinculo = ItemColaborador(
+            item=item,
+            colaborador_id=ultima_transferencia.usuario_id,
+            ativo=True,
+            data_vinculo=ultima_transferencia.created_at,
+            movimentacao_entrega=ultima_transferencia,
+        )
+        cls.preencher_auditoria(vinculo, user, criando=True)
+        vinculo.save()
+
+    @classmethod
     @transaction.atomic
     def registrar(cls, *, form, user):
         tipo = form.cleaned_data["tipo_movimentacao"]

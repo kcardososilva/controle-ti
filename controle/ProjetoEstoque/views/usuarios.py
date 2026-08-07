@@ -1,17 +1,20 @@
 from collections import Counter
 from decimal import Decimal
 from datetime import timedelta
+from io import BytesIO
 from django.core.exceptions import FieldDoesNotExist
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
-from django.http import JsonResponse
-from django.db.models import Q
+from django.http import JsonResponse, HttpResponse
+from django.db.models import Q, Case, When
 from django.core.paginator import Paginator
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.db import transaction
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
 
 from ..models import (
     Usuario, CentroCusto, Localidade, Funcao,
@@ -22,6 +25,7 @@ from ..models import (
 )
 from ..forms import UsuarioForm, ImportarUsuariosForm
 from services.usuario_import_service import UsuarioImportService
+from services.busca_fts import buscar_usuario_ids
 
 def _model_has_field(model, field_name):
     try:
@@ -64,7 +68,8 @@ def _usuario_queryset_filtrado(request):
     cc = request.GET.get("cc", "").strip()
     loc = request.GET.get("loc", "").strip()
     func = request.GET.get("func", "").strip()
-    order = request.GET.get("order", "nome").strip()
+    order_param = request.GET.get("order", "").strip()
+    order = order_param or "nome"
 
     allowed_order = {
         "nome": "nome",
@@ -79,22 +84,32 @@ def _usuario_queryset_filtrado(request):
 
     order_by = allowed_order.get(order, "nome")
 
-    qs = (
-        Usuario.objects
-        .select_related("centro_custo", "localidade", "funcao")
-        .order_by(order_by, "nome")
-    )
+    qs = Usuario.objects.select_related("centro_custo", "localidade", "funcao")
 
     if q:
-        busca = (
-            Q(nome__icontains=q)
-            | Q(email__icontains=q)
-        )
+        ids_relevantes = buscar_usuario_ids(q)
 
-        if _model_has_field(Usuario, "matricula"):
-            busca |= Q(matricula__icontains=q)
-
-        qs = qs.filter(busca)
+        if ids_relevantes is None:
+            # Índice FTS indisponível (ex.: migration ainda não aplicada) —
+            # cai de volta para o filtro por substring de sempre.
+            busca = Q(nome__icontains=q) | Q(email__icontains=q)
+            if _model_has_field(Usuario, "matricula"):
+                busca |= Q(matricula__icontains=q)
+            qs = qs.filter(busca).order_by(order_by, "nome")
+        elif ids_relevantes:
+            qs = qs.filter(pk__in=ids_relevantes)
+            if order_param:
+                qs = qs.order_by(order_by, "nome")
+            else:
+                # Sem ordenação explícita pedida: respeita a relevância do FTS.
+                ordem_relevancia = Case(*[
+                    When(pk=pk, then=pos) for pos, pk in enumerate(ids_relevantes)
+                ])
+                qs = qs.order_by(ordem_relevancia)
+        else:
+            qs = qs.none()
+    else:
+        qs = qs.order_by(order_by, "nome")
 
     if status:
         qs = qs.filter(status=status)
@@ -200,6 +215,108 @@ def usuario_list(request):
         })
 
     return render(request, "front/usuarios/usuario_list.html", context)
+
+
+@login_required
+def usuario_export_excel(request):
+    """Exporta para Excel os colaboradores do filtro atual da listagem —
+    reaproveita `_usuario_queryset_filtrado` para nunca divergir do que está
+    sendo exibido na tela."""
+    from services.excel_theme import (
+        FONT_TITULO, FONT_SUBTITULO,
+        FILL_TITULO, FILL_SUBTITULO,
+        ALIGN_LEFT_IND,
+        estilizar_cabecalho, aplicar_zebra_e_borda, criar_tabela, ajustar_larguras,
+        DATE_FMT,
+    )
+
+    qs = (
+        _usuario_queryset_filtrado(request)
+        .select_related("centro_custo", "localidade", "funcao")
+    )
+    usuarios = list(qs)
+
+    headers = [
+        "Matrícula", "Nome", "Status", "PMB", "E-mail",
+        "Centro de Custo", "Localidade", "Função",
+        "Diretor Geral", "Diretor", "Gestor", "Coordenador", "Supervisor",
+        "Data Início", "Data Término",
+    ]
+    num_cols = len(headers)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Funcionários"
+    ws.sheet_view.showGridLines = False
+
+    last_col = get_column_letter(num_cols)
+    ws.merge_cells(f"A1:{last_col}1")
+    ws["A1"] = "Funcionários — Santa Colomba Agropecuária"
+    ws["A1"].font = FONT_TITULO
+    ws["A1"].fill = FILL_TITULO
+    ws["A1"].alignment = ALIGN_LEFT_IND
+    ws.row_dimensions[1].height = 28
+
+    filtros_aplicados = []
+    if request.GET.get("q"):
+        filtros_aplicados.append(f'Busca: "{request.GET["q"]}"')
+    if request.GET.get("status"):
+        filtros_aplicados.append(f"Status: {request.GET['status']}")
+    if request.GET.get("pmb"):
+        filtros_aplicados.append(f"PMB: {request.GET['pmb']}")
+    subtitulo = (
+        f"{len(usuarios)} colaborador(es) · Gerado em {timezone.localtime():%d/%m/%Y %H:%M}"
+        + (" · " + " · ".join(filtros_aplicados) if filtros_aplicados else "")
+    )
+    ws.merge_cells(f"A2:{last_col}2")
+    ws["A2"] = subtitulo
+    ws["A2"].font = FONT_SUBTITULO
+    ws["A2"].fill = FILL_SUBTITULO
+    ws["A2"].alignment = ALIGN_LEFT_IND
+
+    header_row = 4
+    for col, titulo in enumerate(headers, start=1):
+        ws.cell(row=header_row, column=col, value=titulo)
+    estilizar_cabecalho(ws, header_row, num_cols)
+
+    linha = header_row + 1
+    for u in usuarios:
+        ws.cell(row=linha, column=1, value=u.matricula or "—")
+        ws.cell(row=linha, column=2, value=u.nome)
+        ws.cell(row=linha, column=3, value=u.get_status_display())
+        ws.cell(row=linha, column=4, value=u.get_pmb_display())
+        ws.cell(row=linha, column=5, value=u.email or "—")
+        ws.cell(row=linha, column=6, value=str(u.centro_custo) if u.centro_custo_id else "—")
+        ws.cell(row=linha, column=7, value=u.localidade.local if u.localidade_id else "—")
+        ws.cell(row=linha, column=8, value=u.funcao.nome if u.funcao_id else "—")
+        ws.cell(row=linha, column=9, value=u.diretor_geral or "—")
+        ws.cell(row=linha, column=10, value=u.diretor or "—")
+        ws.cell(row=linha, column=11, value=u.gestor or "—")
+        ws.cell(row=linha, column=12, value=u.coordenador or "—")
+        ws.cell(row=linha, column=13, value=u.supervisor or "—")
+        c_ini = ws.cell(row=linha, column=14, value=u.data_inicio)
+        c_ini.number_format = DATE_FMT
+        c_fim = ws.cell(row=linha, column=15, value=u.data_termino)
+        c_fim.number_format = DATE_FMT
+        linha += 1
+
+    if usuarios:
+        aplicar_zebra_e_borda(ws, header_row + 1, linha - 1, num_cols)
+        criar_tabela(ws, "TabelaFuncionarios", header_row, linha - 1, num_cols)
+
+    ajustar_larguras(ws, [14, 30, 12, 8, 28, 26, 20, 20, 22, 22, 22, 22, 22, 13, 13])
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    filename = f"funcionarios_{timezone.localtime():%Y%m%d_%H%M}.xlsx"
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 @require_POST

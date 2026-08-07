@@ -770,11 +770,15 @@ def _linha_ok(texto: str) -> str:
 def _proxima_efetiva(preventiva, hoje):
     """
     Data efetiva da próxima preventiva — MESMA regra das telas de preventivas/
-    equipamentos: intervalo (Item.data_limite_preventiva → CheckListModelo.intervalo_dias)
-    a partir da última execução; se não houver, usa o campo data_proxima.
+    equipamentos: agendamento explícito tem prioridade; senão, intervalo
+    (Item.data_limite_preventiva → CheckListModelo.intervalo_dias) a partir da
+    âncora de contagem (última execução OU última reativação do item — o que
+    for mais recente); se não houver, usa o campo data_proxima.
     O campo data_proxima sozinho pode estar desatualizado, por isso não é usado direto.
     Retorna date | None.
     """
+    if preventiva.data_agendamento:
+        return preventiva.data_agendamento
     intervalo = 0
     try:
         intervalo = int(getattr(preventiva.equipamento, "data_limite_preventiva", 0) or 0)
@@ -785,8 +789,9 @@ def _proxima_efetiva(preventiva, hoje):
             intervalo = int(preventiva.checklist_modelo.intervalo_dias or 0)
         except (TypeError, ValueError):
             intervalo = 0
-    if intervalo > 0 and preventiva.data_ultima:
-        return preventiva.data_ultima + timedelta(days=intervalo)
+    base = preventiva.base_contagem()
+    if intervalo > 0 and base:
+        return base + timedelta(days=intervalo)
     return preventiva.data_proxima
 
 
@@ -802,13 +807,15 @@ def preventivas_relevantes(dias: int = 7):
       · vencidas → dias_rest < 0
       · proximas → 0 <= dias_rest <= dias
     """
-    from ProjetoEstoque.models import Preventiva
+    from ProjetoEstoque.models import Preventiva, StatusItemChoices
 
     hoje = timezone.localdate()
     vencidas, proximas = [], []
     for p in (
         Preventiva.objects
-        .filter(pausada=False)
+        # Contagem só corre para item ATIVO — backup/defeito/manutenção/pausado
+        # não contam dias nem entram como vencidas nos alertas.
+        .filter(pausada=False, equipamento__status=StatusItemChoices.ATIVO)
         .select_related("equipamento", "equipamento__localidade", "checklist_modelo")
     ):
         proxima = _proxima_efetiva(p, hoje)

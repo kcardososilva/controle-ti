@@ -19,6 +19,7 @@ from ..models import (
     LoteSeparacao,
     OrdemManutencao,
     SeparacaoItem,
+    SeparacaoItemAnexo,
     StatusOrdemManutencaoChoices,
     StatusSeparacaoChoices,
     TipoSeparacaoChoices,
@@ -215,6 +216,7 @@ def separacao_lote_detail(request, pk):
             "item", "item__categoria", "item__subtipo", "item__localidade",
             "item__centro_custo", "item__locacao", "criado_por", "movimentacao_despacho",
         )
+        .prefetch_related("anexos_nf")
         .order_by("-created_at")
     )
 
@@ -233,6 +235,12 @@ def separacao_lote_detail(request, pk):
 
     documentos = list(lote.documentos_fiscais.order_by("-created_at"))
 
+    kpi = {
+        "total": len(itens),
+        "abertos": sum(1 for i in itens if i.status == StatusSeparacaoChoices.ABERTO),
+        "com_nf": sum(1 for i in itens if i.anexos_nf.all()),
+    }
+
     # Candidatos a entrar no lote: soltos compatíveis (mesmo tipo/fornecedor),
     # só faz sentido oferecer enquanto o lote ainda está aberto.
     candidatos = []
@@ -249,6 +257,7 @@ def separacao_lote_detail(request, pk):
         "itens": itens,
         "candidatos": candidatos,
         "documentos": documentos,
+        "kpi": kpi,
         "rota_list": _ROTAS_LIST.get(lote.tipo, "separacao_envio_list"),
         "titulo": _TITULOS.get(lote.tipo, "Remessa"),
     }
@@ -289,6 +298,49 @@ def separacao_lote_item_desvincular(request, pk):
         messages.success(request, f'"{separacao.item.nome}" removido do lote — voltou para itens soltos.')
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
+
+    return redirect("separacao_lote_detail", pk=lote_pk) if lote_pk else redirect(rota_volta)
+
+
+@login_required
+def separacao_item_nota_fiscal_anexar(request, pk):
+    separacao = get_object_or_404(SeparacaoItem.objects.select_related("lote"), pk=pk)
+    lote_pk = separacao.lote_id
+    rota_volta = _ROTAS_LIST.get(separacao.tipo, "separacao_envio_list")
+    if request.method != "POST":
+        return redirect("separacao_lote_detail", pk=lote_pk) if lote_pk else redirect(rota_volta)
+
+    arquivos = request.FILES.getlist("nf")
+    if not arquivos:
+        messages.error(request, "Selecione ao menos um arquivo de NF.")
+    else:
+        descricao = (request.POST.get("descricao") or "").strip()
+        for arq in arquivos:
+            SeparacaoItemAnexo.objects.create(
+                separacao=separacao,
+                arquivo=arq,
+                descricao=descricao,
+                criado_por=request.user,
+                atualizado_por=request.user,
+            )
+        messages.success(request, f'{len(arquivos)} nota(s) fiscal(is) anexada(s) a "{separacao.item.nome}".')
+
+    return redirect("separacao_lote_detail", pk=lote_pk) if lote_pk else redirect(rota_volta)
+
+
+@login_required
+def separacao_nota_fiscal_excluir(request, pk):
+    anexo = get_object_or_404(SeparacaoItemAnexo.objects.select_related("separacao__lote"), pk=pk)
+    separacao = anexo.separacao
+    lote_pk = separacao.lote_id
+    rota_volta = _ROTAS_LIST.get(separacao.tipo, "separacao_envio_list")
+    if request.method != "POST":
+        return redirect("separacao_lote_detail", pk=lote_pk) if lote_pk else redirect(rota_volta)
+
+    if anexo.arquivo:
+        anexo.arquivo.delete(save=False)
+    anexo.delete()
+    messages.success(request, "Nota fiscal excluída.")
 
     return redirect("separacao_lote_detail", pk=lote_pk) if lote_pk else redirect(rota_volta)
 

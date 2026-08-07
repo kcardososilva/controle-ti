@@ -4,6 +4,14 @@
 {% block page_title %}Solicitações de Compra{% endblock %}
 {% block page_subtitle %}Quadro Kanban — Datasul (aprovação) → Almoxarifado{% endblock %}
 
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Solicitações de Compra</span>
+</nav>
+{% endblock %}
+
 {% block extra_css %}
 <style>
 :where(.kan-page) {
@@ -45,7 +53,7 @@
   padding: .55rem .9rem; border: 1px solid var(--kan-border); border-radius: var(--kan-radius-md);
   background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); font-size: .82rem;
 }
-.kan-info-count { font-weight: 650; color: var(--kan-text); white-space: nowrap; }
+.kan-info-count { font-weight: 650; color: var(--kan-text); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .kan-info-sep { color: var(--kan-border2); }
 .kan-info-bar a { color: var(--kan-muted); text-decoration: none; font-weight: 600; white-space: nowrap; }
 .kan-info-bar a:hover { color: var(--kan-primary); }
@@ -80,7 +88,7 @@
 
 .kan-btn, .kan-btn-primary, .kan-btn-secondary {
   min-height: 2.1rem; display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
-  padding: .4rem .85rem; border-radius: var(--kan-radius-pill); border: 1px solid transparent;
+  padding: .4rem .85rem; border-radius: var(--kan-radius-sm); border: 1px solid transparent;
   font-size: .78rem; font-weight: 600; text-decoration: none; cursor: pointer; white-space: nowrap;
   transition: background var(--kan-transition), border-color var(--kan-transition);
 }
@@ -169,12 +177,11 @@
   position: relative; padding: .7rem .75rem .6rem; border-radius: var(--kan-radius-sm);
   background: var(--kan-surface); border: 1px solid var(--kan-border);
   box-shadow: var(--kan-shadow-sm); cursor: grab; text-decoration: none; color: inherit; display: block;
-  transition: box-shadow var(--kan-transition), transform var(--kan-transition), border-color var(--kan-transition);
+  transition: box-shadow var(--kan-transition), border-color var(--kan-transition);
 }
-.kan-card:hover { box-shadow: var(--kan-shadow-md); border-color: var(--kan-border2); transform: translateY(-1px); }
+.kan-card:hover { box-shadow: var(--kan-shadow-md); border-color: var(--kan-border2); }
 .kan-card:active { cursor: grabbing; }
 .kan-card[draggable="false"] { cursor: default; }
-.kan-card[draggable="false"]:hover { transform: none; }
 .kan-card.is-dragging { opacity: .45; }
 .kan-card.kan-card-hidden { display: none; }
 .kan-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-bottom: .4rem; }
@@ -243,7 +250,7 @@
 <div class="kan-page">
 
   <section class="kan-info-bar" aria-label="Resumo">
-    <span class="kan-info-count">{{ total_itens }} item{{ total_itens|pluralize:"ns" }} no quadro</span>
+    <span class="kan-info-count">{{ total_itens }} it{{ total_itens|pluralize:"em,ens" }} no quadro</span>
     <span class="kan-info-sep">·</span>
     <a href="{% url 'requisicoes_list' %}" style="--info-ic:#475569"><i class="fa fa-folder-open" aria-hidden="true"></i>Requisições</a>
     <a href="{% url 'requisicao_itens_list' %}" style="--info-ic:#4338ca"><i class="fa fa-list" aria-hidden="true"></i>Itens Solicitados</a>
@@ -611,6 +618,18 @@
   inicializarBoard();
   inicializarSelecao();
   aplicarLimiteColunas();
+
+  // Atalho "/" foca a busca (padrão de listas do sistema) — ignora quando o
+  // foco já está num campo de formulário, pra não atrapalhar digitação.
+  const campoBusca = document.getElementById('id_q');
+  document.addEventListener('keydown', e => {
+    if (e.key !== '/' || !campoBusca) return;
+    const alvo = document.activeElement;
+    const editando = alvo && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.tagName === 'SELECT' || alvo.isContentEditable);
+    if (editando) return;
+    e.preventDefault();
+    campoBusca.focus();
+  });
 })();
 </script>
 {% endblock %}

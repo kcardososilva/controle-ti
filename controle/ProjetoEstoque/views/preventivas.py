@@ -27,6 +27,7 @@ from ..models import (
     PreventivaResposta,
     SimNaoChoices,
     StatusItemChoices,
+    sincronizar_preventivas_com_status,
 )
 
 
@@ -145,7 +146,9 @@ def _aplicar_status_preventiva(preventiva: Preventiva, hoje: date | None = None)
     """Anexa propriedades calculadas em memória para uso nos templates."""
     hoje = hoje or timezone.localdate()
     intervalo, origem = _intervalo_preventiva(preventiva.equipamento, preventiva.checklist_modelo)
-    proxima_auto = _calc_proxima(preventiva.data_ultima, preventiva.data_proxima, intervalo)
+    # Âncora da contagem: última execução OU última reativação (o mais recente),
+    # para que a contagem recomece quando o item volta a ativo.
+    proxima_auto = _calc_proxima(preventiva.base_contagem(), preventiva.data_proxima, intervalo)
     # data_agendamento sobrepõe o cálculo automático; marca a diferença para o template
     agendamento = getattr(preventiva, "data_agendamento", None)
     proxima = agendamento if agendamento else proxima_auto
@@ -155,7 +158,14 @@ def _aplicar_status_preventiva(preventiva: Preventiva, hoje: date | None = None)
     preventiva.proxima_calc = proxima
     preventiva.tem_agendamento = bool(agendamento)
 
-    if getattr(preventiva, "pausada", False):
+    # Contagem só corre para item ATIVO: cobre também o caso de a flag
+    # `pausada` estar defasada em relação ao status atual do equipamento.
+    item_fora_de_operacao = (
+        preventiva.equipamento_id is not None
+        and preventiva.equipamento.status != StatusItemChoices.ATIVO
+    )
+
+    if getattr(preventiva, "pausada", False) or item_fora_de_operacao:
         preventiva.status_visual = "pausada"
         preventiva.status_label = "Pausada"
         preventiva.status_css = "st-pausada"
@@ -421,16 +431,6 @@ def preventiva_sincronizar_programacao(request):
         .order_by("subtipo__nome", "nome")
     )
 
-    _STATUS_PAUSANTES = {
-        StatusItemChoices.PAUSADO,
-        StatusItemChoices.BACKUP,
-        StatusItemChoices.ESTOQUE,
-        StatusItemChoices.MANUTENCAO,
-        StatusItemChoices.DEFEITO,
-        StatusItemChoices.DESCARTE,
-        StatusItemChoices.DEVOLVIDO,
-    }
-
     criadas = 0
     existentes = 0
     sem_checklist = 0
@@ -484,14 +484,11 @@ def preventiva_sincronizar_programacao(request):
                     prev.save(update_fields=["data_proxima", "dentro_do_prazo", "atualizado_por", "updated_at"])
                     resync += 1
 
-            # Sincroniza estado de pausa conforme status atual do equipamento.
-            item_pausante = item.status in _STATUS_PAUSANTES
-            if item_pausante and not prev.pausada:
-                prev.pausar()
-                pausadas_sync += 1
-            elif not item_pausante and prev.pausada:
-                prev.retomar()
-                retomadas_sync += 1
+            # Sincroniza estado de pausa conforme status atual do equipamento
+            # (mesma regra do signal automático de troca de status).
+            n_pau, n_ret = sincronizar_preventivas_com_status(item)
+            pausadas_sync += n_pau
+            retomadas_sync += n_ret
 
     messages.success(
         request,
@@ -574,7 +571,7 @@ def preventiva_list(request):
         _aplicar_status_preventiva(preventiva, hoje)
 
         # Reclassifica atenção conforme a janela escolhida pelo usuário (ignora pausadas).
-        if not getattr(preventiva, "pausada", False) and preventiva.proxima_calc:
+        if preventiva.status_visual != "pausada" and preventiva.proxima_calc:
             status = _classificar_programacao(preventiva.proxima_calc, hoje, janela_alerta)
             preventiva.status_visual = status["status"]
             preventiva.status_label = status["label"]
@@ -595,7 +592,7 @@ def preventiva_list(request):
         else:
             kpi["sem_data"] += 1
 
-        if not getattr(preventiva, "pausada", False) and preventiva.proxima_calc and 0 <= (preventiva.proxima_calc - hoje).days <= 30:
+        if preventiva.status_visual != "pausada" and preventiva.proxima_calc and 0 <= (preventiva.proxima_calc - hoje).days <= 30:
             kpi["proximas_30"] += 1
 
         processadas.append(preventiva)
@@ -673,6 +670,16 @@ def preventiva_start(request, item_id=None):
                     if not preventiva.data_proxima and not preventiva.data_ultima:
                         preventiva.data_proxima = data_inicial
                     preventiva.save(update_fields=["data_proxima", "atualizado_por", "updated_at"])
+
+                # Item fora de operação: preventiva já nasce com a contagem
+                # suspensa — começa a contar quando o item voltar a Ativo.
+                if item.status != StatusItemChoices.ATIVO and not preventiva.pausada:
+                    preventiva.pausar()
+                    messages.info(
+                        request,
+                        f"O equipamento está em '{item.get_status_display()}': a contagem da "
+                        "preventiva ficará suspensa e iniciará quando ele voltar a Ativo.",
+                    )
 
             messages.success(
                 request,
@@ -1307,7 +1314,11 @@ def preventiva_agendadas(request):
     base_qs = Preventiva.objects.filter(data_agendamento__isnull=False)
 
     kpi_total    = base_qs.count()
-    kpi_vencidas = base_qs.filter(data_agendamento__lt=hoje).count()
+    # Item fora de operação não conta como agendamento vencido
+    kpi_vencidas = base_qs.filter(
+        data_agendamento__lt=hoje, pausada=False,
+        equipamento__status=StatusItemChoices.ATIVO,
+    ).count()
     kpi_hoje     = base_qs.filter(data_agendamento=hoje).count()
     kpi_semana   = base_qs.filter(
         data_agendamento__gte=hoje,

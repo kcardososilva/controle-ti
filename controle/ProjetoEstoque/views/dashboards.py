@@ -784,7 +784,7 @@ def _get_preventiva_dashboard_data(request, limit_vencidas=50):
     proximas = sorted(
         [p for p in all_preventivas
          if p.proxima_calc and 0 <= (p.proxima_calc - today).days <= 30
-         and not getattr(p, "pausada", False)],
+         and p.status_visual != "pausada"],
         key=lambda p: p.proxima_calc,
     )
     for p in proximas:

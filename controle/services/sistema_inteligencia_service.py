@@ -26,6 +26,7 @@ from ProjetoEstoque.models import (
     Usuario,
     MovimentacaoItem,
     Preventiva,
+    StatusItemChoices,
     Licenca,
     LicencaLote,
     MovimentacaoLicenca,
@@ -959,7 +960,12 @@ class SistemaInteligenciaService:
                 )
 
         for preventiva in Preventiva.objects.select_related("equipamento", "checklist_modelo"):
-            if preventiva.data_proxima and preventiva.data_proxima < self.today:
+            # Item fora de operação não conta preventiva vencida (contagem suspensa)
+            preventiva_ativa = (
+                not preventiva.pausada
+                and preventiva.equipamento.status == StatusItemChoices.ATIVO
+            )
+            if preventiva_ativa and preventiva.data_proxima and preventiva.data_proxima < self.today:
                 self.add_issue(
                     issues,
                     "alto",

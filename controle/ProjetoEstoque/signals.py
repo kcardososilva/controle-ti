@@ -9,10 +9,10 @@ fornecedor responsável. Conectado em apps.py (ready()).
 import logging
 
 from django.db import transaction
-from django.db.models.signals import pre_save, post_save
+from django.db.models.signals import pre_save, post_save, post_delete
 from django.dispatch import receiver
 
-from .models import Item, Locacao, StatusItemChoices
+from .models import Item, ItemPadraoDatasul, Locacao, RequisicaoItem, StatusItemChoices, Usuario
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,22 @@ def _item_sincronizar_locacao(sender, instance, created, **kwargs):
 
 
 @receiver(post_save, sender=Item)
+def _item_sincronizar_preventivas(sender, instance, created, **kwargs):
+    """Contagem de preventiva só corre para item ATIVO: qualquer transição de
+    status pausa (sai de ativo) ou retoma reiniciando o intervalo (volta a
+    ativo) as preventivas do item — ver sincronizar_preventivas_com_status."""
+    old = getattr(instance, "_old_status", None)
+    if created or old == instance.status:
+        return
+    try:
+        from .models import sincronizar_preventivas_com_status
+        sincronizar_preventivas_com_status(instance)
+    except Exception:
+        # A sincronização de preventivas nunca pode quebrar o save do item.
+        logger.warning("Falha ao sincronizar pausa de preventivas", exc_info=True)
+
+
+@receiver(post_save, sender=Item)
 def _item_notificar_defeito(sender, instance, created, **kwargs):
     """Ao equipamento TRANSICIONAR para Defeito (não na criação), avisa por
     e-mail o(s) login(s) do fornecedor configurados para receber esse aviso
@@ -62,6 +78,67 @@ def _item_notificar_defeito(sender, instance, created, **kwargs):
             logger.warning("Falha ao notificar fornecedor sobre item em Defeito", exc_info=True)
 
     transaction.on_commit(_mail)
+
+
+@receiver(post_save, sender=Usuario)
+def _usuario_sincronizar_fts(sender, instance, **kwargs):
+    """Mantém a tabela virtual FTS5 (usuario_busca_fts) em dia para a busca
+    por relevância em /usuarios/ — ver services/busca_fts.py."""
+    try:
+        from services.busca_fts import sincronizar_usuario_fts
+        sincronizar_usuario_fts(instance)
+    except Exception:
+        # Índice de busca é auxiliar: nunca pode quebrar o save do usuário.
+        logger.warning("Falha ao sincronizar usuário no índice FTS", exc_info=True)
+
+
+@receiver(post_delete, sender=Usuario)
+def _usuario_remover_fts(sender, instance, **kwargs):
+    try:
+        from services.busca_fts import remover_usuario_fts
+        remover_usuario_fts(instance.pk)
+    except Exception:
+        logger.warning("Falha ao remover usuário do índice FTS", exc_info=True)
+
+
+@receiver(post_save, sender=RequisicaoItem)
+def _requisicao_item_sincronizar_fts(sender, instance, **kwargs):
+    """Mantém a tabela virtual FTS5 (requisicaoitem_busca_fts) em dia para a
+    busca por relevância em /requisicoes/itens/ — ver services/busca_fts.py."""
+    try:
+        from services.busca_fts import sincronizar_requisicao_item_fts
+        sincronizar_requisicao_item_fts(instance)
+    except Exception:
+        logger.warning("Falha ao sincronizar item de requisição no índice FTS", exc_info=True)
+
+
+@receiver(post_delete, sender=RequisicaoItem)
+def _requisicao_item_remover_fts(sender, instance, **kwargs):
+    try:
+        from services.busca_fts import remover_requisicao_item_fts
+        remover_requisicao_item_fts(instance.pk)
+    except Exception:
+        logger.warning("Falha ao remover item de requisição do índice FTS", exc_info=True)
+
+
+@receiver(post_save, sender=ItemPadraoDatasul)
+def _item_padrao_sincronizar_fts(sender, instance, **kwargs):
+    """Mantém a tabela virtual FTS5 (itempadraodatasul_busca_fts) em dia para
+    a busca por relevância em /requisicoes/catalogo/ — ver services/busca_fts.py."""
+    try:
+        from services.busca_fts import sincronizar_item_padrao_fts
+        sincronizar_item_padrao_fts(instance)
+    except Exception:
+        logger.warning("Falha ao sincronizar item padrão no índice FTS", exc_info=True)
+
+
+@receiver(post_delete, sender=ItemPadraoDatasul)
+def _item_padrao_remover_fts(sender, instance, **kwargs):
+    try:
+        from services.busca_fts import remover_item_padrao_fts
+        remover_item_padrao_fts(instance.pk)
+    except Exception:
+        logger.warning("Falha ao remover item padrão do índice FTS", exc_info=True)
 
 
 @receiver(post_save, sender=Locacao)
