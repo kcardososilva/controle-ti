@@ -42,10 +42,13 @@
   --kan-shadow-md:     var(--shadow-md,           0 4px 12px rgba(0,0,0,.06));
   --kan-transition:    var(--transition-fast,     160ms ease);
   --kan-col-w:         17.5rem;
+  /* Leve inclinação para Segoe UI (Office) nesta tela, com fallback pro
+     stack padrão do app — troca não é global, só escopada aqui. */
+  --kan-font:          "Segoe UI", var(--font-display);
 }
 
 .kan-page, .kan-page * { box-sizing: border-box; min-width: 0; }
-.kan-page { display: grid; gap: .75rem; color: var(--kan-text); font-size: .92rem; }
+.kan-page { display: grid; gap: .75rem; color: var(--kan-text); font-size: .92rem; font-family: var(--kan-font); }
 
 /* ── Barra de informação (sem ícone/gradiente — só o essencial) ── */
 .kan-info-bar {
@@ -53,7 +56,7 @@
   padding: .55rem .9rem; border: 1px solid var(--kan-border); border-radius: var(--kan-radius-md);
   background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); font-size: .82rem;
 }
-.kan-info-count { font-weight: 650; color: var(--kan-text); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kan-info-count { font-weight: 600; color: var(--kan-text); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .kan-info-sep { color: var(--kan-border2); }
 .kan-info-bar a { color: var(--kan-muted); text-decoration: none; font-weight: 600; white-space: nowrap; }
 .kan-info-bar a:hover { color: var(--kan-primary); }
@@ -66,6 +69,35 @@
    fundo azul — reforça a cor branca aqui pra não perder contraste/vida. */
 .kan-info-bar .kan-btn-primary,
 .kan-info-bar .kan-btn-primary:hover { margin-left: auto; color: #fff; }
+
+/* ── Barra de progresso do quadro (estilo "plano" do MS Planner) — os
+   segmentos reusam a MESMA cor de coluna (--col-accent, ver abaixo), então
+   a barra é literalmente uma prévia em miniatura do board. ── */
+.kan-progress {
+  display: flex; align-items: center; gap: .8rem;
+  padding: .6rem .9rem; border: 1px solid var(--kan-border); border-radius: var(--kan-radius-md);
+  background: var(--kan-surface); box-shadow: var(--kan-shadow-sm);
+}
+.kan-progress-track {
+  flex: 1; display: flex; height: .45rem; min-width: 6rem;
+  border-radius: var(--kan-radius-pill); overflow: hidden; background: var(--kan-muted-surface);
+}
+.kan-progress-seg {
+  display: block; height: 100%; width: 0;
+  background: var(--col-accent, var(--kan-soft));
+  transition: width 700ms cubic-bezier(.22,.61,.36,1);
+}
+.kan-progress-label {
+  flex: 0 0 auto; display: flex; align-items: baseline; gap: .3rem;
+  font-size: .78rem; color: var(--kan-muted); white-space: nowrap;
+}
+.kan-progress-label strong {
+  color: var(--kan-success); font-size: .95rem; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+@media (max-width: 30rem) {
+  .kan-progress { flex-wrap: wrap; }
+  .kan-progress-track { flex-basis: 100%; }
+}
 
 /* ── Toolbar (filtros) ── */
 .kan-toolbar {
@@ -102,7 +134,7 @@
 .kan-selection-bar {
   display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .7rem; padding: .55rem .9rem;
   border: 1px solid var(--kan-primary); border-radius: var(--kan-radius-md);
-  background: var(--kan-primary-soft); color: var(--kan-primary); font-size: .82rem; font-weight: 650;
+  background: var(--kan-primary-soft); color: var(--kan-primary); font-size: .82rem; font-weight: 600;
 }
 .kan-selection-bar[hidden] { display: none; }
 /* form/select/botões precisam de flex-wrap + flex-shrink:0 nos botões —
@@ -127,15 +159,14 @@
 .kan-board { display: flex; gap: .75rem; min-width: max-content; align-items: flex-start; }
 
 /* Cor de identidade de cada coluna — único lugar de onde a cor "nasce":
-   o dot do cabeçalho e o footer dos cards (avatar/data) herdam daqui via
+   o dot do cabeçalho, o footer dos cards (avatar/data) E o segmento
+   correspondente na barra de progresso do topo herdam daqui via
    var(--col-accent). Nada mais no card carrega cor própria (chips neutros). */
-.kan-col[data-coluna="backlog"]             { --col-accent: #8e8e93; }
-.kan-col[data-coluna="rascunho"]            { --col-accent: #a1a1a6; }
-.kan-col[data-coluna="solicitado"]          { --col-accent: #64748b; }
-.kan-col[data-coluna="aprovacao_pendente"]  { --col-accent: var(--kan-warning); }
-.kan-col[data-coluna="aprovados"]           { --col-accent: var(--kan-success); }
-.kan-col[data-coluna="recebidos"]           { --col-accent: #8b5cf6; }
-.kan-col[data-coluna="pausados_cancelados"] { --col-accent: #98989d; }
+.kan-col[data-coluna="rascunho"],            .kan-progress-seg[data-coluna="rascunho"]            { --col-accent: #a1a1a6; }
+.kan-col[data-coluna="aprovacao_pendente"],  .kan-progress-seg[data-coluna="aprovacao_pendente"]  { --col-accent: var(--kan-warning); }
+.kan-col[data-coluna="aprovados"],           .kan-progress-seg[data-coluna="aprovados"]           { --col-accent: var(--kan-success); }
+.kan-col[data-coluna="recebidos"],           .kan-progress-seg[data-coluna="recebidos"]           { --col-accent: #8b5cf6; }
+.kan-col[data-coluna="pausados_cancelados"], .kan-progress-seg[data-coluna="pausados_cancelados"] { --col-accent: #98989d; }
 
 .kan-col {
   width: var(--kan-col-w); flex: 0 0 var(--kan-col-w); display: flex; flex-direction: column;
@@ -148,7 +179,7 @@
   padding: .65rem .75rem; border-bottom: 1px solid var(--kan-border);
 }
 .kan-col-dot { width: .5rem; height: .5rem; flex: 0 0 .5rem; border-radius: 999px; background: var(--col-accent, var(--kan-soft)); }
-.kan-col-head h2 { flex: 1; min-width: 0; margin: 0; font-size: .76rem; font-weight: 700; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kan-col-head h2 { flex: 1; min-width: 0; margin: 0; font-size: .76rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kan-col-count {
   display: inline-flex; align-items: center; justify-content: center; min-width: 1.3rem; height: 1.3rem;
   padding: 0 .35rem; border-radius: var(--kan-radius-pill); background: var(--kan-surface);
@@ -167,7 +198,7 @@
 .kan-col-more {
   display: flex; align-items: center; justify-content: center; gap: .4rem; width: 100%;
   margin-top: .1rem; padding: .5rem; border-radius: var(--kan-radius-sm); border: 1.5px dashed var(--kan-border2);
-  background: transparent; color: var(--kan-muted); font-size: .72rem; font-weight: 650; cursor: pointer;
+  background: transparent; color: var(--kan-muted); font-size: .72rem; font-weight: 600; cursor: pointer;
   transition: background var(--kan-transition), color var(--kan-transition), border-color var(--kan-transition);
 }
 .kan-col-more:hover { background: var(--kan-hover); color: var(--kan-text); border-color: var(--kan-border2); }
@@ -185,7 +216,7 @@
 .kan-card.is-dragging { opacity: .45; }
 .kan-card.kan-card-hidden { display: none; }
 .kan-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-bottom: .4rem; }
-.kan-card-title { margin: 0 0 .3rem; font-size: .82rem; font-weight: 650; color: var(--kan-text); line-height: 1.32; }
+.kan-card-title { margin: 0 0 .3rem; font-size: .82rem; font-weight: 600; color: var(--kan-text); line-height: 1.32; }
 .kan-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; font-size: .68rem; color: var(--kan-muted); }
 .kan-card-select { position: absolute; top: .55rem; right: .55rem; width: 1rem; height: 1rem; }
 
@@ -194,7 +225,7 @@
 .kan-card-footer { display: flex; align-items: center; gap: .4rem; margin-top: .5rem; padding-top: .45rem; border-top: 1px solid var(--kan-border); }
 .kan-card-avatar {
   display: inline-flex; align-items: center; justify-content: center; flex: 0 0 1.35rem;
-  width: 1.35rem; height: 1.35rem; border-radius: 999px; font-size: .62rem; font-weight: 750;
+  width: 1.35rem; height: 1.35rem; border-radius: 999px; font-size: .62rem; font-weight: 700;
   background: color-mix(in srgb, var(--col-accent, var(--kan-muted)) 16%, transparent);
   color: var(--col-accent, var(--kan-muted));
 }
@@ -204,7 +235,7 @@
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .kan-card-date {
-  flex: 0 0 auto; display: inline-flex; align-items: center; gap: .28rem; font-size: .66rem; font-weight: 650;
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: .28rem; font-size: .66rem; font-weight: 600;
   color: var(--col-accent, var(--kan-soft));
 }
 .kan-card-date i { font-size: .58rem; }
@@ -214,7 +245,7 @@
    disponível) mantêm cor própria, por serem sinais operacionais reais. */
 .kan-badge {
   display: inline-flex; align-items: center; gap: .25rem; padding: .12rem .45rem;
-  border-radius: var(--kan-radius-pill); font-size: .64rem; font-weight: 650; white-space: nowrap;
+  border-radius: var(--kan-radius-pill); font-size: .64rem; font-weight: 600; white-space: nowrap;
   background: var(--kan-muted-surface); color: var(--kan-muted); border: 1px solid var(--kan-border2);
 }
 .kan-badge-warning { background: var(--kan-warning-soft); color: var(--kan-warning); border-color: transparent; }
@@ -240,8 +271,34 @@
   .kan-btn, .kan-btn-primary, .kan-btn-secondary { width: 100%; }
   .kan-info-bar { justify-content: space-between; }
 }
+/* ── Celebração leve ao receber um item (único momento "animado" do
+   quadro — contextual, dispara só quando um card entra em "Recebidos") ── */
+.kan-toast-host { position: fixed; bottom: 1.25rem; right: 1.25rem; z-index: 9999; display: flex; flex-direction: column; gap: .5rem; align-items: flex-end; }
+.kan-toast {
+  display: flex; align-items: center; gap: .55rem;
+  padding: .65rem .95rem; border-radius: var(--kan-radius-sm); color: #fff;
+  font-size: .82rem; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,.2); max-width: 22rem;
+  animation: kan-toast-in 220ms cubic-bezier(.22,.61,.36,1);
+}
+.kan-toast-erro { background: var(--kan-danger, #ff3b30); }
+.kan-toast-sucesso { background: var(--kan-success, #34c759); }
+.kan-toast i { font-size: .9rem; }
+@keyframes kan-toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+.kan-confetti-host { position: fixed; z-index: 9998; pointer-events: none; width: 0; height: 0; }
+.kan-confetti-piece {
+  position: absolute; top: 0; left: 0; width: .4rem; height: .4rem; border-radius: 2px;
+  background: var(--pc, var(--kan-success));
+  animation: kan-confetti-pop 650ms cubic-bezier(.22,.61,.36,1) forwards;
+}
+@keyframes kan-confetti-pop {
+  0%   { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(.5); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .kan-page *, .kan-page *::before, .kan-page *::after { transition: none !important; }
+  .kan-toast, .kan-confetti-piece { animation: none !important; }
 }
 </style>
 {% endblock %}
@@ -250,7 +307,7 @@
 <div class="kan-page">
 
   <section class="kan-info-bar" aria-label="Resumo">
-    <span class="kan-info-count">{{ total_itens }} it{{ total_itens|pluralize:"em,ens" }} no quadro</span>
+    <span class="kan-info-count"><span id="kanTotalCount" data-count="{{ total_itens }}">{{ total_itens }}</span> it{{ total_itens|pluralize:"em,ens" }} no quadro</span>
     <span class="kan-info-sep">·</span>
     <a href="{% url 'requisicoes_list' %}" style="--info-ic:#475569"><i class="fa fa-folder-open" aria-hidden="true"></i>Requisições</a>
     <a href="{% url 'requisicao_itens_list' %}" style="--info-ic:#4338ca"><i class="fa fa-list" aria-hidden="true"></i>Itens Solicitados</a>
@@ -260,12 +317,29 @@
     <a href="{% url 'requisicao_item_create' %}" class="kan-btn-primary"><i class="fa fa-plus" aria-hidden="true"></i>Incluir Item</a>
   </section>
 
+  {% if total_itens %}
+  <section class="kan-progress" aria-label="Progresso do quadro">
+    <div class="kan-progress-track" role="img" aria-label="{{ progresso_pct }}% dos itens já recebidos">
+      {% for coluna in colunas %}
+        {% if coluna.total %}
+        <span class="kan-progress-seg" data-coluna="{{ coluna.chave }}"
+              data-pct="{% widthratio coluna.total total_itens 100 %}"
+              title="{{ coluna.titulo }}: {{ coluna.total }}"></span>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <span class="kan-progress-label">
+      <strong id="kanProgressoPct">{{ progresso_pct }}%</strong> recebido{{ recebidos_total|pluralize }} · {{ recebidos_total }}/{{ total_itens }}
+    </span>
+  </section>
+  {% endif %}
+
   <section class="kan-toolbar" aria-label="Filtros">
     <form method="get" id="kanFilterForm" autocomplete="off">
       <div class="kan-filter-grid">
         <div class="kan-field">
           <label for="id_q">Pesquisar</label>
-          <input id="id_q" type="text" name="q" value="{{ q|default:'' }}" placeholder="Buscar por descrição ou código...">
+          <input id="id_q" type="text" name="q" value="{{ q|default:'' }}" placeholder="Buscar por descrição, código ou nº da requisição...">
         </div>
         <div class="kan-field">
           <label for="id_tipo">Tipo</label>
@@ -387,20 +461,75 @@
 (function () {
   const CSRF_TOKEN = "{{ csrf_token }}";
 
-  // ── Toast simples (sem lib externa) ──────────────────────────────────
-  function mostrarToast(mensagem) {
+  // ── Toast (sem lib externa) — 'erro' (padrão) ou 'sucesso' ────────────
+  function mostrarToast(mensagem, tipo) {
+    tipo = tipo === 'sucesso' ? 'sucesso' : 'erro';
     let host = document.getElementById('kanToastHost');
     if (!host) {
       host = document.createElement('div');
       host.id = 'kanToastHost';
-      host.style.cssText = 'position:fixed;bottom:1.25rem;right:1.25rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;';
+      host.className = 'kan-toast-host';
       document.body.appendChild(host);
     }
     const el = document.createElement('div');
-    el.textContent = mensagem;
-    el.style.cssText = 'background:var(--danger,#ff3b30);color:#fff;padding:.65rem .95rem;border-radius:10px;font-size:.82rem;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:22rem;';
+    el.className = 'kan-toast kan-toast-' + tipo;
+    const icone = tipo === 'sucesso' ? 'fa-circle-check' : 'fa-triangle-exclamation';
+    el.innerHTML = `<i class="fa-solid ${icone}" aria-hidden="true"></i><span></span>`;
+    el.querySelector('span').textContent = mensagem;
     host.appendChild(el);
-    setTimeout(() => el.remove(), 5000);
+    setTimeout(() => el.remove(), tipo === 'sucesso' ? 3200 : 5000);
+  }
+
+  // ── Celebração leve ao receber um item — único momento animado do
+  // quadro: confete contido perto do card + toast de sucesso. Ignorado se
+  // o usuário pedir menos movimento (prefers-reduced-motion). ────────────
+  const reduzMovimento = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function celebrarRecebimento(cardEl) {
+    mostrarToast('Item recebido com sucesso.', 'sucesso');
+    if (reduzMovimento || !cardEl) return;
+    const rect = cardEl.getBoundingClientRect();
+    const host = document.createElement('div');
+    host.className = 'kan-confetti-host';
+    host.style.left = (rect.left + rect.width / 2) + 'px';
+    host.style.top = (rect.top + Math.min(24, rect.height / 2)) + 'px';
+    const cores = ['#34c759', '#0071e3', '#ff9500', '#8b5cf6'];
+    for (let i = 0; i < 10; i++) {
+      const p = document.createElement('span');
+      p.className = 'kan-confetti-piece';
+      const ang = (Math.PI * 2 * i) / 10 + Math.random() * 0.4;
+      const dist = 34 + Math.random() * 22;
+      p.style.setProperty('--dx', Math.cos(ang) * dist + 'px');
+      p.style.setProperty('--dy', Math.sin(ang) * dist - 14 + 'px');
+      p.style.setProperty('--rot', Math.round(Math.random() * 240 - 120) + 'deg');
+      p.style.setProperty('--pc', cores[i % cores.length]);
+      host.appendChild(p);
+    }
+    document.body.appendChild(host);
+    setTimeout(() => host.remove(), 700);
+  }
+
+  // ── Contador (0 → N) e barra de progresso do quadro — um "pop" só na
+  // carga/atualização, nunca em loop contínuo; respeita reduced-motion. ──
+  function contarAte(el) {
+    if (!el) return;
+    const alvo = parseInt(el.dataset.count || el.textContent, 10) || 0;
+    if (reduzMovimento || alvo === 0) { el.textContent = alvo; return; }
+    const duracao = 500;
+    const inicio = performance.now();
+    (function passo(agora) {
+      const t = Math.min(1, (agora - inicio) / duracao);
+      el.textContent = Math.round(alvo * (1 - Math.pow(1 - t, 3)));
+      if (t < 1) requestAnimationFrame(passo);
+    })(inicio);
+  }
+
+  function animarProgressoBoard() {
+    document.querySelectorAll('.kan-progress-seg').forEach(seg => {
+      const pct = seg.dataset.pct || '0';
+      requestAnimationFrame(() => requestAnimationFrame(() => { seg.style.width = pct + '%'; }));
+    });
+    contarAte(document.getElementById('kanTotalCount'));
   }
 
   // ── Seleção pra agrupar em Requisição (só itens do mesmo tipo) ───────
@@ -571,6 +700,7 @@
             card.draggable = true;
             mostrarToast(data.erro || 'Não foi possível mover este item.');
           } else {
+            if (col.dataset.coluna === 'recebidos') celebrarRecebimento(card);
             await atualizarBoard();
           }
         } catch (err) {
@@ -601,9 +731,22 @@
       const novoWrap = doc.querySelector('.kan-board-wrap');
       if (!novoWrap) throw new Error('board-wrap ausente na resposta');
       wrap.replaceWith(novoWrap);
+
+      // Contador e barra de progresso não vivem dentro do board-wrap —
+      // precisam do próprio swap pra refletir a coluna que acabou de mudar.
+      const infoAtual = document.querySelector('.kan-info-bar');
+      const infoNovo = doc.querySelector('.kan-info-bar');
+      if (infoAtual && infoNovo) infoAtual.replaceWith(infoNovo);
+      const progAtual = document.querySelector('.kan-progress');
+      const progNovo = doc.querySelector('.kan-progress');
+      if (progAtual && progNovo) progAtual.replaceWith(progNovo);
+      else if (progAtual && !progNovo) progAtual.remove();
+      else if (!progAtual && progNovo) document.querySelector('.kan-info-bar')?.after(progNovo);
+
       inicializarBoard();
       inicializarSelecao();
       aplicarLimiteColunas();
+      animarProgressoBoard();
       // A seleção pra agrupar não sobrevive a um card sendo movido — os
       // checkboxes voltam frescos (desmarcados) do HTML recém-buscado.
       bar.hidden = true;
@@ -618,6 +761,7 @@
   inicializarBoard();
   inicializarSelecao();
   aplicarLimiteColunas();
+  animarProgressoBoard();
 
   // Atalho "/" foca a busca (padrão de listas do sistema) — ignora quando o
   // foco já está num campo de formulário, pra não atrapalhar digitação.

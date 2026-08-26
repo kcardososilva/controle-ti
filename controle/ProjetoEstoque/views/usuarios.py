@@ -768,6 +768,30 @@ def _historico_licencas_usuario(usuario):
     )
 
 
+def _historico_itens_usuario(usuario, limite=40):
+    """
+    Linha do tempo de posse de equipamentos do colaborador: toda movimentação
+    de item em que ele foi o usuário envolvido (entrega, devolução, baixa ou
+    transferência de titularidade) — inclusive equipamentos que já não estão
+    mais com ele. Cobre tanto itens de detentor único quanto compartilhados:
+    ambos os fluxos preenchem `MovimentacaoItem.usuario` com o colaborador
+    (ver `_sync_vinculo_compartilhado` em movimentacao_service.py), então um
+    filtro simples por `usuario` já reconstrói o histórico completo sem
+    precisar cruzar com `ItemColaborador`.
+    """
+    return (
+        MovimentacaoItem.objects
+        .filter(usuario=usuario)
+        .select_related(
+            "item", "item__subtipo",
+            "localidade_origem", "localidade_destino",
+            "centro_custo_origem", "centro_custo_destino",
+            "criado_por",
+        )
+        .order_by("-created_at", "-id")[:limite]
+    )
+
+
 @login_required
 def usuario_detail(request, pk):
     usuario = get_object_or_404(
@@ -778,6 +802,8 @@ def usuario_detail(request, pk):
     itens_ativos = _itens_ativos_do_usuario(usuario)
     licencas_ativas, total_lic_mensal, total_lic_anual = _licencas_ativas_do_usuario(usuario)
     historico_licencas = _historico_licencas_usuario(usuario)
+    historico_itens = _historico_itens_usuario(usuario)
+    itens_ativos_ids = {i.pk for i in itens_ativos}
 
     total_itens_loc = sum(
         i.custo_calc for i in itens_ativos
@@ -814,8 +840,10 @@ def usuario_detail(request, pk):
         "prazo_vencido_licencas": prazo_vencido_licencas,
 
         "itens_ativos": itens_ativos,
+        "itens_ativos_ids": itens_ativos_ids,
         "licencas_ativas": licencas_ativas,
         "historico_licencas": historico_licencas,
+        "historico_itens": historico_itens,
 
         "kpi": {
             "itens_qtd": len(itens_ativos),

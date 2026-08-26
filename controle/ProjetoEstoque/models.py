@@ -3482,7 +3482,6 @@ class TipoRequisicaoChoices(models.TextChoices):
 
 class StatusRequisicaoChoices(models.TextChoices):
     RASCUNHO = "rascunho", "Rascunho"
-    SOLICITADA = "solicitada", "Solicitada"
     ENVIADA_APROVACAO = "enviada_aprovacao", "Enviada para Aprovação"
     APROVADA = "aprovada", "Aprovada"
     NAO_APROVADA = "nao_aprovada", "Não Aprovada"
@@ -3560,6 +3559,14 @@ class RequisicaoItem(AuditModel):
     retirado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="itens_requisicao_retirados", verbose_name="Retirado por")
 
+    # Preenchidos no recebimento de itens tipo Compra (ver
+    # `RequisicaoService.finalizar_compra_estoque` / `finalizar_compra_sem_estoque`)
+    # — únicos para TODO item de Compra, tenha ou não `item_vinculado`, pra
+    # permitir calcular o custo da requisição a partir dos itens pedidos.
+    numero_nf = models.CharField(max_length=30, blank=True, null=True, verbose_name="Número da NF")
+    valor_unitario = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True,
+        verbose_name="Valor Unitário (recebimento)")
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Item de Requisição"
@@ -3579,6 +3586,14 @@ class RequisicaoItem(AuditModel):
             return None
         from django.db.models import Sum
         return self.item_vinculado.vinculos_lote.aggregate(t=Sum("quantidade_disponivel"))["t"] or 0
+
+    @property
+    def valor_total(self):
+        """Custo do item para a requisição (quantidade × valor unitário
+        recebido) — `None` enquanto o item de Compra ainda não foi recebido."""
+        if self.valor_unitario is None:
+            return None
+        return self.valor_unitario * self.quantidade
 
 
 class ComentarioRequisicaoItem(AuditModel):

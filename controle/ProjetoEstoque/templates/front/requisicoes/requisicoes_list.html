@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load humanize %}
 
 {% block title %}Requisições{% endblock %}
 {% block page_title %}Requisições{% endblock %}
@@ -20,81 +21,314 @@
 
 {% block extra_css %}
 <style>
-:where(.kan-list-page) {
-  --kan-primary:    var(--brand,               #0071e3);
-  --kan-primary-soft: var(--brand-soft,        rgba(0,113,227,.10));
-  --kan-surface:    var(--bg-elevated,         #ffffff);
-  --kan-muted-surf: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
-  --kan-hover:      var(--bg-hover,            rgba(0,0,0,.04));
-  --kan-text:       var(--text-primary,        #1d1d1f);
-  --kan-muted:      var(--text-tertiary,       #6e6e73);
-  --kan-soft:       var(--text-quaternary,     #86868b);
-  --kan-border:     var(--separator-hairline,  rgba(0,0,0,.06));
-  --kan-border2:    var(--separator-non-opaque,rgba(0,0,0,.10));
-  --kan-success:    var(--system-green,        #34c759);
-  --kan-success-soft: var(--system-green-soft, rgba(52,199,89,.12));
-  --kan-warning:    var(--warning,             #ff9500);
-  --kan-warning-soft: var(--warning-soft,      rgba(255,149,0,.12));
-  --kan-danger:     var(--danger,              #ff3b30);
-  --kan-danger-soft:var(--danger-soft,         rgba(255,59,48,.10));
-  --kan-radius-sm:  var(--radius-sm,           10px);
-  --kan-radius-lg:  var(--radius-lg,           18px);
-  --kan-radius-pill:var(--radius-pill,         980px);
-  --kan-shadow-sm:  var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
-  --kan-transition: var(--transition-fast,     160ms ease);
+/* ===================================================================
+   Requisições — lista executiva
+   Prefixo .rq-  ·  escopo :where(.rq-page)
+   Paleta navy + cinza: cor só onde comunica estado (status, progresso).
+   =================================================================== */
+:where(.rq-page) {
+  --rq-navy:        #1e293b;
+  --rq-navy-soft:   rgba(30, 41, 59, .06);
+  --rq-accent:      var(--brand,                #0071e3);
+  --rq-accent-soft: var(--brand-soft,           rgba(0,113,227,.10));
+  --rq-surface:     var(--bg-elevated,          #ffffff);
+  --rq-inset:       var(--bg-fill-tertiary,     rgba(120,120,128,.08));
+  --rq-hover:       var(--bg-hover,             rgba(0,0,0,.04));
+  --rq-text:        var(--text-primary,         #1d1d1f);
+  --rq-text-2:      var(--text-secondary,       #424245);
+  --rq-muted:       var(--text-tertiary,        #6e6e73);
+  --rq-soft:        var(--text-quaternary,      #86868b);
+  --rq-border:      var(--separator-hairline,   rgba(0,0,0,.06));
+  --rq-border-2:    var(--separator-non-opaque, rgba(0,0,0,.10));
+  --rq-success:     var(--system-green,         #34c759);
+  --rq-success-soft:var(--system-green-soft,    rgba(52,199,89,.12));
+  --rq-warning:     var(--warning,              #ff9500);
+  --rq-warning-soft:var(--warning-soft,         rgba(255,149,0,.12));
+  --rq-danger:      var(--danger,               #ff3b30);
+  --rq-danger-soft: var(--danger-soft,          rgba(255,59,48,.10));
+  /* Raios mais fechados de propósito (não puxam do token global --radius-*)
+     — layout estilo Office/Fluent: retangular, pouco arredondado. */
+  --rq-r-sm:        4px;
+  --rq-r-md:        6px;
+  --rq-r-lg:        6px;
+  --rq-r-pill:      4px;
+  --rq-shadow:      var(--shadow-sm,            0 1px 2px rgba(0,0,0,.05));
+  /* Leve inclinação para Segoe UI (Office) nesta tela, com fallback pro
+     stack padrão do app — troca não é global, só escopada aqui. */
+  --rq-font:        "Segoe UI", var(--font-display);
 }
-.kan-list-page, .kan-list-page * { box-sizing: border-box; min-width: 0; }
-.kan-list-page { display: grid; gap: 1rem; color: var(--kan-text); }
+/* No tema escuro o navy sólido some contra o fundo — clareia só os tokens.
+   O tema aqui é a classe `theme-dark` no <html> (base.html), não
+   prefers-color-scheme nem data-theme. */
+html.theme-dark :where(.rq-page) {
+  --rq-navy: #cbd5e1;
+  --rq-navy-soft: rgba(203,213,225,.12);
+}
 
-.kan-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 1rem; align-items: end; padding: 1rem; border: 1px solid var(--kan-border); border-radius: var(--kan-radius-lg); background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); }
-.kan-filter-grid { display: grid; grid-template-columns: minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr); gap: .75rem; }
-.kan-field label { display: block; margin-bottom: .35rem; color: var(--kan-muted); font-size: .76rem; font-weight: 600; }
-.kan-list-page input[type="text"], .kan-list-page select { width: 100%; min-height: 2.4rem; padding: .55rem .8rem; border: 1px solid var(--kan-border2); border-radius: var(--kan-radius-sm); background: var(--kan-surface); color: var(--kan-text); font-family: inherit; font-size: .86rem; }
-.kan-actions-row { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: flex-end; align-items: center; }
-.kan-btn, .kan-btn-primary, .kan-btn-secondary { min-height: 2.3rem; display: inline-flex; align-items: center; justify-content: center; gap: .45rem; padding: .5rem 1rem; border-radius: var(--kan-radius-pill); border: 1px solid transparent; font-size: .84rem; font-weight: 600; text-decoration: none; cursor: pointer; }
-.kan-btn-primary { background: var(--kan-primary); color: #fff; }
-.kan-btn-secondary, .kan-btn { background: transparent; color: var(--kan-text); border-color: var(--kan-border2); }
-.kan-btn-secondary:hover, .kan-btn:hover { background: var(--kan-hover); }
+.rq-page, .rq-page * { box-sizing: border-box; min-width: 0; }
+.rq-page {
+  display: grid;
+  gap: .9rem;
+  width: 100%;
+  max-width: 1360px;   /* sem isto a tela "estica" e tudo parece grande demais */
+  margin: 0 auto;
+  color: var(--rq-text);
+  font-family: var(--rq-font);
+}
 
-.kan-table-card { overflow: hidden; border: 1px solid var(--kan-border); border-radius: var(--kan-radius-lg); background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); }
-.kan-table-wrap { width: 100%; overflow-x: auto; }
-.kan-table { width: max-content; min-width: 100%; border-collapse: collapse; }
-.kan-table th, .kan-table td { padding: .8rem 1rem; border-bottom: 1px solid var(--kan-border); text-align: left; white-space: nowrap; }
-.kan-table th { color: var(--kan-muted); font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
-.kan-table td { font-size: .86rem; }
-.kan-table tbody tr:last-child td { border-bottom: 0; }
-.kan-table tbody tr:hover td { background: var(--kan-hover); }
-.kan-name-link { color: var(--kan-text); font-weight: 650; text-decoration: none; }
-.kan-name-link:hover { color: var(--kan-primary); }
-.kan-badge { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .6rem; border-radius: var(--kan-radius-pill); font-size: .72rem; font-weight: 650; background: var(--kan-muted-surf); color: var(--kan-muted); }
-.kan-badge-primary { background: var(--kan-primary-soft); color: var(--kan-primary); }
-.kan-badge-success { background: var(--kan-success-soft); color: var(--kan-success); }
-.kan-badge-warning { background: var(--kan-warning-soft); color: var(--kan-warning); }
-.kan-badge-danger { background: var(--kan-danger-soft); color: var(--kan-danger); }
-.kan-empty { display: inline-flex; flex-direction: column; align-items: center; gap: .6rem; padding: 2.5rem 1rem; color: var(--kan-soft); font-size: .9rem; }
+/* ── Resumo ──────────────────────────────────────────────────────── */
+.rq-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .75rem;
+}
+.rq-kpi {
+  display: grid;
+  gap: .3rem;
+  padding: .85rem 1rem;
+  border: 1px solid var(--rq-border);
+  border-radius: var(--rq-r-md);
+  background: var(--rq-surface);
+  box-shadow: var(--rq-shadow);
+}
+.rq-kpi-label {
+  display: flex; align-items: center; gap: .4rem;
+  color: var(--rq-muted);
+  font-size: .7rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+}
+.rq-kpi-label i { color: var(--rq-soft); font-size: .74rem; }
+.rq-kpi-value {
+  color: var(--rq-navy);
+  font-size: 1.5rem; font-weight: 600; line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.rq-kpi-hint { color: var(--rq-soft); font-size: .74rem; }
 
-@media (max-width: 52rem) { .kan-toolbar { grid-template-columns: 1fr; } .kan-filter-grid { grid-template-columns: 1fr; } .kan-actions-row { justify-content: stretch; } .kan-btn, .kan-btn-primary, .kan-btn-secondary { width: 100%; } }
+/* ── Progresso geral (estilo "plano" do MS Planner) — retirado x
+   pendente, mesma linguagem visual do quadro Kanban. ── */
+.rq-overview {
+  display: flex; align-items: center; gap: .9rem;
+  padding: .7rem 1rem;
+  border: 1px solid var(--rq-border); border-radius: var(--rq-r-md);
+  background: var(--rq-surface); box-shadow: var(--rq-shadow);
+}
+.rq-overview-track {
+  flex: 1; display: flex; height: .5rem; min-width: 6rem;
+  border-radius: var(--rq-r-pill); overflow: hidden; background: var(--rq-inset);
+}
+.rq-overview-seg { display: block; height: 100%; width: 0; transition: width 700ms cubic-bezier(.22,.61,.36,1); }
+.rq-overview-seg.is-retirado { background: var(--rq-success); }
+.rq-overview-seg.is-pendente { background: var(--rq-navy); opacity: .35; }
+.rq-overview-label {
+  flex: 0 0 auto; display: flex; align-items: baseline; gap: .3rem;
+  font-size: .78rem; color: var(--rq-muted); white-space: nowrap;
+}
+.rq-overview-label strong { color: var(--rq-success); font-size: .95rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (max-width: 30rem) { .rq-overview { flex-wrap: wrap; } .rq-overview-track { flex-basis: 100%; } }
+@media (prefers-reduced-motion: reduce) { .rq-overview-seg { transition: none !important; } }
+
+/* ── Toolbar ─────────────────────────────────────────────────────── */
+.rq-toolbar {
+  display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 1rem; align-items: end;
+  padding: .9rem 1rem;
+  border: 1px solid var(--rq-border);
+  border-radius: var(--rq-r-lg);
+  background: var(--rq-surface);
+  box-shadow: var(--rq-shadow);
+}
+.rq-filter-grid { display: grid; grid-template-columns: minmax(0,1.8fr) minmax(0,1fr) minmax(0,1fr); gap: .7rem; }
+.rq-field label {
+  display: block; margin-bottom: .3rem;
+  color: var(--rq-muted); font-size: .72rem; font-weight: 600;
+  letter-spacing: .03em; text-transform: uppercase;
+}
+.rq-search { position: relative; }
+.rq-search > i {
+  position: absolute; left: .7rem; top: 50%; transform: translateY(-50%);
+  color: var(--rq-soft); font-size: .82rem; pointer-events: none;
+}
+.rq-search input { padding-left: 2rem !important; }
+.rq-page input[type="text"], .rq-page select {
+  width: 100%; min-height: 2.3rem; padding: .5rem .75rem;
+  border: 1px solid var(--rq-border-2); border-radius: var(--rq-r-sm);
+  background: var(--rq-surface); color: var(--rq-text);
+  font-family: inherit; font-size: .85rem;
+}
+.rq-page input[type="text"]:focus, .rq-page select:focus {
+  outline: none; border-color: var(--rq-accent);
+  box-shadow: 0 0 0 3px var(--brand-ring, rgba(0,113,227,.30));
+}
+.rq-actions { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: flex-end; align-items: center; }
+.rq-btn, .rq-btn-primary {
+  min-height: 2.3rem; display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  padding: .5rem 1rem; border-radius: var(--rq-r-pill);
+  border: 1px solid var(--rq-border-2); background: transparent; color: var(--rq-text);
+  font-size: .83rem; font-weight: 600; text-decoration: none; cursor: pointer;
+}
+.rq-btn:hover { background: var(--rq-hover); }
+.rq-btn-primary { background: var(--rq-accent); border-color: var(--rq-accent); color: #fff; }
+.rq-btn-primary:hover { background: var(--brand-hover, #0077ed); }
+
+/* ── Tabela ──────────────────────────────────────────────────────── */
+.rq-card {
+  border: 1px solid var(--rq-border);
+  border-radius: var(--rq-r-lg);
+  background: var(--rq-surface);
+  box-shadow: var(--rq-shadow);
+  overflow: hidden;
+}
+.rq-card-head {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem;
+  padding: .8rem 1rem;
+  border-bottom: 1px solid var(--rq-border);
+}
+.rq-card-title { display: flex; align-items: center; gap: .5rem; font-size: .9rem; font-weight: 600; }
+.rq-card-title i { color: var(--rq-soft); }
+.rq-count { color: var(--rq-muted); font-size: .78rem; font-variant-numeric: tabular-nums; }
+
+.rq-table-wrap { width: 100%; overflow-x: auto; }
+.rq-table { width: max-content; min-width: 100%; border-collapse: collapse; }
+.rq-table th, .rq-table td {
+  padding: .7rem 1rem; text-align: left; white-space: nowrap;
+  border-bottom: 1px solid var(--rq-border);
+  border-right: 1px solid var(--rq-border);
+}
+.rq-table th:last-child, .rq-table td:last-child { border-right: 0; }
+.rq-table thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--rq-inset);
+  color: var(--rq-muted);
+  font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  border-bottom: 1px solid var(--rq-border-2);
+}
+.rq-table td { font-size: .85rem; color: var(--rq-text-2); }
+.rq-table tbody tr:last-child td { border-bottom: 0; }
+.rq-table tbody tr { cursor: pointer; }
+.rq-table tbody tr:hover td { background: var(--rq-hover); }
+.rq-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.rq-ref { display: grid; gap: .15rem; }
+.rq-ref-main {
+  color: var(--rq-text); font-weight: 600; text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+.rq-ref-main:hover { color: var(--rq-accent); }
+.rq-ref-sub { color: var(--rq-soft); font-size: .72rem; }
+.rq-rascunho { color: var(--rq-soft); font-style: italic; font-weight: 500; }
+
+.rq-badge {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .18rem .55rem; border-radius: var(--rq-r-pill);
+  background: var(--rq-navy-soft); color: var(--rq-navy);
+  font-size: .72rem; font-weight: 600; white-space: nowrap;
+}
+.rq-badge-primary { background: var(--rq-accent-soft); color: var(--rq-accent); }
+.rq-badge-success { background: var(--rq-success-soft); color: var(--rq-success); }
+.rq-badge-warning { background: var(--rq-warning-soft); color: var(--rq-warning); }
+.rq-badge-danger  { background: var(--rq-danger-soft);  color: var(--rq-danger); }
+/* Aliases: `status_badge_class` devolve as classes .kan-badge-* do board. */
+.kan-badge-primary { background: var(--rq-accent-soft);  color: var(--rq-accent); }
+.kan-badge-success { background: var(--rq-success-soft); color: var(--rq-success); }
+.kan-badge-warning { background: var(--rq-warning-soft); color: var(--rq-warning); }
+.kan-badge-danger  { background: var(--rq-danger-soft);  color: var(--rq-danger); }
+
+/* Progresso de retirada dos itens — leitura rápida do andamento. */
+.rq-progress { display: grid; gap: .3rem; min-width: 8.5rem; }
+.rq-progress-top {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  font-size: .74rem; color: var(--rq-muted); font-variant-numeric: tabular-nums;
+}
+/* display:block é obrigatório: são <span>, e inline ignora width/height. */
+.rq-progress-track { display: block; height: 5px; border-radius: var(--rq-r-pill); background: var(--rq-inset); overflow: hidden; }
+.rq-progress-fill { display: block; height: 100%; border-radius: inherit; background: var(--rq-navy); }
+.rq-progress-fill.is-done { background: var(--rq-success); }
+
+.rq-empty {
+  display: grid; justify-items: center; gap: .5rem;
+  padding: 3rem 1rem; color: var(--rq-soft); text-align: center;
+}
+.rq-empty i { font-size: 1.5rem; color: var(--rq-border-2); }
+.rq-empty strong { color: var(--rq-muted); font-weight: 600; font-size: .9rem; }
+
+.rq-foot {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .7rem;
+  padding: .8rem 1rem; border-top: 1px solid var(--rq-border);
+}
+.rq-foot span { color: var(--rq-muted); font-size: .78rem; font-variant-numeric: tabular-nums; }
+.rq-foot-nav { display: flex; gap: .45rem; }
+
+@media (max-width: 64rem) { .rq-summary { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 52rem) {
+  .rq-toolbar { grid-template-columns: 1fr; }
+  .rq-filter-grid { grid-template-columns: 1fr; }
+  .rq-actions { justify-content: stretch; }
+  .rq-btn, .rq-btn-primary { flex: 1; }
+}
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="kan-list-page">
+<div class="rq-page">
 
-  <section class="kan-toolbar" aria-label="Filtros">
+  <section class="rq-summary" aria-label="Resumo">
+    <div class="rq-kpi">
+      <span class="rq-kpi-label"><i class="fa fa-folder-open" aria-hidden="true"></i> Requisições</span>
+      <span class="rq-kpi-value" data-count="{{ resumo.total|default:0 }}">0</span>
+      <span class="rq-kpi-hint">{% if tem_filtro %}no filtro atual{% else %}no total{% endif %}</span>
+    </div>
+    <div class="rq-kpi">
+      <span class="rq-kpi-label"><i class="fa fa-spinner" aria-hidden="true"></i> Em andamento</span>
+      <span class="rq-kpi-value" data-count="{{ resumo.em_andamento|default:0 }}">0</span>
+      <span class="rq-kpi-hint">{{ resumo.aprovadas|default:0 }} aprovada{{ resumo.aprovadas|pluralize }}</span>
+    </div>
+    <div class="rq-kpi">
+      <span class="rq-kpi-label"><i class="fa fa-boxes-stacked" aria-hidden="true"></i> Itens solicitados</span>
+      <span class="rq-kpi-value" data-count="{{ resumo.itens_total|default:0 }}">0</span>
+      <span class="rq-kpi-hint">{{ resumo.itens_retirados|default:0 }} já retirado{{ resumo.itens_retirados|pluralize }}</span>
+    </div>
+    <div class="rq-kpi">
+      <span class="rq-kpi-label"><i class="fa fa-hourglass-half" aria-hidden="true"></i> Itens pendentes</span>
+      <span class="rq-kpi-value" data-count="{{ resumo.itens_pendentes|default:0 }}">0</span>
+      <span class="rq-kpi-hint">aguardando retirada</span>
+    </div>
+    <div class="rq-kpi">
+      <span class="rq-kpi-label"><i class="fa fa-file-invoice-dollar" aria-hidden="true"></i> Custo em Compras</span>
+      <span class="rq-kpi-value">R$ {{ resumo.custo_total|intcomma }}</span>
+      <span class="rq-kpi-hint">apurado por NF dos itens recebidos</span>
+    </div>
+  </section>
+
+  {% if resumo.itens_total %}
+  <section class="rq-overview" aria-label="Progresso geral de retirada">
+    <div class="rq-overview-track" role="img" aria-label="{{ resumo.itens_retirados_pct }}% dos itens já retirados">
+      <span class="rq-overview-seg is-retirado" data-pct="{{ resumo.itens_retirados_pct }}"></span>
+      <span class="rq-overview-seg is-pendente" data-pct="{{ resumo.itens_pendentes_pct }}"></span>
+    </div>
+    <span class="rq-overview-label">
+      <strong>{{ resumo.itens_retirados_pct }}%</strong> retirado · {{ resumo.itens_retirados|default:0 }}/{{ resumo.itens_total }}
+    </span>
+  </section>
+  {% endif %}
+
+  <section class="rq-toolbar" aria-label="Filtros">
     <form method="get" id="reqFilterForm" autocomplete="off">
-      <div class="kan-filter-grid">
-        <div class="kan-field">
+      <div class="rq-filter-grid">
+        <div class="rq-field">
           <label for="id_q">Pesquisar</label>
-          <input id="id_q" type="text" name="q" value="{{ q|default:'' }}" placeholder="Buscar por número Datasul...">
+          <div class="rq-search">
+            <i class="fa fa-magnifying-glass" aria-hidden="true"></i>
+            <input id="id_q" type="text" name="q" value="{{ q|default:'' }}"
+                   placeholder="Nº da requisição, Paradigma ou descrição do item...">
+          </div>
         </div>
-        <div class="kan-field">
+        <div class="rq-field">
           <label for="id_status">Status</label>
           <select id="id_status" name="status">
             <option value="">Todos</option>
             {% for v, lbl in status_choices %}<option value="{{ v }}" {% if f_status == v %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
           </select>
         </div>
-        <div class="kan-field">
+        <div class="rq-field">
           <label for="id_tipo">Tipo</label>
           <select id="id_tipo" name="tipo">
             <option value="">Todos</option>
@@ -103,45 +337,149 @@
         </div>
       </div>
     </form>
-    <div class="kan-actions-row">
-      <a href="{% url 'requisicoes_list' %}" class="kan-btn-secondary"><i class="fa fa-eraser" aria-hidden="true"></i> Limpar</a>
-      <button type="submit" form="reqFilterForm" class="kan-btn-primary"><i class="fa fa-filter" aria-hidden="true"></i> Filtrar</button>
+    <div class="rq-actions">
+      {% if tem_filtro %}
+        <a href="{% url 'requisicoes_list' %}" class="rq-btn"><i class="fa fa-eraser" aria-hidden="true"></i> Limpar</a>
+      {% endif %}
+      <button type="submit" form="reqFilterForm" class="rq-btn-primary"><i class="fa fa-filter" aria-hidden="true"></i> Filtrar</button>
     </div>
   </section>
 
-  <div class="kan-table-card">
-    <div class="kan-table-wrap">
-      <table class="kan-table">
+  <div class="rq-card">
+    <div class="rq-card-head">
+      <span class="rq-card-title"><i class="fa fa-list-check" aria-hidden="true"></i> Requisições</span>
+      <span class="rq-count">
+        {% if page_obj.paginator.count %}
+          {{ page_obj.start_index }}–{{ page_obj.end_index }} de {{ page_obj.paginator.count }}
+        {% else %}
+          Nenhum registro
+        {% endif %}
+      </span>
+    </div>
+
+    <div class="rq-table-wrap">
+      <table class="rq-table">
         <thead>
-          <tr><th>Número Datasul</th><th>Tipo</th><th>Status</th><th>Itens</th><th>Criado por</th><th>Criado em</th><th>Finalizada em</th></tr>
+          <tr>
+            <th scope="col">Requisição</th>
+            <th scope="col">Tipo</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="rq-num">Itens</th>
+            <th scope="col">Progresso</th>
+            <th scope="col" class="rq-num">Custo (NF)</th>
+            <th scope="col">Requisitante</th>
+            <th scope="col">Criada em</th>
+            <th scope="col">Finalizada em</th>
+          </tr>
         </thead>
         <tbody>
           {% for req in requisicoes %}
-          <tr>
-            <td><a href="{% url 'requisicao_detail' req.pk %}" class="kan-name-link">{{ req.numero_datasul|default:"Rascunho" }}</a></td>
-            <td><span class="kan-badge">{{ req.get_tipo_display }}</span></td>
-            <td><span class="kan-badge {{ req.badge_class }}">{{ req.get_status_display }}</span></td>
-            <td>{{ req.itens_count }}</td>
+          <tr data-href="{% url 'requisicao_detail' req.pk %}">
+            <td>
+              <span class="rq-ref">
+                <a href="{% url 'requisicao_detail' req.pk %}" class="rq-ref-main">
+                  {% if req.numero_datasul %}{{ req.numero_datasul }}{% else %}<span class="rq-rascunho">Sem número</span>{% endif %}
+                </a>
+                {% if req.numero_paradigma %}<span class="rq-ref-sub">Paradigma {{ req.numero_paradigma }}</span>{% endif %}
+              </span>
+            </td>
+            <td><span class="rq-badge">{{ req.get_tipo_display }}</span></td>
+            <td><span class="rq-badge {{ req.badge_class }}">{{ req.get_status_display }}</span></td>
+            <td class="rq-num">{{ req.itens_count }}</td>
+            <td>
+              {% if req.itens_count %}
+                <span class="rq-progress">
+                  <span class="rq-progress-top">
+                    <span>{{ req.itens_retirados_count }}/{{ req.itens_count }} retirados</span>
+                    <span>{{ req.progresso_pct }}%</span>
+                  </span>
+                  <span class="rq-progress-track">
+                    <span class="rq-progress-fill{% if req.esta_finalizada %} is-done{% endif %}"
+                          style="width: {{ req.progresso_pct }}%"></span>
+                  </span>
+                </span>
+              {% else %}
+                <span class="rq-ref-sub">Sem itens</span>
+              {% endif %}
+            </td>
+            <td class="rq-num">
+              {% if req.tipo == 'compra' and req.custo_total %}R$ {{ req.custo_total|intcomma }}
+              {% else %}<span class="rq-ref-sub">—</span>{% endif %}
+            </td>
             <td>{% if req.criado_por %}{{ req.criado_por.get_full_name|default:req.criado_por.username }}{% else %}—{% endif %}</td>
             <td>{{ req.created_at|date:"d/m/Y H:i" }}</td>
-            <td>{% if req.esta_finalizada %}<span class="kan-badge kan-badge-success"><i class="fa fa-box-open" aria-hidden="true"></i> {{ req.finalizada_em|date:"d/m/Y H:i" }}</span>{% else %}—{% endif %}</td>
+            <td>
+              {% if req.esta_finalizada %}
+                <span class="rq-badge rq-badge-success"><i class="fa fa-box-open" aria-hidden="true"></i> {{ req.finalizada_em|date:"d/m/Y" }}</span>
+              {% else %}—{% endif %}
+            </td>
           </tr>
           {% empty %}
-          <tr><td colspan="7"><div class="kan-empty"><i class="fa fa-folder-open" aria-hidden="true"></i> Nenhuma requisição encontrada.</div></td></tr>
+          <tr>
+            <td colspan="9">
+              <div class="rq-empty">
+                <i class="fa fa-folder-open" aria-hidden="true"></i>
+                <strong>Nenhuma requisição encontrada</strong>
+                <span>{% if tem_filtro %}Ajuste os filtros ou limpe a busca.{% else %}As requisições aparecem aqui depois de agrupar itens no quadro.{% endif %}</span>
+              </div>
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+
     {% if page_obj.has_other_pages %}
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem;border-top:1px solid var(--kan-border);flex-wrap:wrap;gap:.75rem">
-      <span style="color:var(--kan-muted);font-size:.82rem">Página <strong>{{ page_obj.number }}</strong> de <strong>{{ page_obj.paginator.num_pages }}</strong></span>
-      <div style="display:flex;gap:.5rem">
-        {% if page_obj.has_previous %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.previous_page_number }}" class="kan-btn-secondary">Anterior</a>{% endif %}
-        {% if page_obj.has_next %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.next_page_number }}" class="kan-btn-secondary">Próxima</a>{% endif %}
+    <div class="rq-foot">
+      <span>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+      <div class="rq-foot-nav">
+        {% if page_obj.has_previous %}
+          <a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.previous_page_number }}" class="rq-btn"><i class="fa fa-chevron-left" aria-hidden="true"></i> Anterior</a>
+        {% endif %}
+        {% if page_obj.has_next %}
+          <a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.next_page_number }}" class="rq-btn">Próxima <i class="fa fa-chevron-right" aria-hidden="true"></i></a>
+        {% endif %}
       </div>
     </div>
     {% endif %}
   </div>
 
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  // Linha inteira clicável — o link do número segue funcionando sozinho
+  // (e continua sendo o caminho acessível por teclado).
+  document.querySelectorAll('.rq-table tbody tr[data-href]').forEach(function (tr) {
+    tr.addEventListener('click', function (event) {
+      if (event.target.closest('a')) return;
+      window.location.href = tr.dataset.href;
+    });
+  });
+
+  // ── Contadores dos KPIs (0 → N) e barra de progresso geral — um "pop"
+  // só na carga da página, nunca em loop; respeita reduced-motion. ──────
+  const reduzMovimento = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function contarAte(el) {
+    const alvo = parseInt(el.dataset.count, 10) || 0;
+    if (reduzMovimento || alvo === 0) { el.textContent = alvo; return; }
+    const duracao = 550;
+    const inicio = performance.now();
+    (function passo(agora) {
+      const t = Math.min(1, (agora - inicio) / duracao);
+      el.textContent = Math.round(alvo * (1 - Math.pow(1 - t, 3)));
+      if (t < 1) requestAnimationFrame(passo);
+    })(inicio);
+  }
+  document.querySelectorAll('.rq-kpi-value[data-count]').forEach(contarAte);
+
+  document.querySelectorAll('.rq-overview-seg').forEach(seg => {
+    const pct = seg.dataset.pct || '0';
+    requestAnimationFrame(() => requestAnimationFrame(() => { seg.style.width = pct + '%'; }));
+  });
+})();
+</script>
 {% endblock %}

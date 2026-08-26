@@ -3,9 +3,11 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 
 from ProjetoEstoque.models import (
+    CentroCusto,
     Item,
     ItemColaborador,
     ItemLote,
@@ -41,6 +43,110 @@ class MovimentacaoEstoqueService:
         """
         nome = (getattr(centro_custo, "departamento", "") or "").lower()
         return SimNaoChoices.SIM if "tabaco" in nome else SimNaoChoices.NAO
+
+    @classmethod
+    def centro_custo_majoritario(cls, item):
+        """
+        Centro de custo de um equipamento COMPARTILHADO = o CC com MAIS
+        colaboradores vinculados ativos (`ItemColaborador.ativo=True`).
+
+        Um ativo compartilhado não tem um detentor único cujo CC ele possa
+        seguir (regra dos itens normais): o custo pertence ao departamento
+        que de fato mais o utiliza. Ex.: 5 vínculos no Almoxarifado, 6 na
+        Balança e 3 em Operações Agrícolas → o item fica na Balança.
+
+        Retorna `(centro_custo, distribuicao)`, onde `distribuicao` é
+        `{CentroCusto: quantidade}` ordenada da maior para a menor (útil para
+        log/auditoria e para o relatório do comando de recálculo).
+        `centro_custo` é None quando não há maioria a apurar — nesse caso o
+        chamador deve PRESERVAR o CC atual, nunca zerá-lo.
+
+        Casos sem maioria (retorna None):
+        - item não compartilhado (segue a regra de detentor único);
+        - nenhum vínculo ativo (todos devolveram o equipamento);
+        - nenhum dos colaboradores vinculados tem centro de custo cadastrado.
+
+        Empate é resolvido de forma DETERMINÍSTICA e estável: se o CC atual
+        do item está entre os empatados, ele é mantido (evita o custo ficar
+        oscilando entre dois departamentos a cada movimentação); caso
+        contrário vence o de menor número de CC — nunca uma escolha
+        arbitrária que mudaria de resultado entre execuções.
+        """
+        if not item.compartilhado:
+            return None, {}
+
+        linhas = (
+            ItemColaborador.objects
+            .filter(
+                item=item,
+                ativo=True,
+                colaborador__centro_custo__isnull=False,
+            )
+            .values("colaborador__centro_custo_id")
+            .annotate(total=Count("id"))
+            .order_by()
+        )
+
+        contagem = {
+            linha["colaborador__centro_custo_id"]: linha["total"]
+            for linha in linhas
+        }
+
+        if not contagem:
+            return None, {}
+
+        centros = {
+            cc.pk: cc
+            for cc in CentroCusto.objects.filter(pk__in=contagem.keys())
+        }
+
+        maior = max(contagem.values())
+        empatados = [cc_id for cc_id, total in contagem.items() if total == maior]
+
+        if item.centro_custo_id in empatados:
+            vencedor_id = item.centro_custo_id
+        else:
+            vencedor_id = sorted(
+                empatados,
+                key=lambda cc_id: (str(getattr(centros[cc_id], "numero", "") or ""), cc_id),
+            )[0]
+
+        distribuicao = {
+            centros[cc_id]: total
+            for cc_id, total in sorted(
+                contagem.items(),
+                key=lambda par: (-par[1], str(getattr(centros[par[0]], "numero", "") or "")),
+            )
+        }
+
+        return centros[vencedor_id], distribuicao
+
+    @classmethod
+    def aplicar_centro_custo_compartilhado(cls, *, item, cc_anterior_id):
+        """
+        Normaliza o CC de um equipamento COMPARTILHADO pela regra da maioria
+        (`centro_custo_majoritario`), em memória — quem chama decide quando
+        gravar.
+
+        `cc_anterior_id` é o CC que o item tinha ANTES da movimentação: sem
+        maioria apurável, ele é restaurado. Isso impede que um branch de
+        movimentação que enxerga um único usuário (ex.: transferência de
+        equipamento, que copia o CC do colaborador informado) acabe ditando
+        sozinho o centro de custo de um ativo coletivo.
+
+        Retorna True quando o CC do item mudou.
+        """
+        if not item.compartilhado:
+            return False
+
+        cc_maioria, _distribuicao = cls.centro_custo_majoritario(item)
+        cc_correto_id = cc_maioria.pk if cc_maioria is not None else cc_anterior_id
+
+        if item.centro_custo_id == cc_correto_id:
+            return False
+
+        item.centro_custo_id = cc_correto_id
+        return True
 
     @staticmethod
     def preencher_auditoria(obj, user, criando=True):
@@ -397,6 +503,10 @@ class MovimentacaoEstoqueService:
             .get(pk=mov.item_id)
         )
 
+        # CC de partida: para equipamento COMPARTILHADO é o valor a restaurar
+        # quando não houver maioria a apurar (ver aplicar_centro_custo_compartilhado).
+        cc_anterior_id = item.centro_custo_id
+
         mov.item = item
         # Retorno de manutenção com fornecedor: a origem real é o fornecedor (ver
         # `fornecedor_manutencao`), não a localidade/CC do item — que, como o envio
@@ -619,6 +729,19 @@ class MovimentacaoEstoqueService:
                 nota = f'Renomeado: "{nome_atual}" → "{nome_final}".'
                 mov.observacao = f"{mov.observacao}\n{nota}".strip() if mov.observacao else nota
                 mov.save(update_fields=["observacao", "updated_at"])
+
+        # ── CC do equipamento COMPARTILHADO: regra da maioria ──────────────
+        # Normalização final, DEPOIS de qualquer branch acima: o CC de um ativo
+        # compartilhado é sempre o do departamento com mais colaboradores
+        # vinculados, seja qual for o tipo da movimentação. Vale inclusive para
+        # os tipos que não mexem em CC (envio/retorno de manutenção, separação):
+        # qualquer movimentação revalida a maioria, como pedido pela operação.
+        # Fica aqui em cima do bloco de PMB de propósito, para o PMB ser
+        # recalculado a partir do CC já corrigido.
+        if item.compartilhado and cls.aplicar_centro_custo_compartilhado(
+            item=item, cc_anterior_id=cc_anterior_id
+        ):
+            update_fields.append("centro_custo")
 
         # Sempre que a movimentação mudou o CC do item (entrega, devolução,
         # transferência de equipamento), recalcula o PMB automaticamente pelo

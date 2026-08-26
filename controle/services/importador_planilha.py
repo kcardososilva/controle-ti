@@ -183,9 +183,11 @@ class ImportadorPlanilhaService:
 
                 if resultado_linha["acao"] == "criado":
                     criados.append(resultado_linha["item"])
+                    erros.extend(resultado_linha.get("avisos", []))
 
                 elif resultado_linha["acao"] == "atualizado":
                     atualizados.append(resultado_linha["item"])
+                    erros.extend(resultado_linha.get("avisos", []))
 
                 elif resultado_linha["acao"] == "ignorado":
                     ignorados.append(resultado_linha["item"])
@@ -211,6 +213,8 @@ class ImportadorPlanilhaService:
         }
 
     def _processar_linha(self, *, row, columns, linha_excel, numeros_serie_planilha):
+        avisos = []
+
         nome = self._clean_text(self._get_value(row, columns, self.aliases["Nome"]))
         numero_serie = self._clean_text(self._get_value(row, columns, self.aliases["NÚMERO DE SÉRIE"]))
 
@@ -275,14 +279,22 @@ class ImportadorPlanilhaService:
                 "Item de consumo não pode ser importado como locado."
             )
 
-        centro_custo = self._find_fk(self.CentroCusto, centro_custo_nome)
-        subtipo = self._find_fk(self.Subtipo, subtipo_nome)
-        localidade = self._find_fk(self.Localidade, local_nome)
+        centro_custo = self._find_fk_avisado(
+            self.CentroCusto, centro_custo_nome, "centro de custo", avisos, linha_excel
+        )
+        subtipo = self._find_fk_avisado(
+            self.Subtipo, subtipo_nome, "subtipo", avisos, linha_excel
+        )
+        localidade = self._find_fk_avisado(
+            self.Localidade, local_nome, "localidade", avisos, linha_excel
+        )
 
         fornecedor_nome = self._clean_text(
             self._get_value(row, columns, self.aliases["FORNECEDOR"])
         )
-        fornecedor = self._find_fk(self.Fornecedor, fornecedor_nome)
+        fornecedor = self._find_fk_avisado(
+            self.Fornecedor, fornecedor_nome, "fornecedor", avisos, linha_excel
+        )
 
         quantidade_item = self._to_int(
             self._get_value(row, columns, self.aliases["QUANTIDADE"])
@@ -410,7 +422,8 @@ class ImportadorPlanilhaService:
                 "numero_serie": item.numero_serie or "-",
                 "item_consumo": item.item_consumo,
                 "locado": item.locado,
-            }
+            },
+            "avisos": avisos,
         }
 
     def _buscar_item(self, *, numero_serie, nome):
@@ -780,6 +793,25 @@ class ImportadorPlanilhaService:
                         return obj
 
         return None
+
+    def _find_fk_avisado(self, model_class, valor, rotulo, avisos, linha_excel):
+        """
+        Como _find_fk, mas registra em `avisos` quando a planilha informou um
+        valor e ele não bateu com nenhum cadastro — sem isso o campo fica em
+        branco silenciosamente e o problema só aparece dias depois.
+        """
+        if not valor:
+            return None
+
+        obj = self._find_fk(model_class, valor)
+
+        if obj is None:
+            avisos.append(
+                f"Linha {linha_excel}: {rotulo} '{valor}' não encontrado no cadastro "
+                f"— campo salvo em branco no item."
+            )
+
+        return obj
 
     def _montar_observacoes(self, anexo):
         if not anexo:

@@ -31,6 +31,7 @@ from ..models import (
     ItemPadraoDatasul, Categoria,
 )
 from services.busca_fts import buscar_item_padrao_ids
+from services.contratos_vencimento_service import montar_ranking_contratos_vencimento
 
 from .equipamentos import _aplicar_filtros_itens
 from .requisicoes import _aplicar_busca_descricao_codigo
@@ -1654,182 +1655,18 @@ def licencas_dashboard(request):
 
     return render(request, "front/dashboards/licencas_dashboard.html", context)
 
-def _anexar_info_ninja(item):
-    """
-    Anexa ao item (in-memory, não persiste) os dados de login coletados via
-    NinjaOne — usuário logado agora (ou último visto) e o instante do último
-    contato do agente. Usado para identificar rapidamente quem está com o
-    equipamento na tela/planilha de contratos a vencer.
-    Requer que `item` tenha vindo de um queryset com select_related("ninja_device").
-    """
-    ninja = getattr(item, "ninja_device", None)
-    if ninja and (ninja.last_user or ninja.last_contact):
-        item.ninja_login = ninja.last_user or ""
-        item.ninja_online = bool(ninja.is_online)
-        item.ninja_last_contact = ninja.last_contact
-    else:
-        item.ninja_login = ""
-        item.ninja_online = False
-        item.ninja_last_contact = None
-
-
 @login_required
 def avisos_contratos_vencer(request):
     """
-    Tela de avisos para contratos próximos do vencimento.
-    Divide em dois rankings:
-    1) Itens operacionais (ativo, backup, manutencao, defeito)
-    2) Itens pausados
+    Painel "estilo planilha" (não usa o layout padrão do sistema — ver
+    validacao_custos_planilha) de contratos de locação vencidos ou a vencer.
+    Divide em dois rankings: itens operacionais e itens pausados.
+    Toda a apuração vive em `services/contratos_vencimento_service.py`,
+    compartilhada com a exportação Excel para as duas nunca divergirem.
     """
-
-    # =========================
-    # CONFIG
-    # =========================
-    DIAS_ALERTA = 60  # ajuste conforme sua operação
-
-    # Ajuste estes nomes conforme os valores reais do seu StatusItemChoices
-    STATUS_OPERACIONAIS = ["ativo", "backup", "estoque", "manutencao", "defeito", "queimado"]
-    STATUS_PAUSADO = "pausado"
-
-    hoje = date.today()
-
-    # =========================
-    # FILTROS
-    # =========================
-    f_nome = (request.GET.get("nome") or "").strip()
-    f_ns = (request.GET.get("ns") or "").strip()
-    f_subtipo = (request.GET.get("subtipo") or "").strip()
-    f_status = (request.GET.get("status") or "").strip()
-    f_fornecedor = (request.GET.get("fornecedor") or "").strip()
-    f_localidade = (request.GET.get("localidade") or "").strip()
-
-    qs = (
-        Item.objects
-        .filter(
-            locado="sim",
-            locacao__isnull=False,
-            locacao__data_entrada__isnull=False,
-            locacao__tempo_locado__isnull=False,
-        )
-        .select_related(
-            "subtipo",
-            "fornecedor",
-            "centro_custo",
-            "localidade",
-            "locacao",
-            "ninja_device",
-        )
-        .order_by("nome")
-    )
-
-    if f_nome:
-        qs = qs.filter(nome__icontains=f_nome)
-
-    if f_ns:
-        qs = qs.filter(numero_serie__icontains=f_ns)
-
-    if f_subtipo:
-        qs = qs.filter(subtipo_id=f_subtipo)
-
-    if f_status:
-        qs = qs.filter(status=f_status)
-
-    if f_fornecedor:
-        qs = qs.filter(fornecedor_id=f_fornecedor)
-
-    if f_localidade:
-        qs = qs.filter(localidade_id=f_localidade)
-
-    itens_alerta = []
-
-    for item in qs:
-        loc = getattr(item, "locacao", None)
-        if not loc or not loc.data_entrada or not loc.tempo_locado:
-            continue
-
-        try:
-            data_vencimento = loc.data_entrada + relativedelta(months=int(loc.tempo_locado))
-        except Exception:
-            continue
-
-        dias_restantes = (data_vencimento - hoje).days
-
-        # traz vencidos e próximos do vencimento
-        if dias_restantes <= DIAS_ALERTA:
-            item.data_vencimento_contrato = data_vencimento
-            item.dias_restantes_contrato = dias_restantes
-            item.valor_mensal_calc = loc.valor_mensal or 0
-            _anexar_info_ninja(item)
-            itens_alerta.append(item)
-
-    # Ordenação do ranking:
-    # vencidos primeiro, depois os mais próximos
-    itens_alerta.sort(
-        key=lambda x: (
-            x.dias_restantes_contrato > 0,
-            x.dias_restantes_contrato,
-            x.nome.lower()
-        )
-    )
-
-    ranking_operacional = [
-        i for i in itens_alerta
-        if (i.status or "").lower() in STATUS_OPERACIONAIS
-    ]
-
-    ranking_pausados = [
-        i for i in itens_alerta
-        if (i.status or "").lower() == STATUS_PAUSADO
-    ]
-
-    # KPIs
-    total_alertas = len(itens_alerta)
-    total_operacionais = len(ranking_operacional)
-    total_pausados = len(ranking_pausados)
-    vencidos = len([i for i in itens_alerta if i.dias_restantes_contrato < 0])
-
-    subtipos = Subtipo.objects.order_by("nome")
-    fornecedores = Fornecedor.objects.order_by("nome")
-    localidades = Localidade.objects.order_by("local")
-
-    # status disponíveis na própria base filtrada
-    status_opcoes = (
-        Item.objects.exclude(status__isnull=True)
-        .exclude(status__exact="")
-        .values_list("status", flat=True)
-        .distinct()
-        .order_by("status")
-    )
-
-    filtros = {
-        "nome": f_nome,
-        "ns": f_ns,
-        "subtipo": f_subtipo,
-        "status": f_status,
-        "fornecedor": f_fornecedor,
-        "localidade": f_localidade,
-    }
-    filtros_ativos = sum(1 for v in filtros.values() if v)
-
-    context = {
-        "ranking_operacional": ranking_operacional,
-        "ranking_pausados": ranking_pausados,
-        "subtipos": subtipos,
-        "fornecedores": fornecedores,
-        "localidades": localidades,
-        "status_opcoes": status_opcoes,
-        "filtros": filtros,
-        "filtros_ativos": filtros_ativos,
-        "kpi": {
-            "total_alertas": total_alertas,
-            "total_operacionais": total_operacionais,
-            "total_pausados": total_pausados,
-            "vencidos": vencidos,
-            "dias_alerta": DIAS_ALERTA,
-        }
-    }
-
+    context = montar_ranking_contratos_vencimento(request)
     return render(request, "front/dashboards/avisos_contrato_vencer.html", context)
+
 
 @login_required
 def avisos_contratos_vencer_export_excel(request):
@@ -1838,98 +1675,19 @@ def avisos_contratos_vencer_export_excel(request):
     respeitando os mesmos filtros da listagem.
     Inclui o usuário atual do equipamento com base na última movimentação válida.
     """
-
-    DIAS_ALERTA = 60
-    STATUS_OPERACIONAIS = ["ativo", "backup", "estoque", "manutencao", "defeito", "queimado"]
-    STATUS_PAUSADO = "pausado"
+    dados = montar_ranking_contratos_vencimento(request)
+    ranking_operacional = dados["ranking_operacional"]
+    ranking_pausados = dados["ranking_pausados"]
+    itens_alerta = dados["itens_alerta"]
+    kpi = dados["kpi"]
 
     hoje = date.today()
-
-    # =========================
-    # FILTROS
-    # =========================
-    f_nome = (request.GET.get("nome") or "").strip()
-    f_ns = (request.GET.get("ns") or "").strip()
-    f_subtipo = (request.GET.get("subtipo") or "").strip()
-    f_status = (request.GET.get("status") or "").strip()
-    f_fornecedor = (request.GET.get("fornecedor") or "").strip()
-    f_localidade = (request.GET.get("localidade") or "").strip()
-
-    qs = (
-        Item.objects
-        .filter(
-            locado="sim",
-            locacao__isnull=False,
-            locacao__data_entrada__isnull=False,
-            locacao__tempo_locado__isnull=False,
-        )
-        .select_related(
-            "subtipo",
-            "fornecedor",
-            "centro_custo",
-            "localidade",
-            "locacao",
-            "ninja_device",
-        )
-        .order_by("nome")
-    )
-
-    if f_nome:
-        qs = qs.filter(nome__icontains=f_nome)
-
-    if f_ns:
-        qs = qs.filter(numero_serie__icontains=f_ns)
-
-    if f_subtipo:
-        qs = qs.filter(subtipo_id=f_subtipo)
-
-    if f_status:
-        qs = qs.filter(status=f_status)
-
-    if f_fornecedor:
-        qs = qs.filter(fornecedor_id=f_fornecedor)
-
-    if f_localidade:
-        qs = qs.filter(localidade_id=f_localidade)
-
-    itens_alerta = []
-
-    for item in qs:
-        loc = getattr(item, "locacao", None)
-        if not loc or not loc.data_entrada or not loc.tempo_locado:
-            continue
-
-        try:
-            data_vencimento = loc.data_entrada + relativedelta(months=int(loc.tempo_locado))
-        except Exception:
-            continue
-
-        dias_restantes = (data_vencimento - hoje).days
-
-        if dias_restantes <= DIAS_ALERTA:
-            item.data_vencimento_contrato = data_vencimento
-            item.dias_restantes_contrato = dias_restantes
-            item.valor_mensal_calc = loc.valor_mensal or 0
-            _anexar_info_ninja(item)
-            itens_alerta.append(item)
-
-    itens_alerta.sort(
-        key=lambda x: (
-            x.dias_restantes_contrato > 0,
-            x.dias_restantes_contrato,
-            x.nome.lower()
-        )
-    )
-
-    ranking_operacional = [
-        i for i in itens_alerta
-        if (i.status or "").lower() in STATUS_OPERACIONAIS
-    ]
-
-    ranking_pausados = [
-        i for i in itens_alerta
-        if (i.status or "").lower() == STATUS_PAUSADO
-    ]
+    f_nome = dados["filtros"]["nome"]
+    f_ns = dados["filtros"]["ns"]
+    f_subtipo = dados["filtros"]["subtipo"]
+    f_status = dados["filtros"]["status"]
+    f_fornecedor = dados["filtros"]["fornecedor"]
+    f_localidade = dados["filtros"]["localidade"]
 
     # =========================
     # WORKBOOK
@@ -1943,43 +1701,6 @@ def avisos_contratos_vencer_export_excel(request):
         ALIGN_RIGHT as right_alignment, MARROM_CAFE, FONTE,
     )
     title_font = Font(name=FONTE, size=13, bold=True, color=f"FF{MARROM_CAFE}")
-
-    def get_usuario_atual(item):
-        """
-        Busca o usuário atual do equipamento com base
-        na última movimentação com campo usuario preenchido.
-        Ajuste 'MovimentacaoItem' para o nome real do seu model, se necessário.
-        """
-        ultima_mov = (
-            MovimentacaoItem.objects
-            .filter(item=item, usuario__isnull=False)
-            .select_related("usuario")
-            .order_by("-created_at")
-            .first()
-        )
-
-        if not ultima_mov or not ultima_mov.usuario:
-            return {
-                "nome": "-",
-                "username": "-",
-                "email": "-",
-            }
-
-        usuario = ultima_mov.usuario
-
-        nome = "-"
-        if getattr(usuario, "first_name", None) or getattr(usuario, "last_name", None):
-            nome = f"{usuario.first_name} {usuario.last_name}".strip()
-        elif getattr(usuario, "nome", None):
-            nome = f"{usuario.nome} {getattr(usuario, 'last_name', '')}".strip()
-        else:
-            nome = getattr(usuario, "username", "-") or "-"
-
-        return {
-            "nome": nome,
-            "username": getattr(usuario, "username", "-") or "-",
-            "email": getattr(usuario, "email", "-") or "-",
-        }
 
     def preencher_aba(ws, titulo, itens, grupo_nome):
         ws["A1"] = titulo
@@ -2033,7 +1754,7 @@ def avisos_contratos_vencer_export_excel(request):
         row = start_row + 1
 
         for idx, item in enumerate(itens, start=1):
-            usuario_atual = get_usuario_atual(item)
+            usuario_atual = item.usuario_atual
             loc = getattr(item, "locacao", None)
 
             ws.cell(row=row, column=1, value=idx)
@@ -2115,7 +1836,7 @@ def avisos_contratos_vencer_export_excel(request):
 
     resumo = [
         ("Data da Exportação", hoje.strftime("%d/%m/%Y")),
-        ("Janela de Alerta (dias)", DIAS_ALERTA),
+        ("Janela de Alerta (dias)", kpi["dias_alerta"]),
         ("Total em Alerta", len(itens_alerta)),
         ("Ranking Operacional", len(ranking_operacional)),
         ("Ranking Pausados", len(ranking_pausados)),

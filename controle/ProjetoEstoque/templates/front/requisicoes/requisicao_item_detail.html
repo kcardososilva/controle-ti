@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load humanize %}
 
 {% block title %}{{ item.descricao }} — Requisições{% endblock %}
 {% block page_title %}Detalhe do Item{% endblock %}
@@ -39,20 +40,26 @@
   --kan-warning-soft: var(--warning-soft,      rgba(255,149,0,.12));
   --kan-danger:     var(--danger,              #ff3b30);
   --kan-danger-soft:var(--danger-soft,         rgba(255,59,48,.10));
-  --kan-radius-sm:  var(--radius-sm,           10px);
-  --kan-radius-md:  var(--radius-md,           14px);
-  --kan-radius-lg:  var(--radius-lg,           18px);
-  --kan-radius-xl:  var(--radius-xl,           22px);
-  --kan-radius-pill:var(--radius-pill,         980px);
+  --kan-hover:      var(--bg-hover,            rgba(0,0,0,.04));
+  /* Raios mais fechados de propósito (não puxam do token global --radius-*)
+     — layout estilo Office/Fluent: retangular, pouco arredondado. */
+  --kan-radius-sm:  4px;
+  --kan-radius-md:  6px;
+  --kan-radius-lg:  6px;
+  --kan-radius-xl:  8px;
+  --kan-radius-pill:4px;
   --kan-shadow-sm:  var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
   --kan-transition: var(--transition-fast,     160ms ease);
+  /* Leve inclinação para Segoe UI (Office) nesta tela, com fallback pro
+     stack padrão do app — troca não é global, só escopada aqui. */
+  --kan-font:       "Segoe UI", var(--font-display);
 }
 .kan-detail-page, .kan-detail-page * { box-sizing: border-box; min-width: 0; }
-.kan-detail-page { width: min(100%, 780px); margin: 0 auto; display: grid; gap: 1rem; color: var(--kan-text); }
+.kan-detail-page { width: min(100%, 780px); margin: 0 auto; display: grid; gap: 1rem; color: var(--kan-text); font-family: var(--kan-font); }
 
 .kan-d-card { border: 1px solid var(--kan-border); border-radius: var(--kan-radius-xl); background: var(--kan-surface); box-shadow: var(--kan-shadow-sm); overflow: hidden; }
 .kan-d-header { padding: 1.1rem 1.25rem; border-bottom: 1px solid var(--kan-border); }
-.kan-d-title { margin: 0 0 .5rem; font-size: 1.2rem; font-weight: 700; letter-spacing: -.02em; }
+.kan-d-title { margin: 0 0 .5rem; font-size: 1.2rem; font-weight: 700; }
 .kan-d-badges { display: flex; flex-wrap: wrap; gap: .4rem; }
 .kan-d-body { padding: 1.1rem 1.25rem; }
 
@@ -63,7 +70,7 @@
 .kan-d-value a { color: var(--kan-primary); text-decoration: none; }
 .kan-d-value a:hover { text-decoration: underline; }
 
-.kan-badge { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .6rem; border-radius: var(--kan-radius-pill); font-size: .72rem; font-weight: 650; background: var(--kan-muted-surf); color: var(--kan-muted); }
+.kan-badge { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .6rem; border-radius: var(--kan-radius-pill); font-size: .72rem; font-weight: 600; background: var(--kan-muted-surf); color: var(--kan-muted); }
 .kan-badge-primary { background: var(--kan-primary-soft); color: var(--kan-primary); }
 .kan-badge-success { background: var(--kan-success-soft); color: var(--kan-success); }
 .kan-badge-warning { background: var(--kan-warning-soft); color: var(--kan-warning); }
@@ -75,14 +82,26 @@
 .kan-com-list { display: grid; gap: .75rem; margin-bottom: 1rem; }
 .kan-com { padding: .8rem 1rem; border-radius: var(--kan-radius-md); background: var(--kan-muted-surf); }
 .kan-com-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; margin-bottom: .3rem; font-size: .78rem; color: var(--kan-muted); }
-.kan-com-autor { font-weight: 650; color: var(--kan-text); }
+.kan-com-autor { font-weight: 600; color: var(--kan-text); }
 .kan-com-texto { font-size: .88rem; line-height: 1.5; }
 .kan-com-del { background: none; border: none; color: var(--kan-danger); cursor: pointer; font-size: .78rem; padding: 0; }
 .kan-com-empty { color: var(--kan-muted); font-size: .86rem; padding: .5rem 0 1rem; }
 
 .kan-com-form textarea { width: 100%; min-height: 4.5rem; padding: .6rem .8rem; border: 1px solid var(--kan-border2); border-radius: var(--kan-radius-sm); background: var(--kan-surface); color: var(--kan-text); font-family: inherit; font-size: .88rem; }
 .kan-com-form { display: grid; gap: .6rem; }
-.kan-btn-primary { align-self: flex-end; min-height: 2.3rem; display: inline-flex; align-items: center; gap: .45rem; padding: .5rem 1.1rem; border-radius: var(--kan-radius-pill); border: none; background: var(--kan-primary); color: #fff; font-size: .86rem; font-weight: 650; cursor: pointer; }
+
+/* ── Botões (retirar/receber/desfazer/comentar) ── */
+.kan-btn-primary, .kan-btn-success, .kan-btn-secondary {
+  min-height: 2.2rem; display: inline-flex; align-items: center; gap: .45rem; padding: .5rem 1rem;
+  border-radius: var(--kan-radius-pill); border: 1px solid transparent; font-size: .84rem; font-weight: 600;
+  cursor: pointer; text-decoration: none; transition: background var(--kan-transition), border-color var(--kan-transition);
+}
+.kan-btn-primary { align-self: flex-end; background: var(--kan-primary); color: #fff; }
+.kan-btn-primary:hover { background: var(--brand-hover, #0077ed); }
+.kan-btn-success { background: var(--kan-success); color: #fff; }
+.kan-btn-success:hover { background: color-mix(in srgb, var(--kan-success) 85%, black); }
+.kan-btn-secondary { background: var(--kan-surface); color: var(--kan-text); border-color: var(--kan-border2); }
+.kan-btn-secondary:hover { background: var(--kan-hover); }
 
 @media (max-width: 36rem) { .kan-d-grid { grid-template-columns: 1fr; } }
 </style>
@@ -106,18 +125,18 @@
     <div class="kan-d-body">
       {% if pode_retirar or pode_desfazer_retirada %}
       <div style="margin-bottom:1rem;display:flex;gap:.6rem;flex-wrap:wrap;">
-        {% if pode_retirar and item.tipo == 'compra' and item.item_vinculado_id %}
-        <a href="{% url 'requisicao_item_receber_compra' item.pk %}" class="kan-btn-primary" style="background:var(--kan-success);"><i class="fa fa-box-open" aria-hidden="true"></i> Receber Compra e Dar Entrada no Estoque</a>
+        {% if pode_retirar and item.tipo == 'compra' %}
+        <a href="{% url 'requisicao_item_receber_compra' item.pk %}" class="kan-btn-success"><i class="fa fa-box-open" aria-hidden="true"></i> {% if item.item_vinculado_id %}Receber Compra e Dar Entrada no Estoque{% else %}Receber Compra{% endif %}</a>
         {% elif pode_retirar %}
         <form method="post" action="{% url 'requisicao_item_acao' item.pk %}">
           {% csrf_token %}<input type="hidden" name="acao" value="retirar">
-          <button type="submit" class="kan-btn-primary" style="background:var(--kan-success);"><i class="fa fa-box-open" aria-hidden="true"></i> Marcar como Retirado</button>
+          <button type="submit" class="kan-btn-success"><i class="fa fa-box-open" aria-hidden="true"></i> Marcar como Retirado</button>
         </form>
         {% endif %}
         {% if pode_desfazer_retirada %}
         <form method="post" action="{% url 'requisicao_item_acao' item.pk %}">
           {% csrf_token %}<input type="hidden" name="acao" value="desfazer_retirada">
-          <button type="submit" class="kan-btn-primary" style="background:transparent;color:var(--kan-text);border:1px solid var(--kan-border2);"><i class="fa fa-rotate-left" aria-hidden="true"></i> Desfazer Retirada</button>
+          <button type="submit" class="kan-btn-secondary"><i class="fa fa-rotate-left" aria-hidden="true"></i> Desfazer Retirada</button>
         </form>
         {% endif %}
       </div>
@@ -165,6 +184,16 @@
         <div class="kan-d-item">
           <span class="kan-d-label">Retirado</span>
           <span class="kan-d-value">{% if item.retirado_por %}{{ item.retirado_por.get_full_name|default:item.retirado_por.username }}{% else %}—{% endif %} em {{ item.retirado_em|date:"d/m/Y H:i" }}</span>
+        </div>
+        {% endif %}
+        {% if item.numero_nf %}
+        <div class="kan-d-item">
+          <span class="kan-d-label">Nota Fiscal</span>
+          <span class="kan-d-value">{{ item.numero_nf }}</span>
+        </div>
+        <div class="kan-d-item">
+          <span class="kan-d-label">Valor Unitário / Total</span>
+          <span class="kan-d-value">R$ {{ item.valor_unitario|intcomma }} × {{ item.quantidade }} = R$ {{ item.valor_total|intcomma }}</span>
         </div>
         {% endif %}
       </div>

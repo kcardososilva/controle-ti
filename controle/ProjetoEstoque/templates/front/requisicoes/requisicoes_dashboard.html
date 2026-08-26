@@ -25,9 +25,12 @@
   --rqd-border:   var(--separator-hairline);
   --rqd-border-2: var(--separator-non-opaque);
   --rqd-purple-soft: color-mix(in srgb, var(--system-purple) 14%, transparent);
+  /* Leve inclinação para Segoe UI (Office) nesta tela, com fallback pro
+     stack padrão do app — troca não é global, só escopada aqui. */
+  --rqd-font: "Segoe UI", var(--font-display);
 }
 .rqd-page, .rqd-page * { box-sizing: border-box; min-width: 0; }
-.rqd-page { display: grid; gap: 16px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.rqd-page { display: grid; gap: 16px; color: var(--text-primary); font-variant-numeric: tabular-nums; font-family: var(--rqd-font); }
 
 /* ── Toolbar de filtros — inline, sem painel colapsável ── */
 .rqd-toolbar { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; padding: 14px 16px; border: 1px solid var(--rqd-border); border-radius: var(--radius-lg); background: var(--bg-elevated); box-shadow: var(--shadow-xs); }
@@ -44,7 +47,7 @@
 .rqd-metric:hover { background: var(--bg-hover); }
 .rqd-metric-icon { flex-shrink: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 12px; background: var(--tone-soft, var(--bg-fill-tertiary)); color: var(--tone, var(--text-tertiary)); }
 .rqd-metric-body { min-width: 0; }
-.rqd-metric-value { display: block; font-size: 20px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; color: var(--text-primary); }
+.rqd-metric-value { display: block; font-size: 20px; font-weight: 700; line-height: 1.1; color: var(--text-primary); }
 .rqd-metric-label { margin-top: 2px; font-size: 11px; font-weight: 500; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Card genérico ── */
@@ -83,7 +86,8 @@
 .rqd-status-label { font-size: 12.5px; font-weight: 500; color: var(--text-primary); }
 .rqd-status-count { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); }
 .rqd-status-track { grid-column: 2 / -1; height: 5px; border-radius: 99px; background: var(--bg-fill-tertiary); overflow: hidden; }
-.rqd-status-bar { display: block; height: 100%; border-radius: 99px; background: var(--tone); }
+.rqd-status-bar { display: block; height: 100%; width: 0; border-radius: 99px; background: var(--tone); transition: width 700ms cubic-bezier(.22,.61,.36,1); }
+@media (prefers-reduced-motion: reduce) { .rqd-status-bar { transition: none !important; } }
 
 /* ── Tons semânticos (só tokens do base.html) ── */
 .t-brand   { --tone: var(--brand);          --tone-soft: var(--brand-soft); }
@@ -148,15 +152,15 @@
   <section class="rqd-metrics" aria-label="Indicadores">
     <div class="rqd-metric t-brand">
       <span class="rqd-metric-icon"><i class="fa fa-folder-open" aria-hidden="true"></i></span>
-      <span class="rqd-metric-body"><span class="rqd-metric-value">{{ total_requisicoes }}</span><span class="rqd-metric-label">Requisições no período</span></span>
+      <span class="rqd-metric-body"><span class="rqd-metric-value" data-count="{{ total_requisicoes }}">0</span><span class="rqd-metric-label">Requisições no período</span></span>
     </div>
     <div class="rqd-metric t-indigo">
       <span class="rqd-metric-icon"><i class="fa fa-list" aria-hidden="true"></i></span>
-      <span class="rqd-metric-body"><span class="rqd-metric-value">{{ total_itens }}</span><span class="rqd-metric-label">Itens solicitados</span></span>
+      <span class="rqd-metric-body"><span class="rqd-metric-value" data-count="{{ total_itens }}">0</span><span class="rqd-metric-label">Itens solicitados</span></span>
     </div>
     <div class="rqd-metric t-info">
       <span class="rqd-metric-icon"><i class="fa fa-cubes" aria-hidden="true"></i></span>
-      <span class="rqd-metric-body"><span class="rqd-metric-value">{{ quantidade_total }}</span><span class="rqd-metric-label">Quantidade total pedida</span></span>
+      <span class="rqd-metric-body"><span class="rqd-metric-value" data-count="{{ quantidade_total }}">0</span><span class="rqd-metric-label">Quantidade total pedida</span></span>
     </div>
     <div class="rqd-metric t-purple">
       <span class="rqd-metric-icon"><i class="fa fa-scale-balanced" aria-hidden="true"></i></span>
@@ -264,7 +268,7 @@
             <span class="rqd-status-dot"></span>
             <span class="rqd-status-label">{{ s.label }}</span>
             <span class="rqd-status-count">{{ s.n }} · {{ s.pct }}%</span>
-            <span class="rqd-status-track"><span class="rqd-status-bar" style="width:{{ s.pct }}%"></span></span>
+            <span class="rqd-status-track"><span class="rqd-status-bar" data-pct="{{ s.pct }}"></span></span>
           </div>
           {% endfor %}
         </div>
@@ -324,6 +328,28 @@
 (function () {
   const getJson = (id) => JSON.parse(document.getElementById(id).textContent || '[]');
   const tok = (name) => getComputedStyle(document.body).getPropertyValue(name).trim();
+
+  // ── Contadores dos KPIs (0 → N) e barras de status — um "pop" só na
+  // carga da página, nunca em loop; respeita reduced-motion. ────────────
+  const reduzMovimento = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function contarAte(el) {
+    const alvo = parseInt(el.dataset.count, 10) || 0;
+    if (reduzMovimento || alvo === 0) { el.textContent = alvo; return; }
+    const duracao = 550;
+    const inicio = performance.now();
+    (function passo(agora) {
+      const t = Math.min(1, (agora - inicio) / duracao);
+      el.textContent = Math.round(alvo * (1 - Math.pow(1 - t, 3)));
+      if (t < 1) requestAnimationFrame(passo);
+    })(inicio);
+  }
+  document.querySelectorAll('.rqd-metric-value[data-count]').forEach(contarAte);
+
+  document.querySelectorAll('.rqd-status-bar').forEach(bar => {
+    const pct = bar.dataset.pct || '0';
+    requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.width = pct + '%'; }));
+  });
 
   Chart.defaults.font.family = "-apple-system, 'Inter', sans-serif";
   Chart.defaults.font.size = 11;

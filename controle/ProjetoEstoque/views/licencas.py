@@ -3,6 +3,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.http import HttpResponse, JsonResponse
@@ -717,6 +719,7 @@ def mov_licenca_list(request):
     # Filtros
     q = (request.GET.get("q") or "").strip()
     tipo = (request.GET.get("tipo") or "").strip()
+    licenca_id = (request.GET.get("licenca") or "").strip()
 
     # QuerySet Otimizado
     qs = (
@@ -725,12 +728,19 @@ def mov_licenca_list(request):
         .order_by("-created_at")
     )
 
+    # Contexto de origem (drill-down a partir do catálogo de licenças)
+    licenca_filtro = None
+    if licenca_id.isdigit():
+        licenca_filtro = Licenca.objects.filter(pk=licenca_id).first()
+        if licenca_filtro:
+            qs = qs.filter(licenca_id=licenca_id)
+
     if q:
         qs = qs.filter(
-            Q(licenca__nome__icontains=q) | 
+            Q(licenca__nome__icontains=q) |
             Q(usuario__nome__icontains=q)
         )
-    
+
     # Validação do Tipo (segurança)
     valid_types = [choice[0] for choice in MovimentacaoLicenca._meta.get_field("tipo").choices]
     if tipo in valid_types:
@@ -760,10 +770,20 @@ def mov_licenca_list(request):
         "q": q,
         "tipo": tipo,
         "tipos": MovimentacaoLicenca._meta.get_field("tipo").choices,
-        "total": qs.count()
+        "total": qs.count(),
+        "licenca_filtro": licenca_filtro,
     }
 
     return render(request, "front/licencas/mov_licenca_list.html", context)
+
+def _lic_safe_next(request, url):
+    """Valida que a URL de retorno é local/segura antes de redirecionar (evita open redirect)."""
+    if url and url_has_allowed_host_and_scheme(
+        url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return url
+    return None
+
 
 @login_required
 def mov_licenca_form(request):
@@ -772,27 +792,36 @@ def mov_licenca_form(request):
     if "usuario" in request.GET: initial["usuario"] = request.GET.get("usuario")
 
     if request.method == "POST":
+        # Retorno inteligente: volta para onde o usuário estava antes de abrir o
+        # formulário (tela de origem capturada no GET via next/HTTP_REFERER).
+        next_url = _lic_safe_next(request, request.POST.get("next_url")) or reverse("licenca_list")
+
         form = MovimentacaoLicencaForm(request.POST)
         if form.is_valid():
             try:
                 mov = form.save(user=request.user)
-                
+
                 # Feedback detalhado
                 lote_txt = f"Lote #{mov.lote.pk}" if mov.lote else "N/A"
                 cc_txt = mov.centro_custo_destino.departamento if mov.centro_custo_destino else "N/A"
-                
+
                 messages.success(request, f"{mov.get_tipo_display()} realizada. Estoque: {lote_txt} | Custo: {cc_txt}")
-                return redirect("licenca_list")
+                return redirect(next_url)
             except Exception as e:
                 messages.error(request, f"Erro: {e}")
     else:
         form = MovimentacaoLicencaForm(initial=initial)
+        next_url = (
+            _lic_safe_next(request, request.GET.get("next"))
+            or _lic_safe_next(request, request.META.get("HTTP_REFERER"))
+            or reverse("licenca_list")
+        )
 
     # JSON para Select2 (Apenas lotes com saldo)
     lotes_qs = LicencaLote.objects.filter(quantidade_disponivel__gt=0).values(
         'id', 'licenca_id', 'quantidade_disponivel', 'numero_pedido', 'data_compra'
     )
-    
+
     lotes_dict = {}
     for l in lotes_qs:
         lid = str(l['licenca_id'])
@@ -804,7 +833,8 @@ def mov_licenca_form(request):
     context = {
         "form": form,
         "lotes_json": lotes_dict,
-        "pre_selected_lote": request.POST.get("lote_id_select") or ""
+        "pre_selected_lote": request.POST.get("lote_id_select") or "",
+        "next_url": next_url,
     }
     return render(request, "front/licencas/mov_licenca_form.html", context)
 # --- LISTA DE LOTES ---
@@ -814,7 +844,8 @@ def licenca_lote_list(request):
     Lista de Lotes com busca avançada e layout otimizado.
     """
     q = request.GET.get("q", "").strip()
-    
+    licenca_id = request.GET.get("licenca", "").strip()
+
     # QueryBase com select_related para evitar N+1 queries
     qs = (
         LicencaLote.objects
@@ -822,17 +853,25 @@ def licenca_lote_list(request):
         .order_by("-created_at")
     )
 
+    # Contexto de origem (drill-down a partir do catálogo de licenças)
+    licenca_filtro = None
+    if licenca_id.isdigit():
+        licenca_filtro = Licenca.objects.filter(pk=licenca_id).first()
+        if licenca_filtro:
+            qs = qs.filter(licenca_id=licenca_id)
+
     # Filtro Textual
     if q:
         qs = qs.filter(
-            Q(licenca__nome__icontains=q) | 
-            Q(numero_pedido__icontains=q) | 
+            Q(licenca__nome__icontains=q) |
+            Q(numero_pedido__icontains=q) |
             Q(observacao__icontains=q)
         )
 
     return render(request, "front/licencas/licenca_lote_list.html", {
         "lotes": qs,
-        "q": q
+        "q": q,
+        "licenca_filtro": licenca_filtro,
     })
 
 @login_required
@@ -866,15 +905,30 @@ def licenca_lote_form(request, pk=None):
             
             msg = f"Lote #{lote.pk} atualizado com sucesso!" if obj else "Lote criado com sucesso!"
             messages.success(request, msg)
+            if obj is None and request.POST.get("licenca"):
+                return redirect(f"{reverse('licenca_lote_list')}?licenca={request.POST.get('licenca')}")
             return redirect("licenca_lote_list")
         else:
             messages.error(request, "Verifique os erros no formulário abaixo.")
     else:
-        form = LicencaLoteForm(instance=obj)
+        initial = {}
+        licenca_id = request.GET.get("licenca", "").strip()
+        if not obj and licenca_id.isdigit():
+            initial["licenca"] = licenca_id
+        form = LicencaLoteForm(instance=obj, initial=initial)
+
+    movimentacoes_lote = None
+    if obj:
+        movimentacoes_lote = (
+            MovimentacaoLicenca.objects.filter(lote=obj)
+            .select_related("usuario", "centro_custo_destino", "criado_por")
+            .order_by("-created_at")
+        )
 
     return render(request, "front/licencas/licenca_lote_form.html", {
         "form": form,
-        "obj": obj
+        "obj": obj,
+        "movimentacoes_lote": movimentacoes_lote,
     })
 
 

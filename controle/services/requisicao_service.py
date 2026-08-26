@@ -15,18 +15,20 @@ o status da requisição a que pertence (`coluna_kanban`), pra nunca haver
 dessincronia entre os dois.
 
 O quadro é um Kanban de verdade: qualquer card pode ser arrastado livremente
-entre as colunas do fluxo principal (Rascunho → Solicitado → Aprovação
-Pendente → Aprovados), em qualquer direção — o servidor só recusa combinações
-que quebrariam uma invariante real (ex.: marcar como retirado algo que nunca
-foi aprovado, ou reabrir uma requisição encerrada em definitivo).
+entre as colunas do fluxo principal (Rascunho → Aprovação Pendente →
+Aprovados), em qualquer direção — o servidor só recusa combinações que
+quebrariam uma invariante real (ex.: marcar como retirado algo que nunca foi
+aprovado, ou reabrir uma requisição encerrada em definitivo).
 """
 import unicodedata
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
 from ProjetoEstoque.models import (
+    ComentarioRequisicaoItem,
     Requisicao,
     RequisicaoItem,
     StatusItemSolicitacaoChoices,
@@ -35,23 +37,24 @@ from ProjetoEstoque.models import (
 )
 
 # ── Colunas do Kanban (calculadas, nunca persistidas) ──────────────────────
-COLUNA_BACKLOG = "backlog"
+# "Backlog" (ideia sem código) e "Solicitado" (requisição travada mas ainda
+# não enviada) foram retiradas como colunas próprias — a primeira se funde
+# em "Rascunho" (o item continua existindo como NAO_CADASTRADO internamente,
+# só não tem mais swimlane dedicada) e a segunda foi eliminada do fluxo (ver
+# `StatusRequisicaoChoices` — não existe mais status "solicitada"; o board
+# agora vai direto de Rascunho para Aprovação Pendente).
 COLUNA_RASCUNHO = "rascunho"
-COLUNA_SOLICITADO = "solicitado"
 COLUNA_APROVACAO = "aprovacao_pendente"
 COLUNA_APROVADOS = "aprovados"
 COLUNA_RECEBIDOS = "recebidos"
 COLUNA_PAUSADOS = "pausados_cancelados"
 
 COLUNA_ORDEM = (
-    COLUNA_BACKLOG, COLUNA_RASCUNHO, COLUNA_SOLICITADO, COLUNA_APROVACAO,
-    COLUNA_APROVADOS, COLUNA_RECEBIDOS, COLUNA_PAUSADOS,
+    COLUNA_RASCUNHO, COLUNA_APROVACAO, COLUNA_APROVADOS, COLUNA_RECEBIDOS, COLUNA_PAUSADOS,
 )
 
 COLUNA_LABELS = {
-    COLUNA_BACKLOG: "Backlog",
     COLUNA_RASCUNHO: "Rascunho",
-    COLUNA_SOLICITADO: "Solicitado",
     COLUNA_APROVACAO: "Aprovação Pendente",
     COLUNA_APROVADOS: "Aprovados",
     COLUNA_RECEBIDOS: "Recebidos / Retirado no Almoxarifado",
@@ -63,13 +66,11 @@ COLUNA_LABELS = {
 # qualquer direção dentro dela.
 _FLUXO_STATUS = (
     StatusRequisicaoChoices.RASCUNHO,
-    StatusRequisicaoChoices.SOLICITADA,
     StatusRequisicaoChoices.ENVIADA_APROVACAO,
     StatusRequisicaoChoices.APROVADA,
 )
 _FLUXO_COLUNA = {
     StatusRequisicaoChoices.RASCUNHO: COLUNA_RASCUNHO,
-    StatusRequisicaoChoices.SOLICITADA: COLUNA_SOLICITADO,
     StatusRequisicaoChoices.ENVIADA_APROVACAO: COLUNA_APROVACAO,
     StatusRequisicaoChoices.APROVADA: COLUNA_APROVADOS,
 }
@@ -83,10 +84,8 @@ _REQ_PAUSAVEL = {StatusRequisicaoChoices.PAUSADA, StatusRequisicaoChoices.COM_ER
 _REQ_ENCERRA = _REQ_PAUSAVEL | {StatusRequisicaoChoices.NAO_APROVADA, StatusRequisicaoChoices.CANCELADA}
 
 #: Requisição ainda pode ganhar novos itens enquanto não for enviada pro
-#: processo de aprovação de verdade (`ENVIADA_APROVACAO` em diante) —
-#: "Solicitada" é só uma marcação interna (nada foi submetido externamente
-#: ainda), por isso conta como aberta. Ver `vincular_item_a_requisicao`.
-STATUS_ABERTOS_A_NOVOS_ITENS = {StatusRequisicaoChoices.RASCUNHO, StatusRequisicaoChoices.SOLICITADA}
+#: processo de aprovação de verdade — ver `vincular_item_a_requisicao`.
+STATUS_ABERTOS_A_NOVOS_ITENS = {StatusRequisicaoChoices.RASCUNHO}
 
 
 def coluna_kanban(item: "RequisicaoItem") -> str:
@@ -97,8 +96,9 @@ def coluna_kanban(item: "RequisicaoItem") -> str:
         return COLUNA_PAUSADOS
     if item.requisicao_id and item.requisicao.status in _REQ_ENCERRA:
         return COLUNA_PAUSADOS
-    if item.status == StatusItemSolicitacaoChoices.NAO_CADASTRADO:
-        return COLUNA_BACKLOG
+    # NAO_CADASTRADO (ideia sem código) não tem mais coluna própria — aparece
+    # junto com os rascunhos já com código; o badge de status do card
+    # continua diferenciando os dois (ver `item_status_badge_class`).
     if not item.requisicao_id:
         return COLUNA_RASCUNHO
     return _FLUXO_COLUNA.get(item.requisicao.status, COLUNA_RASCUNHO)
@@ -108,12 +108,15 @@ def estagio_kanban(item: "RequisicaoItem"):
     """Rótulo + data do estágio mais recente do card, pra exibir uma única
     data "viva" (retirado > aprovado > solicitado) — nunca as três juntas.
     Retorna (None, None) quando o item ainda não passou por nenhum estágio
-    com data (Backlog/Rascunho) ou foi pausado/reprovado antes de um deles."""
+    com data (ainda é rascunho) ou foi pausado/reprovado antes de um deles."""
     if item.status == StatusItemSolicitacaoChoices.RETIRADO:
         return "Retirado em", item.retirado_em
     if item.requisicao_id and item.requisicao.status == StatusRequisicaoChoices.APROVADA:
         return "Aprovado em", item.requisicao.decidida_em
     if item.status == StatusItemSolicitacaoChoices.SOLICITADO and item.requisicao_id:
+        # `solicitada_em` só existe em requisições antigas (o status
+        # "Solicitada" foi retirado do fluxo) — mantido como fallback pra não
+        # perder a data em registros legados; `enviada_em` é o caminho normal.
         data = item.requisicao.solicitada_em or item.requisicao.enviada_em
         if data:
             return "Solicitado em", data
@@ -125,7 +128,6 @@ def estagio_kanban(item: "RequisicaoItem"):
 # vermelho etc. em qualquer tela (lista, detalhe).
 _STATUS_BADGE_CLASS = {
     StatusRequisicaoChoices.RASCUNHO: "kan-badge",
-    StatusRequisicaoChoices.SOLICITADA: "kan-badge-primary",
     StatusRequisicaoChoices.ENVIADA_APROVACAO: "kan-badge-warning",
     StatusRequisicaoChoices.APROVADA: "kan-badge-success",
     StatusRequisicaoChoices.NAO_APROVADA: "kan-badge-danger",
@@ -151,6 +153,12 @@ _ITEM_STATUS_BADGE_CLASS = {
 
 def item_status_badge_class(status: str) -> str:
     return _ITEM_STATUS_BADGE_CLASS.get(status, "kan-badge")
+
+
+def _fmt_money(valor) -> str:
+    """R$ 1.234,56 — só usado em texto gerado pelo sistema (comentário
+    automático de recebimento); telas usam os filtros de template padrão."""
+    return f"R$ {valor:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
 
 
 class RequisicaoService:
@@ -320,7 +328,7 @@ class RequisicaoService:
     @transaction.atomic
     def enviar_para_aprovacao(cls, *, requisicao, numero_datasul, user):
         req = Requisicao.objects.select_for_update().get(pk=requisicao.pk)
-        if req.status not in (StatusRequisicaoChoices.RASCUNHO, StatusRequisicaoChoices.SOLICITADA):
+        if req.status != StatusRequisicaoChoices.RASCUNHO:
             raise ValidationError("Esta requisição já foi enviada para aprovação.")
         if not req.itens.exists():
             raise ValidationError("Adicione ao menos um item antes de enviar para aprovação.")
@@ -343,12 +351,11 @@ class RequisicaoService:
 
     # Ação -> (status de origem permitidos, status de destino, cascata no item,
     #          guarda o status atual em status_anterior_pausa antes de mudar)
+    #
+    # A ação "solicitar" (Rascunho -> Solicitada) foi retirada: a etapa
+    # intermediária "Solicitada" não existe mais no fluxo — a requisição vai
+    # direto de Rascunho para Enviada para Aprovação (`enviar_para_aprovacao`).
     _ACOES = {
-        "solicitar": {
-            "de": {StatusRequisicaoChoices.RASCUNHO},
-            "para": StatusRequisicaoChoices.SOLICITADA,
-            "cascata_item": StatusItemSolicitacaoChoices.SOLICITADO,
-        },
         "aprovar": {
             "de": {StatusRequisicaoChoices.ENVIADA_APROVACAO},
             "para": StatusRequisicaoChoices.APROVADA,
@@ -359,12 +366,12 @@ class RequisicaoService:
             "cascata_item": StatusItemSolicitacaoChoices.REPROVADO,
         },
         "pausar": {
-            "de": {StatusRequisicaoChoices.SOLICITADA, StatusRequisicaoChoices.ENVIADA_APROVACAO, StatusRequisicaoChoices.APROVADA},
+            "de": {StatusRequisicaoChoices.ENVIADA_APROVACAO, StatusRequisicaoChoices.APROVADA},
             "para": StatusRequisicaoChoices.PAUSADA,
             "guarda_anterior": True,
         },
         "marcar_erro": {
-            "de": {StatusRequisicaoChoices.SOLICITADA, StatusRequisicaoChoices.ENVIADA_APROVACAO, StatusRequisicaoChoices.APROVADA},
+            "de": {StatusRequisicaoChoices.ENVIADA_APROVACAO, StatusRequisicaoChoices.APROVADA},
             "para": StatusRequisicaoChoices.COM_ERRO,
             "guarda_anterior": True,
         },
@@ -374,7 +381,7 @@ class RequisicaoService:
         },
         "cancelar": {
             "de": {
-                StatusRequisicaoChoices.RASCUNHO, StatusRequisicaoChoices.SOLICITADA,
+                StatusRequisicaoChoices.RASCUNHO,
                 StatusRequisicaoChoices.ENVIADA_APROVACAO, StatusRequisicaoChoices.APROVADA,
                 StatusRequisicaoChoices.PAUSADA, StatusRequisicaoChoices.COM_ERRO,
             },
@@ -386,10 +393,10 @@ class RequisicaoService:
     @classmethod
     @transaction.atomic
     def mudar_status_requisicao(cls, *, requisicao, acao, user):
-        """Dispatcher central de solicitar/aprovar/reprovar/pausar/retomar/
-        cancelar/marcar_erro — nunca mudar `Requisicao.status` fora daqui (ou
-        de `_mover_requisicao_fluxo`, usado só pelo drag-and-drop), pra manter
-        a cascata sobre os itens sempre consistente com a transição."""
+        """Dispatcher central de aprovar/reprovar/pausar/retomar/cancelar/
+        marcar_erro — nunca mudar `Requisicao.status` fora daqui (ou de
+        `_mover_requisicao_fluxo`, usado só pelo drag-and-drop), pra manter a
+        cascata sobre os itens sempre consistente com a transição."""
         config = cls._ACOES.get(acao)
         if not config:
             raise ValidationError(f'Ação de requisição desconhecida: "{acao}".')
@@ -410,8 +417,6 @@ class RequisicaoService:
                 req.status_anterior_pausa = req.status
 
         req.status = novo_status
-        if acao == "solicitar":
-            req.solicitada_em = timezone.now()
         if acao in ("aprovar", "reprovar"):
             req.decidida_em = timezone.now()
             req.decidida_por = user
@@ -432,34 +437,59 @@ class RequisicaoService:
         item = RequisicaoItem.objects.select_related("requisicao").select_for_update().get(pk=item.pk)
         if coluna_kanban(item) != COLUNA_APROVADOS:
             raise ValidationError('Só é possível marcar como retirado um item que esteja em "Aprovados".')
-        # Compra vinculada a um item de estoque precisa passar por
-        # `finalizar_compra_estoque` (gera a entrada real — NF, lote, custo).
-        # Bloqueado aqui pra fechar TODOS os caminhos que levam a este método
-        # (botão simples, drag-and-drop do quadro) — não só o botão da tela de
-        # detalhe, que já direciona pro fluxo certo quando renderizado fresco.
-        if item.tipo == TipoRequisicaoChoices.COMPRA and item.item_vinculado_id:
+        # TODO item de Compra (vinculado a estoque ou não) precisa passar por
+        # `finalizar_compra_estoque`/`finalizar_compra_sem_estoque` — é lá que
+        # se informa NF + valor unitário, usados pra calcular o custo da
+        # requisição. Bloqueado aqui pra fechar TODOS os caminhos que levam a
+        # este método (botão simples, drag-and-drop do quadro, ação em massa)
+        # — não só o botão da tela de detalhe, que já direciona pro fluxo
+        # certo quando renderizado fresco.
+        if item.tipo == TipoRequisicaoChoices.COMPRA:
             raise ValidationError(
-                'Este item é uma Compra vinculada a um item de estoque — use "Receber Compra e '
-                'Dar Entrada no Estoque" na tela do item para registrar a entrada real, em vez de '
-                "retirar diretamente."
+                'Este item é uma Compra — use "Receber Compra" na tela do item para informar a '
+                "nota fiscal e o valor unitário antes de retirar."
             )
         return cls._marcar_item_retirado(item=item, user=user)
 
     @classmethod
-    def _marcar_item_retirado(cls, *, item, user):
-        """Núcleo sem a checagem de compra vinculada — usado pelo `marcar_item_retirado`
-        público (após a checagem, acima) e por `finalizar_compra_estoque` (chamado
-        depois que a entrada de estoque real já foi criada, quando o bloqueio já
-        não se aplica)."""
+    def _marcar_item_retirado(cls, *, item, user, numero_nf=None, valor_unitario=None):
+        """Núcleo sem a checagem de Compra — usado pelo `marcar_item_retirado`
+        público (após a checagem, acima) e por `finalizar_compra_estoque`/
+        `finalizar_compra_sem_estoque` (chamados depois que NF/valor já foram
+        validados, quando o bloqueio já não se aplica). `numero_nf`/
+        `valor_unitario` só vêm preenchidos nesses dois últimos casos."""
         agora = timezone.now()
         item.status = StatusItemSolicitacaoChoices.RETIRADO
         item.retirado_em = agora
         item.retirado_por = user
         item.atualizado_por = user
-        item.save(update_fields=["status", "retirado_em", "retirado_por", "atualizado_por", "updated_at"])
+        update_fields = ["status", "retirado_em", "retirado_por", "atualizado_por", "updated_at"]
+        if numero_nf is not None:
+            item.numero_nf = numero_nf
+            update_fields.append("numero_nf")
+        if valor_unitario is not None:
+            item.valor_unitario = valor_unitario
+            update_fields.append("valor_unitario")
+        item.save(update_fields=update_fields)
         if item.requisicao_id:
             transaction.on_commit(lambda: _disparar_email_itens_retirados(item.requisicao_id, [item.pk]))
         return item
+
+    @staticmethod
+    def _comentar_recebimento(*, item, numero_nf, valor_unitario, observacao, user):
+        """Log automático e visível (reaproveita os comentários do próprio
+        item) de como o custo do recebimento foi apurado — sem isso, NF/valor
+        unitário só ficariam nos campos crus, sem contexto de quando/por quem."""
+        texto = (
+            f'Compra recebida — NF {numero_nf}, valor unitário {_fmt_money(valor_unitario)} '
+            f'(total {_fmt_money(valor_unitario * item.quantidade)} para {item.quantidade} unidade(s)).'
+        )
+        observacao = (observacao or "").strip()
+        if observacao:
+            texto += f" {observacao}"
+        ComentarioRequisicaoItem.objects.create(
+            requisicao_item=item, texto=texto, criado_por=user, atualizado_por=user,
+        )
 
     @classmethod
     @transaction.atomic
@@ -468,8 +498,9 @@ class RequisicaoService:
         """Recebimento de uma compra vinculada a um item de estoque (ver
         `RequisicaoItem.item_vinculado`): dá entrada real no estoque — mesmo
         efeito colateral da Entrada em Movimentações (cria `LoteEstoque` +
-        `ItemLote`, soma `Item.quantidade`) — e então marca o item da
-        requisição como retirado. A quantidade da entrada é sempre a
+        `ItemLote`, soma `Item.quantidade`) —, grava NF + valor unitário no
+        próprio item da requisição (pra entrar no custo da requisição) e então
+        marca o item como retirado. A quantidade da entrada é sempre a
         solicitada (`item.quantidade`), não é reeditável aqui."""
         item = (
             RequisicaoItem.objects
@@ -501,7 +532,44 @@ class RequisicaoService:
             user=user,
         )
 
-        return cls._marcar_item_retirado(item=item, user=user)
+        cls._comentar_recebimento(
+            item=item, numero_nf=numero_nf, valor_unitario=custo_unitario,
+            observacao=observacao, user=user,
+        )
+        return cls._marcar_item_retirado(
+            item=item, user=user, numero_nf=numero_nf, valor_unitario=custo_unitario,
+        )
+
+    @classmethod
+    @transaction.atomic
+    def finalizar_compra_sem_estoque(cls, *, item, numero_nf, valor_unitario, observacao, user):
+        """Recebimento de uma compra SEM item de estoque vinculado (ex.:
+        serviço, ativo que não é controlado por lote) — não há `Item` pra dar
+        entrada real, então só grava NF + valor unitário no próprio item da
+        requisição (pra entrar no custo da requisição) e marca como retirado."""
+        item = (
+            RequisicaoItem.objects
+            .select_related("requisicao")
+            .select_for_update()
+            .get(pk=item.pk)
+        )
+        if coluna_kanban(item) != COLUNA_APROVADOS:
+            raise ValidationError('Só é possível receber um item que esteja em "Aprovados".')
+        if item.tipo != TipoRequisicaoChoices.COMPRA:
+            raise ValidationError("Esta ação só está disponível para itens de Compra.")
+        if item.item_vinculado_id:
+            raise ValidationError(
+                "Este item de Compra está vinculado a um item de estoque — use o recebimento com "
+                "entrada no estoque."
+            )
+
+        cls._comentar_recebimento(
+            item=item, numero_nf=numero_nf, valor_unitario=valor_unitario,
+            observacao=observacao, user=user,
+        )
+        return cls._marcar_item_retirado(
+            item=item, user=user, numero_nf=numero_nf, valor_unitario=valor_unitario,
+        )
 
     @classmethod
     def desfazer_retirada_item(cls, *, item, user):
@@ -510,18 +578,29 @@ class RequisicaoService:
         item.status = StatusItemSolicitacaoChoices.SOLICITADO
         item.retirado_em = None
         item.retirado_por = None
+        update_fields = ["status", "retirado_em", "retirado_por", "atualizado_por", "updated_at"]
+        # Limpa NF/valor unitário do recebimento desfeito — o item volta pra
+        # "Aprovados" como se nunca tivesse sido recebido; um novo recebimento
+        # (obrigatório pra Compra, ver `marcar_item_retirado`) grava valores
+        # novos. Sem isso, o card mostraria um custo "fantasma" de um
+        # recebimento que já foi desfeito.
+        if item.tipo == TipoRequisicaoChoices.COMPRA:
+            item.numero_nf = None
+            item.valor_unitario = None
+            update_fields += ["numero_nf", "valor_unitario"]
         item.atualizado_por = user
-        item.save(update_fields=["status", "retirado_em", "retirado_por", "atualizado_por", "updated_at"])
+        item.save(update_fields=update_fields)
         return item
 
     @classmethod
     @transaction.atomic
     def marcar_requisicao_retirada(cls, *, requisicao, user):
-        """Retirada em massa (.update() direto — sem NF/custo por item, então
-        não pode cobrir Compra vinculada a estoque, que exige dados próprios
-        por item). Esses itens são pulados aqui e precisam ser recebidos
-        individualmente em "Receber Compra e Dar Entrada no Estoque"; a view
-        avisa o usuário com a lista de pulados via o segundo item do retorno."""
+        """Retirada em massa (.update() direto — sem NF/valor unitário por
+        item, então não pode cobrir itens de Compra, que agora sempre exigem
+        esses dados próprios por item, vinculados a estoque ou não). Esses
+        itens são pulados aqui e precisam ser recebidos individualmente em
+        "Receber Compra"; a view avisa o usuário com a lista de pulados via o
+        segundo item do retorno."""
         req = Requisicao.objects.select_for_update().get(pk=requisicao.pk)
         if req.status != StatusRequisicaoChoices.APROVADA:
             raise ValidationError("Só é possível marcar como retirada uma requisição aprovada.")
@@ -529,15 +608,12 @@ class RequisicaoService:
         if not pendentes:
             raise ValidationError("Não há itens pendentes de retirada nesta requisição.")
 
-        puladas = [
-            i for i in pendentes
-            if i.tipo == TipoRequisicaoChoices.COMPRA and i.item_vinculado_id
-        ]
+        puladas = [i for i in pendentes if i.tipo == TipoRequisicaoChoices.COMPRA]
         itens = [i for i in pendentes if i not in puladas]
         if not itens:
             raise ValidationError(
-                "Todos os itens pendentes são Compras vinculadas a estoque — receba cada um "
-                'individualmente em "Receber Compra e Dar Entrada no Estoque", na tela de cada item.'
+                "Todos os itens pendentes são de Compra — receba cada um individualmente em "
+                '"Receber Compra", na tela de cada item (é preciso informar NF e valor unitário).'
             )
 
         agora = timezone.now()
@@ -555,11 +631,11 @@ class RequisicaoService:
     @classmethod
     @transaction.atomic
     def mover_item_kanban(cls, *, item, coluna_destino, coluna_conhecida, user):
-        """Traduz um drop do board. O fluxo principal (Rascunho → Solicitado →
-        Aprovação Pendente → Aprovados) pode ser percorrido livremente em
-        qualquer direção arrastando qualquer card do grupo — a requisição
-        inteira acompanha. Só ficam de fora do "livre" as invariantes reais:
-        um item sem requisição não pode pular direto pra Solicitado+; só um
+        """Traduz um drop do board. O fluxo principal (Rascunho → Aprovação
+        Pendente → Aprovados) pode ser percorrido livremente em qualquer
+        direção arrastando qualquer card do grupo — a requisição inteira
+        acompanha. Só ficam de fora do "livre" as invariantes reais: um item
+        sem requisição não pode pular direto pra Aprovação Pendente+; só um
         item em Aprovados pode virar Recebido (retirada é individual, nunca
         em massa por aqui); um item já Recebido fica travado no quadro — não
         volta mais por drag-and-drop, só pela ação explícita "Desfazer
@@ -580,20 +656,7 @@ class RequisicaoService:
         if coluna_atual == coluna_destino:
             return item
 
-        # 1) Backlog ⇄ Rascunho — toggle de item ainda solto (fora de
-        #    requisição, ou requisição ainda em rascunho).
-        if {coluna_atual, coluna_destino} <= {COLUNA_BACKLOG, COLUNA_RASCUNHO}:
-            if item.requisicao_id and item.requisicao.status != StatusRequisicaoChoices.RASCUNHO:
-                raise ValidationError("Este item já pertence a uma requisição enviada.")
-            if coluna_destino == COLUNA_RASCUNHO:
-                if not (item.codigo or "").strip():
-                    raise ValidationError('Informe o código do item antes de movê-lo para "Rascunho".')
-                novo_status = StatusItemSolicitacaoChoices.NAO_SOLICITADO
-            else:
-                novo_status = StatusItemSolicitacaoChoices.NAO_CADASTRADO
-            return cls.mudar_status_item(item=item, novo_status=novo_status, user=user)
-
-        # 2) Entrar em Recebidos — retirada individual (nunca em massa pelo
+        # 1) Entrar em Recebidos — retirada individual (nunca em massa pelo
         #    quadro; "toda a requisição" é ação explícita na tela dela).
         if coluna_destino == COLUNA_RECEBIDOS:
             return cls.marcar_item_retirado(item=item, user=user)
@@ -602,15 +665,16 @@ class RequisicaoService:
         # arrasto o move dali (nem de volta pra "Aprovados"), só a ação
         # explícita e deliberada "Desfazer Retirada" na tela do item. Evita
         # desfazer sem querer por um arrasto acidental — especialmente
-        # crítico pra Compra vinculada a estoque, onde a entrada real já foi
-        # registrada e não é desfeita junto (ver `finalizar_compra_estoque`).
+        # crítico pra Compra, onde a NF/valor unitário já foram registrados
+        # (e, se vinculada a estoque, a entrada real já foi criada) e não são
+        # desfeitos junto (ver `finalizar_compra_estoque`/`finalizar_compra_sem_estoque`).
         if coluna_atual == COLUNA_RECEBIDOS:
             raise ValidationError(
                 'Este item já foi recebido/retirado no almoxarifado — não é mais possível movê-lo '
                 'pelo quadro. Para desfazer, use "Desfazer Retirada" na tela do item.'
             )
 
-        # 3) Sair de Pausados/Cancelados — retoma a requisição (ou o item
+        # 2) Sair de Pausados/Cancelados — retoma a requisição (ou o item
         #    solto pausado), exceto encerramento definitivo.
         if coluna_atual == COLUNA_PAUSADOS:
             if not item.requisicao_id:
@@ -626,9 +690,9 @@ class RequisicaoService:
             coluna_atual = coluna_kanban(item)
             if coluna_atual == coluna_destino:
                 return item
-            # cai para o bloco 4 abaixo, já com o estado restaurado
+            # cai para o bloco 3 abaixo, já com o estado restaurado
 
-        # 4) Entrar em Pausados/Cancelados — pausa (reversível) do item solto
+        # 3) Entrar em Pausados/Cancelados — pausa (reversível) do item solto
         #    ou da requisição inteira. Reprovar/Cancelar continuam ações
         #    explícitas e deliberadas na tela de detalhe da requisição.
         if coluna_destino == COLUNA_PAUSADOS:
@@ -638,8 +702,8 @@ class RequisicaoService:
             item.refresh_from_db()
             return item
 
-        # 5) Fluxo principal — Rascunho ⇄ Solicitado ⇄ Aprovação Pendente ⇄
-        #    Aprovados, em qualquer direção, movendo a requisição inteira.
+        # 4) Fluxo principal — Rascunho ⇄ Aprovação Pendente ⇄ Aprovados, em
+        #    qualquer direção, movendo a requisição inteira.
         if coluna_destino not in _COLUNA_FLUXO_STATUS:
             raise ValidationError("Essa movimentação não é permitida pelo quadro.")
         if not item.requisicao_id:
@@ -663,7 +727,7 @@ class RequisicaoService:
     def _mover_requisicao_fluxo(cls, *, requisicao, alvo, user):
         """Move a requisição (e todos os seus itens, em bloco) para qualquer
         ponto do fluxo principal, pra frente ou pra trás — é o que permite o
-        drag-and-drop livre entre as 4 colunas centrais do quadro."""
+        drag-and-drop livre entre as 3 colunas centrais do quadro."""
         req = Requisicao.objects.select_for_update().get(pk=requisicao.pk)
         if req.status not in _FLUXO_STATUS:
             raise ValidationError("Esta requisição está encerrada — retome-a antes de movê-la.")
@@ -674,8 +738,6 @@ class RequisicaoService:
         indo_para_frente = _FLUXO_STATUS.index(alvo) > _FLUXO_STATUS.index(status_anterior)
 
         req.status = alvo
-        if alvo == StatusRequisicaoChoices.SOLICITADA and indo_para_frente:
-            req.solicitada_em = timezone.now()
         if alvo == StatusRequisicaoChoices.ENVIADA_APROVACAO and indo_para_frente:
             req.enviada_em = timezone.now()
         if alvo == StatusRequisicaoChoices.APROVADA:
@@ -703,6 +765,15 @@ class RequisicaoService:
         for item in itens:
             buckets[coluna_kanban(item)].append(item)
         return buckets
+
+    @staticmethod
+    def custo_total_requisicao(itens) -> Decimal:
+        """Soma de `RequisicaoItem.valor_total` (quantidade × valor unitário
+        recebido) — itens ainda não recebidos (`valor_unitario is None`) não
+        entram na conta. `itens` é uma lista/queryset já carregada em memória
+        (a tela de detalhe já itera sobre ela), então soma em Python em vez
+        de outra consulta agregada."""
+        return sum((i.valor_total for i in itens if i.valor_total is not None), Decimal("0.00"))
 
     # ── Catálogo de itens padrão (código Datasul) ───────────────────────────
 

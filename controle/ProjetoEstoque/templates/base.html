@@ -184,6 +184,27 @@
       --text-link-hover: #3b9eff;
       --system-blue: #2997ff;
 
+      /* Tints translúcidos (success/warning/danger/info) não tinham par no
+         escuro — herdavam o rgba do claro, que sobre --bg-elevated quase preto
+         (#1d1d1f) compõe uma cor quase idêntica ao fundo (badge "apaga"). Alpha
+         maior aqui restaura o contraste sem alterar a cor viva do texto/ícone.
+         IMPORTANTE: --success-soft/--warning-soft/--danger-soft/--info-soft são
+         aliases declarados só em :root (`--success-soft: var(--system-green-soft)`).
+         Custom property só re-resolve var() aninhado pela cascata DO PRÓPRIO
+         elemento onde o alias foi declarado — como o alias nunca é redeclarado
+         em body.theme-dark, ele fica "congelado" no valor calculado em :root
+         (html), e um override do --system-*-soft aqui (escopo body) não se
+         propaga pra ele. Por isso os aliases também precisam ser redeclarados
+         aqui, explicitamente — não basta trocar só a variável de origem. */
+      --system-green-soft: rgba(48, 209, 88, 0.20);
+      --system-orange-soft: rgba(255, 159, 10, 0.20);
+      --system-red-soft: rgba(255, 69, 58, 0.18);
+      --system-teal-soft: rgba(100, 210, 255, 0.18);
+      --success-soft: var(--system-green-soft);
+      --warning-soft: var(--system-orange-soft);
+      --danger-soft: var(--system-red-soft);
+      --info-soft: var(--system-teal-soft);
+
       --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.40);
       --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.35);
       --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.50), 0 1px 2px rgba(0, 0, 0, 0.40);
@@ -2276,6 +2297,29 @@
           </div>
 
           {% if request.user.is_staff or request.user.is_superuser %}
+          <!-- Quiosque -->
+          <div class="nav-group">
+            <button
+              type="button"
+              class="nav-button {% if 'quiosque' in request.resolver_match.url_name %}is-active{% endif %}"
+              data-submenu-target="sub-quiosque"
+              aria-expanded="false"
+              aria-controls="sub-quiosque"
+              title="Quiosque — Celulares corporativos"
+              style="--ic:#ac8e68">
+              <i class="fa-solid fa-mobile-screen-button nav-icon" aria-hidden="true"></i>
+              <span class="nav-text">Quiosque</span>
+              <i class="fa-solid fa-chevron-down nav-arrow" aria-hidden="true"></i>
+            </button>
+            <div class="submenu" id="sub-quiosque">
+              <div class="submenu-inner">
+                <a href="{% url 'quiosque_dashboard' %}" class="sub-link {% if request.resolver_match.url_name == 'quiosque_dashboard' or request.resolver_match.url_name == 'quiosque_detalhe' or request.resolver_match.url_name == 'quiosque_config_editar' %}is-active{% endif %}">Dispositivos</a>
+                <a href="{% url 'quiosque_mapa' %}" class="sub-link {% if request.resolver_match.url_name == 'quiosque_mapa' %}is-active{% endif %}">Mapa</a>
+                <a href="{% url 'quiosque_matriculas' %}" class="sub-link {% if request.resolver_match.url_name == 'quiosque_matriculas' or request.resolver_match.url_name == 'quiosque_matricula_excluir' %}is-active{% endif %}">Matrículas</a>
+              </div>
+            </div>
+          </div>
+
           <div class="nav-group">
             <button
               type="button"
@@ -2323,30 +2367,11 @@
             </div>
           </div>
 
-          <!-- Quiosque -->
-          <div class="nav-group">
-            <button
-              type="button"
-              class="nav-button {% if 'quiosque' in request.resolver_match.url_name %}is-active{% endif %}"
-              data-submenu-target="sub-quiosque"
-              aria-expanded="false"
-              aria-controls="sub-quiosque"
-              title="Quiosque — Celulares corporativos"
-              style="--ic:#ac8e68">
-              <i class="fa-solid fa-mobile-screen-button nav-icon" aria-hidden="true"></i>
-              <span class="nav-text">Quiosque</span>
-              <i class="fa-solid fa-chevron-down nav-arrow" aria-hidden="true"></i>
-            </button>
-            <div class="submenu" id="sub-quiosque">
-              <div class="submenu-inner">
-                <a href="{% url 'quiosque_dashboard' %}" class="sub-link {% if request.resolver_match.url_name == 'quiosque_dashboard' or request.resolver_match.url_name == 'quiosque_detalhe' or request.resolver_match.url_name == 'quiosque_config_editar' %}is-active{% endif %}">Dispositivos</a>
-                <a href="{% url 'quiosque_mapa' %}" class="sub-link {% if request.resolver_match.url_name == 'quiosque_mapa' %}is-active{% endif %}">Mapa</a>
-                <a href="{% url 'quiosque_matriculas' %}" class="sub-link {% if request.resolver_match.url_name == 'quiosque_matriculas' or request.resolver_match.url_name == 'quiosque_matricula_excluir' %}is-active{% endif %}">Matrículas</a>
-              </div>
-            </div>
-          </div>
-
           {% else %}
+          <a href="{% url 'quiosque_dashboard' %}" class="nav-item {% if 'quiosque' in request.resolver_match.url_name %}is-active{% endif %}" title="Quiosque — Celulares corporativos" style="--ic:#ac8e68">
+            <i class="fa-solid fa-mobile-screen-button nav-icon" aria-hidden="true"></i>
+            <span class="nav-text">Quiosque</span>
+          </a>
           <a href="{% url 'planta_list' %}" class="nav-item {% if 'planta_' in request.resolver_match.url_name %}is-active{% endif %}" title="Plantas de infraestrutura" style="--ic:#22c55e">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#ic-network"></use></svg></span>
             <span class="nav-text">Plantas de Rede</span>
@@ -2354,10 +2379,6 @@
           <a href="{% url 'ninja_dashboard' %}" class="nav-item {% if 'ninja' in request.resolver_match.url_name %}is-active{% endif %}" title="NinjaOne RMM" style="--ic:#ff453a">
             <i class="fa-solid fa-shield-halved nav-icon" aria-hidden="true"></i>
             <span class="nav-text">NinjaOne RMM</span>
-          </a>
-          <a href="{% url 'quiosque_dashboard' %}" class="nav-item {% if 'quiosque' in request.resolver_match.url_name %}is-active{% endif %}" title="Quiosque — Celulares corporativos" style="--ic:#ac8e68">
-            <i class="fa-solid fa-mobile-screen-button nav-icon" aria-hidden="true"></i>
-            <span class="nav-text">Quiosque</span>
           </a>
           {% endif %}
 

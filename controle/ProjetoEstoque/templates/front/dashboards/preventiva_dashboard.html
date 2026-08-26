@@ -3,383 +3,618 @@
 
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <style>
+/* ── Paleta Fluent 2 (Microsoft): mesma família visual do dashboard de
+   Consumo de Toner — rampa neutra real + accent "Communication Blue"
+   (#0078d4). Nenhuma cor saturada de decoração; verde/vermelho ficam
+   reservados só pro sinal real (em dia / vencida). O canvas (--pd-page)
+   é propositalmente mais escuro que o card (--pd-surface) — é o "jogo
+   de contraste" entre elemento e fundo. */
 :where(.preventiva-dashboard) {
-  --bg-card: var(--bg-elevated);
-  --text-primary: var(--text-primary);
-  --text-secondary: var(--text-tertiary);
-  --border-subtle: var(--separator-hairline);
-  --border-strong: var(--separator-non-opaque);
-  --brand-color: var(--brand);
-  --brand-hover: var(--brand-hover);
-  --success-color: var(--success);
-  --warning-color: var(--warning);
-  --danger-color: var(--danger);
-  --info-color: var(--info);
-  --radius-md: 12px;
-  --radius-lg: var(--radius-lg);
-  --shadow-sm: var(--shadow-sm);
-  --shadow-md: var(--shadow-md);
+    --pd-gray-98: #fafafa;
+    --pd-gray-96: #f5f5f5;
+    --pd-gray-94: #f0f0f0;
+    --pd-gray-92: #ebebeb;
+    --pd-gray-90: #e6e6e6;
+    --pd-gray-84: #d6d6d6;
+    --pd-gray-38: #616161;
+    --pd-gray-26: #424242;
+    --pd-gray-14: #242424;
+
+    --pd-accent:        #0078d4;
+    --pd-accent-hover:  #106ebe;
+    --pd-accent-soft:   rgba(0, 120, 212, 0.08);
+    --pd-accent-border: rgba(0, 120, 212, 0.24);
+
+    --pd-tooltip-bg: var(--pd-gray-14);
+
+    --pd-page:           var(--pd-gray-96);
+    --pd-surface:        #ffffff;
+    --pd-surface-soft:   var(--pd-gray-94);
+    --pd-surface-muted:  var(--pd-gray-92);
+
+    --pd-text:   var(--pd-gray-14);
+    --pd-muted:  var(--pd-gray-26);
+    --pd-soft:   var(--pd-gray-38);
+
+    --pd-border:        var(--pd-gray-90);
+    --pd-border-subtle: var(--pd-gray-90);
+    --pd-border-strong: var(--pd-gray-84);
+
+    /* Raios menores que o padrão do app — retangular, linha Fluent/Office. */
+    --pd-radius-sm: 6px;
+    --pd-radius-md: 8px;
+    --pd-radius-lg: 10px;
+
+    --pd-shadow-sm: 0 1px 2px rgba(0, 0, 0, .06), 0 1px 1px rgba(0, 0, 0, .04);
+    --pd-shadow-md: 0 4px 12px rgba(0, 0, 0, .08), 0 1px 3px rgba(0, 0, 0, .05);
+
+    --pd-control-h: 2.15rem;
+    --pd-transition: var(--transition-fast);
+    /* Leve inclinação para Segoe UI (Office) nesta tela, com fallback pro
+       stack padrão do app — troca não é global, só escopada aqui. */
+    --pd-font: "Segoe UI", var(--font-display);
 }
+
+body.theme-dark :where(.preventiva-dashboard) {
+    --pd-page:           #14171d;
+    --pd-surface:        #1a1d24;
+    --pd-surface-soft:   #20242c;
+    --pd-surface-muted:  #262a33;
+
+    --pd-border:         #2a2e38;
+    --pd-border-subtle:  #2a2e38;
+    --pd-border-strong:  #363b47;
+
+    --pd-text:  #f1f2f5;
+    --pd-muted: #b7bcc6;
+    --pd-soft:  #8992a0;
+
+    /* Fluent dark-theme brand blue real (colorBrandBackground do tema
+       web-dark), não um ajuste arbitrário do accent claro. */
+    --pd-accent:        #479ef5;
+    --pd-accent-hover:  #62abf5;
+    --pd-accent-soft:   rgba(71, 158, 245, 0.16);
+    --pd-accent-border: rgba(71, 158, 245, 0.34);
+}
+
 .preventiva-dashboard,
-.preventiva-dashboard * { box-sizing:border-box; min-width:0; }
-.preventiva-dashboard { width:100%; max-width:1500px; margin-inline:auto; display:grid; gap:18px; color:var(--text-primary); }
-.preventiva-dashboard .page-header { display:flex; justify-content:space-between; align-items:flex-end; margin:0; flex-wrap:wrap; gap:16px; padding:22px 24px; border:1px solid var(--border-subtle); border-radius:var(--radius-xl); background:linear-gradient(135deg, var(--brand-softer), transparent 48%), var(--bg-card); box-shadow:var(--shadow-sm); }
-.preventiva-dashboard .page-title h2 { margin:0; color:var(--text-primary); font-family:var(--font-display); font-size:clamp(1.35rem,3vw,2rem); font-weight:700; letter-spacing:-.035em; display:flex; align-items:center; gap:12px; }
-.preventiva-dashboard .period-badge { display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:var(--radius-pill); color:var(--brand-color); background:var(--brand-soft); border:1px solid color-mix(in srgb, var(--brand-color) 18%, transparent); font-size:.87rem; font-weight:650; box-shadow:none; }
-.preventiva-dashboard .filters-section,
-.preventiva-dashboard .dashboard-card,
-.preventiva-dashboard .kpi-card { background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); }
-.preventiva-dashboard .filters-section { padding:20px; margin:0; }
-.preventiva-dashboard .filters-grid { display:grid; grid-template-columns:repeat(12,1fr); gap:16px; align-items:end; }
-.preventiva-dashboard .form-group label { display:block; margin-bottom:6px; color:var(--text-secondary); font-size:.75rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
-.preventiva-dashboard .form-control { width:100%; min-height:42px; padding:8px 12px; border:1px solid var(--border-strong); border-radius:12px; background:var(--bg-card); color:var(--text-primary); outline:none; font-size:.9rem; }
-.preventiva-dashboard .form-control:focus { border-color:var(--brand-color); box-shadow:0 0 0 4px var(--brand-ring); }
-.preventiva-dashboard .btn { min-height:40px; padding:8px 18px; border-radius:var(--radius-pill); border:1px solid transparent; display:inline-flex; align-items:center; justify-content:center; gap:8px; text-decoration:none; font-weight:650; font-size:.9rem; cursor:pointer; transition:transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast); }
-.preventiva-dashboard .btn:hover { transform:translateY(-1px); }
-.preventiva-dashboard .btn-primary { background:var(--brand-color); color:#fff; border-color:var(--brand-color); }
-.preventiva-dashboard .btn-primary:hover { background:var(--brand-hover); border-color:var(--brand-hover); }
-.preventiva-dashboard .btn-outline { background:var(--bg-card); border-color:var(--border-strong); color:var(--text-secondary); }
-.preventiva-dashboard .btn-outline:hover { background:var(--bg-hover); color:var(--text-primary); }
-.preventiva-dashboard .btn-success { background:var(--success-color); color:#fff; }
-.preventiva-dashboard .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr)); gap:16px; margin:0; }
-.preventiva-dashboard .kpi-card { position:relative; padding:20px; overflow:hidden; }
-.preventiva-dashboard .kpi-card::before { content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--border-subtle); }
-.preventiva-dashboard .kpi-card.blue::before { background:var(--brand-color); } .preventiva-dashboard .kpi-card.green::before { background:var(--success-color); } .preventiva-dashboard .kpi-card.red::before { background:var(--danger-color); } .preventiva-dashboard .kpi-card.orange::before { background:var(--warning-color); }
-.preventiva-dashboard .kpi-label { color:var(--text-secondary); font-size:.82rem; font-weight:700; }
-.preventiva-dashboard .kpi-value { color:var(--text-primary); font-size:clamp(1.45rem,3vw,2rem); font-weight:800; margin-top:4px; line-height:1; }
-.preventiva-dashboard .kpi-icon { position:absolute; right:20px; top:50%; transform:translateY(-50%); font-size:1.5rem; opacity:.18; }
-.preventiva-dashboard .dashboard-card { padding:20px; display:flex; flex-direction:column; overflow:hidden; transition:box-shadow var(--transition-fast); }
-.preventiva-dashboard .dashboard-card:hover { box-shadow:var(--shadow-md); }
-.preventiva-dashboard .card-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px; border-bottom:1px solid var(--border-subtle); padding-bottom:12px; }
-.preventiva-dashboard .card-title { display:flex; align-items:center; gap:10px; color:var(--text-primary); font-size:1rem; font-weight:800; text-transform:uppercase; letter-spacing:.02em; }
-.preventiva-dashboard .charts-grid { display:grid; grid-template-columns:minmax(0,2fr) minmax(300px,1fr); gap:18px; margin:0; }
-.preventiva-dashboard .chart-container { position:relative; height:320px; width:100%; }
-.preventiva-dashboard .nodata { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); font-weight:700; background:color-mix(in srgb, var(--bg-card) 82%, transparent); }
-.preventiva-dashboard .table-responsive { overflow-x:auto; -webkit-overflow-scrolling:touch; border:0; border-radius:var(--radius-md); }
-.preventiva-dashboard .table { width:100%; min-width:760px; border-collapse:collapse; font-size:.9rem; }
-.preventiva-dashboard .table th { background:color-mix(in srgb, var(--bg-card) 90%, var(--brand-color) 2%); color:var(--text-primary); font-weight:800; text-align:left; padding:12px 16px; border-bottom:1px solid var(--border-subtle); white-space:nowrap; }
-.preventiva-dashboard .table td { padding:12px 16px; border-bottom:1px solid var(--border-subtle); color:var(--text-secondary); }
-.preventiva-dashboard .table tr:hover td { background:color-mix(in srgb, var(--brand-color) 4%, transparent); color:var(--text-primary); }
-.preventiva-dashboard .status-badge { display:inline-flex; align-items:center; padding:4px 10px; border-radius:999px; font-size:.75rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
-.preventiva-dashboard .status-badge.ok { background:var(--success-soft); color:var(--success-color); }
-.preventiva-dashboard .status-badge.warning { background:var(--warning-soft); color:var(--warning-color); }
-.preventiva-dashboard .status-badge.danger { background:var(--danger-soft); color:var(--danger-color); }
-.preventiva-dashboard .status-badge.neutral { background:var(--bg-fill-tertiary); color:var(--text-secondary); }
-.preventiva-dashboard .action-btn { padding:4px 8px; border-radius:8px; color:var(--text-secondary); text-decoration:none; }
-.preventiva-dashboard .action-btn:hover { background:var(--bg-hover); color:var(--brand-color); }
-.preventiva-dashboard .col-span-12{grid-column:span 12;} .preventiva-dashboard .col-span-6{grid-column:span 6;} .preventiva-dashboard .col-span-4{grid-column:span 4;} .preventiva-dashboard .col-span-3{grid-column:span 3;} .preventiva-dashboard .col-span-2{grid-column:span 2;}
-@media (max-width:1200px){ .preventiva-dashboard .charts-grid{ grid-template-columns:1fr; } }
-@media (max-width:1024px){ .preventiva-dashboard .col-span-2{ grid-column:span 3; } .preventiva-dashboard .col-span-4{ grid-column:span 6; } }
-@media (max-width:768px){ .preventiva-dashboard .col-span-2,.preventiva-dashboard .col-span-3,.preventiva-dashboard .col-span-4,.preventiva-dashboard .col-span-6{ grid-column:span 12; } .preventiva-dashboard .page-header{ align-items:flex-start; } .preventiva-dashboard .btn{ width:100%; } .preventiva-dashboard .filters-actions{ display:grid !important; grid-template-columns:1fr; } }
-@media print { .preventiva-dashboard .filters-section, .preventiva-dashboard .btn, .preventiva-dashboard .action-btn{ display:none !important; } .preventiva-dashboard{ max-width:none; } .preventiva-dashboard .dashboard-card{ box-shadow:none; border:1px solid #000; break-inside:avoid; } .preventiva-dashboard .chart-container{ height:250px; } }
+.preventiva-dashboard * { box-sizing: border-box; min-width: 0; }
+
+.preventiva-dashboard {
+    width: 100%;
+    max-width: 1580px;
+    margin: 0 auto;
+    padding: clamp(0.625rem, 2vw, 1.5rem);
+    color: var(--pd-text);
+    font-family: var(--pd-font);
+    background: var(--pd-page);
+    border-radius: 12px;
+}
+
+.pd-shell { display: grid; gap: 1rem; }
+
+/* ── Hero ─────────────────────────────────────────────────────────── */
+.pd-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    align-items: center;
+    padding: clamp(0.6rem, 1.4vw, 0.9rem) clamp(0.8rem, 2vw, 1.1rem);
+    border: 1px solid var(--pd-border);
+    border-radius: var(--pd-radius-lg);
+    background: var(--pd-surface);
+    box-shadow: var(--pd-shadow-sm);
+}
+.pd-hero-main { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.7rem; }
+.pd-hero-icon {
+    width: clamp(2.15rem, 4.5vw, 2.5rem); height: clamp(2.15rem, 4.5vw, 2.5rem);
+    display: grid; place-items: center; border-radius: 0.75rem;
+    background: var(--pd-surface-muted); color: var(--pd-text);
+    border: 1px solid var(--pd-border); font-size: clamp(0.9rem, 2vw, 1.05rem);
+}
+.pd-hero-title h1 { margin: 0; color: var(--pd-text); font-size: 16px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.pd-hero-title span { display: block; margin-top: 0.2rem; color: var(--pd-muted); font-size: 0.78rem; line-height: 1.4; }
+.pd-hero-actions { display: flex; align-items: center; gap: 0.5rem; }
+.pd-period-badge {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+    padding: 0.35rem 0.65rem; border-radius: 999px;
+    background: var(--pd-surface); color: var(--pd-muted); border: 1px solid var(--pd-border);
+    font-size: 0.74rem; font-weight: 700; white-space: nowrap;
+}
+
+/* ── Sub-navegação — ações secundárias fora do cabeçalho principal ──── */
+.pd-subnav { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.pd-subnav a {
+    min-height: 2.05rem; display: inline-flex; align-items: center; gap: 0.45rem;
+    padding: 0 0.75rem; border-radius: var(--pd-radius-sm);
+    border: 1px solid var(--pd-border); background: var(--pd-surface); color: var(--pd-muted);
+    font-size: 0.78rem; font-weight: 700; text-decoration: none;
+    transition: background var(--pd-transition), color var(--pd-transition), border-color var(--pd-transition);
+}
+.pd-subnav a:hover { background: var(--pd-surface-soft); color: var(--pd-text); border-color: var(--pd-accent-border); }
+.pd-subnav a i { color: var(--pd-accent); font-size: 0.78rem; }
+
+/* ── Painéis ──────────────────────────────────────────────────────── */
+.panel { border: 1px solid var(--pd-border); border-radius: var(--pd-radius-lg); background: var(--pd-surface); box-shadow: var(--pd-shadow-sm); overflow: hidden; }
+.panel-body { padding: clamp(0.875rem, 2vw, 1.25rem); }
+.panel-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.125rem; border-bottom: 1px solid var(--pd-border-subtle); }
+.panel-title { display: flex; align-items: center; gap: 0.625rem; color: var(--pd-text); font-size: 0.96rem; font-weight: 700; }
+.panel-title i { color: var(--pd-accent); }
+
+.filters-panel > summary.panel-header { padding: 0.6rem 0.9rem; cursor: pointer; list-style: none; user-select: none; }
+.filters-panel > summary.panel-header::-webkit-details-marker,
+.filters-panel > summary.panel-header::marker { display: none; content: ""; }
+.filters-panel:not([open]) > summary.panel-header { border-bottom-color: transparent; }
+.filters-panel .panel-body { padding: 0.75rem 0.9rem 0.85rem; }
+.filters-header-right { display: flex; align-items: center; gap: 0.5rem; }
+.filters-toggle-icon { color: var(--pd-soft); font-size: 0.72rem; transition: transform var(--pd-transition); }
+.filters-panel[open] .filters-toggle-icon { transform: rotate(180deg); }
+.filters-badge {
+    display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.22rem 0.55rem; border-radius: 999px;
+    background: var(--pd-accent-soft); color: var(--pd-accent); font-size: 0.68rem; font-weight: 800; white-space: nowrap;
+}
+
+.filters-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 0.6rem; align-items: end; }
+.form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+.form-group label { color: var(--pd-soft); font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+.form-control {
+    width: 100%; min-height: var(--pd-control-h); padding: 0.4rem 0.6rem; border-radius: var(--pd-radius-sm);
+    border: 1px solid var(--pd-border-strong); background: var(--pd-surface-soft); color: var(--pd-text);
+    font-size: 0.82rem; outline: none;
+}
+.form-control:focus { background: var(--pd-surface); border-color: var(--pd-accent); box-shadow: 0 0 0 3px var(--pd-accent-soft); }
+.search-wrap { position: relative; }
+.search-wrap i { position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--pd-soft); font-size: 0.8rem; pointer-events: none; }
+.search-wrap input { padding-left: 2rem; }
+
+.col-2 { grid-column: span 2; } .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; }
+
+.quick-range { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.65rem; }
+.quick-range span { color: var(--pd-soft); font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.1rem; }
+.qr-chip {
+    padding: 0.3rem 0.65rem; border-radius: 999px; border: 1px solid var(--pd-border);
+    background: var(--pd-surface-muted); color: var(--pd-muted); font-size: 0.7rem; font-weight: 700; cursor: pointer;
+    transition: background var(--pd-transition), color var(--pd-transition), border-color var(--pd-transition);
+}
+.qr-chip:hover { color: var(--pd-text); border-color: var(--pd-accent-border); }
+.qr-chip.is-active { background: var(--pd-accent); border-color: var(--pd-accent); color: #fff; }
+
+.filter-actions { display: flex; gap: 0.625rem; flex-wrap: wrap; }
+.pd-btn {
+    min-height: var(--pd-control-h); display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+    padding: 0 0.8rem; border-radius: var(--pd-radius-sm); font-size: 0.8rem; font-weight: 700; text-decoration: none;
+    border: 1px solid transparent; cursor: pointer; white-space: nowrap;
+    transition: background var(--pd-transition), border-color var(--pd-transition), color var(--pd-transition);
+}
+.pd-btn-primary { background: var(--pd-accent); color: #fff; }
+.pd-btn-primary:hover { background: var(--pd-accent-hover); }
+.pd-btn-outline { background: var(--pd-surface); border-color: var(--pd-border); color: var(--pd-muted); }
+.pd-btn-outline:hover { background: var(--pd-surface-muted); color: var(--pd-text); border-color: var(--pd-accent-border); }
+.pd-btn-success { background: var(--success); color: #fff; }
+.pd-btn-success:hover { filter: brightness(.93); }
+.pd-btn-sm { min-height: 1.85rem; padding: 0 0.6rem; font-size: 0.76rem; }
+
+/* ── KPIs ─────────────────────────────────────────────────────────── */
+.kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1rem; }
+.kpi-card { display: flex; align-items: center; gap: 0.875rem; padding: 1rem; border: 1px solid var(--pd-border); border-radius: var(--pd-radius-lg); background: var(--pd-surface); box-shadow: var(--pd-shadow-sm); }
+.kpi-icon {
+    width: 3rem; height: 3rem; flex: 0 0 3rem; display: grid; place-items: center; border-radius: var(--pd-radius-md);
+    background: var(--pd-surface-muted); color: var(--pd-text); border: 1px solid var(--pd-border);
+}
+.kpi-icon.is-success { background: var(--success-soft); color: var(--success); border-color: transparent; }
+.kpi-icon.is-danger { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+.kpi-label { display: block; color: var(--pd-soft); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+.kpi-value { display: block; margin-top: 0.28rem; color: var(--pd-text); font-size: clamp(1.1rem, 3vw, 1.55rem); font-weight: 600; line-height: 1.15; overflow-wrap: anywhere; }
+.kpi-value.is-danger { color: var(--danger); }
+.kpi-sub { display: block; margin-top: 0.25rem; color: var(--pd-muted); font-size: 0.75rem; line-height: 1.35; }
+
+/* ── Grades de conteúdo ───────────────────────────────────────────── */
+.dashboard-grid-main { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 1rem; }
+.dashboard-grid-secondary { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1rem; }
+.chart-container { position: relative; height: 320px; width: 100%; }
+.nodata {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; padding: 1rem;
+    color: var(--pd-muted); background: color-mix(in srgb, var(--pd-surface) 78%, transparent); font-weight: 700;
+}
+
+/* ── Tabelas ──────────────────────────────────────────────────────── */
+.table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.pd-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.pd-table th {
+    background: var(--pd-surface-soft); color: var(--pd-soft); font-size: 0.7rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em; text-align: left; padding: 0.8rem 1rem;
+    border-bottom: 1px solid var(--pd-border-subtle); white-space: nowrap;
+}
+.pd-table th.text-center { text-align: center; }
+.pd-table td { padding: 0.8rem 1rem; border-bottom: 1px solid var(--pd-border-subtle); color: var(--pd-text); vertical-align: middle; }
+.pd-table td.text-center { text-align: center; }
+.pd-table tbody tr:last-child td { border-bottom: 0; }
+.pd-table tbody tr:hover td { background: var(--pd-surface-soft); }
+.pd-item-name { font-weight: 500; color: var(--pd-text); }
+.pd-item-sub { margin-top: 0.15rem; color: var(--pd-muted); font-size: 0.76rem; }
+
+.pd-pill {
+    display: inline-flex; align-items: center; padding: 0.22rem 0.6rem; border-radius: 999px;
+    font-size: 0.72rem; font-weight: 600; white-space: nowrap;
+}
+.pd-pill.is-danger { background: var(--danger-soft); color: var(--danger); }
+.pd-pill.is-success { background: var(--success-soft); color: var(--success); }
+.pd-pill.is-neutral { background: var(--pd-surface-muted); color: var(--pd-muted); }
+
+.empty-state { text-align: center; padding: 2rem 1rem; color: var(--pd-muted); font-weight: 700; }
+.pd-num-success { color: var(--success); font-weight: 500; }
+.pd-num-danger { color: var(--danger); font-weight: 500; }
+
+/* Select2 — herda os tokens do dashboard (page-scoped) */
+.preventiva-dashboard .select2-container { width: 100% !important; }
+.preventiva-dashboard .select2-container .select2-selection--single {
+    min-height: var(--pd-control-h) !important; display: flex !important; align-items: center !important;
+    border: 1px solid var(--pd-border-strong) !important; border-radius: var(--pd-radius-sm) !important;
+    background: var(--pd-surface-soft) !important;
+}
+.preventiva-dashboard .select2-container--default.select2-container--focus .select2-selection--single,
+.preventiva-dashboard .select2-container--default .select2-selection--single:focus {
+    border-color: var(--pd-accent) !important; box-shadow: 0 0 0 3px var(--pd-accent-soft) !important;
+}
+.preventiva-dashboard .select2-container--default .select2-selection--single .select2-selection__rendered {
+    color: var(--pd-text) !important; font-size: 0.92rem; padding-left: 0.8rem; line-height: calc(var(--pd-control-h) - 2px) !important;
+}
+.preventiva-dashboard .select2-container--default .select2-selection--single .select2-selection__placeholder { color: var(--pd-soft) !important; }
+.preventiva-dashboard .select2-container--default .select2-selection--single .select2-selection__arrow { height: var(--pd-control-h) !important; }
+
+@media (max-width: 1180px) {
+    .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dashboard-grid-main, .dashboard-grid-secondary { grid-template-columns: 1fr; }
+}
+@media (max-width: 820px) {
+    .preventiva-dashboard { padding: 0.5rem; }
+    .pd-hero { grid-template-columns: 1fr; }
+    .pd-hero-main { grid-template-columns: 1fr; }
+    .pd-hero-actions { justify-content: space-between; }
+    .filters-grid { grid-template-columns: 1fr; }
+    .col-2, .col-3, .col-4 { grid-column: span 1; }
+    .filter-actions { display: grid; grid-template-columns: 1fr; }
+    .pd-btn { width: 100%; }
+    .kpi-grid { grid-template-columns: 1fr; }
+    .chart-container { height: 280px; }
+    .pd-table, .pd-table thead, .pd-table tbody, .pd-table tr, .pd-table td { display: block; width: 100%; }
+    .pd-table thead { display: none; }
+    .pd-table tbody { display: grid; gap: 0.75rem; }
+    .pd-table tbody tr { border: 1px solid var(--pd-border); border-radius: var(--pd-radius-md); background: var(--pd-surface); padding: 0.75rem; }
+    .pd-table td { border-bottom: 1px solid var(--pd-border-subtle); display: grid; grid-template-columns: minmax(7rem, 0.4fr) minmax(0, 1fr); gap: 0.75rem; padding: 0.6rem 0; text-align: left !important; }
+    .pd-table td:last-child { border-bottom: none; }
+    .pd-table td::before { content: attr(data-label); color: var(--pd-soft); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+}
+@media (max-width: 420px) {
+    .panel-body, .panel-header, .pd-hero { padding: 0.875rem; }
+    .pd-table td { grid-template-columns: 1fr; gap: 0.35rem; }
+}
+@media print {
+    .filters-panel, .pd-subnav, .pd-btn { display: none !important; }
+    .preventiva-dashboard { max-width: none; background: #fff; }
+    .panel { box-shadow: none; border: 1px solid #000; break-inside: avoid; }
+    .chart-container { height: 240px; }
+}
 </style>
 
 <div class="preventiva-dashboard">
-    
-    <div class="page-header">
-        <div class="page-title">
-            <h2><i class="fa fa-chart-line" style="color:var(--brand-color)"></i> Dashboard de Preventivas</h2>
-        </div>
-        <div style="display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;">
-            <a href="{% url 'preventiva_plano' %}" class="btn btn-outline" style="font-size:.82rem;">
-                <i class="fa fa-calendar-plus"></i> Plano de Agendamento
-            </a>
-            <a href="{% url 'preventiva_agendadas' %}" class="btn btn-outline" style="font-size:.82rem;">
-                <i class="fa fa-calendar-check"></i> Ver Agendadas
-            </a>
-            <a href="{% url 'minhas_atividades' %}" class="btn btn-outline" style="font-size:.82rem;">
-                <i class="fa fa-list-check"></i> Minhas Atividades
-            </a>
-            <a href="{% url 'preventiva_minha_agenda' %}" class="btn btn-outline" style="font-size:.82rem;">
-                <i class="fa fa-calendar-days"></i> Minha Agenda
-            </a>
-            <a href="{% url 'tecnico_desempenho' %}" class="btn btn-outline" style="font-size:.82rem;">
-                <i class="fa fa-chart-line"></i> Desempenho do Técnico
-            </a>
-            <div class="period-badge">
-                <i class="fa fa-calendar-alt"></i>
-                <span>{{ dt_ini|date:"d/m/Y" }} — {{ dt_fim|date:"d/m/Y" }}</span>
-            </div>
-        </div>
-    </div>
+    <div class="pd-shell">
 
-    <div class="filters-section">
-        <form method="get" class="filters-grid" id="dashFilters" autocomplete="off">
-            <div class="form-group col-span-4">
-                <label>Busca Rápida</label>
-                <div style="position:relative">
-                    <i class="fa fa-search" style="position:absolute; left:12px; top:12px; color:var(--text-secondary)"></i>
-                    <input type="text" class="form-control" name="q" value="{{ q|default:'' }}" placeholder="Equipamento, Obs..." style="padding-left: 36px;">
+        <section class="pd-hero">
+            <div class="pd-hero-main">
+                <div class="pd-hero-icon"><i class="fa fa-chart-line"></i></div>
+                <div class="pd-hero-title">
+                    <h1>Dashboard de Preventivas</h1>
+                    <span>Cobertura, atrasos e execução da manutenção preventiva por checklist e localidade.</span>
+                </div>
+            </div>
+            <div class="pd-hero-actions">
+                <div class="pd-period-badge">
+                    <i class="fa fa-calendar-days"></i>
+                    {{ dt_ini|date:"d/m/Y" }} — {{ dt_fim|date:"d/m/Y" }}
+                </div>
+            </div>
+        </section>
+
+        <nav class="pd-subnav" aria-label="Ferramentas de preventiva">
+            <a href="{% url 'preventiva_plano' %}"><i class="fa fa-calendar-plus"></i> Plano de Agendamento</a>
+            <a href="{% url 'preventiva_agendadas' %}"><i class="fa fa-calendar-check"></i> Ver Agendadas</a>
+            <a href="{% url 'minhas_atividades' %}"><i class="fa fa-list-check"></i> Minhas Atividades</a>
+            <a href="{% url 'preventiva_minha_agenda' %}"><i class="fa fa-calendar-days"></i> Minha Agenda</a>
+            <a href="{% url 'tecnico_desempenho' %}"><i class="fa fa-gauge-high"></i> Desempenho do Técnico</a>
+        </nav>
+
+        <details class="panel filters-panel" open>
+            <summary class="panel-header">
+                <div class="panel-title"><i class="fa fa-sliders"></i> Filtros</div>
+                <div class="filters-header-right">
+                    {% if q or status or checklist %}
+                        <span class="filters-badge"><i class="fa fa-filter"></i> Filtros ativos</span>
+                    {% endif %}
+                    <i class="fa fa-chevron-down filters-toggle-icon" aria-hidden="true"></i>
+                </div>
+            </summary>
+
+            <div class="panel-body">
+                <div class="quick-range" id="quickRange">
+                    <span>Período rápido:</span>
+                    <button type="button" class="qr-chip" data-preset="7" onclick="aplicarPeriodo(7)">7 dias</button>
+                    <button type="button" class="qr-chip" data-preset="30" onclick="aplicarPeriodo(30)">30 dias</button>
+                    <button type="button" class="qr-chip" data-preset="90" onclick="aplicarPeriodo(90)">90 dias</button>
+                    <button type="button" class="qr-chip" data-preset="mes" onclick="aplicarMesAtual()">Mês atual</button>
+                    <button type="button" class="qr-chip" data-preset="ano" onclick="aplicarAnoAtual()">Ano atual</button>
+                </div>
+
+                <form method="get" class="filters-grid" id="dashFilters" autocomplete="off">
+                    <div class="form-group col-4">
+                        <label>Busca Rápida</label>
+                        <div class="search-wrap">
+                            <i class="fa fa-magnifying-glass"></i>
+                            <input type="text" class="form-control" name="q" value="{{ q|default:'' }}" placeholder="Equipamento, observação...">
+                        </div>
+                    </div>
+
+                    <div class="form-group col-2">
+                        <label>Status</label>
+                        <select class="form-control" name="status" onchange="this.form.submit()">
+                            <option value="">Todos</option>
+                            <option value="ok" {% if status == 'ok' %}selected{% endif %}>No Prazo</option>
+                            <option value="vencida" {% if status == 'vencida' %}selected{% endif %}>Vencidas</option>
+                            <option value="sem_agenda" {% if status == 'sem_agenda' %}selected{% endif %}>Sem Agenda</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group col-2">
+                        <label>Checklist</label>
+                        <select class="form-control" id="filtroChecklist" name="checklist">
+                            <option value="">Todos</option>
+                            {% for c in checklist_opts %}
+                                <option value="{{ c.id }}" {% if checklist == c.id|stringformat:'s' %}selected{% endif %}>{{ c.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group col-2">
+                        <label>Início</label>
+                        <input class="form-control" type="date" id="filtroInicio" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}">
+                    </div>
+
+                    <div class="form-group col-2">
+                        <label>Fim</label>
+                        <input class="form-control" type="date" id="filtroFim" name="fim" value="{{ dt_fim|date:'Y-m-d' }}">
+                    </div>
+
+                    <div class="col-2" style="grid-column: span 12;">
+                        <div class="filter-actions" style="justify-content: flex-end;">
+                            <button type="submit" class="pd-btn pd-btn-primary"><i class="fa fa-filter"></i> Aplicar Filtros</button>
+                            <a href="{{ request.path }}" class="pd-btn pd-btn-outline"><i class="fa fa-eraser"></i> Limpar</a>
+                            <a href="{% url 'preventiva_dashboard_export' %}?{{ request.GET.urlencode }}" class="pd-btn pd-btn-success"><i class="fa fa-file-excel"></i> Excel</a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </details>
+
+        <section class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-icon"><i class="fa fa-cubes"></i></div>
+                <div>
+                    <span class="kpi-label">Total de Ativos</span>
+                    <span class="kpi-value">{{ total|default:0 }}</span>
+                    <span class="kpi-sub">programações ativas</span>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon is-success"><i class="fa fa-circle-check"></i></div>
+                <div>
+                    <span class="kpi-label">Em Dia</span>
+                    <span class="kpi-value">{{ ok_count|default:0 }}</span>
+                    <span class="kpi-sub">dentro do prazo</span>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon is-danger"><i class="fa fa-triangle-exclamation"></i></div>
+                <div>
+                    <span class="kpi-label">Vencidas</span>
+                    <span class="kpi-value is-danger">{{ vencidas_count|default:0 }}</span>
+                    <span class="kpi-sub">prioridade máxima</span>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon"><i class="fa fa-list-check"></i></div>
+                <div>
+                    <span class="kpi-label">Executadas (Mês)</span>
+                    <span class="kpi-value">{{ executadas_mes|default:0 }}</span>
+                    <span class="kpi-sub">no mês corrente</span>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon"><i class="fa fa-calendar-check"></i></div>
+                <div>
+                    <span class="kpi-label">Com Data Agendada</span>
+                    <span class="kpi-value">{{ agendadas_count|default:0 }}</span>
+                    <span class="kpi-sub">carga futura</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="dashboard-grid-main">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title"><i class="fa fa-chart-area"></i> Evolução: Executadas vs Agendadas</div>
+                </div>
+                <div class="panel-body">
+                    <div class="chart-container">
+                        <canvas id="serieChart"></canvas>
+                        <div id="nd-serie" class="nodata">Sem dados no período</div>
+                    </div>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title"><i class="fa fa-chart-pie"></i> Adesão por Checklist</div>
+                </div>
+                <div class="panel-body">
+                    <div class="chart-container">
+                        <canvas id="chkRateChart"></canvas>
+                        <div id="nd-chkrate" class="nodata">Sem dados</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="dashboard-grid-secondary">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title"><i class="fa fa-fire" style="color:var(--danger)"></i> Atenção: Vencidas (Top 50)</div>
+                </div>
+                <div class="table-responsive">
+                    <table class="pd-table">
+                        <thead>
+                            <tr><th>Data</th><th>Atraso</th><th>Item</th><th>Local</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            {% for p in vencidas %}
+                            <tr>
+                                <td data-label="Data"><strong>{{ p.proxima_calc|date:"d/m/Y" }}</strong></td>
+                                <td data-label="Atraso"><span class="pd-pill is-danger">{{ p.dias_atraso }} dias</span></td>
+                                <td data-label="Item">
+                                    <div class="pd-item-name">{{ p.equipamento.nome }}</div>
+                                    <div class="pd-item-sub">{{ p.checklist_modelo.nome|default:"—" }}</div>
+                                </td>
+                                <td data-label="Local">{{ p.equipamento.localidade.local|default:"—" }}</td>
+                                <td data-label="Ação">
+                                    <a href="{% url 'preventiva_exec' p.id %}" class="pd-btn pd-btn-primary pd-btn-sm">Executar</a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5"><div class="empty-state">Nenhuma preventiva vencida. Ótimo trabalho!</div></td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <div class="form-group col-span-2">
-                <label>Status</label>
-                <select class="form-control" name="status" onchange="this.form.submit()">
-                    <option value="">Todos</option>
-                    <option value="ok" {% if status == 'ok' %}selected{% endif %}>No Prazo</option>
-                    <option value="vencida" {% if status == 'vencida' %}selected{% endif %}>Vencidas</option>
-                    <option value="sem_agenda" {% if status == 'sem_agenda' %}selected{% endif %}>Sem Agenda</option>
-                </select>
-            </div>
-
-            <div class="form-group col-span-2">
-                <label>Checklist</label>
-                <select class="form-control" name="checklist" onchange="this.form.submit()">
-                    <option value="">Todos</option>
-                    {% for c in checklist_opts %}
-                        <option value="{{ c.id }}" {% if checklist == c.id|stringformat:'s' %}selected{% endif %}>{{ c.nome }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div class="form-group col-span-2">
-                <label>Início</label>
-                <input class="form-control" type="date" name="inicio" value="{{ dt_ini|date:'Y-m-d' }}">
-            </div>
-
-            <div class="form-group col-span-2">
-                <label>Fim</label>
-                <input class="form-control" type="date" name="fim" value="{{ dt_fim|date:'Y-m-d' }}">
-            </div>
-
-            <div class="col-span-12 filters-actions" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px;">
-                <button type="submit" class="btn btn-primary">
-                    <i class="fa fa-filter"></i> Aplicar Filtros
-                </button>
-                <a href="{{ request.path }}" class="btn btn-outline">
-                    <i class="fa fa-eraser"></i> Limpar
-                </a>
-                <a href="{% url 'preventiva_dashboard_export' %}?{{ request.GET.urlencode }}" class="btn btn-success">
-                    <i class="fa fa-file-excel"></i> Excel
-                </a>
-            </div>
-        </form>
-    </div>
-
-    <div class="kpi-grid">
-        <div class="kpi-card blue">
-            <div class="kpi-label">Total de Ativos</div>
-            <div class="kpi-value">{{ total|default:0 }}</div>
-            <i class="fa fa-cubes kpi-icon" style="color:var(--brand-color)"></i>
-        </div>
-        <div class="kpi-card green">
-            <div class="kpi-label">Em Dia</div>
-            <div class="kpi-value">{{ ok_count|default:0 }}</div>
-            <i class="fa fa-check-circle kpi-icon" style="color:var(--success-color)"></i>
-        </div>
-        <div class="kpi-card red">
-            <div class="kpi-label">Vencidas</div>
-            <div class="kpi-value">{{ vencidas_count|default:0 }}</div>
-            <i class="fa fa-exclamation-triangle kpi-icon" style="color:var(--danger-color)"></i>
-        </div>
-        <div class="kpi-card blue">
-            <div class="kpi-label">Executadas (Mês)</div>
-            <div class="kpi-value">{{ executadas_mes|default:0 }}</div>
-            <i class="fa fa-tasks kpi-icon" style="color:var(--brand-color)"></i>
-        </div>
-        <div class="kpi-card" style="border-left:4px solid var(--system-indigo);">
-            <div class="kpi-label">Com Data Agendada</div>
-            <div class="kpi-value" style="color:var(--system-indigo);">{{ agendadas_count|default:0 }}</div>
-            <i class="fa fa-calendar-check kpi-icon" style="color:var(--system-indigo)"></i>
-        </div>
-    </div>
-
-    <div class="charts-grid">
-        <div class="dashboard-card">
-            <div class="card-header">
-                <div class="card-title"><i class="fa fa-chart-area" style="color:var(--brand-color)"></i> Evolução: Executadas vs Agendadas</div>
-            </div>
-            <div class="chart-container">
-                <canvas id="serieChart"></canvas>
-                <div id="nd-serie" class="nodata">Sem dados no período</div>
-            </div>
-        </div>
-        <div class="dashboard-card">
-            <div class="card-header">
-                <div class="card-title"><i class="fa fa-chart-pie" style="color:var(--warning-color)"></i> Adesão por Checklist</div>
-            </div>
-            <div class="chart-container">
-                <canvas id="chkRateChart"></canvas>
-                <div id="nd-chkrate" class="nodata">Sem dados</div>
-            </div>
-        </div>
-    </div>
-
-    <div class="charts-grid">
-        <div class="dashboard-card">
-            <div class="card-header">
-                <div class="card-title" style="color:var(--danger-color)">
-                    <i class="fa fa-fire"></i> Atenção: Vencidas (Top 50)
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title"><i class="fa fa-clock" style="color:var(--success)"></i> Próximos 30 Dias</div>
+                </div>
+                <div class="table-responsive">
+                    <table class="pd-table">
+                        <thead>
+                            <tr><th>Data</th><th>Faltam</th><th>Item</th><th>Local</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for p in proximas %}
+                            <tr>
+                                <td data-label="Data"><strong>{{ p.proxima_calc|date:"d/m/Y" }}</strong></td>
+                                <td data-label="Faltam"><span class="pd-pill is-success">{{ p.dias_faltam }} dias</span></td>
+                                <td data-label="Item">{{ p.equipamento.nome }}</td>
+                                <td data-label="Local">{{ p.equipamento.localidade.local|default:"—" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4"><div class="empty-state">Nenhuma programação próxima.</div></td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-header">
+                <div class="panel-title"><i class="fa fa-list"></i> Visão Detalhada por Checklist</div>
+            </div>
             <div class="table-responsive">
-                <table class="table">
+                <table class="pd-table">
                     <thead>
                         <tr>
-                            <th>Data</th>
-                            <th>Atraso</th>
-                            <th>Item</th>
-                            <th>Local</th>
-                            <th>Ação</th>
+                            <th>Checklist</th>
+                            <th class="text-center">Total</th>
+                            <th class="text-center">Ok</th>
+                            <th class="text-center">Vencidas</th>
+                            <th class="text-center">Sem Agenda</th>
+                            <th class="text-center">Próx. 30d</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for p in vencidas %}
+                        {% for r in agg_chk %}
                         <tr>
-                            <td><strong>{{ p.proxima_calc|date:"d/m/Y" }}</strong></td>
-                            <td><span class="status-badge danger">{{ p.dias_atraso }} dias</span></td>
-                            <td>{{ p.equipamento.nome }}<br><small style="color:var(--text-secondary); font-size:.78rem;">{{ p.checklist_modelo.nome|default:"-" }}</small></td>
-                            <td>{{ p.equipamento.localidade.local|default:"-" }}</td>
-                            <td>
-                                <a href="{% url 'preventiva_exec' p.id %}" class="btn btn-primary" style="height: 30px; padding: 0 10px; font-size: 0.8rem;">
-                                    Executar
-                                </a>
-                            </td>
+                            <td data-label="Checklist" class="pd-item-name">{{ r.checklist_modelo__nome|default:"Sem Definição" }}</td>
+                            <td data-label="Total" class="text-center">{{ r.total }}</td>
+                            <td data-label="Ok" class="text-center"><span class="pd-num-success">{{ r.ok }}</span></td>
+                            <td data-label="Vencidas" class="text-center"><span class="pd-num-danger">{{ r.vencidas }}</span></td>
+                            <td data-label="Sem Agenda" class="text-center">{{ r.sem_agenda }}</td>
+                            <td data-label="Próx. 30d" class="text-center">{{ r.prox_30 }}</td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="5" style="text-align:center; padding: 20px;">Nenhuma preventiva vencida. Ótimo trabalho!</td></tr>
+                        <tr><td colspan="6"><div class="empty-state">Sem dados.</div></td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-        </div>
+        </section>
 
-        <div class="dashboard-card">
-            <div class="card-header">
-                <div class="card-title" style="color:var(--success-color)">
-                    <i class="fa fa-clock"></i> Próximos 30 Dias
+        <section class="dashboard-grid-secondary">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title"><i class="fa fa-location-dot"></i> Visão por Localidade</div>
+                </div>
+                <div class="table-responsive">
+                    <table class="pd-table">
+                        <thead>
+                            <tr><th>Localidade</th><th class="text-center">Total</th><th class="text-center">Ok</th><th class="text-center">Vencidas</th><th class="text-center">Sem Agenda</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for r in agg_loc %}
+                            <tr>
+                                <td data-label="Localidade"><a href="?local={{ r.equipamento__localidade__local|urlencode }}" class="pd-item-name" style="text-decoration:none;">{{ r.equipamento__localidade__local|default:"—" }}</a></td>
+                                <td data-label="Total" class="text-center">{{ r.total }}</td>
+                                <td data-label="Ok" class="text-center"><span class="pd-num-success">{{ r.ok }}</span></td>
+                                <td data-label="Vencidas" class="text-center"><span class="pd-num-danger">{{ r.vencidas }}</span></td>
+                                <td data-label="Sem Agenda" class="text-center">{{ r.sem_agenda }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5"><div class="empty-state">Sem dados.</div></td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
-            <div class="table-responsive">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Data</th>
-                            <th>Faltam</th>
-                            <th>Item</th>
-                            <th>Local</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for p in proximas %}
-                        <tr>
-                            <td><strong>{{ p.proxima_calc|date:"d/m/Y" }}</strong></td>
-                            <td><span class="status-badge ok">{{ p.dias_faltam }} dias</span></td>
-                            <td>{{ p.equipamento.nome }}</td>
-                            <td>{{ p.equipamento.localidade.local|default:"-" }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr><td colspan="4" style="text-align:center;">Nenhuma programação próxima.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title"><i class="fa fa-layer-group"></i> Visão por Subtipo</div>
+                </div>
+                <div class="table-responsive">
+                    <table class="pd-table">
+                        <thead>
+                            <tr><th>Subtipo</th><th class="text-center">Total</th><th class="text-center">Ok</th><th class="text-center">Vencidas</th><th class="text-center">Sem Agenda</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for r in agg_sub %}
+                            <tr>
+                                <td data-label="Subtipo"><a href="?subtipo={{ r.equipamento__subtipo__nome|urlencode }}" class="pd-item-name" style="text-decoration:none;">{{ r.equipamento__subtipo__nome|default:"—" }}</a></td>
+                                <td data-label="Total" class="text-center">{{ r.total }}</td>
+                                <td data-label="Ok" class="text-center"><span class="pd-num-success">{{ r.ok }}</span></td>
+                                <td data-label="Vencidas" class="text-center"><span class="pd-num-danger">{{ r.vencidas }}</span></td>
+                                <td data-label="Sem Agenda" class="text-center">{{ r.sem_agenda }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5"><div class="empty-state">Sem dados.</div></td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
+        </section>
+
     </div>
-
-    <div class="dashboard-card" style="margin-top: 24px;">
-        <div class="card-header">
-            <div class="card-title"><i class="fa fa-list"></i> Visão Detalhada por Checklist</div>
-        </div>
-        <div class="table-responsive">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Checklist</th>
-                        <th style="text-align:center">Total</th>
-                        <th style="text-align:center">Ok</th>
-                        <th style="text-align:center">Vencidas</th>
-                        <th style="text-align:center">Sem Agenda</th>
-                        <th style="text-align:center">Próx. 30d</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in agg_chk %}
-                    <tr>
-                        <td style="font-weight:600">{{ r.checklist_modelo__nome|default:"Sem Definição" }}</td>
-                        <td style="text-align:center">{{ r.total }}</td>
-                        <td style="text-align:center"><span style="color:var(--success-color)">{{ r.ok }}</span></td>
-                        <td style="text-align:center"><span style="color:var(--danger-color)">{{ r.vencidas }}</span></td>
-                        <td style="text-align:center">{{ r.sem_agenda }}</td>
-                        <td style="text-align:center">{{ r.prox_30 }}</td>
-                    </tr>
-                    {% empty %}
-                    <tr><td colspan="6" style="text-align:center">Sem dados.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="charts-grid">
-        <div class="dashboard-card">
-            <div class="card-header">
-                <div class="card-title"><i class="fa fa-location-dot" style="color:var(--brand-color)"></i> Visão por Localidade</div>
-            </div>
-            <div class="table-responsive">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Localidade</th>
-                            <th style="text-align:center">Total</th>
-                            <th style="text-align:center">Ok</th>
-                            <th style="text-align:center">Vencidas</th>
-                            <th style="text-align:center">Sem Agenda</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for r in agg_loc %}
-                        <tr>
-                            <td style="font-weight:600"><a href="?local={{ r.equipamento__localidade__local|urlencode }}">{{ r.equipamento__localidade__local|default:"—" }}</a></td>
-                            <td style="text-align:center">{{ r.total }}</td>
-                            <td style="text-align:center"><span style="color:var(--success-color)">{{ r.ok }}</span></td>
-                            <td style="text-align:center"><span style="color:var(--danger-color)">{{ r.vencidas }}</span></td>
-                            <td style="text-align:center">{{ r.sem_agenda }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr><td colspan="5" style="text-align:center">Sem dados.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="dashboard-card">
-            <div class="card-header">
-                <div class="card-title"><i class="fa fa-layer-group" style="color:var(--brand-color)"></i> Visão por Subtipo</div>
-            </div>
-            <div class="table-responsive">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Subtipo</th>
-                            <th style="text-align:center">Total</th>
-                            <th style="text-align:center">Ok</th>
-                            <th style="text-align:center">Vencidas</th>
-                            <th style="text-align:center">Sem Agenda</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for r in agg_sub %}
-                        <tr>
-                            <td style="font-weight:600"><a href="?subtipo={{ r.equipamento__subtipo__nome|urlencode }}">{{ r.equipamento__subtipo__nome|default:"—" }}</a></td>
-                            <td style="text-align:center">{{ r.total }}</td>
-                            <td style="text-align:center"><span style="color:var(--success-color)">{{ r.ok }}</span></td>
-                            <td style="text-align:center"><span style="color:var(--danger-color)">{{ r.vencidas }}</span></td>
-                            <td style="text-align:center">{{ r.sem_agenda }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr><td colspan="5" style="text-align:center">Sem dados.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
 </div>
 
 {{ serie_labels|default:"[]"|json_script:"serie-labels" }}
@@ -389,29 +624,67 @@
 {{ chk_rates|default:"[]"|json_script:"chk-rates" }}
 
 <script>
-    /* Helpers */
-    const getJson = (id) => JSON.parse(document.getElementById(id).textContent || '[]');
-    const sumArr = (arr) => arr.reduce((a, b) => a + (Number(b) || 0), 0);
-    const showEl = (id, visible) => { 
-        const el = document.getElementById(id); 
-        if(el) el.style.display = visible ? 'flex' : 'none'; 
+(function () {
+    const dash = document.querySelector('.preventiva-dashboard');
+    const getVar = (name, fallback) => {
+        const v = getComputedStyle(dash).getPropertyValue(name).trim();
+        return v || fallback;
     };
+    const getJson = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return [];
+        try { return JSON.parse(el.textContent || '[]'); } catch (e) { return []; }
+    };
+    const sumArr = (arr) => arr.reduce((a, b) => a + (Number(b) || 0), 0);
+    const showEl = (id, visible) => { const el = document.getElementById(id); if (el) el.style.display = visible ? 'flex' : 'none'; };
 
-    /* Config Global ChartJS */
-    Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.color = '#64748b';
-    Chart.defaults.plugins.tooltip.backgroundColor = '#1e293b';
-    Chart.defaults.plugins.tooltip.padding = 10;
-    Chart.defaults.plugins.tooltip.cornerRadius = 8;
+    function hexToRgba(color, a) {
+        const c = (color || '').trim();
+        if (c.startsWith('#')) {
+            let h = c.slice(1);
+            if (h.length === 3) h = h.split('').map(x => x + x).join('');
+            const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+            if ([r, g, b].some(Number.isNaN)) return c;
+            return `rgba(${r}, ${g}, ${b}, ${a})`;
+        }
+        return c;
+    }
 
-    /* Gráfico de Série (Linha) */
-    (function() {
+    const charts = [];
+    const accent = getVar('--pd-accent', '#0078d4');
+    const success = getVar('--success', '#34c759');
+    const muted = getVar('--pd-muted', '#424242');
+    const grid = getVar('--pd-border-subtle', '#e6e6e6');
+    const tooltipBg = getVar('--pd-tooltip-bg', '#242424');
+
+    Chart.defaults.font.family = "'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif";
+    Chart.defaults.color = muted;
+
+    function baseChartOptions(extra = {}) {
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    display: extra.legend !== false,
+                    position: 'top',
+                    align: 'start',
+                    labels: { color: muted, usePointStyle: true, boxWidth: 8 }
+                },
+                tooltip: { backgroundColor: tooltipBg, titleColor: '#fff', bodyColor: '#fff', padding: 10, cornerRadius: 8 }
+            },
+            scales: extra.scales,
+            indexAxis: extra.indexAxis || 'x'
+        };
+    }
+
+    /* ── Evolução: Executadas vs Agendadas (linha) ──────────────────── */
+    (function () {
         const labels = getJson('serie-labels');
         const dataExec = getJson('serie-exec');
         const dataProg = getJson('serie-prog');
-        
-        const hasData = (sumArr(dataExec) + sumArr(dataProg)) > 0;
-        showEl('nd-serie', !hasData);
+        showEl('nd-serie', (sumArr(dataExec) + sumArr(dataProg)) <= 0);
 
         const ctx = document.getElementById('serieChart');
         if (!ctx) return;
@@ -419,54 +692,36 @@
         new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels.length ? labels : ['Jan', 'Fev', 'Mar'],
+                labels: labels.length ? labels : ['—'],
                 datasets: [
                     {
-                        label: 'Executadas',
-                        data: dataExec,
-                        borderColor: '#10b981', // Verde Sucesso
-                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                        borderWidth: 2,
-                        tension: 0.4,
-                        fill: true,
-                        pointRadius: 3,
-                        pointHoverRadius: 6
+                        label: 'Executadas', data: dataExec,
+                        borderColor: success, backgroundColor: hexToRgba(success, .12),
+                        borderWidth: 2.5, tension: .35, fill: true,
+                        pointRadius: 3, pointHoverRadius: 6
                     },
                     {
-                        label: 'Agendadas/Previstas',
-                        data: dataProg,
-                        borderColor: '#3b82f6', // Azul Brand
-                        backgroundColor: 'rgba(59, 130, 246, 0.05)',
-                        borderWidth: 2,
-                        borderDash: [5, 5],
-                        tension: 0.4,
-                        fill: false,
-                        pointRadius: 3
+                        label: 'Agendadas/Previstas', data: dataProg,
+                        borderColor: accent, backgroundColor: 'transparent',
+                        borderWidth: 2, borderDash: [5, 4], tension: .35, fill: false,
+                        pointRadius: 2, pointHoverRadius: 5
                     }
                 ]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
-                plugins: {
-                    legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8 } }
-                },
+            options: baseChartOptions({
                 scales: {
-                    x: { grid: { display: false } },
-                    y: { beginAtZero: true, grid: { borderDash: [2, 2], color: '#e2e8f0' } }
+                    x: { grid: { display: false }, ticks: { color: muted } },
+                    y: { beginAtZero: true, grid: { color: grid }, ticks: { color: muted, precision: 0 } }
                 }
-            }
+            })
         });
     })();
 
-    /* Gráfico de Adesão (Barra) */
-    (function() {
+    /* ── Adesão por Checklist (barra horizontal) ────────────────────── */
+    (function () {
         const labels = getJson('chk-labels');
         const rates = getJson('chk-rates');
-        
-        const hasData = sumArr(rates) > 0;
-        showEl('nd-chkrate', !hasData);
+        showEl('nd-chkrate', sumArr(rates) <= 0);
 
         const ctx = document.getElementById('chkRateChart');
         if (!ctx) return;
@@ -474,33 +729,71 @@
         new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: labels.length ? labels : ['-'],
+                labels: labels.length ? labels : ['—'],
                 datasets: [{
-                    label: '% No Prazo',
-                    data: rates,
-                    backgroundColor: '#f59e0b', // Amber
-                    borderRadius: 4,
-                    barThickness: 20
+                    label: '% No Prazo', data: rates,
+                    backgroundColor: accent, borderRadius: 6, barPercentage: .68, categoryPercentage: .72
                 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                indexAxis: 'y', // Barra horizontal para melhor leitura dos nomes
-                plugins: {
-                    legend: { display: false }
-                },
+            options: baseChartOptions({
+                legend: false,
                 scales: {
-                    x: { 
-                        beginAtZero: true, 
-                        max: 100,
-                        grid: { color: '#f1f5f9' },
-                        ticks: { callback: (v) => v + '%' } 
-                    },
-                    y: { grid: { display: false } }
-                }
-            }
+                    x: { beginAtZero: true, max: 100, grid: { color: grid }, ticks: { color: muted, callback: (v) => v + '%' } },
+                    y: { grid: { display: false }, ticks: { color: muted } }
+                },
+                indexAxis: 'y'
+            })
         });
     })();
+
+    /* ── Filtros: presets de período + select2 do checklist ─────────── */
+    function toISODate(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+    function setPeriodoESubmeter(ini, fim) {
+        document.getElementById('filtroInicio').value = toISODate(ini);
+        document.getElementById('filtroFim').value = toISODate(fim);
+        document.getElementById('dashFilters').submit();
+    }
+    window.aplicarPeriodo = function (dias) {
+        const fim = new Date(); const ini = new Date();
+        ini.setDate(fim.getDate() - (dias - 1));
+        setPeriodoESubmeter(ini, fim);
+    };
+    window.aplicarMesAtual = function () {
+        const fim = new Date(); const ini = new Date(fim.getFullYear(), fim.getMonth(), 1);
+        setPeriodoESubmeter(ini, fim);
+    };
+    window.aplicarAnoAtual = function () {
+        const fim = new Date(); const ini = new Date(fim.getFullYear(), 0, 1);
+        setPeriodoESubmeter(ini, fim);
+    };
+
+    function marcarPeriodoAtivo() {
+        const iniVal = document.getElementById('filtroInicio')?.value;
+        const fimVal = document.getElementById('filtroFim')?.value;
+        if (!iniVal || !fimVal) return;
+        document.querySelectorAll('#quickRange .qr-chip').forEach((c) => c.classList.remove('is-active'));
+
+        const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+        const ini = new Date(iniVal + 'T00:00:00');
+        const fim = new Date(fimVal + 'T00:00:00');
+        const mesmoDia = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+        if (!mesmoDia(fim, hoje)) return;
+
+        const dias = Math.round((fim - ini) / 86400000) + 1;
+        let preset = null;
+        if (dias === 7) preset = '7'; else if (dias === 30) preset = '30'; else if (dias === 90) preset = '90';
+        const mesIni = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+        if (!preset && mesmoDia(ini, mesIni)) preset = 'mes';
+        const anoIni = new Date(hoje.getFullYear(), 0, 1);
+        if (!preset && mesmoDia(ini, anoIni)) preset = 'ano';
+        if (preset) document.querySelector(`#quickRange .qr-chip[data-preset="${preset}"]`)?.classList.add('is-active');
+    }
+    marcarPeriodoAtivo();
+
+    if (window.jQuery) {
+        jQuery('#filtroChecklist').select2({ width: '100%', placeholder: 'Todos', allowClear: true })
+            .on('change', function () { document.getElementById('dashFilters').submit(); });
+    }
+})();
 </script>
 {% endblock %}

@@ -489,6 +489,12 @@ def quiosque_detalhe(request, pk: int):
         elif device.armazenamento_livre_mb < 2048:
             armazenamento_nivel = "warn"
 
+    # Aba inicial: se a página foi recarregada por um filtro/paginação do
+    # histórico (?dia= ou ?page=), a aba "Histórico" deve continuar ativa —
+    # sem isso, esses links (navegação normal, sem AJAX) sempre devolviam o
+    # usuário para "Visão Geral" ao aplicar um filtro de dia.
+    aba_ativa = "historico" if (dia_selecionado or request.GET.get("page")) else "visao"
+
     return render(request, "front/quiosque/quiosque_detalhe.html", {
         "device": device,
         "page_obj": page_obj,
@@ -508,6 +514,7 @@ def quiosque_detalhe(request, pk: int):
         "resumo_dia": resumo_dia,
         "pode_atualizar_ao_vivo": pode_atualizar_ao_vivo,
         "retencao_dias": qs.RETENCAO_DIAS,
+        "aba_ativa": aba_ativa,
     })
 
 

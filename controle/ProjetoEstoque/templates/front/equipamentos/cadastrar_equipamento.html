@@ -6,7 +6,7 @@
 {% block page_subtitle %}Cadastro inteligente de patrimônio, consumo, locação, lotes e preventiva{% endblock %}
 
 {% block header_actions %}
-<a href="{% url 'equipamentos_list' %}" class="btn-secondary btn-sm">
+<a href="{% if next_url %}{{ next_url }}{% else %}{% url 'equipamentos_list' %}{% endif %}" class="btn-secondary btn-sm">
     <i class="fa fa-arrow-left" aria-hidden="true"></i>
     Voltar
 </a>
@@ -16,29 +16,69 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
 
 <style>
-:where(.item-form-page, .choices, .choices__list--dropdown, .choices__list[aria-expanded]) {
-    --if-brand: var(--brand, #0071e3);
-    --if-brand-hover: var(--brand-hover, #0077ed);
-    --if-brand-soft: var(--brand-soft, rgba(0, 113, 227, .10));
-    --if-surface: var(--bg-elevated, #ffffff);
-    --if-surface-soft: var(--bg-fill-tertiary, rgba(120, 120, 128, .08));
-    --if-surface-muted: var(--bg-fill-secondary, rgba(120, 120, 128, .12));
-    --if-text: var(--text-primary, #1d1d1f);
-    --if-muted: var(--text-tertiary, #6e6e73);
-    --if-soft: var(--text-quaternary, #86868b);
-    --if-border: var(--separator-hairline, rgba(0, 0, 0, .06));
-    --if-border-strong: var(--separator-non-opaque, rgba(0, 0, 0, .10));
-    --if-success: var(--success, #34c759);
-    --if-warning: var(--warning, #ff9500);
-    --if-danger: var(--danger, #ff3b30);
-    --if-radius-sm: var(--radius-sm, 10px);
-    --if-radius-md: var(--radius-md, 14px);
-    --if-radius-lg: var(--radius-lg, 18px);
-    --if-radius-xl: var(--radius-xl, 22px);
-    --if-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05));
-    --if-shadow-md: var(--shadow-md, 0 4px 12px rgba(0,0,0,.06));
-    --if-control-h: 42px;
-    --if-transition: var(--transition-fast, 160ms cubic-bezier(.32,.72,0,1));
+/* Paleta Fluent 2 (Microsoft), igual a Licenças/Quiosque/Detalhe do Ativo —
+   tokens locais --if-* isolados nesta tela via :where(), nunca var(--brand)/
+   var(--text-primary)/etc. direto (inclusive no dropdown reanexado ao body
+   pelo Select2 dropdownParent — por isso .if-select2-dropdown também entra
+   no escopo abaixo: propriedades customizadas não dependem de ancestralidade
+   no DOM, só de casar o seletor). */
+:where(.item-form-page, .choices, .choices__list--dropdown, .choices__list[aria-expanded], .if-select2-dropdown) {
+    --if-text:   #242424;
+    --if-muted:  #616161;
+    --if-soft:   #8a8886;
+
+    --if-surface: #ffffff;
+    --if-surface-soft:  #f0f0f0;
+    --if-surface-muted: #ebebeb;
+    --if-hover: rgba(0, 0, 0, .035);
+
+    --if-border: #e6e6e6;
+    --if-border-strong: #d6d6d6;
+
+    --if-brand: #0078d4;
+    --if-brand-hover: #106ebe;
+    --if-brand-soft: rgba(0, 120, 212, .08);
+    --if-ring: rgba(0, 120, 212, .30);
+
+    --if-success: var(--success, #1e8e3e);
+    --if-warning: var(--warning, #c77700);
+    --if-danger:  var(--danger, #d93025);
+
+    --if-radius-sm: 6px;
+    --if-radius-md: 8px;
+    --if-radius-lg: 10px;
+    --if-radius-xl: 12px;
+    --if-radius-pill: 999px;
+
+    --if-shadow: 0 1px 2px rgba(0,0,0,.06), 0 1px 1px rgba(0,0,0,.04);
+    --if-shadow-md: 0 4px 12px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.05);
+
+    --if-sticky-bg: rgba(255, 255, 255, .85);
+
+    --if-control-h: 40px;
+    --if-transition: 150ms ease;
+    --if-font: "Segoe UI", var(--font-display);
+}
+
+body.theme-dark :where(.item-form-page, .choices, .choices__list--dropdown, .choices__list[aria-expanded], .if-select2-dropdown) {
+    --if-text:  #f1f2f5;
+    --if-muted: #b7bcc6;
+    --if-soft:  #8992a0;
+
+    --if-surface: #1a1d24;
+    --if-surface-soft:  #20242c;
+    --if-surface-muted: #262a33;
+    --if-hover: rgba(255, 255, 255, .045);
+
+    --if-border: #2a2e38;
+    --if-border-strong: #363b47;
+
+    --if-brand: #479ef5;
+    --if-brand-hover: #62abf5;
+    --if-brand-soft: rgba(71, 158, 245, .16);
+    --if-ring: rgba(71, 158, 245, .35);
+
+    --if-sticky-bg: rgba(26, 29, 36, .85);
 }
 
 .item-form-page,
@@ -98,7 +138,7 @@
 .if-hero-title h1 {
     margin: 0;
     color: var(--if-text);
-    font-family: var(--font-display, inherit);
+    font-family: var(--if-font);
     font-size: clamp(28px, 4vw, 42px);
     line-height: 1.05;
     letter-spacing: -0.035em;
@@ -127,7 +167,7 @@
     gap: 7px;
     min-height: 32px;
     padding: 6px 12px;
-    border-radius: var(--radius-pill, 999px);
+    border-radius: var(--if-radius-pill);
     background: var(--if-surface-soft);
     color: var(--if-muted);
     border: 1px solid var(--if-border);
@@ -280,7 +320,7 @@
 .if-form textarea:focus,
 .if-control:focus {
     border-color: var(--if-brand);
-    box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, .30));
+    box-shadow: 0 0 0 4px var(--if-ring);
 }
 
 .errorlist {
@@ -335,7 +375,7 @@
     gap: 10px;
     padding: 16px clamp(14px, 2.5vw, 24px);
     border-top: 1px solid var(--if-border);
-    background: var(--bg-vibrancy-strong, rgba(255,255,255,.85));
+    background: var(--if-sticky-bg);
     backdrop-filter: blur(22px) saturate(180%);
     -webkit-backdrop-filter: blur(22px) saturate(180%);
 }
@@ -347,7 +387,7 @@
     justify-content: center;
     gap: 8px;
     padding: 8px 18px;
-    border-radius: var(--radius-pill, 999px);
+    border-radius: var(--if-radius-pill);
     border: 1px solid transparent;
     font-size: 14px;
     font-weight: 500;
@@ -379,7 +419,7 @@
 }
 
 .if-btn-secondary:hover {
-    background: var(--bg-hover, rgba(0,0,0,.04));
+    background: var(--if-hover);
     color: var(--if-text);
 }
 
@@ -387,7 +427,7 @@
 .item-form-page .select2-container {
     width: 100% !important;
     max-width: 100%;
-    font-family: var(--font-sans, inherit);
+    font-family: var(--if-font);
 }
 
 .item-form-page .select2-container--default .select2-selection--single,
@@ -419,7 +459,7 @@
 .item-form-page .select2-container--default.select2-container--focus .select2-selection--multiple,
 .item-form-page .select2-container--default.select2-container--open .select2-selection--multiple {
     border-color: var(--if-brand);
-    box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, .30));
+    box-shadow: 0 0 0 4px var(--if-ring);
 }
 
 .item-form-page .select2-container--default .select2-selection--single .select2-selection__rendered {
@@ -454,7 +494,7 @@
 .item-form-page .select2-container--default .select2-selection--multiple .select2-selection__choice {
     margin-top: 4px;
     border: 1px solid color-mix(in srgb, var(--if-brand) 18%, transparent);
-    border-radius: var(--radius-pill, 999px);
+    border-radius: var(--if-radius-pill);
     background: var(--if-brand-soft);
     color: var(--if-brand);
     font-size: 12px;
@@ -473,36 +513,37 @@
     cursor: not-allowed;
 }
 
-/* Dropdown é anexado ao body pelo dropdownParent. Por isso precisa de classe própria. */
+/* Dropdown é anexado ao body pelo dropdownParent. Por isso precisa de classe própria
+   (já entra no :where() do topo — dark mode automático via --if-*, sem overrides por regra). */
 .if-select2-dropdown {
     z-index: 99999;
-    border: 1px solid var(--separator-non-opaque, rgba(0, 0, 0, .10));
-    border-radius: var(--radius-md, 14px);
-    background: var(--bg-elevated, #fff);
-    color: var(--text-primary, #1d1d1f);
-    box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,.10));
+    border: 1px solid var(--if-border-strong);
+    border-radius: var(--if-radius-md);
+    background: var(--if-surface);
+    color: var(--if-text);
+    box-shadow: var(--if-shadow-md);
     overflow: hidden;
 }
 
 .if-select2-dropdown .select2-search--dropdown {
     padding: 10px;
-    background: var(--bg-elevated, #fff);
-    border-bottom: 1px solid var(--separator-hairline, rgba(0,0,0,.06));
+    background: var(--if-surface);
+    border-bottom: 1px solid var(--if-border);
 }
 
 .if-select2-dropdown .select2-search--dropdown .select2-search__field {
     min-height: 36px;
-    border: 1px solid var(--separator-non-opaque, rgba(0, 0, 0, .10));
-    border-radius: var(--radius-sm, 10px);
-    background: var(--bg-fill-tertiary, rgba(120, 120, 128, .08));
-    color: var(--text-primary, #1d1d1f);
+    border: 1px solid var(--if-border-strong);
+    border-radius: var(--if-radius-sm);
+    background: var(--if-surface-soft);
+    color: var(--if-text);
     outline: none;
     padding: 7px 10px;
 }
 
 .if-select2-dropdown .select2-search--dropdown .select2-search__field:focus {
-    border-color: var(--brand, #0071e3);
-    box-shadow: 0 0 0 3px var(--brand-ring, rgba(0, 113, 227, .30));
+    border-color: var(--if-brand);
+    box-shadow: 0 0 0 3px var(--if-ring);
 }
 
 .if-select2-dropdown .select2-results__options {
@@ -511,39 +552,18 @@
 
 .if-select2-dropdown .select2-results__option {
     padding: 9px 12px;
-    color: var(--text-primary, #1d1d1f);
+    color: var(--if-text);
     font-size: 14px;
 }
 
 .if-select2-dropdown .select2-results__option--highlighted.select2-results__option--selectable {
-    background: var(--brand-soft, rgba(0, 113, 227, .10));
-    color: var(--brand, #0071e3);
+    background: var(--if-brand-soft);
+    color: var(--if-brand);
 }
 
 .if-select2-dropdown .select2-results__option--selected {
-    background: var(--bg-fill-secondary, rgba(120, 120, 128, .12));
-    color: var(--text-primary, #1d1d1f);
-}
-
-body.theme-dark .if-select2-dropdown {
-    border-color: var(--separator-non-opaque, rgba(255,255,255,.12));
-    background: var(--bg-elevated, #1d1d1f);
-    color: var(--text-primary, #f5f5f7);
-}
-
-body.theme-dark .if-select2-dropdown .select2-search--dropdown {
-    background: var(--bg-elevated, #1d1d1f);
-    border-bottom-color: var(--separator-hairline, rgba(255,255,255,.06));
-}
-
-body.theme-dark .if-select2-dropdown .select2-search--dropdown .select2-search__field {
-    border-color: var(--separator-non-opaque, rgba(255,255,255,.12));
-    background: var(--bg-fill-tertiary, rgba(118,118,128,.18));
-    color: var(--text-primary, #f5f5f7);
-}
-
-body.theme-dark .if-select2-dropdown .select2-results__option--selected {
-    background: var(--bg-fill-secondary, rgba(118,118,128,.24));
+    background: var(--if-surface-muted);
+    color: var(--if-text);
 }
 
 /* Blocos dinâmicos */
@@ -699,6 +719,7 @@ body.theme-dark .if-select2-dropdown .select2-results__option--selected {
 
                 <form method="post" id="itemForm" class="if-form" novalidate>
                     {% csrf_token %}
+                    {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
 
                     <div class="if-section">
                         <div class="if-section-header">

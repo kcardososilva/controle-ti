@@ -23,6 +23,8 @@ from django.conf import settings
 from django.utils import timezone
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Pt
 from ProjetoEstoque.models import MovimentacaoItem
 
@@ -48,6 +50,15 @@ def _normalizar(texto):
     )
 
 
+def _cc_nome(item, colaborador):
+    """Nome do centro de custo: prioriza o do colaborador, cai para o do equipamento."""
+    cc_obj = getattr(colaborador, "centro_custo", None) or getattr(item, "centro_custo", None)
+    cc_nome = _safe(getattr(cc_obj, "departamento", None), "")
+    if not cc_nome or cc_nome == "-":
+        cc_nome = _safe(getattr(cc_obj, "numero", None), "")
+    return cc_nome if cc_nome and cc_nome != "-" else ""
+
+
 def _numero_termo_auto(item, colaborador, nome_colaborador):
     """
     Numeração automática do termo no formato pedido pelo TI:
@@ -65,14 +76,47 @@ def _numero_termo_auto(item, colaborador, nome_colaborador):
     if nome_colaborador and nome_colaborador != "-":
         partes.append(nome_colaborador)
 
-    cc_obj = getattr(colaborador, "centro_custo", None) or getattr(item, "centro_custo", None)
-    cc_nome = _safe(getattr(cc_obj, "departamento", None), "")
-    if not cc_nome or cc_nome == "-":
-        cc_nome = _safe(getattr(cc_obj, "numero", None), "")
-    if cc_nome and cc_nome != "-":
+    cc_nome = _cc_nome(item, colaborador)
+    if cc_nome:
         partes.append(cc_nome)
 
     return " - ".join(partes)
+
+
+def _slug_arquivo(valor):
+    """Converte para um trecho seguro de nome de arquivo: ASCII, sem espaços/acentos."""
+    valor = _safe(valor, "")
+    if not valor or valor == "-":
+        return ""
+    sem_acento = "".join(
+        c for c in unicodedata.normalize("NFD", valor)
+        if unicodedata.category(c) != "Mn"
+    )
+    limpo = re.sub(r"[^A-Za-z0-9]+", "_", sem_acento).strip("_")
+    return limpo
+
+
+def _nome_arquivo_auto(tipo, item, colaborador, nome_colaborador):
+    """
+    Nome do arquivo gerado automaticamente:
+        entrega|devolucao_{nº de série}_{nome do colaborador}_{centro de custo}.docx
+
+    Todo em ASCII (sem acentos/espaços) para não quebrar o cabeçalho
+    Content-Disposition da resposta HTTP nem causar problemas no Windows.
+    """
+    partes = [tipo] + [
+        p for p in (
+            _slug_arquivo(getattr(item, "numero_serie", None)),
+            _slug_arquivo(nome_colaborador),
+            _slug_arquivo(_cc_nome(item, colaborador)),
+        )
+        if p
+    ]
+    if len(partes) == 1:
+        # Nenhum dado identificador disponível: garante nome único mesmo assim.
+        partes.append(str(item.pk))
+
+    return "_".join(partes) + ".docx"
 
 
 def _clear_paragraph(paragraph):
@@ -202,6 +246,7 @@ def _build_dados(item, tipo, form_data):
         "tipo": tipo,
         "data_hoje": hoje.strftime("%d/%m/%Y"),
         "numero_termo": numero_termo,
+        "nome_arquivo": _nome_arquivo_auto(tipo, item, colaborador, nome_colaborador),
         "numero_chamado": _safe(form_data.get("numero_chamado"), ""),
         "nome_colaborador": nome_colaborador,
         "email_colaborador": email_colaborador,
@@ -343,12 +388,67 @@ def _fill_main_table(doc, dados):
         celulas_tratadas.append(c_val._tc)
 
 
+def _colapsar_paragrafos_vazios(doc, max_seguidos=1):
+    """
+    Reduz sequências de parágrafos totalmente vazios a no máximo `max_seguidos`.
+
+    O modelo base tem trechos com dezenas de parágrafos vazios em sequência
+    (espaço reservado manualmente no Word para a área de assinatura) que somam
+    vários centímetros de vão morto e empurram o bloco de assinatura para uma
+    página seguinte quase em branco. Aqui isso é normalizado sem tocar no
+    texto/formatação de nenhum parágrafo com conteúdo.
+    """
+    vazios_seguidos = []
+
+    def _descarta_excedente():
+        for extra in vazios_seguidos[max_seguidos:]:
+            extra._p.getparent().remove(extra._p)
+        vazios_seguidos.clear()
+
+    for p in list(doc.paragraphs):
+        if (p.text or "").strip() == "":
+            vazios_seguidos.append(p)
+        else:
+            _descarta_excedente()
+    _descarta_excedente()
+
+
+def _travar_quebra_linhas_tabela(doc):
+    """Impede que uma linha da tabela (ex.: Observações longas) seja partida entre páginas."""
+    for table in doc.tables:
+        for row in table.rows:
+            trPr = row._tr.get_or_add_trPr()
+            if trPr.find(qn("w:cantSplit")) is None:
+                trPr.insert(0, OxmlElement("w:cantSplit"))
+
+
+_ROTULOS_BLOCO_ASSINATURA = ("colaborador:", "assinatura:", "nome:", "respons")
+
+
+def _manter_bloco_assinatura_unido(doc):
+    """
+    Marca os parágrafos do bloco de assinatura (Colaborador/Responsável,
+    Assinatura, Nome, Data) com `keep_with_next` para que o Word não separe
+    essas linhas em páginas diferentes.
+    """
+    for p in doc.paragraphs:
+        texto_norm = _normalizar((p.text or "").split("\n")[0])
+        if texto_norm.startswith(_ROTULOS_BLOCO_ASSINATURA):
+            p.paragraph_format.keep_with_next = True
+            p.paragraph_format.widow_control = True
+
+
 def _ajustar_layout_documento(doc):
     """
     Ajuste de layout NÃO destrutivo: preserva a formatação do modelo base e só
-    aplica margens A4, centraliza o título e garante uma fonte mínima onde o run
-    não define nenhuma. Não sobrescreve a formatação do template.
+    aplica margens A4, centraliza o título, remove vãos de parágrafos vazios em
+    excesso, evita quebra de linha de tabela e mantém o bloco de assinatura
+    unido — sem sobrescrever texto/formatação de conteúdo do template.
     """
+    _colapsar_paragrafos_vazios(doc)
+    _travar_quebra_linhas_tabela(doc)
+    _manter_bloco_assinatura_unido(doc)
+
     for section in doc.sections:
         section.top_margin = 720000      # ~2 cm
         section.bottom_margin = 720000   # ~2 cm
@@ -360,6 +460,8 @@ def _ajustar_layout_documento(doc):
 
         if texto.startswith("TERMO DE RESPONSABILIDADE") or texto.startswith("POLÍTICA"):
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        p.paragraph_format.widow_control = True
 
         for run in p.runs:
             if run.font.size is None:
@@ -386,7 +488,4 @@ def gerar_termo_docx(item, tipo, form_data):
     doc.save(output)
     output.seek(0)
 
-    nome_item = _safe(item.nome, "equipamento").replace(" ", "_")
-    nome_arquivo = f"termo_{tipo}_{item.pk}_{nome_item}.docx"
-
-    return output, nome_arquivo
+    return output, dados["nome_arquivo"]

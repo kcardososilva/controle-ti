@@ -11,13 +11,14 @@ pertence (`coluna_kanban`), nunca armazenada.
 import json
 from collections import Counter
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db.models import Case, Count, Max, Q, Sum, When
+from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, Max, Q, Sum, When
 from django.db.models.functions import TruncMonth
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -32,6 +33,7 @@ from ..forms import (
     RequisicaoItemForm,
     RequisicaoNumerosForm,
     RequisicaoReceberCompraForm,
+    RequisicaoReceberCompraSimplesForm,
 )
 from ..models import (
     Categoria,
@@ -65,23 +67,57 @@ from services.requisicao_service import (
 _DIAS_OCULTAR_ENCERRADOS = 90
 _COLUNAS_HISTORICO = (COLUNA_RECEBIDOS, COLUNA_PAUSADOS)
 
+# Custo de um item de Compra já recebido (quantidade × valor unitário
+# informado na NF) — itens ainda não recebidos têm `valor_unitario is None`,
+# então o produto também é NULL e o Sum() correspondente os ignora
+# automaticamente. Usado só em `.annotate()`/`.aggregate()` sobre `Requisicao`
+# (soma via join em "itens"); a versão em Python fica em
+# `RequisicaoService.custo_total_requisicao`.
+_CUSTO_ITEM_EXPR = ExpressionWrapper(
+    F("itens__valor_unitario") * F("itens__quantidade"),
+    output_field=DecimalField(max_digits=14, decimal_places=2),
+)
 
-def _aplicar_busca_descricao_codigo(qs, q, buscar_ids):
+
+def _aplicar_busca_descricao_codigo(qs, q, buscar_ids, extra_q=None,
+                                     ordenar_por_relevancia=True):
     """Filtra `qs` (RequisicaoItem ou ItemPadraoDatasul) por `q` combinando
     busca por relevância (FTS5, campo "descricao") com icontains em "codigo"
     — o código Datasul é buscado por fragmento no meio da string (ex.:
     últimos dígitos), que o FTS5 (prefixo de token) não cobre, ver
     services/busca_fts.py. Se o índice FTS estiver indisponível (`None`),
-    cai no icontains de sempre nos dois campos."""
+    cai no icontains de sempre nos dois campos.
+
+    `extra_q`: filtro adicional (Q) que também é buscado por fragmento, no
+    mesmo regime do "codigo" — usado pelo board para achar pelo número da
+    requisição (`requisicao__numero_datasul`).
+
+    `ordenar_por_relevancia=False` mantém a ordenação original do queryset —
+    o board agrupa os cards em colunas e reordená-los por bm25 embaralharia a
+    leitura cronológica; o ganho do FTS ali é a QUALIDADE do casamento
+    (multi-palavra, prefixo), não a ordem."""
+    filtro_fragmento = Q(codigo__icontains=q)
+    if extra_q is not None:
+        filtro_fragmento |= extra_q
+
     ids_fts = buscar_ids(q)
     if ids_fts is None:
-        return qs.filter(Q(descricao__icontains=q) | Q(codigo__icontains=q))
-    ids_codigo = list(qs.filter(codigo__icontains=q).values_list("id", flat=True))
-    ids_relevantes = ids_fts + [pk for pk in ids_codigo if pk not in ids_fts]
+        return qs.filter(Q(descricao__icontains=q) | filtro_fragmento)
+
+    vistos = set(ids_fts)
+    ids_fragmento = [
+        pk for pk in qs.filter(filtro_fragmento).values_list("id", flat=True)
+        if pk not in vistos
+    ]
+    ids_relevantes = ids_fts + ids_fragmento
     if not ids_relevantes:
         return qs.none()
+
+    qs = qs.filter(pk__in=ids_relevantes)
+    if not ordenar_por_relevancia:
+        return qs
     ordem_relevancia = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(ids_relevantes)])
-    return qs.filter(pk__in=ids_relevantes).order_by(ordem_relevancia)
+    return qs.order_by(ordem_relevancia)
 
 
 def _pode_editar_requisicao_item(item, user) -> bool:
@@ -131,7 +167,14 @@ def requisicoes_kanban(request):
     if f_requisitante:
         qs = qs.filter(criado_por_id=f_requisitante)
     if q:
-        qs = qs.filter(Q(descricao__icontains=q) | Q(codigo__icontains=q))
+        # Busca por relevância (FTS5) na descrição + fragmento no código
+        # Datasul do item E no número da requisição a que ele pertence —
+        # digitar o número da requisição traz todos os cards dela no board.
+        qs = _aplicar_busca_descricao_codigo(
+            qs, q, buscar_requisicao_item_ids,
+            extra_q=Q(requisicao__numero_datasul__icontains=q),
+            ordenar_por_relevancia=False,
+        )
 
     itens = list(qs)
 
@@ -154,6 +197,9 @@ def requisicoes_kanban(request):
         {"chave": chave, "titulo": COLUNA_LABELS[chave], "itens": buckets[chave], "total": len(buckets[chave])}
         for chave in COLUNA_ORDEM
     ]
+    total_itens = len(itens)
+    recebidos_total = len(buckets.get("recebidos", []))
+    progresso_pct = round(recebidos_total * 100 / total_itens) if total_itens else 0
 
     requisitantes = User.objects.filter(
         pk__in=RequisicaoItem.objects.exclude(criado_por_id__isnull=True).values_list("criado_por_id", flat=True).distinct()
@@ -179,7 +225,9 @@ def requisicoes_kanban(request):
         "q": q,
         "mostrar_antigos": mostrar_antigos,
         "tipo_choices": TipoRequisicaoChoices.choices,
-        "total_itens": len(itens),
+        "total_itens": total_itens,
+        "recebidos_total": recebidos_total,
+        "progresso_pct": progresso_pct,
     })
 
 
@@ -326,11 +374,18 @@ def requisicao_item_acao(request, pk):
 
 @login_required
 def requisicao_item_receber_compra(request, pk):
-    """Recebimento de uma compra vinculada a um item de estoque: dá entrada
-    real (NF, custo, CC, localidade) e marca o item da requisição como
-    retirado — ver `RequisicaoService.finalizar_compra_estoque`. Só se aplica
-    a itens tipo Compra com `item_vinculado` preenchido; os demais continuam
-    usando a ação simples "Marcar como Retirado" (`requisicao_item_acao`)."""
+    """Recebimento de um item de Compra — sempre exige NF + valor unitário,
+    usados pra calcular o custo da requisição (ver
+    `RequisicaoService.custo_total_requisicao`). Dois modos, conforme o item
+    tem ou não `item_vinculado` (um Item de estoque real):
+
+    - Com vínculo: dá entrada real no estoque (NF, custo, CC, localidade) —
+      `RequisicaoService.finalizar_compra_estoque`.
+    - Sem vínculo (serviço, ativo fora de lote): só grava NF + valor unitário
+      no próprio item — `RequisicaoService.finalizar_compra_sem_estoque`.
+
+    Itens tipo Estoque continuam usando a ação simples "Marcar como Retirado"
+    (`requisicao_item_acao`), sem NF/valor — só Compra entra no custo."""
     item = get_object_or_404(
         RequisicaoItem.objects.select_related("requisicao", "item_vinculado"),
         pk=pk,
@@ -338,40 +393,59 @@ def requisicao_item_receber_compra(request, pk):
     if coluna_kanban(item) != COLUNA_APROVADOS:
         messages.error(request, 'Só é possível receber um item que esteja em "Aprovados".')
         return redirect("requisicao_item_detail", pk=item.pk)
-    if item.tipo != TipoRequisicaoChoices.COMPRA or not item.item_vinculado_id:
-        messages.error(request, "Esta ação só está disponível para itens de Compra vinculados a um item de estoque.")
+    if item.tipo != TipoRequisicaoChoices.COMPRA:
+        messages.error(request, "Esta ação só está disponível para itens de Compra.")
         return redirect("requisicao_item_detail", pk=item.pk)
 
-    form = RequisicaoReceberCompraForm(request.POST or None, initial={
-        "fornecedor": item.item_vinculado.fornecedor_id,
-        "localidade_destino": item.item_vinculado.localidade_id,
-        "centro_custo_destino": item.item_vinculado.centro_custo_id,
-    })
+    tem_vinculo = bool(item.item_vinculado_id)
+
+    if tem_vinculo:
+        form = RequisicaoReceberCompraForm(request.POST or None, initial={
+            "fornecedor": item.item_vinculado.fornecedor_id,
+            "localidade_destino": item.item_vinculado.localidade_id,
+            "centro_custo_destino": item.item_vinculado.centro_custo_id,
+        })
+    else:
+        form = RequisicaoReceberCompraSimplesForm(request.POST or None)
+
     if request.method == "POST" and form.is_valid():
         try:
-            RequisicaoService.finalizar_compra_estoque(
-                item=item,
-                fornecedor=form.cleaned_data["fornecedor"],
-                numero_nf=form.cleaned_data["numero_nf"],
-                custo_unitario=form.cleaned_data["custo_unitario"],
-                localidade_destino=form.cleaned_data["localidade_destino"],
-                centro_custo_destino=form.cleaned_data["centro_custo_destino"],
-                observacao=form.cleaned_data.get("observacao"),
-                user=request.user,
-            )
+            if tem_vinculo:
+                RequisicaoService.finalizar_compra_estoque(
+                    item=item,
+                    fornecedor=form.cleaned_data["fornecedor"],
+                    numero_nf=form.cleaned_data["numero_nf"],
+                    custo_unitario=form.cleaned_data["custo_unitario"],
+                    localidade_destino=form.cleaned_data["localidade_destino"],
+                    centro_custo_destino=form.cleaned_data["centro_custo_destino"],
+                    observacao=form.cleaned_data.get("observacao"),
+                    user=request.user,
+                )
+            else:
+                RequisicaoService.finalizar_compra_sem_estoque(
+                    item=item,
+                    numero_nf=form.cleaned_data["numero_nf"],
+                    valor_unitario=form.cleaned_data["valor_unitario"],
+                    observacao=form.cleaned_data.get("observacao"),
+                    user=request.user,
+                )
         except ValidationError as e:
             messages.error(request, "; ".join(e.messages))
             return redirect("requisicao_item_detail", pk=item.pk)
-        messages.success(
-            request,
-            f'Entrada de {item.quantidade} unidade(s) registrada em "{item.item_vinculado.nome}" '
-            "— item marcado como retirado.",
-        )
+        if tem_vinculo:
+            messages.success(
+                request,
+                f'Entrada de {item.quantidade} unidade(s) registrada em "{item.item_vinculado.nome}" '
+                "— item marcado como retirado.",
+            )
+        else:
+            messages.success(request, "Recebimento registrado — item marcado como retirado.")
         return redirect("requisicao_item_detail", pk=item.pk)
 
     return render(request, "front/requisicoes/requisicao_item_receber_compra.html", {
         "item": item,
         "form": form,
+        "tem_vinculo": tem_vinculo,
     })
 
 
@@ -449,7 +523,7 @@ def requisicao_create_from_itens(request):
 #: Status de onde a requisição ainda pode ser pausada/retomada/cancelada —
 #: usado tanto pra decidir o card de Ações quanto o grupo "Encerrar / pausar".
 _STATUS_ENCERRAVEIS = {
-    StatusRequisicaoChoices.RASCUNHO, StatusRequisicaoChoices.SOLICITADA,
+    StatusRequisicaoChoices.RASCUNHO,
     StatusRequisicaoChoices.ENVIADA_APROVACAO, StatusRequisicaoChoices.APROVADA,
     StatusRequisicaoChoices.PAUSADA, StatusRequisicaoChoices.COM_ERRO,
 }
@@ -472,20 +546,17 @@ def requisicao_detail(request, pk):
     # corresponde a um botão/grupo de ação específico da tela de detalhe.
     # Aprovar/Reprovar/Retirar continuam abertos a qualquer usuário logado
     # (ver `_pode_gerenciar_requisicao`); as demais exigem ser o criador.
-    mostrar_solicitar = pode_gerenciar and status == StatusRequisicaoChoices.RASCUNHO
-    mostrar_enviar_aprovacao = pode_gerenciar and status in (
-        StatusRequisicaoChoices.RASCUNHO, StatusRequisicaoChoices.SOLICITADA,
-    )
+    mostrar_enviar_aprovacao = pode_gerenciar and status == StatusRequisicaoChoices.RASCUNHO
     mostrar_aprovar_reprovar = status == StatusRequisicaoChoices.ENVIADA_APROVACAO
     mostrar_retirar_todos = status == StatusRequisicaoChoices.APROVADA and itens_pendentes_retirada
     mostrar_avancar = (
-        mostrar_solicitar or mostrar_enviar_aprovacao or mostrar_aprovar_reprovar or mostrar_retirar_todos
+        mostrar_enviar_aprovacao or mostrar_aprovar_reprovar or mostrar_retirar_todos
     )
 
     mostrar_encerrar = pode_gerenciar and status in _STATUS_ENCERRAVEIS
     mostrar_excluir = pode_gerenciar and status == StatusRequisicaoChoices.RASCUNHO
     mostrar_pausar_erro = pode_gerenciar and status in (
-        StatusRequisicaoChoices.SOLICITADA, StatusRequisicaoChoices.ENVIADA_APROVACAO, StatusRequisicaoChoices.APROVADA,
+        StatusRequisicaoChoices.ENVIADA_APROVACAO, StatusRequisicaoChoices.APROVADA,
     )
     mostrar_retomar = pode_gerenciar and status in (StatusRequisicaoChoices.PAUSADA, StatusRequisicaoChoices.COM_ERRO)
 
@@ -508,6 +579,12 @@ def requisicao_detail(request, pk):
             ).select_related("categoria", "criado_por").order_by("-created_at")
         )
 
+    # Custo apurado a partir dos itens de Compra já recebidos (NF + valor
+    # unitário) — só existe/soma algo pra requisições tipo Compra; fica
+    # None (exibido como "—") pra Estoque, que nunca preenche esses campos.
+    custo_total = RequisicaoService.custo_total_requisicao(itens)
+    itens_com_custo = sum(1 for i in itens if i.valor_total is not None)
+
     return render(request, "front/requisicoes/requisicao_detail.html", {
         "requisicao": requisicao,
         "itens": itens,
@@ -519,7 +596,6 @@ def requisicao_detail(request, pk):
         "mostrar_adicionar_soltos": mostrar_adicionar_soltos,
         "itens_soltos_disponiveis": itens_soltos_disponiveis,
         "mostrar_avancar": mostrar_avancar,
-        "mostrar_solicitar": mostrar_solicitar,
         "mostrar_enviar_aprovacao": mostrar_enviar_aprovacao,
         "mostrar_aprovar_reprovar": mostrar_aprovar_reprovar,
         "mostrar_retirar_todos": mostrar_retirar_todos,
@@ -527,6 +603,8 @@ def requisicao_detail(request, pk):
         "mostrar_excluir": mostrar_excluir,
         "mostrar_pausar_erro": mostrar_pausar_erro,
         "mostrar_retomar": mostrar_retomar,
+        "custo_total": custo_total,
+        "itens_com_custo": itens_com_custo,
     })
 
 
@@ -582,8 +660,8 @@ def requisicao_acao(request, pk):
                 messages.warning(
                     request,
                     f"Requisição marcada como retirada — exceto {len(puladas)} item(ns) de Compra "
-                    f'vinculados a estoque ({nomes}), que precisam ser recebidos individualmente em '
-                    '"Receber Compra e Dar Entrada no Estoque".',
+                    f'({nomes}), que precisam ser recebidos individualmente em "Receber Compra" '
+                    "(é preciso informar NF e valor unitário).",
                 )
             else:
                 messages.success(request, "Requisição inteira marcada como retirada no almoxarifado.")
@@ -593,14 +671,6 @@ def requisicao_acao(request, pk):
 
     if not _pode_gerenciar_requisicao(requisicao, request.user):
         messages.error(request, "Apenas quem criou esta requisição pode executar essa ação.")
-        return redirect("requisicao_detail", pk=pk)
-
-    if acao == "solicitar":
-        try:
-            RequisicaoService.mudar_status_requisicao(requisicao=requisicao, acao="solicitar", user=request.user)
-            messages.success(request, "Requisição marcada como Solicitada.")
-        except ValidationError as e:
-            messages.error(request, "; ".join(e.messages))
         return redirect("requisicao_detail", pk=pk)
 
     if acao == "enviar_aprovacao":
@@ -649,28 +719,98 @@ def requisicao_acao(request, pk):
 
 # ── Listas / consulta ────────────────────────────────────────────────────
 
+# Requisição ainda "viva": nem concluída nem descartada. Usado só no resumo
+# do topo da lista — a coluna de progresso continua vindo dos itens.
+_STATUS_ENCERRADOS = (
+    StatusRequisicaoChoices.NAO_APROVADA,
+    StatusRequisicaoChoices.CANCELADA,
+)
+
+
+def _filtro_busca_requisicao(q):
+    """Busca da tela de Requisições: número (Datasul/Paradigma) por fragmento
+    + descrição dos itens por relevância (FTS5 MATCH, ver services/busca_fts).
+
+    Os IDs dos itens são resolvidos numa consulta separada e devolvidos como
+    `pk__in` de propósito: filtrar `itens__...` direto no queryset da lista
+    truncaria as agregações de itens feitas lá (ver comentário em
+    `requisicoes_list`)."""
+    filtro = Q(numero_datasul__icontains=q) | Q(numero_paradigma__icontains=q)
+
+    ids_itens = buscar_requisicao_item_ids(q)
+    if ids_itens is None:
+        itens_qs = RequisicaoItem.objects.filter(descricao__icontains=q)
+    elif ids_itens:
+        itens_qs = RequisicaoItem.objects.filter(pk__in=ids_itens)
+    else:
+        return filtro
+
+    req_ids = (
+        itens_qs
+        .exclude(requisicao_id__isnull=True)
+        .values_list("requisicao_id", flat=True)
+        .distinct()
+    )
+    return filtro | Q(pk__in=list(req_ids))
+
+
+def _resumo_requisicoes(qs):
+    """KPIs do cabeçalho da lista, apurados sobre o MESMO recorte filtrado da
+    tabela (uma única consulta agregada, sem paginação)."""
+    # Os aliases NÃO podem se chamar "itens": dentro de um mesmo aggregate() o
+    # alias sombreia a relação de mesmo nome e o `filter=Q(itens__status=...)`
+    # passaria a resolver contra o inteiro agregado (FieldError).
+    dados = qs.aggregate(
+        total=Count("id", distinct=True),
+        em_andamento=Count("id", distinct=True, filter=~Q(status__in=_STATUS_ENCERRADOS)),
+        aprovadas=Count("id", distinct=True, filter=Q(status=StatusRequisicaoChoices.APROVADA)),
+        itens_total=Count("itens", distinct=True),
+        itens_retirados=Count("itens", distinct=True, filter=Q(itens__status="retirado")),
+        custo_total=Sum(_CUSTO_ITEM_EXPR),
+    )
+    dados["itens_pendentes"] = (dados["itens_total"] or 0) - (dados["itens_retirados"] or 0)
+    dados["itens_retirados_pct"] = (
+        round(dados["itens_retirados"] * 100 / dados["itens_total"]) if dados["itens_total"] else 0
+    )
+    dados["itens_pendentes_pct"] = 100 - dados["itens_retirados_pct"]
+    # SQLite não tem tipo decimal nativo — Sum(F*F) soma via ponto flutuante
+    # e pode devolver ruído nas casas decimais (ex.: 31.6650000000000). O
+    # `output_field=DecimalField` do Sum só tipa a query, não arredonda o
+    # valor devolvido — o quantize() abaixo garante 2 casas de verdade.
+    dados["custo_total"] = (dados["custo_total"] or Decimal("0.00")).quantize(Decimal("0.01"))
+    return dados
+
+
 @login_required
 def requisicoes_list(request):
     f_status = (request.GET.get("status") or "").strip()
     f_tipo = (request.GET.get("tipo") or "").strip()
     q = (request.GET.get("q") or "").strip()
 
-    qs = (
-        Requisicao.objects
-        .select_related("criado_por", "decidida_por")
-        .annotate(
-            itens_count=Count("itens", distinct=True),
-            itens_retirados_count=Count("itens", filter=Q(itens__status="retirado"), distinct=True),
-            finalizada_em=Max("itens__retirado_em"),
-        )
-        .order_by("-created_at")
-    )
+    # Filtros ANTES do annotate: filtrar por uma relação multivalorada depois
+    # de agregá-la faria a agregação contar só as linhas que casaram (o
+    # "Itens" da tabela mostraria o total filtrado, não o real). Por isso a
+    # busca por descrição resolve os IDs numa consulta à parte e entra aqui
+    # como `pk__in`, sem encostar no join de `itens`.
+    qs = Requisicao.objects.select_related("criado_por", "decidida_por")
+
     if f_status:
         qs = qs.filter(status=f_status)
     if f_tipo:
         qs = qs.filter(tipo=f_tipo)
     if q:
-        qs = qs.filter(numero_datasul__icontains=q)
+        qs = qs.filter(_filtro_busca_requisicao(q))
+
+    # Resumo apurado sobre o recorte filtrado ANTES das anotações por linha —
+    # agregar em cima de um queryset já anotado empilharia os mesmos joins.
+    resumo = _resumo_requisicoes(qs)
+
+    qs = qs.annotate(
+        itens_count=Count("itens", distinct=True),
+        itens_retirados_count=Count("itens", filter=Q(itens__status="retirado"), distinct=True),
+        finalizada_em=Max("itens__retirado_em"),
+        custo_total=Sum(_CUSTO_ITEM_EXPR),
+    ).order_by("-created_at")
 
     paginator = Paginator(qs, 25)
     page_obj = paginator.get_page(request.GET.get("page", 1))
@@ -682,14 +822,23 @@ def requisicoes_list(request):
     for req in requisicoes:
         req.esta_finalizada = req.itens_count > 0 and req.itens_count == req.itens_retirados_count
         req.badge_class = status_badge_class(req.status)
+        req.progresso_pct = (
+            round(req.itens_retirados_count * 100 / req.itens_count) if req.itens_count else 0
+        )
+        # Mesmo cuidado de `_resumo_requisicoes`: Sum(F*F) no SQLite pode
+        # voltar com ruído de ponto flutuante nas casas decimais.
+        if req.custo_total is not None:
+            req.custo_total = req.custo_total.quantize(Decimal("0.01"))
 
     return render(request, "front/requisicoes/requisicoes_list.html", {
         "page_obj": page_obj,
         "requisicoes": requisicoes,
+        "resumo": resumo,
         "f_status": f_status,
         "f_tipo": f_tipo,
         "q": q,
         "qs_keep": get_copy.urlencode(),
+        "tem_filtro": bool(f_status or f_tipo or q),
         "status_choices": StatusRequisicaoChoices.choices,
         "tipo_choices": TipoRequisicaoChoices.choices,
     })
@@ -908,6 +1057,14 @@ def itens_padrao_list(request):
     if "page" in get_copy:
         del get_copy["page"]
 
+    base_qs = ItemPadraoDatasul.objects
+    resumo = {
+        "total": base_qs.count(),
+        "ativos": base_qs.filter(ativo=True).count(),
+        "inativos": base_qs.filter(ativo=False).count(),
+        "categorias": Categoria.objects.filter(itens_padrao_datasul__isnull=False).distinct().count(),
+    }
+
     return render(request, "front/requisicoes/itens_padrao_list.html", {
         "page_obj": page_obj,
         "itens": page_obj.object_list,
@@ -916,6 +1073,8 @@ def itens_padrao_list(request):
         "f_ativo": f_ativo,
         "qs_keep": get_copy.urlencode(),
         "categorias": Categoria.objects.order_by("nome"),
+        "resumo": resumo,
+        "tem_filtro": bool(q or f_categoria or f_ativo != "1"),
     })
 
 

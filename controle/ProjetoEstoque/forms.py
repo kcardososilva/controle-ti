@@ -1239,7 +1239,11 @@ class TermoGeracaoForm(forms.Form):
     numero_termo = forms.CharField(
         required=False,
         label="Número do termo",
-        widget=forms.TextInput(attrs={"class": "form-control"})
+        help_text="Deixe em branco para gerar automaticamente: nº de série - colaborador - centro de custo.",
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "Automático (nº de série - colaborador - centro de custo)",
+        })
     )
 
     numero_chamado = forms.CharField(
@@ -1448,6 +1452,29 @@ class RequisicaoReceberCompraForm(forms.Form):
         queryset=CentroCusto.objects.order_by("numero"),
         label="Centro de Custo",
         widget=forms.Select(attrs={"class": "ctrl"}),
+    )
+    observacao = forms.CharField(
+        required=False,
+        label="Observação (opcional)",
+        widget=forms.Textarea(attrs={"class": "ctrl", "rows": 3}),
+    )
+
+
+class RequisicaoReceberCompraSimplesForm(forms.Form):
+    """Recebimento de uma compra SEM item de estoque vinculado (ex.: serviço,
+    ativo fora do controle por lote) — não há entrada real de estoque, só o
+    registro fiscal (NF + valor unitário) usado pra calcular o custo da
+    requisição a partir dos itens pedidos."""
+    numero_nf = forms.CharField(
+        label="Número da NF",
+        widget=forms.TextInput(attrs={"class": "ctrl", "placeholder": "Ex.: 123456"}),
+    )
+    valor_unitario = forms.DecimalField(
+        label="Valor Unitário",
+        min_value=Decimal("0.01"),
+        max_digits=12,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={"class": "ctrl", "step": "0.01", "min": "0.01"}),
     )
     observacao = forms.CharField(
         required=False,

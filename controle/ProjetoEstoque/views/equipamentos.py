@@ -14,6 +14,7 @@ from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.db import transaction, IntegrityError
 from django.template.loader import render_to_string
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from ..models import (
     Item, Subtipo, Categoria, Localidade, CentroCusto, Fornecedor,
@@ -21,7 +22,6 @@ from ..models import (
     MovimentacaoItem, TipoMovimentacaoChoices, TipoTransferenciaChoices,
     Preventiva, PlantaProjeto,
     ItemStatusHistorico, ItemPRTGHistorico, ItemColaborador,
-    SeparacaoItem, StatusSeparacaoChoices, TipoSeparacaoChoices,
     OrdemManutencao, CicloManutencao,
 )
 from ..forms import ItemForm, LocacaoForm, LoteEstoqueCreateForm
@@ -39,6 +39,20 @@ def adicionar_erros_validacao_no_form(form, erro):
                 form.add_error(campo_form, mensagem)
     else:
         form.add_error(None, erro)
+
+
+def _safe_next_url(request, raw):
+    """
+    Valida um destino de retorno vindo de querystring/POST (?next=) antes de
+    usá-lo em link ou redirect — sem isso, um link malicioso com next=
+    apontando para outro domínio faria open redirect.
+    """
+    if raw and url_has_allowed_host_and_scheme(
+        raw, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return raw
+
+    return None
 
 
 @login_required
@@ -436,8 +450,19 @@ def _build_queryset_and_context(request):
     from services.lote_envio_fornecedor_service import LoteEnvioFornecedorService
     ids_devolver = LoteEnvioFornecedorService.itens_aguardando_devolucao_ids(itens)
 
+    # Destino a preservar nos links de "Detalhar"/"Editar" desta listagem, para
+    # voltar aos mesmos filtros depois de editar um item (em vez de cair na
+    # listagem em branco). Remove partial/view: são flags da chamada AJAX, não
+    # fazem sentido em uma navegação normal de volta para cá.
+    next_params = request.GET.copy()
+    next_params.pop("partial", None)
+    next_params.pop("view", None)
+    next_qs = next_params.urlencode()
+    next_url = f"{request.path}?{next_qs}" if next_qs else request.path
+
     context = {
         "itens": itens,
+        "next_url": next_url,
         "page_obj": page_obj,
         "paginator": paginator,
         "is_paginated": page_obj.has_other_pages(),
@@ -492,13 +517,6 @@ def equipamentos_list(request):
             )
 
         return JsonResponse(data)
-
-    context["sep_envio_count"] = SeparacaoItem.objects.filter(
-        tipo=TipoSeparacaoChoices.ENVIO, status=StatusSeparacaoChoices.ABERTO,
-    ).count()
-    context["sep_devolucao_count"] = SeparacaoItem.objects.filter(
-        tipo=TipoSeparacaoChoices.DEVOLUCAO, status=StatusSeparacaoChoices.ABERTO,
-    ).count()
 
     return render(request, "front/equipamentos/equipamentos_list.html", context)
 
@@ -1330,6 +1348,7 @@ def equipamento_detalhe(request, pk: int):
         "monitoracao_url": f"/equipamentos/{item.pk}/monitoracao/",
         "ninja_device": ninja_device,
         "ninja_snapshots_hoje": ninja_snapshots_hoje,
+        "next_url": _safe_next_url(request, request.GET.get("next")),
     }
 
     return render(request, "front/equipamentos/equipamento_detalhe.html", context)
@@ -1356,6 +1375,10 @@ def preencher_auditoria(obj, user, criando=False):
 @login_required
 def item_update(request, pk):
     item = get_object_or_404(Item, pk=pk)
+
+    next_url = _safe_next_url(
+        request, request.POST.get("next") or request.GET.get("next")
+    )
 
     item_lote = (
         ItemLote.objects
@@ -1536,7 +1559,7 @@ def item_update(request, pk):
                         locacao_editada.save()
 
                     messages.success(request, "Item atualizado com sucesso.")
-                    return redirect("equipamentos_list")
+                    return redirect(next_url or "equipamentos_list")
 
             except ValidationError as e:
                 adicionar_erros_validacao_no_form(form, e)
@@ -1574,6 +1597,7 @@ def item_update(request, pk):
         "lote_form": lote_form,
         "editar": True,
         "item": item,
+        "next_url": next_url,
     })
 
 @require_POST
