@@ -4,8 +4,8 @@ from .models import (
     Categoria, Subtipo, Localidade, Fornecedor, CentroCusto, Funcao,
     Item, Usuario, Locacao, Comentario, CicloManutencao, MovimentacaoItem,
     CheckListModelo, CheckListPergunta, Preventiva, PreventivaExecucao, PreventivaResposta,
-    Licenca, MovimentacaoLicenca, LicencaLote, ItemLote, LoteEstoque,
-    PlantaProjeto, PerfilFornecedor, OrdemManutencao, OrdemManutencaoEvento,
+    Licenca, MovimentacaoLicenca, LicencaLote, LicencaOffice, ItemLote, LoteEstoque,
+    PlantaProjeto, PerfilFornecedor, PerfilParceiroLicenca, OrdemManutencao, OrdemManutencaoEvento,
     LocacaoPeriodo, ItemColaborador, RegistroSeguranca, NovidadeSistema,
 )
 
@@ -79,6 +79,15 @@ class PerfilFornecedorAdmin(AuditAdminMixin):
     search_fields = ("usuario__username", "usuario__email", "fornecedor__nome")
     autocomplete_fields = ("usuario", "fornecedor")
     list_select_related = ("usuario", "fornecedor")
+
+
+@admin.register(PerfilParceiroLicenca)
+class PerfilParceiroLicencaAdmin(AuditAdminMixin):
+    list_display = ("id", "usuario", "parceiro", "ativo")
+    list_filter = ("ativo", "parceiro")
+    search_fields = ("usuario__username", "usuario__email", "parceiro__nome")
+    autocomplete_fields = ("usuario", "parceiro")
+    list_select_related = ("usuario", "parceiro")
 
 
 @admin.register(CentroCusto)
@@ -385,14 +394,14 @@ class LicencaLoteAdmin(AuditAdminMixin):
 @admin.register(MovimentacaoLicenca)
 class MovimentacaoLicencaAdmin(AuditAdminMixin):
     list_display = (
-        "id", "licenca", "tipo", "usuario", 
+        "id", "licenca", "tipo", "usuario",
         "lote", "centro_custo_destino", "valor_unitario_display", "created_at"
     )
     list_filter = ("tipo", "licenca", "centro_custo_destino")
     search_fields = ("licenca__nome", "usuario__nome", "observacao")
     autocomplete_fields = ("licenca", "usuario", "centro_custo_destino", "lote")
     list_select_related = ("licenca", "usuario", "centro_custo_destino", "lote")
-    
+
     fieldsets = (
         (None, {
             "fields": ("tipo", "licenca", "lote", "usuario", "centro_custo_destino", "observacao")
@@ -409,7 +418,24 @@ class MovimentacaoLicencaAdmin(AuditAdminMixin):
     @admin.display(description="Valor Unit.")
     def valor_unitario_display(self, obj):
         return f"R$ {obj.valor_unitario:.2f}" if obj.valor_unitario else "-"
-    
+
+
+@admin.register(LicencaOffice)
+class LicencaOfficeAdmin(AuditAdminMixin):
+    list_display = (
+        "id", "produto", "chave_produto", "status", "item",
+        "usuario_vinculado", "data_licenca",
+    )
+    list_filter = ("status",)
+    search_fields = (
+        "produto", "chave_produto", "conta_vinculada", "id_dell",
+        "estacao_importada", "usuario_vinculado", "item__nome",
+    )
+    autocomplete_fields = ("item",)
+    list_select_related = ("item",)
+    ordering = ("produto", "chave_produto")
+
+
 @admin.register(LoteEstoque)
 class LoteEstoqueAdmin(admin.ModelAdmin):
     list_display = (

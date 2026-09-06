@@ -1,0 +1,449 @@
+{% extends 'front/portal_licencas/portal_licencas_base.html' %}
+
+{% block title %}Licenças Office — Portal{% endblock %}
+{% block page_title %}Licenças Office{% endblock %}
+{% block page_subtitle %}Controle de chave/serial por notebook e desktop — {{ parceiro.nome }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+<style>
+.pll-summary { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: .75rem; margin-bottom: 1rem; }
+.pll-kpi { display: grid; gap: .3rem; padding: .85rem 1rem; }
+.pll-kpi-label { display: flex; align-items: center; gap: .4rem; color: var(--text-tertiary); font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.pll-kpi-value { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.pll-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 1rem; align-items: end; padding: 1rem; margin-bottom: 1rem; }
+.pll-filter-grid { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr); gap: .75rem; }
+.pll-field label { display: block; margin-bottom: .3rem; color: var(--text-tertiary); font-size: .74rem; font-weight: 700; }
+.pll-toolbar input[type="text"], .pll-toolbar select {
+  width: 100%; min-height: 2.4rem; padding: .5rem .75rem; border-radius: var(--radius-sm);
+  border: 1px solid var(--separator-non-opaque); background: var(--bg-page); color: var(--text-primary); font: inherit; font-size: .85rem;
+}
+.pll-actions-row { display: flex; gap: .5rem; justify-content: flex-end; }
+
+.pll-table-wrap { overflow-x: auto; }
+.pll-table { width: 100%; min-width: 52rem; border-collapse: collapse; }
+.pll-table th, .pll-table td { padding: .65rem .9rem; border-bottom: 1px solid var(--separator-hairline); text-align: left; white-space: nowrap; font-size: .84rem; }
+.pll-table thead th { font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--text-tertiary); background: var(--bg-fill-tertiary); }
+.pll-table tbody tr:hover td { background: var(--bg-hover); }
+.pll-table tbody tr.pll-row-em-uso td { background: var(--success-soft); }
+.pll-table tbody tr.pll-row-em-uso:hover td { background: color-mix(in srgb, var(--success-soft) 60%, var(--bg-hover)); }
+.pll-mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-tertiary); }
+.pll-row-actions { display: flex; gap: .7rem; justify-content: flex-end; align-items: center; }
+.pll-row-actions a { color: var(--text-tertiary); }
+.pll-row-actions a:hover { color: var(--brand); }
+.pll-icon-btn { background: none; border: none; padding: 0; color: var(--text-tertiary); cursor: pointer; font-size: .85rem; }
+.pll-icon-btn:hover { color: var(--brand); }
+.pll-icon-btn.is-danger:hover { color: var(--danger); }
+.pll-icon-btn:disabled { opacity: .4; cursor: wait; }
+
+.pll-flash { display: flex; align-items: center; gap: .5rem; padding: .7rem 1rem; margin-bottom: .5rem; border-radius: var(--radius-sm); font-size: .82rem; font-weight: 700; background: var(--success-soft); color: var(--success); }
+.pll-flash.is-error { background: var(--danger-soft); color: var(--danger); }
+
+.pll-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem; padding: .9rem 1rem; }
+.pll-foot span { color: var(--text-tertiary); font-size: .78rem; }
+
+.pll-modal { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+/* `[hidden]` (UA) perde pra `display:flex` (author) mesmo com o atributo
+   presente — sem isso o modal nunca fecha de verdade. */
+.pll-modal[hidden] { display: none; }
+.pll-modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.45); }
+.pll-modal-card { position: relative; width: min(100%, 26rem); border-radius: var(--radius-lg); background: var(--bg-elevated); box-shadow: var(--shadow-md); padding: 1.25rem; display: grid; gap: .9rem; }
+.pll-modal-card h3 { margin: 0; font-size: 1.02rem; }
+.pll-modal-sub { margin: 0; color: var(--text-tertiary); font-size: .82rem; }
+.pll-modal-error { display: none; padding: .55rem .75rem; border-radius: var(--radius-sm); background: var(--danger-soft); color: var(--danger); font-size: .8rem; font-weight: 700; }
+.pll-modal-error.is-visible { display: block; }
+.pll-modal-actions { display: flex; justify-content: flex-end; gap: .6rem; }
+.pll-modal select {
+  width: 100%; min-height: 2.4rem; padding: .5rem .75rem; border-radius: var(--radius-sm);
+  border: 1px solid var(--separator-non-opaque); background: var(--bg-page); color: var(--text-primary); font: inherit; font-size: .85rem;
+}
+
+.select2-container { width: 100% !important; }
+.select2-container .select2-selection--single {
+  min-height: 2.4rem !important; height: 2.4rem !important; display: flex !important; align-items: center !important;
+  border: 1px solid var(--separator-non-opaque) !important; border-radius: var(--radius-sm) !important; background: var(--bg-page) !important;
+}
+.select2-container--default.select2-container--focus .select2-selection--single {
+  border-color: var(--brand) !important; box-shadow: 0 0 0 3px var(--brand-soft) !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  padding-left: .75rem !important; padding-right: 2rem !important; color: var(--text-primary) !important; line-height: calc(2.4rem - 2px) !important; font-size: .85rem !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__placeholder { color: var(--text-tertiary) !important; }
+.select2-container--default .select2-selection--single .select2-selection__arrow { height: calc(2.4rem - 2px) !important; right: .5rem !important; }
+.select2-dropdown { z-index: 10000 !important; overflow: hidden !important; border: 1px solid var(--separator-non-opaque) !important; border-radius: var(--radius-sm) !important; background: var(--bg-elevated) !important; color: var(--text-primary) !important; box-shadow: var(--shadow-md); }
+.select2-search__field { border: 1px solid var(--separator-non-opaque) !important; border-radius: 6px !important; background: var(--bg-page) !important; color: var(--text-primary) !important; outline: none !important; }
+.select2-results__option { color: var(--text-primary) !important; }
+.select2-results__option--highlighted { background: var(--brand) !important; color: #fff !important; }
+
+@media (max-width: 52rem) { .pll-summary { grid-template-columns: repeat(2, minmax(0,1fr)); } .pll-toolbar { grid-template-columns: 1fr; } .pll-filter-grid { grid-template-columns: 1fr; } .pll-actions-row { justify-content: stretch; } .pll-actions-row .pl-btn { flex: 1; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="pllPage">
+
+  <section class="pll-summary" aria-label="Resumo">
+    <div class="pl-card pll-kpi">
+      <span class="pll-kpi-label"><i class="fa fa-key" aria-hidden="true"></i> Licenças</span>
+      <span class="pll-kpi-value">{{ resumo.total }}</span>
+    </div>
+    <div class="pl-card pll-kpi">
+      <span class="pll-kpi-label"><i class="fa fa-laptop" aria-hidden="true"></i> Vinculadas</span>
+      <span class="pll-kpi-value">{{ resumo.vinculadas }}</span>
+    </div>
+    <div class="pl-card pll-kpi">
+      <span class="pll-kpi-label"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> Sem vínculo</span>
+      <span class="pll-kpi-value">{{ resumo.sem_vinculo }}</span>
+    </div>
+    <div class="pl-card pll-kpi">
+      <span class="pll-kpi-label"><i class="fa fa-circle-exclamation" aria-hidden="true"></i> Com problema</span>
+      <span class="pll-kpi-value">{{ resumo.com_problema }}</span>
+    </div>
+  </section>
+
+  <section class="pl-card pll-toolbar" aria-label="Filtros">
+    <form method="get" id="pllFilterForm" autocomplete="off">
+      <div class="pll-filter-grid">
+        <div class="pll-field">
+          <label for="id_q">Pesquisar</label>
+          <input id="id_q" type="text" name="q" value="{{ q|default:'' }}" placeholder="Produto, chave, conta, nº de série, usuário ou equipamento...">
+        </div>
+        <div class="pll-field">
+          <label for="id_status">Status</label>
+          <select id="id_status" name="status">
+            <option value="">Todos</option>
+            {% for value, label in status_choices %}
+              <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="pll-field">
+          <label for="id_vinculo">Vínculo</label>
+          <select id="id_vinculo" name="vinculo">
+            <option value="">Todos</option>
+            <option value="com" {% if vinculo == "com" %}selected{% endif %}>Com equipamento</option>
+            <option value="sem" {% if vinculo == "sem" %}selected{% endif %}>Sem equipamento</option>
+          </select>
+        </div>
+      </div>
+    </form>
+    <div class="pll-actions-row">
+      {% if tem_filtro %}<a href="{% url 'portal_licencas_office_list' %}" class="pl-btn"><i class="fa fa-eraser" aria-hidden="true"></i> Limpar</a>{% endif %}
+      <button type="submit" form="pllFilterForm" class="pl-btn pl-btn--brand"><i class="fa fa-filter" aria-hidden="true"></i> Filtrar</button>
+    </div>
+  </section>
+
+  <div class="pl-card">
+    <div class="pll-flash" id="pllFlash" hidden></div>
+    <div class="pll-table-wrap">
+      <table class="pll-table">
+        <thead>
+          <tr>
+            <th scope="col">Produto</th>
+            <th scope="col">Chave / Serial</th>
+            <th scope="col">Status</th>
+            <th scope="col">Número de Série</th>
+            <th scope="col">Equipamento</th>
+            <th scope="col">Usuário</th>
+            <th scope="col">Data</th>
+            <th scope="col"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for obj in licencas %}
+          <tr data-licenca-row="{{ obj.pk }}" data-licenca-label="{{ obj.produto }} — {{ obj.chave_produto }}" class="{% if obj.item %}pll-row-em-uso{% endif %}">
+            <td>{{ obj.produto }}</td>
+            <td class="pll-mono">{{ obj.chave_produto }}</td>
+            <td>
+              {% if obj.status == "ok" %}
+                <span class="pl-chip pl-chip--ok">OK</span>
+              {% elif obj.status == "problema" %}
+                <span class="pl-chip pl-chip--problema">{{ obj.get_status_display }}</span>
+              {% else %}
+                <span class="pl-chip pl-chip--outro">{{ obj.get_status_display }}</span>
+              {% endif %}
+            </td>
+            <td class="pll-mono js-pll-ns-cell">{{ obj.item.numero_serie|default:"—" }}</td>
+            <td class="js-pll-eq-cell">
+              {% if obj.item %}
+                {{ obj.item.nome }}
+              {% else %}
+                <span class="pl-chip pl-chip--neutro">Sem vínculo</span>
+              {% endif %}
+            </td>
+            <td class="js-pll-user-cell">{{ obj.usuario_exibicao|default:"—" }}</td>
+            <td>{{ obj.data_licenca|date:"d/m/Y"|default:"—" }}</td>
+            <td>
+              <div class="pll-row-actions">
+                {% if obj.item %}
+                  <button type="button" class="pll-icon-btn is-danger js-pll-unlink" data-item-pk="{{ obj.item.pk }}" title="Desvincular do equipamento">
+                    <i class="fa fa-link-slash" aria-hidden="true"></i>
+                  </button>
+                {% else %}
+                  <button type="button" class="pll-icon-btn js-pll-link" data-licenca-pk="{{ obj.pk }}" title="Vincular a um equipamento">
+                    <i class="fa fa-link" aria-hidden="true"></i>
+                  </button>
+                {% endif %}
+                <a href="{% url 'portal_licencas_office_editar' obj.pk %}" title="Editar"><i class="fa fa-pen" aria-hidden="true"></i></a>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8"><div class="pl-empty"><i class="fa fa-key" aria-hidden="true"></i><p>Nenhuma licença Office cadastrada ainda.</p></div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if page_obj.has_other_pages %}
+    <div class="pll-foot">
+      <span>Página <strong>{{ page_obj.number }}</strong> de <strong>{{ page_obj.paginator.num_pages }}</strong></span>
+      <div style="display:flex;gap:.5rem">
+        {% if page_obj.has_previous %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.previous_page_number }}" class="pl-btn">Anterior</a>{% endif %}
+        {% if page_obj.has_next %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.next_page_number }}" class="pl-btn">Próxima</a>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="pll-modal" id="pllLinkModal" hidden>
+    <div class="pll-modal-backdrop" data-pll-close></div>
+    <div class="pll-modal-card" role="dialog" aria-modal="true" aria-labelledby="pllLinkModalTitle">
+      <h3 id="pllLinkModalTitle">Vincular a um equipamento</h3>
+      <p class="pll-modal-sub" id="pllLinkModalSub"></p>
+      <div class="pll-modal-error" id="pllLinkModalError"></div>
+      <select id="pllLinkModalSelect">
+        <option value="">Selecione um equipamento...</option>
+        {% for it in itens_sem_licenca %}
+          <option value="{{ it.pk }}" data-ns="{{ it.numero_serie|default:'' }}" data-modelo="{{ it.modelo|default:'' }}">{{ it.nome }}{% if it.numero_serie %} — NS: {{ it.numero_serie }}{% endif %}</option>
+        {% endfor %}
+      </select>
+      <div class="pll-modal-actions">
+        <button type="button" class="pl-btn" data-pll-close>Cancelar</button>
+        <button type="button" class="pl-btn pl-btn--brand" id="pllLinkModalConfirm"><i class="fa fa-link" aria-hidden="true"></i> Vincular</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var page = document.getElementById('pllPage');
+  if (!page) return;
+
+  var flash = document.getElementById('pllFlash');
+  var modal = document.getElementById('pllLinkModal');
+  var modalSub = document.getElementById('pllLinkModalSub');
+  var modalError = document.getElementById('pllLinkModalError');
+  var modalSelect = document.getElementById('pllLinkModalSelect');
+  var modalConfirm = document.getElementById('pllLinkModalConfirm');
+  var pendingLicencaPk = null;
+
+  function csrf() {
+    var el = document.querySelector('input[name=csrfmiddlewaretoken]');
+    if (el) return el.value;
+    var m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+
+  function showFlash(mensagem, isError) {
+    if (!flash) return;
+    flash.textContent = mensagem;
+    flash.hidden = false;
+    flash.classList.toggle('is-error', !!isError);
+    clearTimeout(flash._t);
+    flash._t = setTimeout(function () { flash.hidden = true; }, 4500);
+  }
+
+  function chamar(url, body, onOk, onErro) {
+    fetch(url, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrf(), 'X-Requested-With': 'XMLHttpRequest' },
+      body: body,
+    })
+      .then(function (resp) { return resp.json().catch(function () { return null; }); })
+      .then(function (data) {
+        if (data && data.ok) onOk(data);
+        else onErro((data && data.erro) || 'Não foi possível concluir a ação.');
+      })
+      .catch(function () { onErro('Falha de comunicação — tente novamente.'); });
+  }
+
+  function atualizarCelulaEquipamento(row, item) {
+    var cell = row.querySelector('.js-pll-eq-cell');
+    if (cell) {
+      cell.textContent = item ? item.nome : '';
+      if (!item) cell.innerHTML = '<span class="pl-chip pl-chip--neutro">Sem vínculo</span>';
+    }
+    var nsCell = row.querySelector('.js-pll-ns-cell');
+    if (nsCell) nsCell.textContent = (item && item.numero_serie) ? item.numero_serie : '—';
+    row.classList.toggle('pll-row-em-uso', !!item);
+  }
+
+  function atualizarCelulaUsuario(row, usuarioVinculado) {
+    var cell = row.querySelector('.js-pll-user-cell');
+    if (cell) cell.textContent = usuarioVinculado || '—';
+  }
+
+  function atualizarBotaoAcao(row, licencaPk, item) {
+    var atual = row.querySelector('.js-pll-link, .js-pll-unlink');
+    if (!atual) return;
+    var novo = document.createElement('button');
+    novo.type = 'button';
+    novo.className = 'pll-icon-btn';
+    if (item) {
+      novo.classList.add('is-danger', 'js-pll-unlink');
+      novo.title = 'Desvincular do equipamento';
+      novo.setAttribute('data-item-pk', item.pk);
+      novo.innerHTML = '<i class="fa fa-link-slash" aria-hidden="true"></i>';
+    } else {
+      novo.classList.add('js-pll-link');
+      novo.title = 'Vincular a um equipamento';
+      novo.setAttribute('data-licenca-pk', licencaPk);
+      novo.innerHTML = '<i class="fa fa-link" aria-hidden="true"></i>';
+    }
+    atual.replaceWith(novo);
+  }
+
+  function removerOpcaoEquipamento(itemPk) {
+    var opt = modalSelect.querySelector('option[value="' + itemPk + '"]');
+    if (opt) opt.remove();
+    $(modalSelect).trigger('change.select2');
+  }
+
+  function adicionarOpcaoEquipamento(item) {
+    if (modalSelect.querySelector('option[value="' + item.pk + '"]')) return;
+    var opt = document.createElement('option');
+    opt.value = item.pk;
+    opt.textContent = item.nome + (item.numero_serie ? ' — NS: ' + item.numero_serie : '');
+    if (item.numero_serie) opt.setAttribute('data-ns', item.numero_serie);
+    if (item.modelo) opt.setAttribute('data-modelo', item.modelo);
+    var proxima = Array.prototype.find.call(modalSelect.options, function (o) {
+      return o.value && o.textContent.localeCompare(item.nome) > 0;
+    });
+    modalSelect.insertBefore(opt, proxima || null);
+    $(modalSelect).trigger('change.select2');
+  }
+
+  function matchEquipamento(params, data) {
+    var termo = $.trim(params.term || '').toLowerCase();
+    if (!termo) return data;
+    if (typeof data.text === 'undefined') return null;
+    var el = data.element;
+    var pesquisavel = (
+      data.text + ' ' +
+      (el ? (el.getAttribute('data-ns') || '') : '') + ' ' +
+      (el ? (el.getAttribute('data-modelo') || '') : '')
+    ).toLowerCase();
+    return pesquisavel.indexOf(termo) > -1 ? data : null;
+  }
+
+  function fecharModal() {
+    modal.hidden = true;
+    modalError.classList.remove('is-visible');
+    $(modalSelect).val('').trigger('change.select2');
+    pendingLicencaPk = null;
+  }
+
+  function abrirModal(licencaPk, label) {
+    pendingLicencaPk = licencaPk;
+    modalSub.textContent = label || '';
+    modalError.classList.remove('is-visible');
+    $(modalSelect).val('').trigger('change.select2');
+    modal.hidden = false;
+  }
+
+  page.addEventListener('click', function (e) {
+    var linkBtn = e.target.closest('.js-pll-link');
+    if (linkBtn) {
+      var linkRow = linkBtn.closest('tr');
+      abrirModal(linkBtn.getAttribute('data-licenca-pk'), linkRow ? linkRow.getAttribute('data-licenca-label') : '');
+      return;
+    }
+
+    var unlinkBtn = e.target.closest('.js-pll-unlink');
+    if (unlinkBtn) {
+      if (!window.confirm('Desvincular esta licença do equipamento? Ela continua cadastrada, só deixa de aparecer vinculada.')) return;
+      var row = unlinkBtn.closest('tr');
+      var itemPk = unlinkBtn.getAttribute('data-item-pk');
+      unlinkBtn.disabled = true;
+      chamar(
+        '/portal-licencas/equipamentos/' + itemPk + '/desvincular/',
+        new FormData(),
+        function (data) {
+          atualizarCelulaEquipamento(row, null);
+          atualizarCelulaUsuario(row, data.licenca.usuario_vinculado);
+          atualizarBotaoAcao(row, data.licenca.pk, null);
+          adicionarOpcaoEquipamento(data.item);
+          showFlash(data.mensagem, false);
+        },
+        function (erro) {
+          unlinkBtn.disabled = false;
+          showFlash(erro, true);
+        }
+      );
+    }
+  });
+
+  modal.querySelectorAll('[data-pll-close]').forEach(function (el) {
+    el.addEventListener('click', fecharModal);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !modal.hidden) fecharModal();
+  });
+
+  $(modalSelect).select2({
+    width: '100%',
+    placeholder: 'Selecione um equipamento...',
+    dropdownParent: $(modal),
+    matcher: matchEquipamento,
+    language: {
+      noResults: function () { return 'Nenhum equipamento elegível encontrado'; },
+      searching: function () { return 'Buscando...'; },
+    },
+  });
+
+  modalConfirm.addEventListener('click', function () {
+    var itemPk = $(modalSelect).val();
+    if (!itemPk) {
+      modalError.textContent = 'Selecione um equipamento.';
+      modalError.classList.add('is-visible');
+      return;
+    }
+    var row = page.querySelector('tr[data-licenca-row="' + pendingLicencaPk + '"]');
+    var body = new FormData();
+    body.append('licenca_id', pendingLicencaPk);
+
+    modalConfirm.disabled = true;
+    chamar(
+      '/portal-licencas/equipamentos/' + itemPk + '/vincular/',
+      body,
+      function (data) {
+        modalConfirm.disabled = false;
+        fecharModal();
+        if (row) {
+          atualizarCelulaEquipamento(row, data.item);
+          atualizarCelulaUsuario(row, data.licenca.usuario_vinculado);
+          atualizarBotaoAcao(row, data.licenca.pk, data.item);
+        }
+        removerOpcaoEquipamento(data.item.pk);
+        showFlash(data.mensagem, false);
+      },
+      function (erro) {
+        modalConfirm.disabled = false;
+        modalError.textContent = erro;
+        modalError.classList.add('is-visible');
+      }
+    );
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,189 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#fbfbfd">
+  <title>{% block title %}Portal de Licenças Office — Zelo{% endblock %}</title>
+
+  <link rel="icon" type="image/svg+xml" href="{% static 'img/zelo-mark.svg' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+  <style>
+    :root {
+      color-scheme: light;
+      --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", system-ui, sans-serif;
+      --bg-page: #fbfbfd; --bg-page-2: #f5f5f7; --bg-elevated: #ffffff;
+      --bg-fill-tertiary: rgba(120,120,128,.08); --bg-hover: rgba(0,0,0,.04);
+      --text-primary: #1d1d1f; --text-secondary: #424245; --text-tertiary: #6e6e73; --text-quaternary: #86868b;
+      --separator-hairline: rgba(0,0,0,.06); --separator-non-opaque: rgba(0,0,0,.10);
+      --brand: #0071e3; --brand-hover: #0077ed; --brand-soft: rgba(0,113,227,.10);
+      --success: #34c759; --success-soft: rgba(52,199,89,.12);
+      --warning: #ff9500; --warning-soft: rgba(255,149,0,.14);
+      --danger: #ff3b30; --danger-soft: rgba(255,59,48,.12);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+      --radius-sm: 10px; --radius-md: 14px; --radius-lg: 18px; --radius-pill: 980px;
+      --content-max: 72rem;
+      --safe-top: env(safe-area-inset-top, 0px);
+    }
+    body.theme-dark {
+      color-scheme: dark;
+      --bg-page: #000; --bg-page-2: #1d1d1f; --bg-elevated: #1d1d1f;
+      --bg-fill-tertiary: rgba(118,118,128,.18); --bg-hover: rgba(255,255,255,.08);
+      --text-primary: #f5f5f7; --text-secondary: #d2d2d7; --text-tertiary: #a1a1a6; --text-quaternary: #6e6e73;
+      --separator-hairline: rgba(255,255,255,.08); --separator-non-opaque: rgba(255,255,255,.12);
+      --brand: #2997ff; --brand-hover: #3b9eff; --brand-soft: rgba(41,151,255,.16);
+      /* --success-soft/--warning-soft/--danger-soft não tinham par no escuro —
+         a mesma alpha do claro, sobre --bg-elevated quase preto, deixa o tom
+         quase imperceptível. Alpha maior aqui restaura o contraste (mesmo
+         ajuste já feito em templates/base.html para o app interno). */
+      --success-soft: rgba(52,199,89,.20);
+      --warning-soft: rgba(255,149,0,.20);
+      --danger-soft: rgba(255,59,48,.18);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; min-width: 0; }
+    body {
+      font-family: var(--font-sans); color: var(--text-primary);
+      background: linear-gradient(180deg, var(--bg-page), var(--bg-page-2));
+      min-height: 100dvh; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    }
+    a { color: var(--brand); text-decoration: none; }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    :focus-visible { outline: 3px solid var(--brand-soft); outline-offset: 2px; border-radius: 6px; }
+
+    .pl-topbar {
+      position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 1rem;
+      padding: 1rem clamp(1rem, 3vw, 2rem); padding-top: calc(1rem + var(--safe-top));
+      background: color-mix(in srgb, var(--bg-page) 82%, transparent);
+      backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%);
+      border-bottom: 1px solid var(--separator-hairline);
+    }
+    .pl-brand { display: flex; align-items: center; gap: .6rem; }
+    .pl-brand img { width: 1.9rem; height: 2.1rem; object-fit: contain; }
+    .pl-brand-title { font-weight: 800; letter-spacing: -.03em; font-size: 1rem; line-height: 1.15; }
+    .pl-brand-sub { color: var(--brand); font-size: .58rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+    .pl-partner {
+      display: flex; align-items: center; gap: .5rem; margin-left: auto; padding: .4rem .7rem .4rem .4rem;
+      border-radius: var(--radius-pill); background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
+    }
+    .pl-partner-avatar { width: 1.9rem; height: 1.9rem; display: grid; place-items: center; border-radius: 999px; background: var(--brand-soft); color: var(--brand); font-weight: 800; font-size: .8rem; }
+    .pl-partner-name { font-size: .82rem; font-weight: 700; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pl-theme, .pl-logout-btn {
+      width: 2.3rem; height: 2.3rem; display: grid; place-items: center; border-radius: 999px;
+      border: 1px solid var(--separator-hairline); background: var(--bg-elevated); color: var(--text-secondary);
+    }
+    .pl-theme:hover { color: var(--brand); }
+    .pl-logout-btn:hover { color: var(--danger); }
+    .pl-logout-form { display: contents; }
+
+    .pl-content { width: 100%; max-width: var(--content-max); margin-inline: auto; padding: clamp(1rem, 3vw, 2rem); }
+
+    .pl-breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-bottom: 1rem; font-size: .8rem; color: var(--text-tertiary); font-weight: 600; }
+    .pl-breadcrumbs a { color: var(--text-tertiary); }
+    .pl-breadcrumbs a:hover { color: var(--brand); }
+    .pl-crumb-current { color: var(--text-primary); font-weight: 700; }
+
+    .pl-page-title { font-size: 1.3rem; font-weight: 800; letter-spacing: -.03em; margin-bottom: .2rem; }
+    .pl-page-sub { color: var(--text-tertiary); font-size: .85rem; margin-bottom: 1.1rem; }
+
+    .pl-messages { display: grid; gap: .5rem; margin-bottom: 1.1rem; }
+    .pl-msg { display: flex; align-items: flex-start; gap: .6rem; padding: .8rem 1rem; border-radius: var(--radius-md); font-size: .85rem; font-weight: 600; border: 1px solid var(--separator-hairline); background: var(--bg-fill-tertiary); }
+    .pl-msg--success { color: var(--success); background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 22%, transparent); }
+    .pl-msg--error   { color: var(--danger);  background: var(--danger-soft);  border-color: color-mix(in srgb, var(--danger) 22%, transparent); }
+    .pl-msg--warning { color: var(--warning); background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 22%, transparent); }
+
+    .pl-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: .5rem; padding: .58rem 1rem; border-radius: var(--radius-pill);
+      border: 1px solid var(--separator-non-opaque); background: var(--bg-elevated); color: var(--text-primary);
+      font-size: .85rem; font-weight: 700; white-space: nowrap; box-shadow: var(--shadow-sm);
+      transition: background .15s, transform .1s;
+    }
+    .pl-btn:hover { background: var(--bg-hover); }
+    .pl-btn:active { transform: scale(.97); }
+    .pl-btn:disabled { opacity: .55; cursor: not-allowed; }
+    .pl-btn--brand { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .pl-btn--brand:hover { background: var(--brand-hover); }
+
+    .pl-card { background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+    .pl-empty { text-align: center; padding: 3rem 1rem; color: var(--text-tertiary); }
+    .pl-empty i { font-size: 2rem; color: var(--text-quaternary); margin-bottom: .75rem; }
+
+    .pl-chip { display: inline-flex; align-items: center; gap: .4rem; padding: .25rem .6rem; border-radius: var(--radius-pill); font-size: .72rem; font-weight: 800; }
+    .pl-chip::before { content: ""; width: .4rem; height: .4rem; border-radius: 999px; background: currentColor; }
+    .pl-chip--ok { color: var(--success); background: var(--success-soft); }
+    .pl-chip--problema { color: var(--warning); background: var(--warning-soft); }
+    .pl-chip--outro { color: var(--danger); background: var(--danger-soft); }
+    .pl-chip--neutro { color: var(--text-tertiary); background: var(--bg-fill-tertiary); }
+
+    @media (prefers-reduced-motion: reduce) { * { transition-duration: .001ms !important; } }
+  </style>
+  {% block extra_css %}{% endblock %}
+</head>
+<body class="theme-light">
+  <script>
+    (function () {
+      try { if (localStorage.getItem('controleTI.theme') === 'dark') { document.body.classList.remove('theme-light'); document.body.classList.add('theme-dark'); } } catch (e) {}
+    })();
+  </script>
+
+  <header class="pl-topbar">
+    <a href="{% url 'portal_licencas_office_list' %}" class="pl-brand">
+      <img src="{% static 'img/zelo-mark.svg' %}" alt="Zelo">
+      <div>
+        <div class="pl-brand-title">Zelo</div>
+        <div class="pl-brand-sub">Licenças Office</div>
+      </div>
+    </a>
+    <div class="pl-partner">
+      <span class="pl-partner-avatar">{{ parceiro.nome|first|upper }}</span>
+      <span class="pl-partner-name" title="{{ parceiro.nome }}">{{ parceiro.nome }}</span>
+    </div>
+    <button type="button" class="pl-theme" id="plTheme" aria-label="Alternar tema"><i class="fa-solid fa-moon" id="plThemeIcon"></i></button>
+    <form method="post" action="{% url 'logout' %}" class="pl-logout-form">
+      {% csrf_token %}
+      <button type="submit" class="pl-logout-btn" aria-label="Sair" title="Sair"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
+    </form>
+  </header>
+
+  <main class="pl-content">
+    {% block breadcrumbs %}{% endblock %}
+    <div class="pl-page-title">{% block page_title %}Licenças Office{% endblock %}</div>
+    <div class="pl-page-sub">{% block page_subtitle %}{% endblock %}</div>
+
+    {% if messages %}
+    <div class="pl-messages">
+      {% for message in messages %}
+      <div class="pl-msg pl-msg--{{ message.tags }}">
+        <i class="fa-solid {% if message.tags == 'success' %}fa-circle-check{% elif message.tags == 'error' %}fa-circle-xmark{% elif message.tags == 'warning' %}fa-triangle-exclamation{% else %}fa-circle-info{% endif %}"></i>
+        <span>{{ message }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    (function () {
+      var tt = document.getElementById('plTheme'), ti = document.getElementById('plThemeIcon'), key = 'controleTI.theme';
+      function apply(t) {
+        var dark = t === 'dark';
+        document.body.classList.toggle('theme-dark', dark);
+        document.body.classList.toggle('theme-light', !dark);
+        if (ti) ti.className = dark ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+        try { localStorage.setItem(key, dark ? 'dark' : 'light'); } catch (e) {}
+      }
+      apply((function () { try { return localStorage.getItem(key) === 'dark' ? 'dark' : 'light'; } catch (e) { return 'light'; } })());
+      if (tt) tt.addEventListener('click', function () { apply(document.body.classList.contains('theme-dark') ? 'light' : 'dark'); });
+    })();
+  </script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -44,6 +44,19 @@
         </span>
     </div>
 
+    {% if mov.tipo_transferencia or mov.revertida %}
+    <div class="mov-gc-ops">
+        {% if mov.tipo_transferencia == 'entrega' %}
+            <span class="op-badge op-entrega"><i class="fa fa-arrow-right-from-bracket"></i> Entrega</span>
+        {% elif mov.tipo_transferencia == 'devolucao' %}
+            <span class="op-badge op-devolucao"><i class="fa fa-arrow-right-to-bracket"></i> Devolução</span>
+        {% endif %}
+        {% if mov.revertida %}
+            <span class="op-badge op-revertida"><i class="fa fa-ban"></i> Revertida</span>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <div class="mov-gc-flow">
         <span class="mov-gc-flow-tag">
             {% if mov.tipo_movimentacao == 'entrada' and mov.lote.fornecedor %}{{ mov.lote.fornecedor.nome|default:"Fornecedor" }}
@@ -61,8 +74,25 @@
         </span>
     </div>
 
-    {% if mov.quantidade or mov.lote %}
+    {% if mov.usuario %}
+    <div class="mov-gc-person">
+        <div class="user-avatar{% if mov.tipo_transferencia == 'devolucao' %} av-devolucao{% elif mov.tipo_transferencia == 'entrega' %} av-entrega{% endif %}" style="width:22px;height:22px;font-size:.62rem;">
+            {{ mov.usuario.nome|slice:":1"|upper }}
+        </div>
+        <div class="mov-gc-person-txt">
+            <span class="user-role">
+                {% if mov.tipo_transferencia == 'entrega' %}Entregue a
+                {% elif mov.tipo_transferencia == 'devolucao' %}Devolvido por
+                {% else %}Solicitante{% endif %}
+            </span>
+            <span class="mov-gc-person-name">{{ mov.usuario.nome }}</span>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if mov.quantidade or mov.lote or mov.item.subtipo %}
     <div class="mov-gc-chips">
+        {% if mov.item.subtipo %}<span class="mini-chip"><i class="fa fa-tag"></i> {{ mov.item.subtipo.nome }}</span>{% endif %}
         {% if mov.quantidade %}<span class="mini-chip"><i class="fa fa-layer-group"></i> {{ mov.quantidade }} un.</span>{% endif %}
         {% if mov.lote %}<span class="mini-chip"><i class="fa fa-box"></i> NF {{ mov.lote.numero_nf|default:mov.lote.id }}</span>{% endif %}
     </div>
@@ -71,7 +101,7 @@
     <div class="mov-gc-footer">
         <div class="mov-gc-user">
             {% if mov.criado_por %}
-                <div class="user-avatar" style="width:24px;height:24px;font-size:.65rem;">
+                <div class="user-avatar av-sistema" style="width:24px;height:24px;font-size:.65rem;">
                     {% if mov.criado_por.first_name %}{{ mov.criado_por.first_name|slice:":1"|upper }}{% else %}{{ mov.criado_por.username|slice:":1"|upper }}{% endif %}
                 </div>
                 <span class="mov-gc-user-name">

@@ -928,6 +928,34 @@ body.theme-dark :where(.asset-detail-page) {
 }
 .ad-prtg-nolink i { margin-top: 2px; color: var(--ad-soft); }
 
+/* ── Licença Office (card na Ficha Técnica) ──────────────────────────── */
+.ad-lo-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: var(--ad-radius-xs);
+  background: var(--ad-surface-soft-2); color: var(--ad-muted);
+}
+.ad-lo-status.is-ok { background: color-mix(in srgb, var(--ad-success) 15%, transparent); color: var(--ad-success); }
+.ad-lo-status.is-problema { background: color-mix(in srgb, var(--ad-warning) 15%, transparent); color: var(--ad-warning); }
+.ad-lo-status.is-outro { background: color-mix(in srgb, var(--ad-danger) 15%, transparent); color: var(--ad-danger); }
+.ad-lo-actions { display: flex; gap: 8px; margin-top: 12px; }
+.ad-lo-pick { display: flex; gap: 8px; margin-top: 10px; }
+.ad-lo-pick select {
+  flex: 1; min-height: 36px; padding: 6px 10px;
+  border: 1px solid var(--ad-border-strong); border-radius: var(--ad-radius-sm);
+  background: var(--ad-surface); color: var(--ad-text); font-family: inherit; font-size: 12.5px;
+}
+.ad-lo-pick select:focus { outline: none; border-color: var(--ad-brand); }
+.ad-lo-flash {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; margin-bottom: 10px;
+  border-radius: var(--ad-radius-sm); font-size: 12.5px; font-weight: 600;
+  background: var(--ad-success-bg); color: var(--ad-success);
+}
+.ad-lo-flash.is-error { background: var(--ad-danger-bg); color: var(--ad-danger); }
+.js-lo-form.is-loading { opacity: .6; pointer-events: none; }
+.js-lo-form button[disabled] { cursor: wait; }
+
 /* ── Responsivo ─────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .ad-hero { grid-template-columns: 1fr; }
@@ -1384,6 +1412,11 @@ body.theme-dark :where(.asset-detail-page) {
             </div>
           </section>
           {% endif %}
+
+          {# ── Licença Office (chave por equipamento) — fragmento próprio, reaproveitado pelas respostas AJAX de vincular/desvincular ── #}
+          <div id="ad-lo-card-wrap">
+            {% include 'front/equipamentos/_licenca_office_card.html' %}
+          </div>
 
           {# ── Resumo financeiro do patrimônio (não consumo, não locado) ── #}
           {% if financeiro.modo == 'AQUISIÇÃO' and item.item_consumo != 'sim' and financeiro.custo_aquisicao > 0 %}
@@ -2416,6 +2449,87 @@ body.theme-dark :where(.asset-detail-page) {
     if (monBtn) monBtn.click();
   }
 
+})();
+</script>
+
+<script>
+/* Licença Office — vincular/desvincular via fetch (sem recarregar a página).
+   O card inteiro (#ad-lo-card-wrap) é trocado pelo HTML fresco devolvido
+   pelo servidor, então qualquer mudança de estado (com/sem vínculo, status,
+   lista de licenças disponíveis) fica sempre consistente com o banco — nunca
+   precisa reimplementar essa lógica condicional aqui em JS. */
+(function () {
+  'use strict';
+
+  var wrap = document.getElementById('ad-lo-card-wrap');
+  if (!wrap) return;
+
+  function csrf() {
+    var el = wrap.querySelector('input[name=csrfmiddlewaretoken]');
+    if (el) return el.value;
+    var m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+
+  function showFlash(mensagem, isError) {
+    var box = wrap.querySelector('.ad-lo-flash');
+    if (!box) return;
+    box.textContent = mensagem;
+    box.hidden = false;
+    box.classList.toggle('is-error', !!isError);
+    clearTimeout(box._loTimer);
+    box._loTimer = setTimeout(function () { box.hidden = true; }, 4500);
+  }
+
+  function bind() {
+    wrap.querySelectorAll('.js-lo-form').forEach(function (form) {
+      if (form._loBound) return;
+      form._loBound = true;
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        if (!form.checkValidity()) {
+          form.reportValidity();
+          return;
+        }
+
+        var confirmMsg = form.getAttribute('data-lo-confirm');
+        if (confirmMsg && !window.confirm(confirmMsg)) return;
+
+        var btn = form.querySelector('button[type="submit"]');
+        form.classList.add('is-loading');
+        if (btn) btn.disabled = true;
+
+        fetch(form.action, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrf(), 'X-Requested-With': 'XMLHttpRequest' },
+          body: new FormData(form),
+        })
+          .then(function (resp) {
+            return resp.json().catch(function () { return null; });
+          })
+          .then(function (data) {
+            if (data && data.ok && data.html) {
+              wrap.innerHTML = data.html;
+              bind();
+              showFlash(data.mensagem, false);
+            } else {
+              form.classList.remove('is-loading');
+              if (btn) btn.disabled = false;
+              showFlash((data && data.erro) || 'Não foi possível concluir a ação.', true);
+            }
+          })
+          .catch(function () {
+            form.classList.remove('is-loading');
+            if (btn) btn.disabled = false;
+            showFlash('Falha de comunicação — tente novamente.', true);
+          });
+      });
+    });
+  }
+
+  bind();
 })();
 </script>
 {% endblock %}

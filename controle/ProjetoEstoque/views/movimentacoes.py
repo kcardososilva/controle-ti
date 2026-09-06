@@ -15,7 +15,7 @@ from xhtml2pdf import pisa
 
 from ..models import (
     MovimentacaoItem, TipoMovimentacaoChoices, TipoTransferenciaChoices, StatusItemChoices,
-    ItemLote, Item, ItemColaborador,
+    ItemLote, Item, ItemColaborador, Subtipo,
 )
 from ..forms import MovimentacaoItemForm
 from services.movimentacao_service import MovimentacaoEstoqueService
@@ -29,6 +29,8 @@ def _get_movimentacao_qs(request):
     q = (request.GET.get("q") or "").strip()
     tipo = (request.GET.get("tipo") or "").strip()
     grupo = (request.GET.get("grupo") or "").strip()
+    tipo_transferencia = (request.GET.get("tipo_transferencia") or "").strip()
+    subtipo = (request.GET.get("subtipo") or "").strip()
     usuario_q = (request.GET.get("usuario") or "").strip()
     numero_serie = (request.GET.get("numero_serie") or "").strip()
     centro_custo = (request.GET.get("centro_custo") or "").strip()
@@ -38,7 +40,7 @@ def _get_movimentacao_qs(request):
     qs = (
         MovimentacaoItem.objects
         .select_related(
-            "item", "usuario",
+            "item", "item__subtipo", "item__subtipo__categoria", "usuario",
             "localidade_origem", "localidade_destino",
             "centro_custo_origem", "centro_custo_destino",
             "fornecedor_manutencao",
@@ -47,7 +49,9 @@ def _get_movimentacao_qs(request):
     )
 
     if q:
-        qs = qs.filter(item__nome__icontains=q)
+        qs = qs.filter(
+            Q(item__nome__icontains=q) | Q(item__numero_serie__icontains=q)
+        )
     if tipo:
         qs = qs.filter(tipo_movimentacao=tipo)
     # Filtro por grupo (usado pelas células de indicador clicáveis): agrupa
@@ -56,7 +60,18 @@ def _get_movimentacao_qs(request):
         qs = qs.filter(tipo_movimentacao__in=["transferencia", "transferencia_equipamento"])
     elif grupo == "manutencao":
         qs = qs.filter(tipo_movimentacao__in=["envio_manutencao", "retorno_manutencao"])
+    # Entrega/Devolução só existe em transferência de dispositivo — filtrar por
+    # ela sem restringir o tipo traria ruído (registros com o campo vazio já
+    # ficam fora pelo próprio filtro, mas o `tipo_movimentacao` deixa explícito).
+    if tipo_transferencia:
+        qs = qs.filter(
+            tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
+            tipo_transferencia=tipo_transferencia,
+        )
+    if subtipo.isdigit():
+        qs = qs.filter(item__subtipo_id=int(subtipo))
     if usuario_q:
+        # "Usuário" histórico da tela = colaborador vinculado à movimentação.
         qs = qs.filter(usuario__nome__icontains=usuario_q)
     if numero_serie:
         qs = qs.filter(item__numero_serie__icontains=numero_serie)
@@ -71,42 +86,32 @@ def _get_movimentacao_qs(request):
         qs = qs.filter(created_at__date__gte=data_inicio)
     if data_fim:
         qs = qs.filter(created_at__date__lte=data_fim)
-        
+
     return qs
 
-@login_required
-def movimentacao_list(request):
-    qs = (
-        _get_movimentacao_qs(request)
-        .select_related(
-            "item",
-            "usuario",
-            "criado_por",
-            "centro_custo_origem",
-            "centro_custo_destino",
-            "localidade_origem",
-            "localidade_destino",
-            "fornecedor_manutencao",
-            "lote",
-            "lote__fornecedor",
-        )
-        .order_by("-created_at")
-    )
 
-    total_filtrado = qs.count()
+def _movimentacao_kpis(qs, hoje=None):
+    """
+    Indicadores da faixa superior (tela) e do bloco de resumo (PDF).
+    Fonte única para os dois — a tela e o relatório nunca divergem.
+    """
+    hoje = hoje or timezone.now().date()
 
     stats = dict(qs.values_list("tipo_movimentacao").annotate(c=Count("id")).order_by())
 
     def get_count(key):
         return stats.get(key, 0)
 
-    kpi_entrada = get_count("entrada")
-    kpi_saida = get_count("baixa")
-    kpi_transf = get_count("transferencia") + get_count("transferencia_equipamento")
-    kpi_manut = get_count("envio_manutencao") + get_count("retorno_manutencao")
-
-    hoje = timezone.now().date()
-    kpi_hoje = qs.filter(created_at__date=hoje).count()
+    transferencias = qs.aggregate(
+        entregas=Count("id", filter=Q(
+            tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
+            tipo_transferencia=TipoTransferenciaChoices.ENTREGA,
+        )),
+        devolucoes=Count("id", filter=Q(
+            tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
+            tipo_transferencia=TipoTransferenciaChoices.DEVOLUCAO,
+        )),
+    )
 
     top_mover_data = (
         qs.values("item__nome")
@@ -114,8 +119,84 @@ def movimentacao_list(request):
         .order_by("-total")
         .first()
     )
-    kpi_top_item_nome = top_mover_data["item__nome"] if top_mover_data else "-"
-    kpi_top_item_qtd = top_mover_data["total"] if top_mover_data else 0
+
+    return {
+        "hoje": qs.filter(created_at__date=hoje).count(),
+        "top_item": top_mover_data["item__nome"] if top_mover_data else "—",
+        "top_item_qtd": top_mover_data["total"] if top_mover_data else 0,
+        "entrada": get_count("entrada"),
+        "saida": get_count("baixa"),
+        "transferencias": get_count("transferencia") + get_count("transferencia_equipamento"),
+        "manutencao": get_count("envio_manutencao") + get_count("retorno_manutencao"),
+        "entregas": transferencias["entregas"],
+        "devolucoes": transferencias["devolucoes"],
+    }
+
+
+def _subtipos_opcoes():
+    """Subtipos disponíveis no filtro, agrupados visualmente pela categoria."""
+    return (
+        Subtipo.objects
+        .select_related("categoria")
+        .order_by("categoria__nome", "nome")
+    )
+
+
+def _filtros_resumo(request):
+    """
+    Lista legível dos filtros aplicados — usada no cabeçalho do PDF para que o
+    relatório impresso documente exatamente o recorte exportado.
+    """
+    tipos_map = dict(TipoMovimentacaoChoices.choices)
+    transf_map = dict(TipoTransferenciaChoices.choices)
+    grupos_map = {"transferencia": "Transferências", "manutencao": "Manutenção"}
+
+    def g(chave):
+        return (request.GET.get(chave) or "").strip()
+
+    resumo = []
+
+    if g("q"):
+        resumo.append(("Busca", g("q")))
+    if g("tipo"):
+        resumo.append(("Tipo", tipos_map.get(g("tipo"), g("tipo"))))
+    if g("grupo"):
+        resumo.append(("Grupo", grupos_map.get(g("grupo"), g("grupo"))))
+    if g("tipo_transferencia"):
+        resumo.append(("Operação", transf_map.get(g("tipo_transferencia"), g("tipo_transferencia"))))
+    if g("subtipo").isdigit():
+        sub = Subtipo.objects.select_related("categoria").filter(pk=int(g("subtipo"))).first()
+        if sub:
+            resumo.append(("Subtipo", str(sub)))
+    if g("usuario"):
+        resumo.append(("Colaborador", g("usuario")))
+    if g("numero_serie"):
+        resumo.append(("Nº de Série", g("numero_serie")))
+    if g("centro_custo"):
+        resumo.append(("Centro de Custo", g("centro_custo")))
+
+    inicio, fim = g("data_inicio"), g("data_fim")
+    if inicio or fim:
+        resumo.append(("Período", f"{inicio or 'início'} até {fim or 'hoje'}"))
+
+    return resumo
+
+
+@login_required
+def movimentacao_list(request):
+    qs = (
+        _get_movimentacao_qs(request)
+        .select_related(
+            "criado_por",
+            "lote",
+            "lote__fornecedor",
+        )
+    )
+
+    total_filtrado = qs.count()
+
+    hoje = timezone.now().date()
+    kpi = _movimentacao_kpis(qs, hoje=hoje)
 
     try:
         per_page = int(request.GET.get("pp", 20))
@@ -131,32 +212,51 @@ def movimentacao_list(request):
         del get_copy["page"]
     qs_keep = get_copy.urlencode()
 
+    f_q = request.GET.get("q", "")
+    f_tipo = request.GET.get("tipo", "")
+    f_grupo = request.GET.get("grupo", "")
+    f_tt = request.GET.get("tipo_transferencia", "")
+    f_subtipo = request.GET.get("subtipo", "")
+    f_user = request.GET.get("usuario", "")
+    f_serie = request.GET.get("numero_serie", "")
+    f_cc = request.GET.get("centro_custo", "")
+    f_ini = request.GET.get("data_inicio", "")
+    f_fim = request.GET.get("data_fim", "")
+
+    # Rótulos legíveis para os chips de "filtros aplicados".
+    subtipo_obj = (
+        Subtipo.objects.select_related("categoria").filter(pk=int(f_subtipo)).first()
+        if f_subtipo.isdigit() else None
+    )
+
     context = {
         "movimentacoes": page_obj.object_list,
         "page_obj": page_obj,
         "total": total_filtrado,
         "qs_keep": qs_keep,
 
-        "f_q": request.GET.get("q", ""),
-        "f_tipo": request.GET.get("tipo", ""),
-        "f_grupo": request.GET.get("grupo", ""),
-        "f_user": request.GET.get("usuario", ""),
-        "f_serie": request.GET.get("numero_serie", ""),
-        "f_cc": request.GET.get("centro_custo", ""),
-        "f_ini": request.GET.get("data_inicio", ""),
-        "f_fim": request.GET.get("data_fim", ""),
+        "f_q": f_q,
+        "f_tipo": f_tipo,
+        "f_grupo": f_grupo,
+        "f_tt": f_tt,
+        "f_subtipo": f_subtipo,
+        "f_user": f_user,
+        "f_serie": f_serie,
+        "f_cc": f_cc,
+        "f_ini": f_ini,
+        "f_fim": f_fim,
+        "f_pp": per_page,
+        "f_tipo_label": dict(TipoMovimentacaoChoices.choices).get(f_tipo, f_tipo),
+        "f_tt_label": dict(TipoTransferenciaChoices.choices).get(f_tt, f_tt),
+        "f_grupo_label": {"transferencia": "Transferências", "manutencao": "Manutenção"}.get(f_grupo, f_grupo),
+        "f_subtipo_label": str(subtipo_obj) if subtipo_obj else "",
+        "filtros_ativos": bool(f_q or f_tipo or f_tt or f_subtipo or f_user or f_serie or f_cc or f_ini or f_fim),
         "today_iso": hoje.isoformat(),
         "tipos_choices": TipoMovimentacaoChoices.choices,
+        "tipo_transferencia_choices": TipoTransferenciaChoices.choices,
+        "subtipos_opcoes": _subtipos_opcoes(),
 
-        "kpi": {
-            "hoje": kpi_hoje,
-            "top_item": kpi_top_item_nome,
-            "top_item_qtd": kpi_top_item_qtd,
-            "entrada": kpi_entrada,
-            "saida": kpi_saida,
-            "transferencias": kpi_transf,
-            "manutencao": kpi_manut,
-        }
+        "kpi": kpi,
     }
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -173,37 +273,33 @@ def movimentacao_list(request):
 
     return render(request, "front/movimentacao/movimentacao_list.html", context)
 
+
 @login_required
 def movimentacao_export_pdf(request):
     """
     Gera PDF usando xhtml2pdf (Pisa).
-    Mostra o usuário que realmente realizou a movimentação
-    com base no campo criado_por.
+    Reproduz o mesmo recorte da tela (mesmos filtros, mesmos indicadores),
+    incluindo a operação de transferência (Entrega/Devolução), o colaborador
+    envolvido e o subtipo do equipamento.
     """
     qs = (
         _get_movimentacao_qs(request)
         .select_related(
-            "item",
             "criado_por",
-            "centro_custo_origem",
-            "centro_custo_destino",
-            "localidade_origem",
-            "localidade_destino",
-            "fornecedor_manutencao",
+            "lote",
+            "lote__fornecedor",
         )
-        .order_by("-created_at")
     )
+
+    total = qs.count()
 
     context = {
         "movimentacoes": qs,
         "usuario": request.user,
         "data_geracao": timezone.now(),
-        "total": qs.count(),
-        "filtros": {
-            "inicio": request.GET.get("data_inicio"),
-            "fim": request.GET.get("data_fim"),
-            "tipo": request.GET.get("tipo"),
-        }
+        "total": total,
+        "kpi": _movimentacao_kpis(qs),
+        "filtros_resumo": _filtros_resumo(request),
     }
 
     template_path = "front/movimentacao/movimentacao_pdf.html"

@@ -71,6 +71,7 @@ MIDDLEWARE = [
     'ProjetoEstoque.middleware.LoginThrottleMiddleware',
     'ProjetoEstoque.middleware.TVAccessMiddleware',
     'ProjetoEstoque.middleware.FornecedorAccessMiddleware',
+    'ProjetoEstoque.middleware.LicencaOfficeAccessMiddleware',
 ]
 
 ROOT_URLCONF = 'controle.urls'

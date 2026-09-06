@@ -1287,6 +1287,13 @@ def equipamento_detalhe(request, pk: int):
     except Exception:
         pass
 
+    # =========================================================
+    # Licença Office (chave por equipamento) — não se aplica a item de consumo
+    # =========================================================
+    from .licencas_office import licenca_office_contexto
+
+    licenca_office, licencas_office_disponiveis = licenca_office_contexto(item)
+
     # Histórico de locação congelável (períodos de aluguel por status do item)
     loc_periodos = list(item.locacao_periodos.all()) if item.eh_locado else []
     loc_total_acumulado = sum((p.valor_acumulado for p in loc_periodos), Decimal("0.00"))
@@ -1348,6 +1355,8 @@ def equipamento_detalhe(request, pk: int):
         "monitoracao_url": f"/equipamentos/{item.pk}/monitoracao/",
         "ninja_device": ninja_device,
         "ninja_snapshots_hoje": ninja_snapshots_hoje,
+        "licenca_office": licenca_office,
+        "licencas_office_disponiveis": licencas_office_disponiveis,
         "next_url": _safe_next_url(request, request.GET.get("next")),
     }
 
@@ -1420,6 +1429,18 @@ def item_update(request, pk):
         locacao_valida = locacao_form.is_valid() if eh_locado else True
         lote_valido = lote_form.is_valid() if eh_consumo else True
 
+        if eh_consumo and lote_valido and item_lote and not lote_form.possui_dados():
+            # Este item já tem estoque/lote real vinculado — não dá pra
+            # "esvaziar" o lote por aqui (órfão o ItemLote/quantidade
+            # existente). Ajustes de saldo passam por Movimentação de Baixa.
+            lote_form.add_error(
+                None,
+                "Este item já possui lote de estoque vinculado — os dados do "
+                "lote não podem ficar em branco. Para reduzir o estoque, use "
+                "uma Movimentação de Baixa.",
+            )
+            lote_valido = False
+
         _STATUS_PAUSANTES = {
             StatusItemChoices.PAUSADO,
             StatusItemChoices.BACKUP,
@@ -1439,31 +1460,40 @@ def item_update(request, pk):
 
                     preencher_auditoria(item_editado, request.user, criando=False)
 
+                    lote_editado = None
+
                     if eh_consumo:
-                        lote_editado = lote_form.save(commit=False)
-                        preencher_auditoria(
-                            lote_editado,
-                            request.user,
-                            criando=lote_editado.pk is None
-                        )
+                        if lote_form.possui_dados():
+                            lote_editado = lote_form.save(commit=False)
+                            preencher_auditoria(
+                                lote_editado,
+                                request.user,
+                                criando=lote_editado.pk is None
+                            )
 
-                        lote_editado.full_clean()
-                        lote_editado.save()
+                            lote_editado.full_clean()
+                            lote_editado.save()
 
-                        item_editado.tem_lote = True
-                        # NÃO usar lote_editado.quantidade aqui: esse é só o
-                        # total do lote sendo editado (o mais recente) — um
-                        # item com vários lotes teria a contribuição dos
-                        # demais apagada. O valor definitivo é recalculado
-                        # abaixo, depois de ajustar o ItemLote, como soma de
-                        # `quantidade_disponivel` de TODOS os lotes do item.
-                        # Placeholder até lá (campo não é nullable): mantém o
-                        # valor atual do item.
-                        item_editado.quantidade = item.quantidade
-                        item_editado.valor = lote_editado.custo_unitario
-                        item_editado.fornecedor = lote_editado.fornecedor
-                        item_editado.numero_pedido = lote_editado.numero_nf
-                        item_editado.data_compra = lote_editado.data_entrada
+                            item_editado.tem_lote = True
+                            # NÃO usar lote_editado.quantidade aqui: esse é só o
+                            # total do lote sendo editado (o mais recente) — um
+                            # item com vários lotes teria a contribuição dos
+                            # demais apagada. O valor definitivo é recalculado
+                            # abaixo, depois de ajustar o ItemLote, como soma de
+                            # `quantidade_disponivel` de TODOS os lotes do item.
+                            # Placeholder até lá (campo não é nullable): mantém o
+                            # valor atual do item.
+                            item_editado.quantidade = item.quantidade
+                            item_editado.valor = lote_editado.custo_unitario
+                            item_editado.fornecedor = lote_editado.fornecedor
+                            item_editado.numero_pedido = lote_editado.numero_nf
+                            item_editado.data_compra = lote_editado.data_entrada
+                        else:
+                            # Sem dados de lote e sem lote existente (garantido
+                            # pela validação acima): item de consumo continua
+                            # pendente de entrada, com estoque zerado.
+                            item_editado.tem_lote = False
+                            item_editado.quantidade = 0
 
                     else:
                         if item_lote:
@@ -1497,7 +1527,7 @@ def item_update(request, pk):
                             for prev in preventivas:
                                 prev.retomar()
 
-                    if eh_consumo:
+                    if eh_consumo and lote_editado is not None:
                         if item_lote:
                             quantidade_antiga = item_lote.quantidade_entrada or 0
                             quantidade_nova = lote_editado.quantidade or 0

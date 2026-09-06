@@ -156,6 +156,8 @@ class ImportadorPlanilhaService:
         df = pd.read_excel(self.arquivo)
         df.columns = [str(c).strip() for c in df.columns if str(c).strip() != "None"]
 
+        self._validar_planilha_de_equipamentos(df.columns)
+
         criados = []
         atualizados = []
         ignorados = []
@@ -425,6 +427,30 @@ class ImportadorPlanilhaService:
             },
             "avisos": avisos,
         }
+
+    def _validar_planilha_de_equipamentos(self, columns):
+        """
+        A única coluna obrigatória por linha é "Nome" (aliases incluem
+        "DESCRIÇÃO"/"EQUIPAMENTO"), o que basta para aceitar QUALQUER planilha
+        que tenha uma coluna de nome — inclusive a de colaboradores — e criar
+        itens-fantasma (só com o nome preenchido). Exige aqui pelo menos uma
+        coluna específica de equipamento antes de processar qualquer linha.
+        """
+        sinais_equipamento = ["SUBTIPO", "NÚMERO DE SÉRIE", "CENTRO DE CUSTO"]
+
+        tem_sinal = any(
+            self._find_column(columns, alias)
+            for campo in sinais_equipamento
+            for alias in self.aliases[campo]
+        )
+
+        if not tem_sinal:
+            raise ValueError(
+                "Esta planilha não parece ser de equipamentos: nenhuma coluna "
+                "SUBTIPO, NÚMERO DE SÉRIE ou CENTRO DE CUSTO foi encontrada. "
+                "Confira se o arquivo é o correto — planilha de colaboradores "
+                "deve ser importada pela tela de Colaboradores."
+            )
 
     def _buscar_item(self, *, numero_serie, nome):
         if numero_serie:

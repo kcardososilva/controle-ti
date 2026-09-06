@@ -15,6 +15,8 @@ ProjetoEstoque views package — organização por domínio de negócio.
   ciclos.py        — CRUD de ciclos de manutenção
   preventivas.py   — Checklists e execuções de preventivas
   licencas.py      — CRUD, lotes e movimentações de licenças
+  licencas_office.py — Licenças Office (chave por equipamento) + vínculo com Item
+  portal_licencas.py — Portal de Licenças Office (área isolada p/ parceiros externos, ex.: Routerlink)
   dashboards.py    — Dashboard principal e preventiva/CC dashboard
   relatorios.py    — Exportações (toner, equipamentos, avisos, custos CC)
   termos.py        — Geração de termos de entrega/devolução
@@ -200,6 +202,27 @@ from .licencas import (
     mov_licenca_form,
     licenca_lote_list,
     licenca_lote_form,
+)
+
+# ── Licenças Office (chave por equipamento) ───────────────────────────────────
+from .licencas_office import (
+    licenca_office_list,
+    licenca_office_form,
+    licenca_office_delete,
+    licenca_office_importar,
+    licenca_office_vincular,
+    licenca_office_desvincular,
+)
+
+# ── Portal de Licenças Office (área isolada p/ parceiros externos) ───────────
+# Nomes com sufixo "_office" de propósito: já existe `portal_licencas_list`
+# (Portal do Fornecedor, módulo antigo de pool de licenças em portal_fornecedor.py)
+# — sem o sufixo, este import silenciosamente sobrescreveria aquele símbolo aqui.
+from .portal_licencas import (
+    portal_licencas_office_list,
+    portal_licencas_office_editar,
+    portal_licencas_office_vincular,
+    portal_licencas_office_desvincular,
 )
 
 # ── Dashboards ───────────────────────────────────────────────────────────────

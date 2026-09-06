@@ -11,7 +11,7 @@ from .models import (
     StatusItemChoices, TipoMovimentacaoChoices, TipoTransferenciaChoices,
     LocalidadeChoices, CheckListModelo, CheckListPergunta, Preventiva,
     TipoRespostaChoices, SimNaoChoices, Licenca, MovimentacaoLicenca,
-    TipoMovLicencaChoices, LicencaLote, LoteEstoque, ItemLote, PlantaProjeto,
+    TipoMovLicencaChoices, LicencaLote, LicencaOffice, LoteEstoque, ItemLote, PlantaProjeto,
     OrdemManutencao, StatusOrdemManutencaoChoices,
     Requisicao, RequisicaoItem, ComentarioRequisicaoItem, ItemPadraoDatasul,
 )
@@ -902,27 +902,57 @@ class LoteEstoqueCreateForm(forms.ModelForm):
             }),
         }
 
+    # Campos que compõem "os dados do lote" para fins de decidir se o usuário
+    # quer dar entrada agora ou só cadastrar o item de consumo (estoque = 0)
+    # para dar entrada depois, via Requisição vinculada ao Item Padrão Datasul
+    # ou por uma Movimentação de Entrada.
+    CAMPOS_LOTE = ["fornecedor", "data_entrada", "numero_nf", "quantidade", "custo_unitario"]
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Nenhum campo do lote é obrigatório individualmente: um item de
+        # consumo pode ser cadastrado sem estoque ainda (ex.: só para
+        # sinalizar que precisa ser solicitado). Se o usuário começar a
+        # preencher, `clean()` abaixo exige o preenchimento completo — evita
+        # um lote pela metade (NF sem quantidade, por exemplo).
+        self.fields["fornecedor"].required = False
+        self.fields["numero_nf"].required = False
+        self.fields["quantidade"].required = False
+        self.fields["custo_unitario"].required = False
 
         if self.instance and self.instance.pk:
             self.initial["data_entrada"] = formatar_data_para_input_html(
                 self.instance.data_entrada
             )
 
+    def possui_dados(self):
+        """True se o usuário informou algum dado do lote (mesmo que
+        incompleto). Chamar só depois de is_valid()/clean() ter rodado."""
+        return any(self.cleaned_data.get(campo) for campo in self.CAMPOS_LOTE)
+
     def clean(self):
         cleaned = super().clean()
 
-        data_entrada = cleaned.get("data_entrada")
-        quantidade = cleaned.get("quantidade")
-        custo_unitario = cleaned.get("custo_unitario")
+        if not self.possui_dados():
+            # Nada preenchido: cadastro de item de consumo sem estoque ainda.
+            # A entrada real (lote + quantidade) é feita depois.
+            return cleaned
 
-        if not data_entrada:
+        if not cleaned.get("fornecedor"):
+            self.add_error("fornecedor", "Informe o fornecedor do lote.")
+
+        if not cleaned.get("data_entrada"):
             self.add_error("data_entrada", "Informe a data de entrada do lote.")
 
+        if not cleaned.get("numero_nf"):
+            self.add_error("numero_nf", "Informe o número da NF do lote.")
+
+        quantidade = cleaned.get("quantidade")
         if not quantidade or quantidade <= 0:
             self.add_error("quantidade", "A quantidade do lote deve ser maior que zero.")
 
+        custo_unitario = cleaned.get("custo_unitario")
         if not custo_unitario or custo_unitario <= 0:
             self.add_error("custo_unitario", "O custo unitário deve ser maior que zero.")
 
@@ -1214,8 +1244,122 @@ class LicencaLoteForm(forms.ModelForm):
             usados = self.instance.quantidade_total - self.instance.quantidade_disponivel
             if qtd < usados:
                 raise forms.ValidationError(f"Não é possível reduzir para {qtd}. Já existem {usados} licenças em uso neste lote.")
-        
+
         return qtd
+
+
+# --- LICENÇA OFFICE (chave por equipamento) ---
+class LicencaOfficeForm(forms.ModelForm):
+    data_licenca = forms.DateField(
+        required=False,
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"type": "date", "class": "form-control"},
+        ),
+        input_formats=["%Y-%m-%d", "%d/%m/%Y"],
+    )
+
+    class Meta:
+        model = LicencaOffice
+        fields = [
+            "produto", "chave_produto", "status", "conta_vinculada",
+            "id_dell", "data_licenca", "usuario_vinculado", "item", "observacao",
+        ]
+        widgets = {
+            "produto": forms.TextInput(attrs={
+                "class": "form-control", "placeholder": "Ex: Office Home and Business 2016",
+            }),
+            "chave_produto": forms.TextInput(attrs={
+                "class": "form-control", "placeholder": "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX",
+            }),
+            "status": forms.Select(attrs={"class": "form-control"}),
+            "conta_vinculada": forms.TextInput(attrs={
+                "class": "form-control", "placeholder": "conta@dominio.com",
+            }),
+            "id_dell": forms.TextInput(attrs={"class": "form-control"}),
+            "usuario_vinculado": forms.TextInput(attrs={
+                "class": "form-control", "placeholder": "usuario.sobrenome",
+            }),
+            "item": forms.Select(attrs={"class": "form-control select2"}),
+            "observacao": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Só faz sentido vincular a equipamentos (patrimônio) — item de
+        # consumo (toner, cabo...) não tem licença de software.
+        self.fields["item"].queryset = Item.objects.filter(
+            item_consumo=SimNaoChoices.NAO
+        ).order_by("nome")
+        self.fields["item"].required = False
+        self.fields["item"].empty_label = "Sem equipamento vinculado (em estoque)"
+
+        if self.instance and self.instance.pk:
+            self.initial["data_licenca"] = formatar_data_para_input_html(
+                self.instance.data_licenca
+            )
+
+    def clean_item(self):
+        item = self.cleaned_data.get("item")
+        if item:
+            conflito = LicencaOffice.objects.filter(item=item)
+            if self.instance.pk:
+                conflito = conflito.exclude(pk=self.instance.pk)
+            if conflito.exists():
+                raise forms.ValidationError(
+                    f'O equipamento "{item}" já possui outra licença Office vinculada. '
+                    "Desvincule a licença atual antes de vincular esta a ele."
+                )
+        return item
+
+
+class LicencaOfficeImportForm(forms.Form):
+    arquivo = forms.FileField(
+        label="Planilha (.xlsx)",
+        help_text=(
+            "Colunas: Produto, Serial, Status, Conta, ID Principal Dell, Data da Licença, "
+            "Estação, Usuário vinculado com a máquina. Uma licença já cadastrada com a mesma "
+            "chave/serial é atualizada, não duplicada."
+        ),
+        widget=forms.ClearableFileInput(attrs={"class": "ctrl", "accept": ".xlsx"}),
+    )
+
+
+class LicencaOfficePortalForm(forms.ModelForm):
+    """Versão restrita de `LicencaOfficeForm` para o Portal de Licenças
+    Office (parceiros externos, ex.: Routerlink) — só os campos que o TI
+    aprovou para edição por terceiros. Produto, chave/serial, ID Dell e o
+    vínculo com o equipamento (que passa pelas ações dedicadas de vincular/
+    desvincular, nunca por este form) ficam de fora: nem entram no
+    `Meta.fields`, então um POST forjado tentando alterá-los é ignorado pelo
+    `ModelForm` — não é uma checagem que dependa de "não mostrar" no HTML."""
+    data_licenca = forms.DateField(
+        required=False,
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"type": "date", "class": "pl-input"},
+        ),
+        input_formats=["%Y-%m-%d", "%d/%m/%Y"],
+    )
+
+    class Meta:
+        model = LicencaOffice
+        fields = ["status", "conta_vinculada", "usuario_vinculado", "data_licenca", "observacao"]
+        widgets = {
+            "status": forms.Select(attrs={"class": "pl-input"}),
+            "conta_vinculada": forms.TextInput(attrs={"class": "pl-input", "placeholder": "conta@dominio.com"}),
+            "usuario_vinculado": forms.TextInput(attrs={"class": "pl-input", "placeholder": "usuario.sobrenome"}),
+            "observacao": forms.Textarea(attrs={"class": "pl-input", "rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.initial["data_licenca"] = formatar_data_para_input_html(
+                self.instance.data_licenca
+            )
+
 
 ESTABELECIMENTO_CHOICES = [
     ("rio_do_meio", "Rio do Meio"),
@@ -1364,7 +1508,13 @@ class RequisicaoItemForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["item_vinculado"].queryset = Item.objects.filter(tem_lote=True).order_by("nome")
+        # Não filtra por `tem_lote=True`: um item de consumo recém-cadastrado
+        # e ainda sem estoque (aguardando a primeira entrada) também precisa
+        # aparecer aqui — é assim que o usuário vincula a requisição a ele e,
+        # ao "Receber Compra", dá a entrada real (ver `finalizar_compra_estoque`).
+        self.fields["item_vinculado"].queryset = (
+            Item.objects.filter(item_consumo=SimNaoChoices.SIM).order_by("nome")
+        )
         self.fields["item_vinculado"].required = False
         self.fields["codigo"].required = False
         self.fields["justificativa"].required = False

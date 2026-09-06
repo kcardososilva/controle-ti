@@ -42,6 +42,7 @@ from ..models import (
     ItemPadraoDatasul,
     Requisicao,
     RequisicaoItem,
+    SimNaoChoices,
     StatusItemSolicitacaoChoices,
     StatusRequisicaoChoices,
     TipoRequisicaoChoices,
@@ -262,13 +263,14 @@ def requisicao_item_mover(request, pk):
 
 def _mapa_itens_vinculaveis_por_numero_serie():
     """`numero_serie` normalizado (strip+upper) -> pk do Item, restrito ao
-    mesmo universo elegível pro campo `item_vinculado` (`tem_lote=True`) —
-    usado no form pra autovincular quando o código digitado/escolhido bate
-    com o número de série de um item já cadastrado. Sem `unique=True` no
-    model, número de série duplicado faz o último da consulta prevalecer."""
+    mesmo universo elegível pro campo `item_vinculado` (`item_consumo="sim"`,
+    com ou sem estoque ainda — ver `RequisicaoItemForm`) — usado no form pra
+    autovincular quando o código digitado/escolhido bate com o número de
+    série de um item já cadastrado. Sem `unique=True` no model, número de
+    série duplicado faz o último da consulta prevalecer."""
     return {
         (ns or "").strip().upper(): pk
-        for pk, ns in Item.objects.filter(tem_lote=True)
+        for pk, ns in Item.objects.filter(item_consumo=SimNaoChoices.SIM)
             .exclude(numero_serie__isnull=True).exclude(numero_serie="")
             .values_list("id", "numero_serie")
     }

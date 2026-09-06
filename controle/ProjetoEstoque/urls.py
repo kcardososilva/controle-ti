@@ -172,6 +172,15 @@ urlpatterns = [
     path("licencas/<int:pk>/exportar-excel/", views.licenca_export_excel, name="licenca_export_excel"),
     path("licencas/devolver-rapido/<int:usuario_id>/<int:licenca_id>/", views.licenca_devolver_rapido, name="licenca_devolver_rapido"),
 
+    # ── Licenças Office (chave por equipamento) ────────────────────────────
+    path("licencas-office/", views.licenca_office_list, name="licenca_office_list"),
+    path("licencas-office/novo/", views.licenca_office_form, name="licenca_office_create"),
+    path("licencas-office/importar/", views.licenca_office_importar, name="licenca_office_importar"),
+    path("licencas-office/<int:pk>/editar/", views.licenca_office_form, name="licenca_office_update"),
+    path("licencas-office/<int:pk>/excluir/", views.licenca_office_delete, name="licenca_office_delete"),
+    path("equipamentos/<int:item_pk>/licenca-office/vincular/", views.licenca_office_vincular, name="licenca_office_vincular"),
+    path("equipamentos/<int:item_pk>/licenca-office/desvincular/", views.licenca_office_desvincular, name="licenca_office_desvincular"),
+
     # ── Dashboards ──────────────────────────────────────────────────────────
     path("dashboards/custos-cc/", views.cc_custos_dashboard, name="cc_custos_dashboard"),
     path("dashboards/custos-cc/detalhe/", views.cc_custos_detalhe, name="cc_custos_detalhe"),
@@ -292,6 +301,12 @@ urlpatterns = [
     path("portal/licencas/", views.portal_licencas_list, name="portal_licencas_list"),
     path("portal/ajuda/", views.portal_ajuda, name="portal_ajuda"),
     path("portal/ajuda/diagrama/", views.portal_ajuda_diagrama, name="portal_ajuda_diagrama"),
+
+    # ── Portal de Licenças Office (área isolada p/ parceiros externos, ex.: Routerlink) ──
+    path("portal-licencas/", views.portal_licencas_office_list, name="portal_licencas_office_list"),
+    path("portal-licencas/<int:pk>/editar/", views.portal_licencas_office_editar, name="portal_licencas_office_editar"),
+    path("portal-licencas/equipamentos/<int:item_pk>/vincular/", views.portal_licencas_office_vincular, name="portal_licencas_office_vincular"),
+    path("portal-licencas/equipamentos/<int:item_pk>/desvincular/", views.portal_licencas_office_desvincular, name="portal_licencas_office_desvincular"),
 
     # ── Notificações (sino do topo) ─────────────────────────────────────────
     path("notificacoes/marcar-lidas/", views.notificacoes_marcar_lidas, name="notificacoes_marcar_lidas"),

@@ -1,0 +1,536 @@
+{% extends 'base.html' %}
+
+{% block title %}Licenças Office (por equipamento){% endblock %}
+{% block page_title %}Licenças Office{% endblock %}
+{% block page_subtitle %}Controle de chave/serial por notebook e desktop{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'licenca_list' %}">Licenças</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Licenças Office</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'licenca_list' %}" class="btn-secondary btn-sm"><i class="fa fa-arrow-left" aria-hidden="true"></i> Voltar a Licenças</a>
+{% endblock %}
+
+{% block extra_css %}
+{% include 'front/licencas/_lic_design_system.html' %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+<style>
+:where(.lo-list-page, .select2-container, .select2-dropdown) {
+  --lo-primary:    var(--brand,               #0071e3);
+  --lo-primary-soft: var(--brand-soft,        rgba(0,113,227,.10));
+  --lo-surface:    var(--bg-elevated,         #ffffff);
+  --lo-muted-surf: var(--bg-fill-tertiary,    rgba(120,120,128,.08));
+  --lo-hover:      var(--bg-hover,            rgba(0,0,0,.04));
+  --lo-text:       var(--text-primary,        #1d1d1f);
+  --lo-text-2:     var(--text-secondary,      #424245);
+  --lo-muted:      var(--text-tertiary,       #6e6e73);
+  --lo-soft:       var(--text-quaternary,     #86868b);
+  --lo-border:     var(--separator-hairline,  rgba(0,0,0,.06));
+  --lo-border2:    var(--separator-non-opaque,rgba(0,0,0,.10));
+  --lo-success:    var(--system-green,        #34c759);
+  --lo-success-soft: var(--system-green-soft, rgba(52,199,89,.12));
+  --lo-warning:    var(--warning,             #ff9f0a);
+  --lo-warning-soft: var(--warning-soft,      rgba(255,159,10,.12));
+  --lo-danger:     var(--danger,              #ff3b30);
+  --lo-danger-soft:var(--danger-soft,         rgba(255,59,48,.10));
+  --lo-radius-sm:  6px;
+  --lo-radius-lg:  10px;
+  --lo-radius-pill:999px;
+  --lo-shadow-sm:  var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+}
+.lo-list-page, .lo-list-page * { box-sizing: border-box; min-width: 0; }
+.lo-list-page { display: grid; gap: 1rem; color: var(--lo-text); }
+
+.lo-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+.lo-kpi { display: grid; gap: .3rem; padding: .85rem 1rem; border: 1px solid var(--lo-border); border-radius: var(--lo-radius-lg); background: var(--lo-surface); box-shadow: var(--lo-shadow-sm); }
+.lo-kpi-label { display: flex; align-items: center; gap: .4rem; color: var(--lo-muted); font-size: .7rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.lo-kpi-label i { color: var(--lo-soft); font-size: .74rem; }
+.lo-kpi-value { color: var(--lo-text); font-size: 1.5rem; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+
+.lo-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 1rem; align-items: end; padding: 1rem; border: 1px solid var(--lo-border); border-radius: var(--lo-radius-lg); background: var(--lo-surface); box-shadow: var(--lo-shadow-sm); }
+.lo-filter-grid { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr); gap: .75rem; }
+.lo-field label { display: block; margin-bottom: .35rem; color: var(--lo-muted); font-size: .76rem; font-weight: 600; }
+.lo-search { position: relative; }
+.lo-search > i { position: absolute; left: .7rem; top: 50%; transform: translateY(-50%); color: var(--lo-soft); font-size: .8rem; pointer-events: none; }
+.lo-search input { padding-left: 2rem !important; }
+.lo-list-page input[type="text"], .lo-list-page select { width: 100%; min-height: 2.4rem; padding: .55rem .8rem; border: 1px solid var(--lo-border2); border-radius: var(--lo-radius-sm); background: var(--lo-surface); color: var(--lo-text); font-family: inherit; font-size: .86rem; }
+.lo-list-page input[type="text"]:focus, .lo-list-page select:focus { outline: none; border-color: var(--lo-primary); box-shadow: 0 0 0 3px var(--brand-ring, rgba(0,113,227,.30)); }
+.lo-actions-row { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: flex-end; align-items: center; }
+.lo-btn, .lo-btn-primary, .lo-btn-secondary { min-height: 2.3rem; display: inline-flex; align-items: center; justify-content: center; gap: .45rem; padding: .5rem 1rem; border-radius: var(--lo-radius-pill); border: 1px solid transparent; font-size: .84rem; font-weight: 600; text-decoration: none; cursor: pointer; }
+.lo-btn-primary { background: var(--lo-primary); color: #fff; }
+.lo-btn-secondary, .lo-btn { background: transparent; color: var(--lo-text); border-color: var(--lo-border2); }
+.lo-btn-secondary:hover, .lo-btn:hover { background: var(--lo-hover); }
+
+.lo-table-card { overflow: hidden; border: 1px solid var(--lo-border); border-radius: var(--lo-radius-lg); background: var(--lo-surface); box-shadow: var(--lo-shadow-sm); }
+.lo-table-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; padding: .8rem 1rem; border-bottom: 1px solid var(--lo-border); }
+.lo-table-title { display: flex; align-items: center; gap: .5rem; font-size: .9rem; font-weight: 600; }
+.lo-table-title i { color: var(--lo-soft); }
+.lo-count { color: var(--lo-muted); font-size: .78rem; font-variant-numeric: tabular-nums; }
+.lo-table-wrap { width: 100%; overflow-x: auto; }
+.lo-table { width: max-content; min-width: 100%; border-collapse: collapse; }
+.lo-table th, .lo-table td { padding: .7rem 1rem; border-bottom: 1px solid var(--lo-border); border-right: 1px solid var(--lo-border); text-align: left; white-space: nowrap; }
+.lo-table th:last-child, .lo-table td:last-child { border-right: 0; }
+.lo-table thead th { position: sticky; top: 0; z-index: 1; background: var(--lo-muted-surf); color: var(--lo-muted); font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; border-bottom: 1px solid var(--lo-border2); }
+.lo-table td { font-size: .85rem; color: var(--lo-text-2); }
+.lo-table tbody tr:last-child td { border-bottom: 0; }
+.lo-table tbody tr:hover td { background: var(--lo-hover); }
+/* Licença em uso (vinculada a um equipamento) — tokens --lo-success* já
+   trocam de valor sozinhos no tema escuro (ver :where() acima), então o
+   verde nunca fica "gritante"/ilegível ao alternar claro↔escuro. */
+.lo-table tbody tr.lo-row-em-uso td { background: var(--lo-success-soft); }
+.lo-table tbody tr.lo-row-em-uso:hover td { background: color-mix(in srgb, var(--lo-success-soft) 60%, var(--lo-hover)); }
+.lo-name-link { color: var(--lo-text); font-weight: 600; text-decoration: none; }
+.lo-name-link:hover { color: var(--lo-primary); }
+.lo-mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--lo-muted); }
+.lo-badge { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .6rem; border-radius: var(--lo-radius-pill); font-size: .72rem; font-weight: 600; background: var(--lo-muted-surf); color: var(--lo-muted); }
+.lo-badge-success { background: var(--lo-success-soft); color: var(--lo-success); }
+.lo-badge-warning { background: var(--lo-warning-soft); color: var(--lo-warning); }
+.lo-badge-danger { background: var(--lo-danger-soft); color: var(--lo-danger); }
+.lo-empty { display: inline-flex; flex-direction: column; align-items: center; gap: .6rem; padding: 2.5rem 1rem; color: var(--lo-soft); font-size: .9rem; }
+.lo-row-actions { display: flex; gap: .7rem; justify-content: flex-end; align-items: center; }
+.lo-row-actions a { color: var(--lo-muted); text-decoration: none; }
+.lo-row-actions a:hover { color: var(--lo-primary); }
+.lo-icon-btn { background: none; border: none; padding: 0; color: var(--lo-muted); cursor: pointer; font-size: .85rem; line-height: 1; }
+.lo-icon-btn:hover { color: var(--lo-primary); }
+.lo-icon-btn:disabled { opacity: .4; cursor: wait; }
+.lo-icon-btn.is-danger:hover { color: var(--lo-danger); }
+
+.lo-flash { display: flex; align-items: center; gap: .5rem; padding: .7rem 1rem; font-size: .82rem; font-weight: 600; border-bottom: 1px solid var(--lo-border); background: var(--lo-success-soft); color: var(--lo-success); }
+.lo-flash.is-error { background: var(--lo-danger-soft); color: var(--lo-danger); }
+
+.lo-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .7rem; padding: .8rem 1rem; border-top: 1px solid var(--lo-border); }
+.lo-foot span { color: var(--lo-muted); font-size: .78rem; }
+
+/* ── Modal "Vincular a um equipamento" ──────────────────────────────── */
+.lo-modal { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+/* Bug: `[hidden]` (UA stylesheet) perde pra `display:flex` do author-CSS
+   acima mesmo com a mesma especificidade — origem author > user-agent na
+   cascata, independente de quem vem depois. Sem isso o modal nunca fecha
+   (JS seta `hidden`, mas o navegador ignora e mantém `display:flex`). */
+.lo-modal[hidden] { display: none; }
+.lo-modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.45); }
+.lo-modal-card { position: relative; width: min(100%, 26rem); border-radius: var(--lo-radius-lg); background: var(--lo-surface); box-shadow: 0 12px 40px rgba(0,0,0,.25); padding: 1.25rem; display: grid; gap: .9rem; }
+.lo-modal-card h3 { margin: 0; font-size: 1.02rem; color: var(--lo-text); }
+.lo-modal-sub { margin: 0; color: var(--lo-muted); font-size: .82rem; }
+.lo-modal-error { display: none; padding: .55rem .75rem; border-radius: var(--lo-radius-sm); background: var(--lo-danger-soft); color: var(--lo-danger); font-size: .8rem; font-weight: 600; }
+.lo-modal-error.is-visible { display: block; }
+.lo-modal-actions { display: flex; justify-content: flex-end; gap: .6rem; }
+
+.select2-container { width: 100% !important; }
+.select2-container .select2-selection--single {
+  min-height: 2.4rem !important; height: 2.4rem !important; display: flex !important; align-items: center !important;
+  border: 1px solid var(--lo-border2) !important; border-radius: var(--lo-radius-sm) !important; background: var(--lo-surface) !important;
+}
+.select2-container--default.select2-container--focus .select2-selection--single {
+  border-color: var(--lo-primary) !important; box-shadow: 0 0 0 3px var(--brand-ring, rgba(0,113,227,.30)) !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  padding-left: .8rem !important; padding-right: 2rem !important; color: var(--lo-text) !important; line-height: calc(2.4rem - 2px) !important; font-size: .86rem !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__placeholder { color: var(--lo-soft) !important; }
+.select2-container--default .select2-selection--single .select2-selection__arrow { height: calc(2.4rem - 2px) !important; right: .5rem !important; }
+.select2-dropdown { z-index: 10000 !important; overflow: hidden !important; border: 1px solid var(--lo-border2) !important; border-radius: var(--lo-radius-sm) !important; background: var(--lo-surface) !important; color: var(--lo-text) !important; box-shadow: var(--lo-shadow-sm); }
+.select2-search__field { border: 1px solid var(--lo-border2) !important; border-radius: 6px !important; background: var(--lo-surface) !important; color: var(--lo-text) !important; outline: none !important; }
+.select2-results__option { color: var(--lo-text) !important; }
+.select2-results__option--highlighted { background: var(--lo-primary) !important; color: #fff !important; }
+
+@media (max-width: 64rem) { .lo-summary { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 52rem) { .lo-toolbar { grid-template-columns: 1fr; } .lo-filter-grid { grid-template-columns: 1fr; } .lo-actions-row { justify-content: stretch; } .lo-btn, .lo-btn-primary, .lo-btn-secondary { width: 100%; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lo-list-page">
+
+  <div class="lic-page">{% include 'front/licencas/_lic_subnav.html' %}</div>
+
+  <section class="lo-summary" aria-label="Resumo">
+    <div class="lo-kpi">
+      <span class="lo-kpi-label"><i class="fa fa-key" aria-hidden="true"></i> Licenças cadastradas</span>
+      <span class="lo-kpi-value">{{ resumo.total }}</span>
+    </div>
+    <div class="lo-kpi">
+      <span class="lo-kpi-label"><i class="fa fa-laptop" aria-hidden="true"></i> Vinculadas a um equipamento</span>
+      <span class="lo-kpi-value">{{ resumo.vinculadas }}</span>
+    </div>
+    <div class="lo-kpi">
+      <span class="lo-kpi-label"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> Sem vínculo</span>
+      <span class="lo-kpi-value">{{ resumo.sem_vinculo }}</span>
+    </div>
+    <div class="lo-kpi">
+      <span class="lo-kpi-label"><i class="fa fa-circle-exclamation" aria-hidden="true"></i> Com problema</span>
+      <span class="lo-kpi-value">{{ resumo.com_problema }}</span>
+    </div>
+  </section>
+
+  <section class="lo-toolbar" aria-label="Filtros">
+    <form method="get" id="loFilterForm" autocomplete="off">
+      <div class="lo-filter-grid">
+        <div class="lo-field">
+          <label for="id_q">Pesquisar</label>
+          <div class="lo-search">
+            <i class="fa fa-magnifying-glass" aria-hidden="true"></i>
+            <input id="id_q" type="text" name="q" value="{{ q|default:'' }}" placeholder="Produto, chave, conta, ID Dell, nº de série, usuário ou equipamento...">
+          </div>
+        </div>
+        <div class="lo-field">
+          <label for="id_status">Status</label>
+          <select id="id_status" name="status">
+            <option value="">Todos</option>
+            {% for value, label in status_choices %}
+              <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="lo-field">
+          <label for="id_vinculo">Vínculo</label>
+          <select id="id_vinculo" name="vinculo">
+            <option value="">Todos</option>
+            <option value="com" {% if vinculo == "com" %}selected{% endif %}>Com equipamento</option>
+            <option value="sem" {% if vinculo == "sem" %}selected{% endif %}>Sem equipamento</option>
+          </select>
+        </div>
+      </div>
+    </form>
+    <div class="lo-actions-row">
+      {% if tem_filtro %}
+        <a href="{% url 'licenca_office_list' %}" class="lo-btn"><i class="fa fa-eraser" aria-hidden="true"></i> Limpar</a>
+      {% endif %}
+      <a href="{% url 'licenca_office_importar' %}" class="lo-btn-secondary"><i class="fa fa-file-arrow-up" aria-hidden="true"></i> Importar Planilha</a>
+      <a href="{% url 'licenca_office_create' %}" class="lo-btn-primary"><i class="fa fa-plus" aria-hidden="true"></i> Nova Licença</a>
+      <button type="submit" form="loFilterForm" class="lo-btn-secondary"><i class="fa fa-filter" aria-hidden="true"></i> Filtrar</button>
+    </div>
+  </section>
+
+  <div class="lo-table-card">
+    <div class="lo-table-head">
+      <span class="lo-table-title"><i class="fa fa-list-check" aria-hidden="true"></i> Licenças</span>
+      <span class="lo-count">
+        {% if page_obj.paginator.count %}
+          {{ page_obj.start_index }}–{{ page_obj.end_index }} de {{ page_obj.paginator.count }}
+        {% else %}
+          Nenhum registro
+        {% endif %}
+      </span>
+    </div>
+    <div class="lo-flash" id="loFlash" hidden></div>
+    <div class="lo-table-wrap">
+      <table class="lo-table">
+        <thead>
+          <tr>
+            <th scope="col">Produto</th>
+            <th scope="col">Chave / Serial</th>
+            <th scope="col">Status</th>
+            <th scope="col">Número de Série</th>
+            <th scope="col">Equipamento</th>
+            <th scope="col">Usuário</th>
+            <th scope="col">Data</th>
+            <th scope="col"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for obj in licencas %}
+          <tr data-licenca-row="{{ obj.pk }}" data-licenca-label="{{ obj.produto }} — {{ obj.chave_produto }}" class="{% if obj.item %}lo-row-em-uso{% endif %}">
+            <td><a href="{% url 'licenca_office_update' obj.pk %}" class="lo-name-link">{{ obj.produto }}</a></td>
+            <td class="lo-mono">{{ obj.chave_produto }}</td>
+            <td>
+              {% if obj.status == "ok" %}
+                <span class="lo-badge lo-badge-success">OK</span>
+              {% elif obj.status == "problema" %}
+                <span class="lo-badge lo-badge-warning">{{ obj.get_status_display }}</span>
+              {% else %}
+                <span class="lo-badge lo-badge-danger">{{ obj.get_status_display }}</span>
+              {% endif %}
+            </td>
+            <td class="lo-mono js-lo-ns-cell">{{ obj.item.numero_serie|default:"—" }}</td>
+            <td class="js-lo-eq-cell">
+              {% if obj.item %}
+                <a href="{% url 'equipamento_detalhe' obj.item.pk %}" class="lo-name-link">{{ obj.item.nome }}</a>
+              {% else %}
+                <span class="lo-badge">Sem vínculo</span>
+              {% endif %}
+            </td>
+            <td class="js-lo-user-cell">{{ obj.usuario_exibicao|default:"—" }}</td>
+            <td>{{ obj.data_licenca|date:"d/m/Y"|default:"—" }}</td>
+            <td>
+              <div class="lo-row-actions">
+                {% if obj.item %}
+                  <button type="button" class="lo-icon-btn is-danger js-lo-unlink" data-item-pk="{{ obj.item.pk }}" title="Desvincular do equipamento">
+                    <i class="fa fa-link-slash" aria-hidden="true"></i>
+                  </button>
+                {% else %}
+                  <button type="button" class="lo-icon-btn js-lo-link" data-licenca-pk="{{ obj.pk }}" title="Vincular a um equipamento">
+                    <i class="fa fa-link" aria-hidden="true"></i>
+                  </button>
+                {% endif %}
+                <a href="{% url 'licenca_office_update' obj.pk %}" title="Editar"><i class="fa fa-pen" aria-hidden="true"></i></a>
+                <a href="{% url 'licenca_office_delete' obj.pk %}" title="Excluir"><i class="fa fa-trash" aria-hidden="true"></i></a>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8"><div class="lo-empty"><i class="fa fa-key" aria-hidden="true"></i> Nenhuma licença Office cadastrada ainda.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if page_obj.has_other_pages %}
+    <div class="lo-foot">
+      <span>Página <strong>{{ page_obj.number }}</strong> de <strong>{{ page_obj.paginator.num_pages }}</strong></span>
+      <div style="display:flex;gap:.5rem">
+        {% if page_obj.has_previous %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.previous_page_number }}" class="lo-btn-secondary">Anterior</a>{% endif %}
+        {% if page_obj.has_next %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.next_page_number }}" class="lo-btn-secondary">Próxima</a>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="lo-modal" id="loLinkModal" hidden>
+    <div class="lo-modal-backdrop" data-lo-close></div>
+    <div class="lo-modal-card" role="dialog" aria-modal="true" aria-labelledby="loLinkModalTitle">
+      <h3 id="loLinkModalTitle">Vincular a um equipamento</h3>
+      <p class="lo-modal-sub" id="loLinkModalSub"></p>
+      <div class="lo-modal-error" id="loLinkModalError"></div>
+      <select id="loLinkModalSelect">
+        <option value="">Selecione um equipamento...</option>
+        {% for it in itens_sem_licenca %}
+          <option value="{{ it.pk }}" data-ns="{{ it.numero_serie|default:'' }}" data-modelo="{{ it.modelo|default:'' }}">{{ it.nome }}{% if it.numero_serie %} — NS: {{ it.numero_serie }}{% endif %}</option>
+        {% endfor %}
+      </select>
+      <div class="lo-modal-actions">
+        <button type="button" class="lo-btn-secondary" data-lo-close>Cancelar</button>
+        <button type="button" class="lo-btn-primary" id="loLinkModalConfirm"><i class="fa fa-link" aria-hidden="true"></i> Vincular</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var page = document.querySelector('.lo-list-page');
+  if (!page) return;
+
+  var flash = document.getElementById('loFlash');
+  var modal = document.getElementById('loLinkModal');
+  var modalSub = document.getElementById('loLinkModalSub');
+  var modalError = document.getElementById('loLinkModalError');
+  var modalSelect = document.getElementById('loLinkModalSelect');
+  var modalConfirm = document.getElementById('loLinkModalConfirm');
+  var pendingLicencaPk = null;
+
+  function csrf() {
+    var m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+
+  function showFlash(mensagem, isError) {
+    if (!flash) return;
+    flash.textContent = mensagem;
+    flash.hidden = false;
+    flash.classList.toggle('is-error', !!isError);
+    clearTimeout(flash._loTimer);
+    flash._loTimer = setTimeout(function () { flash.hidden = true; }, 4500);
+  }
+
+  function chamar(url, body, onOk, onErro) {
+    fetch(url, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrf(), 'X-Requested-With': 'XMLHttpRequest' },
+      body: body,
+    })
+      .then(function (resp) { return resp.json().catch(function () { return null; }); })
+      .then(function (data) {
+        if (data && data.ok) onOk(data);
+        else onErro((data && data.erro) || 'Não foi possível concluir a ação.');
+      })
+      .catch(function () { onErro('Falha de comunicação — tente novamente.'); });
+  }
+
+  function atualizarCelulaEquipamento(row, item) {
+    var cell = row.querySelector('.js-lo-eq-cell');
+    if (cell) {
+      if (item) {
+        cell.innerHTML = '<a href="/equipamentos/' + item.pk + '/" class="lo-name-link"></a>';
+        cell.firstChild.textContent = item.nome;
+      } else {
+        cell.innerHTML = '<span class="lo-badge">Sem vínculo</span>';
+      }
+    }
+    var nsCell = row.querySelector('.js-lo-ns-cell');
+    if (nsCell) nsCell.textContent = (item && item.numero_serie) ? item.numero_serie : '—';
+    row.classList.toggle('lo-row-em-uso', !!item);
+  }
+
+  function atualizarCelulaUsuario(row, usuarioVinculado) {
+    var cell = row.querySelector('.js-lo-user-cell');
+    if (cell) cell.textContent = usuarioVinculado || '—';
+  }
+
+  function atualizarBotaoAcao(row, licencaPk, item) {
+    var btnAtual = row.querySelector('.js-lo-link, .js-lo-unlink');
+    if (!btnAtual) return;
+    var novo = document.createElement('button');
+    novo.type = 'button';
+    novo.className = 'lo-icon-btn';
+    if (item) {
+      novo.classList.add('is-danger', 'js-lo-unlink');
+      novo.title = 'Desvincular do equipamento';
+      novo.setAttribute('data-item-pk', item.pk);
+      novo.innerHTML = '<i class="fa fa-link-slash" aria-hidden="true"></i>';
+    } else {
+      novo.classList.add('js-lo-link');
+      novo.title = 'Vincular a um equipamento';
+      novo.setAttribute('data-licenca-pk', licencaPk);
+      novo.innerHTML = '<i class="fa fa-link" aria-hidden="true"></i>';
+    }
+    btnAtual.replaceWith(novo);
+  }
+
+  function removerOpcaoEquipamento(itemPk) {
+    var opt = modalSelect.querySelector('option[value="' + itemPk + '"]');
+    if (opt) opt.remove();
+    $(modalSelect).trigger('change.select2');
+  }
+
+  function adicionarOpcaoEquipamento(item) {
+    if (modalSelect.querySelector('option[value="' + item.pk + '"]')) return;
+    var opt = document.createElement('option');
+    opt.value = item.pk;
+    opt.textContent = item.nome + (item.numero_serie ? ' — NS: ' + item.numero_serie : '');
+    if (item.numero_serie) opt.setAttribute('data-ns', item.numero_serie);
+    if (item.modelo) opt.setAttribute('data-modelo', item.modelo);
+    var proxima = Array.prototype.find.call(modalSelect.options, function (o) {
+      return o.value && o.textContent.localeCompare(item.nome) > 0;
+    });
+    modalSelect.insertBefore(opt, proxima || null);
+    $(modalSelect).trigger('change.select2');
+  }
+
+  function matchEquipamento(params, data) {
+    var termo = $.trim(params.term || '').toLowerCase();
+    if (!termo) return data;
+    if (typeof data.text === 'undefined') return null;
+    var el = data.element;
+    var pesquisavel = (
+      data.text + ' ' +
+      (el ? (el.getAttribute('data-ns') || '') : '') + ' ' +
+      (el ? (el.getAttribute('data-modelo') || '') : '')
+    ).toLowerCase();
+    return pesquisavel.indexOf(termo) > -1 ? data : null;
+  }
+
+  function fecharModal() {
+    modal.hidden = true;
+    modalError.classList.remove('is-visible');
+    $(modalSelect).val('').trigger('change.select2');
+    pendingLicencaPk = null;
+  }
+
+  function abrirModal(licencaPk, label) {
+    pendingLicencaPk = licencaPk;
+    modalSub.textContent = label || '';
+    modalError.classList.remove('is-visible');
+    $(modalSelect).val('').trigger('change.select2');
+    modal.hidden = false;
+  }
+
+  page.addEventListener('click', function (e) {
+    var linkBtn = e.target.closest('.js-lo-link');
+    if (linkBtn) {
+      var linkRow = linkBtn.closest('tr');
+      abrirModal(linkBtn.getAttribute('data-licenca-pk'), linkRow ? linkRow.getAttribute('data-licenca-label') : '');
+      return;
+    }
+
+    var unlinkBtn = e.target.closest('.js-lo-unlink');
+    if (unlinkBtn) {
+      if (!window.confirm('Desvincular esta licença do equipamento? Ela continua cadastrada, só deixa de aparecer vinculada.')) return;
+      var row = unlinkBtn.closest('tr');
+      var itemPk = unlinkBtn.getAttribute('data-item-pk');
+      unlinkBtn.disabled = true;
+      chamar(
+        '/equipamentos/' + itemPk + '/licenca-office/desvincular/',
+        new FormData(),
+        function (data) {
+          atualizarCelulaEquipamento(row, null);
+          atualizarCelulaUsuario(row, data.licenca.usuario_vinculado);
+          atualizarBotaoAcao(row, data.licenca.pk, null);
+          adicionarOpcaoEquipamento(data.item);
+          showFlash(data.mensagem, false);
+        },
+        function (erro) {
+          unlinkBtn.disabled = false;
+          showFlash(erro, true);
+        }
+      );
+    }
+  });
+
+  modal.querySelectorAll('[data-lo-close]').forEach(function (el) {
+    el.addEventListener('click', fecharModal);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !modal.hidden) fecharModal();
+  });
+
+  $(modalSelect).select2({
+    width: '100%',
+    placeholder: 'Selecione um equipamento...',
+    dropdownParent: $(modal),
+    matcher: matchEquipamento,
+    language: {
+      noResults: function () { return 'Nenhum equipamento elegível encontrado'; },
+      searching: function () { return 'Buscando...'; },
+    },
+  });
+
+  modalConfirm.addEventListener('click', function () {
+    var itemPk = $(modalSelect).val();
+    if (!itemPk) {
+      modalError.textContent = 'Selecione um equipamento.';
+      modalError.classList.add('is-visible');
+      return;
+    }
+    var row = page.querySelector('tr[data-licenca-row="' + pendingLicencaPk + '"]');
+    var body = new FormData();
+    body.append('licenca_id', pendingLicencaPk);
+
+    modalConfirm.disabled = true;
+    chamar(
+      '/equipamentos/' + itemPk + '/licenca-office/vincular/',
+      body,
+      function (data) {
+        modalConfirm.disabled = false;
+        fecharModal();
+        if (row) {
+          atualizarCelulaEquipamento(row, data.item);
+          atualizarCelulaUsuario(row, data.licenca.usuario_vinculado);
+          atualizarBotaoAcao(row, data.licenca.pk, data.item);
+        }
+        removerOpcaoEquipamento(data.item.pk);
+        showFlash(data.mensagem, false);
+      },
+      function (erro) {
+        modalConfirm.disabled = false;
+        modalError.textContent = erro;
+        modalError.classList.add('is-visible');
+      }
+    );
+  });
+})();
+</script>
+{% endblock %}

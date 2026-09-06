@@ -1,22 +1,49 @@
 {% for mov in movimentacoes %}
-<tr class="mov-row" data-href="{% url 'movimentacao_detail' mov.pk %}">
+<tr class="mov-row{% if mov.revertida %} is-reverted{% endif %}" data-href="{% url 'movimentacao_detail' mov.pk %}">
     <td data-label="Item">
         <div class="item-cell">
             <span class="item-name">{{ mov.item.nome }}</span>
             <span class="item-serial"><i class="fa fa-barcode"></i> {{ mov.item.numero_serie|default:"S/N não registrado" }}</span>
             <div class="item-extra">
-                {% if mov.lote %}<span class="mini-chip"><i class="fa fa-box"></i> Lote/NF: {{ mov.lote.numero_nf|default:mov.lote.id }}</span>{% endif %}
-                {% if mov.quantidade %}<span class="mini-chip"><i class="fa fa-layer-group"></i> Qtd: {{ mov.quantidade }}</span>{% endif %}
+                {% if mov.item.subtipo %}<span class="mini-chip"><i class="fa fa-tag"></i> {{ mov.item.subtipo.nome }}</span>{% endif %}
+                {% if mov.lote %}<span class="mini-chip"><i class="fa fa-box"></i> NF {{ mov.lote.numero_nf|default:mov.lote.id }}</span>{% endif %}
+                {% if mov.quantidade %}<span class="mini-chip"><i class="fa fa-layer-group"></i> {{ mov.quantidade }} un.</span>{% endif %}
             </div>
         </div>
     </td>
-    <td data-label="Tipo">
-        {% if mov.tipo_movimentacao == 'entrada' %}<span class="badge green">Entrada</span>
-        {% elif 'transferencia' in mov.tipo_movimentacao %}<span class="badge blue">{{ mov.get_tipo_movimentacao_display }}</span>
-        {% elif 'manutencao' in mov.tipo_movimentacao %}<span class="badge orange">Manutenção</span>
-        {% elif mov.tipo_movimentacao == 'baixa' %}<span class="badge red">Baixa</span>
-        {% else %}<span class="badge gray">{{ mov.get_tipo_movimentacao_display }}</span>{% endif %}
+
+    <td data-label="Tipo / Operação">
+        <div class="type-cell">
+            {% if mov.tipo_movimentacao == 'entrada' %}<span class="badge green">Entrada</span>
+            {% elif 'transferencia' in mov.tipo_movimentacao %}<span class="badge blue">{{ mov.get_tipo_movimentacao_display }}</span>
+            {% elif 'manutencao' in mov.tipo_movimentacao %}<span class="badge orange">{{ mov.get_tipo_movimentacao_display }}</span>
+            {% elif mov.tipo_movimentacao == 'baixa' %}<span class="badge red">Baixa</span>
+            {% else %}<span class="badge gray">{{ mov.get_tipo_movimentacao_display }}</span>{% endif %}
+
+            {% if mov.tipo_transferencia %}
+                {% if mov.tipo_transferencia == 'entrega' %}
+                    <span class="op-badge op-entrega" title="Entrega de equipamento ao colaborador">
+                        <i class="fa fa-arrow-right-from-bracket" aria-hidden="true"></i> Entrega
+                    </span>
+                {% else %}
+                    <span class="op-badge op-devolucao" title="Devolução de equipamento pelo colaborador">
+                        <i class="fa fa-arrow-right-to-bracket" aria-hidden="true"></i> Devolução
+                    </span>
+                {% endif %}
+            {% elif mov.tipo_movimentacao == 'transferencia_equipamento' and mov.status_transferencia %}
+                <span class="op-badge op-neutro" title="Novo status do equipamento após a transferência">
+                    <i class="fa fa-circle-dot" aria-hidden="true"></i> {{ mov.get_status_transferencia_display }}
+                </span>
+            {% endif %}
+
+            {% if mov.revertida %}
+                <span class="op-badge op-revertida" title="Revertida em {{ mov.revertida_em|date:'d/m/Y H:i' }}">
+                    <i class="fa fa-ban" aria-hidden="true"></i> Revertida
+                </span>
+            {% endif %}
+        </div>
     </td>
+
     <td data-label="Fluxo">
         <div class="flow-container">
             <span class="flow-tag">
@@ -35,19 +62,47 @@
             </span>
         </div>
     </td>
-    <td data-label="Responsável">
+
+    <td data-label="Colaborador">
+        {% if mov.usuario %}
+            <div class="user-cell">
+                <div class="user-avatar{% if mov.tipo_transferencia == 'devolucao' %} av-devolucao{% elif mov.tipo_transferencia == 'entrega' %} av-entrega{% endif %}">
+                    {{ mov.usuario.nome|slice:":1"|upper }}
+                </div>
+                <div class="user-block">
+                    <span class="user-role">
+                        {% if mov.tipo_transferencia == 'entrega' %}Entregue a
+                        {% elif mov.tipo_transferencia == 'devolucao' %}Devolvido por
+                        {% else %}Solicitante{% endif %}
+                    </span>
+                    <span class="user-name">{{ mov.usuario.nome }}</span>
+                </div>
+            </div>
+        {% else %}
+            <span class="cell-empty">—</span>
+        {% endif %}
+    </td>
+
+    <td data-label="Registrado por">
         {% if mov.criado_por %}
             <div class="user-cell">
-                <div class="user-avatar">{% if mov.criado_por.first_name %}{{ mov.criado_por.first_name|slice:":1"|upper }}{% else %}{{ mov.criado_por.username|slice:":1"|upper }}{% endif %}</div>
+                <div class="user-avatar av-sistema">{% if mov.criado_por.first_name %}{{ mov.criado_por.first_name|slice:":1"|upper }}{% else %}{{ mov.criado_por.username|slice:":1"|upper }}{% endif %}</div>
                 <span class="user-name">{% if mov.criado_por.first_name or mov.criado_por.last_name %}{{ mov.criado_por.first_name }} {{ mov.criado_por.last_name }}{% else %}{{ mov.criado_por.username }}{% endif %}</span>
             </div>
-        {% else %}<span style="color:var(--mv-muted)">-</span>{% endif %}
+        {% else %}<span class="cell-empty">—</span>{% endif %}
     </td>
+
     <td data-label="Data">
         <div class="date-cell-main">{{ mov.created_at|date:"d/m/Y" }}</div>
         <div class="date-cell-sub">{{ mov.created_at|date:"H:i" }}</div>
     </td>
+
     <td data-label="Ações" style="text-align:right;">
+        {% if mov.termo_pdf %}
+        <a href="{{ mov.termo_pdf.url }}" target="_blank" rel="noopener" class="mv-icon-btn" title="Abrir termo de responsabilidade" aria-label="Abrir termo de responsabilidade" onclick="event.stopPropagation();">
+            <i class="fa fa-file-signature" aria-hidden="true"></i>
+        </a>
+        {% endif %}
         <a href="{% url 'movimentacao_detail' mov.pk %}" class="mv-icon-btn" title="Ver detalhes" aria-label="Ver detalhes de {{ mov.item.nome }}">
             <i class="fa fa-eye" aria-hidden="true"></i>
         </a>
@@ -70,7 +125,7 @@
 </tr>
 {% empty %}
 <tr>
-    <td colspan="6">
+    <td colspan="7">
         <div class="empty-state">
             <i class="fa fa-arrow-right-arrow-left"></i>
             <h3>Nenhuma movimentação</h3>

@@ -1280,7 +1280,18 @@ def _get_meses_ciclo(periodicidade_str):
     if 'TRI' in p: return 3
     if 'SEM' in p: return 6
     if 'ANU' in p: return 12
-    return 1 
+    return 1
+
+def _brl(v, dec=2):
+    """Formata valor em Real (pt-BR) com separador de milhar — sem isso um
+    custo grande (ex.: 45231.90) aparece sem agrupamento de milhar
+    (45231,90 em vez de 45.231,90), o que não é aceitável num dashboard
+    corporativo."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        v = 0.0
+    return f"{v:,.{dec}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 @login_required
 def licencas_dashboard(request):
@@ -1478,12 +1489,12 @@ def licencas_dashboard(request):
                 "qtd": qtd,
                 "disp": disp,
                 "periodicidade": p_label,
-                "custo_total_lote": custo_ciclo_lote,
-                "custo_unit_ciclo": custo_unit_ciclo,
-                "custo_mensal_unit": custo_mensal_unit,
-                "custo_anual_unit": custo_anual_unit,
-                "custo_mensal_total": custo_mensal_lote_total,
-                "custo_anual_total": custo_anual_lote_total,
+                "custo_total_lote": _brl(custo_ciclo_lote),
+                "custo_unit_ciclo": _brl(custo_unit_ciclo),
+                "custo_mensal_unit": _brl(custo_mensal_unit),
+                "custo_anual_unit": _brl(custo_anual_unit),
+                "custo_mensal_total": _brl(custo_mensal_lote_total),
+                "custo_anual_total": _brl(custo_anual_lote_total),
             })
 
         if l_qtd_total > 0:
@@ -1554,9 +1565,9 @@ def licencas_dashboard(request):
         linhas_tabela.append({
             "obj": lic,
             "periodicidade_display": per_display,
-            "custo_mensal_total": custo_mensal_exibido,
-            "custo_anual_total": custo_anual_exibido,
-            "custo_mensal_unit_medio": custo_medio_unitario,
+            "custo_mensal_total": _brl(custo_mensal_exibido),
+            "custo_anual_total": _brl(custo_anual_exibido),
+            "custo_mensal_unit_medio": _brl(custo_medio_unitario),
             "ativos": qtd_ativos,
             "total": total_exibido,
             "estoque": qtd_estoque,
@@ -1616,7 +1627,13 @@ def licencas_dashboard(request):
     colaboradores_total_mensal = sum((Decimal(str(c["total_mensal"])) for c in colaboradores), Decimal("0.00"))
 
     sorted_cc = sorted(cc_costs.items(), key=lambda x: x[1], reverse=True)
+    sorted_per = sorted(per_counts.items(), key=lambda x: x[1], reverse=True)
     periodicidade_choices = LicencaLote._meta.get_field("periodicidade").choices
+
+    kpi_disp = kpi_seats_total - kpi_assentos_em_uso
+    kpi_utilizacao_pct = (
+        round((kpi_assentos_em_uso / kpi_seats_total) * 100) if kpi_seats_total else 0
+    )
 
     context = {
         "f_q": q,
@@ -1635,10 +1652,11 @@ def licencas_dashboard(request):
 
         "kpi_total": kpi_total_licencas,
         "kpi_assentos": kpi_assentos_em_uso,
-        "kpi_disp": kpi_seats_total - kpi_assentos_em_uso,
-        "kpi_custo_mensal": kpi_custo_mensal.quantize(Decimal("0.01")),
-        "kpi_custo_anual": (kpi_custo_mensal * Decimal("12")).quantize(Decimal("0.01")),
+        "kpi_disp": kpi_disp,
+        "kpi_custo_mensal_fmt": _brl(kpi_custo_mensal),
+        "kpi_custo_anual_fmt": _brl(kpi_custo_mensal * Decimal("12")),
         "kpi_colaboradores": kpi_colaboradores,
+        "kpi_utilizacao_pct": kpi_utilizacao_pct,
 
         "linhas": linhas_tabela,
         "lotes_rows": lotes_detalhes,
@@ -1646,11 +1664,14 @@ def licencas_dashboard(request):
         "colaboradores": colaboradores,
         "colaboradores_total_mensal": colaboradores_total_mensal.quantize(Decimal("0.01")),
 
-        "cc_list": [{"label": k, "val": v} for k, v in sorted_cc],
+        # `val` fica numérico (Decimal/int) de propósito — usado no {% widthratio %}
+        # da barra de ranking; `val_fmt` é só o texto formatado em R$ pt-BR.
+        "cc_list": [{"label": k, "val": v, "val_fmt": _brl(v)} for k, v in sorted_cc],
+        "cc_list_max": sorted_cc[0][1] if sorted_cc else Decimal("0.00"),
+        "per_list": [{"label": k, "val": v} for k, v in sorted_per],
+        "per_list_max": sorted_per[0][1] if sorted_per else 0,
         "chart_forn_labels": list(forn_costs.keys()),
         "chart_forn_data": [float(v) for v in forn_costs.values()],
-        "chart_per_labels": list(per_counts.keys()),
-        "chart_per_data": list(per_counts.values()),
     }
 
     return render(request, "front/dashboards/licencas_dashboard.html", context)

@@ -210,6 +210,54 @@ class PerfilFornecedor(AuditModel):
         return f"{self.usuario.username} → {self.fornecedor.nome}"
 
 
+# Nome do grupo Django que identifica usuários do Portal de Licenças Office.
+# Fonte única — importado pelo middleware, views e data migration. Deliberadamente
+# SEPARADO de GRUPO_FORNECEDOR: um parceiro de licenças (ex.: Routerlink) não deve
+# ganhar acesso ao Portal do Fornecedor (equipamentos/manutenção) de brinde, e
+# vice-versa — "somente esse módulo" é a regra.
+GRUPO_PARCEIRO_LICENCA = "Parceiro de Licenças"
+
+
+class PerfilParceiroLicenca(AuditModel):
+    """
+    Liga um usuário Django (login) a um Fornecedor tratado aqui como "empresa
+    parceira" (ex.: Routerlink), habilitando acesso ao Portal de Licenças
+    Office — área isolada e restrita SOMENTE ao módulo `LicencaOffice`.
+    Reaproveita o cadastro de `Fornecedor` (mesmo conceito de "empresa
+    externa" já usado no resto do sistema) em vez de criar um cadastro de
+    parceiro do zero, mas é um perfil de acesso independente de
+    `PerfilFornecedor` — as duas áreas isoladas nunca se misturam.
+
+    Sandbox de acesso (mesma defesa em profundidade do Portal do
+    Fornecedor): grupo "Parceiro de Licenças" + LicencaOfficeAccessMiddleware
+    + views decoradas com `@parceiro_licenca_required`.
+    """
+    usuario = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="perfil_parceiro_licenca",
+        verbose_name="Usuário de acesso",
+    )
+    parceiro = models.ForeignKey(
+        Fornecedor,
+        on_delete=models.CASCADE,
+        related_name="perfis_parceiro_licenca",
+        verbose_name="Empresa parceira",
+        help_text="Empresa externa com acesso ao Portal de Licenças Office (ex.: Routerlink).",
+    )
+    ativo = models.BooleanField(
+        default=True,
+        help_text="Desmarque para suspender o acesso sem excluir o usuário.",
+    )
+
+    class Meta:
+        verbose_name = "Perfil de Parceiro de Licenças"
+        verbose_name_plural = "Perfis de Parceiros de Licenças"
+
+    def __str__(self):
+        return f"{self.usuario.username} → {self.parceiro.nome} (Licenças Office)"
+
+
 # ✅ Centro de Custo agora indica se é PMB
 class CentroCusto(AuditModel):
     numero = models.CharField(max_length=10)
@@ -681,6 +729,31 @@ class LoteEstoque(AuditModel):
 
     def clean(self):
         super().clean()
+
+        # Instância completamente vazia: cadastro de item de consumo sem dar
+        # entrada ainda (ver `ItemCreateService.criar_item` / `item_update`).
+        # Django chama `Model.clean()` incondicionalmente dentro do
+        # `ModelForm.full_clean()`, mesmo quando o form marcou estes campos
+        # como não-obrigatórios e o usuário deixou tudo em branco de
+        # propósito — sem este escape, `LoteEstoqueCreateForm.is_valid()`
+        # nunca passaria nesse cenário. Uma instância parcialmente
+        # preenchida continua caindo nas validações abaixo normalmente.
+        #
+        # `quantidade` (tem `default=1`) fica de fora do sinal de presença de
+        # propósito: se o campo não vier no POST, `ModelForm._post_clean()`
+        # (via `construct_instance`) preserva o default do model em vez de
+        # zerá-lo, o que faria uma instância genuinamente vazia parecer
+        # "preenchida" só por causa do `1` default. Os outros 4 campos não
+        # têm default — ausência neles é sempre um sinal confiável.
+        preenchido = any([
+            self.fornecedor_id,
+            self.data_entrada,
+            self.numero_nf,
+            self.custo_unitario,
+        ])
+
+        if not preenchido:
+            return
 
         errors = {}
 
@@ -2663,6 +2736,73 @@ class MovimentacaoLicenca(AuditModel):
         return f"{self.get_tipo_display()} - {self.licenca}"
 
 
+class StatusLicencaOfficeChoices(models.TextChoices):
+    OK = "ok", _("OK")
+    PROBLEMA = "problema", _("Com Problema")
+    EXPIRADA = "expirada", _("Expirada")
+    CANCELADA = "cancelada", _("Cancelada")
+
+
+# --- LICENÇA POR EQUIPAMENTO (chave única, ex.: Office OEM/Retail) ---
+class LicencaOffice(AuditModel):
+    """
+    Controle de licença com CHAVE ÚNICA por equipamento (ex.: Office
+    Home/Business vendido preso a uma máquina) — diferente do módulo
+    `Licenca`/`LicencaLote` acima, que é um POOL de assentos por nome de
+    software alocado a colaboradores. Aqui cada registro é uma chave/serial
+    real, e o vínculo relevante é com o `Item` (notebook/desktop), não com o
+    `Usuario`. Editável manualmente ou importada de planilha (ver
+    `services/licenca_office_import_service.py`); aparece no detalhe do
+    equipamento vinculado.
+    """
+    produto = models.CharField(
+        max_length=160, verbose_name="Produto",
+        help_text="Ex.: Office Home and Business 2016",
+    )
+    chave_produto = models.CharField(
+        max_length=100, db_index=True, verbose_name="Chave / Serial",
+    )
+    status = models.CharField(
+        max_length=20, choices=StatusLicencaOfficeChoices.choices,
+        default=StatusLicencaOfficeChoices.OK, verbose_name="Status",
+    )
+    conta_vinculada = models.CharField(
+        max_length=150, blank=True, verbose_name="Conta / E-mail de ativação",
+    )
+    id_dell = models.CharField(
+        max_length=60, blank=True, verbose_name="ID Principal Dell",
+        help_text="Service Tag / identificador do fabricante, quando aplicável.",
+    )
+    data_licenca = models.DateField(null=True, blank=True, verbose_name="Data da Licença")
+    estacao_importada = models.CharField(
+        max_length=100, blank=True, verbose_name="Estação (planilha)",
+        help_text="Nome da estação como veio da planilha de origem — usado para localizar o "
+                   "equipamento na importação. O vínculo oficial é o campo 'Equipamento' abaixo.",
+    )
+    usuario_vinculado = models.CharField(
+        max_length=100, blank=True, verbose_name="Usuário vinculado à máquina",
+    )
+    item = models.OneToOneField(
+        "Item", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="licenca_office", verbose_name="Equipamento vinculado",
+        help_text="Notebook/desktop do estoque a que esta licença pertence. Deixe em branco "
+                   "para manter a licença sem uso (em estoque).",
+    )
+    observacao = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["produto", "chave_produto"]
+        verbose_name = "Licença Office (por equipamento)"
+        verbose_name_plural = "Licenças Office (por equipamento)"
+        indexes = [
+            models.Index(fields=["chave_produto"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.produto} — {self.chave_produto}"
+
+
 # ========== HISTÓRICO DE STATUS DO ITEM ==========
 
 class ItemStatusHistorico(models.Model):
@@ -3547,7 +3687,9 @@ class RequisicaoItem(AuditModel):
         verbose_name="Categoria")
     item_vinculado = models.ForeignKey(Item, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="requisicoes_kanban", verbose_name="Item / Equipamento (opcional)",
-        help_text="Vincula a um item já controlado por lote (mostra quantidade disponível). Deixe em branco para cadastro livre.")
+        help_text="Vincula a um item de consumo já cadastrado (com ou sem estoque ainda) — mostra a "
+                   "quantidade disponível e permite dar entrada real ao receber a compra. Deixe em "
+                   "branco para cadastro livre.")
     codigo = models.CharField(max_length=60, blank=True, null=True, verbose_name="Código",
         help_text="Código no Datasul, se já existir. Pode ficar em branco enquanto é só uma ideia.")
     descricao = models.CharField(max_length=255, verbose_name="Descrição")

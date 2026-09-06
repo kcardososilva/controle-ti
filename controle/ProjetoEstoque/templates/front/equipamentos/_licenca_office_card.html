@@ -1,0 +1,86 @@
+{% comment %}
+Card "Licença Office" da ficha do equipamento — parametrizado por `item`,
+`licenca_office` e `licencas_office_disponiveis`. Reaproveitado tanto no
+render normal de `equipamento_detalhe.html` quanto pelas respostas AJAX de
+`licenca_office_vincular`/`licenca_office_desvincular` (troca só este
+fragmento via fetch, sem recarregar a página).
+{% endcomment %}
+{% if item.item_consumo != 'sim' %}
+<section class="ad-card" id="ad-lo-card">
+  <div class="ad-card-header">
+    <div class="ad-card-title"><i class="fa-solid fa-key" aria-hidden="true"></i> Licença Office</div>
+    {% if licenca_office %}
+      <span class="ad-lo-status {% if licenca_office.status == 'ok' %}is-ok{% elif licenca_office.status == 'problema' %}is-problema{% else %}is-outro{% endif %}">
+        {{ licenca_office.get_status_display }}
+      </span>
+    {% endif %}
+  </div>
+  <div class="ad-card-body">
+    <div class="ad-lo-flash" hidden></div>
+    {% if licenca_office %}
+      <div class="ad-info-grid">
+        <div class="ad-info-item">
+          <div class="ad-info-label"><i class="fa-solid fa-box-open" aria-hidden="true"></i> Produto</div>
+          <div class="ad-info-value">{{ licenca_office.produto }}</div>
+        </div>
+        <div class="ad-info-item">
+          <div class="ad-info-label"><i class="fa-solid fa-key" aria-hidden="true"></i> Chave / Serial</div>
+          <div class="ad-info-value ad-mono">{{ licenca_office.chave_produto }}</div>
+        </div>
+        {% if licenca_office.conta_vinculada %}
+        <div class="ad-info-item">
+          <div class="ad-info-label"><i class="fa-solid fa-at" aria-hidden="true"></i> Conta</div>
+          <div class="ad-info-value">{{ licenca_office.conta_vinculada }}</div>
+        </div>
+        {% endif %}
+        {% if licenca_office.data_licenca %}
+        <div class="ad-info-item">
+          <div class="ad-info-label"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i> Data da Licença</div>
+          <div class="ad-info-value">{{ licenca_office.data_licenca|date:"d/m/Y" }}</div>
+        </div>
+        {% endif %}
+        {% if licenca_office.id_dell %}
+        <div class="ad-info-item">
+          <div class="ad-info-label"><i class="fa-solid fa-barcode" aria-hidden="true"></i> ID Principal Dell</div>
+          <div class="ad-info-value ad-mono">{{ licenca_office.id_dell }}</div>
+        </div>
+        {% endif %}
+      </div>
+      {% if licenca_office.observacao %}
+        <div class="ad-note-box" style="margin-top:10px;">{{ licenca_office.observacao|linebreaksbr }}</div>
+      {% endif %}
+      <div class="ad-lo-actions">
+        <a href="{% url 'licenca_office_update' licenca_office.pk %}?next={% url 'equipamento_detalhe' item.pk %}" class="btn btn-sm">
+          <i class="fa-solid fa-pen" aria-hidden="true"></i> Editar
+        </a>
+        <form method="post" action="{% url 'licenca_office_desvincular' item.pk %}" class="js-lo-form" data-lo-confirm="Desvincular esta licença do equipamento? A licença continua cadastrada, só deixa de aparecer nesta ficha.">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm"><i class="fa-solid fa-link-slash" aria-hidden="true"></i> Desvincular</button>
+        </form>
+      </div>
+    {% else %}
+      <div class="ad-empty">
+        <i class="fa-solid fa-key" aria-hidden="true"></i>
+        <div>Nenhuma licença Office vinculada a este equipamento.</div>
+      </div>
+      {% if licencas_office_disponiveis %}
+      <form method="post" action="{% url 'licenca_office_vincular' item.pk %}" class="ad-lo-pick js-lo-form">
+        {% csrf_token %}
+        <select name="licenca_id" class="js-lo-select2" required>
+          <option value="">Selecione uma licença sem vínculo...</option>
+          {% for lic in licencas_office_disponiveis %}
+            <option value="{{ lic.pk }}">{{ lic.produto }} — {{ lic.chave_produto }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm"><i class="fa-solid fa-link" aria-hidden="true"></i> Vincular</button>
+      </form>
+      {% endif %}
+      <div class="ad-lo-actions">
+        <a href="{% url 'licenca_office_create' %}?item={{ item.pk }}&next={% url 'equipamento_detalhe' item.pk %}" class="btn-primary btn-sm">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i> Cadastrar nova licença
+        </a>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}

@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+
+{% block title %}Importar Licenças Office{% endblock %}
+{% block page_title %}Importar Licenças Office{% endblock %}
+{% block page_subtitle %}Planilha de chaves por equipamento{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'licenca_office_list' %}">Licenças Office</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Importar</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'licenca_office_list' %}" class="btn-secondary btn-sm"><i class="fa fa-arrow-left" aria-hidden="true"></i> Voltar</a>
+{% endblock %}
+
+{% block extra_css %}
+{% include 'front/licencas/_lic_design_system.html' %}
+<style>
+:where(.lo-import-page) {
+  --lo-primary:    var(--brand,               #0071e3);
+  --lo-surface:    var(--bg-elevated,         #ffffff);
+  --lo-muted-surface: var(--bg-fill-tertiary, rgba(120,120,128,.08));
+  --lo-hover:      var(--bg-hover,            rgba(0,0,0,.04));
+  --lo-text:       var(--text-primary,        #1d1d1f);
+  --lo-muted:      var(--text-tertiary,       #6e6e73);
+  --lo-border:     var(--separator-hairline,  rgba(0,0,0,.06));
+  --lo-border2:    var(--separator-non-opaque,rgba(0,0,0,.10));
+  --lo-danger:     var(--danger,              #ff3b30);
+  --lo-radius-sm:  10px;
+  --lo-radius-md:  14px;
+  --lo-radius-xl:  22px;
+  --lo-radius-pill:980px;
+  --lo-shadow-sm:  var(--shadow-sm,           0 1px 2px rgba(0,0,0,.05));
+  --lo-control-h:  2.75rem;
+}
+.lo-import-page, .lo-import-page * { box-sizing: border-box; min-width: 0; }
+.lo-import-page { width: min(100%, 640px); margin: 0 auto; color: var(--lo-text); display: grid; gap: 1rem; }
+.lo-form-card { overflow: hidden; border: 1px solid var(--lo-border); border-radius: var(--lo-radius-xl); background: var(--lo-surface); box-shadow: var(--lo-shadow-sm); }
+.lo-card-body { padding: clamp(1rem,2.5vw,1.5rem); }
+.lo-field { display: flex; flex-direction: column; gap: .4rem; }
+.lo-field label { color: var(--lo-muted); font-size: .82rem; font-weight: 600; }
+.lo-import-page input[type="file"] { width: 100%; min-height: var(--lo-control-h); padding: .6rem .85rem; border: 1px dashed var(--lo-border2); border-radius: var(--lo-radius-sm); background: var(--lo-muted-surface); color: var(--lo-text); font-family: inherit; font-size: .88rem; }
+.lo-hint { margin-top: .3rem; color: var(--lo-muted); font-size: .8rem; }
+.lo-import-page .errorlist { display: grid; gap: .25rem; margin: .3rem 0 0; padding: 0; list-style: none; color: var(--lo-danger); font-size: .78rem; font-weight: 600; }
+
+.lo-instrucoes { padding: .9rem 1rem; border-radius: var(--lo-radius-md); background: var(--lo-muted-surface); font-size: .86rem; line-height: 1.6; color: var(--lo-text); }
+.lo-instrucoes code { background: var(--lo-surface); padding: .1rem .4rem; border-radius: .3rem; border: 1px solid var(--lo-border); white-space: nowrap; }
+.lo-instrucoes-table-wrap { margin-top: .6rem; overflow-x: auto; border-radius: var(--lo-radius-sm); }
+.lo-instrucoes table { width: 100%; min-width: 46rem; border-collapse: collapse; font-size: .78rem; }
+.lo-instrucoes th, .lo-instrucoes td { padding: .4rem .5rem; border: 1px solid var(--lo-border2); text-align: left; white-space: nowrap; background: var(--lo-surface); }
+.lo-instrucoes th { background: var(--lo-muted-surface); font-weight: 700; }
+
+.lo-actions { display: flex; justify-content: flex-end; gap: .75rem; padding: 1rem clamp(1rem,2.5vw,1.5rem); border-top: 1px solid var(--lo-border); }
+.lo-btn-primary, .lo-btn-secondary { min-height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; padding: .6rem 1.05rem; border-radius: var(--lo-radius-pill); border: 1px solid transparent; font-size: .9rem; font-weight: 600; text-decoration: none; cursor: pointer; }
+.lo-btn-primary { background: var(--lo-primary); color: #fff; }
+.lo-btn-secondary { background: transparent; color: var(--lo-text); border-color: var(--lo-border2); }
+.lo-btn-secondary:hover { background: var(--lo-hover); }
+
+@media (max-width: 42rem) {
+  .lo-actions { display: grid; }
+  .lo-btn-primary, .lo-btn-secondary { width: 100%; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lo-import-page">
+  <div class="lic-page">{% include 'front/licencas/_lic_subnav.html' %}</div>
+
+  <div class="lo-instrucoes">
+    <strong><i class="fa fa-circle-info" aria-hidden="true"></i> Formato da planilha</strong> — primeira linha com os cabeçalhos, uma linha por licença.
+    <strong>Produto</strong> e <strong>Serial</strong> são obrigatórios. Uma licença já cadastrada com o mesmo <code>Serial</code> é <strong>atualizada</strong>, não duplicada.
+    A coluna <strong>Estação</strong> é usada só para achar o equipamento pelo nome (<code>Item.nome</code>) e vincular automaticamente — quando não encontra, a licença é salva sem vínculo (dá pra vincular depois manualmente).
+    <div class="lo-instrucoes-table-wrap">
+      <table>
+        <thead>
+          <tr><th>Produto</th><th>Serial</th><th>Status</th><th>Conta</th><th>ID Principal Dell</th><th>Data da Licença</th><th>Estação</th><th>Usuário vinculado com a máquina</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Office Home and Business 2016</td><td>82WNM-F972P-46CFM-H6RWQ-WQKVX</td><td>OK</td>
+            <td>suporte_agro@outlook.com</td><td></td><td>15/06/2016</td><td>SCNB-110</td><td>jose.dionizio</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" novalidate class="lo-form-card">
+    {% csrf_token %}
+    <div class="lo-card-body">
+      {% if form.non_field_errors %}<div class="lo-alert-error">{{ form.non_field_errors }}</div>{% endif %}
+      <div class="lo-field">
+        <label for="{{ form.arquivo.id_for_label }}">{{ form.arquivo.label }}</label>
+        {{ form.arquivo }}
+        <span class="lo-hint">{{ form.arquivo.help_text }}</span>
+        {{ form.arquivo.errors }}
+      </div>
+    </div>
+    <div class="lo-actions">
+      <a href="{% url 'licenca_office_list' %}" class="lo-btn-secondary"><i class="fa fa-arrow-left" aria-hidden="true"></i> Cancelar</a>
+      <button class="lo-btn-primary" type="submit"><i class="fa fa-file-arrow-up" aria-hidden="true"></i> Importar</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

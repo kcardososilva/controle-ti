@@ -198,3 +198,50 @@ class FornecedorAccessMiddleware:
     @staticmethod
     def _is_fornecedor(user) -> bool:
         return GRUPO_FORNECEDOR in _grupos_do_usuario(user)
+
+
+# ─── Middleware: Portal de Licenças Office ────────────────────────────────────
+
+from ProjetoEstoque.models import GRUPO_PARCEIRO_LICENCA  # noqa: E402
+
+_LICENCA_PARCEIRO_PERMITIDO = re.compile(
+    r'^(/portal-licencas/'          # área isolada do parceiro de licenças
+    r'|/static/'                    # arquivos estáticos
+    r'|/login/'                     # login
+    r'|/logout/'                    # logout
+    r')'
+)
+
+
+class LicencaOfficeAccessMiddleware:
+    """
+    Usuários do grupo 'Parceiro de Licenças' (Portal de Licenças Office) só
+    podem acessar as URLs sob /portal-licencas/. Qualquer outra rota é
+    redirecionada pra lá. Usuários staff e superusuários não são afetados.
+
+    Espelha FornecedorAccessMiddleware — mesma defesa em profundidade, mas
+    para um módulo diferente. Um usuário não deveria pertencer aos dois
+    grupos ao mesmo tempo (cada um restringe às SUAS próprias URLs, então a
+    interseção deixaria o usuário sem nenhuma rota permitida) — combinação
+    tratada como erro de configuração do admin, não como caso a suportar.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, 'user', None)
+        if (
+            user is not None
+            and user.is_authenticated
+            and not user.is_staff
+            and not user.is_superuser
+            and self._is_parceiro_licenca(user)
+            and not _LICENCA_PARCEIRO_PERMITIDO.match(request.path)
+        ):
+            return redirect('/portal-licencas/')
+        return self.get_response(request)
+
+    @staticmethod
+    def _is_parceiro_licenca(user) -> bool:
+        return GRUPO_PARCEIRO_LICENCA in _grupos_do_usuario(user)

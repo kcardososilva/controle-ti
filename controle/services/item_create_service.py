@@ -29,18 +29,29 @@ class ItemCreateService:
         lote = None
 
         if eh_consumo:
-            lote = lote_form.save(commit=False)
-            cls.preencher_auditoria(lote, user, criando=True)
+            if lote_form.possui_dados():
+                lote = lote_form.save(commit=False)
+                cls.preencher_auditoria(lote, user, criando=True)
 
-            lote.full_clean()
-            lote.save()
+                lote.full_clean()
+                lote.save()
 
-            item.tem_lote = True
-            item.quantidade = lote.quantidade
-            item.valor = lote.custo_unitario
-            item.fornecedor = lote.fornecedor
-            item.numero_pedido = lote.numero_nf
-            item.data_compra = lote.data_entrada
+                item.tem_lote = True
+                item.quantidade = lote.quantidade
+                item.valor = lote.custo_unitario
+                item.fornecedor = lote.fornecedor
+                item.numero_pedido = lote.numero_nf
+                item.data_compra = lote.data_entrada
+            else:
+                # Item de consumo cadastrado sem dados de lote: ainda não
+                # chegou/foi comprado. Fica com estoque zerado até a entrada
+                # real, feita depois via Requisição vinculada ao Item Padrão
+                # Datasul (`RequisicaoService.finalizar_compra_estoque`) ou
+                # por uma Movimentação de Entrada — ambas usam
+                # `MovimentacaoEstoqueService.registrar_entrada`, que cria o
+                # primeiro lote e liga `tem_lote=True` nesse momento.
+                item.tem_lote = False
+                item.quantidade = 0
 
         else:
             item.tem_lote = False
