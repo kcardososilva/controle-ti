@@ -10,13 +10,22 @@
   <link rel="icon" type="image/svg+xml" href="{% static 'img/zelo-mark.svg' %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  {% comment %}Inter VARIÁVEL (`wght@300..900`): o portal carregava 9 arquivos estáticos
+     e ainda assim não tinha os pesos intermediários que o CSS pede (750), que o
+     navegador arredondava para 700. A variável é um arquivo só, cobre toda a faixa e
+     pesa menos que os 9 juntos.{% endcomment %}
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
   <style>
     :root {
       color-scheme: light;
-      --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", system-ui, sans-serif;
+      /* Inter PRIMEIRO: o portal já baixa a fonte de propósito, mas o stack a
+         deixava em terceiro — num Mac vencia a SF Pro e o arquivo baixado era
+         desperdiçado, e o mesmo portal tinha desenho de letra diferente por
+         sistema. Sendo área de cliente externo, a renderização consistente vale
+         mais do que economizar o carregamento. */
+      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
       --bg-page: #fbfbfd;
       --bg-page-2: #f5f5f7;
       --bg-elevated: #ffffff;
@@ -105,7 +114,14 @@
       font-family: var(--font-sans); color: var(--text-primary);
       background: linear-gradient(180deg, var(--bg-page), var(--bg-page-2));
       min-height: 100dvh; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+      /* cv11 = "1" com serifa e "l" com cauda; ss01 = "a"/"g" de uma história.
+         Num portal cheio de número de série ("AIR-ACCPMK1550-0012") é o que
+         separa 1/l/I de relance. `tnum` alinha os dígitos em coluna nas tabelas. */
+      font-feature-settings: "cv11" 1, "ss01" 1, "tnum" 1;
+      font-variant-numeric: tabular-nums;
     }
+    /* O texto corrido volta à largura proporcional — tabular só serve a número. */
+    p, .pf-page-sub, .pf-empty p { font-variant-numeric: normal; }
     a { color: var(--brand); text-decoration: none; }
     button, input, select { font: inherit; color: inherit; }
     button { cursor: pointer; }
@@ -344,6 +360,14 @@
         <a href="{% url 'portal_licencas_list' %}" class="pf-nav-item {% if active_nav == 'licencas' %}is-active{% endif %}">
           <i class="fa-solid fa-key"></i><span>Licenças</span>
         </a>
+
+        {% if request.user.perfil_parceiro_licenca.ativo %}
+        <div class="pf-nav-label">Outro acesso</div>
+        <a href="{% url 'portal_licencas_office_list' %}" class="pf-nav-item" title="Você também tem acesso ao Portal de Licenças Office">
+          <i class="fa-solid fa-file-shield"></i><span>Portal de Licenças</span>
+          <i class="fa-solid fa-arrow-up-right-from-square" style="margin-left:auto; font-size:.68rem; color:var(--text-quaternary);"></i>
+        </a>
+        {% endif %}
 
         <div class="pf-nav-label">Suporte</div>
         <a href="{% url 'portal_ajuda' %}" class="pf-nav-item {% if active_nav == 'ajuda' %}is-active{% endif %}">

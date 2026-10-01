@@ -21,6 +21,7 @@ from django.db.models import Q, Count, Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse
 from django.utils import timezone
 
 from ..models import (
@@ -117,16 +118,19 @@ def portal_home(request):
         row["status"]: row["n"]
         for row in qs.values("status").annotate(n=Count("id"))
     }
+    total = qs.count()
+
+    # `pct` alimenta a barra de proporção do painel. Calculado aqui, e não no
+    # template: regra de cálculo não é trabalho de template (ver CLAUDE.md).
     status_cards = [
         {
             "slug": s.value,
             "label": s.label,
             "count": counts.get(s.value, 0),
+            "pct": round(counts.get(s.value, 0) / total * 100, 1) if total else 0,
         }
         for s in _STATUS_ORDEM
     ]
-
-    total = qs.count()
 
     recentes = (
         qs.select_related("subtipo", "localidade").order_by("-updated_at")[:6]
@@ -142,6 +146,62 @@ def portal_home(request):
         SOM.SEM_CONDICOES, SOM.DESCARTE_LOCAL_APROVADO,
     ]).count()
 
+    # ── Pendências dos OUTROS módulos do portal ──────────────────────────────
+    # O painel mostrava só os números de equipamento; para saber se havia lote
+    # por enviar ou troca em andamento, o fornecedor tinha que abrir um item do
+    # menu de cada vez. Um painel de portal existe justamente para responder
+    # "o que depende de mim agora?" sem essa caça.
+    lotes_abertos = LoteEnvioFornecedor.objects.filter(
+        fornecedor=request.fornecedor,
+        status=StatusLoteEnvioFornecedorChoices.ABERTO,
+    ).count()
+
+    trocas_andamento = OrdemManutencao.objects.filter(
+        fornecedor=request.fornecedor, troca_antecipada=True,
+    ).exclude(status__in=[SOM.CONCLUIDO, SOM.CANCELADO, SOM.DESCARTADO]).count()
+
+    # Remessas que o TI já despachou para o fornecedor — é chegada de material,
+    # não ação dele, e por isso entra como acompanhamento. "enviado" é o último
+    # estado do lote de separação (não existe "concluído" aqui).
+    separacoes_a_caminho = LoteSeparacao.objects.filter(
+        fornecedor=request.fornecedor,
+        tipo=TipoSeparacaoChoices.ENVIO,
+        status=StatusSeparacaoChoices.ENVIADO,
+    ).count()
+
+    # Cada pendência é um cartão de AÇÃO. `tom` define a cor: só é vermelho o
+    # que trava o fluxo do outro lado; o resto é âmbar (aguarda) ou azul
+    # (acompanhamento). Cor por gravidade real, não por posição no card.
+    pendencias = []
+    if qtd_os_acao:
+        pendencias.append({
+            "tom": "alerta", "icone": "fa-screwdriver-wrench", "valor": qtd_os_acao,
+            "titulo": "Manutenção aguardando você",
+            "texto": "Ordens paradas esperando uma ação sua.",
+            "url": reverse("portal_manutencao_list"), "cta": "Tratar ordens",
+        })
+    if lotes_abertos:
+        pendencias.append({
+            "tom": "atencao", "icone": "fa-boxes-packing", "valor": lotes_abertos,
+            "titulo": "Lote em organização",
+            "texto": "Comece a montar ou finalize o envio ao TI.",
+            "url": reverse("portal_lote_envio_list"), "cta": "Abrir lotes",
+        })
+    if trocas_andamento:
+        pendencias.append({
+            "tom": "info", "icone": "fa-right-left", "valor": trocas_andamento,
+            "titulo": "Troca antecipada em andamento",
+            "texto": "Acompanhe o estágio de cada processo.",
+            "url": reverse("portal_troca_antecipada_list"), "cta": "Acompanhar",
+        })
+    if separacoes_a_caminho:
+        pendencias.append({
+            "tom": "info", "icone": "fa-truck-fast", "valor": separacoes_a_caminho,
+            "titulo": "Remessa enviada pelo TI",
+            "texto": "Material a caminho do seu endereço.",
+            "url": reverse("portal_separacao_envio_list"), "cta": "Ver remessas",
+        })
+
     context = {
         "fornecedor": request.fornecedor,
         "total_itens": total,
@@ -149,6 +209,7 @@ def portal_home(request):
         "recentes": recentes,
         "qtd_os_abertas": qtd_os_abertas,
         "qtd_os_acao": qtd_os_acao,
+        "pendencias": pendencias,
         "active_nav": "home",
     }
     return render(request, "front/portal/portal_home.html", context)

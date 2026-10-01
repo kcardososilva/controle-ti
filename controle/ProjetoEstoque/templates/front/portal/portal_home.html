@@ -2,134 +2,233 @@
 
 {% block title %}Painel — Portal do Fornecedor{% endblock %}
 {% block page_title %}Olá, {{ fornecedor.nome }}{% endblock %}
-{% block page_subtitle %}Visão geral dos seus equipamentos{% endblock %}
+{% block page_subtitle %}O que precisa da sua atenção hoje{% endblock %}
+
+{% comment %}
+O painel mostrava seis números de equipamento, todos do mesmo azul — inclusive
+"Defeito", que é alerta — e nada sobre os outros módulos do portal. Para saber
+se havia lote por enviar ou troca em andamento era preciso abrir cada item do
+menu. Um portal existe para responder "o que depende de mim agora?".
+
+Ordem da tela, da pergunta mais urgente para a mais ampla:
+  1. Pendências — o que trava o fluxo, com a ação ao lado e cor por gravidade.
+  2. Parque — a composição do inventário, com a proporção visível de uma vez.
+  3. Movimento recente — o que mudou por último.
+{% endcomment %}
 
 {% block extra_css %}
 <style>
-  :where(.pf-home) { display: grid; gap: 1.25rem; }
-  .pf-home .pf-kpi-row {
-    display: grid; gap: .9rem;
-    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  }
-  .pf-home .pf-kpi {
-    padding: .85rem 1rem; border-radius: var(--radius-md); background: var(--bg-elevated);
-    border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
-    display: grid; gap: .4rem; transition: border-color .15s, box-shadow .15s;
-  }
-  .pf-home .pf-kpi:hover { border-color: var(--separator-non-opaque); box-shadow: var(--shadow-md); }
-  .pf-home .pf-kpi-top { display: flex; align-items: center; justify-content: space-between; }
-  .pf-home .pf-kpi-ic { width: 1.9rem; height: 1.9rem; display: grid; place-items: center; border-radius: 8px; font-size: .8rem; }
-  .pf-home .pf-kpi-num { font-size: 1.375rem; font-weight: 650; letter-spacing: -.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
-  .pf-home .pf-kpi-lbl { color: var(--text-tertiary); font-size: .78rem; font-weight: 500; }
-  .pf-home .pf-kpi--total { border-color: color-mix(in srgb, var(--brand) 30%, var(--separator-hairline)); background: color-mix(in srgb, var(--brand) 6%, var(--bg-elevated)); }
-  .pf-home .pf-kpi--total .pf-kpi-lbl { color: var(--brand); }
-  .pf-home .pf-kpi--total .pf-kpi-num { color: var(--brand); }
-  .pf-home .pf-kpi--total .pf-kpi-ic { background: var(--brand-soft); color: var(--brand); }
+  :where(.pf-home) { display: grid; gap: 1.5rem; }
 
-  .pf-home .pf-ic-ativo { background: var(--success-soft); color: var(--success); }
-  .pf-home .pf-ic-manutencao { background: var(--warning-soft); color: var(--warning); }
-  .pf-home .pf-ic-defeito { background: var(--danger-soft); color: var(--danger); }
-  .pf-home .pf-ic-backup { background: var(--info-soft); color: var(--info); }
-  .pf-home .pf-ic-pausado { background: var(--gray-soft); color: var(--gray); }
+  /* ── Cabeçalho de seção ─────────────────────────────────────────────── */
+  .pf-home .pf-sec { display: grid; gap: .8rem; }
+  .pf-home .pf-sec-h { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+  .pf-home .pf-sec-h h2 { font-size: .95rem; font-weight: 800; letter-spacing: -.02em; }
+  .pf-home .pf-sec-h .sub { color: var(--text-tertiary); font-size: .8rem; }
+  .pf-home .pf-sec-h .act { margin-left: auto; }
 
-  .pf-home .pf-section-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: .25rem; }
-  .pf-home .pf-section-h h2 { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; }
-  .pf-home .pf-recent { display: grid; gap: .1rem; }
+  /* ── Pendências ──────────────────────────────────────────────────────
+     Cada cartão é uma tarefa: número, o que é, e o botão que resolve. A cor
+     vem da gravidade (`tom`), não da posição — um cartão vermelho significa
+     que alguém do outro lado está parado esperando. */
+  .pf-home .pf-task-grid { display: grid; gap: .85rem; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+  .pf-home .pf-task {
+    display: grid; grid-template-columns: auto 1fr; gap: .55rem .9rem; align-items: start;
+    padding: 1rem 1.1rem; border-radius: var(--radius-lg); color: inherit;
+    background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
+    box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
+    transition: box-shadow .18s, transform .18s, border-color .18s;
+  }
+  .pf-home .pf-task::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--tom); }
+  .pf-home .pf-task:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); border-color: var(--separator-non-opaque); }
+  .pf-home .pf-task--alerta  { --tom: var(--danger);  --tom-soft: var(--danger-soft); }
+  .pf-home .pf-task--atencao { --tom: var(--warning); --tom-soft: var(--warning-soft); }
+  .pf-home .pf-task--info    { --tom: var(--brand);   --tom-soft: var(--brand-soft); }
+  .pf-home .pf-task-ic {
+    width: 2.4rem; height: 2.4rem; display: grid; place-items: center; border-radius: var(--radius-md);
+    background: var(--tom-soft); color: var(--tom); font-size: .95rem; grid-row: span 2;
+  }
+  .pf-home .pf-task-top { display: flex; align-items: baseline; gap: .5rem; }
+  .pf-home .pf-task-n { font-size: 1.6rem; font-weight: 750; line-height: 1; letter-spacing: -.03em;
+    color: var(--tom); font-variant-numeric: tabular-nums; }
+  .pf-home .pf-task-t { font-size: .88rem; font-weight: 750; letter-spacing: -.01em; }
+  .pf-home .pf-task-x { color: var(--text-tertiary); font-size: .79rem; line-height: 1.45; }
+  .pf-home .pf-task-cta { grid-column: 2; margin-top: .25rem; display: inline-flex; align-items: center; gap: .4rem;
+    color: var(--tom); font-size: .79rem; font-weight: 750; }
+
+  /* Estado "nada pendente" — merece destaque próprio: é a resposta boa. */
+  .pf-home .pf-ok {
+    display: flex; align-items: center; gap: 1rem; padding: 1.15rem 1.25rem;
+    border-radius: var(--radius-lg); background: var(--success-soft);
+    border: 1px solid color-mix(in srgb, var(--success) 22%, transparent);
+  }
+  .pf-home .pf-ok-ic { width: 2.6rem; height: 2.6rem; flex: 0 0 2.6rem; display: grid; place-items: center;
+    border-radius: var(--radius-md); background: color-mix(in srgb, var(--success) 18%, transparent);
+    color: var(--success); font-size: 1.1rem; }
+  .pf-home .pf-ok-t { font-weight: 800; letter-spacing: -.02em; color: var(--success); }
+  .pf-home .pf-ok-s { color: var(--text-secondary); font-size: .82rem; margin-top: .1rem; }
+
+  /* ── Parque: barra de proporção + legenda clicável ───────────────────
+     Seis caixas iguais não diziam que 55% do parque é ativo e 46% é backup.
+     A barra mostra a composição antes de qualquer número ser lido. */
+  .pf-home .pf-parque { padding: 1.15rem 1.25rem; display: grid; gap: 1rem; }
+  .pf-home .pf-parque-top { display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+  .pf-home .pf-parque-n { font-size: 2.1rem; font-weight: 750; line-height: 1; letter-spacing: -.035em;
+    font-variant-numeric: tabular-nums; }
+  .pf-home .pf-parque-l { color: var(--text-tertiary); font-size: .8rem; font-weight: 600; margin-bottom: .2rem; }
+  .pf-home .pf-bar { display: flex; height: .7rem; border-radius: 999px; overflow: hidden;
+    background: var(--bg-fill-tertiary); gap: 2px; }
+  .pf-home .pf-bar span { display: block; min-width: 0; transition: filter .15s; }
+  .pf-home .pf-bar span:hover { filter: brightness(1.12); }
+  .pf-home .pf-bar .s-ativo { background: var(--success); }
+  .pf-home .pf-bar .s-manutencao { background: var(--warning); }
+  .pf-home .pf-bar .s-defeito { background: var(--danger); }
+  .pf-home .pf-bar .s-backup { background: var(--info); }
+  .pf-home .pf-bar .s-pausado { background: var(--gray); }
+
+  .pf-home .pf-leg { display: grid; gap: .3rem; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); }
+  .pf-home .pf-leg-i {
+    display: flex; align-items: center; gap: .55rem; padding: .5rem .6rem;
+    border-radius: var(--radius-sm); color: inherit; transition: background .15s;
+  }
+  .pf-home .pf-leg-i:hover { background: var(--bg-hover); }
+  .pf-home .pf-leg-dot { width: .6rem; height: .6rem; border-radius: 3px; flex: 0 0 .6rem; }
+  .pf-home .pf-leg-t { font-size: .79rem; font-weight: 600; color: var(--text-secondary); }
+  .pf-home .pf-leg-v { margin-left: auto; font-size: .85rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .pf-home .pf-leg-p { color: var(--text-quaternary); font-size: .72rem; font-variant-numeric: tabular-nums;
+    min-width: 2.6rem; text-align: right; }
+  /* Só o que é alerta ganha cor no número; o resto fica neutro para o alerta
+     não se perder entre seis destaques iguais. */
+  .pf-home .pf-leg-i--defeito .pf-leg-v { color: var(--danger); }
+
+  /* ── Movimento recente ───────────────────────────────────────────────── */
+  .pf-home .pf-recent { display: grid; }
   .pf-home .pf-recent-item {
-    display: flex; align-items: center; gap: .9rem; padding: .8rem 1rem; border-radius: var(--radius-md);
-    transition: background .15s; color: inherit;
+    display: grid; grid-template-columns: 5.6rem 1fr auto; align-items: center; gap: .9rem;
+    padding: .72rem .4rem; border-radius: var(--radius-sm); color: inherit; transition: background .15s;
   }
+  .pf-home .pf-recent-item + .pf-recent-item { border-top: 1px solid var(--separator-hairline); }
   .pf-home .pf-recent-item:hover { background: var(--bg-hover); }
-  .pf-home .pf-recent-item + .pf-recent-item { border-top: 1px solid var(--separator-hairline); border-radius: 0; }
-  .pf-home .pf-recent-name { font-weight: 700; font-size: .9rem; }
-  .pf-home .pf-recent-meta { color: var(--text-tertiary); font-size: .76rem; margin-top: .1rem; }
-  .pf-home .pf-recent-arrow { margin-left: auto; color: var(--text-quaternary); }
+  .pf-home .pf-recent-name { font-weight: 700; font-size: .85rem; letter-spacing: -.01em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pf-home .pf-recent-meta { color: var(--text-tertiary); font-size: .74rem; margin-top: .12rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pf-home .pf-recent-arrow { color: var(--text-quaternary); font-size: .72rem; }
 
-  .pf-home .pf-mnt {
-    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
-    padding: 1.1rem 1.25rem; border-radius: var(--radius-lg); color: inherit;
-    background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm);
+  @media (max-width: 34rem) {
+    .pf-home .pf-recent-item { grid-template-columns: 1fr auto; }
+    .pf-home .pf-recent-item .pf-chip { grid-column: 1 / -1; justify-self: start; }
+    .pf-home .pf-parque-n { font-size: 1.8rem; }
   }
-  .pf-home .pf-mnt.has-acao { background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 22%, transparent); }
-  .pf-home .pf-mnt-ic { width: 2.8rem; height: 2.8rem; flex: 0 0 2.8rem; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--warning-soft); color: var(--warning); font-size: 1.15rem; }
-  .pf-home .pf-mnt-ic.ok { background: var(--success-soft); color: var(--success); }
-  .pf-home .pf-mnt-title { font-weight: 800; letter-spacing: -.02em; }
-  .pf-home .pf-mnt-sub { color: var(--text-tertiary); font-size: .84rem; margin-top: .12rem; }
-  .pf-home .pf-mnt-cta { margin-left: auto; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="pf-home">
 
-  <a class="pf-mnt {% if qtd_os_acao %}has-acao{% endif %}" href="{% url 'portal_manutencao_list' %}">
-    {% if qtd_os_acao %}
-      <span class="pf-mnt-ic"><i class="fa-solid fa-screwdriver-wrench"></i></span>
-      <div>
-        <div class="pf-mnt-title">{{ qtd_os_acao }} manutenção{{ qtd_os_acao|pluralize:"ões" }} aguardando você</div>
-        <div class="pf-mnt-sub">Há ordens que dependem de uma ação sua. Clique para tratar.</div>
+  <section class="pf-sec">
+    <div class="pf-sec-h">
+      <h2>Precisa de você</h2>
+      {% if pendencias %}<span class="sub">{{ pendencias|length }} ite{{ pendencias|length|pluralize:"m,ns" }} em aberto</span>{% endif %}
+    </div>
+
+    {% if pendencias %}
+      <div class="pf-task-grid">
+        {% for p in pendencias %}
+        <a class="pf-task pf-task--{{ p.tom }}" href="{{ p.url }}">
+          <span class="pf-task-ic"><i class="fa-solid {{ p.icone }}" aria-hidden="true"></i></span>
+          <span class="pf-task-top">
+            <span class="pf-task-n">{{ p.valor }}</span>
+            <span class="pf-task-t">{{ p.titulo }}</span>
+          </span>
+          <span class="pf-task-x">{{ p.texto }}</span>
+          <span class="pf-task-cta">{{ p.cta }} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span>
+        </a>
+        {% endfor %}
       </div>
     {% else %}
-      <span class="pf-mnt-ic ok"><i class="fa-solid fa-circle-check"></i></span>
-      <div>
-        <div class="pf-mnt-title">Manutenção em dia</div>
-        <div class="pf-mnt-sub">{% if qtd_os_abertas %}{{ qtd_os_abertas }} ordem{{ qtd_os_abertas|pluralize }} em andamento, sem ação pendente sua.{% else %}Nenhuma ordem de manutenção aberta.{% endif %}</div>
-      </div>
-    {% endif %}
-    <span class="pf-btn pf-mnt-cta"><i class="fa-solid fa-arrow-right"></i> Manutenção</span>
-  </a>
-
-  <section class="pf-kpi-row">
-    <div class="pf-kpi pf-kpi--total">
-      <div class="pf-kpi-top">
-        <span class="pf-kpi-lbl">Total de equipamentos</span>
-        <span class="pf-kpi-ic"><i class="fa-solid fa-display"></i></span>
-      </div>
-      <div class="pf-kpi-num">{{ total_itens }}</div>
-    </div>
-
-    {% for c in status_cards %}
-    <a class="pf-kpi" href="{% url 'portal_equipamentos_list' %}?status={{ c.slug }}">
-      <div class="pf-kpi-top">
-        <span class="pf-kpi-lbl">{{ c.label }}</span>
-        <span class="pf-kpi-ic pf-ic-{{ c.slug }}">
-          <i class="fa-solid {% if c.slug == 'ativo' %}fa-circle-check{% elif c.slug == 'manutencao' %}fa-screwdriver-wrench{% elif c.slug == 'defeito' %}fa-triangle-exclamation{% elif c.slug == 'backup' %}fa-box-archive{% else %}fa-circle-pause{% endif %}"></i>
-        </span>
-      </div>
-      <div class="pf-kpi-num">{{ c.count }}</div>
-    </a>
-    {% endfor %}
-  </section>
-
-  <section class="pf-card" style="padding: 1.1rem 1.25rem;">
-    <div class="pf-section-h">
-      <h2>Atualizados recentemente</h2>
-      <a class="pf-btn" href="{% url 'portal_equipamentos_list' %}"><i class="fa-solid fa-list"></i> Ver todos</a>
-    </div>
-
-    {% if recentes %}
-    <div class="pf-recent">
-      {% for item in recentes %}
-      <a class="pf-recent-item" href="{% url 'portal_equipamento_detail' item.pk %}">
-        <span class="pf-chip pf-chip--{{ item.status }}">{{ item.get_status_display }}</span>
-        <span>
-          <div class="pf-recent-name">{{ item.nome }}</div>
-          <div class="pf-recent-meta">
-            {% if item.numero_serie %}Série {{ item.numero_serie }}{% else %}Sem nº de série{% endif %}
-            {% if item.localidade %} · {{ item.localidade.local }}{% endif %}
+      <div class="pf-ok">
+        <span class="pf-ok-ic"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></span>
+        <div>
+          <div class="pf-ok-t">Tudo em dia</div>
+          <div class="pf-ok-s">
+            {% comment %}`pluralize` com UM argumento ACRESCENTA o sufixo ("ordem"+"ens");
+               a forma com dois troca o final a partir do radical.{% endcomment %}
+            {% if qtd_os_abertas %}
+              {{ qtd_os_abertas }} ord{{ qtd_os_abertas|pluralize:"em,ens" }} de manutenção em andamento, nenhuma parada esperando você.
+            {% else %}
+              Nenhuma pendência aberta no portal neste momento.
+            {% endif %}
           </div>
-        </span>
-        <i class="fa-solid fa-chevron-right pf-recent-arrow"></i>
-      </a>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="pf-empty">
-      <i class="fa-solid fa-box-open"></i>
-      <p>Nenhum equipamento vinculado ao seu acesso ainda.</p>
-    </div>
+        </div>
+      </div>
     {% endif %}
   </section>
+
+  <section class="pf-sec">
+    <div class="pf-sec-h">
+      <h2>Seu parque</h2>
+      <span class="sub">Composição por situação do equipamento</span>
+      <a class="pf-btn act" href="{% url 'portal_equipamentos_list' %}">
+        <i class="fa-solid fa-list" aria-hidden="true"></i> Ver todos
+      </a>
+    </div>
+
+    <div class="pf-card pf-parque">
+      <div class="pf-parque-top">
+        <span class="pf-parque-n">{{ total_itens }}</span>
+        <span class="pf-parque-l">equipamento{{ total_itens|pluralize }} sob sua responsabilidade</span>
+      </div>
+
+      {% if total_itens %}
+      <div class="pf-bar" role="img" aria-label="Proporção dos equipamentos por situação">
+        {% for c in status_cards %}{% if c.count %}<span class="s-{{ c.slug }}" style="flex: {{ c.count }}" title="{{ c.label }}: {{ c.count }} ({{ c.pct }}%)"></span>{% endif %}{% endfor %}
+      </div>
+
+      <div class="pf-leg">
+        {% for c in status_cards %}
+        <a class="pf-leg-i pf-leg-i--{{ c.slug }}" href="{% url 'portal_equipamentos_list' %}?status={{ c.slug }}">
+          <span class="pf-leg-dot s-{{ c.slug }}" style="background: var(--{% if c.slug == 'ativo' %}success{% elif c.slug == 'manutencao' %}warning{% elif c.slug == 'defeito' %}danger{% elif c.slug == 'backup' %}info{% else %}gray{% endif %})"></span>
+          <span class="pf-leg-t">{{ c.label }}</span>
+          <span class="pf-leg-v">{{ c.count }}</span>
+          <span class="pf-leg-p">{{ c.pct }}%</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="pf-empty">
+        <i class="fa-solid fa-box-open" aria-hidden="true"></i>
+        <p>Nenhum equipamento vinculado ao seu acesso ainda.</p>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if recentes %}
+  <section class="pf-sec">
+    <div class="pf-sec-h">
+      <h2>Movimento recente</h2>
+      <span class="sub">Últimas atualizações nos seus equipamentos</span>
+    </div>
+    <div class="pf-card" style="padding: .6rem .85rem;">
+      <div class="pf-recent">
+        {% for item in recentes %}
+        <a class="pf-recent-item" href="{% url 'portal_equipamento_detail' item.pk %}">
+          <span class="pf-chip pf-chip--{{ item.status }}">{{ item.get_status_display }}</span>
+          <span>
+            <div class="pf-recent-name">{{ item.nome }}</div>
+            <div class="pf-recent-meta">
+              {% if item.numero_serie %}Série {{ item.numero_serie }}{% else %}Sem nº de série{% endif %}
+              {% if item.localidade %} · {{ item.localidade.local }}{% endif %}
+            </div>
+          </span>
+          <i class="fa-solid fa-chevron-right pf-recent-arrow" aria-hidden="true"></i>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
 
 </div>
 {% endblock %}

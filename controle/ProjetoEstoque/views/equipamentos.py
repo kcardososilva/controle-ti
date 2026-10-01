@@ -188,6 +188,21 @@ def _build_related_q(base_model, fk_field, related_fields, search_value):
     return query
 
 
+def _filtrar_por_ids(queryset, campo, ids, exceto):
+    """
+    Filtra `queryset` por uma lista de IDs num campo (ex.: "subtipo_id").
+
+    Base do toggle "Exceto" dos filtros de Subtipo/Localidade/Centro de Custo:
+    sem `ids` não faz nada; com `ids` e `exceto=False` restringe à seleção
+    ("apenas estes"); com `exceto=True` inverte para exclusão ("todos, exceto
+    estes") — mesma lista de IDs, sentido oposto.
+    """
+    if not ids:
+        return queryset
+    condicao = {f"{campo}__in": ids}
+    return queryset.exclude(**condicao) if exceto else queryset.filter(**condicao)
+
+
 def _build_nested_q(related_model, prefix, related_fields, search_value):
     """
     Monta Q seguro para relações aninhadas.
@@ -296,18 +311,33 @@ def _subtipos_queryset():
     return qs.order_by("id")
 
 
+def _localidades_queryset():
+    return Localidade.objects.order_by("local")
+
+
+def _centros_custo_queryset():
+    return CentroCusto.objects.order_by("numero")
+
+
 def _aplicar_filtros_itens(request, qs):
     """Aplica todos os filtros GET ao queryset de Item. Fonte única de verdade — usada pela listagem e pela exportação."""
     nome = request.GET.get("nome", "").strip()
     numero_serie = request.GET.get("numero_serie", "").strip()
     modelo = request.GET.get("modelo", "").strip()
-    subtipo = request.GET.get("subtipo", "").strip()
+    subtipo_ids = [v for v in request.GET.getlist("subtipo") if v.isdigit()]
     status = request.GET.get("status", "").strip()
     fornecedor = request.GET.get("fornecedor", "").strip()
-    localidade = request.GET.get("localidade", "").strip()
-    centro_custo = request.GET.get("centro_custo", "").strip()
+    localidade_ids = [v for v in request.GET.getlist("localidade") if v.isdigit()]
+    centro_custo_ids = [v for v in request.GET.getlist("centro_custo") if v.isdigit()]
     tipo_item = request.GET.get("tipo_item", "").strip()
     estoque = request.GET.get("estoque", "").strip()
+
+    # Toggle "Exceto" — inverte Subtipo/Localidade/Centro de Custo de "apenas
+    # estes" para "todos, exceto estes". `_filtrar_por_ids` já é no-op sem
+    # IDs selecionados, então não precisa checar a lista aqui.
+    subtipo_exc = request.GET.get("subtipo_exc") == "1"
+    localidade_exc = request.GET.get("localidade_exc") == "1"
+    centro_custo_exc = request.GET.get("centro_custo_exc") == "1"
 
     if nome:
         ids_relevantes = buscar_item_ids(nome)
@@ -320,8 +350,7 @@ def _aplicar_filtros_itens(request, qs):
         qs = qs.filter(numero_serie__icontains=numero_serie)
     if modelo:
         qs = qs.filter(modelo__icontains=modelo)
-    if subtipo:
-        qs = qs.filter(subtipo_id=subtipo)
+    qs = _filtrar_por_ids(qs, "subtipo_id", subtipo_ids, subtipo_exc)
     if status:
         qs = qs.filter(status=status)
 
@@ -339,18 +368,8 @@ def _aplicar_filtros_itens(request, qs):
         if query:
             qs = qs.filter(query).distinct()
 
-    if localidade:
-        query = _build_related_q(Item, "localidade", ["local", "nome", "descricao"], localidade)
-        if query:
-            qs = qs.filter(query).distinct()
-
-    if centro_custo:
-        query = _build_related_q(
-            Item, "centro_custo",
-            ["departamento", "nome", "numero", "codigo", "descricao"], centro_custo,
-        )
-        if query:
-            qs = qs.filter(query).distinct()
+    qs = _filtrar_por_ids(qs, "localidade_id", localidade_ids, localidade_exc)
+    qs = _filtrar_por_ids(qs, "centro_custo_id", centro_custo_ids, centro_custo_exc)
 
     if tipo_item == "consumo":
         qs = qs.filter(item_consumo="sim")
@@ -460,6 +479,24 @@ def _build_queryset_and_context(request):
     next_qs = next_params.urlencode()
     next_url = f"{request.path}?{next_qs}" if next_qs else request.path
 
+    # Quantos campos de filtro estão com algum valor selecionado — mostrado
+    # como badge no resumo do painel (fechado ou aberto). Os toggles "*_exc"
+    # ficam de fora de propósito: marcar "Exceto" sem nada selecionado ainda
+    # não é, por si só, um filtro ativo.
+    filtros_contagem = {
+        "nome": request.GET.get("nome", "").strip(),
+        "numero_serie": request.GET.get("numero_serie", "").strip(),
+        "modelo": request.GET.get("modelo", "").strip(),
+        "fornecedor": request.GET.get("fornecedor", "").strip(),
+        "status": request.GET.get("status", "").strip(),
+        "tipo_item": request.GET.get("tipo_item", "").strip(),
+        "estoque": request.GET.get("estoque", "").strip(),
+        "subtipo": request.GET.getlist("subtipo"),
+        "localidade": request.GET.getlist("localidade"),
+        "centro_custo": request.GET.getlist("centro_custo"),
+    }
+    filtros_ativos = sum(1 for v in filtros_contagem.values() if v)
+
     context = {
         "itens": itens,
         "next_url": next_url,
@@ -469,11 +506,24 @@ def _build_queryset_and_context(request):
         "filtered_total": filtered_total,
         "per_page": per_page,
         "subtipos": _subtipos_queryset(),
+        "localidades": _localidades_queryset(),
+        "centros_custo": _centros_custo_queryset(),
         "status_choices": status_choices,
         "kpis": kpis,
         "tipo_item": request.GET.get("tipo_item", ""),
         "estoque": request.GET.get("estoque", ""),
         "ids_devolver": ids_devolver,
+
+        # seleção atual dos multi-selects (Subtipo/Localidade/Centro de Custo)
+        # e do toggle "Exceto" de cada um — usados só no load inicial da
+        # página (o filtro AJAX depois lê direto do form, ver refreshList).
+        "subtipo_sel": request.GET.getlist("subtipo"),
+        "localidade_sel": request.GET.getlist("localidade"),
+        "centro_custo_sel": request.GET.getlist("centro_custo"),
+        "subtipo_exc": request.GET.get("subtipo_exc") == "1",
+        "localidade_exc": request.GET.get("localidade_exc") == "1",
+        "centro_custo_exc": request.GET.get("centro_custo_exc") == "1",
+        "filtros_ativos": filtros_ativos,
     }
 
     return context

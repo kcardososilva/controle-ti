@@ -204,6 +204,24 @@ tr.vc-row-hidden{display:none;}
 .select2-container--default .select2-results__option{color:var(--vc-ink)!important;}
 .select2-container--default .select2-results__option--highlighted[aria-selected]{background:var(--vc-brand)!important;color:#fff!important;}
 .select2-container--default .select2-results__option[aria-selected="true"]{background:var(--vc-brand-soft)!important;color:var(--vc-brand-text)!important;}
+
+/* ── Toggle "Exceto" — inverte um multi-select de "apenas estes" para
+     "todos, exceto estes" (ex.: todos os CCs exceto X, Y e Z). ── */
+.vc-field-headrow{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.vc-exc-switch{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+  color:var(--vc-ink-soft);background:transparent;border:1px solid transparent;
+  border-radius:10px;padding:1px 6px 1px 4px;cursor:pointer;user-select:none;
+  transition:color .12s,background .12s,border-color .12s;
+}
+.vc-exc-switch input{width:12px;height:12px;margin:0;cursor:pointer;accent-color:var(--vc-red-text);}
+.vc-exc-switch:hover{color:var(--vc-ink);}
+.vc-field.is-exceto .vc-exc-switch{
+  color:var(--vc-red-text);background:var(--vc-red-soft);border-color:var(--vc-red-text);
+}
+.vc-field.is-exceto .vc-field-headrow > label::after{content:" — exceto";color:var(--vc-red-text);text-transform:none;letter-spacing:0;font-weight:700;}
+.vc-field.is-exceto .select2-container .select2-selection--multiple{border-color:var(--vc-red-text)!important;}
 </style>
 </head>
 <body class="vc-page">
@@ -217,8 +235,14 @@ tr.vc-row-hidden{display:none;}
 
   <div class="vc-ribbon">
     <form method="get" action="{% url 'validacao_custos_planilha' %}">
-      <div class="vc-field grow">
-        <label for="fSubtipo">Subtipo (um ou vários)</label>
+      <div class="vc-field grow{% if subtipo_exc %} is-exceto{% endif %}">
+        <div class="vc-field-headrow">
+          <label for="fSubtipo">Subtipo (um ou vários)</label>
+          <label class="vc-exc-switch" title="Inverte a seleção: mostra tudo, exceto os subtipos marcados">
+            <input type="checkbox" id="fSubtipoExc" name="subtipo_exc" value="1" {% if subtipo_exc %}checked{% endif %}>
+            <span>Exceto</span>
+          </label>
+        </div>
         <select id="fSubtipo" name="subtipo" multiple class="select2-filter">
           {% regroup subtipos_opts by categoria as subtipo_grupos %}
           {% for grupo in subtipo_grupos %}
@@ -231,8 +255,14 @@ tr.vc-row-hidden{display:none;}
         </select>
       </div>
 
-      <div class="vc-field grow">
-        <label for="fCC">Centro de Custo (um ou vários)</label>
+      <div class="vc-field grow{% if cc_exc %} is-exceto{% endif %}">
+        <div class="vc-field-headrow">
+          <label for="fCC">Centro de Custo (um ou vários)</label>
+          <label class="vc-exc-switch" title="Inverte a seleção: mostra tudo, exceto os centros de custo marcados">
+            <input type="checkbox" id="fCCExc" name="centro_custo_exc" value="1" {% if cc_exc %}checked{% endif %}>
+            <span>Exceto</span>
+          </label>
+        </div>
         <select id="fCC" name="centro_custo" multiple class="select2-filter">
           {% for cc in ccs_opts %}
           <option value="{{ cc.id }}" {% if cc.id in cc_ids %}selected{% endif %}>{{ cc.numero }} - {{ cc.departamento }} {% if cc.pmb_efetivo == 'sim' %}(PMB){% else %}(Fazenda){% endif %}</option>
@@ -240,8 +270,14 @@ tr.vc-row-hidden{display:none;}
         </select>
       </div>
 
-      <div class="vc-field grow">
-        <label for="fFornecedor">Fornecedor (um ou vários)</label>
+      <div class="vc-field grow{% if fornecedor_exc %} is-exceto{% endif %}">
+        <div class="vc-field-headrow">
+          <label for="fFornecedor">Fornecedor (um ou vários)</label>
+          <label class="vc-exc-switch" title="Inverte a seleção: mostra tudo, exceto os fornecedores marcados">
+            <input type="checkbox" id="fFornecedorExc" name="fornecedor_exc" value="1" {% if fornecedor_exc %}checked{% endif %}>
+            <span>Exceto</span>
+          </label>
+        </div>
         <select id="fFornecedor" name="fornecedor" multiple class="select2-filter">
           {% for f in fornecedores_opts %}
           <option value="{{ f.id }}" {% if f.id in fornecedor_ids %}selected{% endif %}>{{ f.nome }}</option>
@@ -282,7 +318,7 @@ tr.vc-row-hidden{display:none;}
       </div>
     </form>
   </div>
-  <p class="vc-note">Licenças não possuem subtipo próprio — ao filtrar por subtipo, as linhas de licença ficam ocultas do relatório. Fornecedor considera o fornecedor da locação (Locação), do equipamento (Patrimônio) ou da licença (Licença), conforme a linha. Sem marcar nada, Status mostra só equipamento Ativo (padrão anterior); marque outros status para ver também Backup/Manutenção/Defeito/etc. — não afeta linhas de Licença (sempre "Atribuída").</p>
+  <p class="vc-note">Licenças não possuem subtipo próprio — ao filtrar por subtipo, as linhas de licença ficam ocultas do relatório. Fornecedor considera o fornecedor da locação (Locação), do equipamento (Patrimônio) ou da licença (Licença), conforme a linha. Sem marcar nada, Status mostra só equipamento Ativo (padrão anterior); marque outros status para ver também Backup/Manutenção/Defeito/etc. — não afeta linhas de Licença (sempre "Atribuída"). Marque <strong>Exceto</strong> ao lado de Subtipo, Centro de Custo ou Fornecedor para inverter a seleção: em vez de mostrar só os marcados, mostra todos <em>menos</em> os marcados.</p>
 
   <div class="vc-kpis">
     <div class="vc-kpi"><div class="vc-kpi-label">Linhas</div><div class="vc-kpi-val tabular">{{ kpi_total_linhas }}</div></div>
@@ -440,6 +476,17 @@ tr.vc-row-hidden{display:none;}
   if (window.jQuery && jQuery.fn.select2) {
     jQuery('.select2-filter').select2({ width: '100%', placeholder: 'Todos', allowClear: true });
   }
+
+  // Toggle "Exceto": só um reflexo visual (borda/etiqueta em vermelho) do
+  // checkbox — quem decide "incluir" x "excluir" de fato é o backend, a
+  // partir do mesmo par campo/campo_exc enviado no GET.
+  document.querySelectorAll('.vc-exc-switch input[type="checkbox"]').forEach(function(cb){
+    var field = cb.closest('.vc-field');
+    if (!field) return;
+    cb.addEventListener('change', function(){
+      field.classList.toggle('is-exceto', cb.checked);
+    });
+  });
 
   document.querySelectorAll('.vc-grouphead').forEach(function(head){
     head.addEventListener('click', function(){

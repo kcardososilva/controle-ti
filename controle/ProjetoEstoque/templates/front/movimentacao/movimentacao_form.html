@@ -415,6 +415,68 @@ body.theme-dark :where(.mvf-page, .select2-container, .select2-dropdown) {
 .mvf-note > i { color: var(--mvf-brand); margin-top: 0.15rem; flex: 0 0 auto; }
 .mvf-note .mvf-note-body { font-size: 0.84rem; line-height: 1.5; color: var(--mvf-text); }
 
+.mvf-note--warning {
+  border-left-color: var(--mvf-warning);
+  background: color-mix(in srgb, var(--mvf-warning) 8%, var(--mvf-surface-soft));
+}
+.mvf-note--warning > i { color: var(--mvf-warning); }
+.mvf-note--warning a {
+  color: var(--mvf-brand);
+  text-decoration: none;
+}
+.mvf-note--warning a:hover { text-decoration: underline; }
+
+/* =========================================================
+   CARD "COLABORADOR DESLIGADO" (checkbox destacado, devolução)
+   ========================================================= */
+.mvf-check-card {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.9rem 1rem;
+  border-radius: var(--mvf-radius-md);
+  background: var(--mvf-surface-soft);
+  border: 1px solid var(--mvf-hair);
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.mvf-check-card:hover { border-color: var(--mvf-danger); }
+.mvf-check-card input[type="checkbox"] {
+  margin-top: 0.2rem;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--mvf-danger);
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+.mvf-check-card-text { display: flex; flex-direction: column; gap: 0.2rem; }
+.mvf-check-card-text strong { font-size: 0.9rem; color: var(--mvf-text); }
+.mvf-check-card-text span { font-size: 0.8rem; color: var(--mvf-muted); line-height: 1.45; }
+.mvf-check-card:has(input:checked) {
+  background: color-mix(in srgb, var(--mvf-danger) 7%, var(--mvf-surface-soft));
+  border-color: color-mix(in srgb, var(--mvf-danger) 35%, var(--mvf-hair));
+}
+
+.mvf-termo-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--mvf-radius-md);
+  background: var(--mvf-brand-soft);
+  border: 1px solid color-mix(in srgb, var(--mvf-brand) 30%, transparent);
+  color: var(--mvf-brand);
+  font-size: 0.84rem;
+  font-weight: 650;
+  text-decoration: none;
+  transition: background .15s ease, border-color .15s ease;
+}
+.mvf-termo-link:hover {
+  background: color-mix(in srgb, var(--mvf-brand) 14%, var(--mvf-brand-soft));
+  border-color: var(--mvf-brand);
+}
+
 /* =========================================================
    ALERTAS / ERROS
    ========================================================= */
@@ -743,6 +805,26 @@ body.theme-dark :where(.mvf-page, .select2-container, .select2-dropdown) {
             </div>
           </div>
 
+          <div class="col-12 mov-form-group hidden" data-f="colaborador_desligado">
+            <label class="mvf-check-card" for="id_colaborador_desligado">
+              {{ form.colaborador_desligado }}
+              <div class="mvf-check-card-text">
+                <strong>O colaborador está sendo desligado?</strong>
+                <span>Ao marcar, TODOS os equipamentos e licenças ativas deste colaborador serão devolvidos automaticamente ao estoque, e o cadastro dele será marcado como desligado.</span>
+              </div>
+            </label>
+
+            <a id="desligamentoTermoLink" href="#" target="_blank" rel="noopener" class="mvf-termo-link">
+              <i class="fa-solid fa-file-word" aria-hidden="true"></i>
+              Gerar termo de devolução (desligamento) — lista todos os equipamentos num único documento para imprimir e assinar
+            </a>
+
+            <div id="desligamentoResumo" class="mvf-note mvf-note--warning hidden" style="margin-top:0.6rem;">
+              <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+              <div class="mvf-note-body" id="desligamentoResumoTexto"></div>
+            </div>
+          </div>
+
           <div class="col-6 mov-form-group hidden" data-f="usuario">
             <label for="id_usuario" id="label_usuario">
               Usuário Responsável <span class="required-mark">*</span>
@@ -888,6 +970,8 @@ body.theme-dark :where(.mvf-page, .select2-container, .select2-dropdown) {
 <script>
 $(document).ready(function() {
   const lotesUrl = "{% url 'api_lotes_por_item' %}";
+  // placeholder "0" — trocado pelo usuario_id real ao exibir o resumo de desligamento
+  const termoDesligamentoUrlBase = "{% url 'termo_desligamento_form' usuario_id=0 %}";
 
   $('select.form-control').select2({
     width: '100%',
@@ -960,6 +1044,7 @@ $(document).ready(function() {
     'lote_entrada',
     'tipo_transferencia',
     'devolucao_info',
+    'colaborador_desligado',
     'usuario',
     'quantidade',
     'numero_pedido',
@@ -1057,12 +1142,19 @@ $(document).ready(function() {
         $('[data-f="usuario"]').addClass('hidden');
         $('[data-f="centro_custo_destino"]').addClass('hidden');
         $('[data-f="devolucao_info"]').removeClass('hidden');
+        $('[data-f="colaborador_desligado"]').removeClass('hidden');
         carregarInfoDevolucao();
       } else {
         $('[data-f="usuario"]').removeClass('hidden');
         $('[data-f="centro_custo_destino"]').removeClass('hidden');
         $('[data-f="devolucao_info"]').addClass('hidden');
+        $('[data-f="colaborador_desligado"]').addClass('hidden');
+        $('#id_colaborador_desligado').prop('checked', false);
+        $('#desligamentoResumo').addClass('hidden');
       }
+    } else {
+      $('#id_colaborador_desligado').prop('checked', false);
+      $('#desligamentoResumo').addClass('hidden');
     }
 
     setLabelContext(type);
@@ -1078,9 +1170,15 @@ $(document).ready(function() {
     $content.hide().empty();
     $none.hide();
 
+    // Reseta o card de desligamento a cada troca de item — o resumo é
+    // relativo ao colaborador vinculado ao item, que pode mudar.
+    $('#id_colaborador_desligado').prop('checked', false);
+    $('#desligamentoResumo').addClass('hidden');
+
     if (!itemId) {
       $loading.hide();
       $content.html('<span style="color:var(--text-tertiary,#777);">Selecione o item para ver o vínculo atual.</span>').show();
+      $('[data-f="colaborador_desligado"]').addClass('hidden');
       return;
     }
 
@@ -1096,6 +1194,10 @@ $(document).ready(function() {
         // A devolução precisa que o operador escolha QUAL colaborador está
         // devolvendo: revela o campo "Usuário" e lista quem está com o item.
         if (resp.compartilhado) {
+          // Item compartilhado pode ter vários detentores ao mesmo tempo —
+          // não dá para saber de antemão quem está desligando, então o card
+          // de desligamento em massa não se aplica aqui.
+          $('[data-f="colaborador_desligado"]').addClass('hidden');
           $('[data-f="usuario"]').removeClass('hidden');
           $('#label_usuario').html('<i class="fa fa-user"></i> Colaborador que está devolvendo <span style="color:#d00">*</span>');
 
@@ -1115,7 +1217,11 @@ $(document).ready(function() {
           return;
         }
 
-        if (!resp.tem_entrega) { $none.show(); return; }
+        if (!resp.tem_entrega) {
+          $('[data-f="colaborador_desligado"]').addClass('hidden');
+          $none.show();
+          return;
+        }
 
         const pessoa = resp.usuario
           ? '<b>' + $('<div>').text(resp.usuario).html() + '</b>'
@@ -1128,12 +1234,38 @@ $(document).ready(function() {
           'Item vinculado a ' + pessoa + '. Ao devolver, será registrado nesta pessoa ' +
           'e voltará automaticamente para o centro de custo ' + cc + '.'
         ).show();
+
+        // Colaborador já vinculado e identificável → habilita o card de
+        // desligamento e prepara o resumo (equipamentos/licenças extras).
+        if (resp.desligamento) {
+          $('[data-f="colaborador_desligado"]').removeClass('hidden');
+
+          const d = resp.desligamento;
+          const partes = [];
+          if (d.outros_itens > 0) partes.push(d.outros_itens + ' outro(s) equipamento(s)');
+          if (d.licencas > 0) partes.push(d.licencas + ' licença(s)');
+
+          const texto = partes.length
+            ? ('Este colaborador também tem ' + partes.join(' e ') + ' ativos — serão devolvidos automaticamente junto com o desligamento.')
+            : 'Este colaborador não tem outros equipamentos ou licenças ativas além deste item.';
+
+          $('#desligamentoResumoTexto').text(texto);
+          $('#desligamentoTermoLink').attr('href', termoDesligamentoUrlBase.replace('0', d.usuario_id));
+          $('#desligamentoResumo').toggleClass('hidden', !$('#id_colaborador_desligado').is(':checked'));
+        } else {
+          $('[data-f="colaborador_desligado"]').addClass('hidden');
+        }
       },
       error: function () {
         $loading.hide();
       }
     });
   }
+
+  $('#id_colaborador_desligado').on('change', function () {
+    const temResumo = $('#desligamentoResumoTexto').text().trim().length > 0;
+    $('#desligamentoResumo').toggleClass('hidden', !(temResumo && this.checked));
+  });
 
   $('#id_tipo_movimentacao').on('change', updateLayout);
   $('#id_item').on('change', function () {

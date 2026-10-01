@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse, HttpResponse
-from django.db.models import Q, Case, When
+from django.db.models import Q, Case, When, Sum
 from django.core.paginator import Paginator
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -19,11 +19,11 @@ from openpyxl.utils import get_column_letter
 from ..models import (
     Usuario, CentroCusto, Localidade, Funcao,
     StatusUsuarioChoices, SimNaoChoices,
-    MovimentacaoLicenca, MovimentacaoItem, LicencaLote,
+    MovimentacaoLicenca, MovimentacaoItem, LicencaLote, Licenca,
     TipoMovLicencaChoices, ItemColaborador,
     TipoMovimentacaoChoices, TipoTransferenciaChoices,
 )
-from ..forms import UsuarioForm, ImportarUsuariosForm
+from ..forms import UsuarioForm, ImportarUsuariosForm, MovimentacaoLicencaForm
 from services.usuario_import_service import UsuarioImportService
 from services.busca_fts import buscar_usuario_ids
 
@@ -346,6 +346,60 @@ def usuario_desligar(request, pk):
 from services.usuario_import_service import UsuarioImportService
 
 
+def _licencas_disponiveis_para_popup():
+    """Licenças com saldo em algum lote, já serializadas — usadas no pop-up
+    "Vincular licenças" do cadastro/edição de colaborador (área
+    administrativa). Lista simples (não queryset) para virar JSON direto no
+    template via `json_script`, alimentando o filtro inteligente em JS."""
+    licencas = (
+        Licenca.objects
+        .annotate(saldo_total=Sum("lotes__quantidade_disponivel"))
+        .filter(saldo_total__gt=0)
+        .select_related("fornecedor")
+        .order_by("nome")
+    )
+
+    return [
+        {
+            "id": lic.pk,
+            "nome": lic.nome,
+            "fornecedor": lic.fornecedor.nome if lic.fornecedor_id else "",
+            "saldo": lic.saldo_total,
+        }
+        for lic in licencas
+    ]
+
+
+def _vincular_licencas_selecionadas(request, usuario):
+    """Cria a atribuição (MovimentacaoLicenca) de cada licença marcada no
+    pop-up do formulário de colaborador. Reaproveita `MovimentacaoLicencaForm`
+    (mesma tela de Movimentação de Licenças) para não duplicar a escolha de
+    lote/FIFO, o cálculo de valor_unitario e a checagem de duplicidade."""
+    licenca_ids = [v for v in request.POST.getlist("licencas_vincular") if v]
+    total = 0
+
+    for licenca_id in licenca_ids:
+        form = MovimentacaoLicencaForm(data={
+            "tipo": TipoMovLicencaChoices.ATRIBUICAO,
+            "licenca": licenca_id,
+            "usuario": usuario.pk,
+            "observacao": "Vinculada no cadastro do colaborador (área administrativa).",
+        })
+
+        if form.is_valid():
+            form.save(user=request.user)
+            total += 1
+        else:
+            licenca_nome = Licenca.objects.filter(pk=licenca_id).values_list("nome", flat=True).first()
+            erro = next(iter(form.errors.values()), ["erro desconhecido"])[0]
+            messages.warning(
+                request,
+                f'Não foi possível vincular a licença "{licenca_nome or licenca_id}": {erro}',
+            )
+
+    return total
+
+
 @login_required
 def usuario_create(request):
     if request.method == "POST":
@@ -362,7 +416,13 @@ def usuario_create(request):
 
             obj.save()
 
-            messages.success(request, "Funcionário criado com sucesso.")
+            msg = "Funcionário criado com sucesso."
+            if obj.area_administrativa:
+                n = _vincular_licencas_selecionadas(request, obj)
+                if n:
+                    msg += f" {n} licença(s) vinculada(s) automaticamente."
+
+            messages.success(request, msg)
             return redirect("usuario_list")
 
         messages.error(request, "Corrija os erros do formulário.")
@@ -376,6 +436,7 @@ def usuario_create(request):
         {
             "form": form,
             "editar": False,
+            "licencas_disponiveis": _licencas_disponiveis_para_popup(),
         }
     )
 
@@ -480,12 +541,23 @@ def usuario_update(request, pk: int):
             sobj = form.save(commit=False)
             sobj.atualizado_por = request.user
             sobj.save()
-            messages.success(request, "Usuário atualizado com sucesso!")
+
+            msg = "Usuário atualizado com sucesso!"
+            if sobj.area_administrativa:
+                n = _vincular_licencas_selecionadas(request, sobj)
+                if n:
+                    msg += f" {n} licença(s) vinculada(s) automaticamente."
+
+            messages.success(request, msg)
             return redirect("usuario_list")
         messages.error(request, "Corrija os erros do formulário.")
     else:
         form = UsuarioForm(instance=obj)
-    return render(request, "front/usuarios/usuario_form.html", {"form": form, "editar": True})
+    return render(request, "front/usuarios/usuario_form.html", {
+        "form": form,
+        "editar": True,
+        "licencas_disponiveis": _licencas_disponiveis_para_popup(),
+    })
 
 
 # DETAIL

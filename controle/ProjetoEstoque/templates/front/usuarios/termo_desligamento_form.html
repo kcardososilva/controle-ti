@@ -1,0 +1,577 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ titulo }}{% endblock %}
+{% block page_title %}{{ titulo }}{% endblock %}
+{% block page_subtitle %}{{ subtitulo }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'usuario_list' %}">Funcionários</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'usuario_detail' usuario.pk %}">{{ usuario.nome|truncatechars:32 }}</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Termo de Desligamento</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'usuario_detail' usuario.pk %}" class="btn btn-sm">
+  <i class="fa fa-arrow-left" aria-hidden="true"></i>
+  Voltar
+</a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+
+<style>
+/* Paleta Fluent 2 (Microsoft), igual ao termo individual de equipamento. */
+:where(.term-form-page, .select2-container, .select2-dropdown) {
+  --tf-text:  #242424;
+  --tf-muted: #616161;
+  --tf-soft:  #8a8886;
+
+  --tf-surface: #ffffff;
+  --tf-surface-soft:  #f0f0f0;
+  --tf-surface-muted: #ebebeb;
+
+  --tf-border: #e6e6e6;
+  --tf-border-strong: #d6d6d6;
+
+  --tf-brand: #0078d4;
+  --tf-brand-hover: #106ebe;
+  --tf-brand-soft: rgba(0, 120, 212, .08);
+  --tf-ring: rgba(0, 120, 212, .30);
+
+  --tf-danger: var(--danger, #d93025);
+  --tf-danger-soft: var(--danger-soft, rgba(217, 48, 37, .10));
+
+  --tf-radius-sm: 6px;
+  --tf-radius-md: 8px;
+  --tf-radius-lg: 10px;
+  --tf-radius-xl: 12px;
+
+  --tf-shadow: 0 1px 2px rgba(0,0,0,.06), 0 1px 1px rgba(0,0,0,.04);
+  --tf-shadow-md: 0 4px 12px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.05);
+
+  --tf-control-h: 40px;
+  --tf-transition: 150ms ease;
+  --tf-font: "Segoe UI", var(--font-display);
+}
+
+body.theme-dark :where(.term-form-page, .select2-container, .select2-dropdown) {
+  --tf-text:  #f1f2f5;
+  --tf-muted: #b7bcc6;
+  --tf-soft:  #8992a0;
+
+  --tf-surface: #1a1d24;
+  --tf-surface-soft:  #20242c;
+  --tf-surface-muted: #262a33;
+
+  --tf-border: #2a2e38;
+  --tf-border-strong: #363b47;
+
+  --tf-brand: #479ef5;
+  --tf-brand-hover: #62abf5;
+  --tf-brand-soft: rgba(71, 158, 245, .16);
+  --tf-ring: rgba(71, 158, 245, .35);
+}
+
+.term-form-page,
+.term-form-page * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.term-form-page {
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  color: var(--tf-text);
+  font-family: var(--tf-font);
+}
+
+.tf-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.tf-card,
+.tf-info-item {
+  background: var(--tf-surface);
+  border: 1px solid var(--tf-border);
+  box-shadow: var(--tf-shadow);
+}
+
+.tf-card {
+  border-radius: var(--tf-radius-xl);
+  overflow: hidden;
+}
+
+.tf-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--tf-border);
+  background: color-mix(in srgb, var(--tf-surface) 92%, var(--tf-brand) 2%);
+}
+
+.tf-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--tf-text);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.016em;
+}
+
+.tf-card-title i {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--tf-brand-soft);
+  color: var(--tf-brand);
+}
+
+.tf-card-badge {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--tf-brand-soft);
+  color: var(--tf-brand);
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.tf-card-body {
+  padding: clamp(14px, 2.3vw, 20px);
+}
+
+.tf-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 14px;
+}
+
+.tf-info-item {
+  border-radius: var(--tf-radius-md);
+  padding: 14px;
+}
+
+.tf-info-label,
+.tf-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--tf-muted);
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.tf-info-value {
+  margin-top: 7px;
+  color: var(--tf-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.tf-equip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tf-equip-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--tf-radius-md);
+  background: var(--tf-surface-soft);
+  border: 1px solid var(--tf-border);
+}
+
+.tf-equip-row-num {
+  flex: 0 0 auto;
+  min-width: 22px;
+  color: var(--tf-brand);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tf-equip-row-text {
+  min-width: 0;
+  color: var(--tf-text);
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.tf-equip-row-text strong {
+  font-weight: 650;
+}
+
+.tf-equip-row-text span {
+  color: var(--tf-muted);
+}
+
+.tf-empty {
+  padding: 18px;
+  text-align: center;
+  color: var(--tf-muted);
+  font-size: 13.5px;
+}
+
+.tf-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.tf-col-12 { grid-column: span 12; }
+.tf-col-6 { grid-column: span 6; }
+
+.tf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.term-form-page input[type="text"],
+.term-form-page input[type="number"],
+.term-form-page input[type="date"],
+.term-form-page input[type="email"],
+.term-form-page select,
+.term-form-page textarea {
+  width: 100%;
+  min-height: var(--tf-control-h);
+  padding: 9px 12px;
+  border-radius: var(--tf-radius-sm);
+  border: 1px solid var(--tf-border-strong);
+  background: var(--tf-surface);
+  color: var(--tf-text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color var(--tf-transition), box-shadow var(--tf-transition), background var(--tf-transition);
+}
+
+.term-form-page textarea {
+  min-height: 108px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.term-form-page input:focus,
+.term-form-page select:focus,
+.term-form-page textarea:focus {
+  border-color: var(--tf-brand);
+  box-shadow: 0 0 0 4px var(--tf-ring);
+}
+
+.tf-hint {
+  color: var(--tf-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.errorlist {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--tf-danger);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.tf-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.tf-btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: var(--tf-radius-sm);
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--tf-transition), border-color var(--tf-transition), color var(--tf-transition);
+}
+
+.tf-btn:active { transform: scale(.98); }
+
+.tf-btn-primary {
+  background: var(--tf-brand);
+  border-color: var(--tf-brand);
+  color: #fff;
+}
+
+.tf-btn-primary:hover {
+  background: var(--tf-brand-hover);
+  border-color: var(--tf-brand-hover);
+  color: #fff;
+}
+
+.tf-btn-primary:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.tf-btn-secondary {
+  background: transparent;
+  border-color: var(--tf-border-strong);
+  color: var(--tf-text);
+}
+
+.tf-btn-secondary:hover {
+  background: color-mix(in srgb, var(--tf-text) 5%, transparent);
+  color: var(--tf-text);
+}
+
+/* Select2 */
+.select2-container {
+  width: 100% !important;
+}
+
+.select2-container .select2-selection--single {
+  min-height: var(--tf-control-h) !important;
+  border: 1px solid var(--tf-border-strong) !important;
+  border-radius: var(--tf-radius-sm) !important;
+  background: var(--tf-surface) !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  color: var(--tf-text) !important;
+  line-height: 40px !important;
+  padding-left: 12px !important;
+  padding-right: 34px !important;
+  font-size: 14px !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 40px !important;
+  right: 8px !important;
+}
+
+.select2-container--default.select2-container--focus .select2-selection--single {
+  border-color: var(--tf-brand) !important;
+  box-shadow: 0 0 0 4px var(--tf-ring) !important;
+}
+
+.select2-dropdown {
+  z-index: 9999 !important;
+  border: 1px solid var(--tf-border-strong) !important;
+  border-radius: var(--tf-radius-md) !important;
+  background: var(--tf-surface) !important;
+  color: var(--tf-text) !important;
+  overflow: hidden;
+  box-shadow: var(--tf-shadow-md);
+}
+
+@media (max-width: 760px) {
+  .tf-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .tf-col-6 {
+    grid-column: span 12;
+  }
+
+  .tf-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .tf-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .tf-hero,
+  .tf-card-body,
+  .tf-card-header,
+  .tf-info-item {
+    padding: 12px;
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="term-form-page">
+  <div class="tf-shell">
+
+    <section class="tf-card">
+      <div class="tf-card-header">
+        <div class="tf-card-title">
+          <i class="fa fa-circle-info" aria-hidden="true"></i>
+          Colaborador
+        </div>
+      </div>
+
+      <div class="tf-card-body">
+        <div class="tf-info-grid">
+          <div class="tf-info-item">
+            <div class="tf-info-label">Nome</div>
+            <div class="tf-info-value">{{ usuario.nome }}</div>
+          </div>
+          <div class="tf-info-item">
+            <div class="tf-info-label">Matrícula</div>
+            <div class="tf-info-value">{{ usuario.matricula|default:"-" }}</div>
+          </div>
+          <div class="tf-info-item">
+            <div class="tf-info-label">Centro de Custo</div>
+            <div class="tf-info-value">{{ usuario.centro_custo.departamento|default:"-" }}</div>
+          </div>
+          <div class="tf-info-item">
+            <div class="tf-info-label">Localidade</div>
+            <div class="tf-info-value">{{ usuario.localidade.local|default:"-" }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tf-card">
+      <div class="tf-card-header">
+        <div class="tf-card-title">
+          <i class="fa fa-boxes-stacked" aria-hidden="true"></i>
+          Equipamentos que entrarão no termo
+        </div>
+        <span class="tf-card-badge">{{ itens|length }} equipamento(s)</span>
+      </div>
+
+      <div class="tf-card-body">
+        {% if itens %}
+        <div class="tf-equip-list">
+          {% for item in itens %}
+          <div class="tf-equip-row">
+            <span class="tf-equip-row-num">{{ forloop.counter }}.</span>
+            <span class="tf-equip-row-text">
+              <strong>{{ item.nome }}</strong>
+              <span> — Série: {{ item.numero_serie|default:"-" }} — Modelo: {{ item.modelo|default:"-" }}</span>
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="tf-empty">Este colaborador não possui equipamentos ativos no momento.</div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="tf-card">
+      <div class="tf-card-header">
+        <div class="tf-card-title">
+          <i class="fa fa-file-word" aria-hidden="true"></i>
+          Dados do Termo
+        </div>
+      </div>
+
+      <div class="tf-card-body">
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          {% if form.non_field_errors %}
+            <div class="errorlist" style="margin-bottom:12px;">{{ form.non_field_errors }}</div>
+          {% endif %}
+
+          <div class="tf-grid">
+            <div class="tf-col-6 tf-field">
+              <label class="tf-label" for="{{ form.numero_termo.id_for_label }}">Número do Termo</label>
+              {{ form.numero_termo }}
+              <small class="tf-hint">Deixe em branco para gerar automaticamente: colaborador - centro de custo.</small>
+              {{ form.numero_termo.errors }}
+            </div>
+
+            <div class="tf-col-6 tf-field">
+              <label class="tf-label" for="{{ form.numero_chamado.id_for_label }}">Número do Chamado</label>
+              {{ form.numero_chamado }}
+              {{ form.numero_chamado.errors }}
+            </div>
+
+            <div class="tf-col-6 tf-field">
+              <label class="tf-label" for="{{ form.estabelecimento.id_for_label }}">Estabelecimento</label>
+              {{ form.estabelecimento }}
+              {{ form.estabelecimento.errors }}
+            </div>
+
+            <div class="tf-col-6 tf-field">
+              <label class="tf-label" for="{{ form.responsavel_ti_nome.id_for_label }}">Responsável do TI</label>
+              {{ form.responsavel_ti_nome }}
+              {{ form.responsavel_ti_nome.errors }}
+            </div>
+
+            <div class="tf-col-12 tf-field">
+              <label class="tf-label" for="{{ form.acessorios.id_for_label }}">Acessórios</label>
+              {{ form.acessorios }}
+              {{ form.acessorios.errors }}
+            </div>
+
+            <div class="tf-col-12 tf-field">
+              <label class="tf-label" for="{{ form.observacoes.id_for_label }}">Observações do Termo</label>
+              {{ form.observacoes }}
+              {{ form.observacoes.errors }}
+            </div>
+          </div>
+
+          <div class="tf-actions">
+            <a href="{% url 'usuario_detail' usuario.pk %}" class="tf-btn tf-btn-secondary">
+              <i class="fa fa-arrow-left" aria-hidden="true"></i>
+              Voltar
+            </a>
+
+            <button type="submit" class="tf-btn tf-btn-primary" {% if not itens %}disabled{% endif %}>
+              <i class="fa fa-file-word" aria-hidden="true"></i>
+              Gerar Documento
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+$(document).ready(function() {
+  const $estabelecimento = $('#id_estabelecimento');
+  if ($estabelecimento.length) {
+    $estabelecimento.select2({
+      width: '100%',
+      minimumResultsForSearch: Infinity
+    });
+  }
+});
+</script>
+{% endblock %}

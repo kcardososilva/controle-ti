@@ -50,6 +50,7 @@ urlpatterns = [
     # ── Fornecedores ────────────────────────────────────────────────────────
     path("fornecedores/", views.fornecedor_list, name="fornecedor_list"),
     path("fornecedores/novo/", views.fornecedor_create, name="fornecedor_create"),
+    path("fornecedores/rapido/", views.fornecedor_quick_create, name="fornecedor_quick_create"),
     path("fornecedores/pdf/", views.fornecedor_export_pdf, name="fornecedor_export_pdf"),
     path("fornecedores/acessos/", views.fornecedor_acessos_list, name="fornecedor_acessos_list"),
     path("fornecedores/acessos/<int:pk>/acao/", views.fornecedor_acesso_acao, name="fornecedor_acesso_acao"),
@@ -72,6 +73,7 @@ urlpatterns = [
     path("usuarios/<int:pk>/excluir/", views.usuario_delete, name="usuario_delete"),
     path("usuarios/<int:pk>/desligar/", views.usuario_desligar, name="usuario_desligar"),
     path("usuarios/<int:pk>/remover-todas-licencas/", views.usuario_remover_todas_licencas, name="usuario_remover_todas_licencas"),
+    path("usuarios/<int:usuario_id>/termo/desligamento/", views.termo_desligamento_form, name="termo_desligamento_form"),
 
     # ── Equipamentos / Itens ────────────────────────────────────────────────
     path("equipamentos/", views.equipamentos_list, name="equipamentos_list"),
@@ -103,9 +105,12 @@ urlpatterns = [
     # ── Movimentações ───────────────────────────────────────────────────────
     path("movimentacoes/", views.movimentacao_list, name="movimentacao_list"),
     path("movimentacoes/nova/", views.movimentacao_create, name="movimentacao_create"),
+    path("movimentacoes/lote/", views.movimentacao_lote_create, name="movimentacao_lote_create"),
+    path("movimentacoes/lote/termo/", views.movimentacao_lote_termo, name="movimentacao_lote_termo"),
     path("movimentacoes/pdf/", views.movimentacao_export_pdf, name="movimentacao_export_pdf"),
     path("movimentacoes/api/lotes-por-item/", views.api_lotes_por_item, name="api_lotes_por_item"),
     path("movimentacoes/api/item-devolucao-info/", views.api_item_devolucao_info, name="api_item_devolucao_info"),
+    path("movimentacoes/api/itens-disponiveis-lote/", views.api_itens_disponiveis_lote, name="api_itens_disponiveis_lote"),
     path("movimentacoes/termos/", views.repositorio_termos, name="repositorio_termos"),
     path("movimentacoes/<int:pk>/", views.movimentacao_detail, name="movimentacao_detail"),
     path("movimentacoes/<int:pk>/editar/", views.movimentacao_update, name="movimentacao_update"),
@@ -273,6 +278,7 @@ urlpatterns = [
     path("quiosque/<int:pk>/",         views.quiosque_detalhe,       name="quiosque_detalhe"),
     path("quiosque/<int:pk>/mapa/atualizar/",     views.quiosque_mapa_atualizar,     name="quiosque_mapa_atualizar"),
     path("quiosque/<int:pk>/checkins/exportar/",  views.quiosque_checkins_exportar,  name="quiosque_checkins_exportar"),
+    path("quiosque/<int:pk>/mapa/exportar/",     views.quiosque_mapa_exportar,      name="quiosque_mapa_exportar"),
     path("quiosque/<int:pk>/config/",  views.quiosque_config_editar, name="quiosque_config_editar"),
     path("quiosque/<int:pk>/comando/", views.quiosque_comando_novo,  name="quiosque_comando_novo"),
     path("quiosque/<int:pk>/revogar/", views.quiosque_revogar,       name="quiosque_revogar"),
@@ -304,6 +310,7 @@ urlpatterns = [
 
     # ── Portal de Licenças Office (área isolada p/ parceiros externos, ex.: Routerlink) ──
     path("portal-licencas/", views.portal_licencas_office_list, name="portal_licencas_office_list"),
+    path("portal-licencas/colaboradores/", views.portal_licencas_colaboradores_list, name="portal_licencas_colaboradores_list"),
     path("portal-licencas/<int:pk>/editar/", views.portal_licencas_office_editar, name="portal_licencas_office_editar"),
     path("portal-licencas/equipamentos/<int:item_pk>/vincular/", views.portal_licencas_office_vincular, name="portal_licencas_office_vincular"),
     path("portal-licencas/equipamentos/<int:item_pk>/desvincular/", views.portal_licencas_office_desvincular, name="portal_licencas_office_desvincular"),

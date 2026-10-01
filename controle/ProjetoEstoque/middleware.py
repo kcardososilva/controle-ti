@@ -155,25 +155,45 @@ class TVAccessMiddleware:
         return _GRUPO_TV in _grupos_do_usuario(user)
 
 
-# ─── Middleware: Portal do Fornecedor ─────────────────────────────────────────
+# ─── Middleware: Portais externos (Fornecedor / Parceiro de Licenças) ─────────
+#
+# Um mesmo login pode pertencer aos dois grupos ao mesmo tempo (ex.: um
+# fornecedor que também é parceiro de licenças de software) — cada middleware
+# abaixo libera as URLs do SEU próprio portal e também as do(s) outro(s)
+# portal(is) a que o usuário pertença, em vez de expulsá-lo só por não estar
+# na própria área. Sem isso, pertencer aos dois grupos gerava um loop de
+# redirecionamento (cada middleware jogava o usuário pra URL do outro).
 
-from ProjetoEstoque.models import GRUPO_FORNECEDOR  # noqa: E402
+from ProjetoEstoque.models import GRUPO_FORNECEDOR, GRUPO_PARCEIRO_LICENCA  # noqa: E402
 
-_FORNECEDOR_PERMITIDO = re.compile(
-    r'^(/portal/'                   # área isolada do fornecedor
-    r'|/static/'                    # arquivos estáticos
-    r'|/media/'                     # uploads (fotos/termos do item)
-    r'|/login/'                     # login
-    r'|/logout/'                    # logout
-    r')'
-)
+_COMUM_PERMITIDO = ('/static/', '/media/', '/login/', '/logout/')
+
+# grupo → prefixo de URL do respectivo portal
+_PORTAL_POR_GRUPO = {
+    GRUPO_FORNECEDOR: '/portal/',
+    GRUPO_PARCEIRO_LICENCA: '/portal-licencas/',
+}
+
+
+def _prefixos_de_portais_do_usuario(user):
+    """Prefixos de URL de TODOS os portais externos a que o usuário pertence."""
+    grupos = _grupos_do_usuario(user)
+    return [prefixo for grupo, prefixo in _PORTAL_POR_GRUPO.items() if grupo in grupos]
+
+
+def _path_liberado_para_portais(path, user) -> bool:
+    if path.startswith(_COMUM_PERMITIDO):
+        return True
+    return any(path.startswith(prefixo) for prefixo in _prefixos_de_portais_do_usuario(user))
 
 
 class FornecedorAccessMiddleware:
     """
     Usuários do grupo 'Fornecedor' (Portal do Fornecedor) só podem acessar as
-    URLs sob /portal/. Qualquer outra rota é redirecionada para /portal/.
-    Usuários staff e superusuários não são afetados.
+    URLs sob /portal/ — mais as de qualquer outro portal externo a que também
+    pertençam (ex.: /portal-licencas/, se também for Parceiro de Licenças).
+    Qualquer outra rota é redirecionada para /portal/. Usuários staff e
+    superusuários não são afetados.
 
     Espelha TVAccessMiddleware — é a 1ª das 3 camadas de isolamento
     (middleware + @fornecedor_required + queryset filtrado).
@@ -190,7 +210,7 @@ class FornecedorAccessMiddleware:
             and not user.is_staff
             and not user.is_superuser
             and self._is_fornecedor(user)
-            and not _FORNECEDOR_PERMITIDO.match(request.path)
+            and not _path_liberado_para_portais(request.path, user)
         ):
             return redirect('/portal/')
         return self.get_response(request)
@@ -200,30 +220,16 @@ class FornecedorAccessMiddleware:
         return GRUPO_FORNECEDOR in _grupos_do_usuario(user)
 
 
-# ─── Middleware: Portal de Licenças Office ────────────────────────────────────
-
-from ProjetoEstoque.models import GRUPO_PARCEIRO_LICENCA  # noqa: E402
-
-_LICENCA_PARCEIRO_PERMITIDO = re.compile(
-    r'^(/portal-licencas/'          # área isolada do parceiro de licenças
-    r'|/static/'                    # arquivos estáticos
-    r'|/login/'                     # login
-    r'|/logout/'                    # logout
-    r')'
-)
-
-
 class LicencaOfficeAccessMiddleware:
     """
     Usuários do grupo 'Parceiro de Licenças' (Portal de Licenças Office) só
-    podem acessar as URLs sob /portal-licencas/. Qualquer outra rota é
-    redirecionada pra lá. Usuários staff e superusuários não são afetados.
+    podem acessar as URLs sob /portal-licencas/ — mais as de qualquer outro
+    portal externo a que também pertençam (ex.: /portal/, se também for
+    Fornecedor). Qualquer outra rota é redirecionada pra lá. Usuários staff e
+    superusuários não são afetados.
 
     Espelha FornecedorAccessMiddleware — mesma defesa em profundidade, mas
-    para um módulo diferente. Um usuário não deveria pertencer aos dois
-    grupos ao mesmo tempo (cada um restringe às SUAS próprias URLs, então a
-    interseção deixaria o usuário sem nenhuma rota permitida) — combinação
-    tratada como erro de configuração do admin, não como caso a suportar.
+    para um módulo diferente.
     """
 
     def __init__(self, get_response):
@@ -237,7 +243,7 @@ class LicencaOfficeAccessMiddleware:
             and not user.is_staff
             and not user.is_superuser
             and self._is_parceiro_licenca(user)
-            and not _LICENCA_PARCEIRO_PERMITIDO.match(request.path)
+            and not _path_liberado_para_portais(request.path, user)
         ):
             return redirect('/portal-licencas/')
         return self.get_response(request)

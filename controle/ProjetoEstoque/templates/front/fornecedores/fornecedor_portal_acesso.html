@@ -1,150 +1,532 @@
 {% extends 'base.html' %}
 
-{% block title %}Acesso ao Portal — {{ fornecedor.nome }}{% endblock %}
-{% block page_title %}Acesso ao Portal do Fornecedor{% endblock %}
+{% block title %}Acesso aos Portais — {{ fornecedor.nome }}{% endblock %}
+{% block page_title %}Acesso aos Portais{% endblock %}
 {% block page_subtitle %}{{ fornecedor.nome }}{% endblock %}
 
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'fornecedor_list' %}">Fornecedores</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'fornecedor_detail' fornecedor.pk %}">{{ fornecedor.nome|truncatechars:32 }}</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Acesso aos Portais</span>
+</nav>
+{% endblock %}
+
 {% block header_actions %}
-  <a href="{% url 'fornecedor_detail' fornecedor.pk %}" class="btn btn-light"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+  <a href="{% url 'fornecedor_acessos_list' %}" class="btn btn-sm"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Central de Acessos</a>
+  <a href="{% url 'fornecedor_detail' fornecedor.pk %}" class="btn btn-sm"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Voltar</a>
 {% endblock %}
 
 {% block extra_css %}
 <style>
-  :where(.facc-page) {
-    /* Leve inclinação para Segoe UI (Office) nesta tela, com fallback pro
-       stack padrão do app — troca não é global, só escopada aqui. */
-    --facc-font: "Segoe UI", var(--font-display);
-  }
-  .facc-page { max-width: 46rem; display: grid; gap: 1.1rem; font-family: var(--facc-font); }
-  .facc-page .facc-card {
-    background: var(--bg-elevated); border: 1px solid var(--separator-hairline);
-    border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 1.4rem 1.5rem;
-  }
-  .facc-page .facc-status {
-    display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; margin-bottom: 1rem;
-    padding: .9rem 1.1rem; border-radius: var(--radius-md); background: var(--bg-fill-tertiary, rgba(120,120,128,.08));
-  }
-  .facc-page .facc-badge { display: inline-flex; align-items: center; gap: .45rem; padding: .3rem .7rem; border-radius: 980px; font-size: .76rem; font-weight: 800; }
-  .facc-page .facc-badge.on  { color: #34c759; background: rgba(52,199,89,.14); }
-  .facc-page .facc-badge.off { color: #ff3b30; background: rgba(255,59,48,.12); }
-  .facc-page h2 { font-size: 1.05rem; font-weight: 800; margin-bottom: 1rem; }
-  .facc-page .facc-field { display: grid; gap: .4rem; margin-bottom: 1rem; }
-  .facc-page .facc-field label { font-size: .82rem; font-weight: 700; color: var(--text-secondary); }
-  .facc-page .facc-field input {
-    min-height: 2.8rem; padding: .6rem .9rem; border-radius: var(--radius-md);
-    border: 1px solid var(--separator-non-opaque, rgba(0,0,0,.12)); background: var(--bg-page, #fff); color: var(--text-primary);
-  }
-  .facc-page .facc-field input[readonly] { opacity: .7; }
-  .facc-page .facc-hint { font-size: .76rem; color: var(--text-tertiary); }
-  .facc-page .facc-actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: .5rem; }
-  .facc-page .btn-brand { background: var(--brand); border: 1px solid var(--brand); color: #fff; }
-  .facc-page .btn-brand:hover { background: var(--brand-hover); color: #fff; }
-  .facc-page .facc-note { display: flex; gap: .6rem; font-size: .82rem; color: var(--text-tertiary); }
-  .facc-page .facc-note i { color: var(--brand); margin-top: .15rem; }
+/* =========================================================
+   ACESSO AOS PORTAIS — mesma família visual de usuarios/
+   (page-header, KPI cards com halo, painéis corporativos),
+   com prefixo .pa- e tokens próprios pra não vazar pro resto.
+   ========================================================= */
+:where(.pa-page) {
+  --pa-primary: var(--brand);
+  --pa-primary-hover: var(--brand-hover);
+  --pa-primary-soft: var(--brand-soft);
+
+  --pa-surface: var(--bg-elevated);
+  --pa-fill: var(--bg-fill-tertiary, rgba(120,120,128,.08));
+  --pa-hover: var(--bg-hover);
+
+  --pa-text: var(--text-primary);
+  --pa-text-2: var(--text-secondary);
+  --pa-muted: var(--text-tertiary);
+  --pa-soft: var(--text-quaternary);
+
+  --pa-border: var(--separator-hairline);
+  --pa-border-strong: var(--separator-non-opaque);
+
+  --pa-success: var(--success, #34c759);
+  --pa-success-bg: var(--success-soft, rgba(52,199,89,.12));
+  --pa-warning: var(--warning, #ff9500);
+  --pa-warning-bg: var(--warning-soft, rgba(255,149,0,.14));
+  --pa-danger: var(--danger, #ff3b30);
+  --pa-danger-bg: var(--danger-soft, rgba(255,59,48,.12));
+
+  --pa-radius-sm: var(--radius-sm);
+  --pa-radius-md: var(--radius-md);
+  --pa-radius-lg: var(--radius-lg);
+  --pa-radius-xl: var(--radius-xl);
+  --pa-radius-pill: var(--radius-pill);
+
+  --pa-shadow-sm: var(--shadow-sm);
+  --pa-shadow-md: var(--shadow-md);
+
+  --pa-control-h: 2.8rem;
+  --pa-t: var(--transition-fast, 150ms ease);
+  --pa-font: "Segoe UI", var(--font-display);
+}
+
+.pa-page, .pa-page * { box-sizing: border-box; min-width: 0; }
+.pa-page { width: 100%; color: var(--pa-text); font-family: var(--pa-font); }
+.pa-shell { display: grid; gap: 16px; }
+
+.pa-page-header { margin-bottom: 0; }
+
+/* ── KPI strip ── */
+.pa-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
+.pa-kpi-card {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  min-height: 76px; padding: 12px 14px; overflow: hidden;
+  border: 1px solid var(--pa-border); border-radius: var(--pa-radius-md); background: var(--pa-surface);
+  transition: transform var(--pa-t), border-color var(--pa-t), box-shadow var(--pa-t);
+}
+.pa-kpi-card::before {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(circle at 92% 4%, color-mix(in srgb, var(--kpi-color, var(--pa-primary)) 16%, transparent) 0, transparent 34%);
+  pointer-events: none;
+}
+.pa-kpi-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--kpi-color, var(--pa-primary)) 28%, var(--pa-border-strong)); box-shadow: var(--pa-shadow-sm); }
+.pa-kpi-icon {
+  position: relative; z-index: 1; width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center;
+  border-radius: 11px; background: color-mix(in srgb, var(--kpi-color, var(--pa-primary)) 12%, transparent);
+  color: var(--kpi-color, var(--pa-primary)); border: 1px solid color-mix(in srgb, var(--kpi-color, var(--pa-primary)) 20%, transparent);
+  font-size: 13px;
+}
+.pa-kpi-info { position: relative; z-index: 1; display: grid; gap: 1px; min-width: 0; }
+.pa-kpi-label { color: var(--pa-muted); font-size: 10.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+.pa-kpi-value { color: var(--pa-text); font-size: 15px; font-weight: 700; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-kpi-sub { color: var(--pa-soft); font-size: 10.5px; line-height: 1.3; }
+
+/* ── Banner de vínculo inteligente ── */
+.pa-smart-banner {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 14px 18px; border-radius: var(--pa-radius-lg);
+  background: color-mix(in srgb, var(--pa-primary) 6%, var(--pa-surface)); border: 1px solid color-mix(in srgb, var(--pa-primary) 24%, var(--pa-border));
+}
+.pa-smart-banner-icon {
+  width: 40px; height: 40px; flex: 0 0 40px; display: grid; place-items: center; border-radius: 12px;
+  background: var(--pa-primary-soft); color: var(--pa-primary); font-size: 16px;
+}
+.pa-smart-banner-text { flex: 1; min-width: 220px; }
+.pa-smart-banner-text strong { display: block; font-size: 13.5px; font-weight: 700; color: var(--pa-text); }
+.pa-smart-banner-text span { display: block; margin-top: 2px; font-size: 12.5px; color: var(--pa-muted); }
+
+/* ── Grid dos dois painéis ── */
+.pa-panels { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; align-items: start; }
+
+.pa-panel {
+  border: 1px solid var(--pa-border); border-radius: var(--pa-radius-xl); background: var(--pa-surface);
+  overflow: hidden; box-shadow: var(--pa-shadow-sm);
+}
+.pa-panel-head {
+  display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--pa-border);
+  background: color-mix(in srgb, var(--pa-surface) 92%, var(--pa-primary) 2%);
+}
+.pa-panel-icon {
+  width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border-radius: 11px;
+  background: var(--pa-primary-soft); color: var(--pa-primary); font-size: 15px;
+}
+.pa-panel-title { min-width: 0; flex: 1; }
+.pa-panel-title strong { display: block; font-size: 14.5px; font-weight: 700; color: var(--pa-text); }
+.pa-panel-title span { display: block; margin-top: 1px; font-size: 12px; color: var(--pa-muted); }
+.pa-panel-body { padding: 18px; display: grid; gap: 14px; }
+
+/* Identidade (avatar + user + status) */
+.pa-identity { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pa-avatar {
+  width: 40px; height: 40px; flex: 0 0 40px; display: grid; place-items: center; border-radius: 13px;
+  background: var(--pa-primary-soft); color: var(--pa-primary); border: 1px solid color-mix(in srgb, var(--pa-primary) 18%, transparent);
+  font-size: 14px; font-weight: 700; text-transform: uppercase;
+}
+.pa-identity-copy { min-width: 0; flex: 1; }
+.pa-identity-name { font-size: 13.5px; font-weight: 700; color: var(--pa-text); overflow-wrap: anywhere; }
+.pa-identity-email { font-size: 12px; color: var(--pa-muted); overflow-wrap: anywhere; }
+
+.pa-status-pill {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 4px 11px;
+  border-radius: var(--pa-radius-pill); font-size: 11.5px; font-weight: 700; white-space: nowrap;
+}
+.pa-status-pill::before { content: ""; width: 6px; height: 6px; flex: 0 0 6px; border-radius: 999px; background: currentColor; }
+.pa-status-on { background: var(--pa-success-bg); color: var(--pa-success); }
+.pa-status-off { background: var(--pa-danger-bg); color: var(--pa-danger); }
+.pa-status-neutral { background: var(--pa-fill); color: var(--pa-muted); }
+
+/* Linhas de permissão (toggle rows) */
+.pa-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 11px 13px; border-radius: var(--pa-radius-md); background: var(--pa-fill);
+}
+.pa-row-copy { flex: 1; min-width: 160px; }
+.pa-row-copy strong { display: block; font-size: 12.5px; font-weight: 700; color: var(--pa-text); }
+.pa-row-copy span { display: block; margin-top: 1px; font-size: 11.5px; color: var(--pa-muted); line-height: 1.4; }
+
+.pa-page .pa-field { display: grid; gap: 6px; }
+.pa-page .pa-field label { font-size: 11.5px; font-weight: 700; color: var(--pa-text-2); text-transform: uppercase; letter-spacing: .02em; }
+.pa-page input[type="text"],
+.pa-page input[type="email"] {
+  width: 100%; min-height: var(--pa-control-h); padding: .6rem .9rem; border-radius: var(--pa-radius-sm);
+  border: 1px solid var(--pa-border-strong); background: var(--bg-page, #fff); color: var(--pa-text); font: inherit; font-size: 13.5px;
+  outline: none; transition: border-color var(--pa-t), box-shadow var(--pa-t);
+}
+.pa-page input:focus { border-color: var(--pa-primary); box-shadow: 0 0 0 4px var(--pa-primary-soft); }
+.pa-page input[readonly] { opacity: .65; }
+.pa-hint { font-size: 11.5px; color: var(--pa-muted); line-height: 1.4; }
+
+.pa-form-grid { display: grid; gap: 12px; }
+.pa-actions-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.pa-btn {
+  min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 8px 15px; border-radius: var(--pa-radius-pill); border: 1px solid var(--pa-border-strong);
+  background: transparent; color: var(--pa-text); font-size: 13px; font-weight: 600; white-space: nowrap;
+  cursor: pointer; text-decoration: none; transition: background var(--pa-t), border-color var(--pa-t), color var(--pa-t);
+}
+.pa-btn:hover { background: var(--pa-hover); }
+.pa-btn:active { transform: scale(.97); }
+.pa-btn-primary { background: var(--pa-primary); border-color: var(--pa-primary); color: #fff; }
+.pa-btn-primary:hover { background: var(--pa-primary-hover); border-color: var(--pa-primary-hover); color: #fff; }
+.pa-btn-danger { color: var(--pa-danger); border-color: color-mix(in srgb, var(--pa-danger) 30%, transparent); }
+.pa-btn-danger:hover { background: var(--pa-danger-bg); }
+
+.pa-divider { height: 1px; background: var(--pa-border); margin: 2px 0; }
+
+.pa-empty-state {
+  display: grid; justify-items: center; gap: 10px; padding: 28px 18px; text-align: center;
+}
+.pa-empty-state i {
+  width: 48px; height: 48px; display: grid; place-items: center; border-radius: 16px;
+  background: var(--pa-fill); color: var(--pa-soft); font-size: 19px;
+}
+.pa-empty-state p { max-width: 26rem; font-size: 12.5px; color: var(--pa-muted); line-height: 1.5; }
+
+.pa-note {
+  display: flex; gap: 10px; align-items: flex-start; padding: 12px 15px;
+  border-radius: var(--pa-radius-md); background: var(--pa-fill); font-size: 12px; color: var(--pa-muted); line-height: 1.5;
+}
+.pa-note i { color: var(--pa-primary); margin-top: 2px; flex: 0 0 auto; }
+
+@media (max-width: 1080px) {
+  .pa-kpi-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .pa-panels { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .pa-kpi-grid { grid-template-columns: 1fr; }
+  .pa-row { flex-direction: column; align-items: stretch; }
+  .pa-actions-row { display: grid; }
+  .pa-actions-row .pa-btn { width: 100%; }
+}
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="facc-page">
+<div class="pa-page">
+  <div class="pa-shell">
 
-  {% if perfil %}
-  <div class="facc-card">
-    <div class="facc-status">
-      <div style="flex:1; min-width:0;">
-        <div style="font-weight:800;">{{ perfil.usuario.username }}</div>
-        <div style="font-size:.82rem; color:var(--text-tertiary);">{{ perfil.usuario.email|default:"sem e-mail cadastrado" }}</div>
+    <section class="page-header pa-page-header">
+      <div class="page-header-main">
+        <div class="page-kicker">
+          <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+          Governança de Acessos Externos
+        </div>
+        <h2 class="page-heading">{{ fornecedor.nome }}</h2>
+        <p class="page-description">
+          Login, status e permissões deste fornecedor nos dois portais externos — Portal do Fornecedor (equipamentos e manutenção) e Portal de Licenças Office.
+        </p>
       </div>
-      {% if perfil.ativo %}
-        <span class="facc-badge on"><i class="fa-solid fa-circle-check"></i> Acesso ativo</span>
-      {% else %}
-        <span class="facc-badge off"><i class="fa-solid fa-circle-pause"></i> Acesso suspenso</span>
-      {% endif %}
+    </section>
+
+    <section class="pa-kpi-grid" aria-label="Indicadores de acesso">
+      <div class="pa-kpi-card" style="--kpi-color:{% if perfil %}{% if perfil.ativo %}var(--pa-success){% else %}var(--pa-danger){% endif %}{% else %}var(--pa-soft){% endif %};">
+        <div class="pa-kpi-icon"><i class="fa-solid fa-display" aria-hidden="true"></i></div>
+        <div class="pa-kpi-info">
+          <div class="pa-kpi-label">Portal do Fornecedor</div>
+          <div class="pa-kpi-value">{% if perfil %}{% if perfil.ativo %}Ativo{% else %}Suspenso{% endif %}{% else %}Não configurado{% endif %}</div>
+          {% if perfil %}<div class="pa-kpi-sub">{{ perfil.usuario.username }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="pa-kpi-card" style="--kpi-color:{% if perfil_lic %}{% if perfil_lic.ativo %}var(--pa-success){% else %}var(--pa-danger){% endif %}{% else %}var(--pa-soft){% endif %};">
+        <div class="pa-kpi-icon"><i class="fa-solid fa-file-shield" aria-hidden="true"></i></div>
+        <div class="pa-kpi-info">
+          <div class="pa-kpi-label">Portal de Licenças</div>
+          <div class="pa-kpi-value">{% if perfil_lic %}{% if perfil_lic.ativo %}Ativo{% else %}Suspenso{% endif %}{% else %}Não configurado{% endif %}</div>
+          {% if perfil_lic %}<div class="pa-kpi-sub">{{ perfil_lic.usuario.username }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="pa-kpi-card" style="--kpi-color:{% if perfil and perfil_lic and perfil.usuario_id == perfil_lic.usuario_id %}var(--pa-primary){% else %}var(--pa-soft){% endif %};">
+        <div class="pa-kpi-icon"><i class="fa-solid fa-link" aria-hidden="true"></i></div>
+        <div class="pa-kpi-info">
+          <div class="pa-kpi-label">Login compartilhado</div>
+          <div class="pa-kpi-value">{% if perfil and perfil_lic and perfil.usuario_id == perfil_lic.usuario_id %}Sim{% elif perfil and perfil_lic %}Não{% else %}—{% endif %}</div>
+          <div class="pa-kpi-sub">mesmo usuário nos 2 portais</div>
+        </div>
+      </div>
+
+      <div class="pa-kpi-card" style="--kpi-color:{% if perfil_lic.pode_ver_colaboradores %}var(--pa-success){% else %}var(--pa-soft){% endif %};">
+        <div class="pa-kpi-icon"><i class="fa-solid fa-users" aria-hidden="true"></i></div>
+        <div class="pa-kpi-info">
+          <div class="pa-kpi-label">Colaboradores</div>
+          <div class="pa-kpi-value">{% if not perfil_lic %}—{% elif perfil_lic.pode_ver_colaboradores %}Liberado{% else %}Bloqueado{% endif %}</div>
+          <div class="pa-kpi-sub">visão no Portal de Licenças</div>
+        </div>
+      </div>
+    </section>
+
+    {% if perfil and not perfil_lic %}
+    <div class="pa-smart-banner">
+      <div class="pa-smart-banner-icon"><i class="fa-solid fa-bolt" aria-hidden="true"></i></div>
+      <div class="pa-smart-banner-text">
+        <strong>Este fornecedor já tem login no Portal do Fornecedor ({{ perfil.usuario.username }})</strong>
+        <span>Conceda também o Portal de Licenças com um clique, reaproveitando o mesmo usuário — sem criar um segundo login.</span>
+      </div>
       <form method="post" style="margin:0;">
         {% csrf_token %}
-        <input type="hidden" name="acao" value="toggle">
-        <button type="submit" class="btn {% if perfil.ativo %}btn-light{% else %}btn-brand{% endif %}">
-          {% if perfil.ativo %}<i class="fa-solid fa-ban"></i> Suspender{% else %}<i class="fa-solid fa-play"></i> Reativar{% endif %}
-        </button>
+        <input type="hidden" name="acao" value="vincular_lic_existente">
+        <button type="submit" class="pa-btn pa-btn-primary"><i class="fa-solid fa-link" aria-hidden="true"></i> Conceder Portal de Licenças</button>
       </form>
     </div>
-
-    <div class="facc-status">
-      <div style="flex:1; min-width:0;">
-        <div style="font-weight:700; font-size:.88rem;">Notificação de Defeito</div>
-        <div style="font-size:.78rem; color:var(--text-tertiary);">Aviso por e-mail a este login quando um equipamento do fornecedor for marcado como Defeito.</div>
+    {% elif perfil_lic and perfil and perfil.usuario_id == perfil_lic.usuario_id %}
+    <div class="pa-smart-banner">
+      <div class="pa-smart-banner-icon"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></div>
+      <div class="pa-smart-banner-text">
+        <strong>Login unificado</strong>
+        <span>{{ perfil.usuario.username }} acessa os dois portais com a mesma senha — equipamentos e licenças.</span>
       </div>
-      {% if perfil.notificar_defeito_email %}
-        <span class="facc-badge on"><i class="fa-solid fa-bell"></i> Ativa</span>
-      {% else %}
-        <span class="facc-badge off"><i class="fa-solid fa-bell-slash"></i> Inativa</span>
-      {% endif %}
-      <form method="post" style="margin:0;">
-        {% csrf_token %}
-        <input type="hidden" name="acao" value="toggle_notificacao">
-        <button type="submit" class="btn btn-light">
-          {% if perfil.notificar_defeito_email %}<i class="fa-solid fa-bell-slash"></i> Desativar{% else %}<i class="fa-solid fa-bell"></i> Ativar{% endif %}
-        </button>
-      </form>
+    </div>
+    {% endif %}
+
+    <section class="pa-panels">
+
+      <!-- ───────────── Portal do Fornecedor ───────────── -->
+      <div class="pa-panel">
+        <div class="pa-panel-head">
+          <div class="pa-panel-icon"><i class="fa-solid fa-display" aria-hidden="true"></i></div>
+          <div class="pa-panel-title">
+            <strong>Portal do Fornecedor</strong>
+            <span>Equipamentos e manutenção</span>
+          </div>
+        </div>
+
+        <div class="pa-panel-body">
+          {% if perfil %}
+          <div class="pa-identity">
+            <div class="pa-avatar">{{ perfil.usuario.username|first }}</div>
+            <div class="pa-identity-copy">
+              <div class="pa-identity-name">{{ perfil.usuario.username }}</div>
+              <div class="pa-identity-email">{{ perfil.usuario.email|default:"sem e-mail cadastrado" }}</div>
+            </div>
+            {% if perfil.ativo %}
+              <span class="pa-status-pill pa-status-on">Ativo</span>
+            {% else %}
+              <span class="pa-status-pill pa-status-off">Suspenso</span>
+            {% endif %}
+          </div>
+
+          <div class="pa-row">
+            <div class="pa-row-copy">
+              <strong>Acesso ao portal</strong>
+              <span>Suspender bloqueia o login sem apagar o cadastro.</span>
+            </div>
+            <form method="post" style="margin:0;">
+              {% csrf_token %}
+              <input type="hidden" name="acao" value="toggle">
+              <button type="submit" class="pa-btn">
+                {% if perfil.ativo %}<i class="fa-solid fa-ban" aria-hidden="true"></i> Suspender{% else %}<i class="fa-solid fa-play" aria-hidden="true"></i> Reativar{% endif %}
+              </button>
+            </form>
+          </div>
+
+          <div class="pa-row">
+            <div class="pa-row-copy">
+              <strong>Notificação de Defeito</strong>
+              <span>E-mail a este login quando um equipamento do fornecedor virar Defeito.</span>
+            </div>
+            <form method="post" style="margin:0;">
+              {% csrf_token %}
+              <input type="hidden" name="acao" value="toggle_notificacao">
+              <button type="submit" class="pa-btn">
+                {% if perfil.notificar_defeito_email %}<i class="fa-solid fa-bell-slash" aria-hidden="true"></i> Desativar{% else %}<i class="fa-solid fa-bell" aria-hidden="true"></i> Ativar{% endif %}
+              </button>
+            </form>
+          </div>
+
+          <div class="pa-divider"></div>
+
+          <form method="post" class="pa-form-grid">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="salvar">
+            <div class="pa-field">
+              <label>Usuário</label>
+              <input type="text" value="{{ perfil.usuario.username }}" readonly>
+            </div>
+            <div class="pa-field">
+              <label for="email">E-mail</label>
+              <input type="email" id="email" name="email" value="{{ perfil.usuario.email }}" placeholder="email@fornecedor.com">
+            </div>
+            <div class="pa-field">
+              <label for="senha">Nova senha</label>
+              <input type="text" id="senha" name="senha" placeholder="Deixe em branco para manter a senha atual" minlength="6">
+              <span class="pa-hint">Mínimo de 6 caracteres. Anote e repasse ao fornecedor por canal seguro.</span>
+            </div>
+            <div class="pa-actions-row">
+              <button type="submit" class="pa-btn pa-btn-primary"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Salvar alterações</button>
+              <a href="{% url 'portal_home' %}" class="pa-btn" target="_blank" rel="noopener"><i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i> Abrir portal</a>
+            </div>
+          </form>
+
+          {% else %}
+          <div class="pa-empty-state">
+            <i class="fa-solid fa-display" aria-hidden="true"></i>
+            <p>Este fornecedor ainda não tem acesso ao Portal do Fornecedor. Ele poderá ver apenas os equipamentos vinculados a ele — nenhuma outra área.</p>
+          </div>
+          <form method="post" class="pa-form-grid">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="salvar">
+            <div class="pa-field">
+              <label for="username">Usuário <span style="color:var(--pa-danger)">*</span></label>
+              <input type="text" id="username" name="username" required placeholder="ex: routerlink ou sgomes" autocomplete="off">
+            </div>
+            <div class="pa-field">
+              <label for="email">E-mail</label>
+              <input type="email" id="email" name="email" placeholder="email@fornecedor.com">
+            </div>
+            <div class="pa-field">
+              <label for="senha">Senha</label>
+              <input type="text" id="senha" name="senha" minlength="6" placeholder="Mín. 6 caracteres (obrigatória para usuário novo)" autocomplete="off">
+              <span class="pa-hint">Se o usuário já existir, ele será <b>vinculado</b> a este fornecedor — senha opcional, em branco mantém a atual.</span>
+            </div>
+            <div class="pa-actions-row">
+              <button type="submit" class="pa-btn pa-btn-primary"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Criar acesso</button>
+            </div>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- ───────────── Portal de Licenças Office ───────────── -->
+      <div class="pa-panel">
+        <div class="pa-panel-head">
+          <div class="pa-panel-icon"><i class="fa-solid fa-file-shield" aria-hidden="true"></i></div>
+          <div class="pa-panel-title">
+            <strong>Portal de Licenças Office</strong>
+            <span>Só o módulo de licenças</span>
+          </div>
+        </div>
+
+        <div class="pa-panel-body">
+          {% if perfil_lic %}
+          <div class="pa-identity">
+            <div class="pa-avatar">{{ perfil_lic.usuario.username|first }}</div>
+            <div class="pa-identity-copy">
+              <div class="pa-identity-name">{{ perfil_lic.usuario.username }}</div>
+              <div class="pa-identity-email">{{ perfil_lic.usuario.email|default:"sem e-mail cadastrado" }}</div>
+            </div>
+            {% if perfil_lic.ativo %}
+              <span class="pa-status-pill pa-status-on">Ativo</span>
+            {% else %}
+              <span class="pa-status-pill pa-status-off">Suspenso</span>
+            {% endif %}
+          </div>
+
+          {% if perfil and perfil.usuario_id == perfil_lic.usuario_id %}
+          <div class="pa-note"><i class="fa-solid fa-link" aria-hidden="true"></i> Este login também abre o Portal do Fornecedor (equipamentos) — é o mesmo usuário nos dois portais.</div>
+          {% endif %}
+
+          <div class="pa-row">
+            <div class="pa-row-copy">
+              <strong>Acesso ao portal</strong>
+              <span>Suspender bloqueia o login sem apagar o cadastro.</span>
+            </div>
+            <form method="post" style="margin:0;">
+              {% csrf_token %}
+              <input type="hidden" name="acao" value="toggle_lic">
+              <button type="submit" class="pa-btn">
+                {% if perfil_lic.ativo %}<i class="fa-solid fa-ban" aria-hidden="true"></i> Suspender{% else %}<i class="fa-solid fa-play" aria-hidden="true"></i> Reativar{% endif %}
+              </button>
+            </form>
+          </div>
+
+          <div class="pa-row">
+            <div class="pa-row-copy">
+              <strong>Ver colaboradores</strong>
+              <span>Libera a lista de colaboradores (nome, e-mail, função, CC, localidade) pra achar a conta certa ao vincular. Desligado por padrão.</span>
+            </div>
+            <form method="post" style="margin:0;">
+              {% csrf_token %}
+              <input type="hidden" name="acao" value="toggle_colaboradores">
+              <button type="submit" class="pa-btn">
+                {% if perfil_lic.pode_ver_colaboradores %}<i class="fa-solid fa-users-slash" aria-hidden="true"></i> Bloquear{% else %}<i class="fa-solid fa-users" aria-hidden="true"></i> Liberar{% endif %}
+              </button>
+            </form>
+          </div>
+
+          <div class="pa-divider"></div>
+
+          <form method="post" class="pa-form-grid">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="salvar_lic">
+            <div class="pa-field">
+              <label>Usuário</label>
+              <input type="text" value="{{ perfil_lic.usuario.username }}" readonly>
+            </div>
+            <div class="pa-field">
+              <label for="email_lic">E-mail</label>
+              <input type="email" id="email_lic" name="email_lic" value="{{ perfil_lic.usuario.email }}" placeholder="email@parceiro.com">
+            </div>
+            <div class="pa-field">
+              <label for="senha_lic">Nova senha</label>
+              <input type="text" id="senha_lic" name="senha_lic" placeholder="Deixe em branco para manter a senha atual" minlength="6">
+              <span class="pa-hint">Mínimo de 6 caracteres.</span>
+            </div>
+            <div class="pa-actions-row">
+              <button type="submit" class="pa-btn pa-btn-primary"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Salvar alterações</button>
+              <a href="{% url 'portal_licencas_office_list' %}" class="pa-btn" target="_blank" rel="noopener"><i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i> Abrir portal</a>
+            </div>
+          </form>
+
+          <form method="post" onsubmit="return confirm('Revogar o acesso de {{ perfil_lic.usuario.username|escapejs }} ao Portal de Licenças?');">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="revogar_lic">
+            <button type="submit" class="pa-btn pa-btn-danger"><i class="fa-solid fa-trash" aria-hidden="true"></i> Revogar acesso ao Portal de Licenças</button>
+          </form>
+
+          {% else %}
+          <div class="pa-empty-state">
+            <i class="fa-solid fa-file-shield" aria-hidden="true"></i>
+            <p>Este fornecedor ainda não tem acesso ao Portal de Licenças. Ele poderá ver e vincular só o módulo de licenças Office — nenhuma outra área.</p>
+          </div>
+          <form method="post" class="pa-form-grid">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="salvar_lic">
+            <div class="pa-field">
+              <label for="username_lic">Usuário <span style="color:var(--pa-danger)">*</span></label>
+              <input type="text" id="username_lic" name="username_lic" required placeholder="ex: routerlink ou sgomes" autocomplete="off">
+            </div>
+            <div class="pa-field">
+              <label for="email_lic">E-mail</label>
+              <input type="email" id="email_lic" name="email_lic" placeholder="email@parceiro.com">
+            </div>
+            <div class="pa-field">
+              <label for="senha_lic">Senha</label>
+              <input type="text" id="senha_lic" name="senha_lic" minlength="6" placeholder="Mín. 6 caracteres (obrigatória para usuário novo)" autocomplete="off">
+              <span class="pa-hint">Se o usuário já existir, ele será <b>vinculado</b> a este fornecedor — senha opcional, em branco mantém a atual.</span>
+            </div>
+            <div class="pa-actions-row">
+              <button type="submit" class="pa-btn pa-btn-primary"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Criar acesso</button>
+            </div>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+
+    </section>
+
+    <div class="pa-note">
+      <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+      <span>Cada portal é isolado por middleware — o Portal do Fornecedor só enxerga itens próprios ou enviados a ele para manutenção, e o Portal de Licenças enxerga apenas o módulo de licenças (nunca valores financeiros). Um mesmo login pode ter os dois acessos ao mesmo tempo.</span>
     </div>
 
-    <h2>Redefinir senha / e-mail</h2>
-    <form method="post">
-      {% csrf_token %}
-      <input type="hidden" name="acao" value="salvar">
-      <div class="facc-field">
-        <label>Usuário</label>
-        <input type="text" value="{{ perfil.usuario.username }}" readonly>
-      </div>
-      <div class="facc-field">
-        <label for="email">E-mail</label>
-        <input type="email" id="email" name="email" value="{{ perfil.usuario.email }}" placeholder="email@fornecedor.com">
-      </div>
-      <div class="facc-field">
-        <label for="senha">Nova senha</label>
-        <input type="text" id="senha" name="senha" placeholder="Deixe em branco para manter a senha atual" minlength="6">
-        <span class="facc-hint">Mínimo de 6 caracteres. Anote e repasse ao fornecedor por canal seguro.</span>
-      </div>
-      <div class="facc-actions">
-        <button type="submit" class="btn btn-brand"><i class="fa-solid fa-floppy-disk"></i> Salvar alterações</button>
-        <a href="{% url 'portal_home' %}" class="btn btn-light" target="_blank"><i class="fa-solid fa-up-right-from-square"></i> Abrir portal</a>
-      </div>
-    </form>
   </div>
-
-  {% else %}
-  <div class="facc-card">
-    <h2>Criar acesso ao portal</h2>
-    <p class="facc-note" style="margin-bottom:1rem;">
-      <i class="fa-solid fa-circle-info"></i>
-      <span>O fornecedor poderá entrar no sistema e ver apenas os equipamentos vinculados a ele. Não terá acesso a nenhuma outra área. Se o usuário informado já existir, ele será <b>vinculado</b> a este fornecedor.</span>
-    </p>
-    <form method="post">
-      {% csrf_token %}
-      <input type="hidden" name="acao" value="salvar">
-      <div class="facc-field">
-        <label for="username">Usuário <span style="color:#ff3b30">*</span></label>
-        <input type="text" id="username" name="username" required placeholder="ex: routerlink ou sgomes" autocomplete="off">
-      </div>
-      <div class="facc-field">
-        <label for="email">E-mail</label>
-        <input type="email" id="email" name="email" placeholder="email@fornecedor.com">
-      </div>
-      <div class="facc-field">
-        <label for="senha">Senha</label>
-        <input type="text" id="senha" name="senha" minlength="6" placeholder="Mín. 6 caracteres (obrigatória para usuário novo)" autocomplete="off">
-        <span class="facc-hint">Para um usuário que já existe, deixe em branco para manter a senha atual.</span>
-      </div>
-      <div class="facc-actions">
-        <button type="submit" class="btn btn-brand"><i class="fa-solid fa-user-plus"></i> Criar acesso</button>
-      </div>
-    </form>
-  </div>
-  {% endif %}
-
-  <div class="facc-note">
-    <i class="fa-solid fa-shield-halved"></i>
-    <span>O acesso é isolado: o login do fornecedor é restrito à área <code>/portal/</code> por middleware e só enxerga itens próprios ou enviados a ele para manutenção.</span>
-  </div>
-
 </div>
 {% endblock %}

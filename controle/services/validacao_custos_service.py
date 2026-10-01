@@ -71,6 +71,31 @@ def _aplicar_filtro_pmb(queryset, prefixo, pmb_filtro):
     return queryset.exclude(**{campo: "tabaco"})
 
 
+def _filtrar_por_ids(queryset, campo, ids, exceto):
+    """
+    Filtra `queryset` por uma lista de IDs num campo (ex.: "subtipo_id").
+
+    Base do toggle "Exceto" dos filtros de Subtipo/Centro de Custo/Fornecedor:
+    sem `ids` não faz nada; com `ids` e `exceto=False` restringe à seleção
+    ("apenas estes"); com `exceto=True` inverte para exclusão ("todos, exceto
+    estes") — mesma lista de IDs, sentido oposto.
+    """
+    if not ids:
+        return queryset
+    condicao = {f"{campo}__in": ids}
+    return queryset.exclude(**condicao) if exceto else queryset.filter(**condicao)
+
+
+def _passa_filtro_lista(valor_id, ids, exceto):
+    """
+    Equivalente a `_filtrar_por_ids`, mas para checagem em memória (loop de
+    Licença, que não filtra via ORM). Sem `ids`, todo mundo passa.
+    """
+    if not ids:
+        return True
+    return (valor_id in ids) != exceto
+
+
 def _custo_mensal_unitario_lote(lote):
     """
     Custo mensal por assento de um LicencaLote.
@@ -159,6 +184,15 @@ def _parse_filtros(request):
     cc_ids = [int(v) for v in request.GET.getlist("centro_custo") if v.isdigit()]
     fornecedor_ids = [int(v) for v in request.GET.getlist("fornecedor") if v.isdigit()]
 
+    # Toggle "Exceto" — inverte Subtipo/CC/Fornecedor de "apenas estes" para
+    # "todos, exceto estes". Guardado cru (sem checar se a lista de IDs está
+    # vazia): o próprio `_filtrar_por_ids`/`_passa_filtro_lista` já é no-op
+    # sem IDs, e manter o valor cru permite o checkbox continuar marcado na
+    # tela mesmo antes de o usuário escolher algum item.
+    subtipo_exc = request.GET.get("subtipo_exc") == "1"
+    cc_exc = request.GET.get("centro_custo_exc") == "1"
+    fornecedor_exc = request.GET.get("fornecedor_exc") == "1"
+
     pmb_filtro = (request.GET.get("pmb") or "").strip().lower()
     if pmb_filtro not in ("sim", "nao"):
         pmb_filtro = ""
@@ -174,7 +208,10 @@ def _parse_filtros(request):
     if not status_sel:
         status_sel = [StatusItemChoices.ATIVO]
 
-    return subtipo_ids, cc_ids, fornecedor_ids, pmb_filtro, tipos_sel, status_sel
+    return (
+        subtipo_ids, cc_ids, fornecedor_ids, pmb_filtro, tipos_sel, status_sel,
+        subtipo_exc, cc_exc, fornecedor_exc,
+    )
 
 
 def _linha_base(tipo_custo, cc, subtipo, categoria, descricao, marca_modelo, numero_serie,
@@ -206,7 +243,10 @@ def _linha_base(tipo_custo, cc, subtipo, categoria, descricao, marca_modelo, num
 
 
 def montar_dados_validacao_custos(request):
-    subtipo_ids, cc_ids, fornecedor_ids, pmb_filtro, tipos_sel, status_sel = _parse_filtros(request)
+    (
+        subtipo_ids, cc_ids, fornecedor_ids, pmb_filtro, tipos_sel, status_sel,
+        subtipo_exc, cc_exc, fornecedor_exc,
+    ) = _parse_filtros(request)
 
     linhas = []
 
@@ -228,12 +268,9 @@ def montar_dados_validacao_custos(request):
         )
         loc_qs = _prefetch_item_extras(loc_qs, "equipamento__")
 
-        if subtipo_ids:
-            loc_qs = loc_qs.filter(equipamento__subtipo_id__in=subtipo_ids)
-        if cc_ids:
-            loc_qs = loc_qs.filter(equipamento__centro_custo_id__in=cc_ids)
-        if fornecedor_ids:
-            loc_qs = loc_qs.filter(fornecedor_id__in=fornecedor_ids)
+        loc_qs = _filtrar_por_ids(loc_qs, "equipamento__subtipo_id", subtipo_ids, subtipo_exc)
+        loc_qs = _filtrar_por_ids(loc_qs, "equipamento__centro_custo_id", cc_ids, cc_exc)
+        loc_qs = _filtrar_por_ids(loc_qs, "fornecedor_id", fornecedor_ids, fornecedor_exc)
         loc_qs = _aplicar_filtro_pmb(loc_qs, "equipamento__centro_custo__", pmb_filtro)
 
         for loc in loc_qs:
@@ -270,12 +307,9 @@ def montar_dados_validacao_custos(request):
         )
         itens_qs = _prefetch_item_extras(itens_qs, "")
 
-        if subtipo_ids:
-            itens_qs = itens_qs.filter(subtipo_id__in=subtipo_ids)
-        if cc_ids:
-            itens_qs = itens_qs.filter(centro_custo_id__in=cc_ids)
-        if fornecedor_ids:
-            itens_qs = itens_qs.filter(fornecedor_id__in=fornecedor_ids)
+        itens_qs = _filtrar_por_ids(itens_qs, "subtipo_id", subtipo_ids, subtipo_exc)
+        itens_qs = _filtrar_por_ids(itens_qs, "centro_custo_id", cc_ids, cc_exc)
+        itens_qs = _filtrar_por_ids(itens_qs, "fornecedor_id", fornecedor_ids, fornecedor_exc)
         itens_qs = _aplicar_filtro_pmb(itens_qs, "centro_custo__", pmb_filtro)
 
         for item in itens_qs:
@@ -320,9 +354,9 @@ def montar_dados_validacao_custos(request):
             cc = (mov.usuario.centro_custo if mov.usuario else None) or mov.centro_custo_destino or mov.licenca.centro_custo
             if not cc:
                 continue
-            if cc_ids and cc.id not in cc_ids:
+            if not _passa_filtro_lista(cc.id, cc_ids, cc_exc):
                 continue
-            if fornecedor_ids and mov.licenca.fornecedor_id not in fornecedor_ids:
+            if not _passa_filtro_lista(mov.licenca.fornecedor_id, fornecedor_ids, fornecedor_exc):
                 continue
             if pmb_filtro and _pmb_efetivo(cc) != pmb_filtro:
                 continue
@@ -420,6 +454,9 @@ def montar_dados_validacao_custos(request):
         "pmb_filtro": pmb_filtro,
         "tipos_sel": tipos_sel,
         "status_sel": status_sel,
+        "subtipo_exc": subtipo_exc,
+        "cc_exc": cc_exc,
+        "fornecedor_exc": fornecedor_exc,
         "querystring": request.GET.urlencode(),
 
         # opções para os filtros

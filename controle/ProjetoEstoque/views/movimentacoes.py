@@ -1,3 +1,4 @@
+import os
 from decimal import Decimal
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -15,7 +16,7 @@ from xhtml2pdf import pisa
 
 from ..models import (
     MovimentacaoItem, TipoMovimentacaoChoices, TipoTransferenciaChoices, StatusItemChoices,
-    ItemLote, Item, ItemColaborador, Subtipo,
+    ItemLote, Item, ItemColaborador, Subtipo, Localidade, Usuario, CentroCusto,
 )
 from ..forms import MovimentacaoItemForm
 from services.movimentacao_service import MovimentacaoEstoqueService
@@ -34,6 +35,13 @@ def _get_movimentacao_qs(request):
     usuario_q = (request.GET.get("usuario") or "").strip()
     numero_serie = (request.GET.get("numero_serie") or "").strip()
     centro_custo = (request.GET.get("centro_custo") or "").strip()
+    localidade_ids = [v for v in request.GET.getlist("localidade") if v.isdigit()]
+    # Toggle "Exceto" — inverte Localidade de "apenas estas" (origem OU destino
+    # bate com alguma marcada) para "todas, exceto estas" (nem origem nem
+    # destino pode bater com nenhuma marcada). Guardado cru: sem localidades
+    # marcadas o filtro já é no-op, e isso deixa o checkbox marcado na tela
+    # mesmo antes de escolher alguma.
+    localidade_exc = request.GET.get("localidade_exc") == "1"
     data_inicio = request.GET.get("data_inicio")
     data_fim = request.GET.get("data_fim")
 
@@ -82,6 +90,9 @@ def _get_movimentacao_qs(request):
             Q(centro_custo_destino__numero__icontains=centro_custo) |
             Q(centro_custo_destino__departamento__icontains=centro_custo)
         )
+    if localidade_ids:
+        localidade_q = Q(localidade_origem_id__in=localidade_ids) | Q(localidade_destino_id__in=localidade_ids)
+        qs = qs.exclude(localidade_q) if localidade_exc else qs.filter(localidade_q)
     if data_inicio:
         qs = qs.filter(created_at__date__gte=data_inicio)
     if data_fim:
@@ -142,6 +153,10 @@ def _subtipos_opcoes():
     )
 
 
+def _localidades_opcoes():
+    return Localidade.objects.order_by("local")
+
+
 def _filtros_resumo(request):
     """
     Lista legível dos filtros aplicados — usada no cabeçalho do PDF para que o
@@ -174,6 +189,12 @@ def _filtros_resumo(request):
         resumo.append(("Nº de Série", g("numero_serie")))
     if g("centro_custo"):
         resumo.append(("Centro de Custo", g("centro_custo")))
+
+    localidade_ids = [v for v in request.GET.getlist("localidade") if v.isdigit()]
+    if localidade_ids:
+        nomes = list(Localidade.objects.filter(pk__in=localidade_ids).values_list("local", flat=True))
+        prefixo = "Exceto: " if g("localidade_exc") == "1" else ""
+        resumo.append(("Localidade", prefixo + ", ".join(nomes)))
 
     inicio, fim = g("data_inicio"), g("data_fim")
     if inicio or fim:
@@ -220,6 +241,8 @@ def movimentacao_list(request):
     f_user = request.GET.get("usuario", "")
     f_serie = request.GET.get("numero_serie", "")
     f_cc = request.GET.get("centro_custo", "")
+    f_localidade = request.GET.getlist("localidade")
+    f_localidade_exc = request.GET.get("localidade_exc") == "1"
     f_ini = request.GET.get("data_inicio", "")
     f_fim = request.GET.get("data_fim", "")
 
@@ -228,6 +251,10 @@ def movimentacao_list(request):
         Subtipo.objects.select_related("categoria").filter(pk=int(f_subtipo)).first()
         if f_subtipo.isdigit() else None
     )
+    localidade_ids_validos = [v for v in f_localidade if v.isdigit()]
+    f_localidade_label = ", ".join(
+        Localidade.objects.filter(pk__in=localidade_ids_validos).values_list("local", flat=True)
+    ) if localidade_ids_validos else ""
 
     context = {
         "movimentacoes": page_obj.object_list,
@@ -243,6 +270,8 @@ def movimentacao_list(request):
         "f_user": f_user,
         "f_serie": f_serie,
         "f_cc": f_cc,
+        "f_localidade": f_localidade,
+        "f_localidade_exc": f_localidade_exc,
         "f_ini": f_ini,
         "f_fim": f_fim,
         "f_pp": per_page,
@@ -250,11 +279,16 @@ def movimentacao_list(request):
         "f_tt_label": dict(TipoTransferenciaChoices.choices).get(f_tt, f_tt),
         "f_grupo_label": {"transferencia": "Transferências", "manutencao": "Manutenção"}.get(f_grupo, f_grupo),
         "f_subtipo_label": str(subtipo_obj) if subtipo_obj else "",
-        "filtros_ativos": bool(f_q or f_tipo or f_tt or f_subtipo or f_user or f_serie or f_cc or f_ini or f_fim),
+        "f_localidade_label": f_localidade_label,
+        "filtros_ativos": bool(
+            f_q or f_tipo or f_tt or f_subtipo or f_user or f_serie or f_cc
+            or localidade_ids_validos or f_ini or f_fim
+        ),
         "today_iso": hoje.isoformat(),
         "tipos_choices": TipoMovimentacaoChoices.choices,
         "tipo_transferencia_choices": TipoTransferenciaChoices.choices,
         "subtipos_opcoes": _subtipos_opcoes(),
+        "localidades_opcoes": _localidades_opcoes(),
 
         "kpi": kpi,
     }
@@ -329,12 +363,57 @@ def movimentacao_create(request):
 
         if form.is_valid():
             try:
-                MovimentacaoEstoqueService.registrar(
+                mov = MovimentacaoEstoqueService.registrar(
                     form=form,
                     user=request.user,
                 )
 
-                messages.success(request, "Movimentação realizada com sucesso.")
+                aviso_desligamento = ""
+
+                if (
+                    mov.tipo_movimentacao == "transferencia"
+                    and mov.tipo_transferencia == "devolucao"
+                    and form.cleaned_data.get("colaborador_desligado")
+                    and mov.usuario_id
+                ):
+                    try:
+                        from services.desligamento_service import DesligamentoService
+
+                        # Repassa o termo assinado enviado nesta devolução (ideal:
+                        # o termo CONSOLIDADO gerado via "Gerar termo de
+                        # devolução (desligamento)") para os outros equipamentos
+                        # devolvidos automaticamente pela cascata — sem isso eles
+                        # ficariam sem nenhum comprovante de devolução anexado.
+                        termo_pdf_bytes = None
+                        termo_pdf_nome = None
+                        if mov.termo_pdf:
+                            mov.termo_pdf.open("rb")
+                            try:
+                                termo_pdf_bytes = mov.termo_pdf.read()
+                            finally:
+                                mov.termo_pdf.close()
+                            termo_pdf_nome = os.path.basename(mov.termo_pdf.name)
+
+                        resultado = DesligamentoService.desligar_e_liberar_ativos(
+                            usuario=mov.usuario,
+                            executado_por=request.user,
+                            termo_pdf_bytes=termo_pdf_bytes,
+                            termo_pdf_nome=termo_pdf_nome,
+                        )
+                        aviso_desligamento = (
+                            f" Colaborador {mov.usuario.nome} marcado como desligado — "
+                            f"{resultado['itens']} equipamento(s) e {resultado['licencas']} "
+                            f"licença(s) devolvidos automaticamente."
+                        )
+                    except Exception as e:
+                        messages.warning(
+                            request,
+                            "Devolução registrada, mas houve um problema ao desligar "
+                            f"automaticamente o colaborador: {e}. Finalize manualmente "
+                            "na tela do colaborador.",
+                        )
+
+                messages.success(request, "Movimentação realizada com sucesso." + aviso_desligamento)
                 return redirect("movimentacao_list")
 
             except ValidationError as e:
@@ -360,6 +439,147 @@ def movimentacao_create(request):
         form = MovimentacaoItemForm()
 
     return render(request, "front/movimentacao/movimentacao_form.html", {"form": form})
+
+
+@login_required
+def movimentacao_lote_create(request):
+    """Movimentação em Lote: entrega ou devolução de VÁRIOS equipamentos de
+    uma vez para/de um único colaborador — ver MovimentacaoLoteService."""
+    if request.method == "POST":
+        from services.movimentacao_lote_service import MovimentacaoLoteService
+
+        try:
+            resultado = MovimentacaoLoteService.processar(request)
+            messages.success(
+                request,
+                f"{resultado['sucesso']} {resultado['tipo_label']} registrada(s) com sucesso.",
+            )
+            return redirect("movimentacao_list")
+
+        except ValidationError as e:
+            msg = e.message if hasattr(e, "message") else str(e)
+            messages.error(request, f"Nenhuma movimentação foi gravada — {msg}")
+
+        except Exception as e:
+            messages.error(request, f"Erro inesperado no lote: {e}")
+
+    colaboradores = Usuario.objects.filter(status="ativo").order_by("nome")
+    localidades = Localidade.objects.order_by("local")
+    centros_custo = CentroCusto.objects.order_by("numero", "departamento")
+
+    return render(request, "front/movimentacao/movimentacao_lote_form.html", {
+        "colaboradores": colaboradores,
+        "localidades": localidades,
+        "centros_custo": centros_custo,
+    })
+
+
+@login_required
+def movimentacao_lote_termo(request):
+    """Gera o termo consolidado (.docx) a partir da seleção ATUAL da tela de
+    Movimentação em Lote — antes de confirmar a movimentação, para TI
+    imprimir e colher a assinatura. Não grava nada no banco."""
+    if request.method != "POST":
+        messages.warning(request, "Ação não permitida via GET.")
+        return redirect("movimentacao_lote_create")
+
+    usuario_id = request.POST.get("usuario")
+    item_ids = [i for i in request.POST.getlist("itens") if i]
+    acao = request.POST.get("tipo_transferencia")
+
+    if acao not in ("entrega", "devolucao") or not usuario_id or not item_ids:
+        messages.error(
+            request,
+            "Selecione a ação, o colaborador e ao menos um equipamento antes de gerar o termo.",
+        )
+        return redirect("movimentacao_lote_create")
+
+    usuario = get_object_or_404(Usuario, pk=usuario_id)
+
+    itens = list(Item.objects.filter(pk__in=item_ids))
+    ordem = {str(pk): i for i, pk in enumerate(item_ids)}
+    itens.sort(key=lambda it: ordem.get(str(it.pk), 0))
+
+    form_data = {
+        "numero_termo": request.POST.get("numero_termo", ""),
+        "numero_chamado": request.POST.get("numero_chamado", ""),
+        "acessorios": request.POST.get("acessorios", ""),
+        "observacoes": request.POST.get("observacao", ""),
+        "estabelecimento": request.POST.get("estabelecimento", "karitel"),
+        "responsavel_ti_nome": request.user.get_full_name() or request.user.username,
+    }
+
+    from services.termos import gerar_termo_lote_docx
+
+    arquivo, nome_arquivo = gerar_termo_lote_docx(usuario, itens, acao, form_data)
+    response = HttpResponse(
+        arquivo.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    response["Content-Disposition"] = f'attachment; filename="{nome_arquivo}"'
+    return response
+
+
+@login_required
+def api_itens_disponiveis_lote(request):
+    """Para a tela de Movimentação em Lote: busca remota (select2 ajax) dos
+    equipamentos elegíveis para a ação escolhida — em estoque/disponíveis
+    (entrega) ou os que o colaborador selecionado tem ativos agora
+    (devolução). Itens compartilhados ficam de fora — têm vários detentores
+    ao mesmo tempo, o que não se encaixa no modelo "um lote = um colaborador".
+
+    Busca server-side (parâmetro `q`) em vez de carregar tudo de uma vez: o
+    catálogo de equipamentos elegíveis para entrega passa facilmente de
+    algumas centenas, então paginar cortaria itens do resultado sem que o
+    operador percebesse."""
+    acao = request.GET.get("acao")
+    usuario_id = request.GET.get("usuario_id")
+    q = (request.GET.get("q") or "").strip()
+
+    if acao == "devolucao":
+        if not usuario_id:
+            return JsonResponse({"results": []})
+
+        usuario = Usuario.objects.filter(pk=usuario_id).first()
+        if not usuario:
+            return JsonResponse({"results": []})
+
+        from services.desligamento_service import DesligamentoService
+
+        itens = [
+            item for item in DesligamentoService.ativos_do_usuario(usuario)["itens"]
+            if not item.compartilhado
+        ]
+
+        if q:
+            q_norm = q.lower()
+            itens = [
+                item for item in itens
+                if q_norm in (item.nome or "").lower() or q_norm in (item.numero_serie or "").lower()
+            ]
+
+        itens.sort(key=lambda item: item.nome or "")
+    else:
+        qs = (
+            Item.objects
+            .filter(excluido=False, compartilhado=False)
+            .exclude(status=StatusItemChoices.ATIVO)
+            .select_related("centro_custo", "localidade")
+        )
+
+        if q:
+            qs = qs.filter(Q(nome__icontains=q) | Q(numero_serie__icontains=q) | Q(modelo__icontains=q))
+
+        itens = list(qs.order_by("nome")[:50])
+
+    results = [
+        {
+            "id": item.pk,
+            "text": f"{item.nome} — {item.numero_serie or 'sem série'} ({item.get_status_display()})",
+        }
+        for item in itens
+    ]
+    return JsonResponse({"results": results})
 
 
 @login_required
@@ -449,12 +669,27 @@ def api_item_devolucao_info(request):
         return JsonResponse({"ok": True, "compartilhado": False, "tem_entrega": False})
 
     cc = ultima_entrega.centro_custo_origem
+
+    resumo_desligamento = None
+    if ultima_entrega.usuario_id and ultima_entrega.usuario.status != "desligado":
+        from services.desligamento_service import DesligamentoService
+
+        resumo = DesligamentoService.resumo_ativos(ultima_entrega.usuario)
+        resumo_desligamento = {
+            "usuario_id": ultima_entrega.usuario_id,
+            # Desconta o próprio item desta devolução, que já vai ser
+            # devolvido pela movimentação normal — o resumo é só dos "outros".
+            "outros_itens": max(resumo["itens"] - 1, 0),
+            "licencas": resumo["licencas"],
+        }
+
     return JsonResponse({
         "ok": True,
         "compartilhado": False,
         "tem_entrega": True,
         "usuario": str(ultima_entrega.usuario) if ultima_entrega.usuario_id else None,
         "centro_custo_origem": _centro_custo_label(cc) if cc else None,
+        "desligamento": resumo_desligamento,
     })
 
 

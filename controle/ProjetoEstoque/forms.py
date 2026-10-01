@@ -118,6 +118,7 @@ class UsuarioForm(forms.ModelForm):
             "centro_custo",
             "localidade",
             "funcao",
+            "area_administrativa",
         ]
 
         widgets = {
@@ -571,6 +572,15 @@ class MovimentacaoItemForm(forms.ModelForm):
             "maxlength": "100",
             "placeholder": "Deixe em branco para manter o nome atual",
         })
+    )
+
+    # Só usado quando tipo_movimentacao="transferencia" + tipo_transferencia=
+    # "devolucao": dispara a cascata de desligamento (ver DesligamentoService)
+    # devolvendo automaticamente TODOS os equipamentos e licenças ativas do
+    # colaborador, além de marcar o cadastro dele como desligado.
+    colaborador_desligado = forms.BooleanField(
+        required=False,
+        label="O colaborador está sendo desligado?",
     )
 
     class Meta:

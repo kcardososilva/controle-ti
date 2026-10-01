@@ -1,0 +1,79 @@
+{% extends 'front/portal_licencas/portal_licencas_base.html' %}
+
+{% block title %}Colaboradores — Portal{% endblock %}
+{% block page_title %}Colaboradores{% endblock %}
+{% block page_subtitle %}Localização e contato de colaboradores ativos, para vincular a conta certa a uma licença — {{ parceiro.nome }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.plc-toolbar { display: flex; gap: 1rem; align-items: end; padding: 1rem; margin-bottom: 1rem; }
+.plc-field { flex: 1; max-width: 22rem; }
+.plc-field label { display: block; margin-bottom: .3rem; color: var(--text-tertiary); font-size: .74rem; font-weight: 700; }
+.plc-toolbar input[type="text"] {
+  width: 100%; min-height: 2.4rem; padding: .5rem .75rem; border-radius: var(--radius-sm);
+  border: 1px solid var(--separator-non-opaque); background: var(--bg-page); color: var(--text-primary); font: inherit; font-size: .85rem;
+}
+.plc-count { color: var(--text-tertiary); font-size: .8rem; font-weight: 600; margin-left: auto; }
+
+.plc-table-wrap { overflow-x: auto; }
+.plc-table { width: 100%; min-width: 46rem; border-collapse: collapse; }
+.plc-table th, .plc-table td { padding: .65rem .9rem; border-bottom: 1px solid var(--separator-hairline); text-align: left; white-space: nowrap; font-size: .84rem; }
+.plc-table thead th { font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--text-tertiary); background: var(--bg-fill-tertiary); }
+.plc-table tbody tr:hover td { background: var(--bg-hover); }
+.plc-mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-tertiary); }
+.plc-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem; padding: .9rem 1rem; }
+.plc-foot span { color: var(--text-tertiary); font-size: .78rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pl-card">
+  <form method="get" class="plc-toolbar">
+    <div class="plc-field">
+      <label for="plcQ">Buscar colaborador</label>
+      <input type="text" id="plcQ" name="q" value="{{ q }}" placeholder="Nome, matrícula ou e-mail...">
+    </div>
+    <button type="submit" class="pl-btn"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Buscar</button>
+    <span class="plc-count">{{ total }} colaborador{{ total|pluralize }}</span>
+  </form>
+
+  <div class="plc-table-wrap">
+    <table class="plc-table">
+      <thead>
+        <tr>
+          <th scope="col">Nome</th>
+          <th scope="col">Matrícula</th>
+          <th scope="col">E-mail</th>
+          <th scope="col">Função</th>
+          <th scope="col">Centro de Custo</th>
+          <th scope="col">Localidade</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in colaboradores %}
+        <tr>
+          <td>{{ c.nome }}</td>
+          <td class="plc-mono">{{ c.matricula|default:"—" }}</td>
+          <td>{{ c.email|default:"—" }}</td>
+          <td>{{ c.funcao.nome|default:"—" }}</td>
+          <td>{{ c.centro_custo.departamento|default:"—" }}</td>
+          <td>{{ c.localidade.local|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6"><div class="pl-empty"><i class="fa-solid fa-users" aria-hidden="true"></i><p>Nenhum colaborador encontrado{% if q %} para a busca aplicada{% endif %}.</p></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.has_other_pages %}
+  <div class="plc-foot">
+    <span>Página <strong>{{ page_obj.number }}</strong> de <strong>{{ page_obj.paginator.num_pages }}</strong></span>
+    <div style="display:flex;gap:.5rem">
+      {% if page_obj.has_previous %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.previous_page_number }}" class="pl-btn">Anterior</a>{% endif %}
+      {% if page_obj.has_next %}<a href="?{% if qs_keep %}{{ qs_keep }}&{% endif %}page={{ page_obj.next_page_number }}" class="pl-btn">Próxima</a>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

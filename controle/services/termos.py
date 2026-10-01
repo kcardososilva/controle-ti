@@ -154,6 +154,19 @@ def _set_cell(cell, text):
     p.add_run(text)
 
 
+def _set_cell_multiline(cell, linhas):
+    """Preenche a célula com um parágrafo por linha (lista de equipamentos
+    do termo consolidado de desligamento) — sem mexer na estrutura de linhas
+    da tabela."""
+    cell.text = ""
+    primeira = True
+    for linha in linhas:
+        p = cell.paragraphs[0] if primeira else cell.add_paragraph()
+        primeira = False
+        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        p.add_run(str(linha))
+
+
 def _usuario_display(usuario):
     if not usuario:
         return "-"
@@ -489,3 +502,199 @@ def gerar_termo_docx(item, tipo, form_data):
     output.seek(0)
 
     return output, dados["nome_arquivo"]
+
+
+# ============================================================================
+# TERMO CONSOLIDADO EM LOTE (ENTREGA OU DEVOLUÇÃO DE VÁRIOS EQUIPAMENTOS)
+# ============================================================================
+# Reaproveita o MESMO modelo base do termo individual correspondente (mesmo
+# texto legal, mesma formatação, mesmo bloco de assinatura) — só a tabela de
+# equipamento muda: em vez de UMA linha "Descrição do Equipamento", a lista
+# de itens entra como várias linhas de texto na MESMA célula, sob uma única
+# assinatura. Usado tanto pela cascata de desligamento (devolução de vários
+# ativos de uma vez) quanto pela Movimentação em Lote (entrega de vários
+# equipamentos a um colaborador de uma vez).
+
+
+def _build_dados_lote(usuario, itens, tipo, form_data):
+    hoje = timezone.localdate()
+    nome_colaborador = _usuario_display(usuario)
+    email_colaborador = _safe(getattr(usuario, "email", None), "")
+    centro_custo_colaborador = _safe(getattr(getattr(usuario, "centro_custo", None), "departamento", None), "")
+    funcao_colaborador = _safe(getattr(getattr(usuario, "funcao", None), "nome", None), "")
+    localidade_colaborador = _safe(getattr(getattr(usuario, "localidade", None), "local", None), "")
+
+    descricoes_equipamentos = []
+    for i, item in enumerate(itens, start=1):
+        partes = [
+            f"{i}. {_safe(item.nome)}",
+            f"Série: {_safe(item.numero_serie)}",
+            f"Modelo: {_safe(item.modelo)}",
+        ]
+        patrimonio = _safe(getattr(item, "patrimonio", None), "")
+        if patrimonio and patrimonio != "-":
+            partes.append(f"Patrimônio: {patrimonio}")
+        descricoes_equipamentos.append(" | ".join(partes))
+
+    prefixo_termo = "DESLIGAMENTO" if tipo == "devolucao" else "ENTREGA-LOTE"
+    prefixo_arquivo = "desligamento" if tipo == "devolucao" else "entrega_lote"
+    observacao_padrao = (
+        "Devolução consolidada de equipamentos por desligamento do colaborador."
+        if tipo == "devolucao"
+        else "Entrega consolidada de equipamentos ao colaborador."
+    )
+
+    numero_termo = _safe(form_data.get("numero_termo"), "")
+    if not numero_termo:
+        cc_nome = centro_custo_colaborador if centro_custo_colaborador != "-" else ""
+        partes_num = [p for p in (nome_colaborador, cc_nome) if p and p != "-"]
+        numero_termo = " - ".join(partes_num) if partes_num else f"{prefixo_termo}-{usuario.pk}"
+
+    nome_arquivo = "_".join(
+        [p for p in (prefixo_arquivo, _slug_arquivo(nome_colaborador), _slug_arquivo(centro_custo_colaborador)) if p]
+        or [f"{prefixo_arquivo}_{usuario.pk}"]
+    ) + ".docx"
+
+    return {
+        "tipo": tipo,
+        "data_hoje": hoje.strftime("%d/%m/%Y"),
+        "numero_termo": numero_termo,
+        "nome_arquivo": nome_arquivo,
+        "numero_chamado": _safe(form_data.get("numero_chamado"), ""),
+        "nome_colaborador": nome_colaborador,
+        "email_colaborador": email_colaborador,
+        "centro_custo_colaborador": centro_custo_colaborador,
+        "funcao_colaborador": funcao_colaborador,
+        "localidade_colaborador": localidade_colaborador,
+        "descricoes_equipamentos": descricoes_equipamentos,
+        "acessorios": _safe(form_data.get("acessorios"), ""),
+        "estabelecimento": _build_estabelecimento_line(form_data.get("estabelecimento")),
+        "observacoes": _safe(form_data.get("observacoes"), observacao_padrao),
+        "responsavel_ti_nome": _safe(form_data.get("responsavel_ti_nome"), ""),
+    }
+
+
+def _fill_main_table_multi(doc, dados):
+    """
+    Mesma varredura por RÓTULO da `_fill_main_table`, mas a linha "Descrição
+    do Equipamento" é clonada uma vez por item (em vez de preenchida uma
+    única vez) e as linhas "Série"/"Plaqueta" — que só fazem sentido para um
+    equipamento por termo — são removidas, já que cada série/patrimônio já
+    vai embutido na respectiva linha de descrição clonada.
+    """
+    if not doc.tables:
+        return
+
+    table = doc.tables[0]
+
+    campos_simples = [
+        (lambda t: "termo" in t and "chamado" not in t, dados["numero_termo"]),
+        (lambda t: "chamado" in t, dados["numero_chamado"]),
+        (lambda t: "acessorio" in t, dados["acessorios"]),
+        (lambda t: "estabelecimento" in t, dados["estabelecimento"]),
+        (lambda t: "observac" in t, dados["observacoes"]),
+    ]
+
+    # O modelo tem a linha "Descrição Equipamento" DUPLICADA (mesmo artefato
+    # que `_fill_main_table` já trata para os outros campos: cabeçalho +
+    # digitação). Em vez de clonar linhas da tabela — arriscado aqui porque
+    # há mesclagem vertical entre linhas vizinhas, o que corrompe o grid ao
+    # duplicar/realocar linhas via XML — a lista de equipamentos entra como
+    # VÁRIOS PARÁGRAFOS dentro da MESMA célula (1 por equipamento). Linhas
+    # "Série"/"Plaqueta" (só fazem sentido para 1 equipamento) são removidas:
+    # cada série/patrimônio já vai junto do nome na linha correspondente.
+    descricao_preenchida = False
+    linhas_remover = []
+    celulas_tratadas = []
+
+    def _ja_tratada(tc):
+        return any(tc is x for x in celulas_tratadas)
+
+    for row in table.rows:
+        cells = row.cells
+        if not cells:
+            continue
+
+        label_raw = cells[0].text or ""
+        label = _normalizar(label_raw)
+        if not label:
+            continue
+
+        if "descric" in label:
+            if descricao_preenchida:
+                # Linha duplicada (mesmo artefato do modelo de "cabeçalho +
+                # digitação") — removida por inteiro em vez de só limpar o
+                # texto: há mesclagem vertical com a linha anterior que faz a
+                # simples limpeza de célula não "colar" corretamente aqui.
+                linhas_remover.append(row)
+                continue
+
+            mesclada = len(cells) > 1 and cells[1]._tc is cells[0]._tc
+            c_val = cells[0] if mesclada else (cells[1] if len(cells) > 1 else cells[0])
+            linhas_texto = dados["descricoes_equipamentos"] or ["(nenhum equipamento ativo)"]
+            if mesclada:
+                base = label_raw.split(":")[0].strip()
+                _set_cell_multiline(c_val, [f"{base}:"] + linhas_texto)
+            else:
+                _set_cell_multiline(c_val, linhas_texto)
+            descricao_preenchida = True
+            celulas_tratadas.append(c_val._tc)
+            continue
+
+        if label.startswith("serie") or "plaqueta" in label:
+            linhas_remover.append(row)
+            continue
+
+        idx = next((i for i, (pred, _) in enumerate(campos_simples) if pred(label)), None)
+        if idx is None:
+            continue
+
+        valor = campos_simples[idx][1]
+        mesclada = len(cells) > 1 and cells[1]._tc is cells[0]._tc
+        c_val = cells[0] if mesclada else (cells[1] if len(cells) > 1 else cells[0])
+        if _ja_tratada(c_val._tc):
+            continue
+
+        if mesclada:
+            base = label_raw.split(":")[0].strip()
+            _set_cell(c_val, f"{base}: {valor}" if valor and valor != "-" else f"{base}:")
+        else:
+            _set_cell(c_val, "" if (not valor or valor == "-") else str(valor))
+
+        celulas_tratadas.append(c_val._tc)
+
+    for row in linhas_remover:
+        row._tr.getparent().remove(row._tr)
+
+
+def gerar_termo_lote_docx(usuario, itens, tipo, form_data):
+    """Termo CONSOLIDADO (entrega OU devolução) de vários equipamentos para
+    um único colaborador, sob uma única assinatura. Usado pela cascata de
+    desligamento (`tipo="devolucao"`) e pela Movimentação em Lote
+    (`tipo="entrega"` ou `"devolucao"`)."""
+    if tipo not in ("entrega", "devolucao"):
+        raise ValueError("Tipo inválido para termo em lote.")
+
+    template_path = TEMPLATE_ENTREGA if tipo == "entrega" else TEMPLATE_DEVOLUCAO
+    if not template_path.exists():
+        raise FileNotFoundError(f"Template não encontrado: {template_path}")
+
+    doc = Document(str(template_path))
+    dados = _build_dados_lote(usuario, itens, tipo, form_data)
+
+    _fill_intro(doc, dados)
+    _fill_main_table_multi(doc, dados)
+    _fill_signatures(doc, dados)
+    _ajustar_layout_documento(doc)
+
+    output = BytesIO()
+    doc.save(output)
+    output.seek(0)
+
+    return output, dados["nome_arquivo"]
+
+
+def gerar_termo_desligamento_docx(usuario, itens, form_data):
+    """Atalho para `gerar_termo_lote_docx(..., tipo="devolucao")` — mantido
+    para não exigir mudança no chamador existente (`termo_desligamento_form`)."""
+    return gerar_termo_lote_docx(usuario, itens, "devolucao", form_data)

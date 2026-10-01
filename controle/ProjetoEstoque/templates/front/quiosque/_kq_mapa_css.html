@@ -1,0 +1,152 @@
+<style>
+/* ============================================================
+   Quiosque — estilos compartilhados dos MAPAS (frota + detalhe).
+   Par obrigatório de _kq_mapa_js.html: os nomes de classe aqui são
+   os mesmos que o KQMapa gera nos divIcon. Nunca editar um sem o outro.
+   ============================================================ */
+
+/* ── Selo de conexão/sinal desenhado EM CIMA do ponto ────────────────── */
+.kq-selo-wrap { background: none; border: 0; }
+.kq-selo {
+  /* `relative` é obrigatório: o bico (::after) é posicionado em relação ao
+     próprio selo. Sem isso ele se ancora no primeiro ancestral posicionado —
+     que no mapa é o divIcon do Leaflet (funciona por acaso) mas fora dele é a
+     página inteira, jogando o bico para um canto da tela. */
+  position: relative;
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px;
+  border-radius: 99px; background: var(--kq-surface, #fff); color: var(--kq-text, #242424);
+  border: 1px solid var(--kq-border-strong, #d6d6d6); box-shadow: 0 1px 4px rgba(0,0,0,.22);
+  font-family: var(--kq-font, "Segoe UI", sans-serif); font-size: 10.5px; font-weight: 700;
+  line-height: 1; white-space: nowrap;
+}
+/* Só o selo DENTRO do mapa aponta para um ponto; em linha (lista lateral,
+   barra-resumo) o selo é um rótulo comum e o bico não faz sentido. */
+.kq-selo-wrap .kq-selo { transform: translateY(-2px); }
+.kq-selo-wrap .kq-selo::after {   /* bico apontando para o ponto */
+  content: ""; position: absolute; left: 50%; bottom: -4px; width: 7px; height: 7px;
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--kq-surface, #fff);
+  border-right: 1px solid var(--kq-border-strong, #d6d6d6);
+  border-bottom: 1px solid var(--kq-border-strong, #d6d6d6);
+}
+.kq-selo-txt { letter-spacing: .02em; }
+
+/* Barrinhas de nível (0-4) — o nº de barras acesas é o nível; as apagadas
+   continuam visíveis para a escala ficar legível ("2 de 4", não "2"). */
+.kq-selo-bars { display: inline-flex; align-items: flex-end; gap: 1px; height: 10px; }
+.kq-selo-bars i { display: block; width: 2.5px; border-radius: 1px; background: currentColor; opacity: .22; }
+.kq-selo-bars i:nth-child(1) { height: 3px; }
+.kq-selo-bars i:nth-child(2) { height: 5px; }
+.kq-selo-bars i:nth-child(3) { height: 7.5px; }
+.kq-selo-bars i:nth-child(4) { height: 10px; }
+.kq-selo-bars i.on { opacity: 1; }
+
+/* Cor do selo = qualidade do sinal (não o transporte): é o que o usuário
+   precisa enxergar de longe ao varrer o mapa procurando área de sombra. */
+.kq-selo.n0, .kq-selo.n1 { color: var(--kq-danger, #d13438); border-color: color-mix(in srgb, var(--kq-danger, #d13438) 45%, transparent); }
+.kq-selo.n2 { color: var(--kq-warning, #f7630c); border-color: color-mix(in srgb, var(--kq-warning, #f7630c) 45%, transparent); }
+.kq-selo.n3, .kq-selo.n4 { color: var(--kq-success, #107c10); border-color: color-mix(in srgb, var(--kq-success, #107c10) 45%, transparent); }
+.kq-selo.sem { color: var(--kq-soft, #616161); }
+.kq-selo.off { color: var(--kq-danger, #d13438); background: var(--kq-danger-bg, #fdf3f4); }
+.kq-selo-wrap .kq-selo.off::after { background: var(--kq-danger-bg, #fdf3f4); }
+
+/* ── Seta de sentido do trajeto ──────────────────────────────────────── */
+.kq-seta { background: none; border: 0; }
+.kq-seta span {
+  display: block; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent;
+  border-bottom: 9px solid currentColor; filter: drop-shadow(0 0 1.5px rgba(255,255,255,.9));
+}
+
+/* ── Painel de filtros/legenda (controle Leaflet) ────────────────────── */
+.kq-mapctl {
+  background: var(--kq-surface, #fff); border: 1px solid var(--kq-border-strong, #d6d6d6);
+  border-radius: var(--kq-radius-md, 8px); box-shadow: 0 2px 10px rgba(0,0,0,.16);
+  font-family: var(--kq-font, "Segoe UI", sans-serif); color: var(--kq-text, #242424);
+  min-width: 190px; max-width: 240px; overflow: hidden;
+}
+.kq-mapctl-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  padding: 8px 11px; border: 0; background: var(--kq-surface-soft, #f0f0f0); cursor: pointer;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--kq-soft, #616161); font-family: inherit;
+}
+.kq-mapctl-head i.chev { transition: transform 150ms ease; font-size: 10px; }
+.kq-mapctl.is-closed .kq-mapctl-head i.chev { transform: rotate(-90deg); }
+.kq-mapctl.is-closed .kq-mapctl-body { display: none; }
+.kq-mapctl-body { padding: 9px 11px; display: grid; gap: 7px; }
+.kq-mapctl label {
+  display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500;
+  color: var(--kq-text, #242424); cursor: pointer; line-height: 1.3;
+}
+.kq-mapctl input[type=checkbox] { margin: 0; flex: 0 0 auto; accent-color: var(--kq-accent, #0078d4); }
+.kq-mapctl-sep { height: 1px; background: var(--kq-border, #e6e6e6); margin: 3px 0; }
+.kq-mapctl-t { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--kq-soft, #616161); }
+.kq-mapctl-leg { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--kq-muted, #424242); }
+.kq-mapctl-leg .sw { width: 16px; height: 3px; border-radius: 2px; flex: 0 0 auto; }
+.kq-mapctl-leg .sw.dash { background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 7px); height: 3px; }
+.kq-mapctl-leg .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.kq-mapctl-leg .ring { width: 9px; height: 9px; border-radius: 50%; background: #fff; flex: 0 0 auto; }
+.kq-mapctl-hint { font-size: 10.5px; color: var(--kq-soft, #616161); line-height: 1.4; }
+
+/* ── Aviso sobre o mapa (camada de fundo indisponível) ───────────────── */
+.kq-mapaviso {
+  background: var(--kq-warning-bg, #fff4ce); color: var(--kq-warning, #f7630c);
+  border: 1px solid color-mix(in srgb, var(--kq-warning, #f7630c) 40%, transparent);
+  border-radius: var(--kq-radius-sm, 6px); padding: 7px 11px; max-width: 300px;
+  font-family: var(--kq-font, "Segoe UI", sans-serif); font-size: 11.5px; font-weight: 600; line-height: 1.4;
+  box-shadow: 0 2px 8px rgba(0,0,0,.14);
+}
+.kq-mapaviso i { margin-right: 5px; }
+
+/* ── Popup no padrão do módulo (Leaflet default é cinza/serif) ───────── */
+.leaflet-popup-content-wrapper { border-radius: var(--kq-radius-md, 8px); }
+.leaflet-popup-content { font-family: var(--kq-font, "Segoe UI", sans-serif); font-size: 12.5px; line-height: 1.5; margin: 10px 13px; }
+.leaflet-popup-content b { color: var(--kq-text, #242424); }
+.kq-pop-t { font-size: 13px; font-weight: 700; }
+.kq-pop-l { display: block; margin-top: 3px; color: #616161; font-size: 11.5px; }
+.kq-pop-tag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 99px; font-size: 10.5px; font-weight: 700; }
+.kq-pop-tag.on { background: #dff6dd; color: #107c10; }
+.kq-pop-tag.off { background: #fdf3f4; color: #d13438; }
+.kq-pop-tag.fila { background: #fff4ce; color: #9d5d00; }
+.kq-pop-a { display: inline-block; margin-top: 6px; font-weight: 600; text-decoration: none; }
+
+/* ── Barra de reprodução do trajeto ──────────────────────────────────── */
+.kq-play { display: flex; align-items: center; gap: 9px; padding: 8px 14px; border-top: 1px solid var(--kq-border);
+  background: var(--kq-surface-soft); }
+.kq-play[hidden] { display: none; }
+.kq-play button {
+  width: 28px; height: 28px; flex: 0 0 auto; display: grid; place-items: center; cursor: pointer;
+  border-radius: 99px; border: 1px solid var(--kq-border-strong); background: var(--kq-surface);
+  color: var(--kq-accent); font-size: 11px;
+}
+.kq-play button:hover { background: var(--kq-accent-soft); border-color: var(--kq-accent-border); }
+.kq-play input[type=range] { flex: 1; min-width: 0; accent-color: var(--kq-accent); }
+.kq-play .kq-play-lbl { font-size: 11.5px; font-weight: 600; color: var(--kq-muted); font-variant-numeric: tabular-nums;
+  white-space: nowrap; min-width: 116px; text-align: right; }
+
+/* ── Modo terreno ────────────────────────────────────────────────────────
+   Nada é escondido de verdade: a rota é ATENUADA para a imagem do terreno
+   (pivôs, divisas de talhão, estradas) poder ser lida por baixo. Os pontos
+   seguem clicáveis — só perdem o destaque visual, que é o que os fazia cobrir
+   o chão. Os selos saem porque são retângulos opacos: atenuá-los deixaria um
+   borrão cinza sobre a lavoura, pior que removê-los. */
+.kq-terreno-btn button {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer;
+  border-radius: 7px; border: 1px solid rgba(0, 0, 0, .18); background: #fff; color: #23262b;
+  font-size: 11.5px; font-weight: 650; font-family: inherit; box-shadow: 0 1px 4px rgba(0, 0, 0, .18);
+}
+.kq-terreno-btn button:hover { background: #f3f5f8; }
+.kq-terreno-btn button.is-on { background: #1f6f3f; border-color: #1a5c34; color: #fff; }
+
+.kq-terreno .leaflet-tile-pane { filter: contrast(1.13) saturate(1.16); }
+.kq-terreno .leaflet-overlay-pane { opacity: .30; }
+.kq-terreno .leaflet-marker-pane { opacity: .42; }
+.kq-terreno .kq-selo-wrap { display: none; }
+
+.kq-nitidez {
+  max-width: 270px; padding: 7px 10px; border-radius: 8px;
+  background: rgba(24, 26, 30, .90); color: #fff; font-size: 11px; line-height: 1.45;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .3);
+}
+.kq-nitidez i { color: #ffd45e; margin-right: 4px; }
+</style>

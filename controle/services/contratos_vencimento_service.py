@@ -23,6 +23,21 @@ STATUS_OPERACIONAIS_VENCIMENTO = ["ativo", "backup", "estoque", "manutencao", "d
 STATUS_PAUSADO_VENCIMENTO = "pausado"
 
 
+def _filtrar_por_ids(queryset, campo, ids, exceto):
+    """
+    Filtra `queryset` por uma lista de valores num campo (ex.: "subtipo_id").
+
+    Base do toggle "Exceto" dos filtros de Subtipo/Status/Fornecedor/Localidade:
+    sem `ids` não faz nada; com `ids` e `exceto=False` restringe à seleção
+    ("apenas estes"); com `exceto=True` inverte para exclusão ("todos, exceto
+    estes") — mesma lista de valores, sentido oposto.
+    """
+    if not ids:
+        return queryset
+    condicao = {f"{campo}__in": ids}
+    return queryset.exclude(**condicao) if exceto else queryset.filter(**condicao)
+
+
 def _usuario_atual_item(item):
     """Usuário atual do equipamento, pela última movimentação com usuário preenchido."""
     ultima_mov = (
@@ -84,6 +99,15 @@ def montar_ranking_contratos_vencimento(request):
     f_fornecedor = [v for v in request.GET.getlist("fornecedor") if v]
     f_localidade = [v for v in request.GET.getlist("localidade") if v]
 
+    # Toggle "Exceto" — inverte Subtipo/Status/Fornecedor/Localidade de
+    # "apenas estes" para "todos, exceto estes". Guardado cru: sem itens
+    # selecionados o filtro já é no-op (ver `_filtrar_por_ids`), e manter o
+    # valor cru deixa o checkbox marcado na tela mesmo antes de escolher algo.
+    f_subtipo_exc = request.GET.get("subtipo_exc") == "1"
+    f_status_exc = request.GET.get("status_exc") == "1"
+    f_fornecedor_exc = request.GET.get("fornecedor_exc") == "1"
+    f_localidade_exc = request.GET.get("localidade_exc") == "1"
+
     qs = (
         Item.objects
         .filter(
@@ -100,14 +124,10 @@ def montar_ranking_contratos_vencimento(request):
         qs = qs.filter(nome__icontains=f_nome)
     if f_ns:
         qs = qs.filter(numero_serie__icontains=f_ns)
-    if f_subtipo:
-        qs = qs.filter(subtipo_id__in=f_subtipo)
-    if f_status:
-        qs = qs.filter(status__in=f_status)
-    if f_fornecedor:
-        qs = qs.filter(fornecedor_id__in=f_fornecedor)
-    if f_localidade:
-        qs = qs.filter(localidade_id__in=f_localidade)
+    qs = _filtrar_por_ids(qs, "subtipo_id", f_subtipo, f_subtipo_exc)
+    qs = _filtrar_por_ids(qs, "status", f_status, f_status_exc)
+    qs = _filtrar_por_ids(qs, "fornecedor_id", f_fornecedor, f_fornecedor_exc)
+    qs = _filtrar_por_ids(qs, "localidade_id", f_localidade, f_localidade_exc)
 
     itens_alerta = []
 
@@ -162,6 +182,14 @@ def montar_ranking_contratos_vencimento(request):
         "fornecedor": f_fornecedor,
         "localidade": f_localidade,
     }
+    filtros_ativos = sum(1 for v in filtros.values() if v)
+
+    # Flags do toggle "Exceto" — de propósito fora da contagem acima: marcar
+    # "Exceto" sem selecionar nada ainda não é, por si só, um filtro ativo.
+    filtros["subtipo_exc"] = f_subtipo_exc
+    filtros["status_exc"] = f_status_exc
+    filtros["fornecedor_exc"] = f_fornecedor_exc
+    filtros["localidade_exc"] = f_localidade_exc
 
     return {
         "ranking_operacional": ranking_operacional,
@@ -172,7 +200,7 @@ def montar_ranking_contratos_vencimento(request):
         "localidades": Localidade.objects.order_by("local"),
         "status_opcoes": status_opcoes,
         "filtros": filtros,
-        "filtros_ativos": sum(1 for v in filtros.values() if v),
+        "filtros_ativos": filtros_ativos,
         "querystring": request.GET.urlencode(),
         "kpi": {
             "total_alertas": len(itens_alerta),

@@ -1,0 +1,246 @@
+{% comment %}
+Área de evidências fotográficas — envio de quantas fotos forem necessárias,
+cada uma marcada como Antes, Depois ou valendo para os dois momentos.
+
+Espera no contexto:
+  execucao (opcional) — quando presente, lista as fotos já gravadas com opção
+                        de remover (checkbox escondido em `remover_fotos`).
+  fotos_existentes (opcional) — lista de PreventivaFoto já na execução.
+
+O formulário que inclui este bloco PRECISA ter enctype="multipart/form-data".
+
+Contrato com o servidor (ver services/preventiva_fotos_service.coletar_do_request):
+  - `fotos`    → um input file múltiplo; cada arquivo selecionado vira um item.
+  - `momentos` → um hidden POR ARQUIVO, na MESMA ORDEM dos arquivos.
+  - `remover_fotos` → ids das fotos existentes marcadas para exclusão.
+
+A ordem é o único vínculo entre arquivo e momento — por isso o JS reconstrói a
+lista de arquivos via DataTransfer sempre que algo muda, mantendo os hidden em
+sincronia. Sem JS, os arquivos ainda sobem e caem no padrão "antes" no servidor.
+{% endcomment %}
+
+<section class="pv-card" aria-labelledby="pv-fotos-titulo">
+  <div class="pv-card-head">
+    <h3 class="pv-card-title" id="pv-fotos-titulo">
+      <i class="fa-solid fa-images" aria-hidden="true"></i> Evidências fotográficas
+    </h3>
+    <div class="pv-card-actions">
+      <span class="pv-badge" id="pvFotosContador">0 foto(s)</span>
+    </div>
+  </div>
+
+  <div class="pv-card-body">
+
+    {% if fotos_existentes %}
+    <div>
+      <div class="pv-coluna-t">
+        <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+        Fotos já registradas <span class="n">{{ fotos_existentes|length }}</span>
+      </div>
+      <div class="pv-fotos">
+        {% for foto in fotos_existentes %}
+        <figure class="pv-foto" data-existente="{{ foto.id }}">
+          <img class="pv-foto-img" src="{{ foto.imagem.url }}" alt="Evidência {{ foto.get_momento_display|lower }}"
+               loading="lazy" data-lightbox data-legenda="{{ foto.get_momento_display }}"
+               onerror="this.outerHTML='&lt;div class=\'pv-foto-ausente\'&gt;&lt;i class=\'fa-solid fa-image-slash\'&gt;&lt;/i&gt;Arquivo não encontrado no servidor&lt;/div&gt;'">
+          <span class="pv-foto-tag {{ foto.momento }}">{{ foto.get_momento_display }}</span>
+          <button type="button" class="pv-foto-x" data-remover="{{ foto.id }}"
+                  title="Remover esta foto" aria-label="Remover esta foto">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+          {% comment %}Barra só quando há legenda: uma faixa com "—" em cada miniatura
+             sem legenda só acrescenta ruído à grade.{% endcomment %}
+          {% if foto.legenda %}
+          <div class="pv-foto-bar"><span class="pv-foto-nome">{{ foto.legenda }}</span></div>
+          {% endif %}
+        </figure>
+        {% endfor %}
+      </div>
+      <p class="pv-dropzone-s" style="margin:8px 0 0;">
+        As fotos removidas só saem de fato ao salvar o formulário.
+      </p>
+    </div>
+    {% endif %}
+
+    <label class="pv-dropzone" id="pvDropzone" tabindex="0" role="button"
+           aria-label="Selecionar fotos para enviar">
+      <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
+      <span class="pv-dropzone-t">Arraste as fotos aqui ou clique para escolher</span>
+      <span class="pv-dropzone-s">
+        Envie quantas quiser. Depois marque cada uma como <b>Antes</b>, <b>Depois</b>
+        ou <b>Ambos</b> — use “Ambos” quando a mesma foto vale para os dois momentos.
+      </span>
+      <input type="file" name="fotos" id="pvFotosInput" accept="image/*" multiple>
+    </label>
+
+    <div class="pv-fotos" id="pvFotosPreview"></div>
+
+    <div class="pv-empty" id="pvFotosVazio">
+      <i class="fa-solid fa-camera-retro" aria-hidden="true"></i>
+      <span>Nenhuma foto nova selecionada.</span>
+    </div>
+
+  </div>
+
+  {# Hidden de remoção e de momentos são gerados aqui pelo JS. #}
+  <div id="pvFotosHidden" hidden></div>
+</section>
+
+<script>
+(function () {
+  "use strict";
+  var input      = document.getElementById('pvFotosInput');
+  var dropzone   = document.getElementById('pvDropzone');
+  var preview    = document.getElementById('pvFotosPreview');
+  var vazio      = document.getElementById('pvFotosVazio');
+  var contador   = document.getElementById('pvFotosContador');
+  var hiddenBox  = document.getElementById('pvFotosHidden');
+  if (!input || !dropzone) return;
+
+  var MAX = {{ max_fotos|default:40 }};
+  // Lista-mestra dos arquivos escolhidos. O <input type=file> não permite
+  // remover um item isolado, então mantemos a lista aqui e reescrevemos o
+  // input via DataTransfer a cada mudança — é o que garante que a ordem dos
+  // arquivos corresponda à ordem dos hidden `momentos`.
+  var itens = [];   // [{arquivo, momento, url}]
+
+  function rotuloArquivo(nome) {
+    return nome.length > 26 ? nome.slice(0, 12) + '…' + nome.slice(-11) : nome;
+  }
+
+  function sincronizarInput() {
+    var dt = new DataTransfer();
+    itens.forEach(function (it) { dt.items.add(it.arquivo); });
+    input.files = dt.files;
+
+    // Um hidden `momentos` por arquivo, na mesma ordem. Remove APENAS os
+    // hidden de momento: o mesmo container guarda os `remover_fotos`, e
+    // limpá-lo inteiro descartaria as remoções marcadas pelo usuário.
+    hiddenBox.querySelectorAll('input[name="momentos"]').forEach(function (n) { n.remove(); });
+    itens.forEach(function (it) {
+      var h = document.createElement('input');
+      h.type = 'hidden'; h.name = 'momentos'; h.value = it.momento;
+      hiddenBox.appendChild(h);
+    });
+  }
+
+  function atualizarContador() {
+    var existentes = document.querySelectorAll('.pv-foto[data-existente]:not(.is-removida)').length;
+    var total = existentes + itens.length;
+    contador.textContent = total + ' foto(s)';
+    contador.className = 'pv-badge' + (total ? ' pv-badge-info' : '');
+    vazio.hidden = itens.length > 0;
+  }
+
+  function desenhar() {
+    preview.innerHTML = '';
+    itens.forEach(function (it, indice) {
+      var fig = document.createElement('figure');
+      fig.className = 'pv-foto';
+      fig.innerHTML =
+        '<img class="pv-foto-img" src="' + it.url + '" alt="Pré-visualização" data-lightbox data-legenda="' + rotuloArquivo(it.arquivo.name) + '">' +
+        '<button type="button" class="pv-foto-x" title="Remover" aria-label="Remover foto"><i class="fa-solid fa-xmark"></i></button>' +
+        '<div class="pv-foto-bar"><span class="pv-foto-nome" title="' + it.arquivo.name + '">' + rotuloArquivo(it.arquivo.name) + '</span></div>' +
+        '<div class="pv-momento" style="margin:0 8px 8px;">' +
+          ['antes', 'depois', 'ambos'].map(function (valor) {
+            var texto = valor === 'antes' ? 'Antes' : (valor === 'depois' ? 'Depois' : 'Ambos');
+            return '<label><input type="radio" name="m_' + indice + '" value="' + valor + '"' +
+                   (it.momento === valor ? ' checked' : '') + '><span>' + texto + '</span></label>';
+          }).join('') +
+        '</div>';
+
+      fig.querySelector('.pv-foto-x').addEventListener('click', function () {
+        URL.revokeObjectURL(it.url);
+        itens.splice(indice, 1);
+        render();
+      });
+      fig.querySelectorAll('.pv-momento input').forEach(function (radio) {
+        radio.addEventListener('change', function () {
+          it.momento = radio.value;
+          sincronizarInput();
+        });
+      });
+      preview.appendChild(fig);
+    });
+  }
+
+  function render() {
+    desenhar();
+    sincronizarInput();
+    atualizarContador();
+  }
+
+  function adicionar(lista) {
+    var recusadas = [];
+    Array.prototype.forEach.call(lista, function (arquivo) {
+      if (!arquivo.type.startsWith('image/')) { recusadas.push(arquivo.name); return; }
+      if (itens.length >= MAX) { recusadas.push(arquivo.name); return; }
+      itens.push({
+        arquivo: arquivo,
+        // Padrão "antes": marcar como "ambos" por engano duplicaria a foto na
+        // comparação e distorceria a evidência. O técnico promove a "ambos"
+        // conscientemente, num toque.
+        momento: 'antes',
+        url: URL.createObjectURL(arquivo)
+      });
+    });
+    render();
+    if (recusadas.length) {
+      alert('Não foi possível adicionar: ' + recusadas.join(', ') +
+            '\n\nEnvie apenas imagens, no máximo ' + MAX + ' por execução.');
+    }
+  }
+
+  // O change do input traz os arquivos novos; a lista-mestra é quem manda,
+  // então lemos e imediatamente reescrevemos o input a partir dela.
+  input.addEventListener('change', function () {
+    if (input.files && input.files.length) adicionar(input.files);
+  });
+
+  ['dragenter', 'dragover'].forEach(function (evento) {
+    dropzone.addEventListener(evento, function (e) {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.add('is-dragging');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (evento) {
+    dropzone.addEventListener(evento, function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (evento === 'dragleave' && dropzone.contains(e.relatedTarget)) return;
+      dropzone.classList.remove('is-dragging');
+    });
+  });
+  dropzone.addEventListener('drop', function (e) {
+    if (e.dataTransfer && e.dataTransfer.files.length) adicionar(e.dataTransfer.files);
+  });
+  dropzone.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+  });
+
+  // Remoção de foto JÁ gravada: não apaga na hora — marca visualmente e cria o
+  // hidden `remover_fotos`, para a exclusão acontecer só ao salvar (e poder ser
+  // desfeita clicando de novo antes disso).
+  document.querySelectorAll('[data-remover]').forEach(function (botao) {
+    botao.addEventListener('click', function () {
+      var id = botao.getAttribute('data-remover');
+      var fig = botao.closest('.pv-foto');
+      var marcado = fig.classList.toggle('is-removida');
+      var existente = hiddenBox.querySelector('input[data-rm="' + id + '"]');
+      if (marcado && !existente) {
+        var h = document.createElement('input');
+        h.type = 'hidden'; h.name = 'remover_fotos'; h.value = id; h.setAttribute('data-rm', id);
+        hiddenBox.appendChild(h);
+        botao.title = 'Desfazer remoção';
+        botao.innerHTML = '<i class="fa-solid fa-rotate-left"></i>';
+      } else if (!marcado && existente) {
+        existente.remove();
+        botao.title = 'Remover esta foto';
+        botao.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+      }
+      atualizarContador();
+    });
+  });
+
+  atualizarContador();
+})();
+</script>

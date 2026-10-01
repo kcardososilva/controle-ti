@@ -107,6 +107,36 @@
 .select2-results__option { color: var(--kan-text) !important; }
 .select2-results__option--highlighted { background: var(--kan-primary) !important; color: #fff !important; }
 
+.kan-field-forn { display: flex; align-items: flex-end; gap: .5rem; }
+.kan-field-forn > div:first-child { flex: 1; min-width: 0; }
+.kan-forn-add {
+  flex: 0 0 auto; min-height: var(--kan-control-h); width: var(--kan-control-h);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--kan-border2); border-radius: var(--kan-radius-sm);
+  background: var(--kan-surface); color: var(--kan-primary); cursor: pointer;
+  transition: background var(--kan-transition), border-color var(--kan-transition);
+}
+.kan-forn-add:hover { background: var(--kan-primary-soft); border-color: var(--kan-primary); }
+
+/* Modal de cadastro rápido de fornecedor */
+.kan-modal-backdrop {
+  position: fixed; inset: 0; z-index: 9998; background: rgba(0,0,0,.4);
+  display: flex; align-items: center; justify-content: center; padding: 1rem;
+}
+.kan-modal {
+  width: min(100%, 28rem); background: var(--kan-surface); border-radius: var(--kan-radius-lg);
+  box-shadow: var(--kan-shadow-md); overflow: hidden;
+}
+.kan-modal-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--kan-border); }
+.kan-modal-head strong { font-size: .95rem; }
+.kan-modal-close { border: 0; background: transparent; color: var(--kan-muted); cursor: pointer; font-size: 1rem; padding: .25rem; }
+.kan-modal-body { padding: 1.1rem 1.25rem; display: grid; gap: .85rem; }
+.kan-modal-foot { display: flex; justify-content: flex-end; gap: .6rem; padding: .9rem 1.25rem; border-top: 1px solid var(--kan-border); }
+.kan-modal-error { display: none; padding: .6rem .8rem; border-radius: var(--kan-radius-sm); background: var(--kan-danger-soft); color: var(--kan-danger); font-size: .82rem; font-weight: 600; }
+.kan-modal-error.show { display: block; }
+
+.hidden { display: none !important; }
+
 @media (max-width: 42rem) { .kan-grid, .kan-resumo-grid { grid-template-columns: 1fr; } .kan-actions { display: grid; } .kan-btn-primary, .kan-btn-secondary { width: 100%; } }
 </style>
 {% endblock %}
@@ -158,7 +188,12 @@
         {% if tem_vinculo %}
         <div class="kan-field">
           <label for="{{ form.fornecedor.id_for_label }}">{{ form.fornecedor.label }}</label>
-          {{ form.fornecedor }}
+          <div class="kan-field-forn">
+            <div>{{ form.fornecedor }}</div>
+            <button type="button" class="kan-forn-add" id="kanFornAddBtn" title="Cadastrar novo fornecedor">
+              <i class="fa fa-plus" aria-hidden="true"></i>
+            </button>
+          </div>
           {{ form.fornecedor.errors }}
         </div>
         <div class="kan-field">
@@ -219,6 +254,36 @@
       </button>
     </div>
   </form>
+
+  {% if tem_vinculo %}
+  <div class="kan-modal-backdrop hidden" id="kanFornModalBackdrop">
+    <div class="kan-modal">
+      <div class="kan-modal-head">
+        <strong><i class="fa fa-truck-field" aria-hidden="true"></i> Cadastrar fornecedor</strong>
+        <button type="button" class="kan-modal-close" id="kanFornModalClose"><i class="fa fa-xmark" aria-hidden="true"></i></button>
+      </div>
+      <div class="kan-modal-body">
+        <div class="kan-modal-error" id="kanFornModalError"></div>
+        <div class="kan-field">
+          <label for="kanFornNome">Nome <span style="color:var(--kan-danger)">*</span></label>
+          <input type="text" id="kanFornNome" placeholder="Razão social ou nome fantasia">
+        </div>
+        <div class="kan-field">
+          <label for="kanFornCnpj">CNPJ <span style="color:var(--kan-danger)">*</span></label>
+          <input type="text" id="kanFornCnpj" placeholder="00.000.000/0000-00">
+        </div>
+        <div class="kan-field">
+          <label for="kanFornContrato">Contrato <span style="color:var(--kan-muted); font-weight:400;">(opcional)</span></label>
+          <textarea id="kanFornContrato" placeholder="Observações do contrato, se houver"></textarea>
+        </div>
+      </div>
+      <div class="kan-modal-foot">
+        <button type="button" class="kan-btn-secondary" id="kanFornModalCancel">Cancelar</button>
+        <button type="button" class="kan-btn-primary" id="kanFornModalSave"><i class="fa fa-check" aria-hidden="true"></i> Cadastrar e selecionar</button>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}
 
@@ -244,6 +309,66 @@
   jQuery('#{{ form.centro_custo_destino.auto_id }}').select2({
     width: '100%', placeholder: 'Selecione o centro de custo...',
     language: { noResults: function () { return 'Nenhum centro de custo encontrado'; }, searching: function () { return 'Buscando...'; } },
+  });
+})();
+</script>
+
+{# Cadastro rápido de fornecedor — evita sair do fluxo de recebimento quando #}
+{# o fornecedor da nota fiscal ainda não está cadastrado no sistema.        #}
+<script>
+(function () {
+  'use strict';
+  var $backdrop = jQuery('#kanFornModalBackdrop');
+  var $btnAdd = jQuery('#kanFornAddBtn');
+  var $btnSave = jQuery('#kanFornModalSave');
+  var $error = jQuery('#kanFornModalError');
+  var $fornecedor = jQuery('#{{ form.fornecedor.auto_id }}');
+  if (!$backdrop.length || !$btnAdd.length) return;
+
+  function abrir() {
+    $error.removeClass('show').text('');
+    jQuery('#kanFornNome, #kanFornCnpj, #kanFornContrato').val('');
+    $backdrop.removeClass('hidden');
+    jQuery('#kanFornNome').trigger('focus');
+  }
+  function fechar() { $backdrop.addClass('hidden'); }
+
+  $btnAdd.on('click', abrir);
+  jQuery('#kanFornModalClose, #kanFornModalCancel').on('click', fechar);
+  $backdrop.on('click', function (ev) { if (ev.target === this) fechar(); });
+
+  $btnSave.on('click', function () {
+    var nome = jQuery('#kanFornNome').val().trim();
+    var cnpj = jQuery('#kanFornCnpj').val().trim();
+    var contrato = jQuery('#kanFornContrato').val().trim();
+    if (!nome || !cnpj) {
+      $error.addClass('show').text('Informe nome e CNPJ.');
+      return;
+    }
+    $btnSave.prop('disabled', true);
+    jQuery.ajax({
+      url: '{% url "fornecedor_quick_create" %}',
+      method: 'POST',
+      data: {
+        nome: nome, cnpj: cnpj, contrato: contrato,
+        csrfmiddlewaretoken: jQuery('[name=csrfmiddlewaretoken]').val(),
+      },
+    }).done(function (resp) {
+      if (!resp.ok) {
+        var msg = resp.errors ? Object.values(resp.errors).join(' ') : 'Não foi possível cadastrar o fornecedor.';
+        $error.addClass('show').text(msg);
+        return;
+      }
+      var opt = new Option(resp.text, resp.id, true, true);
+      $fornecedor.append(opt).trigger('change');
+      fechar();
+    }).fail(function (xhr) {
+      var resp = xhr.responseJSON;
+      var msg = resp && resp.errors ? Object.values(resp.errors).join(' ') : 'Não foi possível cadastrar o fornecedor.';
+      $error.addClass('show').text(msg);
+    }).always(function () {
+      $btnSave.prop('disabled', false);
+    });
   });
 })();
 </script>

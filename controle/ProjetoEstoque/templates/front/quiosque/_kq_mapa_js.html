@@ -1,0 +1,430 @@
+<script>
+/* ============================================================
+   Quiosque — módulo compartilhado dos MAPAS (frota + detalhe).
+   Incluir SEMPRE depois do <script> do Leaflet e junto de
+   _kq_mapa_css.html (as classes dos divIcon vivem lá).
+
+   Por que as camadas de fundo ficam aqui e não em cada tela: as duas
+   telas precisam exatamente do mesmo conjunto, e foi justamente uma
+   divergência silenciosa entre elas que deixou o problema do
+   OpenStreetMap passar despercebido (ver KQMapa.CAMADAS).
+   ============================================================ */
+window.KQMapa = (function () {
+  "use strict";
+
+  var ATTR_ESRI = 'Tiles &copy; Esri';
+
+  /* ── Camadas de fundo ──────────────────────────────────────────────────
+     O OpenStreetMap foi REMOVIDO de propósito, não por engano: os
+     servidores voluntários do OSM respondem HTTP 418 "Access blocked" a
+     este sistema (política de uso de tiles) e devolvem SEMPRE a mesma
+     imagem de aviso, em qualquer coordenada e zoom. Como essa resposta é
+     um PNG válido, o navegador a desenha como se fosse um tile normal e
+     o Leaflet nem dispara `tileerror` — por isso o "Mapa" aparecia
+     apenas como um mosaico inútil enquanto o satélite funcionava, sem
+     nenhum erro no console. Trocar o subdomínio ou o User-Agent não
+     resolve: o bloqueio é da política, não do endereço.
+
+     Em lugar dele, camadas do ArcGIS/Esri (mesmo host que já serve o
+     satélite nesta rede, logo comprovadamente liberado no firewall) e o
+     CARTO como base clara. maxNativeZoom evita o placeholder "Map data
+     not yet available" onde o provedor não tem imagem no zoom pedido —
+     o Leaflet passa a reescalar o último tile disponível. */
+  var CAMADAS = [
+    { id: "satelite", rotulo: "Satélite",
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      opts: { maxZoom: 19, maxNativeZoom: 17, attribution: ATTR_ESRI } },
+    { id: "hibrido", rotulo: "Satélite + nomes",
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      opts: { maxZoom: 19, maxNativeZoom: 17, attribution: ATTR_ESRI },
+      // Sobreposição de rótulos (estradas/localidades) por cima da imagem:
+      // numa fazenda é o que dá referência sem perder o terreno real.
+      overlay: "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}" },
+    { id: "ruas", rotulo: "Ruas",
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+      opts: { maxZoom: 19, maxNativeZoom: 18, attribution: ATTR_ESRI } },
+    { id: "topo", rotulo: "Topográfico",
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+      opts: { maxZoom: 19, maxNativeZoom: 18, attribution: ATTR_ESRI } },
+    { id: "claro", rotulo: "Claro (alto contraste)",
+      url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+      opts: { maxZoom: 20, subdomains: "abcd", attribution: '&copy; OpenStreetMap, &copy; CARTO' } }
+  ];
+
+  var CHAVE_CAMADA = "kq_mapa_camada";
+
+  function _ler(chave, padrao) {
+    try { var v = localStorage.getItem(chave); return v === null ? padrao : v; }
+    catch (e) { return padrao; }
+  }
+  function _gravar(chave, valor) {
+    try { localStorage.setItem(chave, valor); } catch (e) { /* modo privado */ }
+  }
+
+  /* Monta as camadas de fundo, o seletor e a persistência da escolha.
+     Devolve { control } — as camadas em si ficam sob controle do Leaflet. */
+  function montarCamadas(map, opcoes) {
+    opcoes = opcoes || {};
+    var mapaDeCamadas = {};
+    var porId = {};
+    var overlays = {};
+
+    CAMADAS.forEach(function (def) {
+      var camada = L.tileLayer(def.url, def.opts);
+      if (def.overlay) {
+        // Base + rótulos viajam como UMA opção no seletor: o usuário escolhe
+        // "Satélite + nomes", não monta a combinação na mão.
+        var rot = L.tileLayer(def.overlay, { maxZoom: 19, maxNativeZoom: 17, attribution: ATTR_ESRI });
+        camada = L.layerGroup([camada, rot]);
+      }
+      // Último zoom com imagem REAL desta camada. Acima dele o Leaflet reamplia
+      // o tile anterior: a tela continua respondendo ao zoom, mas nenhum detalhe
+      // novo aparece — é o que fazia a borda do pivô "sumir" justamente quando
+      // se aproximava para vê-la. Guardado aqui para o aviso de nitidez e para o
+      // modo terreno saberem onde está esse limite, sem repetir o número.
+      camada._kqNativo = def.opts.maxNativeZoom || def.opts.maxZoom || 19;
+      mapaDeCamadas[def.rotulo] = camada;
+      porId[def.id] = camada;
+      camada._kqId = def.id;
+      overlays[def.id] = camada;
+    });
+
+    var escolhida = _ler(CHAVE_CAMADA, opcoes.padrao || "satelite");
+    var inicial = porId[escolhida] || porId.satelite;
+    inicial.addTo(map);
+
+    var control = L.control.layers(mapaDeCamadas, null, { position: "topright" }).addTo(map);
+    map.on("baselayerchange", function (ev) {
+      if (ev.layer && ev.layer._kqId) _gravar(CHAVE_CAMADA, ev.layer._kqId);
+    });
+
+    _vigiarTiles(map);
+    return { control: control, camadas: porId };
+  }
+
+  /* Falha REAL de tiles (provedor fora do ar, firewall bloqueando o host):
+     mostra um aviso sobre o mapa em vez de deixar a tela cinza sem explicação.
+     Não cobre o caso do OSM descrito acima — lá o servidor responde 200-ish
+     com uma imagem válida e nenhum evento de erro é emitido; aquele problema
+     se resolve não usando o provedor, e não com detecção em tempo de execução. */
+  function _vigiarTiles(map) {
+    var erros = 0, aviso = null;
+    map.on("tileerror", function () {
+      erros++;
+      if (erros < 6 || aviso) return;
+      aviso = L.control({ position: "bottomleft" });
+      aviso.onAdd = function () {
+        var d = L.DomUtil.create("div", "kq-mapaviso");
+        d.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>Esta camada de fundo não está carregando. ' +
+                      'Escolha outra no seletor de camadas (canto superior direito).';
+        return d;
+      };
+      aviso.addTo(map);
+    });
+    map.on("baselayerchange", function () {
+      erros = 0;
+      if (aviso) { map.removeControl(aviso); aviso = null; }
+    });
+  }
+
+  /* ── Selo de conexão/sinal ───────────────────────────────────────────── */
+
+  function _escapar(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  /* HTML do selo. `sinal` = {rotulo, nivel, dbm, operadora, tipo} vindo do
+     servidor (sinal_do_checkin/sinal_atual_device). nivel null = o aparelho
+     NÃO reporta força de sinal: mostra só o transporte, sem barras — nunca
+     um nível inventado. */
+  function seloHtml(sinal, online) {
+    if (!sinal) return "";
+    var nivel = (sinal.nivel === null || sinal.nivel === undefined) ? null : Math.max(0, Math.min(4, sinal.nivel));
+    var classe = !online ? "off" : (nivel === null ? "sem" : "n" + nivel);
+    var texto = online ? (sinal.rotulo || "Rede") : "Sem conexão";
+    var barras = "";
+    if (online && nivel !== null) {
+      barras = '<span class="kq-selo-bars">';
+      for (var i = 1; i <= 4; i++) barras += '<i class="' + (i <= nivel ? "on" : "") + '"></i>';
+      barras += "</span>";
+    }
+    return '<span class="kq-selo ' + classe + '"><span class="kq-selo-txt">' +
+           _escapar(texto) + "</span>" + barras + "</span>";
+  }
+
+  function iconeSelo(sinal, online) {
+    return L.divIcon({
+      className: "kq-selo-wrap",
+      html: seloHtml(sinal, online),
+      iconSize: null,          // deixa o conteúdo definir a largura do pill
+      iconAnchor: [0, 26]      // ajustado no runtime por _centralizarSelo
+    });
+  }
+
+  /* O divIcon nasce ancorado pela esquerda; centralizar exige a largura real,
+     que só existe depois de estar no DOM. Roda uma vez por marcador. */
+  function centralizarSelo(marcador) {
+    var el = marcador.getElement && marcador.getElement();
+    if (!el) return;
+    var largura = el.offsetWidth || 0;
+    if (largura) el.style.marginLeft = (-largura / 2) + "px";
+  }
+
+  /* ── Colisão entre selos ──────────────────────────────────────────────
+     Num mapa real os selos se amontoam: no da frota, dezenas de aparelhos
+     fixos ficam no mesmo pátio; no da rota, a conexão cai e volta num trecho
+     de 200 m. Sem filtro, viram um borrão ilegível.
+
+     O teste é por SOBREPOSIÇÃO DE RETÂNGULO, não por distância entre centros:
+     os rótulos têm larguras bem diferentes ("4G" ≈ 46 px, "Sem conexão" ≈ 100
+     px) e dois selos largos se sobrepõem mesmo com os centros afastados.
+     É medida de TELA, então precisa ser refeita a cada mudança de zoom.
+
+     Nada de informação se perde: o marcador embaixo continua clicável, e dar
+     zoom separa os selos e revela os que tinham sido omitidos. */
+  var SELO_ALTURA_PX = 18;
+  var SELO_FOLGA_PX = 5;
+  var SELO_OFFSET_Y = 28;   // o selo é desenhado ACIMA do ponto
+
+  /* Largura estimada do pill antes de existir no DOM: ~6.1 px por caractere
+     (Segoe UI 10.5px, peso 700) + padding + as 4 barrinhas quando há nível. */
+  function larguraSelo(sinal, online) {
+    var texto = online ? ((sinal && sinal.rotulo) || "Rede") : "Sem conexão";
+    var temNivel = online && sinal && sinal.nivel !== null && sinal.nivel !== undefined;
+    return 16 + texto.length * 6.1 + (temNivel ? 18 : 0);
+  }
+
+  /* itens: [{lat, lon, sinal, online}] (campos extras são preservados).
+     Devolve o subconjunto que cabe sem sobreposição. Os itens SEM conexão são
+     posicionados primeiro — são a informação que o mapa existe para dar, então
+     reservam espaço e os demais é que cedem. */
+  function semColisao(map, itens) {
+    if (!map._loaded) return [];
+    var ocupados = [], saida = [];
+
+    function tentar(it) {
+      var centro = map.latLngToContainerPoint([it.lat, it.lon]);
+      var meia = larguraSelo(it.sinal, it.online) / 2 + SELO_FOLGA_PX;
+      var caixa = {
+        e: centro.x - meia, d: centro.x + meia,
+        c: centro.y - SELO_OFFSET_Y,
+        b: centro.y - SELO_OFFSET_Y + SELO_ALTURA_PX + SELO_FOLGA_PX
+      };
+      for (var i = 0; i < ocupados.length; i++) {
+        var o = ocupados[i];
+        if (caixa.e < o.d && caixa.d > o.e && caixa.c < o.b && caixa.b > o.c) return;
+      }
+      ocupados.push(caixa);
+      saida.push(it);
+    }
+
+    itens.forEach(function (it) { if (!it.online) tentar(it); });
+    itens.forEach(function (it) { if (it.online) tentar(it); });
+    return saida;
+  }
+
+  function textoSinal(sinal, online) {
+    if (!online) return "Sem conexão";
+    if (!sinal) return "—";
+    var partes = [sinal.rotulo || "Rede"];
+    if (sinal.nivel !== null && sinal.nivel !== undefined) partes.push("sinal " + sinal.nivel + "/4");
+    if (sinal.dbm !== null && sinal.dbm !== undefined) partes.push(sinal.dbm + " dBm");
+    if (sinal.operadora) partes.push(sinal.operadora);
+    return partes.join(" · ");
+  }
+
+  /* ── Painel de filtros (controle Leaflet, canto inferior esquerdo) ───── */
+
+  /* itens: [{id, rotulo, padrao}] · aoMudar(estado) roda a cada alteração e
+     uma vez na montagem. O estado é persistido por `chave` (localStorage),
+     para o filtro sobreviver ao F5 como o resto da tela. */
+  function painelFiltros(map, opcoes) {
+    var itens = opcoes.itens || [];
+    var chave = opcoes.chave || "kq_mapa_filtros";
+    var estado = {};
+    var salvo = {};
+    try { salvo = JSON.parse(_ler(chave, "{}")) || {}; } catch (e) { salvo = {}; }
+    itens.forEach(function (it) {
+      estado[it.id] = (typeof salvo[it.id] === "boolean") ? salvo[it.id] : !!it.padrao;
+    });
+
+    var ctl = L.control({ position: opcoes.posicao || "bottomleft" });
+    ctl.onAdd = function () {
+      var box = L.DomUtil.create("div", "kq-mapctl");
+      var aberto = _ler(chave + "_aberto", "1") === "1";
+      if (!aberto) L.DomUtil.addClass(box, "is-closed");
+
+      var html = '<button type="button" class="kq-mapctl-head">' +
+                 '<span><i class="fa-solid fa-sliders"></i> ' + _escapar(opcoes.titulo || "Exibir no mapa") + "</span>" +
+                 '<i class="fa-solid fa-chevron-down chev"></i></button><div class="kq-mapctl-body">';
+      itens.forEach(function (it) {
+        html += '<label><input type="checkbox" data-kq="' + _escapar(it.id) + '"' +
+                (estado[it.id] ? " checked" : "") + "> " + _escapar(it.rotulo) + "</label>";
+      });
+      if (opcoes.legenda) html += '<div class="kq-mapctl-sep"></div>' + opcoes.legenda;
+      html += "</div>";
+      box.innerHTML = html;
+
+      // Sem isso, arrastar/rolar sobre o painel movimenta o mapa por baixo.
+      L.DomEvent.disableClickPropagation(box);
+      L.DomEvent.disableScrollPropagation(box);
+
+      var cabecalho = box.querySelector(".kq-mapctl-head");
+      cabecalho.addEventListener("click", function () {
+        var fechado = L.DomUtil.hasClass(box, "is-closed");
+        if (fechado) L.DomUtil.removeClass(box, "is-closed"); else L.DomUtil.addClass(box, "is-closed");
+        _gravar(chave + "_aberto", fechado ? "1" : "0");
+      });
+
+      box.querySelectorAll("input[data-kq]").forEach(function (inp) {
+        inp.addEventListener("change", function () {
+          estado[inp.getAttribute("data-kq")] = inp.checked;
+          _gravar(chave, JSON.stringify(estado));
+          opcoes.aoMudar(estado);
+        });
+      });
+      return box;
+    };
+    ctl.addTo(map);
+    opcoes.aoMudar(estado);
+    return { estado: estado };
+  }
+
+  /* ── Modo terreno (ver os pivôs e as divisas) ─────────────────────────
+     Numa fazenda, o fundo NÃO é decoração: os pivôs, as bordas das lavouras e
+     as estradas estão na imagem de satélite, e é sobre eles que se lê onde o
+     aparelho passou. O que escondia esse terreno eram duas coisas:
+
+       1. A própria sobreposição — traço grosso, pontos, círculos de precisão e
+          selos cobrindo o chão. Aqui ela é atenuada, não removida: a rota
+          continua visível como referência, só deixa de disputar a atenção.
+       2. O zoom acima do último nível com imagem real, onde o Leaflet só
+          amplia o tile anterior. Aproximar passava a BORRAR em vez de
+          detalhar. No modo terreno o zoom é travado nesse limite.
+
+     O leve ganho de contraste/saturação é o que destaca a divisa entre o
+     círculo irrigado e o solo seco em volta. */
+  var CHAVE_TERRENO = "kq_mapa_terreno";
+
+  function zoomNativo(map) {
+    var limite = null;
+    map.eachLayer(function (camada) {
+      if (camada._kqNativo) limite = Math.min(limite === null ? 99 : limite, camada._kqNativo);
+    });
+    return limite;
+  }
+
+  /* Aviso de que a imagem passou da resolução do provedor. Sem ele, a pessoa
+     continua aproximando achando que vai melhorar — e a imagem só piora. */
+  function avisoNitidez(map) {
+    var ctl = L.control({ position: "bottomright" });
+    var elemento = null;
+    ctl.onAdd = function () {
+      elemento = L.DomUtil.create("div", "kq-nitidez");
+      elemento.innerHTML = '<i class="fa-solid fa-circle-info"></i> ' +
+        'Imagem ampliada além da resolução do satélite — afaste um nível para ver o terreno nítido.';
+      L.DomEvent.disableClickPropagation(elemento);
+      return elemento;
+    };
+    ctl.addTo(map);
+
+    function atualizar() {
+      var limite = zoomNativo(map);
+      if (!elemento) return;
+      var passou = limite !== null && map.getZoom() > limite;
+      elemento.style.display = passou ? "" : "none";
+    }
+    map.on("zoomend baselayerchange", atualizar);
+    atualizar();
+  }
+
+  function modoTerreno(map, opcoes) {
+    opcoes = opcoes || {};
+    var ativo = _ler(CHAVE_TERRENO, "0") === "1";
+    var recipiente = map.getContainer();
+    var zoomMaximoOriginal = map.getMaxZoom();
+
+    function aplicar() {
+      if (ativo) L.DomUtil.addClass(recipiente, "kq-terreno");
+      else L.DomUtil.removeClass(recipiente, "kq-terreno");
+
+      var limite = zoomNativo(map);
+      if (ativo && limite !== null) {
+        map.setMaxZoom(limite);
+        if (map.getZoom() > limite) map.setZoom(limite);
+      } else {
+        map.setMaxZoom(zoomMaximoOriginal);
+      }
+      if (opcoes.aoMudar) opcoes.aoMudar(ativo);
+    }
+
+    var ctl = L.control({ position: opcoes.posicao || "topright" });
+    ctl.onAdd = function () {
+      var caixa = L.DomUtil.create("div", "kq-terreno-btn");
+      caixa.innerHTML = '<button type="button" title="Destaca a imagem do terreno: ' +
+        'atenua a rota e trava o zoom no limite da imagem de satélite">' +
+        '<i class="fa-solid fa-mountain-sun"></i><span>Terreno</span></button>';
+      var botao = caixa.querySelector("button");
+      if (ativo) L.DomUtil.addClass(botao, "is-on");
+      L.DomEvent.disableClickPropagation(caixa);
+      botao.addEventListener("click", function () {
+        ativo = !ativo;
+        _gravar(CHAVE_TERRENO, ativo ? "1" : "0");
+        if (ativo) L.DomUtil.addClass(botao, "is-on");
+        else L.DomUtil.removeClass(botao, "is-on");
+        aplicar();
+      });
+      return caixa;
+    };
+    ctl.addTo(map);
+
+    // Trocar de camada muda o limite nativo (o satélite para no 17, o mapa
+    // claro vai ao 20) — reaplica para o travamento acompanhar.
+    map.on("baselayerchange", function () { setTimeout(aplicar, 0); });
+    aplicar();
+    return { ativo: function () { return ativo; } };
+  }
+
+  /* ── Utilidades de geometria ─────────────────────────────────────────── */
+
+  /* Ângulo (graus, 0 = norte) de A para B — orienta as setas de sentido.
+     Aproximação plana: nas distâncias de uma fazenda o erro é irrelevante
+     e evita trigonometria esférica a cada segmento do traço. */
+  function rumo(a, b) {
+    var dy = b[0] - a[0];
+    var dx = (b[1] - a[1]) * Math.cos((a[0] + b[0]) / 2 * Math.PI / 180);
+    return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+  }
+
+  function iconeSeta(graus, cor) {
+    return L.divIcon({
+      className: "kq-seta",
+      html: '<span style="color:' + cor + ';transform:rotate(' + (graus + 180) + 'deg);"></span>',
+      iconSize: [10, 10], iconAnchor: [5, 5]
+    });
+  }
+
+  return {
+    CAMADAS: CAMADAS,
+    montarCamadas: montarCamadas,
+    seloHtml: seloHtml,
+    iconeSelo: iconeSelo,
+    centralizarSelo: centralizarSelo,
+    textoSinal: textoSinal,
+    painelFiltros: painelFiltros,
+    modoTerreno: modoTerreno,
+    avisoNitidez: avisoNitidez,
+    zoomNativo: zoomNativo,
+    semColisao: semColisao,
+    larguraSelo: larguraSelo,
+    rumo: rumo,
+    iconeSeta: iconeSeta,
+    escapar: _escapar,
+    COR_ON: "#34c759",
+    COR_OFF: "#ff3b30",
+    COR_PARADO: "#0078d4"
+  };
+})();
+</script>

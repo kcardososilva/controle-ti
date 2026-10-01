@@ -202,6 +202,24 @@ table{border-collapse:collapse;}
 .select2-container--default .select2-results__option--highlighted[aria-selected]{background:var(--vc-brand)!important;color:#fff!important;}
 .select2-container--default .select2-results__option[aria-selected="true"]{background:var(--vc-brand-soft)!important;color:var(--vc-brand-text)!important;}
 
+/* ── Toggle "Exceto" — inverte um multi-select de "apenas estes" para
+     "todos, exceto estes" (ex.: todas as localidades exceto X, Y e Z). ── */
+.vc-field-headrow{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.vc-exc-switch{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+  color:var(--vc-ink-soft);background:transparent;border:1px solid transparent;
+  border-radius:10px;padding:1px 6px 1px 4px;cursor:pointer;user-select:none;
+  transition:color .12s,background .12s,border-color .12s;
+}
+.vc-exc-switch input{width:12px;height:12px;margin:0;cursor:pointer;accent-color:var(--vc-red-text);}
+.vc-exc-switch:hover{color:var(--vc-ink);}
+.vc-field.is-exceto .vc-exc-switch{
+  color:var(--vc-red-text);background:var(--vc-red-soft);border-color:var(--vc-red-text);
+}
+.vc-field.is-exceto .vc-field-headrow > label::after{content:" — exceto";color:var(--vc-red-text);text-transform:none;letter-spacing:0;font-weight:700;}
+.vc-field.is-exceto .select2-container .select2-selection--multiple{border-color:var(--vc-red-text)!important;}
+
 @media (max-width: 720px){
   .vc-kpis{grid-template-columns:repeat(2,1fr);}
   .vc-ribbon form{flex-direction:column;align-items:stretch;}
@@ -228,32 +246,56 @@ table{border-collapse:collapse;}
         <label for="f_ns">Número de Série</label>
         <input type="text" id="f_ns" name="ns" value="{{ filtros.ns }}" placeholder="NS" data-autosubmit>
       </div>
-      <div class="vc-field grow">
-        <label for="f_subtipo">Subtipo (um ou vários)</label>
+      <div class="vc-field grow{% if filtros.subtipo_exc %} is-exceto{% endif %}">
+        <div class="vc-field-headrow">
+          <label for="f_subtipo">Subtipo (um ou vários)</label>
+          <label class="vc-exc-switch" title="Inverte a seleção: mostra tudo, exceto os subtipos marcados">
+            <input type="checkbox" id="f_subtipo_exc" name="subtipo_exc" value="1" {% if filtros.subtipo_exc %}checked{% endif %}>
+            <span>Exceto</span>
+          </label>
+        </div>
         <select id="f_subtipo" name="subtipo" multiple class="select2-filter">
           {% for s in subtipos %}
             <option value="{{ s.id }}" {% if s.id|stringformat:"s" in filtros.subtipo %}selected{% endif %}>{{ s.nome }}</option>
           {% endfor %}
         </select>
       </div>
-      <div class="vc-field grow">
-        <label for="f_status">Status (um ou vários)</label>
+      <div class="vc-field grow{% if filtros.status_exc %} is-exceto{% endif %}">
+        <div class="vc-field-headrow">
+          <label for="f_status">Status (um ou vários)</label>
+          <label class="vc-exc-switch" title="Inverte a seleção: mostra tudo, exceto os status marcados">
+            <input type="checkbox" id="f_status_exc" name="status_exc" value="1" {% if filtros.status_exc %}checked{% endif %}>
+            <span>Exceto</span>
+          </label>
+        </div>
         <select id="f_status" name="status" multiple class="select2-filter">
           {% for st in status_opcoes %}
             <option value="{{ st }}" {% if st in filtros.status %}selected{% endif %}>{{ st|title }}</option>
           {% endfor %}
         </select>
       </div>
-      <div class="vc-field grow">
-        <label for="f_fornecedor">Fornecedor (um ou vários)</label>
+      <div class="vc-field grow{% if filtros.fornecedor_exc %} is-exceto{% endif %}">
+        <div class="vc-field-headrow">
+          <label for="f_fornecedor">Fornecedor (um ou vários)</label>
+          <label class="vc-exc-switch" title="Inverte a seleção: mostra tudo, exceto os fornecedores marcados">
+            <input type="checkbox" id="f_fornecedor_exc" name="fornecedor_exc" value="1" {% if filtros.fornecedor_exc %}checked{% endif %}>
+            <span>Exceto</span>
+          </label>
+        </div>
         <select id="f_fornecedor" name="fornecedor" multiple class="select2-filter">
           {% for f in fornecedores %}
             <option value="{{ f.id }}" {% if f.id|stringformat:"s" in filtros.fornecedor %}selected{% endif %}>{{ f.nome }}</option>
           {% endfor %}
         </select>
       </div>
-      <div class="vc-field grow">
-        <label for="f_localidade">Localidade (uma ou várias)</label>
+      <div class="vc-field grow{% if filtros.localidade_exc %} is-exceto{% endif %}">
+        <div class="vc-field-headrow">
+          <label for="f_localidade">Localidade (uma ou várias)</label>
+          <label class="vc-exc-switch" title="Inverte a seleção: mostra tudo, exceto as localidades marcadas">
+            <input type="checkbox" id="f_localidade_exc" name="localidade_exc" value="1" {% if filtros.localidade_exc %}checked{% endif %}>
+            <span>Exceto</span>
+          </label>
+        </div>
         <select id="f_localidade" name="localidade" multiple class="select2-filter">
           {% for l in localidades %}
             <option value="{{ l.id }}" {% if l.id|stringformat:"s" in filtros.localidade %}selected{% endif %}>{{ l.local }}</option>
@@ -266,7 +308,7 @@ table{border-collapse:collapse;}
       </div>
     </form>
   </div>
-  <p class="vc-note">Considera equipamentos locados (Locação ativa) com contrato vencido ou a vencer em até {{ kpi.dias_alerta }} dias. "Usuário Atual" vem da última movimentação de estoque com usuário preenchido; "Login Ninja" vem do último agente NinjaOne coletado para o equipamento.</p>
+  <p class="vc-note">Considera equipamentos locados (Locação ativa) com contrato vencido ou a vencer em até {{ kpi.dias_alerta }} dias. "Usuário Atual" vem da última movimentação de estoque com usuário preenchido; "Login Ninja" vem do último agente NinjaOne coletado para o equipamento. Marque <strong>Exceto</strong> ao lado de Subtipo, Status, Fornecedor ou Localidade para inverter a seleção: em vez de mostrar só os marcados, mostra todos <em>menos</em> os marcados.</p>
 
   <div class="vc-kpis">
     <div class="vc-kpi"><div class="vc-kpi-label">Total de Equipamentos</div><div class="vc-kpi-val tabular">{{ kpi.total_alertas }}</div></div>
@@ -292,6 +334,17 @@ table{border-collapse:collapse;}
   if (window.jQuery && jQuery.fn.select2) {
     jQuery('.select2-filter').select2({ width: '100%', placeholder: 'Todos', allowClear: true });
   }
+
+  // Toggle "Exceto": só o reflexo visual (borda/etiqueta em vermelho) do
+  // checkbox — quem decide "incluir" x "excluir" de fato é o backend, a
+  // partir do mesmo par campo/campo_exc enviado no GET.
+  document.querySelectorAll('.vc-exc-switch input[type="checkbox"]').forEach(function(cb){
+    var field = cb.closest('.vc-field');
+    if (!field) return;
+    cb.addEventListener('change', function(){
+      field.classList.toggle('is-exceto', cb.checked);
+    });
+  });
 })();
 
 // Auto-submit só nos campos de texto (debounce) — os selects agora aceitam

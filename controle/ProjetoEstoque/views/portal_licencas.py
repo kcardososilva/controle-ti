@@ -33,8 +33,10 @@ from ..models import (
     LicencaOffice,
     MovimentacaoItem,
     StatusLicencaOfficeChoices,
+    StatusUsuarioChoices,
     TipoMovimentacaoChoices,
     TipoTransferenciaChoices,
+    Usuario,
 )
 from .licencas_office import (
     detentor_pessoa_atual,
@@ -47,26 +49,44 @@ from .licencas_office import (
 
 # ─── Helpers de segurança ─────────────────────────────────────────────────────
 
-def parceiro_licenca_do_request(request):
-    """Retorna a empresa parceira vinculada ao usuário logado (perfil ativo), ou None."""
+def parceiro_licenca_perfil_do_request(request):
+    """Retorna o PerfilParceiroLicenca ativo do usuário logado, ou None."""
     perfil = getattr(request.user, "perfil_parceiro_licenca", None)
     if perfil is not None and perfil.ativo:
-        return perfil.parceiro
+        return perfil
     return None
+
+
+def parceiro_licenca_do_request(request):
+    """Retorna a empresa parceira vinculada ao usuário logado (perfil ativo), ou None."""
+    perfil = parceiro_licenca_perfil_do_request(request)
+    return perfil.parceiro if perfil else None
 
 
 def parceiro_licenca_required(view_func):
     """Garante que o request tem um parceiro de licenças ativo vinculado e
-    injeta `request.parceiro_licenca`. Deve decorar TODA view do portal."""
+    injeta `request.parceiro_licenca` (a empresa) e `request.parceiro_licenca_perfil`
+    (o vínculo de acesso, com as permissões finas tipo `pode_ver_colaboradores`).
+    Deve decorar TODA view do portal."""
     @wraps(view_func)
     @login_required
     def _wrapped(request, *args, **kwargs):
-        parceiro = parceiro_licenca_do_request(request)
-        if parceiro is None:
+        perfil = parceiro_licenca_perfil_do_request(request)
+        if perfil is None:
             return render(request, "front/portal_licencas/portal_licencas_sem_acesso.html", status=403)
-        request.parceiro_licenca = parceiro
+        request.parceiro_licenca = perfil.parceiro
+        request.parceiro_licenca_perfil = perfil
         return view_func(request, *args, **kwargs)
     return _wrapped
+
+
+def _contexto_base_portal(request):
+    """Contexto comum a toda página do portal — usado pela nav (aba
+    'Colaboradores' só aparece pra quem tem `pode_ver_colaboradores`)."""
+    return {
+        "parceiro": request.parceiro_licenca,
+        "pode_ver_colaboradores": request.parceiro_licenca_perfil.pode_ver_colaboradores,
+    }
 
 
 def _is_ajax(request):
@@ -163,7 +183,7 @@ def portal_licencas_office_list(request):
     itens_sem_licenca = itens_elegiveis_para_licenca_office()
 
     context = {
-        "parceiro": request.parceiro_licenca,
+        **_contexto_base_portal(request),
         "page_obj": page_obj,
         "licencas": page_obj.object_list,
         "qs_keep": get_copy.urlencode(),
@@ -195,11 +215,51 @@ def portal_licencas_office_editar(request, pk):
         form = LicencaOfficePortalForm(instance=obj)
 
     return render(request, "front/portal_licencas/portal_licencas_form.html", {
-        "parceiro": request.parceiro_licenca,
+        **_contexto_base_portal(request),
         "form": form,
         "obj": obj,
         "item_resumo": _resumo_item(obj.item),
     })
+
+
+@parceiro_licenca_required
+def portal_licencas_colaboradores_list(request):
+    """Lista de colaboradores só pra parceiros liberados pelo TI
+    (`pode_ver_colaboradores`) — ajuda a achar a pessoa certa na hora de
+    vincular uma conta/licença Office a um equipamento. Só dados de
+    identificação/lotação — nunca hierarquia de RH ou dados financeiros."""
+    if not request.parceiro_licenca_perfil.pode_ver_colaboradores:
+        messages.error(request, "Este acesso não tem permissão para ver colaboradores. Fale com o time de TI se precisar dela.")
+        return redirect("portal_licencas_office_list")
+
+    q = (request.GET.get("q") or "").strip()
+    qs = (
+        Usuario.objects.filter(status=StatusUsuarioChoices.ATIVO)
+        .select_related("centro_custo", "localidade", "funcao")
+        .order_by("nome")
+    )
+    if q:
+        qs = qs.filter(
+            Q(nome__icontains=q)
+            | Q(matricula__icontains=q)
+            | Q(email__icontains=q)
+        )
+
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    get_copy = request.GET.copy()
+    get_copy.pop("page", None)
+
+    context = {
+        **_contexto_base_portal(request),
+        "page_obj": page_obj,
+        "colaboradores": page_obj.object_list,
+        "qs_keep": get_copy.urlencode(),
+        "q": q,
+        "total": qs.count(),
+    }
+    return render(request, "front/portal_licencas/portal_licencas_colaboradores_list.html", context)
 
 
 @require_POST

@@ -27,24 +27,61 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from services import quiosque_service as qs
+from services import quiosque_mapa_export_service as mapa_export
 
 
 def _parse_dia_param(raw: str) -> "date | None":
-    """Converte `?dia=YYYY-MM-DD` num `date`, só se estiver dentro da janela de
-    retenção do histórico (RETENCAO_DIAS). Qualquer entrada inválida/fora da
-    janela é ignorada silenciosamente (cai para a visão padrão) — os links da
-    própria tela nunca geram um valor fora do range, então isto só protege
-    contra URL editada manualmente."""
+    """Converte `?dia=YYYY-MM-DD` num `date`. Entrada inválida é ignorada
+    silenciosamente (cai para a visão padrão) — os links da própria tela nunca
+    geram valor inválido, então isto só protege contra URL editada manualmente.
+
+    Não recorta mais por "últimos RETENCAO_DIAS dias": um aparelho que ficou
+    muito tempo offline entrega leituras antigas que o servidor PRESERVA (ver
+    quiosque_service.prune_checkins), e recusar a data aqui tornaria esse dado
+    guardado impossível de abrir. Quem limita o alcance é o que existe na
+    tabela; um dia sem dado simplesmente aparece vazio."""
     if not raw:
         return None
     try:
         dia = date.fromisoformat(raw)
     except (TypeError, ValueError):
         return None
-    hoje = timezone.localdate()
-    if dia > hoje or (hoje - dia).days >= qs.RETENCAO_DIAS:
-        return None
-    return dia
+    return None if dia > timezone.localdate() else dia
+
+
+def _parse_horas_param(raw: str) -> int:
+    """Converte `?horas=N` na janela do traço de rota. Só aceita os valores
+    oferecidos na própria tela (qs.TRILHA_JANELAS_H); qualquer outro cai no
+    padrão — o parâmetro alimenta um filtro de data em cima de uma tabela com
+    retenção curta, então não há motivo para aceitar janela arbitrária."""
+    try:
+        horas = int(raw)
+    except (TypeError, ValueError):
+        return qs.TRILHA_JANELA_PADRAO_H
+    return horas if horas in qs.TRILHA_JANELAS_H else qs.TRILHA_JANELA_PADRAO_H
+
+
+# Abas da tela de detalhe do dispositivo. A aba ativa vive na URL (`?aba=`) para
+# sobreviver a F5, a um link compartilhado e ao botão "voltar" do navegador —
+# antes, qualquer recarga jogava o usuário de volta em "Visão Geral".
+_ABAS_DETALHE = ("visao", "historico", "controle")
+
+
+def _resolver_aba(request, dia_selecionado) -> str:
+    """Aba inicial da tela de detalhe, por ordem de precedência:
+
+      1. `?aba=` explícito — é a intenção declarada do usuário (a própria tela
+         reescreve esse parâmetro ao trocar de aba, então F5 volta onde estava).
+      2. Filtro/paginação de histórico (`?dia=` / `?page=`) sem `?aba=`: só pode
+         ter vindo de um link da aba Histórico — abre nela.
+      3. Visão Geral.
+    """
+    aba = (request.GET.get("aba") or "").strip()
+    if aba in _ABAS_DETALHE:
+        return aba
+    if dia_selecionado or request.GET.get("page"):
+        return "historico"
+    return "visao"
 
 
 def _sem_acento(value: str) -> str:
@@ -133,14 +170,20 @@ def kiosk_config(request):
 
 @kiosk_token_required
 def kiosk_comando_ack(request, pk: int):
-    """POST /api/quiosque/comando/<id>/ack/ — confirmação de execução de comando."""
+    """POST /api/quiosque/comando/<id>/ack/ — desfecho de um comando no aparelho.
+
+    404 = o `id` não é deste aparelho; 400 = status fora do contrato. Nos dois
+    casos o app para de reenviar esse ACK (INFORME_SERVIDOR_COMANDOS_REMOTOS §3).
+    """
     if request.method != "POST":
         return JsonResponse({"ok": False, "erro": "Método não permitido."}, status=405)
-    dados = _json_body(request)
-    ok = qs.registrar_ack_comando(
-        request.kiosk_device, pk, dados.get("status", "executado"), dados.get("detalhe", "")
-    )
-    return JsonResponse({"ok": ok}, status=200 if ok else 404)
+    try:
+        ok = qs.registrar_ack_comando(request.kiosk_device, pk, _json_body(request))
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "erro": str(exc)}, status=400)
+    if not ok:
+        return JsonResponse({"ok": False, "erro": "Comando não encontrado."}, status=404)
+    return JsonResponse({"ok": True})
 
 
 @kiosk_token_required
@@ -265,12 +308,34 @@ def _checkins_xlsx(device, checkins: list, periodo_label: str, dia):
     dt_fmt = "DD/MM/YYYY HH:MM:SS"
 
     telemetria_wifi = bool(device.telemetria_wifi)
+    # Mesmo recorte da tela: o gate ligado num app anterior à v1.10.0 nunca
+    # produz `movel_*`, e 4 colunas de "—" na planilha só atrapalham quem for
+    # analisar. Ver qs.estado_telemetria_movel.
+    telemetria_movel = qs.estado_telemetria_movel(device)["mostrar_sinal"]
+    atraso_fila = qs.limiar_fila(device)
     header = ["#", "Coletado em", "Recebido em", "Bateria %", "Carregando", "Rede", "Wi-Fi (SSID)"]
     if telemetria_wifi:
         header += ["RSSI Wi-Fi (dBm)", "Nível sinal (0-4)", "Velocidade (Mbps)", "Banda (GHz)"]
-    header += ["Online", "Latitude", "Longitude", "Precisão (m)"]
+    if telemetria_movel:
+        header += ["Conexão", "Operadora", "Sinal móvel (dBm)", "Nível móvel (0-4)"]
+    # "Conexão OK" é a classificação do sistema (ver conexao_do_checkin), não o
+    # campo `online` cru do app: mesmo critério que pinta o traço no mapa, para
+    # a planilha não contradizer a tela. "Guardado na memória" identifica as
+    # leituras que subiram de fila offline.
+    header += ["Conexão OK", "Guardado na memória", "Atraso de entrega (s)",
+               "Latitude", "Longitude", "Precisão (m)"]
     ncols = len(header)
-    center_cols = {1, 4, 5, 8, 9, 10, 11} if telemetria_wifi else {1, 4, 5, 8}
+    # Colunas centralizadas: as numéricas/booleanas de telemetria. O bloco móvel
+    # entra depois do Wi-Fi, então o deslocamento é acumulativo.
+    center_cols = {1, 4, 5}
+    proxima = 8
+    if telemetria_wifi:
+        center_cols |= {proxima, proxima + 1, proxima + 2, proxima + 3}
+        proxima += 4
+    if telemetria_movel:
+        center_cols |= {proxima + 2, proxima + 3}   # dBm e nível (operadora fica à esquerda)
+        proxima += 4
+    center_cols |= {proxima, proxima + 1, proxima + 2}   # Conexão OK / memória / atraso
 
     wb = Workbook()
     ws = wb.active
@@ -314,8 +379,19 @@ def _checkins_xlsx(device, checkins: list, periodo_label: str, dia):
                 c_.wifi_velocidade_mbps if c_.wifi_velocidade_mbps is not None else "—",
                 c_.wifi_banda_ghz or "—",
             ]
+        if telemetria_movel:
+            sinal = qs.sinal_do_checkin(c_)
+            valores += [
+                sinal["rotulo"] or "—",
+                c_.movel_operadora or "—",
+                c_.movel_rssi_dbm if c_.movel_rssi_dbm is not None else "—",
+                c_.movel_nivel if c_.movel_nivel is not None else "—",
+            ]
+        conexao = qs.conexao_do_checkin(c_, atraso_fila)
         valores += [
-            "Sim" if c_.online else "Não",
+            "Sim" if conexao["online"] else "Não",
+            "Sim" if conexao["fila"] else "Não",
+            conexao["atraso_s"],
             c_.latitude if c_.latitude is not None else "—",
             c_.longitude if c_.longitude is not None else "—",
             round(c_.precisao_m) if c_.precisao_m is not None else "—",
@@ -433,13 +509,25 @@ def quiosque_detalhe(request, pk: int):
 
     paginator = Paginator(checkins, 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
-    comandos = device.comandos.all()[:20]
+    comandos = device.comandos.select_related("criado_por")[:20]
+    pode_reiniciar = request.user.has_perm(qs.PERM_REINICIAR_REMOTO)
+    pode_sair_quiosque = request.user.has_perm(qs.PERM_SAIR_QUIOSQUE_REMOTO)
+
+    # "Apps em uso" (snapshot do último check-in) com o nome amigável do
+    # inventário quando houver — a chave continua sendo o pkg.
+    abertos = list(device.apps_abertos or [])
+    nomes = dict(device.apps.filter(pkg__in=abertos).values_list("pkg", "nome")) if abertos else {}
+    apps_abertos = [{"pkg": p, "nome": nomes.get(p) or ""} for p in abertos]
 
     # Traço de rota (deslocamento) para o mapa do detalhe. A montagem fica no
     # service: ordena por horário real de coleta, descarta fixes de GPS ruins e
     # saltos impossíveis — deixando o caminho fiel ao percorrido (ordem antigo→recente).
     # Com um dia selecionado, cobre o dia inteiro (não só a janela recente).
-    trilha = qs.montar_trilha(device, dia=dia_selecionado)
+    # Janela do traço quando NÃO há dia filtrado: últimas N horas (padrão 6h).
+    # O modo antigo ("últimos 150 pontos") cobria ~12 min com o app em 5s — não
+    # servia para acompanhar quem percorre a fazenda por horas.
+    horas_janela = _parse_horas_param(request.GET.get("horas"))
+    trilha = qs.montar_trilha(device, dia=dia_selecionado, horas=horas_janela)
     mapa = qs.montar_mapa_dict(device, trilha, dia=dia_selecionado)
     # "Ao vivo" só faz sentido enquanto o dia em exibição ainda pode receber
     # novos check-ins (sem filtro, ou filtrando o próprio dia de hoje) — um dia
@@ -452,6 +540,18 @@ def quiosque_detalhe(request, pk: int):
     # o ponto EXATO no mapa ao clicar na linha (chaveado pelo id do check-in).
     # Serializado via json_script no template → sempre com ponto decimal, sem o
     # problema de localização pt-BR (vírgula) que quebraria o parseFloat no JS.
+    # Conectividade e sinal de cada linha da tabela do histórico — pela MESMA
+    # classificação usada no mapa (um só lugar decide o que é "online"),
+    # anexados ao objeto para o template não recalcular nada e para o
+    # `geo_pagina` abaixo reaproveitar o mesmo resultado.
+    atraso_fila = qs.limiar_fila(device)
+    for c in page_obj.object_list:
+        conexao = qs.conexao_do_checkin(c, atraso_fila)
+        c.conexao_online = conexao["online"]
+        c.conexao_fila = conexao["fila"]
+        c.conexao_atraso_s = conexao["atraso_s"]
+        c.sinal = qs.sinal_do_checkin(c)
+
     geo_pagina = {
         c.pk: {
             "lat": c.latitude,
@@ -460,7 +560,9 @@ def quiosque_detalhe(request, pk: int):
             "quando": timezone.localtime(c.quando).strftime("%d/%m/%Y %H:%M:%S"),
             "bateria": c.bateria,
             "rede": c.rede,
-            "online": c.online,
+            "online": c.conexao_online,
+            "fila": c.conexao_fila,
+            "sinal": c.sinal,
         }
         for c in page_obj.object_list
         if c.latitude is not None and c.longitude is not None
@@ -489,11 +591,9 @@ def quiosque_detalhe(request, pk: int):
         elif device.armazenamento_livre_mb < 2048:
             armazenamento_nivel = "warn"
 
-    # Aba inicial: se a página foi recarregada por um filtro/paginação do
-    # histórico (?dia= ou ?page=), a aba "Histórico" deve continuar ativa —
-    # sem isso, esses links (navegação normal, sem AJAX) sempre devolviam o
-    # usuário para "Visão Geral" ao aplicar um filtro de dia.
-    aba_ativa = "historico" if (dia_selecionado or request.GET.get("page")) else "visao"
+    # Gate do servidor × capacidade do app para o sinal 2G/3G/4G/5G. São coisas
+    # diferentes e a tela tratava como uma só — ver qs.estado_telemetria_movel.
+    tel_movel = qs.estado_telemetria_movel(device)
 
     return render(request, "front/quiosque/quiosque_detalhe.html", {
         "device": device,
@@ -501,6 +601,10 @@ def quiosque_detalhe(request, pk: int):
         "checkins": page_obj.object_list,
         "total_checkins": paginator.count,
         "comandos": comandos,
+        "comando_tipos": qs.opcoes_comando(pode_reiniciar, pode_sair_quiosque),
+        "comando_validades": qs.opcoes_validade(),
+        "app_executa_comandos": (device.app_versao_codigo or 0) >= qs.APP_VERSAO_CODIGO_COMANDOS,
+        "apps_abertos": apps_abertos,
         "mapa": mapa,
         "geo_pagina": geo_pagina,
         "offline_apos": KioskDevice.OFFLINE_APOS,
@@ -514,7 +618,28 @@ def quiosque_detalhe(request, pk: int):
         "resumo_dia": resumo_dia,
         "pode_atualizar_ao_vivo": pode_atualizar_ao_vivo,
         "retencao_dias": qs.RETENCAO_DIAS,
-        "aba_ativa": aba_ativa,
+        # Cobertura REAL do histórico guardado. A política diz 15 dias; este
+        # bloco diz o que existe DE FATO para este aparelho — um recém-matriculado
+        # tem 1 dia, e anunciar 15 ali seria mentir sobre a base da análise.
+        "retencao": qs.estatisticas_retencao(device),
+        "aba_ativa": _resolver_aba(request, dia_selecionado),
+        # Filtro de janela do traço (só faz sentido sem dia filtrado).
+        "horas_janela": horas_janela,
+        "janelas_horas": qs.TRILHA_JANELAS_H,
+        # A frota é quase toda de aparelho fixo em Wi-Fi; o selo de sinal e as
+        # colunas de rede móvel só aparecem onde a telemetria está ligada, para
+        # a tela não ficar cheia de "—". Ver INFORME_SERVIDOR_TELEMETRIA_REDE_MOVEL.
+        #
+        # O gate ligado NÃO basta para a coluna de rede móvel: o app precisa ser
+        # v1.10.0+ para medir sinal do chip (ver qs.estado_telemetria_movel).
+        # Sem esse recorte, ligar a telemetria num aparelho com app antigo
+        # acrescentava uma coluna que nunca teria valor nenhum.
+        "tel_movel": tel_movel,
+        "tem_telemetria_sinal": device.telemetria_wifi or tel_movel["mostrar_sinal"],
+        # Selo de conexão da barra-resumo. Vem do snapshot no device, e não de
+        # `mapa.sinal`: um aparelho com rede mas sem GPS não tem `mapa` nenhum,
+        # e a barra-resumo precisa mostrar a conexão do mesmo jeito.
+        "sinal_atual": qs.sinal_atual_device(device),
     })
 
 
@@ -531,8 +656,9 @@ def quiosque_mapa_atualizar(request, pk: int):
 
     device = get_object_or_404(KioskDevice, pk=pk)
     dia = _parse_dia_param(request.GET.get("dia"))
+    horas = _parse_horas_param(request.GET.get("horas"))
 
-    trilha = qs.montar_trilha(device, dia=dia)
+    trilha = qs.montar_trilha(device, dia=dia, horas=horas)
     mapa = qs.montar_mapa_dict(device, trilha, dia=dia)
 
     return JsonResponse({
@@ -540,6 +666,10 @@ def quiosque_mapa_atualizar(request, pk: int):
         "online": device.online,
         "bateria": device.ultima_bateria,
         "rede": device.ultima_rede,
+        # Selo de sinal da posição atual (mesmo formato de sinal_do_checkin) —
+        # o polling redesenha o selo junto com o ponto, senão o mapa mostraria
+        # a posição nova com o sinal do carregamento da página.
+        "sinal": qs.sinal_atual_device(device),
         "ultimo_checkin_label": timezone.localtime(device.ultimo_checkin).strftime("%d/%m/%Y %H:%M") if device.ultimo_checkin else None,
         "ultimo_checkin_ts_ms": int(device.ultimo_checkin.timestamp() * 1000) if device.ultimo_checkin else 0,
         "mapa": mapa,
@@ -567,6 +697,56 @@ def quiosque_checkins_exportar(request, pk: int):
     checkins = list(checkins.order_by("-_quando")[:_CHECKINS_XLSX_MAX_LINHAS])
 
     return _checkins_xlsx(device, checkins, periodo_label, dia)
+
+
+_FILTROS_MAPA = ("rota", "offline", "selos", "paradas", "setas", "precisao")
+
+
+def _filtros_mapa(request) -> dict:
+    """Lê os filtros do mapa da querystring, no MESMO formato que o painel da
+    tela grava (`KQMapa.painelFiltros`). O botão de exportar repassa o estado
+    atual, para o arquivo sair igual ao que está na tela — exportar algo
+    diferente do que a pessoa vê seria pior do que não ter filtro nenhum.
+
+    Ausente = padrão da tela; só `precisao` nasce desligada."""
+    filtros = {nome: request.GET.get(nome, "1") != "0" for nome in _FILTROS_MAPA}
+    filtros["precisao"] = request.GET.get("precisao") == "1"
+    return filtros
+
+
+@login_required
+def quiosque_mapa_exportar(request, pk: int):
+    """GET — exporta o mapa da rota em PDF (relatório) ou PNG (imagem).
+
+    Respeita os mesmos filtros da tela: `?dia=`/`?horas=` recortam o período e
+    os demais parâmetros ligam/desligam camadas. A renderização é toda no
+    servidor (ver services/quiosque_mapa_export_service.py)."""
+    from ProjetoEstoque.models import KioskDevice
+
+    device = get_object_or_404(KioskDevice, pk=pk)
+    dia = _parse_dia_param(request.GET.get("dia"))
+    horas = _parse_horas_param(request.GET.get("horas"))
+    formato = "png" if request.GET.get("formato") == "png" else "pdf"
+
+    trilha = qs.montar_trilha(device, dia=dia, horas=horas)
+    cobertura = qs.resumir_cobertura(trilha)
+
+    try:
+        conteudo, tipo_conteudo, nome_arquivo = mapa_export.exportar(
+            device, trilha, cobertura, formato=formato, dia=dia, horas=horas,
+            filtros=_filtros_mapa(request),
+            usuario=request.user.get_full_name() or request.user.get_username(),
+        )
+    except ValueError as erro:
+        # Sem posição no período não há mapa: volta para a tela com o aviso, em
+        # vez de entregar um arquivo vazio que o usuário só descobriria ao abrir.
+        messages.warning(request, str(erro))
+        destino = reverse("quiosque_detalhe", args=[device.pk])
+        return redirect(f"{destino}?{request.GET.urlencode()}" if request.GET else destino)
+
+    resposta = HttpResponse(conteudo, content_type=tipo_conteudo)
+    resposta["Content-Disposition"] = f'attachment; filename="{nome_arquivo}"'
+    return resposta
 
 
 @login_required
@@ -815,9 +995,14 @@ def quiosque_mapa(request):
             "modelo": f"{d.fabricante} {d.modelo}".strip(),
             "lat": d.ultima_latitude,
             "lon": d.ultima_longitude,
+            "precisao": d.ultima_precisao_m,
             "online": d.online,
             "bateria": d.ultima_bateria,
             "rede": d.ultima_rede,
+            # Selo de conexão/sinal desenhado EM CIMA do ponto no mapa. Vem do
+            # snapshot no device (ver sinal_atual_device) — nada de consultar o
+            # último check-in por aparelho, que seria um N+1 nesta tela.
+            "sinal": qs.sinal_atual_device(d),
             "checkin": timezone.localtime(d.ultimo_checkin).strftime("%d/%m/%Y %H:%M") if d.ultimo_checkin else "—",
             "url": reverse("quiosque_detalhe", args=[d.pk]),
         }
@@ -827,7 +1012,12 @@ def quiosque_mapa(request):
         "pontos": pontos,
         "total": len(pontos),
         "online": sum(1 for d in com_local if d.online),
+        "offline": sum(1 for d in com_local if not d.online),
         "sem_local": len(ativos) - len(com_local),
+        # Quantos aparelhos realmente reportam força de sinal: define se o filtro
+        # "nível de sinal" nasce ligado ou se vem com o aviso de que a telemetria
+        # está desligada na frota (nunca um selo vazio sem explicação).
+        "com_sinal": sum(1 for p in pontos if p["sinal"]["nivel"] is not None),
     })
 
 
@@ -842,6 +1032,7 @@ def quiosque_config_editar(request, pk: int):
         device.wifi_only = request.POST.get("wifi_only") == "on"
         device.mensagem_quiosque = (request.POST.get("mensagem_quiosque") or "").strip()[:200]
         device.telemetria_wifi = request.POST.get("telemetria_wifi") == "on"
+        device.telemetria_movel = request.POST.get("telemetria_movel") == "on"
         # Gates locais da tela "Gerência do TI" no aparelho — ver
         # INFORME_SERVIDOR_CACHE_E_ENERGIA.md. São permissões (o app decide se
         # mostra/libera o botão), nunca um comando remoto de ação imediata.
@@ -849,6 +1040,7 @@ def quiosque_config_editar(request, pk: int):
         device.permite_desligar = request.POST.get("permite_desligar") == "on"
         device.limpeza_cache_automatica = request.POST.get("limpeza_cache_automatica") == "on"
         device.permite_limpar_apps_terceiros = request.POST.get("permite_limpar_apps_terceiros") == "on"
+        device.permite_notificacoes = request.POST.get("permite_notificacoes") == "on"
         # wifi_ssid/wifi_senha (rede provisionada pelo servidor) ficam de fora do
         # painel de propósito: exigiria o TI guardar a senha real da rede aqui, e a
         # infraestrutura de Wi-Fi da empresa usa autenticação/cadastro no Meraki —
@@ -870,7 +1062,16 @@ def quiosque_config_editar(request, pk: int):
             p = p.strip()[:255]
             if p and p not in apps:
                 apps.append(p)
-        device.apps_permitidos = apps
+        # Lista vazia NÃO é aplicável: por contrato (INFORME_API_SERVIDOR §4) o
+        # app ignora `apps_permitidos` vazio e MANTÉM a última lista — é uma
+        # proteção dele contra perder os apps numa queda de rede. Gravar `[]`
+        # aqui faria o painel afirmar "0 apps liberados" enquanto o aparelho
+        # segue com os antigos: o painel passaria a mentir sobre o estado do
+        # aparelho, que é pior do que recusar a operação. Então preservamos a
+        # lista e dizemos por quê.
+        apps_vazios_ignorados = bool(not apps and device.apps_permitidos)
+        if not apps_vazios_ignorados:
+            device.apps_permitidos = apps
         device.config_versao = (device.config_versao or 1) + 1
         device.save()
 
@@ -878,7 +1079,16 @@ def quiosque_config_editar(request, pk: int):
         if novo_pin:
             qs.definir_pin(device, novo_pin)
 
-        messages.success(request, "Configuração atualizada. Será aplicada no próximo check-in do dispositivo.")
+        if apps_vazios_ignorados:
+            messages.warning(
+                request,
+                "Configuração atualizada, mas a lista de apps liberados foi mantida: "
+                "o aparelho ignora uma lista vazia e continuaria com os apps anteriores "
+                "de qualquer forma. Para restringir, deixe marcado só o que deve ficar "
+                "liberado; para bloquear o uso, use o comando remoto “Fechar apps”."
+            )
+        else:
+            messages.success(request, "Configuração atualizada. O aparelho aplica no próximo check-in, sem precisar reiniciar (app v1.8.0+).")
         return redirect("quiosque_detalhe", pk=device.pk)
 
     # Inventário recebido do aparelho + estado de liberação de cada app (checkbox).
@@ -897,25 +1107,57 @@ def quiosque_config_editar(request, pk: int):
         "inventario": inventario,
         "inventario_total": len(inventario),
         "apps_extra_texto": "\n".join(extras),
+        # Avisa, ao lado do próprio toggle, quando o app deste aparelho é
+        # anterior à v1.10.0 e portanto não cumpre o gate de rede móvel.
+        "tel_movel": qs.estado_telemetria_movel(device),
     })
 
 
 @login_required
 def quiosque_comando_novo(request, pk: int):
+    """POST — enfileira um comando remoto (sai no próximo check-in do aparelho)."""
     from ProjetoEstoque.models import KioskDevice, KioskComando
 
     device = get_object_or_404(KioskDevice, pk=pk)
-    if request.method == "POST":
-        tipo = (request.POST.get("tipo") or "").strip()
-        if tipo in KioskComando.Tipo.values:
-            payload = {}
-            if tipo == KioskComando.Tipo.MENSAGEM:
-                payload = {"texto": (request.POST.get("mensagem") or "").strip()[:200]}
-            KioskComando.objects.create(device=device, tipo=tipo, payload=payload, criado_por=request.user)
-            messages.success(request, "Comando enfileirado. Será entregue no próximo check-in.")
-        else:
-            messages.error(request, "Tipo de comando inválido.")
-    return redirect("quiosque_detalhe", pk=device.pk)
+    destino = f"{reverse('quiosque_detalhe', args=[device.pk])}?aba=controle"
+    if request.method != "POST":
+        return redirect(destino)
+
+    tipo = (request.POST.get("tipo") or "").strip()
+    # O remoto não passa pelos gates permite_reiniciar/permite_desligar (esses só
+    # valem no aparelho) — a proteção é a permissão do usuário aqui.
+    if tipo == KioskComando.Tipo.REINICIAR and not request.user.has_perm(qs.PERM_REINICIAR_REMOTO):
+        messages.error(request, "Você não tem permissão para reiniciar aparelhos remotamente.")
+        return redirect(destino)
+    # sair_quiosque é o comando mais sensível do canal (entrega o aparelho pra
+    # uso normal do Android, sem PIN, pra quem estiver na frente dele) — exige
+    # permissão própria, à parte de reiniciar. Ver INFORME_SERVIDOR_COMANDOS_REMOTOS.md §2.
+    if tipo == KioskComando.Tipo.SAIR_QUIOSQUE and not request.user.has_perm(qs.PERM_SAIR_QUIOSQUE_REMOTO):
+        messages.error(request, "Você não tem permissão para tirar aparelhos do quiosque remotamente.")
+        return redirect(destino)
+
+    try:
+        comando = qs.criar_comando(
+            device, tipo, user=request.user,
+            mensagem=request.POST.get("mensagem") or "",
+            titulo=request.POST.get("titulo") or "",
+            pacotes=request.POST.getlist("pacote"),
+            validade_min=request.POST.get("validade_min"),
+        )
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect(destino)
+
+    prazo = timezone.localtime(comando.expira_em).strftime("%d/%m %H:%M")
+    if device.online:
+        messages.success(request, f"“{comando.get_tipo_display()}” enviado. Sai no próximo check-in; vale até {prazo}.")
+    else:
+        messages.warning(
+            request,
+            f"“{comando.get_tipo_display()}” enfileirado, mas o aparelho está offline. "
+            f"Só será executado se ele fizer check-in até {prazo}.",
+        )
+    return redirect(destino)
 
 
 @login_required

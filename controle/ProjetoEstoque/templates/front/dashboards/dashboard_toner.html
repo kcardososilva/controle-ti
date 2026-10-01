@@ -1,9 +1,16 @@
 {% extends "base.html" %}
 {% load static humanize %}
 
-{% block title %}Indicadores de Consumo de Toner | Gestão de Ativos{% endblock %}
+{% block title %}Consumo de Toner{% endblock %}
+{% comment %}A tela repetia o próprio nome num "hero" e deixava a barra superior do app
+   mostrando o título genérico do sistema. Declarando os blocos, o nome vai para o lugar
+   onde todas as outras telas o colocam — e o hero deixa de gastar uma faixa inteira só
+   para dizer o que a barra já diz.{% endcomment %}
+{% block page_title %}Consumo de Toner{% endblock %}
+{% block page_subtitle %}Baixas, custo por centro de custo, solicitantes e tendência mensal{% endblock %}
 
 {% block content %}
+{% include 'front/dashboards/_dash_design_system.html' %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -29,70 +36,57 @@
     --td-gray-26: #424242;
     --td-gray-14: #242424;
 
-    --td-accent:        #0078d4;
-    --td-accent-hover:  #106ebe;
-    --td-accent-soft:   rgba(0, 120, 212, 0.08);
-    --td-accent-border: rgba(0, 120, 212, 0.24);
+    --td-accent:        var(--dsh-accent);
+    --td-accent-hover:  var(--dsh-accent-hover);
+    --td-accent-soft:   var(--dsh-accent-soft);
+    --td-accent-border: var(--dsh-accent-border);
 
-    --td-alert:      #b45309;
-    --td-alert-soft: rgba(180, 83, 9, 0.10);
+    --td-alert:      var(--dsh-warn);
+    --td-alert-soft: var(--dsh-warn-soft);
 
     --td-tooltip-bg: var(--td-gray-14);
     --td-chart-track: var(--td-gray-84);
 
-    --td-page:           var(--td-gray-96);
-    --td-surface:        #ffffff;
-    --td-surface-soft:   var(--td-gray-94);
-    --td-surface-muted:  var(--td-gray-92);
+    /* Superfícies, texto e bordas vêm do design system dos painéis
+       (_dash_design_system.html). Antes esta tela tinha rampa de cinza e accent
+       próprios, e o painel vizinho (Visão Geral) tinha outros — duas telas do
+       mesmo sistema pareciam produtos diferentes. Os nomes `--td-*` continuam,
+       porque são usados nas ~1.800 linhas de CSS abaixo; só a ORIGEM do valor
+       mudou, então a troca de paleta não exige reescrever nada disso. */
+    --td-page:           var(--dsh-canvas);
+    --td-surface:        var(--dsh-surface);
+    --td-surface-soft:   var(--dsh-fill);
+    --td-surface-muted:  var(--dsh-fill);
 
-    --td-text:   var(--td-gray-14);
-    --td-muted:  var(--td-gray-26);
-    --td-soft:   var(--td-gray-38);
+    --td-text:   var(--dsh-text);
+    --td-muted:  var(--dsh-muted);
+    --td-soft:   var(--dsh-soft);
 
-    --td-border:        var(--td-gray-90);
-    --td-border-subtle: var(--td-gray-90);
-    --td-border-strong: var(--td-gray-84);
+    --td-border:        var(--dsh-border);
+    --td-border-subtle: var(--dsh-border);
+    --td-border-strong: var(--dsh-border2);
 
-    /* Raios propositalmente menores que o padrão do app (--radius-lg
-       costuma ser ~18px) — retangular, na linha Fluent/Office, não pill. */
-    --td-radius-sm: 6px;
-    --td-radius-md: 8px;
-    --td-radius-lg: 10px;
+    /* Alinhados aos raios do design system dos painéis. Eram menores (6/8/10)
+       para imitar o Fluent/Office, mas o painel vizinho arredonda em 18 — e a
+       diferença aparecia lado a lado na navegação, não numa comparação teórica. */
+    --td-radius-sm: var(--radius-xs, 6px);
+    --td-radius-md: var(--dsh-r-sm);
+    --td-radius-lg: var(--dsh-r);
 
     --td-shadow-sm: 0 1px 2px rgba(0, 0, 0, .06), 0 1px 1px rgba(0, 0, 0, .04);
     --td-shadow-md: 0 4px 12px rgba(0, 0, 0, .08), 0 1px 3px rgba(0, 0, 0, .05);
 
     --td-control-h: 2.15rem;
     --td-transition: var(--transition-fast);
-    /* Leve inclinação para Segoe UI (Office) nesta tela, com fallback pro
-       stack padrão do app — troca não é global, só escopada aqui. */
-    --td-font: "Segoe UI", var(--font-display);
+    /* Mesma fonte do resto do app. Esta tela forçava "Segoe UI" na frente do
+       stack padrão, o que a deixava com um desenho de letra diferente do painel
+       ao lado — diferença que só aparecia ao navegar entre as duas. */
+    --td-font: var(--font-display);
 }
 
+/* No escuro, os `--td-*` acima já seguem os `--dsh-*`, que o design system
+   redefine em `body.theme-dark`. Só sobra aqui o que é exclusivo desta tela. */
 body.theme-dark :where(.toner-dashboard) {
-    --td-page:           #14171d;
-    --td-surface:        #1a1d24;
-    --td-surface-soft:   #20242c;
-    --td-surface-muted:  #262a33;
-
-    --td-border:         #2a2e38;
-    --td-border-subtle:  #2a2e38;
-    --td-border-strong:  #363b47;
-
-    --td-text:  #f1f2f5;
-    --td-muted: #b7bcc6;
-    --td-soft:  #8992a0;
-
-    /* Fluent dark-theme brand blue real (colorBrandBackground do tema
-       web-dark), não um ajuste arbitrário do accent claro. */
-    --td-accent:        #479ef5;
-    --td-accent-hover:  #62abf5;
-    --td-accent-soft:   rgba(71, 158, 245, 0.16);
-    --td-accent-border: rgba(71, 158, 245, 0.34);
-
-    --td-alert:      #d97a3f;
-    --td-alert-soft: rgba(217, 122, 63, 0.16);
-
     --td-chart-track: #3a3f4b;
 }
 
@@ -254,6 +248,11 @@ body.theme-dark :where(.toner-dashboard) {
 .filters-panel > summary.panel-header::marker {
     display: none;
     content: "";
+}
+/* O `.panel` traz 20px de padding; num filtro recolhido isso vira 40px de área
+   vazia em volta de uma linha só. O summary já tem o próprio respiro. */
+.filters-panel {
+    padding: 0;
 }
 .filters-panel:not([open]) > summary.panel-header {
     border-bottom-color: transparent;
@@ -788,41 +787,26 @@ body.theme-dark :where(.toner-dashboard) {
 .select2-results__option[aria-selected="true"] { background: var(--td-accent-soft, rgba(0,120,212,0.12)) !important; color: var(--td-accent, #0078d4) !important; }
 </style>
 
-<div class="toner-dashboard">
+{% comment %}A classe `dsh` traz os tokens do design system dos painéis; os `--td-*`
+   desta tela apontam para eles (ver o bloco de tokens acima).{% endcomment %}
+<div class="toner-dashboard dsh">
     <div class="toner-shell">
 
-        <section class="toner-hero">
-            <div class="hero-main">
-                <div class="hero-icon">
-                    <i class="fa fa-print"></i>
-                </div>
-
-                <div class="hero-title">
-                    <h1>Consumo de Toner</h1>
-                    <span>
-                        Dashboard executivo para análise de baixas, custo por centro de custo, solicitantes, itens críticos e tendência mensal.
-                    </span>
-                </div>
-            </div>
-
-            <div class="hero-actions">
-                <div class="period-badge">
-                    <i class="fa fa-calendar-days"></i>
-                    {{ dt_ini|date:"d/m/Y" }} — {{ dt_fim|date:"d/m/Y" }}
-                </div>
-                <a href="{% url 'dashboard' %}" class="hero-close" title="Voltar aos Painéis Gerenciais" aria-label="Voltar aos Painéis Gerenciais">
-                    <i class="fa fa-xmark" aria-hidden="true"></i>
-                </a>
-            </div>
-        </section>
-
-        <details class="panel filters-panel" open>
+        {% comment %}Filtros recolhidos por padrão. Abertos, ocupavam ~290px antes do
+           primeiro número: numa tela que existe para ser lida de relance, o controle
+           empurrava o dado para fora da primeira tela. O resumo no cabeçalho mostra o
+           período e quantos filtros estão ativos sem precisar abrir.{% endcomment %}
+        <details class="panel filters-panel"{% if f_item or f_cc_id or f_usuario %} open{% endif %}>
             <summary class="panel-header">
                 <div class="panel-title">
                     <i class="fa fa-sliders"></i>
                     Filtros
                 </div>
                 <div class="filters-header-right">
+                    <span class="period-badge">
+                        <i class="fa fa-calendar-days"></i>
+                        {{ dt_ini|date:"d/m/Y" }} — {{ dt_fim|date:"d/m/Y" }}
+                    </span>
                     {% if f_item or f_cc_id or f_usuario %}
                         <span class="filters-badge">
                             <i class="fa fa-filter"></i>

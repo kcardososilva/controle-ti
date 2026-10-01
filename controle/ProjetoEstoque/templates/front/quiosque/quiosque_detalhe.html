@@ -23,6 +23,7 @@
 {% block extra_css %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 {% include 'front/quiosque/_kq_design_system.html' %}
+{% include 'front/quiosque/_kq_mapa_css.html' %}
 <style>
 .kq-det { width:100%; max-width:1400px; margin:0 auto; display:grid; gap:14px; }
 
@@ -111,6 +112,17 @@
   background:var(--kq-accent-soft); padding:4px 10px; border-radius:99px; font-size:12px; font-weight:600; }
 .kq-reset[hidden] { display:none; }
 
+/* Exportar o mapa (PDF/PNG). Classe propria em vez de .kq-pill: aquela desenha
+   um ponto decorativo no ::before, que num botao de acao vira sujeira visual. */
+.kq-export { display:inline-flex; gap:6px; }
+.kq-xbtn { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px;
+  font-size:.72rem; font-weight:650; text-decoration:none; cursor:pointer;
+  border:1px solid var(--kq-border-strong); background:var(--kq-surface); color:var(--kq-accent); }
+.kq-xbtn:hover { background:var(--kq-accent-soft); border-color:var(--kq-accent-border); }
+.kq-xbtn.is-busy { pointer-events:none; opacity:.65; }
+.kq-xbtn.is-busy i { animation:kqSpin .9s linear infinite; }
+@keyframes kqSpin { to { transform:rotate(360deg); } }
+
 /* Marcador de FOCO no mapa — pino pulsante sobre o ponto selecionado */
 .kq-focus-pin { display:grid; place-items:center; background:transparent; border:0; }
 .kq-focus-dot { width:14px; height:14px; border-radius:50%; background:var(--kq-accent); border:2px solid #fff;
@@ -126,6 +138,17 @@
 .kq-iconbtn { width:26px; height:26px; border-radius:99px; }
 .kq-iconbtn.is-spin i { animation:kqSpin .7s linear; }
 @keyframes kqSpin { from{ transform:rotate(0); } to{ transform:rotate(360deg); } }
+/* Legenda do mapa, fora da área do mapa (ver o comentário no markup). */
+.kq-map-leg { display:flex; flex-wrap:wrap; align-items:center; gap:6px 16px; padding:9px 16px;
+  border-top:1px solid var(--kq-border); font-size:11.5px; color:var(--kq-muted); }
+.kq-map-leg span { display:inline-flex; align-items:center; gap:7px; }
+.kq-map-leg em { font-style:normal; color:var(--kq-soft); }
+.kq-map-leg .sw { width:20px; height:0; border-top:3px solid var(--kq-success); border-radius:2px; }
+.kq-map-leg .sw.off { border-top-style:dashed; border-color:var(--kq-danger); }
+.kq-map-leg .sw.stop { width:11px; height:11px; border:2.5px solid var(--kq-accent); border-radius:99px; }
+.kq-map-leg .hint { margin-left:auto; color:var(--kq-soft); font-size:11px; }
+@media (max-width:880px){ .kq-map-leg .hint { margin-left:0; } }
+
 .kq-map-info { display:flex; flex-wrap:wrap; gap:4px 14px; padding:9px 16px; border-top:1px solid var(--kq-border);
   font-size:11.5px; color:var(--kq-soft); background:var(--kq-surface-soft); }
 .kq-map-info span { display:inline-flex; align-items:center; gap:6px; }
@@ -134,6 +157,20 @@
 
 /* ── filtro de histórico por dia (chips) ──────────────────────────────────── */
 .kq-days { display:flex; flex-wrap:wrap; gap:7px; padding-bottom:14px; }
+/* Com a retenção em 15 dias (e até 31 chips quando um aparelho entrega uma fila
+   offline longa), a lista de dias passou a empurrar a tabela para fora da tela.
+   Recolhida mostra ~2 linhas; o botão só aparece quando há o que revelar. */
+.kq-days.is-collapsed { max-height:76px; overflow:hidden; }
+.kq-days-mais { display:inline-flex; align-items:center; gap:6px; margin:-6px 0 12px; padding:0; border:0;
+  background:none; cursor:pointer; font-size:11.5px; font-weight:650; color:var(--kq-accent); font-family:inherit; }
+.kq-days-mais[hidden] { display:none; }
+
+/* Cobertura real do histórico guardado. */
+.kq-retencao { display:flex; gap:9px; align-items:flex-start; margin:0 0 14px; padding:9px 12px;
+  border-radius:var(--radius-md,10px); background:var(--kq-fill); border:1px solid var(--kq-border);
+  font-size:11.8px; line-height:1.5; color:var(--kq-muted); }
+.kq-retencao i { color:var(--kq-accent); margin-top:2px; flex:0 0 auto; }
+.kq-retencao b { color:var(--kq-text); font-weight:700; }
 .kq-day-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:99px; border:1px solid var(--kq-border-strong);
   background:var(--kq-surface); color:var(--kq-muted); font-size:12px; font-weight:600; text-decoration:none;
   transition:background var(--kq-transition),border-color var(--kq-transition),color var(--kq-transition); }
@@ -183,8 +220,18 @@
         <div class="kq-hs-v" id="kqHeroBateria">{% if device.ultima_bateria is not None %}<i class="fa-solid fa-battery-half" style="color:var(--kq-soft)"></i> {{ device.ultima_bateria }}%{% else %}<span class="kq-muted">—</span>{% endif %}</div>
       </div>
       <div class="kq-hs">
-        <div class="kq-hs-l">Rede</div>
-        <div class="kq-hs-v" id="kqHeroRede">{% if device.ultima_rede %}<i class="fa-solid {% if device.ultima_rede == 'wifi' %}fa-wifi{% else %}fa-signal{% endif %}" style="color:var(--kq-soft)"></i> {{ device.ultima_rede }}{% else %}<span class="kq-muted">—</span>{% endif %}</div>
+        <div class="kq-hs-l">Conexão</div>
+        {# Mesmo selo do mapa (transporte + barrinhas de nível), no lugar do texto cru de `rede` ("wifi"/"none") que não dizia nada sobre sinal. O polling ao vivo reescreve este bloco com KQMapa.seloHtml. #}
+        <div class="kq-hs-v" id="kqHeroRede">
+          {% if device.ultima_rede or device.ultima_rede_tipo %}
+            <span class="kq-selo {% if not device.online %}off{% elif sinal_atual.nivel is not None %}n{{ sinal_atual.nivel }}{% else %}sem{% endif %}" style="box-shadow:none;">
+              <span class="kq-selo-txt">{% if device.online %}{{ sinal_atual.rotulo|default:device.ultima_rede }}{% else %}Sem conexão{% endif %}</span>
+              {% if device.online and sinal_atual.nivel is not None %}
+              <span class="kq-selo-bars">{% for n in "1234" %}<i class="{% if forloop.counter <= sinal_atual.nivel %}on{% endif %}"></i>{% endfor %}</span>
+              {% endif %}
+            </span>
+          {% else %}<span class="kq-muted">—</span>{% endif %}
+        </div>
       </div>
       <div class="kq-hs">
         <div class="kq-hs-l">Último check-in</div>
@@ -202,7 +249,7 @@
       <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Histórico
       <span class="kq-tab-count">{{ total_checkins }}</span>
     </button>
-    <button class="kq-tab-btn" data-tab="controle" role="tab" aria-selected="false">
+    <button class="kq-tab-btn{% if aba_ativa == 'controle' %} is-active{% endif %}" data-tab="controle" role="tab" aria-selected="{% if aba_ativa == 'controle' %}true{% else %}false{% endif %}">
       <i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Controle do TI
       {% if not device.admin_pin_hash %}<span class="kq-tab-dot" title="PIN do TI não definido"></span>{% endif %}
     </button>
@@ -216,21 +263,68 @@
       <div class="kq-col">
         <div class="kq-card">
           <div class="kq-card-head">
-            <span class="kq-card-title"><i class="fa-solid fa-location-dot"></i>{% if dia_selecionado %}Trajeto de {{ dia_selecionado|date:"d/m/Y" }}{% else %}Localização atual{% endif %}</span>
+            <span class="kq-card-title"><i class="fa-solid fa-route"></i>{% if dia_selecionado %}Rota de {{ dia_selecionado|date:"d/m/Y" }}{% else %}Rota percorrida{% endif %}</span>
             <div class="kq-card-head-actions">
               {% if pode_atualizar_ao_vivo and mapa %}
                 <span class="kq-live" id="kqLiveTick" title="A posição se atualiza sozinha, sem recarregar a página"><i class="fa-solid fa-circle"></i> <span id="kqLiveTickTxt">ao vivo</span></span>
                 <button type="button" id="kqRefreshNow" class="kq-iconbtn" title="Atualizar agora"><i class="fa-solid fa-rotate"></i></button>
               {% endif %}
               {% if mapa %}<button type="button" id="kqReset" class="kq-reset" hidden><i class="fa-solid fa-arrows-to-dot"></i> Visão geral</button>{% endif %}
+              {# Exportar o mapa como está na tela: o href é reescrito pelo JS a cada mudança de filtro (ver `atualizarLinksExportar`). #}
+              {% if mapa %}
+              <span class="kq-export" id="kqExport">
+                <a href="#" data-formato="pdf" class="kq-xbtn" title="Relatório em PDF: mapa em alta resolução, trechos sem conexão e todas as leituras"><i class="fa-solid fa-file-pdf"></i> PDF</a>
+                <a href="#" data-formato="png" class="kq-xbtn" title="Imagem do mapa em alta resolução, para compartilhar"><i class="fa-solid fa-file-image"></i> PNG</a>
+              </span>
+              {% endif %}
               {% if device.tem_localizacao %}<a href="{% url 'quiosque_mapa' %}" class="kq-pill" style="text-decoration:none;color:var(--kq-accent);">Mapa geral</a>{% endif %}
             </div>
           </div>
+
+          {# Janela do traço. Só sem dia filtrado: com um dia escolhido a janela É o dia inteiro, e oferecer "últimas 6h" ali seria contraditório. #}
+          {% if not dia_selecionado %}
+          <div class="kq-card-body" style="padding-bottom:0;">
+            <div class="kq-days" style="padding-bottom:0;">
+              <span class="kq-mapctl-t" style="align-self:center;margin-right:2px;">Período</span>
+              {% for h in janelas_horas %}
+              <a class="kq-day-chip{% if h == horas_janela %} is-active{% endif %}" href="?horas={{ h }}&amp;aba=visao">últimas {{ h }}h</a>
+              {% endfor %}
+              {% if dias_disponiveis %}<a class="kq-day-chip" href="?dia={{ dias_disponiveis.0.data|date:'Y-m-d' }}&amp;aba=visao"><i class="fa-solid fa-calendar-day"></i> por dia</a>{% endif %}
+            </div>
+          </div>
+          {% endif %}
+
           {% if mapa %}
             <div id="kqMap" class="kq-map"></div>
+
+            {# Reprodução do trajeto — percorre a rota ponto a ponto no tempo. É o que permite responder "onde eu estava às 14h20 e tinha sinal?". #}
+            <div class="kq-play" id="kqPlay" hidden>
+              <button type="button" id="kqPlayBtn" title="Reproduzir o trajeto" aria-label="Reproduzir o trajeto"><i class="fa-solid fa-play"></i></button>
+              <input type="range" id="kqPlayRange" min="0" max="0" value="0" step="1" aria-label="Posição no trajeto">
+              <span class="kq-play-lbl" id="kqPlayLbl">—</span>
+            </div>
+
+            {% comment %}Legenda ABAIXO do mapa, e não dentro do painel flutuante: ali ela
+               ocupava um terço da área útil justamente sobre o terreno (pivôs, divisas de
+               talhão) que o mapa existe para mostrar, e sumia quando o painel era recolhido.
+               Aqui fica sempre visível sem cobrir nada.{% endcomment %}
+            <div class="kq-map-leg">
+              <span><i class="sw on"></i> Com conexão</span>
+              <span><i class="sw off"></i> Sem conexão <em>(guardado na memória)</em></span>
+              <span><i class="sw stop"></i> Parada</span>
+              <span class="hint">Os selos aparecem onde a conexão ou o sinal mudam; clique em qualquer ponto para ver o detalhe.</span>
+            </div>
+
             <div class="kq-map-info" id="kqMapInfo">
-              <span><i class="fa-solid fa-route"></i> <b id="kqMapInfoPontos">{{ mapa.trilha|length }}</b>&nbsp;ponto(s) no traço{% if not dia_selecionado %} <span class="kq-muted">(mais recentes)</span>{% endif %}</span>
-              {% if resumo_dia and resumo_dia.distancia_km %}<span><i class="fa-solid fa-ruler"></i> <b>{{ resumo_dia.distancia_km|floatformat:2 }}</b>&nbsp;km percorridos</span>{% endif %}
+              <span><i class="fa-solid fa-location-dot"></i> <b id="kqMapInfoPontos">{{ mapa.trilha|length }}</b>&nbsp;ponto(s) no traço</span>
+              <span><i class="fa-solid fa-ruler"></i> <b id="kqMapInfoKm">{{ mapa.cobertura.distancia_km|floatformat:2 }}</b>&nbsp;km</span>
+              <span title="Percentual das leituras do traço em que o aparelho tinha conexão"><i class="fa-solid fa-signal"></i> <b id="kqMapInfoOnline">{{ mapa.cobertura.pct_online }}</b>%&nbsp;com conexão</span>
+              {% if mapa.cobertura.segmentos_offline %}
+              <span title="Trechos vermelhos no mapa: onde o aparelho ficou sem conexão e guardou as leituras na memória"><i class="fa-solid fa-plug-circle-xmark" style="color:var(--kq-danger)"></i> <b id="kqMapInfoTrechos">{{ mapa.cobertura.segmentos_offline }}</b>&nbsp;trecho(s) sem conexão</span>
+              {% endif %}
+              {% if mapa.cobertura.geracao_predominante %}
+              <span title="Tecnologia de rede móvel predominante no trajeto"><i class="fa-solid fa-tower-cell"></i> <b>{{ mapa.cobertura.geracao_predominante }}</b>{% if mapa.cobertura.operadora_predominante %}&nbsp;·&nbsp;{{ mapa.cobertura.operadora_predominante }}{% endif %}</span>
+              {% endif %}
               <span id="kqMapInfoAtualizado">{% if pode_atualizar_ao_vivo %}<i class="fa-solid fa-clock"></i> atualizado agora{% endif %}</span>
             </div>
           {% elif dia_selecionado %}
@@ -374,12 +468,31 @@
       </div>
       {% if dias_disponiveis %}
       <div class="kq-card-body" style="padding-bottom:0;">
-        <div class="kq-days">
-          <a class="kq-day-chip{% if not dia_selecionado %} is-active{% endif %}" href="{% url 'quiosque_detalhe' device.pk %}"><i class="fa-solid fa-layer-group"></i> Todos ({{ retencao_dias }} dias)</a>
+        <div class="kq-days" id="kqDias">
+          <a class="kq-day-chip{% if not dia_selecionado %} is-active{% endif %}" href="{% url 'quiosque_detalhe' device.pk %}?aba=historico"><i class="fa-solid fa-layer-group"></i> Todos os dias</a>
           {% for d in dias_disponiveis %}
-          <a class="kq-day-chip{% if dia_selecionado == d.data %} is-active{% endif %}" href="?dia={{ d.data|date:'Y-m-d' }}">{{ d.label }} <span class="n">{{ d.total }}</span></a>
+          <a class="kq-day-chip{% if dia_selecionado == d.data %} is-active{% endif %}" href="?dia={{ d.data|date:'Y-m-d' }}&amp;aba=historico">{{ d.label }} <span class="n">{{ d.total }}</span></a>
           {% endfor %}
         </div>
+        <button type="button" class="kq-days-mais" id="kqDiasMais" hidden></button>
+
+        {% comment %}Cobertura REAL guardada, não a política. Diz o que existe de fato
+           para este aparelho, para ninguém concluir de uma janela que não foi coberta.{% endcomment %}
+        {% if retencao.total %}
+        <div class="kq-retencao">
+          <i class="fa-solid fa-database"></i>
+          <span>
+            Histórico guardado: <b>{{ retencao.dias_cobertos }} dia{{ retencao.dias_cobertos|pluralize }}</b>
+            com registro, de {{ retencao.inicio|date:"d/m/Y" }} a {{ retencao.fim|date:"d/m/Y" }}
+            (<b>{{ retencao.total }}</b> leitura{{ retencao.total|pluralize }}).
+            {% if retencao.completo %}
+              A janela de retenção é de {{ retencao_dias }} dias — o que for mais antigo é substituído pelos dados novos.
+            {% else %}
+              A janela de retenção é de {{ retencao_dias }} dias; este aparelho ainda não tem esse período completo.
+            {% endif %}
+          </span>
+        </div>
+        {% endif %}
         {% if resumo_dia %}
           {% if resumo_dia.total_checkins %}
           <div class="kq-resumo-dia">
@@ -389,7 +502,11 @@
               <div class="kq-resumo-stat"><span class="l">Último</span><span class="v">{{ resumo_dia.ultimo_checkin|date:"H:i" }}</span></div>
               <div class="kq-resumo-stat"><span class="l">Duração</span><span class="v">{{ resumo_dia.duracao_label }}</span></div>
               <div class="kq-resumo-stat"><span class="l">Percurso</span><span class="v">{{ resumo_dia.distancia_km|floatformat:2 }} km</span></div>
-              <div class="kq-resumo-stat"><span class="l">Online</span><span class="v">{{ resumo_dia.pct_online }}%</span></div>
+              <div class="kq-resumo-stat"><span class="l">Com conexão</span><span class="v">{{ resumo_dia.pct_online }}%</span></div>
+              {% if resumo_dia.quedas %}<div class="kq-resumo-stat" title="Transições de com conexão para sem conexão ao longo do dia"><span class="l">Quedas</span><span class="v">{{ resumo_dia.quedas }}</span></div>{% endif %}
+              {% if resumo_dia.offline_min %}<div class="kq-resumo-stat" title="Tempo somado em que o aparelho ficou sem conexão"><span class="l">Sem rede</span><span class="v">{{ resumo_dia.offline_min }} min</span></div>{% endif %}
+              {% if resumo_dia.geracao_predominante %}<div class="kq-resumo-stat" title="{{ resumo_dia.operadora_predominante }}"><span class="l">Rede móvel</span><span class="v">{{ resumo_dia.geracao_predominante }}</span></div>{% endif %}
+              {% if resumo_dia.sinal_medio is not None %}<div class="kq-resumo-stat" title="Média do nível de sinal (0 a 4) nas leituras do dia"><span class="l">Sinal médio</span><span class="v">{{ resumo_dia.sinal_medio }}/4</span></div>{% endif %}
               {% if resumo_dia.bateria_final is not None %}<div class="kq-resumo-stat"><span class="l">Bateria</span><span class="v">{% if resumo_dia.bateria_inicial != resumo_dia.bateria_final %}{{ resumo_dia.bateria_inicial }}→{{ resumo_dia.bateria_final }}%{% else %}{{ resumo_dia.bateria_final }}%{% endif %}</span></div>{% endif %}
             </div>
           </div>
@@ -401,38 +518,46 @@
       {% endif %}
       <div class="kq-scroll">
         <table class="kq-table">
-          <thead><tr><th>Quando</th><th>Bateria</th><th>Rede</th><th>Wi-Fi (SSID)</th>{% if device.telemetria_wifi %}<th>Sinal Wi-Fi</th>{% endif %}<th>Online</th><th>Localização</th></tr></thead>
+          <thead><tr><th>Quando</th><th>Bateria</th><th>Conexão</th><th>Rede</th><th>Wi-Fi (SSID)</th>{% if device.telemetria_wifi %}<th>Sinal Wi-Fi</th>{% endif %}{% if tel_movel.mostrar_sinal %}<th>Sinal móvel</th>{% endif %}<th>Localização</th></tr></thead>
           <tbody>
             {% for c in checkins %}
             <tr>
               <td><span title="Coletado: {{ c.quando|date:'d/m/Y H:i:s' }} · Recebido: {{ c.registrado_em|date:'d/m/Y H:i:s' }}">{{ c.quando|date:"d/m/Y H:i" }}</span></td>
               <td>{% if c.bateria is not None %}{{ c.bateria }}%{% if c.carregando %} <i class="fa-solid fa-bolt" style="color:var(--kq-success);"></i>{% endif %}{% else %}<span class="kq-muted">—</span>{% endif %}</td>
-              <td>{{ c.rede|default:"—" }}</td>
+              {# Mesma classificação que pinta o traço no mapa (conexao_do_checkin), não o campo `online` cru — tabela e mapa nunca se contradizem. #}
+              <td>
+                {% if c.conexao_online %}<span class="kq-badge kq-badge-success"><i class="fa-solid fa-circle-check"></i> Com conexão</span>
+                {% elif c.conexao_fila %}<span class="kq-badge kq-badge-warning" title="Leitura coletada sem rede e guardada na memória do aparelho; chegou ao servidor {{ c.conexao_atraso_s }}s depois"><i class="fa-solid fa-box-archive"></i> Guardado na memória</span>
+                {% else %}<span class="kq-badge kq-badge-danger"><i class="fa-solid fa-plug-circle-xmark"></i> Sem conexão</span>{% endif %}
+              </td>
+              <td>{% if c.sinal.nivel is not None %}<span title="{{ c.sinal.rotulo }} · nível {{ c.sinal.nivel }}/4{% if c.sinal.dbm %} · {{ c.sinal.dbm }} dBm{% endif %}">{{ c.sinal.rotulo }} <span class="kq-muted">{{ c.sinal.nivel }}/4</span></span>{% else %}{{ c.sinal.rotulo|default:"—" }}{% endif %}</td>
               <td>{{ c.ssid|default:"—" }}</td>
               {% if device.telemetria_wifi %}
               <td>{% if c.wifi_rssi_dbm is not None %}<span title="Nível {{ c.wifi_nivel|default:'—' }}/4{% if c.wifi_velocidade_mbps %} · {{ c.wifi_velocidade_mbps }} Mbps{% endif %}{% if c.wifi_banda_ghz %} · {{ c.wifi_banda_ghz }} GHz{% endif %}">{{ c.wifi_rssi_dbm }} dBm</span>{% else %}<span class="kq-muted">—</span>{% endif %}</td>
               {% endif %}
-              <td>{% if c.online %}<span class="kq-yes">sim</span>{% else %}<span class="kq-no">não</span>{% endif %}</td>
+              {% if tel_movel.mostrar_sinal %}
+              <td>{% if c.movel_rssi_dbm is not None or c.movel_nivel is not None %}<span title="{{ c.movel_tecnologia|default:'—' }}{% if c.movel_operadora %} · {{ c.movel_operadora }}{% endif %}">{% if c.movel_geracao %}{{ c.movel_geracao|upper }} {% endif %}{% if c.movel_rssi_dbm is not None %}{{ c.movel_rssi_dbm }} dBm{% else %}nível {{ c.movel_nivel }}/4{% endif %}</span>{% else %}<span class="kq-muted">—</span>{% endif %}</td>
+              {% endif %}
               <td>{% if c.latitude is not None %}<button type="button" class="kq-loc" data-cid="{{ c.pk }}" aria-pressed="false" title="Mostrar este ponto exato no mapa (Visão Geral)"><i class="fa-solid fa-location-crosshairs"></i><span>{{ c.latitude|floatformat:5 }}, {{ c.longitude|floatformat:5 }}</span></button><a class="kq-loc-ext" target="_blank" rel="noopener" href="https://www.google.com/maps?q={{ c.latitude|unlocalize }},{{ c.longitude|unlocalize }}" title="Abrir no Google Maps"><i class="fa-solid fa-up-right-from-square"></i></a>{% else %}<span class="kq-muted">—</span>{% endif %}</td>
             </tr>
             {% empty %}
-            <tr><td colspan="{% if device.telemetria_wifi %}7{% else %}6{% endif %}" style="text-align:center;color:var(--kq-soft);padding:22px;">Nenhum check-in recebido ainda.</td></tr>
+            <tr><td colspan="9" style="text-align:center;color:var(--kq-soft);padding:22px;">Nenhum check-in recebido ainda.</td></tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
       {% if page_obj.has_other_pages %}
       <div class="kq-pg">
-        {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}{% if dia_selecionado %}&dia={{ dia_selecionado|date:'Y-m-d' }}{% endif %}" aria-label="Anterior">‹</a>{% endif %}
+        {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&amp;aba=historico{% if dia_selecionado %}&amp;dia={{ dia_selecionado|date:'Y-m-d' }}{% endif %}" aria-label="Anterior">‹</a>{% endif %}
         <span class="cur">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-        {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}{% if dia_selecionado %}&dia={{ dia_selecionado|date:'Y-m-d' }}{% endif %}" aria-label="Próxima">›</a>{% endif %}
+        {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&amp;aba=historico{% if dia_selecionado %}&amp;dia={{ dia_selecionado|date:'Y-m-d' }}{% endif %}" aria-label="Próxima">›</a>{% endif %}
       </div>
       {% endif %}
     </div>
   </div>
 
   {# ─────────────────────── ABA: CONTROLE DO TI ─────────────────────── #}
-  <div id="tab-controle" class="kq-tab-panel" role="tabpanel">
+  <div id="tab-controle" class="kq-tab-panel{% if aba_ativa == 'controle' %} is-active{% endif %}" role="tabpanel">
     <div class="kq-tab-2col">
 
       <div class="kq-col">
@@ -469,6 +594,28 @@
                 <div class="kq-info-value">{% if device.telemetria_wifi %}<span class="kq-badge kq-badge-success">Ativa</span>{% else %}<span class="kq-badge kq-badge-neutral">Desligada</span>{% endif %}</div>
               </div>
               <div class="kq-info-item">
+                <div class="kq-info-label"><i class="fa-solid fa-tower-cell"></i>Telemetria de rede móvel</div>
+                {% comment %}
+                  Três estados, não dois. "Ativa" só quando o gate está ligado E
+                  o app sabe medir sinal do chip (v1.10.0+): ligar o gate num
+                  aparelho com app antigo não gera erro — o app ignora a chave e
+                  nunca manda os campos. Dizer "Ativa" ali mandava o TI caçar o
+                  problema no SIM, que é o primeiro suspeito sugerido pelo próprio
+                  informe do app, quando a causa é a versão instalada.
+                {% endcomment %}
+                <div class="kq-info-value" title="Alimenta o selo de 3G/4G/5G e nível de sinal no mapa de rota">
+                  {% if tel_movel.aguardando %}
+                    <span class="kq-badge kq-badge-warning" title="O gate está ligado no servidor, mas este aparelho roda o app {{ tel_movel.app_versao|default:'(versão não informada)' }}. A medição de sinal do chip existe a partir da v{{ tel_movel.versao_minima }} — até atualizar, nenhum campo de rede móvel chega.">
+                      <i class="fa-solid fa-hourglass-half"></i> Aguardando app v{{ tel_movel.versao_minima }}
+                    </span>
+                  {% elif tel_movel.ligada %}
+                    <span class="kq-badge kq-badge-success">Ativa</span>
+                  {% else %}
+                    <span class="kq-badge kq-badge-neutral">Desligada</span>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="kq-info-item">
                 <div class="kq-info-label"><i class="fa-solid fa-power-off"></i>Reiniciar (botão no app)</div>
                 <div class="kq-info-value">{% if device.permite_reiniciar %}<span class="kq-badge kq-badge-success">Liberado</span>{% else %}<span class="kq-badge kq-badge-warning">Bloqueado</span>{% endif %}</div>
               </div>
@@ -488,6 +635,10 @@
                 <div class="kq-info-label"><i class="fa-solid fa-eraser"></i>Limpar apps liberados (tela nativa)</div>
                 <div class="kq-info-value">{% if device.permite_limpar_apps_terceiros %}<span class="kq-badge kq-badge-success">Liberado</span>{% else %}<span class="kq-badge kq-badge-neutral">Bloqueado</span>{% endif %}</div>
               </div>
+              <div class="kq-info-item">
+                <div class="kq-info-label"><i class="fa-solid fa-bell"></i>Notificações</div>
+                <div class="kq-info-value">{% if device.permite_notificacoes %}<span class="kq-badge kq-badge-success">Liberado</span>{% else %}<span class="kq-badge kq-badge-neutral">Bloqueado</span>{% endif %}</div>
+              </div>
             </div>
 
             {% if device.apps_permitidos %}
@@ -503,38 +654,87 @@
         <div class="kq-card">
           <div class="kq-card-head"><span class="kq-card-title"><i class="fa-solid fa-terminal"></i>Comandos remotos</span></div>
           <div class="kq-card-body">
-            <form method="post" action="{% url 'quiosque_comando_novo' device.pk %}" class="kq-form">
+            {% if not device.ativo %}
+            <div class="kq-note is-warn"><i class="fa-solid fa-ban"></i><span>Dispositivo revogado: ele não faz mais check-in, então não recebe comandos.</span></div>
+            {% elif not app_executa_comandos %}
+            <div class="kq-note is-warn"><i class="fa-solid fa-triangle-exclamation"></i><span>O aparelho está com o app {% if device.app_versao %}v{{ device.app_versao }}{% else %}numa versão antiga{% endif %}, que recebe os comandos mas não os executa. Só a partir da <b>v1.8.0</b> os comandos passam a valer.</span></div>
+            {% endif %}
+
+            <!-- apps em uso (snapshot do último check-in) -->
+            <div class="kq-open">
+              <div class="kq-info-label"><i class="fa-solid fa-layer-group"></i>Apps em uso <span class="kq-open-when">· último check-in</span></div>
+              {% if apps_abertos %}
+              <form method="post" action="{% url 'quiosque_comando_novo' device.pk %}" class="kq-open-form" data-confirma="Fechar este app no aparelho? O colaborador perde o que não tiver salvo nele.">
+                {% csrf_token %}
+                <input type="hidden" name="tipo" value="fechar_apps">
+                <ul class="kq-open-list">
+                  {% for a in apps_abertos %}
+                  <li>
+                    <span class="kq-open-name">{{ a.nome|default:a.pkg }}{% if a.nome %} <span class="kq-open-pkg">{{ a.pkg }}</span>{% endif %}</span>
+                    <button type="submit" name="pacote" value="{{ a.pkg }}" class="btn btn-sm"><i class="fa-solid fa-xmark"></i> Fechar</button>
+                  </li>
+                  {% endfor %}
+                </ul>
+              </form>
+              <form method="post" action="{% url 'quiosque_comando_novo' device.pk %}" class="kq-open-all" data-confirma="Fechar TODOS os apps liberados abertos neste aparelho?">
+                {% csrf_token %}
+                <input type="hidden" name="tipo" value="fechar_apps">
+                <button type="submit" class="btn btn-sm"><i class="fa-solid fa-circle-xmark"></i> Fechar todos</button>
+                <span class="hint">Encerra as telas do app; no Android 14+ o processo, já sem telas, é recolhido pelo próprio sistema.</span>
+              </form>
+              {% else %}
+              <div class="kq-sub-note">Nenhum app liberado aberto no último check-in.</div>
+              {% endif %}
+            </div>
+
+            <form method="post" action="{% url 'quiosque_comando_novo' device.pk %}" class="kq-cmd-form" id="kqCmdForm">
               {% csrf_token %}
-              <label>Enviar novo comando</label>
+              <div class="kq-info-label"><i class="fa-solid fa-paper-plane"></i>Enviar comando</div>
               <div class="kq-form-row">
-                <select name="tipo" class="form-control">
-                  <option value="bloquear">Bloquear dispositivo</option>
-                  <option value="desbloquear">Desbloquear dispositivo</option>
-                  <option value="mensagem">Exibir mensagem</option>
-                  <option value="atualizar_config">Atualizar configuração</option>
-                  <option value="reiniciar_app">Reiniciar aplicativo</option>
+                <select name="tipo" id="kqCmdTipo" class="form-control" aria-label="Comando">
+                  {% for t in comando_tipos %}
+                  <option value="{{ t.valor }}" data-descricao="{{ t.descricao }}" data-validade="{{ t.validade_label }}"{% if t.confirmar %} data-confirma="1"{% endif %}>{{ t.rotulo }}</option>
+                  {% endfor %}
                 </select>
-                <input type="text" name="mensagem" class="form-control" placeholder="Mensagem (se aplicável)">
-                <button type="submit" class="btn btn-sm"><i class="fa-solid fa-paper-plane"></i> Enviar</button>
+                <select name="validade_min" id="kqCmdValidade" class="form-control kq-cmd-validade" aria-label="Validade">
+                  <option value="">Validade padrão</option>
+                  {% for v in comando_validades %}<option value="{{ v.min }}">Vale por {{ v.label }}</option>{% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-primary"><i class="fa-solid fa-paper-plane"></i> Enviar</button>
               </div>
+              <div class="kq-cmd-msg" id="kqCmdMsg" hidden>
+                <input type="text" name="titulo" maxlength="80" class="form-control" placeholder="Título (opcional)">
+                <textarea name="mensagem" maxlength="500" rows="2" class="form-control" placeholder="Texto do aviso exibido no aparelho"></textarea>
+              </div>
+              <div class="hint" id="kqCmdHint"></div>
             </form>
 
             {% if comandos %}
             <div class="kq-scroll">
               <table class="kq-table">
-                <thead><tr><th>Comando</th><th>Status</th><th>Criado</th><th>Detalhe</th></tr></thead>
+                <thead><tr><th>Comando</th><th>Status</th><th>Pedido</th><th>Detalhe</th></tr></thead>
                 <tbody>
                   {% for c in comandos %}
                   <tr>
-                    <td>{{ c.get_tipo_display }}</td>
                     <td>
-                      {% if c.status == "executado" %}<span class="kq-badge kq-badge-success">{{ c.get_status_display }}</span>
-                      {% elif c.status == "falhou" %}<span class="kq-badge kq-badge-danger">{{ c.get_status_display }}</span>
-                      {% elif c.status == "entregue" %}<span class="kq-badge kq-badge-info">{{ c.get_status_display }}</span>
-                      {% else %}<span class="kq-badge kq-badge-warning">{{ c.get_status_display }}</span>{% endif %}
+                      {{ c.get_tipo_display }}
+                      {% if c.payload.mensagem %}<div class="kq-cmd-sub">“{{ c.payload.mensagem|truncatechars:60 }}”</div>{% endif %}
+                      {% if c.payload.pacotes %}<div class="kq-cmd-sub">{{ c.payload.pacotes|join:", "|truncatechars:60 }}</div>{% endif %}
                     </td>
-                    <td>{{ c.criado_em|naturaltime }}</td>
-                    <td>{{ c.detalhe|default:"—" }}</td>
+                    <td>
+                      {% if c.vencido %}<span class="kq-badge kq-badge-neutral" title="Passou da validade sem resposta do aparelho">Expirado</span>
+                      {% elif c.status == "executado" %}<span class="kq-badge kq-badge-success"{% if c.executado_em %} title="Executado no aparelho em {{ c.executado_em|date:'d/m/Y H:i:s' }}"{% endif %}>{{ c.get_status_display }}</span>
+                      {% elif c.status == "falhou" %}<span class="kq-badge kq-badge-danger">{{ c.get_status_display }}</span>
+                      {% elif c.status == "nao_suportado" %}<span class="kq-badge kq-badge-danger"{% if c.app_versao %} title="App v{{ c.app_versao }}"{% endif %}>{{ c.get_status_display }}</span>
+                      {% elif c.status == "expirado" %}<span class="kq-badge kq-badge-neutral">{{ c.get_status_display }}</span>
+                      {% elif c.status == "entregue" %}<span class="kq-badge kq-badge-info" title="Já foi ao aparelho; aguardando a confirmação">Aguardando confirmação</span>
+                      {% else %}<span class="kq-badge kq-badge-warning" title="Sai no próximo check-in">{{ c.get_status_display }}</span>{% endif %}
+                    </td>
+                    <td>
+                      <span title="{{ c.criado_em|date:'d/m/Y H:i:s' }}">{{ c.criado_em|naturaltime }}</span>
+                      <div class="kq-cmd-sub">{% if c.criado_por %}{{ c.criado_por.get_full_name|default:c.criado_por.username }}{% else %}—{% endif %}{% if c.aberto and c.expira_em and not c.vencido %} · vale até {{ c.expira_em|date:"d/m H:i" }}{% endif %}</div>
+                    </td>
+                    <td class="kq-cmd-det">{{ c.detalhe|default:"—" }}</td>
                   </tr>
                   {% endfor %}
                 </tbody>
@@ -596,6 +796,7 @@
 {{ mapa|json_script:"__kqmap" }}
 {{ geo_pagina|json_script:"__kqgeo" }}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% include 'front/quiosque/_kq_mapa_js.html' %}
 <script>
 (function(){
   var data = JSON.parse(document.getElementById('__kqmap').textContent);
@@ -603,73 +804,366 @@
   try { geo = JSON.parse(document.getElementById('__kqgeo').textContent) || {}; } catch (e) {}
   if (!data || data.lat == null || data.lon == null) return;
 
-  // Camadas base: satélite (Esri, PADRÃO) + mapa de ruas (OSM). maxNativeZoom evita
-  // o placeholder "Map data not yet available" onde a Esri não tem imagem (rural).
-  var ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'&copy; OpenStreetMap' });
-  var sat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:19, maxNativeZoom:17, attribution:'Tiles &copy; Esri' });
-  var map = L.map('kqMap', { scrollWheelZoom:false, layers:[sat] });
-  L.control.layers({ 'Satélite':sat, 'Mapa':ruas }, null, { position:'topright' }).addTo(map);
+  var map = L.map('kqMap', { scrollWheelZoom:false });
+  KQMapa.montarCamadas(map, { padrao:'satelite' });
+  // Ver o terreno (pivos, divisas de talhao) por baixo da rota, e nao aproximar
+  // alem do que a imagem de satelite realmente tem.
+  KQMapa.modoTerreno(map);
+  KQMapa.avisoNitidez(map);
   L.control.scale({ imperial:false }).addTo(map);
 
-  // Camadas dinâmicas (redesenhadas a cada atualização, ao vivo ou manual) —
-  // agrupadas em LayerGroups para poder limpar e redesenhar sem acumular
-  // marcadores fantasmas de rodadas anteriores.
-  var trilhaLayer = L.layerGroup().addTo(map);
-  var atualLayer = L.layerGroup().addTo(map);
-  var atual = null;       // referência ao marcador de posição/último ponto (para popup/flyTo)
+  // Uma camada por família de desenho: o painel de filtros liga/desliga cada
+  // uma sem precisar redesenhar a rota inteira, e a atualização ao vivo limpa
+  // e repovoa só o que mudou (sem deixar marcadores fantasmas).
+  var rotaLayer     = L.layerGroup().addTo(map);   // polilinhas do trajeto
+  var setasLayer    = L.layerGroup().addTo(map);   // sentido do percurso
+  var pontosLayer   = L.layerGroup().addTo(map);   // leituras intermediárias
+  var selosLayer    = L.layerGroup().addTo(map);   // rótulos de conexão/sinal
+  var precisaoLayer = L.layerGroup();              // círculos de precisão do GPS
+  var atualLayer    = L.layerGroup().addTo(map);   // início, fim e posição atual
+  var playLayer     = L.layerGroup().addTo(map);   // cursor da reprodução
+
+  var atual = null;          // marcador da posição/último ponto (popup, flyTo)
   var homeBounds = null;
+  var trilha = [];           // traço atualmente desenhado
+  var selosMarcadores = [];
+  var selosCandidatos = [];  // marcos elegíveis a selo (filtrados por colisão)
+  var filtros = { rota:true, offline:true, selos:true, paradas:true, precisao:false, setas:true };
 
   function home(){ if (homeBounds) map.fitBounds(homeBounds); else if (atual) map.setView(atual.getLatLng(), 17); }
 
-  // Desenha o traço (polilinha com gradiente indicando o sentido do trajeto +
-  // pontos intermediários) e o marcador de posição/último ponto — chamada no
-  // carregamento inicial e a cada atualização (ao vivo ou manual).
-  function render(d, ajustarCamera){
-    trilhaLayer.clearLayers();
-    atualLayer.clearLayers();
+  function corDoPonto(p){ return p.online ? KQMapa.COR_ON : KQMapa.COR_OFF; }
 
-    var cor = d.online ? '#34c759' : '#8e8e93';
-    var trilha = d.trilha || [];   // cronológico: antigo → recente
-    var pts = trilha.map(function(p){ return [p.lat, p.lon]; });
-
-    if (pts.length > 1) {
-      for (var s = 1; s < pts.length; s++) {
-        var op = 0.22 + 0.5 * (s / (pts.length - 1));   // 0.22 (início) → 0.72 (fim)
-        L.polyline([pts[s-1], pts[s]], { color: cor, weight: 3, opacity: op, lineJoin: 'round', lineCap: 'round', smoothFactor: 0.5 }).addTo(trilhaLayer);
-      }
-      L.circleMarker(pts[0], { radius:5, color:'#fff', weight:2, fillColor:cor, fillOpacity:.85 })
-        .addTo(trilhaLayer).bindPopup('<b>Início do trajeto</b><br>' + (trilha[0].quando_inicio || trilha[0].quando));
+  function textoPonto(p){
+    var linhas = [];
+    if (p.parado) {
+      linhas.push('<span class="kq-pop-t">Parado aqui</span>');
+      linhas.push('<span class="kq-pop-l">' + KQMapa.escapar(p.quando_inicio) + ' – ' + KQMapa.escapar(p.quando) + '</span>');
+      linhas.push('<span class="kq-pop-l">' + p.pontos_originais + ' leitura(s) nesta posição' +
+        (p.offline_pontos ? ' · <b>' + p.offline_pontos + ' sem conexão</b>' : '') + '</span>');
+    } else {
+      linhas.push('<span class="kq-pop-t">' + KQMapa.escapar(p.quando) + '</span>');
     }
-    // Pontos "parado" (ver `_colapsar_paradas` no service) representam várias
-    // leituras no mesmo lugar (jitter de GPS/Wi-Fi com o aparelho fisicamente
-    // parado, ex.: tablet de ponto fixo) já reduzidas a UM ponto — por isso
-    // aparecem maiores/com anel, para diferenciar de um waypoint de trajeto real.
-    trilha.forEach(function(p, i){
-      if (i === 0 || i === trilha.length - 1) return;
-      var extra = (p.bateria != null ? ' &middot; ' + p.bateria + '%' : '')
-        + (p.precisao != null ? ' &middot; ±' + Math.round(p.precisao) + ' m' : '');
-      if (p.parado) {
-        L.circleMarker([p.lat, p.lon], { radius:6, color:cor, weight:2, fillColor:'#fff', fillOpacity:.9 })
-          .addTo(trilhaLayer).bindPopup('<b>Parado aqui</b><br>' + p.quando_inicio + ' – ' + p.quando
-            + '<br><small>' + p.pontos_originais + ' leitura(s) nesta posição</small>' + extra);
-      } else {
-        L.circleMarker([p.lat, p.lon], { radius:3.5, color:cor, weight:1, fillColor:cor, fillOpacity:.5 })
-          .addTo(trilhaLayer).bindPopup(p.quando + extra);
-      }
-    });
-    if (d.precisao) {
-      L.circle([d.lat, d.lon], { radius:d.precisao, color:cor, weight:1, fillColor:cor, fillOpacity:.08 }).addTo(atualLayer);
-    }
-    var rotulo = d.historico ? 'última posição do dia' : 'posição atual';
-    atual = L.circleMarker([d.lat, d.lon], { radius:9, color:'#fff', weight:2, fillColor:cor, fillOpacity:1 })
-      .addTo(atualLayer).bindPopup('<b>'+ d.nome +'</b><br>'+ (d.online ? 'Online' : 'Offline') + ' &middot; ' + rotulo);
-
-    homeBounds = pts.length > 1 ? L.latLngBounds(pts.concat([[d.lat, d.lon]])).pad(0.25) : null;
-    if (ajustarCamera) { home(); atual.openPopup(); }
-
-    var infoPontos = document.getElementById('kqMapInfoPontos');
-    if (infoPontos) infoPontos.textContent = trilha.length;
+    var etiqueta = p.online
+      ? '<span class="kq-pop-tag on">Com conexão</span>'
+      : (p.fila ? '<span class="kq-pop-tag fila">Guardado na memória</span>'
+                : '<span class="kq-pop-tag off">Sem conexão</span>');
+    linhas.push('<span class="kq-pop-l">' + etiqueta + ' ' +
+      KQMapa.escapar(KQMapa.textoSinal({ rotulo:p.sinal_rotulo, nivel:p.sinal_nivel, dbm:p.sinal_dbm, operadora:p.sinal_operadora }, p.online)) + '</span>');
+    var extra = [];
+    if (p.bateria != null) extra.push(p.bateria + '%');
+    if (p.precisao != null) extra.push('±' + Math.round(p.precisao) + ' m');
+    if (!p.online && p.fila && p.atraso_s) extra.push('subiu ' + Math.round(p.atraso_s / 60) + ' min depois');
+    if (extra.length) linhas.push('<span class="kq-pop-l">' + KQMapa.escapar(extra.join(' · ')) + '</span>');
+    return linhas.join('');
   }
+
+  // Quebra o traço em TRECHOS de estado homogêneo (com conexão / sem conexão).
+  // Desenhar uma polilinha por segmento seria pesado num dia inteiro (centenas
+  // de objetos); agrupando as corridas, o mapa tem tantas linhas quantas forem
+  // as transições reais — que é também exatamente o que se quer ver.
+  function trechos(pontos){
+    var saida = [], atualTrecho = null;
+    for (var i = 1; i < pontos.length; i++) {
+      // O estado do TRECHO é o do ponto de chegada: o trecho representa o
+      // deslocamento que terminou naquela leitura.
+      var online = !!pontos[i].online;
+      if (!atualTrecho || atualTrecho.online !== online) {
+        atualTrecho = { online: online, pts: [[pontos[i-1].lat, pontos[i-1].lon]] };
+        saida.push(atualTrecho);
+      }
+      atualTrecho.pts.push([pontos[i].lat, pontos[i].lon]);
+    }
+    return saida;
+  }
+
+  function desenharRota(){
+    rotaLayer.clearLayers();
+    setasLayer.clearLayers();
+    if (!filtros.rota || trilha.length < 2) return;
+
+    trechos(trilha).forEach(function(t){
+      if (!t.online && !filtros.offline) return;   // filtro "trechos sem conexão"
+      L.polyline(t.pts, {
+        color: t.online ? KQMapa.COR_ON : KQMapa.COR_OFF,
+        weight: t.online ? 4 : 4.5,
+        opacity: t.online ? 0.85 : 0.95,
+        // Tracejado no trecho sem conexão: a posição ali é real (o aparelho
+        // gravou na memória), mas o caminho entre duas leituras distantes é
+        // interpolado — o tracejado comunica essa incerteza sem escondê-la.
+        dashArray: t.online ? null : '9,7',
+        lineJoin: 'round', lineCap: 'round', smoothFactor: 0.6
+      }).addTo(rotaLayer);
+    });
+
+    if (!filtros.setas) return;
+    // Setas espaçadas: ~1 a cada 10 pontos, no máximo 14 no traço todo, para
+    // indicar o sentido sem virar um enxame.
+    var passo = Math.max(1, Math.ceil(trilha.length / 14));
+    for (var i = passo; i < trilha.length; i += passo) {
+      var a = trilha[i-1], b = trilha[i];
+      if (a.lat === b.lat && a.lon === b.lon) continue;
+      if (!b.online && !filtros.offline) continue;
+      var meio = [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2];
+      L.marker(meio, {
+        icon: KQMapa.iconeSeta(KQMapa.rumo([a.lat, a.lon], [b.lat, b.lon]), corDoPonto(b)),
+        interactive: false, zIndexOffset: 200
+      }).addTo(setasLayer);
+    }
+  }
+
+  function desenharPontos(){
+    pontosLayer.clearLayers();
+    precisaoLayer.clearLayers();
+    selosCandidatos = [];
+
+    trilha.forEach(function(p, i){
+      var cor = corDoPonto(p);
+      var ehExtremo = (i === 0 || i === trilha.length - 1);
+
+      if (filtros.precisao && p.precisao) {
+        L.circle([p.lat, p.lon], { radius:p.precisao, color:cor, weight:1, fillColor:cor, fillOpacity:.07 }).addTo(precisaoLayer);
+      }
+
+      if (!ehExtremo) {
+        if (p.parado && filtros.paradas) {
+          // Parada = várias leituras no mesmo lugar já colapsadas num ponto
+          // (ver _colapsar_paradas no service): anel maior para não ser
+          // confundido com um waypoint de trajeto.
+          L.circleMarker([p.lat, p.lon], { radius:7, color:cor, weight:2.5, fillColor:'#fff', fillOpacity:.95 })
+            .addTo(pontosLayer).bindPopup(textoPonto(p));
+        } else if (!p.online) {
+          L.circleMarker([p.lat, p.lon], { radius:5, color:KQMapa.COR_OFF, weight:2, fillColor:'#fff', fillOpacity:1 })
+            .addTo(pontosLayer).bindPopup(textoPonto(p));
+        } else if (!p.parado) {
+          L.circleMarker([p.lat, p.lon], { radius:3.5, color:cor, weight:1, fillColor:cor, fillOpacity:.55 })
+            .addTo(pontosLayer).bindPopup(textoPonto(p));
+        }
+      }
+
+      // Selo só nos "marcos" (início, fim, paradas e transições de conexão/
+      // sinal) — calculado no servidor em _marcar_marcos. Um selo por leitura
+      // deixaria o mapa ilegível num trajeto longo.
+      if (p.marco) selosCandidatos.push(p);
+    });
+    desenharSelos();
+  }
+
+  // Desenha os selos dos marcos que cabem sem se sobrepor. O filtro de colisão
+  // é o mesmo usado no mapa da frota (KQMapa.semColisao) — é medida de TELA,
+  // por isso roda de novo a cada mudança de zoom. Nada se perde: o ponto embaixo
+  // continua clicável, e dar zoom separa os selos e revela os omitidos.
+  function desenharSelos(){
+    selosLayer.clearLayers();
+    selosMarcadores = [];
+    if (!filtros.selos || !map._loaded) return;
+
+    var itens = selosCandidatos.map(function(p){
+      return {
+        lat: p.lat, lon: p.lon, online: p.online,
+        sinal: { rotulo:p.sinal_rotulo, nivel:p.sinal_nivel, dbm:p.sinal_dbm, operadora:p.sinal_operadora }
+      };
+    });
+
+    KQMapa.semColisao(map, itens).forEach(function(it){
+      var selo = L.marker([it.lat, it.lon], {
+        icon: KQMapa.iconeSelo(it.sinal, it.online),
+        interactive: false, zIndexOffset: it.online ? 600 : 650
+      });
+      selo.addTo(selosLayer);
+      selo.on('add', function(){ KQMapa.centralizarSelo(selo); });
+      selosMarcadores.push(selo);
+    });
+    selosMarcadores.forEach(KQMapa.centralizarSelo);
+  }
+
+  function desenharExtremos(d){
+    atualLayer.clearLayers();
+    if (trilha.length > 1) {
+      var ini = trilha[0];
+      L.circleMarker([ini.lat, ini.lon], { radius:6, color:'#fff', weight:2, fillColor:KQMapa.COR_PARADO, fillOpacity:1 })
+        .addTo(atualLayer)
+        .bindPopup('<span class="kq-pop-t">Início do trajeto</span><span class="kq-pop-l">' +
+                   KQMapa.escapar(ini.quando_inicio || ini.quando) + '</span>');
+    }
+    if (d.precisao) {
+      L.circle([d.lat, d.lon], { radius:d.precisao, color:d.online ? KQMapa.COR_ON : '#8e8e93', weight:1,
+        fillColor:d.online ? KQMapa.COR_ON : '#8e8e93', fillOpacity:.08 }).addTo(atualLayer);
+    }
+    var rotulo = d.historico ? 'última posição do período' : 'posição atual';
+    atual = L.circleMarker([d.lat, d.lon], { radius:9, color:'#fff', weight:2,
+      fillColor:d.online ? KQMapa.COR_ON : '#8e8e93', fillOpacity:1 })
+      .addTo(atualLayer)
+      .bindPopup('<span class="kq-pop-t">' + KQMapa.escapar(d.nome) + '</span>' +
+        '<span class="kq-pop-l"><span class="kq-pop-tag ' + (d.online ? 'on' : 'off') + '">' +
+        (d.online ? 'Online' : 'Offline') + '</span> ' + KQMapa.escapar(rotulo) + '</span>' +
+        '<span class="kq-pop-l">' + KQMapa.escapar(KQMapa.textoSinal(d.sinal, d.online)) + '</span>');
+
+    if (filtros.selos && d.sinal) {
+      var seloAtual = L.marker([d.lat, d.lon], { icon:KQMapa.iconeSelo(d.sinal, d.online), interactive:false, zIndexOffset:700 });
+      seloAtual.addTo(atualLayer);
+      seloAtual.on('add', function(){ KQMapa.centralizarSelo(seloAtual); });
+      KQMapa.centralizarSelo(seloAtual);
+    }
+  }
+
+  function render(d, ajustarCamera){
+    trilha = d.trilha || [];
+    desenharRota();
+    desenharPontos();
+    desenharExtremos(d);
+
+    var pts = trilha.map(function(p){ return [p.lat, p.lon]; });
+    homeBounds = pts.length > 1 ? L.latLngBounds(pts.concat([[d.lat, d.lon]])).pad(0.25) : null;
+    // A câmera precisa ser definida ANTES de montar a reprodução: `irPara`
+    // consulta map.getBounds(), e o Leaflet lança "Set map center and zoom
+    // first." num mapa que ainda não tem enquadramento.
+    if (ajustarCamera) { home(); if (atual) atual.openPopup(); }
+    // Os selos são filtrados por colisão em pixels de tela, o que exige a
+    // câmera já definida — na primeira renderização `desenharPontos` roda antes
+    // disso e sai sem desenhar nenhum. Redesenha aqui, com o enquadramento
+    // pronto; não dá para confiar no evento `zoomend`, que só dispara se o
+    // zoom realmente mudou.
+    desenharSelos();
+    montarReproducao();
+
+    atualizarInfo(d);
+  }
+
+  function atualizarInfo(d){
+    var c = d.cobertura || {};
+    function por(id, valor){ var el = document.getElementById(id); if (el && valor != null) el.textContent = valor; }
+    por('kqMapInfoPontos', trilha.length);
+    por('kqMapInfoKm', (c.distancia_km != null ? c.distancia_km.toFixed(2) : null));
+    por('kqMapInfoOnline', c.pct_online);
+    por('kqMapInfoTrechos', c.segmentos_offline);
+  }
+
+  // ── Reprodução do trajeto ─────────────────────────────────────────────
+  // Percorre a rota no tempo: responde "onde eu estava às 14h20 e tinha sinal
+  // ali?" sem precisar clicar ponto a ponto.
+  var playBarra = document.getElementById('kqPlay');
+  var playBtn   = document.getElementById('kqPlayBtn');
+  var playRange = document.getElementById('kqPlayRange');
+  var playLbl   = document.getElementById('kqPlayLbl');
+  var playTimer = null, playCursor = null;
+
+  function pararReproducao(){
+    if (playTimer) { clearInterval(playTimer); playTimer = null; }
+    if (playBtn) playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+  }
+
+  function irPara(indice){
+    var p = trilha[indice];
+    if (!p) return;
+    var ll = [p.lat, p.lon];
+    if (playCursor) { playCursor.setLatLng(ll); }
+    else { playCursor = L.circleMarker(ll, { radius:8, color:'#fff', weight:3, fillColor:KQMapa.COR_PARADO, fillOpacity:1 }).addTo(playLayer); }
+    if (playLbl) {
+      playLbl.textContent = p.quando + ' · ' +
+        (p.online ? (p.sinal_rotulo || 'com conexão') + (p.sinal_nivel != null ? ' ' + p.sinal_nivel + '/4' : '') : 'sem conexão');
+    }
+    // `_loaded` = o mapa já tem centro/zoom. Sem essa guarda, getBounds() lança
+    // num mapa ainda não enquadrado (ver a ordem em `render`); é a única forma
+    // que o Leaflet oferece de perguntar isso sem provocar a própria exceção.
+    if (map._loaded && !map.getBounds().contains(ll)) map.panTo(ll);
+  }
+
+  function montarReproducao(){
+    pararReproducao();
+    playLayer.clearLayers();
+    playCursor = null;
+    if (!playBarra) return;
+    if (trilha.length < 2) { playBarra.hidden = true; return; }
+    playBarra.hidden = false;
+    playRange.max = String(trilha.length - 1);
+    playRange.value = String(trilha.length - 1);
+    irPara(trilha.length - 1);
+  }
+
+  if (playRange) playRange.addEventListener('input', function(){
+    pararReproducao();
+    irPara(parseInt(playRange.value, 10));
+  });
+
+  if (playBtn) playBtn.addEventListener('click', function(){
+    if (playTimer) { pararReproducao(); return; }
+    // Reiniciar do começo quando já está no fim (senão o play não faria nada).
+    if (parseInt(playRange.value, 10) >= trilha.length - 1) playRange.value = '0';
+    playBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+    playTimer = setInterval(function(){
+      var i = parseInt(playRange.value, 10) + 1;
+      if (i >= trilha.length) { pararReproducao(); return; }
+      playRange.value = String(i);
+      irPara(i);
+    }, 260);
+  });
+
+  // ── Painel de filtros ─────────────────────────────────────────────────
+  KQMapa.painelFiltros(map, {
+    chave: 'kq_mapa_rota_filtros',
+    titulo: 'Exibir no mapa',
+    itens: [
+      { id:'rota',     rotulo:'Rota percorrida',            padrao:true },
+      { id:'offline',  rotulo:'Trechos sem conexão',        padrao:true },
+      { id:'selos',    rotulo:'Conexão e nível de sinal',   padrao:true },
+      { id:'paradas',  rotulo:'Paradas',                    padrao:true },
+      { id:'setas',    rotulo:'Sentido do percurso',        padrao:true },
+      { id:'precisao', rotulo:'Precisão do GPS',            padrao:false }
+    ],
+    // Sem `legenda` aqui: ela foi para a faixa abaixo do mapa (.kq-map-leg),
+    // onde não cobre o terreno nem some ao recolher o painel.
+    aoMudar: function(estado){
+      filtros = estado;
+      if (filtros.precisao) precisaoLayer.addTo(map); else map.removeLayer(precisaoLayer);
+      if (trilha.length) { desenharRota(); desenharPontos(); }
+      atualizarLinksExportar();
+    }
+  });
+
+  /* Links de exportação: carregam o MESMO recorte (dia/janela) e o MESMO estado
+     de filtros que está na tela. Montados aqui, e não no template, porque os
+     filtros só existem no cliente — um href fixo exportaria sempre a visão
+     padrão, e o arquivo sairia diferente do que a pessoa vê. */
+  function atualizarLinksExportar(){
+    var caixa = document.getElementById('kqExport');
+    if (!caixa) return;
+    var base = "{% url 'quiosque_mapa_exportar' device.pk %}";
+    var comuns = [];
+    {% if dia_selecionado %}comuns.push('dia={{ dia_selecionado|date:"Y-m-d" }}');
+    {% else %}comuns.push('horas={{ horas_janela }}');{% endif %}
+    ['rota','offline','selos','paradas','setas','precisao'].forEach(function(nome){
+      comuns.push(nome + '=' + (filtros && filtros[nome] ? '1' : '0'));
+    });
+    caixa.querySelectorAll('a[data-formato]').forEach(function(link){
+      link.href = base + '?formato=' + link.getAttribute('data-formato') + '&' + comuns.join('&');
+    });
+  }
+
+  /* O servidor monta o mosaico de satélite e desenha a rota — leva alguns
+     segundos. Como o retorno é um download, a página não muda de estado
+     sozinha: sem este aviso o clique parece não ter funcionado e a pessoa
+     clica de novo, disparando outra renderização. O tempo é fixo porque não
+     há evento de "download concluído" para um link comum. */
+  (function(){
+    var caixa = document.getElementById('kqExport');
+    if (!caixa) return;
+    caixa.addEventListener('click', function(ev){
+      var link = ev.target.closest('a[data-formato]');
+      if (!link || link.classList.contains('is-busy')) return;
+      var original = link.innerHTML;
+      link.classList.add('is-busy');
+      link.innerHTML = '<i class="fa-solid fa-circle-notch"></i> Gerando…';
+      setTimeout(function(){
+        link.classList.remove('is-busy');
+        link.innerHTML = original;
+      }, 9000);
+    });
+  })();
+
+  // A seleção de selos depende do zoom (colisão medida em pixels), então
+  // precisa ser refeita sempre que a escala muda.
+  map.on('zoomend', desenharSelos);
 
   render(data, true);
 
@@ -677,7 +1171,10 @@
   // (ativa por padrão), mas se o usuário for pra outra aba e voltar, o container
   // passou por display:none → display:grid — sem invalidateSize() o Leaflet
   // mantém o tamanho antigo em cache e os tiles saem cortados/cinza.
-  window.__kqInvalidateMap = function(){ map.invalidateSize(); };
+  window.__kqInvalidateMap = function(){
+    map.invalidateSize();
+    selosMarcadores.forEach(KQMapa.centralizarSelo);
+  };
 
   // ── Marcador de FOCO: o ponto EXATO do check-in selecionado na tabela ──
   var focusIcon = L.divIcon({ className:'kq-focus-pin', html:'<span class="kq-focus-dot"></span>', iconSize:[28,28], iconAnchor:[14,14] });
@@ -693,9 +1190,17 @@
     if (p.precisao) { fCircle = L.circle(ll, { radius:p.precisao, color:'#0078d4', weight:1, fillColor:'#0078d4', fillOpacity:.10 }).addTo(map); }
     var extra = [];
     if (p.bateria != null) extra.push(p.bateria + '%');
-    if (p.rede) extra.push(p.rede);
     if (p.precisao != null) extra.push('±' + Math.round(p.precisao) + ' m');
-    fMarker.bindPopup('<b>'+ p.quando +'</b>' + (extra.length ? '<br>' + extra.join(' &middot; ') : ''), { offset:[0,-4] }).openPopup();
+    var etiqueta = p.online
+      ? '<span class="kq-pop-tag on">Com conexão</span>'
+      : (p.fila ? '<span class="kq-pop-tag fila">Guardado na memória</span>'
+                : '<span class="kq-pop-tag off">Sem conexão</span>');
+    fMarker.bindPopup(
+      '<span class="kq-pop-t">' + KQMapa.escapar(p.quando) + '</span>' +
+      '<span class="kq-pop-l">' + etiqueta + ' ' + KQMapa.escapar(KQMapa.textoSinal(p.sinal, p.online)) + '</span>' +
+      (extra.length ? '<span class="kq-pop-l">' + KQMapa.escapar(extra.join(' · ')) + '</span>' : ''),
+      { offset:[0,-4] }
+    ).openPopup();
     map.flyTo(ll, Math.max(map.getZoom(), 18), { duration:.7 });
     if (resetBtn) resetBtn.hidden = false;
   };
@@ -713,7 +1218,7 @@
   };
   if (resetBtn) resetBtn.addEventListener('click', window.__kqReset);
 
-  setTimeout(function(){ map.invalidateSize(); }, 120);
+  setTimeout(function(){ map.invalidateSize(); selosMarcadores.forEach(KQMapa.centralizarSelo); }, 120);
 
   {% if pode_atualizar_ao_vivo %}
   // ── Atualização ao vivo: sonda o servidor periodicamente e redesenha o
@@ -724,7 +1229,7 @@
   // quando o usuário aciona "Visão geral"/"Atualizar agora" explicitamente.
   (function(){
     var INTERVALO_MS = 25000;
-    var pollUrl = "{% url 'quiosque_mapa_atualizar' device.pk %}{% if dia_selecionado %}?dia={{ dia_selecionado|date:'Y-m-d' }}{% endif %}";
+    var pollUrl = "{% url 'quiosque_mapa_atualizar' device.pk %}?horas={{ horas_janela }}{% if dia_selecionado %}&dia={{ dia_selecionado|date:'Y-m-d' }}{% endif %}";
     var tick = document.getElementById('kqLiveTick');
     var tickTxt = document.getElementById('kqLiveTickTxt');
     var infoAtualizado = document.getElementById('kqMapInfoAtualizado');
@@ -765,11 +1270,12 @@
           ? '<i class="fa-solid fa-battery-half" style="color:var(--kq-soft)"></i> ' + json.bateria + '%'
           : '<span class="kq-muted">—</span>';
       }
-      if (redeEl) {
-        var icone = json.rede === 'wifi' ? 'fa-wifi' : 'fa-signal';
-        redeEl.innerHTML = json.rede
-          ? '<i class="fa-solid ' + icone + '" style="color:var(--kq-soft)"></i> ' + json.rede
-          : '<span class="kq-muted">—</span>';
+      if (redeEl && json.sinal) {
+        // A barra-resumo mostra o MESMO selo do mapa: transporte + barrinhas de
+        // nível, em vez do texto cru de `rede` ("wifi"/"none").
+        redeEl.innerHTML = json.sinal.tipo === 'nenhuma' && !json.online
+          ? '<span class="kq-muted">sem rede</span>'
+          : KQMapa.seloHtml(json.sinal, json.online);
       }
       if (ultimoEl && json.ultimo_checkin_label) {
         ultimoEl.innerHTML = '<span title="' + json.ultimo_checkin_label + '">' + json.ultimo_checkin_label + '</span>';
@@ -801,28 +1307,50 @@
 {% endif %}
 <script>
 // ── Navegação por abas ──────────────────────────────────────────────
+// A aba ativa vive na URL (`?aba=`). O servidor já a lê (ver _resolver_aba em
+// views/quiosque.py); aqui a gravamos com replaceState a cada troca, para que
+// F5, link compartilhado e o botão "voltar" do navegador devolvam o usuário à
+// aba em que ele estava. Antes, qualquer recarga caía em "Visão Geral" —
+// inclusive ao voltar da paginação do histórico.
 (function(){
   var tabBtns = document.querySelectorAll('.kq-tab-btn');
-  tabBtns.forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      tabBtns.forEach(function (b) {
-        b.classList.remove('is-active');
-        b.setAttribute('aria-selected', 'false');
-      });
-      document.querySelectorAll('.kq-tab-panel').forEach(function (p) {
-        p.classList.remove('is-active');
-      });
-      btn.classList.add('is-active');
-      btn.setAttribute('aria-selected', 'true');
-      var panel = document.getElementById('tab-' + btn.dataset.tab);
-      if (panel) panel.classList.add('is-active');
-      // O mapa (Leaflet) só mede corretamente o próprio tamanho enquanto visível;
-      // ao voltar pra "Visão Geral" depois de trocar de aba, força um recálculo.
-      if (btn.dataset.tab === 'visao' && typeof window.__kqInvalidateMap === 'function') {
-        setTimeout(window.__kqInvalidateMap, 60);
-      }
+
+  function ativar(nome, gravarUrl){
+    var btn = document.querySelector('.kq-tab-btn[data-tab="' + nome + '"]');
+    if (!btn) return;
+    tabBtns.forEach(function (b) {
+      b.classList.remove('is-active');
+      b.setAttribute('aria-selected', 'false');
     });
+    document.querySelectorAll('.kq-tab-panel').forEach(function (p) {
+      p.classList.remove('is-active');
+    });
+    btn.classList.add('is-active');
+    btn.setAttribute('aria-selected', 'true');
+    var panel = document.getElementById('tab-' + nome);
+    if (panel) panel.classList.add('is-active');
+
+    if (gravarUrl && window.history && history.replaceState) {
+      var url = new URL(window.location.href);
+      url.searchParams.set('aba', nome);
+      history.replaceState(null, '', url);
+    }
+
+    // O mapa (Leaflet) só mede corretamente o próprio tamanho enquanto visível;
+    // ao voltar pra "Visão Geral" depois de trocar de aba, força um recálculo.
+    if (nome === 'visao' && typeof window.__kqInvalidateMap === 'function') {
+      setTimeout(window.__kqInvalidateMap, 60);
+    }
+  }
+
+  tabBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () { ativar(btn.dataset.tab, true); });
   });
+
+  // Links internos da tela (filtro de dia, paginação, período do mapa) já
+  // carregam `aba=` no href; esta função fica exposta para o clique em
+  // "localização" da tabela alternar de aba mantendo a URL coerente.
+  window.__kqAbrirAba = function(nome){ ativar(nome, true); };
 })();
 
 // Status ao vivo: se o aparelho parar de enviar check-in, o badge vira "Offline".
@@ -875,7 +1403,7 @@
 
       var visaoBtn = document.querySelector('.kq-tab-btn[data-tab="visao"]');
       var precisaTrocarAba = visaoBtn && !visaoBtn.classList.contains('is-active');
-      if (precisaTrocarAba) visaoBtn.click();
+      if (precisaTrocarAba && typeof window.__kqAbrirAba === 'function') window.__kqAbrirAba('visao');
 
       var mapEl = document.getElementById('kqMap');
       var focar = function(){
@@ -895,6 +1423,64 @@
       }
     });
   });
+})();
+
+// Formulário "Enviar comando": mostra a descrição/validade do tipo escolhido,
+// revela título/mensagem só para "Exibir mensagem" e pede confirmação antes de
+// enviar os tipos marcados como disruptivos (reiniciar, bloquear tela, sair do
+// quiosque etc. — ver COMANDOS/opcoes_comando em quiosque_service.py).
+(function(){
+  var form = document.getElementById('kqCmdForm');
+  var tipoSel = document.getElementById('kqCmdTipo');
+  if (!form || !tipoSel) return;
+  var msgBox = document.getElementById('kqCmdMsg');
+  var hint = document.getElementById('kqCmdHint');
+
+  function atualizar(){
+    var opt = tipoSel.options[tipoSel.selectedIndex];
+    if (!opt) return;
+    if (hint) {
+      var validade = opt.getAttribute('data-validade');
+      hint.textContent = opt.getAttribute('data-descricao') + (validade ? ' Vale por ' + validade + ' por padrão.' : '');
+    }
+    if (msgBox) msgBox.hidden = opt.value !== 'exibir_mensagem';
+  }
+  tipoSel.addEventListener('change', atualizar);
+  atualizar();
+
+  form.addEventListener('submit', function(ev){
+    var opt = tipoSel.options[tipoSel.selectedIndex];
+    if (!opt || opt.getAttribute('data-confirma') !== '1') return;
+    var texto = 'Enviar “' + opt.textContent.trim() + '”? ' + (opt.getAttribute('data-descricao') || '');
+    if (!confirm(texto)) ev.preventDefault();
+  });
+})();
+
+/* Seletor de dias retrátil. Com a retenção em 15 dias a lista passou a ocupar
+   várias linhas e empurrar a tabela para baixo da dobra. Só recolhe quando há
+   excesso de verdade — recolher 3 chips só esconderia informação sem ganho. */
+(function(){
+  var lista = document.getElementById('kqDias');
+  var botao = document.getElementById('kqDiasMais');
+  if (!lista || !botao) return;
+
+  var LIMITE = 76;           // ~2 linhas de chips (ver .kq-days.is-collapsed)
+  if (lista.scrollHeight <= LIMITE + 8) return;
+
+  // O dia em exibição precisa estar visível: recolher escondendo justamente o
+  // chip ativo deixaria a tela sem indicar o que está filtrado.
+  var ativo = lista.querySelector('.kq-day-chip.is-active');
+  var recolhido = !(ativo && ativo.offsetTop > LIMITE);
+
+  function aplicar(){
+    lista.classList.toggle('is-collapsed', recolhido);
+    botao.innerHTML = recolhido
+      ? '<i class="fa-solid fa-chevron-down"></i> Mostrar todos os dias'
+      : '<i class="fa-solid fa-chevron-up"></i> Mostrar menos';
+  }
+  botao.hidden = false;
+  botao.addEventListener('click', function(){ recolhido = !recolhido; aplicar(); });
+  aplicar();
 })();
 </script>
 {% endblock %}

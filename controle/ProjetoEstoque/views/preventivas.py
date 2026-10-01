@@ -24,11 +24,13 @@ from ..models import (
     Localidade,
     Preventiva,
     PreventivaExecucao,
+    PreventivaFoto,
     PreventivaResposta,
     SimNaoChoices,
     StatusItemChoices,
     sincronizar_preventivas_com_status,
 )
+from services import preventiva_fotos_service as fotos_service
 
 
 # =========================================================
@@ -734,7 +736,7 @@ def preventiva_detail(request, pk):
     exec_qs = (
         preventiva.execucoes
         .select_related("criado_por", "tecnico")
-        .prefetch_related("respostas", "respostas__pergunta", "tecnicos_auxiliares")
+        .prefetch_related("respostas", "respostas__pergunta", "tecnicos_auxiliares", "fotos")
         .order_by("-data_execucao", "-id")
     )
 
@@ -774,6 +776,9 @@ def preventiva_detail(request, pk):
             "obj": execucao,
             "linhas": linhas,
             "pode_editar": _pode_editar_execucao(execucao, request.user),
+            # Galeria já agrupada em antes/depois (uma foto "ambos" entra nas
+            # duas colunas) — ver preventiva_fotos_service.galeria_da_execucao.
+            "galeria": fotos_service.galeria_da_execucao(execucao),
         })
 
     hoje = timezone.localdate()
@@ -793,6 +798,9 @@ def preventiva_detail(request, pk):
         "intervalo_info": f"{preventiva.intervalo_dias_calc} dias ({preventiva.intervalo_origem_calc})",
         "total_execucoes": len(execucoes_data),
         "total_nao_conforme": total_nao_conforme,
+        # Evidências do snapshot antigo, sem execução vinculada. Sem esta seção
+        # elas ficariam invisíveis na ficha depois da migração da galeria.
+        "fotos_sem_execucao": fotos_service.fotos_orfas(preventiva),
     }
 
     if request.GET.get("print") == "true":
@@ -886,6 +894,15 @@ def preventiva_exec(request, pk):
         if not perguntas:
             erros.append("Este checklist não possui perguntas cadastradas.")
 
+        # Fotos: validadas ANTES da transação para que um arquivo recusado
+        # (formato/tamanho) volte como erro no formulário, junto das demais
+        # críticas, em vez de estourar no meio da gravação.
+        fotos_enviadas = []
+        try:
+            fotos_enviadas = fotos_service.coletar_do_request(request)
+        except fotos_service.FotoInvalida as exc:
+            erros.append(str(exc))
+
         for pergunta in perguntas:
             field_name = f"r_{pergunta.id}"
             raw_val = (request.POST.get(field_name) or "").strip()
@@ -943,6 +960,7 @@ def preventiva_exec(request, pk):
                     },
                     "tecnicos_disponiveis": _tecnicos_disponiveis(excluir_id=tecnico_alvo.id),
                     "tecnicos_auxiliares_ids": [t.id for t in auxiliares],
+                    "max_fotos": fotos_service.MAX_FOTOS_POR_EXECUCAO,
                 },
             )
 
@@ -958,10 +976,6 @@ def preventiva_exec(request, pk):
                 preventiva=preventiva,
                 data_execucao=data_exec,
                 observacao=(request.POST.get("observacao") or "").strip(),
-                foto_antes=request.FILES.get("foto_antes"),
-                foto_depois=request.FILES.get("foto_depois"),
-                foto_antes_2=request.FILES.get("foto_antes_2"),
-                foto_depois_2=request.FILES.get("foto_depois_2"),
                 tecnico=tecnico_alvo,
                 data_agendada=data_agendada_snap,
                 no_prazo=no_prazo_snap,
@@ -980,43 +994,25 @@ def preventiva_exec(request, pk):
             if respostas_bulk:
                 PreventivaResposta.objects.bulk_create(respostas_bulk)
 
+            # Galeria de evidências: N fotos, cada uma marcada como antes,
+            # depois ou valendo para os dois. O service grava as fotos e
+            # espelha as primeiras de cada momento nos campos legados, que
+            # continuam existindo durante a transição.
+            fotos_service.adicionar(execucao, fotos_enviadas, usuario=request.user)
+
             preventiva.data_ultima = data_exec
             preventiva.data_proxima = proxima
             preventiva.data_agendamento = None  # agendamento consumido pela execução
             preventiva.dentro_do_prazo = True if proxima is None else hoje <= proxima
             preventiva.atualizado_por = request.user
-
-            foto_antes = request.FILES.get("foto_antes")
-            foto_depois = request.FILES.get("foto_depois")
-            foto_antes_2 = request.FILES.get("foto_antes_2")
-            foto_depois_2 = request.FILES.get("foto_depois_2")
-
-            update_fields = [
+            preventiva.save(update_fields=[
                 "data_ultima",
                 "data_proxima",
                 "data_agendamento",
                 "dentro_do_prazo",
                 "atualizado_por",
                 "updated_at",
-            ]
-
-            if foto_antes:
-                preventiva.foto_antes = foto_antes
-                update_fields.append("foto_antes")
-
-            if foto_depois:
-                preventiva.foto_depois = foto_depois
-                update_fields.append("foto_depois")
-
-            if foto_antes_2:
-                preventiva.foto_antes_2 = foto_antes_2
-                update_fields.append("foto_antes_2")
-
-            if foto_depois_2:
-                preventiva.foto_depois_2 = foto_depois_2
-                update_fields.append("foto_depois_2")
-
-            preventiva.save(update_fields=update_fields)
+            ])
 
         duracao_txt = execucao.duracao_formatada
         sufixo_aux = ""
@@ -1044,6 +1040,7 @@ def preventiva_exec(request, pk):
             "today": hoje,
             "tecnicos_disponiveis": _tecnicos_disponiveis(excluir_id=(preventiva.tecnico_id or request.user.id)),
             "tecnicos_auxiliares_ids": [],
+            "max_fotos": fotos_service.MAX_FOTOS_POR_EXECUCAO,
         },
     )
 
@@ -1179,6 +1176,16 @@ def preventiva_execucao_editar(request, execucao_pk):
 
             respostas_valores[pergunta.id] = raw_val
 
+        # Fotos novas desta edição — validadas antes da transação (mesmo
+        # critério da tela de execução).
+        fotos_enviadas = []
+        try:
+            fotos_enviadas = fotos_service.coletar_do_request(request)
+        except fotos_service.FotoInvalida as exc:
+            erros.append(str(exc))
+        # Ids marcados para remoção na galeria (checkbox por foto).
+        fotos_remover = request.POST.getlist("remover_fotos")
+
         if erros:
             for erro in erros:
                 messages.error(request, erro)
@@ -1200,6 +1207,8 @@ def preventiva_execucao_editar(request, execucao_pk):
                     },
                     "tecnicos_disponiveis": _tecnicos_disponiveis(excluir_id=tecnico_alvo.id),
                     "tecnicos_auxiliares_ids": [t.id for t in auxiliares],
+                    "max_fotos": fotos_service.MAX_FOTOS_POR_EXECUCAO,
+                    "fotos_existentes": list(execucao.fotos.all()),
                 },
             )
 
@@ -1211,14 +1220,15 @@ def preventiva_execucao_editar(request, execucao_pk):
             if execucao.data_agendada:
                 execucao.no_prazo = data_exec <= execucao.data_agendada
 
-            for campo in ("foto_antes", "foto_depois", "foto_antes_2", "foto_depois_2"):
-                arquivo = request.FILES.get(campo)
-                if arquivo:
-                    setattr(execucao, campo, arquivo)
-
             execucao.atualizado_por = request.user
             execucao.save()
             execucao.tecnicos_auxiliares.set(auxiliares)
+
+            # Galeria: remove o que foi desmarcado e anexa o que veio novo. O
+            # service reespelha os campos legados nos dois casos, para que a
+            # remoção também se reflita neles.
+            fotos_service.remover(execucao, fotos_remover, usuario=request.user)
+            fotos_service.adicionar(execucao, fotos_enviadas, usuario=request.user)
 
             existentes = {r.pergunta_id: r for r in execucao.respostas.all()}
             for pergunta in perguntas:
@@ -1265,6 +1275,8 @@ def preventiva_execucao_editar(request, execucao_pk):
                 excluir_id=(execucao.tecnico_id or execucao.criado_por_id or request.user.id)
             ),
             "tecnicos_auxiliares_ids": list(execucao.tecnicos_auxiliares.values_list("id", flat=True)),
+            "max_fotos": fotos_service.MAX_FOTOS_POR_EXECUCAO,
+            "fotos_existentes": list(execucao.fotos.all()),
         },
     )
 
@@ -1292,6 +1304,11 @@ def preventiva_execucao_excluir(request, execucao_pk):
         with transaction.atomic():
             execucao.delete()
             _recalcular_agregados_preventiva(preventiva)
+            # As fotos da execução saem junto (CASCADE), mas o espelho legado
+            # da preventiva ainda apontaria para elas. Reespelha a partir da
+            # execução mais recente que sobrou — senão a "última evidência" da
+            # preventiva ficaria referenciando fotos que não existem mais.
+            fotos_service.reespelhar_preventiva(preventiva)
 
         messages.success(request, "Execução excluída com sucesso.")
         return redirect("preventiva_detail", pk=preventiva.pk)

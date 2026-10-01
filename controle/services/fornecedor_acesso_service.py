@@ -123,13 +123,19 @@ class FornecedorAcessoService:
     @transaction.atomic
     def revogar(cls, perfil):
         """
-        Revoga o acesso: tira do grupo, desativa o login e remove o vínculo.
-        O usuário Django é mantido (auditoria/histórico).
+        Revoga o acesso: tira do grupo e remove o vínculo. Só desativa o
+        login se ele não tiver também `perfil_parceiro_licenca` ativo (nesse
+        caso o login continua valendo pro Portal de Licenças). O usuário
+        Django é mantido (auditoria/histórico).
         """
         usuario = perfil.usuario
         grupo = Group.objects.filter(name=GRUPO_FORNECEDOR).first()
         if grupo:
             usuario.groups.remove(grupo)
-        usuario.is_active = False
-        usuario.save(update_fields=["is_active"])
+        tem_outro_acesso = (
+            hasattr(usuario, "perfil_parceiro_licenca") and usuario.perfil_parceiro_licenca.ativo
+        )
+        if not tem_outro_acesso:
+            usuario.is_active = False
+            usuario.save(update_fields=["is_active"])
         perfil.delete()

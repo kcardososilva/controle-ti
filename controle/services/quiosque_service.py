@@ -26,6 +26,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.contrib.auth.hashers import make_password
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from django.db.models.functions import Coalesce
 
 
@@ -33,12 +34,16 @@ from django.db.models.functions import Coalesce
 # Após este prazo os dados antigos são sobrepostos pelos novos. A limpeza só roda
 # QUANDO o aparelho faz check-in; logo, um aparelho que parou de enviar conserva
 # todo o seu histórico (fica guardado como histórico do dispositivo).
-RETENCAO_DIAS = 5
+#
+# Volume: com o intervalo de 300 s configurado na frota são 288 leituras por dia
+# por aparelho — 15 dias × 40 aparelhos ≈ 173 mil linhas, folgado para o SQLite.
+RETENCAO_DIAS = 15
 
-# Probabilidade de rodar a poda em cada check-in. A poda é uma janela de 5 dias e
-# NÃO precisa rodar a cada heartbeat — com o app em ~5s isso seria um DELETE-scan
-# contínuo. Rodando de forma amostrada (~1 a cada 50 check-ins) a tabela continua
-# limitada à janela e a resposta do check-in fica leve em alta frequência.
+# Probabilidade de rodar a poda em cada check-in. A poda NÃO precisa rodar a cada
+# heartbeat — seria um DELETE-scan contínuo. Rodando de forma amostrada (~1 a cada
+# 50 check-ins) a tabela continua limitada à janela e a resposta do check-in fica
+# leve. O atraso que a amostragem introduz só faz a janela durar um pouco MAIS,
+# nunca menos — erra para o lado de preservar dado.
 _PRUNE_PROB = 0.02
 
 
@@ -479,6 +484,11 @@ def config_dict(device) -> dict:
         "mensagem_quiosque": device.mensagem_quiosque or "",
         "config_versao": device.config_versao,
         "telemetria_wifi": device.telemetria_wifi,
+        # Telemetria de rede móvel (v1.10.0+) — geração/operadora/força do sinal
+        # do chip. App antigo ignora a chave e simplesmente não manda os campos:
+        # o servidor trata ausência como "aparelho não reporta" (ver
+        # sinal_do_checkin), nunca como sinal zero.
+        "telemetria_movel": device.telemetria_movel,
         # None (não string vazia) quando não configurado — ver INFORME §4.1:
         # wifi_ssid vazio = "sem rede provisionada"; o app trata ausência/null
         # da mesma forma (não tenta provisionar nada).
@@ -492,6 +502,11 @@ def config_dict(device) -> dict:
         "permite_desligar": device.permite_desligar,
         "limpeza_cache_automatica": device.limpeza_cache_automatica,
         "permite_limpar_apps_terceiros": device.permite_limpar_apps_terceiros,
+        # Gate da barra de status + bandeja de notificações (v1.9.0+, ver
+        # INFORME_SERVIDOR_NOTIFICACOES.md) — só abre a "porta"; o app de
+        # origem (WhatsApp Business, Outlook, Gmail…) também precisa estar em
+        # apps_permitidos, senão fica suspenso e nunca notifica nada.
+        "permite_notificacoes": device.permite_notificacoes,
     }
 
 
@@ -631,6 +646,180 @@ _APPS_NOME_MAX   = 255
 _APPS_VERSAO_MAX = 100
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Rede e sinal — normalização do que o aparelho reporta
+# ──────────────────────────────────────────────────────────────────────────────
+# O app reporta o transporte em `rede` como texto livre ("wifi" / "cellular" /
+# "none", e nada impede uma build antiga mandar outra grafia). A UI (mapa de
+# rota, selo de sinal, filtros) NÃO pode depender de comparar essas strings:
+# normalizamos uma vez na gravação e guardamos em `rede_tipo`.
+
+REDE_WIFI     = "wifi"
+REDE_MOVEL    = "movel"
+REDE_ETHERNET = "ethernet"
+REDE_NENHUMA  = "nenhuma"
+
+_REDE_TIPOS = {
+    "wifi": REDE_WIFI, "wi-fi": REDE_WIFI, "wlan": REDE_WIFI,
+    "cellular": REDE_MOVEL, "celular": REDE_MOVEL, "movel": REDE_MOVEL,
+    "móvel": REDE_MOVEL, "mobile": REDE_MOVEL, "dados": REDE_MOVEL,
+    "ethernet": REDE_ETHERNET, "eth": REDE_ETHERNET, "lan": REDE_ETHERNET,
+    "none": REDE_NENHUMA, "nenhuma": REDE_NENHUMA, "offline": REDE_NENHUMA, "sem": REDE_NENHUMA,
+}
+
+# Rótulo curto para o selo em cima do ponto no mapa (sem a geração móvel, que
+# é concatenada quando existe: "4G", "5G"…).
+REDE_ROTULOS = {
+    REDE_WIFI: "Wi-Fi", REDE_MOVEL: "Móvel",
+    REDE_ETHERNET: "Cabo", REDE_NENHUMA: "Sem rede",
+}
+
+# Geração derivada da tecnologia crua do Android (TelephonyManager.getDataNetworkType).
+# Fonte única: a UI exibe só a geração; `movel_tecnologia` fica guardada para auditoria.
+_GERACAO_POR_TECNOLOGIA = {
+    "nr": "5g", "nr_nsa": "5g", "nr_sa": "5g", "5g": "5g",
+    "lte": "4g", "lte_ca": "4g", "lte_a": "4g", "lte+": "4g", "iwlan": "4g", "4g": "4g",
+    "umts": "3g", "hspa": "3g", "hspa+": "3g", "hspap": "3g", "hsdpa": "3g",
+    "hsupa": "3g", "evdo": "3g", "evdo_a": "3g", "evdo_b": "3g", "ehrpd": "3g",
+    "td_scdma": "3g", "tdscdma": "3g", "3g": "3g",
+    "gsm": "2g", "gprs": "2g", "edge": "2g", "cdma": "2g", "1xrtt": "2g", "iden": "2g", "2g": "2g",
+}
+_GERACOES_VALIDAS = ("2g", "3g", "4g", "5g")
+
+
+def normalizar_rede_tipo(rede: str) -> str:
+    """Texto livre de `rede` → um de REDE_WIFI/REDE_MOVEL/REDE_ETHERNET/REDE_NENHUMA.
+    Devolve '' quando não reconhece (nunca inventa um transporte)."""
+    chave = (rede or "").strip().lower()
+    return _REDE_TIPOS.get(chave, "")
+
+
+def normalizar_geracao(geracao: str = "", tecnologia: str = "") -> str:
+    """Geração móvel normalizada ('2g'|'3g'|'4g'|'5g') a partir do que o app
+    mandar: `movel_geracao` explícita tem prioridade; senão deriva da tecnologia
+    crua do Android. '' quando não há como afirmar."""
+    direta = (geracao or "").strip().lower().replace(" ", "")
+    if direta in _GERACOES_VALIDAS:
+        return direta
+    bruta = (tecnologia or "").strip().lower().replace(" ", "").replace("-", "_")
+    return _GERACAO_POR_TECNOLOGIA.get(bruta, "")
+
+
+# Faixas de dBm → nível 0-4, usadas SÓ como fallback quando o app manda a força
+# do sinal mas não o nível (o Android já calcula o nível por operadora/rádio, que
+# é sempre mais fiel que uma régua fixa — por isso `nivel` do app tem prioridade).
+_FAIXAS_DBM_MOVEL = ((-85, 4), (-95, 3), (-105, 2), (-115, 1))
+_FAIXAS_DBM_WIFI  = ((-55, 4), (-66, 3), (-75, 2), (-85, 1))
+
+
+def _nivel_por_dbm(dbm, faixas) -> int | None:
+    if dbm is None:
+        return None
+    for limite, nivel in faixas:
+        if dbm >= limite:
+            return nivel
+    return 0
+
+
+def sinal_do_checkin(c) -> dict:
+    """Sinal UNIFICADO de uma linha de check-in, já resolvido para o transporte
+    em uso — é o que o selo em cima do ponto no mapa consome, sem precisar saber
+    se o aparelho estava em Wi-Fi ou no chip.
+
+    Devolve sempre o mesmo formato:
+      {tipo, rotulo, geracao, nivel (0-4|None), dbm, operadora}
+
+    `rotulo` é o que aparece no selo: "4G", "5G", "Wi-Fi", "Sem rede".
+    `nivel` None = o aparelho não reporta força de sinal (telemetria desligada
+    ou app antigo) — a UI mostra o transporte sem as barrinhas, nunca um nível
+    inventado.
+    """
+    tipo = c.rede_tipo or normalizar_rede_tipo(c.rede)
+    geracao = normalizar_geracao(c.movel_geracao, c.movel_tecnologia)
+
+    if tipo == REDE_MOVEL:
+        nivel = c.movel_nivel if c.movel_nivel is not None else _nivel_por_dbm(c.movel_rssi_dbm, _FAIXAS_DBM_MOVEL)
+        rotulo = geracao.upper() if geracao else REDE_ROTULOS[REDE_MOVEL]
+        return {
+            "tipo": tipo, "rotulo": rotulo, "geracao": geracao,
+            "nivel": nivel, "dbm": c.movel_rssi_dbm,
+            "operadora": c.movel_operadora or "",
+        }
+
+    if tipo == REDE_WIFI:
+        nivel = c.wifi_nivel if c.wifi_nivel is not None else _nivel_por_dbm(c.wifi_rssi_dbm, _FAIXAS_DBM_WIFI)
+        return {
+            "tipo": tipo, "rotulo": REDE_ROTULOS[REDE_WIFI], "geracao": "",
+            "nivel": nivel, "dbm": c.wifi_rssi_dbm,
+            "operadora": c.ssid or "",
+        }
+
+    return {
+        "tipo": tipo or REDE_NENHUMA,
+        "rotulo": REDE_ROTULOS.get(tipo, REDE_ROTULOS[REDE_NENHUMA]),
+        "geracao": "", "nivel": None, "dbm": None, "operadora": "",
+    }
+
+
+# Piso absoluto (s) do limiar de "entregue de fila". O limiar real é relativo ao
+# intervalo de check-in do aparelho (ver `limiar_fila`), mas nunca menor que
+# isto: abaixo de 10 min o atraso não distingue falta de rede de um simples
+# envio em lote, de uma retentativa com backoff ou do Doze do Android segurando
+# a transmissão por alguns minutos. Um limiar curto demais pintaria de vermelho
+# a rota inteira de um aparelho perfeitamente conectado — foi exatamente o que
+# aconteceu ao validar com dados sintéticos antes deste ajuste.
+_ATRASO_FILA_PISO_S = 600
+# Múltiplo do intervalo de check-in a partir do qual o atraso deixa de ser
+# explicável por lote/backoff. 4 ciclos perdidos = o aparelho realmente não
+# estava conseguindo falar com o servidor.
+_ATRASO_FILA_CICLOS = 4
+
+
+def limiar_fila(device) -> int:
+    """Atraso (s) a partir do qual uma leitura conta como ENTREGUE DE FILA para
+    ESTE aparelho — isto é, ficou guardada na memória por falta de rede.
+
+    Relativo ao `intervalo_checkin_seg` configurado: um aparelho em 5s e outro
+    em 300s têm noções muito diferentes de "atrasado", e um limiar fixo
+    classificaria errado um dos dois. Calcule UMA vez por device e repasse a
+    `conexao_do_checkin`; ler `c.device` dentro do laço seria uma query por linha.
+    """
+    intervalo = getattr(device, "intervalo_checkin_seg", 0) or 0
+    return max(_ATRASO_FILA_PISO_S, _ATRASO_FILA_CICLOS * intervalo)
+
+
+def conexao_do_checkin(c, atraso_fila_s: int = _ATRASO_FILA_PISO_S) -> dict:
+    """Classifica a CONECTIVIDADE de uma linha de check-in cruzando as três
+    evidências disponíveis — é o que pinta o trecho da rota de verde ou vermelho:
+
+      1. `online` — auto-declarado pelo app no instante da coleta.
+      2. `rede_tipo == nenhuma` — o Android não tinha transporte nenhum.
+      3. atraso de entrega acima de `atraso_fila_s` — a leitura chegou muito
+         depois de ter sido coletada, logo ficou guardada na memória.
+
+    Qualquer uma das três basta para marcar o ponto como SEM conexão: são
+    evidências independentes e, na prática, um aparelho em área de sombra pode
+    reportar `online=true` (o rádio ainda vê a torre) e ainda assim não
+    conseguir transmitir — só o atraso revela esse caso. Por isso o limiar
+    precisa ser folgado (ver `limiar_fila`): a terceira evidência é a única
+    inferida, e um limiar apertado transforma envio em lote em falso "offline".
+
+    Devolve {online: bool, fila: bool, atraso_s: int}. `fila` distingue "estava
+    sem conexão E a leitura foi guardada na memória" (o caso que o usuário quer
+    ver no mapa) de uma simples queda auto-declarada.
+    """
+    atraso_s = 0
+    if c.coletado_em and c.registrado_em:
+        # Negativo = relógio do aparelho adiantado em relação ao servidor; não é
+        # fila. Clampa em 0 para não virar "entrega antecipada".
+        atraso_s = max(0, int((c.registrado_em - c.coletado_em).total_seconds()))
+
+    fila = atraso_s >= atraso_fila_s
+    tipo = c.rede_tipo or normalizar_rede_tipo(c.rede)
+    online = bool(c.online) and tipo != REDE_NENHUMA and not fila
+    return {"online": online, "fila": fila, "atraso_s": atraso_s}
+
+
 def _parse_dt_ms(v):
     """Converte epoch ms (int) para datetime aware. None se inválido/ausente."""
     ms = _i(v)
@@ -703,22 +892,95 @@ def _persistir_inventario(device, apps, apps_hash) -> bool:
 
 def prune_checkins(device) -> int:
     """
-    Mantém apenas a janela móvel de RETENCAO_DIAS de telemetria do aparelho.
+    Mantém a janela móvel de RETENCAO_DIAS de telemetria do aparelho.
 
-    Roda no check-in: aparelhos ativos giram uma janela de 5 dias; um aparelho que
-    PAROU de enviar nunca é podado, então conserva todo o histórico já recebido.
+    Roda no check-in: aparelhos ativos giram a janela; um aparelho que PAROU de
+    enviar nunca é podado, então conserva todo o histórico já recebido.
+
+    Uma linha só é descartada quando está fora da janela pelos DOIS carimbos —
+    coleta E chegada ao servidor. Podar só por `coletado_em` (como era antes)
+    destrói dado que o aparelho guardou na memória e entregou com atraso: uma
+    leitura coletada há 20 dias e recebida agora nasceria já vencida e sumiria na
+    poda seguinte, embora tivesse acabado de chegar. No histórico real deste
+    sistema isso não é hipótese — há 1.097 leituras entregues mais de 24 h depois
+    de coletadas, e uma com mais de 120 h de atraso.
+
+    Como a chegada (`registrado_em`) é sempre crescente, ela é que limita o
+    tamanho da tabela: todo dado recebido vive RETENCAO_DIAS a partir da entrega,
+    e nada fica preso para sempre.
+
+    Os dois filtros usam colunas indexadas diretamente (nada de `Coalesce`, que
+    impediria o uso do índice e forçaria varredura completa da tabela).
     """
     from ProjetoEstoque.models import KioskCheckin
 
     cutoff = timezone.now() - timedelta(days=RETENCAO_DIAS)
     apagados, _ = (
         KioskCheckin.objects
-        .filter(device=device)
-        .annotate(ts=Coalesce("coletado_em", "registrado_em"))
-        .filter(ts__lt=cutoff)
+        .filter(device=device, registrado_em__lt=cutoff)
+        .filter(Q(coletado_em__lt=cutoff) | Q(coletado_em__isnull=True))
         .delete()
     )
     return apagados
+
+
+# Campos que uma reentrega pode LEGITIMAMENTE trazer preenchidos quando a linha
+# já gravada os tem vazios. O caso real é o GPS: o app manda o check-in assim que
+# o ciclo vence e, se o fix ainda não chegou, manda de novo segundos depois com a
+# posição — mesmo `coletado_em`. Sem consolidar, isso vira duas linhas no mesmo
+# instante, uma sem posição; e um "primeira ganha" ingênuo guardaria justamente a
+# linha SEM o GPS, descartando a coordenada.
+#
+# Booleanos (`online`, `carregando`) ficam de fora de propósito: em um booleano
+# não há como distinguir "não informado" de "informado como falso", então
+# completar seria adivinhar.
+_CAMPOS_CONSOLIDAVEIS = (
+    "latitude", "longitude", "precisao_m", "bateria",
+    "rede", "ssid", "mac_em_uso",
+    "wifi_rssi_dbm", "wifi_nivel", "wifi_velocidade_mbps",
+    "wifi_frequencia_mhz", "wifi_banda_ghz",
+    "rede_tipo", "movel_geracao", "movel_tecnologia",
+    "movel_operadora", "movel_rssi_dbm", "movel_nivel",
+)
+
+
+def _consolidar_reenvio(device, coletado, valores: dict) -> bool:
+    """
+    Trata a reentrega de uma leitura JÁ gravada (mesmo aparelho, mesmo
+    `coletado_em`). Devolve True quando a leitura foi absorvida — o chamador
+    então NÃO cria uma linha nova.
+
+    O app reenvia um lote da fila sempre que a resposta HTTP se perde; sem este
+    tratamento cada reenvio virava uma linha extra, duplicando pontos na rota e
+    inflando as contagens do dia (no histórico atual: 383 instantes repetidos,
+    420 linhas excedentes).
+
+    Reenvio idêntico é ignorado. Reenvio mais RICO completa os campos vazios da
+    linha original — nunca sobrescreve um valor já gravado, porque reescrever
+    telemetria recebida seria alterar histórico, não corrigi-lo.
+    """
+    from ProjetoEstoque.models import KioskCheckin
+
+    existente = (
+        KioskCheckin.objects
+        .filter(device=device, coletado_em=coletado)
+        .order_by("registrado_em")
+        .first()
+    )
+    if existente is None:
+        return False
+
+    preenchidos = []
+    for campo in _CAMPOS_CONSOLIDAVEIS:
+        novo = valores.get(campo)
+        if novo is None or novo == "":
+            continue
+        if getattr(existente, campo) in (None, ""):
+            setattr(existente, campo, novo)
+            preenchidos.append(campo)
+    if preenchidos:
+        existente.save(update_fields=preenchidos)
+    return True
 
 
 def registrar_checkin(device, dados: dict, request=None) -> dict:
@@ -730,7 +992,7 @@ def registrar_checkin(device, dados: dict, request=None) -> dict:
     Cada leitura vira uma linha de histórico; o "estado atual" só é atualizado
     quando a leitura é a mais recente já vista (não regride com dados antigos).
     """
-    from ProjetoEstoque.models import KioskCheckin, KioskComando, KioskDevice
+    from ProjetoEstoque.models import KioskCheckin, KioskDevice
 
     lat = _f(dados.get("latitude"))
     lon = _f(dados.get("longitude"))
@@ -739,7 +1001,11 @@ def registrar_checkin(device, dados: dict, request=None) -> dict:
     rede = (dados.get("rede") or "")[:20]
     online = bool(dados.get("online", True))
     carregando = bool(dados.get("carregando", False))
-    coletado = _parse_dt(dados.get("coletado_em")) or timezone.now()
+    # Guardamos separado se o instante veio do APARELHO ou se é o "agora" do
+    # servidor: só o primeiro identifica uma leitura, e portanto só ele permite
+    # reconhecer uma reentrega (ver _consolidar_reenvio).
+    coletado_informado = _parse_dt(dados.get("coletado_em"))
+    coletado = coletado_informado or timezone.now()
     serial = (dados.get("serial") or "").strip()
     # ssid = estado do momento (vai na linha do check-in); mac = identidade estável (vai no device).
     # Ambos opcionais/anuláveis: o app pode mandar null (emulador/sem Wi-Fi). Nunca exigir.
@@ -751,6 +1017,7 @@ def registrar_checkin(device, dados: dict, request=None) -> dict:
     # do payload (build antiga) e null (fora de Wi-Fi/OEM mascara) são o mesmo
     # caso aqui: não há leitura para comparar contra `mac`.
     mac_em_uso = (dados.get("mac_em_uso") or "").strip()[:17] or None
+    apps_abertos = _lista_pacotes(dados.get("apps_abertos"))
 
     # Telemetria de sinal Wi-Fi: opt-in (só chega quando device.telemetria_wifi
     # está ligada) — ver INFORME_SERVIDOR_WIFI_TELEMETRIA §2.1. AUSENTE do
@@ -765,17 +1032,46 @@ def registrar_checkin(device, dados: dict, request=None) -> dict:
     if wifi_banda:
         wifi_banda = str(wifi_banda)[:4]
 
+    # Telemetria de rede móvel: opt-in (só chega quando device.telemetria_movel
+    # está ligada) — ver INFORME_SERVIDOR_TELEMETRIA_REDE_MOVEL.md. `rede_tipo`
+    # é a exceção: sempre derivado, inclusive de aparelho com app antigo que só
+    # manda `rede`, para TODA linha do histórico ser classificável na leitura.
+    rede_tipo = normalizar_rede_tipo(dados.get("rede_tipo") or rede)
+    movel_tecnologia = str(dados.get("movel_tecnologia") or "").strip()[:24]
+    movel_geracao = normalizar_geracao(dados.get("movel_geracao"), movel_tecnologia)
+    movel_operadora = str(dados.get("movel_operadora") or "").strip()[:40]
+    movel_rssi = _i(dados.get("movel_rssi_dbm"))
+    # Nível vem do Android (SignalStrength.getLevel) já ponderado por rádio e
+    # operadora; clampado na faixa 0-4 porque o dado vem do device e não é confiável.
+    movel_nivel = _i(dados.get("movel_nivel"))
+    if movel_nivel is not None:
+        movel_nivel = min(4, max(0, movel_nivel))
+
     # Tudo num único bloco atômico: a 5s de intervalo isso reduz commits/locks no
     # SQLite (1 transação por check-in em vez de várias autocommit em série).
+    valores = dict(
+        latitude=lat, longitude=lon, precisao_m=prec,
+        bateria=bat, carregando=carregando, rede=rede, online=online,
+        ssid=ssid, mac_em_uso=mac_em_uso,
+        wifi_rssi_dbm=wifi_rssi, wifi_nivel=wifi_nivel,
+        wifi_velocidade_mbps=wifi_velocidade, wifi_frequencia_mhz=wifi_frequencia,
+        wifi_banda_ghz=wifi_banda,
+        rede_tipo=rede_tipo, movel_geracao=movel_geracao,
+        movel_tecnologia=movel_tecnologia, movel_operadora=movel_operadora,
+        movel_rssi_dbm=movel_rssi, movel_nivel=movel_nivel,
+    )
+
     with transaction.atomic():
-        KioskCheckin.objects.create(
-            device=device, latitude=lat, longitude=lon, precisao_m=prec,
-            bateria=bat, carregando=carregando, rede=rede, online=online,
-            ssid=ssid, mac_em_uso=mac_em_uso, coletado_em=coletado,
-            wifi_rssi_dbm=wifi_rssi, wifi_nivel=wifi_nivel,
-            wifi_velocidade_mbps=wifi_velocidade, wifi_frequencia_mhz=wifi_frequencia,
-            wifi_banda_ghz=wifi_banda,
+        # Reentrega da fila (resposta HTTP perdida) não vira linha nova: é
+        # absorvida pela leitura já gravada no mesmo instante. A resposta segue
+        # sendo "ok" — o dado ESTÁ no servidor, e é justamente esse "ok" que faz
+        # o app parar de reenviar.
+        duplicada = (
+            coletado_informado is not None
+            and _consolidar_reenvio(device, coletado_informado, valores)
         )
+        if not duplicada:
+            KioskCheckin.objects.create(device=device, coletado_em=coletado, **valores)
 
         eh_mais_recente = device.ultimo_checkin is None or coletado >= device.ultimo_checkin
         if eh_mais_recente:
@@ -785,6 +1081,26 @@ def registrar_checkin(device, dados: dict, request=None) -> dict:
             device.ultima_bateria = bat if bat is not None else device.ultima_bateria
             device.ultima_rede = rede or device.ultima_rede
             device.ultimo_checkin = coletado
+            # Conectividade do último check-in (snapshot p/ o selo de sinal no
+            # mapa da frota). `rede_tipo` sempre existe quando `rede` veio; os
+            # campos móveis são sobrescritos SEM guarda de "só se não-vazio" de
+            # propósito: ao sair do 4G para o Wi-Fi, a geração/operadora antigas
+            # têm de ser limpas, senão o selo mostraria "4G" num aparelho que
+            # está no Wi-Fi. Mesmo motivo para o nível/dBm serem recalculados
+            # sempre a partir do transporte em uso agora.
+            if rede_tipo:
+                device.ultima_rede_tipo = rede_tipo
+            device.ultima_movel_geracao = movel_geracao
+            device.ultima_movel_operadora = movel_operadora
+            if rede_tipo == REDE_MOVEL:
+                device.ultimo_sinal_dbm = movel_rssi
+                device.ultimo_sinal_nivel = movel_nivel if movel_nivel is not None else _nivel_por_dbm(movel_rssi, _FAIXAS_DBM_MOVEL)
+            elif rede_tipo == REDE_WIFI:
+                device.ultimo_sinal_dbm = wifi_rssi
+                device.ultimo_sinal_nivel = wifi_nivel if wifi_nivel is not None else _nivel_por_dbm(wifi_rssi, _FAIXAS_DBM_WIFI)
+            else:
+                device.ultimo_sinal_dbm = None
+                device.ultimo_sinal_nivel = None
             if serial and not device.serial:
                 device.serial = serial
             # Memória/armazenamento: snapshot do check-in mais recente (não histórico —
@@ -817,6 +1133,10 @@ def registrar_checkin(device, dados: dict, request=None) -> dict:
             dados_app = _i(dados.get("dados_app_mb"))
             if dados_app is not None:
                 device.dados_app_mb = dados_app
+            # Apps em uso (v1.8.0+, vem sempre — `[]` quando nenhum). Ausente = build
+            # antiga: não apaga o último snapshot conhecido.
+            if apps_abertos is not None:
+                device.apps_abertos = apps_abertos
         # MAC: identidade estável do aparelho → atualiza só quando chega valor não-nulo
         # (não sobrescreve um MAC bom com null vindo de um check-in sem Device Owner).
         if mac and device.mac != mac:
@@ -856,20 +1176,12 @@ def registrar_checkin(device, dados: dict, request=None) -> dict:
             )
         device.save()
 
-        # Retenção: janela móvel de 5 dias, podada de forma amostrada (ver _PRUNE_PROB)
-        # — não roda a cada heartbeat para manter a resposta leve em alta frequência.
+        # Retenção: janela móvel de RETENCAO_DIAS, podada de forma amostrada (ver
+        # _PRUNE_PROB) — não roda a cada heartbeat para manter a resposta leve.
         if random.random() < _PRUNE_PROB:
             prune_checkins(device)
 
-        # Comandos pendentes → marca como entregues
-        pendentes = list(device.comandos.filter(status=KioskComando.Status.PENDENTE).order_by("criado_em"))
-        comandos = [{"id": c.id, "tipo": c.tipo, "payload": c.payload or {}} for c in pendentes]
-        if pendentes:
-            agora = timezone.now()
-            for c in pendentes:
-                c.status = KioskComando.Status.ENTREGUE
-                c.entregue_em = agora
-            KioskComando.objects.bulk_update(pendentes, ["status", "entregue_em"])
+        comandos = _comandos_para_entrega(device)
 
     # Config só vai de volta se o device estiver desatualizado
     try:
@@ -889,19 +1201,285 @@ def registrar_checkin(device, dados: dict, request=None) -> dict:
     }
 
 
-def registrar_ack_comando(device, comando_id, status: str, detalhe: str = "") -> bool:
-    """O device confirma a execução (ou falha) de um comando."""
+# ──────────────────────────────────────────────────────────────────────────────
+# Comandos remotos (app v1.8.0+) — ver INFORME_SERVIDOR_COMANDOS_REMOTOS.md
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Tipos oferecidos no painel, na ordem do <select>. Todo comando nasce com
+# `expira_em`: sem isso, um aparelho que passa dias desligado executaria um
+# "reiniciar" velho assim que voltasse. O que interrompe o colaborador vence
+# rápido; o que é idempotente pode esperar um dia.
+COMANDOS = {
+    "sincronizar_config": {
+        "validade_min": 1440, "confirmar": False,
+        "descricao": "Puxa a configuração e reaplica todas as políticas, mesmo sem mudança. Use quando o aparelho parecer fora do padrão.",
+    },
+    "reenviar_inventario": {
+        "validade_min": 1440, "confirmar": False,
+        "descricao": "Força o reenvio da lista de apps instalados no próximo check-in.",
+    },
+    "exibir_mensagem": {
+        "validade_min": 480, "confirmar": False,
+        "descricao": "Traz o Zelo para a frente e mostra o aviso com um botão OK.",
+    },
+    "fechar_apps": {
+        "validade_min": 60, "confirmar": True,
+        "descricao": "Fecha todos os apps liberados abertos. Para fechar só um, use “Apps em uso” acima.",
+    },
+    "limpar_cache": {
+        "validade_min": 1440, "confirmar": False,
+        "descricao": "Limpa o cache do próprio Zelo. Não mexe nos outros apps.",
+    },
+    "bloquear_tela": {
+        "validade_min": 30, "confirmar": True,
+        "descricao": "Desliga a tela. O colaborador religa pelo botão de energia.",
+    },
+    "desbloquear": {
+        "validade_min": 30, "confirmar": False,
+        "descricao": "Acorda a tela remotamente (contrapartida de “Bloquear tela”) e traz o Zelo de volta à frente. Sem PIN configurado, acender a tela já revela o quiosque direto.",
+    },
+    "reiniciar": {
+        "validade_min": 30, "confirmar": True,
+        "descricao": "Reinicia o aparelho (reinício silencioso do Device Owner). Não depende do “Permitir reiniciar” da configuração.",
+    },
+    "reiniciar_app": {
+        "validade_min": 30, "confirmar": True,
+        "descricao": "Reinicia só o processo do Zelo (mais rápido que “Reiniciar aparelho”) — útil quando o app está travado/lento sem precisar derrubar o aparelho inteiro.",
+    },
+    "reativar_quiosque": {
+        "validade_min": 1440, "confirmar": False,
+        "descricao": "Volta a travar o quiosque se ele foi pausado para manutenção e ficou destravado.",
+    },
+    "sair_quiosque": {
+        "validade_min": 15, "confirmar": True,
+        "descricao": "Sai do quiosque à distância e devolve o aparelho ao Android normal, sem PIN, para quem estiver na frente dele. Só quem tem a permissão “Pode tirar aparelhos do quiosque remotamente” vê esta opção. Para travar de novo, use “Reativar quiosque”.",
+    },
+}
+COMANDO_VALIDADES_MIN = (15, 30, 60, 240, 480, 1440, 4320)
+PERM_REINICIAR_REMOTO = "ProjetoEstoque.reiniciar_quiosque_remoto"
+PERM_SAIR_QUIOSQUE_REMOTO = "ProjetoEstoque.sair_quiosque_remoto"
+# versionCode da primeira versão do app que executa comandos (v1.8.0).
+APP_VERSAO_CODIGO_COMANDOS = 13
+
+# versionCode da primeira versão do app que MEDE sinal 2G/3G/4G/5G (v1.10.0),
+# confirmado em INFORME_SERVIDOR_ROTA_E_SINAL_MOVEL.md §6.
+#
+# Por que isto existe: `telemetria_movel` é só o gate do SERVIDOR. Ligá-lo num
+# aparelho cujo app não sabe medir sinal móvel não produz erro nenhum — o app
+# simplesmente ignora a chave e nunca manda os campos. O painel então mostraria
+# "Ativa" e uma coluna de "—" para sempre, e o TI procuraria o problema no SIM
+# ou no chip (é o primeiro suspeito que o próprio informe do app sugere), quando
+# a causa é a versão instalada. Medido na frota em 2026-10-01: 1.7.2 entrega
+# `wifi_*` em 5.969 linhas e `movel_*` em ZERO — o gate de Wi-Fi funciona na
+# frota atual, o de rede móvel não pode funcionar em nenhum aparelho dela.
+APP_VERSAO_CODIGO_TELEMETRIA_MOVEL = 18
+
+
+def reporta_sinal_movel(device) -> bool:
+    """O app instalado NESTE aparelho sabe medir 2G/3G/4G/5G?
+
+    `app_versao_codigo` 0/ausente = build anterior ao campo, logo anterior à
+    v1.10.0: incapaz. Nunca otimista — é melhor o painel dizer "aguardando
+    atualização" e estar errado por excesso de cautela do que afirmar que mede
+    e devolver uma coluna vazia sem explicação.
+    """
+    return (getattr(device, "app_versao_codigo", 0) or 0) >= APP_VERSAO_CODIGO_TELEMETRIA_MOVEL
+
+
+def estado_telemetria_movel(device) -> dict:
+    """Estado REAL da telemetria de rede móvel deste aparelho, para a UI.
+
+    Separa as duas perguntas que o painel confundia numa só:
+      `ligada`     — o gate do servidor está ligado (decisão do TI);
+      `reportando` — o app deste aparelho sabe cumprir o gate (capacidade);
+      `aguardando` — ligada mas o app é antigo: o estado que precisa de aviso.
+
+    `mostrar_sinal` é o que as colunas/selos de sinal móvel devem consultar:
+    só há o que mostrar quando as duas condições valem.
+    """
+    ligada = bool(getattr(device, "telemetria_movel", False))
+    reportando = reporta_sinal_movel(device)
+    return {
+        "ligada": ligada,
+        "reportando": reportando,
+        "aguardando": ligada and not reportando,
+        "mostrar_sinal": ligada and reportando,
+        "versao_minima": "1.10.0",
+        "app_versao": getattr(device, "app_versao", "") or "",
+    }
+
+# O app tolera 1 min de diferença de relógio antes de recusar por `expira_em`;
+# o servidor espera um pouco mais antes de tirar o comando da fila.
+_COMANDO_FOLGA_EXPIRACAO = timedelta(minutes=2)
+_COMANDO_DETALHE_MAX = 2000
+_MENSAGEM_MAX = 500
+_TITULO_MAX = 80
+_PACOTES_MAX = 50
+_ACK_STATUS = ("executado", "falhou", "nao_suportado", "expirado")
+
+
+def _lista_pacotes(valor, limite: int = _PACOTES_MAX):
+    """Normaliza uma lista de package names (dado não confiável: vem do aparelho
+    ou do POST). None quando não é lista — campo ausente ≠ lista vazia."""
+    if not isinstance(valor, list):
+        return None
+    pacotes = []
+    for p in valor:
+        p = p.strip()[:_APPS_PKG_MAX] if isinstance(p, str) else ""
+        if p and p not in pacotes:
+            pacotes.append(p)
+            if len(pacotes) >= limite:
+                break
+    return pacotes
+
+
+def _validade_label(minutos: int) -> str:
+    if minutos < 60:
+        return f"{minutos} min"
+    horas = minutos // 60
+    if horas < 24 or horas % 24:
+        return f"{horas} h"
+    dias = horas // 24
+    return f"{dias} dia{'s' if dias > 1 else ''}"
+
+
+def opcoes_comando(pode_reiniciar: bool, pode_sair_quiosque: bool = False) -> list:
+    """Tipos para o <select> do painel. "Reiniciar" e "Sair do quiosque" só
+    aparecem para quem tem a permissão correspondente (a view revalida no
+    POST)."""
     from ProjetoEstoque.models import KioskComando
 
+    rotulos = dict(KioskComando.Tipo.choices)
+    return [
+        {
+            "valor": tipo,
+            "rotulo": rotulos[tipo],
+            "descricao": cfg["descricao"],
+            "confirmar": cfg["confirmar"],
+            "validade_label": _validade_label(cfg["validade_min"]),
+        }
+        for tipo, cfg in COMANDOS.items()
+        if (tipo != KioskComando.Tipo.REINICIAR or pode_reiniciar)
+        and (tipo != KioskComando.Tipo.SAIR_QUIOSQUE or pode_sair_quiosque)
+    ]
+
+
+def opcoes_validade() -> list:
+    return [{"min": m, "label": _validade_label(m)} for m in COMANDO_VALIDADES_MIN]
+
+
+def criar_comando(device, tipo: str, *, user=None, mensagem: str = "", titulo: str = "",
+                  pacotes=None, validade_min=None):
+    """Enfileira um comando para o aparelho (sai no próximo check-in).
+
+    Levanta ValueError com a mensagem pronta para o usuário. A autorização
+    (ex.: permissão para reiniciar) é checada na view.
+    """
+    from ProjetoEstoque.models import KioskComando
+
+    tipo = (tipo or "").strip()
+    cfg = COMANDOS.get(tipo)
+    if cfg is None:
+        raise ValueError("Tipo de comando inválido.")
+    if not device.ativo:
+        raise ValueError("Dispositivo revogado: ele não faz mais check-in e nunca receberia o comando.")
+
+    payload = {}
+    if tipo == KioskComando.Tipo.EXIBIR_MENSAGEM:
+        mensagem = (mensagem or "").strip()[:_MENSAGEM_MAX]
+        if not mensagem:
+            raise ValueError("Informe o texto da mensagem.")
+        payload["mensagem"] = mensagem
+        titulo = (titulo or "").strip()[:_TITULO_MAX]
+        if titulo:
+            payload["titulo"] = titulo
+    elif tipo == KioskComando.Tipo.FECHAR_APPS:
+        # Sem lista = o app fecha todos os liberados.
+        lista = _lista_pacotes(pacotes)
+        if lista:
+            payload["pacotes"] = lista
+
+    try:
+        minutos = int(validade_min)
+    except (TypeError, ValueError):
+        minutos = None
+    if minutos not in COMANDO_VALIDADES_MIN:
+        minutos = cfg["validade_min"]
+    expira_em = (timezone.now() + timedelta(minutes=minutos)).replace(microsecond=0)
+
+    return KioskComando.objects.create(
+        device=device, tipo=tipo, payload=payload, expira_em=expira_em, criado_por=user,
+    )
+
+
+def _comandos_para_entrega(device) -> list:
+    """Monta o `comandos` da resposta do check-in: todos os abertos (pendentes +
+    entregues ainda sem ACK), na ordem em que foram pedidos.
+
+    Reentrega até o ACK: o app deduplica por `id`, então repetir é seguro e
+    cobre a perda de uma resposta de rede (inclusive na rajada da fila offline).
+    Os vencidos saem da fila aqui como `expirado`; um ACK que chegue depois (o
+    app insiste por até 24 h) ainda sobrescreve com o desfecho real. As escritas
+    filtram pelo status lido para não atropelar um ACK que chegue no meio.
+    """
+    from ProjetoEstoque.models import KioskComando
+
+    St = KioskComando.Status
+    agora = timezone.now()
+    entregar, novos, vencidos_pendentes, vencidos_entregues = [], [], [], []
+    for c in device.comandos.filter(status__in=KioskComando.ABERTOS).order_by("criado_em"):
+        if c.expira_em and c.expira_em + _COMANDO_FOLGA_EXPIRACAO < agora:
+            (vencidos_pendentes if c.status == St.PENDENTE else vencidos_entregues).append(c.pk)
+            continue
+        if c.status == St.PENDENTE:
+            novos.append(c.pk)
+        entregar.append({
+            "id": c.pk,
+            "tipo": c.tipo,
+            "payload": c.payload or {},
+            "expira_em": timezone.localtime(c.expira_em).isoformat(timespec="seconds") if c.expira_em else None,
+        })
+
+    if novos:
+        KioskComando.objects.filter(pk__in=novos, status=St.PENDENTE).update(status=St.ENTREGUE, entregue_em=agora)
+    if vencidos_pendentes:
+        KioskComando.objects.filter(pk__in=vencidos_pendentes, status=St.PENDENTE).update(
+            status=St.EXPIRADO, finalizado_em=agora,
+            detalhe="Expirou antes de ser entregue: o aparelho não fez check-in dentro do prazo.",
+        )
+    if vencidos_entregues:
+        KioskComando.objects.filter(pk__in=vencidos_entregues, status=St.ENTREGUE).update(
+            status=St.EXPIRADO, finalizado_em=agora,
+            detalhe="Expirou sem confirmação do aparelho (sem rede, ou app anterior à v1.8.0).",
+        )
+    return entregar
+
+
+def registrar_ack_comando(device, comando_id, dados: dict) -> bool:
+    """O aparelho confirma o desfecho de um comando (POST /comando/<id>/ack/).
+
+    False se o `id` não é deste aparelho (a view responde 404 e o app para de
+    tentar); ValueError para `status` fora do contrato (400). Idempotente: numa
+    reentrega o app manda o ACK de novo com o resultado original, e um ACK
+    tardio sobrescreve o `expirado` que o servidor tenha marcado por conta própria.
+    """
     c = device.comandos.filter(id=comando_id).first()
     if c is None:
         return False
-    if status not in (KioskComando.Status.EXECUTADO, KioskComando.Status.FALHOU):
-        status = KioskComando.Status.EXECUTADO
+    status = str(dados.get("status") or "").strip().lower()
+    if status not in _ACK_STATUS:
+        raise ValueError(f"Status inválido. Use: {', '.join(_ACK_STATUS)}.")
+    try:
+        executado_em = _parse_dt(dados.get("executado_em"))
+    except ValueError:
+        executado_em = None
+
     c.status = status
-    c.detalhe = (detalhe or "")[:255]
+    c.detalhe = str(dados.get("detalhe") or "")[:_COMANDO_DETALHE_MAX]
+    c.executado_em = executado_em
+    c.app_versao = str(dados.get("app_versao") or "")[:20]
     c.finalizado_em = timezone.now()
-    c.save(update_fields=["status", "detalhe", "finalizado_em"])
+    c.save(update_fields=["status", "detalhe", "executado_em", "app_versao", "finalizado_em"])
     return True
 
 
@@ -930,6 +1508,13 @@ TRILHA_DIA_FETCH_MAX = 20000
 # do traço de um dia) — crescem geometricamente até caber em TRILHA_DIA_MAX_PONTOS.
 TRILHA_DECIM_MIN_M = 12.0
 TRILHA_DECIM_MIN_S = 20.0
+
+# Janelas de tempo oferecidas no filtro do mapa de rota. Substituem o antigo
+# "últimos 150 pontos" como modo padrão: com o app em 5s, 150 pontos cobriam
+# ~12 minutos de trajeto — inútil para quem percorre a fazenda por horas. A
+# janela é por TEMPO e o volume é resolvido pela decimação, que preserva a forma.
+TRILHA_JANELAS_H = (1, 6, 12, 24)
+TRILHA_JANELA_PADRAO_H = 6
 
 
 def _haversine_m(lat1, lon1, lat2, lon2) -> float:
@@ -967,21 +1552,32 @@ def _rotulo_dia(dia: date, hoje: date | None = None) -> str:
     return f"{_DIAS_SEMANA_PT[dia.weekday()]}, {data_fmt}"
 
 
+# Teto de chips no seletor de dias. A quantidade REAL é limitada pela retenção;
+# este número só impede que um aparelho que entregou um atraso enorme encha a
+# tela de chips.
+DIAS_SELETOR_MAX = 31
+
+
 def dias_disponiveis_checkin(device) -> list:
-    """Dias (dentro da janela de retenção de RETENCAO_DIAS) com pelo menos um
-    check-in — alimenta os filtros de "histórico por dia" na tela de detalhe.
-    Mais recente primeiro. [{data, label, total}]."""
+    """Dias com pelo menos um check-in guardado — alimenta os filtros de
+    "histórico por dia" na tela de detalhe. Mais recente primeiro.
+    [{data, label, total}].
+
+    Lista o que EXISTE na tabela, sem recortar por "últimos N dias". O recorte
+    por data de coleta escondia exatamente o dado que `prune_checkins` faz
+    questão de preservar: a leitura coletada há muito tempo e entregue agora
+    (fila offline longa) fica guardada, e precisa aparecer para ser consultável —
+    dado retido mas inalcançável pela tela é o mesmo que dado perdido.
+    """
     from django.db.models import Count
     from django.db.models.functions import TruncDate
     from ProjetoEstoque.models import KioskCheckin
 
-    cutoff = timezone.now() - timedelta(days=RETENCAO_DIAS)
     hoje = timezone.localdate()
     linhas = (
         KioskCheckin.objects
         .filter(device=device)
         .annotate(ts=Coalesce("coletado_em", "registrado_em"))
-        .filter(ts__gte=cutoff)
         .annotate(d=TruncDate("ts"))
         .values("d")
         .annotate(total=Count("id"))
@@ -991,7 +1587,62 @@ def dias_disponiveis_checkin(device) -> list:
         {"data": row["d"], "label": _rotulo_dia(row["d"], hoje), "total": row["total"]}
         for row in linhas
         if row["d"] is not None
-    ][:RETENCAO_DIAS]
+    ][:DIAS_SELETOR_MAX]
+
+
+def estatisticas_retencao(device) -> dict:
+    """Cobertura REAL do histórico guardado deste aparelho — alimenta o aviso de
+    retenção na tela de detalhe.
+
+    Mostra o que existe, não o que a política promete: um aparelho matriculado
+    ontem tem 1 dia de histórico, não 15, e dizer "15 dias" ali seria mentir
+    sobre a base de uma análise. `dias_cobertos` conta dias-calendário distintos
+    com leitura, e não a diferença entre extremos, porque um aparelho que passou
+    a semana desligado tem buracos que não são cobertura.
+    """
+    from django.db.models import Count, Max, Min
+    from django.db.models.functions import TruncDate
+    from ProjetoEstoque.models import KioskCheckin
+
+    base = KioskCheckin.objects.filter(device=device).annotate(
+        ts=Coalesce("coletado_em", "registrado_em")
+    )
+    ag = base.aggregate(total=Count("id"), inicio=Min("ts"), fim=Max("ts"))
+    total = ag["total"] or 0
+    if not total:
+        return {
+            "total": 0, "inicio": None, "fim": None, "dias_cobertos": 0,
+            "retencao_dias": RETENCAO_DIAS, "completo": False,
+        }
+
+    dias = base.annotate(d=TruncDate("ts")).values("d").distinct().count()
+    return {
+        "total": total,
+        "inicio": timezone.localtime(ag["inicio"]) if ag["inicio"] else None,
+        "fim": timezone.localtime(ag["fim"]) if ag["fim"] else None,
+        "dias_cobertos": dias,
+        "retencao_dias": RETENCAO_DIAS,
+        # Só é "janela cheia" quando há dado cobrindo o período todo — o que
+        # separa "guardamos 15 dias" de "este aparelho ainda não tem 15 dias".
+        "completo": dias >= RETENCAO_DIAS,
+    }
+
+
+def _mudou_conectividade(a: dict, b: dict) -> bool:
+    """True quando dois pontos consecutivos diferem no que a rota precisa MOSTRAR:
+    estado de conexão, origem da leitura (fila offline) ou rótulo/força de sinal.
+
+    Usado como trava da decimação: um ponto que marca transição nunca é
+    descartado por estar "perto do anterior". Sem isso, decimar um dia inteiro
+    apagaria justamente o ponto onde a conexão caiu — a informação que a tela
+    existe para dar.
+    """
+    return (
+        a["online"] != b["online"]
+        or a["fila"] != b["fila"]
+        or a["sinal_rotulo"] != b["sinal_rotulo"]
+        or a["sinal_nivel"] != b["sinal_nivel"]
+    )
 
 
 def _decimar_trilha(pontos: list, alvo: int) -> list:
@@ -1001,7 +1652,8 @@ def _decimar_trilha(pontos: list, alvo: int) -> list:
     mantido — o dispositivo parado gera muitos pontos redundantes; em
     movimento, os pontos ficam naturalmente mais espaçados e são preservados.
     Primeiro e último ponto do dia são sempre mantidos (partida/chegada exatas
-    para o resumo do dia)."""
+    para o resumo do dia), assim como toda transição de conectividade/sinal
+    (ver `_mudou_conectividade`) — que é conteúdo, não redundância."""
     if len(pontos) <= alvo:
         return pontos
     min_m, min_s = TRILHA_DECIM_MIN_M, TRILHA_DECIM_MIN_S
@@ -1012,7 +1664,7 @@ def _decimar_trilha(pontos: list, alvo: int) -> list:
             ult = mantidos[-1]
             dist = _haversine_m(ult["lat"], ult["lon"], p["lat"], p["lon"])
             dt = (p["_ts"] - ult["_ts"]).total_seconds()
-            if dist >= min_m or dt >= min_s:
+            if dist >= min_m or dt >= min_s or _mudou_conectividade(ult, p):
                 mantidos.append(p)
         mantidos.append(pontos[-1])
         if len(mantidos) <= alvo:
@@ -1054,6 +1706,18 @@ def _colapsar_paradas(pontos: list) -> list:
     def _centro(cluster: list) -> dict:
         n = len(cluster)
         precisoes = [p["precisao"] for p in cluster if p["precisao"] is not None]
+        # Conectividade do cluster: o aparelho ficou parado no mesmo lugar, mas a
+        # conexão pode ter oscilado ali. Contamos as duas metades — é o dado que
+        # responde "nesse ponto eu tinha sinal?" com honestidade ("12 leituras:
+        # 9 com conexão, 3 sem") — e a COR do ponto segue a maioria, para o mapa
+        # não pintar de vermelho um lugar onde a conexão só piscou.
+        offline_pontos = sum(1 for p in cluster if not p["online"])
+        online_pontos = n - offline_pontos
+        # Sinal representativo: o pior nível observado na parada. Numa área de
+        # sombra o que importa é o teto de degradação, não a média otimista.
+        niveis = [p["sinal_nivel"] for p in cluster if p["sinal_nivel"] is not None]
+        pior = min(niveis) if niveis else None
+        base = next((p for p in cluster if p["sinal_nivel"] == pior), cluster[-1]) if pior is not None else cluster[-1]
         return {
             "id": cluster[-1]["id"],
             "lat": sum(p["lat"] for p in cluster) / n,
@@ -1061,11 +1725,26 @@ def _colapsar_paradas(pontos: list) -> list:
             "precisao": max(precisoes) if precisoes else None,
             "quando": cluster[-1]["quando"],
             "quando_inicio": cluster[0]["quando"],
+            # Uma parada COBRE um intervalo: guardamos os dois extremos em ISO
+            # para quem precisa medir duração (ex.: quanto tempo o aparelho ficou
+            # sem conexão parado ali) não ter que reinterpretar texto.
+            "ts": cluster[-1]["ts"],
+            "ts_inicio": cluster[0]["ts"],
             "bateria": cluster[-1]["bateria"],
-            "online": cluster[-1]["online"],
+            "online": online_pontos >= offline_pontos,
+            "fila": any(p["fila"] for p in cluster),
+            "atraso_s": max(p["atraso_s"] for p in cluster),
+            "rede": base["rede"],
+            "sinal_tipo": base["sinal_tipo"],
+            "sinal_rotulo": base["sinal_rotulo"],
+            "sinal_nivel": pior,
+            "sinal_dbm": base["sinal_dbm"],
+            "sinal_operadora": base["sinal_operadora"],
             "_ts": cluster[-1]["_ts"],
             "parado": True,
             "pontos_originais": n,
+            "online_pontos": online_pontos,
+            "offline_pontos": offline_pontos,
         }
 
     resultado, cluster, ancora = [], [pontos[0]], pontos[0]
@@ -1085,23 +1764,50 @@ def _colapsar_paradas(pontos: list) -> list:
     return achatado
 
 
-def montar_trilha(device, max_pontos: int = TRILHA_MAX_PONTOS, dia: date | None = None) -> list:
+def _marcar_marcos(trilha: list) -> None:
+    """Marca (in-place) os pontos que merecem um SELO visível no mapa.
+
+    Pôr o rótulo de sinal em cima de todos os pontos de um trajeto de 600
+    leituras deixa o mapa ilegível. O selo aparece onde a informação muda de
+    fato: início, fim, paradas e toda transição de conexão/sinal
+    (`_mudou_conectividade`). O resto continua clicável — o dado está no ponto,
+    só o rótulo é que não é desenhado por padrão.
+    """
+    anterior = None
+    for i, p in enumerate(trilha):
+        primeiro_ou_ultimo = i == 0 or i == len(trilha) - 1
+        p["marco"] = bool(
+            primeiro_ou_ultimo
+            or p.get("parado")
+            or (anterior is not None and _mudou_conectividade(anterior, p))
+        )
+        anterior = p
+
+
+def montar_trilha(device, *, dia: date | None = None, horas: int | None = None,
+                  max_pontos: int = TRILHA_MAX_PONTOS) -> list:
     """
     Monta o traço de deslocamento do device para o mapa do detalhe, priorizando a
     PRECISÃO do caminho:
 
       1. Ordena pelo horário REAL de coleta (coletado_em), não pela chegada ao
          servidor — corrige a forma da rota quando o app entrega uma fila offline
-         em rajada (registrado_em fora de ordem).
+         em rajada (registrado_em fora de ordem). É o que faz a rota ficar certa
+         mesmo para os trechos que o aparelho guardou na memória por estar
+         offline: cada leitura entra no lugar onde foi COLETADA, não onde chegou.
       2. Descarta fixes ruins (precisao_m acima do limite) que jogam o traço longe.
       3. Remove saltos impossíveis (velocidade acima do limite) — glitches de GPS.
 
-    Sem `dia`: janela recente limitada a `max_pontos` (traço "ao vivo", mais leve).
-    Com `dia`: cobre o dia inteiro (00:00–23:59 no fuso local), decimado (ver
-    `_decimar_trilha`) se ultrapassar TRILHA_DIA_MAX_PONTOS.
+    Janela (nesta ordem de precedência):
+      - `dia`   → o dia inteiro (00:00–23:59 no fuso local).
+      - `horas` → as últimas N horas.
+      - nenhum  → últimos `max_pontos` pontos (modo legado, mais leve).
+    Em qualquer janela por tempo o volume é resolvido pela decimação
+    (`_decimar_trilha`), que preserva a forma e as transições de conexão.
 
-    Devolve a lista em ordem CRONOLÓGICA (antigo → recente):
-    [{id, lat, lon, precisao, quando, bateria, online}].
+    Devolve a lista em ordem CRONOLÓGICA (antigo → recente); cada ponto traz
+    posição, telemetria e a classificação de conectividade daquele instante
+    (ver `conexao_do_checkin` e `sinal_do_checkin`).
     """
     from ProjetoEstoque.models import KioskCheckin
 
@@ -1115,9 +1821,16 @@ def montar_trilha(device, max_pontos: int = TRILHA_MAX_PONTOS, dia: date | None 
         inicio, fim = intervalo_dia_local(dia)
         base = list(query.filter(ts__gte=inicio, ts__lt=fim).order_by("ts")[:TRILHA_DIA_FETCH_MAX])
         decimar_para = TRILHA_DIA_MAX_PONTOS
+    elif horas:
+        base = list(query.filter(ts__gte=timezone.now() - timedelta(hours=horas)).order_by("ts")[:TRILHA_DIA_FETCH_MAX])
+        decimar_para = TRILHA_DIA_MAX_PONTOS
     else:
         base = list(query.order_by("-ts")[:max_pontos])
         base.reverse()  # cronológico ascendente (antigo → recente)
+
+    # Limiar de "guardado na memória" calculado UMA vez para este aparelho
+    # (ver limiar_fila) — dentro do laço, ler c.device seria 1 query por linha.
+    atraso_fila = limiar_fila(device)
 
     def _construir(filtrar_precisao: bool) -> list:
         pontos, prev = [], None
@@ -1130,14 +1843,28 @@ def montar_trilha(device, max_pontos: int = TRILHA_MAX_PONTOS, dia: date | None 
                 dt = (ts - prev["_ts"]).total_seconds()
                 if dt > 0 and dist > TRILHA_SALTO_MIN_M and (dist / dt) * 3.6 > TRILHA_VEL_MAX_KMH:
                     continue  # salto impossível → descarta como glitch de GPS
+            conexao = conexao_do_checkin(c, atraso_fila)
+            sinal = sinal_do_checkin(c)
             ponto = {
                 "id": c.pk,
                 "lat": c.latitude,
                 "lon": c.longitude,
                 "precisao": c.precisao_m,
                 "quando": timezone.localtime(ts).strftime("%d/%m/%Y %H:%M"),
+                # Mesmo instante em ISO 8601. `quando` é para exibir; `ts` é para
+                # CALCULAR (duração de um trecho sem conexão, por exemplo) sem
+                # ninguém precisar reinterpretar o texto formatado acima.
+                "ts": timezone.localtime(ts).isoformat(),
                 "bateria": c.bateria,
-                "online": c.online,
+                "online": conexao["online"],
+                "fila": conexao["fila"],
+                "atraso_s": conexao["atraso_s"],
+                "rede": c.rede or "",
+                "sinal_tipo": sinal["tipo"],
+                "sinal_rotulo": sinal["rotulo"],
+                "sinal_nivel": sinal["nivel"],
+                "sinal_dbm": sinal["dbm"],
+                "sinal_operadora": sinal["operadora"],
                 "_ts": ts,
             }
             pontos.append(ponto)
@@ -1159,9 +1886,67 @@ def montar_trilha(device, max_pontos: int = TRILHA_MAX_PONTOS, dia: date | None 
     if decimar_para and len(trilha) > decimar_para:
         trilha = _decimar_trilha(trilha, decimar_para)
 
+    _marcar_marcos(trilha)
     for p in trilha:
         p.pop("_ts", None)
     return trilha
+
+
+def resumir_cobertura(trilha: list) -> dict:
+    """Estatísticas de conectividade e deslocamento do traço exibido — alimenta a
+    barra de informação sob o mapa e a legenda dos filtros.
+
+    Vale para QUALQUER janela (dia, últimas N horas ou modo legado), ao contrário
+    de `montar_resumo_dia`, que só existe com um dia filtrado. As leituras de uma
+    parada colapsada contam pelo seu volume ORIGINAL (`pontos_originais`), senão
+    um aparelho parado 3h num ponto sem sinal apareceria como "1 leitura offline".
+    """
+    leituras = online = offline = fila = 0
+    distancia_m = 0.0
+    niveis, geracoes, operadoras = [], {}, {}
+
+    for p in trilha:
+        n = p.get("pontos_originais", 1)
+        leituras += n
+        if p["online"]:
+            online += n
+        else:
+            offline += n
+        if p["fila"]:
+            fila += p.get("offline_pontos", n) or n
+        if p["sinal_nivel"] is not None:
+            niveis.append(p["sinal_nivel"])
+        if p.get("sinal_tipo") == REDE_MOVEL and p["sinal_rotulo"]:
+            geracoes[p["sinal_rotulo"]] = geracoes.get(p["sinal_rotulo"], 0) + n
+        if p.get("sinal_operadora"):
+            operadoras[p["sinal_operadora"]] = operadoras.get(p["sinal_operadora"], 0) + n
+
+    for a, b in zip(trilha, trilha[1:]):
+        distancia_m += _haversine_m(a["lat"], a["lon"], b["lat"], b["lon"])
+
+    return {
+        "pontos": len(trilha),
+        "leituras": leituras,
+        "online": online,
+        "offline": offline,
+        "fila": fila,
+        "pct_online": round(online / leituras * 100) if leituras else 0,
+        "distancia_km": round(distancia_m / 1000, 2),
+        # Trechos SEM conexão desenhados no mapa — corridas consecutivas de
+        # pontos offline. Conta exatamente o que se vê (um trecho vermelho = 1),
+        # e por isso NÃO é "quedas de sinal do dia": essa é `montar_resumo_dia`,
+        # que olha os check-ins crus, sem paradas colapsadas nem decimação. Dois
+        # números diferentes com o mesmo nome se contradiriam na tela.
+        "segmentos_offline": sum(
+            1 for i, p in enumerate(trilha)
+            if not p["online"] and (i == 0 or trilha[i - 1]["online"])
+        ),
+        "sinal_medio": round(sum(niveis) / len(niveis), 1) if niveis else None,
+        "sinal_minimo": min(niveis) if niveis else None,
+        "tem_sinal": bool(niveis),
+        "geracao_predominante": max(geracoes, key=geracoes.get) if geracoes else "",
+        "operadora_predominante": max(operadoras, key=operadoras.get) if operadoras else "",
+    }
 
 
 def montar_mapa_dict(device, trilha: list, dia: date | None = None) -> dict | None:
@@ -1182,6 +1967,7 @@ def montar_mapa_dict(device, trilha: list, dia: date | None = None) -> dict | No
       está olhando um dia passado).
     """
     nome = device.apelido or device.modelo or "Quiosque"
+    cobertura = resumir_cobertura(trilha)
     if dia is not None:
         if not trilha:
             return None
@@ -1189,6 +1975,7 @@ def montar_mapa_dict(device, trilha: list, dia: date | None = None) -> dict | No
         return {
             "nome": nome, "lat": ultimo["lat"], "lon": ultimo["lon"], "precisao": ultimo["precisao"],
             "online": device.online, "trilha": trilha, "historico": True,
+            "cobertura": cobertura, "sinal": sinal_atual_device(device),
         }
 
     if not device.tem_localizacao:
@@ -1197,6 +1984,28 @@ def montar_mapa_dict(device, trilha: list, dia: date | None = None) -> dict | No
         "nome": nome, "lat": device.ultima_latitude, "lon": device.ultima_longitude,
         "precisao": device.ultima_precisao_m, "online": device.online,
         "trilha": trilha, "historico": False,
+        "cobertura": cobertura, "sinal": sinal_atual_device(device),
+    }
+
+
+def sinal_atual_device(device) -> dict:
+    """Sinal do ÚLTIMO check-in a partir do snapshot no device — mesmo formato de
+    `sinal_do_checkin`, para o selo do mapa (frota e detalhe) consumir os dois
+    sem ramificar. Usa o snapshot, e não uma consulta ao último KioskCheckin,
+    para a tela da frota não virar um N+1 com 40 aparelhos."""
+    tipo = device.ultima_rede_tipo or normalizar_rede_tipo(device.ultima_rede)
+    geracao = (device.ultima_movel_geracao or "").lower()
+    if tipo == REDE_MOVEL:
+        rotulo = geracao.upper() if geracao else REDE_ROTULOS[REDE_MOVEL]
+    else:
+        rotulo = REDE_ROTULOS.get(tipo, REDE_ROTULOS[REDE_NENHUMA])
+    return {
+        "tipo": tipo or REDE_NENHUMA,
+        "rotulo": rotulo,
+        "geracao": geracao,
+        "nivel": device.ultimo_sinal_nivel,
+        "dbm": device.ultimo_sinal_dbm,
+        "operadora": device.ultima_movel_operadora or "",
     }
 
 
@@ -1228,8 +2037,34 @@ def montar_resumo_dia(device, dia: date, trilha: list) -> dict:
     baterias = [c.bateria for c in checkins_dia if c.bateria is not None]
     redes = Counter(c.rede for c in checkins_dia if c.rede)
     rede_top = redes.most_common(1)[0][0] if redes else None
-    online_count = sum(1 for c in checkins_dia if c.online)
+
+    # Conectividade pela MESMA classificação usada no mapa (`conexao_do_checkin`),
+    # não pelo campo `online` cru — assim o número no resumo e a cor do traço no
+    # mapa nunca se contradizem, inclusive nas leituras entregues de fila.
+    atraso_fila = limiar_fila(device)
+    conexoes = [conexao_do_checkin(c, atraso_fila) for c in checkins_dia]
+    online_count = sum(1 for k in conexoes if k["online"])
+    fila_count = sum(1 for k in conexoes if k["fila"])
     pct_online = round(online_count / total * 100)
+    # Quedas = transições com→sem conexão ao longo do dia (não o total de
+    # leituras offline): é o que responde "quantas vezes perdi o sinal".
+    quedas = sum(1 for a, b in zip(conexoes, conexoes[1:]) if a["online"] and not b["online"])
+
+    # Tempo sem conexão: soma dos intervalos entre leituras consecutivas em que a
+    # segunda estava offline. Melhor que "nº de leituras × intervalo" porque
+    # respeita o intervalo real (que varia com a configuração e com o Doze).
+    segundos_offline = 0
+    for (ca, ka), (cb, kb) in zip(zip(checkins_dia, conexoes), zip(checkins_dia[1:], conexoes[1:])):
+        if not kb["online"]:
+            delta = (cb.quando - ca.quando).total_seconds()
+            if 0 < delta <= 3600:  # ignora buracos > 1h (aparelho desligado, não "offline")
+                segundos_offline += int(delta)
+    offline_min = round(segundos_offline / 60)
+
+    sinais = [sinal_do_checkin(c) for c in checkins_dia]
+    niveis = [s["nivel"] for s in sinais if s["nivel"] is not None]
+    geracoes = Counter(s["rotulo"] for s in sinais if s["tipo"] == REDE_MOVEL and s["rotulo"])
+    operadoras = Counter(s["operadora"] for s in sinais if s["tipo"] == REDE_MOVEL and s["operadora"])
 
     distancia_km = 0.0
     for a, b in zip(trilha, trilha[1:]):
@@ -1249,7 +2084,25 @@ def montar_resumo_dia(device, dia: date, trilha: list) -> dict:
             partes.append(f"Bateria variou de {baterias[0]}% para {baterias[-1]}%.")
         else:
             partes.append(f"Bateria em torno de {baterias[-1]}%.")
-    partes.append(f"Esteve online em {pct_online}% dos check-ins" + (f", majoritariamente via {rede_top}." if rede_top else "."))
+
+    conectividade = f"Manteve conexão em {pct_online}% das leituras"
+    if geracoes:
+        conectividade += f", predominantemente em {geracoes.most_common(1)[0][0]}"
+        if operadoras:
+            conectividade += f" ({operadoras.most_common(1)[0][0]})"
+    elif rede_top:
+        conectividade += f", majoritariamente via {rede_top}"
+    partes.append(conectividade + ".")
+
+    if quedas:
+        texto_queda = f"Perdeu o sinal {quedas} vez(es)"
+        if offline_min:
+            texto_queda += f", somando cerca de {offline_min} min sem conexão"
+        if fila_count:
+            texto_queda += f"; {fila_count} leitura(s) ficaram guardadas na memória do aparelho até a rede voltar"
+        partes.append(texto_queda + ".")
+    elif fila_count:
+        partes.append(f"{fila_count} leitura(s) chegaram com atraso, guardadas na memória do aparelho.")
 
     return {
         "total_checkins": total,
@@ -1261,6 +2114,13 @@ def montar_resumo_dia(device, dia: date, trilha: list) -> dict:
         "bateria_final": baterias[-1] if baterias else None,
         "rede_predominante": rede_top,
         "pct_online": pct_online,
+        "quedas": quedas,
+        "offline_min": offline_min,
+        "fila_count": fila_count,
+        "sinal_medio": round(sum(niveis) / len(niveis), 1) if niveis else None,
+        "sinal_minimo": min(niveis) if niveis else None,
+        "geracao_predominante": geracoes.most_common(1)[0][0] if geracoes else "",
+        "operadora_predominante": operadoras.most_common(1)[0][0] if operadoras else "",
         "pontos_no_traco": len(trilha),
         "distancia_km": distancia_km,
         "resumo_texto": " ".join(partes),
@@ -1434,6 +2294,12 @@ def montar_indicadores_gerenciais() -> dict:
     # -------- Comandos remotos (canal de controle) --------
     comandos_status = dict(KioskComando.objects.values("status").annotate(c=Count("id")).values_list("status", "c"))
     comandos_total = sum(comandos_status.values())
+    comandos_resumo = {
+        "aguardando": comandos_status.get("pendente", 0) + comandos_status.get("entregue", 0),
+        "executado": comandos_status.get("executado", 0),
+        "falhou": comandos_status.get("falhou", 0) + comandos_status.get("nao_suportado", 0),
+        "expirado": comandos_status.get("expirado", 0),
+    }
 
     # -------- Crescimento da frota (12 meses) — criado_em nunca é podado --------
     stamps = _meses_stamps(12)
@@ -1505,7 +2371,7 @@ def montar_indicadores_gerenciais() -> dict:
         "inst_total": inst_total, "inst_downloads": inst_downloads,
         "inst_validos": inst_validos, "inst_revogados": inst_revogados,
 
-        "comandos_total": comandos_total, "comandos_status": comandos_status,
+        "comandos_total": comandos_total, "comandos_resumo": comandos_resumo,
 
         "labels_meses": labels_meses, "devices_serie": devices_serie, "matriculas_serie": matriculas_serie,
         "dias_labels": dias_labels, "checkins_por_dia": checkins_por_dia,

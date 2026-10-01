@@ -1,0 +1,207 @@
+{% comment %}
+Design system dos PAINÉIS (Visão Geral e Consumo de Toner).
+
+Por que existe: as duas telas tinham paletas próprias e divergentes — navy
+(#2b3563) numa, Fluent blue (#0078d4) na outra — e componentes equivalentes
+(KPI, painel, cabeçalho) escritos duas vezes com medidas diferentes. Telas
+vizinhas do mesmo sistema pareciam de produtos distintos. Aqui ficam os tokens
+e os componentes comuns; cada tela só acrescenta o que é dela.
+
+Layout: grade "bento" de 12 colunas, em que o TAMANHO da célula acompanha a
+importância do dado (`--dsh-span`), com hierarquia em pirâmide invertida —
+KPIs no topo, tendências no meio, detalhe embaixo. As células usam container
+queries, então cada uma se adapta ao espaço QUE ELA TEM, e não à largura da
+janela: é o que faz a mesma célula servir tanto ao painel largo quanto à
+coluna estreita sem media query espalhada.
+
+Escopo: tudo sob `:where(.dsh)` — nunca `:root` (regra 6 do CLAUDE.md).
+{% endcomment %}
+<style>
+:where(.dsh) {
+  /* Accent único para os dois painéis: o azul da marca já definido no
+     base.html, em vez de dois tons inventados por tela. */
+  --dsh-accent:        var(--brand, #0a84ff);
+  --dsh-accent-hover:  var(--brand-hover, #2b93ff);
+  --dsh-accent-soft:   var(--brand-soft, rgba(10,132,255,.10));
+  --dsh-accent-border: var(--brand-ring, rgba(10,132,255,.30));
+
+  --dsh-surface: var(--bg-elevated, #fff);
+  /* O canvas é propositalmente mais escuro que o card: sem esse contraste os
+     cards brancos flutuam sobre um fundo quase idêntico e a grade some. */
+  --dsh-canvas:  var(--bg-page, #f6f5f2);
+  --dsh-fill:    rgba(0,0,0,.035);
+  --dsh-border:  var(--separator-hairline, rgba(0,0,0,.06));
+  --dsh-border2: var(--separator-non-opaque, rgba(0,0,0,.10));
+
+  --dsh-text:  var(--text-primary, #1d1d1f);
+  --dsh-muted: var(--text-secondary, #424245);
+  --dsh-soft:  var(--text-tertiary, #6e6e73);
+
+  /* Sinal, não decoração: só entram onde o dado É aquilo. */
+  --dsh-ok:    #1a7f37;
+  --dsh-warn:  #b45309;
+  --dsh-danger:#c0362c;
+  --dsh-ok-soft:    rgba(26,127,55,.10);
+  --dsh-warn-soft:  rgba(180,83,9,.10);
+  --dsh-danger-soft:rgba(192,54,44,.10);
+
+  --dsh-r:    var(--radius-lg, 18px);
+  --dsh-r-sm: var(--radius-sm, 10px);
+  --dsh-gap:  14px;
+  --dsh-ease: var(--ease-apple, cubic-bezier(.32,.72,0,1));
+}
+body.theme-dark :where(.dsh) {
+  --dsh-surface: #1a1d24;
+  --dsh-canvas:  #14171c;
+  --dsh-fill:    rgba(255,255,255,.06);
+  --dsh-border:  rgba(255,255,255,.09);
+  --dsh-border2: rgba(255,255,255,.14);
+  --dsh-text:  #f2f3f5;
+  --dsh-muted: #c3c8d2;
+  --dsh-soft:  #8f97a4;
+  --dsh-ok:    #4ade80;
+  --dsh-warn:  #fbbf24;
+  --dsh-danger:#f87171;
+  --dsh-ok-soft:    rgba(74,222,128,.14);
+  --dsh-warn-soft:  rgba(251,191,36,.14);
+  --dsh-danger-soft:rgba(248,113,113,.14);
+}
+
+.dsh, .dsh * { box-sizing: border-box; min-width: 0; }
+.dsh { display: flex; flex-direction: column; gap: var(--dsh-gap); color: var(--dsh-text); }
+
+/* ── Barra de comando (abas + filtros + ações) ───────────────────────── */
+.dsh-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; background: var(--dsh-surface);
+  border: 1px solid var(--dsh-border); border-radius: var(--dsh-r);
+  box-shadow: var(--shadow-sm);
+}
+.dsh-seg { display: flex; gap: 3px; padding: 3px; background: var(--dsh-fill); border-radius: 11px; }
+.dsh-seg button {
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px;
+  border: 0; background: transparent; border-radius: 8px; cursor: pointer;
+  font: 700 .8rem/1 inherit; color: var(--dsh-muted); transition: all .18s var(--dsh-ease);
+}
+.dsh-seg button:hover { color: var(--dsh-text); }
+.dsh-seg button.active { background: var(--dsh-surface); color: var(--dsh-accent); box-shadow: var(--shadow-xs); }
+.dsh-bar-actions { display: flex; align-items: center; gap: 7px; margin-left: auto; }
+
+.dsh-btn {
+  height: 34px; padding: 0 13px; border-radius: 9px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  border: 1px solid var(--dsh-border2); background: var(--dsh-surface);
+  color: var(--dsh-text); font: 700 .78rem/1 inherit; transition: all .14s var(--dsh-ease);
+}
+.dsh-btn:hover { background: var(--dsh-fill); }
+.dsh-btn.primary { background: var(--dsh-accent); border-color: var(--dsh-accent); color: #fff; }
+.dsh-btn.primary:hover { background: var(--dsh-accent-hover); }
+.dsh-btn.on { background: var(--dsh-accent-soft); color: var(--dsh-accent); border-color: var(--dsh-accent-border); }
+
+.dsh-select, .dsh-input {
+  height: 34px; padding: 0 11px; border-radius: 9px; min-width: 0;
+  border: 1px solid var(--dsh-border2); background: var(--dsh-surface);
+  color: var(--dsh-text); font: 600 .78rem/1 inherit;
+}
+.dsh-select { padding-right: 28px; cursor: pointer; -webkit-appearance: none; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238e8e93' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; }
+.dsh-select:focus, .dsh-input:focus { outline: 0; border-color: var(--dsh-accent); box-shadow: 0 0 0 3px var(--dsh-accent-soft); }
+
+/* ── Faixa de KPIs ───────────────────────────────────────────────────
+   Uma linha, sem área morta. O padrão de mercado é de 5 a 7 indicadores
+   acima da dobra; passar disso não informa mais, só aumenta o tempo de
+   leitura. `auto-fit` + `minmax` mantém a linha cheia em qualquer largura
+   sem media query. */
+.dsh-kpis { display: grid; gap: var(--dsh-gap); grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); }
+.dsh-kpi {
+  display: flex; align-items: flex-start; gap: 11px; padding: 14px 15px;
+  background: var(--dsh-surface); border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-r-sm); box-shadow: var(--shadow-xs);
+}
+.dsh-kpi-ic {
+  width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center;
+  border-radius: 9px; background: var(--dsh-fill); color: var(--dsh-accent); font-size: .95rem;
+}
+.dsh-kpi-b { min-width: 0; }
+.dsh-kpi-v { font-size: 1.5rem; font-weight: 750; line-height: 1.05; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.dsh-kpi-l { margin-top: 3px; font-size: .68rem; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--dsh-soft); }
+.dsh-kpi-s { margin-top: 2px; font-size: .72rem; color: var(--dsh-muted); }
+/* Cor só quando o KPI É o alerta (ex.: "Críticos") — nunca por posição. */
+.dsh-kpi.alerta .dsh-kpi-ic { background: var(--dsh-warn-soft); color: var(--dsh-warn); }
+.dsh-kpi.alerta .dsh-kpi-v { color: var(--dsh-warn); }
+
+/* ── Grade bento ─────────────────────────────────────────────────────
+   12 colunas; cada célula declara quantas ocupa em --dsh-span. `dense`
+   fecha os buracos que sobram quando uma célula larga não cabe na linha. */
+.dsh-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--dsh-gap); grid-auto-flow: dense; }
+.dsh-cell { grid-column: span var(--dsh-span, 6); min-width: 0; }
+@media (max-width: 1100px) { .dsh-cell { grid-column: span min(12, calc(var(--dsh-span, 6) * 2)); } }
+@media (max-width: 720px)  { .dsh-cell { grid-column: span 12; } }
+
+/* ── Painel (card de conteúdo) ───────────────────────────────────── */
+.dsh-panel {
+  display: flex; flex-direction: column; height: 100%;
+  background: var(--dsh-surface); border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-r); box-shadow: var(--shadow-sm); overflow: hidden;
+  container-type: inline-size;
+}
+.dsh-panel-head {
+  display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+  padding: 13px 16px 0;
+}
+.dsh-panel-t { font-size: .92rem; font-weight: 700; letter-spacing: -.01em; }
+.dsh-panel-s { font-size: .74rem; color: var(--dsh-soft); }
+.dsh-panel-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.dsh-panel-body { padding: 12px 16px 16px; flex: 1; min-height: 0; }
+
+/* Altura do gráfico por tamanho da célula: uma linha de tendência precisa de
+   mais altura que uma barra curta, e o canvas do Chart.js exige altura
+   explícita (maintainAspectRatio:false). */
+.dsh-chart { position: relative; height: 240px; }
+.dsh-chart.alta { height: 300px; }
+.dsh-chart.baixa { height: 190px; }
+.dsh-chart canvas { position: absolute; inset: 0; }
+
+/* Donut com legenda ao lado; vira empilhado quando a CÉLULA é estreita
+   (container query), não quando a janela é. */
+/* O split ocupa toda a altura do painel: numa linha da grade a célula estica
+   para acompanhar a vizinha mais alta, e com altura fixa o donut deixava uma
+   faixa vazia embaixo do card. */
+.dsh-split { display: flex; gap: 14px; align-items: center; height: 100%; min-height: 190px; }
+.dsh-split .dsh-chart { flex: 1 1 52%; height: 100%; min-height: 170px; }
+.dsh-legend { flex: 1 1 48%; display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.dsh-legend-row { display: flex; align-items: center; gap: 8px; font-size: .78rem; color: var(--dsh-muted); }
+.dsh-legend-dot { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 10px; }
+.dsh-legend-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-legend-row b { margin-left: auto; color: var(--dsh-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+@container (max-width: 430px) {
+  .dsh-split { flex-direction: column; align-items: stretch; }
+  .dsh-split .dsh-chart { height: 200px; }
+}
+
+/* ── Estados ─────────────────────────────────────────────────────── */
+.dsh-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; min-height: 150px; color: var(--dsh-soft); font-size: .82rem; text-align: center;
+}
+.dsh-empty i { font-size: 26px; opacity: .35; }
+.dsh-skel { border-radius: var(--dsh-r-sm); background: var(--dsh-fill); animation: dshPulse 1.3s ease-in-out infinite; }
+@keyframes dshPulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .dsh-skel { animation: none; } }
+
+/* ── Bloco recolhível (filtros) ──────────────────────────────────── */
+.dsh-fold { background: var(--dsh-surface); border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-r); box-shadow: var(--shadow-sm); overflow: hidden; }
+.dsh-fold > summary {
+  display: flex; align-items: center; gap: 9px; padding: 11px 15px; cursor: pointer;
+  font-size: .82rem; font-weight: 700; list-style: none; user-select: none;
+}
+.dsh-fold > summary::-webkit-details-marker { display: none; }
+.dsh-fold > summary .chev { margin-left: auto; transition: transform .2s var(--dsh-ease); color: var(--dsh-soft); }
+.dsh-fold[open] > summary .chev { transform: rotate(180deg); }
+.dsh-fold > summary .resumo { font-weight: 600; color: var(--dsh-soft); font-size: .76rem; }
+.dsh-fold-body { padding: 0 15px 14px; }
+</style>

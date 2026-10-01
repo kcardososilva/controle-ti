@@ -4,7 +4,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required, user_passes_test
 from django.core.exceptions import ValidationError
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.db.models import Q, Count, Sum
 from django.db.models.functions import Coalesce
 from django.core.paginator import Paginator
@@ -13,7 +13,7 @@ from xhtml2pdf import pisa
 
 from ..models import (
     Fornecedor, Item, Licenca, LicencaLote, SimNaoChoices,
-    PerfilFornecedor,
+    PerfilFornecedor, PerfilParceiroLicenca,
 )
 from ..forms import FornecedorForm
 
@@ -335,6 +335,31 @@ def fornecedor_create(request):
     return render(request, "front/fornecedores/fornecedor_form.html", {"form": form, "editar": False})
 
 
+# CREATE rápido (AJAX) — usado pelo pop-up de "cadastrar fornecedor" embutido
+# em telas de terceiros (ex.: recebimento de compra de uma requisição), pra
+# não obrigar o TI a sair do fluxo em que está pra ir à tela de Fornecedores.
+@login_required
+def fornecedor_quick_create(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Método inválido."}, status=405)
+
+    form = FornecedorForm(request.POST)
+    if not form.is_valid():
+        erros = {campo: lista_erros[0] for campo, lista_erros in form.errors.items()}
+        return JsonResponse({"ok": False, "errors": erros}, status=400)
+
+    obj = form.save(commit=False)
+    obj.criado_por = request.user
+    obj.atualizado_por = request.user
+    obj.save()
+    return JsonResponse({
+        "ok": True,
+        "id": obj.pk,
+        "nome": obj.nome,
+        "text": f"{obj.nome} ({obj.cnpj})",
+    })
+
+
 # UPDATE
 @login_required
 def fornecedor_update(request, pk: int):
@@ -509,16 +534,21 @@ def fornecedor_detail(request, pk: int):
     return render(request, "front/fornecedores/fornecedor_detail.html", context)
 
 
-# ── Acesso ao Portal do Fornecedor (por fornecedor) ───────────────────────────
+# ── Acesso aos Portais externos (por fornecedor) ───────────────────────────────
 @login_required
 @staff_required
 def fornecedor_portal_acesso(request, pk: int):
     """
-    Gerencia o login do Portal de um fornecedor específico: cria/vincula o
-    usuário, redefine senha/e-mail e suspende/reativa. Toda a regra fica no
-    FornecedorAcessoService.
+    Gerencia, numa única tela, os dois acessos externos que um fornecedor
+    pode ter: Portal do Fornecedor (equipamentos/manutenção, PerfilFornecedor)
+    e Portal de Licenças Office (PerfilParceiroLicenca) — um fornecedor que
+    também é parceiro de licenças (ex.: Routerlink) tem os dois vínculos
+    geridos aqui, inclusive reaproveitando o MESMO login (ver
+    `vincular_lic_existente`, o atalho de um clique). Toda a regra de negócio
+    fica nos services (FornecedorAcessoService / ParceiroLicencaAcessoService).
     """
     from services.fornecedor_acesso_service import FornecedorAcessoService
+    from services.parceiro_licenca_acesso_service import ParceiroLicencaAcessoService
 
     fornecedor = get_object_or_404(Fornecedor, pk=pk)
     perfil = (
@@ -527,11 +557,63 @@ def fornecedor_portal_acesso(request, pk: int):
         .select_related("usuario")
         .first()
     )
+    perfil_lic = (
+        PerfilParceiroLicenca.objects
+        .filter(parceiro=fornecedor)
+        .select_related("usuario")
+        .first()
+    )
 
     if request.method == "POST":
         acao = request.POST.get("acao", "salvar")
         try:
-            if acao == "toggle" and perfil:
+            # ── Portal de Licenças Office ────────────────────────────────
+            if acao == "toggle_lic" and perfil_lic:
+                ParceiroLicencaAcessoService.definir_ativo(perfil_lic, not perfil_lic.ativo, request.user)
+                messages.success(request, "Acesso ao Portal de Licenças reativado." if perfil_lic.ativo else "Acesso ao Portal de Licenças suspenso.")
+            elif acao == "toggle_colaboradores" and perfil_lic:
+                ParceiroLicencaAcessoService.definir_pode_ver_colaboradores(
+                    perfil_lic, not perfil_lic.pode_ver_colaboradores, request.user
+                )
+                messages.success(
+                    request,
+                    "Visão de colaboradores liberada." if perfil_lic.pode_ver_colaboradores
+                    else "Visão de colaboradores revogada.",
+                )
+            elif acao == "revogar_lic" and perfil_lic:
+                nome = perfil_lic.usuario.username
+                ParceiroLicencaAcessoService.revogar(perfil_lic)
+                messages.success(request, f"Acesso de '{nome}' ao Portal de Licenças revogado.")
+            elif acao == "vincular_lic_existente":
+                if not perfil:
+                    messages.error(request, "Este fornecedor ainda não tem um acesso ao Portal do Fornecedor pra reaproveitar o login.")
+                else:
+                    ParceiroLicencaAcessoService.vincular_usuario_existente(
+                        parceiro=fornecedor, usuario=perfil.usuario, user=request.user,
+                    )
+                    messages.success(
+                        request,
+                        f"Acesso ao Portal de Licenças concedido para '{perfil.usuario.username}' "
+                        "— mesmo login já usado no Portal do Fornecedor.",
+                    )
+            elif acao == "salvar_lic":
+                if perfil_lic:
+                    ParceiroLicencaAcessoService.atualizar_email(perfil_lic, request.POST.get("email_lic"))
+                    senha = (request.POST.get("senha_lic") or "").strip()
+                    if senha:
+                        ParceiroLicencaAcessoService.resetar_senha(perfil_lic, senha)
+                    messages.success(request, "Acesso ao Portal de Licenças atualizado com sucesso.")
+                else:
+                    ParceiroLicencaAcessoService.provisionar(
+                        parceiro=fornecedor,
+                        username=request.POST.get("username_lic"),
+                        email=request.POST.get("email_lic"),
+                        senha=request.POST.get("senha_lic"),
+                        user=request.user,
+                    )
+                    messages.success(request, "Acesso ao Portal de Licenças configurado com sucesso.")
+            # ── Portal do Fornecedor ─────────────────────────────────────
+            elif acao == "toggle" and perfil:
                 FornecedorAcessoService.definir_ativo(perfil, not perfil.ativo, request.user)
                 messages.success(request, "Acesso reativado." if perfil.ativo else "Acesso suspenso.")
             elif acao == "toggle_notificacao" and perfil:
@@ -562,7 +644,7 @@ def fornecedor_portal_acesso(request, pk: int):
             messages.error(request, "; ".join(exc.messages))
         return redirect("fornecedor_portal_acesso", pk=pk)
 
-    context = {"fornecedor": fornecedor, "perfil": perfil}
+    context = {"fornecedor": fornecedor, "perfil": perfil, "perfil_lic": perfil_lic}
     return render(request, "front/fornecedores/fornecedor_portal_acesso.html", context)
 
 
@@ -610,11 +692,20 @@ def fornecedor_acessos_list(request):
         row["fornecedor"]: row["n"]
         for row in Item.objects.values("fornecedor").annotate(n=Count("id"))
     }
+    # Mapa usuario_id → PerfilParceiroLicenca — pra sinalizar, em cada linha,
+    # se esse MESMO login já também abre o Portal de Licenças (e permitir
+    # conceder isso com um clique, sem sair da central).
+    perfis_lic_por_usuario = {
+        p.usuario_id: p
+        for p in PerfilParceiroLicenca.objects.select_related("parceiro")
+    }
     for p in perfis:
         p.qtd_itens_calc = cont_itens.get(p.fornecedor_id, 0)
+        p.perfil_lic_calc = perfis_lic_por_usuario.get(p.usuario_id)
 
     total = len(perfis)
     ativos = sum(1 for p in perfis if p.ativo)
+    com_licencas = sum(1 for p in perfis if p.perfil_lic_calc)
 
     context = {
         "perfis": perfis,
@@ -623,6 +714,7 @@ def fornecedor_acessos_list(request):
         "kpi_total": total,
         "kpi_ativos": ativos,
         "kpi_suspensos": total - ativos,
+        "kpi_com_licencas": com_licencas,
     }
     return render(request, "front/fornecedores/fornecedor_acessos.html", context)
 
@@ -630,8 +722,10 @@ def fornecedor_acessos_list(request):
 @login_required
 @staff_required
 def fornecedor_acesso_acao(request, pk: int):
-    """Ações por acesso: toggle (suspender/reativar), reset de senha, revogar."""
+    """Ações por acesso: toggle (suspender/reativar), reset de senha, revogar,
+    e conceder/revogar (com o mesmo login) o Portal de Licenças."""
     from services.fornecedor_acesso_service import FornecedorAcessoService
+    from services.parceiro_licenca_acesso_service import ParceiroLicencaAcessoService
 
     perfil = get_object_or_404(
         PerfilFornecedor.objects.select_related("usuario", "fornecedor"), pk=pk
@@ -660,6 +754,34 @@ def fornecedor_acesso_acao(request, pk: int):
             nome = perfil.usuario.username
             FornecedorAcessoService.revogar(perfil)
             messages.success(request, f"Acesso de '{nome}' revogado.")
+        elif acao == "conceder_licenca":
+            ParceiroLicencaAcessoService.vincular_usuario_existente(
+                parceiro=perfil.fornecedor, usuario=perfil.usuario, user=request.user,
+            )
+            messages.success(
+                request,
+                f"Portal de Licenças concedido a '{perfil.usuario.username}' — mesmo login do Portal do Fornecedor.",
+            )
+        elif acao == "revogar_licenca":
+            perfil_lic = PerfilParceiroLicenca.objects.filter(usuario=perfil.usuario).first()
+            if perfil_lic:
+                nome = perfil_lic.usuario.username
+                ParceiroLicencaAcessoService.revogar(perfil_lic)
+                messages.success(request, f"Acesso de '{nome}' ao Portal de Licenças revogado.")
+            else:
+                messages.error(request, "Este usuário não tem acesso ao Portal de Licenças.")
+        elif acao == "toggle_colaboradores":
+            perfil_lic = PerfilParceiroLicenca.objects.filter(usuario=perfil.usuario).first()
+            if perfil_lic:
+                ParceiroLicencaAcessoService.definir_pode_ver_colaboradores(
+                    perfil_lic, not perfil_lic.pode_ver_colaboradores, request.user
+                )
+                messages.success(
+                    request,
+                    f"Visão de colaboradores {'liberada' if perfil_lic.pode_ver_colaboradores else 'revogada'} para '{perfil.usuario.username}'.",
+                )
+            else:
+                messages.error(request, "Este usuário não tem acesso ao Portal de Licenças.")
         else:
             messages.error(request, "Ação inválida.")
     except ValidationError as exc:

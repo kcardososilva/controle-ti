@@ -2,201 +2,451 @@
 
 {% block title %}Acessos de Fornecedor{% endblock %}
 {% block page_title %}Acessos de Fornecedor{% endblock %}
-{% block page_subtitle %}Cadastre e gerencie os usuários que acessam o Portal do Fornecedor{% endblock %}
+{% block page_subtitle %}Cadastre e gerencie os usuários que acessam o Portal do Fornecedor e o Portal de Licenças{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'fornecedor_list' %}">Fornecedores</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Acessos</span>
+</nav>
+{% endblock %}
 
 {% block header_actions %}
-  <a href="{% url 'fornecedor_list' %}" class="fac-btn fac-btn-light"><i class="fa-solid fa-arrow-left"></i> Fornecedores</a>
+  <a href="{% url 'fornecedor_list' %}" class="btn btn-sm"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Fornecedores</a>
 {% endblock %}
 
 {% block extra_css %}
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-  :where(.fac-page) {
-    /* Leve inclinação para Segoe UI (Office) nesta tela, com fallback pro
-       stack padrão do app — troca não é global, só escopada aqui. */
-    --fac-font: "Segoe UI", var(--font-display);
-  }
-  .fac-page { display: grid; gap: 1.2rem; max-width: 70rem; font-family: var(--fac-font); }
+/* =========================================================
+   ACESSOS DE FORNECEDOR — mesma família .pa- da tela de
+   Acesso aos Portais (governança de acessos externos), com
+   um painel de criação + tabela densa no lugar dos cartões
+   soltos anteriores.
+   ========================================================= */
+:where(.pa-page, .select2-container, .select2-dropdown) {
+  --pa-primary: var(--brand);
+  --pa-primary-hover: var(--brand-hover);
+  --pa-primary-soft: var(--brand-soft);
 
-  /* Select2 alinhado ao visual do formulário */
-  .fac-page .select2-container { width: 100% !important; }
-  .fac-page .select2-container--default .select2-selection--single {
-    min-height: 2.7rem; height: 2.7rem; border-radius: 12px; padding: .2rem .3rem;
-    border: 1px solid var(--separator-non-opaque, rgba(0,0,0,.12)); background: var(--bg-page, #fff);
-  }
-  .fac-page .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 2.3rem; color: var(--text-primary); padding-left: .55rem; }
-  .fac-page .select2-container--default .select2-selection--single .select2-selection__arrow { height: 2.5rem; }
+  --pa-surface: var(--bg-elevated);
+  --pa-fill: var(--bg-fill-tertiary, rgba(120,120,128,.08));
+  --pa-hover: var(--bg-hover);
 
-  .fac-page .fac-kpis { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
-  .fac-page .fac-kpi { padding: 1rem 1.1rem; border-radius: 16px; background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-sm); }
-  .fac-page .fac-kpi-n { font-size: 1.7rem; font-weight: 700; }
-  .fac-page .fac-kpi-l { color: var(--text-tertiary); font-size: .8rem; font-weight: 600; margin-top: .15rem; }
-  .fac-page .fac-kpi.ok .fac-kpi-n { color: #34c759; }
-  .fac-page .fac-kpi.off .fac-kpi-n { color: #ff9500; }
+  --pa-text: var(--text-primary);
+  --pa-text-2: var(--text-secondary);
+  --pa-muted: var(--text-tertiary);
+  --pa-soft: var(--text-quaternary);
 
-  .fac-page .fac-card { background: var(--bg-elevated); border: 1px solid var(--separator-hairline); border-radius: 18px; box-shadow: var(--shadow-sm); }
-  .fac-page .fac-card-h { padding: 1rem 1.25rem; border-bottom: 1px solid var(--separator-hairline); font-weight: 800; display: flex; align-items: center; gap: .6rem; }
-  .fac-page .fac-card-b { padding: 1.25rem; }
+  --pa-border: var(--separator-hairline);
+  --pa-border-strong: var(--separator-non-opaque);
 
-  .fac-page .fac-form-grid { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); align-items: end; }
-  .fac-page label { font-size: .76rem; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: .35rem; }
-  .fac-page input, .fac-page select {
-    width: 100%; min-height: 2.7rem; padding: .55rem .85rem; border-radius: 12px; font: inherit; color: var(--text-primary);
-    border: 1px solid var(--separator-non-opaque, rgba(0,0,0,.12)); background: var(--bg-page, #fff);
-  }
-  .fac-page .fac-hint { font-size: .74rem; color: var(--text-tertiary); margin-top: .3rem; }
+  --pa-success: var(--success, #34c759);
+  --pa-success-bg: var(--success-soft, rgba(52,199,89,.12));
+  --pa-warning: var(--warning, #ff9500);
+  --pa-warning-bg: var(--warning-soft, rgba(255,149,0,.14));
+  --pa-danger: var(--danger, #ff3b30);
+  --pa-danger-bg: var(--danger-soft, rgba(255,59,48,.12));
 
-  .fac-page .fac-btn { display: inline-flex; align-items: center; gap: .5rem; padding: .6rem 1rem; border-radius: 980px; font-size: .85rem; font-weight: 700; border: 1px solid var(--separator-non-opaque, rgba(0,0,0,.12)); background: var(--bg-elevated); color: var(--text-primary); cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
-  .fac-page .fac-btn:hover { background: var(--bg-hover, rgba(0,0,0,.04)); }
-  .fac-page .fac-btn-light { background: transparent; }
-  .fac-page .fac-btn-brand { background: var(--brand, #0071e3); border-color: var(--brand, #0071e3); color: #fff; }
-  .fac-page .fac-btn-brand:hover { background: var(--brand-hover, #0077ed); color: #fff; }
-  .fac-page .fac-btn-danger { color: #ff3b30; border-color: rgba(255,59,48,.3); }
-  .fac-page .fac-btn-danger:hover { background: rgba(255,59,48,.1); }
-  .fac-page .fac-btn-sm { padding: .42rem .7rem; font-size: .78rem; }
+  --pa-radius-sm: var(--radius-sm);
+  --pa-radius-md: var(--radius-md);
+  --pa-radius-lg: var(--radius-lg);
+  --pa-radius-xl: var(--radius-xl);
+  --pa-radius-pill: var(--radius-pill);
 
-  .fac-page .fac-search { position: relative; max-width: 22rem; }
-  .fac-page .fac-search i { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%); color: var(--text-quaternary); }
-  .fac-page .fac-search input { padding-left: 2.4rem; border-radius: 980px; }
+  --pa-shadow-sm: var(--shadow-sm);
+  --pa-shadow-md: var(--shadow-md);
 
-  .fac-page .fac-row { display: grid; grid-template-columns: 2.6rem 1.4fr 1fr auto; align-items: center; gap: 1rem; padding: .9rem 1.25rem; border-top: 1px solid var(--separator-hairline); }
-  .fac-page .fac-row:first-child { border-top: 0; }
-  .fac-page .fac-av { width: 2.6rem; height: 2.6rem; display: grid; place-items: center; border-radius: 999px; background: var(--brand-soft, rgba(0,113,227,.1)); color: var(--brand, #0071e3); font-weight: 800; }
-  .fac-page .fac-forn { font-weight: 800; }
-  .fac-page .fac-user { color: var(--text-tertiary); font-size: .8rem; margin-top: .1rem; }
-  .fac-page .fac-col-mid { font-size: .8rem; color: var(--text-tertiary); }
-  .fac-page .fac-badge { display: inline-flex; align-items: center; gap: .4rem; padding: .25rem .6rem; border-radius: 980px; font-size: .72rem; font-weight: 800; }
-  .fac-page .fac-badge.on { color: #34c759; background: rgba(52,199,89,.14); }
-  .fac-page .fac-badge.off { color: #ff9500; background: rgba(255,149,0,.14); }
-  .fac-page .fac-actions { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
-  .fac-page details.fac-reset { position: relative; }
-  .fac-page details.fac-reset > summary { list-style: none; cursor: pointer; }
-  .fac-page details.fac-reset > summary::-webkit-details-marker { display: none; }
-  .fac-page .fac-pop { position: absolute; right: 0; top: 2.4rem; z-index: 5; width: 16rem; padding: .9rem; border-radius: 14px; background: var(--bg-elevated); border: 1px solid var(--separator-hairline); box-shadow: var(--shadow-md); }
-  .fac-page .fac-empty { text-align: center; padding: 2.5rem 1rem; color: var(--text-tertiary); }
-  .fac-page .fac-empty i { font-size: 2rem; color: var(--text-quaternary); display: block; margin-bottom: .6rem; }
+  --pa-control-h: 2.6rem;
+  --pa-t: var(--transition-fast, 150ms ease);
+  --pa-font: "Segoe UI", var(--font-display);
+}
 
-  @media (max-width: 48rem) {
-    .fac-page .fac-row { grid-template-columns: 2.6rem 1fr; }
-    .fac-page .fac-col-mid { grid-column: 2; }
-    .fac-page .fac-actions { grid-column: 1 / -1; justify-content: flex-start; }
-  }
+.pa-page, .pa-page * { box-sizing: border-box; min-width: 0; }
+.pa-page { width: 100%; color: var(--pa-text); font-family: var(--pa-font); }
+.pa-shell { display: grid; gap: 16px; }
+
+/* ── KPI strip ── */
+.pa-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
+.pa-kpi-card {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  min-height: 76px; padding: 12px 14px; overflow: hidden;
+  border: 1px solid var(--pa-border); border-radius: var(--pa-radius-md); background: var(--pa-surface);
+  transition: transform var(--pa-t), border-color var(--pa-t), box-shadow var(--pa-t);
+}
+.pa-kpi-card::before {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(circle at 92% 4%, color-mix(in srgb, var(--kpi-color, var(--pa-primary)) 16%, transparent) 0, transparent 34%);
+  pointer-events: none;
+}
+.pa-kpi-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--kpi-color, var(--pa-primary)) 28%, var(--pa-border-strong)); box-shadow: var(--pa-shadow-sm); }
+.pa-kpi-icon {
+  position: relative; z-index: 1; width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center;
+  border-radius: 11px; background: color-mix(in srgb, var(--kpi-color, var(--pa-primary)) 12%, transparent);
+  color: var(--kpi-color, var(--pa-primary)); border: 1px solid color-mix(in srgb, var(--kpi-color, var(--pa-primary)) 20%, transparent);
+  font-size: 13px;
+}
+.pa-kpi-info { position: relative; z-index: 1; display: grid; gap: 1px; min-width: 0; }
+.pa-kpi-label { color: var(--pa-muted); font-size: 10.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+.pa-kpi-value { color: var(--pa-text); font-size: 20px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+
+/* ── Painel (cartão corporativo) ── */
+.pa-panel {
+  border: 1px solid var(--pa-border); border-radius: var(--pa-radius-xl); background: var(--pa-surface);
+  overflow: hidden; box-shadow: var(--pa-shadow-sm);
+}
+.pa-panel-head {
+  display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--pa-border);
+  background: color-mix(in srgb, var(--pa-surface) 92%, var(--pa-primary) 2%);
+}
+.pa-panel-icon {
+  width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border-radius: 10px;
+  background: var(--pa-primary-soft); color: var(--pa-primary); font-size: 14px;
+}
+.pa-panel-title { min-width: 0; flex: 1; }
+.pa-panel-title strong { display: block; font-size: 14px; font-weight: 700; color: var(--pa-text); }
+.pa-panel-title span { display: block; margin-top: 1px; font-size: 11.5px; color: var(--pa-muted); }
+.pa-panel-body { padding: 18px; }
+
+.pa-page .pa-field { display: grid; gap: 6px; }
+.pa-page .pa-field label { font-size: 11.5px; font-weight: 700; color: var(--pa-text-2); text-transform: uppercase; letter-spacing: .02em; }
+.pa-page input[type="text"],
+.pa-page input[type="email"],
+.pa-page select {
+  width: 100%; min-height: var(--pa-control-h); padding: .55rem .85rem; border-radius: var(--pa-radius-sm);
+  border: 1px solid var(--pa-border-strong); background: var(--bg-page, #fff); color: var(--pa-text); font: inherit; font-size: 13.5px;
+  outline: none; transition: border-color var(--pa-t), box-shadow var(--pa-t);
+}
+.pa-page input:focus { border-color: var(--pa-primary); box-shadow: 0 0 0 4px var(--pa-primary-soft); }
+.pa-hint { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 11.5px; color: var(--pa-muted); line-height: 1.5; }
+.pa-hint i { color: var(--pa-primary); margin-top: 1px; }
+
+.pa-form-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); align-items: end; }
+
+.pa-btn {
+  min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 8px 15px; border-radius: var(--pa-radius-pill); border: 1px solid var(--pa-border-strong);
+  background: transparent; color: var(--pa-text); font-size: 13px; font-weight: 600; white-space: nowrap;
+  cursor: pointer; text-decoration: none; transition: background var(--pa-t), border-color var(--pa-t), color var(--pa-t);
+}
+.pa-btn:hover { background: var(--pa-hover); }
+.pa-btn:active { transform: scale(.97); }
+.pa-btn-primary { background: var(--pa-primary); border-color: var(--pa-primary); color: #fff; width: 100%; }
+.pa-btn-primary:hover { background: var(--pa-primary-hover); border-color: var(--pa-primary-hover); color: #fff; }
+
+/* ── Toolbar (contagem + busca) ── */
+.pa-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.pa-count { color: var(--pa-muted); font-size: 13px; font-weight: 500; }
+.pa-count strong { color: var(--pa-text); font-weight: 700; }
+.pa-search { position: relative; width: 20rem; max-width: 100%; }
+.pa-search i { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%); color: var(--pa-soft); font-size: 12.5px; }
+.pa-search input { padding-left: 2.3rem !important; border-radius: var(--pa-radius-pill) !important; }
+
+/* ── Tabela densa ── */
+.pa-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.pa-table { width: 100%; min-width: 60rem; border-collapse: collapse; text-align: left; }
+.pa-table thead th {
+  position: sticky; top: 0; z-index: 2; background: var(--pa-surface); color: var(--pa-muted);
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  padding: 11px 16px; border-bottom: 1px solid var(--pa-border); white-space: nowrap;
+}
+.pa-table tbody td { padding: 12px 16px; border-bottom: 1px solid var(--pa-border); vertical-align: middle; color: var(--pa-text); font-size: 13px; }
+.pa-table tbody tr:hover td { background: var(--pa-hover); }
+.pa-table tbody tr:last-child td { border-bottom: none; }
+
+.pa-row-identity { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.pa-row-av {
+  width: 36px; height: 36px; flex: 0 0 36px; display: grid; place-items: center; border-radius: 11px;
+  background: var(--pa-primary-soft); color: var(--pa-primary); font-size: 13px; font-weight: 700; text-transform: uppercase;
+}
+.pa-row-forn { font-weight: 700; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-row-user { color: var(--pa-muted); font-size: 11.5px; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pa-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+.pa-status-pill {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 22px; padding: 3px 9px;
+  border-radius: var(--pa-radius-pill); font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.pa-status-pill::before { content: ""; width: 5px; height: 5px; flex: 0 0 5px; border-radius: 999px; background: currentColor; }
+.pa-status-on { background: var(--pa-success-bg); color: var(--pa-success); }
+.pa-status-off { background: var(--pa-danger-bg); color: var(--pa-danger); }
+.pa-status-neutral { background: var(--pa-fill); color: var(--pa-muted); }
+
+.pa-meta { font-size: 12px; color: var(--pa-muted); }
+.pa-meta strong { color: var(--pa-text-2); font-weight: 600; }
+
+.pa-row-actions { display: flex; gap: 4px; justify-content: flex-end; align-items: center; flex-wrap: nowrap; }
+.pa-icon-btn {
+  width: 30px; height: 30px; flex: 0 0 30px; display: inline-grid; place-items: center;
+  border-radius: var(--pa-radius-sm); border: 1px solid var(--pa-border-strong); background: transparent;
+  color: var(--pa-muted); cursor: pointer; text-decoration: none; font-size: 12px;
+  transition: background var(--pa-t), color var(--pa-t), border-color var(--pa-t);
+}
+.pa-icon-btn:hover { background: var(--pa-primary-soft); color: var(--pa-primary); border-color: color-mix(in srgb, var(--pa-primary) 30%, transparent); }
+.pa-icon-btn.is-on { color: var(--pa-primary); border-color: color-mix(in srgb, var(--pa-primary) 30%, transparent); background: var(--pa-primary-soft); }
+.pa-icon-btn.is-danger:hover { background: var(--pa-danger-bg); color: var(--pa-danger); border-color: color-mix(in srgb, var(--pa-danger) 30%, transparent); }
+
+.pa-reset { position: relative; }
+.pa-reset > summary { list-style: none; cursor: pointer; }
+.pa-reset > summary::-webkit-details-marker { display: none; }
+.pa-reset-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: 15rem; padding: .9rem;
+  border-radius: var(--pa-radius-md); background: var(--pa-surface); border: 1px solid var(--pa-border); box-shadow: var(--pa-shadow-md);
+}
+.pa-reset-pop label { font-size: 11px; font-weight: 700; color: var(--pa-text-2); display: block; margin-bottom: .35rem; }
+
+.pa-empty { text-align: center; padding: 3rem 1rem; color: var(--pa-muted); }
+.pa-empty i { font-size: 2rem; color: var(--pa-soft); display: block; margin-bottom: .75rem; }
+
+/* Select2 alinhado ao formulário */
+.select2-container { width: 100% !important; }
+.select2-container .select2-selection--single {
+  min-height: var(--pa-control-h) !important; border: 1px solid var(--pa-border-strong) !important;
+  border-radius: var(--pa-radius-sm) !important; background: var(--bg-page, #fff) !important;
+  display: flex !important; align-items: center !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered { color: var(--pa-text) !important; font-size: 13.5px; padding-left: .7rem !important; line-height: calc(var(--pa-control-h) - 2px) !important; }
+.select2-container--default .select2-selection--single .select2-selection__arrow { height: calc(var(--pa-control-h) - 2px) !important; }
+.select2-container--default.select2-container--focus .select2-selection--single,
+.select2-container--default.select2-container--open .select2-selection--single { border-color: var(--pa-primary) !important; box-shadow: 0 0 0 4px var(--pa-primary-soft) !important; }
+.select2-dropdown { z-index: 9999 !important; background: var(--pa-surface) !important; color: var(--pa-text) !important; border: 1px solid var(--pa-border-strong) !important; border-radius: var(--pa-radius-md) !important; overflow: hidden !important; box-shadow: var(--pa-shadow-md); }
+.select2-results__option { color: var(--pa-text) !important; }
+.select2-results__option--highlighted { background: var(--pa-primary) !important; color: #fff !important; }
+
+/* ── Responsivo (tabela → cartão) ── */
+@media (max-width: 1080px) { .pa-kpi-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 860px) {
+  .pa-table, .pa-table thead, .pa-table tbody, .pa-table th, .pa-table td, .pa-table tr { display: block; width: 100%; }
+  .pa-table thead { display: none; }
+  .pa-table tbody { display: grid; gap: .75rem; padding: .75rem; }
+  .pa-table tbody tr { border: 1px solid var(--pa-border); border-radius: var(--pa-radius-md); background: var(--pa-surface); overflow: hidden; }
+  .pa-table tbody td { border-bottom: 1px solid var(--pa-border); padding: .65rem .9rem; display: grid; grid-template-columns: minmax(6rem,.4fr) minmax(0,1fr); gap: .6rem; align-items: center; }
+  .pa-table tbody td:last-child { border-bottom: 0; }
+  .pa-table tbody td::before { content: attr(data-label); color: var(--pa-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+  .pa-table tbody td.pa-td-identity::before, .pa-table tbody td.pa-td-actions::before { display: none; }
+  .pa-table tbody td.pa-td-identity { display: block; padding: .9rem; }
+  .pa-row-actions { justify-content: flex-start; flex-wrap: wrap; }
+}
+@media (max-width: 480px) { .pa-kpi-grid { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="fac-page">
+<div class="pa-page">
+  <div class="pa-shell">
 
-  <section class="fac-kpis">
-    <div class="fac-kpi"><div class="fac-kpi-n">{{ kpi_total }}</div><div class="fac-kpi-l">Acessos cadastrados</div></div>
-    <div class="fac-kpi ok"><div class="fac-kpi-n">{{ kpi_ativos }}</div><div class="fac-kpi-l">Ativos</div></div>
-    <div class="fac-kpi off"><div class="fac-kpi-n">{{ kpi_suspensos }}</div><div class="fac-kpi-l">Suspensos</div></div>
-  </section>
-
-  <section class="fac-card">
-    <div class="fac-card-h"><i class="fa-solid fa-user-plus"></i> Novo acesso de fornecedor</div>
-    <div class="fac-card-b">
-      <form method="post" action="{% url 'fornecedor_acessos_list' %}">
-        {% csrf_token %}
-        <div class="fac-form-grid">
-          <div>
-            <label for="fornecedor">Fornecedor *</label>
-            <select id="fornecedor" name="fornecedor" required>
-              <option value="">Selecione…</option>
-              {% for f in fornecedores %}<option value="{{ f.id }}">{{ f.nome }}</option>{% endfor %}
-            </select>
-          </div>
-          <div>
-            <label for="username">Usuário *</label>
-            <input type="text" id="username" name="username" required placeholder="Nome de usuário para login" autocomplete="off">
-          </div>
-          <div>
-            <label for="email">E-mail</label>
-            <input type="email" id="email" name="email" placeholder="email@fornecedor.com">
-          </div>
-          <div>
-            <label for="senha">Senha</label>
-            <input type="text" id="senha" name="senha" minlength="6" placeholder="Mín. 6 (obrigatória p/ novo)" autocomplete="off">
-          </div>
-          <div>
-            <button type="submit" class="fac-btn fac-btn-brand" style="width:100%;"><i class="fa-solid fa-plus"></i> Criar / Vincular</button>
-          </div>
-        </div>
-        <p class="fac-hint"><i class="fa-solid fa-circle-info"></i> Se o usuário já existir, ele é <b>vinculado</b> a este fornecedor (senha opcional, em branco mantém a atual). O acesso fica restrito ao Portal do Fornecedor.</p>
-      </form>
-    </div>
-  </section>
-
-  <section class="fac-card">
-    <div class="fac-card-h" style="justify-content:space-between;">
-      <span><i class="fa-solid fa-id-badge"></i> Acessos cadastrados</span>
-      <form method="get" class="fac-search">
-        <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="text" name="q" value="{{ f_q }}" placeholder="Buscar usuário, e-mail ou fornecedor…">
-      </form>
-    </div>
-
-    {% if perfis %}
-    <div>
-      {% for p in perfis %}
-      <div class="fac-row">
-        <div class="fac-av">{{ p.fornecedor.nome|first|upper }}</div>
-        <div style="min-width:0;">
-          <div class="fac-forn">{{ p.fornecedor.nome }}</div>
-          <div class="fac-user"><i class="fa-solid fa-user"></i> {{ p.usuario.username }}{% if p.usuario.email %} · {{ p.usuario.email }}{% endif %}</div>
-        </div>
-        <div class="fac-col-mid">
-          <div style="display:flex; flex-wrap:wrap; gap:.35rem;">
-            {% if p.ativo %}<span class="fac-badge on"><i class="fa-solid fa-circle-check"></i> Ativo</span>{% else %}<span class="fac-badge off"><i class="fa-solid fa-circle-pause"></i> Suspenso</span>{% endif %}
-            {% if p.notificar_defeito_email %}<span class="fac-badge on"><i class="fa-solid fa-bell"></i> Notifica</span>{% else %}<span class="fac-badge off"><i class="fa-solid fa-bell-slash"></i> Não notifica</span>{% endif %}
-          </div>
-          <div style="margin-top:.35rem;">
-            {{ p.qtd_itens_calc }} equip. · último acesso: {{ p.usuario.last_login|date:"d/m/Y H:i"|default:"nunca" }}
-          </div>
-        </div>
-        <div class="fac-actions">
-          <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;">
-            {% csrf_token %}
-            <input type="hidden" name="acao" value="toggle">
-            <button type="submit" class="fac-btn fac-btn-sm">{% if p.ativo %}<i class="fa-solid fa-ban"></i> Suspender{% else %}<i class="fa-solid fa-play"></i> Reativar{% endif %}</button>
-          </form>
-
-          <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;" title="Notificação de e-mail quando equipamento vira Defeito">
-            {% csrf_token %}
-            <input type="hidden" name="acao" value="toggle_notificacao">
-            <button type="submit" class="fac-btn fac-btn-sm">{% if p.notificar_defeito_email %}<i class="fa-solid fa-bell-slash"></i> Notif.{% else %}<i class="fa-solid fa-bell"></i> Notif.{% endif %}</button>
-          </form>
-
-          <details class="fac-reset">
-            <summary class="fac-btn fac-btn-sm"><i class="fa-solid fa-key"></i> Senha</summary>
-            <div class="fac-pop">
-              <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;">
-                {% csrf_token %}
-                <input type="hidden" name="acao" value="reset">
-                <label for="s{{ p.pk }}">Nova senha</label>
-                <input type="text" id="s{{ p.pk }}" name="senha" minlength="6" required placeholder="Mín. 6 caracteres">
-                <button type="submit" class="fac-btn fac-btn-brand fac-btn-sm" style="width:100%; margin-top:.6rem;">Redefinir</button>
-              </form>
-            </div>
-          </details>
-
-          <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;" onsubmit="return confirm('Revogar o acesso de {{ p.usuario.username|escapejs }}? O login será desativado.');">
-            {% csrf_token %}
-            <input type="hidden" name="acao" value="revogar">
-            <button type="submit" class="fac-btn fac-btn-sm fac-btn-danger"><i class="fa-solid fa-trash"></i> Revogar</button>
-          </form>
+    <section class="pa-kpi-grid" aria-label="Indicadores de acesso">
+      <div class="pa-kpi-card" style="--kpi-color:var(--pa-primary);">
+        <div class="pa-kpi-icon"><i class="fa-solid fa-id-badge" aria-hidden="true"></i></div>
+        <div class="pa-kpi-info">
+          <div class="pa-kpi-label">Acessos cadastrados</div>
+          <div class="pa-kpi-value">{{ kpi_total }}</div>
         </div>
       </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="fac-empty">
-      <i class="fa-solid fa-user-slash"></i>
-      Nenhum acesso de fornecedor cadastrado{% if f_q %} para a busca aplicada{% endif %}.
-    </div>
-    {% endif %}
-  </section>
+      <div class="pa-kpi-card" style="--kpi-color:var(--pa-success);">
+        <div class="pa-kpi-icon"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></div>
+        <div class="pa-kpi-info">
+          <div class="pa-kpi-label">Ativos</div>
+          <div class="pa-kpi-value">{{ kpi_ativos }}</div>
+        </div>
+      </div>
+      <div class="pa-kpi-card" style="--kpi-color:var(--pa-warning);">
+        <div class="pa-kpi-icon"><i class="fa-solid fa-circle-pause" aria-hidden="true"></i></div>
+        <div class="pa-kpi-info">
+          <div class="pa-kpi-label">Suspensos</div>
+          <div class="pa-kpi-value">{{ kpi_suspensos }}</div>
+        </div>
+      </div>
+      <div class="pa-kpi-card" style="--kpi-color:var(--pa-primary);">
+        <div class="pa-kpi-icon"><i class="fa-solid fa-file-shield" aria-hidden="true"></i></div>
+        <div class="pa-kpi-info">
+          <div class="pa-kpi-label">Também c/ Licenças</div>
+          <div class="pa-kpi-value">{{ kpi_com_licencas }}</div>
+        </div>
+      </div>
+    </section>
 
+    <section class="pa-panel">
+      <div class="pa-panel-head">
+        <div class="pa-panel-icon"><i class="fa-solid fa-user-plus" aria-hidden="true"></i></div>
+        <div class="pa-panel-title">
+          <strong>Novo acesso de fornecedor</strong>
+          <span>Cria ou vincula um login ao Portal do Fornecedor</span>
+        </div>
+      </div>
+      <div class="pa-panel-body">
+        <form method="post" action="{% url 'fornecedor_acessos_list' %}">
+          {% csrf_token %}
+          <div class="pa-form-grid">
+            <div class="pa-field">
+              <label for="fornecedor">Fornecedor *</label>
+              <select id="fornecedor" name="fornecedor" required>
+                <option value="">Selecione…</option>
+                {% for f in fornecedores %}<option value="{{ f.id }}">{{ f.nome }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="pa-field">
+              <label for="username">Usuário *</label>
+              <input type="text" id="username" name="username" required placeholder="Nome de usuário para login" autocomplete="off">
+            </div>
+            <div class="pa-field">
+              <label for="email">E-mail</label>
+              <input type="email" id="email" name="email" placeholder="email@fornecedor.com">
+            </div>
+            <div class="pa-field">
+              <label for="senha">Senha</label>
+              <input type="text" id="senha" name="senha" minlength="6" placeholder="Mín. 6 (obrigatória p/ novo)" autocomplete="off">
+            </div>
+            <div class="pa-field">
+              <button type="submit" class="pa-btn pa-btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Criar / Vincular</button>
+            </div>
+          </div>
+          <p class="pa-hint"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Se o usuário já existir, ele é <b>vinculado</b> a este fornecedor (senha opcional, em branco mantém a atual). O acesso fica restrito ao Portal do Fornecedor.</p>
+        </form>
+      </div>
+    </section>
+
+    <section class="pa-panel">
+      <div class="pa-panel-head" style="justify-content:space-between;">
+        <div class="pa-panel-title" style="display:flex; align-items:center; gap:10px;">
+          <div class="pa-panel-icon"><i class="fa-solid fa-list" aria-hidden="true"></i></div>
+          <div>
+            <strong>Acessos cadastrados</strong>
+            <span>{{ kpi_total }} no total</span>
+          </div>
+        </div>
+        <form method="get" class="pa-search">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input type="text" name="q" value="{{ f_q }}" placeholder="Buscar usuário, e-mail ou fornecedor…">
+        </form>
+      </div>
+
+      {% if perfis %}
+      <div class="pa-table-wrap">
+        <table class="pa-table">
+          <thead>
+            <tr>
+              <th scope="col">Fornecedor / Usuário</th>
+              <th scope="col">Status</th>
+              <th scope="col">Portais e permissões</th>
+              <th scope="col">Uso</th>
+              <th scope="col" style="text-align:right">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in perfis %}
+            <tr>
+              <td class="pa-td-identity">
+                <div class="pa-row-identity">
+                  <div class="pa-row-av">{{ p.fornecedor.nome|first|upper }}</div>
+                  <div style="min-width:0;">
+                    <div class="pa-row-forn">{{ p.fornecedor.nome }}</div>
+                    <div class="pa-row-user">{{ p.usuario.username }}{% if p.usuario.email %} · {{ p.usuario.email }}{% endif %}</div>
+                  </div>
+                </div>
+              </td>
+              <td data-label="Status">
+                <div class="pa-badges">
+                  {% if p.ativo %}<span class="pa-status-pill pa-status-on">Ativo</span>{% else %}<span class="pa-status-pill pa-status-off">Suspenso</span>{% endif %}
+                  {% if p.notificar_defeito_email %}<span class="pa-status-pill pa-status-on">Notifica</span>{% else %}<span class="pa-status-pill pa-status-neutral">Não notifica</span>{% endif %}
+                </div>
+              </td>
+              <td data-label="Portais">
+                <div class="pa-badges">
+                  {% if p.perfil_lic_calc %}
+                    <span class="pa-status-pill pa-status-on" title="Também acessa o Portal de Licenças">+ Licenças</span>
+                    {% if p.perfil_lic_calc.pode_ver_colaboradores %}
+                      <span class="pa-status-pill pa-status-on" title="Vê a lista de colaboradores">+ Colaboradores</span>
+                    {% endif %}
+                  {% else %}
+                    <span class="pa-status-pill pa-status-neutral">Só Fornecedor</span>
+                  {% endif %}
+                </div>
+              </td>
+              <td data-label="Uso">
+                <div class="pa-meta"><strong>{{ p.qtd_itens_calc }}</strong> equip.</div>
+                <div class="pa-meta">último: {{ p.usuario.last_login|date:"d/m/Y H:i"|default:"nunca" }}</div>
+              </td>
+              <td class="pa-td-actions" data-label="Ações">
+                <div class="pa-row-actions">
+                  <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="toggle">
+                    <button type="submit" class="pa-icon-btn" title="{% if p.ativo %}Suspender acesso{% else %}Reativar acesso{% endif %}">
+                      <i class="fa-solid {% if p.ativo %}fa-ban{% else %}fa-play{% endif %}" aria-hidden="true"></i>
+                    </button>
+                  </form>
+
+                  <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="toggle_notificacao">
+                    <button type="submit" class="pa-icon-btn {% if p.notificar_defeito_email %}is-on{% endif %}" title="Notificação de e-mail quando equipamento vira Defeito">
+                      <i class="fa-solid {% if p.notificar_defeito_email %}fa-bell{% else %}fa-bell-slash{% endif %}" aria-hidden="true"></i>
+                    </button>
+                  </form>
+
+                  {% if p.perfil_lic_calc %}
+                  <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;" onsubmit="return confirm('Revogar o acesso de {{ p.usuario.username|escapejs }} ao Portal de Licenças?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="revogar_licenca">
+                    <button type="submit" class="pa-icon-btn is-on" title="Revogar Portal de Licenças (mantém o Portal do Fornecedor)">
+                      <i class="fa-solid fa-file-shield" aria-hidden="true"></i>
+                    </button>
+                  </form>
+                  <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="toggle_colaboradores">
+                    <button type="submit" class="pa-icon-btn {% if p.perfil_lic_calc.pode_ver_colaboradores %}is-on{% endif %}" title="{% if p.perfil_lic_calc.pode_ver_colaboradores %}Bloquear{% else %}Liberar{% endif %} visão de colaboradores">
+                      <i class="fa-solid {% if p.perfil_lic_calc.pode_ver_colaboradores %}fa-users-slash{% else %}fa-users{% endif %}" aria-hidden="true"></i>
+                    </button>
+                  </form>
+                  {% else %}
+                  <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="conceder_licenca">
+                    <button type="submit" class="pa-icon-btn" title="Conceder também o Portal de Licenças (mesmo login)">
+                      <i class="fa-solid fa-file-shield" aria-hidden="true"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+
+                  <details class="pa-reset">
+                    <summary class="pa-icon-btn" title="Redefinir senha"><i class="fa-solid fa-key" aria-hidden="true"></i></summary>
+                    <div class="pa-reset-pop">
+                      <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;">
+                        {% csrf_token %}
+                        <input type="hidden" name="acao" value="reset">
+                        <label for="s{{ p.pk }}">Nova senha</label>
+                        <input type="text" id="s{{ p.pk }}" name="senha" minlength="6" required placeholder="Mín. 6 caracteres">
+                        <button type="submit" class="pa-btn pa-btn-primary" style="margin-top:.6rem; min-height:32px; font-size:12.5px;">Redefinir</button>
+                      </form>
+                    </div>
+                  </details>
+
+                  <form method="post" action="{% url 'fornecedor_acesso_acao' p.pk %}" style="margin:0;" onsubmit="return confirm('Revogar o acesso de {{ p.usuario.username|escapejs }}? O login será desativado.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="revogar">
+                    <button type="submit" class="pa-icon-btn is-danger" title="Revogar acesso"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="pa-empty">
+        <i class="fa-solid fa-user-slash" aria-hidden="true"></i>
+        Nenhum acesso de fornecedor cadastrado{% if f_q %} para a busca aplicada{% endif %}.
+      </div>
+      {% endif %}
+    </section>
+
+  </div>
 </div>
 {% endblock %}
 
@@ -208,7 +458,7 @@
     $('#fornecedor').select2({
       placeholder: 'Selecione o fornecedor…',
       width: '100%',
-      dropdownParent: $('.fac-page')
+      dropdownParent: $('.pa-page')
     });
   });
 </script>

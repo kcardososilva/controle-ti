@@ -21,6 +21,7 @@
 {% block extra_css %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 {% include 'front/quiosque/_kq_design_system.html' %}
+{% include 'front/quiosque/_kq_mapa_css.html' %}
 <style>
 :where(.kq-mapa) { --kq-h:calc(100dvh - 232px); }
 .kq-mapa { display:grid; grid-template-columns:300px 1fr; gap:14px; align-items:stretch; }
@@ -28,6 +29,9 @@
 
 .kq-side { display:flex; flex-direction:column; gap:10px; min-height:0; max-height:var(--kq-h); }
 .kq-metrics { grid-template-columns:repeat(3,1fr); flex:0 0 auto; }
+/* Células da faixa de métricas viram FILTRO de status (padrão .kq-metric.is-active
+   do design system) — clicar em "Online" deixa no mapa e na lista só os online. */
+.kq-metric { cursor:pointer; user-select:none; }
 
 .kq-list-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:2px 2px; flex:0 0 auto; }
 .kq-list-head .t { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--kq-soft); }
@@ -43,8 +47,12 @@
 .kq-item.hidden { display:none; }
 .kq-dot { width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
 .kq-item-main { min-width:0; flex:1; }
-.kq-item .nm { font-weight:500; font-size:13px; color:var(--kq-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.kq-item .sb { font-size:11.5px; color:var(--kq-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+/* `display:block` é necessário: como <span> inline, nome e subtítulo ficam na
+   mesma linha e o selo (à direita) passa por cima do nome. */
+.kq-item .nm { display:block; font-weight:500; font-size:13px; color:var(--kq-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kq-item .sb { display:block; font-size:11.5px; color:var(--kq-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+.kq-item-selo { flex:0 0 auto; display:inline-flex; }
+.kq-item .kq-selo { font-size:9.5px; padding:1px 6px; box-shadow:none; }
 .kq-open { width:26px; height:26px; border:1px solid transparent; background:transparent; }
 .kq-list-empty { padding:16px; text-align:center; color:var(--kq-soft); font-size:12.5px; }
 
@@ -57,10 +65,14 @@
 
   <div class="kq-side">
     <div class="kq-metrics">
-      <div class="kq-metric"><div class="v">{{ total }}</div><div class="l"><span class="mdot" style="background:var(--kq-accent)"></span>No mapa</div></div>
-      <div class="kq-metric"><div class="v">{{ online }}</div><div class="l"><span class="mdot" style="background:var(--success)"></span>Online</div></div>
-      <div class="kq-metric"><div class="v">{{ sem_local }}</div><div class="l"><span class="mdot" style="background:var(--warning)"></span>Sem GPS</div></div>
+      <div class="kq-metric is-active" data-filtro="todos" role="button" tabindex="0" title="Mostrar todos os dispositivos"><div class="v">{{ total }}</div><div class="l"><span class="mdot" style="background:var(--kq-accent)"></span>No mapa</div></div>
+      <div class="kq-metric" data-filtro="online" role="button" tabindex="0" title="Mostrar só os que estão online"><div class="v">{{ online }}</div><div class="l"><span class="mdot" style="background:var(--success)"></span>Online</div></div>
+      <div class="kq-metric" data-filtro="offline" role="button" tabindex="0" title="Mostrar só os que estão offline"><div class="v">{{ offline }}</div><div class="l"><span class="mdot" style="background:var(--kq-soft)"></span>Offline</div></div>
     </div>
+
+    {% if sem_local %}
+    <div class="kq-note"><i class="fa-solid fa-location-slash"></i><span>{{ sem_local }} aparelho(s) ativo(s) ainda não enviaram localização e por isso não aparecem no mapa.</span></div>
+    {% endif %}
 
     {% if pontos %}
     <label class="kq-search">
@@ -76,12 +88,13 @@
 
     <div class="kq-list" id="kqList">
       {% for p in pontos %}
-      <a class="kq-item" href="{{ p.url }}" data-pk="{{ p.pk }}" data-name="{{ p.nome|lower }} {{ p.modelo|lower }}">
+      <a class="kq-item" href="{{ p.url }}" data-pk="{{ p.pk }}" data-online="{% if p.online %}1{% else %}0{% endif %}" data-name="{{ p.nome|lower }} {{ p.modelo|lower }} {{ p.sinal.rotulo|lower }}">
         <span class="kq-dot" style="background:{% if p.online %}var(--success){% else %}var(--kq-soft){% endif %}"></span>
         <span class="kq-item-main">
           <span class="nm">{{ p.nome }}</span>
           <span class="sb">{{ p.modelo }}{% if p.bateria is not None %} · {{ p.bateria }}%{% endif %} · {{ p.checkin }}</span>
         </span>
+        <span class="kq-item-selo" data-selo="{{ p.pk }}"></span>
         <span class="kq-open" title="Abrir dispositivo"><i class="fa-solid fa-chevron-right"></i></span>
       </a>
       {% empty %}
@@ -99,42 +112,163 @@
 {% block extra_js %}
 {{ pontos|json_script:"__kqpontos" }}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% include 'front/quiosque/_kq_mapa_js.html' %}
 <script>
 (function(){
   var pontos = JSON.parse(document.getElementById('__kqpontos').textContent) || [];
+  var COM_SINAL = {{ com_sinal|default:0 }};
 
-  var ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'&copy; OpenStreetMap' });
-  var sat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:19, maxNativeZoom:17, attribution:'Tiles &copy; Esri' });
-  var map = L.map('kqMap', { layers:[sat] });
-  L.control.layers({ 'Satélite':sat, 'Mapa':ruas }, null, { position:'topright' }).addTo(map);
+  var map = L.map('kqMap');
+  KQMapa.montarCamadas(map, { padrao:'satelite' });
+  // Ver o terreno (pivos, divisas de talhao) por baixo da rota, e nao aproximar
+  // alem do que a imagem de satelite realmente tem.
+  KQMapa.modoTerreno(map);
+  KQMapa.avisoNitidez(map);
   L.control.scale({ imperial:false }).addTo(map);
 
-  var markers = {};
-  var bounds = [];
+  // Camadas separadas para o filtro poder ligar/desligar cada família de
+  // desenho sem redesenhar o mapa inteiro.
+  var pontosLayer = L.layerGroup().addTo(map);
+  var selosLayer  = L.layerGroup().addTo(map);
+  var precisaoLayer = L.layerGroup();
+
+  var markers = {}, bounds = [];
+  var selosVisiveis = [];   // marcadores de selo atualmente desenhados
+
+  // Os selos dos aparelhos são redesenhados (e não só escondidos) porque o
+  // filtro de colisão depende do ZOOM e de quais aparelhos estão visíveis:
+  // num pátio com 30 tablets parados no mesmo ponto, sem isso o mapa vira um
+  // borrão de rótulos sobrepostos. O marcador embaixo continua clicável, e dar
+  // zoom separa os pontos e revela os selos omitidos.
+  function desenharSelos(){
+    selosLayer.clearLayers();
+    selosVisiveis = [];
+    if (!mostrarSelos || !map._loaded) return;
+    var candidatos = pontos.filter(function(p){
+      return p.lat != null && p.lon != null && visiveisPorPk[p.pk];
+    });
+    KQMapa.semColisao(map, candidatos).forEach(function(p){
+      var selo = L.marker([p.lat, p.lon], { icon:KQMapa.iconeSelo(p.sinal, p.online), interactive:false, zIndexOffset:500 });
+      selo.addTo(selosLayer);
+      selo.on('add', function(){ KQMapa.centralizarSelo(selo); });
+      selosVisiveis.push(selo);
+    });
+    selosVisiveis.forEach(KQMapa.centralizarSelo);
+  }
+
+  var mostrarSelos = true;
+  var visiveisPorPk = {};
+
   pontos.forEach(function(p){
     if (p.lat == null || p.lon == null) return;
-    var cor = p.online ? '#34c759' : '#8e8e93';
+    var cor = p.online ? KQMapa.COR_ON : '#8e8e93';
+
+    var popup =
+      '<span class="kq-pop-t">' + KQMapa.escapar(p.nome) + '</span>' +
+      '<span class="kq-pop-l">' + KQMapa.escapar(p.modelo) + '</span>' +
+      '<span class="kq-pop-l"><span class="kq-pop-tag ' + (p.online ? 'on' : 'off') + '">' +
+        (p.online ? 'Online' : 'Offline') + '</span> ' +
+        KQMapa.escapar(KQMapa.textoSinal(p.sinal, p.online)) +
+        (p.bateria != null ? ' &middot; ' + p.bateria + '%' : '') + '</span>' +
+      '<span class="kq-pop-l">Último check-in: ' + KQMapa.escapar(p.checkin) + '</span>' +
+      '<a class="kq-pop-a" href="' + p.url + '">Abrir dispositivo &rsaquo;</a>';
+
     var m = L.circleMarker([p.lat, p.lon], { radius:9, color:'#fff', weight:2, fillColor:cor, fillOpacity:1 })
-      .addTo(map)
-      .bindPopup('<b>'+ p.nome +'</b><br>'+ p.modelo +'<br>'+
-                 (p.online ? 'Online' : 'Offline') +
-                 (p.bateria != null ? ' &middot; ' + p.bateria + '%' : '') +
-                 '<br><small>'+ p.checkin +'</small>' +
-                 '<br><a href="'+ p.url +'">Abrir dispositivo &rsaquo;</a>');
+      .addTo(pontosLayer).bindPopup(popup);
     markers[p.pk] = m;
+
+    if (p.precisao) {
+      L.circle([p.lat, p.lon], { radius:p.precisao, color:cor, weight:1, fillColor:cor, fillOpacity:.07 }).addTo(precisaoLayer);
+    }
     bounds.push([p.lat, p.lon]);
+
+    // Mesmo selo, em miniatura, na linha da lista lateral.
+    var alvo = document.querySelector('[data-selo="' + p.pk + '"]');
+    if (alvo) alvo.innerHTML = KQMapa.seloHtml(p.sinal, p.online);
   });
 
-  function fitAll(){
-    if (bounds.length > 1) { map.fitBounds(L.latLngBounds(bounds).pad(0.2)); }
+  KQMapa.painelFiltros(map, {
+    chave: 'kq_mapa_frota_filtros',
+    titulo: 'Exibir no mapa',
+    itens: [
+      { id:'selos',    rotulo:'Conexão e nível de sinal', padrao:true },
+      { id:'precisao', rotulo:'Círculo de precisão do GPS', padrao:false }
+    ],
+    legenda:
+      '<div class="kq-mapctl-t" style="margin-bottom:5px;">Legenda</div>' +
+      '<div class="kq-mapctl-leg"><span class="dot" style="background:' + KQMapa.COR_ON + '"></span> Online</div>' +
+      '<div class="kq-mapctl-leg"><span class="dot" style="background:#8e8e93"></span> Offline</div>' +
+      (COM_SINAL ? '' :
+        '<div class="kq-mapctl-hint" style="margin-top:6px;"><i class="fa-solid fa-circle-info"></i> ' +
+        'Nenhum aparelho reporta força de sinal ainda — ligue a telemetria na configuração do dispositivo.</div>'),
+    aoMudar: function(estado){
+      mostrarSelos = estado.selos;
+      if (estado.precisao) precisaoLayer.addTo(map); else map.removeLayer(precisaoLayer);
+      desenharSelos();
+    }
+  });
+
+  var itens = Array.prototype.slice.call(document.querySelectorAll('#kqList .kq-item'));
+  var semMatch = document.getElementById('kqNoMatch');
+  var filtroTexto = document.getElementById('kqFilter');
+  var filtroStatus = 'todos';
+
+  function visivel(el){
+    var q = (filtroTexto && filtroTexto.value.trim().toLowerCase()) || '';
+    var casaTexto = !q || (el.getAttribute('data-name') || '').indexOf(q) !== -1;
+    var online = el.getAttribute('data-online') === '1';
+    var casaStatus = filtroStatus === 'todos' || (filtroStatus === 'online') === online;
+    return casaTexto && casaStatus;
+  }
+
+  // Lista e mapa compartilham o MESMO critério de visibilidade: filtrar a lista
+  // sem filtrar o mapa (comportamento anterior) deixava no mapa pontos que a
+  // lista dizia não existir.
+  function aplicarFiltros(){
+    var visiveis = 0, caixa = [];
+    itens.forEach(function(el){
+      var ok = visivel(el);
+      el.classList.toggle('hidden', !ok);
+      var pk = el.getAttribute('data-pk');
+      var m = markers[pk];
+      visiveisPorPk[pk] = ok;
+      if (m) { if (ok) { pontosLayer.addLayer(m); } else { pontosLayer.removeLayer(m); } }
+      if (ok) { visiveis++; if (m) caixa.push(m.getLatLng()); }
+    });
+    if (semMatch) semMatch.hidden = visiveis > 0;
+    desenharSelos();
+    return caixa;
+  }
+
+  function enquadrar(caixa){
+    if (caixa && caixa.length > 1) { map.fitBounds(L.latLngBounds(caixa).pad(0.2)); }
+    else if (caixa && caixa.length === 1) { map.setView(caixa[0], 15); }
+    else if (bounds.length > 1) { map.fitBounds(L.latLngBounds(bounds).pad(0.2)); }
     else if (bounds.length === 1) { map.setView(bounds[0], 15); }
     else { map.setView([-16.6869, -49.2643], 4); }
   }
-  fitAll();
-  setTimeout(function(){ map.invalidateSize(); }, 120);
+
+  // Estado inicial: todos visíveis; a câmera precisa existir antes do primeiro
+  // cálculo de colisão (que é em pixels de tela).
+  pontos.forEach(function(p){ visiveisPorPk[p.pk] = true; });
+  enquadrar(null);
+  desenharSelos();
+  map.on('zoomend', desenharSelos);
+  setTimeout(function(){ map.invalidateSize(); desenharSelos(); }, 120);
+
+  document.querySelectorAll('.kq-metric[data-filtro]').forEach(function(cel){
+    function acionar(){
+      filtroStatus = cel.getAttribute('data-filtro');
+      document.querySelectorAll('.kq-metric[data-filtro]').forEach(function(o){ o.classList.toggle('is-active', o === cel); });
+      enquadrar(aplicarFiltros());
+    }
+    cel.addEventListener('click', acionar);
+    cel.addEventListener('keydown', function(ev){
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); acionar(); }
+    });
+  });
 
   // Clicar na lista foca o marcador e destaca o item (chevron abre o detalhe).
-  var itens = document.querySelectorAll('#kqList .kq-item');
   itens.forEach(function(el){
     el.addEventListener('click', function(ev){
       if (ev.target.closest('.kq-open')) return;   // chevron → segue o href (abre detalhe)
@@ -149,27 +283,14 @@
     });
   });
 
-  // "Ver todos" → reenquadra o mapa em todos os pontos.
   var fitBtn = document.getElementById('kqFitAll');
   if (fitBtn) fitBtn.addEventListener('click', function(){
     itens.forEach(function(o){ o.classList.remove('sel'); });
     map.closePopup();
-    fitAll();
+    enquadrar(aplicarFiltros());
   });
 
-  // Filtro client-side da lista lateral.
-  var filtro = document.getElementById('kqFilter');
-  var semMatch = document.getElementById('kqNoMatch');
-  if (filtro) filtro.addEventListener('input', function(){
-    var q = filtro.value.trim().toLowerCase();
-    var visiveis = 0;
-    itens.forEach(function(el){
-      var hit = !q || (el.getAttribute('data-name') || '').indexOf(q) !== -1;
-      el.classList.toggle('hidden', !hit);
-      if (hit) visiveis++;
-    });
-    if (semMatch) semMatch.hidden = visiveis > 0;
-  });
+  if (filtroTexto) filtroTexto.addEventListener('input', function(){ aplicarFiltros(); });
 })();
 </script>
 {% endblock %}

@@ -1,0 +1,103 @@
+{% comment %}
+Visualizador de foto em tela cheia. Incluir UMA vez por página, no fim do
+bloco de conteúdo. Ativa em qualquer <img data-lightbox> da página, inclusive
+nas adicionadas depois (pré-visualização do upload) — a escuta é delegada no
+documento, não presa aos elementos existentes na carga.
+
+Navegação: clique nas setas, ← → no teclado, Esc para fechar.
+{% endcomment %}
+
+<div class="pv-lightbox" id="pvLightbox" hidden role="dialog" aria-modal="true" aria-label="Visualizar evidência">
+  <div class="pv-lightbox-top">
+    <span class="pv-lightbox-legenda">
+      <b id="pvLbTitulo"></b>
+      <small id="pvLbSub"></small>
+    </span>
+    <button type="button" class="pv-lightbox-btn" id="pvLbFechar" aria-label="Fechar (Esc)">
+      <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+    </button>
+  </div>
+  <button type="button" class="pv-lightbox-btn pv-lightbox-nav ant" id="pvLbAnt" aria-label="Foto anterior">
+    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+  </button>
+  <img id="pvLbImg" src="" alt="">
+  <button type="button" class="pv-lightbox-btn pv-lightbox-nav prox" id="pvLbProx" aria-label="Próxima foto">
+    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+  </button>
+  <span class="pv-lightbox-conta" id="pvLbConta"></span>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var caixa   = document.getElementById('pvLightbox');
+  var img     = document.getElementById('pvLbImg');
+  var titulo  = document.getElementById('pvLbTitulo');
+  var sub     = document.getElementById('pvLbSub');
+  var conta   = document.getElementById('pvLbConta');
+  var btnAnt  = document.getElementById('pvLbAnt');
+  var btnProx = document.getElementById('pvLbProx');
+  if (!caixa) return;
+
+  var lista = [], atual = 0, focoAnterior = null;
+
+  function coletar() {
+    // Recolhe na ABERTURA, não na carga da página: a pré-visualização do
+    // upload cria imagens depois, e elas precisam entrar na navegação.
+    lista = Array.prototype.slice.call(document.querySelectorAll('img[data-lightbox]'));
+  }
+
+  function mostrar(indice) {
+    if (!lista.length) return;
+    atual = (indice + lista.length) % lista.length;   // circular
+    var alvo = lista[atual];
+    img.src = alvo.currentSrc || alvo.src;
+    img.alt = alvo.alt || '';
+    titulo.textContent = alvo.getAttribute('data-legenda') || '';
+    sub.textContent = alvo.getAttribute('data-sub') || '';
+    conta.textContent = (atual + 1) + ' de ' + lista.length;
+    var varias = lista.length > 1;
+    btnAnt.hidden = !varias;
+    btnProx.hidden = !varias;
+    conta.hidden = !varias;
+  }
+
+  function abrir(alvo) {
+    coletar();
+    var indice = lista.indexOf(alvo);
+    if (indice < 0) return;
+    focoAnterior = document.activeElement;
+    caixa.hidden = false;
+    document.body.style.overflow = 'hidden';
+    mostrar(indice);
+    btnFechar.focus();
+  }
+
+  function fechar() {
+    caixa.hidden = true;
+    img.src = '';
+    document.body.style.overflow = '';
+    if (focoAnterior && focoAnterior.focus) focoAnterior.focus();
+  }
+
+  var btnFechar = document.getElementById('pvLbFechar');
+
+  // Delegação: pega inclusive as imagens criadas depois da carga.
+  document.addEventListener('click', function (ev) {
+    var alvo = ev.target.closest && ev.target.closest('img[data-lightbox]');
+    if (alvo) { ev.preventDefault(); abrir(alvo); }
+  });
+
+  btnFechar.addEventListener('click', fechar);
+  btnAnt.addEventListener('click', function () { mostrar(atual - 1); });
+  btnProx.addEventListener('click', function () { mostrar(atual + 1); });
+  caixa.addEventListener('click', function (ev) { if (ev.target === caixa) fechar(); });
+
+  document.addEventListener('keydown', function (ev) {
+    if (caixa.hidden) return;
+    if (ev.key === 'Escape') { ev.preventDefault(); fechar(); }
+    else if (ev.key === 'ArrowLeft') { ev.preventDefault(); mostrar(atual - 1); }
+    else if (ev.key === 'ArrowRight') { ev.preventDefault(); mostrar(atual + 1); }
+  });
+})();
+</script>

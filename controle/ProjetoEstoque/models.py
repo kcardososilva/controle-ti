@@ -249,6 +249,14 @@ class PerfilParceiroLicenca(AuditModel):
         default=True,
         help_text="Desmarque para suspender o acesso sem excluir o usuário.",
     )
+    pode_ver_colaboradores = models.BooleanField(
+        default=False,
+        verbose_name="Pode ver colaboradores",
+        help_text="Quando ativo, este parceiro também enxerga a lista de colaboradores "
+                   "(nome, e-mail, função, centro de custo e localidade — sem dados "
+                   "sensíveis de RH) no Portal de Licenças. Desligado por padrão: cada "
+                   "parceiro só ganha essa visão se o TI liberar explicitamente.",
+    )
 
     class Meta:
         verbose_name = "Perfil de Parceiro de Licenças"
@@ -888,6 +896,12 @@ class Usuario(AuditModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True
+    )
+
+    area_administrativa = models.BooleanField(
+        default=False,
+        verbose_name="Área administrativa",
+        help_text="Colaboradores de área administrativa costumam receber licenças de software no cadastro.",
     )
 
     # ── Hierarquia organizacional (preenchida via importação da planilha RH) ──
@@ -2435,10 +2449,18 @@ class Preventiva(AuditModel):
         ])
 
     @transaction.atomic
-    def registrar_execucao(self, respostas_dict: dict, usuario=None, observacao=None, foto_antes=None, foto_depois=None, foto_antes_2=None, foto_depois_2=None, data_execucao=None, hora_inicio=None, hora_fim=None):
+    def registrar_execucao(self, respostas_dict: dict, usuario=None, observacao=None, foto_antes=None, foto_depois=None, foto_antes_2=None, foto_depois_2=None, data_execucao=None, hora_inicio=None, hora_fim=None, fotos=None):
         """
         Registra a execução sem sobrescrever históricos anteriores.
         respostas_dict: { pergunta_id: valor_string }
+
+        `fotos`: [(arquivo, momento)] da galeria nova (ver
+        services/preventiva_fotos_service.py) — quantas forem necessárias, cada
+        uma marcada como "antes", "depois" ou "ambos".
+
+        Os parâmetros `foto_antes`/`foto_depois`/`foto_antes_2`/`foto_depois_2`
+        seguem aceitos para não quebrar chamadas existentes: quando vierem, são
+        convertidos em itens da galeria. Preferir sempre `fotos`.
         """
         hoje = data_execucao or timezone.now().date()
 
@@ -2451,10 +2473,6 @@ class Preventiva(AuditModel):
             preventiva=self,
             data_execucao=hoje,
             observacao=(observacao or ""),
-            foto_antes=foto_antes,
-            foto_depois=foto_depois,
-            foto_antes_2=foto_antes_2,
-            foto_depois_2=foto_depois_2,
             tecnico=(self.tecnico or usuario),
             data_agendada=data_agendada_snap,
             no_prazo=no_prazo_snap,
@@ -2482,22 +2500,32 @@ class Preventiva(AuditModel):
         if bulk:
             PreventivaResposta.objects.bulk_create(bulk)
 
-        # 3) atualiza os campos de "última execução" para agenda/relatórios
+        # 3) evidências → galeria. Os parâmetros legados de foto única viram
+        # itens da galeria, para que exista UMA fonte de verdade de evidência.
+        from services import preventiva_fotos_service as _fotos
+
+        lista_fotos = list(fotos or [])
+        if not lista_fotos:
+            for arquivo, momento in (
+                (foto_antes, PreventivaFoto.Momento.ANTES),
+                (foto_antes_2, PreventivaFoto.Momento.ANTES),
+                (foto_depois, PreventivaFoto.Momento.DEPOIS),
+                (foto_depois_2, PreventivaFoto.Momento.DEPOIS),
+            ):
+                if arquivo:
+                    lista_fotos.append((arquivo, momento))
+        if lista_fotos:
+            # Espelha os campos legados da execução E da preventiva.
+            _fotos.adicionar(execucao, lista_fotos, usuario=usuario)
+
+        # 4) atualiza os campos de "última execução" para agenda/relatórios
         self.data_ultima = hoje
         self.data_agendamento = None  # agendamento consumido pela execução
         if observacao:
             self.observacao = observacao
-        if foto_antes:
-            self.foto_antes = foto_antes
-        if foto_depois:
-            self.foto_depois = foto_depois
-        if foto_antes_2:
-            self.foto_antes_2 = foto_antes_2
-        if foto_depois_2:
-            self.foto_depois_2 = foto_depois_2
 
         self.recomputar_prazo(hoje)
-        self.save(update_fields=["data_ultima", "data_agendamento", "data_proxima", "dentro_do_prazo", "observacao", "foto_antes", "foto_depois", "foto_antes_2", "foto_depois_2", "updated_at"])
+        self.save(update_fields=["data_ultima", "data_agendamento", "data_proxima", "dentro_do_prazo", "observacao", "updated_at"])
 
 
 def sincronizar_preventivas_com_status(item) -> tuple[int, int]:
@@ -2637,6 +2665,82 @@ class PreventivaExecucao(AuditModel):
         if self.hora_inicio and self.hora_fim:
             self.duracao_minutos = self.calcular_duracao_minutos(self.hora_inicio, self.hora_fim)
         super().save(*args, **kwargs)
+
+
+class PreventivaFoto(AuditModel):
+    """
+    Galeria de evidências de uma preventiva — quantas fotos forem necessárias,
+    cada uma marcada como "antes", "depois" ou valendo para os DOIS momentos.
+
+    Substitui os 4 campos fixos (`foto_antes`, `foto_depois`, `foto_antes_2`,
+    `foto_depois_2`) que existiam em `Preventiva` e em `PreventivaExecucao`.
+    Aqueles campos continuam no banco de propósito (ver migration
+    0166): são a rede de segurança do histórico já registrado, e a migração de
+    dados apenas COPIA o caminho do arquivo para cá, sem mover nem reprocessar
+    nenhuma imagem — os arquivos em `MEDIA_ROOT` ficam exatamente onde estão.
+
+    `momento = AMBOS` é o caso que motivou o modelo: numa preventiva de veículo
+    uma mesma foto costuma valer como evidência de antes e de depois, e obrigar
+    o técnico a enviar o mesmo arquivo duas vezes só duplicava armazenamento.
+    """
+
+    class Momento(models.TextChoices):
+        ANTES  = "antes",  "Antes"
+        DEPOIS = "depois", "Depois"
+        AMBOS  = "ambos",  "Antes e depois"
+
+    # A preventiva é SEMPRE preenchida; a execução é opcional porque as fotos
+    # legadas do snapshot de `Preventiva` são anteriores ao próprio model
+    # PreventivaExecucao e não têm execução a que se vincular. Sem isso, essas
+    # evidências antigas se perderiam na migração.
+    preventiva = models.ForeignKey(
+        Preventiva, on_delete=models.CASCADE, related_name="fotos",
+        verbose_name="Preventiva",
+    )
+    execucao = models.ForeignKey(
+        PreventivaExecucao, on_delete=models.CASCADE, related_name="fotos",
+        null=True, blank=True, verbose_name="Execução",
+        help_text="Vazio nas evidências anteriores ao histórico de execuções.",
+    )
+
+    imagem = models.ImageField(upload_to="preventivas/%Y/%m/", verbose_name="Imagem")
+    momento = models.CharField(
+        max_length=10, choices=Momento.choices, default=Momento.ANTES,
+        db_index=True, verbose_name="Momento",
+    )
+    legenda = models.CharField(
+        max_length=200, blank=True, default="", verbose_name="Legenda",
+        help_text="Descrição opcional do que a foto mostra.",
+    )
+    ordem = models.PositiveIntegerField(default=0, verbose_name="Ordem")
+
+    # Preenchido só nas fotos criadas pela migração de dados, com o nome do
+    # campo de origem (ex.: "execucao.foto_antes_2"). Serve para auditar o que
+    # veio do modelo antigo e para a migração ser reversível sem adivinhação.
+    origem_legado = models.CharField(
+        max_length=40, blank=True, default="", db_index=True,
+        verbose_name="Origem (campo legado)",
+    )
+
+    class Meta:
+        ordering = ["ordem", "id"]
+        verbose_name = "Foto de Preventiva"
+        verbose_name_plural = "Fotos de Preventiva"
+        indexes = [
+            models.Index(fields=["preventiva", "momento"]),
+            models.Index(fields=["execucao", "ordem"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_momento_display()} — {self.preventiva.equipamento.nome}"
+
+    @property
+    def vale_para_antes(self) -> bool:
+        return self.momento in (self.Momento.ANTES, self.Momento.AMBOS)
+
+    @property
+    def vale_para_depois(self) -> bool:
+        return self.momento in (self.Momento.DEPOIS, self.Momento.AMBOS)
 
 
 # ACRESCENTA o vínculo da resposta à execução
@@ -3357,6 +3461,13 @@ class KioskDevice(models.Model):
     # ── Telemetria de sinal Wi-Fi (opt-in por aparelho, v1.6.0+) ──
     telemetria_wifi = models.BooleanField(default=False, verbose_name='Telemetria de sinal Wi-Fi')
 
+    # ── Telemetria de rede móvel (opt-in por aparelho, v1.10.0+) — geração
+    # (3G/4G/5G), operadora e força do sinal do chip. Separada de
+    # telemetria_wifi porque no Android exige READ_PHONE_STATE (permissão
+    # sensível) e só faz sentido em aparelho COM chip; padrão SEGURO = False,
+    # mesmo critério dos demais gates. Ver INFORME_SERVIDOR_TELEMETRIA_REDE_MOVEL.md.
+    telemetria_movel = models.BooleanField(default=False, verbose_name='Telemetria de rede móvel (3G/4G/5G)')
+
     # ── Gates locais da tela "Gerência do TI" no aparelho (v1.7.1+) — são
     # PERMISSÕES, não comandos remotos: o servidor só libera/bloqueia a ação no
     # próprio aparelho; quem aciona é sempre alguém na frente do celular (tela já
@@ -3390,6 +3501,16 @@ class KioskDevice(models.Model):
     permite_limpar_apps_terceiros = models.BooleanField(
         default=False, verbose_name='Permite limpar cache/dados dos apps liberados (tela nativa)',
     )
+    # Libera a barra de status + bandeja de notificações dentro do Lock Task
+    # (LOCK_TASK_FEATURE_NOTIFICATIONS + LOCK_TASK_FEATURE_SYSTEM_INFO, v1.9.0+)
+    # para o colaborador ver/receber notificação de WhatsApp Business, Outlook,
+    # Gmail e chamada do telefone. Só abre a "porta": o app de origem também
+    # precisa estar em apps_permitidos, senão fica suspenso e nunca notifica
+    # nada. Padrão SEGURO = False (mesmo cuidado dos outros gates acima). Ver
+    # INFORME_SERVIDOR_NOTIFICACOES.md.
+    permite_notificacoes = models.BooleanField(
+        default=False, verbose_name='Permite notificações (barra de status + bandeja)',
+    )
 
     # ── Cache/dados do PRÓPRIO app Quiosque (snapshot do último check-in — mesmo
     # padrão de ram_total_mb/armazenamento_total_mb: vêm em TODO check-in, então
@@ -3419,6 +3540,10 @@ class KioskDevice(models.Model):
     # inventário foi substituído pela última vez. A lista em si fica em KioskDeviceApp.
     apps_hash          = models.CharField(max_length=64, blank=True, default='', verbose_name='Hash do inventário de apps')
     apps_atualizado_em = models.DateTimeField(null=True, blank=True, verbose_name='Inventário de apps atualizado em')
+    # Apps liberados abertos pelo Zelo e ainda não fechados (package names, do mais
+    # recente para o mais antigo) — snapshot do último check-in (v1.8.0+). Base do
+    # "Apps em uso" no painel e do comando `fechar_apps`.
+    apps_abertos       = models.JSONField(default=list, blank=True, verbose_name='Apps abertos (último check-in)')
 
     # ── Estado mais recente (atualizado a cada check-in) ──
     ultima_latitude   = models.FloatField(null=True, blank=True)
@@ -3427,6 +3552,20 @@ class KioskDevice(models.Model):
     ultima_bateria    = models.IntegerField(null=True, blank=True)
     ultima_rede       = models.CharField(max_length=20, blank=True, default='')
     ultimo_checkin    = models.DateTimeField(null=True, blank=True)
+
+    # ── Conectividade do último check-in (snapshot — mesmo padrão de
+    # ultima_rede/ultima_bateria). Alimenta o selo de sinal em CIMA do ponto no
+    # mapa da frota (/quiosque/mapa/), que mostra a última posição conhecida de
+    # cada aparelho: sem snapshot aqui seria 1 query de último check-in por
+    # aparelho (N+1 na tela de mapa).
+    #   ultima_rede_tipo  = transporte normalizado (wifi/movel/ethernet/nenhuma)
+    #   ultimo_sinal_*    = força do sinal DO TRANSPORTE EM USO (Wi-Fi ou chip),
+    #                       já unificada para o selo não precisar saber qual é.
+    ultima_rede_tipo        = models.CharField(max_length=12, blank=True, default='', verbose_name='Tipo de rede (última leitura)')
+    ultima_movel_geracao    = models.CharField(max_length=6, blank=True, default='', verbose_name='Geração móvel (última leitura)')
+    ultima_movel_operadora  = models.CharField(max_length=40, blank=True, default='', verbose_name='Operadora (última leitura)')
+    ultimo_sinal_nivel      = models.IntegerField(null=True, blank=True, verbose_name='Nível de sinal 0-4 (última leitura)')
+    ultimo_sinal_dbm        = models.IntegerField(null=True, blank=True, verbose_name='Sinal em dBm (última leitura)')
 
     # ── Memória e armazenamento (snapshot do último check-in — não é histórico;
     # o app manda esses 7 campos em TODO check-in, a cada ~5s, então guardar linha
@@ -3487,6 +3626,25 @@ class KioskCheckin(models.Model):
     wifi_velocidade_mbps  = models.IntegerField(null=True, blank=True, verbose_name='Velocidade do link (Mbps)')
     wifi_frequencia_mhz   = models.IntegerField(null=True, blank=True, verbose_name='Frequência do canal (MHz)')
     wifi_banda_ghz        = models.CharField(max_length=4, null=True, blank=True, verbose_name='Banda (GHz)')
+
+    # ── Telemetria de rede móvel (opt-in — só vem quando device.telemetria_movel
+    # está ligada; v1.10.0+). Fica no check-in, e não só no device, porque o mapa
+    # de rota precisa do sinal NO PONTO onde o aparelho estava — é isso que
+    # permite ver em que trecho da fazenda o 4G cai. Ver
+    # INFORME_SERVIDOR_TELEMETRIA_REDE_MOVEL.md.
+    #   rede_tipo        = transporte normalizado no instante da coleta. Derivado
+    #                      de `rede` quando o app não manda explícito, para que
+    #                      TODA linha (inclusive as já gravadas) tenha um valor
+    #                      consultável sem reinterpretar texto livre na leitura.
+    #   movel_tecnologia = valor cru do Android (LTE, NR_NSA, HSPA+…) — auditoria;
+    #                      `movel_geracao` é o derivado que a UI exibe.
+    rede_tipo        = models.CharField(max_length=12, blank=True, default='', db_index=True, verbose_name='Tipo de rede')
+    movel_geracao    = models.CharField(max_length=6, blank=True, default='', verbose_name='Geração móvel (2g/3g/4g/5g)')
+    movel_tecnologia = models.CharField(max_length=24, blank=True, default='', verbose_name='Tecnologia móvel (crua)')
+    movel_operadora  = models.CharField(max_length=40, blank=True, default='', verbose_name='Operadora')
+    movel_rssi_dbm   = models.IntegerField(null=True, blank=True, verbose_name='Sinal móvel (dBm)')
+    movel_nivel      = models.IntegerField(null=True, blank=True, verbose_name='Nível de sinal móvel (0-4)')
+
     # Instante REAL da coleta no aparelho (ISO 8601 com fuso). Pode estar no passado
     # quando o app entrega uma fila offline em rajada. registrado_em = chegada no servidor.
     coletado_em   = models.DateTimeField(null=True, blank=True, db_index=True, verbose_name='Coletado em')
@@ -3511,38 +3669,88 @@ class KioskCheckin(models.Model):
 
 
 class KioskComando(models.Model):
-    """Comando remoto enviado pelo TI ao device (entregue no próximo check-in)."""
+    """Comando remoto enviado pelo TI ao device (app v1.8.0+ executa e confirma).
+
+    Vai no `comandos` de TODA resposta do /checkin/ enquanto o aparelho não
+    confirmar (reentrega até o ACK — sobrevive à perda de uma resposta de rede);
+    o app executa cada `id` no máximo uma vez. Ver
+    INFORME_SERVIDOR_COMANDOS_REMOTOS.md e services/quiosque_service.py.
+    """
     class Tipo(models.TextChoices):
-        BLOQUEAR         = 'bloquear', 'Bloquear dispositivo'
-        DESBLOQUEAR      = 'desbloquear', 'Desbloquear dispositivo'
-        MENSAGEM         = 'mensagem', 'Exibir mensagem'
-        ATUALIZAR_CONFIG = 'atualizar_config', 'Atualizar configuração'
-        REINICIAR_APP    = 'reiniciar_app', 'Reiniciar aplicativo'
+        SINCRONIZAR_CONFIG  = 'sincronizar_config', 'Sincronizar configuração'
+        REENVIAR_INVENTARIO = 'reenviar_inventario', 'Reenviar inventário de apps'
+        EXIBIR_MENSAGEM     = 'exibir_mensagem', 'Exibir mensagem'
+        FECHAR_APPS         = 'fechar_apps', 'Fechar apps'
+        LIMPAR_CACHE        = 'limpar_cache', 'Limpar cache do app'
+        BLOQUEAR_TELA       = 'bloquear_tela', 'Bloquear tela'
+        DESBLOQUEAR         = 'desbloquear', 'Desbloquear tela'
+        REINICIAR           = 'reiniciar', 'Reiniciar aparelho'
+        REINICIAR_APP       = 'reiniciar_app', 'Reiniciar aplicativo'
+        REATIVAR_QUIOSQUE   = 'reativar_quiosque', 'Reativar quiosque'
+        SAIR_QUIOSQUE       = 'sair_quiosque', 'Sair do quiosque'
+        # Legados de verdade: valores descartados antes da v1.7.2, substituídos
+        # por OUTRO `tipo` (nunca reentregues; só aparecem no histórico já
+        # existente — o painel não os oferece mais, ver quiosque_service.COMANDOS).
+        # `desbloquear` e `reiniciar_app` NÃO entram aqui: são os valores atuais
+        # e definitivos desde a v1.8.2 (ver INFORME_SERVIDOR_COMANDOS_REMOTOS.md),
+        # não sinônimos de outra coisa — ficaram marcados como legado por engano
+        # numa build anterior deste model.
+        BLOQUEAR_LEGADO         = 'bloquear', 'Bloquear dispositivo (legado)'
+        MENSAGEM_LEGADO         = 'mensagem', 'Exibir mensagem (legado)'
+        ATUALIZAR_CONFIG_LEGADO = 'atualizar_config', 'Atualizar configuração (legado)'
 
     class Status(models.TextChoices):
-        PENDENTE  = 'pendente', 'Pendente'
-        ENTREGUE  = 'entregue', 'Entregue'
-        EXECUTADO = 'executado', 'Executado'
-        FALHOU    = 'falhou', 'Falhou'
+        PENDENTE      = 'pendente', 'Pendente'
+        # Já foi em algum check-in; continua sendo reentregue até o ACK chegar.
+        ENTREGUE      = 'entregue', 'Entregue'
+        EXECUTADO     = 'executado', 'Executado'
+        FALHOU        = 'falhou', 'Falhou'
+        NAO_SUPORTADO = 'nao_suportado', 'Não suportado'
+        EXPIRADO      = 'expirado', 'Expirado'
+
+    ABERTOS = (Status.PENDENTE, Status.ENTREGUE)
 
     device      = models.ForeignKey(KioskDevice, on_delete=models.CASCADE, related_name='comandos')
-    tipo        = models.CharField(max_length=20, choices=Tipo.choices)
+    tipo        = models.CharField(max_length=40, choices=Tipo.choices)
     payload     = models.JSONField(default=dict, blank=True)
-    status      = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDENTE, db_index=True)
-    detalhe     = models.CharField(max_length=255, blank=True, default='')
-    criado_por  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='kiosk_comandos')
+    status      = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDENTE, db_index=True)
+    detalhe     = models.TextField(blank=True, default='')
+    criado_por  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='kiosk_comandos', verbose_name='Solicitado por')
     criado_em   = models.DateTimeField(auto_now_add=True)
-    entregue_em = models.DateTimeField(null=True, blank=True)
-    finalizado_em = models.DateTimeField(null=True, blank=True)
+    # Passado desse horário o app não executa (confirma `expirado`) e o servidor
+    # para de reentregar. Todo comando criado pelo painel nasce com validade.
+    expira_em   = models.DateTimeField(null=True, blank=True, verbose_name='Expira em')
+    entregue_em = models.DateTimeField(null=True, blank=True)  # 1ª entrega (não muda nas reentregas)
+    executado_em = models.DateTimeField(null=True, blank=True, verbose_name='Executado em (no aparelho)')
+    finalizado_em = models.DateTimeField(null=True, blank=True)  # chegada do ACK (ou expiração no servidor)
+    app_versao  = models.CharField(max_length=20, blank=True, default='', verbose_name='Versão do app no ACK')
 
     class Meta:
         ordering = ['-criado_em']
         verbose_name = 'Comando de Quiosque'
         verbose_name_plural = 'Comandos de Quiosque'
         indexes = [models.Index(fields=['device', 'status'])]
+        permissions = [
+            ('reiniciar_quiosque_remoto', 'Pode reiniciar aparelhos do quiosque remotamente'),
+            # sair_quiosque é o comando mais sensível do canal: entrega o
+            # aparelho para uso normal do Android, fora do quiosque, para quem
+            # estiver na frente dele naquele momento, sem PIN nenhum. Ver
+            # INFORME_SERVIDOR_COMANDOS_REMOTOS.md §2.
+            ('sair_quiosque_remoto', 'Pode tirar aparelhos do quiosque remotamente'),
+        ]
 
     def __str__(self):
         return f"{self.get_tipo_display()} → {self.device} ({self.status})"
+
+    @property
+    def aberto(self) -> bool:
+        return self.status in self.ABERTOS
+
+    @property
+    def vencido(self) -> bool:
+        """Aberto e fora da validade — o servidor só o fecha no próximo check-in
+        do aparelho; até lá o painel já o mostra como expirado."""
+        return self.aberto and self.expira_em is not None and self.expira_em < timezone.now()
 
 
 class KioskDeviceApp(models.Model):

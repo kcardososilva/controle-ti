@@ -63,6 +63,7 @@ from .usuarios import (
 from .fornecedores import (
     fornecedor_list,
     fornecedor_create,
+    fornecedor_quick_create,
     fornecedor_update,
     fornecedor_detail,
     fornecedor_delete,
@@ -132,6 +133,8 @@ from .comentarios import (
 from .movimentacoes import (
     movimentacao_list,
     movimentacao_create,
+    movimentacao_lote_create,
+    movimentacao_lote_termo,
     movimentacao_detail,
     movimentacao_update,
     movimentacao_delete,
@@ -139,6 +142,7 @@ from .movimentacoes import (
     movimentacao_export_pdf,
     api_lotes_por_item,
     api_item_devolucao_info,
+    api_itens_disponiveis_lote,
     repositorio_termos,
 )
 
@@ -223,6 +227,7 @@ from .portal_licencas import (
     portal_licencas_office_editar,
     portal_licencas_office_vincular,
     portal_licencas_office_desvincular,
+    portal_licencas_colaboradores_list,
 )
 
 # ── Dashboards ───────────────────────────────────────────────────────────────
@@ -258,6 +263,7 @@ from .relatorios import (
 from .termos import (
     termo_entrega_form,
     termo_devolucao_form,
+    termo_desligamento_form,
 )
 
 # ── Inteligência ─────────────────────────────────────────────────────────────
@@ -311,6 +317,7 @@ from .quiosque import (
     quiosque_detalhe,
     quiosque_mapa_atualizar,
     quiosque_checkins_exportar,
+    quiosque_mapa_exportar,
     quiosque_matriculas,
     quiosque_matricula_excluir,
     quiosque_matricula_renomear,

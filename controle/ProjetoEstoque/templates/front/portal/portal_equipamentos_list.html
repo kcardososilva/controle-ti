@@ -53,6 +53,21 @@
   .pf-eq .pf-td-link { text-align: right; }
   .pf-eq .pf-td-link a { color: var(--brand); font-weight: 700; }
 
+  /* Densidade: com 701 equipamentos, cada linha que quebra em duas custa metade
+     da lista visível — série e localidade quebravam no meio, e o "Ver" chegava a
+     ficar com a seta numa linha abaixo do texto.
+
+     O corte com reticências vale para TODAS as colunas, não só para as longas:
+     impedir a quebra sem limitar a largura empurrava a tabela para além do
+     container e escondia o Status na rolagem horizontal — trocar uma linha
+     dupla por uma informação invisível não é ganho. O valor inteiro fica no
+     `title` de cada célula. */
+  .pf-eq tbody td {
+    padding: .55rem 1rem; white-space: nowrap;
+    max-width: 13rem; overflow: hidden; text-overflow: ellipsis;
+  }
+  .pf-eq .pf-td-link a { display: inline-flex; align-items: center; gap: .35rem; }
+
   .pf-eq .pf-pager { display: flex; align-items: center; justify-content: center; gap: .5rem; padding-top: .3rem; }
   .pf-eq .pf-pager a, .pf-eq .pf-pager span {
     min-width: 2.3rem; min-height: 2.3rem; display: inline-flex; align-items: center; justify-content: center; padding: 0 .7rem;
@@ -141,13 +156,13 @@
       <tbody>
         {% for item in page_obj.object_list %}
         <tr>
-          <td class="pf-td-name"><a href="{% url 'portal_equipamento_detail' item.pk %}">{{ item.nome }}</a></td>
-          <td class="pf-muted">{{ item.numero_serie|default:"—" }}</td>
+          <td class="pf-td-name" title="{{ item.nome }}"><a href="{% url 'portal_equipamento_detail' item.pk %}">{{ item.nome }}</a></td>
+          <td class="pf-muted" title="{{ item.numero_serie|default:'' }}">{{ item.numero_serie|default:"—" }}</td>
           <td>{% if item.marca or item.modelo %}{{ item.marca|default:'' }} {{ item.modelo|default:'' }}{% else %}<span class="pf-muted">—</span>{% endif %}</td>
           <td>
             {% if item.subtipo %}{% if item.subtipo.categoria %}{{ item.subtipo.categoria.nome }} · {% endif %}{{ item.subtipo.nome }}{% else %}<span class="pf-muted">—</span>{% endif %}
           </td>
-          <td class="pf-muted">{% if item.localidade %}{{ item.localidade.local }}{% else %}—{% endif %}</td>
+          <td class="pf-muted" title="{% if item.localidade %}{{ item.localidade.local }}{% endif %}">{% if item.localidade %}{{ item.localidade.local }}{% else %}—{% endif %}</td>
           <td>
             <span class="pf-chip pf-chip--{{ item.status }}">{{ item.get_status_display }}</span>
             {% if item.id in ids_devolver %}

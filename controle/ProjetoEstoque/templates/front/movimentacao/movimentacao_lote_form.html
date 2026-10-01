@@ -1,0 +1,683 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Movimentação em Lote{% endblock %}
+{% block page_title %}Movimentação em Lote{% endblock %}
+{% block page_subtitle %}Entrega ou devolução de vários equipamentos de uma vez, para um único colaborador.{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span>Patrimônio &amp; TI</span>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'movimentacao_list' %}">Movimentações</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Em Lote</span>
+</nav>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'movimentacao_list' %}" class="btn btn-sm">
+  <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Voltar
+</a>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+/* =========================================================
+   MOVIMENTAÇÃO EM LOTE — mesmo padrão visual/tokens de
+   movimentacao_form.html (família .mvf-*). Apresentação apenas.
+   ========================================================= */
+
+:where(.mvf-page, .select2-container, .select2-dropdown) {
+  --mvf-brand: #0078d4;
+  --mvf-brand-hover: #106ebe;
+  --mvf-brand-soft: rgba(0, 120, 212, .08);
+  --mvf-ring: rgba(0, 120, 212, .30);
+
+  --mvf-surface: #ffffff;
+  --mvf-surface-soft: #f0f0f0;
+  --mvf-surface-muted: #ebebeb;
+
+  --mvf-text: #242424;
+  --mvf-muted: #616161;
+  --mvf-soft: #8a8886;
+
+  --mvf-hair: #e6e6e6;
+  --mvf-line: #d6d6d6;
+
+  --mvf-danger: var(--danger, #d93025);
+  --mvf-success: var(--success, #1e8e3e);
+  --mvf-warning: var(--warning, #c77700);
+
+  --mvf-radius-sm: 6px;
+  --mvf-radius-md: 8px;
+  --mvf-radius-lg: 10px;
+
+  --mvf-shadow-sm: 0 1px 2px rgba(0,0,0,.06), 0 1px 1px rgba(0,0,0,.04);
+  --mvf-shadow-md: 0 4px 12px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.05);
+
+  --mvf-input-h: 2.6rem;
+  --mvf-t: 150ms ease;
+  --mvf-font: "Segoe UI", var(--font-display);
+}
+
+body.theme-dark :where(.mvf-page, .select2-container, .select2-dropdown) {
+  --mvf-brand: #479ef5;
+  --mvf-brand-hover: #62abf5;
+  --mvf-brand-soft: rgba(71, 158, 245, .16);
+  --mvf-ring: rgba(71, 158, 245, .35);
+
+  --mvf-surface: #1a1d24;
+  --mvf-surface-soft: #20242c;
+  --mvf-surface-muted: #262a33;
+
+  --mvf-text: #f1f2f5;
+  --mvf-muted: #b7bcc6;
+  --mvf-soft: #8992a0;
+
+  --mvf-hair: #2a2e38;
+  --mvf-line: #363b47;
+}
+
+.mvf-page,
+.mvf-page * { box-sizing: border-box; min-width: 0; }
+
+.mvf-page {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  color: var(--mvf-text);
+  font-family: var(--mvf-font);
+}
+
+.mvf-card {
+  width: 100%;
+  border: 1px solid var(--mvf-hair);
+  border-radius: var(--mvf-radius-lg);
+  background: var(--mvf-surface);
+  box-shadow: var(--mvf-shadow-sm);
+  overflow: hidden;
+}
+
+.mvf-head {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: clamp(1rem, 2vw, 1.25rem) clamp(1rem, 2vw, 1.4rem);
+  border-bottom: 1px solid var(--mvf-hair);
+}
+.mvf-head-ic {
+  width: 2.4rem; height: 2.4rem; flex: 0 0 2.4rem;
+  display: grid; place-items: center;
+  border-radius: var(--mvf-radius-md);
+  background: var(--mvf-surface-soft);
+  color: var(--mvf-muted);
+  font-size: 1rem;
+}
+.mvf-head-txt { min-width: 0; }
+.mvf-head-txt h2 { margin: 0; font-size: 1rem; font-weight: 600; line-height: 1.25; color: var(--mvf-text); }
+.mvf-head-txt p { margin: 0.2rem 0 0; font-size: 0.82rem; line-height: 1.4; color: var(--mvf-muted); }
+
+.mvf-body { padding: clamp(1rem, 2.4vw, 1.5rem); }
+
+.mov-grid { display: grid; gap: 1rem; grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.col-12 { grid-column: span 12; }
+.col-6  { grid-column: span 6; }
+
+.mov-divider { grid-column: span 12; height: 1px; background: var(--mvf-hair); margin: 0.15rem 0; }
+
+.mov-form-group { display: flex; flex-direction: column; gap: 0.42rem; }
+.mov-form-group label {
+  display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;
+  font-size: 0.8rem; font-weight: 600; line-height: 1.25; color: var(--mvf-muted);
+}
+.required-mark { color: var(--mvf-danger); }
+.hint-inline { color: var(--mvf-soft); font-weight: 400; font-size: 0.92em; }
+.hint-text {
+  display: flex; align-items: flex-start; gap: 0.4rem;
+  font-size: 0.76rem; line-height: 1.4; color: var(--mvf-muted); overflow-wrap: anywhere;
+}
+.hint-text i { margin-top: 0.12rem; color: var(--mvf-soft); }
+
+.mvf-page .form-control,
+.mvf-page input[type="text"],
+.mvf-page input[type="file"],
+.mvf-page select,
+.mvf-page textarea {
+  width: 100%;
+  min-height: var(--mvf-input-h);
+  padding: 0.62rem 0.75rem;
+  border-radius: var(--mvf-radius-sm);
+  border: 1px solid var(--mvf-line);
+  background: var(--mvf-surface);
+  color: var(--mvf-text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--mvf-t), box-shadow var(--mvf-t);
+}
+.mvf-page .form-control:focus,
+.mvf-page input:focus,
+.mvf-page select:focus,
+.mvf-page textarea:focus {
+  border-color: var(--mvf-brand);
+  box-shadow: 0 0 0 4px var(--mvf-ring);
+}
+.mvf-page textarea { min-height: 5.5rem; height: auto; resize: vertical; line-height: 1.45; }
+.mvf-page input[type="file"] { padding-top: 0.55rem; }
+
+/* Select2 */
+.select2-container { width: 100% !important; max-width: 100% !important; }
+.select2-container .select2-selection--single,
+.select2-container .select2-selection--multiple {
+  min-height: var(--mvf-input-h) !important;
+  border: 1px solid var(--mvf-line) !important;
+  border-radius: var(--mvf-radius-sm) !important;
+  background-color: var(--mvf-surface) !important;
+  transition: border-color var(--mvf-t), box-shadow var(--mvf-t);
+}
+.select2-container--focus .select2-selection--single,
+.select2-container--focus .select2-selection--multiple,
+.select2-container--open .select2-selection--single,
+.select2-container--open .select2-selection--multiple {
+  border-color: var(--mvf-brand) !important;
+  box-shadow: 0 0 0 4px var(--mvf-ring) !important;
+}
+.select2-container--default .select2-selection--single {
+  display: flex !important; align-items: center !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  padding-left: 0.75rem !important; padding-right: 2rem !important;
+  color: var(--mvf-text) !important; font-size: 0.9rem; line-height: 2.5rem !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__placeholder { color: var(--mvf-muted) !important; }
+.select2-container--default .select2-selection--single .select2-selection__arrow { height: 2.5rem !important; right: 0.35rem !important; }
+.select2-container--default .select2-selection--multiple .select2-selection__rendered { padding: 0.3rem 0.5rem; }
+.select2-container--default .select2-selection--multiple .select2-selection__choice {
+  background: var(--mvf-brand-soft) !important;
+  border: 1px solid color-mix(in srgb, var(--mvf-brand) 30%, transparent) !important;
+  color: var(--mvf-brand) !important;
+  border-radius: 999px !important;
+  padding: 2px 8px 2px 10px !important;
+  font-size: 0.8rem !important;
+}
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove { color: var(--mvf-brand) !important; margin-right: 4px !important; }
+.select2-dropdown {
+  z-index: 9999 !important;
+  background: var(--mvf-surface) !important; color: var(--mvf-text) !important;
+  border: 1px solid var(--mvf-line) !important; border-radius: var(--mvf-radius-md) !important;
+  overflow: hidden !important; box-shadow: var(--mvf-shadow-md);
+}
+.select2-search__field { background: var(--mvf-surface-soft) !important; color: var(--mvf-text) !important; border: 1px solid var(--mvf-hair) !important; border-radius: var(--mvf-radius-sm) !important; outline: none !important; }
+.select2-results__option { color: var(--mvf-text) !important; }
+.select2-results__option--highlighted { background: var(--mvf-brand) !important; color: #fff !important; }
+.select2-results__option[aria-selected=true] { background: color-mix(in srgb, var(--mvf-brand) 12%, transparent) !important; color: var(--mvf-brand) !important; }
+.select2-container--disabled .select2-selection { background-color: var(--mvf-surface-soft) !important; cursor: not-allowed; }
+
+/* Radio tiles (ação / modo do termo) */
+.radio-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.7rem; }
+.radio-option { position: relative; cursor: pointer; display: block; }
+.radio-option input { position: absolute; opacity: 0; width: 0; height: 0; }
+.radio-tile {
+  display: flex; align-items: center; gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  border: 1.5px solid var(--mvf-line);
+  border-radius: var(--mvf-radius-md);
+  background: var(--mvf-surface);
+  transition: border-color var(--mvf-t), background var(--mvf-t), box-shadow var(--mvf-t);
+}
+.radio-tile-ic {
+  width: 2.3rem; height: 2.3rem; flex: 0 0 2.3rem;
+  display: grid; place-items: center;
+  border-radius: var(--mvf-radius-sm);
+  background: var(--mvf-surface-soft);
+  color: var(--mvf-muted);
+  font-size: 1rem;
+  transition: background var(--mvf-t), color var(--mvf-t);
+}
+.radio-tile-txt { min-width: 0; }
+.radio-tile-txt strong { display: block; font-size: 0.9rem; font-weight: 700; color: var(--mvf-text); line-height: 1.25; }
+.radio-tile-txt span { display: block; margin-top: 0.15rem; font-size: 0.76rem; line-height: 1.4; color: var(--mvf-muted); }
+.radio-tile-dot {
+  margin-left: auto; flex: 0 0 auto;
+  width: 1.15rem; height: 1.15rem;
+  border-radius: 50%; border: 2px solid var(--mvf-line);
+  position: relative; transition: border-color var(--mvf-t);
+}
+.radio-tile-dot::after {
+  content: ""; position: absolute; inset: 2px; border-radius: 50%;
+  background: var(--mvf-brand); transform: scale(0); transition: transform var(--mvf-t);
+}
+.radio-option:hover .radio-tile { border-color: var(--mvf-brand); }
+.radio-option input:checked + .radio-tile {
+  background: color-mix(in srgb, var(--mvf-brand) 6%, transparent);
+  border-color: var(--mvf-brand);
+  box-shadow: 0 0 0 3px var(--mvf-ring);
+}
+.radio-option input:checked + .radio-tile .radio-tile-ic { background: var(--mvf-brand); color: #fff; }
+.radio-option input:checked + .radio-tile .radio-tile-dot { border-color: var(--mvf-brand); }
+.radio-option input:checked + .radio-tile .radio-tile-dot::after { transform: scale(1); }
+.radio-option input:focus-visible + .radio-tile { box-shadow: 0 0 0 4px var(--mvf-ring); }
+@media (max-width: 460px) { .radio-tile-txt span { display: none; } }
+
+.mvf-note {
+  display: flex; gap: 0.7rem; align-items: flex-start;
+  padding: 0.85rem 1rem; border-radius: var(--mvf-radius-md);
+  background: var(--mvf-surface-soft); border: 1px solid var(--mvf-hair);
+  border-left: 3px solid var(--mvf-brand);
+}
+.mvf-note > i { color: var(--mvf-brand); margin-top: 0.15rem; flex: 0 0 auto; }
+.mvf-note .mvf-note-body { font-size: 0.84rem; line-height: 1.5; color: var(--mvf-text); }
+
+.mvf-termo-link {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--mvf-radius-md);
+  background: var(--mvf-brand-soft);
+  border: 1px solid color-mix(in srgb, var(--mvf-brand) 30%, transparent);
+  color: var(--mvf-brand);
+  font-size: 0.84rem; font-weight: 650;
+  text-decoration: none;
+  transition: background .15s ease, border-color .15s ease;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.4;
+}
+.mvf-termo-link:hover {
+  background: color-mix(in srgb, var(--mvf-brand) 14%, var(--mvf-brand-soft));
+  border-color: var(--mvf-brand);
+}
+
+.mvf-lote-count {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 10px; border-radius: 999px;
+  background: var(--mvf-brand-soft); color: var(--mvf-brand);
+  font-size: 0.74rem; font-weight: 700;
+}
+
+.mvf-lote-termo-list { display: grid; gap: 0.55rem; }
+.mvf-lote-termo-row {
+  display: flex; align-items: center; gap: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--mvf-hair); border-radius: var(--mvf-radius-md);
+  background: var(--mvf-surface-soft);
+}
+.mvf-lote-termo-row strong {
+  flex: 0 0 auto; min-width: 140px; max-width: 260px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 0.8rem; font-weight: 600; color: var(--mvf-text);
+}
+.mvf-lote-termo-row input[type="file"] { flex: 1; min-height: 2.3rem; padding: 0.3rem 0.5rem; font-size: 0.78rem; }
+.mvf-lote-empty { padding: 1rem; text-align: center; color: var(--mvf-muted); font-size: 0.84rem; }
+
+.hidden { display: none !important; }
+
+.mvf-foot {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; justify-content: flex-end; gap: 0.65rem;
+  padding: 0.9rem clamp(1rem, 2.4vw, 1.4rem);
+  border-top: 1px solid var(--mvf-hair);
+  background: var(--mvf-surface);
+}
+
+@media (max-width: 640px) {
+  .col-6 { grid-column: span 12; }
+  .radio-group { grid-template-columns: 1fr; }
+  .mvf-foot { position: static; display: grid; grid-template-columns: 1fr; gap: 0.55rem; }
+  .mvf-foot .btn, .mvf-foot .btn-primary { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mvf-page">
+  <form id="loteForm" method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="modo_termo" id="id_modo_termo" value="unico">
+
+    <div class="mvf-card">
+      <div class="mvf-head">
+        <div class="mvf-head-ic"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></div>
+        <div class="mvf-head-txt">
+          <h2>Movimentação em Lote</h2>
+          <p>Vincule ou devolva vários equipamentos de uma vez, para um único colaborador — com um termo só ou um termo por equipamento.</p>
+        </div>
+      </div>
+
+      <div class="mvf-body">
+        <div class="mov-grid">
+
+          <div class="col-12 mov-form-group">
+            <label>Ação <span class="required-mark">*</span></label>
+            <div class="radio-group">
+              <label class="radio-option" for="id_acao_entrega">
+                <input type="radio" name="tipo_transferencia" value="entrega" id="id_acao_entrega" checked>
+                <div class="radio-tile">
+                  <div class="radio-tile-ic"><i class="fa-solid fa-user-check" aria-hidden="true"></i></div>
+                  <div class="radio-tile-txt">
+                    <strong>Entrega</strong>
+                    <span>Vincula vários equipamentos a um colaborador</span>
+                  </div>
+                  <span class="radio-tile-dot" aria-hidden="true"></span>
+                </div>
+              </label>
+              <label class="radio-option" for="id_acao_devolucao">
+                <input type="radio" name="tipo_transferencia" value="devolucao" id="id_acao_devolucao">
+                <div class="radio-tile">
+                  <div class="radio-tile-ic"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></div>
+                  <div class="radio-tile-txt">
+                    <strong>Devolução</strong>
+                    <span>Devolve vários equipamentos de um colaborador ao estoque</span>
+                  </div>
+                  <span class="radio-tile-dot" aria-hidden="true"></span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="col-6 mov-form-group">
+            <label for="id_usuario">Colaborador <span class="required-mark">*</span></label>
+            <select name="usuario" id="id_usuario" class="form-control" data-placeholder="Selecione o colaborador...">
+              <option value=""></option>
+              {% for c in colaboradores %}
+                <option value="{{ c.pk }}">{{ c.nome }}{% if c.matricula %} ({{ c.matricula }}){% endif %}</option>
+              {% endfor %}
+            </select>
+            <div class="hint-text"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> <span id="hintUsuarioTexto">Colaborador que vai receber os equipamentos selecionados.</span></div>
+          </div>
+
+          <div class="col-6 mov-form-group">
+            <label for="id_localidade_destino">Localidade de Destino <span class="required-mark" id="localidadeReq">*</span></label>
+            <select name="localidade_destino" id="id_localidade_destino" class="form-control" data-placeholder="Selecione...">
+              <option value=""></option>
+              {% for l in localidades %}<option value="{{ l.pk }}">{{ l.local }}</option>{% endfor %}
+            </select>
+          </div>
+
+          <div class="col-6 mov-form-group" id="centroCustoWrap">
+            <label for="id_centro_custo_destino">Centro de Custo Destino <span class="hint-inline">(opcional)</span></label>
+            <select name="centro_custo_destino" id="id_centro_custo_destino" class="form-control" data-placeholder="Selecione...">
+              <option value=""></option>
+              {% for cc in centros_custo %}<option value="{{ cc.pk }}">{{ cc.numero }} - {{ cc.departamento }}</option>{% endfor %}
+            </select>
+            <div class="hint-text"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Se vazio, usa o centro de custo do colaborador.</div>
+          </div>
+
+          <div class="col-12 mov-form-group">
+            <label for="id_itens">
+              Equipamentos <span class="required-mark">*</span>
+              <span class="mvf-lote-count" id="itensCount">0 selecionado(s)</span>
+            </label>
+            <select name="itens" id="id_itens" class="form-control" multiple data-placeholder="Carregando..." disabled></select>
+            <div class="hint-text"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> <span id="hintItensTexto">Selecione a ação e o colaborador.</span></div>
+          </div>
+
+          <div class="mov-divider"></div>
+
+          <div class="col-12 mov-form-group">
+            <label>Termo de Responsabilidade <span class="required-mark">*</span></label>
+            <div class="radio-group">
+              <label class="radio-option" for="id_modo_unico">
+                <input type="radio" name="modo_termo_radio" value="unico" id="id_modo_unico" checked>
+                <div class="radio-tile">
+                  <div class="radio-tile-ic"><i class="fa-solid fa-file-shield" aria-hidden="true"></i></div>
+                  <div class="radio-tile-txt">
+                    <strong>Um termo para todos</strong>
+                    <span>Um único PDF assinado cobre todos os equipamentos do lote</span>
+                  </div>
+                  <span class="radio-tile-dot" aria-hidden="true"></span>
+                </div>
+              </label>
+              <label class="radio-option" for="id_modo_por_item">
+                <input type="radio" name="modo_termo_radio" value="por_item" id="id_modo_por_item">
+                <div class="radio-tile">
+                  <div class="radio-tile-ic"><i class="fa-solid fa-copy" aria-hidden="true"></i></div>
+                  <div class="radio-tile-txt">
+                    <strong>Um termo por equipamento</strong>
+                    <span>Cada equipamento tem seu próprio PDF assinado</span>
+                  </div>
+                  <span class="radio-tile-dot" aria-hidden="true"></span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="col-12 mov-form-group" id="termoUnicoWrap">
+            <label for="id_termo_pdf_unico">Termo de Responsabilidade (PDF)</label>
+            <input type="file" name="termo_pdf_unico" id="id_termo_pdf_unico" accept="application/pdf">
+          </div>
+
+          <div class="col-12 mov-form-group hidden" id="termoPorItemWrap">
+            <label>Um termo por equipamento selecionado</label>
+            <div class="mvf-lote-termo-list" id="termoPorItemList">
+              <div class="mvf-lote-empty">Selecione os equipamentos acima para anexar o termo de cada um.</div>
+            </div>
+          </div>
+
+          <div class="col-12 mov-form-group" id="termoConsolidadoWrap">
+            <button type="submit" formaction="{% url 'movimentacao_lote_termo' %}" formtarget="_blank" class="mvf-termo-link">
+              <i class="fa-solid fa-file-word" aria-hidden="true"></i>
+              Gerar termo consolidado (.docx) — lista todos os equipamentos selecionados num único documento para imprimir e assinar
+            </button>
+          </div>
+
+          <div class="mov-divider"></div>
+
+          <div class="col-6 mov-form-group">
+            <label for="id_numero_termo">Número do Termo <span class="hint-inline">(opcional)</span></label>
+            <input type="text" name="numero_termo" id="id_numero_termo" placeholder="Automático (colaborador - centro de custo)">
+          </div>
+
+          <div class="col-6 mov-form-group">
+            <label for="id_numero_chamado">Número do Chamado <span class="hint-inline">(opcional)</span></label>
+            <input type="text" name="numero_chamado" id="id_numero_chamado">
+          </div>
+
+          <div class="col-6 mov-form-group">
+            <label for="id_estabelecimento">Estabelecimento</label>
+            <select name="estabelecimento" id="id_estabelecimento" class="form-control">
+              <option value="rio_do_meio">Rio do Meio</option>
+              <option value="karitel" selected>Karitel</option>
+              <option value="sao_paulo">São Paulo</option>
+              <option value="sta_edwiges">Sta.Edwiges</option>
+            </select>
+          </div>
+
+          <div class="col-6 mov-form-group">
+            <label for="id_acessorios">Acessórios <span class="hint-inline">(opcional)</span></label>
+            <input type="text" name="acessorios" id="id_acessorios" placeholder="Ex.: cabo de força, mochila...">
+          </div>
+
+          <div class="col-12 mov-form-group">
+            <label for="id_observacao">Observações <span class="hint-inline">(opcional)</span></label>
+            <textarea name="observacao" id="id_observacao" rows="3" placeholder="Ex.: onboarding do novo colaborador, troca de equipamento por defeito..."></textarea>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="mvf-foot">
+        <a href="{% url 'movimentacao_list' %}" class="btn">Cancelar</a>
+        <button type="submit" class="btn btn-primary" id="btnSubmitLote">
+          <i class="fa-solid fa-check" aria-hidden="true"></i>
+          Confirmar Movimentação em Lote
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+$(document).ready(function() {
+  const itensUrl = "{% url 'api_itens_disponiveis_lote' %}";
+
+  $('select.form-control').not('#id_itens').select2({
+    width: '100%',
+    placeholder: 'Selecione...',
+    allowClear: true
+  });
+
+  const $itens = $('#id_itens');
+  const $usuario = $('#id_usuario');
+  const $itensCount = $('#itensCount');
+  const $hintItensTexto = $('#hintItensTexto');
+  const $localidadeReq = $('#localidadeReq');
+  const $termoPorItemList = $('#termoPorItemList');
+
+  function acaoAtual() {
+    return $('input[name="tipo_transferencia"]:checked').val();
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = String(text || '');
+    return div.innerHTML;
+  }
+
+  // Busca remota (select2 ajax) em vez de pré-carregar tudo: o catálogo de
+  // equipamentos elegíveis para entrega passa facilmente de algumas
+  // centenas — paginar no cliente cortaria itens sem o operador perceber.
+  $itens.select2({
+    width: '100%',
+    placeholder: 'Digite para buscar equipamentos...',
+    minimumInputLength: 0,
+    ajax: {
+      url: itensUrl,
+      dataType: 'json',
+      delay: 250,
+      data: function(params) {
+        return {
+          acao: acaoAtual(),
+          usuario_id: $usuario.val() || '',
+          q: params.term || ''
+        };
+      },
+      processResults: function(data) {
+        return { results: data.results || [] };
+      },
+      cache: false
+    }
+  });
+
+  function atualizarLabelsAcao() {
+    const acao = acaoAtual();
+    if (acao === 'devolucao') {
+      $localidadeReq.hide();
+      $('#centroCustoWrap').addClass('hidden');
+      $('#hintUsuarioTexto').text('A lista de equipamentos mostra só o que este colaborador tem ativo agora.');
+    } else {
+      $localidadeReq.show();
+      $('#centroCustoWrap').removeClass('hidden');
+      $('#hintUsuarioTexto').text('Colaborador que vai receber os equipamentos selecionados.');
+    }
+  }
+
+  function atualizarDisponibilidadeItens() {
+    const acao = acaoAtual();
+    const usuarioId = $usuario.val();
+    const bloqueado = acao === 'devolucao' && !usuarioId;
+
+    // Troca de ação/colaborador invalida a seleção anterior — a lista de
+    // opções elegíveis é outra (estoque disponível x itens deste colaborador).
+    $itens.val(null).trigger('change');
+    $itens.prop('disabled', bloqueado);
+
+    $hintItensTexto.text(
+      bloqueado
+        ? 'Selecione o colaborador para buscar os equipamentos ativos dele.'
+        : (acao === 'devolucao'
+            ? 'Digite para buscar entre os equipamentos ativos deste colaborador.'
+            : 'Digite para buscar entre os equipamentos disponíveis em estoque.')
+    );
+  }
+
+  function atualizarContagem() {
+    const n = ($itens.val() || []).length;
+    $itensCount.text(n + ' selecionado(s)');
+  }
+
+  function renderTermoPorItem() {
+    const ids = $itens.val() || [];
+    if (!ids.length) {
+      $termoPorItemList.html('<div class="mvf-lote-empty">Selecione os equipamentos acima para anexar o termo de cada um.</div>');
+      return;
+    }
+    let html = '';
+    ids.forEach(function(id) {
+      const label = $itens.find('option[value="' + id + '"]').text();
+      html +=
+        '<div class="mvf-lote-termo-row">' +
+          '<strong title="' + escapeHtml(label) + '">' + escapeHtml(label) + '</strong>' +
+          '<input type="file" name="termo_item_' + id + '" accept="application/pdf">' +
+        '</div>';
+    });
+    $termoPorItemList.html(html);
+  }
+
+  $('input[name="tipo_transferencia"]').on('change', function() {
+    atualizarLabelsAcao();
+    atualizarDisponibilidadeItens();
+  });
+
+  $usuario.on('change', atualizarDisponibilidadeItens);
+
+  $itens.on('change', function() {
+    atualizarContagem();
+    if ($('#id_modo_por_item').is(':checked')) {
+      renderTermoPorItem();
+    }
+  });
+
+  $('input[name="modo_termo_radio"]').on('change', function() {
+    const modo = $(this).val();
+    $('#id_modo_termo').val(modo);
+    $('#termoUnicoWrap').toggleClass('hidden', modo !== 'unico');
+    $('#termoPorItemWrap').toggleClass('hidden', modo !== 'por_item');
+    $('#termoConsolidadoWrap').toggleClass('hidden', modo !== 'unico');
+    if (modo === 'por_item') {
+      renderTermoPorItem();
+    }
+  });
+
+  $('#loteForm').on('submit', function(e) {
+    const acao = acaoAtual();
+    const usuarioId = $usuario.val();
+    const itensIds = $itens.val() || [];
+
+    if (!usuarioId) {
+      alert('Selecione o colaborador.');
+      e.preventDefault();
+      return;
+    }
+    if (!itensIds.length) {
+      alert('Selecione ao menos um equipamento.');
+      e.preventDefault();
+      return;
+    }
+    if (acao === 'entrega' && !$('#id_localidade_destino').val()) {
+      alert('Informe a localidade de destino.');
+      e.preventDefault();
+      return;
+    }
+
+    const submitter = e.originalEvent && e.originalEvent.submitter;
+    const ehBotaoTermo = submitter && submitter.getAttribute('formtarget') === '_blank';
+
+    if (!ehBotaoTermo) {
+      $('#btnSubmitLote').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Processando...');
+    }
+  });
+
+  atualizarLabelsAcao();
+  atualizarDisponibilidadeItens();
+});
+</script>
+{% endblock %}
