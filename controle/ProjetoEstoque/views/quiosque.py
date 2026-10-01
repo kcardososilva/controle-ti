@@ -23,7 +23,7 @@ from django.core.paginator import Paginator
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
-from django.utils import timezone
+from django.utils import formats, timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from services import quiosque_service as qs
@@ -673,6 +673,46 @@ def quiosque_mapa_atualizar(request, pk: int):
         "ultimo_checkin_label": timezone.localtime(device.ultimo_checkin).strftime("%d/%m/%Y %H:%M") if device.ultimo_checkin else None,
         "ultimo_checkin_ts_ms": int(device.ultimo_checkin.timestamp() * 1000) if device.ultimo_checkin else 0,
         "mapa": mapa,
+    })
+
+
+@login_required
+def quiosque_mapa_sinal(request, pk: int):
+    """GET /quiosque/<pk>/sinal/ — Mapa de Sinal de UM dia do aparelho.
+
+    Tela irmã do mapa de rota do detalhe, com objetivo diferente: lá a pergunta
+    é "por onde passou"; aqui é "que sinal tinha em cada ponto, e quando caiu".
+    Por isso nenhuma leitura com coordenada é descartada (ver
+    qs.dados_mapa_sinal) e a linha do tempo é o eixo principal.
+
+    Toda a filtragem (potência, tipo de rede, raio de precisão, reprodução) é
+    de cliente, sobre a série enviada uma vez — o dia é o único recorte que
+    volta ao servidor, porque é o único que muda o conjunto de dados.
+    """
+    from ProjetoEstoque.models import KioskDevice
+
+    device = get_object_or_404(KioskDevice, pk=pk)
+    dia = _parse_dia_param(request.GET.get("dia"))
+    dados = qs.dados_mapa_sinal(device, dia=dia)
+
+    nome = device.apelido or device.modelo or "Dispositivo"
+    return render(request, "front/quiosque/quiosque_mapa_sinal.html", {
+        "device": device,
+        "dados": dados,
+        "pontos_json": dados["pontos"],
+        # Texto que o JS usa no cabeçalho do PNG. Vai por json_script (nunca
+        # interpolado no <script>): o apelido é digitado pelo TI e cairia num
+        # contexto de JavaScript — `|safe` é proibido neste projeto por isso.
+        "sinal_meta": {
+            "aparelho": nome,
+            "dia_label": formats.date_format(dados["dia"], "d/m/Y"),
+            "dia_iso": dados["dia"].isoformat(),
+        },
+        "dia_selecionado": dados["dia"],
+        "dias_disponiveis": qs.dias_disponiveis_checkin(device),
+        # Mesmo recorte das outras telas: sem app v1.10.0+ não há `movel_*`, e a
+        # legenda não deve prometer 2G/3G/4G/5G que nunca vai aparecer.
+        "tel_movel": qs.estado_telemetria_movel(device),
     })
 
 

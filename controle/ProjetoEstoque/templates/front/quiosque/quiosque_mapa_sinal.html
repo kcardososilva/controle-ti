@@ -1,0 +1,1210 @@
+{% extends 'base.html' %}
+{% load l10n %}
+
+{% block title %}Mapa de sinal — {{ device.apelido|default:device.modelo }} — Quiosque{% endblock %}
+{% block page_title %}{{ device.apelido|default:device.modelo|default:"Dispositivo" }}{% endblock %}
+{% block page_subtitle %}Quiosque · mapa de sinal{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'quiosque_dashboard' %}">Quiosque</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'quiosque_detalhe' device.pk %}">{{ device.apelido|default:device.modelo|default:"Dispositivo" }}</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Mapa de sinal</span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+{% comment %}
+  Design DESTA tela: o do mapa de sinal original, não o design system do módulo
+  Quiosque. Paleta, tipografia (IBM Plex Sans / Plex Sans Condensed), raios,
+  alturas e componentes são os do arquivo de referência, valor por valor.
+
+  Duas consequências que vale saber:
+
+  1. A tela é CLARA nos dois temas do sistema. O design original é light-only e
+     foi desenhado para ser lido sobre imagem de satélite — escurecer o painel
+     mudaria o contraste das seis cores de potência, que são a chave de leitura
+     do mapa. Por isso não há variante `body.theme-dark` aqui.
+  2. Nada é herdado de _kq_design_system.html nem de _kq_mapa_css.html: os
+     includes foram removidos de propósito, para o visual desta tela não mudar
+     junto quando os tokens do módulo mudarem.
+
+  Tudo escopado em `.sg-app` (nunca `:root`), que é o que impede a paleta de
+  vazar para o resto do sistema.
+{% endcomment %}
+:where(.sg-app) {
+  --ink:   #16232d;
+  --muted: #5b6b78;
+  --line:  #d9e0e5;
+  --panel: #f7f9fa;
+  --bg:    #ffffff;
+  --accent:#0f5e78;
+
+  /* Escala de potência — a mesma da legenda, dos pontos, dos selos e das
+     barras da linha do tempo. */
+  --s4:  #1a9850;
+  --s3:  #7cbf4a;
+  --s2:  #f2a93b;
+  --s1:  #e8603c;
+  --nm:  #7d8c99;
+  --off: #b3132b;
+
+  --f:  "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fc: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.sg-app, .sg-app * { box-sizing: border-box; min-width: 0; }
+.sg-app {
+  font: 14px/1.45 var(--f);
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* O original é uma página inteira (html,body{height:100%}); aqui a ferramenta
+     vive dentro do conteúdo do sistema. Esta altura é só o FALLBACK: o JS mede
+     onde o quadro começa e estica até o fim da janela (ver `ajustarAltura`),
+     o que dá o mapa maior possível sem criar duas barras de rolagem. */
+  height: min(88vh, 1200px);
+  min-height: 640px;
+}
+
+/* ── Cabeçalho da ferramenta ─────────────────────────────────────────── */
+.sg-app .sg-head {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--bg);
+  flex: none;
+}
+.sg-app .sg-head h2 { font: 600 19px/1.2 var(--fc); margin: 0; }
+.sg-app .sg-sub { color: var(--muted); font-size: 13px; }
+.sg-app .sg-acts { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.sg-app .hbtn {
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px;
+  font: 500 13px var(--f); color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; cursor: pointer;
+  white-space: nowrap; text-decoration: none;
+}
+.sg-app .hbtn:hover { border-color: var(--accent); }
+.sg-app .hbtn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sg-app .hbtn.primary:hover { background: #0c4d63; }
+.sg-app .hbtn[disabled] { opacity: .7; cursor: progress; }
+
+/* ── Seletor de dia (não existe no arquivo original — o dia dele era fixo;
+   estilizado na mesma linguagem para não parecer enxerto) ─────────────── */
+.sg-days { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+.sg-days .chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
+  font: 500 12.5px var(--f); color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-radius: 99px; text-decoration: none;
+}
+.sg-days .chip:hover { border-color: var(--accent); }
+.sg-days .chip.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sg-days .chip .n {
+  font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted);
+  background: var(--panel); border-radius: 99px; padding: 1px 6px;
+}
+.sg-days .chip.is-active .n { background: rgba(255,255,255,.22); color: #fff; }
+
+/* Aviso contextual — mesmo desenho do aviso do arquivo original */
+.sg-warn {
+  background: #fff8e1; border: 1px solid #e9c46a; color: #5c4400;
+  border-radius: 6px; padding: 8px 10px; font: 12.5px/1.45 var(--f);
+  margin-bottom: 10px;
+}
+
+/* ── Moldura: painel + palco ─────────────────────────────────────────── */
+.sg-app .sg-wrap { flex: 1; display: flex; min-height: 0; }
+.sg-app aside.sg-panel {
+  width: 340px; flex: none; overflow-y: auto; overflow-x: hidden;
+  transition: width .22s ease, padding .22s ease;
+  background: var(--panel); border-right: 1px solid var(--line);
+  padding: 16px 18px 24px;
+}
+.sg-app.panel-off aside.sg-panel { width: 0; padding-left: 0; padding-right: 0; border-right: 0; }
+.sg-app .sg-stage { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.sg-app .sg-map { flex: 1; min-height: 0; }
+
+.sg-app aside h3 {
+  font: 600 13px/1.3 var(--fc); color: var(--muted);
+  margin: 22px 0 10px; letter-spacing: .02em; text-transform: none;
+}
+.sg-app aside h3:first-child { margin-top: 0; }
+
+/* KPIs */
+.sg-app .sg-kpis {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  background: var(--line); border: 1px solid var(--line);
+  border-radius: 6px; overflow: hidden;
+}
+.sg-app .sg-kpi { background: var(--bg); padding: 10px 12px; }
+.sg-app .sg-kpi b { display: block; font: 600 24px/1.1 var(--fc); }
+.sg-app .sg-kpi span { font-size: 12px; color: var(--muted); }
+.sg-app .sg-kpi.is-good b { color: var(--s4); }
+.sg-app .sg-kpi.is-bad b { color: var(--off); }
+
+/* Legendas com filtro */
+.sg-app .sg-leg label {
+  display: flex; align-items: center; gap: 10px; padding: 5px 2px;
+  cursor: pointer; user-select: none;
+}
+.sg-app .sg-leg input { accent-color: var(--accent); margin: 0; flex: none; }
+.sg-app .sg-leg .dot {
+  width: 12px; height: 12px; border-radius: 50%; flex: none;
+  border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.25);
+}
+.sg-app .sg-leg .dot.sq { border-radius: 2px; }
+.sg-app .sg-leg .cnt { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sg-app .sg-leg small { color: var(--muted); }
+.sg-app .sg-note { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+.sg-app .sg-toggles label { display: flex; gap: 10px; align-items: center; padding: 4px 2px; cursor: pointer; }
+.sg-app .sg-toggles input { accent-color: var(--accent); margin: 0; }
+
+.sg-app button.reset {
+  margin-top: 10px; font: 500 13px var(--f); padding: 7px 12px;
+  border: 1px solid var(--line); background: var(--bg); border-radius: 5px;
+  cursor: pointer; color: var(--ink);
+}
+.sg-app button.reset:hover { border-color: var(--accent); }
+
+/* Lista de quedas */
+.sg-app .sg-offs { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.sg-app .sg-offs li { display: flex; gap: 10px; padding: 7px 10px; border-top: 1px solid var(--line); cursor: pointer; }
+.sg-app .sg-offs li:first-child { border-top: 0; }
+.sg-app .sg-offs li:hover, .sg-app .sg-offs li:focus { background: #fbeef0; outline: none; }
+.sg-app .sg-offs li.is-empty { cursor: default; color: var(--muted); }
+.sg-app .sg-offs li.is-empty:hover { background: var(--bg); }
+.sg-app .sg-offs .time { font-weight: 600; font-variant-numeric: tabular-nums; flex: none; }
+.sg-app .sg-offs .why { color: var(--muted); font-size: 12.5px; }
+
+/* ── Selo de status sobre o ponto ────────────────────────────────────── */
+.sg-app .sg-stico { width: 0; height: 0; background: none; border: 0; }
+.sg-stwrap {
+  position: absolute; left: 0; bottom: 9px; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; cursor: pointer;
+}
+.sg-st {
+  display: flex; align-items: center; gap: 6px; background: #fff; border-radius: 13px;
+  padding: 3px 9px 3px 10px; box-shadow: 0 1px 5px rgba(0,0,0,.35);
+  font: 600 12.5px "IBM Plex Sans", system-ui, sans-serif; white-space: nowrap;
+}
+.sg-st svg { display: block; }
+.sg-stem { width: 2px; height: 9px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+
+/* Marcador de queda */
+.sg-offico {
+  background: var(--off, #b3132b); border: 2px solid #fff; border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.45); color: #fff;
+  font: 700 12px/14px sans-serif; text-align: center;
+}
+
+/* Legenda flutuante do mapa */
+.sg-maplegend {
+  background: rgba(255,255,255,.95); padding: 8px 10px; border-radius: 6px;
+  box-shadow: 0 1px 5px rgba(0,0,0,.25); font: 12px/1.7 var(--f, sans-serif); color: #16232d;
+}
+.sg-maplegend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.sg-maplegend i.sq { border-radius: 2px; }
+
+/* Aviso de camada indisponível (vem do KQMapa; re-estilizado na linguagem
+   desta tela, já que o CSS do módulo não é mais incluído aqui) */
+.kq-mapaviso {
+  background: #fff8e1; border: 1px solid #e9c46a; color: #5c4400;
+  border-radius: 6px; padding: 7px 11px; max-width: 300px;
+  font: 600 11.5px/1.4 var(--f, sans-serif); box-shadow: 0 2px 8px rgba(0,0,0,.14);
+}
+.kq-mapaviso i { margin-right: 5px; }
+
+/* ── Linha do tempo ─────────────────────────────────────────────────── */
+.sg-app .sg-dock { border-top: 1px solid var(--line); background: var(--bg); flex: none; }
+.sg-app .sg-dockbar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; flex-wrap: wrap; }
+.sg-app .sg-dock button {
+  font: 500 13px var(--f); color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 5px; cursor: pointer; height: 30px;
+}
+.sg-app .sg-dock button:hover { border-color: var(--accent); }
+.sg-app .sg-dock .sg-play { width: 38px; background: var(--accent); border-color: var(--accent); color: #fff; font-size: 13px; }
+.sg-app .sg-dock .sg-step { width: 30px; font-size: 16px; line-height: 1; }
+/* Botão com rótulo (ocultar/mostrar a linha do tempo) */
+.sg-app .sg-dock .sg-dockbtn { display: inline-flex; align-items: center; gap: 7px; padding: 0 11px; }
+.sg-app .sg-dock .sg-dockbtn span:first-child { font-size: 14px; line-height: 1; }
+/* O base.html estiliza TODO `select` de formulário com `width:100%` e
+   `min-height:38px`. Dentro desta barra isso é destrutivo: o seletor de
+   velocidade virava um campo de 1.368px que ocupava a linha inteira e empurrava
+   os outros controles para baixo — a barra ia a 130px (três linhas) e roubava
+   do mapa a altura que ele deveria ter. `min-height` vence `height`, então é
+   ele que precisa ser anulado, não basta redeclarar a altura. */
+.sg-app .sg-dock select {
+  width: auto; flex: 0 0 auto;
+  height: 30px; min-height: 0;
+  border: 1px solid var(--line); border-radius: 5px;
+  font: 13px var(--f); padding: 0 6px; background: var(--bg); color: var(--ink);
+}
+.sg-app .sg-now { flex: 1 1 auto; min-width: 120px; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sg-app .sg-now b { color: var(--ink); font-variant-numeric: tabular-nums; margin-right: 6px; }
+.sg-app .sg-now .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; color: #fff; font-size: 12px; font-weight: 600; margin-right: 6px; }
+.sg-app .sg-seg { display: flex; }
+.sg-app .sg-seg button { border-radius: 0; padding: 0 10px; }
+.sg-app .sg-seg button:first-child { border-radius: 5px 0 0 5px; }
+.sg-app .sg-seg button:last-child { border-radius: 0 5px 5px 0; border-left: 0; }
+.sg-app .sg-seg button.on { background: #e6f0f3; border-color: var(--accent); color: var(--accent); }
+.sg-app .sg-dockbody { padding: 0 14px 10px; }
+.sg-app .sg-dock.is-closed .sg-dockbody { display: none; }
+/* 88px em vez dos 120px do original: a faixa de níveis 1–4 continua legível
+   (≈14px por nível) e devolve 32px ao mapa, que é o que a tela existe para
+   mostrar. Quem quiser o gráfico maior recolhe o painel lateral. */
+.sg-app .sg-chart { position: relative; height: 88px; }
+.sg-app .sg-chart svg { display: block; width: 100%; height: 100%; cursor: crosshair; }
+.sg-app .sg-tip {
+  position: absolute; top: 0; pointer-events: none; background: var(--ink); color: #fff;
+  font-size: 12px; padding: 4px 8px; border-radius: 4px; white-space: nowrap;
+  transform: translateX(-50%); display: none;
+}
+.sg-app .sg-scrub { width: 100%; margin: 4px 0 0; accent-color: var(--accent); }
+
+.sg-pulse { animation: sg-pulse 1.4s ease-out infinite; }
+@keyframes sg-pulse { 0% { stroke-opacity: .9; stroke-width: 3; } 100% { stroke-opacity: 0; stroke-width: 16; } }
+
+/* ── Popup ──────────────────────────────────────────────────────────── */
+.sg-app .leaflet-popup-content { margin: 12px 14px; font: 13px/1.4 var(--f); min-width: 250px; }
+.sg-pop { min-width: 250px; }
+.sg-pop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.sg-pop-head b { font-size: 15px; }
+.sg-badge { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 10px; color: #fff; }
+.sg-pop table { border-collapse: collapse; width: 100%; }
+.sg-pop td { padding: 3px 0; border-top: 1px solid #edf1f3; vertical-align: top; }
+.sg-pop td:first-child { color: #5b6b78; padding-right: 12px; white-space: nowrap; }
+.sg-pop td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.sg-pop .stack { margin-top: 8px; font-size: 12px; color: #5b6b78; }
+
+.sg-app .sg-empty { padding: 48px 20px; text-align: center; color: var(--muted); font-size: 13px; }
+.sg-app .sg-empty i { font-size: 26px; display: block; margin-bottom: 10px; }
+
+:where(.sg-app) :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .sg-app aside.sg-panel { transition: none; }
+  .sg-pulse { animation: none; }
+}
+@media (max-width: 820px) {
+  .sg-app { height: auto; }
+  .sg-app .sg-wrap { flex-direction: column; }
+  .sg-app aside.sg-panel { width: auto; max-height: 42vh; border-right: 0; border-bottom: 1px solid var(--line); }
+  .sg-app.panel-off aside.sg-panel { display: none; }
+  .sg-app .sg-head h2 { font-size: 16px; }
+  .sg-app .hbtn span.lbl { display: none; }
+  .sg-app .sg-stage { min-height: 70vh; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% comment %}
+  Seletor de dia e avisos ficam FORA da moldura da ferramenta: no arquivo
+  original o dia era fixo e não havia aviso nenhum, então enfiá-los dentro do
+  cabeçalho dele desmancharia o layout. Aqui eles são contexto do sistema, e a
+  ferramenta começa na borda do quadro abaixo.
+{% endcomment %}
+{% if dias_disponiveis %}
+<div class="sg-days">
+  {% for d in dias_disponiveis %}
+  <a class="chip{% if dia_selecionado == d.data %} is-active{% endif %}" href="?dia={{ d.data|date:'Y-m-d' }}">{{ d.label }} <span class="n">{{ d.total }}</span></a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if dados.sem_gps or dados.truncado or tel_movel.aguardando %}
+<div class="sg-warn">
+  {% if dados.sem_gps %}
+    {{ dados.sem_gps }} leitura{{ dados.sem_gps|pluralize }} deste dia não {{ dados.sem_gps|pluralize:"tem,têm" }} coordenada e por isso não {{ dados.sem_gps|pluralize:"aparece,aparecem" }} no mapa — o app manda posição nula de propósito quando o fix de GPS está velho, em vez de desenhar o aparelho onde ele esteve antes.
+  {% endif %}
+  {% if dados.truncado %}
+    Exibindo as {{ dados.limite }} leituras mais antigas do dia (o dia tem mais que isso); use o histórico do detalhe para ver o restante.
+  {% endif %}
+  {% if tel_movel.aguardando %}
+    A telemetria de rede móvel está ligada, mas este aparelho roda o app {{ tel_movel.app_versao|default:"(versão não informada)" }} — o nível de 2G/3G/4G/5G só chega a partir da v{{ tel_movel.versao_minima }}.
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="sg-app" id="sgPage">
+
+  <div class="sg-head">
+    <button type="button" class="hbtn" id="sgTogglePanel" aria-expanded="true" aria-controls="sgPanel" title="Recolher painel lateral">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="2.2" y="3.2" width="4.3" height="9.6" fill="currentColor" id="sgPanelIco"/></svg>
+      <span class="lbl" id="sgTogglePanelTxt">Ocultar painel</span>
+    </button>
+    <h2>Mapa de sinal — {{ device.apelido|default:device.modelo|default:"Dispositivo" }}</h2>
+    <span class="sg-sub" id="sgSub"></span>
+    <div class="sg-acts">
+      <a href="{% url 'quiosque_detalhe' device.pk %}{% if dia_selecionado %}?dia={{ dia_selecionado|date:'Y-m-d' }}&amp;aba=visao{% endif %}" class="hbtn" title="Voltar para a rota e o histórico deste aparelho">
+        <i class="fa-solid fa-route"></i><span class="lbl">Rota e histórico</span>
+      </a>
+      {% if dados.pontos %}
+      <button type="button" class="hbtn primary" id="sgExport" title="Baixar a visualização atual do mapa em PNG">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.8 6.8M8 10l3.2-3.2M2.5 11v2.5h11V11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="lbl" id="sgExportTxt">Exportar PNG</span>
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if dados.pontos %}
+  <div class="sg-wrap">
+    <aside class="sg-panel" id="sgPanel">
+      <h3>Resumo do dia</h3>
+      <div class="sg-kpis" id="sgKpis"></div>
+
+      <h3>Potência do sinal</h3>
+      <div class="sg-leg" id="sgLegend"></div>
+      <p class="sg-note">Wi-Fi: nível 0–4 informado pelo aparelho (ou derivado do RSSI quando ausente). Móvel: nível do sinal do chip. Pontos cinza estavam conectados, mas o aparelho não reportou a potência.</p>
+
+      <h3>Tipo de rede</h3>
+      <div class="sg-leg" id="sgNets"></div>
+
+      <h3>Exibição</h3>
+      <div class="sg-toggles">
+        <label><input type="checkbox" id="sgOptRoute" checked> Trajeto entre check-ins</label>
+        <label><input type="checkbox" id="sgOptAcc"> Raio de precisão do GPS</label>
+        <label><input type="checkbox" id="sgOptLabels" checked> Selos de rede sobre os pontos</label>
+      </div>
+      <button type="button" class="reset" id="sgFit">Enquadrar todos os pontos</button>
+
+      <h3>Momentos sem conexão</h3>
+      <ul class="sg-offs" id="sgOffList"></ul>
+    </aside>
+
+    <main class="sg-stage">
+      <div id="sgMap" class="sg-map" role="region" aria-label="Mapa de sinal dos check-ins"></div>
+      <section class="sg-dock" id="sgDock" aria-label="Linha do tempo">
+        <div class="sg-dockbar">
+          <button type="button" class="sg-play" id="sgPlay" aria-label="Reproduzir">▶</button>
+          <button type="button" class="sg-step" id="sgPrev" aria-label="Check-in anterior">‹</button>
+          <button type="button" class="sg-step" id="sgNext" aria-label="Próximo check-in">›</button>
+          <select id="sgSpeed" aria-label="Velocidade da reprodução">
+            <option value="600">Lento</option>
+            <option value="220" selected>Normal</option>
+            <option value="70">Rápido</option>
+          </select>
+          <div class="sg-now" id="sgNow">Selecione um check-in no gráfico ou aperte reproduzir</div>
+          <div class="sg-seg" role="group" aria-label="Escala do eixo">
+            <button type="button" data-mode="time" class="on">Horário real</button>
+            <button type="button" data-mode="seq">Por check-in</button>
+          </div>
+          {% comment %}
+            Rótulo visível, e não só o chevron: como botão de 30px sem texto,
+            colado no segmentado, ele parecia parte do controle ao lado e
+            passava despercebido — justamente a opção que dá mais mapa.
+          {% endcomment %}
+          <button type="button" class="sg-dockbtn" id="sgCollapse" aria-expanded="true" aria-controls="sgDockBody">
+            <span id="sgCollapseIco" aria-hidden="true">▾</span>
+            <span class="lbl" id="sgCollapseTxt">Ocultar linha do tempo</span>
+          </button>
+        </div>
+        <div class="sg-dockbody" id="sgDockBody">
+          <div class="sg-chart" id="sgChart"><svg id="sgTl"></svg><div class="sg-tip" id="sgTip"></div></div>
+          <input type="range" id="sgScrub" class="sg-scrub" min="0" max="0" value="0" aria-label="Posição na linha do tempo">
+        </div>
+      </section>
+    </main>
+  </div>
+  {% else %}
+  <div class="sg-empty">
+    <i class="fa-solid fa-location-crosshairs"></i>
+    {% if dados.total_dia %}
+      As {{ dados.total_dia }} leitura{{ dados.total_dia|pluralize }} de {{ dados.dia|date:"d/m/Y" }} chegaram sem coordenada de GPS, então não há o que desenhar no mapa.
+    {% else %}
+      Nenhuma leitura registrada em {{ dados.dia|date:"d/m/Y" }}.
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ pontos_json|json_script:"__sgPontos" }}
+{% comment %}
+  Nome e dia saem por json_script, nunca interpolados dentro do <script>: o
+  apelido é texto livre digitado pelo TI e cairia direto num contexto de
+  JavaScript. `|safe` é proibido neste projeto exatamente por isso.
+{% endcomment %}
+{{ sinal_meta|json_script:"__sgMeta" }}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% include 'front/quiosque/_kq_mapa_js.html' %}
+<script>
+(function () {
+  "use strict";
+
+  var DATA = JSON.parse(document.getElementById("__sgPontos").textContent);
+  if (!DATA.length) return;
+
+  var PAGE = document.getElementById("sgPage");
+  var META = JSON.parse(document.getElementById("__sgMeta").textContent);
+  var DIA = META.dia_label, DIA_ISO = META.dia_iso, NOME = META.aparelho;
+
+  /* ── Escala de potência ────────────────────────────────────────────────
+     A mesma classificação alimenta pontos, legenda, KPIs, selos e as barras
+     da linha do tempo — uma função só, para não divergirem. */
+  var CAT = {
+    s4:  { label: "Forte",                 desc: "nível 4",   color: "#1a9850" },
+    s3:  { label: "Bom",                   desc: "nível 3",   color: "#7cbf4a" },
+    s2:  { label: "Regular",               desc: "nível 2",   color: "#f2a93b" },
+    s1:  { label: "Fraco",                 desc: "nível 0–1", color: "#e8603c" },
+    nm:  { label: "Conectado, sem medição", desc: "",         color: "#7d8c99" },
+    off: { label: "Sem conexão",           desc: "",          color: "#b3132b" }
+  };
+  var NET = { wifi: "Wi-Fi", cellular: "Móvel (2G–5G)", ethernet: "Cabo", none: "Sem rede" };
+
+  function cat(r) {
+    if (!r.ok) return "off";
+    if (r.lvl == null) return "nm";
+    if (r.lvl >= 4) return "s4";
+    if (r.lvl === 3) return "s3";
+    if (r.lvl === 2) return "s2";
+    return "s1";
+  }
+  /* `rede` cru do app fala inglês (wifi|cellular|none) e builds antigas podem
+     trazer outra grafia; normaliza para as chaves do filtro sem inventar
+     transporte — mesma política do servidor (normalizar_rede_tipo). */
+  function net(r) {
+    var v = String(r.rede || "").toLowerCase();
+    if (v === "wifi" || v === "wi-fi" || v === "wlan") return "wifi";
+    if (v === "cellular" || v === "celular" || v === "movel" || v === "móvel" || v === "mobile" || v === "dados") return "cellular";
+    if (v === "ethernet" || v === "eth" || v === "lan") return "ethernet";
+    return "none";
+  }
+  DATA.forEach(function (r) { r.cat = cat(r); r.net = net(r); });
+
+  // Quantos check-ins caem na MESMA coordenada (aparelho parado): o popup diz,
+  // em vez de deixar o usuário achar que há só uma leitura ali.
+  var stackKey = function (r) { return r.lat.toFixed(6) + "," + r.lon.toFixed(6); };
+  var stacks = {};
+  DATA.forEach(function (r) { (stacks[stackKey(r)] = stacks[stackKey(r)] || []).push(r); });
+
+  var tFirst = DATA[0].t, tLast = DATA[DATA.length - 1].t;
+  var esc = KQMapa.escapar;
+
+  /* ── KPIs e subtítulo ──────────────────────────────────────────────── */
+  var n = DATA.length;
+  var nOk = DATA.filter(function (r) { return r.ok; }).length;
+  var nWifi = DATA.filter(function (r) { return r.net === "wifi"; }).length;
+  var nCell = DATA.filter(function (r) { return r.net === "cellular"; }).length;
+
+  document.getElementById("sgKpis").innerHTML =
+    '<div class="sg-kpi"><b>' + n + "</b><span>check-in" + (n === 1 ? "" : "s") + "</span></div>" +
+    '<div class="sg-kpi is-good"><b>' + (nOk / n * 100).toFixed(1).replace(".", ",") + "%</b><span>com conexão (" + nOk + ")</span></div>" +
+    '<div class="sg-kpi is-bad"><b>' + (n - nOk) + "</b><span>sem conexão</span></div>" +
+    '<div class="sg-kpi"><b>' + nWifi + " / " + nCell + "</b><span>Wi-Fi / móvel</span></div>";
+
+  /* ── Mapa ──────────────────────────────────────────────────────────────
+     Camadas pelo KQMapa (fonte única do módulo), incluindo a do OpenStreetMap
+     — que mostra os pivôs com nome, os canais e os galpões, justamente o que a
+     imagem de satélite tem mas não rotula. Qual provedor serve esses dados, e
+     por que não é o openstreetmap.org, está explicado em KQMapa.CAMADAS.
+     `crossOrigin` é pedido aqui porque esta tela desenha os tiles num canvas
+     para exportar o PNG; sem ele o canvas fica "tainted" e o download falha. */
+  var map = L.map("sgMap", { zoomControl: true, preferCanvas: false });
+  var bounds = L.latLngBounds(DATA.map(function (r) { return [r.lat, r.lon]; }));
+  function fitAll() { map.fitBounds(bounds, { padding: [40, 40] }); }
+  fitAll();
+
+  var camadas = KQMapa.montarCamadas(map, { padrao: "satelite", crossOrigin: true });
+
+  /* O nome da camada vai impresso no cabeçalho do PNG exportado. Ele NÃO pode
+     nascer fixo em "Satélite": o KQMapa restaura a última camada escolhida pela
+     pessoa, então quem deixou o mapa no OpenStreetMap e exportava levava um PNG
+     de ruas legendado como satélite. Lê-se a camada que de fato entrou. */
+  var baseName = (function () {
+    for (var id in camadas) {
+      if (Object.prototype.hasOwnProperty.call(camadas, id) && map.hasLayer(camadas[id])) {
+        return camadas[id]._kqRotulo || "Satélite";
+      }
+    }
+    return "Satélite";
+  })();
+  L.control.scale({ imperial: false }).addTo(map);
+
+  var legendCtl = L.control({ position: "bottomright" });
+  legendCtl.onAdd = function () {
+    var d = L.DomUtil.create("div", "sg-maplegend");
+    d.innerHTML = Object.keys(CAT).map(function (k) {
+      return '<div><i class="' + (k === "off" ? "sq" : "") + '" style="background:' + CAT[k].color + '"></i>' + esc(CAT[k].label) + "</div>";
+    }).join("");
+    L.DomEvent.disableClickPropagation(d);
+    return d;
+  };
+  legendCtl.addTo(map);
+
+  /* ── Popup ─────────────────────────────────────────────────────────── */
+  function fmt(x, u) { return x == null ? "—" : String(x).replace(".", ",") + (u || ""); }
+  function popupHtml(r) {
+    var c = CAT[r.cat];
+    var sig = r.net === "wifi"
+      ? "<tr><td>Rede Wi-Fi</td><td>" + esc(r.ssid || "—") + "</td></tr>" +
+        "<tr><td>RSSI Wi-Fi</td><td>" + fmt(r.wr, " dBm") + "</td></tr>" +
+        "<tr><td>Nível Wi-Fi</td><td>" + (r.wl == null ? "—" : r.wl + " de 4") + "</td></tr>" +
+        "<tr><td>Velocidade</td><td>" + fmt(r.vel, " Mbps") + "</td></tr>" +
+        "<tr><td>Banda</td><td>" + fmt(r.band, " GHz") + "</td></tr>"
+      : "<tr><td>Operadora</td><td>" + esc(r.op || "—") + "</td></tr>" +
+        (r.tec ? "<tr><td>Tecnologia</td><td>" + esc(r.tec) + "</td></tr>" : "") +
+        "<tr><td>Sinal móvel</td><td>" + fmt(r.mr, " dBm") + "</td></tr>" +
+        "<tr><td>Nível móvel</td><td>" + (r.ml == null ? "—" : r.ml + " de 4") + "</td></tr>";
+    var st = stacks[stackKey(r)];
+    return '<div class="sg-pop">' +
+      '<div class="sg-pop-head"><b>' + esc(r.t) + '</b><span class="sg-badge" style="background:' + c.color + '">' + esc(c.label) + "</span></div>" +
+      "<table>" +
+        "<tr><td>Registro</td><td>#" + r.n + "</td></tr>" +
+        "<tr><td>Conexão</td><td>" + esc(r.con) + (r.ok ? " · OK" : " · falhou") + "</td></tr>" +
+        sig +
+        "<tr><td>Bateria</td><td>" + (r.bat == null ? "—" : r.bat + "%") + (r.chg ? " · carregando" : "") + "</td></tr>" +
+        "<tr><td>Recebido em</td><td>" + esc(r.rt) + "</td></tr>" +
+        "<tr><td>Guardado na memória</td><td>" + (r.mem ? "Sim" : "Não") + "</td></tr>" +
+        "<tr><td>Atraso de entrega</td><td>" + fmt(r.delay, " s") + "</td></tr>" +
+        "<tr><td>Coordenadas</td><td>" + r.lat.toFixed(6) + ", " + r.lon.toFixed(6) + "</td></tr>" +
+        "<tr><td>Precisão GPS</td><td>± " + fmt(r.acc, " m") + "</td></tr>" +
+      "</table>" +
+      (st.length > 1 ? '<div class="stack">' + st.length + " check-ins registrados nesta mesma coordenada (" + esc(st[0].t.slice(0, 5)) + "–" + esc(st[st.length - 1].t.slice(0, 5)) + ").</div>" : "") +
+    "</div>";
+  }
+
+  /* ── Pontos ────────────────────────────────────────────────────────────
+     Ordem de desenho: sem-medição no fundo, depois por potência, e as QUEDAS
+     por cima de tudo — são a informação que a tela existe para dar e não podem
+     ficar escondidas sob um ponto verde. */
+  var offIcon = L.divIcon({ className: "sg-offico", html: "×", iconSize: [18, 18], iconAnchor: [9, 9] });
+  var ORDEM = { nm: 0, s4: 1, s3: 2, s2: 3, s1: 4, off: 5 };
+  var layers = {};
+  var pointsLayer = L.layerGroup().addTo(map);
+  var accLayer = L.layerGroup();
+
+  DATA.slice().sort(function (a, b) { return ORDEM[a.cat] - ORDEM[b.cat]; }).forEach(function (r) {
+    var c = CAT[r.cat];
+    var m = r.cat === "off"
+      ? L.marker([r.lat, r.lon], { icon: offIcon, zIndexOffset: 1000, title: "Sem conexão " + r.t, keyboard: true })
+      : L.circleMarker([r.lat, r.lon], { radius: r.cat === "nm" ? 6 : 8, color: "#fff", weight: 2, fillColor: c.color, fillOpacity: .92 });
+    m.bindPopup(function () { return popupHtml(r); }, { maxWidth: 320 });
+    m.bindTooltip(r.t + " · " + c.label + (r.dbm != null ? " · " + r.dbm + " dBm" : ""), { direction: "top", offset: [0, -6] });
+    var a = L.circle([r.lat, r.lon], { radius: r.acc || 0, color: c.color, weight: 1, fillOpacity: .05, interactive: false });
+    layers[r.n] = { r: r, m: m, a: a };
+  });
+
+  var route = L.polyline(DATA.map(function (r) { return [r.lat, r.lon]; }),
+    { color: "#0f5e78", weight: 2.5, opacity: .55, dashArray: "6 6" }).addTo(map);
+  route.bringToBack();
+
+  /* ── Selos de rede sobre os pontos ─────────────────────────────────────
+     Um selo por coordenada (o mais recente visível ali), e o conjunto passa
+     pelo KQMapa.semColisao — teste de sobreposição de RETÂNGULO, que respeita
+     a largura real de cada rótulo e dá prioridade às quedas. É medida de tela,
+     então precisa ser refeita a cada zoom. */
+  var labelLayer = L.layerGroup().addTo(map);
+  var mostrarSelos = true;
+
+  function barrasSvg(lvl, cor) {
+    var hs = [5, 8, 11, 14], s = "";
+    for (var i = 0; i < 4; i++) {
+      s += '<rect x="' + (i * 5) + '" y="' + (14 - hs[i]) + '" width="3.2" height="' + hs[i] +
+           '" rx="1" fill="' + (lvl != null && i < lvl ? cor : "#cfd6dc") + '"/>';
+    }
+    return '<svg width="19" height="14" viewBox="0 0 19 14" aria-hidden="true">' + s + "</svg>";
+  }
+  function textoSelo(r) { return r.ok ? (r.con || "Rede") : "Sem conexão"; }
+  function nivelSelo(r) { return r.cat === "off" ? 0 : (r.lvl == null ? null : Math.max(1, r.lvl)); }
+  function statusHtml(r) {
+    var c = CAT[r.cat].color;
+    return '<div class="sg-stwrap"><div class="sg-st" style="color:' + c + '">' + esc(textoSelo(r)) +
+           barrasSvg(nivelSelo(r), c) + '</div><div class="sg-stem"></div></div>';
+  }
+
+  var PRIO = { off: 0, s1: 1, s2: 2, s3: 3, s4: 4, nm: 5 };
+  function placeLabels() {
+    labelLayer.clearLayers();
+    if (!mostrarSelos) return;
+    var porKey = {};
+    DATA.forEach(function (r) {
+      if (!visivel(r)) return;
+      var k = stackKey(r);
+      if (!porKey[k] || r.t > porKey[k].t) porKey[k] = r;
+    });
+    var cand = Object.keys(porKey).map(function (k) { return porKey[k]; })
+      .sort(function (a, b) { return PRIO[a.cat] - PRIO[b.cat] || (a.t < b.t ? 1 : -1); })
+      .map(function (r) {
+        return { lat: r.lat, lon: r.lon, online: r.ok, rec: r,
+                 sinal: { rotulo: textoSelo(r), nivel: nivelSelo(r) } };
+      });
+    KQMapa.semColisao(map, cand).forEach(function (it) {
+      var r = it.rec;
+      var m = L.marker([r.lat, r.lon], {
+        icon: L.divIcon({ className: "sg-stico", html: statusHtml(r), iconSize: [0, 0], iconAnchor: [0, 0] }),
+        zIndexOffset: 2000 + (5 - PRIO[r.cat]) * 10, keyboard: false, rec: r
+      });
+      m.bindPopup(function () { return popupHtml(r); }, { maxWidth: 320, offset: [0, -30] });
+      labelLayer.addLayer(m);
+    });
+  }
+  map.on("zoomend", placeLabels);
+  map.on("moveend", placeLabels);
+  map.on("baselayerchange", function (ev) {
+    baseName = ev.name || baseName;
+    // Sobre satélite o traço azul escuro desaparece; em base clara o branco é
+    // que desaparece. A cor acompanha o fundo escolhido.
+    var escuro = /Sat/i.test(baseName);
+    route.setStyle(escuro ? { color: "#ffffff", opacity: .85 } : { color: "#0f5e78", opacity: .55 });
+  });
+
+  /* ── Filtros (potência × tipo de rede) ─────────────────────────────── */
+  var activeCat = {}, activeNet = {};
+  Object.keys(CAT).forEach(function (k) { activeCat[k] = true; });
+  Object.keys(NET).forEach(function (k) { activeNet[k] = true; });
+  function visivel(r) { return activeCat[r.cat] && activeNet[r.net]; }
+
+  function render() {
+    pointsLayer.clearLayers();
+    accLayer.clearLayers();
+    Object.keys(layers).forEach(function (k) {
+      var o = layers[k];
+      if (visivel(o.r)) { pointsLayer.addLayer(o.m); accLayer.addLayer(o.a); }
+    });
+    desenharLinha();
+    placeLabels();
+  }
+
+  function buildChecks(el, dict, set, campo, isCat) {
+    el.innerHTML = Object.keys(dict).map(function (k) {
+      var v = dict[k];
+      var count = DATA.filter(function (r) { return r[campo] === k; }).length;
+      var lbl = isCat ? v.label : v;
+      var sw = isCat ? '<span class="dot' + (k === "off" ? " sq" : "") + '" style="background:' + v.color + '"></span>' : "";
+      var desc = isCat && v.desc ? " <small>" + esc(v.desc) + "</small>" : "";
+      return '<label><input type="checkbox" data-k="' + k + '" checked>' + sw +
+             "<span>" + esc(lbl) + desc + '</span><span class="cnt">' + count + "</span></label>";
+    }).join("");
+    el.addEventListener("change", function (e) {
+      var k = e.target.getAttribute("data-k");
+      if (k == null) return;
+      set[k] = e.target.checked;
+      render();
+    });
+  }
+  buildChecks(document.getElementById("sgLegend"), CAT, activeCat, "cat", true);
+  buildChecks(document.getElementById("sgNets"), NET, activeNet, "net", false);
+
+  document.getElementById("sgOptRoute").addEventListener("change", function (e) {
+    if (e.target.checked) { route.addTo(map); route.bringToBack(); } else { map.removeLayer(route); }
+  });
+  document.getElementById("sgOptAcc").addEventListener("change", function (e) {
+    if (e.target.checked) accLayer.addTo(map); else map.removeLayer(accLayer);
+  });
+  document.getElementById("sgOptLabels").addEventListener("change", function (e) {
+    mostrarSelos = e.target.checked; placeLabels();
+  });
+  document.getElementById("sgFit").addEventListener("click", fitAll);
+
+  function focarRegistro(num) {
+    var o = layers[num];
+    if (!o) return;
+    var r = o.r;
+    // Um item da lista de quedas pode estar escondido por um filtro; reabrir o
+    // filtro é mais útil que não responder ao clique.
+    if (!visivel(r)) {
+      activeCat[r.cat] = true; activeNet[r.net] = true;
+      PAGE.querySelectorAll(".sg-leg input[data-k]").forEach(function (i) {
+        var k = i.getAttribute("data-k");
+        if (k === r.cat || k === r.net) i.checked = true;
+      });
+      render();
+    }
+    map.setView([r.lat, r.lon], Math.max(map.getZoom(), 17));
+    o.m.openPopup();
+    var i = tlList.indexOf(r);
+    if (i >= 0) { cur = i; scrub.value = i; desenharLinha(); }
+  }
+
+  /* ── Lista de quedas ───────────────────────────────────────────────── */
+  var quedas = DATA.filter(function (r) { return !r.ok; });
+  var offEl = document.getElementById("sgOffList");
+  offEl.innerHTML = quedas.length
+    ? quedas.map(function (r) {
+        var why = esc(r.con) +
+          (r.mr != null ? " · " + r.mr + " dBm" : "") +
+          (r.wr != null ? " · Wi-Fi " + r.wr + " dBm" : "") +
+          (r.mem ? " · guardado na memória" : "") +
+          (r.bat != null ? " · bateria " + r.bat + "%" : "");
+        return '<li tabindex="0" data-n="' + r.n + '"><span class="time">' + esc(r.t) + '</span><span class="why">' + why + "</span></li>";
+      }).join("")
+    : '<li class="is-empty">Nenhuma queda registrada neste dia.</li>';
+  offEl.addEventListener("click", function (e) {
+    var li = e.target.closest("li[data-n]");
+    if (li) focarRegistro(+li.getAttribute("data-n"));
+  });
+  offEl.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    var li = e.target.closest("li[data-n]");
+    if (li) focarRegistro(+li.getAttribute("data-n"));
+  });
+
+  /* ── Linha do tempo ────────────────────────────────────────────────────
+     Dois modos de eixo de propósito: "horário real" mostra onde ficaram os
+     buracos de tempo (um aparelho desligado 3 h deixa um vazio visível), e
+     "por check-in" dá a mesma largura a cada leitura, o que é melhor para ler
+     a sequência quando a cadência é irregular. */
+  var toSec = function (s) { var p = s.split(":").map(Number); return p[0] * 3600 + p[1] * 60 + p[2]; };
+  var tlMode = "time", tlList = [], cur = -1, timer = null;
+  var svg = document.getElementById("sgTl"), tip = document.getElementById("sgTip"), scrub = document.getElementById("sgScrub");
+  var PAD = { l: 34, r: 10, t: 10, b: 20 };
+  var hl = L.layerGroup().addTo(map);
+  var playBtn = document.getElementById("sgPlay");
+
+  function xOf(i, W) {
+    var iw = W - PAD.l - PAD.r;
+    if (tlMode === "seq") return PAD.l + (tlList.length < 2 ? iw / 2 : i / (tlList.length - 1) * iw);
+    var a = toSec(tlList[0].t), b = toSec(tlList[tlList.length - 1].t);
+    return PAD.l + (b === a ? iw / 2 : (toSec(tlList[i].t) - a) / (b - a) * iw);
+  }
+
+  function desenharLinha() {
+    tlList = DATA.filter(visivel);
+    scrub.max = Math.max(0, tlList.length - 1);
+    if (cur >= tlList.length) cur = tlList.length - 1;
+    var W = svg.clientWidth || 800, H = svg.clientHeight || 120;
+    var ih = H - PAD.t - PAD.b, base = PAD.t + ih;
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    if (!tlList.length) {
+      svg.innerHTML = '<text x="' + (W / 2) + '" y="' + (H / 2) + '" text-anchor="middle" fill="#5b6b78" font-size="13">Nenhum check-in com os filtros atuais</text>';
+      return;
+    }
+    var g = "";
+    for (var l = 1; l <= 4; l++) {
+      var y = base - ih * l / 4;
+      g += '<line x1="' + PAD.l + '" x2="' + (W - PAD.r) + '" y1="' + y + '" y2="' + y + '" stroke="#e6ebee"/>' +
+           '<text x="' + (PAD.l - 8) + '" y="' + (y + 4) + '" text-anchor="end" font-size="10.5" fill="#5b6b78">' + l + "</text>";
+    }
+    g += '<text x="4" y="' + (PAD.t + ih / 2) + '" font-size="10.5" fill="#5b6b78" transform="rotate(-90 10 ' + (PAD.t + ih / 2) + ')" text-anchor="middle">nível</text>';
+
+    var lastH = -1;
+    tlList.forEach(function (r, i) {
+      var h = +r.t.slice(0, 2);
+      if (tlMode === "time") {
+        if (i === 0) {
+          var a = toSec(tlList[0].t), b = toSec(tlList[tlList.length - 1].t);
+          for (var hh = Math.ceil(a / 3600); hh * 3600 <= b; hh++) {
+            var x = PAD.l + (hh * 3600 - a) / ((b - a) || 1) * (W - PAD.l - PAD.r);
+            g += '<line x1="' + x + '" x2="' + x + '" y1="' + PAD.t + '" y2="' + base + '" stroke="#eef2f4"/>' +
+                 '<text x="' + x + '" y="' + (H - 5) + '" text-anchor="middle" font-size="10.5" fill="#5b6b78">' + String(hh).padStart(2, "0") + "h</text>";
+          }
+        }
+      } else if (h !== lastH) {
+        var xs = xOf(i, W);
+        g += '<line x1="' + xs + '" x2="' + xs + '" y1="' + PAD.t + '" y2="' + base + '" stroke="#eef2f4"/>' +
+             '<text x="' + xs + '" y="' + (H - 5) + '" text-anchor="middle" font-size="10.5" fill="#5b6b78">' + String(h).padStart(2, "0") + "h</text>";
+      }
+      lastH = h;
+    });
+
+    var bw = tlMode === "seq" ? Math.max(1.5, (W - PAD.l - PAD.r) / tlList.length * .75) : 2.2;
+    tlList.forEach(function (r, i) {
+      if (r.cat !== "off") return;
+      var x = xOf(i, W);
+      g += '<rect x="' + (x - Math.max(bw, 4) / 2) + '" y="' + PAD.t + '" width="' + Math.max(bw, 4) + '" height="' + ih + '" fill="#b3132b" opacity=".16"/>';
+    });
+    tlList.forEach(function (r, i) {
+      var x = xOf(i, W), h;
+      if (r.cat === "off") h = ih; else if (r.lvl == null) h = ih * .12; else h = ih * Math.max(1, r.lvl) / 4;
+      g += '<rect x="' + (x - bw / 2).toFixed(1) + '" y="' + (base - h).toFixed(1) + '" width="' + bw.toFixed(1) +
+           '" height="' + h.toFixed(1) + '" fill="' + CAT[r.cat].color + '"' + (r.cat === "off" ? "" : ' opacity=".9"') + "/>";
+    });
+    g += '<line x1="' + PAD.l + '" x2="' + (W - PAD.r) + '" y1="' + base + '" y2="' + base + '" stroke="#9aa8b3"/>';
+    if (cur >= 0) {
+      var xc = xOf(cur, W);
+      g += '<line x1="' + xc + '" x2="' + xc + '" y1="' + (PAD.t - 6) + '" y2="' + base + '" stroke="#16232d" stroke-width="1.5"/>' +
+           '<circle cx="' + xc + '" cy="' + (PAD.t - 6) + '" r="4" fill="#16232d"/>';
+    }
+    svg.innerHTML = g;
+  }
+
+  function maisProximo(clientX) {
+    var rc = svg.getBoundingClientRect(), W = rc.width, x = clientX - rc.left;
+    var best = 0, bd = 1e9;
+    tlList.forEach(function (_, i) { var d = Math.abs(xOf(i, W) - x); if (d < bd) { bd = d; best = i; } });
+    return best;
+  }
+
+  function selecionar(i, opts) {
+    opts = opts || {};
+    if (!tlList.length) return;
+    cur = Math.max(0, Math.min(i, tlList.length - 1));
+    scrub.value = cur;
+    var r = tlList[cur], c = CAT[r.cat];
+    hl.clearLayers();
+    L.circleMarker([r.lat, r.lon], { radius: 14, color: c.color, weight: 3, fill: false, className: "sg-pulse", interactive: false }).addTo(hl);
+    L.circleMarker([r.lat, r.lon], { radius: 14, color: "#16232d", weight: 1.5, fill: false, interactive: false }).addTo(hl);
+    document.getElementById("sgNow").innerHTML =
+      "<b>" + esc(r.t) + '</b><span class="pill" style="background:' + c.color + '">' + esc(c.label) + "</span>" +
+      esc(r.con) + (r.op ? " " + esc(r.op) : "") + (r.ssid ? " " + esc(r.ssid) : "") +
+      (r.dbm != null ? " · " + r.dbm + " dBm" : "") +
+      (r.bat != null ? " · bateria " + r.bat + "%" : "") +
+      " · check-in " + (cur + 1) + " de " + tlList.length;
+    if (opts.pan !== false && !map.getBounds().pad(-.15).contains([r.lat, r.lon])) map.panTo([r.lat, r.lon]);
+    if (opts.popup) layers[r.n].m.openPopup();
+    desenharLinha();
+  }
+
+  svg.addEventListener("mousemove", function (e) {
+    if (!tlList.length) return;
+    var i = maisProximo(e.clientX), r = tlList[i], rc = svg.getBoundingClientRect();
+    tip.style.display = "block";
+    tip.style.left = Math.min(Math.max(xOf(i, rc.width), 70), rc.width - 70) + "px";
+    tip.textContent = r.t + " · " + r.con + " · " + CAT[r.cat].label + (r.dbm != null ? " · " + r.dbm + " dBm" : "");
+  });
+  svg.addEventListener("mouseleave", function () { tip.style.display = "none"; });
+  svg.addEventListener("click", function (e) { if (tlList.length) { parar(); selecionar(maisProximo(e.clientX), { popup: true }); } });
+  scrub.addEventListener("input", function () { parar(); selecionar(+scrub.value); });
+
+  function parar() {
+    clearInterval(timer); timer = null;
+    playBtn.textContent = "▶";
+    playBtn.setAttribute("aria-label", "Reproduzir");
+  }
+  playBtn.addEventListener("click", function () {
+    if (timer) { parar(); return; }
+    if (cur < 0 || cur >= tlList.length - 1) cur = -1;
+    playBtn.textContent = "❚❚";
+    playBtn.setAttribute("aria-label", "Pausar");
+    timer = setInterval(function () {
+      if (cur >= tlList.length - 1) { parar(); return; }
+      selecionar(cur + 1);
+    }, +document.getElementById("sgSpeed").value);
+  });
+  document.getElementById("sgSpeed").addEventListener("change", function () { if (timer) { parar(); playBtn.click(); } });
+  document.getElementById("sgPrev").addEventListener("click", function () { parar(); selecionar(cur <= 0 ? 0 : cur - 1); });
+  document.getElementById("sgNext").addEventListener("click", function () { parar(); selecionar(cur + 1); });
+  PAGE.querySelectorAll(".sg-seg button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      PAGE.querySelectorAll(".sg-seg button").forEach(function (x) { x.classList.toggle("on", x === b); });
+      tlMode = b.getAttribute("data-mode");
+      desenharLinha();
+    });
+  });
+  /* Recolher a linha do tempo devolve ~155px ao mapa, e quem trabalha em tela
+     de 768px costuma querer isso sempre. A escolha é lembrada (mesmo padrão da
+     camada de fundo em KQMapa), em vez de ter de repetir o clique a cada abertura. */
+  var CHAVE_DOCK = "sg_dock_fechada";
+  function lerDock() { try { return localStorage.getItem(CHAVE_DOCK); } catch (e) { return null; } }
+  function gravarDock(v) { try { localStorage.setItem(CHAVE_DOCK, v ? "1" : "0"); } catch (e) { /* modo privado */ } }
+
+  var dockEl = document.getElementById("sgDock"), colBtn = document.getElementById("sgCollapse");
+  var colIco = document.getElementById("sgCollapseIco"), colTxt = document.getElementById("sgCollapseTxt");
+
+  function aplicarDock(fechada) {
+    dockEl.classList.toggle("is-closed", fechada);
+    colIco.textContent = fechada ? "▴" : "▾";
+    colTxt.textContent = fechada ? "Mostrar linha do tempo" : "Ocultar linha do tempo";
+    colBtn.title = fechada
+      ? "Mostrar o gráfico de sinal ao longo do dia"
+      : "Esconder o gráfico e dar essa altura ao mapa";
+    colBtn.setAttribute("aria-expanded", String(!fechada));
+  }
+
+  /* Estado inicial. Preferência explícita do usuário manda; sem ela, começa
+     RECOLHIDA quando nenhuma leitura do dia traz nível de sinal — aí o gráfico
+     seria uma fileira de tocos de 12% de altura, sem informação, ocupando
+     espaço que o mapa usa melhor. (Acontece em todo aparelho com a telemetria
+     de sinal desligada, que hoje é a maioria da frota.) */
+  var temMedicao = DATA.some(function (r) { return r.lvl != null; });
+  var salvo = lerDock();
+  aplicarDock(salvo === null ? !temMedicao : salvo === "1");
+
+  colBtn.addEventListener("click", function () {
+    var fechada = !dockEl.classList.contains("is-closed");
+    aplicarDock(fechada);
+    gravarDock(fechada);
+    ajustarAltura();
+    if (!fechada) desenharLinha();
+    placeLabels();
+  });
+  window.addEventListener("resize", desenharLinha);
+  document.addEventListener("keydown", function (e) {
+    if (e.target.closest("input,select,textarea,.leaflet-popup")) return;
+    if (e.key === "ArrowRight") { parar(); selecionar(cur + 1); }
+    if (e.key === "ArrowLeft") { parar(); selecionar(Math.max(0, cur - 1)); }
+  });
+
+  /* ── Altura da ferramenta ──────────────────────────────────────────────
+     O mapa é `flex:1`, então toda sobra vertical vira mapa. Em vez de fixar
+     uma altura chutada, medimos onde o quadro começa (o que já desconta a
+     topbar, o título, os chips de dia e um aviso se houver) e esticamos até o
+     fim da janela. Resultado: o maior mapa que cabe, sem o scroll duplo que
+     uma altura em `vh` produz quando há aviso na tela.
+
+     Abaixo de 820px a regra de CSS passa a `height:auto` (painel vira faixa
+     em cima do mapa); ali a altura inline é removida para não atropelá-la. */
+  var RESPIRO_PX = 18;
+  var ALTURA_MIN = 420;
+  function ajustarAltura() {
+    if (window.innerWidth <= 820) { PAGE.style.height = ""; map.invalidateSize(); return; }
+    var topo = PAGE.getBoundingClientRect().top + window.scrollY;
+    PAGE.style.height = Math.max(ALTURA_MIN, window.innerHeight - topo - RESPIRO_PX) + "px";
+    map.invalidateSize();
+  }
+  window.addEventListener("resize", ajustarAltura);
+
+  /* ── Painel lateral retrátil ───────────────────────────────────────── */
+  (function () {
+    var btn = document.getElementById("sgTogglePanel"), aside = document.getElementById("sgPanel");
+    function refresh() { map.invalidateSize(); desenharLinha(); placeLabels(); }
+    btn.addEventListener("click", function () {
+      var off = PAGE.classList.toggle("panel-off");
+      btn.setAttribute("aria-expanded", String(!off));
+      btn.title = off ? "Mostrar painel lateral" : "Recolher painel lateral";
+      document.getElementById("sgTogglePanelTxt").textContent = off ? "Mostrar painel" : "Ocultar painel";
+      var ico = document.getElementById("sgPanelIco");
+      if (ico) ico.style.opacity = off ? "0" : "1";
+      if (matchMedia("(prefers-reduced-motion: reduce)").matches || getComputedStyle(aside).display === "none") refresh();
+    });
+    aside.addEventListener("transitionend", function (e) { if (e.propertyName === "width") refresh(); });
+  })();
+
+  document.getElementById("sgSub").textContent =
+    DIA + " · " + tFirst.slice(0, 5) + " às " + tLast.slice(0, 5) + " · " + n + " check-in" + (n === 1 ? "" : "s");
+
+  /* ── Exportar PNG ──────────────────────────────────────────────────────
+     Desenha no canvas o que está na TELA (camada, zoom, filtros, selos e o
+     ponto destacado na linha do tempo). É isso que o PDF/PNG do servidor não
+     consegue fazer: lá o recorte é recalculado a partir dos filtros da URL.
+     Em 2x para a imagem continuar nítida ao ser ampliada num relatório. */
+  function rr(ctx, x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function esperarTiles(ms) {
+    ms = ms || 4500;
+    var t0 = Date.now();
+    return new Promise(function (resolve) {
+      (function olhar() {
+        var faltando = document.querySelector("#sgMap .leaflet-tile-container img.leaflet-tile:not(.leaflet-tile-loaded)");
+        if (!faltando || Date.now() - t0 > ms) return resolve();
+        setTimeout(olhar, 150);
+      })();
+    });
+  }
+
+  var btnX = document.getElementById("sgExport"), txtX = document.getElementById("sgExportTxt");
+  btnX.addEventListener("click", function () { exportarPNG(); });
+
+  async function exportarPNG() {
+    btnX.disabled = true;
+    var antes = txtX.textContent;
+    txtX.textContent = "Gerando…";
+    try {
+      map.closePopup();
+      await esperarTiles();
+      if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) {} }
+
+      var F  = '"IBM Plex Sans", "Segoe UI", Arial, sans-serif';
+      var FC = '"IBM Plex Sans Condensed", "IBM Plex Sans", "Segoe UI", Arial, sans-serif';
+      var mapEl = document.getElementById("sgMap"), mr = mapEl.getBoundingClientRect();
+      var W = Math.round(mr.width), MH = Math.round(mr.height), HEAD = 78, FOOT = 34, S = 2;
+      var cv = document.createElement("canvas");
+      cv.width = W * S; cv.height = (HEAD + MH + FOOT) * S;
+      var ctx = cv.getContext("2d");
+      ctx.scale(S, S);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, W, HEAD + MH + FOOT);
+
+      // cabeçalho
+      ctx.fillStyle = "#16232d"; ctx.font = "600 20px " + FC; ctx.textBaseline = "alphabetic";
+      ctx.fillText("Mapa de sinal — " + NOME, 18, 30);
+      ctx.fillStyle = "#5b6b78"; ctx.font = "13px " + F;
+      ctx.fillText(DIA + " · " + tFirst.slice(0, 5) + " às " + tLast.slice(0, 5) + " · camada: " + baseName, 18, 51);
+      var vis = DATA.filter(visivel);
+      var vOk = vis.filter(function (r) { return r.ok; }).length;
+      var temFiltro = Object.keys(activeCat).some(function (k) { return !activeCat[k]; }) ||
+                      Object.keys(activeNet).some(function (k) { return !activeNet[k]; });
+      ctx.fillText(vis.length + " check-ins exibidos" + (temFiltro ? " (com filtros aplicados)" : "") +
+                   " · " + vOk + " com conexão · " + (vis.length - vOk) + " sem conexão", 18, 69);
+      var agora = new Date();
+      ctx.textAlign = "right";
+      ctx.fillText("Exportado em " + agora.toLocaleDateString("pt-BR") + " " +
+                   agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), W - 18, 30);
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#d9e0e5"; ctx.fillRect(0, HEAD - 1, W, 1);
+
+      // mapa
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, HEAD, W, MH); ctx.clip();
+      ctx.translate(0, HEAD);
+      ctx.fillStyle = "#e5e8eb"; ctx.fillRect(0, 0, W, MH);
+      var tilesOk = true;
+      document.querySelectorAll("#sgMap .leaflet-tile-pane .leaflet-layer").forEach(function (layer) {
+        var op = parseFloat(getComputedStyle(layer).opacity) || 1;
+        layer.querySelectorAll("img.leaflet-tile-loaded").forEach(function (img) {
+          var b = img.getBoundingClientRect();
+          if (b.right < mr.left || b.left > mr.right || b.bottom < mr.top || b.top > mr.bottom) return;
+          ctx.globalAlpha = op * (parseFloat(img.style.opacity || 1) || 1);
+          try { ctx.drawImage(img, b.left - mr.left, b.top - mr.top, b.width, b.height); }
+          catch (e) { tilesOk = false; }
+        });
+      });
+      ctx.globalAlpha = 1;
+
+      var P = function (ll) { return map.latLngToContainerPoint(ll); };
+      var mpp = function (lat) { return 40075016.686 * Math.cos(lat * Math.PI / 180) / Math.pow(2, map.getZoom() + 8); };
+
+      if (map.hasLayer(accLayer)) {
+        Object.keys(layers).forEach(function (k) {
+          var o = layers[k];
+          if (!pointsLayer.hasLayer(o.m)) return;
+          var p = P([o.r.lat, o.r.lon]), rad = (o.r.acc || 0) / mpp(o.r.lat), c = CAT[o.r.cat].color;
+          if (!rad) return;
+          ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+          ctx.fillStyle = c + "0d"; ctx.fill();
+          ctx.strokeStyle = c; ctx.lineWidth = 1; ctx.stroke();
+        });
+      }
+
+      if (map.hasLayer(route)) {
+        var o = route.options;
+        ctx.save();
+        ctx.strokeStyle = o.color; ctx.globalAlpha = o.opacity; ctx.lineWidth = o.weight;
+        ctx.setLineDash([6, 6]); ctx.lineJoin = "round";
+        ctx.beginPath();
+        route.getLatLngs().forEach(function (ll, i) { var p = P(ll); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      DATA.slice().sort(function (a, b) { return ORDEM[a.cat] - ORDEM[b.cat]; }).forEach(function (r) {
+        if (!pointsLayer.hasLayer(layers[r.n].m)) return;
+        var p = P([r.lat, r.lon]);
+        if (p.x < -20 || p.y < -20 || p.x > W + 20 || p.y > MH + 20) return;
+        if (r.cat === "off") {
+          ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = 4; ctx.shadowOffsetY = 1;
+          rr(ctx, p.x - 9, p.y - 9, 18, 18, 3); ctx.fillStyle = "#b3132b"; ctx.fill();
+          ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+          ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(p.x - 3.5, p.y - 3.5); ctx.lineTo(p.x + 3.5, p.y + 3.5);
+          ctx.moveTo(p.x + 3.5, p.y - 3.5); ctx.lineTo(p.x - 3.5, p.y + 3.5);
+          ctx.lineWidth = 2; ctx.stroke();
+        } else {
+          var rad = r.cat === "nm" ? 6 : 8;
+          ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+          ctx.globalAlpha = .92; ctx.fillStyle = CAT[r.cat].color; ctx.fill(); ctx.globalAlpha = 1;
+          ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+        }
+      });
+
+      if (cur >= 0 && tlList[cur]) {
+        var rc = tlList[cur], pc = P([rc.lat, rc.lon]);
+        ctx.beginPath(); ctx.arc(pc.x, pc.y, 14, 0, Math.PI * 2);
+        ctx.strokeStyle = CAT[rc.cat].color; ctx.lineWidth = 3; ctx.stroke();
+        ctx.beginPath(); ctx.arc(pc.x, pc.y, 14, 0, Math.PI * 2);
+        ctx.strokeStyle = "#16232d"; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+
+      labelLayer.eachLayer(function (m) {
+        var r = m.options.rec;
+        if (!r) return;
+        var p = P([r.lat, r.lon]), c = CAT[r.cat].color;
+        var txt = textoSelo(r), lvl = nivelSelo(r);
+        ctx.font = "600 12.5px " + F;
+        var tw = ctx.measureText(txt).width;
+        var w = 10 + tw + 6 + 19 + 9, h = 20, x = p.x - w / 2, yb = p.y - 9 - 9, y = yb - h;
+        ctx.fillStyle = "#fff"; ctx.fillRect(p.x - 1, yb, 2, 9);
+        ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = 5; ctx.shadowOffsetY = 1;
+        rr(ctx, x, y, w, h, 10); ctx.fillStyle = "#fff"; ctx.fill();
+        ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+        ctx.fillStyle = c; ctx.textBaseline = "middle"; ctx.fillText(txt, x + 10, y + h / 2 + .5);
+        ctx.textBaseline = "alphabetic";
+        var hs = [5, 8, 11, 14], bx = x + 10 + tw + 6, by = y + 3 + 14;
+        for (var i = 0; i < 4; i++) {
+          rr(ctx, bx + i * 5, by - hs[i], 3.2, hs[i], 1);
+          ctx.fillStyle = (lvl != null && i < lvl) ? c : "#cfd6dc";
+          ctx.fill();
+        }
+      });
+
+      // escala
+      var latC = map.getCenter().lat, maxM = mpp(latC) * 120;
+      var pow = Math.pow(10, Math.floor(Math.log10(maxM))), dd = maxM / pow;
+      var nice = (dd >= 5 ? 5 : dd >= 2 ? 2 : 1) * pow, sw = nice / mpp(latC);
+      ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fillRect(10, MH - 30, sw + 4, 20);
+      ctx.strokeStyle = "#16232d"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(12, MH - 22); ctx.lineTo(12, MH - 12);
+      ctx.lineTo(12 + sw, MH - 12); ctx.lineTo(12 + sw, MH - 22); ctx.stroke();
+      ctx.fillStyle = "#16232d"; ctx.font = "11.5px " + F;
+      ctx.fillText(nice >= 1000 ? (nice / 1000) + " km" : nice + " m", 17, MH - 15);
+
+      // legenda
+      var items = Object.keys(CAT).map(function (k) {
+        return { k: k, c: CAT[k], n: vis.filter(function (r) { return r.cat === k; }).length };
+      });
+      ctx.font = "12.5px " + F;
+      var lw = Math.max.apply(null, items.map(function (it) { return ctx.measureText(it.c.label + " (" + it.n + ")").width; })) + 40;
+      var lh = items.length * 21 + 36, lx = W - lw - 12, ly = MH - lh - 12;
+      ctx.shadowColor = "rgba(0,0,0,.25)"; ctx.shadowBlur = 6;
+      rr(ctx, lx, ly, lw, lh, 6); ctx.fillStyle = "rgba(255,255,255,.96)"; ctx.fill();
+      ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
+      ctx.fillStyle = "#16232d"; ctx.font = "600 12.5px " + FC;
+      ctx.fillText("Potência do sinal", lx + 12, ly + 20);
+      ctx.font = "12.5px " + F;
+      items.forEach(function (it, i) {
+        var yy = ly + 38 + i * 21;
+        ctx.fillStyle = it.c.color;
+        if (it.k === "off") { ctx.fillRect(lx + 12, yy - 9, 10, 10); }
+        else { ctx.beginPath(); ctx.arc(lx + 17, yy - 4, 5, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = "#16232d";
+        ctx.fillText(it.c.label + " (" + it.n + ")", lx + 30, yy);
+      });
+      ctx.restore();
+
+      // rodapé
+      ctx.fillStyle = "#d9e0e5"; ctx.fillRect(0, HEAD + MH, W, 1);
+      ctx.fillStyle = "#5b6b78"; ctx.font = "11.5px " + F;
+      var attr = ((map.attributionControl && map.attributionControl.getContainer().textContent) || "")
+        .replace(/^\s*Leaflet\s*\|\s*/, "").trim();
+      ctx.fillText("Base: " + attr, 18, HEAD + MH + 21);
+
+      var blob = await new Promise(function (res, rej) {
+        try { cv.toBlob(function (b) { return b ? res(b) : rej(new Error("blob")); }, "image/png"); }
+        catch (e) { rej(e); }
+      });
+      var a = document.createElement("a");
+      var hh = String(agora.getHours()).padStart(2, "0") + String(agora.getMinutes()).padStart(2, "0");
+      a.href = URL.createObjectURL(blob);
+      a.download = "mapa_sinal_" + DIA_ISO + "_" + hh + ".png";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+      if (!tilesOk) alert("Parte do fundo do mapa não pôde ser incluída na imagem. Os pontos e selos foram exportados normalmente.");
+    } catch (e) {
+      console.error(e);
+      alert("Não foi possível gerar o PNG com esta camada de fundo. Escolha outra camada no seletor (canto superior direito) e tente de novo.");
+    } finally {
+      btnX.disabled = false;
+      txtX.textContent = antes;
+    }
+  }
+
+  render();
+  /* Nesta ordem: a altura final primeiro, o enquadramento depois. O `fitBounds`
+     do início rodou com o quadro ainda no tamanho do fallback, e enquadrar numa
+     altura que vai mudar deixa o traço fora de centro. */
+  ajustarAltura();
+  fitAll();
+})();
+</script>
+{% endblock %}

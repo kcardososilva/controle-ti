@@ -13,23 +13,36 @@ window.KQMapa = (function () {
   "use strict";
 
   var ATTR_ESRI = 'Tiles &copy; Esri';
+  var ATTR_OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">colaboradores do OpenStreetMap</a>';
 
   /* ── Camadas de fundo ──────────────────────────────────────────────────
-     O OpenStreetMap foi REMOVIDO de propósito, não por engano: os
-     servidores voluntários do OSM respondem HTTP 418 "Access blocked" a
-     este sistema (política de uso de tiles) e devolvem SEMPRE a mesma
-     imagem de aviso, em qualquer coordenada e zoom. Como essa resposta é
-     um PNG válido, o navegador a desenha como se fosse um tile normal e
-     o Leaflet nem dispara `tileerror` — por isso o "Mapa" aparecia
-     apenas como um mosaico inútil enquanto o satélite funcionava, sem
-     nenhum erro no console. Trocar o subdomínio ou o User-Agent não
-     resolve: o bloqueio é da política, não do endereço.
+     DADOS do OpenStreetMap sim; SERVIDOR do openstreetmap.org não. A
+     distinção é o ponto todo desta lista, e confundir as duas coisas já
+     custou duas camadas inúteis aqui.
 
-     Em lugar dele, camadas do ArcGIS/Esri (mesmo host que já serve o
-     satélite nesta rede, logo comprovadamente liberado no firewall) e o
-     CARTO como base clara. maxNativeZoom evita o placeholder "Map data
-     not yet available" onde o provedor não tem imagem no zoom pedido —
-     o Leaflet passa a reescalar o último tile disponível. */
+     `tile.openstreetmap.org` responde "403 Access blocked" ao IP desta
+     empresa (política de uso dos servidores voluntários). O veneno está na
+     forma da resposta: é um PNG válido, status 200, servido para QUALQUER
+     coordenada e zoom. O navegador desenha a imagem de aviso como se fosse
+     um tile normal, o Leaflet não dispara `tileerror`, e a camada vira um
+     mosaico repetido sem um único erro no console. Trocar subdomínio ou
+     User-Agent não resolve — o bloqueio é por política, não por endereço.
+
+     O CARTO (`basemaps.cartocdn.com`) caiu no MESMO buraco depois: passou a
+     exigir API key e hoje devolve um tile escrito "API KEY REQUIRED", de
+     novo com status 200 e de novo em silêncio. Por isso existe agora o
+     `_sondarPlaceholder` abaixo: a defesa não podia continuar sendo "lembrar
+     de não usar o provedor X", porque o provedor bom de ontem vira o
+     provedor quebrado de amanhã sem avisar ninguém.
+
+     A camada "Mapa (OpenStreetMap)" serve os mesmos dados do OSM — os pivôs
+     com nome, os canais, os galpões, que é o que o satélite não rotula — por
+     um operador que permite este uso. As demais vêm do ArcGIS/Esri, mesmo
+     host do satélite, comprovadamente liberado no firewall da empresa.
+
+     maxNativeZoom evita o placeholder "Map data not yet available" onde o
+     provedor não tem imagem no zoom pedido — o Leaflet passa a reescalar o
+     último tile disponível. */
   var CAMADAS = [
     { id: "satelite", rotulo: "Satélite",
       url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -46,9 +59,9 @@ window.KQMapa = (function () {
     { id: "topo", rotulo: "Topográfico",
       url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
       opts: { maxZoom: 19, maxNativeZoom: 18, attribution: ATTR_ESRI } },
-    { id: "claro", rotulo: "Claro (alto contraste)",
-      url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-      opts: { maxZoom: 20, subdomains: "abcd", attribution: '&copy; OpenStreetMap, &copy; CARTO' } }
+    { id: "osm", rotulo: "Mapa (OpenStreetMap)",
+      url: "https://tile.openstreetmap.de/{z}/{x}/{y}.png",
+      opts: { maxZoom: 19, maxNativeZoom: 18, attribution: ATTR_OSM + ' &middot; tiles: openstreetmap.de' } }
   ];
 
   var CHAVE_CAMADA = "kq_mapa_camada";
@@ -69,12 +82,29 @@ window.KQMapa = (function () {
     var porId = {};
     var overlays = {};
 
+    /* `opcoes.crossOrigin` existe para a tela que exporta o mapa desenhando os
+       tiles num <canvas> (Mapa de Sinal). Sem o atributo crossorigin na <img>,
+       o canvas fica "tainted" e `toBlob()` lança SecurityError — a imagem
+       aparece na tela e o download simplesmente falha.
+
+       É opt-in, e não o padrão, de propósito: com crossorigin ligado um tile
+       servido SEM cabeçalho CORS não é apenas rejeitado no canvas, ele não
+       carrega de jeito nenhum. Ligar para toda a frota arriscaria apagar o
+       fundo do mapa nas duas telas que não precisam disso. */
+    function _opts(base) {
+      if (!opcoes.crossOrigin) return base;
+      var o = {};
+      for (var k in base) if (Object.prototype.hasOwnProperty.call(base, k)) o[k] = base[k];
+      o.crossOrigin = true;
+      return o;
+    }
+
     CAMADAS.forEach(function (def) {
-      var camada = L.tileLayer(def.url, def.opts);
+      var camada = L.tileLayer(def.url, _opts(def.opts));
       if (def.overlay) {
         // Base + rótulos viajam como UMA opção no seletor: o usuário escolhe
         // "Satélite + nomes", não monta a combinação na mão.
-        var rot = L.tileLayer(def.overlay, { maxZoom: 19, maxNativeZoom: 17, attribution: ATTR_ESRI });
+        var rot = L.tileLayer(def.overlay, _opts({ maxZoom: 19, maxNativeZoom: 17, attribution: ATTR_ESRI }));
         camada = L.layerGroup([camada, rot]);
       }
       // Último zoom com imagem REAL desta camada. Acima dele o Leaflet reamplia
@@ -83,6 +113,11 @@ window.KQMapa = (function () {
       // se aproximava para vê-la. Guardado aqui para o aviso de nitidez e para o
       // modo terreno saberem onde está esse limite, sem repetir o número.
       camada._kqNativo = def.opts.maxNativeZoom || def.opts.maxZoom || 19;
+      // Guardados para a sonda de placeholder (_sondarPlaceholder) poder
+      // montar URLs de tile desta camada sem depender do Leaflet.
+      camada._kqUrl = def.url;
+      camada._kqRotulo = def.rotulo;
+      camada._kqSub = (def.opts.subdomains || "a")[0];
       mapaDeCamadas[def.rotulo] = camada;
       porId[def.id] = camada;
       camada._kqId = def.id;
@@ -94,37 +129,110 @@ window.KQMapa = (function () {
     inicial.addTo(map);
 
     var control = L.control.layers(mapaDeCamadas, null, { position: "topright" }).addTo(map);
+    var estado = { aviso: null };
+
     map.on("baselayerchange", function (ev) {
-      if (ev.layer && ev.layer._kqId) _gravar(CHAVE_CAMADA, ev.layer._kqId);
+      // Trocar de camada zera o diagnóstico: o aviso falava da camada ANTERIOR,
+      // e deixá-lo na tela culparia a camada nova pelo problema da velha.
+      if (estado.aviso) { map.removeControl(estado.aviso); estado.aviso = null; }
+      if (!ev.layer) return;
+      if (ev.layer._kqId) _gravar(CHAVE_CAMADA, ev.layer._kqId);
+      _sondarPlaceholder(map, ev.layer, estado);
     });
 
-    _vigiarTiles(map);
+    _vigiarTiles(map, estado);
+    map.whenReady(function () { _sondarPlaceholder(map, inicial, estado); });
     return { control: control, camadas: porId };
   }
 
-  /* Falha REAL de tiles (provedor fora do ar, firewall bloqueando o host):
-     mostra um aviso sobre o mapa em vez de deixar a tela cinza sem explicação.
-     Não cobre o caso do OSM descrito acima — lá o servidor responde 200-ish
-     com uma imagem válida e nenhum evento de erro é emitido; aquele problema
-     se resolve não usando o provedor, e não com detecção em tempo de execução. */
-  function _vigiarTiles(map) {
-    var erros = 0, aviso = null;
+  /* Aviso único sobre o mapa, no canto inferior esquerdo. Só um por vez: duas
+     tarjas empilhadas cobririam justamente o mapa que se quer mostrar. */
+  function _aviso(map, estado, html) {
+    if (estado.aviso) return;
+    estado.aviso = L.control({ position: "bottomleft" });
+    estado.aviso.onAdd = function () {
+      var d = L.DomUtil.create("div", "kq-mapaviso");
+      d.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>' + html;
+      L.DomEvent.disableClickPropagation(d);
+      return d;
+    };
+    estado.aviso.addTo(map);
+  }
+
+  var TROCAR = ' Escolha outra no seletor de camadas (canto superior direito).';
+
+  /* Falha REAL de tiles: provedor fora do ar, firewall bloqueando o host.
+     O Leaflet emite `tileerror` e o aviso aparece em vez da tela cinza muda. */
+  function _vigiarTiles(map, estado) {
+    var erros = 0;
     map.on("tileerror", function () {
-      erros++;
-      if (erros < 6 || aviso) return;
-      aviso = L.control({ position: "bottomleft" });
-      aviso.onAdd = function () {
-        var d = L.DomUtil.create("div", "kq-mapaviso");
-        d.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>Esta camada de fundo não está carregando. ' +
-                      'Escolha outra no seletor de camadas (canto superior direito).';
-        return d;
-      };
-      aviso.addTo(map);
+      if (++erros < 6) return;
+      _aviso(map, estado, "Esta camada de fundo não está carregando." + TROCAR);
     });
-    map.on("baselayerchange", function () {
-      erros = 0;
-      if (aviso) { map.removeControl(aviso); aviso = null; }
-    });
+    // Sem zerar aqui, os erros da camada anterior se somariam aos da nova e
+    // acusariam de falha uma camada que está carregando bem.
+    map.on("baselayerchange", function () { erros = 0; });
+  }
+
+  /* ── Sonda de provedor "mudo" ──────────────────────────────────────────
+     A falha que o `tileerror` NÃO pega: o servidor responde 200 com um PNG
+     perfeitamente válido, só que é sempre a MESMA figura, em qualquer
+     coordenada e zoom — o "403 Access blocked" do openstreetmap.org, o
+     "API KEY REQUIRED" que o CARTO passou a devolver. O navegador desenha,
+     o Leaflet não reclama, e a pessoa fica olhando um mosaico repetido sem
+     nenhum erro no console. Foi assim nas duas vezes.
+
+     A checagem precisa ser explícita, então: baixa dois tiles de propósito
+     MUITO diferentes — um do mundo inteiro (z=2) e outro do pedaço que está
+     na tela — e compara os bytes. Dois tiles tão distantes só saem idênticos
+     quando o servidor devolve sempre a mesma imagem. Comparar tiles VIZINHOS
+     não serviria: em área vazia eles são legitimamente iguais e o alarme
+     seria falso — foi o que quase me enganou ao diagnosticar isto.
+
+     Roda uma vez por camada, só quando a camada entra em uso. Se o fetch
+     falhar (CORS, rede, offline) não acusa nada: falha dura já tem dono. */
+  var _sondadas = {};
+
+  function _urlTile(camada, z, x, y) {
+    return String(camada._kqUrl)
+      .replace("{s}", camada._kqSub || "a").replace("{r}", "")
+      .replace("{z}", z).replace("{x}", x).replace("{y}", y);
+  }
+
+  function _mesmosBytes(a, b) {
+    if (a.byteLength !== b.byteLength) return false;
+    var va = new Uint8Array(a), vb = new Uint8Array(b);
+    for (var i = 0; i < va.length; i++) if (va[i] !== vb[i]) return false;
+    return true;
+  }
+
+  function _sondarPlaceholder(map, camada, estado) {
+    if (!camada || !camada._kqUrl || !window.fetch || _sondadas[camada._kqId]) return;
+    _sondadas[camada._kqId] = true;
+
+    // Piso de zoom 6 garante que a sonda local nunca caia no mesmo tile da
+    // sonda global (z=2) — senão a comparação acusaria a si mesma.
+    var c = map.getCenter();
+    var z = Math.min(Math.max(map.getZoom(), 6), camada._kqNativo || 18);
+    var n = Math.pow(2, z);
+    var rad = c.lat * Math.PI / 180;
+    var x = Math.floor((c.lng + 180) / 360 * n);
+    var y = Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * n);
+
+    /* `cache: "reload"` não é zelo exagerado, é obrigatório: nas telas que NÃO
+       pedem crossOrigin os tiles entram no cache como resposta no-cors, sem
+       cabeçalho CORS. Um `fetch` normal reaproveita essa entrada e o navegador
+       o rejeita com erro de CORS no console — a sonda ficava barulhenta e cega
+       exatamente nas telas onde ninguém mais está olhando o problema. */
+    Promise.all([_urlTile(camada, 2, 1, 2), _urlTile(camada, z, x, y)].map(function (u) {
+      return fetch(u, { mode: "cors", cache: "reload" })
+        .then(function (r) { return r.ok ? r.arrayBuffer() : null; });
+    })).then(function (b) {
+      if (!b[0] || !b[1] || !_mesmosBytes(b[0], b[1])) return;
+      _aviso(map, estado, "O provedor da camada <b>" + _escapar(camada._kqRotulo || "selecionada") +
+             "</b> está devolvendo a mesma imagem para todo lugar (bloqueio de uso ou chave exigida), " +
+             "então o fundo do mapa não vale nada aqui." + TROCAR);
+    }).catch(function () { /* rede/CORS: `tileerror` cobre */ });
   }
 
   /* ── Selo de conexão/sinal ───────────────────────────────────────────── */

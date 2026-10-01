@@ -279,6 +279,7 @@ urlpatterns = [
     path("quiosque/<int:pk>/mapa/atualizar/",     views.quiosque_mapa_atualizar,     name="quiosque_mapa_atualizar"),
     path("quiosque/<int:pk>/checkins/exportar/",  views.quiosque_checkins_exportar,  name="quiosque_checkins_exportar"),
     path("quiosque/<int:pk>/mapa/exportar/",     views.quiosque_mapa_exportar,      name="quiosque_mapa_exportar"),
+    path("quiosque/<int:pk>/sinal/",             views.quiosque_mapa_sinal,         name="quiosque_mapa_sinal"),
     path("quiosque/<int:pk>/config/",  views.quiosque_config_editar, name="quiosque_config_editar"),
     path("quiosque/<int:pk>/comando/", views.quiosque_comando_novo,  name="quiosque_comando_novo"),
     path("quiosque/<int:pk>/revogar/", views.quiosque_revogar,       name="quiosque_revogar"),

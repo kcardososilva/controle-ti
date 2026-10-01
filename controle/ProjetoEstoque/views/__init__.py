@@ -318,6 +318,7 @@ from .quiosque import (
     quiosque_mapa_atualizar,
     quiosque_checkins_exportar,
     quiosque_mapa_exportar,
+    quiosque_mapa_sinal,
     quiosque_matriculas,
     quiosque_matricula_excluir,
     quiosque_matricula_renomear,

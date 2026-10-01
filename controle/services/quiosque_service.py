@@ -2128,6 +2128,128 @@ def montar_resumo_dia(device, dia: date, trilha: list) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Mapa de sinal (uma tela por aparelho/dia — cobertura no espaço e no tempo)
+# ──────────────────────────────────────────────────────────────────────────────
+# Diferente do traço de rota de `montar_trilha`: lá o objetivo é o CAMINHO, e
+# por isso fixes ruins e saltos impossíveis são descartados e as paradas são
+# colapsadas num ponto só. Aqui o objetivo é o SINAL em cada leitura, então
+# nenhuma leitura com coordenada é descartada:
+#
+#   • não há filtro de precisão — um fix de 1.700 m ainda diz "neste pedaço da
+#     fazenda o 4G estava em nível 3", que é exatamente a pergunta da tela; o
+#     raio de precisão é exibido como círculo para o usuário julgar;
+#   • paradas não são colapsadas — num ponto fixo o sinal oscila ao longo das
+#     horas, e colapsar esconderia a oscilação, que é o dado;
+#   • a ordem é cronológica por `coletado_em` (ascendente), para a linha do
+#     tempo e o traço seguirem o evento real, não a chegada ao servidor.
+MAPA_SINAL_MAX_PONTOS = 2000
+
+
+def _hhmmss(dt) -> str:
+    return timezone.localtime(dt).strftime("%H:%M:%S") if dt else ""
+
+
+def dados_mapa_sinal(device, dia: date | None = None) -> dict:
+    """Série de leituras geolocalizadas de um dia, já resolvidas para o que a
+    tela de Mapa de Sinal consome (um registro por check-in).
+
+    Cada registro traz o sinal JÁ RESOLVIDO para o transporte em uso
+    (`sinal_do_checkin`) e a conectividade pelas três evidências
+    (`conexao_do_checkin`) — a tela não reinterpreta nada, para nunca
+    contradizer o mapa de rota nem a planilha exportada.
+
+    Sem dia informado, usa o dia mais recente que tem leitura (e não "hoje",
+    que num aparelho desligado viria vazio sem explicar por quê).
+    """
+    from ProjetoEstoque.models import KioskCheckin
+    from django.db.models.functions import Coalesce
+
+    base = KioskCheckin.objects.filter(device=device).annotate(
+        _quando=Coalesce("coletado_em", "registrado_em")
+    )
+
+    if dia is None:
+        ultimo = base.order_by("-_quando").values_list("_quando", flat=True).first()
+        dia = timezone.localtime(ultimo).date() if ultimo else timezone.localdate()
+
+    inicio, fim = intervalo_dia_local(dia)
+    do_dia = base.filter(_quando__gte=inicio, _quando__lt=fim).order_by("_quando")
+
+    total_dia = do_dia.count()
+    # Só leituras com coordenada entram no mapa — não há onde desenhar as
+    # outras. O total que ficou de fora é informado na tela em vez de somir:
+    # desde a v1.10.0 o app manda posição nula de propósito quando o fix está
+    # velho (ver INFORME_SERVIDOR_ROTA_E_SINAL_MOVEL §3), então "sem GPS" passou
+    # a ser um estado legítimo e frequente, não um defeito.
+    com_gps = do_dia.exclude(latitude=None).exclude(longitude=None)
+    n_com_gps = com_gps.count()
+    truncado = n_com_gps > MAPA_SINAL_MAX_PONTOS
+    linhas = list(com_gps[:MAPA_SINAL_MAX_PONTOS]) if truncado else list(com_gps)
+
+    atraso_fila = limiar_fila(device)
+    pontos = []
+    # `n` numera do mais recente para o mais antigo (o registro #1 é a última
+    # leitura do dia), espelhando a ordem da tabela de histórico do detalhe.
+    total = len(linhas)
+    for i, c in enumerate(linhas):
+        sinal = sinal_do_checkin(c)
+        conx = conexao_do_checkin(c, atraso_fila)
+        pontos.append({
+            "id": c.pk,
+            "n": total - i,
+            "t": _hhmmss(c.coletado_em or c.registrado_em),
+            "rt": timezone.localtime(c.registrado_em).strftime("%d/%m %H:%M:%S") if c.registrado_em else "",
+            "bat": c.bateria,
+            "chg": bool(c.carregando),
+            "rede": c.rede or "",
+            "ssid": c.ssid or None,
+            "wr": c.wifi_rssi_dbm,
+            "wl": c.wifi_nivel,
+            "vel": c.wifi_velocidade_mbps,
+            "band": c.wifi_banda_ghz or None,
+            "con": sinal["rotulo"],
+            "op": c.movel_operadora or None,
+            "mr": c.movel_rssi_dbm,
+            "ml": c.movel_nivel,
+            "tec": c.movel_tecnologia or None,
+            "ok": conx["online"],
+            "mem": conx["fila"],
+            "delay": conx["atraso_s"],
+            "lat": c.latitude,
+            "lon": c.longitude,
+            "acc": c.precisao_m,
+            "dbm": sinal["dbm"],
+            "lvl": sinal["nivel"],
+        })
+
+    com_conexao = sum(1 for p in pontos if p["ok"])
+    n_wifi = sum(1 for p in pontos if normalizar_rede_tipo(p["rede"]) == REDE_WIFI)
+    n_movel = sum(1 for p in pontos if normalizar_rede_tipo(p["rede"]) == REDE_MOVEL)
+    com_medicao = sum(1 for p in pontos if p["lvl"] is not None)
+
+    return {
+        "dia": dia,
+        "pontos": pontos,
+        "kpis": {
+            "total": len(pontos),
+            "com_conexao": com_conexao,
+            "sem_conexao": len(pontos) - com_conexao,
+            "pct_online": round(com_conexao / len(pontos) * 100, 1) if pontos else 0.0,
+            "wifi": n_wifi,
+            "movel": n_movel,
+            "com_medicao": com_medicao,
+        },
+        "t_inicio": pontos[0]["t"] if pontos else "",
+        "t_fim": pontos[-1]["t"] if pontos else "",
+        "total_dia": total_dia,
+        "sem_gps": total_dia - n_com_gps,
+        "truncado": truncado,
+        "limite": MAPA_SINAL_MAX_PONTOS,
+        "atraso_fila_s": atraso_fila,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Painel Gerencial (indicadores para apresentação — RH / gestão de TI)
 # ──────────────────────────────────────────────────────────────────────────────
 # Métricas construídas só a partir do que é persistido de forma confiável:
