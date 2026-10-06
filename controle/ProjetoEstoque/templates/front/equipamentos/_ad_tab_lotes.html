@@ -1,0 +1,79 @@
+{% load humanize %}
+{% comment %}Lotes — lotes de estoque vinculados ao item.
+   Fatia de equipamento_detalhe.html, que tinha 2.535 linhas numa só tela.
+   Recebe o contexto do include — as variáveis são as mesmas da view
+   `equipamento_detalhe`; esta fatia não busca nada por conta própria.{% endcomment %}
+    {# ─────────────────────── TAB: LOTES ─────────────────────── #}
+    {% if possui_lotes %}
+    <div id="tab-lotes" class="ad-tab-panel" role="tabpanel">
+      <section class="ad-card">
+        <div class="ad-card-header">
+          <div class="ad-card-title"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i> Lotes Vinculados</div>
+          <span class="ad-badge ad-badge-info">{{ lotes_cards|length }} lote{{ lotes_cards|length|pluralize }}</span>
+        </div>
+        <div class="ad-card-body">
+          <div class="ad-lotes-grid">
+            {% for lote_card in lotes_cards %}
+              <div class="ad-lote-card">
+                <div class="ad-lote-top">
+                  <div>
+                    <div class="ad-lote-title">NF {{ lote_card.lote.numero_nf }}</div>
+                    <div class="ad-lote-meta">
+                      {% if lote_card.lote.data_entrada %}Entrada: {{ lote_card.lote.data_entrada|date:"d/m/Y" }}{% endif %}
+                      {% if lote_card.lote.fornecedor %} · {{ lote_card.lote.fornecedor.nome|default:lote_card.lote.fornecedor }}{% endif %}
+                    </div>
+                  </div>
+                  {% if lote_card.status_lote == 'ok' %}<span class="ad-badge ad-badge-success"><span class="dot"></span>Disponível</span>
+                  {% elif lote_card.status_lote == 'atencao' %}<span class="ad-badge ad-badge-warning"><span class="dot"></span>Atenção</span>
+                  {% elif lote_card.status_lote == 'critico' %}<span class="ad-badge ad-badge-danger"><span class="dot"></span>Crítico</span>
+                  {% else %}<span class="ad-badge ad-badge-neutral">Zerado</span>{% endif %}
+                </div>
+
+                <div class="ad-lote-fiscal">
+                  <div class="ad-lote-fiscal-title"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Dados Fiscais</div>
+                  <div class="ad-lote-fiscal-grid">
+                    <div><span>Fornecedor</span><strong>{{ lote_card.lote.fornecedor.nome|default:"—" }}</strong></div>
+                    <div><span>CNPJ</span><strong>{{ lote_card.lote.fornecedor.cnpj|default:"—" }}</strong></div>
+                    <div><span>Nº da NF</span><strong>{{ lote_card.lote.numero_nf|default:"—" }}</strong></div>
+                    <div><span>Data de Entrada</span><strong>{{ lote_card.lote.data_entrada|date:"d/m/Y"|default:"—" }}</strong></div>
+                  </div>
+                </div>
+
+                <div class="ad-lote-total">
+                  <div class="ad-lote-total-label">
+                    <i class="fa-solid fa-sack-dollar" aria-hidden="true"></i> Custo Total do Lote
+                    <span class="ad-lote-total-tag" title="Valor pago na aquisição do lote — não muda com o consumo do estoque">valor fixo da aquisição</span>
+                  </div>
+                  <div class="ad-lote-total-value">R$ {{ lote_card.valor_total|floatformat:2|intcomma }}</div>
+                </div>
+
+                <div class="ad-lote-values">
+                  <div class="ad-lote-mini"><span>Entrada</span><strong>{{ lote_card.quantidade_entrada }}</strong></div>
+                  <div class="ad-lote-mini"><span>Disponível</span><strong>{{ lote_card.quantidade_disponivel }}</strong></div>
+                  <div class="ad-lote-mini"><span>Custo Unit.</span><strong>R$ {{ lote_card.custo_unitario|floatformat:2|intcomma }}</strong></div>
+                  <div class="ad-lote-mini"><span>Saldo Disponível (R$)</span><strong>R$ {{ lote_card.valor_disponivel|floatformat:2|intcomma }}</strong></div>
+                </div>
+                <div class="ad-progress-text">
+                  <span>Saldo do lote</span><span>{{ lote_card.percentual_saldo }}%</span>
+                </div>
+                <div class="ad-progress-bg">
+                  <div class="ad-progress-fill {% if lote_card.status_lote == 'critico' or lote_card.status_lote == 'zerado' %}ad-critical{% elif lote_card.status_lote == 'atencao' %}ad-warning{% endif %}" style="width:{{ lote_card.percentual_saldo }}%;"></div>
+                </div>
+                {% if lote_card.lote.observacao_tecnica %}
+                  <div class="ad-lote-meta" style="margin-top:12px;">
+                    <i class="fa-solid fa-note-sticky" aria-hidden="true"></i>
+                    {{ lote_card.lote.observacao_tecnica|linebreaksbr }}
+                  </div>
+                {% endif %}
+                <div class="ad-lote-meta" style="margin-top:12px;">
+                  <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+                  {{ lote_card.movimentacoes_count }} movimentação{{ lote_card.movimentacoes_count|pluralize:"ões" }}
+                  {% if lote_card.ultima_movimentacao %} · Última: {{ lote_card.ultima_movimentacao.created_at|date:"d/m/Y H:i" }}{% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+    </div>
+    {% endif %}

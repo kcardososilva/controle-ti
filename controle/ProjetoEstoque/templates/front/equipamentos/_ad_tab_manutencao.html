@@ -1,0 +1,160 @@
+{% load humanize %}
+{% comment %}Manutenção — preventivas, histórico de reparo e ordens no fornecedor.
+   Fatia de equipamento_detalhe.html, que tinha 2.535 linhas numa só tela.
+   Recebe o contexto do include — as variáveis são as mesmas da view
+   `equipamento_detalhe`; esta fatia não busca nada por conta própria.{% endcomment %}
+    {# ─────────────────────── TAB: MANUTENÇÃO ─────────────────────── #}
+    {% if preventivas or item.precisa_preventiva == 'sim' or historico_manutencao or ordens_manutencao %}
+    <div id="tab-manutencao" class="ad-tab-panel" role="tabpanel">
+      <div class="ad-tab-2col">
+        <div class="ad-col">
+          {% if preventivas %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i> Plano Preventivo</div>
+              {% if item.precisa_preventiva == 'sim' %}
+              <a href="{% url 'preventiva_start_item' item.id %}" class="btn btn-sm"><i class="fa-solid fa-plus" aria-hidden="true"></i> Nova</a>
+              {% endif %}
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-simple-list">
+                {% for p in preventivas %}
+                  <div class="ad-simple-item">
+                    <div class="ad-simple-top">
+                      <div>
+                        <div class="ad-simple-title">{{ p.checklist_modelo.nome }}</div>
+                        {% if p.suspensa %}
+                          <div class="ad-simple-sub">Contagem suspensa — inicia quando o item voltar a Ativo</div>
+                        {% elif p.proxima_calc %}
+                          <div class="ad-simple-sub">
+                            Próxima: {{ p.proxima_calc|date:"d/m/Y" }}
+                            {% if p.atrasado %} <span style="color:var(--ad-danger)">({{ p.proxima_calc|timesince }} atrás)</span>
+                            {% elif p.atencao %} <span style="color:var(--ad-warning)">(em {{ p.proxima_calc|timeuntil }})</span>{% endif %}
+                          </div>
+                        {% elif p.data_proxima %}
+                          <div class="ad-simple-sub">Próxima: {{ p.data_proxima|date:"d/m/Y" }}</div>
+                        {% else %}
+                          <div class="ad-simple-sub">Sem data programada</div>
+                        {% endif %}
+                        {% if p.data_ultima %}
+                          <div class="ad-simple-sub" style="color:var(--ad-soft)">Última: {{ p.data_ultima|date:"d/m/Y" }}</div>
+                        {% endif %}
+                      </div>
+                      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+                        {% if p.suspensa %}
+                          <span class="ad-badge ad-badge-neutral">Pausada</span>
+                        {% elif p.atrasado %}
+                          <span class="ad-badge ad-badge-danger">Atrasada</span>
+                        {% elif p.atencao %}
+                          <span class="ad-badge ad-badge-warning">Atenção</span>
+                        {% elif p.proxima_calc or p.data_proxima %}
+                          <span class="ad-badge ad-badge-success">Em dia</span>
+                        {% else %}
+                          <span class="ad-badge ad-badge-neutral">Sem data</span>
+                        {% endif %}
+                        <a href="{% url 'preventiva_exec' p.id %}" class="btn btn-sm"><i class="fa-solid fa-play" aria-hidden="true"></i> Executar</a>
+                      </div>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+          {% elif item.precisa_preventiva == 'sim' %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i> Plano Preventivo</div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-empty">
+                <i class="fa-solid fa-circle-plus" aria-hidden="true"></i>
+                <div>Nenhuma preventiva programada.</div>
+                <a href="{% url 'preventiva_start_item' item.id %}" class="btn-primary btn-sm" style="margin-top:6px;">
+                  <i class="fa-solid fa-plus" aria-hidden="true"></i> Programar preventiva
+                </a>
+              </div>
+            </div>
+          </section>
+          {% endif %}
+        </div>
+
+        <div class="ad-col">
+          {% if historico_manutencao %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-wrench" aria-hidden="true"></i> Manutenção Externa</div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-simple-list">
+                {% for m in historico_manutencao|slice:":5" %}
+                  <div class="ad-simple-item">
+                    <div class="ad-simple-top">
+                      <div>
+                        <div class="ad-simple-title">{% if m.tipo_movimentacao == 'envio_manutencao' %}Envio para manutenção{% else %}Retorno de manutenção{% endif %}</div>
+                        <div class="ad-simple-sub">{{ m.created_at|date:"d/m/Y H:i" }}</div>
+                      </div>
+                      {% if m.tipo_movimentacao == 'envio_manutencao' %}<span class="ad-badge ad-badge-warning">Envio</span>{% else %}<span class="ad-badge ad-badge-success">Retorno</span>{% endif %}
+                    </div>
+                    {% if m.fornecedor_manutencao %}<div class="ad-simple-sub">Fornecedor: {{ m.fornecedor_manutencao.nome }}</div>{% endif %}
+                    {% if m.localidade_destino %}<div class="ad-simple-sub">Local: {{ m.localidade_destino.local|default:m.localidade_destino }}</div>{% endif %}
+                    {% if m.custo > 0 %}<div class="ad-simple-sub">Custo: R$ {{ m.custo|floatformat:2|intcomma }}</div>{% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+          {% else %}
+          <section class="ad-card">
+            <div class="ad-card-body">
+              <div class="ad-empty">
+                <i class="fa-solid fa-circle-check" style="color:var(--ad-success)" aria-hidden="true"></i>
+                <div>Nenhum registro de manutenção externa.</div>
+              </div>
+            </div>
+          </section>
+          {% endif %}
+
+          {% if ordens_manutencao %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Ordens de Manutenção</div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-simple-list">
+                {% for os in ordens_manutencao %}
+                  <div class="ad-simple-item">
+                    <div class="ad-simple-top">
+                      <div>
+                        <div class="ad-simple-title">OS #{{ os.pk }} — {{ os.fornecedor.nome }}</div>
+                        <div class="ad-simple-sub">{{ os.created_at|date:"d/m/Y H:i" }}{% if os.finalizada_em %} · finalizada em {{ os.finalizada_em|date:"d/m/Y H:i" }}{% endif %}</div>
+                      </div>
+                      <a href="{% url 'manutencao_recebimento_detail' os.pk %}" class="ad-badge {% if os.status == 'concluido' %}ad-badge-success{% elif os.status == 'cancelado' or os.status == 'descartado' %}ad-badge-neutral{% elif 'reprovad' in os.status %}ad-badge-danger{% else %}ad-badge-warning{% endif %}" title="Ver detalhe da OS">{{ os.get_status_display }}</a>
+                    </div>
+                    {% if os.diagnostico %}<div class="ad-simple-sub"><b>Motivo:</b> {{ os.diagnostico }}</div>{% endif %}
+                    {% if os.item_substituto %}
+                    <div class="ad-simple-sub">
+                      <b>Substituto:</b> {{ os.item_substituto.nome }}{% if os.item_substituto.numero_serie %} · Série {{ os.item_substituto.numero_serie }}{% endif %}
+                      · <a href="{% url 'equipamento_detalhe' os.item_substituto.pk %}">ver equipamento</a>
+                      {% if os.substituto_valor %} · R$ {{ os.substituto_valor|floatformat:2|intcomma }} ({% if os.substituto_locado == 'sim' %}locação{% else %}compra{% endif %}){% endif %}
+                    </div>
+                    {% endif %}
+                    {% if os.orcamentos.all %}
+                    <div class="ad-simple-sub" style="margin-top:4px;">
+                      <b>Histórico de orçamentos:</b>
+                      {% for orc in os.orcamentos.all %}
+                        <span class="ad-badge {% if orc.status == 'aprovado' %}ad-badge-success{% elif orc.status == 'reprovado' %}ad-badge-danger{% else %}ad-badge-neutral{% endif %}" style="margin:2px 3px 0 0;" title="{{ orc.get_tipo_display }}{% if orc.motivo_rejeicao %} — {{ orc.motivo_rejeicao }}{% endif %}">
+                          #{{ orc.numero }} R$ {{ orc.valor|floatformat:2 }} ({{ orc.get_status_display }})
+                        </span>
+                      {% endfor %}
+                    </div>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}

@@ -3,6 +3,7 @@ import json
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
@@ -189,7 +190,40 @@ def planta_editor(request, pk):
         "layout_json":     planta.layout,
         "prtg_ok":         prtg_service.is_configured(),
         "tipos_elementos": _TIPOS_ELEMENTOS,
+        "editor_config":   _config_editor(request, planta),
     })
+
+
+def _config_editor(request, planta: PlantaProjeto) -> dict:
+    """
+    Tudo que o editor precisa do servidor, num dict que vai ao browser por
+    `json_script` (ver `planta_editor.html`).
+
+    Existe porque as 3.839 linhas de JS do editor saíram do template para
+    `static/js/planta-editor.js`: num arquivo .js não há `{% url %}` nem
+    `{{ csrf_token }}`, e interpolar isso na mão seria exatamente o
+    acoplamento que tirou o arquivo do lugar. As chaves daqui são lidas uma
+    vez no topo do JS e atribuídas às MESMAS constantes de antes
+    (`SALVAR_URL`, `BG_URL`, ...), então o resto do editor não mudou.
+
+    `json_script` escapa o conteúdo — `|safe` aqui seria XSS via nome de
+    arquivo da imagem de fundo (regra 14 do CLAUDE.md).
+    """
+    return {
+        "salvar_url":        reverse("planta_salvar_layout", args=[planta.pk]),
+        "check_version_url": reverse("planta_check_version", args=[planta.pk]),
+        "historico_url":     reverse("planta_historico_api", args=[planta.pk]),
+        "restaurar_base":    f"/plantas/{planta.pk}/restaurar/",
+        "item_search_url":   reverse("item_search_api"),
+        "prtg_search_url":   reverse("prtg_search_api"),
+        "prtg_status_url":   reverse("prtg_status_api"),
+        "csrf_token":        get_token(request),
+        "bg_url":            planta.imagem_fundo.url if planta.imagem_fundo else None,
+        "prtg_ok":           bool(prtg_service.is_configured()),
+        "layout_version":    planta.layout_version,
+        # Nome do arquivo sugerido na exportação PNG/JSON da planta.
+        "planta_nome":       planta.nome or "planta",
+    }
 
 
 # ── Visualizador com Status PRTG ──────────────────────────────────────────────

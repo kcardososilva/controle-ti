@@ -198,6 +198,30 @@ def _pode_editar_execucao(execucao: "PreventivaExecucao", user) -> bool:
     return execucao.criado_por_id == user.id
 
 
+def _marco_rascunho(preventiva: Preventiva) -> str:
+    """
+    Carimbo da execução mais recente JÁ GRAVADA desta preventiva, em ISO.
+
+    A tela de execução guarda um rascunho no `localStorage` do aparelho,
+    porque o técnico preenche o checklist no galpão e a rede cai (ver o bloco
+    "Rascunho local" em `preventiva_exec.html`). O problema de guardar
+    rascunho é saber quando ele já não serve: um rascunho mais ANTIGO que este
+    carimbo foi enviado com sucesso, e oferecê-lo de volta faria o técnico
+    repreencher uma execução que já está no banco.
+
+    Devolve "" quando a preventiva nunca foi executada — aí qualquer rascunho
+    é legítimo.
+    """
+    ultima = (
+        PreventivaExecucao.objects
+        .filter(preventiva=preventiva)
+        .order_by("-updated_at")
+        .values_list("updated_at", flat=True)
+        .first()
+    )
+    return ultima.isoformat() if ultima else ""
+
+
 def _tecnicos_disponiveis(excluir_id=None):
     """Usuários ativos da equipe de TI (fora do grupo Fornecedor), para
     seleção de técnico responsável/auxiliares. Compartilhado pelas telas de
@@ -1041,6 +1065,7 @@ def preventiva_exec(request, pk):
             "tecnicos_disponiveis": _tecnicos_disponiveis(excluir_id=(preventiva.tecnico_id or request.user.id)),
             "tecnicos_auxiliares_ids": [],
             "max_fotos": fotos_service.MAX_FOTOS_POR_EXECUCAO,
+            "rascunho_marco": _marco_rascunho(preventiva),
         },
     )
 
@@ -1277,6 +1302,9 @@ def preventiva_execucao_editar(request, execucao_pk):
             "tecnicos_auxiliares_ids": list(execucao.tecnicos_auxiliares.values_list("id", flat=True)),
             "max_fotos": fotos_service.MAX_FOTOS_POR_EXECUCAO,
             "fotos_existentes": list(execucao.fotos.all()),
+            # Na edição o carimbo é o da PRÓPRIA execução aberta: rascunho
+            # anterior à última gravação dela já virou dado no banco.
+            "rascunho_marco": execucao.updated_at.isoformat() if execucao.updated_at else "",
         },
     )
 

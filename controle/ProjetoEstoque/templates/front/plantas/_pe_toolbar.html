@@ -1,0 +1,104 @@
+{% comment %}Barra de ferramentas do editor — salvar, histórico, snap, escala, fundo, alinhamento.
+   Fatia de planta_editor.html, que tinha 5.064 linhas numa só tela.
+   Herda o contexto do include. Os handlers (onclick) são funções
+   globais de static/js/planta-editor.js — mover marcação entre
+   fatias é seguro, renomear id/função não.{% endcomment %}
+  <!-- Toolbar -->
+  <div class="pe-toolbar">
+    <div class="pe-toolbar-group">
+      <button class="pe-tool-btn primary" id="btnSalvar" onclick="salvarLayout()">
+        <i class="fa-solid fa-floppy-disk"></i> Salvar
+      </button>
+      <button class="pe-tool-btn" id="btnNovaVersao" onclick="salvarNovaVersao()" title="Salvar como nova versão no histórico (Ctrl+Shift+S)">
+        <i class="fa-solid fa-bookmark"></i>
+      </button>
+      <button class="pe-tool-btn" onclick="abrirHistorico()" title="Histórico de versões salvas">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+      </button>
+    </div>
+    <div class="pe-toolbar-sep"></div>
+    <div class="pe-toolbar-group">
+      <button class="pe-tool-btn" onclick="undo()" title="Desfazer (Ctrl+Z)">
+        <i class="fa-solid fa-rotate-left"></i>
+      </button>
+      <button class="pe-tool-btn" onclick="redo()" title="Refazer (Ctrl+Y)">
+        <i class="fa-solid fa-rotate-right"></i>
+      </button>
+    </div>
+    <div class="pe-toolbar-sep"></div>
+    <div class="pe-toolbar-group">
+      <button class="pe-tool-btn" id="btnSnap" onclick="toggleSnap()" title="Grid Snap (G)">
+        <i class="fa-solid fa-border-all"></i> <span class="pe-tool-label">Snap</span>
+      </button>
+      <button class="pe-tool-btn" onclick="fitToScreen()" title="Ajustar à Tela (F)">
+        <i class="fa-solid fa-expand"></i>
+      </button>
+      <button class="pe-tool-btn" id="btnEscala" onclick="toggleEscalaPopover()" title="Escala e medição">
+        <i class="fa-solid fa-ruler-combined"></i> <span class="pe-tool-label">Escala</span>
+      </button>
+      <button class="pe-tool-btn" onclick="exportarPNG()" title="Exportar como PNG">
+        <i class="fa-solid fa-file-image"></i> <span class="pe-tool-label">PNG</span>
+      </button>
+      <button class="pe-tool-btn" onclick="abrirAtalhos()" title="Atalhos de teclado (?)">
+        <i class="fa-solid fa-keyboard"></i>
+      </button>
+      <button class="pe-tool-btn" id="btnPropsToggle" onclick="togglePropsDrawer()" title="Mostrar/ocultar propriedades">
+        <i class="fa-solid fa-sliders"></i> <span class="pe-tool-label">Propriedades</span>
+      </button>
+      <!-- Botão de paleta (visível apenas em mobile) -->
+      <button class="pe-palette-toggle" onclick="togglePaletteMobile()" title="Elementos">
+        <i class="fa-solid fa-shapes"></i> <span>Elementos</span>
+      </button>
+    </div>
+    <!-- Ferramentas de alinhamento (visíveis quando 2+ selecionados) -->
+    <div class="pe-toolbar-group" id="alignGroup" style="display:none">
+      <div class="pe-toolbar-sep"></div>
+      <button class="pe-tool-btn" onclick="alinhar('left')"    title="Alinhar à Esquerda"><i class="fa-solid fa-align-left"></i></button>
+      <button class="pe-tool-btn" onclick="alinhar('centerH')" title="Centralizar H"><i class="fa-solid fa-align-center"></i></button>
+      <button class="pe-tool-btn" onclick="alinhar('right')"   title="Alinhar à Direita"><i class="fa-solid fa-align-right"></i></button>
+      <button class="pe-tool-btn" onclick="alinhar('top')"     title="Alinhar ao Topo"><i class="fa-solid fa-arrow-up"></i>T</button>
+      <button class="pe-tool-btn" onclick="alinhar('centerV')" title="Centralizar V"><i class="fa-solid fa-arrows-up-down"></i></button>
+      <button class="pe-tool-btn" onclick="alinhar('bottom')"  title="Alinhar à Base"><i class="fa-solid fa-arrow-down"></i>B</button>
+    </div>
+    <!-- Distribuir (visível quando 3+ selecionados) -->
+    <div class="pe-toolbar-group" id="distribGroup" style="display:none">
+      <div class="pe-toolbar-sep"></div>
+      <button class="pe-tool-btn" onclick="distribuir('h')" title="Distribuir horizontalmente (espaçamento igual)"><i class="fa-solid fa-arrows-left-right"></i>H</button>
+      <button class="pe-tool-btn" onclick="distribuir('v')" title="Distribuir verticalmente (espaçamento igual)"><i class="fa-solid fa-arrows-up-down"></i>V</button>
+    </div>
+    <div class="pe-toolbar-sep"></div>
+    <div class="pe-toolbar-group">
+      <label for="bgInput" class="pe-tool-btn" title="Carregar imagem de fundo">
+        <i class="fa-solid fa-image"></i> <span class="pe-tool-label">Fundo</span>
+        <input type="file" id="bgInput" accept=".png,.jpg,.jpeg" style="display:none" onchange="carregarFundo(this)">
+      </label>
+      <button class="pe-tool-btn" id="btnToggleFundo" onclick="toggleFundo()" title="Mostrar / Ocultar fundo" style="display:none">
+        <i class="fa-solid fa-eye-slash"></i>
+      </button>
+      <button class="pe-tool-btn" id="btnLimparFundo" onclick="limparFundo()" title="Remover imagem de fundo" style="display:none">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="pe-toolbar-sep"></div>
+    <!-- Tipo de linha (visível no modo linha) -->
+    <div class="pe-toolbar-group" id="lineTypeGroup" style="display:none">
+      <span style="font-size:.72rem;font-weight:600;color:var(--pe-muted)">Linha:</span>
+      <div class="pe-line-types">
+        <button class="pe-line-type-btn active" data-lt="network" onclick="setLineTipo('network',this)" id="lt-network">
+          <span style="width:12px;height:2px;background:#0071e3;display:inline-block;border-radius:1px"></span> Rede
+        </button>
+        <button class="pe-line-type-btn" data-lt="fiber" onclick="setLineTipo('fiber',this)" id="lt-fiber">
+          <span style="width:12px;height:0;display:inline-block;border-top:2px dashed #5856d6"></span> Fibra
+        </button>
+        <button class="pe-line-type-btn" data-lt="power" onclick="setLineTipo('power',this)" id="lt-power">
+          <span style="width:12px;height:2px;background:#ff9500;display:inline-block;border-radius:1px"></span> Energia
+        </button>
+        <button class="pe-line-type-btn" data-lt="dependencia" onclick="setLineTipo('dependencia',this)" id="lt-dependencia">
+          <span style="width:12px;height:2px;background:#34c759;display:inline-block;border-radius:1px"></span> Hierarquia
+        </button>
+      </div>
+    </div>
+    <div id="saveIndicator" class="pe-save-indicator">
+      <i class="fa-solid fa-circle-check"></i> <span>Tudo salvo</span>
+    </div>
+  </div>

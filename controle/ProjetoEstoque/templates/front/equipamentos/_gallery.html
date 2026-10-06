@@ -56,6 +56,47 @@
             </li>
             {% endif %}
         </ul>
+
+        {% comment %}Saldo em lote — só para quem tem. A visão em lista já trazia
+           isto na coluna "Lotes / Saldo"; na galeria faltava, e quem confere
+           estoque de consumo por aqui tinha de voltar para a tabela.
+
+           A barra usa as MESMAS classes da tabela (`eq-lote-progress` /
+           `eq-lote-fill`), então a cor por faixa de saldo — ok, atenção,
+           crítico, zerado — é decidida num lugar só e as duas visões não
+           divergem quando o limiar mudar.
+
+           Os campos vêm de `_enriquecer_itens_com_lotes` em
+           views/equipamentos.py; a galeria recebe o mesmo contexto da
+           tabela.{% endcomment %}
+        {% if item.lotes_count > 0 %}
+        <div class="eq-gc-lote eq-lote-{{ item.lote_status }}">
+            <div class="eq-gc-lote-head">
+                <span class="eq-gc-lote-rotulo">
+                    <i class="fa fa-layer-group" aria-hidden="true"></i>
+                    Saldo em lote
+                </span>
+                <strong class="eq-gc-lote-qtd">
+                    {{ item.lote_total_disponivel }}<span>/{{ item.lote_total_entrada }}</span>
+                </strong>
+            </div>
+
+            <div class="eq-lote-progress"
+                 role="meter"
+                 aria-valuenow="{{ item.lote_percentual }}"
+                 aria-valuemin="0"
+                 aria-valuemax="100"
+                 aria-label="Saldo disponível em lote: {{ item.lote_percentual }}%">
+                <div class="eq-lote-fill {{ item.lote_status }}"
+                     style="width: {{ item.lote_percentual }}%;"></div>
+            </div>
+
+            <div class="eq-gc-lote-pe">
+                <span>{{ item.lotes_count }} lote{{ item.lotes_count|pluralize }}</span>
+                <strong>R$ {{ item.lote_valor_disponivel|floatformat:2|intcomma }}</strong>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <div class="eq-gc-footer">

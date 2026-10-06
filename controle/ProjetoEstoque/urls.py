@@ -9,9 +9,27 @@ urlpatterns = [
     path("dashboard/", views.dashboard, name="dashboard"),
     path("dashboard/dados/", views.dashboard_apresentacao_dados, name="dashboard_apresentacao_dados"),
     path("sobre/", views.sobre_plataforma, name="sobre_plataforma"),
+    # Catálogo de tokens e componentes do design system. Restrita a staff:
+    # não tem dado do negócio, mas não é tela de operação.
+    path("sistema/design/", views.design_system, name="design_system"),
     path("login/", auth_views.LoginView.as_view(template_name="login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(next_page="login"), name="logout"),
     path("perfil/", views.admin_perfil, name="admin_perfil"),
+
+    # ── Recuperação de senha ("esqueci minha senha") ─────────────────────────
+    # Os NOMES das rotas são os do Django (`password_reset*`): o template de
+    # e-mail nativo e o `PasswordResetConfirmView` montam o link por
+    # `{% url 'password_reset_confirm' %}`, então renomear quebra o link do
+    # e-mail sem quebrar nenhuma tela — falha silenciosa. Ver
+    # views/autenticacao.py e services/recuperacao_senha_service.py.
+    path("senha/recuperar/",
+         views.RecuperarSenhaView.as_view(), name="password_reset"),
+    path("senha/recuperar/enviado/",
+         views.RecuperarSenhaEnviadoView.as_view(), name="password_reset_done"),
+    path("senha/nova/<uidb64>/<token>/",
+         views.RecuperarSenhaConfirmarView.as_view(), name="password_reset_confirm"),
+    path("senha/nova/concluido/",
+         views.RecuperarSenhaConcluidoView.as_view(), name="password_reset_complete"),
 
     # ── Categorias ──────────────────────────────────────────────────────────
     path("categorias/", views.categorias_list, name="categorias_list"),

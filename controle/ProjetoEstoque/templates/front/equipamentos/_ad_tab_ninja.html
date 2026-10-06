@@ -1,0 +1,175 @@
+{% comment %}NinjaOne — inventário, sessões e uso reportados pelo agente RMM.
+   Fatia de equipamento_detalhe.html, que tinha 2.535 linhas numa só tela.
+   Recebe o contexto do include — as variáveis são as mesmas da view
+   `equipamento_detalhe`; esta fatia não busca nada por conta própria.{% endcomment %}
+    {# ─────────────────────── TAB: NINJAONE ─────────────────────── #}
+    {% if ninja_device %}
+    <div id="tab-ninja" class="ad-tab-panel" role="tabpanel">
+
+      {# ── Cabeçalho de status ── #}
+      <div class="ad-nj-head">
+        <div class="ad-nj-id">
+          <div class="ad-nj-id-icon"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></div>
+          <div>
+            <div class="ad-nj-name">{{ ninja_device.display_name }}</div>
+            <div class="ad-nj-sub">
+              NinjaOne ID #{{ ninja_device.ninja_id }}{% if ninja_device.hostname %} · {{ ninja_device.hostname }}{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="ad-nj-meta">
+          {% if ninja_device.is_online %}
+            <span class="ad-status-pill is-online"><span class="dot"></span> Online agora</span>
+          {% else %}
+            <span class="ad-status-pill is-offline"><span class="dot"></span> Offline</span>
+          {% endif %}
+          {% if ninja_device.last_contact %}
+            <span class="ad-nj-time"><i class="fa-solid fa-clock" aria-hidden="true"></i> Último contato: {{ ninja_device.last_contact|date:"d/m/Y H:i" }}</span>
+          {% endif %}
+          <a href="{% url 'ninja_dispositivos' %}?q={{ item.numero_serie }}" class="btn btn-sm">
+            <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Ver no NinjaOne
+          </a>
+        </div>
+      </div>
+
+      <div class="ad-nj-grid">
+
+        {# ── Especificações do hardware ── #}
+        <section class="ad-card">
+          <div class="ad-card-header">
+            <div class="ad-card-title"><i class="fa-solid fa-microchip" aria-hidden="true"></i> Especificações do dispositivo</div>
+          </div>
+          <div class="ad-card-body">
+            <div class="ad-info-grid">
+              {% if ninja_device.os_name %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa-brands fa-windows" aria-hidden="true"></i> Sistema Operacional</div>
+                <div class="ad-info-value">{{ ninja_device.os_name }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.manufacturer %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa-solid fa-industry" aria-hidden="true"></i> Fabricante</div>
+                <div class="ad-info-value">{{ ninja_device.manufacturer }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.model_name %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa-solid fa-desktop" aria-hidden="true"></i> Modelo</div>
+                <div class="ad-info-value">{{ ninja_device.model_name }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.processor %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa-solid fa-microchip" aria-hidden="true"></i> Processador</div>
+                <div class="ad-info-value">{{ ninja_device.processor }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.memory_gb %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa-solid fa-memory" aria-hidden="true"></i> Memória RAM</div>
+                <div class="ad-info-value">{{ ninja_device.memory_gb }} GB</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.ip_address %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa-solid fa-network-wired" aria-hidden="true"></i> Endereço IP</div>
+                <div class="ad-info-value ad-mono">{{ ninja_device.ip_address }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.serial_number %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa-solid fa-barcode" aria-hidden="true"></i> Série (NinjaOne)</div>
+                <div class="ad-info-value ad-mono">{{ ninja_device.serial_number }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.node_class_label %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa-solid fa-tag" aria-hidden="true"></i> Tipo</div>
+                <div class="ad-info-value">{{ ninja_device.node_class_label }}</div>
+              </div>
+              {% endif %}
+              {% if ninja_device.organization_name %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa-solid fa-building" aria-hidden="true"></i> Organização</div>
+                <div class="ad-info-value">{{ ninja_device.organization_name }}</div>
+              </div>
+              {% endif %}
+              <div class="ad-info-item">
+                <div class="ad-info-label"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Última sincronização</div>
+                <div class="ad-info-value">{{ ninja_device.last_sync|date:"d/m/Y H:i" }}</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {# ── Usuário e atividade de hoje ── #}
+        <section class="ad-card">
+          <div class="ad-card-header">
+            <div class="ad-card-title"><i class="fa-solid fa-user-clock" aria-hidden="true"></i> Usuário e atividade hoje</div>
+          </div>
+          <div class="ad-card-body">
+
+            {# Usuário logado atual #}
+            <div class="ad-nj-user">
+              <div class="ad-nj-user-avatar"><i class="fa-solid fa-user" aria-hidden="true"></i></div>
+              <div>
+                <div class="ad-nj-user-l">Último usuário logado</div>
+                <div class="ad-nj-user-v">
+                  {% if ninja_device.last_user %}{{ ninja_device.last_user }}{% else %}<span class="none">Não registrado</span>{% endif %}
+                </div>
+              </div>
+            </div>
+
+            {# Snapshots de hoje #}
+            {% if ninja_snapshots_hoje %}
+              <div class="ad-nj-stats">
+                <div class="ad-nj-stat">
+                  <div class="ad-nj-stat-v">{{ ninja_snapshots_hoje|length }}</div>
+                  <div class="ad-nj-stat-l">Snapshots hoje</div>
+                </div>
+                <div class="ad-nj-stat">
+                  <div class="ad-nj-stat-v ok" id="nj-online-snaps-{{ item.pk }}">—</div>
+                  <div class="ad-nj-stat-l">Online hoje (~min)</div>
+                </div>
+              </div>
+
+              {# Mini-timeline #}
+              <div class="ad-nj-tl-title">Atividade de hoje</div>
+              <div class="ad-nj-tl" title="Verde = online · Cinza = offline">
+                {% for snap in ninja_snapshots_hoje %}
+                  <div class="ad-nj-tl-bar{% if snap.is_online %} on{% endif %}"
+                       title="{{ snap.timestamp|date:'H:i' }}{% if snap.current_user %} · {{ snap.current_user }}{% endif %}"></div>
+                {% endfor %}
+              </div>
+              <div class="ad-nj-tl-note">Cada barra = 1 snapshot · Verde = online · Cinza = offline</div>
+
+              {# Script para calcular online count em JS #}
+              <script>
+              (function(){
+                var onlineData = [{% for s in ninja_snapshots_hoje %}{% if s.is_online %}1{% else %}0{% endif %}{% if not forloop.last %},{% endif %}{% endfor %}];
+                var onlineCount = onlineData.reduce(function(a,b){return a+b;},0);
+                var minutos = onlineCount * 15;
+                var el = document.getElementById('nj-online-snaps-{{ item.pk }}');
+                if(el) el.textContent = minutos + ' min';
+              })();
+              </script>
+
+            {% else %}
+              <div class="ad-empty">
+                <i class="fa-solid fa-calendar-day" aria-hidden="true"></i>
+                <div>Nenhum snapshot registrado hoje.</div>
+                <small>Importe a planilha do NinjaOne no módulo Ninja para coletar dados.</small>
+              </div>
+            {% endif %}
+
+          </div>
+        </section>
+
+      </div>{# /grid #}
+
+    </div>{# /tab-ninja #}
+    {% endif %}
+
+  </div>{# /ad-shell #}
+</div>{# /asset-detail-page #}

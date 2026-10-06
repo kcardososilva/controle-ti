@@ -101,6 +101,8 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'ProjetoEstoque.context_processors.notificacoes',
+                'ProjetoEstoque.context_processors.assets',
+                'ProjetoEstoque.context_processors.perfil_acesso',
             ],
             'loaders': _TEMPLATE_LOADERS,
         },
@@ -232,3 +234,181 @@ NINJA_REDIRECT_URI  = os.environ.get(
     "NINJA_REDIRECT_URI",
     "http://santa-colomba-karitel-qqprmnjdwc.dynamic-m.com:65300/ninja/oauth/callback/",
 )
+
+# =============================================================================
+# TRANSPORTE E COOKIES
+# =============================================================================
+#
+# ATENÇÃO AO LIGAR O HTTPS: `SESSION_COOKIE_SECURE`/`CSRF_COOKIE_SECURE` fazem
+# o navegador só devolver o cookie em conexão TLS. Ligados enquanto o acesso
+# externo ainda é http:// (ver NINJA_REDIRECT_URI no settings.py), NINGUÉM
+# entra — o login cai em laço de redirecionamento porque a sessão nunca volta
+# ao servidor. Por isso ficam atrás de UMA chave, desligada por padrão: quando
+# o domínio externo tiver certificado, defina DJANGO_HTTPS=True no .env.
+HTTPS_ATIVO = os.environ.get('DJANGO_HTTPS', 'False') == 'True'
+
+SESSION_COOKIE_SECURE = HTTPS_ATIVO
+CSRF_COOKIE_SECURE = HTTPS_ATIVO
+SECURE_SSL_REDIRECT = HTTPS_ATIVO
+
+# HSTS só faz sentido com HTTPS, e começa curto de propósito: o cabeçalho é
+# IRREVERSÍVEL pelo prazo anunciado. Se o certificado falhar com um ano
+# declarado, os navegadores recusam o acesso por http durante um ano e não há
+# como contornar do lado do servidor. Suba para 31536000 depois de alguns dias
+# de HTTPS estável.
+SECURE_HSTS_SECONDS = (
+    int(os.environ.get('DJANGO_HSTS_SECONDS', '3600')) if HTTPS_ATIVO else 0
+)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
+
+# Atrás do túnel (dynamic-m.com), o Django só sabe que a requisição original
+# era HTTPS por este cabeçalho — sem ele, SECURE_SSL_REDIRECT entra em laço.
+if HTTPS_ATIVO:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Django 4+ exige a origem declarada para aceitar POST com Host externo.
+CSRF_TRUSTED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')
+    if o.strip()
+]
+if not CSRF_TRUSTED_ORIGINS:
+    _esquema = 'https' if HTTPS_ATIVO else 'http'
+    CSRF_TRUSTED_ORIGINS = [
+        f'{_esquema}://{h.strip()}'
+        for h in ALLOWED_HOSTS
+        if h.strip() and h.strip() != '*'
+    ]
+
+# ── Vale desde já, não depende de HTTPS ──────────────────────────────────────
+SECURE_CONTENT_TYPE_NOSNIFF = True       # navegador não "adivinha" o tipo
+SECURE_REFERRER_POLICY = 'same-origin'   # não vaza URL interna ao sair do site
+X_FRAME_OPTIONS = 'DENY'                 # nenhuma tela do sistema usa <iframe>
+SESSION_COOKIE_HTTPONLY = True
+
+# SameSite=Lax: o cookie não acompanha requisição vinda de outro site, mas
+# acompanha o clique num link — é disso que o retorno do OAuth do NinjaOne
+# depende. 'Strict' quebraria esse callback.
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+# CSRF_COOKIE_HTTPONLY fica FALSO de propósito. Sete templates leem o token do
+# cookie em JS (`document.cookie.match(/csrftoken=([^;]+)/)`) para os POST via
+# fetch — sino de notificações (base.html), ficha do equipamento, licenças
+# Office, portal do fornecedor, portal de licenças e duas telas de preventiva.
+# Ligar isso quebraria os sete SEM erro visível: o fetch sai sem token e leva
+# 403 silencioso. O token no cookie não é segredo — a proteção do CSRF vem da
+# política de mesma origem, não de esconder o valor.
+CSRF_COOKIE_HTTPONLY = False
+
+# =============================================================================
+# SESSÃO
+# =============================================================================
+#
+# 12h cobre um turno inteiro. Com SESSION_SAVE_EVERY_REQUEST a janela é
+# deslizante: quem está trabalhando não é derrubado no meio do serviço; quem
+# largou a estação logada perde a sessão.
+#
+# O painel de TV é a exceção — fica numa tela de parede, logado por dias. O
+# prazo longo dele é dado no login (services/sessao_service.py), não aqui:
+# esticar o padrão de todo mundo por causa da TV seria o caminho errado.
+SESSION_COOKIE_AGE = int(os.environ.get('DJANGO_SESSION_HORAS', '12')) * 3600
+SESSION_SAVE_EVERY_REQUEST = True
+
+# Validade do link de "esqueci minha senha". O padrão do Django é 3 dias —
+# longo demais para um e-mail que troca senha sem pedir a antiga.
+PASSWORD_RESET_TIMEOUT = (
+    int(os.environ.get('DJANGO_RESET_TIMEOUT_HORAS', '2')) * 3600
+)
+
+# Remetente das mensagens automáticas (recuperação de senha, alertas).
+DEFAULT_FROM_EMAIL = os.environ.get(
+    'DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'nao-responda@santacolomba.com.br'
+)
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+#
+# Sem LOGGING configurado o Django escreve no console do Waitress: a janela
+# fecha e o rastro do erro vai com ela. Aqui erro e evento de segurança vão
+# para arquivo rotativo.
+#
+# O diretório sai de dentro do OneDrive quando DJANGO_LOG_DIR é definido — a
+# pasta do projeto é sincronizada, e um arquivo escrito a cada requisição faz o
+# OneDrive subir o arquivo sem parar (mesmo motivo do DJANGO_DB_PATH).
+LOG_DIR = Path(os.environ.get('DJANGO_LOG_DIR') or (BASE_DIR / 'logs'))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'detalhado': {
+            'format': '{asctime} {levelname} {name} {message}',
+            'style': '{',
+        },
+        'simples': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simples',
+            'level': 'INFO',
+        },
+        'arquivo_erros': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': str(LOG_DIR / 'erros.log'),
+            'maxBytes': 5 * 1024 * 1024,
+            'backupCount': 5,
+            'encoding': 'utf-8',
+            'formatter': 'detalhado',
+            'level': 'WARNING',
+        },
+        'arquivo_seguranca': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': str(LOG_DIR / 'seguranca.log'),
+            'maxBytes': 5 * 1024 * 1024,
+            'backupCount': 10,
+            'encoding': 'utf-8',
+            'formatter': 'detalhado',
+            'level': 'INFO',
+        },
+    },
+    'root': {
+        'handlers': ['console', 'arquivo_erros'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        # Erro 500 com stack trace completo em arquivo.
+        'django.request': {
+            'handlers': ['console', 'arquivo_erros'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        # Host não permitido, CSRF rejeitado, tentativa de acesso indevido.
+        'django.security': {
+            'handlers': ['console', 'arquivo_seguranca'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Trilha própria: login, logout, falha e recuperação de senha
+        # (services/seguranca_service.py, services/sessao_service.py).
+        'seguranca': {
+            'handlers': ['console', 'arquivo_seguranca'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Silencia o ruído de SQL mesmo com DEBUG=True.
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}

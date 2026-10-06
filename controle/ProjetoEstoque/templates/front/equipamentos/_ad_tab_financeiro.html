@@ -1,0 +1,130 @@
+{% load humanize %}
+{% comment %}Financeiro — contrato de locação, períodos e custo acumulado.
+   Fatia de equipamento_detalhe.html, que tinha 2.535 linhas numa só tela.
+   Recebe o contexto do include — as variáveis são as mesmas da view
+   `equipamento_detalhe`; esta fatia não busca nada por conta própria.{% endcomment %}
+    {# ─────────────────────── TAB: FINANCEIRO ─────────────────────── #}
+    {% if dados_locacao %}
+    <div id="tab-financeiro" class="ad-tab-panel" role="tabpanel">
+      <div class="ad-tab-2col">
+        <div class="ad-col">
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-file-contract" aria-hidden="true"></i> Dados da Locação</div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-info-grid">
+                {% for dado in dados_locacao %}
+                  <div class="ad-info-item">
+                    <div class="ad-info-label"><i class="fa {{ dado.icon }}" aria-hidden="true"></i> {{ dado.label }}</div>
+                    <div class="ad-info-value">
+                      {% if dado.label == "Valor Mensal" %}
+                        R$ {{ dado.valor|floatformat:2|intcomma }}
+                      {% elif dado.label == "Data de Entrada" or dado.label == "Vencimento do Contrato" %}
+                        {{ dado.valor|date:"d/m/Y" }}
+                      {% else %}
+                        {{ dado.valor|linebreaksbr }}
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+
+          {% if pos_contrato %}
+          <section class="ad-card {% if not pos_contrato.pausado %}ad-card-warning{% endif %}">
+            <div class="ad-card-header">
+              <div class="ad-card-title">
+                {% if pos_contrato.pausado %}
+                  <i class="fa-solid fa-pause-circle" aria-hidden="true"></i> Contagem Pós-Contrato Encerrada
+                {% else %}
+                  <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Equipamento Além do Prazo
+                {% endif %}
+              </div>
+            </div>
+            <div class="ad-card-body">
+              {% if pos_contrato.pausado %}
+                <div class="ad-pos-paused">
+                  O contrato venceu em <strong>{{ pos_contrato.data_vencimento|date:"d/m/Y" }}</strong>, mas o equipamento está <strong>pausado</strong>. A contagem pós-contrato está suspensa.
+                </div>
+              {% else %}
+                <div class="ad-pos">
+                  <div class="ad-pos-counter">
+                    <div class="ad-pos-number">
+                      {% if pos_contrato.meses > 0 %}{{ pos_contrato.meses }}m {{ pos_contrato.dias_restantes }}d{% else %}{{ pos_contrato.dias_total }}d{% endif %}
+                    </div>
+                    <div class="ad-pos-label">além do contrato</div>
+                  </div>
+                  <div class="ad-simple-list">
+                    <div class="ad-simple-item">
+                      <div class="ad-info-label"><i class="fa-solid fa-calendar-xmark" aria-hidden="true"></i> Contrato venceu em</div>
+                      <div class="ad-info-value">{{ pos_contrato.data_vencimento|date:"d/m/Y" }}</div>
+                    </div>
+                    <div class="ad-simple-item">
+                      <div class="ad-info-label"><i class="fa-solid fa-clock" aria-hidden="true"></i> Dias além do prazo</div>
+                      <div class="ad-info-value">{{ pos_contrato.dias_total }} dias</div>
+                    </div>
+                    <div class="ad-simple-item">
+                      <div class="ad-info-label"><i class="fa-solid fa-tag" aria-hidden="true"></i> Status atual</div>
+                      <div class="ad-info-value">{{ pos_contrato.status_item }}</div>
+                    </div>
+                  </div>
+                  <div class="ad-pos-alert">
+                    <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+                    <span>Equipamento em uso além do prazo contratado. A contagem é encerrada quando o status mudar para <strong>Pausado</strong>.</span>
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+          </section>
+          {% endif %}
+        </div>
+
+        {% if financeiro.custo_aluguel_acumulado > 0 or financeiro.custo_manutencao > 0 %}
+        <div class="ad-col">
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i> Resumo de Custos</div>
+              <span class="ad-badge ad-badge-neutral">TCO</span>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-simple-list">
+                {% if financeiro.meses_na_empresa %}
+                <div class="ad-simple-item">
+                  <div class="ad-info-label"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i> Tempo em uso</div>
+                  <div class="ad-info-value">{{ financeiro.meses_na_empresa }} mes{{ financeiro.meses_na_empresa|pluralize:"es" }} ({{ financeiro.dias_na_empresa }} dias)</div>
+                </div>
+                {% endif %}
+                {% if financeiro.custo_mensal > 0 %}
+                <div class="ad-simple-item">
+                  <div class="ad-info-label"><i class="fa-solid fa-file-contract" aria-hidden="true"></i> Valor mensal</div>
+                  <div class="ad-info-value">R$ {{ financeiro.custo_mensal|floatformat:2|intcomma }}</div>
+                </div>
+                {% endif %}
+                {% if financeiro.custo_aluguel_acumulado > 0 %}
+                <div class="ad-simple-item">
+                  <div class="ad-info-label"><i class="fa-solid fa-receipt" aria-hidden="true"></i> Locação acumulada</div>
+                  <div class="ad-info-value">R$ {{ financeiro.custo_aluguel_acumulado|floatformat:2|intcomma }}</div>
+                </div>
+                {% endif %}
+                {% if financeiro.custo_manutencao > 0 %}
+                <div class="ad-simple-item ad-simple-item--danger">
+                  <div class="ad-info-label"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> Manutenção</div>
+                  <div class="ad-info-value">R$ {{ financeiro.custo_manutencao|floatformat:2|intcomma }}</div>
+                </div>
+                {% endif %}
+                {% if financeiro.custo_total_empresa > 0 %}
+                <div class="ad-simple-item ad-simple-item--total">
+                  <div class="ad-info-label"><i class="fa-solid fa-sack-dollar" aria-hidden="true"></i> Total gasto (TCO)</div>
+                  <div class="ad-info-value">R$ {{ financeiro.custo_total_empresa|floatformat:2|intcomma }}</div>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </section>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}

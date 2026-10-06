@@ -277,6 +277,9 @@ from .inteligencia import (
 # ── Home / Sobre ─────────────────────────────────────────────────────────────
 from .home import sobre_plataforma
 
+# ── Arquivos de MEDIA_ROOT (entrega autenticada) ─────────────────────────────
+from .media_protegida import media_protegida
+
 # ── Administrador do Sistema (perfil do usuário logado) ──────────────────────
 from .admin_perfil import admin_perfil
 
@@ -429,3 +432,14 @@ from .requisicoes import (
     itens_padrao_delete,
     itens_padrao_importar,
 )
+
+# ── Recuperação de senha ("esqueci minha senha") ─────────────────────────────
+from .autenticacao import (  # noqa: E402
+    RecuperarSenhaView,
+    RecuperarSenhaEnviadoView,
+    RecuperarSenhaConfirmarView,
+    RecuperarSenhaConcluidoView,
+)
+
+# ── Referência viva do design system (tokens + componentes) ──────────────────
+from .design_system import design_system  # noqa: E402

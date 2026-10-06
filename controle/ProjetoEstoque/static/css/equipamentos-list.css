@@ -1,0 +1,1928 @@
+/* =============================================================
+   equipamentos-list.css — Lista de equipamentos — hero 3D, KPIs, filtros, tabela e galeria
+
+   Extraido do <style> de equipamentos_list.html. Nenhuma regra alterada.
+   Escopo preservado: as regras continuam presas ao prefixo da
+   tela (ver CLAUDE.md — nunca :root num template).
+
+   Ao mudar, suba ASSETS_VERSION em context_processors.py.
+   ============================================================= */
+/* Paleta Fluent 2 (Microsoft), igual a Licenças/Quiosque/Detalhe/Cadastro —
+   tokens locais --eq-* isolados nesta tela via :where(), nunca var(--brand)/
+   var(--text-primary)/etc. direto. */
+:where(.equipment-page, #deleteModal, #importResultModal, .select2-container, .select2-dropdown) {
+    /* Paleta refinada (v2): mesma família Fluent das telas irmãs (Licenças/
+       Quiosque/Detalhe/Cadastro), com o azul aprofundado para um tom mais
+       autoral/"de produto" e menos "Office padrão de fábrica" — e neutros com
+       leve temperatura quente (em vez de cinza puro) para uma superfície mais
+       macia. Continua 1 único acento; semânticos só onde comunicam estado. */
+    --eq-brand: var(--brand, #1858a8);
+    --eq-brand-hover: var(--brand-hover, #123f7d);
+    --eq-brand-soft: var(--brand-soft, rgba(24, 88, 168, .09));
+    --eq-brand-softer: var(--brand-softer, rgba(24, 88, 168, .045));
+    --eq-ring: rgba(24, 88, 168, .28);
+
+    --eq-bg: #ffffff;
+    --eq-bg-2: #f8f7f5;
+    --eq-bg-soft: #f2f1ee;
+    --eq-bg-muted: #eae8e4;
+    --eq-hover: rgba(24, 41, 61, .035);
+
+    --eq-text: #20242b;
+    --eq-muted: #5f6570;
+    --eq-soft: #8b8f97;
+
+    --eq-border: #e8e6e1;
+    --eq-border-2: #d9d6cf;
+    --eq-border-strong: #c2beb5;
+
+    --eq-success: var(--success, #1e8e3e);
+    --eq-success-bg: var(--success-soft, rgba(30, 142, 62, .10));
+    --eq-warning: var(--warning, #c77700);
+    --eq-warning-bg: var(--warning-soft, rgba(199, 119, 0, .10));
+    --eq-danger: var(--danger, #d93025);
+    --eq-danger-bg: var(--danger-soft, rgba(217, 48, 37, .10));
+    --eq-info: var(--info, #1858a8);
+    --eq-info-bg: var(--info-soft, rgba(24, 88, 168, .10));
+    --eq-purple: #7c5cb8;
+    --eq-purple-bg: rgba(124, 92, 184, .10);
+
+    --eq-radius-sm: 6px;
+    --eq-radius-md: 8px;
+    --eq-radius-lg: 10px;
+    --eq-radius-xl: 12px;
+    --eq-radius-pill: 999px;
+
+    --eq-shadow-sm: 0 1px 2px rgba(24, 24, 20, .06), 0 1px 1px rgba(24, 24, 20, .04);
+    --eq-shadow-md: 0 6px 16px rgba(24, 24, 20, .09), 0 1px 3px rgba(24, 24, 20, .06);
+    --eq-shadow-lg: 0 14px 34px rgba(24, 24, 20, .13), 0 4px 12px rgba(24, 24, 20, .07);
+
+    --eq-control-h: var(--control-h, 38px);
+    --eq-transition: 150ms ease;
+
+    /* Segoe UI (Office), com fallback pro stack padrão do app — troca não é
+       global, só escopada aqui. */
+    --eq-font: var(--font-sans, "Segoe UI", system-ui, sans-serif);
+}
+
+body.theme-dark :where(.equipment-page, #deleteModal, #importResultModal, .select2-container, .select2-dropdown) {
+    --eq-brand: var(--brand, #6ba6f2);
+    --eq-brand-hover: var(--brand-hover, #85b7f5);
+    --eq-brand-soft: rgba(107, 166, 242, .17);
+    --eq-brand-softer: rgba(107, 166, 242, .09);
+    --eq-ring: rgba(107, 166, 242, .35);
+
+    --eq-bg: #191c22;
+    --eq-bg-2: #1f232b;
+    --eq-bg-soft: #1f232b;
+    --eq-bg-muted: #262a33;
+    --eq-hover: rgba(255, 255, 255, .045);
+
+    --eq-text: #f1f2f5;
+    --eq-muted: #b7bcc6;
+    --eq-soft: #8992a0;
+
+    --eq-border: #2a2e38;
+    --eq-border-2: #363b47;
+    --eq-border-strong: #454b59;
+
+    --eq-info: var(--info, #6ba6f2);
+    --eq-info-bg: var(--info-soft, rgba(107, 166, 242, .14));
+}
+
+.equipment-page,
+.equipment-page * {
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.equipment-page {
+    width: 100%;
+    max-width: 1680px;
+    margin-inline: auto;
+    color: var(--eq-text);
+    font-family: var(--eq-font);
+}
+
+.equipment-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+}
+
+.eq-panel,
+.eq-table-card {
+    width: 100%;
+    border: 1px solid var(--eq-border-2);
+    border-radius: var(--eq-radius-md);
+    background: var(--eq-bg);
+    /* Elevação em repouso: as superfícies "flutuam" sobre o canvas (--bg-page),
+       eliminando o efeito chapado / estouro de branco de tela cheia. */
+    box-shadow: var(--eq-shadow-sm);
+    overflow: hidden;
+    transition: border-color var(--eq-transition), box-shadow var(--eq-transition);
+}
+
+.eq-table-card {
+    position: relative;
+}
+
+.eq-panel:hover,
+.eq-table-card:hover {
+    box-shadow: var(--eq-shadow-md);
+}
+
+/* ── Toolbar (ações + exibição) — substitui o hero interno ──────── */
+.eq-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.eq-toolbar-lead {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.eq-result-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--eq-muted);
+    font-size: var(--text-sm);
+    font-weight: 500;
+}
+.eq-result-count::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-pill);
+    background: var(--eq-soft);
+}
+
+.eq-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+/* Separador sutil entre grupos de ação (utilitários · exportação · ação primária) */
+.eq-toolbar-divider {
+    width: 1px;
+    align-self: stretch;
+    min-height: 22px;
+    background: var(--eq-border-2);
+    margin: 0 2px;
+}
+@media (max-width: 720px) {
+    .eq-toolbar-divider { display: none; }
+}
+
+.eq-chip,
+.eq-badge,
+.eq-type-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: var(--eq-radius-pill);
+    white-space: nowrap;
+}
+
+.eq-size-form {
+    display: flex;
+    align-items: center;
+}
+
+.eq-size-form select,
+.eq-form-control {
+    width: 100%;
+    min-height: var(--eq-control-h);
+    padding: 8px 14px;
+    border: 1px solid var(--eq-border-2);
+    border-radius: 12px;
+    background: var(--eq-bg);
+    color: var(--eq-text);
+    font-size: var(--text-base);
+    outline: none;
+    transition: border-color var(--eq-transition), box-shadow var(--eq-transition), background var(--eq-transition);
+}
+
+.eq-size-form select {
+    min-width: 128px;
+    cursor: pointer;
+}
+
+.eq-form-control:hover,
+.eq-size-form select:hover {
+    border-color: var(--eq-border-strong);
+}
+
+.eq-form-control:focus,
+.eq-size-form select:focus {
+    border-color: var(--eq-brand);
+    box-shadow: 0 0 0 4px var(--eq-ring);
+}
+
+.eq-btn {
+    min-height: var(--eq-control-h);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 16px;
+    border: 1px solid transparent;
+    border-radius: var(--eq-radius-sm);
+    background: transparent;
+    color: var(--eq-text);
+    font-size: var(--text-base);
+    font-weight: 500;
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        transform var(--eq-transition),
+        background var(--eq-transition),
+        border-color var(--eq-transition),
+        color var(--eq-transition),
+        opacity var(--eq-transition);
+}
+
+.eq-btn:active {
+    transform: scale(.97);
+}
+
+.eq-btn-primary {
+    background: var(--eq-brand);
+    border-color: var(--eq-brand);
+    color: #fff;
+}
+
+.eq-btn-primary:hover {
+    background: var(--eq-brand-hover);
+    border-color: var(--eq-brand-hover);
+    color: #fff;
+}
+
+.eq-btn-outline {
+    background: transparent;
+    border-color: var(--eq-border-2);
+    color: var(--eq-text);
+}
+
+.eq-btn-outline:hover {
+    background: var(--eq-hover);
+    border-color: var(--eq-border-strong);
+    color: var(--eq-text);
+}
+
+.eq-btn-danger {
+    background: var(--eq-danger);
+    border-color: var(--eq-danger);
+    color: #fff;
+}
+
+.eq-btn-danger:hover {
+    background: #ff5147;
+    border-color: #ff5147;
+    color: #fff;
+}
+
+.eq-btn[disabled],
+.eq-btn.is-disabled {
+    opacity: .48;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ── Faixa de métricas (padrão profissional — sem cards 3D/tilt/gradiente) ──
+   6 células divididas por hairlines (gap:1px sobre a cor de borda), num único
+   bloco que flutua sobre o canvas. Informação-primeiro, sem decoração. */
+.eq-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 1px;
+    border: 1px solid var(--eq-border-2);
+    border-radius: var(--eq-radius-md);
+    background: var(--eq-border);
+    box-shadow: var(--eq-shadow-sm);
+    overflow: hidden;
+}
+@media (max-width: 1100px) {
+    .eq-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+    .eq-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 380px) {
+    .eq-kpi-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.eq-kpi-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 64px;
+    padding: 12px 14px 11px;
+    background: var(--eq-bg);
+    border-top: 3px solid color-mix(in srgb, var(--eq-kpi-color) 65%, transparent);
+    transition: background var(--eq-transition), border-color var(--eq-transition);
+}
+
+.eq-kpi-card:hover {
+    background: var(--eq-bg-soft);
+}
+
+.eq-kpi-icon {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    /* --eq-kpi-color é setado inline por card em _kpis.html (60-30-10: saúde
+       colorida, inventário/financeiro neutro) — o ícone e a barra de topo são
+       os únicos pontos que carregam esse sinal, o resto da célula é neutro. */
+    background: color-mix(in srgb, var(--eq-kpi-color) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--eq-kpi-color) 26%, transparent);
+    color: var(--eq-kpi-color);
+    font-size: var(--text-xs);
+}
+
+.eq-kpi-body {
+    min-width: 0;
+    flex: 1;
+}
+
+.eq-kpi-value {
+    display: block;
+    color: var(--eq-text);
+    font-family: var(--eq-font);
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.eq-kpi-label {
+    margin-top: 3px;
+    color: var(--eq-muted);
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Faixa de destaque no topo do painel — mesma linguagem dos cards de KPI
+   acima (borda colorida de 3px), só que aqui fixa na cor da marca: dá ao
+   painel de filtros uma "assinatura" visual, como a barra de acento de uma
+   guia ativa no Office (Excel/Outlook). Painel 100% chapado — sem sombra,
+   sem gradiente, cantos quase retos: estilo planilha corporativa. */
+.eq-filters,
+.eq-filters:hover,
+.eq-filters[open] {
+    border-top: 3px solid var(--eq-brand);
+    border-radius: 3px;
+    box-shadow: none;
+}
+
+.eq-filters-summary {
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    background: var(--eq-bg-soft);
+    color: var(--eq-text);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+
+.eq-filters-summary::-webkit-details-marker {
+    display: none;
+}
+
+.eq-filters-summary-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    background: var(--eq-brand-soft);
+    color: var(--eq-brand);
+    font-size: var(--text-xs);
+}
+
+.eq-filters-summary .fa-chevron-down {
+    margin-left: auto;
+    color: var(--eq-muted);
+    font-size: var(--text-xs);
+    transition: transform var(--eq-transition), color var(--eq-transition);
+}
+
+.eq-filters[open] .eq-filters-summary .fa-chevron-down {
+    transform: rotate(180deg);
+    color: var(--eq-brand);
+}
+
+.eq-filters-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: var(--eq-radius-pill);
+    background: var(--eq-brand-soft);
+    color: var(--eq-brand);
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    white-space: nowrap;
+}
+/* `display: inline-flex` acima tem a mesma especificidade do `[hidden]` do
+   navegador e vem depois na cascata, então vence — sem isto o badge "0
+   filtros ativos" nunca fica realmente escondido. */
+.eq-filters-badge[hidden] {
+    display: none;
+}
+
+.eq-filters-body {
+    padding: 16px 20px 18px;
+    border-top: 1px solid var(--eq-border);
+    background: var(--eq-bg);
+}
+
+/* ── Filtros v2 — agrupados por finalidade em vez de uma única linha densa
+   de pills. Rótulo ACIMA do controle (em vez do tag lateral antigo) e grade
+   responsiva. Só 2 clusters com cabeçalho sutil ("Classificação" — que
+   também abre com a busca por nome — e "Identificação, local & custo"),
+   compactos de propósito: menos altura total que 3 grupos separados. O
+   "Limpar filtros" mora no cabeçalho do 1º cluster (não numa linha própria)
+   pelo mesmo motivo. O par select2/toggle "Exceto" preserva a mesma altura
+   entre campos com e sem exceção: o toggle fica lado a lado do controle,
+   nunca empilhado. ── */
+.eq-filter-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.eq-filter-group-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 9px;
+}
+
+.eq-filter-group-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--eq-soft);
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.eq-filter-group-title::after {
+    content: "";
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--eq-border);
+}
+
+.eq-filter-group-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px 14px;
+}
+.eq-filter-group-fields .eq-filter-field--wide {
+    grid-column: span 2;
+}
+@media (max-width: 640px) {
+    .eq-filter-group-fields .eq-filter-field--wide { grid-column: span 1; }
+}
+
+.eq-filter-field {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.eq-filter-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    color: var(--eq-muted);
+    font-size: var(--text-2xs);
+    font-weight: 600;
+}
+.eq-filter-label i {
+    flex-shrink: 0;
+    width: 13px;
+    color: var(--eq-brand);
+    font-size: var(--text-2xs);
+    text-align: center;
+}
+.eq-filter-field.is-exceto .eq-filter-label i {
+    color: var(--eq-danger);
+}
+
+.eq-filter-control-row {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    height: 38px;
+    border: 1px solid var(--eq-border-2);
+    border-radius: var(--eq-radius-sm);
+    background: var(--eq-bg);
+    overflow: hidden;
+    transition: border-color var(--eq-transition), background var(--eq-transition), box-shadow var(--eq-transition);
+}
+.eq-filter-control-row:hover {
+    border-color: var(--eq-border-strong);
+}
+.eq-filter-control-row:focus-within {
+    border-color: var(--eq-brand);
+    box-shadow: 0 0 0 3px var(--eq-ring);
+}
+.eq-filter-field.is-exceto .eq-filter-control-row {
+    border-color: var(--eq-danger);
+    background: var(--eq-danger-bg);
+}
+
+/* Busca por nome: mesma "control-row" e altura de todo mundo agora (campo
+   comum dentro de "Classificação"), só com o ícone de lupa embutido para
+   continuar reconhecível como busca. */
+.eq-filter-search-icon {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    color: var(--eq-soft);
+    font-size: var(--text-sm);
+}
+.eq-filter-field--search .eq-filter-control-row:focus-within .eq-filter-search-icon {
+    color: var(--eq-brand);
+}
+.eq-filter-field--search .eq-filter-control input[type="text"] {
+    padding-left: 2px;
+}
+
+.eq-filter-control {
+    flex: 1 1 auto;
+    display: flex;
+    min-width: 0;
+}
+
+.eq-filter-control input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    padding: 0 12px;
+    color: var(--eq-text);
+    font-size: var(--text-sm);
+    font-family: inherit;
+    outline: none;
+}
+.eq-filter-control input[type="text"]::placeholder {
+    color: var(--eq-soft);
+}
+
+/* Toggle "Exceto" — agora com rótulo de texto visível (não só ícone), lado a
+   lado do controle: inverte a seleção de "apenas estes" para "todos, exceto
+   estes" (ex.: todas as localidades exceto X, Y e Z). O checkbox real fica
+   visualmente oculto, mas continua focável/acessível via teclado/leitor. */
+.eq-exc-toggle {
+    position: relative;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 10px;
+    border-left: 1px solid var(--eq-border-2);
+    background: var(--eq-bg-soft);
+    color: var(--eq-soft);
+    cursor: pointer;
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    transition: color var(--eq-transition), background var(--eq-transition);
+}
+.eq-exc-toggle:hover {
+    color: var(--eq-text);
+}
+.eq-exc-toggle input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+.eq-exc-toggle .eq-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+.eq-exc-toggle:focus-within {
+    outline: 2px solid var(--eq-brand);
+    outline-offset: -2px;
+}
+.eq-filter-field.is-exceto .eq-exc-toggle {
+    background: var(--eq-danger);
+    color: #fff;
+}
+
+.eq-filter-clear {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 10px;
+    border: 1px solid var(--eq-border-2);
+    border-radius: var(--eq-radius-sm);
+    background: var(--eq-bg);
+    color: var(--eq-muted);
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    font-family: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color var(--eq-transition), border-color var(--eq-transition), background var(--eq-transition);
+}
+.eq-filter-clear:hover {
+    color: var(--eq-danger);
+    border-color: var(--eq-danger);
+    background: var(--eq-danger-bg);
+}
+
+/* Select2 "embutido" na control-row: sem borda/fundo/raio próprios — herda
+   tudo do wrapper ao redor (senão duplicaria a moldura do campo). */
+.eq-filter-control .select2-container {
+    width: 100% !important;
+}
+.eq-filter-control .select2-selection--single,
+.eq-filter-control .select2-selection--multiple {
+    min-height: 36px !important;
+    max-height: 36px !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+.eq-filter-control .select2-selection--single {
+    display: flex !important;
+    align-items: center !important;
+}
+.eq-filter-control .select2-selection--multiple {
+    /* O <span> de busca inline do select2 é IRMÃO da <ul> de chips (não filho
+       dela) — sem isto os dois empilham como blocos em vez de ficar lado a
+       lado, e a caixa do campo "estoura" mesmo com só 1 chip selecionado. */
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    scrollbar-width: thin !important; /* Firefox — trilho fino em vez do padrão largo */
+}
+.eq-filter-control .select2-selection--multiple .select2-search--inline {
+    display: inline-flex !important;
+    align-items: center !important;
+    flex: 1 1 auto !important;
+    min-width: 28px !important;
+}
+/* Scrollbar fina (Chrome/Edge) — só aparece de fato quando há chips o
+   bastante para não caber no campo; sem isso o navegador reserva a barra
+   larga padrão do SO mesmo para 1px de sobra, feio e sem necessidade. */
+.eq-filter-control .select2-selection--multiple::-webkit-scrollbar {
+    width: 5px;
+}
+.eq-filter-control .select2-selection--multiple::-webkit-scrollbar-track {
+    background: transparent;
+}
+.eq-filter-control .select2-selection--multiple::-webkit-scrollbar-thumb {
+    background: var(--eq-border-strong);
+    border-radius: 1px;
+}
+.eq-filter-control .select2-selection__rendered {
+    padding-left: 12px !important;
+    padding-right: 26px !important;
+    color: var(--eq-text) !important;
+    font-size: var(--text-xs) !important;
+    line-height: 34px !important;
+}
+.eq-filter-control .select2-selection--multiple .select2-selection__rendered {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 3px !important;
+    padding: 4px 10px !important;
+    line-height: normal !important;
+}
+.eq-filter-control .select2-selection__placeholder {
+    color: var(--eq-soft) !important;
+}
+.eq-filter-control .select2-selection__arrow {
+    height: 34px !important;
+    right: 6px !important;
+}
+.eq-filter-control .select2-selection--multiple .select2-selection__choice {
+    background: var(--eq-brand-soft) !important;
+    border: 1px solid color-mix(in srgb, var(--eq-brand) 30%, transparent) !important;
+    color: var(--eq-brand) !important;
+    border-radius: 4px !important;
+    padding: 0 5px !important;
+    margin: 0 !important;
+    font-size: var(--text-2xs) !important;
+    line-height: 17px !important;
+}
+.eq-filter-control .select2-selection--multiple .select2-selection__choice__remove {
+    color: var(--eq-brand) !important;
+    border: none !important;
+    margin-right: 3px !important;
+}
+.eq-filter-control .select2-selection--multiple .select2-selection__choice__remove:hover {
+    color: var(--eq-danger) !important;
+    background: transparent !important;
+}
+.eq-filter-control .select2-selection--multiple .select2-search--inline .select2-search__field {
+    border: none !important;
+    min-height: 19px !important;
+    font-size: var(--text-2xs) !important;
+}
+
+.select2-dropdown {
+    z-index: 10000 !important;
+    overflow: hidden !important;
+    border: 1px solid var(--eq-border-2) !important;
+    border-radius: var(--eq-radius-md) !important;
+    background: var(--eq-bg) !important;
+    color: var(--eq-text) !important;
+    box-shadow: var(--eq-shadow-md);
+}
+
+.select2-search__field {
+    border: 1px solid var(--eq-border-2) !important;
+    border-radius: var(--radius-sm) !important;
+    background: var(--eq-bg) !important;
+    color: var(--eq-text) !important;
+    outline: none !important;
+}
+
+.select2-results__option {
+    color: var(--eq-text) !important;
+    font-size: var(--text-sm) !important;
+}
+
+.select2-results__option--highlighted {
+    background: var(--eq-brand) !important;
+    color: #fff !important;
+}
+
+.eq-chip-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--eq-border);
+}
+
+.eq-chip-row-label {
+    flex: 0 0 auto;
+    margin-right: 2px;
+    color: var(--eq-soft);
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.eq-chip {
+    min-height: 30px;
+    padding: 6px 13px;
+    border: 1px solid var(--eq-border-2);
+    border-radius: var(--eq-radius-pill);
+    background: var(--eq-bg-soft);
+    color: var(--eq-muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-decoration: none;
+    transition: background var(--eq-transition), border-color var(--eq-transition), color var(--eq-transition);
+}
+
+.eq-chip:hover {
+    background: var(--eq-hover);
+    border-color: var(--eq-border-strong);
+    color: var(--eq-text);
+}
+
+.eq-chip.is-active {
+    background: var(--eq-brand-soft);
+    border-color: color-mix(in srgb, var(--eq-brand) 20%, transparent);
+    color: var(--eq-brand);
+}
+
+.eq-table-card {
+    position: relative;
+}
+
+.eq-table-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: color-mix(in srgb, var(--eq-bg) 78%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--eq-brand);
+    font-weight: 600;
+}
+
+.eq-table-loading.is-active {
+    display: flex;
+}
+
+.eq-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+
+.eq-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.eq-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 11px 16px;
+    border-bottom: 2px solid var(--eq-border-strong);
+    border-right: 1px solid var(--eq-border);
+    background: var(--eq-bg-soft);
+    color: var(--eq-muted);
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    transition: color var(--eq-transition), background var(--eq-transition);
+}
+
+.eq-table thead th:last-child {
+    border-right: none;
+}
+
+/* Somente colunas ordenáveis são clicáveis e mostram a afordância de ordenação. */
+.eq-table thead th[data-col] {
+    padding-right: 28px;
+    cursor: pointer;
+}
+
+.eq-table thead th[data-col]::after {
+    content: "↕";
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: var(--text-2xs);
+    line-height: 1;
+    opacity: .3;
+    transition: opacity var(--eq-transition), color var(--eq-transition);
+}
+
+.eq-table thead th[data-col]:hover::after { opacity: .6; }
+
+.eq-table thead th[data-col][data-order="asc"]::after {
+    content: "↑";
+    opacity: .95;
+    color: var(--eq-brand);
+}
+
+.eq-table thead th[data-col][data-order="desc"]::after {
+    content: "↓";
+    opacity: .95;
+    color: var(--eq-brand);
+}
+
+.eq-table thead th[data-col]:hover {
+    background: var(--eq-bg-muted);
+    color: var(--eq-text);
+}
+
+.eq-table tbody td {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--eq-border);
+    border-right: 1px solid var(--eq-border);
+    color: var(--eq-text);
+    font-size: var(--text-sm);
+    vertical-align: middle;
+}
+
+.eq-table tbody td:last-child {
+    border-right: none;
+}
+
+.eq-table tbody tr {
+    transition: background var(--eq-transition);
+}
+
+/* Zebra striping (estilo planilha) — resolvido por linha ímpar/par; o hover
+   abaixo tem a mesma especificidade (0,2,3) e vence por ordem de declaração. */
+.eq-table tbody tr:nth-child(even) td {
+    background: var(--eq-bg-2);
+}
+
+.eq-table tbody tr:hover td {
+    background: var(--eq-hover);
+}
+
+.eq-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.eq-clickable {
+    cursor: pointer;
+}
+
+.eq-asset-cell {
+    min-width: 260px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.eq-asset-avatar {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--eq-radius-sm);
+    background: var(--eq-bg-soft);
+    color: var(--eq-muted);
+    border: 1px solid var(--eq-border);
+    font-size: var(--text-base);
+}
+
+.eq-asset-main {
+    min-width: 0;
+}
+
+.eq-asset-name {
+    color: var(--eq-text);
+    font-size: var(--text-base);
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.eq-asset-sub {
+    margin-top: 3px;
+    color: var(--eq-muted);
+    font-size: var(--text-xs);
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.eq-badge {
+    min-height: 24px;
+    padding: 4px 10px;
+    font-size: var(--text-xs);
+    font-weight: 500;
+}
+
+.eq-badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    display: block;
+    border-radius: var(--radius-pill);
+}
+
+/* Disciplina de cor + legibilidade (WCAG): texto em tom profundo no tema claro,
+   dot na cor viva como sinal; no tema escuro o texto volta à cor viva. */
+.st-ativo {
+    background: var(--eq-success-bg);
+    color: #248a3d;
+}
+.st-ativo::before {
+    background: var(--eq-success);
+}
+body.theme-dark .st-ativo {
+    color: var(--eq-success);
+}
+
+.st-backup,
+.st-estoque {
+    background: var(--eq-info-bg);
+    color: #0090d4;
+}
+.st-backup::before,
+.st-estoque::before {
+    background: #0090d4;
+}
+body.theme-dark .st-backup,
+body.theme-dark .st-estoque {
+    color: var(--eq-info);
+}
+body.theme-dark .st-backup::before,
+body.theme-dark .st-estoque::before {
+    background: var(--eq-info);
+}
+
+.st-manutencao,
+.st-correcao {
+    background: var(--eq-warning-bg);
+    color: #a15c00;
+}
+.st-manutencao::before,
+.st-correcao::before {
+    background: var(--eq-warning);
+}
+body.theme-dark .st-manutencao,
+body.theme-dark .st-correcao {
+    color: var(--eq-warning);
+}
+
+.st-defeito,
+.st-queimado {
+    background: var(--eq-danger-bg);
+    color: var(--danger, #d70015);
+}
+.st-defeito::before,
+.st-queimado::before {
+    background: var(--eq-danger);
+}
+body.theme-dark .st-defeito,
+body.theme-dark .st-queimado {
+    color: var(--eq-danger);
+}
+
+.st-pausado,
+.st-inativo {
+    background: color-mix(in srgb, var(--eq-muted) 12%, transparent);
+    color: var(--eq-muted);
+}
+.st-pausado::before,
+.st-inativo::before {
+    background: var(--eq-muted);
+}
+
+.st-descarte {
+    background: color-mix(in srgb, #64748b 14%, transparent);
+    color: #475569;
+}
+.st-descarte::before {
+    background: #64748b;
+}
+body.theme-dark .st-descarte {
+    color: #94a3b8;
+}
+
+.eq-type-badge {
+    min-height: 24px;
+    padding: 4px 10px;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    background: var(--eq-bg-soft);
+    color: var(--eq-muted);
+}
+
+/* Disciplina de cor: o STATUS é o único sinal colorido da linha; o tipo é neutro. */
+.eq-type-badge.tp-consumo,
+.eq-type-badge.tp-locado,
+.eq-type-badge.tp-lote,
+.eq-type-badge.tp-patrimonio {
+    background: var(--eq-bg-soft);
+    color: var(--eq-muted);
+}
+
+.tp-consumo {
+    background: var(--eq-purple-bg);
+    color: var(--eq-purple);
+}
+
+.tp-locado {
+    background: var(--eq-info-bg);
+    color: #0090d4;
+}
+body.theme-dark .tp-locado {
+    color: var(--eq-info);
+}
+
+.tp-lote {
+    background: var(--eq-warning-bg);
+    color: var(--eq-warning);
+}
+
+.tp-patrimonio {
+    background: color-mix(in srgb, var(--eq-muted) 10%, transparent);
+    color: var(--eq-muted);
+}
+
+.eq-lote-stack {
+    min-width: 180px;
+    display: grid;
+    gap: 7px;
+}
+
+.eq-lote-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--eq-muted);
+    font-size: var(--text-xs);
+}
+
+.eq-lote-line strong {
+    color: var(--eq-text);
+    font-weight: 600;
+}
+
+.eq-lote-progress {
+    height: 7px;
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+    background: color-mix(in srgb, var(--eq-muted) 18%, transparent);
+}
+
+.eq-lote-fill {
+    height: 100%;
+    min-width: 0;
+    border-radius: inherit;
+    background: var(--eq-success);
+}
+
+.eq-lote-fill.atencao {
+    background: var(--eq-warning);
+}
+
+.eq-lote-fill.critico,
+.eq-lote-fill.zerado {
+    background: var(--eq-danger);
+}
+
+.eq-muted-dash {
+    color: var(--eq-soft);
+}
+
+.eq-actions-cell {
+    display: flex;
+    justify-content: flex-end;
+    gap: 7px;
+}
+
+.eq-icon-action {
+    width: 34px;
+    height: 34px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--eq-border-2);
+    background: transparent;
+    color: var(--eq-muted);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background var(--eq-transition), border-color var(--eq-transition), color var(--eq-transition), transform var(--eq-transition);
+}
+
+.eq-icon-action:hover {
+    background: var(--eq-brand-soft);
+    border-color: color-mix(in srgb, var(--eq-brand) 24%, transparent);
+    color: var(--eq-brand);
+}
+
+.eq-icon-action.eq-danger:hover {
+    background: var(--eq-danger-bg);
+    border-color: color-mix(in srgb, var(--eq-danger) 24%, transparent);
+    color: var(--eq-danger);
+}
+
+.eq-icon-action:active {
+    transform: scale(.94);
+}
+
+.eq-list-footer {
+    min-height: 64px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 14px 18px;
+    border-top: 1px solid var(--eq-border);
+    background: var(--eq-bg);
+}
+
+.eq-pagination-info {
+    color: var(--eq-muted);
+    font-size: var(--text-sm);
+}
+
+.eq-pagination-info strong {
+    color: var(--eq-text);
+    font-weight: 600;
+}
+
+.eq-pagination-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.eq-empty-state {
+    display: grid;
+    place-items: center;
+    gap: 8px;
+    padding: 38px 18px;
+    color: var(--eq-muted);
+    text-align: center;
+}
+
+.eq-empty-state i {
+    color: var(--eq-soft);
+    font-size: var(--text-2xl);
+}
+
+.eq-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, .38);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    opacity: 0;
+    transition: opacity var(--eq-transition);
+}
+
+.eq-modal-overlay.is-open {
+    display: flex;
+    opacity: 1;
+}
+
+.eq-modal {
+    width: min(100%, 980px);
+    max-height: calc(100dvh - 40px);
+    overflow-y: auto;
+    padding: 24px;
+    border: 1px solid var(--eq-border-2);
+    border-radius: var(--eq-radius-xl);
+    background: var(--eq-bg);
+    color: var(--eq-text);
+    box-shadow: var(--eq-shadow-lg);
+    transform: translateY(6px) scale(.98);
+    transition: transform var(--eq-transition);
+}
+
+.eq-modal-overlay.is-open .eq-modal {
+    transform: translateY(0) scale(1);
+}
+
+.eq-modal-sm {
+    max-width: 460px;
+}
+
+.eq-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.eq-modal-icon {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-pill);
+    background: var(--eq-danger-bg);
+    color: var(--eq-danger);
+    font-size: var(--text-lg);
+}
+
+.eq-modal-icon.eq-info {
+    background: var(--eq-info-bg);
+    color: #0090d4;
+}
+body.theme-dark .eq-modal-icon.eq-info {
+    color: var(--eq-info);
+}
+
+.eq-modal-title {
+    margin: 0;
+    color: var(--eq-text);
+    font-family: var(--eq-font);
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.eq-modal-text {
+    color: var(--eq-muted);
+    font-size: var(--text-base);
+    line-height: 1.5;
+}
+
+.eq-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 22px;
+}
+
+.eq-import-summary {
+    margin-bottom: 18px;
+    color: var(--eq-muted);
+    font-size: var(--text-base);
+}
+
+.eq-import-result-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.eq-result-title {
+    margin: 0 0 10px;
+    font-size: var(--text-base);
+    font-weight: 600;
+}
+
+.eq-result-title.eq-created {
+    color: var(--eq-success);
+}
+
+.eq-result-title.eq-updated {
+    color: var(--eq-warning);
+}
+
+.eq-result-title.eq-ignored {
+    color: var(--eq-danger);
+}
+
+.eq-import-list {
+    max-height: 260px;
+    overflow: auto;
+    padding: 12px;
+    border: 1px solid var(--eq-border);
+    border-radius: var(--eq-radius-md);
+    background: var(--eq-bg-soft);
+    color: var(--eq-text);
+}
+
+.eq-import-row {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--eq-border);
+}
+
+.eq-import-row:last-child {
+    border-bottom: none;
+}
+
+.eq-import-row small {
+    color: var(--eq-muted);
+}
+
+.eq-error-wrap {
+    display: none;
+    margin-top: 18px;
+}
+
+@media (max-width: 860px) {
+    .eq-filters-summary {
+        padding: 15px 16px;
+    }
+
+    .eq-filters-body {
+        padding: 16px;
+    }
+
+    .eq-table,
+    .eq-table thead,
+    .eq-table tbody,
+    .eq-table tr,
+    .eq-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .eq-table thead {
+        display: none;
+    }
+
+    .eq-table tbody {
+        display: grid;
+        gap: 12px;
+        padding: 12px;
+    }
+
+    .eq-table tbody tr {
+        border: 1px solid var(--eq-border);
+        border-radius: var(--eq-radius-lg);
+        background: var(--eq-bg);
+        padding: 12px;
+        box-shadow: var(--eq-shadow-sm);
+    }
+
+    .eq-table tbody tr:hover {
+        background: var(--eq-bg);
+    }
+
+    .eq-table tbody td {
+        display: grid;
+        grid-template-columns: minmax(7rem, .35fr) minmax(0, 1fr);
+        gap: 10px;
+        padding: 9px 0;
+        border-bottom: 1px solid var(--eq-border);
+        border-right: none;
+        text-align: left !important;
+    }
+
+    /* Grade vertical e zebra são um recurso de planilha — não fazem sentido
+       no cartão empilhado do mobile, onde cada linha já é um cartão próprio. */
+    .eq-table tbody tr:nth-child(even) td {
+        background: transparent;
+    }
+
+    .eq-table tbody td:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    .eq-table tbody td:not(.eq-td-main)::before {
+        content: attr(data-label);
+        color: var(--eq-muted);
+        font-size: var(--text-2xs);
+        font-weight: 600;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+    }
+
+    .eq-table tbody td.eq-td-main {
+        display: block;
+    }
+
+    .eq-table tbody td.eq-td-main::before {
+        display: none;
+    }
+
+    .eq-asset-cell {
+        min-width: 0;
+    }
+
+    .eq-actions-cell {
+        justify-content: stretch;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .eq-icon-action {
+        width: 100%;
+    }
+
+    .eq-list-footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .eq-pagination-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .eq-pagination-actions .eq-btn {
+        width: 100%;
+    }
+
+    .eq-import-result-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 540px) {
+    .equipment-shell {
+        gap: 14px;
+    }
+
+    .eq-chip {
+        width: 100%;
+    }
+
+    .eq-table tbody td {
+        grid-template-columns: 1fr;
+        gap: 5px;
+    }
+
+    .eq-pagination-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .eq-modal {
+        padding: 16px;
+    }
+
+    .eq-modal-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .eq-modal-actions .eq-btn {
+        width: 100%;
+    }
+}
+
+/* ── View Toggle ─────────────────────────────────────────────────── */
+.eq-view-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--eq-border);
+}
+
+.eq-view-toggle {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    border: 1px solid var(--eq-border);
+    border-radius: 10px;
+    padding: 2px;
+    background: var(--eq-bg-soft);
+}
+
+.eq-view-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: transparent;
+    color: var(--eq-muted);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.eq-view-btn.is-active {
+    background: var(--eq-bg);
+    color: var(--eq-brand);
+    box-shadow: 0 1px 3px rgba(0,0,0,.10);
+}
+
+.eq-view-btn:not(.is-active):hover {
+    color: var(--eq-text);
+}
+
+/* ── Gallery Grid ────────────────────────────────────────────────── */
+.eq-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+    gap: 14px;
+    padding: 16px;
+    background: var(--eq-bg-2);
+}
+
+@media (max-width: 520px) {
+    .eq-gallery-grid { grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; }
+}
+@media (max-width: 360px) {
+    .eq-gallery-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Gallery Card ────────────────────────────────────────────────── */
+/* Sinal de status por card: --eq-gc-accent é setado por data-status (mapa
+   abaixo) e reaproveitado na borda esquerda + avatar — mesmo "1 cor = status"
+   já usado no badge, só que dá pra ler a saúde do ativo sem abrir o card. */
+.eq-gc[data-status="ativo"] { --eq-gc-accent: var(--eq-success); }
+.eq-gc[data-status="backup"],
+.eq-gc[data-status="estoque"] { --eq-gc-accent: var(--eq-info); }
+.eq-gc[data-status="manutencao"],
+.eq-gc[data-status="correcao"] { --eq-gc-accent: var(--eq-warning); }
+.eq-gc[data-status="defeito"],
+.eq-gc[data-status="queimado"] { --eq-gc-accent: var(--eq-danger); }
+.eq-gc[data-status="pausado"],
+.eq-gc[data-status="inativo"] { --eq-gc-accent: var(--eq-muted); }
+.eq-gc[data-status="descarte"] { --eq-gc-accent: #64748b; }
+
+.eq-gc {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--eq-border-2);
+    border-left-width: 3px;
+    border-left-color: var(--eq-gc-accent, var(--eq-border-2));
+    border-radius: var(--eq-radius-md);
+    background: var(--eq-bg);
+    /* Flutua em repouso como as demais superfícies do app (--eq-panel/--eq-table-card já fazem isso). */
+    box-shadow: var(--eq-shadow-sm);
+    overflow: hidden;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.eq-gc:hover {
+    border-top-color: var(--eq-border-strong);
+    border-right-color: var(--eq-border-strong);
+    border-bottom-color: var(--eq-border-strong);
+    box-shadow: var(--eq-shadow-md);
+}
+
+.eq-gc:focus-visible {
+    outline: 2px solid var(--eq-brand);
+    outline-offset: 2px;
+}
+
+/* Hero row: avatar + name */
+.eq-gc-hero {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    padding: 14px 14px 10px;
+}
+
+/* Ícone tinge com a cor de status (--eq-gc-accent): tipo fica no glifo,
+   saúde fica na cor — dois sinais ortogonais, sem repetir o mesmo dado. */
+.eq-gc-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--eq-radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-md);
+    flex-shrink: 0;
+    background: color-mix(in srgb, var(--eq-gc-accent, var(--eq-muted)) 14%, transparent);
+    color: var(--eq-gc-accent, var(--eq-muted));
+    border: 1px solid color-mix(in srgb, var(--eq-gc-accent, var(--eq-muted)) 26%, transparent);
+}
+
+.eq-gc-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.eq-gc-name {
+    font-weight: 600;
+    font-size: var(--text-sm);
+    line-height: 1.35;
+    color: var(--eq-text);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-clamp: 2;
+}
+
+.eq-gc-sn {
+    font-size: var(--text-2xs);
+    color: var(--eq-muted);
+    margin-top: 3px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* Body: badges + meta */
+.eq-gc-body {
+    padding: 0 14px 12px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+}
+
+.eq-gc-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.eq-gc-meta {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.eq-gc-meta li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-xs);
+    color: var(--eq-muted);
+    overflow: hidden;
+}
+
+.eq-gc-meta li i {
+    width: 12px;
+    font-size: 10px;
+    text-align: center;
+    flex-shrink: 0;
+    opacity: 0.60;
+}
+
+.eq-gc-meta li span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.eq-gc-meta-empty {
+    opacity: 0.55;
+    font-style: italic;
+}
+
+/* Footer */
+/* ── Saldo em lote no cartão da galeria ──────────────────────────────────
+   A barra e as cores vêm das regras `.eq-lote-progress` / `.eq-lote-fill`
+   usadas na tabela; aqui só entra o enquadramento dentro do cartão.
+
+   `margin-top: auto` empurra o bloco para o fim do corpo do cartão: numa
+   grade, cartões com mais ou menos linhas de meta deixariam a barra em
+   alturas diferentes, e é justamente a barra que se compara de relance
+   entre um cartão e outro. */
+.eq-gc-lote {
+    margin-top: auto;
+    padding-top: 10px;
+    border-top: 1px dashed var(--eq-border);
+    display: grid;
+    gap: 6px;
+}
+
+.eq-gc-lote-head,
+.eq-gc-lote-pe {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: var(--text-2xs);
+    color: var(--eq-muted);
+}
+
+.eq-gc-lote-rotulo {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 600;
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+}
+
+.eq-gc-lote-rotulo i { font-size: 0.85em; }
+
+/* Quantidade disponível em destaque; o total de entrada fica discreto ao
+   lado, porque o que se procura aqui é "quanto ainda tem". */
+.eq-gc-lote-qtd {
+    color: var(--eq-text);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.eq-gc-lote-qtd span {
+    color: var(--eq-soft);
+    font-weight: 500;
+}
+
+.eq-gc-lote-pe strong {
+    color: var(--eq-text);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* Saldo zerado: o cartão inteiro precisa dizer isso sem depender de ler o
+   número — é a diferença entre "tem pouco" e "acabou". */
+.eq-gc-lote.eq-lote-zerado .eq-gc-lote-qtd { color: var(--eq-danger); }
+.eq-gc-lote.eq-lote-critico .eq-gc-lote-qtd { color: var(--eq-danger); }
+.eq-gc-lote.eq-lote-atencao .eq-gc-lote-qtd { color: var(--eq-warning); }
+
+.eq-gc-footer {
+    padding: 9px 14px;
+    background: var(--eq-bg-2);
+    border-top: 1px solid var(--eq-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.eq-gc-view-hint {
+    font-size: var(--text-2xs);
+    color: var(--eq-muted);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: color var(--eq-transition);
+}
+
+.eq-gc:hover .eq-gc-view-hint {
+    color: var(--eq-brand);
+}
+
+.eq-gc-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.eq-gc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    border: 1px solid var(--eq-border);
+    background: transparent;
+    color: var(--eq-muted);
+    font-size: var(--text-2xs);
+    cursor: pointer;
+    transition: all 140ms ease;
+    text-decoration: none;
+    line-height: 1;
+}
+
+.eq-gc-btn:hover {
+    border-color: var(--eq-brand);
+    color: var(--eq-brand);
+    background: var(--eq-brand-soft);
+}
+
+.eq-gc-btn.eq-danger:hover {
+    border-color: var(--eq-danger);
+    color: var(--eq-danger);
+    background: var(--eq-danger-bg);
+}
+
+/* Empty state for gallery */
+.eq-gallery-empty {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 60px 20px;
+    color: var(--eq-muted);
+    text-align: center;
+}
+
+.eq-gallery-empty i {
+    font-size: 2.5rem;
+    opacity: 0.35;
+}

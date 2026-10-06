@@ -1,0 +1,281 @@
+{% load humanize %}
+{% comment %}Ficha técnica — identificação, alocação, licença Office e preventiva.
+   Fatia de equipamento_detalhe.html, que tinha 2.535 linhas numa só tela.
+   Recebe o contexto do include — as variáveis são as mesmas da view
+   `equipamento_detalhe`; esta fatia não busca nada por conta própria.{% endcomment %}
+    {# ─────────────────────── TAB: FICHA TÉCNICA ─────────────────────── #}
+    <div id="tab-ficha" class="ad-tab-panel is-active" role="tabpanel">
+      <div class="ad-tab-2col">
+        <div class="ad-col">
+          {% if dados_item %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-sliders" aria-hidden="true"></i> Ficha Técnica</div>
+              <span class="ad-badge ad-badge-neutral">Campos preenchidos</span>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-info-grid">
+                {% for dado in dados_item %}
+                  <div class="ad-info-item">
+                    <div class="ad-info-label">
+                      <i class="fa {{ dado.icon }}" aria-hidden="true"></i>
+                      {{ dado.label }}
+                    </div>
+                    <div class="ad-info-value {% if dado.mono %}ad-mono{% endif %}">
+                      {% if dado.label == "Data de Compra" %}
+                        {{ dado.valor|date:"d/m/Y" }}
+                      {% elif dado.label == "Valor Unitário" %}
+                        R$ {{ dado.valor|floatformat:2|intcomma }}
+                      {% else %}
+                        {{ dado.valor }}
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+              {% if financeiro.vida_util_texto %}
+                <div class="ad-life">
+                  <div class="ad-life-head">
+                    <span>{% if financeiro.modo == 'LOCAÇÃO' %}Vigência do Contrato{% else %}Ciclo de Vida / Depreciação{% endif %}</span>
+                    <span class="ad-badge {% if financeiro.status_vida == 'critical' %}ad-badge-danger{% elif financeiro.status_vida == 'warning' %}ad-badge-warning{% else %}ad-badge-success{% endif %}">
+                      {{ financeiro.vida_util_texto }}
+                    </span>
+                  </div>
+                  <div class="ad-progress-bg">
+                    <div class="ad-progress-fill {% if financeiro.status_vida == 'critical' %}ad-critical{% elif financeiro.status_vida == 'warning' %}ad-warning{% endif %}" style="width: {{ financeiro.vida_util_perc }}%;"></div>
+                  </div>
+                  <div class="ad-life-dates">
+                    {% if financeiro.data_inicio %}<span>Início: {{ financeiro.data_inicio|date:"d/m/Y" }}</span>{% endif %}
+                    {% if financeiro.data_fim %}<span>Fim: {{ financeiro.data_fim|date:"d/m/Y" }}</span>{% endif %}
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+          </section>
+          {% endif %}
+
+          {% if item.eh_locado %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Histórico de Locação</div>
+              {% if loc_congelado %}
+                <span class="ad-badge ad-badge-warning"><i class="fa-solid fa-snowflake" aria-hidden="true"></i> Congelado</span>
+              {% elif loc_periodo_atual.aguardando_inicio %}
+                <span class="ad-badge ad-badge-warning"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> Aguardando início</span>
+              {% elif loc_periodo_atual %}
+                <span class="ad-badge ad-badge-success"><span class="dot"></span> Contando</span>
+              {% endif %}
+            </div>
+            <div class="ad-card-body">
+              <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+                <span style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;">R$ {{ loc_total_acumulado|floatformat:2|intcomma }}</span>
+                <span class="ad-metric-s" style="margin-top:0;">total acumulado (todos os períodos)</span>
+              </div>
+              <p class="ad-simple-sub" style="margin:8px 0 12px;">
+                {% if loc_congelado %}
+                  Aluguel congelado — o equipamento está {{ item.get_status_display|lower }}. A contagem fica como histórico e recomeça do zero se voltar a Ativo/Backup.
+                {% elif loc_periodo_atual.aguardando_inicio %}
+                  Cobrança inicia em {{ loc_periodo_atual.data_inicio|date:"d/m/Y" }} — ainda não começou.
+                {% elif loc_periodo_atual %}
+                  Contando desde {{ loc_periodo_atual.data_inicio|date:"d/m/Y" }} ({{ loc_periodo_atual.meses }} mês{{ loc_periodo_atual.meses|pluralize:"es" }}).
+                {% else %}
+                  Sem período de cobrança ativo.
+                {% endif %}
+              </p>
+              {% if loc_periodos %}
+              <div class="ad-scroll">
+                <table class="ad-table">
+                  <thead>
+                    <tr>
+                      <th>Início</th>
+                      <th>Fim</th>
+                      <th class="num">Meses</th>
+                      <th class="num">R$/mês</th>
+                      <th class="num">Acumulado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for p in loc_periodos %}
+                    <tr>
+                      <td>{{ p.data_inicio|date:"d/m/Y" }}{% if p.aguardando_inicio %} <span style="color:var(--ad-muted);">(futuro)</span>{% endif %}</td>
+                      <td>
+                        {% if p.data_fim %}{{ p.data_fim|date:"d/m/Y" }}{% if p.motivo_fim %} <span style="color:var(--ad-muted);">({{ p.motivo_fim|capfirst }})</span>{% endif %}
+                        {% elif p.aguardando_inicio %}<span style="color:var(--ad-warning);font-weight:700;">aguarda início</span>
+                        {% else %}<span style="color:var(--ad-success);font-weight:700;">em andamento</span>{% endif %}
+                      </td>
+                      <td class="num">{% if p.aguardando_inicio %}—{% else %}{{ p.meses }}{% endif %}</td>
+                      <td class="num">R$ {{ p.valor_mensal|default:'0'|floatformat:2|intcomma }}</td>
+                      <td class="num strong">{% if p.aguardando_inicio %}—{% else %}R$ {{ p.valor_acumulado|floatformat:2|intcomma }}{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% endif %}
+            </div>
+          </section>
+          {% endif %}
+
+          {% if item.observacoes %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-note-sticky" aria-hidden="true"></i> Notas Gerais</div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-note-box">{{ item.observacoes|linebreaksbr }}</div>
+            </div>
+          </section>
+          {% endif %}
+        </div>
+
+        <div class="ad-col">
+          {% if item.compartilhado %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-people-arrows" aria-hidden="true"></i> Colaboradores Vinculados</div>
+              <span class="ad-badge ad-badge-info">{{ vinculos_compartilhados|length }} ativo{{ vinculos_compartilhados|length|pluralize }}</span>
+            </div>
+            <div class="ad-card-body">
+              {% if vinculos_compartilhados %}
+                <div class="ad-vinc-list">
+                  {% for v in vinculos_compartilhados %}
+                    <div class="ad-vinc-item">
+                      <div class="ad-vinc-avatar">{{ v.colaborador.nome|slice:":1"|upper }}</div>
+                      <div class="ad-vinc-main">
+                        <div class="ad-vinc-name">{{ v.colaborador.nome }}</div>
+                        <div class="ad-vinc-meta">
+                          {% if v.colaborador.funcao %}{{ v.colaborador.funcao.nome }}{% endif %}
+                          {% if v.colaborador.centro_custo %}{% if v.colaborador.funcao %} · {% endif %}{{ v.colaborador.centro_custo.departamento|default:v.colaborador.centro_custo }}{% endif %}
+                          {% if not v.colaborador.funcao and not v.colaborador.centro_custo %}Colaborador{% endif %}
+                        </div>
+                        <div class="ad-vinc-since">
+                          <i class="fa-solid fa-calendar-check" aria-hidden="true"></i>
+                          Desde {{ v.data_vinculo|date:"d/m/Y" }}
+                          {% if v.movimentacao_entrega %}
+                            · <a href="{% url 'movimentacao_detail' v.movimentacao_entrega.pk %}" class="ad-vinc-link">ver termo</a>
+                          {% endif %}
+                        </div>
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <div class="ad-empty">
+                  <i class="fa-solid fa-user-slash" aria-hidden="true"></i>
+                  <div>Nenhum colaborador vinculado no momento.</div>
+                  <small>Registre uma movimentação de <b>entrega</b> com termo para vincular um colaborador.</small>
+                </div>
+              {% endif %}
+            </div>
+          </section>
+          {% else %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-user-tag" aria-hidden="true"></i> Detentor Atual</div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-person-box">
+                <div class="ad-person-icon"><i class="fa-solid fa-user-shield" aria-hidden="true"></i></div>
+                <div>
+                  <div class="ad-person-title">{{ ultimo_resp }}</div>
+                  <div class="ad-person-sub">Baseado na última movimentação registrada</div>
+                </div>
+              </div>
+            </div>
+          </section>
+          {% endif %}
+
+          {# ── Licença Office (chave por equipamento) — fragmento próprio, reaproveitado pelas respostas AJAX de vincular/desvincular ── #}
+          <div id="ad-lo-card-wrap">
+            {% include 'front/equipamentos/_licenca_office_card.html' %}
+          </div>
+
+          {# ── Resumo financeiro do patrimônio (não consumo, não locado) ── #}
+          {% if financeiro.modo == 'AQUISIÇÃO' and item.item_consumo != 'sim' and financeiro.custo_aquisicao > 0 %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-sack-dollar" aria-hidden="true"></i> Resumo Financeiro</div>
+              <span class="ad-badge ad-badge-neutral">Patrimônio</span>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-simple-list">
+                <div class="ad-simple-item">
+                  <div class="ad-info-label"><i class="fa-solid fa-coins" aria-hidden="true"></i> Valor de Aquisição</div>
+                  <div class="ad-info-value">R$ {{ financeiro.custo_aquisicao|floatformat:2|intcomma }}</div>
+                </div>
+                {% if financeiro.data_inicio %}
+                <div class="ad-simple-item">
+                  <div class="ad-info-label"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i> Em uso há</div>
+                  <div class="ad-info-value">{{ financeiro.meses_na_empresa }} mes{{ financeiro.meses_na_empresa|pluralize:"es" }} ({{ financeiro.dias_na_empresa }} dias)</div>
+                </div>
+                {% if financeiro.valor_atual > 0 %}
+                <div class="ad-simple-item">
+                  <div class="ad-info-label"><i class="fa-solid fa-arrow-trend-down" aria-hidden="true"></i> Valor Atual (depreciado)</div>
+                  <div class="ad-info-value">R$ {{ financeiro.valor_atual|floatformat:2|intcomma }}</div>
+                </div>
+                {% endif %}
+                {% endif %}
+                {% if financeiro.custo_manutencao > 0 %}
+                <div class="ad-simple-item ad-simple-item--danger">
+                  <div class="ad-info-label"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> Manutenção acumulada</div>
+                  <div class="ad-info-value">R$ {{ financeiro.custo_manutencao|floatformat:2|intcomma }}</div>
+                </div>
+                <div class="ad-simple-item ad-simple-item--total">
+                  <div class="ad-info-label"><i class="fa-solid fa-sack-dollar" aria-hidden="true"></i> Total gasto (TCO)</div>
+                  <div class="ad-info-value">R$ {{ financeiro.custo_total_empresa|floatformat:2|intcomma }}</div>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </section>
+          {% endif %}
+
+          {% if plantas_mapeadas %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-map" aria-hidden="true"></i> Plantas de Infraestrutura</div>
+              <span class="ad-badge ad-badge-neutral">{{ plantas_mapeadas|length }} planta{{ plantas_mapeadas|length|pluralize }}</span>
+            </div>
+            <div class="ad-card-body">
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                {% for pl in plantas_mapeadas %}
+                <a href="{% url 'planta_viewer' pl.pk %}" class="ad-nav-link">
+                  <i class="fa-solid fa-map-location-dot lead" aria-hidden="true"></i>
+                  <div class="body">
+                    <div class="title">{{ pl.nome }}</div>
+                    <div class="sub">{{ pl.localidade.local|default:"Sem localidade" }} · {{ pl.updated_at|date:"d/m/Y" }}</div>
+                  </div>
+                  <i class="fa-solid fa-arrow-right chev" aria-hidden="true"></i>
+                </a>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+          {% endif %}
+
+          {% if auditoria %}
+          <section class="ad-card">
+            <div class="ad-card-header">
+              <div class="ad-card-title"><i class="fa-solid fa-fingerprint" aria-hidden="true"></i> Auditoria</div>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-simple-list">
+                {% for dado in auditoria %}
+                  <div class="ad-simple-item">
+                    <div class="ad-info-label"><i class="fa {{ dado.icon }}" aria-hidden="true"></i> {{ dado.label }}</div>
+                    <div class="ad-info-value">
+                      {% if dado.label == "Criado em" or dado.label == "Última edição" %}
+                        {{ dado.valor|date:"d/m/Y H:i" }}
+                      {% else %}
+                        {{ dado.valor }}
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+          {% endif %}
+        </div>
+      </div>
+    </div>

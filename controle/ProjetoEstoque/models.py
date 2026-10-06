@@ -3273,6 +3273,11 @@ class TipoEventoSegurancaChoices(models.TextChoices):
     LOGIN_FALHA   = "login_falha", "Falha de login"
     LOGOUT        = "logout", "Logout"
     ACESSO_NEGADO = "acesso_negado", "Acesso negado"
+    # Recuperacao de senha por link (services/recuperacao_senha_service.py).
+    # PEDIDO entra na trilha mesmo quando o identificador nao resolve em
+    # ninguem — pedido "vazio" repetido e justamente o sinal de sondagem.
+    SENHA_RESET_PEDIDO = "senha_reset_pedido", "Recuperação de senha solicitada"
+    SENHA_RESET_OK     = "senha_reset_ok", "Senha redefinida por link"
 
 
 class RegistroSeguranca(models.Model):

@@ -1,0 +1,59 @@
+{% load humanize %}
+{% comment %}Histórico — rastreabilidade das movimentações do ativo.
+   Fatia de equipamento_detalhe.html, que tinha 2.535 linhas numa só tela.
+   Recebe o contexto do include — as variáveis são as mesmas da view
+   `equipamento_detalhe`; esta fatia não busca nada por conta própria.{% endcomment %}
+    {# ─────────────────────── TAB: HISTÓRICO ─────────────────────── #}
+    <div id="tab-historico" class="ad-tab-panel" role="tabpanel">
+      <section class="ad-card">
+        <div class="ad-card-header">
+          <div class="ad-card-title"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Rastreabilidade Operacional</div>
+          <span class="ad-badge ad-badge-neutral">Últimas 15</span>
+        </div>
+        <div class="ad-card-body">
+          <div class="ad-timeline">
+            {% for mov in movimentacoes|slice:":15" %}
+              <div class="ad-timeline-item">
+                <div class="ad-marker" aria-hidden="true"></div>
+                <div class="ad-timeline-content">
+                  <div class="ad-timeline-header">
+                    <span class="ad-timeline-type">
+                      {% if mov.tipo_movimentacao == 'transferencia' %}Transferência
+                      {% elif mov.tipo_movimentacao == 'baixa' %}Baixa
+                      {% elif mov.tipo_movimentacao == 'entrada' %}Entrada
+                      {% elif 'manutencao' in mov.tipo_movimentacao %}Manutenção
+                      {% else %}{{ mov.get_tipo_movimentacao_display }}
+                      {% endif %}
+                    </span>
+                    {% if mov.revertida %}
+                      <span class="ad-badge ad-badge-danger" title="Revertida em {{ mov.revertida_em|date:'d/m/Y H:i' }}">
+                        <i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Revertida
+                      </span>
+                    {% endif %}
+                    <span class="ad-timeline-date">{{ mov.created_at|date:"d/m/Y H:i" }}</span>
+                  </div>
+                  <div class="ad-timeline-body">
+                    {% if mov.lote %}<div class="ad-row"><i class="fa-solid fa-box" aria-hidden="true"></i> Lote/NF: {{ mov.lote.numero_nf }}</div>{% endif %}
+                    {% if mov.usuario %}<div class="ad-row"><i class="fa-solid fa-user" aria-hidden="true"></i> {{ mov.usuario.nome }}</div>
+                    {% elif mov.fornecedor_manutencao %}<div class="ad-row"><i class="fa-solid fa-truck" aria-hidden="true"></i> {{ mov.fornecedor_manutencao.nome }}</div>
+                    {% elif mov.criado_por %}<div class="ad-row"><i class="fa-solid fa-user-gear" aria-hidden="true"></i> {{ mov.criado_por }}</div>{% endif %}
+                    {% if mov.quantidade %}<div class="ad-row"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Quantidade: {{ mov.quantidade }}</div>{% endif %}
+                    {% if mov.centro_custo_origem %}<div class="ad-row"><i class="fa-solid fa-building-circle-arrow-right" aria-hidden="true"></i> Origem: {{ mov.centro_custo_origem.departamento|default:mov.centro_custo_origem }}</div>{% endif %}
+                    {% if mov.centro_custo_destino %}<div class="ad-row"><i class="fa-solid fa-building" aria-hidden="true"></i> Destino: {{ mov.centro_custo_destino.departamento|default:mov.centro_custo_destino }}</div>{% endif %}
+                    {% if mov.localidade_destino %}<div class="ad-row"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ mov.localidade_destino.local|default:mov.localidade_destino }}</div>{% endif %}
+                    {% if mov.custo > 0 %}<div class="ad-row"><i class="fa-solid fa-coins" aria-hidden="true"></i> R$ {{ mov.custo|floatformat:2|intcomma }}</div>{% endif %}
+                    {% if mov.observacao %}<div class="ad-row"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i> {{ mov.observacao|truncatechars:120 }}</div>{% endif %}
+                  </div>
+                  <a href="{% url 'movimentacao_detail' mov.pk %}" class="ad-link">Ver detalhes <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+                </div>
+              </div>
+            {% empty %}
+              <div class="ad-empty">
+                <i class="fa-solid fa-inbox" aria-hidden="true"></i>
+                <div>Sem histórico registrado.</div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+    </div>

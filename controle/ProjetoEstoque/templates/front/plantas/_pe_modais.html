@@ -1,0 +1,84 @@
+{% comment %}Modal de histórico de versões, painel de atalhos, toast e menu de contexto.
+   Fatia de planta_editor.html, que tinha 5.064 linhas numa só tela.
+   Herda o contexto do include. Os handlers (onclick) são funções
+   globais de static/js/planta-editor.js — mover marcação entre
+   fatias é seguro, renomear id/função não.{% endcomment %}
+<!-- Modal de histórico de versões -->
+<div id="historicoModal" class="pe-hist-overlay" onclick="fecharHistoricoModal(event)">
+  <div class="pe-hist-box">
+    <div class="pe-hist-header">
+      <i class="fa-solid fa-clock-rotate-left" style="color:#0071e3"></i>
+      <h3>Histórico de Versões</h3>
+      <button class="pe-hist-close" onclick="fecharHistoricoModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="pe-hist-body" id="historicoLista">
+      <p style="color:#6e6e73;font-size:.85rem;text-align:center;padding:24px">Carregando...</p>
+    </div>
+    <div class="pe-hist-footer">
+      Versões criadas pelo botão <i class="fa-solid fa-bookmark"></i>. O autosave não gera entradas no histórico.
+    </div>
+  </div>
+</div>
+
+<!-- Painel de atalhos de teclado -->
+<div class="pe-shortcuts-overlay" id="atalhosOverlay" onclick="fecharAtalhos(event)">
+  <div class="pe-shortcuts-box">
+    <div class="pe-shortcuts-head">
+      <div class="pe-sc-icon"><i class="fa-solid fa-keyboard"></i></div>
+      <h3>Atalhos de Teclado</h3>
+      <button class="pe-shortcuts-close" onclick="fecharAtalhos()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="pe-shortcuts-body">
+      <div class="pe-sc-group">
+        <h4>Edição</h4>
+        <div class="pe-sc-row"><span>Desfazer</span><span class="pe-sc-keys"><kbd>Ctrl</kbd><kbd>Z</kbd></span></div>
+        <div class="pe-sc-row"><span>Refazer</span><span class="pe-sc-keys"><kbd>Ctrl</kbd><kbd>Y</kbd></span></div>
+        <div class="pe-sc-row"><span>Copiar</span><span class="pe-sc-keys"><kbd>Ctrl</kbd><kbd>C</kbd></span></div>
+        <div class="pe-sc-row"><span>Colar</span><span class="pe-sc-keys"><kbd>Ctrl</kbd><kbd>V</kbd></span></div>
+        <div class="pe-sc-row"><span>Duplicar</span><span class="pe-sc-keys"><kbd>Ctrl</kbd><kbd>D</kbd></span></div>
+        <div class="pe-sc-row"><span>Excluir seleção</span><span class="pe-sc-keys"><kbd>Del</kbd></span></div>
+        <div class="pe-sc-row"><span>Selecionar tudo</span><span class="pe-sc-keys"><kbd>Ctrl</kbd><kbd>A</kbd></span></div>
+      </div>
+      <div class="pe-sc-group">
+        <h4>Salvar</h4>
+        <div class="pe-sc-row"><span>Salvar</span><span class="pe-sc-keys"><kbd>Ctrl</kbd><kbd>S</kbd></span></div>
+        <div class="pe-sc-row"><span>Salvar nova versão</span><span class="pe-sc-keys"><kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>S</kbd></span></div>
+      </div>
+      <div class="pe-sc-group">
+        <h4>Navegação</h4>
+        <div class="pe-sc-row"><span>Mover canvas</span><span class="pe-sc-keys"><kbd>Espaço</kbd><kbd>arrastar</kbd></span></div>
+        <div class="pe-sc-row"><span>Zoom</span><span class="pe-sc-keys"><kbd>Scroll</kbd></span></div>
+        <div class="pe-sc-row"><span>Ajustar à tela</span><span class="pe-sc-keys"><kbd>F</kbd></span></div>
+        <div class="pe-sc-row"><span>Mover elemento (1px)</span><span class="pe-sc-keys"><kbd>↑↓←→</kbd></span></div>
+      </div>
+      <div class="pe-sc-group">
+        <h4>Ferramentas</h4>
+        <div class="pe-sc-row"><span>Grid Snap</span><span class="pe-sc-keys"><kbd>G</kbd></span></div>
+        <div class="pe-sc-row"><span>Girar +90°</span><span class="pe-sc-keys"><kbd>R</kbd></span></div>
+        <div class="pe-sc-row"><span>Cancelar / desmarcar</span><span class="pe-sc-keys"><kbd>Esc</kbd></span></div>
+        <div class="pe-sc-row"><span>Esta ajuda</span><span class="pe-sc-keys"><kbd>?</kbd></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast de notificações -->
+<div id="peToast"></div>
+
+<!-- Menu de contexto (clique direito) -->
+<div class="pe-ctx-menu" id="ctxMenu">
+  <div class="pe-ctx-item" onclick="copiarSelecao();fecharCtx()"><i class="fa-regular fa-copy"></i> Copiar <small style="margin-left:auto;opacity:.5">Ctrl+C</small></div>
+  <div class="pe-ctx-item" id="ctxColar" onclick="colarSelecao();fecharCtx()"><i class="fa-solid fa-paste"></i> Colar <small style="margin-left:auto;opacity:.5">Ctrl+V</small></div>
+  <div class="pe-ctx-item" onclick="duplicarSelecao();fecharCtx()"><i class="fa-regular fa-clone"></i> Duplicar <small style="margin-left:auto;opacity:.5">Ctrl+D</small></div>
+  <div class="pe-ctx-item" id="ctxLock" onclick="toggleTravado();fecharCtx()"><i class="fa-solid fa-lock" id="ctxLockIcon"></i> <span id="ctxLockLabel">Travar</span></div>
+  <div class="pe-ctx-sep"></div>
+  <div class="pe-ctx-item" onclick="rotarElemento(90);fecharCtx()"><i class="fa-solid fa-rotate-right"></i> Girar +90°  <small style="margin-left:auto;opacity:.5">R</small></div>
+  <div class="pe-ctx-item" onclick="rotarElemento(-90);fecharCtx()"><i class="fa-solid fa-rotate-left"></i> Girar -90°</div>
+  <div class="pe-ctx-item" onclick="agrupar();fecharCtx()"><i class="fa-solid fa-object-group"></i> Agrupar</div>
+  <div class="pe-ctx-item" onclick="desagrupar();fecharCtx()"><i class="fa-solid fa-object-ungroup"></i> Desagrupar</div>
+  <div class="pe-ctx-sep"></div>
+  <div class="pe-ctx-item" onclick="camadaFrente();fecharCtx()"><i class="fa-solid fa-angles-up"></i> Trazer à Frente</div>
+  <div class="pe-ctx-item" onclick="camadaFundo();fecharCtx()"><i class="fa-solid fa-angles-down"></i> Enviar ao Fundo</div>
+  <div class="pe-ctx-sep"></div>
+  <div class="pe-ctx-item danger" onclick="excluirSelecao();fecharCtx()"><i class="fa-solid fa-trash"></i> Excluir <small style="margin-left:auto;opacity:.5">Del</small></div>
+</div>

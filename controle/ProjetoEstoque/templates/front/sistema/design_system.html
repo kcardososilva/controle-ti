@@ -1,0 +1,633 @@
+{% extends 'base.html' %}
+{% block title %}Design System — Zelo{% endblock %}
+{% block page_title %}Design System{% endblock %}
+{% block page_subtitle %}Tokens e componentes — versão 5{% endblock %}
+
+{% comment %}
+Referência viva do design system. Não tem dado do negócio: tudo aqui é a
+própria folha de estilo se mostrando.
+
+Por que uma tela e não um documento: CSS se revisa olhando. Mudou um token em
+tokens.css? Abra isto nos dois temas e veja o efeito antes de descobrir em
+produção. Vai criar um componente? Veja aqui se ele já existe — há 6 marcações
+diferentes de paginação no sistema porque essa conferência nunca foi possível.
+
+O CSS desta tela é só o grid do catálogo (as amostras). Os componentes
+mostrados vêm de base.css e ui-kit.css — se eu copiasse estilo para cá, o
+catálogo mentiria na primeira mudança.
+{% endcomment %}
+
+{% block header_actions %}
+  <button type="button" class="btn btn-sm" id="dsTema">
+    <i class="fa-solid fa-circle-half-stroke"></i> Alternar tema
+  </button>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* Só a grade do catálogo. Escopado em .ds-page, nunca no :root
+     (CLAUDE.md, regra de CSS). */
+  .ds-page { display: grid; gap: var(--space-8); padding-bottom: var(--space-12); }
+
+  .ds-sec { display: grid; gap: var(--space-4); }
+  .ds-sec > header { display: grid; gap: 2px; }
+  .ds-sec h2 {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 650;
+    letter-spacing: var(--tracking-tightest);
+  }
+  .ds-sec header p { font-size: var(--text-sm); color: var(--text-tertiary); max-width: 62ch; }
+
+  .ds-nota {
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--bg-fill-tertiary);
+    border-inline-start: 3px solid var(--brand);
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--text-secondary);
+  }
+
+  .ds-swatches { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr)); }
+  .ds-swatch { display: grid; gap: var(--space-2); }
+  .ds-chip {
+    height: 3.25rem;
+    border-radius: var(--radius-md);
+    box-shadow: inset 0 0 0 1px var(--separator-non-opaque);
+  }
+  .ds-swatch code { font-size: var(--text-2xs); color: var(--text-primary); }
+  .ds-swatch small { font-size: var(--text-2xs); color: var(--text-tertiary); }
+
+  .ds-tipo-linha {
+    display: flex; align-items: baseline; gap: var(--space-4);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--separator-hairline);
+  }
+  .ds-tipo-linha > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ds-tipo-meta { font-size: var(--text-2xs); color: var(--text-tertiary); white-space: nowrap; font-family: var(--font-mono); }
+
+  .ds-caixas { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+  .ds-caixa { display: grid; gap: var(--space-2); justify-items: center; }
+  .ds-caixa > div:first-child {
+    width: 5rem; height: 3.5rem;
+    background: var(--bg-elevated);
+    box-shadow: inset 0 0 0 1px var(--separator-non-opaque);
+  }
+  .ds-caixa code { font-size: var(--text-2xs); }
+
+  .ds-sombra { width: 7rem; height: 4rem; border-radius: var(--radius-md); background: var(--bg-elevated); }
+
+  .ds-espaco { display: grid; gap: var(--space-2); }
+  .ds-espaco-linha { display: flex; align-items: center; gap: var(--space-3); }
+  .ds-espaco-barra { height: 10px; border-radius: 3px; background: var(--brand); }
+
+  .ds-demo {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3);
+    padding: var(--space-5);
+    border-radius: var(--radius-lg);
+    border: 1px dashed var(--separator-non-opaque);
+    background: var(--bg-elevated);
+  }
+  .ds-demo.is-coluna { display: grid; align-items: stretch; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ds-page ui-enter">
+
+  <div class="ds-nota">
+    Esta tela consome <code class="mono">tokens.css</code>,
+    <code class="mono">base.css</code> e <code class="mono">ui-kit.css</code> —
+    as mesmas folhas do resto do sistema. Mudou um token? Aparece aqui.
+    Use o botão <strong>Alternar tema</strong> no topo para conferir o modo
+    escuro: contraste de chip e de texto é onde o escuro mais quebra.
+  </div>
+
+  {# ─── CORES ─────────────────────────────────────────────────────────── #}
+  {% for titulo, descricao, cores in grupos_cor %}
+    <section class="ds-sec">
+      <header>
+        <h2>{{ titulo }}</h2>
+        <p>{{ descricao }}</p>
+      </header>
+      <div class="ds-swatches">
+        {% for token, uso in cores %}
+          <div class="ds-swatch">
+            <div class="ds-chip" style="background: var({{ token }});"></div>
+            <code class="mono">{{ token }}</code>
+            <small>{{ uso }}</small>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+
+  {# ─── TIPOGRAFIA ────────────────────────────────────────────────────── #}
+  <section class="ds-sec">
+    <header>
+      <h2>Tipografia</h2>
+      <p>
+        Inter no corpo, Inter Tight nos títulos, JetBrains Mono em texto que se
+        confere caractere por caractere. Antes a pilha começava em
+        <code class="mono">-apple-system</code>: a mesma tela era SF Pro no Mac
+        e Inter no Windows, com quebras de linha diferentes.
+      </p>
+    </header>
+    <div class="card">
+      {% for token, px, uso in escala_tipo %}
+        <div class="ds-tipo-linha">
+          <span style="font-size: var({{ token }}); {% if token == '--text-3xl' or token == '--text-2xl' or token == '--text-xl' or token == '--text-lg' %}font-family: var(--font-display); font-weight: 650; letter-spacing: var(--tracking-tighter);{% endif %}">
+            Equipamento 1.482 · Notebook Dell
+          </span>
+          <span class="ds-tipo-meta">{{ token }} · {{ px }}</span>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="ds-demo is-coluna">
+      <div class="ui-dl">
+        <div class="ui-dl-item">
+          <span class="ui-dl-label">Número tabular (tabela, KPI)</span>
+          <span class="ui-dl-valor mono" style="font-variant-numeric: tabular-nums;">
+            1.111,11 &nbsp; 8.888,88 &nbsp; 4.444,44
+          </span>
+        </div>
+        <div class="ui-dl-item">
+          <span class="ui-dl-label">Proporcional (texto corrido)</span>
+          <span class="ui-dl-valor" style="font-variant-numeric: proportional-nums;">
+            1.111,11 &nbsp; 8.888,88 &nbsp; 4.444,44
+          </span>
+        </div>
+        <div class="ui-dl-item">
+          <span class="ui-dl-label">Monoespaçada — série, chave, patrimônio</span>
+          <span class="ui-dl-valor mono">SN-7KQ2L8 · O0 l1 I1</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ─── FORMA ─────────────────────────────────────────────────────────── #}
+  <section class="ds-sec">
+    <header>
+      <h2>Raio, sombra e espaçamento</h2>
+      <p>
+        Raios mais fechados que a versão anterior e sombra em duas camadas —
+        um contato curto que define a borda, uma difusão ampla que define a
+        altura.
+      </p>
+    </header>
+
+    <div class="ds-caixas">
+      {% for token, px in raios %}
+        <div class="ds-caixa">
+          <div style="border-radius: var({{ token }});"></div>
+          <code class="mono">{{ px }}</code>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="ds-caixas">
+      {% for token, uso in sombras %}
+        <div class="ds-caixa">
+          <div class="ds-sombra" style="box-shadow: var({{ token }});"></div>
+          <code class="mono">{{ token }}</code>
+          <small style="font-size: var(--text-2xs); color: var(--text-tertiary);">{{ uso }}</small>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="card ds-espaco">
+      {% for token, px in espacos %}
+        <div class="ds-espaco-linha">
+          <code class="mono" style="width: 7rem; font-size: var(--text-2xs);">{{ token }}</code>
+          <div class="ds-espaco-barra" style="width: var({{ token }});"></div>
+          <small style="color: var(--text-tertiary); font-size: var(--text-2xs);">{{ px }}</small>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ─── BOTÕES ────────────────────────────────────────────────────────── #}
+  <section class="ds-sec">
+    <header>
+      <h2>Botões</h2>
+      <p>Mesma altura do campo de formulário (<code class="mono">--control-h</code>, 36px) — eram 36 contra 38 e desalinhavam na mesma linha.</p>
+    </header>
+    <div class="ds-demo">
+      <button class="btn-primary">Salvar</button>
+      <button class="btn-secondary">Cancelar</button>
+      <button class="btn-muted">Exportar</button>
+      <button class="btn-danger">Excluir</button>
+      <button class="btn-ghost">Ignorar</button>
+      <button class="btn-primary" disabled>Desabilitado</button>
+      <button class="btn-primary is-carregando"><span>Salvando</span></button>
+    </div>
+    <div class="ds-demo">
+      <button class="btn-primary btn-sm">Pequeno</button>
+      <button class="btn-primary">Padrão</button>
+      <button class="btn-primary btn-lg">Grande</button>
+      <button class="btn btn-icon-only" aria-label="Editar"><i class="fa-solid fa-pen"></i></button>
+      <span class="btn-group">
+        <button class="btn btn-sm">Mês</button>
+        <button class="btn btn-sm">Trimestre</button>
+        <button class="btn btn-sm">Ano</button>
+      </span>
+    </div>
+  </section>
+
+  {# ─── CHIPS ─────────────────────────────────────────────────────────── #}
+  <section class="ds-sec">
+    <header>
+      <h2>Chips de status</h2>
+      <p>Anel <code class="mono">inset</code> em vez de borda: o chip não muda de tamanho entre a versão com e sem contorno.</p>
+    </header>
+    <div class="ds-demo">
+      <span class="badge badge-success badge-dot-lead">Ativo</span>
+      <span class="badge badge-warning badge-dot-lead">Vence em 12 dias</span>
+      <span class="badge badge-danger badge-dot-lead">Defeito</span>
+      <span class="badge badge-info badge-dot-lead">Em backup</span>
+      <span class="badge badge-brand">Novo</span>
+      <span class="badge badge-neutral">Sem alocação</span>
+      <span class="badge badge-pill badge-neutral">42</span>
+    </div>
+  </section>
+
+  {# ─── CAMPOS ────────────────────────────────────────────────────────── #}
+  <section class="ds-sec">
+    <header>
+      <h2>Campos</h2>
+      <p>Estados que faltavam: desabilitado, somente leitura e inválido — este último por <code class="mono">aria-invalid</code>, que o leitor de tela também anuncia.</p>
+    </header>
+    <div class="card">
+      <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));">
+        <div class="field">
+          <label class="is-required" for="ds-a">Nome do equipamento</label>
+          <input id="ds-a" type="text" placeholder="Notebook Dell Latitude">
+          <span class="form-hint">Como aparece na etiqueta de patrimônio.</span>
+        </div>
+        <div class="field">
+          <label for="ds-b">Número de série</label>
+          <input id="ds-b" type="text" value="SN-" aria-invalid="true">
+          <span class="form-error">Série já cadastrada no item 1.482.</span>
+        </div>
+        <div class="field">
+          <label for="ds-c">Centro de custo</label>
+          <select id="ds-c"><option>Tecnologia da Informação</option></select>
+        </div>
+        <div class="field">
+          <label for="ds-d">Patrimônio (gerado)</label>
+          <input id="ds-d" type="text" value="PAT-004821" readonly>
+          <span class="form-hint">Somente leitura — gerado no cadastro.</span>
+        </div>
+      </div>
+      <div class="card-foot">
+        <button class="btn-secondary">Cancelar</button>
+        <button class="btn-primary">Salvar equipamento</button>
+      </div>
+    </div>
+  </section>
+
+  {# ─── KPI ───────────────────────────────────────────────────────────── #}
+  <section class="ds-sec">
+    <header>
+      <h2>KPI</h2>
+      <p>
+        <code class="mono">is-up</code>/<code class="mono">is-down</code> dão a
+        seta; <code class="mono">is-bom</code>/<code class="mono">is-ruim</code>
+        dão a cor. São coisas diferentes: queda de custo é verde.
+      </p>
+    </header>
+    <div class="ui-grid ui-grid-sm ui-enter-stagger">
+      <div class="kpi-card">
+        <div class="ui-kpi">
+          <span class="ui-kpi-label"><i class="fa-solid fa-laptop"></i> Equipamentos ativos</span>
+          <span class="ui-kpi-value">1.482</span>
+          <span class="ui-kpi-meta"><span class="ui-trend is-up is-bom">4,2%</span> no mês</span>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="ui-kpi">
+          <span class="ui-kpi-label"><i class="fa-solid fa-coins"></i> Custo de licenças</span>
+          <span class="ui-kpi-value">R$ 38.140</span>
+          <span class="ui-kpi-meta"><span class="ui-trend is-down is-bom">6,8%</span> no mês</span>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="ui-kpi">
+          <span class="ui-kpi-label"><i class="fa-solid fa-triangle-exclamation"></i> Em defeito</span>
+          <span class="ui-kpi-value">17</span>
+          <span class="ui-kpi-meta"><span class="ui-trend is-up is-ruim">3</span> desde ontem</span>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="ui-kpi">
+          <span class="ui-kpi-label"><i class="fa-solid fa-key"></i> Licenças em uso</span>
+          <span class="ui-kpi-value">96 <small style="font-size: var(--text-sm); color: var(--text-tertiary); font-weight: 500;">/ 120</small></span>
+          <div class="ui-kpi-bar"><span style="width: 80%;"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ─── TABELA ────────────────────────────────────────────────────────── #}
+  <section class="ds-sec">
+    <header>
+      <h2>Tabela de dados</h2>
+      <p>
+        Coluna numérica à direita com número tabular, cabeçalho ordenável por
+        <code class="mono">aria-sort</code>, linha selecionada e densidade
+        compacta (<code class="mono">.table-compact</code>, ~40% mais linhas na
+        mesma tela).
+      </p>
+    </header>
+
+    <div class="ui-toolbar">
+      <div class="ui-toolbar-busca">
+        <i class="fa-solid fa-magnifying-glass ui-toolbar-ico"></i>
+        <input type="search" placeholder="Buscar por nome, série ou patrimônio">
+      </div>
+      <div class="ui-toolbar-grupo">
+        <span class="ui-segmented">
+          <button class="is-active" aria-pressed="true"><i class="fa-solid fa-table-list"></i> Tabela</button>
+          <button aria-pressed="false"><i class="fa-solid fa-grip"></i> Cartões</button>
+        </span>
+        <button class="btn btn-sm"><i class="fa-solid fa-filter"></i> Filtros</button>
+        <button class="btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Novo</button>
+      </div>
+    </div>
+
+    <div class="ui-filtros" style="margin-bottom: var(--space-3);">
+      <span class="ui-filtro-chip"><b>Status:</b> Ativo <button aria-label="Remover filtro">✕</button></span>
+      <span class="ui-filtro-chip"><b>Centro de custo:</b> TI <button aria-label="Remover filtro">✕</button></span>
+      <span class="ui-toolbar-contagem">183 resultados</span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table-zebra">
+        <thead>
+          <tr>
+            <th aria-sort="ascending">Equipamento</th>
+            <th>Série</th>
+            <th aria-sort="none">Centro de custo</th>
+            <th class="num">Valor</th>
+            <th>Status</th>
+            <th class="acoes">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="is-selected">
+            <td>Notebook Dell Latitude 5440</td>
+            <td class="mono">SN-7KQ2L8</td>
+            <td>Tecnologia da Informação</td>
+            <td class="num">R$ 4.890,00</td>
+            <td><span class="badge badge-success badge-dot-lead">Ativo</span></td>
+            <td class="acoes"><button class="btn btn-sm btn-icon-only" aria-label="Editar"><i class="fa-solid fa-pen"></i></button></td>
+          </tr>
+          <tr>
+            <td>Impressora HP LaserJet M428</td>
+            <td class="mono">SN-A91BX2</td>
+            <td>Administrativo</td>
+            <td class="num">R$ 2.140,50</td>
+            <td><span class="badge badge-warning badge-dot-lead">Manutenção</span></td>
+            <td class="acoes"><button class="btn btn-sm btn-icon-only" aria-label="Editar"><i class="fa-solid fa-pen"></i></button></td>
+          </tr>
+          <tr>
+            <td>Switch Cisco CBS350-24T</td>
+            <td class="mono">SN-0O1lI8</td>
+            <td>Infraestrutura</td>
+            <td class="num">R$ 11.780,00</td>
+            <td><span class="badge badge-danger badge-dot-lead">Defeito</span></td>
+            <td class="acoes"><button class="btn btn-sm btn-icon-only" aria-label="Editar"><i class="fa-solid fa-pen"></i></button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="ui-pager">
+      <span class="ui-pager-info">Mostrando 1–3 de 183</span>
+      <span class="ui-pager-links">
+        <a href="#" class="ui-pager-link is-disabled">‹</a>
+        <a href="#" class="ui-pager-link is-active">1</a>
+        <a href="#" class="ui-pager-link">2</a>
+        <a href="#" class="ui-pager-link">3</a>
+        <a href="#" class="ui-pager-link">›</a>
+      </span>
+    </div>
+  </section>
+
+  {# ─── CARREGANDO E VAZIO ────────────────────────────────────────────── #}
+  <section class="ds-sec">
+    <header>
+      <h2>Carregando e vazio</h2>
+      <p>
+        Várias telas buscam dado por fetch depois de carregar (PRTG, NinjaOne,
+        busca de item). Sem o skeleton, a área fica em branco e parece
+        quebrada — e o layout salta quando o dado chega.
+      </p>
+    </header>
+    <div class="ui-grid ui-grid-md">
+      <div class="card">
+        <div class="card-head"><span class="card-title">Carregando</span></div>
+        <div class="ui-skeleton-stack">
+          <div class="ui-skeleton ui-skeleton-title"></div>
+          <div class="ui-skeleton ui-skeleton-text"></div>
+          <div class="ui-skeleton ui-skeleton-text ui-skeleton-line-sm"></div>
+          <div class="ui-skeleton ui-skeleton-text ui-skeleton-line-xs"></div>
+          <div class="ui-skeleton ui-skeleton-block"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ui-empty">
+          <div class="ui-empty-ico"><i class="fa-regular fa-folder-open"></i></div>
+          <div class="ui-empty-title">Nenhum equipamento encontrado</div>
+          <p class="ui-empty-text">
+            Nenhum item corresponde aos filtros aplicados. Isso não quer dizer
+            que não haja equipamento cadastrado.
+          </p>
+          <div class="ui-empty-actions">
+            <button class="btn-secondary btn-sm">Limpar filtros</button>
+            <button class="btn-primary btn-sm">Cadastrar equipamento</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ─── FEEDBACK ──────────────────────────────────────────────────────── #}
+  <section class="ds-sec">
+    <header>
+      <h2>Avisos e progresso</h2>
+      <p>O aviso ganhou faixa de cor na borda inicial: identifica-se pelo canto mesmo quando o texto é longo.</p>
+    </header>
+    <div class="alert-container">
+      <div class="alert alert-success"><i class="fa-solid fa-circle-check"></i><span>Movimentação registrada. O termo foi enviado para assinatura.</span></div>
+      <div class="alert alert-warning"><i class="fa-solid fa-triangle-exclamation"></i><span>3 licenças vencem nos próximos 30 dias.</span></div>
+      <div class="alert alert-error"><i class="fa-solid fa-circle-xmark"></i><span>Não foi possível falar com o PRTG. O status de rede está desatualizado.</span></div>
+      <div class="alert alert-info"><i class="fa-solid fa-circle-info"></i><span>A sincronização com o NinjaOne roda a cada 30 minutos.</span></div>
+    </div>
+
+    <div class="card ui-stack">
+      <div>
+        <div class="ui-row-between" style="margin-bottom: var(--space-2);">
+          <span class="ui-dl-label">Importação da planilha</span>
+          <span class="ui-toolbar-contagem">184 / 240</span>
+        </div>
+        <div class="ui-progress"><span style="width: 76%;"></span></div>
+      </div>
+      <div>
+        <div class="ui-dl-label" style="margin-bottom: var(--space-2);">Sem total conhecido</div>
+        <div class="ui-progress is-indeterminado"><span></span></div>
+      </div>
+      <div class="ui-row">
+        <label class="ui-switch">
+          <input type="checkbox" checked>
+          <span class="ui-switch-track"></span>
+          <span class="ui-switch-label">Notificar por e-mail<small>Quando um equipamento for marcado como Defeito</small></span>
+        </label>
+      </div>
+      <div class="ui-row">
+        <span class="ui-dica" data-dica="A dica nativa do navegador demora 1s, não funciona em toque e não quebra linha.">
+          <button class="btn btn-sm"><i class="fa-regular fa-circle-question"></i> Passe o cursor</button>
+        </span>
+        <span>Atalho: <span class="ui-kbd">Ctrl</span> <span class="ui-kbd">K</span></span>
+      </div>
+    </div>
+  </section>
+
+  {# ─── LINHA DO TEMPO ────────────────────────────────────────────────── #}
+  <section class="ds-sec">
+    <header>
+      <h2>Linha do tempo</h2>
+      <p>Histórico de movimentação, ciclo de manutenção e trilha de auditoria são tabelas hoje — e numa tabela a ordem dos eventos some.</p>
+    </header>
+    <div class="card">
+      <div class="ui-timeline">
+        <div class="ui-timeline-item is-atual">
+          <span class="ui-timeline-quando">Hoje · 14:32</span>
+          <span class="ui-timeline-titulo">Entregue ao colaborador</span>
+          <span class="ui-timeline-texto">Termo assinado digitalmente. Centro de custo: Tecnologia da Informação.</span>
+        </div>
+        <div class="ui-timeline-item is-sucesso">
+          <span class="ui-timeline-quando">02/10/2026 · 09:10</span>
+          <span class="ui-timeline-titulo">Manutenção preventiva concluída</span>
+          <span class="ui-timeline-texto">Checklist de 12 itens, sem pendência. Próxima em 90 dias.</span>
+        </div>
+        <div class="ui-timeline-item is-perigo">
+          <span class="ui-timeline-quando">18/09/2026 · 16:45</span>
+          <span class="ui-timeline-titulo">Enviado ao fornecedor</span>
+          <span class="ui-timeline-texto">Tela com defeito. NF de remessa 00184.</span>
+        </div>
+        <div class="ui-timeline-item">
+          <span class="ui-timeline-quando">04/03/2026 · 11:02</span>
+          <span class="ui-timeline-titulo">Cadastrado</span>
+          <span class="ui-timeline-texto">Entrada por nota fiscal 00061.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ─── AUXILIARES ────────────────────────────────────────────────────── #}
+  <section class="ds-sec">
+    <header>
+      <h2>Auxiliares</h2>
+      <p>
+        Peças pequenas que aparecem em quase toda tela: par rótulo/valor,
+        avatar, divisor com rótulo e texto truncado em N linhas.
+      </p>
+    </header>
+
+    <div class="ui-grid ui-grid-md">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <span class="card-title">Par rótulo / valor</span>
+            <div class="card-subtitle">O bloco mais repetido do sistema</div>
+          </div>
+        </div>
+        <div class="ui-dl">
+          <div class="ui-dl-item">
+            <span class="ui-dl-label">Patrimônio</span>
+            <span class="ui-dl-valor mono">PAT-004821</span>
+          </div>
+          <div class="ui-dl-item">
+            <span class="ui-dl-label">Centro de custo</span>
+            <span class="ui-dl-valor">Tecnologia da Informação</span>
+          </div>
+          <div class="ui-dl-item">
+            <span class="ui-dl-label">Observação (vazio)</span>
+            <span class="ui-dl-valor is-vazio"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><span class="card-title">Avatar e divisor</span></div>
+        <div class="ui-row" style="margin-bottom: var(--space-2);">
+          <span class="ui-avatar ui-avatar-sm">k</span>
+          <span class="ui-avatar">m</span>
+          <span class="ui-avatar ui-avatar-lg">r</span>
+          <span style="font-size: var(--text-xs); color: var(--text-tertiary);">
+            sm · padrão · lg
+          </span>
+        </div>
+        <div class="ui-divisor">Dados fiscais</div>
+        <p class="ui-clamp-2" style="font-size: var(--text-sm); color: var(--text-tertiary);">
+          Texto truncado em duas linhas com <code class="mono">.ui-clamp-2</code>.
+          Serve para descrição de item em cartão, onde um texto longo de um
+          registro empurraria os cartões vizinhos e desalinharia a grade
+          inteira — exatamente o que acontece hoje em algumas listagens.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="ds-nota">
+    <strong>Para quem for criar tela nova:</strong> antes de escrever CSS,
+    procure o componente aqui. As 6 marcações diferentes de paginação e os 4
+    azuis que existiam no sistema vieram de não haver onde conferir.
+  </div>
+
+</div>
+
+{% comment %}O aviso flutuante vive fora do contêiner: é `position: fixed`, e
+   dentro de um ancestral com `transform` o fixed passa a ser relativo a ele.{% endcomment %}
+<div class="ui-toast-area" id="dsToasts" aria-live="polite"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    'use strict';
+
+    // Alternar tema: reaproveita a MESMA chave do resto do sistema, para o
+    // tema escolhido aqui valer nas outras telas (e vice-versa).
+    document.getElementById('dsTema').addEventListener('click', function () {
+      var escuro = document.body.classList.toggle('theme-dark');
+      document.body.classList.toggle('theme-light', !escuro);
+      document.documentElement.classList.toggle('theme-dark', escuro);
+      document.documentElement.classList.toggle('theme-light', !escuro);
+      try { localStorage.setItem('controleTI.theme', escuro ? 'dark' : 'light'); } catch (e) {}
+    });
+
+    // Demonstração do aviso flutuante. Um só, no carregamento: o componente
+    // precisa ser visto, mas um catálogo que dispara avisos a cada clique
+    // atrapalha a leitura do resto.
+    var area = document.getElementById('dsToasts');
+    var toast = document.createElement('div');
+    toast.className = 'ui-toast is-sucesso';
+    toast.innerHTML =
+      '<i class="fa-solid fa-circle-check ui-toast-ico"></i>' +
+      '<span>Este é o aviso flutuante. Fica no canto, visível mesmo com a tela rolada.</span>' +
+      '<button class="ui-toast-fechar" aria-label="Fechar">✕</button>';
+    area.appendChild(toast);
+
+    function fechar() {
+      toast.classList.add('is-saindo');
+      toast.addEventListener('animationend', function () { toast.remove(); });
+    }
+    toast.querySelector('.ui-toast-fechar').addEventListener('click', fechar);
+    setTimeout(fechar, 7000);
+  })();
+</script>
+{% endblock %}

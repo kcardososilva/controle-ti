@@ -28,3 +28,7 @@ class ProjetoestoqueConfig(AppConfig):
         # Conecta o monitoramento de segurança (ISO 27001 A.8.15/A.8.16):
         # login/logout/falha → RegistroSeguranca + alerta de acesso suspeito.
         from services import seguranca_service  # noqa: F401
+
+        # Prazo de sessao por tipo de login: o painel de TV (tela de parede)
+        # recebe prazo longo; os demais seguem o SESSION_COOKIE_AGE de 12h.
+        from services import sessao_service  # noqa: F401

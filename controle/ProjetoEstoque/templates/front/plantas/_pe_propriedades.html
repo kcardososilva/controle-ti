@@ -1,0 +1,276 @@
+{% comment %}Drawer de propriedades do elemento/conexão selecionado.
+   Fatia de planta_editor.html, que tinha 5.064 linhas numa só tela.
+   Herda o contexto do include. Os handlers (onclick) são funções
+   globais de static/js/planta-editor.js — mover marcação entre
+   fatias é seguro, renomear id/função não.{% endcomment %}
+    <!-- Painel de Propriedades (drawer) -->
+    <div class="pe-props-panel" id="propsPanel">
+      <div class="pe-props-header">
+        <i class="fa-solid fa-sliders"></i> Propriedades
+        <button type="button" class="pe-props-close" onclick="fecharPropsDrawer(true)" title="Ocultar painel" aria-label="Ocultar painel">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="pe-props-empty" id="propsEmpty">
+        <i class="fa-solid fa-arrow-pointer"></i>
+        <span>Clique em um elemento ou arraste da paleta para adicionar</span>
+      </div>
+      <div class="pe-props-body" id="propsBody" style="display:none">
+
+        <div class="pe-field">
+          <label>Nome / Label</label>
+          <input type="text" id="propLabel" placeholder="Nome do elemento" oninput="updateProp('label',this.value)">
+        </div>
+
+        <div class="pe-field" id="fieldLock">
+          <button class="pe-btn-lock" id="btnLock" onclick="toggleTravado()">
+            <i class="fa-solid fa-unlock" id="lockIcon"></i>
+            <span id="lockLabel">Travar Posição</span>
+          </button>
+        </div>
+
+        <!-- Fonte e Tamanho -->
+        <div class="pe-field" id="fieldFont">
+          <label>Texto</label>
+          <div class="pe-font-row">
+            <select id="propFontFamily" onchange="updateProp('fontFamily',this.value)" style="flex:1;font-size:.75rem;height:26px;border:1px solid var(--pe-border2);border-radius:6px;background:transparent;padding:0 4px">
+              <option value="system">Sistema</option>
+              <option value="mono">Mono</option>
+              <option value="serif">Serif</option>
+            </select>
+            <div class="pe-font-size-ctrl">
+              <button onclick="adjustFontSize(-1)">−</button>
+              <input type="number" id="propFontSize" min="6" max="96" value="14"
+                     onchange="updateProp('fontSize',Math.max(6,Math.min(96,+this.value||14)))">
+              <button onclick="adjustFontSize(+1)">+</button>
+            </div>
+            <button class="pe-font-toggle" id="btnBold"   onclick="toggleFontProp('fontBold')"   title="Negrito"><b>B</b></button>
+            <button class="pe-font-toggle" id="btnItalic" onclick="toggleFontProp('fontItalic')" title="Itálico"><i>I</i></button>
+          </div>
+          <div class="pe-align-btns" id="fieldTextAlign" style="display:none">
+            <button class="pe-align-btn" id="btnAlignLeft"   onclick="setTextAlign('left')"   title="Alinhar à Esquerda"><i class="fa-solid fa-align-left"></i></button>
+            <button class="pe-align-btn" id="btnAlignCenter" onclick="setTextAlign('center')" title="Centralizar"><i class="fa-solid fa-align-center"></i></button>
+            <button class="pe-align-btn" id="btnAlignRight"  onclick="setTextAlign('right')"  title="Alinhar à Direita"><i class="fa-solid fa-align-right"></i></button>
+          </div>
+        </div>
+
+        <div class="pe-field-row">
+          <div class="pe-field">
+            <label>Cor do Preenchimento</label>
+            <div class="pe-field-color">
+              <input type="color" id="propColor" oninput="updateProp('color',this.value)">
+              <span id="propColorHex" style="font-size:.75rem;color:var(--pe-muted)"></span>
+            </div>
+          </div>
+          <div class="pe-field" id="fieldOpacity" style="display:none">
+            <label>Opacidade</label>
+            <input type="range" id="propOpacity" min="0.02" max="0.5" step="0.02"
+                   oninput="updateProp('fillOpacity',parseFloat(this.value))">
+          </div>
+        </div>
+
+        <!-- Borda das formas -->
+        <div class="pe-field" id="fieldBorda" style="display:none">
+          <label style="font-weight:800;margin-bottom:6px;display:block">Borda</label>
+          <div class="pe-field-row">
+            <div class="pe-field">
+              <label>Cor</label>
+              <div class="pe-field-color">
+                <input type="color" id="propBorderColor" oninput="updateProp('borderColor',this.value)">
+                <span id="propBorderColorHex" style="font-size:.72rem;color:var(--pe-muted)"></span>
+              </div>
+            </div>
+            <div class="pe-field">
+              <label>Espessura <span id="borderWidthVal" style="float:right;color:var(--pe-muted);font-weight:400">2</span></label>
+              <input type="range" id="propBorderWidth" min="0" max="12" step="0.5" value="2"
+                     oninput="document.getElementById('borderWidthVal').textContent=this.value; updateProp('borderWidth',parseFloat(this.value))">
+            </div>
+          </div>
+          <label style="margin-top:4px">Estilo da Borda</label>
+          <select id="propBorderStyle" onchange="updateProp('borderStyle',this.value)">
+            <option value="solid">Sólida (padrão)</option>
+            <option value="dashed">Tracejada</option>
+            <option value="dotted">Pontilhada</option>
+          </select>
+        </div>
+
+        <!-- Formato da forma (apenas quadro) -->
+        <div class="pe-field" id="fieldShapeKind" style="display:none">
+          <label>Formato</label>
+          <select id="propShapeKind" onchange="updateProp('shapeKind',this.value)">
+            <option value="rounded">Retângulo arredondado</option>
+            <option value="rect">Retângulo</option>
+            <option value="diamond">Losango</option>
+            <option value="triangle">Triângulo</option>
+            <option value="hexagon">Hexágono</option>
+          </select>
+        </div>
+
+        <!-- Tamanho (para formas) -->
+        <div class="pe-field" id="fieldSize" style="display:none">
+          <label>Tamanho <span id="sizeMetersHint" style="float:right;color:var(--pe-brand);font-weight:600"></span></label>
+          <div class="pe-field-row">
+            <div class="pe-field">
+              <label>Largura</label>
+              <input type="number" id="propWidth" min="40" oninput="updateProp('width',parseFloat(this.value)||80)">
+            </div>
+            <div class="pe-field">
+              <label>Altura</label>
+              <input type="number" id="propHeight" min="40" oninput="updateProp('height',parseFloat(this.value)||80)">
+            </div>
+          </div>
+        </div>
+
+        <!-- Raio de canto (quadro) -->
+        <div class="pe-field" id="fieldRadius" style="display:none">
+          <label>Arredondamento <span id="radiusVal" style="float:right;color:var(--pe-muted);font-weight:400">10</span></label>
+          <input type="range" id="propRadius" min="0" max="60" step="1" value="10"
+                 oninput="document.getElementById('radiusVal').textContent=this.value; updateProp('cornerRadius',+this.value)">
+        </div>
+
+        <!-- Linha — propriedades extras (oculto para outros tipos) -->
+        <div class="pe-field" id="fieldLinha" style="display:none">
+          <label>Espessura</label>
+          <input type="range" id="propStroke" min="1" max="8" step="1"
+                 oninput="updateProp('strokeWidth',parseInt(this.value))">
+          <label style="margin-top:8px">Estilo</label>
+          <select id="propDash" onchange="updateProp('dash',this.value)">
+            <option value="solid">Sólida</option>
+            <option value="dashed">Tracejada</option>
+            <option value="dotted">Pontilhada</option>
+          </select>
+          <label style="margin-top:8px;display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600">
+            <input type="checkbox" id="propArrowStart" onchange="updateProp('arrowStart',this.checked)">
+            Seta na origem
+          </label>
+          <label style="margin-top:6px;display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600">
+            <input type="checkbox" id="propArrow" onchange="updateProp('arrowEnd',this.checked)">
+            Seta na ponta
+          </label>
+        </div>
+
+        <!-- Campo de visão (somente câmera) -->
+        <div class="pe-field" id="fieldFov" style="display:none">
+          <label style="font-weight:700;color:var(--pe-brand);margin-bottom:6px;display:block">
+            <i class="fa-solid fa-camera" style="font-size:.8em;margin-right:4px"></i> Campo Visual
+          </label>
+          <label>Ângulo FOV <span id="fovAngleVal" style="float:right;color:var(--pe-muted);font-weight:400">60°</span></label>
+          <input type="range" id="propFovAngle" min="10" max="180" step="5" value="60"
+                 oninput="document.getElementById('fovAngleVal').textContent=this.value+'°'; updateProp('fovAngle',+this.value)">
+          <label style="margin-top:8px">Direção <span id="fovDirVal" style="float:right;color:var(--pe-muted);font-weight:400">0° →</span></label>
+          <input type="range" id="propFovDir" min="0" max="359" step="5" value="0"
+                 oninput="const d=+this.value; const dirs=['→','↗','↑','↖','←','↙','↓','↘']; document.getElementById('fovDirVal').textContent=d+'° '+dirs[Math.round(d/45)%8]; updateProp('fovDir',d)">
+        </div>
+
+        <!-- Equipamento do sistema (oculto para formas) -->
+        <div class="pe-field" style="position:relative" id="fieldItem">
+          <label>Equipamento do Sistema</label>
+          <input type="text" id="propItemSearch" placeholder="Buscar por nome..."
+                 autocomplete="off" oninput="buscarItem(this.value)">
+          <div class="pe-autocomplete" id="acItems"></div>
+          <div id="propItemSelecionado" style="display:none;font-size:.72rem;margin-top:3px;padding:3px 7px;background:rgba(0,113,227,.06);border-radius:5px;color:var(--pe-brand)">
+            <i class="fa-solid fa-check-circle"></i> <span id="propItemNome"></span>
+            <a href="#" onclick="limparItem(event)" style="margin-left:6px;color:var(--pe-danger)"><i class="fa-solid fa-xmark"></i></a>
+          </div>
+        </div>
+
+        <!-- PRTG (oculto para formas) -->
+        <div class="pe-field" style="position:relative" id="fieldPrtg">
+          <label>Dispositivo PRTG</label>
+          <input type="text" id="propPrtgSearch" placeholder="Buscar por nome ou IP..."
+                 autocomplete="off" oninput="buscarPrtg(this.value)">
+          <div class="pe-autocomplete" id="acPrtg"></div>
+          <div id="propPrtgSelecionado" style="display:none;font-size:.72rem;margin-top:3px;padding:3px 7px;background:rgba(0,113,227,.06);border-radius:5px;color:var(--pe-brand)">
+            <i class="fa-solid fa-satellite-dish"></i> <span id="propPrtgNome"></span>
+            <a href="#" onclick="limparPrtg(event)" style="margin-left:6px;color:var(--pe-danger)"><i class="fa-solid fa-xmark"></i></a>
+          </div>
+        </div>
+
+        <div class="pe-field" id="fieldIp">
+          <label>IP Manual <small style="font-weight:400">(fallback)</small></label>
+          <input type="text" id="propIp" placeholder="192.168.x.x" oninput="updateProp('ip',this.value)">
+        </div>
+
+        <!-- Rotação -->
+        <div class="pe-field" id="fieldRotation">
+          <label>Rotação <span id="rotVal" style="float:right;color:var(--pe-muted);font-weight:400">0°</span></label>
+          <input type="range" id="propRotation" min="0" max="359" step="1" value="0"
+                 oninput="document.getElementById('rotVal').textContent=this.value+'°'; updateProp('rotation',+this.value)">
+          <div style="display:flex;gap:4px;margin-top:4px">
+            <button class="pe-layer-btn" onclick="rotarElemento(-90)" title="-90°"><i class="fa-solid fa-rotate-left"></i> -90°</button>
+            <button class="pe-layer-btn" onclick="rotarElemento(90)"  title="+90°"><i class="fa-solid fa-rotate-right"></i> +90°</button>
+          </div>
+        </div>
+
+        <div class="pe-field" id="fieldCamadas">
+          <label>Camadas <span id="camadaNum" style="float:right;font-weight:400;color:var(--pe-muted);font-size:.72rem">—</span></label>
+          <div style="display:flex;gap:4px;margin-bottom:4px">
+            <button class="pe-layer-btn" onclick="camadaFundo()" title="Enviar para o fundo"><i class="fa-solid fa-angles-down"></i></button>
+            <button class="pe-layer-btn" onclick="camadaRecuar()" title="Descer camada"><i class="fa-solid fa-angle-down"></i></button>
+            <button class="pe-layer-btn" onclick="camadaAvancar()" title="Subir camada"><i class="fa-solid fa-angle-up"></i></button>
+            <button class="pe-layer-btn" onclick="camadaFrente()" title="Trazer para frente"><i class="fa-solid fa-angles-up"></i></button>
+          </div>
+        </div>
+
+        <div class="pe-field">
+          <label>Observações</label>
+          <textarea id="propObs" placeholder="Informações adicionais..." oninput="updateProp('observacoes',this.value)"></textarea>
+        </div>
+
+      </div>
+      <button class="pe-btn-delete-el" id="btnDeleteEl" style="display:none" onclick="excluirSelecionado()">
+        <i class="fa-solid fa-trash"></i> Excluir Elemento
+      </button>
+
+      <!-- Painel de propriedades de CONEXÃO -->
+      <div id="cnPropsBody" style="display:none;padding:10px 0">
+        <div class="pe-props-header" style="margin-bottom:8px">
+          <i class="fa-solid fa-link"></i> Conexão
+        </div>
+
+        <div class="pe-field">
+          <label>Label / Descrição</label>
+          <input type="text" id="cnPropLabel" placeholder="Ex: CAT6, 10Gbps..." oninput="updateCnProp('label',this.value)">
+        </div>
+
+        <div class="pe-field-row">
+          <div class="pe-field">
+            <label>Cor</label>
+            <div class="pe-field-color">
+              <input type="color" id="cnPropColor" oninput="updateCnProp('color',this.value)">
+              <span id="cnPropColorHex" style="font-size:.72rem;color:var(--pe-muted)"></span>
+            </div>
+          </div>
+          <div class="pe-field">
+            <label>Espessura <span id="cnWidthVal" style="float:right;color:var(--pe-muted);font-weight:400">2</span></label>
+            <input type="range" id="cnPropWidth" min="1" max="10" step="0.5" value="2"
+                   oninput="document.getElementById('cnWidthVal').textContent=this.value; updateCnProp('strokeWidth',parseFloat(this.value))">
+          </div>
+        </div>
+
+        <div class="pe-field">
+          <label>Estilo</label>
+          <select id="cnPropDash" onchange="updateCnProp('dash',this.value)">
+            <option value="">Padrão do tipo</option>
+            <option value="solid">Sólida</option>
+            <option value="dashed">Tracejada</option>
+            <option value="dotted">Pontilhada</option>
+          </select>
+        </div>
+
+        <div class="pe-field">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="cnPropArrow" onchange="updateCnProp('arrow', this.checked ? true : null)">
+            Mostrar seta
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px">
+            <input type="checkbox" id="cnPropArrowOff" onchange="updateCnProp('arrow', this.checked ? false : null)">
+            Ocultar seta (forçar)
+          </label>
+        </div>
+
+        <button class="pe-btn-delete-el" onclick="excluirConexaoSelecionada()" style="display:block;width:100%;margin-top:10px">
+          <i class="fa-solid fa-trash"></i> Excluir Conexão
+        </button>
+      </div>
+    </div>

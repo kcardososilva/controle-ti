@@ -1,0 +1,885 @@
+/* =============================================================
+   ui-kit.css — componentes NOVOS do design system v5.
+
+   Separado do base.css por natureza, não por tamanho: o base.css é o
+   contrato existente (classes que 174 templates já usam, cujos valores
+   foram atualizados). Aqui é vocabulário NOVO — nada daqui sobrescreve
+   nada de lá, então ler este arquivo não exige saber o que o base.css
+   faz.
+
+   Carregado pelo base.html DEPOIS do base.css. Depende de tokens.css.
+
+   O que entra aqui: padrão que várias telas reinventavam cada uma à sua
+   maneira (KPI, estado vazio, barra de ferramentas de tabela, paginação)
+   ou que simplesmente não existia e fazia falta (skeleton, toast,
+   segmentado, switch, tooltip, progresso, timeline).
+
+   NADA aqui é obrigatório. Tela existente continua funcionando sem
+   conhecer este arquivo.
+
+   Ao mudar este arquivo, suba ASSETS_VERSION em
+   ProjetoEstoque/context_processors.py.
+   ============================================================= */
+
+/* =========================================================
+   1. KPI / NÚMERO EM DESTAQUE
+   Cada dashboard montava o próprio bloco de número grande, com tamanho e
+   peso diferentes — o mesmo indicador aparecia em dois painéis com cara
+   de coisa diferente.
+   ========================================================= */
+
+.ui-kpi {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.ui-kpi-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.ui-kpi-value {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: var(--tracking-tightest);
+  color: var(--text-primary);
+  /* Número tabular também aqui: num grid de KPIs, valores de larguras
+     diferentes desalinham os cartões verticalmente. */
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-kpi-value.is-xl { font-size: var(--text-3xl); }
+
+.ui-kpi-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+/* Variação ("+12% no mês"). A seta vem da classe de direção, e a COR vem
+   junto — mas direção e cor são coisas diferentes: queda de custo é verde.
+   Por isso `is-up`/`is-down` definem só a seta, e `is-bom`/`is-ruim`
+   definem a cor. */
+.ui-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--text-xs);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+.ui-trend.is-up::before { content: "▲"; font-size: 0.7em; }
+.ui-trend.is-down::before { content: "▼"; font-size: 0.7em; }
+.ui-trend.is-flat::before { content: "—"; }
+.ui-trend.is-bom { color: var(--success); }
+.ui-trend.is-ruim { color: var(--danger); }
+.ui-trend.is-neutro { color: var(--text-tertiary); }
+
+/* Barra fina de proporção sob o KPI (ex.: 42 de 120 licenças usadas). */
+.ui-kpi-bar {
+  height: 4px;
+  margin-top: var(--space-2);
+  border-radius: 999px;
+  background: var(--bg-fill-secondary);
+  overflow: hidden;
+}
+
+.ui-kpi-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--brand);
+  transition: width var(--transition-slow);
+}
+
+/* =========================================================
+   2. ESTADO VAZIO
+   Onze templates têm `.empty-state`, cada um com marcação própria. Lista
+   vazia sem explicação é o lugar onde mais se abre chamado: a pessoa não
+   sabe se não há dado ou se o filtro escondeu tudo.
+   ========================================================= */
+
+.ui-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-12) var(--space-5);
+  text-align: center;
+}
+
+.ui-empty-ico {
+  width: 3.5rem;
+  height: 3.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-lg);
+  background: var(--bg-fill-tertiary);
+  color: var(--text-quaternary);
+  font-size: 1.4rem;
+}
+
+.ui-empty-title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tighter);
+  color: var(--text-primary);
+}
+
+.ui-empty-text {
+  max-width: 34rem;
+  font-size: var(--text-base);
+  line-height: var(--leading-snug);
+  color: var(--text-tertiary);
+}
+
+.ui-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* =========================================================
+   3. SKELETON (carregando)
+   Várias telas buscam dado por fetch depois de carregar (PRTG, NinjaOne,
+   busca de item). Enquanto a resposta não chega, a área fica vazia e
+   parece quebrada. O skeleton diz "está vindo" e, por ocupar o mesmo
+   espaço do conteúdo, evita o salto do layout quando o dado chega.
+   ========================================================= */
+
+.ui-skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  background: var(--bg-fill-secondary);
+  /* Sem isso um skeleton vazio tem altura zero. */
+  min-height: 0.75rem;
+}
+
+.ui-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--bg-elevated) 70%, transparent),
+    transparent
+  );
+  animation: uiShimmer 1.4s infinite;
+}
+
+@keyframes uiShimmer {
+  100% { transform: translateX(100%); }
+}
+
+.ui-skeleton-text { height: 0.8rem; }
+.ui-skeleton-title { height: 1.3rem; width: 42%; }
+.ui-skeleton-line-sm { width: 60%; }
+.ui-skeleton-line-xs { width: 35%; }
+.ui-skeleton-circle { border-radius: 999px; aspect-ratio: 1; width: 2.5rem; }
+.ui-skeleton-block { height: 8rem; border-radius: var(--radius-md); }
+
+.ui-skeleton-stack {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* Quem pediu menos movimento não deve receber um brilho pulsando: o bloco
+   fica parado, ainda cumprindo o papel de reservar o espaço. */
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton::after { animation: none; display: none; }
+}
+
+/* Girador para botão em envio. */
+.ui-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 999px;
+  animation: uiSpin 0.6s linear infinite;
+}
+
+@keyframes uiSpin { to { transform: rotate(360deg); } }
+
+/* Botão que vira girador no envio sem mudar de largura (a largura muda se
+   o texto sai; aqui ele fica, invisível, sustentando a caixa). */
+.is-carregando {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+
+.is-carregando > * { visibility: hidden; }
+
+.is-carregando::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 1em;
+  height: 1em;
+  border: 2px solid #fff;
+  border-top-color: transparent;
+  border-radius: 999px;
+  animation: uiSpin 0.6s linear infinite;
+}
+
+/* =========================================================
+   4. CONTROLE SEGMENTADO
+   O padrão para alternar VISÃO (tabela/cartão, mês/trimestre/ano). Hoje
+   isso é feito com botões soltos, e não se vê qual está ativo sem ler a
+   cor de fundo de cada um.
+   ========================================================= */
+
+.ui-segmented {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-fill-tertiary);
+  box-shadow: inset 0 0 0 1px var(--separator-hairline);
+}
+
+.ui-segmented > button,
+.ui-segmented > a,
+.ui-segmented > label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: calc(var(--control-h) - 6px);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.ui-segmented > *:hover { color: var(--text-primary); }
+
+.ui-segmented > .is-active,
+.ui-segmented > [aria-selected="true"],
+.ui-segmented > [aria-pressed="true"] {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+/* =========================================================
+   5. INTERRUPTOR
+   Para preferência que vale na hora (ex.: "notificar por e-mail" no perfil
+   do fornecedor). Checkbox nativo não comunica "liga/desliga agora".
+   ========================================================= */
+
+.ui-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ui-switch > input {
+  /* O input fica acessível (foco, teclado, leitor de tela) e invisível. */
+  position: absolute;
+  opacity: 0;
+  width: 2.5rem;
+  height: 1.4rem;
+  margin: 0;
+  cursor: pointer;
+}
+
+.ui-switch-track {
+  position: relative;
+  width: 2.5rem;
+  height: 1.4rem;
+  flex: 0 0 2.5rem;
+  border-radius: 999px;
+  background: var(--bg-fill-primary);
+  transition: background var(--transition-base);
+}
+
+.ui-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 2px;
+  width: calc(1.4rem - 4px);
+  height: calc(1.4rem - 4px);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-base);
+}
+
+.ui-switch > input:checked + .ui-switch-track { background: var(--brand); }
+.ui-switch > input:checked + .ui-switch-track::after {
+  transform: translateX(calc(2.5rem - 1.4rem));
+}
+.ui-switch > input:focus-visible + .ui-switch-track {
+  outline: var(--ring-width) solid var(--ring);
+  outline-offset: var(--ring-offset);
+}
+.ui-switch > input:disabled + .ui-switch-track { opacity: 0.45; cursor: not-allowed; }
+
+.ui-switch-label {
+  display: grid;
+  gap: 1px;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+}
+
+.ui-switch-label small {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+/* =========================================================
+   6. BARRA DE FERRAMENTAS DE TABELA
+   Busca + filtros + ações + contagem. Toda listagem tem isso, e cada uma
+   organiza de um jeito — a contagem às vezes em cima, às vezes embaixo.
+   ========================================================= */
+
+.ui-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0 var(--space-4);
+}
+
+.ui-toolbar-busca {
+  position: relative;
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.ui-toolbar-busca > input {
+  padding-inline-start: 2.25rem;
+}
+
+.ui-toolbar-busca > .ui-toolbar-ico {
+  position: absolute;
+  inset-inline-start: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-quaternary);
+  font-size: var(--text-sm);
+  pointer-events: none;
+}
+
+.ui-toolbar-grupo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ui-toolbar-contagem {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Filtro aplicado, com o X para remover. Hoje filtro ativo só aparece como
+   `?status=ativo` na URL — fora da tela, ninguém vê por que a lista está
+   curta. */
+.ui-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ui-filtro-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px var(--space-2) 3px var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--brand-soft);
+  color: var(--brand);
+  box-shadow: inset 0 0 0 1px var(--brand-ring);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ui-filtro-chip > b { font-weight: 700; }
+
+.ui-filtro-chip > a,
+.ui-filtro-chip > button {
+  display: grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.ui-filtro-chip > a:hover,
+.ui-filtro-chip > button:hover { background: var(--brand-ring); }
+
+/* =========================================================
+   7. PAGINAÇÃO
+   24 templates paginam e há pelo menos 6 marcações diferentes
+   (.lic-page-link, .cc-page-link, .pa-page, .mvf-page, .pf-pager...).
+   ========================================================= */
+
+.ui-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+}
+
+.ui-pager-info {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-pager-links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ui-pager-link {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--control-h-sm);
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.ui-pager-link:hover { background: var(--bg-fill-tertiary); color: var(--text-primary); }
+
+.ui-pager-link.is-active {
+  background: var(--brand);
+  color: var(--text-inverted);
+}
+
+.ui-pager-link.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* =========================================================
+   8. DICA (tooltip)
+   `title=""` nativo demora ~1s para aparecer, não funciona em toque e não
+   quebra linha. Aqui é CSS puro, sem JS.
+   ========================================================= */
+
+.ui-dica {
+  position: relative;
+  display: inline-flex;
+}
+
+.ui-dica::after {
+  content: attr(data-dica);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 50;
+  transform: translateX(-50%) translateY(3px);
+  width: max-content;
+  max-width: 18rem;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--text-primary);
+  color: var(--bg-elevated);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: var(--leading-snug);
+  white-space: normal;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.ui-dica:hover::after,
+.ui-dica:focus-visible::after,
+.ui-dica:focus-within::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Em tela de toque não há hover: a dica ficaria presa depois do primeiro
+   toque e cobriria o conteúdo. Melhor não existir. */
+@media (hover: none) {
+  .ui-dica::after { display: none; }
+}
+
+/* =========================================================
+   9. AVISO FLUTUANTE (toast)
+   As mensagens do Django aparecem no topo do conteúdo e, numa tela
+   rolada, o "salvo com sucesso" acontece fora do campo de visão.
+   ========================================================= */
+
+.ui-toast-area {
+  position: fixed;
+  z-index: 9000;
+  inset-block-end: calc(var(--space-5) + var(--safe-bottom));
+  inset-inline-end: var(--space-5);
+  display: grid;
+  gap: var(--space-2);
+  width: min(22rem, calc(100vw - var(--space-8)));
+  pointer-events: none;
+}
+
+.ui-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--separator-non-opaque);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-xl);
+  font-size: var(--text-base);
+  line-height: var(--leading-snug);
+  color: var(--text-primary);
+  pointer-events: auto;
+  animation: uiToastIn 240ms var(--ease-apple-out) both;
+}
+
+@keyframes uiToastIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ui-toast.is-saindo {
+  animation: uiToastOut 180ms var(--ease-apple-in) both;
+}
+
+@keyframes uiToastOut {
+  to { opacity: 0; transform: translateX(16px); }
+}
+
+.ui-toast-ico { flex: 0 0 auto; margin-top: 1px; }
+.ui-toast.is-sucesso .ui-toast-ico { color: var(--success); }
+.ui-toast.is-erro .ui-toast-ico { color: var(--danger); }
+.ui-toast.is-aviso .ui-toast-ico { color: var(--warning); }
+.ui-toast.is-info .ui-toast-ico { color: var(--info); }
+
+.ui-toast-fechar {
+  flex: 0 0 auto;
+  margin: -2px -4px 0 auto;
+  padding: 2px 5px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-quaternary);
+  cursor: pointer;
+}
+
+.ui-toast-fechar:hover { background: var(--bg-fill-tertiary); color: var(--text-primary); }
+
+/* =========================================================
+   10. BARRA DE PROGRESSO
+   ========================================================= */
+
+.ui-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-fill-secondary);
+  overflow: hidden;
+}
+
+.ui-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--brand);
+  transition: width var(--transition-slow);
+}
+
+.ui-progress.is-sucesso > span { background: var(--success); }
+.ui-progress.is-aviso > span { background: var(--warning); }
+.ui-progress.is-perigo > span { background: var(--danger); }
+
+/* Progresso sem total conhecido (importação de planilha em andamento). */
+.ui-progress.is-indeterminado > span {
+  width: 35% !important;
+  animation: uiProgressSlide 1.2s var(--ease-apple) infinite;
+}
+
+@keyframes uiProgressSlide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(320%); }
+}
+
+/* =========================================================
+   11. LINHA DO TEMPO
+   Histórico de movimentação, ciclo de manutenção, trilha de auditoria —
+   hoje cada um é uma tabela, onde a ordem dos eventos some.
+   ========================================================= */
+
+.ui-timeline {
+  display: grid;
+  gap: 0;
+  padding-inline-start: var(--space-2);
+}
+
+.ui-timeline-item {
+  position: relative;
+  display: grid;
+  gap: var(--space-1);
+  padding: 0 0 var(--space-5) var(--space-6);
+  /* O traço é a borda do próprio item, então ele acompanha a altura do
+     conteúdo sem precisar de altura calculada. */
+  border-inline-start: 2px solid var(--separator-non-opaque);
+}
+
+.ui-timeline-item:last-child {
+  border-inline-start-color: transparent;
+  padding-bottom: 0;
+}
+
+.ui-timeline-item::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: -6px;
+  top: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  box-shadow: 0 0 0 2px var(--separator-strong);
+}
+
+.ui-timeline-item.is-atual::before {
+  background: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+
+.ui-timeline-item.is-sucesso::before { background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); }
+.ui-timeline-item.is-perigo::before { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+
+.ui-timeline-quando {
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-timeline-titulo {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ui-timeline-texto {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--text-tertiary);
+}
+
+/* =========================================================
+   12. AUXILIARES
+   ========================================================= */
+
+/* Divisor com rótulo no meio ("ou", "dados fiscais"). */
+.ui-divisor {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-quaternary);
+}
+
+.ui-divisor::before,
+.ui-divisor::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--separator-non-opaque);
+}
+
+.ui-divisor.is-inicio::before { display: none; }
+
+/* Grade que se adapta sem media query: cada cartão pede um mínimo e a
+   grade decide quantas colunas cabem. Substitui as grades de dashboard
+   com 3 breakpoints escritos à mão. */
+.ui-grid { display: grid; gap: var(--space-4); }
+.ui-grid-sm { grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); }
+.ui-grid-md { grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); }
+.ui-grid-lg { grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); }
+
+/* Pilha e linha — o respiro vem do token, não de margin solta. */
+.ui-stack { display: grid; gap: var(--space-4); }
+.ui-stack-sm { display: grid; gap: var(--space-2); }
+.ui-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ui-row-between {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* Par rótulo/valor — o bloco mais repetido do sistema (ficha de
+   equipamento, detalhe de licença, dados do fornecedor). */
+.ui-dl {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.ui-dl-item { display: grid; gap: 2px; min-width: 0; }
+
+.ui-dl-label {
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-quaternary);
+}
+
+.ui-dl-valor {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.ui-dl-valor:empty::after,
+.ui-dl-valor.is-vazio::after {
+  content: "—";
+  color: var(--text-quaternary);
+}
+
+/* Avatar com inicial. */
+.ui-avatar {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 2rem;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ui-avatar-sm { width: 1.5rem; height: 1.5rem; flex-basis: 1.5rem; font-size: var(--text-2xs); }
+.ui-avatar-lg { width: 2.75rem; height: 2.75rem; flex-basis: 2.75rem; font-size: var(--text-base); }
+
+/* Tecla de atalho. */
+.ui-kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.4rem;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-fill-tertiary);
+  box-shadow: inset 0 0 0 1px var(--separator-non-opaque), 0 1px 0 var(--separator-non-opaque);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+}
+
+/* Entrada de conteúdo. Aplicada no contêiner da tela, dá à navegação a
+   sensação de resposta imediata sem atrasar nada: 180ms e só opacidade +
+   4px, nada que faça esperar. */
+.ui-enter {
+  animation: uiEnter 180ms var(--ease-apple-out) both;
+}
+
+@keyframes uiEnter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Entrada em cascata para grade de cartões. Limitada a 8 filhos de
+   propósito: numa lista de 200 linhas, o atraso acumulado faria o último
+   item aparecer segundos depois. */
+.ui-enter-stagger > * { animation: uiEnter 200ms var(--ease-apple-out) both; }
+.ui-enter-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.ui-enter-stagger > *:nth-child(2) { animation-delay: 25ms; }
+.ui-enter-stagger > *:nth-child(3) { animation-delay: 50ms; }
+.ui-enter-stagger > *:nth-child(4) { animation-delay: 75ms; }
+.ui-enter-stagger > *:nth-child(5) { animation-delay: 100ms; }
+.ui-enter-stagger > *:nth-child(6) { animation-delay: 125ms; }
+.ui-enter-stagger > *:nth-child(7) { animation-delay: 150ms; }
+.ui-enter-stagger > *:nth-child(n + 8) { animation-delay: 175ms; }
+
+/* Texto truncado em N linhas. */
+.ui-clamp-1,
+.ui-clamp-2,
+.ui-clamp-3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+}
+
+.ui-clamp-1 { -webkit-line-clamp: 1; line-clamp: 1; }
+.ui-clamp-2 { -webkit-line-clamp: 2; line-clamp: 2; }
+.ui-clamp-3 { -webkit-line-clamp: 3; line-clamp: 3; }
+
+/* Alvo de toque mínimo. Os 44px do iOS/Material: abaixo disso, erra-se o
+   botão com o dedo. Para onde um ícone pequeno é o único clicável. */
+@media (pointer: coarse) {
+  .ui-toque,
+  .ui-toque-area a,
+  .ui-toque-area button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+}

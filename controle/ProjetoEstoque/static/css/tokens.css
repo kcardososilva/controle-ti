@@ -1,0 +1,358 @@
+/* =============================================================
+   tokens.css — a camada de tokens do Zelo. FONTE ÚNICA.
+
+   Arquivo separado por um motivo prático: as telas de autenticação
+   (login e as 4 de recuperação de senha) NÃO carregam o base.css —
+   não têm menu lateral nem topbar para estilizar. Enquanto os tokens
+   moravam dentro do base.css, o `auth.css` mantinha uma CÓPIA deles,
+   e a cópia envelheceu: o login ficou numa paleta anterior à do
+   resto do sistema.
+
+   Agora quem precisa de tokens carrega ESTE arquivo primeiro:
+
+     base.html            → tokens.css + base.css
+     login.html           → tokens.css + auth.css
+     registration/_auth_shell.html → tokens.css + auth.css
+
+   A ordem importa: tokens.css SEMPRE antes da folha que os consome.
+
+   Regra do CLAUDE.md que continua valendo: template nunca sobrescreve
+   token no :root — escopa em `:where(.prefixo-page)`.
+
+   Ao mudar este arquivo, suba ASSETS_VERSION em
+   ProjetoEstoque/context_processors.py.
+   ============================================================= */
+
+/* =========================================================
+   SANTA COLOMBA · ZELO — DESIGN SYSTEM v5
+
+   O que mudou em relação à v4 ("Apple Design Language") e por quê:
+
+   • TIPOGRAFIA — a pilha começava em `-apple-system`, então a MESMA tela
+     era SF Pro num Mac e Inter no Windows: métricas diferentes, quebras de
+     linha diferentes, colunas de tabela desalinhadas entre máquinas. Num
+     sistema de onde se tira print para mandar no grupo e cujas telas são
+     quase todas tabela, uma fonte só em todo lugar é o que dá previsi-
+     bilidade. Agora é Inter (corpo) + Inter Tight (títulos) + JetBrains
+     Mono (número de série, chave de licença, código).
+
+   • NÚMERO TABULAR — `font-variant-numeric: tabular-nums` nas tabelas e
+     nos KPIs. Fonte proporcional dá largura diferente para cada dígito, e
+     uma coluna de valores fica com a vírgula dançando. É a correção de
+     maior efeito por linha de CSS num sistema de inventário.
+
+   • PALETA — o canvas era quente (#f6f5f2, bege). Foi para neutro: a cor
+     passa a significar estado (verde/âmbar/vermelho), não decoração — e
+     num fundo neutro o verde de "ativo" e o âmbar de "vence em 30 dias"
+     ficam inequívocos. O azul de ação saiu do #0a84ff (System Blue do
+     iOS, que lê como app de celular) para um azul mais fechado e sóbrio.
+
+   • ACENTO ÚNICO — havia QUATRO azuis no sistema: #0a84ff aqui, #0078d4
+     em licenças/quiosque/ficha, #1858a8 em equipamentos e #0071e3 em
+     preventivas/plantas. Agora todos derivam de `--brand`.
+
+   • RAIOS E SOMBRAS — raios menores e sombras em duas camadas. Raio
+     generoso e sombra difusa são linguagem de app de consumo; tela de
+     trabalho densa pede aresta mais contida.
+
+   • MOVIMENTO — 280ms → 200ms na transição base. Em tela que se usa o dia
+     inteiro, animação longa deixa de ser elegante e passa a ser espera.
+
+   REGRA QUE NÃO MUDOU: nenhum NOME de token foi removido ou renomeado. Os
+   80 tokens da v4 continuam existindo — é o contrato com os 174 templates
+   e com as 8 folhas de módulo. Só os valores mudaram, mais os tokens
+   novos no fim de cada bloco.
+   ========================================================= */
+
+:root {
+  color-scheme: light;
+
+  /* ---------- Tipografia ---------- */
+  /* Inter Tight nos títulos: mesma família do corpo, desenho mais estreito
+     e tracking mais fechado — dá hierarquia sem trocar de voz. */
+  --font-display: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  /* ---------- Escala tipográfica (nova) ----------
+     Passos fechados de propósito: tela de inventário vive entre 11px e
+     15px, e é aí que a escala precisa de resolução. */
+  --text-2xs: 0.6875rem;   /* 11px — rótulo de coluna, chip */
+  --text-xs: 0.75rem;      /* 12px — legenda, meta */
+  --text-sm: 0.8125rem;    /* 13px — célula de tabela */
+  --text-base: 0.875rem;   /* 14px — corpo, botão, campo */
+  --text-md: 0.9375rem;    /* 15px — corpo em leitura longa */
+  --text-lg: 1.0625rem;    /* 17px — título de card */
+  --text-xl: 1.375rem;     /* 22px — título de seção */
+  --text-2xl: 1.75rem;     /* 28px — título de página */
+  --text-3xl: 2.25rem;     /* 36px — número de KPI */
+
+  --tracking-tight: -0.014em;
+  --tracking-tighter: -0.022em;
+  --tracking-tightest: -0.03em;
+  --tracking-wide: 0.04em;   /* caixa-alta de rótulo */
+
+  --leading-tight: 1.18;
+  --leading-snug: 1.35;
+  --leading-normal: 1.55;
+
+  /* ---------- Espaçamento (novo) ----------
+     Base 4px. Antes cada tela escolhia o próprio respiro (.6rem, 14px,
+     0.85rem...), e é daí que vem a sensação de desalinho entre módulos. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* ---------- Superfícies ----------
+     Canvas neutro (era #f6f5f2, bege). Quatro degraus crescentes:
+     canvas → canvas rebaixado → card → popover. */
+  --bg-page: #f5f6f8;
+  --bg-page-2: #eceef2;
+  --bg-elevated: #ffffff;
+  --bg-elevated-2: #ffffff;
+  --bg-vibrancy: rgba(255, 255, 255, 0.78);
+  --bg-vibrancy-strong: #ffffff;
+  --bg-fill-tertiary: rgba(15, 23, 42, 0.045);
+  --bg-fill-secondary: rgba(15, 23, 42, 0.075);
+  --bg-fill-primary: rgba(15, 23, 42, 0.11);
+  --bg-hover: rgba(15, 23, 42, 0.04);
+  --bg-pressed: rgba(15, 23, 42, 0.08);
+
+  /* ---------- Texto ----------
+     Primário mais fechado que o #1d1d1f da v4: em corpo de 13px sobre
+     branco, um pouco mais de densidade melhora a leitura de tabela. */
+  --text-primary: #0f1218;
+  --text-secondary: #3a4253;
+  --text-tertiary: #626b7d;
+  --text-quaternary: #8b93a3;
+  --text-inverted: #ffffff;
+  --text-link: #1f56e0;
+  --text-link-hover: #1a49bf;
+
+  /* ---------- Separadores ---------- */
+  --separator-opaque: #dfe3ea;
+  --separator-non-opaque: rgba(15, 23, 42, 0.11);
+  --separator-hairline: rgba(15, 23, 42, 0.07);
+  --separator-strong: rgba(15, 23, 42, 0.2);
+
+  /* ---------- Azul de ação ----------
+     Único acento do app. Contraste 6,3:1 sobre branco, então serve também
+     como cor de link e de texto, não só de botão preenchido — o System
+     Blue anterior (#0a84ff, 3,1:1) não servia e obrigava cada tela a
+     escurecer o azul por conta própria. O hover ESCURECE (o anterior
+     clareava): em azul fechado, clarear no hover lê como desabilitar. */
+  --brand: #1f56e0;
+  --brand-hover: #1a49bf;
+  --brand-pressed: #163da1;
+  --brand-soft: rgba(31, 86, 224, 0.09);
+  --brand-softer: rgba(31, 86, 224, 0.045);
+  --brand-ring: rgba(31, 86, 224, 0.26);
+
+  /* ---------- Cores de estado ----------
+     Nomes `--system-*` preservados (as folhas de módulo os consomem), com
+     valores novos: a família iOS era clara e saturada demais para texto
+     sobre branco — chip de status não passava contraste e virava
+     decoração em vez de informação. */
+  --system-blue: #1f56e0;
+  --system-green: #0f9a56;
+  --system-green-soft: rgba(15, 154, 86, 0.1);
+  --system-orange: #c2690a;
+  --system-orange-soft: rgba(194, 105, 10, 0.11);
+  --system-red: #d32f2b;
+  --system-red-soft: rgba(211, 47, 43, 0.09);
+  --system-yellow: #b08400;
+  --system-yellow-soft: rgba(176, 132, 0, 0.12);
+  --system-indigo: #4f46c7;
+  --system-indigo-soft: rgba(79, 70, 199, 0.09);
+  --system-purple: #8b3fc4;
+  --system-pink: #c42a63;
+  --system-teal: #0e7f99;
+  --system-teal-soft: rgba(14, 127, 153, 0.1);
+
+  /* Aliases semânticos */
+  --success: var(--system-green);
+  --success-soft: var(--system-green-soft);
+  --warning: var(--system-orange);
+  --warning-soft: var(--system-orange-soft);
+  --danger: var(--system-red);
+  --danger-soft: var(--system-red-soft);
+  --info: var(--system-teal);
+  --info-soft: var(--system-teal-soft);
+
+  /* ---------- Séries de gráfico (nova) ----------
+     Cada dashboard inventava a própria cor de série (#fbbf24, #f87171,
+     #6ba6f2...), então a mesma categoria aparecia de cor diferente em dois
+     painéis. Ordem pensada para ser distinguível também em daltonismo
+     (azul→laranja→verde antes de vermelho→roxo). */
+  --chart-1: #1f56e0;
+  --chart-2: #e8862a;
+  --chart-3: #0f9a56;
+  --chart-4: #c42a63;
+  --chart-5: #6b4ad6;
+  --chart-6: #0e8fa8;
+  --chart-7: #b08400;
+  --chart-8: #64748b;
+
+  /* ---------- Sombras ----------
+     Duas camadas: um contato curto (define a borda) e uma difusão ampla e
+     deslocada (define a altura). Sombra de camada única é o que faz um
+     card parecer "colado" na página. */
+  --shadow-xs: 0 1px 2px rgba(16, 20, 32, 0.05);
+  --shadow-sm: 0 1px 2px rgba(16, 20, 32, 0.05), 0 2px 6px -1px rgba(16, 20, 32, 0.05);
+  --shadow-md: 0 1px 3px rgba(16, 20, 32, 0.05), 0 8px 18px -5px rgba(16, 20, 32, 0.1);
+  --shadow-lg: 0 2px 6px rgba(16, 20, 32, 0.05), 0 18px 36px -10px rgba(16, 20, 32, 0.14);
+  --shadow-xl: 0 4px 10px rgba(16, 20, 32, 0.06), 0 36px 68px -18px rgba(16, 20, 32, 0.2);
+  --shadow-brand: 0 1px 2px rgba(22, 61, 161, 0.2), 0 6px 16px -4px rgba(31, 86, 224, 0.3);
+
+  /* Anel de foco (novo) — um valor só, para o foco ser idêntico em botão,
+     campo, link e linha de tabela. */
+  --ring-width: 3px;
+  --ring: var(--brand-ring);
+  --ring-offset: 2px;
+
+  /* ---------- Raios ----------
+     Mais fechados que a v4 (era 6/10/14/18/22/28). */
+  --radius-xs: 5px;
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 24px;
+  --radius-pill: 980px;
+
+  /* ---------- Altura de controle (nova) ----------
+     Botão, campo e select passam a ter a MESMA altura, que é o que fazia
+     um formulário parecer desalinhado: botão de 36px ao lado de campo de
+     38px. */
+  --control-h: 36px;
+  --control-h-sm: 30px;
+  --control-h-lg: 44px;
+
+  /* ---------- Layout ---------- */
+  --sidebar-width: 17rem;
+  --sidebar-collapsed: 3.9rem;
+  --topbar-height: 3.75rem;
+  --content-max: 96rem;
+
+  /* ---------- Movimento ----------
+     Base 280ms → 200ms. Os nomes `--ease-apple*` ficam por contrato (8
+     folhas de módulo os usam); a curva é a mesma família. */
+  --ease-apple: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-apple-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-apple-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-spring: cubic-bezier(0.34, 1.46, 0.64, 1);
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --transition-fast: 130ms var(--ease-apple);
+  --transition-base: 200ms var(--ease-apple);
+  --transition-slow: 320ms var(--ease-apple);
+
+  /* ---------- Aliases semânticos de superfície (novos) ---------- */
+  --surface: var(--bg-elevated);
+  --surface-sunken: var(--bg-page-2);
+  --border: var(--separator-hairline);
+  --border-strong: var(--separator-non-opaque);
+
+  /* ---------- Safe areas ---------- */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ---------- Modo escuro ----------
+   Grafite neutro em 4 degraus. A v4 era grafite QUENTE; o neutro deixa o
+   verde/âmbar/vermelho de estado ler como estado, sem o fundo empurrando
+   tudo para o amarelado. Texto primário é off-white (#e7eaf0), não branco
+   puro: branco #fff sobre fundo quase preto produz halo e cansa em turno
+   inteiro. */
+body.theme-dark {
+  color-scheme: dark;
+
+  --bg-page: #0e1014;
+  --bg-page-2: #14171d;
+  --bg-elevated: #1b1f27;
+  --bg-elevated-2: #232832;
+  --bg-vibrancy: rgba(20, 23, 29, 0.78);
+  --bg-vibrancy-strong: #1b1f27;
+  --bg-fill-tertiary: rgba(169, 183, 209, 0.1);
+  --bg-fill-secondary: rgba(169, 183, 209, 0.15);
+  --bg-fill-primary: rgba(169, 183, 209, 0.22);
+  --bg-hover: rgba(214, 226, 247, 0.06);
+  --bg-pressed: rgba(214, 226, 247, 0.1);
+
+  --text-primary: #e7eaf0;
+  --text-secondary: #bcc3d0;
+  --text-tertiary: #8e97a7;
+  --text-quaternary: #6a7281;
+
+  --separator-opaque: #2c323d;
+  --separator-non-opaque: rgba(255, 255, 255, 0.11);
+  --separator-hairline: rgba(255, 255, 255, 0.07);
+  --separator-strong: rgba(255, 255, 255, 0.2);
+
+  /* O azul fechado do claro não tem contraste sobre grafite. Aqui ele
+     clareia, e o hover clareia MAIS — invertido em relação ao claro, que é
+     como funciona: no escuro, "mais luz" é que lê como ativo. */
+  --brand: #6d9bff;
+  --brand-hover: #8aafff;
+  --brand-pressed: #5a8bf5;
+  --brand-soft: rgba(109, 155, 255, 0.16);
+  --brand-softer: rgba(109, 155, 255, 0.08);
+  --brand-ring: rgba(109, 155, 255, 0.4);
+  --text-link: #8aafff;
+  --text-link-hover: #a8c3ff;
+  --system-blue: #6d9bff;
+
+  /* Cores de estado clareadas para o fundo escuro. */
+  --system-green: #35c47e;
+  --system-orange: #f0a140;
+  --system-red: #ff6b63;
+  --system-yellow: #e5be3f;
+  --system-indigo: #8b85f0;
+  --system-purple: #c07ae8;
+  --system-pink: #f05d8f;
+  --system-teal: #4cc0da;
+
+  /* Tints com alpha maior: sobre #1b1f27 um rgba de 10% compõe uma cor
+     quase igual ao fundo e o chip "apaga".
+
+     IMPORTANTE: --success-soft e companhia são ALIASES declarados em
+     :root (`--success-soft: var(--system-green-soft)`). Custom property
+     só re-resolve o var() aninhado pela cascata DO ELEMENTO onde o alias
+     foi declarado — como o alias nasce em :root (html) e este bloco é
+     escopo body, trocar só o --system-*-soft aqui NÃO chega no alias. Por
+     isso os aliases são redeclarados explicitamente abaixo. */
+  --system-green-soft: rgba(53, 196, 126, 0.18);
+  --system-orange-soft: rgba(240, 161, 64, 0.18);
+  --system-red-soft: rgba(255, 107, 99, 0.17);
+  --system-teal-soft: rgba(76, 192, 218, 0.17);
+  --system-yellow-soft: rgba(229, 190, 63, 0.18);
+  --system-indigo-soft: rgba(139, 133, 240, 0.17);
+  --success-soft: var(--system-green-soft);
+  --warning-soft: var(--system-orange-soft);
+  --danger-soft: var(--system-red-soft);
+  --info-soft: var(--system-teal-soft);
+
+  /* Séries de gráfico clareadas — as do claro ficam ilegíveis no escuro. */
+  --chart-1: #6d9bff;
+  --chart-2: #f0a140;
+  --chart-3: #35c47e;
+  --chart-4: #f05d8f;
+  --chart-5: #a894f5;
+  --chart-6: #4cc0da;
+  --chart-7: #e5be3f;
+  --chart-8: #94a3b8;
+
+  /* Sombra no escuro funciona por ausência de luz, não por tinta: alpha
+     alto e difusão curta, mais uma linha de luz no topo da superfície. */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 2px 6px -1px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.5), 0 8px 18px -5px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.5), 0 18px 36px -10px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 4px 10px rgba(0, 0, 0, 0.5), 0 36px 68px -18px rgba(0, 0, 0, 0.65);
+  --shadow-brand: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 16px -4px rgba(109, 155, 255, 0.3);
+}
