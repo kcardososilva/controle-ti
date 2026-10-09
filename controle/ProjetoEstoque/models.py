@@ -2758,7 +2758,20 @@ class PreventivaResposta(AuditModel):
         return f"{self.pergunta.texto_pergunta}: {self.resposta}"
 
 class PeriodicidadeChoices(models.TextChoices):
+    """
+    Ciclo de cobranca do lote. O rateio para custo mensal/anual mora em
+    `services/licenca_service._MESES_POR_CICLO` — **a lista de opcoes aqui e a
+    tabela de divisores ali tem de andar juntas**.
+
+    Ja nao andaram: a tabela mapeava uma chave `trimestral` que NAO era opcao
+    deste enum e nao tinha `trienal` nem `contrato`, que eram. Um lote Trienal
+    caia no fallback de 1 mes e tinha o custo mensal publicado **36x maior** do
+    que o real. Nenhum lote da base estava nesses ciclos, entao o defeito nunca
+    apareceu — mas o maior contrato do acervo passa de R$ 1 mi por ciclo, e ali
+    o divisor errado nao e centavo, e ordem de grandeza.
+    """
     MENSAL = "mensal", _("Mensal")
+    TRIMESTRAL = "trimestral", _("Trimestral")
     SEMESTRAL = "semestral", _("Semestral")
     ANUAL = "anual", _("Anual")
     TRI = "trienal", _("Trienal")
@@ -2803,6 +2816,31 @@ class LicencaLote(AuditModel):
     custo_ciclo = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     periodicidade = models.CharField(max_length=20, choices=PeriodicidadeChoices.choices, default=PeriodicidadeChoices.ANUAL)
     data_compra = models.DateField(null=True, blank=True)
+
+    # ── Renovação ────────────────────────────────────────────────────────
+    # O vencimento é DERIVADO de `data_compra` + ciclo quando este campo está
+    # vazio, e é o campo que vale quando está preenchido. Os dois existem
+    # porque contrato de verdade quase nunca renova exatamente no aniversário
+    # da compra: assina-se no dia 12, o faturamento vira no dia 1º, e a
+    # diferença é justamente a janela em que a renovação é decidida.
+    #
+    # Derivar sem campo deixaria o TI sem como corrigir a data real; só o
+    # campo deixaria 47 lotes já cadastrados sem vencimento nenhum. Com os
+    # dois, o acervo inteiro ganha uma data no mesmo dia e quem souber a data
+    # certa pode gravá-la.
+    data_renovacao = models.DateField(
+        null=True, blank=True, verbose_name="Próxima renovação",
+        help_text="Deixe em branco para o sistema calcular a partir da data de "
+                  "compra e da periodicidade. Preencha quando o contrato tiver "
+                  "data de renovação própria.",
+    )
+    renovacao_automatica = models.BooleanField(
+        default=True, verbose_name="Renova automaticamente",
+        help_text="Desmarque para contrato que exige renovação manual — o aviso "
+                  "de vencimento passa a ser tratado como ação obrigatória, não "
+                  "como informação.",
+    )
+
     numero_pedido = models.CharField(max_length=50, null=True, blank=True)
     fornecedor = models.ForeignKey("Fornecedor", on_delete=models.SET_NULL, null=True, blank=True)
     centro_custo = models.ForeignKey("CentroCusto", on_delete=models.SET_NULL, null=True, blank=True)
@@ -2811,6 +2849,12 @@ class LicencaLote(AuditModel):
     class Meta:
         ordering = ["-data_compra", "-id"]
         verbose_name = "Lote de Licença"
+        indexes = [
+            # A tela de renovações filtra por janela de vencimento e o alerta
+            # por e-mail roda a mesma pergunta todo dia.
+            models.Index(fields=["data_renovacao"], name="licencalote_renov_idx"),
+            models.Index(fields=["licenca", "data_compra"], name="licencalote_lic_compra_idx"),
+        ]
 
     def save(self, *args, **kwargs):
         if self._state.adding and self.quantidade_disponivel is None:
@@ -3988,3 +4032,363 @@ class ItemPadraoDatasul(AuditModel):
 
     def __str__(self):
         return f"{self.codigo} — {self.descricao}"
+
+
+# ========== ASSINATURA DIGITAL DOS TERMOS DE RESPONSABILIDADE ==========
+# Coleta da assinatura manuscrita do colaborador em tablet, no ato da entrega
+# ou da devolução do equipamento, e emissão do termo já assinado em PDF.
+#
+# Por que um modelo próprio e não mais um campo em `MovimentacaoItem`: o termo
+# assinado é PROVA, e prova precisa de tudo o que a cerca — quem assinou,
+# quando, de qual aparelho/IP, sobre QUAL texto, com qual traço e com que
+# integridade. Nada disso cabe num `FileField`. O `MovimentacaoItem.termo_pdf`
+# continua existindo e continua sendo a via do termo escaneado em papel: o
+# fluxo digital ALIMENTA aquele campo ao final (ver
+# `termo_assinatura_service.registrar_assinatura`), para que o Repositório de
+# Termos e a cascata de desligamento sigam funcionando sem precisar saber que
+# a assinatura veio de um tablet.
+
+class StatusAssinaturaTermoChoices(models.TextChoices):
+    PENDENTE  = "pendente",  "Aguardando assinatura"
+    ASSINADO  = "assinado",  "Assinado"
+    CANCELADO = "cancelado", "Cancelado"
+    # "Expirado" NAO e estado gravado: e derivado de `expira_em` (ver
+    # `esta_expirado`). Gravar exigiria uma tarefa agendada só para virar
+    # linhas de pendente para expirado — e um termo que ninguém assinou dentro
+    # do prazo é, para todos os efeitos, indistinguível de um cujo prazo acabou
+    # agora. Menos peça móvel, mesma resposta.
+
+
+class StatusViaEmailChoices(models.TextChoices):
+    """
+    Resultado do envio da VIA do termo para o e-mail do colaborador.
+
+    Existe porque "não recebi o e-mail" era uma pergunta sem resposta: o envio
+    acontece num `on_commit`, o sucesso ia só para `logger.info` (que no
+    settings.py vai para o CONSOLE, não para arquivo) e a falha ia para um log
+    rotativo que ninguém lê olhando a tela do termo. Resultado: era impossível
+    distinguir "o sistema mandou e o e-mail se perdeu no caminho" de "o sistema
+    nunca tentou" — e as duas situações pedem providências opostas.
+
+    Com isto gravado na linha, a tela do termo responde a pergunta, e o botão
+    "Reenviar via" do TI tem onde registrar a nova tentativa.
+    """
+    NAO_ENVIADA = "nao_enviada", "Via ainda não enviada"
+    ENVIADA     = "enviada",     "Via enviada"
+    FALHOU      = "falhou",      "Falha no envio"
+    SEM_EMAIL   = "sem_email",   "Colaborador sem e-mail no cadastro"
+    # Termos assinados ANTES deste rastreamento existir. Não é o mesmo que
+    # "não enviada": naquele desenho o envio automático já acontecia, só não
+    # deixava registro — marcar esses como "não enviada" afirmaria que o
+    # sistema não tentou, o que não é verdade e manda o TI investigar a coisa
+    # errada. "Não há registro" é a informação correta, e é o que fica.
+    ANTERIOR    = "anterior",    "Sem registro (anterior ao rastreamento)"
+
+
+def _upload_assinatura_traco(instance, filename):
+    return f"termos/assinaturas/{timezone.now():%Y/%m}/{uuid.uuid4().hex}.png"
+
+
+def _upload_assinatura_pdf(instance, filename):
+    return f"termos/assinados/{timezone.now():%Y/%m}/{filename}"
+
+
+class TermoAssinatura(AuditModel):
+    """
+    Uma sessão de assinatura digital de termo de responsabilidade.
+
+    Nasce PENDENTE, criada por um usuário interno com o equipamento (ou os
+    equipamentos) e o colaborador já definidos, e carrega um token opaco de uso
+    único e validade curta. O tablet abre `/termos/assinar/<token>/` — rota
+    ANÔNIMA de propósito: quem assina é o colaborador, que não tem login no
+    sistema, e exigir sessão ali significaria o TI emprestar a própria sessão
+    para o colaborador assinar, o que é pior em todos os sentidos. A proteção é
+    o token (só o hash é persistido), o prazo curto e o uso único.
+
+    `dados` guarda um SNAPSHOT do que foi apresentado na tela no momento da
+    assinatura (número do termo, chamado, acessórios, observações, lista de
+    equipamentos com série e patrimônio, e o texto legal em vigor). É snapshot
+    por necessidade jurídica: o colaborador assinou AQUELE texto sobre AQUELE
+    equipamento, e nem a renomeação do item depois nem uma atualização do
+    modelo base do termo podem reescrever o que ele assinou.
+    """
+    tipo = models.CharField(
+        max_length=10,
+        choices=TipoTransferenciaChoices.choices,
+        verbose_name="Tipo de termo",
+    )
+
+    colaborador = models.ForeignKey(
+        "Usuario",
+        on_delete=models.PROTECT,
+        related_name="termos_assinatura",
+        verbose_name="Colaborador signatário",
+    )
+
+    itens = models.ManyToManyField(
+        "Item",
+        related_name="termos_assinatura",
+        blank=True,
+        verbose_name="Equipamentos do termo",
+    )
+
+    # Preenchido quando a assinatura nasce de uma movimentação já registrada
+    # (ou de várias, no caso do lote/desligamento). Ao concluir, o PDF assinado
+    # é gravado também no `termo_pdf` de cada uma delas.
+    movimentacoes = models.ManyToManyField(
+        "MovimentacaoItem",
+        related_name="assinaturas_termo",
+        blank=True,
+        verbose_name="Movimentações vinculadas",
+    )
+
+    status = models.CharField(
+        max_length=12,
+        choices=StatusAssinaturaTermoChoices.choices,
+        default=StatusAssinaturaTermoChoices.PENDENTE,
+        db_index=True,
+        verbose_name="Situação",
+    )
+
+    # Desligamento é uma DEVOLUÇÃO com consequências maiores, não um terceiro
+    # tipo de termo: o texto legal assinado é o mesmo da devolução (o
+    # `docs_templates/.../Termo_de_Devolução.docx`), e o `tipo` continua
+    # "devolucao" para o PDF, a movimentação e os relatórios não precisarem
+    # aprender um caso novo. O que este campo marca é o EFEITO: ao assinar,
+    # além de devolver os equipamentos, o sistema remove todas as licenças do
+    # colaborador e marca o cadastro como desligado (ver
+    # `termo_assinatura_service._executar_desligamento`).
+    desligamento = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Encerra o vínculo (desligamento)",
+        help_text=(
+            "Ao assinar, devolve TODOS os equipamentos, remove TODAS as licenças "
+            "e marca o colaborador como desligado."
+        ),
+    )
+
+    # -- Token do tablet ---------------------------------------------------
+    # Só o SHA-256 é persistido; o token puro existe uma única vez, na resposta
+    # da criação da sessão (no QR Code e no link copiável) — mesmo princípio do
+    # token de device e do link de instalador do Quiosque.
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    expira_em = models.DateTimeField(verbose_name="Link expira em")
+
+    numero_termo = models.CharField(max_length=200, blank=True, verbose_name="Número do termo")
+    dados = models.JSONField(default=dict, blank=True, verbose_name="Snapshot do termo")
+
+    # Código curto e legível impresso no PDF, para conferir a autenticidade do
+    # documento depois (`/termos/assinaturas/verificar/`). Não é segredo: a
+    # tela de verificação é autenticada e o código só serve para LOCALIZAR o
+    # registro — a prova de integridade é o `pdf_sha256`.
+    codigo_verificacao = models.CharField(max_length=20, unique=True, db_index=True)
+
+    # -- Traço da assinatura -----------------------------------------------
+    assinatura_colaborador = models.ImageField(
+        upload_to=_upload_assinatura_traco, blank=True, null=True,
+        verbose_name="Assinatura do colaborador",
+    )
+    assinatura_responsavel = models.ImageField(
+        upload_to=_upload_assinatura_traco, blank=True, null=True,
+        verbose_name="Assinatura do responsável do TI",
+    )
+
+    # -- Identificação declarada no ato ------------------------------------
+    # O texto do termo tem campos de RG e CPF em branco para preenchimento à
+    # mão. Na via digital eles são digitados pelo próprio signatário no tablet,
+    # entram no PDF emitido e PARAM AÍ.
+    #
+    # NÃO existe campo de CPF/RG neste model, e isso é deliberado: guardar o
+    # documento de 1.376 colaboradores numa coluna cria um alvo que o sistema
+    # não precisa ter. O termo vale como prova com o documento impresso nele; a
+    # via fica com o colaborador e no `MovimentacaoItem.termo_pdf`, que é
+    # arquivo protegido por `media_acesso_service` (regra 23) — não uma tabela
+    # consultável que vaza inteira se o banco vazar. A migration `0170` removeu
+    # as colunas `signatario_cpf`/`signatario_rg` e apagou o conteúdo delas.
+    #
+    # Para localizar termos por pessoa, use `colaborador` — já está aqui.
+    signatario_nome = models.CharField(max_length=150, blank=True, verbose_name="Nome confirmado")
+
+    # -- Trilha de auditoria do ato ----------------------------------------
+    assinado_em = models.DateTimeField(null=True, blank=True, verbose_name="Assinado em")
+    assinado_ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="IP do aparelho")
+    assinado_user_agent = models.CharField(max_length=400, blank=True, verbose_name="Aparelho/navegador")
+    aceite_declarado = models.BooleanField(
+        default=False,
+        verbose_name="Aceite eletrônico declarado",
+        help_text="O signatário marcou, no tablet, que leu o termo e aceita assiná-lo eletronicamente.",
+    )
+
+    # -- Documento emitido -------------------------------------------------
+    pdf = models.FileField(
+        upload_to=_upload_assinatura_pdf, blank=True, null=True,
+        verbose_name="Termo assinado (PDF)",
+    )
+    pdf_sha256 = models.CharField(
+        max_length=64, blank=True, db_index=True, verbose_name="SHA-256 do PDF",
+    )
+
+    cancelado_em = models.DateTimeField(null=True, blank=True, verbose_name="Cancelado em")
+    motivo_cancelamento = models.CharField(max_length=200, blank=True, verbose_name="Motivo do cancelamento")
+
+    # -- Via enviada ao colaborador ----------------------------------------
+    # Rastro do envio automático (e de cada reenvio). Ver
+    # `StatusViaEmailChoices` para o porquê de isto ser coluna e não só log.
+    via_email_status = models.CharField(
+        max_length=12,
+        choices=StatusViaEmailChoices.choices,
+        default=StatusViaEmailChoices.NAO_ENVIADA,
+        db_index=True,
+        verbose_name="Via por e-mail",
+    )
+    via_email_em = models.DateTimeField(
+        null=True, blank=True, verbose_name="Última tentativa de envio da via",
+    )
+    via_email_tentativas = models.PositiveIntegerField(
+        default=0, verbose_name="Tentativas de envio da via",
+    )
+    # Endereço MASCARADO e/ou motivo da falha. Mascarado de propósito: o e-mail
+    # completo já está em `Usuario.email` e repeti-lo aqui só multiplicaria o
+    # lugar de onde ele vaza — para saber o destino exato, olhe o cadastro.
+    via_email_detalhe = models.CharField(
+        max_length=300, blank=True, verbose_name="Resultado do envio da via",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Assinatura de Termo"
+        verbose_name_plural = "Assinaturas de Termos"
+        indexes = [
+            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["colaborador", "-created_at"]),
+            models.Index(fields=["tipo", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"Termo de {self.get_tipo_display()} - {self.colaborador} - {self.get_status_display()}"
+
+    # -- Imutabilidade da prova --------------------------------------------
+    #
+    # Um termo assinado é PROVA: o colaborador declarou aceite sobre AQUELE
+    # texto, sobre AQUELES equipamentos, e o `pdf_sha256` é o que permite
+    # afirmar depois que o PDF não mudou. Se qualquer um destes campos puder ser
+    # reescrito, a verificação de autenticidade passa a atestar o documento
+    # ERRADO — e continua dizendo "íntegro", porque o hash teria sido
+    # regravado junto. É a pior falha possível aqui: silenciosa e com cara de
+    # sucesso.
+    #
+    # O risco real não é o invasor — é o código. Um `save()` distraído numa
+    # rotina futura (recalcular `dados`, reaproveitar a linha para "reassinar",
+    # um import que atualiza itens em massa) faz isso sem má intenção e sem
+    # deixar rastro. Por isso o bloqueio é no MODEL, e não só na view: é o
+    # único ponto por onde todo caminho de gravação passa.
+    #
+    # `via_email_*` fica FORA da lista de propósito: ele registra o que
+    # aconteceu DEPOIS da assinatura (o envio da via, e cada reenvio pedido
+    # pelo TI) e não faz parte do que foi assinado.
+    CAMPOS_IMUTAVEIS_APOS_ASSINATURA = (
+        "tipo", "colaborador", "dados", "numero_termo",
+        "token_hash", "codigo_verificacao",
+        "assinatura_colaborador", "assinatura_responsavel",
+        "signatario_nome", "aceite_declarado",
+        "assinado_em", "assinado_ip", "assinado_user_agent",
+        "pdf", "pdf_sha256", "desligamento",
+    )
+
+    def _valor_de_prova(self, campo):
+        """
+        Valor comparável do campo: FK pelo id (sem buscar o objeto) e arquivo
+        pelo caminho — comparar `FieldFile` por igualdade não serve.
+
+        "Vazio" é normalizado para `None` porque os dois vazios NÃO são o mesmo
+        objeto dependendo de como a linha chegou: um campo de arquivo opcional
+        (`assinatura_responsavel`) vale `None` numa instância recém-construída
+        (é o `get_default()` de um `FileField(null=True)`) e `''` numa linha
+        lida do banco, que foi gravada a partir do `FieldFile` vazio. Sem
+        normalizar, qualquer `save()` legítimo num termo assinado sem
+        assinatura do responsável — que é o caso COMUM, o campo é opcional —
+        seria recusado apontando um campo que ninguém tocou.
+        """
+        meta = self._meta.get_field(campo)
+        if meta.is_relation:
+            return getattr(self, meta.attname)
+        valor = getattr(self, campo, None)
+        valor = getattr(valor, "name", valor)
+        return None if valor in ("", None) else valor
+
+    def save(self, *args, **kwargs):
+        """
+        Recusa alterar a prova de um termo já assinado.
+
+        A comparação é contra o BANCO, não contra o estado em memória: o
+        próprio ato de assinar grava todos estes campos de uma vez, e naquele
+        momento a linha ainda está PENDENTE — então aquele `save()` passa. O
+        que o guarda impede é o save SEGUINTE.
+        """
+        if self.pk and self.status == StatusAssinaturaTermoChoices.ASSINADO:
+            campos = kwargs.get("update_fields")
+            # Atalho: save que só toca campo liberado (`via_email_*`,
+            # `atualizado_por`) não precisa consultar o banco. `update_fields`
+            # ausente significa "grava tudo", e aí a conferência sempre vale.
+            protegidos = set(self.CAMPOS_IMUTAVEIS_APOS_ASSINATURA)
+            if campos is None or (set(campos) & protegidos):
+                anterior = (
+                    type(self)._base_manager
+                    .filter(pk=self.pk, status=StatusAssinaturaTermoChoices.ASSINADO)
+                    .first()
+                )
+                if anterior is not None:
+                    a_conferir = protegidos if campos is None else (set(campos) & protegidos)
+                    alterados = sorted(
+                        campo for campo in a_conferir
+                        if self._valor_de_prova(campo) != anterior._valor_de_prova(campo)
+                    )
+                    if alterados:
+                        raise ValidationError(
+                            "Este termo já foi assinado e seu conteúdo não pode ser "
+                            "alterado — ele é a prova do que o colaborador firmou. "
+                            "Campo(s) recusado(s): " + ", ".join(alterados) + ". "
+                            "Para desfazer o efeito de uma entrega, reverta a "
+                            "movimentação; para corrigir um dado, emita um termo novo."
+                        )
+        return super().save(*args, **kwargs)
+
+    # -- Estado derivado ---------------------------------------------------
+    @property
+    def esta_expirado(self) -> bool:
+        return (
+            self.status == StatusAssinaturaTermoChoices.PENDENTE
+            and self.expira_em is not None
+            and self.expira_em <= timezone.now()
+        )
+
+    @property
+    def pode_assinar(self) -> bool:
+        return self.status == StatusAssinaturaTermoChoices.PENDENTE and not self.esta_expirado
+
+    @property
+    def situacao_slug(self) -> str:
+        """Situação para a UI, com o "expirado" derivado já resolvido."""
+        if self.esta_expirado:
+            return "expirado"
+        return self.status
+
+    @property
+    def situacao_label(self) -> str:
+        if self.esta_expirado:
+            return "Link expirado"
+        return self.get_status_display()
+
+    @property
+    def equipamentos_resumo(self) -> str:
+        """Resumo dos equipamentos a partir do SNAPSHOT, não das FKs — é o que
+        foi assinado, e segue legível mesmo que o item seja renomeado depois."""
+        linhas = (self.dados or {}).get("equipamentos") or []
+        nomes = [str(linha.get("nome") or "").strip() for linha in linhas]
+        nomes = [n for n in nomes if n]
+        if not nomes:
+            return "—"
+        if len(nomes) == 1:
+            return nomes[0]
+        return f"{nomes[0]} + {len(nomes) - 1} equipamento{'s' if len(nomes) > 2 else ''}"

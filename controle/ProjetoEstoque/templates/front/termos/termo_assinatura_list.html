@@ -1,0 +1,244 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ titulo }}{% endblock %}
+{% block page_title %}{{ titulo }}{% endblock %}
+{% block page_subtitle %}{{ subtitulo }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span>Movimentações</span>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Termos assinados</span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-termos.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="ta-page">
+
+  {# Ações de página ficam no CORPO, nunca na topbar/navbar (regra 16). #}
+  <div class="ta-kpis">
+    <div class="ta-kpi" style="--ta-kpi-tom: var(--brand)">
+      <span class="ta-kpi-valor">{{ totais.total }}</span>
+      <span class="ta-kpi-rotulo">Sessões</span>
+    </div>
+    <div class="ta-kpi" style="--ta-kpi-tom: var(--success)">
+      <span class="ta-kpi-valor">{{ totais.assinados }}</span>
+      <span class="ta-kpi-rotulo">Assinados</span>
+    </div>
+    <div class="ta-kpi" style="--ta-kpi-tom: var(--warning)">
+      <span class="ta-kpi-valor">{{ totais.pendentes }}</span>
+      <span class="ta-kpi-rotulo">Aguardando</span>
+    </div>
+    <div class="ta-kpi" style="--ta-kpi-tom: var(--text-quaternary)">
+      <span class="ta-kpi-valor">{{ totais.expirados }}</span>
+      <span class="ta-kpi-rotulo">Expirados</span>
+    </div>
+    <div class="ta-kpi" style="--ta-kpi-tom: var(--danger)">
+      <span class="ta-kpi-valor">{{ totais.cancelados }}</span>
+      <span class="ta-kpi-rotulo">Cancelados</span>
+    </div>
+  </div>
+
+  <section class="ta-card">
+    <div class="ta-card-head">
+      <h2 class="ta-card-title">
+        <i class="fa-solid fa-filter" aria-hidden="true"></i>
+        Buscar
+      </h2>
+      <div class="btn-group" style="margin-left:auto">
+        <a href="{% url 'termo_assinatura_preparar' 'entrega' %}" class="btn btn-sm btn-primary">
+          <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
+          Nova entrega
+        </a>
+        <a href="{% url 'termo_assinatura_preparar' 'devolucao' %}" class="btn btn-sm">
+          <i class="fa-solid fa-file-arrow-up" aria-hidden="true"></i>
+          Nova devolução
+        </a>
+        <a href="{% url 'termo_assinatura_desligamento' %}" class="btn btn-sm">
+          <i class="fa-solid fa-user-xmark" aria-hidden="true"></i>
+          Desligamento
+        </a>
+        <a href="{% url 'termo_assinatura_verificar' %}" class="btn btn-sm btn-ghost">
+          <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+          Verificar documento
+        </a>
+      </div>
+    </div>
+
+    <div class="ta-card-body">
+      <form method="get" class="ta-sign-grid">
+        <div class="ta-field">
+          <label class="ta-dt" for="q">Colaborador, equipamento, nº do termo ou código</label>
+          <input type="text" id="q" name="q" value="{{ q }}" class="ctrl"
+                 placeholder="Ex.: ABCD-EFGH-JKLM">
+        </div>
+        <div class="ta-field">
+          <label class="ta-dt" for="situacao">Situação</label>
+          <select id="situacao" name="situacao" class="ctrl">
+            <option value="">Todas</option>
+            <option value="assinado"  {% if f_situacao == 'assinado' %}selected{% endif %}>Assinados</option>
+            <option value="pendente"  {% if f_situacao == 'pendente' %}selected{% endif %}>Aguardando assinatura</option>
+            <option value="expirado"  {% if f_situacao == 'expirado' %}selected{% endif %}>Expirados</option>
+            <option value="cancelado" {% if f_situacao == 'cancelado' %}selected{% endif %}>Cancelados</option>
+          </select>
+        </div>
+        <div class="ta-field">
+          <label class="ta-dt" for="tipo">Tipo</label>
+          <select id="tipo" name="tipo" class="ctrl">
+            <option value="">Entrega e devolução</option>
+            <option value="entrega"   {% if f_tipo == 'entrega' %}selected{% endif %}>Entrega</option>
+            <option value="devolucao" {% if f_tipo == 'devolucao' %}selected{% endif %}>Devolução</option>
+          </select>
+        </div>
+        <div class="ta-field">
+          <label class="ta-dt" for="data_inicio">De</label>
+          <input type="date" id="data_inicio" name="data_inicio" value="{{ f_ini }}" class="ctrl">
+        </div>
+        <div class="ta-field">
+          <label class="ta-dt" for="data_fim">Até</label>
+          <input type="date" id="data_fim" name="data_fim" value="{{ f_fim }}" class="ctrl">
+        </div>
+        <div class="ta-field" style="align-self:end">
+          <div class="btn-group">
+            <button type="submit" class="btn btn-primary">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+              Filtrar
+            </button>
+            <a href="{% url 'termo_assinatura_list' %}" class="btn btn-ghost">Limpar</a>
+          </div>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  {% if pagina.object_list %}
+    <div class="ta-table-wrap">
+      <table class="ta-table">
+        <thead>
+          <tr>
+            <th>Situação</th>
+            <th>Colaborador</th>
+            <th>Tipo</th>
+            <th>Equipamento(s)</th>
+            <th>Assinado em</th>
+            <th>Código</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in pagina.object_list %}
+            <tr>
+              <td>
+                <span class="ta-situacao" data-situacao="{{ t.situacao_slug }}">{{ t.situacao_label }}</span>
+              </td>
+              <td>
+                <span class="ta-forte">{{ t.colaborador.nome }}</span>
+                {% if t.colaborador.centro_custo %}
+                  <br><span class="ta-item-meta">{{ t.colaborador.centro_custo.departamento }}</span>
+                {% endif %}
+              </td>
+              <td>
+                {{ t.get_tipo_display }}
+                {% if t.desligamento %}
+                  <br><span class="ta-selo-desligamento">Desligamento</span>
+                {% endif %}
+              </td>
+              <td>{{ t.equipamentos_resumo }}</td>
+              <td>
+                {% if t.assinado_em %}
+                  {{ t.assinado_em|date:"d/m/Y H:i" }}
+                {% else %}
+                  <span class="ta-item-meta">—</span>
+                {% endif %}
+              </td>
+              <td><code>{{ t.codigo_verificacao }}</code></td>
+              <td class="acoes">
+                <a href="{% url 'termo_assinatura_detalhe' t.pk %}" class="btn btn-sm btn-ghost" title="Ver detalhes">
+                  <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                </a>
+                {% if t.pdf %}
+                  <a href="{% url 'termo_assinatura_pdf' t.pk %}" class="btn btn-sm btn-ghost" title="Abrir PDF assinado">
+                    <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+                  </a>
+                {% endif %}
+                {% if t.pode_assinar %}
+                  <a href="{% url 'termo_assinatura_painel' t.pk %}" class="btn btn-sm btn-ghost" title="Abrir painel de assinatura">
+                    <i class="fa-solid fa-qrcode" aria-hidden="true"></i>
+                  </a>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% comment %}Cartões para o telefone — a tabela acima some em ≤760px, e
+       regra 24 exige que exista cartão no lugar dela.{% endcomment %}
+    <div class="ta-cards">
+      {% for t in pagina.object_list %}
+        <div class="ta-card-linha">
+          <span class="ta-situacao" data-situacao="{{ t.situacao_slug }}" style="justify-self:start">
+            {{ t.situacao_label }}
+          </span>
+          <strong class="ta-item-nome">{{ t.colaborador.nome }}</strong>
+          <span class="ta-item-meta">
+            {{ t.get_tipo_display }}{% if t.desligamento %} · <strong>Desligamento</strong>{% endif %}
+            · {{ t.equipamentos_resumo }}<br>
+            {% if t.assinado_em %}Assinado em {{ t.assinado_em|date:"d/m/Y H:i" }}<br>{% endif %}
+            Código <code>{{ t.codigo_verificacao }}</code>
+          </span>
+          <div class="btn-group">
+            <a href="{% url 'termo_assinatura_detalhe' t.pk %}" class="btn btn-sm">Detalhes</a>
+            {% if t.pdf %}
+              <a href="{% url 'termo_assinatura_pdf' t.pk %}" class="btn btn-sm btn-ghost">PDF</a>
+            {% endif %}
+            {% if t.pode_assinar %}
+              <a href="{% url 'termo_assinatura_painel' t.pk %}" class="btn btn-sm btn-ghost">Assinar</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if pagina.paginator.num_pages > 1 %}
+      <nav class="ui-pager" aria-label="Paginação">
+        {% if pagina.has_previous %}
+          <a href="?{% if q %}q={{ q }}&{% endif %}{% if f_situacao %}situacao={{ f_situacao }}&{% endif %}{% if f_tipo %}tipo={{ f_tipo }}&{% endif %}{% if f_ini %}data_inicio={{ f_ini }}&{% endif %}{% if f_fim %}data_fim={{ f_fim }}&{% endif %}page={{ pagina.previous_page_number }}" class="btn btn-sm">
+            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i> Anterior
+          </a>
+        {% endif %}
+        <span class="ta-item-meta">Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</span>
+        {% if pagina.has_next %}
+          <a href="?{% if q %}q={{ q }}&{% endif %}{% if f_situacao %}situacao={{ f_situacao }}&{% endif %}{% if f_tipo %}tipo={{ f_tipo }}&{% endif %}{% if f_ini %}data_inicio={{ f_ini }}&{% endif %}{% if f_fim %}data_fim={{ f_fim }}&{% endif %}page={{ pagina.next_page_number }}" class="btn btn-sm">
+            Próxima <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+          </a>
+        {% endif %}
+      </nav>
+    {% endif %}
+
+  {% else %}
+    <div class="ui-empty">
+      <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
+      <p>
+        {% if q or f_situacao or f_tipo or f_ini or f_fim %}
+          Nenhuma assinatura encontrada com esses filtros.
+        {% else %}
+          Nenhum termo assinado digitalmente ainda. Comece criando uma sessão de assinatura.
+        {% endif %}
+      </p>
+      <a href="{% url 'termo_assinatura_preparar' 'entrega' %}" class="btn btn-primary">
+        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+        Nova assinatura de entrega
+      </a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

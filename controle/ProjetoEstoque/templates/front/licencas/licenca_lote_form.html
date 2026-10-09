@@ -1,122 +1,294 @@
 {% extends 'base.html' %}
 {% load static humanize %}
 
-{% block title %}{% if obj %}Editar Lote{% else %}Novo Lote{% endif %}{% endblock %}
-{% block page_title %}{% if obj %}Editar Lote{% else %}Novo Lote{% endif %}{% endblock %}
-{% block page_subtitle %}Entrada de lote com rastreabilidade financeira e saldo para movimentações{% endblock %}
+{% block title %}{% if obj %}Lote #{{ obj.pk }}{% else %}Novo lote{% endif %}{% endblock %}
+{% block page_title %}{% if obj %}Lote #{{ obj.pk }}{% else %}Novo lote{% endif %}{% endblock %}
+{% block page_subtitle %}Compra de assentos: quantidade, custo do ciclo e renovação{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'licenca_list' %}">Licenças</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'licenca_lote_list' %}">Lotes</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{% if obj %}#{{ obj.pk }}{% else %}Novo{% endif %}</span>
+</nav>
+{% endblock %}
 
 {% block extra_css %}
 {% include 'front/licencas/_lic_design_system.html' %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-.lic-lote-form-page { width: min(100%, 980px); }
+  .lic-lote-form-page { width: min(100%, 1060px); }
+  :where(.lic-lote-form-page) { --lic-table-min: 720px; }
+
+  /* Prévia do rateio ao lado dos campos de custo: o operador digita
+     "R$ 1.064.400,12 / anual / 130 assentos" e o número que importa para o
+     rateio por centro de custo é o mensal POR ASSENTO — que ninguém calcula
+     de cabeça. Sem a prévia, o erro de digitação só aparecia no relatório de
+     custos, um mês depois. */
+  :where(.lic-lote-form-page) .lic-previa {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(130px, 100%), 1fr));
+    gap: 10px;
+    padding: 13px 15px;
+    border: 1px dashed var(--lic-border-strong);
+    border-radius: var(--lic-radius-md);
+    background: var(--lic-surface-soft);
+  }
+  :where(.lic-lote-form-page) .lic-previa-item { display: grid; gap: 2px; }
+  :where(.lic-lote-form-page) .lic-previa-valor {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 650;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--lic-text);
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="lic-page lic-lote-form-page">
   <div class="lic-shell">
-    <section class="lic-hero">
-      <div class="lic-hero-main">
-        <div class="lic-hero-icon">
-          <i class="fa fa-boxes-stacked"></i>
-        </div>
-        <div class="lic-hero-title">
-          <h1>{% if obj %}Editar Lote{% else %}Novo Lote de Licenças{% endif %}</h1>
-          <p>Cadastre a entrada do lote com rastreabilidade financeira e saldo para movimentações futuras.</p>
-        </div>
-      </div>
 
+    <header class="lic-head">
+      <div class="lic-head-main">
+        <span class="lic-head-eyebrow"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i> Lote de compra</span>
+        <h1 class="lic-head-title">
+          {% if obj %}Lote #{{ obj.pk }} — {{ obj.licenca.nome }}{% else %}Novo lote de licenças{% endif %}
+        </h1>
+        <p class="lic-head-sub">
+          O lote é a <strong>compra</strong>: quantos assentos, quanto foi pago
+          pelo ciclo e quando renova. O saldo disponível não é digitado —
+          é apurado pelas movimentações.
+        </p>
+      </div>
       <div class="lic-actions">
-        <a href="{% url 'licenca_lote_list' %}" class="lic-btn lic-btn-secondary">
-          <i class="fa fa-arrow-left"></i>
-          Voltar
+        <a href="{% if obj %}{% url 'licenca_detail' obj.licenca_id %}{% else %}{% url 'licenca_lote_list' %}{% endif %}" class="lic-btn lic-btn-ghost">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Cancelar
         </a>
       </div>
-    </section>
+    </header>
 
     {% include 'front/licencas/_lic_subnav.html' %}
 
     {% if obj %}
-    <nav class="lic-tabs" role="tablist" aria-label="Seções do lote">
-      <button class="lic-tab-btn is-active" data-tab="dados" role="tab" aria-selected="true">
-        <i class="fa fa-layer-group"></i> Dados do Lote
-      </button>
-      <button class="lic-tab-btn" data-tab="movs" role="tab" aria-selected="false">
-        <i class="fa fa-clock-rotate-left"></i> Movimentações ({{ movimentacoes_lote.count }})
-      </button>
-    </nav>
-    {% endif %}
+      <section class="lic-stats" aria-label="Situação do lote">
+        <div class="lic-stat" data-tom="brand">
+          <span class="lic-stat-label"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Comprados</span>
+          <span class="lic-stat-value">{{ situacao.total }}</span>
+          <span class="lic-stat-meta">assento{{ situacao.total|pluralize }} neste lote</span>
+        </div>
+        <div class="lic-stat" data-tom="{% if situacao.livre == 0 %}alerta{% else %}ok{% endif %}">
+          <span class="lic-stat-label"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Em uso</span>
+          <span class="lic-stat-value">{{ situacao.em_uso }} <small>/ {{ situacao.total }}</small></span>
+          <span class="lic-stat-meta">{{ situacao.livre }} livre{{ situacao.livre|pluralize }} — apurado no razão</span>
+        </div>
+        <div class="lic-stat" data-tom="info">
+          <span class="lic-stat-label"><i class="fa-solid fa-coins" aria-hidden="true"></i> Por assento</span>
+          <span class="lic-stat-value">R$ {{ situacao.custo.mensal_unit|floatformat:2|intcomma }}</span>
+          <span class="lic-stat-meta">por mês · R$ {{ situacao.custo.anual_unit|floatformat:2|intcomma }}/ano</span>
+        </div>
+        <div class="lic-stat" data-tom="{% if situacao.divergente %}erro{% else %}ok{% endif %}">
+          <span class="lic-stat-label"><i class="fa-solid fa-scale-unbalanced" aria-hidden="true"></i> Contador</span>
+          <span class="lic-stat-value">{{ situacao.saldo_contador }}</span>
+          <span class="lic-stat-meta">
+            {% if situacao.divergente %}
+              diverge do razão ({{ situacao.livre }})
+            {% else %}
+              de acordo com o razão
+            {% endif %}
+          </span>
+        </div>
+      </section>
 
-    <div id="tab-dados" class="lic-tab-panel is-active">
-      <section class="lic-card">
-        {% if not obj %}
-        <div class="lic-card-header">
-          <div class="lic-card-title">
-            <i class="fa fa-layer-group"></i>
-            Dados do lote
+      {% if situacao.divergente %}
+        <div class="lic-callout" data-tom="erro">
+          <i class="fa-solid fa-scale-unbalanced" aria-hidden="true"></i>
+          <div class="lic-callout-body">
+            <strong>O saldo gravado deste lote discorda das movimentações.</strong>
+            Contador: {{ situacao.saldo_contador }} · Razão: {{ situacao.livre }}.
+            Reconciliar alinha o cache e <strong>não altera nenhuma movimentação</strong>.
+            <div class="lic-callout-actions">
+              <form method="post" action="{% url 'licenca_reconciliar_lote' obj.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit" class="lic-btn lic-btn-secondary lic-btn-sm">
+                  <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Reconciliar agora
+                </button>
+              </form>
+            </div>
           </div>
         </div>
-        {% endif %}
+      {% endif %}
+
+      <nav class="lic-tabs" role="tablist" aria-label="Seções do lote" data-lic-tabs>
+        <button class="lic-tab-btn is-active" data-tab="dados" role="tab" aria-selected="true">
+          <i class="fa-solid fa-layer-group" aria-hidden="true"></i> Dados do lote
+        </button>
+        <button class="lic-tab-btn" data-tab="movs" role="tab" aria-selected="false">
+          <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Movimentações
+          <span class="lic-tab-count">{{ movimentacoes_lote|length }}</span>
+        </button>
+      </nav>
+    {% endif %}
+
+    <div id="tab-dados" class="lic-tab-panel is-active" role="tabpanel">
+      <section class="lic-card">
+        <div class="lic-card-header">
+          <h2 class="lic-card-title">
+            <i class="fa-solid fa-layer-group" aria-hidden="true"></i> Dados da compra
+          </h2>
+        </div>
 
         <form method="post" novalidate autocomplete="off">
           {% csrf_token %}
 
           <div class="lic-card-body">
             {% if form.errors %}
-              <div class="lic-alert lic-alert-danger">
-                <i class="fa fa-circle-exclamation"></i>
-                <div>Existem erros no preenchimento. Revise os campos destacados abaixo.</div>
+              <div class="lic-callout" data-tom="erro">
+                <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+                <div class="lic-callout-body">
+                  <strong>Revise os campos destacados.</strong>
+                  {{ form.non_field_errors }}
+                </div>
               </div>
             {% endif %}
 
             <div class="lic-form-grid">
-              <div class="lic-col-12 lic-field">
-                <label class="lic-label" for="{{ form.licenca.id_for_label }}">Licença Vinculada</label>
-                {{ form.licenca }}
-                {{ form.licenca.errors }}
+
+              <div class="lic-fieldset">
+                <div class="lic-fieldset-title">
+                  <i class="fa-solid fa-file-contract" aria-hidden="true"></i> Identificação
+                </div>
+                <div class="lic-form-grid">
+                  <div class="lic-col-12 lic-field">
+                    <label class="lic-label lic-required" for="{{ form.licenca.id_for_label }}">Licença</label>
+                    {{ form.licenca }}
+                    {{ form.licenca.errors }}
+                  </div>
+                  <div class="lic-col-4 lic-field">
+                    <label class="lic-label" for="{{ form.fornecedor.id_for_label }}">Fornecedor</label>
+                    {{ form.fornecedor }}
+                    {{ form.fornecedor.errors }}
+                  </div>
+                  <div class="lic-col-4 lic-field">
+                    <label class="lic-label" for="{{ form.centro_custo.id_for_label }}">Centro de custo</label>
+                    {{ form.centro_custo }}
+                    {{ form.centro_custo.errors }}
+                    <span class="lic-help">Dono da compra — a devolução estorna para cá.</span>
+                  </div>
+                  <div class="lic-col-4 lic-field">
+                    <label class="lic-label" for="{{ form.numero_pedido.id_for_label }}">Nº do pedido / contrato</label>
+                    {{ form.numero_pedido }}
+                    {{ form.numero_pedido.errors }}
+                  </div>
+                </div>
               </div>
 
-              <div class="lic-col-6 lic-field">
-                <label class="lic-label" for="{{ form.fornecedor.id_for_label }}">Fornecedor</label>
-                {{ form.fornecedor }}
-                {{ form.fornecedor.errors }}
+              <div class="lic-fieldset">
+                <div class="lic-fieldset-title">
+                  <i class="fa-solid fa-coins" aria-hidden="true"></i> Assentos e custo
+                  <small>o rateio aparece abaixo enquanto você digita</small>
+                </div>
+                <div class="lic-form-grid">
+                  <div class="lic-col-4 lic-field">
+                    <label class="lic-label lic-required" for="{{ form.quantidade_total.id_for_label }}">Assentos comprados</label>
+                    {{ form.quantidade_total }}
+                    {{ form.quantidade_total.errors }}
+                    <span class="lic-help">
+                      {% if obj %}
+                        Não é possível reduzir abaixo dos {{ situacao.em_uso }} assento{{ situacao.em_uso|pluralize }}
+                        atribuído{{ situacao.em_uso|pluralize }} — devolva antes.
+                      {% else %}
+                        Todos nascem livres; o saldo passa a ser apurado pelas movimentações.
+                      {% endif %}
+                    </span>
+                  </div>
+                  <div class="lic-col-4 lic-field">
+                    <label class="lic-label lic-required" for="{{ form.periodicidade.id_for_label }}">Ciclo de cobrança</label>
+                    {{ form.periodicidade }}
+                    {{ form.periodicidade.errors }}
+                    <span class="lic-help">
+                      Define o divisor do custo mensal. <strong>Contrato/Outro</strong>
+                      não declara ciclo e é rateado como anual, com o valor marcado
+                      como estimado nas telas.
+                    </span>
+                  </div>
+                  <div class="lic-col-4 lic-field">
+                    <label class="lic-label" for="{{ form.custo_ciclo.id_for_label }}">Valor total do ciclo (R$)</label>
+                    {{ form.custo_ciclo }}
+                    {{ form.custo_ciclo.errors }}
+                    <span class="lic-help">O que o fornecedor cobra por ciclo, pelo lote inteiro.</span>
+                  </div>
+
+                  <div class="lic-col-12">
+                    <div class="lic-previa" id="licPrevia" aria-live="polite">
+                      <div class="lic-previa-item">
+                        <span class="lic-stat-label">Por assento / ciclo</span>
+                        <span class="lic-previa-valor" data-previa="unit-ciclo">—</span>
+                      </div>
+                      <div class="lic-previa-item">
+                        <span class="lic-stat-label">Por assento / mês</span>
+                        <span class="lic-previa-valor" data-previa="unit-mes">—</span>
+                      </div>
+                      <div class="lic-previa-item">
+                        <span class="lic-stat-label">Lote / mês</span>
+                        <span class="lic-previa-valor" data-previa="lote-mes">—</span>
+                      </div>
+                      <div class="lic-previa-item">
+                        <span class="lic-stat-label">Lote / ano</span>
+                        <span class="lic-previa-valor" data-previa="lote-ano">—</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div class="lic-col-6 lic-field">
-                <label class="lic-label" for="{{ form.centro_custo.id_for_label }}">Centro de Custo</label>
-                {{ form.centro_custo }}
-                {{ form.centro_custo.errors }}
-              </div>
-
-              <div class="lic-col-6 lic-field">
-                <label class="lic-label" for="{{ form.numero_pedido.id_for_label }}">Nº Pedido / Contrato</label>
-                {{ form.numero_pedido }}
-                {{ form.numero_pedido.errors }}
-              </div>
-
-              <div class="lic-col-6 lic-field">
-                <label class="lic-label" for="{{ form.data_compra.id_for_label }}">Data de Compra</label>
-                {{ form.data_compra }}
-                {{ form.data_compra.errors }}
-              </div>
-
-              <div class="lic-col-4 lic-field">
-                <label class="lic-label" for="{{ form.quantidade_total.id_for_label }}">Quantidade Comprada</label>
-                {{ form.quantidade_total }}
-                {{ form.quantidade_total.errors }}
-                <span class="lic-help">{% if obj %}O saldo será recalculado conforme a alteração.{% else %}O saldo inicial será igual à quantidade comprada.{% endif %}</span>
-              </div>
-
-              <div class="lic-col-4 lic-field">
-                <label class="lic-label" for="{{ form.periodicidade.id_for_label }}">Periodicidade</label>
-                {{ form.periodicidade }}
-                {{ form.periodicidade.errors }}
-              </div>
-
-              <div class="lic-col-4 lic-field">
-                <label class="lic-label" for="{{ form.custo_ciclo.id_for_label }}">Custo Total do Lote (R$)</label>
-                {{ form.custo_ciclo }}
-                {{ form.custo_ciclo.errors }}
+              <div class="lic-fieldset">
+                <div class="lic-fieldset-title">
+                  <i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Datas e renovação
+                </div>
+                <div class="lic-form-grid">
+                  <div class="lic-col-4 lic-field">
+                    <label class="lic-label" for="{{ form.data_compra.id_for_label }}">Data de compra</label>
+                    {{ form.data_compra }}
+                    {{ form.data_compra.errors }}
+                    <span class="lic-help">
+                      Base do vencimento calculado e da ordem FIFO de consumo
+                      (o lote comprado antes é atribuído primeiro).
+                    </span>
+                  </div>
+                  <div class="lic-col-4 lic-field">
+                    <label class="lic-label" for="{{ form.data_renovacao.id_for_label }}">Próxima renovação</label>
+                    {{ form.data_renovacao }}
+                    {{ form.data_renovacao.errors }}
+                    <span class="lic-help">
+                      Deixe em branco para o sistema calcular pela data de compra
+                      e pelo ciclo. Preencha quando o contrato tiver data própria.
+                      {% if obj and obj.vencimento_calculado %}
+                        <br>Calculado hoje: <strong>{{ obj.vencimento_calculado|date:"d/m/Y" }}</strong>.
+                      {% endif %}
+                    </span>
+                  </div>
+                  <div class="lic-col-4 lic-field" style="align-self:end">
+                    <label class="lic-checkrow" for="{{ form.renovacao_automatica.id_for_label }}">
+                      {{ form.renovacao_automatica }}
+                      <span class="lic-checkrow-text">
+                        <strong>Renova automaticamente</strong>
+                        <span>
+                          Desmarque para contrato que exige ação manual — ele
+                          passa a aparecer em destaque no calendário, porque
+                          sem renovar a licença simplesmente para.
+                        </span>
+                      </span>
+                    </label>
+                    {{ form.renovacao_automatica.errors }}
+                  </div>
+                </div>
               </div>
 
               <div class="lic-col-12 lic-field">
@@ -127,10 +299,12 @@
             </div>
           </div>
 
-          <div class="lic-pagination">
-            <div class="lic-muted">A consistência do saldo depende da movimentação correta dos assentos.</div>
+          <div class="lic-card-foot">
+            <span class="lic-muted" style="font-size: var(--text-xs)">
+              O saldo disponível é derivado das movimentações — não há campo para digitá-lo.
+            </span>
             <button type="submit" class="lic-btn lic-btn-primary">
-              <i class="fa fa-save"></i>
+              <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
               {% if obj %}Salvar alterações{% else %}Cadastrar lote{% endif %}
             </button>
           </div>
@@ -139,105 +313,153 @@
     </div>
 
     {% if obj %}
-    <div id="tab-movs" class="lic-tab-panel">
-      <section class="lic-card">
-        <div class="lic-card-header">
-          <div class="lic-card-title">
-            <i class="fa fa-clock-rotate-left"></i>
-            Movimentações deste lote
+      <div id="tab-movs" class="lic-tab-panel" role="tabpanel">
+        <section class="lic-card">
+          <div class="lic-card-header">
+            <h2 class="lic-card-title">
+              <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+              Movimentações deste lote
+              <span class="lic-card-title-sub">é daqui que sai o saldo de {{ situacao.livre }} assento{{ situacao.livre|pluralize }} livre{{ situacao.livre|pluralize }}</span>
+            </h2>
+            <a href="{% url 'mov_licenca_form' %}?licenca={{ obj.licenca_id }}&next={{ request.get_full_path|urlencode }}"
+               class="lic-btn lic-btn-secondary lic-btn-sm">
+              <i class="fa-solid fa-plus" aria-hidden="true"></i> Nova movimentação
+            </a>
           </div>
-          <a href="{% url 'mov_licenca_form' %}?licenca={{ obj.licenca_id }}&next={{ request.get_full_path|urlencode }}" class="lic-btn lic-btn-secondary">
-            <i class="fa fa-plus"></i> Nova Movimentação
-          </a>
-        </div>
-        <div class="lic-table-wrap">
-          <table class="lic-table">
-            <thead>
-              <tr>
-                <th>Ação</th>
-                <th>Colaborador / Usuário</th>
-                <th>Centro de Custo</th>
-                <th class="lic-text-right">Data</th>
-                <th class="lic-text-right">Resp.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for mov in movimentacoes_lote %}
+
+          <div class="lic-table-wrap">
+            <table class="lic-table">
+              <thead>
                 <tr>
-                  <td>
-                    {% if mov.tipo == 'atribuicao' %}
-                      <span class="lic-badge lic-badge-danger"><i class="fa fa-arrow-right"></i> Saída</span>
-                    {% else %}
-                      <span class="lic-badge lic-badge-success"><i class="fa fa-arrow-left"></i> Devolução</span>
-                    {% endif %}
-                  </td>
-                  <td>{{ mov.usuario.nome|default:"-" }}</td>
-                  <td>
-                    {% if mov.centro_custo_destino %}
-                      {{ mov.centro_custo_destino.departamento }}
-                      <span class="lic-sub">CC: {{ mov.centro_custo_destino.numero }}</span>
-                    {% else %}
-                      <span class="lic-muted">—</span>
-                    {% endif %}
-                  </td>
-                  <td class="lic-text-right">
-                    <div>{{ mov.created_at|date:"d/m/Y" }}</div>
-                    <span class="lic-sub">{{ mov.created_at|date:"H:i" }}</span>
-                  </td>
-                  <td class="lic-text-right lic-muted">{{ mov.criado_por.username|default:"-"|title }}</td>
+                  <th scope="col">Operação</th>
+                  <th scope="col">Colaborador</th>
+                  <th scope="col">Centro de custo</th>
+                  <th scope="col" class="lic-text-right">Custo / mês</th>
+                  <th scope="col">Quando</th>
+                  <th scope="col">Registrado por</th>
                 </tr>
-              {% empty %}
-                <tr>
-                  <td colspan="5">
-                    <div class="lic-empty">
-                      <i class="fa fa-history"></i>
-                      Nenhuma movimentação registrada para este lote.
-                    </div>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
+              </thead>
+              <tbody>
+                {% for mov in movimentacoes_lote %}
+                  <tr>
+                    <td>
+                      {% if mov.tipo == 'atribuicao' %}
+                        <span class="lic-pill" data-tom="saida">
+                          <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Atribuição
+                        </span>
+                      {% else %}
+                        <span class="lic-pill" data-tom="entrada">
+                          <i class="fa-solid fa-arrow-left-to-bracket" aria-hidden="true"></i> Devolução
+                        </span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if mov.usuario %}
+                        <a href="{% url 'usuario_detail' mov.usuario.pk %}" class="lic-title-link">{{ mov.usuario.nome }}</a>
+                      {% else %}
+                        <span class="lic-muted">—</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if mov.centro_custo_destino %}
+                        {{ mov.centro_custo_destino.departamento }}
+                        <span class="lic-sub">CC {{ mov.centro_custo_destino.numero }}</span>
+                      {% else %}
+                        <span class="lic-muted">—</span>
+                      {% endif %}
+                    </td>
+                    <td class="lic-text-right">
+                      <span class="lic-money">R$ {{ mov.valor_unitario|default:0|floatformat:2|intcomma }}</span>
+                    </td>
+                    <td class="lic-nowrap">
+                      {{ mov.created_at|date:"d/m/Y" }}
+                      <span class="lic-sub">{{ mov.created_at|date:"H:i" }}</span>
+                    </td>
+                    <td><span class="lic-muted" style="font-size: var(--text-xs)">{{ mov.criado_por.username|default:"—" }}</span></td>
+                  </tr>
+                {% empty %}
+                  <tr>
+                    <td colspan="6">
+                      <div class="lic-empty">
+                        <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+                        <strong>Nenhuma movimentação</strong>
+                        <div>Os {{ situacao.total }} assentos deste lote estão livres.</div>
+                      </div>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     {% endif %}
+
   </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
+{% include 'front/licencas/_lic_js_base.html' %}
+{% comment %}Os divisores do ciclo vêm do SERVIDOR por json_script, não
+   repetidos à mão no JS: a tabela autoritativa é
+   `licenca_service._MESES_POR_CICLO`, e uma segunda cópia aqui divergiria
+   dela na próxima periodicidade nova — exatamente o defeito que fazia um lote
+   trienal publicar custo mensal 36x maior.{% endcomment %}
+{{ meses_por_ciclo|json_script:"lic-meses-ciclo" }}
 <script>
-$(document).ready(function() {
-  $('.lic-page select').select2({
-    width: '100%',
-    placeholder: 'Selecione...',
-    allowClear: true,
-    language: {
-      noResults: function () { return 'Nenhum resultado encontrado'; },
-      searching: function () { return 'Buscando...'; }
-    }
-  });
-
-  $('.lic-page input:not([type="hidden"]), .lic-page textarea').addClass('lic-form-control');
-});
-
+/* Prévia do rateio — espelha `custos_do_lote` para o operador conferir ANTES
+   de salvar. Mesma ordem de arredondamento do servidor: divide em precisão
+   cheia e arredonda só no fim, uma vez por valor exibido. Prévia que arredonda
+   em passos diferentes mostraria um centavo a mais que a tela depois,
+   e aí ninguém confia em nenhuma das duas. */
 (function () {
-  var tabBtns = document.querySelectorAll('.lic-tab-btn');
-  tabBtns.forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      tabBtns.forEach(function (b) { b.classList.remove('is-active'); b.setAttribute('aria-selected', 'false'); });
-      document.querySelectorAll('.lic-tab-panel').forEach(function (p) { p.classList.remove('is-active'); });
-      btn.classList.add('is-active');
-      btn.setAttribute('aria-selected', 'true');
-      var panel = document.getElementById('tab-' + btn.dataset.tab);
-      if (panel) panel.classList.add('is-active');
-    });
+  "use strict";
+
+  var cfg = document.getElementById("lic-meses-ciclo");
+  var previa = document.getElementById("licPrevia");
+  if (!cfg || !previa) { return; }
+
+  var MESES = JSON.parse(cfg.textContent);
+  var qtd = document.getElementById("id_quantidade_total");
+  var custo = document.getElementById("id_custo_ciclo");
+  var ciclo = document.getElementById("id_periodicidade");
+  if (!qtd || !custo || !ciclo) { return; }
+
+  var moeda = new Intl.NumberFormat("pt-BR", {
+    style: "currency", currency: "BRL", minimumFractionDigits: 2
   });
+
+  function escrever(chave, valor) {
+    var el = previa.querySelector('[data-previa="' + chave + '"]');
+    if (el) { el.textContent = valor; }
+  }
+
+  function calcular() {
+    var n = parseInt(qtd.value, 10);
+    var total = parseFloat(String(custo.value).replace(",", "."));
+    var meses = MESES[ciclo.value] || 12;
+
+    if (!n || n < 1 || !isFinite(total) || total <= 0) {
+      ["unit-ciclo", "unit-mes", "lote-mes", "lote-ano"].forEach(function (k) {
+        escrever(k, "—");
+      });
+      return;
+    }
+
+    var unitCiclo = total / n;
+    var unitMes = unitCiclo / meses;
+    escrever("unit-ciclo", moeda.format(unitCiclo));
+    escrever("unit-mes", moeda.format(unitMes));
+    escrever("lote-mes", moeda.format(unitMes * n));
+    escrever("lote-ano", moeda.format(unitMes * n * 12));
+  }
+
+  [qtd, custo, ciclo].forEach(function (el) {
+    el.addEventListener("input", calcular);
+    el.addEventListener("change", calcular);
+  });
+  calcular();
 })();
 </script>
 {% endblock %}

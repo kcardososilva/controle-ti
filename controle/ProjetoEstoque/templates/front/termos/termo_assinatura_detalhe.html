@@ -1,0 +1,387 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ titulo }}{% endblock %}
+{% block page_title %}{{ titulo }}{% endblock %}
+{% block page_subtitle %}{{ subtitulo }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'termo_assinatura_list' %}">Termos assinados</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">#{{ termo.pk }}</span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-termos.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="ta-page">
+
+  <section class="ta-card">
+    <div class="ta-card-head">
+      <h2 class="ta-card-title">
+        <i class="fa-solid fa-file-contract" aria-hidden="true"></i>
+        Documento
+      </h2>
+      <span class="ta-situacao" data-situacao="{{ termo.situacao_slug }}">{{ termo.situacao_label }}</span>
+    </div>
+
+    <div class="ta-card-body" style="display:grid;gap:var(--space-4)">
+      {% if integridade %}
+        {% comment %}Integridade = o SHA-256 recalculado do arquivo em disco
+           confere com o gravado no ato da assinatura. Num diretório
+           sincronizado por OneDrive, divergência é mais provável por acidente
+           do que por má-fé — e é por isso que precisa ser visível.{% endcomment %}
+        <div class="ta-integridade" data-ok="{{ integridade.integro|yesno:'true,false,' }}">
+          <i class="fa-solid {% if integridade.integro %}fa-shield-halved{% else %}fa-triangle-exclamation{% endif %}" aria-hidden="true"></i>
+          <div>
+            {% if integridade.integro %}
+              <strong>Documento íntegro.</strong>
+              <span class="ta-item-meta">
+                O arquivo armazenado é byte a byte o mesmo emitido no momento da assinatura.
+              </span>
+            {% else %}
+              <strong>Atenção: o arquivo armazenado mudou desde a emissão.</strong>
+              <span class="ta-item-meta">
+                O resumo criptográfico atual não confere com o gravado na assinatura.
+                O registro da assinatura (quem, quando, de onde) continua válido no banco,
+                mas este PDF específico não pode ser tratado como a via original.
+              </span>
+            {% endif %}
+            <p class="ta-hash">
+              Gravado: {{ integridade.hash_gravado|default:"—" }}<br>
+              Atual:&nbsp;&nbsp;&nbsp;{{ integridade.hash_atual|default:"—" }}
+            </p>
+          </div>
+        </div>
+      {% endif %}
+
+      <dl class="ta-dl">
+        <div>
+          <dt class="ta-dt">Código de verificação</dt>
+          <dd class="ta-dd is-mono">{{ termo.codigo_verificacao }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Nº do termo</dt>
+          <dd class="ta-dd">{{ termo.numero_termo|default:"—" }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Tipo</dt>
+          <dd class="ta-dd">{{ termo.get_tipo_display }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Nº do chamado</dt>
+          <dd class="ta-dd">{{ dados.numero_chamado|default:"—" }}</dd>
+        </div>
+      </dl>
+
+      {% if termo.pdf %}
+        <div class="btn-group">
+          <a href="{% url 'termo_assinatura_pdf' termo.pk %}" class="btn btn-primary" target="_blank" rel="noopener">
+            <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+            Abrir o termo assinado
+          </a>
+          <a href="{% url 'termo_assinatura_verificar' %}?codigo={{ termo.codigo_verificacao }}" class="btn btn-ghost">
+            <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+            Conferir autenticidade
+          </a>
+        </div>
+      {% elif termo.pode_assinar %}
+        <a href="{% url 'termo_assinatura_painel' termo.pk %}" class="btn btn-primary">
+          <i class="fa-solid fa-qrcode" aria-hidden="true"></i>
+          Abrir painel de assinatura
+        </a>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="ta-card">
+    <div class="ta-card-head">
+      <h2 class="ta-card-title">
+        <i class="fa-solid fa-user-check" aria-hidden="true"></i>
+        Signatário
+      </h2>
+    </div>
+
+    <div class="ta-card-body" style="display:grid;gap:var(--space-4)">
+      <dl class="ta-dl">
+        <div>
+          <dt class="ta-dt">Colaborador (cadastro)</dt>
+          <dd class="ta-dd">
+            <a href="{% url 'usuario_detail' termo.colaborador.pk %}">{{ termo.colaborador.nome }}</a>
+          </dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Nome confirmado no ato</dt>
+          <dd class="ta-dd">{{ termo.signatario_nome|default:"—" }}</dd>
+        </div>
+        {% comment %}CPF e RG NÃO aparecem aqui porque não são guardados: eles
+           entram no PDF no momento da assinatura e param ali. Esta tela mostra
+           onde encontrá-los, não os valores — ver a regra 35 do CLAUDE.md antes
+           de "trazer para a tela para facilitar".{% endcomment %}
+        <div>
+          <dt class="ta-dt">Documentos declarados</dt>
+          <dd class="ta-dd" style="font-weight:500">
+            Constam apenas no PDF assinado.
+            <span class="ta-item-meta">
+              Por segurança, CPF e RG não são guardados no banco de dados.
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Função</dt>
+          <dd class="ta-dd">{{ dados.colaborador.funcao|default:"—" }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Centro de custo</dt>
+          <dd class="ta-dd">{{ dados.colaborador.centro_custo|default:"—" }}</dd>
+        </div>
+      </dl>
+
+      {% if termo.assinatura_colaborador %}
+        <div>
+          <p class="ta-dt" style="margin-bottom:6px">Traço coletado</p>
+          <div class="ta-traco">
+            <img src="{{ termo.assinatura_colaborador.url }}" alt="Assinatura de {{ termo.signatario_nome|default:termo.colaborador.nome }}">
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="ta-card">
+    <div class="ta-card-head">
+      <h2 class="ta-card-title">
+        <i class="fa-solid fa-fingerprint" aria-hidden="true"></i>
+        Trilha do ato
+      </h2>
+    </div>
+
+    <div class="ta-card-body">
+      <dl class="ta-dl">
+        <div>
+          <dt class="ta-dt">Assinado em</dt>
+          <dd class="ta-dd">{{ termo.assinado_em|date:"d/m/Y H:i:s"|default:"—" }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">IP de origem</dt>
+          <dd class="ta-dd is-mono">{{ termo.assinado_ip|default:"—" }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Aceite eletrônico</dt>
+          <dd class="ta-dd">{{ termo.aceite_declarado|yesno:"declarado pelo signatário,não declarado" }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Revisão do texto legal</dt>
+          <dd class="ta-dd is-mono">
+            {{ dados.texto_legal_clausulas|default:"—" }} cláusulas · {{ dados.texto_legal_hash|default:"—" }}
+          </dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Preparado por</dt>
+          <dd class="ta-dd">{{ termo.criado_por.get_full_name|default:termo.criado_por.username|default:"—" }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Preparado em</dt>
+          <dd class="ta-dd">{{ termo.created_at|date:"d/m/Y H:i" }}</dd>
+        </div>
+      </dl>
+
+      {% if termo.assinado_user_agent %}
+        <p class="ta-hash" style="margin-top:var(--space-3)">
+          Aparelho: {{ termo.assinado_user_agent }}
+        </p>
+      {% endif %}
+
+      {% if termo.status == 'cancelado' %}
+        <div class="alert alert-warning" style="margin-top:var(--space-3)">
+          <i class="fa-solid fa-ban" aria-hidden="true"></i>
+          <span>
+            Cancelado em {{ termo.cancelado_em|date:"d/m/Y H:i" }}
+            por {{ termo.atualizado_por.get_full_name|default:termo.atualizado_por.username|default:"—" }}.
+            {% if termo.motivo_cancelamento %}Motivo: {{ termo.motivo_cancelamento }}{% endif %}
+          </span>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if termo.status == 'assinado' %}
+    {% comment %}Via por e-mail: existe porque "não recebi o e-mail" não tinha
+       como ser respondido. O envio roda num `on_commit` e o sucesso só ia para
+       o log de console; agora o resultado de cada tentativa fica na linha do
+       termo (`via_email_*`) e aparece aqui, com o reenvio ao lado.{% endcomment %}
+    <section class="ta-card">
+      <div class="ta-card-head">
+        <h2 class="ta-card-title">
+          <i class="fa-solid fa-envelope-circle-check" aria-hidden="true"></i>
+          Via do colaborador
+        </h2>
+        <span class="ta-situacao" data-situacao="{% if termo.via_email_status == 'enviada' %}assinado{% elif termo.via_email_status == 'falhou' %}cancelado{% else %}pendente{% endif %}">
+          {{ termo.get_via_email_status_display }}
+        </span>
+      </div>
+
+      <div class="ta-card-body">
+        <dl class="ta-dl">
+          <div>
+            <dt class="ta-dt">E-mail do cadastro</dt>
+            <dd class="ta-dd">{{ termo.colaborador.email|default:"— sem e-mail no cadastro" }}</dd>
+          </div>
+          <div>
+            <dt class="ta-dt">Última tentativa</dt>
+            <dd class="ta-dd">{{ termo.via_email_em|date:"d/m/Y H:i:s"|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="ta-dt">Tentativas</dt>
+            <dd class="ta-dd">{{ termo.via_email_tentativas }}</dd>
+          </div>
+        </dl>
+
+        {% if termo.via_email_detalhe %}
+          <p class="ta-hash" style="margin-top:var(--space-3)">{{ termo.via_email_detalhe }}</p>
+        {% endif %}
+
+        {% if termo.via_email_status == 'sem_email' %}
+          <div class="alert alert-warning" style="margin-top:var(--space-3)">
+            <i class="fa-solid fa-user-slash" aria-hidden="true"></i>
+            <span>
+              O que falta é o CADASTRO, não o reenvio:
+              {{ termo.colaborador.nome }} não tem e-mail na ficha. Preencha em
+              <a href="{% url 'usuario_detail' termo.colaborador.pk %}">{{ termo.colaborador.nome }}</a>
+              e depois use "Reenviar via".
+            </span>
+          </div>
+        {% elif termo.via_email_status == 'falhou' %}
+          <div class="alert alert-danger" style="margin-top:var(--space-3)">
+            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+            <span>
+              O sistema tentou e não conseguiu enviar. O colaborador continua
+              sem a via — reenvie abaixo. O documento assinado segue íntegro e
+              disponível para download aqui.
+            </span>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="ta-card-foot">
+        <form method="post" action="{% url 'termo_assinatura_reenviar_via' termo.pk %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-secondary"
+                  {% if not termo.colaborador.email %}disabled
+                  title="Sem e-mail no cadastro do colaborador"{% endif %}>
+            <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+            Reenviar via ao colaborador
+          </button>
+        </form>
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="ta-card">
+    <div class="ta-card-head">
+      <h2 class="ta-card-title">
+        <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i>
+        Equipamentos do termo
+      </h2>
+    </div>
+
+    <div class="ta-card-body">
+      {% comment %}Lista a partir do SNAPSHOT (`dados.equipamentos`), não das
+         FKs: é o que o colaborador assinou. Renomear ou alterar o item depois
+         não pode reescrever o conteúdo de um documento já firmado.{% endcomment %}
+      <div class="ta-itens">
+        {% for eq in equipamentos %}
+          <div class="ta-item" style="cursor:default">
+            <i class="fa-solid fa-microchip" aria-hidden="true" style="color:var(--text-tertiary);margin-top:3px"></i>
+            <span>
+              <span class="ta-item-nome">
+                {{ eq.nome }}
+                {% if eq.compartilhado %}
+                  {% comment %}Vem do SNAPSHOT: é o que valia no ato da
+                     assinatura. O item pode deixar de ser compartilhado
+                     depois, e o termo continua sendo o que foi firmado.{% endcomment %}
+                  <span class="ta-selo-compartilhado">
+                    <i class="fa-solid fa-users" aria-hidden="true"></i>
+                    uso compartilhado
+                  </span>
+                {% endif %}
+              </span>
+              <span class="ta-item-meta">
+                {% if eq.numero_serie %}Série <code>{{ eq.numero_serie }}</code> · {% endif %}
+                {{ eq.marca|default:"—" }} {{ eq.modelo|default:"" }}
+                {% if eq.centro_custo %} · {{ eq.centro_custo }}{% endif %}
+                {% if eq.compartilhado and eq.codetentores %}
+                  · com {{ eq.codetentores }} colaborador{{ eq.codetentores|pluralize:"es" }} no ato
+                {% endif %}
+                {% if eq.id %}
+                  · <a href="{% url 'equipamento_detalhe' eq.id %}">ficha atual</a>
+                {% endif %}
+              </span>
+            </span>
+          </div>
+        {% empty %}
+          <div class="ta-item" style="cursor:default">
+            <span class="ta-item-meta">Nenhum equipamento registrado no termo.</span>
+          </div>
+        {% endfor %}
+      </div>
+
+      {% if dados.acessorios %}
+        <div style="margin-top:var(--space-4)">
+          <p class="ta-dt">Acessórios</p>
+          <p class="ta-dd">{{ dados.acessorios|linebreaksbr }}</p>
+        </div>
+      {% endif %}
+
+      {% if dados.observacoes %}
+        <div style="margin-top:var(--space-4)">
+          <p class="ta-dt">Observações</p>
+          <p class="ta-dd">{{ dados.observacoes|linebreaksbr }}</p>
+        </div>
+      {% endif %}
+
+      {% if termo.movimentacoes.all %}
+        <div style="margin-top:var(--space-4)">
+          <p class="ta-dt" style="margin-bottom:6px">Movimentações vinculadas</p>
+          <div class="ta-itens">
+            {% for mov in termo.movimentacoes.all %}
+              <div class="ta-item" style="cursor:default">
+                <i class="fa-solid fa-right-left" aria-hidden="true" style="color:var(--text-tertiary);margin-top:3px"></i>
+                <span>
+                  <span class="ta-item-nome">
+                    <a href="{% url 'movimentacao_detail' mov.pk %}">#{{ mov.pk }} · {{ mov.item.nome }}</a>
+                  </span>
+                  <span class="ta-item-meta">
+                    {{ mov.get_tipo_transferencia_display|default:mov.get_tipo_movimentacao_display }}
+                    · {{ mov.created_at|date:"d/m/Y H:i" }}
+                    {% if mov.termo_pdf %} · termo anexado{% endif %}
+                  </span>
+                </span>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if termo.pode_assinar %}
+      <div class="ta-card-foot">
+        <form method="post" action="{% url 'termo_assinatura_cancelar' termo.pk %}"
+              onsubmit="return confirm('Cancelar esta sessão de assinatura?');">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-ghost">
+            <i class="fa-solid fa-ban" aria-hidden="true"></i>
+            Cancelar sessão
+          </button>
+        </form>
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

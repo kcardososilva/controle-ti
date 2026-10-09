@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ titulo }}{% endblock %}
+{% block page_title %}{{ titulo }}{% endblock %}
+{% block page_subtitle %}{{ subtitulo }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'termo_assinatura_list' %}">Termos assinados</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Verificar</span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-termos.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="ta-page">
+
+  <section class="ta-card">
+    <div class="ta-card-head">
+      <h2 class="ta-card-title">
+        <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+        Código de verificação
+      </h2>
+    </div>
+
+    <div class="ta-card-body">
+      <form method="get" class="ta-link-row">
+        <input type="text" name="codigo" value="{{ codigo }}" class="ctrl"
+               placeholder="ABCD-EFGH-JKLM" aria-label="Código de verificação"
+               style="font-family:var(--font-mono);letter-spacing:.06em" autofocus>
+        <button type="submit" class="btn btn-primary">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          Verificar
+        </button>
+      </form>
+      <p class="form-hint" style="margin-top:var(--space-2)">
+        O código está impresso no rodapé de todas as páginas do termo assinado.
+        A verificação recalcula o resumo criptográfico do arquivo guardado e compara
+        com o registrado no momento da assinatura.
+      </p>
+    </div>
+  </section>
+
+  {% if consultou %}
+    {% if resultado %}
+      <div class="ta-integridade" data-ok="{{ resultado.integro|yesno:'true,false,' }}">
+        <i class="fa-solid {% if resultado.integro %}fa-circle-check{% else %}fa-triangle-exclamation{% endif %}" aria-hidden="true"></i>
+        <div>
+          {% if resultado.integro %}
+            <strong>Termo autêntico e íntegro.</strong>
+          {% elif resultado.integro is None %}
+            <strong>Termo encontrado, mas sem documento emitido.</strong>
+          {% else %}
+            <strong>O arquivo guardado não confere com o emitido.</strong>
+          {% endif %}
+          <p class="ta-hash">
+            Gravado: {{ resultado.hash_gravado|default:"—" }}<br>
+            Atual:&nbsp;&nbsp;&nbsp;{{ resultado.hash_atual|default:"—" }}
+          </p>
+        </div>
+      </div>
+
+      <section class="ta-card">
+        <div class="ta-card-head">
+          <h2 class="ta-card-title">
+            <i class="fa-solid fa-file-contract" aria-hidden="true"></i>
+            Termo {{ resultado.termo.codigo_verificacao }}
+          </h2>
+          <span class="ta-situacao" data-situacao="{{ resultado.termo.situacao_slug }}">
+            {{ resultado.termo.situacao_label }}
+          </span>
+        </div>
+
+        <div class="ta-card-body" style="display:grid;gap:var(--space-4)">
+          <dl class="ta-dl">
+            <div>
+              <dt class="ta-dt">Colaborador</dt>
+              <dd class="ta-dd">{{ resultado.termo.colaborador.nome }}</dd>
+            </div>
+            <div>
+              <dt class="ta-dt">Tipo</dt>
+              <dd class="ta-dd">{{ resultado.termo.get_tipo_display }}</dd>
+            </div>
+            <div>
+              <dt class="ta-dt">Assinado em</dt>
+              <dd class="ta-dd">{{ resultado.termo.assinado_em|date:"d/m/Y H:i:s"|default:"—" }}</dd>
+            </div>
+            <div>
+              <dt class="ta-dt">Equipamento(s)</dt>
+              <dd class="ta-dd">{{ resultado.termo.equipamentos_resumo }}</dd>
+            </div>
+          </dl>
+
+          <div class="btn-group">
+            <a href="{% url 'termo_assinatura_detalhe' resultado.termo.pk %}" class="btn btn-primary">
+              <i class="fa-solid fa-eye" aria-hidden="true"></i>
+              Ver registro completo
+            </a>
+            {% if resultado.termo.pdf %}
+              <a href="{% url 'termo_assinatura_pdf' resultado.termo.pk %}" class="btn" target="_blank" rel="noopener">
+                <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+                Abrir PDF
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      </section>
+
+    {% else %}
+      <div class="ui-empty">
+        <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+        <p>
+          Nenhum termo com o código <strong>{{ codigo }}</strong>.
+          Confira a digitação — o código usa letras e números sem os caracteres
+          ambíguos (não há zero, O, um nem I).
+        </p>
+      </div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

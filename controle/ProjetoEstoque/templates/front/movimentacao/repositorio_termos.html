@@ -3,7 +3,7 @@
 
 {% block title %}Repositório de Termos{% endblock %}
 {% block page_title %}Repositório de Termos{% endblock %}
-{% block page_subtitle %}Termos de responsabilidade de entrega/devolução — controle de assinatura e pendências{% endblock %}
+{% block page_subtitle %}Arquivo dos termos de responsabilidade — assinados no tablet e anexados em papel{% endblock %}
 
 {% block breadcrumbs %}
 <nav class="breadcrumbs" aria-label="Você está aqui">
@@ -16,572 +16,374 @@
 {% endblock %}
 
 {% block header_actions %}
+<a href="{% url 'termo_assinatura_list' %}" class="btn btn-sm">
+    <i class="fa-solid fa-signature" aria-hidden="true"></i> Assinaturas digitais
+</a>
 <a href="{% url 'movimentacao_list' %}" class="btn btn-sm">
-    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Voltar às Movimentações
+    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Movimentações
 </a>
 {% endblock %}
 
 {% block extra_css %}
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
-<style>
-/* ===================================================================
-   Repositório de Termos — paleta Fluent 2 (Microsoft), mesmo idioma
-   visual de movimentacao_list.html: metric strip, filtro retrátil,
-   table-card. Prefixo .rtm-  ·  escopo :where(.rtm-page, .select2-*)
-   =================================================================== */
-:where(.rtm-page, .select2-container, .select2-dropdown) {
-  --rtm-primary: var(--brand, #0078d4);
-  --rtm-primary-hover: var(--brand-hover, #106ebe);
-  --rtm-primary-soft:  rgba(0, 120, 212, .08);
-  --rtm-primary-softer:rgba(0, 120, 212, .04);
-  --rtm-ring:          rgba(0, 120, 212, .30);
-  --rtm-surface:       #ffffff;
-  --rtm-fill:          #f0f0f0;
-  --rtm-fill-2:        #ebebeb;
-  --rtm-hover:         rgba(0, 0, 0, .035);
-  --rtm-text:          #242424;
-  --rtm-text-2:        #424242;
-  --rtm-muted:         #616161;
-  --rtm-soft:          #8a8886;
-  --rtm-border:        #e6e6e6;
-  --rtm-border-2:      #d6d6d6;
-  --rtm-success:       var(--success, #1e8e3e);
-  --rtm-success-bg:    var(--success-soft, rgba(30, 142, 62, .10));
-  --rtm-warning:       var(--warning, #c77700);
-  --rtm-warning-bg:    var(--warning-soft, rgba(199, 119, 0, .10));
-  --rtm-danger:        var(--danger, #d93025);
-  --rtm-danger-bg:     var(--danger-soft, rgba(217, 48, 37, .10));
-  --rtm-radius-xs:     4px;
-  --rtm-radius-sm:     6px;
-  --rtm-radius-md:     8px;
-  --rtm-radius-lg:     10px;
-  --rtm-shadow-xs:     0 1px 2px rgba(0,0,0,.06);
-  --rtm-shadow-sm:     0 1px 2px rgba(0,0,0,.06), 0 1px 1px rgba(0,0,0,.04);
-  --rtm-shadow-md:     0 4px 12px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.05);
-  --rtm-control-h:     2.5rem;
-  --rtm-tr:            150ms ease;
-  /* Segoe UI (Office), com fallback pro stack padrão do app — troca não é
-     global, só escopada aqui. */
-  --rtm-font:          var(--font-sans);
-}
-
-body.theme-dark :where(.rtm-page, .select2-container, .select2-dropdown) {
-  --rtm-primary:       #479ef5;
-  --rtm-primary-hover: #62abf5;
-  --rtm-primary-soft:  rgba(71, 158, 245, .16);
-  --rtm-primary-softer:rgba(71, 158, 245, .08);
-  --rtm-ring:          rgba(71, 158, 245, .35);
-  --rtm-surface:       #1a1d24;
-  --rtm-fill:          #20242c;
-  --rtm-fill-2:        #262a33;
-  --rtm-hover:         rgba(255, 255, 255, .045);
-  --rtm-text:          #f1f2f5;
-  --rtm-text-2:        #cfd3da;
-  --rtm-muted:         #b7bcc6;
-  --rtm-soft:          #8992a0;
-  --rtm-border:        #2a2e38;
-  --rtm-border-2:      #363b47;
-}
-
-.rtm-page, .rtm-page * { box-sizing: border-box; min-width: 0; }
-.rtm-page {
-  display: grid; gap: 14px; color: var(--rtm-text);
-  max-width: 1440px; margin-inline: auto; width: 100%;
-  font-family: var(--rtm-font);
-}
-
-/* ── Botões (sóbrios, raio-sm) ── */
-.rtm-page .btn, .rtm-page .btn-primary, .rtm-page .btn-light {
-  min-height: var(--rtm-control-h); padding: 0 16px; border-radius: var(--rtm-radius-sm);
-  font-weight: 500; font-size: var(--text-base);
-  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-  cursor: pointer; text-decoration: none; border: 1px solid transparent; white-space: nowrap;
-  transition: background var(--rtm-tr), border-color var(--rtm-tr), color var(--rtm-tr);
-}
-.rtm-page .btn, .rtm-page .btn-light { background: transparent; border-color: var(--rtm-border-2); color: var(--rtm-text); }
-.rtm-page .btn:hover, .rtm-page .btn-light:hover { background: var(--rtm-hover); }
-.rtm-page .btn-primary { background: var(--rtm-primary); border-color: var(--rtm-primary); color: #fff; box-shadow: var(--rtm-shadow-xs); }
-.rtm-page .btn-primary:hover { background: var(--rtm-primary-hover); border-color: var(--rtm-primary-hover); }
-
-.rtm-icon-btn {
-  width: 34px; height: 34px; flex-shrink: 0; display: inline-grid; place-items: center;
-  border-radius: var(--rtm-radius-sm); border: 1px solid var(--rtm-border-2);
-  background: transparent; color: var(--rtm-muted); text-decoration: none;
-  transition: background var(--rtm-tr), color var(--rtm-tr), border-color var(--rtm-tr);
-}
-.rtm-icon-btn:hover { background: var(--rtm-primary-soft); color: var(--rtm-primary); border-color: color-mix(in srgb, var(--rtm-primary) 30%, transparent); }
-
-/* ── Toolbar ── */
-.rtm-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.rtm-count {
-  display: inline-flex; align-items: center; gap: 8px; color: var(--rtm-muted);
-  font-size: var(--text-sm); font-weight: 500; font-variant-numeric: tabular-nums;
-}
-.rtm-count::before { content: ""; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--rtm-soft); }
-
-/* ── Faixa de indicadores ── */
-.rtm-metrics {
-  display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 1px;
-  background: var(--rtm-border); border: 1px solid var(--rtm-border); border-radius: var(--rtm-radius-lg);
-  overflow: hidden; box-shadow: var(--rtm-shadow-xs);
-}
-@media (max-width: 1080px) { .rtm-metrics { grid-template-columns: repeat(3, minmax(0,1fr)); } }
-@media (max-width: 620px)  { .rtm-metrics { grid-template-columns: repeat(2, minmax(0,1fr)); } }
-
-.rtm-metric {
-  display: flex; flex-direction: column; padding: 13px 15px; background: var(--rtm-surface);
-  border: 0; text-align: left; font: inherit; color: inherit; text-decoration: none;
-  transition: background var(--rtm-tr);
-}
-a.rtm-metric { cursor: pointer; }
-.rtm-metric:hover { background: var(--rtm-fill); }
-.rtm-metric.is-active { background: var(--rtm-primary-softer); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rtm-primary) 28%, transparent); }
-.rtm-metric-static { cursor: default; }
-
-.rtm-metric-l { display: flex; align-items: center; gap: 7px; font-size: var(--text-2xs); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--rtm-muted); }
-.rtm-metric-l .mdot { width: 7px; height: 7px; border-radius: var(--radius-pill); flex-shrink: 0; }
-.rtm-metric.is-active .rtm-metric-l { color: var(--rtm-primary); }
-.rtm-metric-v { margin-top: 9px; font-size: var(--text-xl); font-weight: 700; line-height: 1.05; color: var(--rtm-text); font-variant-numeric: tabular-nums; }
-.rtm-metric-s { margin-top: 5px; font-size: var(--text-2xs); color: var(--rtm-soft); }
-
-/* ── Filtro retrátil ── */
-.rtm-filters { background: var(--rtm-surface); border: 1px solid var(--rtm-border); border-radius: var(--rtm-radius-lg); box-shadow: var(--rtm-shadow-xs); overflow: hidden; }
-.rtm-filters-summary {
-  min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 12px 16px;
-  color: var(--rtm-text); font-size: var(--text-sm); font-weight: 600;
-  cursor: pointer; user-select: none; list-style: none; transition: background var(--rtm-tr);
-}
-.rtm-filters-summary::-webkit-details-marker { display: none; }
-.rtm-filters-summary:hover { background: var(--rtm-fill); }
-.rtm-filters-summary > i:first-child { color: var(--rtm-muted); font-size: var(--text-sm); }
-.rtm-filter-chevron { margin-left: auto; color: var(--rtm-muted); transition: transform 200ms ease, color 200ms ease; }
-.rtm-filters[open] .rtm-filter-chevron { transform: rotate(180deg); color: var(--rtm-primary); }
-.rtm-filter-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--rtm-primary); flex-shrink: 0; }
-
-.rtm-filters-body { padding: 14px 16px 16px; border-top: 1px solid var(--rtm-border); }
-.rtm-filters-grid { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)) auto; gap: 12px; align-items: end; }
-@media (max-width: 1180px) { .rtm-filters-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
-@media (max-width: 640px)  { .rtm-filters-grid { grid-template-columns: 1fr; } }
-
-.rtm-fgroup { min-width: 0; }
-.rtm-fgroup label { display: block; margin-bottom: 6px; color: var(--rtm-muted); font-size: var(--text-xs); font-weight: 500; }
-.rtm-fctl {
-  width: 100%; min-height: var(--rtm-control-h); padding: 0 12px; border: 1px solid var(--rtm-border-2);
-  border-radius: var(--rtm-radius-sm); background: var(--rtm-surface); color: var(--rtm-text);
-  font-size: var(--text-base); font-family: inherit; outline: none; transition: border-color var(--rtm-tr), box-shadow var(--rtm-tr);
-}
-.rtm-fctl:hover { border-color: var(--separator-strong); }
-.rtm-fctl:focus { border-color: var(--rtm-primary); box-shadow: 0 0 0 4px var(--rtm-ring); }
-.rtm-factions { display: flex; gap: 8px; }
-
-/* ── Card genérico ── */
-.rtm-card { background: var(--rtm-surface); border: 1px solid var(--rtm-border); border-radius: var(--rtm-radius-lg); box-shadow: var(--rtm-shadow-xs); overflow: hidden; }
-.rtm-card-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--rtm-border); }
-.rtm-card-title { display: flex; align-items: center; gap: 8px; color: var(--rtm-text); font-size: var(--text-sm); font-weight: 600; }
-.rtm-card-title i { color: var(--rtm-muted); font-size: var(--text-sm); }
-
-/* ── Pendências (acompanhamento) ── */
-.rtm-pending { border-color: color-mix(in srgb, var(--rtm-warning) 30%, var(--rtm-border-2)); }
-.rtm-pending .rtm-card-header { background: var(--rtm-warning-bg); border-bottom-color: color-mix(in srgb, var(--rtm-warning) 22%, transparent); }
-.rtm-pending .rtm-card-title { color: color-mix(in srgb, var(--rtm-warning) 55%, var(--rtm-text) 45%); }
-.rtm-pending .rtm-card-title i { color: var(--rtm-warning); }
-.rtm-pending-note { padding: 10px 16px 0; font-size: var(--text-xs); color: var(--rtm-muted); }
-.rtm-pending-more { padding: 8px 16px 12px; font-size: var(--text-xs); color: var(--rtm-muted); }
-
-/* ── Tabela ── */
-.rtm-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.rtm-table { width: 100%; border-collapse: collapse; text-align: left; }
-.rtm-table thead th {
-  background: var(--rtm-fill); color: var(--rtm-muted); font-weight: 600; font-size: var(--text-2xs);
-  text-transform: uppercase; letter-spacing: .05em; padding: 10px 14px; border-bottom: 1px solid var(--rtm-border); white-space: nowrap;
-}
-.rtm-table tbody td { padding: 11px 14px; border-bottom: 1px solid var(--rtm-border); vertical-align: middle; color: var(--rtm-text); font-size: var(--text-sm); }
-.rtm-table tbody tr:hover td { background: var(--rtm-fill); }
-.rtm-table tbody tr:last-child td { border-bottom: none; }
-
-.rtm-colab { display: flex; align-items: center; gap: 9px; min-width: 0; }
-.rtm-avatar {
-  width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; border-radius: var(--rtm-radius-sm);
-  background: var(--rtm-fill-2); color: var(--rtm-text-2); font-size: var(--text-xs); font-weight: 700; text-transform: uppercase;
-}
-.rtm-colab-name { font-weight: 600; font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.rtm-item-cell { display: grid; gap: .2rem; }
-.rtm-item-name { font-weight: 600; font-size: var(--text-sm); overflow-wrap: anywhere; }
-.rtm-item-serie { display: inline-flex; align-items: center; gap: .3rem; color: var(--rtm-muted); font-size: var(--text-2xs); font-family: var(--font-mono); }
-
-.rtm-cat-cell { display: grid; gap: .15rem; font-size: var(--text-xs); }
-.rtm-cat-sub { color: var(--rtm-text-2); font-weight: 600; }
-.rtm-cat-forn { color: var(--rtm-muted); }
-
-.badge {
-  display: inline-flex; align-items: center; gap: .3rem; padding: .25rem .55rem; border-radius: var(--rtm-radius-xs);
-  font-size: var(--text-2xs); font-weight: 600; white-space: nowrap;
-}
-.badge::before { content: ""; width: .35rem; height: .35rem; border-radius: var(--radius-pill); display: block; }
-.badge.green  { background: var(--rtm-success-bg); color: var(--rtm-success); }
-.badge.green::before  { background: var(--rtm-success); }
-.badge.orange { background: var(--rtm-warning-bg); color: var(--rtm-warning); }
-.badge.orange::before { background: var(--rtm-warning); }
-
-.rtm-date-main { color: var(--rtm-text); font-weight: 600; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
-.rtm-actions { display: flex; gap: 6px; justify-content: flex-end; }
-
-/* ── Vazio / Paginação ── */
-.rtm-empty { text-align: center; padding: 3.5rem 1.25rem; color: var(--rtm-muted); }
-.rtm-empty i { display: block; margin-bottom: 1rem; color: var(--rtm-soft); font-size: 2rem; }
-.rtm-empty strong { display: block; margin-bottom: .5rem; color: var(--rtm-text); font-size: var(--text-md); font-weight: 600; }
-
-.pagination { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; background: var(--rtm-surface); border-top: 1px solid var(--rtm-border); gap: .75rem; flex-wrap: wrap; }
-.pagination-info { color: var(--rtm-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-.pagination-info strong { color: var(--rtm-text); }
-
-/* ── Select2 ── */
-.select2-container { width: 100% !important; }
-.select2-container .select2-selection--single {
-  min-height: var(--rtm-control-h) !important; border: 1px solid var(--rtm-border-2) !important;
-  border-radius: var(--rtm-radius-sm) !important; background-color: var(--rtm-surface) !important;
-  display: flex !important; align-items: center !important;
-}
-.select2-container--default.select2-container--focus .select2-selection--single { border-color: var(--rtm-primary) !important; box-shadow: 0 0 0 4px var(--rtm-ring) !important; }
-.select2-container--default .select2-selection--single .select2-selection__rendered { color: var(--rtm-text) !important; font-size: var(--text-base); padding-left: 12px; line-height: calc(var(--rtm-control-h) - 2px) !important; }
-.select2-container--default .select2-selection--single .select2-selection__placeholder { color: var(--rtm-soft) !important; }
-.select2-container--default .select2-selection--single .select2-selection__arrow { height: calc(var(--rtm-control-h) - 2px) !important; }
-.select2-dropdown { z-index: 9999 !important; background: var(--rtm-surface) !important; color: var(--rtm-text) !important; border: 1px solid var(--rtm-border-2) !important; border-radius: var(--rtm-radius-md) !important; overflow: hidden !important; box-shadow: var(--rtm-shadow-md); }
-.select2-results__option { color: var(--rtm-text) !important; }
-.select2-results__option--highlighted { background: var(--rtm-primary) !important; color: #fff !important; }
-.select2-results__option[aria-selected=true] { background: var(--rtm-primary-soft) !important; color: var(--rtm-primary) !important; }
-.select2-search__field { border: 1px solid var(--rtm-border-2) !important; border-radius: var(--radius-sm) !important; background: var(--rtm-surface) !important; color: var(--rtm-text) !important; outline: none !important; }
-
-/* ── Responsivo (tabela → cartão) ── */
-@media (max-width: 768px) {
-  .rtm-table, .rtm-table thead, .rtm-table tbody, .rtm-table th, .rtm-table td, .rtm-table tr { display: block; width: 100%; }
-  .rtm-table thead { display: none; }
-  .rtm-table tbody { display: grid; gap: .75rem; padding: .75rem; }
-  .rtm-table tbody tr { border: 1px solid var(--rtm-border); border-radius: var(--rtm-radius-md); background: var(--rtm-surface); padding: .75rem; box-shadow: var(--rtm-shadow-xs); }
-  .rtm-table tbody td { border-bottom: 1px solid var(--rtm-border); padding: .6rem 0; display: grid; grid-template-columns: minmax(5.5rem,.4fr) minmax(0,1fr); gap: .75rem; align-items: start; }
-  .rtm-table tbody td:last-child { border-bottom: 0; }
-  .rtm-table tbody td::before { content: attr(data-label); color: var(--rtm-muted); font-size: var(--text-2xs); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
-  .rtm-actions { justify-content: flex-start; }
-}
-</style>
+{% comment %}Folha própria (`.rt-*`), em vez do <style> de 240 linhas que esta
+   tela carregava com a paleta Fluent escrita à mão. Ver o cabeçalho do
+   arquivo.{% endcomment %}
+<link rel="stylesheet" href="{% static 'css/ds-repositorio-termos.css' %}?v={{ assets_version }}">
 {% endblock %}
 
 {% block content %}
-<div class="rtm-page">
+<div class="rt-page">
 
-  <!-- Toolbar -->
-  <section class="rtm-toolbar" aria-label="Resumo">
-    <span class="rtm-count">{{ page_obj.paginator.count }} termo{{ page_obj.paginator.count|pluralize }} assinado{{ page_obj.paginator.count|pluralize }} encontrado{{ page_obj.paginator.count|pluralize }}</span>
-  </section>
-
-  <!-- Indicadores (clique para filtrar) -->
-  <section class="rtm-metrics" aria-label="Indicadores — clique numa célula para filtrar">
-    <div class="rtm-metric rtm-metric-static">
-      <span class="rtm-metric-l"><span class="mdot" style="background:var(--rtm-primary)"></span> Termos assinados</span>
-      <span class="rtm-metric-v">{{ kpi.total_termos }}</span>
+  {# ─── Resumo do acervo ───────────────────────────────────────────── #}
+  <div class="rt-resumo">
+    <div class="rt-kpi">
+      <span class="rt-kpi-valor">{{ resumo.total }}</span>
+      <span class="rt-kpi-rotulo">Termos no acervo</span>
     </div>
-
-    <button type="button" class="rtm-metric {% if f_tipo == 'entrega' %}is-active{% endif %}"
-            data-mv-tipo="entrega" aria-pressed="{% if f_tipo == 'entrega' %}true{% else %}false{% endif %}">
-      <span class="rtm-metric-l"><span class="mdot" style="background:var(--rtm-success)"></span> Entregas</span>
-      <span class="rtm-metric-v">{{ kpi.entregas }}</span>
-    </button>
-
-    <button type="button" class="rtm-metric {% if f_tipo == 'devolucao' %}is-active{% endif %}"
-            data-mv-tipo="devolucao" aria-pressed="{% if f_tipo == 'devolucao' %}true{% else %}false{% endif %}">
-      <span class="rtm-metric-l"><span class="mdot" style="background:var(--rtm-warning)"></span> Devoluções</span>
-      <span class="rtm-metric-v">{{ kpi.devolucoes }}</span>
-    </button>
-
-    <div class="rtm-metric rtm-metric-static">
-      <span class="rtm-metric-l"><i class="fa-solid fa-users" aria-hidden="true"></i> Colaboradores</span>
-      <span class="rtm-metric-v">{{ kpi.colaboradores }}</span>
+    <div class="rt-kpi">
+      <span class="rt-kpi-valor">{{ resumo.digitais }}</span>
+      <span class="rt-kpi-rotulo">Assinados no tablet</span>
     </div>
-
-    <div class="rtm-metric rtm-metric-static">
-      <span class="rtm-metric-l"><i class="fa-solid fa-truck-field" aria-hidden="true"></i> Fornecedores</span>
-      <span class="rtm-metric-v">{{ kpi.fornecedores }}</span>
+    <div class="rt-kpi">
+      <span class="rt-kpi-valor">{{ resumo.anexos }}</span>
+      <span class="rt-kpi-rotulo">Anexados em papel</span>
     </div>
+    <div class="rt-kpi">
+      <span class="rt-kpi-valor">{{ resumo.entregas }}</span>
+      <span class="rt-kpi-rotulo">Entregas</span>
+    </div>
+    <div class="rt-kpi">
+      <span class="rt-kpi-valor">{{ resumo.devolucoes }}</span>
+      <span class="rt-kpi-rotulo">Devoluções</span>
+    </div>
+    <div class="rt-kpi" {% if pendentes_total %}data-tom="alerta"{% endif %}>
+      <span class="rt-kpi-valor">{{ pendentes_total }}</span>
+      <span class="rt-kpi-rotulo">Sem termo</span>
+    </div>
+  </div>
 
-    {% if kpi.pendentes %}
-      <a href="#rtm-pendencias" class="rtm-metric">
-        <span class="rtm-metric-l"><span class="mdot" style="background:var(--rtm-danger)"></span> Pendentes</span>
-        <span class="rtm-metric-v" style="color:var(--rtm-danger)">{{ kpi.pendentes }}</span>
-        <span class="rtm-metric-s">sem termo anexado</span>
-      </a>
-    {% else %}
-      <div class="rtm-metric rtm-metric-static">
-        <span class="rtm-metric-l"><span class="mdot" style="background:var(--rtm-success)"></span> Pendentes</span>
-        <span class="rtm-metric-v">0</span>
-        <span class="rtm-metric-s">tudo em dia</span>
-      </div>
-    {% endif %}
-  </section>
-
-  <!-- Filtro retrátil -->
-  <details id="rtmFilter" class="rtm-filters" {% if f_q or f_tipo or f_subtipo or f_fornecedor or f_ini or f_fim %}open{% endif %}>
-    <summary class="rtm-filters-summary">
-      <i class="fa-solid fa-filter" aria-hidden="true"></i>
-      Filtros de busca
-      {% if f_q or f_tipo or f_subtipo or f_fornecedor or f_ini or f_fim %}<span class="rtm-filter-dot"></span>{% endif %}
-      <i class="fa-solid fa-chevron-down rtm-filter-chevron" aria-hidden="true"></i>
+  {# ─── Filtros (retrátil) ─────────────────────────────────────────── #}
+  {% comment %}Mesmo padrão <details>/<summary> do filtro de Movimentações:
+     nativo, sem JS. Aberto por padrão quando algum filtro já está em uso —
+     senão o próprio filtro aplicado ficaria escondido do usuário que o
+     aplicou.{% endcomment %}
+  <details class="rt-filtros-details" {% if filtros.algum %}open{% endif %}>
+    <summary class="rt-filtros-summary">
+      <span class="rt-filtros-summary-icon"><i class="fa-solid fa-filter" aria-hidden="true"></i></span>
+      Buscar no acervo
+      {% if filtros.algum %}<span class="rt-filtros-active-dot" title="Há filtros aplicados"></span>{% endif %}
+      <i class="fa-solid fa-chevron-down rt-filtros-chevron" aria-hidden="true"></i>
     </summary>
-    <div class="rtm-filters-body">
-      <form method="get" id="rtmFilterForm" autocomplete="off">
-        <div class="rtm-filters-grid">
-          <div class="rtm-fgroup">
-            <label for="id_q">Colaborador / Equipamento</label>
-            <input type="text" name="q" id="id_q" value="{{ f_q }}" class="rtm-fctl" placeholder="Nome, item ou nº de série...">
+    <div class="rt-filtros-body">
+      <form method="get" class="rt-filtros">
+        {% comment %}`agrupar` viaja escondido para a busca não jogar o usuário
+           de volta no eixo padrão depois de ele escolher outro.{% endcomment %}
+        <input type="hidden" name="agrupar" value="{{ eixo.slug }}">
+
+        <div class="rt-filtros-grid">
+          <div class="rt-campo rt-campo-busca">
+            <label for="rt-q">Colaborador, equipamento, nº de série ou código de verificação</label>
+            <input type="search" id="rt-q" name="q" value="{{ filtros.q }}" class="ctrl"
+                   placeholder="Ex.: MARIA SILVA · NOTEBOOK · SN-123 · PDLZ-QWMC-A263">
           </div>
-          <div class="rtm-fgroup">
-            <label for="id_tipo_transferencia">Tipo</label>
-            <select name="tipo_transferencia" id="id_tipo_transferencia" class="rtm-fctl">
+
+          <div class="rt-campo">
+            <label for="rt-tipo">Tipo</label>
+            <select id="rt-tipo" name="tipo" class="ctrl">
               <option value="">Todos</option>
-              {% for value, label in tipo_transferencia_choices %}
-                <option value="{{ value }}" {% if f_tipo == value %}selected{% endif %}>{{ label }}</option>
+              {% for valor, rotulo in tipo_transferencia_choices %}
+                <option value="{{ valor }}" {% if filtros.tipo == valor %}selected{% endif %}>{{ rotulo }}</option>
               {% endfor %}
             </select>
           </div>
-          <div class="rtm-fgroup">
-            <label for="id_subtipo">Subtipo do Equipamento</label>
-            <select name="subtipo" id="id_subtipo" class="rtm-fctl select2-filter">
-              <option value="">Todos os subtipos</option>
-              {% for opt in subtipos_opcoes %}
-                <option value="{{ opt.item__subtipo_id }}" {% if f_subtipo == opt.item__subtipo_id|stringformat:"s" %}selected{% endif %}>
-                  {{ opt.item__subtipo__nome }}
-                </option>
+
+          <div class="rt-campo">
+            <label for="rt-origem">Origem</label>
+            <select id="rt-origem" name="origem" class="ctrl">
+              <option value="">Todas</option>
+              <option value="digital" {% if filtros.origem == 'digital' %}selected{% endif %}>Assinado no tablet</option>
+              <option value="anexo" {% if filtros.origem == 'anexo' %}selected{% endif %}>Anexado em papel</option>
+            </select>
+          </div>
+
+          <div class="rt-campo">
+            <label for="rt-fornecedor">Fornecedor</label>
+            <select id="rt-fornecedor" name="fornecedor" class="ctrl">
+              <option value="">Todos</option>
+              {% for forn in fornecedores_opcoes %}
+                <option value="{{ forn.id }}" {% if filtros.fornecedor == forn.id|stringformat:"s" %}selected{% endif %}>{{ forn.nome }}</option>
               {% endfor %}
             </select>
           </div>
-          <div class="rtm-fgroup">
-            <label for="id_fornecedor">Fornecedor</label>
-            <select name="fornecedor" id="id_fornecedor" class="rtm-fctl select2-filter">
-              <option value="">Todos os fornecedores</option>
-              {% for opt in fornecedores_opcoes %}
-                <option value="{{ opt.item__fornecedor_id }}" {% if f_fornecedor == opt.item__fornecedor_id|stringformat:"s" %}selected{% endif %}>
-                  {{ opt.item__fornecedor__nome }}
-                </option>
-              {% endfor %}
-            </select>
+
+          <div class="rt-campo">
+            <label for="rt-ini">De</label>
+            <input type="date" id="rt-ini" name="data_inicio" value="{{ filtros.data_inicio }}" class="ctrl">
           </div>
-          <div class="rtm-fgroup">
-            <label for="id_data_inicio">Período</label>
-            <div style="display:flex; gap:6px;">
-              <input type="date" name="data_inicio" id="id_data_inicio" value="{{ f_ini }}" class="rtm-fctl" title="Data início">
-              <input type="date" name="data_fim" id="id_data_fim" value="{{ f_fim }}" class="rtm-fctl" title="Data fim">
-            </div>
+
+          <div class="rt-campo">
+            <label for="rt-fim">Até</label>
+            <input type="date" id="rt-fim" name="data_fim" value="{{ filtros.data_fim }}" class="ctrl">
           </div>
-          <div class="rtm-fgroup rtm-factions">
-            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-filter" aria-hidden="true"></i> Filtrar</button>
-            <button type="button" id="btnLimparFiltros" class="btn btn-light"><i class="fa-solid fa-eraser" aria-hidden="true"></i></button>
-          </div>
+        </div>
+
+        <div class="rt-filtros-acoes">
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Buscar
+          </button>
+          {% if filtros.algum %}
+            <a href="{% url 'repositorio_termos' %}?agrupar={{ eixo.slug }}" class="btn btn-sm btn-ghost">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i> Limpar
+            </a>
+          {% endif %}
         </div>
       </form>
     </div>
   </details>
 
-  <!-- Pendências de assinatura -->
+  {# ─── Pendências ─────────────────────────────────────────────────── #}
   {% if pendentes %}
-    <div class="rtm-card rtm-pending" id="rtm-pendencias">
-      <div class="rtm-card-header">
-        <div class="rtm-card-title"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Pendentes de assinatura ({{ kpi.pendentes }})</div>
+    <div class="rt-card">
+      <div class="rt-card-head">
+        <h2 class="rt-card-title">
+          <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          Transferências sem termo
+        </h2>
+        <span class="rt-selo" data-tom="alerta">{{ pendentes_total }}</span>
       </div>
-      <p class="rtm-pending-note">Transferências já registradas sem o termo de responsabilidade anexado — acompanhar com o colaborador e anexar assim que assinado.</p>
-      <div class="rtm-table-wrap">
-        <table class="rtm-table">
-          <thead>
-            <tr>
-              <th>Colaborador</th>
-              <th>Equipamento</th>
-              <th>Tipo</th>
-              <th>Data</th>
-              <th style="text-align:right">Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for mov in pendentes %}
-              <tr>
-                <td data-label="Colaborador">
-                  <div class="rtm-colab">
-                    <div class="rtm-avatar">{{ mov.usuario.nome|default:"?"|slice:":1" }}</div>
-                    <span class="rtm-colab-name">{{ mov.usuario.nome|default:"Colaborador não informado" }}</span>
-                  </div>
-                </td>
-                <td data-label="Equipamento">
-                  <div class="rtm-item-cell">
-                    <span class="rtm-item-name">{{ mov.item.nome }}</span>
-                    {% if mov.item.numero_serie %}<span class="rtm-item-serie"><i class="fa-solid fa-barcode" aria-hidden="true"></i> {{ mov.item.numero_serie }}</span>{% endif %}
-                  </div>
-                </td>
-                <td data-label="Tipo">
-                  {% if mov.tipo_transferencia == "entrega" %}
-                    <span class="badge green">Entrega</span>
-                  {% else %}
-                    <span class="badge orange">Devolução</span>
-                  {% endif %}
-                </td>
-                <td data-label="Data" class="rtm-date-main">{{ mov.created_at|date:"d/m/Y" }}</td>
-                <td data-label="Ação">
-                  <div class="rtm-actions">
-                    <a href="{% url 'movimentacao_update' mov.pk %}" class="btn btn-light" style="min-height:32px; padding:0 12px; font-size:12.5px;">
-                      <i class="fa-solid fa-paperclip" aria-hidden="true"></i> Anexar termo
-                    </a>
-                  </div>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <div class="rt-linha-cab rt-linha-cab--pendente" aria-hidden="true">
+        <span></span>
+        <span>Equipamento</span>
+        <span>Tipo</span>
+        <span>Data</span>
+        <span>Ações</span>
       </div>
-      {% if kpi.pendentes > 8 %}
-        <p class="rtm-pending-more">Mostrando as 8 pendências mais recentes de {{ kpi.pendentes }} no total.</p>
+      <div class="rt-linhas">
+        {% for mov in pendentes %}
+          <div class="rt-linha rt-linha--pendente">
+            <span class="rt-origem" data-origem="anexo" title="Sem documento">
+              <i class="fa-solid fa-file-circle-question" aria-hidden="true"></i>
+            </span>
+            <span>
+              <span class="rt-linha-titulo">{{ mov.item.nome }}</span>
+              <span class="rt-linha-meta">
+                {{ mov.usuario.nome|default:"Colaborador não informado" }}
+                {% if mov.item.numero_serie %} · <code>{{ mov.item.numero_serie }}</code>{% endif %}
+              </span>
+            </span>
+            <span>
+              <span class="rt-selo" data-tom="{{ mov.tipo_transferencia|default:'neutro' }}">
+                {{ mov.get_tipo_transferencia_display|default:"—" }}
+              </span>
+            </span>
+            <span class="rt-linha-data">{{ mov.created_at|date:"d/m/Y" }}</span>
+            <span class="rt-linha-acoes">
+              {% comment %}Leva para a sessão de assinatura já com o colaborador
+                 e o equipamento pré-selecionados; ao assinar, o PDF é anexado
+                 nesta mesma movimentação (`_movimentacoes_sugeridas`) e a
+                 pendência sai da lista sozinha.{% endcomment %}
+              {% if mov.usuario_id and mov.tipo_transferencia %}
+                <a href="{% url 'termo_assinatura_preparar' mov.tipo_transferencia %}?item={{ mov.item_id }}&colaborador={{ mov.usuario_id }}"
+                   class="btn btn-sm btn-primary" title="Colher a assinatura no tablet">
+                  <i class="fa-solid fa-signature" aria-hidden="true"></i> Assinar
+                </a>
+              {% endif %}
+              <a href="{% url 'movimentacao_update' mov.pk %}" class="btn btn-sm btn-ghost" title="Anexar o PDF do termo em papel">
+                <i class="fa-solid fa-paperclip" aria-hidden="true"></i> Anexar
+              </a>
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+      {% if pendentes_total > 8 %}
+        <div class="rt-paginacao">
+          <span class="rt-paginacao-info">
+            Mostrando as 8 mais recentes de {{ pendentes_total }}.
+          </span>
+        </div>
       {% endif %}
     </div>
   {% endif %}
 
-  <!-- Termos assinados -->
-  <div class="rtm-card">
-    <div class="rtm-card-header">
-      <div class="rtm-card-title"><i class="fa-solid fa-file-signature" aria-hidden="true"></i> Termos assinados</div>
-    </div>
-
-    {% if page_obj.object_list %}
-      <div class="rtm-table-wrap">
-        <table class="rtm-table">
-          <thead>
-            <tr>
-              <th>Colaborador</th>
-              <th>Equipamento</th>
-              <th>Categoria / Fornecedor</th>
-              <th>Tipo</th>
-              <th>Data</th>
-              <th style="text-align:right">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for mov in page_obj.object_list %}
-              <tr>
-                <td data-label="Colaborador">
-                  <div class="rtm-colab">
-                    <div class="rtm-avatar">{{ mov.usuario.nome|default:"?"|slice:":1" }}</div>
-                    <span class="rtm-colab-name">{{ mov.usuario.nome|default:"Colaborador não informado" }}</span>
-                  </div>
-                </td>
-                <td data-label="Equipamento">
-                  <div class="rtm-item-cell">
-                    <span class="rtm-item-name">{{ mov.item.nome }}</span>
-                    {% if mov.item.numero_serie %}<span class="rtm-item-serie"><i class="fa-solid fa-barcode" aria-hidden="true"></i> {{ mov.item.numero_serie }}</span>{% endif %}
-                  </div>
-                </td>
-                <td data-label="Categoria">
-                  <div class="rtm-cat-cell">
-                    <span class="rtm-cat-sub">{{ mov.item.subtipo.nome|default:"Sem subtipo" }}</span>
-                    <span class="rtm-cat-forn">{{ mov.item.fornecedor.nome|default:"Sem fornecedor" }}</span>
-                  </div>
-                </td>
-                <td data-label="Tipo">
-                  {% if mov.tipo_transferencia == "entrega" %}
-                    <span class="badge green">Entrega</span>
-                  {% else %}
-                    <span class="badge orange">Devolução</span>
-                  {% endif %}
-                </td>
-                <td data-label="Data" class="rtm-date-main">{{ mov.created_at|date:"d/m/Y" }}</td>
-                <td data-label="Ações">
-                  <div class="rtm-actions">
-                    <a href="{{ mov.termo_pdf.url }}" target="_blank" rel="noopener" class="btn btn-primary" style="min-height:32px; padding:0 12px; font-size:12.5px;" title="Abrir termo assinado">
-                      <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Ver termo
-                    </a>
-                    <a href="{% url 'movimentacao_detail' mov.pk %}" class="rtm-icon-btn" title="Ver movimentação de origem">
-                      <i class="fa-solid fa-eye" aria-hidden="true"></i>
-                    </a>
-                  </div>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+  {# ─── Navegação por pastas ───────────────────────────────────────── #}
+  {% if visao == 'pastas' %}
+    <div class="rt-card">
+      <div class="rt-card-head">
+        <h2 class="rt-card-title"><i class="fa-solid fa-folder-tree" aria-hidden="true"></i> Pastas</h2>
+        <div class="rt-spacer"></div>
+        <div class="rt-eixos">
+          {% for opcao in eixos %}
+            <a class="rt-eixo" aria-current="{% if opcao.slug == eixo.slug %}true{% else %}false{% endif %}"
+               href="?agrupar={{ opcao.slug }}{% if qs_raiz %}&{{ qs_raiz }}{% endif %}"
+               title="{{ opcao.descricao }}">
+              <i class="fa-solid {{ opcao.icone }}" aria-hidden="true"></i> {{ opcao.rotulo }}
+            </a>
+          {% endfor %}
+        </div>
       </div>
-      {% if page_obj.has_other_pages %}
-        <div class="pagination">
-          <span class="pagination-info">
-            Mostrando <strong>{{ page_obj.start_index }}</strong>–<strong>{{ page_obj.end_index }}</strong>
-            de <strong>{{ page_obj.paginator.count }}</strong>
-          </span>
-          <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
-            {% if page_obj.has_previous %}
-              <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="btn btn-light"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i> Anterior</a>
-            {% endif %}
-            {% if page_obj.has_next %}
-              <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="btn btn-light">Próxima <i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>
-            {% endif %}
+
+      {% if page_obj.object_list %}
+        <div class="rt-pastas">
+          {% for pasta in page_obj.object_list %}
+            <a class="rt-pasta" href="?agrupar={{ eixo.slug }}&pasta={{ pasta.chave|urlencode }}{% if qs_raiz %}&{{ qs_raiz }}{% endif %}">
+              <span class="rt-pasta-icone"><i class="fa-solid fa-folder" aria-hidden="true"></i></span>
+              <span class="rt-pasta-corpo">
+                <span class="rt-pasta-nome" title="{{ pasta.rotulo }}">{{ pasta.rotulo }}</span>
+                <span class="rt-pasta-meta">
+                  {{ pasta.total }} termo{{ pasta.total|pluralize }} ·
+                  último em {{ pasta.ultima_data|date:"d/m/Y" }}
+                </span>
+                <span class="rt-pasta-tags">
+                  {% if pasta.entregas %}<span class="rt-selo" data-tom="entrega">{{ pasta.entregas }} entrega{{ pasta.entregas|pluralize }}</span>{% endif %}
+                  {% if pasta.devolucoes %}<span class="rt-selo" data-tom="devolucao">{{ pasta.devolucoes }} devolução{{ pasta.devolucoes|pluralize:"ões" }}</span>{% endif %}
+                  {% if pasta.digitais %}<span class="rt-selo" data-tom="digital"><i class="fa-solid fa-signature" aria-hidden="true"></i> {{ pasta.digitais }}</span>{% endif %}
+                </span>
+              </span>
+            </a>
+          {% endfor %}
+        </div>
+        {% if eixo.multiplo %}
+          <div class="rt-paginacao">
+            <span class="rt-paginacao-info">
+              <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+              Um termo com equipamentos de fornecedores diferentes aparece em mais
+              de uma pasta — por isso a soma das pastas pode passar
+              {{ resumo.total }}.
+            </span>
           </div>
+        {% endif %}
+        {% include "front/movimentacao/_rt_paginacao.html" %}
+      {% else %}
+        <div class="rt-vazio">
+          <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
+          <strong>Nenhum termo no acervo</strong>
+          {% if filtros.algum %}
+            Nenhum resultado para os filtros aplicados.
+          {% else %}
+            Termos assinados no tablet e PDFs anexados nas transferências
+            aparecem aqui automaticamente.
+          {% endif %}
         </div>
       {% endif %}
-    {% else %}
-      <div class="rtm-empty">
-        <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
-        <strong>Nenhum termo encontrado</strong>
-        {% if f_q or f_tipo or f_subtipo or f_fornecedor or f_ini or f_fim %}
-          Nenhum resultado para os filtros aplicados. Tente ajustar a busca.
-        {% else %}
-          Os termos assinados anexados nas entregas/devoluções de equipamento aparecerão aqui automaticamente.
+    </div>
+  {% endif %}
+
+  {# ─── Conteúdo de uma pasta, ou resultado da busca ───────────────── #}
+  {% if visao != 'pastas' %}
+    {% if visao == 'pasta' %}
+      <nav class="rt-trilha" aria-label="Trilha do arquivo">
+        <a href="?agrupar={{ eixo.slug }}{% if qs_raiz %}&{{ qs_raiz }}{% endif %}">
+          <i class="fa-solid fa-folder-tree" aria-hidden="true"></i> {{ eixo.rotulo }}
+        </a>
+        <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+        <strong>{{ pasta_rotulo }}</strong>
+      </nav>
+    {% endif %}
+
+    <div class="rt-card">
+      <div class="rt-card-head">
+        <h2 class="rt-card-title">
+          {% if visao == 'busca' %}
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            Resultado da busca
+          {% else %}
+            <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
+            {{ pasta_rotulo }}
+          {% endif %}
+        </h2>
+        <span class="rt-selo" data-tom="neutro">
+          {{ page_obj.paginator.count }} termo{{ page_obj.paginator.count|pluralize }}
+        </span>
+        <div class="rt-spacer"></div>
+        {% if visao == 'busca' %}
+          <span class="rt-paginacao-info">A busca atravessa todas as pastas.</span>
         {% endif %}
       </div>
-    {% endif %}
-  </div>
+
+      {% if page_obj.object_list %}
+        <div class="rt-linha-cab rt-linha-cab--termo" aria-hidden="true">
+          <span></span>
+          <span>Equipamento</span>
+          <span>Centro de custo / Fornecedor</span>
+          <span>Tipo</span>
+          <span>Data</span>
+          <span>Ações</span>
+        </div>
+        <div class="rt-linhas">
+          {% for linha in page_obj.object_list %}
+            <div class="rt-linha rt-linha--termo">
+              <span class="rt-origem" data-origem="{{ linha.origem }}"
+                    title="{% if linha.digital %}Assinado eletronicamente no tablet{% else %}PDF anexado na transferência{% endif %}">
+                <i class="fa-solid {% if linha.digital %}fa-signature{% else %}fa-paperclip{% endif %}" aria-hidden="true"></i>
+              </span>
+
+              <span>
+                <span class="rt-linha-titulo">{{ linha.equipamento_resumo }}</span>
+                <span class="rt-linha-meta">
+                  {{ linha.colaborador_nome }}
+                  {% if linha.equipamentos|length == 1 and linha.equipamentos.0.serie %}
+                    · <code>{{ linha.equipamentos.0.serie }}</code>
+                  {% elif linha.equipamentos|length > 1 %}
+                    · {{ linha.equipamentos|length }} equipamentos neste termo
+                  {% endif %}
+                  {% if linha.codigo_verificacao %}
+                    · <code>{{ linha.codigo_verificacao }}</code>
+                  {% endif %}
+                </span>
+              </span>
+
+              <span>
+                <span class="rt-linha-meta" style="margin-top:0">
+                  {{ linha.centro_custo_nome }}<br>{{ linha.fornecedor_resumo }}
+                </span>
+              </span>
+
+              <span>
+                <span class="rt-selo" data-tom="{{ linha.tipo|default:'neutro' }}">{{ linha.tipo_label }}</span>
+                {% if linha.desligamento %}
+                  <span class="rt-selo" data-tom="alerta" title="A assinatura encerrou o vínculo do colaborador">
+                    <i class="fa-solid fa-user-slash" aria-hidden="true"></i> desligamento
+                  </span>
+                {% endif %}
+                {% if linha.compartilhado %}
+                  <span class="rt-selo" data-tom="info" title="Equipamento de uso compartilhado">
+                    <i class="fa-solid fa-users" aria-hidden="true"></i> compartilhado
+                  </span>
+                {% endif %}
+              </span>
+
+              <span class="rt-linha-data">{{ linha.data|date:"d/m/Y" }}</span>
+
+              <span class="rt-linha-acoes">
+                <a href="{{ linha.pdf_url }}" target="_blank" rel="noopener"
+                   class="btn btn-sm btn-primary" title="Abrir o PDF do termo">
+                  <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Ver termo
+                </a>
+                <a href="{{ linha.detalhe_url }}" class="btn btn-sm btn-ghost"
+                   title="{% if linha.digital %}Ver o ato da assinatura (IP, aparelho, integridade){% else %}Ver a movimentação de origem{% endif %}">
+                  <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                </a>
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+
+        {% include "front/movimentacao/_rt_paginacao.html" %}
+      {% else %}
+        <div class="rt-vazio">
+          <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
+          <strong>Nada por aqui</strong>
+          {% if visao == 'busca' %}
+            Nenhum termo corresponde a “{{ filtros.q }}”. A busca cobre nome do
+            colaborador, nome e nº de série do equipamento e o código de
+            verificação do documento.
+          {% else %}
+            Esta pasta não tem termos com os filtros aplicados.
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
 
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<script>
-$(document).ready(function () {
-    $('.select2-filter').select2({ width: '100%' });
-
-    $('#id_tipo_transferencia, #id_subtipo, #id_fornecedor, #id_data_inicio, #id_data_fim').on('change', function () {
-        $('#rtmFilterForm').submit();
-    });
-
-    $('#btnLimparFiltros').on('click', function () {
-        window.location.href = window.location.pathname;
-    });
-
-    var timeout = null;
-    $('#id_q').on('keyup', function () {
-        clearTimeout(timeout);
-        timeout = setTimeout(function () { $('#rtmFilterForm').submit(); }, 800);
-    });
-});
-
-/* Indicadores clicáveis (Entregas/Devoluções = filtro por tipo) */
-(function () {
-    document.querySelectorAll('.rtm-metric[data-mv-tipo]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var active = btn.getAttribute('aria-pressed') === 'true';
-            var params = new URLSearchParams(window.location.search);
-            params.delete('page');
-            if (active) { params.delete('tipo_transferencia'); }
-            else { params.set('tipo_transferencia', btn.dataset.mvTipo); }
-            var qs = params.toString();
-            window.location.href = window.location.pathname + (qs ? '?' + qs : '');
-        });
-    });
-})();
-
-/* Estado do filtro (persistido) */
-(function () {
-    var det = document.getElementById('rtmFilter');
-    if (!det) return;
-    var saved = localStorage.getItem('rtm_termos_filter_open');
-    if (saved === 'false') det.removeAttribute('open');
-    else if (saved === 'true') det.setAttribute('open', '');
-    det.addEventListener('toggle', function () {
-        localStorage.setItem('rtm_termos_filter_open', det.open ? 'true' : 'false');
-    });
-})();
-</script>
 {% endblock %}

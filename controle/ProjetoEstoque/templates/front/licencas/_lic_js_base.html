@@ -1,0 +1,120 @@
+{% comment %}
+Base de JS do módulo: jQuery + Select2 + os comportamentos comuns.
+
+Estava COPIADO em cinco templates do módulo, cada um com a sua versão do
+bloco de inicialização do Select2 e das mensagens em português — então
+"Nenhum resultado encontrado" aparecia em quatro telas e "Sem resultados" na
+quinta, e corrigir a altura do campo exigia lembrar de cinco arquivos.
+
+Comportamentos daqui, todos acionados por ATRIBUTO no HTML (nada de
+`onclick=` espalhado):
+
+  · `.lic-select`            → Select2 com os textos em pt-BR;
+  · `[data-lic-autosubmit]`  → envia o formulário ao mudar (filtro de select);
+  · `[data-lic-busca]`       → envia o formulário 600 ms depois de parar de
+                               digitar. Sem o atraso, cada tecla era uma
+                               requisição e a lista piscava enquanto a pessoa
+                               ainda escrevia;
+  · `[data-lic-tabs]`        → abas, com a aba atual no hash da URL para
+                               recarregar e compartilhar link caírem na mesma
+                               aba;
+  · `[data-lic-confirma]`    → confirmação antes de enviar, com o texto do
+                               próprio atributo.
+
+Nada aqui lê URL ou dado do servidor: isso entra por `json_script` na tela que
+precisa (CLAUDE.md, "Telas grandes"). Este arquivo é só comportamento.
+{% endcomment %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var TEXTOS = {
+    noResults: function () { return "Nenhum resultado encontrado"; },
+    searching: function () { return "Buscando..."; },
+    inputTooShort: function () { return "Digite para buscar"; },
+    errorLoading: function () { return "Falha ao buscar. Verifique a conexão."; }
+  };
+  window.LIC_SELECT2_TEXTOS = TEXTOS;
+
+  function iniciar() {
+    if (typeof jQuery !== "undefined") {
+      jQuery(".lic-select").each(function () {
+        var $el = jQuery(this);
+        if ($el.data("select2")) { return; }
+        $el.select2({
+          width: "100%",
+          // Com menos de 10 opções o campo de busca do Select2 ocupa mais
+          // espaço do que a lista inteira.
+          minimumResultsForSearch: $el.is("[data-lic-sempre-busca]") ? 0 : 10,
+          placeholder: $el.attr("data-placeholder") || "Selecione...",
+          allowClear: $el.is("[data-lic-limpavel]"),
+          language: TEXTOS
+        });
+      });
+
+      jQuery("[data-lic-autosubmit]").on("change", function () {
+        var form = this.form || this.closest("form");
+        if (form) { form.submit(); }
+      });
+    }
+
+    document.querySelectorAll("[data-lic-busca]").forEach(function (campo) {
+      var timer = null;
+      campo.addEventListener("input", function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          var form = campo.form || campo.closest("form");
+          if (form) { form.submit(); }
+        }, 600);
+      });
+    });
+
+    document.querySelectorAll("[data-lic-confirma]").forEach(function (el) {
+      el.addEventListener("submit", function (ev) {
+        if (!window.confirm(el.getAttribute("data-lic-confirma"))) {
+          ev.preventDefault();
+        }
+      });
+    });
+
+    document.querySelectorAll("[data-lic-tabs]").forEach(function (nav) {
+      var botoes = nav.querySelectorAll(".lic-tab-btn");
+
+      function abrir(nome, mexerNoHash) {
+        var achou = false;
+        botoes.forEach(function (b) {
+          var ativo = b.dataset.tab === nome;
+          achou = achou || ativo;
+          b.classList.toggle("is-active", ativo);
+          b.setAttribute("aria-selected", ativo ? "true" : "false");
+        });
+        if (!achou) { return; }
+        document.querySelectorAll(".lic-tab-panel").forEach(function (p) {
+          p.classList.toggle("is-active", p.id === "tab-" + nome);
+        });
+        // `replaceState` e não `pushState`: trocar de aba não é navegar, e
+        // encher o histórico faz o botão Voltar percorrer abas em vez de sair
+        // da tela.
+        if (mexerNoHash && history.replaceState) {
+          history.replaceState(null, "", "#" + nome);
+        }
+      }
+
+      botoes.forEach(function (b) {
+        b.addEventListener("click", function () { abrir(b.dataset.tab, true); });
+      });
+
+      var hash = (window.location.hash || "").replace("#", "");
+      if (hash) { abrir(hash, false); }
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", iniciar);
+  } else {
+    iniciar();
+  }
+})();
+</script>

@@ -145,14 +145,41 @@ class TokensSaoFonteUnicaTests(TestCase):
         pela cascata DO ELEMENTO onde foi declarada — então trocar só o
         `--system-green-soft` no escuro (escopo body) NÃO chega ao alias, e o
         chip de status "apaga" no fundo escuro.
+
+        Descoberto em 2026-10-07 em dois lugares do mesmo módulo: primeiro no
+        detalhe do termo assinado (`--surface-sunken` preso no cinza claro,
+        texto quase invisível), depois — pela MESMA causa, um alias diferente —
+        no painel de assinatura (`.ta-situacao` usa `color: var(--warning)`,
+        que ficava com o laranja escuro do claro por cima do fundo já corrigido
+        de `--warning-soft`: baixo contraste, lido como "bugado" de novo).
+
+        Por isso o teste não lista alias por nome: ele VARRE todo
+        `--x: var(--y)` declarado em `:root` e cobra a redeclaração de `--x` no
+        bloco escuro. Listar por nome tinha deixado `--success`/`--warning`/
+        `--danger`/`--info`/`--ring` de fora silenciosamente — só as variantes
+        "-soft" tinham entrado na primeira correção.
         """
         css = _texto(_CSS, "tokens.css")
+        raiz = css[css.index(":root {"):css.index("body.theme-dark")]
         escuro = css[css.index("body.theme-dark"):]
-        for alias in ("--success-soft", "--warning-soft", "--danger-soft", "--info-soft"):
-            self.assertRegex(
-                escuro, rf"(?m)^\s*{re.escape(alias)}\s*:",
-                f"{alias} não é redeclarado no modo escuro",
-            )
+
+        # Alias simples: `--x: var(--y)` ou `--x: var(--y, fallback)`. Reserva
+        # de var() (`--kan-primary: var(--brand, #0071e3)`) tem a MESMA forma
+        # sintática — mas se --kan-primary também não existisse no escuro, o
+        # fallback entraria em jogo e a tela sairia errada do mesmo jeito, então
+        # vale como alias para este teste também, não é falso positivo.
+        aliases = re.findall(r"^\s*(--[\w-]+)\s*:\s*var\((--[\w-]+)[,)]", raiz, re.M)
+        self.assertGreater(len(aliases), 0, "nenhum alias encontrado — regex desatualizada?")
+
+        quebrados = [
+            nome for nome, _alvo in aliases
+            if not re.search(rf"(?m)^\s*{re.escape(nome)}\s*:", escuro)
+        ]
+        self.assertEqual(
+            quebrados, [],
+            "alias(es) de :root não redeclarado(s) no modo escuro — presos no valor "
+            "claro mesmo com body.theme-dark ativo: " + ", ".join(quebrados),
+        )
 
 
 class OrdemDeCarregamentoTests(TestCase):
@@ -206,9 +233,20 @@ class ClassesCompartilhadasTests(TestCase):
     """
 
     # classe, em quantos templates ela aparece hoje (piso)
+    #
+    # `badge-success` caiu de 25 para 21 em 2026-10-07 e isso foi DELIBERADO:
+    # o módulo de licenças usava `lic-badge-success` (que contém a substring) e
+    # passou a usar `.lic-pill[data-tom="ok"]`, porque a severidade do selo é
+    # ESTADO DO DADO e estava sendo escolhida como classe de cor em cada tela —
+    # atribuição aparecia VERDE na lista de movimentações e VERMELHA no detalhe
+    # da licença, a mesma operação com dois significados visuais opostos em
+    # telas a um clique de distância.
+    #
+    # A classe `.badge-success` do `base.css` não foi renomeada nem removida;
+    # quem guarda isso é `test_classes_do_contrato_continuam_definidas`.
     CONTRATO = [
         ("btn-primary", 90),
-        ("badge-success", 25),
+        ("badge-success", 21),
         ("kpi-card", 15),
         ("empty-state", 10),
     ]

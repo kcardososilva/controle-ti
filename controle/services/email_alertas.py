@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
@@ -1052,71 +1053,223 @@ def alerta_estoque_critico(limite_qtd: int = 2) -> bool:
 # ─────────────────────────────────────────────────────────────
 
 def alerta_licencas_desligados() -> bool:
-    from ProjetoEstoque.models import MovimentacaoLicenca, StatusUsuarioChoices
+    """
+    Assentos de licença no nome de quem NÃO está ativo no cadastro.
 
-    mov_devolucao_posterior = MovimentacaoLicenca.objects.filter(
-        usuario=OuterRef("usuario_id"),
-        lote=OuterRef("lote_id"),
-        tipo="devolucao",
-        created_at__gt=OuterRef("created_at"),
-    )
+    **Era a SEXTA implementação da pergunta "este assento ainda está ativo?"**
+    — e discordava das outras cinco em dois pontos, o que fazia o e-mail e
+    `/licencas/saude/` apresentarem listas diferentes para a mesma base:
 
-    qs = (
-        MovimentacaoLicenca.objects
-        .filter(tipo="atribuicao", usuario__status=StatusUsuarioChoices.DESLIGADO)
-        .annotate(foi_devolvida=Exists(mov_devolucao_posterior))
-        .filter(foi_devolvida=False)
-        .select_related("usuario", "lote", "lote__licenca", "usuario__funcao", "usuario__centro_custo")
-        .order_by("usuario__nome", "lote__licenca__nome")
-    )
+      (a) **casava a devolução por `(usuario, lote)`.** Quando o lote original
+          é apagado, `licenca_service.devolver` devolve o assento ao lote mais
+          recente da licença, de propósito, para o assento não se perder. Essa
+          devolução tem OUTRO `lote_id`, então o `Exists` não a encontrava e o
+          assento aparecia como pendente para sempre — cobrança de algo que já
+          havia sido resolvido;
 
-    if not qs.exists():
-        logger.info("alerta_licencas: nenhuma licença pendente de usuário desligado.")
+      (b) **filtrava só `status=DESLIGADO`.** Colaborador em qualquer outro
+          estado não-ativo (afastado, status em branco por importação
+          incompleta) ficava fora do aviso, enquanto o painel de saúde — que
+          compara contra `"ativo"` — o mostrava.
+
+    Hoje a apuração é `licenca_service.assentos_orfaos()`, a mesma do painel,
+    do comando de auditoria e do badge do subnav. O e-mail não pode divergir
+    da tela que o TI vai abrir para resolver o que o e-mail cobrou.
+    """
+    from services import licenca_service as ls
+
+    orfaos = ls.assentos_orfaos()
+    if not orfaos:
+        logger.info("alerta_licencas: nenhum assento preso em colaborador não ativo.")
         return False
 
     linhas = []
-    for mov in qs:
-        data_term = mov.usuario.data_termino
-        licenca_nome = mov.lote.licenca.nome if mov.lote and mov.lote.licenca else "—"
+    for item in orfaos:
+        usuario = item["usuario"]
+        termino = getattr(usuario, "data_termino", None)
         linhas.append([
-            mov.usuario.nome or mov.usuario.email or "—",
-            mov.usuario.funcao.nome if mov.usuario.funcao else "—",
-            mov.usuario.centro_custo.departamento if mov.usuario.centro_custo else "—",
-            licenca_nome,
-            data_term.strftime("%d/%m/%Y") if data_term else "—",
+            usuario.nome or usuario.email or "—",
+            usuario.funcao.nome if getattr(usuario, "funcao", None) else "—",
+            usuario.centro_custo.departamento if getattr(usuario, "centro_custo", None) else "—",
+            item["licenca"].nome,
+            termino.strftime("%d/%m/%Y") if termino else "—",
+            # O custo é o argumento: "9 licenças pendentes" não move ninguém,
+            # "R$ 752,75/mês saindo por licença de quem já saiu" move.
+            _brl_alerta(item["mensal"]) + "/mês",
             _badge("PENDENTE", "#fee2e2", "#b91c1c"),
         ])
 
     tabela = _tabela_html(
-        ["Colaborador", "Função", "Centro de Custo", "Licença", "Desligamento", "Status"],
+        ["Colaborador", "Função", "Centro de Custo", "Licença", "Desligamento",
+         "Custo", "Status"],
         linhas,
     )
-    total = len(linhas)
+    total = len(orfaos)
     hoje = date.today()
+    mensal = sum((o["mensal"] for o in orfaos), Decimal("0.00"))
+    anual = sum((o["anual"] for o in orfaos), Decimal("0.00"))
 
     intro = (
         f'<p style="margin:0 0 4px;color:#334155;font-size:14px;">'
-        f'<strong style="color:#b91c1c;">{total}</strong> licença(s) ainda atribuída(s) a colaboradores desligados. '
-        f'Acesse o sistema para realizar a devolução.</p>'
+        f'<strong style="color:#b91c1c;">{total}</strong> assento(s) de licença '
+        f'no nome de colaborador que não está ativo — '
+        f'<strong style="color:#b91c1c;">{_brl_alerta(mensal)}/mês</strong> '
+        f'({_brl_alerta(anual)}/ano) saindo por licença de quem já saiu.</p>'
+        f'<p style="margin:0 0 10px;color:#64748b;font-size:13px;">'
+        f'Devolver libera o assento para outra pessoa e estorna o custo do '
+        f'centro de custo. Resolva em <strong>Licenças &rsaquo; Saúde</strong>.</p>'
     )
 
-    corpo = _secao("Licenças pendentes — colaboradores desligados", "🔑", "#b91c1c", intro + tabela)
+    corpo = _secao("Assentos presos em colaborador não ativo", "🔑", "#b91c1c", intro + tabela)
     html = _base_html(
-        f"Atenção: {total} licença(s) de colaboradores desligados",
-        f"Alerta gerado em {hoje.strftime('%d/%m/%Y')}",
+        f"{total} assento(s) de licença com colaborador não ativo",
+        f"{_brl_alerta(mensal)}/mês a recuperar — apurado em {hoje.strftime('%d/%m/%Y')}",
         corpo,
     )
     texto = (
-        f"ALERTA — Licenças de colaboradores desligados sem devolução\nTotal: {total}\n\n"
+        f"ALERTA — Assentos de licença em colaborador não ativo\n"
+        f"Total: {total} | {_brl_alerta(mensal)}/mês | {_brl_alerta(anual)}/ano\n\n"
         + "\n".join(
-            f"- {m.usuario.nome or m.usuario.email or '—'} | {m.lote.licenca.nome if m.lote and m.lote.licenca else '—'}"
-            for m in qs
+            f"- {o['usuario'].nome or '—'} | {o['licenca'].nome} | {_brl_alerta(o['mensal'])}/mês"
+            for o in orfaos
         )
     )
 
     return _enviar(
-        f"[Controle TI] {total} licença(s) pendente(s) de colaboradores desligados",
+        f"[Controle TI] {total} assento(s) de licença em colaborador não ativo "
+        f"— {_brl_alerta(mensal)}/mês",
         texto, html, codigo="licencas_desligados",
+    )
+
+
+def _brl_alerta(valor) -> str:
+    """R$ no formato pt-BR para o corpo do e-mail."""
+    try:
+        numero = Decimal(valor or 0)
+    except (TypeError, ValueError, ArithmeticError):
+        numero = Decimal("0")
+    return "R$ " + f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def alerta_licencas_vencendo(dias: int = 60) -> bool:
+    """
+    Contratos de licença que vencem dentro da janela.
+
+    **Existe porque a renovação chegava pela fatura do fornecedor.** O acervo
+    guardava `data_compra` e `periodicidade` e nunca cruzava as duas, então a
+    empresa descobria o vencimento DEPOIS de renovar — quando já não havia
+    decisão a tomar. São ~R$ 3,5 mi/ano em contrato.
+
+    O e-mail leva, por lote, o valor do CICLO (o que vai ser cobrado) ao lado
+    dos assentos ociosos daquele lote. É o par que muda a pergunta de
+    "renova?" para "renova quantos?": renovar 225 assentos para usar 168 é a
+    forma mais cara de não decidir nada.
+
+    Contrato **sem renovação automática** aparece primeiro e marcado: ali o
+    vencimento não gera cobrança, gera interrupção de serviço.
+
+    Apurado por `licenca_service.resumo_renovacoes` — a mesma função da tela e
+    do comando de auditoria.
+    """
+    from services import licenca_service as ls
+
+    resumo = ls.resumo_renovacoes(dias=dias)
+    linhas_dados = resumo["linhas"]
+
+    if not linhas_dados:
+        logger.info("alerta_licencas_vencendo: nada vencendo em %s dias.", dias)
+        return False
+
+    # Manual primeiro, depois por urgência — a ordem do e-mail é a ordem em que
+    # vale a pena agir, não a ordem do calendário.
+    linhas_dados = sorted(linhas_dados, key=lambda r: (r["automatica"], r["dias"]))
+
+    linhas = []
+    for item in linhas_dados:
+        if item["vencido"]:
+            prazo = f"VENCIDO há {item['dias_abs']}d"
+            cor_bg, cor_txt = "#fee2e2", "#b91c1c"
+        elif item["dias"] <= 30:
+            prazo = f"{item['dias']} dias"
+            cor_bg, cor_txt = "#fee2e2", "#b91c1c"
+        else:
+            prazo = f"{item['dias']} dias"
+            cor_bg, cor_txt = "#fffbeb", "#92400e"
+
+        linhas.append([
+            item["licenca"].nome,
+            f"#{item['lote'].pk}" + (f" · {item['lote'].numero_pedido}" if item["lote"].numero_pedido else ""),
+            item["vencimento"].strftime("%d/%m/%Y") + (" (est.)" if item["derivado"] else ""),
+            _badge(prazo, cor_bg, cor_txt),
+            f"{item['em_uso']}/{item['total']}",
+            _brl_alerta(item["custo_ciclo"]),
+            (
+                _badge("MANUAL", "#fee2e2", "#b91c1c") if not item["automatica"]
+                else _badge("automática", "#f1f5f9", "#475569")
+            ),
+        ])
+
+    tabela = _tabela_html(
+        ["Licença", "Lote", "Vencimento", "Prazo", "Em uso", "Valor do ciclo",
+         "Renovação"],
+        linhas,
+    )
+
+    total = len(linhas_dados)
+    valor = resumo["total_valor"]
+    desperdicio = resumo["total_desperdicio"]
+    manuais = resumo["manuais"]
+    hoje = date.today()
+
+    intro = (
+        f'<p style="margin:0 0 4px;color:#334155;font-size:14px;">'
+        f'<strong>{total}</strong> lote(s) de licença vencem nos próximos '
+        f'<strong>{dias} dias</strong>, somando '
+        f'<strong>{_brl_alerta(valor)}</strong> a renovar.</p>'
+    )
+    if desperdicio > 0:
+        intro += (
+            f'<p style="margin:0 0 4px;color:#b45309;font-size:13px;">'
+            f'<strong>{_brl_alerta(desperdicio)}</strong> desse total é assento '
+            f'comprado e <strong>não usado</strong> — é a economia disponível '
+            f'sem negociar preço com ninguém, bastando renovar menos.</p>'
+        )
+    if manuais:
+        intro += (
+            f'<p style="margin:0 0 10px;color:#b91c1c;font-size:13px;">'
+            f'<strong>{len(manuais)} contrato(s) não renovam automaticamente.</strong> '
+            f'Nesses, o vencimento não gera cobrança: a licença simplesmente '
+            f'para de funcionar.</p>'
+        )
+    else:
+        intro += (
+            '<p style="margin:0 0 10px;color:#64748b;font-size:13px;">'
+            'Confira em <strong>Licenças &rsaquo; Renovações</strong> antes de '
+            'autorizar a renovação.</p>'
+        )
+
+    corpo = _secao("Licenças a renovar", "📅", "#b45309", intro + tabela)
+    html = _base_html(
+        f"{total} licença(s) a renovar nos próximos {dias} dias",
+        f"{_brl_alerta(valor)} em contrato — apurado em {hoje.strftime('%d/%m/%Y')}",
+        corpo,
+    )
+    texto = (
+        f"ALERTA — Licencas a renovar em {dias} dias\n"
+        f"Total: {total} lote(s) | {_brl_alerta(valor)}\n\n"
+        + "\n".join(
+            f"- {r['licenca'].nome} | lote #{r['lote'].pk} | "
+            f"{r['vencimento'].strftime('%d/%m/%Y')} | "
+            f"{r['em_uso']}/{r['total']} em uso | {_brl_alerta(r['custo_ciclo'])}"
+            + ("" if r["automatica"] else " | RENOVACAO MANUAL")
+            for r in linhas_dados
+        )
+    )
+
+    return _enviar(
+        f"[Controle TI] {total} licença(s) a renovar em {dias} dias "
+        f"— {_brl_alerta(valor)}",
+        texto, html, codigo="licencas_vencendo",
     )
 
 
@@ -2082,3 +2235,137 @@ def enviar_todos_alertas() -> dict:
         "estoque_critico": alerta_estoque_critico(limite_qtd=2),
         "licencas_desligados": alerta_licencas_desligados(),
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Termo de responsabilidade assinado — via para o próprio colaborador
+# ──────────────────────────────────────────────────────────────────────────────
+
+def enviar_termo_assinado_ao_colaborador(termo) -> tuple[bool, str]:
+    """
+    Envia a via em PDF do termo recém-assinado para o e-mail do COLABORADOR,
+    a pedido dele, no tablet, logo depois de assinar.
+
+    Retorna `(enviado, mensagem)` — mensagem já pronta para a tela, porque aqui
+    quem espera é uma pessoa de pé na frente do TI, e "deu certo?" precisa de
+    resposta de verdade.
+
+    Duas diferenças deliberadas em relação aos outros envios deste módulo:
+
+    • **Não passa por `_alertas_habilitados()` nem por `CanalNotificacao`.**
+      Aquela chave-mestra existe para silenciar os ALERTAS automáticos do
+      sistema (estoque crítico, PRTG, preventivas) quando o TI não quer ser
+      incomodado. Isto não é alerta: é a via do documento que a pessoa acabou
+      de assinar e pediu para receber. Suprimir por causa de uma configuração
+      de alerta seria recusar ao signatário a cópia do que ele assinou.
+
+    • **É SÍNCRONO**, contra a regra 3 do CLAUDE.md (e-mail fire-and-forget via
+      `transaction.on_commit`). A regra existe para não pendurar a requisição
+      de quem está operando o sistema num SMTP lento. Aqui o envio É a ação
+      pedida, e responder "enviado" sem saber se foi faria a tela mentir para
+      alguém que não tem como conferir depois — ela não tem login no sistema.
+      O custo é a espera de um envio; o ganho é a pessoa saber se precisa
+      pedir ao TI por outro caminho.
+    """
+    destinatario = (getattr(termo.colaborador, "email", "") or "").strip()
+    if not destinatario:
+        return False, (
+            "Não há e-mail cadastrado para você no sistema. "
+            "Peça a via ao responsável do setor de TI."
+        )
+
+    if not termo.pdf:
+        return False, "O documento ainda não está disponível. Procure o responsável do TI."
+
+    try:
+        termo.pdf.open("rb")
+        try:
+            conteudo = termo.pdf.read()
+        finally:
+            termo.pdf.close()
+    except (FileNotFoundError, OSError):
+        logger.error("Termo %s: PDF não encontrado no storage ao enviar por e-mail.", termo.pk)
+        return False, "Não foi possível ler o documento. Procure o responsável do TI."
+
+    from services.termo_pdf_service import nome_arquivo_pdf
+
+    acao = "entrega" if termo.tipo == "entrega" else "devolução"
+    assinado_em = timezone.localtime(termo.assinado_em) if termo.assinado_em else timezone.localtime()
+
+    equipamentos = (termo.dados or {}).get("equipamentos") or []
+    linhas = [
+        [
+            e.get("nome") or "—",
+            " ".join(p for p in (e.get("marca"), e.get("modelo")) if p) or "—",
+            e.get("numero_serie") or "—",
+        ]
+        for e in equipamentos
+    ]
+
+    corpo_html = (
+        f'<p style="margin:0 0 14px;color:#334155;font-size:14px;line-height:1.6;">'
+        f'Olá, <strong>{termo.colaborador.nome}</strong>.</p>'
+        f'<p style="margin:0 0 18px;color:#334155;font-size:14px;line-height:1.6;">'
+        f'Segue em anexo a sua via do termo de responsabilidade de <strong>{acao}</strong> '
+        f'de equipamento, assinado eletronicamente por você em '
+        f'<strong>{assinado_em.strftime("%d/%m/%Y às %H:%M")}</strong>.</p>'
+        + _tabela_html(["Equipamento", "Marca / Modelo", "Nº de série"], linhas)
+        + f'<p style="margin:18px 0 0;color:#64748b;font-size:12px;line-height:1.6;">'
+        f'Código de verificação do documento: '
+        f'<strong style="font-family:monospace;color:#1e3a8a;">{termo.codigo_verificacao}</strong><br>'
+        f'Guarde este e-mail: ele é a sua via do termo.</p>'
+    )
+
+    corpo_texto = (
+        f"Olá, {termo.colaborador.nome}.\n\n"
+        f"Segue em anexo a sua via do termo de responsabilidade de {acao} de equipamento, "
+        f"assinado eletronicamente por você em {assinado_em.strftime('%d/%m/%Y às %H:%M')}.\n\n"
+        + "\n".join(f"  - {l[0]} | {l[1]} | Nº série: {l[2]}" for l in linhas)
+        + f"\n\nCódigo de verificação: {termo.codigo_verificacao}\n"
+        "Guarde este e-mail: ele é a sua via do termo.\n"
+    )
+
+    assunto = f"Sua via do termo de {acao} de equipamento — Santa Colomba"
+
+    try:
+        msg = EmailMultiAlternatives(
+            subject=assunto,
+            body=corpo_texto,
+            from_email=REMETENTE,
+            to=[destinatario],
+        )
+        msg.attach_alternative(
+            _base_html(f"Termo de {acao} assinado", "Sua via do documento", corpo_html),
+            "text/html",
+        )
+        msg.attach(nome_arquivo_pdf(termo), conteudo, "application/pdf")
+        # `send()` devolve QUANTAS mensagens saíram. Com `fail_silently=False`
+        # um erro vira exceção, mas há caminho em que ele devolve 0 sem
+        # levantar nada (backend recusando o destinatário, por exemplo) — e
+        # tratar isso como sucesso faria a tela dizer "enviado" para uma via
+        # que não saiu, exatamente o relato que não se consegue investigar.
+        enviadas = msg.send(fail_silently=False)
+    except Exception as exc:
+        logger.error("Falha ao enviar termo %s para %s: %s", termo.pk, destinatario, exc)
+        return False, "Não foi possível enviar agora. Peça a via ao responsável do setor de TI."
+
+    if not enviadas:
+        logger.error(
+            "Termo %s: o servidor de e-mail não aceitou a mensagem para %s "
+            "(send() devolveu 0, sem erro).", termo.pk, destinatario,
+        )
+        return False, "O servidor de e-mail não aceitou a mensagem. Procure o responsável do TI."
+
+    logger.info("Termo %s enviado por e-mail para %s", termo.pk, destinatario)
+    return True, f"Enviado para {_mascarar_email(destinatario)}."
+
+
+def _mascarar_email(endereco: str) -> str:
+    """Mostra o e-mail parcialmente: a tela do tablet fica à vista de quem
+    estiver por perto, e o endereço completo do colaborador não precisa ser
+    exposto só para confirmar que o envio saiu."""
+    usuario, _, dominio = endereco.partition("@")
+    if not dominio:
+        return "seu e-mail cadastrado"
+    visivel = usuario[:2] if len(usuario) > 3 else usuario[:1]
+    return f"{visivel}{'*' * max(3, len(usuario) - len(visivel))}@{dominio}"

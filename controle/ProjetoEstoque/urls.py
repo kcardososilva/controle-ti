@@ -12,6 +12,10 @@ urlpatterns = [
     # Catálogo de tokens e componentes do design system. Restrita a staff:
     # não tem dado do negócio, mas não é tela de operação.
     path("sistema/design/", views.design_system, name="design_system"),
+    # Preview das telas de erro (pivô irrigando). Em dev os handlers não
+    # entram — o Django mostra o traceback —, então é por aqui que se
+    # confere o visual. Staff apenas.
+    path("sistema/erro/<str:codigo>/", views.erro_preview, name="erro_preview"),
     path("login/", auth_views.LoginView.as_view(template_name="login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(next_page="login"), name="logout"),
     path("perfil/", views.admin_perfil, name="admin_perfil"),
@@ -130,6 +134,36 @@ urlpatterns = [
     path("movimentacoes/api/item-devolucao-info/", views.api_item_devolucao_info, name="api_item_devolucao_info"),
     path("movimentacoes/api/itens-disponiveis-lote/", views.api_itens_disponiveis_lote, name="api_itens_disponiveis_lote"),
     path("movimentacoes/termos/", views.repositorio_termos, name="repositorio_termos"),
+
+    # ── Termos — assinatura digital em tablet ───────────────────────────────
+    # `termos/assinar/<token>/` e o `/enviar/` dela são as ÚNICAS rotas
+    # anônimas do módulo: quem assina é o colaborador, que não tem login
+    # (ver views/termos_assinatura.py). Ficam ANTES das rotas por `<int:pk>`
+    # porque o token é uma string com `-` e `_` — não colidem, mas manter a
+    # ordem evita surpresa se algum dia o conversor mudar.
+    path("termos/assinaturas/", views.termo_assinatura_list, name="termo_assinatura_list"),
+    path("termos/assinaturas/api/colaboradores/", views.termo_assinatura_colaboradores_api, name="termo_assinatura_colaboradores_api"),
+    path("termos/assinaturas/api/equipamentos/", views.termo_assinatura_equipamentos_api, name="termo_assinatura_equipamentos_api"),
+    path("termos/assinaturas/verificar/", views.termo_assinatura_verificar, name="termo_assinatura_verificar"),
+    # Desligamento tem rota PRÓPRIA, antes da genérica por `<str:tipo>`: o
+    # fluxo não escolhe equipamento (o termo cobre tudo o que o colaborador
+    # tem) e o efeito ao assinar é outro — encerra o vínculo inteiro.
+    path("termos/assinaturas/novo/desligamento/", views.termo_assinatura_desligamento, name="termo_assinatura_desligamento"),
+    path("termos/assinaturas/novo/<str:tipo>/", views.termo_assinatura_preparar, name="termo_assinatura_preparar"),
+    path("termos/assinaturas/<int:pk>/", views.termo_assinatura_detalhe, name="termo_assinatura_detalhe"),
+    path("termos/assinaturas/<int:pk>/painel/", views.termo_assinatura_painel, name="termo_assinatura_painel"),
+    path("termos/assinaturas/<int:pk>/status/", views.termo_assinatura_status, name="termo_assinatura_status"),
+    path("termos/assinaturas/<int:pk>/novo-link/", views.termo_assinatura_novo_link, name="termo_assinatura_novo_link"),
+    path("termos/assinaturas/<int:pk>/cancelar/", views.termo_assinatura_cancelar, name="termo_assinatura_cancelar"),
+    path("termos/assinaturas/<int:pk>/reenviar-via/", views.termo_assinatura_reenviar_via, name="termo_assinatura_reenviar_via"),
+    path("termos/assinaturas/<int:pk>/pdf/", views.termo_assinatura_pdf, name="termo_assinatura_pdf"),
+    path("termos/assinar/<str:token>/", views.termo_assinar, name="termo_assinar"),
+    path("termos/assinar/<str:token>/enviar/", views.termo_assinar_enviar, name="termo_assinar_enviar"),
+    path("termos/assinar/<str:token>/concluido/", views.termo_assinar_concluido, name="termo_assinar_concluido"),
+    # Via do colaborador. Sem id na URL de propósito: quem autoriza é a marca
+    # de sessão deixada pela assinatura, com prazo (ver views/termos_assinatura.py).
+    path("termos/recibo/pdf/", views.termo_recibo_pdf, name="termo_recibo_pdf"),
+    path("termos/recibo/email/", views.termo_recibo_email, name="termo_recibo_email"),
     path("movimentacoes/<int:pk>/", views.movimentacao_detail, name="movimentacao_detail"),
     path("movimentacoes/<int:pk>/editar/", views.movimentacao_update, name="movimentacao_update"),
     path("movimentacoes/<int:pk>/excluir/", views.movimentacao_delete, name="movimentacao_delete"),
@@ -185,8 +219,22 @@ urlpatterns = [
     # ── Licenças ────────────────────────────────────────────────────────────
     path("licencas/", views.licenca_list, name="licenca_list"),
     path("licencas/nova/", views.licenca_form, name="licenca_create"),
+    # Saúde do acervo: assento preso em desligado, contador fora do razão,
+    # pool esgotado. Rota antes de `licencas/<int:pk>/` não é necessária
+    # (o conversor int não casa com "saude"), mas fica junto das irmãs.
+    path("licencas/saude/", views.licenca_saude, name="licenca_saude"),
+    path("licencas/api/colaboradores/", views.licenca_colaboradores_api, name="licenca_colaboradores_api"),
+    path("licencas/saude/devolver-orfao/", views.licenca_devolver_orfao, name="licenca_devolver_orfao"),
+    path("licencas/lotes/<int:pk>/reconciliar/", views.licenca_reconciliar_lote, name="licenca_reconciliar_lote"),
+    path("licencas/<int:pk>/atribuir-rapido/", views.licenca_atribuir_rapido, name="licenca_atribuir_rapido"),
+    # Calendario de renovacao: rota ANTES de `licencas/<int:pk>/` por seguranca
+    # de leitura (o conversor `int` ja impediria o conflito, mas a ordem deixa
+    # obvio que "renovacoes" nunca cai no detalhe).
+    path("licencas/renovacoes/", views.licenca_renovacoes, name="licenca_renovacoes"),
+    path("licencas/renovacoes/datas/", views.licenca_renovacao_datas, name="licenca_renovacao_datas"),
     path("licencas/mov/", views.mov_licenca_list, name="mov_licenca_list"),
     path("licencas/mov/nova/", views.mov_licenca_form, name="mov_licenca_form"),
+    path("licencas/mov/exportar/", views.mov_licenca_export, name="mov_licenca_export"),
     path("licencas/lotes/", views.licenca_lote_list, name="licenca_lote_list"),
     path("licencas/lotes/novo/", views.licenca_lote_form, name="licenca_lote_novo"),
     path("licencas/lotes/<int:pk>/", views.licenca_lote_form, name="licenca_lote_edit"),

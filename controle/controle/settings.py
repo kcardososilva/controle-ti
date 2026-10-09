@@ -103,6 +103,9 @@ TEMPLATES = [
                 'ProjetoEstoque.context_processors.notificacoes',
                 'ProjetoEstoque.context_processors.assets',
                 'ProjetoEstoque.context_processors.perfil_acesso',
+                # Badge "Saúde" do subnav de licenças. Sai na primeira linha
+                # fora de /licencas — ver o docstring.
+                'ProjetoEstoque.context_processors.licencas_pendencias',
             ],
             'loaders': _TEMPLATE_LOADERS,
         },

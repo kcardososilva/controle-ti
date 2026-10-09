@@ -950,104 +950,80 @@ def usuario_remover_todas_licencas(request, pk):
         messages.error(request, "A remoção em massa só é permitida para funcionário desligado/inativo.")
         return redirect("usuario_detail", pk=pk)
 
-    licencas_ativas, _, _ = _licencas_ativas_do_usuario(usuario)
+    # Pelo `licenca_service`, que é a fonte única. Antes esta view montava a
+    # devolução na mão (`_criar_mov_licenca_devolucao` + `_incrementar_saldo_lote`)
+    # — um terceiro caminho, com um `+= 1` sem teto no saldo do lote. Rodar isto
+    # depois do botão de devolução individual, ou duas vezes, inflava o pool.
+    from services import licenca_service as ls
 
-    if not licencas_ativas:
+    resultado = ls.devolver_todas_do_usuario(
+        usuario=usuario,
+        user=request.user,
+        observacao=(
+            f"Remoção em massa de licença por desligamento do funcionário "
+            f"{usuario.nome}. Operador: {request.user}."
+        ),
+    )
+
+    if not resultado["total"] and not resultado["falhas"]:
         messages.info(request, "Este funcionário não possui licenças ativas para remover.")
         return redirect("usuario_detail", pk=pk)
 
-    total_removidas = 0
+    if resultado["total"]:
+        messages.success(
+            request,
+            f"{resultado['total']} licença(s) removida(s) do funcionário "
+            f"{usuario.nome} e devolvida(s) ao estoque."
+        )
 
-    with transaction.atomic():
-        for item in licencas_ativas:
-            licenca = item["licenca"]
-            lote = item["lote"]
-            custo_base = item["custo_base"]
-
-            _criar_mov_licenca_devolucao(
-                usuario=usuario,
-                licenca=licenca,
-                lote=lote,
-                valor_unitario=custo_base,
-                request_user=request.user,
-                observacao=(
-                    f"Remoção em massa de licença por desligamento do funcionário "
-                    f"{usuario.nome}. Operador: {request.user}."
-                )
-            )
-
-            _incrementar_saldo_lote(lote, quantidade=1)
-            total_removidas += 1
-
-    messages.success(
-        request,
-        f"{total_removidas} licença(s) removida(s) do funcionário {usuario.nome} e devolvida(s) ao estoque."
-    )
+    # Falha de uma licença não esconde o sucesso das outras: o operador precisa
+    # saber exatamente o que ficou pendente, senão assume que terminou.
+    for falha in resultado["falhas"]:
+        messages.error(
+            request,
+            f"A licença “{falha['licenca'].nome}” não pôde ser devolvida: {falha['motivo']}",
+        )
 
     return redirect("usuario_detail", pk=pk)
 
 
 @login_required
-@transaction.atomic
+@require_POST
 def licenca_devolver_rapido(request, usuario_id, licenca_id):
     """
-    Ação rápida para devolver uma licença do usuário ao estoque.
-    Restaura o saldo do lote original e ajusta o centro de custo.
+    Ação rápida para devolver UMA licença do colaborador ao estoque.
+
+    Só resolve o redirecionamento e a mensagem: o efeito é do
+    `licenca_service`. Esta view era o quarto caminho que reimplementava a
+    devolução — identificava o lote de origem, somava `+= 1` no saldo sem teto
+    e decidia o centro de custo por conta própria. Todas essas regras agora têm
+    um dono só.
+
+    `@require_POST` no lugar da checagem manual de método: é a mesma garantia,
+    expressa onde quem lê a view já procura por ela, e devolve 405 em vez de um
+    redirect com mensagem — que é a resposta certa para método errado.
     """
-    if request.method != "POST":
-        messages.warning(request, "Ação não permitida via GET.")
-        return redirect("usuario_detail", pk=usuario_id)
+    from services import licenca_service as ls
+    from ..models import Licenca
 
     usuario = get_object_or_404(Usuario, pk=usuario_id)
-    
-    # 1. Encontrar a atribuição ativa
-    # Buscamos a última movimentação. Deve ser uma ATRIBUIÇÃO para podermos devolver.
-    last_mov = MovimentacaoLicenca.objects.filter(
-        usuario_id=usuario_id,
-        licenca_id=licenca_id
-    ).order_by('-created_at', '-id').first()
+    licenca = get_object_or_404(Licenca, pk=licenca_id)
 
-    if not last_mov or last_mov.tipo != TipoMovLicencaChoices.ATRIBUICAO:
-        messages.error(request, "Não foi encontrada uma atribuição ativa desta licença para este usuário.")
-        return redirect("usuario_detail", pk=usuario_id)
-
-    # 2. Identificar Lote de Origem
-    lote_origem = last_mov.lote # O lote de onde saiu
-    
-    # Se o lote original não existir mais (deletado?), tentamos um fallback (LIFO)
-    if not lote_origem:
-        lote_origem = LicencaLote.objects.filter(licenca_id=licenca_id).order_by('-data_compra').first()
-
-    # 3. Criar Movimentação de Devolução
-    nova_mov = MovimentacaoLicenca(
-        tipo=TipoMovLicencaChoices.DEVOLUCAO,
-        licenca_id=licenca_id,
-        usuario_id=usuario_id,
-        lote=lote_origem,
-        criado_por=request.user,
-        atualizado_por=request.user,
-        # Mantém o valor histórico para estorno contábil
-        valor_unitario=last_mov.valor_unitario
-    )
-
-    # 4. Restaurar Estoque e Definir Destino do Custo
-    if lote_origem:
-        # Trava lote para atualização segura
-        lote_atual = LicencaLote.objects.select_for_update().get(pk=lote_origem.pk)
-        lote_atual.quantidade_disponivel += 1
-        lote_atual.save()
-        
-        # O custo volta para o dono do lote (ex: TI, ou Depto que comprou)
-        nova_mov.centro_custo_destino = lote_atual.centro_custo
+    try:
+        ls.devolver(
+            licenca=licenca,
+            usuario=usuario,
+            user=request.user,
+            observacao=f"Devolução avulsa pela ficha do colaborador. Operador: {request.user}.",
+        )
+    except ls.LicencaError as erro:
+        messages.error(request, str(erro))
     else:
-        # Se não tem lote, tenta CC da licença
-        from ..models import Licenca
-        lic = Licenca.objects.get(pk=licenca_id)
-        nova_mov.centro_custo_destino = lic.centro_custo
+        messages.success(
+            request,
+            f"Licença “{licenca.nome}” devolvida. O assento voltou para o estoque.",
+        )
 
-    nova_mov.save()
-
-    messages.success(request, f"Licença devolvida com sucesso! O saldo retornou ao estoque.")
     return redirect("usuario_detail", pk=usuario_id)
 
 

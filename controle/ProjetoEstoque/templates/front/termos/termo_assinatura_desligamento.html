@@ -1,0 +1,333 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ titulo }}{% endblock %}
+{% block page_title %}{{ titulo }}{% endblock %}
+{% block page_subtitle %}{{ subtitulo }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'termo_assinatura_list' %}">Termos assinados</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Desligamento</span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'css/ds-termos.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="ta-page ta-prep">
+
+  {% comment %}Aviso primeiro, antes de qualquer campo: este fluxo não é mais
+     uma devolução — ele encerra o vínculo. Quem abre a tela precisa saber
+     disso antes de escolher o colaborador, não depois de gerar o link.{% endcomment %}
+  <div class="ta-alerta-forte">
+    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+    <div>
+      <strong>Este termo encerra o vínculo do colaborador.</strong>
+      <span>
+        Quando ele assinar no tablet, o sistema devolve <strong>todos os equipamentos</strong>
+        (status Backup), remove <strong>todas as licenças de software</strong> e marca o
+        cadastro como <strong>desligado</strong>. Não há seleção manual: o termo cobre tudo
+        o que estiver no nome dele no momento da assinatura.
+      </span>
+    </div>
+  </div>
+
+  {% if pendentes %}
+    <div class="alert alert-warning">
+      <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+      <span>
+        {{ colaborador_selecionado.nome }} já tem
+        {{ pendentes|length }} link{{ pendentes|length|pluralize }} de assinatura aberto{{ pendentes|length|pluralize }}:
+        {% for p in pendentes %}
+          <a href="{% url 'termo_assinatura_painel' p.pk %}">#{{ p.pk }}</a>{% if not forloop.last %}, {% endif %}
+        {% endfor %}.
+        Conclua ou cancele antes de criar outro.
+      </span>
+    </div>
+  {% endif %}
+
+  <form method="post" novalidate id="taForm">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-error">
+        <i class="fa-solid fa-circle-xmark" aria-hidden="true"></i>
+        <span>{{ form.non_field_errors|join:" " }}</span>
+      </div>
+    {% endif %}
+
+    <div class="ta-prep-grid">
+      <div class="ta-prep-main">
+
+        <section class="ta-card">
+          <div class="ta-card-head">
+            <h2 class="ta-card-title">
+              <i class="fa-solid fa-user-xmark" aria-hidden="true"></i>
+              1. Quem está sendo desligado
+            </h2>
+          </div>
+
+          <div class="ta-card-body">
+            <div class="ta-field">
+              <label class="ta-dt is-required" for="id_colaborador">Colaborador</label>
+              <select name="colaborador" id="id_colaborador" class="ctrl ta-select"
+                      data-remoto="colaborador" {% if form.colaborador.errors %}aria-invalid="true"{% endif %}>
+                {% if colaborador_selecionado %}
+                  <option value="{{ colaborador_selecionado.pk }}" selected>{{ colaborador_selecionado.nome }}</option>
+                {% endif %}
+              </select>
+              {% if form.colaborador.errors %}<p class="form-error">{{ form.colaborador.errors|join:" " }}</p>{% endif %}
+              <p class="form-hint">
+                Escolher o colaborador carrega abaixo tudo o que está no nome dele agora.
+              </p>
+            </div>
+
+            {% if colaborador_selecionado %}
+              <div class="ta-resumo-colab">
+                <span class="ta-avatar" aria-hidden="true">{{ colaborador_selecionado.nome|slice:":1" }}</span>
+                <div>
+                  <strong>{{ colaborador_selecionado.nome }}</strong>
+                  <span class="ta-item-meta">
+                    {% if colaborador_selecionado.matricula %}Matrícula {{ colaborador_selecionado.matricula }} · {% endif %}
+                    {{ colaborador_selecionado.funcao.nome|default:"função não informada" }}<br>
+                    {{ colaborador_selecionado.centro_custo.departamento|default:"sem centro de custo" }}
+                    · {{ colaborador_selecionado.localidade.local|default:"sem localidade" }}
+                    {% if colaborador_selecionado.email %}<br>{{ colaborador_selecionado.email }}{% endif %}
+                  </span>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+        </section>
+
+        {% if colaborador_selecionado %}
+          <section class="ta-card">
+            <div class="ta-card-head">
+              <h2 class="ta-card-title">
+                <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i>
+                2. Equipamentos que serão devolvidos
+              </h2>
+              <span class="ta-contador">{{ itens|length }} equipamento{{ itens|length|pluralize }}</span>
+            </div>
+
+            <div class="ta-card-body">
+              {% if itens %}
+                <div class="ta-itens">
+                  {% for item in itens %}
+                    <div class="ta-item" style="cursor:default">
+                      <i class="fa-solid fa-microchip" aria-hidden="true" style="color:var(--text-tertiary);margin-top:3px"></i>
+                      <span>
+                        <span class="ta-item-nome">{{ item.nome }}</span>
+                        <span class="ta-item-meta">
+                          {% if item.numero_serie %}Série <code>{{ item.numero_serie }}</code> · {% endif %}
+                          {{ item.marca|default:"—" }} {{ item.modelo|default:"" }}
+                          {% if item.centro_custo %} · {{ item.centro_custo.departamento }}{% endif %}
+                        </span>
+                      </span>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <div class="ui-empty">
+                  <i class="fa-solid fa-box-open" aria-hidden="true"></i>
+                  <p>Este colaborador não tem equipamento em posse.</p>
+                </div>
+              {% endif %}
+            </div>
+          </section>
+
+          <section class="ta-card">
+            <div class="ta-card-head">
+              <h2 class="ta-card-title">
+                <i class="fa-solid fa-key" aria-hidden="true"></i>
+                3. Licenças que serão removidas
+              </h2>
+              <span class="ta-contador">{{ licencas|length }} licença{{ licencas|length|pluralize }}</span>
+            </div>
+
+            <div class="ta-card-body">
+              {% if licencas %}
+                <div class="ta-itens">
+                  {% for mov in licencas %}
+                    <div class="ta-item" style="cursor:default">
+                      <i class="fa-solid fa-certificate" aria-hidden="true" style="color:var(--text-tertiary);margin-top:3px"></i>
+                      <span>
+                        <span class="ta-item-nome">{{ mov.licenca }}</span>
+                        <span class="ta-item-meta">Alocada em {{ mov.created_at|date:"d/m/Y" }}</span>
+                      </span>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <div class="ui-empty">
+                  <i class="fa-solid fa-key" aria-hidden="true"></i>
+                  <p>Nenhuma licença de software alocada a este colaborador.</p>
+                </div>
+              {% endif %}
+            </div>
+          </section>
+        {% endif %}
+
+        <section class="ta-card">
+          <div class="ta-card-head">
+            <h2 class="ta-card-title">
+              <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+              {% if colaborador_selecionado %}4{% else %}2{% endif %}. Dados do termo
+            </h2>
+          </div>
+
+          <div class="ta-card-body ta-form-grid">
+            <div class="ta-field">
+              <label class="ta-dt" for="{{ form.numero_termo.id_for_label }}">Número do termo</label>
+              {{ form.numero_termo }}
+              <p class="form-hint">{{ form.numero_termo.help_text }}</p>
+            </div>
+            <div class="ta-field">
+              <label class="ta-dt" for="{{ form.numero_chamado.id_for_label }}">Número do chamado</label>
+              {{ form.numero_chamado }}
+            </div>
+            <div class="ta-field">
+              <label class="ta-dt" for="{{ form.estabelecimento.id_for_label }}">Estabelecimento</label>
+              {{ form.estabelecimento }}
+            </div>
+            <div class="ta-field">
+              <label class="ta-dt" for="{{ form.responsavel_ti_nome.id_for_label }}">Responsável do TI</label>
+              {{ form.responsavel_ti_nome }}
+            </div>
+            <div class="ta-field ta-col-cheia">
+              <label class="ta-dt" for="{{ form.observacoes.id_for_label }}">Observações do termo</label>
+              {{ form.observacoes }}
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <aside class="ta-prep-lado">
+        <section class="ta-card ta-sticky">
+          <div class="ta-card-head">
+            <h2 class="ta-card-title">
+              <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+              O que vai acontecer
+            </h2>
+          </div>
+
+          <div class="ta-card-body">
+            <ol class="ta-timeline">
+              <li>
+                <strong>Você gera o link</strong>
+                <span>QR Code na tela para abrir no tablet.</span>
+              </li>
+              <li>
+                <strong>O colaborador assina</strong>
+                <span>Vê a lista completa do que está devolvendo e assina uma única vez.</span>
+              </li>
+              <li>
+                <strong>O sistema encerra o vínculo</strong>
+                <span>
+                  Devolve <strong>{{ itens|length }} equipamento{{ itens|length|pluralize }}</strong> (status Backup),
+                  remove <strong>{{ licencas|length }} licença{{ licencas|length|pluralize }}</strong>
+                  e marca o colaborador como <strong>desligado</strong>.
+                </span>
+              </li>
+              <li>
+                <strong>O colaborador recebe a via</strong>
+                <span>O PDF assinado vai para o e-mail do cadastro dele automaticamente.</span>
+              </li>
+            </ol>
+
+            <label class="ta-aceite" for="{{ form.confirmacao.id_for_label }}" style="margin-top:var(--space-4)">
+              {{ form.confirmacao }}
+              <span>{{ form.confirmacao.label }}</span>
+            </label>
+            {% if form.confirmacao.errors %}<p class="form-error">{{ form.confirmacao.errors|join:" " }}</p>{% endif %}
+
+            <div class="ta-field" style="margin-top:var(--space-4)">
+              <label class="ta-dt" for="{{ form.validade_minutos.id_for_label }}">Validade do link (minutos)</label>
+              {{ form.validade_minutos }}
+              {% if form.validade_minutos.errors %}<p class="form-error">{{ form.validade_minutos.errors|join:" " }}</p>{% endif %}
+            </div>
+          </div>
+
+          <div class="ta-card-foot ta-acoes-fim">
+            <a href="{% url 'termo_assinatura_list' %}" class="btn btn-ghost">Cancelar</a>
+            <button type="submit" class="btn btn-primary" id="taSubmit"
+                    {% if not colaborador_selecionado %}disabled{% endif %}>
+              <i class="fa-solid fa-qrcode" aria-hidden="true"></i>
+              Gerar link de assinatura
+            </button>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ config_busca|json_script:"__ta_busca" }}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var CFG = JSON.parse(document.getElementById("__ta_busca").textContent);
+  var $colaborador = $("#id_colaborador");
+
+  $colaborador.select2({
+    width: "100%",
+    placeholder: "Busque por nome ou matrícula",
+    language: {
+      noResults: function () { return "Nenhum resultado"; },
+      searching: function () { return "Buscando…"; },
+      errorLoading: function () { return "Falha ao buscar. Verifique a conexão."; }
+    },
+    minimumInputLength: 0,
+    ajax: {
+      url: CFG.urlColaboradores,
+      dataType: "json",
+      delay: 250,
+      data: function (params) { return { q: params.term || "" }; },
+      processResults: function (data) { return { results: data.results || [] }; },
+      cache: true
+    },
+    templateResult: function (item) {
+      if (!item.id) { return item.text; }
+      var meta = [item.matricula, item.centro_custo, item.funcao].filter(Boolean).join(" · ");
+      var $linha = $("<span class='ta-opt'></span>");
+      $linha.append($("<span class='ta-opt-nome'></span>").text(item.text));
+      if (meta) { $linha.append($("<span class='ta-opt-meta'></span>").text(meta)); }
+      return $linha;
+    }
+  });
+
+  // Trocar o colaborador recarrega a tela: a lista do que será devolvido é
+  // apurada no servidor (mesma fonte da cascata de desligamento). Montá-la em
+  // JS criaria uma segunda versão da regra que decide o que está com quem.
+  $colaborador.on("change", function () {
+    var valor = $colaborador.val();
+    if (!valor) { return; }
+    var url = new URL(window.location.href);
+    url.searchParams.set("colaborador", valor);
+    window.location.assign(url.toString());
+  });
+
+  var botao = document.getElementById("taSubmit");
+  document.getElementById("taForm").addEventListener("submit", function () {
+    botao.disabled = true;
+    botao.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Gerando…';
+  });
+  window.addEventListener("pageshow", function () {
+    botao.disabled = false;
+    botao.innerHTML = '<i class="fa-solid fa-qrcode" aria-hidden="true"></i> Gerar link de assinatura';
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,242 @@
+/* =============================================================
+   erro-pivo.css — telas de erro (404 / 403 / 500 / 400).
+
+   Tela que QUALQUER UM alcança, inclusive sem login: é a página que
+   o colaborador vê se sair do link de assinatura e tentar outra URL.
+   Por isso ela é autossuficiente — carrega tokens.css por conta e não
+   depende do base.css, que só existe para quem tem sessão.
+
+   A ilustração é um PIVÔ CENTRAL irrigando: a referência visual da
+   empresa, não um ícone genérico de erro. Desenhado em SVG inline no
+   template (nenhuma imagem a baixar — a página de erro precisa abrir
+   mesmo quando o servidor está mal) e animado só com CSS.
+
+   Nada de tag de template neste arquivo, nem dentro de comentário: um
+   .css é servido cru de static/ e um teste varre esse arquivo em busca
+   de delimitador de template.
+
+   Ao mudar este arquivo, suba ASSETS_VERSION em
+   ProjetoEstoque/context_processors.py e rode collectstatic.
+   ============================================================= */
+
+:where(.erro-page) {
+  --erro-ceu-topo: #cfe6f7;
+  --erro-ceu-base: #eaf4fb;
+  --erro-terra: #d9c49a;
+  --erro-pivo-metal: #8b93a3;
+  --erro-pivo-torre: #5b6475;
+  --erro-agua: #4da3d9;
+  --erro-verde: #6aa84f;
+  --erro-verde-claro: #93c47d;
+}
+
+/* O céu do desenho é o MESMO nos dois temas, e isso é deliberado: é uma
+   ilustração de campo ao ar livre, não uma superfície de interface. O que
+   acompanha o tema é a página em volta. */
+.erro-page {
+  min-height: 100dvh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6) var(--space-4);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+.erro-caixa {
+  width: 100%;
+  max-width: 560px;
+  display: grid;
+  justify-items: center;
+  gap: var(--space-4);
+  text-align: center;
+}
+
+/* -- Ilustração ---------------------------------------------- */
+
+.erro-cena {
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 3 / 2;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--separator-hairline);
+  box-shadow: var(--shadow-sm);
+}
+
+.erro-cena svg { display: block; width: 100%; height: 100%; }
+
+/* O pivô gira em torno da torre central. `transform-box: fill-box` +
+   `transform-origin: center` fazem a origem ser o centro do PRÓPRIO grupo,
+   e não a do viewBox — sem isso o braço descreve um arco para fora da tela. */
+.pivo-braco {
+  transform-origin: 300px 250px;
+  animation: pivo-girar 14s linear infinite;
+}
+
+@keyframes pivo-girar {
+  /* Arco de vaivém, não volta completa: em vista frontal uma rotação de 360°
+     faria o braço "atravessar" a torre e sair pelas costas, que é justamente
+     o que denuncia o truque. O vaivém lê como o pivô varrendo o talhão. */
+  0%   { transform: rotate(-13deg); }
+  50%  { transform: rotate(13deg); }
+  100% { transform: rotate(-13deg); }
+}
+
+/* Cada jato tem atraso próprio: aspersores disparando em uníssono parecem
+   um pente, não irrigação. */
+.jato {
+  animation: jato-cair 1.9s ease-in infinite;
+  transform-origin: top center;
+}
+
+.jato-1 { animation-delay: 0s; }
+.jato-2 { animation-delay: .24s; }
+.jato-3 { animation-delay: .48s; }
+.jato-4 { animation-delay: .72s; }
+.jato-5 { animation-delay: .96s; }
+.jato-6 { animation-delay: 1.2s; }
+
+@keyframes jato-cair {
+  0%   { opacity: 0; transform: translateY(-4px) scaleY(.3); }
+  25%  { opacity: .85; }
+  70%  { opacity: .55; }
+  100% { opacity: 0; transform: translateY(26px) scaleY(1.25); }
+}
+
+/* Gotas que quicam no solo, no fim do arco de cada jato. */
+.gota {
+  animation: gota-quicar 1.9s ease-out infinite;
+}
+
+.gota-1 { animation-delay: .35s; }
+.gota-2 { animation-delay: .75s; }
+.gota-3 { animation-delay: 1.15s; }
+
+@keyframes gota-quicar {
+  0%, 55% { opacity: 0; transform: translateY(0); }
+  70%     { opacity: .7; transform: translateY(-5px); }
+  100%    { opacity: 0; transform: translateY(2px); }
+}
+
+/* O verde do talhão "respira" — sugere a cultura reagindo à água sem
+   precisar de mais elementos na cena. */
+.talhao { animation: talhao-respirar 7s ease-in-out infinite; transform-origin: center bottom; }
+
+@keyframes talhao-respirar {
+  0%, 100% { transform: scaleY(1); }
+  50%      { transform: scaleY(1.035); }
+}
+
+.nuvem { animation: nuvem-andar 26s linear infinite; }
+.nuvem-2 { animation-duration: 38s; animation-delay: -12s; }
+
+@keyframes nuvem-andar {
+  0%   { transform: translateX(-70px); }
+  100% { transform: translateX(640px); }
+}
+
+/* Acessibilidade: quem pediu menos movimento recebe a cena parada. A
+   ilustração continua fazendo sentido — ela não depende da animação para
+   comunicar. */
+@media (prefers-reduced-motion: reduce) {
+  .pivo-braco,
+  .jato,
+  .gota,
+  .talhao,
+  .nuvem {
+    animation: none;
+  }
+}
+
+/* -- Texto ---------------------------------------------------- */
+
+.erro-codigo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-fill-secondary);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+}
+
+.erro-titulo {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  text-wrap: balance;
+}
+
+.erro-texto {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  text-wrap: pretty;
+}
+
+.erro-acoes {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: var(--space-2);
+}
+
+.erro-btn {
+  min-height: var(--control-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.erro-btn-primario {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--text-inverted);
+}
+
+.erro-btn-primario:hover { background: var(--brand-hover); }
+
+.erro-btn-secundario {
+  background: var(--bg-elevated);
+  border-color: var(--separator-opaque);
+  color: var(--text-secondary);
+}
+
+.erro-btn-secundario:hover { background: var(--bg-hover); }
+
+.erro-rodape {
+  margin: var(--space-2) 0 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+@media (max-width: 480px) {
+  .erro-titulo { font-size: var(--text-xl); }
+  .erro-acoes { width: 100%; }
+  .erro-btn { flex: 1 1 100%; }
+}

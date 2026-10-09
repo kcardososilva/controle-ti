@@ -1050,9 +1050,9 @@ class LicencaForm(forms.ModelForm):
                 "class": "form-control",
                 "placeholder": "Ex: Microsoft Office 365"
             }),
-            "fornecedor": forms.Select(attrs={"class": "form-control"}),
-            "centro_custo": forms.Select(attrs={"class": "form-control"}),
-            "pmb": forms.Select(attrs={"class": "form-control"}),
+            "fornecedor": forms.Select(attrs={"class": "form-control lic-select", "data-lic-limpavel": ""}),
+            "centro_custo": forms.Select(attrs={"class": "form-control lic-select", "data-lic-limpavel": ""}),
+            "pmb": forms.Select(attrs={"class": "form-control lic-select", "data-lic-limpavel": ""}),
             "observacao": forms.Textarea(attrs={
                 "class": "form-control",
                 "rows": 4,
@@ -1073,189 +1073,208 @@ class MovimentacaoLicencaForm(forms.ModelForm):
         model = MovimentacaoLicenca
         fields = ["tipo", "licenca", "usuario", "observacao"]
         widgets = {
-            "tipo": forms.Select(attrs={"class": "form-control"}),
-            "licenca": forms.Select(attrs={"class": "form-control", "id": "id_licenca"}),
-            "usuario": forms.Select(attrs={"class": "form-control"}),
+            "tipo": forms.Select(attrs={"class": "form-control lic-select", "data-lic-limpavel": ""}),
+            "licenca": forms.Select(attrs={"class": "form-control lic-select", "data-lic-limpavel": "", "id": "id_licenca"}),
+            "usuario": forms.Select(attrs={"class": "form-control lic-select", "data-lic-limpavel": ""}),
             "observacao": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
 
     def clean(self):
+        """
+        Valida pelo `licenca_service`, que é a fonte única da regra.
+
+        A validação ANTIGA de devolução procurava a última movimentação
+        filtrando `tipo=ATRIBUICAO` — e, como esse filtro ignora as devoluções,
+        ela continuava achando a atribuição já devolvida e **liberava uma
+        segunda devolução**, que somava +1 no saldo do lote. Defeito
+        reproduzido: lote com total 10 terminava com 11 disponíveis, e o
+        assento fantasma era oferecido para atribuir a alguém.
+
+        A pergunta certa é "existe atribuição VIGENTE?", apurada no razão por
+        `licenca_service.atribuicao_vigente`.
+        """
+        from services import licenca_service as ls
+
         cleaned_data = super().clean()
-        # (Mantém a mesma validação robusta de antes)
         tipo = cleaned_data.get("tipo")
         licenca = cleaned_data.get("licenca")
         usuario = cleaned_data.get("usuario")
         lote_id = cleaned_data.get("lote_id_select")
 
-        if not licenca or not tipo: return cleaned_data
+        if not licenca or not tipo:
+            return cleaned_data
+
+        if not usuario:
+            self.add_error("usuario", "Informe o colaborador.")
+            return cleaned_data
+
+        vigente = ls.atribuicao_vigente(licenca, usuario)
 
         if tipo == TipoMovLicencaChoices.ATRIBUICAO:
-            if not usuario:
-                self.add_error('usuario', "Informe o colaborador.")
+            if vigente is not None:
+                self.add_error("usuario", "Este colaborador já possui esta licença.")
                 return cleaned_data
-            
-            last_mov = MovimentacaoLicenca.objects.filter(
-                licenca=licenca, usuario=usuario
-            ).order_by('-created_at', '-id').first()
-
-            if last_mov and last_mov.tipo == TipoMovLicencaChoices.ATRIBUICAO:
-                self.add_error('usuario', f"O usuário já possui esta licença.")
 
             if lote_id:
-                try:
-                    lote = LicencaLote.objects.get(pk=lote_id, licenca=licenca)
-                    if lote.quantidade_disponivel < 1:
-                        raise ValidationError(f"O Lote #{lote_id} está esgotado.")
-                    cleaned_data['lote_manual_obj'] = lote
-                except LicencaLote.DoesNotExist:
-                    raise ValidationError("Lote inválido.")
-            else:
-                total = LicencaLote.objects.filter(licenca=licenca).aggregate(s=Sum('quantidade_disponivel'))['s'] or 0
-                if total < 1:
-                    raise ValidationError("Estoque esgotado.")
+                lote = LicencaLote.objects.filter(pk=lote_id, licenca=licenca).first()
+                if lote is None:
+                    self.add_error(None, "Lote inválido para esta licença.")
+                    return cleaned_data
+                cleaned_data["lote_escolhido"] = lote
+
+            # Saldo conferido pelo RAZÃO (não pelo contador, que pode ter
+            # divergido): o service levanta a mensagem pronta se faltar assento.
+            try:
+                ls.conferir_pode_atribuir(
+                    licenca=licenca, lote=cleaned_data.get("lote_escolhido"),
+                )
+            except ls.LicencaError as erro:
+                self.add_error(None, str(erro))
 
         elif tipo == TipoMovLicencaChoices.DEVOLUCAO:
-            if not usuario:
-                self.add_error('usuario', "Informe o colaborador.")
-            
-            last_attrib = MovimentacaoLicenca.objects.filter(
-                licenca=licenca, usuario=usuario, tipo=TipoMovLicencaChoices.ATRIBUICAO
-            ).order_by('-created_at', '-id').first()
-
-            if not last_attrib:
-                self.add_error('usuario', "Este usuário não possui licença ativa para devolver.")
-            else:
-                cleaned_data['origem_devolucao'] = last_attrib
+            if vigente is None:
+                self.add_error(
+                    "usuario",
+                    "Este colaborador não possui esta licença ativa para devolver.",
+                )
 
         return cleaned_data
 
-    @transaction.atomic
     def save(self, commit=True, user=None):
-        instance = super().save(commit=False)
-        
-        lote_manual = self.cleaned_data.get('lote_manual_obj')
-        origem_devolucao = self.cleaned_data.get('origem_devolucao')
+        """
+        Delega ao `licenca_service`. **Nada de efeito no estoque mora aqui.**
 
-        if user:
-            if instance.pk is None: instance.criado_por = user
-            instance.atualizado_por = user
+        Antes este `save` implementava baixa de saldo, escolha de lote, rateio
+        de custo e destino de centro de custo — a mesma regra que outros três
+        caminhos implementavam à sua maneira (ficha do colaborador, remoção em
+        massa e cascata de desligamento). Quatro versões da mesma regra
+        divergem na próxima mudança, e a divergência aparece como assento
+        perdido ou cobrado no centro de custo errado meses depois.
+        """
+        from services import licenca_service as ls
 
-        if commit:
-            # === ATRIBUIÇÃO (SAÍDA) ===
-            if instance.tipo == TipoMovLicencaChoices.ATRIBUICAO:
-                lote_alvo = None
-                
-                # 1. Define Lote (Manual ou FIFO)
-                if lote_manual:
-                    lote_alvo = LicencaLote.objects.select_for_update().get(pk=lote_manual.pk)
-                else:
-                    lote_alvo = LicencaLote.objects.select_for_update().filter(
-                        licenca=instance.licenca,
-                        quantidade_disponivel__gt=0
-                    ).order_by('data_compra', 'id').first()
+        dados = self.cleaned_data
+        tipo = dados.get("tipo")
+        licenca = dados.get("licenca")
+        usuario = dados.get("usuario")
+        observacao = dados.get("observacao") or ""
 
-                if lote_alvo:
-                    # 2. Baixa de Estoque
-                    lote_alvo.quantidade_disponivel = max(0, lote_alvo.quantidade_disponivel - 1)
-                    lote_alvo.save()
-                    
-                    instance.lote = lote_alvo
-                    
-                    # 3. Define Centro de Custo (Destino = Usuário)
-                    if instance.usuario and instance.usuario.centro_custo:
-                        instance.centro_custo_destino = instance.usuario.centro_custo
-                    
-                    # Cálculo do custo mensal unitário por licença
-                    custo_ciclo = lote_alvo.custo_ciclo or Decimal(0)
-                    periodicidade = str(lote_alvo.periodicidade or "").lower()
-                    qtd_total = Decimal(lote_alvo.quantidade_total or 1)
+        if not commit:
+            # Único caso que não passa pelo service: o chamador pediu
+            # explicitamente para não gravar. Devolve a instância montada sem
+            # efeito nenhum no estoque.
+            instance = super().save(commit=False)
+            if user:
+                instance.criado_por = instance.criado_por or user
+                instance.atualizado_por = user
+            return instance
 
-                    custo_unitario_ciclo = custo_ciclo / qtd_total
+        if tipo == TipoMovLicencaChoices.ATRIBUICAO:
+            return ls.atribuir(
+                licenca=licenca, usuario=usuario,
+                lote=dados.get("lote_escolhido"),
+                user=user, observacao=observacao,
+            )
 
-                    if periodicidade == "anual":
-                        instance.valor_unitario = (custo_unitario_ciclo / Decimal("12")).quantize(Decimal("0.01"))
-                    elif periodicidade == "semestral":
-                        instance.valor_unitario = (custo_unitario_ciclo / Decimal("6")).quantize(Decimal("0.01"))
-                    elif periodicidade == "trimestral":
-                        instance.valor_unitario = (custo_unitario_ciclo / Decimal("3")).quantize(Decimal("0.01"))
-                    else:
-                        instance.valor_unitario = custo_unitario_ciclo.quantize(Decimal("0.01"))
-
-            # === DEVOLUÇÃO (ENTRADA) ===
-            elif instance.tipo == TipoMovLicencaChoices.DEVOLUCAO:
-                lote_retorno = None
-                origem_id = origem_devolucao.lote_id if origem_devolucao else None
-                
-                if origem_id:
-                    try:
-                        lote_retorno = LicencaLote.objects.select_for_update().get(pk=origem_id)
-                    except LicencaLote.DoesNotExist: pass
-                
-                if not lote_retorno:
-                    lote_retorno = LicencaLote.objects.select_for_update().filter(
-                        licenca=instance.licenca
-                    ).order_by('-data_compra').first()
-
-                if lote_retorno:
-                    lote_retorno.quantidade_disponivel += 1
-                    lote_retorno.save()
-                    instance.lote = lote_retorno
-                    # Retorna custo para quem comprou (Lote)
-                    instance.centro_custo_destino = lote_retorno.centro_custo
-                else:
-                    instance.centro_custo_destino = getattr(instance.licenca, 'centro_custo', None)
-
-                # Mantém valor histórico (estorna o valor cobrado na saída)
-                if origem_devolucao:
-                    instance.valor_unitario = origem_devolucao.valor_unitario
-
-            instance.save()
-
-        return instance
+        return ls.devolver(
+            licenca=licenca, usuario=usuario, user=user, observacao=observacao,
+        )
 # --- FORMULÁRIO DE LOTE (Estoque Específico) ---
 class LicencaLoteForm(forms.ModelForm):
     class Meta:
         model = LicencaLote
         fields = [
-            "licenca", "fornecedor", "centro_custo", 
-            "numero_pedido", "data_compra", 
-            "quantidade_total", # Disponível removido da tela
-            "periodicidade", "custo_ciclo", 
-            "observacao"
+            "licenca", "fornecedor", "centro_custo",
+            "numero_pedido", "data_compra",
+            "quantidade_total",  # "Disponível" não vai para a tela: é derivado do razão
+            "periodicidade", "custo_ciclo",
+            "data_renovacao", "renovacao_automatica",
+            "observacao",
         ]
         widgets = {
-            "licenca": forms.Select(attrs={"class": "form-control"}),
-            "fornecedor": forms.Select(attrs={"class": "form-control"}),
-            "centro_custo": forms.Select(attrs={"class": "form-control"}),
-            
+            "licenca": forms.Select(attrs={"class": "form-control lic-select", "data-lic-limpavel": ""}),
+            "fornecedor": forms.Select(attrs={"class": "form-control lic-select", "data-lic-limpavel": ""}),
+            "centro_custo": forms.Select(attrs={"class": "form-control lic-select", "data-lic-limpavel": ""}),
+
             "numero_pedido": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex: PO-2024-001"}),
-            "data_compra": forms.DateInput(format='%Y-%m-%d', attrs={"class": "form-control", "type": "date"}),
-            
+            "data_compra": forms.DateInput(format="%Y-%m-%d", attrs={"class": "form-control", "type": "date"}),
+
             "quantidade_total": forms.NumberInput(attrs={"class": "form-control", "min": 1}),
-            "periodicidade": forms.Select(attrs={"class": "form-control"}),
-            "custo_ciclo": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "placeholder": "0.00"}),
-            
+            "periodicidade": forms.Select(attrs={"class": "form-control lic-select", "data-lic-limpavel": ""}),
+            "custo_ciclo": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "placeholder": "0,00"}),
+
+            "data_renovacao": forms.DateInput(format="%Y-%m-%d", attrs={"class": "form-control", "type": "date"}),
+            "renovacao_automatica": forms.CheckboxInput(attrs={"class": "lic-checkbox"}),
+
             "observacao": forms.Textarea(attrs={"class": "form-control", "rows": 3, "placeholder": "Detalhes adicionais..."}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Formata a data corretamente para edição
-        if self.instance.pk and self.instance.data_compra:
-            self.fields['data_compra'].initial = self.instance.data_compra.strftime('%Y-%m-%d')
+        # `type="date"` do HTML só aceita ISO; sem isto a data gravada volta
+        # vazia na edição e o operador "perde" o dado ao salvar de novo.
+        for campo in ("data_compra", "data_renovacao"):
+            valor = getattr(self.instance, campo, None)
+            if self.instance.pk and valor:
+                self.fields[campo].initial = valor.strftime("%Y-%m-%d")
+
+        self.fields["data_renovacao"].required = False
+        self.fields["custo_ciclo"].required = False
 
     def clean_quantidade_total(self):
-        qtd = self.cleaned_data.get('quantidade_total')
-        if qtd is not None and qtd < 1:
-            raise forms.ValidationError("A quantidade total deve ser pelo menos 1.")
-        
-        # Validação extra na edição: não permitir reduzir total abaixo do que já foi usado
+        """
+        Não deixa reduzir o total abaixo do que o RAZÃO mostra em uso.
+
+        A versão anterior media o uso pelo CACHE
+        (`quantidade_total - quantidade_disponivel`). Com o contador divergente
+        — o estado que o painel de saúde existe para apontar — a conta errava
+        para os dois lados: contador inflado deixava reduzir abaixo dos
+        assentos realmente ocupados (e aí o lote passa a ter menos assentos do
+        que gente usando), contador deflacionado barrava uma redução legítima
+        com uma mensagem que o operador não tinha como contestar, porque o
+        número citado não existia em lugar nenhum da tela.
+        """
+        from services import licenca_service as ls
+
+        qtd = self.cleaned_data.get("quantidade_total")
+        if qtd is None:
+            return qtd
+        if qtd < 1:
+            raise forms.ValidationError("A quantidade comprada deve ser pelo menos 1.")
+
         if self.instance.pk:
-            usados = self.instance.quantidade_total - self.instance.quantidade_disponivel
-            if qtd < usados:
-                raise forms.ValidationError(f"Não é possível reduzir para {qtd}. Já existem {usados} licenças em uso neste lote.")
+            em_uso = ls.alocacao_de(self.instance.licenca).por_lote.get(
+                self.instance.pk, 0
+            )
+            if qtd < em_uso:
+                raise forms.ValidationError(
+                    "Não é possível reduzir para %s: %s assento(s) deste lote "
+                    "estão atribuídos a colaboradores. Devolva os assentos "
+                    "antes de reduzir o total comprado." % (qtd, em_uso)
+                )
 
         return qtd
+
+    def clean(self):
+        """
+        Coerência das datas do lote.
+
+        `data_renovacao` antes de `data_compra` é inversão de causa: a
+        renovação é o fim do ciclo que a compra começou. Passava sem reclamar e
+        aparecia depois como lote "vencido há 400 dias" no calendário, sem
+        ninguém entender de onde saiu.
+        """
+        dados = super().clean()
+        compra = dados.get("data_compra")
+        renovacao = dados.get("data_renovacao")
+
+        if compra and renovacao and renovacao < compra:
+            self.add_error(
+                "data_renovacao",
+                "A renovação não pode ser anterior à data de compra.",
+            )
+
+        return dados
 
 
 # --- LICENÇA OFFICE (chave por equipamento) ---
@@ -1639,5 +1658,187 @@ class RequisicaoReceberCompraSimplesForm(forms.Form):
     observacao = forms.CharField(
         required=False,
         label="Observação (opcional)",
+        widget=forms.Textarea(attrs={"class": "ctrl", "rows": 3}),
+    )
+
+
+
+# ================== ASSINATURA DIGITAL DE TERMOS ==================
+# Preparação da sessão de assinatura (lado do TI). Os campos do termo em si são
+# os mesmos do `TermoGeracaoForm` — mesma informação, mesmo rótulo —, porque o
+# termo é o mesmo documento nas duas vias (papel e tablet). O que muda é o
+# alvo: aqui o usuário escolhe QUAIS equipamentos entram e por quanto tempo o
+# link de assinatura fica válido.
+
+class TermoAssinaturaSessaoForm(forms.Form):
+    # Os dois campos abaixo são preenchidos por Select2 com busca REMOTA (ver
+    # `termo_assinatura_colaboradores_api` / `_equipamentos_api`). O queryset
+    # aqui NÃO alimenta a tela — alimenta a VALIDAÇÃO do POST. São 1.376
+    # colaboradores ativos e 751 equipamentos entregáveis: renderizar isso como
+    # `<option>` seriam centenas de KB de HTML a cada abertura, e a busca local
+    # do Select2 filtraria um DOM gigante a cada tecla.
+    colaborador = forms.ModelChoiceField(
+        queryset=Usuario.objects.filter(status="ativo").select_related("centro_custo"),
+        label="Colaborador que vai assinar",
+        empty_label=None,
+        widget=forms.Select(attrs={
+            "class": "ctrl ta-select",
+            "data-remoto": "colaborador",
+        }),
+        error_messages={
+            "required": "Selecione o colaborador que vai assinar o termo.",
+            "invalid_choice": "Colaborador não encontrado ou inativo.",
+        },
+    )
+
+    itens = forms.ModelMultipleChoiceField(
+        queryset=Item.objects.none(),
+        label="Equipamentos do termo",
+        widget=forms.SelectMultiple(attrs={
+            "class": "ctrl ta-select",
+            "data-remoto": "equipamento",
+        }),
+        error_messages={
+            "required": "Selecione ao menos um equipamento para o termo.",
+            "invalid_choice": "Um dos equipamentos selecionados não está disponível para este termo.",
+        },
+    )
+
+    validade_minutos = forms.IntegerField(
+        label="Validade do link",
+        initial=30,
+        min_value=5,
+        max_value=1440,
+        help_text="Tempo que o link do tablet continua aceitando a assinatura.",
+        widget=forms.NumberInput(attrs={"class": "ctrl", "step": "5"}),
+    )
+
+    numero_termo = forms.CharField(
+        required=False,
+        label="Número do termo",
+        help_text="Em branco gera automaticamente: nº de série - colaborador - centro de custo.",
+        widget=forms.TextInput(attrs={
+            "class": "ctrl",
+            "placeholder": "Automático",
+        }),
+    )
+
+    numero_chamado = forms.CharField(
+        required=False,
+        label="Número do chamado",
+        widget=forms.TextInput(attrs={"class": "ctrl"}),
+    )
+
+    estabelecimento = forms.ChoiceField(
+        choices=ESTABELECIMENTO_CHOICES,
+        required=False,
+        label="Estabelecimento",
+        widget=forms.Select(attrs={"class": "ctrl ta-select"}),
+    )
+
+    responsavel_ti_nome = forms.CharField(
+        required=False,
+        label="Responsável do TI",
+        widget=forms.TextInput(attrs={"class": "ctrl"}),
+    )
+
+    acessorios = forms.CharField(
+        required=False,
+        label="Acessórios entregues",
+        widget=forms.Textarea(attrs={"class": "ctrl", "rows": 3,
+                                     "placeholder": "Ex.: cabo de força, mochila, mouse"}),
+    )
+
+    observacoes = forms.CharField(
+        required=False,
+        label="Observações do termo",
+        widget=forms.Textarea(attrs={"class": "ctrl", "rows": 3}),
+    )
+
+    def __init__(self, *args, itens_disponiveis=None, **kwargs):
+        """
+        `itens_disponiveis` restringe o queryset do campo de equipamentos ao
+        universo que a tela ofereceu (estoque, para entrega; em posse do
+        colaborador, para devolução).
+
+        Não é cosmético: sem essa restrição o campo aceitaria qualquer `Item.pk`
+        enviado no POST, e o termo passaria a poder listar equipamento que não
+        está nem na mão do colaborador nem disponível para entrega. Validação de
+        pertinência é do formulário; o que NÃO fica aqui é regra de negócio
+        (regra 2 do CLAUDE.md) — montar a sessão é do service.
+        """
+        super().__init__(*args, **kwargs)
+        if itens_disponiveis is not None:
+            self.fields["itens"].queryset = itens_disponiveis
+
+
+class TermoDesligamentoSessaoForm(forms.Form):
+    """
+    Sessão de assinatura de DESLIGAMENTO.
+
+    Não tem campo de equipamento, e isso é a diferença que importa: o termo
+    cobre TUDO o que o colaborador tem, apurado na hora pelo
+    `DesligamentoService`. Deixar o TI selecionar seria convidar ao erro que o
+    desligamento não perdoa — equipamento esquecido fora do termo continua no
+    nome de quem não trabalha mais aqui.
+    """
+    colaborador = forms.ModelChoiceField(
+        queryset=Usuario.objects.filter(status="ativo").select_related("centro_custo"),
+        label="Colaborador que está sendo desligado",
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "ctrl ta-select", "data-remoto": "colaborador"}),
+        error_messages={
+            "required": "Selecione o colaborador que está sendo desligado.",
+            "invalid_choice": "Colaborador não encontrado ou já desligado.",
+        },
+    )
+
+    confirmacao = forms.BooleanField(
+        required=True,
+        label="Confirmo que este termo encerra o vínculo do colaborador",
+        error_messages={
+            "required": "Confirme que entendeu o efeito do desligamento antes de gerar o link.",
+        },
+        widget=forms.CheckboxInput(attrs={"class": "ta-check"}),
+    )
+
+    validade_minutos = forms.IntegerField(
+        label="Validade do link",
+        initial=30,
+        min_value=5,
+        max_value=1440,
+        help_text="Tempo que o link do tablet continua aceitando a assinatura.",
+        widget=forms.NumberInput(attrs={"class": "ctrl", "step": "5"}),
+    )
+
+    numero_termo = forms.CharField(
+        required=False,
+        label="Número do termo",
+        help_text="Em branco gera automaticamente.",
+        widget=forms.TextInput(attrs={"class": "ctrl", "placeholder": "Automático"}),
+    )
+
+    numero_chamado = forms.CharField(
+        required=False,
+        label="Número do chamado",
+        widget=forms.TextInput(attrs={"class": "ctrl"}),
+    )
+
+    estabelecimento = forms.ChoiceField(
+        choices=ESTABELECIMENTO_CHOICES,
+        required=False,
+        label="Estabelecimento",
+        widget=forms.Select(attrs={"class": "ctrl ta-select"}),
+    )
+
+    responsavel_ti_nome = forms.CharField(
+        required=False,
+        label="Responsável do TI",
+        widget=forms.TextInput(attrs={"class": "ctrl"}),
+    )
+
+    observacoes = forms.CharField(
+        required=False,
+        label="Observações do termo",
         widget=forms.Textarea(attrs={"class": "ctrl", "rows": 3}),
     )

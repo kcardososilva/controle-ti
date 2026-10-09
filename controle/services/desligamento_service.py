@@ -228,32 +228,36 @@ class DesligamentoService:
 
     @classmethod
     def _devolver_licencas_ativas(cls, *, usuario, executado_por):
-        from ProjetoEstoque.forms import MovimentacaoLicencaForm
+        """
+        Devolve as licenças do colaborador pelo `licenca_service`.
 
-        licencas = cls._licencas_ativas_do_usuario(usuario)
-        total = 0
+        Antes passava por `MovimentacaoLicencaForm`, montando um `data={}` como
+        se fosse um POST de tela. Isso arrastava a validação de formulário para
+        dentro de uma cascata de back-end — e herdava o defeito dela: a
+        validação de devolução não conferia se a atribuição estava VIGENTE, só
+        se existia alguma atribuição no histórico. Rodar o desligamento duas
+        vezes (ou combinar com o botão da ficha) somava assento fantasma no
+        lote. O service recusa a segunda devolução e recalcula o saldo do razão
+        em vez de incrementar.
+        """
+        from services import licenca_service as ls
 
-        for licenca in licencas:
-            form = MovimentacaoLicencaForm(data={
-                "tipo": TipoMovLicencaChoices.DEVOLUCAO,
-                "licenca": licenca.pk,
-                "usuario": usuario.pk,
-                "observacao": (
-                    f"Devolução automática — desligamento do colaborador {usuario.nome}, "
-                    f"registrado por {executado_por}."
-                ),
-            })
+        resultado = ls.devolver_todas_do_usuario(
+            usuario=usuario,
+            user=executado_por,
+            observacao=(
+                f"Devolução automática — desligamento do colaborador {usuario.nome}, "
+                f"registrado por {executado_por}."
+            ),
+        )
 
-            if form.is_valid():
-                form.save(user=executado_por)
-                total += 1
-            else:
-                logger.warning(
-                    "Desligamento: falha ao devolver licença %s do colaborador %s: %s",
-                    licenca.pk, usuario.pk, form.errors,
-                )
+        for falha in resultado["falhas"]:
+            logger.warning(
+                "Desligamento: falha ao devolver licença %s do colaborador %s: %s",
+                falha["licenca"].pk, usuario.pk, falha["motivo"],
+            )
 
-        return total
+        return resultado["total"]
 
     @classmethod
     def _marcar_desligado(cls, *, usuario, executado_por):

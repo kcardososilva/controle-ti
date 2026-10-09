@@ -23,3 +23,17 @@ urlpatterns = [
 urlpatterns += [
     re_path(r'^media/(?P<path>.*)$', media_protegida, name='media_protegida'),
 ]
+
+
+# ── Telas de erro (400 / 403 / 404 / 500) ────────────────────────────────────
+# Pivô central irrigando, no lugar da tela crua do Django. Quem alcança estas
+# páginas inclui o colaborador SEM LOGIN que saiu do link de assinatura e
+# tentou outra URL — ver ProjetoEstoque/views/erros.py.
+#
+# Só valem com DEBUG=False: em desenvolvimento o Django mostra o traceback de
+# propósito, e é isso que se quer ali. Para conferir o visual em dev, use a
+# rota /sistema/erro/<codigo>/ (staff).
+handler400 = 'ProjetoEstoque.views.erros.erro_400'
+handler403 = 'ProjetoEstoque.views.erros.erro_403'
+handler404 = 'ProjetoEstoque.views.erros.erro_404'
+handler500 = 'ProjetoEstoque.views.erros.erro_500'

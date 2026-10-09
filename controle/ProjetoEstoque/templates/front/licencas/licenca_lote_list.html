@@ -1,163 +1,281 @@
 {% extends "base.html" %}
+{% load static humanize %}
 
-{% block title %}Gestão de Lotes{% endblock %}
-{% block page_title %}Gestão de Lotes{% endblock %}
-{% block page_subtitle %}Entradas, saldos e rastreabilidade dos lotes de licenças{% endblock %}
+{% block title %}Lotes de Licença{% endblock %}
+{% block page_title %}Lotes{% endblock %}
+{% block page_subtitle %}Compras, saldo de assentos, custo do ciclo e vencimento{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'licenca_list' %}">Licenças</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Lotes</span>
+</nav>
+{% endblock %}
 
 {% block extra_css %}
 {% include 'front/licencas/_lic_design_system.html' %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-.lic-lote-list-page { width: min(100%, 1300px); }
-
-/* Barra de saldo por lote (disponível / total) */
-.lic-saldo { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 5px; min-width: 92px; }
-.lic-saldo-num { font-variant-numeric: tabular-nums; }
-.lic-saldo-tot { color: var(--lic-soft); font-weight: 400; }
-.lic-saldo-track {
-  width: 92px; height: 6px; border-radius: var(--radius-pill);
-  background: var(--lic-fill-2); overflow: hidden; border: 1px solid var(--lic-border);
-}
-.lic-saldo-fill { height: 100%; border-radius: var(--radius-pill); background: var(--lic-brand); min-width: 0; transition: width .4s ease; }
-.lic-saldo-fill.is-full { background: var(--lic-success); }
-.lic-saldo-fill.is-empty { background: transparent; }
-
-@media (max-width: 760px) {
-  .lic-lote-list-page .lic-table { min-width: 820px; }
-}
+  :where(.lic-lote-list-page) { --lic-table-min: 1220px; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="lic-page lic-lote-list-page">
   <div class="lic-shell">
-    <section class="lic-hero">
-      <div class="lic-hero-main">
-        <div class="lic-hero-icon">
-          <i class="fa fa-layer-group"></i>
-        </div>
-        <div class="lic-hero-title">
-          <h1>Gestão de Lotes</h1>
-          <p>Gerencie entradas, compras, disponibilidade e status dos lotes de licenças.</p>
-          {% if licenca_filtro %}
-            <div class="lic-crumb">
-              <span class="lic-crumb-label">Filtrando por:</span>
-              <a href="{% url 'licenca_detail' licenca_filtro.pk %}" class="lic-crumb-name">{{ licenca_filtro.nome }}</a>
-              <a href="{% url 'licenca_lote_list' %}" class="lic-crumb-clear" title="Remover filtro"><i class="fa fa-xmark"></i></a>
-            </div>
-          {% endif %}
-        </div>
-      </div>
 
+    <header class="lic-head">
+      <div class="lic-head-main">
+        <span class="lic-head-eyebrow"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i> Lotes de compra</span>
+        <h1 class="lic-head-title">Lotes de licença</h1>
+        <p class="lic-head-sub">
+          Cada lote é uma compra: a quantidade de assentos, o que foi pago pelo
+          ciclo e quando ele renova. O saldo mostrado é o apurado pelas
+          movimentações.
+        </p>
+        {% if licenca_filtro %}
+          <div class="lic-head-meta">
+            <span class="lic-crumb">
+              <span class="lic-crumb-label">Filtrando por</span>
+              <a href="{% url 'licenca_detail' licenca_filtro.pk %}" class="lic-crumb-name">{{ licenca_filtro.nome }}</a>
+              <a href="{% url 'licenca_lote_list' %}" class="lic-crumb-clear" title="Remover filtro" aria-label="Remover filtro de licença">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+              </a>
+            </span>
+          </div>
+        {% endif %}
+      </div>
       <div class="lic-actions">
-        <a href="{% url 'licenca_list' %}" class="lic-btn lic-btn-secondary">
-          <i class="fa fa-arrow-left"></i>
-          Voltar
+        <a href="{% url 'licenca_renovacoes' %}" class="lic-btn lic-btn-secondary">
+          <i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Renovações
         </a>
         <a href="{% url 'licenca_lote_novo' %}{% if licenca_filtro %}?licenca={{ licenca_filtro.pk }}{% endif %}" class="lic-btn lic-btn-primary">
-          <i class="fa fa-plus"></i>
-          Novo Lote
+          <i class="fa-solid fa-plus" aria-hidden="true"></i> Novo lote
         </a>
       </div>
-    </section>
+    </header>
 
     {% include 'front/licencas/_lic_subnav.html' %}
 
-    <form method="get" class="lic-filter-card" autocomplete="off">
-      {% if licenca_filtro %}<input type="hidden" name="licenca" value="{{ licenca_filtro.pk }}">{% endif %}
-      <div class="lic-filter-grid" style="grid-template-columns:minmax(0,1fr) auto;">
-        <div class="lic-field">
-          <label class="lic-label" for="id_q">Busca</label>
-          <div class="lic-search-wrap">
-            <i class="fa fa-search"></i>
-            <input type="text" id="id_q" name="q" placeholder="Buscar por licença, pedido ou observação..." value="{{ q }}">
-          </div>
-        </div>
-
-        <div class="lic-action-row">
-          {% if q %}
-            <a href="{{ request.path }}{% if licenca_filtro %}?licenca={{ licenca_filtro.pk }}{% endif %}" class="lic-btn lic-btn-danger">
-              <i class="fa fa-times"></i>
-              Limpar
-            </a>
-          {% else %}
-            <button type="submit" class="lic-btn lic-btn-primary">
-              <i class="fa fa-filter"></i>
-              Filtrar
-            </button>
-          {% endif %}
-        </div>
+    <section class="lic-stats" aria-label="Totais do recorte">
+      <div class="lic-stat" data-tom="brand">
+        <span class="lic-stat-label"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Lotes</span>
+        <span class="lic-stat-value">{{ totais.lotes }}</span>
+        <span class="lic-stat-meta">{{ totais.assentos }} assento{{ totais.assentos|pluralize }} comprado{{ totais.assentos|pluralize }}</span>
       </div>
-    </form>
+      <div class="lic-stat" data-tom="info">
+        <span class="lic-stat-label"><i class="fa-solid fa-unlock" aria-hidden="true"></i> Livres</span>
+        <span class="lic-stat-value">{{ totais.livres }}</span>
+        <span class="lic-stat-meta">disponíveis para atribuir</span>
+      </div>
+      <div class="lic-stat" data-tom="info">
+        <span class="lic-stat-label"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Contratado</span>
+        <span class="lic-stat-value">R$ {{ totais.ciclo|floatformat:2|intcomma }}</span>
+        <span class="lic-stat-meta">soma dos ciclos deste recorte</span>
+      </div>
+      <div class="lic-stat" data-tom="info">
+        <span class="lic-stat-label"><i class="fa-solid fa-coins" aria-hidden="true"></i> Equivalente mensal</span>
+        <span class="lic-stat-value">R$ {{ totais.mensal|floatformat:2|intcomma }}</span>
+        <span class="lic-stat-meta">rateio do ciclo por mês</span>
+      </div>
+      <div class="lic-stat" data-tom="{% if totais.divergentes %}erro{% else %}ok{% endif %}">
+        <span class="lic-stat-label"><i class="fa-solid fa-scale-unbalanced" aria-hidden="true"></i> Divergentes</span>
+        <span class="lic-stat-value">{{ totais.divergentes }}</span>
+        <span class="lic-stat-meta">
+          contador fora do razão ·
+          <a class="lic-stat-link" href="{% url 'licenca_saude' %}">reconciliar</a>
+        </span>
+      </div>
+    </section>
 
     <section class="lic-card">
       <div class="lic-card-header">
-        <div class="lic-card-title">
-          <i class="fa fa-boxes-stacked"></i>
+        <h2 class="lic-card-title">
+          <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i>
           Lotes cadastrados
-        </div>
-        <span class="lic-badge">Total: {{ lotes.count }}</span>
+          <span class="lic-card-title-sub">{{ total_registros }} registro{{ total_registros|pluralize }}</span>
+        </h2>
       </div>
+
+      <form method="get" class="lic-card-body lic-filter-compact" autocomplete="off"
+            style="padding-bottom:12px; border-bottom:1px solid var(--lic-border)">
+        {% if licenca_filtro %}<input type="hidden" name="licenca" value="{{ licenca_filtro.pk }}">{% endif %}
+        <div class="lic-filter-grid">
+          <div class="lic-field lic-field-wide">
+            <label class="lic-label" for="id_q">Buscar</label>
+            <div class="lic-search-wrap">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+              <input type="search" id="id_q" name="q" value="{{ q }}"
+                     placeholder="Licença, nº do pedido, fornecedor ou #id do lote">
+            </div>
+          </div>
+          <div class="lic-field">
+            <label class="lic-label" for="id_estado">Situação do lote</label>
+            <select name="estado" id="id_estado" class="lic-select" data-lic-autosubmit>
+              <option value="">Todas</option>
+              {% for val, rotulo in opt_estado %}
+                <option value="{{ val }}" {% if filter_estado == val %}selected{% endif %}>{{ rotulo }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="lic-field">
+            <label class="lic-label" for="id_vence">Vencimento</label>
+            <select name="vence" id="id_vence" class="lic-select" data-lic-autosubmit>
+              <option value="">Qualquer</option>
+              {% for val, rotulo in opt_vence %}
+                <option value="{{ val }}" {% if filter_vence == val %}selected{% endif %}>{{ rotulo }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="lic-field">
+            <label class="lic-label" for="id_ordem">Ordenar por</label>
+            <select name="ordem" id="id_ordem" class="lic-select" data-lic-autosubmit>
+              {% for val, rotulo in opt_ordem %}
+                <option value="{{ val }}" {% if filter_ordem == val %}selected{% endif %}>{{ rotulo }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% comment %}"Filtrar" e "Limpar" CONVIVEM. A versão anterior trocava um
+             pelo outro quando havia busca ativa: depois de buscar uma vez não
+             havia como refinar a busca sem apagar tudo e recomeçar.{% endcomment %}
+          <div class="lic-action-row" style="justify-content:flex-start">
+            <button type="submit" class="lic-btn lic-btn-primary lic-btn-sm">
+              <i class="fa-solid fa-filter" aria-hidden="true"></i> Filtrar
+            </button>
+            {% if tem_filtro %}
+              <a href="{{ request.path }}{% if licenca_filtro %}?licenca={{ licenca_filtro.pk }}{% endif %}"
+                 class="lic-btn lic-btn-ghost lic-btn-sm">
+                <i class="fa-solid fa-eraser" aria-hidden="true"></i> Limpar
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      </form>
 
       <div class="lic-table-wrap">
         <table class="lic-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Licença vinculada</th>
-              <th>Nº Pedido</th>
-              <th>Data Compra</th>
-              <th class="lic-text-right">Total</th>
-              <th class="lic-text-right">Disponível</th>
-              <th>Status</th>
-              <th class="lic-text-right">Ações</th>
+              <th scope="col">Lote</th>
+              <th scope="col">Licença</th>
+              <th scope="col">Compra</th>
+              <th scope="col">Renovação</th>
+              <th scope="col">Ciclo</th>
+              <th scope="col">Ocupação</th>
+              <th scope="col" class="lic-text-right">Valor do ciclo</th>
+              <th scope="col" class="lic-text-right">Por mês</th>
+              <th scope="col">Situação</th>
+              <th scope="col" class="lic-text-right">Ações</th>
             </tr>
           </thead>
           <tbody>
             {% for lote in lotes %}
-              <tr>
-                <td class="lic-mono">#{{ lote.id }}</td>
+              <tr {% if lote.divergente %}data-tom="erro"{% elif lote.dias_vencimento != None and lote.dias_vencimento <= 30 %}data-tom="alerta"{% endif %}>
+                <td>
+                  <span class="lic-mono">#{{ lote.pk }}</span>
+                  <span class="lic-sub">{{ lote.numero_pedido|default:"sem pedido" }}</span>
+                </td>
                 <td>
                   {% if lote.licenca %}
-                    <a href="{% url 'licenca_detail' lote.licenca.pk %}" class="lic-title-link">
-                      {{ lote.licenca.nome }}
-                    </a>
+                    <a href="{% url 'licenca_detail' lote.licenca.pk %}" class="lic-title-link">{{ lote.licenca.nome }}</a>
+                    {% comment %}`firstof` e NAO `|default:` encadeado. O
+                       argumento de um filtro e resolvido ANTES de o filtro
+                       rodar, entao `|default:lote.licenca.fornecedor.nome`
+                       levantava `VariableDoesNotExist` quando a licenca nao
+                       tem fornecedor — a tela estourava com 500 justamente no
+                       caso que o default existia para cobrir. `firstof` avalia
+                       um por um e para no primeiro que vale.{% endcomment %}
+                    <span class="lic-sub">{% firstof lote.fornecedor.nome lote.licenca.fornecedor.nome "sem fornecedor" %}</span>
                   {% else %}
                     <span class="lic-muted">Licença excluída</span>
                   {% endif %}
                 </td>
-                <td>{{ lote.numero_pedido|default:"-" }}</td>
-                <td>{{ lote.data_compra|date:"d/m/Y"|default:"-" }}</td>
-                <td class="lic-text-right lic-mono">{{ lote.quantidade_total }}</td>
-                <td class="lic-text-right">
-                  <div class="lic-saldo">
-                    <span class="lic-mono lic-saldo-num">{{ lote.quantidade_disponivel }}<span class="lic-saldo-tot">/{{ lote.quantidade_total }}</span></span>
-                    <div class="lic-saldo-track">
-                      <div class="lic-saldo-fill {% if lote.quantidade_disponivel == 0 %}is-empty{% elif lote.quantidade_disponivel == lote.quantidade_total %}is-full{% endif %}"
-                           style="width: {% if lote.quantidade_total %}{% widthratio lote.quantidade_disponivel lote.quantidade_total 100 %}{% else %}0{% endif %}%"></div>
+                <td class="lic-nowrap">{{ lote.data_compra|date:"d/m/Y"|default:"—" }}</td>
+                <td class="lic-nowrap">
+                  {% if lote.vencimento %}
+                    <div class="lic-prazo" data-tom="{% if lote.dias_vencimento < 0 %}erro{% elif lote.dias_vencimento <= 30 %}erro{% elif lote.dias_vencimento <= 60 %}alerta{% endif %}">
+                      <span class="lic-prazo-dias">{{ lote.vencimento|date:"d/m/Y" }}</span>
+                      <span class="lic-prazo-data">
+                        {% if lote.dias_vencimento < 0 %}vencido{% else %}em {{ lote.dias_vencimento }} dia{{ lote.dias_vencimento|pluralize }}{% endif %}
+                        {% if not lote.data_renovacao %}
+                          <span class="lic-est" title="Calculado da data de compra + periodicidade">est.</span>
+                        {% endif %}
+                      </span>
+                    </div>
+                  {% else %}
+                    <span class="lic-muted">sem data</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="lic-pill">{{ lote.get_periodicidade_display }}</span>
+                  {% if not lote.renovacao_automatica %}
+                    <span class="lic-pill" data-tom="alerta" title="Exige renovação manual">manual</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="lic-meter-cell">
+                    <span class="lic-meter-num">{{ lote.em_uso_real }}<small>/{{ lote.quantidade_total }}</small></span>
+                    <div class="lic-meter-track">
+                      <span class="lic-meter-fill" style="width: {% if lote.quantidade_total %}{% widthratio lote.em_uso_real lote.quantidade_total 100 %}{% else %}0{% endif %}%"></span>
                     </div>
                   </div>
                 </td>
-                <td>
-                  {% if lote.quantidade_disponivel == 0 %}
-                    <span class="lic-badge lic-badge-danger">Esgotado</span>
-                  {% elif lote.quantidade_disponivel == lote.quantidade_total %}
-                    <span class="lic-badge lic-badge-success">Intacto</span>
+                <td class="lic-text-right">
+                  {% if lote.custo_ciclo %}
+                    <span class="lic-money">R$ {{ lote.custo_ciclo|floatformat:2|intcomma }}</span>
                   {% else %}
-                    <span class="lic-badge lic-badge-warning">Em uso</span>
+                    <span class="lic-money is-zero" title="Sem custo informado — este lote não entra em nenhum rateio de custo">—</span>
                   {% endif %}
                 </td>
                 <td class="lic-text-right">
-                  <a href="{% url 'licenca_lote_edit' pk=lote.id %}" class="lic-icon-btn" title="Editar Lote">
-                    <i class="fa fa-pen"></i>
-                  </a>
+                  <div class="lic-money-stack">
+                    <span class="lic-money">R$ {{ lote.custo.mensal_total|floatformat:2|intcomma }}</span>
+                    <span class="lic-money-sub">
+                      R$ {{ lote.custo.mensal_unit|floatformat:2|intcomma }}/assento
+                      {% if lote.custo.ciclo_estimado %}<span class="lic-est" title="Ciclo “Contrato/Outro” — mensal estimado como anual">est.</span>{% endif %}
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  {% if lote.divergente %}
+                    <span class="lic-pill" data-tom="erro" title="O contador gravado diz {{ lote.quantidade_disponivel }}, o razão diz {{ lote.saldo_real }}">
+                      <i class="fa-solid fa-scale-unbalanced" aria-hidden="true"></i> Divergente
+                    </span>
+                  {% elif lote.saldo_real == 0 %}
+                    <span class="lic-pill" data-tom="alerta">Esgotado</span>
+                  {% elif lote.em_uso_real == 0 %}
+                    <span class="lic-pill" data-tom="info">Intacto</span>
+                  {% else %}
+                    <span class="lic-pill" data-tom="ok">Em uso</span>
+                  {% endif %}
+                </td>
+                <td class="lic-text-right">
+                  <div class="lic-action-row">
+                    {% if lote.divergente %}
+                      <form method="post" action="{% url 'licenca_reconciliar_lote' lote.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <button type="submit" class="lic-icon-btn" title="Reconciliar saldo deste lote com o razão">
+                          <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+                        </button>
+                      </form>
+                    {% endif %}
+                    <a href="{% url 'licenca_lote_edit' lote.pk %}" class="lic-icon-btn" title="Editar lote">
+                      <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                    </a>
+                  </div>
                 </td>
               </tr>
             {% empty %}
               <tr>
-                <td colspan="8">
+                <td colspan="10">
                   <div class="lic-empty">
-                    <i class="fa fa-box-open"></i>
-                    Nenhum lote encontrado com os critérios atuais.
+                    <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
+                    <strong>Nenhum lote encontrado</strong>
+                    <div>Ajuste os filtros ou registre uma compra.</div>
                   </div>
                 </td>
               </tr>
@@ -165,7 +283,65 @@
           </tbody>
         </table>
       </div>
+
+      {% comment %}Cartões do celular: a tabela de 1220px só sai de cena
+         porque existe esta lista no lugar dela (regra 24).{% endcomment %}
+      <div class="lic-mobile-list">
+        {% for lote in lotes %}
+          <article class="lic-mobile-card" {% if lote.divergente %}data-tom="erro"{% endif %}>
+            <div class="lic-mobile-head">
+              <div>
+                {% if lote.licenca %}
+                  <a href="{% url 'licenca_detail' lote.licenca.pk %}" class="lic-title-link">{{ lote.licenca.nome }}</a>
+                {% endif %}
+                <span class="lic-sub">Lote #{{ lote.pk }} · {{ lote.get_periodicidade_display }}</span>
+              </div>
+              {% if lote.saldo_real == 0 %}
+                <span class="lic-pill" data-tom="alerta">Esgotado</span>
+              {% else %}
+                <span class="lic-pill" data-tom="brand">{{ lote.saldo_real }} livre{{ lote.saldo_real|pluralize }}</span>
+              {% endif %}
+            </div>
+            <div class="lic-mobile-meta">
+              <div>
+                <span class="lic-mobile-label">Ocupação</span>
+                <span>{{ lote.em_uso_real }} / {{ lote.quantidade_total }}</span>
+              </div>
+              <div>
+                <span class="lic-mobile-label">Renovação</span>
+                <span>{{ lote.vencimento|date:"d/m/Y"|default:"sem data" }}</span>
+              </div>
+              <div>
+                <span class="lic-mobile-label">Valor do ciclo</span>
+                <span class="lic-money">R$ {{ lote.custo_ciclo|default:0|floatformat:2|intcomma }}</span>
+              </div>
+              <div>
+                <span class="lic-mobile-label">Por mês</span>
+                <span class="lic-money">R$ {{ lote.custo.mensal_total|floatformat:2|intcomma }}</span>
+              </div>
+            </div>
+            <div class="lic-mobile-actions" style="grid-template-columns:1fr">
+              <a href="{% url 'licenca_lote_edit' lote.pk %}" class="lic-btn lic-btn-secondary lic-btn-sm">
+                <i class="fa-solid fa-pen" aria-hidden="true"></i> Editar lote
+              </a>
+            </div>
+          </article>
+        {% empty %}
+          <div class="ui-empty">
+            <div class="ui-empty-ico"><i class="fa-regular fa-folder-open" aria-hidden="true"></i></div>
+            <div class="ui-empty-title">Nenhum lote encontrado</div>
+            <p class="ui-empty-text">Ajuste os filtros ou registre uma compra.</p>
+          </div>
+        {% endfor %}
+      </div>
+
+      {% include 'front/licencas/_lic_pagination.html' %}
     </section>
+
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% include 'front/licencas/_lic_js_base.html' %}
 {% endblock %}

@@ -1,50 +1,81 @@
-{% for obj in page_obj %}
-<div class="lic-gc" data-href="{% url 'licenca_detail' obj.pk %}" tabindex="0" role="article">
+{% comment %}
+Cartões do catálogo (visão galeria). Mesma fonte de dados das linhas da
+tabela — `licenca_service.LinhaCatalogo` —, então as duas visões NÃO podem
+mostrar números diferentes para a mesma licença. Antes a galeria lia
+`estoque_real` (o contador) e a tabela também; hoje as duas leem o razão.
+{% endcomment %}
+{% load humanize %}
+{% for linha in page_obj %}
+<div class="lic-gc"
+     data-href="{% url 'licenca_detail' linha.licenca.pk %}"
+     {% if linha.divergente %}data-tom="erro"{% elif linha.esgotada or linha.sem_lote %}data-tom="alerta"{% endif %}
+     tabindex="0" role="article"
+     aria-label="{{ linha.licenca.nome }}">
   <div class="lic-gc-header">
-    <div class="lic-gc-icon">
-      <i class="fa fa-key"></i>
-    </div>
+    <div class="lic-gc-icon"><i class="fa-solid fa-key" aria-hidden="true"></i></div>
     <div class="lic-gc-info">
-      <div class="lic-gc-name">{{ obj.nome }}</div>
+      <div class="lic-gc-name">{{ linha.licenca.nome }}</div>
       <div class="lic-gc-supplier">
-        <i class="fa fa-building"></i> {{ obj.fornecedor.nome|default:"Sem fornecedor" }}
+        <i class="fa-solid fa-building" aria-hidden="true"></i>
+        {{ linha.licenca.fornecedor.nome|default:"Sem fornecedor" }}
       </div>
     </div>
-    {% if obj.pmb == 'sim' %}
-      <span class="lic-badge lic-badge-success lic-gc-pmb"><i class="fa fa-star"></i> PMB</span>
+    {% if linha.licenca.pmb == 'sim' %}
+      <span class="lic-pill lic-gc-pmb" data-tom="brand">PMB</span>
     {% endif %}
+  </div>
+
+  <div class="lic-gc-meter">
+    <div class="lic-meter" data-tom="{% if linha.total == 0 %}vazio{% elif linha.pct_uso >= 95 %}erro{% elif linha.pct_uso >= 80 %}alerta{% else %}ok{% endif %}">
+      <div class="lic-meter-head">
+        <span class="lic-gc-stat-label">Ocupação</span>
+        <span class="lic-meter-pct">{{ linha.pct_uso }}%</span>
+      </div>
+      <div class="lic-meter-track">
+        <span class="lic-meter-fill" style="width: {{ linha.pct_uso }}%"></span>
+      </div>
+      <div class="lic-meter-legend">
+        <span>{{ linha.em_uso }} em uso</span>
+        <span>{{ linha.livre }} livre{{ linha.livre|pluralize }}</span>
+      </div>
+    </div>
   </div>
 
   <div class="lic-gc-stats">
     <div class="lic-gc-stat">
-      <span class="lic-gc-stat-value {% if obj.estoque_real > 0 %}up{% else %}empty{% endif %}">{{ obj.estoque_real }}</span>
-      <span class="lic-gc-stat-label">Disponível</span>
+      <span class="lic-gc-stat-value">R$ {{ linha.mensal|floatformat:0|intcomma }}</span>
+      <span class="lic-gc-stat-label">Custo / mês</span>
     </div>
     <div class="lic-gc-stat">
-      <span class="lic-gc-stat-value">{{ obj.qtd_lotes }}</span>
-      <span class="lic-gc-stat-label">Lote{{ obj.qtd_lotes|pluralize }}</span>
+      <span class="lic-gc-stat-value {% if linha.desperdicio_mensal > 0 %}empty{% endif %}">R$ {{ linha.desperdicio_mensal|floatformat:0|intcomma }}</span>
+      <span class="lic-gc-stat-label">Parado / mês</span>
     </div>
   </div>
 
   <div class="lic-gc-footer">
-    <span class="lic-gc-view-hint"><i class="fa fa-eye"></i> Ver detalhes</span>
+    {% if linha.vencimento %}
+      <span class="lic-gc-view-hint" title="Próxima renovação">
+        <i class="fa-solid fa-calendar-check" aria-hidden="true"></i>
+        {% if linha.dias_vencimento < 0 %}Vencido{% else %}{{ linha.dias_vencimento }} dia{{ linha.dias_vencimento|pluralize }}{% endif %}
+      </span>
+    {% else %}
+      <span class="lic-gc-view-hint"><i class="fa-solid fa-eye" aria-hidden="true"></i> Ver ficha</span>
+    {% endif %}
     <div class="lic-gc-actions">
-      <a href="{% url 'licenca_lote_list' %}?licenca={{ obj.pk }}"
-         class="lic-gc-btn" title="Gerenciar lotes"
-         onclick="event.stopPropagation()">
-        <i class="fa fa-boxes-stacked"></i>
+      <a href="{% url 'licenca_lote_list' %}?licenca={{ linha.licenca.pk }}"
+         class="lic-gc-btn" title="Lotes desta licença" onclick="event.stopPropagation()">
+        <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i>
       </a>
-      <a href="{% url 'licenca_update' obj.pk %}"
-         class="lic-gc-btn" title="Editar"
-         onclick="event.stopPropagation()">
-        <i class="fa fa-pen"></i>
+      <a href="{% url 'licenca_update' linha.licenca.pk %}"
+         class="lic-gc-btn" title="Editar cadastro" onclick="event.stopPropagation()">
+        <i class="fa-solid fa-pen" aria-hidden="true"></i>
       </a>
     </div>
   </div>
 </div>
 {% empty %}
 <div class="lic-gallery-empty">
-  <i class="fa fa-inbox"></i>
+  <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
   <strong>Nenhuma licença encontrada</strong>
   <span>Ajuste os filtros ou cadastre uma nova licença.</span>
 </div>

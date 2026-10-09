@@ -17,8 +17,15 @@
 .licd-col { display:flex; flex-direction:column; gap:14px; }
 @media (max-width:1100px) { .licd-main { grid-template-columns:1fr; } }
 
-.lic-kpi-card.is-clickable { cursor:pointer; transition:background var(--lic-transition), border-color var(--lic-transition); }
-.lic-kpi-card.is-clickable:hover { background:var(--lic-fill); border-color:var(--lic-border-strong); }
+/* O cartao que abre a janela de colaboradores. Vale para os dois nomes
+   porque a faixa passou de `.lic-kpi-card` para `.lic-stat`: sem o seletor
+   novo o cartao continuava abrindo (o JS prende no id) mas perdia o cursor
+   e o foco visivel — clicavel sem parecer clicavel. */
+.lic-kpi-card.is-clickable,
+.lic-stat.is-clickable { cursor:pointer; transition:background var(--lic-transition), border-color var(--lic-transition); }
+.lic-kpi-card.is-clickable:hover,
+.lic-stat.is-clickable:hover { background:var(--lic-fill); }
+.lic-stat.is-clickable:focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 
 .licd-rank-row { display:grid; grid-template-columns:1fr auto; gap:4px 14px; padding:12px 18px; border-bottom:1px solid var(--lic-border); }
 .licd-rank-row:last-child { border-bottom:0; }
@@ -100,61 +107,80 @@
 <div class="lic-page">
   <div class="lic-shell">
 
-    <section class="lic-hero">
-      <div class="lic-hero-main">
-        <div class="lic-hero-icon"><i class="fa fa-chart-pie"></i></div>
-        <div class="lic-hero-title">
-          <h1>Dashboard de Licenças</h1>
-          <p>Custos e alocação de licenças de software por fornecedor, centro de custo e colaborador.</p>
-        </div>
+    <header class="lic-head">
+      <div class="lic-head-main">
+        <span class="lic-head-eyebrow"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i> Painel de custos</span>
+        <h1 class="lic-head-title">Custo das licenças de software</h1>
+        <p class="lic-head-sub">
+          Quanto o acervo custa, para quem vai o custo e quanto dele está
+          sendo pago sem uso. Toda apuração vem das movimentações
+          registradas — a mesma fonte do catálogo e da ficha da licença.
+        </p>
       </div>
-    </section>
+      <div class="lic-actions">
+        <a href="{% url 'licenca_renovacoes' %}" class="lic-btn lic-btn-secondary">
+          <i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Renovações
+        </a>
+        <a href="{% url 'mov_licenca_export' %}" class="lic-btn lic-btn-secondary">
+          <i class="fa-solid fa-file-csv" aria-hidden="true"></i> Razão em CSV
+        </a>
+      </div>
+    </header>
 
     {% include 'front/licencas/_lic_subnav.html' %}
 
-    <section class="lic-kpi-grid">
-      <div class="lic-kpi-card" style="--kpi-color: var(--lic-brand);">
-        <div class="lic-kpi-icon"><i class="fa fa-id-badge"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-value">{{ kpi_total }}</span>
-          <span class="lic-kpi-label">Licenças no escopo</span>
-        </div>
+    {% comment %}A faixa responde o que o painel existe para responder, na
+       ordem em que a conversa acontece: quanto custa, quanto disso está em
+       uso, quanto está parado e o que vence. "Assento parado" e "Vence em 90
+       dias" são os dois números novos — eram justamente os que ninguém tinha
+       e que mudam a decisão de renovar.{% endcomment %}
+    <section class="lic-stats" aria-label="Indicadores de custo">
+      <div class="lic-stat" data-tom="info">
+        <span class="lic-stat-label"><i class="fa-solid fa-coins" aria-hidden="true"></i> Custo mensal</span>
+        <span class="lic-stat-value">R$ {{ kpi_custo_mensal_fmt }}</span>
+        <span class="lic-stat-meta">R$ {{ kpi_custo_anual_fmt }} por ano</span>
       </div>
-      <div class="lic-kpi-card" style="--kpi-color: var(--lic-success);">
-        <div class="lic-kpi-icon"><i class="fa fa-user-check"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-value">{{ kpi_assentos }}</span>
-          <span class="lic-kpi-label">Assentos em uso</span>
-          <span class="lic-kpi-sub">{{ kpi_utilizacao_pct }}% de ocupação</span>
+
+      <div class="lic-stat" data-tom="{% if kpi_utilizacao_pct >= 95 %}erro{% elif kpi_utilizacao_pct >= 80 %}alerta{% else %}ok{% endif %}">
+        <span class="lic-stat-label"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Assentos em uso</span>
+        <span class="lic-stat-value">{{ kpi_assentos }}</span>
+        <div class="lic-meter" data-tom="{% if kpi_utilizacao_pct >= 95 %}erro{% elif kpi_utilizacao_pct >= 80 %}alerta{% else %}ok{% endif %}" style="margin-top:4px">
+          <div class="lic-meter-track"><span class="lic-meter-fill" style="width: {{ kpi_utilizacao_pct }}%"></span></div>
         </div>
+        <span class="lic-stat-meta">{{ kpi_utilizacao_pct }}% de ocupação</span>
       </div>
-      <div class="lic-kpi-card" style="--kpi-color: var(--lic-warning);">
-        <div class="lic-kpi-icon"><i class="fa fa-box-open"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-value">{{ kpi_disp }}</span>
-          <span class="lic-kpi-label">Disponíveis (estoque)</span>
-        </div>
+
+      <div class="lic-stat" data-tom="alerta">
+        <span class="lic-stat-label"><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i> Assento parado</span>
+        <span class="lic-stat-value">R$ {{ kpi_desperdicio_fmt }}</span>
+        <span class="lic-stat-meta">
+          por mês, em {{ kpi_disp }} assento{{ kpi_disp|pluralize }} comprado{{ kpi_disp|pluralize }} e sem uso
+        </span>
       </div>
-      <div class="lic-kpi-card is-clickable" style="--kpi-color: var(--lic-brand);" id="licdOpenKpi" title="Ver colaboradores e suas licenças" role="button" tabindex="0">
-        <div class="lic-kpi-icon"><i class="fa fa-users"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-value">{{ kpi_colaboradores }} <i class="fa fa-arrow-up-right-from-square" style="font-size:.68rem; opacity:.55;"></i></span>
-          <span class="lic-kpi-label">Colaboradores com licença</span>
-        </div>
+
+      <div class="lic-stat" data-tom="{% if kpi_renov_90 %}alerta{% else %}ok{% endif %}">
+        <span class="lic-stat-label"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Vence em 90 dias</span>
+        <span class="lic-stat-value">{{ kpi_renov_90 }}</span>
+        <span class="lic-stat-meta">
+          R$ {{ kpi_renov_valor_fmt }} a renovar ·
+          <a class="lic-stat-link" href="{% url 'licenca_renovacoes' %}">calendário</a>
+        </span>
       </div>
-      <div class="lic-kpi-card" style="--kpi-color: var(--lic-brand);">
-        <div class="lic-kpi-icon"><i class="fa fa-coins"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-value">R$ {{ kpi_custo_mensal_fmt }}</span>
-          <span class="lic-kpi-label">Custo mensal total</span>
-        </div>
+
+      <div class="lic-stat is-clickable" data-tom="brand" id="licdOpenKpi"
+           title="Ver colaboradores e suas licenças" role="button" tabindex="0">
+        <span class="lic-stat-label"><i class="fa-solid fa-users" aria-hidden="true"></i> Colaboradores</span>
+        <span class="lic-stat-value">
+          {{ kpi_colaboradores }}
+          <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.62rem; opacity:.5;" aria-hidden="true"></i>
+        </span>
+        <span class="lic-stat-meta">com licença atribuída · clique para detalhar</span>
       </div>
-      <div class="lic-kpi-card" style="--kpi-color: var(--lic-brand);">
-        <div class="lic-kpi-icon"><i class="fa fa-calendar-days"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-value">R$ {{ kpi_custo_anual_fmt }}</span>
-          <span class="lic-kpi-label">Custo anual (projeção)</span>
-        </div>
+
+      <div class="lic-stat" data-tom="brand">
+        <span class="lic-stat-label"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Licenças no recorte</span>
+        <span class="lic-stat-value">{{ kpi_total }}</span>
+        <span class="lic-stat-meta">{% if tem_filtro %}com os filtros aplicados{% else %}acervo inteiro{% endif %}</span>
       </div>
     </section>
 
@@ -236,9 +262,9 @@
     </details>
 
     {% if pmb_pessoa_ativo %}
-    <div class="lic-alert">
-      <i class="fa fa-user-shield"></i>
-      <div>
+    <div class="lic-callout" data-tom="info">
+      <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+      <div class="lic-callout-body">
         {% if f_pmb_pessoa == 'sim' %}
         Exibindo apenas o custo de licenças atribuídas a <strong>colaboradores PMB</strong> (campo PMB = Sim <strong>e</strong> Centro de Custo PMB). A parcela de estoque não é considerada.
         {% else %}
@@ -259,35 +285,81 @@
             <table class="lic-table">
               <thead>
                 <tr>
-                  <th>Licença</th>
-                  <th>Fornecedor</th>
-                  <th>Periodicidade</th>
-                  <th class="lic-text-center">Total</th>
-                  <th class="lic-text-center">Em uso</th>
-                  <th class="lic-text-center">Estoque</th>
-                  <th class="lic-text-right">Custo médio / assento</th>
-                  <th class="lic-text-right">Custo mensal</th>
-                  <th class="lic-text-right">Custo anual</th>
+                  <th scope="col">Licença</th>
+                  <th scope="col">Fornecedor</th>
+                  <th scope="col">Ciclo</th>
+                  <th scope="col">Ocupação</th>
+                  <th scope="col" class="lic-text-center">Parados</th>
+                  <th scope="col" class="lic-text-right">Por assento</th>
+                  <th scope="col" class="lic-text-right">Custo mensal</th>
+                  <th scope="col" class="lic-text-right">Pago à toa</th>
+                  <th scope="col">Renova em</th>
                 </tr>
               </thead>
               <tbody>
                 {% for l in linhas %}
-                <tr>
+                <tr {% if l.estoque and l.pct_uso < 50 %}data-tom="alerta"{% endif %}>
                   <td>
-                    <span class="lic-link" style="font-weight:600;">{{ l.obj.nome }}</span>
-                    <span class="lic-sub">{{ l.obj.centro_custo.numero|default:"CC indefinido" }}</span>
+                    <a href="{% url 'licenca_detail' l.obj.pk %}" class="lic-title-link">{{ l.obj.nome }}</a>
+                    <span class="lic-sub">{{ l.obj.centro_custo.numero|default:"sem CC proprietário" }}</span>
                   </td>
                   <td>{{ l.obj.fornecedor.nome|default:"—" }}</td>
-                  <td><span class="lic-badge">{{ l.periodicidade_display }}</span></td>
-                  <td class="lic-text-center">{{ l.total }}</td>
-                  <td class="lic-text-center"><span class="lic-badge lic-badge-success">{{ l.ativos }}</span></td>
-                  <td class="lic-text-center"><span class="lic-badge lic-badge-warning">{{ l.estoque }}</span></td>
-                  <td class="lic-text-right">R$ {{ l.custo_mensal_unit_medio }}</td>
-                  <td class="lic-text-right">R$ {{ l.custo_mensal_total }}</td>
-                  <td class="lic-text-right">R$ {{ l.custo_anual_total }}</td>
+                  <td>
+                    <span class="lic-pill">{{ l.periodicidade_display }}</span>
+                    {% if l.estimado %}
+                      <span class="lic-est" title="Algum lote tem ciclo “Contrato/Outro”, que não declara periodicidade — o mensal é estimado como anual">estimado</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <div class="lic-meter" data-tom="{% if l.total == 0 %}vazio{% elif l.pct_uso >= 95 %}erro{% elif l.pct_uso >= 80 %}alerta{% else %}ok{% endif %}">
+                      <div class="lic-meter-head">
+                        <span class="lic-meter-num">{{ l.ativos }}<small>/{{ l.total }}</small></span>
+                        <span class="lic-meter-pct">{{ l.pct_uso }}%</span>
+                      </div>
+                      <div class="lic-meter-track">
+                        <span class="lic-meter-fill" style="width: {{ l.pct_uso }}%"></span>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="lic-text-center">
+                    {% if l.estoque %}
+                      <span class="lic-pill" data-tom="alerta">{{ l.estoque }}</span>
+                    {% else %}
+                      <span class="lic-pill" data-tom="ok">0</span>
+                    {% endif %}
+                  </td>
+                  <td class="lic-text-right"><span class="lic-money">R$ {{ l.custo_mensal_unit_medio }}</span></td>
+                  <td class="lic-text-right"><span class="lic-money">R$ {{ l.custo_mensal_total }}</span></td>
+                  <td class="lic-text-right">
+                    {% if l.estoque %}
+                      <span class="lic-money is-perda">R$ {{ l.desperdicio }}</span>
+                    {% else %}
+                      <span class="lic-money is-zero">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="lic-nowrap">
+                    {% if l.vencimento %}
+                      <div class="lic-prazo" data-tom="{% if l.dias_vencimento < 0 %}erro{% elif l.dias_vencimento <= 30 %}erro{% elif l.dias_vencimento <= 60 %}alerta{% endif %}">
+                        <span class="lic-prazo-dias">
+                          {% if l.dias_vencimento < 0 %}Vencido{% else %}{{ l.dias_vencimento }} dia{{ l.dias_vencimento|pluralize }}{% endif %}
+                        </span>
+                        <span class="lic-prazo-data">{{ l.vencimento }}</span>
+                      </div>
+                    {% else %}
+                      <span class="lic-sub">sem data</span>
+                    {% endif %}
+                  </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="9" class="lic-empty">Nenhum dado encontrado para os filtros atuais.</td></tr>
+                <tr>
+                  <td colspan="9">
+                    <div class="lic-empty">
+                      <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
+                      <strong>Nenhum dado para os filtros atuais</strong>
+                      <div>Amplie o recorte ou limpe os filtros.</div>
+                    </div>
+                  </td>
+                </tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -306,9 +378,11 @@
                 <tr>
                   <th>Licença</th>
                   <th>Lote / Pedido</th>
-                  <th>Periodicidade</th>
-                  <th class="lic-text-center">Qtd.</th>
-                  <th class="lic-text-right">Custo do ciclo</th>
+                  <th scope="col">Periodicidade</th>
+                  <th scope="col">Renovação</th>
+                  <th scope="col" class="lic-text-center">Qtd.</th>
+                  <th scope="col" class="lic-text-center">Livres</th>
+                  <th scope="col" class="lic-text-right">Custo do ciclo</th>
                   <th class="lic-text-right">Custo unit. do ciclo</th>
                   <th class="lic-text-right">Custo mensal / assento</th>
                   <th class="lic-text-right">Custo anual / assento</th>
@@ -321,9 +395,20 @@
                 <tr>
                   <td>{{ lote.licenca }}</td>
                   <td>{{ lote.lote }} <span class="lic-sub">{{ lote.pedido|default:"—" }}</span></td>
-                  <td>{{ lote.periodicidade }}</td>
+                  <td>
+                    <span class="lic-pill">{{ lote.periodicidade }}</span>
+                    {% if lote.estimado %}<span class="lic-est" title="Ciclo “Contrato/Outro” — mensal estimado como anual">est.</span>{% endif %}
+                  </td>
+                  <td class="lic-nowrap">{{ lote.vencimento }}</td>
                   <td class="lic-text-center">{{ lote.qtd }}</td>
-                  <td class="lic-text-right">R$ {{ lote.custo_total_lote }}</td>
+                  <td class="lic-text-center">
+                    {% if lote.disp %}
+                      <span class="lic-pill" data-tom="brand">{{ lote.disp }}</span>
+                    {% else %}
+                      <span class="lic-pill" data-tom="alerta">0</span>
+                    {% endif %}
+                  </td>
+                  <td class="lic-text-right"><span class="lic-money">R$ {{ lote.custo_total_lote }}</span></td>
                   <td class="lic-text-right">R$ {{ lote.custo_unit_ciclo }}</td>
                   <td class="lic-text-right">R$ {{ lote.custo_mensal_unit }}</td>
                   <td class="lic-text-right">R$ {{ lote.custo_anual_unit }}</td>
@@ -411,8 +496,12 @@
 </div>
 
 {{ colaboradores|json_script:"js-colaboradores" }}
-{{ chart_forn_labels|default:"[]"|json_script:"js-forn-labels" }}
-{{ chart_forn_data|default:"[]"|json_script:"js-forn-data" }}
+{% comment %}SEM `|default:"[]"` — regra 18. Lista vazia é falsy, então o
+   default a substituiria pela STRING "[]"; o json_script serializa isso como
+   texto JSON e o JSON.parse devolve uma string, fazendo o gráfico estourar
+   justamente quando não há dado nenhum. A view sempre entrega lista.{% endcomment %}
+{{ chart_forn_labels|json_script:"js-forn-labels" }}
+{{ chart_forn_data|json_script:"js-forn-data" }}
 
 <script>
     const getJSON = (id) => JSON.parse(document.getElementById(id).textContent || '[]');

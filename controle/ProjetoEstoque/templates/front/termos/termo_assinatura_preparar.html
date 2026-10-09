@@ -1,0 +1,447 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ titulo }}{% endblock %}
+{% block page_title %}{{ titulo }}{% endblock %}
+{% block page_subtitle %}{{ subtitulo }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'termo_assinatura_list' %}">Termos assinados</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">
+    Nova {% if tipo == 'entrega' %}entrega{% else %}devolução{% endif %}
+  </span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'css/ds-termos.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="ta-page ta-prep">
+
+  {% comment %}Trilha de etapas: a tela tem três passos com dependência entre
+     eles (o colaborador define quais equipamentos aparecem na devolução), e
+     sem a trilha o operador não percebe a ordem — abria pelo meio e via lista
+     vazia sem saber por quê.{% endcomment %}
+  <ol class="ta-passos" aria-label="Etapas">
+    <li class="ta-passo is-atual"><span>1</span> Colaborador</li>
+    <li class="ta-passo"><span>2</span> Equipamentos</li>
+    <li class="ta-passo"><span>3</span> Dados do termo</li>
+    <li class="ta-passo"><span><i class="fa-solid fa-qrcode" aria-hidden="true"></i></span> Assinatura</li>
+  </ol>
+
+  {% if pendentes %}
+    <div class="alert alert-warning">
+      <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+      <span>
+        {{ colaborador_selecionado.nome }} já tem
+        {{ pendentes|length }} link{{ pendentes|length|pluralize }} de assinatura aberto{{ pendentes|length|pluralize }}:
+        {% for p in pendentes %}
+          <a href="{% url 'termo_assinatura_painel' p.pk %}">#{{ p.pk }} ({{ p.get_tipo_display }})</a>{% if not forloop.last %}, {% endif %}
+        {% endfor %}.
+        Conclua ou cancele antes de criar outro, para não ficarem dois termos do mesmo ato.
+      </span>
+    </div>
+  {% endif %}
+
+  <form method="post" novalidate id="taForm">
+    {% csrf_token %}
+
+    {% comment %}O equipamento indicado na URL (entrada pela ficha ou pela
+       pendência do Repositório de Termos) viaja no POST: sem isso, um erro de
+       validação reexibiria a tela sem ele no universo de opções — ver
+       `_com_item_indicado` em views/termos_assinatura.py.{% endcomment %}
+    {% if item_indicado %}
+      <input type="hidden" name="item_indicado" value="{{ item_indicado }}">
+    {% endif %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-error">
+        <i class="fa-solid fa-circle-xmark" aria-hidden="true"></i>
+        <span>{{ form.non_field_errors|join:" " }}</span>
+      </div>
+    {% endif %}
+
+    <div class="ta-prep-grid">
+      <div class="ta-prep-main">
+
+        {# ── 1. Colaborador ───────────────────────────────────────────── #}
+        <section class="ta-card">
+          <div class="ta-card-head">
+            <h2 class="ta-card-title">
+              <i class="fa-solid fa-user-check" aria-hidden="true"></i>
+              1. Quem vai assinar
+            </h2>
+          </div>
+
+          <div class="ta-card-body">
+            <div class="ta-field">
+              <label class="ta-dt is-required" for="id_colaborador">Colaborador</label>
+              <select name="colaborador" id="id_colaborador" class="ctrl ta-select"
+                      data-remoto="colaborador" {% if form.colaborador.errors %}aria-invalid="true"{% endif %}>
+                {% if colaborador_selecionado %}
+                  <option value="{{ colaborador_selecionado.pk }}" selected>{{ colaborador_selecionado.nome }}</option>
+                {% endif %}
+              </select>
+              {% if form.colaborador.errors %}<p class="form-error">{{ form.colaborador.errors|join:" " }}</p>{% endif %}
+              <p class="form-hint">
+                Busque por nome ou matrícula — a lista carrega conforme você digita.
+                {% if tipo == 'devolucao' %}
+                  Trocar o colaborador recarrega os equipamentos que estão com ele.
+                {% endif %}
+              </p>
+            </div>
+
+            {% if colaborador_selecionado %}
+              <div class="ta-resumo-colab">
+                <span class="ta-avatar" aria-hidden="true">{{ colaborador_selecionado.nome|slice:":1" }}</span>
+                <div>
+                  <strong>{{ colaborador_selecionado.nome }}</strong>
+                  <span class="ta-item-meta">
+                    {% if colaborador_selecionado.matricula %}Matrícula {{ colaborador_selecionado.matricula }} · {% endif %}
+                    {{ colaborador_selecionado.funcao.nome|default:"função não informada" }}<br>
+                    {{ colaborador_selecionado.centro_custo.departamento|default:"sem centro de custo" }}
+                    · {{ colaborador_selecionado.localidade.local|default:"sem localidade" }}
+                    {% if colaborador_selecionado.email %}<br>{{ colaborador_selecionado.email }}{% endif %}
+                  </span>
+                </div>
+              </div>
+
+              {% if tipo == 'entrega' and not colaborador_selecionado.localidade_id %}
+                <div class="alert alert-warning" style="margin-top:var(--space-3)">
+                  <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                  <span>
+                    Este colaborador está <strong>sem localidade</strong> no cadastro. A entrega precisa
+                    dela para registrar o destino do equipamento — corrija a ficha dele antes de seguir.
+                  </span>
+                </div>
+              {% endif %}
+            {% endif %}
+          </div>
+        </section>
+
+        {# ── 2. Equipamentos ──────────────────────────────────────────── #}
+        <section class="ta-card">
+          <div class="ta-card-head">
+            <h2 class="ta-card-title">
+              <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i>
+              2. Equipamentos do termo
+            </h2>
+            <span class="ta-contador" id="taContador">0 selecionado</span>
+          </div>
+
+          <div class="ta-card-body">
+            <div class="ta-field">
+              <label class="ta-dt is-required" for="id_itens">
+                Buscar por nome, nº de série, marca ou modelo
+              </label>
+              <select name="itens" id="id_itens" class="ctrl ta-select" multiple
+                      data-remoto="equipamento" {% if form.itens.errors %}aria-invalid="true"{% endif %}>
+                {% for item in itens_pre_selecionados %}
+                  <option value="{{ item.pk }}" selected>
+                    {{ item.nome }}{% if item.numero_serie %} — {{ item.numero_serie }}{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+              {% if form.itens.errors %}<p class="form-error">{{ form.itens.errors|join:" " }}</p>{% endif %}
+              <p class="form-hint">
+                {% if tipo == 'devolucao' %}
+                  Mostra apenas o que este colaborador tem em posse agora.
+                {% else %}
+                  Mostra apenas equipamentos disponíveis para entrega (estoque, backup ou pausado).
+                {% endif %}
+                Pode selecionar vários — todos entram num único termo, com uma assinatura só.
+              </p>
+            </div>
+
+            <div class="ta-selecionados" id="taSelecionados" hidden></div>
+          </div>
+        </section>
+
+        {# ── 3. Dados do termo ────────────────────────────────────────── #}
+        <section class="ta-card">
+          <div class="ta-card-head">
+            <h2 class="ta-card-title">
+              <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+              3. Dados do termo
+            </h2>
+          </div>
+
+          <div class="ta-card-body ta-form-grid">
+            <div class="ta-field">
+              <label class="ta-dt" for="{{ form.numero_termo.id_for_label }}">Número do termo</label>
+              {{ form.numero_termo }}
+              <p class="form-hint">{{ form.numero_termo.help_text }}</p>
+            </div>
+
+            <div class="ta-field">
+              <label class="ta-dt" for="{{ form.numero_chamado.id_for_label }}">Número do chamado</label>
+              {{ form.numero_chamado }}
+            </div>
+
+            <div class="ta-field">
+              <label class="ta-dt" for="{{ form.estabelecimento.id_for_label }}">Estabelecimento</label>
+              {{ form.estabelecimento }}
+            </div>
+
+            <div class="ta-field">
+              <label class="ta-dt" for="{{ form.responsavel_ti_nome.id_for_label }}">Responsável do TI</label>
+              {{ form.responsavel_ti_nome }}
+            </div>
+
+            <div class="ta-field ta-col-cheia">
+              <label class="ta-dt" for="{{ form.acessorios.id_for_label }}">Acessórios entregues</label>
+              {{ form.acessorios }}
+            </div>
+
+            <div class="ta-field ta-col-cheia">
+              <label class="ta-dt" for="{{ form.observacoes.id_for_label }}">Observações do termo</label>
+              {{ form.observacoes }}
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {# ── Coluna lateral: o que vai acontecer ──────────────────────────── #}
+      <aside class="ta-prep-lado">
+        <section class="ta-card ta-sticky">
+          <div class="ta-card-head">
+            <h2 class="ta-card-title">
+              <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+              O que vai acontecer
+            </h2>
+          </div>
+
+          <div class="ta-card-body">
+            {% comment %}Explicitar o efeito no patrimônio ANTES de gerar o link
+               não é enfeite: a assinatura move o equipamento de centro de custo
+               e muda o status, e o operador precisa saber disso antes de
+               chamar o colaborador, não depois.{% endcomment %}
+            <ol class="ta-timeline">
+              <li>
+                <strong>Você gera o link</strong>
+                <span>QR Code na tela para abrir no tablet.</span>
+              </li>
+              <li>
+                <strong>O colaborador assina</strong>
+                <span>Lê o termo, confere os equipamentos e assina na tela.</span>
+              </li>
+              <li>
+                <strong>O sistema registra</strong>
+                {% if tipo == 'entrega' %}
+                  <span>
+                    O equipamento passa para o <strong>centro de custo</strong> e a
+                    <strong>localidade do colaborador</strong>, com status
+                    <strong>Ativo</strong>, e o termo assinado fica anexado à movimentação.
+                  </span>
+                {% else %}
+                  <span>
+                    O equipamento volta para o <strong>centro de custo de origem</strong> com
+                    status <strong>Backup</strong>, e o termo assinado fica anexado à movimentação.
+                  </span>
+                {% endif %}
+              </li>
+              <li>
+                <strong>O colaborador recebe a via</strong>
+                <span>Pode baixar o PDF ali mesmo ou pedir por e-mail.</span>
+              </li>
+            </ol>
+
+            <div class="ta-field" style="margin-top:var(--space-4)">
+              <label class="ta-dt" for="{{ form.validade_minutos.id_for_label }}">Validade do link (minutos)</label>
+              {{ form.validade_minutos }}
+              <p class="form-hint">{{ form.validade_minutos.help_text }}</p>
+              {% if form.validade_minutos.errors %}<p class="form-error">{{ form.validade_minutos.errors|join:" " }}</p>{% endif %}
+            </div>
+          </div>
+
+          <div class="ta-card-foot ta-acoes-fim">
+            <a href="{% url 'termo_assinatura_list' %}" class="btn btn-ghost">Cancelar</a>
+            <button type="submit" class="btn btn-primary" id="taSubmit">
+              <i class="fa-solid fa-qrcode" aria-hidden="true"></i>
+              Gerar link de assinatura
+            </button>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ config_busca|json_script:"__ta_busca" }}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var CFG = JSON.parse(document.getElementById("__ta_busca").textContent);
+
+  var textos = {
+    noResults: function () { return "Nenhum resultado"; },
+    searching: function () { return "Buscando…"; },
+    inputTooShort: function () { return "Digite para buscar"; },
+    errorLoading: function () { return "Falha ao buscar. Verifique a conexão."; }
+  };
+
+  // ── Colaborador ───────────────────────────────────────────────────────────
+  var $colaborador = $("#id_colaborador");
+
+  $colaborador.select2({
+    width: "100%",
+    placeholder: "Busque por nome ou matrícula",
+    allowClear: false,
+    language: textos,
+    minimumInputLength: 0,
+    ajax: {
+      url: CFG.urlColaboradores,
+      dataType: "json",
+      delay: 250,
+      data: function (params) { return { q: params.term || "" }; },
+      processResults: function (data) { return { results: data.results || [] }; },
+      cache: true
+    },
+    templateResult: function (item) {
+      if (!item.id) { return item.text; }
+      // Linha rica: nome em destaque + matrícula/CC/função embaixo. Num
+      // sistema com 1.376 colaboradores há nomes repetidos, e só o nome não
+      // basta para escolher o certo.
+      var meta = [item.matricula, item.centro_custo, item.funcao]
+        .filter(Boolean).join(" · ");
+      var $linha = $("<span class='ta-opt'></span>");
+      $linha.append($("<span class='ta-opt-nome'></span>").text(item.text));
+      if (meta) { $linha.append($("<span class='ta-opt-meta'></span>").text(meta)); }
+      return $linha;
+    }
+  });
+
+  // ── Equipamentos ──────────────────────────────────────────────────────────
+  var $itens = $("#id_itens");
+
+  $itens.select2({
+    width: "100%",
+    placeholder: "Busque por nome, nº de série, marca ou modelo",
+    language: textos,
+    minimumInputLength: 0,
+    closeOnSelect: false,
+    ajax: {
+      url: CFG.urlEquipamentos,
+      dataType: "json",
+      delay: 250,
+      data: function (params) {
+        return {
+          q: params.term || "",
+          tipo: CFG.tipo,
+          // Na devolução o universo depende do colaborador escolhido — o
+          // mesmo recorte que a view usa, para a lista e a validação do POST
+          // nunca discordarem sobre o que é elegível.
+          colaborador: $colaborador.val() || "",
+          incluir: CFG.itemIndicado || ""
+        };
+      },
+      processResults: function (data) { return { results: data.results || [] }; },
+      cache: false
+    },
+    templateResult: function (item) {
+      if (!item.id) { return item.text; }
+      var meta = [item.serie ? "Série " + item.serie : "", item.marca_modelo, item.status]
+        .filter(Boolean).join(" · ");
+      var $linha = $("<span class='ta-opt'></span>");
+      $linha.append($("<span class='ta-opt-nome'></span>").text(item.text));
+      if (meta) { $linha.append($("<span class='ta-opt-meta'></span>").text(meta)); }
+      if (item.sem_centro_custo) {
+        // Avisa ANTES de montar o termo: equipamento sem centro de custo não
+        // passa na validação da entrega, e descobrir isso só na hora de gerar
+        // o link custa uma volta inteira.
+        $linha.append($("<span class='ta-opt-aviso'></span>").text("sem centro de custo"));
+      }
+      if (item.compartilhado) {
+        // Compartilhado aparece na lista mesmo com status "Ativo" — o que para
+        // ele significa "tem detentor", não "indisponível". Sem este rótulo o
+        // operador leria "Ativo" e acharia que a lista está oferecendo um
+        // equipamento que já saiu.
+        var rotulo = item.codetentores > 0
+          ? "compartilhado · com " + item.codetentores +
+            (item.codetentores === 1 ? " colaborador" : " colaboradores")
+          : "compartilhado";
+        $linha.append($("<span class='ta-opt-tag'></span>").text(rotulo));
+      }
+      if (item.ja_com_colaborador) {
+        // Este colaborador JÁ é um dos detentores: `validar_pre_condicoes`
+        // recusa o termo (entregar de novo não abriria vínculo novo). Dizer
+        // aqui evita montar o termo inteiro para receber o erro no fim.
+        $linha.append($("<span class='ta-opt-aviso'></span>")
+          .text("já está com este colaborador"));
+      }
+      return $linha;
+    }
+  });
+
+  // ── Contador e lista do que está selecionado ─────────────────────────────
+  var contador = document.getElementById("taContador");
+  var painel = document.getElementById("taSelecionados");
+
+  function atualizarSelecionados() {
+    var escolhidos = $itens.select2("data") || [];
+    contador.textContent = escolhidos.length + " selecionado" + (escolhidos.length === 1 ? "" : "s");
+
+    painel.innerHTML = "";
+    painel.hidden = escolhidos.length === 0;
+
+    escolhidos.forEach(function (item) {
+      var linha = document.createElement("div");
+      linha.className = "ta-selecionado";
+      var nome = document.createElement("strong");
+      nome.textContent = item.text;
+      linha.appendChild(nome);
+      if (item.serie) {
+        var serie = document.createElement("code");
+        serie.textContent = item.serie;
+        linha.appendChild(serie);
+      }
+      painel.appendChild(linha);
+    });
+  }
+
+  $itens.on("change", atualizarSelecionados);
+  atualizarSelecionados();
+
+  // Trocar o colaborador invalida o que já estava escolhido na DEVOLUÇÃO (a
+  // lista é dele), e recarrega a tela para a view montar o universo certo.
+  {% if tipo == 'devolucao' %}
+  $colaborador.on("change", function () {
+    var valor = $colaborador.val();
+    if (!valor) { return; }
+    var url = new URL(window.location.href);
+    url.searchParams.set("colaborador", valor);
+    window.location.assign(url.toString());
+  });
+  {% else %}
+  $colaborador.on("change", function () { $itens.val(null).trigger("change"); });
+  {% endif %}
+
+  // ── Envio ────────────────────────────────────────────────────────────────
+  // Desabilita no submit (gerar duas sessões por clique duplo é o erro mais
+  // fácil de cometer aqui) e religa no `pageshow`, senão uma falha de envio +
+  // seta "voltar" deixaria o botão morto para sempre — mesmo cuidado da
+  // regra 25 na tela de preventiva.
+  var botao = document.getElementById("taSubmit");
+  document.getElementById("taForm").addEventListener("submit", function () {
+    botao.disabled = true;
+    botao.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Gerando…';
+  });
+  window.addEventListener("pageshow", function () {
+    botao.disabled = false;
+    botao.innerHTML = '<i class="fa-solid fa-qrcode" aria-hidden="true"></i> Gerar link de assinatura';
+  });
+})();
+</script>
+{% endblock %}

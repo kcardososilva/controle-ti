@@ -1,166 +1,218 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static humanize %}
 
-{% block title %}Gestão de Licenças{% endblock %}
-{% block page_title %}Gestão de Licenças{% endblock %}
-{% block page_subtitle %}Catálogo, lotes, saldo de assentos e movimentações por licença{% endblock %}
+{% block title %}Catálogo de Licenças{% endblock %}
+{% block page_title %}Licenças{% endblock %}
+{% block page_subtitle %}Catálogo, assentos, custo mensal e renovação por licença{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Licenças</span>
+</nav>
+{% endblock %}
 
 {% block extra_css %}
 {% include 'front/licencas/_lic_design_system.html' %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<style>
+  /* Só a largura da tabela desta tela. Tudo o mais vem do design system —
+     `--lic-table-min` existe exatamente para a tela não escrever
+     `min-width` solto num seletor que vaza (regra 6). */
+  :where(.lic-catalogo-page) { --lic-table-min: 1180px; }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="lic-page">
+<div class="lic-page lic-catalogo-page">
   <div class="lic-shell">
 
-    <!-- Hero + ações -->
-    <section class="lic-hero">
-      <div class="lic-hero-main">
-        <div class="lic-hero-icon"><i class="fa fa-list-check"></i></div>
-        <div class="lic-hero-title">
-          <h1>Catálogo de Licenças</h1>
-          <p>Controle centralizado de licenças, lotes, disponibilidade e histórico de movimentações.</p>
-        </div>
+    <header class="lic-head">
+      <div class="lic-head-main">
+        <span class="lic-head-eyebrow"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Catálogo</span>
+        <h1 class="lic-head-title">Licenças de software</h1>
+        <p class="lic-head-sub">
+          Assentos, custo e renovação de cada licença. Os números vêm das
+          movimentações registradas — não do contador gravado no lote.
+        </p>
       </div>
       <div class="lic-actions">
-        <a href="{% url 'mov_licenca_form' %}?next={{ request.get_full_path|urlencode }}" class="lic-btn lic-btn-secondary">
-          <i class="fa fa-exchange-alt"></i> Movimentar
+        <a href="{% url 'licenca_renovacoes' %}" class="lic-btn lic-btn-secondary">
+          <i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Renovações
         </a>
-        <a href="{% url 'licenca_lote_list' %}" class="lic-btn lic-btn-secondary">
-          <i class="fa fa-boxes-stacked"></i> Gerenciar Lotes
+        <a href="{% url 'mov_licenca_form' %}?next={{ request.get_full_path|urlencode }}" class="lic-btn lic-btn-secondary">
+          <i class="fa-solid fa-right-left" aria-hidden="true"></i> Movimentar
         </a>
         <a href="{% url 'licenca_create' %}" class="lic-btn lic-btn-primary">
-          <i class="fa fa-plus"></i> Nova Licença
+          <i class="fa-solid fa-plus" aria-hidden="true"></i> Nova licença
         </a>
       </div>
-    </section>
+    </header>
 
     {% include 'front/licencas/_lic_subnav.html' %}
 
-    <!-- KPIs -->
-    <section class="lic-kpi-grid">
-      <div class="lic-kpi-card" style="--kpi-color: var(--lic-brand);">
-        <div class="lic-kpi-icon"><i class="fa fa-folder-tree"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-value">{{ kpi_total }}</span>
-          <span class="lic-kpi-label">Licenças cadastradas</span>
-        </div>
+    {% comment %}A faixa responde, na ordem: o que existe, quanto está em uso,
+       quanto custa e quanto está sendo pago à toa. O último número é o único
+       em que dá para agir hoje, e por isso ele leva o tom de alerta e um
+       atalho para o recorte que o explica.{% endcomment %}
+    <section class="lic-stats" aria-label="Resumo do acervo">
+      <div class="lic-stat" data-tom="brand">
+        <span class="lic-stat-label"><i class="fa-solid fa-folder-tree" aria-hidden="true"></i> Licenças</span>
+        <span class="lic-stat-value">{{ resumo.licencas }}</span>
+        <span class="lic-stat-meta">{{ resumo.total }} assento{{ resumo.total|pluralize }} comprado{{ resumo.total|pluralize }}</span>
       </div>
-      <div class="lic-kpi-card" style="--kpi-color: var(--lic-success);">
-        <div class="lic-kpi-icon"><i class="fa fa-layer-group"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-value">{{ kpi_assentos }}</span>
-          <span class="lic-kpi-label">Assentos disponíveis</span>
+
+      <div class="lic-stat" data-tom="{% if resumo.pct_uso >= 95 %}erro{% elif resumo.pct_uso >= 80 %}alerta{% else %}ok{% endif %}">
+        <span class="lic-stat-label"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Em uso</span>
+        <span class="lic-stat-value">{{ resumo.em_uso }} <small>/ {{ resumo.total }}</small></span>
+        <div class="lic-meter" data-tom="{% if resumo.pct_uso >= 95 %}erro{% elif resumo.pct_uso >= 80 %}alerta{% else %}ok{% endif %}" style="margin-top:4px">
+          <div class="lic-meter-track"><span class="lic-meter-fill" style="width: {{ resumo.pct_uso }}%"></span></div>
         </div>
+        <span class="lic-stat-meta">{{ resumo.pct_uso }}% de ocupação</span>
       </div>
-      <div class="lic-kpi-card" style="--kpi-color: var(--lic-warning);">
-        <div class="lic-kpi-icon"><i class="fa fa-star"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-value">{{ kpi_pmb }}</span>
-          <span class="lic-kpi-label">Licenças PMB</span>
-        </div>
+
+      <div class="lic-stat" data-tom="info">
+        <span class="lic-stat-label"><i class="fa-solid fa-coins" aria-hidden="true"></i> Custo mensal</span>
+        <span class="lic-stat-value">R$ {{ resumo.mensal|floatformat:2|intcomma }}</span>
+        <span class="lic-stat-meta">R$ {{ resumo.anual|floatformat:2|intcomma }} por ano</span>
+      </div>
+
+      <div class="lic-stat" data-tom="{% if resumo.desperdicio_mensal > 0 %}alerta{% else %}ok{% endif %}">
+        <span class="lic-stat-label"><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i> Assento parado</span>
+        <span class="lic-stat-value">R$ {{ resumo.desperdicio_mensal|floatformat:2|intcomma }}</span>
+        <span class="lic-stat-meta">
+          {{ resumo.livre }} assento{{ resumo.livre|pluralize }} pago{{ resumo.livre|pluralize }} e sem uso ·
+          <a class="lic-stat-link" href="?status=ociosa&amp;ordem=desperdicio">ver quais</a>
+        </span>
+      </div>
+
+      <div class="lic-stat" data-tom="{% if resumo.divergentes or resumo.sem_lote %}erro{% else %}ok{% endif %}">
+        <span class="lic-stat-label"><i class="fa-solid fa-heart-pulse" aria-hidden="true"></i> Cadastro</span>
+        <span class="lic-stat-value">{{ resumo.divergentes|add:resumo.sem_lote }}</span>
+        <span class="lic-stat-meta">
+          {{ resumo.divergentes }} divergente{{ resumo.divergentes|pluralize }},
+          {{ resumo.sem_lote }} sem lote ·
+          <a class="lic-stat-link" href="{% url 'licenca_saude' %}">painel de saúde</a>
+        </span>
       </div>
     </section>
 
-    <!-- Filtro retrátil -->
-    <details id="licFilter" class="lic-filter-details lic-filter-compact" {% if filter_q or filter_fornecedor or filter_pmb or filter_status %}open{% endif %}>
-      <summary class="lic-filter-summary">
-        <i class="fa fa-filter"></i>
-        Filtros
-        {% if filter_q or filter_fornecedor or filter_pmb or filter_status %}
-          <span class="lic-filter-active-dot" title="Filtros ativos"></span>
-        {% endif %}
-        <i class="fa fa-chevron-down lic-filter-chevron"></i>
-      </summary>
-      <div class="lic-filter-body">
-        <form method="get" id="filterForm">
-          <div class="lic-filter-grid">
-            <div class="lic-field lic-field-wide">
-              <label class="lic-label" for="id_q">Busca</label>
-              <div class="lic-search-wrap">
-                <i class="fa fa-search"></i>
-                <input type="text" id="id_q" name="q" value="{{ filter_q }}" placeholder="Buscar por nome ou observação...">
-              </div>
-            </div>
-            <div class="lic-field">
-              <label class="lic-label" for="id_fornecedor">Fornecedor</label>
-              <select name="fornecedor" id="id_fornecedor" class="select2-filter">
-                <option value="">Todos Fornecedores</option>
-                {% for f in opt_fornecedores %}
-                  <option value="{{ f.id }}" {% if filter_fornecedor == f.id %}selected{% endif %}>{{ f.nome }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="lic-field">
-              <label class="lic-label" for="id_status">Status Estoque</label>
-              <select name="status" id="id_status" class="select2-filter">
-                <option value="">Todos</option>
-                <option value="com_estoque" {% if filter_status == 'com_estoque' %}selected{% endif %}>Com Estoque</option>
-                <option value="sem_estoque" {% if filter_status == 'sem_estoque' %}selected{% endif %}>Sem Estoque</option>
-              </select>
-            </div>
-            <div class="lic-field">
-              <label class="lic-label" for="id_pmb">PMB?</label>
-              <select name="pmb" id="id_pmb" class="select2-filter">
-                <option value="">Todos</option>
-                {% for val, label in opt_pmb %}
-                  <option value="{{ val }}" {% if filter_pmb == val %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="lic-action-row">
-              <button type="submit" class="lic-btn lic-btn-primary">
-                <i class="fa fa-search"></i> Filtrar
-              </button>
-              <a href="{% url 'licenca_list' %}" class="lic-btn lic-btn-secondary">
-                <i class="fa fa-eraser"></i> Limpar
-              </a>
-            </div>
-          </div>
-        </form>
-      </div>
-    </details>
-
-    <!-- Tabela / Galeria -->
     <section class="lic-card">
       <div class="lic-card-header">
-        <div class="lic-card-title">
-          <i class="fa fa-key"></i>
-          Licenças cadastradas
-        </div>
+        <h2 class="lic-card-title">
+          <i class="fa-solid fa-key" aria-hidden="true"></i>
+          Licenças
+          <span class="lic-card-title-sub" id="licCount">{{ total_registros }} registro{{ total_registros|pluralize }}</span>
+        </h2>
         <div class="lic-card-header-right">
-          <div class="lic-view-toggle">
-            <button id="btnViewList" class="lic-view-btn active" onclick="licSetViewMode('list')">
-              <i class="fa fa-list"></i> Lista
+          <div class="lic-view-toggle" role="group" aria-label="Formato da lista">
+            <button type="button" id="btnViewList" class="lic-view-btn active" data-lic-view="list" aria-pressed="true">
+              <i class="fa-solid fa-table-list" aria-hidden="true"></i> Tabela
             </button>
-            <button id="btnViewGallery" class="lic-view-btn" onclick="licSetViewMode('gallery')">
-              <i class="fa fa-grip"></i> Galeria
+            <button type="button" id="btnViewGallery" class="lic-view-btn" data-lic-view="gallery" aria-pressed="false">
+              <i class="fa-solid fa-grip" aria-hidden="true"></i> Cartões
             </button>
           </div>
-          <span class="lic-badge" id="licCount">{{ total_registros }} registro(s)</span>
         </div>
       </div>
 
-      <!-- Visão lista -->
+      {# ── Filtros ───────────────────────────────────────────────────── #}
+      <form method="get" id="filterForm" class="lic-card-body lic-filter-compact" autocomplete="off"
+            style="padding-bottom: 12px; border-bottom: 1px solid var(--lic-border)">
+        <div class="lic-filter-grid">
+          <div class="lic-field lic-field-wide">
+            <label class="lic-label" for="id_q">Buscar</label>
+            <div class="lic-search-wrap">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+              <input type="search" id="id_q" name="q" value="{{ filter_q }}"
+                     placeholder="Nome da licença, fornecedor ou observação">
+            </div>
+          </div>
+
+          <div class="lic-field">
+            <label class="lic-label" for="id_fornecedor">Fornecedor</label>
+            <select name="fornecedor" id="id_fornecedor" class="lic-select" data-lic-autosubmit data-placeholder="Todos">
+              <option value="">Todos</option>
+              {% for f in opt_fornecedores %}
+                <option value="{{ f.id }}" {% if filter_fornecedor == f.id %}selected{% endif %}>{{ f.nome }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="lic-field">
+            <label class="lic-label" for="id_status">Situação</label>
+            <select name="status" id="id_status" class="lic-select" data-lic-autosubmit data-placeholder="Todas">
+              <option value="">Todas</option>
+              {% for val, rotulo in opt_status %}
+                <option value="{{ val }}" {% if filter_status == val %}selected{% endif %}>{{ rotulo }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="lic-field">
+            <label class="lic-label" for="id_pmb">PMB</label>
+            <select name="pmb" id="id_pmb" class="lic-select" data-lic-autosubmit data-placeholder="Todas">
+              <option value="">Todas</option>
+              {% for val, rotulo in opt_pmb %}
+                <option value="{{ val }}" {% if filter_pmb == val %}selected{% endif %}>{{ rotulo }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="lic-field">
+            <label class="lic-label" for="id_ordem">Ordenar por</label>
+            <select name="ordem" id="id_ordem" class="lic-select" data-lic-autosubmit>
+              {% for val, rotulo in opt_ordem %}
+                <option value="{{ val }}" {% if filter_ordem == val %}selected{% endif %}>{{ rotulo }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="lic-action-row" style="justify-content:flex-start">
+            <button type="submit" class="lic-btn lic-btn-primary lic-btn-sm">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Filtrar
+            </button>
+            {% comment %}"Limpar" ACOMPANHA "Filtrar" em vez de substituí-lo:
+               na tela de lotes o botão de filtrar era TROCADO pelo de limpar
+               quando havia busca ativa, então depois de buscar uma vez não
+               havia como refinar sem apagar tudo.{% endcomment %}
+            {% if tem_filtro %}
+              <a href="{% url 'licenca_list' %}" class="lic-btn lic-btn-ghost lic-btn-sm">
+                <i class="fa-solid fa-eraser" aria-hidden="true"></i> Limpar
+              </a>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if tem_filtro %}
+          <div class="ui-filtros" style="margin-top:10px">
+            {% if filter_q %}<span class="ui-filtro-chip"><b>Busca:</b> {{ filter_q }}</span>{% endif %}
+            {% if filter_status %}<span class="ui-filtro-chip"><b>Situação:</b> {% for v,r in opt_status %}{% if v == filter_status %}{{ r }}{% endif %}{% endfor %}</span>{% endif %}
+            {% if filter_pmb %}<span class="ui-filtro-chip"><b>PMB:</b> {{ filter_pmb }}</span>{% endif %}
+            <span class="ui-toolbar-contagem">{{ total_registros }} de {{ resumo.licencas }} licenças</span>
+          </div>
+        {% endif %}
+      </form>
+
+      {# ── Visão tabela ──────────────────────────────────────────────── #}
       <div id="licListView">
         <div class="lic-table-wrap">
           <table class="lic-table">
             <colgroup>
-              <col>
-              <col style="width:20%">
-              <col style="width:120px">
-              <col style="width:108px">
-              <col style="width:132px">
-              <col style="width:196px">
+              <col><col style="width:168px"><col style="width:150px"><col style="width:86px">
+              <col style="width:148px"><col style="width:126px"><col style="width:112px"><col style="width:158px">
             </colgroup>
             <thead>
               <tr>
-                <th>Licença</th>
-                <th>Fornecedor</th>
-                <th>Classificação</th>
-                <th class="lic-text-center">Lotes Ativos</th>
-                <th class="lic-text-center">Saldo Disponível</th>
-                <th class="lic-text-right">Ações</th>
+                <th scope="col">Licença</th>
+                <th scope="col">Situação</th>
+                <th scope="col">Ocupação</th>
+                <th scope="col" class="lic-text-center">Livres</th>
+                <th scope="col" class="lic-text-right">Custo</th>
+                <th scope="col" class="lic-text-right" title="Custo mensal dos assentos comprados e não usados">Parado</th>
+                <th scope="col">Renova em</th>
+                <th scope="col" class="lic-text-right">Ações</th>
               </tr>
             </thead>
             <tbody id="licTbody">
@@ -169,65 +221,62 @@
           </table>
         </div>
 
-        <!-- Mobile -->
+        {% comment %}Cartões do celular: a tabela de 1180px só sai de cena
+           porque existe esta lista no lugar dela (regra 24).{% endcomment %}
         <div class="lic-mobile-list">
-          {% for obj in page_obj %}
-            <article class="lic-mobile-card">
+          {% for linha in page_obj %}
+            <article class="lic-mobile-card" {% if linha.divergente %}data-tom="erro"{% elif linha.esgotada %}data-tom="alerta"{% endif %}>
               <div class="lic-mobile-head">
                 <div>
-                  <a href="{% url 'licenca_detail' obj.pk %}" class="lic-title-link">{{ obj.nome }}</a>
-                  {% if obj.observacao %}<span class="lic-sub">{{ obj.observacao }}</span>{% endif %}
+                  <a href="{% url 'licenca_detail' linha.licenca.pk %}" class="lic-title-link">{{ linha.licenca.nome }}</a>
+                  <span class="lic-sub">{{ linha.licenca.fornecedor.nome|default:"Sem fornecedor" }}</span>
                 </div>
-                {% if obj.pmb == 'sim' %}
-                  <span class="lic-badge lic-badge-success">PMB</span>
-                {% else %}
-                  <span class="lic-badge">Padrão</span>
-                {% endif %}
+                {% if linha.licenca.pmb == 'sim' %}<span class="lic-pill" data-tom="brand">PMB</span>{% endif %}
               </div>
+
+              <div class="lic-meter" data-tom="{% if linha.total == 0 %}vazio{% elif linha.pct_uso >= 95 %}erro{% elif linha.pct_uso >= 80 %}alerta{% else %}ok{% endif %}">
+                <div class="lic-meter-head">
+                  <span class="lic-meter-num">{{ linha.em_uso }}<small>/{{ linha.total }}</small> em uso</span>
+                  <span class="lic-meter-pct">{{ linha.pct_uso }}%</span>
+                </div>
+                <div class="lic-meter-track"><span class="lic-meter-fill" style="width: {{ linha.pct_uso }}%"></span></div>
+              </div>
+
               <div class="lic-mobile-meta">
                 <div>
-                  <span class="lic-mobile-label">Fornecedor</span>
-                  <span>{{ obj.fornecedor.nome|default:"-" }}</span>
+                  <span class="lic-mobile-label">Custo / mês</span>
+                  <span class="lic-money">R$ {{ linha.mensal|floatformat:2|intcomma }}</span>
                 </div>
                 <div>
-                  <span class="lic-mobile-label">Lotes ativos</span>
-                  <span>{{ obj.qtd_lotes|default:"0" }}</span>
-                </div>
-                <div>
-                  <span class="lic-mobile-label">Saldo</span>
-                  {% if obj.estoque_real > 0 %}
-                    <span class="lic-badge lic-badge-brand">{{ obj.estoque_real }}</span>
-                  {% else %}
-                    <span class="lic-badge lic-badge-danger">0</span>
-                  {% endif %}
+                  <span class="lic-mobile-label">Parado / mês</span>
+                  <span class="lic-money {% if linha.desperdicio_mensal > 0 %}is-perda{% else %}is-zero{% endif %}">R$ {{ linha.desperdicio_mensal|floatformat:2|intcomma }}</span>
                 </div>
               </div>
+
               <div class="lic-mobile-actions">
-                <a href="{% url 'licenca_lote_list' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary"><i class="fa fa-boxes-stacked"></i></a>
-                <a href="{% url 'mov_licenca_list' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary"><i class="fa fa-clock-rotate-left"></i></a>
-                <a href="{% url 'licenca_detail' obj.pk %}" class="lic-btn lic-btn-secondary"><i class="fa fa-eye"></i></a>
-                <a href="{% url 'licenca_update' obj.pk %}" class="lic-btn lic-btn-secondary"><i class="fa fa-pen"></i></a>
+                <a href="{% url 'licenca_detail' linha.licenca.pk %}" class="lic-btn lic-btn-secondary lic-btn-sm" aria-label="Ficha"><i class="fa-solid fa-eye" aria-hidden="true"></i></a>
+                <a href="{% url 'licenca_lote_list' %}?licenca={{ linha.licenca.pk }}" class="lic-btn lic-btn-secondary lic-btn-sm" aria-label="Lotes"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i></a>
+                <a href="{% url 'mov_licenca_list' %}?licenca={{ linha.licenca.pk }}" class="lic-btn lic-btn-secondary lic-btn-sm" aria-label="Razão"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
+                <a href="{% url 'licenca_update' linha.licenca.pk %}" class="lic-btn lic-btn-secondary lic-btn-sm" aria-label="Editar"><i class="fa-solid fa-pen" aria-hidden="true"></i></a>
               </div>
             </article>
           {% empty %}
-            <div class="lic-empty">
-              <i class="fa fa-folder-open"></i>
-              Nenhuma licença encontrada.
+            <div class="ui-empty">
+              <div class="ui-empty-ico"><i class="fa-regular fa-folder-open" aria-hidden="true"></i></div>
+              <div class="ui-empty-title">Nenhuma licença encontrada</div>
+              <p class="ui-empty-text">Ajuste os filtros ou cadastre uma nova licença.</p>
             </div>
           {% endfor %}
         </div>
 
-        <!-- Paginação lista -->
         <div id="licPagWrap">
           {% include 'front/licencas/_lic_pagination.html' %}
         </div>
       </div>
 
-      <!-- Visão galeria -->
-      <div id="licGalleryView" style="display:none">
-        <div class="lic-gallery-grid" id="licGalleryWrap">
-          <!-- preenchido via AJAX -->
-        </div>
+      {# ── Visão cartões ─────────────────────────────────────────────── #}
+      <div id="licGalleryView" hidden>
+        <div class="lic-gallery-grid" id="licGalleryWrap"></div>
         <div id="licGalleryPagWrap"></div>
       </div>
     </section>
@@ -237,116 +286,100 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
+{% include 'front/licencas/_lic_js_base.html' %}
 <script>
-/* ── Select2 ─────────────────────────────────────────────────── */
-$(document).ready(function () {
-  $('.select2-filter').select2({
-    width: '100%',
-    minimumResultsForSearch: 10,
-    language: {
-      noResults: function () { return 'Nenhum resultado encontrado'; },
-      searching: function () { return 'Buscando...'; }
-    }
-  });
-  $('.select2-filter').on('change', function () {
-    $('#filterForm').submit();
-  });
-});
-
-/* ── Filter details state ────────────────────────────────────── */
+/* Alternador tabela/cartões. A visão escolhida fica no `localStorage` porque
+   é preferência de quem opera, por aparelho — não é estado do sistema e não
+   tem por que viajar na URL. Leitura e escrita em try/catch: em janela
+   anônima o acesso pode lançar, e perder o alternador por causa disso seria
+   trocar um recurso por um erro de console. */
 (function () {
-  var det = document.getElementById('licFilter');
-  if (!det) return;
-  var saved = localStorage.getItem('lic_filter_open');
-  if (saved === 'false') det.removeAttribute('open');
-  det.addEventListener('toggle', function () {
-    localStorage.setItem('lic_filter_open', det.open ? 'true' : 'false');
-  });
-})();
+  "use strict";
 
-/* ── View toggle ─────────────────────────────────────────────── */
-var _licMode = localStorage.getItem('lic_view_mode') || 'list';
-var _licDom = {
-  listView:    document.getElementById('licListView'),
-  galleryView: document.getElementById('licGalleryView'),
-  galleryWrap: document.getElementById('licGalleryWrap'),
-  galPagWrap:  document.getElementById('licGalleryPagWrap'),
-  pagWrap:     document.getElementById('licPagWrap'),
-  count:       document.getElementById('licCount'),
-  btnList:     document.getElementById('btnViewList'),
-  btnGallery:  document.getElementById('btnViewGallery'),
-};
+  var dom = {
+    lista:    document.getElementById("licListView"),
+    galeria:  document.getElementById("licGalleryView"),
+    grade:    document.getElementById("licGalleryWrap"),
+    pagGal:   document.getElementById("licGalleryPagWrap"),
+    contagem: document.getElementById("licCount"),
+    btnLista: document.getElementById("btnViewList"),
+    btnGal:   document.getElementById("btnViewGallery")
+  };
+  if (!dom.lista || !dom.galeria) { return; }
 
-function licSetViewMode(mode) {
-  _licMode = mode;
-  localStorage.setItem('lic_view_mode', mode);
-  if (mode === 'gallery') {
-    _licDom.listView.style.display = 'none';
-    _licDom.galleryView.style.display = '';
-    _licDom.btnList.classList.remove('active');
-    _licDom.btnGallery.classList.add('active');
-    _licLoadGallery();
-  } else {
-    _licDom.galleryView.style.display = 'none';
-    _licDom.listView.style.display = '';
-    _licDom.btnList.classList.add('active');
-    _licDom.btnGallery.classList.remove('active');
+  var CHAVE = "lic_view_mode";
+  var carregada = false;
+
+  function lembrar(modo) {
+    try { localStorage.setItem(CHAVE, modo); } catch (e) { /* sem persistência */ }
   }
-}
-window.licSetViewMode = licSetViewMode;
+  function lembrado() {
+    try { return localStorage.getItem(CHAVE); } catch (e) { return null; }
+  }
 
-function _licLoadGallery() {
-  var params = new URLSearchParams(window.location.search);
-  params.set('view', 'gallery');
-  _licDom.galleryWrap.style.opacity = '0.5';
-  fetch('?' + params.toString(), {
-    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-  })
-  .then(function (r) { return r.json(); })
-  .then(function (data) {
-    _licDom.galleryWrap.style.opacity = '';
-    if (data.gallery !== undefined) {
-      _licDom.galleryWrap.innerHTML = data.gallery;
-      _licBindGallery();
-    }
-    if (data.pagination !== undefined) {
-      _licDom.galPagWrap.innerHTML = data.pagination;
-    }
-    if (data.count !== undefined) {
-      _licDom.count.textContent = data.count + ' registro(s)';
-    }
-  })
-  .catch(function () { _licDom.galleryWrap.style.opacity = ''; });
-}
+  function aplicar(modo) {
+    var galeria = modo === "gallery";
+    dom.lista.hidden = galeria;
+    dom.galeria.hidden = !galeria;
+    dom.btnGal.classList.toggle("active", galeria);
+    dom.btnLista.classList.toggle("active", !galeria);
+    dom.btnGal.setAttribute("aria-pressed", galeria ? "true" : "false");
+    dom.btnLista.setAttribute("aria-pressed", galeria ? "false" : "true");
+    if (galeria && !carregada) { carregar(); }
+  }
 
-function _licBindGallery() {
-  _licDom.galleryWrap.querySelectorAll('.lic-gc[data-href]').forEach(function (card) {
-    card.addEventListener('click', function (e) {
-      if (!e.target.closest('.lic-gc-actions')) {
+  function carregar() {
+    var params = new URLSearchParams(window.location.search);
+    params.set("view", "gallery");
+    dom.grade.setAttribute("aria-busy", "true");
+
+    fetch("?" + params.toString(), { headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (r) { return r.json(); })
+      .then(function (dados) {
+        if (dados.gallery !== undefined) {
+          dom.grade.innerHTML = dados.gallery;
+          ligarCartoes();
+          carregada = true;
+        }
+        if (dados.pagination !== undefined) { dom.pagGal.innerHTML = dados.pagination; }
+        if (dados.count !== undefined && dom.contagem) {
+          dom.contagem.textContent = dados.count + " registro(s)";
+        }
+      })
+      .catch(function () {
+        // Falhar calado deixaria a grade vazia e sem explicação; a pessoa
+        // ficaria olhando para um branco achando que não há licença nenhuma.
+        dom.grade.innerHTML =
+          '<div class="lic-gallery-empty">' +
+          '<i class="fa-solid fa-triangle-exclamation"></i>' +
+          "<strong>Não foi possível carregar os cartões</strong>" +
+          "<span>Verifique a conexão e tente de novo.</span></div>";
+      })
+      .finally(function () { dom.grade.removeAttribute("aria-busy"); });
+  }
+
+  function ligarCartoes() {
+    dom.grade.querySelectorAll(".lic-gc[data-href]").forEach(function (card) {
+      function abrir(ev) {
+        if (ev.target.closest(".lic-gc-actions")) { return; }
         window.location = card.dataset.href;
       }
+      card.addEventListener("click", abrir);
+      card.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); abrir(ev); }
+      });
     });
-    card.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        window.location = card.dataset.href;
-      }
+  }
+
+  [dom.btnLista, dom.btnGal].forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var modo = btn.dataset.licView;
+      lembrar(modo);
+      aplicar(modo);
     });
   });
-}
 
-/* Init: restore saved mode */
-(function () {
-  if (_licMode === 'gallery') {
-    _licDom.listView.style.display = 'none';
-    _licDom.galleryView.style.display = '';
-    _licDom.btnGallery.classList.add('active');
-    _licDom.btnList.classList.remove('active');
-    setTimeout(_licLoadGallery, 0);
-  }
+  aplicar(lembrado() === "gallery" ? "gallery" : "list");
 })();
 </script>
 {% endblock %}

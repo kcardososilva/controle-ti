@@ -282,10 +282,15 @@ def _fill_intro(doc, dados):
         return
 
     if dados["tipo"] == "entrega":
+        # "de agora em diante chamado de USUÁRIO" foi retirado a pedido da
+        # operação. A mesma frase saiu da via eletrônica
+        # (`termo_pdf_service._intro_assinada`) — as duas vias são o MESMO
+        # termo, e deixar a expressão em uma só criaria dois documentos
+        # diferentes para o mesmo ato.
         texto = (
             f"Eu, {dados['nome_colaborador']}, portador(a) de cédula de identidade RG nº "
             f"_______________________________________________ e inscrito no CPF/MF nº "
-            f"_____________________________ de agora em diante chamado de USUÁRIO, "
+            f"_____________________________, "
             f"declaro que recebi, li e entendi as obrigações desse Termo de Responsabilidade "
             f"pela Guarda e Uso de Equipamentos Corporativos da SANTA COLOMBA (Termo) e me "
             f"comprometo, de forma irretratável, com as regras e obrigações abaixo:"

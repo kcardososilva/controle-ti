@@ -1,0 +1,360 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ titulo }}{% endblock %}
+{% block page_title %}{{ titulo }}{% endblock %}
+{% block page_subtitle %}{{ subtitulo }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'termo_assinatura_list' %}">Termos assinados</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Sessão #{{ termo.pk }}</span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-termos.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="ta-page">
+
+  {# Aviso que aparece quando o polling detecta a assinatura, sem recarregar. #}
+  <div class="ta-concluido" id="taConcluido" hidden>
+    <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+    <strong style="font-size:var(--text-lg)">Termo assinado</strong>
+    <span id="taConcluidoDetalhe" class="ta-item-meta"></span>
+    <a href="{% url 'termo_assinatura_detalhe' termo.pk %}" class="btn btn-primary">
+      <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+      Abrir o documento assinado
+    </a>
+  </div>
+
+  <section class="ta-card">
+    <div class="ta-card-head">
+      <h2 class="ta-card-title">
+        <i class="fa-solid fa-tablet-screen-button" aria-hidden="true"></i>
+        Abrir no tablet
+      </h2>
+      <span class="ta-situacao" data-situacao="{{ termo.situacao_slug }}" id="taSituacao">
+        {{ termo.situacao_label }}
+      </span>
+    </div>
+
+    <div class="ta-card-body">
+      {% if host_local %}
+        <div class="alert alert-warning" style="margin-bottom:var(--space-4)">
+          <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          <span>
+            Você abriu o sistema por <strong>localhost</strong>, então o link e o QR Code apontam
+            para esta máquina — o tablet vai mostrar “não foi possível conectar”.
+            Para colher a assinatura, abra o sistema pelo endereço de rede
+            (ex.: <code>172.16.60.254:65300</code>) e gere o link de novo aqui.
+          </span>
+        </div>
+      {% endif %}
+
+      {% if link %}
+        <div class="ta-qr-grid">
+          <div class="ta-qr-box">
+            {% comment %}O QR é gerado no servidor (reportlab) e chega como data
+               URI — sem lib de QR no cliente e sem uma segunda requisição.{% endcomment %}
+            <img src="{{ link.qr_base64 }}" alt="QR Code do link de assinatura">
+            <p class="ta-qr-dica">
+              Aponte a câmera do tablet para abrir a tela de assinatura.
+            </p>
+          </div>
+
+          <div style="display:grid;gap:var(--space-4)">
+            <div>
+              <p class="ta-dt">Link de assinatura</p>
+              <div class="ta-link-row" style="margin-top:6px">
+                <input type="text" id="taLink" value="{{ link.url }}" readonly
+                       aria-label="Link de assinatura">
+                <button type="button" class="btn btn-sm" id="taCopiar">
+                  <i class="fa-regular fa-copy" aria-hidden="true"></i>
+                  Copiar
+                </button>
+                <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn btn-sm">
+                  <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                  Abrir aqui
+                </a>
+              </div>
+              <p class="form-hint" style="margin-top:6px">
+                Este link aparece <strong>uma única vez</strong>: o sistema guarda apenas o
+                resumo criptográfico dele. Se a tela for fechada antes da assinatura,
+                use “Gerar novo link”.
+              </p>
+            </div>
+
+            <div>
+              <p class="ta-dt">Prazo</p>
+              <p class="ta-prazo" style="margin-top:6px">
+                <strong id="taPrazo">—</strong>
+                <span class="ta-item-meta">restante(s) para assinar</span>
+              </p>
+            </div>
+
+            <div class="ta-link-row">
+              <form method="post" action="{% url 'termo_assinatura_novo_link' termo.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm">
+                  <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                  Gerar novo link
+                </button>
+              </form>
+              <form method="post" action="{% url 'termo_assinatura_cancelar' termo.pk %}"
+                    onsubmit="return confirm('Cancelar esta sessão de assinatura? O link deixará de funcionar.');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-ghost">
+                  <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                  Cancelar sessão
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+      {% elif termo.pode_assinar %}
+        <div class="alert alert-info">
+          <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+          <span>
+            Esta sessão está aberta, mas o link não pode ser exibido de novo —
+            o sistema guarda apenas o resumo criptográfico dele, nunca o link em si.
+            Gere um link novo para colher a assinatura (o anterior deixa de valer).
+          </span>
+        </div>
+        <form method="post" action="{% url 'termo_assinatura_novo_link' termo.pk %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-qrcode" aria-hidden="true"></i>
+            Gerar novo link
+          </button>
+        </form>
+
+      {% else %}
+        <div class="alert {% if termo.status == 'assinado' %}alert-success{% else %}alert-warning{% endif %}">
+          <i class="fa-solid {% if termo.status == 'assinado' %}fa-circle-check{% else %}fa-circle-info{% endif %}" aria-hidden="true"></i>
+          <span>
+            {% if termo.status == 'assinado' %}
+              Termo já assinado em {{ termo.assinado_em|date:"d/m/Y H:i" }} por
+              {{ termo.signatario_nome|default:termo.colaborador.nome }}.
+            {% elif termo.status == 'cancelado' %}
+              Sessão cancelada em {{ termo.cancelado_em|date:"d/m/Y H:i" }}.
+              {% if termo.motivo_cancelamento %}Motivo: {{ termo.motivo_cancelamento }}{% endif %}
+            {% else %}
+              O prazo deste link expirou sem assinatura. Gere um novo para colher a assinatura.
+            {% endif %}
+          </span>
+        </div>
+
+        {% if termo.status == 'assinado' %}
+          <a href="{% url 'termo_assinatura_detalhe' termo.pk %}" class="btn btn-primary">
+            <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+            Ver documento assinado
+          </a>
+        {% elif termo.status == 'pendente' %}
+          <form method="post" action="{% url 'termo_assinatura_novo_link' termo.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary">
+              <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+              Gerar novo link
+            </button>
+          </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="ta-card">
+    <div class="ta-card-head">
+      <h2 class="ta-card-title">
+        <i class="fa-solid fa-clipboard-list" aria-hidden="true"></i>
+        O que vai ser assinado
+      </h2>
+    </div>
+
+    <div class="ta-card-body" style="display:grid;gap:var(--space-4)">
+      <dl class="ta-dl">
+        <div>
+          <dt class="ta-dt">Colaborador</dt>
+          <dd class="ta-dd">{{ termo.colaborador.nome }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Tipo</dt>
+          <dd class="ta-dd">{{ termo.get_tipo_display }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Nº do termo</dt>
+          <dd class="ta-dd">{{ termo.numero_termo|default:"—" }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Código de verificação</dt>
+          <dd class="ta-dd is-mono">{{ termo.codigo_verificacao }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Preparado por</dt>
+          <dd class="ta-dd">{{ termo.criado_por.get_full_name|default:termo.criado_por.username|default:"—" }}</dd>
+        </div>
+        <div>
+          <dt class="ta-dt">Preparado em</dt>
+          <dd class="ta-dd">{{ termo.created_at|date:"d/m/Y H:i" }}</dd>
+        </div>
+      </dl>
+
+      <div>
+        <p class="ta-dt" style="margin-bottom:6px">Equipamentos</p>
+        <div class="ta-itens">
+          {% for item in termo.itens.all %}
+            <div class="ta-item" style="cursor:default">
+              <i class="fa-solid fa-microchip" aria-hidden="true" style="color:var(--text-tertiary);margin-top:3px"></i>
+              <span>
+                <span class="ta-item-nome">
+                  {{ item.nome }}
+                  {% if item.compartilhado %}
+                    <span class="ta-selo-compartilhado">
+                      <i class="fa-solid fa-users" aria-hidden="true"></i>
+                      uso compartilhado
+                    </span>
+                  {% endif %}
+                </span>
+                <span class="ta-item-meta">
+                  {% if item.numero_serie %}Série <code>{{ item.numero_serie }}</code> · {% endif %}
+                  {{ item.marca|default:"—" }} {{ item.modelo|default:"" }}
+                </span>
+              </span>
+            </div>
+          {% empty %}
+            <div class="ta-item" style="cursor:default">
+              <span class="ta-item-meta">Nenhum equipamento vinculado.</span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% if termo.movimentacoes.exists %}
+        <div class="alert alert-info">
+          <i class="fa-solid fa-link" aria-hidden="true"></i>
+          <span>
+            Ao assinar, o PDF será anexado automaticamente
+            {% if termo.movimentacoes.count == 1 %}à movimentação{% else %}às {{ termo.movimentacoes.count }} movimentações{% endif %}
+            vinculada{{ termo.movimentacoes.count|pluralize }} — o termo passa a aparecer no
+            Repositório de Termos sem nenhum passo manual.
+          </span>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ termo.pk|json_script:"__ta_termo_pk" }}
+<script>
+(function () {
+  "use strict";
+
+  var PK = JSON.parse(document.getElementById("__ta_termo_pk").textContent);
+  var STATUS_URL = "{% url 'termo_assinatura_status' termo.pk %}";
+
+  // ── Copiar o link ────────────────────────────────────────────────────────
+  var btnCopiar = document.getElementById("taCopiar");
+  var campoLink = document.getElementById("taLink");
+
+  if (btnCopiar && campoLink) {
+    btnCopiar.addEventListener("click", function () {
+      // `navigator.clipboard` exige contexto seguro (HTTPS ou localhost), e o
+      // acesso interno é HTTP puro (regra 28) — então a reserva com
+      // `select()` + `execCommand` NÃO é código legado aqui, é o caminho que
+      // de fato roda na rede da empresa.
+      var texto = campoLink.value;
+      var pronto = function () {
+        btnCopiar.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Copiado';
+        setTimeout(function () {
+          btnCopiar.innerHTML = '<i class="fa-regular fa-copy" aria-hidden="true"></i> Copiar';
+        }, 2000);
+      };
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(texto).then(pronto);
+        return;
+      }
+      campoLink.select();
+      campoLink.setSelectionRange(0, texto.length);
+      try { document.execCommand("copy"); pronto(); } catch (e) { /* o campo fica selecionado */ }
+    });
+  }
+
+  // ── Acompanhamento do status ─────────────────────────────────────────────
+  var elSituacao = document.getElementById("taSituacao");
+  var elPrazo = document.getElementById("taPrazo");
+  var elConcluido = document.getElementById("taConcluido");
+  var elDetalhe = document.getElementById("taConcluidoDetalhe");
+
+  var restante = null;
+  var pararPolling = false;
+
+  function formatar(segundos) {
+    if (segundos <= 0) { return "expirado"; }
+    var m = Math.floor(segundos / 60);
+    var s = segundos % 60;
+    return m + ":" + (s < 10 ? "0" : "") + s;
+  }
+
+  function consultar() {
+    if (pararPolling) { return; }
+
+    fetch(STATUS_URL, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (r) { return r.json(); })
+      .then(function (dados) {
+        if (elSituacao) {
+          elSituacao.textContent = dados.situacao_label;
+          elSituacao.setAttribute("data-situacao", dados.situacao);
+        }
+        restante = dados.expira_em_segundos;
+
+        if (dados.assinado) {
+          pararPolling = true;
+          if (elConcluido) { elConcluido.hidden = false; }
+          if (elDetalhe) {
+            elDetalhe.textContent = "Assinado por " + (dados.signatario || "—") +
+              " em " + (dados.assinado_em || "—") +
+              " · verificação " + dados.codigo_verificacao;
+          }
+          if (elConcluido) { elConcluido.scrollIntoView({ behavior: "smooth", block: "center" }); }
+        }
+      })
+      .catch(function () { /* rede instável: a próxima rodada tenta de novo */ });
+  }
+
+  {% if termo.pode_assinar %}
+  // 4s: o TI está com o colaborador na frente e espera o retorno imediato;
+  // mais lento que isso faz a tela parecer travada, mais rápido só gera
+  // requisição sem informação nova.
+  var tiquePolling = setInterval(function () {
+    if (pararPolling) { clearInterval(tiquePolling); return; }
+    consultar();
+  }, 4000);
+
+  // Contagem local a cada segundo (sem bater no servidor para isso).
+  setInterval(function () {
+    if (restante === null || elPrazo === null) { return; }
+    if (restante > 0) { restante -= 1; }
+    elPrazo.textContent = formatar(restante);
+    var pai = elPrazo.closest(".ta-prazo");
+    if (pai) { pai.classList.toggle("is-urgente", restante <= 120); }
+  }, 1000);
+
+  consultar();
+
+  // Pausa o polling com a aba escondida — mesmo cuidado dos canvas de plantas.
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden && !pararPolling) { consultar(); }
+  });
+  {% endif %}
+})();
+</script>
+{% endblock %}

@@ -1,60 +1,120 @@
-{% for obj in page_obj %}
-<tr>
+{% comment %}
+Linhas do catálogo. Fatia compartilhada pela tela e pelo AJAX do alternador
+de visão — herda o contexto do include e não busca nada por conta própria.
+
+Cada `linha` é um `licenca_service.LinhaCatalogo`: os números já vêm apurados
+do RAZÃO. O template não calcula saldo, custo nem ocupação — o que ele faz é
+escolher o TOM a partir do estado, e o tom é o mesmo em todas as telas.
+{% endcomment %}
+{% load humanize %}
+{% for linha in page_obj %}
+<tr {% if linha.divergente %}data-tom="erro"{% elif linha.esgotada or linha.sem_lote %}data-tom="alerta"{% endif %}>
   <td>
     <div class="lic-cell-primary">
-      <span class="lic-cell-icon"><i class="fa fa-key"></i></span>
+      <span class="lic-cell-icon"><i class="fa-solid fa-key" aria-hidden="true"></i></span>
       <div class="lic-cell-text">
-        <a href="{% url 'licenca_detail' obj.pk %}" class="lic-title-link">{{ obj.nome }}</a>
-        {% if obj.observacao %}
-          <span class="lic-sub" title="{{ obj.observacao }}"><i class="fa fa-circle-info"></i> {{ obj.observacao }}</span>
-        {% endif %}
+        <a href="{% url 'licenca_detail' linha.licenca.pk %}" class="lic-title-link">{{ linha.licenca.nome }}</a>
+        <span class="lic-sub">
+          {{ linha.licenca.fornecedor.nome|default:"Sem fornecedor" }}
+          {% if linha.lotes %}· {{ linha.lotes|length }} lote{{ linha.lotes|length|pluralize }}{% endif %}
+        </span>
       </div>
     </div>
   </td>
-  <td>{{ obj.fornecedor.nome|default:"-" }}</td>
+
   <td>
-    {% if obj.pmb == 'sim' %}
-      <span class="lic-badge lic-badge-success">PMB</span>
+    {% if linha.sem_lote %}
+      <span class="lic-pill" data-tom="alerta" title="Licença cadastrada sem nenhuma compra registrada — não há assento para atribuir nem custo para ratear">
+        <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Sem lote
+      </span>
+    {% elif linha.divergente %}
+      <span class="lic-pill" data-tom="erro" title="O saldo gravado ({{ linha.saldo_contador }}) discorda do razão ({{ linha.livre }})">
+        <i class="fa-solid fa-scale-unbalanced" aria-hidden="true"></i> Divergente
+      </span>
+    {% elif linha.esgotada %}
+      <span class="lic-pill" data-tom="alerta"><i class="fa-solid fa-battery-empty" aria-hidden="true"></i> Esgotada</span>
     {% else %}
-      <span class="lic-badge">Padrão</span>
+      <span class="lic-pill" data-tom="ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Em dia</span>
     {% endif %}
+    {% if linha.licenca.pmb == 'sim' %}<span class="lic-pill" data-tom="brand">PMB</span>{% endif %}
   </td>
+
+  <td>
+    {% comment %}Ocupação: a barra responde "dá para atribuir?" sem a pessoa
+       ter de subtrair dois números de cabeça. O tom vem da própria ocupação —
+       acima de 90% a próxima atribuição provavelmente falha.{% endcomment %}
+    <div class="lic-meter" data-tom="{% if linha.total == 0 %}vazio{% elif linha.pct_uso >= 95 %}erro{% elif linha.pct_uso >= 80 %}alerta{% else %}ok{% endif %}">
+      <div class="lic-meter-head">
+        <span class="lic-meter-num">{{ linha.em_uso }}<small>/{{ linha.total }}</small></span>
+        <span class="lic-meter-pct">{{ linha.pct_uso }}%</span>
+      </div>
+      <div class="lic-meter-track">
+        <span class="lic-meter-fill" style="width: {{ linha.pct_uso }}%"></span>
+      </div>
+    </div>
+  </td>
+
   <td class="lic-text-center">
-    {% if obj.qtd_lotes > 0 %}
-      <span class="lic-mono">{{ obj.qtd_lotes }}</span>
+    {% if linha.livre > 0 %}
+      <span class="lic-pill" data-tom="brand">{{ linha.livre }}</span>
     {% else %}
-      <span class="lic-muted">—</span>
+      <span class="lic-pill" data-tom="erro">0</span>
     {% endif %}
   </td>
-  <td class="lic-text-center">
-    {% if obj.estoque_real > 0 %}
-      <span class="lic-badge lic-badge-brand">{{ obj.estoque_real }}</span>
+
+  <td class="lic-text-right">
+    <div class="lic-money-stack">
+      <span class="lic-money">R$ {{ linha.mensal|floatformat:2|intcomma }}</span>
+      <span class="lic-money-sub">R$ {{ linha.anual|floatformat:2|intcomma }}/ano</span>
+    </div>
+  </td>
+
+  <td class="lic-text-right">
+    {% comment %}Desperdício é a coluna que não existia: custo mensal dos
+       assentos comprados e parados. É a única coluna do catálogo em que dá
+       para agir hoje, sem negociar preço com ninguém.{% endcomment %}
+    {% if linha.desperdicio_mensal > 0 %}
+      <span class="lic-money is-perda">R$ {{ linha.desperdicio_mensal|floatformat:2|intcomma }}</span>
     {% else %}
-      <span class="lic-badge lic-badge-danger">0</span>
+      <span class="lic-money is-zero">—</span>
     {% endif %}
   </td>
+
+  <td>
+    {% if linha.vencimento %}
+      <div class="lic-prazo" data-tom="{% if linha.dias_vencimento < 0 %}erro{% elif linha.dias_vencimento <= 30 %}erro{% elif linha.dias_vencimento <= 60 %}alerta{% endif %}">
+        <span class="lic-prazo-dias">
+          {% if linha.dias_vencimento < 0 %}Vencido{% else %}{{ linha.dias_vencimento }} dia{{ linha.dias_vencimento|pluralize }}{% endif %}
+        </span>
+        <span class="lic-prazo-data">{{ linha.vencimento|date:"d/m/Y" }}</span>
+      </div>
+    {% else %}
+      <span class="lic-sub">sem data</span>
+    {% endif %}
+  </td>
+
   <td class="lic-text-right">
     <div class="lic-action-row">
-      <a href="{% url 'licenca_lote_list' %}?licenca={{ obj.pk }}" class="lic-icon-btn" title="Gerenciar Lotes">
-        <i class="fa fa-boxes-stacked"></i>
+      <a href="{% url 'licenca_detail' linha.licenca.pk %}" class="lic-icon-btn" title="Abrir ficha da licença">
+        <i class="fa-solid fa-eye" aria-hidden="true"></i>
       </a>
-      <a href="{% url 'mov_licenca_list' %}?licenca={{ obj.pk }}" class="lic-icon-btn" title="Histórico">
-        <i class="fa fa-clock-rotate-left"></i>
+      <a href="{% url 'licenca_lote_list' %}?licenca={{ linha.licenca.pk }}" class="lic-icon-btn" title="Lotes desta licença">
+        <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i>
       </a>
-      <a href="{% url 'licenca_detail' obj.pk %}" class="lic-icon-btn" title="Painel Detalhado">
-        <i class="fa fa-eye"></i>
+      <a href="{% url 'mov_licenca_list' %}?licenca={{ linha.licenca.pk }}" class="lic-icon-btn" title="Razão desta licença">
+        <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
       </a>
-      <a href="{% url 'licenca_update' obj.pk %}" class="lic-icon-btn" title="Editar">
-        <i class="fa fa-pen"></i>
+      <a href="{% url 'licenca_update' linha.licenca.pk %}" class="lic-icon-btn" title="Editar cadastro">
+        <i class="fa-solid fa-pen" aria-hidden="true"></i>
       </a>
     </div>
   </td>
 </tr>
 {% empty %}
 <tr>
-  <td colspan="6">
+  <td colspan="8">
     <div class="lic-empty">
-      <i class="fa fa-folder-open"></i>
+      <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
       <strong>Nenhuma licença encontrada</strong>
       <div>Ajuste os filtros ou cadastre uma nova licença.</div>
     </div>

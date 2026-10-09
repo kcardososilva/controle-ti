@@ -1,0 +1,1341 @@
+/* =============================================================
+   ds-termos.css — módulo de Assinatura Digital de Termos.
+
+   Prefixo `.ta-*`. Consome os tokens de `tokens.css` (regra 33 do
+   CLAUDE.md: cor e tamanho não se escrevem à mão aqui) e só define
+   tokens de prefixo próprio.
+
+   Carregado por:
+     • as telas internas (TI), pelo bloco extra_css do base.html — ou
+       seja, depois de tokens.css, base.css e ui-kit.css;
+     • `termo_assinar.html`, que tem SHELL PRÓPRIO (tela de tablet, sem
+       sidebar nem topbar) e por isso carrega tokens.css por conta —
+       ordem obrigatória, ver regra 26/31.
+
+   Nada de tag de template neste arquivo, nem dentro de comentário: um
+   .css é servido cru de static/ e um teste varre esse arquivo em busca
+   de delimitador de template.
+
+   O bloco `.ta-sign-*` é o único pensado para DEDO, não para mouse:
+   alvos de 48px, campos com font-size de 16px (abaixo disso o iOS dá
+   zoom ao focar e reposiciona a página) e nenhuma interação que dependa
+   de hover.
+
+   Ao mudar este arquivo, suba ASSETS_VERSION em
+   ProjetoEstoque/context_processors.py e rode collectstatic.
+   ============================================================= */
+
+:where(.ta-page, .ta-sign-page) {
+  --ta-brand: var(--brand, #1c4e80);
+  --ta-brand-soft: var(--brand-soft, rgba(28, 78, 128, .1));
+
+  /* Altura de alvo de toque. 48px é o mínimo confortável para dedo —
+     o --control-h do sistema (36/40px) é dimensionado para mouse. */
+  --ta-touch-h: 48px;
+
+  /* Altura do quadro de assinatura. Fixa em px e NÃO em vh: com o
+     teclado virtual aberto o vh encolhe no Android e o quadro muda de
+     tamanho no meio do traço, deformando a assinatura já desenhada. */
+  --ta-canvas-h: 220px;
+}
+
+/* ===========================================================
+   1. Telas internas (TI)
+   =========================================================== */
+
+.ta-page,
+.ta-page * { box-sizing: border-box; min-width: 0; }
+
+.ta-page {
+  display: grid;
+  gap: var(--space-4);
+}
+
+/* -- Cartão ------------------------------------------------- */
+
+.ta-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.ta-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--separator-hairline);
+}
+
+.ta-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 650;
+  letter-spacing: var(--tracking-tight);
+}
+
+.ta-card-title i { color: var(--ta-brand); }
+
+.ta-card-body { padding: var(--space-4); }
+
+.ta-card-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-4);
+  border-top: 1px solid var(--separator-hairline);
+  background: var(--surface-sunken);
+}
+
+/* -- KPIs de situação --------------------------------------- */
+
+.ta-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+  gap: var(--space-3);
+}
+
+.ta-kpi {
+  padding: var(--space-4);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border-inline-start: 3px solid var(--ta-kpi-tom, var(--separator-opaque));
+}
+
+.ta-kpi-valor {
+  display: block;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-tight);
+}
+
+.ta-kpi-rotulo {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+/* -- Par rótulo/valor --------------------------------------- */
+
+.ta-dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.ta-dl > div {
+  padding: var(--space-3);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.ta-dt {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.ta-dd {
+  margin: var(--space-1) 0 0;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: var(--leading-snug);
+  overflow-wrap: anywhere;
+}
+
+.ta-dd.is-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+/* -- Situação ----------------------------------------------- */
+
+.ta-situacao {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  white-space: nowrap;
+}
+
+.ta-situacao::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ta-situacao[data-situacao="assinado"]  { background: var(--success-soft); color: var(--success); }
+.ta-situacao[data-situacao="pendente"]  { background: var(--warning-soft); color: var(--warning); }
+.ta-situacao[data-situacao="expirado"]  { background: var(--bg-fill-secondary); color: var(--text-tertiary); }
+.ta-situacao[data-situacao="cancelado"] { background: var(--danger-soft); color: var(--danger); }
+
+/* -- Seletor de equipamentos (preparar) --------------------- */
+
+.ta-itens {
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.ta-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--separator-hairline);
+  cursor: pointer;
+}
+
+.ta-item:last-child { border-bottom: 0; }
+.ta-item:hover { background: var(--bg-hover); }
+.ta-item:has(input:checked) { background: var(--ta-brand-soft); }
+
+.ta-item input[type="checkbox"] {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--ta-brand);
+}
+
+.ta-item-nome {
+  display: block;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: var(--leading-snug);
+}
+
+.ta-item-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.ta-item-meta code {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+/* -- Painel do QR Code -------------------------------------- */
+
+.ta-qr-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.ta-qr-box {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+  padding: var(--space-4);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-md);
+  /* Fundo branco literal, não token: o QR Code é um PNG com fundo
+     branco e módulos pretos. No tema escuro, um fundo de token
+     escuro deixaria uma moldura clara ao redor do código — e o
+     leitor precisa da zona de silêncio branca para decodificar. */
+  background: #ffffff;
+}
+
+.ta-qr-box img {
+  width: 100%;
+  max-width: 240px;
+  height: auto;
+  display: block;
+}
+
+.ta-qr-dica {
+  margin: 0;
+  color: #5b6475;
+  font-size: var(--text-xs);
+  text-align: center;
+  line-height: var(--leading-snug);
+}
+
+.ta-link-row {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ta-link-row input {
+  flex: 1 1 260px;
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--separator-opaque);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.ta-prazo {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.ta-prazo strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.ta-prazo.is-urgente strong { color: var(--danger); }
+
+/* Aviso de conclusão que aparece quando o polling detecta a assinatura. */
+.ta-concluido {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+  padding: var(--space-6) var(--space-4);
+  border: 1px solid var(--success);
+  border-radius: var(--radius-md);
+  background: var(--success-soft);
+  text-align: center;
+}
+
+.ta-concluido i { color: var(--success); font-size: var(--text-3xl); }
+
+/* -- Integridade do arquivo --------------------------------- */
+
+.ta-integridade {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--separator-hairline);
+  background: var(--surface-sunken);
+}
+
+.ta-integridade i { font-size: var(--text-xl); line-height: 1; }
+.ta-integridade[data-ok="true"]  { border-color: var(--success); background: var(--success-soft); }
+.ta-integridade[data-ok="true"] i { color: var(--success); }
+.ta-integridade[data-ok="false"] { border-color: var(--danger); background: var(--danger-soft); }
+.ta-integridade[data-ok="false"] i { color: var(--danger); }
+
+.ta-hash {
+  margin: var(--space-2) 0 0;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  overflow-wrap: anywhere;
+}
+
+/* -- Traço arquivado --------------------------------------- */
+
+.ta-traco {
+  /* Branco literal: o traço é PNG com fundo transparente e tinta
+     escura. Sobre superfície escura ele desapareceria — é o mesmo
+     caso do #peToast citado na regra 33. */
+  background: #ffffff;
+  border: 1px solid var(--separator-opaque);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+}
+
+.ta-traco img {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+}
+
+/* -- Tabela ------------------------------------------------- */
+
+.ta-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.ta-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.ta-table th,
+.ta-table td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--separator-hairline);
+  vertical-align: middle;
+}
+
+.ta-table th {
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  white-space: nowrap;
+  background: var(--surface-sunken);
+}
+
+.ta-table td {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.ta-table tbody tr:last-child td { border-bottom: 0; }
+.ta-table tbody tr:hover { background: var(--bg-hover); }
+
+.ta-table .ta-forte {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ta-table code {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+/* Cartões no lugar da tabela no telefone — regra 24: tabela só pode
+   virar display:none se existir cartão substituindo. */
+.ta-cards { display: none; }
+
+@media (max-width: 760px) {
+  .ta-table-wrap { display: none; }
+
+  .ta-cards {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .ta-card-linha {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    border: 1px solid var(--separator-hairline);
+    border-radius: var(--radius-md);
+    background: var(--bg-elevated);
+  }
+
+  .ta-qr-grid { grid-template-columns: 1fr; }
+}
+
+/* ===========================================================
+   2. Tela do tablet (shell próprio, uso com o dedo)
+   =========================================================== */
+
+.ta-sign-page,
+.ta-sign-page * { box-sizing: border-box; min-width: 0; }
+
+.ta-sign-page {
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+.ta-sign-shell {
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-4) calc(var(--space-12) + env(safe-area-inset-bottom, 0px));
+  display: grid;
+  gap: var(--space-4);
+}
+
+.ta-sign-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.ta-sign-marca {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ta-brand);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 700;
+  letter-spacing: var(--tracking-tight);
+}
+
+.ta-sign-titulo {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+}
+
+.ta-sign-sub {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  line-height: var(--leading-snug);
+}
+
+/* -- Texto legal rolável ------------------------------------ */
+
+.ta-legal {
+  max-height: 46dvh;
+  overflow-y: auto;
+  padding: var(--space-4);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  /* Rolagem com inércia no iOS; sem isto o texto "trava" ao arrastar. */
+  -webkit-overflow-scrolling: touch;
+}
+
+.ta-legal h3 {
+  margin: 0 0 var(--space-2);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: var(--tracking-tight);
+}
+
+.ta-legal p,
+.ta-legal li {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  text-align: justify;
+}
+
+.ta-legal ol {
+  margin: var(--space-3) 0 0;
+  padding-inline-start: var(--space-5);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.ta-legal-fim {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--separator-hairline);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* -- Quadro de assinatura ----------------------------------- */
+
+.ta-sign-box {
+  position: relative;
+  /* Branco literal: é a "folha" onde se assina. O traço é tinta
+     escura e precisa de fundo claro nos dois temas — inverter isso
+     no modo escuro apagaria a assinatura. */
+  background: #ffffff;
+  border: 2px dashed #b4bac6;
+  border-radius: var(--radius-md);
+  height: var(--ta-canvas-h);
+  overflow: hidden;
+  /* `touch-action: none` é OBRIGATÓRIO: sem ele o navegador interpreta
+     o arrasto do dedo como rolagem da página e o traço nunca chega ao
+     canvas (a página rola em vez de desenhar). */
+  touch-action: none;
+}
+
+.ta-sign-box.is-preenchido { border-style: solid; border-color: var(--ta-brand); }
+
+.ta-sign-box canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.ta-sign-linha {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 28%;
+  height: 1px;
+  background: #d7dbe3;
+  pointer-events: none;
+}
+
+.ta-sign-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  gap: var(--space-1);
+  color: #8b93a3;
+  font-size: var(--text-sm);
+  text-align: center;
+  pointer-events: none;
+  padding: 0 var(--space-4);
+}
+
+.ta-sign-box.is-preenchido .ta-sign-placeholder,
+.ta-sign-box.is-preenchido .ta-sign-linha { display: none; }
+
+/* -- Campos de uso com o dedo ------------------------------- */
+
+.ta-sign-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: var(--space-3);
+  /* Mesma razão da `.ta-form-grid`: sem isto, o campo cujo rótulo quebra em
+     duas linhas estica os vizinhos. */
+  align-items: start;
+}
+
+.ta-field { display: grid; gap: 6px; }
+
+.ta-field > label {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 650;
+}
+
+.ta-sign-page input[type="text"],
+.ta-sign-page input[type="tel"] {
+  width: 100%;
+  min-height: var(--ta-touch-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--separator-opaque);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  /* 16px exatos: abaixo disso o Safari no iOS dá zoom ao focar o campo,
+     reposiciona a página e o colaborador perde de vista o que assina.
+     Mesmo motivo registrado na regra 25 para a tela de preventiva. */
+  font-size: 16px;
+  outline: none;
+}
+
+.ta-sign-page input:focus {
+  border-color: var(--ta-brand);
+  box-shadow: 0 0 0 var(--ring-width, 3px) var(--brand-ring);
+}
+
+.ta-aceite {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--ta-brand);
+  border-radius: var(--radius-md);
+  background: var(--ta-brand-soft);
+  cursor: pointer;
+}
+
+.ta-aceite input[type="checkbox"] {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
+  accent-color: var(--ta-brand);
+}
+
+.ta-aceite span {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  text-align: justify;
+}
+
+/* -- Botões de dedo ---------------------------------------- */
+
+.ta-sign-acoes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--space-3);
+}
+
+.ta-btn {
+  min-height: var(--ta-touch-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.ta-btn-primario {
+  background: var(--ta-brand);
+  border-color: var(--ta-brand);
+  color: var(--text-inverted);
+}
+
+.ta-btn-primario:active { background: var(--brand-pressed); }
+
+.ta-btn-secundario {
+  background: var(--bg-elevated);
+  border-color: var(--separator-opaque);
+  color: var(--text-secondary);
+}
+
+.ta-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.ta-erro {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.ta-erro[hidden] { display: none; }
+
+/* -- Confirmação / indisponível ----------------------------- */
+
+.ta-sign-final {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+}
+
+.ta-sign-final-box {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+  max-width: 460px;
+  padding: var(--space-8) var(--space-6);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-xl);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
+}
+
+.ta-sign-final-box i { font-size: var(--text-3xl); }
+.ta-sign-final-box[data-tom="ok"] i { color: var(--success); }
+.ta-sign-final-box[data-tom="erro"] i { color: var(--text-tertiary); }
+
+.ta-sign-final-box h1 {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: var(--tracking-tight);
+}
+
+.ta-sign-final-box p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  line-height: var(--leading-snug);
+}
+
+.ta-codigo {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: .08em;
+}
+
+@media (max-width: 560px) {
+  .ta-sign-acoes { grid-template-columns: 1fr; }
+  .ta-legal { max-height: 38dvh; }
+}
+
+/* ===========================================================
+   3. Tela de preparação (TI) — passos, Select2 e resumo
+   =========================================================== */
+
+.ta-prep-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.ta-prep-main {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.ta-sticky {
+  position: sticky;
+  /* Abaixo da topbar: sem o offset o cartão gruda por baixo dela e o título
+     fica escondido ao rolar. */
+  top: calc(var(--topbar-height, 64px) + var(--space-3));
+}
+
+/* -- Trilha de etapas ---------------------------------------- */
+
+.ta-passos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ta-passo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.ta-passo > span {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-fill-secondary);
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+}
+
+.ta-passo.is-atual {
+  border-color: var(--ta-brand);
+  background: var(--ta-brand-soft);
+  color: var(--ta-brand);
+}
+
+.ta-passo.is-atual > span {
+  background: var(--ta-brand);
+  color: var(--text-inverted);
+}
+
+/* -- Grade do formulário ------------------------------------- */
+
+.ta-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: var(--space-4) var(--space-4);
+  /* `start` é o que conserta o desalinhamento: por padrão o grid estica as
+     células até a altura da LINHA, e a linha fica alta por causa da dica de
+     texto sob "Número do termo". Resultado: aquele campo com a altura certa
+     e os três ao lado esticados, cada um num tamanho diferente do vizinho.
+     Com `start`, cada campo tem a altura do próprio conteúdo. */
+  align-items: start;
+}
+
+/* Mesma razão, um nível abaixo: dentro do campo, o controle não deve crescer
+   para preencher sobra nenhuma. */
+.ta-field { align-content: start; }
+
+/* Rótulo em duas linhas num campo e em uma no vizinho desalinhava os
+   controles entre si. Reservar a altura de duas linhas no rótulo mantém a
+   fileira de campos começando na mesma altura, com ou sem quebra. */
+.ta-form-grid > .ta-field > .ta-dt {
+  min-height: calc(2 * var(--text-2xs) * 1.35);
+  display: flex;
+  align-items: flex-start;
+}
+
+/* A dica fica FORA do fluxo que define a altura da fileira: ela explica o
+   campo, não empurra os vizinhos. */
+.ta-form-grid .form-hint {
+  margin-top: 2px;
+  min-height: 0;
+}
+
+.ta-col-cheia { grid-column: 1 / -1; }
+
+/* Campos de uma linha têm altura FIXA, não mínima: `min-height` deixava o
+   input crescer junto com a célula e produzia a fileira irregular da tela
+   anterior. O textarea é a exceção — ele precisa poder crescer. */
+.ta-prep .ctrl:not(textarea),
+.ta-prep input[type="text"],
+.ta-prep input[type="number"],
+.ta-prep select {
+  height: var(--control-h);
+  min-height: var(--control-h);
+}
+
+.ta-prep .ctrl,
+.ta-prep input[type="text"],
+.ta-prep input[type="number"],
+.ta-prep select,
+.ta-prep textarea {
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 8px var(--space-3);
+  border: 1px solid var(--separator-opaque);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.ta-prep textarea {
+  min-height: 84px;
+  resize: vertical;
+  line-height: var(--leading-snug);
+}
+
+.ta-prep .ctrl:focus,
+.ta-prep input:focus,
+.ta-prep select:focus,
+.ta-prep textarea:focus {
+  border-color: var(--ta-brand);
+  box-shadow: 0 0 0 var(--ring-width, 3px) var(--brand-ring);
+}
+
+.ta-dt.is-required::after {
+  content: " *";
+  color: var(--danger);
+}
+
+/* -- Resumo do colaborador ----------------------------------- */
+
+.ta-resumo-colab {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.ta-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--ta-brand-soft);
+  color: var(--ta-brand);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+
+.ta-resumo-colab strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  line-height: var(--leading-snug);
+}
+
+/* -- Contador e selecionados --------------------------------- */
+
+.ta-contador {
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--ta-brand-soft);
+  color: var(--ta-brand);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ta-selecionados {
+  display: grid;
+  gap: 6px;
+  margin-top: var(--space-3);
+}
+
+.ta-selecionado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--separator-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.ta-selecionado strong {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ta-selecionado code {
+  flex: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+/* -- Linha do tempo "o que vai acontecer" -------------------- */
+
+.ta-timeline {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0 0 0 var(--space-5);
+  list-style: none;
+  counter-reset: ta-etapa;
+}
+
+.ta-timeline li {
+  position: relative;
+  counter-increment: ta-etapa;
+}
+
+.ta-timeline li::before {
+  content: counter(ta-etapa);
+  position: absolute;
+  left: calc(-1 * var(--space-5));
+  top: 1px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ta-brand-soft);
+  color: var(--ta-brand);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+}
+
+.ta-timeline strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 650;
+}
+
+.ta-timeline span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.ta-acoes-fim {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2);
+}
+
+/* -- Select2 no tema do sistema ------------------------------ */
+/* O dropdown é anexado ao <body>, FORA do `.ta-page` — por isso os seletores
+   do dropdown não podem ser escopados na página. O `!important` é necessário:
+   a folha do Select2 vem de CDN e é carregada depois desta. */
+
+.ta-prep .select2-container { width: 100% !important; }
+
+.ta-prep .select2-container--default .select2-selection--single,
+.ta-prep .select2-container--default .select2-selection--multiple {
+  min-height: var(--control-h) !important;
+  border: 1px solid var(--separator-opaque) !important;
+  border-radius: var(--radius-sm) !important;
+  background: var(--bg-elevated) !important;
+}
+
+.ta-prep .select2-container--default .select2-selection--single .select2-selection__rendered {
+  padding-left: var(--space-3) !important;
+  color: var(--text-primary) !important;
+  line-height: var(--control-h) !important;
+  font-size: var(--text-base) !important;
+}
+
+.ta-prep .select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: var(--control-h) !important;
+}
+
+.ta-prep .select2-container--default .select2-selection--single .select2-selection__placeholder,
+.ta-prep .select2-container--default .select2-search__field::placeholder {
+  color: var(--text-quaternary) !important;
+}
+
+.ta-prep .select2-container--default .select2-selection--multiple .select2-selection__choice {
+  margin: 4px 4px 0 0 !important;
+  padding: 3px 8px !important;
+  border: 1px solid var(--ta-brand) !important;
+  border-radius: var(--radius-sm) !important;
+  background: var(--ta-brand-soft) !important;
+  color: var(--text-primary) !important;
+  font-size: var(--text-xs) !important;
+}
+
+.ta-prep .select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
+  color: var(--ta-brand) !important;
+  margin-right: 5px !important;
+}
+
+.ta-prep .select2-container--default.select2-container--focus .select2-selection--single,
+.ta-prep .select2-container--default.select2-container--focus .select2-selection--multiple {
+  border-color: var(--ta-brand) !important;
+  box-shadow: 0 0 0 var(--ring-width, 3px) var(--brand-ring) !important;
+}
+
+.select2-dropdown {
+  border: 1px solid var(--separator-opaque) !important;
+  border-radius: var(--radius-md) !important;
+  background: var(--bg-elevated) !important;
+  box-shadow: var(--shadow-md) !important;
+  z-index: 9999 !important;
+}
+
+.select2-container--default .select2-search--dropdown .select2-search__field {
+  min-height: var(--control-h-sm, 32px);
+  padding: 6px var(--space-3) !important;
+  border: 1px solid var(--separator-opaque) !important;
+  border-radius: var(--radius-sm) !important;
+  background: var(--surface-sunken) !important;
+  color: var(--text-primary) !important;
+  font-size: var(--text-base) !important;
+}
+
+.select2-container--default .select2-results__option {
+  padding: var(--space-2) var(--space-3) !important;
+  color: var(--text-secondary) !important;
+  font-size: var(--text-sm) !important;
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+  background: var(--ta-brand) !important;
+  color: var(--text-inverted) !important;
+}
+
+.select2-container--default .select2-results__option[aria-selected="true"] {
+  background: var(--ta-brand-soft) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Linha rica da opção (nome + metadados). Com 1.376 colaboradores há nomes
+   parecidos, e só o nome não basta para escolher o certo. */
+.ta-opt { display: block; line-height: var(--leading-snug); }
+
+.ta-opt-nome {
+  display: block;
+  color: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.ta-opt-meta {
+  display: block;
+  margin-top: 1px;
+  opacity: .72;
+  font-size: var(--text-2xs);
+}
+
+.ta-opt-aviso {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+}
+
+/* Uso compartilhado: INFORMAÇÃO, não aviso — por isso o tom "info" e não o
+   laranja do `.ta-opt-aviso`. Equipamento compartilhado "Ativo" é o estado
+   normal dele, e pintar isso de alerta ensinaria o operador a hesitar no caso
+   que passou a ser suportado. */
+.ta-opt-tag {
+  display: inline-block;
+  margin-top: 3px;
+  margin-right: 4px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--info-soft);
+  color: var(--info);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+}
+
+/* Selo de compartilhado nas listas de equipamento do termo (preparação,
+   painel, detalhe e tablet). Mesmo tom do `.ta-opt-tag` para a pessoa
+   reconhecer a mesma informação nas quatro telas. */
+.ta-selo-compartilhado {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--info-soft);
+  color: var(--info);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media (max-width: 1040px) {
+  .ta-prep-grid { grid-template-columns: 1fr; }
+  .ta-sticky { position: static; }
+}
+
+@media (max-width: 560px) {
+  .ta-passo { font-size: var(--text-2xs); padding: 6px var(--space-2); }
+  .ta-acoes-fim { grid-template-columns: 1fr; }
+  .ta-acoes-fim .btn { width: 100%; }
+}
+
+/* ===========================================================
+   4. Via do colaborador na tela de conclusão (tablet)
+   =========================================================== */
+
+.ta-via {
+  display: grid;
+  gap: var(--space-3);
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+.ta-via .ta-btn { width: 100%; }
+
+.ta-via-msg {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: var(--leading-snug);
+}
+
+.ta-via-msg[data-tom="ok"]   { background: var(--success-soft); color: var(--success); }
+.ta-via-msg[data-tom="erro"] { background: var(--danger-soft);  color: var(--danger); }
+.ta-via-msg[hidden] { display: none; }
+
+/* ===========================================================
+   5. Desligamento — aviso de consequência
+   =========================================================== */
+
+/* O desligamento não é mais uma devolução: ele encerra o vínculo. O aviso
+   abre a tela, antes de qualquer campo, porque quem chega aqui precisa saber
+   o efeito ANTES de escolher o colaborador — não depois de gerar o link. */
+.ta-alerta-forte {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--warning);
+  border-inline-start: 4px solid var(--warning);
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+}
+
+.ta-alerta-forte > i {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warning);
+  font-size: var(--text-xl);
+  line-height: 1;
+}
+
+.ta-alerta-forte strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: 700;
+  line-height: var(--leading-snug);
+}
+
+.ta-alerta-forte span {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.ta-check {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  accent-color: var(--ta-brand);
+}
+
+/* Selo do termo de desligamento na listagem — o olho precisa separar isto de
+   uma devolução comum sem ler a linha inteira. */
+.ta-selo-desligamento {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  white-space: nowrap;
+}

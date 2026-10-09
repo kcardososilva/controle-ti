@@ -1,0 +1,207 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  {% comment %}`maximum-scale=1` e `user-scalable=no` aqui NÃO são decisão de
+     estética e não se aplicam ao resto do sistema: nesta tela o dedo desenha
+     sobre um canvas, e o gesto de pinça do navegador competiria com o traço —
+     ampliar a página no meio da assinatura desloca o canvas e corta o
+     desenho. O texto do termo já é rolável e legível no tamanho natural.
+     `viewport-fit=cover` + os safe-area-inset do CSS tratam o notch.{% endcomment %}
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Assinatura do termo — Santa Colomba</title>
+
+  <link rel="icon" type="image/svg+xml" href="{% static 'img/zelo-mark.svg' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..800&family=Inter+Tight:wght@500..800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+  {% comment %}Shell próprio (não estende o base.html — o tablet não tem menu
+     lateral nem topbar), então carrega os tokens por conta. A ORDEM importa e
+     nada é redefinido aqui: ver regras 26 e 31 do CLAUDE.md.{% endcomment %}
+  <link rel="stylesheet" href="{% static 'css/tokens.css' %}?v={{ assets_version }}">
+  <link rel="stylesheet" href="{% static 'css/ds-termos.css' %}?v={{ assets_version }}">
+</head>
+
+<body class="ta-sign-page">
+  <div class="ta-sign-shell">
+
+    <header class="ta-sign-top">
+      <span class="ta-sign-marca">
+        <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
+        Santa Colomba · TI
+      </span>
+      <span class="ta-prazo" aria-live="off">
+        <i class="fa-regular fa-clock" aria-hidden="true"></i>
+        Expira em <strong id="taPrazo">—</strong>
+      </span>
+    </header>
+
+    <div>
+      <h1 class="ta-sign-titulo">
+        Termo de {% if termo.tipo == 'entrega' %}Entrega{% else %}Devolução{% endif %} de Equipamento
+      </h1>
+      <p class="ta-sign-sub">
+        {{ termo.colaborador.nome }}{% if dados.colaborador.matricula %} · matrícula {{ dados.colaborador.matricula }}{% endif %}
+        {% if termo.numero_termo %}<br>Termo nº {{ termo.numero_termo }}{% endif %}
+      </p>
+    </div>
+
+    {# 1. O que está sendo entregue/devolvido — o colaborador confere antes de assinar #}
+    <section class="ta-card">
+      <div class="ta-card-head">
+        <h2 class="ta-card-title">
+          <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i>
+          Confira o{{ equipamentos|length|pluralize }} equipamento{{ equipamentos|length|pluralize }}
+        </h2>
+      </div>
+      <div class="ta-card-body">
+        <div class="ta-cards" style="display:grid">
+          {% for eq in equipamentos %}
+            <div class="ta-card-linha">
+              <strong class="ta-item-nome">
+                {{ eq.nome }}
+                {% if eq.compartilhado %}
+                  {% comment %}Quem assina tem de SABER que o equipamento é de
+                     uso compartilhado: num item compartilhado ele não é o
+                     único responsável, e deixar isso de fora seria pedir a
+                     assinatura de uma declaração que não corresponde ao
+                     arranjo real.{% endcomment %}
+                  <span class="ta-selo-compartilhado">
+                    <i class="fa-solid fa-users" aria-hidden="true"></i>
+                    uso compartilhado
+                  </span>
+                {% endif %}
+              </strong>
+              <span class="ta-item-meta">
+                {% if eq.marca or eq.modelo %}{{ eq.marca }} {{ eq.modelo }}<br>{% endif %}
+                {% if eq.numero_serie %}Série: <code>{{ eq.numero_serie }}</code>{% endif %}
+                {% if eq.patrimonio %} · Patrimônio: <code>{{ eq.patrimonio }}</code>{% endif %}
+                {% if eq.compartilhado %}
+                  <br>Equipamento de uso compartilhado{% if eq.codetentores > 1 %},
+                  hoje em uso por {{ eq.codetentores }} colaboradores{% endif %}.
+                  A guarda é conjunta — você responde pelo uso e pela conservação
+                  enquanto estiver com você.
+                {% endif %}
+              </span>
+            </div>
+          {% empty %}
+            <p class="ta-item-meta">Nenhum equipamento informado neste termo.</p>
+          {% endfor %}
+        </div>
+
+        {% if dados.acessorios %}
+          <div style="margin-top:var(--space-3)">
+            <p class="ta-dt">Acessórios</p>
+            <p class="ta-dd">{{ dados.acessorios|linebreaksbr }}</p>
+          </div>
+        {% endif %}
+
+        {% if dados.observacoes %}
+          <div style="margin-top:var(--space-3)">
+            <p class="ta-dt">Observações</p>
+            <p class="ta-dd">{{ dados.observacoes|linebreaksbr }}</p>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    {% comment %}2. Texto legal na íntegra — rolável, nunca resumido: o
+       colaborador assina este texto, e esconder parte dele atrás de um "ver
+       mais" fragilizaria o documento.{% endcomment %}
+    <section class="ta-legal" tabindex="0" aria-label="Texto do termo de responsabilidade">
+      <h3>{{ texto_legal.titulo }}</h3>
+
+      <p>
+        Eu, <strong>{{ termo.colaborador.nome }}</strong>,
+        {% if termo.tipo == 'entrega' %}
+          declaro que recebi, li e entendi as obrigações deste Termo de Responsabilidade pela
+          Guarda e Uso de Equipamentos Corporativos da SANTA COLOMBA e me comprometo, de forma
+          irretratável, com as regras e obrigações abaixo:
+        {% else %}
+          declaro que devolvi o(s) equipamento(s) descrito(s) neste documento, pertencente(s) à
+          SANTA COLOMBA, nas condições especificadas. Declaro estar ciente de que, caso haja danos
+          não reportados ou perda de algum item, poderei ser responsabilizado conforme as normas
+          internas da empresa.
+        {% endif %}
+      </p>
+
+      <ol>
+        {% for clausula in clausulas %}
+          <li>{{ clausula }}</li>
+        {% endfor %}
+      </ol>
+
+      {% if texto_legal.fecho %}
+        <p class="ta-legal-fim">{{ texto_legal.fecho }}</p>
+      {% endif %}
+    </section>
+
+    {# 3. Identificação + aceite + traço #}
+    <section class="ta-card">
+      <div class="ta-card-head">
+        <h2 class="ta-card-title">
+          <i class="fa-solid fa-pen-nib" aria-hidden="true"></i>
+          Assinatura
+        </h2>
+      </div>
+
+      <div class="ta-card-body" style="display:grid;gap:var(--space-4)">
+        {% csrf_token %}
+
+        <div class="ta-sign-grid">
+          <div class="ta-field">
+            <label for="taNome">Nome completo</label>
+            <input type="text" id="taNome" name="nome" autocomplete="name"
+                   value="{{ termo.colaborador.nome }}" required>
+          </div>
+          <div class="ta-field">
+            <label for="taCpf">CPF <span style="color:var(--text-tertiary);font-weight:500">(opcional)</span></label>
+            <input type="tel" id="taCpf" name="cpf" inputmode="numeric" placeholder="000.000.000-00">
+          </div>
+          <div class="ta-field">
+            <label for="taRg">RG <span style="color:var(--text-tertiary);font-weight:500">(opcional)</span></label>
+            <input type="text" id="taRg" name="rg" placeholder="Documento de identidade">
+          </div>
+        </div>
+
+        <label class="ta-aceite" for="taAceite">
+          <input type="checkbox" id="taAceite" name="aceite">
+          <span>{{ texto_aceite }}</span>
+        </label>
+
+        <div>
+          <p class="ta-dt" style="margin-bottom:6px">Assine no quadro abaixo</p>
+          <div class="ta-sign-box" id="taSignBox">
+            <canvas id="taCanvas" aria-label="Quadro de assinatura"></canvas>
+            <span class="ta-sign-linha" aria-hidden="true"></span>
+            <span class="ta-sign-placeholder">
+              <i class="fa-solid fa-hand-pointer" aria-hidden="true"></i>
+              Use o dedo ou a caneta para assinar
+            </span>
+          </div>
+        </div>
+
+        <p class="ta-erro" id="taErro" hidden role="alert"></p>
+
+        <div class="ta-sign-acoes">
+          <button type="button" class="ta-btn ta-btn-secundario" id="taLimpar">
+            <i class="fa-solid fa-eraser" aria-hidden="true"></i>
+            Apagar
+          </button>
+          <button type="button" class="ta-btn ta-btn-primario" id="taEnviar" disabled>
+            <i class="fa-solid fa-check" aria-hidden="true"></i>
+            Confirmar e assinar
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  {{ config|json_script:"__ta_config" }}
+  <script src="{% static 'js/termo-assinar.js' %}?v={{ assets_version }}" defer></script>
+</body>
+</html>

@@ -1,0 +1,281 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Renovações de Licenças{% endblock %}
+{% block page_title %}Renovações{% endblock %}
+{% block page_subtitle %}Contratos que vencem, valor da renovação e assentos ociosos{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'licenca_list' %}">Licenças</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Renovações</span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}{% include 'front/licencas/_lic_design_system.html' %}{% endblock %}
+
+{% block content %}
+<div class="lic-page lic-renov-page">
+  <div class="lic-shell">
+
+    <header class="lic-head">
+      <div class="lic-head-main">
+        <span class="lic-head-eyebrow"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Calendário de renovação</span>
+        <h1 class="lic-head-title">O que vence nos próximos {{ dias }} dias</h1>
+        <p class="lic-head-sub">
+          Cada linha traz o valor que o fornecedor vai cobrar na renovação ao
+          lado dos assentos que ninguém está usando naquele lote. Juntas, as
+          duas informações mudam a pergunta de “renova?” para “renova quantos?”.
+        </p>
+      </div>
+      <div class="lic-actions">
+        <form method="get" class="lic-field" style="min-width:190px">
+          <label class="lic-label" for="id_dias">Janela</label>
+          <select name="dias" id="id_dias" class="lic-select" data-lic-autosubmit>
+            {% for d in opt_dias %}
+              <option value="{{ d }}" {% if dias == d %}selected{% endif %}>Próximos {{ d }} dias</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    </header>
+
+    {% include 'front/licencas/_lic_subnav.html' %}
+
+    {% comment %}As janelas são clicáveis e recortam a própria tela: "vence em
+       83 dias" e "vence em 3 dias" pedem decisões diferentes, e uma lista
+       ordenada por data não mostra onde está a virada.{% endcomment %}
+    <section class="lic-janelas" aria-label="Janelas de vencimento">
+      <a class="lic-janela" data-tom="erro" href="?dias={{ dias }}#vencidos">
+        <span class="lic-janela-rotulo">Já vencido</span>
+        <span class="lic-janela-qtd">{{ resumo.vencidos|length }}</span>
+        <span class="lic-janela-valor">R$ {{ resumo.vencidos_valor|floatformat:2|intcomma }}</span>
+      </a>
+      {% for janela in resumo.por_janela %}
+        <a class="lic-janela" data-tom="{{ janela.tom }}" href="?dias={{ janela.dias }}">
+          <span class="lic-janela-rotulo">Em até {{ janela.dias }} dias</span>
+          <span class="lic-janela-qtd">{{ janela.qtd }}</span>
+          <span class="lic-janela-valor">R$ {{ janela.valor|floatformat:2|intcomma }}</span>
+        </a>
+      {% endfor %}
+      <div class="lic-janela" data-tom="info">
+        <span class="lic-janela-rotulo">Assento parado no ciclo</span>
+        <span class="lic-janela-qtd">R$ {{ resumo.total_desperdicio|floatformat:0|intcomma }}</span>
+        <span class="lic-janela-valor">do que será cobrado</span>
+      </div>
+    </section>
+
+    {% if resumo.manuais %}
+      <div class="lic-callout" data-tom="erro">
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+        <div class="lic-callout-body">
+          <strong>{{ resumo.manuais|length }} contrato{{ resumo.manuais|length|pluralize }} sem renovação automática vence{{ resumo.manuais|pluralize:"m" }} em até 60 dias.</strong>
+          Este é o caso que interrompe serviço de verdade: ninguém cobra, a
+          licença simplesmente para de funcionar no dia do vencimento.
+        </div>
+      </div>
+    {% endif %}
+
+    {# ─── Linhas de renovação ───────────────────────────────────────── #}
+    <section class="lic-card" id="vencidos">
+      <div class="lic-card-header">
+        <h2 class="lic-card-title">
+          <i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i>
+          Lotes a renovar
+          <span class="lic-card-title-sub">
+            {{ resumo.linhas|length }} lote{{ resumo.linhas|length|pluralize }} ·
+            R$ {{ resumo.total_valor|floatformat:2|intcomma }} em jogo
+          </span>
+        </h2>
+      </div>
+
+      {% if resumo.linhas %}
+        <div class="lic-row-head lic-row-head--renov">
+          <span>Licença / lote</span>
+          <span>Vencimento</span>
+          <span>Uso dos assentos</span>
+          <span class="lic-text-right">Valor do ciclo</span>
+          <span class="lic-text-right">Ação</span>
+        </div>
+
+        {% for item in resumo.linhas %}
+          <div class="lic-row lic-row--renov" data-tom="{{ item.tom }}">
+            <span>
+              <span class="lic-row-nome">
+                <a href="{% url 'licenca_detail' item.licenca.pk %}">{{ item.licenca.nome }}</a>
+              </span>
+              <span class="lic-row-meta">
+                Lote #{{ item.lote.pk }}
+                {% if item.lote.numero_pedido %}· {{ item.lote.numero_pedido }}{% endif %}
+                · {{ item.lote.get_periodicidade_display }}
+                {% if item.lote.fornecedor %}· {{ item.lote.fornecedor.nome }}{% elif item.licenca.fornecedor %}· {{ item.licenca.fornecedor.nome }}{% endif %}
+                {% if not item.automatica %}
+                  <br><strong style="color:var(--lic-danger)">Renovação manual</strong>
+                {% endif %}
+              </span>
+            </span>
+
+            <span>
+              <div class="lic-prazo" data-tom="{{ item.tom }}">
+                <span class="lic-prazo-dias">
+                  {% if item.vencido %}
+                    Vencido há {{ item.dias_abs }} dia{{ item.dias_abs|pluralize }}
+                  {% else %}
+                    {{ item.dias }} dia{{ item.dias|pluralize }}
+                  {% endif %}
+                </span>
+                <span class="lic-prazo-data">
+                  {{ item.vencimento|date:"d/m/Y" }}
+                  {% if item.derivado %}
+                    {% comment %}Data DERIVADA da compra + ciclo, não informada
+                       pelo contrato. Marcar importa: quem for negociar precisa
+                       saber se a data é um dado ou um cálculo.{% endcomment %}
+                    <span class="lic-est" title="Calculado a partir da data de compra e da periodicidade — informe a data real do contrato no lote">estimado</span>
+                  {% endif %}
+                </span>
+              </div>
+            </span>
+
+            <span>
+              <div class="lic-meter" data-tom="{{ item.tom_uso }}">
+                <div class="lic-meter-head">
+                  <span class="lic-meter-num">{{ item.em_uso }}<small>/{{ item.total }}</small></span>
+                  {% if item.ocioso %}
+                    <span class="lic-meter-pct">{{ item.ocioso }} parado{{ item.ocioso|pluralize }}</span>
+                  {% endif %}
+                </div>
+                <div class="lic-meter-track">
+                  <span class="lic-meter-fill" style="width: {{ item.pct_uso }}%"></span>
+                </div>
+                {% if item.desperdicio_ciclo > 0 %}
+                  <span class="lic-row-meta" style="margin-top:0">
+                    R$ {{ item.desperdicio_ciclo|floatformat:2|intcomma }} do ciclo em assento parado
+                  </span>
+                {% endif %}
+              </div>
+            </span>
+
+            <span class="lic-row-valor">
+              R$ {{ item.custo_ciclo|floatformat:2|intcomma }}
+              <span class="lic-row-meta" style="margin-top:0">
+                R$ {{ item.custo.mensal_total|floatformat:2|intcomma }}/mês
+                {% if item.custo.ciclo_estimado %}
+                  <span class="lic-est" title="Periodicidade “Contrato/Outro” não declara ciclo — o mensal é estimado como anual">estimado</span>
+                {% endif %}
+              </span>
+            </span>
+
+            <span class="lic-row-acao">
+              <a href="{% url 'licenca_lote_edit' item.lote.pk %}" class="lic-btn lic-btn-secondary lic-btn-sm" title="Editar lote, data e quantidade">
+                <i class="fa-solid fa-pen" aria-hidden="true"></i> Lote
+              </a>
+            </span>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="ui-empty">
+          <div class="ui-empty-ico"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></div>
+          <div class="ui-empty-title">Nada vencendo nos próximos {{ dias }} dias</div>
+          <p class="ui-empty-text">
+            {% if sem_data %}
+              Atenção: {{ sem_data|length }} lote{{ sem_data|length|pluralize }}
+              não {% if sem_data|length == 1 %}tem{% else %}têm{% endif %} data
+              nenhuma cadastrada, então o sistema não consegue vigiar
+              {% if sem_data|length == 1 %}seu{% else %}seus{% endif %}
+              vencimento{{ sem_data|length|pluralize }} — preencha abaixo.
+            {% else %}
+              Amplie a janela para ver o que vem depois.
+            {% endif %}
+          </p>
+          {% if not sem_data %}
+            <div class="ui-empty-actions">
+              <a href="?dias=365" class="lic-btn lic-btn-secondary lic-btn-sm">Ver próximos 365 dias</a>
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+    </section>
+
+    {# ─── Lotes sem data: o formulário que destrava a tela ──────────── #}
+    {% if sem_data %}
+      <section class="lic-card" id="sem-data">
+        <div class="lic-card-header">
+          <h2 class="lic-card-title">
+            <i class="fa-solid fa-calendar-xmark" aria-hidden="true"></i>
+            Lotes que o sistema não consegue vigiar
+            <span class="lic-card-title-sub">{{ sem_data|length }} sem data de compra nem de renovação</span>
+          </h2>
+          <span class="lic-pill" data-tom="alerta">Cadastro incompleto</span>
+        </div>
+
+        <p class="lic-card-note">
+          Sem data de compra o vencimento não tem de onde ser calculado, e sem
+          data de renovação não há o que vigiar — o lote fica fora do
+          calendário, o que é <strong>diferente</strong> de não vencer. Preencha
+          aqui, de uma vez: informe <strong>a data de compra</strong> e o sistema
+          calcula o vencimento pela periodicidade do lote, ou informe
+          <strong>a data de renovação</strong> quando o contrato tiver data
+          própria. Campo deixado em branco não é alterado.
+        </p>
+
+        <form method="post" action="{% url 'licenca_renovacao_datas' %}">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+
+          <div class="lic-row-head lic-row-head--cadastro">
+            <span>Licença / lote</span>
+            <span>Data de compra</span>
+            <span>Renovação (se houver data própria)</span>
+          </div>
+
+          {% for lote in sem_data %}
+            <div class="lic-row lic-row--cadastro">
+              <span>
+                <span class="lic-row-nome">{{ lote.licenca.nome }}</span>
+                <span class="lic-row-meta">
+                  Lote #{{ lote.pk }}
+                  {% if lote.numero_pedido %}· {{ lote.numero_pedido }}{% endif %}
+                  · {{ lote.quantidade_total }} assento{{ lote.quantidade_total|pluralize }}
+                  · {{ lote.get_periodicidade_display }}
+                </span>
+              </span>
+              <span>
+                <label class="lic-label" for="compra_{{ lote.pk }}" style="display:none">Data de compra do lote {{ lote.pk }}</label>
+                <input type="date" id="compra_{{ lote.pk }}" name="compra_{{ lote.pk }}">
+              </span>
+              <span>
+                <label class="lic-label" for="renovacao_{{ lote.pk }}" style="display:none">Data de renovação do lote {{ lote.pk }}</label>
+                <input type="date" id="renovacao_{{ lote.pk }}" name="renovacao_{{ lote.pk }}">
+              </span>
+            </div>
+          {% endfor %}
+
+          <div class="lic-card-foot">
+            <span class="lic-muted" style="font-size: var(--text-xs)">
+              Só os campos preenchidos são gravados.
+            </span>
+            <button type="submit" class="lic-btn lic-btn-primary">
+              <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Salvar datas
+            </button>
+          </div>
+        </form>
+      </section>
+    {% endif %}
+
+    <p class="lic-help">
+      Esta tela só <strong>lê</strong> — nenhum vencimento é calculado e gravado
+      ao abrir a página. O aviso por e-mail da mesma apuração sai por
+      <code>manage.py enviar_alertas --tipo renovacoes</code>, e a auditoria
+      completa do módulo por <code>manage.py auditar_licencas</code>.
+    </p>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% include 'front/licencas/_lic_js_base.html' %}
+{% endblock %}

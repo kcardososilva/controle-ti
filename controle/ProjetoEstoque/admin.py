@@ -7,6 +7,7 @@ from .models import (
     Licenca, MovimentacaoLicenca, LicencaLote, LicencaOffice, ItemLote, LoteEstoque,
     PlantaProjeto, PerfilFornecedor, PerfilParceiroLicenca, OrdemManutencao, OrdemManutencaoEvento,
     LocacaoPeriodo, ItemColaborador, RegistroSeguranca, NovidadeSistema,
+    TermoAssinatura,
 )
 
 # ---------------------------
@@ -525,3 +526,98 @@ class NovidadeSistemaAdmin(AuditAdminMixin):
         ("Publicação", {"fields": ("versao", "data", "ativo")}),
         ("Auditoria", {"fields": ("criado_por", "atualizado_por", "created_at", "updated_at"), "classes": ("collapse",)}),
     )
+
+
+
+# ---------------------------
+# Assinatura digital de termos
+# ---------------------------
+@admin.register(TermoAssinatura)
+class TermoAssinaturaAdmin(AuditAdminMixin):
+    """
+    Consulta e cancelamento. O ATO em si não é editável pelo admin: o traço, o
+    PDF, o hash, o IP e os carimbos de tempo são prova do que aconteceu, e um
+    campo editável ali transformaria a trilha de auditoria em algo que alguém
+    com acesso ao admin pode reescrever — o que anula o motivo de ela existir.
+
+    Criar também está desligado: a sessão nasce do fluxo com o colaborador
+    presente (`termo_assinatura_service.criar_sessao`), que é quem gera o token
+    e monta o snapshot do termo. Uma linha criada à mão aqui nasceria sem token
+    utilizável e sem texto legal.
+
+    **Os `readonly_fields` abaixo são a PRIMEIRA barreira, não a única.** A
+    segunda é `TermoAssinatura.save()`, que recusa alterar a prova de um termo
+    já assinado (`CAMPOS_IMUTAVEIS_APOS_ASSINATURA`, regra 42). As duas se
+    complementam e nenhuma substitui a outra: aqui a proteção é da TELA e vale
+    só para quem passa por ela — um `save()` em shell, num import ou numa
+    rotina nova não encosta nesta lista. Por isso os dois conjuntos de campos
+    são praticamente iguais; se um campo novo de prova aparecer, ele precisa
+    entrar nos DOIS lugares.
+
+    Note que o que sobra editável (`motivo_cancelamento`, `itens`,
+    `movimentacoes`) está fora da lista imutável de propósito: o motivo do
+    cancelamento não é prova da assinatura, e os M2M não passam pelo
+    `save()` do model.
+    """
+    list_display = (
+        "codigo_verificacao", "colaborador", "tipo", "status",
+        "assinado_em", "expira_em", "criado_por",
+    )
+    list_filter = ("status", "tipo", "assinado_em")
+    search_fields = (
+        "codigo_verificacao", "numero_termo", "colaborador__nome",
+        "signatario_nome", "pdf_sha256",
+    )
+    autocomplete_fields = ("colaborador",)
+    filter_horizontal = ("itens", "movimentacoes")
+    date_hierarchy = "created_at"
+    list_per_page = 50
+
+    readonly_fields = AuditAdminMixin.readonly_fields + (
+        "tipo", "colaborador", "status", "token_hash", "expira_em",
+        "numero_termo", "dados", "codigo_verificacao",
+        "assinatura_colaborador", "assinatura_responsavel",
+        "signatario_nome",
+        "assinado_em", "assinado_ip", "assinado_user_agent", "aceite_declarado",
+        "pdf", "pdf_sha256", "cancelado_em",
+        # `desligamento` marca o EFEITO que a assinatura produziu (devolveu tudo,
+        # removeu as licenças, desligou o cadastro). Virar esse booleano depois
+        # do ato reescreveria o que o termo significa, então ele é prova como os
+        # outros — e sem estar aqui o `save()` do model recusaria a gravação,
+        # devolvendo 500 no admin em vez de mensagem.
+        "desligamento",
+        # Registro do envio da via: é histórico de uma ação do sistema. Editável
+        # aqui, viraria "marque como enviada" — o oposto do que o campo existe
+        # para responder.
+        "via_email_status", "via_email_em", "via_email_tentativas", "via_email_detalhe",
+    )
+
+    fieldsets = (
+        ("Identificação", {"fields": ("codigo_verificacao", "tipo", "status", "colaborador",
+                                      "numero_termo", "desligamento")}),
+        ("Via enviada ao colaborador", {
+            "fields": ("via_email_status", "via_email_em", "via_email_tentativas",
+                       "via_email_detalhe"),
+            "classes": ("collapse",),
+        }),
+        # Sem CPF/RG: eles não são persistidos, existem só dentro do PDF
+        # emitido (ver TermoAssinatura.signatario_nome e a regra 35).
+        ("Signatário", {"fields": ("signatario_nome", "aceite_declarado")}),
+        ("Ato", {"fields": ("assinado_em", "assinado_ip", "assinado_user_agent",
+                            "assinatura_colaborador", "assinatura_responsavel")}),
+        ("Documento", {"fields": ("pdf", "pdf_sha256")}),
+        ("Sessão", {"fields": ("expira_em", "token_hash", "cancelado_em", "motivo_cancelamento"),
+                    "classes": ("collapse",)}),
+        ("Snapshot do termo", {"fields": ("dados",), "classes": ("collapse",)}),
+        ("Vínculos", {"fields": ("itens", "movimentacoes")}),
+        ("Auditoria", {"fields": ("criado_por", "atualizado_por", "created_at", "updated_at"),
+                       "classes": ("collapse",)}),
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        # Termo assinado é prova; apagar a linha destruiria o registro do ato
+        # junto com o documento. Cancelar sessão pendente é o caminho (UI).
+        return False

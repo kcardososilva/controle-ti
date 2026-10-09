@@ -1,47 +1,60 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}{% if obj %}Editar Licença{% else %}Nova Licença{% endif %}{% endblock %}
-{% block page_title %}{% if obj %}Editar Licença{% else %}Nova Licença{% endif %}{% endblock %}
-{% block page_subtitle %}Cadastro mestre de licenças, fornecedor, classificação PMB e observações{% endblock %}
+{% block title %}{% if obj %}Editar licença{% else %}Nova licença{% endif %}{% endblock %}
+{% block page_title %}{% if obj %}Editar licença{% else %}Nova licença{% endif %}{% endblock %}
+{% block page_subtitle %}Cadastro mestre: nome, fornecedor, centro de custo proprietário e classificação{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'licenca_list' %}">Licenças</a>
+  {% if obj %}
+    <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+    <a href="{% url 'licenca_detail' obj.pk %}">{{ obj.nome }}</a>
+  {% endif %}
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{% if obj %}Editar{% else %}Nova{% endif %}</span>
+</nav>
+{% endblock %}
 
 {% block extra_css %}
 {% include 'front/licencas/_lic_design_system.html' %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-.lic-form-page { width: min(100%, 920px); }
+  .lic-form-page { width: min(100%, 920px); }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="lic-page lic-form-page">
   <div class="lic-shell">
-    <section class="lic-hero">
-      <div class="lic-hero-main">
-        <div class="lic-hero-icon">
-          <i class="fa fa-file-contract"></i>
-        </div>
-        <div class="lic-hero-title">
-          <h1>{% if obj %}Editar Licença{% else %}Nova Licença{% endif %}</h1>
-          <p>Estruture o cadastro da licença para controle de lotes, movimentações, custos e alocação por centro de custo.</p>
-        </div>
-      </div>
 
+    <header class="lic-head">
+      <div class="lic-head-main">
+        <span class="lic-head-eyebrow"><i class="fa-solid fa-file-contract" aria-hidden="true"></i> Cadastro mestre</span>
+        <h1 class="lic-head-title">{% if obj %}{{ obj.nome }}{% else %}Nova licença{% endif %}</h1>
+        <p class="lic-head-sub">
+          A licença é o <strong>nome do software</strong>. A quantidade de
+          assentos, o custo e o vencimento ficam nos <strong>lotes</strong> —
+          uma licença pode ter várias compras ao longo do tempo.
+        </p>
+      </div>
       <div class="lic-actions">
-        <a href="{% url 'licenca_list' %}" class="lic-btn lic-btn-secondary">
-          <i class="fa fa-arrow-left"></i>
-          Voltar
+        <a href="{% if obj %}{% url 'licenca_detail' obj.pk %}{% else %}{% url 'licenca_list' %}{% endif %}" class="lic-btn lic-btn-ghost">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Cancelar
         </a>
       </div>
-    </section>
+    </header>
 
     {% include 'front/licencas/_lic_subnav.html' %}
 
     <section class="lic-card">
       <div class="lic-card-header">
-        <div class="lic-card-title">
-          <i class="fa fa-pen-to-square"></i>
-          Dados da licença
-        </div>
+        <h2 class="lic-card-title">
+          <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i> Dados da licença
+        </h2>
       </div>
 
       <form method="post" novalidate autocomplete="off">
@@ -49,17 +62,21 @@
 
         <div class="lic-card-body">
           {% if form.non_field_errors %}
-            <div class="lic-alert lic-alert-danger">
-              <i class="fa fa-circle-exclamation"></i>
-              <div>{{ form.non_field_errors }}</div>
+            <div class="lic-callout" data-tom="erro">
+              <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+              <div class="lic-callout-body">{{ form.non_field_errors }}</div>
             </div>
           {% endif %}
 
           <div class="lic-form-grid">
             <div class="lic-col-12 lic-field">
-              <label class="lic-label lic-required" for="{{ form.nome.id_for_label }}">Nome da Licença</label>
+              <label class="lic-label lic-required" for="{{ form.nome.id_for_label }}">Nome da licença</label>
               {{ form.nome }}
               {{ form.nome.errors }}
+              <span class="lic-help">
+                Use o nome comercial do produto, como aparece na fatura — é por
+                ele que o acervo é conciliado com o fornecedor.
+              </span>
             </div>
 
             <div class="lic-col-6 lic-field">
@@ -69,52 +86,74 @@
             </div>
 
             <div class="lic-col-6 lic-field">
-              <label class="lic-label lic-required" for="{{ form.pmb.id_for_label }}">PMB?</label>
+              <label class="lic-label" for="{{ form.pmb.id_for_label }}">Classificação PMB</label>
               {{ form.pmb }}
               {{ form.pmb.errors }}
+            </div>
+
+            {% comment %}ESTE CAMPO NÃO ERA RENDERIZADO. Ele existe em
+               `LicencaForm.fields` desde que a devolução passou a precisar
+               dele — com o `help_text` "CC proprietário (devolução retorna
+               aqui)" — mas o template nunca o desenhou. Resultado: era
+               impossível preenchê-lo pela interface, `Licenca.centro_custo`
+               ficava nulo em todo o acervo, e a devolução de assento sem lote
+               não tinha para onde estornar o custo. Quem lê o código do
+               service via a regra; quem usa o sistema não tinha o campo.{% endcomment %}
+            <div class="lic-col-12 lic-field">
+              <label class="lic-label" for="{{ form.centro_custo.id_for_label }}">Centro de custo proprietário</label>
+              {{ form.centro_custo }}
+              {{ form.centro_custo.errors }}
+              <span class="lic-help">
+                Para onde o custo <strong>volta</strong> quando um assento é
+                devolvido e o lote de origem não existe mais. Normalmente é o
+                CC de TI. Sem isso, essa devolução fica sem centro de custo de
+                destino.
+              </span>
             </div>
 
             <div class="lic-col-12 lic-field">
               <label class="lic-label" for="{{ form.observacao.id_for_label }}">Observações</label>
               {{ form.observacao }}
               {{ form.observacao.errors }}
-              <span class="lic-help">Use este campo para registrar regras comerciais, restrições de uso ou observações contratuais.</span>
+              <span class="lic-help">
+                Regras comerciais, restrições de uso e condições de contrato.
+                Aparece no catálogo e na ficha da licença.
+              </span>
             </div>
           </div>
         </div>
 
-        <div class="lic-pagination">
-          <div class="lic-muted">Os lotes e movimentações serão gerenciados nas telas específicas.</div>
+        <div class="lic-card-foot">
+          <span class="lic-muted" style="font-size: var(--text-xs)">
+            {% if obj %}
+              Assentos e custo são gerenciados em
+              <a href="{% url 'licenca_lote_list' %}?licenca={{ obj.pk }}" class="lic-link">Lotes</a>.
+            {% else %}
+              Depois de salvar, registre a primeira compra em Lotes para a
+              licença ter assentos.
+            {% endif %}
+          </span>
           <button type="submit" class="lic-btn lic-btn-primary">
-            <i class="fa fa-save"></i>
-            Salvar
+            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Salvar
           </button>
         </div>
       </form>
     </section>
+
   </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
+{% comment %}A classe `lic-select` vem do WIDGET (forms.py), não de um script
+   que a acrescenta no DOM: o `_lic_js_base.html` inicializa o Select2 em
+   `.lic-select`, e um script por tela só para pôr a classe seria uma ordem de
+   execução a mais para dar errado.{% endcomment %}
+{% include 'front/licencas/_lic_js_base.html' %}
 <script>
-$(document).ready(function() {
-  $('.lic-page select').select2({
-    width: '100%',
-    placeholder: 'Selecione...',
-    allowClear: true,
-    language: {
-      noResults: function () { return 'Nenhum resultado encontrado'; },
-      searching: function () { return 'Buscando...'; }
-    }
-  });
-
-  $('.lic-page input:not([type="hidden"]), .lic-page textarea').addClass('lic-form-control');
-  $('#id_nome').trigger('focus');
-});
+(function () {
+  var nome = document.getElementById("id_nome");
+  if (nome && !nome.value) { nome.focus(); }
+})();
 </script>
 {% endblock %}

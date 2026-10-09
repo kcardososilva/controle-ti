@@ -1,22 +1,50 @@
+{% comment %}
+Paginação única do módulo — usada pelas quatro listas E pela galeria por AJAX.
+
+Era copiada em três templates com três formatos de link diferentes
+(`?page=N&{{ qs_keep }}`, `?{{ qs_keep }}&page=N` e um `{% with base=... %}`),
+e o primeiro deles produzia `?page=2&` quando não havia filtro. Três cópias
+divergem, e o sintoma aqui é o pior possível: perder o filtro ao virar a
+página — a pessoa filtra, vai para a página 2 e vê o acervo inteiro sem notar
+que o recorte sumiu.
+
+`qs_keep` já vem da view SEM o `page`, então o `&page=` no fim é sempre seguro.
+{% endcomment %}
 {% if page_obj.has_other_pages %}
-<div class="lic-pagination">
-  <div class="lic-muted">
-    Página <strong>{{ page_obj.number }}</strong> de {{ page_obj.paginator.num_pages }} — {{ total_registros }} registro(s)
-  </div>
+<nav class="lic-pagination" aria-label="Paginação">
+  <span class="lic-muted" style="font-size: var(--text-xs)">
+    Página <strong>{{ page_obj.number }}</strong> de {{ page_obj.paginator.num_pages }}
+    · {{ total_registros }} registro{{ total_registros|pluralize }}
+  </span>
+
   <div class="lic-page-links">
     {% if page_obj.has_previous %}
-      <a href="?page={{ page_obj.previous_page_number }}&{{ qs_keep }}" class="lic-page-link"><i class="fa fa-angle-left"></i></a>
+      <a href="?{{ qs_keep }}&page=1" class="lic-page-link" aria-label="Primeira página">&laquo;</a>
+      <a href="?{{ qs_keep }}&page={{ page_obj.previous_page_number }}" class="lic-page-link" aria-label="Página anterior">
+        <i class="fa-solid fa-angle-left" aria-hidden="true"></i>
+      </a>
+    {% else %}
+      <span class="lic-page-link disabled">&laquo;</span>
+      <span class="lic-page-link disabled"><i class="fa-solid fa-angle-left" aria-hidden="true"></i></span>
     {% endif %}
+
     {% for num in page_obj.paginator.page_range %}
-      {% if page_obj.number == num %}
-        <span class="lic-page-link active">{{ num }}</span>
+      {% if num == page_obj.number %}
+        <span class="lic-page-link active" aria-current="page">{{ num }}</span>
       {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-        <a href="?page={{ num }}&{{ qs_keep }}" class="lic-page-link">{{ num }}</a>
+        <a href="?{{ qs_keep }}&page={{ num }}" class="lic-page-link">{{ num }}</a>
       {% endif %}
     {% endfor %}
+
     {% if page_obj.has_next %}
-      <a href="?page={{ page_obj.next_page_number }}&{{ qs_keep }}" class="lic-page-link"><i class="fa fa-angle-right"></i></a>
+      <a href="?{{ qs_keep }}&page={{ page_obj.next_page_number }}" class="lic-page-link" aria-label="Próxima página">
+        <i class="fa-solid fa-angle-right" aria-hidden="true"></i>
+      </a>
+      <a href="?{{ qs_keep }}&page={{ page_obj.paginator.num_pages }}" class="lic-page-link" aria-label="Última página">&raquo;</a>
+    {% else %}
+      <span class="lic-page-link disabled"><i class="fa-solid fa-angle-right" aria-hidden="true"></i></span>
+      <span class="lic-page-link disabled">&raquo;</span>
     {% endif %}
   </div>
-</div>
+</nav>
 {% endif %}

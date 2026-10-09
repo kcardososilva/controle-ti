@@ -202,8 +202,16 @@ from .licencas import (
     licenca_form,
     licenca_detail,
     licenca_export_excel,
+    licenca_saude,
+    licenca_colaboradores_api,
+    licenca_devolver_orfao,
+    licenca_reconciliar_lote,
+    licenca_atribuir_rapido,
+    licenca_renovacoes,
+    licenca_renovacao_datas,
     mov_licenca_list,
     mov_licenca_form,
+    mov_licenca_export,
     licenca_lote_list,
     licenca_lote_form,
 )
@@ -264,6 +272,31 @@ from .termos import (
     termo_entrega_form,
     termo_devolucao_form,
     termo_desligamento_form,
+)
+
+# ── Termos — assinatura digital em tablet ────────────────────────────────────
+# `termo_assinar` e `termo_assinar_enviar` são as DUAS únicas views anônimas
+# deste bloco (o colaborador que assina não tem login); a autorização delas é
+# o token opaco. As demais são `@login_required`.
+from .termos_assinatura import (
+    termo_assinatura_preparar,
+    termo_assinatura_desligamento,
+    termo_assinatura_painel,
+    termo_assinatura_status,
+    termo_assinatura_novo_link,
+    termo_assinatura_cancelar,
+    termo_assinatura_reenviar_via,
+    termo_assinar,
+    termo_assinar_enviar,
+    termo_assinar_concluido,
+    termo_recibo_pdf,
+    termo_recibo_email,
+    termo_assinatura_colaboradores_api,
+    termo_assinatura_equipamentos_api,
+    termo_assinatura_list,
+    termo_assinatura_detalhe,
+    termo_assinatura_pdf,
+    termo_assinatura_verificar,
 )
 
 # ── Inteligência ─────────────────────────────────────────────────────────────
@@ -443,3 +476,6 @@ from .autenticacao import (  # noqa: E402
 
 # ── Referência viva do design system (tokens + componentes) ──────────────────
 from .design_system import design_system  # noqa: E402
+
+# ── Telas de erro (preview em desenvolvimento) ───────────────────────────────
+from .erros import erro_preview  # noqa: E402

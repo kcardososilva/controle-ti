@@ -995,96 +995,86 @@ def movimentacao_reverter(request, pk):
 @login_required
 def repositorio_termos(request):
     """
-    Repositório operacional dos termos de responsabilidade (entrega/devolução):
-    lista filtrável dos termos já assinados/anexados e painel de pendências
-    (transferências sem PDF anexado, que precisam de acompanhamento). O PDF em
-    si já é coletado no fluxo normal de transferência
-    (`MovimentacaoItemForm.termo_pdf`) — esta tela apenas indexa/monitora.
+    Repositório de Termos — arquivo navegável por pastas.
+
+    Indexa as DUAS origens de termo de responsabilidade: o PDF anexado na
+    transferência (papel escaneado) e a assinatura eletrônica colhida no tablet
+    (`TermoAssinatura`). A montagem, a de-duplicação entre as duas e o
+    agrupamento ficam em `services/repositorio_termos_service.py` — aqui só se
+    lê a URL, se escolhe a visão e se pagina.
+
+    Três estados na mesma rota, porque é a mesma pergunta em zooms diferentes
+    e separar em rotas obrigaria a repetir os filtros em todas:
+
+      • sem `pasta` e sem busca  → grade de PASTAS do eixo escolhido;
+      • com `pasta=<chave>`      → conteúdo daquela pasta;
+      • com `q=<busca>`          → resultado plano, atravessando as pastas
+                                   (quem busca por nome de equipamento não
+                                   sabe em que pasta ele está — é justamente
+                                   por isso que está buscando).
     """
-    q = (request.GET.get("q") or "").strip()
-    f_tipo = (request.GET.get("tipo_transferencia") or "").strip()
-    f_subtipo = (request.GET.get("subtipo") or "").strip()
-    f_fornecedor = (request.GET.get("fornecedor") or "").strip()
-    f_ini = (request.GET.get("data_inicio") or "").strip()
-    f_fim = (request.GET.get("data_fim") or "").strip()
+    from services import repositorio_termos_service as rts
 
-    transferencias_qs = (
-        MovimentacaoItem.objects
-        .filter(tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA)
-        .select_related("item", "item__subtipo", "item__fornecedor", "usuario")
-    )
+    filtros = rts.Filtros.do_request(request)
+    eixo = rts.eixo_valido(request.GET.get("agrupar"))
+    pasta_chave = (request.GET.get("pasta") or "").strip()
 
-    # Opções de filtro restritas ao universo real de transferências (evita
-    # listar subtipos/fornecedores sem nenhum termo no repositório).
-    subtipos_opcoes = (
-        transferencias_qs.exclude(item__subtipo__isnull=True)
-        .values("item__subtipo_id", "item__subtipo__nome")
-        .distinct().order_by("item__subtipo__nome")
-    )
-    fornecedores_opcoes = (
-        transferencias_qs.exclude(item__fornecedor__isnull=True)
-        .values("item__fornecedor_id", "item__fornecedor__nome")
-        .distinct().order_by("item__fornecedor__nome")
-    )
+    acervo = rts.acervo(filtros)
+    resumo = rts.resumo(acervo)
+    pendentes, pendentes_total = rts.pendencias(filtros, limite=8)
 
-    base_qs = transferencias_qs
-    if q:
-        base_qs = base_qs.filter(
-            Q(usuario__nome__icontains=q)
-            | Q(item__nome__icontains=q)
-            | Q(item__numero_serie__icontains=q)
+    buscando = bool(filtros.q)
+    pastas = [] if (buscando or pasta_chave) else rts.pastas(eixo, acervo)
+
+    if buscando:
+        visao, linhas = "busca", acervo
+        pasta_rotulo = ""
+    elif pasta_chave:
+        visao, linhas = "pasta", rts.conteudo(eixo, pasta_chave, acervo)
+        # O rótulo sai da própria linha e não de uma consulta à tabela de
+        # origem: a pasta "0" é a dos registros SEM aquele vínculo (sem centro
+        # de custo, sem fornecedor) e não corresponde a nenhum id real.
+        pasta_rotulo = next(
+            (rotulo for linha in linhas
+             for chave, rotulo in linha.chaves_de_pasta(eixo) if chave == pasta_chave),
+            "Pasta vazia",
         )
-    if f_tipo:
-        base_qs = base_qs.filter(tipo_transferencia=f_tipo)
-    if f_subtipo:
-        base_qs = base_qs.filter(item__subtipo_id=f_subtipo)
-    if f_fornecedor:
-        base_qs = base_qs.filter(item__fornecedor_id=f_fornecedor)
-    if f_ini:
-        base_qs = base_qs.filter(created_at__date__gte=f_ini)
-    if f_fim:
-        base_qs = base_qs.filter(created_at__date__lte=f_fim)
+    else:
+        visao, linhas, pasta_rotulo = "pastas", [], ""
 
-    termos_qs = base_qs.exclude(termo_pdf__isnull=True).exclude(termo_pdf="").order_by("-created_at")
-    pendentes_qs = base_qs.filter(Q(termo_pdf__isnull=True) | Q(termo_pdf="")).order_by("-created_at")
-
-    contagens = termos_qs.aggregate(
-        total=Count("id"),
-        entregas=Count("id", filter=Q(tipo_transferencia="entrega")),
-        devolucoes=Count("id", filter=Q(tipo_transferencia="devolucao")),
-    )
-    colaboradores_unicos = termos_qs.exclude(usuario__isnull=True).values("usuario_id").distinct().count()
-    fornecedores_unicos = termos_qs.exclude(item__fornecedor__isnull=True).values("item__fornecedor_id").distinct().count()
-    pendentes_count = pendentes_qs.count()
-
-    paginator = Paginator(termos_qs, 20)
+    # Um paginador para as duas coisas: na visão de pastas ele pagina PASTAS,
+    # nas outras pagina linhas. São 214 colaboradores com termo — a grade
+    # inteira de uma vez eram 200 KB de HTML remontados a cada filtro, o mesmo
+    # peso que o CLAUDE.md registra como defeito em outras telas.
+    paginator = Paginator(pastas if visao == "pastas" else linhas,
+                          48 if visao == "pastas" else 24)
     page_obj = paginator.get_page(request.GET.get("page"))
 
     get_copy = request.GET.copy()
-    if "page" in get_copy:
-        del get_copy["page"]
+    get_copy.pop("page", None)
     qs_keep = get_copy.urlencode()
 
-    context = {
+    # Querystring sem `pasta`/`page`, para os links de eixo e a trilha voltarem
+    # à raiz preservando os filtros que o usuário já aplicou.
+    raiz_copy = request.GET.copy()
+    for descartar in ("page", "pasta", "agrupar"):
+        raiz_copy.pop(descartar, None)
+    qs_raiz = raiz_copy.urlencode()
+
+    return render(request, "front/movimentacao/repositorio_termos.html", {
+        "visao": visao,
+        "eixo": eixo,
+        "eixos": rts.EIXOS,
+        "pastas": pastas,
+        "pasta_chave": pasta_chave,
+        "pasta_rotulo": pasta_rotulo,
         "page_obj": page_obj,
         "qs_keep": qs_keep,
-        "pendentes": pendentes_qs[:8],
-        "f_q": q,
-        "f_tipo": f_tipo,
-        "f_subtipo": f_subtipo,
-        "f_fornecedor": f_fornecedor,
-        "f_ini": f_ini,
-        "f_fim": f_fim,
+        "qs_raiz": qs_raiz,
+        "filtros": filtros,
+        "resumo": resumo,
+        "pendentes": pendentes,
+        "pendentes_total": pendentes_total,
         "tipo_transferencia_choices": TipoTransferenciaChoices.choices,
-        "subtipos_opcoes": subtipos_opcoes,
-        "fornecedores_opcoes": fornecedores_opcoes,
-        "kpi": {
-            "total_termos": contagens["total"],
-            "entregas": contagens["entregas"],
-            "devolucoes": contagens["devolucoes"],
-            "colaboradores": colaboradores_unicos,
-            "fornecedores": fornecedores_unicos,
-            "pendentes": pendentes_count,
-        },
-    }
-    return render(request, "front/movimentacao/repositorio_termos.html", context)
+        "fornecedores_opcoes": rts.opcoes_fornecedor(),
+    })

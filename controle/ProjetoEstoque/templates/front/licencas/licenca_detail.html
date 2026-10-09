@@ -1,325 +1,484 @@
 {% extends 'base.html' %}
 {% load static humanize %}
 
-{% block title %}Detalhes: {{ obj.nome }}{% endblock %}
-{% block page_title %}Detalhes da Licença{% endblock %}
-{% block page_subtitle %}Custos, lotes, alocação, burn rate e histórico operacional{% endblock %}
+{% block title %}{{ obj.nome }} — Licença{% endblock %}
+{% block page_title %}{{ obj.nome }}{% endblock %}
+{% block page_subtitle %}Assentos, custo, lotes, renovação e razão completo{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'licenca_list' %}">Licenças</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">{{ obj.nome }}</span>
+</nav>
+{% endblock %}
 
 {% block extra_css %}
 {% include 'front/licencas/_lic_design_system.html' %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-.lic-detail-page { width: min(100%, 1500px); }
+  :where(.lic-detail-page) { --lic-table-min: 1080px; }
 
-.lic-meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-
-.lic-detail-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(280px, .9fr);
-  gap: 14px;
-  align-items: start;
-}
-
-.lic-summary-card { text-align: center; }
-
-.lic-summary-number {
-  color: var(--lic-brand);
-  font-size: clamp(2rem, 5vw, 2.6rem);
-  font-weight: 700;
-  line-height: 1;
-}
-
-.lic-summary-divider { height: 1px; background: var(--lic-border); margin: 18px 0; }
-
-/* Medidor de ocupação de assentos */
-.lic-gauge { text-align: left; margin-top: 16px; }
-.lic-gauge-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.lic-gauge-pct {
-  font-size: 1.2rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--lic-success);
-}
-.lic-gauge-track { height: 10px; border-radius: var(--radius-pill); overflow: hidden; background: var(--lic-fill-2); border: 1px solid var(--lic-border); }
-.lic-gauge-fill {
-  height: 100%; border-radius: var(--radius-pill); min-width: 3px;
-  background: var(--lic-success);
-  transition: width .6s ease;
-}
-.lic-gauge.is-mid .lic-gauge-pct { color: var(--lic-warning); }
-.lic-gauge.is-mid .lic-gauge-fill { background: var(--lic-warning); }
-.lic-gauge.is-high .lic-gauge-pct { color: var(--lic-danger); }
-.lic-gauge.is-high .lic-gauge-fill { background: var(--lic-danger); }
-.lic-gauge-legend { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: var(--text-xs); color: var(--lic-muted); }
-.lic-gauge-legend i { font-size: .55rem; vertical-align: middle; margin-right: 5px; color: var(--lic-success); }
-.lic-gauge.is-mid .lic-gauge-legend i { color: var(--lic-warning); }
-.lic-gauge.is-high .lic-gauge-legend i { color: var(--lic-danger); }
-
-.lic-user-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.lic-user-avatar {
-  width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center;
-  border-radius: var(--radius-pill); background: var(--lic-brand-soft); color: var(--lic-brand);
-}
-.lic-user-name { color: var(--lic-text); font-weight: 500; overflow-wrap: anywhere; }
-
-.lic-cost-stack { display: grid; gap: 2px; justify-items: end; }
-.lic-cost-main { color: var(--lic-text); font-weight: 500; }
-
-@media (max-width: 1100px) {
-  .lic-detail-grid { grid-template-columns: 1fr; }
-}
-@media (max-width: 760px) {
-  .lic-detail-page .lic-table { min-width: 1100px; }
-}
+  /* Duas colunas: o trabalho à esquerda, o resumo à direita. O resumo sobe
+     para o topo no tablet porque é a resposta curta — "dá para atribuir?" —
+     e empurrá-lo para depois de uma tabela de 12 colunas significa que
+     ninguém o lê. */
+  :where(.lic-detail-page) .lic-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(272px, 330px);
+    gap: 14px;
+    align-items: start;
+  }
+  @media (max-width: 1100px) {
+    :where(.lic-detail-page) .lic-split { grid-template-columns: 1fr; }
+  }
+  :where(.lic-detail-page) .lic-aside { display: grid; gap: 14px; position: sticky; top: calc(var(--topbar-height) + 10px); }
+  @media (max-width: 1100px) {
+    :where(.lic-detail-page) .lic-aside { position: static; }
+  }
+  :where(.lic-detail-page) .lic-ocupacao-num {
+    font-family: var(--font-display);
+    font-size: clamp(1.9rem, 4.4vw, 2.4rem);
+    font-weight: 650;
+    line-height: 1;
+    letter-spacing: var(--tracking-tightest);
+    font-variant-numeric: tabular-nums;
+    color: var(--lic-text);
+  }
+  :where(.lic-detail-page) .lic-ocupacao-num small {
+    font-size: var(--text-md); font-weight: 500; color: var(--lic-soft); letter-spacing: 0;
+  }
+  :where(.lic-detail-page) .lic-detentor {
+    display: flex; align-items: center; gap: 9px; min-width: 0;
+  }
+  :where(.lic-detail-page) .lic-detentor-avatar {
+    width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center;
+    border-radius: var(--radius-pill);
+    background: var(--lic-brand-soft); color: var(--lic-brand); font-size: var(--text-xs);
+  }
+  :where(.lic-detail-page) .lic-detentor[data-tom="erro"] .lic-detentor-avatar {
+    background: var(--lic-danger-bg); color: var(--lic-danger);
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="lic-page lic-detail-page">
   <div class="lic-shell">
-    <section class="lic-hero">
-      <div class="lic-hero-main">
-        <div class="lic-hero-icon">
-          <i class="fa fa-key"></i>
-        </div>
 
-        <div class="lic-hero-title">
-          <h1>{{ obj.nome }}</h1>
-          <p>Visão executiva da licença com investimento, uso, custo mensal/ anual e rastreabilidade por lote.</p>
-
-          <div class="lic-meta-row">
-            <span class="lic-badge">
-              <i class="fa fa-building"></i>
-              {{ obj.fornecedor.nome|default:"Fornecedor N/A" }}
+    <header class="lic-head">
+      <div class="lic-head-main">
+        <span class="lic-head-eyebrow"><i class="fa-solid fa-key" aria-hidden="true"></i> Licença</span>
+        <h1 class="lic-head-title">{{ obj.nome }}</h1>
+        <div class="lic-head-meta">
+          <span class="lic-pill"><i class="fa-solid fa-building" aria-hidden="true"></i> {{ obj.fornecedor.nome|default:"Sem fornecedor" }}</span>
+          {% if obj.pmb == 'sim' %}
+            <span class="lic-pill" data-tom="brand"><i class="fa-solid fa-star" aria-hidden="true"></i> PMB</span>
+          {% endif %}
+          {% if obj.centro_custo %}
+            <span class="lic-pill" title="Centro de custo proprietário — a devolução estorna para cá">
+              <i class="fa-solid fa-sitemap" aria-hidden="true"></i> {{ obj.centro_custo.departamento }}
             </span>
-
-            {% if obj.pmb == 'sim' %}
-              <span class="lic-badge lic-badge-success">
-                <i class="fa fa-check"></i>
-                PMB
-              </span>
-            {% else %}
-              <span class="lic-badge">Licença padrão</span>
-            {% endif %}
-
-            {% if obj.centro_custo %}
-              <span class="lic-badge">
-                <i class="fa fa-sitemap"></i>
-                {{ obj.centro_custo.departamento }}
-              </span>
-            {% endif %}
-          </div>
+          {% else %}
+            <span class="lic-pill" data-tom="alerta" title="Sem CC proprietário, a devolução de assento sem lote não tem para onde estornar o custo">
+              <i class="fa-solid fa-sitemap" aria-hidden="true"></i> Sem CC proprietário
+            </span>
+          {% endif %}
+          {% if kpi.vencimento %}
+            <span class="lic-pill" data-tom="{% if kpi.dias_vencimento < 0 %}erro{% elif kpi.dias_vencimento <= 30 %}erro{% elif kpi.dias_vencimento <= 60 %}alerta{% else %}info{% endif %}">
+              <i class="fa-solid fa-calendar-check" aria-hidden="true"></i>
+              {% if kpi.dias_vencimento < 0 %}Vencido{% else %}Renova em {{ kpi.dias_vencimento }} dia{{ kpi.dias_vencimento|pluralize }}{% endif %}
+            </span>
+          {% endif %}
         </div>
       </div>
 
       <div class="lic-actions">
-        <a href="{% url 'licenca_list' %}" class="lic-btn lic-btn-secondary">
-          <i class="fa fa-arrow-left"></i>
-          Voltar
+        <a href="{% url 'licenca_list' %}" class="lic-btn lic-btn-ghost">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Catálogo
         </a>
-        <a href="{% url 'licenca_export_excel' obj.pk %}" class="lic-btn lic-btn-secondary" target="_blank">
-          <i class="fa fa-file-excel"></i>
-          Exportar Excel
+        <a href="{% url 'licenca_export_excel' obj.pk %}" class="lic-btn lic-btn-secondary">
+          <i class="fa-solid fa-file-excel" aria-hidden="true"></i> Excel
         </a>
         <a href="{% url 'licenca_lote_novo' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary">
-          <i class="fa fa-plus"></i>
-          Novo Lote
-        </a>
-        <a href="{% url 'mov_licenca_form' %}?licenca={{ obj.pk }}&next={{ request.get_full_path|urlencode }}" class="lic-btn lic-btn-primary">
-          <i class="fa fa-exchange-alt"></i>
-          Movimentar
+          <i class="fa-solid fa-plus" aria-hidden="true"></i> Novo lote
         </a>
         <a href="{% url 'licenca_update' obj.pk %}" class="lic-btn lic-btn-secondary">
-          <i class="fa fa-pen"></i>
-          Editar
+          <i class="fa-solid fa-pen" aria-hidden="true"></i> Editar
+        </a>
+        <a href="{% url 'mov_licenca_form' %}?licenca={{ obj.pk }}&next={{ request.get_full_path|urlencode }}" class="lic-btn lic-btn-primary">
+          <i class="fa-solid fa-right-left" aria-hidden="true"></i> Movimentar
         </a>
       </div>
-    </section>
+    </header>
 
     {% include 'front/licencas/_lic_subnav.html' %}
 
-    {% if obj.observacao %}
-      <div class="lic-alert lic-alert-warning">
-        <i class="fa fa-circle-info"></i>
-        <div><strong>Observações:</strong> {{ obj.observacao|linebreaksbr }}</div>
+    {% comment %}AVISO DE DIVERGÊNCIA — era calculado na view (`kpi.divergente`)
+       com um comentário dizendo que existia "para a tela poder avisar", e o
+       aviso nunca havia sido construído. Enquanto isso o cabeçalho mostrava o
+       número do razão e a aba de lotes o do contador, sem nada explicando por
+       que os dois discordavam.{% endcomment %}
+    {% if kpi.divergente %}
+      <div class="lic-callout" data-tom="erro">
+        <i class="fa-solid fa-scale-unbalanced" aria-hidden="true"></i>
+        <div class="lic-callout-body">
+          <strong>O saldo gravado desta licença discorda das movimentações.</strong>
+          Os lotes somam <strong>{{ kpi.saldo_contador }}</strong> assento{{ kpi.saldo_contador|pluralize }}
+          livre{{ kpi.saldo_contador|pluralize }} no contador, mas o razão aponta
+          <strong>{{ kpi.disponivel }}</strong>. Os números desta tela usam o razão,
+          que é a verdade; o contador é cache e pode ter divergido.
+          Reconciliar alinha o cache e <strong>não altera nenhuma movimentação</strong>.
+          <div class="lic-callout-actions">
+            {% for lote in lotes_divergentes %}
+              <form method="post" action="{% url 'licenca_reconciliar_lote' lote.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit" class="lic-btn lic-btn-secondary lic-btn-sm">
+                  <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+                  Reconciliar lote #{{ lote.pk }} ({{ lote.quantidade_disponivel }} → {{ lote.saldo_real }})
+                </button>
+              </form>
+            {% endfor %}
+            <a href="{% url 'licenca_saude' %}" class="lic-btn lic-btn-ghost lic-btn-sm">Painel de saúde</a>
+          </div>
+        </div>
       </div>
     {% endif %}
 
-    <section class="lic-kpi-grid">
-      <div class="lic-kpi-card" style="--kpi-color: var(--lic-brand);">
-        <div class="lic-kpi-icon"><i class="fa fa-coins"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-label">Investimento Total</span>
-          <span class="lic-kpi-value">R$ {{ kpi.investimento_total|floatformat:2|intcomma }}</span>
-          <span class="lic-kpi-sub">{{ kpi.total }} licenças compradas</span>
-        </div>
+    {% if obj.observacao %}
+      <div class="lic-callout" data-tom="info">
+        <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+        <div class="lic-callout-body"><strong>Observações:</strong> {{ obj.observacao|linebreaksbr }}</div>
       </div>
+    {% endif %}
 
-      <div class="lic-kpi-card" style="--kpi-color: var(--lic-success);">
-        <div class="lic-kpi-icon"><i class="fa fa-user-check"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-label">Em Uso</span>
-          <span class="lic-kpi-value">{{ kpi.em_uso }} / {{ kpi.total }}</span>
-          <span class="lic-kpi-sub">{{ kpi.pct_uso }}% de utilização</span>
-        </div>
+    <section class="lic-stats" aria-label="Indicadores da licença">
+      <div class="lic-stat" data-tom="brand">
+        <span class="lic-stat-label"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Assentos</span>
+        <span class="lic-stat-value">{{ kpi.total }}</span>
+        <span class="lic-stat-meta">{{ lotes|length }} lote{{ lotes|length|pluralize }} · {{ kpi.disponivel }} livre{{ kpi.disponivel|pluralize }}</span>
       </div>
-
-      <div class="lic-kpi-card" style="--kpi-color: var(--lic-warning);">
-        <div class="lic-kpi-icon"><i class="fa fa-calendar-days"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-label">Custo Mensal Ativo</span>
-          <span class="lic-kpi-value">R$ {{ kpi.gasto_mensal|floatformat:2|intcomma }}</span>
-          <span class="lic-kpi-sub">Baseado nas licenças alocadas</span>
-        </div>
+      <div class="lic-stat" data-tom="{% if kpi.pct_uso >= 95 %}erro{% elif kpi.pct_uso >= 80 %}alerta{% else %}ok{% endif %}">
+        <span class="lic-stat-label"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Em uso</span>
+        <span class="lic-stat-value">{{ kpi.em_uso }} <small>/ {{ kpi.total }}</small></span>
+        <span class="lic-stat-meta">{{ kpi.pct_uso }}% de ocupação</span>
       </div>
-
-      <div class="lic-kpi-card" style="--kpi-color: var(--lic-info);">
-        <div class="lic-kpi-icon"><i class="fa fa-chart-line"></i></div>
-        <div class="lic-kpi-content">
-          <span class="lic-kpi-label">Custo Anual Ativo</span>
-          <span class="lic-kpi-value">R$ {{ kpi.gasto_anual|floatformat:2|intcomma }}</span>
-          <span class="lic-kpi-sub">Projeção consolidada</span>
-        </div>
+      <div class="lic-stat" data-tom="info">
+        <span class="lic-stat-label"><i class="fa-solid fa-coins" aria-hidden="true"></i> Custo em uso</span>
+        <span class="lic-stat-value">R$ {{ kpi.gasto_mensal|floatformat:2|intcomma }}</span>
+        <span class="lic-stat-meta">por mês · R$ {{ kpi.gasto_anual|floatformat:2|intcomma }}/ano</span>
+      </div>
+      <div class="lic-stat" data-tom="{% if kpi.desperdicio_mensal > 0 %}alerta{% else %}ok{% endif %}">
+        <span class="lic-stat-label"><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i> Assento parado</span>
+        <span class="lic-stat-value">R$ {{ kpi.desperdicio_mensal|floatformat:2|intcomma }}</span>
+        <span class="lic-stat-meta">por mês, em {{ kpi.disponivel }} assento{{ kpi.disponivel|pluralize }} comprado{{ kpi.disponivel|pluralize }}</span>
+      </div>
+      <div class="lic-stat" data-tom="info">
+        <span class="lic-stat-label"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Contratado</span>
+        <span class="lic-stat-value">R$ {{ kpi.investido_ciclo|floatformat:2|intcomma }}</span>
+        <span class="lic-stat-meta">
+          soma dos ciclos dos lotes
+          {% if kpi.ciclo_estimado %}
+            · <span class="lic-est" title="Algum lote tem periodicidade “Contrato/Outro”, que não declara ciclo — o mensal dele é estimado como anual">valor estimado</span>
+          {% endif %}
+        </span>
       </div>
     </section>
 
-    {# ─────────────────────── ABAS ─────────────────────── #}
-    <nav class="lic-tabs" role="tablist" aria-label="Seções da licença">
+    <nav class="lic-tabs" role="tablist" aria-label="Seções da licença" data-lic-tabs>
       <button class="lic-tab-btn is-active" data-tab="geral" role="tab" aria-selected="true">
-        <i class="fa fa-chart-pie"></i> Visão Geral
+        <i class="fa-solid fa-chart-pie" aria-hidden="true"></i> Visão geral
+      </button>
+      <button class="lic-tab-btn" data-tab="detentores" role="tab" aria-selected="false">
+        <i class="fa-solid fa-users" aria-hidden="true"></i> Quem tem
+        <span class="lic-tab-count">{{ detentores|length }}</span>
       </button>
       <button class="lic-tab-btn" data-tab="lotes" role="tab" aria-selected="false">
-        <i class="fa fa-boxes-stacked"></i> Lotes ({{ lotes|length }})
+        <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i> Lotes
+        <span class="lic-tab-count">{{ lotes|length }}</span>
       </button>
       <button class="lic-tab-btn" data-tab="historico" role="tab" aria-selected="false">
-        <i class="fa fa-clock-rotate-left"></i> Histórico de Alocação
+        <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Razão
+        <span class="lic-tab-count">{{ movimentacoes.paginator.count }}</span>
       </button>
     </nav>
 
-    {# ─────────────────────── ABA: VISÃO GERAL ─────────────────────── #}
+    {# ═══════════════ VISÃO GERAL ═══════════════ #}
     <div id="tab-geral" class="lic-tab-panel is-active" role="tabpanel">
-      <div class="lic-detail-grid">
+
+      {% comment %}Atribuição rápida: o caso mais comum do dia é "dá essa
+         licença para essa pessoa", e ele exigia sair do detalhe, abrir a tela
+         de movimentação e reencontrar a licença num select de dezenas de
+         opções. Só aparece quando há assento livre — oferecer o formulário
+         para depois recusar no POST é pior do que não oferecer.{% endcomment %}
+      {% if kpi.disponivel > 0 %}
         <section class="lic-card">
           <div class="lic-card-header">
-            <div class="lic-card-title">
-              <i class="fa fa-chart-pie"></i>
-              Alocação por Centro de Custo
+            <h2 class="lic-card-title">
+              <i class="fa-solid fa-user-plus" aria-hidden="true"></i> Atribuir um assento
+            </h2>
+            <span class="lic-pill" data-tom="ok">{{ kpi.disponivel }} livre{{ kpi.disponivel|pluralize }}</span>
+          </div>
+          <div class="lic-card-body">
+            <form method="post" action="{% url 'licenca_atribuir_rapido' obj.pk %}">
+              {% csrf_token %}
+              <div class="lic-filter-grid" style="grid-template-columns: minmax(0,2fr) minmax(0,1fr) auto">
+                <div class="lic-field">
+                  <label class="lic-label lic-required" for="lic-atribuir-usuario">Colaborador</label>
+                  {% comment %}Select VAZIO: a busca é remota (Select2 +
+                     `licenca_colaboradores_api`). São 1.376 colaboradores
+                     ativos — como `<option>` seriam ~80 KB de HTML em cada
+                     abertura desta tela, que o navegador ainda teria de montar
+                     antes de pintar.{% endcomment %}
+                  <select name="usuario" id="lic-atribuir-usuario" required></select>
+                  <span class="lic-help">
+                    Digite para buscar. Aparecem só colaboradores <strong>ativos</strong>
+                    que ainda não têm esta licença.
+                  </span>
+                </div>
+                <div class="lic-field">
+                  <label class="lic-label" for="lic-atribuir-lote">Lote de origem</label>
+                  <select name="lote" id="lic-atribuir-lote" class="lic-select">
+                    <option value="">Automático (compra mais antiga)</option>
+                    {% for lote in lotes_com_saldo %}
+                      <option value="{{ lote.pk }}">
+                        #{{ lote.pk }} · {{ lote.saldo_real }} livre{{ lote.saldo_real|pluralize }}
+                        {% if lote.data_compra %}· {{ lote.data_compra|date:"d/m/Y" }}{% endif %}
+                      </option>
+                    {% endfor %}
+                  </select>
+                  <span class="lic-help">Automático consome o lote comprado antes — é o que vence antes.</span>
+                </div>
+                <div class="lic-action-row" style="align-items:flex-end">
+                  <button type="submit" class="lic-btn lic-btn-primary">
+                    <i class="fa-solid fa-check" aria-hidden="true"></i> Atribuir
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </section>
+      {% else %}
+        <div class="lic-callout" data-tom="alerta">
+          <i class="fa-solid fa-battery-empty" aria-hidden="true"></i>
+          <div class="lic-callout-body">
+            <strong>Sem assento livre.</strong>
+            {% if kpi.total == 0 %}
+              Esta licença não tem lote cadastrado — registre a compra para poder atribuir.
+            {% else %}
+              Os {{ kpi.total }} assentos comprados estão em uso. Para atribuir a
+              alguém, cadastre um lote novo ou devolva um assento.
+            {% endif %}
+            <div class="lic-callout-actions">
+              <a href="{% url 'licenca_lote_novo' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary lic-btn-sm">
+                <i class="fa-solid fa-plus" aria-hidden="true"></i> Registrar compra
+              </a>
             </div>
           </div>
+        </div>
+      {% endif %}
 
-          <div class="lic-table-wrap">
-            <table class="lic-table" style="min-width:640px;">
+      <div class="lic-split">
+        <section class="lic-card">
+          <div class="lic-card-header">
+            <h2 class="lic-card-title">
+              <i class="fa-solid fa-sitemap" aria-hidden="true"></i>
+              Rateio por centro de custo
+              <span class="lic-card-title-sub">custo mensal cobrado de cada CC pelos assentos que detém</span>
+            </h2>
+          </div>
+          <div class="lic-table-wrap" style="--lic-table-min: 420px">
+            <table class="lic-table">
               <thead>
                 <tr>
-                  <th>Departamento / CC</th>
-                  <th class="lic-text-center">Assentos</th>
-                  <th class="lic-text-right">Gasto</th>
+                  <th scope="col">Centro de custo</th>
+                  <th scope="col" class="lic-text-center">Assentos</th>
+                  <th scope="col" class="lic-text-right">Custo / mês</th>
                 </tr>
               </thead>
               <tbody>
                 {% for cc in cc_list %}
                   <tr>
                     <td>{{ cc.nome }}</td>
-                    <td class="lic-text-center"><span class="lic-badge lic-badge-brand">{{ cc.qtd }}</span></td>
-                    <td class="lic-text-right"><span class="lic-cost-main">R$ {{ cc.total|floatformat:2|intcomma }}</span></td>
+                    <td class="lic-text-center"><span class="lic-pill" data-tom="brand">{{ cc.qtd }}</span></td>
+                    <td class="lic-text-right"><span class="lic-money">R$ {{ cc.total|floatformat:2|intcomma }}</span></td>
                   </tr>
                 {% empty %}
-                  <tr>
-                    <td colspan="3">
-                      <div class="lic-empty">Nenhuma alocação ativa.</div>
-                    </td>
-                  </tr>
+                  <tr><td colspan="3"><div class="lic-empty">Nenhum assento atribuído.</div></td></tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
+          <p class="lic-card-note">
+            O valor somado é o que foi <strong>cobrado na atribuição</strong>, não o
+            preço atual do lote: recalcular pelo preço de hoje reescreveria o
+            passado a cada renovação de contrato.
+          </p>
         </section>
 
-        <aside class="lic-card lic-summary-card">
-          <div class="lic-card-body">
-            <span class="lic-kpi-label">Assentos em uso</span>
-            <div class="lic-summary-number">{{ kpi.em_uso }}</div>
-            <div class="lic-muted">de {{ kpi.total }} licenças adquiridas</div>
+        <aside class="lic-aside">
+          <div class="lic-card">
+            <div class="lic-card-body" style="text-align:center">
+              <span class="lic-stat-label" style="justify-content:center">Assentos em uso</span>
+              <div class="lic-ocupacao-num" style="margin:6px 0 2px">
+                {{ kpi.em_uso }}<small> / {{ kpi.total }}</small>
+              </div>
+              <div class="lic-muted" style="font-size: var(--text-xs)">
+                {{ kpi.disponivel }} livre{{ kpi.disponivel|pluralize }} para atribuir
+              </div>
 
-            <div class="lic-gauge {% if kpi.pct_uso >= 90 %}is-high{% elif kpi.pct_uso >= 70 %}is-mid{% endif %}">
-              <div class="lic-gauge-head">
-                <span class="lic-kpi-label">Ocupação</span>
-                <span class="lic-gauge-pct">{{ kpi.pct_uso }}%</span>
-              </div>
-              <div class="lic-gauge-track">
-                <div class="lic-gauge-fill" style="width: {{ kpi.pct_uso }}%"></div>
-              </div>
-              <div class="lic-gauge-legend">
-                <span><i class="fa fa-circle"></i>{{ kpi.em_uso }} em uso</span>
-                <span><i class="fa fa-circle" style="color:var(--lic-border-strong)"></i>{{ kpi.disponivel }} livres</span>
+              <div class="lic-meter" data-tom="{% if kpi.total == 0 %}vazio{% elif kpi.pct_uso >= 95 %}erro{% elif kpi.pct_uso >= 80 %}alerta{% else %}ok{% endif %}" style="margin-top:14px; text-align:left">
+                <div class="lic-meter-head">
+                  <span class="lic-stat-label">Ocupação</span>
+                  <span class="lic-meter-pct">{{ kpi.pct_uso }}%</span>
+                </div>
+                <div class="lic-meter-track"><span class="lic-meter-fill" style="width: {{ kpi.pct_uso }}%"></span></div>
+                <div class="lic-meter-legend">
+                  <span>{{ kpi.em_uso }} em uso</span>
+                  <span>{{ kpi.disponivel }} livre{{ kpi.disponivel|pluralize }}</span>
+                </div>
               </div>
             </div>
 
-            <div class="lic-summary-divider"></div>
+            <div class="ui-dl" style="padding: 0 16px 16px">
+              <div class="ui-dl-item">
+                <span class="ui-dl-label">Custo mensal do acervo</span>
+                <span class="ui-dl-valor">R$ {{ linha.mensal|floatformat:2|intcomma }}</span>
+              </div>
+              <div class="ui-dl-item">
+                <span class="ui-dl-label">Custo mensal em uso</span>
+                <span class="ui-dl-valor">R$ {{ kpi.gasto_mensal|floatformat:2|intcomma }}</span>
+              </div>
+              <div class="ui-dl-item">
+                <span class="ui-dl-label">Pago e parado</span>
+                <span class="ui-dl-valor" style="color: var(--lic-danger)">R$ {{ kpi.desperdicio_mensal|floatformat:2|intcomma }}</span>
+              </div>
+              {% if kpi.vencimento %}
+                <div class="ui-dl-item">
+                  <span class="ui-dl-label">Próxima renovação</span>
+                  <span class="ui-dl-valor">
+                    {{ kpi.vencimento|date:"d/m/Y" }}
+                    <span class="lic-sub">
+                      {% if kpi.dias_vencimento < 0 %}vencido{% else %}em {{ kpi.dias_vencimento }} dia{{ kpi.dias_vencimento|pluralize }}{% endif %}
+                    </span>
+                  </span>
+                </div>
+              {% endif %}
+            </div>
+          </div>
 
-            <span class="lic-kpi-label">Burn rate mensal</span>
-            <div class="lic-kpi-value">R$ {{ kpi.gasto_mensal|floatformat:2|intcomma }}</div>
+          <div class="lic-card">
+            <div class="lic-card-header">
+              <h2 class="lic-card-title" style="font-size: var(--text-sm)">
+                <i class="fa-solid fa-bolt" aria-hidden="true"></i> Atalhos
+              </h2>
+            </div>
+            <div class="lic-card-body" style="display:grid; gap:7px">
+              <a href="{% url 'licenca_lote_list' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary lic-btn-sm">
+                <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i> Lotes desta licença
+              </a>
+              <a href="{% url 'mov_licenca_list' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary lic-btn-sm">
+                <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Razão completo
+              </a>
+              <a href="{% url 'mov_licenca_export' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary lic-btn-sm">
+                <i class="fa-solid fa-file-csv" aria-hidden="true"></i> Baixar razão (CSV)
+              </a>
+              <a href="{% url 'licenca_renovacoes' %}" class="lic-btn lic-btn-secondary lic-btn-sm">
+                <i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Calendário de renovação
+              </a>
+            </div>
           </div>
         </aside>
       </div>
     </div>
 
-    {# ─────────────────────── ABA: LOTES ─────────────────────── #}
-    <div id="tab-lotes" class="lic-tab-panel" role="tabpanel">
+    {# ═══════════════ QUEM TEM ═══════════════ #}
+    <div id="tab-detentores" class="lic-tab-panel" role="tabpanel">
       <section class="lic-card">
         <div class="lic-card-header">
-          <div class="lic-card-title">
-            <i class="fa fa-boxes-stacked"></i>
-            Inventário de Lotes
-          </div>
-          <a href="{% url 'licenca_lote_novo' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary">
-            <i class="fa fa-plus"></i> Novo Lote
-          </a>
+          <h2 class="lic-card-title">
+            <i class="fa-solid fa-users" aria-hidden="true"></i>
+            Quem detém esta licença agora
+            <span class="lic-card-title-sub">apurado pelas movimentações, não por um campo de status</span>
+          </h2>
+          <span class="lic-pill" data-tom="brand">{{ detentores|length }} assento{{ detentores|length|pluralize }}</span>
         </div>
-        <div class="lic-table-wrap">
+
+        {% comment %}Esta aba não existia. A pergunta mais feita na ficha de uma
+           licença — "quem está com ela?" — só era respondida lendo 1.500 linhas
+           de razão de trás para frente e cancelando atribuição com devolução na
+           cabeça.{% endcomment %}
+        <div class="lic-table-wrap" style="--lic-table-min: 780px">
           <table class="lic-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Data Compra</th>
-                <th>Pedido / NF</th>
-                <th>Periodicidade</th>
-                <th class="lic-text-right">Custo Ciclo / Licença</th>
-                <th class="lic-text-right">Custo Mensal / Licença</th>
-                <th class="lic-text-right">Custo Anual / Licença</th>
-                <th class="lic-text-right">Mensal do Lote</th>
-                <th class="lic-text-right">Anual do Lote</th>
-                <th class="lic-text-center">Qtd. Total</th>
-                <th class="lic-text-center">Disponível</th>
-                <th class="lic-text-right">Ação</th>
+                <th scope="col">Colaborador</th>
+                <th scope="col">Centro de custo</th>
+                <th scope="col">Lote</th>
+                <th scope="col">Desde</th>
+                <th scope="col" class="lic-text-right">Custo / mês</th>
+                <th scope="col" class="lic-text-right">Ação</th>
               </tr>
             </thead>
             <tbody>
-              {% for lote in lotes %}
-                <tr>
-                  <td class="lic-mono">#{{ lote.pk }}</td>
-                  <td>{{ lote.data_compra|date:"d/m/Y"|default:"-" }}</td>
-                  <td>{{ lote.numero_pedido|default:"-" }}</td>
-                  <td><span class="lic-badge">{{ lote.get_periodicidade_display|default:"-" }}</span></td>
-                  <td class="lic-text-right">R$ {{ lote.unitario_real|floatformat:2|intcomma }}</td>
-                  <td class="lic-text-right">R$ {{ lote.custo_mensal_unit|floatformat:2|intcomma }}</td>
-                  <td class="lic-text-right">R$ {{ lote.custo_anual_unit|floatformat:2|intcomma }}</td>
-                  <td class="lic-text-right"><span class="lic-cost-main">R$ {{ lote.total_mensal_calc|floatformat:2|intcomma }}</span></td>
-                  <td class="lic-text-right"><span class="lic-cost-main">R$ {{ lote.total_investido_calc|floatformat:2|intcomma }}</span></td>
-                  <td class="lic-text-center">{{ lote.quantidade_total }}</td>
-                  <td class="lic-text-center">
-                    {% if lote.quantidade_disponivel > 0 %}
-                      <span class="lic-badge lic-badge-brand">{{ lote.quantidade_disponivel }}</span>
+              {% for d in detentores %}
+                <tr {% if d.inativo %}data-tom="erro"{% endif %}>
+                  <td>
+                    <div class="lic-detentor" {% if d.inativo %}data-tom="erro"{% endif %}>
+                      <span class="lic-detentor-avatar">
+                        <i class="fa-solid {% if d.inativo %}fa-user-slash{% else %}fa-user{% endif %}" aria-hidden="true"></i>
+                      </span>
+                      <div class="lic-cell-text">
+                        {% if d.usuario %}
+                          <a href="{% url 'usuario_detail' d.usuario.pk %}" class="lic-title-link">{{ d.usuario.nome }}</a>
+                          <span class="lic-sub">
+                            {% if d.usuario.matricula %}Matrícula {{ d.usuario.matricula }}{% endif %}
+                            {% if d.inativo %}
+                              · <strong style="color:var(--lic-danger)">{{ d.usuario.get_status_display }}</strong>
+                            {% endif %}
+                          </span>
+                        {% else %}
+                          <span class="lic-muted">Colaborador removido do cadastro</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    {% if d.centro_custo %}
+                      {{ d.centro_custo.departamento }}
+                      <span class="lic-sub">CC {{ d.centro_custo.numero }}</span>
                     {% else %}
-                      <span class="lic-badge">0</span>
+                      <span class="lic-muted">—</span>
                     {% endif %}
                   </td>
+                  <td>{% if d.lote %}<span class="lic-mono">#{{ d.lote.pk }}</span>{% else %}<span class="lic-muted">—</span>{% endif %}</td>
+                  <td class="lic-nowrap">{{ d.desde|date:"d/m/Y" }}</td>
+                  <td class="lic-text-right"><span class="lic-money">R$ {{ d.mensal|floatformat:2|intcomma }}</span></td>
                   <td class="lic-text-right">
-                    <a href="{% url 'licenca_lote_edit' lote.pk %}" class="lic-icon-btn" title="Editar lote">
-                      <i class="fa fa-pen"></i>
-                    </a>
+                    {% if d.inativo %}
+                      <a href="{% url 'licenca_saude' %}" class="lic-btn lic-btn-danger lic-btn-sm"
+                         title="Assento no nome de quem não está ativo — recuperar pelo painel de saúde">
+                        <i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Recuperar
+                      </a>
+                    {% elif d.usuario %}
+                      <a href="{% url 'mov_licenca_form' %}?licenca={{ obj.pk }}&usuario={{ d.usuario.pk }}&next={{ request.get_full_path|urlencode }}"
+                         class="lic-icon-btn" title="Devolver este assento">
+                        <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                      </a>
+                    {% endif %}
                   </td>
                 </tr>
               {% empty %}
                 <tr>
-                  <td colspan="12">
-                    <div class="lic-empty">Nenhum lote registrado.</div>
+                  <td colspan="6">
+                    <div class="lic-empty">
+                      <i class="fa-regular fa-user" aria-hidden="true"></i>
+                      <strong>Nenhum assento atribuído</strong>
+                      <div>Todos os {{ kpi.total }} assentos comprados estão livres.</div>
+                    </div>
                   </td>
                 </tr>
               {% endfor %}
@@ -329,112 +488,227 @@
       </section>
     </div>
 
-    {# ─────────────────────── ABA: HISTÓRICO ─────────────────────── #}
-    <div id="tab-historico" class="lic-tab-panel" role="tabpanel">
+    {# ═══════════════ LOTES ═══════════════ #}
+    <div id="tab-lotes" class="lic-tab-panel" role="tabpanel">
       <section class="lic-card">
         <div class="lic-card-header">
-          <div class="lic-card-title">
-            <i class="fa fa-clock-rotate-left"></i>
-            Histórico de Alocação
-          </div>
+          <h2 class="lic-card-title">
+            <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i>
+            Lotes de compra
+            <span class="lic-card-title-sub">saldo apurado pelas movimentações</span>
+          </h2>
+          <a href="{% url 'licenca_lote_novo' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary lic-btn-sm">
+            <i class="fa-solid fa-plus" aria-hidden="true"></i> Novo lote
+          </a>
         </div>
+
         <div class="lic-table-wrap">
           <table class="lic-table">
             <thead>
               <tr>
-                <th>Ação</th>
-                <th>Colaborador / Usuário</th>
-                <th>Origem</th>
-                <th>Destino</th>
-                <th class="lic-text-right">Custo Mensal</th>
-                <th class="lic-text-right">Custo Anual</th>
-                <th class="lic-text-right">Data</th>
-                <th class="lic-text-right">Resp.</th>
+                <th scope="col">Lote</th>
+                <th scope="col">Compra</th>
+                <th scope="col">Renovação</th>
+                <th scope="col">Ciclo</th>
+                <th scope="col">Ocupação</th>
+                <th scope="col" class="lic-text-right">Por assento</th>
+                <th scope="col" class="lic-text-right">Valor do ciclo</th>
+                <th scope="col" class="lic-text-right">Lote / mês</th>
+                <th scope="col" class="lic-text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for lote in lotes %}
+                <tr {% if lote.divergente %}data-tom="erro"{% elif lote.faixa_vencimento == 30 or lote.dias_vencimento < 0 %}data-tom="alerta"{% endif %}>
+                  <td>
+                    <span class="lic-mono">#{{ lote.pk }}</span>
+                    <span class="lic-sub">{{ lote.numero_pedido|default:"sem pedido" }}</span>
+                  </td>
+                  <td class="lic-nowrap">{{ lote.data_compra|date:"d/m/Y"|default:"—" }}</td>
+                  <td class="lic-nowrap">
+                    {% if lote.vencimento %}
+                      {{ lote.vencimento|date:"d/m/Y" }}
+                      {% if not lote.data_renovacao %}
+                        <span class="lic-est" title="Calculado da data de compra + periodicidade">estimado</span>
+                      {% endif %}
+                    {% else %}
+                      <span class="lic-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <span class="lic-pill">{{ lote.get_periodicidade_display }}</span>
+                    {% if not lote.renovacao_automatica %}
+                      <span class="lic-pill" data-tom="alerta" title="Exige renovação manual">manual</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <div class="lic-meter-cell">
+                      <span class="lic-meter-num">{{ lote.em_uso_real }}<small>/{{ lote.quantidade_total }}</small></span>
+                      <div class="lic-meter-track">
+                        <span class="lic-meter-fill" style="width: {% if lote.quantidade_total %}{% widthratio lote.em_uso_real lote.quantidade_total 100 %}{% else %}0{% endif %}%"></span>
+                      </div>
+                      {% if lote.divergente %}
+                        <span class="lic-sub" style="color:var(--lic-danger)">contador diz {{ lote.quantidade_disponivel }}</span>
+                      {% endif %}
+                    </div>
+                  </td>
+                  <td class="lic-text-right">
+                    <div class="lic-money-stack">
+                      <span class="lic-money">R$ {{ lote.custo.mensal_unit|floatformat:2|intcomma }}</span>
+                      <span class="lic-money-sub">R$ {{ lote.custo.anual_unit|floatformat:2|intcomma }}/ano</span>
+                    </div>
+                  </td>
+                  <td class="lic-text-right">
+                    <span class="lic-money">R$ {{ lote.custo_ciclo|default:0|floatformat:2|intcomma }}</span>
+                  </td>
+                  <td class="lic-text-right">
+                    <span class="lic-money">R$ {{ lote.custo.mensal_total|floatformat:2|intcomma }}</span>
+                    {% if lote.custo.ciclo_estimado %}<span class="lic-est" title="Ciclo “Contrato/Outro” — mensal estimado como anual">est.</span>{% endif %}
+                  </td>
+                  <td class="lic-text-right">
+                    <a href="{% url 'licenca_lote_edit' lote.pk %}" class="lic-icon-btn" title="Editar lote">
+                      <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                    </a>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="9">
+                    <div class="lic-empty">
+                      <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
+                      <strong>Nenhum lote registrado</strong>
+                      <div>Sem lote não há assento para atribuir nem custo para ratear.</div>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    {# ═══════════════ RAZÃO ═══════════════ #}
+    <div id="tab-historico" class="lic-tab-panel" role="tabpanel">
+      <section class="lic-card">
+        <div class="lic-card-header">
+          <h2 class="lic-card-title">
+            <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+            Razão desta licença
+            <span class="lic-card-title-sub">cada linha é um fato datado — é daqui que sai todo número desta tela</span>
+          </h2>
+          <a href="{% url 'mov_licenca_export' %}?licenca={{ obj.pk }}" class="lic-btn lic-btn-secondary lic-btn-sm">
+            <i class="fa-solid fa-file-csv" aria-hidden="true"></i> CSV
+          </a>
+        </div>
+
+        <form method="get" class="lic-card-body lic-filter-compact" autocomplete="off"
+              style="padding-bottom:12px; border-bottom:1px solid var(--lic-border)">
+          <input type="hidden" name="_aba" value="historico">
+          <div class="lic-filter-grid" style="grid-template-columns: minmax(0,2fr) minmax(0,1fr) auto">
+            <div class="lic-field">
+              <label class="lic-label" for="id_hq">Buscar no razão</label>
+              <div class="lic-search-wrap">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" id="id_hq" name="hq" value="{{ filter_hq }}" placeholder="Colaborador, matrícula ou observação">
+              </div>
+            </div>
+            <div class="lic-field">
+              <label class="lic-label" for="id_tipo_mov">Tipo</label>
+              <select name="tipo" id="id_tipo_mov" class="lic-select" data-lic-autosubmit>
+                <option value="">Todos</option>
+                {% for val, rotulo in tipos_mov %}
+                  <option value="{{ val }}" {% if filter_tipo_mov == val %}selected{% endif %}>{{ rotulo }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="lic-action-row" style="align-items:flex-end; justify-content:flex-start">
+              <button type="submit" class="lic-btn lic-btn-primary lic-btn-sm">
+                <i class="fa-solid fa-filter" aria-hidden="true"></i> Filtrar
+              </button>
+              {% if filter_hq or filter_tipo_mov %}
+                <a href="{% url 'licenca_detail' obj.pk %}#historico" class="lic-btn lic-btn-ghost lic-btn-sm">Limpar</a>
+              {% endif %}
+            </div>
+          </div>
+        </form>
+
+        <div class="lic-table-wrap">
+          <table class="lic-table">
+            <thead>
+              <tr>
+                <th scope="col">Operação</th>
+                <th scope="col">Colaborador</th>
+                <th scope="col">Lote</th>
+                <th scope="col">Centro de custo</th>
+                <th scope="col" class="lic-text-right">Custo / mês</th>
+                <th scope="col">Quando</th>
+                <th scope="col">Registrado por</th>
               </tr>
             </thead>
             <tbody>
               {% for mov in movimentacoes %}
                 <tr>
                   <td>
+                    {% comment %}Atribuição é SAÍDA de estoque (tom de alerta) e
+                       devolução é ENTRADA (tom positivo), igual em todo o
+                       módulo. Antes atribuição era verde na lista de
+                       movimentações e vermelha aqui.{% endcomment %}
                     {% if mov.tipo == 'atribuicao' %}
-                      <span class="lic-badge lic-badge-danger">
-                        <i class="fa fa-arrow-right"></i>
-                        Saída
+                      <span class="lic-pill" data-tom="saida">
+                        <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Atribuição
                       </span>
                     {% else %}
-                      <span class="lic-badge lic-badge-success">
-                        <i class="fa fa-arrow-left"></i>
-                        Devolução
+                      <span class="lic-pill" data-tom="entrada">
+                        <i class="fa-solid fa-arrow-left-to-bracket" aria-hidden="true"></i> Devolução
                       </span>
                     {% endif %}
                   </td>
-
                   <td>
-                    <div class="lic-user-cell">
-                      <div class="lic-user-avatar"><i class="fa fa-user"></i></div>
-                      <div>
-                        <div class="lic-user-name">
-                          {% if mov.usuario.first_name or mov.usuario.last_name %}
-                            {{ mov.usuario.first_name }} {{ mov.usuario.last_name }}
-                          {% elif mov.usuario.nome %}
-                            {{ mov.usuario.nome }} {{ mov.usuario.last_name }}
-                          {% else %}
-                            {{ mov.usuario.username|default:"Usuário não identificado" }}
-                          {% endif %}
-                        </div>
-                        {% if mov.usuario.email %}
-                          <span class="lic-sub">{{ mov.usuario.email }}</span>
-                        {% endif %}
-                      </div>
-                    </div>
-                  </td>
-
-                  <td>
-                    {% if mov.lote %}
-                      <span class="lic-mono">#{{ mov.lote.pk }}</span>
+                    {% if mov.usuario %}
+                      <a href="{% url 'usuario_detail' mov.usuario.pk %}" class="lic-title-link">{{ mov.usuario.nome }}</a>
+                      {% if mov.usuario.matricula %}<span class="lic-sub">Matrícula {{ mov.usuario.matricula }}</span>{% endif %}
                     {% else %}
                       <span class="lic-muted">—</span>
                     {% endif %}
                   </td>
-
+                  <td>{% if mov.lote %}<span class="lic-mono">#{{ mov.lote.pk }}</span>{% else %}<span class="lic-muted">—</span>{% endif %}</td>
                   <td>
                     {% if mov.centro_custo_destino %}
-                      <span class="lic-title-link">{{ mov.centro_custo_destino.departamento }}</span>
-                      <span class="lic-sub">CC: {{ mov.centro_custo_destino.numero }}</span>
+                      {{ mov.centro_custo_destino.departamento }}
+                      <span class="lic-sub">CC {{ mov.centro_custo_destino.numero }}</span>
                     {% else %}
                       <span class="lic-muted">—</span>
                     {% endif %}
                   </td>
-
                   <td class="lic-text-right">
-                    <div class="lic-cost-stack">
-                      <span class="lic-cost-main">R$ {{ mov.custo_mensal_exibicao|floatformat:2|intcomma }}</span>
-                      <span class="lic-sub">lote enviado</span>
+                    <div class="lic-money-stack">
+                      <span class="lic-money">R$ {{ mov.valor_unitario|default:0|floatformat:2|intcomma }}</span>
+                      {% if mov.custo_mensal_exibicao != mov.valor_unitario %}
+                        <span class="lic-money-sub" title="Custo atual do lote — mudou desde esta movimentação">hoje: R$ {{ mov.custo_mensal_exibicao|floatformat:2|intcomma }}</span>
+                      {% endif %}
                     </div>
                   </td>
-
-                  <td class="lic-text-right">
-                    <div class="lic-cost-stack">
-                      <span class="lic-cost-main">R$ {{ mov.custo_anual_exibicao|floatformat:2|intcomma }}</span>
-                      <span class="lic-sub">lote enviado</span>
-                    </div>
-                  </td>
-
-                  <td class="lic-text-right">
-                    <div>{{ mov.created_at|date:"d/m/Y" }}</div>
+                  <td class="lic-nowrap">
+                    {{ mov.created_at|date:"d/m/Y" }}
                     <span class="lic-sub">{{ mov.created_at|date:"H:i" }}</span>
                   </td>
-
-                  <td class="lic-text-right lic-muted">
-                    {{ mov.criado_por.username|default:"-"|title }}
+                  <td>
+                    <span class="lic-muted" style="font-size: var(--text-xs)">{{ mov.criado_por.username|default:"—" }}</span>
+                    {% if mov.observacao %}
+                      <span class="lic-sub" title="{{ mov.observacao }}">{{ mov.observacao|truncatechars:48 }}</span>
+                    {% endif %}
                   </td>
                 </tr>
               {% empty %}
                 <tr>
-                  <td colspan="8">
+                  <td colspan="7">
                     <div class="lic-empty">
-                      <i class="fa fa-history"></i>
-                      Nenhuma movimentação registrada para esta licença.
+                      <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+                      <strong>Nenhuma movimentação</strong>
+                      <div>
+                        {% if filter_hq or filter_tipo_mov %}Nenhum registro corresponde ao filtro.{% else %}Esta licença nunca foi atribuída.{% endif %}
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -443,67 +717,64 @@
           </table>
         </div>
 
-        {% if movimentacoes.paginator.num_pages > 1 %}
-          <div class="lic-pagination">
-            <div class="lic-muted">
-              Página {{ movimentacoes.number }} de {{ movimentacoes.paginator.num_pages }}
-            </div>
-
-            <div class="lic-page-links">
-              {% if movimentacoes.has_previous %}
-                <a class="lic-page-link" href="?page=1">&laquo;</a>
-                <a class="lic-page-link" href="?page={{ movimentacoes.previous_page_number }}">Anterior</a>
-              {% endif %}
-
-              {% for num in movimentacoes.paginator.page_range %}
-                {% if num == movimentacoes.number %}
-                  <span class="lic-page-link active">{{ num }}</span>
-                {% elif num >= movimentacoes.number|add:'-2' and num <= movimentacoes.number|add:'2' %}
-                  <a class="lic-page-link" href="?page={{ num }}">{{ num }}</a>
-                {% endif %}
-              {% endfor %}
-
-              {% if movimentacoes.has_next %}
-                <a class="lic-page-link" href="?page={{ movimentacoes.next_page_number }}">Próxima</a>
-                <a class="lic-page-link" href="?page={{ movimentacoes.paginator.num_pages }}">&raquo;</a>
-              {% endif %}
-            </div>
-          </div>
-        {% endif %}
+        {% with page_obj=movimentacoes total_registros=movimentacoes.paginator.count qs_keep=qs_keep_hist %}
+          {% include 'front/licencas/_lic_pagination.html' %}
+        {% endwith %}
       </section>
     </div>
+
   </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+{% comment %}Config por json_script e NUNCA interpolada no JS: a URL da API sai
+   de `{% url %}`, e um `.js` servido de static/ não passa pelo motor de
+   template (CLAUDE.md, "Telas grandes"). Dado novo para esta tela entra
+   AQUI.{% endcomment %}
+{{ config_atribuir|json_script:"lic-config-atribuir" }}
+{% include 'front/licencas/_lic_js_base.html' %}
 <script>
+/* Busca remota de colaborador na atribuição rápida. */
 (function () {
-  var tabBtns = document.querySelectorAll('.lic-tab-btn');
-  tabBtns.forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      tabBtns.forEach(function (b) {
-        b.classList.remove('is-active');
-        b.setAttribute('aria-selected', 'false');
-      });
-      document.querySelectorAll('.lic-tab-panel').forEach(function (p) {
-        p.classList.remove('is-active');
-      });
-      btn.classList.add('is-active');
-      btn.setAttribute('aria-selected', 'true');
-      var panel = document.getElementById('tab-' + btn.dataset.tab);
-      if (panel) panel.classList.add('is-active');
-      if (history.replaceState) {
-        history.replaceState(null, '', '#' + btn.dataset.tab);
-      }
-    });
-  });
+  "use strict";
 
-  var hash = (window.location.hash || '').replace('#', '');
-  if (hash) {
-    var target = document.querySelector('.lic-tab-btn[data-tab="' + hash + '"]');
-    if (target) target.click();
-  }
+  var el = document.getElementById("lic-config-atribuir");
+  var seletor = document.getElementById("lic-atribuir-usuario");
+  if (!el || !seletor || typeof jQuery === "undefined") { return; }
+
+  var CFG = JSON.parse(el.textContent);
+
+  jQuery(seletor).select2({
+    width: "100%",
+    placeholder: "Busque por nome ou matrícula",
+    allowClear: true,
+    minimumInputLength: 0,
+    language: window.LIC_SELECT2_TEXTOS || {},
+    ajax: {
+      url: CFG.urlColaboradores,
+      dataType: "json",
+      delay: 250,
+      // `licenca` viaja para a API excluir quem JÁ tem esta licença: oferecer
+      // essa pessoa só para o service recusar no POST é mandar o operador
+      // descobrir o erro pelo caminho mais longo.
+      data: function (params) { return { q: params.term || "", licenca: CFG.licenca }; },
+      processResults: function (dados) { return { results: dados.results || [] }; },
+      cache: true
+    },
+    templateResult: function (item) {
+      if (!item.id) { return item.text; }
+      // Linha rica: com 1.376 colaboradores há nomes repetidos, e só o nome
+      // não basta para escolher o certo.
+      var meta = [item.matricula, item.centro_custo].filter(Boolean).join(" · ");
+      var $l = jQuery("<span class='lic-opt'></span>");
+      $l.append(jQuery("<span></span>").text(item.text));
+      if (meta) {
+        $l.append(jQuery("<small style='display:block;opacity:.72'></small>").text(meta));
+      }
+      return $l;
+    }
+  });
 })();
 </script>
 {% endblock %}

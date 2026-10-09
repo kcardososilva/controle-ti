@@ -1,0 +1,286 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Saúde das Licenças{% endblock %}
+{% block page_title %}Saúde das Licenças{% endblock %}
+{% block page_subtitle %}Assentos presos em desligado, contadores fora do razão e pools sem saldo{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+    <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+    <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+    <a href="{% url 'licenca_list' %}">Licenças</a>
+    <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+    <span class="crumb-current" aria-current="page">Saúde</span>
+</nav>
+{% endblock %}
+
+{% block extra_css %}{% include "front/licencas/_lic_design_system.html" %}{% endblock %}
+
+{% block content %}
+<div class="lic-page">
+  <div class="lic-shell">
+
+    <header class="lic-head">
+      <div class="lic-head-main">
+        <span class="lic-head-eyebrow"><i class="fa-solid fa-heart-pulse" aria-hidden="true"></i> Saúde do acervo</span>
+        <h1 class="lic-head-title">O que está errado nas licenças</h1>
+        <p class="lic-head-sub">
+          O catálogo responde "quantas licenças existem". Esta tela responde
+          "o que está errado": assento preso em quem já saiu, contador fora do
+          razão e pool sem assento livre.
+        </p>
+      </div>
+      <div class="lic-actions">
+        <a href="{% url 'licenca_renovacoes' %}" class="lic-btn lic-btn-secondary">
+          <i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Renovações
+        </a>
+        <a href="{% url 'licenca_list' %}" class="lic-btn lic-btn-ghost">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Catálogo
+        </a>
+      </div>
+    </header>
+
+    {% include "front/licencas/_lic_subnav.html" %}
+
+    {% comment %}Resumo em números: o que custa dinheiro primeiro, porque é a
+       única linha desta tela que alguém age em cima no mesmo dia.{% endcomment %}
+    <div class="lic-saude-grid">
+      <div class="lic-saude-kpi" data-tom="{% if resumo.orfaos %}erro{% else %}ok{% endif %}">
+        <span class="lic-saude-kpi-rotulo">Assentos presos</span>
+        <span class="lic-saude-kpi-valor">{{ resumo.orfaos|length }}</span>
+        <span class="lic-saude-kpi-sub">em colaborador não ativo</span>
+      </div>
+      <div class="lic-saude-kpi" data-tom="{% if resumo.orfaos_mensal %}erro{% else %}ok{% endif %}">
+        <span class="lic-saude-kpi-rotulo">Desperdício por mês</span>
+        <span class="lic-saude-kpi-valor">R$ {{ resumo.orfaos_mensal|floatformat:2 }}</span>
+        <span class="lic-saude-kpi-sub">R$ {{ resumo.orfaos_anual|floatformat:2 }} por ano</span>
+      </div>
+      <div class="lic-saude-kpi" data-tom="{% if resumo.divergencias %}erro{% else %}ok{% endif %}">
+        <span class="lic-saude-kpi-rotulo">Contadores divergentes</span>
+        <span class="lic-saude-kpi-valor">{{ resumo.divergencias|length }}</span>
+        <span class="lic-saude-kpi-sub">saldo de lote fora do razão</span>
+      </div>
+      <div class="lic-saude-kpi" data-tom="{% if resumo.esgotados %}alerta{% else %}ok{% endif %}">
+        <span class="lic-saude-kpi-rotulo">Pools esgotados</span>
+        <span class="lic-saude-kpi-valor">{{ resumo.esgotados|length }}</span>
+        <span class="lic-saude-kpi-sub">sem assento livre</span>
+      </div>
+    </div>
+
+    {# ─── 1. Assentos presos em colaborador não ativo ─────────────────── #}
+    <section class="lic-card">
+      <div class="lic-card-header">
+        <h2 class="lic-card-title">
+          <i class="fa-solid fa-user-slash" aria-hidden="true"></i>
+          Assentos no nome de quem não está mais ativo
+        </h2>
+        {% if resumo.orfaos %}
+          <span class="lic-pill" data-tom="erro">{{ resumo.orfaos|length }}</span>
+        {% endif %}
+      </div>
+
+      {% if resumo.orfaos %}
+        <p class="lic-help" style="padding:0 16px 10px">
+          A cascata de desligamento devolve as licenças de quem é desligado
+          <em>pelo fluxo</em>. Quem foi marcado como desligado direto na ficha
+          — ou saiu antes da cascata existir — deixou o assento preso, e até
+          agora nenhuma tela mostrava isso. Devolver libera o assento para
+          outra pessoa e para o estorno do centro de custo.
+        </p>
+
+        <div class="lic-row-head lic-row-head--problema">
+          <span>Licença / colaborador</span>
+          <span>Lote e centro de custo</span>
+          <span>Custo</span>
+          <span>Ação</span>
+        </div>
+
+        {% for item in resumo.orfaos %}
+          <div class="lic-row lic-row--problema">
+            <span>
+              <span class="lic-row-nome">{{ item.licenca.nome }}</span>
+              <span class="lic-row-meta">
+                <a href="{% url 'usuario_detail' item.usuario.pk %}">{{ item.usuario.nome }}</a>
+                · {{ item.usuario.status }}
+                {% if item.usuario.data_termino %} · saiu em {{ item.usuario.data_termino|date:"d/m/Y" }}{% endif %}
+              </span>
+            </span>
+            <span>
+              <span class="lic-row-meta" style="margin-top:0">
+                {% if item.lote %}Lote #{{ item.lote.pk }}{% else %}sem lote{% endif %}
+                {% if item.movimentacao.centro_custo_destino %}
+                  <br>{{ item.movimentacao.centro_custo_destino.departamento }}
+                {% endif %}
+                <br>desde {{ item.desde|date:"d/m/Y" }}
+              </span>
+            </span>
+            <span class="lic-row-valor is-perda">
+              R$ {{ item.mensal|floatformat:2 }}<br>
+              <span class="lic-row-meta">R$ {{ item.anual|floatformat:2 }}/ano</span>
+            </span>
+            <span>
+              <form method="post" action="{% url 'licenca_devolver_orfao' %}"
+                    onsubmit="return confirm('Devolver o assento de “{{ item.licenca.nome|escapejs }}” de {{ item.usuario.nome|escapejs }} ao estoque?');">
+                {% csrf_token %}
+                <input type="hidden" name="licenca" value="{{ item.licenca.pk }}">
+                <input type="hidden" name="usuario" value="{{ item.usuario.pk }}">
+                <button type="submit" class="lic-btn lic-btn-primary">
+                  <i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Devolver
+                </button>
+              </form>
+            </span>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="lic-row-vazio">
+          <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+          Nenhum assento preso — todas as licenças estão com colaborador ativo.
+        </div>
+      {% endif %}
+    </section>
+
+    {# ─── 2. Contadores divergentes ───────────────────────────────────── #}
+    <section class="lic-card">
+      <div class="lic-card-header">
+        <h2 class="lic-card-title">
+          <i class="fa-solid fa-scale-unbalanced" aria-hidden="true"></i>
+          Saldo de lote divergente do razão
+        </h2>
+        {% if resumo.divergencias %}
+          <span class="lic-pill" data-tom="erro">{{ resumo.divergencias|length }}</span>
+        {% endif %}
+      </div>
+
+      {% if resumo.divergencias %}
+        <p class="lic-help" style="padding:0 16px 10px">
+          O saldo gravado no lote é um <strong>cache</strong>; a verdade são as
+          movimentações. Quando os dois discordam, a tela passa a oferecer
+          assento que não existe (ou a esconder assento pago). Reconciliar
+          alinha o cache ao razão e <strong>não altera nenhuma movimentação</strong>.
+        </p>
+
+        {% for d in resumo.divergencias %}
+          <div class="lic-row lic-row--problema">
+            <span>
+              <span class="lic-row-nome">{{ d.licenca.nome }}</span>
+              <span class="lic-row-meta">Lote #{{ d.lote.pk }}</span>
+            </span>
+            <span>
+              <span class="lic-row-meta" style="margin-top:0">
+                {% for motivo in d.motivos %}{{ motivo }}<br>{% endfor %}
+              </span>
+            </span>
+            <span class="lic-row-valor is-perda">
+              {{ d.gravado }} → {{ d.esperado }}
+              <span class="lic-row-meta">de {{ d.total }} comprados</span>
+            </span>
+            <span>
+              <form method="post" action="{% url 'licenca_reconciliar_lote' d.lote.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'licenca_saude' %}">
+                <button type="submit" class="lic-btn lic-btn-secondary">
+                  <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Reconciliar
+                </button>
+              </form>
+            </span>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="lic-row-vazio">
+          <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+          Todos os contadores batem com as movimentações.
+        </div>
+      {% endif %}
+    </section>
+
+    {# ─── 3. Pools esgotados e cadastro incompleto ────────────────────── #}
+    <section class="lic-card">
+      <div class="lic-card-header">
+        <h2 class="lic-card-title">
+          <i class="fa-solid fa-battery-empty" aria-hidden="true"></i>
+          Licenças sem assento livre
+        </h2>
+        {% if resumo.esgotados %}
+          <span class="lic-pill" data-tom="alerta">{{ resumo.esgotados|length }}</span>
+        {% endif %}
+      </div>
+
+      {% if resumo.esgotados %}
+        <p class="lic-help" style="padding:0 16px 10px">
+          Aviso, não erro: o pool estar cheio é estado legítimo. Mas a próxima
+          atribuição vai falhar na frente do operador — e dá para comprar antes.
+        </p>
+        {% for e in resumo.esgotados %}
+          <div class="lic-row lic-row--problema">
+            <span>
+              <span class="lic-row-nome">
+                <a href="{% url 'licenca_detail' e.licenca.pk %}">{{ e.licenca.nome }}</a>
+              </span>
+              <span class="lic-row-meta">
+                {% if e.licenca.fornecedor %}{{ e.licenca.fornecedor.nome }}{% else %}sem fornecedor{% endif %}
+              </span>
+            </span>
+            <span>
+              <span class="lic-row-meta" style="margin-top:0">
+                {{ e.em_uso }} de {{ e.total }} assento{{ e.total|pluralize }} em uso
+              </span>
+            </span>
+            <span class="lic-row-valor is-perda" style="color:var(--lic-warning)">0 livre</span>
+            <span>
+              <a href="{% url 'licenca_lote_novo' %}?licenca={{ e.licenca.pk }}" class="lic-btn lic-btn-secondary">
+                <i class="fa-solid fa-plus" aria-hidden="true"></i> Novo lote
+              </a>
+            </span>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="lic-row-vazio">
+          <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+          Todas as licenças têm assento livre.
+        </div>
+      {% endif %}
+
+      {% if resumo.sem_lote %}
+        <div class="lic-card-header" style="border-top:1px solid var(--lic-border)">
+          <h2 class="lic-card-title">
+            <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+            Licença sem nenhum lote
+          </h2>
+          <span class="lic-pill" data-tom="alerta">{{ resumo.sem_lote|length }}</span>
+        </div>
+        <p class="lic-help" style="padding:0 16px 10px">
+          Cadastro pela metade: a licença existe, mas sem lote não há assento
+          para atribuir nem custo para ratear.
+        </p>
+        {% for lic in resumo.sem_lote %}
+          <div class="lic-row lic-row--problema">
+            <span>
+              <span class="lic-row-nome">
+                <a href="{% url 'licenca_detail' lic.pk %}">{{ lic.nome }}</a>
+              </span>
+            </span>
+            <span><span class="lic-row-meta" style="margin-top:0">nenhuma compra registrada</span></span>
+            <span class="lic-row-valor is-perda" style="color:var(--lic-soft)">—</span>
+            <span>
+              <a href="{% url 'licenca_lote_novo' %}?licenca={{ lic.pk }}" class="lic-btn lic-btn-secondary">
+                <i class="fa-solid fa-plus" aria-hidden="true"></i> Registrar compra
+              </a>
+            </span>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </section>
+
+    <p class="lic-help">
+      Esta tela só <strong>lê</strong>. Nenhum número aqui é corrigido ao abrir
+      a página — reconciliar é sempre uma ação sua, e fica registrada no log.
+      Para rodar a mesma auditoria agendada:
+      <code>manage.py auditar_licencas</code> — e o aviso por e-mail dos
+      assentos presos e dos contratos vencendo sai por
+      <code>manage.py enviar_alertas --tipo licencas</code>.
+    </p>
+
+  </div>
+</div>
+{% endblock %}

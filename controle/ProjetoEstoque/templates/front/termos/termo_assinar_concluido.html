@@ -1,0 +1,134 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Termo assinado — Santa Colomba</title>
+
+  <link rel="icon" type="image/svg+xml" href="{% static 'img/zelo-mark.svg' %}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..800&family=Inter+Tight:wght@500..800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <link rel="stylesheet" href="{% static 'css/tokens.css' %}?v={{ assets_version }}">
+  <link rel="stylesheet" href="{% static 'css/ds-termos.css' %}?v={{ assets_version }}">
+</head>
+
+<body class="ta-sign-page">
+  {% comment %}Esta tela mostra o MÍNIMO sobre o termo — nome do signatário e
+     código de verificação — e nada do conteúdo. O tablet é aparelho
+     compartilhado, passando de mão em mão, e a URL fica no histórico. A via
+     completa sai por download ou e-mail, que exigem a marca de sessão desta
+     assinatura e expiram em 15 minutos (ver `_termo_do_recibo`).{% endcomment %}
+  <div class="ta-sign-final">
+    <div class="ta-sign-final-box" data-tom="ok">
+      <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+      <h1>Termo assinado</h1>
+
+      {% if termo %}
+        <p>
+          Obrigado, <strong>{{ termo.signatario_nome|default:termo.colaborador.nome }}</strong>.
+          A assinatura foi registrada e o documento já está no sistema, vinculado ao seu cadastro.
+        </p>
+        <span class="ta-codigo">{{ termo.codigo_verificacao }}</span>
+        <p style="color:var(--text-tertiary);font-size:var(--text-sm)">
+          Código de verificação do documento
+        </p>
+
+        <div class="ta-via">
+          <a href="{% url 'termo_recibo_pdf' %}" class="ta-btn ta-btn-primario" id="taBaixar">
+            <i class="fa-solid fa-file-arrow-down" aria-hidden="true"></i>
+            Baixar minha via (PDF)
+          </a>
+
+          {% if tem_email %}
+            <button type="button" class="ta-btn ta-btn-secundario" id="taEnviarEmail">
+              <i class="fa-regular fa-envelope" aria-hidden="true"></i>
+              Receber por e-mail
+            </button>
+          {% else %}
+            <p class="ta-via-msg" data-tom="erro" style="text-align:left">
+              Não há e-mail cadastrado para você no sistema — baixe a via acima
+              ou peça ao responsável do setor de TI.
+            </p>
+          {% endif %}
+
+          <p class="ta-via-msg" id="taViaMsg" hidden role="status"></p>
+        </div>
+
+        <p style="color:var(--text-tertiary);font-size:var(--text-xs)">
+          Estas opções ficam disponíveis por alguns minutos neste aparelho.
+          Depois disso, peça a via ao setor de TI.
+        </p>
+      {% else %}
+        <p>
+          A assinatura foi registrada e o documento já está no sistema,
+          vinculado ao seu cadastro.
+        </p>
+        <p style="color:var(--text-tertiary);font-size:var(--text-sm)">
+          Para receber a sua via, procure o responsável do setor de TI.
+        </p>
+      {% endif %}
+
+      <p style="color:var(--text-tertiary);font-size:var(--text-sm)">
+        Você pode devolver o tablet ao responsável.
+      </p>
+    </div>
+  </div>
+
+  {% if tem_email %}
+  {% csrf_token %}
+  <script>
+  (function () {
+    "use strict";
+
+    var botao = document.getElementById("taEnviarEmail");
+    var aviso = document.getElementById("taViaMsg");
+    var URL_EMAIL = "{% url 'termo_recibo_email' %}";
+
+    function mostrar(tom, texto) {
+      aviso.setAttribute("data-tom", tom);
+      aviso.textContent = texto;
+      aviso.hidden = false;
+    }
+
+    function csrf() {
+      var campo = document.querySelector("input[name=csrfmiddlewaretoken]");
+      if (campo && campo.value) { return campo.value; }
+      var achado = document.cookie.match(/csrftoken=([^;]+)/);
+      return achado ? achado[1] : "";
+    }
+
+    botao.addEventListener("click", function () {
+      botao.disabled = true;
+      botao.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Enviando…';
+      aviso.hidden = true;
+
+      fetch(URL_EMAIL, {
+        method: "POST",
+        headers: { "X-CSRFToken": csrf(), "X-Requested-With": "XMLHttpRequest" }
+      })
+        .then(function (r) { return r.json().then(function (c) { return { ok: r.ok, corpo: c }; }); })
+        .then(function (res) {
+          if (res.ok && res.corpo.ok) {
+            mostrar("ok", res.corpo.mensagem || "Enviado para o seu e-mail.");
+            // Mantém desabilitado após o sucesso: reenviar a mesma via só
+            // gera e-mail duplicado e dúvida sobre qual é a boa.
+            botao.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Enviado';
+            return;
+          }
+          mostrar("erro", res.corpo.erro || res.corpo.mensagem || "Não foi possível enviar.");
+          botao.disabled = false;
+          botao.innerHTML = '<i class="fa-regular fa-envelope" aria-hidden="true"></i> Tentar de novo';
+        })
+        .catch(function () {
+          mostrar("erro", "Falha de conexão. Baixe a via pelo botão acima.");
+          botao.disabled = false;
+          botao.innerHTML = '<i class="fa-regular fa-envelope" aria-hidden="true"></i> Tentar de novo';
+        });
+    });
+  })();
+  </script>
+  {% endif %}
+</body>
+</html>

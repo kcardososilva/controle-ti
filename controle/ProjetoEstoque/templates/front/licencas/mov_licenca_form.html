@@ -1,61 +1,58 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static humanize %}
 
-{% block title %}Nova Movimentação{% endblock %}
-{% block page_title %}Nova movimentação de licença{% endblock %}
-{% block page_subtitle %}Atribuição, devolução e rastreabilidade de assentos por colaborador{% endblock %}
+{% block title %}Nova movimentação de licença{% endblock %}
+{% block page_title %}Nova movimentação{% endblock %}
+{% block page_subtitle %}Atribuir ou devolver um assento de licença{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'licenca_list' %}">Licenças</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'mov_licenca_list' %}">Razão</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Nova</span>
+</nav>
+{% endblock %}
 
 {% block extra_css %}
 {% include 'front/licencas/_lic_design_system.html' %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-.lic-mov-form-page { width: min(100%, 880px); }
-
-.lic-fifo-note {
-  padding: 12px 14px;
-  border-radius: var(--lic-radius-md);
-  background: var(--lic-brand-soft);
-  color: var(--lic-muted);
-  border: 1px solid var(--lic-brand-border);
-  font-size: var(--text-sm);
-  line-height: 1.45;
-}
+  .lic-mov-form-page { width: min(100%, 920px); }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="lic-page lic-mov-form-page">
   <div class="lic-shell">
-    <section class="lic-hero">
-      <div class="lic-hero-main">
-        <div class="lic-hero-icon">
-          <i class="fa fa-arrow-right-arrow-left"></i>
-        </div>
-        <div class="lic-hero-title">
-          <h1>Nova movimentação</h1>
-          <p>Registre saída ou devolução de licença com vínculo ao colaborador, lote e observação operacional.</p>
-        </div>
-      </div>
 
+    <header class="lic-head">
+      <div class="lic-head-main">
+        <span class="lic-head-eyebrow"><i class="fa-solid fa-right-left" aria-hidden="true"></i> Movimentação</span>
+        <h1 class="lic-head-title">Atribuir ou devolver assento</h1>
+        <p class="lic-head-sub">
+          A movimentação é um <strong>fato no razão</strong>: ela não edita um
+          contador, ela registra o que aconteceu. O saldo de assentos passa a
+          ser derivado dela.
+        </p>
+      </div>
       <div class="lic-actions">
-        <a href="{% url 'mov_licenca_list' %}" class="lic-btn lic-btn-secondary">
-          <i class="fa fa-clock-rotate-left"></i>
-          Histórico
-        </a>
-        <a href="{% url 'licenca_list' %}" class="lic-btn lic-btn-secondary">
-          <i class="fa fa-arrow-left"></i>
-          Licenças
+        <a href="{{ next_url }}" class="lic-btn lic-btn-ghost">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Cancelar
         </a>
       </div>
-    </section>
+    </header>
 
     {% include 'front/licencas/_lic_subnav.html' %}
 
     <section class="lic-card">
       <div class="lic-card-header">
-        <div class="lic-card-title">
-          <i class="fa fa-clipboard-check"></i>
-          Dados da movimentação
-        </div>
+        <h2 class="lic-card-title">
+          <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i> Dados da movimentação
+        </h2>
       </div>
 
       <form method="post" autocomplete="off" id="movForm">
@@ -64,53 +61,81 @@
         <input type="hidden" name="next_url" value="{{ next_url }}">
 
         <div class="lic-card-body">
+          {% if form.non_field_errors %}
+            {% comment %}Aqui caem as mensagens do `licenca_service` — "sem
+               assento livre", "o lote não pertence a esta licença". Elas vêm
+               prontas para a tela e não devem ser reescritas aqui: a regra que
+               recusou é a mesma que vai recusar no POST.{% endcomment %}
+            <div class="lic-callout" data-tom="erro">
+              <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+              <div class="lic-callout-body">{{ form.non_field_errors }}</div>
+            </div>
+          {% endif %}
+
           <div class="lic-form-grid">
-            <div class="lic-col-12 lic-field">
-              <label class="lic-label" for="{{ form.tipo.id_for_label }}">Tipo de Ação</label>
+            <div class="lic-col-6 lic-field">
+              <label class="lic-label lic-required" for="{{ form.tipo.id_for_label }}">Operação</label>
               {{ form.tipo }}
               {{ form.tipo.errors }}
             </div>
 
-            <div class="lic-col-12 lic-field">
-              <label class="lic-label" for="{{ form.licenca.id_for_label }}">Licença</label>
+            <div class="lic-col-6 lic-field">
+              <label class="lic-label lic-required" for="{{ form.licenca.id_for_label }}">Licença</label>
               {{ form.licenca }}
               {{ form.licenca.errors }}
             </div>
 
-            <div class="lic-col-12 lic-field" id="box_lote">
-              <label class="lic-label" for="visual_lote_select">Lote específico</label>
-              <select id="visual_lote_select" class="lic-form-control">
-                <option value="">Automático — FIFO / mais antigo</option>
-              </select>
-              <div class="lic-fifo-note">
-                <i class="fa fa-circle-info"></i>
-                Na devolução, o sistema identifica automaticamente o lote de origem.
-              </div>
-            </div>
-
             <div class="lic-col-12 lic-field">
-              <label class="lic-label" for="{{ form.usuario.id_for_label }}">Colaborador</label>
+              <label class="lic-label lic-required" for="{{ form.usuario.id_for_label }}">Colaborador</label>
               {{ form.usuario }}
               {{ form.usuario.errors }}
             </div>
 
+            <div class="lic-col-12 lic-field" id="box_lote">
+              <label class="lic-label" for="visual_lote_select">Lote de origem</label>
+              <select id="visual_lote_select">
+                <option value="">Automático — consome a compra mais antiga</option>
+              </select>
+              <span class="lic-help" id="ajuda_lote">
+                O automático segue FIFO: gasta primeiro o lote comprado antes,
+                que é o que vence antes. Escolha um lote específico só quando o
+                assento precisar sair de uma compra determinada (rateio para
+                outro centro de custo, por exemplo).
+              </span>
+            </div>
+
             <div class="lic-col-12 lic-field">
-              <label class="lic-label" for="{{ form.observacao.id_for_label }}">Observações</label>
+              <label class="lic-label" for="{{ form.observacao.id_for_label }}">Observação</label>
               {{ form.observacao }}
               {{ form.observacao.errors }}
+              <span class="lic-help">
+                Fica no razão para sempre e aparece na auditoria. Registre o
+                motivo quando a operação não for rotina.
+              </span>
+            </div>
+          </div>
+
+          <div class="lic-callout" data-tom="info" id="aviso_devolucao" hidden>
+            <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+            <div class="lic-callout-body">
+              Na <strong>devolução</strong> o lote de origem é identificado
+              automaticamente pelo razão — é o lote de onde o assento saiu, e o
+              valor estornado é exatamente o que foi cobrado na atribuição.
             </div>
           </div>
         </div>
 
-        <div class="lic-pagination">
-          <div class="lic-muted">Após confirmar, o histórico e o saldo da licença serão atualizados.</div>
+        <div class="lic-card-foot">
+          <span class="lic-muted" style="font-size: var(--text-xs)">
+            Depois de confirmar, o saldo e o custo do centro de custo são recalculados.
+          </span>
           <button type="submit" class="lic-btn lic-btn-primary" id="btnSubmit">
-            <i class="fa fa-check"></i>
-            Confirmar movimentação
+            <i class="fa-solid fa-check" aria-hidden="true"></i> Confirmar movimentação
           </button>
         </div>
       </form>
     </section>
+
   </div>
 </div>
 
@@ -119,93 +144,90 @@
 {% endblock %}
 
 {% block extra_js %}
-
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
+{% include 'front/licencas/_lic_js_base.html' %}
 <script>
-$(document).ready(function() {
-  $('.lic-page select').not('#visual_lote_select').select2({
-    width: '100%',
-    placeholder: 'Selecione...',
+(function () {
+  "use strict";
+  if (typeof jQuery === "undefined") { return; }
+
+  var TEXTOS = window.LIC_SELECT2_TEXTOS || {};
+
+  jQuery("#visual_lote_select").select2({
+    width: "100%",
+    placeholder: "Automático — consome a compra mais antiga",
     allowClear: true,
-    language: {
-      noResults: function () { return 'Nenhum resultado encontrado'; },
-      searching: function () { return 'Buscando...'; }
-    }
+    language: TEXTOS
   });
 
-  $('#visual_lote_select').select2({
-    width: '100%',
-    placeholder: 'Automático — FIFO / mais antigo',
-    allowClear: true,
-    language: {
-      noResults: function () { return 'Nenhum lote disponível'; },
-      searching: function () { return 'Buscando...'; }
-    }
-  });
+  var lotes = JSON.parse(document.getElementById("lotes-data").textContent || "{}");
+  var preLote = JSON.parse(document.getElementById("pre-lote").textContent || '""');
 
-  $('.lic-page input:not([type="hidden"]), .lic-page textarea').addClass('lic-form-control');
+  var $licenca = jQuery("#id_licenca");
+  var $lote = jQuery("#visual_lote_select");
+  var $hidden = jQuery('[name="lote_id_select"]');
+  var $tipo = jQuery("#id_tipo");
+  var boxLote = document.getElementById("box_lote");
+  var avisoDev = document.getElementById("aviso_devolucao");
+  var btn = document.getElementById("btnSubmit");
 
-  const lotesData = JSON.parse(document.getElementById('lotes-data').textContent || '{}');
-  const preLote = JSON.parse(document.getElementById('pre-lote').textContent || '""');
+  $lote.on("change", function () { $hidden.val(jQuery(this).val()); });
 
-  const $licenca = $('#id_licenca');
-  const $visualLote = $('#visual_lote_select');
-  const $hiddenLote = $('[name="lote_id_select"]');
-  const $tipo = $('#id_tipo');
-  const $boxLote = $('#box_lote');
+  function carregarLotes(licencaId) {
+    $lote.empty().append(new Option("Automático — consome a compra mais antiga", ""));
+    var disponiveis = (licencaId && lotes[licencaId]) || [];
+    disponiveis.forEach(function (item) {
+      $lote.append(new Option(item.text, item.id));
+    });
 
-  $visualLote.on('change', function() {
-    $hiddenLote.val($(this).val());
-  });
-
-  function atualizarLotes(licencaId) {
-    $visualLote.empty().append(new Option('Automático — FIFO / mais antigo', ''));
-
-    if (licencaId && lotesData[licencaId]) {
-      lotesData[licencaId].forEach(function(item) {
-        $visualLote.append(new Option(item.text, item.id));
-      });
+    // Licença escolhida sem NENHUM lote com saldo: dizer isso agora é melhor
+    // do que deixar o operador preencher o resto para o POST recusar no fim.
+    var ajuda = document.getElementById("ajuda_lote");
+    if (licencaId && disponiveis.length === 0 && $tipo.val() !== "devolucao" && ajuda) {
+      ajuda.innerHTML =
+        "<strong>Esta licença não tem lote com assento livre.</strong> " +
+        "Cadastre um lote novo ou devolva um assento antes de atribuir.";
+    } else if (ajuda && ajuda.dataset.original) {
+      ajuda.innerHTML = ajuda.dataset.original;
     }
 
-    if (preLote) {
-      $visualLote.val(preLote);
-    }
-
-    $visualLote.trigger('change');
+    if (preLote) { $lote.val(preLote); }
+    $lote.trigger("change");
   }
 
-  function checkTipo() {
-    if ($tipo.val() === 'devolucao') {
-      $boxLote.hide();
-      $visualLote.val(null).trigger('change');
-    } else {
-      $boxLote.show();
-    }
+  function aplicarTipo() {
+    var devolucao = $tipo.val() === "devolucao";
+    boxLote.hidden = devolucao;
+    avisoDev.hidden = !devolucao;
+    if (devolucao) { $lote.val(null).trigger("change"); }
   }
 
-  $licenca.on('change', function() {
-    atualizarLotes($(this).val());
+  var ajuda = document.getElementById("ajuda_lote");
+  if (ajuda) { ajuda.dataset.original = ajuda.innerHTML; }
+
+  $licenca.on("change", function () { carregarLotes(jQuery(this).val()); });
+  $tipo.on("change", function () { aplicarTipo(); carregarLotes($licenca.val()); });
+
+  // Duplo clique no botão criava DUAS movimentações — e o par
+  // atribuição/devolução indevido era exatamente o caminho do assento
+  // fantasma que o service passou a impedir. O travamento aqui é a primeira
+  // barreira; o service é a que vale.
+  document.getElementById("movForm").addEventListener("submit", function (ev) {
+    if (btn.disabled) { ev.preventDefault(); return; }
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Processando…';
   });
 
-  $tipo.on('change', checkTipo);
-
-  $('#movForm').on('submit', function() {
-    const btn = $('#btnSubmit');
-
-    if (btn.prop('disabled')) {
-      return false;
+  // Religa o botão quando a página volta do bfcache: uma falha de envio
+  // seguida de "voltar" deixava o botão morto para sempre.
+  window.addEventListener("pageshow", function (ev) {
+    if (ev.persisted && btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> Confirmar movimentação';
     }
-
-    btn.prop('disabled', true).html('<i class="fa fa-circle-notch fa-spin"></i> Processando...');
   });
 
-  if ($licenca.val()) {
-    atualizarLotes($licenca.val());
-  }
-
-  checkTipo();
-});
+  aplicarTipo();
+  if ($licenca.val()) { carregarLotes($licenca.val()); }
+})();
 </script>
 {% endblock %}

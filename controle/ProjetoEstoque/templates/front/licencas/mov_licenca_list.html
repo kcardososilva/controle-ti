@@ -1,151 +1,247 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static humanize %}
 
-{% block title %}Histórico de Movimentações{% endblock %}
-{% block page_title %}Histórico de Movimentações{% endblock %}
-{% block page_subtitle %}Auditoria de atribuições, devoluções e movimentações de licenças{% endblock %}
+{% block title %}Razão de Licenças{% endblock %}
+{% block page_title %}Razão de Licenças{% endblock %}
+{% block page_subtitle %}Atribuições e devoluções — a fonte de todo número do módulo{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Você está aqui">
+  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <a href="{% url 'licenca_list' %}">Licenças</a>
+  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
+  <span class="crumb-current" aria-current="page">Razão</span>
+</nav>
+{% endblock %}
 
 {% block extra_css %}
 {% include 'front/licencas/_lic_design_system.html' %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 <style>
-.lic-mov-list-page { width: min(100%, 1300px); }
-
-.lic-status-dot::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-pill);
-  background: currentColor;
-}
-
-@media (max-width: 760px) {
-  .lic-mov-list-page .lic-table { min-width: 920px; }
-}
+  :where(.lic-mov-list-page) { --lic-table-min: 1080px; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="lic-page lic-mov-list-page">
   <div class="lic-shell">
-    <section class="lic-hero">
-      <div class="lic-hero-main">
-        <div class="lic-hero-icon">
-          <i class="fa fa-clock-rotate-left"></i>
-        </div>
-        <div class="lic-hero-title">
-          <h1>Histórico de Movimentações</h1>
-          <p>Consulta operacional das movimentações de licenças por usuário, centro de custo e período.</p>
-          <span class="lic-badge lic-badge-brand">{{ total }} registro(s)</span>
-          {% if licenca_filtro %}
-            <div class="lic-crumb">
-              <span class="lic-crumb-label">Filtrando por:</span>
-              <a href="{% url 'licenca_detail' licenca_filtro.pk %}" class="lic-crumb-name">{{ licenca_filtro.nome }}</a>
-              <a href="{% url 'mov_licenca_list' %}" class="lic-crumb-clear" title="Remover filtro"><i class="fa fa-xmark"></i></a>
-            </div>
-          {% endif %}
-        </div>
-      </div>
 
+    <header class="lic-head">
+      <div class="lic-head-main">
+        <span class="lic-head-eyebrow"><i class="fa-solid fa-right-left" aria-hidden="true"></i> Livro-razão</span>
+        <h1 class="lic-head-title">Razão de licenças</h1>
+        <p class="lic-head-sub">
+          Cada linha é um fato datado — uma atribuição ou uma devolução de
+          assento. Quem detém o quê, quanto custa e quanto sobra são todos
+          derivados daqui, nunca de um campo de status.
+        </p>
+        {% if licenca_filtro %}
+          <div class="lic-head-meta">
+            <span class="lic-crumb">
+              <span class="lic-crumb-label">Filtrando por</span>
+              <a href="{% url 'licenca_detail' licenca_filtro.pk %}" class="lic-crumb-name">{{ licenca_filtro.nome }}</a>
+              <a href="{% url 'mov_licenca_list' %}" class="lic-crumb-clear" title="Remover filtro" aria-label="Remover filtro de licença">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+              </a>
+            </span>
+          </div>
+        {% endif %}
+      </div>
       <div class="lic-actions">
-        <a href="{% url 'licenca_list' %}" class="lic-btn lic-btn-secondary">
-          <i class="fa fa-arrow-left"></i>
-          Voltar
+        {% comment %}O CSV leva os MESMOS filtros da tela (a view usa
+           `_mov_licenca_filtradas` para as duas coisas). Export que ignora o
+           filtro aplicado é a forma mais discreta de entregar o número errado
+           para uma conferência contábil.{% endcomment %}
+        <a href="{% url 'mov_licenca_export' %}{% if qs_keep %}?{{ qs_keep }}{% endif %}" class="lic-btn lic-btn-secondary">
+          <i class="fa-solid fa-file-csv" aria-hidden="true"></i> Exportar CSV
         </a>
-        <a href="{% url 'mov_licenca_form' %}?next={{ request.get_full_path|urlencode }}{% if licenca_filtro %}&licenca={{ licenca_filtro.pk }}{% endif %}" class="lic-btn lic-btn-primary">
-          <i class="fa fa-plus"></i>
-          Nova Movimentação
+        <a href="{% url 'mov_licenca_form' %}?next={{ request.get_full_path|urlencode }}{% if licenca_filtro %}&licenca={{ licenca_filtro.pk }}{% endif %}"
+           class="lic-btn lic-btn-primary">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i> Nova movimentação
         </a>
       </div>
-    </section>
+    </header>
 
     {% include 'front/licencas/_lic_subnav.html' %}
 
-    <form method="get" id="filterForm" class="lic-filter-card" autocomplete="off">
-      {% if licenca_filtro %}<input type="hidden" name="licenca" value="{{ licenca_filtro.pk }}">{% endif %}
-      <div class="lic-filter-grid" style="grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr) auto;">
-        <div class="lic-field">
-          <label class="lic-label" for="q">Buscar</label>
-          <input type="text" name="q" id="q" placeholder="Licença ou usuário..." value="{{ q }}">
-        </div>
-
-        <div class="lic-field">
-          <label class="lic-label" for="tipo">Tipo de Movimentação</label>
-          <select name="tipo" id="tipo" class="select2-filter">
-            <option value="">Todos</option>
-            {% for code, label in tipos %}
-              <option value="{{ code }}" {% if tipo == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div class="lic-action-row">
-          <button type="submit" class="lic-btn lic-btn-primary" title="Filtrar">
-            <i class="fa fa-filter"></i>
-            Filtrar
-          </button>
-          <button type="button" id="btnClear" class="lic-btn lic-btn-secondary" title="Limpar Filtros">
-            <i class="fa fa-eraser"></i>
-            Limpar
-          </button>
-        </div>
+    <section class="lic-stats" aria-label="Totais do recorte">
+      <div class="lic-stat" data-tom="brand">
+        <span class="lic-stat-label"><i class="fa-solid fa-list" aria-hidden="true"></i> Movimentações</span>
+        <span class="lic-stat-value">{{ total_registros }}</span>
+        <span class="lic-stat-meta">neste recorte</span>
       </div>
-    </form>
+      <div class="lic-stat" data-tom="alerta">
+        <span class="lic-stat-label"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Atribuições</span>
+        <span class="lic-stat-value">{{ agregado.atribuicoes }}</span>
+        <span class="lic-stat-meta">saídas de estoque</span>
+      </div>
+      <div class="lic-stat" data-tom="ok">
+        <span class="lic-stat-label"><i class="fa-solid fa-arrow-left-to-bracket" aria-hidden="true"></i> Devoluções</span>
+        <span class="lic-stat-value">{{ agregado.devolucoes }}</span>
+        <span class="lic-stat-meta">entradas de estoque</span>
+      </div>
+      <div class="lic-stat" data-tom="info">
+        <span class="lic-stat-label"><i class="fa-solid fa-coins" aria-hidden="true"></i> Valor movimentado</span>
+        <span class="lic-stat-value">R$ {{ agregado.valor|floatformat:2|intcomma }}</span>
+        <span class="lic-stat-meta">soma do custo mensal das linhas</span>
+      </div>
+    </section>
 
     <section class="lic-card">
       <div class="lic-card-header">
-        <div class="lic-card-title">
-          <i class="fa fa-history"></i>
-          Registros encontrados
-        </div>
+        <h2 class="lic-card-title">
+          <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+          Movimentações
+          <span class="lic-card-title-sub">mais recentes primeiro</span>
+        </h2>
       </div>
+
+      <form method="get" id="filterForm" class="lic-card-body lic-filter-compact" autocomplete="off"
+            style="padding-bottom:12px; border-bottom:1px solid var(--lic-border)">
+        {% if licenca_filtro %}<input type="hidden" name="licenca" value="{{ licenca_filtro.pk }}">{% endif %}
+        <div class="lic-filter-grid">
+          <div class="lic-field lic-field-wide">
+            <label class="lic-label" for="id_q">Buscar</label>
+            <div class="lic-search-wrap">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+              <input type="search" id="id_q" name="q" value="{{ q }}" data-lic-busca
+                     placeholder="Licença, colaborador, matrícula ou observação">
+            </div>
+          </div>
+          <div class="lic-field">
+            <label class="lic-label" for="id_tipo">Operação</label>
+            <select name="tipo" id="id_tipo" class="lic-select" data-lic-autosubmit>
+              <option value="">Todas</option>
+              {% for code, rotulo in tipos %}
+                <option value="{{ code }}" {% if tipo == code %}selected{% endif %}>{{ rotulo }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="lic-field">
+            <label class="lic-label" for="id_cc">Centro de custo</label>
+            <select name="cc" id="id_cc" class="lic-select" data-lic-autosubmit data-lic-sempre-busca>
+              <option value="">Todos</option>
+              {% for cc in opt_cc %}
+                <option value="{{ cc.id }}" {% if filter_cc == cc.id %}selected{% endif %}>{{ cc.numero }} — {{ cc.departamento }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% comment %}Período: sem ele não havia como responder "o que o CC de
+             TI movimentou em setembro", que é a pergunta do fechamento
+             mensal.{% endcomment %}
+          <div class="lic-field">
+            <label class="lic-label" for="id_inicio">De</label>
+            <input type="date" id="id_inicio" name="inicio" value="{{ filter_inicio }}">
+          </div>
+          <div class="lic-field">
+            <label class="lic-label" for="id_fim">Até</label>
+            <input type="date" id="id_fim" name="fim" value="{{ filter_fim }}">
+          </div>
+          <div class="lic-action-row" style="justify-content:flex-start">
+            <button type="submit" class="lic-btn lic-btn-primary lic-btn-sm">
+              <i class="fa-solid fa-filter" aria-hidden="true"></i> Filtrar
+            </button>
+            {% if tem_filtro %}
+              {% comment %}"Limpar" PRESERVA o recorte por licença: quem chegou
+                 aqui pelo drill-down do catálogo quer limpar os filtros, não
+                 sair da licença que estava vendo. A versão anterior ia para
+                 `window.location.pathname` e derrubava o contexto.{% endcomment %}
+              <a href="{{ request.path }}{% if licenca_filtro %}?licenca={{ licenca_filtro.pk }}{% endif %}"
+                 class="lic-btn lic-btn-ghost lic-btn-sm">
+                <i class="fa-solid fa-eraser" aria-hidden="true"></i> Limpar
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      </form>
 
       <div class="lic-table-wrap">
         <table class="lic-table">
           <thead>
             <tr>
-              <th>Licença</th>
-              <th>Tipo</th>
-              <th>Usuário / Destinatário</th>
-              <th>Centro de Custo</th>
-              <th>Observação</th>
-              <th>Data/Hora</th>
+              <th scope="col">Operação</th>
+              <th scope="col">Licença</th>
+              <th scope="col">Colaborador</th>
+              <th scope="col">Centro de custo</th>
+              <th scope="col">Lote</th>
+              <th scope="col" class="lic-text-right">Custo / mês</th>
+              <th scope="col">Quando</th>
+              <th scope="col">Observação</th>
             </tr>
           </thead>
           <tbody>
             {% for mov in movs %}
               <tr>
                 <td>
-                  <span class="lic-title-link">{{ mov.licenca.nome }}</span>
-                </td>
-                <td>
+                  {% comment %}SEMÂNTICA UNIFICADA: atribuição é SAÍDA de
+                     estoque (tom de alerta) e devolução é ENTRADA (tom
+                     positivo). Nesta tela atribuição era VERDE e no detalhe da
+                     licença era VERMELHA — a mesma operação com dois
+                     significados visuais opostos, a um clique de
+                     distância.{% endcomment %}
                   {% if mov.tipo == 'atribuicao' %}
-                    <span class="lic-badge lic-badge-success lic-status-dot">{{ mov.get_tipo_display }}</span>
-                  {% elif mov.tipo == 'remocao' or mov.tipo == 'devolucao' %}
-                    <span class="lic-badge lic-badge-danger lic-status-dot">{{ mov.get_tipo_display }}</span>
+                    <span class="lic-pill" data-tom="saida">
+                      <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Atribuição
+                    </span>
                   {% else %}
-                    <span class="lic-badge lic-status-dot">{{ mov.get_tipo_display }}</span>
+                    <span class="lic-pill" data-tom="entrada">
+                      <i class="fa-solid fa-arrow-left-to-bracket" aria-hidden="true"></i> Devolução
+                    </span>
                   {% endif %}
                 </td>
-                <td>{{ mov.usuario.nome|default:"-" }}</td>
                 <td>
-                  {% if mov.centro_custo_destino %}
-                    <span class="lic-title-link">{{ mov.centro_custo_destino.departamento }}</span>
-                    <span class="lic-sub">CC: {{ mov.centro_custo_destino.numero }}</span>
+                  <a href="{% url 'licenca_detail' mov.licenca.pk %}" class="lic-title-link">{{ mov.licenca.nome }}</a>
+                  {% if mov.licenca.fornecedor %}<span class="lic-sub">{{ mov.licenca.fornecedor.nome }}</span>{% endif %}
+                </td>
+                <td>
+                  {% if mov.usuario %}
+                    <a href="{% url 'usuario_detail' mov.usuario.pk %}" class="lic-title-link">{{ mov.usuario.nome }}</a>
+                    <span class="lic-sub">
+                      {% if mov.usuario.matricula %}Matrícula {{ mov.usuario.matricula }}{% endif %}
+                      {% if mov.usuario.status and mov.usuario.status != 'ativo' %}
+                        · <strong style="color:var(--lic-danger)">{{ mov.usuario.get_status_display }}</strong>
+                      {% endif %}
+                    </span>
                   {% else %}
                     <span class="lic-muted">—</span>
                   {% endif %}
                 </td>
                 <td>
-                  <span class="lic-muted">{{ mov.observacao|default:"-"|truncatechars:70 }}</span>
+                  {% if mov.centro_custo_destino %}
+                    {{ mov.centro_custo_destino.departamento }}
+                    <span class="lic-sub">CC {{ mov.centro_custo_destino.numero }}</span>
+                  {% else %}
+                    <span class="lic-muted">—</span>
+                  {% endif %}
                 </td>
-                <td class="lic-nowrap">{{ mov.created_at|date:"d/m/Y H:i" }}</td>
+                <td>{% if mov.lote_id %}<span class="lic-mono">#{{ mov.lote_id }}</span>{% else %}<span class="lic-muted">—</span>{% endif %}</td>
+                <td class="lic-text-right">
+                  <span class="lic-money {% if not mov.valor_unitario %}is-zero{% endif %}">
+                    R$ {{ mov.valor_unitario|default:0|floatformat:2|intcomma }}
+                  </span>
+                </td>
+                <td class="lic-nowrap">
+                  {{ mov.created_at|date:"d/m/Y" }}
+                  <span class="lic-sub">{{ mov.created_at|date:"H:i" }} · {{ mov.criado_por.username|default:"—" }}</span>
+                </td>
+                <td>
+                  {% if mov.observacao %}
+                    <span class="lic-muted" style="font-size: var(--text-xs)" title="{{ mov.observacao }}">
+                      {{ mov.observacao|truncatechars:58 }}
+                    </span>
+                  {% else %}
+                    <span class="lic-muted">—</span>
+                  {% endif %}
+                </td>
               </tr>
             {% empty %}
               <tr>
-                <td colspan="6">
+                <td colspan="8">
                   <div class="lic-empty">
-                    <i class="fa fa-exchange-alt"></i>
-                    Nenhuma movimentação encontrada.
+                    <i class="fa-solid fa-right-left" aria-hidden="true"></i>
+                    <strong>Nenhuma movimentação encontrada</strong>
+                    <div>{% if tem_filtro %}Nenhum registro corresponde aos filtros.{% else %}Nenhum assento foi atribuído ainda.{% endif %}</div>
                   </div>
                 </td>
               </tr>
@@ -154,75 +250,57 @@
         </table>
       </div>
 
-      {% if paginator.num_pages > 1 %}
-        <div class="lic-pagination">
-          <div class="lic-muted">
-            Página <strong>{{ page_obj.number }}</strong> de <strong>{{ paginator.num_pages }}</strong>
-          </div>
-
-          <div class="lic-page-links">
-            {% with base='?'|add:qs_keep %}
-              {% if page_obj.has_previous %}
-                <a href="{{ base }}&page={{ page_obj.previous_page_number }}" class="lic-page-link"><i class="fa fa-chevron-left"></i></a>
+      {% comment %}Cartões do celular: a tabela de 1080px só sai de cena
+         porque existe esta lista no lugar dela (regra 24).{% endcomment %}
+      <div class="lic-mobile-list">
+        {% for mov in movs %}
+          <article class="lic-mobile-card">
+            <div class="lic-mobile-head">
+              <div>
+                <a href="{% url 'licenca_detail' mov.licenca.pk %}" class="lic-title-link">{{ mov.licenca.nome }}</a>
+                <span class="lic-sub">{{ mov.created_at|date:"d/m/Y H:i" }}</span>
+              </div>
+              {% if mov.tipo == 'atribuicao' %}
+                <span class="lic-pill" data-tom="saida">Atribuição</span>
               {% else %}
-                <span class="lic-page-link disabled"><i class="fa fa-chevron-left"></i></span>
+                <span class="lic-pill" data-tom="entrada">Devolução</span>
               {% endif %}
-
-              {% for num in paginator.page_range %}
-                {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
-                  {% if num == page_obj.number %}
-                    <span class="lic-page-link active">{{ num }}</span>
-                  {% else %}
-                    <a href="{{ base }}&page={{ num }}" class="lic-page-link">{{ num }}</a>
-                  {% endif %}
-                {% endif %}
-              {% endfor %}
-
-              {% if page_obj.has_next %}
-                <a href="{{ base }}&page={{ page_obj.next_page_number }}" class="lic-page-link"><i class="fa fa-chevron-right"></i></a>
-              {% else %}
-                <span class="lic-page-link disabled"><i class="fa fa-chevron-right"></i></span>
-              {% endif %}
-            {% endwith %}
+            </div>
+            <div class="lic-mobile-meta">
+              <div>
+                <span class="lic-mobile-label">Colaborador</span>
+                <span>{{ mov.usuario.nome|default:"—" }}</span>
+              </div>
+              <div>
+                <span class="lic-mobile-label">Centro de custo</span>
+                <span>{{ mov.centro_custo_destino.departamento|default:"—" }}</span>
+              </div>
+              <div>
+                <span class="lic-mobile-label">Custo / mês</span>
+                <span class="lic-money">R$ {{ mov.valor_unitario|default:0|floatformat:2|intcomma }}</span>
+              </div>
+              <div>
+                <span class="lic-mobile-label">Lote</span>
+                <span>{% if mov.lote_id %}#{{ mov.lote_id }}{% else %}—{% endif %}</span>
+              </div>
+            </div>
+          </article>
+        {% empty %}
+          <div class="ui-empty">
+            <div class="ui-empty-ico"><i class="fa-solid fa-right-left" aria-hidden="true"></i></div>
+            <div class="ui-empty-title">Nenhuma movimentação encontrada</div>
+            <p class="ui-empty-text">Ajuste os filtros para ampliar o recorte.</p>
           </div>
-        </div>
-      {% endif %}
+        {% endfor %}
+      </div>
+
+      {% include 'front/licencas/_lic_pagination.html' %}
     </section>
+
   </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
-<script>
-$(document).ready(function() {
-  $('.select2-filter').select2({
-    width: '100%',
-    minimumResultsForSearch: 10,
-    language: {
-      noResults: function () { return 'Nenhum resultado encontrado'; },
-      searching: function () { return 'Buscando...'; }
-    }
-  });
-
-  $('#tipo').on('change', function() {
-    $('#filterForm').submit();
-  });
-
-  $('#btnClear').on('click', function() {
-    window.location.href = window.location.pathname;
-  });
-
-  let timeout = null;
-  $('#q').on('input', function() {
-    clearTimeout(timeout);
-    timeout = setTimeout(function() {
-      $('#filterForm').submit();
-    }, 600);
-  });
-});
-</script>
+{% include 'front/licencas/_lic_js_base.html' %}
 {% endblock %}
