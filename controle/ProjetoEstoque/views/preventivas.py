@@ -18,6 +18,7 @@ from ..forms import (
 )
 from ..models import (
     GRUPO_FORNECEDOR,
+    AreaOperacionalChoices,
     CheckListModelo,
     CheckListPergunta,
     Item,
@@ -28,6 +29,7 @@ from ..models import (
     PreventivaResposta,
     SimNaoChoices,
     StatusItemChoices,
+    Subtipo,
     sincronizar_preventivas_com_status,
 )
 from services import preventiva_fotos_service as fotos_service
@@ -715,7 +717,25 @@ def preventiva_start(request, item_id=None):
     else:
         form = PreventivaStartForm(item_instance=item_instance)
 
-    return render(request, "front/preventivas/preventiva_start.html", {"form": form})
+    # Mapas para o JS escolher o checklist sozinho quando o TI seleciona o
+    # equipamento, sem precisar navegar de novo — mesma regra de resolução
+    # por subtipo que `preventiva_plano` já usa (ver CLAUDE.md regra 47).
+    mapa_item_subtipo = {
+        str(it.pk): it.subtipo_id
+        for it in form.fields["item"].queryset
+    }
+    mapa_subtipo_checklist = {}
+    for checklist in (
+        CheckListModelo.objects.filter(ativo=SimNaoChoices.SIM).order_by("subtipo__nome", "nome")
+    ):
+        chave = str(checklist.subtipo_id) if checklist.subtipo_id else "geral"
+        mapa_subtipo_checklist.setdefault(chave, checklist.pk)
+
+    return render(request, "front/preventivas/preventiva_start.html", {
+        "form": form,
+        "mapa_item_subtipo": mapa_item_subtipo,
+        "mapa_subtipo_checklist": mapa_subtipo_checklist,
+    })
 
 
 @login_required
@@ -1458,6 +1478,7 @@ def preventiva_plano(request):
     localidade_filter = (request.GET.get("localidade") or "").strip()
     checklist_filter = (request.GET.get("checklist") or "").strip()
     tecnico_filter = (request.GET.get("tecnico") or "").strip()
+    area_filter = (request.GET.get("area") or "").strip()
 
     if request.method == "POST":
         item_ids_raw = request.POST.getlist("item_ids")
@@ -1514,6 +1535,15 @@ def preventiva_plano(request):
             tecnico_obj = AuthUser.objects.filter(pk=int(tecnico_id), is_active=True).first()
 
         itens = Item.objects.filter(pk__in=item_ids).select_related("subtipo")
+        # Sem técnico escolhido no formulário, cada equipamento herda o
+        # responsável da sua ÁREA (pode ser um por área no mesmo lote). Não
+        # sobrescreve atribuição já existente — ver `campos` mais abaixo.
+        resp_por_area = {}
+        if tecnico_obj is None:
+            from services import preventiva_meta_service as _meta
+            for _st in {i.subtipo_id for i in itens}:
+                for _area, _user in _meta.responsaveis_map(_st).items():
+                    resp_por_area[(_st, _area)] = _user
         checklists_ativos = (
             CheckListModelo.objects
             .filter(ativo=SimNaoChoices.SIM)
@@ -1551,6 +1581,14 @@ def preventiva_plano(request):
                 if tecnico_obj is not None:
                     preventiva.tecnico = tecnico_obj
                     campos.append("tecnico")
+                elif preventiva.tecnico_id is None:
+                    # Padrão vindo da responsabilidade por área. Só preenche o
+                    # que está VAZIO: atribuição feita à mão é decisão de
+                    # alguém e o cadastro de área não pode apagá-la.
+                    herdado = resp_por_area.get((item.subtipo_id, item.area_operacional))
+                    if herdado is not None:
+                        preventiva.tecnico = herdado
+                        campos.append("tecnico")
                 # data_proxima passa a refletir a data efetiva (o agendamento)
                 preventiva.sincronizar_data_proxima(hoje, salvar=False)
                 preventiva.save(update_fields=campos)
@@ -1589,6 +1627,13 @@ def preventiva_plano(request):
     if localidade_filter:
         items_qs = items_qs.filter(localidade_id=localidade_filter)
 
+    if area_filter == "sem":
+        items_qs = items_qs.filter(
+            Q(area_operacional__isnull=True) | Q(area_operacional="")
+        )
+    elif area_filter in dict(AreaOperacionalChoices.choices):
+        items_qs = items_qs.filter(area_operacional=area_filter)
+
     if checklist_filter:
         ids_com_checklist = set(
             Preventiva.objects.filter(
@@ -1612,6 +1657,18 @@ def preventiva_plano(request):
     hoje = timezone.localdate()
     rows = []
 
+    # Responsável por área, resolvido uma vez por subtipo presente na tela
+    # (não por linha — seriam 2 consultas por equipamento).
+    from services import preventiva_meta_service as _meta_plano
+    resp_cache = {}
+
+    def _responsavel_area(item):
+        if not item.area_operacional:
+            return None
+        if item.subtipo_id not in resp_cache:
+            resp_cache[item.subtipo_id] = _meta_plano.responsaveis_map(item.subtipo_id)
+        return resp_cache[item.subtipo_id].get(item.area_operacional)
+
     for item in items_qs:
         p = prev_map.get(item.pk)
 
@@ -1633,6 +1690,9 @@ def preventiva_plano(request):
             proxima_calc=None,
             tem_agendamento=False,
             tecnico=(p.tecnico if p else None),
+            area=item.area_operacional or "",
+            area_label=item.area_operacional_label,
+            responsavel_area=_responsavel_area(item),
         )
 
         if p:
@@ -1682,6 +1742,8 @@ def preventiva_plano(request):
         "filter_localidade": localidade_filter,
         "filter_checklist": checklist_filter,
         "filter_tecnico": tecnico_filter,
+        "filter_area": area_filter,
+        "areas": AreaOperacionalChoices.choices,
         "localidades": Localidade.objects.order_by("local"),
         "checklists": CheckListModelo.objects.order_by("nome"),
         "tecnicos": AuthUser.objects.filter(is_active=True).exclude(groups__name=GRUPO_FORNECEDOR).order_by("first_name", "last_name", "username"),
@@ -2307,3 +2369,518 @@ def apontamentos_horas_export(request):
     )
     response["Content-Disposition"] = f'attachment; filename="{nome_arquivo}"'
     return response
+
+
+# =========================================================
+# METAS DE PREVENTIVA POR ÁREA E CICLO
+# =========================================================
+#
+# Três telas, uma fonte de verdade: toda apuração sai de
+# `services/preventiva_meta_service.py`. Nenhuma view aqui recalcula
+# previsto/realizado/pendente por conta própria.
+
+def _subtipo_meta_padrao(subtipo_param: str = "") -> int | None:
+    """
+    Subtipo que o painel abre por padrão.
+
+    Prioridade: o que vier na URL → o que tem ciclo vigente → "Switches"
+    (subtipo de partida definido com o usuário) → qualquer um com parque no
+    programa de preventiva. Sem nenhum, devolve None e a tela mostra o estado
+    vazio explicando o que falta cadastrar.
+    """
+    from ..models import PreventivaCicloMeta
+
+    if subtipo_param.isdigit():
+        return int(subtipo_param)
+
+    hoje = timezone.localdate()
+    for ciclo in PreventivaCicloMeta.objects.order_by("-data_inicio").select_related("subtipo"):
+        if ciclo.contem(hoje):
+            return ciclo.subtipo_id
+
+    switches = (
+        Subtipo.objects
+        .filter(nome__iexact="Switches")
+        .values_list("pk", flat=True)
+        .first()
+    )
+    if switches:
+        return switches
+
+    return (
+        Item.objects
+        .filter(precisa_preventiva=SimNaoChoices.SIM, subtipo__isnull=False)
+        .values_list("subtipo_id", flat=True)
+        .first()
+    )
+
+
+def _subtipos_com_parque():
+    """Subtipos que têm equipamento no programa de preventiva (para o seletor)."""
+    ids = (
+        Item.objects
+        .filter(precisa_preventiva=SimNaoChoices.SIM, subtipo__isnull=False)
+        .values_list("subtipo_id", flat=True)
+        .distinct()
+    )
+    return Subtipo.objects.filter(pk__in=list(ids)).order_by("nome")
+
+
+@login_required
+def preventiva_metas(request):
+    """
+    Painel gerencial de metas — progresso do ciclo por área, comparativo entre
+    Área Produtiva e Área Não Produtiva, desempenho por técnico, equipamentos
+    pendentes e evolução da execução ao longo do período.
+
+    POST `acao=abrir_ciclo` abre o ciclo de referência do subtipo (encadeado no
+    dia seguinte ao fim do último, para não deixar dia descoberto).
+    """
+    from django.core.exceptions import ValidationError
+
+    from services import preventiva_meta_service as meta_service
+
+    hoje = timezone.localdate()
+
+    if request.method == "POST":
+        acao = (request.POST.get("acao") or "").strip()
+        subtipo_id = (request.POST.get("subtipo") or "").strip()
+        destino = f"{request.path}?subtipo={subtipo_id}" if subtipo_id.isdigit() else request.path
+
+        if acao != "abrir_ciclo" or not subtipo_id.isdigit():
+            messages.error(request, "Ação inválida.")
+            return redirect(destino)
+
+        duracao = _to_int(request.POST.get("duracao_dias"), 90) or 90
+        try:
+            ciclo = meta_service.abrir_ciclo(
+                int(subtipo_id), duracao_dias=duracao, usuario=request.user
+            )
+        except ValidationError as erro:
+            for mensagem in erro.messages:
+                messages.error(request, mensagem)
+            return redirect(destino)
+
+        messages.success(
+            request,
+            f"Ciclo de {ciclo.duracao_dias} dias aberto para {ciclo.subtipo.nome}: "
+            f"{ciclo.data_inicio:%d/%m/%Y} a {ciclo.data_fim:%d/%m/%Y}.",
+        )
+        return redirect(destino)
+
+    subtipo_id = _subtipo_meta_padrao((request.GET.get("subtipo") or "").strip())
+    subtipo = Subtipo.objects.filter(pk=subtipo_id).first() if subtipo_id else None
+
+    ciclos = meta_service.ciclos_do_subtipo(subtipo_id) if subtipo_id else []
+    ciclo_param = (request.GET.get("ciclo") or "").strip()
+
+    ciclo = None
+    if ciclo_param.isdigit():
+        ciclo = next((c for c in ciclos if c.pk == int(ciclo_param)), None)
+    if ciclo is None:
+        ciclo = next((c for c in ciclos if c.contem(hoje)), None)
+    if ciclo is None and ciclos:
+        ciclo = ciclos[0]
+
+    apuracao = meta_service.apurar_ciclo(ciclo, hoje) if ciclo else None
+
+    # Histórico: os ciclos anteriores entram pelo resumo enxuto (sem montar
+    # lista de equipamentos nem curva de cada um).
+    historico = [
+        meta_service.resumo_ciclo(c, hoje)
+        for c in ciclos
+        if ciclo is None or c.pk != ciclo.pk
+    ][:6]
+
+    context = {
+        "hoje": hoje,
+        "subtipo": subtipo,
+        "subtipos": _subtipos_com_parque(),
+        "ciclo": ciclo,
+        "ciclos": ciclos,
+        "apuracao": apuracao,
+        "historico": historico,
+        "proximo_inicio": meta_service.proximo_inicio(subtipo_id, hoje) if subtipo_id else hoje,
+        "responsaveis": meta_service.responsaveis_map(subtipo_id) if subtipo_id else {},
+        "duracao_padrao": 90,
+    }
+    return render(request, "front/preventivas/preventiva_metas.html", context)
+
+
+@login_required
+def preventiva_metas_config(request):
+    """
+    Configuração do programa de metas: técnicos responsáveis por área e ciclos
+    de referência. Fica separada do painel porque o painel é tela de leitura
+    diária do gestor e isto é cadastro — misturar os dois é como se chegou a
+    seis marcações de paginação diferentes (CLAUDE.md, design system).
+    """
+    from django.core.exceptions import ValidationError
+
+    from ..forms import PreventivaAreaResponsavelForm, PreventivaCicloMetaForm
+    from ..models import PreventivaAreaResponsavel, PreventivaCicloMeta
+    from services import preventiva_meta_service as meta_service
+
+    hoje = timezone.localdate()
+    form_responsavel = PreventivaAreaResponsavelForm()
+    form_ciclo = PreventivaCicloMetaForm(
+        initial={"duracao_dias": PreventivaCicloMeta.DURACAO_PADRAO}
+    )
+    editando_responsavel = None
+    editando_ciclo = None
+    impacto = None
+
+    # Edição de ciclo: a tela abre o MESMO formulário preenchido, em vez de um
+    # modal próprio, para não existirem duas marcações do mesmo campo.
+    ciclo_edit_id = (request.GET.get("editar_ciclo") or "").strip()
+    if request.method == "GET" and ciclo_edit_id.isdigit():
+        editando_ciclo = PreventivaCicloMeta.objects.filter(pk=int(ciclo_edit_id)).first()
+        if editando_ciclo:
+            form_ciclo = PreventivaCicloMetaForm(instance=editando_ciclo)
+
+    if request.method == "POST":
+        acao = (request.POST.get("acao") or "").strip()
+
+        if acao == "salvar_responsavel":
+            pk = (request.POST.get("responsavel_id") or "").strip()
+            instancia = (
+                PreventivaAreaResponsavel.objects.filter(pk=int(pk)).first()
+                if pk.isdigit() else None
+            )
+            form_responsavel = PreventivaAreaResponsavelForm(request.POST, instance=instancia)
+            if form_responsavel.is_valid():
+                obj = form_responsavel.save(commit=False)
+                if instancia is None:
+                    obj.criado_por = request.user
+                obj.atualizado_por = request.user
+                obj.save()
+                messages.success(
+                    request,
+                    f"Responsável de {obj.get_area_display()} salvo: "
+                    f"{obj.tecnico.get_full_name() or obj.tecnico.username}.",
+                )
+                return redirect("preventiva_metas_config")
+            editando_responsavel = instancia.pk if instancia else None
+            messages.error(request, "Verifique os campos destacados do responsável.")
+
+        elif acao == "remover_responsavel":
+            pk = (request.POST.get("responsavel_id") or "").strip()
+            obj = PreventivaAreaResponsavel.objects.filter(pk=int(pk)).first() if pk.isdigit() else None
+            if obj:
+                rotulo = str(obj)
+                obj.delete()
+                messages.success(request, f"Responsabilidade removida: {rotulo}.")
+            else:
+                messages.error(request, "Responsável não encontrado.")
+            return redirect("preventiva_metas_config")
+
+        elif acao == "salvar_ciclo":
+            ciclo_id = (request.POST.get("ciclo_id") or "").strip()
+            instancia = (
+                PreventivaCicloMeta.objects.filter(pk=int(ciclo_id)).first()
+                if ciclo_id.isdigit() else None
+            )
+            form_ciclo = PreventivaCicloMetaForm(request.POST, instance=instancia)
+            if form_ciclo.is_valid():
+                obj = form_ciclo.save(commit=False)
+                if instancia is None:
+                    obj.criado_por = request.user
+                obj.atualizado_por = request.user
+                try:
+                    obj.full_clean()
+                except ValidationError as erro:
+                    # A sobreposição é validada no model (regra 2): a mensagem
+                    # chega aqui e vai para o campo, não para um 500.
+                    for campo, mensagens in erro.message_dict.items():
+                        for mensagem in mensagens:
+                            form_ciclo.add_error(
+                                campo if campo in form_ciclo.fields else None, mensagem
+                            )
+                else:
+                    if instancia is None:
+                        obj.save()
+                        messages.success(
+                            request,
+                            f"Ciclo aberto: {obj.subtipo.nome}, "
+                            f"{obj.data_inicio:%d/%m/%Y} a {obj.data_fim:%d/%m/%Y}.",
+                        )
+                        return redirect("preventiva_metas_config")
+
+                    # EDIÇÃO: mexer na janela mexe no placar. Se a nova janela
+                    # deixar execuções de fora (ou trouxer outras), a tela
+                    # mostra o impacto e exige uma segunda confirmação — a
+                    # pessoa vê o que vai mudar ANTES de mudar.
+                    original = PreventivaCicloMeta.objects.get(pk=instancia.pk)
+                    impacto = meta_service.impacto_de_editar_ciclo(
+                        original, obj.data_inicio, obj.duracao_dias
+                    )
+                    confirmou = request.POST.get("confirmar_impacto") == "1"
+                    if impacto["muda_placar"] and not confirmou:
+                        editando_ciclo = original
+                        impacto["ciclo"] = original
+                        impacto["nova_inicio"] = obj.data_inicio
+                        impacto["nova_duracao"] = obj.duracao_dias
+                        messages.warning(
+                            request,
+                            "Esta alteração muda a apuração do ciclo. "
+                            "Confira o impacto e confirme.",
+                        )
+                    else:
+                        meta_service.editar_ciclo(
+                            original, obj.data_inicio, obj.duracao_dias,
+                            observacao=obj.observacao, usuario=request.user,
+                        )
+                        messages.success(
+                            request,
+                            f"Ciclo atualizado: {original.subtipo.nome}, "
+                            f"{original.data_inicio:%d/%m/%Y} a {original.data_fim:%d/%m/%Y}.",
+                        )
+                        return redirect("preventiva_metas_config")
+            else:
+                messages.error(request, "Verifique os campos destacados do ciclo.")
+
+        elif acao in ("encerrar_ciclo", "reabrir_ciclo"):
+            pk = (request.POST.get("ciclo_id") or "").strip()
+            ciclo = PreventivaCicloMeta.objects.filter(pk=int(pk)).first() if pk.isdigit() else None
+            if not ciclo:
+                messages.error(request, "Ciclo não encontrado.")
+            else:
+                ciclo.encerrado = (acao == "encerrar_ciclo")
+                ciclo.atualizado_por = request.user
+                ciclo.save(update_fields=["encerrado", "atualizado_por", "updated_at"])
+                messages.success(
+                    request,
+                    f"Ciclo {'encerrado' if ciclo.encerrado else 'reaberto'}: {ciclo}.",
+                )
+            return redirect("preventiva_metas_config")
+
+        elif acao == "excluir_ciclo":
+            pk = (request.POST.get("ciclo_id") or "").strip()
+            ciclo = PreventivaCicloMeta.objects.filter(pk=int(pk)).first() if pk.isdigit() else None
+            if not ciclo:
+                messages.error(request, "Ciclo não encontrado.")
+            else:
+                rotulo = str(ciclo)
+                ciclo.delete()
+                messages.success(
+                    request,
+                    f"Ciclo excluído: {rotulo}. As execuções registradas seguem no histórico.",
+                )
+            return redirect("preventiva_metas_config")
+
+        else:
+            messages.error(request, "Ação inválida.")
+            return redirect("preventiva_metas_config")
+
+    responsaveis = list(
+        PreventivaAreaResponsavel.objects
+        .select_related("tecnico", "subtipo")
+        .order_by("area", "subtipo__nome")
+    )
+
+    ciclos = []
+    for ciclo in (
+        PreventivaCicloMeta.objects
+        .select_related("subtipo")
+        .order_by("-data_inicio")[:24]
+    ):
+        ciclos.append(meta_service.resumo_ciclo(ciclo, hoje))
+
+    # Quantos ativos de cada subtipo ainda estão sem área — a classificação é
+    # pré-requisito da meta, e sem este número ninguém descobre que o
+    # denominador está incompleto.
+    pendencias = []
+    for subtipo in _subtipos_com_parque():
+        sem_area = meta_service.nao_classificados_qs(subtipo.pk).count()
+        if sem_area:
+            pendencias.append({
+                "subtipo": subtipo,
+                "sem_area": sem_area,
+                "classificados": meta_service.universo_qs(subtipo.pk).count(),
+            })
+    pendencias.sort(key=lambda p: -p["sem_area"])
+
+    context = {
+        "hoje": hoje,
+        "form_responsavel": form_responsavel,
+        "form_ciclo": form_ciclo,
+        "editando_responsavel": editando_responsavel,
+        "editando_ciclo": editando_ciclo,
+        "impacto": impacto,
+        "responsaveis": responsaveis,
+        "ciclos": ciclos,
+        "areas": AreaOperacionalChoices.choices,
+        "pendencias": pendencias[:8],
+        "subtipos": _subtipos_com_parque(),
+    }
+    return render(request, "front/preventivas/preventiva_metas_config.html", context)
+
+
+@login_required
+def preventiva_metas_export(request):
+    """
+    Exporta (Excel) a apuração da meta do ciclo: resumo por área, desempenho
+    por técnico e a lista nominal dos equipamentos que faltam.
+
+    Aceita ?subtipo=<id>&ciclo=<id> — os mesmos parâmetros do painel, para que
+    a planilha seja exatamente o que está na tela.
+    """
+    from io import BytesIO
+
+    from django.http import Http404, HttpResponse
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment
+    from openpyxl.utils import get_column_letter
+
+    from services import preventiva_meta_service as meta_service
+    from services.excel_theme import (
+        BORDA as border, FONT_TITULO as f_title, FONT_SUBTITULO as f_sub,
+        FONT_HEADER as f_header, FONT_CELL as f_cell, FONT_CELL_BOLD as f_bold,
+        FILL_TITULO as fill_title, FILL_SUBTITULO as fill_sub,
+        FILL_HEADER as fill_header, FILL_ZEBRA as fill_zebra,
+        ALIGN_LEFT as a_left, ALIGN_CENTER as a_center,
+    )
+    from ..models import PreventivaCicloMeta
+
+    hoje = timezone.localdate()
+    subtipo_id = _subtipo_meta_padrao((request.GET.get("subtipo") or "").strip())
+    ciclo_param = (request.GET.get("ciclo") or "").strip()
+
+    ciclo = None
+    if ciclo_param.isdigit():
+        ciclo = (
+            PreventivaCicloMeta.objects
+            .filter(pk=int(ciclo_param)).select_related("subtipo").first()
+        )
+    if ciclo is None and subtipo_id:
+        ciclo = meta_service.ciclo_vigente(subtipo_id, hoje)
+    if ciclo is None and subtipo_id:
+        ciclo = (
+            PreventivaCicloMeta.objects
+            .filter(subtipo_id=subtipo_id)
+            .select_related("subtipo")
+            .order_by("-data_inicio")
+            .first()
+        )
+    if ciclo is None:
+        raise Http404("Nenhum ciclo de meta cadastrado para exportar.")
+
+    ap = meta_service.apurar_ciclo(ciclo, hoje)
+    gerado = timezone.localtime().strftime("%d/%m/%Y às %H:%M")
+    periodo = f"{ciclo.data_inicio:%d/%m/%Y} a {ciclo.data_fim:%d/%m/%Y}"
+
+    def faixa(ws, ncols, titulo, subtitulo):
+        last = get_column_letter(ncols)
+        ws.merge_cells(f"A1:{last}1")
+        c = ws["A1"]
+        c.value, c.font, c.fill = titulo, f_title, fill_title
+        c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        ws.row_dimensions[1].height = 30
+        ws.merge_cells(f"A2:{last}2")
+        c = ws["A2"]
+        c.value, c.font, c.fill = subtitulo, f_sub, fill_sub
+        c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        ws.row_dimensions[2].height = 18
+        ws.sheet_view.showGridLines = False
+
+    def cabecalho(ws, row, headers, center_cols=()):
+        for ci, h in enumerate(headers, 1):
+            c = ws.cell(row=row, column=ci, value=h)
+            c.fill, c.font, c.border = fill_header, f_header, border
+            c.alignment = a_center if ci in center_cols else a_left
+        ws.row_dimensions[row].height = 22
+
+    def linhas(ws, row, dados, center_cols=(), larguras=()):
+        for i, valores in enumerate(dados):
+            for ci, val in enumerate(valores, 1):
+                c = ws.cell(row=row, column=ci, value=val)
+                c.border, c.font = border, f_cell
+                c.alignment = a_center if ci in center_cols else a_left
+                if i % 2 == 1:
+                    c.fill = fill_zebra
+            row += 1
+        for i, w in enumerate(larguras, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+        return row
+
+    wb = Workbook()
+
+    # ── Aba 1: resumo por área ────────────────────────────────────────────
+    ws = wb.active
+    ws.title = "Meta por Area"
+    headers = ["Área", "Técnico responsável", "Previstos", "Realizados",
+               "Pendentes", "% executado", "% pendente", "Situação"]
+    faixa(ws, len(headers),
+          f"META DE PREVENTIVAS — {ciclo.subtipo.nome.upper()}",
+          f"Santa Colomba Agropecuária · Ciclo {periodo} "
+          f"({ap['dias_decorridos']}/{ap['duracao']} dias) · Gerado em {gerado}")
+    cabecalho(ws, 4, headers, center_cols=(3, 4, 5, 6, 7, 8))
+    row = linhas(
+        ws, 5,
+        [[a["label"], a["tecnico_nome"], a["previstos"], a["realizados"],
+          a["pendentes"], f"{a['pct']}%", f"{a['pct_pendente']}%", a["risco_label"]]
+         for a in ap["areas"]],
+        center_cols=(3, 4, 5, 6, 7, 8),
+        larguras=(24, 30, 12, 12, 12, 14, 14, 24),
+    )
+    for ci, val in enumerate(
+        ["TOTAL DO CICLO", "", ap["previstos"], ap["realizados"], ap["pendentes"],
+         f"{ap['pct']}%", f"{ap['pct_pendente']}%", ap["risco_label"]], 1
+    ):
+        c = ws.cell(row=row, column=ci, value=val)
+        c.font, c.border, c.fill = f_bold, border, fill_sub
+        c.alignment = a_center if ci >= 3 else a_left
+    ws.freeze_panes = "A5"
+
+    # ── Aba 2: desempenho por técnico ─────────────────────────────────────
+    ws2 = wb.create_sheet("Por Tecnico")
+    headers2 = ["Técnico", "Áreas", "Previstos", "Realizados", "Pendentes", "% executado"]
+    faixa(ws2, len(headers2), "DESEMPENHO POR TÉCNICO", f"Ciclo {periodo}")
+    cabecalho(ws2, 4, headers2, center_cols=(3, 4, 5, 6))
+    linhas(
+        ws2, 5,
+        [[t["nome"], t["areas_label"], t["previstos"], t["realizados"],
+          t["pendentes"], f"{t['pct']}%"] for t in ap["tecnicos"]],
+        center_cols=(3, 4, 5, 6),
+        larguras=(32, 26, 12, 12, 12, 14),
+    )
+    ws2.freeze_panes = "A5"
+
+    # ── Aba 3: equipamentos que faltam ────────────────────────────────────
+    ws3 = wb.create_sheet("Faltam Executar")
+    headers3 = ["Área", "Equipamento", "Nº Série", "Localidade", "Centro de custo",
+                "Técnico", "Agendado para", "Situação do agendamento"]
+    pendentes = [
+        [a["label"], item.nome, item.numero_serie or "—",
+         item.localidade.local if item.localidade else "—",
+         item.centro_custo.departamento if item.centro_custo else "—",
+         item.meta_tecnico_nome,
+         item.meta_data_agendamento.strftime("%d/%m/%Y") if item.meta_data_agendamento else "—",
+         ("Sem preventiva cadastrada" if item.meta_sem_preventiva
+          else "Agendamento vencido" if item.meta_agendamento_vencido
+          else "Agendada" if item.meta_data_agendamento else "Sem agendamento")]
+        for a in ap["areas"] for item in a["itens_pendentes"]
+    ]
+    faixa(ws3, len(headers3), "EQUIPAMENTOS QUE FALTAM PARA CONCLUIR A META",
+          f"{len(pendentes)} equipamento(s) · Ciclo {periodo}")
+    cabecalho(ws3, 4, headers3, center_cols=(1, 7, 8))
+    if pendentes:
+        linhas(ws3, 5, pendentes, center_cols=(1, 7, 8),
+               larguras=(20, 34, 20, 28, 26, 26, 16, 26))
+    else:
+        ws3.merge_cells(start_row=5, start_column=1, end_row=5, end_column=len(headers3))
+        c = ws3.cell(row=5, column=1,
+                     value="Meta concluída — nenhum equipamento pendente neste ciclo.")
+        c.font, c.alignment = f_cell, a_center
+    ws3.freeze_panes = "A5"
+
+    saida = BytesIO()
+    wb.save(saida)
+    saida.seek(0)
+    nome = f"meta_preventivas_{ciclo.subtipo.nome[:18]}_{ciclo.data_inicio:%Y%m%d}.xlsx"
+    resposta = HttpResponse(
+        saida.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resposta["Content-Disposition"] = f'attachment; filename="{nome}"'
+    return resposta

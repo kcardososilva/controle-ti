@@ -1,373 +1,158 @@
 {% extends 'base.html' %}
+{% load static %}
+
 {% block title %}Monitor PRTG{% endblock %}
 {% block page_title %}Monitor PRTG{% endblock %}
-{% block page_subtitle %}Dispositivos de rede em tempo real{% endblock %}
+{% block page_subtitle %}Todos os dispositivos monitorados, por grupo, com o status efetivo{% endblock %}
 
-{% block breadcrumbs %}
-<nav class="breadcrumbs" aria-label="Você está aqui">
-  <a href="{% url 'dashboard' %}"><i class="fa-solid fa-house-chimney" aria-hidden="true"></i>Início</a>
-  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
-  <span>Infraestrutura</span>
-  <i class="fa-solid fa-chevron-right crumb-sep" aria-hidden="true"></i>
-  <span class="crumb-current" aria-current="page">Monitor PRTG</span>
-</nav>
-{% endblock %}
+{% comment %}
+Tela no design system do módulo (`ds-rede.css`, prefixo `.nx-*`).
 
-{% block header_actions %}
-{% if prtg_ok %}
-<span class="pm-refresh-badge" id="pmRefreshBadge" title="Atualizado há 0s">
-  <i class="fa-solid fa-rotate pm-spin-icon" id="pmSpinIcon" aria-hidden="true"></i>
-  <span id="pmRefreshLabel">ao vivo</span>
-</span>
-{% endif %}
-{% endblock %}
+Duas mudanças de fundo além do desenho:
+
+(a) Era uma GRADE DE CARTÕES. Com 300+ dispositivos, cartão gasta a tela em
+    moldura: a pergunta aqui é "o que está fora do ar", e ela se responde
+    varrendo uma coluna. Virou tabela densa por grupo, com numeral tabular —
+    o mesmo formato da planilha que a tela exporta.
+
+(b) O recolher/expandir era `div` + classe + `localStorage` em JS. Agora é
+    `<details>` nativo, que já guarda estado de teclado, leitor de tela e
+    `Ctrl+F` do navegador (o `display:none` do anterior escondia o texto da
+    busca do próprio navegador). O `localStorage` ficou só para lembrar a
+    escolha entre visitas.
+{% endcomment %}
 
 {% block extra_css %}
-<style>
-:where(.pm-page) {
-  --pm-brand:    var(--brand, #0071e3);
-  --pm-brand-hover: var(--brand-hover, #0077ed);
-  --pm-brand-soft: var(--brand-soft, rgba(0,113,227,.10));
-  --pm-ring:     var(--brand-ring, rgba(0,113,227,.30));
-
-  --pm-bg:       var(--bg-elevated, #ffffff);
-  --pm-bg-soft:  var(--bg-fill-tertiary, rgba(120,120,128,.08));
-  --pm-bg-muted: var(--bg-fill-secondary, rgba(120,120,128,.12));
-
-  --pm-text:     var(--text-primary, #1d1d1f);
-  --pm-muted:    var(--text-tertiary, #6e6e73);
-  --pm-soft:     var(--text-quaternary, #86868b);
-
-  --pm-border:   var(--separator-hairline, rgba(0,0,0,.08));
-  --pm-border-2: var(--separator-non-opaque, rgba(0,0,0,.14));
-
-  --pm-up:      var(--success, #34c759);
-  --pm-warn:    var(--warning, #ff9500);
-  --pm-down:    var(--danger,  #ff3b30);
-  --pm-paused:  #8e8e93;
-  --pm-unknown: #98989d;
-
-  --pm-radius-sm: var(--radius-sm, 9px);
-  --pm-radius-md: var(--radius-md, 12px);
-  --pm-radius-pill: var(--radius-pill, 980px);
-  --pm-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04));
-  --pm-trans:   150ms cubic-bezier(.32,.72,0,1);
-}
-
-.pm-page, .pm-page * { box-sizing: border-box; min-width: 0; }
-.pm-page { width: 100%; max-width: 1440px; margin-inline: auto; color: var(--pm-text); display: grid; gap: 16px; }
-
-/* ── Faixa de métricas (densa, hairline) ─────────────────────────────── */
-.pm-metrics {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 1px;
-  background: var(--pm-border);
-  border: 1px solid var(--pm-border);
-  border-radius: var(--pm-radius-md);
-  overflow: hidden;
-}
-.pm-metric { background: var(--pm-bg); padding: 13px 16px; display: flex; flex-direction: column; gap: 5px; }
-.pm-metric-label {
-  display: inline-flex; align-items: center; gap: 7px;
-  font-size: var(--text-xs); font-weight: 500; color: var(--pm-muted); letter-spacing: -0.006em;
-}
-.pm-metric-label .pm-dot { width: 8px; height: 8px; }
-.pm-metric-value {
-  font-family: var(--font-display); font-size: 21px; font-weight: 600;
-  letter-spacing: -0.02em; color: var(--pm-text); line-height: 1.1;
-}
-
-/* ── Toolbar (filtros + busca + export) ──────────────────────────────── */
-.pm-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.pm-filters { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.pm-filter-btn {
-  display: inline-flex; align-items: center; gap: 7px;
-  height: 34px; padding: 0 12px;
-  border-radius: var(--pm-radius-sm);
-  border: 1px solid var(--pm-border-2);
-  background: var(--pm-bg);
-  font-size: var(--text-sm); font-weight: 500; cursor: pointer;
-  color: var(--pm-text);
-  transition: background var(--pm-trans), color var(--pm-trans), border-color var(--pm-trans);
-}
-.pm-filter-btn:hover { background: var(--pm-bg-soft); }
-.pm-filter-btn.is-active { background: var(--pm-brand); color: #fff; border-color: var(--pm-brand); }
-.pm-filter-btn[data-f="up"].is-active      { background: var(--pm-up);   border-color: var(--pm-up); }
-.pm-filter-btn[data-f="down"].is-active     { background: var(--pm-down); border-color: var(--pm-down); }
-.pm-filter-btn[data-f="warning"].is-active  { background: var(--pm-warn); border-color: var(--pm-warn); }
-.pm-filter-btn[data-f="paused"].is-active   { background: var(--pm-paused); border-color: var(--pm-paused); }
-.pm-filter-btn .pm-fcount {
-  font-size: var(--text-2xs); font-weight: 600; color: var(--pm-muted);
-  background: var(--pm-bg-muted); border-radius: var(--pm-radius-pill); padding: 1px 7px; min-width: 20px; text-align: center;
-}
-.pm-filter-btn.is-active .pm-fcount { background: rgba(255,255,255,.24); color: #fff; }
-
-.pm-search {
-  display: flex; align-items: center; gap: 8px;
-  height: 34px; padding: 0 12px; min-width: 200px; flex: 1 1 200px;
-  background: var(--pm-bg);
-  border: 1px solid var(--pm-border-2);
-  border-radius: var(--pm-radius-sm);
-  transition: border-color var(--pm-trans), box-shadow var(--pm-trans);
-}
-.pm-search:focus-within { border-color: var(--pm-brand); box-shadow: 0 0 0 3px var(--pm-ring); }
-.pm-search input { border: none; outline: none; background: transparent; font-size: var(--text-sm); color: var(--pm-text); width: 100%; }
-.pm-search input::placeholder { color: var(--pm-soft); }
-.pm-search-icon { color: var(--pm-soft); font-size: var(--text-xs); }
-
-.pm-export-btn {
-  display: inline-flex; align-items: center; gap: 8px;
-  height: 34px; padding: 0 14px;
-  border-radius: var(--pm-radius-sm);
-  border: 1px solid var(--pm-border-2);
-  background: var(--pm-bg);
-  color: var(--pm-text);
-  font-size: var(--text-sm); font-weight: 500; text-decoration: none; white-space: nowrap;
-  transition: background var(--pm-trans), border-color var(--pm-trans);
-}
-.pm-export-btn:hover { background: var(--pm-bg-soft); color: var(--pm-text); }
-.pm-export-btn i { color: var(--pm-up); font-size: var(--text-base); }
-
-/* ── Grupo (site) ────────────────────────────────────────────────────── */
-.pm-group { display: grid; gap: 10px; }
-.pm-group-header {
-  display: flex; align-items: center; gap: 8px;
-  padding: 5px 6px; margin: 0 -6px;
-  border-radius: var(--pm-radius-sm);
-  cursor: pointer; user-select: none;
-  transition: background var(--pm-trans);
-}
-.pm-group-header:hover { background: var(--pm-bg-soft); }
-.pm-group-header:focus-visible { outline: 2px solid var(--pm-brand); outline-offset: 1px; }
-.pm-group-chevron {
-  font-size: var(--text-2xs); color: var(--pm-soft); width: 12px; text-align: center;
-  transition: transform var(--pm-trans);
-}
-.pm-group.is-collapsed .pm-group-chevron { transform: rotate(-90deg); }
-.pm-group.is-collapsed .pm-grid { display: none; }
-.pm-group-title { font-size: var(--text-sm); font-weight: 600; color: var(--pm-text); letter-spacing: -0.01em; }
-.pm-group-count {
-  font-size: var(--text-2xs); font-weight: 600; color: var(--pm-muted);
-  background: var(--pm-bg-muted); border-radius: var(--pm-radius-pill); padding: 1px 8px;
-}
-
-.pm-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
-  gap: 12px;
-}
-
-/* ── Card ────────────────────────────────────────────────────────────── */
-.pm-card {
-  position: relative;
-  background: var(--pm-bg);
-  border: 1px solid var(--pm-border);
-  border-radius: var(--pm-radius-md);
-  overflow: hidden;
-  transition: border-color var(--pm-trans), box-shadow var(--pm-trans);
-}
-.pm-card:hover { border-color: var(--pm-border-2); box-shadow: var(--pm-shadow-sm); }
-
-.pm-card-bar { height: 3px; width: 100%; background: var(--pm-unknown); transition: background var(--pm-trans); }
-.pm-bar-up      { background: var(--pm-up); }
-.pm-bar-warning,.pm-bar-unusual { background: var(--pm-warn); }
-.pm-bar-down    { background: var(--pm-down); }
-.pm-bar-paused_by_user,.pm-bar-paused_by_dep,.pm-bar-paused_by_sched,.pm-bar-paused_until,
-.pm-bar-no_probe,.pm-bar-not_licensed { background: var(--pm-paused); }
-.pm-bar-unknown,.pm-bar-collecting { background: var(--pm-unknown); }
-
-.pm-card-body { padding: 12px 14px 14px; display: grid; gap: 9px; }
-.pm-card-top { display: flex; align-items: flex-start; gap: 8px; }
-.pm-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; display: inline-block; background: var(--pm-unknown); transition: background var(--pm-trans); }
-.pm-dot-up      { background: var(--pm-up); }
-.pm-dot-warning,.pm-dot-unusual { background: var(--pm-warn); }
-.pm-dot-down    { background: var(--pm-down); }
-.pm-dot-paused_by_user,.pm-dot-paused_by_dep,.pm-dot-paused_by_sched,.pm-dot-paused_until,
-.pm-dot-no_probe,.pm-dot-not_licensed { background: var(--pm-paused); }
-.pm-dot-unknown,.pm-dot-collecting { background: var(--pm-unknown); }
-
-.pm-card-name { font-size: var(--text-sm); font-weight: 600; color: var(--pm-text); line-height: 1.3; letter-spacing: -0.012em; word-break: break-word; }
-.pm-card-meta { display: flex; flex-direction: column; gap: 3px; }
-.pm-meta-row { display: flex; align-items: center; gap: 6px; font-size: var(--text-2xs); color: var(--pm-muted); }
-.pm-meta-row i { width: 12px; text-align: center; color: var(--pm-soft); }
-.pm-meta-val { color: var(--pm-text); font-size: var(--text-xs); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.pm-status-badge {
-  align-self: flex-start;
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 2px 9px; border-radius: var(--pm-radius-pill);
-  font-size: var(--text-2xs); font-weight: 600; letter-spacing: 0.2px;
-}
-.pm-badge-up      { background: color-mix(in srgb, var(--pm-up) 13%, transparent);   color: var(--pm-up); }
-.pm-badge-warning,.pm-badge-unusual { background: color-mix(in srgb, var(--pm-warn) 14%, transparent); color: var(--pm-warn); }
-.pm-badge-down    { background: color-mix(in srgb, var(--pm-down) 12%, transparent); color: var(--pm-down); }
-.pm-badge-paused_by_user,.pm-badge-paused_by_dep,.pm-badge-paused_by_sched,
-.pm-badge-paused_until,.pm-badge-no_probe,.pm-badge-not_licensed { background: var(--pm-bg-muted); color: var(--pm-paused); }
-.pm-badge-unknown,.pm-badge-collecting { background: var(--pm-bg-muted); color: var(--pm-unknown); }
-
-.pm-card-item { margin-top: 1px; padding-top: 9px; border-top: 1px solid var(--pm-border); }
-.pm-item-label { font-size: 10px; text-transform: uppercase; font-weight: 600; color: var(--pm-soft); letter-spacing: 0.5px; margin-bottom: 3px; }
-.pm-item-link { font-size: var(--text-xs); font-weight: 600; color: var(--pm-brand); text-decoration: none; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pm-item-link:hover { text-decoration: underline; }
-.pm-item-sub { font-size: var(--text-2xs); color: var(--pm-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* ── Estados ─────────────────────────────────────────────────────────── */
-.pm-empty, .pm-no-prtg {
-  display: grid; place-items: center; gap: 4px; text-align: center;
-  padding: 56px 24px; color: var(--pm-muted);
-  border: 1px solid var(--pm-border); border-radius: var(--pm-radius-md); background: var(--pm-bg);
-}
-.pm-empty-icon, .pm-no-prtg-icon {
-  width: 56px; height: 56px; display: grid; place-items: center;
-  border-radius: var(--pm-radius-md); background: var(--pm-bg-soft); font-size: var(--text-xl); color: var(--pm-soft); margin-bottom: 8px;
-}
-.pm-empty p { margin: 0; font-size: var(--text-sm); }
-.pm-no-prtg h3 { color: var(--pm-text); margin: 0 0 4px; font-size: var(--text-md); font-weight: 600; }
-.pm-no-prtg p { margin: 0; font-size: var(--text-sm); }
-.pm-no-prtg code { font-family: var(--font-mono, monospace); font-size: var(--text-xs); }
-
-/* ── Refresh badge (header) ──────────────────────────────────────────── */
-.pm-refresh-badge {
-  display: inline-flex; align-items: center; gap: 7px;
-  font-size: var(--text-xs); font-weight: 500; color: var(--text-tertiary, #6e6e73);
-  background: var(--bg-elevated, #fff); border: 1px solid var(--separator-hairline, rgba(0,0,0,.08));
-  border-radius: var(--radius-sm, 9px); padding: 5px 11px;
-}
-.pm-refresh-badge .pm-spin-icon { color: var(--success, #34c759); font-size: var(--text-2xs); }
-@keyframes pmSpin { to { transform: rotate(360deg); } }
-.pm-spin-icon.is-spinning { animation: pmSpin 0.8s linear infinite; }
-
-/* filtro/estado */
-.pm-card.is-hidden { display: none !important; }
-.pm-group.is-empty { display: none !important; }
-
-@media (max-width: 720px) {
-  .pm-metrics { grid-template-columns: repeat(3, 1fr); }
-  .pm-search { flex-basis: 100%; order: 3; }
-}
-@media (max-width: 460px) {
-  .pm-metrics { grid-template-columns: 1fr 1fr; }
-  .pm-grid { grid-template-columns: 1fr; }
-}
-</style>
+<link rel="stylesheet" href="{% static 'css/ds-rede.css' %}?v={{ assets_version }}">
 {% endblock %}
 
 {% block content %}
-<div class="pm-page">
+<div class="nx-pagina">
 
 {% if not prtg_ok %}
-<div class="pm-no-prtg">
-  <div class="pm-no-prtg-icon"><i class="fa-solid fa-plug-circle-xmark"></i></div>
-  <h3>PRTG não configurado</h3>
-  <p>Defina <code>PRTG_URL</code>, <code>PRTG_USER</code> e <code>PRTG_PASSHASH</code> no arquivo <code>.env</code>.</p>
-</div>
+  <div class="nx-vazio-bloco">
+    <h2>PRTG não configurado</h2>
+    <p>
+      Defina <code>PRTG_URL</code>, <code>PRTG_USER</code> e
+      <code>PRTG_PASSHASH</code> no arquivo <code>.env</code>. As credenciais
+      ficam só no servidor — o navegador recebe apenas o JSON filtrado.
+    </p>
+  </div>
 {% else %}
 
-<!-- Métricas -->
-<div class="pm-metrics">
-  <div class="pm-metric">
-    <span class="pm-metric-label"><i class="fa-solid fa-server" style="font-size:11px;color:var(--pm-soft)"></i> Dispositivos</span>
-    <span class="pm-metric-value" id="kpiTotal">{{ total }}</span>
-  </div>
-  <div class="pm-metric">
-    <span class="pm-metric-label"><span class="pm-dot pm-dot-up"></span> Online</span>
-    <span class="pm-metric-value" id="kpiOnline">{{ online }}</span>
-  </div>
-  <div class="pm-metric">
-    <span class="pm-metric-label"><span class="pm-dot pm-dot-down"></span> Offline</span>
-    <span class="pm-metric-value" id="kpiOffline">{{ offline }}</span>
-  </div>
-  <div class="pm-metric">
-    <span class="pm-metric-label"><span class="pm-dot pm-dot-warning"></span> Atenção</span>
-    <span class="pm-metric-value" id="kpiWarn">{{ warning }}</span>
-  </div>
-  <div class="pm-metric">
-    <span class="pm-metric-label"><span class="pm-dot pm-dot-paused_by_user"></span> Pausado</span>
-    <span class="pm-metric-value" id="kpiPaused">{{ paused }}</span>
-  </div>
-</div>
-
-<!-- Toolbar -->
-<div class="pm-toolbar">
-  <div class="pm-filters">
-    <button class="pm-filter-btn is-active" data-f="all">Todos <span class="pm-fcount" id="fbAll">{{ total }}</span></button>
-    <button class="pm-filter-btn" data-f="up">Online <span class="pm-fcount" id="fbUp">{{ online }}</span></button>
-    <button class="pm-filter-btn" data-f="down">Offline <span class="pm-fcount" id="fbDown">{{ offline }}</span></button>
-    <button class="pm-filter-btn" data-f="warning">Atenção <span class="pm-fcount" id="fbWarn">{{ warning }}</span></button>
-    <button class="pm-filter-btn" data-f="paused">Pausado <span class="pm-fcount" id="fbPaused">{{ paused }}</span></button>
-  </div>
-  <label class="pm-search">
-    <i class="fa-solid fa-magnifying-glass pm-search-icon" aria-hidden="true"></i>
-    <input type="search" id="pmSearch" placeholder="Buscar dispositivo…" autocomplete="off">
-  </label>
-  <a href="{% url 'prtg_monitor_export' %}" class="pm-export-btn" title="Gera uma planilha com todos os equipamentos e status, separados por KTL, RDM, PIN e Mambaí.">
-    <i class="fa-solid fa-file-excel" aria-hidden="true"></i> Exportar planilha
-  </a>
-</div>
-
-<!-- Grupos (sites) -->
-{% for group_name, devs in groups_list %}
-<div class="pm-group" id="grp-{{ forloop.counter }}" data-grp-name="{{ group_name }}">
-  <div class="pm-group-header" role="button" tabindex="0" aria-expanded="true" aria-controls="car-{{ forloop.counter }}">
-    <i class="fa-solid fa-chevron-down pm-group-chevron" aria-hidden="true"></i>
-    <span class="pm-group-title">{{ group_name }}</span>
-    <span class="pm-group-count grp-count" data-grp="{{ forloop.counter }}">{{ devs|length }}</span>
-  </div>
-  <div class="pm-grid" id="car-{{ forloop.counter }}">
-    {% for dev in devs %}
-    <div class="pm-card"
-         data-prtg-id="{{ dev.objid }}"
-         data-status="{{ dev.status_slug }}"
-         data-grp="{{ forloop.parentloop.counter }}"
-         data-name="{{ dev.name|lower }}">
-      <div class="pm-card-bar pm-bar-{{ dev.status_slug }}"></div>
-      <div class="pm-card-body">
-        <div class="pm-card-top">
-          <span class="pm-dot pm-dot-{{ dev.status_slug }}"></span>
-          <span class="pm-card-name">{{ dev.name }}</span>
-        </div>
-        <div class="pm-card-meta">
-          {% if dev.host %}
-          <div class="pm-meta-row">
-            <i class="fa-solid fa-network-wired" aria-hidden="true"></i>
-            <span class="pm-meta-val">{{ dev.host }}</span>
-          </div>
-          {% endif %}
-          {% if dev.group %}
-          <div class="pm-meta-row">
-            <i class="fa-solid fa-folder" aria-hidden="true"></i>
-            <span>{{ dev.group }}</span>
-          </div>
-          {% endif %}
-        </div>
-        <span class="pm-status-badge pm-badge-{{ dev.status_slug }}">
-          {{ dev.statustext|default:dev.status_slug }}
-        </span>
-        {% if dev.item_match %}
-        <div class="pm-card-item">
-          <div class="pm-item-label">Estoque</div>
-          <a href="{% url 'equipamento_detalhe' dev.item_match.id %}" class="pm-item-link" title="{{ dev.item_match.nome }}">
-            {{ dev.item_match.nome }}
-          </a>
-          <div class="pm-item-sub">
-            {% if dev.item_match.marca %}{{ dev.item_match.marca }}{% endif %}
-            {% if dev.item_match.modelo %} — {{ dev.item_match.modelo }}{% endif %}
-            {% if dev.item_match.localidade__local %} · {{ dev.item_match.localidade__local }}{% endif %}
-          </div>
-        </div>
-        {% endif %}
-      </div>
+  <div class="nx-kpis">
+    <div class="nx-kpi">
+      <span class="nx-kpi-n" id="kpiTotal">{{ total }}</span>
+      <span class="nx-kpi-r">Dispositivos</span>
     </div>
-    {% endfor %}
+    <div class="nx-kpi" data-tom="ok">
+      <span class="nx-kpi-n" id="kpiOnline">{{ online }}</span>
+      <span class="nx-kpi-r">Online</span>
+    </div>
+    <div class="nx-kpi" data-tom="ruim">
+      <span class="nx-kpi-n" id="kpiOffline">{{ offline }}</span>
+      <span class="nx-kpi-r">Offline</span>
+    </div>
+    <div class="nx-kpi" data-tom="atencao">
+      <span class="nx-kpi-n" id="kpiWarn">{{ warning }}</span>
+      <span class="nx-kpi-r">Instável</span>
+    </div>
+    <div class="nx-kpi">
+      <span class="nx-kpi-n" id="kpiPaused">{{ paused }}</span>
+      <span class="nx-kpi-r">Pausado</span>
+    </div>
+    <div class="nx-kpi">
+      <span class="nx-kpi-n" id="kpiUnknown">{{ unknown }}</span>
+      <span class="nx-kpi-r">Desconhecido</span>
+    </div>
   </div>
-</div>
-{% empty %}
-<div class="pm-empty">
-  <div class="pm-empty-icon"><i class="fa-solid fa-satellite-dish"></i></div>
-  <p>Nenhum dispositivo encontrado no PRTG.</p>
-</div>
-{% endfor %}
+
+  <div class="nx-barra">
+    <span class="nx-label">Filtrar</span>
+    <div class="nx-grupo-btn" role="group" aria-label="Filtrar por situação">
+      <button type="button" class="nx-btn is-ativo" data-f="all" aria-pressed="true">
+        Todos <span class="nx-conta" id="fbAll">{{ total }}</span>
+      </button>
+      <button type="button" class="nx-btn" data-f="up" aria-pressed="false">
+        Online <span class="nx-conta" id="fbUp">{{ online }}</span>
+      </button>
+      <button type="button" class="nx-btn" data-f="down" aria-pressed="false">
+        Offline <span class="nx-conta" id="fbDown">{{ offline }}</span>
+      </button>
+      <button type="button" class="nx-btn" data-f="warning" aria-pressed="false">
+        Instável <span class="nx-conta" id="fbWarn">{{ warning }}</span>
+      </button>
+      <button type="button" class="nx-btn" data-f="paused" aria-pressed="false">
+        Pausado <span class="nx-conta" id="fbPaused">{{ paused }}</span>
+      </button>
+    </div>
+
+    <input type="search" class="nx-input" id="buscaDev" style="flex:0 1 230px"
+           placeholder="Buscar dispositivo ou IP…" aria-label="Buscar dispositivo">
+
+    <div class="nx-elastico"></div>
+
+    <span class="nx-selo" data-tom="ok" title="Status relido a cada 30 segundos">
+      ao vivo · <span class="nx-num" id="relogio">agora</span>
+    </span>
+    <a class="nx-btn" href="{% url 'rede_mapa' %}">Mapa de Rede</a>
+    <a class="nx-btn nx-btn--primario" href="{% url 'prtg_monitor_export' %}"
+       title="Planilha com todos os equipamentos e status, seccionada por KTL, RDM, PIN e Mambaí">
+      Exportar planilha
+    </a>
+  </div>
+
+  {% for group_name, devs in groups_list %}
+  <details class="nx-cartao nx-grupo-dev" id="grp-{{ forloop.counter }}"
+           data-grupo="{{ group_name }}" open>
+    <summary>
+      <span>{{ group_name }}</span>
+      <span class="nx-conta"><b class="nx-num grp-conta">{{ devs|length }}</b> / {{ devs|length }}</span>
+    </summary>
+
+    <div class="nx-tabela-wrap">
+      <table class="nx-tabela">
+        <thead>
+          <tr>
+            <th scope="col">Dispositivo</th>
+            <th scope="col">IP / host</th>
+            <th scope="col">Situação</th>
+            <th scope="col">Detalhe do PRTG</th>
+            <th scope="col">Item no estoque</th>
+            <th scope="col">Localidade</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for dev in devs %}
+          <tr data-prtg-id="{{ dev.objid }}"
+              data-status="{{ dev.status_slug }}"
+              data-busca="{{ dev.name|lower }} {{ dev.host|lower }}">
+            <td title="{{ dev.name }}">{{ dev.name }}</td>
+            <td class="nx-num">{{ dev.host|default:"—" }}</td>
+            <td class="celula-situacao"></td>
+            <td class="celula-detalhe" title="{{ dev.statustext }}">{{ dev.statustext|default:"—" }}</td>
+            <td>
+              {% if dev.item_match %}
+              <a href="{% url 'equipamento_detalhe' dev.item_match.id %}" title="{{ dev.item_match.nome }}">
+                {{ dev.item_match.nome }}
+              </a>
+              {% else %}
+              <span class="nx-dica">não correlacionado</span>
+              {% endif %}
+            </td>
+            <td>{{ dev.item_match.localidade__local|default:"—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% empty %}
+  <div class="nx-vazio-bloco">
+    <h2>Nenhum dispositivo no PRTG</h2>
+    <p>A conexão respondeu, mas o servidor não devolveu dispositivo nenhum.</p>
+  </div>
+  {% endfor %}
 
 {% endif %}
 </div>
@@ -377,206 +162,170 @@
 {% if prtg_ok %}
 <script>
 (function () {
-  'use strict';
+'use strict';
 
-  var STATUS_URL = '{{ status_url }}';
-  var REFRESH_MS = 30000;
-  var _lastRefresh = Date.now();
-  var _filterActive = 'all';
-  var _searchTerm   = '';
+const STATUS_URL = '{{ status_url }}';
+const INTERVALO = 30000;
+const CHAVE_RECOLHIDOS = 'nxMonitorRecolhidos';
 
-  // ── Filtro de status ───────────────────────────────────────────────────────
-  document.querySelectorAll('.pm-filter-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      document.querySelectorAll('.pm-filter-btn').forEach(function (b) { b.classList.remove('is-active'); });
-      btn.classList.add('is-active');
-      _filterActive = btn.dataset.f;
-      applyFilter();
+/* Rótulo e tom por slug — cobre os 12 códigos do PRTG; o 10 (unusual)
+   conta como instável, como manda a tabela do CLAUDE.md. */
+const ROTULO = {
+  up: 'Online', down: 'Offline', warning: 'Instável', unusual: 'Instável',
+  unknown: 'Desconhecido', collecting: 'Coletando',
+  paused_by_user: 'Pausado (usuário)', paused_by_dep: 'Pausado (dependência)',
+  paused_by_sched: 'Pausado (agenda)', paused_until: 'Pausado (prazo)',
+  no_probe: 'Sem sonda', not_licensed: 'Sem licença',
+};
+const TOM = { up: 'ok', down: 'ruim', warning: 'atencao', unusual: 'atencao' };
+
+let filtro = 'all';
+let termo = '';
+
+/* ── Situação: desenhada em JS para o rótulo e o tom saírem do MESMO
+   lugar na carga inicial e no refresh. Duas fontes divergiriam no
+   primeiro status que alguém acrescentasse. ───────────────────────── */
+function pintarSituacao(linha) {
+  const slug = linha.dataset.status || 'unknown';
+  const celula = linha.querySelector('.celula-situacao');
+  if (!celula) return;
+  celula.replaceChildren();
+  const selo = document.createElement('span');
+  selo.className = 'nx-selo';
+  selo.dataset.tom = TOM[slug] || 'neutro';
+  selo.textContent = ROTULO[slug] || slug;
+  celula.appendChild(selo);
+}
+
+document.querySelectorAll('.nx-tabela tr[data-prtg-id]').forEach(pintarSituacao);
+
+/* ── Filtro e busca ────────────────────────────────────────────────── */
+function casaFiltro(slug) {
+  if (filtro === 'all') return true;
+  if (filtro === 'warning') return slug === 'warning' || slug === 'unusual';
+  if (filtro === 'paused') return slug.indexOf('paused') !== -1;
+  return slug === filtro;
+}
+
+function aplicar() {
+  document.querySelectorAll('.nx-grupo-dev').forEach((grupo) => {
+    let visiveis = 0;
+    grupo.querySelectorAll('tr[data-prtg-id]').forEach((linha) => {
+      const slug = linha.dataset.status || '';
+      const alvo = linha.dataset.busca || '';
+      const mostra = casaFiltro(slug) && (!termo || alvo.includes(termo));
+      linha.hidden = !mostra;
+      if (mostra) visiveis += 1;
     });
+    // Grupo sem linha visível fica recolhido, nunca escondido: some o
+    // conteúdo e fica o título, para o filtro não apagar da tela que
+    // aquele grupo existe.
+    grupo.hidden = false;
+    if (!visiveis) grupo.open = false;
+    const conta = grupo.querySelector('.grp-conta');
+    if (conta) conta.textContent = String(visiveis);
   });
+}
 
-  // ── Busca ──────────────────────────────────────────────────────────────────
-  var searchInput = document.getElementById('pmSearch');
-  if (searchInput) {
-    searchInput.addEventListener('input', function () {
-      _searchTerm = this.value.toLowerCase().trim();
-      applyFilter();
+document.querySelectorAll('[data-f]').forEach((botao) => {
+  botao.addEventListener('click', () => {
+    document.querySelectorAll('[data-f]').forEach((b) => {
+      b.classList.toggle('is-ativo', b === botao);
+      b.setAttribute('aria-pressed', b === botao ? 'true' : 'false');
     });
-  }
-
-  // ── Recolher / expandir grupos (accordion) ─────────────────────────────────
-  var COLLAPSE_KEY = 'pmCollapsedGroups';
-  function loadCollapsed() {
-    try { return JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]'); } catch (e) { return []; }
-  }
-  var _collapsed = loadCollapsed();
-  function saveCollapsed() {
-    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(_collapsed)); } catch (e) {}
-  }
-
-  document.querySelectorAll('.pm-group').forEach(function (grp) {
-    var header = grp.querySelector('.pm-group-header');
-    if (!header) return;
-    var name = grp.dataset.grpName || grp.id;
-
-    if (_collapsed.indexOf(name) !== -1) grp.classList.add('is-collapsed');
-    header.setAttribute('aria-expanded', grp.classList.contains('is-collapsed') ? 'false' : 'true');
-
-    function toggle() {
-      var collapsed = grp.classList.toggle('is-collapsed');
-      header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-      var idx = _collapsed.indexOf(name);
-      if (collapsed && idx === -1) _collapsed.push(name);
-      else if (!collapsed && idx !== -1) _collapsed.splice(idx, 1);
-      saveCollapsed();
-    }
-
-    header.addEventListener('click', toggle);
-    header.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); toggle(); }
-    });
+    filtro = botao.dataset.f;
+    aplicar();
   });
+});
 
-  function statusMatchesFilter(slug) {
-    if (_filterActive === 'all') return true;
-    if (_filterActive === 'up')      return slug === 'up';
-    if (_filterActive === 'down')    return slug === 'down';
-    if (_filterActive === 'warning') return slug === 'warning' || slug === 'unusual';
-    if (_filterActive === 'paused')  return slug.indexOf('paused') !== -1;
-    return true;
-  }
+const busca = document.getElementById('buscaDev');
+if (busca) {
+  busca.addEventListener('input', () => {
+    termo = busca.value.toLowerCase().trim();
+    aplicar();
+  });
+}
 
-  function applyFilter() {
-    var groups = {};
-    document.querySelectorAll('.pm-card').forEach(function (card) {
-      var slug = card.dataset.status || '';
-      var name = card.dataset.name  || '';
-      var grp  = card.dataset.grp   || '';
-      var show = statusMatchesFilter(slug) && (!_searchTerm || name.indexOf(_searchTerm) !== -1);
-      card.classList.toggle('is-hidden', !show);
-      if (!groups[grp]) groups[grp] = { total: 0, visible: 0 };
-      groups[grp].total++;
-      if (show) groups[grp].visible++;
+/* ── Memória do recolhido ──────────────────────────────────────────── */
+function lerRecolhidos() {
+  try { return JSON.parse(localStorage.getItem(CHAVE_RECOLHIDOS) || '[]'); } catch (e) { return []; }
+}
+let recolhidos = lerRecolhidos();
+
+document.querySelectorAll('.nx-grupo-dev').forEach((grupo) => {
+  const nome = grupo.dataset.grupo || grupo.id;
+  if (recolhidos.includes(nome)) grupo.open = false;
+  grupo.addEventListener('toggle', () => {
+    const i = recolhidos.indexOf(nome);
+    if (!grupo.open && i === -1) recolhidos.push(nome);
+    else if (grupo.open && i !== -1) recolhidos.splice(i, 1);
+    try { localStorage.setItem(CHAVE_RECOLHIDOS, JSON.stringify(recolhidos)); } catch (e) { /* cota */ }
+  });
+});
+
+/* ── Releitura do status ───────────────────────────────────────────── */
+async function reler() {
+  try {
+    const r = await fetch(STATUS_URL, { credentials: 'same-origin' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.ok || !d.devices_map) return;
+    const mapa = d.devices_map;
+
+    document.querySelectorAll('tr[data-prtg-id]').forEach((linha) => {
+      const id = parseInt(linha.dataset.prtgId, 10);
+      const dev = mapa[id] || mapa[String(id)];
+      if (!dev) return;
+      const slug = dev.status_slug || 'unknown';
+      if (slug !== linha.dataset.status) {
+        linha.dataset.status = slug;
+        pintarSituacao(linha);
+      }
+      const detalhe = linha.querySelector('.celula-detalhe');
+      if (detalhe) {
+        detalhe.textContent = dev.statustext || ROTULO[slug] || slug;
+        detalhe.title = dev.statustext || '';
+      }
     });
-    // Oculta grupos sem cards visíveis; atualiza contagem
-    document.querySelectorAll('.pm-group').forEach(function (grpEl) {
-      var id   = grpEl.id.replace('grp-', '');
-      var info = groups[id];
-      var cnt  = info ? info.visible : 0;
-      grpEl.classList.toggle('is-empty', cnt === 0);
-      var badge = grpEl.querySelector('.grp-count');
-      if (badge) badge.textContent = cnt;
+
+    const c = { total: 0, up: 0, down: 0, warn: 0, paused: 0, unknown: 0 };
+    document.querySelectorAll('tr[data-prtg-id]').forEach((linha) => {
+      const slug = linha.dataset.status || '';
+      c.total += 1;
+      if (slug === 'up') c.up += 1;
+      else if (slug === 'down') c.down += 1;
+      else if (slug === 'warning' || slug === 'unusual') c.warn += 1;
+      else if (slug.indexOf('paused') !== -1) c.paused += 1;
+      else c.unknown += 1;
     });
-  }
 
-  // ── Auto-refresh de status PRTG ───────────────────────────────────────────
-  var spinIcon = document.getElementById('pmSpinIcon');
-  var refreshLabel = document.getElementById('pmRefreshLabel');
-
-  function slugToStatusText(slug) {
-    var map = {
-      'up': 'Online', 'down': 'Offline', 'warning': 'Atenção',
-      'unusual': 'Incomum', 'unknown': 'Desconhecido', 'collecting': 'Coletando',
-      'paused_by_user': 'Pausado (usuário)', 'paused_by_dep': 'Pausado (dep.)',
-      'paused_by_sched': 'Pausado (agend.)', 'paused_until': 'Pausado (tempo)',
-      'no_probe': 'Sem sonda', 'not_licensed': 'Sem licença',
+    const por = {
+      kpiTotal: c.total, kpiOnline: c.up, kpiOffline: c.down, kpiWarn: c.warn,
+      kpiPaused: c.paused, kpiUnknown: c.unknown,
+      fbAll: c.total, fbUp: c.up, fbDown: c.down, fbWarn: c.warn, fbPaused: c.paused,
     };
-    return map[slug] || slug;
+    Object.entries(por).forEach(([id, valor]) => {
+      const no = document.getElementById(id);
+      if (no) no.textContent = String(valor);
+    });
+
+    aplicar();
+    const relogio = document.getElementById('relogio');
+    if (relogio) relogio.textContent = new Date().toLocaleTimeString('pt-BR', { hour12: false });
+  } catch (erro) {
+    /* O monitor segue útil com o último status desenhado. */
   }
+}
 
-  function refreshStatus() {
-    if (spinIcon) spinIcon.classList.add('is-spinning');
-    fetch(STATUS_URL, { credentials: 'same-origin' })
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (!data.ok || !data.devices_map) return;
-        var map = data.devices_map;
-        var counts = { online: 0, offline: 0, warning: 0, paused: 0, total: 0 };
+aplicar();
+setInterval(() => {
+  if (document.visibilityState === 'visible') reler();
+}, INTERVALO);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') reler();
+});
 
-        document.querySelectorAll('.pm-card[data-prtg-id]').forEach(function (card) {
-          var id  = parseInt(card.dataset.prtgId, 10);
-          var dev = map[id] || map[String(id)];
-          if (!dev) return;
-          var slug = dev.status_slug || 'unknown';
-          var oldSlug = card.dataset.status;
-          if (slug !== oldSlug) {
-            // Atualizar barra
-            var bar = card.querySelector('.pm-card-bar');
-            if (bar) { bar.className = 'pm-card-bar pm-bar-' + slug; }
-            // Atualizar dot
-            var dot = card.querySelector('.pm-dot');
-            if (dot) { dot.className = 'pm-dot pm-dot-' + slug; }
-            // Atualizar badge
-            var badge = card.querySelector('.pm-status-badge');
-            if (badge) {
-              badge.className = 'pm-status-badge pm-badge-' + slug;
-              badge.textContent = dev.statustext || slugToStatusText(slug);
-            }
-            card.dataset.status = slug;
-          }
-        });
-
-        // Recontagem total
-        document.querySelectorAll('.pm-card').forEach(function (card) {
-          var slug = card.dataset.status || '';
-          counts.total++;
-          if (slug === 'up') counts.online++;
-          else if (slug === 'down') counts.offline++;
-          else if (slug === 'warning' || slug === 'unusual') counts.warning++;
-          else if (slug.indexOf('paused') !== -1) counts.paused++;
-        });
-
-        var kpiTotal  = document.getElementById('kpiTotal');
-        var kpiOnline = document.getElementById('kpiOnline');
-        var kpiOffline= document.getElementById('kpiOffline');
-        var kpiWarn   = document.getElementById('kpiWarn');
-        var kpiPaused = document.getElementById('kpiPaused');
-        var fbAll     = document.getElementById('fbAll');
-        var fbUp      = document.getElementById('fbUp');
-        var fbDown    = document.getElementById('fbDown');
-        var fbWarn    = document.getElementById('fbWarn');
-        var fbPaused  = document.getElementById('fbPaused');
-
-        if (kpiTotal)   kpiTotal.textContent   = counts.total;
-        if (kpiOnline)  kpiOnline.textContent  = counts.online;
-        if (kpiOffline) kpiOffline.textContent = counts.offline;
-        if (kpiWarn)    kpiWarn.textContent    = counts.warning;
-        if (kpiPaused)  kpiPaused.textContent  = counts.paused;
-        if (fbAll)      fbAll.textContent      = counts.total;
-        if (fbUp)       fbUp.textContent       = counts.online;
-        if (fbDown)     fbDown.textContent     = counts.offline;
-        if (fbWarn)     fbWarn.textContent     = counts.warning;
-        if (fbPaused)   fbPaused.textContent   = counts.paused;
-
-        applyFilter();
-        _lastRefresh = Date.now();
-      })
-      .catch(function () {})
-      .finally(function () {
-        if (spinIcon) spinIcon.classList.remove('is-spinning');
-      });
-  }
-
-  // Contador "atualizado há Xs"
-  setInterval(function () {
-    if (!refreshLabel) return;
-    var sec = Math.round((Date.now() - _lastRefresh) / 1000);
-    refreshLabel.textContent = sec < 5 ? 'ao vivo' : 'há ' + sec + 's';
-  }, 5000);
-
-  // Iniciar refresh periódico
-  setTimeout(function tick() {
-    refreshStatus();
-    setTimeout(tick, REFRESH_MS);
-  }, REFRESH_MS);
-
-  // Pausar quando aba está oculta
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden && Date.now() - _lastRefresh > REFRESH_MS) {
-      refreshStatus();
-    }
-  });
-})();
+}());
 </script>
 {% endif %}
 {% endblock %}

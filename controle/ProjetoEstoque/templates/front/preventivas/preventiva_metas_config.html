@@ -1,0 +1,390 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Responsáveis e Ciclos de Preventiva{% endblock %}
+{% block page_title %}Responsáveis por Área{% endblock %}
+{% block page_subtitle %}Quem responde por cada parque e em que ciclo a meta é apurada{% endblock %}
+
+{% block header_actions %}
+  <a href="{% url 'preventiva_metas' %}" class="btn btn-sm">
+    <i class="fa fa-chart-pie" aria-hidden="true"></i> Painel de metas
+  </a>
+  <a href="{% url 'preventiva_plano' %}" class="btn btn-sm">
+    <i class="fa fa-calendar-plus" aria-hidden="true"></i> Plano de Agendamento
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+  {% comment %}A folha do módulo vem DEPOIS do Select2 de propósito: é ela que
+     reveste o componente nos tokens do sistema, e invertida a ordem o CDN
+     venceria (regra 26 — a ordem faz parte do contrato).{% endcomment %}
+  {% include 'front/preventivas/_pv_design_system.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="pvc-page">
+
+  {% comment %}Como as três peças se encaixam. Sem isto, "área" no cadastro do
+     equipamento e "responsável" aqui parecem controles soltos.{% endcomment %}
+  <div class="pvm-aviso is-info">
+    <i class="fa fa-circle-info" aria-hidden="true"></i>
+    <div class="pvm-aviso-corpo">
+      <span class="pvm-aviso-titulo">Como a meta é montada</span>
+      <span class="pvm-aviso-texto">
+        <strong>1.</strong> O equipamento recebe a <strong>área de operação</strong> no próprio cadastro
+        (campo “Área de operação”, em Controle Operacional). ·
+        <strong>2.</strong> Aqui você diz <strong>quem responde</strong> por cada área. ·
+        <strong>3.</strong> O <strong>ciclo</strong> é a janela em que todo equipamento elegível
+        precisa receber uma preventiva — 90 dias para switches.
+        A execução continua sendo registrada normalmente nas telas de preventiva;
+        a meta apenas lê esses registros.
+      </span>
+    </div>
+  </div>
+
+  {# ── Pendência de classificação: pré-requisito que trava o denominador ── #}
+  {% if pendencias %}
+    <div class="pvm-aviso">
+      <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+      <div class="pvm-aviso-corpo">
+        <span class="pvm-aviso-titulo">Equipamentos ativos sem área de operação</span>
+        <span class="pvm-aviso-texto">
+          Sem área, o ativo não entra na meta de nenhum técnico. Classifique no cadastro do equipamento.
+        </span>
+        <div class="pvm-aviso-chips">
+          {% for p in pendencias %}
+            <a class="pvm-aviso-chip"
+               href="{% url 'equipamentos_list' %}?subtipo={{ p.subtipo.pk }}"
+               title="{{ p.classificados }} já classificado(s)">
+              {{ p.subtipo.nome }}: {{ p.sem_area }} sem área
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="pvc-colunas {% if editando_ciclo %}is-editando{% endif %}">
+
+    {# ══════════════ RESPONSÁVEIS POR ÁREA ══════════════ #}
+    <section class="pv-card">
+      <div class="pv-card-head">
+        <h2 class="pv-card-title"><i class="fa fa-user-gear" aria-hidden="true"></i> Técnicos responsáveis</h2>
+      </div>
+      <div class="pv-card-body">
+        <form method="post" class="pvc-form">
+          {% csrf_token %}
+          <input type="hidden" name="acao" value="salvar_responsavel">
+          <input type="hidden" name="responsavel_id" value="{{ editando_responsavel|default_if_none:'' }}">
+
+          {% if form_responsavel.non_field_errors %}
+            <div class="pvc-erro">{{ form_responsavel.non_field_errors }}</div>
+          {% endif %}
+
+          <div class="pvc-grid">
+            <div class="pvc-campo {% if form_responsavel.area.errors %}is-erro{% endif %}">
+              <label for="{{ form_responsavel.area.id_for_label }}">Área de operação</label>
+              {{ form_responsavel.area }}
+              {% if form_responsavel.area.errors %}<div class="pvc-erro">{{ form_responsavel.area.errors }}</div>{% endif %}
+            </div>
+
+            <div class="pvc-campo {% if form_responsavel.tecnico.errors %}is-erro{% endif %}">
+              <label for="{{ form_responsavel.tecnico.id_for_label }}">Técnico</label>
+              {{ form_responsavel.tecnico }}
+              {% if form_responsavel.tecnico.errors %}<div class="pvc-erro">{{ form_responsavel.tecnico.errors }}</div>{% endif %}
+            </div>
+
+            <div class="pvc-campo {% if form_responsavel.subtipo.errors %}is-erro{% endif %}">
+              <label for="{{ form_responsavel.subtipo.id_for_label }}">Subtipo</label>
+              {{ form_responsavel.subtipo }}
+              <span class="pvc-dica">Vazio = vale para todos os subtipos da área.</span>
+              {% if form_responsavel.subtipo.errors %}<div class="pvc-erro">{{ form_responsavel.subtipo.errors }}</div>{% endif %}
+            </div>
+
+            <div class="pvc-campo">
+              <label for="{{ form_responsavel.ativo.id_for_label }}">Ativo</label>
+              <span style="display:flex;align-items:center;gap:var(--space-2);height:var(--pv-control-h);">
+                {{ form_responsavel.ativo }}
+                <span class="pvc-dica">Desmarcado, deixa de ser o padrão sem perder o histórico.</span>
+              </span>
+            </div>
+
+            <div class="pvc-campo is-largo">
+              <label for="{{ form_responsavel.observacao.id_for_label }}">Observação</label>
+              {{ form_responsavel.observacao }}
+            </div>
+          </div>
+
+          <div class="pvc-acoes">
+            <button type="submit" class="btn btn-sm btn-primary">
+              <i class="fa fa-floppy-disk" aria-hidden="true"></i> Salvar responsável
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {% if responsaveis %}
+        <div class="pv-card-body" style="border-top:1px solid var(--pv-border);">
+          <div class="pvc-lista">
+            {% for r in responsaveis %}
+              <div class="pvc-linha {% if not r.ativo %}is-inativa{% endif %}">
+                <span class="pvc-area-tag is-{{ r.area }}">{{ r.get_area_display }}</span>
+                <div class="pvc-linha-info">
+                  <span class="pvc-linha-titulo">{{ r.tecnico.get_full_name|default:r.tecnico.username }}</span>
+                  <span class="pvc-linha-sub">
+                    {% if r.subtipo %}{{ r.subtipo.nome }}{% else %}Todos os subtipos (padrão da área){% endif %}
+                    {% if not r.ativo %} · inativo{% endif %}
+                    {% if r.observacao %} · {{ r.observacao|truncatechars:60 }}{% endif %}
+                  </span>
+                </div>
+                <div class="pvc-linha-acoes">
+                  <form method="post" onsubmit="return confirm('Remover esta responsabilidade? As execuções já registradas não mudam.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="remover_responsavel">
+                    <input type="hidden" name="responsavel_id" value="{{ r.pk }}">
+                    <button type="submit" class="btn btn-sm btn-ghost" title="Remover responsabilidade">
+                      <i class="fa fa-trash" aria-hidden="true"></i>
+                      <span class="sr-only">Remover</span>
+                    </button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% else %}
+        <div class="pv-card-body" style="border-top:1px solid var(--pv-border);">
+          <div class="ui-empty">
+            <div class="ui-empty-ico"><i class="fa fa-user-slash" aria-hidden="true"></i></div>
+            <p class="ui-empty-title">Nenhum responsável definido</p>
+            <p class="ui-empty-text">
+              Sem responsável, a pendência de preventiva não tem dono antes do agendamento
+              e o painel de metas avisa a área como vaga.
+            </p>
+          </div>
+        </div>
+      {% endif %}
+    </section>
+
+    {# ══════════════ CICLOS DE REFERÊNCIA ══════════════ #}
+    <section class="pv-card" id="pvcCiclo">
+      <div class="pv-card-head">
+        <h2 class="pv-card-title">
+          <i class="fa fa-flag-checkered" aria-hidden="true"></i>
+          {% if editando_ciclo %}Editar ciclo{% else %}Ciclos de referência{% endif %}
+        </h2>
+        {% if editando_ciclo %}
+          <a href="{% url 'preventiva_metas_config' %}" class="btn btn-sm btn-ghost">
+            <i class="fa fa-xmark" aria-hidden="true"></i> Cancelar edição
+          </a>
+        {% endif %}
+      </div>
+      <div class="pv-card-body">
+        <form method="post" class="pvc-form">
+          {% csrf_token %}
+          <input type="hidden" name="acao" value="salvar_ciclo">
+          {% if editando_ciclo %}
+            <input type="hidden" name="ciclo_id" value="{{ editando_ciclo.pk }}">
+            <div class="pvm-aviso is-info">
+              <i class="fa fa-pen" aria-hidden="true"></i>
+              <div class="pvm-aviso-corpo">
+                <span class="pvm-aviso-titulo">
+                  Editando o ciclo de {{ editando_ciclo.subtipo.nome }}
+                </span>
+                <span class="pvm-aviso-texto">
+                  Janela atual: {{ editando_ciclo.data_inicio|date:"d/m/Y" }} a
+                  {{ editando_ciclo.data_fim|date:"d/m/Y" }}
+                  ({{ editando_ciclo.duracao_dias }} dias).
+                </span>
+              </div>
+            </div>
+          {% endif %}
+
+          {% if impacto %}
+            {% comment %}Mexer na janela mexe no PLACAR: execução que sai da
+               janela continua no histórico, mas deixa de pagar a meta. A tela
+               mostra quantos equipamentos mudam de lado e pede a segunda
+               confirmação em vez de aplicar calado.{% endcomment %}
+            <div class="pvm-aviso">
+              <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+              <div class="pvm-aviso-corpo">
+                <span class="pvm-aviso-titulo">Esta alteração muda a apuração do ciclo</span>
+                <span class="pvm-aviso-texto">
+                  Nova janela: <strong>{{ impacto.nova_inicio|date:"d/m/Y" }} a
+                  {{ impacto.data_fim|date:"d/m/Y" }}</strong>
+                  ({{ impacto.nova_duracao }} dias).
+                  {% if impacto.saem %}
+                    <strong>{{ impacto.saem }}</strong>
+                    equipamento{{ impacto.saem|pluralize }} deixa{{ impacto.saem|pluralize:",m" }}
+                    de contar como executado{{ impacto.saem|pluralize }} —
+                    a preventiva permanece no histórico, mas sai desta meta.
+                  {% endif %}
+                  {% if impacto.entram %}
+                    <strong>{{ impacto.entram }}</strong>
+                    equipamento{{ impacto.entram|pluralize }}
+                    passa{{ impacto.entram|pluralize:",m" }} a contar.
+                  {% endif %}
+                </span>
+                <div class="pvc-acoes" style="margin-top:var(--space-2);">
+                  <button type="submit" name="confirmar_impacto" value="1"
+                          class="btn btn-sm btn-primary">
+                    <i class="fa fa-check" aria-hidden="true"></i>
+                    Confirmar e aplicar
+                  </button>
+                  <a href="{% url 'preventiva_metas_config' %}" class="btn btn-sm">
+                    Descartar alteração
+                  </a>
+                </div>
+              </div>
+            </div>
+          {% endif %}
+
+          {% if form_ciclo.non_field_errors %}
+            <div class="pvc-erro">{{ form_ciclo.non_field_errors }}</div>
+          {% endif %}
+
+          <div class="pvc-grid">
+            <div class="pvc-campo {% if form_ciclo.subtipo.errors %}is-erro{% endif %}">
+              <label for="{{ form_ciclo.subtipo.id_for_label }}">Subtipo</label>
+              {{ form_ciclo.subtipo }}
+              {% if form_ciclo.subtipo.help_text %}
+                <span class="pvc-dica">{{ form_ciclo.subtipo.help_text }}</span>
+              {% endif %}
+              {% if form_ciclo.subtipo.errors %}<div class="pvc-erro">{{ form_ciclo.subtipo.errors }}</div>{% endif %}
+            </div>
+
+            <div class="pvc-campo {% if form_ciclo.data_inicio.errors %}is-erro{% endif %}">
+              <label for="{{ form_ciclo.data_inicio.id_for_label }}">Início</label>
+              {{ form_ciclo.data_inicio }}
+              {% if form_ciclo.data_inicio.errors %}<div class="pvc-erro">{{ form_ciclo.data_inicio.errors }}</div>{% endif %}
+            </div>
+
+            <div class="pvc-campo {% if form_ciclo.duracao_dias.errors %}is-erro{% endif %}">
+              <label for="{{ form_ciclo.duracao_dias.id_for_label }}">Duração (dias)</label>
+              {{ form_ciclo.duracao_dias }}
+              <span class="pvc-dica">90 = ciclo de referência dos switches.</span>
+              {% if form_ciclo.duracao_dias.errors %}<div class="pvc-erro">{{ form_ciclo.duracao_dias.errors }}</div>{% endif %}
+            </div>
+
+            <div class="pvc-campo is-largo">
+              <label for="{{ form_ciclo.observacao.id_for_label }}">Observação</label>
+              {{ form_ciclo.observacao }}
+            </div>
+          </div>
+
+          <span class="pvc-dica">
+            Ciclos do mesmo subtipo não podem se sobrepor — uma execução dentro de duas janelas
+            contaria duas vezes e as duas apurações divergiriam.
+          </span>
+
+          <div class="pvc-acoes">
+            <button type="submit" class="btn btn-sm btn-primary">
+              {% if editando_ciclo %}
+                <i class="fa fa-floppy-disk" aria-hidden="true"></i> Salvar alterações
+              {% else %}
+                <i class="fa fa-plus" aria-hidden="true"></i> Abrir ciclo
+              {% endif %}
+            </button>
+            {% if editando_ciclo %}
+              <a href="{% url 'preventiva_metas_config' %}" class="btn btn-sm">Cancelar</a>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+
+      {% if ciclos %}
+        <div class="pv-card-body" style="border-top:1px solid var(--pv-border);">
+          <div class="pvc-lista">
+            {% for c in ciclos %}
+              <div class="pvc-linha">
+                <div class="pvc-linha-info">
+                  <span class="pvc-linha-titulo">
+                    {{ c.ciclo.subtipo.nome }} ·
+                    {{ c.ciclo.data_inicio|date:"d/m/Y" }} → {{ c.ciclo.data_fim|date:"d/m/Y" }}
+                  </span>
+                  <span class="pvc-linha-sub">
+                    {{ c.ciclo.duracao_dias }} dias ·
+                    {{ c.realizados }}/{{ c.previstos }} executados ({{ c.pct }}%)
+                    {% if c.situacao == 'vigente' %} · faltam {{ c.dias_restantes }} dia{{ c.dias_restantes|pluralize }}{% endif %}
+                  </span>
+                </div>
+                <span class="pvm-selo is-{{ c.risco }}">{{ c.risco_label }}</span>
+                <div class="pvc-linha-acoes">
+                  <a class="btn btn-sm btn-ghost"
+                     href="{% url 'preventiva_metas' %}?subtipo={{ c.ciclo.subtipo.pk }}&ciclo={{ c.ciclo.pk }}"
+                     title="Abrir no painel">
+                    <i class="fa fa-chart-pie" aria-hidden="true"></i>
+                    <span class="sr-only">Abrir no painel</span>
+                  </a>
+                  <a class="btn btn-sm btn-ghost"
+                     href="?editar_ciclo={{ c.ciclo.pk }}#pvcCiclo"
+                     title="Editar janela do ciclo">
+                    <i class="fa fa-pen" aria-hidden="true"></i>
+                    <span class="sr-only">Editar</span>
+                  </a>
+                  <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="{% if c.ciclo.encerrado %}reabrir_ciclo{% else %}encerrar_ciclo{% endif %}">
+                    <input type="hidden" name="ciclo_id" value="{{ c.ciclo.pk }}">
+                    <button type="submit" class="btn btn-sm btn-ghost"
+                            title="{% if c.ciclo.encerrado %}Reabrir ciclo{% else %}Encerrar ciclo antes do prazo{% endif %}">
+                      <i class="fa {% if c.ciclo.encerrado %}fa-rotate-left{% else %}fa-flag{% endif %}" aria-hidden="true"></i>
+                      <span class="sr-only">{% if c.ciclo.encerrado %}Reabrir{% else %}Encerrar{% endif %}</span>
+                    </button>
+                  </form>
+                  <form method="post" onsubmit="return confirm('Excluir este ciclo? A apuração dele deixa de existir, mas as execuções registradas permanecem no histórico.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="excluir_ciclo">
+                    <input type="hidden" name="ciclo_id" value="{{ c.ciclo.pk }}">
+                    <button type="submit" class="btn btn-sm btn-ghost" title="Excluir ciclo">
+                      <i class="fa fa-trash" aria-hidden="true"></i>
+                      <span class="sr-only">Excluir</span>
+                    </button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% else %}
+        <div class="pv-card-body" style="border-top:1px solid var(--pv-border);">
+          <div class="ui-empty">
+            <div class="ui-empty-ico"><i class="fa fa-flag-checkered" aria-hidden="true"></i></div>
+            <p class="ui-empty-title">Nenhum ciclo aberto</p>
+            <p class="ui-empty-text">
+              Sem ciclo não existe prazo comum: a meta do técnico não tem data para fechar
+              e o painel não tem o que comparar.
+            </p>
+          </div>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(function () {
+  if (!window.jQuery) return;
+  // Os selects de cadastro: área, técnico e subtipo (nos dois formulários).
+  // O de subtipo lista 20 opções e é o que mais justifica a busca.
+  jQuery('#id_resp_area, #id_resp_tecnico, #id_resp_subtipo, #id_ciclo_subtipo').each(function () {
+    const $el = jQuery(this);
+    // Campo desabilitado (o subtipo travado na edição do ciclo) fica como
+    // <select> cru: o Select2 esconderia o estado desabilitado.
+    if (this.disabled) return;
+    $el.select2({
+      width: '100%',
+      containerCssClass: 'pvm-s2',
+      dropdownCssClass: 'pvm-s2',
+      minimumResultsForSearch: 8,
+      placeholder: $el.find('option[value=""]').text() || null,
+    });
+  });
+})();
+</script>
+{% endblock %}

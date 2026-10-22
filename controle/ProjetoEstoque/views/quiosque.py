@@ -480,6 +480,15 @@ def quiosque_dashboard(request):
 
 
 @login_required
+def quiosque_apresentacao(request):
+    """Apresentação do app Zelo Kiosk (capturas reais do aparelho) — página HTML
+    autônoma (própria <head>/CSS/JS, sem estender base.html), igual ao padrão da
+    vitrine pública em views/apresentacao.py. Fica dentro do login porque mostra
+    o app de dentro do módulo Quiosque, não é material de divulgação externa."""
+    return render(request, "front/quiosque/quiosque_apresentacao.html")
+
+
+@login_required
 def quiosque_detalhe(request, pk: int):
     from ProjetoEstoque.models import KioskDevice
 

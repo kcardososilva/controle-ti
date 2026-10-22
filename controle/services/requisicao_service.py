@@ -452,12 +452,13 @@ class RequisicaoService:
         return cls._marcar_item_retirado(item=item, user=user)
 
     @classmethod
-    def _marcar_item_retirado(cls, *, item, user, numero_nf=None, valor_unitario=None):
+    def _marcar_item_retirado(cls, *, item, user, numero_nf=None, valor_unitario=None, fornecedor=None):
         """Núcleo sem a checagem de Compra — usado pelo `marcar_item_retirado`
         público (após a checagem, acima) e por `finalizar_compra_estoque`/
         `finalizar_compra_sem_estoque` (chamados depois que NF/valor já foram
         validados, quando o bloqueio já não se aplica). `numero_nf`/
-        `valor_unitario` só vêm preenchidos nesses dois últimos casos."""
+        `valor_unitario`/`fornecedor` só vêm preenchidos nesses dois últimos
+        casos."""
         agora = timezone.now()
         item.status = StatusItemSolicitacaoChoices.RETIRADO
         item.retirado_em = agora
@@ -470,6 +471,9 @@ class RequisicaoService:
         if valor_unitario is not None:
             item.valor_unitario = valor_unitario
             update_fields.append("valor_unitario")
+        if fornecedor is not None:
+            item.fornecedor = fornecedor
+            update_fields.append("fornecedor")
         item.save(update_fields=update_fields)
         if item.requisicao_id:
             transaction.on_commit(lambda: _disparar_email_itens_retirados(item.requisicao_id, [item.pk]))
@@ -538,15 +542,17 @@ class RequisicaoService:
         )
         return cls._marcar_item_retirado(
             item=item, user=user, numero_nf=numero_nf, valor_unitario=custo_unitario,
+            fornecedor=fornecedor,
         )
 
     @classmethod
     @transaction.atomic
-    def finalizar_compra_sem_estoque(cls, *, item, numero_nf, valor_unitario, observacao, user):
+    def finalizar_compra_sem_estoque(cls, *, item, fornecedor, numero_nf, valor_unitario, observacao, user):
         """Recebimento de uma compra SEM item de estoque vinculado (ex.:
         serviço, ativo que não é controlado por lote) — não há `Item` pra dar
-        entrada real, então só grava NF + valor unitário no próprio item da
-        requisição (pra entrar no custo da requisição) e marca como retirado."""
+        entrada real, então só grava fornecedor + NF + valor unitário no
+        próprio item da requisição (pra entrar no custo da requisição) e marca
+        como retirado."""
         item = (
             RequisicaoItem.objects
             .select_related("requisicao")
@@ -569,6 +575,7 @@ class RequisicaoService:
         )
         return cls._marcar_item_retirado(
             item=item, user=user, numero_nf=numero_nf, valor_unitario=valor_unitario,
+            fornecedor=fornecedor,
         )
 
     @classmethod
@@ -587,7 +594,8 @@ class RequisicaoService:
         if item.tipo == TipoRequisicaoChoices.COMPRA:
             item.numero_nf = None
             item.valor_unitario = None
-            update_fields += ["numero_nf", "valor_unitario"]
+            item.fornecedor = None
+            update_fields += ["numero_nf", "valor_unitario", "fornecedor"]
         item.atualizado_por = user
         item.save(update_fields=update_fields)
         return item

@@ -1,7 +1,22 @@
 {% extends 'base.html' %}
-{% block title %}Plantas de Infraestrutura{% endblock %}
-{% block page_title %}Plantas de Infraestrutura{% endblock %}
-{% block page_subtitle %}Mapas visuais de equipamentos por localidade com monitoramento PRTG{% endblock %}
+{% load static %}
+
+{% block title %}Plantas de rede{% endblock %}
+{% block page_title %}Plantas de rede{% endblock %}
+{% block page_subtitle %}Mapas de infraestrutura por localidade, com status PRTG sobre cada elemento{% endblock %}
+
+{% comment %}
+O hub do módulo, no design system próprio (`ds-rede.css`, prefixo `.nx-*`).
+
+Antes esta tela carregava ~500 linhas de `<style>` com a paleta e os raios
+escritos à mão (`#0071e3`, `#34c759`, raio 12/18px): mudar um token do sistema
+não chegava aqui, e ela ficou congelada na versão anterior (regras 31 e 33).
+
+O comportamento foi preservado inteiro — busca de cliente, miniatura de
+topologia em canvas e o polling de 30s do PRTG. A única mudança de fundo é que
+as cores do canvas agora são LIDAS dos tokens em vez de escritas no JS: um
+canvas não herda CSS, e hex fixo ali fazia a miniatura ignorar o tema escuro.
+{% endcomment %}
 
 {% block breadcrumbs %}
 <nav class="breadcrumbs" aria-label="Você está aqui">
@@ -13,721 +28,401 @@
 </nav>
 {% endblock %}
 
-{% block header_actions %}
-  {% if request.user.is_staff or request.user.is_superuser %}
-  <a href="{% url 'planta_tv_gerenciar' %}" class="plt-btn plt-btn-ghost">
-    <i class="fa-solid fa-tv"></i> Acesso TV
-  </a>
-  {% endif %}
-  <a href="{% url 'planta_create' %}" class="plt-btn plt-btn-primary">
-    <i class="fa-solid fa-plus"></i> Nova Planta
-  </a>
-{% endblock %}
-
 {% block extra_css %}
-<style>
-:where(.plt-page, .select2-container, .select2-dropdown) {
-  --plt-brand:        var(--brand, #0071e3);
-  --plt-brand-hover:  var(--brand-hover, #0077ed);
-  --plt-brand-soft:   var(--brand-soft, rgba(0,113,227,.10));
-  --plt-ring:         var(--brand-ring, rgba(0,113,227,.30));
-
-  --plt-bg:           var(--bg-elevated, #ffffff);
-  --plt-bg-2:         var(--bg-page-2, #f5f5f7);
-  --plt-bg-soft:      var(--bg-fill-tertiary, rgba(120,120,128,.08));
-  --plt-bg-muted:     var(--bg-fill-secondary, rgba(120,120,128,.12));
-
-  --plt-text:         var(--text-primary, #1d1d1f);
-  --plt-muted:        var(--text-tertiary, #6e6e73);
-  --plt-soft:         var(--text-quaternary, #86868b);
-
-  --plt-border:       var(--separator-hairline, rgba(0,0,0,.08));
-  --plt-border-2:     var(--separator-non-opaque, rgba(0,0,0,.14));
-
-  --plt-success:      var(--success, #34c759);
-  --plt-warning:      var(--warning, #ff9500);
-  --plt-danger:       var(--danger, #ff3b30);
-
-  --plt-radius-sm:    var(--radius-sm, 9px);
-  --plt-radius-md:    var(--radius-md, 12px);
-  --plt-radius-pill:  var(--radius-pill, 980px);
-
-  --plt-shadow-sm:    var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04));
-  --plt-shadow-lg:    var(--shadow-lg, 0 12px 32px rgba(0,0,0,.10), 0 4px 12px rgba(0,0,0,.05));
-
-  --plt-control-h:    38px;
-  --plt-transition:   150ms cubic-bezier(.32,.72,0,1);
-}
-
-.plt-page, .plt-page * { box-sizing: border-box; min-width: 0; }
-.plt-page {
-  width: 100%;
-  max-width: 1440px;
-  margin-inline: auto;
-  color: var(--plt-text);
-  display: grid;
-  gap: 16px;
-}
-
-/* ── Buttons ── */
-.plt-btn {
-  min-height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 7px 14px;
-  border: 1px solid transparent;
-  border-radius: var(--plt-radius-sm);
-  background: transparent;
-  color: var(--plt-text);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: -0.012em;
-  text-decoration: none;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background var(--plt-transition), border-color var(--plt-transition), color var(--plt-transition);
-}
-.plt-btn-primary { background: var(--plt-brand); border-color: var(--plt-brand); color: #fff; }
-.plt-btn-primary:hover { background: var(--plt-brand-hover); border-color: var(--plt-brand-hover); color: #fff; }
-.plt-btn-ghost { border-color: var(--plt-border-2); color: var(--plt-text); }
-.plt-btn-ghost:hover { background: var(--plt-bg-soft); border-color: var(--plt-border-2); }
-
-/* Icon-only buttons */
-.plt-icon-btn {
-  width: 32px; height: 32px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: var(--plt-radius-sm);
-  border: 1px solid var(--plt-border);
-  background: var(--plt-bg);
-  color: var(--plt-muted);
-  text-decoration: none;
-  cursor: pointer;
-  font-size: var(--text-xs);
-  flex-shrink: 0;
-  transition: background var(--plt-transition), border-color var(--plt-transition), color var(--plt-transition);
-}
-.plt-icon-btn:hover { background: var(--plt-bg-soft); border-color: var(--plt-border-2); color: var(--plt-text); }
-.plt-icon-btn.plt-danger:hover {
-  background: color-mix(in srgb, var(--plt-danger) 10%, transparent);
-  border-color: color-mix(in srgb, var(--plt-danger) 30%, transparent);
-  color: var(--plt-danger);
-}
-
-/* ── PRTG warning ── */
-.plt-notice {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 14px;
-  border: 1px solid color-mix(in srgb, var(--plt-warning) 30%, transparent);
-  border-radius: var(--plt-radius-md);
-  background: color-mix(in srgb, var(--plt-warning) 8%, transparent);
-  color: var(--plt-text);
-  font-size: var(--text-sm);
-}
-.plt-notice i { color: var(--plt-warning); }
-.plt-notice code { font-family: var(--font-mono, monospace); font-size: var(--text-xs); }
-
-/* ── Metric strip (denso, hairline-separated) ── */
-.plt-metrics {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1px;
-  background: var(--plt-border);
-  border: 1px solid var(--plt-border);
-  border-radius: var(--plt-radius-md);
-  overflow: hidden;
-}
-.plt-metric {
-  background: var(--plt-bg);
-  padding: 13px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.plt-metric-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: var(--text-xs);
-  font-weight: 500;
-  color: var(--plt-muted);
-  letter-spacing: -0.006em;
-}
-.plt-metric-label i { font-size: var(--text-2xs); color: var(--plt-soft); width: 13px; text-align: center; }
-.plt-metric-value {
-  font-family: var(--font-display);
-  font-size: 21px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--plt-text);
-  line-height: 1.1;
-}
-
-/* ── Toolbar ── */
-.plt-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.plt-tb-filter { min-width: 210px; }
-.plt-search { position: relative; flex: 1 1 220px; min-width: 200px; display: flex; align-items: center; }
-.plt-search-ic { position: absolute; left: 12px; color: var(--plt-soft); font-size: var(--text-xs); pointer-events: none; }
-.plt-search input {
-  width: 100%;
-  height: var(--plt-control-h);
-  padding: 0 34px;
-  border: 1px solid var(--plt-border-2);
-  border-radius: var(--plt-radius-sm);
-  background: var(--plt-bg);
-  color: var(--plt-text);
-  font-size: var(--text-sm);
-  transition: border-color var(--plt-transition), box-shadow var(--plt-transition);
-}
-.plt-search input:focus { outline: none; border-color: var(--plt-brand); box-shadow: 0 0 0 3px var(--plt-ring); }
-.plt-search input::placeholder { color: var(--plt-soft); }
-.plt-search-clear {
-  position: absolute; right: 6px; width: 26px; height: 26px;
-  border: none; background: transparent; color: var(--plt-soft);
-  cursor: pointer; border-radius: 6px; display: none;
-  align-items: center; justify-content: center;
-}
-.plt-search-clear:hover { background: var(--plt-bg-muted); color: var(--plt-text); }
-.plt-search.has-value .plt-search-clear { display: flex; }
-
-.plt-count { font-size: var(--text-sm); color: var(--plt-muted); white-space: nowrap; }
-.plt-count strong { color: var(--plt-text); font-weight: 600; }
-
-.plt-live { display: inline-flex; align-items: center; gap: 7px; font-size: var(--text-xs); color: var(--plt-muted); white-space: nowrap; }
-.plt-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--plt-success); flex-shrink: 0; }
-
-/* ── Select2 (compacto) ── */
-.select2-container { width: 100% !important; }
-.select2-container .select2-selection--single {
-  min-height: var(--plt-control-h) !important;
-  height: var(--plt-control-h) !important;
-  display: flex !important;
-  align-items: center !important;
-  border: 1px solid var(--plt-border-2) !important;
-  border-radius: var(--plt-radius-sm) !important;
-  background: var(--plt-bg) !important;
-  transition: border-color var(--plt-transition), box-shadow var(--plt-transition) !important;
-}
-.select2-container--default.select2-container--focus .select2-selection--single {
-  border-color: var(--plt-brand) !important;
-  box-shadow: 0 0 0 3px var(--plt-ring) !important;
-}
-.select2-container--default .select2-selection--single .select2-selection__rendered {
-  width: 100%;
-  padding-left: 13px !important;
-  padding-right: 30px !important;
-  color: var(--plt-text) !important;
-  line-height: calc(var(--plt-control-h) - 2px) !important;
-  font-size: var(--text-sm) !important;
-}
-.select2-container--default .select2-selection--single .select2-selection__placeholder { color: var(--plt-soft) !important; }
-.select2-container--default .select2-selection--single .select2-selection__arrow { height: calc(var(--plt-control-h) - 2px) !important; right: 7px !important; }
-.select2-dropdown {
-  z-index: 10000 !important;
-  overflow: hidden !important;
-  border: 1px solid var(--plt-border-2) !important;
-  border-radius: var(--plt-radius-sm) !important;
-  background: var(--plt-bg) !important;
-  color: var(--plt-text) !important;
-  box-shadow: var(--plt-shadow-lg) !important;
-}
-.select2-search__field {
-  border: 1px solid var(--plt-border-2) !important;
-  border-radius: 7px !important;
-  background: var(--plt-bg) !important;
-  color: var(--plt-text) !important;
-  outline: none !important;
-}
-.select2-results__option { color: var(--plt-text) !important; font-size: var(--text-sm); }
-.select2-results__option--highlighted { background: var(--plt-brand) !important; color: #fff !important; }
-
-/* ── Card Grid ── */
-.plt-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(258px, 1fr));
-  gap: 14px;
-}
-
-.plt-card {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--plt-border);
-  border-radius: var(--plt-radius-md);
-  background: var(--plt-bg);
-  overflow: hidden;
-  transition: border-color var(--plt-transition), box-shadow var(--plt-transition);
-}
-.plt-card:hover { border-color: var(--plt-border-2); box-shadow: var(--plt-shadow-sm); }
-
-.plt-card-thumb {
-  position: relative;
-  height: 116px;
-  background: linear-gradient(160deg, var(--plt-bg-soft), var(--plt-bg-2));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--plt-border);
-}
-.plt-card-thumb > i.fa-map-location-dot { font-size: 34px; color: var(--plt-soft); opacity: .5; }
-.plt-card-thumb img { width: 100%; height: 100%; object-fit: cover; }
-
-/* Mini-mapa ao vivo da topologia */
-.plt-mini { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
-.plt-mini-tag {
-  position: absolute; left: 9px; bottom: 8px; z-index: 2;
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 2px 7px; border-radius: 6px;
-  background: color-mix(in srgb, var(--plt-bg) 84%, transparent);
-  border: 1px solid var(--plt-border);
-  color: var(--plt-soft); font-size: 10px; font-weight: 600;
-}
-.plt-mini-tag i { font-size: 8px; color: var(--plt-soft); }
-
-/* Barra de status (topo do thumb) + badge de saúde */
-.plt-card-statusbar { position: absolute; top: 0; left: 0; right: 0; height: 3px; z-index: 3; background: transparent; }
-.plt-card-statusbar.up   { background: var(--plt-success); }
-.plt-card-statusbar.warn { background: var(--plt-warning); }
-.plt-card-statusbar.down { background: var(--plt-danger); }
-.plt-card-health {
-  position: absolute; top: 9px; right: 9px; z-index: 4; display: none; align-items: center; gap: 5px;
-  padding: 2px 8px; border-radius: 6px; font-size: var(--text-2xs); font-weight: 600;
-  color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2);
-}
-.plt-card-health.show { display: inline-flex; }
-.plt-card-health.down { background: var(--plt-danger); }
-.plt-card-health.warn { background: var(--plt-warning); }
-.plt-card-health .dot { width: 6px; height: 6px; border-radius: 50%; background: #fff; }
-
-.plt-card-body { padding: 13px 14px; display: flex; flex-direction: column; flex: 1; gap: 8px; }
-.plt-card-head { display: flex; flex-direction: column; gap: 2px; }
-.plt-card-nome {
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: var(--text-base);
-  color: var(--plt-text);
-  letter-spacing: -0.014em;
-  line-height: 1.28;
-}
-.plt-card-loc { display: inline-flex; align-items: center; gap: 5px; font-size: var(--text-xs); color: var(--plt-muted); }
-.plt-card-loc i { font-size: var(--text-2xs); color: var(--plt-soft); }
-
-.plt-card-stats { font-size: var(--text-xs); color: var(--plt-muted); }
-.plt-card-stats .sep { margin: 0 5px; opacity: .5; }
-
-.plt-card-prtg { display: flex; gap: 5px; flex-wrap: wrap; min-height: 20px; }
-.plt-status-chip {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 2px 8px; border-radius: var(--plt-radius-pill);
-  font-size: var(--text-2xs); font-weight: 600;
-}
-.plt-status-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.plt-status-chip.up      { background: color-mix(in srgb, var(--plt-success) 12%, transparent); color: #1a7a35; }
-.plt-status-chip.up::before      { background: var(--plt-success); }
-.plt-status-chip.warn    { background: color-mix(in srgb, var(--plt-warning) 12%, transparent); color: #7a4800; }
-.plt-status-chip.warn::before    { background: var(--plt-warning); }
-.plt-status-chip.down    { background: color-mix(in srgb, var(--plt-danger) 12%, transparent); color: #c0100a; }
-.plt-status-chip.down::before    { background: var(--plt-danger); }
-.plt-status-chip.paused  { background: var(--plt-bg-muted); color: var(--plt-muted); }
-.plt-status-chip.paused::before  { background: #8e8e93; }
-.plt-status-chip.loading { background: var(--plt-bg-muted); color: var(--plt-soft); }
-.plt-status-chip.loading::before { background: var(--plt-soft); }
-
-.plt-card-footer { display: flex; gap: 6px; align-items: center; margin-top: auto; padding-top: 4px; }
-.plt-card-footer .plt-btn { flex: 1; }
-
-/* ── Empty / No-match ── */
-.plt-empty {
-  display: grid; place-items: center; gap: 4px;
-  padding: 56px 24px; text-align: center;
-  border: 1px solid var(--plt-border); border-radius: var(--plt-radius-md); background: var(--plt-bg);
-}
-.plt-empty-icon {
-  width: 56px; height: 56px; display: grid; place-items: center;
-  border-radius: var(--plt-radius-md); background: var(--plt-bg-soft);
-  font-size: var(--text-xl); color: var(--plt-soft); margin-bottom: 10px;
-}
-.plt-empty h3 { font-size: var(--text-md); font-weight: 600; margin: 0 0 4px; color: var(--plt-text); }
-.plt-empty p  { color: var(--plt-muted); font-size: var(--text-sm); margin: 0 0 16px; }
-
-.plt-nomatch {
-  padding: 32px 24px; text-align: center; color: var(--plt-muted); font-size: var(--text-sm);
-  border: 1px dashed var(--plt-border-2); border-radius: var(--plt-radius-md);
-}
-.plt-nomatch i { margin-right: 6px; }
-
-/* ── Responsive ── */
-@media (max-width: 720px) {
-  .plt-metrics { grid-template-columns: repeat(2, 1fr); }
-  .plt-tb-filter { min-width: 100%; flex: 1 1 100%; }
-}
-@media (max-width: 460px) {
-  .plt-metrics { grid-template-columns: 1fr 1fr; }
-  .plt-grid { grid-template-columns: 1fr; }
-}
-</style>
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+{% comment %}A folha do módulo vem DEPOIS do Select2: ela reveste o
+   componente. Invertida, o CDN vence e nada tem efeito (regra 26).{% endcomment %}
+<link rel="stylesheet" href="{% static 'css/ds-rede.css' %}?v={{ assets_version }}">
 {% endblock %}
 
 {% block content %}
-<div class="plt-page">
+<div class="nx-pagina">
 
   {% if not prtg_ok %}
-  <div class="plt-notice">
-    <i class="fa-solid fa-triangle-exclamation"></i>
-    <span>PRTG não configurado — adicione <code>PRTG_URL</code>, <code>PRTG_USER</code> e <code>PRTG_PASSHASH</code> no arquivo <code>.env</code> para ativar o monitoramento em tempo real.</span>
+  <div class="nx-faixa-aviso">
+    <span>
+      PRTG não configurado. Sem <code>PRTG_URL</code>, <code>PRTG_USER</code> e
+      <code>PRTG_PASSHASH</code> no <code>.env</code>, o desenho existe mas
+      nenhum elemento acende: todos ficam como "sem monitoramento".
+    </span>
   </div>
   {% endif %}
 
-  <!-- Métricas -->
-  <div class="plt-metrics">
-    <div class="plt-metric">
-      <span class="plt-metric-label"><i class="fa-solid fa-map"></i> Plantas</span>
-      <span class="plt-metric-value">{{ total_plantas }}</span>
+  <div class="nx-kpis">
+    <div class="nx-kpi">
+      <span class="nx-kpi-n">{{ total_plantas }}</span>
+      <span class="nx-kpi-r">Plantas</span>
     </div>
-    <div class="plt-metric">
-      <span class="plt-metric-label"><i class="fa-solid fa-network-wired"></i> Dispositivos</span>
-      <span class="plt-metric-value">{{ total_elementos }}</span>
+    <div class="nx-kpi">
+      <span class="nx-kpi-n">{{ total_elementos }}</span>
+      <span class="nx-kpi-r">Dispositivos no desenho</span>
     </div>
-    <div class="plt-metric">
-      <span class="plt-metric-label"><i class="fa-solid fa-satellite-dish" style="color:var(--plt-success)"></i> Monitorados</span>
-      <span class="plt-metric-value">{{ total_com_prtg }}</span>
+    <div class="nx-kpi" data-tom="ok">
+      <span class="nx-kpi-n">{{ total_com_prtg }}</span>
+      <span class="nx-kpi-r">Com vínculo PRTG</span>
     </div>
-    <div class="plt-metric">
-      <span class="plt-metric-label"><i class="fa-solid fa-circle-minus"></i> Sem PRTG</span>
-      <span class="plt-metric-value">{{ total_sem_prtg }}</span>
+    <div class="nx-kpi" data-tom="atencao">
+      <span class="nx-kpi-n">{{ total_sem_prtg }}</span>
+      <span class="nx-kpi-r">Sem monitoramento</span>
+      <span class="nx-kpi-d">A queda deles não acende no mapa</span>
     </div>
   </div>
 
-  <!-- Toolbar: filtro + busca + status -->
-  <div class="plt-toolbar">
-    <form id="formFiltroLocalidade" method="get" class="plt-tb-filter">
-      <select name="localidade" id="filtroLocalidade">
+  {% comment %}Porta de entrada da bancada no CORPO da página — ação de
+     página não vai para a topbar nem para a navbar por conta própria
+     (regra 16). O item no menu lateral foi autorizado em separado.{% endcomment %}
+  <div class="nx-faixa-aviso" data-tom="info">
+    <span>
+      <b>Mapa de Rede</b> — a bancada de topologia: todos os switches, APs e
+      equipamentos ligados porta por porta, com conferência técnica e
+      exportação para o gestor.
+    </span>
+    <a class="nx-btn nx-btn--primario" href="{% url 'rede_mapa' %}" style="margin-left:auto;flex:0 0 auto">
+      Abrir o mapa
+    </a>
+  </div>
+
+  <div class="nx-barra">
+    <form method="get" id="formLocalidade" style="flex:0 1 260px">
+      <select name="localidade" id="filtroLocalidade" aria-label="Filtrar por localidade">
         <option value=""></option>
         {% for loc in localidades %}
-          <option value="{{ loc.pk }}" {% if localidade_sel == loc.pk|stringformat:"s" %}selected{% endif %}>{{ loc.local }}</option>
+        <option value="{{ loc.pk }}" {% if localidade_sel == loc.pk|stringformat:"s" %}selected{% endif %}>{{ loc.local }}</option>
         {% endfor %}
       </select>
     </form>
-    <div class="plt-search">
-      <i class="fa-solid fa-magnifying-glass plt-search-ic"></i>
-      <input type="text" id="pltSearch" placeholder="Buscar por nome ou localidade…" autocomplete="off" aria-label="Buscar plantas">
-      <button type="button" id="pltSearchClear" class="plt-search-clear" title="Limpar busca"><i class="fa-solid fa-xmark"></i></button>
-    </div>
-    <span class="plt-count"><strong>{{ plantas|length }}</strong> de {{ total_plantas }}</span>
+
+    <input type="search" class="nx-input" id="buscaPlanta" style="flex:0 1 260px"
+           placeholder="Buscar por nome ou localidade…" aria-label="Buscar plantas">
+
+    <span class="nx-micro"><b class="nx-num" id="contaVisiveis">{{ plantas|length }}</b> de {{ total_plantas }}</span>
+
+    <div class="nx-elastico"></div>
+
     {% if prtg_ok %}
-    <div class="plt-live" id="pltLive" title="Status PRTG atualizado a cada 30s">
-      <span class="plt-live-dot"></span> <span id="pltLiveTxt">ao vivo</span>
-    </div>
+    <span class="nx-selo" data-tom="ok" title="Status PRTG relido a cada 30 segundos">
+      ao vivo · <span class="nx-num" id="relogioPrtg">—</span>
+    </span>
     {% endif %}
+
+    <a class="nx-btn" href="{% url 'prtg_monitor' %}">Monitor PRTG</a>
+    <a class="nx-btn nx-btn--primario" href="{% url 'planta_create' %}">Nova planta</a>
   </div>
 
-  <!-- Grid -->
   {% if plantas %}
-  <div class="plt-nomatch" id="pltNoMatch" style="display:none">
-    <i class="fa-solid fa-magnifying-glass"></i> Nenhuma planta corresponde à busca.
+  <div class="nx-vazio-bloco" id="semResultado" hidden>
+    <h2>Nenhuma planta corresponde à busca</h2>
+    <p>Apague o termo para ver as {{ total_plantas }} plantas cadastradas.</p>
   </div>
 
-  <div class="plt-grid">
+  <div class="nx-grade" id="grade">
     {% for planta in plantas %}
-    <div class="plt-card" data-search="{{ planta.nome|lower }} {{ planta.localidade|default:''|lower }}">
-      <div class="plt-card-thumb">
+    <article class="nx-cartao" data-busca="{{ planta.nome|lower }} {{ planta.localidade|default:''|lower }}">
+      <div class="nx-barra-st" id="st-{{ planta.pk }}" aria-hidden="true"></div>
+
+      <div class="nx-preview">
         {% if planta.imagem_fundo %}
-          <img src="{{ planta.imagem_fundo.url }}" alt="Fundo da planta {{ planta.nome }}">
+        <img src="{{ planta.imagem_fundo.url }}" alt="Fundo da planta {{ planta.nome }}">
+        <span class="nx-preview-marca">planta baixa</span>
         {% else %}
-          <i class="fa-solid fa-map-location-dot"></i>
-          <canvas class="plt-mini" id="mini-{{ planta.pk }}" data-plant="{{ planta.pk }}" aria-hidden="true"></canvas>
-        {% endif %}
-        {% if prtg_ok and planta.elementos_com_prtg %}
-        <div class="plt-card-statusbar" id="sb-{{ planta.pk }}"></div>
-        <div class="plt-card-health" id="health-{{ planta.pk }}"><span class="dot"></span><span class="txt"></span></div>
+        <canvas class="nx-mini-planta" data-planta="{{ planta.pk }}" aria-hidden="true"></canvas>
+        <span class="nx-preview-marca">topologia</span>
         {% endif %}
       </div>
 
-      <div class="plt-card-body">
-        <div class="plt-card-head">
-          <h3 class="plt-card-nome">{{ planta.nome }}</h3>
-          <span class="plt-card-loc">
-            <i class="fa-solid fa-location-dot"></i>{{ planta.localidade|default:"Sem localidade" }}
-          </span>
+      <div class="nx-cartao-corpo">
+        <div>
+          <div style="font-size:var(--nx-fs-cell);font-weight:600;line-height:1.2">{{ planta.nome }}</div>
+          <div class="nx-micro">{{ planta.localidade|default:"Sem localidade" }}</div>
         </div>
 
-        <div class="plt-card-stats">
-          {{ planta.total_elementos }} elemento{{ planta.total_elementos|pluralize }}
-          {% if planta.elementos_com_prtg %}<span class="sep">·</span>{{ planta.elementos_com_prtg }} monitorado{{ planta.elementos_com_prtg|pluralize }}{% endif %}
-        </div>
+        <dl class="nx-dl">
+          <div>
+            <dt>Elementos</dt>
+            <dd><span class="nx-num">{{ planta.total_elementos }}</span></dd>
+          </div>
+          <div>
+            <dt>Monitorados</dt>
+            <dd><span class="nx-num">{{ planta.elementos_com_prtg }}</span></dd>
+          </div>
+        </dl>
 
         {% if prtg_ok and planta.elementos_com_prtg %}
-        <div class="plt-card-prtg" id="prtg-{{ planta.pk }}">
-          <span class="plt-status-chip loading">carregando…</span>
+        <div class="nx-chips" id="chips-{{ planta.pk }}">
+          <span class="nx-selo" data-tom="neutro">lendo o PRTG…</span>
         </div>
         {% endif %}
-
-        <div class="plt-card-footer">
-          <a href="{% url 'planta_viewer' planta.pk %}" class="plt-btn plt-btn-primary">
-            <i class="fa-solid fa-eye"></i> Visualizar
-          </a>
-          <a href="{% url 'planta_tv' planta.pk %}" class="plt-icon-btn" target="_blank" title="Modo TV">
-            <i class="fa-solid fa-tv"></i>
-          </a>
-          <a href="{% url 'planta_editor' planta.pk %}" class="plt-icon-btn" title="Abrir editor">
-            <i class="fa-solid fa-pen-to-square"></i>
-          </a>
-          <a href="{% url 'planta_update' planta.pk %}" class="plt-icon-btn" title="Configurações">
-            <i class="fa-solid fa-gear"></i>
-          </a>
-          <a href="{% url 'planta_delete' planta.pk %}" class="plt-icon-btn plt-danger" title="Excluir planta">
-            <i class="fa-solid fa-trash"></i>
-          </a>
-        </div>
       </div>
-    </div>
+
+      <footer>
+        <a class="nx-btn nx-btn--primario" href="{% url 'planta_viewer' planta.pk %}">Visualizar</a>
+        <div class="nx-grupo-btn">
+          <a class="nx-btn" href="{% url 'planta_editor' planta.pk %}" title="Abrir o editor do desenho">Editor</a>
+          <a class="nx-btn" href="{% url 'planta_tv' planta.pk %}" target="_blank" rel="noopener" title="Abrir em modo TV">TV</a>
+          <a class="nx-btn" href="{% url 'planta_update' planta.pk %}" title="Nome, localidade e imagem de fundo">Dados</a>
+          <a class="nx-btn nx-btn--perigo" href="{% url 'planta_delete' planta.pk %}" title="Excluir a planta">Excluir</a>
+        </div>
+      </footer>
+    </article>
     {% endfor %}
   </div>
 
   {% else %}
-  <div class="plt-empty">
-    <div class="plt-empty-icon"><i class="fa-solid fa-map"></i></div>
-    <h3>Nenhuma planta encontrada</h3>
+  <div class="nx-vazio-bloco">
+    <h2>Nenhuma planta cadastrada</h2>
     <p>
       {% if localidade_sel %}
-        Não há plantas para a localidade selecionada.
+        Não há planta para a localidade selecionada. Limpe o filtro ou crie a primeira.
       {% else %}
-        Crie a primeira planta de infraestrutura para começar.
+        Uma planta é o desenho de uma localidade: onde cada equipamento está.
+        Para ver como a rede se LIGA — porta por porta —, abra o Mapa de Rede.
       {% endif %}
     </p>
-    <a href="{% url 'planta_create' %}" class="plt-btn plt-btn-primary">
-      <i class="fa-solid fa-plus"></i> Nova Planta
-    </a>
+    <div style="display:flex;gap:var(--nx-gap);flex-wrap:wrap;justify-content:center">
+      <a class="nx-btn nx-btn--primario" href="{% url 'planta_create' %}">Nova planta</a>
+      <a class="nx-btn" href="{% url 'rede_mapa' %}">Abrir o Mapa de Rede</a>
+    </div>
   </div>
   {% endif %}
-
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script>
-$(function () {
-  $('#filtroLocalidade').select2({
-    placeholder: 'Todas as localidades',
-    allowClear: true,
-    width: '100%',
-    language: { noResults: function () { return 'Nenhuma localidade encontrada'; } }
-  }).on('change', function () {
-    document.getElementById('formFiltroLocalidade').submit();
-  });
-});
-</script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 {{ previews_json|json_script:"__plt_previews" }}
+{% if prtg_ok %}{{ prtg_ids_json|json_script:"__prtg_data" }}{% endif %}
+
 <script>
-/* ── Plantas — busca client-side + mini-mapa de topologia ──────── */
 (function () {
 'use strict';
 
-/* 1 · Busca rápida (filtra cards por nome/localidade) */
+/* ── 1 · Filtro de localidade ──────────────────────────────────────── */
+if (window.jQuery && jQuery.fn.select2) {
+  jQuery('#filtroLocalidade').select2({
+    width: '100%',
+    containerCssClass: 'nx-s2',
+    dropdownCssClass: 'nx-s2',
+    placeholder: 'Todas as localidades',
+    allowClear: true,
+    language: { noResults: () => 'Nenhuma localidade encontrada' },
+  }).on('change', () => document.getElementById('formLocalidade').submit());
+}
+
+/* ── 2 · Busca de cliente ──────────────────────────────────────────── */
 (function () {
-  var input = document.getElementById('pltSearch');
-  if (!input) return;
-  var box      = input.closest('.plt-search');
-  var clearBtn = document.getElementById('pltSearchClear');
-  var noMatch  = document.getElementById('pltNoMatch');
-  var cards    = Array.prototype.slice.call(document.querySelectorAll('.plt-grid .plt-card'));
+  const campo = document.getElementById('buscaPlanta');
+  if (!campo) return;
+  const cartoes = Array.from(document.querySelectorAll('#grade .nx-cartao'));
+  const vazio = document.getElementById('semResultado');
+  const conta = document.getElementById('contaVisiveis');
 
-  function norm(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+  const normalizar = (s) => (s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-  function apply() {
-    var q = norm(input.value.trim());
-    if (box) box.classList.toggle('has-value', input.value.length > 0);
-    var visible = 0;
-    cards.forEach(function (c) {
-      var hay  = norm(c.getAttribute('data-search') || c.textContent);
-      var show = !q || hay.indexOf(q) !== -1;
-      c.style.display = show ? '' : 'none';
-      if (show) visible++;
+  campo.addEventListener('input', () => {
+    const termo = normalizar(campo.value.trim());
+    let visiveis = 0;
+    cartoes.forEach((c) => {
+      const alvo = normalizar(c.dataset.busca || c.textContent);
+      const mostra = !termo || alvo.includes(termo);
+      c.hidden = !mostra;
+      if (mostra) visiveis += 1;
     });
-    if (noMatch) noMatch.style.display = (visible === 0 && q) ? '' : 'none';
-  }
-
-  input.addEventListener('input', apply);
-  if (clearBtn) clearBtn.addEventListener('click', function () { input.value = ''; apply(); input.focus(); });
+    if (vazio) vazio.hidden = !(visiveis === 0 && termo);
+    if (conta) conta.textContent = String(visiveis);
+  });
 }());
 
-
-/* 2 · Mini-mapa de topologia por card (nós + conexões, coloridos por status PRTG) */
-window.__pltMini = (function () {
-  var data = {};
+/* ── 3 · Miniatura de topologia ────────────────────────────────────────
+   Canvas não herda CSS, então a cor é LIDA dos tokens do módulo em vez
+   de escrita aqui: com hex fixo, a miniatura ignorava o tema escuro e
+   ficava com o verde/vermelho da paleta anterior (regra 33). */
+const MiniPlanta = (function () {
+  let dados = {};
   try {
-    var raw = document.getElementById('__plt_previews');
-    if (raw) data = JSON.parse(raw.textContent || '{}');
-  } catch (e) { data = {}; }
+    const cru = document.getElementById('__plt_previews');
+    if (cru) dados = JSON.parse(cru.textContent || '{}');
+  } catch (erro) { dados = {}; }
 
-  var reg = {};
-  var DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  var COLORS = { up: '#34c759', warning: '#ff9500', down: '#ff3b30', paused_dep: '#8e8e93', none: '#a1a1aa' };
+  const registro = {};
+  const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
-  function build(cv) {
-    var pid = cv.getAttribute('data-plant');
-    var pv  = data[pid];
-    if (!pv || !pv.n || !pv.n.length) { cv.remove(); return; }   // sem nós → mantém ícone
-
-    var thumb = cv.parentNode;
-    var ic = thumb ? thumb.querySelector('i.fa-map-location-dot') : null;
-    if (ic) ic.style.display = 'none';
-
-    var byId = {};
-    pv.n.forEach(function (n) { byId[n.id] = n; });
-    reg[pid] = { cv: cv, ctx: cv.getContext('2d'), nodes: pv.n, links: pv.l || [], byId: byId, status: {} };
-
-    if (thumb && !thumb.querySelector('.plt-mini-tag')) {
-      var tag = document.createElement('span');
-      tag.className = 'plt-mini-tag';
-      tag.innerHTML = '<i class="fa-solid fa-circle-nodes"></i> topologia';
-      thumb.appendChild(tag);
-    }
-    resize(pid); draw(pid);
+  function token(nome, reserva) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(nome).trim();
+    return v || reserva;
   }
 
-  function resize(pid) {
-    var r = reg[pid]; if (!r) return;
-    var w = r.cv.clientWidth || 260, h = r.cv.clientHeight || 116;
-    r.cv.width = Math.round(w * DPR); r.cv.height = Math.round(h * DPR);
+  // Resolvidas uma vez por desenho: `getComputedStyle` por nó, em doze
+  // miniaturas, é trabalho de layout a cada quadro.
+  function paleta() {
+    return {
+      up: token('--success', '#0f9a56'),
+      warning: token('--warning', '#c2690a'),
+      down: token('--danger', '#d32f2b'),
+      paused_dep: token('--text-quaternary', '#8b93a3'),
+      none: token('--text-quaternary', '#8b93a3'),
+      fio: token('--separator-non-opaque', 'rgba(15,23,42,.11)'),
+      halo: token('--bg-elevated', '#fff'),
+    };
+  }
+
+  function montar(cv) {
+    const pid = cv.dataset.planta;
+    const pv = dados[pid];
+    if (!pv || !pv.n || !pv.n.length) { cv.remove(); return; }
+    const porId = {};
+    pv.n.forEach((n) => { porId[n.id] = n; });
+    registro[pid] = { cv, ctx: cv.getContext('2d'), nos: pv.n, fios: pv.l || [], porId, st: {} };
+    medir(pid);
+    desenhar(pid);
+  }
+
+  function medir(pid) {
+    const r = registro[pid];
+    if (!r) return;
+    const w = r.cv.clientWidth || 280;
+    const h = r.cv.clientHeight || 158;
+    r.cv.width = Math.round(w * DPR);
+    r.cv.height = Math.round(h * DPR);
     r.W = w; r.H = h;
     r.ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
-    var minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
-    r.nodes.forEach(function (n) {
-      if (n.x < minx) minx = n.x; if (n.x > maxx) maxx = n.x;
-      if (n.y < miny) miny = n.y; if (n.y > maxy) maxy = n.y;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    r.nos.forEach((n) => {
+      x0 = Math.min(x0, n.x); x1 = Math.max(x1, n.x);
+      y0 = Math.min(y0, n.y); y1 = Math.max(y1, n.y);
     });
-    var pad = 22, sw = (maxx - minx) || 1, sh = (maxy - miny) || 1;
-    var s = Math.min((w - pad * 2) / sw, (h - pad * 2) / sh);
-    if (!isFinite(s) || s <= 0) s = 1;
-    var ox = (w - sw * s) / 2 - minx * s, oy = (h - sh * s) / 2 - miny * s;
-    r.fit = function (n) { return [ox + n.x * s, oy + n.y * s]; };
+    const margem = 18;
+    const lw = (x1 - x0) || 1;
+    const lh = (y1 - y0) || 1;
+    let esc = Math.min((w - margem * 2) / lw, (h - margem * 2) / lh);
+    if (!isFinite(esc) || esc <= 0) esc = 1;
+    const ox = (w - lw * esc) / 2 - x0 * esc;
+    const oy = (h - lh * esc) / 2 - y0 * esc;
+    r.pos = (n) => [ox + n.x * esc, oy + n.y * esc];
   }
 
-  function draw(pid) {
-    var r = reg[pid]; if (!r || !r.fit) return;
-    var ctx = r.ctx; ctx.clearRect(0, 0, r.W, r.H);
+  function desenhar(pid) {
+    const r = registro[pid];
+    if (!r || !r.pos) return;
+    const c = paleta();
+    const ctx = r.ctx;
+    ctx.clearRect(0, 0, r.W, r.H);
 
-    ctx.strokeStyle = 'rgba(120,120,128,.30)'; ctx.lineWidth = 1;
-    r.links.forEach(function (l) {
-      var a = r.byId[l[0]], b = r.byId[l[1]]; if (!a || !b) return;
-      var pa = r.fit(a), pb = r.fit(b);
-      ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
+    ctx.strokeStyle = c.fio;
+    ctx.lineWidth = 1;
+    r.fios.forEach((l) => {
+      const a = r.porId[l[0]];
+      const b = r.porId[l[1]];
+      if (!a || !b) return;
+      const pa = r.pos(a);
+      const pb = r.pos(b);
+      ctx.beginPath();
+      ctx.moveTo(pa[0], pa[1]);
+      ctx.lineTo(pb[0], pb[1]);
+      ctx.stroke();
     });
 
-    r.nodes.forEach(function (n) {
-      var p = r.fit(n), st = r.status[n.id] || 'none';
-      var c = COLORS[st] || COLORS.none;
-      if (st === 'down') {
-        ctx.beginPath(); ctx.arc(p[0], p[1], 7, 0, 6.2832);
-        ctx.fillStyle = 'rgba(255,59,48,.16)'; ctx.fill();
-      }
-      ctx.beginPath(); ctx.arc(p[0], p[1], 3.4, 0, 6.2832);
-      ctx.fillStyle = c; ctx.fill();
-      ctx.lineWidth = 1.3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.stroke();
+    r.nos.forEach((n) => {
+      const p = r.pos(n);
+      const st = r.st[n.id] || 'none';
+      // Quadrado, não círculo: a prancha do módulo é de aresta reta, e o
+      // nó da miniatura é o mesmo objeto do mapa, visto de longe.
+      ctx.fillStyle = c[st] || c.none;
+      ctx.fillRect(p[0] - 3, p[1] - 3, 6, 6);
+      ctx.strokeStyle = c.halo;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p[0] - 3.5, p[1] - 3.5, 7, 7);
     });
   }
 
-  function applyStatus(pid, statusByObjid) {
-    var r = reg[pid]; if (!r) return;
-    r.nodes.forEach(function (n) {
-      r.status[n.id] = (n.o && statusByObjid[n.o]) ? statusByObjid[n.o] : 'none';
-    });
-    draw(pid);
+  function aplicarStatus(pid, porObjid) {
+    const r = registro[pid];
+    if (!r) return;
+    r.nos.forEach((n) => { r.st[n.id] = (n.o && porObjid[n.o]) ? porObjid[n.o] : 'none'; });
+    desenhar(pid);
   }
 
-  Array.prototype.slice.call(document.querySelectorAll('canvas.plt-mini')).forEach(build);
-  window.addEventListener('resize', function () {
-    Object.keys(reg).forEach(function (pid) { resize(pid); draw(pid); });
+  document.querySelectorAll('canvas.nx-mini-planta').forEach(montar);
+  window.addEventListener('resize', () => {
+    Object.keys(registro).forEach((pid) => { medir(pid); desenhar(pid); });
   }, { passive: true });
 
-  return { applyStatus: applyStatus };
+  return { aplicarStatus };
 }());
 
-}());
-</script>
+/* ── 4 · Status ao vivo do PRTG ────────────────────────────────────── */
+const alvoPrtg = document.getElementById('__prtg_data');
+if (alvoPrtg) {
+  const POR_PLANTA = JSON.parse(alvoPrtg.textContent);
+  const STATUS_URL = '{% url "prtg_status_api" %}';
+  // Cobre os 12 códigos do PRTG; o 10 (unusual) conta como instável.
+  const ST = { 3: 'up', 4: 'warning', 5: 'down', 10: 'warning', 8: 'paused_dep' };
 
-{% if prtg_ok %}
-{{ prtg_ids_json|json_script:"__prtg_data" }}
-<script>
-const PRTG_PLANT_MAP = JSON.parse(document.getElementById('__prtg_data').textContent);
-const STATUS_URL     = "{% url 'prtg_status_api' %}";
-const ST_MAP = { 3:"up", 4:"warning", 5:"down", 10:"warning", 8:"paused_dep" };
+  async function ler() {
+    try {
+      const r = await fetch(STATUS_URL, { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const d = await r.json();
+      if (!d.ok) return;
+      const mapa = d.devices_map || {};
 
-async function carregarStatusCards() {
-  try {
-    const r = await fetch(STATUS_URL, { credentials: "same-origin" });
-    if (!r.ok) return;
-    const d = await r.json();
-    if (!d.ok) return;
-    const dm = d.devices_map || {};
+      for (const [pid, objids] of Object.entries(POR_PLANTA)) {
+        let up = 0, warn = 0, down = 0, pausado = 0;
+        const porObjid = {};
+        objids.forEach((objid) => {
+          const dev = mapa[parseInt(objid, 10)];
+          if (!dev) return;
+          const st = ST[parseInt(dev.status, 10)];
+          if (st) porObjid[objid] = st;
+          if (st === 'up') up += 1;
+          else if (st === 'warning') warn += 1;
+          else if (st === 'down') down += 1;
+          else if (st === 'paused_dep') pausado += 1;
+        });
 
-    for (const [plantId, objids] of Object.entries(PRTG_PLANT_MAP)) {
-      let up = 0, warn = 0, down = 0, paused = 0;
-      const stByObjid = {};
-      for (const objid of objids) {
-        const dev = dm[parseInt(objid)];
-        if (!dev) continue;
-        const st = ST_MAP[parseInt(dev.status)];
-        if (st) stByObjid[objid] = st;
-        if      (st === 'up')         up++;
-        else if (st === 'warning')    warn++;
-        else if (st === 'down')       down++;
-        else if (st === 'paused_dep') paused++;
+        MiniPlanta.aplicarStatus(pid, porObjid);
+
+        const chips = document.getElementById(`chips-${pid}`);
+        if (chips) {
+          chips.replaceChildren();
+          const selo = (n, tom, texto) => {
+            if (!n) return;
+            const s = document.createElement('span');
+            s.className = 'nx-selo';
+            s.dataset.tom = tom;
+            s.textContent = `${n} ${texto}`;
+            chips.appendChild(s);
+          };
+          selo(down, 'ruim', 'offline');
+          selo(warn, 'atencao', 'instável');
+          selo(up, 'ok', 'online');
+          selo(pausado, 'neutro', 'pausado');
+        }
+
+        const barra = document.getElementById(`st-${pid}`);
+        if (barra) {
+          barra.dataset.st = down ? 'down' : (warn ? 'warn' : ((up || pausado) ? 'up' : ''));
+        }
       }
 
-      // Atualiza o mini-mapa de topologia do card com os status ao vivo
-      if (window.__pltMini) window.__pltMini.applyStatus(plantId, stByObjid);
-
-      const el = document.getElementById(`prtg-${plantId}`);
-      if (!el) continue;
-
-      let chips = '';
-      if (up)     chips += `<span class="plt-status-chip up">${up} online</span>`;
-      if (warn)   chips += `<span class="plt-status-chip warn">${warn} instável</span>`;
-      if (down)   chips += `<span class="plt-status-chip down">${down} offline</span>`;
-      if (paused) chips += `<span class="plt-status-chip paused">${paused} pausado</span>`;
-      el.innerHTML = chips || '';
-
-      // Barra de status no topo do card (pior status manda)
-      const worst = down ? 'down' : warn ? 'warn' : (up || paused) ? 'up' : '';
-      const sb = document.getElementById(`sb-${plantId}`);
-      if (sb) sb.className = 'plt-card-statusbar' + (worst ? ' ' + worst : '');
-
-      // Badge de saúde — só destaca quando há problema
-      const hb = document.getElementById(`health-${plantId}`);
-      if (hb) {
-        const txt = hb.querySelector('.txt');
-        if (down)      { hb.className = 'plt-card-health show down'; if (txt) txt.textContent = `${down} offline`; }
-        else if (warn) { hb.className = 'plt-card-health show warn'; if (txt) txt.textContent = `${warn} instável`; }
-        else           { hb.className = 'plt-card-health'; }
+      const relogio = document.getElementById('relogioPrtg');
+      if (relogio) {
+        relogio.textContent = new Date().toLocaleTimeString('pt-BR', { hour12: false });
       }
+    } catch (erro) {
+      /* Status é camada adicional: a lista continua útil sem ele. */
     }
+  }
 
-    const liveTxt = document.getElementById('pltLiveTxt');
-    if (liveTxt) {
-      const n = new Date();
-      const hh = String(n.getHours()).padStart(2, '0');
-      const mm = String(n.getMinutes()).padStart(2, '0');
-      const ss = String(n.getSeconds()).padStart(2, '0');
-      liveTxt.textContent = `${hh}:${mm}:${ss}`;
-    }
-  } catch (e) { /* PRTG status é não-crítico na listagem */ }
+  ler();
+  setInterval(() => {
+    if (document.visibilityState === 'visible') ler();
+  }, 30000);
 }
-carregarStatusCards();
-setInterval(carregarStatusCards, 30000);
+
+}());
 </script>
-{% endif %}
 {% endblock %}

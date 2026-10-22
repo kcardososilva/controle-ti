@@ -5,219 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ planta.nome }} — TV</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  {% comment %}O painel de TV tem shell próprio e mantém a PRÓPRIA paleta
-     (tela de parede, vista de longe, com contraste próprio). Mas consome a
-     escala tipográfica e os raios do sistema, e sem esta folha esses
-     `var(--text-*)` cairiam no valor inicial do navegador — 16px para tudo,
-     numa tela que é lida a metros de distância. Os tokens próprios da tela
-     são declarados DEPOIS e continuam vencendo.{% endcomment %}
+  {% comment %}Shell próprio: a tela de parede não tem menu nem topbar, então
+     ela carrega os tokens por conta (regra 31). O que mudou: a PALETA deixou de
+     ser própria. A classe `theme-dark` no body troca os ~60 tokens do sistema de
+     uma vez, e `ds-rede.css` veste a moldura na linguagem da prancha — antes
+     eram duas paletas paralelas escritas à mão (a escura e o bloco
+     `.tv-root.light`), que envelheciam juntas.{% endcomment %}
   <link rel="stylesheet" href="{% static 'css/tokens.css' %}?v={{ assets_version }}">
-<style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { width: 100%; height: 100%; background: #0a0a0b; color: var(--text-primary, #f5f5f7); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; overflow: hidden; }
-
-.tv-root { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
-
-/* ── Header ── */
-.tv-header {
-  height: 48px; flex-shrink: 0;
-  display: flex; align-items: center; gap: 12px;
-  padding: 0 18px;
-  background: rgba(255,255,255,.04);
-  border-bottom: 1px solid rgba(255,255,255,.07);
-  backdrop-filter: blur(10px);
-}
-.tv-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger, #ff3b30); flex-shrink: 0; animation: tvPulse 1.4s ease-in-out infinite; }
-@keyframes tvPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.35)} }
-.tv-live-label { font-size: var(--text-2xs); font-weight: 700; color: var(--danger, #ff3b30); letter-spacing: .07em; text-transform: uppercase; flex-shrink: 0; }
-.tv-sep { width: 1px; height: 18px; background: rgba(255,255,255,.1); flex-shrink: 0; }
-.tv-location { font-size: var(--text-2xs); color: rgba(255,255,255,.4); white-space: nowrap; flex-shrink: 0; }
-.tv-name { font-size: var(--text-base); font-weight: 700; color: var(--text-primary, #f5f5f7); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tv-clock { font-size: var(--text-xs); font-weight: 600; color: rgba(255,255,255,.55); font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
-
-.tv-mode-group { display: flex; gap: 3px; flex-shrink: 0; }
-.tv-mode-btn {
-  height: 27px; padding: 0 11px; border-radius: 7px;
-  border: 1px solid rgba(255,255,255,.14); background: transparent;
-  color: rgba(255,255,255,.45); cursor: pointer; font-size: var(--text-2xs); font-weight: 700;
-  letter-spacing: .05em; transition: all 150ms;
-}
-.tv-mode-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
-.tv-mode-btn.is-2d  { background: rgba(0,113,227,.55); border-color: var(--brand, #0071e3); color: #fff; box-shadow: 0 0 10px #0071e344; }
-.tv-mode-btn.is-3d  { background: rgba(0,207,255,.18); border-color: #00cfff99; color: #00cfff; box-shadow: 0 0 12px #00cfff44; }
-
-.tv-icon-btn {
-  width: 29px; height: 29px; display: flex; align-items: center; justify-content: center;
-  border-radius: 7px; border: 1px solid rgba(255,255,255,.12); background: transparent;
-  color: rgba(255,255,255,.55); cursor: pointer; font-size: var(--text-sm); flex-shrink: 0;
-  transition: background 130ms, color 130ms;
-}
-.tv-icon-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
-
-/* ── Canvas wrap ── */
-.tv-canvas-wrap { flex: 1; position: relative; overflow: hidden; }
-#tvCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: default; }
-
-/* ── 3D badge ── */
-.tv-3d-badge {
-  position: absolute; top: 10px; left: 14px;
-  background: rgba(0,207,255,.12); border: 1px solid rgba(0,207,255,.35);
-  color: #00cfff; font-size: .65rem; font-weight: 700; letter-spacing: .1em;
-  padding: 3px 10px; border-radius: 20px; display: none; pointer-events: none;
-  backdrop-filter: blur(8px); animation: badge3dPulse 2.5s ease-in-out infinite;
-}
-.tv-3d-badge.on { display: flex; align-items: center; gap: 6px; }
-@keyframes badge3dPulse { 0%,100%{opacity:1} 50%{opacity:.65} }
-
-/* ── Orbit / nav hint ── */
-.tv-orbit-hint {
-  position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-  background: rgba(0,0,0,.55); backdrop-filter: blur(10px);
-  border: 1px solid rgba(255,255,255,.09); border-radius: var(--radius-pill);
-  padding: 5px 16px; font-size: var(--text-2xs); color: rgba(255,255,255,.52);
-  pointer-events: none; display: none; white-space: nowrap; z-index: 15;
-  transition: opacity .6s ease;
-}
-.tv-orbit-hint.visible { display: block; opacity: 1; }
-.tv-orbit-hint.fading  { opacity: 0; }
-
-/* ── Tooltip ── */
-.tv-tooltip {
-  position: absolute; pointer-events: none; display: none; z-index: 25;
-  background: rgba(8,8,12,.92); backdrop-filter: blur(14px);
-  border: 1px solid rgba(255,255,255,.13); border-radius: var(--radius-md);
-  padding: 8px 12px; max-width: 215px;
-  box-shadow: 0 6px 24px rgba(0,0,0,.5);
-  color: #c8c8cc; font-size: var(--text-2xs); line-height: 1.5;
-}
-.tv-tooltip .tt-name { font-weight: 700; font-size: var(--text-xs); color: var(--text-primary, #f5f5f7); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tv-tooltip .tt-row  { display: flex; align-items: center; gap: 5px; font-size: var(--text-2xs); }
-.tv-tooltip .tt-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 8px; border-radius: 20px;
-  font-size: var(--text-2xs); font-weight: 700;
-}
-.tv-tooltip .tt-chip.up         { background: rgba(52,199,89,.15);  color: var(--success, #34c759); }
-.tv-tooltip .tt-chip.warning    { background: rgba(255,149,0,.15);  color: var(--warning, #ff9500); }
-.tv-tooltip .tt-chip.down       { background: rgba(255,59,48,.15);  color: var(--danger, #ff3b30); }
-.tv-tooltip .tt-chip.paused_dep { background: rgba(0,207,255,.15);  color: #00cfff; }
-.tv-tooltip .tt-chip.unknown    { background: rgba(120,120,128,.12);color: #8e8e93; }
-.tv-tooltip .tt-chip.none       { background: rgba(72,72,74,.1);    color: #636366; }
-.tv-tooltip .tt-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; display: inline-block; flex-shrink: 0; }
-.tv-tooltip .tt-host { color: #636366; font-size: var(--text-2xs); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* ── Legend ── */
-.tv-legend {
-  position: absolute; bottom: 10px; right: 14px;
-  background: rgba(8,8,12,.75); backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,.09); border-radius: 10px;
-  padding: 8px 12px; display: flex; flex-direction: column; gap: 5px;
-  pointer-events: none;
-}
-.tv-legend-row { display: flex; align-items: center; gap: 6px; font-size: var(--text-2xs); color: rgba(255,255,255,.45); }
-.tv-legend-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-
-/* ── Footer ── */
-.tv-footer {
-  height: 44px; flex-shrink: 0;
-  display: flex; align-items: center; gap: 14px;
-  padding: 0 18px;
-  background: rgba(255,255,255,.03);
-  border-top: 1px solid rgba(255,255,255,.07);
-}
-.tv-kpi { display: flex; align-items: center; gap: 6px; font-size: var(--text-xs); font-weight: 600; }
-.tv-kpi-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.tv-kpi-dot.up     { background: var(--success, #34c759); box-shadow: 0 0 5px #34c75966; }
-.tv-kpi-dot.warn   { background: var(--warning, #ff9500); box-shadow: 0 0 5px #ff950066; }
-.tv-kpi-dot.down   { background: var(--danger, #ff3b30); box-shadow: 0 0 5px #ff3b3066; }
-.tv-kpi-dot.paused { background: #00cfff; box-shadow: 0 0 5px #00cfff66; }
-.tv-kpi-dot.none   { background: #48484a; }
-.tv-kpi-count { color: var(--text-primary, #f5f5f7); }
-.tv-kpi-label { color: rgba(255,255,255,.4); }
-.tv-footer-sep { width: 1px; height: 16px; background: rgba(255,255,255,.08); flex-shrink: 0; }
-.tv-ref { margin-left: auto; font-size: var(--text-2xs); color: rgba(255,255,255,.28); display: flex; align-items: center; gap: 5px; white-space: nowrap; }
-
-/* ── Light theme ── */
-.tv-root.light { background: #f2f2f7; color: var(--text-primary, #1d1d1f); }
-.tv-root.light .tv-header { background: rgba(0,0,0,.04); border-color: rgba(0,0,0,.08); }
-.tv-root.light .tv-footer { background: rgba(0,0,0,.02); border-color: rgba(0,0,0,.08); }
-.tv-root.light .tv-name,.tv-root.light .tv-kpi-count { color: var(--text-primary, #1d1d1f); }
-.tv-root.light .tv-location,.tv-root.light .tv-kpi-label,.tv-root.light .tv-ref { color: rgba(0,0,0,.45); }
-.tv-root.light .tv-clock { color: rgba(0,0,0,.55); }
-.tv-root.light .tv-sep,.tv-root.light .tv-footer-sep { background: rgba(0,0,0,.1); }
-.tv-root.light .tv-mode-btn { border-color: rgba(0,0,0,.14); color: rgba(0,0,0,.5); }
-.tv-root.light .tv-mode-btn:hover { background: rgba(0,0,0,.05); color: var(--text-primary, #1d1d1f); }
-.tv-root.light .tv-icon-btn { border-color: rgba(0,0,0,.14); color: rgba(0,0,0,.55); }
-.tv-root.light .tv-icon-btn:hover { background: rgba(0,0,0,.06); color: var(--text-primary, #1d1d1f); }
-.tv-root.light #tvZoomLbl { color: rgba(0,0,0,.45) !important; }
-.tv-root.light .tv-legend { background: rgba(245,245,247,.92); border-color: rgba(0,0,0,.1); }
-.tv-root.light .tv-legend-row { color: rgba(0,0,0,.55); }
-.tv-root.light .tv-3d-badge { background: rgba(0,160,210,.1); border-color: rgba(0,160,210,.3); color: #007aaa; }
-.tv-root.light .tv-tooltip { background: rgba(245,245,247,.96); border-color: rgba(0,0,0,.1); color: #3a3a3c; box-shadow: 0 6px 24px rgba(0,0,0,.12); }
-.tv-root.light .tv-tooltip .tt-name { color: var(--text-primary, #1d1d1f); }
-.tv-root.light .tv-orbit-hint { background: rgba(255,255,255,.8); border-color: rgba(0,0,0,.1); color: rgba(0,0,0,.45); }
-
-/* ── Botão Tour (apresentação automática) ── */
-.tv-icon-btn.on { background: rgba(0,207,255,.18); border-color: #00cfff99; color: #00cfff; box-shadow: 0 0 12px #00cfff44; }
-.tv-root.light .tv-icon-btn.on { background: rgba(0,160,210,.14); border-color: #00a0d2; color: #007aaa; }
-
-/* ── Vinheta ambiente ── */
-.tv-vignette {
-  position: absolute; inset: 0; pointer-events: none; z-index: 1;
-  background: radial-gradient(ellipse 120% 90% at 50% 42%, transparent 55%, rgba(0,0,0,.42) 100%);
-  transition: opacity .4s ease;
-}
-.tv-root.light .tv-vignette { background: radial-gradient(ellipse 120% 90% at 50% 42%, transparent 60%, rgba(0,0,0,.10) 100%); }
-
-/* ── Stack de alertas de status (NOC) ── */
-.tv-alert-stack {
-  position: absolute; top: 12px; right: 14px; z-index: 30;
-  display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
-  pointer-events: none; max-width: 320px;
-}
-.tv-alert {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 14px 9px 12px; border-radius: 12px;
-  background: rgba(8,8,12,.86); backdrop-filter: blur(14px);
-  border: 1px solid rgba(255,255,255,.1);
-  box-shadow: 0 8px 30px rgba(0,0,0,.5);
-  font-size: var(--text-xs); color: var(--text-primary, #f5f5f7); white-space: nowrap;
-  animation: tvAlertIn .45s cubic-bezier(.2,.9,.3,1.2) both;
-  border-left-width: 3px;
-}
-.tv-alert.out { animation: tvAlertOut .5s ease forwards; }
-.tv-alert i { font-size: var(--text-base); flex-shrink: 0; }
-.tv-alert strong { display: block; font-weight: 700; font-size: var(--text-xs); }
-.tv-alert span { display: block; font-size: var(--text-2xs); color: rgba(255,255,255,.55); }
-.tv-alert.down { border-left-color: var(--danger, #ff3b30); } .tv-alert.down i { color: var(--danger, #ff3b30); }
-.tv-alert.warn { border-left-color: var(--warning, #ff9500); } .tv-alert.warn i { color: var(--warning, #ff9500); }
-.tv-alert.up   { border-left-color: var(--success, #34c759); } .tv-alert.up i   { color: var(--success, #34c759); }
-.tv-root.light .tv-alert { background: rgba(255,255,255,.95); border-color: rgba(0,0,0,.08); color: var(--text-primary, #1d1d1f); box-shadow: 0 8px 30px rgba(0,0,0,.16); }
-.tv-root.light .tv-alert span { color: rgba(0,0,0,.5); }
-@keyframes tvAlertIn  { from { opacity:0; transform: translateX(40px) scale(.92); } to { opacity:1; transform:none; } }
-@keyframes tvAlertOut { to { opacity:0; transform: translateX(40px) scale(.92); } }
-
-/* ── Anel de saúde geral (rodapé) ── */
-.tv-health { display: flex; align-items: center; gap: 8px; }
-.tv-health-ring {
-  width: 22px; height: 22px; border-radius: 50%;
-  background: conic-gradient(#34c759 0deg, rgba(255,255,255,.12) 0deg);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  transition: background .6s ease;
-}
-.tv-health-ring::after {
-  content: ''; width: 15px; height: 15px; border-radius: 50%;
-  background: #0a0a0b;
-}
-.tv-root.light .tv-health-ring::after { background: #f2f2f7; }
-.tv-health-txt { display: flex; flex-direction: column; line-height: 1.1; }
-.tv-health-txt b { font-size: var(--text-sm); font-weight: 700; color: var(--text-primary, #f5f5f7); font-variant-numeric: tabular-nums; }
-.tv-health-txt small { font-size: .58rem; text-transform: uppercase; letter-spacing: .06em; color: rgba(255,255,255,.4); }
-.tv-root.light .tv-health-txt b { color: var(--text-primary, #1d1d1f); }
-.tv-root.light .tv-health-txt small { color: rgba(0,0,0,.45); }
-</style>
+  <link rel="stylesheet" href="{% static 'css/ds-rede.css' %}?v={{ assets_version }}">
 </head>
-<body>
+<body class="theme-dark nx-parede">
 <div class="tv-root" id="tvRoot">
 
   <header class="tv-header">
@@ -231,13 +28,13 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: var(--text-p
     <div class="tv-sep"></div>
     <div class="tv-mode-group">
       <button class="tv-mode-btn is-2d" id="btn2d" onclick="setMode('2d')">2D</button>
-      <button class="tv-mode-btn" id="btn3d" onclick="setMode('3d')"><i class="fa-solid fa-cube" style="font-size:.65rem"></i> 3D</button>
+      <button class="tv-mode-btn" id="btn3d" onclick="setMode('3d')"><i class="fa-solid fa-cube"></i> 3D</button>
     </div>
     <div class="tv-sep"></div>
     <button class="tv-icon-btn" onclick="navigateElement(true)" title="Elemento anterior (Shift+Tab)">
       <i class="fa-solid fa-chevron-left"></i>
     </button>
-    <span id="tvNavInfo" style="font-size:.68rem;font-weight:700;color:rgba(255,255,255,.4);min-width:44px;text-align:center;font-variant-numeric:tabular-nums">—</span>
+    <span id="tvNavInfo" class="tv-leitura">—</span>
     <button class="tv-icon-btn" onclick="navigateElement(false)" title="Próximo elemento (Tab)">
       <i class="fa-solid fa-chevron-right"></i>
     </button>
@@ -248,7 +45,7 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: var(--text-p
     <button class="tv-icon-btn" onclick="(()=>{const r=wrap.getBoundingClientRect();applyZoom(1/1.18,r.width/2,r.height/2);})()" title="Reduzir zoom (−)">
       <i class="fa-solid fa-minus"></i>
     </button>
-    <span id="tvZoomLbl" style="font-size:.7rem;font-weight:700;color:rgba(255,255,255,.45);min-width:36px;text-align:center;font-variant-numeric:tabular-nums">100%</span>
+    <span id="tvZoomLbl" class="tv-leitura">100%</span>
     <button class="tv-icon-btn" onclick="(()=>{const r=wrap.getBoundingClientRect();applyZoom(1.18,r.width/2,r.height/2);})()" title="Ampliar zoom (+)">
       <i class="fa-solid fa-plus"></i>
     </button>
@@ -274,11 +71,11 @@ html, body { width: 100%; height: 100%; background: #0a0a0b; color: var(--text-p
     </div>
     <div class="tv-tooltip" id="tvTooltip"></div>
     <div class="tv-legend">
-      <div class="tv-legend-row"><div class="tv-legend-dot" style="background:#34c759;box-shadow:0 0 4px #34c75966"></div> Online</div>
-      <div class="tv-legend-row"><div class="tv-legend-dot" style="background:#ff9500;box-shadow:0 0 4px #ff950066"></div> Instável</div>
-      <div class="tv-legend-row"><div class="tv-legend-dot" style="background:#ff3b30;box-shadow:0 0 4px #ff3b3066"></div> Offline</div>
-      <div class="tv-legend-row"><div class="tv-legend-dot" style="background:#00cfff;box-shadow:0 0 4px #00cfff66"></div> Paus. p/ Dep.</div>
-      <div class="tv-legend-row"><div class="tv-legend-dot" style="background:#48484a"></div> Sem PRTG</div>
+      <div class="tv-legend-row" data-st="up"><div class="tv-legend-dot"></div> Online</div>
+      <div class="tv-legend-row" data-st="warn"><div class="tv-legend-dot"></div> Instável</div>
+      <div class="tv-legend-row" data-st="down"><div class="tv-legend-dot"></div> Offline</div>
+      <div class="tv-legend-row" data-st="paused"><div class="tv-legend-dot"></div> Paus. p/ Dep.</div>
+      <div class="tv-legend-row" data-st="none"><div class="tv-legend-dot"></div> Sem PRTG</div>
     </div>
   </div>
 
@@ -1365,12 +1162,9 @@ function updateKpis() {
   if(hp)hp.textContent=mon?pct+'%':'—';
   const ring=document.getElementById('tvHealthRing');
   if(ring){
-    if(!mon){
-      ring.style.background='conic-gradient(rgba(255,255,255,.12) 360deg, rgba(255,255,255,.12) 0deg)';
-    }else{
-      const col=pct>=90?'#34c759':pct>=60?'#ff9500':'#ff3b30';
-      ring.style.background=`conic-gradient(${col} ${pct*3.6}deg, rgba(255,255,255,.12) 0deg)`;
-    }
+    // O ângulo entra por token de instância; a cor é do CSS. Escrever o
+    // `conic-gradient` inteiro aqui congelava a paleta no JS.
+    ring.style.setProperty('--tv-saude', mon ? `${pct*3.6}deg` : '0deg');
   }
 }
 
@@ -1403,8 +1197,11 @@ updateClock(); setInterval(updateClock,1000);
 // ── Theme ──────────────────────────────────────────────────────────────────────
 function toggleTheme(){
   darkMode=!darkMode;
-  document.querySelector('.tv-root').classList.toggle('light',!darkMode);
-  document.body.style.background=document.documentElement.style.background=darkMode?'#0a0a0b':'#f2f2f7';
+  // `theme-dark` é a classe do SISTEMA: ela troca os ~60 tokens de
+  // tokens.css de uma vez, e a moldura inteira acompanha. Antes havia um
+  // bloco `.tv-root.light` com 20 regras de cor paralelas para manter em
+  // sincronia — a cópia que envelhece da regra 31.
+  document.body.classList.toggle('theme-dark',darkMode);
   document.getElementById('tvThemeIcon').className=darkMode?'fa-solid fa-moon':'fa-solid fa-sun';
 }
 

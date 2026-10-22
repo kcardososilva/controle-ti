@@ -25,6 +25,25 @@ class StatusItemChoices(models.TextChoices):
     DESCARTE = 'descarte', 'Descarte'
     DEVOLVIDO = 'devolvido', 'Devolvido (Locação)'
 
+class AreaOperacionalChoices(models.TextChoices):
+    """
+    Área de operação do equipamento de infraestrutura de rede.
+
+    Divide o parque entre o que sustenta a PRODUÇÃO (algodoeira, silo,
+    indústria, campo, balança, torres) e o que atende a operação de apoio
+    (escritório, alojamento, hotel, refeitório). A divisão existe porque a
+    responsabilidade pela manutenção preventiva e a apuração da meta são
+    por área — ver `services/preventiva_meta_service.py`.
+
+    Vazio (`null`) significa **não classificado**, e não "não produtiva": o
+    equipamento não classificado fica FORA do universo da meta e aparece
+    como pendência de cadastro no painel. Um default mentiria sobre uma
+    decisão que ninguém tomou.
+    """
+    PRODUTIVA = 'produtiva', 'Área Produtiva'
+    NAO_PRODUTIVA = 'nao_produtiva', 'Área Não Produtiva'
+
+
 class StatusUsuarioChoices(models.TextChoices):
     ATIVO = 'ativo', 'Ativo'
     DESLIGADO = 'desligado', 'Desligado'
@@ -392,6 +411,26 @@ class Item(AuditModel):
         null=True
     )
 
+    # Classificação do equipamento de rede entre Área Produtiva e Área Não
+    # Produtiva. É o que liga o ativo ao técnico responsável e à apuração da
+    # meta de preventivas (ver AreaOperacionalChoices e
+    # services/preventiva_meta_service.py). Opcional de propósito: o campo
+    # vale para switch, access point, Meraki, core, fonte, antena e rádio,
+    # e não faz sentido para monitor ou headset.
+    area_operacional = models.CharField(
+        max_length=15,
+        choices=AreaOperacionalChoices.choices,
+        blank=True,
+        null=True,
+        db_index=True,
+        verbose_name="Área de operação",
+        help_text=(
+            "Para equipamentos de infraestrutura de rede: indica se o ativo "
+            "sustenta a área produtiva ou a área não produtiva. Define o "
+            "técnico responsável pela preventiva e a apuração da meta."
+        ),
+    )
+
     data_compra = models.DateField(blank=True, null=True)
     numero_pedido = models.CharField(max_length=100, blank=True, null=True)
     numero_nf = models.CharField(
@@ -455,7 +494,22 @@ class Item(AuditModel):
             models.Index(fields=["localidade"]),
             models.Index(fields=["centro_custo"]),
             models.Index(fields=["excluido"]),
+            # Universo da meta de preventivas: filtra por subtipo + área +
+            # "precisa preventiva" + status numa única varredura.
+            models.Index(
+                fields=["subtipo", "area_operacional", "precisa_preventiva", "status"],
+                name="item_universo_meta_idx",
+            ),
         ]
+
+    @property
+    def area_operacional_label(self):
+        """Rótulo curto da área ('Produtiva' / 'Não Produtiva' / 'Não classificada')."""
+        if self.area_operacional == AreaOperacionalChoices.PRODUTIVA:
+            return "Produtiva"
+        if self.area_operacional == AreaOperacionalChoices.NAO_PRODUTIVA:
+            return "Não Produtiva"
+        return "Não classificada"
 
     @property
     def eh_consumo(self):
@@ -2757,6 +2811,200 @@ class PreventivaResposta(AuditModel):
     def __str__(self):
         return f"{self.pergunta.texto_pergunta}: {self.resposta}"
 
+
+# ----------------- META DE PREVENTIVAS POR ÁREA -----------------
+class PreventivaAreaResponsavel(AuditModel):
+    """
+    Técnico responsável pelas preventivas de uma área de operação.
+
+    É cadastro de RESPONSABILIDADE, não de atribuição: quem executa continua
+    gravado em `Preventiva.tecnico` (agendamento) e em
+    `PreventivaExecucao.tecnico` (execução). Esta tabela responde "de quem é
+    este parque", e o módulo a usa em dois lugares:
+
+      1. o Plano de Agendamento pré-seleciona este técnico ao agendar
+         equipamento da área (sem sobrescrever atribuição já feita à mão);
+      2. a apuração da meta credita a PENDÊNCIA a este técnico quando a
+         preventiva ainda não tem um responsável próprio.
+
+    `subtipo` nulo é o responsável PADRÃO da área — vale para todo subtipo
+    que não tenha linha específica. É o que permite começar com "switches do
+    produtivo são do Vinicius" e depois destacar os access points sem mexer
+    no que já existe.
+    """
+    area = models.CharField(
+        max_length=15,
+        choices=AreaOperacionalChoices.choices,
+        verbose_name="Área de operação",
+    )
+    subtipo = models.ForeignKey(
+        Subtipo,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name="responsaveis_preventiva",
+        verbose_name="Subtipo de equipamento",
+        help_text="Vazio = responsável padrão da área (vale para todos os subtipos).",
+    )
+    tecnico = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="areas_preventiva",
+        verbose_name="Técnico responsável",
+    )
+    ativo = models.BooleanField(default=True, verbose_name="Ativo")
+    observacao = models.TextField(blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Responsável por Área (Preventivas)"
+        verbose_name_plural = "Responsáveis por Área (Preventivas)"
+        ordering = ["area", "subtipo__nome"]
+        constraints = [
+            # Uma linha por (área, subtipo). As duas restrições existem porque
+            # o SQLite (e o Postgres) tratam NULL como valor DISTINTO num
+            # UNIQUE composto: sem a segunda, daria para cadastrar dois
+            # responsáveis padrão para a mesma área.
+            models.UniqueConstraint(
+                fields=["area", "subtipo"],
+                condition=models.Q(subtipo__isnull=False),
+                name="uniq_resp_area_subtipo",
+            ),
+            models.UniqueConstraint(
+                fields=["area"],
+                condition=models.Q(subtipo__isnull=True),
+                name="uniq_resp_area_padrao",
+            ),
+        ]
+
+    def __str__(self):
+        escopo = self.subtipo.nome if self.subtipo else "todos os subtipos"
+        nome = self.tecnico.get_full_name() or self.tecnico.username
+        return f"{self.get_area_display()} · {escopo} → {nome}"
+
+
+class PreventivaCicloMeta(AuditModel):
+    """
+    Ciclo de referência da meta de manutenção preventiva.
+
+    Um ciclo é uma JANELA DE TEMPO (90 dias para switches) dentro da qual todo
+    equipamento elegível do subtipo deve receber uma preventiva. A meta não é
+    "cada equipamento a cada 90 dias" (isso é `Preventiva.data_proxima`, que
+    continua valendo por ativo): é um prazo COMUM, o mesmo para a área inteira,
+    para que exista uma data em que a meta do técnico fecha e um número que o
+    gestor possa comparar entre ciclos.
+
+    O ciclo não guarda resultado nenhum. Previstos, realizados e pendentes são
+    apurados na hora a partir de `PreventivaExecucao` por
+    `services/preventiva_meta_service.py` — gravar o placar criaria uma segunda
+    verdade que envelhece sozinha quando alguém corrige uma execução.
+    """
+    DURACAO_PADRAO = 90
+
+    subtipo = models.ForeignKey(
+        Subtipo,
+        on_delete=models.PROTECT,
+        related_name="ciclos_meta",
+        verbose_name="Subtipo de equipamento",
+        help_text="Subtipo cujo parque este ciclo cobre (ex.: Switches).",
+    )
+    data_inicio = models.DateField(verbose_name="Início do ciclo")
+    duracao_dias = models.PositiveIntegerField(
+        default=DURACAO_PADRAO,
+        validators=[MinValueValidator(1)],
+        verbose_name="Duração (dias)",
+        help_text="Ciclo de referência inicial dos switches: 90 dias.",
+    )
+    encerrado = models.BooleanField(
+        default=False,
+        verbose_name="Encerrado manualmente",
+        help_text="Marca o ciclo como fechado antes do prazo (não altera a apuração do período).",
+    )
+    observacao = models.TextField(blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Ciclo de Meta (Preventivas)"
+        verbose_name_plural = "Ciclos de Meta (Preventivas)"
+        ordering = ["-data_inicio", "subtipo__nome"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["subtipo", "data_inicio"],
+                name="uniq_ciclo_subtipo_inicio",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["subtipo", "data_inicio"]),
+        ]
+
+    def __str__(self):
+        return f"{self.subtipo.nome} · {self.data_inicio:%d/%m/%Y} a {self.data_fim:%d/%m/%Y}"
+
+    # ── Janela ────────────────────────────────────────────────────────────
+    @property
+    def data_fim(self):
+        """Último dia do ciclo (INCLUSIVE). 90 dias = início + 89."""
+        return self.data_inicio + timedelta(days=int(self.duracao_dias) - 1)
+
+    def contem(self, dia) -> bool:
+        return bool(dia) and self.data_inicio <= dia <= self.data_fim
+
+    @property
+    def contem_hoje(self) -> bool:
+        """Para o template marcar o ciclo atual no seletor (o `{% if %}` do
+        Django não chama método com argumento)."""
+        return self.contem(timezone.localdate())
+
+    def dias_decorridos(self, hoje=None) -> int:
+        """Dias já vividos do ciclo, de 0 (não começou) até `duracao_dias`."""
+        hoje = hoje or timezone.localdate()
+        if hoje < self.data_inicio:
+            return 0
+        return min((hoje - self.data_inicio).days + 1, int(self.duracao_dias))
+
+    def dias_restantes(self, hoje=None) -> int:
+        """Dias que ainda restam, contando hoje. 0 quando o prazo já passou."""
+        hoje = hoje or timezone.localdate()
+        if hoje > self.data_fim:
+            return 0
+        if hoje < self.data_inicio:
+            return int(self.duracao_dias)
+        return (self.data_fim - hoje).days + 1
+
+    def pct_tempo(self, hoje=None) -> int:
+        """Quanto do prazo já passou, em %. É a régua contra a qual a execução é lida."""
+        total = int(self.duracao_dias) or 1
+        return min(100, round(self.dias_decorridos(hoje) / total * 100))
+
+    def situacao(self, hoje=None) -> str:
+        """`futuro` | `vigente` | `encerrado` — estado do ciclo na linha do tempo."""
+        hoje = hoje or timezone.localdate()
+        if self.encerrado or hoje > self.data_fim:
+            return "encerrado"
+        if hoje < self.data_inicio:
+            return "futuro"
+        return "vigente"
+
+    def clean(self):
+        super().clean()
+        if not self.data_inicio or not self.subtipo_id or not self.duracao_dias:
+            return
+        # Ciclos do mesmo subtipo não podem se sobrepor: um equipamento
+        # executado num dia coberto por dois ciclos contaria duas vezes, e as
+        # duas apurações divergiriam da outra sem ninguém saber qual está certa.
+        conflito = (
+            PreventivaCicloMeta.objects
+            .filter(subtipo_id=self.subtipo_id)
+            .exclude(pk=self.pk)
+        )
+        for outro in conflito:
+            if self.data_inicio <= outro.data_fim and outro.data_inicio <= self.data_fim:
+                raise ValidationError({
+                    "data_inicio": (
+                        f"Este período se sobrepõe ao ciclo de "
+                        f"{outro.data_inicio:%d/%m/%Y} a {outro.data_fim:%d/%m/%Y}. "
+                        f"Ajuste a data de início ou a duração."
+                    )
+                })
+
+
 class PeriodicidadeChoices(models.TextChoices):
     """
     Ciclo de cobranca do lote. O rateio para custo mensal/anual mora em
@@ -3965,6 +4213,11 @@ class RequisicaoItem(AuditModel):
     numero_nf = models.CharField(max_length=30, blank=True, null=True, verbose_name="Número da NF")
     valor_unitario = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True,
         verbose_name="Valor Unitário (recebimento)")
+    fornecedor = models.ForeignKey("Fornecedor", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="itens_requisicao_recebidos", verbose_name="Fornecedor (recebimento)",
+        help_text="Quem entregou a compra. Gravado tanto no recebimento com vínculo de estoque "
+                   "(mesmo valor enviado à Entrada em Movimentações) quanto sem vínculo — só assim "
+                   "fica registrado no RequisicaoItem nos dois casos.")
 
     class Meta:
         ordering = ["-created_at"]
@@ -4392,3 +4645,571 @@ class TermoAssinatura(AuditModel):
         if len(nomes) == 1:
             return nomes[0]
         return f"{nomes[0]} + {len(nomes) - 1} equipamento{'s' if len(nomes) > 2 else ''}"
+
+
+# ========== MAPA DE REDE (TOPOLOGIA) ==========
+# O módulo de Plantas desenha ONDE o equipamento está. O que faltava era COMO
+# ele está ligado: qual porta do switch, com que meio, para onde vai. Sem isso
+# "mapear a rede da empresa" era uma pergunta respondida por planilha paralela.
+#
+# A decisão que organiza tudo aqui: o cabo é um fato da PORTA, não do desenho.
+# O enlace mora em RedePorta.destino_porta / destino_item; o
+# RedeTopologia.layout guarda só geometria (posição do nó, zonas, notas). Por
+# isso um mapa nunca pode discordar do inventário de portas — e a mesma ligação
+# aparece em todos os mapas que mostrem os dois equipamentos. O contrário
+# (enlace dentro do JSON do mapa) daria dois desenhos afirmando cabeamentos
+# diferentes para o mesmo switch, sem ninguém para desempatar.
+
+
+class RedePapelChoices(models.TextChoices):
+    """
+    Camada do equipamento na hierarquia da rede.
+
+    É o que permite o auto-arranjo do mapa sair parecido com um diagrama de
+    verdade (borda em cima, terminal embaixo) em vez de uma nuvem de caixas.
+    """
+    BORDA        = 'borda',        'Borda / Internet'
+    CORE         = 'core',         'Núcleo (core)'
+    DISTRIBUICAO = 'distribuicao', 'Distribuição'
+    ACESSO       = 'acesso',       'Acesso'
+    TERMINAL     = 'terminal',     'Terminal'
+
+
+class RedePortaTipoChoices(models.TextChoices):
+    RJ45    = 'rj45',    'RJ45 (cobre)'
+    SFP     = 'sfp',     'SFP / SFP+ (fibra)'
+    COMBO   = 'combo',   'Combo (uplink)'
+    CONSOLE = 'console', 'Console'
+
+
+class RedePortaStatusChoices(models.TextChoices):
+    """
+    Situação administrativa da porta.
+
+    ATIVA é o estado de uma porta COM cabo — é ele que responde "quantas
+    portas do switch estão em uso". LIVRE é porta disponível. Os outros três
+    existem porque "não tem cabo" e "não pode receber cabo" são coisas
+    diferentes na hora de planejar a próxima instalação.
+    """
+    ATIVA     = 'ativa',     'Ativa (em uso)'
+    LIVRE     = 'livre',     'Livre'
+    RESERVADA = 'reservada', 'Reservada'
+    DEFEITO   = 'defeito',   'Com defeito'
+    DESLIGADA = 'desligada', 'Desligada (administrativo)'
+
+
+class RedeVelocidadeChoices(models.TextChoices):
+    FE    = '100m', '100 Mbps'
+    GE    = '1g',   '1 Gbps'
+    MGE   = '2.5g', '2,5 Gbps'
+    TENGE = '10g',  '10 Gbps'
+
+
+class RedeMeioChoices(models.TextChoices):
+    UTP    = 'utp',    'Cabo UTP'
+    FIBRA  = 'fibra',  'Fibra óptica'
+    RADIO  = 'radio',  'Enlace de rádio'
+    STACK  = 'stack',  'Empilhamento (stack)'
+    LOGICO = 'logico', 'Lógico / virtual'
+
+
+class RedeDispositivo(AuditModel):
+    """
+    A faceta de REDE de um ativo do inventário.
+
+    Não é um cadastro paralelo de equipamento: é uma extensão 1-1 de Item
+    com o que só a rede precisa saber (papel, IP de gerência, vínculo PRTG).
+    Pôr essas colunas em Item cobraria de monitor e headset um custo que é
+    de switch e access point — e Item é consumido por 174 templates.
+    """
+    item = models.OneToOneField(
+        Item,
+        on_delete=models.CASCADE,
+        related_name='rede',
+        verbose_name="Equipamento",
+    )
+    papel = models.CharField(
+        max_length=14,
+        choices=RedePapelChoices.choices,
+        default=RedePapelChoices.ACESSO,
+        db_index=True,
+        verbose_name="Papel na rede",
+    )
+    ip_gerencia = models.GenericIPAddressField(
+        null=True, blank=True,
+        verbose_name="IP de gerência",
+        help_text="Endereço de administração do equipamento.",
+    )
+    prtg_objid = models.PositiveIntegerField(
+        null=True, blank=True,
+        db_index=True,
+        verbose_name="ID do objeto no PRTG",
+        help_text="Vínculo com o monitoramento. Sem ele o nó aparece como sem monitoramento.",
+    )
+    modelo_portas = models.CharField(
+        max_length=40, blank=True,
+        verbose_name="Modelo do catálogo",
+        help_text="Chave do modelo usado para gerar as portas (ver rede_topologia_service).",
+    )
+    observacoes = models.TextField(blank=True, verbose_name="Observações de rede")
+
+    # ── Onde ele está FISICAMENTE ──────────────────────────────────────────
+    # `Item.localidade` responde "em que fazenda", que é o que o inventário
+    # precisa. Nenhuma dessas três colunas responde "em que armário, em que
+    # altura, em que ponto do terreno" — e é essa a pergunta de quem vai
+    # puxar o cabo. Ficam aqui, na faceta de rede, e não em Item, pela mesma
+    # razão do bloco acima: monitor e headset não têm posição em rack.
+    rack = models.ForeignKey(
+        'RedeRack',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='equipamentos',
+        verbose_name="Rack",
+    )
+    rack_u = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name="Posição no rack (U)",
+        help_text="Contada de baixo para cima, como na régua do rack. Vazio = posição não declarada.",
+    )
+    rack_altura_u = models.PositiveSmallIntegerField(
+        default=1,
+        verbose_name="Altura no rack (U)",
+        help_text="Quantas unidades o equipamento ocupa. Switch de 24p costuma ser 1U.",
+    )
+    latitude = models.DecimalField(
+        max_digits=10, decimal_places=7,
+        null=True, blank=True,
+        verbose_name="Latitude",
+        help_text="Posição no mapa. Vazio = herda a posição do rack, se houver.",
+    )
+    longitude = models.DecimalField(
+        max_digits=10, decimal_places=7,
+        null=True, blank=True,
+        verbose_name="Longitude",
+    )
+
+    class Meta:
+        verbose_name = "Dispositivo de rede"
+        verbose_name_plural = "Dispositivos de rede"
+        ordering = ['item__nome']
+
+    def __str__(self):
+        return f"{self.item.nome} ({self.get_papel_display()})"
+
+    # ── Portas: as contas que a tela e o relatório pedem ──────────────────
+    @property
+    def total_portas(self) -> int:
+        return self.portas.count()
+
+    @property
+    def portas_ativas(self) -> int:
+        return self.portas.filter(status=RedePortaStatusChoices.ATIVA).count()
+
+    @property
+    def ocupacao_pct(self) -> int:
+        total = self.total_portas
+        if not total:
+            return 0
+        return round(self.portas_ativas * 100 / total)
+
+
+class RedePorta(AuditModel):
+    """
+    Uma porta física do equipamento — e, quando ela tem cabo, o outro lado dele.
+
+    destino_porta é 1-1 porque uma porta só pode estar ligada a uma outra:
+    o banco recusa um segundo cabo no mesmo destino, que é o erro de cadastro
+    mais comum ao mapear um rack inteiro na mão. O par é gravado nos DOIS
+    sentidos por rede_topologia_service.conectar — nunca à mão, senão o grafo
+    sai com enlace de uma perna só.
+
+    destino_item existe para o caso em que o outro lado NÃO tem portas
+    cadastradas (uma câmera, um desktop): dá para registrar "a porta 7 vai na
+    câmera do pátio" sem obrigar a modelar as portas da câmera.
+    """
+    dispositivo = models.ForeignKey(
+        RedeDispositivo,
+        on_delete=models.CASCADE,
+        related_name='portas',
+        verbose_name="Dispositivo",
+    )
+    numero = models.PositiveSmallIntegerField(verbose_name="Número")
+    rotulo = models.CharField(
+        max_length=40, blank=True,
+        verbose_name="Rótulo",
+        help_text="Identificação do fabricante (ex.: Gi1/0/12).",
+    )
+    tipo = models.CharField(
+        max_length=10,
+        choices=RedePortaTipoChoices.choices,
+        default=RedePortaTipoChoices.RJ45,
+        verbose_name="Tipo",
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=RedePortaStatusChoices.choices,
+        default=RedePortaStatusChoices.LIVRE,
+        db_index=True,
+        verbose_name="Situação",
+    )
+    velocidade = models.CharField(
+        max_length=6, blank=True,
+        choices=RedeVelocidadeChoices.choices,
+        verbose_name="Velocidade",
+    )
+    poe = models.BooleanField(default=False, verbose_name="PoE")
+    vlan = models.CharField(max_length=40, blank=True, verbose_name="VLAN")
+    meio = models.CharField(
+        max_length=8,
+        choices=RedeMeioChoices.choices,
+        default=RedeMeioChoices.UTP,
+        verbose_name="Meio do enlace",
+    )
+    destino_porta = models.OneToOneField(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='porta_origem',
+        verbose_name="Porta de destino",
+    )
+    destino_item = models.ForeignKey(
+        Item,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='portas_de_entrada',
+        verbose_name="Equipamento de destino",
+    )
+    descricao = models.CharField(max_length=160, blank=True, verbose_name="Descrição")
+    rota = models.ForeignKey(
+        'RedeRota',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='enlaces',
+        verbose_name="Rota física do cabo",
+        help_text="Por onde este lance passa no terreno. Várias portas dividem a mesma vala.",
+    )
+
+    class Meta:
+        verbose_name = "Porta de rede"
+        verbose_name_plural = "Portas de rede"
+        ordering = ['dispositivo__item__nome', 'numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['dispositivo', 'numero'], name='uniq_porta_por_dispositivo'
+            ),
+        ]
+        indexes = [models.Index(fields=['dispositivo', 'status'])]
+
+    def __str__(self):
+        return f"{self.dispositivo.item.nome} · {self.rotulo or self.numero}"
+
+    @property
+    def tem_enlace(self) -> bool:
+        return bool(self.destino_porta_id or self.destino_item_id)
+
+    def clean(self):
+        super().clean()
+        if self.destino_porta_id and self.destino_porta_id == self.pk:
+            raise ValidationError({"destino_porta": "Uma porta não se liga a si mesma."})
+        if self.destino_porta_id and self.dispositivo_id:
+            destino = RedePorta.objects.filter(pk=self.destino_porta_id).first()
+            if destino and destino.dispositivo_id == self.dispositivo_id:
+                raise ValidationError(
+                    {"destino_porta": "A porta de destino está no mesmo equipamento."}
+                )
+
+
+class RedeTopologia(AuditModel):
+    """
+    Um mapa salvo: escopo (localidade/área) + geometria.
+
+    layout guarda SÓ desenho — {"nos": {"<item_id>": {"x":..., "y":...}},
+    "zonas": [...], "notas": [...], "canvas": {...}}. Enlace nenhum entra
+    aqui: ele é da porta (ver o comentário no topo deste bloco).
+    """
+    nome       = models.CharField(max_length=160, verbose_name="Nome do mapa")
+    descricao  = models.TextField(blank=True, verbose_name="Descrição")
+    localidade = models.ForeignKey(
+        Localidade,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='topologias',
+        verbose_name="Localidade",
+    )
+    area = models.CharField(
+        max_length=15, blank=True,
+        choices=AreaOperacionalChoices.choices,
+        verbose_name="Área de operação",
+        help_text="Vazio = o mapa não filtra por área.",
+    )
+    layout  = models.JSONField(default=dict, verbose_name="Geometria do mapa")
+    versao  = models.PositiveIntegerField(default=1, verbose_name="Versão")
+
+    class Meta:
+        verbose_name = "Mapa de rede"
+        verbose_name_plural = "Mapas de rede"
+        ordering = ['localidade__local', 'nome']
+        indexes = [models.Index(fields=['localidade'])]
+
+    def __str__(self):
+        return f"{self.nome} — {self.localidade or 'Corporativo'}"
+
+    @property
+    def total_nos(self) -> int:
+        return len((self.layout or {}).get("nos") or {})
+
+
+class RedeTopologiaHistorico(models.Model):
+    """Versões anteriores da geometria — mesmo contrato do histórico de plantas."""
+    topologia = models.ForeignKey(
+        RedeTopologia, on_delete=models.CASCADE, related_name='historico'
+    )
+    versao    = models.PositiveIntegerField()
+    layout    = models.JSONField()
+    salvo_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='topologias_salvas'
+    )
+    descricao = models.CharField(max_length=200, blank=True, verbose_name="Descrição")
+    salvo_em  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-versao']
+        unique_together = [['topologia', 'versao']]
+        verbose_name = "Versão de mapa de rede"
+        verbose_name_plural = "Versões de mapa de rede"
+
+    def __str__(self):
+        return f"{self.topologia.nome} — v{self.versao}"
+
+
+# ========== PLANTA GEORREFERENCIADA DA REDE (RACK, ROTA) ==========
+# O bloco acima responde COMO o equipamento está ligado. O que faltava era
+# POR ONDE o cabo passa fisicamente, e EM QUE rack o equipamento está.
+#
+# A separação que organiza este bloco é a mesma do anterior, um degrau abaixo:
+#
+#   • o CABO é fato da PORTA        (RedePorta.destino_porta) — já existia;
+#   • a ROTA é fato do TERRENO      (RedeRota.pontos, em lat/lon);
+#   • o cabo APONTA para a rota     (RedePorta.rota) — "este enlace viaja por
+#     aquela vala".
+#
+# Por que não guardar o traçado dentro da porta: uma vala de fibra entre a
+# sede e o galpão carrega doze enlaces. Com o traçado na porta, o mesmo
+# caminho seria redesenhado doze vezes, e remanejar a vala obrigaria a
+# corrigir doze cadastros — na prática, a corrigir nenhum. Com a rota como
+# objeto, mede-se o comprimento uma vez, conta-se a ocupação de fibras, e
+# "quem cai se esta vala for rompida" é uma pergunta respondível.
+#
+# Por que lat/lon e não x/y do desenho: o pedido é desenhar sobre o mapa real
+# (ver Architecture Rule 15 para o provedor de tiles). Coordenada de tela
+# muda de significado quando alguém dá zoom; coordenada geográfica é o fato,
+# e é o que permite o comprimento sair em METROS — que é o número que decide
+# se o lance de UTP cabe nos 90 m da norma ou se precisa de fibra.
+
+
+class RedeRotaTipoChoices(models.TextChoices):
+    """
+    O que passa dentro da rota.
+
+    Separar fibra de UTP não é detalhe de catálogo: o limite de 90 m do
+    cabeamento horizontal (TIA-568) vale para o par trançado e não vale para
+    a fibra. É esse par (tipo + comprimento medido) que faz a conferência da
+    planta apontar o lance impossível antes de alguém puxar o cabo.
+    """
+    FIBRA_MM    = 'fibra_mm',   'Fibra óptica multimodo (OM3/OM4)'
+    FIBRA_SM    = 'fibra_sm',   'Fibra óptica monomodo (OS2)'
+    UTP_CAT5E   = 'utp_cat5e',  'Cabo UTP Cat5e'
+    UTP_CAT6    = 'utp_cat6',   'Cabo UTP Cat6'
+    UTP_CAT6A   = 'utp_cat6a',  'Cabo UTP Cat6A'
+    COAXIAL     = 'coaxial',    'Cabo coaxial'
+    ELETRICO    = 'eletrico',   'Alimentação elétrica'
+    RADIO       = 'radio',      'Enlace de rádio (visada)'
+    DUTO_VAZIO  = 'duto_vazio', 'Duto reservado (vazio)'
+
+
+class RedeRotaInstalacaoChoices(models.TextChoices):
+    """
+    Como a rota está instalada no terreno.
+
+    Muda o custo de mexer nela e muda quem some quando ela rompe: o lance
+    aéreo cai com o galho, o subterrâneo cai com a retroescavadeira.
+    """
+    SUBTERRANEO = 'subterraneo', 'Subterrâneo (vala / duto)'
+    AEREO       = 'aereo',       'Aéreo (poste / espinada)'
+    EMBUTIDO    = 'embutido',    'Embutido (eletroduto / parede)'
+    CANALETA    = 'canaleta',    'Canaleta aparente'
+    LANCADO     = 'lancado',     'Lançado (forro / piso elevado)'
+    VISADA      = 'visada',      'Visada livre (rádio)'
+
+
+class RedeRack(AuditModel):
+    """
+    Um rack, armário ou caixa de emenda — o lugar físico do equipamento.
+
+    Existe como objeto, e não como texto em `Item.observacoes`, por três
+    perguntas que só um objeto responde: que altura útil (U) ainda sobra,
+    o que exatamente cai quando falta energia neste armário, e onde ele
+    está no mapa para a rota de fibra chegar até ele.
+    """
+    nome = models.CharField(max_length=120, verbose_name="Nome do rack")
+    codigo = models.CharField(
+        max_length=40, blank=True,
+        verbose_name="Código / etiqueta",
+        help_text="Como ele está etiquetado em campo (ex.: RK-SEDE-01).",
+    )
+    localidade = models.ForeignKey(
+        Localidade,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='racks',
+        verbose_name="Localidade",
+    )
+    area = models.CharField(
+        max_length=15, blank=True,
+        choices=AreaOperacionalChoices.choices,
+        verbose_name="Área de operação",
+    )
+    ambiente = models.CharField(
+        max_length=120, blank=True,
+        verbose_name="Ambiente",
+        help_text="Sala, galpão ou poste onde o rack está (ex.: CPD, almoxarifado).",
+    )
+    us = models.PositiveSmallIntegerField(
+        default=42,
+        verbose_name="Altura útil (U)",
+        help_text="Quantas unidades de rack cabem. Caixa de emenda: deixe 1.",
+    )
+    latitude = models.DecimalField(
+        max_digits=10, decimal_places=7,
+        null=True, blank=True,
+        verbose_name="Latitude",
+    )
+    longitude = models.DecimalField(
+        max_digits=10, decimal_places=7,
+        null=True, blank=True,
+        verbose_name="Longitude",
+    )
+    observacoes = models.TextField(blank=True, verbose_name="Observações")
+
+    class Meta:
+        verbose_name = "Rack de rede"
+        verbose_name_plural = "Racks de rede"
+        ordering = ['localidade__local', 'nome']
+        indexes = [models.Index(fields=['localidade'])]
+
+    def __str__(self):
+        return f"{self.nome}{f' ({self.codigo})' if self.codigo else ''}"
+
+    @property
+    def tem_geo(self) -> bool:
+        return self.latitude is not None and self.longitude is not None
+
+    @property
+    def us_ocupados(self) -> int:
+        """Soma da altura dos equipamentos com posição declarada."""
+        return sum(
+            d.rack_altura_u or 1
+            for d in self.equipamentos.all()
+            if d.rack_u
+        )
+
+
+class RedeRota(AuditModel):
+    """
+    O caminho FÍSICO de um lance de cabo, em coordenadas geográficas.
+
+    `pontos` é a lista do traçado — `[[lat, lon], [lat, lon], …]`, na ordem
+    em que o cabo anda. Não é geometria de desenho: é o terreno. Daí sair
+    `comprimento_m` em metros reais (ver `rede_topologia_service`), que é o
+    número que o projeto precisa e que nenhuma coordenada de tela dá.
+
+    `comprimento_m` é CALCULADO e gravado em vez de apurado a cada leitura
+    porque ele entra em ordenação, em soma por tipo e na conferência dos
+    90 m — e recalcular haversine de 400 rotas a cada tela seria pagar três
+    vezes pelo mesmo número. Quem grava é sempre o service, nunca a tela.
+    """
+    nome = models.CharField(
+        max_length=160,
+        verbose_name="Nome da rota",
+        help_text="Como o pessoal de campo chama o lance (ex.: Vala CPD -> Galpão 2).",
+    )
+    localidade = models.ForeignKey(
+        Localidade,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rotas_rede',
+        verbose_name="Localidade",
+    )
+    area = models.CharField(
+        max_length=15, blank=True,
+        choices=AreaOperacionalChoices.choices,
+        verbose_name="Área de operação",
+    )
+    tipo = models.CharField(
+        max_length=12,
+        choices=RedeRotaTipoChoices.choices,
+        default=RedeRotaTipoChoices.FIBRA_SM,
+        db_index=True,
+        verbose_name="Tipo de cabo",
+    )
+    instalacao = models.CharField(
+        max_length=12,
+        choices=RedeRotaInstalacaoChoices.choices,
+        default=RedeRotaInstalacaoChoices.SUBTERRANEO,
+        verbose_name="Forma de instalação",
+    )
+    pontos = models.JSONField(
+        default=list,
+        verbose_name="Traçado",
+        help_text="Lista [[lat, lon], ...] na ordem do lance.",
+    )
+    comprimento_m = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        default=0,
+        verbose_name="Comprimento (m)",
+        help_text="Medido sobre o traçado pelo service. Não editar à mão.",
+    )
+    fibras = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="Fibras / pares no cabo",
+        help_text="Capacidade do cabo. 0 = não informado.",
+    )
+    rack_a = models.ForeignKey(
+        RedeRack,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rotas_saindo',
+        verbose_name="Rack de origem",
+    )
+    rack_b = models.ForeignKey(
+        RedeRack,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rotas_chegando',
+        verbose_name="Rack de destino",
+    )
+    observacoes = models.TextField(blank=True, verbose_name="Observações")
+
+    class Meta:
+        verbose_name = "Rota de cabo"
+        verbose_name_plural = "Rotas de cabo"
+        ordering = ['localidade__local', 'nome']
+        indexes = [
+            models.Index(fields=['localidade', 'tipo']),
+        ]
+
+    def __str__(self):
+        return f"{self.nome} - {self.get_tipo_display()}"
+
+    @property
+    def e_cobre(self) -> bool:
+        """Par trançado — é quem responde ao limite de 90 m."""
+        return self.tipo in (
+            RedeRotaTipoChoices.UTP_CAT5E,
+            RedeRotaTipoChoices.UTP_CAT6,
+            RedeRotaTipoChoices.UTP_CAT6A,
+        )
+
+    @property
+    def total_pontos(self) -> int:
+        return len(self.pontos or [])

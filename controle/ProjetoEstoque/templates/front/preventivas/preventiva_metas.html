@@ -1,0 +1,774 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Metas e Ciclos de Preventiva{% endblock %}
+{% block page_title %}Metas e Ciclos{% endblock %}
+{% block page_subtitle %}Execução da manutenção preventiva por área, técnico e ciclo{% endblock %}
+
+{% block header_actions %}
+  {% if ciclo %}
+    <a href="{% url 'preventiva_metas_export' %}?subtipo={{ subtipo.pk }}&ciclo={{ ciclo.pk }}" class="btn btn-sm">
+      <i class="fa fa-file-excel" aria-hidden="true"></i> Exportar
+    </a>
+  {% endif %}
+  <a href="{% url 'preventiva_metas_config' %}" class="btn btn-sm">
+    <i class="fa fa-sliders" aria-hidden="true"></i> Configurar
+  </a>
+  <a href="{% url 'preventiva_plano' %}" class="btn btn-sm">
+    <i class="fa fa-calendar-plus" aria-hidden="true"></i> Plano de Agendamento
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+  {% comment %}A folha do módulo vem DEPOIS do Select2 de propósito: é ela que
+     reveste o componente nos tokens do sistema, e invertida a ordem o CDN
+     venceria (regra 26 — a ordem faz parte do contrato).{% endcomment %}
+  {% include 'front/preventivas/_pv_design_system.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="pvm-page">
+
+  {# ── Contexto: qual parque e qual ciclo estão sendo lidos ─────────────── #}
+  <form method="get" class="pvm-contexto" id="pvmContexto">
+    <div class="pvm-contexto-campo">
+      <label class="pvm-contexto-label" for="pvmSubtipo">Subtipo de equipamento</label>
+      <select name="subtipo" id="pvmSubtipo" data-autosubmit>
+        {% for st in subtipos %}
+          <option value="{{ st.pk }}" {% if subtipo and st.pk == subtipo.pk %}selected{% endif %}>{{ st.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    {% if ciclos %}
+      <div class="pvm-contexto-campo">
+        <label class="pvm-contexto-label" for="pvmCiclo">Ciclo de referência</label>
+        <select name="ciclo" id="pvmCiclo" data-autosubmit>
+          {% for c in ciclos %}
+            <option value="{{ c.pk }}" {% if ciclo and c.pk == ciclo.pk %}selected{% endif %}>
+              {{ c.data_inicio|date:"d/m/Y" }} a {{ c.data_fim|date:"d/m/Y" }}{% if c.contem_hoje %} (atual){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
+
+    <div class="pvm-contexto-acoes">
+      <noscript><button type="submit" class="btn btn-sm btn-primary">Aplicar</button></noscript>
+    </div>
+  </form>
+
+  {% if not subtipo %}
+    {# Nem o parque existe: a tela diz o que falta cadastrar, em vez de abrir vazia. #}
+    <div class="pv-card">
+      <div class="pv-card-body">
+        <div class="ui-empty">
+          <div class="ui-empty-ico"><i class="fa fa-layer-group" aria-hidden="true"></i></div>
+          <p class="ui-empty-title">Nenhum equipamento no programa de preventiva</p>
+          <p class="ui-empty-text">
+            A meta é apurada sobre os equipamentos marcados como <strong>“Precisa Preventiva: Sim”</strong>
+            no cadastro. Marque os ativos de rede que entram no programa e defina a periodicidade em dias.
+          </p>
+          <div class="ui-empty-actions">
+            <a href="{% url 'equipamentos_list' %}" class="btn btn-sm btn-primary">
+              <i class="fa fa-screwdriver-wrench" aria-hidden="true"></i> Abrir equipamentos
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  {% elif not ciclo %}
+    {# Parque existe, ciclo não. Abrir o ciclo é POST — é criação de dado. #}
+    <div class="pv-card">
+      <div class="pv-card-body">
+        <div class="ui-empty">
+          <div class="ui-empty-ico"><i class="fa fa-flag-checkered" aria-hidden="true"></i></div>
+          <p class="ui-empty-title">Nenhum ciclo de referência aberto para {{ subtipo.nome }}</p>
+          <p class="ui-empty-text">
+            O ciclo é a janela em que todo equipamento elegível precisa receber uma preventiva.
+            Para switches, o ciclo inicial de referência é de <strong>90 dias</strong>.
+            Começaria em <strong>{{ proximo_inicio|date:"d/m/Y" }}</strong>.
+          </p>
+          <div class="ui-empty-actions">
+            <form method="post" action="{% url 'preventiva_metas' %}">
+              {% csrf_token %}
+              <input type="hidden" name="acao" value="abrir_ciclo">
+              <input type="hidden" name="subtipo" value="{{ subtipo.pk }}">
+              <input type="hidden" name="duracao_dias" value="{{ duracao_padrao }}">
+              <button type="submit" class="btn btn-sm btn-primary">
+                <i class="fa fa-play" aria-hidden="true"></i>
+                Abrir ciclo de {{ duracao_padrao }} dias
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  {% else %}
+    {% with ap=apuracao %}
+
+    {# ── Pré-requisitos: o que mantém o denominador incompleto ─────────── #}
+    {% if ap.nao_classificados_total %}
+      <div class="pvm-aviso">
+        <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+        <div class="pvm-aviso-corpo">
+          <span class="pvm-aviso-titulo">
+            {{ ap.nao_classificados_total }}
+            {{ subtipo.nome|lower }}{{ ap.nao_classificados_total|pluralize }} ativo{{ ap.nao_classificados_total|pluralize }}
+            sem área de operação definida
+          </span>
+          <span class="pvm-aviso-texto">
+            Equipamento sem área fica <strong>fora da meta</strong> — não tem responsável nem entra no
+            comparativo. Classifique no cadastro do equipamento, campo “Área de operação”.
+          </span>
+          <div class="pvm-aviso-chips">
+            {% for item in ap.nao_classificados|slice:":6" %}
+              <a class="pvm-aviso-chip" href="{% url 'equipamento_detalhe' item.pk %}">{{ item.nome }}</a>
+            {% endfor %}
+            {% if ap.nao_classificados_total > 6 %}
+              <span class="pvm-aviso-chip">+{{ ap.nao_classificados_total|add:"-6" }}</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    {% for area in ap.areas %}
+      {% if not area.tecnico and area.previstos %}
+        <div class="pvm-aviso">
+          <i class="fa fa-user-slash" aria-hidden="true"></i>
+          <div class="pvm-aviso-corpo">
+            <span class="pvm-aviso-titulo">{{ area.label }} sem técnico responsável</span>
+            <span class="pvm-aviso-texto">
+              {{ area.previstos }} equipamento{{ area.previstos|pluralize }} previsto{{ area.previstos|pluralize }}
+              sem dono: a pendência não é creditada a ninguém e o Plano de Agendamento não tem
+              quem pré-selecionar.
+              <a href="{% url 'preventiva_metas_config' %}">Definir responsável</a>.
+            </span>
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+
+    {# ── Ciclo: a figura herói e a régua execução × prazo ──────────────── #}
+    <section class="pvm-hero">
+      <div class="pvm-hero-figura">
+        <span class="pvm-hero-rotulo">Meta do ciclo</span>
+        <span class="pvm-hero-valor">{{ ap.pct }}<small>%</small></span>
+        <span class="pvm-hero-sub">
+          {{ ap.realizados }} de {{ ap.previstos }} equipamento{{ ap.previstos|pluralize }}
+        </span>
+        <span class="pvm-selo is-{{ ap.risco }}" style="margin-top:var(--space-2);justify-self:start;">
+          {% if ap.risco == 'concluido' %}<i class="fa fa-circle-check" aria-hidden="true"></i>
+          {% elif ap.risco == 'em_dia' %}<i class="fa fa-circle-play" aria-hidden="true"></i>
+          {% elif ap.risco == 'atrasado' %}<i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+          {% elif ap.risco == 'risco' %}<i class="fa fa-fire" aria-hidden="true"></i>
+          {% elif ap.risco == 'nao_cumprida' %}<i class="fa fa-circle-xmark" aria-hidden="true"></i>
+          {% elif ap.risco == 'sem_parque' %}<i class="fa fa-layer-group" aria-hidden="true"></i>
+          {% else %}<i class="fa fa-clock" aria-hidden="true"></i>{% endif %}
+          {{ ap.risco_label }}
+        </span>
+      </div>
+
+      <div class="pvm-hero-corpo">
+        <div class="pvm-hero-linha">
+          <span class="pvm-hero-titulo">{{ subtipo.nome }} · {{ ap.situacao_label }}</span>
+          <span class="pvm-hero-datas">
+            {{ ciclo.data_inicio|date:"d/m/Y" }} → {{ ciclo.data_fim|date:"d/m/Y" }}
+            · dia {{ ap.dias_decorridos }} de {{ ap.duracao }}
+          </span>
+        </div>
+
+        {# A régua responde "43% é bom?": o traço marca quanto do PRAZO já passou. #}
+        <div class="pvm-regua {% if ap.risco == 'concluido' or ap.risco == 'em_dia' %}is-ok{% elif ap.risco == 'atrasado' %}is-aviso{% elif ap.risco == 'risco' or ap.risco == 'nao_cumprida' %}is-perigo{% endif %}"
+             style="--pvm-exec: {{ ap.pct }}%; --pvm-tempo: {{ ap.expectativa }}%;"
+             role="img"
+             aria-label="{{ ap.pct }}% da meta executada, contra {{ ap.expectativa }}% esperado neste ponto do ciclo">
+          <span class="pvm-regua-fill"></span>
+          <span class="pvm-regua-tempo" aria-hidden="true"></span>
+        </div>
+
+        <div class="pvm-regua-legenda">
+          <span>Executado <b>{{ ap.pct }}%</b></span>
+          <span><i aria-hidden="true"></i>Esperado agora <b>{{ ap.expectativa }}%</b></span>
+          <span>Não realizado <b>{{ ap.pct_pendente }}%</b></span>
+          {% if ap.ritmo_semanal %}
+            <span>Ritmo necessário <b>{{ ap.ritmo_semanal|floatformat:"-1" }}</b>/semana</span>
+          {% endif %}
+        </div>
+
+        {% if ap.expectativa_ajustada %}
+          {% comment %}A expectativa só difere do calendário quando houve entrada
+             de equipamento no meio do ciclo. Dizer isso é o que impede a
+             pergunta "por que 52% de prazo e 41% esperado?".{% endcomment %}
+          <p class="pvm-nota-ajuste">
+            <i class="fa fa-circle-info" aria-hidden="true"></i>
+            O prazo já consumiu <strong>{{ ap.pct_tempo }}%</strong>, mas o esperado é
+            <strong>{{ ap.expectativa }}%</strong>: {{ ap.entraram }}
+            equipamento{{ ap.entraram|pluralize }} entrou em operação depois da abertura
+            do ciclo e só é cobrado pelo tempo em que esteve disponível.
+          </p>
+        {% endif %}
+      </div>
+    </section>
+
+    {# ── KPIs do ciclo ─────────────────────────────────────────────────── #}
+    <section class="pvm-kpis">
+      <div class="pvm-kpi">
+        <span class="pvm-kpi-label"><i class="fa fa-list-check" aria-hidden="true"></i> Previstos</span>
+        <span class="pvm-kpi-valor">{{ ap.previstos }}</span>
+        <span class="pvm-kpi-nota">
+          elegíveis e classificados
+          {% if ap.fora_do_ciclo_total %}· {{ ap.fora_do_ciclo_total }} fora do ciclo{% endif %}
+        </span>
+      </div>
+      <div class="pvm-kpi">
+        <span class="pvm-kpi-label"><i class="fa fa-circle-check" aria-hidden="true"></i> Realizados</span>
+        <span class="pvm-kpi-valor">{{ ap.realizados }}</span>
+        <span class="pvm-kpi-nota">{{ ap.pct }}% da meta</span>
+      </div>
+      <div class="pvm-kpi {% if ap.pendentes %}is-pendente{% endif %}">
+        <span class="pvm-kpi-label"><i class="fa fa-hourglass-half" aria-hidden="true"></i> Pendentes</span>
+        <span class="pvm-kpi-valor">{{ ap.pendentes }}</span>
+        <span class="pvm-kpi-nota">{{ ap.pct_pendente }}% não realizado</span>
+      </div>
+      <div class="pvm-kpi {% if ap.risco == 'risco' or ap.risco == 'nao_cumprida' %}is-critico{% endif %}">
+        <span class="pvm-kpi-label"><i class="fa fa-calendar-day" aria-hidden="true"></i> Dias restantes</span>
+        <span class="pvm-kpi-valor">{{ ap.dias_restantes }}</span>
+        <span class="pvm-kpi-nota">
+          {% if ap.ritmo_necessario %}
+            {{ ap.ritmo_necessario|floatformat:"-2" }} equip./dia para fechar
+          {% else %}
+            sem pendência a recuperar
+          {% endif %}
+        </span>
+      </div>
+    </section>
+
+    {# ── Comparativo entre áreas ───────────────────────────────────────── #}
+    <section class="pvm-areas">
+      {% for area in ap.areas %}
+        <article class="pvm-area is-{{ area.area }}">
+          <header class="pvm-area-head">
+            <div class="pvm-area-nome">
+              <span class="pvm-area-titulo">{{ area.label }}</span>
+              <span class="pvm-area-tecnico {% if not area.tecnico %}is-vago{% endif %}">
+                <i class="fa {% if area.tecnico %}fa-user-gear{% else %}fa-user-slash{% endif %}" aria-hidden="true"></i>
+                {{ area.tecnico_nome }}
+              </span>
+            </div>
+            <div style="display:grid;gap:var(--space-2);justify-items:end;">
+              <span class="pvm-area-pct">{{ area.pct }}<small>%</small></span>
+              <span class="pvm-selo is-{{ area.risco }}">
+                {% if area.risco == 'concluido' %}<i class="fa fa-circle-check" aria-hidden="true"></i>
+                {% elif area.risco == 'em_dia' %}<i class="fa fa-circle-play" aria-hidden="true"></i>
+                {% elif area.risco == 'atrasado' %}<i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+                {% elif area.risco == 'risco' %}<i class="fa fa-fire" aria-hidden="true"></i>
+                {% elif area.risco == 'nao_cumprida' %}<i class="fa fa-circle-xmark" aria-hidden="true"></i>
+                {% elif area.risco == 'sem_parque' %}<i class="fa fa-layer-group" aria-hidden="true"></i>
+                {% else %}<i class="fa fa-clock" aria-hidden="true"></i>{% endif %}
+                {{ area.risco_label }}
+              </span>
+            </div>
+          </header>
+
+          <div class="pvm-regua {% if area.risco == 'concluido' or area.risco == 'em_dia' %}is-ok{% elif area.risco == 'atrasado' %}is-aviso{% elif area.risco == 'risco' or area.risco == 'nao_cumprida' %}is-perigo{% endif %}"
+               style="--pvm-exec: {{ area.pct }}%; --pvm-tempo: {{ area.expectativa }}%;"
+               role="img"
+               aria-label="{{ area.label }}: {{ area.pct }}% executado, {{ area.expectativa }}% esperado neste ponto">
+            <span class="pvm-regua-fill"></span>
+            <span class="pvm-regua-tempo" aria-hidden="true"></span>
+          </div>
+
+          <div class="pvm-area-nums">
+            <div class="pvm-area-num"><b>{{ area.previstos }}</b><span>Previstos</span></div>
+            <div class="pvm-area-num"><b>{{ area.realizados }}</b><span>Realizados</span></div>
+            <div class="pvm-area-num {% if area.pendentes %}is-pendente{% endif %}"><b>{{ area.pendentes }}</b><span>Faltam</span></div>
+          </div>
+
+          {% if area.pendentes and ap.situacao == 'vigente' %}
+            <p class="pvm-area-ritmo">
+              Faltam <b>{{ area.pendentes }}</b> equipamento{{ area.pendentes|pluralize }} em
+              <b>{{ ap.dias_restantes }}</b> dia{{ ap.dias_restantes|pluralize }} —
+              ritmo de <b>{{ area.ritmo_semanal|floatformat:"-1" }}</b> por semana
+              ({{ area.ritmo_necessario|floatformat:"-2" }} por dia).
+            </p>
+          {% endif %}
+
+          {% if area.itens_pendentes_topo %}
+            <div class="pvm-faltam">
+              <div class="pvm-faltam-titulo">
+                <span>Equipamentos que faltam</span>
+                {% if area.pendentes_restantes %}
+                  <a href="{% url 'preventiva_metas_export' %}?subtipo={{ subtipo.pk }}&ciclo={{ ciclo.pk }}">ver todos</a>
+                {% endif %}
+              </div>
+              <div class="pvm-faltam-lista">
+                {% for item in area.itens_pendentes_topo %}
+                  <div class="pvm-faltam-item">
+                    <span title="{{ item.nome }}{% if item.numero_serie %} · {{ item.numero_serie }}{% endif %}">
+                      {{ item.nome }}
+                      {% if item.meta_novo_no_ciclo %}
+                        <span class="pvm-novo"
+                              title="Entrou em operação em {{ item.meta_entrou_em|date:'d/m/Y' }} — disponível há {{ item.meta_dias_operacao }} dia{{ item.meta_dias_operacao|pluralize }}">novo</span>
+                      {% endif %}
+                    </span>
+                    <span class="pvm-faltam-local">{{ item.localidade.local|default:"—"|truncatechars:22 }}</span>
+                    {% if item.meta_sem_preventiva %}
+                      <span class="pvm-faltam-tag">Sem preventiva</span>
+                    {% elif item.meta_agendamento_vencido %}
+                      <span class="pvm-faltam-tag is-vencido">Venceu {{ item.meta_data_agendamento|date:"d/m" }}</span>
+                    {% elif item.meta_data_agendamento %}
+                      <span class="pvm-faltam-tag is-agendado">{{ item.meta_data_agendamento|date:"d/m" }}</span>
+                    {% else %}
+                      <span class="pvm-faltam-tag">Sem agenda</span>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+                {% if area.pendentes_restantes %}
+                  <div class="pvm-faltam-mais">+{{ area.pendentes_restantes }} equipamento{{ area.pendentes_restantes|pluralize }}</div>
+                {% endif %}
+              </div>
+            </div>
+          {% elif area.previstos %}
+            <p class="pvm-area-ritmo" style="border-style:solid;">
+              <i class="fa fa-circle-check" aria-hidden="true"></i>
+              Todos os {{ area.previstos }} equipamento{{ area.previstos|pluralize }} desta área já receberam
+              preventiva neste ciclo.
+            </p>
+          {% else %}
+            <p class="pvm-area-ritmo">
+              Nenhum {{ subtipo.nome|lower }} ativo classificado nesta área.
+            </p>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </section>
+
+    {# ── Movimentação do parque dentro do ciclo ────────────────────────── #}
+    {% if ap.trocas or ap.saidas or ap.entraram %}
+      <section class="pv-card">
+        <div class="pv-card-head">
+          <h2 class="pv-card-title"><i class="fa fa-right-left" aria-hidden="true"></i> Movimentação do parque no ciclo</h2>
+          <span class="pvm-tabela-sub">
+            {{ ap.entraram }} entrada{{ ap.entraram|pluralize }} ·
+            {{ ap.saidas_total }} saída{{ ap.saidas_total|pluralize }} ·
+            {{ ap.trocas|length }} troca{{ ap.trocas|length|pluralize }} identificada{{ ap.trocas|length|pluralize }}
+          </span>
+        </div>
+        <div class="pv-card-body">
+          {% if ap.trocas %}
+            <div class="pvm-trocas">
+              {% for t in ap.trocas %}
+                <div class="pvm-troca">
+                  <div class="pvm-troca-par">
+                    <span class="pvm-troca-saiu">
+                      <i class="fa fa-arrow-right-from-bracket" aria-hidden="true"></i>
+                      {{ t.saiu.nome }}
+                      <small>saiu {{ t.saiu_em|date:"d/m" }} · {{ t.saiu_para }}</small>
+                    </span>
+                    <i class="fa fa-arrow-right pvm-troca-seta" aria-hidden="true"></i>
+                    <span class="pvm-troca-entrou">
+                      <i class="fa fa-arrow-right-to-bracket" aria-hidden="true"></i>
+                      {{ t.entrou.nome }}
+                      <small>entrou {{ t.entrou_em|date:"d/m" }}</small>
+                    </span>
+                  </div>
+                  <span class="pvm-troca-local">{{ t.localidade|default:"sem localidade" }}</span>
+                </div>
+              {% endfor %}
+            </div>
+            <p class="pvm-tabela-sub" style="margin-top:var(--space-3);">
+              Troca identificada por <strong>mesma localidade</strong> e no máximo 7 dias entre a
+              saída e a entrada. O equipamento que entrou é cobrado só pelo tempo em que esteve
+              disponível; o que saiu deixa o universo da meta, e a preventiva já feita nele
+              permanece no histórico.
+            </p>
+          {% endif %}
+
+          {% if ap.saidas %}
+            <div class="pvm-faltam" style="margin-top:var(--space-4);">
+              <div class="pvm-faltam-titulo"><span>Saíram de operação (sem substituto identificado)</span></div>
+              <div class="pvm-faltam-lista">
+                {% for sa in ap.saidas|slice:":10" %}
+                  <div class="pvm-faltam-item">
+                    <span>{{ sa.item.nome }}</span>
+                    <span class="pvm-faltam-local">{{ sa.item.localidade.local|default:"—"|truncatechars:22 }}</span>
+                    <span class="pvm-faltam-tag">{{ sa.data|date:"d/m" }} · {{ sa.status_label }}</span>
+                  </div>
+                {% endfor %}
+                {% if ap.saidas|length > 10 %}
+                  <div class="pvm-faltam-mais">+{{ ap.saidas|length|add:"-10" }}</div>
+                {% endif %}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
+
+    {# ── Evolução ao longo do período ──────────────────────────────────── #}
+    <section class="pv-card">
+      <div class="pv-card-head">
+        <h2 class="pv-card-title"><i class="fa fa-chart-line" aria-hidden="true"></i> Evolução da execução</h2>
+        <span class="pvm-tabela-sub">% da meta de cada área, acumulado por semana do ciclo</span>
+      </div>
+      <div class="pv-card-body">
+        {% if ap.previstos %}
+          <div class="pvm-grafico-wrap">
+            <canvas id="pvmEvolucao" aria-label="Evolução acumulada da execução por área, em percentual da meta" role="img"></canvas>
+          </div>
+          <p class="pvm-tabela-sub" style="margin-top:var(--space-3);">
+            A linha tracejada é o <strong>ritmo ideal</strong>: onde a execução precisa estar em cada
+            semana para o ciclo fechar no prazo. Série abaixo dela está atrasada.
+            Os números de cada área estão na tabela acima.
+          </p>
+        {% else %}
+          <div class="ui-empty">
+            <div class="ui-empty-ico"><i class="fa fa-chart-line" aria-hidden="true"></i></div>
+            <p class="ui-empty-title">Sem equipamentos classificados</p>
+            <p class="ui-empty-text">A curva aparece quando houver {{ subtipo.nome|lower }} ativo com área de operação definida.</p>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    {# ── Desempenho individual por técnico ─────────────────────────────── #}
+    <section class="pv-card">
+      <div class="pv-card-head">
+        <h2 class="pv-card-title"><i class="fa fa-user-gear" aria-hidden="true"></i> Desempenho por técnico</h2>
+        <span class="pvm-tabela-sub">Realizado = quem executou · Pendente = quem responde pelo equipamento</span>
+      </div>
+      <div class="pv-card-body" style="padding:0;">
+        {% if ap.tecnicos %}
+          <div class="pvm-tabela-wrap">
+            <table class="pvm-tabela">
+              <thead>
+                <tr>
+                  <th scope="col">Técnico</th>
+                  <th scope="col">Áreas</th>
+                  <th scope="col" class="num">Previstos</th>
+                  <th scope="col" class="num">Realizados</th>
+                  <th scope="col" class="num">Faltam</th>
+                  <th scope="col">Execução</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for t in ap.tecnicos %}
+                  <tr>
+                    <td><span class="pvm-tabela-nome">{{ t.nome }}</span></td>
+                    <td><span class="pvm-tabela-sub">{{ t.areas_label }}</span></td>
+                    <td class="num">{{ t.previstos }}</td>
+                    <td class="num">{{ t.realizados }}</td>
+                    <td class="num">{{ t.pendentes }}</td>
+                    <td>
+                      <div class="pvm-tabela-barra">
+                        <span class="pvm-tabela-sub"><strong>{{ t.pct }}%</strong> executado</span>
+                        <div class="ui-progress {% if t.pct >= 80 %}is-sucesso{% elif t.pct < 40 %}is-aviso{% endif %}">
+                          <span style="width: {{ t.pct }}%;"></span>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          {# Mesma informação em cartão no celular — a tabela não desaparece sem substituta (regra 24). #}
+          <div class="pvm-cards" style="padding:var(--space-4);">
+            {% for t in ap.tecnicos %}
+              <div class="pvm-card">
+                <div class="pvm-card-head">
+                  <span class="pvm-card-nome">{{ t.nome }}</span>
+                  <span class="pvm-card-pct">{{ t.pct }}%</span>
+                </div>
+                <span class="pvm-tabela-sub">{{ t.areas_label }}</span>
+                <div class="pvm-card-grid">
+                  <div><span>Previstos</span><b>{{ t.previstos }}</b></div>
+                  <div><span>Realizados</span><b>{{ t.realizados }}</b></div>
+                  <div><span>Faltam</span><b>{{ t.pendentes }}</b></div>
+                </div>
+                <div class="ui-progress {% if t.pct >= 80 %}is-sucesso{% elif t.pct < 40 %}is-aviso{% endif %}">
+                  <span style="width: {{ t.pct }}%;"></span>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="ui-empty">
+            <div class="ui-empty-ico"><i class="fa fa-user-gear" aria-hidden="true"></i></div>
+            <p class="ui-empty-title">Nenhum técnico com parque neste ciclo</p>
+            <p class="ui-empty-text">
+              Defina os responsáveis por área para que as pendências tenham dono antes do agendamento.
+            </p>
+            <div class="ui-empty-actions">
+              <a href="{% url 'preventiva_metas_config' %}" class="btn btn-sm btn-primary">
+                <i class="fa fa-user-plus" aria-hidden="true"></i> Definir responsáveis
+              </a>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    {# ── Ciclos anteriores ─────────────────────────────────────────────── #}
+    {% if historico %}
+      <section class="pv-card">
+        <div class="pv-card-head">
+          <h2 class="pv-card-title"><i class="fa fa-clock-rotate-left" aria-hidden="true"></i> Ciclos anteriores</h2>
+          <span class="pvm-tabela-sub">{{ subtipo.nome }}</span>
+        </div>
+        <div class="pv-card-body" style="padding:0;">
+          <div class="pvm-tabela-wrap">
+            <table class="pvm-tabela">
+              <thead>
+                <tr>
+                  <th scope="col">Período</th>
+                  <th scope="col" class="num">Previstos</th>
+                  <th scope="col" class="num">Realizados</th>
+                  <th scope="col" class="num">Faltaram</th>
+                  <th scope="col" class="num">Execução</th>
+                  <th scope="col">Situação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for h in historico %}
+                  <tr>
+                    <td>
+                      <a href="?subtipo={{ subtipo.pk }}&ciclo={{ h.ciclo.pk }}" class="pvm-tabela-nome">
+                        {{ h.ciclo.data_inicio|date:"d/m/Y" }} → {{ h.ciclo.data_fim|date:"d/m/Y" }}
+                      </a>
+                      <span class="pvm-tabela-sub">{{ h.ciclo.duracao_dias }} dias</span>
+                    </td>
+                    <td class="num">{{ h.previstos }}</td>
+                    <td class="num">{{ h.realizados }}</td>
+                    <td class="num">{{ h.pendentes }}</td>
+                    <td class="num">{{ h.pct }}%</td>
+                    <td>
+                      <span class="pvm-selo is-{{ h.risco }}">
+                        {% if h.risco == 'concluido' %}<i class="fa fa-circle-check" aria-hidden="true"></i>
+                        {% elif h.risco == 'em_dia' %}<i class="fa fa-circle-play" aria-hidden="true"></i>
+                        {% elif h.risco == 'atrasado' %}<i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+                        {% elif h.risco == 'risco' %}<i class="fa fa-fire" aria-hidden="true"></i>
+                        {% elif h.risco == 'nao_cumprida' %}<i class="fa fa-circle-xmark" aria-hidden="true"></i>
+                        {% elif h.risco == 'sem_parque' %}<i class="fa fa-layer-group" aria-hidden="true"></i>
+                        {% else %}<i class="fa fa-clock" aria-hidden="true"></i>{% endif %}
+                        {{ h.risco_label }}
+                      </span>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pvm-cards" style="padding:var(--space-4);">
+            {% for h in historico %}
+              <div class="pvm-card">
+                <div class="pvm-card-head">
+                  <a class="pvm-card-nome" href="?subtipo={{ subtipo.pk }}&ciclo={{ h.ciclo.pk }}">
+                    {{ h.ciclo.data_inicio|date:"d/m/y" }} → {{ h.ciclo.data_fim|date:"d/m/y" }}
+                  </a>
+                  <span class="pvm-card-pct">{{ h.pct }}%</span>
+                </div>
+                <span class="pvm-selo is-{{ h.risco }}" style="justify-self:start;">{{ h.risco_label }}</span>
+                <div class="pvm-card-grid">
+                  <div><span>Previstos</span><b>{{ h.previstos }}</b></div>
+                  <div><span>Realizados</span><b>{{ h.realizados }}</b></div>
+                  <div><span>Faltaram</span><b>{{ h.pendentes }}</b></div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+    {% endif %}
+
+    {# Dados do gráfico — json_script, nunca |safe (XSS pelo nome do subtipo). #}
+    {{ ap.evolucao|json_script:"pvm-evolucao" }}
+
+    {% endwith %}
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if apuracao and apuracao.previstos %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+<script>
+(function () {
+  const root = document.querySelector('.pvm-page');
+  if (!root || typeof Chart === 'undefined') return;
+
+  const canvas = document.getElementById('pvmEvolucao');
+  const dadosEl = document.getElementById('pvm-evolucao');
+  if (!canvas || !dadosEl) return;
+
+  let dados;
+  try { dados = JSON.parse(dadosEl.textContent); } catch (e) { return; }
+  if (!dados || !dados.labels || !dados.labels.length) return;
+
+  const estilo = getComputedStyle(root);
+  const tom = (nome, reserva) => (estilo.getPropertyValue(nome).trim() || reserva);
+  const comAlfa = (cor, a) => {
+    const c = (cor || '').trim();
+    if (c.startsWith('#')) {
+      let h = c.slice(1);
+      if (h.length === 3) h = h.split('').map(x => x + x).join('');
+      const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+      if ([r, g, b].some(Number.isNaN)) return c;
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (m) { const p = m[1].split(',').map(s => s.trim()); return `rgba(${p[0]}, ${p[1]}, ${p[2]}, ${a})`; }
+    return c;
+  };
+
+  // Cores do design system (tokens.css). Lidas do CSS e não escritas aqui:
+  // trocar a paleta do sistema precisa chegar a este gráfico também.
+  const CORES = {
+    produtiva:     tom('--chart-1', '#1f56e0'),
+    nao_produtiva: tom('--chart-2', '#e8862a'),
+    texto:         tom('--pv-muted', '#6e6e73'),
+    grade:         tom('--pv-border', 'rgba(0,0,0,.08)'),
+    tinta:         tom('--pv-text', '#1d1d1f'),
+    superficie:    tom('--pv-surface', '#ffffff'),
+  };
+
+  // O Chart.js tem preto como padrão de fonte: no tema escuro o eixo
+  // desapareceria. A pilha de fontes vem do body para seguir o design system
+  // em vez de repetir a lista aqui (CLAUDE.md, regra 30).
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.color = CORES.texto;
+
+  const series = (dados.series || []).map((s) => ({
+    label: s.label + ' (' + s.previstos + ')',
+    data: s.acumulado_pct,
+    borderColor: CORES[s.area] || CORES.produtiva,
+    backgroundColor: comAlfa(CORES[s.area] || CORES.produtiva, .10),
+    // Linha de 2px, marcador de 8px e anel da cor da superfície para as duas
+    // séries não se fundirem onde se cruzam.
+    borderWidth: 2,
+    pointRadius: 4,
+    pointHoverRadius: 7,
+    pointBackgroundColor: CORES[s.area] || CORES.produtiva,
+    pointBorderColor: CORES.superficie,
+    pointBorderWidth: 2,
+    tension: .25,
+    fill: true,
+    spanGaps: false,
+    _previstos: s.previstos,
+    _contagem: s.acumulado,
+  }));
+
+  // Referência, não série: tracejada, fina e sem marcador, para não disputar
+  // leitura com os dados.
+  if (dados.ritmo_ideal && dados.ritmo_ideal.length) {
+    series.push({
+      label: 'Ritmo ideal',
+      data: dados.ritmo_ideal,
+      borderColor: comAlfa(CORES.tinta, .38),
+      borderWidth: 1.5,
+      borderDash: [5, 4],
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      fill: false,
+      tension: 0,
+      _referencia: true,
+    });
+  }
+
+  new Chart(canvas, {
+    type: 'line',
+    data: { labels: dados.labels, datasets: series },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { usePointStyle: true, pointStyle: 'line', boxWidth: 22, padding: 14 },
+        },
+        tooltip: {
+          backgroundColor: comAlfa(CORES.tinta, .92),
+          padding: 10,
+          displayColors: true,
+          usePointStyle: true,
+          callbacks: {
+            title: (itens) => (dados.titulos || [])[itens[0].dataIndex] || itens[0].label,
+            label: (ctx) => {
+              const v = ctx.parsed.y;
+              if (v === null || v === undefined) return null;
+              const ds = ctx.dataset;
+              if (ds._referencia) return `${ds.label}: ${v}%`;
+              // Contagem real vinda do servidor — reconstruir a partir do %
+              // arredondado erraria um equipamento para cima ou para baixo.
+              const feitos = (ds._contagem || [])[ctx.dataIndex];
+              return `${ds.label}: ${v}% · ${feitos} de ${ds._previstos}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          border: { color: CORES.grade },
+          ticks: { maxRotation: 0, autoSkipPadding: 12 },
+        },
+        y: {
+          beginAtZero: true,
+          max: 100,
+          grid: { color: CORES.grade, drawTicks: false },
+          border: { display: false },
+          ticks: { callback: (v) => v + '%', stepSize: 25, padding: 8 },
+        },
+      },
+    },
+  });
+})();
+</script>
+{% endif %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+// Trocar subtipo ou ciclo recarrega a leitura. Sem JS o <noscript> mostra o
+// botão "Aplicar" — a tela nunca fica sem como trocar de contexto.
+(function () {
+  const form = document.getElementById('pvmContexto');
+  if (!form) return;
+
+  // Select2 nos dois seletores: são 20 subtipos e os ciclos acumulam com o
+  // tempo, e sem busca a pessoa rola a lista procurando o que quer.
+  if (window.jQuery) {
+    jQuery('#pvmSubtipo, #pvmCiclo').select2({
+      width: '100%',
+      // `.pvm-s2` é o que liga a folha do módulo ao componente — inclusive no
+      // dropdown, que o Select2 injeta fora desta página.
+      containerCssClass: 'pvm-s2',
+      dropdownCssClass: 'pvm-s2',
+      // Com poucas opções a caixa de busca só ocupa espaço.
+      minimumResultsForSearch: 8,
+    });
+  }
+
+  form.querySelectorAll('[data-autosubmit]').forEach((sel) => {
+    // O Select2 dispara `change` no <select> original, então este listener
+    // continua valendo para os dois casos (com e sem Select2).
+    sel.addEventListener('change', () => {
+      // Trocar o subtipo zera o ciclo: o ciclo do subtipo anterior não existe
+      // no novo parque, e mandar os dois faria a tela abrir vazia.
+      if (sel.name === 'subtipo') {
+        const ciclo = form.querySelector('[name="ciclo"]');
+        if (ciclo) ciclo.remove();
+      }
+      form.submit();
+    });
+  });
+})();
+</script>
+{% endblock %}

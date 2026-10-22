@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Planta da Rede{% endblock %}
+{% block page_title %}Planta da Rede{% endblock %}
+{% block page_subtitle %}Racks, rotas de fibra e UTP desenhados sobre o mapa real, com o comprimento medido em metros{% endblock %}
+
+{% comment %}
+Tela irmã da bancada (`front/rede/mapa.html`), mesma casca `.nx-app` e mesma
+folha `ds-rede.css`. O que muda é o que está sob o desenho: aqui é tile de
+satélite, e o número que importa é o COMPRIMENTO em metros.
+
+O fundo do mapa vem de `KQMapa.CAMADAS` (`front/quiosque/_kq_mapa_js.html`),
+que é a fonte única das camadas de tile do sistema — ver Architecture Rule 15.
+Só o JS é incluído: o `_kq_mapa_css.html` veste os selos de sinal da frota,
+que esta tela não usa.
+
+Dado do servidor entra por `json_script`; nunca interpolado no `.js`.
+{% endcomment %}
+
+{% block breadcrumbs %}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="{% static 'css/ds-rede.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+{{ planta_config|json_script:"__planta_config" }}
+
+<div class="nx-app" id="app">
+  {% include 'front/rede/_nx_planta_topbar.html' %}
+
+  <div class="nx-body">
+    {% include 'front/rede/_nx_planta_trilho.html' %}
+    {% include 'front/rede/_nx_planta_mapa.html' %}
+    {% include 'front/rede/_nx_planta_inspetor.html' %}
+  </div>
+
+  {% include 'front/rede/_nx_planta_status.html' %}
+</div>
+
+{% include 'front/rede/_nx_planta_modais.html' %}
+<div class="nx-toast" id="toast" role="status" aria-live="polite"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% include 'front/quiosque/_kq_mapa_js.html' %}
+<script src="{% static 'js/rede-planta.js' %}?v={{ assets_version }}" defer></script>
+{% endblock %}

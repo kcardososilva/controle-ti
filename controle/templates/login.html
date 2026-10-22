@@ -8,6 +8,22 @@
 
   <title>Acesso ao Zelo — Santa Colomba</title>
 
+  {% comment %}Tema aplicado ANTES da primeira pintura. Sem isto, quem
+     escolheu o escuro via a tela clara piscar a cada acesso — e agora
+     que o escuro é preto puro, o flash seria branco cheio.{% endcomment %}
+  <script>
+    (function () {
+      var escolhido;
+      try { escolhido = localStorage.getItem('controleTI.theme'); } catch (e) { escolhido = null; }
+      if (escolhido !== 'dark' && escolhido !== 'light') {
+        escolhido = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark' : 'light';
+      }
+      document.documentElement.classList.add('theme-' + escolhido);
+      document.documentElement.style.colorScheme = escolhido;
+    })();
+  </script>
+
   <link rel="icon" type="image/svg+xml" href="{% static 'img/zelo-mark.svg' %}">
   <link rel="alternate icon" href="{% static 'img/logo2.png' %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,14 +35,22 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..800&family=Inter+Tight:wght@500..800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
-  {% comment %}Folha das telas de autenticação. Eram 493 linhas de <style> aqui
-     dentro; agora servem também as 4 telas de recuperação de senha. Ver
-     static/css/auth.css.{% endcomment %}
+  {% comment %}Ordem obrigatória: tokens do sistema → linguagem de cinema →
+     folha das telas de acesso. O `cinema.css` é o que a tela de acesso
+     divide com a vitrine (/apresentacao/): no tema escuro ela usa o mesmo
+     palco, o mesmo azul clareado e as mesmas camadas de atmosfera.{% endcomment %}
   <link rel="stylesheet" href="{% static 'css/tokens.css' %}?v={{ assets_version }}">
+  <link rel="stylesheet" href="{% static 'css/cinema.css' %}?v={{ assets_version }}">
   <link rel="stylesheet" href="{% static 'css/auth.css' %}?v={{ assets_version }}">
 </head>
 
-<body class="theme-light">
+<body class="au-page theme-light">
+
+  {% comment %}As três camadas de atmosfera da vitrine. No tema claro a
+     vinheta some e o grão vira textura de papel (ver auth.css).{% endcomment %}
+  <div class="ap-luz" aria-hidden="true"></div>
+  <div class="ap-grao" aria-hidden="true"></div>
+  <div class="ap-vinheta" aria-hidden="true"></div>
 
   <button type="button" class="theme-toggle" id="themeToggle" aria-label="Alternar entre modo claro e escuro" title="Alternar tema">
     <i class="fa-solid fa-moon" id="themeIcon" aria-hidden="true"></i>
@@ -38,9 +62,7 @@
     <section class="brand-panel" aria-label="Informações do sistema">
       <div class="brand-panel-inner">
         <div class="brand-top">
-          <div class="brand-mark" aria-hidden="true">
-            <img src="{% static 'img/zelo-mark.svg' %}" alt="Zelo">
-          </div>
+          <div class="brand-mark" aria-hidden="true">{% include "_marca_zelo.html" %}</div>
           <div class="brand-copy">
             <div class="brand-name">Zelo</div>
             <div class="brand-sub">Santa Colomba</div>
@@ -100,9 +122,7 @@
         <div class="login-card">
           <div class="login-card-top">
             <div class="system-brand">
-              <div class="system-logo-wrap" aria-hidden="true">
-                <img src="{% static 'img/zelo-mark.svg' %}" alt="Zelo">
-              </div>
+              <div class="system-logo-wrap" aria-hidden="true">{% include "_marca_zelo.html" %}</div>
               <div>
                 <h2 class="system-title">Zelo</h2>
                 <p class="system-subtitle">Acesse sua área operacional</p>
@@ -200,10 +220,10 @@
                   {% comment %}Antes não existia recuperação: todo esquecimento
                      virava ligação para o TI. Ver templates/registration/ e
                      views/autenticacao.py.{% endcomment %}
-                  <a href="{% url 'password_reset' %}" class="help-link" style="text-decoration:none;">
+                  <a href="{% url 'password_reset' %}" class="help-link">
                     Esqueci minha senha
                   </a>
-                  <span aria-hidden="true" style="color:var(--text-quaternary);">·</span>
+                  <span aria-hidden="true" style="color:var(--au-tinta-4);">·</span>
                   <button type="button" class="help-link" id="openSecurityModal">
                     Política de acesso
                   </button>
@@ -222,6 +242,15 @@
                   <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
                   Sobre o sistema
                 </button>
+                {% comment %}Vitrine pública (/apresentacao/): o filme de 30s
+                   e a página de apresentação da plataforma. É link, não
+                   modal, porque a peça ocupa a tela inteira. Rota SEM login
+                   de propósito — quem está aqui ainda não tem sessão — e por
+                   isso ela não consulta o banco.{% endcomment %}
+                <a href="{% url 'apresentacao' %}" class="info-button">
+                  <i class="fa-solid fa-circle-play" aria-hidden="true"></i>
+                  Conheça o Zelo
+                </a>
               </div>
 
               <div class="copyright">
@@ -350,6 +379,10 @@
       function applyTheme(theme) {
         const selectedTheme = theme === 'dark' ? 'dark' : 'light';
 
+        /* O <html> carrega o tema junto com o <body>: é dele que sai o
+           fundo pintado antes do CSS resolver (ver auth.css). */
+        document.documentElement.classList.toggle('theme-dark', selectedTheme === 'dark');
+        document.documentElement.classList.toggle('theme-light', selectedTheme === 'light');
         document.body.classList.toggle('theme-dark', selectedTheme === 'dark');
         document.body.classList.toggle('theme-light', selectedTheme === 'light');
         document.documentElement.style.colorScheme = selectedTheme;
@@ -374,11 +407,18 @@
         }
 
         setThemeColor(selectedTheme);
-        localStorage.setItem(themeStorageKey, selectedTheme);
+
+        try { localStorage.setItem(themeStorageKey, selectedTheme); } catch (e) { /* modo privado */ }
       }
 
       function resolveInitialTheme() {
-        const savedTheme = localStorage.getItem(themeStorageKey);
+        /* O script do <head> já decidiu e marcou o <html>; aqui só
+           repetimos a decisão para o <body> e para os rótulos. */
+        if (document.documentElement.classList.contains('theme-dark')) return 'dark';
+        if (document.documentElement.classList.contains('theme-light')) return 'light';
+
+        let savedTheme = null;
+        try { savedTheme = localStorage.getItem(themeStorageKey); } catch (e) { savedTheme = null; }
         if (savedTheme === 'dark' || savedTheme === 'light') return savedTheme;
 
         return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches

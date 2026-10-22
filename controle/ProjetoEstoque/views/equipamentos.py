@@ -942,6 +942,13 @@ def equipamento_qr(request, pk: int):
     })
 
 
+def _responsavel_preventiva_area(item):
+    """Técnico responsável pela área do equipamento (ver preventiva_meta_service)."""
+    from services import preventiva_meta_service as meta_service
+
+    return meta_service.responsavel_do_item(item)
+
+
 @login_required
 def equipamento_detalhe(request, pk: int):
     # `Item.all_objects` (não o `Item.objects` filtrado): um item excluído
@@ -1407,6 +1414,13 @@ def equipamento_detalhe(request, pk: int):
         "ninja_snapshots_hoje": ninja_snapshots_hoje,
         "licenca_office": licenca_office,
         "licencas_office_disponiveis": licencas_office_disponiveis,
+        # Responsável pela preventiva deste ativo, pela área + subtipo dele.
+        # Só é consultado para quem está no programa de preventiva: numa ficha
+        # de monitor a pergunta não existe e a consulta seria desperdício.
+        "area_responsavel": (
+            _responsavel_preventiva_area(item)
+            if item.precisa_preventiva == SimNaoChoices.SIM else None
+        ),
         "next_url": _safe_next_url(request, request.GET.get("next")),
     }
 

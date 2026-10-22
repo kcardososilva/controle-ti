@@ -24,7 +24,8 @@
    ============================================================ */
 
 :where(.pv-list-page, .pv-detail-page, .pv-exec-page, .pv-start-page,
-       .agd-page, .pma-page, .pv-modal) {
+       .agd-page, .pma-page, .pv-modal, .pvm-page, .pvc-page,
+       .select2-container.pvm-s2, .select2-dropdown.pvm-s2) {
   --pv-primary:       var(--brand,                #0071e3);
   --pv-primary-hover: var(--brand-hover,          #0077ed);
   --pv-primary-soft:  var(--brand-soft,           rgba(0,113,227,.10));
@@ -72,7 +73,8 @@
    então no tema escuro do sistema as telas continuavam com cartões brancos
    e texto quase invisível. */
 body.theme-dark :where(.pv-list-page, .pv-detail-page, .pv-exec-page, .pv-start-page,
-                       .agd-page, .pma-page, .pv-modal) {
+                       .agd-page, .pma-page, .pv-modal, .pvm-page, .pvc-page,
+                       .select2-container.pvm-s2, .select2-dropdown.pvm-s2) {
   --pv-page:          #14171d;
   --pv-surface:       #1a1d24;
   --pv-muted-surface: #20242c;
@@ -98,10 +100,13 @@ body.theme-dark :where(.pv-list-page, .pv-detail-page, .pv-exec-page, .pv-start-
 
 /* ── Base da página ─────────────────────────────────────────────────── */
 .pv-list-page, .pv-detail-page, .pv-exec-page, .pv-start-page, .agd-page, .pma-page,
-.pv-list-page *, .pv-detail-page *, .pv-exec-page *, .pv-start-page *, .agd-page *, .pma-page * {
+.pvm-page, .pvc-page,
+.pv-list-page *, .pv-detail-page *, .pv-exec-page *, .pv-start-page *, .agd-page *, .pma-page *,
+.pvm-page *, .pvc-page * {
   box-sizing: border-box; min-width: 0;
 }
-.pv-list-page, .pv-detail-page, .pv-exec-page, .pv-start-page, .agd-page, .pma-page {
+.pv-list-page, .pv-detail-page, .pv-exec-page, .pv-start-page, .agd-page, .pma-page,
+.pvm-page, .pvc-page {
   font-family: var(--pv-font);
   color: var(--pv-text);
 }
@@ -296,3 +301,530 @@ body.theme-dark :where(.pv-list-page, .pv-detail-page, .pv-exec-page, .pv-start-
 .pv-note i { color: var(--pv-primary); font-size: var(--text-sm); margin-top: 2px; flex: 0 0 auto; }
 .pv-note.is-warn { border-left-color: var(--pv-warning); }
 .pv-note.is-warn i { color: var(--pv-warning); }
+
+/* =============================================================
+   METAS DE PREVENTIVA — painel gerencial (.pvm-*) e configuração (.pvc-*)
+
+   Consome os tokens `--pv-*` já declarados no topo deste arquivo, que por sua
+   vez derivam do `tokens.css`. Nenhuma cor literal e nenhum tamanho fora da
+   escala (regra 33). Os componentes do `ui-kit.css` (ui-kpi, ui-progress,
+   ui-empty, ui-grid-*) são usados como estão — aqui só mora o que o kit não
+   tem: a RÉGUA de execução contra prazo, que é a leitura central da tela.
+   ============================================================= */
+
+.pvm-page, .pvc-page {
+  width: 100%; max-width: 92rem; margin: 0 auto;
+  display: grid; gap: var(--space-4);
+}
+
+/* ── Barra de contexto: subtipo + ciclo ───────────────────────────────── */
+.pvm-contexto {
+  display: flex; align-items: flex-end; gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-4) var(--space-5);
+  background: var(--pv-surface);
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-lg);
+  box-shadow: var(--pv-shadow-sm);
+}
+.pvm-contexto-campo { display: grid; gap: var(--space-1); min-width: 12rem; }
+.pvm-contexto-label {
+  font-size: var(--text-2xs); font-weight: 650;
+  letter-spacing: var(--tracking-wide); text-transform: uppercase;
+  color: var(--pv-muted);
+}
+.pvm-contexto select {
+  height: var(--pv-control-h); padding: 0 var(--space-3);
+  font: inherit; font-size: var(--text-sm); color: var(--pv-text);
+  background: var(--pv-muted-surface);
+  border: 1px solid var(--pv-border2); border-radius: var(--pv-radius-sm);
+}
+.pvm-contexto select:focus-visible { outline: 2px solid var(--pv-primary-ring); outline-offset: 1px; }
+.pvm-contexto-acoes { display: flex; gap: var(--space-2); margin-left: auto; align-items: center; }
+
+/* ── Cabeçalho do ciclo: a figura herói + a régua ─────────────────────── */
+.pvm-hero {
+  display: grid; gap: var(--space-5);
+  grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+  align-items: start;                   /* regra 36: grade alinha pelo topo */
+  padding: var(--space-6);
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--pv-primary) 5%, transparent),
+      var(--pv-surface) 60%);
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-xl);
+  box-shadow: var(--pv-shadow-sm);
+}
+@media (max-width: 760px) { .pvm-hero { grid-template-columns: 1fr; gap: var(--space-4); } }
+
+.pvm-hero-figura { display: grid; gap: var(--space-1); }
+.pvm-hero-rotulo {
+  font-size: var(--text-2xs); font-weight: 650;
+  letter-spacing: var(--tracking-wide); text-transform: uppercase;
+  color: var(--pv-muted);
+}
+/* A ÚNICA figura herói da tela. `tabular-nums` fica de fora de propósito:
+   em corpo de exibição ele dá a todo dígito a largura do zero e "43%" sai
+   folgado (ver guia de visualização de dados). */
+.pvm-hero-valor {
+  font-size: var(--text-3xl); font-weight: 700; line-height: 1;
+  letter-spacing: var(--tracking-tightest); color: var(--pv-text);
+}
+.pvm-hero-valor small { font-size: .45em; font-weight: 650; color: var(--pv-muted); }
+.pvm-hero-sub { font-size: var(--text-sm); color: var(--pv-muted); }
+.pvm-hero-corpo { display: grid; gap: var(--space-3); min-width: 0; }
+.pvm-hero-linha {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-3); flex-wrap: wrap;
+}
+.pvm-hero-titulo { font-size: var(--text-md); font-weight: 650; color: var(--pv-text); }
+.pvm-hero-datas { font-size: var(--text-xs); color: var(--pv-muted); font-variant-numeric: tabular-nums; }
+
+/* ── A RÉGUA ──────────────────────────────────────────────────────────────
+   O gráfico mais importante do painel, e por isso não é um gráfico: é uma
+   barra. Ela responde a única pergunta que o número sozinho não responde —
+   "43% executado é bom?". A resposta depende de quanto do PRAZO já passou,
+   então o traço vertical marca o tempo decorrido sobre o mesmo eixo.
+
+   `--pvm-exec` e `--pvm-tempo` chegam por `style=""` no template (token de
+   instância, caso previsto na regra 26). O trilho é um degrau claro da mesma
+   rampa do preenchimento, para o estado ler ao longo da barra inteira.
+   ------------------------------------------------------------------------ */
+.pvm-regua {
+  --pvm-exec: 0%;
+  --pvm-tempo: 0%;
+  --pvm-cor: var(--pv-primary);
+  position: relative;
+  height: 14px; border-radius: var(--pv-radius-pill);
+  background: color-mix(in srgb, var(--pvm-cor) 14%, var(--pv-muted-surface));
+  overflow: visible;
+}
+.pvm-regua-fill {
+  display: block; height: 100%; width: var(--pvm-exec);
+  max-width: 100%;
+  border-radius: var(--pv-radius-pill);
+  background: var(--pvm-cor);
+  transition: width var(--transition-slow, 360ms) var(--ease-apple-out, ease);
+}
+/* Marcador do prazo decorrido. Fica ACIMA do preenchimento (z-index) porque
+   quando execução e tempo coincidem é exatamente aí que a leitura importa. */
+.pvm-regua-tempo {
+  position: absolute; top: -4px; bottom: -4px;
+  left: clamp(0%, var(--pvm-tempo), 100%);
+  width: 2px; border-radius: 1px;
+  background: var(--pv-text);
+  opacity: .55; z-index: 1;
+}
+.pvm-regua-tempo::after {
+  content: ""; position: absolute; top: -3px; left: -2px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--pv-text);
+}
+.pvm-regua.is-ok     { --pvm-cor: var(--pv-success); }
+.pvm-regua.is-aviso  { --pvm-cor: var(--pv-warning); }
+.pvm-regua.is-perigo { --pvm-cor: var(--pv-danger); }
+
+.pvm-regua-legenda {
+  display: flex; gap: var(--space-4); flex-wrap: wrap;
+  font-size: var(--text-xs); color: var(--pv-muted);
+}
+.pvm-regua-legenda b { color: var(--pv-text); font-variant-numeric: tabular-nums; }
+.pvm-regua-legenda i {
+  display: inline-block; width: 10px; height: 2px; vertical-align: middle;
+  background: var(--pv-text); opacity: .55; margin-right: var(--space-1);
+}
+
+/* ── Selo de situação. Cor é gravidade e vem SEMPRE com ícone + rótulo:
+   cor sozinha não é informação para quem não distingue as duas pontas. ─── */
+.pvm-selo {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: 3px var(--space-3); border-radius: var(--pv-radius-pill);
+  font-size: var(--text-2xs); font-weight: 700;
+  letter-spacing: var(--tracking-wide); text-transform: uppercase;
+  border: 1px solid transparent; white-space: nowrap;
+}
+.pvm-selo i { font-size: var(--text-2xs); }
+.pvm-selo.is-concluido    { color: var(--pv-success); background: var(--pv-success-soft); border-color: color-mix(in srgb, var(--pv-success) 22%, transparent); }
+.pvm-selo.is-em_dia       { color: var(--pv-info);    background: var(--pv-info-soft);    border-color: color-mix(in srgb, var(--pv-info) 22%, transparent); }
+.pvm-selo.is-atrasado     { color: var(--pv-warning); background: var(--pv-warning-soft); border-color: color-mix(in srgb, var(--pv-warning) 24%, transparent); }
+.pvm-selo.is-risco        { color: var(--pv-danger);  background: var(--pv-danger-soft);  border-color: color-mix(in srgb, var(--pv-danger) 24%, transparent); }
+.pvm-selo.is-nao_cumprida { color: var(--pv-danger);  background: var(--pv-danger-soft);  border-color: color-mix(in srgb, var(--pv-danger) 30%, transparent); }
+.pvm-selo.is-aguardando   { color: var(--pv-muted);   background: var(--pv-muted-surface); border-color: var(--pv-border2); }
+.pvm-selo.is-sem_parque   { color: var(--pv-muted);   background: var(--pv-muted-surface); border-color: var(--pv-border2); }
+
+/* ── Faixa de KPIs ───────────────────────────────────────────────────────
+   Quatro números, um cartão cada. Só o que está em falta recebe cor: seis
+   destaques iguais fazem o alerta desaparecer (lição do Portal do
+   Fornecedor, registrada no CLAUDE.md). */
+.pvm-kpis { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); }
+.pvm-kpi {
+  padding: var(--space-4) var(--space-5);
+  background: var(--pv-surface); border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-lg); box-shadow: var(--pv-shadow-sm);
+  display: grid; gap: var(--space-1); align-content: start;
+}
+.pvm-kpi-label {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-2xs); font-weight: 650;
+  letter-spacing: var(--tracking-wide); text-transform: uppercase;
+  color: var(--pv-muted);
+}
+.pvm-kpi-valor {
+  font-size: var(--text-2xl); font-weight: 700; line-height: 1.05;
+  letter-spacing: var(--tracking-tightest); color: var(--pv-text);
+}
+.pvm-kpi-nota { font-size: var(--text-xs); color: var(--pv-muted); }
+.pvm-kpi.is-pendente .pvm-kpi-valor { color: var(--pv-warning); }
+.pvm-kpi.is-pendente .pvm-kpi-label i { color: var(--pv-warning); }
+.pvm-kpi.is-critico  .pvm-kpi-valor { color: var(--pv-danger); }
+.pvm-kpi.is-critico  .pvm-kpi-label i { color: var(--pv-danger); }
+
+/* ── Comparativo entre áreas ─────────────────────────────────────────────
+   Barras, não rosca: rosca compara mal valores próximos, e produtiva x não
+   produtiva costuma ficar perto. */
+.pvm-areas { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); }
+.pvm-area {
+  display: grid; gap: var(--space-4); align-content: start;
+  padding: var(--space-5);
+  background: var(--pv-surface); border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-lg); box-shadow: var(--pv-shadow-sm);
+  border-top: 3px solid var(--pvm-area-cor, var(--pv-primary));
+}
+.pvm-area.is-produtiva     { --pvm-area-cor: var(--chart-1); }
+.pvm-area.is-nao_produtiva { --pvm-area-cor: var(--chart-2); }
+.pvm-area-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.pvm-area-nome { display: grid; gap: 2px; }
+.pvm-area-titulo { font-size: var(--text-base); font-weight: 700; color: var(--pv-text); }
+.pvm-area-tecnico { font-size: var(--text-xs); color: var(--pv-muted); display: flex; align-items: center; gap: var(--space-2); }
+.pvm-area-tecnico i { color: var(--pv-primary); }
+.pvm-area-tecnico.is-vago { color: var(--pv-warning); }
+.pvm-area-tecnico.is-vago i { color: var(--pv-warning); }
+.pvm-area-pct { font-size: var(--text-2xl); font-weight: 700; line-height: 1; color: var(--pv-text); letter-spacing: var(--tracking-tightest); }
+.pvm-area-pct small { font-size: .5em; font-weight: 650; color: var(--pv-muted); }
+
+.pvm-area-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.pvm-area-num {
+  padding: var(--space-3); border-radius: var(--pv-radius-sm);
+  background: var(--pv-muted-surface); border: 1px solid var(--pv-border);
+  display: grid; gap: 2px; text-align: center;
+}
+.pvm-area-num b { font-size: var(--text-lg); font-weight: 700; color: var(--pv-text); font-variant-numeric: tabular-nums; }
+.pvm-area-num span { font-size: var(--text-2xs); color: var(--pv-muted); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+.pvm-area-num.is-pendente b { color: var(--pv-warning); }
+
+.pvm-area-ritmo {
+  font-size: var(--text-xs); color: var(--pv-muted);
+  padding: var(--space-3); border-radius: var(--pv-radius-sm);
+  background: var(--pv-muted-surface); border: 1px dashed var(--pv-border2);
+}
+.pvm-area-ritmo b { color: var(--pv-text); }
+
+/* Lista dos equipamentos que faltam, dentro do cartão da área. */
+.pvm-faltam { display: grid; gap: var(--space-2); }
+.pvm-faltam-titulo {
+  font-size: var(--text-2xs); font-weight: 650; text-transform: uppercase;
+  letter-spacing: var(--tracking-wide); color: var(--pv-muted);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+}
+.pvm-faltam-lista { display: grid; gap: 1px; background: var(--pv-border); border-radius: var(--pv-radius-sm); overflow: hidden; }
+.pvm-faltam-item {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3); background: var(--pv-surface);
+  font-size: var(--text-xs);
+}
+.pvm-faltam-item > span:first-child { color: var(--pv-text); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pvm-faltam-local { color: var(--pv-muted); white-space: nowrap; }
+.pvm-faltam-tag {
+  font-size: var(--text-2xs); font-weight: 700; padding: 1px var(--space-2);
+  border-radius: var(--pv-radius-pill); white-space: nowrap;
+  color: var(--pv-muted); background: var(--pv-muted-surface);
+}
+.pvm-faltam-tag.is-vencido { color: var(--pv-danger); background: var(--pv-danger-soft); }
+.pvm-faltam-tag.is-agendado { color: var(--pv-info); background: var(--pv-info-soft); }
+.pvm-faltam-mais { font-size: var(--text-xs); color: var(--pv-muted); text-align: center; padding: var(--space-2); background: var(--pv-surface); }
+
+/* ── Gráfico de evolução ─────────────────────────────────────────────────
+   Altura fixa no wrapper: `maintainAspectRatio:false` do Chart.js sem altura
+   declarada entra em laço de crescimento e a página rola sem parar. */
+.pvm-grafico-wrap { position: relative; height: 18rem; }
+@media (max-width: 560px) { .pvm-grafico-wrap { height: 15rem; } }
+
+/* ── Tabela (desempenho por técnico / histórico de ciclos) ───────────────
+   Rola na horizontal com aviso, OU tem cartão no lugar — nunca esconde
+   conteúdo no celular (regra 24). */
+.pvm-tabela-wrap { overflow-x: auto; }
+.pvm-tabela { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.pvm-tabela th, .pvm-tabela td {
+  padding: var(--space-3) var(--space-4); text-align: left;
+  border-bottom: 1px solid var(--pv-border);
+}
+.pvm-tabela th {
+  font-size: var(--text-2xs); font-weight: 700; text-transform: uppercase;
+  letter-spacing: var(--tracking-wide); color: var(--pv-muted);
+  background: var(--pv-muted-surface); white-space: nowrap;
+}
+.pvm-tabela td.num, .pvm-tabela th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.pvm-tabela tbody tr:hover { background: var(--pv-hover); }
+.pvm-tabela tbody tr:last-child td { border-bottom: 0; }
+.pvm-tabela-nome { font-weight: 650; color: var(--pv-text); }
+.pvm-tabela-sub { font-size: var(--text-xs); color: var(--pv-muted); }
+.pvm-tabela-barra { display: grid; gap: var(--space-1); min-width: 7rem; }
+
+/* Cartões equivalentes da mesma tabela no celular. */
+.pvm-cards { display: none; gap: var(--space-2); }
+.pvm-card {
+  display: grid; gap: var(--space-2);
+  padding: var(--space-4); background: var(--pv-surface);
+  border: 1px solid var(--pv-border); border-radius: var(--pv-radius-md);
+}
+.pvm-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.pvm-card-nome { font-weight: 650; color: var(--pv-text); }
+.pvm-card-pct { font-size: var(--text-lg); font-weight: 700; color: var(--pv-text); font-variant-numeric: tabular-nums; }
+.pvm-card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); font-size: var(--text-xs); }
+.pvm-card-grid div { display: grid; gap: 1px; }
+.pvm-card-grid span { color: var(--pv-muted); text-transform: uppercase; font-size: var(--text-2xs); letter-spacing: var(--tracking-wide); }
+.pvm-card-grid b { color: var(--pv-text); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 760px) {
+  .pvm-tabela-wrap { display: none; }
+  .pvm-cards { display: grid; }
+  .pvm-area-nums { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ── Avisos de pré-requisito (equipamento sem área, parque fora do ciclo) */
+.pvm-aviso {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--pv-radius-md);
+  background: var(--pv-warning-soft);
+  border: 1px solid color-mix(in srgb, var(--pv-warning) 24%, transparent);
+  font-size: var(--text-sm); color: var(--pv-text);
+}
+.pvm-aviso i { color: var(--pv-warning); margin-top: 2px; }
+.pvm-aviso.is-info { background: var(--pv-info-soft); border-color: color-mix(in srgb, var(--pv-info) 22%, transparent); }
+.pvm-aviso.is-info i { color: var(--pv-info); }
+.pvm-aviso-corpo { display: grid; gap: var(--space-1); min-width: 0; }
+.pvm-aviso-titulo { font-weight: 650; }
+.pvm-aviso-texto { color: var(--pv-muted); font-size: var(--text-xs); }
+.pvm-aviso-chips { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-1); }
+.pvm-aviso-chip {
+  font-size: var(--text-2xs); font-weight: 600;
+  padding: 2px var(--space-2); border-radius: var(--pv-radius-pill);
+  background: var(--pv-surface); border: 1px solid var(--pv-border2); color: var(--pv-text);
+}
+
+/* =============================================================
+   CONFIGURAÇÃO (.pvc-*) — responsáveis por área e ciclos
+   ============================================================= */
+
+.pvc-colunas { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); }
+
+.pvc-form { display: grid; gap: var(--space-4); align-items: start; align-content: start; }
+.pvc-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); align-items: start; }
+.pvc-campo { display: grid; gap: var(--space-1); align-content: start; }
+.pvc-campo label {
+  font-size: var(--text-2xs); font-weight: 650;
+  letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--pv-muted);
+}
+.pvc-campo.is-largo { grid-column: 1 / -1; }
+/* Altura FIXA nos controles de uma linha: `min-height` sozinho deixa o input
+   crescer até a altura da linha do grid e a fileira sai irregular (regra 36).
+   O textarea fica de fora porque ele precisa crescer. */
+.pvc-campo .ctrl {
+  height: var(--pv-control-h); padding: 0 var(--space-3);
+  width: 100%; font: inherit; font-size: var(--text-sm);
+  color: var(--pv-text); background: var(--pv-muted-surface);
+  border: 1px solid var(--pv-border2); border-radius: var(--pv-radius-sm);
+}
+.pvc-campo textarea.ctrl { height: auto; min-height: 4.5rem; padding: var(--space-2) var(--space-3); resize: vertical; }
+.pvc-campo .ctrl:focus-visible { outline: 2px solid var(--pv-primary-ring); outline-offset: 1px; border-color: var(--pv-primary); }
+.pvc-campo .ctrl[aria-invalid="true"], .pvc-campo.is-erro .ctrl { border-color: var(--pv-danger); }
+.pvc-dica { font-size: var(--text-xs); color: var(--pv-muted); }
+.pvc-erro { font-size: var(--text-xs); color: var(--pv-danger); font-weight: 600; }
+.pvc-erro ul { margin: 0; padding-left: var(--space-4); }
+.pvc-acoes { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+.pvc-lista { display: grid; gap: 1px; background: var(--pv-border); border-radius: var(--pv-radius-md); overflow: hidden; }
+.pvc-linha {
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4); background: var(--pv-surface);
+}
+.pvc-linha-info { display: grid; gap: 2px; min-width: 0; flex: 1 1 14rem; }
+.pvc-linha-titulo { font-size: var(--text-sm); font-weight: 650; color: var(--pv-text); }
+.pvc-linha-sub { font-size: var(--text-xs); color: var(--pv-muted); }
+.pvc-linha-acoes { display: flex; gap: var(--space-2); margin-left: auto; }
+.pvc-linha.is-inativa .pvc-linha-titulo { color: var(--pv-muted); text-decoration: line-through; }
+
+.pvc-area-tag {
+  font-size: var(--text-2xs); font-weight: 700; text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  padding: 2px var(--space-2); border-radius: var(--pv-radius-pill);
+  border: 1px solid transparent; white-space: nowrap;
+}
+.pvc-area-tag.is-produtiva     { color: var(--chart-1); background: color-mix(in srgb, var(--chart-1) 12%, transparent); border-color: color-mix(in srgb, var(--chart-1) 26%, transparent); }
+.pvc-area-tag.is-nao_produtiva { color: var(--chart-2); background: color-mix(in srgb, var(--chart-2) 14%, transparent); border-color: color-mix(in srgb, var(--chart-2) 30%, transparent); }
+
+
+/* =============================================================
+   Select2 das telas de meta — escopado em `.pvm-s2`
+
+   As regras do Select2 são globais por natureza
+   (`.select2-container--default …`). Escrevê-las soltas aqui mudaria o
+   Select2 de TODA tela que carrega esta folha. A classe vem de
+   `containerCssClass`/`dropdownCssClass` na inicialização, então só os
+   campos destas duas telas são atingidos.
+
+   Os tokens `--pv-*` precisaram entrar também no escopo de
+   `.select2-container.pvm-s2`/`.select2-dropdown.pvm-s2` (topo do arquivo):
+   o Select2 injeta o dropdown no FIM do `<body>`, fora de `.pvm-page`, e sem
+   isso nenhum `var(--pv-*)` resolveria ali — o dropdown abriria sem cor, no
+   escuro e no claro, sem erro nenhum.
+
+   `!important` é necessário: a folha do Select2 vem do CDN depois desta.
+   ============================================================= */
+
+.select2-container.pvm-s2 { width: 100% !important; }
+
+.select2-container--default.pvm-s2 .select2-selection--single {
+  height: var(--pv-control-h) !important;
+  padding: 0 !important;
+  background: var(--pv-muted-surface) !important;
+  border: 1px solid var(--pv-border2) !important;
+  border-radius: var(--pv-radius-sm) !important;
+}
+.select2-container--default.pvm-s2.select2-container--focus .select2-selection--single,
+.select2-container--default.pvm-s2.select2-container--open .select2-selection--single {
+  border-color: var(--pv-primary) !important;
+  box-shadow: 0 0 0 3px var(--pv-primary-ring) !important;
+}
+.select2-container--default.pvm-s2 .select2-selection--single .select2-selection__rendered {
+  line-height: calc(var(--pv-control-h) - 2px) !important;
+  padding-left: var(--space-3) !important;
+  padding-right: var(--space-8) !important;
+  color: var(--pv-text) !important;
+  font-size: var(--text-sm) !important;
+}
+.select2-container--default.pvm-s2 .select2-selection--single .select2-selection__placeholder {
+  color: var(--pv-soft) !important;
+}
+.select2-container--default.pvm-s2 .select2-selection--single .select2-selection__arrow {
+  height: calc(var(--pv-control-h) - 2px) !important;
+  right: var(--space-2) !important;
+}
+.select2-container--default.pvm-s2 .select2-selection--single .select2-selection__arrow b {
+  border-color: var(--pv-muted) transparent transparent transparent !important;
+}
+.select2-container--default.pvm-s2.select2-container--disabled .select2-selection--single {
+  background: var(--pv-hover) !important;
+  cursor: not-allowed;
+}
+
+.select2-dropdown.pvm-s2 {
+  background: var(--pv-surface) !important;
+  border: 1px solid var(--pv-border2) !important;
+  border-radius: var(--pv-radius-sm) !important;
+  box-shadow: var(--pv-shadow-lg) !important;
+  overflow: hidden;
+}
+.pvm-s2 .select2-search--dropdown { padding: var(--space-2) !important; }
+.pvm-s2 .select2-search--dropdown .select2-search__field {
+  background: var(--pv-muted-surface) !important;
+  color: var(--pv-text) !important;
+  border: 1px solid var(--pv-border2) !important;
+  border-radius: var(--pv-radius-sm) !important;
+  padding: var(--space-2) var(--space-3) !important;
+  /* 16px impede o iOS de dar zoom ao focar o campo de busca — o zoom
+     reposiciona a página e esconde a lista que a pessoa acabou de abrir. */
+  font-size: 16px !important;
+}
+.pvm-s2 .select2-results__option {
+  color: var(--pv-text) !important;
+  font-size: var(--text-sm) !important;
+  padding: var(--space-2) var(--space-3) !important;
+}
+.pvm-s2 .select2-results__option--highlighted[aria-selected],
+.pvm-s2 .select2-results__option--highlighted {
+  background: var(--pv-primary) !important;
+  color: var(--text-inverted) !important;
+}
+.pvm-s2 .select2-results__option[aria-selected="true"] {
+  background: var(--pv-primary-soft) !important;
+  color: var(--pv-text) !important;
+  font-weight: 650;
+}
+.pvm-s2 .select2-results__message { color: var(--pv-muted) !important; font-size: var(--text-sm) !important; }
+
+
+/* =============================================================
+   Movimentação do parque dentro do ciclo (.pvm-troca*, .pvm-novo)
+
+   O parque se mexe durante os 90 dias: o switch queima e o reserva sobe no
+   lugar. Estes componentes existem para o gestor ver esse movimento, em vez
+   de só ver o denominador mudar de tamanho sem explicação.
+   ============================================================= */
+
+/* Nota que explica por que "esperado agora" difere do prazo decorrido. */
+.pvm-nota-ajuste {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  margin: 0; padding: var(--space-2) var(--space-3);
+  border-radius: var(--pv-radius-sm);
+  background: var(--pv-info-soft);
+  font-size: var(--text-xs); color: var(--pv-text);
+}
+.pvm-nota-ajuste i { color: var(--pv-info); margin-top: 2px; }
+
+/* Selo "novo": o ativo entrou em operação no meio do ciclo. */
+.pvm-novo {
+  display: inline-block; vertical-align: middle;
+  margin-left: var(--space-1);
+  padding: 0 var(--space-2);
+  border-radius: var(--pv-radius-pill);
+  font-size: var(--text-2xs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: var(--tracking-wide);
+  color: var(--pv-info); background: var(--pv-info-soft);
+  cursor: help;
+}
+
+.pvm-trocas { display: grid; gap: var(--space-2); }
+.pvm-troca {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-3); flex-wrap: wrap;
+  padding: var(--space-3); border-radius: var(--pv-radius-sm);
+  background: var(--pv-muted-surface); border: 1px solid var(--pv-border);
+}
+.pvm-troca-par {
+  display: flex; align-items: center; gap: var(--space-3);
+  flex-wrap: wrap; min-width: 0; font-size: var(--text-sm);
+}
+.pvm-troca-saiu, .pvm-troca-entrou {
+  display: inline-flex; align-items: baseline; gap: var(--space-2);
+  min-width: 0; color: var(--pv-text); font-weight: 600;
+}
+.pvm-troca-saiu small, .pvm-troca-entrou small {
+  font-size: var(--text-2xs); font-weight: 500; color: var(--pv-muted);
+  white-space: nowrap;
+}
+/* Cor = direção do movimento, e cada ponta leva ícone próprio: quem não
+   distingue as duas pontas lê pelo ícone e pelo texto "saiu"/"entrou". */
+.pvm-troca-saiu   > i { color: var(--pv-danger); }
+.pvm-troca-entrou > i { color: var(--pv-success); }
+.pvm-troca-seta { color: var(--pv-soft); font-size: var(--text-xs); }
+.pvm-troca-local {
+  font-size: var(--text-2xs); color: var(--pv-muted);
+  padding: 2px var(--space-2); border-radius: var(--pv-radius-pill);
+  background: var(--pv-surface); border: 1px solid var(--pv-border2);
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .pvm-troca-par { flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+  .pvm-troca-seta { transform: rotate(90deg); margin-left: var(--space-3); }
+}
+
+/* Realce do cartão em edição, para a pessoa achar o formulário depois do
+   clique em "editar" na lista logo abaixo dele. */
+.pvc-colunas.is-editando #pvcCiclo {
+  outline: 2px solid var(--pv-primary-ring);
+  outline-offset: 2px;
+}

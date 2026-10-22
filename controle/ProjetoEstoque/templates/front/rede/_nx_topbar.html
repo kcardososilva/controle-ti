@@ -1,0 +1,116 @@
+{% comment %}Barra superior da bancada: marca, menus, mapa em edição e escopo.{% endcomment %}
+<header class="nx-top">
+  <div class="nx-marca">
+    <b>Mapa</b><i>Rede</i>
+    <small>topologia · portas · prtg</small>
+  </div>
+
+  <div class="nx-grupo-btn">
+    <div class="nx-menu">
+      <button type="button" class="nx-btn" data-menu="menuMapa" aria-haspopup="true" aria-expanded="false"
+              title="Salvar, versionar e criar mapa">Mapa</button>
+      <div class="nx-menu-pop" id="menuMapa" hidden>
+        <div class="nx-menu-rot">Gravar</div>
+        <button type="button" class="nx-menu-item" id="mnSalvar">Salvar geometria</button>
+        <button type="button" class="nx-menu-item" id="mnVersao">Gravar versão…</button>
+        <button type="button" class="nx-menu-item" id="mnHistorico">Histórico de versões…</button>
+        <div class="nx-menu-div"></div>
+        <div class="nx-menu-rot">Mapas</div>
+        <button type="button" class="nx-menu-item" id="mnNovo">Novo mapa com este escopo…</button>
+        <a class="nx-menu-item" href="{% url 'rede_planta' %}"
+           title="A rede desenhada sobre o mapa real: racks, rotas de fibra e UTP, metros medidos">
+          Planta georreferenciada…
+        </a>
+        {% if mapa %}
+        <a class="nx-menu-item" href="{% url 'rede_mapa' %}">Voltar à visão corporativa</a>
+        <a class="nx-menu-item" href="{% url 'rede_mapa_excluir' mapa.pk %}">Excluir este mapa…</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="nx-menu">
+      <button type="button" class="nx-btn" data-menu="menuArranjo" aria-haspopup="true" aria-expanded="false"
+              title="Arranjo automático e conferência">Organizar</button>
+      <div class="nx-menu-pop" id="menuArranjo" hidden>
+        <div class="nx-menu-rot">Arranjo automático</div>
+        <button type="button" class="nx-menu-item" id="mnArranjoArvore"
+                title="Segue o cabo: o pai fica centrado sobre os filhos. É o desenho mais limpo quando a rede é hierárquica.">
+          Pela árvore do cabeamento
+        </button>
+        <button type="button" class="nx-menu-item" id="mnArranjoPapel">Por camada da rede</button>
+        <button type="button" class="nx-menu-item" id="mnArranjoLocal">Por localidade</button>
+        <div class="nx-menu-div"></div>
+        <div class="nx-menu-rot">Alinhar a seleção</div>
+        <button type="button" class="nx-menu-item" id="mnAlinharEsq">À esquerda</button>
+        <button type="button" class="nx-menu-item" id="mnAlinharCentroX">Ao centro (vertical)</button>
+        <button type="button" class="nx-menu-item" id="mnAlinharDir">À direita</button>
+        <button type="button" class="nx-menu-item" id="mnAlinharTopo">Ao topo</button>
+        <button type="button" class="nx-menu-item" id="mnAlinharCentroY">Ao meio (horizontal)</button>
+        <button type="button" class="nx-menu-item" id="mnAlinharBase">À base</button>
+        <div class="nx-menu-div"></div>
+        <div class="nx-menu-rot">Distribuir a seleção</div>
+        <button type="button" class="nx-menu-item" id="mnDistribuirX">Com vão igual na horizontal</button>
+        <button type="button" class="nx-menu-item" id="mnDistribuirY">Com vão igual na vertical</button>
+        <div class="nx-menu-div"></div>
+        <button type="button" class="nx-menu-item" id="mnImpacto">Impacto de queda do selecionado…</button>
+      </div>
+    </div>
+
+    <div class="nx-menu">
+      <button type="button" class="nx-btn" data-menu="menuSaida" aria-haspopup="true" aria-expanded="false"
+              title="Levar o mapa para fora da tela">Exportar</button>
+      <div class="nx-menu-pop" id="menuSaida" hidden>
+        <button type="button" class="nx-menu-item" id="mnExcel">Planilha Excel (4 abas)</button>
+        <button type="button" class="nx-menu-item" id="mnJson">Pacote JSON do mapa</button>
+        <button type="button" class="nx-menu-item" id="mnImprimir">Imprimir / PDF da prancha</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="nx-top-mapa">
+    <span class="nx-label">Mapa</span>
+    <select class="nx-select" id="seletorMapa"
+            onchange="if(this.value){window.location.search='?mapa='+this.value}else{window.location.search=''}"
+            title="Abrir outro mapa salvo">
+      <option value="">Visão corporativa</option>
+      {% for m in mapas %}
+      <option value="{{ m.pk }}" {% if mapa and mapa.pk == m.pk %}selected{% endif %}>
+        {{ m.nome }}{% if m.localidade %} — {{ m.localidade.local }}{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="nx-sep" aria-hidden="true"></div>
+
+  <div class="nx-top-mapa">
+    <span class="nx-label">Escopo</span>
+    <select class="nx-select" id="localidade" title="Recortar o mapa por localidade">
+      <option value="">Todas as localidades</option>
+      {% for l in localidades %}
+      <option value="{{ l.pk }}" {% if localidade_sel == l.pk|stringformat:'s' %}selected{% endif %}>{{ l.local }}</option>
+      {% endfor %}
+    </select>
+    <select class="nx-select" id="area" title="Recortar por área de operação">
+      <option value="">Todas as áreas</option>
+      {% for valor, rotulo in areas %}
+      <option value="{{ valor }}" {% if area_sel == valor %}selected{% endif %}>{{ rotulo }}</option>
+      {% endfor %}
+    </select>
+    <label class="nx-check" title="Desligar deixa só a espinha dorsal: borda, núcleo, distribuição e acesso">
+      <input type="checkbox" id="terminais" checked>
+      Terminais
+    </label>
+  </div>
+
+  <div class="nx-top-elastico"></div>
+
+  {% if not prtg_ok %}
+  <span class="nx-chip" data-tom="atencao" title="PRTG_URL / PRTG_USER / PRTG_PASSHASH não configurados no .env">
+    Sem PRTG
+  </span>
+  {% endif %}
+
+  <input type="search" class="nx-input" id="buscaMapa" style="flex:0 1 200px"
+         placeholder="Destacar no mapa…" aria-label="Destacar equipamento no mapa">
+</header>

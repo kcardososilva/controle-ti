@@ -42,7 +42,20 @@
 # 2026-10-07g: ds-licencas.css — o módulo de licenças saiu da paleta Fluent
 # própria (rampa de cinza à mão + bloco body.theme-dark paralelo) e passou a
 # derivar 100% de tokens.css; componentes novos do painel de saúde (.lic-saude-*).
-ASSETS_VERSION = "20261007h"
+# 2026-10-14: apresentacao.css + apresentacao.js (nova vitrine pública
+# /apresentacao/, alcançada pela tela de acesso).
+# 2026-10-14b: cinema.css nasce (a paleta e as camadas de atmosfera saem do
+# apresentacao.css para serem divididas com a tela de acesso); auth.css
+# reescrito na mesma linguagem, com claro = tokens do sistema e escuro = palco
+# do filme; maquetes da vitrine refeitas sobre as telas reais de equipamentos,
+# preventiva de rede e mapa do quiosque; carrossel das telas.
+# 2026-10-14c: .ap-luz desligada (lia como mancha azul, não como
+# continuidade); carrossel trocado de grid-auto-columns para flexbox
+# (as porcentagens de grid colapsavam os 6 slides lado a lado).
+# 2026-10-14d: auth.css — o reset `.au-page button { color: inherit }`
+# vencia por especificidade a cor própria de `.btn-login` e deixava o
+# texto do botão branco sobre fundo branco no tema escuro.
+ASSETS_VERSION = "20261019c"
 
 
 def assets(request):

@@ -1,0 +1,209 @@
+{% comment %}Os quatro modais da planta: ficha da rota, ficha do rack, elevação e impacto.{% endcomment %}
+
+{% comment %}
+Ficha da rota. Abre depois de o traçado estar fechado (Enter) ou pelo
+botão "Editar ficha". O COMPRIMENTO é só leitura aqui de propósito: ele é
+medido pelo servidor sobre o traçado, e um campo editável faria o número
+do relatório discordar do desenho.
+{% endcomment %}
+<div class="nx-modal" id="modalRota" hidden role="dialog" aria-modal="true" aria-label="Ficha da rota">
+  <div class="nx-modal-card">
+    <header>
+      <h2>Rota de cabo</h2>
+      <button type="button" class="nx-btn nx-btn--sm nx-btn--fantasma" data-fechar="modalRota" aria-label="Fechar">✕</button>
+    </header>
+    <div class="nx-modal-corpo">
+      <input type="hidden" id="rotaId">
+
+      <dl class="nx-kv">
+        <dt>Comprimento medido</dt>
+        <dd><span class="nx-num" id="rotaMedida">0 m</span></dd>
+        <dt>Pontos do traçado</dt>
+        <dd><span class="nx-num" id="rotaPontos">0</span></dd>
+      </dl>
+
+      <label class="nx-campo">
+        <span>Nome do lance</span>
+        <input class="nx-input" id="rotaNome" placeholder="Vala CPD → Galpão 2">
+      </label>
+
+      <div class="nx-grid2">
+        <label class="nx-campo">
+          <span>Tipo de cabo</span>
+          <select class="nx-select" id="rotaTipo">
+            {% for valor, rotulo in tipos_rota %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="nx-campo">
+          <span>Forma de instalação</span>
+          <select class="nx-select" id="rotaInstalacao">
+            {% for valor, rotulo in instalacoes %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+
+      <label class="nx-campo">
+        <span>Fibras / pares no cabo</span>
+        <input class="nx-input nx-num" id="rotaFibras" placeholder="12" inputmode="numeric">
+      </label>
+
+      {% comment %}
+      As duas pontas do lance. Opcionais: um duto de reserva pode não chegar a
+      rack nenhum ainda. Declaradas, elas transformam "Vala CPD → Galpão 2" de
+      nome em fato, e saem na aba Rotas da planilha.
+      {% endcomment %}
+      <div class="nx-grid2">
+        <label class="nx-campo">
+          <span>Sai do rack</span>
+          <select class="nx-select" id="rotaRackA"></select>
+        </label>
+        <label class="nx-campo">
+          <span>Chega no rack</span>
+          <select class="nx-select" id="rotaRackB"></select>
+        </label>
+      </div>
+
+      <label class="nx-campo">
+        <span>Observações</span>
+        <textarea class="nx-area" id="rotaObs" placeholder="Caixa de emenda no poste 7, reserva técnica de 20 m…"></textarea>
+      </label>
+
+      <p class="nx-aviso-d" style="margin:0">
+        O limite de <b>90 m</b> vale para o lance permanente em par trançado
+        (TIA-568). Os 10 m restantes do total de 100 m são os cordões das duas
+        pontas — por isso a conferência já avisa a partir de 80 m.
+      </p>
+    </div>
+    <div class="nx-modal-pe">
+      <button type="button" class="nx-btn" data-fechar="modalRota">Cancelar</button>
+      <button type="button" class="nx-btn nx-btn--primario" id="btnRotaGravar">Gravar rota</button>
+    </div>
+  </div>
+</div>
+
+{# ── Ficha do rack ──────────────────────────────────────────────── #}
+<div class="nx-modal" id="modalRack" hidden role="dialog" aria-modal="true" aria-label="Ficha do rack">
+  <div class="nx-modal-card">
+    <header>
+      <h2>Rack / armário</h2>
+      <button type="button" class="nx-btn nx-btn--sm nx-btn--fantasma" data-fechar="modalRack" aria-label="Fechar">✕</button>
+    </header>
+    <div class="nx-modal-corpo">
+      <input type="hidden" id="rackId">
+
+      <div class="nx-grid2">
+        <label class="nx-campo">
+          <span>Nome</span>
+          <input class="nx-input" id="rackNome" placeholder="Rack do CPD">
+        </label>
+        <label class="nx-campo">
+          <span>Código / etiqueta</span>
+          <input class="nx-input nx-num" id="rackCodigo" placeholder="RK-SEDE-01">
+        </label>
+        <label class="nx-campo">
+          <span>Ambiente</span>
+          <input class="nx-input" id="rackAmbiente" placeholder="CPD, almoxarifado, poste 12…">
+        </label>
+        <label class="nx-campo">
+          <span>Altura útil (U)</span>
+          <input class="nx-input nx-num" id="rackUs" value="42" inputmode="numeric"
+                 title="Caixa de emenda ou armário pequeno: deixe 1">
+        </label>
+        <label class="nx-campo">
+          <span>Latitude</span>
+          <input class="nx-input nx-num" id="rackLat" placeholder="-14.7763">
+        </label>
+        <label class="nx-campo">
+          <span>Longitude</span>
+          <input class="nx-input nx-num" id="rackLon" placeholder="-45.5634">
+        </label>
+      </div>
+
+      <label class="nx-campo">
+        <span>Observações</span>
+        <textarea class="nx-area" id="rackObs" placeholder="Nobreak próprio, chave do armário com o encarregado…"></textarea>
+      </label>
+
+      <p class="nx-aviso-d" style="margin:0">
+        O equipamento dentro do rack <b>herda a posição dele</b> no mapa quando
+        não tem coordenada própria — é o que torna o cadastro viável: apontar o
+        armário uma vez em vez de 24 switches um a um.
+      </p>
+    </div>
+    <div class="nx-modal-pe">
+      <button type="button" class="nx-btn" data-fechar="modalRack">Cancelar</button>
+      <button type="button" class="nx-btn nx-btn--primario" id="btnRackGravar">Gravar rack</button>
+    </div>
+  </div>
+</div>
+
+{# ── Elevação do rack ───────────────────────────────────────────── #}
+<div class="nx-modal" id="modalElevacao" hidden role="dialog" aria-modal="true" aria-label="Elevação do rack">
+  <div class="nx-modal-card">
+    <header>
+      <h2>Elevação do rack</h2>
+      <button type="button" class="nx-btn nx-btn--sm nx-btn--fantasma" data-fechar="modalElevacao" aria-label="Fechar">✕</button>
+    </header>
+    <div class="nx-modal-corpo">
+      <div>
+        <div style="font-size:var(--nx-fs-cell);font-weight:600;line-height:1.2" id="elevTitulo">—</div>
+        <div class="nx-micro" id="elevSub">—</div>
+      </div>
+
+      <div class="nx-rack-cab">
+        <span class="nx-label" style="flex:1 1 auto">Altura útil</span>
+        <span class="nx-num" id="elevUs">0</span><span class="nx-micro">U totais</span>
+        <span class="nx-num" id="elevOcup">0</span><span class="nx-micro">ocupados</span>
+        <span class="nx-num" id="elevLivres">0</span><span class="nx-micro">livres</span>
+      </div>
+
+      <div class="nx-rack" id="elevRegua"></div>
+
+      <div id="elevSemPosBloco" hidden>
+        <span class="nx-label">Neste rack, sem altura declarada</span>
+        <p class="nx-aviso-d" style="margin:0">
+          Estão no armário mas ninguém disse em que U. Informe a posição na ficha
+          do equipamento, no Mapa de Rede, para eles entrarem na régua.
+        </p>
+        <div class="nx-lista-escolha" id="elevSemPos"></div>
+      </div>
+
+      <p class="nx-aviso-d" style="margin:0">
+        O número do U conta de baixo para cima, como a régua do rack. Clique num
+        equipamento para abrir a ficha dele.
+      </p>
+    </div>
+  </div>
+</div>
+
+{# ── Impacto de rompimento ──────────────────────────────────────── #}
+<div class="nx-modal" id="modalImpacto" hidden role="dialog" aria-modal="true" aria-label="Impacto de rompimento">
+  <div class="nx-modal-card">
+    <header>
+      <h2>Impacto de rompimento</h2>
+      <button type="button" class="nx-btn nx-btn--sm nx-btn--fantasma" data-fechar="modalImpacto" aria-label="Fechar">✕</button>
+    </header>
+    <div class="nx-modal-corpo">
+      <dl class="nx-kv">
+        <dt>Rota</dt>
+        <dd id="impactoTitulo">—</dd>
+        <dt>Comprimento</dt>
+        <dd><span class="nx-num" id="impactoM">—</span></dd>
+        <dt>Enlaces cortados</dt>
+        <dd><span class="nx-num" id="impactoCortados">0</span></dd>
+        <dt>Ficam isolados</dt>
+        <dd><span class="nx-num" id="impactoTotal">0</span></dd>
+        <dt>Já estavam fora</dt>
+        <dd><span class="nx-num" id="impactoJa">0</span></dd>
+      </dl>
+      <p class="nx-aviso-d" style="margin:0">
+        Calculado pela <b>diferença</b>: retira do grafo os enlaces que declaram
+        passar por esta rota e compara quem a borda alcançava antes com quem
+        alcança depois. É a resposta para "a retroescavadeira passou na vala — o
+        que caiu?". Quem já estava fora do grafo é contado à parte: ele não fica
+        isolado por causa desta vala.
+      </p>
+      <div class="nx-lista-escolha" id="impactoLista"></div>
+    </div>
+  </div>
+</div>

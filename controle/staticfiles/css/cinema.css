@@ -1,0 +1,122 @@
+/* =============================================================
+   cinema.css — a linguagem de cinema do Zelo.
+
+   Duas telas falam esta língua: a vitrine pública
+   (`/apresentacao/`) e as telas de acesso (login + as 4 de
+   recuperação de senha), estas últimas só no tema ESCURO.
+
+   Por que existe este arquivo, e não uma cópia da paleta em cada
+   uma: o pedido foi "a tela de login com o mesmo design da
+   apresentação". Duplicar quinze valores de cor resolveria hoje e
+   divergiria no primeiro ajuste — que é exatamente a história do
+   `auth.css`, que manteve uma cópia dos tokens até a tela de acesso
+   ficar numa paleta anterior à do resto do sistema (regras 26 e 31).
+   Aqui a paleta nasce UMA vez; quem consome escolhe o escopo.
+
+   O que esta folha NÃO faz:
+   • não redefine token do sistema — todo token daqui tem prefixo
+     `--ap-` e vive num escopo de classe, nunca em `:root`;
+   • não escreve cor de marca à mão: `--ap-acento` DERIVA de
+     `var(--brand)`. O azul do sistema (#1f56e0) é fechado para ler
+     bem sobre branco; sobre preto ele apaga, então aqui ele é
+     clareado por `color-mix` em vez de trocado por outro azul —
+     azul novo seria o quinto azul do projeto (ver regra 30/33).
+
+   Ordem de carregamento: `tokens.css` → `cinema.css` → a folha da
+   tela (`apresentacao.css` ou `auth.css`).
+
+   Ao mudar este arquivo, suba ASSETS_VERSION em
+   ProjetoEstoque/context_processors.py e rode collectstatic.
+   ============================================================= */
+
+:where(.ap-page, .au-page) {
+  /* ---------- Palco ---------- */
+  --ap-preto: #000000;
+  --ap-carvao: #07080a;
+  --ap-tinta: #0d0f14;
+  --ap-vidro: rgba(255, 255, 255, 0.045);
+  --ap-vidro-forte: rgba(255, 255, 255, 0.08);
+
+  /* ---------- Tinta ---------- */
+  --ap-branco: #ffffff;
+  --ap-neve: rgba(255, 255, 255, 0.90);
+  --ap-fumaca: rgba(255, 255, 255, 0.60);
+  --ap-cinza: rgba(255, 255, 255, 0.38);
+  --ap-sussurro: rgba(255, 255, 255, 0.22);
+  --ap-traco: rgba(255, 255, 255, 0.10);
+  --ap-traco-forte: rgba(255, 255, 255, 0.18);
+
+  /* ---------- Acento ----------
+     Deriva do azul do sistema, clareado o bastante para viver sobre
+     preto. `--ap-brilho` é o mesmo azul em versão de luz (bloom). */
+  --ap-acento: color-mix(in srgb, var(--brand, #1f56e0) 58%, #9cc2ff);
+  --ap-acento-forte: color-mix(in srgb, var(--brand, #1f56e0) 76%, #b7d4ff);
+  --ap-acento-fraco: color-mix(in srgb, var(--brand, #1f56e0) 30%, transparent);
+  --ap-brilho: color-mix(in srgb, var(--brand, #1f56e0) 45%, transparent);
+  --ap-ambar: var(--chart-2, #e8862a);
+  --ap-verde: #3ddc97;
+
+  /* ---------- Tipo ---------- */
+  --ap-display: var(--font-display, "Inter Tight", system-ui, sans-serif);
+  --ap-corpo: var(--font-sans, "Inter", system-ui, sans-serif);
+  --ap-mono: var(--font-mono, "JetBrains Mono", monospace);
+
+  /* Escala de cinema: a headline ocupa a tela, não a coluna. */
+  --ap-h1: clamp(2.4rem, 7vw, 6.4rem);
+  --ap-h2: clamp(1.9rem, 5vw, 4.4rem);
+  --ap-h3: clamp(1.45rem, 2.9vw, 2.5rem);
+  --ap-lead: clamp(1rem, 1.45vw, 1.3rem);
+
+  /* ---------- Movimento ----------
+     Lento de propósito: o pedido é "transição lenta, sem corte
+     seco". Aqui 1.2s é o tempo de uma troca de plano, não de um
+     hover. */
+  --ap-lento: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ============================================================= */
+/* Camadas de atmosfera — luz, vinheta, grão                      */
+/* ============================================================= */
+
+/* Camada de luz: DESLIGADA por pedido — o brilho azul lia como mancha,
+   não como continuidade de cena. O elemento continua no HTML/JS (o
+   `moverLuz()` do filme segue chamando `tl.to(luz, {...})` a cada
+   cena) porque remover o nó quebraria aquele código; aqui ele só não
+   pinta nada. A continuidade entre cenas já está garantida pelo
+   crossfade de 0,6s — ver TEMPOS em apresentacao.js. */
+.ap-luz { display: none; }
+
+.ap-vinheta {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: radial-gradient(118% 92% at 50% 50%, transparent 52%, rgba(0, 0, 0, 0.82) 100%);
+}
+
+/* Grão de filme. Textura em SVG embutido (nada para baixar) e
+   deslocamento em PASSOS: ruído que desliza continuamente vira
+   "chuva" na tela em vez de grão. */
+.ap-grao {
+  position: fixed;
+  inset: -100%;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.055;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.86' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: ap-grao-anda 1.1s steps(5) infinite;
+}
+
+@keyframes ap-grao-anda {
+  0%   { transform: translate3d(0, 0, 0); }
+  20%  { transform: translate3d(-3%, 2%, 0); }
+  40%  { transform: translate3d(2%, -3%, 0); }
+  60%  { transform: translate3d(-2%, -2%, 0); }
+  80%  { transform: translate3d(3%, 1%, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-grao { animation: none; }
+}

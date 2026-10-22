@@ -8,7 +8,9 @@ montar — e o `base.html` referencia `{% url 'admin_perfil' %}`, que exigiria
 login.
 
 Reaproveita `static/css/auth.css` (a folha extraída do login.html), por isso as
-4 telas de recuperação têm o mesmo cartão do login sem uma linha de CSS nova.
+4 telas de recuperação têm o mesmo cartão do login sem uma linha de CSS nova —
+inclusive a linguagem de cinema e a alternância claro/escuro, que entram pelo
+`cinema.css` carregado antes dela.
 
 Blocos: `auth_title`, `auth_icone`, `auth_heading`, `auth_sub`, `auth_body`.
 {% endcomment %}<!DOCTYPE html>
@@ -20,13 +22,17 @@ Blocos: `auth_title`, `auth_icone`, `auth_heading`, `auth_sub`, `auth_body`.
   <meta name="theme-color" content="#f6f5f2">
 
   <script>
-    /* Mesmo tema do resto do sistema, aplicado antes da primeira pintura. */
+    /* Mesmo tema do login, aplicado antes da primeira pintura: no escuro o
+       fundo é preto puro, então um flash branco seria a tela inteira. */
     (function () {
-      try {
-        if (localStorage.getItem('controleTI.theme') === 'dark') {
-          document.documentElement.classList.add('theme-dark');
-        }
-      } catch (e) {}
+      var escolhido;
+      try { escolhido = localStorage.getItem('controleTI.theme'); } catch (e) { escolhido = null; }
+      if (escolhido !== 'dark' && escolhido !== 'light') {
+        escolhido = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark' : 'light';
+      }
+      document.documentElement.classList.add('theme-' + escolhido);
+      document.documentElement.style.colorScheme = escolhido;
     })();
   </script>
 
@@ -43,29 +49,31 @@ Blocos: `auth_title`, `auth_icone`, `auth_heading`, `auth_sub`, `auth_body`.
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..800&family=Inter+Tight:wght@500..800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link rel="stylesheet" href="{% static 'css/tokens.css' %}?v={{ assets_version }}">
+  <link rel="stylesheet" href="{% static 'css/cinema.css' %}?v={{ assets_version }}">
   <link rel="stylesheet" href="{% static 'css/auth.css' %}?v={{ assets_version }}">
 </head>
 
-<body class="theme-light">
+<body class="au-page theme-light">
   <script>
+    /* Repete no <body> a decisão que o <head> já tomou no <html>: as cores
+       da folha penduram em `.au-page.theme-dark`, não no <html>. */
     (function () {
-      try {
-        if (localStorage.getItem('controleTI.theme') === 'dark') {
-          document.body.classList.remove('theme-light');
-          document.body.classList.add('theme-dark');
-        }
-      } catch (e) {}
+      if (!document.documentElement.classList.contains('theme-dark')) return;
+      document.body.classList.remove('theme-light');
+      document.body.classList.add('theme-dark');
     })();
   </script>
+
+  <div class="ap-luz" aria-hidden="true"></div>
+  <div class="ap-grao" aria-hidden="true"></div>
+  <div class="ap-vinheta" aria-hidden="true"></div>
 
   <main class="login-app" aria-label="Recuperação de senha do Zelo">
 
     <section class="brand-panel" aria-label="Informações do sistema">
       <div class="brand-panel-inner">
         <div class="brand-top">
-          <div class="brand-mark" aria-hidden="true">
-            <img src="{% static 'img/zelo-mark.svg' %}" alt="Zelo">
-          </div>
+          <div class="brand-mark" aria-hidden="true">{% include "_marca_zelo.html" %}</div>
           <div class="brand-copy">
             <div class="brand-name">Zelo</div>
             <div class="brand-sub">Santa Colomba</div>
@@ -118,9 +126,7 @@ Blocos: `auth_title`, `auth_icone`, `auth_heading`, `auth_sub`, `auth_body`.
         <div class="login-card">
           <div class="login-card-top">
             <div class="system-brand">
-              <div class="system-logo-wrap" aria-hidden="true">
-                <img src="{% static 'img/zelo-mark.svg' %}" alt="Zelo">
-              </div>
+              <div class="system-logo-wrap" aria-hidden="true">{% include "_marca_zelo.html" %}</div>
               <div>
                 <h2 class="system-title">Zelo</h2>
                 <p class="system-subtitle">{% block auth_sub %}Recuperação de senha{% endblock %}</p>

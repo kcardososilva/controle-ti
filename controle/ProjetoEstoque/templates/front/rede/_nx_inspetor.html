@@ -1,0 +1,308 @@
+{% comment %}Inspetor: ficha de rede, faceplate das portas e conferência técnica.{% endcomment %}
+<aside class="nx-trilho nx-trilho--dir" id="insp" data-aberto="1" aria-label="Inspetor">
+  <div class="nx-faixa">
+    <span class="nx-label nx-recolhivel" style="flex:1 1 auto">Inspetor</span>
+    <button type="button" class="nx-btn nx-btn--sm nx-btn--fantasma" data-trilho="insp"
+            aria-expanded="true" title="Recolher ou abrir o inspetor">›</button>
+  </div>
+  <span class="nx-vert">Inspetor</span>
+
+  <div class="nx-abas nx-recolhivel" role="tablist">
+    <button type="button" class="nx-aba" role="tab" aria-selected="true" data-painel="painelSel">Seleção</button>
+    <button type="button" class="nx-aba" role="tab" aria-selected="false" data-painel="painelConf">
+      Conferência <span class="nx-conta" id="avisosConta">0</span>
+    </button>
+  </div>
+
+  {# ── Aba Seleção ────────────────────────────────────────────────── #}
+  <div class="nx-rolagem nx-recolhivel" id="painelSel" role="tabpanel">
+
+    <div class="nx-bloco" id="inspVazio">
+      <span class="nx-label">Nada selecionado</span>
+      <p class="nx-aviso-d" style="margin:0">
+        Clique num equipamento para abrir a ficha de rede e o painel de portas.
+        Arraste no vazio para laçar vários. <b>C</b> liga o modo cabo, <b>F</b> enquadra,
+        <b>I</b> identifica a porta selecionada, <b>Delete</b> retira do desenho
+        (nunca do inventário).
+      </p>
+    </div>
+
+    <div class="nx-bloco" id="inspMulti" hidden>
+      <span class="nx-label">Seleção múltipla</span>
+      <p style="margin:0">
+        <span class="nx-num" id="multiConta">0</span> equipamentos selecionados.
+        Arraste para mover o conjunto; <b>Alt</b> solta o encaixe.
+        Alinhar e distribuir estão no menu <b>Organizar</b>.
+      </p>
+    </div>
+
+    {# Enlace selecionado #}
+    <div class="nx-bloco" id="inspEnlace" hidden>
+      <span class="nx-label">Enlace</span>
+      <dl class="nx-kv" id="enlaceKv"></dl>
+      <button type="button" class="nx-btn nx-btn--perigo" id="enlaceSoltar">Retirar o cabo</button>
+    </div>
+
+    {# Ficha do equipamento #}
+    <div id="inspFicha" hidden>
+      <div class="nx-bloco">
+        <div>
+          <div style="font-size:var(--nx-fs-cell);font-weight:600;line-height:1.2" id="fichaNome">—</div>
+          <div class="nx-micro" id="fichaSub">—</div>
+        </div>
+        <dl class="nx-kv" id="fichaKv"></dl>
+      </div>
+
+      {% comment %}
+      Painel de portas — o FACEPLATE: o equipamento visto de frente, com
+      o vão de metal a cada seis colunas, par embaixo de ímpar e a gaiola
+      de SFP destacada. O arranjo vem montado do servidor (`dados.face`);
+      ver `painel_portas` no rede_topologia_service.
+
+      Fica ANTES da ficha de propósito: quem abre um switch no mapa quer
+      ver as portas, não o campo de IP. Era o contrário até aqui, e isso
+      custava uma rolagem a cada equipamento aberto.
+      {% endcomment %}
+      <div class="nx-bloco">
+        <div class="nx-portas-cab">
+          <span class="nx-label" style="flex:1 1 auto">Portas</span>
+          <span class="nx-num" id="portasAtivas">0</span>
+          <span class="nx-micro">em uso de</span>
+          <span class="nx-num" id="portasTotal">0</span>
+          <span class="nx-micro">·</span>
+          <span class="nx-num" id="portasLivres">0</span>
+          <span class="nx-micro">livres</span>
+          <span class="nx-num" id="portasOcup">0%</span>
+        </div>
+
+        <div class="nx-face">
+          <div class="nx-face-reg" id="faceReg" aria-hidden="true"></div>
+          <div class="nx-face-chassi" id="faceChassi"></div>
+          <div class="nx-face-leg">
+            <span data-st="ativa">Em uso</span>
+            <span data-st="livre">Livre</span>
+            <span data-st="reservada">Reservada</span>
+            <span data-st="defeito">Defeito</span>
+            <span data-st="desligada">Desligada</span>
+          </div>
+          <p class="nx-aviso-d" style="margin:0">
+            Clique numa porta para abrir a ficha dela. O dente na borda de baixo
+            marca a porta <b>com cabo</b>; o ponto laranja, a que <b>alimenta PoE</b>;
+            a aresta roxa, a gaiola de <b>fibra</b>. Setas andam pelo painel.
+          </p>
+        </div>
+
+        <div class="nx-grid2">
+          <label class="nx-campo">
+            <span>Modelo do catálogo</span>
+            <select class="nx-select" id="fichaModelo"></select>
+          </label>
+          <div class="nx-campo">
+            <span>Gerar painel</span>
+            <div class="nx-grupo-btn">
+              <button type="button" class="nx-btn" id="btnGerar"
+                      title="Cria as portas que faltam. Porta com cabo é preservada.">Gerar</button>
+              <button type="button" class="nx-btn" id="btnRegerar"
+                      title="Recria as portas SEM cabo pelo modelo escolhido.">Regerar</button>
+              <button type="button" class="nx-btn" id="btnPortaNova"
+                      title="Acrescenta uma porta avulsa no fim da numeração.">+1</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="nx-portas-cab">
+          <span class="nx-micro" style="flex:1 1 auto">
+            PoE em uso: <b class="nx-num" id="portasPoe">0</b>
+          </span>
+          <span class="nx-chip" id="semRota" data-tom="atencao" hidden
+                title="Cabos cadastrados sem traçado físico declarado. Aponte a rota na ficha da porta.">
+            <b class="nx-num" id="semRotaConta">0</b> sem rota
+          </span>
+        </div>
+      </div>
+
+      {# ── Porta selecionada ───────────────────────────────────────── #}
+      <div class="nx-bloco" id="portaDet" hidden>
+        <div class="nx-portas-cab">
+          <span class="nx-label" style="flex:1 1 auto">Porta</span>
+          <span class="nx-num" id="portaTitulo">—</span>
+          <span class="nx-chip" id="portaSit">—</span>
+        </div>
+
+        <dl class="nx-kv">
+          <dt>Destino</dt>
+          <dd id="portaDestino">Sem cabo</dd>
+          <dt>Rota física</dt>
+          <dd id="portaRotaLer">—</dd>
+        </dl>
+        <div class="nx-grupo-btn">
+          <button type="button" class="nx-btn nx-btn--primario" id="portaIdentificar"
+                  title="Pisca a porta no painel, acende o cabo dela no mapa e leva a vista até a outra ponta (I)">
+            Identificar
+          </button>
+          <button type="button" class="nx-btn" id="portaLigar">Ligar cabo</button>
+          <button type="button" class="nx-btn nx-btn--perigo" id="portaSoltar">Retirar</button>
+        </div>
+
+        <div class="nx-grid2">
+          <label class="nx-campo">
+            <span>Rótulo</span>
+            <input class="nx-input nx-num" id="portaRotulo" placeholder="Gi1/0/12">
+          </label>
+          <label class="nx-campo">
+            <span>Tipo</span>
+            <select class="nx-select" id="portaTipo">
+              {% for valor, rotulo in tipos_porta %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="nx-campo">
+            <span>Situação</span>
+            <select class="nx-select" id="portaStatus">
+              {% for valor, rotulo in status_porta %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="nx-campo">
+            <span>Velocidade</span>
+            <select class="nx-select" id="portaVel">
+              <option value="">—</option>
+              {% for valor, rotulo in velocidades %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="nx-campo">
+            <span>Meio do enlace</span>
+            <select class="nx-select" id="portaMeio">
+              {% for valor, rotulo in meios %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="nx-campo">
+            <span>VLAN</span>
+            <input class="nx-input nx-num" id="portaVlan" placeholder="10, 20, 300…">
+          </label>
+        </div>
+
+        <label class="nx-campo">
+          <span>Rota física do cabo</span>
+          <select class="nx-select" id="portaRota"
+                  title="Por onde este lance passa no terreno. Desenhe as rotas na Planta da Rede.">
+          </select>
+        </label>
+
+        <label class="nx-check"><input type="checkbox" id="portaPoe"> Alimenta PoE</label>
+
+        <label class="nx-campo">
+          <span>Descrição</span>
+          <input class="nx-input" id="portaDesc" placeholder="AP do alojamento 4, câmera do pátio…">
+        </label>
+
+        <div class="nx-grupo-btn">
+          <button type="button" class="nx-btn nx-btn--primario" id="btnPortaSalvar">Salvar porta</button>
+          <button type="button" class="nx-btn nx-btn--perigo" id="btnPortaExcluir">Excluir</button>
+        </div>
+      </div>
+
+      {# ── Vizinhos: para onde os cabos deste equipamento vão ──────── #}
+      <div class="nx-bloco" id="vizinhosBloco" hidden>
+        <div class="nx-portas-cab">
+          <span class="nx-label" style="flex:1 1 auto">Ligado a</span>
+          <span class="nx-conta" id="vizinhosConta">0</span>
+        </div>
+        <div id="vizinhos"></div>
+      </div>
+
+      {# ── Ficha de rede ───────────────────────────────────────────── #}
+      <div class="nx-bloco">
+        <span class="nx-label">Ficha de rede</span>
+        <div class="nx-grid2">
+          <label class="nx-campo">
+            <span>Papel</span>
+            <select class="nx-select" id="fichaPapel">
+              {% for valor, rotulo in papeis %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="nx-campo">
+            <span>IP de gerência</span>
+            <input class="nx-input nx-num" id="fichaIp" placeholder="172.16.0.0" inputmode="numeric">
+          </label>
+        </div>
+        <label class="nx-campo">
+          <span>ID do objeto no PRTG</span>
+          <input class="nx-input nx-num" id="fichaPrtg" placeholder="sem vínculo" inputmode="numeric">
+        </label>
+
+        <div id="prtgBloco">
+          <label class="nx-campo">
+            <span>Localizar no PRTG pelo nome</span>
+            <input type="search" class="nx-input" id="prtgBusca" placeholder="SW-A-SC-KTL…">
+          </label>
+          <div class="nx-lista-escolha" id="prtgLista" style="border:0"></div>
+        </div>
+
+        <label class="nx-campo">
+          <span>Observações de rede</span>
+          <textarea class="nx-area" id="fichaObs" placeholder="VLANs, credencial de acesso, histórico…"></textarea>
+        </label>
+        <button type="button" class="nx-btn nx-btn--primario" id="btnFichaSalvar">Salvar ficha</button>
+      </div>
+
+      {% comment %}
+      Onde o equipamento está FISICAMENTE. Separado da ficha de rede
+      porque responde outra pergunta: a ficha diz o que ele é na rede,
+      isto diz onde o técnico vai encontrá-lo. A coordenada é editável
+      aqui para quem tem o número; quem não tem arrasta o pino na
+      Planta da Rede, que é mais rápido.
+      {% endcomment %}
+      <div class="nx-bloco">
+        <span class="nx-label">Posição física</span>
+        <div class="nx-grid2">
+          <label class="nx-campo">
+            <span>Rack</span>
+            <select class="nx-select" id="fichaRack"></select>
+          </label>
+          <div class="nx-campo">
+            <span>Altura no rack</span>
+            <div class="nx-grupo-btn">
+              <input class="nx-input nx-num" id="fichaRackU" placeholder="U" inputmode="numeric"
+                     title="Posição, contada de baixo para cima como na régua do rack"
+                     style="flex:1 1 60px">
+              <input class="nx-input nx-num" id="fichaRackAlt" value="1" inputmode="numeric"
+                     title="Quantos U o equipamento ocupa" style="flex:1 1 60px">
+            </div>
+          </div>
+          <label class="nx-campo">
+            <span>Latitude</span>
+            <input class="nx-input nx-num" id="fichaLat" placeholder="-14.7763">
+          </label>
+          <label class="nx-campo">
+            <span>Longitude</span>
+            <input class="nx-input nx-num" id="fichaLon" placeholder="-45.5634">
+          </label>
+        </div>
+        <div class="nx-grupo-btn">
+          <button type="button" class="nx-btn" id="btnElevacao" disabled
+                  title="O rack visto de frente, com a régua de U">Ver o rack…</button>
+          <button type="button" class="nx-btn" id="btnAbrirPlanta"
+                  title="Desenhar rotas de fibra, UTP e racks sobre o mapa real">
+            Planta da Rede…
+          </button>
+        </div>
+      </div>
+
+      <div class="nx-bloco">
+        <button type="button" class="nx-btn" id="btnVerImpacto"
+                title="O que fica isolado se este equipamento cair">Impacto de queda…</button>
+      </div>
+    </div>
+  </div>
+
+  {# ── Aba Conferência ────────────────────────────────────────────── #}
+  <div class="nx-rolagem nx-recolhivel" id="painelConf" role="tabpanel" hidden>
+    <div class="nx-bloco">
+      <span class="nx-label">Conferência técnica</span>
+      <p class="nx-aviso-d" style="margin:0">
+        Apurada no servidor pelos mesmos critérios da planilha. Clique num item
+        para destacar os equipamentos no mapa.
+      </p>
+    </div>
+    <div id="avisos"></div>
+  </div>
+</aside>

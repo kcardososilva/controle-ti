@@ -189,6 +189,7 @@ class TelasComShellProprioTests(TestCase):
         "front/portal/portal_base.html",
         "front/portal_licencas/portal_licencas_base.html",
         "front/sobre_plataforma.html",
+        "front/apresentacao.html",
         "front/dashboards/avisos_contrato_vencer.html",
         "front/dashboards/validacao_custos_planilha.html",
         # As duas telas de "sem acesso" ficaram de fora da primeira poda

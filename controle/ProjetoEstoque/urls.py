@@ -9,6 +9,10 @@ urlpatterns = [
     path("dashboard/", views.dashboard, name="dashboard"),
     path("dashboard/dados/", views.dashboard_apresentacao_dados, name="dashboard_apresentacao_dados"),
     path("sobre/", views.sobre_plataforma, name="sobre_plataforma"),
+    # Vitrine PÚBLICA (sem login) — é o link "Conheça o Zelo" da tela de
+    # acesso, então quem abre ainda não tem sessão. Não consulta o banco: a
+    # versão com números reais é a `/sobre/` acima, que exige login.
+    path("apresentacao/", views.apresentacao, name="apresentacao"),
     # Catálogo de tokens e componentes do design system. Restrita a staff:
     # não tem dado do negócio, mas não é tela de operação.
     path("sistema/design/", views.design_system, name="design_system"),
@@ -207,6 +211,10 @@ urlpatterns = [
     path("preventiva/desempenho/apontamentos/exportar/", views.apontamentos_horas_export, name="apontamentos_horas_export"),
     path("preventiva/minhas-atividades/", views.minhas_atividades, name="minhas_atividades"),
     path("preventiva/minha-agenda/", views.preventiva_minha_agenda, name="preventiva_minha_agenda"),
+    # Metas de preventiva por área e ciclo de 90 dias
+    path("preventiva/metas/", views.preventiva_metas, name="preventiva_metas"),
+    path("preventiva/metas/configurar/", views.preventiva_metas_config, name="preventiva_metas_config"),
+    path("preventiva/metas/exportar/", views.preventiva_metas_export, name="preventiva_metas_export"),
     # Checklists de preventiva
     path("preventiva/checklists/", views.checklist_list, name="checklist_list"),
     path("preventiva/checklists/novo/", views.checklist_form, name="checklist_create"),
@@ -292,6 +300,32 @@ urlpatterns = [
     path("plantas/monitor/",                              views.prtg_monitor,                name="prtg_monitor"),
     path("plantas/monitor/exportar/",                     views.prtg_monitor_export,         name="prtg_monitor_export"),
 
+    # -- Mapa de Rede (topologia + portas de switch) --------------------------
+    path("plantas/rede/",                      views.rede_mapa,            name="rede_mapa"),
+    path("plantas/rede/novo/",                 views.rede_mapa_criar,      name="rede_mapa_criar"),
+    path("plantas/rede/salvar/",               views.rede_mapa_salvar,     name="rede_mapa_salvar"),
+    path("plantas/rede/exportar-excel/",       views.rede_mapa_export,     name="rede_mapa_export"),
+    path("plantas/rede/<int:pk>/excluir/",     views.rede_mapa_excluir,    name="rede_mapa_excluir"),
+    path("plantas/rede/api/grafo/",            views.rede_grafo_api,       name="rede_grafo_api"),
+    path("plantas/rede/api/impacto/",          views.rede_impacto_api,     name="rede_impacto_api"),
+    path("plantas/rede/api/historico/",        views.rede_historico_api,   name="rede_historico_api"),
+    path("plantas/rede/api/dispositivo/",      views.rede_dispositivo_api, name="rede_dispositivo_api"),
+    path("plantas/rede/api/portas/",           views.rede_portas_api,      name="rede_portas_api"),
+    path("plantas/rede/api/porta/",            views.rede_porta_api,       name="rede_porta_api"),
+    path("plantas/rede/api/enlace/",           views.rede_enlace_api,      name="rede_enlace_api"),
+    path("plantas/rede/api/inventario/",       views.rede_inventario_api,  name="rede_inventario_api"),
+
+    # Planta georreferenciada da rede (racks, rotas, metros) — ver rede_planta.py
+    path("plantas/rede/planta/",               views.rede_planta,          name="rede_planta"),
+    path("plantas/rede/planta/exportar-excel/", views.rede_planta_export,  name="rede_planta_export"),
+    path("plantas/rede/rack/<int:pk>/excluir/", views.rede_rack_excluir,   name="rede_rack_excluir"),
+    path("plantas/rede/api/planta/",           views.rede_planta_api,      name="rede_planta_api"),
+    path("plantas/rede/api/posicao/",          views.rede_posicao_api,     name="rede_posicao_api"),
+    path("plantas/rede/api/rota/",             views.rede_rota_api,        name="rede_rota_api"),
+    path("plantas/rede/api/impacto-rota/",     views.rede_impacto_rota_api, name="rede_impacto_rota_api"),
+    path("plantas/rede/api/rack/",             views.rede_rack_api,        name="rede_rack_api"),
+    path("plantas/rede/api/rack-elevacao/",    views.rede_rack_elevacao_api, name="rede_rack_elevacao_api"),
+
     # ── Avisos & Relatórios ─────────────────────────────────────────────────
     path("avisos/contratos-a-vencer/", views.avisos_contratos_vencer, name="avisos_contratos_vencer"),
     path("avisos/contratos-a-vencer/exportar-excel/", views.avisos_contratos_vencer_export_excel, name="avisos_contratos_vencer_export_excel"),
@@ -330,6 +364,7 @@ urlpatterns = [
 
     # ── Módulo Quiosque — Dashboard interno (TI) ────────────────────────────
     path("quiosque/",                  views.quiosque_dashboard,     name="quiosque_dashboard"),
+    path("quiosque/apresentacao/",     views.quiosque_apresentacao,  name="quiosque_apresentacao"),
     path("quiosque/indicadores/",      views.quiosque_indicadores,   name="quiosque_indicadores"),
     path("quiosque/mapa/",             views.quiosque_mapa,          name="quiosque_mapa"),
     path("quiosque/matriculas/",       views.quiosque_matriculas,    name="quiosque_matriculas"),

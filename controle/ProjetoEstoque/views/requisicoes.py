@@ -328,7 +328,9 @@ def requisicao_item_delete(request, pk):
 @login_required
 def requisicao_item_detail(request, pk):
     item = get_object_or_404(
-        RequisicaoItem.objects.select_related("requisicao", "categoria", "item_vinculado", "criado_por"),
+        RequisicaoItem.objects.select_related(
+            "requisicao", "categoria", "item_vinculado", "criado_por", "fornecedor",
+        ),
         pk=pk,
     )
     comentarios = list(item.comentarios.select_related("criado_por").order_by("-created_at"))
@@ -426,6 +428,7 @@ def requisicao_item_receber_compra(request, pk):
             else:
                 RequisicaoService.finalizar_compra_sem_estoque(
                     item=item,
+                    fornecedor=form.cleaned_data["fornecedor"],
                     numero_nf=form.cleaned_data["numero_nf"],
                     valor_unitario=form.cleaned_data["valor_unitario"],
                     observacao=form.cleaned_data.get("observacao"),
@@ -534,7 +537,11 @@ _STATUS_ENCERRAVEIS = {
 @login_required
 def requisicao_detail(request, pk):
     requisicao = get_object_or_404(Requisicao, pk=pk)
-    itens = list(requisicao.itens.select_related("categoria", "item_vinculado", "criado_por").order_by("-created_at"))
+    itens = list(
+        requisicao.itens
+        .select_related("categoria", "item_vinculado", "criado_por", "fornecedor")
+        .order_by("-created_at")
+    )
     for item in itens:
         item.requisicao = requisicao  # evita reconsultar a mesma requisição por item em estagio_kanban()
         item.estagio_rotulo, item.estagio_data = estagio_kanban(item)

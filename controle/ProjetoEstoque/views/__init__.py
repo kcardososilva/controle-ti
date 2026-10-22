@@ -190,6 +190,9 @@ from .preventivas import (
     preventiva_plano,
     preventiva_agendadas,
     preventiva_sincronizar_programacao,
+    preventiva_metas,
+    preventiva_metas_config,
+    preventiva_metas_export,
     tecnico_desempenho,
     minhas_atividades,
     preventiva_minha_agenda,
@@ -349,6 +352,7 @@ from .quiosque import (
     kiosk_instalador_download,
     # Dashboard interno
     quiosque_dashboard,
+    quiosque_apresentacao,
     quiosque_indicadores,
     quiosque_detalhe,
     quiosque_mapa_atualizar,
@@ -440,6 +444,35 @@ from .plantas import (
     item_search_api,
 )
 
+# -- Mapa de Rede (topologia + portas de switch) ------------------------------
+from .rede_mapa import (
+    rede_mapa,
+    rede_mapa_criar,
+    rede_mapa_excluir,
+    rede_mapa_salvar,
+    rede_mapa_export,
+    rede_grafo_api,
+    rede_impacto_api,
+    rede_historico_api,
+    rede_dispositivo_api,
+    rede_portas_api,
+    rede_porta_api,
+    rede_enlace_api,
+    rede_inventario_api,
+)
+
+from .rede_planta import (
+    rede_planta,
+    rede_planta_api,
+    rede_planta_export,
+    rede_posicao_api,
+    rede_rota_api,
+    rede_impacto_rota_api,
+    rede_rack_api,
+    rede_rack_elevacao_api,
+    rede_rack_excluir,
+)
+
 # ── Solicitações de Compra (Kanban) ───────────────────────────────────────────
 from .requisicoes import (
     requisicoes_kanban,
@@ -479,3 +512,6 @@ from .design_system import design_system  # noqa: E402
 
 # ── Telas de erro (preview em desenvolvimento) ───────────────────────────────
 from .erros import erro_preview  # noqa: E402
+
+# ── Apresentação pública (vitrine alcançada pela tela de acesso) ─────────────
+from .apresentacao import apresentacao  # noqa: E402

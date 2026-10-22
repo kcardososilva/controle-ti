@@ -1,0 +1,996 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br" class="ap-html">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  {% comment %}Tela pública, mas de uso interno: é a vitrine que o
+     colaborador abre a partir do login, não um site de produto. Fora do
+     índice de busca como o resto do sistema.{% endcomment %}
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="Zelo — plataforma de controle de TI da Santa Colomba: ativos, licenças, movimentações, preventivas, termos assinados e monitoramento em uma base única.">
+
+  <title>Zelo — a plataforma de controle de TI da Santa Colomba</title>
+
+  <link rel="icon" type="image/svg+xml" href="{% static 'img/zelo-mark.svg' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..800&family=Inter+Tight:wght@500..800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  {% comment %}Shell próprio (regra 31): carrega os tokens do sistema por
+     conta e NÃO os redefine. A paleta de palco desta tela tem prefixo
+     próprio (--ap-*) e o acento dela deriva de var(--brand).{% endcomment %}
+  <link rel="stylesheet" href="{% static 'css/tokens.css' %}?v={{ assets_version }}">
+  <link rel="stylesheet" href="{% static 'css/cinema.css' %}?v={{ assets_version }}">
+  <link rel="stylesheet" href="{% static 'css/apresentacao.css' %}?v={{ assets_version }}">
+
+  <script>
+    /* Decide ANTES da primeira pintura se esta página vai rodar o filme.
+       Sem isso haveria um lampejo com as 8 cenas empilhadas antes de o JS
+       escondê-las. E o watchdog é o que impede o pior modo de falha: se o
+       GSAP do CDN não chegar (ou o apresentacao.js falhar), a tela ficaria
+       PRETA e VAZIA, com HTTP 200 e nada no log. Passados 5s sem o filme
+       anunciar que está pronto, a página vira a versão estática. */
+    (function () {
+      var raiz = document.documentElement;
+      var parado = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      raiz.classList.add(parado ? 'ap-sem-filme' : 'ap-com-filme');
+      if (parado) return;
+      window.setTimeout(function () {
+        if (!raiz.classList.contains('ap-filme-pronto')) {
+          raiz.classList.remove('ap-com-filme');
+          raiz.classList.add('ap-sem-filme');
+          // Destravar a rolagem é parte da queda: quem tira o
+          // `ap-travado` normalmente é o filme, que aqui não existe.
+          if (document.body) document.body.classList.remove('ap-travado');
+        }
+      }, 5000);
+    })();
+  </script>
+</head>
+
+<body class="ap-page ap-travado">
+
+  <a class="ap-oculto-visual" href="#conteudo">Pular a apresentação e ir ao conteúdo</a>
+
+  {% comment %}Atmosfera. A luz é a única camada que atravessa todas as
+     cenas — é ela que faz a troca de plano não ser um corte.{% endcomment %}
+  <div class="ap-luz" data-luz aria-hidden="true"></div>
+  <div class="ap-grao" aria-hidden="true"></div>
+  <div class="ap-vinheta" aria-hidden="true"></div>
+  <div class="ap-tarja ap-tarja--topo" data-tarja aria-hidden="true"></div>
+  <div class="ap-tarja ap-tarja--base" data-tarja aria-hidden="true"></div>
+
+  <header class="ap-topo">
+    <a class="ap-marca" href="{% url 'login' %}">
+      <svg viewBox="0 0 40 40" aria-hidden="true">
+        <rect width="40" height="40" rx="9" fill="var(--ap-acento)"/>
+        <path d="M12 10.5 H28 V14.5 L18 25.5 H28 V29.5 H12 V25.5 L22 14.5 H12 Z" fill="#ffffff"/>
+      </svg>
+      <b>Zelo</b>
+      <span>Santa Colomba</span>
+    </a>
+
+    <div class="ap-topo-acoes">
+      <button type="button" class="ap-btn ap-btn--fantasma ap-btn--secundario" data-pular>
+        Pular apresentação
+      </button>
+      <a class="ap-btn ap-btn--solido" href="{% url 'login' %}">
+        Entrar no sistema
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </header>
+
+  {% comment %}══ O FILME ══ 8 cenas, 30 segundos, sem corte seco: toda
+     cena entra antes de a anterior terminar de sair. A ordem e a duração
+     ficam em static/js/apresentacao.js (const CENAS).{% endcomment %}
+  <main class="ap-palco" data-palco aria-label="Apresentação do Zelo em vídeo">
+
+    <!-- ── Cena 1 · Abertura com a marca ─────────────────────────────── -->
+    <section class="ap-cena ap-cena--centro" data-cena data-rotulo="Abertura">
+      <div class="ap-cena-interno">
+        <div class="ap-abertura">
+          <div class="ap-marca-palco">
+            <span class="ap-anel" data-anel aria-hidden="true"></span>
+            <span class="ap-anel" data-anel aria-hidden="true"></span>
+            <span class="ap-anel" data-anel aria-hidden="true"></span>
+            <svg viewBox="0 0 40 40" role="img" aria-label="Marca do Zelo">
+              <rect class="ap-marca-traco" data-traco x="0.8" y="0.8" width="38.4" height="38.4" rx="8.6"/>
+              <path class="ap-marca-z" data-traco d="M12 10.5 H28 V14.5 L18 25.5 H28 V29.5 H12 V25.5 L22 14.5 H12 Z"/>
+              <g class="ap-marca-cheia" data-marca-cheia>
+                <rect width="40" height="40" rx="9" fill="var(--ap-acento)"/>
+                <path d="M12 10.5 H28 V14.5 L18 25.5 H28 V29.5 H12 V25.5 L22 14.5 H12 Z" fill="#ffffff"/>
+              </g>
+            </svg>
+          </div>
+
+          <h1 class="ap-palavra-marca" data-letras>Zelo</h1>
+          <p class="ap-assinatura-marca" data-surge>Santa Colomba · Tecnologia da Informação</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Cena 2 · O problema ───────────────────────────────────────── -->
+    <section class="ap-cena ap-cena--centro" data-cena data-rotulo="O problema">
+      <div class="ap-cena-interno">
+        <p class="ap-selo" data-surge><b>01</b> O problema</p>
+        <h2 class="ap-titulo-grande" data-palavras>Toda empresa sabe o que comprou.</h2>
+        <h2 class="ap-titulo-grande ap-titulo--acento" data-palavras>Poucas sabem onde está.</h2>
+      </div>
+    </section>
+
+    <!-- ── Cena 3 · Inventário vivo ──────────────────────────────────── -->
+    <section class="ap-cena ap-cena--dupla ap-cena--ampla" data-cena data-rotulo="Inventário">
+      <div class="ap-cena-interno">
+        <div class="ap-coluna-texto">
+          <p class="ap-selo" data-surge><b>02</b> Ativos de TI</p>
+          <h2 class="ap-titulo" data-palavras>Cada ativo, uma ficha viva.</h2>
+          <p class="ap-apoio" data-surge>
+            Série, nota fiscal, garantia, centro de custo, localidade e o histórico
+            inteiro de quem usou. A ficha não é um registro parado: ela muda sozinha
+            a cada movimentação.
+          </p>
+        </div>
+
+        <div class="ap-maquete">
+          <div class="ap-janela" data-maquete>
+            <div class="ap-janela-barra" aria-hidden="true">
+              <span class="ap-ponto"></span><span class="ap-ponto"></span><span class="ap-ponto"></span>
+              <span class="ap-janela-url">zelo · /equipamentos/</span>
+            </div>
+
+            <div class="ap-janela-corpo">
+              <div class="ap-kpis">
+                <div class="ap-kpi">
+                  <div class="ap-kpi-rotulo">Total filtrado</div>
+                  <div class="ap-kpi-valor"><span data-conta="498">498</span></div>
+                </div>
+                <div class="ap-kpi">
+                  <div class="ap-kpi-rotulo">Ativos / Backup</div>
+                  <div class="ap-kpi-valor"><span data-conta="412">412</span><small> / 24</small></div>
+                </div>
+                <div class="ap-kpi">
+                  <div class="ap-kpi-rotulo">Manutenção / Defeito</div>
+                  <div class="ap-kpi-valor"><span data-conta="7">7</span><small> / 3</small></div>
+                </div>
+                <div class="ap-kpi">
+                  <div class="ap-kpi-rotulo">Valor em estoque</div>
+                  <div class="ap-kpi-valor"><small>R$ </small><span data-conta="72940" data-moeda="1">72.940</span></div>
+                </div>
+              </div>
+
+              <div class="ap-barra-filtro" aria-hidden="true">
+                <span class="ap-busca">Buscar por nome, série ou nota fiscal…</span>
+                <span class="ap-filtro ap-filtro--ligado">Todos</span>
+                <span class="ap-filtro">Ativo</span>
+                <span class="ap-filtro">Manutenção</span>
+                <span class="ap-filtro">Com lote</span>
+              </div>
+
+              <div class="ap-tabela ap-tabela--ativos">
+                <div class="ap-linha ap-linha--cab" aria-hidden="true">
+                  <span>Ativo</span>
+                  <span>Tipo</span>
+                  <span>Status</span>
+                  <span>Localidade / CC</span>
+                  <span>Lotes / Saldo</span>
+                </div>
+
+                <div class="ap-linha" data-linha>
+                  <span class="ap-ativo">
+                    <span class="ap-ativo-ico" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="11" rx="2"/><path d="M1.5 19.5h21"/></svg>
+                    </span>
+                    <span class="ap-ativo-txt">
+                      <b>Notebook Dell Latitude 5440</b>
+                      <span class="ap-serie">S/N 4471-A2K</span>
+                      <span class="ap-ativo-sub">Dell / Latitude 5440</span>
+                    </span>
+                  </span>
+                  <span class="ap-tipo">Patrimônio</span>
+                  <span class="ap-chip ap-chip--ok">Ativo</span>
+                  <span class="ap-local"><b>Escritório Sede</b><span>Administrativo · 1102</span></span>
+                  <span class="ap-sem-saldo">Sem lote</span>
+                </div>
+
+                <div class="ap-linha ap-linha--marcada" data-linha>
+                  <span class="ap-ativo">
+                    <span class="ap-ativo-ico" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="10" rx="2"/><path d="M6.5 12h.01M10 12h.01M13.5 12h.01"/><path d="M17.5 10.5v3"/></svg>
+                    </span>
+                    <span class="ap-ativo-txt">
+                      <b>Switch 24 portas Gigabit</b>
+                      <span class="ap-serie">S/N 0317-SW</span>
+                      <span class="ap-ativo-sub">TP-Link / TL-SG1024</span>
+                    </span>
+                  </span>
+                  <span class="ap-tipo">Patrimônio</span>
+                  <span class="ap-chip ap-chip--alerta">Manutenção</span>
+                  <span class="ap-local"><b>CPD · Fazenda</b><span>Infraestrutura · 2040</span></span>
+                  <span class="ap-sem-saldo">Sem lote</span>
+                </div>
+
+                <div class="ap-linha" data-linha>
+                  <span class="ap-ativo">
+                    <span class="ap-ativo-ico" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg>
+                    </span>
+                    <span class="ap-ativo-txt">
+                      <b>Cabo de rede Cat6 U/UTP</b>
+                      <span class="ap-serie">Sem número de série</span>
+                      <span class="ap-ativo-sub">Furukawa / caixa 305 m</span>
+                    </span>
+                  </span>
+                  <span class="ap-tipo ap-tipo--lote">Com lote</span>
+                  <span class="ap-chip ap-chip--neutro">Estoque</span>
+                  <span class="ap-local"><b>Almoxarifado TI</b><span>Suprimentos · 1310</span></span>
+                  <span class="ap-saldo">
+                    <span class="ap-saldo-linha"><span>3 lotes</span><b>412/600</b></span>
+                    <span class="ap-saldo-trilho"><span class="ap-saldo-cheio" style="--ap-pct: 69%"></span></span>
+                  </span>
+                </div>
+
+                <div class="ap-linha" data-linha>
+                  <span class="ap-ativo">
+                    <span class="ap-ativo-ico" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M10.5 18.8h3"/></svg>
+                    </span>
+                    <span class="ap-ativo-txt">
+                      <b>Tablet de campo</b>
+                      <span class="ap-serie">S/N 2088-TB</span>
+                      <span class="ap-ativo-sub">Samsung / Galaxy Tab Active</span>
+                    </span>
+                  </span>
+                  <span class="ap-tipo ap-tipo--locado">Locado</span>
+                  <span class="ap-chip ap-chip--ok">Ativo</span>
+                  <span class="ap-local"><b>Equipe agrícola</b><span>Operação campo · 3025</span></span>
+                  <span class="ap-sem-saldo">Sem lote</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Cena 4 · Licenças e custo ─────────────────────────────────── -->
+    <section class="ap-cena ap-cena--dupla ap-cena--invertida" data-cena data-rotulo="Licenças">
+      <div class="ap-cena-interno">
+        <div class="ap-maquete">
+          <div class="ap-janela" data-maquete>
+            <div class="ap-janela-barra" aria-hidden="true">
+              <span class="ap-ponto"></span><span class="ap-ponto"></span><span class="ap-ponto"></span>
+              <span class="ap-janela-url">zelo · /dashboards/custos-diretoria/</span>
+            </div>
+            <div class="ap-janela-corpo">
+              <div class="ap-grafico">
+                <div class="ap-rosca">
+                  <svg viewBox="0 0 100 100" aria-hidden="true">
+                    <circle class="ap-rosca-trilho" cx="50" cy="50" r="42"/>
+                    <circle class="ap-rosca-arco" data-arco cx="50" cy="50" r="42"/>
+                  </svg>
+                  <div class="ap-rosca-centro"><span data-conta="94" data-sufixo="%">94%</span></div>
+                </div>
+
+                <div>
+                  <div class="ap-kpi-rotulo">Assentos alocados · custo anual</div>
+                  <div class="ap-kpi-valor"><small>R$</small> <span data-conta="184320" data-moeda="1">184.320</span></div>
+                  <div class="ap-barras" data-barras>
+                    <span class="ap-barra" style="--ap-h: 0.42"></span>
+                    <span class="ap-barra" style="--ap-h: 0.66"></span>
+                    <span class="ap-barra" style="--ap-h: 0.38"></span>
+                    <span class="ap-barra ap-barra--destaque" style="--ap-h: 0.92"></span>
+                    <span class="ap-barra" style="--ap-h: 0.54"></span>
+                    <span class="ap-barra" style="--ap-h: 0.71"></span>
+                    <span class="ap-barra" style="--ap-h: 0.48"></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="ap-legenda" aria-hidden="true">
+                <span><i></i> Office 365</span>
+                <span><i class="ap-legenda--2"></i> Vence em 30 dias</span>
+                <span><i class="ap-legenda--3"></i> Assento livre</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ap-coluna-texto">
+          <p class="ap-selo" data-surge><b>03</b> Licenças e custos</p>
+          <h2 class="ap-titulo" data-palavras>Cada licença, um custo com nome.</h2>
+          <p class="ap-apoio" data-surge>
+            Assento por colaborador, chave por máquina, renovação com data e o custo
+            rateado por centro de custo e por diretoria. Quem desligou devolve a
+            licença no mesmo ato.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Cena 5 · Preventiva em campo ──────────────────────────────── -->
+    <section class="ap-cena ap-cena--dupla" data-cena data-rotulo="Preventivas">
+      <div class="ap-cena-interno">
+        <div class="ap-coluna-texto">
+          <p class="ap-selo" data-surge><b>04</b> Manutenção preventiva</p>
+          <h2 class="ap-titulo" data-palavras>Manutenção antes da parada.</h2>
+          <p class="ap-apoio" data-surge>
+            Checklist por modelo de equipamento, preenchido em pé, na frente do rack,
+            com foto de antes e depois. Se a rede cair no galpão, o rascunho fica no
+            aparelho até dar para enviar.
+          </p>
+        </div>
+
+        <div class="ap-maquete">
+          <div class="ap-fone" data-maquete>
+            <div class="ap-fone-tela">
+              <div class="ap-fone-topo">
+                <div class="ap-fone-titulo">Switch 24 portas Gigabit</div>
+                <div class="ap-fone-sub">Check List Switches · 7 itens</div>
+              </div>
+
+              <div class="ap-pv-strip" aria-hidden="true">
+                <span class="ap-pv-mini"><span>Nº Série</span><b>0317-SW</b></span>
+                <span class="ap-pv-mini"><span>Localidade</span><b>CPD · Fazenda</b></span>
+                <span class="ap-pv-mini"><span>Última</span><b>12/07/2026</b></span>
+                <span class="ap-pv-mini"><span>Próxima</span><b>09/01/2027</b></span>
+              </div>
+
+              <div class="ap-check">
+                <div class="ap-pv-q" data-check>
+                  <div class="ap-pv-pergunta"><span class="ap-pv-num">1</span>Remover poeira e sujeira acumulada nas portas e ventiladores do switch</div>
+                  <div class="ap-pv-resposta">
+                    <span class="ap-pv-opcao ap-pv-opcao--sim">
+                      <span class="ap-caixa"><svg viewBox="0 0 24 24" aria-hidden="true"><path data-visto d="M5 12.5 10 17.5 19 7"/></svg></span>
+                      Conforme
+                    </span>
+                    <span class="ap-pv-opcao">Não conforme</span>
+                  </div>
+                </div>
+
+                <div class="ap-pv-q" data-check>
+                  <div class="ap-pv-pergunta"><span class="ap-pv-num">2</span>Observe os LEDs do switch para garantir que todas as portas estão operando</div>
+                  <div class="ap-pv-resposta">
+                    <span class="ap-pv-opcao ap-pv-opcao--sim">
+                      <span class="ap-caixa"><svg viewBox="0 0 24 24" aria-hidden="true"><path data-visto d="M5 12.5 10 17.5 19 7"/></svg></span>
+                      Conforme
+                    </span>
+                    <span class="ap-pv-opcao">Não conforme</span>
+                  </div>
+                </div>
+
+                <div class="ap-pv-q" data-check>
+                  <div class="ap-pv-pergunta"><span class="ap-pv-num">3</span>Confirme se os cabos Ethernet estão conectados e sem sinais de desgaste</div>
+                  <div class="ap-pv-resposta">
+                    <span class="ap-pv-opcao ap-pv-opcao--sim">
+                      <span class="ap-caixa"><svg viewBox="0 0 24 24" aria-hidden="true"><path data-visto d="M5 12.5 10 17.5 19 7"/></svg></span>
+                      Conforme
+                    </span>
+                    <span class="ap-pv-opcao">Não conforme</span>
+                  </div>
+                </div>
+
+                <div class="ap-pv-q" data-check>
+                  <div class="ap-pv-pergunta"><span class="ap-pv-num">4</span>Sinal do link (em caso da uplink fibra)</div>
+                  <div class="ap-pv-campo"><b>-18,4</b><span>dBm</span></div>
+                </div>
+              </div>
+
+              <div class="ap-pv-rodape">
+                <div class="ap-fotos" data-fotos aria-hidden="true">
+                  <span class="ap-foto"><i>Antes</i></span>
+                  <span class="ap-foto"><i>Depois</i></span>
+                </div>
+                <span class="ap-pv-rascunho">Rascunho guardado no aparelho</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Cena 6 · Assinatura digital do termo ──────────────────────── -->
+    <section class="ap-cena ap-cena--dupla ap-cena--invertida" data-cena data-rotulo="Assinatura">
+      <div class="ap-cena-interno">
+        <div class="ap-maquete">
+          <div class="ap-tablet" data-maquete>
+            <div class="ap-tablet-tela">
+              <div class="ap-fone-titulo">Termo de responsabilidade · entrega</div>
+              <div class="ap-doc-linhas" aria-hidden="true">
+                <span class="ap-doc-linha" data-doc></span>
+                <span class="ap-doc-linha" data-doc></span>
+                <span class="ap-doc-linha" data-doc></span>
+              </div>
+
+              <div class="ap-assina">
+                <svg viewBox="0 0 320 90" role="img" aria-label="Assinatura manuscrita sendo desenhada">
+                  <path data-firma d="M14 64c22-6 30-34 24-42-5-7-14 2-13 16 1 17 11 30 23 30 14 0 20-14 26-26 5-10 9-16 14-16 6 0 7 9 4 17-3 9-10 17-10 17s12-8 22-8c7 0 8 6 5 11-3 6-9 9-9 9s9-3 17-3c11 0 14 7 23 7 14 0 28-9 46-27"/>
+                </svg>
+                <span class="ap-assina-rotulo">Assinatura do colaborador</span>
+              </div>
+
+              <span class="ap-selo-pdf" data-selo>
+                Termo assinado · <code>PDF</code> · <code>7F2A-91C4</code>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ap-coluna-texto">
+          <p class="ap-selo" data-surge><b>05</b> Termos e prova</p>
+          <h2 class="ap-titulo" data-palavras>A assinatura que move o patrimônio.</h2>
+          <p class="ap-apoio" data-surge>
+            O colaborador assina no tablet e, no mesmo ato, o equipamento muda de
+            mão no sistema. Sai um PDF com código de verificação — e a via dele
+            chega por e-mail sem ninguém precisar lembrar.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Cena 7 · Infraestrutura monitorada ────────────────────────── -->
+    <section class="ap-cena ap-cena--dupla ap-cena--ampla" data-cena data-rotulo="Infraestrutura">
+      <div class="ap-cena-interno">
+        <div class="ap-coluna-texto">
+          <p class="ap-selo" data-surge><b>06</b> Infraestrutura</p>
+          <h2 class="ap-titulo" data-palavras>A operação inteira numa tela só.</h2>
+          <p class="ap-apoio" data-surge>
+            Cada tablet, quiosque e rádio no lugar onde ele está agora, sobre a
+            imagem de satélite do talhão — com o trajeto do dia, o nível de sinal
+            e a bateria de cada aparelho. Na parede do CPD, em modo TV.
+          </p>
+        </div>
+
+        <div class="ap-maquete">
+          <div class="ap-janela" data-maquete>
+            <div class="ap-janela-barra" aria-hidden="true">
+              <span class="ap-ponto"></span><span class="ap-ponto"></span><span class="ap-ponto"></span>
+              <span class="ap-janela-url">zelo · /quiosque/mapa/</span>
+            </div>
+
+            <div class="ap-janela-corpo ap-janela-corpo--mapa">
+              <div class="ap-kq-lado" aria-hidden="true">
+                <div class="ap-kq-metricas">
+                  <span class="ap-kq-metrica ap-kq-metrica--ligada"><b>18</b><span><i class="ap-kq-ponto"></i>No mapa</span></span>
+                  <span class="ap-kq-metrica"><b>15</b><span><i class="ap-kq-ponto ap-kq-ponto--on"></i>Online</span></span>
+                  <span class="ap-kq-metrica"><b>3</b><span><i class="ap-kq-ponto ap-kq-ponto--off"></i>Offline</span></span>
+                </div>
+
+                <span class="ap-kq-busca">Filtrar dispositivos…</span>
+                <span class="ap-kq-titulo">Dispositivos no mapa</span>
+
+                <div class="ap-kq-lista">
+                  <span class="ap-kq-item ap-kq-item--sel">
+                    <i class="ap-kq-ponto ap-kq-ponto--on"></i>
+                    <span class="ap-kq-item-txt"><b>Tablet 07 · Campo</b><span>Galaxy Tab Active · 82% · há 2 min</span></span>
+                    <span class="ap-kq-selo">4G</span>
+                  </span>
+                  <span class="ap-kq-item">
+                    <i class="ap-kq-ponto ap-kq-ponto--on"></i>
+                    <span class="ap-kq-item-txt"><b>Quiosque Oficina</b><span>Tab A8 · 97% · há 1 min</span></span>
+                    <span class="ap-kq-selo">Wi-Fi</span>
+                  </span>
+                  <span class="ap-kq-item">
+                    <i class="ap-kq-ponto ap-kq-ponto--on"></i>
+                    <span class="ap-kq-item-txt"><b>Tablet 03 · Pulverização</b><span>Galaxy Tab Active · 64% · há 6 min</span></span>
+                    <span class="ap-kq-selo">4G</span>
+                  </span>
+                  <span class="ap-kq-item">
+                    <i class="ap-kq-ponto ap-kq-ponto--off"></i>
+                    <span class="ap-kq-item-txt"><b>Tablet 11 · Silo</b><span>Galaxy Tab Active · 12% · há 3 h</span></span>
+                    <span class="ap-kq-selo ap-kq-selo--off">3G</span>
+                  </span>
+                </div>
+              </div>
+
+              <div class="ap-mapa" data-mapa>
+                <svg class="ap-terreno" viewBox="0 0 160 110" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="apPivo" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="var(--ap-terra-pivo-centro)"/>
+                      <stop offset="100%" stop-color="var(--ap-terra-pivo-borda)"/>
+                    </radialGradient>
+                  </defs>
+
+                  <rect width="160" height="110" fill="var(--ap-terra-base)"/>
+
+                  <g class="ap-terreno-talhao">
+                    <path d="M0 0h62l-8 44-54 6z"/>
+                    <path d="M62 0h98v38l-52 10-54-4z"/>
+                    <path d="M0 58l56-6 6 40-62 4z"/>
+                    <path d="M66 54l94-10v66H70z"/>
+                  </g>
+
+                  <g class="ap-terreno-pivo">
+                    <circle cx="120" cy="26" r="15" fill="url(#apPivo)"/>
+                    <circle cx="136" cy="76" r="13" fill="url(#apPivo)"/>
+                    <circle cx="78" cy="22" r="11" fill="url(#apPivo)"/>
+                  </g>
+                  <g class="ap-terreno-eixo">
+                    <path d="M120 26h15M136 76h13M78 22h11"/>
+                  </g>
+
+                  <path class="ap-terreno-grade" d="M0 22h160M0 44h160M0 66h160M0 88h160M32 0v110M64 0v110M96 0v110M128 0v110"/>
+
+                  <path class="ap-terreno-rio" d="M10 0c10 24 2 44 16 64s16 32 10 46"/>
+                  <path class="ap-terreno-estrada" d="M0 88c30 6 58-2 88-12s50-14 72-16"/>
+                  <path class="ap-terreno-estrada ap-terreno-estrada--fina" d="M40 110c4-28 8-44 12-70"/>
+
+                  <path class="ap-mapa-rota" data-rota d="M26 78 45 91 70 88 96 74 134 74"/>
+                  <path class="ap-mapa-rota ap-mapa-rota--b" data-rota d="M26 78 40 58 52 40 74 46 92 56 112 28"/>
+                </svg>
+
+                <span class="ap-no" data-no style="left:16.3%; top:70.9%">
+                  <span class="ap-no-bolha"></span><span class="ap-no-rotulo">Sede</span>
+                </span>
+                <span class="ap-no" data-no style="left:32.5%; top:36.4%">
+                  <span class="ap-no-bolha"></span><span class="ap-no-rotulo">CPD</span>
+                </span>
+                <span class="ap-no" data-no style="left:27.5%; top:82.7%">
+                  <span class="ap-no-bolha"></span><span class="ap-no-rotulo">Oficina</span>
+                </span>
+                <span class="ap-no ap-no--alerta" data-no style="left:57.5%; top:50.9%">
+                  <span class="ap-no-bolha"></span><span class="ap-no-rotulo">Rádio 3</span>
+                </span>
+                <span class="ap-no" data-no style="left:70%; top:25.5%">
+                  <span class="ap-no-bolha"></span><span class="ap-no-rotulo">Silo</span>
+                </span>
+                <span class="ap-no ap-no--foco" data-no style="left:83.8%; top:67.3%">
+                  <span class="ap-no-bolha"></span><span class="ap-no-rotulo">Pivô 7</span>
+                  <span class="ap-no-balao">Tablet 07 · 4G · 82%<small>há 2 min · 18 pontos no traço</small></span>
+                </span>
+
+                <span class="ap-mapa-zoom" aria-hidden="true"><b>+</b><b>−</b></span>
+                <span class="ap-mapa-camada" aria-hidden="true">Satélite + nomes</span>
+                <span class="ap-mapa-credito" aria-hidden="true">Imagem ilustrativa · a tela real usa satélite sobre a planta da fazenda</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Cena 8 · Fecho ────────────────────────────────────────────── -->
+    <section class="ap-cena ap-cena--centro" data-cena data-rotulo="Fecho">
+      <div class="ap-cena-interno">
+        <div class="ap-abertura">
+          <div class="ap-marca-palco" data-marca-fecho>
+            <svg viewBox="0 0 40 40" role="img" aria-label="Marca do Zelo">
+              <rect width="40" height="40" rx="9" fill="var(--ap-acento)"/>
+              <path d="M12 10.5 H28 V14.5 L18 25.5 H28 V29.5 H12 V25.5 L22 14.5 H12 Z" fill="#ffffff"/>
+            </svg>
+          </div>
+
+          <h2 class="ap-titulo" data-palavras>Controle de TI com rastreabilidade.</h2>
+          <p class="ap-apoio" data-surge>
+            Ativos, licenças, movimentações, preventivas, termos e monitoramento —
+            numa base só, com histórico de quem fez o quê.
+          </p>
+
+          <div class="ap-fecho-acoes" data-surge>
+            <a class="ap-btn ap-btn--solido ap-btn--grande" href="{% url 'login' %}">
+              Entrar no sistema
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+            </a>
+            <a class="ap-btn ap-btn--grande" href="#conteudo" data-ver-mais>Conhecer a plataforma</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="ap-rolar" data-rolar aria-hidden="true">
+    Role para continuar
+    <span></span>
+  </div>
+
+  {% comment %}HUD do filme. Os capítulos são montados pelo JS a partir do
+     data-rotulo de cada cena — fonte única: acrescentar cena não exige
+     lembrar de acrescentar botão.{% endcomment %}
+  <div class="ap-hud" data-hud>
+    <div class="ap-trilha"><div class="ap-progresso" data-progresso></div></div>
+
+    <div class="ap-hud-linha">
+      <div class="ap-hud-esq">
+        <button type="button" class="ap-controle" data-tocar aria-label="Pausar apresentação">
+          <svg viewBox="0 0 24 24" data-icone-tocar aria-hidden="true"><path d="M8 5h3v14H8zM13 5h3v14h-3z"/></svg>
+        </button>
+        <button type="button" class="ap-controle" data-reiniciar aria-label="Ver desde o começo">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+        </button>
+        <button type="button" class="ap-controle" data-pular aria-label="Pular para o fim da apresentação">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5l9 7-9 7zM16 5h2.5v14H16z"/></svg>
+        </button>
+        <span class="ap-tempo" data-tempo>00:00 / 00:30</span>
+      </div>
+
+      <nav class="ap-capitulos" data-capitulos aria-label="Cenas da apresentação"></nav>
+    </div>
+  </div>
+
+  {% comment %}══ A PÁGINA ══ Aparece quando o filme termina (ou quando o
+     visitante pula). É aqui que mora o argumento escrito.{% endcomment %}
+  <div class="ap-pagina" id="conteudo">
+
+    <section class="ap-secao">
+      <div class="ap-secao-interno">
+        <div class="ap-cabecalho-secao ap-reveal">
+          <p class="ap-selo">Por que existe</p>
+          <h2 class="ap-titulo ap-titulo--medio">
+            Inventário não é planilha. É prova.
+          </h2>
+          <p class="ap-apoio">
+            Planilha responde "o que compramos". O Zelo responde "quem está com o
+            equipamento, desde quando, por quanto, com qual licença, qual a última
+            manutenção e onde está o termo assinado". A diferença aparece no dia em
+            que alguém pergunta.
+          </p>
+        </div>
+
+        <div class="ap-numeros ap-reveal">
+          <div class="ap-numero"><b>9</b><span>módulos integrados na mesma base</span></div>
+          <div class="ap-numero"><b>6</b><span>níveis de hierarquia, do diretor ao responsável</span></div>
+          <div class="ap-numero"><b>2</b><span>portais isolados para empresas de fora</span></div>
+          <div class="ap-numero"><b>1</b><span>fonte de verdade — sem planilha paralela</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="ap-secao ap-secao--borda">
+      <div class="ap-secao-interno">
+        <div class="ap-cabecalho-secao ap-reveal">
+          <p class="ap-selo">O que tem dentro</p>
+          <h2 class="ap-titulo ap-titulo--medio">Nove módulos, uma base.</h2>
+        </div>
+
+        <div class="ap-grade ap-reveal">
+          <article class="ap-card">
+            <span class="ap-card-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>
+            <h3>Ativos de TI</h3>
+            <p>Ficha por equipamento com série, nota fiscal, garantia, centro de custo, anexos e histórico. Consumível entra com controle de lote e saldo.</p>
+          </article>
+
+          <article class="ap-card">
+            <span class="ap-card-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg></span>
+            <h3>Movimentações</h3>
+            <p>Entrada, baixa, transferência, envio e retorno de manutenção — cada operação com data, custo, responsável e alerta por e-mail quando precisa.</p>
+          </article>
+
+          <article class="ap-card">
+            <span class="ap-card-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="12" r="3.2"/><path d="M11.2 12H21l-2 2.6M17 12v3"/></svg></span>
+            <h3>Licenças</h3>
+            <p>Pool de assentos por software e chave única por máquina, com renovação, custo por diretoria e um painel de saúde que acha assento órfão.</p>
+          </article>
+
+          <article class="ap-card">
+            <span class="ap-card-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 4.5a4.5 4.5 0 0 0-5.9 5.6L4 15.7V20h4.3l5.6-5.6a4.5 4.5 0 0 0 5.6-5.9l-2.7 2.7-2.5-2.5z"/></svg></span>
+            <h3>Preventivas</h3>
+            <p>Checklist por modelo, agenda que calcula o próximo vencimento e execução no celular, com galeria de fotos de antes e depois.</p>
+          </article>
+
+          <article class="ap-card">
+            <span class="ap-card-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h7l5 5v4"/><path d="M6 3v18h6"/><path d="M20.4 14.6 15 20l-3 .9.9-3 5.4-5.4a1.5 1.5 0 0 1 2.1 2.1z"/></svg></span>
+            <h3>Termos e assinatura</h3>
+            <p>O colaborador assina no tablet, o PDF sai com código de verificação e a transferência de patrimônio acontece no mesmo ato. Desligamento encerra o vínculo inteiro.</p>
+          </article>
+
+          <article class="ap-card">
+            <span class="ap-card-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M5 8v4h14V8M12 12v4"/></svg></span>
+            <h3>Plantas e monitoramento</h3>
+            <p>Mapa visual da infraestrutura com status ao vivo do PRTG, histórico de versões do layout e modo TV para a parede.</p>
+          </article>
+
+          <article class="ap-card">
+            <span class="ap-card-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg></span>
+            <h3>Quiosque</h3>
+            <p>Celular corporativo com check-in, mapa de rota, mapa de sinal e apps liberados por política — sem depender do que o motorista lembra de contar.</p>
+          </article>
+
+          <article class="ap-card">
+            <span class="ap-card-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16"/><path d="M8 16v-5M13 16V8M18 16v-7"/></svg></span>
+            <h3>Painéis de custo</h3>
+            <p>Custo por centro de custo e por diretoria, com detalhamento até o item e exportação para Excel e PDF.</p>
+          </article>
+
+          <article class="ap-card">
+            <span class="ap-card-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5M9.5 11h1M13.5 11h1"/></svg></span>
+            <h3>Portais externos</h3>
+            <p>Fornecedor e parceiro de licenças acessam o que é deles, e só isso: área isolada, com três camadas de verificação antes de qualquer registro aparecer.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="ap-secao ap-secao--borda">
+      <div class="ap-secao-interno">
+        <div class="ap-cabecalho-secao ap-reveal">
+          <p class="ap-selo">Por dentro</p>
+          <h2 class="ap-titulo ap-titulo--medio">Um giro pelas telas.</h2>
+          <p class="ap-apoio">
+            Seis módulos, seis telas de trabalho. Arraste para o lado, use as setas
+            do teclado ou deixe correr sozinho.
+          </p>
+        </div>
+
+        <div class="ap-carrossel ap-reveal" data-carrossel
+             aria-roledescription="carrossel" aria-label="Telas do sistema">
+          <div class="ap-carrossel-trilho" data-trilho tabindex="0">
+          <article class="ap-slide" data-slide role="group"
+                   aria-roledescription="slide" aria-label="Equipamentos">
+            <div class="ap-slide-arte" aria-hidden="true">
+              <svg viewBox="0 0 160 100">
+                <rect class="ap-arte-quadro" x="8" y="8" width="144" height="84" rx="6"/>
+                <path class="ap-arte-fio" d="M8 24h144"/>
+                <circle class="ap-arte-mancha" cx="17" cy="16" r="1.8"/>
+                <circle class="ap-arte-mancha" cx="24" cy="16" r="1.8"/>
+                <circle class="ap-arte-mancha" cx="31" cy="16" r="1.8"/>
+                <rect class="ap-arte-bloco" x="16" y="32" width="38" height="16" rx="3"/>
+                <rect class="ap-arte-bloco" x="60" y="32" width="38" height="16" rx="3"/>
+                <rect class="ap-arte-bloco" x="104" y="32" width="40" height="16" rx="3"/>
+                <rect class="ap-arte-bloco" x="16" y="55" width="128" height="10" rx="3"/>
+                <rect class="ap-arte-bloco ap-arte-bloco--sel" x="16" y="68" width="128" height="10" rx="3"/>
+                <rect class="ap-arte-ok" x="124" y="57" width="16" height="6" rx="3"/>
+                <rect class="ap-arte-alerta" x="124" y="70" width="16" height="6" rx="3"/>
+              </svg>
+            </div>
+            <div class="ap-slide-texto">
+              <p class="ap-selo"><b>01</b> Equipamentos</p>
+              <h3>A lista que responde sozinha.</h3>
+              <p>Filtro por status, tipo, localidade e centro de custo; indicadores no topo que mudam junto com o filtro; e o saldo de lote de cada consumível na mesma linha.</p>
+              <span class="ap-slide-rota">zelo · /equipamentos/</span>
+            </div>
+          </article>
+
+          <article class="ap-slide" data-slide role="group"
+                   aria-roledescription="slide" aria-label="Licenças">
+            <div class="ap-slide-arte" aria-hidden="true">
+              <svg viewBox="0 0 160 100">
+                <rect class="ap-arte-quadro" x="8" y="8" width="144" height="84" rx="6"/>
+                <path class="ap-arte-fio" d="M8 24h144"/>
+                <circle class="ap-arte-mancha" cx="17" cy="16" r="1.8"/>
+                <circle class="ap-arte-mancha" cx="24" cy="16" r="1.8"/>
+                <circle class="ap-arte-mancha" cx="31" cy="16" r="1.8"/>
+                <circle class="ap-arte-trilho" cx="48" cy="60" r="20"/>
+                <path class="ap-arte-arco" d="M48 40a20 20 0 1 1-17 30"/>
+                <rect class="ap-arte-bloco" x="84" y="36" width="60" height="7" rx="3"/>
+                <rect class="ap-arte-acento" x="84" y="48" width="44" height="7" rx="3"/>
+                <rect class="ap-arte-bloco" x="84" y="60" width="52" height="7" rx="3"/>
+                <rect class="ap-arte-acento" x="84" y="72" width="30" height="7" rx="3"/>
+              </svg>
+            </div>
+            <div class="ap-slide-texto">
+              <p class="ap-selo"><b>02</b> Licenças</p>
+              <h3>Assento, chave e renovação.</h3>
+              <p>Pool de assentos por software, chave única por máquina, custo rateado por ciclo e um painel de saúde que encontra assento pago sem dono.</p>
+              <span class="ap-slide-rota">zelo · /licencas/</span>
+            </div>
+          </article>
+
+          <article class="ap-slide" data-slide role="group"
+                   aria-roledescription="slide" aria-label="Preventivas">
+            <div class="ap-slide-arte" aria-hidden="true">
+              <svg viewBox="0 0 160 100">
+                <rect class="ap-arte-quadro" x="8" y="8" width="144" height="84" rx="6"/>
+                <path class="ap-arte-fio" d="M8 24h144"/>
+                <circle class="ap-arte-mancha" cx="17" cy="16" r="1.8"/>
+                <circle class="ap-arte-mancha" cx="24" cy="16" r="1.8"/>
+                <circle class="ap-arte-mancha" cx="31" cy="16" r="1.8"/>
+                <rect class="ap-arte-bloco" x="16" y="32" width="128" height="14" rx="4"/>
+                <rect class="ap-arte-bloco" x="16" y="50" width="128" height="14" rx="4"/>
+                <rect class="ap-arte-bloco" x="16" y="68" width="128" height="14" rx="4"/>
+                <path class="ap-arte-visto" d="M22 39l3.4 3.4L32 36"/>
+                <path class="ap-arte-visto" d="M22 57l3.4 3.4L32 54"/>
+                <path class="ap-arte-visto" d="M22 75l3.4 3.4L32 72"/>
+              </svg>
+            </div>
+            <div class="ap-slide-texto">
+              <p class="ap-selo"><b>03</b> Preventivas</p>
+              <h3>O checklist vai junto com o técnico.</h3>
+              <p>Agenda que calcula o próximo vencimento, execução pelo celular na frente do equipamento e galeria de fotos de antes e depois a cada execução.</p>
+              <span class="ap-slide-rota">zelo · /preventivas/</span>
+            </div>
+          </article>
+
+          <article class="ap-slide" data-slide role="group"
+                   aria-roledescription="slide" aria-label="Termos">
+            <div class="ap-slide-arte" aria-hidden="true">
+              <svg viewBox="0 0 160 100">
+                <rect class="ap-arte-quadro" x="8" y="8" width="144" height="84" rx="6"/>
+                <path class="ap-arte-fio" d="M8 24h144"/>
+                <circle class="ap-arte-mancha" cx="17" cy="16" r="1.8"/>
+                <circle class="ap-arte-mancha" cx="24" cy="16" r="1.8"/>
+                <circle class="ap-arte-mancha" cx="31" cy="16" r="1.8"/>
+                <rect class="ap-arte-bloco" x="16" y="32" width="90" height="6" rx="3"/>
+                <rect class="ap-arte-bloco" x="16" y="43" width="112" height="6" rx="3"/>
+                <rect class="ap-arte-bloco" x="16" y="54" width="70" height="6" rx="3"/>
+                <path class="ap-arte-firma" d="M20 78c8-10 13 6 20-3s11 5 18-4 12 6 18 1"/>
+                <rect class="ap-arte-acento" x="116" y="68" width="28" height="14" rx="4"/>
+              </svg>
+            </div>
+            <div class="ap-slide-texto">
+              <p class="ap-selo"><b>04</b> Termos</p>
+              <h3>Assinou, o patrimônio andou.</h3>
+              <p>O colaborador assina na tela, o PDF sai com código de verificação e a transferência de responsabilidade acontece no mesmo ato — sem papel no meio.</p>
+              <span class="ap-slide-rota">zelo · /termos/</span>
+            </div>
+          </article>
+
+          <article class="ap-slide" data-slide role="group"
+                   aria-roledescription="slide" aria-label="Quiosque">
+            <div class="ap-slide-arte" aria-hidden="true">
+              <svg viewBox="0 0 160 100">
+                <rect class="ap-arte-quadro" x="8" y="8" width="144" height="84" rx="6"/>
+                <path class="ap-arte-fio" d="M8 24h144"/>
+                <circle class="ap-arte-mancha" cx="17" cy="16" r="1.8"/>
+                <circle class="ap-arte-mancha" cx="24" cy="16" r="1.8"/>
+                <circle class="ap-arte-mancha" cx="31" cy="16" r="1.8"/>
+                <path class="ap-arte-fio ap-arte-fio--leve" d="M8 48h144M8 70h144M52 24v68M100 24v68"/>
+                <path class="ap-arte-rota" d="M28 80 46 86 74 70 104 58 134 62"/>
+                <circle class="ap-arte-no" cx="28" cy="80" r="3.4"/>
+                <circle class="ap-arte-no" cx="74" cy="70" r="3.4"/>
+                <circle class="ap-arte-no ap-arte-no--alerta" cx="104" cy="58" r="3.4"/>
+                <circle class="ap-arte-no" cx="134" cy="62" r="3.4"/>
+              </svg>
+            </div>
+            <div class="ap-slide-texto">
+              <p class="ap-selo"><b>05</b> Quiosque</p>
+              <h3>Onde cada aparelho esteve hoje.</h3>
+              <p>Check-in dos tablets sobre a imagem de satélite da fazenda, com trajeto do dia, nível de sinal, bateria e aplicativos liberados por política.</p>
+              <span class="ap-slide-rota">zelo · /quiosque/mapa/</span>
+            </div>
+          </article>
+
+          <article class="ap-slide" data-slide role="group"
+                   aria-roledescription="slide" aria-label="Painéis">
+            <div class="ap-slide-arte" aria-hidden="true">
+              <svg viewBox="0 0 160 100">
+                <rect class="ap-arte-quadro" x="8" y="8" width="144" height="84" rx="6"/>
+                <path class="ap-arte-fio" d="M8 24h144"/>
+                <circle class="ap-arte-mancha" cx="17" cy="16" r="1.8"/>
+                <circle class="ap-arte-mancha" cx="24" cy="16" r="1.8"/>
+                <circle class="ap-arte-mancha" cx="31" cy="16" r="1.8"/>
+                <path class="ap-arte-fio ap-arte-fio--leve" d="M16 82h128"/>
+                <rect class="ap-arte-acento" x="24" y="56" width="14" height="26" rx="3"/>
+                <rect class="ap-arte-acento" x="46" y="46" width="14" height="36" rx="3"/>
+                <rect class="ap-arte-destaque" x="68" y="34" width="14" height="48" rx="3"/>
+                <rect class="ap-arte-acento" x="90" y="50" width="14" height="32" rx="3"/>
+                <rect class="ap-arte-acento" x="112" y="40" width="14" height="42" rx="3"/>
+              </svg>
+            </div>
+            <div class="ap-slide-texto">
+              <p class="ap-selo"><b>06</b> Painéis</p>
+              <h3>O custo com nome e dono.</h3>
+              <p>Custo por centro de custo e por diretoria, detalhamento até o item, comparação entre ciclos e exportação para Excel e PDF.</p>
+              <span class="ap-slide-rota">zelo · /dashboards/</span>
+            </div>
+          </article>
+
+          </div>
+
+          <div class="ap-carrossel-barra">
+            <button type="button" class="ap-controle" data-anterior aria-label="Tela anterior">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+
+            <div class="ap-carrossel-pontos" data-pontos></div>
+
+            <button type="button" class="ap-controle" data-proximo aria-label="Próxima tela">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+
+          <p class="ap-oculto-visual" role="status" aria-live="polite" data-anuncio></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="ap-secao ap-secao--borda">
+      <div class="ap-secao-interno">
+        <div class="ap-cabecalho-secao ap-reveal">
+          <p class="ap-selo">Como funciona</p>
+          <h2 class="ap-titulo ap-titulo--medio">Três passos, nenhum retrabalho.</h2>
+        </div>
+
+        <div class="ap-passos ap-reveal">
+          <div class="ap-passo">
+            <h3>Cadastra</h3>
+            <p>A planilha que já existe entra por importação — equipamentos, colaboradores e a hierarquia inteira, com resolução de nome abreviado.</p>
+          </div>
+          <div class="ap-passo">
+            <h3>Movimenta</h3>
+            <p>Entrega, devolução, transferência e manutenção viram registro no ato. O saldo do lote, o centro de custo e a localidade se ajustam sozinhos.</p>
+          </div>
+          <div class="ap-passo">
+            <h3>Comprova</h3>
+            <p>Termo assinado em PDF, código de verificação, trilha por data e usuário, e alerta por e-mail quando algo vence ou falta.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="ap-secao ap-secao--borda">
+      <div class="ap-secao-interno">
+        <div class="ap-cabecalho-secao ap-reveal">
+          <p class="ap-selo">Diferenciais</p>
+          <h2 class="ap-titulo ap-titulo--medio">O que só aqui funciona assim.</h2>
+        </div>
+
+        <div class="ap-lista ap-reveal">
+          <div class="ap-lista-item">
+            <span class="ap-lista-indice">01</span>
+            <div>
+              <b>A assinatura move o patrimônio</b>
+              <p>Na maioria dos sistemas o termo é um papel que alguém arquiva depois. Aqui, assinar É a operação: o equipamento troca de mão, o centro de custo muda e a via do colaborador sai por e-mail sozinha.</p>
+            </div>
+          </div>
+
+          <div class="ap-lista-item">
+            <span class="ap-lista-indice">02</span>
+            <div>
+              <b>Feito para o galpão, não só para a mesa</b>
+              <p>A tela de execução de preventiva é preenchida em pé, com luva e rede ruim: alvo de toque maior, rascunho salvo no aparelho e aviso honesto do que ficou de fora.</p>
+            </div>
+          </div>
+
+          <div class="ap-lista-item">
+            <span class="ap-lista-indice">03</span>
+            <div>
+              <b>Custo com nome e sobrenome</b>
+              <p>Locação, licença e manutenção caem no centro de custo e na diretoria certa. O painel abre até o item, então a conversa deixa de ser sobre o total e passa a ser sobre o que fazer.</p>
+            </div>
+          </div>
+
+          <div class="ap-lista-item">
+            <span class="ap-lista-indice">04</span>
+            <div>
+              <b>Quem é de fora enxerga só o que é dele</b>
+              <p>Fornecedor e parceiro de licenças entram pelo próprio portal, com middleware, decorador e consulta filtrada — três camadas, não uma caixinha de permissão.</p>
+            </div>
+          </div>
+
+          <div class="ap-lista-item">
+            <span class="ap-lista-indice">05</span>
+            <div>
+              <b>O sistema avisa antes</b>
+              <p>Estoque crítico, licença de quem foi desligado, preventiva perto do vencimento e queda no monitoramento viram e-mail — o resumo diário chega sem ninguém abrir o sistema.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="ap-secao ap-secao--borda">
+      <div class="ap-secao-interno">
+        <div class="ap-fecho ap-reveal">
+          <p class="ap-selo">Acesso</p>
+          <h2 class="ap-titulo">Pronto para entrar?</h2>
+          <p class="ap-apoio">
+            O acesso é com a credencial corporativa. Ainda não tem a sua, ou precisa
+            de um módulo liberado? Fale com o Departamento de Tecnologia.
+          </p>
+          <div class="ap-fecho-acoes">
+            <a class="ap-btn ap-btn--solido ap-btn--grande" href="{% url 'login' %}">
+              Entrar no sistema
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+            </a>
+            <a class="ap-btn ap-btn--grande" href="mailto:ti@santacolomba.com.br">Falar com o TI</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="ap-rodape">
+      <span>© {% now "Y" %} Santa Colomba Agropecuária · Departamento de Tecnologia</span>
+      <span>Zelo · versão {{ versao }} · <a href="{% url 'login' %}">Acessar</a></span>
+    </footer>
+  </div>
+
+  {% comment %}GSAP pelo mesmo CDN que o login já usa para os ícones. Se
+     ele não chegar, o watchdog do <head> transforma a página na versão
+     estática — nenhuma cena fica escondida por falta de script.{% endcomment %}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
+  <script src="{% static 'js/apresentacao.js' %}?v={{ assets_version }}" defer></script>
+</body>
+</html>

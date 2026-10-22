@@ -52,9 +52,6 @@ _EXCECOES = {
     ("planta_tv_gerenciar.html", "#1d1d1f"),
     ("avisos_contrato_vencer.html", "#1d1d1f"),
     ("validacao_custos_planilha.html", "#1d1d1f"),
-    # Chip CLARO atrás da marca no modo escuro, para a logo escura continuar
-    # legível. É o inverso do token, de propósito.
-    ("auth.css", "#f5f5f7"),
     # Trilho recolhido do menu: é escuro mesmo no tema claro, então redefine
     # os neutros no próprio escopo (ver regra 32) — são os valores do modo
     # escuro aplicados a um pedaço de tela clara, não deriva de paleta.

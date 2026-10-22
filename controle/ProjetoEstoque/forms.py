@@ -14,6 +14,7 @@ from .models import (
     TipoMovLicencaChoices, LicencaLote, LicencaOffice, LoteEstoque, ItemLote, PlantaProjeto,
     OrdemManutencao, StatusOrdemManutencaoChoices,
     Requisicao, RequisicaoItem, ComentarioRequisicaoItem, ItemPadraoDatasul,
+    AreaOperacionalChoices, PreventivaAreaResponsavel, PreventivaCicloMeta,
 )
 
 BASE_CTRL_CSS = {
@@ -330,6 +331,7 @@ class ItemForm(forms.ModelForm):
             "pmb",
             "precisa_preventiva",
             "data_limite_preventiva",
+            "area_operacional",
             "valor",
             "data_compra",
             "numero_pedido",
@@ -353,6 +355,7 @@ class ItemForm(forms.ModelForm):
             "pmb": forms.Select(attrs={"class": "form-control"}),
             "precisa_preventiva": forms.Select(attrs={"class": "form-control"}),
             "data_limite_preventiva": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
+            "area_operacional": forms.Select(attrs={"class": "form-control"}),
             "valor": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "min": "0"}),
             "numero_pedido": forms.TextInput(attrs={"class": "form-control"}),
             "numero_nf": forms.TextInput(attrs={"class": "form-control"}),
@@ -369,6 +372,17 @@ class ItemForm(forms.ModelForm):
         self.fields["numero_nf"].required = False
         self.fields["fornecedor"].required = False
         self.fields["data_limite_preventiva"].required = False
+        # Área de operação só faz sentido para infraestrutura de rede; monitor
+        # e headset não têm área. Vazio = não classificado (ver
+        # AreaOperacionalChoices) — nunca um default silencioso.
+        self.fields["area_operacional"].required = False
+        # Django nomeia a opção vazia de CharField com choices como "---------".
+        # Aqui ela precisa DIZER o que significa: "Não classificada" é um
+        # estado legítimo do cadastro, não ausência de resposta.
+        self.fields["area_operacional"].choices = [
+            ("", "Não classificada"),
+            *AreaOperacionalChoices.choices,
+        ]
 
         if self.instance and self.instance.pk:
             self.initial["data_compra"] = formatar_data_para_input_html(
@@ -402,6 +416,12 @@ class ItemForm(forms.ModelForm):
 
         if precisa_preventiva == SimNaoChoices.NAO:
             cleaned["data_limite_preventiva"] = None
+
+        # O select devolve "" quando ninguém escolhe. Gravar string vazia num
+        # campo `null=True` deixaria DOIS valores significando "não
+        # classificado", e todo filtro de área passaria a precisar dos dois.
+        if not cleaned.get("area_operacional"):
+            cleaned["area_operacional"] = None
 
         if not eh_consumo:
             if not quantidade or quantidade <= 0:
@@ -1037,6 +1057,118 @@ class PreventivaStartForm(forms.Form):
             except Exception:
                 pass
 
+# ================== METAS DE PREVENTIVA POR ÁREA ==================
+
+class PreventivaAreaResponsavelForm(BaseStyledForm):
+    """
+    Define o técnico responsável pelas preventivas de uma área.
+
+    O queryset de técnicos exclui o grupo Fornecedor pelo mesmo motivo das
+    outras telas do módulo: usuário de portal externo não executa preventiva, e
+    oferecê-lo no select convida a atribuir parque a quem não entra na fazenda.
+    """
+    class Meta:
+        model = PreventivaAreaResponsavel
+        fields = ["area", "subtipo", "tecnico", "ativo", "observacao"]
+        widgets = {
+            "observacao": forms.Textarea(attrs={
+                "rows": 2,
+                "placeholder": "Opcional: combinado, cobertura de férias…",
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("auto_id", "id_resp_%s")
+        super().__init__(*args, **kwargs)
+        from django.contrib.auth import get_user_model
+        from .models import GRUPO_FORNECEDOR
+
+        AuthUser = get_user_model()
+        self.fields["tecnico"].queryset = (
+            AuthUser.objects
+            .filter(is_active=True)
+            .exclude(groups__name=GRUPO_FORNECEDOR)
+            .order_by("first_name", "last_name", "username")
+        )
+        self.fields["tecnico"].label_from_instance = (
+            lambda u: u.get_full_name() or u.username
+        )
+        self.fields["subtipo"].queryset = Subtipo.objects.select_related("categoria").order_by("nome")
+        self.fields["subtipo"].required = False
+        self.fields["subtipo"].empty_label = "Todos os subtipos (padrão da área)"
+        self.fields["observacao"].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        area = cleaned.get("area")
+        subtipo = cleaned.get("subtipo")
+        if not area:
+            return cleaned
+
+        # A restrição única existe no banco, mas chegar nela devolve
+        # IntegrityError 500 em vez de erro no campo. Aqui a pessoa lê o que
+        # está errado e consegue corrigir.
+        existente = PreventivaAreaResponsavel.objects.filter(area=area, subtipo=subtipo)
+        if self.instance and self.instance.pk:
+            existente = existente.exclude(pk=self.instance.pk)
+        if existente.exists():
+            escopo = subtipo.nome if subtipo else "todos os subtipos"
+            self.add_error(
+                "subtipo",
+                f"Já existe responsável cadastrado para {dict(AreaOperacionalChoices.choices)[area]} "
+                f"· {escopo}. Edite o cadastro existente em vez de criar outro.",
+            )
+        return cleaned
+
+
+class PreventivaCicloMetaForm(BaseStyledForm):
+    """Abre o ciclo de referência (90 dias para switches) de um subtipo."""
+    class Meta:
+        model = PreventivaCicloMeta
+        fields = ["subtipo", "data_inicio", "duracao_dias", "observacao"]
+        widgets = {
+            "data_inicio": forms.DateInput(
+                format="%Y-%m-%d", attrs={"type": "date"},
+            ),
+            "duracao_dias": forms.NumberInput(attrs={"min": "1", "max": "730"}),
+            "observacao": forms.Textarea(attrs={
+                "rows": 2, "placeholder": "Opcional: o que motivou este ciclo…",
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("auto_id", "id_ciclo_%s")
+        super().__init__(*args, **kwargs)
+        self.fields["data_inicio"].input_formats = ["%Y-%m-%d", "%d/%m/%Y"]
+        # Só subtipos que têm parque no programa de preventiva: a lista cheia
+        # tem 69 entradas (mouse pad, fita, toner) e esconde as 4 que importam.
+        with_parque = (
+            Item.objects
+            .filter(precisa_preventiva=SimNaoChoices.SIM, subtipo__isnull=False)
+            .values_list("subtipo_id", flat=True)
+            .distinct()
+        )
+        self.fields["subtipo"].queryset = (
+            Subtipo.objects.filter(pk__in=list(with_parque))
+            .select_related("categoria").order_by("nome")
+        )
+        self.fields["subtipo"].empty_label = None
+        self.fields["observacao"].required = False
+        if self.instance and self.instance.pk:
+            self.initial["data_inicio"] = formatar_data_para_input_html(
+                self.instance.data_inicio
+            )
+            # Numa EDIÇÃO o subtipo fica travado: trocá-lo reapontaria o ciclo
+            # para outro parque e a apuração histórica dele passaria a falar de
+            # equipamentos que nunca estiveram naquela janela. Para medir outro
+            # subtipo, abre-se um ciclo próprio — eles podem ser simultâneos.
+            self.fields["subtipo"].disabled = True
+            self.fields["subtipo"].help_text = (
+                "O subtipo não muda depois do ciclo aberto. "
+                "Abra um ciclo próprio para outro subtipo."
+            )
+
+
 # ================== LICENÇAS ==================
 ISO_FMT = "%Y-%m-%d"
 
@@ -1642,8 +1774,13 @@ class RequisicaoReceberCompraForm(forms.Form):
 class RequisicaoReceberCompraSimplesForm(forms.Form):
     """Recebimento de uma compra SEM item de estoque vinculado (ex.: serviço,
     ativo fora do controle por lote) — não há entrada real de estoque, só o
-    registro fiscal (NF + valor unitário) usado pra calcular o custo da
-    requisição a partir dos itens pedidos."""
+    registro fiscal (fornecedor + NF + valor unitário) usado pra calcular o
+    custo da requisição a partir dos itens pedidos."""
+    fornecedor = forms.ModelChoiceField(
+        queryset=Fornecedor.objects.order_by("nome"),
+        label="Fornecedor",
+        widget=forms.Select(attrs={"class": "ctrl"}),
+    )
     numero_nf = forms.CharField(
         label="Número da NF",
         widget=forms.TextInput(attrs={"class": "ctrl", "placeholder": "Ex.: 123456"}),

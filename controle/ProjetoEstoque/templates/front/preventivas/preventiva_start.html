@@ -45,8 +45,7 @@
   align-items: center;
   padding: clamp(1rem, 2.5vw, 1.5rem);
   border-bottom: 1px solid var(--pv-border);
-  background: radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--pv-primary) 10%, transparent), transparent 14rem),
-              color-mix(in srgb, var(--pv-surface) 94%, var(--pv-muted-surface));
+  background: color-mix(in srgb, var(--pv-surface) 94%, var(--pv-muted-surface));
 }
 
 .pv-form-icon {
@@ -117,24 +116,12 @@
 
 .pv-error { color: var(--pv-danger); font-size: var(--text-sm); font-weight: 700; }
 
-.pv-input-wrap { position: relative; }
-
-.pv-input-wrap .pv-ico {
-  position: absolute;
-  left: .85rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--pv-soft);
-  pointer-events: none;
-  z-index: 2;
-}
-
 .pv-start-page input,
 .pv-start-page select,
 .pv-start-page .pv-control {
   width: 100%;
   min-height: var(--pv-control-h);
-  padding: .68rem .85rem .68rem 2.45rem;
+  padding: .68rem .85rem;
   border: 1px solid var(--pv-border2);
   border-radius: var(--pv-radius-sm);
   background: var(--pv-surface);
@@ -149,7 +136,7 @@
 .pv-start-page select:focus,
 .pv-start-page .pv-control:focus {
   border-color: var(--pv-primary);
-  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30));
+  box-shadow: 0 0 0 4px var(--pv-primary-ring);
 }
 
 .pv-form-actions {
@@ -236,49 +223,6 @@
   flex-shrink: 0;
 }
 
-/* ── Select2 integration ── */
-.select2-container { width: 100% !important; }
-
-.select2-container .select2-selection--single {
-  min-height: var(--pv-control-h) !important;
-  border: 1px solid var(--pv-border2) !important;
-  border-radius: var(--pv-radius-sm) !important;
-  background: var(--pv-surface) !important;
-  display: flex !important;
-  align-items: center !important;
-}
-
-.select2-container--default .select2-selection--single .select2-selection__rendered {
-  width: 100%;
-  padding-left: 2.45rem !important;
-  padding-right: 2rem !important;
-  color: var(--pv-text) !important;
-  font-size: var(--text-base);
-  line-height: 2.65rem !important;
-}
-
-.select2-container--default .select2-selection--single .select2-selection__arrow {
-  height: 2.65rem !important;
-  right: .35rem !important;
-}
-
-.select2-container--open .select2-selection--single {
-  border-color: var(--pv-primary) !important;
-  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0,113,227,.30)) !important;
-}
-
-.select2-dropdown {
-  z-index: 9999 !important;
-  overflow: hidden !important;
-  border: 1px solid var(--pv-border2) !important;
-  border-radius: var(--pv-radius-md) !important;
-  background: var(--pv-surface) !important;
-  box-shadow: var(--pv-shadow-md);
-}
-
-.select2-results__option { color: var(--pv-text) !important; }
-.select2-results__option--highlighted { background: var(--pv-primary) !important; color: #fff !important; }
-
 @media (max-width: 62rem) {
   .pv-start-page { grid-template-columns: 1fr; }
   .pv-start-side { position: static; }
@@ -322,10 +266,7 @@
           <i class="fa fa-cube" aria-hidden="true"></i>
           Equipamento / Ativo
         </label>
-        <div class="pv-input-wrap">
-          <span class="pv-ico"><i class="fa fa-cube" aria-hidden="true"></i></span>
-          {{ form.item }}
-        </div>
+        {{ form.item }}
         {% if form.item.errors %}
           <div class="pv-error">{{ form.item.errors.0 }}</div>
         {% endif %}
@@ -337,14 +278,11 @@
           <i class="fa fa-list-check" aria-hidden="true"></i>
           Modelo de Checklist
         </label>
-        <div class="pv-input-wrap">
-          <span class="pv-ico"><i class="fa fa-list-check" aria-hidden="true"></i></span>
-          {{ form.checklist_modelo }}
-        </div>
+        {{ form.checklist_modelo }}
         {% if form.checklist_modelo.errors %}
           <div class="pv-error">{{ form.checklist_modelo.errors.0 }}</div>
         {% endif %}
-        <div class="pv-hint">O intervalo será buscado primeiro no equipamento; se não houver, será usado o intervalo do checklist.</div>
+        <div class="pv-hint" id="checklistHint">O intervalo será buscado primeiro no equipamento; se não houver, será usado o intervalo do checklist.</div>
       </div>
     </div>
 
@@ -386,14 +324,25 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ mapa_item_subtipo|json_script:"mapaItemSubtipo" }}
+{{ mapa_subtipo_checklist|json_script:"mapaSubtipoChecklist" }}
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
   $(document).ready(function() {
+    const mapaItemSubtipo = JSON.parse(document.getElementById('mapaItemSubtipo').textContent);
+    const mapaSubtipoChecklist = JSON.parse(document.getElementById('mapaSubtipoChecklist').textContent);
     const config = {
       width: '100%',
       placeholder: 'Selecione...',
       allowClear: false,
+      // O Select2 injeta o dropdown no fim do <body>, fora de `.pv-start-page`.
+      // Sem estas duas classes nenhum `var(--pv-*)` resolve ali (o escopo em
+      // ds-preventivas.css só alcança `.select2-container.pvm-s2` /
+      // `.select2-dropdown.pvm-s2`) — o dropdown abria sem cor, transparente,
+      // e o texto da tela por trás "vazava" por cima dele. Ver preventiva_metas_config.html.
+      containerCssClass: 'pvm-s2',
+      dropdownCssClass: 'pvm-s2',
       language: {
         noResults: function() { return 'Nenhum resultado encontrado'; },
         searching: function() { return 'Buscando...'; }
@@ -403,11 +352,39 @@
     const $item = $('#{{ form.item.auto_id }}');
     const $check = $('#{{ form.checklist_modelo.auto_id }}');
 
-    $item.addClass('pv-control').select2(config);
-    $check.addClass('pv-control').select2(config);
+    $item.select2(config);
+    $check.select2(config);
 
     // Nenhum campo abre/foca sozinho ao carregar a tela — isso evita o
     // comportamento de "campo ativo automaticamente" que confundia o usuário.
+
+    const $checklistHint = $('#checklistHint');
+    const dicaPadrao = $checklistHint.text();
+
+    // Ao escolher o equipamento, busca o checklist do subtipo dele (mesma
+    // regra do Plano de Agendamento) e já seleciona — o TI continua podendo
+    // trocar manualmente depois.
+    function autoSelecionarChecklist() {
+      const itemId = $item.val();
+      if (!itemId) return;
+
+      const subtipoId = mapaItemSubtipo[itemId];
+      const chave = subtipoId ? String(subtipoId) : 'geral';
+      let checklistId = mapaSubtipoChecklist[chave];
+      if (!checklistId && chave !== 'geral') {
+        checklistId = mapaSubtipoChecklist['geral'];
+      }
+
+      if (checklistId && $check.find('option[value="' + checklistId + '"]').length) {
+        $check.val(String(checklistId)).trigger('change');
+        $checklistHint.text('Selecionado automaticamente com base no equipamento. Você pode trocar se necessário.');
+      } else {
+        $checklistHint.text(dicaPadrao);
+      }
+    }
+
+    $item.on('change', autoSelecionarChecklist);
+    autoSelecionarChecklist();
 
     $('#startForm').on('submit', function(e) {
       // Validação inteligente: bloqueia o envio se faltar ativo ou checklist,

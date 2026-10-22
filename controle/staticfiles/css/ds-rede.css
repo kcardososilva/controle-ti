@@ -1,0 +1,4187 @@
+/* =============================================================
+   ds-rede.css — o design system do módulo de Plantas de Rede.
+   Prefixo `.nx-*`, tokens `--nx-*`. Escopado em `:where(.nx-app)`.
+
+   ── Por que este módulo tem linguagem própria ───────────────────
+   O resto do Zelo é tela de LISTA: card com raio, sombra em duas
+   camadas, respiro de 16px, acabamento de app. O módulo de rede é
+   tela de PRANCHA — bancada de trabalho onde se desenha, confere
+   porta por porta e apresenta o resultado. As duas coisas pedem
+   densidades opostas: numa planta com 90 switches, 16px de respiro
+   entre controles tira do campo de visão metade do diagrama.
+
+   A linguagem vem do **Plantas Pro** (o CAD de infraestrutura que a
+   empresa já usa, `Projeto Plantas - Infraestrutura de Redes`), para
+   quem abre as duas ferramentas no mesmo dia não ter de trocar de
+   vocabulário:
+
+     • ARESTA RETA. `border-radius: 0` em tudo. Raio é linguagem de
+       app de consumo; prancha técnica tem canto vivo.
+     • FIO DE 1px no lugar de sombra. Separação por linha, não por
+       elevação — sombra empilhada em 40 painéis vira sujeira.
+     • RÓTULO MICRO EM CAIXA-ALTA, 10–11px com `letter-spacing`
+       aberto. Ele identifica o campo sem competir com o valor.
+     • NÚMERO MONOESPAÇADO (`--font-mono`, que o sistema já carrega)
+       em toda leitura de medida: coordenada, zoom, contagem de
+       porta, ocupação. Dígito de largura fixa é o que permite
+       comparar duas linhas de olho.
+     • CONTROLE DE 26px. O sistema usa 36px; aqui a barra de
+       ferramentas tem 30 comandos e eles precisam caber.
+
+   ── O que NÃO é próprio ─────────────────────────────────────────
+   Cor nenhuma nasce aqui. Todo `--nx-*` de superfície, texto e
+   separador é APELIDO de um token de `tokens.css` — é o que faz o
+   módulo acompanhar o tema claro/escuro do sistema sem manter cópia
+   que envelhece (regras 26 e 31). O acento é `var(--brand)`: um
+   quinto azul no sistema seria a regra 33 de novo.
+
+   As únicas cores com nome próprio são as de DOMÍNIO — situação do
+   equipamento, meio do enlace, situação da porta, classe do
+   dispositivo —, e mesmo elas derivam dos tokens de estado e das
+   séries `--chart-*`. A regra 33 isenta cor de domínio
+   explicitamente ("mapa de rede… não são deriva de paleta").
+
+   Ao mudar este arquivo, suba ASSETS_VERSION em
+   ProjetoEstoque/context_processors.py e rode collectstatic.
+   ============================================================= */
+
+/* ── O ESCOPO DOS TOKENS ────────────────────────────────────────────
+   Toda raiz do módulo entra aqui, e isto não é generosidade: custom
+   property só existe para quem está DENTRO do elemento onde ela nasce.
+   Uma raiz de fora da lista lê `var(--nx-tx)` como inexistente, cai no
+   valor inicial do navegador (transparente, `medium`, sem borda) e a
+   tela abre 200, sem cor e sem erro — exatamente a falha silenciosa da
+   regra 26.
+
+   Três grupos:
+     • as raízes de tela — `.nx-app` (bancada), `.nx-pagina` (lista,
+       formulário, monitor), `.plt-vw-page`, `.plt-ed-page`, `.tvgr-page`;
+     • o que o navegador coloca FORA da raiz — modal, aviso passageiro e
+       o `#tvgrToast`, todos filhos diretos do `<body>`;
+     • o Select2, que injeta o dropdown no fim do `<body>`. A classe
+       `.nx-s2` vem de `containerCssClass`/`dropdownCssClass` — sem ela,
+       as regras do Select2, globais por natureza, mudariam o componente
+       em toda tela que carregue esta folha (é a armadilha da regra 48,
+       que já custou um dropdown transparente nas preventivas). */
+:where(.nx-app, .nx-pagina, .nx-parede, .plt-vw-page, .plt-ed-page, .tvgr-page,
+       .tv-root, .nx-modal, .nx-toast, #tvgrToast,
+       .select2-container.nx-s2, .select2-dropdown.nx-s2) {
+  /* ---------- Superfícies (apelidos) ---------- */
+  --nx-bg:      var(--bg-page, #f5f6f8);
+  --nx-panel:   var(--bg-page-2, #eceef2);
+  --nx-panel-2: var(--bg-elevated, #fff);
+  --nx-canvas:  var(--bg-page, #f5f6f8);
+
+  /* ---------- Fios ---------- */
+  --nx-ln:   var(--separator-non-opaque, rgba(15, 23, 42, 0.11));
+  --nx-ln-2: var(--separator-hairline, rgba(15, 23, 42, 0.07));
+  --nx-ln-3: var(--separator-strong, rgba(15, 23, 42, 0.2));
+
+  /* ---------- Texto ---------- */
+  --nx-tx:   var(--text-primary, #0f1218);
+  --nx-tx-2: var(--text-tertiary, #626b7d);
+  --nx-tx-3: var(--text-quaternary, #8b93a3);
+
+  /* ---------- Acento ---------- */
+  --nx-a:      var(--brand, #1f56e0);
+  --nx-a-soft: var(--brand-soft, rgba(31, 86, 224, 0.09));
+  --nx-a-ring: var(--brand-ring, rgba(31, 86, 224, 0.26));
+
+  /* ---------- Escala tipográfica do módulo ----------
+     Dois degraus abaixo da escala do sistema, que começa em 11px: a
+     régua e o rótulo de porta precisam de 10px para a etiqueta do
+     switch caber dentro do nó. Os outros três são apelidos. */
+  --nx-fs-micro: 0.625rem;              /* 10px — régua, rótulo de porta */
+  --nx-fs-label: var(--text-2xs, 0.6875rem);   /* 11px — rótulo de campo */
+  --nx-fs-base:  var(--text-xs, 0.75rem);      /* 12px — corpo da bancada */
+  --nx-fs-cell:  var(--text-sm, 0.8125rem);    /* 13px — valor, nome de nó */
+  --nx-fs-head:  var(--text-lg, 1.0625rem);    /* 17px — marca da barra */
+
+  /* ---------- Geometria ---------- */
+  --nx-h:        26px;                  /* altura de controle da bancada */
+  --nx-h-sm:     20px;
+  --nx-top-h:    42px;
+  --nx-status-h: 26px;
+  --nx-rail:     256px;
+  --nx-insp:     336px;
+  --nx-rail-min: 30px;                  /* trilho recolhido */
+  --nx-gap:      6px;
+  --nx-pad:      8px;
+
+  /* ---------- Situação do equipamento (domínio) ---------- */
+  --nx-st-up:     var(--success, #0f9a56);
+  --nx-st-down:   var(--danger, #d32f2b);
+  --nx-st-warn:   var(--warning, #c2690a);
+  --nx-st-pause:  var(--text-quaternary, #8b93a3);
+  --nx-st-none:   var(--text-quaternary, #8b93a3);
+
+  /* ---------- Meio do enlace (domínio) ---------- */
+  --nx-utp:    var(--chart-1, #1f56e0);
+  --nx-fibra:  var(--chart-5, #6b4ad6);
+  --nx-radio:  var(--chart-6, #0e8fa8);
+  --nx-stack:  var(--chart-2, #e8862a);
+  --nx-logico: var(--chart-8, #64748b);
+
+  /* ---------- Situação da porta (domínio) ---------- */
+  --nx-p-ativa:     var(--success, #0f9a56);
+  --nx-p-livre:     var(--text-quaternary, #8b93a3);
+  --nx-p-reservada: var(--system-indigo, #4f46c7);
+  --nx-p-defeito:   var(--danger, #d32f2b);
+  --nx-p-desligada: var(--text-quaternary, #8b93a3);
+
+  --nx-transicao: 120ms var(--ease-apple, cubic-bezier(.32, .72, 0, 1));
+}
+
+/* O tema escuro não precisa de bloco próprio: os apelidos acima
+   resolvem pelo elemento onde nascem (`.nx-app`, no corpo da
+   página), então `body.theme-dark` já trocou os tokens antes de o
+   apelido ser lido. Um bloco escuro aqui seria a cópia que a regra
+   26 existe para impedir. */
+
+/* =========================================================
+   1. A bancada ocupa a tela inteira
+   ========================================================= */
+/* O shell do sistema é feito para tela de lista: `.main-scroll` tem
+   22px de respiro e `.main-container` trava em `--content-max`. Numa
+   prancha isso é moldura desperdiçada. Se o navegador não suportar
+   `:has()`, a regra cai e a bancada abre dentro do respiro normal —
+   apertada, nunca quebrada (mesmo princípio da regra 24). */
+body:has(.nx-app) .main-scroll {
+  padding: 0;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+body:has(.nx-app) .main-container {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  animation: none;
+}
+
+.nx-app,
+.nx-app * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.nx-app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: var(--nx-top-h) minmax(0, 1fr) var(--nx-status-h);
+  background: var(--nx-bg);
+  color: var(--nx-tx);
+  font-size: var(--nx-fs-base);
+  overflow: hidden;
+}
+
+.nx-app ::selection {
+  background: var(--nx-a-ring);
+}
+
+/* Foco visível e quadrado — o anel arredondado do sistema brigaria
+   com a aresta reta de todo controle daqui. */
+.nx-app :is(button, input, select, textarea, a):focus-visible {
+  outline: 2px solid var(--nx-a);
+  outline-offset: 1px;
+}
+
+.nx-app ::-webkit-scrollbar { width: 9px; height: 9px; }
+.nx-app ::-webkit-scrollbar-thumb { background: var(--nx-ln); }
+.nx-app ::-webkit-scrollbar-track { background: transparent; }
+
+/* =========================================================
+   2. Vocabulário base: rótulo, campo, botão, fio
+   ========================================================= */
+.nx-label {
+  font-size: var(--nx-fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.nx-micro {
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+}
+
+/* Toda leitura de medida é monoespaçada: é o que deixa duas linhas
+   de contagem comparáveis sem alinhar nada à mão. */
+.nx-num {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.nx-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--nx-ln);
+  margin-inline: var(--nx-gap);
+  flex: 0 0 1px;
+}
+
+.nx-btn {
+  height: var(--nx-h);
+  min-width: var(--nx-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--nx-ln);
+  border-radius: 0;
+  background: var(--nx-panel-2);
+  color: var(--nx-tx-2);
+  font: inherit;
+  font-size: var(--nx-fs-base);
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--nx-transicao), color var(--nx-transicao),
+              border-color var(--nx-transicao);
+}
+
+.nx-btn:hover { background: var(--nx-panel); color: var(--nx-tx); }
+.nx-btn:disabled { opacity: 0.42; cursor: not-allowed; }
+.nx-btn[aria-pressed="true"],
+.nx-btn.is-ativo {
+  background: var(--nx-a);
+  border-color: var(--nx-a);
+  color: var(--text-inverted, #fff);
+}
+
+.nx-btn--primario {
+  background: var(--nx-a);
+  border-color: var(--nx-a);
+  color: var(--text-inverted, #fff);
+}
+.nx-btn--primario:hover {
+  background: var(--brand-hover, #1a49bf);
+  border-color: var(--brand-hover, #1a49bf);
+  color: var(--text-inverted, #fff);
+}
+
+.nx-btn--perigo:hover {
+  border-color: var(--nx-st-down);
+  color: var(--nx-st-down);
+  background: var(--danger-soft, rgba(211, 47, 43, 0.09));
+}
+
+.nx-btn--fantasma { background: transparent; }
+
+.nx-btn--sm {
+  height: var(--nx-h-sm);
+  min-width: var(--nx-h-sm);
+  padding: 0 6px;
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Grupo de botões: um fio só entre eles, como numa régua de comando. */
+.nx-grupo-btn {
+  display: inline-flex;
+  border: 1px solid var(--nx-ln);
+}
+.nx-grupo-btn > .nx-btn {
+  border: 0;
+  border-left: 1px solid var(--nx-ln);
+  background: transparent;
+}
+.nx-grupo-btn > .nx-btn:first-child { border-left: 0; }
+
+.nx-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+/* O rótulo do campo é o mesmo `.nx-label`, mas aceito também como
+   `<span>` direto para a marcação do inspetor não repetir a classe
+   em 40 campos. */
+.nx-campo > span:first-child {
+  font-size: var(--nx-fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.nx-input,
+.nx-select,
+.nx-area {
+  height: var(--nx-h);
+  width: 100%;
+  padding: 0 7px;
+  border: 1px solid var(--nx-ln);
+  border-radius: 0;
+  background: var(--nx-panel-2);
+  color: var(--nx-tx);
+  font: inherit;
+  font-size: var(--nx-fs-base);
+}
+.nx-area {
+  height: auto;
+  min-height: 56px;
+  padding: 5px 7px;
+  resize: vertical;
+  line-height: 1.45;
+}
+.nx-input::placeholder { color: var(--nx-tx-3); }
+.nx-input:disabled,
+.nx-select:disabled { opacity: 0.5; }
+
+.nx-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--nx-gap); }
+.nx-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--nx-gap); }
+
+/* Grade de campos alinha pelo TOPO — regra 36. */
+.nx-grid2,
+.nx-grid3 { align-items: start; }
+
+.nx-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--nx-fs-base);
+  color: var(--nx-tx-2);
+  cursor: pointer;
+  user-select: none;
+}
+.nx-check input { accent-color: var(--nx-a); margin: 0; }
+
+/* =========================================================
+   3. Barra superior
+   ========================================================= */
+.nx-top {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-pad);
+  padding: 0 var(--nx-pad);
+  background: var(--nx-panel);
+  border-bottom: 1px solid var(--nx-ln);
+  min-width: 0;
+}
+
+.nx-marca {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding-right: var(--nx-pad);
+  border-right: 1px solid var(--nx-ln);
+  align-self: stretch;
+  flex: 0 0 auto;
+}
+.nx-marca b,
+.nx-marca i {
+  font-family: var(--font-display, sans-serif);
+  font-size: var(--nx-fs-head);
+  font-weight: 700;
+  font-style: normal;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: var(--nx-top-h);
+}
+.nx-marca i { color: var(--nx-a); }
+.nx-marca small {
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+  white-space: nowrap;
+}
+@media (max-width: 1180px) { .nx-marca small { display: none; } }
+
+.nx-top-elastico { flex: 1 1 auto; min-width: 8px; }
+
+.nx-top-mapa {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.nx-top-mapa .nx-select { flex: 0 1 220px; min-width: 110px; }
+@media (max-width: 1420px) { .nx-top-mapa > .nx-label { display: none; } }
+
+/* Menu suspenso — o comando raro sai da barra e vai para cá, para a
+   barra não quebrar em duas linhas por causa do que se usa uma vez. */
+.nx-menu { position: relative; }
+.nx-menu-pop {
+  position: absolute;
+  top: calc(100% + 1px);
+  left: 0;
+  z-index: 40;
+  min-width: 206px;
+  padding: 4px 0;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  box-shadow: var(--shadow-md, 0 8px 18px -5px rgba(16, 20, 32, 0.1));
+}
+.nx-menu-pop[hidden] { display: none; }
+.nx-menu-pop--dir { left: auto; right: 0; }
+.nx-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: var(--nx-h);
+  padding: 0 11px;
+  border: 0;
+  background: transparent;
+  color: var(--nx-tx);
+  font: inherit;
+  font-size: var(--nx-fs-base);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.nx-menu-item:hover { background: var(--nx-a-soft); color: var(--nx-a); }
+.nx-menu-item[disabled] { opacity: 0.4; cursor: not-allowed; }
+.nx-menu-div { height: 1px; background: var(--nx-ln-2); margin: 4px 0; }
+.nx-menu-rot {
+  padding: 6px 11px 3px;
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+}
+
+/* =========================================================
+   4. Corpo: trilho · prancha · inspetor
+   ========================================================= */
+.nx-body {
+  display: grid;
+  grid-template-columns: var(--nx-rail) minmax(0, 1fr) var(--nx-insp);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.nx-trilho {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--nx-panel);
+  overflow: hidden;
+}
+.nx-trilho--esq { border-right: 1px solid var(--nx-ln); }
+.nx-trilho--dir { border-left: 1px solid var(--nx-ln); }
+
+/* Recolhido, o trilho vira uma faixa com o nome em pé: o comando de
+   reabrir continua na tela, e nada de conteúdo fica escondido sem
+   indicação (é a lição da regra 24 aplicada ao painel). */
+.nx-body:has(.nx-trilho--esq[data-aberto="0"]) { grid-template-columns: var(--nx-rail-min) minmax(0, 1fr) var(--nx-insp); }
+.nx-body:has(.nx-trilho--dir[data-aberto="0"]) { grid-template-columns: var(--nx-rail) minmax(0, 1fr) var(--nx-rail-min); }
+.nx-body:has(.nx-trilho--esq[data-aberto="0"]):has(.nx-trilho--dir[data-aberto="0"]) {
+  grid-template-columns: var(--nx-rail-min) minmax(0, 1fr) var(--nx-rail-min);
+}
+.nx-trilho[data-aberto="0"] .nx-recolhivel { display: none; }
+.nx-trilho[data-aberto="1"] .nx-vert { display: none; }
+
+.nx-faixa {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: var(--nx-h);
+  flex: 0 0 var(--nx-h);
+  padding: 0 4px;
+  border-bottom: 1px solid var(--nx-ln);
+}
+.nx-faixa .nx-label { flex: 1 1 auto; }
+
+.nx-vert {
+  writing-mode: vertical-rl;
+  margin-top: 10px;
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+  white-space: nowrap;
+  align-self: center;
+}
+
+.nx-rolagem {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.nx-bloco {
+  padding: var(--nx-pad);
+  border-bottom: 1px solid var(--nx-ln);
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-gap);
+}
+
+/* =========================================================
+   5. Trilho esquerdo: inventário e camadas
+   ========================================================= */
+.nx-grupo > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--nx-h);
+  padding: 0 var(--nx-pad);
+  border-bottom: 1px solid var(--nx-ln-2);
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--nx-fs-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nx-tx-2);
+  font-weight: 600;
+}
+.nx-grupo > summary::-webkit-details-marker { display: none; }
+.nx-grupo > summary::before {
+  content: "+";
+  width: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--nx-tx-3);
+}
+.nx-grupo[open] > summary::before { content: "−"; }
+.nx-grupo > summary > .nx-conta { margin-left: auto; }
+.nx-conta {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-3);
+}
+
+/* Cartão de equipamento do inventário. A barra de cor à esquerda é a
+   classe do dispositivo — a MESMA cor que ele tem no desenho, para a
+   lista e a prancha se reconhecerem. */
+.nx-lib {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 7px 5px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--nx-ln-2);
+  border-left: 3px solid var(--nx-classe, var(--nx-tx-3));
+  background: transparent;
+  color: var(--nx-tx);
+  font: inherit;
+  text-align: left;
+  cursor: grab;
+}
+.nx-lib:hover { background: var(--nx-a-soft); }
+.nx-lib.is-sel { background: var(--nx-a-soft); border-left-color: var(--nx-a); }
+.nx-lib-corpo { flex: 1 1 auto; min-width: 0; }
+.nx-lib-nome {
+  font-size: var(--nx-fs-base);
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-lib-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-lib-portas {
+  flex: 0 0 auto;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-2);
+  padding: 1px 4px;
+  border: 1px solid var(--nx-ln-2);
+}
+.nx-lib[data-no-mapa="1"] .nx-lib-nome::after {
+  content: "·";
+  color: var(--nx-a);
+  margin-left: 4px;
+  font-weight: 700;
+}
+
+/* Camadas: ligar/desligar classe e situação. */
+.nx-camada {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 22px;
+  font-size: var(--nx-fs-base);
+  color: var(--nx-tx-2);
+  cursor: pointer;
+  user-select: none;
+}
+.nx-camada input { accent-color: var(--nx-a); margin: 0; }
+.nx-camada .nx-marcador {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  background: var(--nx-cor, var(--nx-tx-3));
+}
+.nx-camada .nx-conta { margin-left: auto; }
+
+/* =========================================================
+   6. Prancha
+   ========================================================= */
+.nx-prancha {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--nx-canvas);
+  /* Malha em dois passos (10px fino, 100px grosso) — é a referência
+     que torna o alinhamento verificável de olho, como no papel
+     milimetrado. */
+  background-image:
+    linear-gradient(to right, var(--nx-ln-2) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--nx-ln-2) 1px, transparent 1px),
+    linear-gradient(to right, var(--nx-ln) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--nx-ln) 1px, transparent 1px);
+  background-size:
+    calc(10px * var(--nx-z, 1)) calc(10px * var(--nx-z, 1)),
+    calc(10px * var(--nx-z, 1)) calc(10px * var(--nx-z, 1)),
+    calc(100px * var(--nx-z, 1)) calc(100px * var(--nx-z, 1)),
+    calc(100px * var(--nx-z, 1)) calc(100px * var(--nx-z, 1));
+  background-position: var(--nx-px, 0) var(--nx-py, 0);
+  cursor: default;
+  touch-action: none;
+}
+.nx-prancha[data-malha="0"] { background-image: none; }
+.nx-prancha[data-arrastando="1"] { cursor: grabbing; }
+.nx-prancha[data-modo="cabo"] { cursor: crosshair; }
+
+/* O mundo. Pan e zoom são UMA transformação sobre o mundo inteiro,
+   não propriedade de cada nó — assim o SVG dos enlaces e as caixas
+   em HTML nunca saem de registro. */
+.nx-mundo {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.nx-fios {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.nx-nos { position: absolute; inset: 0; pointer-events: none; }
+
+/* ---------- Zona (faixa de camada ou de localidade) ---------- */
+.nx-zona {
+  position: absolute;
+  border: 1px dashed var(--nx-ln-3);
+  background: var(--nx-panel);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.nx-zona-rot {
+  position: absolute;
+  top: -9px;
+  left: 10px;
+  padding: 1px 7px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln);
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nx-tx-2);
+  white-space: nowrap;
+}
+
+/* ---------- Nó ---------- */
+.nx-no {
+  position: absolute;
+  width: 190px;
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 7px;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  border-left: 3px solid var(--nx-classe, var(--nx-tx-3));
+  cursor: grab;
+  pointer-events: auto;
+  user-select: none;
+}
+.nx-no:hover { border-color: var(--nx-a); }
+.nx-no.is-sel {
+  border-color: var(--nx-a);
+  box-shadow: 0 0 0 2px var(--nx-a-ring);
+  z-index: 6;
+}
+.nx-no.is-arrastando { cursor: grabbing; z-index: 8; }
+.nx-no.is-apagado { opacity: 0.22; }
+.nx-no.is-foco { box-shadow: 0 0 0 3px var(--nx-a-ring); z-index: 7; }
+
+.nx-no-icone {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  background: var(--nx-panel);
+  border: 1px solid var(--nx-ln-2);
+  color: var(--nx-classe, var(--nx-tx-2));
+}
+.nx-no-icone svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+
+.nx-no-nome {
+  font-size: var(--nx-fs-base);
+  font-weight: 600;
+  line-height: 1.18;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-no-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-3);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.nx-no-ip { font-family: var(--font-mono, monospace); }
+
+/* Situação: ponto NO CANTO + fio da borda. Dois sinais, porque cor
+   sozinha não é informação para quem não distingue as pontas. */
+.nx-no-st {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--nx-panel-2);
+  background: var(--nx-st-none);
+}
+.nx-no[data-st="up"]      .nx-no-st { background: var(--nx-st-up); }
+.nx-no[data-st="down"]    .nx-no-st { background: var(--nx-st-down); }
+.nx-no[data-st="warning"] .nx-no-st,
+.nx-no[data-st="unusual"] .nx-no-st { background: var(--nx-st-warn); }
+
+.nx-no[data-st="down"] { border-top-color: var(--nx-st-down); border-right-color: var(--nx-st-down); border-bottom-color: var(--nx-st-down); }
+.nx-no[data-st="down"] .nx-no-nome::after {
+  content: " OFFLINE";
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.1em;
+  color: var(--nx-st-down);
+}
+
+/* Régua de ocupação das portas dentro do nó: responde "cabe mais um
+   cabo aqui?" sem abrir o inspetor. */
+.nx-no-reg {
+  grid-column: 2;
+  height: 3px;
+  margin-top: 4px;
+  background: var(--nx-ln);
+  overflow: hidden;
+}
+.nx-no-reg > i {
+  display: block;
+  height: 100%;
+  width: calc(var(--nx-ocup, 0) * 1%);
+  background: var(--nx-a);
+}
+.nx-no[data-lotado="1"] .nx-no-reg > i { background: var(--nx-st-warn); }
+
+/* Nó ainda sem faceta de rede — aresta tracejada diz que ele veio do
+   inventário e ninguém mapeou nada nele ainda. */
+.nx-no[data-mapeado="0"] { border-style: dashed; background: transparent; }
+
+/* Laço de seleção. Vive DENTRO do mundo, em coordenada de mundo: na
+   tela, ele teria de ser corrigido pelo zoom a cada `pointermove`. */
+.nx-laco {
+  position: absolute;
+  border: 1px dashed var(--nx-a);
+  background: var(--nx-a-soft);
+  pointer-events: none;
+  z-index: 20;
+}
+.nx-laco[hidden] { display: none; }
+
+.nx-nota {
+  position: absolute;
+  padding: 6px 8px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln);
+  border-top: 2px solid var(--nx-a);
+  font-size: var(--nx-fs-base);
+  line-height: 1.45;
+  color: var(--nx-tx-2);
+  pointer-events: auto;
+  white-space: pre-wrap;
+}
+
+/* ---------- Fio (enlace) ---------- */
+.nx-fio {
+  fill: none;
+  stroke: var(--nx-utp);
+  stroke-width: 1.6;
+  stroke-linecap: square;
+}
+.nx-fio[data-meio="fibra"]  { stroke: var(--nx-fibra); stroke-dasharray: 9 5; }
+.nx-fio[data-meio="radio"]  { stroke: var(--nx-radio); stroke-dasharray: 2 4; }
+.nx-fio[data-meio="stack"]  { stroke: var(--nx-stack); stroke-width: 3; }
+.nx-fio[data-meio="logico"] { stroke: var(--nx-logico); stroke-dasharray: 1 5; }
+.nx-fio.is-sel { stroke-width: 3.2; }
+.nx-fio.is-apagado { opacity: 0.14; }
+
+/* Faixa invisível e larga por cima do fio: um traço de 1,6px é
+   impossível de acertar com o mouse. */
+.nx-fio-alvo {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.nx-fio-rot {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--nx-fs-micro);
+  fill: var(--nx-tx-2);
+  paint-order: stroke;
+  stroke: var(--nx-canvas);
+  stroke-width: 3.5;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.nx-prancha[data-rotulos="0"] .nx-fio-rot { display: none; }
+
+/* Pacote que percorre o fio — só quando o enlace está selecionado,
+   para a tela não ficar piscando com 200 cabos. */
+.nx-pacote { fill: var(--nx-a); }
+@media (prefers-reduced-motion: reduce) { .nx-pacote { display: none; } }
+
+/* ---------- Ferramentas flutuantes ---------- */
+.nx-ferramentas {
+  position: absolute;
+  top: var(--nx-pad);
+  left: var(--nx-pad);
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+}
+.nx-ferramentas .nx-btn {
+  border: 0;
+  border-top: 1px solid var(--nx-ln-2);
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+.nx-ferramentas .nx-btn:first-child { border-top: 0; }
+
+.nx-legenda {
+  position: absolute;
+  bottom: var(--nx-pad);
+  left: var(--nx-pad);
+  z-index: 12;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--nx-pad);
+  max-width: 54%;
+  padding: 5px 8px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln);
+}
+.nx-legenda-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nx-tx-2);
+}
+.nx-legenda-item > i {
+  width: 12px;
+  height: 0;
+  border-top: 2px solid var(--nx-cor, var(--nx-tx-3));
+}
+.nx-legenda-item[data-tracejado="1"] > i { border-top-style: dashed; }
+.nx-legenda-item > b {
+  width: 9px;
+  height: 9px;
+  background: var(--nx-cor, var(--nx-tx-3));
+}
+
+/* Minimapa: num mapa de 3.600px de largura, é o único jeito de saber
+   onde a vista está sem reenquadrar tudo. */
+.nx-mini {
+  position: absolute;
+  right: var(--nx-pad);
+  bottom: var(--nx-pad);
+  z-index: 12;
+  width: 190px;
+  height: 128px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  cursor: pointer;
+  overflow: hidden;
+}
+.nx-mini[hidden] { display: none; }
+.nx-mini-vista {
+  position: absolute;
+  border: 1px solid var(--nx-a);
+  background: var(--nx-a-soft);
+  pointer-events: none;
+}
+.nx-mini-no { position: absolute; background: var(--nx-cor, var(--nx-tx-3)); }
+
+.nx-vazio {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--nx-gap);
+  text-align: center;
+  padding: var(--nx-pad);
+  color: var(--nx-tx-2);
+}
+.nx-vazio[hidden] { display: none; }
+.nx-vazio h2 {
+  margin: 0;
+  font-family: var(--font-display, sans-serif);
+  font-size: var(--text-xl, 1.375rem);
+  letter-spacing: var(--tracking-tight, -0.014em);
+  color: var(--nx-tx);
+}
+.nx-vazio p { margin: 0; max-width: 46ch; line-height: 1.55; }
+
+/* =========================================================
+   7. Inspetor
+   ========================================================= */
+.nx-abas { display: flex; border-bottom: 1px solid var(--nx-ln); overflow-x: auto; scrollbar-width: none; }
+.nx-abas::-webkit-scrollbar { height: 0; }
+.nx-aba {
+  flex: 0 0 auto;
+  height: var(--nx-h);
+  padding: 0 11px;
+  border: 0;
+  border-right: 1px solid var(--nx-ln-2);
+  background: transparent;
+  color: var(--nx-tx-3);
+  font: inherit;
+  font-size: var(--nx-fs-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nx-aba[aria-selected="true"] {
+  color: var(--nx-tx);
+  background: var(--nx-panel-2);
+  box-shadow: inset 0 -2px 0 var(--nx-a);
+}
+.nx-painel[hidden] { display: none; }
+
+.nx-kv { display: grid; grid-template-columns: minmax(84px, 38%) 1fr; gap: 2px var(--nx-gap); }
+.nx-kv > dt {
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+  padding-top: 2px;
+}
+.nx-kv > dd {
+  margin: 0;
+  font-size: var(--nx-fs-base);
+  color: var(--nx-tx);
+  overflow-wrap: anywhere;
+}
+
+.nx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--nx-ln);
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nx-tx-2);
+  white-space: nowrap;
+}
+.nx-chip[data-tom="ok"]     { color: var(--nx-st-up);   border-color: var(--nx-st-up); }
+.nx-chip[data-tom="ruim"]   { color: var(--nx-st-down); border-color: var(--nx-st-down); }
+.nx-chip[data-tom="atencao"]{ color: var(--nx-st-warn); border-color: var(--nx-st-warn); }
+.nx-chip[data-tom="acento"] { color: var(--nx-a);       border-color: var(--nx-a); }
+
+/* ---------- Painel de portas: o switch visto de frente ----------
+   Duas fileiras, par embaixo de ímpar, exatamente como a porta está
+   no equipamento. Fileira única não bate com a etiqueta do rack, e
+   conferir passa a ser contagem em vez de leitura. */
+.nx-portas {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, auto);
+  gap: 2px;
+  padding: var(--nx-gap);
+  background: var(--nx-panel);
+  border: 1px solid var(--nx-ln);
+  overflow-x: auto;
+}
+.nx-porta {
+  width: 24px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--nx-ln-3);
+  background: var(--nx-panel-2);
+  color: var(--nx-tx-2);
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nx-fs-micro);
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+}
+.nx-porta:hover { border-color: var(--nx-a); }
+.nx-porta.is-sel { outline: 2px solid var(--nx-a); outline-offset: 1px; z-index: 2; }
+
+.nx-porta[data-st="ativa"]     { background: var(--nx-p-ativa);     border-color: var(--nx-p-ativa);     color: var(--text-inverted, #fff); }
+.nx-porta[data-st="reservada"] { background: var(--nx-p-reservada); border-color: var(--nx-p-reservada); color: var(--text-inverted, #fff); }
+.nx-porta[data-st="defeito"]   { background: var(--nx-p-defeito);   border-color: var(--nx-p-defeito);   color: var(--text-inverted, #fff); }
+.nx-porta[data-st="desligada"] { background: var(--nx-ln); color: var(--nx-tx-3); }
+.nx-porta[data-st="desligada"]::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-top: 1px solid var(--nx-tx-3);
+  transform: rotate(-32deg);
+}
+/* SFP é porta de fibra: aresta superior marcada, como no painel. */
+.nx-porta[data-tipo="sfp"]  { box-shadow: inset 0 2px 0 var(--nx-fibra); }
+.nx-porta[data-poe="1"]::before {
+  content: "";
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  width: 3px;
+  height: 3px;
+  background: var(--nx-stack);
+}
+
+.nx-portas-cab {
+  display: flex;
+  align-items: baseline;
+  gap: var(--nx-gap);
+  flex-wrap: wrap;
+}
+.nx-portas-cab .nx-num { font-size: var(--nx-fs-cell); font-weight: 600; }
+
+.nx-regua {
+  position: relative;
+  height: 6px;
+  background: var(--nx-ln);
+  overflow: hidden;
+}
+.nx-regua > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--nx-ocup, 0) * 1%);
+  background: var(--nx-a);
+}
+.nx-regua[data-tom="atencao"] > i { background: var(--nx-st-warn); }
+.nx-regua[data-tom="ruim"] > i { background: var(--nx-st-down); }
+
+/* ---------- Conferência técnica ---------- */
+.nx-aviso {
+  display: grid;
+  grid-template-columns: 3px 1fr auto;
+  gap: var(--nx-gap);
+  align-items: start;
+  padding: 6px 7px;
+  border-bottom: 1px solid var(--nx-ln-2);
+  background: transparent;
+  border-left: 0;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  color: var(--nx-tx);
+}
+.nx-aviso:hover { background: var(--nx-a-soft); }
+.nx-aviso::before { content: ""; align-self: stretch; background: var(--nx-tom, var(--nx-tx-3)); }
+.nx-aviso[data-nivel="erro"]    { --nx-tom: var(--nx-st-down); }
+.nx-aviso[data-nivel="alerta"]  { --nx-tom: var(--nx-st-warn); }
+.nx-aviso[data-nivel="info"]    { --nx-tom: var(--nx-a); }
+.nx-aviso-t { font-size: var(--nx-fs-base); font-weight: 600; line-height: 1.25; }
+.nx-aviso-d { margin-top: 2px; font-size: var(--nx-fs-micro); color: var(--nx-tx-3); line-height: 1.4; }
+
+/* =========================================================
+   8. Barra de leitura
+   ========================================================= */
+.nx-status {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-pad);
+  padding: 0 var(--nx-pad);
+  background: var(--nx-panel);
+  border-top: 1px solid var(--nx-ln);
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-2);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.nx-status b { font-weight: 600; color: var(--nx-tx); }
+.nx-status .nx-num { font-size: var(--nx-fs-micro); }
+.nx-status-elastico { flex: 1 1 auto; min-width: 4px; }
+.nx-status-dica { color: var(--nx-tx-3); overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1280px) { .nx-status-dica { display: none; } }
+
+/* =========================================================
+   9. Modal e aviso passageiro
+   ========================================================= */
+.nx-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4, 1rem);
+  background: color-mix(in srgb, var(--text-primary, #0f1218) 55%, transparent);
+}
+.nx-modal[hidden] { display: none; }
+.nx-modal-card {
+  width: min(620px, 100%);
+  max-height: 84dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  box-shadow: var(--shadow-xl, 0 36px 68px -18px rgba(16, 20, 32, 0.2));
+}
+.nx-modal-card > header {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  height: 34px;
+  flex: 0 0 34px;
+  padding: 0 var(--nx-pad);
+  border-bottom: 1px solid var(--nx-ln);
+}
+.nx-modal-card > header h2 {
+  margin: 0;
+  flex: 1 1 auto;
+  font-family: var(--font-display, sans-serif);
+  font-size: var(--nx-fs-cell);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.nx-modal-corpo {
+  padding: var(--nx-pad);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-gap);
+}
+.nx-modal-pe {
+  display: flex;
+  gap: var(--nx-gap);
+  justify-content: flex-end;
+  padding: var(--nx-pad);
+  border-top: 1px solid var(--nx-ln);
+}
+
+.nx-lista-escolha { display: flex; flex-direction: column; border: 1px solid var(--nx-ln); max-height: 300px; overflow-y: auto; }
+.nx-escolha {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  padding: 5px 7px;
+  border: 0;
+  border-bottom: 1px solid var(--nx-ln-2);
+  background: transparent;
+  color: var(--nx-tx);
+  font: inherit;
+  font-size: var(--nx-fs-base);
+  text-align: left;
+  cursor: pointer;
+}
+.nx-escolha:hover { background: var(--nx-a-soft); }
+.nx-escolha:disabled { opacity: 0.4; cursor: not-allowed; }
+.nx-escolha .nx-conta { margin-left: auto; }
+
+.nx-toast {
+  position: fixed;
+  right: var(--space-4, 1rem);
+  bottom: var(--space-4, 1rem);
+  z-index: 400;
+  max-width: 420px;
+  padding: 8px 11px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  border-left: 3px solid var(--nx-tom, var(--nx-a));
+  box-shadow: var(--shadow-lg, 0 18px 36px -10px rgba(16, 20, 32, 0.14));
+  font-size: var(--nx-fs-base);
+  color: var(--nx-tx);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity var(--nx-transicao), transform var(--nx-transicao);
+}
+.nx-toast.is-visivel { opacity: 1; transform: translateY(0); }
+.nx-toast[data-tom="ruim"] { --nx-tom: var(--nx-st-down); }
+.nx-toast[data-tom="ok"] { --nx-tom: var(--nx-st-up); }
+
+/* =========================================================
+   10. Telas estreitas
+   ========================================================= */
+/* Abaixo de 1100px os três painéis não cabem lado a lado. A prancha
+   continua utilizável e os trilhos viram gavetas sobre ela — nunca
+   `display: none`, que esconderia o inventário e a conferência sem
+   dizer onde foram (regra 24). */
+@media (max-width: 1100px) {
+  .nx-body,
+  .nx-body:has(.nx-trilho[data-aberto="0"]) { grid-template-columns: minmax(0, 1fr); }
+
+  .nx-trilho {
+    position: absolute;
+    top: var(--nx-top-h);
+    bottom: var(--nx-status-h);
+    z-index: 30;
+    width: min(320px, 88vw);
+    box-shadow: var(--shadow-lg, 0 18px 36px -10px rgba(16, 20, 32, 0.14));
+  }
+  .nx-trilho--esq { left: 0; }
+  .nx-trilho--dir { right: 0; }
+  .nx-trilho[data-aberto="0"] { display: none; }
+  .nx-mini { display: none; }
+  .nx-legenda { max-width: 86%; }
+}
+
+
+/* =========================================================
+   12. O RESTO DO MÓDULO na linguagem da prancha
+   =========================================================
+   A bancada (seções 1–11) é tela de altura cheia. As outras oito telas
+   do módulo — lista de plantas, formulário, exclusão, visualizador,
+   monitor PRTG, as duas de TV e o editor — são telas de página, e
+   antes cada uma tinha o próprio `<style>` com a paleta escrita à mão
+   (`#0071e3`, `#1d1d1f`, raio 18px): a falha da regra 31 em forma de
+   módulo, oito vezes.
+
+   Aqui está o vocabulário comum delas, na MESMA linguagem da prancha —
+   aresta reta, fio de 1px, rótulo micro em caixa-alta, número
+   monoespaçado. Quem usa: `.nx-pagina` como raiz em vez de `.nx-app`.
+   ========================================================= */
+
+.nx-pagina,
+.nx-pagina * { box-sizing: border-box; min-width: 0; }
+
+.nx-pagina {
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  display: grid;
+  gap: var(--nx-pad);
+  color: var(--nx-tx);
+  font-size: var(--nx-fs-base);
+}
+
+.nx-pagina ::selection { background: var(--nx-a-ring); }
+
+.nx-pagina :is(button, input, select, textarea, a):focus-visible {
+  outline: 2px solid var(--nx-a);
+  outline-offset: 1px;
+}
+
+/* A página estreita — formulário, confirmação, detalhe de uma coisa só. */
+.nx-pagina--estreita { max-width: 760px; }
+
+/* ---------- Cartão ---------- */
+.nx-cartao {
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.nx-cartao > header {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  min-height: 30px;
+  padding: 5px var(--nx-pad);
+  border-bottom: 1px solid var(--nx-ln);
+  background: var(--nx-panel);
+}
+.nx-cartao > header h2,
+.nx-cartao > header h3 {
+  margin: 0;
+  flex: 1 1 auto;
+  font-family: var(--font-display, sans-serif);
+  font-size: var(--nx-fs-cell);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.nx-cartao-corpo {
+  padding: var(--nx-pad);
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-gap);
+  min-width: 0;
+}
+.nx-cartao > footer {
+  display: flex;
+  gap: var(--nx-gap);
+  justify-content: flex-end;
+  padding: var(--nx-pad);
+  border-top: 1px solid var(--nx-ln);
+}
+
+/* ---------- Grupo recolhível (um <details> com cara de cartão) ----------
+   `<details>` nativo em vez de div + classe + JS: ele já traz teclado,
+   leitor de tela e — o que importa aqui — o `Ctrl+F` do navegador, que
+   o `display:none` da versão anterior escondia junto com o conteúdo. */
+details.nx-grupo-dev { display: block; }
+.nx-grupo-dev > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  min-height: 30px;
+  padding: 5px var(--nx-pad);
+  border-bottom: 1px solid var(--nx-ln);
+  background: var(--nx-panel);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-display, sans-serif);
+  font-size: var(--nx-fs-cell);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.nx-grupo-dev > summary::-webkit-details-marker { display: none; }
+.nx-grupo-dev > summary::before {
+  content: "2";
+  width: 11px;
+  font-family: var(--font-mono, monospace);
+  font-weight: 400;
+  color: var(--nx-tx-3);
+}
+.nx-grupo-dev:not([open]) > summary::before { content: "+"; }
+.nx-grupo-dev:not([open]) > summary { border-bottom: 0; }
+.nx-grupo-dev > summary > .nx-conta { margin-left: auto; text-transform: none; }
+.nx-grupo-dev > summary:hover { background: var(--nx-a-soft); }
+.nx-grupo-dev .nx-tabela-wrap { border: 0; }
+
+/* ---------- Fileira de indicadores ----------
+   Quadrado, fio de 1px, número monoespaçado grande. Nada de sombra:
+   oito cartões com sombra viram relevo, e o que tem de saltar é o
+   número. */
+.nx-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0;
+  border: 1px solid var(--nx-ln);
+  background: var(--nx-panel-2);
+}
+.nx-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--nx-pad);
+  border-left: 1px solid var(--nx-ln-2);
+  border-top: 3px solid var(--nx-tom, transparent);
+  min-width: 0;
+}
+.nx-kpi:first-child { border-left: 0; }
+.nx-kpi-n {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xl, 1.75rem);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--nx-tom, var(--nx-tx));
+}
+.nx-kpi-r {
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+}
+.nx-kpi-d { font-size: var(--nx-fs-micro); color: var(--nx-tx-3); }
+.nx-kpi[data-tom="ok"]      { --nx-tom: var(--nx-st-up); }
+.nx-kpi[data-tom="ruim"]    { --nx-tom: var(--nx-st-down); }
+.nx-kpi[data-tom="atencao"] { --nx-tom: var(--nx-st-warn); }
+.nx-kpi[data-tom="acento"]  { --nx-tom: var(--nx-a); }
+
+/* Numa coluna só (celular) a borda da esquerda não separa nada. */
+@media (max-width: 560px) {
+  .nx-kpi { border-left: 0; border-bottom: 1px solid var(--nx-ln-2); }
+}
+
+/* ---------- Barra de ferramentas da página ---------- */
+.nx-barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nx-gap);
+  padding: var(--nx-gap) var(--nx-pad);
+  background: var(--nx-panel);
+  border: 1px solid var(--nx-ln);
+}
+.nx-barra .nx-elastico { flex: 1 1 auto; min-width: 4px; }
+.nx-barra form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--nx-gap); margin: 0; }
+
+/* ---------- Tabela densa ---------- */
+.nx-tabela-wrap {
+  border: 1px solid var(--nx-ln);
+  background: var(--nx-panel-2);
+  overflow-x: auto;
+}
+.nx-tabela {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: var(--nx-fs-base);
+  font-variant-numeric: tabular-nums;
+}
+.nx-tabela thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--nx-panel);
+  border-bottom: 1px solid var(--nx-ln-3);
+  padding: 5px var(--nx-gap);
+  text-align: left;
+  white-space: nowrap;
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+  font-weight: 600;
+}
+.nx-tabela tbody td {
+  padding: 4px var(--nx-gap);
+  border-bottom: 1px solid var(--nx-ln-2);
+  vertical-align: middle;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-tabela tbody tr:hover { background: var(--nx-a-soft); }
+/* Prefixo próprio inclusive nos modificadores de célula: `td.num` e
+   `td.acoes` já existem no `base.css` com outro desenho, e reaproveitar
+   o nome faria esta folha mudar as tabelas das outras 165 telas. */
+.nx-tabela :is(td, th).nx-num { text-align: right; }
+.nx-tabela td.nx-acoes { text-align: right; white-space: nowrap; }
+.nx-tabela td.nx-vazia {
+  text-align: center;
+  color: var(--nx-tx-3);
+  padding: var(--space-8, 2rem) var(--nx-pad);
+  white-space: normal;
+}
+
+/* ---------- Selo ---------- */
+.nx-selo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--nx-tom, var(--nx-ln-3));
+  color: var(--nx-tom, var(--nx-tx-2));
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.nx-selo::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  flex: 0 0 6px;
+}
+.nx-selo[data-tom="ok"]      { --nx-tom: var(--nx-st-up); }
+.nx-selo[data-tom="ruim"]    { --nx-tom: var(--nx-st-down); }
+.nx-selo[data-tom="atencao"] { --nx-tom: var(--nx-st-warn); }
+.nx-selo[data-tom="neutro"]  { --nx-tom: var(--nx-tx-3); }
+.nx-selo[data-tom="acento"]  { --nx-tom: var(--nx-a); }
+
+/* ---------- Grade de cartões ---------- */
+.nx-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--nx-pad);
+}
+
+/* ---------- Estado vazio dentro da página ---------- */
+.nx-vazio-bloco {
+  display: grid;
+  justify-items: center;
+  gap: var(--nx-gap);
+  padding: var(--space-10, 2.5rem) var(--nx-pad);
+  border: 1px dashed var(--nx-ln-3);
+  background: var(--nx-panel-2);
+  text-align: center;
+}
+.nx-vazio-bloco h2 {
+  margin: 0;
+  font-family: var(--font-display, sans-serif);
+  font-size: var(--text-lg, 1.0625rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.nx-vazio-bloco p { margin: 0; max-width: 52ch; color: var(--nx-tx-2); line-height: 1.55; }
+
+/* ---------- Formulário de página ---------- */
+/* Grade alinhada pelo TOPO e controle de ALTURA FIXA — regra 36: sem
+   isso, o campo sem dica de texto estica até a altura da linha e a
+   fileira sai irregular sem ninguém ter mexido nela. */
+.nx-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--nx-pad);
+  align-items: start;
+}
+.nx-form-grid > .nx-campo { align-content: start; }
+.nx-form-grid > .nx-campo--largo { grid-column: 1 / -1; }
+
+/* O Django renderiza os widgets do form; a folha os reconhece pelo
+   elemento, para o template não ter de repetir classe em cada campo. */
+.nx-campo :is(input[type="text"], input[type="number"], input[type="date"],
+               input[type="email"], input[type="url"], select) {
+  height: var(--nx-h);
+  width: 100%;
+  padding: 0 7px;
+  border: 1px solid var(--nx-ln);
+  border-radius: 0;
+  background: var(--nx-panel-2);
+  color: var(--nx-tx);
+  font: inherit;
+  font-size: var(--nx-fs-base);
+}
+.nx-campo textarea {
+  width: 100%;
+  min-height: 68px;
+  padding: 5px 7px;
+  border: 1px solid var(--nx-ln);
+  border-radius: 0;
+  background: var(--nx-panel-2);
+  color: var(--nx-tx);
+  font: inherit;
+  font-size: var(--nx-fs-base);
+  line-height: 1.45;
+  resize: vertical;
+}
+.nx-campo .errorlist {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-st-down);
+}
+.nx-dica { font-size: var(--nx-fs-micro); color: var(--nx-tx-3); line-height: 1.45; }
+
+/* ---------- Área de upload ---------- */
+.nx-upload {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: var(--nx-gap);
+  padding: var(--space-6, 1.5rem) var(--nx-pad);
+  border: 1px dashed var(--nx-ln-3);
+  background: var(--nx-panel);
+  text-align: center;
+  cursor: pointer;
+}
+.nx-upload:hover { border-color: var(--nx-a); }
+.nx-upload input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.nx-upload img { max-width: 100%; max-height: 190px; border: 1px solid var(--nx-ln); }
+
+/* ---------- Miniatura da planta (topologia ou imagem de fundo) ---------- */
+.nx-preview {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--nx-canvas);
+  border-bottom: 1px solid var(--nx-ln);
+  overflow: hidden;
+  /* Mesma malha da prancha, em passo fixo: a miniatura é a prancha vista
+     de longe, e a malha é o que a identifica como desenho técnico. */
+  background-image:
+    linear-gradient(to right, var(--nx-ln-2) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--nx-ln-2) 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+.nx-preview > :is(canvas, svg, img) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.nx-preview > img { object-fit: cover; }
+.nx-preview-marca {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  padding: 1px 5px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln);
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+}
+
+/* Fio de situação no TOPO do cartão: a cor do pior estado da planta.
+   Fica na borda e não no fundo — fundo tingido em doze cartões vira
+   decoração e deixa de informar. */
+.nx-barra-st {
+  height: 3px;
+  background: var(--nx-ln);
+  flex: 0 0 3px;
+}
+.nx-barra-st[data-st="up"]   { background: var(--nx-st-up); }
+.nx-barra-st[data-st="warn"] { background: var(--nx-st-warn); }
+.nx-barra-st[data-st="down"] { background: var(--nx-st-down); }
+
+.nx-chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 18px; }
+
+/* Cartão que se esconde na busca de cliente. */
+.nx-cartao[hidden] { display: none; }
+
+/* ---------- Faixa de aviso da página ---------- */
+.nx-faixa-aviso {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nx-gap);
+  padding: var(--nx-gap) var(--nx-pad);
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln);
+  border-left: 3px solid var(--nx-tom, var(--nx-st-warn));
+  font-size: var(--nx-fs-base);
+  line-height: 1.5;
+}
+.nx-faixa-aviso[data-tom="info"] { --nx-tom: var(--nx-a); }
+.nx-faixa-aviso[data-tom="ruim"] { --nx-tom: var(--nx-st-down); }
+
+/* ---------- Par rótulo/valor em duas colunas ---------- */
+.nx-dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--nx-gap) var(--nx-pad);
+}
+.nx-dl > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.nx-dl dt {
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+}
+.nx-dl dd { margin: 0; font-size: var(--nx-fs-base); overflow-wrap: anywhere; }
+
+/* ---------- Tela curta de confirmação ----------
+   Excluir mapa e excluir rack usam o vocabulário do módulo sem a
+   bancada inteira: o `.nx-app` escapa da altura cheia e vira um bloco
+   centrado. Morava num `<style>` dentro dos dois templates — duas
+   cópias da mesma regra, que é como a deriva começa (regra 33). */
+.nx-confirma {
+  max-width: 620px;
+  margin-inline: auto;
+  display: grid;
+  gap: var(--nx-gap);
+}
+.nx-confirma .nx-bloco { border: 1px solid var(--nx-ln); }
+.nx-confirma-pe {
+  display: flex;
+  gap: var(--nx-gap);
+  justify-content: flex-end;
+}
+/* A casca do `.nx-app` nesta tela não ocupa a janela: ela é um bloco
+   no corpo da página, com o respiro normal do shell. */
+.nx-app[data-curta="1"] {
+  height: auto;
+  display: block;
+  background: transparent;
+  overflow: visible;
+}
+
+/* =========================================================
+   13. Select2 na linguagem do módulo
+   =========================================================
+   Só com a classe `.nx-s2`, passada em `containerCssClass` e
+   `dropdownCssClass`. As regras do Select2 são globais; sem o gancho,
+   mexer nelas mudaria o componente em toda tela que carregue esta
+   folha. A folha entra DEPOIS do CSS do CDN — invertida, o CDN vence
+   e nada aqui tem efeito (a ordem é parte do contrato, regra 26).
+   ========================================================= */
+.select2-container.nx-s2 { width: 100% !important; }
+
+.select2-container.nx-s2 .select2-selection--single {
+  height: var(--nx-h);
+  border: 1px solid var(--nx-ln);
+  border-radius: 0;
+  background: var(--nx-panel-2);
+  display: flex;
+  align-items: center;
+}
+.select2-container.nx-s2 .select2-selection--single .select2-selection__rendered {
+  padding: 0 7px;
+  line-height: 1.2;
+  color: var(--nx-tx);
+  font-size: var(--nx-fs-base);
+}
+.select2-container.nx-s2 .select2-selection--single .select2-selection__placeholder { color: var(--nx-tx-3); }
+.select2-container.nx-s2 .select2-selection--single .select2-selection__arrow { height: calc(var(--nx-h) - 2px); }
+.select2-container.nx-s2.select2-container--focus .select2-selection--single,
+.select2-container.nx-s2.select2-container--open .select2-selection--single {
+  border-color: var(--nx-a);
+}
+
+.select2-dropdown.nx-s2 {
+  border: 1px solid var(--nx-ln-3);
+  border-radius: 0;
+  background: var(--nx-panel-2);
+  color: var(--nx-tx);
+}
+.select2-dropdown.nx-s2 .select2-search__field {
+  height: var(--nx-h);
+  border: 1px solid var(--nx-ln);
+  border-radius: 0;
+  background: var(--nx-panel);
+  color: var(--nx-tx);
+  font-size: var(--nx-fs-base);
+}
+.select2-dropdown.nx-s2 .select2-results__option {
+  padding: 4px 8px;
+  font-size: var(--nx-fs-base);
+  color: var(--nx-tx);
+}
+.select2-dropdown.nx-s2 .select2-results__option--highlighted {
+  background: var(--nx-a-soft);
+  color: var(--nx-a);
+}
+.select2-dropdown.nx-s2 .select2-results__option[aria-selected="true"] {
+  background: var(--nx-panel);
+  color: var(--nx-tx);
+}
+
+
+/* =========================================================
+   14. Gerenciar acesso TV (`.tvgr-*`) na linguagem da prancha
+   =========================================================
+   Esta tela tinha 546 linhas de `<style>` dentro do template, com
+   raio 22px, avatar em degradê, cartão que levanta no hover e um
+   bloco de Select2 com `!important` em dez declarações. Tudo isso
+   reescrito aqui, no vocabulário do módulo, por dois motivos: o CSS
+   volta a ser cacheável (eram 546 linhas reenviadas a cada abertura)
+   e a tela passa a mudar junto com o resto do módulo.
+
+   Os NOMES de classe ficam: o JS da tela injeta cartão novo ao
+   adicionar colaborador, e renomear classe aqui quebraria a injeção
+   em silêncio. O que muda é o desenho, não o contrato.
+   ========================================================= */
+.tvgr-page,
+.tvgr-page * { box-sizing: border-box; min-width: 0; }
+
+.tvgr-page {
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-pad);
+  color: var(--nx-tx);
+  font-size: var(--nx-fs-base);
+}
+
+.tvgr-page :is(button, input, select, textarea, a):focus-visible {
+  outline: 2px solid var(--nx-a);
+  outline-offset: 1px;
+}
+
+/* ---------- Indicadores ---------- */
+.tvgr-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid var(--nx-ln);
+  background: var(--nx-panel-2);
+}
+.tvgr-kpi {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nx-gap);
+  padding: var(--nx-pad);
+  border-left: 1px solid var(--nx-ln-2);
+  border-top: 3px solid var(--kpi-c, var(--nx-a));
+}
+.tvgr-kpi:first-child { border-left: 0; }
+/* O ícone era um selo de 44px com fundo tingido; três deles em fila
+   formavam uma coluna de cor competindo com o número, que é o que se
+   lê. Sem selo, o traço basta. */
+.tvgr-kpi-icon {
+  width: 18px;
+  flex: 0 0 18px;
+  display: grid;
+  place-items: center;
+  color: var(--kpi-c, var(--nx-a));
+  font-size: var(--nx-fs-base);
+  padding-top: 3px;
+}
+.tvgr-kpi-info { display: grid; gap: 1px; min-width: 0; }
+.tvgr-kpi-label {
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+}
+.tvgr-kpi-number {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xl, 1.75rem);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--kpi-c, var(--nx-tx));
+}
+.tvgr-kpi-sub { font-size: var(--nx-fs-micro); color: var(--nx-tx-3); }
+
+/* ---------- Painel ---------- */
+.tvgr-panel {
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln);
+}
+.tvgr-panel-hd {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  padding: var(--nx-gap) var(--nx-pad);
+  border-bottom: 1px solid var(--nx-ln);
+  background: var(--nx-panel);
+}
+.tvgr-panel-hd-icon { color: var(--nx-a); font-size: var(--nx-fs-base); }
+.tvgr-panel-hd-text { flex: 1 1 auto; min-width: 0; }
+.tvgr-panel-hd-text h3 {
+  margin: 0;
+  font-family: var(--font-display, sans-serif);
+  font-size: var(--nx-fs-cell);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.tvgr-panel-hd-text h3 em { font-style: normal; color: var(--nx-a); }
+.tvgr-panel-hd-text p { margin: 1px 0 0; font-size: var(--nx-fs-micro); color: var(--nx-tx-3); }
+.tvgr-panel-body { padding: var(--nx-pad); }
+
+/* ---------- Adicionar colaborador ---------- */
+.tvgr-add-row { display: grid; grid-template-columns: 1fr auto; gap: var(--nx-gap); align-items: start; }
+.tvgr-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nx-gap);
+  margin-top: var(--nx-gap);
+  padding: var(--nx-gap) var(--nx-pad);
+  background: var(--nx-panel);
+  border: 1px solid var(--nx-ln);
+  border-left: 3px solid var(--nx-a);
+  font-size: var(--nx-fs-base);
+  color: var(--nx-tx-2);
+  line-height: 1.5;
+}
+.tvgr-hint i { color: var(--nx-a); flex-shrink: 0; padding-top: 2px; }
+
+/* ---------- Estado vazio ---------- */
+.tvgr-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--nx-gap);
+  padding: var(--space-10, 2.5rem) var(--nx-pad);
+  text-align: center;
+  color: var(--nx-tx-2);
+  border: 1px dashed var(--nx-ln-3);
+}
+.tvgr-empty-icon { font-size: var(--text-xl, 1.375rem); color: var(--nx-tx-3); }
+.tvgr-empty h4 {
+  margin: 0;
+  font-family: var(--font-display, sans-serif);
+  font-size: var(--text-lg, 1.0625rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.tvgr-empty p { margin: 0; max-width: 46ch; font-size: var(--nx-fs-base); line-height: 1.55; }
+
+/* ---------- Busca ---------- */
+.tvgr-search-wrap { position: relative; margin-bottom: var(--nx-pad); }
+.tvgr-search-wrap i {
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--nx-tx-3);
+  font-size: var(--nx-fs-micro);
+  pointer-events: none;
+}
+.tvgr-search {
+  width: 100%;
+  height: var(--nx-h);
+  padding: 0 7px 0 24px;
+  border: 1px solid var(--nx-ln);
+  border-radius: 0;
+  background: var(--nx-panel-2);
+  color: var(--nx-tx);
+  font: inherit;
+  font-size: var(--nx-fs-base);
+}
+.tvgr-search:focus { outline: none; border-color: var(--nx-a); }
+
+/* ---------- Cartão do colaborador ---------- */
+.tvgr-user-card {
+  border: 1px solid var(--nx-ln);
+  border-left: 3px solid transparent;
+  margin-bottom: -1px;          /* fios colados: uma linha entre dois cartões */
+}
+.tvgr-user-card.is-open { border-left-color: var(--nx-a); position: relative; z-index: 1; }
+.tvgr-user-hd {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  padding: var(--nx-gap) var(--nx-pad);
+  cursor: pointer;
+  user-select: none;
+}
+.tvgr-user-hd:hover { background: var(--nx-a-soft); }
+
+/* Iniciais num quadrado de fio, não num disco em degradê: o módulo não
+   tem raio nem gradiente em lugar nenhum. */
+.tvgr-avatar {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--nx-ln-3);
+  background: var(--nx-panel);
+  color: var(--nx-a);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--nx-fs-micro);
+  font-weight: 600;
+}
+.tvgr-user-info { flex: 1 1 auto; min-width: 0; }
+.tvgr-user-name {
+  font-size: var(--nx-fs-base);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tvgr-user-meta {
+  margin-top: 1px;
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tvgr-chip-group { display: flex; flex-wrap: wrap; gap: 3px; max-width: 340px; justify-content: flex-end; }
+.tvgr-chip {
+  padding: 1px 6px;
+  border: 1px solid var(--nx-ln-3);
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: var(--nx-tx-2);
+}
+.tvgr-chip-blue { border-color: var(--nx-a); color: var(--nx-a); }
+.tvgr-chip-muted { color: var(--nx-tx-3); }
+
+.tvgr-expand-icon {
+  flex-shrink: 0;
+  color: var(--nx-tx-3);
+  font-size: var(--nx-fs-micro);
+  transition: transform var(--nx-transicao);
+}
+.tvgr-user-card.is-open .tvgr-expand-icon { transform: rotate(180deg); }
+
+/* ---------- Editor de plantas do colaborador ---------- */
+.tvgr-editor {
+  display: none;
+  border-top: 1px solid var(--nx-ln);
+  padding: var(--nx-pad);
+  background: var(--nx-panel);
+}
+.tvgr-user-card.is-open .tvgr-editor { display: block; }
+.tvgr-editor-section-label {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  margin-bottom: var(--nx-gap);
+  font-size: var(--nx-fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+  font-weight: 600;
+}
+.tvgr-plant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 2px;
+  margin-bottom: var(--nx-pad);
+}
+.tvgr-plant-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nx-gap);
+  padding: 5px 7px;
+  border: 1px solid var(--nx-ln);
+  background: var(--nx-panel-2);
+  cursor: pointer;
+}
+.tvgr-plant-check:has(input:checked) { border-color: var(--nx-a); background: var(--nx-a-soft); }
+.tvgr-plant-check input[type="checkbox"] { margin-top: 2px; accent-color: var(--nx-a); flex-shrink: 0; }
+.tvgr-plant-check-name { font-size: var(--nx-fs-base); font-weight: 600; line-height: 1.25; }
+.tvgr-plant-check-loc {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 1px;
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-3);
+}
+
+.tvgr-editor-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--nx-gap); }
+.tvgr-feedback {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--nx-fs-micro);
+  font-weight: 600;
+}
+.tvgr-feedback.ok { display: flex; color: var(--nx-st-up); }
+.tvgr-feedback.err { display: flex; color: var(--nx-st-down); }
+
+/* O aviso passageiro da tela. Superfície SEMPRE escura com texto claro
+   por cima seria a exceção da regra 33; aqui ele usa a superfície do
+   módulo e um fio de acento, e por isso acompanha os dois temas. */
+#tvgrToast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-6, 1.5rem);
+  z-index: 9999;
+  transform: translateX(-50%) translateY(6px);
+  padding: 7px var(--space-4, 1rem);
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  border-left: 3px solid var(--nx-a);
+  box-shadow: var(--shadow-lg, 0 18px 36px -10px rgba(16, 20, 32, 0.14));
+  color: var(--nx-tx);
+  font-size: var(--nx-fs-base);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--nx-transicao), transform var(--nx-transicao);
+}
+#tvgrToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Os botões do sistema (`.btn-primary`, `.btn`, `.btn-danger`) são os
+   que o JS injeta no cartão novo; dentro da tela eles seguem a altura e
+   a aresta do módulo, sem mudar nada fora dela. */
+.tvgr-page :is(.btn, .btn-sm, .btn-primary, .btn-danger) {
+  height: var(--nx-h);
+  min-height: var(--nx-h);
+  padding: 0 9px;
+  border-radius: 0;
+  font-size: var(--nx-fs-base);
+  letter-spacing: 0;
+}
+
+@media (max-width: 760px) {
+  .tvgr-kpi-grid { grid-template-columns: 1fr; }
+  .tvgr-kpi { border-left: 0; border-bottom: 1px solid var(--nx-ln-2); }
+  .tvgr-add-row { grid-template-columns: 1fr; }
+  .tvgr-chip-group { display: none; }
+}
+
+
+/* =========================================================
+   15. Visualizador de planta (`.vw-*`) na linguagem da prancha
+   =========================================================
+   371 linhas de `<style>` saíram do template para cá. A tela é a
+   irmã de leitura da bancada — mesma prancha, sem as ferramentas de
+   edição —, então ela ganha o MESMO vocabulário: aresta reta, fio de
+   1px, rótulo micro em caixa-alta e número monoespaçado.
+
+   O que NÃO mudou: os nomes de classe e os ids. O canvas e o drawer
+   são montados por ~1.200 linhas de JS no próprio template, que
+   procuram `.vw-sb-item`, `.vw-status-badge.up`, `#vwCanvas` — trocar
+   um nome aqui quebraria a tela em silêncio.
+   ========================================================= */
+:where(.plt-vw-page) {
+  --vw-brand: var(--nx-a);
+  --vw-muted: var(--nx-tx-2);
+  --vw-bg: var(--nx-panel-2);
+  --vw-border: var(--nx-ln);
+}
+
+.plt-vw-page,
+.plt-vw-page * { box-sizing: border-box; min-width: 0; }
+
+.plt-vw-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 120px);
+  gap: var(--nx-gap);
+  color: var(--nx-tx);
+  font-size: var(--nx-fs-base);
+}
+
+.plt-vw-page :is(button, input, select, a):focus-visible {
+  outline: 2px solid var(--nx-a);
+  outline-offset: 1px;
+}
+
+/* ---------- Fileira de indicadores ---------- */
+.vw-kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--nx-ln);
+  background: var(--nx-panel-2);
+}
+.vw-kpi-card {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  padding: var(--nx-gap) var(--nx-pad);
+  border-left: 1px solid var(--nx-ln-2);
+  border-top: 3px solid var(--vw-tom, transparent);
+}
+.vw-kpi-card:first-child { border-left: 0; }
+.vw-kpi-up { --vw-tom: var(--nx-st-up); }
+.vw-kpi-warn { --vw-tom: var(--nx-st-warn); }
+.vw-kpi-down { --vw-tom: var(--nx-st-down); }
+.vw-kpi-none { --vw-tom: var(--nx-st-none); }
+.vw-kpi-paused { --vw-tom: var(--nx-radio); }
+/* Sem selo tingido atrás do ícone: cinco deles em fila viram uma coluna
+   de cor competindo com o número, que é o que se lê. */
+.vw-kpi-icon {
+  width: 16px;
+  flex: 0 0 16px;
+  display: grid;
+  place-items: center;
+  font-size: var(--nx-fs-base);
+  color: var(--vw-tom, var(--nx-tx-3));
+  background: none;
+}
+.vw-kpi-value {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xl, 1.375rem);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--vw-tom, var(--nx-tx));
+}
+.vw-kpi-label {
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+}
+
+/* ---------- Barra de ferramentas ---------- */
+.vw-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  padding: 4px var(--nx-gap);
+  background: var(--nx-panel);
+  border: 1px solid var(--nx-ln);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.vw-tb-btn {
+  height: var(--nx-h);
+  padding: 0 9px;
+  border: 1px solid var(--nx-ln);
+  border-radius: 0;
+  background: var(--nx-panel-2);
+  color: var(--nx-tx-2);
+  font: inherit;
+  font-size: var(--nx-fs-base);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--nx-transicao), color var(--nx-transicao);
+}
+.vw-tb-btn:hover { background: var(--nx-panel); color: var(--nx-tx); }
+.vw-tb-btn.active {
+  background: var(--nx-a);
+  border-color: var(--nx-a);
+  color: var(--text-inverted, #fff);
+}
+.vw-tb-sep { width: 1px; height: 16px; background: var(--nx-ln); flex-shrink: 0; }
+.vw-tb-zoom {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nx-fs-base);
+  min-width: 42px;
+  text-align: center;
+  color: var(--nx-tx-2);
+}
+.vw-tb-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--nx-ln-3);
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nx-tx-2);
+  white-space: nowrap;
+}
+.vw-tb-badge.loading { border-color: var(--nx-a); color: var(--nx-a); }
+.vw-tb-badge.ok { border-color: var(--nx-st-up); color: var(--nx-st-up); }
+.vw-tb-badge.err { border-color: var(--nx-st-down); color: var(--nx-st-down); }
+
+/* ---------- Área principal ---------- */
+.vw-main { flex: 1 1 auto; display: flex; gap: var(--nx-gap); min-height: 0; }
+
+.vw-canvas-section { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.vw-canvas-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  background: var(--nx-canvas);
+  border: 1px solid var(--nx-ln);
+  overflow: hidden;
+  /* A mesma malha da bancada: as duas telas desenham a mesma coisa e
+     têm de parecer a mesma prancha. */
+  background-image:
+    linear-gradient(to right, var(--nx-ln-2) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--nx-ln-2) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.plt-vw-page #vwCanvas { display: block; width: 100%; height: 100%; }
+
+.vw-legend {
+  position: absolute;
+  left: var(--nx-pad);
+  bottom: var(--nx-pad);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--nx-pad);
+  padding: 5px var(--nx-pad);
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln);
+}
+.vw-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nx-tx-2);
+}
+.vw-legend-dot { width: 9px; height: 9px; border-radius: 0; flex: 0 0 9px; }
+
+/* ---------- Lista lateral ---------- */
+.vw-sidebar {
+  width: clamp(220px, 22vw, 300px);
+  flex-shrink: 0;
+  background: var(--nx-panel);
+  border: 1px solid var(--nx-ln);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width var(--nx-transicao), opacity var(--nx-transicao);
+}
+.vw-sidebar.collapsed { width: 0; opacity: 0; pointer-events: none; }
+.vw-sb-header {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  min-height: var(--nx-h);
+  padding: 0 var(--nx-pad);
+  border-bottom: 1px solid var(--nx-ln);
+  flex-shrink: 0;
+  font-size: var(--nx-fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--nx-tx-3);
+}
+.vw-sb-header i { color: var(--nx-a); }
+.vw-sb-body { flex: 1 1 auto; overflow-y: auto; }
+.vw-sb-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  padding: 4px var(--nx-pad);
+  border-bottom: 1px solid var(--nx-ln-2);
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--nx-tx-3);
+  cursor: pointer;
+  user-select: none;
+}
+.vw-sb-group-header:hover { background: var(--nx-a-soft); }
+.vw-sb-group-dot { width: 8px; height: 8px; flex: 0 0 8px; }
+.vw-sb-group-count {
+  margin-left: auto;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
+  border: 1px solid var(--nx-ln-2);
+  letter-spacing: 0;
+}
+.vw-sb-group-items.hidden { display: none; }
+.vw-sb-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nx-gap);
+  padding: 4px var(--nx-pad) 4px var(--space-5, 1.25rem);
+  border-bottom: 1px solid var(--nx-ln-2);
+  font-size: var(--nx-fs-base);
+  color: var(--nx-tx);
+  cursor: pointer;
+}
+.vw-sb-item:hover { background: var(--nx-a-soft); }
+.vw-sb-item.active { background: var(--nx-a-soft); box-shadow: inset 3px 0 0 var(--nx-a); }
+.vw-sb-item-emoji { flex-shrink: 0; padding-top: 1px; }
+.vw-sb-item-name { flex: 1 1 auto; min-width: 0; line-height: 1.35; word-break: break-word; }
+.vw-sb-item-dot { width: 7px; height: 7px; flex: 0 0 7px; margin-top: 5px; }
+
+.vw-prtg-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nx-gap);
+  padding: var(--nx-gap) var(--nx-pad);
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln);
+  border-left: 3px solid var(--nx-st-warn);
+  font-size: var(--nx-fs-base);
+  color: var(--nx-tx-2);
+  flex-shrink: 0;
+}
+
+/* ---------- Gaveta de detalhe ---------- */
+.vw-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: color-mix(in srgb, var(--text-primary, #0f1218) 40%, transparent);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--nx-transicao);
+}
+.vw-drawer-overlay.open { opacity: 1; visibility: visible; }
+.vw-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 360px;
+  max-width: 100%;
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--nx-panel-2);
+  border-left: 1px solid var(--nx-ln-3);
+  transform: translateX(100%);
+  transition: transform 200ms var(--ease-apple, cubic-bezier(.32, .72, 0, 1));
+}
+.vw-drawer.open { transform: translateX(0); }
+
+.vw-drw-header {
+  padding: var(--nx-pad);
+  border-bottom: 1px solid var(--nx-ln);
+  background: var(--nx-panel);
+  flex-shrink: 0;
+}
+.vw-drw-title-row { display: flex; align-items: center; gap: var(--nx-gap); }
+.vw-drw-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--nx-ln-2);
+  background: var(--nx-panel-2);
+  font-size: var(--nx-fs-cell);
+}
+.vw-drw-name {
+  margin: 0 0 1px;
+  font-size: var(--nx-fs-cell);
+  font-weight: 600;
+  line-height: 1.2;
+}
+.vw-drw-type { font-size: var(--nx-fs-micro); letter-spacing: 0.1em; text-transform: uppercase; color: var(--nx-tx-3); }
+.vw-drw-close {
+  margin-left: auto;
+  width: var(--nx-h-sm);
+  height: var(--nx-h-sm);
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--nx-ln);
+  border-radius: 0;
+  background: transparent;
+  color: var(--nx-tx-2);
+  font-size: var(--nx-fs-base);
+  cursor: pointer;
+}
+.vw-drw-close:hover { background: var(--nx-a-soft); color: var(--nx-a); }
+
+.vw-drw-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--nx-pad);
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-pad);
+}
+.vw-drw-sec-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 var(--nx-gap);
+  font-size: var(--nx-fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--nx-tx-3);
+}
+.vw-drw-sec-title i { color: var(--nx-a); }
+
+.vw-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: var(--nx-gap);
+  padding: 2px 8px;
+  border: 1px solid var(--vw-tom, var(--nx-ln-3));
+  color: var(--vw-tom, var(--nx-tx-2));
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.vw-status-badge.up { --vw-tom: var(--nx-st-up); }
+.vw-status-badge.warn { --vw-tom: var(--nx-st-warn); }
+.vw-status-badge.down { --vw-tom: var(--nx-st-down); }
+.vw-status-badge.none { --vw-tom: var(--nx-st-none); }
+.vw-status-badge.paused_dep { --vw-tom: var(--nx-radio); }
+
+.vw-detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nx-gap);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--nx-ln-2);
+}
+.vw-detail-row:last-child { border-bottom: 0; }
+.vw-detail-key {
+  min-width: 92px;
+  padding-top: 1px;
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+}
+.vw-detail-val { flex: 1 1 auto; font-size: var(--nx-fs-base); overflow-wrap: anywhere; }
+
+.vw-obs-box {
+  padding: var(--nx-gap) var(--nx-pad);
+  background: var(--nx-panel);
+  border: 1px solid var(--nx-ln-2);
+  font-size: var(--nx-fs-base);
+  line-height: 1.5;
+}
+.vw-drw-link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: var(--nx-h);
+  padding: 0 9px;
+  border: 1px solid var(--nx-ln);
+  background: var(--nx-panel-2);
+  color: var(--nx-a);
+  font-size: var(--nx-fs-base);
+  text-decoration: none;
+}
+.vw-drw-link:hover { background: var(--nx-a-soft); }
+
+.vw-cn-list { display: flex; flex-direction: column; gap: 2px; }
+.vw-cn-item {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  padding: 4px 7px;
+  border: 1px solid var(--nx-ln-2);
+  background: var(--nx-panel);
+  font-size: var(--nx-fs-base);
+}
+.vw-cn-item:hover { background: var(--nx-a-soft); border-color: var(--nx-a); }
+.vw-cn-badge {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.vw-cn-arrow { flex-shrink: 0; color: var(--nx-tx-3); }
+.vw-cn-endpoint {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 116px;
+  font-size: var(--nx-fs-micro);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Aviso passageiro ---------- */
+.vw-toast-container {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-10, 2.5rem);
+  z-index: 9999;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--nx-gap);
+  pointer-events: none;
+}
+.vw-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  max-width: 360px;
+  padding: 7px var(--nx-pad);
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  border-left: 3px solid var(--vw-tom, var(--nx-a));
+  box-shadow: var(--shadow-lg, 0 18px 36px -10px rgba(16, 20, 32, 0.14));
+  color: var(--nx-tx);
+  font-size: var(--nx-fs-base);
+  white-space: nowrap;
+  pointer-events: all;
+  animation: vwToastIn 200ms var(--ease-apple, ease) both;
+}
+.vw-toast.up { --vw-tom: var(--nx-st-up); }
+.vw-toast.warn { --vw-tom: var(--nx-st-warn); }
+.vw-toast.down { --vw-tom: var(--nx-st-down); }
+.vw-toast.paused { --vw-tom: var(--nx-radio); }
+.vw-toast.info { --vw-tom: var(--nx-a); }
+@keyframes vwToastIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vw-toast { animation: none; }
+}
+
+/* ---------- Minimapa ---------- */
+.vw-minimap {
+  position: absolute;
+  right: var(--nx-pad);
+  bottom: var(--nx-pad);
+  z-index: 12;
+  width: 200px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  overflow: hidden;
+}
+.vw-minimap.collapsed { width: auto; }
+.vw-minimap.collapsed .vw-minimap-cv { display: none; }
+.vw-minimap-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border-bottom: 1px solid var(--nx-ln-2);
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--nx-tx-3);
+  user-select: none;
+}
+.vw-minimap.collapsed .vw-minimap-head { border-bottom: 0; }
+.vw-minimap-head i.vw-mm-glyph { color: var(--nx-a); }
+.vw-minimap-head .vw-mm-count {
+  margin-left: auto;
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.vw-minimap-toggle {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--nx-tx-3);
+  font-size: var(--nx-fs-micro);
+  cursor: pointer;
+}
+.vw-minimap-toggle:hover { background: var(--nx-a-soft); color: var(--nx-a); }
+.vw-minimap-cv { position: relative; line-height: 0; }
+.plt-vw-page #vwMiniMap { display: block; width: 200px; height: 132px; cursor: pointer; }
+
+/* ---------- Telas estreitas ---------- */
+@media (max-width: 900px) {
+  .plt-vw-page { height: calc(100dvh - 110px); }
+  .vw-kpi-bar { grid-template-columns: repeat(3, 1fr); }
+  .vw-tb-label { display: none; }
+}
+@media (max-width: 680px) { .vw-minimap { display: none; } }
+@media (max-width: 559px) {
+  .plt-vw-page { height: calc(100dvh - 96px); }
+  .vw-kpi-bar { grid-template-columns: repeat(2, 1fr); }
+  /* A lista lateral some no telefone porque o drawer entrega a MESMA
+     informação ao tocar no elemento — não é conteúdo escondido sem
+     substituto (regra 24). */
+  .vw-sidebar { display: none !important; }
+  .vw-tb-sep, .vw-tb-badge { display: none; }
+  .vw-drawer {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: 88dvh;
+    border-left: 0;
+    border-top: 1px solid var(--nx-ln-3);
+    transform: translateY(100%);
+  }
+  .vw-drawer.open { transform: translateY(0); }
+  .vw-drw-handle { display: flex; justify-content: center; padding: 8px 0 2px; }
+  .vw-drw-handle-bar { width: 36px; height: 3px; background: var(--nx-ln-3); }
+}
+@media (min-width: 560px) { .vw-drw-handle { display: none; } }
+
+
+/* =========================================================
+   16. A PAREDE — as telas de TV (`.nx-parede`, `.tvl-*`)
+   =========================================================
+   O painel de TV é tela de parede: fica ligada num corredor escuro e
+   é lida a metros de distância. Por isso ela não alterna tema — é
+   sempre escura — e a escala tipográfica sobe um degrau.
+
+   A forma de conseguir isso SEM literal de cor é o `<body>` levar a
+   classe `theme-dark` do próprio sistema: `tokens.css` troca os ~60
+   tokens de uma vez, e os apelidos `--nx-*` resolvem no escuro.
+   Antes a tela mantinha a própria paleta escrita à mão (`#07080d`,
+   `rgba(255,255,255,.04)`, degradê azul no selo da marca, `#00cfff`),
+   que é a cópia que envelhece da regra 31 — e, de fato, ela estava na
+   paleta anterior à v5.
+
+   É o mesmo princípio do `@media print` da seção 11: um contexto onde
+   a superfície é fixa por natureza, servido por uma variante do mesmo
+   vocabulário, e não por um segundo design system.
+   ========================================================= */
+.nx-parede {
+  /* Lida de longe: cada degrau da escala sobe um nível. */
+  --nx-fs-micro: var(--text-2xs, 0.6875rem);
+  --nx-fs-label: var(--text-xs, 0.75rem);
+  --nx-fs-base:  var(--text-sm, 0.8125rem);
+  --nx-fs-cell:  var(--text-base, 0.875rem);
+  --nx-fs-head:  var(--text-2xl, 1.75rem);
+  --nx-h: 32px;
+  --nx-pad: 12px;
+  --nx-gap: 8px;
+}
+
+.nx-parede,
+.nx-parede * { box-sizing: border-box; min-width: 0; }
+
+/* A tela de parede não carrega o `base.css` (não tem menu nem topbar),
+   então o reset que ele faria vem daqui. */
+.nx-parede :is(h1, h2, h3, h4, p, figure, ul, ol) { margin: 0; padding: 0; }
+
+/* O modo TV de UMA planta ocupa a tela inteira e não rola: o desenho é
+   o conteúdo, e barra de rolagem numa parede é defeito. A lista de
+   plantas, ao contrário, rola — ela é uma lista. */
+.nx-parede:has(.tv-root) { height: 100%; overflow: hidden; }
+
+.nx-parede {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--nx-bg);
+  color: var(--nx-tx);
+  font-family: var(--font-sans, sans-serif);
+  font-size: var(--nx-fs-base);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+.nx-parede :is(button, a):focus-visible { outline: 2px solid var(--nx-a); outline-offset: 2px; }
+
+/* O fundo animado era dois degradês azuis fixos. Numa prancha isso é
+   ruído: ficou a malha, no mesmo passo da bancada. */
+.tvl-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--nx-ln-2) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--nx-ln-2) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.tvl-root { position: relative; z-index: 1; min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ---------- Cabeçalho ---------- */
+.tvl-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--nx-pad);
+  padding: 0 var(--nx-pad);
+  background: var(--nx-panel);
+  border-bottom: 1px solid var(--nx-ln);
+}
+.tvl-brand { display: flex; align-items: center; gap: var(--nx-gap); flex-shrink: 0; }
+.tvl-brand-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--nx-a);
+  background: transparent;
+  color: var(--nx-a);
+  font-size: var(--nx-fs-base);
+}
+.tvl-brand-name {
+  font-family: var(--font-display, sans-serif);
+  font-size: var(--nx-fs-cell);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+.tvl-brand-sub { font-size: var(--nx-fs-micro); letter-spacing: 0.1em; text-transform: uppercase; color: var(--nx-tx-3); }
+.tvl-sep { width: 1px; height: 20px; background: var(--nx-ln); flex-shrink: 0; }
+.tvl-live { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.tvl-live-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  background: var(--nx-st-up);
+  animation: tvlPulse 2s ease-in-out infinite;
+}
+@keyframes tvlPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .tvl-live-dot { animation: none; } }
+.tvl-live-lbl {
+  font-size: var(--nx-fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nx-st-up);
+}
+.tvl-spacer { flex: 1 1 auto; }
+.tvl-clock {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nx-fs-base);
+  color: var(--nx-tx-2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tvl-user-info { display: flex; align-items: center; gap: var(--nx-gap); flex-shrink: 0; }
+.tvl-avatar {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--nx-ln-3);
+  background: var(--nx-panel-2);
+  color: var(--nx-a);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--nx-fs-micro);
+  font-weight: 600;
+}
+.tvl-uname { font-size: var(--nx-fs-micro); color: var(--nx-tx-2); }
+.tvl-logout-btn {
+  height: var(--nx-h);
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--nx-ln);
+  border-radius: 0;
+  background: transparent;
+  color: var(--nx-tx-2);
+  font: inherit;
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--nx-transicao), color var(--nx-transicao), border-color var(--nx-transicao);
+}
+.tvl-logout-btn:hover { border-color: var(--nx-st-down); color: var(--nx-st-down); }
+
+/* ---------- Fileira de indicadores ---------- */
+.tvl-kpi-bar {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--nx-pad);
+  background: var(--nx-panel-2);
+  border-bottom: 1px solid var(--nx-ln);
+  overflow-x: auto;
+}
+.tvl-kpi-item {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  padding: 8px var(--nx-pad) 8px 0;
+  margin-right: var(--nx-pad);
+  border-right: 1px solid var(--nx-ln-2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tvl-kpi-item:last-of-type { border-right: 0; }
+.tvl-kpi-dot { width: 9px; height: 9px; flex: 0 0 9px; }
+.tvl-kpi-dot.up { background: var(--nx-st-up); }
+.tvl-kpi-dot.warn { background: var(--nx-st-warn); }
+.tvl-kpi-dot.down { background: var(--nx-st-down); }
+.tvl-kpi-dot.paused { background: var(--nx-radio); }
+.tvl-kpi-dot.none { background: var(--nx-st-none); }
+.tvl-kpi-val {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nx-fs-cell);
+  font-weight: 600;
+}
+.tvl-kpi-lbl { font-size: var(--nx-fs-micro); letter-spacing: 0.1em; text-transform: uppercase; color: var(--nx-tx-3); }
+.tvl-kpi-bar-refresh {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ---------- Conteúdo ---------- */
+.tvl-content { flex: 1 1 auto; width: 100%; max-width: 1280px; margin: 0 auto; padding: var(--nx-pad); }
+
+.tvl-section-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nx-gap);
+  margin-bottom: var(--nx-pad);
+}
+.tvl-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  margin: 0;
+  font-size: var(--nx-fs-label);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+}
+.tvl-count-badge {
+  padding: 1px 7px;
+  border: 1px solid var(--nx-ln-3);
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-2);
+}
+.tvl-nota { font-size: var(--nx-fs-micro); color: var(--nx-tx-3); display: flex; align-items: center; gap: 5px; }
+
+/* ---------- Cartão da planta ---------- */
+.tvl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--nx-pad); }
+
+.tvl-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: var(--nx-pad);
+  padding-top: calc(var(--nx-pad) + 3px);
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln);
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color var(--nx-transicao), background var(--nx-transicao);
+}
+.tvl-card:hover { border-color: var(--nx-a); background: var(--nx-panel); }
+
+.tvl-card-status-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--nx-ln);
+  transition: background 400ms;
+}
+.tvl-card-status-bar.st-up { background: var(--nx-st-up); }
+.tvl-card-status-bar.st-warning { background: var(--nx-st-warn); }
+.tvl-card-status-bar.st-down { background: var(--nx-st-down); }
+/* Misto: o pior estado manda na leitura, mas a faixa mostra que há
+   mais de um — por isso ela é partida, não uma cor média. */
+.tvl-card-status-bar.st-mixed {
+  background: linear-gradient(90deg, var(--nx-st-up) 45%, var(--nx-st-warn) 45%,
+              var(--nx-st-warn) 72%, var(--nx-st-down) 72%);
+}
+.tvl-card-status-bar.st-none { background: var(--nx-ln); }
+
+.tvl-card-header { display: flex; align-items: flex-start; gap: var(--nx-gap); margin-bottom: var(--nx-pad); }
+.tvl-card-icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--nx-ln-3);
+  background: var(--nx-panel);
+  color: var(--nx-a);
+  font-size: var(--nx-fs-cell);
+}
+.tvl-card-title { flex: 1 1 auto; min-width: 0; }
+.tvl-card-name {
+  margin-bottom: 2px;
+  font-size: var(--nx-fs-cell);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tvl-card-local { display: flex; align-items: center; gap: 4px; font-size: var(--nx-fs-micro); color: var(--nx-tx-3); }
+
+.tvl-card-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: var(--nx-pad); }
+.tvl-metric { padding: 6px 8px; background: var(--nx-panel); border: 1px solid var(--nx-ln-2); }
+.tvl-metric-val {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xl, 1.375rem);
+  font-weight: 600;
+  line-height: 1.1;
+}
+.tvl-metric-lbl { margin-top: 1px; font-size: var(--nx-fs-micro); letter-spacing: 0.1em; text-transform: uppercase; color: var(--nx-tx-3); }
+
+.tvl-card-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--nx-pad); min-height: 20px; }
+.tvl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--tvl-tom, var(--nx-ln-3));
+  color: var(--tvl-tom, var(--nx-tx-2));
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tvl-chip.up { --tvl-tom: var(--nx-st-up); }
+.tvl-chip.warn { --tvl-tom: var(--nx-st-warn); }
+.tvl-chip.down { --tvl-tom: var(--nx-st-down); }
+.tvl-chip.paused { --tvl-tom: var(--nx-radio); }
+.tvl-chip.none { --tvl-tom: var(--nx-st-none); }
+.tvl-chip-dot { width: 5px; height: 5px; background: currentColor; }
+
+.tvl-card-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding: 7px 10px;
+  border: 1px solid var(--nx-a);
+  color: var(--nx-a);
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.tvl-card:hover .tvl-card-cta { background: var(--nx-a-soft); }
+
+/* ---------- Carregando e vazio ---------- */
+.tvl-loading { padding: var(--nx-gap) 0; text-align: center; font-size: var(--nx-fs-micro); color: var(--nx-tx-3); }
+.tvl-spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border: 1.5px solid var(--nx-ln-3);
+  border-top-color: var(--nx-a);
+  border-radius: 50%;
+  animation: tvlSpin 800ms linear infinite;
+}
+@keyframes tvlSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tvl-spinner { animation: none; } }
+
+.tvl-empty {
+  padding: var(--space-12, 3rem) var(--nx-pad);
+  text-align: center;
+  color: var(--nx-tx-3);
+  font-size: var(--nx-fs-base);
+  border: 1px dashed var(--nx-ln-3);
+}
+.tvl-empty i { display: block; margin-bottom: var(--nx-pad); font-size: var(--text-2xl, 1.75rem); opacity: 0.5; }
+.tvl-empty strong {
+  display: block;
+  margin-bottom: 4px;
+  font-family: var(--font-display, sans-serif);
+  font-size: var(--text-lg, 1.0625rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--nx-tx-2);
+}
+
+.tvl-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--nx-gap);
+  padding: var(--nx-pad);
+  border-top: 1px solid var(--nx-ln);
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+}
+
+@media (max-width: 600px) {
+  .tvl-grid { grid-template-columns: 1fr; }
+  .tvl-brand-sub,
+  .tvl-clock,
+  .tvl-uname { display: none; }
+}
+
+
+/* =========================================================
+   17. Modo TV de uma planta (`.tv-*`) na linguagem da prancha
+   =========================================================
+   A moldura da tela de parede: cabeçalho, rodapé, legenda, dica de
+   órbita, tooltip e a pilha de alertas. O DESENHO continua sendo um
+   Canvas 2D/3D desenhado pelo próprio template — canvas não herda
+   CSS, e as cores dele são dado da planta, não da interface.
+
+   O tema claro/escuro era um bloco `.tv-root.light` com 20 regras de
+   cor escritas à mão, paralelo ao escuro: duas paletas para manter em
+   sincronia. Agora o botão de tema troca a classe `theme-dark` no
+   `<body>` — a MESMA do sistema —, os ~60 tokens viram de uma vez e
+   este bloco deixou de existir.
+   ========================================================= */
+.tv-root {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  background: var(--nx-bg);
+  color: var(--nx-tx);
+}
+
+/* ---------- Cabeçalho ---------- */
+.tv-header {
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  padding: 0 var(--nx-pad);
+  background: var(--nx-panel);
+  border-bottom: 1px solid var(--nx-ln);
+}
+.tv-live-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  background: var(--nx-st-down);
+  animation: tvPulse 1.6s ease-in-out infinite;
+}
+@keyframes tvPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .tv-live-dot { animation: none; } }
+.tv-live-label {
+  flex-shrink: 0;
+  font-size: var(--nx-fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nx-st-down);
+}
+.tv-sep,
+.tv-footer-sep { width: 1px; height: 18px; background: var(--nx-ln); flex-shrink: 0; }
+.tv-location {
+  flex-shrink: 0;
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+  white-space: nowrap;
+}
+.tv-name {
+  flex: 1 1 auto;
+  font-family: var(--font-display, sans-serif);
+  font-size: var(--nx-fs-cell);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tv-clock,
+.tv-leitura {
+  flex-shrink: 0;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nx-fs-base);
+  color: var(--nx-tx-2);
+  white-space: nowrap;
+  text-align: center;
+}
+.tv-leitura { min-width: 44px; }
+
+.tv-mode-group { display: flex; border: 1px solid var(--nx-ln); flex-shrink: 0; }
+.tv-mode-btn {
+  height: var(--nx-h);
+  padding: 0 11px;
+  border: 0;
+  border-left: 1px solid var(--nx-ln);
+  border-radius: 0;
+  background: transparent;
+  color: var(--nx-tx-2);
+  font: inherit;
+  font-size: var(--nx-fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: background var(--nx-transicao), color var(--nx-transicao);
+}
+.tv-mode-btn:first-child { border-left: 0; }
+.tv-mode-btn:hover { background: var(--nx-a-soft); color: var(--nx-tx); }
+.tv-mode-btn.is-2d { background: var(--nx-a); color: var(--text-inverted, #fff); }
+.tv-mode-btn.is-3d { background: var(--nx-radio); color: var(--text-inverted, #fff); }
+
+.tv-icon-btn {
+  width: var(--nx-h);
+  height: var(--nx-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--nx-ln);
+  border-radius: 0;
+  background: transparent;
+  color: var(--nx-tx-2);
+  font-size: var(--nx-fs-base);
+  cursor: pointer;
+  transition: background var(--nx-transicao), color var(--nx-transicao), border-color var(--nx-transicao);
+}
+.tv-icon-btn:hover { background: var(--nx-a-soft); color: var(--nx-a); border-color: var(--nx-a); }
+.tv-icon-btn.on { background: var(--nx-radio); border-color: var(--nx-radio); color: var(--text-inverted, #fff); }
+
+/* ---------- Prancha ---------- */
+.tv-canvas-wrap { position: relative; flex: 1 1 auto; overflow: hidden; }
+.tv-root #tvCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: default; }
+
+/* A vinheta existe para a borda da tela não competir com o desenho
+   num corredor escuro. Ela é literal de propósito: é sombra de
+   ambiente sobre o canvas, e não cor de interface. */
+.tv-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(ellipse 120% 90% at 50% 42%, transparent 58%, rgba(0, 0, 0, 0.3) 100%);
+  transition: opacity 300ms ease;
+}
+
+.tv-3d-badge {
+  position: absolute;
+  top: var(--nx-pad);
+  left: var(--nx-pad);
+  display: none;
+  padding: 2px 9px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-radio);
+  color: var(--nx-radio);
+  font-size: var(--nx-fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.tv-3d-badge.on { display: flex; align-items: center; gap: 5px; }
+
+.tv-orbit-hint {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-5, 1.25rem);
+  z-index: 15;
+  transform: translateX(-50%);
+  display: none;
+  padding: 4px 14px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  color: var(--nx-tx-2);
+  font-size: var(--nx-fs-micro);
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 500ms ease;
+}
+.tv-orbit-hint.visible { display: block; opacity: 1; }
+.tv-orbit-hint.fading { opacity: 0; }
+
+.tv-tooltip {
+  position: absolute;
+  z-index: 25;
+  display: none;
+  max-width: 230px;
+  padding: 7px 10px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  box-shadow: var(--shadow-lg, 0 18px 36px -10px rgba(0, 0, 0, 0.5));
+  color: var(--nx-tx-2);
+  font-size: var(--nx-fs-micro);
+  line-height: 1.5;
+  pointer-events: none;
+}
+.tv-tooltip .tt-name {
+  margin-bottom: 3px;
+  font-size: var(--nx-fs-base);
+  font-weight: 600;
+  color: var(--nx-tx);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tv-tooltip .tt-row { display: flex; align-items: center; gap: 5px; }
+.tv-tooltip .tt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--tt-tom, var(--nx-ln-3));
+  color: var(--tt-tom, var(--nx-tx-2));
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.tv-tooltip .tt-chip.up { --tt-tom: var(--nx-st-up); }
+.tv-tooltip .tt-chip.warning { --tt-tom: var(--nx-st-warn); }
+.tv-tooltip .tt-chip.down { --tt-tom: var(--nx-st-down); }
+.tv-tooltip .tt-chip.paused_dep { --tt-tom: var(--nx-radio); }
+.tv-tooltip .tt-chip.unknown,
+.tv-tooltip .tt-chip.none { --tt-tom: var(--nx-st-none); }
+.tv-tooltip .tt-dot { width: 5px; height: 5px; flex-shrink: 0; background: currentColor; display: inline-block; }
+.tv-tooltip .tt-host {
+  margin-top: 2px;
+  font-family: var(--font-mono, monospace);
+  color: var(--nx-tx-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tv-legend {
+  position: absolute;
+  right: var(--nx-pad);
+  bottom: var(--nx-pad);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--nx-gap);
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln);
+  pointer-events: none;
+}
+.tv-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nx-tx-2);
+}
+.tv-legend-dot { width: 9px; height: 9px; flex-shrink: 0; background: var(--tv-tom, var(--nx-st-none)); }
+.tv-legend-row[data-st="up"] { --tv-tom: var(--nx-st-up); }
+.tv-legend-row[data-st="warn"] { --tv-tom: var(--nx-st-warn); }
+.tv-legend-row[data-st="down"] { --tv-tom: var(--nx-st-down); }
+.tv-legend-row[data-st="paused"] { --tv-tom: var(--nx-radio); }
+.tv-legend-row[data-st="none"] { --tv-tom: var(--nx-st-none); }
+
+/* ---------- Pilha de alertas ---------- */
+.tv-alert-stack {
+  position: absolute;
+  top: var(--nx-pad);
+  right: var(--nx-pad);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--nx-gap);
+  max-width: 340px;
+  pointer-events: none;
+}
+.tv-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  padding: 7px 12px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  border-left: 3px solid var(--tv-tom, var(--nx-a));
+  box-shadow: var(--shadow-lg, 0 18px 36px -10px rgba(0, 0, 0, 0.5));
+  color: var(--nx-tx);
+  font-size: var(--nx-fs-base);
+  white-space: nowrap;
+  animation: tvAlertIn 320ms var(--ease-apple, ease) both;
+}
+.tv-alert.out { animation: tvAlertOut 400ms ease forwards; }
+.tv-alert i { flex-shrink: 0; font-size: var(--nx-fs-cell); color: var(--tv-tom, var(--nx-a)); }
+.tv-alert strong { display: block; font-weight: 600; font-size: var(--nx-fs-base); }
+.tv-alert span { display: block; font-size: var(--nx-fs-micro); color: var(--nx-tx-3); }
+.tv-alert.down { --tv-tom: var(--nx-st-down); }
+.tv-alert.warn { --tv-tom: var(--nx-st-warn); }
+.tv-alert.up { --tv-tom: var(--nx-st-up); }
+@keyframes tvAlertIn { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes tvAlertOut { to { opacity: 0; transform: translateX(28px); } }
+@media (prefers-reduced-motion: reduce) {
+  .tv-alert, .tv-alert.out { animation: none; }
+}
+
+/* ---------- Rodapé ---------- */
+.tv-footer {
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--nx-pad);
+  padding: 0 var(--nx-pad);
+  background: var(--nx-panel);
+  border-top: 1px solid var(--nx-ln);
+}
+.tv-kpi { display: flex; align-items: center; gap: 5px; font-size: var(--nx-fs-base); }
+.tv-kpi-dot { width: 8px; height: 8px; flex-shrink: 0; }
+.tv-kpi-dot.up { background: var(--nx-st-up); }
+.tv-kpi-dot.warn { background: var(--nx-st-warn); }
+.tv-kpi-dot.down { background: var(--nx-st-down); }
+.tv-kpi-dot.paused { background: var(--nx-radio); }
+.tv-kpi-dot.none { background: var(--nx-st-none); }
+.tv-kpi-count {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--nx-tx);
+}
+.tv-kpi-label { font-size: var(--nx-fs-micro); letter-spacing: 0.1em; text-transform: uppercase; color: var(--nx-tx-3); }
+.tv-ref {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-3);
+  white-space: nowrap;
+}
+
+/* Anel de saúde: o único elemento redondo que fica, porque ele É um
+   gráfico de proporção — o `conic-gradient` é o dado, não enfeite. O
+   ângulo verde chega por `--tv-saude` do JS. */
+.tv-health { display: flex; align-items: center; gap: var(--nx-gap); }
+.tv-health-ring {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--nx-st-up) var(--tv-saude, 0deg), var(--nx-ln) 0deg);
+  transition: background 500ms ease;
+}
+.tv-health-ring::after {
+  content: "";
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--nx-panel);
+}
+.tv-health-txt { display: flex; flex-direction: column; line-height: 1.1; }
+.tv-health-txt b {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nx-fs-base);
+  font-weight: 600;
+}
+.tv-health-txt small {
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+}
+
+/* =========================================================
+   18. FACEPLATE — o switch visto de frente, porta por porta
+   ========================================================= */
+/* A régua de portas da seção 7 já punha par embaixo de ímpar. O que
+   faltava era o CHASSI: o vão de metal a cada seis colunas, o número
+   impresso acima e abaixo da porta, a gaiola de SFP destacada à
+   direita. Não é enfeite — é por esses três sinais que o técnico
+   acha a porta 34 num painel de 48 sem contar com o dedo, e é o que
+   faz a tela bater com a etiqueta que ele está olhando no rack.
+
+   Medida da porta: 22×18px no corpo, 26px de coluna com o número.
+   Vem do painel real — a porta RJ45 tem proporção mais larga que
+   alta, e um quadrado perfeito lê como botão, não como porta. */
+.nx-face {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-gap);
+}
+
+.nx-face-chassi {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 8px;
+  background: var(--nx-panel);
+  border: 1px solid var(--nx-ln-3);
+  /* O chassi é a única superfície do módulo com um fio interno: ele
+     é o que separa "o metal do equipamento" do painel da tela. */
+  box-shadow: inset 0 0 0 1px var(--nx-ln-2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.nx-face-blocos {
+  display: flex;
+  align-items: flex-start;
+  /* O vão entre blocos é o vão do metal. 11px é o que separa dois
+     grupos de doze num Catalyst sem o painel parecer frouxo. */
+  gap: 11px;
+  flex: 0 0 auto;
+}
+
+.nx-face-bloco {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.nx-face-cols {
+  display: flex;
+  gap: 2px;
+}
+
+.nx-face-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+}
+
+/* Rótulo do bloco: "1–12". É o que a serigrafia do equipamento tem. */
+.nx-face-rot {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.08em;
+  color: var(--nx-tx-3);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.nx-face-porta {
+  position: relative;
+  width: 22px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--nx-ln-3);
+  background: var(--nx-panel-2);
+  color: var(--nx-tx-2);
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nx-fs-micro);
+  line-height: 1;
+  cursor: pointer;
+}
+/* O vazio de uma coluna ímpar sem par (painel de número ímpar de
+   portas) precisa ocupar lugar — sem ele a coluna seguinte sobe e o
+   painel deixa de bater com o equipamento. */
+.nx-face-vago {
+  width: 22px;
+  height: 18px;
+  border: 1px dashed var(--nx-ln-2);
+  background: transparent;
+}
+
+.nx-face-porta:hover {
+  border-color: var(--nx-a);
+  z-index: 3;
+}
+.nx-face-porta.is-sel {
+  outline: 2px solid var(--nx-a);
+  outline-offset: 1px;
+  z-index: 4;
+}
+/* Identificação: a porta pisca quando se pede "mostre onde ela está".
+   Dois ciclos e para — piscar sem fim viraria ruído na tela de quem
+   só quer ler o painel. */
+.nx-face-porta.is-piscando { animation: nx-piscar 520ms steps(1) 4; }
+@keyframes nx-piscar {
+  0%, 49%  { box-shadow: 0 0 0 3px var(--nx-a-ring); }
+  50%, 99% { box-shadow: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nx-face-porta.is-piscando { animation: none; box-shadow: 0 0 0 3px var(--nx-a-ring); }
+}
+
+.nx-face-porta[data-st="ativa"] {
+  background: var(--nx-p-ativa);
+  border-color: var(--nx-p-ativa);
+  color: var(--text-inverted, #fff);
+}
+.nx-face-porta[data-st="reservada"] {
+  background: var(--nx-p-reservada);
+  border-color: var(--nx-p-reservada);
+  color: var(--text-inverted, #fff);
+}
+.nx-face-porta[data-st="defeito"] {
+  background: var(--nx-p-defeito);
+  border-color: var(--nx-p-defeito);
+  color: var(--text-inverted, #fff);
+}
+.nx-face-porta[data-st="desligada"] {
+  background: var(--nx-ln);
+  color: var(--nx-tx-3);
+}
+.nx-face-porta[data-st="desligada"]::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-top: 1px solid var(--nx-tx-3);
+  transform: rotate(-30deg);
+}
+
+/* ── Os dois sinais que a cor sozinha não dá ──────────────────────
+   (a) CABO: um dente na borda de baixo. Porta "ativa" é situação
+   administrativa; cabo é fato. As duas coisas divergem — é
+   exatamente o que o aviso `porta_ativa_sem_destino` aponta —, e sem
+   o dente o painel mostraria as duas como a mesma coisa.
+   (b) PoE: ponto no canto. */
+.nx-face-porta[data-cabo="1"]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  width: 8px;
+  height: 2px;
+  margin-left: -4px;
+  background: var(--nx-tx);
+}
+.nx-face-porta[data-poe="1"] {
+  box-shadow: inset 0 -3px 0 -1px var(--nx-stack);
+}
+
+/* Gaiola de SFP: separada por um fio, porta mais alta, aresta de
+   fibra marcada. No equipamento ela é um módulo à parte, e desenhá-la
+   em linha com o cobre fez mais de um técnico procurar uplink no
+   meio das portas de acesso. */
+.nx-face-cage {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding-left: 10px;
+  border-left: 1px solid var(--nx-ln-3);
+}
+.nx-face-cage .nx-face-cols { gap: 3px; }
+.nx-face-cage .nx-face-porta {
+  width: 26px;
+  height: 22px;
+  box-shadow: inset 0 2px 0 var(--nx-fibra);
+}
+.nx-face-cage .nx-face-porta[data-poe="1"] {
+  box-shadow: inset 0 2px 0 var(--nx-fibra), inset 0 -3px 0 -1px var(--nx-stack);
+}
+
+/* ── Régua segmentada: as cinco situações em proporção ────────────
+   A régua da seção 7 mostrava só ocupação (uma barra). Esta mostra a
+   COMPOSIÇÃO: dez portas livres e dez com defeito dão a mesma
+   "ocupação de 50%" e são problemas opostos. */
+.nx-face-reg {
+  display: flex;
+  height: 7px;
+  background: var(--nx-ln-2);
+  overflow: hidden;
+}
+.nx-face-reg > i {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  background: var(--nx-seg, var(--nx-tx-3));
+}
+.nx-face-reg > i[data-st="ativa"]     { --nx-seg: var(--nx-p-ativa); }
+.nx-face-reg > i[data-st="livre"]     { --nx-seg: var(--nx-ln); }
+.nx-face-reg > i[data-st="reservada"] { --nx-seg: var(--nx-p-reservada); }
+.nx-face-reg > i[data-st="defeito"]   { --nx-seg: var(--nx-p-defeito); }
+.nx-face-reg > i[data-st="desligada"] { --nx-seg: var(--nx-tx-3); }
+
+.nx-face-leg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--nx-pad);
+}
+.nx-face-leg > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--nx-fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nx-tx-3);
+}
+.nx-face-leg > span::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--nx-ln-3);
+  background: var(--nx-seg, transparent);
+}
+.nx-face-leg > span[data-st="ativa"]     { --nx-seg: var(--nx-p-ativa); }
+.nx-face-leg > span[data-st="livre"]     { --nx-seg: var(--nx-panel-2); }
+.nx-face-leg > span[data-st="reservada"] { --nx-seg: var(--nx-p-reservada); }
+.nx-face-leg > span[data-st="defeito"]   { --nx-seg: var(--nx-p-defeito); }
+.nx-face-leg > span[data-st="desligada"] { --nx-seg: var(--nx-ln); }
+
+/* Vizinhos: para onde os cabos deste equipamento vão. Clicar salta. */
+.nx-face-vizinho {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px var(--nx-gap);
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--nx-ln-2);
+  background: transparent;
+  color: var(--nx-tx);
+  font: inherit;
+  font-size: var(--nx-fs-base);
+  text-align: left;
+  cursor: pointer;
+}
+.nx-face-vizinho:hover { background: var(--nx-a-soft); }
+.nx-face-vizinho > b { font-weight: 600; }
+.nx-face-vizinho > span {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-3);
+}
+
+/* =========================================================
+   19. Painel miniatura DENTRO do nó da prancha
+   ========================================================= */
+/* "Aperto um elemento e vejo as portas livres e usadas de forma
+   visual" — o inspetor responde isso para UM equipamento. Esta
+   miniatura responde para TODOS ao mesmo tempo, sem clique: cada
+   porta é um bloco de 3px dentro da caixa do switch.
+
+   Ela não é clicável de propósito. Alvo de 3px não é alvo, e fingir
+   que é faria o clique cair na porta errada; quem quer a porta abre
+   o inspetor, onde ela tem 22px. Aqui se responde "sobra porta
+   naquele switch?" olhando o mapa de longe. */
+/* UMA fileira, sempre — e é por isso que as portas são proporcionais em
+   vez de ter largura fixa. Com quebra de linha, um switch de 48 portas
+   ficaria duas fileiras mais alto que um de 8, e a ALTURA do nó entra no
+   roteamento do cabo (`NO_H` é medido no primeiro nó e vale para todos):
+   caixas de alturas diferentes descolariam a ponta do fio da borda,
+   erro que só aparece em zoom alto. Dividir a largura disponível mantém
+   a altura igual para qualquer contagem de portas. */
+.nx-no-face {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 1px;
+  margin-top: 4px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.nx-no-face > i {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 6px;
+  background: var(--nx-pf, var(--nx-ln));
+}
+.nx-no-face > i[data-p="A"], .nx-no-face > i[data-p="a"] { --nx-pf: var(--nx-p-ativa); }
+.nx-no-face > i[data-p="L"], .nx-no-face > i[data-p="l"] { --nx-pf: var(--nx-ln); }
+.nx-no-face > i[data-p="R"], .nx-no-face > i[data-p="r"] { --nx-pf: var(--nx-p-reservada); }
+.nx-no-face > i[data-p="D"], .nx-no-face > i[data-p="d"] { --nx-pf: var(--nx-p-defeito); }
+.nx-no-face > i[data-p="X"], .nx-no-face > i[data-p="x"] { --nx-pf: var(--nx-tx-3); }
+/* SFP (minúscula no mapa compacto) fica mais estreita e alta: a
+   gaiola de fibra se distingue do cobre mesmo nesta escala. */
+.nx-no-face > i[data-sfp="1"] { width: 2px; height: 8px; margin-top: -1px; }
+
+.nx-prancha[data-paineis="0"] .nx-no-face { display: none; }
+
+/* Fio em DESTAQUE — o cabo da porta selecionada no inspetor. É a
+   "identificação" pedida: escolher a porta e ver o cabo dela acender
+   no mapa, com as duas pontas marcadas. */
+.nx-fio.is-destaque {
+  stroke-width: 4.5;
+  stroke-dasharray: none;
+  filter: drop-shadow(0 0 3px var(--nx-a-ring));
+}
+.nx-no.is-ponta {
+  border-color: var(--nx-a);
+  box-shadow: 0 0 0 3px var(--nx-a-ring);
+  z-index: 9;
+}
+
+/* =========================================================
+   20. Guias de alinhamento e comandos de arrumação
+   ========================================================= */
+/* Alinhar de olho num mapa com 90 caixas não funciona: dois nós
+   fora por 3px parecem alinhados em zoom 40% e desalinhados em 120%.
+   A guia aparece durante o arrasto quando a borda do nó encontra a
+   borda de outro, e é o que torna o alinhamento verificável. */
+.nx-guia {
+  position: absolute;
+  z-index: 18;
+  background: var(--nx-a);
+  pointer-events: none;
+  opacity: 0.75;
+}
+.nx-guia[data-eixo="x"] { width: 1px; }
+.nx-guia[data-eixo="y"] { height: 1px; }
+
+/* Distância medida entre duas seleções, durante o alinhamento. */
+.nx-cota {
+  position: absolute;
+  z-index: 19;
+  padding: 0 3px;
+  background: var(--nx-a);
+  color: var(--text-inverted, #fff);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--nx-fs-micro);
+  line-height: 1.5;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* =========================================================
+   21. PLANTA GEORREFERENCIADA — a rede sobre o mapa real
+   ========================================================= */
+/* Tela irmã da bancada (`front/rede/planta.html`), mesma casca
+   `.nx-app`: trilho, prancha, inspetor e barra de leitura. O que
+   muda é o que está sob o desenho — aqui é tile de satélite, servido
+   por `KQMapa.CAMADAS` (Architecture Rule 15).
+
+   O Leaflet traz folha própria e desenha com arredondamento, sombra
+   e botão de 30px. As regras abaixo o vestem na linguagem da prancha,
+   e TODAS nascem dentro de `.nx-geo` — uma regra `.leaflet-*` solta
+   mudaria também os mapas do Quiosque, que carregam a mesma biblioteca
+   em outra tela. */
+.nx-geo {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--nx-canvas);
+}
+.nx-geo .leaflet-container {
+  height: 100%;
+  background: var(--nx-canvas);
+  font-family: inherit;
+  font-size: var(--nx-fs-base);
+}
+.nx-geo .leaflet-bar,
+.nx-geo .leaflet-control-layers,
+.nx-geo .leaflet-popup-content-wrapper,
+.nx-geo .leaflet-popup-tip {
+  border-radius: 0;
+  box-shadow: none;
+  border: 1px solid var(--nx-ln-3);
+  background: var(--nx-panel-2);
+  color: var(--nx-tx);
+}
+.nx-geo .leaflet-bar a {
+  width: 30px;
+  height: 30px;
+  line-height: 30px;
+  border-radius: 0;
+  border-bottom: 1px solid var(--nx-ln-2);
+  background: var(--nx-panel-2);
+  color: var(--nx-tx);
+}
+.nx-geo .leaflet-bar a:hover { background: var(--nx-a-soft); color: var(--nx-a); }
+.nx-geo .leaflet-control-layers-toggle { width: 30px; height: 30px; }
+.nx-geo .leaflet-control-layers-expanded {
+  padding: var(--nx-gap);
+  font-size: var(--nx-fs-base);
+}
+.nx-geo .leaflet-control-attribution {
+  background: var(--nx-panel-2);
+  border-top: 1px solid var(--nx-ln-2);
+  border-left: 1px solid var(--nx-ln-2);
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-3);
+}
+.nx-geo .leaflet-control-attribution a { color: var(--nx-tx-2); }
+.nx-geo .leaflet-popup-content { margin: var(--nx-pad); font-size: var(--nx-fs-base); }
+.nx-geo .leaflet-popup-close-button { color: var(--nx-tx-3); }
+/* Desenhando rota: o cursor diz que o clique vira ponto do traçado. */
+.nx-geo[data-modo="rota"] .leaflet-container,
+.nx-geo[data-modo="pino"] .leaflet-container { cursor: crosshair; }
+
+/* ---------- Os avisos do KQMapa ----------
+   `montarCamadas` e `avisoNitidez` criam duas tarjas sobre o mapa:
+   `.kq-mapaviso` (provedor devolvendo a mesma imagem para todo lugar,
+   ou camada que não carrega) e `.kq-nitidez` (zoom acima da resolução
+   do satélite). Esta tela NÃO carrega a folha do Quiosque — ela veste
+   os selos de sinal da frota, que aqui não existem —, então as duas
+   chegariam sem estilo algum: texto cru sobre imagem de satélite, que
+   é ilegível justamente no aviso que a regra 15 existe para dar.
+   Vestidas aqui, no vocabulário da prancha, e ancoradas em `.nx-geo`
+   para não mudarem os mapas do Quiosque. */
+.nx-geo .kq-mapaviso,
+.nx-geo .kq-nitidez {
+  max-width: 300px;
+  padding: 7px 10px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  border-left: 3px solid var(--nx-st-warn);
+  font-family: inherit;
+  font-size: var(--nx-fs-base);
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--nx-tx);
+  box-shadow: var(--shadow-lg, 0 18px 36px -10px rgba(16, 20, 32, 0.14));
+}
+.nx-geo .kq-mapaviso i,
+.nx-geo .kq-nitidez i {
+  margin-right: 5px;
+  color: var(--nx-st-warn);
+}
+.nx-geo .kq-mapaviso a { color: var(--nx-a); }
+
+/* ---------- Pino de equipamento e de rack ----------
+   `divIcon` com HTML nosso: o marcador padrão do Leaflet é um
+   alfinete arredondado com sombra, que ao lado de uma prancha de
+   aresta reta lê como outro aplicativo. */
+.nx-geo-pino {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 5px 2px 3px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  border-left: 3px solid var(--nx-classe, var(--nx-tx-3));
+  font-size: var(--nx-fs-micro);
+  line-height: 1.25;
+  color: var(--nx-tx);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nx-geo-pino svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  color: var(--nx-classe, var(--nx-tx-2));
+  flex: 0 0 auto;
+}
+.nx-geo-pino > b { font-weight: 600; }
+.nx-geo-pino > i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  background: var(--nx-st-none);
+}
+.nx-geo-pino[data-st="up"] > i      { background: var(--nx-st-up); }
+.nx-geo-pino[data-st="down"] > i    { background: var(--nx-st-down); }
+.nx-geo-pino[data-st="warning"] > i,
+.nx-geo-pino[data-st="unusual"] > i { background: var(--nx-st-warn); }
+.nx-geo-pino.is-sel { outline: 2px solid var(--nx-a); outline-offset: 1px; }
+/* Posição herdada do rack: aresta tracejada diz que ninguém apontou
+   este equipamento no mapa — ele está onde o armário dele está. */
+.nx-geo-pino[data-herdada="1"] { border-style: dashed; }
+
+.nx-geo-rack {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0 5px;
+  align-items: center;
+  padding: 3px 6px;
+  background: var(--nx-panel-2);
+  border: 2px solid var(--nx-a);
+  font-size: var(--nx-fs-micro);
+  line-height: 1.2;
+  color: var(--nx-tx);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nx-geo-rack > b { font-weight: 600; }
+.nx-geo-rack > span {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono, monospace);
+  color: var(--nx-tx-3);
+}
+.nx-geo-rack.is-sel { outline: 2px solid var(--nx-a); outline-offset: 2px; }
+
+/* O container do Leaflet ocupa a prancha inteira. Estava como
+   `style="height:100%"` na marcação; sai de lá pelo mesmo motivo que o
+   resto (regra 33). */
+.nx-geo-mapa { height: 100%; }
+
+/* ---------- Alça de vértice do traçado ----------
+   `L.marker` com `divIcon` (e não `circleMarker`, que não arrasta). O
+   alvo tem 13px: menor que isso não se acerta com o mouse sobre uma
+   imagem de satélite, maior esconde o traçado que se está corrigindo. */
+.nx-geo-alca {
+  width: 13px;
+  height: 13px;
+  box-sizing: border-box;
+  border: 2px solid var(--nx-a);
+  background: var(--nx-panel-2);
+  cursor: grab;
+}
+.nx-geo-alca:hover { background: var(--nx-a); }
+
+/* ---------- Rótulo da rota sobre o traçado ---------- */
+.nx-geo .nx-rota-rot {
+  padding: 1px 5px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  border-radius: 0;
+  box-shadow: none;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx);
+  white-space: nowrap;
+}
+.nx-geo .nx-rota-rot::before { display: none; }
+
+/* ---------- Leitura de medida enquanto se desenha ----------
+   O número que faz esta tela valer: metros reais, atualizados a cada
+   ponto. Sem ele, "cabe em UTP?" só é respondido depois de gravar. */
+.nx-geo-medida {
+  position: absolute;
+  top: var(--nx-pad);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 14;
+  display: flex;
+  align-items: center;
+  gap: var(--nx-pad);
+  padding: 5px 10px;
+  background: var(--nx-panel-2);
+  border: 1px solid var(--nx-ln-3);
+  border-top: 2px solid var(--nx-a);
+  font-size: var(--nx-fs-base);
+  color: var(--nx-tx);
+  white-space: nowrap;
+}
+.nx-geo-medida[hidden] { display: none; }
+.nx-geo-medida .nx-num { font-size: var(--nx-fs-cell); font-weight: 600; }
+/* Passou dos 90 m em cobre: o número vira o alerta, no lugar onde a
+   pessoa já está olhando. */
+.nx-geo-medida[data-estouro="1"] { border-top-color: var(--nx-st-down); }
+.nx-geo-medida[data-estouro="1"] .nx-num { color: var(--nx-st-down); }
+.nx-geo-medida[data-estouro="limite"] { border-top-color: var(--nx-st-warn); }
+.nx-geo-medida[data-estouro="limite"] .nx-num { color: var(--nx-st-warn); }
+
+/* Linha do item na lista de rotas do trilho. */
+.nx-rota-item {
+  display: grid;
+  grid-template-columns: 3px 1fr auto;
+  gap: var(--nx-gap);
+  align-items: center;
+  width: 100%;
+  padding: 5px 7px;
+  border: 0;
+  border-bottom: 1px solid var(--nx-ln-2);
+  background: transparent;
+  color: var(--nx-tx);
+  font: inherit;
+  font-size: var(--nx-fs-base);
+  text-align: left;
+  cursor: pointer;
+}
+.nx-rota-item:hover { background: var(--nx-a-soft); }
+.nx-rota-item.is-sel { background: var(--nx-a-soft); box-shadow: inset 2px 0 0 var(--nx-a); }
+.nx-rota-item::before { content: ""; align-self: stretch; background: var(--nx-fam, var(--nx-tx-3)); }
+.nx-rota-item[data-fam="fibra"]    { --nx-fam: var(--nx-fibra); }
+.nx-rota-item[data-fam="utp"]      { --nx-fam: var(--nx-utp); }
+.nx-rota-item[data-fam="radio"]    { --nx-fam: var(--nx-radio); }
+.nx-rota-item[data-fam="eletrico"] { --nx-fam: var(--nx-stack); }
+.nx-rota-item[data-fam="coaxial"]  { --nx-fam: var(--nx-logico); }
+.nx-rota-item[data-fam="duto"]     { --nx-fam: var(--nx-tx-3); }
+.nx-rota-nome { font-weight: 600; line-height: 1.2; }
+.nx-rota-meta {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-3);
+}
+.nx-rota-m {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--nx-fs-base);
+  font-weight: 600;
+  color: var(--nx-tx-2);
+}
+.nx-rota-item[data-estouro="1"] .nx-rota-m { color: var(--nx-st-down); }
+
+/* =========================================================
+   22. ELEVAÇÃO DO RACK — o armário visto de frente
+   ========================================================= */
+/* A régua desce (como se olha o rack aberto) e o NÚMERO sobe (como a
+   etiqueta do fabricante está impressa). Inverter um dos dois faria a
+   tela discordar do ferro, e é um erro que só aparece quando alguém
+   vai parafusar o switch no U errado.
+
+   Altura de 17px por U: é o que deixa um rack de 42U caber na altura
+   de um modal sem rolagem, que é o que torna a vista útil para
+   responder "cabe o switch novo?" de uma olhada. */
+.nx-rack {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  border: 1px solid var(--nx-ln-3);
+  background: var(--nx-panel);
+}
+.nx-rack-num,
+.nx-rack-trilha {
+  display: grid;
+  grid-auto-rows: 17px;
+}
+.nx-rack-num {
+  border-right: 1px solid var(--nx-ln-3);
+  background: var(--nx-panel-2);
+}
+.nx-rack-num > i {
+  display: grid;
+  place-items: center;
+  border-bottom: 1px solid var(--nx-ln-2);
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nx-fs-micro);
+  font-style: normal;
+  color: var(--nx-tx-3);
+}
+/* A cada cinco U o número fica legível de longe: é como se conta o
+   rack em campo ("U20, mais três pra cima"). */
+.nx-rack-num > i[data-marco="1"] { color: var(--nx-tx); font-weight: 600; }
+
+.nx-rack-trilha {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr);
+}
+.nx-rack-vago {
+  border-bottom: 1px dashed var(--nx-ln-2);
+}
+.nx-rack-eq {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-gap);
+  min-width: 0;
+  padding: 0 7px;
+  margin: 1px;
+  border: 1px solid var(--nx-ln-3);
+  border-left: 3px solid var(--nx-classe, var(--nx-tx-3));
+  background: var(--nx-panel-2);
+  color: var(--nx-tx);
+  font: inherit;
+  font-size: var(--nx-fs-base);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+.nx-rack-eq:hover { border-color: var(--nx-a); }
+.nx-rack-eq.is-sel { outline: 2px solid var(--nx-a); outline-offset: -1px; }
+.nx-rack-eq svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  color: var(--nx-classe, var(--nx-tx-2));
+}
+.nx-rack-eq > b {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-rack-eq > span {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--nx-fs-micro);
+  color: var(--nx-tx-3);
+}
+
+.nx-rack-cab {
+  display: flex;
+  align-items: baseline;
+  gap: var(--nx-gap);
+  flex-wrap: wrap;
+}
+.nx-rack-cab .nx-num { font-size: var(--nx-fs-cell); font-weight: 600; }
+
+/* =========================================================
+   11. Impressão — a prancha vai para o papel
+   ========================================================= */
+/* Papel não tem tema nem token: este bloco é literal de propósito
+   (regra 33) e os testes excluem `@media print`. */
+@media print {
+  body:has(.nx-app) .main-shell,
+  body:has(.nx-app) .main-scroll { height: auto !important; overflow: visible !important; }
+  .sidebar, .topbar, .nx-top, .nx-trilho, .nx-status,
+  .nx-ferramentas, .nx-mini, .nx-modal, .nx-toast { display: none !important; }
+  .nx-app { height: auto; display: block; background: #fff; color: #000; }
+  .nx-prancha { overflow: visible; height: auto; background: #fff; background-image: none; }
+  .nx-no { background: #fff; border-color: #333; }
+  .nx-legenda { position: static; border-color: #333; }
+}

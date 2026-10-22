@@ -4,10 +4,13 @@ from .models import (
     Categoria, Subtipo, Localidade, Fornecedor, CentroCusto, Funcao,
     Item, Usuario, Locacao, Comentario, CicloManutencao, MovimentacaoItem,
     CheckListModelo, CheckListPergunta, Preventiva, PreventivaExecucao, PreventivaResposta,
+    PreventivaAreaResponsavel, PreventivaCicloMeta,
     Licenca, MovimentacaoLicenca, LicencaLote, LicencaOffice, ItemLote, LoteEstoque,
     PlantaProjeto, PerfilFornecedor, PerfilParceiroLicenca, OrdemManutencao, OrdemManutencaoEvento,
     LocacaoPeriodo, ItemColaborador, RegistroSeguranca, NovidadeSistema,
     TermoAssinatura,
+    RedeDispositivo, RedePorta, RedeRack, RedeRota, RedeTopologia,
+    RedeTopologiaHistorico,
 )
 
 # ---------------------------
@@ -312,6 +315,35 @@ class PreventivaAdmin(AuditAdminMixin):
     search_fields = ("equipamento__nome",)
     autocomplete_fields = ("equipamento", "checklist_modelo")
     list_select_related = ("equipamento", "checklist_modelo")
+
+
+# Metas por área e ciclo de 90 dias. O cadastro tem UI própria em
+# /preventiva/metas/configurar/ — o admin fica como porta de serviço
+# (correção pontual, conferência de auditoria), não como fluxo principal.
+@admin.register(PreventivaAreaResponsavel)
+class PreventivaAreaResponsavelAdmin(AuditAdminMixin):
+    list_display = ("area", "subtipo_label", "tecnico", "ativo")
+    list_filter = ("area", "ativo", "subtipo")
+    search_fields = ("tecnico__username", "tecnico__first_name", "tecnico__last_name")
+    autocomplete_fields = ("subtipo", "tecnico")
+    list_select_related = ("subtipo", "tecnico")
+
+    @admin.display(description="Subtipo", ordering="subtipo__nome")
+    def subtipo_label(self, obj):
+        return obj.subtipo.nome if obj.subtipo else "Todos (padrão da área)"
+
+
+@admin.register(PreventivaCicloMeta)
+class PreventivaCicloMetaAdmin(AuditAdminMixin):
+    list_display = ("subtipo", "data_inicio", "data_fim_col", "duracao_dias", "encerrado")
+    list_filter = ("subtipo", "encerrado")
+    date_hierarchy = "data_inicio"
+    autocomplete_fields = ("subtipo",)
+    list_select_related = ("subtipo",)
+
+    @admin.display(description="Fim do ciclo")
+    def data_fim_col(self, obj):
+        return obj.data_fim
 
 
 # Administração de Execuções e Respostas
@@ -621,3 +653,184 @@ class TermoAssinaturaAdmin(AuditAdminMixin):
         # Termo assinado é prova; apagar a linha destruiria o registro do ato
         # junto com o documento. Cancelar sessão pendente é o caminho (UI).
         return False
+
+
+# ---------------------------
+# Mapa de Rede (topologia + portas de switch)
+# ---------------------------
+# O admin aqui é rede de segurança e conferência em massa, não a interface de
+# trabalho — quem mapeia a rede usa a bancada (`/plantas/rede/`), onde o cabo
+# é gravado nos dois sentidos pelo service. Por isso o enlace NÃO é editável
+# em linha: `destino_porta` gravado à mão deixaria o grafo com uma perna só
+# (ver o comentário no bloco de models e `rede_topologia_service.conectar`).
+
+
+class RedePortaInline(admin.TabularInline):
+    model = RedePorta
+    fk_name = "dispositivo"
+    extra = 0
+    fields = ("numero", "rotulo", "tipo", "status", "velocidade", "poe", "vlan",
+              "meio", "destino_item", "descricao")
+    readonly_fields = ("destino_item",)
+    ordering = ("numero",)
+    autocomplete_fields = ()
+    show_change_link = True
+
+
+@admin.register(RedeDispositivo)
+class RedeDispositivoAdmin(AuditAdminMixin):
+    list_display = ("item", "papel", "ip_gerencia", "prtg_objid",
+                    "modelo_portas", "col_portas", "col_ocupacao", "col_onde")
+    list_filter = ("papel", "rack", "item__localidade", "item__area_operacional")
+    search_fields = ("item__nome", "item__numero_serie", "ip_gerencia", "modelo_portas")
+    autocomplete_fields = ("item", "rack")
+    inlines = [RedePortaInline]
+
+    def get_queryset(self, request):
+        from django.db.models import Count, Q
+        return (
+            super().get_queryset(request)
+            .select_related("item", "item__localidade", "rack")
+            .annotate(
+                n_portas=Count("portas", distinct=True),
+                n_ativas=Count("portas", filter=Q(portas__status="ativa"), distinct=True),
+            )
+        )
+
+    # As propriedades do model contam porta por linha; para a LISTA isso seria
+    # uma consulta por dispositivo. `annotate` resolve as duas colunas numa
+    # varredura só — a mesma razão pela qual o grafo não lê porta por nó.
+    def get_list_select_related(self, request):
+        return ("item", "item__localidade", "rack")
+
+    @admin.display(description="Portas (em uso / total)", ordering="-n_portas")
+    def col_portas(self, obj):
+        return f"{obj.n_ativas} / {obj.n_portas}"
+
+    @admin.display(description="Ocupação")
+    def col_ocupacao(self, obj):
+        if not obj.n_portas:
+            return "—"
+        return f"{round(obj.n_ativas * 100 / obj.n_portas)}%"
+
+    @admin.display(description="Onde está")
+    def col_onde(self, obj):
+        """Rack + U, ou a coordenada. É a coluna que responde onde o técnico
+        vai encontrar o ferro."""
+        if obj.rack_id:
+            return f"{obj.rack}{f' · U{obj.rack_u}' if obj.rack_u else ''}"
+        if obj.latitude is not None:
+            return f"{obj.latitude}, {obj.longitude}"
+        return "—"
+
+
+@admin.register(RedePorta)
+class RedePortaAdmin(AuditAdminMixin):
+    list_display = ("dispositivo", "numero", "rotulo", "tipo", "status",
+                    "velocidade", "poe", "vlan", "meio", "destino_item",
+                    "destino_porta", "rota")
+    list_filter = ("status", "tipo", "meio", "poe", "rota", "dispositivo__papel")
+    search_fields = ("rotulo", "vlan", "descricao",
+                     "dispositivo__item__nome", "destino_item__nome")
+    # Enlace é gravado pelo service, nos dois sentidos. Editar a FK aqui
+    # criaria cabo de uma perna só, invisível em tela nenhuma.
+    # `rota` entra junto: `vincular_rota` grava nas duas pernas, e mexer na
+    # FK aqui deixaria o duto com metade dos cabos declarados.
+    readonly_fields = ("destino_porta", "destino_item", "rota")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            "dispositivo__item", "destino_item",
+            "destino_porta__dispositivo__item", "rota",
+        )
+
+
+@admin.register(RedeTopologia)
+class RedeTopologiaAdmin(AuditAdminMixin):
+    list_display = ("nome", "localidade", "area", "versao", "total_nos", "updated_at")
+    list_filter = ("localidade", "area")
+    search_fields = ("nome", "descricao")
+    readonly_fields = ("versao",)
+
+
+@admin.register(RedeTopologiaHistorico)
+class RedeTopologiaHistoricoAdmin(admin.ModelAdmin):
+    list_display = ("topologia", "versao", "salvo_por", "salvo_em", "descricao")
+    list_filter = ("topologia",)
+    readonly_fields = ("topologia", "versao", "layout", "salvo_por", "salvo_em", "descricao")
+
+    def has_add_permission(self, request):
+        return False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Planta georreferenciada (rack e rota)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class RedeDispositivoNoRackInline(admin.TabularInline):
+    """Quem está no armário, com a altura em U — a elevação em forma de lista."""
+    model = RedeDispositivo
+    fk_name = "rack"
+    extra = 0
+    fields = ("item", "papel", "rack_u", "rack_altura_u", "ip_gerencia")
+    readonly_fields = ("item",)
+    ordering = ("-rack_u",)
+    show_change_link = True
+
+
+@admin.register(RedeRack)
+class RedeRackAdmin(AuditAdminMixin):
+    list_display = ("nome", "codigo", "localidade", "ambiente", "us",
+                    "col_ocupacao", "col_posicao")
+    list_filter = ("localidade", "area")
+    search_fields = ("nome", "codigo", "ambiente", "observacoes")
+    inlines = [RedeDispositivoNoRackInline]
+
+    def get_queryset(self, request):
+        return (
+            super().get_queryset(request)
+            .select_related("localidade")
+            .prefetch_related("equipamentos")
+        )
+
+    @admin.display(description="Ocupação (U)")
+    def col_ocupacao(self, obj):
+        return f"{obj.us_ocupados} / {obj.us}"
+
+    @admin.display(description="No mapa", boolean=True)
+    def col_posicao(self, obj):
+        return obj.tem_geo
+
+
+@admin.register(RedeRota)
+class RedeRotaAdmin(AuditAdminMixin):
+    list_display = ("nome", "localidade", "tipo", "instalacao", "col_metros",
+                    "fibras", "col_enlaces", "col_pontos")
+    list_filter = ("tipo", "instalacao", "localidade", "area")
+    search_fields = ("nome", "observacoes")
+    autocomplete_fields = ("rack_a", "rack_b")
+    # O comprimento é MEDIDO sobre o traçado por `salvar_rota`. Editável aqui,
+    # ele passaria a afirmar um metro que o desenho não tem — e é esse número
+    # que decide se o lance cabe nos 90 m da norma.
+    readonly_fields = ("comprimento_m",)
+
+    def get_queryset(self, request):
+        from django.db.models import Count
+        return (
+            super().get_queryset(request)
+            .select_related("localidade")
+            .annotate(n_enlaces=Count("enlaces", distinct=True))
+        )
+
+    @admin.display(description="Comprimento", ordering="comprimento_m")
+    def col_metros(self, obj):
+        m = float(obj.comprimento_m or 0)
+        return f"{m / 1000:.2f} km" if m >= 1000 else f"{m:.0f} m"
+
+    @admin.display(description="Enlaces", ordering="-n_enlaces")
+    def col_enlaces(self, obj):
+        return obj.n_enlaces
+
+    @admin.display(description="Pontos")
+    def col_pontos(self, obj):
+        return obj.total_pontos

@@ -5,122 +5,262 @@
    únicas telas acessíveis sem sessão, então não têm menu lateral,
    topbar nem contexto de usuário. Esta folha é o shell delas.
 
-   Eram 493 linhas de <style> dentro do login.html, reenviadas no
-   HTML a cada tentativa de acesso. Como arquivo estático entram no
-   WhiteNoise (comprimido + cache) e servem também as 4 telas de
-   recuperação de senha, que reaproveitam o mesmo cartão.
+   ── A LINGUAGEM ────────────────────────────────────────────────
+   A tela de acesso fala a mesma língua da vitrine (`/apresentacao/`):
+   tipo de display enorme, fio de 1px no lugar de sombra, pílula no
+   lugar de botão quadrado e as camadas de atmosfera (luz, grão,
+   vinheta) por trás. A diferença é que aqui existem DOIS temas:
 
-   Nenhuma regra foi alterada na extração — só a indentação.
+     • CLARO  — a paleta do sistema (`tokens.css`), porque a tela de
+                acesso continua sendo porta de entrada de um sistema
+                de trabalho claro;
+     • ESCURO — o palco do filme (`cinema.css`), o mesmo preto, o
+                mesmo azul clareado, a mesma atmosfera.
+
+   Por isso toda cor desta folha passa por um token `--au-*`, que é
+   só um APELIDO: no claro aponta para o token do sistema, no escuro
+   para o token do cinema. Nenhum valor de cor é escrito aqui — se
+   `--brand` mudar, esta tela muda junto, e se o palco do filme
+   mudar, o escuro daqui muda junto. É o contrário do que esta folha
+   já foi: ela manteve uma CÓPIA dos tokens até a tela de acesso
+   ficar numa paleta anterior à do resto do sistema (regras 26 e 31).
+
+   Ordem de carregamento: `tokens.css` → `cinema.css` → esta folha.
 
    Ao mudar este arquivo, suba ASSETS_VERSION em
    ProjetoEstoque/context_processors.py.
    ============================================================= */
-/* A cópia local dos tokens saiu daqui. Eram ~55 custom properties
-   duplicadas de base.css que foram ficando atrás: o login seguia numa
-   paleta anterior à do resto do sistema. Agora login.html e
-   registration/_auth_shell.html carregam `tokens.css` ANTES desta folha —
-   e a tela de acesso passa a mudar junto com o design system. */
 
+/* Pintado antes da primeira camada de CSS resolver, para o tema escuro
+   não começar branco. A classe vem do script no <head>. */
+html.theme-dark { background: #000; color-scheme: dark; }
+
+.au-page {
+  /* ---------- Claro: o design system do sistema ---------- */
+  --au-fundo: var(--bg-page);
+  --au-palco: var(--bg-page-2);
+  --au-cartao: var(--bg-elevated);
+  --au-campo: var(--bg-elevated);
+  --au-vidro: var(--bg-fill-tertiary);
+
+  --au-tinta: var(--text-primary);
+  --au-tinta-2: var(--text-secondary);
+  --au-tinta-3: var(--text-tertiary);
+  --au-tinta-4: var(--text-quaternary);
+
+  --au-traco: var(--separator-hairline);
+  --au-traco-forte: var(--separator-non-opaque);
+
+  --au-acento: var(--brand);
+  --au-acento-fraco: var(--brand-softer);
+  --au-anel: var(--brand-ring);
+  --au-botao: var(--brand);
+  --au-botao-hover: var(--brand-hover);
+  --au-botao-tinta: var(--text-inverted);
+
+  --au-sombra: var(--shadow-lg);
+  --au-sombra-leve: var(--shadow-sm);
+
+  --au-display: var(--ap-display);
+  --au-corpo: var(--ap-corpo);
+  --au-mono: var(--ap-mono);
+  --au-h1: clamp(2.1rem, 4.2vw, 3.7rem);
+  --au-lento: var(--ap-lento);
+}
+
+/* ---------- Escuro: o palco da apresentação ---------- */
+.au-page.theme-dark {
+  --au-fundo: var(--ap-preto);
+  --au-palco: transparent;
+  --au-cartao: rgba(255, 255, 255, 0.028);
+  --au-campo: rgba(255, 255, 255, 0.04);
+  --au-vidro: var(--ap-vidro);
+
+  --au-tinta: var(--ap-branco);
+  --au-tinta-2: var(--ap-neve);
+  --au-tinta-3: var(--ap-fumaca);
+  --au-tinta-4: var(--ap-cinza);
+
+  --au-traco: var(--ap-traco);
+  --au-traco-forte: var(--ap-traco-forte);
+
+  --au-acento: var(--ap-acento);
+  --au-acento-fraco: var(--ap-acento-fraco);
+  --au-anel: var(--ap-acento-fraco);
+  /* O botão principal no escuro é BRANCO com texto preto — é o
+     `.ap-btn--solido` do filme. Azul sobre preto some. */
+  --au-botao: var(--ap-branco);
+  --au-botao-hover: var(--ap-neve);
+  --au-botao-tinta: var(--ap-preto);
+
+  --au-sombra: 0 50px 120px -40px rgba(0, 0, 0, 0.95);
+  --au-sombra-leve: none;
+}
+
+/* ============================================================= */
+/* Base                                                           */
+/* ============================================================= */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; min-width: 0; }
 
 html { min-height: 100%; overflow-x: hidden; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
-body {
+body.au-page {
   width: 100%;
   min-height: 100dvh;
   overflow-x: hidden;
-  font-family: var(--font-sans);
-  color: var(--text-primary);
-  background: var(--bg-page);
+  font-family: var(--au-corpo);
+  color: var(--au-tinta-2);
+  background: var(--au-fundo);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
-a { color: var(--brand); text-decoration: none; transition: color var(--transition-fast); }
-a:hover { color: var(--brand-hover); }
-button, input { font: inherit; color: inherit; letter-spacing: inherit; }
-button { cursor: pointer; }
-:focus-visible { outline: 3px solid var(--brand-ring); outline-offset: 2px; border-radius: var(--radius-xs); }
-::selection { background: var(--brand-soft); color: var(--text-primary); }
+.au-page a { color: var(--au-acento); text-decoration: none; transition: color var(--transition-fast); }
+/* SEM `color: inherit` de propósito: todo botão desta folha (login,
+   toggle de senha, tema, "Sobre o sistema", fechar modal) já declara
+   a própria cor. Um reset genérico aqui TEM mais especificidade que
+   `.btn-login { color: ... }` (seletor `button` some ao peso da
+   classe) e vencia — o botão "Acessar sistema" herdava a cor do
+   corpo da página em vez da pensada para o próprio fundo, e no tema
+   escuro isso é texto branco sobre fundo branco: invisível. */
+.au-page button, .au-page input { font: inherit; letter-spacing: inherit; }
+.au-page button { cursor: pointer; }
+.au-page :focus-visible { outline: 2px solid var(--au-acento); outline-offset: 3px; border-radius: var(--radius-xs); }
+.au-page ::selection { background: var(--au-acento-fraco); color: var(--au-tinta); }
+
+/* ── Atmosfera (as regras moram em cinema.css) ──────────────────
+   No filme o grão e a vinheta passam POR CIMA do conteúdo — é o que
+   faz parecer película. Aqui não: isto é formulário, e escurecer a
+   borda da tela cairia justamente sobre o cartão de login. As três
+   camadas vão para trás do `.login-app`, e a vinheta entra fraca.
+
+   No tema claro elas somem de vez: os painéis são opacos, então nada
+   apareceria por baixo — manter as camadas ligadas seria só custo de
+   pintura para um efeito que ninguém veria. */
+.au-page .ap-luz,
+.au-page .ap-grao,
+.au-page .ap-vinheta { z-index: 0; }
+.au-page .ap-grao { opacity: 0.045; }
+.au-page .ap-vinheta { opacity: 0.45; }
+.au-page.theme-light .ap-luz,
+.au-page.theme-light .ap-grao,
+.au-page.theme-light .ap-vinheta { display: none; }
 
 /* ── Estrutura em duas colunas ─────────────────────────────── */
 .login-app {
+  position: relative;
+  z-index: 1;
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(27rem, 0.95fr);
+  grid-template-columns: minmax(0, 1.12fr) minmax(27rem, 0.88fr);
 }
 
-/* ── Painel de marca (esquerda) ────────────────────────────── */
+/* ── Painel de marca (esquerda) — o palco ──────────────────── */
 .brand-panel {
   position: relative;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  padding: clamp(2rem, 4vw, 4rem);
-  background: var(--bg-page-2);
-  border-right: 1px solid var(--separator-hairline);
+  padding: clamp(2rem, 4.5vw, 4.5rem);
+  background: var(--au-palco);
+  border-right: 1px solid var(--au-traco);
 }
 
 .brand-panel-inner {
   flex: 1;
-  width: min(100%, 40rem);
+  width: min(100%, 42rem);
   margin-inline: auto;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: clamp(1.6rem, 3.2vh, 2.4rem);
+  gap: clamp(1.8rem, 3.6vh, 2.8rem);
 }
 
-.brand-top { display: flex; align-items: center; gap: 0.85rem; }
+.brand-top { display: flex; align-items: center; gap: 0.8rem; }
 
-.brand-mark { width: 2.7rem; height: 3.1rem; flex: 0 0 2.7rem; display: grid; place-items: center; }
-.brand-mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.brand-mark { width: 2.5rem; height: 2.5rem; flex: 0 0 2.5rem; display: grid; place-items: center; }
+.brand-mark svg, .brand-mark img { width: 100%; height: 100%; display: block; }
 
-.brand-copy { display: grid; gap: 0.12rem; }
-.brand-name { font-family: var(--font-display); font-size: 1.45rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1; color: var(--text-primary); }
-.brand-sub { color: var(--text-tertiary); font-size: var(--text-2xs); font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; }
+.brand-copy { display: flex; align-items: baseline; gap: 0.7rem; }
+.brand-name {
+  font-family: var(--au-display);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: var(--tracking-tighter);
+  line-height: 1;
+  color: var(--au-tinta);
+}
+.brand-sub {
+  color: var(--au-tinta-4);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding-left: 0.7rem;
+  border-left: 1px solid var(--au-traco);
+}
 
 .hero-title {
-  max-width: 32rem;
-  font-family: var(--font-display);
-  color: var(--text-primary);
-  font-size: clamp(1.9rem, 3.2vw, 2.85rem);
-  font-weight: 800;
-  line-height: 1.05;
+  max-width: 18ch;
+  font-family: var(--au-display);
+  color: var(--au-tinta);
+  font-size: var(--au-h1);
+  font-weight: 650;
+  line-height: 0.98;
   letter-spacing: -0.04em;
 }
-.hero-title .accent { color: var(--brand); }
+.hero-title .accent { color: var(--au-acento); }
 
 .hero-description {
-  max-width: 34rem;
-  margin-top: 1rem;
-  color: var(--text-tertiary);
-  font-size: clamp(0.98rem, 1.4vw, 1.12rem);
-  line-height: 1.5;
+  max-width: 46ch;
+  margin-top: 1.1rem;
+  color: var(--au-tinta-3);
+  font-size: var(--text-md);
+  line-height: 1.55;
 }
 
-.module-list { display: grid; gap: 1.15rem; max-width: 34rem; }
-.module-item { display: flex; align-items: flex-start; gap: 0.85rem; }
-.module-ico {
-  width: 2.25rem; height: 2.25rem; flex: 0 0 auto;
-  display: grid; place-items: center;
-  border-radius: 0.7rem;
-  background: var(--bg-elevated);
-  border: 1px solid var(--separator-hairline);
-  color: var(--text-secondary);
-  font-size: var(--text-base);
+/* Lista de módulos: fio e índice em mono, como a lista de
+   diferenciais da vitrine. */
+.module-list { display: grid; max-width: 40rem; counter-reset: au-modulo; }
+.module-item {
+  counter-increment: au-modulo;
+  display: grid;
+  grid-template-columns: 2.1rem minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+  padding: 0.95rem 0;
+  border-top: 1px solid var(--au-traco);
 }
-.module-item b { display: block; font-size: var(--text-base); font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
-.module-item span { display: block; margin-top: 0.1rem; font-size: var(--text-sm); color: var(--text-tertiary); line-height: 1.42; }
+.module-item:last-child { border-bottom: 1px solid var(--au-traco); }
+.module-ico {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--au-traco);
+  color: var(--au-tinta-3);
+  font-size: var(--text-sm);
+}
+.module-item b {
+  display: block;
+  font-family: var(--au-display);
+  font-size: var(--text-md);
+  font-weight: 650;
+  color: var(--au-tinta);
+  letter-spacing: var(--tracking-tight);
+}
+.module-item span { display: block; margin-top: 0.14rem; font-size: var(--text-sm); color: var(--au-tinta-3); line-height: 1.45; }
 
 .brand-foot {
-  width: min(100%, 40rem);
+  width: min(100%, 42rem);
   margin-inline: auto;
   padding-top: 1.5rem;
-  color: var(--text-quaternary);
-  font-size: var(--text-xs);
+  color: var(--au-tinta-4);
+  font-family: var(--au-mono);
+  font-size: var(--text-2xs);
   line-height: 1.5;
 }
 
@@ -130,40 +270,52 @@ button { cursor: pointer; }
   display: grid;
   place-items: center;
   padding: clamp(1rem, 4vw, 3rem);
-  background: var(--bg-page);
+  background: var(--au-fundo);
 }
+.au-page.theme-dark .login-panel { background: transparent; }
 
-.login-stack { width: min(100%, 26rem); }
+.login-stack { width: min(100%, 27rem); }
 
 .login-card {
   border-radius: var(--radius-2xl);
-  background: var(--bg-elevated);
-  border: 1px solid var(--separator-hairline);
-  box-shadow: var(--shadow-lg);
+  background: var(--au-cartao);
+  border: 1px solid var(--au-traco);
+  box-shadow: var(--au-sombra);
   overflow: hidden;
 }
 
 .login-card-top {
-  padding: 1.75rem 1.9rem 1.4rem;
-  border-bottom: 1px solid var(--separator-hairline);
+  padding: 1.7rem 1.9rem 1.3rem;
+  border-bottom: 1px solid var(--au-traco);
 }
 
-.system-brand { display: flex; align-items: center; gap: 0.85rem; }
-.system-logo-wrap { width: 2.9rem; height: 3.35rem; flex: 0 0 2.9rem; display: grid; place-items: center; }
-.system-logo-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.system-brand { display: flex; align-items: center; gap: 0.8rem; }
+.system-logo-wrap { width: 2.4rem; height: 2.4rem; flex: 0 0 2.4rem; display: grid; place-items: center; }
+.system-logo-wrap svg, .system-logo-wrap img { width: 100%; height: 100%; display: block; }
 
-.system-title { font-size: 1.5rem; font-weight: 800; line-height: 1.05; letter-spacing: -0.03em; color: var(--text-primary); }
-.system-subtitle { margin-top: 0.22rem; color: var(--text-tertiary); font-size: var(--text-sm); font-weight: 500; }
+.system-title { font-family: var(--au-display); font-size: var(--text-xl); font-weight: 700; line-height: 1.05; letter-spacing: var(--tracking-tighter); color: var(--au-tinta); }
+.system-subtitle { margin-top: 0.2rem; color: var(--au-tinta-3); font-size: var(--text-sm); font-weight: 500; }
 
-.login-card-body { padding: 1.55rem 1.9rem 1.9rem; }
+.login-card-body { padding: 1.6rem 1.9rem 1.9rem; }
 
-.login-heading { margin-bottom: 1.2rem; }
-.login-heading h1 { color: var(--text-primary); font-size: var(--text-lg); font-weight: 800; letter-spacing: -0.02em; }
-.login-heading p { margin-top: 0.3rem; color: var(--text-tertiary); font-size: var(--text-base); line-height: 1.45; }
+.login-heading { margin-bottom: 1.3rem; }
+.login-heading h1 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--au-display);
+  color: var(--au-tinta);
+  font-size: var(--text-2xl);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+.login-heading h1 i { color: var(--au-acento); font-size: var(--text-lg); }
+.login-heading p { margin-top: 0.4rem; color: var(--au-tinta-3); font-size: var(--text-base); line-height: 1.5; }
 
 .alert-box {
   display: none;
-  align-items: flex-start; gap: 0.75rem;
+  align-items: flex-start; gap: 0.7rem;
   margin-bottom: 1rem;
   padding: 0.85rem 0.95rem;
   border-radius: var(--radius-md);
@@ -180,9 +332,9 @@ button { cursor: pointer; }
   display: flex; gap: 0.65rem; align-items: flex-start;
   padding: 0.8rem 0.9rem;
   border-radius: var(--radius-md);
-  border: 1px solid var(--separator-hairline);
-  background: var(--bg-fill-tertiary);
-  color: var(--text-secondary);
+  border: 1px solid var(--au-traco);
+  background: var(--au-vidro);
+  color: var(--au-tinta-2);
   font-size: var(--text-sm); line-height: 1.45;
 }
 .message-alert.success { color: var(--success); background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 26%, transparent); }
@@ -190,50 +342,53 @@ button { cursor: pointer; }
 .message-alert.error   { color: var(--danger);  background: var(--danger-soft);  border-color: color-mix(in srgb, var(--danger) 26%, transparent); }
 
 .login-form { display: grid; gap: 1rem; }
-.form-group { display: grid; gap: 0.42rem; }
+.form-group { display: grid; gap: 0.45rem; }
 
 .form-label {
-  display: inline-flex; align-items: center; gap: 0.4rem;
-  color: var(--text-secondary);
-  font-size: var(--text-sm); font-weight: 650; letter-spacing: -0.008em;
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  color: var(--au-tinta-4);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
-.form-label i { color: var(--text-quaternary); font-size: var(--text-sm); }
+.form-label i { color: var(--au-tinta-4); font-size: var(--text-xs); }
 
 .input-group { position: relative; }
 
 .form-control {
   width: 100%;
-  min-height: 3rem;
+  min-height: var(--control-h-lg);
   padding: 0.7rem 3rem 0.7rem 2.75rem;
   border-radius: var(--radius-md);
-  border: 1px solid var(--separator-non-opaque);
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  font-size: var(--text-md); font-weight: 500; letter-spacing: -0.014em;
+  border: 1px solid var(--au-traco-forte);
+  background: var(--au-campo);
+  color: var(--au-tinta);
+  font-size: var(--text-md); font-weight: 500; letter-spacing: var(--tracking-tight);
   outline: none;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
 }
-.form-control:hover { border-color: var(--separator-strong); }
-.form-control:focus { border-color: var(--brand); box-shadow: 0 0 0 4px var(--brand-ring); }
-.form-control::placeholder { color: var(--text-quaternary); font-weight: 450; }
+.form-control:hover { border-color: var(--au-acento-fraco); }
+.form-control:focus { border-color: var(--au-acento); box-shadow: 0 0 0 4px var(--au-anel); }
+.form-control::placeholder { color: var(--au-tinta-4); font-weight: 450; }
 
 .input-icon {
   position: absolute; left: 1rem; top: 50%; transform: translateY(-50%);
-  color: var(--text-quaternary); font-size: var(--text-base); pointer-events: none;
+  color: var(--au-tinta-4); font-size: var(--text-base); pointer-events: none;
   transition: color var(--transition-fast);
 }
 .form-control:focus ~ .input-icon,
-.form-control:not(:placeholder-shown) ~ .input-icon { color: var(--brand); }
+.form-control:not(:placeholder-shown) ~ .input-icon { color: var(--au-acento); }
 
 .toggle-pass {
   position: absolute; right: 0.55rem; top: 50%; transform: translateY(-50%);
   width: 2.25rem; height: 2.25rem;
   display: grid; place-items: center;
   border: 0; border-radius: var(--radius-pill);
-  background: transparent; color: var(--text-quaternary);
+  background: transparent; color: var(--au-tinta-4);
   transition: color var(--transition-fast), background var(--transition-fast);
 }
-.toggle-pass:hover { color: var(--text-primary); background: var(--bg-fill-tertiary); }
+.toggle-pass:hover { color: var(--au-tinta); background: var(--au-vidro); }
 .toggle-pass:active { transform: translateY(-50%) scale(0.92); }
 
 .caps-warn {
@@ -253,64 +408,69 @@ button { cursor: pointer; }
 }
 .security-note {
   display: inline-flex; align-items: center; gap: 0.42rem;
-  color: var(--text-tertiary); font-size: var(--text-xs); font-weight: 600;
+  color: var(--au-tinta-4); font-size: var(--text-2xs); font-weight: 600;
 }
-.security-note i { color: var(--text-quaternary); }
-.help-link { border: 0; background: transparent; color: var(--brand); font-size: var(--text-xs); font-weight: 700; padding: 0; }
-.help-link:hover { color: var(--brand-hover); }
+.security-note i { color: var(--au-tinta-4); }
+.help-link { border: 0; background: transparent; color: var(--au-acento); font-size: var(--text-xs); font-weight: 650; padding: 0; }
+.help-link:hover { text-decoration: underline; }
 
 .btn-login {
   position: relative;
   width: 100%;
-  min-height: 3rem;
+  min-height: var(--control-h-lg);
   display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem;
-  margin-top: 0.18rem;
-  border: 1px solid var(--brand);
-  border-radius: var(--radius-md);
-  background: var(--brand);
-  color: #ffffff;
-  box-shadow: var(--shadow-sm);
-  font-size: var(--text-md); font-weight: 700; letter-spacing: -0.014em;
-  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+  margin-top: 0.3rem;
+  border: 1px solid var(--au-botao);
+  border-radius: var(--radius-pill);
+  background: var(--au-botao);
+  color: var(--au-botao-tinta);
+  box-shadow: var(--au-sombra-leve);
+  font-size: var(--text-md); font-weight: 700; letter-spacing: var(--tracking-tight);
+  transition: background 420ms var(--au-lento), border-color 420ms var(--au-lento),
+              transform 420ms var(--au-lento);
 }
-.btn-login:hover { background: var(--brand-hover); border-color: var(--brand-hover); box-shadow: var(--shadow-md); }
+.btn-login:hover { background: var(--au-botao-hover); border-color: var(--au-botao-hover); transform: translateY(-1px); }
 .btn-login:active { transform: translateY(1px); }
 .btn-login.loading { color: transparent; pointer-events: none; }
 .btn-login.loading i { opacity: 0; }
 .btn-login.loading::after {
   content: ""; position: absolute;
   width: 1.2rem; height: 1.2rem; border-radius: var(--radius-pill);
-  border: 2px solid rgba(255, 255, 255, 0.34); border-top-color: #ffffff;
+  border: 2px solid color-mix(in srgb, var(--au-botao-tinta) 34%, transparent);
+  border-top-color: var(--au-botao-tinta);
   animation: spin 800ms linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .login-footer {
   display: grid; gap: 0.85rem;
-  margin-top: 1.3rem; padding-top: 1.05rem;
-  border-top: 1px solid var(--separator-hairline);
+  margin-top: 1.4rem; padding-top: 1.1rem;
+  border-top: 1px solid var(--au-traco);
 }
 .info-actions { display: flex; align-items: center; justify-content: center; gap: 0.45rem; flex-wrap: wrap; }
 .info-button {
-  min-height: 2.2rem;
+  min-height: var(--control-h-sm);
   display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;
-  padding: 0 0.9rem;
-  border: 1px solid var(--separator-non-opaque);
+  padding: 0 0.95rem;
+  border: 1px solid var(--au-traco-forte);
   border-radius: var(--radius-pill);
-  background: var(--bg-elevated);
-  color: var(--text-secondary);
-  font-size: var(--text-xs); font-weight: 650;
-  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+  background: transparent;
+  color: var(--au-tinta-2);
+  font-size: var(--text-xs); font-weight: 600;
+  transition: color 420ms var(--au-lento), background 420ms var(--au-lento),
+              border-color 420ms var(--au-lento), transform 420ms var(--au-lento);
 }
-.info-button:hover { color: var(--brand); background: var(--brand-softer); border-color: color-mix(in srgb, var(--brand) 22%, transparent); }
+.info-button:hover { color: var(--au-tinta); background: var(--au-vidro); transform: translateY(-1px); }
 
-.copyright { text-align: center; color: var(--text-quaternary); font-size: var(--text-2xs); line-height: 1.5; }
+.copyright { text-align: center; color: var(--au-tinta-4); font-family: var(--au-mono); font-size: var(--text-2xs); line-height: 1.6; }
 
 /* ── Modais ────────────────────────────────────────────────── */
 .modal {
   position: fixed; inset: 0; z-index: 100;
   display: grid; place-items: center; padding: 1rem;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   opacity: 0; pointer-events: none;
   transition: opacity var(--transition-base);
 }
@@ -318,92 +478,83 @@ button { cursor: pointer; }
 .modal-content {
   width: min(100%, 34rem); overflow: hidden;
   border-radius: var(--radius-2xl);
-  background: var(--bg-elevated);
-  border: 1px solid var(--separator-hairline);
-  box-shadow: var(--shadow-lg);
-  transform: translateY(12px) scale(0.99);
-  transition: transform var(--transition-base);
+  background: var(--au-cartao);
+  border: 1px solid var(--au-traco-forte);
+  box-shadow: var(--au-sombra);
+  transform: translateY(14px) scale(0.99);
+  transition: transform 620ms var(--au-lento);
 }
+.au-page.theme-light .modal-content { background: var(--au-fundo); }
 .modal.active .modal-content { transform: translateY(0) scale(1); }
 .modal-head {
   padding: 1.4rem 1.4rem 1rem;
-  border-bottom: 1px solid var(--separator-hairline);
+  border-bottom: 1px solid var(--au-traco);
   display: flex; align-items: center; gap: 0.9rem;
 }
 .modal-icon {
-  width: 2.8rem; height: 2.8rem; flex: 0 0 2.8rem;
+  width: 2.6rem; height: 2.6rem; flex: 0 0 2.6rem;
   display: grid; place-items: center;
-  border-radius: 0.85rem;
-  background: var(--bg-fill-tertiary); color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--au-traco);
+  color: var(--au-acento);
   font-size: var(--text-lg);
 }
-.modal-title { color: var(--text-primary); font-size: var(--text-lg); font-weight: 800; letter-spacing: -0.02em; }
-.modal-subtitle { margin-top: 0.18rem; color: var(--text-tertiary); font-size: var(--text-sm); }
+.modal-title { font-family: var(--au-display); color: var(--au-tinta); font-size: var(--text-xl); font-weight: 650; letter-spacing: var(--tracking-tighter); }
+.modal-subtitle { margin-top: 0.18rem; color: var(--au-tinta-3); font-size: var(--text-sm); }
 .modal-body { padding: 1.25rem 1.4rem 1.4rem; }
-.modal-text { color: var(--text-secondary); font-size: var(--text-base); line-height: 1.6; }
-.modal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin: 1rem 0; }
-.modal-info-card { padding: 0.85rem; border-radius: var(--radius-md); background: var(--bg-fill-tertiary); border: 1px solid var(--separator-hairline); }
-.modal-info-label { color: var(--text-tertiary); font-size: var(--text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
-.modal-info-value { margin-top: 0.26rem; color: var(--text-primary); font-size: var(--text-base); font-weight: 650; overflow-wrap: anywhere; }
+.modal-text { color: var(--au-tinta-2); font-size: var(--text-base); line-height: 1.6; }
+.modal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin: 1.1rem 0; }
+.modal-info-card { padding: 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--au-traco); }
+.modal-info-label { color: var(--au-tinta-4); font-size: var(--text-2xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+.modal-info-value { margin-top: 0.26rem; color: var(--au-tinta); font-size: var(--text-base); font-weight: 600; overflow-wrap: anywhere; }
 .btn-close {
-  width: 100%; min-height: 2.65rem;
-  border: 1px solid var(--separator-non-opaque);
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated); color: var(--text-primary);
+  width: 100%; min-height: var(--control-h);
+  border: 1px solid var(--au-traco-forte);
+  border-radius: var(--radius-pill);
+  background: transparent; color: var(--au-tinta);
   font-weight: 650;
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
-.btn-close:hover { background: var(--bg-hover); border-color: var(--separator-strong); }
+.btn-close:hover { background: var(--au-vidro); }
 
 /* ── Toggle de tema ────────────────────────────────────────── */
 .theme-toggle {
   position: fixed; top: calc(1rem + var(--safe-top)); right: 1rem; z-index: 50;
-  min-height: 2.5rem;
+  min-height: var(--control-h);
   display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
   padding: 0 0.9rem;
-  border: 1px solid var(--separator-hairline);
+  border: 1px solid var(--au-traco-forte);
   border-radius: var(--radius-pill);
-  color: var(--text-secondary);
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-sm);
-  font-size: var(--text-xs); font-weight: 650; letter-spacing: -0.01em;
-  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+  color: var(--au-tinta-2);
+  background: var(--au-vidro);
+  font-size: var(--text-xs); font-weight: 600; letter-spacing: var(--tracking-tight);
+  transition: color 420ms var(--au-lento), background 420ms var(--au-lento), border-color 420ms var(--au-lento);
 }
-.theme-toggle:hover { color: var(--brand); background: var(--brand-softer); border-color: color-mix(in srgb, var(--brand) 22%, transparent); }
+.theme-toggle:hover { color: var(--au-tinta); border-color: var(--au-acento); }
 .theme-toggle i { font-size: var(--text-base); }
-
-/* Logo continua legível no tema escuro (marca escura sobre chip claro) */
-body.theme-dark .brand-mark,
-body.theme-dark .system-logo-wrap {
-  background: #f5f5f7;
-  border-radius: 0.6rem;
-  padding: 0.28rem;
-}
 
 /* ── Responsivo ────────────────────────────────────────────── */
 @media (max-width: 76rem) {
   .login-app { grid-template-columns: 1fr; }
-  .brand-panel { min-height: auto; padding: 2rem 1.5rem 1.25rem; border-right: 0; border-bottom: 1px solid var(--separator-hairline); }
-  .brand-panel-inner { flex: 0; justify-content: flex-start; gap: 1.3rem; }
+  .brand-panel { min-height: auto; padding: 2rem 1.5rem 1.4rem; border-right: 0; border-bottom: 1px solid var(--au-traco); }
+  .brand-panel-inner { flex: 0; justify-content: flex-start; gap: 1.4rem; }
   .module-list { display: none; }
   .brand-foot { display: none; }
   .login-panel { min-height: auto; padding: 1.75rem 1rem 2.5rem; }
+  .hero-title { max-width: none; }
 }
 
 @media (max-width: 48rem) {
-  .brand-panel { padding: 1.5rem 1rem 1rem; text-align: center; }
-  .brand-top { justify-content: center; }
-  .hero-title, .hero-description { margin-inline: auto; }
+  .brand-panel { padding: 1.6rem 1rem 1.1rem; }
   .form-meta { flex-direction: column; align-items: flex-start; }
   .modal-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 30rem) {
-  .theme-toggle { top: calc(0.75rem + var(--safe-top)); right: 0.75rem; width: 2.5rem; padding: 0; }
+  .theme-toggle { top: calc(0.75rem + var(--safe-top)); right: 0.75rem; width: var(--control-h); padding: 0; }
   .theme-toggle span { display: none; }
-  .brand-panel { text-align: left; }
-  .brand-top { justify-content: flex-start; }
-  .hero-title, .hero-description { margin-inline: 0; }
+  .brand-copy { flex-direction: column; align-items: flex-start; gap: 0.1rem; }
+  .brand-sub { padding-left: 0; border-left: 0; }
   .info-actions { display: grid; grid-template-columns: 1fr; }
   .info-button { width: 100%; }
 }

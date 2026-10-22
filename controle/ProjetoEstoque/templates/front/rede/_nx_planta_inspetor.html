@@ -1,0 +1,181 @@
+{% comment %}Inspetor da planta: rota, rack, equipamento e conferência física.{% endcomment %}
+<aside class="nx-trilho nx-trilho--dir" id="insp" data-aberto="1" aria-label="Inspetor da planta">
+  <div class="nx-faixa">
+    <span class="nx-label nx-recolhivel" style="flex:1 1 auto">Inspetor</span>
+    <button type="button" class="nx-btn nx-btn--sm nx-btn--fantasma" data-trilho="insp"
+            aria-expanded="true" title="Recolher ou abrir o inspetor">›</button>
+  </div>
+  <span class="nx-vert">Inspetor</span>
+
+  <div class="nx-abas nx-recolhivel" role="tablist">
+    <button type="button" class="nx-aba" role="tab" aria-selected="true" data-painel="painelSel">Seleção</button>
+    <button type="button" class="nx-aba" role="tab" aria-selected="false" data-painel="painelConf">
+      Conferência <span class="nx-conta" id="avisosConta">0</span>
+    </button>
+  </div>
+
+  <div class="nx-rolagem nx-recolhivel" id="painelSel" role="tabpanel">
+
+    <div class="nx-bloco" id="inspVazio">
+      <span class="nx-label">Nada selecionado</span>
+      <p class="nx-aviso-d" style="margin:0">
+        Clique numa rota, num rack ou num equipamento do mapa.
+        <b>R</b> começa uma rota, <b>K</b> cria um rack, <b>F</b> enquadra.
+        Arraste o pino para corrigir a posição — ela é gravada na hora.
+      </p>
+    </div>
+
+    {# ── Rota ────────────────────────────────────────────────────── #}
+    <div id="inspRota" hidden>
+      <div class="nx-bloco">
+        <div>
+          <div style="font-size:var(--nx-fs-cell);font-weight:600;line-height:1.2" id="rotaInfoNome">—</div>
+          <div class="nx-micro" id="rotaInfoSub">—</div>
+        </div>
+        <span class="nx-chip" id="rotaInfoSelo" hidden>—</span>
+        <dl class="nx-kv">
+          <dt>Comprimento</dt>
+          <dd><span class="nx-num" id="rotaInfoM">—</span></dd>
+          <dt>Pontos do traçado</dt>
+          <dd><span class="nx-num" id="rotaInfoPontos">0</span></dd>
+          <dt>Fibras / pares</dt>
+          <dd><span class="nx-num" id="rotaInfoFibras">—</span></dd>
+          <dt>Enlaces nesta rota</dt>
+          <dd><span class="nx-num" id="rotaInfoEnlaces">0</span></dd>
+          <dt>Localidade</dt>
+          <dd id="rotaInfoLocal">—</dd>
+          <dt>Observações</dt>
+          <dd id="rotaInfoObs">—</dd>
+        </dl>
+      </div>
+
+      <div class="nx-bloco">
+        <div class="nx-grupo-btn">
+          <button type="button" class="nx-btn" id="btnRotaEditar">Editar ficha…</button>
+          <button type="button" class="nx-btn" id="btnRotaTracado"
+                  title="Mostra os pontos do traçado para arrastar. Botão direito num ponto o remove.">
+            Corrigir traçado
+          </button>
+        </div>
+        <div class="nx-grupo-btn">
+          <button type="button" class="nx-btn nx-btn--primario" id="btnRotaImpacto"
+                  title="O que fica isolado se esta vala for rompida">Impacto de rompimento…</button>
+          <button type="button" class="nx-btn nx-btn--perigo" id="btnRotaExcluir">Excluir</button>
+        </div>
+        <p class="nx-aviso-d" style="margin:0">
+          Excluir a rota não desfaz cabo: os enlaces continuam cadastrados nas
+          portas, apenas sem traçado físico.
+        </p>
+      </div>
+
+      <div class="nx-bloco">
+        <span class="nx-label">Como os enlaces entram aqui</span>
+        <p class="nx-aviso-d" style="margin:0">
+          O cabo é fato da <b>porta</b>. Para dizer que um enlace passa por esta
+          rota, abra o equipamento no <b>Mapa de Rede</b>, selecione a porta e
+          escolha a rota no campo "Rota física do cabo". A ocupação e o
+          "impacto de rompimento" leem daí.
+        </p>
+      </div>
+    </div>
+
+    {# ── Rack ────────────────────────────────────────────────────── #}
+    <div id="inspRack" hidden>
+      <div class="nx-bloco">
+        <div>
+          <div style="font-size:var(--nx-fs-cell);font-weight:600;line-height:1.2" id="rackInfoNome">—</div>
+          <div class="nx-micro" id="rackInfoSub">—</div>
+        </div>
+        <dl class="nx-kv">
+          <dt>Altura útil</dt>
+          <dd><span class="nx-num" id="rackInfoUs">—</span> U ocupados</dd>
+          <dt>U livres</dt>
+          <dd><span class="nx-num" id="rackInfoLivres">0</span></dd>
+          <dt>Equipamentos</dt>
+          <dd><span class="nx-num" id="rackInfoEq">0</span></dd>
+          <dt>Coordenada</dt>
+          <dd class="nx-num" id="rackInfoCoord">—</dd>
+          <dt>Observações</dt>
+          <dd id="rackInfoObs">—</dd>
+        </dl>
+      </div>
+      <div class="nx-bloco">
+        <div class="nx-grupo-btn">
+          <button type="button" class="nx-btn nx-btn--primario" id="btnRackElevacao"
+                  title="O armário visto de frente, com a régua de U">Ver a elevação…</button>
+          <button type="button" class="nx-btn" id="btnRackEditar">Editar…</button>
+          <button type="button" class="nx-btn nx-btn--perigo" id="btnRackExcluir">Excluir</button>
+        </div>
+      </div>
+    </div>
+
+    {# ── Equipamento ─────────────────────────────────────────────── #}
+    <div id="inspEquip" hidden>
+      <div class="nx-bloco">
+        <div>
+          <div style="font-size:var(--nx-fs-cell);font-weight:600;line-height:1.2" id="equipNome">—</div>
+          <div class="nx-micro" id="equipSub">—</div>
+        </div>
+        <dl class="nx-kv">
+          <dt>IP de gerência</dt>
+          <dd class="nx-num" id="equipIp">—</dd>
+          <dt>Localidade</dt>
+          <dd id="equipLocal">—</dd>
+          <dt>Rack</dt>
+          <dd id="equipRack">—</dd>
+          <dt>Coordenada</dt>
+          <dd class="nx-num" id="equipCoord">—</dd>
+          <dt>Monitoramento</dt>
+          <dd id="equipStatus">—</dd>
+        </dl>
+      </div>
+      {% comment %}
+      Rack e altura em U são editáveis AQUI porque são fato de POSIÇÃO, e
+      posição é o assunto desta tela. Obrigar a trocar de tela para dizer
+      "este switch está no rack do CPD, no U 7" quebraria o gesto no meio.
+      {% endcomment %}
+      <div class="nx-bloco">
+        <span class="nx-label">Onde ele está</span>
+        <div class="nx-grid2">
+          <label class="nx-campo">
+            <span>Rack</span>
+            <select class="nx-select" id="equipRackSel"></select>
+          </label>
+          <div class="nx-campo">
+            <span>Altura no rack</span>
+            <div class="nx-grupo-btn">
+              <input class="nx-input nx-num" id="equipRackU" placeholder="U" inputmode="numeric"
+                     title="Posição, contada de baixo para cima como na régua do rack"
+                     style="flex:1 1 60px">
+              <input class="nx-input nx-num" id="equipRackAlt" value="1" inputmode="numeric"
+                     title="Quantos U o equipamento ocupa" style="flex:1 1 60px">
+            </div>
+          </div>
+        </div>
+        <div class="nx-grupo-btn">
+          <button type="button" class="nx-btn nx-btn--primario" id="btnEquipSalvar">Salvar posição</button>
+          <button type="button" class="nx-btn" id="btnEquipRack" disabled
+                  title="O rack deste equipamento, visto de frente">Ver o rack…</button>
+        </div>
+        <p class="nx-aviso-d" style="margin:0">
+          Para mover o pino, arraste-o no mapa — a coordenada é gravada na hora.
+          Porta, cabo e VLAN ficam no <b>Mapa de Rede</b>: é lá que o painel do
+          switch é editado.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {# ── Aba Conferência ────────────────────────────────────────────── #}
+  <div class="nx-rolagem nx-recolhivel" id="painelConf" role="tabpanel" hidden>
+    <div class="nx-bloco">
+      <span class="nx-label">Conferência da planta</span>
+      <p class="nx-aviso-d" style="margin:0">
+        Olha FÍSICA, não cadastro: lance de cobre acima do limite da norma,
+        duto com mais cabo do que fibra, dois equipamentos no mesmo U, rack sem
+        posição. Clique para ir ao item.
+      </p>
+    </div>
+    <div id="avisos"></div>
+  </div>
+</aside>

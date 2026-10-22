@@ -253,6 +253,36 @@
   border-radius: var(--radius-pill); padding: .2rem .6rem; white-space: nowrap;
 }
 .pl-tecnico-chip i { font-size: var(--text-2xs); opacity: .8; }
+/* Chip do responsável HERDADO da área: tracejado, para a tela distinguir
+   "atribuído a alguém" de "cairá neste técnico se ninguém escolher". */
+.pl-tecnico-chip.is-herdado {
+  border-style: dashed; color: var(--pl-sub); background: transparent;
+}
+
+/* Selo de área de operação. Usa os mesmos --chart-1/--chart-2 do painel de
+   metas, para a mesma área ter a mesma cor nas duas telas. */
+.pl-area-tag {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  font-size: var(--text-2xs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em;
+  padding: 2px var(--space-2); border-radius: var(--pl-pill);
+  border: 1px solid transparent; white-space: nowrap;
+}
+.pl-area-tag.is-produtiva {
+  color: var(--chart-1);
+  background: color-mix(in srgb, var(--chart-1) 12%, transparent);
+  border-color: color-mix(in srgb, var(--chart-1) 26%, transparent);
+}
+.pl-area-tag.is-nao_produtiva {
+  color: var(--chart-2);
+  background: color-mix(in srgb, var(--chart-2) 14%, transparent);
+  border-color: color-mix(in srgb, var(--chart-2) 30%, transparent);
+}
+.pl-area-tag.is-vazia {
+  color: var(--warning); background: var(--warning-soft);
+  border-color: color-mix(in srgb, var(--warning) 24%, transparent);
+  text-transform: none; font-weight: 600;
+}
 
 /* Linha em destaque quando tem agendamento */
 .pl-table tbody tr.has-sched td:first-child {
@@ -342,6 +372,16 @@
         </select>
       </div>
       <div class="pl-field">
+        <label>Área de operação</label>
+        <select name="area" class="pl-control">
+          <option value="">Todas</option>
+          {% for valor, rotulo in areas %}
+            <option value="{{ valor }}" {% if filter_area == valor %}selected{% endif %}>{{ rotulo }}</option>
+          {% endfor %}
+          <option value="sem" {% if filter_area == 'sem' %}selected{% endif %}>Sem área definida</option>
+        </select>
+      </div>
+      <div class="pl-field">
         <label>Técnico</label>
         <select name="tecnico" class="pl-control">
           <option value="">Todos</option>
@@ -355,7 +395,7 @@
         <button type="submit" class="btn btn-primary btn-sm">
           <i class="fa fa-filter" aria-hidden="true"></i> Filtrar
         </button>
-        {% if filter_q or filter_status or filter_localidade or filter_checklist or filter_tecnico %}
+        {% if filter_q or filter_status or filter_localidade or filter_checklist or filter_tecnico or filter_area %}
           <a href="{% url 'preventiva_plano' %}" class="btn btn-sm">
             <i class="fa fa-xmark" aria-hidden="true"></i> Limpar
           </a>
@@ -392,7 +432,7 @@
       <div class="pl-date-wrap">
         <label for="pl-tecnico-input">Técnico responsável</label>
         <select name="tecnico_id" id="pl-tecnico-input" class="pl-date-input">
-          <option value="">— manter atual —</option>
+          <option value="">— responsável da área —</option>
           {% for t in tecnicos %}
             <option value="{{ t.pk }}">{{ t.get_full_name|default:t.username }}</option>
           {% endfor %}
@@ -415,7 +455,7 @@
       <div class="pl-table-header">
         <span class="pl-table-title">
           <i class="fa fa-list-check" aria-hidden="true"></i>
-          {{ total }} equipamento{{ total|pluralize:"s" }}{% if filter_q or filter_status or filter_localidade or filter_checklist or filter_tecnico %} — filtro ativo{% endif %}
+          {{ total }} equipamento{{ total|pluralize:"s" }}{% if filter_q or filter_status or filter_localidade or filter_checklist or filter_tecnico or filter_area %} — filtro ativo{% endif %}
         </span>
         {% if page_obj %}
           <label style="display:flex;align-items:center;gap:.45rem;font-size:.82rem;font-weight:600;cursor:pointer;user-select:none;color:var(--pl-sub);">
@@ -430,6 +470,7 @@
             <tr>
               <th style="width:3rem; text-align:center;"></th>
               <th>Equipamento</th>
+              <th>Área</th>
               <th>Checklist</th>
               <th>Intervalo</th>
               <th>Última execução</th>
@@ -455,6 +496,16 @@
                     {% if p.equipamento.localidade %} · {{ p.equipamento.localidade.local }}{% endif %}
                     {% if p.equipamento.subtipo %} · {{ p.equipamento.subtipo.nome }}{% endif %}
                   </div>
+                </td>
+                <td>
+                  {% if p.area %}
+                    <span class="pl-area-tag is-{{ p.area }}">{{ p.area_label }}</span>
+                  {% else %}
+                    {# Sem área o equipamento fica fora da meta: o aviso é na própria linha. #}
+                    <span class="pl-area-tag is-vazia" title="Equipamento sem área de operação — fica fora da apuração da meta. Defina no cadastro do equipamento.">
+                      <i class="fa fa-triangle-exclamation" aria-hidden="true"></i> Sem área
+                    </span>
+                  {% endif %}
                 </td>
                 <td style="color:var(--pl-sub);font-size:.8rem;">{{ p.checklist_modelo.nome|default:"—" }}</td>
                 <td>
@@ -488,6 +539,14 @@
                       <i class="fa fa-user-gear" aria-hidden="true"></i>
                       {{ p.tecnico.get_full_name|default:p.tecnico.username }}
                     </span>
+                  {% elif p.responsavel_area %}
+                    {% comment %}Ainda não atribuído: este é o responsável da área,
+                       que o agendamento aplica se nenhum técnico for escolhido.{% endcomment %}
+                    <span class="pl-tecnico-chip is-herdado"
+                          title="Responsável pela área — será aplicado ao agendar sem escolher técnico">
+                      <i class="fa fa-user-shield" aria-hidden="true"></i>
+                      {{ p.responsavel_area.get_full_name|default:p.responsavel_area.username }}
+                    </span>
                   {% else %}
                     <span style="color:var(--pl-sub);">—</span>
                   {% endif %}
@@ -495,10 +554,10 @@
               </tr>
             {% empty %}
               <tr>
-                <td colspan="8">
+                <td colspan="9">
                   <div class="pl-empty">
                     <i class="fa fa-inbox" aria-hidden="true"></i>
-                    Nenhum equipamento encontrado{% if filter_q or filter_status or filter_localidade or filter_checklist or filter_tecnico %} para os filtros aplicados{% endif %}.
+                    Nenhum equipamento encontrado{% if filter_q or filter_status or filter_localidade or filter_checklist or filter_tecnico or filter_area %} para os filtros aplicados{% endif %}.
                   </div>
                 </td>
               </tr>
@@ -514,13 +573,13 @@
   {% if page_obj.has_other_pages %}
     <nav class="pl-pagination" aria-label="Paginação">
       {% if page_obj.has_previous %}
-        <a class="btn btn-sm" href="?page={{ page_obj.previous_page_number }}{% if filter_q %}&q={{ filter_q }}{% endif %}{% if filter_status %}&status={{ filter_status }}{% endif %}{% if filter_localidade %}&localidade={{ filter_localidade }}{% endif %}{% if filter_checklist %}&checklist={{ filter_checklist }}{% endif %}">
+        <a class="btn btn-sm" href="?page={{ page_obj.previous_page_number }}{% if filter_q %}&q={{ filter_q }}{% endif %}{% if filter_status %}&status={{ filter_status }}{% endif %}{% if filter_localidade %}&localidade={{ filter_localidade }}{% endif %}{% if filter_checklist %}&checklist={{ filter_checklist }}{% endif %}{% if filter_tecnico %}&tecnico={{ filter_tecnico }}{% endif %}{% if filter_area %}&area={{ filter_area }}{% endif %}">
           <i class="fa fa-chevron-left" aria-hidden="true"></i> Anterior
         </a>
       {% endif %}
       <span class="pl-page-info">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
       {% if page_obj.has_next %}
-        <a class="btn btn-sm" href="?page={{ page_obj.next_page_number }}{% if filter_q %}&q={{ filter_q }}{% endif %}{% if filter_status %}&status={{ filter_status }}{% endif %}{% if filter_localidade %}&localidade={{ filter_localidade }}{% endif %}{% if filter_checklist %}&checklist={{ filter_checklist }}{% endif %}">
+        <a class="btn btn-sm" href="?page={{ page_obj.next_page_number }}{% if filter_q %}&q={{ filter_q }}{% endif %}{% if filter_status %}&status={{ filter_status }}{% endif %}{% if filter_localidade %}&localidade={{ filter_localidade }}{% endif %}{% if filter_checklist %}&checklist={{ filter_checklist }}{% endif %}{% if filter_tecnico %}&tecnico={{ filter_tecnico }}{% endif %}{% if filter_area %}&area={{ filter_area }}{% endif %}">
           Próxima <i class="fa fa-chevron-right" aria-hidden="true"></i>
         </a>
       {% endif %}

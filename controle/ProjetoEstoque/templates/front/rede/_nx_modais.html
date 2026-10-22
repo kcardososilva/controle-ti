@@ -1,0 +1,165 @@
+{% comment %}Os quatro modais da bancada: ligar cabo, impacto, histórico e novo mapa.{% endcomment %}
+
+{% comment %}
+Ligar cabo — dois passos num modal só (equipamento → porta): escolher a
+porta antes do equipamento não faz sentido, e dois modais encadeados
+perdem de vista onde o cabo começou.
+{% endcomment %}
+<div class="nx-modal" id="modalCabo" hidden role="dialog" aria-modal="true" aria-label="Ligar cabo">
+  <div class="nx-modal-card">
+    <header>
+      <h2>Ligar cabo</h2>
+      <button type="button" class="nx-btn nx-btn--sm nx-btn--fantasma" data-fechar="modalCabo" aria-label="Fechar">✕</button>
+    </header>
+    <div class="nx-modal-corpo">
+      <dl class="nx-kv">
+        <dt>Origem</dt>
+        <dd id="caboOrigemRot">—</dd>
+      </dl>
+
+      <label class="nx-campo">
+        <span>Meio do enlace</span>
+        <select class="nx-select" id="caboMeio">
+          {% for valor, rotulo in meios %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+        </select>
+      </label>
+
+      <label class="nx-campo">
+        <span>1. Equipamento de destino</span>
+        <input type="search" class="nx-input" id="caboBusca" placeholder="Filtrar equipamentos do escopo…">
+      </label>
+      <div class="nx-lista-escolha" id="caboLista"></div>
+
+      <div id="caboPortasBloco" hidden>
+        <div class="nx-portas-cab">
+          <span class="nx-label" style="flex:1 1 auto">2. Porta de destino em</span>
+          <span id="caboDestinoRot">—</span>
+        </div>
+        <div class="nx-lista-escolha" id="caboPortas"></div>
+        <button type="button" class="nx-btn" id="caboSemPorta" style="margin-top:var(--nx-gap)"
+                title="Registra só o equipamento de destino, para quem não tem portas cadastradas (câmera, desktop)">
+          Ligar sem apontar a porta
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Impacto de queda ───────────────────────────────────────────── #}
+<div class="nx-modal" id="modalImpacto" hidden role="dialog" aria-modal="true" aria-label="Impacto de queda">
+  <div class="nx-modal-card">
+    <header>
+      <h2>Impacto de queda</h2>
+      <button type="button" class="nx-btn nx-btn--sm nx-btn--fantasma" data-fechar="modalImpacto" aria-label="Fechar">✕</button>
+    </header>
+    <div class="nx-modal-corpo">
+      <dl class="nx-kv">
+        <dt>Equipamento</dt>
+        <dd id="impactoTitulo">—</dd>
+        <dt>Ligações diretas</dt>
+        <dd><span class="nx-num" id="impactoDiretos">0</span></dd>
+        <dt>Ficam isolados</dt>
+        <dd><span class="nx-num" id="impactoTotal">0</span></dd>
+        <dt>Já estavam fora</dt>
+        <dd><span class="nx-num" id="impactoJa">0</span></dd>
+      </dl>
+      <p class="nx-aviso-d" style="margin:0">
+        Calculado pela <b>diferença</b>: quem a borda alcança hoje e deixaria de
+        alcançar se este equipamento caísse. Quem já estava fora do grafo — o
+        switch sem enlace cadastrado — é contado à parte, porque ele não fica
+        isolado por causa de ninguém.
+      </p>
+      <div class="nx-lista-escolha" id="impactoLista"></div>
+    </div>
+  </div>
+</div>
+
+{# ── Histórico de versões ───────────────────────────────────────── #}
+<div class="nx-modal" id="modalHistorico" hidden role="dialog" aria-modal="true" aria-label="Histórico de versões">
+  <div class="nx-modal-card">
+    <header>
+      <h2>Histórico de versões</h2>
+      <button type="button" class="nx-btn nx-btn--sm nx-btn--fantasma" data-fechar="modalHistorico" aria-label="Fechar">✕</button>
+    </header>
+    <div class="nx-modal-corpo">
+      <p class="nx-aviso-d" style="margin:0">
+        O histórico guarda a <b>geometria</b> do mapa. Cabeamento é fato da porta
+        e não volta no tempo — restaurar uma versão move caixas, nunca desfaz
+        um cabo cadastrado.
+      </p>
+      <div class="nx-lista-escolha" id="histLista"></div>
+    </div>
+  </div>
+</div>
+
+{# ── Novo mapa ──────────────────────────────────────────────────── #}
+<div class="nx-modal" id="modalNovo" hidden role="dialog" aria-modal="true" aria-label="Novo mapa">
+  <div class="nx-modal-card">
+    <header>
+      <h2>Novo mapa</h2>
+      <button type="button" class="nx-btn nx-btn--sm nx-btn--fantasma" data-fechar="modalNovo" aria-label="Fechar">✕</button>
+    </header>
+    <div class="nx-modal-corpo">
+      <p class="nx-aviso-d" style="margin:0">
+        O mapa guarda o escopo escolhido na barra de cima e a geometria que
+        está na prancha agora.
+      </p>
+      <label class="nx-campo">
+        <span>Nome</span>
+        <input class="nx-input" id="novoNome" placeholder="Rede corporativa — Karitel">
+      </label>
+      <label class="nx-campo">
+        <span>Descrição</span>
+        <textarea class="nx-area" id="novoDesc" placeholder="O que este mapa cobre, para quem abrir depois."></textarea>
+      </label>
+    </div>
+    <div class="nx-modal-pe">
+      <button type="button" class="nx-btn" data-fechar="modalNovo">Cancelar</button>
+      <button type="button" class="nx-btn nx-btn--primario" id="btnNovoCriar">Criar mapa</button>
+    </div>
+  </div>
+</div>
+
+{# ── Elevação do rack ───────────────────────────────────────────── #}
+{% comment %}
+O armário visto de frente. A régua DESCE (como se olha o rack aberto) e o
+número SOBE (como a etiqueta do fabricante está impressa) — ver o comentário
+da seção 22 do ds-rede.css.
+{% endcomment %}
+<div class="nx-modal" id="modalRack" hidden role="dialog" aria-modal="true" aria-label="Elevação do rack">
+  <div class="nx-modal-card">
+    <header>
+      <h2>Elevação do rack</h2>
+      <button type="button" class="nx-btn nx-btn--sm nx-btn--fantasma" data-fechar="modalRack" aria-label="Fechar">✕</button>
+    </header>
+    <div class="nx-modal-corpo">
+      <div>
+        <div style="font-size:var(--nx-fs-cell);font-weight:600;line-height:1.2" id="rackTitulo">—</div>
+        <div class="nx-micro" id="rackSub">—</div>
+      </div>
+
+      <div class="nx-rack-cab">
+        <span class="nx-label" style="flex:1 1 auto">Altura útil</span>
+        <span class="nx-num" id="rackUs">0</span><span class="nx-micro">U totais</span>
+        <span class="nx-num" id="rackOcup">0</span><span class="nx-micro">ocupados</span>
+        <span class="nx-num" id="rackLivres">0</span><span class="nx-micro">livres</span>
+      </div>
+
+      <div class="nx-rack" id="rackRegua"></div>
+
+      <div id="rackSemPosBloco" hidden>
+        <span class="nx-label">Neste rack, sem altura declarada</span>
+        <p class="nx-aviso-d" style="margin:0">
+          Estão no armário mas ninguém disse em que U. Informe a posição na
+          ficha do equipamento para eles entrarem na régua e na conferência.
+        </p>
+        <div class="nx-lista-escolha" id="rackSemPos"></div>
+      </div>
+
+      <p class="nx-aviso-d" style="margin:0">
+        Clique num equipamento para centralizá-lo no mapa. O número do U conta
+        de baixo para cima, como a régua do rack.
+      </p>
+    </div>
+  </div>
+</div>
