@@ -1,0 +1,247 @@
+{% comment %}
+  Card "Equipamentos" — a reserva de equipamento da vaga.
+
+  O TI reserva, do estoque de BACKUP, os equipamentos que a contratação vai precisar;
+  o status deles passa a Reservado. RESERVA NÃO É ENTREGA: a entrega é a movimentação
+  patrimonial feita em nome do colaborador (Movimentações ou termo com assinatura), e é
+  ela que fecha a reserva aqui. Este card só mostra e só pede ao service — a regra
+  (equipamento em Backup, uma vaga por equipamento, revalidação na hora) é de
+  `reserva_equipamento_service`.
+
+  Quem NÃO é do TI (RH) vê o que está reservado/entregue e a pendência, sem ações.
+{% endcomment %}
+<section class="ctr-card" id="reservas">
+  <div class="ctr-card-head">
+    <h2 class="ctr-card-title"><i class="fa fa-laptop" aria-hidden="true"></i> Equipamentos</h2>
+    <span class="ctr-card-sub">{{ obj.get_computador_display }}</span>
+  </div>
+  <div class="ctr-card-body">
+
+    {# ── Pendência de equipamento (não muda o status da vaga) ──────────── #}
+    {% for r in pendencia_equipamento.cedidas %}
+      <div class="ctr-aviso" role="alert">
+        <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+        <div>
+          <strong>Vaga pendente de equipamento.</strong>
+          {{ r.item_rotulo }} foi usado em outra necessidade em {{ r.encerrada_em|date:"d/m/Y H:i" }}{% if r.encerrada_por %} por {{ r.encerrada_por.get_full_name|default:r.encerrada_por.username }}{% endif %}.
+          {% if r.motivo %}Justificativa: {{ r.motivo }}{% endif %}
+          <br>
+          {% if r.alerta_em %}
+            Alerta por e-mail: {{ r.alerta_resultado }} ({{ r.alerta_em|date:"d/m/Y H:i" }}).
+          {% elif r.alerta_resultado %}
+            Alerta por e-mail: {{ r.alerta_resultado }}
+            {% if pode_reservar %}
+              <form method="post" action="{% url 'contratacao_reserva_alerta' obj.pk r.pk %}" class="ctr-acao-linha">
+                {% csrf_token %}
+                <button type="submit" class="ctr-btn is-pequeno">Reenviar alerta</button>
+              </form>
+            {% endif %}
+          {% else %}
+            Há equipamento do mesmo tipo em Backup: reserve um substituto para a vaga.
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+    {% if pendencia_equipamento.sem_reserva %}
+      <div class="ctr-aviso is-info" role="status">
+        <i class="fa fa-circle-info" aria-hidden="true"></i>
+        <div>
+          Esta vaga ainda <strong>não tem equipamento reservado</strong>.
+          {% if pode_reservar %}Escolha abaixo, no estoque de Backup, o que a contratação vai precisar.{% else %}O TI reserva do estoque de Backup; a situação aparece aqui.{% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    {# ── Reposição guiada: um equipamento reservado foi usado em outra necessidade ── #}
+    {% if reposicao %}
+      <div class="ctr-aviso is-info" id="reposicao" role="region" aria-label="Repor a reserva">
+        <i class="fa fa-rotate" aria-hidden="true"></i>
+        <div>
+          <strong>Repor a reserva de {{ reposicao.item_rotulo }}.</strong>
+          {% if candidatos_reposicao %}
+            Estes equipamentos do mesmo tipo estão em Backup. Escolha um para reservar à vaga — o alerta por e-mail deixa de ser necessário.
+          {% else %}
+            Não há outro equipamento do mesmo tipo em Backup agora. A pendência fica registrada e o alerta segue para os responsáveis.
+          {% endif %}
+        </div>
+      </div>
+      {% if candidatos_reposicao %}
+        <form method="post" action="{% url 'contratacao_reservar' obj.pk %}" class="ctr-form-grid">
+          {% csrf_token %}
+          <input type="hidden" name="substitui" value="{{ reposicao.pk }}">
+          <div class="ctr-checklist">
+            {% for item in candidatos_reposicao %}
+              <label class="ctr-check-linha">
+                <input type="checkbox" class="ctr-check" name="item" value="{{ item.pk }}">
+                <span class="ctr-check-texto">
+                  <span class="ctr-check-titulo">{{ item.subtipo.nome|default:"—" }} · {{ item.nome }}</span>
+                  <span class="ctr-check-sub">{% if item.numero_serie %}série {{ item.numero_serie }}{% else %}sem nº de série{% endif %}{% if item.localidade %} · {{ item.localidade.local }}{% endif %}</span>
+                </span>
+              </label>
+            {% endfor %}
+          </div>
+          <div class="ctr-form-acoes">
+            <button type="submit" class="ctr-btn is-primary"><i class="fa fa-bookmark" aria-hidden="true"></i> Reservar o substituto</button>
+          </div>
+        </form>
+      {% endif %}
+    {% endif %}
+
+    {# ── O que está (ou esteve) reservado ──────────────────────────────── #}
+    {% if reservas %}
+      <div class="ctr-checklist">
+        {% for r in reservas %}
+          <div class="ctr-item {% if r.estado == 'entregue' %}is-feito{% elif r.estado == 'ativa' %}is-reservado{% else %}is-encerrado{% endif %}">
+            <span class="ctr-item-marca" aria-hidden="true">
+              <i class="fa {% if r.estado == 'entregue' %}fa-check{% elif r.estado == 'ativa' %}fa-bookmark{% else %}fa-minus{% endif %}"></i>
+            </span>
+            <span class="ctr-item-texto">
+              <span class="ctr-item-nome">
+                {% if pode_gerenciar_contratacao %}<a href="{% url 'equipamento_detalhe' r.item_id %}">{{ r.item_rotulo }}</a>{% else %}{{ r.item_rotulo }}{% endif %}
+                <span class="ctr-chip {% if r.estado == 'entregue' %}is-ok{% elif r.estado == 'ativa' %}is-primary{% elif r.estado == 'cedida' %}is-aviso{% endif %}">{{ r.get_estado_display }}</span>
+              </span>
+              <span class="ctr-item-sub">
+                reservado em {{ r.reservado_em|date:"d/m/Y H:i" }}{% if r.criado_por %} por {{ r.criado_por.get_full_name|default:r.criado_por.username }}{% endif %}
+                {% if r.colaborador %} · {{ r.colaborador.nome }}{% endif %}
+                {% if r.adicional %} · adicional{% endif %}
+                {% if r.estado == 'entregue' %}
+                  · entregue em {{ r.encerrada_em|date:"d/m/Y H:i" }}{% if r.encerrada_por %} por {{ r.encerrada_por.get_full_name|default:r.encerrada_por.username }}{% endif %}
+                  {% if r.movimentacao_id and pode_gerenciar_contratacao %}· <a href="{% url 'movimentacao_detail' r.movimentacao_id %}">movimentação nº {{ r.movimentacao_id }}</a>{% endif %}
+                {% elif r.estado == 'liberada' or r.estado == 'cedida' %}
+                  · {{ r.encerrada_em|date:"d/m/Y H:i" }}{% if r.encerrada_por %} por {{ r.encerrada_por.get_full_name|default:r.encerrada_por.username }}{% endif %}
+                  {% if r.motivo %} — {{ r.motivo }}{% endif %}
+                {% endif %}
+                {% if r.substituida_por %} · reposto por {{ r.substituida_por.item_rotulo }}{% endif %}
+              </span>
+            </span>
+            {% if pode_reservar and r.estado == 'ativa' %}
+              <details class="ctr-item-acao ctr-liberar">
+                <summary class="ctr-btn is-pequeno">Liberar</summary>
+                <form method="post" action="{% url 'contratacao_reserva_liberar' obj.pk r.pk %}">
+                  {% csrf_token %}
+                  <label class="ctr-campo-label" for="ctrLib{{ r.pk }}">Motivo</label>
+                  <input type="text" id="ctrLib{{ r.pk }}" name="motivo" maxlength="500" required placeholder="Ex.: vaga não precisa mais de monitor">
+                  <button type="submit" class="ctr-btn is-pequeno is-perigo">Voltar ao Backup</button>
+                </form>
+              </details>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      <p class="ctr-campo-ajuda">
+        Reservar não é entregar: o equipamento só é considerado entregue depois da
+        {% if pode_gerenciar_contratacao %}<a href="{% url 'movimentacao_create' %}">movimentação de entrega</a>{% else %}movimentação de entrega feita pelo TI{% endif %}
+        em nome do colaborador{% if obj.colaborador %} ({{ obj.colaborador.nome }}){% endif %}.
+      </p>
+    {% elif obj.item_entregue %}
+      <div class="ctr-item is-feito">
+        <span class="ctr-item-marca" aria-hidden="true"><i class="fa fa-check"></i></span>
+        <span class="ctr-item-texto">
+          <span class="ctr-item-nome">
+            {% if pode_gerenciar_contratacao %}<a href="{% url 'equipamento_detalhe' obj.item_entregue.pk %}">{{ obj.item_entregue.nome }}</a>{% else %}{{ obj.item_entregue.nome }}{% endif %}
+          </span>
+          <span class="ctr-item-sub">
+            {{ obj.item_entregue.subtipo.nome|default:"—" }}
+            {% if obj.item_entregue.numero_serie %} · série {{ obj.item_entregue.numero_serie }}{% endif %}
+            · entregue em {{ obj.equipamento_entregue_em|date:"d/m/Y" }}
+          </span>
+        </span>
+      </div>
+    {% elif not obj.precisa_computador and not pode_reservar %}
+      <p class="ctr-campo-ajuda">Esta contratação não pede computador.</p>
+    {% endif %}
+
+    {# ── Reservar (TI) ─────────────────────────────────────────────────── #}
+    {% if pode_reservar %}
+      <details class="ctr-reservar" {% if not reservas or pendencia_equipamento.pendente %}open{% endif %}>
+        <summary class="ctr-btn is-primary"><i class="fa fa-bookmark" aria-hidden="true"></i> Reservar equipamento do Backup</summary>
+        <div class="ctr-reservar-corpo">
+          <nav class="ctr-grupos" aria-label="Tipo de equipamento">
+            <a class="ctr-grupo {% if not filtro_tipo and not filtro_todos %}is-ativo{% endif %}" href="?#reservas">Usuais</a>
+            {% for t in tipos_usuais %}
+              <a class="ctr-grupo {% if filtro_tipo == t %}is-ativo{% endif %}" href="?tipo={{ t|urlencode }}#reservas">{{ t }}</a>
+            {% endfor %}
+            <a class="ctr-grupo {% if filtro_todos %}is-ativo{% endif %}" href="?todos=1#reservas">Outros tipos</a>
+          </nav>
+          <form method="get" class="ctr-acao-linha" action="#reservas">
+            {% if filtro_tipo %}<input type="hidden" name="tipo" value="{{ filtro_tipo }}">{% endif %}
+            {% if filtro_todos %}<input type="hidden" name="todos" value="1">{% endif %}
+            <label class="ctr-campo-label" for="ctrResBusca">Buscar no Backup</label>
+            <input type="search" id="ctrResBusca" name="q" value="{{ filtro_busca }}" placeholder="Nome, modelo ou série">
+            <button type="submit" class="ctr-btn is-pequeno">Buscar</button>
+          </form>
+
+          {% if elegiveis %}
+            <form method="post" action="{% url 'contratacao_reservar' obj.pk %}" class="ctr-form-grid">
+              {% csrf_token %}
+              <div class="ctr-checklist">
+                {% for item in elegiveis %}
+                  <label class="ctr-check-linha">
+                    <input type="checkbox" class="ctr-check" name="item" value="{{ item.pk }}">
+                    <span class="ctr-check-texto">
+                      <span class="ctr-check-titulo">{{ item.subtipo.nome|default:"Sem tipo" }} · {{ item.nome }}</span>
+                      <span class="ctr-check-sub">
+                        {% if item.numero_serie %}série {{ item.numero_serie }}{% else %}sem nº de série{% endif %}
+                        {% if item.marca or item.modelo %} · {{ item.marca|default:"" }} {{ item.modelo|default:"" }}{% endif %}
+                        {% if item.localidade %} · {{ item.localidade.local }}{% endif %}
+                      </span>
+                    </span>
+                  </label>
+                {% endfor %}
+              </div>
+              {% if elegiveis_total > elegiveis|length %}
+                <p class="ctr-campo-ajuda">Mostrando {{ elegiveis|length }} de {{ elegiveis_total }}. Use a busca para filtrar.</p>
+              {% endif %}
+              <label class="ctr-check-linha">
+                <input type="checkbox" class="ctr-check" name="adicional" value="1">
+                <span class="ctr-check-texto">
+                  <span class="ctr-check-titulo">A vaga precisa de mais de um equipamento deste tipo</span>
+                  <span class="ctr-check-sub">Sem isto, um segundo equipamento do mesmo tipo é recusado (quase sempre é clique repetido).</span>
+                </span>
+              </label>
+              <div class="ctr-form-acoes">
+                <button type="submit" class="ctr-btn is-primary"><i class="fa fa-bookmark" aria-hidden="true"></i> Reservar selecionados</button>
+              </div>
+            </form>
+          {% else %}
+            <div class="ctr-vazio">
+              <i class="fa fa-box-open" aria-hidden="true"></i>
+              <span class="ctr-vazio-titulo">Nenhum equipamento em Backup nesta seleção</span>
+              <span class="ctr-vazio-texto">Só equipamento em Backup e sem reserva pode ser reservado. Tente outro tipo ou “Outros tipos”.</span>
+            </div>
+          {% endif %}
+        </div>
+      </details>
+
+      {% if obj.precisa_computador and not obj.item_entregue and obj.colaborador %}
+        <details class="ctr-reservar">
+          <summary class="ctr-btn is-pequeno is-ghost">Equipamento já entregue por movimentação, sem reserva?</summary>
+          <div class="ctr-reservar-corpo">
+            <p class="ctr-campo-ajuda">
+              Selecione o equipamento que JÁ foi entregue a {{ obj.colaborador.nome }} em
+              <a href="{% url 'movimentacao_create' %}">Movimentações</a>. O sistema confere a movimentação de entrega — sem ela, recusa.
+            </p>
+            <form method="post" action="{% url 'contratacao_etapa' obj.pk %}" class="ctr-form-grid">
+              {% csrf_token %}
+              <input type="hidden" name="acao" value="registrar_entrega">
+              <div class="ctr-campo">
+                <label class="ctr-campo-label" for="id_etapa_item">Equipamento entregue</label>
+                {{ form_entrega.item }}
+              </div>
+              <label class="ctr-check-linha">
+                {{ form_entrega.sem_equipamento }}
+                <span class="ctr-check-texto">
+                  <span class="ctr-check-titulo">Esta contratação não envolve equipamento</span>
+                  <span class="ctr-check-sub">As reservas ativas voltam para o Backup.</span>
+                </span>
+              </label>
+              <div class="ctr-form-acoes">
+                <button type="submit" class="ctr-btn is-primary"><i class="fa fa-box-open" aria-hidden="true"></i> Registrar entrega</button>
+              </div>
+            </form>
+          </div>
+        </details>
+      {% endif %}
+    {% endif %}
+  </div>
+</section>

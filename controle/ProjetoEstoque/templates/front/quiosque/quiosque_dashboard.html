@@ -15,8 +15,12 @@
 
 {% block header_actions %}
   <a href="{% url 'quiosque_apresentacao' %}" class="btn btn-sm"><i class="fa-solid fa-circle-info"></i> Conheça o Zelo</a>
+  <a href="{% url 'quiosque_sobre' %}" class="btn btn-sm"><i class="fa-solid fa-circle-question"></i> Sobre o quiosque</a>
   <a href="{% url 'quiosque_mapa' %}" class="btn btn-sm"><i class="fa-solid fa-map-location-dot"></i> Mapa</a>
-  <a href="{% url 'quiosque_matriculas' %}" class="btn btn-primary btn-sm"><i class="fa-solid fa-id-card"></i> Matrículas{% if kpi.matriculas %} <span class="kq-actcount">{{ kpi.matriculas }}</span>{% endif %}</a>
+{% comment %}Matricular aparelho e MEXER no parque: fora para o perfil Consulta Quiosque,
+   que ve tudo e nao muda nada. Quem decide e `pode_gerenciar_quiosque`
+   (services/acesso_restrito_service.py), a mesma regra que o middleware le.{% endcomment %}
+  {% if pode_gerenciar_quiosque %}<a href="{% url 'quiosque_matriculas' %}" class="btn btn-primary btn-sm"><i class="fa-solid fa-id-card"></i> Matrículas{% if kpi.matriculas %} <span class="kq-actcount">{{ kpi.matriculas }}</span>{% endif %}</a>{% endif %}
 {% endblock %}
 
 {% block extra_css %}
@@ -33,8 +37,8 @@
 
   <div class="kq-note">
     <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
-    <span>Aparelhos com o app de quiosque enviam localização, bateria e rede automaticamente.
-      Gere um <a href="{% url 'quiosque_matriculas' %}">código de matrícula</a> para registrar um novo aparelho.</span>
+    <span>Aparelhos com o app de quiosque enviam localização, bateria e rede automaticamente.{% if pode_gerenciar_quiosque %}
+      Gere um <a href="{% url 'quiosque_matriculas' %}">código de matrícula</a> para registrar um novo aparelho.{% endif %}</span>
   </div>
 
   <!-- metric strip: cada célula filtra por status -->
@@ -55,10 +59,12 @@
       <div class="kq-metric-l"><span class="mdot" style="background:var(--warning)"></span>Sem localização</div>
       <div class="kq-metric-v">{{ kpi.sem_local }}</div>
     </a>
+    {% if pode_gerenciar_quiosque %}
     <a class="kq-metric" href="{% url 'quiosque_matriculas' %}">
       <div class="kq-metric-l"><span class="mdot" style="background:var(--info)"></span>Matrículas livres</div>
       <div class="kq-metric-v">{{ kpi.matriculas }}</div>
     </a>
+    {% endif %}
   </section>
 
   <!-- busca -->
@@ -71,6 +77,9 @@
     <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
     {% if f_q or f_status %}<a href="{% url 'quiosque_dashboard' %}" class="btn btn-sm"><i class="fa-solid fa-xmark"></i> Limpar</a>{% endif %}
     <a href="{% url 'quiosque_indicadores' %}" class="btn btn-sm" style="margin-left:auto;"><i class="fa-solid fa-chart-line"></i> Indicadores</a>
+{% comment %}Atalho para Acessos restritos -- quem mais pode ver este painel. Fica no
+    CORPO (barra de busca), nao na topbar nem no menu: regra 16 do CLAUDE.md.{% endcomment %}
+    {% if user.is_staff or user.is_superuser %}<a href="{% url 'acesso_restrito_gerenciar' %}" class="btn btn-sm"><i class="fa-solid fa-user-lock"></i> Acessos</a>{% endif %}
   </form>
 
   <!-- tabela -->
@@ -148,7 +157,8 @@
               <div class="kq-empty">
                 <i class="fa-solid fa-mobile-screen-button"></i>
                 {% if f_status or f_q %}<span>Nenhum dispositivo para o filtro aplicado.</span>
-                {% else %}<span>Nenhum celular matriculado ainda. <a href="{% url 'quiosque_matriculas' %}">Gere um código de matrícula</a> e registre o aparelho no app.</span>{% endif %}
+                {% elif pode_gerenciar_quiosque %}<span>Nenhum celular matriculado ainda. <a href="{% url 'quiosque_matriculas' %}">Gere um código de matrícula</a> e registre o aparelho no app.</span>
+                {% else %}<span>Nenhum celular matriculado ainda.</span>{% endif %}
               </div>
             </td>
           </tr>

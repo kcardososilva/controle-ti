@@ -1,0 +1,418 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{% if editar %}Editar contratação{% else %}Nova contratação{% endif %}{% endblock %}
+
+{% comment %}A topbar fica com o nome do MÓDULO, não com o da tela: o título da
+   tela foi para dentro do corpo (`.page-header` logo abaixo), por pedido do
+   usuário — é como o Planner faz, onde o topo guarda o contexto e o trabalho
+   começa no corpo da página.{% endcomment %}
+{% block page_title %}Contratações{% endblock %}
+{% block page_subtitle %}Admissão de colaboradores{% endblock %}
+
+{% block extra_css %}
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+  {% comment %}A folha do módulo vem DEPOIS do Select2 de propósito: é ela que
+     reveste o componente nos tokens do módulo. Invertida a ordem, o CDN venceria
+     (regra 26 — a ordem faz parte do contrato).{% endcomment %}
+  {% include 'front/contratacao/_ctr_design_system.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="ctr-form-page">
+
+  <section class="page-header page-header-compact" aria-labelledby="ctr-form-title">
+    <div class="page-header-main">
+      <div class="page-kicker">
+        <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+        Pessoas &amp; TI
+      </div>
+      <h2 class="page-heading" id="ctr-form-title">
+        {% if editar %}Editar contratação{% else %}Nova contratação{% endif %}
+      </h2>
+      <p class="page-description">
+        {% if editar %}
+          Ajuste o que esta vaga precisa — o que já foi provisionado continua registrado.
+        {% else %}
+          O que o novo colaborador precisa para começar a trabalhar: computador, telefonia,
+          acessos de sistema e assentos de licença.
+        {% endif %}
+      </p>
+    </div>
+    <div class="page-header-aside">
+      <a href="{% if editar %}{% url 'contratacao_detail' obj.pk %}{% else %}{% url 'contratacao_painel' %}{% endif %}"
+         class="ctr-btn">
+        <i class="fa fa-arrow-left" aria-hidden="true"></i>
+        {% if editar %}Voltar à contratação{% else %}Voltar ao quadro{% endif %}
+      </a>
+    </div>
+  </section>
+
+  {% if form.non_field_errors %}
+    <div class="ctr-aviso is-perigo">
+      <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+      <div>
+        {% for erro in form.non_field_errors %}<div>{{ erro }}</div>{% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <form method="post" class="ctr-form-grid" novalidate>
+    {% csrf_token %}
+
+    {# ── A vaga ───────────────────────────────────────────────────── #}
+    {% comment %}Os spans são escolhidos aqui, não deixados para o navegador:
+       cargo sozinho na primeira linha porque é o título do card; depois três
+       linhas de três campos, cada uma respondendo uma pergunta ("de que vaga
+       é", "onde fica", "quem assume").{% endcomment %}
+    <section class="ctr-card">
+      <div class="ctr-card-head">
+        <h2 class="ctr-card-title"><i class="fa fa-briefcase" aria-hidden="true"></i> A vaga</h2>
+        <span class="ctr-card-sub">Quem pediu, para onde e quando começa</span>
+      </div>
+      <div class="ctr-card-body">
+        <div class="ctr-grid">
+          <div class="ctr-campo ctr-c8">
+            <label class="ctr-campo-label" for="{{ form.cargo.id_for_label }}">Cargo da vaga *</label>
+            {{ form.cargo }}
+            <span class="ctr-campo-ajuda">{{ form.cargo.help_text }}</span>
+            {% for e in form.cargo.errors %}<span class="ctr-campo-erro">{{ e }}</span>{% endfor %}
+          </div>
+
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.tipo_vaga.id_for_label }}">Tipo da vaga</label>
+            {{ form.tipo_vaga }}
+            <span class="ctr-campo-ajuda">Substituição, aumento de quadro ou temporário.</span>
+          </div>
+
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.funcao.id_for_label }}">Função cadastrada</label>
+            {{ form.funcao }}
+            <span class="ctr-campo-ajuda">{{ form.funcao.help_text }}</span>
+          </div>
+
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.gestor.id_for_label }}">Gestor solicitante</label>
+            {{ form.gestor }}
+            <span class="ctr-campo-ajuda">Quem pediu a contratação.</span>
+          </div>
+
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.data_prevista_inicio.id_for_label }}">Previsão de início</label>
+            {{ form.data_prevista_inicio }}
+            <span class="ctr-campo-ajuda">É o prazo contra o qual a contratação atrasa.</span>
+          </div>
+
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.centro_custo.id_for_label }}">Centro de custo</label>
+            {{ form.centro_custo }}
+          </div>
+
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.localidade.id_for_label }}">Localidade</label>
+            {{ form.localidade }}
+          </div>
+
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.substituido.id_for_label }}">Substitui qual colaborador</label>
+            {{ form.substituido }}
+            <span class="ctr-campo-ajuda">De quem é a cadeira — dela sai o perfil a espelhar.</span>
+          </div>
+
+          {% comment %}c4 + c8, não c6 + c6: as três linhas acima quebram em
+             1/3 e 2/3 da largura, e uma linha de metades faria a borda dos
+             campos cair FORA desse trilho — é o desalinho que se vê de
+             relance sem conseguir dizer o que é.{% endcomment %}
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.colaborador.id_for_label }}">Colaborador contratado</label>
+            {{ form.colaborador }}
+            <span class="ctr-campo-ajuda">Só quando a vaga já tem alguém definido.</span>
+          </div>
+
+          <div class="ctr-campo ctr-c8">
+            <label class="ctr-campo-label" for="{{ form.colaborador_nome.id_for_label }}">Nome do contratado</label>
+            {{ form.colaborador_nome }}
+            <span class="ctr-campo-ajuda">Use quando a pessoa ainda não tem cadastro no sistema.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {# ── Ferramenta de trabalho ──────────────────────────────────────── #}
+    <section class="ctr-card">
+      <div class="ctr-card-head">
+        <h2 class="ctr-card-title"><i class="fa fa-laptop" aria-hidden="true"></i> Ferramenta de trabalho</h2>
+        <span class="ctr-card-sub">Computador e telefonia</span>
+      </div>
+      <div class="ctr-card-body">
+        <div class="ctr-grid">
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.computador.id_for_label }}">Computador</label>
+            {{ form.computador }}
+          </div>
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.telefonia.id_for_label }}">Telefonia</label>
+            {{ form.telefonia }}
+          </div>
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.ramal_sugerido.id_for_label }}">Ramal sugerido</label>
+            {{ form.ramal_sugerido }}
+            <span class="ctr-campo-ajuda">Em branco quando não há sugestão.</span>
+          </div>
+
+          <div class="ctr-campo ctr-c8">
+            <label class="ctr-campo-label" for="{{ form.computador_justificativa.id_for_label }}">
+              Justifique a necessidade e descreva a configuração
+            </label>
+            {{ form.computador_justificativa }}
+            <span class="ctr-campo-ajuda">{{ form.computador_justificativa.help_text }}</span>
+          </div>
+
+          <label class="ctr-check-linha ctr-c4">
+            {{ form.ligacao_direta }}
+            <span class="ctr-check-texto">
+              <span class="ctr-check-titulo">Fará ligação direta</span>
+              <span class="ctr-check-sub">Habilita discagem externa no ramal.</span>
+            </span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    {# ── Acessos ─────────────────────────────────────────────────────── #}
+    <section class="ctr-card">
+      <div class="ctr-card-head">
+        <h2 class="ctr-card-title"><i class="fa fa-id-badge" aria-hidden="true"></i> Acessos básicos</h2>
+        <span class="ctr-card-sub">E-mail, login de rede e periféricos</span>
+      </div>
+      <div class="ctr-card-body">
+        <div class="ctr-grid">
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.email_sugerido.id_for_label }}">E-mail sugerido</label>
+            {{ form.email_sugerido }}
+            <span class="ctr-campo-ajuda">Sugestão de endereço, se houver padrão definido.</span>
+          </div>
+
+          <div class="ctr-campo ctr-c4">
+            <label class="ctr-campo-label" for="{{ form.perfil_espelho.id_for_label }}">Usuário espelho (rede)</label>
+            {{ form.perfil_espelho }}
+            <span class="ctr-campo-ajuda">{{ form.perfil_espelho.help_text }}</span>
+          </div>
+
+          <label class="ctr-check-linha ctr-c3">
+            {{ form.email_corporativo }}
+            <span class="ctr-check-texto">
+              <span class="ctr-check-titulo">E-mail corporativo</span>
+              <span class="ctr-check-sub">Caixa no Microsoft 365.</span>
+            </span>
+          </label>
+
+          <label class="ctr-check-linha ctr-c3">
+            {{ form.usuario_rede }}
+            <span class="ctr-check-texto">
+              <span class="ctr-check-titulo">Usuário de rede</span>
+              <span class="ctr-check-sub">Conta de domínio e pastas.</span>
+            </span>
+          </label>
+
+          <label class="ctr-check-linha ctr-c3">
+            {{ form.acesso_vpn }}
+            <span class="ctr-check-texto">
+              <span class="ctr-check-titulo">Acesso VPN</span>
+              <span class="ctr-check-sub">Trabalho fora da fazenda.</span>
+            </span>
+          </label>
+
+          <label class="ctr-check-linha ctr-c3">
+            {{ form.acesso_impressora }}
+            <span class="ctr-check-texto">
+              <span class="ctr-check-titulo">Impressora</span>
+              <span class="ctr-check-sub">Fila de impressão da unidade.</span>
+            </span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    {# ── Sistemas e licenças (uma lista só) ─────────────────────────── #}
+{% comment %}Sistema e licença são a MESMA pergunta para quem preenche
+       ("precisa? de quem copio o perfil?"), e por isso saem na mesma lista,
+       com a mesma linha. O que diferencia as duas é o selo da linha e o que
+       cada uma gera depois — acesso a criar ou assento pago a atribuir.{% endcomment %}
+    <section class="ctr-card">
+      <div class="ctr-card-head">
+        <h2 class="ctr-card-title">
+          <i class="fa fa-shield-halved" aria-hidden="true"></i> Sistemas e licenças
+        </h2>
+        <span class="ctr-card-sub">
+          <a href="{% url 'sistema_corporativo_list' %}">Catálogo de sistemas</a> ·
+          <a href="{% url 'licenca_list' %}">Licenças</a>
+        </span>
+      </div>
+      <div class="ctr-card-body">
+        {% if form.catalogo_acessos %}
+          <div class="ctr-acessos-barra">
+            <div class="ctr-busca">
+              <i class="fa fa-magnifying-glass" aria-hidden="true"></i>
+              <input type="search" id="ctrFiltroAcessos" autocomplete="off"
+                     placeholder="Filtrar sistemas e licenças…"
+                     aria-controls="ctrAcessos" aria-label="Filtrar sistemas e licenças">
+            </div>
+            <span class="ctr-acessos-contagem" id="ctrAcessosContagem" aria-live="polite"></span>
+          </div>
+
+          <div class="ctr-acessos" id="ctrAcessos">
+            {% for linha in form.catalogo_acessos %}
+              <div class="ctr-acesso" data-busca="{{ linha.nome }} {{ linha.descricao }}">
+                <label class="ctr-acesso-pergunta">
+                  {{ linha.campo }}
+                  <span class="ctr-acesso-texto">
+                    <span class="ctr-acesso-nome">
+                      {{ linha.nome }}
+                      {% if linha.tipo == 'licenca' %}
+                        <span class="ctr-tag is-licenca"><i class="fa fa-key" aria-hidden="true"></i> Licença</span>
+                      {% else %}
+                        <span class="ctr-tag is-sistema"><i class="fa fa-server" aria-hidden="true"></i> Sistema</span>
+                      {% endif %}
+                    </span>
+                    {% if linha.descricao %}
+                      <span class="ctr-acesso-desc">{{ linha.descricao }}</span>
+                    {% endif %}
+                    {% if linha.licenca_ligada %}
+                      <span class="ctr-acesso-desc">
+                        <i class="fa fa-key" aria-hidden="true"></i>
+                        Consome assento de {{ linha.licenca_ligada.nome }} — marque a licença também
+                      </span>
+                    {% endif %}
+                  </span>
+                </label>
+                {% if linha.campo_espelho %}
+                  <div class="ctr-acesso-espelho">{{ linha.campo_espelho }}</div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+
+          {% comment %}Um <datalist> só para todas as linhas: é o que dá busca por
+             digitação no "copiar perfil de…" sem repetir os nomes em cada
+             uma das linhas do catálogo.{% endcomment %}
+          <datalist id="ctrUsuariosEspelho">
+            {% for nome in usuarios_espelho %}<option value="{{ nome }}"></option>{% endfor %}
+          </datalist>
+
+          <p class="ctr-campo-ajuda">
+            Marque o que a pessoa precisa e escreva de quem copiar o perfil — a lista
+            sugere os colaboradores ativos, mas aceita um login de serviço que não
+            esteja no cadastro. A atribuição do assento continua sendo feita em Licenças.
+          </p>
+        {% else %}
+          <div class="ctr-vazio">
+            <i class="fa fa-shield-halved" aria-hidden="true"></i>
+            <span class="ctr-vazio-titulo">Nada no catálogo</span>
+            <span class="ctr-vazio-texto">
+              Cadastre os sistemas da empresa e as licenças para que eles apareçam
+              como perguntas aqui.
+            </span>
+            <a href="{% url 'sistema_corporativo_create' %}" class="ctr-btn is-primary is-pequeno">
+              <i class="fa fa-plus" aria-hidden="true"></i> Cadastrar sistema
+            </a>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    {# ── Observações ─────────────────────────────────────────────────── #}
+    <section class="ctr-card">
+      <div class="ctr-card-head">
+        <h2 class="ctr-card-title"><i class="fa fa-note-sticky" aria-hidden="true"></i> Observações</h2>
+        <span class="ctr-card-sub">O que o TI precisa saber antes do primeiro dia</span>
+      </div>
+      <div class="ctr-card-body">
+        <div class="ctr-campo">
+          <label class="ctr-campo-label ctr-sr-only" for="{{ form.observacoes.id_for_label }}">Observações</label>
+          {{ form.observacoes }}
+        </div>
+      </div>
+    </section>
+
+    <div class="ctr-form-acoes">
+      <a href="{% if editar %}{% url 'contratacao_detail' obj.pk %}{% else %}{% url 'contratacao_painel' %}{% endif %}"
+         class="ctr-btn">Cancelar</a>
+      <button type="submit" class="ctr-btn is-primary">
+        <i class="fa fa-check" aria-hidden="true"></i>
+        {% if editar %}Salvar alterações{% else %}Abrir contratação{% endif %}
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(function () {
+  // 1.556 colaboradores e 239 funcoes: sem busca, estes seletores sao
+  // inutilizaveis. `ctr-s2` nas duas pontas porque o dropdown e injetado no
+  // fim do <body>, fora de `.ctr-form-page` -- sem a classe, nenhum token
+  // --ctr-* resolve ali e a lista abre transparente.
+  if (window.jQuery) {
+    jQuery('#id_substituido, #id_colaborador, #id_funcao, #id_centro_custo, #id_localidade').each(function () {
+      jQuery(this).select2({
+        width: '100%',
+        containerCssClass: 'ctr-s2',
+        dropdownCssClass: 'ctr-s2',
+        minimumResultsForSearch: 8,
+      });
+    });
+  }
+
+  // Filtro da lista de sistemas e licencas. Sao 39 linhas numa lista unica:
+  // sem o filtro, achar "Power BI" no meio delas e rolagem. Esconde a LINHA
+  // (nao desmarca nada), por isso o que ja estava marcado continua indo no
+  // POST mesmo filtrado.
+  var filtro = document.getElementById('ctrFiltroAcessos');
+  var lista = document.getElementById('ctrAcessos');
+  var contagem = document.getElementById('ctrAcessosContagem');
+  if (!filtro || !lista) return;
+
+  var linhas = Array.prototype.slice.call(lista.querySelectorAll('.ctr-acesso'));
+
+  // Sem acento dos dois lados: quem digita "licenca" tem de achar "licenca"
+  // escrita com cedilha, e quem digita "pims" tem de achar "PIMS".
+  function chave(texto) {
+    return (texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  }
+
+  linhas.forEach(function (linha) {
+    linha.dataset.chave = chave(linha.getAttribute('data-busca'));
+  });
+
+  function marcadas() {
+    return linhas.filter(function (linha) {
+      var caixa = linha.querySelector('input[type="checkbox"]');
+      return caixa && caixa.checked;
+    }).length;
+  }
+
+  function aplicar() {
+    var termo = chave(filtro.value);
+    var visiveis = 0;
+    linhas.forEach(function (linha) {
+      var bate = !termo || linha.dataset.chave.indexOf(termo) !== -1;
+      linha.hidden = !bate;
+      if (bate) visiveis++;
+    });
+    if (!contagem) return;
+    var total = linhas.length;
+    var escolhidas = marcadas();
+    contagem.textContent = (termo ? visiveis + ' de ' + total + ' na busca' : total + ' no catálogo')
+      + ' · ' + escolhidas + ' marcado' + (escolhidas === 1 ? '' : 's');
+  }
+
+  filtro.addEventListener('input', aplicar);
+  lista.addEventListener('change', aplicar);
+  aplicar();
+})();
+</script>
+{% endblock %}

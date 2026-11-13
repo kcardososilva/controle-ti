@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags %}
+
+{% block title %}{{ importacao.arquivo_nome }} — Importar chips{% endblock %}
+{% block page_title %}Chips e Conectividade{% endblock %}
+{% block page_subtitle %}{% if resultado %}Resultado da importação{% else %}Prévia da importação{% endif %}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page" data-importacao-id="{{ importacao.pk }}">
+  {% url 'frota_importar' as u_importar %}
+  {% include 'front/m2m/_frota_topo.html' with titulo=importacao.arquivo_nome descricao=importacao.get_estado_display voltar_url=u_importar voltar_rotulo="Importar chips" %}
+
+  <ol class="m2m-etapas" aria-label="Passos da importação">
+    <li class="is-feita"><b>Planilha</b><span class="m2m-sub">enviada e lida</span></li>
+    <li {% if resultado %}class="is-feita"{% else %}aria-current="step"{% endif %}><b>Prévia</b><span class="m2m-sub">erros e duplicidades</span></li>
+    <li {% if resultado %}class="is-feita"{% endif %}><b>Confirmação</b><span class="m2m-sub">importar os válidos</span></li>
+    <li {% if resultado %}aria-current="step"{% endif %}><b>Resultado</b><span class="m2m-sub">resumo e relatório</span></li>
+  </ol>
+
+  {% if ja_importado %}
+  <p class="m2m-aviso" data-tom="atencao">
+    <b>Este arquivo já foi importado.</b> Um arquivo com o mesmo conteúdo foi confirmado em {{ ja_importado.confirmada_em|date:"d/m/Y H:i" }}{% if ja_importado.confirmada_por %} por {{ ja_importado.confirmada_por.get_username }}{% endif %}.
+    Chip que já existe não é atualizado: reimportar não duplica nem sobrescreve.
+    <a href="{% url 'frota_importacao' ja_importado.pk %}">Ver aquela importação</a>
+  </p>
+  {% endif %}
+
+  {% if importacao.estado == "previa" and not previa_aberta %}
+  <p class="m2m-aviso" data-tom="erro" role="alert"><b>A prévia expirou.</b> Ela vale por 24 horas. Envie a planilha de novo para gerar outra.</p>
+  {% elif importacao.estado == "cancelada" %}
+  <p class="m2m-aviso" data-tom="neutro"><b>Prévia descartada.</b> Nenhum chip foi importado a partir deste arquivo.</p>
+  {% elif importacao.estado == "confirmada" %}
+  <p class="m2m-aviso" data-tom="neutro"><b>Importação concluída</b> em {{ importacao.confirmada_em|date:"d/m/Y H:i" }}{% if importacao.confirmada_por %} por {{ importacao.confirmada_por.get_username }}{% endif %}. O relatório abaixo mostra o que aconteceu com cada linha.</p>
+  {% endif %}
+
+  <section class="m2m-painel" aria-labelledby="m2m-ip-resumo">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-ip-resumo">Resumo</h3></header>
+    <div class="m2m-regua m2m-regua--seis">
+      <div class="m2m-kpi"><span class="m2m-micro">Linhas lidas</span><span class="m2m-kpi-n m2m-num">{{ importacao.linhas|unlocalize }}</span><span class="m2m-kpi-nota">com dados na planilha</span></div>
+      {% if resultado %}
+      <div class="m2m-kpi"><span class="m2m-micro">Importadas</span><span class="m2m-kpi-n m2m-num">{{ importacao.importados|unlocalize }}</span><span class="m2m-kpi-nota">chips criados</span></div>
+      {% else %}
+      <div class="m2m-kpi"><span class="m2m-micro">Válidas</span><span class="m2m-kpi-n m2m-num">{{ importacao.validas|unlocalize }}</span><span class="m2m-kpi-nota">serão importadas</span></div>
+      {% endif %}
+      <div class="m2m-kpi"><span class="m2m-micro">Já cadastradas</span><span class="m2m-kpi-n m2m-num">{{ importacao.existentes|unlocalize }}</span><span class="m2m-kpi-nota">ficam como estão</span></div>
+      <div class="m2m-kpi" {% if importacao.rejeitados %}data-tom="erro"{% endif %}><span class="m2m-micro">Rejeitadas</span><span class="m2m-kpi-n m2m-num">{{ importacao.rejeitados|unlocalize }}</span><span class="m2m-kpi-nota">com o motivo dito</span></div>
+      <div class="m2m-kpi" {% if importacao.avisos %}data-tom="atencao"{% endif %}><span class="m2m-micro">Com aviso</span><span class="m2m-kpi-n m2m-num">{{ importacao.avisos|unlocalize }}</span><span class="m2m-kpi-nota">importa, mas confira</span></div>
+    </div>
+    <details class="m2m-saiba-mais m2m-saiba-mais--topo">
+    <summary>Detalhes do arquivo</summary>
+    <dl class="m2m-dl m2m-dl--compacta">
+      <div><dt>Arquivo</dt><dd>{{ importacao.arquivo_nome }} <span class="m2m-sub">{{ importacao.get_formato_display }}</span></dd></div>
+      <div><dt>SHA-256</dt><dd class="m2m-id" title="{{ importacao.sha256 }}">{{ importacao.sha256|slice:":16" }}…</dd></div>
+      <div><dt>Enviada</dt><dd>{{ importacao.criada_em|date:"d/m/Y H:i" }}{% if importacao.criada_por %} <span class="m2m-sub">por {{ importacao.criada_por.get_username }}</span>{% endif %}</dd></div>
+      {% if importacao.estado == "previa" %}<div><dt>A prévia vale até</dt><dd>{{ importacao.expira_em|date:"d/m/Y H:i" }}</dd></div>{% endif %}
+      {% if importacao.confirmada_em %}<div><dt>Confirmada</dt><dd>{{ importacao.confirmada_em|date:"d/m/Y H:i" }}{% if importacao.confirmada_por %} <span class="m2m-sub">por {{ importacao.confirmada_por.get_username }}</span>{% endif %}</dd></div>{% endif %}
+    </dl>
+    </details>
+    <div class="m2m-previa-acoes">
+      {% if previa_aberta %}
+      <form method="post" action="{% url 'frota_importacao_confirmar' importacao.pk %}" data-frota-pagina>
+        {% csrf_token %}
+        {% if importacao.validas %}
+        <button type="submit" class="m2m-btn m2m-btn--primario">Importar {{ importacao.validas|unlocalize }} válido{{ importacao.validas|pluralize }}</button>
+        {% else %}
+        <button type="button" class="m2m-btn m2m-btn--primario" disabled title="Nenhuma linha válida para importar">Importar 0 válidos</button>
+        {% endif %}
+      </form>
+      <form method="post" action="{% url 'frota_importacao_cancelar' importacao.pk %}" data-frota-pagina data-frota-confirma="Descartar esta prévia? Nenhum chip será importado.">
+        {% csrf_token %}<button type="submit" class="m2m-btn">Descartar a prévia</button>
+      </form>
+      {% endif %}
+      <a class="m2m-btn" href="{% url 'frota_importacao_relatorio' importacao.pk %}">Baixar relatório (Excel)</a>
+      <a class="m2m-btn m2m-btn--fantasma" href="{% url 'frota_importar' %}">Enviar outra planilha</a>
+    </div>
+  </section>
+
+  <nav class="m2m-segmentos m2m-segmentos--grande" aria-label="Filtrar as linhas por situação">
+    {% for chave, rotulo, n in situacoes %}
+    <a href="?situacao={{ chave }}" {% if situacao == chave %}class="is-ativa" aria-current="true"{% endif %}><span>{{ rotulo }}</span><b class="m2m-num">{{ n|unlocalize }}</b></a>
+    {% endfor %}
+  </nav>
+
+  {% if linhas %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela m2m-tabela--curta">
+      <thead>
+        <tr><th class="num">Linha</th><th>Situação</th><th>ICCID / IMSI</th><th>Nº da linha</th><th>Identificação</th><th>Operadora</th><th>Unidade</th><th>Motivos e avisos</th></tr>
+      </thead>
+      <tbody>
+        {% for l in linhas %}
+        <tr class="m2m-linha" data-situacao-linha="{{ l.situacao }}">
+          <td class="num" data-rotulo="Linha"><span class="m2m-num">{{ l.numero }}</span></td>
+          <td data-rotulo="Situação">
+            {% if l.situacao == "valida" %}{% m2m_ind "normal" "Válida" %}
+            {% elif l.situacao == "importada" %}{% m2m_ind "sucesso" "Importada" %}
+            {% elif l.situacao == "existente" %}{% m2m_ind "sem_sessao" "Já cadastrada" %}
+            {% else %}{% m2m_ind "falha" "Rejeitada" %}{% endif %}
+          </td>
+          <td class="m2m-id" data-rotulo="ICCID / IMSI">
+            {{ l.iccid|m2m_blocos|default:"—" }}
+            {% if l.imsi %}<span class="m2m-id-2" title="IMSI">IMSI {{ l.imsi|m2m_blocos }}</span>{% endif %}
+          </td>
+          <td class="m2m-id" data-rotulo="Nº da linha">{{ l.numero_linha|default:"—" }}</td>
+          <td data-rotulo="Identificação">
+            {% if l.chip_id and pode_ver_chips %}<a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' l.chip_id %}">{{ l.identificacao|default:l.chip_nome }}</a>{% else %}{{ l.identificacao|default:"—" }}{% endif %}
+          </td>
+          <td data-rotulo="Operadora">{{ l.operadora|default:"—" }}</td>
+          <td data-rotulo="Unidade">{{ l.unidade|default:"—" }}</td>
+          <td class="m2m-largo" data-rotulo="Motivos e avisos">
+            {% if l.motivos %}<ul class="m2m-motivos m2m-motivos--erro">{% for m in l.motivos %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+            {% if l.avisos %}<ul class="m2m-motivos">{% for a in l.avisos %}<li><span class="m2m-sub">Aviso:</span> {{ a }}</li>{% endfor %}</ul>{% endif %}
+            {% if not l.motivos and not l.avisos %}<span class="m2m-vazio-linha">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% else %}
+  {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhuma linha nesta situação" acao_url="?situacao=" acao_rotulo="Ver todas as linhas" only %}
+  {% endif %}
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Acessos restritos{% endblock %}
+{% block page_title %}Acessos restritos{% endblock %}
+{% block page_subtitle %}Logins que alcançam uma tela só{% endblock %}
+
+{% block extra_css %}
+  {% include 'front/contratacao/_ctr_design_system.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="ctr-cad-page">
+
+  <div class="ctr-aviso is-info">
+    <i class="fa fa-circle-info" aria-hidden="true"></i>
+    <div>
+      Quem está nesta lista entra pela <strong>mesma tela de acesso</strong> de todo mundo e,
+      ao entrar, só enxerga a área do próprio perfil — o menu do TI não aparece e qualquer
+      outro endereço devolve a pessoa para a tela inicial dela.
+      <strong>Os perfis são independentes e se somam:</strong> o mesmo login pode ter
+      Contratações e Quiosque ao mesmo tempo; liberar um não tira o outro, e revogar um
+      não mexe no outro.
+      <strong>Administradores não podem receber acesso restrito</strong>: staff passa por
+      cima de qualquer restrição, então o acesso existiria na lista e não valeria nada.
+    </div>
+  </div>
+
+  {% for perfil in perfis %}
+    <section class="ctr-card">
+      <div class="ctr-card-head">
+        <h2 class="ctr-card-title">
+          <i class="fa {% if perfil.chave == 'contratacao' %}fa-user-plus{% else %}fa-mobile-screen-button{% endif %}" aria-hidden="true"></i>
+          {{ perfil.rotulo }}
+        </h2>
+        <span class="ctr-card-sub">{{ perfil.detalhe }} · {{ perfil.usuarios|length }} login(s)</span>
+      </div>
+
+      <div class="ctr-tabela-wrap">
+        <table class="ctr-tabela">
+          <thead>
+            <tr>
+              <th>Pessoa</th>
+              <th>Usuário</th>
+              <th>E-mail</th>
+              <th>Último acesso</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in perfil.usuarios %}
+              <tr>
+                <td>
+                  <strong>{{ u.get_full_name|default:u.username }}</strong>
+                  {% for outro in u.tambem_em %}<span class="ctr-chip is-primary">também: {{ outro }}</span>{% endfor %}
+                </td>
+                <td>{{ u.username }}</td>
+                <td>{{ u.email|default:"—" }}</td>
+                <td>{% if u.last_login %}{{ u.last_login|date:"d/m/Y H:i" }}{% else %}<span class="ctr-chip">nunca entrou</span>{% endif %}</td>
+                <td>
+                  <div class="ctr-tabela-acoes">
+                    <form method="post" action="{% url 'acesso_restrito_revogar' u.pk %}"
+                          onsubmit="return confirm('Revogar o acesso de {{ u.username|escapejs }}? O login continua existindo, só não alcança mais essa área.');">
+                      {% csrf_token %}
+                      <input type="hidden" name="perfil" value="{{ perfil.chave }}">
+                      <button type="submit" class="ctr-btn is-pequeno is-ghost">Revogar</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="5">
+                  <div class="ctr-vazio">
+                    <i class="fa fa-user-lock" aria-hidden="true"></i>
+                    <span class="ctr-vazio-titulo">Ninguém com este acesso ainda</span>
+                    <span class="ctr-vazio-texto">
+                      Use o formulário abaixo para liberar <strong>{{ perfil.rotulo }}</strong>
+                      para alguém de fora do TI.
+                    </span>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="ctr-card-body">
+        <form method="post" action="{% url 'acesso_restrito_conceder' %}">
+          {% csrf_token %}
+          <input type="hidden" name="perfil" value="{{ perfil.chave }}">
+          <div class="ctr-grid">
+            <div class="ctr-campo ctr-c4">
+              <label class="ctr-campo-label" for="user_{{ perfil.chave }}">Usuário</label>
+              <input type="text" id="user_{{ perfil.chave }}" name="username" list="candidatos_{{ perfil.chave }}"
+                     autocomplete="off" placeholder="rh.maria" required>
+              <span class="ctr-campo-ajuda">
+                Login existente ou um nome novo. Se já existir, a senha é opcional.
+              </span>
+            </div>
+            <div class="ctr-campo ctr-c4">
+              <label class="ctr-campo-label" for="mail_{{ perfil.chave }}">E-mail</label>
+              <input type="email" id="mail_{{ perfil.chave }}" name="email" autocomplete="off" placeholder="maria@santacolomba.com.br">
+              <span class="ctr-campo-ajuda">Opcional — usado na recuperação de senha.</span>
+            </div>
+            <div class="ctr-campo ctr-c4">
+              <label class="ctr-campo-label" for="pwd_{{ perfil.chave }}">Senha</label>
+              <input type="password" id="pwd_{{ perfil.chave }}" name="senha" autocomplete="new-password" placeholder="mínimo 6 caracteres">
+              <span class="ctr-campo-ajuda">Obrigatória só para login novo.</span>
+            </div>
+          </div>
+          <div class="ctr-form-acoes">
+            <button type="submit" class="ctr-btn is-primary">
+              <i class="fa fa-key" aria-hidden="true"></i> Liberar acesso
+            </button>
+          </div>
+        </form>
+
+        <datalist id="candidatos_{{ perfil.chave }}">
+          {% for c in perfil.candidatos %}
+            <option value="{{ c.username }}">{{ c.get_full_name|default:c.username }}</option>
+          {% endfor %}
+        </datalist>
+
+        <p class="ctr-campo-ajuda">
+          Tela inicial deste perfil: <code>{{ perfil.inicio }}</code>
+        </p>
+      </div>
+    </section>
+  {% endfor %}
+
+</div>
+{% endblock %}

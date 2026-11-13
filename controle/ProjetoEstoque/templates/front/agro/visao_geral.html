@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% load static l10n %}
+
+{% block title %}Visão geral — Zelo Agro{% endblock %}
+{% block page_title %}Zelo Agro{% endblock %}
+{% block page_subtitle %}Visão geral{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% comment %}
+A porta do Zelo Agro. Um grupo por módulo, cada um com a régua dele e o link para a tela do
+módulo — nunca todos os números numa área só. Um grupo só aparece para quem tem a permissão
+do módulo. Estoque, Transferências, Fornecedores e o bloco de Gestão entram aqui quando cada
+módulo existir (fases seguintes): não há cartão "em breve" com número inventado.
+{% endcomment %}
+{% block content %}
+<div class="m2m-page agro-page">
+  <header class="page-header page-header-compact">
+    <div class="page-header-main">
+      <span class="page-kicker">Zelo Agro</span>
+      <h2 class="page-heading">Visão geral</h2>
+      <p class="page-description">A situação da frota e da conectividade dos chips.</p>
+    </div>
+  </header>
+
+  {% if kpis_frota or kpis_conectividade %}
+  <div class="m2m-grade{% if kpis_frota and kpis_conectividade %} m2m-grade--2{% endif %}">
+    {% if kpis_frota %}
+    <section class="m2m-painel" aria-labelledby="agro-g-frota">
+      <header class="m2m-painel-cab">
+        <h3 class="m2m-painel-t" id="agro-g-frota">Frotas</h3>
+        <a class="m2m-painel-link" href="{% url 'frota_visao_geral' %}">Abrir Frotas</a>
+      </header>
+      <div class="m2m-regua">
+        <a class="m2m-kpi" href="{% url 'frota_veiculos' %}">
+          <span class="m2m-micro">Veículos</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.total|unlocalize }}</span>
+          <span class="m2m-kpi-nota">cadastrados</span>
+        </a>
+        <a class="m2m-kpi" href="{% url 'frota_veiculos' %}?status=ativo">
+          <span class="m2m-micro">Ativos</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.ativos|unlocalize }}</span>
+          <span class="m2m-kpi-nota">disponíveis para operar</span>
+        </a>
+        <a class="m2m-kpi" href="{% url 'frota_veiculos' %}?status=manutencao">
+          <span class="m2m-micro">Em manutenção</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.em_manutencao|unlocalize }}</span>
+          <span class="m2m-kpi-nota">parados</span>
+        </a>
+        <a class="m2m-kpi" href="{% url 'frota_veiculos' %}?status=inativo">
+          <span class="m2m-micro">Inativos</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.inativos|unlocalize }}</span>
+          <span class="m2m-kpi-nota">fora de uso</span>
+        </a>
+      </div>
+    </section>
+    {% endif %}
+
+    {% if kpis_conectividade %}
+    <section class="m2m-painel" aria-labelledby="agro-g-conect">
+      <header class="m2m-painel-cab">
+        <h3 class="m2m-painel-t" id="agro-g-conect">Conectividade</h3>
+        <a class="m2m-painel-link" href="{% url 'm2m_visao_geral' %}">Abrir Conectividade</a>
+      </header>
+      <div class="m2m-regua">
+        <a class="m2m-kpi" {% if pode_ver_chips %}href="{% url 'm2m_chips' %}"{% endif %}>
+          <span class="m2m-micro">Chips</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_conectividade.chips_total|unlocalize }}</span>
+          <span class="m2m-kpi-nota">cadastrados</span>
+        </a>
+        <a class="m2m-kpi" {% if pode_ver_chips %}href="{% url 'm2m_chips' %}?situacao_uso=vinculado"{% endif %}>
+          <span class="m2m-micro">Vinculados</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_conectividade.chips_vinculados|unlocalize }}</span>
+          <span class="m2m-kpi-nota">em veículos</span>
+        </a>
+        <a class="m2m-kpi" {% if pode_ver_chips %}href="{% url 'm2m_chips' %}?situacao_uso=vinculado&amp;conectividade=ativa"{% endif %} title="Só chips vinculados e consultados pela API, com dado recente e confirmado pelo mapeamento.">
+          <span class="m2m-micro">Sessões ativas</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_conectividade.com_sessao_ativa|unlocalize }}</span>
+          <span class="m2m-kpi-nota">confirmadas</span>
+        </a>
+        <a class="m2m-kpi" {% if pode_ver_chips %}href="{% url 'm2m_chips' %}?situacao_uso=vinculado&amp;situacao=erro_consulta"{% endif %} title="A falha é da consulta (rede, credencial, API ou identificador): ela não diz que o chip está fora do ar." {% if kpis_conectividade.com_falha %}data-tom="erro"{% endif %}>
+          <span class="m2m-micro">Falhas de consulta</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_conectividade.com_falha|unlocalize }}</span>
+          <span class="m2m-kpi-nota">últimas consultas</span>
+        </a>
+      </div>
+      {% if alertas_abertos %}
+      <p class="m2m-nota m2m-nota--pad"><a href="{% url 'm2m_alertas' %}">{{ alertas_abertos|unlocalize }} alerta{{ alertas_abertos|pluralize }} em aberto</a></p>
+      {% endif %}
+    </section>
+    {% endif %}
+  </div>
+  {% else %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-seedling" titulo="Nenhum módulo do Agro liberado" texto="Seu acesso ao Zelo Agro ainda não inclui nenhum módulo. Peça ao administrador as permissões do que você usa." only %}
+  {% endif %}
+</div>
+{% endblock %}

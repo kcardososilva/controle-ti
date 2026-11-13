@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Equipamentos — Estoque tecnológico — Zelo Agro{% endblock %}
+{% block page_title %}Estoque tecnológico{% endblock %}
+{% block page_subtitle %}Equipamentos individuais{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page">
+  {% if pode_cadastrar %}{% url 'tec_equipamento_novo' as u_novo %}{% endif %}
+  {% include 'front/agro/tec/_topo.html' with titulo="Equipamentos" descricao="Cada peça com número de série: onde está, em que situação e a história dela." acao_url=u_novo acao_rotulo="Novo equipamento" acao_icone="fa-plus" %}
+
+  {% if total_geral %}
+  <nav class="m2m-segmentos m2m-segmentos--grande" aria-label="Equipamentos por situação">
+    {% for s in segmentos %}<a href="{{ s.url }}" {% if s.ativo %}class="is-ativa" aria-current="true"{% endif %}><span>{{ s.rotulo }}</span> <b class="m2m-num">{{ s.n }}</b></a>{% endfor %}
+  </nav>
+  {% endif %}
+
+  {% firstof filtros.fabricante filtros.categoria filtros.grupo filtros.fazenda filtros.local filtros.modelo as avancado %}
+  <form class="m2m-filtros" method="get" role="search">
+    {% if filtros.situacao %}<input type="hidden" name="situacao" value="{{ filtros.situacao }}">{% endif %}
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="f-q">Buscar equipamento</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="f-q" name="q" value="{{ filtros.q }}" class="m2m-campo" data-agro-busca placeholder="Buscar por código, número de série, patrimônio, modelo ou fabricante" autocomplete="off">
+      </div>
+      <button type="button" class="m2m-btn m2m-filtros-botao" data-agro-filtros="agro-filtros-painel" aria-expanded="{% if avancado %}true{% else %}false{% endif %}" aria-controls="agro-filtros-painel"><i class="fa-solid fa-sliders" aria-hidden="true"></i>Filtros</button>
+      <span class="m2m-contagem-lista m2m-num">{% if page_obj.paginator.count != total_geral %}{{ page_obj.paginator.count }} de {{ total_geral }}{% else %}{{ total_geral }}{% endif %} equipamento{{ total_geral|pluralize }}</span>
+    </div>
+
+    <div class="m2m-filtros-mais" id="agro-filtros-painel" {% if not avancado %}hidden{% endif %}>
+      <div class="m2m-filtros-grade">
+        <label class="m2m-rotulo"><span>Fabricante</span>
+          <select name="fabricante" class="m2m-campo" data-agro-auto>
+            <option value="">Todos</option>
+            {% for pk, nome in opcoes.fabricantes %}<option value="{{ pk }}" {% if filtros.fabricante == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Grupo</span>
+          <select name="grupo" class="m2m-campo" data-agro-auto>
+            <option value="">Todos</option>
+            {% for valor, rotulo in opcoes.grupos %}<option value="{{ valor }}" {% if filtros.grupo == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Categoria</span>
+          <select name="categoria" class="m2m-campo" data-agro-auto>
+            <option value="">Todas</option>
+            {% for pk, nome in opcoes.categorias %}<option value="{{ pk }}" {% if filtros.categoria == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Fazenda</span>
+          <select name="fazenda" class="m2m-campo" data-agro-auto>
+            <option value="">Todas</option>
+            {% for pk, nome in opcoes.fazendas %}<option value="{{ pk }}" {% if filtros.fazenda == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Local de armazenamento</span>
+          <select name="local" class="m2m-campo" data-agro-auto>
+            <option value="">Todos</option>
+            {% for pk, nome in opcoes.locais %}<option value="{{ pk }}" {% if filtros.local == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        {% if filtros.modelo %}<input type="hidden" name="modelo" value="{{ filtros.modelo }}">{% endif %}
+      </div>
+      <div class="m2m-filtros-acoes">
+        <button type="submit" class="m2m-btn m2m-btn--primario">Aplicar filtros</button>
+        <a class="m2m-btn" href="{% url 'tec_equipamentos' %}">Limpar</a>
+      </div>
+    </div>
+  </form>
+
+  {% if filtros_ativos %}
+  <ul class="m2m-filtros-ativos" aria-label="Filtros em uso">
+    {% for f in filtros_ativos %}
+    <li class="m2m-etiqueta">{{ f.rotulo }} <a href="{{ f.remover }}" aria-label="Remover o filtro {{ f.rotulo }}" title="Remover o filtro">&times;</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if equipamentos %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela">
+      <thead>
+        <tr><th>Equipamento</th><th>Categoria</th><th>Identificação</th><th>Localização</th><th>Situação</th><th><span class="m2m-sr">Ações</span></th></tr>
+      </thead>
+      <tbody>
+        {% for e in equipamentos %}
+        <tr class="m2m-linha" data-situacao="{{ e.situacao }}">
+          <td class="m2m-c-nome" data-rotulo="Equipamento">
+            <span class="m2m-ident">
+              <a class="m2m-link-forte m2m-corta m2m-corta--larga" href="{% url 'tec_equipamento_detalhe' e.pk %}" title="{{ e.modelo }}">{{ e.modelo.nome }}</a>
+              <span class="m2m-ident-cod">{{ e.codigo }} · {{ e.modelo.fabricante.nome }}</span>
+            </span>
+          </td>
+          <td data-rotulo="Categoria"><span class="m2m-corta m2m-corta--media">{{ e.modelo.categoria.nome }}</span></td>
+          <td data-rotulo="Identificação">
+            {% if e.numero_serie or e.patrimonio %}
+            <span class="m2m-ident">
+              {% if e.numero_serie %}<span class="m2m-id" title="Número de série">{{ e.numero_serie }}</span>{% endif %}
+              {% if e.patrimonio %}<span class="m2m-ident-cod" title="Patrimônio">Pat. {{ e.patrimonio }}</span>{% endif %}
+            </span>
+            {% else %}<span class="m2m-sub">—</span>{% endif %}
+          </td>
+          <td data-rotulo="Localização">
+            {% if e.local %}<span class="m2m-corta m2m-corta--media" title="{{ e.local }}">{{ e.local.nome }}</span> <span class="m2m-sub">{{ e.local.fazenda.local }}</span>
+            {% elif e.situacao == "em_manutencao" %}<span class="m2m-sub">Em manutenção</span>
+            {% elif e.situacao == "instalado" %}{% with inst=e.instalacao_ativa %}{% if inst %}<span class="m2m-corta m2m-corta--media" title="{{ inst.destino_texto }}">{{ inst.destino_texto }}</span> <span class="m2m-sub">{% if inst.operador_id %}operador{% else %}máquina{% endif %}</span>{% else %}<span class="m2m-sub">Instalado</span>{% endif %}{% endwith %}
+            {% else %}<span class="m2m-sub">—</span>{% endif %}
+          </td>
+          <td data-rotulo="Situação"><span class="m2m-status" data-status="{{ e.situacao }}">{{ e.get_situacao_display }}</span></td>
+          <td class="m2m-acoes" data-rotulo="Ações">
+            <a class="m2m-btn m2m-btn--sm" href="{% url 'tec_equipamento_detalhe' e.pk %}">Detalhes</a>
+            {% if pode_cadastrar %}<a class="m2m-btn m2m-btn--sm m2m-btn--fantasma" href="{% url 'tec_equipamento_editar' e.pk %}">Editar</a>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% elif total_geral == 0 %}
+    {% if pode_cadastrar and not sem_modelos %}{% url 'tec_equipamento_novo' as u_cadastrar %}{% elif pode_catalogo %}{% url 'tec_catalogo_novo' 'modelos' as u_cadastrar %}{% endif %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-microchip" titulo="Nenhum equipamento cadastrado" texto="Cadastre monitores, receptores, rádios, antenas e os demais equipamentos com número de série. Cada um ganha histórico próprio." acao_url=u_cadastrar acao_rotulo=sem_modelos|yesno:"Cadastrar um modelo no catálogo,Cadastrar equipamento" acao_primaria=True only %}
+  {% else %}
+    {% url 'tec_equipamentos' as u_limpar %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum resultado para os filtros aplicados" texto="Ajuste a busca ou limpe os filtros para ver todos os equipamentos." acao_url=u_limpar acao_rotulo="Limpar filtros" only %}
+  {% endif %}
+
+  {% include 'front/agro/tec/_rodape.html' %}
+</div>
+{% endblock %}

@@ -1423,8 +1423,34 @@ def equipamento_detalhe(request, pk: int):
         ),
         "next_url": _safe_next_url(request, request.GET.get("next")),
     }
+    context.update(_contexto_de_reserva(request, item))
 
     return render(request, "front/equipamentos/equipamento_detalhe.html", context)
+
+
+def _contexto_de_reserva(request, item):
+    """A reserva do equipamento para uma vaga: a que o prende agora, o histórico
+    das passadas e — só para o TI, com o item em Backup — as vagas para as quais
+    ele pode ser reservado. A regra é de `reserva_equipamento_service`."""
+    from services import reserva_equipamento_service as reservas
+    from services.acesso_restrito_service import pode_gerenciar_contratacao
+    from ..models import Contratacao, StatusContratacaoChoices
+
+    contexto = {"reserva_ativa": None, "reservas_do_item": [], "vagas_para_reservar": []}
+    if item.item_consumo == SimNaoChoices.SIM:
+        return contexto
+    if item.status == StatusItemChoices.RESERVADO:
+        contexto["reserva_ativa"] = reservas.reserva_ativa_do_item(item)
+    contexto["reservas_do_item"] = list(
+        item.reservas.select_related("contratacao", "colaborador", "encerrada_por", "criado_por")[:10]
+    )
+    if item.status == StatusItemChoices.BACKUP and pode_gerenciar_contratacao(request.user):
+        contexto["vagas_para_reservar"] = list(
+            Contratacao.objects.exclude(
+                status__in=(StatusContratacaoChoices.CONCLUIDA, StatusContratacaoChoices.CANCELADA),
+            ).order_by("-created_at")[:60]
+        )
+    return contexto
 
 def adicionar_erros_validacao_no_form(form, erro):
     if hasattr(erro, "message_dict"):
@@ -1508,6 +1534,7 @@ def item_update(request, pk):
         _STATUS_PAUSANTES = {
             StatusItemChoices.PAUSADO,
             StatusItemChoices.BACKUP,
+            StatusItemChoices.RESERVADO,
             StatusItemChoices.ESTOQUE,
             StatusItemChoices.MANUTENCAO,
             StatusItemChoices.DEFEITO,

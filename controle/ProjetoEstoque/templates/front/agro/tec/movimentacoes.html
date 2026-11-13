@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% load static tec_tags %}
+
+{% block title %}Movimentações — Estoque tecnológico — Zelo Agro{% endblock %}
+{% block page_title %}Estoque tecnológico{% endblock %}
+{% block page_subtitle %}Histórico de movimentações{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page">
+  {% include 'front/agro/tec/_topo.html' with titulo="Movimentações" descricao="Tudo o que entrou, saiu, mudou de lugar ou foi baixado. É um registro: não se edita nem se apaga." %}
+
+  {% firstof filtros.tipo filtros.fabricante filtros.usuario filtros.de filtros.ate as avancado %}
+  <form class="m2m-filtros" method="get" role="search">
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="f-q">Buscar movimentação</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="f-q" name="q" value="{{ filtros.q }}" class="m2m-campo" data-agro-busca placeholder="Buscar por código, número de série, patrimônio, modelo, fabricante ou motivo" autocomplete="off">
+      </div>
+      <button type="button" class="m2m-btn m2m-filtros-botao" data-agro-filtros="agro-filtros-painel" aria-expanded="{% if avancado %}true{% else %}false{% endif %}" aria-controls="agro-filtros-painel"><i class="fa-solid fa-sliders" aria-hidden="true"></i>Filtros</button>
+      <span class="m2m-contagem-lista m2m-num">{% if page_obj.paginator.count != total_geral %}{{ page_obj.paginator.count }} de {{ total_geral }}{% else %}{{ total_geral }}{% endif %} registro{{ total_geral|pluralize }}</span>
+    </div>
+    <div class="m2m-filtros-mais" id="agro-filtros-painel" {% if not avancado %}hidden{% endif %}>
+      <div class="m2m-filtros-grade">
+        <label class="m2m-rotulo"><span>Tipo</span>
+          <select name="tipo" class="m2m-campo" data-agro-auto>
+            <option value="">Todos</option>
+            {% for valor, rotulo in opcoes.tipos %}<option value="{{ valor }}" {% if filtros.tipo == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Fabricante</span>
+          <select name="fabricante" class="m2m-campo" data-agro-auto>
+            <option value="">Todos</option>
+            {% for pk, nome in opcoes.fabricantes %}<option value="{{ pk }}" {% if filtros.fabricante == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Responsável (login)</span><input type="text" name="usuario" value="{{ filtros.usuario }}" class="m2m-campo" autocomplete="off"></label>
+        <label class="m2m-rotulo"><span>De</span><input type="date" name="de" value="{{ filtros.de }}" class="m2m-campo"></label>
+        <label class="m2m-rotulo"><span>Até</span><input type="date" name="ate" value="{{ filtros.ate }}" class="m2m-campo"></label>
+      </div>
+      <div class="m2m-filtros-acoes">
+        <button type="submit" class="m2m-btn m2m-btn--primario">Aplicar filtros</button>
+        <a class="m2m-btn" href="{% url 'tec_movimentacoes' %}">Limpar</a>
+      </div>
+    </div>
+  </form>
+
+  {% if filtros_ativos %}
+  <ul class="m2m-filtros-ativos" aria-label="Filtros em uso">
+    {% for f in filtros_ativos %}
+    <li class="m2m-etiqueta">{{ f.rotulo }} <a href="{{ f.remover }}" aria-label="Remover o filtro {{ f.rotulo }}" title="Remover o filtro">&times;</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if movimentacoes %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela">
+      <thead>
+        <tr><th>Quando</th><th>Operação</th><th>Item</th><th class="agro-num">Qtd.</th><th>De → Para</th><th>Motivo</th><th>Responsável</th></tr>
+      </thead>
+      <tbody>
+        {% for m in movimentacoes %}
+        <tr class="m2m-linha">
+          <td class="m2m-num" data-rotulo="Quando">{{ m.em|date:"d/m/Y H:i" }}</td>
+          <td data-rotulo="Operação"><span class="m2m-status" data-status="{{ m.tipo }}">{{ m.get_tipo_display }}</span></td>
+          <td data-rotulo="Item">
+            <span class="m2m-ident">
+              {% if m.equipamento %}<a class="m2m-link-forte m2m-corta m2m-corta--larga" href="{% url 'tec_equipamento_detalhe' m.equipamento.pk %}">{{ m.modelo.nome }}</a>
+              <span class="m2m-ident-cod">{{ m.equipamento.codigo }} · {{ m.modelo.fabricante.nome }}</span>
+              {% else %}<a class="m2m-link-forte m2m-corta m2m-corta--larga" href="{% url 'tec_material_detalhe' m.modelo.pk %}">{{ m.modelo.nome }}</a>
+              <span class="m2m-ident-cod">{{ m.modelo.fabricante.nome }}</span>{% endif %}
+            </span>
+          </td>
+          <td class="agro-num m2m-num" data-rotulo="Qtd.">{% if m.equipamento %}<span class="m2m-sub">1</span>{% else %}{{ m.quantidade|qtd }}{% endif %}</td>
+          <td data-rotulo="De → Para">
+            {% comment %}Origem em cima e destino embaixo: os rótulos ("Almoxarifado · Fazenda Karitel", "TR-025 · Trator 25") somados numa linha estouravam a largura da tabela.{% endcomment %}
+            <span class="m2m-ident">
+              <span class="m2m-corta m2m-corta--larga" title="{{ m.origem_rotulo }}">{{ m.origem_rotulo|default:"—" }}</span>
+              <span class="m2m-corta m2m-corta--larga m2m-sub" title="{{ m.destino_rotulo }}">→ {{ m.destino_rotulo|default:"—" }}</span>
+            </span>{% if m.documento %} <span class="m2m-sub">{{ m.documento }}</span>{% endif %}
+          </td>
+          <td data-rotulo="Motivo">{% if m.motivo %}<span class="m2m-corta m2m-corta--larga" title="{{ m.motivo }}">{{ m.motivo }}</span>{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+          <td data-rotulo="Responsável">{{ m.usuario_nome|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% elif total_geral == 0 %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-clock-rotate-left" titulo="Nenhuma movimentação registrada" texto="Cada entrada, saída, mudança de local e baixa aparece aqui." only %}
+  {% else %}
+    {% url 'tec_movimentacoes' as u_limpar %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum resultado para os filtros aplicados" texto="Ajuste a busca ou limpe os filtros." acao_url=u_limpar acao_rotulo="Limpar filtros" only %}
+  {% endif %}
+
+  {% include 'front/agro/tec/_rodape.html' %}
+</div>
+{% endblock %}

@@ -16,7 +16,10 @@
 {% endblock %}
 
 {% block header_actions %}
-  <a href="{% url 'quiosque_config_editar' device.pk %}" class="btn btn-sm"><i class="fa-solid fa-gear"></i> Configurar</a>
+{% comment %}Perfil Consulta Quiosque: ve tudo, nao muda nada. A regra e
+   `pode_gerenciar_quiosque` (services/acesso_restrito_service.py), a mesma que o
+   AcessoRestritoMiddleware le para barrar o caminho.{% endcomment %}
+  {% if pode_gerenciar_quiosque %}<a href="{% url 'quiosque_config_editar' device.pk %}" class="btn btn-sm"><i class="fa-solid fa-gear"></i> Configurar</a>{% endif %}
   <a href="{% url 'quiosque_dashboard' %}" class="btn btn-sm"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
 {% endblock %}
 
@@ -586,7 +589,7 @@
             <span class="kq-card-title"><i class="fa-solid fa-sliders"></i>Configuração aplicada</span>
             <div class="kq-card-head-actions">
               <span class="kq-pill">config v{{ device.config_versao }}</span>
-              <a href="{% url 'quiosque_config_editar' device.pk %}" class="btn btn-primary btn-sm"><i class="fa-solid fa-gear"></i> Editar configuração</a>
+              {% if pode_gerenciar_quiosque %}<a href="{% url 'quiosque_config_editar' device.pk %}" class="btn btn-primary btn-sm"><i class="fa-solid fa-gear"></i> Editar configuração</a>{% endif %}
             </div>
           </div>
           <div class="kq-card-body">
@@ -681,7 +684,13 @@
             <!-- apps em uso (snapshot do último check-in) -->
             <div class="kq-open">
               <div class="kq-info-label"><i class="fa-solid fa-layer-group"></i>Apps em uso <span class="kq-open-when">· último check-in</span></div>
-              {% if apps_abertos %}
+              {% if apps_abertos and not pode_gerenciar_quiosque %}
+              <ul class="kq-open-list">
+                {% for a in apps_abertos %}
+                <li><span class="kq-open-name">{{ a.nome|default:a.pkg }}{% if a.nome %} <span class="kq-open-pkg">{{ a.pkg }}</span>{% endif %}</span></li>
+                {% endfor %}
+              </ul>
+              {% elif apps_abertos %}
               <form method="post" action="{% url 'quiosque_comando_novo' device.pk %}" class="kq-open-form" data-confirma="Fechar este app no aparelho? O colaborador perde o que não tiver salvo nele.">
                 {% csrf_token %}
                 <input type="hidden" name="tipo" value="fechar_apps">
@@ -705,6 +714,7 @@
               {% endif %}
             </div>
 
+            {% if pode_gerenciar_quiosque %}
             <form method="post" action="{% url 'quiosque_comando_novo' device.pk %}" class="kq-cmd-form" id="kqCmdForm">
               {% csrf_token %}
               <div class="kq-info-label"><i class="fa-solid fa-paper-plane"></i>Enviar comando</div>
@@ -726,6 +736,9 @@
               </div>
               <div class="hint" id="kqCmdHint"></div>
             </form>
+            {% else %}
+            <div class="kq-sub-note"><i class="fa-solid fa-eye"></i> Seu acesso é de consulta: o histórico abaixo mostra o que já foi enviado a este aparelho.</div>
+            {% endif %}
 
             {% if comandos %}
             <div class="kq-scroll">
@@ -767,6 +780,7 @@
       </div>
 
       <div class="kq-col">
+        {% if pode_gerenciar_quiosque %}
         <!-- zona de perigo -->
         <div class="kq-card kq-danger">
           <div class="kq-card-head"><span class="kq-card-title"><i class="fa-solid fa-triangle-exclamation"></i>Zona de perigo</span></div>
@@ -784,6 +798,7 @@
             </div>
           </div>
         </div>
+        {% endif %}
       </div>
 
     </div>
@@ -791,6 +806,7 @@
 
 </div>
 
+{% if pode_gerenciar_quiosque %}
 <!-- modal de exclusão (2ª etapa: senha do sistema) -->
 <div class="kq-modal" id="kqDelModal" hidden>
   <div class="kq-modal-box">
@@ -807,6 +823,7 @@
     </form>
   </div>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -1391,6 +1408,7 @@
   setInterval(atualizar, 30000);
 })();
 
+{% if pode_gerenciar_quiosque %}
 // Modal de exclusão (senha do sistema)
 (function(){
   var modal = document.getElementById('kqDelModal');
@@ -1402,6 +1420,7 @@
   modal.addEventListener('click', function(ev){ if (ev.target === modal || ev.target.hasAttribute('data-close')) close(); });
   document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape' && !modal.hidden) close(); });
 })();
+{% endif %}
 
 // Clique na localização da tabela (aba Histórico) → troca pra aba Visão Geral
 // (se necessário) e foca o ponto EXATO no mapa.
@@ -1443,6 +1462,7 @@
   });
 })();
 
+{% if pode_gerenciar_quiosque %}
 // Formulário "Enviar comando": mostra a descrição/validade do tipo escolhido,
 // revela título/mensagem só para "Exibir mensagem" e pede confirmação antes de
 // enviar os tipos marcados como disruptivos (reiniciar, bloquear tela, sair do
@@ -1473,6 +1493,7 @@
     if (!confirm(texto)) ev.preventDefault();
   });
 })();
+{% endif %}
 
 /* Seletor de dias retrátil. Com a retenção em 15 dias a lista passou a ocupar
    várias linhas e empurrar a tabela para baixo da dobra. Só recolhe quando há

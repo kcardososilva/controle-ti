@@ -146,6 +146,7 @@ _MESES_PERIODICIDADE = {
 _STATUS_META = [
     ("ativo",      "Em uso",     "#34c759"),
     ("backup",     "Em estoque", "#5856d6"),
+    ("reservado",  "Reservado",  "#a855f7"),
     ("manutencao", "Manutenção", "#ff9500"),
     ("defeito",    "Defeito",    "#ff3b30"),
     ("pausado",    "Pausado",    "#8e8e93"),

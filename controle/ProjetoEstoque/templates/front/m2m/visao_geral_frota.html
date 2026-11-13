@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags %}
+
+{% comment %}A MESMA tela serve as duas seções do Zelo Agro (Frotas e Chips e Conectividade), cada
+uma com o seu recorte — ver `views/frota.py::visao_geral_da_secao`.{% endcomment %}
+{% block title %}Visão geral — {% if m2m_secao == "frota" %}Frotas{% else %}Chips e Conectividade{% endif %} — Zelo Agro{% endblock %}
+{% block page_title %}{% if m2m_secao == "frota" %}Frotas{% else %}Chips e Conectividade{% endif %}{% endblock %}
+{% block page_subtitle %}Visão geral{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% if m2m_secao == "frota" %}
+  {% include 'front/m2m/_frota_topo.html' with titulo="Visão geral" descricao="A situação dos veículos e equipamentos da frota." %}
+  {% else %}
+  {% include 'front/m2m/_frota_topo.html' with titulo="Visão geral" descricao="A situação da conectividade dos chips." %}
+  {% endif %}
+
+  {% if mostrar_passos %}{% include 'front/m2m/_config_inicial.html' with completo=False %}{% endif %}
+
+  {% comment %}Resumo: dois cartões, quatro números em cada. O status do veículo é decisão de quem opera; a conectividade é o que a API respondeu — por isso nunca dividem o mesmo cartão.{% endcomment %}
+  <div class="m2m-grade{% if kpis_frota and kpis_conectividade %} m2m-grade--2{% endif %}">
+    {% if kpis_frota %}
+    <section class="m2m-painel" aria-labelledby="m2m-b-frota">
+      <header class="m2m-painel-cab">
+        <h3 class="m2m-painel-t" id="m2m-b-frota">Frota</h3>
+        <a class="m2m-painel-link" href="{% url 'frota_veiculos' %}">Ver veículos</a>
+      </header>
+      <div class="m2m-regua">
+        <a class="m2m-kpi" href="{% url 'frota_veiculos' %}">
+          <span class="m2m-micro">Veículos</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.total|unlocalize }}</span>
+          <span class="m2m-kpi-nota">{% if kpis_frota.desativados %}{{ kpis_frota.desativados|unlocalize }} desativado{{ kpis_frota.desativados|pluralize }} fora da conta{% else %}cadastrados{% endif %}</span>
+        </a>
+        <a class="m2m-kpi" href="{% url 'frota_veiculos' %}?status=ativo">
+          <span class="m2m-micro">Ativos</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.ativos|unlocalize }}</span>
+          <span class="m2m-kpi-nota">em operação</span>
+        </a>
+        <a class="m2m-kpi" href="{% url 'frota_veiculos' %}?status=manutencao">
+          <span class="m2m-micro">Em manutenção</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.em_manutencao|unlocalize }}</span>
+          <span class="m2m-kpi-nota">parados</span>
+        </a>
+        <a class="m2m-kpi" href="{% url 'frota_veiculos' %}?chip=sem&amp;status=ativo" {% if atencao.veiculos_sem_chip.total %}data-tom="atencao"{% endif %}>
+          <span class="m2m-micro">Sem chip</span>
+          <span class="m2m-kpi-n m2m-num">{{ atencao.veiculos_sem_chip.total|unlocalize }}</span>
+          <span class="m2m-kpi-nota">ativos que exigem chip</span>
+        </a>
+      </div>
+    </section>
+    {% endif %}
+
+    {% if kpis_conectividade %}
+    <section class="m2m-painel" aria-labelledby="m2m-b-conect">
+      <header class="m2m-painel-cab">
+        <h3 class="m2m-painel-t" id="m2m-b-conect">Conectividade</h3>
+        <a class="m2m-painel-link" href="{% url 'm2m_chips' %}">Ver chips</a>
+      </header>
+      <div class="m2m-regua">
+        <a class="m2m-kpi" href="{% url 'm2m_chips' %}">
+          <span class="m2m-micro">Chips</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_conectividade.chips_total|unlocalize }}</span>
+          <span class="m2m-kpi-nota">{{ kpis_conectividade.chips_disponiveis|unlocalize }} disponíve{{ kpis_conectividade.chips_disponiveis|pluralize:"l,is" }}</span>
+        </a>
+        <a class="m2m-kpi" href="{% url 'm2m_chips' %}?situacao_uso=vinculado">
+          <span class="m2m-micro">Vinculados</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_conectividade.chips_vinculados|unlocalize }}</span>
+          <span class="m2m-kpi-nota">em veículos</span>
+        </a>
+        <a class="m2m-kpi" href="{% url 'm2m_chips' %}?situacao_uso=vinculado&amp;conectividade=ativa" title="Só chips vinculados a veículo e consultados pela API, com dado recente e confirmado pelo mapeamento.">
+          <span class="m2m-micro">Sessões ativas</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_conectividade.com_sessao_ativa|unlocalize }}</span>
+          <span class="m2m-kpi-nota">confirmadas</span>
+        </a>
+        <a class="m2m-kpi" href="{% url 'm2m_chips' %}?situacao_uso=vinculado&amp;situacao=erro_consulta" title="A falha é da consulta (rede, credencial, API ou identificador): ela não diz que o chip está fora do ar." {% if kpis_conectividade.com_falha %}data-tom="erro"{% endif %}>
+          <span class="m2m-micro">Falhas de consulta</span>
+          <span class="m2m-kpi-n m2m-num">{{ kpis_conectividade.com_falha|unlocalize }}</span>
+          <span class="m2m-kpi-nota">últimas consultas</span>
+        </a>
+      </div>
+      {% if sem_mapeamento %}
+      <p class="m2m-nota m2m-nota--pad">Sem o mapeamento da resposta da API, nenhuma sessão é confirmada.{% if pode_configurar %} <a href="{% url 'm2m_config' %}#mapeamento">Mapear os campos</a>{% endif %}</p>
+      {% endif %}
+    </section>
+    {% endif %}
+  </div>
+
+  {% comment %}Área de atenção: UMA lista, só com o que pede ação. Sem pendência, uma linha discreta.{% endcomment %}
+  <section class="m2m-painel" aria-labelledby="m2m-atencao-t">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-atencao-t">Requer atenção</h3></header>
+    {% if pendencias %}
+      {% for p in pendencias %}
+      <div class="m2m-aten-grupo">
+        <div class="m2m-aten-cab">
+          <span class="m2m-aten-t">{{ p.titulo }}</span>
+          <span class="m2m-painel-t-n">{{ p.total|unlocalize }}</span>
+          <a class="m2m-painel-link" href="{{ p.url }}">Ver todos</a>
+        </div>
+        {% if p.itens %}
+        <ul class="m2m-lista-linhas">
+          {% for item in p.itens %}
+          <li>
+            {% if p.tipo == "veiculo" %}
+              <a class="m2m-link-forte" href="{% url 'frota_veiculo_detalhe' item.pk %}">{{ item.nome }}</a>
+              <span class="m2m-sub m2m-num">{{ item.codigo }}</span>
+              <span class="m2m-sub m2m-lista-fim">{{ item.tipo.nome }}</span>
+            {% else %}
+              <a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' item.pk %}">{{ item.nome }}</a>
+              {% if item.veiculo_atual %}<span class="m2m-sub m2m-num">{{ item.veiculo_atual.codigo }}</span>{% endif %}
+              <span class="m2m-lista-fim">
+                {% if p.tipo == "desatualizado" %}{% m2m_frescor item.frescor_sessao %}
+                {% elif p.tipo == "falha" %}<span class="m2m-sub m2m-sub--erro m2m-num">&times;{{ item.falhas_consecutivas }}</span>{% if item.ultima_falha_rotulo %} <span class="m2m-sub">{{ item.ultima_falha_rotulo }}</span>{% endif %}
+                {% else %}<span class="m2m-sub">ainda não consultado</span>{% endif %}
+              </span>
+            {% endif %}
+          </li>
+          {% endfor %}
+          {% if p.restantes %}<li><span class="m2m-sub">e mais {{ p.restantes|unlocalize }}</span></li>{% endif %}
+        </ul>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="m2m-tudo-certo"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Nenhuma pendência. Tudo em situação normal.</p>
+    {% endif %}
+  </section>
+
+  {% if ver_historico %}
+  <section class="m2m-painel" aria-labelledby="m2m-a-mov">
+    <header class="m2m-painel-cab">
+      <h3 class="m2m-painel-t" id="m2m-a-mov">Movimentações recentes <span class="m2m-sub">{{ atencao.movimentacoes_recentes.total|unlocalize }} em 7 dias</span></h3>
+      <a class="m2m-painel-link" href="{% url 'frota_movimentacoes' %}">Ver histórico completo</a>
+    </header>
+    {% if atencao.movimentacoes_recentes.itens %}
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela m2m-tabela--curta">
+        <thead><tr><th>Data e horário</th><th>Tipo</th><th>Chip</th><th>Veículo</th><th>Responsável</th></tr></thead>
+        <tbody>
+          {% for m in atencao.movimentacoes_recentes.itens %}
+          <tr>
+            <td data-rotulo="Data e horário"><span class="m2m-num">{{ m.em|date:"d/m/Y H:i" }}</span></td>
+            <td data-rotulo="Tipo"><b>{{ m.get_tipo_display }}</b></td>
+            <td data-rotulo="Chip">{{ m.chip.nome }}</td>
+            <td data-rotulo="Veículo">
+              {% if m.veiculo_origem %}{{ m.veiculo_origem.codigo }}{% endif %}{% if m.veiculo_origem and m.veiculo_destino %} <span class="m2m-sub">→</span> {% endif %}{% if m.veiculo_destino %}{{ m.veiculo_destino.codigo }}{% endif %}{% if not m.veiculo_origem and not m.veiculo_destino %}<span class="m2m-vazio-linha">—</span>{% endif %}
+            </td>
+            <td data-rotulo="Responsável">{{ m.usuario_nome|default:"—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      {% include 'front/m2m/_vazio.html' with icone="fa-right-left" titulo="Nenhuma movimentação registrada" texto="Cada vínculo, transferência ou devolução de chip fica registrado aqui." only %}
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if not mostrar_passos and passos %}{% include 'front/m2m/_config_inicial.html' with completo=True %}{% endif %}
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

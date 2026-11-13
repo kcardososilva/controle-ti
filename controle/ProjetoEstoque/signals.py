@@ -57,6 +57,27 @@ def _item_sincronizar_preventivas(sender, instance, created, **kwargs):
 
 
 @receiver(post_save, sender=Item)
+def _item_sair_de_reservado(sender, instance, created, **kwargs):
+    """Rede de segurança da reserva: se o equipamento deixa de ser "Reservado"
+    por um caminho que NÃO passou pelo fluxo de reserva (um reparo aberto
+    direto, um ajuste de cadastro), a reserva não pode continuar "ativa" sobre
+    um equipamento que já não está reservado. Ela vira "usada em outra
+    necessidade", a vaga fica pendente de equipamento e — sem substituto em
+    Backup — o TI é avisado. O fluxo normal (entrega, uso confirmado,
+    liberação) fecha a reserva ANTES de salvar o item, então aqui não há
+    reserva ativa e nada acontece."""
+    old = getattr(instance, "_old_status", None)
+    if created or old != StatusItemChoices.RESERVADO or instance.status == old:
+        return
+    try:
+        from services.reserva_equipamento_service import item_saiu_de_reservado
+        item_saiu_de_reservado(instance, old, getattr(instance, "atualizado_por", None))
+    except Exception:
+        # A reserva nunca pode quebrar o save do item.
+        logger.warning("Falha ao desfazer a reserva do equipamento %s", instance.pk, exc_info=True)
+
+
+@receiver(post_save, sender=Item)
 def _item_notificar_defeito(sender, instance, created, **kwargs):
     """Ao equipamento TRANSICIONAR para Defeito (não na criação), avisa por
     e-mail o(s) login(s) do fornecedor configurados para receber esse aviso
@@ -76,6 +97,65 @@ def _item_notificar_defeito(sender, instance, created, **kwargs):
             alerta_item_defeito(pk)
         except Exception:
             logger.warning("Falha ao notificar fornecedor sobre item em Defeito", exc_info=True)
+
+    transaction.on_commit(_mail)
+
+
+# Status em que o computador está PARADO — a janela em que a licença presa a
+# ele fica pagando sem uso. Entrar nela pede cancelamento; sair dela pede o
+# religamento. Por isso o aviso dispara nos DOIS sentidos.
+_STATUS_COMPUTADOR_PARADO = (
+    StatusItemChoices.BACKUP, StatusItemChoices.RESERVADO, StatusItemChoices.PAUSADO,
+)
+
+
+@receiver(post_save, sender=Item)
+def _item_notificar_computador_parado(sender, instance, created, **kwargs):
+    """Notebook/desktop que ENTRA ou SAI de Backup/Pausado dispara a lista
+    atualizada de computadores parados, com ele em destaque.
+
+    Dispara nos dois sentidos de propósito: a ida é quando se cancela a
+    licença, a volta é quando se religa — avisar só a ida deixaria máquina
+    voltando a operar com licença cancelada, que é o chamado de segunda-feira.
+    Transição ENTRE dois status parados (backup → pausado) não avisa: a
+    decisão sobre a licença já foi tomada na entrada.
+
+    Fire-and-forget em `transaction.on_commit`, como o aviso de Defeito —
+    SMTP lento nunca pode travar o save do item."""
+    old = getattr(instance, "_old_status", None)
+    if created or old == instance.status:
+        return
+
+    saiu = old in _STATUS_COMPUTADOR_PARADO
+    entrou = instance.status in _STATUS_COMPUTADOR_PARADO
+    if not (saiu or entrou) or (saiu and entrou):
+        return
+
+    try:
+        from services.email_alertas import eh_computador_parado
+        # Na SAÍDA o item já não está parado, então o teste de situação não
+        # serve — o que importa ali é só ser notebook/desktop.
+        nome_subtipo = (instance.subtipo.nome if instance.subtipo_id else "") or ""
+        eh_computador = any(
+            termo in nome_subtipo.lower() for termo in ("notebook", "desktop")
+        )
+        if entrou and not eh_computador_parado(instance):
+            return
+        if not eh_computador:
+            return
+    except Exception:
+        logger.warning("Falha ao classificar item para o aviso de computador parado", exc_info=True)
+        return
+
+    pk = instance.pk
+    anterior = old or ""
+
+    def _mail():
+        try:
+            from services.email_alertas import alerta_computadores_parados
+            alerta_computadores_parados(item_destaque_pk=pk, status_anterior=anterior)
+        except Exception:
+            logger.warning("Falha ao enviar aviso de computador parado", exc_info=True)
 
     transaction.on_commit(_mail)
 

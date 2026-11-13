@@ -205,6 +205,28 @@ class FichaDoEquipamentoFatiadaTests(TestCase):
         for aba in ("ficha", "historico", "monitoracao"):
             self.assertIn(f'id="tab-{aba}"', html, f"a aba {aba} não foi renderizada")
 
+    def test_voltar_qr_e_editar_ficam_no_corpo_e_nao_na_barra_superior(self):
+        """Pedido de 2026-11-13: os três botões saíram da barra superior
+        (`header_actions` → `.quick-actions`) para o cartão de identidade do ativo
+        (`.ad-tools`). Voltar/QR/Editar na barra de novo seria regressão."""
+        html = self.client.get(
+            reverse("equipamento_detalhe", args=[self.item.pk]) + "?next=/equipamentos/%3Fq%3Dnote"
+        ).content.decode("utf-8")
+        topo = re.search(r'<div class="quick-actions">(.*?)</div>\s*(?:\{#|<div class="notif-wrap")', html, re.S)
+        self.assertIsNotNone(topo, "a barra superior (.quick-actions) sumiu do base.html")
+        for destino in (reverse("equipamento_qr", args=[self.item.pk]), reverse("item_update", args=[self.item.pk])):
+            self.assertNotIn(destino, topo.group(1), "botão do detalhe voltou para a barra superior")
+        self.assertNotIn("Voltar", topo.group(1))
+        tools = re.search(r'<div class="ad-tools"[^>]*>(.*?)</div>', html, re.S)
+        self.assertIsNotNone(tools, "faltam as ferramentas do cadastro no cartão do ativo")
+        corpo = tools.group(1)
+        self.assertIn(reverse("equipamento_qr", args=[self.item.pk]), corpo)
+        self.assertIn(reverse("item_update", args=[self.item.pk]), corpo)
+        self.assertIn("Voltar", corpo)
+        # o "voltar" continua levando de volta à lista COM os filtros (next), e o editar leva o next adiante
+        self.assertIn('href="/equipamentos/?q=note"', corpo)
+        self.assertIn("next=/equipamentos/%3Fq%3Dnote", corpo)
+
     def test_ficha_nao_deixou_include_sem_resolver(self):
         """Um caminho de include errado não levanta erro: o Django renderiza
         vazio (ou o texto cru, dependendo do debug). Conferir a marcação de

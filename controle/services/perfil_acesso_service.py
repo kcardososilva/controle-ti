@@ -18,7 +18,12 @@ acesso.
 from django.core.cache import cache
 
 from ProjetoEstoque.middleware import _grupos_do_usuario
-from ProjetoEstoque.models import GRUPO_FORNECEDOR, GRUPO_PARCEIRO_LICENCA
+from ProjetoEstoque.models import (
+    GRUPO_CONSULTA_QUIOSQUE,
+    GRUPO_FORNECEDOR,
+    GRUPO_PARCEIRO_LICENCA,
+    GRUPO_PORTAL_CONTRATACAO,
+)
 
 # Mesmo nome literal usado por TVAccessMiddleware e media_acesso_service.
 GRUPO_TV = "Visualizador TV"
@@ -74,6 +79,33 @@ def _calcular(user) -> dict:
     if GRUPO_TV in grupos:
         return {
             "rotulo": "Visualizador TV",
+            "detalhe": "Somente leitura",
+            "externo": True,
+            "tom": "tv",
+        }
+    # Perfis de acesso restrito: pessoas (RH, gestor, terceiro) com UMA tela.
+    # Entram aqui, no bloco dos externos, pelo mesmo motivo dos de cima — o
+    # middleware prende a pessoa à área dela, e o chip tem de dizer isso em vez
+    # de herdar um grupo interno que tenha sobrado de um cadastro antigo.
+    if GRUPO_PORTAL_CONTRATACAO in grupos and GRUPO_CONSULTA_QUIOSQUE in grupos:
+        # Os dois perfis no mesmo login: o chip diz que a pessoa acumula as duas
+        # áreas, em vez de mostrar só a primeira e esconder a outra.
+        return {
+            "rotulo": "Contratações + Quiosque",
+            "detalhe": "Abertura de vagas · consulta de aparelhos",
+            "externo": True,
+            "tom": "externo",
+        }
+    if GRUPO_PORTAL_CONTRATACAO in grupos:
+        return {
+            "rotulo": "Portal de Contratações",
+            "detalhe": "Abertura de vagas",
+            "externo": True,
+            "tom": "externo",
+        }
+    if GRUPO_CONSULTA_QUIOSQUE in grupos:
+        return {
+            "rotulo": "Consulta Quiosque",
             "detalhe": "Somente leitura",
             "externo": True,
             "tom": "tv",

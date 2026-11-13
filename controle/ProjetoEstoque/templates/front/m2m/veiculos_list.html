@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+{% load static m2m_tags %}
+
+{% block title %}Veículos — Frotas — Zelo Agro{% endblock %}
+{% block page_title %}Frotas{% endblock %}
+{% block page_subtitle %}Veículos e equipamentos{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% if pode_editar_frota %}{% url 'frota_veiculo_novo' as u_novo %}{% endif %}
+  {% include 'front/m2m/_frota_topo.html' with titulo="Veículos e equipamentos" descricao="Consulte a frota, o chip de cada veículo e a situação da conectividade." acao_url=u_novo acao_rotulo="Novo veículo" acao_icone="fa-plus" %}
+
+  {% if total_geral %}
+  <nav class="m2m-segmentos m2m-segmentos--grande" aria-label="Veículos com e sem chip">
+    {% for s in segmentos_chip %}<a href="{{ s.url }}" {% if s.ativo %}class="is-ativa" aria-current="true"{% endif %}><span>{{ s.rotulo }}</span> <b class="m2m-num">{{ s.n }}</b></a>{% endfor %}
+  </nav>
+  {% endif %}
+
+  {% firstof filtros.tipo filtros.localidade filtros.status filtros.conectividade filtros.operadora filtros.de filtros.ate as avancado %}
+  <form class="m2m-filtros" method="get" id="m2m-form-filtros" role="search">
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="f-q">Buscar veículo</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="f-q" name="q" value="{{ filtros.q }}" class="m2m-campo" data-m2m-busca placeholder="Buscar por código, nome, modelo, placa, chassi, ICCID ou IMSI" autocomplete="off">
+      </div>
+      <button type="button" class="m2m-btn m2m-filtros-botao" data-m2m-filtros="m2m-filtros-painel" aria-expanded="{% if avancado %}true{% else %}false{% endif %}" aria-controls="m2m-filtros-painel"><i class="fa-solid fa-sliders" aria-hidden="true"></i>Filtros</button>
+      <span class="m2m-contagem-lista m2m-num">{% if page_obj.paginator.count != total_geral %}{{ page_obj.paginator.count }} de {{ total_geral }}{% else %}{{ total_geral }}{% endif %} veículo{{ total_geral|pluralize }}</span>
+    </div>
+
+    <div class="m2m-filtros-mais" id="m2m-filtros-painel" {% if not avancado %}hidden{% endif %}>
+      <div class="m2m-filtros-grade">
+        <label class="m2m-rotulo"><span>Tipo</span>
+          <select name="tipo" class="m2m-campo" data-m2m-auto>
+            <option value="">Todos</option>
+            {% for pk, nome in opcoes.tipos %}<option value="{{ pk }}" {% if filtros.tipo == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Fazenda</span>
+          <select name="localidade" class="m2m-campo" data-m2m-auto>
+            <option value="">Todas</option>
+            {% for pk, nome in opcoes.localidades %}<option value="{{ pk }}" {% if filtros.localidade == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Status</span>
+          <select name="status" class="m2m-campo" data-m2m-auto>
+            <option value="">Todos</option>
+            {% for valor, rotulo in opcoes.status %}<option value="{{ valor }}" {% if filtros.status == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        {% if filtros.chip %}<input type="hidden" name="chip" value="{{ filtros.chip }}">{% endif %}
+        <label class="m2m-rotulo"><span>Conectividade</span>
+          <select name="conectividade" class="m2m-campo" data-m2m-auto>
+            <option value="">Todas</option>
+            {% for valor, rotulo in opcoes.conectividade %}<option value="{{ valor }}" {% if filtros.conectividade == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Operadora do chip</span>
+          <select name="operadora" class="m2m-campo" data-m2m-auto>
+            <option value="">Todas</option>
+            {% for pk, nome in opcoes.operadoras %}<option value="{{ pk }}" {% if filtros.operadora == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Consultado desde</span><input type="date" name="de" value="{{ filtros.de }}" class="m2m-campo"></label>
+        <label class="m2m-rotulo"><span>Consultado até</span><input type="date" name="ate" value="{{ filtros.ate }}" class="m2m-campo"></label>
+        <label class="m2m-rotulo"><span>Ordenar por</span>
+          <select name="ordem" class="m2m-campo" data-m2m-auto>
+            <option value="atencao" {% if filtros.ordem == "atencao" or not filtros.ordem %}selected{% endif %}>Quem precisa de atenção primeiro</option>
+            <option value="codigo" {% if filtros.ordem == "codigo" %}selected{% endif %}>Código</option>
+            <option value="nome" {% if filtros.ordem == "nome" %}selected{% endif %}>Nome</option>
+            <option value="tipo" {% if filtros.ordem == "tipo" %}selected{% endif %}>Tipo</option>
+          </select>
+        </label>
+      </div>
+      <div class="m2m-filtros-acoes">
+        <button type="submit" class="m2m-btn m2m-btn--primario">Aplicar filtros</button>
+        <a class="m2m-btn" href="{% url 'frota_veiculos' %}">Limpar</a>
+      </div>
+    </div>
+  </form>
+
+  {% if filtros_ativos %}
+  <ul class="m2m-filtros-ativos" aria-label="Filtros em uso">
+    {% for f in filtros_ativos %}
+    <li class="m2m-etiqueta">{{ f.rotulo }} <a href="{{ f.remover }}" aria-label="Remover o filtro {{ f.rotulo }}" title="Remover o filtro">&times;</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if veiculos %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela m2m-tabela--veiculos">
+      <thead>
+        <tr>
+          <th>Veículo</th><th>Tipo</th><th>Modelo</th><th>Fazenda</th>
+          <th>Chip vinculado</th><th>Conectividade</th><th>Status</th><th><span class="m2m-sr">Ações</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in veiculos %}
+        <tr class="m2m-linha" data-veiculo-id="{{ v.pk }}" data-status="{{ v.status }}"{% if v.n_chips == 0 and v.exige_efetivo and v.status == "ativo" %} data-sem-chip="1"{% endif %}>
+          <td class="m2m-c-nome" data-rotulo="Veículo">
+            <span class="m2m-ident">
+              <a class="m2m-link-forte m2m-corta m2m-corta--larga" href="{% url 'frota_veiculo_detalhe' v.pk %}" title="{{ v.nome }}">{{ v.nome }}</a>
+              <span class="m2m-ident-cod">{{ v.codigo }}{% if v.placa %} · {{ v.placa }}{% endif %}</span>
+            </span>
+          </td>
+          <td data-rotulo="Tipo">{{ v.tipo.nome }}</td>
+          <td data-rotulo="Modelo">
+            {% if v.modelo or v.ano_fabricacao %}<span class="m2m-corta" title="{{ v.fabricante }} {{ v.modelo }}">{{ v.modelo|default:v.fabricante }}</span>{% if v.ano_fabricacao %} <span class="m2m-sub m2m-num">{{ v.ano_fabricacao }}</span>{% endif %}{% else %}<span class="m2m-sub">—</span>{% endif %}
+          </td>
+          <td data-rotulo="Fazenda">
+            {% if v.localidade %}<span class="m2m-corta m2m-corta--media" title="{% if v.setor %}{{ v.setor }}{% endif %}">{{ v.localidade.local }}</span>{% else %}<span class="m2m-sub">—</span>{% endif %}
+          </td>
+          <td data-rotulo="Chip vinculado">
+            {% if v.n_chips %}
+              {% if pode_ver_chips %}<span class="m2m-corta" title="{% for vi in v.vinculos_ativos %}{{ vi.chip.nome }}{% if not forloop.last %}, {% endif %}{% endfor %}">{{ v.vinculos_ativos.0.chip.nome }}</span>{% if v.n_chips > 1 %} <span class="m2m-sub m2m-num">+{{ v.n_chips|add:"-1" }}</span>{% endif %}{% else %}<span class="m2m-num">{{ v.n_chips }}</span>{% endif %}
+            {% else %}
+              <span class="m2m-sub">{% if v.exige_efetivo and v.status == "ativo" %}exige chip{% else %}—{% endif %}</span>
+            {% endif %}
+          </td>
+          <td class="m2m-quebra" data-rotulo="Conectividade">
+            {% frota_conect v.conectividade.estado %}
+            {% if v.conectividade.contagem.texto %}<span class="m2m-sub">{{ v.conectividade.contagem.texto }}</span>{% endif %}
+          </td>
+          <td data-rotulo="Status">{% frota_status v.status %}</td>
+          <td class="m2m-acoes" data-rotulo="Ações">
+            <a class="m2m-btn m2m-btn--sm" href="{% url 'frota_veiculo_detalhe' v.pk %}">Detalhes</a>
+            {% if pode_editar_frota %}<a class="m2m-btn m2m-btn--sm m2m-btn--fantasma" href="{% url 'frota_veiculo_editar' v.pk %}">Editar</a>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% elif total_geral == 0 %}
+    {% if pode_editar_frota %}{% url 'frota_veiculo_novo' as u_cadastrar %}{% endif %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-tractor" titulo="Nenhum veículo cadastrado" texto="Cadastre os veículos e equipamentos da operação para começar a vincular os chips de conectividade." acao_url=u_cadastrar acao_rotulo="Cadastrar veículo" acao_primaria=True only %}
+  {% else %}
+    {% url 'frota_veiculos' as u_limpar %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum resultado para os filtros aplicados" texto="Ajuste a busca ou limpe os filtros para ver a frota inteira." acao_url=u_limpar acao_rotulo="Limpar filtros" only %}
+  {% endif %}
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

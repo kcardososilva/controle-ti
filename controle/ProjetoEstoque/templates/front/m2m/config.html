@@ -1,0 +1,349 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags %}
+
+{% block title %}Configuração da integração — Chips e Conectividade — Zelo Agro{% endblock %}
+{% block page_title %}Chips e Conectividade{% endblock %}
+{% block page_subtitle %}Configuração da integração{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% include 'front/m2m/_frota_topo.html' with titulo="Configurações" descricao="Integração com a TIM: credencial, frequência, limites de alerta e mapeamento. O endereço da API vem do .env do servidor." %}
+
+  {% include 'front/m2m/_frota_config_abas.html' with aba_config="integracao" %}
+
+  {% if erros %}
+  <div class="m2m-aviso" data-tom="erro" role="alert">
+    <b>Não foi possível salvar.</b>
+    {% for campo, mensagem in erros.items %}<span class="m2m-aviso-item">{{ mensagem }}</span>{% endfor %}
+  </div>
+  {% endif %}
+
+  <nav class="m2m-ancoras" aria-label="Seções desta tela">
+    <a href="#credencial">Credencial</a>
+    <a href="#estado">Estado e teste de conexão</a>
+    <a href="#frequencia">Frequência</a>
+    <a href="#limites">Limites de alerta</a>
+    <a href="#mapeamento">Mapeamento da resposta</a>
+    <a href="#tarefa">Tarefa agendada e erros</a>
+  </nav>
+
+  {% comment %}1. Credencial{% endcomment %}
+  <section class="m2m-painel" id="credencial" aria-labelledby="m2m-cfg-cred">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-cfg-cred">Credencial</h3></header>
+    <div class="m2m-painel-corpo">
+      <dl class="m2m-dl m2m-dl--compacta">
+        <div><dt>Origem do token em uso</dt><dd>{% if integracao.token_origem == "env" %}arquivo .env do servidor{% elif integracao.token_origem == "banco" %}banco de dados (cifrado){% else %}nenhum{% endif %}</dd></div>
+        <div><dt>Final do token</dt><dd class="m2m-num">{% if integracao.token_sufixo %}····{{ integracao.token_sufixo }}{% else %}—{% endif %}</dd></div>
+        <div><dt>Chave de cifra</dt><dd>{% if integracao.chave_cifra_configurada %}configurada{% else %}<span class="m2m-sub m2m-sub--erro">ausente</span>{% endif %}</dd></div>
+        <div><dt>Última troca</dt><dd>{% if cfg.token_atualizado_em %}<span class="m2m-num">{{ cfg.token_atualizado_em|date:"d/m/Y H:i" }}</span>{% if cfg.token_atualizado_por %} <span class="m2m-sub">por {{ cfg.token_atualizado_por }}</span>{% endif %}{% else %}—{% endif %}</dd></div>
+      </dl>
+
+      {% if integracao.token_env_definido %}
+      <p class="m2m-aviso" data-tom="atencao">
+        <b>TIM_M2M_TOKEN está definido no .env e vence o token do banco.</b>
+        O que você gravar abaixo fica guardado, mas só passa a valer se a variável sair do .env.
+      </p>
+      {% endif %}
+
+      {% if not integracao.chave_cifra_configurada %}
+      <div class="m2m-aviso" data-tom="atencao">
+        <b>Falta a chave de cifra.</b> O token não é guardado em claro: sem a chave <code>TIM_M2M_CHAVE_CIFRA</code> no .env o sistema recusa gravá-lo no banco.
+        Gere uma chave com o comando abaixo, coloque o resultado no .env e reinicie o servidor.
+        <pre class="m2m-codigo" tabindex="0">{{ comando_gerar_chave }}</pre>
+      </div>
+      {% endif %}
+
+      <form method="post" action="{% url 'm2m_config_token' %}" class="m2m-form-linha" autocomplete="off">
+        {% csrf_token %}
+        <input type="hidden" name="acao" value="salvar">
+        <label class="m2m-rotulo m2m-rotulo--largo {% if erros.token %}tem-erro{% endif %}"><span>Novo token</span>
+          <input type="password" name="token" class="m2m-campo m2m-campo--mono" autocomplete="off" spellcheck="false" maxlength="4096" placeholder="Cole o token (sem a palavra Bearer)" {% if not integracao.chave_cifra_configurada %}disabled{% endif %} {% if erros.token %}aria-invalid="true"{% endif %}>
+          {% if erros.token %}<em class="m2m-erro">{{ erros.token }}</em>{% else %}<em class="m2m-dica">O token é cifrado ao salvar e nunca volta para esta tela: depois só se vê o final.</em>{% endif %}
+        </label>
+        <button type="submit" class="m2m-btn m2m-btn--primario" {% if not integracao.chave_cifra_configurada %}disabled{% endif %}>Salvar token</button>
+      </form>
+      {% if integracao.token_no_banco %}
+      <form method="post" action="{% url 'm2m_config_token' %}" data-m2m-confirma="Remover o token guardado no banco? O monitoramento para de consultar até um novo token ser informado (ou se houver TIM_M2M_TOKEN no .env).">
+        {% csrf_token %}<input type="hidden" name="acao" value="remover">
+        <button type="submit" class="m2m-btn m2m-btn--perigo">Remover o token do banco</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+
+  {% comment %}2. Estado e teste{% endcomment %}
+  <section class="m2m-painel" id="estado" aria-labelledby="m2m-cfg-estado">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-cfg-estado">Estado e teste de conexão</h3></header>
+    <div class="m2m-painel-corpo">
+      <dl class="m2m-dl m2m-dl--compacta">
+        <div><dt>Estado</dt><dd>{% m2m_ind integracao.estado integracao.rotulo %}</dd></div>
+        <div><dt>Endereço da API</dt><dd class="m2m-num">{{ integracao.base_url|default:"inválido" }} <span class="m2m-sub">definido no .env</span></dd></div>
+        <div><dt>Credenciais aceitas em</dt><dd class="m2m-num">{{ integracao.autenticada_em|date:"d/m/Y H:i"|default:"nunca" }}</dd></div>
+        <div><dt>Recusada em</dt><dd class="m2m-num">{{ integracao.falha_autenticacao_em|date:"d/m/Y H:i"|default:"nunca" }}</dd></div>
+        {% if integracao.bloqueado_ate %}<div><dt>Pausada por limite até</dt><dd class="m2m-num">{{ integracao.bloqueado_ate|date:"d/m/Y H:i" }}</dd></div>{% endif %}
+      </dl>
+
+      <div class="m2m-teste">
+        <label class="m2m-rotulo"><span>Testar com o chip</span>
+          <select id="m2m-teste-chip" class="m2m-campo" {% if not chips_para_teste %}disabled{% endif %}>
+            {% for pk, nome in chips_para_teste %}<option value="{{ pk }}">{{ nome }}</option>{% empty %}<option value="">Cadastre um chip primeiro</option>{% endfor %}
+          </select>
+        </label>
+        <button type="button" class="m2m-btn m2m-btn--primario" id="m2m-teste-botao" {% if not chips_para_teste %}disabled{% endif %}>Testar conexão</button>
+      </div>
+      <p class="m2m-nota">Faz UMA consulta de sessão do chip escolhido. Se der certo, a resposta fica guardada: é com ela que o mapeamento abaixo é feito.</p>
+      <output class="m2m-teste-resultado" id="m2m-teste-resultado" aria-live="polite">
+        {% if resultado_do_teste.resultado %}
+          Último teste{% if resultado_do_teste.em %} em <b class="m2m-num">{{ resultado_do_teste.em|date:"d/m/Y H:i" }}</b>{% endif %}, chip {{ resultado_do_teste.chip }}:
+          <b>{{ resultado_do_teste.resultado_rotulo }}</b>{% if resultado_do_teste.http_status %} (HTTP {{ resultado_do_teste.http_status }}){% endif %}{% if resultado_do_teste.mensagem %} — {{ resultado_do_teste.mensagem }}{% endif %}
+        {% else %}
+          Nenhum teste feito ainda.
+        {% endif %}
+      </output>
+    </div>
+  </section>
+
+  {% comment %}3 e 4. Frequência e limites{% endcomment %}
+  <section class="m2m-painel" id="frequencia" aria-labelledby="m2m-cfg-freq">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-cfg-freq">Frequência das consultas</h3></header>
+    <form method="post" action="{% url 'm2m_config_frequencia' %}" class="m2m-painel-corpo" id="m2m-form-frequencia">
+      {% csrf_token %}
+      <div class="m2m-form-grade m2m-form-grade--4">
+        <label class="m2m-rotulo {% if erros.intervalo_minutos %}tem-erro{% endif %}"><span>Intervalo entre consultas (min)</span>
+          <input type="number" name="intervalo_minutos" value="{{ cfg.intervalo_minutos|unlocalize }}" min="15" max="10080" class="m2m-campo m2m-campo--mono" required data-m2m-simular>
+          <em class="m2m-dica">Mínimo de 15 minutos. Cada chip é consultado uma vez por intervalo.</em>
+        </label>
+        <label class="m2m-rotulo {% if erros.pausa_entre_chamadas_ms %}tem-erro{% endif %}"><span>Pausa entre chamadas (ms)</span>
+          <input type="number" name="pausa_entre_chamadas_ms" value="{{ cfg.pausa_entre_chamadas_ms|unlocalize }}" min="0" max="60000" class="m2m-campo m2m-campo--mono" required>
+          <em class="m2m-dica">Nunca menor do que o limite por minuto permite.</em>
+        </label>
+        <label class="m2m-rotulo {% if erros.limite_req_minuto %}tem-erro{% endif %}"><span>Limite de requisições por minuto</span>
+          <input type="number" name="limite_req_minuto" value="{{ cfg.limite_req_minuto|unlocalize }}" min="1" max="600" class="m2m-campo m2m-campo--mono" required data-m2m-simular>
+          <em class="m2m-dica">Conservador até a TIM informar o limite real.</em>
+        </label>
+        <label class="m2m-rotulo {% if erros.max_chips_execucao %}tem-erro{% endif %}"><span>Máximo de chips por execução</span>
+          <input type="number" name="max_chips_execucao" value="{{ cfg.max_chips_execucao|unlocalize }}" min="1" max="1000" class="m2m-campo m2m-campo--mono" required>
+        </label>
+      </div>
+      <output class="m2m-conta" id="m2m-conta" data-ok="{% if conta.ok %}1{% else %}0{% endif %}" aria-live="polite">
+        <b>A conta:</b> <span class="m2m-num" id="m2m-conta-texto">{{ conta.conta }}</span>
+        <span id="m2m-conta-motivo" class="m2m-sub m2m-sub--erro">{{ conta.motivo }}</span>
+      </output>
+      <div class="m2m-form-acoes"><button type="submit" class="m2m-btn m2m-btn--primario">Salvar frequência</button></div>
+    </form>
+  </section>
+
+  <section class="m2m-painel" id="limites" aria-labelledby="m2m-cfg-lim">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-cfg-lim">Limites de alerta</h3></header>
+    <form method="post" action="{% url 'm2m_config_frequencia' %}" class="m2m-painel-corpo">
+      {% csrf_token %}
+      <div class="m2m-form-grade m2m-form-grade--4">
+        <label class="m2m-rotulo {% if erros.falhas_para_alerta %}tem-erro{% endif %}"><span>Falhas de consulta seguidas</span>
+          <input type="number" name="falhas_para_alerta" value="{{ cfg.falhas_para_alerta|unlocalize }}" min="1" max="100" class="m2m-campo m2m-campo--mono" required>
+          <em class="m2m-dica">Alerta de falha recorrente. Uma falha isolada não gera ocorrência.</em>
+        </label>
+        <label class="m2m-rotulo {% if erros.horas_sem_sessao_alerta %}tem-erro{% endif %}"><span>Horas sem sessão</span>
+          <input type="number" name="horas_sem_sessao_alerta" value="{{ cfg.horas_sem_sessao_alerta|unlocalize }}" min="1" max="720" class="m2m-campo m2m-campo--mono" required>
+          <em class="m2m-dica">Só vale com “sem sessão” confirmado pelo mapeamento.</em>
+        </label>
+        <label class="m2m-rotulo {% if erros.horas_desatualizado %}tem-erro{% endif %}"><span>Horas sem dado novo</span>
+          <input type="number" name="horas_desatualizado" value="{{ cfg.horas_desatualizado|unlocalize }}" min="1" max="720" class="m2m-campo m2m-campo--mono" required>
+          <em class="m2m-dica">Passado isso, o dado é marcado como desatualizado em toda a tela.</em>
+        </label>
+        <label class="m2m-rotulo {% if erros.pct_consumo_alerta %}tem-erro{% endif %}"><span>Consumo, % do limite mensal</span>
+          <input type="number" name="pct_consumo_alerta" value="{{ cfg.pct_consumo_alerta|unlocalize }}" min="1" max="100" class="m2m-campo m2m-campo--mono" required>
+          <em class="m2m-dica">Só vale para o chip que tem limite mensal cadastrado.</em>
+        </label>
+      </div>
+      <div class="m2m-form-acoes"><button type="submit" class="m2m-btn m2m-btn--primario">Salvar limites</button></div>
+    </form>
+  </section>
+
+  {% comment %}5. Mapeamento{% endcomment %}
+  <section class="m2m-painel" id="mapeamento" aria-labelledby="m2m-cfg-mapa">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-cfg-mapa">Mapeamento da resposta</h3></header>
+    <div class="m2m-painel-corpo">
+      <p class="m2m-nota">
+        A documentação da API ainda não foi obtida, então o sistema não presume nenhum campo: a resposta é guardada como veio e só é lida pelas regras daqui.
+        Sem mapeamento, todo chip fica como “não interpretado”. Escolha os campos sobre uma resposta <b>real</b> (faça o teste de conexão acima).
+      </p>
+
+      <div class="m2m-amostras">
+        {% for tipo, amostra in amostras.items %}
+        <p class="m2m-sub">
+          Amostra de {% if tipo == "sessao" %}sessão{% else %}consumo{% endif %}:
+          {% if amostra %}chip {{ amostra.chip.nome }}, <span class="m2m-num">{{ amostra.em|date:"d/m H:i" }}</span>
+            <button type="button" class="m2m-btn m2m-btn--sm m2m-btn--fantasma" data-m2m-payload data-url="{% url 'm2m_consulta_payload' amostra.consulta.pk %}">Ver resposta</button>
+          {% else %}nenhuma resposta com conteúdo guardada ainda{% endif %}
+        </p>
+        {% endfor %}
+      </div>
+
+      <div class="m2m-mapa-grade">
+        <form method="post" action="{% url 'm2m_config_mapeamento' %}" id="m2m-form-mapa" class="m2m-mapa-form">
+          {% csrf_token %}
+          <datalist id="m2m-caminhos">{% for c in caminhos %}<option value="{{ c.caminho }}">{{ c.exemplo }}</option>{% endfor %}</datalist>
+
+          <fieldset class="m2m-grupo">
+            <legend>Sessão</legend>
+            <label class="m2m-rotulo"><span>Campo do estado da sessão</span>
+              <input type="text" name="sessao__campo_estado" value="{{ mapa.sessao.campo_estado }}" class="m2m-campo m2m-campo--mono" list="m2m-caminhos" placeholder="ex.: dados.estado" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="m2m-rotulo"><span>Valores que significam “sessão ativa”</span>
+              <textarea name="sessao__valores_ativa" rows="2" class="m2m-campo m2m-campo--area m2m-campo--mono" placeholder="um por linha">{{ mapa.sessao.valores_ativa }}</textarea>
+            </label>
+            <label class="m2m-rotulo"><span>Valores que significam “sem sessão”</span>
+              <textarea name="sessao__valores_sem_sessao" rows="2" class="m2m-campo m2m-campo--area m2m-campo--mono" placeholder="um por linha">{{ mapa.sessao.valores_sem_sessao }}</textarea>
+              <em class="m2m-dica">Qualquer outro valor vira “não interpretado”, com o valor bruto à mostra.</em>
+            </label>
+            <label class="m2m-rotulo"><span>Campos a exibir no detalhe do chip</span>
+              <textarea name="sessao__campos_exibir" rows="2" class="m2m-campo m2m-campo--area m2m-campo--mono" placeholder="um caminho por linha">{{ mapa.sessao.campos_exibir }}</textarea>
+            </label>
+          </fieldset>
+
+          <fieldset class="m2m-grupo">
+            <legend>Consumo</legend>
+            <label class="m2m-rotulo"><span>Campo do volume</span>
+              <input type="text" name="consumo__campo_volume" value="{{ mapa.consumo.campo_volume }}" class="m2m-campo m2m-campo--mono" list="m2m-caminhos" placeholder="ex.: uso.total" autocomplete="off" spellcheck="false">
+            </label>
+            <div class="m2m-form-grade">
+              <label class="m2m-rotulo"><span>Campo da unidade</span>
+                <input type="text" name="consumo__campo_unidade" value="{{ mapa.consumo.campo_unidade }}" class="m2m-campo m2m-campo--mono" list="m2m-caminhos" autocomplete="off" spellcheck="false">
+              </label>
+              <label class="m2m-rotulo"><span>…ou unidade fixa</span>
+                <select name="consumo__unidade_fixa" class="m2m-campo">
+                  <option value="">— usar o campo da unidade —</option>
+                  {% for u in unidades_fixas %}<option value="{{ u }}" {% if mapa.consumo.unidade_fixa == u %}selected{% endif %}>{{ u }}</option>{% endfor %}
+                </select>
+              </label>
+            </div>
+            <div class="m2m-rotulo m2m-escolha"><span>Base de conversão (KB, MB, GB)</span>
+              <label><input type="radio" name="consumo__base" value="1000" {% if mapa.consumo.base|stringformat:"s" != "1024" %}checked{% endif %}> 1000 (decimal)</label>
+              <label><input type="radio" name="consumo__base" value="1024" {% if mapa.consumo.base|stringformat:"s" == "1024" %}checked{% endif %}> 1024 (binário)</label>
+              <em class="m2m-dica">Unidades em bits (Mb, Gb) não são aceitas: ler megabits como megabytes erraria o volume por 8 vezes.</em>
+            </div>
+            <div class="m2m-form-grade">
+              <label class="m2m-rotulo"><span>Início do período</span>
+                <input type="text" name="consumo__campo_periodo_inicio" value="{{ mapa.consumo.campo_periodo_inicio }}" class="m2m-campo m2m-campo--mono" list="m2m-caminhos" autocomplete="off" spellcheck="false">
+              </label>
+              <label class="m2m-rotulo"><span>Fim do período</span>
+                <input type="text" name="consumo__campo_periodo_fim" value="{{ mapa.consumo.campo_periodo_fim }}" class="m2m-campo m2m-campo--mono" list="m2m-caminhos" autocomplete="off" spellcheck="false">
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset class="m2m-grupo">
+            <legend>Identidade (opcional)</legend>
+            <div class="m2m-form-grade">
+              <label class="m2m-rotulo"><span>Campo do ICCID na resposta</span>
+                <input type="text" name="identidade__campo_iccid" value="{{ mapa.identidade.campo_iccid }}" class="m2m-campo m2m-campo--mono" list="m2m-caminhos" autocomplete="off" spellcheck="false">
+              </label>
+              <label class="m2m-rotulo"><span>Campo do IMSI na resposta</span>
+                <input type="text" name="identidade__campo_imsi" value="{{ mapa.identidade.campo_imsi }}" class="m2m-campo m2m-campo--mono" list="m2m-caminhos" autocomplete="off" spellcheck="false">
+              </label>
+            </div>
+            <p class="m2m-nota">Se a resposta traz o identificador, o sistema avisa quando ele não bate com o cadastro do chip.</p>
+          </fieldset>
+
+          <div class="m2m-form-acoes">
+            <button type="submit" class="m2m-btn m2m-btn--primario">Salvar mapeamento</button>
+            <span class="m2m-sub">Salvar não reescreve as consultas antigas.</span>
+          </div>
+        </form>
+
+        <aside class="m2m-previa" aria-labelledby="m2m-previa-t">
+          <h4 class="m2m-sub-t" id="m2m-previa-t">Prévia ao vivo</h4>
+          <p class="m2m-nota">O que este mapeamento (ainda não salvo) leria nas últimas respostas reais. Nada é gravado.</p>
+          <div id="m2m-previa-corpo" aria-live="polite"><p class="m2m-sub">Edite um campo para ver a prévia.</p></div>
+        </aside>
+      </div>
+
+      {% if caminhos %}
+      <details class="m2m-caminhos-lista">
+        <summary>Campos encontrados nas respostas reais ({{ caminhos|length }})</summary>
+        <div class="m2m-tabela-wrap">
+          <table class="m2m-tabela m2m-tabela--curta">
+            <thead><tr><th>Caminho</th><th>Tipo</th><th>Exemplo</th></tr></thead>
+            <tbody>{% for c in caminhos %}<tr><td class="m2m-num" data-rotulo="Caminho">{{ c.caminho }}</td><td data-rotulo="Tipo">{{ c.tipo }}</td><td class="m2m-num" data-rotulo="Exemplo">{{ c.exemplo|default:"—" }}</td></tr>{% endfor %}</tbody>
+          </table>
+        </div>
+      </details>
+      {% endif %}
+
+      <form method="post" action="{% url 'm2m_reinterpretar' %}" class="m2m-reinterpretar" data-m2m-confirma="Reinterpretar o histórico recalcula os campos normalizados (estado e volume) de todas as consultas válidas e o estado atual dos chips, com o mapeamento SALVO. As respostas guardadas não são alteradas. Continuar?">
+        {% csrf_token %}
+        <button type="submit" class="m2m-btn">Reinterpretar histórico</button>
+        <span class="m2m-sub">Recalcula o estado e o volume das consultas antigas com o mapeamento salvo. As respostas guardadas nunca são tocadas.</span>
+      </form>
+    </div>
+  </section>
+
+  {% comment %}6. Tarefa agendada e erros{% endcomment %}
+  <section class="m2m-painel" id="tarefa" aria-labelledby="m2m-cfg-tarefa">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-cfg-tarefa">Tarefa agendada e últimos erros</h3></header>
+    <div class="m2m-painel-corpo">
+      <dl class="m2m-dl m2m-dl--compacta">
+        <div><dt>Tarefa</dt><dd>
+          {% if integracao.executando %}{% m2m_ind "pendente" "Executando agora" %}
+          {% elif integracao.tarefa_parada %}{% m2m_ind "desatualizado" "Parada" %}
+          {% elif integracao.ultima_sincronizacao %}{% m2m_ind "normal" "Em dia" %}
+          {% else %}{% m2m_ind "pendente" "Nunca executou" %}{% endif %}
+        </dd></div>
+        <div><dt>Última execução</dt><dd class="m2m-num">{{ integracao.ultima_sincronizacao|date:"d/m/Y H:i"|default:"nunca" }}</dd></div>
+        <div><dt>Próxima</dt><dd class="m2m-num">{{ integracao.proxima|date:"d/m/Y H:i"|default:"—" }}</dd></div>
+        <div><dt>Intervalo da tarefa</dt><dd class="m2m-num">{{ integracao.tique_minutos }} min <span class="m2m-sub">(informado pelo comando que a registra)</span></dd></div>
+      </dl>
+      {% if integracao.ultimo_erro %}<p class="m2m-aviso" data-tom="atencao"><b>Último erro do ciclo:</b> {{ integracao.ultimo_erro }}</p>{% endif %}
+
+      <p class="m2m-nota">
+        O Agendador do Windows dispara o ciclo; a frequência de cada chip é a configurada acima. Registrar a tarefa exige um terminal aberto como <b>Administrador</b> no servidor — o sistema não se registra sozinho.
+      </p>
+      <pre class="m2m-codigo" tabindex="0">python manage.py agendar_m2m criar --intervalo 15
+python manage.py agendar_m2m listar
+python manage.py agendar_m2m executar</pre>
+
+      <h4 class="m2m-sub-t">Últimas falhas de consulta</h4>
+      {% if ultimas_falhas %}
+      <div class="m2m-tabela-wrap">
+        <table class="m2m-tabela m2m-tabela--curta">
+          <thead><tr><th>Quando</th><th>Chip</th><th>Resultado</th><th class="num">HTTP</th><th>Mensagem</th></tr></thead>
+          <tbody>
+            {% for c in ultimas_falhas %}
+            <tr>
+              <td data-rotulo="Quando"><span class="m2m-num">{{ c.iniciada_em|date:"d/m H:i" }}</span></td>
+              <td data-rotulo="Chip"><a href="{% url 'm2m_chip_detalhe' c.chip_id %}">{{ c.chip.nome }}</a></td>
+              <td data-rotulo="Resultado">{% m2m_ind "falha" c.get_resultado_display %}</td>
+              <td class="num" data-rotulo="HTTP"><span class="m2m-num">{{ c.http_status|default:"—" }}</span></td>
+              <td data-rotulo="Mensagem"><span class="m2m-corta m2m-corta--larga" title="{{ c.mensagem_erro }}">{{ c.mensagem_erro|default:"—" }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="m2m-painel-vazio">Nenhuma consulta falhou até agora.</p>
+      {% endif %}
+
+      <h4 class="m2m-sub-t">Alterações recentes da integração</h4>
+      {% if eventos %}
+      <ul class="m2m-eventos">
+        {% for e in eventos %}
+        <li>
+          <span class="m2m-num m2m-eventos-quando">{{ e.em|date:"d/m H:i" }}</span>
+          <span class="m2m-eventos-texto"><b>{{ e.titulo }}</b>{% if e.usuario %} <span class="m2m-sub">por {{ e.usuario }}</span>{% endif %}{% if e.detalhe %} <span class="m2m-sub">{{ e.detalhe }}</span>{% endif %}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="m2m-painel-vazio">Nenhuma alteração registrada.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

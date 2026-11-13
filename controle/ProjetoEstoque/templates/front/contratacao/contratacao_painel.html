@@ -1,0 +1,332 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Contratações{% endblock %}
+{% block page_title %}Contratações{% endblock %}
+{% block page_subtitle %}Admissão de colaboradores — equipamento, acessos e licenças{% endblock %}
+
+{% comment %}"Nova contratação" NÃO fica na topbar: por pedido do usuário, a ação
+   mora no corpo da página, ao lado do quadro que ela alimenta — é onde o
+   Planner põe o "Adicionar um novo bucket".{% endcomment %}
+
+{% block extra_css %}
+  {% include 'front/contratacao/_ctr_design_system.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="ctr-page">
+
+  <section class="page-header page-header-compact" aria-labelledby="ctr-hero-title">
+    <div class="page-header-main">
+      <div class="page-kicker">
+        <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+        Pessoas &amp; TI
+      </div>
+      <h2 class="page-heading" id="ctr-hero-title">Contratações</h2>
+      <p class="page-description">
+        O que cada pessoa que está entrando precisa para trabalhar — computador, telefonia,
+        acessos de sistema e licenças — do pedido do gestor até o primeiro dia com tudo
+        funcionando.
+      </p>
+    </div>
+    <div class="page-header-aside">
+      <a href="{% url 'chamados_lista' %}" class="ctr-btn is-grande">
+        <i class="fa fa-headset" aria-hidden="true"></i> Chamados de TI
+      </a>
+      <a href="{% url 'contratacao_create' %}" class="ctr-btn is-primary is-grande">
+        <i class="fa fa-plus" aria-hidden="true"></i> Nova contratação
+      </a>
+    </div>
+  </section>
+
+{% comment %}O aviso de catalogo vazio e o atalho "Sistemas" sao configuracao do TI:
+     quem preenche o formulario nao decide o que ele pergunta.{% endcomment %}
+  {% if not tem_sistemas and pode_gerenciar_contratacao %}
+    <div class="ctr-aviso">
+      <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+      <div>
+        Nenhum sistema cadastrado — o formulário de contratação vai abrir sem as perguntas
+        de acesso (TOTVS, Tekann, ID-Cotton…).
+        <a href="{% url 'sistema_corporativo_list' %}">Cadastrar sistemas</a>.
+      </div>
+    </div>
+  {% endif %}
+
+{% comment %}Fila "pedir estrutura": o atalho de quem ABRE a vaga (RH, gestor). Lista só
+     o que pede ação -- vaga em aberto sem pedido, ou com envio que falhou -- e leva
+     direto para a janela de pedido (?solicitar=1). A situacao vem em texto, nao so
+     em cor, e cada botao diz de QUAL vaga e: leitor de tela le "Solicitar estrutura"
+     N vezes sem o aria-label. Nada aqui diz "chamado aberto": o sistema pede por
+     e-mail e so sabe o resultado do envio.{% endcomment %}
+  {% if fila_estrutura %}
+    <section class="ctr-fila" aria-labelledby="ctrFilaTitulo">
+      <div class="ctr-fila-head">
+        <h2 class="ctr-fila-titulo" id="ctrFilaTitulo">
+          <i class="fa fa-headset" aria-hidden="true"></i> Pedir estrutura à TI
+        </h2>
+        <p class="ctr-fila-sub">
+          {{ fila_estrutura_total }} vaga{{ fila_estrutura_total|pluralize }} em aberto
+          {{ fila_estrutura_total|pluralize:"precisa,precisam" }} de uma ação sua. É um
+          clique para abrir o pedido, já preenchido com o que a vaga informa — você só confere e confirma.
+        </p>
+      </div>
+      <ul class="ctr-fila-lista">
+        {% for card in fila_estrutura %}
+          <li class="ctr-fila-item">
+            <div class="ctr-fila-info">
+              <span class="ctr-fila-cargo">{{ card.cargo }}</span>
+              <span class="ctr-fila-meta">
+                {% if card.nome_contratado %}{{ card.nome_contratado }}{% else %}Sem contratado{% endif %}
+                {% if card.data_prevista_inicio %} · início previsto {{ card.data_prevista_inicio|date:"d/m/Y" }}{% endif %}
+              </span>
+            </div>
+            <span class="ctr-chip is-{{ card.estrutura.tom }}">{{ card.estrutura.rotulo }}</span>
+            {% if card.estrutura.acao == 'pedir' %}
+              <a class="ctr-btn is-primary is-pequeno"
+                 href="{% url 'contratacao_detail' card.pk %}?solicitar=1"
+                 aria-label="Solicitar estrutura para a vaga {{ card.cargo }}">
+                <i class="fa fa-paper-plane" aria-hidden="true"></i> Solicitar estrutura
+              </a>
+            {% else %}
+              <a class="ctr-btn is-pequeno"
+                 href="{% url 'contratacao_detail' card.pk %}#chamados"
+                 aria-label="Ver o envio que falhou e tentar novamente na vaga {{ card.cargo }}">
+                <i class="fa fa-rotate-right" aria-hidden="true"></i> Ver e tentar novamente
+              </a>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+      {% if fila_estrutura_resto %}
+        <p class="ctr-fila-mais">
+          + {{ fila_estrutura_resto }} outra{{ fila_estrutura_resto|pluralize }}
+          na coluna “Em aberto” do quadro, com o selo da situação em cada cartão.
+        </p>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {# ── Herói: quanto do mês já fechou ──────────────────────────────── #}
+  <section class="ctr-hero">
+    <div class="ctr-hero-figura">
+      <span class="ctr-hero-rotulo">Concluídas no mês</span>
+      <span class="ctr-hero-valor">{{ painel.pct_mes }}<small>%</small></span>
+      <span class="ctr-hero-sub">
+        {{ painel.kpis.concluidas_mes }} fechada{{ painel.kpis.concluidas_mes|pluralize }} ·
+        {{ painel.kpis.em_andamento }} em andamento
+      </span>
+    </div>
+    <div class="ctr-hero-corpo">
+      <div class="ctr-hero-linha">
+        <span class="ctr-hero-titulo">Mês de referência</span>
+        <span class="ctr-hero-datas">
+          desde {{ painel.mes_referencia|date:"d/m/Y" }}
+          {% if painel.tempo_medio_dias %}
+            · média de {{ painel.tempo_medio_dias }} dia{{ painel.tempo_medio_dias|pluralize }} entre abrir e concluir
+          {% endif %}
+        </span>
+      </div>
+      <div class="ctr-regua {% if painel.kpis.atrasadas %}is-aviso{% else %}is-ok{% endif %}"
+           style="--ctr-exec: {{ painel.pct_mes }}%;"
+           role="img"
+           aria-label="{{ painel.pct_mes }}% das contratações do mês concluídas">
+        <span class="ctr-regua-fill"></span>
+      </div>
+      {% if painel.kpis.atrasadas %}
+        <p class="ctr-vaga-meta">
+          <span class="ctr-chip is-perigo">
+            <i class="fa fa-clock" aria-hidden="true"></i>
+            {{ painel.kpis.atrasadas }} passou da data prevista de início
+          </span>
+        </p>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── KPIs ─────────────────────────────────────────────────────────── #}
+  <section class="ctr-kpis">
+    <div class="ctr-kpi">
+      <span class="ctr-kpi-label"><i class="fa fa-folder-open" aria-hidden="true"></i> Em aberto</span>
+      <span class="ctr-kpi-valor">{{ painel.kpis.abertas }}</span>
+      <span class="ctr-kpi-nota">vagas ainda sem contratado</span>
+    </div>
+    <div class="ctr-kpi">
+      <span class="ctr-kpi-label"><i class="fa fa-laptop" aria-hidden="true"></i> Sem equipamento</span>
+      <span class="ctr-kpi-valor">{{ painel.kpis.sem_equipamento }}</span>
+      <span class="ctr-kpi-nota">pedem máquina e não têm equipamento reservado</span>
+    </div>
+    <div class="ctr-kpi {% if painel.kpis.atrasadas %}is-alerta{% endif %}">
+      <span class="ctr-kpi-label"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> Atrasadas</span>
+      <span class="ctr-kpi-valor">{{ painel.kpis.atrasadas }}</span>
+      <span class="ctr-kpi-nota">já passaram da previsão de início</span>
+    </div>
+    <div class="ctr-kpi is-ok">
+      <span class="ctr-kpi-label"><i class="fa fa-circle-check" aria-hidden="true"></i> Concluídas</span>
+      <span class="ctr-kpi-valor">{{ painel.kpis.concluidas_mes }}</span>
+      <span class="ctr-kpi-nota">neste mês</span>
+    </div>
+  </section>
+
+  {# ── Filtros ──────────────────────────────────────────────────────── #}
+  <form method="get" class="ctr-filtros">
+    <div class="ctr-filtro">
+      <label class="ctr-filtro-label" for="ctrBusca">Buscar</label>
+      <input type="text" id="ctrBusca" name="q" value="{{ filtros.q }}"
+             placeholder="Cargo, contratado ou gestor">
+    </div>
+    <div class="ctr-filtro">
+      <label class="ctr-filtro-label" for="ctrCc">Centro de custo</label>
+      <select id="ctrCc" name="centro_custo">
+        <option value="">Todos</option>
+        {% for cc in centros_custo %}
+          <option value="{{ cc.pk }}" {% if filtros.centro_custo == cc.pk|stringformat:"s" %}selected{% endif %}>
+            {{ cc.numero }} — {{ cc.departamento }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ctr-filtro">
+      <label class="ctr-filtro-label" for="ctrLoc">Localidade</label>
+      <select id="ctrLoc" name="localidade">
+        <option value="">Todas</option>
+        {% for loc in localidades %}
+          <option value="{{ loc.pk }}" {% if filtros.localidade == loc.pk|stringformat:"s" %}selected{% endif %}>
+            {{ loc.local }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ctr-filtros-acoes">
+      <button type="submit" class="ctr-btn is-primary">
+        <i class="fa fa-magnifying-glass" aria-hidden="true"></i> Filtrar
+      </button>
+      <a href="{% url 'contratacao_painel' %}" class="ctr-btn">Limpar</a>
+      {% if pode_gerenciar_contratacao %}
+      <a href="{% url 'sistema_corporativo_list' %}" class="ctr-btn is-ghost">
+        <i class="fa fa-sliders" aria-hidden="true"></i> Sistemas
+      </a>
+{% comment %}Atalho para a tela de Acessos restritos. Fica no CORPO (barra de filtros),
+      nao na topbar nem no menu lateral -- regra 16 do CLAUDE.md. Visivel so para
+      staff: so administrador concede acesso.{% endcomment %}
+      {% if user.is_staff or user.is_superuser %}
+      <a href="{% url 'acesso_restrito_gerenciar' %}" class="ctr-btn is-ghost">
+        <i class="fa fa-user-lock" aria-hidden="true"></i> Acessos
+      </a>
+      {% endif %}
+      {% endif %}
+    </div>
+  </form>
+
+  {# ── Colunas por etapa ────────────────────────────────────────────── #}
+  <section class="ctr-colunas">
+    {% for coluna in painel.colunas %}
+      <article class="ctr-coluna">
+        <header class="ctr-coluna-head">
+          <div class="ctr-coluna-titulo">
+            <i class="fa {{ coluna.icone }}" aria-hidden="true"></i>
+            {{ coluna.label }}
+            <span class="ctr-coluna-contador">({{ coluna.total }})</span>
+          </div>
+          <p class="ctr-coluna-desc">{{ coluna.descricao }}</p>
+        </header>
+
+        <div class="ctr-coluna-lista">
+          {% comment %}Só na primeira coluna: "em aberto" é a única etapa em que
+             uma contratação nasce. Nas outras três o atalho prometeria uma
+             ação que não existe.{% endcomment %}
+          {% if forloop.first %}
+            <a class="ctr-add-card" href="{% url 'contratacao_create' %}">
+              <i class="fa fa-plus" aria-hidden="true"></i> Nova contratação
+            </a>
+          {% endif %}
+          {% for card in coluna.cards %}
+            <a class="ctr-vaga {% if card.atrasada %}is-atrasada{% endif %}"
+               href="{% url 'contratacao_detail' card.pk %}">
+              <div class="ctr-vaga-topo">
+                <span class="ctr-vaga-cargo">{{ card.cargo }}</span>
+              </div>
+
+              <div class="ctr-vaga-pessoa">
+                {% if card.nome_contratado %}
+                  <span class="ctr-avatar">{{ card.nome_contratado|slice:":1" }}</span>
+                  {{ card.nome_contratado }}
+                {% else %}
+                  <span class="ctr-avatar is-vago"><i class="fa fa-user" aria-hidden="true"></i></span>
+                  Sem contratado
+                {% endif %}
+              </div>
+
+              <div class="ctr-vaga-meta">
+                <span class="ctr-chip">
+                  <i class="fa {% if card.computador == 'desktop' %}fa-desktop{% elif card.computador == 'nenhum' %}fa-ban{% else %}fa-laptop{% endif %}" aria-hidden="true"></i>
+                  {{ card.get_computador_display }}
+                </span>
+                {% if card.centro_custo %}
+                  <span class="ctr-chip">{{ card.centro_custo.departamento|truncatechars:22 }}</span>
+                {% endif %}
+                {% if card.data_prevista_inicio %}
+                  <span class="ctr-chip {% if card.atrasada %}is-perigo{% endif %}">
+                    <i class="fa fa-calendar-day" aria-hidden="true"></i>
+                    {{ card.data_prevista_inicio|date:"d/m" }}
+                  </span>
+                {% endif %}
+                {% if card.sem_equipamento == 'cedida' %}
+                  <span class="ctr-chip is-perigo" title="O equipamento reservado foi usado em outra necessidade e a vaga não tem reposição">
+                    <i class="fa fa-laptop-medical" aria-hidden="true"></i> Reserva usada em outra necessidade
+                  </span>
+                {% elif card.sem_equipamento == 'sem_reserva' %}
+                  <span class="ctr-chip is-aviso" title="A vaga pede computador e ainda não tem equipamento reservado">
+                    <i class="fa fa-laptop-medical" aria-hidden="true"></i> Sem equipamento reservado
+                  </span>
+                {% endif %}
+                {% if card.estrutura %}
+                  <span class="ctr-chip is-{{ card.estrutura.tom }}">
+                    <i class="fa fa-headset" aria-hidden="true"></i> {{ card.estrutura.rotulo }}
+                  </span>
+                {% endif %}
+                {% if card.chamados_ti %}
+                  <span class="ctr-chip is-aviso" title="Chamados de TI desta vaga que ainda não foram concluídos">
+                    <i class="fa fa-headset" aria-hidden="true"></i> {{ card.chamados_ti }} chamado{{ card.chamados_ti|pluralize }} com a TI
+                  </span>
+                {% endif %}
+              </div>
+
+              <div class="ctr-vaga-placar">
+                <div class="ctr-regua {% if card.placar.completo %}is-ok{% endif %}"
+                     style="--ctr-exec: {{ card.placar.pct }}%;">
+                  <span class="ctr-regua-fill"></span>
+                </div>
+                <span>{{ card.placar.feitos }}/{{ card.placar.total }}</span>
+              </div>
+
+              {% if card.lista_pendencias %}
+                <div class="ctr-vaga-pend">
+                  {% for falta in card.lista_pendencias|slice:":2" %}
+                    <span><i class="fa fa-circle-dot" aria-hidden="true"></i> {{ falta }}</span>
+                  {% endfor %}
+                  {% if card.lista_pendencias|length > 2 %}
+                    <span><b>+{{ card.lista_pendencias|length|add:"-2" }}</b> outra(s) pendência(s)</span>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </a>
+          {% empty %}
+            <div class="ctr-vazio">
+              <i class="fa {{ coluna.icone }}" aria-hidden="true"></i>
+              <span class="ctr-vazio-titulo">Nada aqui</span>
+              <span class="ctr-vazio-texto">
+                {% if coluna.chave == 'concluida' %}
+                  Nenhuma contratação concluída neste mês.
+                {% else %}
+                  Nenhuma contratação nesta etapa.
+                {% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      </article>
+    {% endfor %}
+  </section>
+
+</div>
+{% endblock %}

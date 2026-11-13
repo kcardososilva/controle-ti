@@ -27,6 +27,7 @@ from django.utils import formats, timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from services import quiosque_service as qs
+from services.acesso_restrito_service import exige_gestao_quiosque
 from services import quiosque_mapa_export_service as mapa_export
 
 
@@ -489,6 +490,19 @@ def quiosque_apresentacao(request):
 
 
 @login_required
+def quiosque_sobre(request):
+    """Página explicativa do módulo — o que é o modo quiosque, o que o aparelho
+    envia e os conceitos do painel (online/offline, matrícula, comando, PIN).
+
+    Diferente de `quiosque_apresentacao` (vitrine com capturas reais do app):
+    esta é texto de referência, estende `base.html` normalmente e é a mesma
+    para todo público do módulo — inclusive o perfil "Consulta Quiosque", que
+    só tem telas de leitura e se beneficia de entender o vocabulário sem
+    perguntar ao TI."""
+    return render(request, "front/quiosque/quiosque_sobre.html")
+
+
+@login_required
 def quiosque_detalhe(request, pk: int):
     from ProjetoEstoque.models import KioskDevice
 
@@ -808,6 +822,7 @@ def quiosque_indicadores(request):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_matriculas(request):
     from django.db.models import Q
     from ProjetoEstoque.models import KioskMatricula, KioskInstaladorLink
@@ -850,6 +865,7 @@ def quiosque_matriculas(request):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_matricula_excluir(request, pk: int):
     from ProjetoEstoque.models import KioskMatricula
 
@@ -863,6 +879,7 @@ def quiosque_matricula_excluir(request, pk: int):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_matricula_renomear(request, pk: int):
     """Edita a descrição (nome de identificação) de uma matrícula já gerada."""
     from ProjetoEstoque.models import KioskMatricula
@@ -876,6 +893,7 @@ def quiosque_matricula_renomear(request, pk: int):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_matricula_qrcode(request, pk: int):
     """AJAX GET — QR Code do código de matrícula, para escanear no app em vez de
     digitar os 8 caracteres na mão. Só é gerado enquanto o código ainda estiver
@@ -900,6 +918,7 @@ def quiosque_matricula_qrcode(request, pk: int):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_apk_upload(request):
     """POST — upload do instalador (.apk) direto pela tela, substituindo o
     arquivo anterior na pasta protegida (`KIOSK_APK_DIR`). Dispensa copiar o
@@ -950,6 +969,7 @@ def quiosque_apk_upload(request):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_apk_versao_anterior_baixar(request, nome_arquivo: str):
     """GET — baixa um instalador (.apk) arquivado em `versoes_anteriores/`
     (substituído por um upload mais recente na tela de Matrículas). Acesso
@@ -969,6 +989,7 @@ def quiosque_apk_versao_anterior_baixar(request, nome_arquivo: str):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_instalador_gerar(request):
     """POST AJAX — gera um link de instalação (token de validade curta) do .apk
     atual, com QR Code embutido na resposta. Ver kiosk_instalador_download para
@@ -999,6 +1020,7 @@ def quiosque_instalador_gerar(request):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_instalador_status(request, pk: int):
     """AJAX GET — confere se um link de instalador já gerado ainda está válido
     (não expirou e não foi revogado). Nunca devolve a URL/token: o servidor só
@@ -1017,6 +1039,7 @@ def quiosque_instalador_status(request, pk: int):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_instalador_revogar(request, pk: int):
     """Revoga antecipadamente um link de instalação (ex.: gerado por engano ou
     após concluir o provisionamento dos aparelhos)."""
@@ -1071,6 +1094,7 @@ def quiosque_mapa(request):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_config_editar(request, pk: int):
     from ProjetoEstoque.models import KioskDevice
 
@@ -1163,6 +1187,7 @@ def quiosque_config_editar(request, pk: int):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_comando_novo(request, pk: int):
     """POST — enfileira um comando remoto (sai no próximo check-in do aparelho)."""
     from ProjetoEstoque.models import KioskDevice, KioskComando
@@ -1210,6 +1235,7 @@ def quiosque_comando_novo(request, pk: int):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_revogar(request, pk: int):
     from ProjetoEstoque.models import KioskDevice
 
@@ -1223,6 +1249,7 @@ def quiosque_revogar(request, pk: int):
 
 
 @login_required
+@exige_gestao_quiosque
 def quiosque_excluir(request, pk: int):
     """Exclui DEFINITIVAMENTE o dispositivo (e seu histórico). Exige a senha do
     usuário logado como 2ª etapa de segurança."""

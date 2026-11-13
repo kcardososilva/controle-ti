@@ -1,0 +1,145 @@
+{% comment %}
+  Card "Etapas para concluir" — o que falta para a contratação poder ser CONCLUÍDA.
+
+  A vaga "Preenchida" quer dizer que o RH encontrou a pessoa; "Concluída" quer dizer que o
+  colaborador foi cadastrado, recebeu a estrutura e foi integrado. Cada etapa é DEDUZIDA do
+  que o sistema já sabe (colaborador cadastrado, reserva, entrega por movimentação, acesso
+  provisionado, chamado concluído) — por isso não há caixa para marcar à mão o que o sistema
+  consegue provar. Só duas coisas pedem decisão humana: DISPENSAR uma etapa que não se aplica
+  (com justificativa, só o TI) e registrar as orientações de uso. A trava de conclusão é do
+  service (`contratacao_service.concluir`), não deste card.
+
+  Três situações, lidas separadas: a da VAGA, a da INTEGRAÇÃO e a dos CHAMADOS de TI.
+{% endcomment %}
+{% if obj.status != 'cancelada' %}
+<section class="ctr-card" id="processo">
+  <div class="ctr-card-head">
+    <h2 class="ctr-card-title"><i class="fa fa-list-check" aria-hidden="true"></i> Etapas para concluir</h2>
+    <span class="ctr-card-sub">{{ resumo_processo.feitas }} de {{ resumo_processo.total }} etapas{% if resumo_processo.dispensadas %} · {{ resumo_processo.dispensadas }} dispensada{{ resumo_processo.dispensadas|pluralize }}{% endif %}</span>
+  </div>
+  <div class="ctr-card-body">
+
+    <div class="ctr-vaga-meta" aria-label="Situações da contratação">
+      <span class="ctr-chip is-primary" title="Onde a vaga está no quadro">Vaga: {{ obj.get_status_display }}</span>
+      <span class="ctr-chip is-{{ integracao.tom }}" title="Confirmada pelo RH">{{ integracao.rotulo }}</span>
+      <span class="ctr-chip {% if chamados_total and chamados_concluidos == chamados_total %}is-ok{% elif chamados_total %}is-aviso{% endif %}" title="Andamento dos chamados na TI">
+        {% if chamados_total %}Chamados de TI: {{ chamados_concluidos }} de {{ chamados_total }} concluído{{ chamados_total|pluralize }}{% else %}Nenhum chamado de TI solicitado{% endif %}
+      </span>
+    </div>
+
+    <div class="ctr-checklist">
+      {% for e in etapas_processo %}
+        <div class="ctr-item {% if e.concluida %}is-feito{% elif e.dispensada %}is-encerrado{% endif %}">
+          <span class="ctr-item-marca" aria-hidden="true">
+            <i class="fa {% if e.concluida %}fa-check{% elif e.dispensada %}fa-minus{% endif %}"></i>
+          </span>
+          <span class="ctr-item-texto">
+            <span class="ctr-item-nome">
+              {{ e.rotulo }}
+              <span class="ctr-tag {% if e.dono == 'RH' %}is-licenca{% else %}is-sistema{% endif %}">{{ e.dono }}</span>
+              {% if e.dispensada %}<span class="ctr-chip">{% if e.origem == 'configuracao' %}Não se aplica{% else %}Dispensada{% endif %}</span>{% endif %}
+            </span>
+            <span class="ctr-item-sub">
+              {% if e.detalhe %}{{ e.detalhe }}{% elif e.pendente %}Pendente{% endif %}
+              {% if e.feita_em and not e.pendente %} · {{ e.feita_em|date:"d/m/Y H:i" }}{% endif %}
+              {% if e.feita_por %} · {{ e.feita_por }}{% endif %}
+            </span>
+
+            {# Integração: o RH confirma (quem, quando e observação ficam gravados). #}
+            {% if e.chave == 'integracao' and pode_concluir and processo_em_andamento %}
+              {% if e.pendente %}
+                <form method="post" action="{% url 'contratacao_integracao' obj.pk %}" class="ctr-acao-linha">
+                  {% csrf_token %}
+                  <label class="ctr-campo-label" for="ctrIntObs">Observação (opcional)</label>
+                  <input type="text" id="ctrIntObs" name="observacao" maxlength="255" placeholder="Ex.: integração realizada em 12/11 com o gestor">
+                  <button type="submit" class="ctr-btn is-pequeno is-primary"><i class="fa fa-user-check" aria-hidden="true"></i> Confirmar integração</button>
+                </form>
+              {% elif e.concluida and obj.status != 'concluida' %}
+                <details class="ctr-liberar">
+                  <summary class="ctr-btn is-pequeno">Desfazer confirmação</summary>
+                  <form method="post" action="{% url 'contratacao_integracao' obj.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="desfazer">
+                    <label class="ctr-campo-label" for="ctrIntDes">Motivo</label>
+                    <input type="text" id="ctrIntDes" name="motivo" maxlength="500" required>
+                    <button type="submit" class="ctr-btn is-pequeno is-perigo">Desfazer</button>
+                  </form>
+                </details>
+              {% endif %}
+            {% endif %}
+
+            {# Etapas do TI: dispensar / registrar / desfazer. #}
+            {% if pode_gerenciar_contratacao and not obj.encerrada %}
+              {% if e.pendente and e.registravel %}
+                <form method="post" action="{% url 'contratacao_etapa_processo' obj.pk %}" class="ctr-acao-linha">
+                  {% csrf_token %}
+                  <input type="hidden" name="acao" value="registrar">
+                  <input type="hidden" name="chave" value="{{ e.chave }}">
+                  <label class="ctr-campo-label" for="ctrReg{{ e.chave }}">Observação (opcional)</label>
+                  <input type="text" id="ctrReg{{ e.chave }}" name="observacao" maxlength="255" placeholder="Ex.: treinamento feito por videochamada">
+                  <button type="submit" class="ctr-btn is-pequeno is-primary">Registrar como feita</button>
+                </form>
+              {% endif %}
+              {% if e.pendente and e.dispensavel %}
+                <details class="ctr-liberar">
+                  <summary class="ctr-btn is-pequeno is-ghost">Não se aplica? Dispensar</summary>
+                  <form method="post" action="{% url 'contratacao_etapa_processo' obj.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="dispensar">
+                    <input type="hidden" name="chave" value="{{ e.chave }}">
+                    <label class="ctr-campo-label" for="ctrDisp{{ e.chave }}">Justificativa</label>
+                    <input type="text" id="ctrDisp{{ e.chave }}" name="motivo" maxlength="255" required placeholder="Por que esta etapa não se aplica?">
+                    <button type="submit" class="ctr-btn is-pequeno is-perigo">Dispensar etapa</button>
+                  </form>
+                </details>
+              {% endif %}
+              {% if e.origem == 'dispensa' or e.origem == 'manual' %}
+                <details class="ctr-liberar">
+                  <summary class="ctr-btn is-pequeno is-ghost">Desfazer {% if e.origem == 'dispensa' %}dispensa{% else %}registro{% endif %}</summary>
+                  <form method="post" action="{% url 'contratacao_etapa_processo' obj.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="desfazer">
+                    <input type="hidden" name="chave" value="{{ e.chave }}">
+                    <label class="ctr-campo-label" for="ctrDes{{ e.chave }}">Motivo</label>
+                    <input type="text" id="ctrDes{{ e.chave }}" name="motivo" maxlength="500" required>
+                    <button type="submit" class="ctr-btn is-pequeno is-perigo">Desfazer</button>
+                  </form>
+                </details>
+              {% endif %}
+            {% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+
+    {# ── Conclusão (RH ou TI) ─────────────────────────────────────────── #}
+    {% if obj.status == 'concluida' %}
+      <div class="ctr-aviso is-info" role="status">
+        <i class="fa fa-circle-check" aria-hidden="true"></i>
+        <div>Contratação concluída em {{ obj.concluida_em|date:"d/m/Y H:i" }}.</div>
+      </div>
+    {% elif pode_concluir %}
+      {% if not processo_em_andamento %}
+        <p class="ctr-campo-ajuda">A contratação só pode ser concluída depois de a vaga ser preenchida.</p>
+      {% elif faltas_para_concluir %}
+        <div class="ctr-aviso" role="status">
+          <i class="fa fa-hourglass-half" aria-hidden="true"></i>
+          <div>
+            <strong>Ainda não dá para concluir.</strong> Falta:
+            <ul class="ctr-faltas">{% for f in faltas_para_concluir %}<li>{{ f }}</li>{% endfor %}</ul>
+            Se alguma etapa não se aplica a esta contratação, o TI a dispensa com justificativa.
+          </div>
+        </div>
+      {% endif %}
+      {% if processo_em_andamento %}
+        <form method="post" action="{% url 'contratacao_concluir' obj.pk %}" class="ctr-form-acoes">
+          {% csrf_token %}
+          <button type="submit" class="ctr-btn is-primary" {% if not pode_concluir_agora %}disabled aria-disabled="true"{% endif %}>
+            <i class="fa fa-circle-check" aria-hidden="true"></i> Concluir contratação
+          </button>
+        </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</section>
+{% endif %}

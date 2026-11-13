@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags %}
+
+{% block title %}Histórico de consumo — Chips e Conectividade — Zelo Agro{% endblock %}
+{% block page_title %}Chips e Conectividade{% endblock %}
+{% block page_subtitle %}Histórico de consumo{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% include 'front/m2m/_frota_topo.html' with titulo="Consumo" descricao="O volume que a TIM informou em cada consulta, por chip e por período." %}
+  <p class="m2m-nota">O sistema não conhece a franquia contratada: não calcula saldo nem percentual, só compara o que a TIM informou.</p>
+
+  {% if not mapeado.consumo %}
+  <p class="m2m-aviso" data-tom="atencao">
+    <b>O volume de consumo ainda não está mapeado.</b> As respostas de consumo são guardadas, mas nenhum volume é calculado, então as tabelas abaixo ficam sem número.
+    {% if pode_configurar %}<a href="{% url 'm2m_config' %}#mapeamento">Mapear o volume</a>{% endif %}
+  </p>
+  {% endif %}
+
+  <form method="get" class="m2m-filtros" id="m2m-form-consumo">
+    <div class="m2m-filtros-grade m2m-filtros-grade--consumo">
+      <label class="m2m-rotulo"><span>Chip</span>
+        <select name="chip" class="m2m-campo" data-m2m-auto>
+          <option value="">Todos os chips</option>
+          {% for pk, nome in chips %}<option value="{{ pk }}" {% if chip and chip.pk == pk %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="m2m-rotulo"><span>Consultas de</span><input type="date" name="de" value="{{ de|date:'Y-m-d' }}" class="m2m-campo"></label>
+      <label class="m2m-rotulo"><span>até</span><input type="date" name="ate" value="{{ ate|date:'Y-m-d' }}" class="m2m-campo"></label>
+    </div>
+
+    <fieldset class="m2m-comparar">
+      <legend class="m2m-micro">Comparar dois períodos (o último valor válido de cada um)</legend>
+      <div class="m2m-filtros-grade m2m-filtros-grade--cmp">
+        <label class="m2m-rotulo"><span>Período A, de</span><input type="date" name="a_de" value="{{ a_de|date:'Y-m-d' }}" class="m2m-campo"></label>
+        <label class="m2m-rotulo"><span>até</span><input type="date" name="a_ate" value="{{ a_ate|date:'Y-m-d' }}" class="m2m-campo"></label>
+        <label class="m2m-rotulo"><span>Período B, de</span><input type="date" name="b_de" value="{{ b_de|date:'Y-m-d' }}" class="m2m-campo"></label>
+        <label class="m2m-rotulo"><span>até</span><input type="date" name="b_ate" value="{{ b_ate|date:'Y-m-d' }}" class="m2m-campo"></label>
+        <div class="m2m-filtros-acoes">
+          <button type="submit" class="m2m-btn m2m-btn--primario">Aplicar</button>
+          <a class="m2m-btn" href="{% url 'm2m_consumo' %}">Restaurar</a>
+        </div>
+      </div>
+    </fieldset>
+  </form>
+
+  <section class="m2m-painel" aria-labelledby="m2m-c-cmp">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-c-cmp">Comparação entre períodos</h3></header>
+    {% if comparacao and comparacao.linhas %}
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela">
+        <thead>
+          <tr>
+            <th>Chip</th>
+            <th class="num">Último valor no período A</th><th>Consulta (A)</th>
+            <th class="num">Último valor no período B</th><th>Consulta (B)</th>
+            <th class="num">Diferença (B − A)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in comparacao.linhas %}
+          <tr>
+            <td data-rotulo="Chip"><a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' l.chip.pk %}">{{ l.chip.nome }}</a></td>
+            <td class="num" data-rotulo="Valor em A"><span class="m2m-num">{% if l.a_bytes is not None %}{{ l.a_bytes|m2m_bytes:comparacao.base }}{% else %}—{% endif %}</span></td>
+            <td data-rotulo="Consulta (A)"><span class="m2m-sub m2m-num">{{ l.a_em|date:"d/m H:i"|default:"sem consulta" }}</span></td>
+            <td class="num" data-rotulo="Valor em B"><span class="m2m-num">{% if l.b_bytes is not None %}{{ l.b_bytes|m2m_bytes:comparacao.base }}{% else %}—{% endif %}</span></td>
+            <td data-rotulo="Consulta (B)"><span class="m2m-sub m2m-num">{{ l.b_em|date:"d/m H:i"|default:"sem consulta" }}</span></td>
+            <td class="num" data-rotulo="Diferença (B − A)"><span class="m2m-num">{{ l.diferenca_txt }}</span>{% if l.diferenca is None %}<span class="m2m-sub">falta um dos valores</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% if not chip %}
+        <tfoot>
+          <tr><th scope="row">Soma dos valores</th><td class="num"><span class="m2m-num">{{ comparacao.total_a_txt }}</span></td><td></td><td class="num"><span class="m2m-num">{{ comparacao.total_b_txt }}</span></td><td></td><td></td></tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+    <p class="m2m-nota m2m-nota--pad">
+      Cada valor é o que a TIM informou na última consulta lida do período. A diferença é só a conta entre os dois valores informados: não é o consumo medido entre eles, e se a TIM zera o contador a cada ciclo ela pode ser negativa.
+      {% if comparacao.truncado %}Mostrando os primeiros {{ comparacao.linhas|length }} chips; escolha um chip para ver um só.{% endif %}
+    </p>
+    {% elif comparacao %}
+    <p class="m2m-painel-vazio">Nenhum chip tem consumo lido em nenhum dos dois períodos.</p>
+    {% else %}
+    <p class="m2m-painel-vazio">Informe as datas dos dois períodos para comparar.</p>
+    {% endif %}
+  </section>
+
+  <section class="m2m-painel" aria-labelledby="m2m-c-hist">
+    <header class="m2m-painel-cab">
+      <h3 class="m2m-painel-t" id="m2m-c-hist">Consultas de consumo{% if chip %} · {{ chip.nome }}{% endif %}</h3>
+      {% if falhas_no_periodo %}<span class="m2m-sub m2m-sub--erro">{{ falhas_no_periodo }} consulta{{ falhas_no_periodo|pluralize }} de consumo falharam no recorte e não aparecem aqui</span>{% endif %}
+    </header>
+    {% if consultas %}
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela">
+        <thead>
+          <tr><th>Consulta</th><th>Chip</th><th class="num">Volume informado</th><th class="num">Valor original</th><th>Período informado</th><th>Leitura</th><th>Origem</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for c in consultas %}
+          <tr>
+            <td data-rotulo="Consulta"><span class="m2m-num">{{ c.iniciada_em|date:"d/m/Y H:i" }}</span></td>
+            <td data-rotulo="Chip"><a href="{% url 'm2m_chip_detalhe' c.chip_id %}">{{ c.chip.nome }}</a></td>
+            <td class="num" data-rotulo="Volume informado"><span class="m2m-num">{% if c.volume_bytes is not None %}{{ c.volume_bytes|m2m_bytes:consumo_base }}{% else %}—{% endif %}</span></td>
+            <td class="num" data-rotulo="Valor original"><span class="m2m-num">{% if c.valor_original %}{{ c.valor_original }} {{ c.unidade_original }}{% else %}—{% endif %}</span></td>
+            <td data-rotulo="Período informado"><span class="m2m-num m2m-sub">{% if c.periodo_inicio or c.periodo_fim %}{{ c.periodo_inicio|date:"d/m/Y"|default:"?" }} a {{ c.periodo_fim|date:"d/m/Y"|default:"?" }}{% else %}—{% endif %}</span></td>
+            <td data-rotulo="Leitura">
+              {% if c.volume_bytes is not None %}{% m2m_ind "sucesso" "Interpretado" %}
+              {% elif c.resultado == "sucesso_sem_corpo" %}{% m2m_ind "sem_corpo" "Sem conteúdo" %}
+              {% else %}{% m2m_ind "nao_interpretado" "Não interpretado" %}{% endif %}
+            </td>
+            <td data-rotulo="Origem">{{ c.get_origem_display }}</td>
+            <td class="m2m-acoes">{% if c.resultado == "sucesso" %}<button type="button" class="m2m-btn m2m-btn--sm m2m-btn--fantasma" data-m2m-payload data-url="{% url 'm2m_consulta_payload' c.pk %}">Ver resposta</button>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% include 'front/m2m/_paginacao.html' %}
+    {% else %}
+    {% url 'm2m_consumo' as u_restaurar %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-chart-line" titulo="Nenhuma consulta de consumo neste recorte" texto="O chip ainda não foi consultado ou as datas deixaram tudo de fora. Consultas que falharam aparecem no detalhe do chip." acao_url=u_restaurar acao_rotulo="Restaurar filtros" only %}
+    {% endif %}
+  </section>
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

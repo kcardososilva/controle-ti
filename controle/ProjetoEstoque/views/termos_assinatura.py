@@ -63,6 +63,11 @@ _log_seguranca = logging.getLogger("seguranca")
 _STATUS_ENTREGAVEIS = (
     StatusItemChoices.ESTOQUE,
     StatusItemChoices.BACKUP,
+    # Reservado entra: a entrega ao colaborador da vaga é o que fecha a reserva.
+    # Quem NÃO é o colaborador da vaga é barrado na preparação do termo
+    # (`validar_pre_condicoes`) — o termo assinado não tem como pedir a
+    # justificativa do uso em outra necessidade.
+    StatusItemChoices.RESERVADO,
     StatusItemChoices.PAUSADO,
 )
 

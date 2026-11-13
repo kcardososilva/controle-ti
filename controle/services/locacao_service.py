@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 # reparado). Congela quando Pausado (item substituído também vira Pausado),
 # Descarte (equipamento descartado — o aluguel encerra em definitivo) ou
 # Devolvido (fim de contrato de Locação — o equipamento saiu em definitivo).
-ATIVOS = {"ativo", "backup", "manutencao"}
+# Reservado entra: o equipamento locado reservado para uma vaga segue sendo
+# cobrado pela locadora — a cobrança só para em Pausado/Defeito/Devolvido.
+ATIVOS = {"ativo", "backup", "reservado", "manutencao"}
 CONGELADOS = {"pausado", "descarte", "devolvido"}
 
 

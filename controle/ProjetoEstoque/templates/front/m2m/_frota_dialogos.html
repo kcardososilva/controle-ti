@@ -1,0 +1,151 @@
+{% comment %}
+Os diálogos das AÇÕES de movimentação (vincular, desvincular, transferir, substituir, devolver,
+inativar) e o de mudança de status do veículo. Incluído pelo detalhe do veículo e pelo detalhe do chip.
+
+Cada diálogo é um formulário POST com CSRF; o `frota.js` o envia por fetch e mostra o erro do servidor
+DENTRO dele (sem fechar). O botão que abre traz `data-frota-abrir="<nome>"`, `data-url` (a rota da
+ação — quem leva o `vinculo_id` esperado é a URL), `data-alvo` (o texto de contexto) e `data-campo-*`
+(os campos escondidos). TODO diálogo pede o motivo: a movimentação é histórico imutável.
+
+Recebe do contexto: `voltar` (para onde a ação volta), as flags `pode_vincular`, `pode_transferir`,
+`pode_editar_frota` e, só no detalhe do veículo, `status_opcoes`. Cada diálogo aparece só para quem
+tem a permissão da ação — esconder não é autorizar, a view confere de novo.
+{% endcomment %}
+{% if pode_vincular %}
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-vincular_chip" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-vincular_chip-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}"><input type="hidden" name="veiculo" value="">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-vincular_chip-t">Vincular chip ao veículo</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <label class="m2m-rotulo"><span>Chip disponível *</span>
+        <select name="chip" data-frota-s2="chip" data-placeholder="Buscar por nome, ICCID, IMSI ou linha"><option value=""></option></select>
+        <em class="m2m-dica">Só aparecem chips disponíveis: o que já está em um veículo se muda por “Transferir” ou “Substituir”.</em>
+      </label>
+      <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: instalação do rastreador"></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Vincular</button></footer>
+  </form>
+</div>
+
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-vincular_veiculo" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-vincular_veiculo-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}"><input type="hidden" name="chip" value="">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-vincular_veiculo-t">Vincular chip a um veículo</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <label class="m2m-rotulo"><span>Veículo *</span>
+        <select name="veiculo" data-frota-s2="veiculo" data-placeholder="Buscar por código, nome, modelo ou placa"><option value=""></option></select>
+        <em class="m2m-dica">Veículo desativado não recebe chip. Em manutenção ou inativo recebe, com aviso.</em>
+      </label>
+      <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: instalação do rastreador"></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Vincular</button></footer>
+  </form>
+</div>
+{% endif %}
+
+{% if pode_transferir %}
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-desvincular" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-desvincular-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-desvincular-t">Desvincular chip</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <label class="m2m-rotulo"><span>Depois de desvincular, o chip fica</span>
+        <select name="destino" class="m2m-campo"><option value="disponivel">Disponível</option><option value="manutencao">Em manutenção</option></select>
+        <em class="m2m-dica">O chip não é excluído: o cadastro, o histórico de consultas e os vínculos anteriores continuam guardados.</em>
+      </label>
+      <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: veículo vendido"></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Desvincular</button></footer>
+  </form>
+</div>
+
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-transferir" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-transferir-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-transferir-t">Transferir chip para outro veículo</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <label class="m2m-rotulo"><span>Veículo de destino *</span>
+        <select name="veiculo_destino" data-frota-s2="veiculo" data-placeholder="Buscar por código, nome, modelo ou placa"><option value=""></option></select>
+        <em class="m2m-dica">O vínculo atual é encerrado e um novo é aberto: os dois períodos ficam no histórico.</em>
+      </label>
+      <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: o caminhão foi para a oficina"></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Transferir</button></footer>
+  </form>
+</div>
+
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-substituir" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-substituir-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-substituir-t">Substituir chip</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <label class="m2m-rotulo"><span>Chip novo (disponível) *</span>
+        <select name="chip_novo" data-frota-s2="chip" data-placeholder="Buscar por nome, ICCID, IMSI ou linha"><option value=""></option></select>
+        <em class="m2m-dica">O chip novo entra no MESMO veículo. As duas movimentações ficam ligadas pela mesma operação.</em>
+      </label>
+      <label class="m2m-rotulo"><span>O chip substituído fica</span>
+        <select name="destino_antigo" class="m2m-campo"><option value="disponivel">Disponível</option><option value="manutencao">Em manutenção</option></select>
+      </label>
+      <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: chip com defeito de leitura"></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Substituir</button></footer>
+  </form>
+</div>
+
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-retornar" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-retornar-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-retornar-t">Devolver à disponibilidade</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <label class="m2m-check"><input type="checkbox" name="retomar_monitoramento" value="1" checked> Retomar o monitoramento do chip (volta à próxima rodada de consultas)</label>
+      <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: chip testado e liberado"></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Devolver</button></footer>
+  </form>
+</div>
+
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-inativar" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-inativar-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-inativar-t">Inativar chip</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <p class="m2m-nota">O vínculo, se houver, é encerrado e o monitoramento é desligado. O chip nunca é excluído: “Devolver à disponibilidade” o traz de volta.</p>
+      <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: linha cancelada na operadora"></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--perigo">Inativar</button></footer>
+  </form>
+</div>
+{% endif %}
+
+{% if pode_editar_frota and status_opcoes %}
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-status" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-status-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-status-t">Mudar o status do veículo</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <label class="m2m-rotulo"><span>Novo status *</span>
+        <select name="status" class="m2m-campo">{% for valor, rotulo in status_opcoes %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}</select>
+        <em class="m2m-dica">O status é decisão de quem opera a frota. Ele não mexe em chip nem em conectividade, e uma sessão caída não muda o status.</em>
+      </label>
+      <label class="m2m-rotulo"><span>Motivo</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" autocomplete="off" placeholder="Opcional"></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Mudar status</button></footer>
+  </form>
+</div>
+{% endif %}

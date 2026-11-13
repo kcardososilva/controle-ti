@@ -1,18 +1,24 @@
 """
-views/ninja.py — Módulo NinjaOne RMM (via importação de CSV)
+views/ninja.py — Módulo NinjaOne RMM
 
-A integração via API/OAuth foi removida. Os dados vêm da planilha CSV
-exportada do NinjaOne e importada pelo usuário.
+Os dados chegam por duas portas, que gravam pelo mesmo núcleo
+(`services/ninja_service.gravar_dispositivos`): a planilha CSV exportada do
+NinjaOne e a API do NinjaOne, via OAuth (`services/ninja_api_service.py`).
 
 Views:
-    ninja_dashboard     GET  /ninja/
-    ninja_dispositivos  GET  /ninja/dispositivos/
-    ninja_relatorio     GET  /ninja/relatorio/
-    ninja_importar      POST /ninja/importar/   (upload da planilha CSV)
+    ninja_dashboard       GET  /ninja/
+    ninja_dispositivos    GET  /ninja/dispositivos/
+    ninja_relatorio       GET  /ninja/relatorio/
+    ninja_importar        POST /ninja/importar/          (upload da planilha CSV)
+    ninja_oauth_conectar  GET  /ninja/oauth/conectar/    (staff: manda ao NinjaOne autorizar)
+    ninja_oauth_callback  GET  /ninja/oauth/callback/    (staff: retorno do NinjaOne com o código)
+    ninja_sincronizar     POST /ninja/sincronizar/       (busca os dispositivos pela API)
+    ninja_desconectar     POST /ninja/desconectar/       (staff: esquece o token)
 """
 
 import csv as _csv
 import datetime
+import logging
 from collections import defaultdict
 
 from django.contrib import messages
@@ -22,6 +28,9 @@ from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.http import require_POST
+
+logger_seg = logging.getLogger("seguranca")
 
 _LOGIN_STATUS_LABEL = {
     "confere": "Confere",
@@ -299,6 +308,8 @@ def ninja_dashboard(request):
     snapshots_hoje = NinjaDeviceSnapshot.objects.filter(timestamp__date=hoje).count()
     last_import = qs.order_by("-last_sync").values_list("last_sync", flat=True).first()
 
+    from services import ninja_api_service
+
     # ── Séries para gráficos (Chart.js) ──
     chart_local = {
         "labels": [r["local"] for r in por_local[:8]],
@@ -310,6 +321,8 @@ def ninja_dashboard(request):
         "hoje": hoje,
         "last_import": last_import,
         "snapshots_hoje": snapshots_hoje,
+        "api": ninja_api_service.estado(),
+        "pode_administrar_api": _pode_administrar_api(request.user),
         "kpi": {
             "total": total,
             "online": online,
@@ -832,3 +845,135 @@ def ninja_importar(request):
         f"{res['sem_serie']} sem número de série."
     )
     return redirect(destino)
+
+
+# ─────────────────────────────────────────────────────────────
+# API do NinjaOne (OAuth) — conectar, sincronizar, desconectar
+# ─────────────────────────────────────────────────────────────
+
+def _pode_administrar_api(user) -> bool:
+    """Conectar/desconectar muda a conta do NinjaOne que o sistema inteiro usa: só staff.
+    Sincronizar (somente leitura e idempotente) fica aberto a quem já pode importar a planilha."""
+    return bool(user.is_active and (user.is_staff or user.is_superuser))
+
+
+@login_required
+def ninja_oauth_conectar(request):
+    """Manda o navegador ao NinjaOne para autorizar. Só GET: o que protege o retorno é o `state`."""
+    from services import ninja_api_service as api
+
+    if not _pode_administrar_api(request.user):
+        messages.error(request, "Só um administrador pode conectar o sistema ao NinjaOne.")
+        return redirect("ninja_dashboard")
+
+    # O NinjaOne devolve o navegador à URI cadastrada (host + porta). O cookie de sessão — e com
+    # ele o `state` — é do host em que a pessoa está logada: se forem diferentes, o retorno chega
+    # sem sessão e a conexão falha sem explicação. Melhor recusar aqui, dizendo o que fazer.
+    retorno = api.host_de_retorno()
+    if retorno and request.get_host().lower() != retorno.lower():
+        messages.error(
+            request,
+            f"Para conectar, abra o sistema pelo endereço cadastrado no NinjaOne ({retorno}) e tente de novo. "
+            f"Você está em {request.get_host()}: o NinjaOne devolveria o navegador para outro endereço, "
+            "onde esta sessão não existe."
+        )
+        return redirect("ninja_dashboard")
+
+    try:
+        url = api.iniciar_autorizacao(request.session)
+    except api.NinjaErro as exc:
+        messages.error(request, str(exc))
+        return redirect("ninja_dashboard")
+    return redirect(url)
+
+
+_ERROS_AUTORIZACAO = {
+    "access_denied": "a autorização foi negada.",
+    "invalid_scope": "o app não tem o escopo pedido liberado (veja NINJA_SCOPES no .env).",
+    "unauthorized_client": "o app não está autorizado a usar este fluxo.",
+    "invalid_request": "o pedido de autorização foi recusado (confira a URI de retorno cadastrada).",
+}
+
+
+@login_required
+def ninja_oauth_callback(request):
+    """Retorno do NinjaOne: `?code=...&state=...` (ou `?error=...`)."""
+    from services import ninja_api_service as api
+
+    if not _pode_administrar_api(request.user):
+        messages.error(request, "Só um administrador pode conectar o sistema ao NinjaOne.")
+        return redirect("ninja_dashboard")
+
+    # O state é conferido (e consumido) ANTES de qualquer outra coisa — inclusive antes de olhar o
+    # `error`: quem forja uma chamada a esta rota não pode nem escolher a mensagem que aparece.
+    if not api.validar_state(request.session, request.GET.get("state")):
+        logger_seg.warning("NinjaOne: retorno OAuth recusado (state inválido) para %s.", request.user.get_username())
+        messages.error(
+            request,
+            "Não foi possível confirmar a autorização (o pedido venceu, já foi usado ou foi aberto em outro "
+            "navegador). Clique em Conectar ao NinjaOne de novo."
+        )
+        return redirect("ninja_dashboard")
+
+    erro = request.GET.get("error")
+    if erro:
+        motivo = _ERROS_AUTORIZACAO.get(erro, "o NinjaOne não concluiu a autorização.")
+        messages.error(request, f"O NinjaOne recusou: {motivo}")
+        return redirect("ninja_dashboard")
+
+    try:
+        res = api.concluir_autorizacao(request.GET.get("code"), request.user)
+    except api.NinjaErro as exc:
+        messages.error(request, str(exc))
+        return redirect("ninja_dashboard")
+
+    if res["refresh_token"]:
+        messages.success(request, "Conectado ao NinjaOne. Agora é só usar Sincronizar agora.")
+    else:
+        messages.warning(
+            request,
+            "Conectado ao NinjaOne, mas SEM refresh token: a conexão vale por cerca de 1 hora. Para ela "
+            "durar, o app do NinjaOne precisa do escopo offline_access (NINJA_SCOPES) — conecte de novo "
+            "depois de liberar."
+        )
+    return redirect("ninja_dashboard")
+
+
+@login_required
+@require_POST
+def ninja_sincronizar(request):
+    from services import ninja_api_service as api
+
+    try:
+        res = api.sincronizar(user=request.user)
+    except api.NinjaErro as exc:
+        messages.error(request, str(exc))
+        return redirect("ninja_dashboard")
+
+    messages.success(
+        request,
+        f"Sincronização concluída: {res['total']} dispositivo(s) "
+        f"({res['criados']} novo(s), {res['atualizados']} atualizado(s)) · "
+        f"{res['vinculados']} vinculado(s) ao estoque · "
+        f"{res['sem_serie']} sem número de série."
+    )
+    for aviso in res.get("avisos", []):
+        messages.warning(request, aviso)
+    return redirect("ninja_dashboard")
+
+
+@login_required
+@require_POST
+def ninja_desconectar(request):
+    from services import ninja_api_service as api
+
+    if not _pode_administrar_api(request.user):
+        messages.error(request, "Só um administrador pode desconectar o NinjaOne.")
+        return redirect("ninja_dashboard")
+    api.desconectar(user=request.user)
+    messages.success(
+        request,
+        "Conexão removida deste sistema. O acesso do app no NinjaOne não foi revogado lá — para isso, "
+        "revogue o token em Administração > Apps > API."
+    )
+    return redirect("ninja_dashboard")

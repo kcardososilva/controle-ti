@@ -1,0 +1,122 @@
+{% load tec_tags m2m_tags %}
+{% comment %}
+Composição tecnológica da máquina: tudo o que está instalado AGORA nela — equipamentos individuais
+(instalação ativa), chips (o vínculo de chip existente, lido, nunca copiado) e material por quantidade
+aplicado (o razão lido pelo destino). Quem não pode ver chips não vê a linha deles, só a contagem.
+Recebe: `composicao` (equipamentos, materiais, total), `anteriores` (períodos encerrados), `conect`
+(chips ativos da máquina), `pode_ver_chips`, `veiculo`, `pode_instalar_tec` e `pode_transferir_tec`
+(os botões; a permissão é conferida de novo na view de cada operação). O `voltar` leva de volta a este painel.
+{% endcomment %}
+<section class="m2m-painel" id="m2m-v-d-comp" data-secao="Composição tecnológica" aria-labelledby="m2m-v-d-comp-t">
+  <header class="m2m-painel-cab">
+    <h3 class="m2m-painel-t" id="m2m-v-d-comp-t">Composição tecnológica<span class="m2m-painel-t-n">{{ total_composicao }}</span></h3>
+    {% url 'frota_veiculo_detalhe' veiculo.pk as u_veiculo %}
+    {% if pode_instalar_tec and veiculo.status != "desativado" %}
+    <div class="m2m-painel-acoes">
+      <a class="m2m-btn m2m-btn--sm m2m-btn--primario" href="{% url 'tec_veiculo_instalar' veiculo.pk %}?voltar={{ u_veiculo|urlencode:'' }}%23m2m-v-d-comp"><i class="fa-solid fa-plus" aria-hidden="true"></i>Instalar equipamento</a>
+      <a class="m2m-btn m2m-btn--sm" href="{% url 'tec_material_aplicar_novo' %}?destino=veiculo:{{ veiculo.pk }}&amp;voltar={{ u_veiculo|urlencode:'' }}%23m2m-v-d-comp">Aplicar material</a>
+    </div>
+    {% endif %}
+  </header>
+  {% if total_composicao %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela m2m-tabela--curta">
+      <thead><tr><th>Componente</th><th>Fabricante</th><th>Equipamento</th><th>Instalado</th>{% if pode_instalar_tec or pode_transferir_tec %}<th><span class="m2m-sr">Ações</span></th>{% endif %}</tr></thead>
+      <tbody>
+        {% for l in composicao.equipamentos %}
+        <tr class="m2m-linha" data-instalacao-id="{{ l.instalacao.pk }}">
+          <td data-rotulo="Componente">{{ l.categoria.nome }}</td>
+          <td data-rotulo="Fabricante">{{ l.fabricante.nome }}</td>
+          <td data-rotulo="Equipamento">
+            <span class="m2m-ident">
+              <a class="m2m-link-forte" href="{% url 'tec_equipamento_detalhe' l.equipamento.pk %}">{{ l.modelo.nome }}</a>
+              <span class="m2m-ident-cod">{{ l.equipamento.codigo }}{% if l.equipamento.numero_serie %} · S/N {{ l.equipamento.numero_serie }}{% elif l.equipamento.patrimonio %} · Pat. {{ l.equipamento.patrimonio }}{% endif %}</span>
+            </span>
+          </td>
+          <td class="m2m-quebra" data-rotulo="Instalado"><span class="m2m-num">{{ l.desde|date:"d/m/Y H:i" }}</span>{% if l.por %} <span class="m2m-sub">por {{ l.por }}</span>{% endif %}</td>
+          {% if pode_instalar_tec or pode_transferir_tec %}
+          <td class="m2m-acoes" data-rotulo="Ações">
+            {% if pode_transferir_tec %}<a class="m2m-btn m2m-btn--sm" href="{% url 'tec_instalacao_transferir' l.instalacao.pk %}?voltar={{ u_veiculo|urlencode:'' }}%23m2m-v-d-comp">Transferir</a>{% endif %}
+            {% if pode_instalar_tec %}
+              <a class="m2m-btn m2m-btn--sm" href="{% url 'tec_instalacao_substituir' l.instalacao.pk %}?voltar={{ u_veiculo|urlencode:'' }}%23m2m-v-d-comp">Substituir</a>
+              <a class="m2m-btn m2m-btn--sm m2m-btn--perigo" href="{% url 'tec_instalacao_retirar' l.instalacao.pk %}?voltar={{ u_veiculo|urlencode:'' }}%23m2m-v-d-comp">Retirar</a>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+        {% if pode_ver_chips %}
+        {% for item in conect.chips %}
+        <tr class="m2m-linha" data-vinculo-id="{{ item.vinculo.pk }}">
+          <td data-rotulo="Componente">Conectividade</td>
+          <td data-rotulo="Fabricante">{{ item.chip.operadora.nome|default:"—" }}</td>
+          <td data-rotulo="Equipamento">
+            <span class="m2m-ident">
+              <a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' item.chip.pk %}">Chip M2M · {{ item.chip.nome }}</a>
+              <span class="m2m-ident-cod" title="ICCID">{{ item.chip.iccid|m2m_blocos|default:"—" }}</span>
+            </span>
+          </td>
+          <td class="m2m-quebra" data-rotulo="Instalado"><span class="m2m-num">{{ item.desde|date:"d/m/Y H:i" }}</span>{% if item.vinculado_por %} <span class="m2m-sub">por {{ item.vinculado_por }}</span>{% endif %}</td>
+          {% if pode_instalar_tec or pode_transferir_tec %}<td class="m2m-acoes" data-rotulo="Ações"><a class="m2m-btn m2m-btn--sm m2m-btn--fantasma" href="#m2m-v-d-chips">Ver em Chips</a></td>{% endif %}
+        </tr>
+        {% endfor %}
+        {% elif conect.contagem.total %}
+        <tr class="m2m-linha">
+          <td data-rotulo="Componente">Conectividade</td>
+          <td data-rotulo="Fabricante"><span class="m2m-sub">—</span></td>
+          <td data-rotulo="Equipamento">{{ conect.contagem.total }} chip{{ conect.contagem.total|pluralize }} vinculado{{ conect.contagem.total|pluralize }} <span class="m2m-sub">Os dados do chip pedem a permissão de ver chips.</span></td>
+          <td data-rotulo="Instalado"><span class="m2m-sub">—</span></td>
+          {% if pode_instalar_tec or pode_transferir_tec %}<td></td>{% endif %}
+        </tr>
+        {% endif %}
+        {% for m in composicao.materiais %}
+        <tr class="m2m-linha">
+          <td data-rotulo="Componente">{{ m.modelo.categoria.nome }}</td>
+          <td data-rotulo="Fabricante">{{ m.modelo.fabricante.nome }}</td>
+          <td data-rotulo="Equipamento">
+            <span class="m2m-ident">
+              <a class="m2m-link-forte" href="{% url 'tec_material_detalhe' m.modelo.pk %}">{{ m.modelo.nome }}</a>
+              <span class="m2m-ident-cod">{{ m.quantidade|qtd }} {{ m.modelo.unidade.sigla }} aplicado{{ m.quantidade|pluralize }}</span>
+            </span>
+          </td>
+          <td data-rotulo="Instalado"><span class="m2m-sub">Material por quantidade</span></td>
+          {% if pode_instalar_tec or pode_transferir_tec %}
+          <td class="m2m-acoes" data-rotulo="Ações">{% if pode_instalar_tec %}<a class="m2m-btn m2m-btn--sm" href="{% url 'tec_material_devolver' m.modelo.pk %}?destino=veiculo:{{ veiculo.pk }}&amp;voltar={{ u_veiculo|urlencode:'' }}%23m2m-v-d-comp">Devolver</a>{% endif %}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="m2m-nota m2m-nota--pad">Só o que está instalado agora. Cada instalação, retirada ou troca fica em Movimentações, sem poder ser editada.</p>
+  {% else %}
+    {% url 'tec_equipamentos' as u_estoque %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-microchip" titulo="Nenhum equipamento instalado" texto="Os equipamentos e materiais instalados nesta máquina aparecem aqui, junto com os chips." acao_url=u_estoque acao_rotulo="Ver o estoque tecnológico" only %}
+  {% endif %}
+
+  {% if anteriores %}
+  <details class="m2m-passado">
+    <summary>Já passaram por esta máquina <span class="m2m-painel-t-n">{{ anteriores|length }}</span></summary>
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela m2m-tabela--curta">
+        <thead><tr><th>Equipamento</th><th>Instalado em</th><th>Retirado em</th><th>Motivo da saída</th></tr></thead>
+        <tbody>
+          {% for h in anteriores %}
+          <tr class="m2m-linha">
+            <td data-rotulo="Equipamento">
+              <span class="m2m-ident">
+                <a class="m2m-link-forte" href="{% url 'tec_equipamento_detalhe' h.equipamento.pk %}">{{ h.fabricante.nome }} {{ h.modelo.nome }}</a>
+                <span class="m2m-ident-cod">{{ h.equipamento.codigo }}{% if h.equipamento.numero_serie %} · S/N {{ h.equipamento.numero_serie }}{% endif %}</span>
+              </span>
+            </td>
+            <td class="m2m-quebra" data-rotulo="Instalado em"><span class="m2m-num">{{ h.desde|date:"d/m/Y H:i" }}</span>{% if h.por %} <span class="m2m-sub">por {{ h.por }}</span>{% endif %}</td>
+            <td class="m2m-quebra" data-rotulo="Retirado em"><span class="m2m-num">{{ h.ate|date:"d/m/Y H:i" }}</span>{% if h.retirado_por %} <span class="m2m-sub">por {{ h.retirado_por }}</span>{% endif %}</td>
+            <td data-rotulo="Motivo da saída">{% if h.motivo_fim %}<span class="m2m-corta m2m-corta--larga" title="{{ h.motivo_fim }}">{{ h.motivo_fim }}</span>{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+</section>

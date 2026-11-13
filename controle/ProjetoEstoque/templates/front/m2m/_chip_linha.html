@@ -1,0 +1,74 @@
+{% load m2m_tags %}
+{% comment %}
+Uma linha da lista de chips. É renderizada pela lista E pelo POST de atualizar (o JSON
+devolve esta mesma marcação em `html_linha`, e o JS troca a linha): assim o desenho de
+uma linha existe em um lugar só, e nenhuma formatação (ICCID em blocos, volume, frescor)
+é refeita em JavaScript.
+
+Espera `chip` já passado por `anotar_chips`, mais `pode_atualizar`, `pode_vincular` e `consumo_base`.
+Cada <td> leva `data-rotulo`: abaixo de 760px a linha vira cartão e o rótulo aparece
+antes do valor (regra 24: tabela não some no celular sem cartão no lugar).
+
+Colunas: chip (nome sobre o ICCID), vínculo, conectividade, consumo, última atualização e ações.
+A leitura da conectividade traz DUAS coisas, de propósito: a sessão (o que a última resposta válida
+disse) e, só quando não está normal, o estado do monitoramento (falha de consulta, desatualizado…).
+Falha de consulta nunca se confunde com "sem sessão". Unidade, setor e IMSI ficam no detalhe do chip.
+{% endcomment %}
+<tr class="m2m-linha" data-chip-id="{{ chip.pk }}" data-situacao="{{ chip.situacao }}"{% if chip.ocorrencia_aberta %} data-alerta="1"{% endif %}>
+  <td class="m2m-c-nome" data-rotulo="Chip">
+    <span class="m2m-ident">
+      <span>
+        <a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' chip.pk %}"{% if chip.descricao %} title="{{ chip.descricao }}"{% endif %}>{{ chip.nome }}</a>
+        {% if chip.ocorrencia_aberta %}<a class="m2m-alerta-marca" href="{% url 'm2m_alertas' %}?q={{ chip.nome|urlencode }}" title="Há alerta aberto para este chip" aria-label="Há alerta aberto para este chip">!</a>{% endif %}
+      </span>
+      <span class="m2m-ident-cod" title="{% if chip.iccid %}ICCID{% else %}IMSI{% endif %}">{% if chip.iccid %}{{ chip.iccid|m2m_blocos }}{% elif chip.imsi %}{{ chip.imsi|m2m_blocos }}{% else %}—{% endif %}</span>
+    </span>
+  </td>
+  <td data-rotulo="Vínculo">
+    {% if chip.veiculo_atual %}
+      <span class="m2m-corta m2m-corta--media" title="{{ chip.veiculo_atual.codigo }} · {{ chip.veiculo_atual.nome }}">{{ chip.veiculo_atual.codigo }} · {{ chip.veiculo_atual.nome }}</span>
+    {% else %}
+      {% frota_status chip.situacao_uso %}
+    {% endif %}
+  </td>
+  <td class="m2m-quebra" data-rotulo="Conectividade">
+    {% m2m_ind chip.sessao_estado %}
+    {% if chip.sessao_estado == "nao_interpretado" and chip.estado_bruto %}<span class="m2m-sub m2m-corta m2m-num" title="Valor informado pela API: {{ chip.estado_bruto }}">{{ chip.estado_bruto }}</span>{% endif %}
+    {% if chip.sessao_consulta_id %}<span class="m2m-sub">{% m2m_frescor chip.frescor_sessao %}</span>{% endif %}
+    {% if chip.situacao != "normal" %}
+    <div>
+      {% m2m_ind chip.situacao %}
+      {% if chip.falhas_consecutivas %}<span class="m2m-sub m2m-sub--erro m2m-num" title="{{ chip.falhas_consecutivas }} falha{{ chip.falhas_consecutivas|pluralize }} seguida{{ chip.falhas_consecutivas|pluralize }}{% if chip.ultima_falha_rotulo %}. Última: {{ chip.ultima_falha_rotulo }}{% endif %}">&times;{{ chip.falhas_consecutivas }}</span>{% endif %}
+    </div>
+    {% endif %}
+  </td>
+  <td class="m2m-quebra" data-rotulo="Consumo">
+    {% if chip.consumo_bytes is not None %}
+      <span class="m2m-num" title="Último volume informado pela TIM"{% if chip.pct_limite is not None %} data-pct-limite="{{ chip.pct_limite }}"{% endif %}>{{ chip.consumo_txt }}</span>
+      <span class="m2m-sub"{% if chip.pct_limite is not None %} title="{{ chip.pct_limite }}% do limite mensal cadastrado neste chip"{% endif %}>{% m2m_frescor chip.frescor_consumo %}</span>
+    {% elif chip.consumo_consulta_id %}
+      <span class="m2m-sub">não interpretado</span>
+      <span class="m2m-sub">{% m2m_frescor chip.frescor_consumo %}</span>
+    {% else %}
+      <span class="m2m-sub">—</span>
+    {% endif %}
+  </td>
+  <td class="m2m-quebra" data-rotulo="Última atualização">
+    {% if chip.ultima_tentativa_em %}
+      <span class="m2m-num">{{ chip.ultima_tentativa_em|date:"d/m H:i" }}</span>
+    {% else %}
+      <span class="m2m-sub">nunca consultado</span>
+    {% endif %}
+  </td>
+  <td class="m2m-acoes" data-rotulo="Ações">
+    {% if pode_atualizar %}
+      {% if chip.monitorado %}
+        <button type="button" class="m2m-btn m2m-btn--sm" data-m2m-atualizar data-url="{% url 'm2m_chip_atualizar' chip.pk %}" data-tipos="sessao,consumo" data-contexto="linha" title="Consulta a API agora: sessão e consumo">Atualizar</button>
+      {% else %}
+        <span class="m2m-sub" title="Reative o monitoramento para consultar">desativado</span>
+      {% endif %}
+    {% endif %}
+    {% if pode_vincular and chip.situacao_uso == "disponivel" %}<button type="button" class="m2m-btn m2m-btn--sm" data-frota-abrir="vincular_veiculo" data-url="{% url 'frota_vincular' %}" data-campo-chip="{{ chip.pk }}" data-alvo="Chip {{ chip.nome }}">Vincular</button>{% endif %}
+    <a class="m2m-btn m2m-btn--sm m2m-btn--fantasma" href="{% url 'm2m_chip_detalhe' chip.pk %}">Detalhes</a>
+  </td>
+</tr>

@@ -1,0 +1,136 @@
+{% comment %}
+  Card "Colaborador contratado" — o fechamento do processo seletivo pelo RH.
+
+  Vaga em aberto  → chamada para marcar como preenchida (quem pode).
+  Vaga preenchida → os dados do contratado, quem preencheu e quando, e as ações
+                    de corrigir (com motivo) e reabrir (com motivo).
+  O histórico (preenchimento, correções, reaberturas) fica sempre à mão, com o
+  estado de antes: reabrir a vaga LIMPA o contratado dela, e é aqui que se vê quem ele era.
+
+  Preencher a vaga NÃO conclui nenhum chamado de TI — o card diz isso e aponta
+  para os chamados, que seguem o próprio andamento.
+{% endcomment %}
+{% if pode_preencher or obj.status != 'aberta' %}
+  <section class="ctr-card" id="colaborador">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title"><i class="fa fa-user-check" aria-hidden="true"></i> Colaborador contratado</h2>
+      <span class="ctr-card-sub">
+        {% if obj.status == 'aberta' %}Vaga em aberto{% elif obj.vaga_preenchida_em %}Preenchida em {{ obj.vaga_preenchida_em|date:"d/m/Y H:i" }}{% else %}{{ obj.get_status_display }}{% endif %}
+      </span>
+    </div>
+    <div class="ctr-card-body">
+
+      {% if obj.status == 'aberta' %}
+        <div class="ctr-chamado-cta">
+          <p>
+            Quando o processo seletivo terminar, registre quem foi contratado. A vaga passa a
+            <strong>Vaga preenchida</strong>; os chamados de TI <strong>não</strong> são concluídos por isso —
+            seguem o andamento deles.
+          </p>
+          {% if pode_preencher %}
+            <button type="button" class="ctr-btn is-primary" data-ctr-abrir-dialogo="ctrPreencherModal">
+              <i class="fa fa-user-check" aria-hidden="true"></i> Marcar vaga como preenchida
+            </button>
+          {% endif %}
+        </div>
+
+      {% elif obj.nome_contratado %}
+        <div class="ctr-dados">
+          <div class="ctr-dado">
+            <span class="ctr-dado-label">Nome</span>
+            <span class="ctr-dado-valor">{{ obj.nome_contratado }}</span>
+          </div>
+          <div class="ctr-dado">
+            <span class="ctr-dado-label">E-mail</span>
+            <span class="ctr-dado-valor">{{ obj.colaborador_email|default:"—" }}</span>
+          </div>
+          <div class="ctr-dado">
+            <span class="ctr-dado-label">Telefone</span>
+            <span class="ctr-dado-valor">{{ obj.colaborador_telefone|default:"—" }}</span>
+          </div>
+          <div class="ctr-dado">
+            <span class="ctr-dado-label">Data de admissão</span>
+            <span class="ctr-dado-valor">{% if obj.data_admissao %}{{ obj.data_admissao|date:"d/m/Y" }}{% else %}—{% endif %}</span>
+          </div>
+          <div class="ctr-dado">
+            <span class="ctr-dado-label">Preenchida por</span>
+            <span class="ctr-dado-valor">
+              {% if obj.preenchida_por %}{{ obj.preenchida_por.get_full_name|default:obj.preenchida_por.username }}{% else %}—{% endif %}
+            </span>
+          </div>
+        </div>
+        {% if obj.colaborador_observacoes %}
+          <div class="ctr-dado">
+            <span class="ctr-dado-label">Observações</span>
+            <span class="ctr-dado-valor">{{ obj.colaborador_observacoes|linebreaksbr }}</span>
+          </div>
+        {% endif %}
+        <p class="ctr-chamado-nota">
+          Cargo, setor e unidade são os da vaga (acima). A vaga preenchida não perde nada do que já foi
+          pedido à TI: os <a href="#chamados">chamados</a> continuam com a TI até serem concluídos
+          {% if chamados_pendentes %}— <strong>{{ chamados_pendentes }} pendente{{ chamados_pendentes|pluralize:",s" }} agora</strong>{% endif %}.
+        </p>
+        {% if obj.colaborador %}
+          <p class="ctr-chamado-nota">
+            <i class="fa fa-id-card" aria-hidden="true"></i>
+            Cadastrado como colaborador:
+            {% if pode_gerenciar_contratacao %}<a href="{% url 'usuario_detail' obj.colaborador.pk %}">{{ obj.colaborador.nome }}</a>{% else %}{{ obj.colaborador.nome }}{% endif %}.
+            As reservas de equipamento e os chamados desta vaga ficam ligados a ele.
+          </p>
+        {% elif obj.status == 'vaga_preenchida' or obj.status == 'equipamento_entregue' %}
+          <div class="ctr-aviso is-info" role="status">
+            <i class="fa fa-id-card" aria-hidden="true"></i>
+            <div class="ctr-aviso-acao">
+              <span><strong>{{ obj.nome_contratado }}</strong> ainda não tem cadastro de colaborador. O TI só entrega o equipamento em nome de um colaborador cadastrado.</span>
+              {% if pode_preencher %}
+                <button type="button" class="ctr-btn is-primary is-pequeno" data-ctr-abrir-dialogo="ctrCadastroModal">
+                  <i class="fa fa-user-plus" aria-hidden="true"></i> Cadastrar colaborador
+                </button>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+        {% if pode_preencher %}
+          <div class="ctr-chamado-acoes">
+            {% if obj.status != 'cancelada' %}
+              <button type="button" class="ctr-btn is-pequeno" data-ctr-abrir-dialogo="ctrCorrigirModal">
+                <i class="fa fa-pen" aria-hidden="true"></i> Corrigir dados
+              </button>
+            {% endif %}
+            {% if obj.status == 'vaga_preenchida' %}
+              <button type="button" class="ctr-btn is-pequeno is-perigo" data-ctr-abrir-dialogo="ctrReabrirModal">
+                <i class="fa fa-rotate-left" aria-hidden="true"></i> Reabrir vaga
+              </button>
+            {% endif %}
+          </div>
+        {% endif %}
+
+      {% else %}
+        <p class="ctr-campo-ajuda">Esta vaga não tem contratado registrado.</p>
+      {% endif %}
+
+      {% if historico_vaga %}
+        <details class="ctr-chamado-hist">
+          <summary>Histórico do preenchimento ({{ historico_vaga|length }})</summary>
+          <ol>
+            {% for item in historico_vaga %}
+              <li>
+                <span>
+                  <strong>{{ item.registro.get_acao_display }}</strong>
+                  · {{ item.registro.created_at|date:"d/m/Y H:i" }}
+                  · {% if item.registro.criado_por %}{{ item.registro.criado_por.get_full_name|default:item.registro.criado_por.username }}{% else %}—{% endif %}
+                </span>
+                <span>Status: {{ item.status_antes|default:"—" }} → {{ item.status_depois|default:"—" }}</span>
+                {% if item.registro.motivo %}<span>Motivo: {{ item.registro.motivo }}</span>{% endif %}
+                {% for rotulo, antes, depois in item.mudancas %}
+                  <span>{{ rotulo }}: {{ antes }} → {{ depois }}</span>
+                {% endfor %}
+                {% if item.contratado_anterior %}<span>Contratado anterior: {{ item.contratado_anterior }}</span>{% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+        </details>
+      {% endif %}
+    </div>
+  </section>
+{% endif %}

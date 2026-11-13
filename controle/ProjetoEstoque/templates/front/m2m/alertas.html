@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags %}
+
+{% block title %}Alertas e ocorrências — Chips e Conectividade — Zelo Agro{% endblock %}
+{% block page_title %}Chips e Conectividade{% endblock %}
+{% block page_subtitle %}Alertas e ocorrências{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% include 'front/m2m/_frota_topo.html' with titulo="Alertas" descricao="O que o monitoramento detectou e o que a equipe fez a respeito." %}
+
+  <nav class="m2m-segmentos m2m-segmentos--grande" aria-label="Estado das ocorrências">
+    {% for valor, rotulo in estados %}
+    <a href="?estado={{ valor }}{% if filtros.nivel %}&amp;nivel={{ filtros.nivel }}{% endif %}{% if filtros.tipo %}&amp;tipo={{ filtros.tipo }}{% endif %}{% if filtros.q %}&amp;q={{ filtros.q|urlencode }}{% endif %}" {% if filtros.estado == valor %}class="is-ativa" aria-current="true"{% endif %}>
+      <span>{{ rotulo }}</span>
+      {% if valor == "abertas" %}<b class="m2m-num">{{ m2m_alertas_abertos|unlocalize }}</b>{% endif %}
+    </a>
+    {% endfor %}
+    <span class="m2m-segmentos-nota">
+      aberta <b class="m2m-num">{{ contagem.aberta|unlocalize }}</b> ·
+      em tratamento <b class="m2m-num">{{ contagem.em_tratamento|unlocalize }}</b> ·
+      resolvida <b class="m2m-num">{{ contagem.resolvida|unlocalize }}</b> ·
+      descartada <b class="m2m-num">{{ contagem.descartada|unlocalize }}</b>
+    </span>
+  </nav>
+
+  <form method="get" class="m2m-filtros" role="search">
+    <input type="hidden" name="estado" value="{{ filtros.estado }}">
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="a-q">Buscar chip</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="a-q" name="q" value="{{ filtros.q }}" class="m2m-campo" data-m2m-busca placeholder="Buscar por nome, ICCID ou IMSI" autocomplete="off">
+      </div>
+      <label class="m2m-rotulo m2m-rotulo--curto"><span>Nível</span>
+        <select name="nivel" class="m2m-campo" data-m2m-auto>
+          <option value="">Todos</option>
+          {% for valor, rotulo in niveis %}<option value="{{ valor }}" {% if filtros.nivel == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="m2m-rotulo m2m-rotulo--curto"><span>Tipo</span>
+        <select name="tipo" class="m2m-campo" data-m2m-auto>
+          <option value="">Todos</option>
+          {% for valor, rotulo in tipos %}<option value="{{ valor }}" {% if filtros.tipo == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+        </select>
+      </label>
+      <div class="m2m-barra-fim"><span class="m2m-contagem-lista m2m-num">{{ page_obj.paginator.count }} ocorrência{{ page_obj.paginator.count|pluralize }}</span></div>
+    </div>
+  </form>
+
+  {% if ocorrencias %}
+  <ul class="m2m-ocorrencias">
+    {% for o in ocorrencias %}
+    <li class="m2m-ocorrencia" data-nivel="{{ o.nivel }}" data-estado-oc="{{ o.estado }}" id="oc-{{ o.pk }}">
+      <details {% if abrir == o.pk %}open{% endif %}>
+        <summary>
+          <span class="m2m-oc-nivel">{% m2m_ind o.nivel %}</span>
+          <span class="m2m-oc-titulo"><b>{{ o.get_tipo_display }}</b> · {% if o.chip_id %}<a href="{% url 'm2m_chip_detalhe' o.chip_id %}">{{ o.chip.nome }}</a>{% else %}{{ o.veiculo.codigo }} · {{ o.veiculo.nome }}{% endif %}</span>
+          <span class="m2m-oc-estado">{{ o.get_estado_display }}</span>
+          <span class="m2m-oc-quando m2m-num">detectada {{ o.detectada_em|date:"d/m H:i" }}{% if o.deteccoes > 1 %} · {{ o.deteccoes }} detecções{% endif %}</span>
+        </summary>
+        <div class="m2m-oc-corpo">
+          <p class="m2m-oc-descricao">{{ o.descricao }}</p>
+          <p class="m2m-sub">Última detecção: <span class="m2m-num">{{ o.ultima_deteccao_em|date:"d/m/Y H:i" }}</span>{% if o.resolvida_em %} · encerrada em <span class="m2m-num">{{ o.resolvida_em|date:"d/m/Y H:i" }}</span>{% endif %}</p>
+
+          <h4 class="m2m-sub-t">Andamento</h4>
+          <ol class="m2m-tempo">
+            {% for t in o.tratamentos.all %}
+            <li data-nivel="{% if t.usuario %}info{% else %}auto{% endif %}">
+              <span class="m2m-num m2m-tempo-quando">{{ t.em|date:"d/m/Y H:i" }}</span>
+              <span class="m2m-tempo-marca" aria-hidden="true"></span>
+              <span class="m2m-tempo-texto">
+                <b>{{ t.get_acao_display }}</b> <span class="m2m-sub">{% if t.usuario %}por {{ t.usuario.get_username }}{% else %}pelo sistema{% endif %}</span>
+                {% if t.comentario %}<span class="m2m-sub">{{ t.comentario }}</span>{% endif %}
+              </span>
+            </li>
+            {% endfor %}
+          </ol>
+
+          {% if pode_tratar %}
+          <form method="post" action="{% url 'm2m_alerta_tratar' o.pk %}" class="m2m-tratar">
+            {% csrf_token %}
+            <input type="hidden" name="voltar" value="{{ voltar }}">
+            <label class="m2m-rotulo m2m-rotulo--largo"><span>Comentário {% if o.aberta_ou_em_tratamento %}(obrigatório para resolver ou descartar){% endif %}</span>
+              <textarea name="comentario" rows="2" class="m2m-campo m2m-campo--area" maxlength="2000"></textarea>
+            </label>
+            <div class="m2m-tratar-acoes">
+              {% if o.aberta_ou_em_tratamento %}
+                {% if o.estado == "aberta" %}<button type="submit" name="acao" value="assumir" class="m2m-btn">Assumir</button>{% endif %}
+                <button type="submit" name="acao" value="resolver" class="m2m-btn m2m-btn--primario">Resolver</button>
+                <button type="submit" name="acao" value="descartar" class="m2m-btn" title="Já sei disso: o alerta não volta enquanto a condição não sumir e reaparecer">Descartar</button>
+              {% endif %}
+              <button type="submit" name="acao" value="comentar" class="m2m-btn m2m-btn--fantasma">Só comentar</button>
+            </div>
+          </form>
+          {% endif %}
+        </div>
+      </details>
+    </li>
+    {% endfor %}
+  </ul>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% else %}
+  {% url 'm2m_alertas' as u_todas %}
+  {% if filtros.estado == "abertas" and not filtros.nivel and not filtros.tipo and not filtros.q %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-circle-check" titulo="Nenhuma ocorrência em aberto" texto="Nada precisa de atenção agora. Falhas isoladas de consulta não geram ocorrência: só uma sequência de falhas, um chip sem sessão por tempo demais, dado desatualizado, consumo acima do limite cadastrado ou identificador divergente." acao_url=u_todas acao_rotulo="Ver todas as ocorrências" only %}
+  {% else %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-bell-slash" titulo="Nenhum alerta encontrado" texto="Mude o estado ou limpe os filtros para ver as demais ocorrências." acao_url=u_todas acao_rotulo="Ver todas as ocorrências" only %}
+  {% endif %}
+  {% endif %}
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

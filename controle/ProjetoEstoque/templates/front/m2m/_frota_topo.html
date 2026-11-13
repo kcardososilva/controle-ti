@@ -1,0 +1,149 @@
+{% load m2m_tags %}
+{% comment %}
+Topo de TODAS as telas de Frotas e de Chips e Conectividade (Zelo Agro), na ordem: a barra de
+navegação da SEÇÃO, o cabeçalho da página (o `.page-header` do sistema) e, SÓ nas telas de
+conectividade (`m2m_com_faixa`), a faixa de saúde da integração TIM. Cada aba aparece só para quem
+tem a permissão dela.
+
+Recebe por `with`: `titulo` e `descricao` (uma frase curta); opcionais `voltar_url` + `voltar_rotulo`
+(o caminho de volta nas páginas de detalhe) e as ações do cabeçalho: `acao_url` + `acao_rotulo`
+(+ `acao_icone`) é a ação PRINCIPAL; `acao2_url` + `acao2_rotulo` (+ `acao2_icone`) é a secundária.
+Quem não tem permissão para a ação simplesmente não passa a URL.
+
+O resto vem do `contexto_base` da view (views/frota_comum.py): `m2m_com_faixa`, `m2m_faixa`,
+`m2m_sync`, `m2m_proxima_devida`, `m2m_alertas_abertos`, `m2m_aba` e as flags `pode_*`.
+
+Importar chips não tem aba própria: é uma ação da lista de chips, e a aba "Chips" fica acesa
+nas telas de importação (`m2m_aba == "importar"`).
+
+A faixa diz, sem o usuário precisar abrir nada, se o que está na tela pode ser confiado: credencial
+recusada, limite de requisições e tarefa parada são os três casos em que o número ao lado continua
+ali, mas já não está sendo atualizado. Ela não aparece em veículo, movimentação e importação: a saúde
+da API da TIM não diz nada sobre cadastro.
+{% endcomment %}
+{% comment %}As abas são as da SEÇÃO da tela (`m2m_secao`, de `frota_comum.secao_da_aba`): no Zelo Agro,
+Frotas e Chips e Conectividade são acessos independentes, cada um com o próprio submenu, e o topo
+de uma não mostra as abas da outra. "Configurações" aparece nas duas: na Frota abre os tipos de
+veículo; na Conectividade, a integração TIM (as outras abas da configuração ficam na própria tela).{% endcomment %}
+{% if m2m_secao == "frota" %}
+<nav class="m2m-abas" aria-label="Seções de Frotas">
+  <div class="m2m-abas-grupo">
+    {% if pode_ver_frota %}<a href="{% url 'frota_visao_geral' %}" {% if m2m_aba == "visao_frota" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-gauge-high" aria-hidden="true"></i>Visão geral</a>{% endif %}
+    {% if pode_ver_frota %}<a href="{% url 'frota_veiculos' %}" {% if m2m_aba == "veiculos" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-tractor" aria-hidden="true"></i>Veículos e equipamentos</a>{% endif %}
+  </div>
+  {% if pode_configurar %}
+  <div class="m2m-abas-grupo m2m-abas-fim">
+    <a href="{% url 'frota_config_tipos' %}" {% if m2m_aba == "config" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-gear" aria-hidden="true"></i>Configurações</a>
+  </div>
+  {% endif %}
+</nav>
+{% else %}
+<nav class="m2m-abas" aria-label="Seções de Chips e Conectividade">
+  <div class="m2m-abas-grupo">
+    {% if pode_ver_chips %}<a href="{% url 'm2m_visao_geral' %}" {% if m2m_aba == "visao" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-gauge-high" aria-hidden="true"></i>Visão geral</a>{% endif %}
+    {% if pode_ver_chips %}<a href="{% url 'm2m_chips' %}" {% if m2m_aba == "chips" or m2m_aba == "importar" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-sim-card" aria-hidden="true"></i>Chips</a>{% endif %}
+    {% if pode_historico %}<a href="{% url 'frota_movimentacoes' %}" {% if m2m_aba == "movimentacoes" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-right-left" aria-hidden="true"></i>Movimentações</a>{% endif %}
+  </div>
+  {% if pode_atualizar or pode_historico %}
+  <span class="m2m-abas-sep" aria-hidden="true"></span>
+  <div class="m2m-abas-grupo">
+    {% if pode_atualizar %}<a href="{% url 'm2m_sessoes' %}" {% if m2m_aba == "sessoes" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-signal" aria-hidden="true"></i>Sessões</a>{% endif %}
+    {% if pode_atualizar %}<a href="{% url 'm2m_consumo' %}" {% if m2m_aba == "consumo" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-chart-line" aria-hidden="true"></i>Consumo</a>{% endif %}
+    {% if pode_historico %}<a href="{% url 'm2m_alertas' %}" {% if m2m_aba == "alertas" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-bell" aria-hidden="true"></i>Alertas{% if m2m_alertas_abertos %} <span class="m2m-contagem" title="Ocorrências abertas ou em tratamento">{{ m2m_alertas_abertos }}</span>{% endif %}</a>{% endif %}
+  </div>
+  {% endif %}
+  {% if pode_configurar %}
+  <div class="m2m-abas-grupo m2m-abas-fim">
+    <a href="{% url 'm2m_config' %}" {% if m2m_aba == "config" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-gear" aria-hidden="true"></i>Configurações</a>
+  </div>
+  {% endif %}
+</nav>
+{% endif %}
+
+<header class="page-header page-header-compact m2m-cab">
+  <div class="page-header-main">
+    {% if voltar_url %}<a class="m2m-migalha" href="{{ voltar_url }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i>{{ voltar_rotulo }}</a>{% endif %}
+    <h2 class="page-heading">{{ titulo }}</h2>
+    {% if descricao %}<p class="page-description">{{ descricao }}</p>{% endif %}
+  </div>
+  {% if acao_url or acao2_url %}
+  <div class="m2m-cab-acoes">
+    {% if acao2_url %}<a class="m2m-btn" href="{{ acao2_url }}">{% if acao2_icone %}<i class="fa-solid {{ acao2_icone }}" aria-hidden="true"></i>{% endif %}{{ acao2_rotulo }}</a>{% endif %}
+    {% if acao_url %}<a class="m2m-btn m2m-btn--primario" href="{{ acao_url }}">{% if acao_icone %}<i class="fa-solid {{ acao_icone }}" aria-hidden="true"></i>{% endif %}{{ acao_rotulo }}</a>{% endif %}
+  </div>
+  {% endif %}
+</header>
+
+{% if m2m_com_faixa %}
+<section class="m2m-faixa" data-estado="{{ m2m_faixa.estado }}" aria-label="Saúde da integração com a TIM">
+  <div class="m2m-faixa-item">
+    <span class="m2m-micro">Integração TIM</span>
+    {% m2m_ind m2m_faixa.estado m2m_faixa.rotulo %}
+  </div>
+
+  <div class="m2m-faixa-item">
+    <span class="m2m-micro">Última sincronização</span>
+    {% if m2m_faixa.ultima_sincronizacao %}
+      <span class="m2m-num">{{ m2m_faixa.ultima_sincronizacao|date:"d/m H:i" }}</span>
+      <span class="m2m-faixa-nota">{{ m2m_sync.rotulo }}</span>
+    {% else %}
+      <span class="m2m-num">—</span>
+      <span class="m2m-faixa-nota">nunca executou</span>
+    {% endif %}
+  </div>
+
+  <div class="m2m-faixa-item m2m-faixa-item--lateral">
+    <span class="m2m-micro">Próxima</span>
+    {% if m2m_faixa.proxima %}
+      {% if m2m_proxima_devida %}
+        <span class="m2m-num">na próxima rodada</span>
+      {% else %}
+        <span class="m2m-num">{{ m2m_faixa.proxima|date:"d/m H:i" }}</span>
+      {% endif %}
+    {% else %}
+      <span class="m2m-num">—</span>
+      <span class="m2m-faixa-nota">sem chips monitorados</span>
+    {% endif %}
+  </div>
+
+  <div class="m2m-faixa-item m2m-faixa-item--lateral">
+    <span class="m2m-micro">Tarefa agendada</span>
+    {% if m2m_faixa.executando %}
+      {% m2m_ind "pendente" "Executando agora" %}
+    {% elif m2m_faixa.tarefa_parada %}
+      {% m2m_ind "desatualizado" "Parada" "Sem execução há mais de 2 ciclos do Agendador do Windows. Os dados desta tela não estão sendo atualizados sozinhos." %}
+    {% elif m2m_faixa.ultima_sincronizacao %}
+      {% m2m_ind "normal" "Em dia" %}
+      <span class="m2m-faixa-nota">a cada {{ m2m_faixa.tique_minutos }} min</span>
+    {% else %}
+      {% m2m_ind "pendente" "Nunca executou" %}
+    {% endif %}
+  </div>
+
+  <div class="m2m-faixa-item m2m-faixa-item--lateral">
+    <span class="m2m-micro">Credencial</span>
+    {% if m2m_faixa.token_origem == "nenhum" %}
+      <span class="m2m-num">—</span>
+    {% else %}
+      <span class="m2m-num">{% if m2m_faixa.token_origem == "env" %}.env{% else %}banco{% endif %}{% if m2m_faixa.token_sufixo %} ····{{ m2m_faixa.token_sufixo }}{% endif %}</span>
+    {% endif %}
+  </div>
+
+  {% if m2m_faixa.estado != "autenticada" and m2m_faixa.estado != "nao_testada" %}
+  <p class="m2m-faixa-aviso">
+    {% if m2m_faixa.estado == "nao_configurada" %}
+      Sem token, nenhuma consulta é feita. Os números abaixo, se houver, são de consultas anteriores.
+    {% elif m2m_faixa.estado == "credencial_recusada" %}
+      A API recusou o token. O monitoramento está parado até a credencial ser trocada ou um teste de conexão dar certo.
+    {% elif m2m_faixa.estado == "bloqueada" %}
+      A API limitou as requisições. As consultas ficam pausadas até {{ m2m_faixa.bloqueado_ate|date:"H:i" }}.
+    {% elif m2m_faixa.estado == "url_invalida" %}
+      O endereço da API no .env é inválido. Ele só se altera no arquivo .env do servidor, nunca por tela.
+    {% elif m2m_faixa.estado == "token_ilegivel" %}
+      O token salvo no banco não pode ser lido: a chave de cifra do .env sumiu ou mudou. Grave o token de novo.
+    {% endif %}
+    {% if pode_configurar %}<a href="{% url 'm2m_config' %}">Abrir a configuração</a>{% endif %}
+  </p>
+  {% endif %}
+</section>
+{% endif %}

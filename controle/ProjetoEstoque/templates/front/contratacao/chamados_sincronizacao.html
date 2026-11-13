@@ -1,0 +1,209 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Sincronização de e-mail dos chamados{% endblock %}
+{% block page_title %}Contratações{% endblock %}
+{% block page_subtitle %}Sincronização de e-mail dos chamados{% endblock %}
+
+{% block extra_css %}
+  {% include 'front/contratacao/_ctr_design_system.html' %}
+{% endblock %}
+
+{% block content %}
+{% comment %}
+  Tela da TI: a caixa de e-mail está sendo lida? o que ficou em revisão? o que falhou?
+  Nada aqui é para o RH (endereços, erros técnicos). A regra de cada ação é do
+  service; esta página só mostra e dispara.
+{% endcomment %}
+<div class="ctr-page">
+
+  <section class="page-header page-header-compact" aria-labelledby="ctr-sync-titulo">
+    <div class="page-header-main">
+      <div class="page-kicker"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Chamados de TI</div>
+      <h2 class="page-heading" id="ctr-sync-titulo">Sincronização de e-mail</h2>
+      <p class="page-description">
+        As respostas que RH e TI dão pela caixa de e-mail entram na conversa do chamado por esta leitura.
+      </p>
+    </div>
+    <div class="page-header-aside">
+      <a href="{% url 'chamados_lista' %}" class="ctr-btn"><i class="fa fa-arrow-left" aria-hidden="true"></i> Chamados</a>
+    </div>
+  </section>
+
+  {# ── Saúde ────────────────────────────────────────────────────────── #}
+  <section class="ctr-card" aria-labelledby="ctrSyncSaude">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title" id="ctrSyncSaude"><i class="fa fa-heart-pulse" aria-hidden="true"></i> Situação da leitura</h2>
+      <span class="ctr-card-sub">
+        {% if caixa.configurada %}
+          {% if caixa.parada %}<span class="ctr-chip is-perigo">Parada</span>{% else %}<span class="ctr-chip is-ok">Em dia</span>{% endif %}
+        {% else %}
+          <span class="ctr-chip is-aviso">Desligada</span>
+        {% endif %}
+      </span>
+    </div>
+    <div class="ctr-card-body">
+      {% if not caixa.configurada %}
+        <div class="ctr-aviso" role="status">
+          <i class="fa fa-circle-info" aria-hidden="true"></i>
+          <div>
+            <strong>A leitura da caixa não está configurada.</strong> O envio por SMTP e a resposta pela plataforma
+            funcionam, mas o que a TI ou o RH responderem <em>só pelo e-mail</em> não chega à conversa.
+            <br>O Exchange Online deste tenant recusa login básico por IMAP (“Basic authentication is disabled”),
+            então a leitura usa o <strong>Microsoft Graph com um aplicativo registrado no Entra ID</strong>. É preciso:
+            registrar o aplicativo, dar a permissão <code>Mail.Read</code> (tipo aplicativo) com consentimento do administrador,
+            restringi-la à caixa dos chamados (política de acesso de aplicativo do Exchange) e preencher no <code>.env</code>:
+            <code>CHAMADOS_GRAPH_TENANT_ID</code>, <code>CHAMADOS_GRAPH_CLIENT_ID</code>,
+            <code>CHAMADOS_GRAPH_CLIENT_SECRET</code> (e, se a caixa não for a do remetente, <code>CHAMADOS_CAIXA</code>).
+            Passo a passo completo em <code>docs/TUTORIAL_CHAMADOS_CONVERSA.md</code>.
+          </div>
+        </div>
+      {% else %}
+        <div class="ctr-dados">
+          <div class="ctr-dado"><span class="ctr-dado-label">Caixa lida</span><span class="ctr-dado-valor">{{ caixa.caixa }}</span></div>
+          <div class="ctr-dado"><span class="ctr-dado-label">Última leitura</span><span class="ctr-dado-valor">{% if caixa.estado.ultima_execucao %}{{ caixa.estado.ultima_execucao|date:"d/m/Y H:i" }}{% else %}nunca{% endif %}</span></div>
+          <div class="ctr-dado"><span class="ctr-dado-label">Última com sucesso</span><span class="ctr-dado-valor">{% if caixa.estado.ultimo_sucesso %}{{ caixa.estado.ultimo_sucesso|date:"d/m/Y H:i" }}{% else %}nunca{% endif %}</span></div>
+          <div class="ctr-dado"><span class="ctr-dado-label">Resultado</span><span class="ctr-dado-valor">{{ caixa.estado.ultimo_resumo|default:"—" }}</span></div>
+        </div>
+        {% if caixa.estado.ultimo_erro %}
+          <p class="ctr-chamado-erro" role="alert"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> {{ caixa.estado.ultimo_erro }}</p>
+        {% endif %}
+        {% if caixa.parada %}
+          <p class="ctr-chamado-nota">
+            A leitura é feita pela tarefa agendada <code>ControleEstoque_SincronizarChamados</code>. Se ela não existe ou parou,
+            registre/verifique com <code>python manage.py agendar_chamados criar</code> e <code>listar</code> (terminal como Administrador).
+          </p>
+        {% endif %}
+        <form method="post" action="{% url 'chamados_sincronizacao_acao' %}" data-ctr-uma-vez>
+          {% csrf_token %}
+          <input type="hidden" name="acao" value="sincronizar">
+          <button type="submit" class="ctr-btn is-primary"><i class="fa fa-arrows-rotate" aria-hidden="true"></i> Ler a caixa agora</button>
+        </form>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── E-mails em revisão ───────────────────────────────────────────── #}
+  <section class="ctr-card" aria-labelledby="ctrSyncRevisao">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title" id="ctrSyncRevisao"><i class="fa fa-shield-halved" aria-hidden="true"></i> E-mails em revisão</h2>
+      <span class="ctr-card-sub">{{ em_revisao|length }}</span>
+    </div>
+    <div class="ctr-card-body">
+      <p class="ctr-chamado-nota">
+        Parecem ser de um chamado, mas não passaram nas verificações (remetente desconhecido, falha de autenticidade,
+        vínculo ambíguo). Nada daqui aparece na conversa até a TI decidir.
+      </p>
+      {% for r in em_revisao %}
+        <article class="ctr-chamado is-pendente">
+          <div class="ctr-chamado-topo">
+            <span class="ctr-chamado-titulo">{{ r.assunto|default:"(sem assunto)" }}</span>
+            <span class="ctr-chip is-aviso">em revisão</span>
+          </div>
+          <dl class="ctr-chamado-meta">
+            <div><dt>Remetente</dt><dd>{{ r.remetente|default:"—" }}</dd></div>
+            <div><dt>Recebido em</dt><dd>{{ r.recebido_em|date:"d/m/Y H:i"|default:"—" }}</dd></div>
+            <div><dt>Chamado</dt><dd>{% if r.chamado %}<a href="{% url 'chamado_detail' r.chamado.contratacao_id r.chamado.pk %}">nº {{ r.chamado.pk }} — {{ r.chamado.contratacao.cargo }}</a>{% else %}—{% endif %}</dd></div>
+            <div><dt>Motivo</dt><dd>{{ r.motivo }}</dd></div>
+          </dl>
+          <div class="ctr-chamado-acoes">
+            {% if r.chamado and r.bruto %}
+              <form method="post" action="{% url 'chamados_sincronizacao_acao' %}" data-ctr-uma-vez>
+                {% csrf_token %}
+                <input type="hidden" name="acao" value="liberar">
+                <input type="hidden" name="registro" value="{{ r.pk }}">
+                <div class="ctr-campo">
+                  <label class="ctr-campo-label" for="ctrLado{{ r.pk }}">Liberar como</label>
+                  <select id="ctrLado{{ r.pk }}" name="lado" class="ctrl">
+                    {% for valor, rotulo in lados.choices %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+                  </select>
+                </div>
+                <button type="submit" class="ctr-btn is-pequeno is-primary">Liberar na conversa</button>
+              </form>
+            {% endif %}
+            <form method="post" action="{% url 'chamados_sincronizacao_acao' %}" data-ctr-uma-vez>
+              {% csrf_token %}
+              <input type="hidden" name="acao" value="descartar">
+              <input type="hidden" name="registro" value="{{ r.pk }}">
+              <button type="submit" class="ctr-btn is-pequeno is-perigo">Descartar</button>
+            </form>
+          </div>
+        </article>
+      {% empty %}
+        <p class="ctr-campo-ajuda">Nenhum e-mail em revisão.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ── Falhas ───────────────────────────────────────────────────────── #}
+  <section class="ctr-card" aria-labelledby="ctrSyncFalhas">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title" id="ctrSyncFalhas"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> Falhas de sincronização</h2>
+      <span class="ctr-card-sub">{{ falhas|length }}</span>
+    </div>
+    <div class="ctr-card-body">
+      <p class="ctr-chamado-nota">
+        E-mails que não puderam ser lidos ou registrados. Cada um é reprocessado sozinho até {{ max_tentativas }} vezes;
+        depois disso só por aqui. Reprocessar não duplica: o que já virou mensagem é reconhecido.
+      </p>
+      {% for r in falhas %}
+        <article class="ctr-chamado is-falha">
+          <div class="ctr-chamado-topo">
+            <span class="ctr-chamado-titulo">{{ r.assunto|default:"(e-mail da caixa)" }}</span>
+            <span class="ctr-chip is-perigo">falha · {{ r.tentativas }} tentativa{{ r.tentativas|pluralize }}</span>
+          </div>
+          <p class="ctr-chamado-erro">{{ r.motivo }}</p>
+          <div class="ctr-chamado-acoes">
+            <form method="post" action="{% url 'chamados_sincronizacao_acao' %}" data-ctr-uma-vez>
+              {% csrf_token %}
+              <input type="hidden" name="acao" value="reprocessar">
+              <input type="hidden" name="registro" value="{{ r.pk }}">
+              <button type="submit" class="ctr-btn is-pequeno is-primary"><i class="fa fa-rotate-right" aria-hidden="true"></i> Tentar novamente</button>
+            </form>
+          </div>
+        </article>
+      {% empty %}
+        <p class="ctr-campo-ajuda">Nenhuma falha.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ── Últimos tratados ─────────────────────────────────────────────── #}
+  <section class="ctr-card" aria-labelledby="ctrSyncRecentes">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title" id="ctrSyncRecentes"><i class="fa fa-clock-rotate-left" aria-hidden="true"></i> Últimos e-mails tratados</h2>
+    </div>
+    <div class="ctr-card-body">
+      <div class="ctr-timeline">
+        {% for r in recentes %}
+          <div class="ctr-evento">
+            <span class="ctr-evento-marca"><i class="fa fa-envelope" aria-hidden="true"></i></span>
+            <span class="ctr-evento-corpo">
+              <span class="ctr-evento-texto">{{ r.get_estado_display }}{% if r.chamado %} — chamado nº {{ r.chamado.pk }} ({{ r.chamado.contratacao.cargo }}){% endif %}{% if r.motivo %} · {{ r.motivo }}{% endif %}</span>
+              <span class="ctr-evento-meta">{{ r.created_at|date:"d/m/Y H:i" }}{% if r.remetente %} · {{ r.remetente }}{% endif %}</span>
+            </span>
+          </div>
+        {% empty %}
+          <p class="ctr-campo-ajuda">Nenhum e-mail tratado ainda.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  document.querySelectorAll('form[data-ctr-uma-vez]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (f.dataset.enviando === '1') { e.preventDefault(); return; }
+      f.dataset.enviando = '1';
+      var b = f.querySelector('button[type=submit]');
+      if (b) { b.disabled = true; b.textContent = 'Processando…'; }
+    });
+  });
+  window.addEventListener('pageshow', function (ev) { if (ev.persisted) window.location.reload(); });
+})();
+</script>
+{% endblock %}

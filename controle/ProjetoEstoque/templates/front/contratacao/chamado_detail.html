@@ -1,0 +1,393 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Chamado nº {{ chamado.pk }} — {{ chamado.get_tipo_display }}{% endblock %}
+{% block page_title %}Contratações{% endblock %}
+{% block page_subtitle %}Chamado de estrutura{% endblock %}
+
+{% block extra_css %}
+  {% include 'front/contratacao/_ctr_design_system.html' %}
+{% endblock %}
+
+{% block content %}
+{% comment %}
+  Tela de UM chamado — a conversa RH ↔ TI.
+
+  Quem lê e quem pode o quê:
+    • RH e TI veem a mesma conversa e respondem por aqui (vira e-mail para o outro lado);
+    • só a TI muda a situação do atendimento e o responsável;
+    • endereços de e-mail, texto técnico de erro e destinatários só para a TI.
+
+  O que a tela NUNCA diz: "chamado aberto" por ter enviado e-mail, nem "entregue".
+  "E-mail enviado" = o servidor aceitou. "Aberto" só quando a TI registra o nº ou
+  muda a situação. A situação do chamado é independente da etapa da vaga.
+{% endcomment %}
+<div class="ctr-detail-page">
+
+  <section class="page-header page-header-compact" aria-labelledby="ctr-chamado-titulo">
+    <div class="page-header-main">
+      <div class="page-kicker">
+        <i class="fa-solid fa-headset" aria-hidden="true"></i>
+        Chamado nº {{ chamado.pk }}{% if chamado.identificador %} · atendimento nº {{ chamado.identificador }}{% endif %}
+      </div>
+      <h2 class="page-heading" id="ctr-chamado-titulo">{{ chamado.get_tipo_display }}</h2>
+      <p class="page-description">
+        <a href="{% url 'contratacao_detail' obj.pk %}#chamados">{{ obj.cargo }}</a>
+        · {% if obj.nome_contratado %}{{ obj.nome_contratado }}{% else %}vaga sem contratado{% endif %}
+        · vaga: {{ obj.get_status_display }}
+      </p>
+    </div>
+    <div class="page-header-aside">
+      <a href="{% url 'chamados_lista' %}" class="ctr-btn"><i class="fa fa-list" aria-hidden="true"></i> Todos os chamados</a>
+      <a href="{% url 'contratacao_detail' obj.pk %}" class="ctr-btn"><i class="fa fa-arrow-left" aria-hidden="true"></i> Vaga</a>
+    </div>
+  </section>
+
+  {# ── Situação ─────────────────────────────────────────────────────── #}
+  <section class="ctr-card" aria-labelledby="ctrSituacaoTitulo">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title" id="ctrSituacaoTitulo"><i class="fa fa-gauge-high" aria-hidden="true"></i> Situação</h2>
+      <span class="ctr-card-sub">
+        {% if chamado.ultima_atividade_em %}Última atualização em {{ chamado.ultima_atividade_em|date:"d/m/Y H:i" }}{% endif %}
+      </span>
+    </div>
+    <div class="ctr-card-body">
+      <div class="ctr-dados">
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Situação do atendimento</span>
+          <span class="ctr-dado-valor">
+            <span class="ctr-chip is-{{ tom }}">{{ chamado.get_atendimento_display }}</span>
+          </span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">E-mail de abertura</span>
+          <span class="ctr-dado-valor">
+            <span class="ctr-chip {% if chamado.status == 'enviado' %}is-ok{% elif chamado.status == 'falha' %}is-perigo{% else %}is-aviso{% endif %}">{{ chamado.get_status_display }}</span>
+          </span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Responsável / equipe</span>
+          <span class="ctr-dado-valor">
+            {% if chamado.responsavel %}{{ chamado.responsavel.get_full_name|default:chamado.responsavel.username }}{% else %}Equipe de TI{% endif %}
+          </span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Nº do chamado no atendimento</span>
+          <span class="ctr-dado-valor">{% if chamado.identificador %}{{ chamado.identificador }}{% else %}— <span class="ctr-campo-ajuda">ainda não informado pela TI</span>{% endif %}</span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Assunto</span>
+          <span class="ctr-dado-valor">{{ chamado.assunto|default:"—" }}</span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Solicitado em</span>
+          <span class="ctr-dado-valor">{{ chamado.created_at|date:"d/m/Y H:i" }}</span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Solicitado por</span>
+          <span class="ctr-dado-valor">{% if chamado.criado_por %}{{ chamado.criado_por.get_full_name|default:chamado.criado_por.username }}{% else %}—{% endif %}</span>
+        </div>
+      </div>
+
+      <p class="ctr-chamado-nota">
+        A situação do chamado é <strong>independente da vaga</strong>: concluir este chamado não preenche a vaga,
+        e preencher a vaga não conclui este chamado.
+      </p>
+
+      {% if chamado.status == 'falha' %}
+        <div class="ctr-aviso is-perigo" role="alert">
+          <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+          <div class="ctr-aviso-acao">
+            <span>O e-mail de abertura <strong>não foi enviado</strong>: a TI ainda não recebeu este pedido.
+              {% if eh_ti %}{{ chamado.ultimo_erro }}{% endif %}</span>
+            <form method="post" action="{% url 'contratacao_chamado_reenviar' obj.pk chamado.pk %}" data-ctr-uma-vez>
+              {% csrf_token %}
+              <button type="submit" class="ctr-btn is-pequeno is-primary"><i class="fa fa-rotate-right" aria-hidden="true"></i> Tentar novamente</button>
+            </form>
+          </div>
+        </div>
+      {% endif %}
+
+      {% if eh_ti %}
+        <form method="post" action="{% url 'chamado_atendimento' obj.pk chamado.pk %}" class="ctr-form-grid ctr-situacao-form" data-ctr-uma-vez>
+          {% csrf_token %}
+          <div class="ctr-grid">
+            <div class="ctr-campo ctr-c4">
+              <label class="ctr-campo-label" for="ctrSituacao">Nova situação</label>
+              <select id="ctrSituacao" name="situacao" class="ctrl">
+                {% for valor, rotulo in situacoes.choices %}
+                  <option value="{{ valor }}" {% if valor == chamado.atendimento %}selected{% endif %}>{{ rotulo }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="ctr-campo ctr-c4">
+              <label class="ctr-campo-label" for="ctrResponsavel">Responsável</label>
+              <select id="ctrResponsavel" name="responsavel" class="ctrl">
+                <option value="" {% if not chamado.responsavel_id %}selected{% endif %}>Equipe de TI (sem responsável)</option>
+                {% for u in responsaveis %}
+                  <option value="{{ u.pk }}" {% if u.pk == chamado.responsavel_id %}selected{% endif %}>{{ u.get_full_name|default:u.username }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="ctr-campo ctr-c4">
+              <label class="ctr-campo-label" for="ctrSituacaoMotivo">Comentário (opcional)</label>
+              <input type="text" id="ctrSituacaoMotivo" name="motivo" maxlength="255" autocomplete="off" placeholder="Ex.: máquina em configuração">
+            </div>
+          </div>
+          <div class="ctr-form-acoes">
+            <button type="submit" class="ctr-btn is-primary"><i class="fa fa-floppy-disk" aria-hidden="true"></i> Atualizar situação</button>
+          </div>
+        </form>
+      {% endif %}
+
+      {% if historico_status %}
+        <details class="ctr-chamado-hist">
+          <summary>Histórico de situação ({{ historico_status|length }})</summary>
+          <ol>
+            {% for h in historico_status %}
+              <li>
+                <span>
+                  <strong>{% if h.de %}{{ h.get_de_display }} → {% endif %}{{ h.get_para_display }}</strong>
+                  · {{ h.created_at|date:"d/m/Y H:i" }}
+                  · {% if h.automatico %}automático{% if h.criado_por %} ({{ h.criado_por.get_full_name|default:h.criado_por.username }}){% endif %}{% elif h.criado_por %}{{ h.criado_por.get_full_name|default:h.criado_por.username }}{% else %}—{% endif %}
+                </span>
+                {% if h.motivo %}<span>{{ h.motivo }}</span>{% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+        </details>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── Conversa ─────────────────────────────────────────────────────── #}
+  <section class="ctr-card" id="conversa" aria-labelledby="ctrConversaTitulo">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title" id="ctrConversaTitulo"><i class="fa fa-comments" aria-hidden="true"></i> Conversa</h2>
+      <span class="ctr-card-sub">{{ mensagens|length }} mensagem{{ mensagens|length|pluralize:",ns" }}</span>
+    </div>
+    <div class="ctr-card-body">
+
+      {% if not caixa.configurada %}
+        <div class="ctr-aviso" role="status">
+          <i class="fa fa-circle-info" aria-hidden="true"></i>
+          <div>
+            Respostas dadas <strong>só pelo e-mail</strong> ainda não aparecem aqui — a leitura da caixa de e-mail
+            não está configurada{% if eh_ti %} (<a href="{% url 'chamados_sincronizacao' %}">ver como configurar</a>){% else %}; avise a TI{% endif %}.
+            Responder por esta tela funciona normalmente.
+          </div>
+        </div>
+      {% elif caixa.parada %}
+        <div class="ctr-aviso" role="status">
+          <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+          <div>
+            A leitura da caixa de e-mail está <strong>parada</strong>
+            {% if caixa.estado.ultimo_sucesso %}(última leitura com sucesso em {{ caixa.estado.ultimo_sucesso|date:"d/m/Y H:i" }}){% endif %}.
+            Respostas enviadas por e-mail podem demorar a aparecer{% if eh_ti %} — <a href="{% url 'chamados_sincronizacao' %}">ver detalhes</a>{% endif %}.
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="ctr-conversa" role="log" aria-live="polite" aria-label="Mensagens do chamado">
+
+        {# A abertura é a primeira mensagem: conta que o pedido foi enviado, sem repetir o corpo (que está em "Dados da solicitação"). #}
+        <article class="ctr-msg is-sistema">
+          <div class="ctr-msg-topo">
+            <strong>Solicitação</strong>
+            <span class="ctr-chip">{% if chamado.criado_por %}{{ chamado.criado_por.get_full_name|default:chamado.criado_por.username }}{% else %}RH{% endif %}</span>
+            <time datetime="{{ chamado.created_at|date:'c' }}">{{ chamado.created_at|date:"d/m/Y H:i" }}</time>
+          </div>
+          <p class="ctr-msg-corpo">
+            {% if abertura and abertura.estado == 'enviada' or chamado.status == 'enviado' %}
+              Pedido enviado por e-mail {% if eh_ti and chamado.lista_destinatarios %}para {{ chamado.lista_destinatarios|join:", " }}{% else %}à equipe de TI{% endif %}
+              {% if chamado.enviado_em %}em {{ chamado.enviado_em|date:"d/m/Y H:i" }}{% endif %}.
+              <span class="ctr-campo-ajuda">O servidor de e-mail aceitou a mensagem; isso não confirma a abertura do chamado no atendimento.</span>
+            {% elif chamado.status == 'falha' %}
+              O e-mail do pedido não saiu.
+            {% else %}
+              Envio do pedido em andamento.
+            {% endif %}
+            {% if abertura and abertura.entrega_recusada %}
+              <span class="ctr-chip is-perigo">Entrega recusada</span>
+              {% if eh_ti %}<span class="ctr-campo-ajuda">{{ abertura.entrega_erro }}</span>{% endif %}
+            {% endif %}
+          </p>
+        </article>
+
+        {% for m in mensagens %}
+          <article class="ctr-msg is-{{ m.lado }}" id="msg-{{ m.pk }}">
+            <div class="ctr-msg-topo">
+              <strong>{{ m.remetente_nome|default:m.get_lado_display }}</strong>
+              <span class="ctr-chip {% if m.lado == 'ti' %}is-primary{% endif %}">{{ m.get_lado_display }}</span>
+              <span class="ctr-msg-via">{{ m.get_origem_display|lower }}</span>
+              <time datetime="{{ m.created_at|date:'c' }}">{{ m.enviado_em|default:m.created_at|date:"d/m/Y H:i" }}</time>
+            </div>
+            <div class="ctr-msg-corpo">{{ m.corpo|linebreaksbr }}</div>
+
+            {% with anexos=m.anexos.all %}
+              {% if anexos %}
+                <ul class="ctr-anexos" aria-label="Anexos da mensagem">
+                  {% for a in anexos %}
+                    <li>
+                      {% if a.bloqueado %}
+                        <span class="ctr-anexo is-bloqueado"><i class="fa fa-ban" aria-hidden="true"></i> {{ a.nome_original }} — não disponível ({{ a.motivo_bloqueio }})</span>
+                      {% else %}
+                        <a class="ctr-anexo" href="{% url 'chamado_anexo_download' obj.pk chamado.pk a.pk %}">
+                          <i class="fa fa-paperclip" aria-hidden="true"></i> {{ a.nome_original }} <small>{{ a.tamanho|filesizeformat }}</small>
+                        </a>
+                      {% endif %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            {% endwith %}
+
+            <div class="ctr-msg-rodape">
+              {% if m.direcao == 'saida' %}
+                {% if m.estado == 'enviada' %}
+                  <span class="ctr-chip is-ok">E-mail enviado</span>
+                  {% if m.entrega_recusada %}<span class="ctr-chip is-perigo">Entrega recusada</span>{% endif %}
+                {% elif m.estado == 'falha' %}
+                  <span class="ctr-chip is-perigo">Falha no envio</span>
+                {% else %}
+                  <span class="ctr-chip is-aviso">Envio pendente</span>
+                {% endif %}
+              {% else %}
+                <span class="ctr-chip">Recebida por e-mail</span>
+              {% endif %}
+
+              {% if m.estado == 'falha' and eh_ti and m.erro %}<span class="ctr-campo-ajuda">{{ m.erro }}</span>{% endif %}
+              {% if m.estado == 'falha' and not eh_ti %}<span class="ctr-campo-ajuda">O e-mail não saiu. A TI consegue ver o detalhe do erro.</span>{% endif %}
+              {% if m.entrega_recusada and eh_ti %}<span class="ctr-campo-ajuda">{{ m.entrega_erro }}</span>{% endif %}
+              {% if eh_ti and m.destinatarios %}<span class="ctr-campo-ajuda">{% if m.direcao == 'saida' %}Para{% else %}Recebida de {{ m.remetente_email }} · para{% endif %}: {{ m.destinatarios }}</span>{% endif %}
+
+              {% if m.reenviavel %}
+                <form method="post" action="{% url 'chamado_mensagem_reenviar' obj.pk chamado.pk m.pk %}" data-ctr-uma-vez>
+                  {% csrf_token %}
+                  <button type="submit" class="ctr-btn is-pequeno is-primary"><i class="fa fa-rotate-right" aria-hidden="true"></i> Tentar novamente</button>
+                </form>
+              {% endif %}
+            </div>
+          </article>
+        {% empty %}
+          <p class="ctr-campo-ajuda">Ainda não há mensagens além da solicitação. Quando {% if eh_ti %}o RH{% else %}a TI{% endif %} responder — por aqui ou por e-mail — a conversa aparece nesta lista.</p>
+        {% endfor %}
+        <span id="fim"></span>
+      </div>
+
+      {% if pode_responder %}
+        <form method="post" action="{% url 'chamado_responder' obj.pk chamado.pk %}" enctype="multipart/form-data"
+              class="ctr-resposta" data-ctr-uma-vez>
+          {% csrf_token %}
+          <label class="ctr-campo-label" for="ctrTextoResposta">Responder {% if eh_ti %}ao RH{% else %}à TI{% endif %}</label>
+          <textarea id="ctrTextoResposta" name="texto" rows="4" maxlength="8000" class="ctrl"
+                    placeholder="Escreva a mensagem…">{{ texto_digitado }}</textarea>
+          <div class="ctr-campo">
+            <label class="ctr-campo-label" for="ctrArquivosResposta">Anexos (opcional)</label>
+            <input type="file" id="ctrArquivosResposta" name="arquivos" multiple>
+            <span class="ctr-campo-ajuda">Até 10 arquivos de {{ limite_arquivo_mb }} MB. Tipos aceitos: {{ extensoes }}.</span>
+          </div>
+          <div class="ctr-form-acoes">
+            <button type="submit" class="ctr-btn is-primary"><i class="fa fa-paper-plane" aria-hidden="true"></i> Enviar resposta</button>
+            <span class="ctr-campo-ajuda">Sai por e-mail para {% if eh_ti %}o solicitante{% else %}a equipe de TI{% endif %} e fica registrada aqui. {% if eh_ti %}O assunto leva a referência {{ referencia }}.{% endif %}</span>
+          </div>
+        </form>
+      {% else %}
+        <p class="ctr-campo-ajuda">
+          Não dá para conversar antes de o e-mail de abertura ser enviado — use “Tentar novamente” acima.
+        </p>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── Equipamentos da vaga (só no chamado da máquina): reserva e entrega ── #}
+  {% if chamado.tipo == 'maquina' %}
+  <section class="ctr-card" id="equipamentos">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title"><i class="fa fa-laptop" aria-hidden="true"></i> Equipamentos e entrega</h2>
+      <span class="ctr-card-sub"><a href="{% url 'contratacao_detail' obj.pk %}#reservas">gerenciar na vaga</a></span>
+    </div>
+    <div class="ctr-card-body">
+      {% if pendencia_equipamento.pendente %}
+        <div class="ctr-aviso" role="status">
+          <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+          <div>
+            <strong>Vaga pendente de equipamento.</strong>
+            {% if pendencia_equipamento.cedidas %}O equipamento reservado foi usado em outra necessidade e ainda não foi reposto.{% else %}Nenhum equipamento foi reservado para a vaga.{% endif %}
+          </div>
+        </div>
+      {% endif %}
+      {% if equipamentos_da_vaga %}
+        <div class="ctr-checklist">
+          {% for r in equipamentos_da_vaga %}
+            <div class="ctr-item {% if r.estado == 'entregue' %}is-feito{% elif r.estado == 'ativa' %}is-reservado{% else %}is-encerrado{% endif %}">
+              <span class="ctr-item-marca" aria-hidden="true"><i class="fa {% if r.estado == 'entregue' %}fa-check{% elif r.estado == 'ativa' %}fa-bookmark{% else %}fa-minus{% endif %}"></i></span>
+              <span class="ctr-item-texto">
+                <span class="ctr-item-nome">{{ r.item_rotulo }}
+                  <span class="ctr-chip {% if r.estado == 'entregue' %}is-ok{% elif r.estado == 'ativa' %}is-primary{% elif r.estado == 'cedida' %}is-aviso{% endif %}">{{ r.get_estado_display }}</span>
+                </span>
+                <span class="ctr-item-sub">
+                  {% if r.estado == 'entregue' %}
+                    Entregue em {{ r.encerrada_em|date:"d/m/Y H:i" }}{% if r.encerrada_por %} por {{ r.encerrada_por.get_full_name|default:r.encerrada_por.username }}{% endif %}
+                    {% if r.colaborador %} a {{ r.colaborador.nome }}{% endif %}
+                    {% if r.movimentacao_id and eh_ti %} · <a href="{% url 'movimentacao_detail' r.movimentacao_id %}">movimentação nº {{ r.movimentacao_id }}</a>{% endif %}
+                  {% elif r.estado == 'ativa' %}
+                    Reservado em {{ r.reservado_em|date:"d/m/Y H:i" }} — aguardando a movimentação de entrega
+                  {% else %}
+                    {{ r.encerrada_em|date:"d/m/Y H:i" }}{% if r.motivo %} — {{ r.motivo }}{% endif %}
+                  {% endif %}
+                </span>
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="ctr-campo-ajuda">Nenhum equipamento reservado para esta vaga até agora.</p>
+      {% endif %}
+      <p class="ctr-campo-ajuda">Reservar não é entregar: o equipamento só consta como entregue depois da movimentação patrimonial em nome do colaborador.</p>
+    </div>
+  </section>
+  {% endif %}
+
+  {# ── Dados da solicitação ─────────────────────────────────────────── #}
+  <section class="ctr-card">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title"><i class="fa fa-clipboard-list" aria-hidden="true"></i> Dados da solicitação</h2>
+      <span class="ctr-card-sub">o que foi confirmado ao pedir</span>
+    </div>
+    <div class="ctr-card-body">
+      {% for bloco in solicitacao %}
+        <div class="ctr-dados">
+          {% for rotulo, valor in bloco %}
+            <div class="ctr-dado">
+              <span class="ctr-dado-label">{{ rotulo }}</span>
+              <span class="ctr-dado-valor">{{ valor|linebreaksbr }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  // Um clique só: o service também recusa a repetição — isto evita a segunda requisição.
+  document.querySelectorAll('form[data-ctr-uma-vez]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (f.dataset.enviando === '1') { e.preventDefault(); return; }
+      f.dataset.enviando = '1';
+      var b = f.querySelector('button[type=submit]');
+      if (b) { b.disabled = true; b.textContent = 'Enviando…'; }
+    });
+  });
+  // Voltar pelo histórico devolve a página do cache já "enviando".
+  window.addEventListener('pageshow', function (ev) {
+    if (ev.persisted) window.location.reload();
+  });
+})();
+</script>
+{% endblock %}

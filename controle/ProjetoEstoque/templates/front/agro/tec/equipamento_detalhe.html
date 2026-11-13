@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ equipamento.codigo }} · {{ equipamento.modelo }} — Estoque tecnológico — Zelo Agro{% endblock %}
+{% block page_title %}Estoque tecnológico{% endblock %}
+{% block page_subtitle %}Detalhe do equipamento{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page" data-equipamento-id="{{ equipamento.pk }}">
+  {% url 'tec_equipamentos' as u_lista %}
+  {% include 'front/agro/tec/_topo.html' with titulo=equipamento.modelo.nome descricao=equipamento.modelo.fabricante.nome voltar_url=u_lista voltar_rotulo="Equipamentos" %}
+
+  {% comment %}O que importa primeiro: quem é, em que situação está e as ações. O dado técnico fica em "Dados cadastrais".{% endcomment %}
+  <section class="m2m-resumo" aria-label="Resumo e ações do equipamento">
+    <div class="m2m-resumo-cab">
+      <div class="m2m-resumo-estados">
+        <span class="m2m-status" data-status="{{ equipamento.situacao }}">{{ equipamento.get_situacao_display }}</span>
+        {% if equipamento.local %}<span class="m2m-sub">em {{ equipamento.local }}</span>{% elif instalacao %}<span class="m2m-sub">em {{ instalacao.destino_texto }}</span>{% endif %}
+      </div>
+      <div class="m2m-resumo-acoes">
+        {% if pode_instalar and equipamento.situacao == "disponivel" %}<a class="m2m-btn m2m-btn--primario" href="{% url 'tec_equipamento_instalar' equipamento.pk %}"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>Instalar</a>{% endif %}
+        {% if instalacao %}
+          {% if pode_transferir %}<a class="m2m-btn" href="{% url 'tec_instalacao_transferir' instalacao.pk %}"><i class="fa-solid fa-right-left" aria-hidden="true"></i>Transferir</a>{% endif %}
+          {% if pode_instalar %}
+            <a class="m2m-btn" href="{% url 'tec_instalacao_substituir' instalacao.pk %}"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>Substituir</a>
+            <a class="m2m-btn" href="{% url 'tec_instalacao_retirar' instalacao.pk %}"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>{% if instalacao.operador_id %}Desvincular{% else %}Retirar{% endif %}</a>
+          {% endif %}
+        {% endif %}
+        {% if pode_transferir and equipamento.situacao == "disponivel" %}<a class="m2m-btn" href="{% url 'tec_equipamento_mover' equipamento.pk %}"><i class="fa-solid fa-dolly" aria-hidden="true"></i>Mudar de local</a>{% endif %}
+        {% if pode_cadastrar %}
+          {% if equipamento.situacao == "disponivel" or equipamento.situacao == "em_manutencao" %}<a class="m2m-btn m2m-btn--perigo" href="{% url 'tec_equipamento_inativar' equipamento.pk %}">Inativar</a>{% endif %}
+          <a class="m2m-btn" href="{% url 'tec_equipamento_editar' equipamento.pk %}"><i class="fa-solid fa-pen" aria-hidden="true"></i>Editar</a>
+        {% endif %}
+      </div>
+    </div>
+    <dl class="m2m-resumo-fatos">
+      <div><dt>Código</dt><dd class="m2m-id">{{ equipamento.codigo }}</dd></div>
+      <div><dt>Número de série</dt><dd class="m2m-id">{{ equipamento.numero_serie|default:"—" }}</dd></div>
+      <div><dt>Patrimônio</dt><dd class="m2m-id">{{ equipamento.patrimonio|default:"—" }}</dd></div>
+      <div><dt>Categoria</dt><dd>{{ equipamento.modelo.categoria.nome }}</dd></div>
+      <div><dt>Localização</dt><dd>{% if equipamento.local %}{{ equipamento.local.nome }} <span class="m2m-sub">· {{ equipamento.local.fazenda.local }}</span>{% elif equipamento.situacao == "em_manutencao" %}Em manutenção{% elif instalacao %}{% if instalacao.veiculo_id and pode_ver_frota %}<a class="m2m-link-forte" href="{% url 'frota_veiculo_detalhe' instalacao.veiculo_id %}">{{ instalacao.destino_texto }}</a>{% else %}{{ instalacao.destino_texto }}{% endif %}{% else %}—{% endif %}</dd></div>
+      <div><dt>Responsável</dt><dd>{{ responsavel|default:"—" }}</dd></div>
+    </dl>
+  </section>
+
+  {% if equipamento.situacao == "inativo" %}
+  <p class="m2m-aviso" data-tom="neutro"><b>Equipamento inativo.</b> Ele saiu de circulação e não é mais escolhido em nenhuma operação. O cadastro e todo o histórico ficam guardados.</p>
+  {% endif %}
+
+  <div class="m2m-secoes">
+    {% comment %}Onde ele esteve: cada período numa linha. O período em curso vem primeiro; a transferência deixa o anterior aqui.{% endcomment %}
+    <section class="m2m-painel" id="tec-e-inst" aria-labelledby="tec-e-inst-t">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="tec-e-inst-t">Instalações<span class="m2m-painel-t-n">{{ periodos|length }}</span></h3></header>
+      {% if periodos %}
+      <div class="m2m-tabela-wrap">
+        <table class="m2m-tabela m2m-tabela--curta">
+          <thead><tr><th>Onde</th><th>Instalado em</th><th>Retirado em</th><th>Motivo da saída</th></tr></thead>
+          <tbody>
+            {% for p in periodos %}
+            <tr class="m2m-linha">
+              <td data-rotulo="Onde">
+                <span class="m2m-ident">
+                  {% if p.veiculo_id and pode_ver_frota %}<a class="m2m-link-forte" href="{% url 'frota_veiculo_detalhe' p.veiculo_id %}">{{ p.destino_texto }}</a>{% else %}<span class="m2m-link-forte">{{ p.destino_texto }}</span>{% endif %}
+                  <span class="m2m-ident-cod">{% if p.operador_id %}Operador{% else %}Máquina{% endif %}{% if p.fim_em is None %} · em curso{% endif %}</span>
+                </span>
+              </td>
+              <td class="m2m-quebra" data-rotulo="Instalado em"><span class="m2m-num">{{ p.inicio_em|date:"d/m/Y H:i" }}</span>{% if p.inicio_por %} <span class="m2m-sub">por {{ p.inicio_por.get_username }}</span>{% endif %}</td>
+              <td class="m2m-quebra" data-rotulo="Retirado em">{% if p.fim_em %}<span class="m2m-num">{{ p.fim_em|date:"d/m/Y H:i" }}</span>{% if p.fim_por %} <span class="m2m-sub">por {{ p.fim_por.get_username }}</span>{% endif %}{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+              <td data-rotulo="Motivo da saída">{% if p.motivo_fim %}<span class="m2m-corta m2m-corta--larga" title="{{ p.motivo_fim }}">{{ p.motivo_fim }}</span>{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        {% include 'front/m2m/_vazio.html' with icone="fa-screwdriver-wrench" titulo="Nunca foi instalado" texto="Quando for instalado numa máquina ou entregue a um operador, cada período aparece aqui." only %}
+      {% endif %}
+    </section>
+
+    <section class="m2m-painel" id="tec-e-hist" aria-labelledby="tec-e-hist-t">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="tec-e-hist-t">Histórico</h3></header>
+      {% if linha_do_tempo %}
+      <ol class="m2m-tempo">
+        {% for i in linha_do_tempo %}
+        <li>
+          <span class="m2m-num m2m-tempo-quando">{{ i.em|date:"d/m/Y H:i" }}</span>
+          <span class="m2m-tempo-marca" aria-hidden="true"></span>
+          <span class="m2m-tempo-texto">
+            <b>{{ i.titulo }}</b>
+            {% if i.detalhe %}<span class="m2m-sub">{{ i.detalhe }}</span>{% endif %}
+            {% if i.motivo %}<span class="m2m-sub">Motivo: {{ i.motivo }}</span>{% endif %}
+            {% if i.usuario %}<span class="m2m-sub">por {{ i.usuario }}</span>{% endif %}
+          </span>
+        </li>
+        {% endfor %}
+      </ol>
+      <p class="m2m-nota m2m-nota--pad">Do mais novo para o mais antigo. O histórico nunca é apagado nem editado.</p>
+      {% else %}
+        {% include 'front/m2m/_vazio.html' with icone="fa-clock-rotate-left" titulo="Nenhum histórico" texto="Nada foi registrado para este equipamento." only %}
+      {% endif %}
+    </section>
+
+    <section class="m2m-painel" id="tec-e-dados" aria-labelledby="tec-e-dados-t">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="tec-e-dados-t">Dados cadastrais</h3></header>
+      <dl class="m2m-dl">
+        <div><dt>Modelo</dt><dd>{{ equipamento.modelo.nome }}</dd></div>
+        <div><dt>Fabricante</dt><dd>{{ equipamento.modelo.fabricante.nome }}</dd></div>
+        <div><dt>Categoria</dt><dd>{{ equipamento.modelo.categoria.nome }} <span class="m2m-sub">{{ equipamento.modelo.categoria.get_grupo_display }}</span></dd></div>
+        <div><dt>Situação</dt><dd><span class="m2m-status" data-status="{{ equipamento.situacao }}">{{ equipamento.get_situacao_display }}</span></dd></div>
+        <div><dt>Local de armazenamento</dt><dd>{{ equipamento.local|default:"—" }}</dd></div>
+        <div><dt>Data de aquisição</dt><dd class="m2m-num">{{ equipamento.data_aquisicao|date:"d/m/Y"|default:"—" }}</dd></div>
+        <div><dt>Fornecedor</dt><dd>{{ equipamento.fornecedor.nome|default:"—" }}</dd></div>
+        {% if equipamento.observacoes %}<div class="m2m-dl-largo"><dt>Observações técnicas</dt><dd class="m2m-texto-livre">{{ equipamento.observacoes }}</dd></div>{% endif %}
+        <div><dt>Cadastrado</dt><dd>{{ equipamento.created_at|date:"d/m/Y H:i" }}{% if equipamento.criado_por %} <span class="m2m-sub">por {{ equipamento.criado_por.get_username }}</span>{% endif %}</dd></div>
+        <div><dt>Última edição</dt><dd>{{ equipamento.updated_at|date:"d/m/Y H:i" }}{% if equipamento.atualizado_por %} <span class="m2m-sub">por {{ equipamento.atualizado_por.get_username }}</span>{% endif %}</dd></div>
+      </dl>
+    </section>
+  </div>
+  {% include 'front/agro/tec/_rodape.html' %}
+</div>
+{% endblock %}

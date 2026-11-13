@@ -33,6 +33,18 @@
 .nj-import-txt span { display:block; color:var(--text-tertiary); font-size: var(--text-sm); margin-top:.1rem; }
 .nj-import-file { color:var(--nj-brand); font-weight:700; font-size: var(--text-sm); }
 
+/* Conexão com a API */
+.nj-api {
+  display:flex; align-items:center; gap:1rem; flex-wrap:wrap;
+  padding:1rem 1.2rem; border:1px solid var(--separator-hairline);
+  border-radius:var(--radius-xl); background:var(--bg-elevated); box-shadow:var(--shadow-xs);
+}
+.nj-api[data-estado="conectada"] { border-color:color-mix(in srgb,var(--nj-green) 45%,var(--separator-hairline)); }
+.nj-api[data-estado="atencao"] { border-color:color-mix(in srgb,var(--nj-orange) 55%,var(--separator-hairline)); }
+.nj-api-acoes { display:flex; gap:.5rem; flex-wrap:wrap; margin-left:auto; }
+.nj-api-acoes form { margin:0; }
+.nj-api-nota { display:block; margin-top:.35rem; font-size: var(--text-xs); color:var(--nj-orange); }
+
 /* KPIs */
 .nj-kpis { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:.7rem; }
 @media (max-width:1100px){ .nj-kpis{ grid-template-columns:repeat(3,1fr);} }
@@ -88,6 +100,63 @@ a.nj-kpi:hover { box-shadow:var(--shadow-md); transform:translateY(-2px); }
 
 {% block content %}
 <div class="nj-page">
+
+  <!-- Conexão com a API do NinjaOne -->
+  <section class="nj-api" id="njApi" aria-label="Conexão com a API do NinjaOne"
+           data-estado="{% if not api.configurada %}pendente{% elif api.conectada and not api.expirada and api.tem_refresh %}conectada{% elif api.conectada %}atencao{% else %}pendente{% endif %}">
+    <div class="nj-import-ic"><i class="fa fa-plug" aria-hidden="true"></i></div>
+    <div class="nj-import-txt">
+      <strong>API do NinjaOne</strong>
+      {% if not api.configurada %}
+        <span>Ainda não configurada. {{ api.motivo }}</span>
+      {% elif api.conectada %}
+        <span>
+          {% if api.expirada %}A conexão expirou e não pode ser renovada.{% else %}Conectada{% if api.conectado_por %} por {{ api.conectado_por }}{% endif %}{% if api.conectado_em %} em {{ api.conectado_em|date:"d/m/Y H:i" }}{% endif %}.{% endif %}
+          {% if api.sincronizando %}Sincronização em andamento…
+          {% elif api.ultima_sincronizacao_em %}Última sincronização {{ api.ultima_sincronizacao_em|naturaltime }}.
+          {% else %}Ainda não sincronizou.{% endif %}
+        </span>
+        {% if api.conectada and not api.tem_refresh %}
+          <span class="nj-api-nota">Sem refresh token: a conexão vale só por cerca de 1 hora{% if api.expira_em %} (expira {{ api.expira_em|date:"d/m H:i" }}){% endif %}. O app do NinjaOne precisa do escopo offline_access.</span>
+        {% endif %}
+      {% else %}
+        <span>
+          Não conectada. Conecte uma vez e o sistema passa a buscar os dispositivos direto do NinjaOne, sem planilha.
+          {% if not pode_administrar_api %}Peça a um administrador para conectar.{% endif %}
+        </span>
+      {% endif %}
+      {% if api.ultimo_erro %}
+        <span class="nj-api-nota">{{ api.ultimo_erro }}{% if api.ultimo_erro_em %} ({{ api.ultimo_erro_em|naturaltime }}){% endif %}</span>
+      {% endif %}
+    </div>
+    <div class="nj-api-acoes">
+      {% if api.configurada and api.conectada and not api.expirada %}
+        <form method="post" action="{% url 'ninja_sincronizar' %}">
+          {% csrf_token %}
+          <button type="submit" class="btn-primary btn-sm" {% if api.sincronizando %}disabled{% endif %}>
+            <i class="fa fa-rotate" aria-hidden="true"></i> Sincronizar agora
+          </button>
+        </form>
+      {% endif %}
+      {% if api.configurada and pode_administrar_api %}
+        {% if not api.conectada or api.expirada %}
+          <a class="btn-primary btn-sm" href="{% url 'ninja_oauth_conectar' %}">
+            <i class="fa fa-link" aria-hidden="true"></i> {% if api.expirada %}Reconectar{% else %}Conectar ao NinjaOne{% endif %}
+          </a>
+        {% else %}
+          <a class="btn btn-sm" href="{% url 'ninja_oauth_conectar' %}" title="Refaz a autorização no NinjaOne">
+            <i class="fa fa-link" aria-hidden="true"></i> Reconectar
+          </a>
+        {% endif %}
+        {% if api.conectada %}
+          <form method="post" action="{% url 'ninja_desconectar' %}" onsubmit="return confirm('Desconectar o sistema do NinjaOne? Os dispositivos já importados continuam no sistema.');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm"><i class="fa fa-link-slash" aria-hidden="true"></i> Desconectar</button>
+          </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </section>
 
   <!-- Importação de CSV -->
   <form method="post" action="{% url 'ninja_importar' %}" enctype="multipart/form-data" class="nj-import" id="njImportForm">

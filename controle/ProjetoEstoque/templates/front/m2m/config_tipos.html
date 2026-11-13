@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% load static m2m_tags %}
+
+{% block title %}Tipos de veículo — Configuração{% endblock %}
+{% block page_title %}Frotas{% endblock %}
+{% block page_subtitle %}Configuração · Tipos de veículo{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% include 'front/m2m/_frota_topo.html' with titulo="Configurações" descricao="Tipos de veículo (trator, caminhão, pulverizador…) e se cada um exige chip por padrão." %}
+  {% include 'front/m2m/_frota_config_abas.html' %}
+
+  <section class="m2m-painel" aria-labelledby="m2m-t-lista">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-t-lista">Tipos cadastrados<span class="m2m-painel-t-n">{{ tipos|length }}</span></h3></header>
+
+    <form class="m2m-cfg-linha m2m-cfg-linha--novo" method="post" action="{% url 'frota_config_tipo_salvar' %}">
+      {% csrf_token %}
+      <label class="m2m-rotulo"><span>Novo tipo</span><input type="text" name="nome" class="m2m-campo" maxlength="80" required placeholder="Ex.: Motocicleta"></label>
+      <label class="m2m-check"><input type="checkbox" name="exige_conectividade" value="1"> Exige chip</label>
+      <span></span>
+      <button type="submit" class="m2m-btn m2m-btn--primario">Criar tipo</button>
+    </form>
+
+    {% for t in tipos %}
+    <form class="m2m-cfg-linha" method="post" action="{% url 'frota_config_tipo_salvar' %}" id="tipo-{{ t.pk }}">
+      {% csrf_token %}<input type="hidden" name="id" value="{{ t.pk }}">
+      <label class="m2m-rotulo"><span>Nome</span><input type="text" name="nome" value="{{ t.nome }}" class="m2m-campo" maxlength="80" required></label>
+      <label class="m2m-check"><input type="checkbox" name="exige_conectividade" value="1" {% if t.exige_conectividade %}checked{% endif %}> Exige chip</label>
+      <label class="m2m-check"><input type="checkbox" name="ativo" value="1" {% if t.ativo %}checked{% endif %}> Ativo <span class="m2m-sub">({{ t.n_veiculos }} veículo{{ t.n_veiculos|pluralize }})</span></label>
+      <button type="submit" class="m2m-btn">Salvar</button>
+    </form>
+    {% empty %}
+    <p class="m2m-painel-vazio">Nenhum tipo cadastrado.</p>
+    {% endfor %}
+    <p class="m2m-nota m2m-nota--pad">“Exige chip” é o padrão do tipo: veículo ativo desse tipo, sem chip, gera o alerta “Veículo sem chip” (o veículo pode sobrepor no cadastro dele). Tipo inativo deixa de aparecer no cadastro de veículo; os veículos que já são dele continuam como estão. Tipos não se excluem: inative o que não for mais usado.</p>
+  </section>
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

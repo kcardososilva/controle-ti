@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Chamados de contratação{% endblock %}
+{% block page_title %}Contratações{% endblock %}
+{% block page_subtitle %}Chamados de estrutura — RH e TI{% endblock %}
+
+{% block extra_css %}
+  {% include 'front/contratacao/_ctr_design_system.html' %}
+{% endblock %}
+
+{% block content %}
+{% comment %}
+  A fila de chamados — a MESMA lista para RH e TI. Cada um vê o que precisa:
+  o RH acompanha o que pediu e responde; a TI atende. Só a TI vê o atalho para a
+  sincronização com a caixa de e-mail e os e-mails em revisão.
+
+  "Pendente", "Em atendimento" e "Concluído" são GRUPOS de situação (ver
+  `GRUPOS_DE_ATENDIMENTO`): o chamado concluído sai da fila, mas continua aqui,
+  com a conversa inteira.
+{% endcomment %}
+<div class="ctr-page">
+
+  <section class="page-header page-header-compact" aria-labelledby="ctr-chamados-titulo">
+    <div class="page-header-main">
+      <div class="page-kicker"><i class="fa-solid fa-headset" aria-hidden="true"></i> Pessoas &amp; TI</div>
+      <h2 class="page-heading" id="ctr-chamados-titulo">Chamados de TI</h2>
+      <p class="page-description">
+        Os pedidos de estrutura das vagas — máquina, usuário e e-mail, acesso aos sistemas — e a conversa de cada um,
+        inclusive as respostas enviadas por e-mail.
+      </p>
+    </div>
+    <div class="page-header-aside">
+      <a href="{% url 'contratacao_painel' %}" class="ctr-btn"><i class="fa fa-arrow-left" aria-hidden="true"></i> Quadro de vagas</a>
+      {% if eh_ti %}
+        <a href="{% url 'chamados_sincronizacao' %}" class="ctr-btn">
+          <i class="fa fa-arrows-rotate" aria-hidden="true"></i> Sincronização de e-mail
+          {% if em_revisao or com_falha_sync %}<span class="ctr-chip is-aviso">{{ em_revisao|add:com_falha_sync }}</span>{% endif %}
+        </a>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if not caixa.configurada %}
+    <div class="ctr-aviso" role="status">
+      <i class="fa fa-circle-info" aria-hidden="true"></i>
+      <div>
+        A <strong>leitura da caixa de e-mail não está configurada</strong>: respostas enviadas só por e-mail ainda não
+        aparecem aqui. Responder por esta plataforma funciona normalmente.
+        {% if eh_ti %}<a href="{% url 'chamados_sincronizacao' %}">Como configurar</a>.{% else %}Avise a TI.{% endif %}
+      </div>
+    </div>
+  {% elif caixa.parada %}
+    <div class="ctr-aviso" role="status">
+      <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+      <div>
+        A leitura da caixa de e-mail está <strong>parada</strong>
+        {% if caixa.estado.ultimo_sucesso %}(última com sucesso em {{ caixa.estado.ultimo_sucesso|date:"d/m/Y H:i" }}){% endif %}.
+        Respostas por e-mail podem demorar a aparecer.
+        {% if eh_ti %}<a href="{% url 'chamados_sincronizacao' %}">Ver detalhes</a>.{% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  {# ── Grupos e filtros ─────────────────────────────────────────────── #}
+  <nav class="ctr-grupos" aria-label="Situação dos chamados">
+    <a href="{% url 'chamados_lista' %}" class="ctr-grupo {% if not filtros.grupo %}is-ativo{% endif %}" {% if not filtros.grupo %}aria-current="true"{% endif %}>
+      Todos
+    </a>
+    {% for chave, rotulo in grupos.items %}
+      <a href="?grupo={{ chave }}" class="ctr-grupo {% if filtros.grupo == chave %}is-ativo{% endif %}" {% if filtros.grupo == chave %}aria-current="true"{% endif %}>
+        {{ rotulo }}
+        <span class="ctr-grupo-n">{% if chave == 'pendentes' %}{{ contagem.pendentes }}{% elif chave == 'em_atendimento' %}{{ contagem.em_atendimento }}{% else %}{{ contagem.concluidos }}{% endif %}</span>
+      </a>
+    {% endfor %}
+  </nav>
+
+  <form method="get" class="ctr-filtros">
+    {% if filtros.grupo %}<input type="hidden" name="grupo" value="{{ filtros.grupo }}">{% endif %}
+    <div class="ctr-filtro">
+      <label class="ctr-filtro-label" for="ctrChamadoBusca">Buscar</label>
+      <input type="text" id="ctrChamadoBusca" name="q" value="{{ filtros.q }}" placeholder="Vaga, contratado, nº do chamado ou assunto">
+    </div>
+    <div class="ctr-filtro">
+      <label class="ctr-filtro-label" for="ctrChamadoTipo">Tipo</label>
+      <select id="ctrChamadoTipo" name="tipo">
+        <option value="">Todos</option>
+        {% for valor, rotulo in tipos.choices %}
+          <option value="{{ valor }}" {% if filtros.tipo == valor %}selected{% endif %}>{{ rotulo }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <label class="ctr-check-linha ctr-filtro-check">
+      <input type="checkbox" class="ctr-check" name="com_falha" value="1" {% if filtros.com_falha %}checked{% endif %}>
+      <span class="ctr-check-texto"><span class="ctr-check-titulo">Só com falha de envio</span></span>
+    </label>
+    <div class="ctr-filtros-acoes">
+      <button type="submit" class="ctr-btn is-primary"><i class="fa fa-magnifying-glass" aria-hidden="true"></i> Filtrar</button>
+      <a href="{% url 'chamados_lista' %}" class="ctr-btn">Limpar</a>
+    </div>
+  </form>
+
+  {# ── A fila ───────────────────────────────────────────────────────── #}
+  <section class="ctr-card" aria-label="Lista de chamados">
+    <div class="ctr-card-body">
+      {% if chamados %}
+        <ul class="ctr-fila-chamados">
+          {% for c in chamados %}
+            <li>
+              <a class="ctr-chamado-linha is-{{ c.grupo }}" href="{% url 'chamado_detail' c.contratacao_id c.pk %}">
+                <span class="ctr-chamado-linha-principal">
+                  <span class="ctr-chamado-linha-titulo">
+                    {{ c.get_tipo_display }}
+                    {% if c.identificador %}<span class="ctr-chip">atendimento nº {{ c.identificador }}</span>{% endif %}
+                  </span>
+                  <span class="ctr-chamado-linha-sub">
+                    {{ c.contratacao.cargo }} · {% if c.contratacao.nome_contratado %}{{ c.contratacao.nome_contratado }}{% else %}vaga sem contratado{% endif %}
+                    · vaga: {{ c.contratacao.get_status_display }}
+                  </span>
+                </span>
+                <span class="ctr-chamado-linha-estado">
+                  <span class="ctr-chip is-{{ c.tom }}">{{ c.get_atendimento_display }}</span>
+                  {% if c.status == 'falha' %}<span class="ctr-chip is-perigo">Falha no envio</span>{% elif c.status == 'pendente' %}<span class="ctr-chip is-aviso">Envio pendente</span>{% endif %}
+                </span>
+                <span class="ctr-chamado-linha-meta">
+                  <span>{% if c.responsavel %}{{ c.responsavel.get_full_name|default:c.responsavel.username }}{% else %}Equipe de TI{% endif %}</span>
+                  <span><i class="fa fa-comments" aria-hidden="true"></i> {{ c.n_mensagens }}</span>
+                  <span>{% if c.ultima_atividade_em %}atualizado {{ c.ultima_atividade_em|date:"d/m/Y H:i" }}{% else %}{{ c.created_at|date:"d/m/Y H:i" }}{% endif %}</span>
+                </span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="ctr-vazio">
+          <i class="fa fa-headset" aria-hidden="true"></i>
+          <span class="ctr-vazio-titulo">Nenhum chamado por aqui</span>
+          <span class="ctr-vazio-texto">
+            {% if filtros.grupo or filtros.q or filtros.tipo or filtros.com_falha %}Nenhum chamado combina com os filtros.{% else %}Os chamados aparecem quando uma vaga em aberto pede a estrutura à TI.{% endif %}
+          </span>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

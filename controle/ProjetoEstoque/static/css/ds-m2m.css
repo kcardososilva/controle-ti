@@ -1,0 +1,1952 @@
+/* =============================================================
+   ds-m2m.css — o design system do módulo Frotas e Conectividade.
+   Prefixo `.m2m-*`, tokens `--m2m-*`. Escopado em `:where(.m2m-page, ...)`.
+
+   ── Direção visual (reformulação de 12/11/2026) ─────────────────
+   Ferramenta de gestão de ativos e conectividade: o usuário abre para
+   OPERAR (achar um veículo, vincular um chip, ver o que quebrou), não
+   para ler um painel técnico. A versão anterior era um console denso
+   (rótulos em caixa-alta, fios tracejados, KPI em faixas). Esta:
+
+     • FUNDO NEUTRO, SUPERFÍCIE BRANCA, FIO DE 1px. Cartão com raio de
+       8px e sem sombra; controle com raio de 6px.
+     • TEXTO EM CAIXA NORMAL. Hierarquia por tamanho e peso (título 22,
+       seção 14, corpo 13, apoio 12) — nunca por caixa-alta.
+     • COR SÓ PARA ESTADO E AÇÃO. Verde/âmbar/vermelho dizem o que a API
+       respondeu; a cor da marca marca o que é clicável e o que está
+       selecionado. Nada decorativo: sem degradê, brilho nem sombra
+       colorida.
+     • O QUE IMPORTA VEM PRIMEIRO. O detalhe técnico mora na página de
+       detalhe, em abas, ou atrás de um “Filtros”/“Mais detalhes”.
+     • TABELA COM RESPIRO (linha de ~46px, duas linhas por célula quando
+       o dado tem um complemento: nome + código, chip + ICCID).
+     • IDENTIFICADOR E NÚMERO EM `--font-mono` com `tabular-nums`; o
+       ICCID vai em blocos de 4 dígitos.
+
+   ── As duas leituras que a tela nunca mistura ───────────────────
+     1. STATUS OPERACIONAL (`.m2m-status`) — decisão de gente (ativo,
+        em manutenção, inativo). Etiqueta NEUTRA: sem verde/âmbar/vermelho.
+     2. CONECTIVIDADE (`.m2m-ind`) — o que a API respondeu. Ponto + texto,
+        nas cores de estado. A cor NUNCA vai sozinha: cada estado tem uma
+        FORMA própria (cheio, anel, tracejado, contorno grosso) e o texto
+        ao lado. Falha de consulta é CONTORNO — para nunca ser lida como
+        “inativo” ou “sem sessão”.
+   Um veículo “Ativo” com falha de consulta é a etiqueta neutra de um lado
+   e o contorno vermelho do outro, em colunas separadas.
+
+   ── O que NÃO é próprio ─────────────────────────────────────────
+   Cor nenhuma nasce aqui. Todo `--m2m-*` é APELIDO de um token de
+   `tokens.css` (regras 26 e 33), e é por isso que o tema escuro funciona
+   sem bloco próprio: o apelido é lido no elemento onde nasce
+   (`.m2m-page`), já debaixo de `body.theme-dark`.
+
+   Ao mudar este arquivo, suba ASSETS_VERSION em
+   ProjetoEstoque/context_processors.py e rode collectstatic.
+   ============================================================= */
+
+/* ── O ESCOPO DOS TOKENS ────────────────────────────────────────────
+   Toda raiz do módulo entra aqui: custom property só existe para quem
+   está DENTRO do elemento onde nasce. O que o navegador coloca FORA da
+   raiz — a gaveta e o véu (o JS os leva para o <body>: um `position: fixed`
+   dentro do conteúdo ancora no contêiner animado, não na janela), o aviso
+   passageiro (`.m2m-toast-area`) e o dropdown do Select2, todos filhos
+   diretos do <body> — precisa estar na lista, senão lê
+   `var(--m2m-tx)` como inexistente e abre transparente, sem erro algum.
+   O Select2 só entra com a classe `.m2m-s2` (`containerCssClass` e
+   `dropdownCssClass`): sem ela, as regras dele, globais por natureza,
+   mudariam o componente em toda tela que carregue esta folha. */
+:where(.m2m-page, .m2m-modal, .m2m-veu, .m2m-toast, .m2m-toast-area,
+       .select2-container.m2m-s2, .select2-dropdown.m2m-s2) {
+  /* ---------- Superfícies ---------- */
+  --m2m-bg:      var(--bg-page);
+  --m2m-surface: var(--bg-elevated);
+  --m2m-sunken:  var(--bg-page-2);
+  --m2m-hover:   var(--bg-hover);
+  --m2m-fill:    var(--bg-fill-tertiary);
+
+  /* ---------- Fios ---------- */
+  --m2m-ln:   var(--separator-non-opaque);
+  --m2m-ln-2: var(--separator-hairline);
+  --m2m-ln-3: var(--separator-strong);
+
+  /* ---------- Texto ---------- */
+  --m2m-tx:   var(--text-primary);
+  --m2m-tx-2: var(--text-secondary);
+  --m2m-tx-3: var(--text-tertiary);
+  --m2m-tx-4: var(--text-quaternary);
+
+  /* ---------- Acento (só ação, seleção e foco) ---------- */
+  --m2m-a:      var(--brand);
+  --m2m-a-soft: var(--brand-soft);
+  --m2m-a-ring: var(--brand-ring);
+
+  /* ---------- Estado (domínio) ---------- */
+  --m2m-ok:   var(--success);
+  --m2m-warn: var(--warning);
+  --m2m-err:  var(--danger);
+  --m2m-info: var(--info);
+  --m2m-ok-soft:   var(--success-soft);
+  --m2m-warn-soft: var(--warning-soft);
+  --m2m-err-soft:  var(--danger-soft);
+
+  /* ---------- Escala tipográfica (só a do sistema) ---------- */
+  --m2m-fs-micro: var(--text-2xs);             /* 11px — contagem, apoio mínimo */
+  --m2m-fs-label: var(--text-xs);              /* 12px — cabeçalho de coluna, rótulo */
+  --m2m-fs-small: var(--text-xs);              /* 12px — nota, legenda */
+  --m2m-fs-base:  var(--text-sm);              /* 13px — célula, corpo, controle */
+  --m2m-fs-titulo: var(--text-base);           /* 14px — título de cartão */
+  --m2m-fs-lg:    var(--text-md);              /* 15px — destaque */
+  --m2m-fs-page:  var(--text-xl);              /* 22px — título de página */
+  --m2m-fs-num:   var(--text-2xl);             /* 28px — número de indicador */
+  --m2m-fs-big:   var(--text-2xl);             /* 28px — número de detalhe */
+
+  /* ---------- Geometria ---------- */
+  --m2m-raio:    6px;                          /* controle, etiqueta, botão */
+  --m2m-raio-lg: 8px;                          /* cartão, tabela, diálogo */
+  --m2m-h:       36px;                         /* altura de controle */
+  --m2m-h-sm:    28px;
+  --m2m-linha:   46px;                         /* altura da linha de tabela */
+  --m2m-gap:     16px;
+  --m2m-gap-sm:  10px;
+  --m2m-pad:     16px;
+  --m2m-forma:   8px;                          /* ponto do indicador */
+  --m2m-transicao: 120ms var(--ease-apple);
+}
+
+/* O tema escuro não precisa de bloco próprio: os apelidos acima
+   resolvem pelo elemento onde nascem (`.m2m-page`), então
+   `body.theme-dark` já trocou os tokens antes de o apelido ser lido. */
+
+/* =========================================================
+   1. A página
+   ========================================================= */
+.m2m-page,
+.m2m-page *,
+.m2m-modal,
+.m2m-modal * { box-sizing: border-box; min-width: 0; }
+
+.m2m-page {
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  display: grid;
+  gap: var(--m2m-gap);
+  align-content: start;
+  color: var(--m2m-tx);
+  font-size: var(--m2m-fs-base);
+  line-height: var(--leading-snug);
+}
+
+.m2m-page ::selection { background: var(--m2m-a-ring); }
+
+.m2m-page :is(button, input, select, textarea, a, summary, [tabindex]):focus-visible,
+.m2m-modal :is(button, input, select, textarea, a, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--m2m-a);
+  outline-offset: 2px;
+}
+
+.m2m-page a { color: var(--text-link); text-decoration: none; }
+.m2m-page a:hover { color: var(--text-link-hover); text-decoration: underline; }
+
+.m2m-page h2, .m2m-page h3, .m2m-page h4 { margin: 0; }
+
+.m2m-page code {
+  font-family: var(--font-mono);
+  font-size: var(--m2m-fs-small);
+  background: var(--m2m-fill);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* =========================================================
+   2. Vocabulário base: rótulo, número, identificador, nota
+   ========================================================= */
+/* Rótulo de campo ou de indicador: caixa normal, apoio visual discreto. */
+.m2m-micro {
+  font-size: var(--m2m-fs-label);
+  color: var(--m2m-tx-3);
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+/* Toda leitura de medida é monoespaçada: é o que deixa duas linhas
+   comparáveis de olho sem alinhar nada à mão. */
+.m2m-num,
+.m2m-id {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* O ICCID agrupado em blocos de 4 (o `m2m_blocos` põe o espaço). */
+.m2m-id { font-size: var(--m2m-fs-small); white-space: nowrap; color: var(--m2m-tx-2); }
+.m2m-id-2 { display: block; font-size: var(--m2m-fs-micro); color: var(--m2m-tx-3); letter-spacing: 0; }
+
+.m2m-sub {
+  color: var(--m2m-tx-3);
+  font-size: var(--m2m-fs-small);
+}
+.m2m-sub--erro { color: var(--m2m-err); }
+.m2m-sub--aviso { color: var(--m2m-tx-2); font-weight: 600; }
+
+.m2m-nota {
+  margin: 4px 0;
+  color: var(--m2m-tx-3);
+  font-size: var(--m2m-fs-small);
+  line-height: 1.5;
+}
+.m2m-nota--pad { padding: 0 var(--m2m-pad) 12px; margin: 0; }
+
+.m2m-link-forte { font-weight: 600; color: var(--m2m-tx) !important; }
+.m2m-link-forte:hover { color: var(--m2m-a) !important; }
+
+.m2m-corta {
+  display: inline-block;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.m2m-corta--media { max-width: 26ch; }
+.m2m-corta--larga { max-width: 48ch; }
+
+/* Visível só para leitor de tela: o cabeçalho "Ações" da tabela. */
+.m2m-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.m2m-grande {
+  margin: 0;
+  font-size: var(--m2m-fs-big);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+/* Ícone que acompanha um rótulo: sempre decorativo (`aria-hidden`), uma largura só. */
+.m2m-page i.fa-solid, .m2m-modal i.fa-solid { width: 1.1em; text-align: center; flex: 0 0 auto; }
+
+/* =========================================================
+   3. Botão — três pesos: principal, secundário, destrutivo
+   ========================================================= */
+.m2m-btn {
+  height: var(--m2m-h);
+  min-width: var(--m2m-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid var(--m2m-ln-3);
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-surface);
+  color: var(--m2m-tx) !important;
+  font: inherit;
+  font-size: var(--m2m-fs-base);
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none !important;
+  white-space: nowrap;
+  cursor: pointer;
+  position: relative;
+  transition: background var(--m2m-transicao), border-color var(--m2m-transicao), color var(--m2m-transicao);
+}
+.m2m-btn:hover { background: var(--m2m-hover); }
+.m2m-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.m2m-btn--primario {
+  background: var(--m2m-a);
+  border-color: var(--m2m-a);
+  color: var(--text-inverted) !important;
+}
+.m2m-btn--primario:hover {
+  background: var(--brand-hover);
+  border-color: var(--brand-hover);
+  color: var(--text-inverted) !important;
+}
+
+.m2m-btn--perigo { border-color: var(--m2m-err); color: var(--m2m-err) !important; }
+.m2m-btn--perigo:hover { background: var(--m2m-err-soft); color: var(--m2m-err) !important; }
+
+.m2m-btn--fantasma { background: transparent; border-color: transparent; color: var(--m2m-tx-2) !important; }
+.m2m-btn--fantasma:hover { background: var(--m2m-hover); color: var(--m2m-tx) !important; }
+
+.m2m-btn--sm {
+  height: var(--m2m-h-sm);
+  min-width: var(--m2m-h-sm);
+  padding: 0 10px;
+  font-size: var(--m2m-fs-small);
+}
+
+/* Estado "consultando": o `is-carregando` do ui-kit pinta o girador de branco
+   (feito para botão preenchido). Aqui o botão é claro, então o girador toma a
+   cor do texto — e o botão primário, que é escuro, a tinta invertida. */
+.m2m-page .m2m-btn.is-carregando { color: transparent !important; }
+.m2m-page .m2m-btn.is-carregando::after {
+  border-color: var(--m2m-tx-2);
+  border-top-color: transparent;
+}
+.m2m-page .m2m-btn--primario.is-carregando::after {
+  border-color: var(--text-inverted);
+  border-top-color: transparent;
+}
+
+.m2m-btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+.m2m-botoes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* =========================================================
+   4. Campos de formulário
+   ========================================================= */
+.m2m-campo {
+  width: 100%;
+  height: var(--m2m-h);
+  padding: 0 10px;
+  border: 1px solid var(--m2m-ln-3);
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-surface);
+  color: var(--m2m-tx);
+  font: inherit;
+  font-size: var(--m2m-fs-base);
+}
+.m2m-campo::placeholder { color: var(--m2m-tx-4); }
+.m2m-campo:focus { border-color: var(--m2m-a); }
+.m2m-campo:disabled { opacity: 0.5; cursor: not-allowed; }
+/* O base.css estiliza `input`, `select` e `textarea` pelo ELEMENTO (altura mínima de 96px no
+   textarea, anel de foco colorido, fundo de erro em tom pastel). Aqui o módulo vence pela
+   classe, no escopo da página: foco é contorno, erro é borda — nada de brilho nem fundo. */
+.m2m-page .m2m-campo { min-height: 0; box-shadow: none; }
+.m2m-page .m2m-campo:hover { border-color: var(--m2m-ln-3); }
+.m2m-page .m2m-campo:focus { border-color: var(--m2m-a); box-shadow: none; }
+.m2m-page .m2m-campo[aria-invalid="true"] { border-color: var(--m2m-err); background: var(--m2m-surface); box-shadow: none; }
+.m2m-campo--mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.m2m-campo--area { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.45; }
+
+.m2m-rotulo {
+  display: flex;
+  flex-direction: column;
+  align-content: start;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.m2m-rotulo > span:first-child,
+.m2m-rotulo > legend {
+  padding: 0;
+  font-size: var(--m2m-fs-label);
+  color: var(--m2m-tx-2);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.m2m-rotulo--curto { flex: 0 1 160px; }
+.m2m-dica, .m2m-erro {
+  font-style: normal;
+  font-size: var(--m2m-fs-small);
+  line-height: 1.4;
+}
+.m2m-dica { color: var(--m2m-tx-3); }
+.m2m-erro { color: var(--m2m-err); font-weight: 600; }
+.m2m-rotulo.tem-erro .m2m-campo { border-color: var(--m2m-err); }
+
+/* O rótulo com uma ação ao lado (o "Novo tipo" do cadastro de veículo). */
+.m2m-rotulo > .m2m-rotulo-linha { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 20px; }
+.m2m-rotulo-linha .m2m-btn { margin: -4px -6px -4px 0; }
+
+.m2m-escolha { gap: 6px; }
+.m2m-escolha > label { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; font-size: var(--m2m-fs-base); }
+
+/* Grade de campos — alinha pelo TOPO (regra 36): o grid estica a célula até a
+   altura da linha, e a dica sob UM campo faria os vizinhos crescerem sem motivo. */
+.m2m-form-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px var(--m2m-gap);
+  align-items: start;
+  align-content: start;
+  padding: var(--m2m-pad);
+}
+.m2m-form-grade--4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.m2m-rotulo--largo { grid-column: 1 / -1; }
+
+.m2m-campo-composto { display: grid; grid-template-columns: minmax(0, 1fr) 80px; gap: 6px; }
+
+.m2m-form { display: grid; gap: var(--m2m-gap); }
+.m2m-form-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 var(--m2m-pad) var(--m2m-pad); }
+.m2m-form > .m2m-form-acoes { padding: 0; }
+.m2m-form-linha { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 10px 0 0; }
+.m2m-form-linha > .m2m-campo { flex: 1 1 260px; width: auto; }
+.m2m-form-linha > .m2m-rotulo { flex: 1 1 320px; }
+
+.m2m-checks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
+.m2m-check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--m2m-fs-base); color: var(--m2m-tx); }
+.m2m-check input { width: auto; min-height: 0; height: auto; margin: 0; }
+
+.m2m-obrig { color: var(--m2m-err); margin-left: 2px; }
+.m2m-nota-doc { margin: 0; padding: 0 var(--m2m-pad) var(--m2m-pad); font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); line-height: 1.5; }
+
+/* =========================================================
+   5. Indicador de conectividade — ponto + texto
+   =========================================================
+   A cor nunca vai sozinha. Cada estado tem uma FORMA:
+
+     cheio ........ ativa, normal, sucesso, autenticada
+     cheio escuro . sem sessão (o mapeamento CONFIROU)
+     anel + ponto . não interpretado (resposta recebida, sem regra)
+     tracejado .... pendente / não consultado / não testada
+     âmbar cheio .. desatualizado, atenção, bloqueada por limite
+     CONTORNO ..... falha de consulta, credencial recusada, falha
+
+   "Falha de consulta" é o único estado de contorno grosso em vermelho:
+   é de propósito que ele NÃO se pareça com "desativado" (anel fino
+   riscado) nem com "sem sessão" (cheio) — falha de consulta não é
+   chip inativo, e ler uma coisa pela outra manda o TI trocar um chip
+   que está bom. */
+.m2m-ind {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--m2m-fs-base);
+  line-height: 1.25;
+  white-space: nowrap;
+  color: var(--m2m-tx);
+}
+
+.m2m-ind-forma {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 var(--m2m-forma);
+  width: var(--m2m-forma);
+  height: var(--m2m-forma);
+  border-radius: 50%;
+  background: var(--m2m-tx-3);
+}
+
+/* cheio — verde */
+.m2m-ind[data-estado="ativa"] .m2m-ind-forma,
+.m2m-ind[data-estado="normal"] .m2m-ind-forma,
+.m2m-ind[data-estado="sucesso"] .m2m-ind-forma,
+.m2m-ind[data-estado="autenticada"] .m2m-ind-forma { background: var(--m2m-ok); }
+
+/* cheio — neutro escuro: sem sessão CONFIRMADA */
+.m2m-ind[data-estado="sem_sessao"] .m2m-ind-forma { background: var(--m2m-tx-2); }
+
+/* cheio — âmbar */
+.m2m-ind[data-estado="desatualizado"] .m2m-ind-forma,
+.m2m-ind[data-estado="atencao"] .m2m-ind-forma,
+.m2m-ind[data-estado="bloqueada"] .m2m-ind-forma { background: var(--m2m-warn); }
+
+/* cheio — informativo / crítico (nível de ocorrência) */
+.m2m-ind[data-estado="info"] .m2m-ind-forma { background: var(--m2m-info); }
+.m2m-ind[data-estado="critico"] .m2m-ind-forma { background: var(--m2m-err); }
+.m2m-ind[data-estado="critico"] { color: var(--m2m-err); font-weight: 600; }
+
+/* anel + ponto — resposta recebida, mas sem regra de leitura */
+.m2m-ind[data-estado="nao_interpretado"] .m2m-ind-forma {
+  background: transparent;
+  border: 1.5px solid var(--m2m-tx-3);
+}
+.m2m-ind[data-estado="nao_interpretado"] .m2m-ind-forma::after {
+  content: "";
+  position: absolute;
+  inset: 1.5px;
+  border-radius: 50%;
+  background: var(--m2m-tx-3);
+}
+
+/* tracejado — ainda sem resposta */
+.m2m-ind[data-estado="nao_consultado"] .m2m-ind-forma,
+.m2m-ind[data-estado="pendente"] .m2m-ind-forma,
+.m2m-ind[data-estado="nao_testada"] .m2m-ind-forma,
+.m2m-ind[data-estado="nao_configurada"] .m2m-ind-forma {
+  background: transparent;
+  border: 1.5px dashed var(--m2m-tx-3);
+}
+
+/* anel fino riscado — monitoramento DESATIVADO por decisão de gente */
+.m2m-ind[data-estado="desativado"] { color: var(--m2m-tx-3); }
+.m2m-ind[data-estado="desativado"] .m2m-ind-forma {
+  background: transparent;
+  border: 1px solid var(--m2m-tx-4);
+}
+.m2m-ind[data-estado="desativado"] .m2m-ind-forma::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: 50%;
+  height: 1px;
+  background: var(--m2m-tx-4);
+}
+
+/* CONTORNO grosso vermelho — a consulta falhou */
+.m2m-ind[data-estado="erro_consulta"],
+.m2m-ind[data-estado="falha"],
+.m2m-ind[data-estado="credencial_recusada"],
+.m2m-ind[data-estado="url_invalida"],
+.m2m-ind[data-estado="token_ilegivel"] { color: var(--m2m-err); font-weight: 600; }
+.m2m-ind[data-estado="erro_consulta"] .m2m-ind-forma,
+.m2m-ind[data-estado="falha"] .m2m-ind-forma,
+.m2m-ind[data-estado="credencial_recusada"] .m2m-ind-forma,
+.m2m-ind[data-estado="url_invalida"] .m2m-ind-forma,
+.m2m-ind[data-estado="token_ilegivel"] .m2m-ind-forma {
+  background: transparent;
+  border: 2px solid var(--m2m-err);
+}
+
+/* anel vazio de fio fino — veículo SEM chip (não há o que consultar) */
+.m2m-ind[data-estado="sem_chip"] { color: var(--m2m-tx-2); }
+.m2m-ind[data-estado="sem_chip"] .m2m-ind-forma {
+  background: transparent;
+  border: 1px solid var(--m2m-tx-3);
+}
+
+/* ponto com TRAÇO DIAGONAL — chip de operadora SEM integração: é controlado, nunca consultado
+   pela API. Não é falha (contorno vermelho) nem desativado (anel riscado na horizontal): o que
+   falta é a fonte do dado, e a forma diz "sem sinal de origem". */
+.m2m-ind[data-estado="sem_integracao"] { color: var(--m2m-tx-2); }
+.m2m-ind[data-estado="sem_integracao"] .m2m-ind-forma {
+  background: transparent;
+  border: 1.5px solid var(--m2m-tx-3);
+  overflow: hidden;
+}
+.m2m-ind[data-estado="sem_integracao"] .m2m-ind-forma::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 50%;
+  height: 1.5px;
+  background: var(--m2m-tx-3);
+  transform: rotate(-45deg);
+}
+
+/* meia altura — resposta válida sem conteúdo */
+.m2m-ind[data-estado="sem_corpo"] .m2m-ind-forma {
+  background: var(--m2m-tx-3);
+  height: calc(var(--m2m-forma) / 2);
+  align-self: flex-end;
+  border-radius: 2px;
+}
+
+.m2m-estado-grande .m2m-ind { font-size: var(--m2m-fs-lg); font-weight: 600; }
+.m2m-estado-grande .m2m-ind-forma { flex-basis: 12px; width: 12px; height: 12px; }
+.m2m-estado-grande { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+
+/* =========================================================
+   6. Rótulo de frescor
+   ========================================================= */
+.m2m-frescor { color: var(--m2m-tx-3); font-size: var(--m2m-fs-small); white-space: nowrap; }
+.m2m-frescor[data-velho="1"] { color: var(--m2m-tx); }
+.m2m-frescor-velho {
+  color: var(--m2m-tx);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+/* =========================================================
+   7. Faixa de saúde da integração — uma linha só
+   =========================================================
+   Só nas telas de conectividade. Em estado normal é uma linha discreta
+   de texto; só quando algo está errado ela ganha a cor do problema e a
+   frase que explica o que fazer. */
+.m2m-faixa {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 20px;
+  padding: 8px var(--m2m-pad);
+  border: 1px solid var(--m2m-ln);
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-surface);
+}
+.m2m-faixa[data-estado="bloqueada"] { border-color: var(--m2m-warn); }
+.m2m-faixa[data-estado="credencial_recusada"],
+.m2m-faixa[data-estado="url_invalida"],
+.m2m-faixa[data-estado="token_ilegivel"] { border-color: var(--m2m-err); }
+
+.m2m-faixa-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--m2m-fs-small);
+  color: var(--m2m-tx-3);
+}
+.m2m-faixa-item .m2m-micro { color: var(--m2m-tx-3); font-weight: 400; }
+.m2m-faixa-item .m2m-num { font-family: var(--font-sans); letter-spacing: 0; font-size: var(--m2m-fs-small); color: var(--m2m-tx); }
+.m2m-faixa-item .m2m-ind { font-size: var(--m2m-fs-small); font-weight: 600; }
+.m2m-faixa-nota { font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); }
+
+.m2m-faixa-aviso {
+  flex: 1 1 100%;
+  margin: 4px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-sunken);
+  font-size: var(--m2m-fs-base);
+  color: var(--m2m-tx-2);
+}
+.m2m-faixa[data-estado="bloqueada"] .m2m-faixa-aviso { background: var(--m2m-warn-soft); }
+.m2m-faixa[data-estado="credencial_recusada"] .m2m-faixa-aviso,
+.m2m-faixa[data-estado="url_invalida"] .m2m-faixa-aviso,
+.m2m-faixa[data-estado="token_ilegivel"] .m2m-faixa-aviso { background: var(--m2m-err-soft); }
+.m2m-faixa-aviso a { margin-left: 6px; font-weight: 600; }
+
+/* =========================================================
+   8. Navegação do módulo e cabeçalho da página
+   =========================================================
+   A barra do módulo é UMA só, em três grupos: o que se usa todo dia
+   (visão geral, veículos, chips, movimentações), o que se acompanha
+   (conectividade, consumo, alertas) e a configuração, à direita. O
+   grupo e o peso do item ativo dizem onde o usuário está, sem que todos
+   os itens disputem a mesma atenção. */
+.m2m-abas {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--m2m-ln);
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-surface);
+}
+.m2m-abas-grupo { display: flex; align-items: center; gap: 2px; }
+.m2m-abas-sep { align-self: stretch; width: 1px; margin: 6px 6px; background: var(--m2m-ln); }
+.m2m-abas-fim { margin-left: auto; }
+.m2m-abas a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--m2m-raio);
+  color: var(--m2m-tx-2);
+  font-size: var(--m2m-fs-base);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.m2m-abas a i { color: var(--m2m-tx-3); font-size: var(--m2m-fs-small); }
+.m2m-abas a:hover { color: var(--m2m-tx); text-decoration: none; background: var(--m2m-hover); }
+.m2m-abas a.is-ativa { color: var(--m2m-tx); background: var(--m2m-a-soft); font-weight: 650; }
+.m2m-abas a.is-ativa i { color: var(--m2m-a); }
+
+.m2m-contagem {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--m2m-warn-soft);
+  color: var(--m2m-tx);
+  font-family: var(--font-mono);
+  font-size: var(--m2m-fs-micro);
+  font-weight: 700;
+}
+
+/* Cabeçalho da página: o `.page-header` do sistema, na escala do módulo.
+   Título, uma frase de apoio e, à direita, a ação principal da tela. */
+.m2m-page .page-header {
+  margin: 0;
+  padding: 4px 0 0;
+  gap: 4px 16px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.m2m-page .page-heading {
+  font-size: var(--m2m-fs-page);
+  font-weight: 650;
+  letter-spacing: var(--tracking-tighter);
+  line-height: 1.2;
+}
+.m2m-page .page-description {
+  margin-top: 4px;
+  max-width: 70ch;
+  font-size: var(--m2m-fs-base);
+  line-height: 1.45;
+  color: var(--m2m-tx-3);
+  letter-spacing: 0;
+}
+.m2m-cab-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* =========================================================
+   9. Cartão, indicadores, grades
+   ========================================================= */
+.m2m-painel {
+  border: 1px solid var(--m2m-ln);
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-surface);
+  display: grid;
+  align-content: start;
+  overflow: hidden;
+}
+.m2m-painel-cab {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px var(--m2m-gap);
+  min-height: 46px;
+  padding: 8px var(--m2m-pad);
+  border-bottom: 1px solid var(--m2m-ln-2);
+}
+.m2m-painel-t {
+  font-family: var(--font-sans);
+  font-size: var(--m2m-fs-titulo);
+  font-weight: 650;
+  color: var(--m2m-tx);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.m2m-painel-t .m2m-sub { font-weight: 400; }
+.m2m-painel-link { font-size: var(--m2m-fs-small); font-weight: 600; }
+.m2m-painel-corpo { padding: var(--m2m-pad); display: grid; gap: 10px; align-content: start; }
+.m2m-painel-vazio { margin: 0; padding: 20px var(--m2m-pad); color: var(--m2m-tx-3); }
+
+.m2m-grade { display: grid; gap: var(--m2m-gap); align-items: start; }
+.m2m-grade--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.m2m-grade--detalhe { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+
+/* Indicadores: números em destaque, rótulo e nota discretos. O fio entre as células
+   vem do `gap` sobre o fundo da cor do fio — continua certo quando a linha quebra. */
+.m2m-regua {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px;
+  background: var(--m2m-ln-2);
+}
+.m2m-painel > .m2m-regua { border: 0; }
+.m2m-regua--seis { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.m2m-kpi {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px var(--m2m-pad) 14px;
+  background: var(--m2m-surface);
+  color: var(--m2m-tx) !important;
+  text-decoration: none !important;
+}
+a.m2m-kpi:hover { background: var(--m2m-hover); }
+.m2m-kpi > .m2m-micro { order: 0; }
+.m2m-kpi-n {
+  order: 1;
+  font-size: var(--m2m-fs-num);
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  color: var(--m2m-tx);
+}
+.m2m-kpi-n.m2m-num, .m2m-grande.m2m-num { font-family: var(--font-sans); letter-spacing: -0.03em; }
+.m2m-kpi-nota { order: 2; font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); line-height: 1.35; }
+.m2m-kpi[data-tom]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--m2m-warn);
+}
+.m2m-kpi[data-tom="erro"]::before { background: var(--m2m-err); }
+.m2m-kpi[data-tom="erro"] .m2m-kpi-n { color: var(--m2m-err); }
+.m2m-kpi-lado { display: flex; align-items: baseline; gap: 8px; }
+
+/* Aviso: uma ou duas frases com a ação ao lado. Fundo neutro por padrão;
+   o tom (atenção, erro) tinge o fundo e a barra da borda. */
+.m2m-aviso {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--m2m-ln);
+  border-left: 3px solid var(--m2m-tx-3);
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-sunken);
+  color: var(--m2m-tx-2);
+  font-size: var(--m2m-fs-base);
+  line-height: 1.5;
+}
+.m2m-aviso[data-tom="atencao"] { border-left-color: var(--m2m-warn); background: var(--m2m-warn-soft); color: var(--m2m-tx); }
+.m2m-aviso[data-tom="erro"] { border-left-color: var(--m2m-err); background: var(--m2m-err-soft); color: var(--m2m-tx); }
+.m2m-aviso a { font-weight: 600; margin-left: 4px; text-decoration: underline; }
+.m2m-aviso-item { display: block; }
+
+/* Barra empilhada da conectividade: cada chip em UM segmento. Os segmentos
+   repetem as formas do indicador (cheio, anel, contorno, tracejado), e a legenda
+   embaixo traz o texto e o número — a barra sozinha nunca é a única fonte. */
+.m2m-empilhada {
+  display: flex;
+  gap: 1px;
+  height: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--m2m-ln);
+}
+.m2m-empilhada-seg { flex: 1 1 0; min-width: 4px; background: var(--m2m-tx-4); }
+.m2m-empilhada-seg[data-estado="ativa"] { background: var(--m2m-ok); }
+.m2m-empilhada-seg[data-estado="sem_sessao"] { background: var(--m2m-tx-2); }
+.m2m-empilhada-seg[data-estado="nao_interpretado"] { background: var(--m2m-tx-4); }
+.m2m-empilhada-seg[data-estado="falha_consulta"] { background: var(--m2m-surface); border: 2px solid var(--m2m-err); }
+.m2m-empilhada-seg[data-estado="nao_consultado"] { background: var(--m2m-surface); border: 1px dashed var(--m2m-tx-3); }
+
+.m2m-legenda-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 20px; }
+.m2m-legenda-lista a { display: inline-flex; align-items: center; gap: 8px; color: var(--m2m-tx) !important; }
+.m2m-legenda-n { font-weight: 600; }
+
+/* =========================================================
+   10. Tabela e cartão abaixo de 760px
+   ========================================================= */
+.m2m-tabela-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--m2m-ln);
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-surface);
+}
+/* dentro de um cartão a tabela não tem moldura própria */
+.m2m-painel > .m2m-tabela-wrap { border: 0; border-radius: 0; }
+
+.m2m-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--m2m-fs-base);
+  font-variant-numeric: tabular-nums;
+}
+.m2m-tabela--chips { min-width: 940px; }
+.m2m-tabela--veiculos { min-width: 900px; }
+.m2m-tabela--curta { min-width: 0; }
+
+.m2m-tabela th {
+  height: 38px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--m2m-ln);
+  background: var(--m2m-sunken);
+  text-align: left;
+  font-size: var(--m2m-fs-label);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--m2m-tx-3);
+  white-space: nowrap;
+}
+.m2m-tabela td {
+  height: var(--m2m-linha);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--m2m-ln-2);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.m2m-tabela tbody tr:last-child td { border-bottom: 0; }
+.m2m-tabela th.num, .m2m-tabela td.num { text-align: right; }
+.m2m-tabela tbody tr:hover td { background: var(--m2m-hover); }
+.m2m-tabela tfoot th, .m2m-tabela tfoot td { border-top: 1px solid var(--m2m-ln); background: var(--m2m-sunken); }
+
+/* O que vem depois do valor na MESMA célula (frescor, % do limite) fica na mesma
+   linha — é o que mantém a linha baixa. */
+.m2m-tabela td .m2m-sub,
+.m2m-tabela td .m2m-frescor { margin-left: 8px; }
+.m2m-tabela td .m2m-ident .m2m-sub,
+.m2m-tabela td .m2m-ident-2 .m2m-sub { margin-left: 0; }
+/* Sessão, consumo e última consulta podem quebrar em duas linhas (um "desatualizado"
+   longo, uma falha): é o que impede a tabela de ficar mais larga que a tela. */
+.m2m-tabela td.m2m-quebra { white-space: normal; min-width: 7rem; }
+.m2m-tabela td.m2m-quebra .m2m-sub { white-space: normal; }
+
+/* Rolagem horizontal (tablet): a coluna de identificação fica à vista. */
+.m2m-tabela--chips th:first-child,
+.m2m-tabela--chips td:first-child,
+.m2m-tabela--veiculos th:first-child,
+.m2m-tabela--veiculos td:first-child { position: sticky; left: 0; z-index: 1; background: var(--m2m-surface); }
+.m2m-tabela--chips th:first-child,
+.m2m-tabela--veiculos th:first-child { background: var(--m2m-sunken); }
+.m2m-tabela--chips tbody tr:hover td:first-child,
+.m2m-tabela--veiculos tbody tr:hover td:first-child { background: var(--m2m-hover); }
+.m2m-tabela td.num .m2m-sub { margin-left: 8px; margin-right: 0; }
+
+/* Barra de estado na borda esquerda da linha: só aparece quando há problema. */
+.m2m-tabela td:first-child { border-left: 3px solid transparent; padding-left: var(--m2m-pad); }
+.m2m-tabela tr[data-situacao="erro_consulta"] td:first-child { border-left-color: var(--m2m-err); }
+.m2m-tabela tr[data-situacao="desatualizado"] td:first-child { border-left-color: var(--m2m-warn); }
+.m2m-tabela tr[data-alerta="1"] td:first-child { border-left-color: var(--m2m-warn); }
+.m2m-tabela tr[data-situacao="desativado"] td { color: var(--m2m-tx-3); }
+.m2m-tabela--veiculos tr[data-sem-chip="1"] td:first-child { border-left-color: var(--m2m-warn); }
+.m2m-tabela--veiculos tr[data-status="desativado"] td,
+.m2m-tabela--veiculos tr[data-status="inativo"] td { color: var(--m2m-tx-3); }
+
+.m2m-corta.m2m-sub { max-width: 18ch; }
+
+/* Nome sobre código: o que o usuário lê primeiro e o que ele digita para achar. */
+.m2m-ident { display: flex; flex-direction: column; gap: 2px; }
+.m2m-ident-cod { font-family: var(--font-mono); font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); letter-spacing: -0.02em; }
+
+/* O alerta aberto de um chip: um selo pequeno ao lado do nome. */
+.m2m-alerta-marca {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  vertical-align: 1px;
+  border-radius: 50%;
+  background: var(--m2m-warn-soft);
+  border: 1px solid var(--m2m-warn);
+  color: var(--m2m-tx) !important;
+  font-family: var(--font-mono);
+  font-size: var(--m2m-fs-micro);
+  font-weight: 700;
+  line-height: 1;
+}
+.m2m-alerta-marca:hover { background: var(--m2m-hover); text-decoration: none !important; }
+.m2m-acoes { text-align: right; }
+.m2m-acoes > * + * { margin-left: 6px; }
+
+/* =========================================================
+   11. Fita das últimas 24 consultas
+   ========================================================= */
+.m2m-fita { display: grid; gap: 6px; }
+.m2m-fita-marcas { display: flex; align-items: flex-end; gap: 2px; height: 18px; }
+
+.m2m-marca {
+  appearance: none;
+  flex: 0 0 6px;
+  width: 6px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: var(--m2m-ok);
+  cursor: pointer;
+}
+/* A forma nunca depende só da cor. */
+.m2m-marca[data-classe="sucesso"] { background: var(--m2m-ok); }
+.m2m-marca[data-classe="nao_interpretado"] { background: var(--m2m-tx-4); }
+.m2m-marca[data-classe="sem_corpo"] { background: var(--m2m-tx-3); height: 8px; }
+.m2m-marca[data-classe="falha"] { background: transparent; border: 2px solid var(--m2m-err); }
+.m2m-marca[data-classe="vazia"] { background: var(--m2m-ln); height: 2px; cursor: default; }
+.m2m-marca:hover:not([data-classe="vazia"]) { outline: 2px solid var(--m2m-a); outline-offset: 1px; }
+
+.m2m-fita-leitura { min-height: 1.4em; font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); }
+
+.m2m-legenda {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: var(--m2m-fs-small);
+  color: var(--m2m-tx-3);
+}
+.m2m-marca--legenda { display: inline-block; vertical-align: middle; margin-right: 6px; cursor: default; pointer-events: none; }
+
+.m2m-tabela .m2m-fita-marcas { height: 16px; }
+.m2m-tabela .m2m-marca { flex-basis: 5px; width: 5px; height: 14px; }
+.m2m-tabela .m2m-marca[data-classe="sem_corpo"] { height: 7px; }
+
+/* =========================================================
+   12. Barra de ferramentas: busca, filtros, etiquetas, segmentos
+   =========================================================
+   A busca é o elemento principal da lista; os filtros avançados ficam
+   recolhidos atrás do botão “Filtros” e só abrem quando o usuário pede
+   (ou quando já há filtro em uso). */
+.m2m-filtros { display: grid; gap: 10px; }
+.m2m-barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px var(--m2m-gap-sm);
+}
+.m2m-busca { position: relative; flex: 1 1 360px; display: flex; flex-direction: column; gap: 3px; }
+.m2m-busca > .m2m-micro { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.m2m-busca > i {
+  position: absolute;
+  left: 12px;
+  top: calc(var(--m2m-h) / 2);
+  transform: translateY(-50%);
+  color: var(--m2m-tx-3);
+  font-size: var(--m2m-fs-base);
+  pointer-events: none;
+}
+.m2m-busca > .m2m-campo { padding-left: 34px; }
+.m2m-barra-fim { margin-left: auto; display: flex; align-items: center; gap: var(--m2m-gap-sm); }
+.m2m-contagem-lista { font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); white-space: nowrap; }
+.m2m-contagem-lista.m2m-num { font-family: var(--font-sans); letter-spacing: 0; }
+
+/* O botão que abre e fecha os filtros avançados. */
+.m2m-filtros-botao[aria-expanded="true"] { background: var(--m2m-a-soft); border-color: var(--m2m-a); }
+.m2m-filtros-botao .m2m-contagem { background: var(--m2m-a); color: var(--text-inverted); }
+
+.m2m-filtros-mais {
+  border: 1px solid var(--m2m-ln);
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-surface);
+}
+.m2m-filtros-mais[hidden] { display: none; }
+.m2m-filtros-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px var(--m2m-gap);
+  align-items: start;
+  padding: var(--m2m-pad);
+}
+.m2m-filtros-grade--consumo { grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(150px, 1fr)); }
+.m2m-filtros-grade--cmp { grid-template-columns: repeat(4, minmax(130px, 1fr)) auto; align-items: end; padding: 0 0 var(--m2m-pad); }
+.m2m-filtros-acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 0 var(--m2m-pad) var(--m2m-pad); }
+.m2m-filtros-grade--cmp .m2m-filtros-acoes { padding: 0; }
+
+.m2m-comparar { margin: 0; padding: var(--m2m-pad) var(--m2m-pad) 0; border: 0; border-top: 1px solid var(--m2m-ln-2); }
+.m2m-comparar > legend { padding: 0 6px 8px 0; font-size: var(--m2m-fs-label); font-weight: 600; color: var(--m2m-tx-2); }
+
+.m2m-filtros-ativos { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.m2m-etiqueta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 4px 0 10px;
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-a-soft);
+  font-size: var(--m2m-fs-small);
+  font-weight: 500;
+  color: var(--m2m-tx);
+}
+.m2m-etiqueta a { color: var(--m2m-tx-3); font-size: var(--m2m-fs-lg); line-height: 1; padding: 0 5px; }
+.m2m-etiqueta a:hover { color: var(--m2m-err); text-decoration: none; }
+
+/* Segmentos: um filtro de uma escolha só (histórico, situação da linha). */
+.m2m-segmentos {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-fill);
+}
+.m2m-segmentos a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--m2m-h-sm);
+  padding: 0 12px;
+  border-radius: 4px;
+  color: var(--m2m-tx-3);
+  font-size: var(--m2m-fs-small);
+  font-weight: 600;
+}
+.m2m-segmentos a:hover { color: var(--m2m-tx); text-decoration: none; }
+.m2m-segmentos a.is-ativa { background: var(--m2m-surface); color: var(--m2m-tx); }
+.m2m-segmentos--grande { display: flex; align-items: center; width: fit-content; max-width: 100%; }
+.m2m-segmentos--grande a { height: 30px; }
+.m2m-segmentos-nota { margin-left: auto; padding: 0 12px; font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); }
+
+.m2m-pager { padding: 10px 2px 0; }
+.m2m-page .ui-pager-link { border-radius: var(--m2m-raio); }
+
+/* =========================================================
+   12b. Estado vazio — compacto, com a ação do momento
+   =========================================================
+   Um ícone pequeno, um título, uma frase e (quando há o que fazer) um
+   botão. Sem borda tracejada, sem ilustração, sem região vazia: o
+   componente tem a altura do que diz. */
+.m2m-vazio,
+.m2m-page .ui-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-items: stretch;
+  gap: 12px var(--m2m-gap);
+  padding: 20px var(--m2m-pad);
+  border: 1px solid var(--m2m-ln);
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-surface);
+  text-align: left;
+}
+.m2m-painel > .m2m-vazio { border: 0; border-radius: 0; }
+.m2m-vazio-ico,
+.m2m-page .ui-empty-ico {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-fill);
+  color: var(--m2m-tx-3);
+  font-size: var(--m2m-fs-lg);
+}
+.m2m-vazio-texto { flex: 1 1 280px; display: grid; gap: 2px; }
+.m2m-vazio-t,
+.m2m-page .ui-empty-title { margin: 0; font-family: var(--font-sans); font-size: var(--m2m-fs-titulo); font-weight: 650; color: var(--m2m-tx); }
+.m2m-vazio-p,
+.m2m-page .ui-empty-text { margin: 0; max-width: 62ch; font-size: var(--m2m-fs-base); line-height: 1.45; color: var(--m2m-tx-3); }
+.m2m-vazio-acoes,
+.m2m-page .ui-empty-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; justify-content: flex-end; }
+
+/* A situação normal do dashboard: uma linha de texto, não um cartão. */
+.m2m-tudo-certo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 14px var(--m2m-pad);
+  color: var(--m2m-tx-2);
+}
+.m2m-tudo-certo i { color: var(--m2m-ok); }
+
+/* =========================================================
+   13. Detalhe: resumo no topo e seções em abas
+   ========================================================= */
+.m2m-resumo {
+  display: grid;
+  gap: 14px;
+  padding: var(--m2m-pad);
+  border: 1px solid var(--m2m-ln);
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-surface);
+}
+.m2m-resumo-cab { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px var(--m2m-gap); }
+.m2m-resumo-id { display: grid; gap: 6px; }
+.m2m-resumo-estados { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
+.m2m-resumo-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.m2m-resumo-fatos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px var(--m2m-gap);
+  margin: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--m2m-ln-2);
+}
+.m2m-resumo-fatos > div { display: grid; gap: 3px; align-content: start; }
+.m2m-resumo-fatos dt { font-size: var(--m2m-fs-label); color: var(--m2m-tx-3); font-weight: 500; }
+.m2m-resumo-fatos dd { margin: 0; overflow-wrap: anywhere; font-weight: 550; }
+
+/* Compatibilidade: a barra antiga do detalhe do chip/veículo. */
+.m2m-chip-barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+  padding: 12px var(--m2m-pad);
+  border: 1px solid var(--m2m-ln);
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-surface);
+}
+.m2m-chip-ids { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.m2m-chip-estados { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; }
+.m2m-chip-acoes { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Abas de seção do detalhe. O JS as monta a partir de `section[data-secao]`;
+   sem JS, todas as seções ficam visíveis, uma sob a outra. */
+.m2m-secoes-nav {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--m2m-ln);
+  overflow-x: auto;
+}
+.m2m-secoes-nav[hidden] { display: none; }
+.m2m-secoes-nav button {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--m2m-tx-3);
+  font: inherit;
+  font-size: var(--m2m-fs-base);
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.m2m-secoes-nav button:hover { color: var(--m2m-tx); }
+.m2m-secoes-nav button[aria-selected="true"] { color: var(--m2m-a); border-bottom-color: var(--m2m-a); font-weight: 650; }
+[data-secao][hidden] { display: none; }
+
+.m2m-dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin: 0; }
+.m2m-dl > div { display: grid; gap: 3px; padding: 10px var(--m2m-pad); border-bottom: 1px solid var(--m2m-ln-2); align-content: start; }
+.m2m-dl dt { font-size: var(--m2m-fs-label); color: var(--m2m-tx-3); font-weight: 500; }
+.m2m-dl dd { margin: 0; overflow-wrap: anywhere; }
+.m2m-dl-largo { grid-column: 1 / -1; }
+.m2m-dl--compacta > div { padding-left: 0; padding-right: var(--m2m-pad); }
+.m2m-texto-livre { white-space: pre-wrap; }
+
+.m2m-desativar { padding: 12px var(--m2m-pad) var(--m2m-pad); border-top: 1px solid var(--m2m-ln-2); }
+.m2m-desativar > summary { cursor: pointer; font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); }
+
+/* Subtítulo dentro de um cartão: peso e tamanho, sem caixa-alta. */
+.m2m-sub-t {
+  margin: 14px 0 6px;
+  font-family: var(--font-sans);
+  font-size: var(--m2m-fs-base);
+  font-weight: 650;
+  color: var(--m2m-tx);
+}
+
+.m2m-lista-alertas { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.m2m-lista-alertas li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+
+.m2m-consumo-corpo {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: var(--m2m-gap);
+  align-items: start;
+  padding: var(--m2m-pad);
+}
+.m2m-consumo-valores { display: grid; gap: 8px; align-content: start; }
+.m2m-grafico-moldura { position: relative; height: 240px; }
+.m2m-barra-pct { height: 6px; border-radius: 3px; background: var(--m2m-fill); overflow: hidden; }
+.m2m-barra-pct > span { display: block; height: 100%; border-radius: 3px; background: var(--m2m-a); }
+
+/* Linha do tempo: consultas, eventos e ocorrências numa lista só. O marcador
+   repete a forma do indicador: cheio = tudo certo, contorno = falha. */
+.m2m-tempo { list-style: none; margin: 0; padding: 0; }
+.m2m-tempo > li {
+  display: grid;
+  grid-template-columns: 9.5rem var(--m2m-forma) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0 12px;
+  padding: 10px var(--m2m-pad);
+  border-bottom: 1px solid var(--m2m-ln-2);
+}
+.m2m-tempo > li:last-child { border-bottom: 0; }
+.m2m-tempo-quando { font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); }
+.m2m-tempo-marca { width: var(--m2m-forma); height: var(--m2m-forma); background: var(--m2m-tx-3); border-radius: 50%; align-self: center; }
+.m2m-tempo > li[data-nivel="ok"] .m2m-tempo-marca { background: var(--m2m-ok); }
+.m2m-tempo > li[data-nivel="aviso"] .m2m-tempo-marca { background: var(--m2m-warn); }
+.m2m-tempo > li[data-nivel="erro"] .m2m-tempo-marca { background: transparent; border: 2px solid var(--m2m-err); }
+.m2m-tempo > li[data-nivel="auto"] .m2m-tempo-marca { background: transparent; border: 1.5px dashed var(--m2m-tx-3); }
+.m2m-tempo-texto { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+
+.m2m-eventos { list-style: none; margin: 0; padding: 0; }
+.m2m-eventos > li { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0 12px; padding: 10px var(--m2m-pad); border-bottom: 1px solid var(--m2m-ln-2); }
+.m2m-eventos > li:last-child { border-bottom: 0; }
+.m2m-eventos-quando { font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); }
+.m2m-eventos-texto { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.m2m-troca { display: inline-flex; align-items: center; gap: 8px; }
+
+/* Ocorrências */
+.m2m-ocorrencias { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.m2m-ocorrencia {
+  border: 1px solid var(--m2m-ln);
+  border-left: 3px solid var(--m2m-tx-4);
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-surface);
+}
+.m2m-ocorrencia[data-nivel="atencao"] { border-left-color: var(--m2m-warn); }
+.m2m-ocorrencia[data-nivel="critico"] { border-left-color: var(--m2m-err); }
+.m2m-ocorrencia[data-estado-oc="resolvida"],
+.m2m-ocorrencia[data-estado-oc="descartada"] { border-left-color: var(--m2m-ln-3); }
+.m2m-ocorrencia > details > summary {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px var(--m2m-gap);
+  min-height: 44px;
+  padding: 6px var(--m2m-pad);
+  cursor: pointer;
+  list-style: none;
+}
+.m2m-ocorrencia > details > summary::-webkit-details-marker { display: none; }
+.m2m-ocorrencia > details > summary:hover { background: var(--m2m-hover); }
+.m2m-oc-estado { font-size: var(--m2m-fs-label); font-weight: 600; color: var(--m2m-tx-3); }
+.m2m-oc-quando { font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); white-space: nowrap; }
+.m2m-oc-corpo { padding: 6px var(--m2m-pad) var(--m2m-pad); border-top: 1px solid var(--m2m-ln-2); }
+.m2m-oc-descricao { margin: 8px 0 4px; max-width: 90ch; line-height: 1.5; }
+.m2m-tratar { display: grid; gap: 10px; margin-top: 12px; max-width: 720px; }
+.m2m-tratar-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* =========================================================
+   14. Configuração
+   ========================================================= */
+.m2m-ancoras { display: flex; flex-wrap: wrap; gap: 6px; }
+.m2m-ancoras a {
+  padding: 4px 12px;
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-fill);
+  font-size: var(--m2m-fs-small);
+  font-weight: 600;
+  color: var(--m2m-tx-2);
+}
+.m2m-ancoras a:hover { background: var(--m2m-hover); text-decoration: none; }
+.m2m-painel[id] { scroll-margin-top: 12px; }
+
+.m2m-codigo {
+  margin: 4px 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-sunken);
+  color: var(--m2m-tx);
+  font-family: var(--font-mono);
+  font-size: var(--m2m-fs-small);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.m2m-teste { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.m2m-teste > .m2m-rotulo { flex: 0 1 320px; }
+.m2m-teste-resultado {
+  display: block;
+  padding: 10px 14px;
+  border-left: 3px solid var(--m2m-tx-4);
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-sunken);
+  font-size: var(--m2m-fs-base);
+  line-height: 1.5;
+}
+.m2m-teste-resultado[data-tom="ok"] { border-left-color: var(--m2m-ok); background: var(--m2m-ok-soft); }
+.m2m-teste-resultado[data-tom="aviso"] { border-left-color: var(--m2m-warn); background: var(--m2m-warn-soft); }
+.m2m-teste-resultado[data-tom="erro"] { border-left-color: var(--m2m-err); background: var(--m2m-err-soft); }
+
+.m2m-conta {
+  display: block;
+  margin: 0 var(--m2m-pad);
+  padding: 10px 14px;
+  border-left: 3px solid var(--m2m-ok);
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-sunken);
+}
+.m2m-conta[data-ok="0"] { border-left-color: var(--m2m-err); }
+
+.m2m-mapa-grade { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: var(--m2m-gap); align-items: start; }
+.m2m-mapa-form { display: grid; gap: var(--m2m-gap); }
+.m2m-grupo { margin: 0; padding: 12px var(--m2m-pad) var(--m2m-pad); border: 1px solid var(--m2m-ln); border-radius: var(--m2m-raio-lg); display: grid; gap: 10px; align-content: start; }
+.m2m-grupo > legend { padding: 0 6px; font-size: var(--m2m-fs-base); font-weight: 650; color: var(--m2m-tx); }
+.m2m-grupo .m2m-form-grade { padding: 0; }
+.m2m-previa { position: sticky; top: 8px; padding: 12px var(--m2m-pad) var(--m2m-pad); border: 1px solid var(--m2m-ln); border-radius: var(--m2m-raio-lg); background: var(--m2m-sunken); }
+.m2m-previa .m2m-sub-t:first-child { margin-top: 0; }
+.m2m-previa-erros { margin: 0; padding-left: 1.1em; color: var(--m2m-err); }
+.m2m-amostras { display: grid; gap: 2px; }
+.m2m-caminhos-lista > summary { cursor: pointer; font-size: var(--m2m-fs-small); font-weight: 600; color: var(--m2m-tx-2); padding: 4px 0; }
+.m2m-reinterpretar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--m2m-ln-2); }
+
+/* Texto de apoio que não precisa estar sempre à vista: abre sob demanda. */
+.m2m-saiba-mais { padding: 0 var(--m2m-pad) var(--m2m-pad); }
+.m2m-saiba-mais > summary { cursor: pointer; width: fit-content; font-size: var(--m2m-fs-small); font-weight: 600; color: var(--text-link); }
+.m2m-saiba-mais > summary:hover { text-decoration: underline; }
+.m2m-saiba-mais[open] > summary { margin-bottom: 6px; }
+
+/* =========================================================
+   15. Gaveta da resposta completa
+   ========================================================= */
+.m2m-veu {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: color-mix(in srgb, var(--m2m-bg) 72%, transparent);
+}
+.m2m-veu[hidden] { display: none; }
+
+.m2m-gaveta {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9100;
+  width: min(680px, 100vw);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--m2m-ln-3);
+  background: var(--m2m-surface);
+  color: var(--m2m-tx);
+  font-family: var(--font-sans);
+  font-size: var(--m2m-fs-base);
+  line-height: var(--leading-snug);
+  animation: m2mGaveta 160ms var(--ease-apple-out);
+}
+.m2m-gaveta[hidden] { display: none; }
+@keyframes m2mGaveta { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.m2m-gaveta-cab { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--m2m-gap); padding: 14px var(--m2m-pad); border-bottom: 1px solid var(--m2m-ln); }
+.m2m-gaveta-cab h3 { font-size: var(--m2m-fs-lg); }
+.m2m-gaveta-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 0; border-bottom: 1px solid var(--m2m-ln-2); }
+.m2m-gaveta-meta > div { padding: 8px var(--m2m-pad); display: grid; gap: 2px; }
+.m2m-gaveta-meta dt { font-size: var(--m2m-fs-label); color: var(--m2m-tx-3); font-weight: 500; }
+.m2m-gaveta-meta dd { margin: 0; font-family: var(--font-mono); font-size: var(--m2m-fs-small); overflow-wrap: anywhere; }
+.m2m-gaveta-aviso { margin: 0; padding: 10px var(--m2m-pad); border-bottom: 1px solid var(--m2m-ln-2); border-left: 3px solid var(--m2m-warn); background: var(--m2m-warn-soft); font-size: var(--m2m-fs-base); }
+.m2m-json {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: var(--m2m-pad);
+  overflow: auto;
+  background: var(--m2m-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--m2m-fs-small);
+  line-height: 1.55;
+  white-space: pre;
+  tab-size: 2;
+}
+.m2m-gaveta-rodape { display: flex; flex-wrap: wrap; align-items: center; gap: 8px var(--m2m-gap); padding: 10px var(--m2m-pad); border-top: 1px solid var(--m2m-ln); }
+
+/* =========================================================
+   16. Aviso passageiro (toast)
+   ========================================================= */
+.m2m-toast-area {
+  position: fixed;
+  z-index: 9500;
+  right: var(--space-4);
+  bottom: calc(var(--space-4) + var(--safe-bottom));
+  display: grid;
+  gap: 8px;
+  width: min(380px, calc(100vw - 2 * var(--space-4)));
+  pointer-events: none;
+}
+.m2m-toast {
+  pointer-events: auto;
+  padding: 10px 14px;
+  border: 1px solid var(--m2m-ln-3);
+  border-left: 3px solid var(--m2m-tx-3);
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-surface);
+  box-shadow: var(--shadow-md);
+  color: var(--m2m-tx);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  animation: m2mToast 180ms var(--ease-apple-out);
+}
+.m2m-toast[data-tom="ok"] { border-left-color: var(--m2m-ok); }
+.m2m-toast[data-tom="aviso"] { border-left-color: var(--m2m-warn); }
+.m2m-toast[data-tom="erro"] { border-left-color: var(--m2m-err); }
+@keyframes m2mToast { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* =========================================================
+   17. Select2 na linguagem do módulo
+   =========================================================
+   Só com a classe `.m2m-s2`, passada em `containerCssClass` e
+   `dropdownCssClass`. A folha entra DEPOIS do CSS do CDN — invertida,
+   o CDN vence e nada daqui tem efeito (regra 26). */
+.select2-container.m2m-s2 { width: 100% !important; }
+.select2-container.m2m-s2 .select2-selection--single {
+  height: var(--m2m-h);
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--m2m-ln-3);
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-surface);
+}
+.select2-container.m2m-s2 .select2-selection--single .select2-selection__rendered {
+  padding: 0 24px 0 10px;
+  line-height: 1.2;
+  color: var(--m2m-tx);
+  font-size: var(--m2m-fs-base);
+}
+.select2-container.m2m-s2 .select2-selection--single .select2-selection__placeholder { color: var(--m2m-tx-4); }
+.select2-container.m2m-s2 .select2-selection--single .select2-selection__arrow { height: calc(var(--m2m-h) - 2px); }
+.select2-container.m2m-s2 .select2-selection--single .select2-selection__clear { color: var(--m2m-tx-3); margin-right: 6px; }
+.select2-container.m2m-s2.select2-container--focus .select2-selection--single,
+.select2-container.m2m-s2.select2-container--open .select2-selection--single { border-color: var(--m2m-a); }
+
+.select2-dropdown.m2m-s2 {
+  border: 1px solid var(--m2m-ln-3);
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-surface);
+  color: var(--m2m-tx);
+}
+.select2-dropdown.m2m-s2 .select2-search__field {
+  height: var(--m2m-h);
+  border: 1px solid var(--m2m-ln-3);
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-sunken);
+  color: var(--m2m-tx);
+  font-size: var(--m2m-fs-base);
+}
+.select2-dropdown.m2m-s2 .select2-results__option { padding: 7px 10px; font-size: var(--m2m-fs-base); color: var(--m2m-tx); }
+.select2-dropdown.m2m-s2 .select2-results__option--highlighted { background: var(--m2m-a-soft); color: var(--m2m-a); }
+.select2-dropdown.m2m-s2 .select2-results__option[aria-selected="true"] { background: var(--m2m-sunken); color: var(--m2m-tx); }
+.select2-dropdown.m2m-s2 .select2-results__message { color: var(--m2m-tx-3); }
+
+/* =========================================================
+   18. Status operacional — etiqueta neutra
+   =========================================================
+   O status do veículo (ativo, em manutenção, inativo, desativado) e a situação de uso do chip
+   (disponível, vinculado…) são DECISÃO DE GENTE, não leitura da API. Por isso têm vocabulário
+   próprio: uma etiqueta cinza com um ponto, SEM cor de estado. A conectividade já ocupa o verde,
+   o âmbar e o vermelho (seção 5), e as duas leituras nunca podem se confundir. A diferença entre
+   os status está na FORMA do ponto (cheio, anel, apagado) e no peso da tinta — nunca na matiz. */
+.m2m-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px 0 8px;
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-fill);
+  color: var(--m2m-tx);
+  font-size: var(--m2m-fs-small);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+.m2m-status::before {
+  content: "";
+  flex: 0 0 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--m2m-tx-2);
+}
+/* em serviço: ponto cheio e escuro */
+.m2m-status[data-status="ativo"],
+.m2m-status[data-status="vinculado"],
+.m2m-status[data-status="confirmada"] { color: var(--m2m-tx); }
+/* parado, pronto para uso: ponto em anel */
+.m2m-status[data-status="disponivel"] { color: var(--m2m-tx-2); }
+.m2m-status[data-status="disponivel"]::before { background: transparent; border: 1.5px solid var(--m2m-tx-2); }
+/* em intervenção: ponto pela metade */
+.m2m-status[data-status="manutencao"],
+.m2m-status[data-status="previa"] { color: var(--m2m-tx); }
+.m2m-status[data-status="manutencao"]::before,
+.m2m-status[data-status="previa"]::before { background: transparent; border: 1.5px solid var(--m2m-tx-2); border-bottom-color: transparent; }
+/* fora de operação: tinta clara */
+.m2m-status[data-status="inativo"] { color: var(--m2m-tx-3); }
+.m2m-status[data-status="inativo"]::before { background: var(--m2m-tx-4); }
+/* aposentado: tinta clara e riscado */
+.m2m-status[data-status="desativado"],
+.m2m-status[data-status="cancelada"] { color: var(--m2m-tx-4); text-decoration: line-through; }
+.m2m-status[data-status="desativado"]::before,
+.m2m-status[data-status="cancelada"]::before { background: transparent; border: 1px solid var(--m2m-tx-4); }
+
+/* =========================================================
+   19. Frota: conectividade do veículo e listas curtas
+   ========================================================= */
+.m2m-obrig { color: var(--m2m-err); margin-left: 2px; }
+
+/* conectividade do veículo: um bloco por chip, lado a lado quando cabem */
+.m2m-chip-blocos { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1px; background: var(--m2m-ln-2); }
+.m2m-chip-bloco { display: grid; gap: 8px; align-content: start; padding: var(--m2m-pad); background: var(--m2m-surface); }
+.m2m-chip-bloco-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.m2m-chip-bloco-cab .m2m-link-forte { margin-right: 4px; }
+
+.m2m-lista-linhas { list-style: none; margin: 0; padding: 0; }
+.m2m-lista-linhas > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  padding: 10px var(--m2m-pad);
+  border-bottom: 1px solid var(--m2m-ln-2);
+}
+.m2m-lista-linhas > li:last-child { border-bottom: 0; }
+.m2m-lista-fim { margin-left: auto; }
+.m2m-painel-t-n { font-family: var(--font-mono); font-size: var(--m2m-fs-small); font-weight: 600; color: var(--m2m-tx-3); }
+
+/* uma mudança de status ou de vínculo, lida numa frase */
+.m2m-par { display: grid; gap: 2px; }
+.m2m-par > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.m2m-par-papel { font-size: var(--m2m-fs-label); color: var(--m2m-tx-3); font-weight: 500; }
+.m2m-vazio-linha { color: var(--m2m-tx-4); }
+.m2m-tabela td.m2m-largo { white-space: normal; min-width: 16rem; }
+.m2m-motivos { margin: 0; padding-left: 1.1em; }
+.m2m-motivos--erro { color: var(--m2m-err); }
+
+/* =========================================================
+   20. Diálogo de movimentação (vincular, desvincular, transferir…)
+   =========================================================
+   Mesma família da gaveta (`.m2m-modal`): o JS leva o diálogo e o véu para o <body>, porque
+   `position: fixed` dentro do conteúdo ancora no contêiner animado da página. Todo diálogo pede o
+   MOTIVO — a movimentação é histórico imutável — e mostra o erro do servidor dentro dele, sem fechar:
+   o caso importante é "este chip já foi desvinculado por fulano em 12/11 14:05". */
+.m2m-dialogo {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  z-index: 9100;
+  width: min(520px, calc(100vw - 2 * var(--space-4)));
+  height: fit-content;
+  max-height: calc(100vh - 2 * var(--space-4));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--m2m-ln-3);
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-surface);
+  box-shadow: var(--shadow-lg);
+  color: var(--m2m-tx);
+  font-family: var(--font-sans);
+  font-size: var(--m2m-fs-base);
+  line-height: var(--leading-snug);
+  animation: m2mDialogo 140ms var(--ease-apple-out);
+}
+.m2m-dialogo[hidden] { display: none; }
+@keyframes m2mDialogo { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.m2m-dialogo-form { display: flex; flex-direction: column; min-height: 0; margin: 0; }
+.m2m-dialogo-cab { display: flex; align-items: center; justify-content: space-between; gap: var(--m2m-gap); padding: 14px var(--m2m-pad); border-bottom: 1px solid var(--m2m-ln); }
+.m2m-dialogo-cab h3 { margin: 0; font-size: var(--m2m-fs-lg); font-weight: 650; }
+.m2m-dialogo-corpo { display: grid; gap: 14px; padding: var(--m2m-pad); align-content: start; overflow-y: auto; }
+.m2m-dialogo-alvo { margin: 0; padding: 8px 12px; border-radius: var(--m2m-raio); background: var(--m2m-sunken); color: var(--m2m-tx-2); }
+.m2m-dialogo-alvo:empty { display: none; }
+.m2m-dialogo-rodape { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px var(--m2m-pad); border-top: 1px solid var(--m2m-ln); }
+.m2m-dialogo-erro { margin: 0; padding: 10px 12px; border-left: 3px solid var(--m2m-err); border-radius: var(--m2m-raio); background: var(--m2m-err-soft); color: var(--m2m-tx); }
+.m2m-dialogo-erro[hidden] { display: none; }
+
+/* O dialogo mora fora do `.m2m-page` (o JS o leva para o <body>): as regras que o módulo aplica
+   aos campos por `.m2m-page .m2m-campo` precisam valer aqui também. */
+.m2m-modal .m2m-campo { min-height: 0; box-shadow: none; }
+.m2m-modal .m2m-campo:hover { border-color: var(--m2m-ln-3); }
+.m2m-modal .m2m-campo:focus { border-color: var(--m2m-a); box-shadow: none; }
+.m2m-modal .m2m-campo[aria-invalid="true"] { border-color: var(--m2m-err); background: var(--m2m-surface); box-shadow: none; }
+.m2m-modal .m2m-btn.is-carregando { color: transparent !important; }
+.m2m-modal .m2m-btn.is-carregando::after { border-color: var(--m2m-tx-2); border-top-color: transparent; }
+.m2m-modal .m2m-btn--primario.is-carregando::after { border-color: var(--text-inverted); border-top-color: transparent; }
+
+/* =========================================================
+   21. Importação de chips: as quatro etapas
+   =========================================================
+   Um passo a passo horizontal: o número em um círculo, o nome do passo e o que
+   ele pede. O passo atual leva a cor da marca; os feitos, um traço cheio. */
+.m2m-etapas {
+  list-style: none;
+  margin: 0;
+  padding: 14px var(--m2m-pad);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  counter-reset: etapa;
+  gap: var(--m2m-gap);
+  border: 1px solid var(--m2m-ln);
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-surface);
+}
+.m2m-etapas > li {
+  counter-increment: etapa;
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  align-items: center;
+  color: var(--m2m-tx-3);
+}
+.m2m-etapas > li::before {
+  content: counter(etapa);
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid var(--m2m-ln-3);
+  border-radius: 50%;
+  background: var(--m2m-surface);
+  font-family: var(--font-mono);
+  font-size: var(--m2m-fs-small);
+  font-weight: 600;
+  color: var(--m2m-tx-3);
+}
+.m2m-etapas > li > b { color: var(--m2m-tx-2); font-weight: 600; line-height: 1.3; }
+.m2m-etapas > li > .m2m-sub { line-height: 1.3; }
+.m2m-etapas > li[aria-current="step"]::before { border-color: var(--m2m-a); background: var(--m2m-a); color: var(--text-inverted); }
+.m2m-etapas > li[aria-current="step"] > b { color: var(--m2m-tx); }
+.m2m-etapas > li.is-feita::before { content: "\2713"; border-color: var(--m2m-ok); background: var(--m2m-ok-soft); color: var(--m2m-ok); }
+.m2m-etapas > li.is-feita > b { color: var(--m2m-tx); }
+
+.m2m-envio { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px var(--m2m-gap); padding: var(--m2m-pad); }
+.m2m-envio > .m2m-rotulo { flex: 1 1 320px; }
+.m2m-campo--arquivo { height: auto; min-height: var(--m2m-h); padding: 3px 6px; }
+.m2m-campo--arquivo::file-selector-button {
+  margin-right: 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--m2m-ln-3);
+  border-radius: 4px;
+  background: var(--m2m-sunken);
+  color: var(--m2m-tx-2);
+  font: inherit;
+  font-size: var(--m2m-fs-small);
+  cursor: pointer;
+}
+.m2m-previa-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px var(--m2m-pad); border-top: 1px solid var(--m2m-ln-2); }
+.m2m-previa-acoes form { margin: 0; }
+
+/* =========================================================
+   22. Configuração: tipos, operadoras e regras de alerta
+   ========================================================= */
+.m2m-cfg-linha {
+  display: grid;
+  grid-template-columns: minmax(200px, 2fr) minmax(150px, 1fr) minmax(120px, 0.7fr) auto;
+  gap: 8px var(--m2m-gap);
+  align-items: end;
+  padding: 12px var(--m2m-pad);
+  border-bottom: 1px solid var(--m2m-ln-2);
+  margin: 0;
+}
+.m2m-cfg-linha:last-child { border-bottom: 0; }
+.m2m-cfg-linha--novo { background: var(--m2m-sunken); border-bottom: 1px solid var(--m2m-ln); }
+.m2m-cfg-linha .m2m-check { min-height: var(--m2m-h); }
+.m2m-regra-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.m2m-regra-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px var(--m2m-gap);
+  align-items: start;
+  padding: var(--m2m-pad);
+}
+.m2m-regra-grade .m2m-rotulo--largo { grid-column: 1 / -1; }
+.m2m-campo--multi { height: auto; min-height: 96px; padding: 4px; }
+
+/* =========================================================
+   23. Visão geral: resumo, configuração inicial e área de atenção
+   ========================================================= */
+.m2m-bloco-t { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+
+/* Configuração inicial: um checklist recolhível. Aberto enquanto falta etapa;
+   quando tudo está feito, vira uma linha discreta (o `<details>` vem fechado). */
+.m2m-config-ini { border: 1px solid var(--m2m-ln); border-radius: var(--m2m-raio-lg); background: var(--m2m-surface); }
+.m2m-config-ini > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--m2m-gap);
+  padding: 12px var(--m2m-pad);
+  cursor: pointer;
+  list-style: none;
+}
+.m2m-config-ini > summary::-webkit-details-marker { display: none; }
+.m2m-config-ini > summary::after {
+  content: "";
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  margin: -3px 4px 0 auto;
+  border-right: 2px solid var(--m2m-tx-3);
+  border-bottom: 2px solid var(--m2m-tx-3);
+  transform: rotate(45deg);
+  transition: transform var(--m2m-transicao);
+}
+.m2m-config-ini[open] > summary::after { margin-top: 3px; transform: rotate(225deg); }
+.m2m-config-ini-t { font-size: var(--m2m-fs-titulo); font-weight: 650; }
+.m2m-config-ini-n { font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); }
+.m2m-config-ini-barra { flex: 0 1 160px; }
+.m2m-config-ini[data-completo="1"] > summary { padding: 10px var(--m2m-pad); }
+.m2m-config-ini[data-completo="1"] .m2m-config-ini-t { font-size: var(--m2m-fs-base); font-weight: 550; color: var(--m2m-tx-2); }
+.m2m-config-ini[data-completo="1"] .m2m-config-ini-t i { color: var(--m2m-ok); margin-right: 4px; }
+
+.m2m-passos { list-style: none; margin: 0; padding: 0 0 6px; border-top: 1px solid var(--m2m-ln-2); }
+.m2m-passos li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 40px;
+  padding: 6px var(--m2m-pad);
+}
+.m2m-passo-marca {
+  display: grid;
+  place-items: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--m2m-ln-3);
+  border-radius: 50%;
+  font-size: var(--m2m-fs-micro);
+}
+.m2m-passos li.is-feito .m2m-passo-marca { border-color: var(--m2m-ok); background: var(--m2m-ok); color: var(--text-inverted); }
+.m2m-passos li.is-feito .m2m-passo-rotulo { color: var(--m2m-tx-3); text-decoration: line-through; text-decoration-color: var(--m2m-tx-4); }
+.m2m-passo-rotulo { color: var(--m2m-tx); font-weight: 500; }
+.m2m-passo-acoes { margin-left: auto; display: flex; gap: 6px; }
+
+/* Área de atenção: UM cartão, com um grupo por tipo de pendência e só os grupos
+   que têm ocorrência. Sem pendência nenhuma, uma linha de texto (`.m2m-tudo-certo`). */
+.m2m-aten-grupo { border-top: 1px solid var(--m2m-ln-2); }
+.m2m-aten-grupo:first-of-type { border-top: 0; }
+.m2m-aten-cab {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 10px var(--m2m-pad) 2px;
+}
+.m2m-aten-t { font-weight: 650; color: var(--m2m-tx); }
+.m2m-aten-cab:last-child { padding-bottom: 12px; }
+.m2m-aten-cab .m2m-painel-link { margin-left: auto; }
+.m2m-aten-grupo .m2m-lista-linhas > li { padding: 5px var(--m2m-pad) 5px calc(var(--m2m-pad) + 18px); border-bottom: 0; }
+.m2m-aten-grupo .m2m-lista-linhas { padding-bottom: 8px; }
+
+/* =========================================================
+   23b. Migalha, seções do detalhe e menu "Movimentar"
+   ========================================================= */
+/* O caminho de volta nas páginas de detalhe e de importação. */
+.m2m-migalha {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: var(--m2m-fs-small);
+  font-weight: 600;
+  color: var(--m2m-tx-3) !important;
+}
+.m2m-migalha:hover { color: var(--m2m-a) !important; text-decoration: none; }
+
+/* As seções do detalhe: empilhadas sem JS, uma por vez com as abas. */
+.m2m-secoes { display: grid; gap: var(--m2m-gap); align-content: start; }
+
+/* Menu de ações pouco frequentes: um botão que abre uma lista. */
+.m2m-menu { position: relative; }
+.m2m-menu > summary { list-style: none; user-select: none; }
+.m2m-menu > summary::-webkit-details-marker { display: none; }
+.m2m-menu[open] > summary { background: var(--m2m-hover); }
+.m2m-menu > summary i { font-size: var(--m2m-fs-micro); }
+.m2m-menu-lista {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 240px;
+  display: grid;
+  padding: 4px;
+  border: 1px solid var(--m2m-ln-3);
+  border-radius: var(--m2m-raio-lg);
+  background: var(--m2m-surface);
+  box-shadow: var(--shadow-md);
+}
+.m2m-menu-lista button {
+  appearance: none;
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--m2m-raio);
+  background: transparent;
+  color: var(--m2m-tx);
+  font: inherit;
+  font-size: var(--m2m-fs-base);
+  text-align: left;
+  cursor: pointer;
+}
+.m2m-menu-lista button:hover { background: var(--m2m-hover); }
+.m2m-menu-lista .m2m-menu-perigo { color: var(--m2m-err); }
+.m2m-menu-lista .m2m-menu-perigo:hover { background: var(--m2m-err-soft); }
+
+.m2m-saiba-mais--topo { border-top: 1px solid var(--m2m-ln-2); padding-top: 10px; }
+
+/* =========================================================
+   24. Tablet e celular
+   ========================================================= */
+@media (max-width: 1100px) {
+  .m2m-abas { flex-wrap: wrap; }
+  .m2m-abas-fim { margin-left: 0; }
+  .m2m-abas-sep { display: none; }
+  .m2m-grade--2,
+  .m2m-grade--detalhe,
+  .m2m-consumo-corpo,
+  .m2m-mapa-grade { grid-template-columns: minmax(0, 1fr); }
+  .m2m-previa { position: static; }
+  .m2m-filtros-grade--cmp { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
+  .m2m-filtros-grade--consumo { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+  .m2m-chip-acoes { margin-left: 0; }
+  .m2m-etapas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .m2m-cfg-linha { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Abaixo de 760px a linha da tabela vira CARTÃO: cada célula mostra o próprio
+   rótulo (`data-rotulo`) antes do valor. A tabela não some — a regra 24 existe
+   porque um `display: none` seco apagava o conteúdo no telefone. O cabeçalho fica
+   só para leitor de tela. */
+@media (max-width: 759px) {
+  .m2m-page { gap: 12px; }
+  /* A barra do módulo rola na horizontal, sem espremer os itens; o alvo de toque cresce. */
+  .m2m-abas { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; }
+  .m2m-abas-sep { display: block; flex: 0 0 1px; }
+  .m2m-abas::-webkit-scrollbar { display: none; }
+  .m2m-abas a { height: 40px; scroll-snap-align: start; }
+  .m2m-abas-grupo, .m2m-abas-fim { flex: 0 0 auto; }
+  .m2m-abas-fim { margin-left: 0; }
+  .m2m-faixa { gap: 4px 14px; }
+  .m2m-faixa-item--lateral { display: none; }
+
+  .m2m-page .page-header { align-items: stretch; }
+  .m2m-cab-acoes { width: 100%; }
+  .m2m-cab-acoes > .m2m-btn { flex: 1 1 auto; }
+  .m2m-barra-fim { margin-left: 0; width: 100%; justify-content: space-between; }
+  .m2m-regua { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .m2m-etapas { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .m2m-resumo-acoes { width: 100%; }
+  .m2m-resumo-acoes > .m2m-btn { flex: 1 1 auto; }
+
+  .m2m-tabela-wrap { overflow-x: visible; border: 0; background: transparent; }
+  .m2m-tabela,
+  .m2m-tabela tbody,
+  .m2m-tabela tfoot,
+  .m2m-tabela tr,
+  .m2m-tabela td,
+  .m2m-tabela th[scope="row"] { display: block; min-width: 0; width: 100%; }
+  .m2m-tabela--chips,
+  .m2m-tabela--veiculos { min-width: 0; }
+  .m2m-tabela thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .m2m-tabela tr {
+    margin: 0 0 10px;
+    padding: 6px 0;
+    border: 1px solid var(--m2m-ln);
+    border-radius: var(--m2m-raio-lg);
+    background: var(--m2m-surface);
+  }
+  .m2m-tabela td {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    height: auto;
+    padding: 5px var(--m2m-pad);
+    border: 0;
+    text-align: left !important;
+    white-space: normal;
+  }
+  .m2m-tabela tbody tr:last-child td { border-bottom: 0; }
+  .m2m-tabela td::before {
+    content: attr(data-rotulo);
+    font-size: var(--m2m-fs-label);
+    color: var(--m2m-tx-3);
+    font-weight: 500;
+    flex: 0 0 8.5rem;
+  }
+  .m2m-tabela td:not([data-rotulo])::before { content: none; }
+  .m2m-tabela td:first-child { border-left: 0; padding-left: var(--m2m-pad); }
+  .m2m-tabela--chips td:first-child,
+  .m2m-tabela--veiculos td:first-child { position: static; }
+  .m2m-tabela td.m2m-quebra,
+  .m2m-tabela td.m2m-largo { min-width: 0; }
+  .m2m-tabela tr[data-sem-chip="1"] { border-left: 3px solid var(--m2m-warn); }
+  .m2m-cfg-linha { grid-template-columns: minmax(0, 1fr); }
+  .m2m-dialogo { width: calc(100vw - 2 * var(--space-3)); }
+  .m2m-dialogo-rodape > .m2m-btn { flex: 1 1 auto; }
+  .m2m-tabela tr[data-alerta="1"] { border-left: 3px solid var(--m2m-warn); }
+  .m2m-tabela tr[data-situacao="erro_consulta"] { border-left: 3px solid var(--m2m-err); }
+  .m2m-tabela tr[data-situacao="desatualizado"] { border-left: 3px solid var(--m2m-warn); }
+  .m2m-tabela td .m2m-sub,
+  .m2m-tabela td .m2m-frescor { margin-left: 0; }
+  .m2m-corta, .m2m-corta--media, .m2m-corta--larga, .m2m-corta.m2m-sub { max-width: none; white-space: normal; }
+  .m2m-c-nome { max-width: none; }
+  .m2m-acoes { text-align: left; }
+
+  .m2m-tempo > li { grid-template-columns: var(--m2m-forma) minmax(0, 1fr); }
+  .m2m-tempo-quando { grid-column: 1 / -1; }
+  .m2m-eventos > li { grid-template-columns: minmax(0, 1fr); }
+  .m2m-ocorrencia > details > summary { grid-template-columns: minmax(0, 1fr) auto; }
+  .m2m-segmentos-nota { margin-left: 0; width: 100%; padding: 4px 0; }
+  .m2m-filtros-grade--cmp { grid-template-columns: minmax(0, 1fr); }
+  .m2m-gaveta { width: 100vw; }
+  .m2m-campo-composto { grid-template-columns: minmax(0, 1fr) 90px; }
+  .m2m-vazio-acoes { width: 100%; justify-content: stretch; }
+  .m2m-vazio-acoes > .m2m-btn { flex: 1 1 auto; }
+  .m2m-passo-acoes { margin-left: 32px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m2m-gaveta, .m2m-toast, .m2m-dialogo { animation: none; }
+  .m2m-config-ini > summary::after { transition: none; }
+}

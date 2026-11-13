@@ -55,7 +55,42 @@
 # 2026-10-14d: auth.css — o reset `.au-page button { color: inherit }`
 # vencia por especificidade a cor própria de `.btn-login` e deixava o
 # texto do botão branco sobre fundo branco no tema escuro.
-ASSETS_VERSION = "20261019c"
+# 2026-10-29: módulo de Contratações — nova folha ds-contratacoes.css
+# (.ctr-*, linguagem visual da Meta) e item "Contratações" no submenu Pessoas.
+# 2026-10-29c: acesso restrito (Portal de Contratacoes / Consulta Quiosque)
+# -- ds-contratacoes.css passou a estilizar input[type=email] e
+# input[type=password], que a tela de Acessos restritos usa. Sem subir aqui,
+# os dois campos abrem no desenho padrao do navegador ao lado dos vizinhos.
+# 2026-10-30: licenças de Contratações — busca com Select2 em vez de
+# <select multiple>, e linha de "usuário espelho" por licença marcada
+# (.ctr-licencas-espelhos / .ctr-licenca-espelho, novas em ds-contratacoes.css).
+# 2026-10-30b: Contratações trocou a linguagem visual da Meta pela do
+# Microsoft Planner (violeta #5b5fc7, botão em pílula, coluna sem cartão,
+# círculo de conclusão) e sistema+licença viraram UMA lista (.ctr-acesso*,
+# .ctr-tag, .ctr-busca). Sem subir aqui, o navegador serve a folha azul
+# antiga por cima do HTML novo e a tela abre com metade dos componentes
+# sem estilo — HTTP 200, nada no console.
+# 2026-11-09b: ds-contratacoes.css — fila "pedir estrutura" do painel (.ctr-fila*)
+# e aviso com botão no detalhe da vaga (.ctr-aviso-acao). Sem subir aqui, o RH
+# vê a fila como lista sem moldura e o botão do aviso colado ao texto.
+# 2026-11-09c: ds-contratacoes.css — conversa dos chamados (.ctr-msg*, .ctr-anexo*,
+# .ctr-resposta), lista de chamados (.ctr-grupo*, .ctr-chamado-linha*) e janelas
+# do preenchimento da vaga. Sem subir aqui, a conversa abre como texto corrido
+# sem balões nem lados (RH/TI), o que não dá erro — só some a leitura.
+# 2026-11-11: Monitoramento TIM M2M — folha NOVA ds-m2m.css (.m2m-*) e script NOVO
+# m2m.js. Sem subir aqui, quem já tem a página em cache não recebe nenhum dos
+# dois e as sete telas abrem sem estilo e sem os botões de atualizar (HTTP 200,
+# nenhum erro no servidor).
+# 2026-11-13: Ambientes Zelo TI / Zelo Agro — tokens.css (bloco do Agro, verde),
+# base.css (seletor de ambiente na barra superior) e ds-m2m.css (abas por seção).
+# Sem subir aqui, o Agro abre com o violeta do TI e o seletor sem moldura.
+# 2026-11-13b: base.css — menu lateral VERDE no Zelo Agro (todos os estados).
+# 2026-11-13c: base.css — menu lateral AZUL no Zelo TI (todos os estados).
+# 2026-11-13e: ds-agro.css + agro.js (estoque tecnologico do Agro: equipamentos, materiais, catalogo).
+# 2026-11-13d: base.css — azul do menu do TI mais claro (#1e40af); equipamento-detalhe.css — Voltar/QR/Editar saem da barra superior para o cartão do ativo.
+# 2026-11-13f: ds-agro.css — "Ja passaram por esta maquina" (.m2m-passado) na composicao tecnologica do veiculo.
+# 2026-11-13g: ds-agro.css — grupo de acoes do cabecalho do painel (.m2m-painel-acoes: Instalar equipamento, Aplicar material).
+ASSETS_VERSION = "20261113g"
 
 
 def assets(request):
@@ -97,9 +132,13 @@ def notificacoes(request):
                 "notificacoes_nao_lidas": nao_lidas,
                 "notif_marcar_url": "portal_notificacoes_marcar_lidas",
             }
-        # Interno/TI: todas.
-        recentes = _prep(Notificacao.objects.all()[:12], portal=False)
-        nao_lidas = Notificacao.objects.filter(lida=False).count()
+        # Interno: as do ambiente da tela (Zelo TI ou Zelo Agro) — o sino não
+        # mistura os dois. Ver `ambiente_service.notificacoes_do_ambiente`.
+        from services.ambiente_service import notificacoes_do_ambiente
+        chave = getattr(request, "ambiente", None) or "ti"
+        base = notificacoes_do_ambiente(Notificacao.objects.all(), chave)
+        recentes = _prep(base[:12], portal=False)
+        nao_lidas = base.filter(lida=False).count()
         return {
             "notificacoes_recentes": recentes,
             "notificacoes_nao_lidas": nao_lidas,
@@ -185,3 +224,47 @@ def perfil_acesso(request):
         # O chip não pode derrubar a tela: sem o contexto, o template cai no
         # rótulo neutro do `{% if %}`.
         return {}
+
+
+def acesso_restrito(request):
+    """
+    Perfil de acesso restrito do usuário (Portal de Contratações / Consulta
+    Quiosque) + as capacidades que os templates consultam.
+
+    A régua é `services/acesso_restrito_service.py` — fonte única das três
+    camadas. Aqui é só o encanamento até o template.
+
+    Falha em silêncio com as capacidades em `True`: o padrão tem de ser o do
+    usuário interno, que é quem abre 99% das telas. Um erro aqui não pode
+    esconder botão de quem tem direito a ele — e também não libera nada, porque
+    quem autoriza de verdade é o middleware + o decorador.
+    """
+    try:
+        from services.acesso_restrito_service import contexto_restrito
+        return contexto_restrito(request)
+    except Exception:
+        return {
+            "acesso_restrito": None,
+            "pode_gerenciar_contratacao": True,
+            "pode_gerenciar_quiosque": True,
+            "pode_solicitar_estrutura": True,
+            "pode_preencher_vaga": True,
+            "pode_acompanhar_chamados": True,
+        }
+
+
+def ambiente(request):
+    """
+    Ambiente da vez (Zelo TI / Zelo Agro), os ambientes que o usuário alcança
+    (seletor da barra superior) e o menu lateral do Agro.
+
+    A régua é `services/ambiente_service.py`; aqui é só o encanamento. Falha em
+    silêncio para o TI, que é o padrão de todo usuário interno: um erro aqui
+    não pode derrubar a tela — e também não libera nada, porque quem autoriza
+    é o `AmbienteMiddleware` + o decorador da view.
+    """
+    try:
+        from services.ambiente_service import contexto
+        return contexto(request)
+    except Exception:
+        return {"ambiente_atual": None, "ambientes_disponiveis": (), "nav_ambiente": ()}

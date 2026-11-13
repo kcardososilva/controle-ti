@@ -11,6 +11,7 @@ from django.core.paginator import Paginator
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.template.loader import get_template, render_to_string
+from django.urls import reverse
 from django.utils import timezone
 from xhtml2pdf import pisa
 
@@ -414,6 +415,38 @@ def movimentacao_create(request):
                         )
 
                 messages.success(request, "Movimentação realizada com sucesso." + aviso_desligamento)
+
+                # Equipamento que estava reservado para uma vaga: a entrega ao
+                # colaborador fecha a reserva; qualquer outro uso a cede e leva o TI
+                # à vaga, onde ele repõe a reserva (ou vê a pendência).
+                resultado_reserva = getattr(mov, "reserva_resultado", None)
+                if resultado_reserva is not None:
+                    reserva = resultado_reserva.reserva
+                    if resultado_reserva.tipo == "entrega":
+                        messages.success(
+                            request,
+                            f"Reserva concluída: {reserva.item_rotulo} entregue para {reserva.vaga_rotulo}.",
+                        )
+                    elif reserva.contratacao_id:
+                        if resultado_reserva.candidatos:
+                            messages.warning(
+                                request,
+                                f"O equipamento estava reservado para {reserva.vaga_rotulo}. Há "
+                                f"{resultado_reserva.candidatos} equipamento(s) do mesmo tipo em Backup — "
+                                "reserve um substituto para a vaga.",
+                            )
+                        else:
+                            messages.warning(
+                                request,
+                                f"O equipamento estava reservado para {reserva.vaga_rotulo} e não há "
+                                "outro do mesmo tipo em Backup. A vaga ficou pendente de equipamento"
+                                + (" e o alerta por e-mail foi enviado." if resultado_reserva.alerta_disparado
+                                   else "."),
+                            )
+                        return redirect(
+                            reverse("contratacao_detail", args=[reserva.contratacao_id])
+                            + f"?reposicao={reserva.pk}#reservas"
+                        )
                 return redirect("movimentacao_list")
 
             except ValidationError as e:
@@ -620,6 +653,33 @@ def api_lotes_por_item(request):
         })
 
     return JsonResponse({"results": results})
+
+
+@login_required
+def api_item_reserva(request):
+    """AJAX — o item está RESERVADO para uma vaga? O formulário de Movimentação
+    chama ao escolher o equipamento para avisar, na hora, que usá-lo o tira de
+    uma contratação (e abrir os campos de confirmação e justificativa).
+
+    Só devolve o que o aviso precisa: a vaga e o colaborador da reserva. O
+    service é quem impõe a regra — isto é conforto, não autorização."""
+    item_id = request.GET.get("item", "")
+    if not item_id.isdigit():
+        return JsonResponse({"reservado": False})
+
+    from services import reserva_equipamento_service as reservas
+
+    item = Item.objects.filter(pk=int(item_id)).first()
+    reserva = reservas.reserva_ativa_do_item(item) if item is not None else None
+    if reserva is None:
+        return JsonResponse({"reservado": False})
+    return JsonResponse({
+        "reservado": True,
+        "vaga": reserva.vaga_rotulo,
+        "vaga_url": reverse("contratacao_detail", args=[reserva.contratacao_id]) if reserva.contratacao_id else "",
+        "colaborador": reserva.colaborador.nome if reserva.colaborador_id else "",
+        "colaborador_id": reserva.colaborador_id or "",
+    })
 
 
 @login_required

@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+{% load static tec_tags %}
+
+{% block title %}Materiais — Estoque tecnológico — Zelo Agro{% endblock %}
+{% block page_title %}Estoque tecnológico{% endblock %}
+{% block page_subtitle %}Materiais por quantidade{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page">
+  {% if pode_cadastrar %}{% url 'tec_material_entrada_nova' as u_entrada %}{% endif %}
+  {% include 'front/agro/tec/_topo.html' with titulo="Materiais" descricao="Cabos, conectores, fontes, baterias e acessórios: aqui importa o saldo, não cada peça." acao_url=u_entrada acao_rotulo="Nova entrada" acao_icone="fa-plus" %}
+
+  {% if total_geral %}
+  <nav class="m2m-segmentos m2m-segmentos--grande" aria-label="Materiais em falta">
+    {% for s in segmentos %}<a href="{{ s.url }}" {% if s.ativo %}class="is-ativa" aria-current="true"{% endif %}><span>{{ s.rotulo }}</span> <b class="m2m-num">{{ s.n }}</b></a>{% endfor %}
+  </nav>
+  {% endif %}
+
+  {% firstof filtros.fabricante filtros.categoria filtros.grupo filtros.local as avancado %}
+  <form class="m2m-filtros" method="get" role="search">
+    {% if filtros.abaixo_minimo %}<input type="hidden" name="abaixo_minimo" value="{{ filtros.abaixo_minimo }}">{% endif %}
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="f-q">Buscar material</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="f-q" name="q" value="{{ filtros.q }}" class="m2m-campo" data-agro-busca placeholder="Buscar por modelo, fabricante ou categoria" autocomplete="off">
+      </div>
+      <button type="button" class="m2m-btn m2m-filtros-botao" data-agro-filtros="agro-filtros-painel" aria-expanded="{% if avancado %}true{% else %}false{% endif %}" aria-controls="agro-filtros-painel"><i class="fa-solid fa-sliders" aria-hidden="true"></i>Filtros</button>
+      <span class="m2m-contagem-lista m2m-num">{% if page_obj.paginator.count != total_geral %}{{ page_obj.paginator.count }} de {{ total_geral }}{% else %}{{ total_geral }}{% endif %} material{{ total_geral|pluralize:"l,is" }}</span>
+    </div>
+    <div class="m2m-filtros-mais" id="agro-filtros-painel" {% if not avancado %}hidden{% endif %}>
+      <div class="m2m-filtros-grade">
+        <label class="m2m-rotulo"><span>Fabricante</span>
+          <select name="fabricante" class="m2m-campo" data-agro-auto>
+            <option value="">Todos</option>
+            {% for pk, nome in opcoes.fabricantes %}<option value="{{ pk }}" {% if filtros.fabricante == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Grupo</span>
+          <select name="grupo" class="m2m-campo" data-agro-auto>
+            <option value="">Todos</option>
+            {% for valor, rotulo in opcoes.grupos %}<option value="{{ valor }}" {% if filtros.grupo == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Categoria</span>
+          <select name="categoria" class="m2m-campo" data-agro-auto>
+            <option value="">Todas</option>
+            {% for pk, nome in opcoes.categorias %}<option value="{{ pk }}" {% if filtros.categoria == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Com saldo em</span>
+          <select name="local" class="m2m-campo" data-agro-auto>
+            <option value="">Qualquer local</option>
+            {% for pk, nome in opcoes.locais %}<option value="{{ pk }}" {% if filtros.local == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="m2m-filtros-acoes">
+        <button type="submit" class="m2m-btn m2m-btn--primario">Aplicar filtros</button>
+        <a class="m2m-btn" href="{% url 'tec_materiais' %}">Limpar</a>
+      </div>
+    </div>
+  </form>
+
+  {% if filtros_ativos %}
+  <ul class="m2m-filtros-ativos" aria-label="Filtros em uso">
+    {% for f in filtros_ativos %}
+    <li class="m2m-etiqueta">{{ f.rotulo }} <a href="{{ f.remover }}" aria-label="Remover o filtro {{ f.rotulo }}" title="Remover o filtro">&times;</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if materiais %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela">
+      <thead>
+        <tr><th>Material</th><th>Categoria</th><th class="agro-num">Saldo</th><th class="agro-num">Mínimo</th><th>Locais</th><th><span class="m2m-sr">Ações</span></th></tr>
+      </thead>
+      <tbody>
+        {% for m in materiais %}
+        <tr class="m2m-linha"{% if m.estoque_minimo > 0 and m.total < m.estoque_minimo %} data-tom="atencao"{% endif %}>
+          <td class="m2m-c-nome" data-rotulo="Material">
+            <span class="m2m-ident">
+              <a class="m2m-link-forte m2m-corta m2m-corta--larga" href="{% url 'tec_material_detalhe' m.pk %}">{{ m.nome }}</a>
+              <span class="m2m-ident-cod">{{ m.fabricante.nome }}</span>
+            </span>
+          </td>
+          <td data-rotulo="Categoria"><span class="m2m-corta m2m-corta--media">{{ m.categoria.nome }}</span></td>
+          <td class="agro-num m2m-num" data-rotulo="Saldo">{{ m.total|qtd }} <span class="m2m-sub">{{ m.unidade.sigla }}</span>{% if m.estoque_minimo > 0 and m.total < m.estoque_minimo %} <span class="m2m-etiqueta agro-etiqueta-falta" title="Abaixo do estoque mínimo">em falta</span>{% endif %}</td>
+          <td class="agro-num m2m-num" data-rotulo="Mínimo">{% if m.estoque_minimo > 0 %}{{ m.estoque_minimo|qtd }}{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+          <td class="m2m-num" data-rotulo="Locais">{% if m.n_locais %}{{ m.n_locais }}{% else %}<span class="m2m-sub">sem saldo</span>{% endif %}</td>
+          <td class="m2m-acoes" data-rotulo="Ações">
+            <a class="m2m-btn m2m-btn--sm" href="{% url 'tec_material_detalhe' m.pk %}">Saldo por local</a>
+            {% if pode_cadastrar %}<a class="m2m-btn m2m-btn--sm m2m-btn--fantasma" href="{% url 'tec_material_entrada' m.pk %}">Entrada</a>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% elif total_geral == 0 %}
+    {% if pode_catalogo %}{% url 'tec_catalogo_novo' 'modelos' as u_cadastrar %}{% endif %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-boxes-stacked" titulo="Nenhum material cadastrado" texto="Cadastre no catálogo um modelo com controle por quantidade (cabo, conector, fonte…) e dê entrada no estoque." acao_url=u_cadastrar acao_rotulo="Cadastrar um modelo" acao_primaria=True only %}
+  {% else %}
+    {% url 'tec_materiais' as u_limpar %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum resultado para os filtros aplicados" texto="Ajuste a busca ou limpe os filtros para ver todos os materiais." acao_url=u_limpar acao_rotulo="Limpar filtros" only %}
+  {% endif %}
+
+  {% include 'front/agro/tec/_rodape.html' %}
+</div>
+{% endblock %}

@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+{% load static m2m_tags %}
+
+{% block title %}Movimentações — Chips e Conectividade — Zelo Agro{% endblock %}
+{% block page_title %}Chips e Conectividade{% endblock %}
+{% block page_subtitle %}Movimentações dos chips{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% include 'front/m2m/_frota_topo.html' with titulo="Movimentações" descricao="O histórico de entradas, vínculos, transferências e devoluções de chips. Os registros não se editam nem se apagam." acao2_url=url_exportar acao2_rotulo="Exportar Excel" acao2_icone="fa-file-excel" %}
+
+  {% firstof filtros.tipo filtros.chip filtros.veiculo filtros.usuario filtros.de filtros.ate as avancado %}
+  <form class="m2m-filtros" method="get" role="search">
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="mv-q">Buscar movimentação</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="mv-q" name="q" value="{{ filtros.q }}" class="m2m-campo" data-m2m-busca placeholder="Buscar por chip, ICCID, veículo, placa, motivo ou usuário" autocomplete="off">
+      </div>
+      <button type="button" class="m2m-btn m2m-filtros-botao" data-m2m-filtros="m2m-filtros-painel" aria-expanded="{% if avancado %}true{% else %}false{% endif %}" aria-controls="m2m-filtros-painel"><i class="fa-solid fa-sliders" aria-hidden="true"></i>Filtros</button>
+      <span class="m2m-contagem-lista m2m-num">{% if page_obj.paginator.count != total_geral %}{{ page_obj.paginator.count }} de {{ total_geral }}{% else %}{{ total_geral }}{% endif %} registro{{ total_geral|pluralize }}</span>
+    </div>
+    <div class="m2m-filtros-mais" id="m2m-filtros-painel" {% if not avancado %}hidden{% endif %}>
+      <div class="m2m-filtros-grade">
+        <label class="m2m-rotulo"><span>Tipo</span>
+          <select name="tipo" class="m2m-campo" data-m2m-auto>
+            <option value="">Todos</option>
+            {% for valor, rotulo in tipos %}<option value="{{ valor }}" {% if filtros.tipo == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Chip</span><input type="text" name="chip" value="{{ filtros.chip }}" class="m2m-campo" placeholder="nome, ICCID ou IMSI"></label>
+        <label class="m2m-rotulo"><span>Veículo</span><input type="text" name="veiculo" value="{{ filtros.veiculo }}" class="m2m-campo" placeholder="código, nome ou placa"></label>
+        <label class="m2m-rotulo"><span>Usuário</span><input type="text" name="usuario" value="{{ filtros.usuario }}" class="m2m-campo" placeholder="login"></label>
+        <label class="m2m-rotulo"><span>De</span><input type="date" name="de" value="{{ filtros.de }}" class="m2m-campo"></label>
+        <label class="m2m-rotulo"><span>Até</span><input type="date" name="ate" value="{{ filtros.ate }}" class="m2m-campo"></label>
+      </div>
+      <div class="m2m-filtros-acoes">
+        <button type="submit" class="m2m-btn m2m-btn--primario">Aplicar filtros</button>
+        <a class="m2m-btn" href="{% url 'frota_movimentacoes' %}">Limpar</a>
+      </div>
+    </div>
+  </form>
+
+  {% if filtros_ativos %}
+  <ul class="m2m-filtros-ativos" aria-label="Filtros em uso">
+    {% for f in filtros_ativos %}
+    <li class="m2m-etiqueta">{{ f.rotulo }} <a href="{{ f.remover }}" aria-label="Remover o filtro {{ f.rotulo }}" title="Remover o filtro">&times;</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if grupos %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela">
+      <thead>
+        <tr><th>Data e horário</th><th>Tipo</th><th>Chip</th><th>Origem e destino</th><th>Responsável</th></tr>
+      </thead>
+      <tbody>
+        {% for g in grupos %}
+        <tr class="m2m-linha" data-operacao="{{ g.operacao }}" data-tipo="{{ g.tipo }}">
+          <td class="m2m-quebra" data-rotulo="Data e horário"><span class="m2m-num">{{ g.em|date:"d/m/Y H:i" }}</span></td>
+          <td class="m2m-largo" data-rotulo="Tipo">
+            <span class="m2m-ident">
+              <b>{{ g.movimentacoes.0.get_tipo_display }}</b>
+              {% if g.movimentacoes|length > 1 %}<span class="m2m-sub">uma ação, {{ g.movimentacoes|length }} registros</span>{% endif %}
+              {% if g.motivo %}<span class="m2m-sub" title="Motivo informado">{{ g.motivo }}</span>{% endif %}
+            </span>
+          </td>
+          <td data-rotulo="Chip">
+            {% if g.movimentacoes|length > 1 %}
+              <span class="m2m-par">
+                {% for m in g.movimentacoes reversed %}
+                <span>
+                  <span class="m2m-par-papel">{% if m.veiculo_destino_id %}entrou{% else %}saiu{% endif %}</span>
+                  {% if pode_ver_chips %}<a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' m.chip_id %}">{{ m.chip.nome }}</a>{% else %}{{ m.chip.nome }}{% endif %}
+                </span>
+                {% endfor %}
+              </span>
+            {% else %}
+              {% with m=g.movimentacoes.0 %}
+              <span class="m2m-ident">
+                {% if pode_ver_chips %}<a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' m.chip_id %}">{{ m.chip.nome }}</a>{% else %}<b>{{ m.chip.nome }}</b>{% endif %}
+                {% if m.chip.iccid %}<span class="m2m-ident-cod" title="ICCID">…{{ m.chip.iccid|slice:"-6:" }}</span>{% endif %}
+              </span>
+              {% endwith %}
+            {% endif %}
+          </td>
+          <td class="m2m-quebra" data-rotulo="Origem e destino">
+            {% with m=g.movimentacoes.0 %}
+              {% if m.veiculo_origem %}{% if pode_ver_frota %}<a href="{% url 'frota_veiculo_detalhe' m.veiculo_origem_id %}" title="{{ m.veiculo_origem.nome }}">{{ m.veiculo_origem.codigo }}</a>{% else %}{{ m.veiculo_origem.codigo }}{% endif %}{% endif %}
+              {% if m.veiculo_origem and m.veiculo_destino and g.movimentacoes|length == 1 %}<span class="m2m-sub" aria-label="para">→</span>{% endif %}
+              {% if m.veiculo_destino and g.movimentacoes|length == 1 %}{% if pode_ver_frota %}<a href="{% url 'frota_veiculo_detalhe' m.veiculo_destino_id %}" title="{{ m.veiculo_destino.nome }}">{{ m.veiculo_destino.codigo }}</a>{% else %}{{ m.veiculo_destino.codigo }}{% endif %}{% endif %}
+              {% if g.movimentacoes|length > 1 and not m.veiculo_origem %}{{ m.veiculo_destino.codigo }}{% endif %}
+              {% if not m.veiculo_origem and not m.veiculo_destino %}<span class="m2m-vazio-linha">—</span>{% endif %}
+              {% if m.importacao_id %}<span class="m2m-sub" title="Entrada pela importação de planilha">importação: {{ m.importacao.arquivo_nome }}</span>{% endif %}
+            {% endwith %}
+          </td>
+          <td data-rotulo="Responsável">{{ g.usuario_nome|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% elif total_geral == 0 %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-right-left" titulo="Nenhuma movimentação registrada" texto="Cada chip cadastrado, vinculado, transferido, desvinculado, substituído, devolvido ou inativado deixa um registro aqui." only %}
+  {% else %}
+    {% url 'frota_movimentacoes' as u_limpar %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum resultado para os filtros aplicados" texto="Ajuste a busca ou limpe os filtros para ver todas as movimentações." acao_url=u_limpar acao_rotulo="Limpar filtros" only %}
+  {% endif %}
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

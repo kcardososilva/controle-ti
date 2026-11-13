@@ -925,6 +925,36 @@ body.theme-dark :where(.mvf-page, .select2-container, .select2-dropdown) {
             <div class="field-errors">{{ form.observacao.errors }}</div>
           </div>
 
+          {% comment %}Equipamento RESERVADO para uma vaga: aviso + confirmação + justificativa. Fica
+             fora do mapa de campos por tipo: vale para qualquer movimentação do item. O
+             servidor impõe a regra (reserva_equipamento_service); isto é o aviso.{% endcomment %}
+          <div class="col-12" id="reservaUso" data-url="{% url 'api_item_reserva' %}"
+               {% if not form.reserva_em_conflito and not form.confirmar_uso_reservado.value %}hidden{% endif %}>
+            <div class="mvf-note mvf-note--warning">
+              <i class="fa-solid fa-bookmark" aria-hidden="true"></i>
+              <div class="mvf-note-body">
+                <strong>Equipamento reservado para uma contratação.</strong>
+                <span id="reservaUsoTexto">
+                  {% if form.reserva_em_conflito %}Reservado para {{ form.reserva_em_conflito.vaga_rotulo }}.{% endif %}
+                </span>
+                Entregar ao colaborador da própria vaga conclui a reserva sem confirmação. Qualquer outro uso
+                (entregar a outra pessoa, manutenção, transferência) tira o equipamento da vaga: marque a
+                confirmação e informe a justificativa — ficam no histórico da reserva.
+              </div>
+            </div>
+            <label class="mvf-check-card" style="margin-top:0.6rem;">
+              {{ form.confirmar_uso_reservado }}
+              <div class="mvf-check-card-text">
+                <strong>{{ form.confirmar_uso_reservado.label }}</strong>
+              </div>
+            </label>
+            <div class="mov-form-group" style="margin-top:0.6rem;">
+              <label for="id_justificativa_uso_reservado">{{ form.justificativa_uso_reservado.label }}</label>
+              {{ form.justificativa_uso_reservado }}
+              <div class="field-errors">{{ form.justificativa_uso_reservado.errors }}</div>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -1267,8 +1297,31 @@ $(document).ready(function() {
     $('#desligamentoResumo').toggleClass('hidden', !(temResumo && this.checked));
   });
 
+  // Aviso de equipamento RESERVADO: pergunta ao servidor ao escolher o item.
+  function verificarReserva() {
+    const $bloco = $('#reservaUso');
+    const itemId = $('#id_item').val();
+    if (!itemId) { $bloco.prop('hidden', true); return; }
+    $.ajax({
+      url: $bloco.data('url'), data: { item: itemId }, method: 'GET',
+      success: function (r) {
+        if (r && r.reservado) {
+          let texto = 'Reservado para ' + r.vaga + (r.colaborador ? ' (colaborador: ' + r.colaborador + ')' : '') + '.';
+          $('#reservaUsoTexto').text(texto);
+          $bloco.prop('hidden', false);
+        } else {
+          $bloco.prop('hidden', true);
+          $('#id_confirmar_uso_reservado').prop('checked', false);
+          $('#id_justificativa_uso_reservado').val('');
+        }
+      },
+      error: function () { /* sem aviso ao vivo: o servidor ainda impõe a regra */ }
+    });
+  }
+
   $('#id_tipo_movimentacao').on('change', updateLayout);
   $('#id_item').on('change', function () {
+    verificarReserva();
     carregarLotesDoItem();
     const type = $('#id_tipo_movimentacao').val();
     const action = $('input[name="tipo_transferencia"]:checked').val();
@@ -1279,6 +1332,7 @@ $(document).ready(function() {
   $('input[name="tipo_transferencia"]').on('change', updateLayout);
 
   updateLayout();
+  if ($('#id_item').val() && $('#reservaUso').prop('hidden')) { verificarReserva(); }
 
   $('#movForm').on('submit', function() {
     $('#btnSave')

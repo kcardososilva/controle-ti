@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+{% load static tec_tags %}
+
+{% block title %}{{ modelo }} — Materiais — Estoque tecnológico — Zelo Agro{% endblock %}
+{% block page_title %}Estoque tecnológico{% endblock %}
+{% block page_subtitle %}Detalhe do material{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page">
+  {% url 'tec_materiais' as u_lista %}
+  {% include 'front/agro/tec/_topo.html' with titulo=modelo.nome descricao=modelo.fabricante.nome voltar_url=u_lista voltar_rotulo="Materiais" %}
+
+  <section class="m2m-resumo" aria-label="Resumo e ações do material">
+    <div class="m2m-resumo-cab">
+      <div class="m2m-resumo-estados">
+        <span class="agro-saldo m2m-num">{{ total|qtd }} <span class="m2m-sub">{{ modelo.unidade.sigla }}</span></span>
+        {% if abaixo_do_minimo %}<span class="m2m-etiqueta agro-etiqueta-falta">abaixo do mínimo de {{ modelo.estoque_minimo|qtd }}</span>{% endif %}
+        {% if not modelo.ativo %}<span class="m2m-etiqueta">modelo inativo</span>{% endif %}
+      </div>
+      <div class="m2m-resumo-acoes">
+        {% if pode_cadastrar and modelo.ativo %}
+          <a class="m2m-btn m2m-btn--primario" href="{% url 'tec_material_entrada' modelo.pk %}"><i class="fa-solid fa-plus" aria-hidden="true"></i>Entrada</a>
+          <a class="m2m-btn" href="{% url 'tec_material_saida' modelo.pk %}"><i class="fa-solid fa-minus" aria-hidden="true"></i>Saída</a>
+          <a class="m2m-btn" href="{% url 'tec_material_ajuste' modelo.pk %}"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>Ajustar saldo</a>
+        {% endif %}
+        {% if pode_transferir and modelo.ativo %}<a class="m2m-btn" href="{% url 'tec_material_transferir' modelo.pk %}"><i class="fa-solid fa-dolly" aria-hidden="true"></i>Transferir</a>{% endif %}
+        {% if pode_instalar and modelo.ativo %}<a class="m2m-btn" href="{% url 'tec_material_aplicar' modelo.pk %}"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>Aplicar em máquina</a>{% endif %}
+      </div>
+    </div>
+    <dl class="m2m-resumo-fatos">
+      <div><dt>Fabricante</dt><dd>{{ modelo.fabricante.nome }}</dd></div>
+      <div><dt>Categoria</dt><dd>{{ modelo.categoria.nome }}</dd></div>
+      <div><dt>Unidade</dt><dd>{{ modelo.unidade.nome }} <span class="m2m-sub">({{ modelo.unidade.sigla }})</span></dd></div>
+      <div><dt>Estoque mínimo</dt><dd class="m2m-num">{% if modelo.estoque_minimo > 0 %}{{ modelo.estoque_minimo|qtd }}{% else %}—{% endif %}</dd></div>
+      <div><dt>Locais com saldo</dt><dd class="m2m-num">{{ saldos|length }}</dd></div>
+    </dl>
+  </section>
+
+  <div class="m2m-secoes">
+    <section class="m2m-painel" aria-labelledby="tec-m-saldos-t">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="tec-m-saldos-t">Saldo por local<span class="m2m-painel-t-n">{{ saldos|length }}</span></h3></header>
+      {% if saldos %}
+      <div class="m2m-tabela-wrap">
+        <table class="m2m-tabela m2m-tabela--curta">
+          <thead><tr><th>Local</th><th>Fazenda</th><th class="agro-num">Quantidade</th></tr></thead>
+          <tbody>
+            {% for s in saldos %}
+            <tr class="m2m-linha">
+              <td data-rotulo="Local">{{ s.local.nome }}</td>
+              <td data-rotulo="Fazenda">{{ s.local.fazenda.local }}</td>
+              <td class="agro-num m2m-num" data-rotulo="Quantidade">{{ s.quantidade|qtd }} <span class="m2m-sub">{{ modelo.unidade.sigla }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="m2m-nota m2m-nota--pad">O saldo é calculado a partir das movimentações: nenhuma tela o edita direto. Para corrigi-lo, use “Ajustar saldo”.</p>
+      {% else %}
+        {% include 'front/m2m/_vazio.html' with icone="fa-box-open" titulo="Sem saldo em nenhum local" texto="Dê entrada neste material para começar a controlá-lo." only %}
+      {% endif %}
+    </section>
+
+    {% comment %}Onde o material está aplicado: o razão lido pelo destino (máquina ou operador). Some se nada foi aplicado.{% endcomment %}
+    {% if aplicacoes %}
+    <section class="m2m-painel" id="tec-m-aplic" aria-labelledby="tec-m-aplic-t">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="tec-m-aplic-t">Aplicado em<span class="m2m-painel-t-n">{{ aplicacoes|length }}</span></h3></header>
+      <div class="m2m-tabela-wrap">
+        <table class="m2m-tabela m2m-tabela--curta">
+          <thead><tr><th>Onde</th><th class="agro-num">Quantidade</th><th><span class="m2m-sr">Ações</span></th></tr></thead>
+          <tbody>
+            {% for a in aplicacoes %}
+            <tr class="m2m-linha">
+              <td data-rotulo="Onde">
+                <span class="m2m-ident">
+                  {% if a.tipo == "veiculo" and pode_ver_frota %}<a class="m2m-link-forte" href="{% url 'frota_veiculo_detalhe' a.id %}">{{ a.rotulo }}</a>{% else %}<span class="m2m-link-forte">{{ a.rotulo }}</span>{% endif %}
+                  <span class="m2m-ident-cod">{% if a.tipo == "operador" %}Operador{% else %}Máquina{% endif %}</span>
+                </span>
+              </td>
+              <td class="agro-num m2m-num" data-rotulo="Quantidade">{{ a.quantidade|qtd }} <span class="m2m-sub">{{ modelo.unidade.sigla }}</span></td>
+              <td class="m2m-acoes" data-rotulo="Ações">{% if pode_instalar %}<a class="m2m-btn m2m-btn--sm" href="{% url 'tec_material_devolver' modelo.pk %}?destino={{ a.tipo }}:{{ a.id }}">Devolver</a>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
+    {% if pode_historico %}
+    <section class="m2m-painel" aria-labelledby="tec-m-hist-t">
+      <header class="m2m-painel-cab">
+        <h3 class="m2m-painel-t" id="tec-m-hist-t">Últimas movimentações</h3>
+        <a class="m2m-painel-link" href="{% url 'tec_movimentacoes' %}?q={{ modelo.nome|urlencode }}">Ver todas</a>
+      </header>
+      {% if movimentacoes %}
+      <ol class="m2m-tempo">
+        {% for m in movimentacoes %}
+        <li>
+          <span class="m2m-num m2m-tempo-quando">{{ m.em|date:"d/m/Y H:i" }}</span>
+          <span class="m2m-tempo-marca" aria-hidden="true"></span>
+          <span class="m2m-tempo-texto">
+            <b>{{ m.get_tipo_display }} <span class="m2m-num">× {{ m.quantidade|qtd }} {{ modelo.unidade.sigla }}</span></b>
+            <span class="m2m-sub">{{ m.origem_rotulo|default:"—" }} → {{ m.destino_rotulo|default:"—" }}</span>
+            {% if m.motivo %}<span class="m2m-sub">Motivo: {{ m.motivo }}</span>{% endif %}
+            {% if m.usuario_nome %}<span class="m2m-sub">por {{ m.usuario_nome }}</span>{% endif %}
+          </span>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        {% include 'front/m2m/_vazio.html' with icone="fa-clock-rotate-left" titulo="Nenhuma movimentação" texto="Nada foi registrado para este material." only %}
+      {% endif %}
+    </section>
+    {% endif %}
+  </div>
+  {% include 'front/agro/tec/_rodape.html' %}
+</div>
+{% endblock %}

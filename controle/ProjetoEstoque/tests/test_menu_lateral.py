@@ -73,7 +73,17 @@ class IconesDoMenuTests(TestCase):
         spans = re.findall(r'<span class="nav-icon"[^>]*>(.*?)</span>', html, re.S)
         self.assertGreaterEqual(len(spans), 14, "itens de menu a menos que o esperado")
         for conteudo in spans:
-            self.assertIn("<use href=\"#ic-", conteudo)
+            # O item do MENU REDUZIDO (perfil de acesso restrito) e gerado em
+            # loop: o id do sprite vem da tabela PERFIS do
+            # acesso_restrito_service, entao aqui ele aparece como variavel de
+            # template. Continua sendo sprite -- o que esta regra cobra. Que o id
+            # exista de fato no sprite e verificado em
+            # test_acesso_restrito.py::EncanamentoTests, que compara a tabela
+            # com os <symbol> deste arquivo.
+            self.assertTrue(
+                '<use href="#ic-' in conteudo or '<use href="#{{' in conteudo,
+                f"item de menu sem icone de sprite: {conteudo!r}",
+            )
 
     def test_icone_e_traco_e_nao_preenchimento(self):
         css = _texto(_CSS / "base.css")
@@ -288,7 +298,7 @@ class MenuRenderizaTests(TestCase):
         html = self.client.get(reverse("dashboard")).content.decode("utf-8")
         self.assertIn('id="sidebar"', html)
         # Os 4 símbolos acrescentados para aposentar o Font Awesome.
-        for simbolo in ("ic-mobile", "ic-shield", "ic-layers", "ic-swatch"):
+        for simbolo in ("ic-mobile", "ic-shield", "ic-layers", "ic-swatch", "ic-sim"):
             self.assertIn(f'id="{simbolo}"', html, f"símbolo {simbolo} não foi emitido")
         self.assertNotRegex(html, r'<i class="fa-[^"]*nav-icon')
 

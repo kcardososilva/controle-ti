@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ cat.rotulo }} — Catálogo — Estoque tecnológico — Zelo Agro{% endblock %}
+{% block page_title %}Estoque tecnológico{% endblock %}
+{% block page_subtitle %}Catálogo: {{ cat.rotulo|lower }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page">
+  {% if pode_editar_catalogo %}{% url 'tec_catalogo_novo' cat.chave as u_novo %}{% endif %}
+  {% include 'front/agro/tec/_topo.html' with titulo=cat.rotulo descricao=cat.descricao acao_url=u_novo acao_rotulo="Novo" acao_icone="fa-plus" %}
+  {% include 'front/agro/tec/_catalogo_abas.html' %}
+
+  <form class="m2m-filtros" method="get" role="search">
+    {% if request.GET.situacao %}<input type="hidden" name="situacao" value="{{ request.GET.situacao }}">{% endif %}
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="f-q">Buscar</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="f-q" name="q" value="{{ busca }}" class="m2m-campo" data-agro-busca placeholder="Buscar em {{ cat.rotulo|lower }}" autocomplete="off">
+      </div>
+      <span class="m2m-contagem-lista m2m-num">{{ page_obj.paginator.count }} de {{ total_geral }}</span>
+    </div>
+  </form>
+
+  {% if total_geral %}
+  <nav class="m2m-segmentos" aria-label="Situação do cadastro">
+    {% for s in segmentos %}<a href="{{ s.url }}" {% if s.ativo %}class="is-ativa" aria-current="true"{% endif %}><span>{{ s.rotulo }}</span> <b class="m2m-num">{{ s.n }}</b></a>{% endfor %}
+  </nav>
+  {% endif %}
+
+  {% if linhas %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela">
+      <thead>
+        <tr>{% for coluna in cat.colunas %}<th>{{ coluna }}</th>{% endfor %}<th>Situação</th><th><span class="m2m-sr">Ações</span></th></tr>
+      </thead>
+      <tbody>
+        {% for l in linhas %}
+        <tr class="m2m-linha"{% if not l.ativo %} data-inativo="1"{% endif %}>
+          {% for celula in l.celulas %}
+          <td data-rotulo="{{ celula.rotulo }}">{% if forloop.first %}<span class="m2m-link-forte m2m-corta m2m-corta--larga">{{ celula.valor }}</span>{% else %}{{ celula.valor }}{% endif %}</td>
+          {% endfor %}
+          <td data-rotulo="Situação">{% if l.ativo %}<span class="m2m-status" data-status="ativo">Ativo</span>{% else %}<span class="m2m-status" data-status="inativo">Inativo</span>{% endif %}</td>
+          <td class="m2m-acoes" data-rotulo="Ações">{% if l.editar %}<a class="m2m-btn m2m-btn--sm" href="{{ l.editar }}">Editar</a>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% elif total_geral == 0 %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-book" titulo="Nada cadastrado aqui ainda" texto=cat.descricao acao_url=u_novo acao_rotulo="Cadastrar" acao_primaria=True only %}
+  {% else %}
+    {% url 'tec_catalogo' cat.chave as u_limpar %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum resultado" texto="Ajuste a busca ou o filtro de situação." acao_url=u_limpar acao_rotulo="Limpar" only %}
+  {% endif %}
+
+  {% include 'front/agro/tec/_rodape.html' %}
+</div>
+{% endblock %}

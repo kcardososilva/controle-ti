@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags %}
+
+{% block title %}Monitoramento de sessões — Chips e Conectividade — Zelo Agro{% endblock %}
+{% block page_title %}Chips e Conectividade{% endblock %}
+{% block page_subtitle %}Monitoramento de sessões{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% include 'front/m2m/_frota_topo.html' with titulo="Conectividade" descricao="A sessão de cada chip, segundo a última resposta válida da API." %}
+
+  {% if not mapeado.sessao %}
+  <p class="m2m-aviso" data-tom="atencao">
+    <b>O estado da sessão ainda não está mapeado.</b> Por isso nenhum chip é mostrado como “sessão ativa” ou “sem sessão”: toda resposta recebida fica como “não interpretado”.
+    {% if pode_configurar %}<a href="{% url 'm2m_config' %}#mapeamento">Mapear a sessão</a>{% endif %}
+  </p>
+  {% endif %}
+
+  <nav class="m2m-segmentos m2m-segmentos--grande" aria-label="Filtrar por situação da conectividade">
+    <a href="{% url 'm2m_sessoes' %}" {% if not filtros.conectividade %}class="is-ativa" aria-current="true"{% endif %}><span>Todos</span> <b class="m2m-num">{{ conectividade.total }}</b></a>
+    {% for s in conectividade.segmentos %}
+    <a href="?conectividade={{ s.chave }}" {% if filtros.conectividade == s.chave %}class="is-ativa" aria-current="true"{% endif %}>
+      {% if s.chave == "falha_consulta" %}{% m2m_ind "erro_consulta" s.rotulo %}{% else %}{% m2m_ind s.chave s.rotulo %}{% endif %}
+      <b class="m2m-num">{{ s.n|unlocalize }}</b>
+    </a>
+    {% endfor %}
+  </nav>
+
+  <form method="get" class="m2m-filtros" role="search">
+    {% if filtros.conectividade %}<input type="hidden" name="conectividade" value="{{ filtros.conectividade }}">{% endif %}
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="s-q">Buscar chip</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="s-q" name="q" value="{{ filtros.q }}" class="m2m-campo" data-m2m-busca placeholder="Buscar por nome, ICCID ou IMSI" autocomplete="off">
+      </div>
+      <div class="m2m-barra-fim"><span class="m2m-contagem-lista m2m-num">{{ page_obj.paginator.count }} chip{{ page_obj.paginator.count|pluralize }}</span></div>
+    </div>
+  </form>
+
+  {% if filtros_ativos %}
+  <ul class="m2m-filtros-ativos" aria-label="Filtros em uso">
+    {% for f in filtros_ativos %}<li class="m2m-etiqueta">{{ f.rotulo }} <a href="{{ f.remover }}" aria-label="Remover o filtro {{ f.rotulo }}" title="Remover o filtro">&times;</a></li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  <section class="m2m-painel" aria-labelledby="m2m-s-atual">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-s-atual">Estado atual por chip</h3></header>
+    {% if chips %}
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela">
+        <thead>
+          <tr><th>Chip</th><th>ICCID</th><th>Sessão (última resposta válida)</th><th>Valor da API</th><th>Dado de</th><th>Última consulta</th><th>Monitoramento</th></tr>
+        </thead>
+        <tbody>
+          {% for chip in chips %}
+          <tr class="m2m-linha" data-situacao="{{ chip.situacao }}">
+            <td class="m2m-c-nome" data-rotulo="Chip"><a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' chip.pk %}">{{ chip.nome }}</a></td>
+            <td class="m2m-id" data-rotulo="ICCID">{{ chip.iccid|m2m_blocos|default:"—" }}</td>
+            <td data-rotulo="Sessão">{% m2m_ind chip.sessao_estado %}</td>
+            <td data-rotulo="Valor da API"><span class="m2m-num m2m-corta" title="{{ chip.estado_bruto }}">{{ chip.estado_bruto|default:"—" }}</span></td>
+            <td class="m2m-quebra" data-rotulo="Dado de">{% if chip.sessao_consulta_id %}<span class="m2m-num">{{ chip.sessao_consulta.iniciada_em|date:"d/m H:i" }}</span> <span class="m2m-sub">{% m2m_frescor chip.frescor_sessao %}</span>{% else %}<span class="m2m-sub">sem resposta válida</span>{% endif %}</td>
+            <td data-rotulo="Última consulta">
+              {% if chip.ultima_tentativa_em %}<span class="m2m-num">{{ chip.ultima_tentativa_em|date:"d/m H:i" }}</span>{% else %}<span class="m2m-sub">nunca</span>{% endif %}
+              {% if chip.falhas_consecutivas %}<span class="m2m-sub m2m-sub--erro" title="Última falha: {{ chip.ultima_falha_rotulo|default:'erro' }}">falhou</span>{% endif %}
+            </td>
+            <td data-rotulo="Monitoramento">{% m2m_ind chip.situacao %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% include 'front/m2m/_paginacao.html' %}
+    {% else %}
+    {% if filtros_ativos %}
+      {% url 'm2m_sessoes' as u_todos %}
+      {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum resultado para os filtros aplicados" texto="Ajuste a busca ou o filtro para ver os demais chips." acao_url=u_todos acao_rotulo="Ver todos" only %}
+    {% else %}
+      {% url 'm2m_chips' as u_chips %}
+      {% include 'front/m2m/_vazio.html' with icone="fa-sim-card" titulo="Nenhum chip cadastrado" texto="Cadastre os chips para acompanhar a sessão de cada um." acao_url=u_chips acao_rotulo="Ir para Chips" only %}
+    {% endif %}
+    {% endif %}
+  </section>
+
+  <div class="m2m-grade m2m-grade--2">
+    <section class="m2m-painel" aria-labelledby="m2m-s-mud">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-s-mud">Mudanças de estado recentes</h3></header>
+      {% if mudancas %}
+      <ul class="m2m-eventos">
+        {% for m in mudancas %}
+        <li>
+          <span class="m2m-num m2m-eventos-quando">{{ m.em|date:"d/m H:i" }}</span>
+          <span class="m2m-eventos-texto">
+            <a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' m.chip.pk %}">{{ m.chip.nome }}</a>
+            <span class="m2m-troca">{% m2m_ind m.de_chave m.de %} <i aria-hidden="true">&rarr;</i> {% m2m_ind m.para_chave m.para %}</span>
+            {% if m.estado_bruto %}<span class="m2m-sub">valor da API: <b class="m2m-num">{{ m.estado_bruto }}</b></span>{% endif %}
+            {% if m.motivo %}<span class="m2m-sub">{{ m.motivo }}</span>{% endif %}
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="m2m-painel-vazio">Nenhuma mudança de estado registrada ainda.</p>
+      {% endif %}
+    </section>
+
+    <section class="m2m-painel" aria-labelledby="m2m-s-falhas">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-s-falhas">Falhas de consulta de sessão</h3></header>
+      <p class="m2m-nota m2m-nota--pad">São consultas sem resposta. Não são “sem sessão”: ninguém sabe o estado do chip naquele instante.</p>
+      {% if falhas %}
+      <div class="m2m-tabela-wrap">
+        <table class="m2m-tabela m2m-tabela--curta">
+          <thead><tr><th>Quando</th><th>Chip</th><th>Resultado</th><th class="num">HTTP</th></tr></thead>
+          <tbody>
+            {% for c in falhas %}
+            <tr>
+              <td data-rotulo="Quando"><span class="m2m-num">{{ c.iniciada_em|date:"d/m H:i" }}</span></td>
+              <td data-rotulo="Chip"><a href="{% url 'm2m_chip_detalhe' c.chip_id %}">{{ c.chip.nome }}</a></td>
+              <td data-rotulo="Resultado" title="{{ c.mensagem_erro }}">{% m2m_ind "falha" c.get_resultado_display %}</td>
+              <td class="num" data-rotulo="HTTP"><span class="m2m-num">{{ c.http_status|default:"—" }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="m2m-painel-vazio">Nenhuma consulta de sessão falhou.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

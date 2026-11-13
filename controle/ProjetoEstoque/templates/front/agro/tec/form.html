@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ titulo }} — Estoque tecnológico — Zelo Agro{% endblock %}
+{% block page_title %}Estoque tecnológico{% endblock %}
+{% block page_subtitle %}{{ titulo }}{% endblock %}
+
+{% block extra_css %}
+{% comment %}A folha do Agro vem DEPOIS da do módulo: ela só acrescenta (regra 26: ordem de carregamento é contrato).{% endcomment %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page">
+  {% include 'front/agro/tec/_topo.html' %}
+  {% if cat %}{% include 'front/agro/tec/_catalogo_abas.html' %}{% endif %}
+
+  <form method="post" class="m2m-form" novalidate data-agro-envio-unico>
+    {% csrf_token %}
+    {% if token %}<input type="hidden" name="token" value="{{ token }}">{% endif %}
+    {% if voltar_post %}<input type="hidden" name="voltar" value="{{ voltar_post }}">{% endif %}
+    {% if erros_gerais %}<p class="m2m-aviso" data-tom="erro" role="alert">{{ erros_gerais }}</p>{% endif %}
+    {% if aviso %}<p class="m2m-aviso" data-tom="atencao">{{ aviso }}</p>{% endif %}
+
+    {% for painel in paineis %}
+    <section class="m2m-painel">
+      {% if painel.titulo %}<header class="m2m-painel-cab"><h3 class="m2m-painel-t">{{ painel.titulo }}</h3></header>{% endif %}
+      <div class="m2m-form-grade agro-grade">
+        {% for c in painel.campos %}{% include 'front/agro/tec/_campo.html' %}{% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+
+    <div class="m2m-form-acoes">
+      <button type="submit" class="m2m-btn {% if perigo %}m2m-btn--perigo{% else %}m2m-btn--primario{% endif %}">{{ rotulo_enviar }}</button>
+      <a class="m2m-btn" href="{{ voltar_url }}">Cancelar</a>
+    </div>
+  </form>
+  {% include 'front/agro/tec/_rodape.html' %}
+</div>
+{% endblock %}

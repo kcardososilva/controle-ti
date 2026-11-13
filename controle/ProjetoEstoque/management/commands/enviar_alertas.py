@@ -8,6 +8,7 @@ Uso:
     python manage.py enviar_alertas --tipo licencas
     python manage.py enviar_alertas --tipo renovacoes          # licenças a vencer
     python manage.py enviar_alertas --tipo renovacoes --dias 90
+    python manage.py enviar_alertas --tipo computadores     # notebooks/desktops parados
     python manage.py enviar_alertas --tipo diario            # relatório diário consolidado
     python manage.py enviar_alertas --tipo diario --horas 48 # últimas 48h de movimentações
 """
@@ -21,7 +22,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--tipo",
-            choices=["preventivas", "estoque", "licencas", "renovacoes", "todos", "diario"],
+            choices=["preventivas", "estoque", "licencas", "renovacoes", "computadores",
+                     "todos", "diario"],
             default="todos",
             help="Tipo de alerta a enviar (padrão: todos). Use 'diario' para o relatório consolidado.",
         )
@@ -43,6 +45,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         from services.email_alertas import (
+            alerta_computadores_parados,
             alerta_estoque_critico,
             alerta_licencas_desligados,
             alerta_licencas_vencendo,
@@ -95,6 +98,16 @@ class Command(BaseCommand):
                 _rodar(
                     f"Licenças a renovar nos próximos {options['dias']} dias",
                     alerta_licencas_vencendo, dias=options["dias"],
+                )
+
+            # Computador parado é revisão SEMANAL por natureza (ver
+            # `agendar_computadores_parados`): entra em "todos" para o envio
+            # manual da Central de Alertas continuar completo, e tem tipo
+            # próprio para poder ser agendado na sua própria cadência.
+            if tipo in ("computadores", "todos"):
+                _rodar(
+                    "Notebooks/desktops em backup ou pausado",
+                    alerta_computadores_parados,
                 )
 
         self.stdout.write("")

@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+{% load static l10n tec_tags %}
+
+{% block title %}Visão geral — Estoque tecnológico — Zelo Agro{% endblock %}
+{% block page_title %}Estoque tecnológico{% endblock %}
+{% block page_subtitle %}Equipamentos e materiais do parque tecnológico agrícola{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page">
+  {% if pode_cadastrar %}{% url 'tec_equipamento_novo' as u_novo %}{% endif %}
+  {% include 'front/agro/tec/_topo.html' with titulo="Visão geral" descricao="Onde está cada equipamento e quanto há de cada material." acao_url=u_novo acao_rotulo="Novo equipamento" acao_icone="fa-plus" %}
+
+  {% if sem_locais %}
+  <p class="m2m-aviso" data-tom="atencao"><b>Nenhum local de armazenamento cadastrado.</b> Todo equipamento e todo material precisa estar guardado em algum lugar.
+    {% if pode_config %}<a href="{% url 'tec_catalogo' 'locais' %}">Cadastrar os locais</a>{% else %}Peça a quem administra o módulo para cadastrar os locais.{% endif %}</p>
+  {% endif %}
+  {% if sem_modelos and not sem_locais %}
+  <p class="m2m-aviso" data-tom="neutro"><b>O catálogo ainda não tem modelos.</b> Antes de cadastrar equipamentos, registre o que a empresa usa (fabricante, categoria e nome do modelo).
+    {% if pode_catalogo %}<a href="{% url 'tec_catalogo_novo' 'modelos' %}">Cadastrar um modelo</a>{% endif %}</p>
+  {% endif %}
+
+  <section class="m2m-painel" aria-labelledby="tec-b-equip">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="tec-b-equip">Equipamentos individuais</h3></header>
+    <div class="m2m-regua">
+      <a class="m2m-kpi" href="{% url 'tec_equipamentos' %}">
+        <span class="m2m-micro">Equipamentos</span>
+        <span class="m2m-kpi-n m2m-num">{{ resumo.total|unlocalize }}</span>
+        <span class="m2m-kpi-nota">{% if resumo.por_situacao.inativo %}{{ resumo.por_situacao.inativo|unlocalize }} inativo{{ resumo.por_situacao.inativo|pluralize }} na conta{% else %}cadastrados{% endif %}</span>
+      </a>
+      <a class="m2m-kpi" href="{% url 'tec_equipamentos' %}?situacao=disponivel">
+        <span class="m2m-micro">Disponíveis</span>
+        <span class="m2m-kpi-n m2m-num">{{ resumo.por_situacao.disponivel|unlocalize }}</span>
+        <span class="m2m-kpi-nota">em estoque</span>
+      </a>
+      <a class="m2m-kpi" href="{% url 'tec_equipamentos' %}?situacao=instalado">
+        <span class="m2m-micro">Instalados</span>
+        <span class="m2m-kpi-n m2m-num">{{ resumo.por_situacao.instalado|unlocalize }}</span>
+        <span class="m2m-kpi-nota">em uso</span>
+      </a>
+      <a class="m2m-kpi" href="{% url 'tec_equipamentos' %}?situacao=em_manutencao" {% if resumo.por_situacao.em_manutencao %}data-tom="atencao"{% endif %}>
+        <span class="m2m-micro">Em manutenção</span>
+        <span class="m2m-kpi-n m2m-num">{{ resumo.por_situacao.em_manutencao|unlocalize }}</span>
+        <span class="m2m-kpi-nota">fora de operação</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="m2m-painel" aria-labelledby="tec-b-mat">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="tec-b-mat">Materiais e movimento</h3></header>
+    <div class="m2m-regua">
+      <a class="m2m-kpi" href="{% url 'tec_materiais' %}">
+        <span class="m2m-micro">Materiais</span>
+        <span class="m2m-kpi-n m2m-num">{{ resumo.materiais|unlocalize }}</span>
+        <span class="m2m-kpi-nota">controlados por quantidade</span>
+      </a>
+      <a class="m2m-kpi" href="{% url 'tec_materiais' %}?abaixo_minimo=1" {% if resumo.abaixo_do_minimo %}data-tom="atencao"{% endif %}>
+        <span class="m2m-micro">Abaixo do mínimo</span>
+        <span class="m2m-kpi-n m2m-num">{{ resumo.abaixo_do_minimo|unlocalize }}</span>
+        <span class="m2m-kpi-nota">modelos em falta</span>
+      </a>
+      {% if pode_historico %}
+      <a class="m2m-kpi" href="{% url 'tec_movimentacoes' %}">
+        <span class="m2m-micro">Movimentações</span>
+        <span class="m2m-kpi-n m2m-num">{{ resumo.movimentos_7_dias|unlocalize }}</span>
+        <span class="m2m-kpi-nota">nos últimos 7 dias</span>
+      </a>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if faltas %}
+  <section class="m2m-painel" aria-labelledby="tec-b-falta">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="tec-b-falta">Abaixo do estoque mínimo<span class="m2m-painel-t-n">{{ faltas|length }}</span></h3></header>
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela m2m-tabela--curta">
+        <thead><tr><th>Modelo</th><th class="agro-num">Disponível</th><th class="agro-num">Mínimo</th><th class="agro-num">Falta</th><th><span class="m2m-sr">Ações</span></th></tr></thead>
+        <tbody>
+          {% for f in faltas %}
+          <tr class="m2m-linha">
+            <td data-rotulo="Modelo"><span class="m2m-ident"><span class="m2m-link-forte">{{ f.modelo.nome }}</span><span class="m2m-ident-cod">{{ f.modelo.fabricante.nome }}</span></span></td>
+            <td class="agro-num m2m-num" data-rotulo="Disponível">{{ f.disponivel|qtd }}{% if f.modelo.unidade %} <span class="m2m-sub">{{ f.modelo.unidade.sigla }}</span>{% endif %}</td>
+            <td class="agro-num m2m-num" data-rotulo="Mínimo">{{ f.minimo|qtd }}</td>
+            <td class="agro-num m2m-num" data-rotulo="Falta">{{ f.falta|qtd }}</td>
+            <td class="m2m-acoes" data-rotulo="Ações">
+              {% if f.modelo.controle == "quantidade" %}<a class="m2m-btn m2m-btn--sm" href="{% url 'tec_material_detalhe' f.modelo.pk %}">Ver saldo</a>
+              {% else %}<a class="m2m-btn m2m-btn--sm" href="{% url 'tec_equipamentos' %}?modelo={{ f.modelo.pk }}">Ver equipamentos</a>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if pode_historico %}
+  <section class="m2m-painel" aria-labelledby="tec-b-mov">
+    <header class="m2m-painel-cab">
+      <h3 class="m2m-painel-t" id="tec-b-mov">Últimas movimentações</h3>
+      <a class="m2m-painel-link" href="{% url 'tec_movimentacoes' %}">Ver todas</a>
+    </header>
+    {% if ultimas %}
+    <ol class="m2m-tempo">
+      {% for m in ultimas %}
+      <li>
+        <span class="m2m-num m2m-tempo-quando">{{ m.em|date:"d/m/Y H:i" }}</span>
+        <span class="m2m-tempo-marca" aria-hidden="true"></span>
+        <span class="m2m-tempo-texto">
+          <b>{{ m.get_tipo_display }} · {% if m.equipamento %}{{ m.equipamento.codigo }} {% endif %}{{ m.modelo }}{% if not m.equipamento %} <span class="m2m-num">× {{ m.quantidade|qtd }}</span>{% endif %}</b>
+          <span class="m2m-sub">{{ m.origem_rotulo|default:"—" }} → {{ m.destino_rotulo|default:"—" }}{% if m.usuario_nome %} · {{ m.usuario_nome }}{% endif %}</span>
+        </span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+      {% include 'front/m2m/_vazio.html' with icone="fa-clock-rotate-left" titulo="Nenhuma movimentação ainda" texto="Cada entrada, saída, mudança de local e baixa aparece aqui, sem poder ser editada." only %}
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% include 'front/agro/tec/_rodape.html' %}
+</div>
+{% endblock %}

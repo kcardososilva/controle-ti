@@ -1,6 +1,9 @@
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 from django.db import models, transaction
 from django.contrib.auth.models import User
 import datetime
+import os
 import uuid
 from django.core.validators import MinValueValidator
 from decimal import Decimal
@@ -18,12 +21,27 @@ class SimNaoChoices(models.TextChoices):
 class StatusItemChoices(models.TextChoices):
     ATIVO = 'ativo', 'Ativo'
     BACKUP = 'backup', 'Backup'
+    # Reservado NÃO é um status que alguém escolhe: só nasce (e só some) pelo
+    # fluxo de reserva de vaga (`services/reserva_equipamento_service.py`), que
+    # grava a vaga, quem reservou e o status de antes. Escolhê-lo à mão deixaria
+    # um equipamento "reservado" sem vaga nenhuma — por isso os formulários o
+    # tiram da lista (`STATUS_ITEM_ESCOLHIVEIS`).
+    RESERVADO = 'reservado', 'Reservado'
     ESTOQUE = 'estoque', 'Estoque'
     MANUTENCAO = 'manutencao', 'Manutenção'
     DEFEITO = 'defeito', 'Defeito'
     PAUSADO = 'pausado', 'Pausado'
     DESCARTE = 'descarte', 'Descarte'
     DEVOLVIDO = 'devolvido', 'Devolvido (Locação)'
+
+# Status que o usuário pode ESCOLHER num formulário (edição do equipamento,
+# transferência de equipamento, retorno). Tudo menos "Reservado" — ver o
+# comentário em `StatusItemChoices.RESERVADO`.
+STATUS_ITEM_ESCOLHIVEIS = [
+    (valor, rotulo) for valor, rotulo in StatusItemChoices.choices
+    if valor != StatusItemChoices.RESERVADO
+]
+
 
 class AreaOperacionalChoices(models.TextChoices):
     """
@@ -235,6 +253,45 @@ class PerfilFornecedor(AuditModel):
 # ganhar acesso ao Portal do Fornecedor (equipamentos/manutenção) de brinde, e
 # vice-versa — "somente esse módulo" é a regra.
 GRUPO_PARCEIRO_LICENCA = "Parceiro de Licenças"
+
+
+# ─── Grupos de ACESSO RESTRITO (perfis que só alcançam UMA tela) ──────────────
+#
+# Diferença em relação a GRUPO_FORNECEDOR / GRUPO_PARCEIRO_LICENCA: aqueles dois
+# são EMPRESAS externas com portal próprio (`/portal/`, `/portal-licencas/`) e um
+# perfil em tabela (PerfilFornecedor/PerfilParceiroLicenca) que amarra o login à
+# empresa. Estes dois são PESSOAS — RH, gestor de área, terceiro — que usam uma
+# tela que o TI já tinha, sem ganhar o resto do sistema. Não há empresa a amarrar,
+# então não há tabela de perfil: a autorização é o grupo, e só.
+#
+# Fonte única dos nomes. O literal "Visualizador TV" está copiado em SEIS
+# arquivos neste projeto (middleware, views/plantas, admin, 3 services e um
+# management command) — mudar o nome daquele grupo hoje exige caçar os seis.
+# Estes nascem importados de um lugar só para não repetir o mesmo erro.
+GRUPO_PORTAL_CONTRATACAO = "Portal de Contratações"
+GRUPO_CONSULTA_QUIOSQUE = "Consulta Quiosque"
+
+# Frotas e Conectividade (ex-"Monitoramento TIM M2M"): dois grupos, criados/renomeados
+# pela migration 0191 (a 0189 criou o antigo "Monitoramento M2M", que foi renomeado).
+#   • GRUPO_FROTAS          — as 9 permissões de operação. `administrar_frota_config`
+#                             (token, frequência, mapeamento, tipos, operadoras e
+#                             regras de alerta) NÃO vai no grupo: é permissão
+#                             explícita, dada a quem de fato mexe na credencial.
+#   • GRUPO_FROTAS_CONSULTA — só as 4 de leitura (ver_frota, ver_chips,
+#                             consultar_conectividade, ver_historico_frota).
+# Fonte única dos nomes: nenhum outro arquivo repete o literal (a migration 0191
+# é a exceção legítima — migration não importa model).
+GRUPO_FROTAS = "Frotas e Conectividade"
+GRUPO_FROTAS_CONSULTA = "Frotas — Consulta"
+
+# Ambientes do Zelo (TI · Agro) — ver `services/ambiente_service.py`.
+#   • O TI é o padrão de todo usuário interno (não é permissão a conceder).
+#   • O Agro exige `acessar_zelo_agro` OU qualquer permissão de módulo do Agro.
+#   • GRUPO_SOMENTE_AGRO prende o login no Agro (o "acesso somente ao Zelo Agro").
+GRUPO_SOMENTE_AGRO = "Zelo Agro — Exclusivo"
+PERMISSOES_AGRO_AMBIENTE = [
+    ("acessar_zelo_agro", "Pode acessar o ambiente Zelo Agro (visão geral)"),
+]
 
 
 class PerfilParceiroLicenca(AuditModel):
@@ -3429,6 +3486,51 @@ class NinjaLoginRegistro(models.Model):
         return f"{self.device} — {self.get_status_display()} ({self.verificado_em:%d/%m/%Y %H:%M})"
 
 
+class NinjaConexao(models.Model):
+    """A conexão OAuth do sistema com a API do NinjaOne — uma linha só (`get()`).
+
+    Os tokens NUNCA ficam em claro: `access_cifrado` e `refresh_cifrado` são Fernet
+    (chave `NINJA_CHAVE_CIFRA`, no .env) e a tela só mostra o estado. Quem cifra e
+    decifra é `services/ninja_api_service.py`; nada mais lê estes campos.
+
+    `sincronizando_desde` é a trava contra duas sincronizações ao mesmo tempo (botão
+    + tarefa agendada, ou duplo clique): o `UPDATE` condicional é atômico no banco,
+    então vale entre processos — um `cache.add` só valeria dentro do servidor web.
+    """
+
+    access_cifrado = models.TextField(blank=True, default="")
+    refresh_cifrado = models.TextField(blank=True, default="")
+    expira_em = models.DateTimeField(null=True, blank=True, verbose_name="Access token expira em")
+    escopo = models.CharField(max_length=255, blank=True, default="")
+    conectado_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+        verbose_name="Conectado por",
+    )
+    conectado_em = models.DateTimeField(null=True, blank=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    sincronizando_desde = models.DateTimeField(null=True, blank=True)
+    ultima_sincronizacao_em = models.DateTimeField(null=True, blank=True)
+    ultimo_erro = models.TextField(blank=True, default="")
+    ultimo_erro_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Conexão NinjaOne"
+        verbose_name_plural = "Conexão NinjaOne"
+
+    def __str__(self):
+        return "Conexão NinjaOne"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @property
+    def conectada(self):
+        return bool(self.refresh_cifrado or self.access_cifrado)
+
+
 # ========== CONFIGURAÇÃO DO SISTEMA ==========
 
 class ConfiguracaoSistema(models.Model):
@@ -5213,3 +5315,2479 @@ class RedeRota(AuditModel):
     @property
     def total_pontos(self) -> int:
         return len(self.pontos or [])
+
+
+# ========== CONTRATAÇÃO DE COLABORADOR (admissão / onboarding de TI) ==========
+#
+# O que isto substitui: um quadro do Microsoft Planner onde o RH abria um card
+# por vaga e o TI lia, no corpo do card, um texto colado do formulário
+# ("[TI] Ferramenta de trabalho: Computador: Notebook", "[TI] Sistema: TOTVS -
+# Datasul: Sim", ...). Aquilo respondia "o que pediram", mas não respondia
+# nada do que o TI precisa saber depois: QUAL notebook foi entregue, QUAIS
+# acessos já foram criados, há quanto tempo a vaga está aberta e quantas
+# estão atrasadas. Card de Planner não tem vínculo com o equipamento nem com
+# a licença — e é justamente esse vínculo que o resto deste sistema já tem.
+#
+# Por que três modelos e não um JSONField com o formulário inteiro: o pedido
+# ("preciso de Datasul") e o provisionamento ("Datasul criado em 12/03") são
+# fatos de datas diferentes sobre a mesma linha. Num JSON, marcar um acesso
+# como feito reescreve o documento todo e não sobra histórico; com
+# `ContratacaoSistema` cada acesso tem o seu próprio estado e a sua própria
+# data, e "o que ainda falta para esta pessoa começar?" vira uma consulta em
+# vez de leitura de texto.
+
+class StatusContratacaoChoices(models.TextChoices):
+    ABERTA = "aberta", "Em aberto"
+    VAGA_PREENCHIDA = "vaga_preenchida", "Vaga preenchida"
+    EQUIPAMENTO_ENTREGUE = "equipamento_entregue", "Equipamento entregue"
+    CONCLUIDA = "concluida", "Concluída"
+    CANCELADA = "cancelada", "Cancelada"
+
+
+class TipoVagaChoices(models.TextChoices):
+    SUBSTITUICAO = "substituicao", "Substituição"
+    NOVA = "nova", "Nova vaga (aumento de quadro)"
+    TEMPORARIO = "temporario", "Temporário / safra"
+
+
+class TipoComputadorChoices(models.TextChoices):
+    NOTEBOOK = "notebook", "Notebook"
+    DESKTOP = "desktop", "Desktop"
+    NENHUM = "nenhum", "Não precisa de computador"
+
+
+class TipoTelefoniaChoices(models.TextChoices):
+    NENHUM = "nenhum", "Não precisa"
+    RAMAL = "ramal", "Ramal"
+    CELULAR = "celular", "Celular corporativo"
+    RAMAL_CELULAR = "ramal_celular", "Ramal + celular corporativo"
+
+
+class SistemaCorporativo(AuditModel):
+    """Catálogo dos sistemas a que uma contratação pode exigir acesso (TOTVS
+    Datasul, PIMS MC, Beneficiamento, Pesagem, Tekann, ID-Cotton...).
+
+    É cadastro, e não lista fixa em código, porque a lista muda sem aviso
+    (sistema novo entra, módulo sai) e quem sabe disso é o TI, não quem
+    mantém o código. Cada linha vira uma pergunta no formulário de
+    contratação; desmarcar `ativo` tira a pergunta das PRÓXIMAS contratações
+    sem apagar o histórico das antigas.
+
+    `licenca` é opcional e liga o acesso ao assento pago correspondente
+    (ex.: "TOTVS - Datasul" com a licença "DATASUL / PIMS"): quando existe, a
+    contratação sabe que criar aquele acesso consome um assento, e a tela de
+    provisionamento leva o TI para a atribuição da licença em vez de deixar o
+    assento sair do controle."""
+
+    nome = models.CharField(max_length=120, unique=True, verbose_name="Sistema")
+    descricao = models.CharField(
+        max_length=255, blank=True, default="", verbose_name="Descrição",
+        help_text="Aparece como ajuda embaixo da pergunta no formulário de contratação.",
+    )
+    ordem = models.PositiveSmallIntegerField(
+        default=0, verbose_name="Ordem",
+        help_text="Ordem de exibição no formulário (menor primeiro).",
+    )
+    ativo = models.BooleanField(
+        default=True, verbose_name="Ativo",
+        help_text="Inativo some do formulário das próximas contratações, mas continua nas já abertas.",
+    )
+    exige_perfil_espelho = models.BooleanField(
+        default=True, verbose_name="Pede usuário espelho",
+        help_text="Quando marcado, o formulário pergunta de qual usuário copiar o perfil.",
+    )
+    licenca = models.ForeignKey(
+        "Licenca", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="sistemas_corporativos", verbose_name="Licença vinculada",
+        help_text="Se o acesso consome um assento de licença, aponte aqui — a contratação "
+                  "passa a cobrar a atribuição do assento junto com o acesso.",
+    )
+
+    class Meta:
+        ordering = ["ordem", "nome"]
+        verbose_name = "Sistema Corporativo"
+        verbose_name_plural = "Sistemas Corporativos"
+        indexes = [models.Index(fields=["ativo", "ordem"])]
+
+    def __str__(self):
+        return self.nome
+
+
+class Contratacao(AuditModel):
+    """Uma vaga em processo de admissão, do pedido do gestor até o
+    colaborador sentado com tudo funcionando.
+
+    As quatro etapas (`StatusContratacaoChoices`) são as mesmas colunas do
+    quadro do Planner que este módulo substitui — mantidas de propósito, para
+    quem já usava o quadro não precisar reaprender o fluxo:
+
+        Em aberto -> Vaga preenchida -> Equipamento entregue -> Concluída
+
+    A diferença é o que cada etapa passa a gravar: `colaborador` liga a vaga
+    ao cadastro real do colaborador, `item_entregue` ao equipamento do
+    inventário, e os carimbos de data permitem medir quanto tempo a vaga
+    ficou em cada etapa. O card do Planner não tinha nenhum dos três.
+
+    O que este modelo NÃO faz: movimentar estoque. Registrar a entrega aqui
+    grava QUAL equipamento foi entregue; a transferência continua sendo feita
+    em Movimentações, que é a fonte única do inventário (ver
+    `services/movimentacao_service.py`). Duplicar isso aqui criaria duas
+    verdades sobre o mesmo equipamento."""
+
+    # ── A vaga ────────────────────────────────────────────────────────────
+    cargo = models.CharField(
+        max_length=150, verbose_name="Cargo da vaga",
+        help_text="Como a vaga é conhecida — ex.: “Técnico de Segurança do Trabalho”.",
+    )
+    funcao = models.ForeignKey(
+        Funcao, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="contratacoes", verbose_name="Função cadastrada",
+        help_text="Opcional: liga a vaga à função já cadastrada no sistema.",
+    )
+    centro_custo = models.ForeignKey(
+        CentroCusto, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="contratacoes", verbose_name="Centro de custo",
+    )
+    localidade = models.ForeignKey(
+        Localidade, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="contratacoes", verbose_name="Localidade",
+    )
+    gestor = models.CharField(
+        max_length=150, blank=True, default="", verbose_name="Gestor solicitante",
+    )
+    tipo_vaga = models.CharField(
+        max_length=15, choices=TipoVagaChoices.choices,
+        default=TipoVagaChoices.SUBSTITUICAO, verbose_name="Tipo da vaga",
+    )
+    substituido = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="contratacoes_substituindo", verbose_name="Substitui qual colaborador",
+        help_text="Em vaga de substituição: de quem é a cadeira. É dele que sai o perfil "
+                  "a espelhar e, muitas vezes, o próprio equipamento.",
+    )
+    data_prevista_inicio = models.DateField(
+        null=True, blank=True, verbose_name="Previsão de início",
+        help_text="Data em que a pessoa começa. É o prazo contra o qual a contratação atrasa.",
+    )
+
+    # ── Quem ocupou a vaga ────────────────────────────────────────────────
+    colaborador = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="contratacoes", verbose_name="Colaborador contratado",
+    )
+    colaborador_nome = models.CharField(
+        max_length=150, blank=True, default="", verbose_name="Nome do contratado",
+        help_text="Use quando a pessoa ainda não tem cadastro de colaborador no sistema.",
+    )
+    # Dados que o RH informa ao marcar a vaga como preenchida. Todos opcionais
+    # (exceto o nome, que é o próprio ato de preencher): o RH não deve ser
+    # obrigado a inventar o que ainda não existe. Cargo, setor e unidade NÃO são
+    # repetidos aqui — já são da vaga, e duplicá-los criaria duas verdades.
+    colaborador_email = models.EmailField(
+        blank=True, default="", verbose_name="E-mail do contratado",
+        help_text="Corporativo ou pessoal, o que o RH tiver. Não vai nos e-mails de chamado.",
+    )
+    colaborador_telefone = models.CharField(
+        max_length=30, blank=True, default="", verbose_name="Telefone do contratado",
+    )
+    colaborador_observacoes = models.TextField(
+        blank=True, default="", verbose_name="Observações sobre o contratado",
+    )
+    data_admissao = models.DateField(
+        null=True, blank=True, verbose_name="Data de admissão",
+        help_text="Prevista ou efetiva. Diferente de “Previsão de início” da vaga, que é o prazo do pedido.",
+    )
+    preenchida_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="vagas_preenchidas", verbose_name="Preenchida por",
+    )
+
+    # ── Ferramenta de trabalho ────────────────────────────────────────────
+    computador = models.CharField(
+        max_length=10, choices=TipoComputadorChoices.choices,
+        default=TipoComputadorChoices.NOTEBOOK, verbose_name="Computador",
+    )
+    computador_justificativa = models.TextField(
+        blank=True, default="", verbose_name="Justificativa / configuração",
+        help_text="Por que precisa e qual configuração — ex.: “Substituição”, “Tabulação de dados, 16 GB”.",
+    )
+    item_entregue = models.ForeignKey(
+        Item, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="contratacoes", verbose_name="Equipamento entregue",
+    )
+    telefonia = models.CharField(
+        max_length=15, choices=TipoTelefoniaChoices.choices,
+        default=TipoTelefoniaChoices.NENHUM, verbose_name="Telefonia",
+    )
+    ligacao_direta = models.BooleanField(default=False, verbose_name="Fará ligação direta")
+    ramal_sugerido = models.CharField(
+        max_length=30, blank=True, default="", verbose_name="Ramal sugerido",
+    )
+
+    # ── Acessos ───────────────────────────────────────────────────────────
+    email_corporativo = models.BooleanField(default=True, verbose_name="E-mail corporativo")
+    email_sugerido = models.CharField(
+        max_length=150, blank=True, default="", verbose_name="E-mail sugerido",
+    )
+    usuario_rede = models.BooleanField(default=True, verbose_name="Usuário de rede (login)")
+    perfil_espelho = models.CharField(
+        max_length=150, blank=True, default="", verbose_name="Usuário espelho (rede)",
+        help_text="De qual usuário copiar as permissões de pasta e de grupo.",
+    )
+    acesso_vpn = models.BooleanField(default=False, verbose_name="Acesso VPN")
+    acesso_impressora = models.BooleanField(default=False, verbose_name="Acesso a impressora")
+
+    observacoes = models.TextField(blank=True, default="", verbose_name="Observações")
+
+    # ── Andamento ─────────────────────────────────────────────────────────
+    status = models.CharField(
+        max_length=25, choices=StatusContratacaoChoices.choices,
+        default=StatusContratacaoChoices.ABERTA, db_index=True,
+    )
+    vaga_preenchida_em = models.DateTimeField(null=True, blank=True)
+    equipamento_entregue_em = models.DateTimeField(null=True, blank=True)
+    concluida_em = models.DateTimeField(null=True, blank=True)
+    cancelada_em = models.DateTimeField(null=True, blank=True)
+    motivo_cancelamento = models.CharField(max_length=255, blank=True, default="")
+
+    # ── Integração do colaborador ─────────────────────────────────────────
+    # A integração é um eixo à parte do status da vaga: a vaga pode estar
+    # "Preenchida" (ou até "Equipamento entregue") com a integração ainda em
+    # andamento. Quem confirma, quando e com qual observação fica aqui; o
+    # estado (não iniciada / em andamento / confirmada) é DERIVADO — ver
+    # `contratacao_service.situacao_integracao`.
+    integracao_confirmada_em = models.DateTimeField(null=True, blank=True)
+    integracao_confirmada_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="integracoes_confirmadas", verbose_name="Integração confirmada por",
+    )
+    integracao_observacao = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Contratação"
+        verbose_name_plural = "Contratações"
+        indexes = [
+            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["data_prevista_inicio"]),
+        ]
+
+    def __str__(self):
+        return f"{self.cargo} — {self.get_status_display()}"
+
+    @property
+    def nome_contratado(self) -> str:
+        """Quem ocupa a vaga, venha do cadastro ou do campo livre. A vaga
+        começa sem ninguém, então o vazio é um estado legítimo."""
+        if self.colaborador_id:
+            return self.colaborador.nome
+        return self.colaborador_nome or ""
+
+    @property
+    def precisa_computador(self) -> bool:
+        return self.computador != TipoComputadorChoices.NENHUM
+
+    @property
+    def encerrada(self) -> bool:
+        return self.status in (
+            StatusContratacaoChoices.CONCLUIDA, StatusContratacaoChoices.CANCELADA,
+        )
+
+    @property
+    def atrasada(self) -> bool:
+        """Previsão de início já passou e a contratação não fechou. É a única
+        métrica de urgência do módulo: sem data prevista não há atraso —
+        contratação sem prazo não é cobrada por um prazo inventado."""
+        if self.encerrada or not self.data_prevista_inicio:
+            return False
+        return self.data_prevista_inicio < datetime.date.today()
+
+    @property
+    def dias_para_inicio(self):
+        if not self.data_prevista_inicio:
+            return None
+        return (self.data_prevista_inicio - datetime.date.today()).days
+
+
+class ContratacaoVagaHistorico(AuditModel):
+    """Cada vez que a vaga foi preenchida, o contratado foi corrigido ou a vaga
+    foi reaberta — com o estado ANTES e DEPOIS, quem fez e por quê.
+
+    Existe porque `ContratacaoEvento.descricao` cabe em 255 caracteres: serve
+    para a linha do tempo, não para guardar o contratado anterior por inteiro.
+    Reabrir uma vaga LIMPA os dados do contratado da vaga (ela volta a não ter
+    ninguém); o que ele era fica aqui, e nunca é editado nem apagado."""
+
+    class Acao(models.TextChoices):
+        PREENCHIMENTO = "preenchimento", "Vaga preenchida"
+        CORRECAO = "correcao", "Dados do contratado corrigidos"
+        REABERTURA = "reabertura", "Vaga reaberta"
+        CADASTRO = "cadastro", "Colaborador cadastrado no sistema"
+
+    contratacao = models.ForeignKey(
+        Contratacao, on_delete=models.CASCADE, related_name="historico_vaga",
+    )
+    acao = models.CharField(max_length=15, choices=Acao.choices)
+    status_antes = models.CharField(max_length=25, blank=True, default="")
+    status_depois = models.CharField(max_length=25, blank=True, default="")
+    motivo = models.TextField(blank=True, default="")
+    antes = models.JSONField(default=dict, blank=True)
+    depois = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        verbose_name = "Histórico do preenchimento da vaga"
+        verbose_name_plural = "Histórico do preenchimento das vagas"
+        indexes = [models.Index(fields=["contratacao", "-created_at"])]
+
+
+class ContratacaoSistema(AuditModel):
+    """Um acesso pedido para uma contratação — a linha "[TI] Sistema: X: Sim"
+    do formulário do Planner, agora com estado próprio.
+
+    `necessario` é o PEDIDO (o gestor marcou que precisa) e `provisionado` é
+    o FATO (o TI criou). Os dois são campos separados porque a resposta a
+    "falta alguma coisa para essa pessoa começar?" é a diferença entre eles —
+    com um campo só, marcar como feito apagaria o pedido e a pergunta
+    deixaria de ter resposta."""
+
+    contratacao = models.ForeignKey(
+        Contratacao, on_delete=models.CASCADE, related_name="sistemas",
+        verbose_name="Contratação",
+    )
+    sistema = models.ForeignKey(
+        SistemaCorporativo, on_delete=models.PROTECT, related_name="pedidos",
+        verbose_name="Sistema",
+    )
+    necessario = models.BooleanField(default=False, verbose_name="Necessário")
+    perfil_espelho = models.CharField(
+        max_length=150, blank=True, default="", verbose_name="Usuário espelho",
+        help_text="Nome do usuário de quem copiar o perfil neste sistema.",
+    )
+    observacao = models.CharField(max_length=255, blank=True, default="")
+    provisionado = models.BooleanField(default=False, verbose_name="Acesso criado")
+    provisionado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["sistema__ordem", "sistema__nome"]
+        verbose_name = "Sistema da Contratação"
+        verbose_name_plural = "Sistemas da Contratação"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["contratacao", "sistema"], name="contratacao_sistema_unico",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.sistema} — {'sim' if self.necessario else 'não'}"
+
+
+class ContratacaoLicenca(AuditModel):
+    """Assento de licença que a contratação precisa (Microsoft 365, Power BI...).
+
+    Fica separado de `ContratacaoSistema` porque licença é ativo com custo e
+    saldo (ver `services/licenca_service.py`): aqui se declara a necessidade,
+    e a atribuição de verdade continua acontecendo no módulo de Licenças, que
+    é quem debita o lote. `movimentacao` guarda o elo quando a atribuição é
+    feita, para a contratação poder provar qual assento saiu."""
+
+    contratacao = models.ForeignKey(
+        Contratacao, on_delete=models.CASCADE, related_name="licencas_necessarias",
+        verbose_name="Contratação",
+    )
+    licenca = models.ForeignKey(
+        "Licenca", on_delete=models.PROTECT, related_name="contratacoes",
+        verbose_name="Licença",
+    )
+    # Mesmo campo, mesmo tipo e mesmo papel do `ContratacaoSistema.perfil_espelho`:
+    # no formulário as duas coisas são UMA lista só ("marque a caixa e diga de
+    # quem copiar o perfil"), e tipos diferentes nos dois lados obrigariam a
+    # duas versões de cada linha do template, do form e do service.
+    perfil_espelho = models.CharField(
+        max_length=150, blank=True, default="", verbose_name="Usuário espelho",
+        help_text="Nome do usuário de quem copiar o perfil nesta licença.",
+    )
+    observacao = models.CharField(max_length=255, blank=True, default="")
+    provisionada = models.BooleanField(default=False, verbose_name="Assento atribuído")
+    provisionada_em = models.DateTimeField(null=True, blank=True)
+    movimentacao = models.ForeignKey(
+        "MovimentacaoLicenca", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="contratacoes", verbose_name="Movimentação do assento",
+    )
+
+    class Meta:
+        ordering = ["licenca__nome"]
+        verbose_name = "Licença da Contratação"
+        verbose_name_plural = "Licenças da Contratação"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["contratacao", "licenca"], name="contratacao_licenca_unica",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.licenca} — {'atribuída' if self.provisionada else 'pendente'}"
+
+
+class ContratacaoEvento(AuditModel):
+    """Linha do tempo da contratação: abertura, mudança de etapa, acesso
+    criado, cancelamento. Mesma função do `OrdemManutencaoEvento` no módulo
+    de manutenção — o estado atual diz ONDE a vaga está, o evento diz COMO
+    ela chegou lá, e é isso que se lê quando alguém pergunta por que a
+    admissão demorou."""
+
+    contratacao = models.ForeignKey(
+        Contratacao, on_delete=models.CASCADE, related_name="eventos",
+        verbose_name="Contratação",
+    )
+    tipo = models.CharField(max_length=30, default="etapa")
+    descricao = models.CharField(max_length=255)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Evento da Contratação"
+        verbose_name_plural = "Eventos da Contratação"
+        indexes = [models.Index(fields=["contratacao", "-created_at"])]
+
+    def __str__(self):
+        return self.descricao
+
+
+class ContratacaoEtapaRegistro(AuditModel):
+    """Registro MANUAL de uma etapa do processo — só existe quando alguém
+    precisou DECIDIR algo que o sistema não deduz sozinho:
+
+      • `concluida`  — o TI registrou que a etapa foi feita (as orientações de
+        uso dos sistemas, por exemplo: não há movimentação nem chamado que
+        prove que a conversa aconteceu);
+      • `dispensada` — a etapa não se aplica a esta contratação, e a
+        justificativa diz por quê.
+
+    Etapa que o sistema deduz do que já existe (colaborador cadastrado,
+    equipamento reservado, entrega por movimentação, acesso provisionado,
+    chamado concluído) não tem linha aqui: duplicar o fato num registro à mão
+    criaria duas verdades que divergem. Nunca é apagada; desfazer uma dispensa
+    grava `desfeita_em`, e a linha continua como histórico."""
+
+    class Estado(models.TextChoices):
+        CONCLUIDA = "concluida", "Concluída"
+        DISPENSADA = "dispensada", "Dispensada"
+
+    contratacao = models.ForeignKey(
+        Contratacao, on_delete=models.CASCADE, related_name="etapas_registro",
+    )
+    chave = models.CharField(max_length=30)
+    estado = models.CharField(max_length=12, choices=Estado.choices)
+    justificativa = models.CharField(max_length=255, blank=True, default="")
+    registrada_em = models.DateTimeField(default=timezone.now)
+    desfeita_em = models.DateTimeField(null=True, blank=True)
+    desfeita_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+
+    class Meta:
+        ordering = ["-registrada_em", "-pk"]
+        verbose_name = "Registro de etapa da contratação"
+        verbose_name_plural = "Registros de etapa da contratação"
+        constraints = [
+            # Uma linha VIGENTE por (vaga, etapa). A desfeita fica de histórico.
+            models.UniqueConstraint(
+                fields=["contratacao", "chave"],
+                condition=models.Q(desfeita_em__isnull=True),
+                name="etapa_registro_vigente_unica",
+            ),
+        ]
+        indexes = [models.Index(fields=["contratacao", "chave"])]
+
+    def __str__(self):
+        return f"{self.chave}: {self.get_estado_display()}"
+
+
+class ReservaEquipamento(AuditModel):
+    """A destinação PLANEJADA de um equipamento do estoque para uma vaga.
+
+    Reserva NÃO é entrega, transferência nem ativação: o equipamento continua
+    no mesmo lugar, no mesmo centro de custo, sem baixa e sem termo — só o
+    status muda (Backup → Reservado) e esta linha registra para quê. A entrega
+    é a movimentação patrimonial feita pelo TI em nome do colaborador; é ela
+    que fecha a reserva (`estado=entregue`) e guarda a prova em `movimentacao`.
+
+    A linha NUNCA é apagada: liberar, ceder para outra necessidade ou entregar
+    muda `estado` e grava quem/quando/por quê. O histórico de um equipamento
+    ("já foi reservado para quem?") e de uma vaga ("que máquinas já passaram
+    por ela?") sai daqui.
+
+    `contratacao` é SET_NULL e há `vaga_rotulo` de propósito: excluir a vaga
+    não pode levar o histórico da reserva junto — o rótulo diz de qual vaga era.
+    """
+
+    class Estado(models.TextChoices):
+        ATIVA = "ativa", "Reservado"
+        ENTREGUE = "entregue", "Entregue"
+        LIBERADA = "liberada", "Liberado (voltou ao Backup)"
+        CEDIDA = "cedida", "Usado em outra necessidade"
+
+    class Motivo(models.TextChoices):
+        CANCELAMENTO = "cancelamento", "Vaga cancelada"
+        EXCLUSAO = "exclusao", "Vaga excluída"
+        MANUAL = "manual", "Liberado pelo TI"
+        ENTREGA = "entrega", "Entregue ao colaborador"
+        REPOSICAO = "reposicao", "Usado em reposição"
+        STATUS_ALTERADO = "status_alterado", "Status alterado fora da reserva"
+
+    contratacao = models.ForeignKey(
+        Contratacao, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reservas", verbose_name="Vaga",
+    )
+    vaga_rotulo = models.CharField(max_length=200, blank=True, default="")
+    item = models.ForeignKey(
+        Item, on_delete=models.PROTECT, related_name="reservas", verbose_name="Equipamento",
+    )
+    item_rotulo = models.CharField(max_length=200, blank=True, default="")
+    colaborador = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reservas_equipamento", verbose_name="Colaborador",
+        help_text="Preenchido quando a vaga é preenchida e o colaborador cadastrado.",
+    )
+    estado = models.CharField(
+        max_length=10, choices=Estado.choices, default=Estado.ATIVA, db_index=True,
+    )
+    status_anterior = models.CharField(
+        max_length=15, default=StatusItemChoices.BACKUP,
+        help_text="Status do equipamento antes de reservar — para onde ele volta ao liberar.",
+    )
+    reservado_em = models.DateTimeField(default=timezone.now)
+    adicional = models.BooleanField(
+        default=False,
+        help_text="O TI confirmou que a vaga precisa de mais de um equipamento deste tipo.",
+    )
+
+    encerrada_em = models.DateTimeField(null=True, blank=True)
+    encerrada_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    motivo_tipo = models.CharField(max_length=20, choices=Motivo.choices, blank=True, default="")
+    motivo = models.TextField(blank=True, default="")
+    movimentacao = models.ForeignKey(
+        MovimentacaoItem, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reservas", verbose_name="Movimentação",
+        help_text="A entrega que fechou a reserva — ou a movimentação que usou o equipamento em outra necessidade.",
+    )
+    substituida_por = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="substitui",
+    )
+
+    # O alerta "vaga sem equipamento" é por OCORRÊNCIA (uma cessão sem substituto
+    # = um e-mail). Estes campos são o que impede o mesmo problema de ser
+    # avisado de novo a cada tela aberta ou a cada clique.
+    alerta_em = models.DateTimeField(null=True, blank=True)
+    alerta_resultado = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        ordering = ["-reservado_em", "-pk"]
+        verbose_name = "Reserva de equipamento"
+        verbose_name_plural = "Reservas de equipamento"
+        constraints = [
+            # Um equipamento não pode estar reservado para duas vagas ao mesmo
+            # tempo. É o BANCO que garante — dois TIs clicando juntos esbarram
+            # no mesmo INSERT, e o segundo vira "já reservado".
+            models.UniqueConstraint(
+                fields=["item"], condition=models.Q(estado="ativa"),
+                name="reserva_ativa_unica_por_item",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["contratacao", "estado"]),
+            models.Index(fields=["colaborador", "estado"]),
+        ]
+
+    def __str__(self):
+        return f"{self.item_rotulo or self.item_id} → {self.vaga_rotulo or self.contratacao_id} ({self.get_estado_display()})"
+
+    @property
+    def ativa(self) -> bool:
+        return self.estado == self.Estado.ATIVA
+
+
+class TipoChamadoContratacao(models.TextChoices):
+    """Os três chamados que uma vaga pode pedir à TI. Cada um é independente:
+    tem a própria mensagem, o próprio destinatário e o próprio estado."""
+    MAQUINA = "maquina", "Configuração e entrega de máquina"
+    USUARIO_EMAIL = "usuario_email", "Criação de usuário e e-mail"
+    SISTEMAS = "sistemas", "Orientação e uso dos sistemas"
+
+
+class AtendimentoChamadoChoices(models.TextChoices):
+    """Andamento do chamado na TI — independente do status da vaga e do estado
+    do envio do e-mail.
+
+    "Aberto" quer dizer que a TI registrou o chamado no atendimento (é o que o
+    nº do chamado informado na vaga faz); o chamado recém-enviado ainda é
+    "Aguardando atendimento". Quem muda a situação é a TI; a única mudança
+    automática é a volta para "Aguardando atendimento" quando o RH responde a
+    um chamado que esperava por ele (ver `chamado_conversa_service`)."""
+    ABERTO = "aberto", "Aberto"
+    AGUARDANDO_ATENDIMENTO = "aguardando_atendimento", "Aguardando atendimento"
+    EM_ANDAMENTO = "em_andamento", "Em andamento"
+    AGUARDANDO_RH = "aguardando_rh", "Aguardando retorno do RH"
+    AGUARDANDO_INFORMACOES = "aguardando_informacoes", "Aguardando informações"
+    CONCLUIDO = "concluido", "Concluído"
+    CANCELADO = "cancelado", "Cancelado"
+
+
+class StatusChamadoContratacao(models.TextChoices):
+    """Estado do ENVIO do e-mail — e só dele.
+
+    "Não solicitado" não é um valor: é a ausência da linha. Nenhum estado diz
+    "chamado aberto", de propósito: o sistema só sabe que o servidor de e-mail
+    ACEITOU a mensagem, não que alguém abriu um chamado no sistema de
+    atendimento (não há integração). A confirmação, quando existe, é o
+    `identificador` registrado pelo TI."""
+    PENDENTE = "pendente", "Envio pendente"
+    ENVIADO = "enviado", "E-mail enviado com sucesso"
+    FALHA = "falha", "Falha no envio"
+
+
+class ContratacaoChamado(AuditModel):
+    """Um chamado pedido por e-mail à TI para preparar a estrutura de uma vaga.
+
+    No máximo UM por (vaga, tipo) — `chamado_unico_por_tipo`. É essa restrição
+    do BANCO, e não um `if` na view, que impede o clique repetido, a aba
+    duplicada e o reenvio de gerar chamado em dobro: o segundo INSERT falha, e
+    o service trata a falha como "já solicitado".
+
+    `dados` é o SNAPSHOT do que o solicitante confirmou na janela (cargo,
+    setor, necessidades...). A nova tentativa reenvia ESSE conteúdo, não o que a
+    vaga diz hoje: o que a TI recebe tem de ser o que foi confirmado.
+
+    `criado_por`/`created_at` (do AuditModel) são QUEM solicitou e QUANDO.
+    """
+
+    PENDENTE_EXPIRA = datetime.timedelta(minutes=10)
+
+    contratacao = models.ForeignKey(
+        Contratacao, on_delete=models.CASCADE, related_name="chamados",
+        verbose_name="Contratação",
+    )
+    tipo = models.CharField(max_length=20, choices=TipoChamadoContratacao.choices)
+    status = models.CharField(
+        max_length=10, choices=StatusChamadoContratacao.choices,
+        default=StatusChamadoContratacao.PENDENTE, db_index=True,
+    )
+    dados = models.JSONField(default=dict, blank=True, verbose_name="Dados enviados")
+    assunto = models.CharField(max_length=255, blank=True, default="")
+    destinatarios = models.TextField(
+        blank=True, default="",
+        help_text="Quem recebeu na ÚLTIMA tentativa, separado por vírgula.",
+    )
+    enviado_em = models.DateTimeField(null=True, blank=True)
+    tentativas = models.PositiveSmallIntegerField(default=0)
+    ultimo_erro = models.TextField(blank=True, default="")
+
+    # Só o TI preenche: sem integração com o sistema de atendimento, é o único
+    # jeito de o número do chamado chegar aqui.
+    identificador = models.CharField(
+        max_length=60, blank=True, default="", verbose_name="Nº do chamado",
+        help_text="Registrado pelo TI quando o chamado é aberto no sistema de atendimento.",
+    )
+    identificador_em = models.DateTimeField(null=True, blank=True)
+
+    # ── Atendimento (a conversa RH ↔ TI) ─────────────────────────────────
+    # `status` acima descreve o ENVIO do e-mail de abertura e continua sendo só
+    # isso. `atendimento` é o andamento do pedido na TI — outro eixo, de
+    # propósito: "o e-mail saiu" e "a máquina foi entregue" são fatos diferentes,
+    # e nenhum deles é o status da VAGA (um chamado concluído não preenche a
+    # vaga, e preencher a vaga não conclui chamado).
+    atendimento = models.CharField(
+        max_length=30, choices=AtendimentoChamadoChoices.choices,
+        default=AtendimentoChamadoChoices.AGUARDANDO_ATENDIMENTO, db_index=True,
+        verbose_name="Situação do atendimento",
+    )
+    responsavel = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="chamados_contratacao_atendidos", verbose_name="Responsável na TI",
+    )
+    ultima_atividade_em = models.DateTimeField(
+        null=True, blank=True, db_index=True,
+        help_text="Última mensagem ou mudança de situação — é o que ordena a fila.",
+    )
+    # Id de conversa do provedor de e-mail (Graph `conversationId`), aprendido
+    # quando a primeira resposta chega. Um dos sinais de vínculo — nunca o único.
+    conversation_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Chamado da Contratação"
+        verbose_name_plural = "Chamados da Contratação"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["contratacao", "tipo"], name="chamado_unico_por_tipo",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} — {self.get_status_display()}"
+
+    @property
+    def lista_destinatarios(self) -> list:
+        return [e.strip() for e in self.destinatarios.split(",") if e.strip()]
+
+    @property
+    def confirmado(self) -> bool:
+        """O TI registrou o número do chamado. É a ÚNICA coisa que autoriza
+        dizer que o chamado existe; e-mail enviado, sozinho, não autoriza."""
+        return bool(self.identificador)
+
+    @property
+    def interrompido(self) -> bool:
+        """Ficou "pendente" além do prazo: o envio não terminou (servidor
+        reiniciado no meio, por exemplo) e não se sabe se a mensagem saiu."""
+        return (
+            self.status == StatusChamadoContratacao.PENDENTE
+            and timezone.now() - self.updated_at > self.PENDENTE_EXPIRA
+        )
+
+    @property
+    def reenviavel(self) -> bool:
+        """Só a falha — e o envio interrompido — admitem nova tentativa. O que
+        já foi enviado com sucesso nunca é reenviado: seria chamado em dobro."""
+        return self.status == StatusChamadoContratacao.FALHA or self.interrompido
+
+
+class ContratacaoChamadoTentativa(AuditModel):
+    """Uma tentativa de envio — a primeira e cada reenvio. É o histórico das
+    comunicações: quem tentou, quando, para quem e com que resultado. Nunca é
+    apagada nem editada; o estado atual mora em `ContratacaoChamado`."""
+
+    chamado = models.ForeignKey(
+        ContratacaoChamado, on_delete=models.CASCADE, related_name="historico",
+        verbose_name="Chamado",
+    )
+    sucesso = models.BooleanField(default=False)
+    assunto = models.CharField(max_length=255, blank=True, default="")
+    destinatarios = models.TextField(blank=True, default="")
+    erro = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Tentativa de envio do chamado"
+        verbose_name_plural = "Tentativas de envio do chamado"
+        indexes = [models.Index(fields=["chamado", "-created_at"])]
+
+    def __str__(self):
+        return f"{'ok' if self.sucesso else 'falha'} — {self.created_at:%d/%m/%Y %H:%M}"
+
+
+class SuporteSistemasChoices(models.TextChoices):
+    """O que o solicitante pede no chamado de sistemas. Não é campo de modelo:
+    vira texto no snapshot `ContratacaoChamado.dados`, então mudar a lista não
+    exige migration nem altera o que já foi enviado."""
+    ORIENTACAO = "orientacao", "Orientação de uso dos sistemas"
+    CONFIGURACAO = "configuracao", "Configuração do acesso"
+    LIBERACAO = "liberacao", "Liberação de acesso"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Conversa RH ↔ TI de cada chamado (e-mail nos dois sentidos)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ArmazenamentoChamados(FileSystemStorage):
+    """Disco PRIVADO dos anexos e dos e-mails brutos dos chamados.
+
+    Fica fora de `MEDIA_ROOT` e de `STATIC_ROOT` de propósito: nada ali é
+    alcançável por URL. O único caminho até o arquivo é a view autenticada de
+    download, que confere se a pessoa pode ver o chamado. O local é lido de
+    `settings.CHAMADOS_ARQUIVOS_ROOT` a cada uso (e não fixado na construção)
+    para o teste poder apontar para um diretório temporário."""
+
+    @property
+    def base_location(self):
+        return settings.CHAMADOS_ARQUIVOS_ROOT
+
+    @property
+    def location(self):
+        return os.path.abspath(self.base_location)
+
+
+class ChamadoMensagem(AuditModel):
+    """Uma mensagem da conversa de um chamado — enviada pela plataforma,
+    recebida por e-mail, ou o e-mail de abertura.
+
+    É o REGISTRO: nunca é editada nem apagada pela tela. O que mudou depois
+    (falha de entrega, nova tentativa) é anotado nos campos de estado, não
+    reescrevendo o conteúdo.
+
+    O estado diz só o que o sistema SABE:
+      • `enviada`  — o servidor SMTP aceitou. NÃO é "entregue" nem "lida";
+      • `falha`    — o servidor recusou (ou o envio não terminou);
+      • `recebida` — o e-mail foi capturado da caixa e registrado aqui;
+      • `entrega_recusada` — chegou um aviso de não entrega (DSN) citando esta
+        mensagem. É a única evidência de entrega que a caixa fornece.
+    """
+
+    class Direcao(models.TextChoices):
+        SAIDA = "saida", "Enviada"
+        ENTRADA = "entrada", "Recebida"
+
+    class Origem(models.TextChoices):
+        PLATAFORMA = "plataforma", "Pela plataforma"
+        EMAIL = "email", "Por e-mail"
+
+    class Lado(models.TextChoices):
+        RH = "rh", "RH"
+        TI = "ti", "TI"
+        OUTRO = "outro", "Outro participante"
+
+    class Tipo(models.TextChoices):
+        ABERTURA = "abertura", "Solicitação"
+        MENSAGEM = "mensagem", "Mensagem"
+
+    class Estado(models.TextChoices):
+        PENDENTE = "pendente", "Envio pendente"
+        ENVIADA = "enviada", "E-mail enviado"
+        FALHA = "falha", "Falha no envio"
+        RECEBIDA = "recebida", "Recebida por e-mail"
+
+    PENDENTE_EXPIRA = datetime.timedelta(minutes=10)
+
+    chamado = models.ForeignKey(
+        ContratacaoChamado, on_delete=models.CASCADE, related_name="mensagens",
+    )
+    tipo = models.CharField(max_length=10, choices=Tipo.choices, default=Tipo.MENSAGEM)
+    direcao = models.CharField(max_length=10, choices=Direcao.choices)
+    origem = models.CharField(max_length=12, choices=Origem.choices)
+    lado = models.CharField(max_length=6, choices=Lado.choices)
+    estado = models.CharField(max_length=10, choices=Estado.choices, db_index=True)
+
+    autor = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="mensagens_de_chamado",
+        help_text="Vazio quando o remetente não é um usuário do sistema (resposta por e-mail).",
+    )
+    remetente_nome = models.CharField(max_length=150, blank=True, default="")
+    remetente_email = models.CharField(max_length=254, blank=True, default="")
+    destinatarios = models.TextField(blank=True, default="")
+    assunto = models.CharField(max_length=255, blank=True, default="")
+    corpo = models.TextField(blank=True, default="")
+
+    # Cabeçalhos RFC 5322 que mantêm a conversa costurada. `message_id` é a
+    # CHAVE de deduplicação (única quando preenchida): a mesma mensagem lida
+    # duas vezes da caixa, ou reenviada após uma falha, nunca vira duas linhas.
+    message_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    in_reply_to = models.CharField(max_length=255, blank=True, default="")
+    referencias = models.TextField(blank=True, default="")
+
+    enviado_em = models.DateTimeField(null=True, blank=True)
+    recebido_em = models.DateTimeField(null=True, blank=True)
+    tentativas = models.PositiveSmallIntegerField(default=0)
+    erro = models.TextField(blank=True, default="")
+    entrega_recusada = models.BooleanField(default=False)
+    entrega_erro = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        verbose_name = "Mensagem do Chamado"
+        verbose_name_plural = "Mensagens dos Chamados"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message_id"], condition=~models.Q(message_id=""),
+                name="chamado_mensagem_id_unico",
+            ),
+        ]
+        indexes = [models.Index(fields=["chamado", "created_at"])]
+
+    def __str__(self):
+        return f"{self.get_lado_display()} · {self.get_estado_display()} · {self.assunto[:40]}"
+
+    @property
+    def reenviavel(self) -> bool:
+        """Só a saída que falhou (ou ficou pendente além do prazo) admite nova
+        tentativa — o que foi aceito pelo servidor nunca é reenviado."""
+        if self.direcao != self.Direcao.SAIDA:
+            return False
+        if self.estado == self.Estado.FALHA:
+            return True
+        return (
+            self.estado == self.Estado.PENDENTE
+            and timezone.now() - self.updated_at > self.PENDENTE_EXPIRA
+        )
+
+
+class ChamadoAnexo(AuditModel):
+    """Arquivo de uma mensagem. Quando o arquivo foi BLOQUEADO (tipo proibido,
+    grande demais, conteúdo que não bate com a extensão) a linha existe mesmo
+    assim — sem arquivo — para a conversa dizer que havia um anexo e por que ele
+    não está disponível, em vez de sumir calada."""
+
+    mensagem = models.ForeignKey(ChamadoMensagem, on_delete=models.CASCADE, related_name="anexos")
+    arquivo = models.FileField(
+        storage=ArmazenamentoChamados(), upload_to="anexos/%Y/%m/", blank=True, max_length=255,
+    )
+    nome_original = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=100, blank=True, default="")
+    tamanho = models.PositiveBigIntegerField(default=0)
+    sha256 = models.CharField(max_length=64, blank=True, default="")
+    bloqueado = models.BooleanField(default=False)
+    motivo_bloqueio = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        ordering = ["pk"]
+        verbose_name = "Anexo do Chamado"
+        verbose_name_plural = "Anexos dos Chamados"
+
+    def __str__(self):
+        return self.nome_original
+
+
+class ChamadoStatusLog(AuditModel):
+    """Cada mudança da situação do atendimento: de → para, quem, quando, por
+    quê. `automatico` marca a única mudança que o sistema faz sozinho (resposta
+    do RH reabrindo a fila da TI). Nunca é editada."""
+
+    chamado = models.ForeignKey(ContratacaoChamado, on_delete=models.CASCADE, related_name="historico_status")
+    de = models.CharField(max_length=30, choices=AtendimentoChamadoChoices.choices, blank=True, default="")
+    para = models.CharField(max_length=30, choices=AtendimentoChamadoChoices.choices)
+    motivo = models.CharField(max_length=255, blank=True, default="")
+    automatico = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        verbose_name = "Mudança de situação do chamado"
+        verbose_name_plural = "Mudanças de situação dos chamados"
+
+
+class ChamadoEmailRecebido(AuditModel):
+    """Cada e-mail lido da caixa — o que se fez com ele e, quando não deu certo,
+    por quê. É o que torna a sincronização RECUPERÁVEL:
+
+      • o e-mail bruto fica guardado, então reprocessar uma falha não depende de
+        a caixa ainda tê-lo;
+      • `provider_id` (id da mensagem no provedor) e `message_id` impedem que o
+        mesmo e-mail vire duas mensagens, venha da leitura repetida ou do
+        reprocessamento;
+      • `quarentena` guarda o que parece ser do chamado mas não passou nas
+        verificações (remetente desconhecido, falha de SPF/DKIM, vínculo
+        ambíguo) para o TI decidir — nada disso aparece na conversa antes.
+
+    E-mail sem relação com chamado (`ignorado`) guarda só os identificadores,
+    para não ser baixado de novo a cada leitura; assunto, remetente e conteúdo
+    de e-mail que não é nosso não são retidos."""
+
+    class Estado(models.TextChoices):
+        PROCESSADO = "processado", "Registrado no chamado"
+        QUARENTENA = "quarentena", "Aguardando revisão do TI"
+        FALHA = "falha", "Falha na sincronização"
+        IGNORADO = "ignorado", "Sem relação com chamado"
+        DESCARTADO = "descartado", "Descartado pelo TI"
+
+    provider_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    message_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    conversation_id = models.CharField(max_length=255, blank=True, default="")
+    estado = models.CharField(max_length=12, choices=Estado.choices, db_index=True)
+    motivo = models.TextField(blank=True, default="")
+    tentativas = models.PositiveSmallIntegerField(default=0)
+    recebido_em = models.DateTimeField(null=True, blank=True)
+    remetente = models.CharField(max_length=254, blank=True, default="")
+    assunto = models.CharField(max_length=255, blank=True, default="")
+    bruto = models.FileField(
+        storage=ArmazenamentoChamados(), upload_to="brutos/%Y/%m/", blank=True, max_length=255,
+    )
+    chamado = models.ForeignKey(
+        ContratacaoChamado, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="emails_recebidos",
+    )
+    mensagem = models.OneToOneField(
+        ChamadoMensagem, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="origem_email",
+    )
+    resolvido_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="emails_de_chamado_resolvidos",
+    )
+    resolvido_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "E-mail recebido do chamado"
+        verbose_name_plural = "E-mails recebidos dos chamados"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider_id"], condition=~models.Q(provider_id=""),
+                name="chamado_email_provider_unico",
+            ),
+        ]
+
+
+class ChamadoCaixaEstado(models.Model):
+    """Cursor e saúde da sincronização com a caixa de e-mail — uma linha só.
+
+    `marca_dagua` é o `receivedDateTime` do último e-mail tratado; cada leitura
+    recomeça um pouco ANTES dela (sobreposição), e a deduplicação por
+    `provider_id`/`message_id` faz a sobreposição ser inofensiva. É assim que um
+    e-mail que chegou "fora de ordem" não fica para trás."""
+
+    marca_dagua = models.DateTimeField(null=True, blank=True)
+    ultima_execucao = models.DateTimeField(null=True, blank=True)
+    ultimo_sucesso = models.DateTimeField(null=True, blank=True)
+    ultimo_erro = models.TextField(blank=True, default="")
+    ultimo_resumo = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        verbose_name = "Estado da caixa de chamados"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Monitoramento TIM M2M
+#
+# Regras que moldam estes models (a lógica está em services/tim_m2m_service.py,
+# m2m_interpretacao.py e m2m_monitoramento_service.py):
+#
+#   • A resposta da API é guardada CRUA (`M2MConsulta.payload`). Só é
+#     interpretada se `M2MIntegracao.mapeamento` disser como — a documentação da
+#     TIM ainda não foi obtida, então nenhum campo é presumido.
+#   • SITUAÇÃO ATUAL ≠ HISTÓRICO. O chip guarda o último dado VÁLIDO
+#     (`sessao_consulta`, `consumo_consulta`); a falha de uma consulta só mexe nos
+#     contadores de falha e NUNCA nesse dado. O histórico (`M2MConsulta`) é
+#     imutável e o chip é PROTECT: nada daqui é apagado, só desativado.
+#   • Falha de consulta nunca vira "chip indisponível": quem falhou foi a
+#     consulta (rede, credencial, API, identificador), não necessariamente o chip.
+# ═════════════════════════════════════════════════════════════════════════════
+
+class M2MIntegracao(models.Model):
+    """Configuração e saúde da integração com a API TIM M2M — uma linha só
+    (`get()`), no molde de `ChamadoCaixaEstado`.
+
+    O token NUNCA é guardado em claro: `token_cifrado` é Fernet (chave em
+    `TIM_M2M_CHAVE_CIFRA`, no .env) e a tela só mostra `token_sufixo`. Se
+    `TIM_M2M_TOKEN` existir no .env, ele vence este campo
+    (`services/tim_m2m_service.token()`).
+    """
+
+    # ── credencial ──
+    token_cifrado = models.TextField(blank=True, default="")
+    token_sufixo = models.CharField(max_length=8, blank=True, default="")
+    token_atualizado_em = models.DateTimeField(null=True, blank=True)
+    token_atualizado_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+
+    # ── frequência (a tarefa do Agendador é só o "tique"; quem manda é isto) ──
+    intervalo_minutos = models.PositiveIntegerField(
+        default=60, validators=[MinValueValidator(15)],
+        help_text="De quanto em quanto tempo cada chip é consultado. Mínimo de 15 minutos.",
+    )
+    pausa_entre_chamadas_ms = models.PositiveIntegerField(default=1000)
+    limite_req_minuto = models.PositiveIntegerField(
+        default=30,
+        help_text="Teto de requisições por minuto. Conservador até a TIM informar o limite real.",
+    )
+    max_chips_execucao = models.PositiveIntegerField(default=100)
+    tique_minutos = models.PositiveSmallIntegerField(
+        default=15,
+        help_text="Intervalo da tarefa do Agendador (informado pelo comando). Só serve para dizer se a tarefa parou.",
+    )
+
+    # ── limites de alerta ──
+    falhas_para_alerta = models.PositiveSmallIntegerField(default=3)
+    horas_sem_sessao_alerta = models.PositiveIntegerField(default=24)
+    horas_desatualizado = models.PositiveIntegerField(default=24)
+    pct_consumo_alerta = models.PositiveSmallIntegerField(default=80)
+
+    # ── interpretação (ver services/m2m_interpretacao.py) ──
+    mapeamento = models.JSONField(default=dict, blank=True)
+
+    # ── saúde ──
+    ultima_execucao = models.DateTimeField(null=True, blank=True)
+    ultimo_sucesso = models.DateTimeField(null=True, blank=True)
+    ultimo_erro = models.TextField(blank=True, default="")
+    ultimo_status_http = models.PositiveSmallIntegerField(null=True, blank=True)
+    autenticada_em = models.DateTimeField(null=True, blank=True)       # último 2xx
+    falha_autenticacao_em = models.DateTimeField(null=True, blank=True)  # último 401/403
+    bloqueado_ate = models.DateTimeField(null=True, blank=True)          # 429: não consulta até aqui
+    executando_desde = models.DateTimeField(null=True, blank=True)       # trava contra execução sobreposta
+    proxima_execucao = models.DateTimeField(null=True, blank=True)
+    ultimo_teste = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Integração TIM M2M"
+        verbose_name_plural = "Integração TIM M2M"
+
+    def __str__(self):
+        return "Integração TIM M2M"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+def operadora_padrao_id():
+    """`default` de `M2MChip.operadora`: a operadora com integração TIM M2M (a que o
+    módulo nasceu atendendo). `None` se ela foi apagada — aí o INSERT falha e quem
+    chamou precisa escolher uma operadora. Fica no módulo (e não em lambda) porque
+    a migration 0190 referencia este nome."""
+    return (
+        ConectividadeOperadora.objects.filter(integracao=ConectividadeOperadora.Integracao.TIM_M2M)
+        .order_by("pk").values_list("pk", flat=True).first()
+    )
+
+
+class ConectividadeOperadora(models.Model):
+    """Operadora de chips. É a costura para outras operadoras além da TIM: o ciclo
+    de monitoramento só consulta chips cuja operadora tem `integracao="tim_m2m"`; os
+    demais aparecem como "sem integração — não consultado pela API". `integracao`
+    vazia = operadora cadastrada só para organizar o parque (sem consulta)."""
+
+    class Integracao(models.TextChoices):
+        TIM_M2M = "tim_m2m", "TIM M2M (API)"
+
+    nome = models.CharField(max_length=80, unique=True)
+    integracao = models.CharField(
+        max_length=20, choices=Integracao.choices, blank=True, default="",
+        help_text="Vazio = sem integração: os chips são cadastrados e controlados, mas não consultados pela API.",
+    )
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["nome"]
+        verbose_name = "Operadora de conectividade"
+        verbose_name_plural = "Operadoras de conectividade"
+
+    def __str__(self):
+        return self.nome
+
+    @property
+    def tem_integracao(self) -> bool:
+        return bool(self.integracao)
+
+
+# Permissões do módulo. A fonte é esta lista (`Meta.permissions` dos dois models as
+# usa); a migration 0191 repete os mesmos códigos e um teste confere que não divergem.
+PERMISSOES_FROTA_VEICULO = [
+    ("ver_frota", "Pode ver os veículos e equipamentos da frota"),
+    ("editar_frota", "Pode cadastrar e editar veículos e equipamentos da frota"),
+]
+PERMISSOES_FROTA_CHIP = [
+    ("ver_chips", "Pode ver os chips de conectividade"),
+    ("importar_chips", "Pode cadastrar chips (individualmente ou por planilha)"),
+    ("vincular_chips", "Pode vincular chips a veículos"),
+    ("transferir_chips", "Pode desvincular, transferir, substituir, devolver à disponibilidade e inativar chips"),
+    ("consultar_conectividade", "Pode ver sessão e consumo dos chips e atualizar a consulta"),
+    ("ver_historico_frota", "Pode ver o histórico de movimentações, os alertas e as ocorrências"),
+    ("tratar_ocorrencias", "Pode tratar as ocorrências de conectividade"),
+    ("administrar_frota_config", "Pode administrar a integração, os tipos de veículo, as operadoras e as regras de alerta"),
+]
+
+
+class M2MChip(AuditModel):
+    """Um chip de conectividade acompanhado (hoje TIM M2M; a operadora é um cadastro).
+    O cadastro é do TI; a SITUAÇÃO ATUAL (sessão, consumo, falhas) é preenchida só pelo
+    serviço de monitoramento e a SITUAÇÃO DE USO (`situacao_uso`) só pelo serviço de
+    vínculo (`services/frota_vinculo_service.py`) — ninguém a edita à mão."""
+
+    class Identificador(models.TextChoices):
+        ICCID = "iccid", "ICCID"
+        IMSI = "imsi", "IMSI"
+
+    class SituacaoUso(models.TextChoices):
+        DISPONIVEL = "disponivel", "Disponível"
+        VINCULADO = "vinculado", "Vinculado"
+        MANUTENCAO = "manutencao", "Em manutenção"
+        INATIVO = "inativo", "Inativo"
+
+    class SessaoEstado(models.TextChoices):
+        ATIVA = "ativa", "Sessão ativa"
+        SEM_SESSAO = "sem_sessao", "Sem sessão"
+        NAO_INTERPRETADO = "nao_interpretado", "Não interpretado"
+        NAO_CONSULTADO = "nao_consultado", "Não consultado"
+
+    # ── cadastro ──
+    nome = models.CharField(max_length=120, unique=True)
+    iccid = models.CharField(max_length=20, blank=True, default="")
+    imsi = models.CharField(max_length=15, blank=True, default="")
+    identificador_consulta = models.CharField(
+        max_length=5, choices=Identificador.choices, default=Identificador.ICCID,
+        help_text="Qual identificador vai na URL da consulta. O escolhido precisa estar preenchido.",
+    )
+    descricao = models.CharField(max_length=255, blank=True, default="")
+    # O "equipamento" do chip é o VEÍCULO, pelo vínculo (`FrotaVinculo`). O antigo FK
+    # para `Item` saiu na migration 0190: a frota é independente do estoque de TI.
+    operadora = models.ForeignKey(
+        "ConectividadeOperadora", on_delete=models.PROTECT, related_name="chips", default=operadora_padrao_id,
+    )
+    numero_linha = models.CharField(
+        max_length=15, blank=True, default="",
+        help_text="Número da linha, só dígitos (com DDD). Opcional; não é único.",
+    )
+    situacao_uso = models.CharField(
+        max_length=12, choices=SituacaoUso.choices, default=SituacaoUso.DISPONIVEL, db_index=True,
+        help_text="Gravada só pelo serviço de vínculo. Não confundir com `monitorado` (consulta à API).",
+    )
+    localidade = models.ForeignKey(
+        Localidade, on_delete=models.SET_NULL, null=True, blank=True, related_name="chips_m2m",
+    )
+    setor = models.CharField(max_length=100, blank=True, default="")
+    responsavel = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="chips_m2m",
+        verbose_name="Responsável",
+    )
+    observacoes = models.TextField(blank=True, default="")
+    limite_mensal_bytes = models.PositiveBigIntegerField(
+        null=True, blank=True,
+        help_text="Opcional. É o ÚNICO gatilho do alerta de consumo elevado.",
+    )
+
+    # ── monitoramento ──
+    monitorado = models.BooleanField(default=True, db_index=True)
+    desativado_em = models.DateTimeField(null=True, blank=True)
+    desativado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    desativado_motivo = models.CharField(max_length=255, blank=True, default="")
+
+    # ── situação atual (derivada das consultas; nunca editada à mão) ──
+    sessao_estado = models.CharField(
+        max_length=20, choices=SessaoEstado.choices, default=SessaoEstado.NAO_CONSULTADO,
+    )
+    sessao_consulta = models.ForeignKey(
+        "M2MConsulta", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    consumo_consulta = models.ForeignKey(
+        "M2MConsulta", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    consumo_bytes = models.PositiveBigIntegerField(null=True, blank=True)
+    ultima_valida_em = models.DateTimeField(null=True, blank=True)
+    ultima_tentativa_em = models.DateTimeField(null=True, blank=True)
+    ultima_falha_em = models.DateTimeField(null=True, blank=True)
+    ultima_falha_tipo = models.CharField(max_length=20, blank=True, default="")
+    falhas_consecutivas = models.PositiveIntegerField(default=0)
+    proxima_consulta_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["nome"]
+        verbose_name = "Chip de conectividade"
+        verbose_name_plural = "Chips de conectividade"
+        permissions = PERMISSOES_FROTA_CHIP
+        constraints = [
+            models.UniqueConstraint(
+                fields=["iccid"], condition=~models.Q(iccid=""), name="m2m_chip_iccid_unico",
+            ),
+            models.UniqueConstraint(
+                fields=["imsi"], condition=~models.Q(imsi=""), name="m2m_chip_imsi_unico",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    (models.Q(identificador_consulta="iccid") & ~models.Q(iccid=""))
+                    | (models.Q(identificador_consulta="imsi") & ~models.Q(imsi=""))
+                ),
+                name="m2m_chip_identificador_preenchido",
+            ),
+        ]
+        indexes = [models.Index(fields=["monitorado", "proxima_consulta_em"], name="m2m_chip_devidos_idx")]
+
+    def __str__(self):
+        return self.nome
+
+    @property
+    def identificador(self) -> str:
+        """O valor que vai na URL da consulta (ICCID ou IMSI, conforme `identificador_consulta`)."""
+        return self.iccid if self.identificador_consulta == self.Identificador.ICCID else self.imsi
+
+    def clean(self):
+        erros = {}
+        if self.identificador_consulta == self.Identificador.ICCID and not self.iccid:
+            erros["iccid"] = "Informe o ICCID, ou escolha o IMSI como identificador de consulta."
+        if self.identificador_consulta == self.Identificador.IMSI and not self.imsi:
+            erros["imsi"] = "Informe o IMSI, ou escolha o ICCID como identificador de consulta."
+        if erros:
+            raise ValidationError(erros)
+
+    @property
+    def consultavel_pela_api(self) -> bool:
+        """A operadora do chip tem integração (hoje só a TIM M2M). Sem ela o chip é
+        cadastrado e controlado, mas NUNCA consultado. Em lista, carregue a
+        operadora com `select_related("operadora")`."""
+        return self.operadora.integracao == ConectividadeOperadora.Integracao.TIM_M2M
+
+    def situacao_monitoramento_com(self, horas_desatualizado: int, agora=None) -> str:
+        """`desativado` / `sem_integracao` (operadora sem API) / `pendente` (nunca
+        consultado) / `erro_consulta` (a última tentativa falhou) / `desatualizado`
+        (último dado válido velho demais) / `normal`. Recebe o limite em horas para a
+        lista não consultar a configuração uma vez por linha."""
+        agora = agora or timezone.now()
+        if not self.monitorado:
+            return "desativado"
+        if not self.consultavel_pela_api:
+            return "sem_integracao"
+        if self.falhas_consecutivas > 0:
+            return "erro_consulta"
+        if self.ultima_tentativa_em is None:
+            return "pendente"
+        referencia = self.ultima_valida_em or self.created_at
+        if referencia is not None and agora - referencia > timedelta(hours=horas_desatualizado):
+            return "desatualizado"
+        return "normal"
+
+    @property
+    def situacao_monitoramento(self) -> str:
+        """Atalho de `situacao_monitoramento_com` que lê a configuração. Em LISTA,
+        chame `situacao_monitoramento_com` com o limite já carregado (evita 1 consulta por linha)."""
+        return self.situacao_monitoramento_com(M2MIntegracao.get().horas_desatualizado)
+
+
+class M2MConsulta(models.Model):
+    """Cada chamada à API — IMUTÁVEL: nunca editada, nunca apagada (o chip é
+    PROTECT). É o histórico; o que o chip mostra "agora" aponta para a última
+    consulta válida de cada tipo.
+
+    `payload` é a resposta crua (até 64 KB; acima disso é truncada com marcação).
+    Os campos normalizados só são preenchidos quando o mapeamento existe e o parse
+    deu certo — e podem ser RECALCULADOS (`reinterpretar_historico`), nunca o payload.
+    """
+
+    class Tipo(models.TextChoices):
+        SESSAO = "sessao", "Sessão"
+        CONSUMO = "consumo", "Consumo"
+
+    class Origem(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        AGENDADA = "agendada", "Agendada"
+        TESTE = "teste", "Teste de conexão"
+
+    class Resultado(models.TextChoices):
+        SUCESSO = "sucesso", "Sucesso"
+        SUCESSO_SEM_CORPO = "sucesso_sem_corpo", "Sucesso sem conteúdo"
+        FALHA_AUTENTICACAO = "falha_autenticacao", "Credencial recusada"
+        NAO_ENCONTRADO = "nao_encontrado", "Não encontrado pela API"
+        LIMITE_EXCEDIDO = "limite_excedido", "Limite de requisições excedido"
+        TIMEOUT = "timeout", "Tempo esgotado"
+        ERRO_REDE = "erro_rede", "Erro de rede"
+        INDISPONIVEL = "indisponivel", "API indisponível"
+        RESPOSTA_INVALIDA = "resposta_invalida", "Resposta inválida"
+
+    RESULTADOS_VALIDOS = ("sucesso", "sucesso_sem_corpo")
+    # Os únicos campos que `reinterpretar_historico` pode regravar numa consulta já existente.
+    CAMPOS_NORMALIZADOS = (
+        "valor_original", "unidade_original", "volume_bytes",
+        "periodo_inicio", "periodo_fim", "estado_bruto", "estado_interpretado",
+    )
+
+    chip = models.ForeignKey(M2MChip, on_delete=models.PROTECT, related_name="consultas")
+    tipo = models.CharField(max_length=10, choices=Tipo.choices)
+    origem = models.CharField(max_length=10, choices=Origem.choices)
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    iniciada_em = models.DateTimeField(default=timezone.now)
+    duracao_ms = models.PositiveIntegerField(null=True, blank=True)
+    tentativas = models.PositiveSmallIntegerField(default=1)
+    http_status = models.PositiveSmallIntegerField(null=True, blank=True)
+    identificador_tipo = models.CharField(max_length=5, choices=M2MChip.Identificador.choices)
+    resultado = models.CharField(max_length=20, choices=Resultado.choices)
+    payload = models.JSONField(null=True, blank=True)
+    mensagem_erro = models.TextField(blank=True, default="")
+
+    # ── normalizados (só com mapeamento e parse bem-sucedido) ──
+    valor_original = models.CharField(max_length=100, blank=True, default="")
+    unidade_original = models.CharField(max_length=40, blank=True, default="")
+    volume_bytes = models.PositiveBigIntegerField(null=True, blank=True)
+    periodo_inicio = models.DateTimeField(null=True, blank=True)
+    periodo_fim = models.DateTimeField(null=True, blank=True)
+    estado_bruto = models.CharField(max_length=100, blank=True, default="")
+    estado_interpretado = models.CharField(max_length=20, blank=True, default="")
+
+    class Meta:
+        ordering = ["-iniciada_em", "-pk"]
+        verbose_name = "Consulta TIM M2M"
+        verbose_name_plural = "Consultas TIM M2M"
+        indexes = [
+            models.Index(fields=["chip", "tipo", "-iniciada_em"], name="m2m_consulta_chip_tipo_idx"),
+            models.Index(fields=["-iniciada_em"], name="m2m_consulta_recente_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} · {self.chip_id} · {self.get_resultado_display()}"
+
+    @property
+    def valida(self) -> bool:
+        return self.resultado in self.RESULTADOS_VALIDOS
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            campos = kwargs.get("update_fields")
+            if not campos or not set(campos) <= set(self.CAMPOS_NORMALIZADOS):
+                raise ValidationError(
+                    "A consulta é histórico imutável: só os campos normalizados podem ser recalculados."
+                )
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("A consulta é histórico imutável e não pode ser apagada.")
+
+
+class M2MOcorrencia(models.Model):
+    """Alerta do módulo. Dois tipos de origem:
+
+    • CONDIÇÃO (falhas, sem sessão, desatualizado, consumo, identificador, veículo sem
+      chip, veículo sem atualização): abre quando a condição fica verdadeira e resolve
+      sozinha quando ela some. No máximo UMA ocorrência em aberto (aberta/em
+      tratamento) por (chip, tipo) — ou, nas que não têm chip (`veiculo_sem_chip`,
+      `veiculo_sem_atualizacao`), por (veículo, tipo). As duas restrições condicionais
+      abaixo são a deduplicação.
+    • EVENTO (`chip_desvinculado`, `alteracao_vinculo`): informativo, nasce de uma
+      movimentação do vínculo e só se encerra por tratamento manual (não há "condição
+      que some").
+
+    `chip` é opcional porque `veiculo_sem_chip` é, por definição, de um veículo que não
+    tem chip. Nas ocorrências de chip, `veiculo` é só contexto (o veículo a que o chip
+    estava ligado) e não entra na deduplicação."""
+
+    class Tipo(models.TextChoices):
+        FALHA_RECORRENTE = "falha_recorrente", "Falhas de consulta seguidas"
+        SEM_SESSAO = "sem_sessao", "Sem sessão"
+        DESATUALIZADO = "desatualizado", "Dados desatualizados"
+        CONSUMO_ELEVADO = "consumo_elevado", "Consumo elevado"
+        IDENTIFICADOR_DIVERGENTE = "identificador_divergente", "Identificador divergente"
+        VEICULO_SEM_CHIP = "veiculo_sem_chip", "Veículo sem chip"
+        CHIP_DESVINCULADO = "chip_desvinculado", "Chip desvinculado"
+        ALTERACAO_VINCULO = "alteracao_vinculo", "Alteração de vínculo"
+        VEICULO_SEM_ATUALIZACAO = "veiculo_sem_atualizacao", "Veículo sem atualização de conectividade"
+
+    # Tipos que nascem de um EVENTO do vínculo (não têm "condição" para resolver sozinhos).
+    TIPOS_DE_EVENTO = ("chip_desvinculado", "alteracao_vinculo")
+    # Tipos que pertencem a um veículo, sem chip.
+    TIPOS_DE_VEICULO = ("veiculo_sem_chip", "veiculo_sem_atualizacao")
+
+    class Nivel(models.TextChoices):
+        INFO = "info", "Informativo"
+        ATENCAO = "atencao", "Atenção"
+        CRITICO = "critico", "Crítico"
+
+    class Estado(models.TextChoices):
+        ABERTA = "aberta", "Aberta"
+        EM_TRATAMENTO = "em_tratamento", "Em tratamento"
+        RESOLVIDA = "resolvida", "Resolvida"
+        DESCARTADA = "descartada", "Descartada"
+
+    ESTADOS_ABERTOS = ("aberta", "em_tratamento")
+
+    chip = models.ForeignKey(M2MChip, on_delete=models.PROTECT, related_name="ocorrencias", null=True, blank=True)
+    veiculo = models.ForeignKey(
+        "FrotaVeiculo", on_delete=models.PROTECT, related_name="ocorrencias", null=True, blank=True,
+    )
+    tipo = models.CharField(max_length=30, choices=Tipo.choices)
+    nivel = models.CharField(max_length=10, choices=Nivel.choices, default=Nivel.ATENCAO)
+    estado = models.CharField(max_length=15, choices=Estado.choices, default=Estado.ABERTA, db_index=True)
+    descricao = models.TextField(blank=True, default="")
+    detectada_em = models.DateTimeField(default=timezone.now)
+    ultima_deteccao_em = models.DateTimeField(default=timezone.now)
+    deteccoes = models.PositiveIntegerField(default=1)
+    resolvida_em = models.DateTimeField(null=True, blank=True)
+    resolvida_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+
+    class Meta:
+        ordering = ["-detectada_em", "-pk"]
+        verbose_name = "Ocorrência de conectividade"
+        verbose_name_plural = "Ocorrências de conectividade"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["chip", "tipo"],
+                condition=models.Q(estado__in=["aberta", "em_tratamento"], chip__isnull=False),
+                name="m2m_ocorrencia_aberta_unica",
+            ),
+            models.UniqueConstraint(
+                fields=["veiculo", "tipo"],
+                condition=models.Q(estado__in=["aberta", "em_tratamento"], chip__isnull=True, veiculo__isnull=False),
+                name="m2m_ocorrencia_veiculo_aberta_unica",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(chip__isnull=False) | models.Q(veiculo__isnull=False),
+                name="m2m_ocorrencia_tem_alvo",
+            ),
+        ]
+        indexes = [models.Index(fields=["estado", "-ultima_deteccao_em"], name="m2m_ocorrencia_estado_idx")]
+
+    def __str__(self):
+        alvo = self.chip_id or (f"veículo {self.veiculo_id}" if self.veiculo_id else "—")
+        return f"{self.get_tipo_display()} · {alvo} · {self.get_estado_display()}"
+
+    @property
+    def aberta_ou_em_tratamento(self) -> bool:
+        return self.estado in self.ESTADOS_ABERTOS
+
+
+class M2MOcorrenciaTratamento(models.Model):
+    """Andamento de uma ocorrência: quem fez o quê e quando. `usuario` nulo = o
+    próprio sistema (detecção, resolução automática)."""
+
+    class Acao(models.TextChoices):
+        DETECTADA = "detectada", "Detectada"
+        ASSUMIR = "assumir", "Assumida"
+        RESOLVER = "resolver", "Resolvida"
+        DESCARTAR = "descartar", "Descartada"
+        COMENTAR = "comentar", "Comentário"
+        RESOLVIDA_AUTOMATICA = "resolvida_automatica", "Resolvida automaticamente"
+        CONDICAO_ENCERRADA = "condicao_encerrada", "Condição encerrada"
+
+    ocorrencia = models.ForeignKey(M2MOcorrencia, on_delete=models.CASCADE, related_name="tratamentos")
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    acao = models.CharField(max_length=25, choices=Acao.choices)
+    comentario = models.TextField(blank=True, default="")
+    em = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["em", "pk"]
+        verbose_name = "Tratamento de ocorrência TIM M2M"
+        verbose_name_plural = "Tratamentos de ocorrências TIM M2M"
+
+
+class M2MEvento(models.Model):
+    """Trilha de auditoria do módulo. `chip` é nulo nos eventos da integração
+    (token, configuração, mapeamento, teste de conexão). `dados` traz o de/para
+    e NUNCA o token."""
+
+    class Tipo(models.TextChoices):
+        CADASTRO = "cadastro", "Chip cadastrado"
+        EDICAO = "edicao", "Chip editado"
+        DESATIVADO = "desativado", "Monitoramento desativado"
+        REATIVADO = "reativado", "Monitoramento reativado"
+        TOKEN_ALTERADO = "token_alterado", "Token alterado"
+        CONFIG_ALTERADA = "config_alterada", "Configuração alterada"
+        MAPEAMENTO_ALTERADO = "mapeamento_alterado", "Mapeamento alterado"
+        TESTE_CONEXAO = "teste_conexao", "Teste de conexão"
+        ESTADO_SESSAO_MUDOU = "estado_sessao_mudou", "Estado da sessão mudou"
+        # Movimentações do chip (espelham `FrotaMovimentacao`, com o id dela em `dados`).
+        ENTRADA = "entrada", "Entrada do chip"
+        VINCULADO = "vinculado", "Chip vinculado a veículo"
+        DESVINCULADO = "desvinculado", "Chip desvinculado"
+        TRANSFERIDO = "transferido", "Chip transferido de veículo"
+        SUBSTITUIDO = "substituido", "Chip substituído"
+        RETORNO_DISPONIBILIDADE = "retorno_disponibilidade", "Chip devolvido à disponibilidade"
+        INATIVADO = "inativado", "Chip inativado"
+        # Gravado pela migration 0190 ao remover o antigo vínculo direto com `Item`.
+        ITEM_REMOVIDO = "item_removido", "Vínculo antigo com equipamento removido"
+        CONFIG_FROTA = "config_frota", "Cadastro de apoio alterado"
+
+    chip = models.ForeignKey(M2MChip, on_delete=models.PROTECT, null=True, blank=True, related_name="eventos")
+    tipo = models.CharField(max_length=25, choices=Tipo.choices)
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    dados = models.JSONField(default=dict, blank=True)
+    em = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-em", "-pk"]
+        verbose_name = "Evento TIM M2M"
+        verbose_name_plural = "Eventos TIM M2M"
+        indexes = [models.Index(fields=["chip", "-em"], name="m2m_evento_chip_idx")]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} · {self.em:%d/%m/%Y %H:%M}"
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Frotas e Conectividade
+#
+# O módulo cresceu do monitoramento de chips TIM M2M para o controle da FROTA
+# (veículos e equipamentos agrícolas) e dos chips que ela usa. Regras que moldam
+# os models abaixo (a lógica está em services/frota_service.py,
+# frota_vinculo_service.py, frota_import_service.py e m2m_monitoramento_service.py):
+#
+#   • INDEPENDENTE DO ESTOQUE DE TI. Nenhum model daqui tem FK para `Item` e nada
+#     passa por `MovimentacaoItem`. Só `Localidade` (unidade/fazenda) e `Usuario`
+#     (responsável) são reaproveitados, por serem cadastros organizacionais, não
+#     patrimoniais de TI.
+#   • UM CHIP, UM VÍNCULO ATIVO. A garantia é a `UniqueConstraint` parcial de
+#     `FrotaVinculo` (chip, quando `fim_em` é nulo) — é o BANCO que impede dois
+#     vínculos ativos, mesmo com duas pessoas clicando ao mesmo tempo.
+#   • HISTÓRICO IMUTÁVEL. `FrotaMovimentacao` e `FrotaEvento` nunca são editados nem
+#     apagados; `FrotaVinculo` só muda ao ser ENCERRADO (e uma vez). O admin é só leitura.
+#   • STATUS OPERACIONAL ≠ CONECTIVIDADE. `FrotaVeiculo.status` (ativo, manutenção…)
+#     e a situação da sessão dos chips são duas coisas; uma nunca deriva da outra.
+# ═════════════════════════════════════════════════════════════════════════════
+
+class FrotaTipo(models.Model):
+    """Tipo de veículo/equipamento (Trator, Caminhão…). Extensível pelo TI.
+    `exige_conectividade` é o PADRÃO do tipo: `FrotaVeiculo.exige_conectividade`
+    (quando preenchido) vence."""
+
+    nome = models.CharField(max_length=80, unique=True)
+    exige_conectividade = models.BooleanField(
+        default=False,
+        help_text="Veículo ativo deste tipo, sem chip vinculado, gera o alerta \"Veículo sem chip\".",
+    )
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["nome"]
+        verbose_name = "Tipo de veículo"
+        verbose_name_plural = "Tipos de veículo"
+
+    def __str__(self):
+        return self.nome
+
+
+class FrotaVeiculo(AuditModel):
+    """Veículo ou equipamento agrícola da frota. Documentos (placa, RENAVAM, chassi/série)
+    são opcionais: trator, pulverizador e implemento nem sempre têm placa."""
+
+    class Status(models.TextChoices):
+        ATIVO = "ativo", "Ativo"
+        MANUTENCAO = "manutencao", "Em manutenção"
+        INATIVO = "inativo", "Inativo"
+        DESATIVADO = "desativado", "Desativado"
+
+    # identificação
+    codigo = models.CharField(max_length=30, unique=True, help_text="Código interno (frota/patrimônio). Único; gravado em caixa alta.")
+    nome = models.CharField(max_length=120)
+    tipo = models.ForeignKey(FrotaTipo, on_delete=models.PROTECT, related_name="veiculos")
+    fabricante = models.CharField(max_length=80, blank=True, default="")
+    modelo = models.CharField(max_length=80, blank=True, default="")
+    ano_fabricacao = models.PositiveSmallIntegerField(null=True, blank=True)
+    # documentos (todos opcionais)
+    placa = models.CharField(max_length=8, blank=True, default="", help_text="AAA9999 (antiga) ou AAA9A99 (Mercosul). Única quando preenchida.")
+    renavam = models.CharField(max_length=11, blank=True, default="", help_text="11 dígitos.")
+    chassi_serie = models.CharField(max_length=30, blank=True, default="", verbose_name="Chassi / nº de série", help_text="Único quando preenchido.")
+    # lotação e responsáveis
+    localidade = models.ForeignKey(
+        Localidade, on_delete=models.SET_NULL, null=True, blank=True, related_name="veiculos_frota",
+        verbose_name="Unidade / fazenda",
+    )
+    setor = models.CharField(max_length=100, blank=True, default="")
+    area_operacao = models.CharField(max_length=100, blank=True, default="", verbose_name="Área de operação")
+    responsavel = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="veiculos_frota",
+        verbose_name="Responsável",
+    )
+    observacoes = models.TextField(blank=True, default="")
+    # operação
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.ATIVO, db_index=True)
+    exige_conectividade = models.BooleanField(
+        null=True, blank=True,
+        help_text="Vazio = herda do tipo. Sim/Não sobrepõe o padrão do tipo.",
+    )
+
+    class Meta:
+        ordering = ["codigo"]
+        verbose_name = "Veículo / equipamento"
+        verbose_name_plural = "Veículos e equipamentos"
+        permissions = PERMISSOES_FROTA_VEICULO
+        constraints = [
+            models.UniqueConstraint(fields=["placa"], condition=~models.Q(placa=""), name="frota_veiculo_placa_unica"),
+            models.UniqueConstraint(
+                fields=["chassi_serie"], condition=~models.Q(chassi_serie=""), name="frota_veiculo_chassi_unico",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.codigo} · {self.nome}"
+
+    def save(self, *args, **kwargs):
+        self.codigo = (self.codigo or "").strip().upper()      # rede de segurança: o service já normaliza
+        super().save(*args, **kwargs)
+
+    @property
+    def exige_conectividade_efetiva(self) -> bool:
+        """Sim/Não do próprio veículo; se vazio, o padrão do tipo."""
+        if self.exige_conectividade is not None:
+            return self.exige_conectividade
+        return bool(self.tipo.exige_conectividade)
+
+
+class _SomenteInsercaoQuerySet(models.QuerySet):
+    """QuerySet de tabela de HISTÓRICO: `update`/`delete` em massa recusados. É o
+    complemento do `save`/`delete` da instância (que o ORM não passa por aqui)."""
+
+    def update(self, **kwargs):
+        raise ValidationError("Este registro é histórico imutável e não pode ser alterado.")
+
+    def delete(self):
+        raise ValidationError("Este registro é histórico imutável e não pode ser apagado.")
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError("Este registro é histórico imutável e não pode ser alterado.")
+
+
+class FrotaImportacaoChips(models.Model):
+    """Uma importação de chips por planilha: nasce como PRÉVIA (nada gravado nos
+    chips), vira `confirmada` ou `cancelada`. A prévia expira em 24 h. Nunca é apagada:
+    é o relatório auditado de quem importou o quê."""
+
+    class Estado(models.TextChoices):
+        PREVIA = "previa", "Prévia"
+        CONFIRMADA = "confirmada", "Confirmada"
+        CANCELADA = "cancelada", "Cancelada"
+
+    class Formato(models.TextChoices):
+        XLSX = "xlsx", "Excel (.xlsx)"
+        CSV = "csv", "CSV"
+
+    VALIDADE_DA_PREVIA = timedelta(hours=24)
+
+    arquivo_nome = models.CharField(max_length=255)
+    sha256 = models.CharField(max_length=64, db_index=True)
+    formato = models.CharField(max_length=5, choices=Formato.choices)
+    estado = models.CharField(max_length=10, choices=Estado.choices, default=Estado.PREVIA, db_index=True)
+    criada_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    criada_em = models.DateTimeField(default=timezone.now)
+    confirmada_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    confirmada_em = models.DateTimeField(null=True, blank=True)
+    # totais (a prévia preenche `linhas`/`validas`/`existentes`/`rejeitados`/`avisos`;
+    # a confirmação preenche `importados` e acerta os demais)
+    linhas = models.PositiveIntegerField(default=0)
+    validas = models.PositiveIntegerField(default=0)
+    importados = models.PositiveIntegerField(default=0)
+    existentes = models.PositiveIntegerField(default=0)
+    rejeitados = models.PositiveIntegerField(default=0)
+    avisos = models.PositiveIntegerField(default=0, help_text="Linhas com pelo menos um aviso.")
+
+    class Meta:
+        ordering = ["-criada_em", "-pk"]
+        verbose_name = "Importação de chips"
+        verbose_name_plural = "Importações de chips"
+
+    def __str__(self):
+        return f"{self.arquivo_nome} · {self.get_estado_display()}"
+
+    @property
+    def expira_em(self):
+        return self.criada_em + self.VALIDADE_DA_PREVIA
+
+    @property
+    def expirada(self) -> bool:
+        return self.estado == self.Estado.PREVIA and timezone.now() > self.expira_em
+
+
+class FrotaImportacaoLinha(models.Model):
+    """Uma linha da planilha, com o que se decidiu sobre ela. `dados` é o valor JÁ
+    normalizado (ICCID/IMSI limpos, texto aparado) — é o que a confirmação regrava,
+    nunca a célula original."""
+
+    class Situacao(models.TextChoices):
+        VALIDA = "valida", "Válida"
+        EXISTENTE = "existente", "Já cadastrada"
+        REJEITADA = "rejeitada", "Rejeitada"
+        IMPORTADA = "importada", "Importada"
+
+    importacao = models.ForeignKey(FrotaImportacaoChips, on_delete=models.CASCADE, related_name="itens")
+    numero = models.PositiveIntegerField(help_text="Número da linha na planilha (a do cabeçalho é a 1).")
+    dados = models.JSONField(default=dict, blank=True)
+    situacao = models.CharField(max_length=10, choices=Situacao.choices, db_index=True)
+    motivos = models.JSONField(default=list, blank=True)
+    avisos = models.JSONField(default=list, blank=True)
+    chip = models.ForeignKey(M2MChip, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+
+    class Meta:
+        ordering = ["importacao", "numero"]
+        verbose_name = "Linha de importação de chips"
+        verbose_name_plural = "Linhas de importação de chips"
+        indexes = [models.Index(fields=["importacao", "situacao"], name="frota_imp_linha_sit_idx")]
+
+    def __str__(self):
+        return f"Linha {self.numero} · {self.get_situacao_display()}"
+
+
+class FrotaMovimentacao(models.Model):
+    """Registro IMUTÁVEL de uma movimentação do chip. Nunca editado, nunca apagado
+    (`save` recusa a edição, `delete` levanta, e o queryset recusa `update`/`delete` em
+    massa). Várias linhas de UMA mesma ação (a substituição grava duas) compartilham
+    `operacao`. `motivo` é obrigatório em tudo, menos na entrada (service)."""
+
+    class Tipo(models.TextChoices):
+        ENTRADA = "entrada", "Entrada"
+        VINCULACAO = "vinculacao", "Vinculação"
+        TRANSFERENCIA = "transferencia", "Transferência"
+        DESVINCULACAO = "desvinculacao", "Desvinculação"
+        RETORNO = "retorno", "Retorno à disponibilidade"
+        SUBSTITUICAO = "substituicao", "Substituição"
+        INATIVACAO = "inativacao", "Inativação"
+
+    tipo = models.CharField(max_length=15, choices=Tipo.choices, db_index=True)
+    chip = models.ForeignKey(M2MChip, on_delete=models.PROTECT, related_name="movimentacoes")
+    chip_relacionado = models.ForeignKey(
+        M2MChip, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="O outro chip da substituição.",
+    )
+    operacao = models.UUIDField(default=uuid.uuid4, db_index=True, help_text="Agrupa as linhas de uma mesma ação.")
+    veiculo_origem = models.ForeignKey(
+        FrotaVeiculo, on_delete=models.PROTECT, null=True, blank=True, related_name="movimentacoes_de_saida",
+    )
+    veiculo_destino = models.ForeignKey(
+        FrotaVeiculo, on_delete=models.PROTECT, null=True, blank=True, related_name="movimentacoes_de_entrada",
+    )
+    motivo = models.CharField(max_length=255, blank=True, default="")
+    observacoes = models.TextField(blank=True, default="")
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="+")
+    usuario_nome = models.CharField(max_length=150, blank=True, default="", help_text="O login no momento (sobrevive à exclusão do usuário).")
+    em = models.DateTimeField(default=timezone.now, db_index=True)
+    importacao = models.ForeignKey(FrotaImportacaoChips, on_delete=models.PROTECT, null=True, blank=True, related_name="movimentacoes")
+
+    objects = _SomenteInsercaoQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-em", "-pk"]
+        verbose_name = "Movimentação de chip"
+        verbose_name_plural = "Movimentações de chips"
+        indexes = [models.Index(fields=["chip", "-em"], name="frota_mov_chip_idx")]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} · chip {self.chip_id} · {self.em:%d/%m/%Y %H:%M}"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("A movimentação é histórico imutável e não pode ser editada.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("A movimentação é histórico imutável e não pode ser apagada.")
+
+
+class FrotaVinculo(models.Model):
+    """Um PERÍODO em que um chip esteve num veículo. Ativo enquanto `fim_em` é nulo.
+    O veículo pode ter N chips; o chip só pode ter UM vínculo ativo — garantido pela
+    restrição condicional abaixo, não pelo código (duas pessoas ao mesmo tempo).
+
+    Nunca apagado. A única alteração permitida é ENCERRAR o período (`fim_em`,
+    `fim_por`, `motivo_fim`, `mov_fim`), e só enquanto ele está ativo."""
+
+    CAMPOS_ENCERRAMENTO = ("fim_em", "fim_por", "motivo_fim", "mov_fim")
+
+    chip = models.ForeignKey(M2MChip, on_delete=models.PROTECT, related_name="vinculos")
+    veiculo = models.ForeignKey(FrotaVeiculo, on_delete=models.PROTECT, related_name="vinculos")
+    inicio_em = models.DateTimeField(default=timezone.now)
+    inicio_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    fim_em = models.DateTimeField(null=True, blank=True)
+    fim_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    motivo_fim = models.CharField(max_length=255, blank=True, default="")
+    mov_inicio = models.ForeignKey(
+        FrotaMovimentacao, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+    )
+    mov_fim = models.ForeignKey(
+        FrotaMovimentacao, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+    )
+
+    class Meta:
+        ordering = ["-inicio_em", "-pk"]
+        verbose_name = "Vínculo chip-veículo"
+        verbose_name_plural = "Vínculos chip-veículo"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["chip"], condition=models.Q(fim_em__isnull=True), name="frota_vinculo_chip_ativo_unico",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(fim_em__isnull=True) | models.Q(fim_em__gte=models.F("inicio_em")),
+                name="frota_vinculo_fim_depois_do_inicio",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["veiculo", "fim_em"], name="frota_vinculo_veiculo_idx"),
+            models.Index(fields=["chip", "-inicio_em"], name="frota_vinculo_chip_idx"),
+        ]
+
+    def __str__(self):
+        return f"chip {self.chip_id} → veículo {self.veiculo_id} ({'ativo' if self.fim_em is None else 'encerrado'})"
+
+    @property
+    def ativo(self) -> bool:
+        return self.fim_em is None
+
+    @property
+    def duracao(self):
+        """`timedelta` do período (até agora, se ainda ativo)."""
+        return (self.fim_em or timezone.now()) - self.inicio_em
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            campos = kwargs.get("update_fields")
+            if not campos or not set(campos) <= set(self.CAMPOS_ENCERRAMENTO):
+                raise ValidationError("O vínculo é histórico: só o encerramento do período pode ser gravado.")
+            if type(self).objects.filter(pk=self.pk, fim_em__isnull=False).exists():
+                raise ValidationError("Este vínculo já foi encerrado e não pode mais ser alterado.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("O vínculo é histórico e não pode ser apagado.")
+
+
+class FrotaEvento(models.Model):
+    """Linha do tempo do CADASTRO do veículo (criação, edição com de/para, status).
+    Vínculos e movimentações entram na linha do tempo por leitura, sem duplicar
+    dados. Imutável, como `FrotaMovimentacao`."""
+
+    class Tipo(models.TextChoices):
+        CADASTRO = "cadastro", "Veículo cadastrado"
+        EDICAO = "edicao", "Veículo editado"
+        STATUS = "status", "Status alterado"
+
+    veiculo = models.ForeignKey(FrotaVeiculo, on_delete=models.PROTECT, related_name="eventos")
+    tipo = models.CharField(max_length=10, choices=Tipo.choices)
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    dados = models.JSONField(default=dict, blank=True)
+    em = models.DateTimeField(default=timezone.now)
+
+    objects = _SomenteInsercaoQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-em", "-pk"]
+        verbose_name = "Evento do veículo"
+        verbose_name_plural = "Eventos dos veículos"
+        indexes = [models.Index(fields=["veiculo", "-em"], name="frota_evento_veiculo_idx")]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} · veículo {self.veiculo_id} · {self.em:%d/%m/%Y %H:%M}"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("O evento é histórico imutável e não pode ser editado.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("O evento é histórico imutável e não pode ser apagado.")
+
+
+# Padrão de cada regra de alerta — a migration 0191 semeia estes valores e o service
+# recria uma regra apagada a partir deles. Os dois eventos do vínculo nascem DESLIGADOS:
+# toda movimentação geraria uma ocorrência, e o TI liga quando quiser acompanhar.
+REGRAS_DE_ALERTA_PADRAO = {
+    "falha_recorrente": dict(gera_ocorrencia=True, nivel="atencao", envia_email=True),
+    "sem_sessao": dict(gera_ocorrencia=True, nivel="atencao", envia_email=True),
+    "desatualizado": dict(gera_ocorrencia=True, nivel="atencao", envia_email=True),
+    "consumo_elevado": dict(gera_ocorrencia=True, nivel="atencao", envia_email=True),
+    "identificador_divergente": dict(gera_ocorrencia=True, nivel="atencao", envia_email=True),
+    "veiculo_sem_chip": dict(gera_ocorrencia=True, nivel="atencao", envia_email=True),
+    "veiculo_sem_atualizacao": dict(gera_ocorrencia=True, nivel="atencao", envia_email=True),
+    "chip_desvinculado": dict(gera_ocorrencia=False, nivel="info", envia_email=False),
+    "alteracao_vinculo": dict(gera_ocorrencia=False, nivel="info", envia_email=False),
+}
+
+
+class FrotaRegraAlerta(models.Model):
+    """Regra de um tipo de ocorrência: se gera ocorrência, com que nível, e se avisa
+    por e-mail — e a QUEM. Uma linha por tipo. O envio sai pelo canal
+    `m2m_ocorrencias` da Central de Alertas, que continua sendo a chave liga/desliga
+    (junto da chave-mestra); os destinatários vêm daqui."""
+
+    tipo = models.CharField(max_length=30, choices=M2MOcorrencia.Tipo.choices, unique=True)
+    gera_ocorrencia = models.BooleanField(default=True)
+    nivel = models.CharField(max_length=10, choices=M2MOcorrencia.Nivel.choices, default=M2MOcorrencia.Nivel.ATENCAO)
+    envia_email = models.BooleanField(default=False)
+    destinatarios_emails = models.TextField(
+        blank=True, default="", help_text="E-mails separados por vírgula, ponto e vírgula ou quebra de linha.",
+    )
+    destinatarios_usuarios = models.ManyToManyField(User, blank=True, related_name="+")
+
+    class Meta:
+        ordering = ["tipo"]
+        verbose_name = "Regra de alerta"
+        verbose_name_plural = "Regras de alerta"
+
+    def __str__(self):
+        return self.get_tipo_display()
+
+
+# ═════════════════════════════════════════════════════════════
+# Ambientes do Zelo (TI · Agro)
+# ═════════════════════════════════════════════════════════════
+
+class PreferenciaAmbiente(models.Model):
+    """O último ambiente que o login usou — para `/` e o pós-login abrirem nele,
+    inclusive em outro computador. NÃO é autorização: quem decide se a pessoa
+    alcança um ambiente é `services/ambiente_service.py` (permissão e grupo); a
+    preferência só escolhe entre os ambientes que ela já alcança.
+
+    Também é o dono da permissão `acessar_zelo_agro` (`Meta.permissions`).
+    Gravada pelo `AmbienteMiddleware` só quando o ambiente MUDA."""
+
+    class Ambiente(models.TextChoices):
+        TI = "ti", "Zelo TI"
+        AGRO = "agro", "Zelo Agro"
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="preferencia_ambiente")
+    ambiente = models.CharField(max_length=8, choices=Ambiente.choices, default=Ambiente.TI)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Preferência de ambiente"
+        verbose_name_plural = "Preferências de ambiente"
+        permissions = PERMISSOES_AGRO_AMBIENTE
+
+    def __str__(self):
+        return f"{self.user} → {self.get_ambiente_display()}"
+
+
+# ════════════════════════════════════════════════════════
+# Zelo Agro — Tecnologia agrícola (inventário, estoque tecnológico e infraestrutura)
+#
+# Spec de 2026-11-13. Plano: `evolucao2-tecnologia-agricola.md`. Regras que moldam estes
+# models (a lógica está em `services/tec_*.py`; nenhuma tela grava saldo ou situação
+# direto):
+#   • NADA daqui toca o estoque de TI (`Item`, `Categoria`, `Fornecedor`, a Rede do TI).
+#   • Dois TIPOS de controle que nunca se misturam: o equipamento INDIVIDUAL
+#     (`TecEquipamento`, um por número de série) e o material por QUANTIDADE
+#     (`TecSaldo`, modelo × local). Quem decide é `TecModelo.controle`.
+#   • O razão (`TecMovimentacao`) e a linha do tempo (`TecEvento`) são IMUTÁVEIS. O saldo e a
+#     situação são cache/estado escritos só pelo service, dentro de transação.
+# ════════════════════════════════════════════════════════
+
+PERMISSOES_TEC = [
+    ("ver_tec_estoque", "Pode ver o estoque tecnológico (equipamentos, materiais e catálogo)"),
+    ("cadastrar_tec_equipamento", "Pode cadastrar e editar equipamentos e materiais"),
+    ("importar_tec_material", "Pode importar equipamentos e materiais por planilha"),
+    ("administrar_tec_catalogo", "Pode administrar fabricantes, categorias, modelos e fornecedores"),
+    ("instalar_tec_equipamento", "Pode instalar, retirar, substituir e desvincular equipamentos"),
+    ("transferir_tec_equipamento", "Pode transferir equipamentos entre máquinas, estruturas e pessoas"),
+    ("administrar_tec_enlace", "Pode administrar os enlaces ponto a ponto"),
+    ("gerenciar_tec_estrutura", "Pode gerenciar torres e estações"),
+    ("gerenciar_tec_radio", "Pode gerenciar a radiocomunicação"),
+    ("ver_tec_historico", "Pode consultar o histórico e os relatórios da tecnologia agrícola"),
+    ("abrir_tec_manutencao", "Pode abrir e acompanhar manutenções de equipamentos"),
+    ("concluir_tec_manutencao", "Pode concluir ou cancelar manutenções de equipamentos"),
+    ("administrar_tec_config", "Pode administrar os locais de armazenamento e as unidades de medida"),
+]
+GRUPO_TEC_GESTAO = "Tecnologia Agrícola — Gestão"
+GRUPO_TEC_CONSULTA = "Tecnologia Agrícola — Consulta"
+
+
+class TecControle(models.TextChoices):
+    INDIVIDUAL = "individual", "Individual (por número de série)"
+    QUANTIDADE = "quantidade", "Por quantidade"
+
+
+class TecFabricante(AuditModel):
+    """Fabricante configurável (Solinftec, John Deere, Stara, Motorola… e os que vierem).
+    Antes só existia como texto solto (`FrotaVeiculo.fabricante`); este é o cadastro."""
+
+    nome = models.CharField(max_length=80, unique=True)
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["nome"]
+        verbose_name = "Fabricante"
+        verbose_name_plural = "Fabricantes"
+
+    def __str__(self):
+        return self.nome
+
+
+class TecCategoria(AuditModel):
+    """Categoria de equipamento/material. `grupo` é o que ROTEIA as áreas do módulo
+    (radiocomunicação lista o grupo `radiocomunicacao`, a infraestrutura usa `rede`…);
+    `controle_padrao` só PRÉ-PREENCHE o modelo — quem decide é `TecModelo.controle`."""
+
+    class Grupo(models.TextChoices):
+        AGRICULTURA_PRECISAO = "agricultura_precisao", "Agricultura de precisão"
+        RADIOCOMUNICACAO = "radiocomunicacao", "Radiocomunicação"
+        REDE = "rede", "Rede e enlaces"
+        CONECTIVIDADE = "conectividade", "Conectividade"
+        ENERGIA = "energia", "Energia"
+        CABEAMENTO = "cabeamento", "Cabos e acessórios"
+        SENSORES = "sensores", "Sensores e controle"
+        OUTRO = "outro", "Outros"
+
+    nome = models.CharField(max_length=80, unique=True)
+    grupo = models.CharField(max_length=24, choices=Grupo.choices, default=Grupo.OUTRO, db_index=True)
+    controle_padrao = models.CharField(max_length=10, choices=TecControle.choices, default=TecControle.INDIVIDUAL)
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["grupo", "nome"]
+        verbose_name = "Categoria tecnológica"
+        verbose_name_plural = "Categorias tecnológicas"
+
+    def __str__(self):
+        return self.nome
+
+
+class AgroUnidadeMedida(models.Model):
+    """Unidade de medida dos materiais por quantidade (un, m, cx, rolo…). `fracionavel`
+    decide se a quantidade aceita casas decimais (metro aceita; unidade não)."""
+
+    sigla = models.CharField(max_length=8, unique=True)
+    nome = models.CharField(max_length=40)
+    fracionavel = models.BooleanField(default=False)
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sigla"]
+        verbose_name = "Unidade de medida"
+        verbose_name_plural = "Unidades de medida"
+
+    def __str__(self):
+        return self.sigla
+
+
+class TecModelo(AuditModel):
+    """Um modelo do catálogo: fabricante + categoria + nome. É ele que decide o TIPO de
+    controle (`controle`): `individual` gera equipamentos com número de série;
+    `quantidade` gera saldo por local. `estoque_minimo` vale para os dois: nos
+    individuais conta equipamentos DISPONÍVEIS. Não há modelos de fábrica: o catálogo
+    é só o que a empresa realmente usa."""
+
+    fabricante = models.ForeignKey(TecFabricante, on_delete=models.PROTECT, related_name="modelos")
+    categoria = models.ForeignKey(TecCategoria, on_delete=models.PROTECT, related_name="modelos")
+    nome = models.CharField(max_length=120)
+    controle = models.CharField(max_length=10, choices=TecControle.choices, default=TecControle.INDIVIDUAL, db_index=True)
+    unidade = models.ForeignKey(
+        AgroUnidadeMedida, on_delete=models.PROTECT, null=True, blank=True, related_name="modelos",
+        help_text="Só nos materiais por quantidade. O equipamento individual é sempre contado em unidades.",
+    )
+    estoque_minimo = models.DecimalField(max_digits=14, decimal_places=3, default=Decimal("0"), validators=[MinValueValidator(Decimal("0"))])
+    observacoes = models.TextField(blank=True, default="", help_text="Observações técnicas do modelo.")
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["fabricante__nome", "nome"]
+        verbose_name = "Modelo tecnológico"
+        verbose_name_plural = "Modelos tecnológicos"
+        constraints = [
+            models.UniqueConstraint(fields=["fabricante", "nome"], name="tec_modelo_fabricante_nome_unico"),
+            models.CheckConstraint(
+                condition=models.Q(controle="individual") | models.Q(unidade__isnull=False),
+                name="tec_modelo_quantidade_tem_unidade",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.fabricante.nome} {self.nome}"
+
+
+class AgroLocal(AuditModel):
+    """Local de armazenamento do Agro (almoxarifado, oficina, container…), dentro de uma
+    unidade (fazenda). Onde o material FICA quando não está instalado em nada."""
+
+    nome = models.CharField(max_length=100)
+    fazenda = models.ForeignKey(Localidade, on_delete=models.PROTECT, related_name="locais_agro", verbose_name="Unidade / fazenda")
+    observacoes = models.CharField(max_length=255, blank=True, default="")
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["fazenda__local", "nome"]
+        verbose_name = "Local de armazenamento"
+        verbose_name_plural = "Locais de armazenamento"
+        constraints = [models.UniqueConstraint(fields=["fazenda", "nome"], name="agro_local_fazenda_nome_unico")]
+
+    def __str__(self):
+        return f"{self.nome} · {self.fazenda.local}"
+
+
+class AgroFornecedor(AuditModel):
+    """Fornecedor do Agro, ENXUTO (o módulo completo — contatos, histórico — vem depois).
+    Separado do `Fornecedor` do TI, que é a âncora dos portais externos."""
+
+    nome = models.CharField(max_length=120)
+    documento = models.CharField(max_length=18, blank=True, default="", help_text="CNPJ ou CPF; único quando preenchido.")
+    contato = models.CharField(max_length=120, blank=True, default="")
+    telefone = models.CharField(max_length=30, blank=True, default="")
+    email = models.EmailField(blank=True, default="")
+    observacoes = models.TextField(blank=True, default="")
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["nome"]
+        verbose_name = "Fornecedor do Agro"
+        verbose_name_plural = "Fornecedores do Agro"
+        constraints = [
+            models.UniqueConstraint(fields=["documento"], condition=~models.Q(documento=""), name="agro_fornecedor_documento_unico"),
+        ]
+
+    def __str__(self):
+        return self.nome
+
+
+class TecEquipamento(AuditModel):
+    """UM equipamento individual (monitor, receptor, rádio, antena…), identificado pelo
+    número de série ou pelo patrimônio. A `situacao` e o `local` só o service escreve:
+    `local` é onde ele está GUARDADO (nulo enquanto instalado ou na assistência)."""
+
+    class Situacao(models.TextChoices):
+        DISPONIVEL = "disponivel", "Disponível"
+        INSTALADO = "instalado", "Instalado"
+        EM_MANUTENCAO = "em_manutencao", "Em manutenção"
+        INATIVO = "inativo", "Inativo"
+
+    codigo = models.CharField(max_length=12, unique=True, null=True, blank=True, help_text="EQ-00001; gerado pelo sistema.")
+    modelo = models.ForeignKey(TecModelo, on_delete=models.PROTECT, related_name="equipamentos")
+    numero_serie = models.CharField(max_length=80, blank=True, default="", verbose_name="Número de série")
+    patrimonio = models.CharField(max_length=40, blank=True, default="", verbose_name="Patrimônio / identificação interna")
+    data_aquisicao = models.DateField(null=True, blank=True, verbose_name="Data de aquisição")
+    fornecedor = models.ForeignKey(AgroFornecedor, on_delete=models.SET_NULL, null=True, blank=True, related_name="equipamentos")
+    situacao = models.CharField(max_length=14, choices=Situacao.choices, default=Situacao.DISPONIVEL, db_index=True)
+    local = models.ForeignKey(AgroLocal, on_delete=models.PROTECT, null=True, blank=True, related_name="equipamentos")
+    observacoes = models.TextField(blank=True, default="", verbose_name="Observações técnicas")
+
+    class Meta:
+        ordering = ["-pk"]
+        verbose_name = "Equipamento tecnológico"
+        verbose_name_plural = "Equipamentos tecnológicos"
+        permissions = PERMISSOES_TEC
+        constraints = [
+            models.UniqueConstraint(
+                fields=["modelo", "numero_serie"], condition=~models.Q(numero_serie=""), name="tec_equip_modelo_serie_unico",
+            ),
+            models.UniqueConstraint(fields=["patrimonio"], condition=~models.Q(patrimonio=""), name="tec_equip_patrimonio_unico"),
+            # Disponível sem local não existe: "em estoque" é um lugar. Instalado não tem local de guarda.
+            models.CheckConstraint(
+                condition=~models.Q(situacao="disponivel") | models.Q(local__isnull=False), name="tec_equip_disponivel_tem_local",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(situacao="instalado") | models.Q(local__isnull=True), name="tec_equip_instalado_sem_local",
+            ),
+        ]
+        indexes = [models.Index(fields=["modelo", "situacao"], name="tec_equip_modelo_sit_idx")]
+
+    def __str__(self):
+        return f"{self.codigo or 'EQ-?'} · {self.modelo}"
+
+    def save(self, *args, **kwargs):
+        self.numero_serie = (self.numero_serie or "").strip()
+        self.patrimonio = (self.patrimonio or "").strip().upper()
+        super().save(*args, **kwargs)
+
+    @property
+    def instalacao_ativa(self):
+        """A instalação em curso (`TecInstalacao` ou `None`). Lê a lista pré-carregada por
+        `Prefetch(..., to_attr="ativas_prefetch")` quando a tela a pediu (sem consulta por linha)."""
+        carregadas = getattr(self, "ativas_prefetch", None)
+        if carregadas is not None:
+            return carregadas[0] if carregadas else None
+        return self.instalacoes.filter(fim_em__isnull=True).select_related("veiculo", "operador").first()
+
+
+class TecSaldo(models.Model):
+    """Quantidade de um material por quantidade num local. É CACHE do razão: quem escreve é
+    `services/tec_estoque_service.py`, que o confere contra `TecMovimentacao`. O banco
+    impede o negativo (`CheckConstraint`); o débito é um UPDATE condicional."""
+
+    modelo = models.ForeignKey(TecModelo, on_delete=models.PROTECT, related_name="saldos")
+    local = models.ForeignKey(AgroLocal, on_delete=models.PROTECT, related_name="saldos")
+    quantidade = models.DecimalField(max_digits=14, decimal_places=3, default=Decimal("0"))
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Saldo de material"
+        verbose_name_plural = "Saldos de materiais"
+        constraints = [
+            models.UniqueConstraint(fields=["modelo", "local"], name="tec_saldo_modelo_local_unico"),
+            models.CheckConstraint(condition=models.Q(quantidade__gte=0), name="tec_saldo_nao_negativo"),
+        ]
+
+    def __str__(self):
+        return f"{self.modelo} @ {self.local}: {self.quantidade}"
+
+
+class TecMovimentacao(models.Model):
+    """O RAZÃO da tecnologia agrícola: cada entrada, saída, instalação, retirada,
+    transferência… Imutável (`save` recusa a edição, `delete` levanta e o queryset recusa
+    `update`/`delete` em massa). Origem e destino são (tipo, id, rótulo): o rótulo é a foto
+    do nome no momento, então o histórico se lê mesmo se o destino for renomeado. Linhas de
+    UMA mesma ação (a substituição grava duas) compartilham `operacao`; `token` é a chave de
+    idempotência de quem clicou duas vezes."""
+
+    class Tipo(models.TextChoices):
+        ENTRADA = "entrada", "Entrada no estoque"
+        SAIDA = "saida", "Saída / baixa"
+        AJUSTE = "ajuste", "Ajuste de saldo"
+        INSTALACAO = "instalacao", "Instalação"
+        RETIRADA = "retirada", "Retirada"
+        TRANSFERENCIA = "transferencia", "Transferência"
+        SUBSTITUICAO = "substituicao", "Substituição"
+        ENVIO_MANUTENCAO = "envio_manutencao", "Envio para manutenção"
+        RETORNO_MANUTENCAO = "retorno_manutencao", "Retorno da manutenção"
+        DESVINCULACAO = "desvinculacao", "Desvinculação"
+        INATIVACAO = "inativacao", "Inativação"
+
+    class Ponto(models.TextChoices):
+        ESTOQUE = "estoque", "Estoque"
+        VEICULO = "veiculo", "Máquina / veículo"
+        ESTRUTURA = "estrutura", "Torre / estação"
+        OPERADOR = "operador", "Operador"
+        PONTA = "ponta", "Ponta de enlace"
+        MANUTENCAO = "manutencao", "Manutenção / assistência"
+        EXTERNO = "externo", "Externo (fornecedor, baixa)"
+
+    tipo = models.CharField(max_length=20, choices=Tipo.choices, db_index=True)
+    modelo = models.ForeignKey(TecModelo, on_delete=models.PROTECT, related_name="movimentacoes")
+    equipamento = models.ForeignKey(TecEquipamento, on_delete=models.PROTECT, null=True, blank=True, related_name="movimentacoes")
+    quantidade = models.DecimalField(max_digits=14, decimal_places=3, default=Decimal("1"))
+    saldo_depois = models.DecimalField(
+        max_digits=14, decimal_places=3, null=True, blank=True, help_text="Saldo do local depois da operação (só material por quantidade).",
+    )
+    origem_tipo = models.CharField(max_length=12, choices=Ponto.choices, blank=True, default="")
+    origem_id = models.PositiveIntegerField(null=True, blank=True)
+    origem_rotulo = models.CharField(max_length=160, blank=True, default="")
+    destino_tipo = models.CharField(max_length=12, choices=Ponto.choices, blank=True, default="")
+    destino_id = models.PositiveIntegerField(null=True, blank=True)
+    destino_rotulo = models.CharField(max_length=160, blank=True, default="")
+    motivo = models.CharField(max_length=255, blank=True, default="")
+    observacoes = models.TextField(blank=True, default="")
+    documento = models.CharField(max_length=60, blank=True, default="", help_text="Nota fiscal ou outro documento da entrada.")
+    fornecedor = models.ForeignKey(AgroFornecedor, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="+")
+    usuario_nome = models.CharField(max_length=150, blank=True, default="", help_text="O login no momento (sobrevive à exclusão do usuário).")
+    em = models.DateTimeField(default=timezone.now, db_index=True)
+    operacao = models.UUIDField(default=uuid.uuid4, db_index=True, help_text="Agrupa as linhas de uma mesma ação.")
+    token = models.UUIDField(null=True, blank=True, unique=True, help_text="Chave de idempotência do formulário (duplo clique).")
+
+    objects = _SomenteInsercaoQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-em", "-pk"]
+        verbose_name = "Movimentação tecnológica"
+        verbose_name_plural = "Movimentações tecnológicas"
+        indexes = [
+            models.Index(fields=["equipamento", "-em"], name="tec_mov_equip_idx"),
+            models.Index(fields=["modelo", "-em"], name="tec_mov_modelo_idx"),
+            models.Index(fields=["destino_tipo", "destino_id"], name="tec_mov_destino_idx"),
+            models.Index(fields=["origem_tipo", "origem_id"], name="tec_mov_origem_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} · {self.modelo} · {self.em:%d/%m/%Y %H:%M}"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("A movimentação é histórico imutável e não pode ser editada.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("A movimentação é histórico imutável e não pode ser apagada.")
+
+
+class TecEvento(models.Model):
+    """Linha do tempo do CADASTRO (criação e edição com de/para, mudança de situação) de
+    qualquer coisa do domínio: equipamento, modelo, fabricante, local, estrutura, enlace…
+    Imutável, como `FrotaEvento`. As movimentações NÃO se repetem aqui: entram na linha
+    do tempo do equipamento por leitura."""
+
+    class Alvo(models.TextChoices):
+        EQUIPAMENTO = "equipamento", "Equipamento"
+        MODELO = "modelo", "Modelo"
+        FABRICANTE = "fabricante", "Fabricante"
+        CATEGORIA = "categoria", "Categoria"
+        LOCAL = "local", "Local de armazenamento"
+        FORNECEDOR = "fornecedor", "Fornecedor"
+        UNIDADE = "unidade", "Unidade de medida"
+        ESTRUTURA = "estrutura", "Torre / estação"
+        ENLACE = "enlace", "Enlace PTP"
+        MANUTENCAO = "manutencao", "Manutenção"
+
+    class Tipo(models.TextChoices):
+        CADASTRO = "cadastro", "Cadastrado"
+        EDICAO = "edicao", "Editado"
+        SITUACAO = "situacao", "Situação alterada"
+
+    alvo = models.CharField(max_length=12, choices=Alvo.choices, db_index=True)
+    alvo_id = models.PositiveIntegerField(db_index=True)
+    tipo = models.CharField(max_length=10, choices=Tipo.choices)
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    dados = models.JSONField(default=dict, blank=True)
+    em = models.DateTimeField(default=timezone.now)
+
+    objects = _SomenteInsercaoQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-em", "-pk"]
+        verbose_name = "Evento de cadastro tecnológico"
+        verbose_name_plural = "Eventos de cadastro tecnológico"
+        indexes = [models.Index(fields=["alvo", "alvo_id", "-em"], name="tec_evento_alvo_idx")]
+
+    def __str__(self):
+        return f"{self.get_alvo_display()} {self.alvo_id} · {self.get_tipo_display()} · {self.em:%d/%m/%Y %H:%M}"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("O evento é histórico imutável e não pode ser editado.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("O evento é histórico imutável e não pode ser apagado.")
+
+
+class TecInstalacao(models.Model):
+    """Um PERÍODO em que um equipamento individual esteve instalado num destino: uma máquina
+    (`veiculo`) ou uma pessoa (`operador`, o colaborador do RH — rádio HT, por exemplo). Ativa
+    enquanto `fim_em` é nulo. Torres e pontas de enlace entram na etapa de infraestrutura, com a
+    sua própria coluna e a mesma regra.
+
+    UMA instalação ativa por equipamento, e isso é garantido pela restrição condicional abaixo, não
+    pelo código (duas pessoas ao mesmo tempo). EXATAMENTE UM destino por linha. Nunca apagada: a
+    única alteração permitida é ENCERRAR o período (`fim_em`, `fim_por`, `motivo_fim`, `mov_fim`),
+    e só enquanto ele está ativo. A transferência encerra uma linha e abre outra, então o vínculo
+    anterior fica no histórico."""
+
+    CAMPOS_ENCERRAMENTO = ("fim_em", "fim_por", "motivo_fim", "mov_fim")
+
+    equipamento = models.ForeignKey(TecEquipamento, on_delete=models.PROTECT, related_name="instalacoes")
+    veiculo = models.ForeignKey(FrotaVeiculo, on_delete=models.PROTECT, null=True, blank=True, related_name="instalacoes_tec")
+    operador = models.ForeignKey(Usuario, on_delete=models.PROTECT, null=True, blank=True, related_name="instalacoes_tec")
+    inicio_em = models.DateTimeField(default=timezone.now)
+    inicio_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    fim_em = models.DateTimeField(null=True, blank=True)
+    fim_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    motivo_fim = models.CharField(max_length=255, blank=True, default="")
+    mov_inicio = models.ForeignKey(TecMovimentacao, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    mov_fim = models.ForeignKey(TecMovimentacao, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+
+    class Meta:
+        ordering = ["-inicio_em", "-pk"]
+        verbose_name = "Instalação de equipamento"
+        verbose_name_plural = "Instalações de equipamentos"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["equipamento"], condition=models.Q(fim_em__isnull=True), name="tec_instalacao_equip_ativa_unica",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(veiculo__isnull=False, operador__isnull=True)
+                    | models.Q(veiculo__isnull=True, operador__isnull=False)
+                ),
+                name="tec_instalacao_um_destino",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(fim_em__isnull=True) | models.Q(fim_em__gte=models.F("inicio_em")),
+                name="tec_instalacao_fim_depois_do_inicio",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["veiculo", "fim_em"], name="tec_inst_veiculo_idx"),
+            models.Index(fields=["operador", "fim_em"], name="tec_inst_operador_idx"),
+            models.Index(fields=["equipamento", "-inicio_em"], name="tec_inst_equip_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.equipamento_id} → {self.destino_texto} ({'ativa' if self.fim_em is None else 'encerrada'})"
+
+    @property
+    def ativa(self) -> bool:
+        return self.fim_em is None
+
+    @property
+    def destino_tipo(self) -> str:
+        return TecMovimentacao.Ponto.VEICULO if self.veiculo_id else TecMovimentacao.Ponto.OPERADOR
+
+    @property
+    def destino_id(self):
+        return self.veiculo_id or self.operador_id
+
+    @property
+    def destino_texto(self) -> str:
+        if self.veiculo_id:
+            return f"{self.veiculo.codigo} · {self.veiculo.nome}"
+        if self.operador_id:
+            return self.operador.nome
+        return ""
+
+    @property
+    def duracao(self):
+        """`timedelta` do período (até agora, se ainda ativa)."""
+        return (self.fim_em or timezone.now()) - self.inicio_em
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            campos = kwargs.get("update_fields")
+            if not campos or not set(campos) <= set(self.CAMPOS_ENCERRAMENTO):
+                raise ValidationError("A instalação é histórico: só o encerramento do período pode ser gravado.")
+            if type(self).objects.filter(pk=self.pk, fim_em__isnull=False).exists():
+                raise ValidationError("Esta instalação já foi encerrada e não pode mais ser alterada.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("A instalação é histórico e não pode ser apagada.")

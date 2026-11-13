@@ -18,11 +18,13 @@ Relatório diário consolidado (principal agendamento automático):
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
+from email.mime.image import MIMEImage
 
 from django.conf import settings
-from django.core.mail import EmailMultiAlternatives
+from django.core.mail import EmailMultiAlternatives, get_connection
 from django.db.models import Exists, OuterRef
 from django.utils import timezone
 
@@ -113,6 +115,15 @@ CATALOGO_NOTIFICACOES: list[dict] = [
         origem_disparo="Agendado — manage.py monitorar_prtg (Task Scheduler)",
     ),
     dict(
+        codigo="m2m_ocorrencias", nome="Ocorrências de Frotas e Conectividade", categoria="Monitoramento",
+        descricao="Ocorrência nova em chips e veículos: falha de consulta, sem sessão, dados desatualizados, consumo "
+        "alto, identificador divergente, veículo sem chip ou sem atualização, vínculo alterado. Só tipos com e-mail ligado.",
+        icone="fa-sim-card", tipo_destinatarios="dinamico",
+        destino_gerenciado_em="Frotas e Conectividade › Configuração",
+        origem_disparo="Agendado — manage.py monitorar_m2m (Task Scheduler), atualização manual de um chip ou "
+        "movimentação de vínculo, só para ocorrência NOVA (services/m2m_monitoramento_service.py)",
+    ),
+    dict(
         codigo="acesso_suspeito", nome="Acesso suspeito (segurança)", categoria="Segurança",
         descricao="Rajada de falhas de login ou login bem-sucedido após várias tentativas.",
         icone="fa-shield-halved", tipo_destinatarios="fixo",
@@ -124,6 +135,47 @@ CATALOGO_NOTIFICACOES: list[dict] = [
         "documento fiscal de envio ou devolução de equipamento ao fornecedor.",
         icone="fa-file-invoice", tipo_destinatarios="fixo",
         origem_disparo="Manual — botão 'Gerar Documento Fiscal' nas telas de Remessa",
+    ),
+    dict(
+        codigo="computadores_parados", nome="Computadores parados (backup / pausado)", categoria="Estoque",
+        descricao="Notebooks e desktops em Backup ou Pausado, com a Licença Office presa a cada "
+        "máquina e há quanto tempo estão parados — para cancelar o que paga no vazio e religar "
+        "quando o equipamento volta a Ativo.",
+        icone="fa-laptop", tipo_destinatarios="fixo",
+        origem_disparo="Semanal (Task Scheduler, via 'agendar_computadores_parados') + a cada "
+        "mudança de status de notebook/desktop que entra ou sai de Backup/Pausado",
+    ),
+    dict(
+        codigo="chamado_contratacao_maquina", nome="Chamado de contratação — máquina", categoria="Contratações",
+        descricao="Pedido de configuração e entrega de máquina para uma vaga em aberto. Um e-mail por "
+        "pedido, com os dados da vaga e a descrição do equipamento.",
+        icone="fa-laptop", tipo_destinatarios="fixo",
+        origem_disparo="Manual — botão 'Solicitar estrutura e abrir chamados' na vaga em aberto (Contratações)",
+    ),
+    dict(
+        codigo="chamado_contratacao_usuario_email", nome="Chamado de contratação — usuário e e-mail",
+        categoria="Contratações",
+        descricao="Pedido de criação de usuário de rede e e-mail corporativo para uma vaga em aberto. "
+        "Só é enviado quando o solicitante marca que a criação é necessária.",
+        icone="fa-user-plus", tipo_destinatarios="fixo",
+        origem_disparo="Manual — botão 'Solicitar estrutura e abrir chamados' na vaga em aberto (Contratações)",
+    ),
+    dict(
+        codigo="chamado_contratacao_sistemas", nome="Chamado de contratação — orientação e acesso a sistemas",
+        categoria="Contratações",
+        descricao="Pedido de orientação, configuração ou liberação de acesso aos sistemas para uma vaga "
+        "em aberto. Só é enviado quando o solicitante marca que o suporte é necessário.",
+        icone="fa-shield-halved", tipo_destinatarios="fixo",
+        origem_disparo="Manual — botão 'Solicitar estrutura e abrir chamados' na vaga em aberto (Contratações)",
+    ),
+    dict(
+        codigo="vaga_sem_equipamento", nome="Vaga sem equipamento reservado", categoria="Contratações",
+        descricao="Avisa quando o equipamento reservado para uma vaga em aberto foi usado em outra "
+        "necessidade e não há outro do mesmo tipo em Backup para repor a reserva. Um e-mail por ocorrência: "
+        "vaga, equipamento usado, quem usou e quando.",
+        icone="fa-laptop-medical", tipo_destinatarios="fixo",
+        origem_disparo="Transacional — ao usar um equipamento reservado em outra movimentação, "
+        "sem substituto em Backup (services/reserva_equipamento_service.py)",
     ),
     dict(
         codigo="requisicao_enviada_aprovacao", nome="Requisição enviada para aprovação", categoria="Requisições",
@@ -241,6 +293,26 @@ def resolver_destinatarios_atuais(canal) -> tuple[list[dict], str]:
             nota,
         )
 
+    if canal.codigo == "m2m_ocorrencias":
+        from services import m2m_monitoramento_service as m2m
+
+        pessoas, vistos = [], set()
+        for regra in m2m.regras_de_alerta().values():
+            if not regra.envia_email:
+                continue
+            for email in m2m.destinatarios_da_regra(regra):
+                if email.lower() not in vistos:
+                    vistos.add(email.lower())
+                    pessoas.append({
+                        "nome": email, "email": email, "contexto": None, "removivel": False,
+                        "remove_kind": None, "remove_id": None,
+                    })
+        nota = (
+            "Os destinatários são definidos regra a regra em Frotas e Conectividade › Configuração › Regras de alerta. "
+            "Regra com e-mail ligado e sem destinatário usa a lista padrão do sistema (.env)."
+        )
+        return pessoas, nota
+
     if canal.codigo == "item_defeito":
         from ProjetoEstoque.models import PerfilFornecedor
         perfis = (
@@ -287,21 +359,44 @@ def _alertas_habilitados() -> bool:
         return True
 
 
-def _enviar(
+@dataclass(frozen=True)
+class ResultadoEnvio:
+    """O que `_enviar_detalhado` devolve: o `bool` de sempre MAIS o porquê e
+    para quem. `ok=True` significa que o servidor de e-mail ACEITOU a mensagem —
+    não que ela foi lida nem que um chamado foi aberto. `motivo` já vem em texto
+    de tela quando `ok=False`."""
+    ok: bool
+    motivo: str = ""
+    destinatarios: tuple = field(default_factory=tuple)
+
+
+def _enviar_detalhado(
     assunto: str, texto: str, html: str,
     destinatarios: list[str] | None = None, *, codigo: str = "",
     anexos: list[tuple[str, bytes, str]] | None = None,
-) -> bool:
-    """Envia o e-mail. `codigo` identifica o canal em CanalNotificacao (opcional,
-    mas todo alerta novo deveria ter um — ver CATALOGO_NOTIFICACOES): se o canal
-    estiver desativado pelo TI, suprime o envio; se for do tipo 'fixo' e tiver
-    `destinatarios_customizados_ativo=True`, a lista customizada substitui
-    `destinatarios` por completo — mesmo vazia (ninguém removido é reintroduzido
-    silenciosamente pelo padrão do .env). `anexos`: lista opcional de
-    (nome_arquivo, conteudo, mimetype) anexados ao e-mail."""
+    timeout: int | None = None,
+    headers: dict[str, str] | None = None,
+    cc: list[str] | None = None,
+    imagens_inline: list[tuple[str, bytes, str]] | None = None,
+) -> ResultadoEnvio:
+    """Envia o e-mail e diz o que aconteceu. `codigo` identifica o canal em
+    CanalNotificacao (opcional, mas todo alerta novo deveria ter um — ver
+    CATALOGO_NOTIFICACOES): se o canal estiver desativado pelo TI, suprime o
+    envio; se for do tipo 'fixo' e tiver `destinatarios_customizados_ativo=True`,
+    a lista customizada substitui `destinatarios` por completo — mesmo vazia
+    (ninguém removido é reintroduzido silenciosamente pelo padrão do .env).
+    `anexos`: lista opcional de (nome_arquivo, conteudo, mimetype) anexados ao
+    e-mail. `timeout` (segundos) limita a conversa com o SMTP: sem ele um
+    servidor que não responde pendura a requisição que está esperando.
+    `headers` (ex.: `Message-ID`, `In-Reply-To`, `References`) e `cc` existem
+    para a conversa dos chamados: o `Message-ID` é gerado ANTES do envio e
+    guardado, porque é por ele que a resposta, depois, volta para o chamado certo.
+
+    É a fonte única da regra de envio; `_enviar` abaixo só reduz o resultado a
+    `bool` para os alertas que não precisam do motivo."""
     if not _alertas_habilitados():
         logger.info("email_alertas: envio suprimido — alertas desativados nas configurações do sistema.")
-        return False
+        return ResultadoEnvio(False, "Os alertas por e-mail estão desativados nas configurações do sistema.")
 
     canal = None
     if codigo:
@@ -309,7 +404,9 @@ def _enviar(
         canal = CanalNotificacao.objects.filter(codigo=codigo).first()
         if canal is not None and not canal.ativo:
             logger.info("email_alertas: envio suprimido — canal '%s' desativado pelo TI.", codigo)
-            return False
+            return ResultadoEnvio(
+                False, "Este tipo de e-mail está desativado em Central de Alertas → Configurar notificações.",
+            )
 
     alvos = destinatarios or DESTINATARIOS
     if (
@@ -321,15 +418,29 @@ def _enviar(
 
     if not alvos:
         logger.warning("email_alertas: nenhum destinatário configurado.")
-        return False
+        return ResultadoEnvio(
+            False, "Nenhum destinatário configurado (Central de Alertas → Configurar notificações).",
+        )
     try:
         msg = EmailMultiAlternatives(
             subject=assunto,
             body=texto,
             from_email=REMETENTE,
             to=alvos,
+            cc=cc or None,
+            headers=headers or None,
+            connection=get_connection(timeout=timeout) if timeout else None,
         )
         msg.attach_alternative(html, "text/html")
+        if imagens_inline:
+            # `related`: a imagem pertence ao corpo HTML (referenciada por
+            # `cid:`), não é anexo — não aparece como arquivo para baixar.
+            msg.mixed_subtype = "related"
+            for cid, conteudo, subtipo in imagens_inline:
+                imagem = MIMEImage(conteudo, _subtype=subtipo)
+                imagem.add_header("Content-ID", f"<{cid}>")
+                imagem.add_header("Content-Disposition", "inline", filename=f"{cid}.{subtipo}")
+                msg.attach(imagem)
         for nome_arquivo, conteudo, mimetype in (anexos or []):
             msg.attach(nome_arquivo, conteudo, mimetype)
         msg.send(fail_silently=False)
@@ -339,10 +450,24 @@ def _enviar(
             type(canal).objects.filter(pk=canal.pk).update(
                 ultimo_envio=timezone.now(), total_envios=F("total_envios") + 1,
             )
-        return True
+        return ResultadoEnvio(True, "", tuple(alvos))
     except Exception as exc:
         logger.error("email_alertas: falha ao enviar '%s': %s", assunto, exc)
-        return False
+        return ResultadoEnvio(
+            False, f"O servidor de e-mail não aceitou a mensagem: {str(exc)[:300]}", tuple(alvos),
+        )
+
+
+def _enviar(
+    assunto: str, texto: str, html: str,
+    destinatarios: list[str] | None = None, *, codigo: str = "",
+    anexos: list[tuple[str, bytes, str]] | None = None,
+) -> bool:
+    """`_enviar_detalhado` reduzido a `bool` — a forma que todo alerta
+    transacional usa. A regra mora na outra; não duplicar aqui."""
+    return _enviar_detalhado(
+        assunto, texto, html, destinatarios, codigo=codigo, anexos=anexos,
+    ).ok
 
 
 def _fmt_brl(valor) -> str:
@@ -452,6 +577,460 @@ def _badge(texto: str, cor_bg: str, cor_texto: str) -> str:
 def _linha_vazia(texto: str = "Nenhum registro encontrado.") -> str:
     return (
         f'<p style="margin:6px 0 0;color:#94a3b8;font-size:13px;font-style:italic;">{texto}</p>'
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# Chamados de contratação — estrutura para o novo colaborador (manual)
+# ─────────────────────────────────────────────────────────────
+#
+# Três e-mails INDEPENDENTES, um por tipo de chamado: cada um tem o próprio
+# canal em CATALOGO_NOTIFICACOES, então o TI define na Central de Alertas QUEM
+# recebe cada tipo (a equipe de máquinas pode não ser a de acessos) e pode
+# desligar um sem mexer nos outros. Nenhum endereço mora aqui: sem lista
+# customizada vale a lista padrão do sistema (.env), como em todo alerta.
+#
+# O que o e-mail ALEGA é só o que o sistema sabe: que o pedido foi feito. O
+# texto pede à TI que registre o chamado no sistema de atendimento e informe o
+# número na vaga — é assim que o `identificador` chega ao Controle TI.
+
+CANAL_CHAMADO_CONTRATACAO = {
+    "maquina": "chamado_contratacao_maquina",
+    "usuario_email": "chamado_contratacao_usuario_email",
+    "sistemas": "chamado_contratacao_sistemas",
+}
+
+# Rótulo do tipo no ASSUNTO e no título — fixos aqui (e não lidos do model)
+# porque são o texto que a equipe de TI aprende a filtrar na caixa de entrada.
+_CHAMADO_TITULO = {
+    "maquina": "Configuração e entrega de máquina",
+    "usuario_email": "Criação de usuário e e-mail",
+    "sistemas": "Orientação e acesso aos sistemas",
+}
+_CHAMADO_ETIQUETA = {
+    "maquina": "Máquina",
+    "usuario_email": "Usuário e e-mail",
+    "sistemas": "Sistemas",
+}
+_CHAMADO_TIMEOUT_SMTP = 20  # segundos — ver `_enviar_detalhado`
+
+
+def situacao_canal_chamado(tipo: str) -> dict:
+    """Quem receberia o chamado `tipo` AGORA e se o envio está habilitado.
+
+    Serve à janela de confirmação: o solicitante vê, antes de clicar, que o
+    envio está desligado ou sem destinatário — em vez de descobrir depois, na
+    linha "Falha no envio". Mesma resolução que `_enviar_detalhado` usa (via
+    `_base_efetiva`), para a tela e o envio não divergirem.
+    """
+    from ProjetoEstoque.models import CanalNotificacao
+
+    codigo = CANAL_CHAMADO_CONTRATACAO[tipo]
+    canal = CanalNotificacao.objects.filter(codigo=codigo).first()
+    canal_ativo = canal is None or canal.ativo
+    destinatarios = _base_efetiva(codigo)
+
+    problema = ""
+    if not _alertas_habilitados():
+        problema = "Os alertas por e-mail estão desativados nas configurações do sistema."
+    elif not canal_ativo:
+        problema = "Este tipo de e-mail está desativado em Central de Alertas."
+    elif not destinatarios:
+        problema = "Nenhum destinatário configurado para este chamado."
+    return {"destinatarios": list(destinatarios), "problema": problema, "pronto": not problema}
+
+
+# O assunto que a TI aprende a filtrar na caixa de entrada: um padrão FIXO por tipo,
+# seguido do nome do colaborador (ou, enquanto a vaga não tem ninguém, da vaga).
+_CHAMADO_ASSUNTO = {
+    "maquina": "Nova solicitação de preparação de equipamento",
+    "usuario_email": "Solicitação de criação de acessos corporativos",
+    "sistemas": "Solicitação de acessos e integração aos sistemas",
+}
+
+
+def _assunto_chamado(tipo: str, dados: dict, tentativa: int, nome: str = "") -> str:
+    # Uma linha só: nome e cargo vêm de formulário, e uma quebra de linha num
+    # cabeçalho de e-mail é recusada pelo Django (BadHeaderError).
+    quem = " ".join((nome or dados.get("nome_contratado") or "").split())[:80]
+    if not quem:
+        cargo = " ".join(str(dados.get("cargo", "")).split())[:80]
+        quem = f"{cargo} (Vaga nº {dados.get('vaga_id', '?')})"
+    sufixo = " (reenvio)" if tentativa > 1 else ""
+    return f"{_CHAMADO_ASSUNTO[tipo]} | {quem}{sufixo}"
+
+
+def _linhas_do_chamado(tipo: str, dados: dict) -> tuple[list, list]:
+    """(vaga, específicas) — cada uma `[(rótulo, valor)]`. `valor` é texto puro
+    (lista vira linhas com "• "); o escape de HTML é de quem desenha."""
+    def sim_nao(v):
+        return "Sim" if v else "Não"
+
+    def lista(itens):
+        itens = [str(i) for i in (itens or []) if str(i).strip()]
+        return "\n".join(f"• {i}" for i in itens) if itens else "—"
+
+    cargo = dados.get("cargo", "")
+    funcao = dados.get("funcao", "")
+    vaga = [
+        ("Identificação da vaga", f"Nº {dados.get('vaga_id', '?')}"),
+        ("Cargo / função", cargo + (f" ({funcao})" if funcao and funcao != cargo else "")),
+        ("Departamento / setor", dados.get("departamento") or "Não informado"),
+        ("Local de trabalho / unidade", dados.get("local") or "Não informado"),
+        ("Previsão de início", dados.get("previsao_inicio") or "Não informada"),
+        ("Tipo da vaga", dados.get("tipo_vaga") or "—"),
+    ]
+
+    if tipo == "maquina":
+        espec = [
+            ("Computador", dados.get("computador") or "—"),
+            ("Telefonia", dados.get("telefonia") or "Não precisa"),
+            ("Necessidades de equipamento", dados.get("descricao") or "Não detalhadas."),
+        ]
+    elif tipo == "usuario_email":
+        email = sim_nao(dados.get("criar_email"))
+        if dados.get("criar_email") and dados.get("email_sugerido"):
+            email += f" — sugestão: {dados['email_sugerido']}"
+        espec = [
+            ("Colaborador", dados.get("nome_contratado") or "A definir (vaga ainda sem contratado)"),
+            ("Criar usuário de rede (login)", sim_nao(dados.get("criar_usuario_rede"))),
+            ("Criar e-mail corporativo", email),
+            ("Usuário espelho (rede)", dados.get("usuario_espelho") or "Não informado"),
+            ("Sistemas / recursos de acesso", lista(dados.get("acessos"))),
+            ("Observações", dados.get("observacao") or "—"),
+        ]
+    else:  # sistemas
+        espec = [
+            ("Sistemas que o colaborador deverá utilizar", lista(dados.get("sistemas"))),
+            ("Licenças de software", lista(dados.get("licencas"))),
+            ("Tipo de orientação / suporte", lista(dados.get("suporte"))),
+            ("Observações", dados.get("observacao") or "—"),
+        ]
+    return vaga, espec
+
+
+def montar_chamado_contratacao(
+    tipo: str, dados: dict, *, solicitado_em, enviado_em, tentativa: int = 1,
+    referencia: str = "", protocolo: str = "", link: str = "", colaborador: str = "",
+    equipamentos: list | None = None, pendencias: list | None = None,
+) -> tuple[str, str, str]:
+    """`(assunto, texto, html)` do chamado — função pura, sem SMTP nem banco.
+
+    O que a TI RECEBE vem do SNAPSHOT `dados` guardado na hora da solicitação
+    (um reenvio diz exatamente o que o solicitante confirmou). O que MUDA depois
+    — quem foi contratado, quais equipamentos estão reservados, o que ainda está
+    pendente — o chamador lê da vaga NO MOMENTO do envio e passa em
+    `colaborador`, `equipamentos` e `pendencias`: a TI precisa do retrato de agora.
+
+    Só entra o que a atividade precisa: sem CPF, telefone, endereço, senha ou
+    credencial. O nome do contratado vai nos três tipos — a TI não prepara
+    máquina, login nem acesso para "uma pessoa" — mas nada além dele.
+    """
+    from services import email_layout as layout
+
+    equipamentos = equipamentos or []
+    pendencias = pendencias or []
+    nome = (colaborador or dados.get("nome_contratado") or "").strip()
+    assunto = _assunto_chamado(tipo, dados, tentativa, nome)
+    vaga_cod = dados.get("vaga_id", "?")
+    cargo = dados.get("cargo", "")
+    titulo = _CHAMADO_TITULO_EMAIL[tipo]
+
+    def sim_nao(v):
+        return "Sim" if v else "Não"
+
+    quando = timezone.localtime(solicitado_em).strftime("%d/%m/%Y às %H:%M")
+    envio = timezone.localtime(enviado_em).strftime("%d/%m/%Y às %H:%M")
+    solicitante = dados.get("solicitante") or "—"
+    if dados.get("solicitante_email"):
+        solicitante += f" ({dados['solicitante_email']})"
+
+    doc = layout.Documento(
+        titulo=titulo, etiqueta=_CHAMADO_ETIQUETA_EMAIL[tipo],
+        subtitulo=f"{cargo} · Vaga nº {vaga_cod}",
+        preheader=f"{titulo} — {nome or cargo} (Vaga nº {vaga_cod})",
+    )
+    doc.identificacao([
+        ("Chamado", protocolo or "—"),
+        ("Vaga", f"Nº {vaga_cod} — {cargo}"),
+        ("Abertura", quando),
+        ("Área responsável", "Tecnologia da Informação (TI)"),
+    ])
+
+    funcao = dados.get("funcao", "")
+    doc.bloco("Colaborador e vaga", [
+        ("Colaborador", nome or "A definir — a vaga ainda não tem contratado"),
+        ("Cargo / função", cargo + (f" ({funcao})" if funcao and funcao != cargo else "")),
+        ("Departamento / setor", dados.get("departamento") or "Não informado"),
+        ("Unidade de trabalho", dados.get("local") or "Não informada"),
+        ("Previsão de início", dados.get("previsao_inicio") or "Não informada"),
+        ("Tipo da vaga", dados.get("tipo_vaga") or "—"),
+    ])
+
+    if tipo == "maquina":
+        linhas_eq = [
+            [eq.get("equipamento", "—"), eq.get("identificacao") or "—",
+             layout.Pilula(eq.get("situacao", "—"), eq.get("tom", "neutro"))]
+            for eq in equipamentos
+        ]
+        if linhas_eq:
+            doc.tabela("Equipamentos reservados", ["Equipamento", "Identificação", "Situação da reserva"], linhas_eq)
+        else:
+            doc.aviso(
+                "Nenhum equipamento reservado para esta vaga até o momento. A TI pode reservar do "
+                "estoque de Backup; a situação das reservas fica sempre atualizada na plataforma.",
+                "aviso", "Equipamentos",
+            )
+        doc.bloco("Preparação solicitada", [
+            ("Computador", dados.get("computador") or "—"),
+            ("Telefonia", dados.get("telefonia") or "Não precisa"),
+            ("Orientações do RH", dados.get("descricao") or "Não detalhadas."),
+        ])
+    elif tipo == "usuario_email":
+        email = sim_nao(dados.get("criar_email"))
+        if dados.get("criar_email") and dados.get("email_sugerido"):
+            email += f" — sugestão: {dados['email_sugerido']}"
+        doc.bloco("Acessos corporativos solicitados", [
+            ("Criar usuário de rede (login)", sim_nao(dados.get("criar_usuario_rede"))),
+            ("Criar e-mail corporativo", email),
+            ("Usuário espelho (rede)", dados.get("usuario_espelho") or "Não informado"),
+            ("Recursos e acessos", layout.lista_com_marcadores(dados.get("acessos"))),
+            ("Observações", dados.get("observacao") or None),
+        ])
+    else:  # sistemas
+        doc.bloco("Sistemas e acessos", [
+            ("Sistemas que o colaborador deverá utilizar", layout.lista_com_marcadores(dados.get("sistemas"))),
+            ("Licenças de software", layout.lista_com_marcadores(dados.get("licencas"))),
+            ("Tipo de acesso / orientação necessária", layout.lista_com_marcadores(dados.get("suporte"))),
+            ("Observações", dados.get("observacao") or None),
+        ])
+        if pendencias:
+            doc.bloco("Pendências conhecidas", [("Em aberto na vaga", layout.lista_com_marcadores(pendencias))])
+
+    registro = [("Responsável pela solicitação", solicitante), ("Enviado em", envio)]
+    if tentativa > 1:
+        registro.append(("Tentativa de envio", f"{tentativa}ª (reenvio após falha)"))
+    doc.bloco("Registro da solicitação", registro)
+
+    doc.aviso(
+        "Esta mensagem é uma solicitação, não um chamado aberto no sistema de atendimento. "
+        "Ao registrar o chamado, informe o número na vaga "
+        "(Controle TI → Contratações → a vaga → Estrutura e chamados).",
+        "info",
+    )
+    doc.botao("Abrir o chamado na plataforma", link)
+    doc.rodape(_rodape_da_conversa(referencia), _rodape_da_conversa_texto(referencia))
+
+    html = doc.html(com_logo=layout.logo_bytes() is not None)
+    return assunto, doc.texto(), html
+
+
+# Título e etiqueta do e-mail (o cabeçalho que a TI lê de relance). O assunto tem o
+# próprio padrão (`_CHAMADO_ASSUNTO`).
+_CHAMADO_TITULO_EMAIL = {
+    "maquina": "Preparação de equipamento",
+    "usuario_email": "Criação de acessos corporativos",
+    "sistemas": "Acessos e integração aos sistemas",
+}
+_CHAMADO_ETIQUETA_EMAIL = {
+    "maquina": "Solicitação de TI · Equipamento",
+    "usuario_email": "Solicitação de TI · Usuário e e-mail",
+    "sistemas": "Solicitação de TI · Sistemas",
+}
+
+
+def enviar_chamado_contratacao(
+    tipo: str, dados: dict, *, solicitado_em, tentativa: int = 1,
+    message_id: str = "", referencia: str = "", protocolo: str = "", link: str = "",
+    colaborador: str = "", equipamentos: list | None = None, pendencias: list | None = None,
+) -> tuple[str, ResultadoEnvio]:
+    """Envia UM chamado e devolve `(assunto, resultado)`. Nunca levanta: erro de
+    SMTP, canal desligado e lista vazia voltam em `resultado` — quem chama
+    grava o resultado por chamado e segue para o próximo, de modo que a falha de
+    um não impede os outros. O assunto volta mesmo na falha, para o histórico
+    dizer o que se tentou enviar."""
+    from services import email_layout as layout
+
+    enviado_em = timezone.now()
+    assunto, texto, html = montar_chamado_contratacao(
+        tipo, dados, solicitado_em=solicitado_em, enviado_em=enviado_em, tentativa=tentativa,
+        referencia=referencia, protocolo=protocolo, link=link, colaborador=colaborador,
+        equipamentos=equipamentos, pendencias=pendencias,
+    )
+    logo = layout.logo_bytes()
+    resultado = _enviar_detalhado(
+        assunto, texto, html,
+        codigo=CANAL_CHAMADO_CONTRATACAO[tipo], timeout=_CHAMADO_TIMEOUT_SMTP,
+        # O Message-ID é nosso e fica guardado: a resposta chega apontando para ele.
+        headers={"Message-ID": f"<{message_id}>"} if message_id else None,
+        imagens_inline=[(layout.LOGO_CID, logo, "png")] if logo else None,
+    )
+    return assunto, resultado
+
+
+# ─────────────────────────────────────────────────────────────
+# Alerta: vaga em aberto sem equipamento reservado
+# ─────────────────────────────────────────────────────────────
+
+def alerta_vaga_sem_equipamento(reserva) -> ResultadoEnvio:
+    """E-mail aos responsáveis pelas vagas e pelo inventário: o equipamento
+    reservado para a vaga foi usado em outra necessidade e não há outro do mesmo
+    tipo em Backup para repor.
+
+    Diz o que precisa ser dito para agir sem abrir o sistema: QUAL vaga ficou
+    sem equipamento, QUAL equipamento foi usado, POR QUEM e QUANDO, e que é
+    preciso uma nova reserva. Um e-mail por OCORRÊNCIA (a reserva cedida) — o
+    controle de repetição é de `reserva_equipamento_service`. Quem recebe é a
+    lista do canal `vaga_sem_equipamento` na Central de Alertas.
+    """
+    from django.urls import reverse
+    from services import email_layout as layout
+
+    vaga = reserva.contratacao
+    cargo = vaga.cargo if vaga else (reserva.vaga_rotulo or "Vaga")
+    quando = (
+        timezone.localtime(reserva.encerrada_em).strftime("%d/%m/%Y às %H:%M")
+        if reserva.encerrada_em else "—"
+    )
+    quem = "—"
+    if reserva.encerrada_por_id:
+        quem = reserva.encerrada_por.get_full_name() or reserva.encerrada_por.get_username()
+    tipo = reserva.item.subtipo.nome if reserva.item.subtipo_id else "equipamento"
+    mov = reserva.movimentacao
+
+    doc = layout.Documento(
+        titulo="Vaga aberta sem equipamento reservado",
+        etiqueta="Atenção · Inventário e contratações",
+        subtitulo=f"{cargo} · {reserva.vaga_rotulo}",
+        preheader=f"A vaga {reserva.vaga_rotulo} ficou sem equipamento reservado — é necessária uma nova reserva.",
+    )
+    doc.identificacao([
+        ("Vaga", reserva.vaga_rotulo or "—"),
+        ("Ocorrência", quando),
+        ("Equipamento usado", tipo),
+        ("Área responsável", "Tecnologia da Informação (TI)"),
+    ])
+    doc.aviso(
+        "Existe uma vaga aberta sem equipamento vinculado e não há outro equipamento do mesmo tipo "
+        "em Backup para substituir a reserva. É necessária uma nova reserva para esta vaga.",
+        "aviso", "Ação necessária",
+    )
+    if vaga is not None:
+        doc.bloco("Vaga", [
+            ("Cargo", vaga.cargo),
+            ("Departamento / setor", vaga.centro_custo.departamento if vaga.centro_custo_id else "Não informado"),
+            ("Unidade de trabalho", vaga.localidade.local if vaga.localidade_id else "Não informada"),
+            ("Previsão de início", vaga.data_prevista_inicio.strftime("%d/%m/%Y") if vaga.data_prevista_inicio else "Não informada"),
+            ("Colaborador", vaga.nome_contratado or "A definir"),
+            ("Situação da vaga", vaga.get_status_display()),
+        ])
+    doc.bloco("O que aconteceu", [
+        ("Equipamento que estava reservado", reserva.item_rotulo),
+        ("Usado em outra necessidade por", quem),
+        ("Data e horário", quando),
+        ("Justificativa informada", reserva.motivo or "—"),
+        ("Movimentação registrada", f"Nº {mov.pk}" if mov is not None else None),
+    ])
+    link = layout.link_absoluto(reverse("contratacao_detail", args=[vaga.pk]) + "#reservas") if vaga else ""
+    doc.botao("Abrir a vaga e reservar um equipamento", link)
+
+    html = doc.html(com_logo=layout.logo_bytes() is not None)
+    logo = layout.logo_bytes()
+    return _enviar_detalhado(
+        f"Vaga sem equipamento reservado | {reserva.vaga_rotulo}", doc.texto(), html,
+        codigo="vaga_sem_equipamento", timeout=_CHAMADO_TIMEOUT_SMTP,
+        imagens_inline=[(layout.LOGO_CID, logo, "png")] if logo else None,
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# Conversa do chamado: resposta pela plataforma → e-mail
+# ─────────────────────────────────────────────────────────────
+
+def _rodape_da_conversa(referencia: str) -> str:
+    """Rodapé que liga a mensagem ao chamado SEM depender do assunto: a
+    referência assinada (um vínculo a mais para a resposta voltar ao lugar certo,
+    junto dos cabeçalhos In-Reply-To/References) e o aviso de que responder o
+    e-mail continua a conversa na plataforma."""
+    if not referencia:
+        return ""
+    from django.utils.html import escape
+    return (
+        '<p style="margin:14px 0 0;color:#64748b;font-size:11px;line-height:1.5;">'
+        'Responda a este e-mail para continuar a conversa — a resposta é registrada no chamado, '
+        'no Controle TI. Não altere nem apague a linha abaixo.<br>'
+        f'Ref. do chamado: <strong>{escape(referencia)}</strong></p>'
+    )
+
+
+def _rodape_da_conversa_texto(referencia: str) -> str:
+    if not referencia:
+        return ""
+    return (
+        "\nResponda a este e-mail para continuar a conversa — a resposta é registrada no chamado, "
+        f"no Controle TI. Não altere nem apague a linha abaixo.\nRef. do chamado: {referencia}\n"
+    )
+
+
+_LADO_ROTULO = {"rh": "RH", "ti": "TI", "outro": "Participante"}
+
+
+def montar_mensagem_chamado(
+    *, assunto: str, tipo_rotulo: str, vaga_rotulo: str, autor_nome: str, lado: str,
+    texto_corpo: str, quando, nomes_anexos: list[str], referencia: str,
+) -> tuple[str, str]:
+    """`(texto, html)` de uma resposta da conversa — função pura. O corpo vem de
+    usuário e é ESCAPADO; quebra de linha vira `<br>`. O cabeçalho diz quem
+    escreveu e de que lado (RH/TI), porque o e-mail sai sempre do endereço do
+    sistema e o remetente real não aparece no "De"."""
+    from django.utils.html import escape
+
+    quando_txt = timezone.localtime(quando).strftime("%d/%m/%Y às %H:%M")
+    lado_txt = _LADO_ROTULO.get(lado, "Participante")
+    quem = f"{autor_nome or 'Usuário'} ({lado_txt})"
+
+    corpo = (
+        '<p style="margin:0 0 6px;color:#334155;font-size:13px;">'
+        f'<strong>{escape(quem)}</strong> escreveu em {escape(quando_txt)}:</p>'
+        '<div style="margin:0 0 16px;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;'
+        'border-left:3px solid #1e3a8a;border-radius:8px;color:#0f172a;font-size:14px;line-height:1.55;">'
+        f'{escape(texto_corpo).replace(chr(10), "<br>")}</div>'
+    )
+    if nomes_anexos:
+        itens = "".join(f"<li>{escape(n)}</li>" for n in nomes_anexos)
+        corpo += (
+            '<p style="margin:0 0 4px;color:#334155;font-size:12px;"><strong>Anexos:</strong></p>'
+            f'<ul style="margin:0 0 12px;padding-left:20px;color:#334155;font-size:12px;">{itens}</ul>'
+        )
+    corpo += _rodape_da_conversa(referencia)
+    html = _base_html(f"Chamado — {tipo_rotulo}", escape(vaga_rotulo), corpo)
+
+    texto = f"{quem} escreveu em {quando_txt}:\n\n{texto_corpo}\n"
+    if nomes_anexos:
+        texto += "\nAnexos: " + ", ".join(nomes_anexos) + "\n"
+    texto += _rodape_da_conversa_texto(referencia)
+    return texto, html
+
+
+def enviar_mensagem_chamado(
+    *, assunto: str, texto: str, html: str, para: list[str], cc: list[str],
+    message_id: str, em_resposta_a: str, referencias: list[str],
+    anexos: list[tuple[str, bytes, str]] | None = None,
+) -> ResultadoEnvio:
+    """Envia UMA resposta da conversa. Nunca levanta: o resultado diz o que
+    aconteceu. `para` vazio é recusado AQUI — `_enviar_detalhado` trataria lista
+    vazia como "use a lista padrão do .env" e mandaria a conversa para quem não
+    participa dela."""
+    if not para:
+        return ResultadoEnvio(False, "Nenhum destinatário para esta mensagem (confira os e-mails cadastrados).")
+    headers = {"Message-ID": f"<{message_id}>"}
+    if em_resposta_a:
+        headers["In-Reply-To"] = f"<{em_resposta_a}>"
+    if referencias:
+        headers["References"] = " ".join(f"<{r}>" for r in referencias[-20:])
+    return _enviar_detalhado(
+        assunto, texto, html, para, anexos=anexos, timeout=_CHAMADO_TIMEOUT_SMTP,
+        headers=headers, cc=cc or None,
     )
 
 
@@ -1741,6 +2320,77 @@ def alerta_prtg_transicoes(alarmes, recuperados=None) -> bool:
     return _enviar(assunto, texto, html, codigo="prtg_transicoes")
 
 
+def alerta_m2m_ocorrencias(ocorrencias, destinatarios: list[str] | None = None) -> bool:
+    """
+    UM e-mail consolidado com as ocorrências NOVAS do módulo Frotas e Conectividade
+    (chips e veículos). Disparado por `m2m_monitoramento_service.notificar_ocorrencias`
+    (via `transaction.on_commit`) para as ocorrências cuja REGRA manda avisar: ocorrência
+    já aberta não gera e-mail de novo.
+
+    Cada item de `ocorrencias` é uma `M2MOcorrencia` (com `chip` e/ou `veiculo`). O texto
+    traz, por ocorrência, o veículo, o chip, o tipo, o nível, QUANDO foi detectada, o que
+    foi detectado e a AÇÃO NECESSÁRIA — e nunca afirma "fora de cobertura" nem "defeito":
+    falha de consulta (rede, credencial, API ou identificador) é diferente de chip
+    indisponível, e o monitoramento só diz que o chip está sem sessão quando o mapeamento
+    da resposta confirma.
+
+    `destinatarios`: os e-mails da regra (o chamador agrupa por conjunto de destinatários).
+    Vazio ou `None` = a lista padrão do sistema. O envio ainda respeita a chave-mestra de
+    e-mails e o `ativo` do canal `m2m_ocorrencias`.
+    """
+    from django.urls import NoReverseMatch, reverse
+    from services import email_layout as layout
+    from services import m2m_monitoramento_service as m2m
+
+    ocorrencias = list(ocorrencias or [])
+    if not ocorrencias:
+        return False
+
+    n = len(ocorrencias)
+    n_critico = sum(1 for o in ocorrencias if o.nivel == "critico")
+    agora = timezone.localtime()
+    doc = layout.Documento(
+        titulo=f"{n} ocorrência(s) nova(s) em Frotas e Conectividade",
+        etiqueta="Atenção · Frotas · Conectividade",
+        subtitulo=f"Detecção automática · {agora.strftime('%d/%m/%Y às %H:%M')}",
+        preheader=f"{n} ocorrência(s) nova(s) em Frotas e Conectividade" + (f", {n_critico} crítica(s)." if n_critico else "."),
+    )
+    doc.aviso(
+        "Falha de consulta (rede, credencial, API ou identificador) é diferente de chip indisponível: "
+        "o monitoramento só afirma que o chip está sem sessão quando o mapeamento da resposta confirma. "
+        "O último dado válido de cada chip continua guardado.",
+        "info", "Como ler",
+    )
+    doc.tabela(
+        "Ocorrências novas", ["Veículo", "Chip", "Ocorrência", "Nível", "Detectada em", "O que foi detectado", "Ação necessária"],
+        [
+            [
+                f"{o.veiculo.codigo} · {o.veiculo.nome}" if o.veiculo_id else "—",
+                o.chip.nome if o.chip_id else "—",
+                o.get_tipo_display(),
+                layout.Pilula(o.get_nivel_display(), "perigo" if o.nivel == "critico" else ("aviso" if o.nivel == "atencao" else "info")),
+                timezone.localtime(o.detectada_em).strftime("%d/%m/%Y %H:%M"),
+                o.descricao,
+                m2m.acao_necessaria(o.tipo),
+            ]
+            for o in ocorrencias
+        ],
+    )
+    try:
+        link = layout.link_absoluto(reverse("m2m_alertas"))
+    except NoReverseMatch:
+        link = ""
+    doc.botao("Abrir alertas e ocorrências", link)
+
+    logo = layout.logo_bytes()
+    assunto = f"[Controle TI] Frotas e Conectividade: {n} ocorrência(s) nova(s)" + (f" · {n_critico} crítica(s)" if n_critico else "")
+    return _enviar_detalhado(
+        assunto, doc.texto(), doc.html(com_logo=logo is not None), list(destinatarios) if destinatarios else None,
+        codigo="m2m_ocorrencias", timeout=_CHAMADO_TIMEOUT_SMTP,
+        imagens_inline=[(layout.LOGO_CID, logo, "png")] if logo else None,
+    ).ok
+
+
 # ─────────────────────────────────────────────────────────────
 # Segurança — acesso suspeito (ISO 27001 A.8.16)
 # ─────────────────────────────────────────────────────────────
@@ -2369,3 +3019,365 @@ def _mascarar_email(endereco: str) -> str:
         return "seu e-mail cadastrado"
     visivel = usuario[:2] if len(usuario) > 3 else usuario[:1]
     return f"{visivel}{'*' * max(3, len(usuario) - len(visivel))}@{dominio}"
+
+
+# ─────────────────────────────────────────────────────────────
+# Computadores parados (Backup / Pausado) — licença a cancelar e a religar
+# ─────────────────────────────────────────────────────────────
+#
+# Por que este alerta existe: quando um notebook ou desktop vai para BACKUP
+# ou PAUSADO, o TI cancela licenças que seguem pagando no vazio (a chave
+# Office presa à máquina, o assento do colaborador que a usava); quando ele
+# volta a ATIVO, as mesmas licenças precisam ser religadas antes de alguém
+# sentar na máquina. Hoje essa lista só existe na cabeça de quem movimentou,
+# e a conta aparece na fatura do mês seguinte.
+#
+# Duas cadências de propósito:
+#   • SEMANAL — a lista inteira, atualizada, para a conferência de rotina;
+#   • NA MOVIMENTAÇÃO — o mesmo e-mail, com a máquina que acabou de mudar em
+#     destaque no topo. É a hora em que a decisão sobre a licença é tomada;
+#     um resumo semanal sozinho sempre chega depois.
+#
+# Mandar só a máquina que mudou não serviria: a pergunta do TI nunca é "o que
+# mudou?", é "o que está parado agora?" — e essa é a lista inteira.
+
+_SUBTIPOS_COMPUTADOR = ("notebook", "desktop")
+# Reservado entra: o computador reservado para uma vaga está parado do mesmo jeito
+# (a licença presa a ele segue sendo cobrada até a entrega).
+_STATUS_PARADO = ("backup", "reservado", "pausado")
+
+
+def _itens_computador_qs():
+    """Notebooks e desktops do inventário.
+
+    `icontains` em vez de igualdade porque `Subtipo.nome` é texto livre
+    cadastrado à mão — é o mesmo critério já usado pelas Licenças Office
+    (`views/licencas_office.SUBTIPOS_LICENCA_OFFICE`), e as duas telas têm de
+    falar do mesmo parque."""
+    from django.db.models import Q as _Q
+    from ProjetoEstoque.models import Item
+
+    filtro = _Q()
+    for termo in _SUBTIPOS_COMPUTADOR:
+        filtro |= _Q(subtipo__nome__icontains=termo)
+    return Item.objects.filter(filtro)
+
+
+def eh_computador_parado(item) -> bool:
+    """Se este item entra na lista deste alerta. Usado pelo signal para não
+    disparar e-mail a cada mudança de status de switch, toner ou cabo."""
+    if item.status not in _STATUS_PARADO:
+        return False
+    nome = (item.subtipo.nome if item.subtipo_id else "") or ""
+    return any(termo in nome.lower() for termo in _SUBTIPOS_COMPUTADOR)
+
+
+def computadores_parados() -> list[dict]:
+    """A lista de hoje: notebooks e desktops em Backup ou Pausado, com desde
+    quando estão assim, qual licença Office está presa à máquina e quem a
+    usava por último.
+
+    Custo fixo em 3 consultas, independentemente do tamanho do parque (hoje
+    são ~150 máquinas): uma para os itens, uma para o histórico de status e
+    uma para a última movimentação. Resolver "desde quando" item a item seria
+    N+1 num e-mail que existe justamente porque a lista é grande."""
+    from ProjetoEstoque.models import (
+        ItemStatusHistorico, MovimentacaoItem, TipoMovimentacaoChoices,
+        TipoTransferenciaChoices,
+    )
+
+    itens = list(
+        _itens_computador_qs()
+        .filter(status__in=_STATUS_PARADO)
+        .select_related("subtipo", "localidade", "centro_custo", "licenca_office")
+        .order_by("status", "nome")
+    )
+    if not itens:
+        return []
+
+    ids = [i.pk for i in itens]
+
+    # "Desde quando": a entrada mais recente do histórico que registra a
+    # chegada ao status atual. O histórico vem ordenado por data decrescente,
+    # então o PRIMEIRO que casar é o que vale.
+    desde = {}
+    historico = (
+        ItemStatusHistorico.objects
+        .filter(item_id__in=ids)
+        .order_by("item_id", "-alterado_em")
+        .values("item_id", "status_novo", "alterado_em")
+    )
+    por_item = {}
+    for linha in historico:
+        por_item.setdefault(linha["item_id"], []).append(linha)
+    for item in itens:
+        for linha in por_item.get(item.pk, []):
+            if linha["status_novo"] == item.status:
+                desde[item.pk] = linha["alterado_em"]
+                break
+
+    # Último colaborador: a devolução grava `usuario` só para auditoria (quem
+    # devolveu), então ela NÃO conta como posse — mesma regra do detalhe do
+    # equipamento. Sem essa exclusão, toda máquina devolvida apareceria ainda
+    # "com" a pessoa que a entregou de volta.
+    ultimo_colab = {}
+    movs = (
+        MovimentacaoItem.objects
+        .filter(item_id__in=ids, usuario__isnull=False)
+        .exclude(
+            tipo_movimentacao=TipoMovimentacaoChoices.TRANSFERENCIA,
+            tipo_transferencia=TipoTransferenciaChoices.DEVOLUCAO,
+        )
+        .select_related("usuario")
+        .order_by("item_id", "-created_at")
+    )
+    for mov in movs:
+        ultimo_colab.setdefault(mov.item_id, mov.usuario)
+
+    agora = timezone.now()
+    linhas = []
+    for item in itens:
+        inicio = desde.get(item.pk)
+        dias = (agora - inicio).days if inicio else None
+        licenca = getattr(item, "licenca_office", None)
+        linhas.append({
+            "item": item,
+            "status": item.status,
+            "status_label": item.get_status_display(),
+            "desde": inicio,
+            "dias": dias,
+            "localidade": item.localidade.local if item.localidade_id else "",
+            "centro_custo": item.centro_custo.departamento if item.centro_custo_id else "",
+            "licenca_office": licenca,
+            "ultimo_colaborador": ultimo_colab.get(item.pk),
+        })
+    return linhas
+
+
+def _linha_computador_parado(dado: dict) -> list[str]:
+    item = dado["item"]
+    licenca = dado["licenca_office"]
+    colaborador = dado["ultimo_colaborador"]
+
+    if dado["status"] == "backup":
+        selo = _badge("BACKUP", "#dbeafe", "#1d4ed8")
+    elif dado["status"] == "reservado":
+        selo = _badge("RESERVADO", "#ede9fe", "#6d28d9")
+    else:
+        selo = _badge("PAUSADO", "#fef3c7", "#b45309")
+
+    if dado["dias"] is None:
+        tempo = "—"
+    elif dado["dias"] == 0:
+        tempo = "hoje"
+    else:
+        tempo = f"{dado['dias']} dia(s)"
+
+    return [
+        f'<strong>{item.nome}</strong>',
+        item.numero_serie or "—",
+        item.subtipo.nome if item.subtipo_id else "—",
+        selo,
+        tempo,
+        dado["localidade"] or dado["centro_custo"] or "—",
+        (f'{licenca.produto}<br><span style="color:#94a3b8;font-size:11px;">'
+         f'{licenca.chave_produto}</span>') if licenca else "—",
+        colaborador.nome if colaborador else "—",
+    ]
+
+
+_CAB_COMPUTADOR_PARADO = [
+    "Equipamento", "Nº de série", "Tipo", "Situação", "Parado há",
+    "Localidade / Setor", "Licença Office na máquina", "Último colaborador",
+]
+
+
+def _csv_computadores_parados(dados: list[dict]) -> bytes:
+    """A lista COMPLETA em anexo.
+
+    O corpo do e-mail mostra as primeiras 50 linhas por tabela (`_tabela_html`)
+    e o parque parado passa de 150 máquinas: só no corpo, o TI receberia uma
+    lista cortada bem no meio do trabalho dele. Pior, HTML acima de ~102 KB é
+    **truncado** por vários clientes de e-mail, e as linhas que somem não
+    avisam que sumiram. O anexo leva todas, abre no Excel e serve de lista de
+    conferência para cancelar/religar licença.
+
+    `utf-8-sig` porque o Excel do Windows lê CSV sem BOM como ANSI e
+    "Localidade" vira "Localidade" na tela de quem for usar a planilha."""
+    import csv
+    import io as _io
+
+    buffer = _io.StringIO()
+    escritor = csv.writer(buffer, delimiter=";")
+    escritor.writerow([
+        "Equipamento", "Número de série", "Tipo", "Situação", "Parado desde",
+        "Dias parado", "Localidade", "Centro de custo", "Licença Office",
+        "Chave", "Último colaborador",
+    ])
+    for d in dados:
+        item = d["item"]
+        licenca = d["licenca_office"]
+        escritor.writerow([
+            item.nome,
+            item.numero_serie or "",
+            item.subtipo.nome if item.subtipo_id else "",
+            d["status_label"],
+            timezone.localtime(d["desde"]).strftime("%d/%m/%Y") if d["desde"] else "",
+            d["dias"] if d["dias"] is not None else "",
+            d["localidade"],
+            d["centro_custo"],
+            licenca.produto if licenca else "",
+            licenca.chave_produto if licenca else "",
+            d["ultimo_colaborador"].nome if d["ultimo_colaborador"] else "",
+        ])
+    return buffer.getvalue().encode("utf-8-sig")
+
+
+def alerta_computadores_parados(*, item_destaque_pk: int | None = None,
+                                status_anterior: str = "") -> bool:
+    """Envia a lista de notebooks/desktops em Backup ou Pausado.
+
+    `item_destaque_pk` chega quando o disparo veio de uma movimentação: a
+    máquina que acabou de mudar vai num bloco próprio no topo, com a
+    transição (`status_anterior` → status atual) escrita por extenso, porque
+    é ela que motiva a ação de agora. A lista completa continua embaixo.
+
+    Devolve False quando não há nada parado — e aí nenhum e-mail sai, igual
+    aos outros alertas deste módulo: caixa de entrada com "0 registros"
+    semanal é o que faz o alerta ser ignorado quando passa a ter conteúdo."""
+    from ProjetoEstoque.models import Item, StatusItemChoices
+
+    dados = computadores_parados()
+
+    destaque = None
+    if item_destaque_pk:
+        destaque = (
+            Item.objects
+            .filter(pk=item_destaque_pk)
+            .select_related("subtipo", "localidade", "licenca_office")
+            .first()
+        )
+
+    if not dados and destaque is None:
+        logger.info("alerta_computadores_parados: nenhum notebook/desktop parado.")
+        return False
+
+    backup = [d for d in dados if d["status"] == "backup"]
+    reservado = [d for d in dados if d["status"] == "reservado"]
+    pausado = [d for d in dados if d["status"] == "pausado"]
+    com_licenca = [d for d in dados if d["licenca_office"]]
+
+    corpo = ""
+
+    if destaque is not None:
+        voltou = destaque.status == StatusItemChoices.ATIVO
+        de = dict(StatusItemChoices.choices).get(status_anterior, status_anterior or "—")
+        para = destaque.get_status_display()
+        cor = "#166534" if voltou else "#b45309"
+        fundo = "#dcfce7" if voltou else "#fef3c7"
+        acao = (
+            "voltou a operar — <strong>religue</strong> as licenças que haviam sido canceladas"
+            if voltou else
+            "saiu de operação — <strong>cancele</strong> as licenças que ficam pagando no vazio"
+        )
+        licenca = getattr(destaque, "licenca_office", None)
+        detalhe_licenca = (
+            f'<p style="margin:6px 0 0;color:#334155;font-size:13px;">'
+            f'Licença presa a esta máquina: <strong>{licenca.produto}</strong> '
+            f'({licenca.chave_produto}).</p>'
+        ) if licenca else (
+            '<p style="margin:6px 0 0;color:#64748b;font-size:13px;">'
+            'Nenhuma Licença Office vinculada a esta máquina no cadastro.</p>'
+        )
+        corpo += (
+            f'<div style="background:{fundo};border-left:4px solid {cor};'
+            f'border-radius:8px;padding:14px 16px;margin-bottom:22px;">'
+            f'<p style="margin:0;color:{cor};font-size:11px;font-weight:800;'
+            f'text-transform:uppercase;letter-spacing:.08em;">Movimentação agora</p>'
+            f'<p style="margin:6px 0 0;color:#0f172a;font-size:15px;font-weight:700;">'
+            f'{destaque.nome}'
+            f'{f" · série {destaque.numero_serie}" if destaque.numero_serie else ""}</p>'
+            f'<p style="margin:6px 0 0;color:#334155;font-size:13px;">'
+            f'{de} &rarr; <strong>{para}</strong> — {acao}.</p>'
+            f'{detalhe_licenca}'
+            f'</div>'
+        )
+
+    intro = (
+        f'<p style="margin:0 0 4px;color:#334155;font-size:14px;">'
+        f'<strong>{len(dados)}</strong> computador(es) fora de operação — '
+        f'<strong>{len(backup)}</strong> em backup, <strong>{len(reservado)}</strong> reservado(s) '
+        f'para vaga e <strong>{len(pausado)}</strong> pausado(s). '
+        f'<strong>{len(com_licenca)}</strong> tem Licença Office vinculada no cadastro.</p>'
+        f'<p style="margin:0 0 10px;color:#64748b;font-size:13px;">'
+        f'Máquina parada com licença ativa é custo sem uso: cancele o que estiver preso a '
+        f'estas máquinas e religue quando elas voltarem a Ativo.</p>'
+        + (
+            f'<p style="margin:0 0 10px;color:#64748b;font-size:13px;">'
+            f'As tabelas abaixo mostram as primeiras 50 de cada situação. '
+            f'<strong>A lista completa ({len(dados)} máquinas) vai no CSV em anexo.</strong></p>'
+            if len(dados) > 50 else ''
+        )
+    )
+    corpo += _secao("Panorama", "💻", "#1d4ed8", intro)
+
+    if backup:
+        corpo += _secao(
+            f"Em backup ({len(backup)})", "🗄️", "#1d4ed8",
+            _tabela_html(_CAB_COMPUTADOR_PARADO, [_linha_computador_parado(d) for d in backup]),
+        )
+    if reservado:
+        corpo += _secao(
+            f"Reservados para vagas ({len(reservado)})", "📌", "#6d28d9",
+            _tabela_html(_CAB_COMPUTADOR_PARADO, [_linha_computador_parado(d) for d in reservado]),
+        )
+    if pausado:
+        corpo += _secao(
+            f"Pausados ({len(pausado)})", "⏸️", "#b45309",
+            _tabela_html(_CAB_COMPUTADOR_PARADO, [_linha_computador_parado(d) for d in pausado]),
+        )
+    if not dados:
+        corpo += _secao(
+            "Situação atual", "✅", "#166534",
+            _linha_ok("Nenhum notebook ou desktop em backup ou pausado no momento."),
+        )
+
+    hoje = date.today()
+    titulo = (
+        f"{len(dados)} computador(es) parado(s) — licenças a revisar"
+        if dados else "Nenhum computador parado"
+    )
+    html = _base_html(
+        titulo,
+        f"Notebooks e desktops em Backup/Pausado — apurado em {hoje.strftime('%d/%m/%Y')}",
+        corpo,
+    )
+
+    texto_linhas = "\n".join(
+        f"- {d['item'].nome} | {d['status_label']} | "
+        f"{'parado há ' + str(d['dias']) + ' dia(s)' if d['dias'] is not None else 'sem histórico'} | "
+        f"licença: {d['licenca_office'].produto if d['licenca_office'] else '—'}"
+        for d in dados
+    )
+    texto = (
+        f"CONTROLE TI — Computadores em Backup/Pausado\n"
+        f"Total: {len(dados)} ({len(backup)} backup, {len(reservado)} reservado, {len(pausado)} pausado)\n\n"
+        + texto_linhas
+    )
+
+    assunto_destaque = ""
+    if destaque is not None:
+        assunto_destaque = f" — {destaque.nome} agora em {destaque.get_status_display()}"
+
+    anexos = []
+    if dados:
+        anexos.append((
+            f"computadores_parados_{hoje.strftime('%Y-%m-%d')}.csv",
+            _csv_computadores_parados(dados),
+            "text/csv",
+        ))
+
+    return _enviar(
+        f"[Controle TI] {len(dados)} computador(es) parado(s){assunto_destaque}",
+        texto, html, codigo="computadores_parados", anexos=anexos,
+    )

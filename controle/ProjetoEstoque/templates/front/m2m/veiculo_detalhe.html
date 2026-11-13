@@ -1,0 +1,199 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags %}
+
+{% block title %}{{ veiculo.codigo }} · {{ veiculo.nome }} — Frotas — Zelo Agro{% endblock %}
+{% block page_title %}Frotas{% endblock %}
+{% block page_subtitle %}Detalhe do veículo{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+{% comment %}A folha do módulo vem DEPOIS da do Select2: ela reveste o componente. Invertida, o CDN vence e nada tem efeito (regra 26).{% endcomment %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page" data-veiculo-id="{{ veiculo.pk }}">
+  {% url 'frota_veiculos' as u_lista %}
+  {% include 'front/m2m/_frota_topo.html' with titulo=veiculo.nome descricao=veiculo.tipo.nome voltar_url=u_lista voltar_rotulo="Veículos e equipamentos" %}
+
+  {% comment %}O que importa primeiro: quem é o veículo, em que situação está e as ações. O dado técnico fica na aba "Dados cadastrais".{% endcomment %}
+  <section class="m2m-resumo" aria-label="Resumo e ações do veículo">
+    <div class="m2m-resumo-cab">
+      <div class="m2m-resumo-estados">
+        {% frota_status veiculo.status %}
+        {% if pode_atualizar or pode_ver_chips %}{% frota_conect conect.estado %}{% if conect.contagem.texto %}<span class="m2m-sub">{{ conect.contagem.texto }}</span>{% endif %}{% endif %}
+      </div>
+      <div class="m2m-resumo-acoes">
+        {% if pode_vincular and veiculo.status != "desativado" %}<button type="button" class="m2m-btn m2m-btn--primario" data-frota-abrir="vincular_chip" data-url="{% url 'frota_vincular' %}" data-campo-veiculo="{{ veiculo.pk }}" data-alvo="Veículo {{ veiculo.codigo }} · {{ veiculo.nome }}"><i class="fa-solid fa-link" aria-hidden="true"></i>Vincular chip</button>{% endif %}
+        {% if pode_editar_frota %}
+          <button type="button" class="m2m-btn" data-frota-abrir="status" data-url="{% url 'frota_veiculo_status' veiculo.pk %}" data-alvo="Veículo {{ veiculo.codigo }} · {{ veiculo.nome }} — hoje: {{ veiculo.get_status_display }}">Mudar status</button>
+          <a class="m2m-btn" href="{% url 'frota_veiculo_editar' veiculo.pk %}"><i class="fa-solid fa-pen" aria-hidden="true"></i>Editar</a>
+        {% endif %}
+      </div>
+    </div>
+    <dl class="m2m-resumo-fatos">
+      <div><dt>Código</dt><dd class="m2m-id">{{ veiculo.codigo }}</dd></div>
+      <div><dt>Placa</dt><dd class="m2m-id">{{ veiculo.placa|default:"—" }}</dd></div>
+      <div><dt>Modelo</dt><dd>{% if veiculo.modelo or veiculo.fabricante %}{{ veiculo.fabricante }} {{ veiculo.modelo }}{% if veiculo.ano_fabricacao %} <span class="m2m-sub m2m-num">{{ veiculo.ano_fabricacao|unlocalize }}</span>{% endif %}{% else %}—{% endif %}</dd></div>
+      <div><dt>Fazenda</dt><dd>{{ veiculo.localidade.local|default:"—" }}{% if veiculo.setor %} <span class="m2m-sub">· {{ veiculo.setor }}</span>{% endif %}</dd></div>
+      <div><dt>Responsável</dt><dd>{{ veiculo.responsavel.nome|default:"—" }}</dd></div>
+      <div><dt>Chips vinculados</dt><dd class="m2m-num">{{ conect.contagem.total }}</dd></div>
+      {% if pode_ver_tec %}<div><dt>Equipamentos instalados</dt><dd class="m2m-num">{{ composicao.equipamentos|length }}</dd></div>{% endif %}
+    </dl>
+  </section>
+
+  {% if veiculo.status == "desativado" %}
+  <p class="m2m-aviso" data-tom="neutro"><b>Veículo desativado.</b> Ele não recebe chips e o cadastro fica guardado, com todo o histórico.</p>
+  {% elif conect.estado == "sem_chip" and exige_chip %}
+  <p class="m2m-aviso" data-tom="atencao"><b>Este veículo exige chip de conectividade e não tem nenhum vinculado.</b> {% if pode_vincular %}Use “Vincular chip” para ligar um chip disponível.{% endif %}</p>
+  {% endif %}
+
+  <div class="m2m-secoes" data-m2m-secoes>
+    {% comment %}Composição tecnológica: equipamentos, chips e material instalados agora. Só para quem vê o estoque tecnológico.{% endcomment %}
+    {% if pode_ver_tec %}{% include 'front/agro/tec/_composicao.html' %}{% endif %}
+
+    {% comment %}Chips vinculados{% endcomment %}
+    <section class="m2m-painel" id="m2m-v-d-chips" data-secao="Chips vinculados" aria-labelledby="m2m-v-d-chips-t">
+      <header class="m2m-painel-cab">
+        <h3 class="m2m-painel-t" id="m2m-v-d-chips-t">Chips vinculados<span class="m2m-painel-t-n">{{ conect.contagem.total }}</span></h3>
+      </header>
+      {% if not pode_ver_chips %}
+        <p class="m2m-painel-vazio">{% if conect.contagem.total %}Este veículo tem {{ conect.contagem.total }} chip{{ conect.contagem.total|pluralize }} vinculado{{ conect.contagem.total|pluralize }}. Os dados do chip pedem a permissão de ver chips.{% else %}Nenhum chip vinculado.{% endif %}</p>
+      {% elif conect.chips %}
+      <div class="m2m-tabela-wrap">
+        <table class="m2m-tabela m2m-tabela--curta">
+          <thead><tr><th>Chip</th><th>Linha</th><th>Vinculado desde</th><th>Uso</th><th><span class="m2m-sr">Ações</span></th></tr></thead>
+          <tbody>
+            {% for item in conect.chips %}
+            <tr class="m2m-linha" data-vinculo-id="{{ item.vinculo.pk }}" data-chip-id="{{ item.chip.pk }}">
+              <td data-rotulo="Chip">
+                <span class="m2m-ident">
+                  <a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' item.chip.pk %}">{{ item.chip.nome }}</a>
+                  <span class="m2m-ident-cod" title="ICCID">{{ item.chip.iccid|m2m_blocos|default:"—" }}</span>
+                  {% if item.chip.imsi %}<span class="m2m-ident-cod" title="IMSI">IMSI {{ item.chip.imsi|m2m_blocos }}</span>{% endif %}
+                </span>
+              </td>
+              <td data-rotulo="Linha"><span class="m2m-ident"><span class="m2m-id">{{ item.chip.numero_linha|default:"—" }}</span> <span class="m2m-sub">{{ item.chip.operadora.nome }}</span></span></td>
+              <td class="m2m-quebra" data-rotulo="Vinculado desde"><span class="m2m-num">{{ item.desde|date:"d/m/Y H:i" }}</span>{% if item.vinculado_por %} <span class="m2m-sub">por {{ item.vinculado_por }}</span>{% endif %}</td>
+              <td data-rotulo="Uso">{% frota_status item.chip.situacao_uso %}</td>
+              <td class="m2m-acoes" data-rotulo="Ações">
+                {% if pode_atualizar and item.chip.monitorado and item.chip.consultavel_pela_api %}
+                  <button type="button" class="m2m-btn m2m-btn--sm" data-m2m-atualizar data-url="{% url 'm2m_chip_atualizar' item.chip.pk %}" data-tipos="sessao,consumo" data-contexto="detalhe" title="Consulta a API agora: sessão e consumo">Atualizar</button>
+                {% endif %}
+                {% if pode_transferir %}
+                  <button type="button" class="m2m-btn m2m-btn--sm" data-frota-abrir="transferir" data-url="{% url 'frota_transferir' item.vinculo.pk %}" data-alvo="Chip {{ item.chip.nome }} · hoje no veículo {{ veiculo.codigo }}">Transferir</button>
+                  <button type="button" class="m2m-btn m2m-btn--sm" data-frota-abrir="substituir" data-url="{% url 'frota_substituir' item.vinculo.pk %}" data-alvo="Chip {{ item.chip.nome }} · veículo {{ veiculo.codigo }}">Substituir</button>
+                  <button type="button" class="m2m-btn m2m-btn--sm m2m-btn--perigo" data-frota-abrir="desvincular" data-url="{% url 'frota_desvincular' item.vinculo.pk %}" data-alvo="Chip {{ item.chip.nome }} · veículo {{ veiculo.codigo }}">Desvincular</button>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="m2m-nota m2m-nota--pad">Cada ação pede um motivo e fica registrada em Movimentações, sem poder ser editada.</p>
+      {% else %}
+        {% include 'front/m2m/_vazio.html' with icone="fa-sim-card" titulo="Nenhum chip vinculado" texto="Vincule um chip disponível para acompanhar a conectividade deste veículo." only %}
+      {% endif %}
+    </section>
+
+    {% comment %}Conectividade: só para quem pode consultar sessão e consumo{% endcomment %}
+    {% if pode_atualizar %}
+    <section class="m2m-painel" id="m2m-v-d-conect" data-secao="Conectividade" aria-labelledby="m2m-v-d-conect-t">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-v-d-conect-t">Conectividade</h3></header>
+      {% if conect.chips %}
+        <div class="m2m-chip-blocos">
+        {% for item in conect.chips %}
+        <div class="m2m-chip-bloco">
+          <div class="m2m-chip-bloco-cab">
+            <a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' item.chip.pk %}">{{ item.chip.nome }}</a>
+            {% frota_conect item.estado %}
+            <span class="m2m-sub">{% m2m_frescor item.frescor %}</span>
+            {% if item.falhas_consecutivas %}<span class="m2m-sub m2m-sub--erro m2m-num">&times;{{ item.falhas_consecutivas }} falha{{ item.falhas_consecutivas|pluralize }} seguida{{ item.falhas_consecutivas|pluralize }}</span>{% endif %}
+          </div>
+          {% if item.estado == "sem_integracao" %}
+            <p class="m2m-nota">A operadora {{ item.chip.operadora.nome }} não tem integração configurada: o chip é controlado aqui, mas nunca consultado pela API.</p>
+          {% else %}
+            <dl class="m2m-dl m2m-dl--compacta">
+              <div><dt>Sessão (última resposta válida)</dt><dd>{{ item.sessao_rotulo }}</dd></div>
+              <div><dt>Consumo (último valor)</dt><dd class="m2m-num">{% if item.chip.consumo_bytes is not None %}{{ item.chip.consumo_txt }}{% else %}—{% endif %}</dd></div>
+              <div><dt>Última consulta</dt><dd class="m2m-num">{% if item.chip.ultima_tentativa_em %}{{ item.chip.ultima_tentativa_em|date:"d/m/Y H:i" }}{% else %}nunca consultado{% endif %}</dd></div>
+            </dl>
+            {% include 'front/m2m/_m2m_fita.html' with fita=item.fita compacta=True %}
+          {% endif %}
+        </div>
+        {% endfor %}
+        </div>
+        {% include 'front/m2m/_m2m_fita_legenda.html' %}
+      {% else %}
+        {% include 'front/m2m/_vazio.html' with icone="fa-signal" titulo="Sem chip vinculado" texto="Sem chip vinculado, não há conectividade para consultar." only %}
+      {% endif %}
+      <p class="m2m-nota m2m-nota--pad">A conectividade vem das consultas à API e não altera o status do veículo.</p>
+    </section>
+    {% endif %}
+
+    {% comment %}Histórico: movimentações, vínculos e ocorrências numa linha do tempo só{% endcomment %}
+    <section class="m2m-painel" id="m2m-v-d-hist" data-secao="Histórico" data-secao-query="hist" aria-labelledby="m2m-v-d-hist-t">
+      <header class="m2m-painel-cab">
+        <h3 class="m2m-painel-t" id="m2m-v-d-hist-t">Histórico e ocorrências</h3>
+        <nav class="m2m-segmentos" aria-label="Filtrar o histórico">
+          <a href="{% url 'frota_veiculo_detalhe' veiculo.pk %}#m2m-v-d-hist" {% if not fontes_ativas %}class="is-ativa" aria-current="true"{% endif %}>Tudo</a>
+          {% for chave, rotulo in fontes_do_historico %}<a href="?hist={{ chave }}#m2m-v-d-hist" {% if fontes_ativas.0 == chave %}class="is-ativa" aria-current="true"{% endif %}>{{ rotulo }}</a>{% endfor %}
+        </nav>
+      </header>
+      {% if linha_do_tempo %}
+      <ol class="m2m-tempo">
+        {% for i in linha_do_tempo %}
+        <li data-nivel="{{ i.nivel }}">
+          <span class="m2m-num m2m-tempo-quando">{{ i.quando|date:"d/m/Y H:i" }}</span>
+          <span class="m2m-tempo-marca" aria-hidden="true"></span>
+          <span class="m2m-tempo-texto">
+            <b>{{ i.titulo }}</b>
+            {% if i.detalhe %}<span class="m2m-sub">{{ i.detalhe }}</span>{% endif %}
+            {% if i.fonte == "ocorrencia" and pode_historico %}<a class="m2m-sub" href="{% url 'm2m_alertas' %}?abrir={{ i.ref_id }}">ver ocorrência</a>{% endif %}
+          </span>
+        </li>
+        {% endfor %}
+      </ol>
+      <p class="m2m-nota m2m-nota--pad">Até 60 itens, do mais novo para o mais antigo. O histórico nunca é apagado.</p>
+      {% else %}
+        {% include 'front/m2m/_vazio.html' with icone="fa-clock-rotate-left" titulo="Nenhum histórico disponível" texto="Nada foi registrado para este filtro." only %}
+      {% endif %}
+    </section>
+
+    {% comment %}Dados cadastrais: o detalhe técnico, fora do caminho de quem só quer operar{% endcomment %}
+    <section class="m2m-painel" id="m2m-v-d-dados" data-secao="Dados cadastrais" aria-labelledby="m2m-v-d-dados-t">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-v-d-dados-t">Dados cadastrais</h3></header>
+      <dl class="m2m-dl">
+        <div><dt>Nome</dt><dd>{{ veiculo.nome }}</dd></div>
+        <div><dt>Código</dt><dd class="m2m-id">{{ veiculo.codigo }}</dd></div>
+        <div><dt>Tipo</dt><dd>{{ veiculo.tipo.nome }}</dd></div>
+        <div><dt>Status operacional</dt><dd>{% frota_status veiculo.status %}</dd></div>
+        <div><dt>Fabricante</dt><dd>{{ veiculo.fabricante|default:"—" }}</dd></div>
+        <div><dt>Modelo</dt><dd>{{ veiculo.modelo|default:"—" }}</dd></div>
+        <div><dt>Ano de fabricação</dt><dd class="m2m-num">{{ veiculo.ano_fabricacao|unlocalize|default:"—" }}</dd></div>
+        <div><dt>Placa</dt><dd class="m2m-id">{{ veiculo.placa|default:"—" }}</dd></div>
+        <div><dt>RENAVAM</dt><dd class="m2m-id">{{ veiculo.renavam|default:"—" }}</dd></div>
+        <div><dt>Chassi / nº de série</dt><dd class="m2m-id">{{ veiculo.chassi_serie|default:"—" }}</dd></div>
+        <div><dt>Fazenda</dt><dd>{{ veiculo.localidade.local|default:"—" }}</dd></div>
+        <div><dt>Setor</dt><dd>{{ veiculo.setor|default:"—" }}</dd></div>
+        <div><dt>Área de operação</dt><dd>{{ veiculo.area_operacao|default:"—" }}</dd></div>
+        <div><dt>Responsável</dt><dd>{{ veiculo.responsavel.nome|default:"—" }}</dd></div>
+        <div><dt>Exige chip</dt><dd>{% if exige_chip %}Sim{% else %}Não{% endif %} <span class="m2m-sub">{% if veiculo.exige_conectividade is None %}herdado do tipo{% else %}definido neste veículo{% endif %}</span></dd></div>
+        {% if veiculo.observacoes %}<div class="m2m-dl-largo"><dt>Observações</dt><dd class="m2m-texto-livre">{{ veiculo.observacoes }}</dd></div>{% endif %}
+        <div><dt>Cadastrado</dt><dd>{{ veiculo.created_at|date:"d/m/Y H:i" }}{% if veiculo.criado_por %} <span class="m2m-sub">por {{ veiculo.criado_por.get_username }}</span>{% endif %}</dd></div>
+        <div><dt>Última edição</dt><dd>{{ veiculo.updated_at|date:"d/m/Y H:i" }}{% if veiculo.atualizado_por %} <span class="m2m-sub">por {{ veiculo.atualizado_por.get_username }}</span>{% endif %}</dd></div>
+      </dl>
+    </section>
+  </div>
+
+  {% include 'front/m2m/_frota_dialogos.html' %}
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+{% endblock %}

@@ -19,7 +19,9 @@ from ProjetoEstoque.models import Fornecedor, Item, Localidade, MovimentacaoItem
 
 DIAS_ALERTA_CONTRATO = 150
 
-STATUS_OPERACIONAIS_VENCIMENTO = ["ativo", "backup", "estoque", "manutencao", "defeito", "queimado"]
+STATUS_OPERACIONAIS_VENCIMENTO = [
+    "ativo", "backup", "reservado", "estoque", "manutencao", "defeito", "queimado",
+]
 STATUS_PAUSADO_VENCIMENTO = "pausado"
 
 

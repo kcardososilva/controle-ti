@@ -17,17 +17,9 @@
 </nav>
 {% endblock %}
 
-{% block header_actions %}
-<a href="{% if next_url %}{{ next_url }}{% else %}{% url 'equipamentos_list' %}{% endif %}" class="btn btn-sm">
-  <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Voltar
-</a>
-<a href="{% url 'equipamento_qr' item.id %}" class="btn btn-sm" title="Gerar QR Code">
-  <i class="fa-solid fa-qrcode" aria-hidden="true"></i> QR
-</a>
-<a href="{% url 'item_update' item.id %}{% if next_url %}?next={{ next_url|urlencode }}{% endif %}" class="btn-primary btn-sm">
-  <i class="fa-solid fa-pen" aria-hidden="true"></i> Editar
-</a>
-{% endblock %}
+{% comment %}Voltar, QR e Editar viviam na barra superior (header_actions). Desde 2026-11-13
+   moram no cartão de identidade do ativo (.ad-tools), logo ao lado do nome: a barra
+   superior fica só com o título e o que é global (tema, sino, perfil).{% endcomment %}
 
 {% block extra_css %}
   {# Folha desta tela: eram 940 linhas de <style> aqui. #}
@@ -81,7 +73,7 @@
             {% endif %}
 
             {% if item.status %}
-              <span class="ad-badge {% if item.status == 'ativo' %}ad-badge-success{% elif item.status == 'manutencao' or item.status == 'correcao' %}ad-badge-warning{% elif item.status == 'defeito' or item.status == 'queimado' %}ad-badge-danger{% else %}ad-badge-neutral{% endif %}">
+              <span class="ad-badge {% if item.status == 'ativo' %}ad-badge-success{% elif item.status == 'manutencao' or item.status == 'correcao' %}ad-badge-warning{% elif item.status == 'defeito' or item.status == 'queimado' %}ad-badge-danger{% elif item.status == 'reservado' %}ad-badge-info{% else %}ad-badge-neutral{% endif %}">
                 <span class="dot"></span>{{ item.get_status_display|default:item.status|capfirst }}
               </span>
             {% endif %}
@@ -117,7 +109,21 @@
         </div>
       </div>
 
-      <div class="ad-actions">
+      {# Sobre o REGISTRO (sair, etiqueta, editar) — canto do cartão, junto ao nome. #}
+      <div class="ad-tools" role="group" aria-label="Ferramentas do cadastro">
+        <a href="{% if next_url %}{{ next_url }}{% else %}{% url 'equipamentos_list' %}{% endif %}" class="btn btn-sm">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Voltar
+        </a>
+        <a href="{% url 'equipamento_qr' item.id %}" class="btn btn-sm" title="Gerar QR Code">
+          <i class="fa-solid fa-qrcode" aria-hidden="true"></i> QR
+        </a>
+        <a href="{% url 'item_update' item.id %}{% if next_url %}?next={{ next_url|urlencode }}{% endif %}" class="btn-primary btn-sm">
+          <i class="fa-solid fa-pen" aria-hidden="true"></i> Editar
+        </a>
+      </div>
+
+      {# Sobre o FLUXO do ativo (termos, preventiva, ciclo) — faixa própria sob o nome. #}
+      <div class="ad-actions" role="group" aria-label="Ações do ativo">
         {# Ativo (em uso) → devolução. Backup/pausado/demais (em estoque) → entrega. #}
         {% comment %}Duas vias para o MESMO termo, lado a lado de propósito: o
            ".docx" para imprimir e assinar à mão (fluxo antigo, que segue
@@ -162,6 +168,74 @@
       </span>
       <span class="btn btn-sm"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Gerenciar</span>
     </a>
+    {% endif %}
+
+    {# ─────────────────────── RESERVA PARA VAGA ─────────────────────── #}
+    {% if reserva_ativa or vagas_para_reservar or reservas_do_item %}
+    <section class="ad-card" id="reserva" style="margin-bottom:1rem;">
+      <div class="ad-card-header">
+        <h2 class="ad-card-title"><i class="fa-solid fa-bookmark" aria-hidden="true"></i> Reserva para vaga</h2>
+      </div>
+      <div class="ad-card-body">
+        {% if reserva_ativa %}
+          <div class="ad-info-grid">
+            <div class="ad-info-item">
+              <span class="ad-info-label">Reservado para</span>
+              <span class="ad-info-value">
+                {% if reserva_ativa.contratacao_id %}<a class="ad-link" href="{% url 'contratacao_detail' reserva_ativa.contratacao_id %}#reservas">{{ reserva_ativa.vaga_rotulo }}</a>{% else %}{{ reserva_ativa.vaga_rotulo }}{% endif %}
+              </span>
+            </div>
+            <div class="ad-info-item">
+              <span class="ad-info-label">Colaborador</span>
+              <span class="ad-info-value">{{ reserva_ativa.colaborador.nome|default:"A definir (vaga sem colaborador cadastrado)" }}</span>
+            </div>
+            <div class="ad-info-item">
+              <span class="ad-info-label">Reservado em</span>
+              <span class="ad-info-value">{{ reserva_ativa.reservado_em|date:"d/m/Y H:i" }}{% if reserva_ativa.criado_por %} · {{ reserva_ativa.criado_por.get_full_name|default:reserva_ativa.criado_por.username }}{% endif %}</span>
+            </div>
+          </div>
+          <p class="ad-info-label" style="margin-top:.75rem;">
+            Reserva não é entrega: o equipamento só é entregue pela movimentação em nome do colaborador.
+            Usá-lo em outra necessidade pede confirmação e justificativa na Movimentação.
+          </p>
+        {% elif vagas_para_reservar %}
+          <form method="post" action="{% url 'equipamento_reservar' item.pk %}" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;">
+            {% csrf_token %}
+            <label style="display:grid;gap:.25rem;flex:1;min-width:16rem;">
+              <span class="ad-info-label">Reservar este equipamento (Backup) para a vaga</span>
+              <select name="contratacao" required class="form-control">
+                <option value="">— escolha a vaga —</option>
+                {% for v in vagas_para_reservar %}
+                  <option value="{{ v.pk }}">Nº {{ v.pk }} — {{ v.cargo }} ({{ v.get_status_display }}{% if v.nome_contratado %} · {{ v.nome_contratado }}{% endif %})</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label style="display:flex;gap:.4rem;align-items:center;font-size:.85rem;">
+              <input type="checkbox" name="adicional" value="1"> a vaga precisa de mais de um deste tipo
+            </label>
+            <button type="submit" class="btn btn-sm btn-primary"><i class="fa-solid fa-bookmark" aria-hidden="true"></i> Reservar</button>
+          </form>
+        {% endif %}
+
+        {% if reservas_do_item %}
+          <div class="ad-scroll" style="margin-top:1rem;">
+            <table class="ad-table">
+              <thead><tr><th>Vaga</th><th>Situação</th><th>Reservado em</th><th>Encerrada</th></tr></thead>
+              <tbody>
+                {% for r in reservas_do_item %}
+                  <tr>
+                    <td>{{ r.vaga_rotulo|default:"—" }}</td>
+                    <td>{{ r.get_estado_display }}</td>
+                    <td>{{ r.reservado_em|date:"d/m/Y H:i" }}</td>
+                    <td>{% if r.encerrada_em %}{{ r.encerrada_em|date:"d/m/Y H:i" }}{% if r.motivo %} — {{ r.motivo|truncatechars:80 }}{% endif %}{% else %}—{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </section>
     {% endif %}
 
     {# ─────────────────────── MÉTRICAS ─────────────────────── #}

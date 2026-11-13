@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% load static m2m_tags %}
+
+{% block title %}{% if chip %}Editar {{ chip.nome }}{% else %}Novo chip{% endif %} — Chips e Conectividade — Zelo Agro{% endblock %}
+{% block page_title %}Chips e Conectividade{% endblock %}
+{% block page_subtitle %}{% if chip %}Editar cadastro do chip{% else %}Cadastrar chip{% endif %}{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+{% comment %}A folha do módulo vem DEPOIS da do Select2: ela reveste o componente. Invertida, o CDN vence e nada tem efeito (regra 26).{% endcomment %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% url 'm2m_chips' as u_lista %}
+  {% include 'front/m2m/_frota_topo.html' with titulo=chip.nome|default:"Novo chip" descricao="ICCID e IMSI são validados e guardados só com dígitos. Sessão e consumo vêm das consultas." voltar_url=u_lista voltar_rotulo="Chips" %}
+
+  <form method="post" class="m2m-form" novalidate>
+    {% csrf_token %}
+    {% if erros.geral %}<p class="m2m-aviso" data-tom="erro" role="alert">{{ erros.geral }}</p>{% endif %}
+
+    <section class="m2m-painel" aria-labelledby="m2m-f-ident">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-f-ident">Identificação</h3></header>
+      <div class="m2m-form-grade">
+        <label class="m2m-rotulo m2m-rotulo--largo {% if erros.nome %}tem-erro{% endif %}"><span>Nome do chip *</span>
+          <input type="text" name="nome" value="{{ valores.nome }}" class="m2m-campo" maxlength="120" required autofocus {% if erros.nome %}aria-invalid="true"{% endif %}>
+          {% if erros.nome %}<em class="m2m-erro">{{ erros.nome }}</em>{% endif %}
+        </label>
+        <label class="m2m-rotulo {% if erros.iccid %}tem-erro{% endif %}"><span>ICCID</span>
+          <input type="text" name="iccid" value="{{ valores.iccid }}" class="m2m-campo m2m-campo--mono" inputmode="numeric" maxlength="32" autocomplete="off" placeholder="89 + 17 ou 18 dígitos" {% if erros.iccid %}aria-invalid="true"{% endif %}>
+          {% if erros.iccid %}<em class="m2m-erro">{{ erros.iccid }}</em>{% else %}<em class="m2m-dica">19 ou 20 dígitos, começando em 89. Espaços e hífens são ignorados.</em>{% endif %}
+        </label>
+        <label class="m2m-rotulo {% if erros.imsi %}tem-erro{% endif %}"><span>IMSI</span>
+          <input type="text" name="imsi" value="{{ valores.imsi }}" class="m2m-campo m2m-campo--mono" inputmode="numeric" maxlength="24" autocomplete="off" placeholder="15 dígitos" {% if erros.imsi %}aria-invalid="true"{% endif %}>
+          {% if erros.imsi %}<em class="m2m-erro">{{ erros.imsi }}</em>{% else %}<em class="m2m-dica">Exatamente 15 dígitos.</em>{% endif %}
+        </label>
+        <fieldset class="m2m-rotulo m2m-escolha {% if erros.identificador_consulta %}tem-erro{% endif %}">
+          <legend>Identificador usado na consulta</legend>
+          <label><input type="radio" name="identificador_consulta" value="iccid" {% if valores.identificador_consulta != "imsi" %}checked{% endif %}> ICCID</label>
+          <label><input type="radio" name="identificador_consulta" value="imsi" {% if valores.identificador_consulta == "imsi" %}checked{% endif %}> IMSI</label>
+          {% if erros.identificador_consulta %}<em class="m2m-erro">{{ erros.identificador_consulta }}</em>{% else %}<em class="m2m-dica">O escolhido precisa estar preenchido: é ele que vai na URL da API.</em>{% endif %}
+        </fieldset>
+        <label class="m2m-rotulo m2m-rotulo--largo {% if erros.descricao %}tem-erro{% endif %}"><span>Descrição</span>
+          <input type="text" name="descricao" value="{{ valores.descricao }}" class="m2m-campo" maxlength="255" placeholder="Onde o chip está, para que serve" {% if erros.descricao %}aria-invalid="true"{% endif %}>
+          {% if erros.descricao %}<em class="m2m-erro">{{ erros.descricao }}</em>{% endif %}
+        </label>
+      </div>
+    </section>
+
+    <section class="m2m-painel" aria-labelledby="m2m-f-vinc">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-f-vinc">Vínculos</h3></header>
+      <div class="m2m-form-grade">
+        <label class="m2m-rotulo {% if erros.localidade %}tem-erro{% endif %}"><span>Unidade</span>
+          <select name="localidade" data-m2m-s2="local" data-placeholder="Escolher a unidade">
+            <option value=""></option>
+            {% for pk, nome in localidades %}<option value="{{ pk }}" {% if valores.localidade|stringformat:"s" == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+          {% if erros.localidade %}<em class="m2m-erro">{{ erros.localidade }}</em>{% endif %}
+        </label>
+        <label class="m2m-rotulo {% if erros.setor %}tem-erro{% endif %}"><span>Setor</span>
+          <input type="text" name="setor" value="{{ valores.setor }}" class="m2m-campo" maxlength="100" {% if erros.setor %}aria-invalid="true"{% endif %}>
+          {% if erros.setor %}<em class="m2m-erro">{{ erros.setor }}</em>{% endif %}
+        </label>
+        <label class="m2m-rotulo {% if erros.responsavel %}tem-erro{% endif %}"><span>Responsável</span>
+          <select name="responsavel" data-m2m-s2="ajax" data-campo="responsavel" data-placeholder="Buscar colaborador ativo">
+            <option value=""></option>
+            {% if responsavel_atual %}<option value="{{ responsavel_atual.0 }}" selected>{{ responsavel_atual.1 }}</option>{% endif %}
+          </select>
+          {% if erros.responsavel %}<em class="m2m-erro">{{ erros.responsavel }}</em>{% endif %}
+        </label>
+      </div>
+    </section>
+
+    <section class="m2m-painel" aria-labelledby="m2m-f-mon">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-f-mon">Limite e observações</h3></header>
+      <div class="m2m-form-grade">
+        <div class="m2m-rotulo {% if erros.limite_valor or erros.limite_mensal_bytes %}tem-erro{% endif %}">
+          <span id="m2m-f-limite-r">Limite mensal (opcional)</span>
+          <div class="m2m-campo-composto">
+            <input type="text" name="limite_valor" value="{{ valores.limite_valor }}" class="m2m-campo m2m-campo--mono" inputmode="decimal" placeholder="ex.: 5" aria-labelledby="m2m-f-limite-r" {% if erros.limite_valor or erros.limite_mensal_bytes %}aria-invalid="true"{% endif %}>
+            <select name="limite_unidade" class="m2m-campo" aria-label="Unidade do limite">
+              {% for u in unidades %}<option value="{{ u }}" {% if valores.limite_unidade == u %}selected{% endif %}>{{ u }}</option>{% endfor %}
+            </select>
+          </div>
+          {% if erros.limite_valor %}<em class="m2m-erro">{{ erros.limite_valor }}</em>{% elif erros.limite_mensal_bytes %}<em class="m2m-erro">{{ erros.limite_mensal_bytes }}</em>{% else %}
+          <em class="m2m-dica">É o ÚNICO gatilho do alerta de consumo elevado. Sem limite, o sistema não calcula saldo nem “% da franquia”. Convertido com base {{ consumo_base }}.</em>{% endif %}
+        </div>
+        <label class="m2m-rotulo m2m-rotulo--largo"><span>Observações</span>
+          <textarea name="observacoes" rows="3" class="m2m-campo m2m-campo--area">{{ valores.observacoes }}</textarea>
+        </label>
+      </div>
+    </section>
+
+    <div class="m2m-form-acoes">
+      <button type="submit" class="m2m-btn m2m-btn--primario">{% if chip %}Salvar alterações{% else %}Cadastrar chip{% endif %}</button>
+      <a class="m2m-btn" href="{% if chip %}{% url 'm2m_chip_detalhe' chip.pk %}{% else %}{% url 'm2m_chips' %}{% endif %}">Cancelar</a>
+    </div>
+  </form>
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+{% endblock %}

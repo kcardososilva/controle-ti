@@ -1,0 +1,159 @@
+{% comment %}
+  Três janelas do preenchimento da vaga (<dialog> nativo, mesmo desenho da janela de
+  chamados): preencher · corrigir (com motivo) · reabrir (com motivo).
+
+  Só existem quando a ação existe: a de preencher com a vaga em aberto, a de corrigir
+  com contratado registrado, a de reabrir só em "Vaga preenchida". A regra de verdade é do
+  service — a janela é conforto, não autorização.
+
+  Um formulário recusado reabre a MESMA janela (`abrir_dialogo`) com o que foi digitado.
+{% endcomment %}
+
+{% if pode_preencher and obj.status == 'aberta' %}
+  <dialog class="ctr-modal" id="ctrPreencherModal" data-ctr-dialogo aria-labelledby="ctrPreencherTitulo"
+          data-abrir="{% if abrir_dialogo == 'preencher' %}1{% endif %}">
+    <form method="post" action="{% url 'contratacao_preencher' obj.pk %}" class="ctr-modal-form" data-ctr-uma-vez novalidate>
+      {% csrf_token %}
+      <header class="ctr-modal-head">
+        <h2 id="ctrPreencherTitulo">Marcar vaga como preenchida</h2>
+        <p>
+          Vaga: <strong>{{ obj.cargo }}</strong>{% if obj.centro_custo %} · {{ obj.centro_custo.departamento }}{% endif %}{% if obj.localidade %} · {{ obj.localidade.local }}{% endif %}.
+          Só o nome é obrigatório — preencha o resto se já souber.
+        </p>
+      </header>
+      <div class="ctr-modal-corpo">
+        {% if form_preencher.non_field_errors %}
+          <div class="ctr-aviso is-perigo" role="alert">{{ form_preencher.non_field_errors|join:" " }}</div>
+        {% endif %}
+        <div class="ctr-grid">
+          {% include 'front/contratacao/_campo_form.html' with campo=form_preencher.colaborador classe='ctr-c6' %}
+          {% include 'front/contratacao/_campo_form.html' with campo=form_preencher.colaborador_nome classe='ctr-c6' %}
+          {% include 'front/contratacao/_campo_form.html' with campo=form_preencher.colaborador_email classe='ctr-c6' %}
+          {% include 'front/contratacao/_campo_form.html' with campo=form_preencher.colaborador_telefone classe='ctr-c6' %}
+          {% include 'front/contratacao/_campo_form.html' with campo=form_preencher.data_admissao classe='ctr-c6' %}
+          {% include 'front/contratacao/_campo_form.html' with campo=form_preencher.colaborador_observacoes classe='ctr-c12' %}
+        </div>
+        <fieldset class="ctr-cadastro-colab">
+          <legend>Cadastro do colaborador</legend>
+          <label class="ctr-check-linha">
+            {{ form_preencher.cadastrar_colaborador }}
+            <span class="ctr-check-texto">
+              <span class="ctr-check-titulo">{{ form_preencher.cadastrar_colaborador.label }}</span>
+              <span class="ctr-check-sub">{{ form_preencher.cadastrar_colaborador.help_text }} Não vale se você escolheu um colaborador já cadastrado.</span>
+            </span>
+          </label>
+          <div class="ctr-grid">
+            {% include 'front/contratacao/_campo_form.html' with campo=form_preencher.matricula classe='ctr-c6' %}
+            <label class="ctr-check-linha ctr-c6">
+              {{ form_preencher.area_administrativa }}
+              <span class="ctr-check-texto"><span class="ctr-check-titulo">Área administrativa</span></span>
+            </label>
+          </div>
+        </fieldset>
+        <p class="ctr-chamado-nota">
+          Marcar a vaga como preenchida <strong>não conclui</strong> os chamados de TI: máquina, usuário e
+          e-mail e acessos continuam com a TI até ela concluí-los, e você acompanha pela própria vaga.
+        </p>
+      </div>
+      <footer class="ctr-modal-rodape">
+        <button type="button" class="ctr-btn" data-ctr-fechar>Cancelar</button>
+        <button type="submit" class="ctr-btn is-primary"><i class="fa fa-user-check" aria-hidden="true"></i> Confirmar preenchimento</button>
+      </footer>
+    </form>
+  </dialog>
+{% endif %}
+
+{% if pode_preencher and obj.nome_contratado and not obj.colaborador and obj.status != 'aberta' and obj.status != 'cancelada' and obj.status != 'concluida' %}
+  <dialog class="ctr-modal" id="ctrCadastroModal" data-ctr-dialogo aria-labelledby="ctrCadastroTitulo"
+          data-abrir="{% if abrir_dialogo == 'cadastro' %}1{% endif %}">
+    <form method="post" action="{% url 'contratacao_colaborador_cadastrar' obj.pk %}" class="ctr-modal-form" data-ctr-uma-vez novalidate>
+      {% csrf_token %}
+      <header class="ctr-modal-head">
+        <h2 id="ctrCadastroTitulo">Cadastrar colaborador</h2>
+        <p>
+          O cadastro usa o que a vaga já informa: <strong>{{ obj.nome_contratado }}</strong>{% if obj.colaborador_email %}, {{ obj.colaborador_email }}{% endif %},
+          setor, unidade e função da vaga{% if obj.data_admissao %}, admissão em {{ obj.data_admissao|date:"d/m/Y" }}{% endif %}.
+          Falta só o complemento abaixo.
+        </p>
+      </header>
+      <div class="ctr-modal-corpo">
+        {% if form_cadastro.non_field_errors %}
+          <div class="ctr-aviso is-perigo" role="alert">{{ form_cadastro.non_field_errors|join:" " }}</div>
+        {% endif %}
+        <div class="ctr-grid">
+          {% include 'front/contratacao/_campo_form.html' with campo=form_cadastro.matricula classe='ctr-c6' %}
+          <label class="ctr-check-linha ctr-c6">
+            {{ form_cadastro.area_administrativa }}
+            <span class="ctr-check-texto"><span class="ctr-check-titulo">Área administrativa</span></span>
+          </label>
+        </div>
+        <p class="ctr-chamado-nota">
+          O sistema recusa o cadastro se já existir colaborador ativo com o mesmo nome, e-mail ou matrícula — para não duplicar.
+          Hierarquia (gestor, diretor…) vem da planilha do RH, não daqui.
+        </p>
+      </div>
+      <footer class="ctr-modal-rodape">
+        <button type="button" class="ctr-btn" data-ctr-fechar>Cancelar</button>
+        <button type="submit" class="ctr-btn is-primary"><i class="fa fa-user-plus" aria-hidden="true"></i> Cadastrar colaborador</button>
+      </footer>
+    </form>
+  </dialog>
+{% endif %}
+
+{% if pode_preencher and obj.nome_contratado and obj.status != 'aberta' and obj.status != 'cancelada' %}
+  <dialog class="ctr-modal" id="ctrCorrigirModal" data-ctr-dialogo aria-labelledby="ctrCorrigirTitulo"
+          data-abrir="{% if abrir_dialogo == 'corrigir' %}1{% endif %}">
+    <form method="post" action="{% url 'contratacao_colaborador_corrigir' obj.pk %}" class="ctr-modal-form" data-ctr-uma-vez novalidate>
+      {% csrf_token %}
+      <header class="ctr-modal-head">
+        <h2 id="ctrCorrigirTitulo">Corrigir dados do contratado</h2>
+        <p>A correção exige um motivo e fica no histórico, com os dados de antes.</p>
+      </header>
+      <div class="ctr-modal-corpo">
+        {% if form_corrigir.non_field_errors %}
+          <div class="ctr-aviso is-perigo" role="alert">{{ form_corrigir.non_field_errors|join:" " }}</div>
+        {% endif %}
+        <div class="ctr-grid">
+          {% include 'front/contratacao/_campo_form.html' with campo=form_corrigir.colaborador classe='ctr-c6' %}
+          {% include 'front/contratacao/_campo_form.html' with campo=form_corrigir.colaborador_nome classe='ctr-c6' %}
+          {% include 'front/contratacao/_campo_form.html' with campo=form_corrigir.colaborador_email classe='ctr-c6' %}
+          {% include 'front/contratacao/_campo_form.html' with campo=form_corrigir.colaborador_telefone classe='ctr-c6' %}
+          {% include 'front/contratacao/_campo_form.html' with campo=form_corrigir.data_admissao classe='ctr-c6' %}
+          {% include 'front/contratacao/_campo_form.html' with campo=form_corrigir.colaborador_observacoes classe='ctr-c12' %}
+          {% include 'front/contratacao/_campo_form.html' with campo=form_corrigir.motivo classe='ctr-c12' %}
+        </div>
+      </div>
+      <footer class="ctr-modal-rodape">
+        <button type="button" class="ctr-btn" data-ctr-fechar>Cancelar</button>
+        <button type="submit" class="ctr-btn is-primary"><i class="fa fa-floppy-disk" aria-hidden="true"></i> Salvar correção</button>
+      </footer>
+    </form>
+  </dialog>
+{% endif %}
+
+{% if pode_preencher and obj.status == 'vaga_preenchida' %}
+  <dialog class="ctr-modal" id="ctrReabrirModal" data-ctr-dialogo aria-labelledby="ctrReabrirTitulo"
+          data-abrir="{% if abrir_dialogo == 'reabrir' %}1{% endif %}">
+    <form method="post" action="{% url 'contratacao_vaga_reabrir' obj.pk %}" class="ctr-modal-form" data-ctr-uma-vez novalidate>
+      {% csrf_token %}
+      <header class="ctr-modal-head">
+        <h2 id="ctrReabrirTitulo">Reabrir a vaga</h2>
+        <p>A vaga volta para <strong>Em aberto</strong> e deixa de ter contratado. Os dados de <strong>{{ obj.nome_contratado }}</strong> ficam no histórico.</p>
+      </header>
+      <div class="ctr-modal-corpo">
+        {% if form_reabrir.non_field_errors %}
+          <div class="ctr-aviso is-perigo" role="alert">{{ form_reabrir.non_field_errors|join:" " }}</div>
+        {% endif %}
+        {% include 'front/contratacao/_campo_form.html' with campo=form_reabrir.motivo classe='ctr-c12' %}
+        <p class="ctr-chamado-nota">
+          Os chamados de TI <strong>não</strong> são alterados: o que já foi pedido ou preparado continua visível, e
+          você combina com a TI o que fazer com eles.
+        </p>
+      </div>
+      <footer class="ctr-modal-rodape">
+        <button type="button" class="ctr-btn" data-ctr-fechar>Cancelar</button>
+        <button type="submit" class="ctr-btn is-perigo"><i class="fa fa-rotate-left" aria-hidden="true"></i> Reabrir vaga</button>
+      </footer>
+    </form>
+  </dialog>
+{% endif %}

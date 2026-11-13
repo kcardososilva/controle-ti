@@ -1,11 +1,15 @@
+import datetime
+import re
+
 from django import forms
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from decimal import Decimal
 from .models import (
+    SuporteSistemasChoices,
     Categoria, Subtipo, Localidade, Fornecedor, CentroCusto, Funcao, Usuario,
     Item, Locacao, Comentario, CicloManutencao, MovimentacaoItem,
     StatusItemChoices, TipoMovimentacaoChoices, TipoTransferenciaChoices,
@@ -15,6 +19,9 @@ from .models import (
     OrdemManutencao, StatusOrdemManutencaoChoices,
     Requisicao, RequisicaoItem, ComentarioRequisicaoItem, ItemPadraoDatasul,
     AreaOperacionalChoices, PreventivaAreaResponsavel, PreventivaCicloMeta,
+    Contratacao, ContratacaoLicenca, ContratacaoSistema, SistemaCorporativo,
+    TipoVagaChoices, TipoComputadorChoices, TipoTelefoniaChoices,
+    STATUS_ITEM_ESCOLHIVEIS,
 )
 
 BASE_CTRL_CSS = {
@@ -384,6 +391,15 @@ class ItemForm(forms.ModelForm):
             *AreaOperacionalChoices.choices,
         ]
 
+        # "Reservado" não se escolhe à mão (ver StatusItemChoices.RESERVADO):
+        # só o fluxo de reserva de vaga o grava. Equipamento que JÁ está
+        # reservado mantém a opção na lista — senão o formulário o trocaria de
+        # status só por ser aberto.
+        if self.instance and self.instance.pk and self.instance.status == StatusItemChoices.RESERVADO:
+            self.fields["status"].choices = StatusItemChoices.choices
+        else:
+            self.fields["status"].choices = STATUS_ITEM_ESCOLHIVEIS
+
         if self.instance and self.instance.pk:
             self.initial["data_compra"] = formatar_data_para_input_html(
                 self.instance.data_compra
@@ -430,6 +446,22 @@ class ItemForm(forms.ModelForm):
         if eh_locado:
             cleaned["data_compra"] = None
             cleaned["numero_pedido"] = None
+
+        # Equipamento reservado para uma vaga: mudar o status por aqui tiraria
+        # o equipamento da vaga sem justificativa nem aviso. A saída é liberar a
+        # reserva (na vaga) ou usá-lo numa movimentação com justificativa.
+        if (
+            self.instance
+            and self.instance.pk
+            and self.instance.status == StatusItemChoices.RESERVADO
+            and cleaned.get("status") != StatusItemChoices.RESERVADO
+        ):
+            self.add_error(
+                "status",
+                "Este equipamento está reservado para uma vaga — o status não pode ser "
+                "alterado por aqui. Libere a reserva na própria vaga (Contratações) ou use "
+                "o equipamento numa Movimentação, que pede a justificativa.",
+            )
 
         # Enquanto o equipamento está em manutenção (status=MANUTENCAO, seja via
         # OS do Portal do Fornecedor ou via Ciclo de Manutenção interno), o
@@ -603,6 +635,26 @@ class MovimentacaoItemForm(forms.ModelForm):
         label="O colaborador está sendo desligado?",
     )
 
+    # Equipamento RESERVADO para uma vaga só sai dela com o conhecimento do TI:
+    # entregar ao colaborador da própria vaga não pede nada; qualquer outro uso
+    # (entregar a outra pessoa, mandar para manutenção, transferir) pede esta
+    # confirmação e a justificativa, que ficam no histórico da reserva. Os campos
+    # só aparecem na tela quando o item escolhido está reservado.
+    confirmar_uso_reservado = forms.BooleanField(
+        required=False,
+        label="Confirmo o uso deste equipamento em outra necessidade",
+    )
+    justificativa_uso_reservado = forms.CharField(
+        required=False,
+        max_length=500,
+        label="Justificativa do uso",
+        widget=forms.Textarea(attrs={
+            "class": "form-control",
+            "rows": 2,
+            "placeholder": "Ex.: notebook do financeiro com defeito — reposição imediata.",
+        }),
+    )
+
     class Meta:
         model = MovimentacaoItem
         fields = [
@@ -696,6 +748,16 @@ class MovimentacaoItemForm(forms.ModelForm):
 
         self.fields["lote"].label_from_instance = self._label_lote
 
+        # "Reservado" só nasce do fluxo de reserva de vaga: não é um status que
+        # se escolhe como destino de uma transferência nem de um retorno.
+        for nome in ("status_transferencia", "status_retorno"):
+            self.fields[nome].choices = [("", "---------"), *STATUS_ITEM_ESCOLHIVEIS]
+
+        # Preenchido por `clean()` quando o item escolhido está reservado para
+        # uma vaga que esta movimentação tiraria dela — o template usa para
+        # mostrar o aviso e os campos de confirmação.
+        self.reserva_em_conflito = None
+
         # Reaproveitado por 4 tipos (envio_manutencao, separacao_envio,
         # separacao_devolucao, devolucao_locacao): rótulo genérico em vez do
         # nome de campo do banco ("Fornecedor Manutenção").
@@ -748,6 +810,41 @@ class MovimentacaoItemForm(forms.ModelForm):
                 "em andamento). Encerre o ciclo atual antes de enviá-lo novamente.",
             )
 
+    def _checar_item_reservado(self, cleaned, item, tipo):
+        """Aviso de equipamento COMPROMETIDO com uma contratação.
+
+        Entregar ao colaborador da própria vaga é o uso previsto da reserva e
+        passa direto. Qualquer outro uso exige a confirmação e a justificativa —
+        a regra também é imposta pelo service (que roda mesmo sem este
+        formulário); aqui ela vira mensagem para o TI e deixa os campos visíveis.
+        """
+        from services import reserva_equipamento_service as reservas
+
+        usuario = cleaned.get("usuario")
+        reserva = reservas.exige_confirmacao(
+            item, tipo_movimentacao=tipo,
+            tipo_transferencia=cleaned.get("tipo_transferencia") or "",
+            usuario_id=usuario.pk if usuario else None,
+        )
+        self.reserva_em_conflito = reserva
+        if reserva is None:
+            return
+
+        destino = reserva.vaga_rotulo or "uma vaga em aberto"
+        if not cleaned.get("confirmar_uso_reservado"):
+            self.add_error(
+                None,
+                f'O equipamento "{item.nome}" está RESERVADO para {destino}. Usá-lo aqui o '
+                "tira dessa contratação. Para continuar, marque a confirmação e informe a "
+                "justificativa.",
+            )
+        elif len((cleaned.get("justificativa_uso_reservado") or "").strip()) < 5:
+            self.add_error(
+                "justificativa_uso_reservado",
+                "Informe a justificativa do uso (mínimo de 5 caracteres) — ela fica no "
+                "histórico da reserva.",
+            )
+
     def _checar_item_bloqueado_por_manutencao(self, item, tipo):
         """Uma vez em manutenção (status=MANUTENCAO), o item está fisicamente
         fora de uso — nenhuma outra movimentação que mexa em status/posse
@@ -778,6 +875,8 @@ class MovimentacaoItemForm(forms.ModelForm):
         if not item:
             self.add_error("item", "Selecione o item.")
             return cleaned
+
+        self._checar_item_reservado(cleaned, item, tipo)
 
         if tipo == "entrada":
             lote_quantidade = cleaned.get("lote_quantidade")
@@ -1979,3 +2078,507 @@ class TermoDesligamentoSessaoForm(forms.Form):
         label="Observações do termo",
         widget=forms.Textarea(attrs={"class": "ctrl", "rows": 3}),
     )
+
+
+# ================== CONTRATAÇÃO DE COLABORADOR ==================
+
+CTRL = {"class": "ctrl"}
+
+
+class SistemaCorporativoForm(forms.ModelForm):
+    class Meta:
+        model = SistemaCorporativo
+        fields = ["nome", "descricao", "ordem", "ativo", "exige_perfil_espelho", "licenca"]
+        widgets = {
+            "nome": forms.TextInput(attrs=CTRL | {"placeholder": "Ex.: TOTVS - Datasul"}),
+            "descricao": forms.TextInput(attrs=CTRL | {"placeholder": "Ex.: ERP corporativo — módulo administrativo"}),
+            "ordem": forms.NumberInput(attrs=CTRL | {"min": 0, "step": 1}),
+            "licenca": forms.Select(attrs=CTRL),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["licenca"].queryset = Licenca.objects.order_by("nome")
+        self.fields["licenca"].empty_label = "Nenhuma — o acesso não consome assento"
+
+
+class ContratacaoForm(forms.ModelForm):
+    """Formulário de abertura/edição da vaga.
+
+    As perguntas de ACESSO — sistema E licença — não são campos deste
+    ModelForm: elas nascem dos cadastros `SistemaCorporativo` e `Licenca` e
+    são injetadas em `__init__` como `sistema_<pk>` / `licenca_<pk>` (precisa?)
+    e `<campo>_espelho` (de quem copiar o perfil). Escrever os sistemas e as
+    33 licenças de hoje como campos fixos obrigaria a uma migration a cada
+    item novo — que é exatamente o que os cadastros existem para evitar.
+
+    SISTEMA E LICENÇA SAEM NA MESMA LISTA, com a mesma forma de linha, por
+    pedido do usuário: para quem preenche, as duas são a mesma pergunta
+    ("precisa deste acesso? de quem copio o perfil?"). O que muda é só o que
+    cada uma gera depois — `ContratacaoSistema` (acesso a criar) ou
+    `ContratacaoLicenca` (assento pago, que debita lote no módulo de
+    Licenças). É por isso que o espelho dos dois é o mesmo CharField: tipos
+    diferentes exigiriam duas versões de cada linha do template e do service.
+
+    Os sistemas já marcados numa contratação ANTIGA continuam aparecendo
+    mesmo que o cadastro tenha sido desativado depois: tirar a pergunta da
+    tela apagaria da vista um pedido que ainda está pendente."""
+
+    class Meta:
+        model = Contratacao
+        fields = [
+            "cargo", "funcao", "centro_custo", "localidade", "gestor",
+            "tipo_vaga", "substituido", "data_prevista_inicio",
+            "colaborador", "colaborador_nome",
+            "computador", "computador_justificativa",
+            "telefonia", "ligacao_direta", "ramal_sugerido",
+            "email_corporativo", "email_sugerido", "usuario_rede", "perfil_espelho",
+            "acesso_vpn", "acesso_impressora", "observacoes",
+        ]
+        widgets = {
+            "cargo": forms.TextInput(attrs=CTRL | {"placeholder": "Ex.: Técnico de Segurança do Trabalho"}),
+            "funcao": forms.Select(attrs=CTRL),
+            "centro_custo": forms.Select(attrs=CTRL),
+            "localidade": forms.Select(attrs=CTRL),
+            "gestor": forms.TextInput(attrs=CTRL | {"placeholder": "Quem solicitou a vaga"}),
+            "tipo_vaga": forms.Select(attrs=CTRL),
+            "substituido": forms.Select(attrs=CTRL),
+            "data_prevista_inicio": forms.DateInput(attrs=CTRL | {"type": "date"}, format="%Y-%m-%d"),
+            "colaborador": forms.Select(attrs=CTRL),
+            "colaborador_nome": forms.TextInput(attrs=CTRL | {"placeholder": "Nome de quem assumiu a vaga"}),
+            "computador": forms.Select(attrs=CTRL),
+            "computador_justificativa": forms.Textarea(
+                attrs=CTRL | {"rows": 3, "placeholder": "Ex.: Substituição. Notebook i5, 16 GB."}),
+            "telefonia": forms.Select(attrs=CTRL),
+            "ramal_sugerido": forms.TextInput(attrs=CTRL | {"placeholder": "Ex.: 2045"}),
+            "email_sugerido": forms.TextInput(attrs=CTRL | {"placeholder": "nome.sobrenome@santacolomba.com.br"}),
+            "perfil_espelho": forms.TextInput(attrs=CTRL | {"placeholder": "Ex.: rodrigo.tadeu"}),
+            "observacoes": forms.Textarea(attrs=CTRL | {"rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields["funcao"].queryset = Funcao.objects.order_by("nome")
+        self.fields["funcao"].empty_label = "— sem função cadastrada —"
+        self.fields["centro_custo"].queryset = CentroCusto.objects.order_by("numero")
+        self.fields["centro_custo"].empty_label = "— selecione —"
+        self.fields["localidade"].queryset = Localidade.objects.order_by("local")
+        self.fields["localidade"].empty_label = "— selecione —"
+
+        # 1.556 colaboradores no cadastro: o seletor de "substitui quem" e o de
+        # "quem assumiu" precisam de busca (Select2 na tela), e desligado tem de
+        # continuar aparecendo em `substituido` — a vaga existe justamente
+        # porque a pessoa saiu.
+        usuarios = Usuario.objects.select_related("funcao").order_by("nome")
+        self.fields["substituido"].queryset = usuarios
+        self.fields["substituido"].empty_label = "— ninguém (vaga nova) —"
+        self.fields["colaborador"].queryset = usuarios.filter(status="ativo")
+        self.fields["colaborador"].empty_label = "— ainda não definido —"
+
+        self.catalogo_acessos = self._linhas_de_sistema() + self._linhas_de_licenca()
+
+    def _campo_de_espelho(self, nome_do_campo, inicial):
+        """O campo "de quem copiar o perfil", idêntico para sistema e licença.
+
+        `list=` aponta para um <datalist> ÚNICO na tela, com os colaboradores
+        ativos: dá busca por digitação em todas as linhas de uma vez. Um
+        Select2 por linha daria a mesma busca, mas clonaria os ~1.376 nomes em
+        cada uma das 39 linhas do catálogo — 50 mil <option> numa tela só.
+        Texto livre continua valendo de propósito: espelho às vezes é um login
+        de serviço que não existe no cadastro de colaboradores."""
+        self.fields[nome_do_campo] = forms.CharField(
+            required=False, max_length=150, label="Usuário espelho",
+            initial=inicial,
+            widget=forms.TextInput(attrs=CTRL | {
+                "placeholder": "Copiar perfil de…",
+                "list": "ctrUsuariosEspelho",
+                "autocomplete": "off",
+            }),
+        )
+        return self[nome_do_campo]
+
+    def _linhas_de_sistema(self):
+        """Cria `sistema_<pk>` / `sistema_<pk>_espelho` e devolve as linhas na
+        ordem do cadastro."""
+        catalogo = list(SistemaCorporativo.objects.filter(ativo=True).order_by("ordem", "nome"))
+        marcados = {}
+        if self.instance.pk:
+            existentes = (
+                ContratacaoSistema.objects
+                .filter(contratacao=self.instance)
+                .select_related("sistema")
+            )
+            for linha in existentes:
+                marcados[linha.sistema_id] = linha
+                if linha.sistema.ativo is False and linha.necessario:
+                    catalogo.append(linha.sistema)
+
+        linhas = []
+        for sistema in catalogo:
+            campo = f"sistema_{sistema.pk}"
+            atual = marcados.get(sistema.pk)
+            self.fields[campo] = forms.BooleanField(
+                required=False, label=sistema.nome, initial=bool(atual and atual.necessario),
+                widget=forms.CheckboxInput(attrs={"class": "ctr-check", "data-sistema": sistema.pk}),
+            )
+            campo_espelho = None
+            if sistema.exige_perfil_espelho:
+                campo_espelho = self._campo_de_espelho(
+                    f"{campo}_espelho", atual.perfil_espelho if atual else "",
+                )
+            linhas.append({
+                "tipo": "sistema",
+                "objeto": sistema,
+                "nome": sistema.nome,
+                "descricao": sistema.descricao,
+                "licenca_ligada": sistema.licenca,
+                "campo": self[campo],
+                "campo_espelho": campo_espelho,
+            })
+        return linhas
+
+    def _linhas_de_licenca(self):
+        """Cria `licenca_<pk>` / `licenca_<pk>_espelho`, na mesma forma das
+        linhas de sistema.
+
+        Toda licença do cadastro vira linha — `Licenca` não tem o `ativo` que
+        `SistemaCorporativo` tem, e inventar um filtro aqui esconderia assento
+        que alguém acabou de cadastrar. Quem tem 33 linhas na tela acha pelo
+        campo de filtro, não por uma regra escondida no servidor."""
+        marcadas = {}
+        if self.instance.pk:
+            marcadas = {
+                linha.licenca_id: linha
+                for linha in ContratacaoLicenca.objects.filter(contratacao=self.instance)
+            }
+
+        linhas = []
+        for licenca in Licenca.objects.select_related("fornecedor").order_by("nome"):
+            campo = f"licenca_{licenca.pk}"
+            atual = marcadas.get(licenca.pk)
+            self.fields[campo] = forms.BooleanField(
+                required=False, label=licenca.nome, initial=atual is not None,
+                widget=forms.CheckboxInput(attrs={"class": "ctr-check", "data-licenca": licenca.pk}),
+            )
+            linhas.append({
+                "tipo": "licenca",
+                "objeto": licenca,
+                "nome": licenca.nome,
+                "descricao": licenca.fornecedor.nome if licenca.fornecedor else "",
+                "licenca_ligada": None,
+                "campo": self[campo],
+                "campo_espelho": self._campo_de_espelho(
+                    f"{campo}_espelho", atual.perfil_espelho if atual else "",
+                ),
+            })
+        return linhas
+
+    def clean(self):
+        cleaned = super().clean()
+
+        # Vaga de substituição SEM o colaborador substituído é aceita de
+        # propósito. O RH abre a vaga antes de saber de quem é a cadeira mais
+        # vezes do que se imagina, e exigir o campo aqui empurraria todo mundo
+        # a marcar "nova vaga" para conseguir salvar — o que estragaria a
+        # contagem de aumento de quadro, que é justamente para o que o campo
+        # `tipo_vaga` existe. O campo fica editável na tela da contratação.
+
+        telefonia = cleaned.get("telefonia")
+        if telefonia == TipoTelefoniaChoices.NENHUM:
+            cleaned["ligacao_direta"] = False
+            cleaned["ramal_sugerido"] = ""
+
+        if cleaned.get("computador") == TipoComputadorChoices.NENHUM:
+            cleaned["computador_justificativa"] = cleaned.get("computador_justificativa") or ""
+
+        return cleaned
+
+    def clean_colaborador_nome(self):
+        return (self.cleaned_data.get("colaborador_nome") or "").strip()
+
+    def _marcados(self, tipo, prefixo):
+        """[(objeto, espelho)] das linhas marcadas de um tipo — consumido pelo
+        service, que é quem grava as duas tabelas."""
+        escolhidos = []
+        for linha in self.catalogo_acessos:
+            if linha["tipo"] != tipo:
+                continue
+            objeto = linha["objeto"]
+            if not self.cleaned_data.get(f"{prefixo}_{objeto.pk}"):
+                continue
+            espelho = (self.cleaned_data.get(f"{prefixo}_{objeto.pk}_espelho") or "").strip()
+            escolhidos.append((objeto, espelho))
+        return escolhidos
+
+    def sistemas_marcados(self):
+        return self._marcados("sistema", "sistema")
+
+    def licencas_marcadas(self):
+        return self._marcados("licenca", "licenca")
+
+
+class ContratacaoVagaForm(forms.Form):
+    """Etapa 2 — quem assumiu a vaga."""
+    colaborador = forms.ModelChoiceField(
+        queryset=Usuario.objects.none(), required=False, label="Colaborador cadastrado",
+        widget=forms.Select(attrs=CTRL | {"id": "id_etapa_colaborador"}),
+    )
+    colaborador_nome = forms.CharField(
+        required=False, max_length=150, label="Nome do contratado",
+        widget=forms.TextInput(attrs=CTRL | {"placeholder": "Se ainda não há cadastro"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["colaborador"].queryset = (
+            Usuario.objects.filter(status="ativo").order_by("nome")
+        )
+        self.fields["colaborador"].empty_label = "— informar só o nome —"
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("colaborador") and not (cleaned.get("colaborador_nome") or "").strip():
+            raise ValidationError(
+                "Informe quem assumiu a vaga — o colaborador cadastrado ou, na falta "
+                "de cadastro, o nome."
+            )
+        return cleaned
+
+
+class ContratacaoPreenchimentoForm(forms.Form):
+    """Janela "Marcar vaga como preenchida" — quem foi contratado.
+
+    Só o NOME (ou o colaborador cadastrado) é exigido: é o próprio ato de
+    preencher. O resto o RH informa se já tiver — pedir e-mail ou telefone que
+    ainda não existem só leva a dado inventado. Cargo, setor e unidade não são
+    perguntados de novo: são da vaga.
+
+    Usado sempre com `prefix=` (há uma janela de preencher e uma de corrigir na
+    mesma página; sem prefixo os ids dos campos colidiriam).
+    """
+    colaborador = forms.ModelChoiceField(
+        queryset=Usuario.objects.none(), required=False, label="Colaborador cadastrado",
+        widget=forms.Select(attrs=CTRL),
+    )
+    colaborador_nome = forms.CharField(
+        required=False, max_length=150, label="Nome completo",
+        widget=forms.TextInput(attrs=CTRL | {"placeholder": "Se a pessoa ainda não tem cadastro"}),
+    )
+    colaborador_email = forms.EmailField(
+        required=False, label="E-mail",
+        widget=forms.EmailInput(attrs=CTRL | {"placeholder": "Corporativo ou pessoal, se já houver"}),
+    )
+    colaborador_telefone = forms.CharField(
+        required=False, max_length=30, label="Telefone",
+        widget=forms.TextInput(attrs=CTRL | {"placeholder": "(00) 00000-0000", "inputmode": "tel"}),
+    )
+    data_admissao = forms.DateField(
+        required=False, label="Data de admissão",
+        widget=forms.DateInput(attrs=CTRL | {"type": "date"}, format="%Y-%m-%d"),
+        help_text="Prevista ou efetiva.",
+    )
+    colaborador_observacoes = forms.CharField(
+        required=False, max_length=1000, label="Observações",
+        widget=forms.Textarea(attrs=CTRL | {"rows": 2, "maxlength": 1000}),
+    )
+    # Cadastro do colaborador no sistema, a partir dos dados acima. Só vale quando
+    # NÃO se escolhe um colaborador já cadastrado. Quem cadastra de verdade é o
+    # service (`contratacao_service.preencher_vaga`); o formulário só lê o pedido.
+    cadastrar_colaborador = forms.BooleanField(
+        required=False, label="Cadastrar este colaborador no sistema agora",
+        widget=forms.CheckboxInput(attrs={"class": "ctr-check"}),
+        help_text="Usa o nome, o e-mail, a data de admissão, o setor, a unidade e a função desta vaga.",
+    )
+    matricula = forms.CharField(
+        required=False, max_length=30, label="Matrícula",
+        widget=forms.TextInput(attrs=CTRL | {"placeholder": "Se já houver"}),
+    )
+    area_administrativa = forms.BooleanField(
+        required=False, label="Área administrativa",
+        widget=forms.CheckboxInput(attrs={"class": "ctr-check"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["colaborador"].queryset = Usuario.objects.filter(status="ativo").order_by("nome")
+        self.fields["colaborador"].empty_label = "— informar só o nome —"
+
+    def clean_matricula(self):
+        return (self.cleaned_data.get("matricula") or "").strip()
+
+    def clean_colaborador_telefone(self):
+        valor = (self.cleaned_data.get("colaborador_telefone") or "").strip()
+        if valor and not re.fullmatch(r"[0-9()+\-.\s]{8,30}", valor):
+            raise ValidationError("Use só números, espaços, parênteses, + e -.")
+        return valor
+
+    def clean_data_admissao(self):
+        valor = self.cleaned_data.get("data_admissao")
+        if valor and not (datetime.date(2000, 1, 1) <= valor <= datetime.date.today() + datetime.timedelta(days=3 * 365)):
+            raise ValidationError("Confira a data: ela está fora de um intervalo razoável.")
+        return valor
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("colaborador") and not (cleaned.get("colaborador_nome") or "").strip():
+            raise ValidationError(
+                "Informe quem foi contratado — o colaborador cadastrado ou, na falta de "
+                "cadastro, o nome completo."
+            )
+        if cleaned.get("cadastrar_colaborador") and cleaned.get("colaborador"):
+            raise ValidationError(
+                "Escolha um colaborador já cadastrado OU cadastre um novo — os dois ao mesmo "
+                "tempo duplicariam o cadastro."
+            )
+        return cleaned
+
+
+class ContratacaoCadastroColaboradorForm(forms.Form):
+    """Cadastrar o colaborador de uma vaga já preenchida: só o complemento —
+    o resto o sistema lê da própria vaga."""
+    matricula = forms.CharField(
+        required=False, max_length=30, label="Matrícula",
+        widget=forms.TextInput(attrs=CTRL | {"placeholder": "Se já houver"}),
+    )
+    area_administrativa = forms.BooleanField(
+        required=False, label="Área administrativa",
+        widget=forms.CheckboxInput(attrs={"class": "ctr-check"}),
+    )
+
+    def clean_matricula(self):
+        return (self.cleaned_data.get("matricula") or "").strip()
+
+
+class ContratacaoMotivoForm(forms.Form):
+    """Um texto curto e obrigatório que explica a decisão — a justificativa de
+    uma dispensa, o motivo de desfazer um registro, o de liberar uma reserva."""
+    motivo = forms.CharField(
+        required=True, max_length=500, label="Justificativa",
+        widget=forms.TextInput(attrs=CTRL | {"maxlength": 500}),
+    )
+
+
+class ContratacaoCorrecaoForm(ContratacaoPreenchimentoForm):
+    """Corrigir os dados do contratado: os mesmos campos, mais o MOTIVO, que é
+    obrigatório — a correção entra no histórico com ele."""
+    motivo = forms.CharField(
+        required=True, max_length=500, label="Motivo da correção",
+        widget=forms.TextInput(attrs=CTRL | {"placeholder": "Ex.: nome digitado errado"}),
+    )
+
+
+class ContratacaoReaberturaForm(forms.Form):
+    """Reabrir uma vaga preenchida: só o motivo, e é obrigatório."""
+    motivo = forms.CharField(
+        required=True, max_length=500, label="Motivo da reabertura",
+        widget=forms.TextInput(attrs=CTRL | {"placeholder": "Ex.: candidato desistiu antes de assumir"}),
+    )
+
+
+class ContratacaoEntregaForm(forms.Form):
+    """Etapa 3 — qual equipamento foi entregue.
+
+    O seletor lista notebooks e desktops que NÃO estão descartados: a máquina
+    entregue costuma vir de backup/estoque, e restringir a "ativo" esconderia
+    justamente o parque de onde ela sai."""
+
+    item = forms.ModelChoiceField(
+        queryset=Item.objects.none(), required=False, label="Equipamento entregue",
+        widget=forms.Select(attrs=CTRL | {"id": "id_etapa_item"}),
+    )
+    sem_equipamento = forms.BooleanField(
+        required=False, label="Esta contratação não envolve equipamento",
+        widget=forms.CheckboxInput(attrs={"class": "ctr-check"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        filtro = Q()
+        for termo in ("notebook", "desktop"):
+            filtro |= Q(subtipo__nome__icontains=termo)
+        self.fields["item"].queryset = (
+            Item.objects.filter(filtro)
+            .exclude(status=StatusItemChoices.DESCARTE)
+            .select_related("subtipo", "localidade")
+            .order_by("nome")
+        )
+        self.fields["item"].empty_label = "— selecione o equipamento —"
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("item") and not cleaned.get("sem_equipamento"):
+            raise ValidationError(
+                "Escolha o equipamento entregue ou marque que esta contratação não "
+                "envolve equipamento."
+            )
+        return cleaned
+
+
+class ContratacaoChamadoForm(forms.Form):
+    """Janela "Solicitar estrutura e abrir chamados".
+
+    Só LÊ e limpa o que veio no POST — tamanho dos textos, formato dos campos.
+    As REGRAS (vaga em aberto, máquina obrigatória, o que cada chamado exige,
+    duplicidade) moram em `services/chamado_contratacao_service.py`: a view
+    chama o service com `selecao()`, e é ele quem decide.
+
+    Cada chamado é um bloco com o próprio interruptor (`maquina`,
+    `usuario_email`, `sistemas`); os campos de detalhe de um bloco desligado são
+    ignorados — não viajam no snapshot.
+    """
+
+    maquina = forms.BooleanField(required=False, widget=forms.CheckboxInput(attrs={"class": "ctr-check"}))
+    maquina_descricao = forms.CharField(
+        required=False, max_length=1000, label="Necessidades de equipamento",
+        widget=forms.Textarea(attrs=CTRL | {
+            "rows": 3, "maxlength": 1000,
+            "placeholder": "Ex.: Notebook com 16 GB de RAM, mouse, headset e monitor extra.",
+        }),
+    )
+
+    usuario_email = forms.BooleanField(required=False, widget=forms.CheckboxInput(attrs={"class": "ctr-check"}))
+    criar_usuario_rede = forms.BooleanField(
+        required=False, label="Criar usuário de rede (login)",
+        widget=forms.CheckboxInput(attrs={"class": "ctr-check"}),
+    )
+    criar_email = forms.BooleanField(
+        required=False, label="Criar e-mail corporativo",
+        widget=forms.CheckboxInput(attrs={"class": "ctr-check"}),
+    )
+    usuario_email_obs = forms.CharField(
+        required=False, max_length=600, label="Observações",
+        widget=forms.Textarea(attrs=CTRL | {"rows": 2, "maxlength": 600}),
+    )
+
+    sistemas = forms.BooleanField(required=False, widget=forms.CheckboxInput(attrs={"class": "ctr-check"}))
+    sistemas_suporte = forms.MultipleChoiceField(
+        required=False, label="Tipo de orientação ou suporte",
+        choices=SuporteSistemasChoices.choices,
+        widget=forms.CheckboxSelectMultiple(attrs={"class": "ctr-check"}),
+    )
+    sistemas_obs = forms.CharField(
+        required=False, max_length=600, label="Observações",
+        widget=forms.Textarea(attrs=CTRL | {"rows": 2, "maxlength": 600}),
+    )
+
+    def selecao(self) -> dict:
+        """O que o solicitante ligou, no formato que o service espera:
+        `{tipo: detalhes}`. Só entram os blocos com o interruptor ligado."""
+        c = self.cleaned_data
+        selecao = {}
+        if c.get("maquina"):
+            selecao["maquina"] = {"descricao": c.get("maquina_descricao", "")}
+        if c.get("usuario_email"):
+            selecao["usuario_email"] = {
+                "criar_usuario_rede": bool(c.get("criar_usuario_rede")),
+                "criar_email": bool(c.get("criar_email")),
+                "observacao": c.get("usuario_email_obs", ""),
+            }
+        if c.get("sistemas"):
+            rotulos = dict(SuporteSistemasChoices.choices)
+            selecao["sistemas"] = {
+                "suporte": [rotulos[k] for k in c.get("sistemas_suporte", []) if k in rotulos],
+                "observacao": c.get("sistemas_obs", ""),
+            }
+        return selecao

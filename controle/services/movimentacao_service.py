@@ -19,6 +19,11 @@ from ProjetoEstoque.models import (
 
 logger = logging.getLogger(__name__)
 
+# Status de onde o equipamento SAI quando é entregue a um colaborador e passa a
+# "Ativo". Reservado entra aqui: a entrega ao colaborador da vaga é justamente
+# o que encerra a reserva.
+_STATUS_ANTES_DA_ENTREGA = (StatusItemChoices.BACKUP, StatusItemChoices.RESERVADO)
+
 
 class MovimentacaoEstoqueService:
     ENTRADA = "entrada"
@@ -576,6 +581,25 @@ class MovimentacaoEstoqueService:
 
         update_fields = []
 
+        # Equipamento RESERVADO para uma vaga: entregá-lo ao colaborador dela
+        # é o uso previsto e fecha a reserva (a movimentação é a prova da
+        # entrega); qualquer outro uso tira o equipamento da vaga e exige
+        # confirmação + justificativa — a regra mora em
+        # `reserva_equipamento_service`, e roda ANTES de o status mudar, porque
+        # é o status "Reservado" que identifica o caso.
+        reserva_resultado = None
+        if item.status == StatusItemChoices.RESERVADO:
+            from services import reserva_equipamento_service as reservas
+
+            reserva_resultado = reservas.tratar_movimentacao(
+                item=item, mov=mov,
+                confirmou=bool(form.cleaned_data.get("confirmar_uso_reservado")),
+                justificativa=form.cleaned_data.get("justificativa_uso_reservado") or "",
+                user=user,
+            )
+        # A view lê isto para levar o TI de volta à vaga (repor / ver a pendência).
+        mov.reserva_resultado = reserva_resultado
+
         if mov.tipo_movimentacao == cls.ENVIO_MANUTENCAO:
             # Enviar para manutenção NÃO dá baixa na quantidade: o equipamento
             # continua sendo o mesmo ativo, apenas muda de status para "Manutenção".
@@ -646,7 +670,7 @@ class MovimentacaoEstoqueService:
                 item=item, ativo=True
             ).exists()
 
-            if mov.tipo_transferencia == "entrega" and item.status == StatusItemChoices.BACKUP:
+            if mov.tipo_transferencia == "entrega" and item.status in _STATUS_ANTES_DA_ENTREGA:
                 item.status = StatusItemChoices.ATIVO
                 update_fields.append("status")
 
@@ -680,7 +704,7 @@ class MovimentacaoEstoqueService:
                 item.centro_custo = mov.centro_custo_destino
                 update_fields.append("centro_custo")
 
-            if mov.tipo_transferencia == "entrega" and item.status == StatusItemChoices.BACKUP:
+            if mov.tipo_transferencia == "entrega" and item.status in _STATUS_ANTES_DA_ENTREGA:
                 item.status = StatusItemChoices.ATIVO
                 update_fields.append("status")
 
@@ -751,6 +775,17 @@ class MovimentacaoEstoqueService:
             if item.pmb != novo_pmb:
                 item.pmb = novo_pmb
                 update_fields.append("pmb")
+
+        # Reserva CEDIDA por um movimento que não muda o status (ex.: o item só
+        # foi separado para remessa): o equipamento não pode ficar "Reservado"
+        # sem reserva. Volta ao status de antes (Backup).
+        if (
+            reserva_resultado is not None
+            and reserva_resultado.tipo == "cessao"
+            and item.status == StatusItemChoices.RESERVADO
+        ):
+            item.status = reserva_resultado.reserva.status_anterior or StatusItemChoices.BACKUP
+            update_fields.append("status")
 
         if update_fields:
             cls.preencher_auditoria(item, user, criando=False)

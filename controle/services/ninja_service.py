@@ -1,11 +1,15 @@
 """
-ninja_service.py — Importação de dispositivos NinjaOne via planilha CSV.
+ninja_service.py — Dispositivos NinjaOne: leitura da planilha CSV e gravação.
 
-A integração via API/OAuth foi removida. Agora os dados vêm de uma planilha
-CSV exportada do NinjaOne e importada pelo usuário nas telas do módulo Ninja.
+Os dados chegam por DUAS portas e saem pelo mesmo núcleo de gravação:
+    • planilha CSV exportada do NinjaOne e importada nas telas do módulo
+      (`importar_csv`, abaixo);
+    • API do NinjaOne, via OAuth (`services/ninja_api_service.sincronizar`).
 
-Função principal:
-    importar_csv(arquivo, user=None) -> dict   (estatísticas da importação)
+Funções principais:
+    importar_csv(arquivo, user=None) -> dict      (lê a planilha e grava)
+    gravar_dispositivos(parsed, user=None) -> dict (núcleo comum: vínculo, snapshot,
+                                                    validação de login, estatísticas)
 
 Relações inteligentes resolvidas na importação:
     • Dispositivo ↔ Item do estoque  → por número de série (BIOS) e, em fallback,
@@ -138,9 +142,6 @@ def importar_csv(arquivo, user=None) -> dict:
     Retorna estatísticas: {ok, total, criados, atualizados, vinculados,
                            sem_serie, nao_vinculados, locais, erro}.
     """
-    from django.utils import timezone
-    from ProjetoEstoque.models import NinjaDevice, Item
-
     texto = _decode(arquivo)
     # detecta delimitador (vírgula ou ponto-e-vírgula)
     amostra = texto[:4096]
@@ -156,11 +157,7 @@ def importar_csv(arquivo, user=None) -> dict:
         c = cols.get(key)
         return (row.get(c) or "").strip() if c else ""
 
-    criados = atualizados = vinculados = sem_serie = total = 0
-    locais = {}
-    agora = timezone.now()
-
-    # 1) Lê e parseia todas as linhas da planilha.
+    # Lê e parseia todas as linhas da planilha.
     parsed = []
     for row in reader:
         display = val(row, "display")
@@ -177,7 +174,38 @@ def importar_csv(arquivo, user=None) -> dict:
             "org": val(row, "org"),
         })
 
-    # 2) Ordena para que o dispositivo MAIS ATIVO reivindique o Item primeiro
+    return gravar_dispositivos(parsed, user=user)
+
+
+# Campos que só a API conhece. Entram no registro quando vêm preenchidos; o CSV
+# nunca os informa e, por isso, nunca os apaga.
+_CAMPOS_SO_DA_API = ("ninja_id", "os_name", "manufacturer", "processor",
+                     "total_memory_mb", "ip_address", "node_class")
+
+
+def gravar_dispositivos(parsed, user=None) -> dict:
+    """
+    NÚCLEO ÚNICO de gravação de dispositivos NinjaOne — a planilha CSV
+    (`importar_csv`) e a API (`ninja_api_service.sincronizar`) terminam aqui, para
+    a regra de vínculo com o estoque, o snapshot e a validação de login existirem
+    uma vez só.
+
+    Cada item de `parsed` é um dict com `display`, `serial`, `is_online`,
+    `last_contact`, `local`, `model`, `org` e, opcionalmente:
+      • `last_user` — se a CHAVE falta, o último usuário já gravado é preservado
+        (a API nem sempre sabe; apagar aqui criaria falso "sem login" no histórico);
+      • `hostname` e os campos de `_CAMPOS_SO_DA_API`;
+      • `preservar_vazios=True` — valor vazio NÃO sobrescreve o que já está gravado
+        (a API é uma fonte parcial; a planilha, que traz a coluna inteira, não usa).
+    """
+    from django.utils import timezone
+    from ProjetoEstoque.models import NinjaDevice, Item
+
+    criados = atualizados = vinculados = sem_serie = total = 0
+    locais = {}
+    agora = timezone.now()
+
+    # Ordena para que o dispositivo MAIS ATIVO reivindique o Item primeiro
     #    (online e contato mais recente vêm antes). Como Item↔Dispositivo é 1-para-1,
     #    quando a planilha tem a mesma série em 2 dispositivos, o ativo fica vinculado
     #    e o duplicado fica sem vínculo — sem quebrar a importação.
@@ -196,7 +224,16 @@ def importar_csv(arquivo, user=None) -> dict:
         if r["local"]:
             locais[r["local"]] = locais.get(r["local"], 0) + 1
 
-        obj = NinjaDevice.objects.filter(display_name=display).first()
+        # Quem tem `ninja_id` (API) é achado por ele — assim um dispositivo
+        # RENOMEADO no NinjaOne continua sendo o mesmo registro. Sem registro com
+        # esse id, adota o que veio da planilha (mesmo nome, ainda sem id) em vez
+        # de duplicar. Sem `ninja_id` (planilha) vale o nome, como sempre valeu.
+        nid = r.get("ninja_id")
+        if nid is not None:
+            obj = (NinjaDevice.objects.filter(ninja_id=nid).first()
+                   or NinjaDevice.objects.filter(display_name=display, ninja_id__isnull=True).first())
+        else:
+            obj = NinjaDevice.objects.filter(display_name=display).first()
 
         # ── Relação inteligente Dispositivo ↔ Item (à prova de conflito 1-para-1) ──
         candidate = None
@@ -216,17 +253,25 @@ def importar_csv(arquivo, user=None) -> dict:
 
         defaults = {
             "serial_number": serial,
-            "hostname": display,
-            "last_user": r["last_user"],
+            "hostname": r.get("hostname") or display,
             "is_online": r["is_online"],
             "last_contact": r["last_contact"],
             "local": r["local"],
             "model_name": r["model"],
             "organization_name": r["org"],
         }
+        if "last_user" in r:
+            defaults["last_user"] = r["last_user"]
+        for campo in _CAMPOS_SO_DA_API:
+            if r.get(campo) not in (None, ""):
+                defaults[campo] = r[campo]
+        if r.get("preservar_vazios"):
+            defaults = {k: v for k, v in defaults.items() if v not in ("", None)}
 
         try:
             if obj:
+                if nid is not None:
+                    obj.display_name = display  # acompanha o renome feito no NinjaOne
                 for k, v in defaults.items():
                     setattr(obj, k, v)
                 if candidate is not None:

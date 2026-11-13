@@ -1,0 +1,167 @@
+{% comment %}
+  Card "Estrutura e chamados" — o que a vaga já pediu à TI por e-mail.
+
+  Lista SEMPRE os três tipos, inclusive o que não foi solicitado. Os quatro
+  estados (Não solicitado · Envio pendente · E-mail enviado com sucesso · Falha
+  no envio) descrevem o ENVIO DO E-MAIL; nenhum diz "chamado aberto". A frase
+  "Chamado nº X registrado pelo TI" só aparece quando o TI informou o número —
+  é a única prova de que o chamado existe no sistema de atendimento.
+
+  Endereços de e-mail e texto técnico de erro só aparecem para quem atende a
+  contratação (`pode_gerenciar_contratacao`); o solicitante vê a equipe e o
+  resultado, sem a infraestrutura.
+{% endcomment %}
+  <section class="ctr-card" id="chamados">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title"><i class="fa fa-headset" aria-hidden="true"></i> Estrutura e chamados</h2>
+      <span class="ctr-card-sub">
+        {% if chamados_resumo.total %}
+          {% if chamados_resumo.pendentes %}{{ chamados_resumo.pendentes }} com a TI · {% endif %}<a href="{% url 'chamados_lista' %}">ver todos os chamados</a>
+        {% else %}Pedidos enviados por e-mail à TI{% endif %}
+      </span>
+    </div>
+    <div class="ctr-card-body">
+
+      {% if chamados_resumo.pendentes %}
+{% comment %}"Preenchi a vaga — falta a TI terminar o quê, e com quem?" (resposta direta, sem abrir cada chamado){% endcomment %}
+        <div class="ctr-aviso is-info" role="status">
+          <i class="fa fa-list-check" aria-hidden="true"></i>
+          <div>
+            Ainda com a TI:
+            {% for rotulo, quem in chamados_resumo.por_equipe %}<strong>{{ rotulo }}</strong> ({{ quem }}){% if not forloop.last %}; {% endif %}{% endfor %}.
+          </div>
+        </div>
+      {% endif %}
+
+      {% if chamados_pode_solicitar %}
+        <div class="ctr-chamado-cta">
+          <p>
+            Peça à TI a estrutura para quem vai entrar: <strong>máquina</strong>,
+            <strong>usuário e e-mail</strong> e <strong>acesso aos sistemas</strong>.
+            Cada chamado é um e-mail independente, para a equipe responsável.
+          </p>
+          <button type="button" class="ctr-btn is-primary" data-ctr-abrir-chamados>
+            <i class="fa fa-paper-plane" aria-hidden="true"></i> Solicitar estrutura e abrir chamados
+          </button>
+        </div>
+      {% elif chamados_bloqueio_status %}
+        <div class="ctr-aviso is-info">
+          <i class="fa fa-circle-info" aria-hidden="true"></i>
+          <div>
+            Chamados de estrutura só podem ser solicitados com a vaga <strong>em aberto</strong> —
+            esta está em “{{ obj.get_status_display }}”. Os chamados já enviados continuam com a TI
+            e você segue acompanhando por aqui.
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="ctr-chamados">
+        {% for linha in chamados %}
+          {% with c=linha.chamado %}
+          <article class="ctr-chamado is-{{ linha.estado }}">
+            <div class="ctr-chamado-topo">
+              <span class="ctr-chamado-titulo">
+                {{ linha.rotulo }}
+                {% if linha.obrigatorio %}<span class="ctr-chip">obrigatório</span>{% endif %}
+              </span>
+              <span class="ctr-chamado-chips">
+                {% if c %}
+                  <span class="ctr-chip is-{{ linha.atendimento_tom }}" title="Situação do atendimento na TI">{{ linha.atendimento_rotulo }}</span>
+                {% endif %}
+                <span class="ctr-chip {% if linha.tom == 'ok' %}is-ok{% elif linha.tom == 'aviso' %}is-aviso{% elif linha.tom == 'perigo' %}is-perigo{% endif %}" title="Estado do envio do e-mail">
+                  {{ linha.estado_rotulo }}
+                </span>
+              </span>
+            </div>
+
+            {% if linha.nota %}<p class="ctr-chamado-nota">{{ linha.nota }}</p>{% endif %}
+
+            {% if c %}
+              <dl class="ctr-chamado-meta">
+                <div>
+                  <dt>Solicitado em</dt>
+                  <dd>{{ c.created_at|date:"d/m/Y H:i" }}</dd>
+                </div>
+                <div>
+                  <dt>Solicitado por</dt>
+                  <dd>{% if c.criado_por %}{{ c.criado_por.get_full_name|default:c.criado_por.username }}{% else %}—{% endif %}</dd>
+                </div>
+                <div>
+                  <dt>Destinatário / equipe</dt>
+                  <dd>
+                    {% if not c.lista_destinatarios %}—
+                    {% elif pode_gerenciar_contratacao %}{{ c.lista_destinatarios|join:", " }}
+                    {% else %}Equipe de TI ({{ c.lista_destinatarios|length }} destinatário{{ c.lista_destinatarios|length|pluralize }}){% endif %}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Nº do chamado</dt>
+                  <dd>{% if c.identificador %}{{ c.identificador }}{% else %}— <span class="ctr-campo-ajuda">ainda não informado pelo TI</span>{% endif %}</dd>
+                </div>
+                {% if c.enviado_em %}
+                <div>
+                  <dt>E-mail enviado em</dt>
+                  <dd>{{ c.enviado_em|date:"d/m/Y H:i" }}</dd>
+                </div>
+                {% endif %}
+              </dl>
+
+              {% if c.status == 'falha' and c.ultimo_erro %}
+                <p class="ctr-chamado-erro" role="alert">
+                  <i class="fa fa-triangle-exclamation" aria-hidden="true"></i>
+                  {% if pode_gerenciar_contratacao %}{{ c.ultimo_erro }}{% else %}O e-mail não foi enviado. O TI consegue ver o detalhe do erro.{% endif %}
+                </p>
+              {% endif %}
+
+              {% if c.historico.all %}
+                <details class="ctr-chamado-hist">
+                  <summary>Histórico de tentativas ({{ c.historico.all|length }})</summary>
+                  <ol>
+                    {% for t in c.historico.all %}
+                      <li class="{% if not t.sucesso %}is-falha{% endif %}">
+                        <span>
+                          <strong>{% if t.sucesso %}Enviado{% else %}Falhou{% endif %}</strong>
+                          · {{ t.created_at|date:"d/m/Y H:i" }}
+                          · {% if t.criado_por %}{{ t.criado_por.get_full_name|default:t.criado_por.username }}{% else %}—{% endif %}
+                        </span>
+                        {% if pode_gerenciar_contratacao %}
+                          {% if t.destinatarios %}<span>Para: {{ t.destinatarios }}</span>{% endif %}
+                          {% if t.erro %}<span>{{ t.erro }}</span>{% endif %}
+                        {% endif %}
+                      </li>
+                    {% endfor %}
+                  </ol>
+                </details>
+              {% endif %}
+
+              <div class="ctr-chamado-acoes">
+                <a class="ctr-btn is-pequeno" href="{% url 'chamado_detail' obj.pk c.pk %}">
+                  <i class="fa fa-comments" aria-hidden="true"></i> Abrir conversa{% if c.n_mensagens %} ({{ c.n_mensagens }}){% endif %}
+                </a>
+                {% if c.reenviavel and chamados_pode_reenviar %}
+                  <form method="post" action="{% url 'contratacao_chamado_reenviar' obj.pk c.pk %}" data-ctr-uma-vez>
+                    {% csrf_token %}
+                    <button type="submit" class="ctr-btn is-pequeno is-primary">
+                      <i class="fa fa-rotate-right" aria-hidden="true"></i> Tentar novamente
+                    </button>
+                  </form>
+                {% endif %}
+                {% if pode_gerenciar_contratacao and c.status == 'enviado' %}
+                  <form method="post" action="{% url 'contratacao_chamado_identificador' obj.pk c.pk %}">
+                    {% csrf_token %}
+                    <div class="ctr-campo">
+                      <label class="ctr-campo-label" for="ctrNumChamado{{ c.pk }}">Nº do chamado no atendimento</label>
+                      <input type="text" id="ctrNumChamado{{ c.pk }}" name="identificador" maxlength="60"
+                             value="{{ c.identificador }}" placeholder="Ex.: 48213" autocomplete="off">
+                    </div>
+                    <button type="submit" class="ctr-btn is-pequeno">Registrar</button>
+                  </form>
+                {% endif %}
+              </div>
+            {% endif %}
+          </article>
+          {% endwith %}
+        {% endfor %}
+      </div>
+    </div>
+  </section>

@@ -1,0 +1,551 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ obj.cargo }} — Contratação{% endblock %}
+
+{% comment %}Topbar com o nome do MÓDULO e título da tela no corpo, como nas
+   outras telas de Contratações — o botão de editar foi junto, para a ação
+   ficar ao lado do que ela edita.{% endcomment %}
+{% block page_title %}Contratações{% endblock %}
+{% block page_subtitle %}Admissão de colaboradores{% endblock %}
+
+{% block extra_css %}
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+  {% include 'front/contratacao/_ctr_design_system.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="ctr-detail-page">
+
+  <section class="page-header page-header-compact" aria-labelledby="ctr-detail-title">
+    <div class="page-header-main">
+      <div class="page-kicker">
+        <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+        {{ obj.get_status_display }}
+      </div>
+      <h2 class="page-heading" id="ctr-detail-title">{{ obj.cargo }}</h2>
+      <p class="page-description">
+        {% if obj.nome_contratado %}{{ obj.nome_contratado }}{% else %}Vaga ainda sem contratado{% endif %}
+        {% if obj.centro_custo %} · {{ obj.centro_custo.departamento }}{% endif %}
+        {% if obj.localidade %} · {{ obj.localidade.local }}{% endif %}
+      </p>
+    </div>
+    <div class="page-header-aside">
+      <a href="{% url 'contratacao_painel' %}" class="ctr-btn">
+        <i class="fa fa-arrow-left" aria-hidden="true"></i> Quadro
+      </a>
+      {% if pode_gerenciar_contratacao %}
+      <a href="{% url 'contratacao_update' obj.pk %}" class="ctr-btn is-primary">
+        <i class="fa fa-pen" aria-hidden="true"></i> Editar
+      </a>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if obj.status == 'cancelada' %}
+    <div class="ctr-aviso is-perigo">
+      <i class="fa fa-circle-xmark" aria-hidden="true"></i>
+      <div>
+        Contratação cancelada em {{ obj.cancelada_em|date:"d/m/Y H:i" }}.
+        {% if obj.motivo_cancelamento %}Motivo: {{ obj.motivo_cancelamento }}{% endif %}
+      </div>
+    </div>
+  {% elif obj.atrasada %}
+    <div class="ctr-aviso">
+      <i class="fa fa-clock" aria-hidden="true"></i>
+      <div>
+        A previsão de início era <strong>{{ obj.data_prevista_inicio|date:"d/m/Y" }}</strong> e a
+        contratação ainda não fechou.
+      </div>
+    </div>
+  {% endif %}
+
+{% comment %}O card "Estrutura e chamados" mora no fim da pagina; quem abriu a vaga para pedir
+     a estrutura nao pode ter de rolar ate la para achar o botao. Este aviso aparece so
+     enquanto o pedido que a TI espera (a maquina) ainda nao foi feito, e o botao abre a
+     MESMA janela do card.{% endcomment %}
+  {% if chamados_pode_solicitar and chamados_falta_pedir %}
+    <div class="ctr-aviso is-info" role="region" aria-label="Pedido de estrutura à TI">
+      <i class="fa fa-headset" aria-hidden="true"></i>
+      <div class="ctr-aviso-acao">
+        <span>Esta vaga ainda <strong>não pediu a estrutura à TI</strong> — máquina, usuário e e-mail, acesso aos sistemas.</span>
+        <button type="button" class="ctr-btn is-primary is-pequeno" data-ctr-abrir-chamados>
+          <i class="fa fa-paper-plane" aria-hidden="true"></i> Solicitar estrutura
+        </button>
+      </div>
+    </div>
+  {% endif %}
+
+  {# ── Trilha de etapas ────────────────────────────────────────────── #}
+  <section class="ctr-stepper">
+    {% for etapa in etapas %}
+      <div class="ctr-step
+        {% if etapa.chave == etapa_atual %}is-atual
+        {% elif etapa.chave == 'aberta' %}is-feita
+        {% elif etapa.chave == 'vaga_preenchida' and obj.vaga_preenchida_em %}is-feita
+        {% elif etapa.chave == 'equipamento_entregue' and obj.equipamento_entregue_em %}is-feita
+        {% elif etapa.chave == 'concluida' and obj.concluida_em %}is-feita{% endif %}">
+        <span class="ctr-step-titulo">
+          <i class="fa {{ etapa.icone }}" aria-hidden="true"></i> {{ etapa.label }}
+        </span>
+        <span class="ctr-step-data">
+          {% if etapa.chave == 'aberta' %}{{ obj.created_at|date:"d/m/Y" }}
+          {% elif etapa.chave == 'vaga_preenchida' %}{{ obj.vaga_preenchida_em|date:"d/m/Y"|default:"—" }}
+          {% elif etapa.chave == 'equipamento_entregue' %}{{ obj.equipamento_entregue_em|date:"d/m/Y"|default:"—" }}
+          {% else %}{{ obj.concluida_em|date:"d/m/Y"|default:"—" }}{% endif %}
+        </span>
+      </div>
+    {% endfor %}
+  </section>
+
+  {# ── Placar de preparação ────────────────────────────────────────── #}
+  <section class="ctr-hero">
+    <div class="ctr-hero-figura">
+      <span class="ctr-hero-rotulo">Preparação</span>
+      <span class="ctr-hero-valor">{{ placar.pct }}<small>%</small></span>
+      <span class="ctr-hero-sub">{{ placar.feitos }} de {{ placar.total }} itens prontos</span>
+    </div>
+    <div class="ctr-hero-corpo">
+      <div class="ctr-hero-linha">
+        <span class="ctr-hero-titulo">
+          {% if placar.completo %}Tudo provisionado{% else %}{{ placar.faltam }} item(ns) pendente(s){% endif %}
+        </span>
+        <span class="ctr-hero-datas">
+          {% if obj.data_prevista_inicio %}
+            início previsto {{ obj.data_prevista_inicio|date:"d/m/Y" }}
+            {% if obj.dias_para_inicio >= 0 %}· faltam {{ obj.dias_para_inicio }} dia(s){% endif %}
+          {% else %}sem previsão de início{% endif %}
+        </span>
+      </div>
+      <div class="ctr-regua {% if placar.completo %}is-ok{% elif obj.atrasada %}is-perigo{% endif %}"
+           style="--ctr-exec: {{ placar.pct }}%;"
+           role="img" aria-label="{{ placar.pct }}% da preparação concluída">
+        <span class="ctr-regua-fill"></span>
+      </div>
+      {% if pendencias %}
+        <div class="ctr-vaga-meta">
+          {% for falta in pendencias %}
+            <span class="ctr-chip is-aviso">{{ falta }}</span>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── Dados da vaga ───────────────────────────────────────────────── #}
+  <section class="ctr-card">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title"><i class="fa fa-briefcase" aria-hidden="true"></i> Dados da vaga</h2>
+      <span class="ctr-card-sub">Aberta em {{ obj.created_at|date:"d/m/Y" }}</span>
+    </div>
+    <div class="ctr-card-body">
+      <div class="ctr-dados">
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Tipo</span>
+          <span class="ctr-dado-valor">{{ obj.get_tipo_vaga_display }}</span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Gestor solicitante</span>
+          <span class="ctr-dado-valor">{{ obj.gestor|default:"—" }}</span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Centro de custo</span>
+          <span class="ctr-dado-valor">
+            {% if obj.centro_custo %}{{ obj.centro_custo.numero }} — {{ obj.centro_custo.departamento }}{% else %}—{% endif %}
+          </span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Localidade</span>
+          <span class="ctr-dado-valor">{{ obj.localidade.local|default:"—" }}</span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Substitui</span>
+          <span class="ctr-dado-valor">
+            {% if obj.substituido %}
+{% comment %}Fora de /contratacoes/: para o perfil restrito o middleware barra o clique,
+              então o nome vai como texto. Mesma troca nos outros quatro links do arquivo.{% endcomment %}
+              {% if pode_gerenciar_contratacao %}<a href="{% url 'usuario_detail' obj.substituido.pk %}">{{ obj.substituido.nome }}</a>{% else %}{{ obj.substituido.nome }}{% endif %}
+            {% else %}—{% endif %}
+          </span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Contratado</span>
+          <span class="ctr-dado-valor">
+            {% if obj.colaborador %}
+              {% if pode_gerenciar_contratacao %}<a href="{% url 'usuario_detail' obj.colaborador.pk %}">{{ obj.colaborador.nome }}</a>{% else %}{{ obj.colaborador.nome }}{% endif %}
+            {% elif obj.colaborador_nome %}{{ obj.colaborador_nome }}
+            {% else %}—{% endif %}
+          </span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Telefonia</span>
+          <span class="ctr-dado-valor">
+            {{ obj.get_telefonia_display }}
+            {% if obj.ramal_sugerido %} · ramal {{ obj.ramal_sugerido }}{% endif %}
+            {% if obj.ligacao_direta %} · ligação direta{% endif %}
+          </span>
+        </div>
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">E-mail / rede</span>
+          <span class="ctr-dado-valor">
+            {% if obj.email_corporativo %}e-mail{% else %}sem e-mail{% endif %}
+            · {% if obj.usuario_rede %}login de rede{% else %}sem login{% endif %}
+            {% if obj.perfil_espelho %} · espelho: {{ obj.perfil_espelho }}{% endif %}
+          </span>
+        </div>
+      </div>
+
+      {% if obj.computador_justificativa %}
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Justificativa / configuração</span>
+          <span class="ctr-dado-valor">{{ obj.computador_justificativa|linebreaksbr }}</span>
+        </div>
+      {% endif %}
+      {% if obj.observacoes %}
+        <div class="ctr-dado">
+          <span class="ctr-dado-label">Observações</span>
+          <span class="ctr-dado-valor">{{ obj.observacoes|linebreaksbr }}</span>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── Colaborador contratado (RH preenche a vaga) ──────────────────── #}
+  {% include 'front/contratacao/_colaborador_card.html' %}
+
+  {# ── Equipamentos: reserva do Backup, entrega por movimentação, pendência ── #}
+  {% include 'front/contratacao/_reservas_card.html' %}
+
+  {# ── Preparação: sistemas e licenças numa lista só ─────────────────── #}
+{% comment %}Mesma união do formulário: quem confere o que falta não pensa
+     "acesso" e "assento" em dois lugares — pensa numa lista de coisas a
+     fazer. O que muda entre as duas é o verbo do botão e para onde o toggle
+     posta.{% endcomment %}
+  <section class="ctr-card">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title">
+        <i class="fa fa-shield-halved" aria-hidden="true"></i> Sistemas e licenças
+      </h2>
+      <span class="ctr-card-sub">{{ total_acessos }} item(ns) a preparar</span>
+    </div>
+    <div class="ctr-card-body">
+      {% if sistemas_pedidos or licencas %}
+        <div class="ctr-checklist">
+          {% for linha in sistemas_pedidos %}
+            <div class="ctr-item {% if linha.provisionado %}is-feito{% endif %}">
+              <span class="ctr-item-marca" aria-hidden="true">
+                <i class="fa {% if linha.provisionado %}fa-check{% endif %}"></i>
+              </span>
+              <span class="ctr-item-texto">
+                <span class="ctr-item-nome">
+                  {{ linha.sistema.nome }}
+                  <span class="ctr-tag is-sistema"><i class="fa fa-server" aria-hidden="true"></i> Sistema</span>
+                </span>
+                <span class="ctr-item-sub">
+                  {% if linha.perfil_espelho %}espelho: {{ linha.perfil_espelho }}{% else %}sem usuário espelho{% endif %}
+                  {% if linha.provisionado %} · criado em {{ linha.provisionado_em|date:"d/m/Y" }}{% endif %}
+                </span>
+              </span>
+              {% if pode_gerenciar_contratacao %}
+              <form method="post" action="{% url 'contratacao_sistema_toggle' obj.pk linha.pk %}" class="ctr-item-acao">
+                {% csrf_token %}
+                <button type="submit" class="ctr-btn is-pequeno {% if not linha.provisionado %}is-primary{% endif %}">
+                  {% if linha.provisionado %}Desmarcar{% else %}Marcar como criado{% endif %}
+                </button>
+              </form>
+              {% endif %}
+            </div>
+          {% endfor %}
+
+          {% for linha in licencas %}
+            <div class="ctr-item {% if linha.provisionada %}is-feito{% endif %}">
+              <span class="ctr-item-marca" aria-hidden="true">
+                <i class="fa {% if linha.provisionada %}fa-check{% endif %}"></i>
+              </span>
+              <span class="ctr-item-texto">
+                <span class="ctr-item-nome">
+                  {{ linha.licenca.nome }}
+                  <span class="ctr-tag is-licenca"><i class="fa fa-key" aria-hidden="true"></i> Licença</span>
+                </span>
+                <span class="ctr-item-sub">
+                  {% if linha.perfil_espelho %}espelho: {{ linha.perfil_espelho }}{% else %}sem usuário espelho{% endif %}
+                  ·
+                  {% if linha.provisionada %}atribuída em {{ linha.provisionada_em|date:"d/m/Y" }}
+                  {% else %}atribua o assento em Licenças e marque aqui{% endif %}
+                </span>
+              </span>
+              {% if pode_gerenciar_contratacao %}
+              <form method="post" action="{% url 'contratacao_licenca_toggle' obj.pk linha.pk %}" class="ctr-item-acao">
+                {% csrf_token %}
+                <button type="submit" class="ctr-btn is-pequeno {% if not linha.provisionada %}is-primary{% endif %}">
+                  {% if linha.provisionada %}Desmarcar{% else %}Marcar como atribuída{% endif %}
+                </button>
+              </form>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+        {% if pode_gerenciar_contratacao and licencas %}
+        <p class="ctr-campo-ajuda">
+          A atribuição que debita o lote é feita em
+          <a href="{% url 'licenca_list' %}">Licenças</a> — aqui fica o registro de que ela foi feita.
+        </p>
+        {% endif %}
+      {% else %}
+        <div class="ctr-vazio">
+          <i class="fa fa-shield-halved" aria-hidden="true"></i>
+          <span class="ctr-vazio-titulo">Nenhum acesso pedido</span>
+          <span class="ctr-vazio-texto">
+            Edite a contratação para marcar os sistemas e as licenças necessários.
+          </span>
+        </div>
+      {% endif %}
+
+      {% if sistemas_dispensados %}
+        <p class="ctr-campo-ajuda">
+          Sem acesso pedido:
+          {% for linha in sistemas_dispensados %}{{ linha.sistema.nome }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+        </p>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── Estrutura e chamados (e-mail para a TI) ──────────────────────── #}
+  {% include 'front/contratacao/_chamados_card.html' %}
+
+  {# ── Etapas até a conclusão (RH confirma a integração e conclui) ───── #}
+  {% include 'front/contratacao/_processo_card.html' %}
+
+{% comment %}Card de etapa inteiro é do TI: preencher vaga, concluir, cancelar, reabrir
+     e excluir são o ATENDIMENTO da contratação. O solicitante acompanha pelo
+     cabeçalho (régua de etapas + pendências) e pelo histórico abaixo.{% endcomment %}
+  {% if pode_gerenciar_contratacao %}
+  {# ── Ações de etapa ──────────────────────────────────────────────── #}
+  <section class="ctr-card">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title"><i class="fa fa-forward" aria-hidden="true"></i> Andamento</h2>
+    </div>
+    <div class="ctr-card-body">
+      {% if obj.status == 'aberta' %}
+{% comment %}A janela é a MESMA do RH (card "Colaborador contratado"): um caminho só para
+     preencher a vaga, com os mesmos dados e o mesmo histórico, seja o TI ou o RH.{% endcomment %}
+        <div class="ctr-form-acoes">
+          <button type="button" class="ctr-btn is-primary" data-ctr-abrir-dialogo="ctrPreencherModal">
+            <i class="fa fa-user-check" aria-hidden="true"></i> Marcar vaga como preenchida
+          </button>
+        </div>
+      {% endif %}
+
+      <div class="ctr-acoes-etapa">
+        {% if not obj.encerrada %}
+          <form method="post" action="{% url 'contratacao_etapa' obj.pk %}" class="ctr-acao-inline">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="cancelar">
+            <label class="ctr-campo-label" for="ctrMotivo">Motivo do cancelamento</label>
+            <input type="text" id="ctrMotivo" name="motivo" placeholder="Ex.: vaga congelada pela diretoria">
+            <button type="submit" class="ctr-btn is-perigo">
+              <i class="fa fa-ban" aria-hidden="true"></i> Cancelar vaga
+            </button>
+          </form>
+        {% else %}
+          <form method="post" action="{% url 'contratacao_etapa' obj.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="reabrir">
+            <button type="submit" class="ctr-btn">
+              <i class="fa fa-rotate-left" aria-hidden="true"></i> Reabrir
+            </button>
+          </form>
+        {% endif %}
+        <a href="{% url 'contratacao_delete' obj.pk %}" class="ctr-btn is-ghost">Excluir</a>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {# ── Linha do tempo ──────────────────────────────────────────────── #}
+  <section class="ctr-card">
+    <div class="ctr-card-head">
+      <h2 class="ctr-card-title"><i class="fa fa-clock-rotate-left" aria-hidden="true"></i> Linha do tempo</h2>
+    </div>
+    <div class="ctr-card-body">
+      <div class="ctr-timeline">
+        {% for evento in eventos %}
+          <div class="ctr-evento">
+            <span class="ctr-evento-marca">
+              <i class="fa {% if evento.tipo == 'provisionamento' %}fa-wand-magic-sparkles{% elif evento.tipo == 'cancelamento' %}fa-ban{% elif evento.tipo == 'criacao' %}fa-flag{% elif evento.tipo == 'chamado' %}fa-headset{% else %}fa-arrow-right{% endif %}" aria-hidden="true"></i>
+            </span>
+            <span class="ctr-evento-corpo">
+              <span class="ctr-evento-texto">{{ evento.descricao }}</span>
+              <span class="ctr-evento-meta">
+                {{ evento.created_at|date:"d/m/Y H:i" }}
+                {% if evento.criado_por %} · {{ evento.criado_por.get_full_name|default:evento.criado_por.username }}{% endif %}
+              </span>
+            </span>
+          </div>
+        {% empty %}
+          <p class="ctr-campo-ajuda">Sem eventos registrados.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  {# A janela mora DENTRO de .ctr-detail-page: o <dialog> vai para a camada de topo, mas herda os tokens --ctr-* do pai. #}
+  {% if modal_chamados %}{% include 'front/contratacao/_chamados_modal.html' %}{% endif %}
+  {% include 'front/contratacao/_colaborador_modais.html' %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(function () {
+  if (!window.jQuery) return;
+  jQuery('#id_etapa_item').each(function () {
+    jQuery(this).select2({
+      width: '100%',
+      containerCssClass: 'ctr-s2',
+      dropdownCssClass: 'ctr-s2',
+      minimumResultsForSearch: 8,
+    });
+  });
+  // Dentro de um <dialog> o dropdown do Select2 (anexado ao body por padrão)
+  // nasceria ATRÁS da janela, que vive na camada de topo: ele é anexado à janela.
+  jQuery('dialog.ctr-modal[data-ctr-dialogo] select').each(function () {
+    jQuery(this).select2({
+      width: '100%',
+      containerCssClass: 'ctr-s2',
+      dropdownCssClass: 'ctr-s2',
+      dropdownParent: jQuery(this).closest('dialog'),
+      minimumResultsForSearch: 8,
+    });
+  });
+})();
+</script>
+
+{# Janelas simples (preencher · corrigir · reabrir): abrir, fechar, reabrir se recusada. #}
+<script>
+(function () {
+  document.querySelectorAll('dialog.ctr-modal[data-ctr-dialogo]').forEach(function (dlg) {
+    function abrir() {
+      if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+    }
+    document.querySelectorAll('[data-ctr-abrir-dialogo="' + dlg.id + '"]').forEach(function (b) {
+      b.addEventListener('click', abrir);
+    });
+    dlg.querySelectorAll('[data-ctr-fechar]').forEach(function (b) {
+      b.addEventListener('click', function () { dlg.close(); });
+    });
+    if (dlg.dataset.abrir === '1') abrir();
+  });
+})();
+</script>
+
+{# Janela de chamados: sem dependência, sem dado do servidor no JS — tudo vem de data-attributes. #}
+<script>
+(function () {
+  var dlg = document.getElementById('ctrChamadosModal');
+  var form = document.getElementById('ctrChamadosForm');
+
+  // "Tentar novamente": um clique só. O service também recusa a repetição —
+  // isto evita a segunda requisição, não a protege.
+  document.querySelectorAll('form[data-ctr-uma-vez]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (f.dataset.enviando === '1') { e.preventDefault(); return; }
+      f.dataset.enviando = '1';
+      var b = f.querySelector('button[type=submit]');
+      if (b) { b.disabled = true; b.textContent = 'Enviando…'; }
+    });
+  });
+
+  if (!dlg || !form) return;
+
+  var blocos = Array.prototype.slice.call(form.querySelectorAll('[data-ctr-bloco]'));
+  var botao = document.getElementById('ctrChamadosEnviar');
+  var rotuloBotao = botao.innerHTML;
+  var lista = document.getElementById('ctrResumoLista');
+  var vazio = document.getElementById('ctrResumoVazio');
+
+  function chave(b) {
+    return b.querySelector('input[type=checkbox][name=maquina], input[type=checkbox][name=usuario_email], input[type=checkbox][name=sistemas]');
+  }
+  function ativo(b) {
+    if (b.hasAttribute('data-ctr-bloqueado')) return false;
+    if (b.hasAttribute('data-ctr-obrigatorio')) return true;
+    var c = chave(b);
+    return !!(c && c.checked);
+  }
+  function sincronizar() {
+    blocos.forEach(function (b) {
+      var det = b.querySelector('[data-ctr-detalhe]');
+      if (det) det.hidden = !ativo(b);
+    });
+    // Resumo montado com textContent: o rótulo e o destino vêm do servidor, mas
+    // nunca viram HTML aqui.
+    lista.innerHTML = '';
+    var n = 0;
+    blocos.forEach(function (b) {
+      if (!ativo(b)) return;
+      n++;
+      var li = document.createElement('li');
+      var forte = document.createElement('strong');
+      forte.textContent = b.dataset.rotulo;
+      li.appendChild(forte);
+      li.appendChild(document.createTextNode(' → ' + (b.dataset.destino || 'destinatários da Central de Alertas')));
+      lista.appendChild(li);
+      if (b.dataset.problema) {
+        var p = document.createElement('li');
+        p.className = 'is-problema';
+        p.textContent = 'Atenção: ' + b.dataset.problema + ' O envio vai falhar.';
+        lista.appendChild(p);
+      }
+    });
+    lista.hidden = n === 0;
+    vazio.hidden = n !== 0;
+    botao.disabled = n === 0;
+  }
+
+  form.addEventListener('change', sincronizar);
+  document.querySelectorAll('[data-ctr-abrir-chamados]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+      sincronizar();
+    });
+  });
+  dlg.querySelectorAll('[data-ctr-fechar]').forEach(function (b) {
+    b.addEventListener('click', function () { dlg.close(); });
+  });
+
+  // Clique repetido no "Confirmar": o primeiro envia, os outros são engolidos.
+  form.addEventListener('submit', function (e) {
+    if (form.dataset.enviando === '1' || botao.disabled) { e.preventDefault(); return; }
+    form.dataset.enviando = '1';
+    botao.disabled = true;
+    botao.textContent = 'Enviando…';
+  });
+  // Voltar pelo histórico do navegador devolve a página do cache já "enviando".
+  window.addEventListener('pageshow', function (ev) {
+    if (!ev.persisted) return;
+    form.dataset.enviando = '';
+    botao.innerHTML = rotuloBotao;
+    sincronizar();
+  });
+
+  sincronizar();
+  if (dlg.dataset.abrir === '1') {
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+    // O atalho chegou com ?solicitar=1. Tira da barra de endereço: sem isso,
+    // F5 depois de cancelar reabriria a janela, e o link copiado já abriria
+    // o pedido na cara de quem recebe.
+    try {
+      var u = new URL(window.location.href);
+      if (u.searchParams.has('solicitar')) {
+        u.searchParams.delete('solicitar');
+        window.history.replaceState(null, '', u.pathname + u.search + u.hash);
+      }
+    } catch (e) { /* sem History API: a janela abre igual */ }
+  }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% load static m2m_tags %}
+
+{% block title %}Chips — Chips e Conectividade — Zelo Agro{% endblock %}
+{% block page_title %}Chips e Conectividade{% endblock %}
+{% block page_subtitle %}Chips{% endblock %}
+
+{% block extra_css %}
+{% if pode_vincular %}<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">{% endif %}
+{% comment %}A folha do módulo vem DEPOIS da do Select2: ela reveste o componente. Invertida, o CDN vence e nada tem efeito (regra 26).{% endcomment %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% if pode_importar %}{% url 'm2m_chip_novo' as u_novo %}{% url 'frota_importar' as u_importar %}{% endif %}
+  {% include 'front/m2m/_frota_topo.html' with titulo="Chips" descricao="Cada chip, o veículo em que está e o que a última consulta à API respondeu." acao_url=u_novo acao_rotulo="Novo chip" acao_icone="fa-plus" acao2_url=u_importar acao2_rotulo="Importar planilha" acao2_icone="fa-file-arrow-up" %}
+
+  {% if total_geral %}
+  <nav class="m2m-segmentos m2m-segmentos--grande" aria-label="Chips vinculados e disponíveis">
+    {% for s in segmentos_uso %}<a href="{{ s.url }}" {% if s.ativo %}class="is-ativa" aria-current="true"{% endif %}><span>{{ s.rotulo }}</span> <b class="m2m-num">{{ s.n }}</b></a>{% endfor %}
+  </nav>
+  {% endif %}
+
+  {% firstof filtros.iccid filtros.imsi filtros.veiculo filtros.sessao filtros.conectividade filtros.situacao filtros.localidade filtros.setor filtros.de filtros.ate as avancado %}
+  <form class="m2m-filtros" method="get" id="m2m-form-filtros" role="search">
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="f-q">Buscar chip</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="f-q" name="q" value="{{ filtros.q }}" class="m2m-campo" data-m2m-busca placeholder="Buscar por ICCID, IMSI, nome, veículo, setor ou responsável" autocomplete="off">
+      </div>
+      <button type="button" class="m2m-btn m2m-filtros-botao" data-m2m-filtros="m2m-filtros-painel" aria-expanded="{% if avancado %}true{% else %}false{% endif %}" aria-controls="m2m-filtros-painel"><i class="fa-solid fa-sliders" aria-hidden="true"></i>Filtros</button>
+      <span class="m2m-contagem-lista m2m-num">{% if page_obj.paginator.count != total_geral %}{{ page_obj.paginator.count }} de {{ total_geral }}{% else %}{{ total_geral }}{% endif %} chip{{ total_geral|pluralize }}</span>
+    </div>
+
+    <div class="m2m-filtros-mais" id="m2m-filtros-painel" {% if not avancado %}hidden{% endif %}>
+      <div class="m2m-filtros-grade">
+        <label class="m2m-rotulo"><span>ICCID</span><input type="text" name="iccid" value="{{ filtros.iccid }}" class="m2m-campo m2m-campo--mono" inputmode="numeric" placeholder="só dígitos"></label>
+        <label class="m2m-rotulo"><span>IMSI</span><input type="text" name="imsi" value="{{ filtros.imsi }}" class="m2m-campo m2m-campo--mono" inputmode="numeric" placeholder="só dígitos"></label>
+        <label class="m2m-rotulo"><span>Veículo</span><input type="text" name="veiculo" value="{{ filtros.veiculo }}" class="m2m-campo" placeholder="código, nome ou placa"></label>
+        <label class="m2m-rotulo"><span>Sessão (última resposta válida)</span>
+          <select name="sessao" class="m2m-campo" data-m2m-auto>
+            <option value="">Todas</option>
+            {% for valor, rotulo in sessoes %}<option value="{{ valor }}" {% if filtros.sessao == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Monitoramento</span>
+          <select name="situacao" class="m2m-campo" data-m2m-auto>
+            <option value="">Todos</option>
+            {% for valor, rotulo in situacoes %}<option value="{{ valor }}" {% if filtros.situacao == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Unidade</span>
+          <select name="localidade" class="m2m-campo" data-m2m-auto>
+            <option value="">Todas</option>
+            {% for pk, nome in opcoes.localidades %}<option value="{{ pk }}" {% if filtros.localidade == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Setor</span>
+          <input type="text" name="setor" value="{{ filtros.setor }}" class="m2m-campo" list="m2m-setores" placeholder="parte do nome">
+          <datalist id="m2m-setores">{% for s in opcoes.setores %}<option value="{{ s }}">{% endfor %}</datalist>
+        </label>
+        <label class="m2m-rotulo"><span>Consultado desde</span><input type="date" name="de" value="{{ filtros.de }}" class="m2m-campo"></label>
+        <label class="m2m-rotulo"><span>Consultado até</span><input type="date" name="ate" value="{{ filtros.ate }}" class="m2m-campo"></label>
+        <label class="m2m-rotulo"><span>Ordenar por</span>
+          <select name="ordem" class="m2m-campo" data-m2m-auto>
+            <option value="atencao" {% if filtros.ordem == "atencao" or not filtros.ordem %}selected{% endif %}>Quem precisa de atenção primeiro</option>
+            <option value="nome" {% if filtros.ordem == "nome" %}selected{% endif %}>Nome</option>
+            <option value="consumo" {% if filtros.ordem == "consumo" %}selected{% endif %}>Maior volume informado</option>
+            <option value="consulta" {% if filtros.ordem == "consulta" %}selected{% endif %}>Consulta mais recente</option>
+          </select>
+        </label>
+      </div>
+      <div class="m2m-filtros-acoes">
+        <button type="submit" class="m2m-btn m2m-btn--primario">Aplicar filtros</button>
+        <a class="m2m-btn" href="{% url 'm2m_chips' %}">Limpar</a>
+      </div>
+    </div>
+  </form>
+
+  {% if filtros_ativos %}
+  <ul class="m2m-filtros-ativos" aria-label="Filtros em uso">
+    {% for f in filtros_ativos %}
+    <li class="m2m-etiqueta">{{ f.rotulo }} <a href="{{ f.remover }}" aria-label="Remover o filtro {{ f.rotulo }}" title="Remover o filtro">&times;</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if chips and not mapeado.sessao %}
+  <p class="m2m-aviso" data-tom="neutro">
+    Sem o mapeamento da sessão, nenhum chip aparece como “sessão ativa”: a resposta é guardada e fica como “não interpretado”.
+    {% if pode_configurar %}<a href="{% url 'm2m_config' %}#mapeamento">Mapear os campos</a>{% endif %}
+  </p>
+  {% endif %}
+
+  {% if chips %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela m2m-tabela--chips">
+      <thead>
+        <tr>
+          <th>Chip</th><th>Vínculo</th><th>Conectividade</th>
+          <th title="Último volume informado pela TIM em cada chip">Consumo</th><th>Última atualização</th><th><span class="m2m-sr">Ações</span></th>
+        </tr>
+      </thead>
+      <tbody id="m2m-corpo-chips">
+        {% for chip in chips %}{% include 'front/m2m/_chip_linha.html' %}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% elif total_geral == 0 %}
+    {% if pode_importar %}{% url 'm2m_chip_novo' as u_cadastrar %}{% url 'frota_importar' as u_importar2 %}{% endif %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-sim-card" titulo="Nenhum chip cadastrado" texto="Cadastre um chip ou importe uma planilha para começar a acompanhar a conectividade." acao_url=u_importar2 acao_rotulo="Importar planilha" acao_primaria=True acao2_url=u_cadastrar acao2_rotulo="Cadastrar chip" only %}
+  {% else %}
+    {% url 'm2m_chips' as u_limpar %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum resultado para os filtros aplicados" texto="Ajuste a busca ou limpe os filtros para ver todos os chips." acao_url=u_limpar acao_rotulo="Limpar filtros" only %}
+  {% endif %}
+
+  {% include 'front/m2m/_frota_dialogos.html' %}
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if pode_vincular %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+{% endif %}
+{% endblock %}

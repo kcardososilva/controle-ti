@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% load static m2m_tags %}
+
+{% block title %}Operadoras — Configuração{% endblock %}
+{% block page_title %}Chips e Conectividade{% endblock %}
+{% block page_subtitle %}Configuração · Operadoras{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% include 'front/m2m/_frota_topo.html' with titulo="Configurações" descricao="Operadoras e o modo como o sistema consulta os chips de cada uma." %}
+  {% include 'front/m2m/_frota_config_abas.html' %}
+
+  <section class="m2m-painel" aria-labelledby="m2m-o-lista">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-o-lista">Operadoras cadastradas<span class="m2m-painel-t-n">{{ operadoras|length }}</span></h3></header>
+
+    <form class="m2m-cfg-linha m2m-cfg-linha--novo" method="post" action="{% url 'frota_config_operadora_salvar' %}">
+      {% csrf_token %}
+      <label class="m2m-rotulo"><span>Nova operadora</span><input type="text" name="nome" class="m2m-campo" maxlength="80" required placeholder="Ex.: Claro"></label>
+      <label class="m2m-rotulo"><span>Integração</span>
+        <select name="integracao" class="m2m-campo">
+          <option value="">Sem integração</option>
+          {% for valor, rotulo in integracoes %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+        </select>
+      </label>
+      <span></span>
+      <button type="submit" class="m2m-btn m2m-btn--primario">Criar operadora</button>
+    </form>
+
+    {% for o in operadoras %}
+    <form class="m2m-cfg-linha" method="post" action="{% url 'frota_config_operadora_salvar' %}" id="operadora-{{ o.pk }}">
+      {% csrf_token %}<input type="hidden" name="id" value="{{ o.pk }}">
+      <label class="m2m-rotulo"><span>Nome</span><input type="text" name="nome" value="{{ o.nome }}" class="m2m-campo" maxlength="80" required></label>
+      <label class="m2m-rotulo"><span>Integração</span>
+        <select name="integracao" class="m2m-campo">
+          <option value="" {% if not o.integracao %}selected{% endif %}>Sem integração</option>
+          {% for valor, rotulo in integracoes %}<option value="{{ valor }}" {% if o.integracao == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="m2m-check"><input type="checkbox" name="ativo" value="1" {% if o.ativo %}checked{% endif %}> Ativa <span class="m2m-sub">({{ o.n_chips }} chip{{ o.n_chips|pluralize }})</span></label>
+      <button type="submit" class="m2m-btn">Salvar</button>
+    </form>
+    {% empty %}
+    <p class="m2m-painel-vazio">Nenhuma operadora cadastrada.</p>
+    {% endfor %}
+    <p class="m2m-nota m2m-nota--pad">Sem integração, os chips da operadora são controlados (vínculo, movimentações), mas nunca consultados pela API: aparecem como “sem integração”, e não como falha. Operadora inativa deixa de aparecer no cadastro de chip; os chips dela ficam. Trocar a integração vale para todos os chips da operadora na próxima rodada de consultas.</p>
+  </section>
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

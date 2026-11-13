@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% load static m2m_tags %}
+
+{% block title %}Regras de alerta — Configuração{% endblock %}
+{% block page_title %}Chips e Conectividade{% endblock %}
+{% block page_subtitle %}Configuração · Regras de alerta{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% include 'front/m2m/_frota_topo.html' with titulo="Configurações" descricao="Regras de alerta: quando abrir uma ocorrência, com que nível e para quem avisar por e-mail." %}
+  {% include 'front/m2m/_frota_config_abas.html' %}
+
+  {% if not chave_mestra_ativa %}
+  <p class="m2m-aviso" data-tom="atencao"><b>Os e-mails de alerta estão desligados no sistema inteiro</b> (chave-mestra). As ocorrências continuam sendo abertas, mas nenhum e-mail sai, qualquer que seja a regra abaixo.</p>
+  {% elif not canal_ativo %}
+  <p class="m2m-aviso" data-tom="atencao"><b>O canal “Ocorrências de Frotas e Conectividade” está desativado</b> na Central de Alertas. As ocorrências continuam sendo abertas, mas nenhum e-mail sai, qualquer que seja a regra abaixo.</p>
+  {% else %}
+  <p class="m2m-nota">Desligar “gera ocorrência” silencia o alerta por completo. O e-mail sai pelo canal “Ocorrências de Frotas e Conectividade” da Central de Alertas, que segue sendo a chave liga/desliga. Sem destinatário na regra, vale a lista padrão do sistema (.env).</p>
+  {% endif %}
+
+  {% for r in regras %}
+  <section class="m2m-painel" id="regra-{{ r.tipo }}" aria-labelledby="m2m-r-{{ r.tipo }}">
+    <header class="m2m-painel-cab">
+      <h3 class="m2m-painel-t" id="m2m-r-{{ r.tipo }}">{{ r.rotulo }}</h3>
+      <span class="m2m-sub">{% m2m_ind r.nivel %}</span>
+    </header>
+    <form method="post" action="{% url 'frota_config_regra_salvar' r.tipo %}">
+      {% csrf_token %}
+      <p class="m2m-nota m2m-nota--pad"><b>Ação necessária:</b> {{ r.acao_necessaria }}</p>
+      <div class="m2m-regra-grade">
+        <div class="m2m-rotulo">
+          <span>Comportamento</span>
+          <div class="m2m-checks">
+            <label class="m2m-check"><input type="checkbox" name="gera_ocorrencia" value="1" {% if r.gera_ocorrencia %}checked{% endif %}> Gera ocorrência</label>
+            <label class="m2m-check"><input type="checkbox" name="envia_email" value="1" {% if r.envia_email %}checked{% endif %}> Avisa por e-mail</label>
+          </div>
+        </div>
+        <label class="m2m-rotulo"><span>Nível</span>
+          <select name="nivel" class="m2m-campo">
+            {% for valor, rotulo in niveis %}<option value="{{ valor }}" {% if r.nivel == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo m2m-rotulo--largo"><span>E-mails dos destinatários</span>
+          <textarea name="destinatarios_emails" rows="2" class="m2m-campo m2m-campo--area" placeholder="um@empresa.com.br, outro@empresa.com.br">{{ r.destinatarios_emails }}</textarea>
+          <em class="m2m-dica">Separe por vírgula, ponto e vírgula ou quebra de linha.</em>
+        </label>
+        <label class="m2m-rotulo m2m-rotulo--largo"><span>Usuários do sistema como destinatários</span>
+          <select name="destinatarios_usuarios" multiple size="5" class="m2m-campo m2m-campo--multi">
+            {% for u in usuarios %}<option value="{{ u.pk }}" {% if u.pk in r.ids_usuarios %}selected{% endif %}>{{ u.get_full_name|default:u.username }}{% if u.email %} · {{ u.email }}{% else %} · sem e-mail{% endif %}</option>{% endfor %}
+          </select>
+          <em class="m2m-dica">Ctrl ou Shift para escolher mais de um. Usuário sem e-mail não recebe.</em>
+        </label>
+      </div>
+      <p class="m2m-nota m2m-nota--pad">
+        {% if r.destinatarios %}Recebem hoje: {% for e in r.destinatarios %}<span class="m2m-num">{{ e }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}.{% else %}Sem destinatário próprio: vale a lista padrão do sistema.{% endif %}
+      </p>
+      <div class="m2m-form-acoes">
+        <button type="submit" class="m2m-btn m2m-btn--primario">Salvar regra</button>
+        <button type="submit" class="m2m-btn" formaction="{% url 'frota_config_regra_restaurar' r.tipo %}" formnovalidate>Restaurar o padrão</button>
+      </div>
+    </form>
+  </section>
+  {% endfor %}
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

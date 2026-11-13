@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% load static m2m_tags %}
+
+{% block title %}Importar chips — Chips e Conectividade — Zelo Agro{% endblock %}
+{% block page_title %}Chips e Conectividade{% endblock %}
+{% block page_subtitle %}Importar chips por planilha{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page">
+  {% url 'm2m_chips' as u_chips %}
+  {% include 'front/m2m/_frota_topo.html' with titulo="Importar chips" descricao="Envie a planilha, confira a prévia e confirme. Nada é gravado antes da sua confirmação." voltar_url=u_chips voltar_rotulo="Chips" %}
+
+  <ol class="m2m-etapas" aria-label="Passos da importação">
+    <li aria-current="step"><b>Planilha</b><span class="m2m-sub">modelo e envio</span></li>
+    <li><b>Prévia</b><span class="m2m-sub">erros e duplicidades</span></li>
+    <li><b>Confirmação</b><span class="m2m-sub">importar os válidos</span></li>
+    <li><b>Resultado</b><span class="m2m-sub">resumo e relatório</span></li>
+  </ol>
+
+  <section class="m2m-painel" aria-labelledby="m2m-i-envio">
+    <header class="m2m-painel-cab">
+      <h3 class="m2m-painel-t" id="m2m-i-envio">Selecionar a planilha</h3>
+      <div class="m2m-botoes">
+        <a class="m2m-btn m2m-btn--sm" href="{% url 'frota_modelo_planilha' %}?formato=xlsx"><i class="fa-solid fa-download" aria-hidden="true"></i>Modelo Excel</a>
+        <a class="m2m-btn m2m-btn--sm" href="{% url 'frota_modelo_planilha' %}?formato=csv"><i class="fa-solid fa-download" aria-hidden="true"></i>Modelo CSV</a>
+      </div>
+    </header>
+    {% if erro %}<p class="m2m-aviso" data-tom="erro" role="alert">{{ erro }}</p>{% endif %}
+    <form method="post" enctype="multipart/form-data" class="m2m-envio" data-frota-pagina>
+      {% csrf_token %}
+      <label class="m2m-rotulo"><span>Planilha (.xlsx ou .csv)</span>
+        <input type="file" name="arquivo" class="m2m-campo m2m-campo--arquivo" accept=".xlsx,.csv" required>
+        <em class="m2m-dica">Até {{ max_mb }} MB e {{ max_linhas }} linhas. O sistema lê e valida o arquivo; a prévia mostra o que cada linha vai virar.</em>
+      </label>
+      <button type="submit" class="m2m-btn m2m-btn--primario">Analisar planilha</button>
+    </form>
+    <details class="m2m-saiba-mais">
+      <summary>Colunas e regras da importação</summary>
+      <p class="m2m-nota">Colunas: {% for c in colunas %}<b>{{ c }}</b>{% if not forloop.last %}, {% endif %}{% endfor %}. Em cada linha, pelo menos um entre ICCID e IMSI é obrigatório. O modelo em Excel traz as instruções e as listas de operadoras e unidades.</p>
+      <p class="m2m-nota">A importação só cria chips: o que já existe fica como está. Unidade ou operadora inexistente ou inativa, identificação repetida e conflito entre ICCID e IMSI rejeitam a linha, com o motivo na prévia. Número da linha repetido só gera aviso.</p>
+    </details>
+  </section>
+
+  <section class="m2m-painel" aria-labelledby="m2m-i-lista">
+    <header class="m2m-painel-cab">
+      <h3 class="m2m-painel-t" id="m2m-i-lista">Importações anteriores</h3>
+      <a class="m2m-painel-link" href="{% url 'frota_importacoes' %}">Ver todas</a>
+    </header>
+    {% if importacoes %}
+      {% include 'front/m2m/_importacoes_tabela.html' %}
+    {% else %}
+      {% include 'front/m2m/_vazio.html' with icone="fa-file-arrow-up" titulo="Nenhuma planilha enviada" texto="As importações feitas ficam registradas aqui, com o resultado de cada uma." only %}
+    {% endif %}
+  </section>
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

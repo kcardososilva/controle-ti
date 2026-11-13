@@ -11,6 +11,11 @@ from .models import (
     TermoAssinatura,
     RedeDispositivo, RedePorta, RedeRack, RedeRota, RedeTopologia,
     RedeTopologiaHistorico,
+    Contratacao, ContratacaoSistema, ContratacaoLicenca, ContratacaoEvento,
+    SistemaCorporativo,
+    M2MChip, M2MConsulta, M2MEvento, M2MIntegracao, M2MOcorrencia,
+    ConectividadeOperadora, FrotaEvento, FrotaImportacaoChips, FrotaImportacaoLinha, FrotaMovimentacao,
+    FrotaRegraAlerta, FrotaTipo, FrotaVeiculo, FrotaVinculo,
 )
 
 # ---------------------------
@@ -834,3 +839,191 @@ class RedeRotaAdmin(AuditAdminMixin):
     @admin.display(description="Pontos")
     def col_pontos(self, obj):
         return obj.total_pontos
+
+
+# ---------------------------
+# Contratacoes (admissao / onboarding de TI)
+# ---------------------------
+class ContratacaoSistemaInline(admin.TabularInline):
+    model = ContratacaoSistema
+    extra = 0
+    autocomplete_fields = ("sistema",)
+
+
+class ContratacaoLicencaInline(admin.TabularInline):
+    model = ContratacaoLicenca
+    extra = 0
+    autocomplete_fields = ("licenca",)
+
+
+@admin.register(SistemaCorporativo)
+class SistemaCorporativoAdmin(admin.ModelAdmin):
+    list_display = ("nome", "ordem", "ativo", "exige_perfil_espelho", "licenca")
+    list_filter = ("ativo", "exige_perfil_espelho")
+    search_fields = ("nome", "descricao")
+    ordering = ("ordem", "nome")
+
+
+@admin.register(Contratacao)
+class ContratacaoAdmin(admin.ModelAdmin):
+    list_display = ("cargo", "status", "colaborador", "centro_custo",
+                    "data_prevista_inicio", "item_entregue")
+    list_filter = ("status", "tipo_vaga", "computador", "telefonia")
+    search_fields = ("cargo", "colaborador_nome", "gestor", "colaborador__nome")
+    date_hierarchy = "created_at"
+    inlines = (ContratacaoSistemaInline, ContratacaoLicencaInline)
+    autocomplete_fields = ("colaborador", "substituido", "item_entregue")
+
+
+@admin.register(ContratacaoEvento)
+class ContratacaoEventoAdmin(admin.ModelAdmin):
+    list_display = ("contratacao", "tipo", "descricao", "created_at")
+    list_filter = ("tipo",)
+    search_fields = ("descricao",)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Monitoramento TIM M2M — SOMENTE LEITURA
+#
+# Tudo o que muda aqui passa por services/m2m_monitoramento_service.py, que grava a
+# trilha de auditoria (M2MEvento) e aplica as regras (identificador normalizado,
+# histórico imutável, token cifrado). Editar pelo admin pularia as três coisas.
+# `token_cifrado` NUNCA aparece: nem como coluna, nem como campo, nem em busca.
+# ──────────────────────────────────────────────────────────────────────────────
+
+class SomenteLeituraAdmin(admin.ModelAdmin):
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(M2MConsulta)
+class M2MConsultaAdmin(SomenteLeituraAdmin):
+    list_display = ("iniciada_em", "chip", "tipo", "origem", "resultado", "http_status", "tentativas")
+    list_filter = ("tipo", "origem", "resultado")
+    search_fields = ("chip__nome",)
+    date_hierarchy = "iniciada_em"
+    list_per_page = 50
+
+
+@admin.register(M2MEvento)
+class M2MEventoAdmin(SomenteLeituraAdmin):
+    list_display = ("em", "tipo", "chip", "usuario")
+    list_filter = ("tipo",)
+    search_fields = ("chip__nome",)
+    date_hierarchy = "em"
+    list_per_page = 50
+
+
+@admin.register(M2MChip)
+class M2MChipAdmin(SomenteLeituraAdmin):
+    list_display = ("nome", "operadora", "situacao_uso", "identificador_consulta", "monitorado", "sessao_estado", "falhas_consecutivas", "ultima_valida_em")
+    list_filter = ("monitorado", "sessao_estado", "situacao_uso", "operadora")
+    search_fields = ("nome", "iccid", "imsi", "numero_linha")
+    list_select_related = ("operadora",)
+
+
+@admin.register(M2MOcorrencia)
+class M2MOcorrenciaAdmin(SomenteLeituraAdmin):
+    list_display = ("detectada_em", "chip", "veiculo", "tipo", "nivel", "estado", "deteccoes")
+    list_filter = ("tipo", "nivel", "estado")
+    search_fields = ("chip__nome", "veiculo__codigo", "veiculo__nome")
+
+
+@admin.register(M2MIntegracao)
+class M2MIntegracaoAdmin(SomenteLeituraAdmin):
+    # Lista explícita de campos: nunca `__all__`, para um campo novo de credencial
+    # não aparecer por esquecimento. O token só existe aqui como "últimos 4".
+    fields = (
+        "token_sufixo", "token_atualizado_em", "intervalo_minutos", "pausa_entre_chamadas_ms",
+        "limite_req_minuto", "max_chips_execucao", "falhas_para_alerta", "horas_sem_sessao_alerta",
+        "horas_desatualizado", "pct_consumo_alerta", "mapeamento", "ultima_execucao", "ultimo_sucesso",
+        "ultimo_erro", "ultimo_status_http", "autenticada_em", "falha_autenticacao_em", "bloqueado_ate",
+    )
+    readonly_fields = fields
+    list_display = ("__str__", "token_sufixo", "ultima_execucao", "autenticada_em")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Frotas e Conectividade — SOMENTE LEITURA
+#
+# Tudo o que muda passa por services/frota_service.py, frota_vinculo_service.py e
+# frota_import_service.py: eles normalizam, validam, gravam a trilha de auditoria e
+# garantem o vínculo único. Movimentação, evento e vínculo são histórico IMUTÁVEL; editar
+# qualquer um pelo admin pularia as regras (e o model recusaria de qualquer jeito).
+# ──────────────────────────────────────────────────────────────────────────────
+
+@admin.register(ConectividadeOperadora)
+class ConectividadeOperadoraAdmin(SomenteLeituraAdmin):
+    list_display = ("nome", "integracao", "ativo")
+    list_filter = ("ativo", "integracao")
+    search_fields = ("nome",)
+
+
+@admin.register(FrotaTipo)
+class FrotaTipoAdmin(SomenteLeituraAdmin):
+    list_display = ("nome", "exige_conectividade", "ativo")
+    list_filter = ("ativo", "exige_conectividade")
+    search_fields = ("nome",)
+
+
+@admin.register(FrotaVeiculo)
+class FrotaVeiculoAdmin(SomenteLeituraAdmin):
+    list_display = ("codigo", "nome", "tipo", "placa", "status", "localidade", "responsavel")
+    list_filter = ("status", "tipo")
+    search_fields = ("codigo", "nome", "placa", "chassi_serie", "modelo")
+    list_select_related = ("tipo", "localidade", "responsavel")
+
+
+@admin.register(FrotaVinculo)
+class FrotaVinculoAdmin(SomenteLeituraAdmin):
+    list_display = ("chip", "veiculo", "inicio_em", "fim_em", "inicio_por", "fim_por")
+    search_fields = ("chip__nome", "veiculo__codigo", "veiculo__nome")
+    list_select_related = ("chip", "veiculo", "inicio_por", "fim_por")
+    date_hierarchy = "inicio_em"
+    list_per_page = 50
+
+
+@admin.register(FrotaMovimentacao)
+class FrotaMovimentacaoAdmin(SomenteLeituraAdmin):
+    list_display = ("em", "tipo", "chip", "veiculo_origem", "veiculo_destino", "usuario_nome")
+    list_filter = ("tipo",)
+    search_fields = ("chip__nome", "veiculo_origem__codigo", "veiculo_destino__codigo", "motivo")
+    list_select_related = ("chip", "veiculo_origem", "veiculo_destino")
+    date_hierarchy = "em"
+    list_per_page = 50
+
+
+@admin.register(FrotaEvento)
+class FrotaEventoAdmin(SomenteLeituraAdmin):
+    list_display = ("em", "tipo", "veiculo", "usuario")
+    list_filter = ("tipo",)
+    search_fields = ("veiculo__codigo", "veiculo__nome")
+    list_select_related = ("veiculo", "usuario")
+    date_hierarchy = "em"
+    list_per_page = 50
+
+
+@admin.register(FrotaImportacaoChips)
+class FrotaImportacaoChipsAdmin(SomenteLeituraAdmin):
+    list_display = ("criada_em", "arquivo_nome", "estado", "linhas", "importados", "existentes", "rejeitados", "criada_por")
+    list_filter = ("estado", "formato")
+    search_fields = ("arquivo_nome", "sha256")
+
+
+@admin.register(FrotaImportacaoLinha)
+class FrotaImportacaoLinhaAdmin(SomenteLeituraAdmin):
+    list_display = ("importacao", "numero", "situacao", "chip")
+    list_filter = ("situacao",)
+    list_select_related = ("importacao", "chip")
+
+
+@admin.register(FrotaRegraAlerta)
+class FrotaRegraAlertaAdmin(SomenteLeituraAdmin):
+    list_display = ("tipo", "gera_ocorrencia", "nivel", "envia_email")
+    list_filter = ("gera_ocorrencia", "envia_email", "nivel")

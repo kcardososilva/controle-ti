@@ -251,3 +251,107 @@ class LicencaOfficeAccessMiddleware:
     @staticmethod
     def _is_parceiro_licenca(user) -> bool:
         return GRUPO_PARCEIRO_LICENCA in _grupos_do_usuario(user)
+
+
+# ─── Middleware: perfis de ACESSO RESTRITO (uma tela só) ──────────────────────
+#
+# Os três middlewares acima nasceram um por grupo, e cada novo grupo custava
+# outra cópia do mesmo bloco de nove linhas. Os perfis restritos (Portal de
+# Contratações e Consulta Quiosque) entram por UM middleware só, que lê a
+# tabela de `services/acesso_restrito_service.py`: perfil novo é uma entrada
+# naquele dicionário, não uma classe nova aqui e uma linha nova no settings.
+#
+# Por que o import é no `__init__` e não no topo do arquivo: o service importa
+# `_grupos_do_usuario` DESTE módulo (como `perfil_acesso_service` já faz), então
+# um import no topo seria circular. O `__init__` roda uma vez, quando o Django
+# monta a cadeia de middleware — depois do registro de apps, e nunca por
+# requisição.
+
+
+class AcessoRestritoMiddleware:
+    """
+    Prende cada perfil restrito à sua área e manda o resto de volta para a tela
+    inicial dele. Quem tem MAIS DE UM perfil (Contratações + Quiosque) alcança a
+    união das áreas — cada uma com as travas do próprio perfil.
+
+    É a 1ª das 3 camadas (middleware + decorador de capacidade + botão escondido
+    no template). As três leem a MESMA tabela — ver o cabeçalho do service.
+
+    Diferença importante em relação ao `FornecedorAccessMiddleware`: aqui o
+    bloqueio não para no prefixo. `/quiosque/` guarda as telas de consulta e as
+    de gestão lado a lado, então o perfil de consulta precisa alcançar o
+    prefixo e ser barrado DENTRO dele — é o que `caminho_liberado` resolve.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+        from services import acesso_restrito_service as ar
+        self._ar = ar
+
+    def __call__(self, request):
+        user = getattr(request, 'user', None)
+        if user is not None and user.is_authenticated:
+            chaves = self._ar.perfis_de(user)
+            if chaves and not self._ar.caminho_liberado_em(request.path, chaves):
+                # Quem acumula perfis volta para a tela inicial da área em que
+                # estava; dali o menu mostra as duas.
+                return redirect(self._ar.url_de_retorno(request.path, chaves))
+        return self.get_response(request)
+
+
+# ─── Middleware: AMBIENTES do Zelo (TI · Agro) ────────────────────────────────
+#
+# Mesmo desenho do `AcessoRestritoMiddleware`: a régua é a tabela de
+# `services/ambiente_service.py`, lida também pelo menu e pelo decorador das
+# views. Roda DEPOIS dos middlewares de portal/perfil restrito: quem é preso
+# por eles já foi devolvido para a própria área antes de chegar aqui.
+
+
+class AmbienteMiddleware:
+    """
+    A ROTA define o ambiente (`/agro/…` é Zelo Agro; o resto é Zelo TI). Quem
+    não alcança o ambiente do caminho recebe 403 — a mesma resposta que o
+    módulo já dava a quem não tem a permissão da tela. Superusuário passa por cima, como em todo o
+    sistema; staff não: "acesso somente ao Agro" precisa valer para qualquer
+    login, e o TI continua aberto a todo interno por padrão.
+
+    Também anota `request.ambiente` (para o shell desenhar a identidade certa)
+    e guarda o ambiente da vez quando ele MUDA — é isso que faz o próximo
+    acesso abrir no último ambiente usado. Trocar de ambiente não concede nada:
+    só a permissão concede.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+        from services import ambiente_service as amb
+        self._amb = amb
+
+    def __call__(self, request):
+        amb = self._amb
+        user = getattr(request, 'user', None)
+        request.ambiente = None
+        if user is None or not user.is_authenticated or amb.fora_dos_ambientes(user):
+            return self.get_response(request)
+
+        chave = amb.ambiente_do_caminho(request.path)
+        if chave is None:
+            # Caminho neutro (conta, sessão, arquivo, sino): veste o ambiente
+            # que a pessoa estava usando, sem decidir acesso nem mudar nada.
+            if not request.path.startswith(('/static/', '/media/')):
+                request.ambiente = amb.ambiente_preferido(user, getattr(request, 'session', None))
+            return self.get_response(request)
+
+        if not amb.pode_acessar(user, chave):
+            # 403 (a tela de erro do sistema), não um redirecionamento: quem colou
+            # um link do Agro sem ter o Agro precisa ver que não tem acesso, não
+            # cair no painel do TI sem explicação. A raiz `/` é neutra e leva cada
+            # um ao ambiente que alcança (views.ambiente.inicio).
+            from django.core.exceptions import PermissionDenied
+            raise PermissionDenied
+
+        request.ambiente = chave
+        # Só navegação de verdade conta como "usar o ambiente": um POST de
+        # formulário ou uma chamada AJAX não muda a preferência de ninguém.
+        if request.method == 'GET' and request.headers.get('x-requested-with') != 'XMLHttpRequest':
+            amb.registrar_uso(user, chave, getattr(request, 'session', None))
+        return self.get_response(request)

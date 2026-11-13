@@ -1,11 +1,13 @@
-from django.urls import path
+from django.urls import path, re_path
 from django.contrib.auth import views as auth_views
 from . import views
 
 urlpatterns = [
 
     # ── Home & Autenticação ──────────────────────────────────────────────────
-    path("", views.dashboard, name="home"),
+    # `/` abre o ambiente que a pessoa usou por último (Zelo TI ou Zelo Agro);
+    # `/dashboard/` é sempre o painel do TI. Ver views/ambiente.py.
+    path("", views.inicio, name="home"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("dashboard/dados/", views.dashboard_apresentacao_dados, name="dashboard_apresentacao_dados"),
     path("sobre/", views.sobre_plataforma, name="sobre_plataforma"),
@@ -107,6 +109,7 @@ urlpatterns = [
     path("equipamentos/importar/", views.importar_planilha, name="importar_planilha"),
     path("equipamentos/exportar/", views.equipamentos_exportar, name="equipamentos_exportar"),
     path("equipamentos/<int:pk>/", views.equipamento_detalhe, name="equipamento_detalhe"),
+    path("equipamentos/<int:pk>/reservar/", views.equipamento_reservar, name="equipamento_reservar"),
     path("equipamentos/<int:pk>/qr/", views.equipamento_qr, name="equipamento_qr"),
     path("equipamentos/<int:pk>/editar/", views.item_update, name="item_update"),
     path("equipamentos/<int:pk>/excluir/", views.equipamento_excluir, name="equipamento_excluir"),
@@ -136,6 +139,7 @@ urlpatterns = [
     path("movimentacoes/pdf/", views.movimentacao_export_pdf, name="movimentacao_export_pdf"),
     path("movimentacoes/api/lotes-por-item/", views.api_lotes_por_item, name="api_lotes_por_item"),
     path("movimentacoes/api/item-devolucao-info/", views.api_item_devolucao_info, name="api_item_devolucao_info"),
+    path("movimentacoes/api/item-reserva/", views.api_item_reserva, name="api_item_reserva"),
     path("movimentacoes/api/itens-disponiveis-lote/", views.api_itens_disponiveis_lote, name="api_itens_disponiveis_lote"),
     path("movimentacoes/termos/", views.repositorio_termos, name="repositorio_termos"),
 
@@ -340,7 +344,7 @@ urlpatterns = [
     path("alertas/notificacoes/<int:pk>/remover-email/", views.alertas_notificacao_remover_email, name="alertas_notificacao_remover_email"),
     path("alertas/notificacoes/<int:pk>/desvincular/<int:perfil_id>/", views.alertas_notificacao_desvincular_perfil, name="alertas_notificacao_desvincular_perfil"),
 
-    # ── NinjaOne RMM (via importação de CSV) ───────────────────────────────
+    # ── NinjaOne RMM (importação de CSV + API via OAuth) ───────────────────
     path("ninja/",                    views.ninja_dashboard,     name="ninja_dashboard"),
     path("ninja/dispositivos/",       views.ninja_dispositivos,  name="ninja_dispositivos"),
     path("ninja/nao-cadastrados/",    views.ninja_nao_cadastrados, name="ninja_nao_cadastrados"),
@@ -349,6 +353,10 @@ urlpatterns = [
     path("ninja/login/<int:pk>/",     views.ninja_login_detalhe, name="ninja_login_detalhe"),
     path("ninja/relatorio/",          views.ninja_relatorio,     name="ninja_relatorio"),
     path("ninja/importar/",           views.ninja_importar,      name="ninja_importar"),
+    path("ninja/oauth/conectar/",     views.ninja_oauth_conectar, name="ninja_oauth_conectar"),
+    path("ninja/oauth/callback/",     views.ninja_oauth_callback, name="ninja_oauth_callback"),
+    path("ninja/sincronizar/",        views.ninja_sincronizar,   name="ninja_sincronizar"),
+    path("ninja/desconectar/",        views.ninja_desconectar,   name="ninja_desconectar"),
 
     # ── Módulo Quiosque — API do dispositivo (app Android) ──────────────────
     path("api/quiosque/enroll/",              views.kiosk_enroll,       name="kiosk_enroll"),
@@ -365,6 +373,7 @@ urlpatterns = [
     # ── Módulo Quiosque — Dashboard interno (TI) ────────────────────────────
     path("quiosque/",                  views.quiosque_dashboard,     name="quiosque_dashboard"),
     path("quiosque/apresentacao/",     views.quiosque_apresentacao,  name="quiosque_apresentacao"),
+    path("quiosque/sobre/",            views.quiosque_sobre,         name="quiosque_sobre"),
     path("quiosque/indicadores/",      views.quiosque_indicadores,   name="quiosque_indicadores"),
     path("quiosque/mapa/",             views.quiosque_mapa,          name="quiosque_mapa"),
     path("quiosque/matriculas/",       views.quiosque_matriculas,    name="quiosque_matriculas"),
@@ -462,5 +471,152 @@ urlpatterns = [
     path("requisicoes/catalogo/importar/", views.itens_padrao_importar, name="itens_padrao_importar"),
     path("requisicoes/catalogo/<int:pk>/editar/", views.itens_padrao_update, name="itens_padrao_update"),
     path("requisicoes/catalogo/<int:pk>/excluir/", views.itens_padrao_delete, name="itens_padrao_delete"),
+
+    # ── Contratações (admissão / onboarding de TI) ───────────────────
+    path("contratacoes/", views.contratacao_painel, name="contratacao_painel"),
+    path("contratacoes/nova/", views.contratacao_create, name="contratacao_create"),
+    path("contratacoes/sistemas/", views.sistema_corporativo_list, name="sistema_corporativo_list"),
+    path("contratacoes/sistemas/novo/", views.sistema_corporativo_create, name="sistema_corporativo_create"),
+    path("contratacoes/sistemas/<int:pk>/editar/", views.sistema_corporativo_update, name="sistema_corporativo_update"),
+    path("contratacoes/sistemas/<int:pk>/excluir/", views.sistema_corporativo_delete, name="sistema_corporativo_delete"),
+    path("contratacoes/<int:pk>/", views.contratacao_detail, name="contratacao_detail"),
+    path("contratacoes/<int:pk>/editar/", views.contratacao_update, name="contratacao_update"),
+    path("contratacoes/<int:pk>/excluir/", views.contratacao_delete, name="contratacao_delete"),
+    path("contratacoes/<int:pk>/etapa/", views.contratacao_etapa, name="contratacao_etapa"),
+    path("contratacoes/<int:pk>/sistema/<int:linha_pk>/", views.contratacao_sistema_toggle, name="contratacao_sistema_toggle"),
+    path("contratacoes/<int:pk>/licenca/<int:linha_pk>/", views.contratacao_licenca_toggle, name="contratacao_licenca_toggle"),
+    path("contratacoes/chamados/", views.chamados_lista, name="chamados_lista"),
+    path("contratacoes/chamados/sincronizacao/", views.chamados_sincronizacao, name="chamados_sincronizacao"),
+    path("contratacoes/chamados/sincronizacao/acao/", views.chamados_sincronizacao_acao, name="chamados_sincronizacao_acao"),
+    path("contratacoes/<int:pk>/preencher/", views.contratacao_preencher, name="contratacao_preencher"),
+    path("contratacoes/<int:pk>/colaborador/", views.contratacao_colaborador_corrigir, name="contratacao_colaborador_corrigir"),
+    path("contratacoes/<int:pk>/reabrir-vaga/", views.contratacao_vaga_reabrir, name="contratacao_vaga_reabrir"),
+    path("contratacoes/<int:pk>/cadastrar-colaborador/", views.contratacao_colaborador_cadastrar, name="contratacao_colaborador_cadastrar"),
+    path("contratacoes/<int:pk>/integracao/", views.contratacao_integracao, name="contratacao_integracao"),
+    path("contratacoes/<int:pk>/concluir/", views.contratacao_concluir, name="contratacao_concluir"),
+    path("contratacoes/<int:pk>/etapas/", views.contratacao_etapa_processo, name="contratacao_etapa_processo"),
+    path("contratacoes/<int:pk>/reservar/", views.contratacao_reservar, name="contratacao_reservar"),
+    path("contratacoes/<int:pk>/reservas/<int:reserva_pk>/liberar/", views.contratacao_reserva_liberar, name="contratacao_reserva_liberar"),
+    path("contratacoes/<int:pk>/reservas/<int:reserva_pk>/alerta/", views.contratacao_reserva_alerta, name="contratacao_reserva_alerta"),
+    path("contratacoes/<int:pk>/chamados/", views.contratacao_chamados_solicitar, name="contratacao_chamados_solicitar"),
+    path("contratacoes/<int:pk>/chamados/<int:chamado_pk>/", views.chamado_detail, name="chamado_detail"),
+    path("contratacoes/<int:pk>/chamados/<int:chamado_pk>/responder/", views.chamado_responder, name="chamado_responder"),
+    path("contratacoes/<int:pk>/chamados/<int:chamado_pk>/atendimento/", views.chamado_atendimento, name="chamado_atendimento"),
+    path("contratacoes/<int:pk>/chamados/<int:chamado_pk>/mensagens/<int:mensagem_pk>/reenviar/", views.chamado_mensagem_reenviar, name="chamado_mensagem_reenviar"),
+    path("contratacoes/<int:pk>/chamados/<int:chamado_pk>/anexos/<int:anexo_pk>/", views.chamado_anexo_download, name="chamado_anexo_download"),
+    path("contratacoes/<int:pk>/chamados/<int:chamado_pk>/reenviar/", views.contratacao_chamado_reenviar, name="contratacao_chamado_reenviar"),
+    path("contratacoes/<int:pk>/chamados/<int:chamado_pk>/identificador/", views.contratacao_chamado_identificador, name="contratacao_chamado_identificador"),
+
+    # ─── Acessos restritos (perfis de uma tela só) ────────────────────────────
+    # Fora de /contratacoes/ e de /quiosque/ de proposito: e tela de TI, e o
+    # AcessoRestritoMiddleware barra qualquer perfil restrito aqui.
+    path("acessos/restritos/", views.acesso_restrito_gerenciar, name="acesso_restrito_gerenciar"),
+    path("acessos/restritos/conceder/", views.acesso_restrito_conceder, name="acesso_restrito_conceder"),
+    path("acessos/restritos/<int:pk>/revogar/", views.acesso_restrito_revogar, name="acesso_restrito_revogar"),
+
+    # ─── ZELO AGRO ────────────────────────────────────────────────────────────
+    # Tudo do Agro mora sob /agro/: é o caminho que define o ambiente
+    # (services/ambiente_service.py + AmbienteMiddleware). Frotas e Conectividade
+    # saíram de /frotas/ e /m2m/ em 2026-11-13 com os MESMOS nomes de rota — nenhum
+    # {% url %}, JS ou teste por nome mudou. Os endereços antigos respondem 308
+    # (rota_legada_frota + urls_legado_frota.py), no fim deste bloco.
+    path("agro/", views.agro_visao_geral, name="agro_visao_geral"),
+
+    # ─── Agro › Frotas (veículos e equipamentos) ──────────────────────────────
+    # ver_frota nas telas de veículo, editar_frota no cadastro e no status (403 sem elas,
+    # views/frota.py e views/frota_api.py). Os tipos de veículo (administrar_frota_config)
+    # são cadastro da frota, por isso ficam aqui e não na configuração da TIM.
+    path("agro/frotas/", views.frota_visao_geral, name="frota_visao_geral"),
+    path("agro/frotas/veiculos/", views.frota_veiculos, name="frota_veiculos"),
+    path("agro/frotas/veiculos/novo/", views.frota_veiculo_novo, name="frota_veiculo_novo"),
+    path("agro/frotas/veiculos/<int:pk>/", views.frota_veiculo_detalhe, name="frota_veiculo_detalhe"),
+    path("agro/frotas/veiculos/<int:pk>/editar/", views.frota_veiculo_editar, name="frota_veiculo_editar"),
+    path("agro/frotas/veiculos/<int:pk>/status/", views.frota_veiculo_status, name="frota_veiculo_status"),
+    path("agro/frotas/opcoes/", views.frota_opcoes, name="frota_opcoes"),
+    path("agro/frotas/configuracao/tipos/", views.frota_config_tipos, name="frota_config_tipos"),
+    path("agro/frotas/configuracao/tipos/salvar/", views.frota_config_tipo_salvar, name="frota_config_tipo_salvar"),
+    path("agro/frotas/tipos/rapido/", views.frota_tipo_rapido, name="frota_tipo_rapido"),
+
+    # ─── Agro › Chips e Conectividade (TIM M2M) ───────────────────────────────
+    # ver_chips nas telas de chip; consultar_conectividade em sessões, consumo, no JSON da
+    # resposta guardada e no Atualizar; importar_chips no cadastro e na importação;
+    # vincular_chips em vincular/ e transferir_chips nas demais ações sobre o vínculo (que
+    # levam o id do vínculo que a tela mostrava: o service recusa se ele mudou);
+    # ver_historico_frota em movimentações e alertas; tratar_ocorrencias no tratamento;
+    # administrar_frota_config em tudo de configuracao/ (ver views/m2m.py e views/frota*.py).
+    path("agro/conectividade/", views.m2m_visao_geral, name="m2m_visao_geral"),
+    path("agro/conectividade/chips/", views.m2m_chips, name="m2m_chips"),
+    path("agro/conectividade/chips/novo/", views.m2m_chip_novo, name="m2m_chip_novo"),
+    path("agro/conectividade/chips/<int:pk>/", views.m2m_chip_detalhe, name="m2m_chip_detalhe"),
+    path("agro/conectividade/chips/<int:pk>/editar/", views.m2m_chip_editar, name="m2m_chip_editar"),
+    path("agro/conectividade/chips/<int:pk>/monitoramento/", views.m2m_chip_monitoramento, name="m2m_chip_monitoramento"),
+    path("agro/conectividade/chips/<int:pk>/atualizar/", views.m2m_chip_atualizar, name="m2m_chip_atualizar"),
+    path("agro/conectividade/chips/<int:pk>/retornar/", views.frota_retornar, name="frota_retornar"),
+    path("agro/conectividade/chips/<int:pk>/inativar/", views.frota_inativar, name="frota_inativar"),
+    path("agro/conectividade/consultas/<int:pk>/", views.m2m_consulta_payload, name="m2m_consulta_payload"),
+    path("agro/conectividade/opcoes/", views.m2m_opcoes, name="m2m_opcoes"),
+    path("agro/conectividade/sessoes/", views.m2m_sessoes, name="m2m_sessoes"),
+    path("agro/conectividade/consumo/", views.m2m_consumo, name="m2m_consumo"),
+    path("agro/conectividade/movimentacoes/", views.frota_movimentacoes, name="frota_movimentacoes"),
+    path("agro/conectividade/vincular/", views.frota_vincular, name="frota_vincular"),
+    path("agro/conectividade/vinculos/<int:vinculo_id>/desvincular/", views.frota_desvincular, name="frota_desvincular"),
+    path("agro/conectividade/vinculos/<int:vinculo_id>/transferir/", views.frota_transferir, name="frota_transferir"),
+    path("agro/conectividade/vinculos/<int:vinculo_id>/substituir/", views.frota_substituir, name="frota_substituir"),
+    path("agro/conectividade/alertas/", views.m2m_alertas, name="m2m_alertas"),
+    path("agro/conectividade/alertas/<int:pk>/tratar/", views.m2m_alerta_tratar, name="m2m_alerta_tratar"),
+    # Importação de chips por planilha (importar_chips): modelo -> envio -> prévia -> resultado.
+    path("agro/conectividade/importar/", views.frota_importar, name="frota_importar"),
+    path("agro/conectividade/importar/modelo/", views.frota_modelo_planilha, name="frota_modelo_planilha"),
+    path("agro/conectividade/importar/<int:pk>/", views.frota_importacao, name="frota_importacao"),
+    path("agro/conectividade/importar/<int:pk>/confirmar/", views.frota_importacao_confirmar, name="frota_importacao_confirmar"),
+    path("agro/conectividade/importar/<int:pk>/cancelar/", views.frota_importacao_cancelar, name="frota_importacao_cancelar"),
+    path("agro/conectividade/importar/<int:pk>/relatorio/", views.frota_importacao_relatorio, name="frota_importacao_relatorio"),
+    path("agro/conectividade/importacoes/", views.frota_importacoes, name="frota_importacoes"),
+    # Configuração (administrar_frota_config): integração TIM, operadoras e regras de alerta.
+    path("agro/conectividade/configuracao/", views.m2m_config, name="m2m_config"),
+    path("agro/conectividade/configuracao/token/", views.m2m_config_token, name="m2m_config_token"),
+    path("agro/conectividade/configuracao/frequencia/", views.m2m_config_frequencia, name="m2m_config_frequencia"),
+    path("agro/conectividade/configuracao/mapeamento/", views.m2m_config_mapeamento, name="m2m_config_mapeamento"),
+    path("agro/conectividade/configuracao/previa/", views.m2m_config_previa, name="m2m_config_previa"),
+    path("agro/conectividade/configuracao/testar/", views.m2m_config_testar, name="m2m_config_testar"),
+    path("agro/conectividade/configuracao/reinterpretar/", views.m2m_reinterpretar, name="m2m_reinterpretar"),
+    path("agro/conectividade/configuracao/operadoras/", views.frota_config_operadoras, name="frota_config_operadoras"),
+    path("agro/conectividade/configuracao/operadoras/salvar/", views.frota_config_operadora_salvar, name="frota_config_operadora_salvar"),
+    path("agro/conectividade/configuracao/regras/", views.frota_config_regras, name="frota_config_regras"),
+    path("agro/conectividade/configuracao/regras/<str:tipo>/salvar/", views.frota_config_regra_salvar, name="frota_config_regra_salvar"),
+    path("agro/conectividade/configuracao/regras/<str:tipo>/restaurar/", views.frota_config_regra_restaurar, name="frota_config_regra_restaurar"),
+
+    # Endereços ANTIGOS do módulo (/frotas/… e /m2m/…, até 2026-11-13): 308 para o novo,
+    # traduzidos pelo NOME da rota (ProjetoEstoque/urls_legado_frota.py). Favorito, link de
+    # e-mail antigo e aba aberta (inclusive POST) continuam chegando ao mesmo registro.
+    # ── Tecnologia agrícola: estoque tecnológico (2026-11-13) ──
+    path("agro/estoque/", views.tec_visao_geral, name="tec_visao_geral"),
+    path("agro/estoque/equipamentos/", views.tec_equipamentos, name="tec_equipamentos"),
+    path("agro/estoque/equipamentos/novo/", views.tec_equipamento_novo, name="tec_equipamento_novo"),
+    path("agro/estoque/equipamentos/<int:pk>/", views.tec_equipamento_detalhe, name="tec_equipamento_detalhe"),
+    path("agro/estoque/equipamentos/<int:pk>/editar/", views.tec_equipamento_editar, name="tec_equipamento_editar"),
+    path("agro/estoque/equipamentos/<int:pk>/mover/", views.tec_equipamento_mover, name="tec_equipamento_mover"),
+    path("agro/estoque/equipamentos/<int:pk>/inativar/", views.tec_equipamento_inativar, name="tec_equipamento_inativar"),
+    path("agro/estoque/equipamentos/<int:pk>/instalar/", views.tec_equipamento_instalar, name="tec_equipamento_instalar"),
+    path("agro/estoque/maquinas/<int:pk>/instalar/", views.tec_veiculo_instalar, name="tec_veiculo_instalar"),
+    path("agro/estoque/instalacoes/<int:pk>/retirar/", views.tec_instalacao_retirar, name="tec_instalacao_retirar"),
+    path("agro/estoque/instalacoes/<int:pk>/transferir/", views.tec_instalacao_transferir, name="tec_instalacao_transferir"),
+    path("agro/estoque/instalacoes/<int:pk>/substituir/", views.tec_instalacao_substituir, name="tec_instalacao_substituir"),
+    path("agro/estoque/materiais/", views.tec_materiais, name="tec_materiais"),
+    path("agro/estoque/materiais/entrada/", views.tec_material_entrada, name="tec_material_entrada_nova"),
+    path("agro/estoque/materiais/<int:pk>/", views.tec_material_detalhe, name="tec_material_detalhe"),
+    path("agro/estoque/materiais/<int:pk>/entrada/", views.tec_material_entrada, name="tec_material_entrada"),
+    path("agro/estoque/materiais/<int:pk>/saida/", views.tec_material_saida, name="tec_material_saida"),
+    path("agro/estoque/materiais/<int:pk>/ajuste/", views.tec_material_ajuste, name="tec_material_ajuste"),
+    path("agro/estoque/materiais/<int:pk>/transferir/", views.tec_material_transferir, name="tec_material_transferir"),
+    path("agro/estoque/materiais/aplicar/", views.tec_material_aplicar, name="tec_material_aplicar_novo"),
+    path("agro/estoque/materiais/<int:pk>/aplicar/", views.tec_material_aplicar, name="tec_material_aplicar"),
+    path("agro/estoque/materiais/<int:pk>/devolver/", views.tec_material_devolver, name="tec_material_devolver"),
+    path("agro/estoque/movimentacoes/", views.tec_movimentacoes, name="tec_movimentacoes"),
+    path("agro/estoque/catalogo/", views.tec_catalogo, {"tipo": "modelos"}, name="tec_catalogo_inicio"),
+    path("agro/estoque/catalogo/<slug:tipo>/", views.tec_catalogo, name="tec_catalogo"),
+    path("agro/estoque/catalogo/<slug:tipo>/novo/", views.tec_catalogo_novo, name="tec_catalogo_novo"),
+    path("agro/estoque/catalogo/<slug:tipo>/<int:pk>/editar/", views.tec_catalogo_editar, name="tec_catalogo_editar"),
+    re_path(r"^(?P<antigo>(?:frotas|m2m)/.*)$", views.rota_legada_frota, name="rota_legada_frota"),
 
 ]

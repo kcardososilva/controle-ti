@@ -18,6 +18,12 @@ load_dotenv(BASE_DIR / ".env")
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# Anexos e e-mails brutos dos chamados de contratação. FORA de MEDIA_ROOT e de
+# qualquer pasta servida: o único caminho até o arquivo é a view autenticada de
+# download (views/contratacoes.py). Em produção aponte para uma pasta que entre
+# no backup — o conteúdo é dado do negócio, não cache.
+CHAMADOS_ARQUIVOS_ROOT = os.environ.get('CHAMADOS_ARQUIVOS_DIR') or os.path.join(BASE_DIR, 'chamados_arquivos')
+
 # Pasta protegida onde o TI copia o instalador (.apk) do app Quiosque. NÃO fica em
 # MEDIA_ROOT — /media/ é servido sem autenticação (django.views.static.serve) e
 # qualquer pessoa com a URL acessaria o arquivo. O download do .apk só é liberado
@@ -72,6 +78,10 @@ MIDDLEWARE = [
     'ProjetoEstoque.middleware.TVAccessMiddleware',
     'ProjetoEstoque.middleware.FornecedorAccessMiddleware',
     'ProjetoEstoque.middleware.LicencaOfficeAccessMiddleware',
+    'ProjetoEstoque.middleware.AcessoRestritoMiddleware',
+    # Ambientes Zelo TI / Zelo Agro: a rota define o ambiente. Depois dos
+    # middlewares de portal e de perfil restrito (ver o docstring).
+    'ProjetoEstoque.middleware.AmbienteMiddleware',
 ]
 
 ROOT_URLCONF = 'controle.urls'
@@ -106,6 +116,14 @@ TEMPLATES = [
                 # Badge "Saúde" do subnav de licenças. Sai na primeira linha
                 # fora de /licencas — ver o docstring.
                 'ProjetoEstoque.context_processors.licencas_pendencias',
+                # Perfis de acesso restrito (Portal de Contratacoes /
+                # Consulta Quiosque): encolhe o menu do base.html e diz a
+                # cada tela o que esconder. Sai na primeira linha para
+                # usuario interno -- ver o docstring do service.
+                'ProjetoEstoque.context_processors.acesso_restrito',
+                # Ambiente da vez (Zelo TI / Zelo Agro): identidade, seletor
+                # da barra superior e o menu do Agro. Ver services/ambiente_service.py.
+                'ProjetoEstoque.context_processors.ambiente',
             ],
             'loaders': _TEMPLATE_LOADERS,
         },
@@ -191,6 +209,37 @@ EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
 EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+
+# ── Receber as respostas dos chamados (Microsoft Graph, aplicativo sem usuário) ──
+# O Exchange Online deste tenant recusa login básico por IMAP ("Basic
+# authentication is disabled") e só aceita OAuth2 — então a leitura da caixa
+# precisa de um APLICATIVO registrado no Entra ID com a permissão `Mail.Read`
+# (aplicativo) restrita a esta caixa. Sem as três chaves abaixo a sincronização
+# fica DESLIGADA (e a tela diz isso): o envio por SMTP e as respostas pela
+# plataforma funcionam normalmente. Passo a passo: docs/TUTORIAL_CHAMADOS_CONVERSA.md.
+CHAMADOS_GRAPH_TENANT_ID = os.environ.get('CHAMADOS_GRAPH_TENANT_ID', '')
+CHAMADOS_GRAPH_CLIENT_ID = os.environ.get('CHAMADOS_GRAPH_CLIENT_ID', '')
+CHAMADOS_GRAPH_CLIENT_SECRET = os.environ.get('CHAMADOS_GRAPH_CLIENT_SECRET', '')
+# A caixa onde as respostas chegam: a mesma de onde os chamados SAEM (o
+# remetente), porque "responder" devolve a mensagem para o endereço de origem.
+CHAMADOS_CAIXA = os.environ.get('CHAMADOS_CAIXA') or EMAIL_HOST_USER
+
+# ── Monitoramento de chips TIM M2M (services/tim_m2m_service.py) ──────────────
+# TIM_M2M_BASE_URL: raiz da API. É a ÚNICA fonte do endereço — nenhuma tela
+#   aceita URL — e o serviço só fala https com o host daqui (o token nunca vai a
+#   outro host, nem por redirecionamento).
+# TIM_M2M_TOKEN: opcional. Se existir, VENCE o token salvo (cifrado) no banco.
+# TIM_M2M_CHAVE_CIFRA: chave Fernet que cifra o token salvo no banco. Sem ela a
+#   tela de configuração recusa gravar token. Gerar com:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+TIM_M2M_BASE_URL = (os.environ.get('TIM_M2M_BASE_URL') or 'https://tim-m2m-platform.com').strip().rstrip('/')
+TIM_M2M_TOKEN = os.environ.get('TIM_M2M_TOKEN', '').strip()
+TIM_M2M_CHAVE_CIFRA = os.environ.get('TIM_M2M_CHAVE_CIFRA', '').strip()
+# Endereço pelo qual a TI e o RH abrem o Controle TI (sem barra no fim), ex.:
+# http://172.16.60.254:8000. Usado só para montar o link "Abrir o chamado na
+# plataforma" dos e-mails. Vazio = o e-mail sai sem o link (nunca com um link
+# quebrado apontando para localhost).
+SISTEMA_URL = os.environ.get('SISTEMA_URL', '').strip().rstrip('/')
 ALERTA_EMAIL = os.environ.get('ALERTA_EMAIL', '')
 ALERTA_EMAILS = [
     e.strip()
@@ -227,16 +276,26 @@ PRTG_URL      = os.environ.get("PRTG_URL", "")
 PRTG_USER     = os.environ.get("PRTG_USER", "")
 PRTG_PASSHASH = os.environ.get("PRTG_PASSHASH", "")
 
-# NinjaOne RMM — credenciais via .env (OAuth2 Client Credentials)
-# Gerar em: Administração → Apps → API → Adicionar aplicativo OAuth
-NINJA_BASE_URL      = os.environ.get("NINJA_BASE_URL", "")
-NINJA_CLIENT_ID     = os.environ.get("NINJA_CLIENT_ID", "")
-NINJA_CLIENT_SECRET = os.environ.get("NINJA_CLIENT_SECRET", "")
+# NinjaOne RMM — credenciais via .env (OAuth2 Authorization Code, app tipo "Web")
+# Gerar em: Administração → Apps → API → Client app IDs
+# (services/ninja_api_service.py — ver Architecture Rule 59)
+NINJA_BASE_URL      = os.environ.get("NINJA_BASE_URL", "").strip().rstrip("/")
+NINJA_CLIENT_ID     = os.environ.get("NINJA_CLIENT_ID", "").strip()
+NINJA_CLIENT_SECRET = os.environ.get("NINJA_CLIENT_SECRET", "").strip()
 # URI exata cadastrada no app OAuth do NinjaOne — deve corresponder exatamente
 NINJA_REDIRECT_URI  = os.environ.get(
     "NINJA_REDIRECT_URI",
     "http://santa-colomba-karitel-qqprmnjdwc.dynamic-m.com:65300/ninja/oauth/callback/",
-)
+).strip()
+# Escopos pedidos na autorização. `offline_access` é o que faz o NinjaOne devolver o
+# refresh token; sem ele a conexão dura só o tempo de vida do access token (~1 h).
+# Se o app no NinjaOne não tiver esse escopo liberado, a autorização é recusada com
+# `invalid_scope` — aí defina NINJA_SCOPES=monitoring no .env.
+NINJA_SCOPES = os.environ.get("NINJA_SCOPES", "monitoring offline_access").strip()
+# Chave Fernet que cifra, no banco, o access/refresh token do NinjaOne. Sem ela a
+# conexão é recusada (token nunca vai em claro para o banco). Gerar com:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+NINJA_CHAVE_CIFRA = os.environ.get("NINJA_CHAVE_CIFRA", "").strip()
 
 # =============================================================================
 # TRANSPORTE E COOKIES

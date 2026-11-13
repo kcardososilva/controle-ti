@@ -288,6 +288,25 @@ def validar_pre_condicoes(*, tipo, colaborador, itens, movimentacoes=None) -> li
     for item in itens:
         compartilhado = bool(getattr(item, "compartilhado", False))
 
+        # Equipamento RESERVADO para uma vaga só pode ser entregue, por termo, ao
+        # colaborador dessa vaga. Usá-lo em outra necessidade exige a confirmação
+        # e a justificativa da Movimentação — e o termo assinado não tem onde
+        # pedi-las. Descobrir isso DEPOIS da assinatura deixaria o documento
+        # firmado sem movimentação, que é o que esta checagem existe para evitar.
+        if getattr(item, "status", "") == "reservado":
+            from services import reserva_equipamento_service as reservas
+
+            reserva = reservas.reserva_ativa_do_item(item)
+            if reserva is not None and (
+                colaborador is None or reserva.colaborador_id != colaborador.pk
+            ):
+                problemas.append(
+                    f'O equipamento "{item.nome}" está reservado para {reserva.vaga_rotulo}'
+                    + (f" ({reserva.colaborador.nome})" if reserva.colaborador_id else "")
+                    + ". Só o colaborador dessa vaga recebe o equipamento por este termo; "
+                    "para usá-lo em outra necessidade, faça a Movimentação (ela pede a justificativa)."
+                )
+
         # Item compartilhado é isento: ele não restaura centro de custo na
         # devolução (é ativo de vários setores) — mesma isenção do formulário.
         if not item.centro_custo_id and not compartilhado:

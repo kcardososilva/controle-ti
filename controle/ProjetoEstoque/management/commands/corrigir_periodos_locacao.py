@@ -167,7 +167,7 @@ class Command(BaseCommand):
 
         candidatos = (
             Item.objects
-            .filter(locado="sim", status__in=["ativo", "backup", "manutencao"])
+            .filter(locado="sim", status__in=["ativo", "backup", "reservado", "manutencao"])
             .exclude(pk__in=LocacaoPeriodo.objects.values("item"))
             .select_related("locacao", "fornecedor")
         )

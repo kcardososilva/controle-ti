@@ -1,0 +1,199 @@
+{% comment %}
+  Janela de confirmação "Solicitar estrutura e abrir chamados" (<dialog> nativo).
+
+  Três blocos, um por chamado:
+    • Máquina ............ obrigatória (um <input hidden> a envia); só vira opcional
+                           quando a vaga declara "não precisa de computador";
+    • Usuário e e-mail ... só vai se o solicitante marcar que precisa;
+    • Sistemas ........... idem.
+  O que já foi solicitado aparece TRAVADO e nunca é reenviado: o service também
+  recusa, esta trava só evita pedir o que não adianta.
+
+  O resumo ("o que será enviado") é montado por JS a partir de data-attributes
+  dos blocos; o service revalida tudo no POST — a janela não é autorização.
+  Destinatários: endereços só para quem atende a contratação; o solicitante vê
+  "Equipe de TI".
+{% endcomment %}
+  <dialog class="ctr-modal" id="ctrChamadosModal" aria-labelledby="ctrChamadosTitulo"
+          data-abrir="{% if abrir_modal_chamados %}1{% endif %}">
+    <form method="post" action="{% url 'contratacao_chamados_solicitar' obj.pk %}"
+          class="ctr-modal-form" id="ctrChamadosForm" novalidate>
+      {% csrf_token %}
+
+      <header class="ctr-modal-head">
+        <h2 id="ctrChamadosTitulo">Solicitar estrutura e abrir chamados</h2>
+        <p>
+          Vaga: <strong>{{ obj.cargo }}</strong>{% if obj.data_prevista_inicio %} · início previsto
+          {{ obj.data_prevista_inicio|date:"d/m/Y" }}{% endif %}.
+          Cada chamado marcado vira um e-mail independente.
+        </p>
+      </header>
+
+      <div class="ctr-modal-corpo">
+
+        {% if form_chamados.non_field_errors %}
+          <div class="ctr-aviso is-perigo" role="alert">{{ form_chamados.non_field_errors|join:" " }}</div>
+        {% endif %}
+
+        {# ── 1. Máquina ───────────────────────────────────────────── #}
+        {% with m=modal_chamados.maquina %}
+        <section class="ctr-chamado-bloco {% if m.chamado %}is-bloqueado{% endif %}" data-ctr-bloco
+                 data-rotulo="{{ m.rotulo }}"
+                 {% if m.canal %}data-destino="{% if pode_gerenciar_contratacao %}{{ m.canal.destinatarios|join:', ' }}{% else %}Equipe de TI{% endif %}" data-problema="{{ m.canal.problema }}"{% endif %}
+                 {% if m.chamado %}data-ctr-bloqueado{% elif m.obrigatorio %}data-ctr-obrigatorio{% endif %}>
+          <div class="ctr-chamado-bloco-topo">
+            <h3 class="ctr-chamado-bloco-titulo"><i class="fa fa-laptop" aria-hidden="true"></i> {{ m.rotulo }}</h3>
+            {% if m.chamado %}
+              <span class="ctr-chip is-ok">já solicitado</span>
+            {% elif m.obrigatorio %}
+              <span class="ctr-chip is-primary">obrigatório</span>
+              <input type="hidden" name="maquina" value="on">
+            {% else %}
+              <label class="ctr-check-linha">
+                {{ form_chamados.maquina }}
+                <span class="ctr-check-texto"><span class="ctr-check-titulo">Também preciso de máquina</span></span>
+              </label>
+            {% endif %}
+          </div>
+          {% if m.chamado %}
+            <p class="ctr-chamado-nota">
+              Solicitado em {{ m.chamado.created_at|date:"d/m/Y H:i" }} — não será enviado de novo.
+            </p>
+          {% else %}
+            <p class="ctr-chamado-nota">
+              Pedido da vaga: <strong>{{ obj.get_computador_display }}</strong>
+              {% if obj.telefonia != 'nenhum' %}· telefonia: {{ obj.get_telefonia_display }}{% endif %}.
+              {% if not m.obrigatorio %}Esta vaga está marcada como “não precisa de computador”, por isso este chamado é opcional.{% endif %}
+            </p>
+            <div class="ctr-chamado-detalhe" {% if not m.obrigatorio %}data-ctr-detalhe{% endif %}>
+              <div class="ctr-campo">
+                <label class="ctr-campo-label" for="{{ form_chamados.maquina_descricao.id_for_label }}">
+                  Necessidades de equipamento
+                </label>
+                {{ form_chamados.maquina_descricao }}
+                <span class="ctr-campo-ajuda">Configuração, periféricos e o que mais a TI precisa preparar.</span>
+              </div>
+            </div>
+            {% if m.canal.problema %}<div class="ctr-aviso is-perigo"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i><div>{{ m.canal.problema }}</div></div>{% endif %}
+          {% endif %}
+        </section>
+        {% endwith %}
+
+        {# ── 2. Usuário e e-mail ──────────────────────────────────── #}
+        {% with m=modal_chamados.usuario_email %}
+        <section class="ctr-chamado-bloco {% if m.chamado %}is-bloqueado{% endif %}" data-ctr-bloco
+                 data-rotulo="{{ m.rotulo }}"
+                 {% if m.canal %}data-destino="{% if pode_gerenciar_contratacao %}{{ m.canal.destinatarios|join:', ' }}{% else %}Equipe de TI{% endif %}" data-problema="{{ m.canal.problema }}"{% endif %}
+                 {% if m.chamado %}data-ctr-bloqueado{% endif %}>
+          <div class="ctr-chamado-bloco-topo">
+            <h3 class="ctr-chamado-bloco-titulo"><i class="fa fa-user-plus" aria-hidden="true"></i> {{ m.rotulo }}</h3>
+            {% if m.chamado %}<span class="ctr-chip is-ok">já solicitado</span>{% endif %}
+          </div>
+          {% if m.chamado %}
+            <p class="ctr-chamado-nota">Solicitado em {{ m.chamado.created_at|date:"d/m/Y H:i" }} — não será enviado de novo.</p>
+          {% else %}
+            <label class="ctr-check-linha">
+              {{ form_chamados.usuario_email }}
+              <span class="ctr-check-texto">
+                <span class="ctr-check-titulo">Preciso que a TI crie usuário de rede e/ou e-mail</span>
+                <span class="ctr-check-sub">Deixe desmarcado se a pessoa já tem tudo — nenhum e-mail será enviado.</span>
+              </span>
+            </label>
+            <div class="ctr-chamado-detalhe" data-ctr-detalhe>
+              <label class="ctr-check-linha">
+                {{ form_chamados.criar_usuario_rede }}
+                <span class="ctr-check-texto"><span class="ctr-check-titulo">{{ form_chamados.criar_usuario_rede.label }}</span></span>
+              </label>
+              <label class="ctr-check-linha">
+                {{ form_chamados.criar_email }}
+                <span class="ctr-check-texto">
+                  <span class="ctr-check-titulo">{{ form_chamados.criar_email.label }}</span>
+                  {% if obj.email_sugerido %}<span class="ctr-check-sub">Sugestão da vaga: {{ obj.email_sugerido }}</span>{% endif %}
+                </span>
+              </label>
+              <p class="ctr-chamado-nota">
+                Vão junto: cargo, setor, unidade, previsão de início
+                {% if obj.nome_contratado %}e o nome do contratado ({{ obj.nome_contratado }}){% else %}(a vaga ainda não tem contratado){% endif %},
+                usuário espelho{% if obj.perfil_espelho %} “{{ obj.perfil_espelho }}”{% endif %} e os acessos já marcados na vaga.
+              </p>
+              <div class="ctr-campo">
+                <label class="ctr-campo-label" for="{{ form_chamados.usuario_email_obs.id_for_label }}">Observações</label>
+                {{ form_chamados.usuario_email_obs }}
+              </div>
+            </div>
+            {% if m.canal.problema %}<div class="ctr-aviso is-perigo"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i><div>{{ m.canal.problema }}</div></div>{% endif %}
+          {% endif %}
+        </section>
+        {% endwith %}
+
+        {# ── 3. Orientação e uso dos sistemas ─────────────────────── #}
+        {% with m=modal_chamados.sistemas %}
+        <section class="ctr-chamado-bloco {% if m.chamado %}is-bloqueado{% endif %}" data-ctr-bloco
+                 data-rotulo="{{ m.rotulo }}"
+                 {% if m.canal %}data-destino="{% if pode_gerenciar_contratacao %}{{ m.canal.destinatarios|join:', ' }}{% else %}Equipe de TI{% endif %}" data-problema="{{ m.canal.problema }}"{% endif %}
+                 {% if m.chamado %}data-ctr-bloqueado{% endif %}>
+          <div class="ctr-chamado-bloco-topo">
+            <h3 class="ctr-chamado-bloco-titulo"><i class="fa fa-shield-halved" aria-hidden="true"></i> {{ m.rotulo }}</h3>
+            {% if m.chamado %}<span class="ctr-chip is-ok">já solicitado</span>{% endif %}
+          </div>
+          {% if m.chamado %}
+            <p class="ctr-chamado-nota">Solicitado em {{ m.chamado.created_at|date:"d/m/Y H:i" }} — não será enviado de novo.</p>
+          {% else %}
+            <label class="ctr-check-linha">
+              {{ form_chamados.sistemas }}
+              <span class="ctr-check-texto">
+                <span class="ctr-check-titulo">Preciso de orientação, configuração ou liberação de acesso aos sistemas</span>
+                <span class="ctr-check-sub">Deixe desmarcado se não há suporte a pedir — nenhum e-mail será enviado.</span>
+              </span>
+            </label>
+            <div class="ctr-chamado-detalhe" data-ctr-detalhe>
+              {% if sistemas_pedidos or licencas %}
+                <div>
+                  <span class="ctr-campo-label">Sistemas e licenças marcados na vaga</span>
+                  <ul class="ctr-chamado-lista">
+                    {% for linha in sistemas_pedidos %}<li>{{ linha.sistema.nome }}</li>{% endfor %}
+                    {% for linha in licencas %}<li>{{ linha.licenca.nome }} <span class="ctr-campo-ajuda">(licença)</span></li>{% endfor %}
+                  </ul>
+                </div>
+              {% else %}
+                <p class="ctr-chamado-nota">A vaga não tem sistema marcado — descreva nas observações quais a pessoa vai usar.</p>
+              {% endif %}
+              <fieldset class="ctr-campo" style="border:0;padding:0;margin:0;">
+                <legend class="ctr-campo-label">Tipo de orientação ou suporte</legend>
+                {% for opcao in form_chamados.sistemas_suporte %}
+                  <label class="ctr-check-linha">
+                    {{ opcao.tag }}
+                    <span class="ctr-check-texto"><span class="ctr-check-titulo">{{ opcao.choice_label }}</span></span>
+                  </label>
+                {% endfor %}
+              </fieldset>
+              <div class="ctr-campo">
+                <label class="ctr-campo-label" for="{{ form_chamados.sistemas_obs.id_for_label }}">Observações</label>
+                {{ form_chamados.sistemas_obs }}
+              </div>
+            </div>
+            {% if m.canal.problema %}<div class="ctr-aviso is-perigo"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i><div>{{ m.canal.problema }}</div></div>{% endif %}
+          {% endif %}
+        </section>
+        {% endwith %}
+
+        {# ── Resumo do que será enviado ───────────────────────────── #}
+        <div class="ctr-resumo" aria-live="polite">
+          <h3>Resumo — o que será enviado</h3>
+          <p class="ctr-resumo-vazio" id="ctrResumoVazio">Marque ao menos um chamado.</p>
+          <ul id="ctrResumoLista" hidden></ul>
+          <p class="ctr-chamado-nota">
+            O sistema envia o e-mail e registra o resultado. Ele não confirma que o chamado foi
+            aberto no atendimento — isso só aparece quando o TI registra o número.
+          </p>
+        </div>
+      </div>
+
+      <footer class="ctr-modal-rodape">
+        <button type="button" class="ctr-btn" data-ctr-fechar>Cancelar</button>
+        <button type="submit" class="ctr-btn is-primary" id="ctrChamadosEnviar">
+          <i class="fa fa-paper-plane" aria-hidden="true"></i> Confirmar e enviar
+        </button>
+      </footer>
+    </form>
+  </dialog>

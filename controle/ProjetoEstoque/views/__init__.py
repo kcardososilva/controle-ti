@@ -142,6 +142,7 @@ from .movimentacoes import (
     movimentacao_export_pdf,
     api_lotes_por_item,
     api_item_devolucao_info,
+    api_item_reserva,
     api_itens_disponiveis_lote,
     repositorio_termos,
 )
@@ -336,6 +337,10 @@ from .ninja import (
     ninja_login_revalidar,
     ninja_login_detalhe,
     ninja_importar,
+    ninja_oauth_conectar,
+    ninja_oauth_callback,
+    ninja_sincronizar,
+    ninja_desconectar,
 )
 
 # ── Status Board ─────────────────────────────────────────────────────────────
@@ -353,6 +358,7 @@ from .quiosque import (
     # Dashboard interno
     quiosque_dashboard,
     quiosque_apresentacao,
+    quiosque_sobre,
     quiosque_indicadores,
     quiosque_detalhe,
     quiosque_mapa_atualizar,
@@ -499,6 +505,50 @@ from .requisicoes import (
     itens_padrao_importar,
 )
 
+# -- Contratacoes (admissao / onboarding de TI) ------------------------------
+from .contratacoes import (  # noqa: E402
+    contratacao_painel,
+    contratacao_create,
+    contratacao_update,
+    contratacao_detail,
+    contratacao_delete,
+    contratacao_etapa,
+    contratacao_sistema_toggle,
+    contratacao_licenca_toggle,
+    contratacao_preencher,
+    contratacao_colaborador_corrigir,
+    contratacao_vaga_reabrir,
+    contratacao_colaborador_cadastrar,
+    contratacao_integracao,
+    contratacao_concluir,
+    contratacao_etapa_processo,
+    contratacao_reservar,
+    contratacao_reserva_liberar,
+    contratacao_reserva_alerta,
+    equipamento_reservar,
+    contratacao_chamados_solicitar,
+    contratacao_chamado_reenviar,
+    contratacao_chamado_identificador,
+    chamados_lista,
+    chamado_detail,
+    chamado_responder,
+    chamado_mensagem_reenviar,
+    chamado_atendimento,
+    chamado_anexo_download,
+    chamados_sincronizacao,
+    chamados_sincronizacao_acao,
+    sistema_corporativo_list,
+    sistema_corporativo_create,
+    sistema_corporativo_update,
+    sistema_corporativo_delete,
+)
+
+from .acessos_restritos import (  # noqa: E402
+    acesso_restrito_gerenciar,
+    acesso_restrito_conceder,
+    acesso_restrito_revogar,
+)
+
 # ── Recuperação de senha ("esqueci minha senha") ─────────────────────────────
 from .autenticacao import (  # noqa: E402
     RecuperarSenhaView,
@@ -515,3 +565,103 @@ from .erros import erro_preview  # noqa: E402
 
 # ── Apresentação pública (vitrine alcançada pela tela de acesso) ─────────────
 from .apresentacao import apresentacao  # noqa: E402
+
+# ── Monitoramento TIM M2M (chips, consumo, sessões, alertas e configuração) ──
+from .m2m import (  # noqa: E402
+    m2m_visao_geral,
+    m2m_chips,
+    m2m_chip_detalhe,
+    m2m_chip_novo,
+    m2m_chip_editar,
+    m2m_consumo,
+    m2m_sessoes,
+    m2m_alertas,
+    m2m_config,
+)
+from .m2m_api import (  # noqa: E402
+    m2m_chip_atualizar,
+    m2m_chip_monitoramento,
+    m2m_consulta_payload,
+    m2m_opcoes,
+    m2m_alerta_tratar,
+    m2m_config_token,
+    m2m_config_frequencia,
+    m2m_config_mapeamento,
+    m2m_config_previa,
+    m2m_config_testar,
+    m2m_reinterpretar,
+)
+
+# ── Frotas e Conectividade (veículos, movimentações do chip, importação, configuração) ──
+from .frota import (  # noqa: E402
+    frota_visao_geral,
+    frota_movimentacoes,
+    frota_importar,
+    frota_importacoes,
+    frota_importacao,
+    frota_config_tipos,
+    frota_config_operadoras,
+    frota_config_regras,
+    frota_veiculos,
+    frota_veiculo_detalhe,
+    frota_veiculo_novo,
+    frota_veiculo_editar,
+)
+from .frota_api import (  # noqa: E402
+    frota_veiculo_status,
+    frota_vincular,
+    frota_desvincular,
+    frota_transferir,
+    frota_substituir,
+    frota_retornar,
+    frota_inativar,
+    frota_opcoes,
+    frota_importacao_confirmar,
+    frota_importacao_cancelar,
+    frota_importacao_relatorio,
+    frota_modelo_planilha,
+    frota_config_tipo_salvar,
+    frota_tipo_rapido,
+    frota_config_operadora_salvar,
+    frota_config_regra_salvar,
+    frota_config_regra_restaurar,
+)
+
+# ── Tecnologia agrícola do Zelo Agro: estoque tecnológico e catálogo ──
+from .tec_estoque import (  # noqa: E402
+    tec_visao_geral,
+    tec_equipamentos,
+    tec_equipamento_novo,
+    tec_equipamento_detalhe,
+    tec_equipamento_editar,
+    tec_equipamento_mover,
+    tec_equipamento_inativar,
+    tec_materiais,
+    tec_material_detalhe,
+    tec_material_entrada,
+    tec_material_saida,
+    tec_material_ajuste,
+    tec_material_transferir,
+    tec_movimentacoes,
+)
+from .tec_instalacao import (  # noqa: E402
+    tec_equipamento_instalar,
+    tec_veiculo_instalar,
+    tec_instalacao_retirar,
+    tec_instalacao_transferir,
+    tec_instalacao_substituir,
+    tec_material_aplicar,
+    tec_material_devolver,
+)
+from .tec_catalogo import (  # noqa: E402
+    tec_catalogo,
+    tec_catalogo_novo,
+    tec_catalogo_editar,
+)
+
+# Ambientes do Zelo (TI · Agro) — services/ambiente_service.py
+from .ambiente import (  # noqa: E402
+    agro_visao_geral,
+    inicio,
+    rota_legada_frota,
+)
