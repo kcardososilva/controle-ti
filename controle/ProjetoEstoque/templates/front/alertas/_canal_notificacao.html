@@ -1,0 +1,97 @@
+{% comment %}
+  O cartão de UM canal do painel de notificações. Vive num parcial porque duas rotas o desenham: a página inteira
+  (`alertas_notificacoes`) e as ações do painel quando chamadas pela própria tela (`_responder` em views/alertas.py), que
+  devolvem este mesmo HTML e o JS troca só este cartão — sem recarregar a página.
+  Cada <form data-al-ajax> funciona sozinho sem JavaScript (POST comum + redirect); com `notificacoes-ajax.js` vira fetch.
+  Contexto: `canal` já preparado por `_preparar_canal` (pessoas, pessoas_nota, pessoas_total). Os estilos `.al-*` são os da
+  página que inclui este parcial.
+{% endcomment %}
+    <div class="al-canal {% if not canal.ativo %}is-off{% endif %}" id="al-canal-{{ canal.pk }}">
+      <div class="al-canal-top">
+        <div class="al-canal-icon"><i class="fa-solid {{ canal.icone|default:'fa-bell' }}" aria-hidden="true"></i></div>
+        <div class="al-canal-info">
+          <div class="al-canal-nome">{{ canal.nome }}</div>
+          {% if canal.descricao %}<div class="al-canal-desc">{{ canal.descricao }}</div>{% endif %}
+          <div class="al-canal-meta">
+            {% if canal.origem_disparo %}<span><i class="fa-solid fa-diagram-project" aria-hidden="true"></i>{{ canal.origem_disparo }}</span>{% endif %}
+            {% if canal.ultimo_envio %}
+              <span><i class="fa-regular fa-clock" aria-hidden="true"></i>Último envio: {{ canal.ultimo_envio|date:"d/m/Y H:i" }}</span>
+            {% else %}
+              <span><i class="fa-regular fa-clock" aria-hidden="true"></i>Nunca enviado</span>
+            {% endif %}
+            <span><i class="fa-solid fa-hashtag" aria-hidden="true"></i>{{ canal.total_envios }} envio{{ canal.total_envios|pluralize:"s" }}</span>
+          </div>
+        </div>
+        <div class="al-canal-actions">
+          {% if canal.pessoas_total > 0 %}
+            <span class="al-badge people" title="Pessoas que recebem este canal agora"><i class="fa-solid fa-users" aria-hidden="true"></i> {{ canal.pessoas_total }}</span>
+          {% endif %}
+          {% if canal.ativo %}
+            <span class="al-badge on"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Ativa</span>
+          {% else %}
+            <span class="al-badge off"><i class="fa-solid fa-circle-pause" aria-hidden="true"></i> Desativada</span>
+          {% endif %}
+          <form method="post" action="{% url 'alertas_notificacao_toggle' canal.pk %}" style="margin:0;" data-al-ajax>
+            {% csrf_token %}
+            <button type="submit" class="al-btn al-btn-sm {% if canal.ativo %}al-btn-off{% else %}al-btn-on{% endif %}">
+              {% if canal.ativo %}<i class="fa-solid fa-bell-slash" aria-hidden="true"></i> Desativar{% else %}<i class="fa-solid fa-bell" aria-hidden="true"></i> Ativar{% endif %}
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="al-pessoas-wrap">
+        <div class="al-pessoas-label">
+          <i class="fa-solid fa-user-group" aria-hidden="true"></i> Quem recebe agora
+          {% if canal.ativo and canal.pessoas_total == 0 %}
+            <span class="al-badge off"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Ninguém configurado — ativo, mas não envia</span>
+          {% endif %}
+        </div>
+        {% if canal.pessoas_total > 0 %}
+        <div class="al-pessoas">
+          {% for p in canal.pessoas|slice:":15" %}
+            <span class="al-pessoa">
+              <span title="{{ p.email }}">
+                {% if p.nome != p.email %}{{ p.nome }} <span class="ctx">&lt;{{ p.email }}&gt;</span>{% else %}{{ p.email }}{% endif %}
+                {% if p.contexto %}<span class="ctx">· {{ p.contexto }}</span>{% endif %}
+              </span>
+              {% if p.removivel %}
+                {% if p.remove_kind == "email" %}
+                <form method="post" action="{% url 'alertas_notificacao_remover_email' canal.pk %}" class="al-pessoa-rm-form" data-al-ajax onsubmit="return confirm('Remover {{ p.email|escapejs }} desta notificação?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="email" value="{{ p.remove_id }}">
+                  <button type="submit" class="al-pessoa-rm" title="Remover {{ p.email }}" aria-label="Remover {{ p.email }}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </form>
+                {% elif p.remove_kind == "perfil" %}
+                <form method="post" action="{% url 'alertas_notificacao_desvincular_perfil' canal.pk p.remove_id %}" class="al-pessoa-rm-form" data-al-ajax onsubmit="return confirm('Desvincular {{ p.nome|escapejs }} desta notificação?');">
+                  {% csrf_token %}
+                  <button type="submit" class="al-pessoa-rm" title="Desvincular {{ p.nome }}" aria-label="Desvincular {{ p.nome }}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </form>
+                {% endif %}
+              {% endif %}
+            </span>
+          {% endfor %}
+          {% if canal.pessoas_total > 15 %}<span class="al-pessoas-mais">+ {{ canal.pessoas_total|add:"-15" }} pessoa(s)</span>{% endif %}
+        </div>
+        {% else %}
+        <div class="al-pessoas is-empty"><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Nenhum destinatário resolvido no momento.</div>
+        {% endif %}
+        {% if canal.pessoas_nota %}<div class="al-pessoas-nota">{{ canal.pessoas_nota }}</div>{% endif %}
+      </div>
+
+      {% if canal.codigo == "item_defeito" %}
+      <div class="al-canal-dyn">
+        <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+        <span>Gerenciar em <a href="{% url 'fornecedor_acessos_list' %}">Fornecedores → Acesso ao Portal</a>.</span>
+      </div>
+      {% else %}
+      <div class="al-canal-dest">
+        <form method="post" action="{% url 'alertas_notificacao_destinatarios' canal.pk %}" data-al-ajax>
+          {% csrf_token %}
+          <input type="text" name="destinatarios" value="{{ canal.destinatarios_customizados }}" placeholder="Padrão do sistema (definido no .env) — informe e-mails separados por vírgula para redirecionar" aria-label="Destinatários de {{ canal.nome }}">
+          <button type="submit" class="al-btn al-btn-sm"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Salvar</button>
+          <span class="al-hint">Deixe em branco para usar o padrão do sistema.</span>
+        </form>
+      </div>
+      {% endif %}
+    </div>

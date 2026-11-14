@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags zelo_icones %}
+
+{% block title %}{{ tela.titulo }} — Frotas e Maquinários — Zelo Agro{% endblock %}
+{% block page_title %}Frotas e Maquinários{% endblock %}
+{% block page_subtitle %}{{ tela.titulo }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page" data-frota="{% if so_movimentacoes %}movimentacoes{% else %}historico{% endif %}">
+  {% include 'front/agro/frota/_topo.html' with titulo=tela.titulo descricao=tela.descricao %}
+
+  <form class="m2m-filtros" method="get" role="search">
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="f-q">Buscar equipamento</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="f-q" name="q" value="{{ filtros.q }}" class="m2m-campo" data-m2m-busca placeholder="Código do ERP, identificador interno ou nome" autocomplete="off">
+      </div>
+      <button type="button" class="m2m-btn m2m-filtros-botao" data-m2m-filtros="m2m-filtros-painel" aria-expanded="{% if filtros.tipo or filtros.usuario or filtros.natureza or filtros.de or filtros.ate %}true{% else %}false{% endif %}" aria-controls="m2m-filtros-painel"><i class="fa-solid fa-sliders" aria-hidden="true"></i>Filtros</button>
+    </div>
+    <div class="m2m-filtros-mais" id="m2m-filtros-painel" {% if not filtros.tipo and not filtros.usuario and not filtros.natureza and not filtros.de and not filtros.ate %}hidden{% endif %}>
+      <div class="m2m-filtros-grade">
+        <label class="m2m-rotulo"><span>{% if so_movimentacoes %}O que mudou{% else %}Tipo de registro{% endif %}</span>
+          <select name="tipo" class="m2m-campo">
+            <option value="">Todos</option>
+            {% for valor, rotulo in tipos %}<option value="{{ valor }}" {% if filtros.tipo == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Natureza</span>
+          <select name="natureza" class="m2m-campo">
+            <option value="">Todas</option>
+            {% for valor, rotulo in naturezas %}<option value="{{ valor }}" {% if filtros.natureza == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Registrado por</span><input type="text" name="usuario" value="{{ filtros.usuario }}" class="m2m-campo" autocomplete="off" placeholder="Login"></label>
+        <label class="m2m-rotulo"><span>De</span><input type="date" name="de" value="{{ filtros.de }}" class="m2m-campo"></label>
+        <label class="m2m-rotulo"><span>Até</span><input type="date" name="ate" value="{{ filtros.ate }}" class="m2m-campo"></label>
+      </div>
+      <div class="m2m-filtros-acoes">
+        <button type="submit" class="m2m-btn m2m-btn--primario">Aplicar filtros</button>
+        <a class="m2m-btn" href="{% url tela.rota %}">Limpar filtros</a>
+      </div>
+    </div>
+    <div class="agro-controles">
+      <p class="agro-contagem m2m-num" aria-live="polite">
+        {% if total_filtrado != total_geral %}<b>{{ total_filtrado|unlocalize }}</b> de {{ total_geral|unlocalize }} registro{{ total_geral|pluralize }}{% else %}<b>{{ total_geral|unlocalize }}</b> registro{{ total_geral|pluralize }}{% endif %}
+      </p>
+      <div class="agro-controles-fim">
+        {% if filtros_ativos %}<a class="m2m-btn m2m-btn--sm m2m-btn--fantasma" href="{% url tela.rota %}">Limpar filtros</a>{% endif %}
+        {% if pode_exportar and total_filtrado %}<a class="m2m-btn m2m-btn--sm" href="{{ url_exportar }}"><i class="fa-solid fa-file-excel" aria-hidden="true"></i>Exportar</a>{% endif %}
+      </div>
+    </div>
+  </form>
+
+  {% if filtros_ativos %}
+  <ul class="m2m-filtros-ativos" aria-label="Filtros em uso">
+    {% for f in filtros_ativos %}
+    <li class="m2m-etiqueta">{{ f.rotulo }} <a href="{{ f.remover }}" aria-label="Remover o filtro {{ f.rotulo }}" title="Remover o filtro">&times;</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if eventos %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela">
+      <thead><tr><th>Quando</th><th>Equipamento</th><th>{% if so_movimentacoes %}O que mudou{% else %}Evento{% endif %}</th><th>{% if so_movimentacoes %}De → para{% else %}Detalhe{% endif %}</th><th>Motivo</th><th>Registrado por</th></tr></thead>
+      <tbody>
+        {% for e in eventos %}
+        <tr class="m2m-linha">
+          <td class="m2m-quebra" data-rotulo="Quando"><span class="m2m-num">{{ e.quando|date:"d/m/Y H:i" }}</span></td>
+          <td data-rotulo="Equipamento">
+            <span class="zi-rotulo">
+              <span class="zi-selo" title="{{ e.veiculo.tipo.nome }}">{% zelo_icone_veiculo e.veiculo %}</span>
+              <span class="m2m-ident">
+                <a class="m2m-link-forte m2m-id" href="{% url 'frota_veiculo_detalhe' e.veiculo.pk %}">{{ e.veiculo.codigo_legado|default:e.veiculo.codigo }}</a>
+                <span class="m2m-ident-cod m2m-corta m2m-corta--media" title="{{ e.veiculo.nome }}">{{ e.veiculo.nome }}</span>
+              </span>
+            </span>
+          </td>
+          <td data-rotulo="{% if so_movimentacoes %}O que mudou{% else %}Evento{% endif %}"><b>{{ e.titulo }}</b></td>
+          <td class="m2m-quebra" data-rotulo="{% if so_movimentacoes %}De → para{% else %}Detalhe{% endif %}">
+            {% if e.mudancas %}{% for c in e.mudancas %}<span class="agro-de-para"><span class="m2m-sub">{{ c.rotulo }}</span> {{ c.de }} <i class="fa-solid fa-arrow-right-long" aria-hidden="true"></i> {{ c.para }}</span>{% endfor %}{% else %}{{ e.resumo|default:"—" }}{% endif %}
+          </td>
+          <td data-rotulo="Motivo">{% if e.motivo %}{{ e.motivo }}{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+          <td data-rotulo="Registrado por">{{ e.por|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% elif total_geral == 0 %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-right-left" titulo=tela.vazio texto=tela.vazio_texto only %}
+  {% else %}
+    {% url tela.rota as u_limpar %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum registro para os filtros aplicados" texto="Ajuste a busca ou limpe os filtros." acao_url=u_limpar acao_rotulo="Limpar filtros" only %}
+  {% endif %}
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

@@ -7,7 +7,10 @@ POSTs por `require_POST` — o CSRF é do middleware do Django (o formulário le
 `frota.js` manda também `X-CSRFToken`). Nenhuma regra de negócio mora aqui: cada função valida a
 entrada, chama o service e responde.
 
-    frota_veiculo_status   editar_frota
+    frota_veiculo_status   editar_frota   (também é o "Excluir" e o "Restaurar" da lista: status desativado / ativo)
+    frota_veiculo_exclusao editar_frota   (GET, JSON: o que impede e o que fica guardado, para o diálogo da lista)
+    frota_veiculo_validar  validar_inventario_frota
+    frota_veiculo_movimentar  editar_frota
     frota_vincular         vincular_chips
     frota_desvincular      transferir_chips   (o `vinculo_id` da URL é o vínculo que a tela MOSTRAVA)
     frota_transferir       transferir_chips   (idem)
@@ -49,7 +52,7 @@ from services import frota_service as frota
 from services import frota_vinculo_service as vinculos
 from services import m2m_monitoramento_service as m2m
 
-from .frota_comum import erros_de, exige_frota, mensagem_de, negar_sem, voltar_para
+from .frota_comum import erro_de_fazenda, erros_de, exige_frota, mensagem_de, negar_sem, voltar_para
 
 
 # ═════════════════════════════════════════════════════════════
@@ -115,6 +118,55 @@ def frota_veiculo_status(request, pk):
     )
 
 
+@exige_frota("editar_frota")
+@require_GET
+def frota_veiculo_exclusao(request, pk):
+    """O que existe em volta do equipamento ANTES de excluí-lo (`frota_service.verificar_exclusao`), em JSON, para o
+    diálogo "Excluir equipamento" da LISTA: ele abre, pergunta aqui e mostra o que impede (chip vinculado,
+    equipamento tecnológico instalado) e o que fica guardado. A conferência é de agora, não da hora em que a lista
+    foi desenhada — e o POST em `frota_veiculo_status` confere de novo, então esta leitura nunca autoriza nada."""
+    veiculo = get_object_or_404(FrotaVeiculo, pk=pk)
+    return JsonResponse({
+        **frota.verificar_exclusao(veiculo),
+        "codigo": veiculo.codigo_legado or veiculo.codigo, "nome": veiculo.nome, "status": veiculo.status,
+    }, headers={"Cache-Control": "no-store"})
+
+
+@exige_frota("validar_inventario_frota")
+@require_POST
+def frota_veiculo_validar(request, pk):
+    """O responsável pelo inventário CONFIRMA o cadastro importado: a pendência de validação sai e o status pode ser
+    ajustado na mesma hora (`status` vazio mantém o atual; `motivo` opcional). Vale uma vez só por equipamento."""
+    veiculo = get_object_or_404(FrotaVeiculo, pk=pk)
+    return _executar(
+        request,
+        lambda: frota.validar_cadastro(veiculo, request.user, status=_opcao_de_destino(request, "status"), motivo=request.POST.get("motivo", "")),
+        f"Cadastro de {veiculo.codigo_legado or veiculo.codigo} validado.",
+        reverse("frota_veiculo_detalhe", args=[veiculo.pk]),
+    )
+
+
+@exige_frota("editar_frota")
+@require_POST
+def frota_veiculo_movimentar(request, pk):
+    """Registra que o equipamento mudou de lugar ou de responsável (`localidade`, `setor`, `area_operacao`,
+    `centro_custo`, `responsavel`, e o `motivo`, obrigatório). Campo VAZIO não muda: o diálogo mostra o que há hoje e
+    pede só o que passa a valer."""
+    veiculo = get_object_or_404(FrotaVeiculo, pk=pk)
+
+    def agir():
+        dados = {c: request.POST[c].strip() for c in frota.CAMPOS_DE_MOVIMENTACAO if (request.POST.get(c) or "").strip()}
+        erro = erro_de_fazenda(dados.get("localidade"), veiculo)
+        if erro:
+            raise ValidationError({"localidade": erro})
+        return frota.registrar_movimentacao(veiculo, dados, request.user, motivo=request.POST.get("motivo", ""))
+
+    return _executar(
+        request, agir, f"Movimentação de {veiculo.codigo_legado or veiculo.codigo} registrada.",
+        reverse("frota_veiculo_detalhe", args=[veiculo.pk]),
+    )
+
+
 # ═════════════════════════════════════════════════════════════
 # Movimentações do chip
 # ═════════════════════════════════════════════════════════════
@@ -147,7 +199,7 @@ def frota_desvincular(request, vinculo_id):
     return _executar(
         request,
         lambda: vinculos.desvincular(vinculo_id, request.user, request.POST.get("motivo", ""), destino),
-        lambda r: f"Chip {r.vinculo_encerrado.chip.nome} desvinculado do veículo {r.vinculo_encerrado.veiculo.codigo}.",
+        lambda r: f"Chip {r.vinculo_encerrado.chip.nome} desvinculado do {vinculos.descrever_destino(r.vinculo_encerrado)}.",
         reverse("frota_veiculos"),
     )
 
@@ -163,8 +215,8 @@ def frota_transferir(request, vinculo_id):
     return _executar(
         request, agir,
         lambda r: (
-            f"Chip {r.vinculo.chip.nome} transferido de {r.vinculo_encerrado.veiculo.codigo} "
-            f"para {r.vinculo.veiculo.codigo}."
+            f"Chip {r.vinculo.chip.nome} transferido do {vinculos.descrever_destino(r.vinculo_encerrado)} "
+            f"para o {vinculos.descrever_destino(r.vinculo)}."
         ),
         reverse("frota_veiculos"),
     )
@@ -184,7 +236,7 @@ def frota_substituir(request, vinculo_id):
         request, agir,
         lambda r: (
             f"Chip {r.vinculo_encerrado.chip.nome} substituído pelo chip {r.vinculo.chip.nome} "
-            f"no veículo {r.vinculo.veiculo.codigo}."
+            f"no {vinculos.descrever_destino(r.vinculo)}."
         ),
         reverse("frota_veiculos"),
     )
@@ -344,10 +396,14 @@ def _salvar_e_voltar(request, acao, sucesso: str, destino: str):
 @exige_frota("administrar_frota_config")
 @require_POST
 def frota_config_tipo_salvar(request):
-    """Cria (sem `id`) ou edita um tipo de veículo: `nome`, `exige_conectividade`, `ativo`."""
+    """Cria (sem `id`) ou edita um tipo de veículo: `nome`, `exige_conectividade`, `espera_placa`,
+    `espera_chassi`, `ativo`."""
     pk = request.POST.get("id", "")
     tipo = get_object_or_404(FrotaTipo, pk=int(pk)) if pk.isdigit() else None
-    dados = {"nome": request.POST.get("nome", ""), "exige_conectividade": _marcado(request, "exige_conectividade")}
+    dados = {
+        "nome": request.POST.get("nome", ""), "exige_conectividade": _marcado(request, "exige_conectividade"),
+        "espera_placa": _marcado(request, "espera_placa"), "espera_chassi": _marcado(request, "espera_chassi"),
+    }
     if tipo is not None:
         dados["ativo"] = _marcado(request, "ativo")
     return _salvar_e_voltar(

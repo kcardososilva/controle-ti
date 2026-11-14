@@ -313,6 +313,11 @@
           errorLoading: () => 'Não foi possível buscar',
         },
       };
+      // Opções (ou resultados remotos) com ícone do tipo de equipamento: `data-icone` na <option>, `icone` no resultado.
+      if (window.ZeloIcones && (sel.dataset.m2mS2 === 'ajax' || window.ZeloIcones.selectTemIcones(sel))) {
+        opcoes.templateResult = window.ZeloIcones.select2.result;
+        opcoes.templateSelection = window.ZeloIcones.select2.selection;
+      }
       // `data-fonte` escolhe o endpoint de opções (`opcoes` = chip, `frota_opcoes` = veículo): cada um
       // tem a permissão dele, e o cadastro do veículo não tem a de importar chips.
       const fonte = URLS[sel.dataset.fonte || 'opcoes'];
@@ -442,15 +447,53 @@
         const r = await enviar(URLS.simular, {
           simular: '1',
           intervalo_minutos: form.elements.intervalo_minutos.value,
+          intervalo_repouso_minutos: form.elements.intervalo_repouso_minutos.value,
           limite_req_minuto: form.elements.limite_req_minuto.value,
         }, true);
         if (!r.dados) return;
         document.getElementById('m2m-conta-texto').textContent = r.dados.conta || '';
         document.getElementById('m2m-conta-motivo').textContent = r.dados.motivo || '';
-        caixa.dataset.ok = r.dados.ok ? '1' : '0';
+        caixa.dataset.ok = (r.dados.ok && !r.dados.limitado) ? '1' : '0';
       } catch (e) { /* a conta é só informativa: o servidor valida ao salvar */ }
     }, 300);
     camposConta.forEach((c) => c.addEventListener('input', simular));
+  }
+
+  /* ── 8b · A faixa de sincronização se atualiza sozinha ───────── */
+  /* O servidor só LÊ do banco o que a tarefa do Agendador gravou: esta pergunta nunca dispara consulta na
+     API, e a página aberta ou fechada não muda a frequência da sincronização. Pausa com a aba escondida. */
+  const faixaSync = document.querySelector('[data-sync-url]');
+  if (faixaSync) {
+    const INTERVALO_MS = 30000;
+    const campo = (nome) => faixaSync.querySelector('[data-sync-campo="' + nome + '"]');
+    function texto(nome, valor) { const e = campo(nome); if (e) e.textContent = valor; }
+    function aplicar(d) {
+      faixaSync.dataset.sync = d.estado;
+      const ind = faixaSync.querySelector('[data-sync-ind] .m2m-ind');
+      if (ind) {
+        ind.dataset.estado = d.ind;
+        ind.title = d.motivo || '';
+        const rotulo = ind.querySelector('span');
+        if (rotulo) rotulo.textContent = d.rotulo;
+      }
+      texto('ultima', d.ultima_sincronizacao.texto || '—');
+      texto('ultima-rotulo', d.ultima_sincronizacao.rotulo || 'nunca concluiu');
+      texto('resposta', d.ultima_resposta_valida.texto || '—');
+      texto('proxima', d.proxima.texto || '—');
+      if (d.ciclo) {
+        texto('ciclo', d.ciclo.consultados + ' chip' + (d.ciclo.consultados === 1 ? '' : 's') + ' · ' + d.ciclo.falhas +
+          ' falha' + (d.ciclo.falhas === 1 ? '' : 's') + ' · ' + d.ciclo.chamadas + ' req.');
+      }
+    }
+    async function perguntar() {
+      if (document.hidden) return;
+      try {
+        const r = await fetch(faixaSync.dataset.syncUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' });
+        if (r.ok) aplicar(await r.json());
+      } catch (e) { /* sem rede: a faixa fica como estava e a próxima pergunta tenta de novo */ }
+    }
+    setInterval(perguntar, INTERVALO_MS);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) perguntar(); });
   }
 
   /* ── 9 · Configuração: prévia ao vivo do mapeamento ─────────── */

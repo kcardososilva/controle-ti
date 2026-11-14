@@ -32,6 +32,7 @@ from services import tim_m2m_service as tim
 from .m2m import (
     contexto_de_configuracao,
     erros_de,
+    exige_api,
     exige_frota,
     mapeamento_do_post,
     voltar_para,
@@ -130,6 +131,7 @@ def m2m_chip_atualizar(request, pk):
         resposta["html_linha"] = render_to_string("front/m2m/_chip_linha.html", {
             "chip": m2m.anotar_chips([chip])[0],
             "pode_atualizar": request.user.has_perm("ProjetoEstoque.consultar_conectividade"),
+            "pode_ver_api": True,        # esta rota já exige `consultar_conectividade`: quem chega aqui vê a API
             "pode_ver_frota": request.user.has_perm("ProjetoEstoque.ver_frota"),
             "pode_vincular": request.user.has_perm("ProjetoEstoque.vincular_chips"),
             "consumo_base": m2m.base_de_consumo(m2m.configuracao_atual()["mapeamento"]),
@@ -138,6 +140,7 @@ def m2m_chip_atualizar(request, pk):
 
 
 @exige_frota("importar_chips")
+@exige_api            # ligar/desligar a consulta à API é controle da API, não cadastro do chip
 @require_POST
 def m2m_chip_monitoramento(request, pk):
     """Desativa (`acao=desativar`, com `motivo` obrigatório) ou reativa
@@ -271,15 +274,15 @@ def m2m_config_frequencia(request):
     if request.POST.get("simular"):
         try:
             intervalo = int(str(dados.get("intervalo_minutos", "")).strip())
+            repouso = int(str(dados.get("intervalo_repouso_minutos", "")).strip()) if dados.get("intervalo_repouso_minutos") else None
             limite = int(str(dados.get("limite_req_minuto", "")).strip()) if dados.get("limite_req_minuto") else None
-            if intervalo < 1 or (limite is not None and limite < 1):
+            if intervalo < 1 or (repouso is not None and repouso < 1) or (limite is not None and limite < 1):
                 raise ValueError
         except ValueError:
             return JsonResponse({"ok": False, "motivo": "Informe números inteiros maiores que zero.", "conta": ""})
-        conta = m2m.validar_frequencia(intervalo, limite_req_minuto=limite)
+        plano = m2m.plano_atual(intervalo_ativo=intervalo, intervalo_repouso=repouso, limite=limite)
         return JsonResponse({
-            "ok": conta["ok"], "motivo": conta["motivo"], "conta": conta["conta"],
-            "intervalo_minimo_sugerido": conta["intervalo_minimo_sugerido"],
+            "ok": True, "motivo": "", "conta": plano["texto"], "limitado": plano["limitado"],
         })
     try:
         m2m.salvar_configuracao(dados, request.user)
@@ -287,6 +290,43 @@ def m2m_config_frequencia(request):
         return _renderizar_configuracao_com_erros(request, erros_de(exc), valores=dados)
     messages.success(request, "Configuração salva.")
     return redirect("m2m_config")
+
+
+@exige_frota("ver_chips")
+@exige_api
+@require_GET
+def m2m_sincronizacao(request):
+    """O estado da sincronização automática, em JSON, para a faixa do topo se atualizar sozinha (o `m2m.js`
+    pergunta a cada 30 s). SÓ LÊ do banco o que a tarefa do Agendador gravou: abrir ou consultar esta rota
+    nunca dispara uma consulta à API. Não leva credencial, nem o token, nem a resposta da TIM."""
+    agora = timezone.now()
+    e = m2m.estado_sincronizacao(agora)
+
+    def quando(momento):
+        if not momento:
+            return {"texto": "", "iso": "", "rotulo": ""}
+        local = timezone.localtime(momento)
+        return {
+            "texto": local.strftime("%H:%M:%S") if local.date() == timezone.localdate() else local.strftime("%d/%m %H:%M"),
+            "iso": momento.isoformat(), "rotulo": m2m.frescor(momento, 10 ** 6, agora)["rotulo"],
+        }
+
+    exec_ = e["execucao"]
+    return JsonResponse({
+        "estado": e["estado"], "rotulo": e["rotulo"], "tom": e["tom"], "motivo": e["motivo"], "ind": e["ind"],
+        "ultima_sincronizacao": quando(e["ultima_sincronizacao"]),
+        "ultima_tentativa": quando(e["ultima_tentativa"]),
+        "ultima_resposta_valida": quando(e["ultima_resposta_valida"]),
+        "proxima": quando(e["proxima"]),
+        "vencidos": e["vencidos"],
+        "ciclo": ({
+            "iniciado": quando(exec_.iniciada_em), "estado": exec_.get_estado_display(), "consultados": exec_.consultados,
+            "sucessos": exec_.sucessos, "falhas": exec_.falhas, "chamadas": exec_.chamadas,
+            "pendentes": exec_.pendentes, "duracao_s": round(exec_.duracao_ms / 1000, 1), "mudancas": exec_.mudancas or {},
+        } if exec_ else None),
+        "plano": e["plano"]["texto"], "limitado": e["plano"]["limitado"],
+        "tique_minutos": e["tique_minutos"],
+    })
 
 
 @exige_frota("administrar_frota_config")

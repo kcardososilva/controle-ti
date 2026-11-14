@@ -55,6 +55,8 @@ from ProjetoEstoque.models import (
     Usuario,
 )
 from ProjetoEstoque.tests import test_m2m as base
+from services import frota_service
+from services import m2m_analise_service as m2m_analise
 from services import m2m_interpretacao as interp
 from services import m2m_monitoramento_service as m2m
 from services import tim_m2m_service as tim
@@ -207,12 +209,21 @@ class AcessoTests(TelasBase):
             with self.subTest(rota=nome):
                 self.assertEqual(self.chamar(cliente, nome, args, metodo).status_code, 403)
 
+    # Rotas que, além da permissão própria, são DA API (Portal do Colaborador, regra 71): sem uma permissão de API
+    # (`ambiente_service.PERMISSOES_API`) levam 403 mesmo para quem tem a própria — alerta de conectividade e ligar/desligar a
+    # consulta são o que a operadora disse e o controle dela, não cadastro nem movimentação.
+    DA_API = {"m2m_alertas", "m2m_chip_monitoramento"}
+
     def test_cada_rota_exige_exatamente_a_sua_permissao(self):
-        """Quem tem SÓ a permissão da rota passa (não leva 403); quem tem todas as OUTRAS leva 403."""
+        """Quem tem SÓ a permissão da rota passa (não leva 403); quem tem todas as OUTRAS leva 403. As rotas de `DA_API`
+        pedem também uma permissão de API: com a própria e sem nenhuma de API, 403."""
         todas = {c for c in {r[3] for r in self.rotas()}}
         for nome, args, metodo, exigida in self.rotas():
             with self.subTest(rota=nome):
-                so_ela = self.cliente_de(self.usuario_com(f"so_{nome}", exigida))
+                if nome in self.DA_API:
+                    sem_api = self.cliente_de(self.usuario_com(f"sem_api_{nome}", exigida))
+                    self.assertEqual(self.chamar(sem_api, nome, args, metodo).status_code, 403, f"{nome} deixou passar quem não tem API")
+                so_ela = self.cliente_de(self.usuario_com(f"so_{nome}", exigida, *(("consultar_conectividade",) if nome in self.DA_API else ())))
                 self.assertNotEqual(self.chamar(so_ela, nome, args, metodo).status_code, 403, f"{nome} barrou quem tem {exigida}")
                 todas_menos_ela = self.cliente_de(self.usuario_com(f"menos_{nome}", *sorted(todas - {exigida})))
                 self.assertEqual(
@@ -338,19 +349,22 @@ class MenuTests(TelasBase):
         self.assertNotIn("sub-agro-frotas", so_opera)                     # nem nada da frota (ver_frota)
         so_config = self.menu(self.cliente_de(self.usuario_com("menu_config", "configurar")))
         self.assertIn(f'href="{reverse("m2m_config")}"', so_config)
-        self.assertIn(f'href="{reverse("frota_config_tipos")}"', so_config)
+        self.assertIn(f'href="{reverse("frota_categorias")}"', so_config)     # "Tipos de veículo" virou "Categorias e classes"
         self.assertNotIn(f'href="{reverse("m2m_chips")}"', so_config)
 
     def test_o_menu_tem_as_telas_e_a_configuracao_so_com_a_permissao(self):
         so_ve = self.menu(self.cliente_de(self.usuario_com("menu_a", "ver")))
         for nome in ("m2m_visao_geral", "m2m_chips", "m2m_consumo", "m2m_sessoes", "m2m_alertas",
-                     "frota_movimentacoes", "frota_visao_geral", "frota_veiculos"):
+                     "frota_movimentacoes", "frota_visao_geral", "frota_equipamentos_proprios", "frota_equipamentos_terceiros",
+                     "frota_equip_movimentacoes", "frota_equip_historico", "frota_relatorios"):
             self.assertIn(f'href="{reverse(nome)}" class="sub-link', so_ve)
         self.assertNotIn(f'href="{reverse("m2m_config")}"', so_ve)
+        self.assertNotIn(f'href="{reverse("frota_categorias")}"', so_ve)
         completo = self.menu(self.cliente_de(self.usuario_com("menu_b", "ver", "configurar")))
         self.assertIn(f'href="{reverse("m2m_config")}" class="sub-link', completo)
-        for rotulo in ("Visão geral", "Chips cadastrados", "Sessões", "Consumo",
-                       "Movimentações", "Alertas", "Configuração", "Veículos e equipamentos", "Tipos de veículo"):
+        # Frotas e Maquinários (prompt de 2026-11-13, Parte 2) + Chips e Conectividade
+        for rotulo in ("Visão geral", "Chips cadastrados", "Sessões", "Consumo", "Movimentações", "Alertas", "Configuração",
+                       "Próprios", "Terceiros", "Categorias e classes", "Histórico", "Relatórios"):
             self.assertIn(rotulo, completo)
 
     def test_grupo_acende_nas_telas_do_modulo(self):
@@ -393,13 +407,13 @@ class TelasVaziasTests(TelasBase):
                 self.sem_lixo_de_template(html, nome)
                 self.assertIn("m2m-faixa", html)            # a faixa de saúde está em TODA tela
                 self.assertIn("m2m-abas", html)
-                self.assertIn("Telecom · TIM M2M", html)
+                self.assertIn("Chips e Conectividade", html)      # o nome da seção (até 13/11 era "Telecom · TIM M2M")
 
     def test_visao_geral_vazia_diz_que_nao_ha_chip_e_aponta_o_proximo_passo(self):
         html = self.html(self.get("m2m_visao_geral"))
-        self.assertIn("Nenhum chip cadastrado", html)
+        self.assertIn("Nenhuma sessão de dados registrada no período", html)         # estado vazio, não gráfico de zeros
+        self.assertIn("Cadastrar ou importar chips", html)                           # o próximo passo (checklist de configuração)
         self.assertIn(reverse("m2m_chip_novo"), html)
-        self.assertIn("Para começar", html)
 
     def test_lista_vazia_tem_estado_vazio(self):
         html = self.html(self.get("m2m_chips"))
@@ -540,23 +554,31 @@ class TelasComDadosTests(TelasBase):
 
     def test_visao_geral_traz_a_regua_a_conectividade_e_o_consumo_com_a_origem_dita(self):
         html = self.html(self.get("m2m_visao_geral"))
-        for rotulo in ("Chips monitorados", "Sessão ativa confirmada", "Sem sessão identificada", "Não interpretado",
-                       "Consulta pendente", "Falha de consulta", "Desatualizados", "Precisam de atenção"):
+        # A primeira área é a do pedido de 14/11 (docs/prompt.txt, parte 2): seis indicadores. Os rótulos antigos
+        # ("Cadastrados", "Sessão ativa", "Consulta com falha", "Dados desatualizados") foram substituídos por ela; o dado
+        # desatualizado/com falha continua visível no gráfico de inatividade e nos estados do consumo.
+        for rotulo in ("Situação dos chips", "Total de chips", "Em uso", "Disponíveis", "Sessões ativas confirmadas",
+                       "Sem sessão identificada", "Falhas de consulta", "Consumo de dados por dia", "Consumo de dados: maiores e menores",
+                       "Chips sem atividade recente", "Últimas sincronizações", "Histórico de falhas", "Movimentações recentes"):
             self.assertIn(rotulo, html)
-        self.assertIn("m2m-empilhada", html)
-        self.assertIn("Chips com falha de consulta", html)
-        self.assertIn("Últimas consultas", html)
-        self.assertIn("Eventos recentes", html)
-        self.assertIn("último volume informado", html)
-        self.assertIn("Não é o consumo do mês, nem saldo", html)
+        # sem nenhuma sessão de dados no período, o painel diz isso em vez de desenhar um ranking de zeros
+        self.assertIn("Nenhuma sessão de dados registrada no período", html)
+        self.assertNotIn("Maiores consumidores", html)
+        self.assertIn("Fonte: Sessões de dados lidas na plataforma da TIM", html)  # cada gráfico diz a origem
+        self.assertIn("o limite contratado de cada chip não é conhecido", html)    # e não inventa franquia
         self.assertNotIn("% da franquia", html)
 
     def test_visao_geral_os_numeros_da_regua_sao_os_do_servico(self):
         k = m2m.indicadores()
+        a = m2m_analise.indicadores()
         html = self.html(self.get("m2m_visao_geral"))
         self.assertEqual(k["monitorados"], 5)
-        for chave in ("monitorados", "sessao_ativa", "sem_sessao", "nao_interpretado", "falha_consulta"):
-            self.assertRegex(html, rf'm2m-kpi-n m2m-num">{k[chave]}<')
+        self.assertEqual(a["total"], M2MChip.objects.count())                       # todos os cadastrados (um deles está desativado)
+        # cada número é lido pelo RÓTULO ao lado dele — procurar só o número casaria com qualquer outro cartão de mesmo valor
+        for rotulo, chave in (("Total de chips", "total"), ("Em uso", "em_uso"), ("Disponíveis", "disponiveis"),
+                              ("Sessões ativas confirmadas", "sessao_ativa"), ("Sem sessão identificada", "sem_sessao"),
+                              ("Falhas de consulta", "falha_consulta")):
+            self.assertRegex(html, rf'<span class="m2m-micro">{rotulo}</span><span class="m2m-kpi-n m2m-num">{a[chave]}<', rotulo)
 
     def test_faixa_de_saude_aparece_com_o_estado_da_integracao(self):
         html = self.html(self.get("m2m_visao_geral"))
@@ -578,7 +600,7 @@ class TelasComDadosTests(TelasBase):
     def test_sem_mapeamento_a_tela_diz_isso_e_aponta_a_configuracao(self):
         M2MIntegracao.objects.filter(pk=1).update(mapeamento={})
         for nome, trecho in (
-            ("m2m_visao_geral", "Nenhum mapeamento da resposta configurado"),
+            ("m2m_visao_geral", "Sem o mapeamento da resposta da API"),
             ("m2m_chips", "Sem o mapeamento da sessão"),
             ("m2m_sessoes", "O estado da sessão ainda não está mapeado"),
             ("m2m_consumo", "O volume de consumo ainda não está mapeado"),
@@ -788,7 +810,7 @@ class AtualizarJsonTests(TelasBase):
         self.assertEqual(d["chip"]["consumo_bytes"], 250_500_000)
         self.assertEqual(d["chip"]["falhas_consecutivas"], 0)
         self.assertNotIn("html_linha", d)                          # só a lista pede a linha
-        self.assertEqual(len(sessao.chamadas), 2)
+        self.assertEqual(len(sessao.chamadas), 1)                  # sessão e consumo: o mesmo registro, um GET só
         self.assertEqual(M2MConsulta.objects.filter(chip=self.chip_, origem="manual").count(), 2)
 
     def test_na_lista_devolve_a_linha_ja_renderizada(self):
@@ -805,7 +827,7 @@ class AtualizarJsonTests(TelasBase):
         sessao = self.api_falsa(base.roteador())
         d = self.atualizar_json({"tipos": ["consumo"]}).json()
         self.assertEqual([c["tipo"] for c in d["consultas"]], ["consumo"])
-        self.assertTrue(sessao.urls[0].endswith("/usage"))
+        self.assertIn("/simcards/", sessao.urls[0])                 # consumo e sessão saem do mesmo recurso
         self.chip_.refresh_from_db()
         self.assertEqual(self.chip_.sessao_estado, "nao_consultado")
 
@@ -854,7 +876,7 @@ class AtualizarJsonTests(TelasBase):
             r = self.atualizar_json()
         self.assertEqual(r.status_code, 409)
         self.assertEqual(r.json()["codigo"], "configuracao")
-        self.assertIn("Nenhum token configurado", r.json()["mensagem"])
+        self.assertIn("Nenhuma credencial configurada", r.json()["mensagem"])
         self.assertEqual(sessao.chamadas, [])
 
     def test_api_bloqueada_por_limite_recusa(self):
@@ -902,7 +924,7 @@ class PayloadJsonTests(TelasBase):
         r = self.client.get(reverse("m2m_consulta_payload", args=[consulta.pk]))
         self.assertEqual(r.status_code, 200)
         d = r.json()
-        self.assertEqual(d["payload"], base.SESSAO_UP)
+        self.assertEqual(d["payload"], {**base.SESSAO_UP, **base.USO_MB})
         self.assertEqual(d["chip"]["nome"], chip.nome)
         self.assertEqual(d["tipo"], "sessao")
         self.assertTrue(d["valida"])
@@ -1142,7 +1164,7 @@ class AlertasTests(TelasBase):
 
     def test_o_contador_da_aba_acompanha_as_ocorrencias_abertas(self):
         html = self.html(self.get("m2m_visao_geral"))
-        self.assertRegex(html, r'Alertas e ocorrências <span class="m2m-contagem"[^>]*>1</span>')
+        self.assertRegex(html, r'Alertas\s*<span class="m2m-contagem"[^>]*>1</span>')
         self.tratar("resolver", "ok")
         self.assertNotIn("m2m-contagem", self.html(self.get("m2m_visao_geral")))
 
@@ -1189,6 +1211,15 @@ class ConfiguracaoTelasTests(TelasBase):
         self.assertIn("arquivo .env do servidor", html)
         self.assertIn("····" + base.TOKEN[-4:], html)
 
+    def test_usuario_e_senha_da_api_no_env_a_tela_diz_o_modo_e_nao_mostra_a_senha(self):
+        with override_settings(TIM_M2M_CLIENT_ID="usuario-api", TIM_M2M_CLIENT_SECRET="senha-secreta-9876"):
+            html = self.html(self.get("m2m_config"))
+        self.assertIn("usuário e senha da API, no arquivo .env do servidor", html)
+        self.assertIn("TIM_M2M_CLIENT_ID e TIM_M2M_CLIENT_SECRET", html)
+        self.assertNotIn("Final do token", html)                      # não há pedaço de senha a mostrar
+        self.assertNotIn("senha-secreta-9876", html)
+        self.assertNotIn("usuario-api", html)
+
     def test_sem_chave_de_cifra_a_tela_recusa_gravar_e_mostra_o_comando(self):
         with override_settings(TIM_M2M_TOKEN="", TIM_M2M_CHAVE_CIFRA=""):
             html = self.html(self.get("m2m_config"))
@@ -1222,19 +1253,23 @@ class ConfiguracaoTelasTests(TelasBase):
         self.assertTrue(M2MEvento.objects.filter(tipo="config_alterada").exists())
 
     def test_frequencia_invalida_volta_com_a_conta_e_com_o_valor_digitado(self):
-        r = self.client.post(reverse("m2m_config_frequencia"), {"intervalo_minutos": "5"})
+        r = self.client.post(reverse("m2m_config_frequencia"), {"intervalo_minutos": "0"})
         self.assertEqual(r.status_code, 400)
         html = r.content.decode("utf-8")
-        self.assertIn("O intervalo mínimo é de 15 minutos", html)
-        self.assertRegex(html, r'name="intervalo_minutos" value="5"')
-        self.assertEqual(M2MIntegracao.get().intervalo_minutos, 60)
+        self.assertIn("informe um valor entre 1 e", html)
+        self.assertRegex(html, r'name="intervalo_minutos" value="0"')
+        self.assertEqual(M2MIntegracao.get().intervalo_minutos, 1)
 
-    def test_frequencia_acima_do_limite_de_requisicoes_mostra_a_conta(self):
+    def test_frequencia_acima_do_limite_de_requisicoes_e_aceita_e_a_tela_mostra_o_efetivo(self):
         for n in range(1, 11):
             self.chip(n)
-        r = self.client.post(reverse("m2m_config_frequencia"), {"intervalo_minutos": "15", "limite_req_minuto": "1"})
-        self.assertEqual(r.status_code, 400)
-        self.assertIn("req/min", r.content.decode("utf-8"))
+        r = self.client.post(reverse("m2m_config_frequencia"), {
+            "intervalo_minutos": "1", "intervalo_repouso_minutos": "1", "limite_req_minuto": "5",
+        })
+        self.assertEqual(r.status_code, 302)                       # o intervalo desejado é gravado: o ciclo é que se limita
+        html = self.html(self.get("m2m_config"))
+        self.assertIn("Na prática", html)
+        self.assertEqual(M2MIntegracao.get().limite_req_minuto, 5)
 
     def test_simular_a_frequencia_devolve_a_conta_e_nao_grava(self):
         for n in range(1, 11):
@@ -1242,11 +1277,15 @@ class ConfiguracaoTelasTests(TelasBase):
         r = self.client.post(reverse("m2m_config_frequencia"), {"simular": "1", "intervalo_minutos": "15", "limite_req_minuto": "30"})
         d = r.json()
         self.assertTrue(d["ok"])
-        self.assertIn("2 consultas x 10 chips / 15 min", d["conta"])
-        d = self.client.post(reverse("m2m_config_frequencia"), {"simular": "1", "intervalo_minutos": "15", "limite_req_minuto": "1"}).json()
-        self.assertFalse(d["ok"])
-        self.assertGreater(d["intervalo_minimo_sugerido"], 15)
-        self.assertEqual(M2MIntegracao.get().intervalo_minutos, 60)
+        self.assertFalse(d["limitado"])
+        self.assertIn("10 sem sessão a cada 15 min", d["conta"])
+        d = self.client.post(reverse("m2m_config_frequencia"), {
+            "simular": "1", "intervalo_minutos": "1", "intervalo_repouso_minutos": "1", "limite_req_minuto": "1",
+        }).json()
+        self.assertTrue(d["ok"])                                    # nunca recusa: informa
+        self.assertTrue(d["limitado"])
+        self.assertIn("Na prática", d["conta"])
+        self.assertEqual(M2MIntegracao.get().intervalo_minutos, 1)
         for lixo in ({"intervalo_minutos": "abc"}, {"intervalo_minutos": "0"}, {}):
             self.assertFalse(self.client.post(reverse("m2m_config_frequencia"), {"simular": "1", **lixo}).json()["ok"])
 
@@ -1295,7 +1334,7 @@ class ConfiguracaoTelasTests(TelasBase):
         r = self.client.post(reverse("m2m_reinterpretar"), follow=True)
         self.assertEqual(M2MChip.objects.get(pk=chip.pk).sessao_estado, "ativa")
         self.assertIn("Histórico reinterpretado", "".join(str(m) for m in r.context["messages"]))
-        self.assertEqual(M2MChip.objects.get(pk=chip.pk).sessao_consulta.payload, base.SESSAO_UP)     # o payload nunca é tocado
+        self.assertEqual(M2MChip.objects.get(pk=chip.pk).sessao_consulta.payload, {**base.SESSAO_UP, **base.USO_MB})     # o payload nunca é tocado
 
     def test_previa_ao_vivo_usa_a_ultima_resposta_real_e_nao_grava(self):
         chip = self.chip(1)

@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static m2m_tags %}
+{% load static m2m_tags zelo_icones %}
 
 {% block title %}Movimentações — Chips e Conectividade — Zelo Agro{% endblock %}
 {% block page_title %}Chips e Conectividade{% endblock %}
@@ -75,7 +75,7 @@
               <span class="m2m-par">
                 {% for m in g.movimentacoes reversed %}
                 <span>
-                  <span class="m2m-par-papel">{% if m.veiculo_destino_id %}entrou{% else %}saiu{% endif %}</span>
+                  <span class="m2m-par-papel">{% if m.veiculo_destino_id or m.item_destino_id %}entrou{% else %}saiu{% endif %}</span>
                   {% if pode_ver_chips %}<a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' m.chip_id %}">{{ m.chip.nome }}</a>{% else %}{{ m.chip.nome }}{% endif %}
                 </span>
                 {% endfor %}
@@ -91,11 +91,11 @@
           </td>
           <td class="m2m-quebra" data-rotulo="Origem e destino">
             {% with m=g.movimentacoes.0 %}
-              {% if m.veiculo_origem %}{% if pode_ver_frota %}<a href="{% url 'frota_veiculo_detalhe' m.veiculo_origem_id %}" title="{{ m.veiculo_origem.nome }}">{{ m.veiculo_origem.codigo }}</a>{% else %}{{ m.veiculo_origem.codigo }}{% endif %}{% endif %}
-              {% if m.veiculo_origem and m.veiculo_destino and g.movimentacoes|length == 1 %}<span class="m2m-sub" aria-label="para">→</span>{% endif %}
-              {% if m.veiculo_destino and g.movimentacoes|length == 1 %}{% if pode_ver_frota %}<a href="{% url 'frota_veiculo_detalhe' m.veiculo_destino_id %}" title="{{ m.veiculo_destino.nome }}">{{ m.veiculo_destino.codigo }}</a>{% else %}{{ m.veiculo_destino.codigo }}{% endif %}{% endif %}
-              {% if g.movimentacoes|length > 1 and not m.veiculo_origem %}{{ m.veiculo_destino.codigo }}{% endif %}
-              {% if not m.veiculo_origem and not m.veiculo_destino %}<span class="m2m-vazio-linha">—</span>{% endif %}
+              {% if m.veiculo_origem %}{% zelo_icone_veiculo m.veiculo_origem %} {% if pode_ver_frota %}<a href="{% url 'frota_veiculo_detalhe' m.veiculo_origem_id %}" title="{{ m.veiculo_origem.nome }}">{{ m.veiculo_origem.codigo }}</a>{% else %}{{ m.veiculo_origem.codigo }}{% endif %}{% elif m.item_origem %}{% zelo_icone_item m.item_origem %} <a href="{% url 'equipamento_detalhe' m.item_origem_id %}" title="Equipamento do estoque de TI: {{ m.origem_rotulo }}">{{ m.item_origem.nome }}</a>{% endif %}
+              {% if m.origem_rotulo and m.destino_rotulo and g.movimentacoes|length == 1 %}<span class="m2m-sub" aria-label="para">→</span>{% endif %}
+              {% if g.movimentacoes|length == 1 %}{% if m.veiculo_destino %}{% zelo_icone_veiculo m.veiculo_destino %} {% if pode_ver_frota %}<a href="{% url 'frota_veiculo_detalhe' m.veiculo_destino_id %}" title="{{ m.veiculo_destino.nome }}">{{ m.veiculo_destino.codigo }}</a>{% else %}{{ m.veiculo_destino.codigo }}{% endif %}{% elif m.item_destino %}{% zelo_icone_item m.item_destino %} <a href="{% url 'equipamento_detalhe' m.item_destino_id %}" title="Equipamento do estoque de TI: {{ m.destino_rotulo }}">{{ m.item_destino.nome }}</a>{% endif %}{% endif %}
+              {% if g.movimentacoes|length > 1 and not m.origem_rotulo %}{% if m.veiculo_destino %}{{ m.veiculo_destino.codigo }}{% elif m.item_destino %}{{ m.item_destino.nome }}{% endif %}{% endif %}
+              {% if not m.origem_rotulo and not m.destino_rotulo %}<span class="m2m-vazio-linha">—</span>{% endif %}
               {% if m.importacao_id %}<span class="m2m-sub" title="Entrada pela importação de planilha">importação: {{ m.importacao.arquivo_nome }}</span>{% endif %}
             {% endwith %}
           </td>

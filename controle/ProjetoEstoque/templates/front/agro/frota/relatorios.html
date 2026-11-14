@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags %}
+
+{% block title %}Relatórios — Frotas e Maquinários — Zelo Agro{% endblock %}
+{% block page_title %}Frotas e Maquinários{% endblock %}
+{% block page_subtitle %}Relatórios{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page" data-frota="relatorios">
+  {% include 'front/agro/frota/_topo.html' with titulo="Relatórios" descricao="O inventário por categoria e classe, as conferências do cadastro e as saídas em Excel. Cada número é o da lista que ele abre." %}
+
+  <section class="m2m-painel" aria-labelledby="agro-rel-inventario">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-rel-inventario">Inventário</h3></header>
+    <div class="m2m-regua m2m-regua--seis">
+      <a class="m2m-kpi" href="{% url 'frota_visao_geral' %}"><span class="m2m-micro">Total de equipamentos</span><span class="m2m-kpi-n m2m-num">{{ kpis.total|unlocalize }}</span><span class="m2m-kpi-nota">abrir a lista</span></a>
+      <a class="m2m-kpi" href="{% url 'frota_equipamentos_proprios' %}"><span class="m2m-micro">Próprios</span><span class="m2m-kpi-n m2m-num">{{ kpis.proprios|unlocalize }}</span><span class="m2m-kpi-nota">abrir a lista</span></a>
+      <a class="m2m-kpi" href="{% url 'frota_equipamentos_terceiros' %}"><span class="m2m-micro">Terceiros</span><span class="m2m-kpi-n m2m-num">{{ kpis.terceiros|unlocalize }}</span><span class="m2m-kpi-nota">abrir a lista</span></a>
+      <a class="m2m-kpi" href="{% url 'frota_visao_geral' %}?status=ativo"><span class="m2m-micro">Em uso</span><span class="m2m-kpi-n m2m-num">{{ kpis.em_uso|unlocalize }}</span><span class="m2m-kpi-nota">segundo o ERP</span></a>
+      <a class="m2m-kpi" href="{% url 'frota_visao_geral' %}?status=manutencao"><span class="m2m-micro">Em manutenção</span><span class="m2m-kpi-n m2m-num">{{ kpis.em_manutencao|unlocalize }}</span><span class="m2m-kpi-nota">abrir a lista</span></a>
+      <a class="m2m-kpi" href="{% url 'frota_visao_geral' %}?validacao=pendente"><span class="m2m-micro">A validar</span><span class="m2m-kpi-n m2m-num">{{ kpis.a_validar|unlocalize }}</span><span class="m2m-kpi-nota">aguardam o responsável</span></a>
+    </div>
+    {% if pode_exportar %}
+    <div class="m2m-previa-acoes">
+      <a class="m2m-btn m2m-btn--primario" href="{% url 'frota_visao_geral' %}?formato=xlsx"><i class="fa-solid fa-download" aria-hidden="true"></i>Inventário completo (Excel)</a>
+      <a class="m2m-btn" href="{% url 'frota_equipamentos_proprios' %}?formato=xlsx">Só próprios</a>
+      <a class="m2m-btn" href="{% url 'frota_equipamentos_terceiros' %}?formato=xlsx">Só terceiros</a>
+      <span class="m2m-sub">O Excel traz todas as colunas do cadastro; a tela mostra as principais.</span>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="m2m-painel" aria-labelledby="agro-rel-categoria">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-rel-categoria">Por categoria<span class="m2m-painel-t-n">{{ por_categoria|length }}</span></h3></header>
+    {% if por_categoria %}
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela m2m-tabela--curta">
+        <thead><tr><th>Categoria</th><th class="num">Total</th><th class="num">Próprios</th><th class="num">Terceiros</th><th class="num">Em uso</th><th class="num">Em manutenção</th><th class="num">A validar</th></tr></thead>
+        <tbody>
+          {% for c in por_categoria %}
+          <tr class="m2m-linha">
+            <td data-rotulo="Categoria"><a class="m2m-link-forte" href="{% url 'frota_visao_geral' %}?tipo={{ c.tipo_id }}">{{ c.categoria }}</a></td>
+            <td class="num" data-rotulo="Total"><span class="m2m-num">{{ c.total|unlocalize }}</span></td>
+            <td class="num" data-rotulo="Próprios"><span class="m2m-num">{{ c.proprios|unlocalize }}</span></td>
+            <td class="num" data-rotulo="Terceiros"><span class="m2m-num">{{ c.terceiros|unlocalize }}</span></td>
+            <td class="num" data-rotulo="Em uso"><span class="m2m-num">{{ c.em_uso|unlocalize }}</span></td>
+            <td class="num" data-rotulo="Em manutenção"><span class="m2m-num">{{ c.em_manutencao|unlocalize }}</span></td>
+            <td class="num" data-rotulo="A validar"><span class="m2m-num">{{ c.a_validar|unlocalize }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="m2m-painel-vazio">Nenhum equipamento cadastrado ainda.</p>
+    {% endif %}
+  </section>
+
+  <section class="m2m-painel" aria-labelledby="agro-rel-classe">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-rel-classe">Por classe operacional<span class="m2m-painel-t-n">{{ por_classe|length }}</span></h3></header>
+    {% if por_classe %}
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela m2m-tabela--curta">
+        <thead><tr><th>Classe operacional (ERP)</th><th>Categoria</th><th class="num">Total</th><th class="num">Próprios</th><th class="num">Terceiros</th><th class="num">A validar</th></tr></thead>
+        <tbody>
+          {% for c in por_classe %}
+          <tr class="m2m-linha">
+            <td class="m2m-quebra" data-rotulo="Classe operacional">
+              {% if c.classe_id %}<a class="m2m-link-forte" href="{% url 'frota_visao_geral' %}?classe_operacional={{ c.classe_id }}">{{ c.classe }}</a>
+              {% else %}<a class="m2m-link-forte" href="{% url 'frota_visao_geral' %}?pendencia=sem_classe">Sem classe operacional</a>{% endif %}
+            </td>
+            <td data-rotulo="Categoria">{{ c.categoria }}</td>
+            <td class="num" data-rotulo="Total"><span class="m2m-num">{{ c.total|unlocalize }}</span></td>
+            <td class="num" data-rotulo="Próprios"><span class="m2m-num">{{ c.proprios|unlocalize }}</span></td>
+            <td class="num" data-rotulo="Terceiros"><span class="m2m-num">{{ c.terceiros|unlocalize }}</span></td>
+            <td class="num" data-rotulo="A validar"><span class="m2m-num">{{ c.a_validar|unlocalize }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="m2m-painel-vazio">Nenhum equipamento cadastrado ainda.</p>
+    {% endif %}
+  </section>
+
+  <section class="m2m-painel" aria-labelledby="agro-rel-conferencias">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-rel-conferencias">Conferências do cadastro<span class="m2m-painel-t-n">{{ conferencias|length }}</span></h3></header>
+    {% if conferencias %}
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela m2m-tabela--curta">
+        <thead><tr><th>Conferência</th><th class="num">Equipamentos</th><th><span class="m2m-sr">Ações</span></th></tr></thead>
+        <tbody>
+          {% for c in conferencias %}
+          <tr class="m2m-linha">
+            <td data-rotulo="Conferência">{{ c.rotulo }}</td>
+            <td class="num" data-rotulo="Equipamentos"><span class="m2m-num">{{ c.n|unlocalize }}</span></td>
+            <td class="m2m-acoes" data-rotulo="Ações">
+              <a class="m2m-btn m2m-btn--sm" href="{% url 'frota_visao_geral' %}?pendencia={{ c.chave }}">Abrir</a>
+              {% if pode_exportar %}<a class="m2m-btn m2m-btn--sm" href="{% url 'frota_visao_geral' %}?pendencia={{ c.chave }}&amp;formato=xlsx">Excel</a>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="m2m-nota m2m-nota--pad">Conferência não é erro: o sistema sinaliza e quem responde pelo inventário decide. Nada é corrigido sozinho.</p>
+    {% else %}
+    <p class="m2m-painel-vazio">Nenhuma conferência pendente no cadastro.</p>
+    {% endif %}
+  </section>
+
+  <section class="m2m-painel" aria-labelledby="agro-rel-saidas">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-rel-saidas">Movimentações, histórico e importações</h3></header>
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela m2m-tabela--curta">
+        <thead><tr><th>Relatório</th><th>O que traz</th><th><span class="m2m-sr">Ações</span></th></tr></thead>
+        <tbody>
+          {% if pode_historico %}
+          <tr class="m2m-linha">
+            <td data-rotulo="Relatório"><b>Movimentações</b></td>
+            <td class="m2m-largo" data-rotulo="O que traz">Mudanças de local, fazenda, responsável, situação e centro de custo, com o de/para, o motivo e quem registrou.</td>
+            <td class="m2m-acoes" data-rotulo="Ações">
+              <a class="m2m-btn m2m-btn--sm" href="{% url 'frota_equip_movimentacoes' %}">Abrir</a>
+              {% if pode_exportar %}<a class="m2m-btn m2m-btn--sm" href="{% url 'frota_equip_movimentacoes' %}?formato=xlsx">Excel</a>{% endif %}
+            </td>
+          </tr>
+          <tr class="m2m-linha">
+            <td data-rotulo="Relatório"><b>Histórico</b></td>
+            <td class="m2m-largo" data-rotulo="O que traz">Todos os eventos do cadastro: criação, edição, validação, movimentação e instalação.</td>
+            <td class="m2m-acoes" data-rotulo="Ações">
+              <a class="m2m-btn m2m-btn--sm" href="{% url 'frota_equip_historico' %}">Abrir</a>
+              {% if pode_exportar %}<a class="m2m-btn m2m-btn--sm" href="{% url 'frota_equip_historico' %}?formato=xlsx">Excel</a>{% endif %}
+            </td>
+          </tr>
+          {% endif %}
+          {% if pode_importar_equip %}
+          <tr class="m2m-linha">
+            <td data-rotulo="Relatório"><b>Importações da planilha</b></td>
+            <td class="m2m-largo" data-rotulo="O que traz">
+              Cada importação tem o seu relatório em Excel (linha a linha, inconsistências e mapeamento usado).
+              {% if ultima_importacao %}<span class="m2m-sub">Última: {{ ultima_importacao.arquivo_nome }}, {{ ultima_importacao.criada_em|date:"d/m/Y H:i" }}.</span>{% endif %}
+            </td>
+            <td class="m2m-acoes" data-rotulo="Ações">
+              <a class="m2m-btn m2m-btn--sm" href="{% url 'frota_equip_importacoes' %}">Ver as importações</a>
+            </td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+    {% if not pode_historico and not pode_importar_equip %}
+    <p class="m2m-painel-vazio">Sem permissão para os relatórios de movimentações, histórico e importações.</p>
+    {% endif %}
+  </section>
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

@@ -9,6 +9,7 @@ Uso:
     python manage.py enviar_alertas --tipo renovacoes          # licenças a vencer
     python manage.py enviar_alertas --tipo renovacoes --dias 90
     python manage.py enviar_alertas --tipo computadores     # notebooks/desktops parados
+    python manage.py enviar_alertas --tipo ninja            # máquinas paradas ainda com licença do NinjaOne
     python manage.py enviar_alertas --tipo diario            # relatório diário consolidado
     python manage.py enviar_alertas --tipo diario --horas 48 # últimas 48h de movimentações
 """
@@ -22,7 +23,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--tipo",
-            choices=["preventivas", "estoque", "licencas", "renovacoes", "computadores",
+            choices=["preventivas", "estoque", "licencas", "renovacoes", "computadores", "ninja",
                      "todos", "diario"],
             default="todos",
             help="Tipo de alerta a enviar (padrão: todos). Use 'diario' para o relatório consolidado.",
@@ -49,6 +50,7 @@ class Command(BaseCommand):
             alerta_estoque_critico,
             alerta_licencas_desligados,
             alerta_licencas_vencendo,
+            alerta_ninja_licencas,
             alerta_preventivas_proximas,
             relatorio_diario,
         )
@@ -108,6 +110,14 @@ class Command(BaseCommand):
                 _rodar(
                     "Notebooks/desktops em backup ou pausado",
                     alerta_computadores_parados,
+                )
+
+            # Licença do NinjaOne presa a máquina parada: mesma natureza (revisão semanal — `agendar_ninja_licencas`)
+            # e mesmas razões para o tipo próprio e para entrar em "todos".
+            if tipo in ("ninja", "todos"):
+                _rodar(
+                    "Máquinas paradas com licença do NinjaOne",
+                    alerta_ninja_licencas,
                 )
 
         self.stdout.write("")

@@ -19,6 +19,7 @@ from django.core.cache import cache
 
 from ProjetoEstoque.middleware import _grupos_do_usuario
 from ProjetoEstoque.models import (
+    GRUPO_COLABORADOR_AGRO,
     GRUPO_CONSULTA_QUIOSQUE,
     GRUPO_FORNECEDOR,
     GRUPO_PARCEIRO_LICENCA,
@@ -109,6 +110,16 @@ def _calcular(user) -> dict:
             "detalhe": "Somente leitura",
             "externo": True,
             "tom": "tv",
+        }
+
+    # Portal do Colaborador (Zelo Agro): pessoa presa ao Agro. Mesmo motivo dos perfis de cima — o chip diz o que a pessoa É,
+    # e um grupo interno que sobrou de cadastro antigo não pode fazê-la parecer da equipe de TI.
+    if GRUPO_COLABORADOR_AGRO in grupos and not (user.is_superuser or user.is_staff):
+        return {
+            "rotulo": "Colaborador Agro",
+            "detalhe": "Zelo Agro",
+            "externo": False,
+            "tom": "externo",
         }
 
     # ── Internos ────────────────────────────────────────────────────────────

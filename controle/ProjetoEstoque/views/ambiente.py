@@ -69,24 +69,30 @@ def rota_legada_frota(request, antigo: str):
 
 @exige_ambiente(amb.AGRO)
 def agro_visao_geral(request):
-    """A porta do Zelo Agro. Cada grupo aparece só para quem tem a permissão do
-    módulo dele; os números vêm dos mesmos services das telas de cada módulo
-    (nada é recalculado aqui)."""
-    from services import frota_service as frota
-    from services import m2m_monitoramento_service as m2m
+    """A porta do Zelo Agro: o dashboard que junta os três módulos. Cada bloco aparece
+    só para quem tem a permissão do módulo dele (e nem é calculado para os outros);
+    os números vêm dos mesmos services das telas de cada módulo — nada é recalculado
+    aqui — e cada um diz de onde vem. O período (7/30/90 dias) vale para o consumo
+    de dados."""
+    from services import agro_dash_service as dash
 
     user = request.user
-    ver_frota = user.has_perm("ProjetoEstoque.ver_frota")
-    ver_conectividade = any(
-        user.has_perm(f"ProjetoEstoque.{p}")
-        for p in ("ver_chips", "consultar_conectividade", "ver_historico_frota")
-    )
-    indicadores = frota.indicadores_frota() if (ver_frota or ver_conectividade) else None
+    acesso = {
+        "frota": user.has_perm("ProjetoEstoque.ver_frota"),
+        "chips": user.has_perm("ProjetoEstoque.ver_chips"),
+        "historico": user.has_perm("ProjetoEstoque.ver_historico_frota"),
+        "infra": user.has_perm("ProjetoEstoque.ver_tec_estoque"),
+    }
+    # Quem administra o patrimônio dos chips no TI (acesso ao ambiente TI + vincular chips) também vê a pendência do estoque.
+    acesso["estoque_ti"] = acesso["chips"] and user.has_perm("ProjetoEstoque.vincular_chips") and amb.pode_acessar(user, amb.TI)
+    acesso["conectividade"] = acesso["chips"] or acesso["historico"] or user.has_perm("ProjetoEstoque.consultar_conectividade")
+    # o que a operadora respondeu (sessão, consumo, alertas): sem permissão de API o painel mostra o chip só como cadastro e vínculo
+    acesso["api"] = amb.pode_ver_api(user)
+    dias = dash.periodo_pedido(request.GET.get("periodo"))
     return render(request, "front/agro/visao_geral.html", {
-        "kpis_frota": indicadores["frota"] if ver_frota else None,
-        "kpis_conectividade": indicadores["conectividade"] if ver_conectividade else None,
-        "alertas_abertos": (
-            m2m.contar_alertas_abertos() if user.has_perm("ProjetoEstoque.ver_historico_frota") else None
-        ),
-        "pode_ver_chips": user.has_perm("ProjetoEstoque.ver_chips"),
+        "painel": dash.painel_da_porta(acesso, dias),
+        "periodo": dias, "periodos": dash.PERIODOS,
+        "pode_ver_mapa": acesso["frota"] or acesso["infra"],
+        "pode_ver_chips": acesso["chips"],
+        "pode_ver_api": acesso["api"],
     })

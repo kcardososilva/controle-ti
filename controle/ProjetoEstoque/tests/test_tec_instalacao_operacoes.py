@@ -237,7 +237,9 @@ class RetirarTransferirSubstituirNasTelasTests(OperacoesBase):
         url = reverse("tec_instalacao_retirar", args=[inst.pk])
         html = self.client.get(url).content.decode()
         self.assertIn("Retirar EQ-", html)
-        self.assertIn("Oficina", html)
+        # O campo oferece as duas fazendas (regra de 2026-11-14); a "Oficina" legada não é mais uma opção.
+        self.assertIn(self.rio.local, html)
+        self.assertNotIn("Oficina", html)
         r = self.post(url, {"local": self.oficina.pk, "motivo": "tela rachada"})
         self.assertEqual(r.status_code, 302)
         eq = self.atual(inst.equipamento)

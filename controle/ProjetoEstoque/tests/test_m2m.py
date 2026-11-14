@@ -85,6 +85,7 @@ class Resp:
         if content is None:
             content = b"" if json is None else __import__("json").dumps(json).encode()
         self.content = content
+        self.text = content.decode("utf-8", "replace") if isinstance(content, bytes) else str(content)
 
     def json(self):
         if self._json is None:
@@ -96,8 +97,21 @@ class Sessao:
     """`respostas`: lista (uma por chamada, na ordem; exceção é levantada) ou função
     `fn(url) -> Resp`. Guarda cada chamada em `chamadas` como `(url, kwargs)`."""
 
-    def __init__(self, respostas):
-        self.respostas, self.chamadas = respostas, []
+    def __init__(self, respostas, post=None):
+        self.respostas, self.chamadas, self.posts = respostas, [], []
+        self.respostas_post = post            # lista (uma por chamada) ou função `fn(url, dados) -> Resp`
+
+    def post(self, url, **kw):
+        self.posts.append((url, kw))
+        if self.respostas_post is None:
+            r = Resp(200, json={"access_token": "ACESSO-TOKEN-123456", "expires_in": 7200, "token_type": "Bearer"})
+        elif callable(self.respostas_post):
+            r = self.respostas_post(url, kw.get("data"))
+        else:
+            r = self.respostas_post.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
 
     def get(self, url, **kw):
         self.chamadas.append((url, kw))
@@ -129,19 +143,41 @@ MAPA = {
 
 
 def roteador(sessao=SESSAO_UP, uso=USO_MB, status=200):
-    """`fn(url)`: devolve o JSON de sessão para `/session` e o de consumo para `/usage`."""
+    """`fn(url)`: o registro do SIM Card, que na API real traz a sessão E o consumo juntos
+    (`GET /simcards/{id}/`, uma lista com um registro)."""
+    registro = {**(sessao or {}), **(uso or {})}
+
     def fn(url):
-        return Resp(status, json=sessao if url.endswith("/session") else uso)
+        if url.split("?")[0].rstrip("/").endswith("/simcards"):       # a lista completa da conta
+            objetos = [
+                {**registro, "iccid": c.iccid, "msisdn": c.numero_linha}
+                for c in M2MChip.objects.exclude(iccid="").order_by("pk")
+            ]
+            meta = {"pagina": 1, "anterior": None, "proxima": None,
+                    "total_registros_pagina": len(objetos), "total_registros": len(objetos)}
+            return Resp(status, json={"meta": meta, "objetos": objetos})
+        return Resp(status, json=[registro])
     return fn
 
 
-@override_settings(TIM_M2M_BASE_URL=BASE, TIM_M2M_TOKEN=TOKEN, TIM_M2M_CHAVE_CIFRA=CHAVE)
+# CLIENT_ID/SECRET vazios: o teste não pode depender do que o .env do desenvolvedor tem (ele
+# guarda a credencial real, que ligaria o modo OAuth2 e a rede).
+@override_settings(
+    TIM_M2M_BASE_URL=BASE, TIM_M2M_TOKEN=TOKEN, TIM_M2M_CHAVE_CIFRA=CHAVE,
+    TIM_M2M_CLIENT_ID="", TIM_M2M_CLIENT_SECRET="",
+)
 class M2MBase(TestCase):
     """Token no ambiente, `sleep` falso, logs capturados (e fora do arquivo real)."""
 
     def setUp(self):
         self.usuario = User.objects.create(username="ti_m2m")        # sem senha: o hash PBKDF2 custaria ~0,3 s por teste
         M2MIntegracao.get()          # a linha única existe antes de qualquer `.update()` dos testes
+        # A migration 0199 grava o mapeamento do GSIM; os testes partem do estado "ninguém mapeou". A leitura das
+        # sessões de dados (que faz outras chamadas além do resumo) fica DESLIGADA: estes testes contam chamadas
+        # HTTP. Quem a testa é `test_m2m_dados.py`, que a liga.
+        M2MIntegracao.objects.filter(pk=1).update(mapeamento={}, dados_por_eventos=False)
+        tim.limpar_token_de_acesso()
+        self.addCleanup(tim.limpar_token_de_acesso)
         patch = mock.patch("time.sleep")
         self.sleep = patch.start()
         self.addCleanup(patch.stop)
@@ -154,7 +190,7 @@ class M2MBase(TestCase):
                 teste.logs.append(registro.getMessage() + (f" | {registro.exc_text}" if registro.exc_text else ""))
 
         captura = Captura()
-        for nome in ("services.tim_m2m_service", "services.m2m_monitoramento_service"):
+        for nome in ("services.tim_m2m_service", "services.m2m_monitoramento_service", "services.m2m_dados_service"):
             logger = logging.getLogger(nome)
             guardado = (logger.propagate, logger.level)
             logger.propagate, logger.level = False, logging.DEBUG
@@ -404,7 +440,8 @@ class CadastroTests(M2MBase):
         a, b = M2MIntegracao.get(), M2MIntegracao.get()
         self.assertEqual(a.pk, b.pk)
         self.assertEqual(M2MIntegracao.objects.count(), 1)
-        self.assertEqual((a.intervalo_minutos, a.limite_req_minuto, a.falhas_para_alerta, a.pct_consumo_alerta), (60, 30, 3, 80))
+        self.assertEqual((a.intervalo_minutos, a.limite_req_minuto, a.falhas_para_alerta, a.pct_consumo_alerta), (1, 30, 3, 80))
+        self.assertEqual(a.intervalo_repouso_minutos, 15)
 
 
 # ═════════════════════════════════════════════════════════════
@@ -414,10 +451,11 @@ class CadastroTests(M2MBase):
 class TransporteTests(M2MBase):
     def test_url_headers_e_opcoes_de_seguranca(self):
         chip = self.chip(1)
-        cliente, sessao = self.cliente([Resp(200, json={"a": 1}), Resp(200, json={"b": 2})])
+        cliente, sessao = self.cliente([Resp(200, json=[{"a": 1}])])
         cliente.consultar(chip, "sessao", "manual")
         cliente.consultar(chip, "consumo", "manual")
-        self.assertEqual(sessao.urls, [f"{BASE}/{chip.iccid}/session", f"{BASE}/{chip.iccid}/usage"])
+        # sessão e consumo são o MESMO registro: uma chamada só atende as duas consultas
+        self.assertEqual(sessao.urls, [f"{BASE}/simcards/{chip.iccid}/"])
         kw = sessao.chamadas[0][1]
         self.assertEqual(kw["headers"]["Authorization"], f"Bearer {TOKEN}")
         self.assertEqual(kw["headers"]["Accept"], "application/json")
@@ -429,14 +467,14 @@ class TransporteTests(M2MBase):
         chip = self.chip(1, imsi=imsi_valido(1), identificador_consulta="imsi")
         cliente, sessao = self.cliente([Resp(200, json={})])
         cliente.consultar(chip, "sessao", "manual")
-        self.assertEqual(sessao.urls, [f"{BASE}/{chip.imsi}/session"])
+        self.assertEqual(sessao.urls, [f"{BASE}/simcards/{chip.imsi}/"])
 
     def test_identificador_e_codificado_e_o_host_nao_muda(self):
         url = tim.ClienteTIM.url_da_consulta("89/../evil@x.com", "sessao")
-        self.assertEqual(url, f"{BASE}/89%2F..%2Fevil%40x.com/session")
+        self.assertEqual(url, f"{BASE}/simcards/89%2F..%2Fevil%40x.com/")
         self.assertEqual(requests.utils.urlparse(url).hostname, "tim-m2m-platform.com")
         with override_settings(TIM_M2M_BASE_URL="https://api.exemplo.com.br/v2/"):
-            self.assertEqual(tim.ClienteTIM.url_da_consulta("123", "consumo"), "https://api.exemplo.com.br/v2/123/usage")
+            self.assertEqual(tim.ClienteTIM.url_da_consulta("123", "consumo"), "https://api.exemplo.com.br/v2/simcards/123/")
 
     def test_so_aceita_https_com_host(self):
         for ruim in ("http://tim-m2m-platform.com", "", "tim-m2m-platform.com", "https://u:s@host.com",
@@ -658,7 +696,7 @@ class TokenTests(M2MBase):
         self.assertTrue(tim.configurada())
         with override_settings(TIM_M2M_TOKEN=""):
             self.assertFalse(tim.configurada())
-            self.assertIn("Nenhum token", tim.motivo_nao_configurada())
+            self.assertIn("Nenhuma credencial", tim.motivo_nao_configurada())
         with override_settings(TIM_M2M_BASE_URL="http://inseguro.com"):
             self.assertFalse(tim.configurada())
             self.assertIn("https", tim.motivo_nao_configurada())
@@ -878,19 +916,19 @@ class AtualizacaoTests(M2MBase):
         chip = self.chip(1)
         r, sessao = self.atualizar(chip, roteador(), origem="manual")
         self.assertTrue(r.ok)
-        self.assertEqual(len(sessao.chamadas), 2)
+        self.assertEqual(len(sessao.chamadas), 1)                              # sessão e consumo: o mesmo GET
         sess = chip.sessao_consulta
-        self.assertEqual(sess.payload, SESSAO_UP)                              # cru, intocado
+        self.assertEqual(sess.payload, {**SESSAO_UP, **USO_MB})                # cru, intocado (o registro inteiro)
         self.assertEqual(sess.resultado, "sucesso")
         self.assertEqual(sess.estado_interpretado, "nao_interpretado")
         self.assertEqual(chip.sessao_estado, "nao_interpretado")               # nunca "ativa" por palpite
         self.assertEqual(sess.estado_bruto, "")
         self.assertIsNone(chip.consumo_bytes)                                   # nem volume por palpite
-        self.assertEqual(chip.consumo_consulta.payload, USO_MB)
+        self.assertEqual(chip.consumo_consulta.payload, {**SESSAO_UP, **USO_MB})   # o mesmo registro
         self.assertEqual(chip.falhas_consecutivas, 0)
         self.assertIsNotNone(chip.ultima_valida_em)
         self.assertAlmostEqual(
-            (chip.proxima_consulta_em - timezone.now()).total_seconds(), 3600, delta=30,
+            (chip.proxima_consulta_em - timezone.now()).total_seconds(), 15 * 60, delta=30,
         )
 
     def test_com_mapeamento_interpreta_e_registra_a_mudanca_de_estado(self):
@@ -958,7 +996,7 @@ class AtualizacaoTests(M2MBase):
         self.atualizar(chip, roteador(sessao=SESSAO_DOWN))
         self.assertEqual(chip.consultas.filter(tipo="sessao").count(), 2)
         primeira.refresh_from_db()
-        self.assertEqual((primeira.payload, primeira.estado_interpretado), (SESSAO_UP, "ativa"))
+        self.assertEqual((primeira.payload, primeira.estado_interpretado), ({**SESSAO_UP, **USO_MB}, "ativa"))
         self.assertNotEqual(chip.sessao_consulta_id, primeira.pk)
 
     def test_sucesso_sem_corpo_conta_como_valido_mas_nao_interpretado(self):
@@ -1026,12 +1064,15 @@ class AtualizacaoTests(M2MBase):
         # a agendada não tem essa trava; outro chip também não
         m2m.atualizar(chip, ("sessao",), "agendada", None, cliente=cliente)
         m2m.atualizar(self.chip(2), ("sessao",), "manual", self.usuario, cliente=cliente)
-        self.assertEqual(len(sessao.chamadas), 3)
+        # a agendada do mesmo chip foi gravada (sem a trava de 60 s); a chamada dele saiu da memória (< 10 s)
+        self.assertEqual(chip.consultas.filter(origem="agendada").count(), 1)
+        self.assertEqual(len(sessao.chamadas), 2)
         # passados os 60 s, volta a valer
         M2MChip.objects.filter(pk=chip.pk).update(ultima_tentativa_em=timezone.now() - timedelta(seconds=61))
         chip.refresh_from_db()
         m2m.atualizar(chip, ("sessao",), "manual", self.usuario, cliente=cliente)
-        self.assertEqual(len(sessao.chamadas), 4)
+        # a trava de 60 s acabou: a manual foi aceita e gravada (a chamada saiu da memória do cliente)
+        self.assertEqual(chip.consultas.filter(origem="manual", tipo="sessao").count(), 2)
 
     def test_chip_desativado_nao_e_consultado_mas_o_teste_de_conexao_vale(self):
         chip = self.chip(1)
@@ -1400,6 +1441,7 @@ class CicloTests(M2MBase):
         self.assertIsNotNone(M2MIntegracao.get().ultima_execucao)                     # a tarefa está viva
         self.assertIn("token", M2MIntegracao.get().ultimo_erro)
 
+    @mock.patch.object(m2m, "LIMIAR_LOTE", 99)          # aqui o que se prova é a consulta chip a chip
     def test_consulta_so_os_vencidos_os_mais_atrasados_primeiro_e_respeita_o_maximo(self):
         futuro = self.chip(1)
         nunca = self.chip(2)
@@ -1412,7 +1454,7 @@ class CicloTests(M2MBase):
         M2MIntegracao.objects.filter(pk=1).update(max_chips_execucao=2)
         resumo, sessao = self.ciclo(roteador())
         self.assertEqual(resumo.consultados, 2)
-        ordem = [u.split("/")[-2] for u in sessao.urls if u.endswith("/session")]
+        ordem = [u.split("/")[-2] for u in sessao.urls]
         self.assertEqual(ordem, [nunca.iccid, atrasado.iccid])                         # nunca consultado, depois o mais atrasado
         self.assertNotIn(futuro.iccid, " ".join(sessao.urls))
         self.assertNotIn(recente.iccid, " ".join(sessao.urls))                         # o limite de 2 deixou para a próxima
@@ -1423,14 +1465,15 @@ class CicloTests(M2MBase):
         resumo, sessao = self.ciclo(roteador())
         self.assertEqual((resumo.executou, resumo.consultados, sessao.chamadas), (True, 0, []))
 
+    @mock.patch.object(m2m, "LIMIAR_LOTE", 99)
     def test_a_pausa_entre_as_chamadas_e_a_configurada(self):
         M2MIntegracao.objects.filter(pk=1).update(pausa_entre_chamadas_ms=2500)
         for n in (1, 2, 3):
             self.chip(n)
         resumo, sessao = self.ciclo(roteador())
-        self.assertEqual(len(sessao.chamadas), 6)                                       # 3 chips x 2 consultas
-        self.assertEqual(len(self.sleeps_de(2.5)), 5)                                   # entre as 6 chamadas
-        self.assertEqual(self.sleep.call_count, 5)                                      # (nenhuma retentativa aqui)
+        self.assertEqual(len(sessao.chamadas), 3)                                       # 1 chamada por chip (sessão + consumo)
+        self.assertEqual(len(self.sleeps_de(2.5)), 2)                                   # entre as 3 chamadas
+        self.assertEqual(self.sleep.call_count, 2)                                      # (nenhuma retentativa aqui)
 
     def test_a_pausa_nunca_e_menor_que_o_teto_de_requisicoes_por_minuto(self):
         cfg = M2MIntegracao.get()
@@ -1441,13 +1484,14 @@ class CicloTests(M2MBase):
         cfg.pausa_entre_chamadas_ms, cfg.limite_req_minuto = 0, 120
         self.assertEqual(m2m.pausa_efetiva_s(cfg), 0.5)
 
+    @mock.patch.object(m2m, "LIMIAR_LOTE", 99)
     def test_para_no_primeiro_429_e_nao_volta_a_consultar_ate_o_bloqueio_passar(self):
         chips = [self.chip(n) for n in (1, 2, 3)]
         chamadas = []
 
         def fn(url):
             chamadas.append(url)
-            return Resp(429, headers={"Retry-After": "900"}) if chips[1].iccid in url else Resp(200, json=SESSAO_UP)
+            return Resp(429, headers={"Retry-After": "900"}) if chips[1].iccid in url else Resp(200, json=[SESSAO_UP])
 
         resumo, sessao = self.ciclo(fn)
         self.assertEqual((resumo.consultados, resumo.interrompido_por), (2, "limite_excedido"))
@@ -1531,7 +1575,7 @@ class CicloTests(M2MBase):
         self.assertGreaterEqual(cfg.ultimo_sucesso, antes)
         self.assertEqual((cfg.ultimo_erro, cfg.tique_minutos), ("", 10))
         self.assertIsNotNone(cfg.proxima_execucao)
-        self.assertGreater(cfg.proxima_execucao, antes + timedelta(minutes=50))          # intervalo de 60 min
+        self.assertGreater(cfg.proxima_execucao, antes + timedelta(minutes=10))          # repouso de 15 min (chip sem sessão ativa)
         self.ciclo(roteador())
         self.assertEqual(M2MIntegracao.get().tique_minutos, 10)                           # sem --tique, não muda
 
@@ -1661,7 +1705,7 @@ class LeiturasTests(M2MBase):
         chip = self.chip(1)
         self.assertLessEqual(m2m.estado_integracao()["proxima"], timezone.now())            # nunca consultado: já vencido
         self.atualizar(chip, roteador(), avaliar=False)
-        self.assertGreater(m2m.estado_integracao()["proxima"], timezone.now() + timedelta(minutes=50))
+        self.assertGreater(m2m.estado_integracao()["proxima"], timezone.now() + timedelta(minutes=10))
 
     def test_fita_das_ultimas_consultas_mais_antiga_primeiro(self):
         self.mapear()
@@ -1735,8 +1779,8 @@ class LeiturasTests(M2MBase):
         self.atualizar(chip, roteador(), avaliar=False)
         self.falhar(chip, 1)
         achada = m2m.ultima_resposta_valida("sessao")
-        self.assertEqual(achada.payload, SESSAO_UP)
-        self.assertEqual(m2m.ultima_resposta_valida("consumo").payload, USO_MB)
+        self.assertEqual(achada.payload, {**SESSAO_UP, **USO_MB})
+        self.assertEqual(m2m.ultima_resposta_valida("consumo").payload, {**SESSAO_UP, **USO_MB})
         self.assertIn("sessao.estado", interp.caminhos(achada.payload))
 
     def test_frescor(self):
@@ -1773,17 +1817,41 @@ class ConfiguracaoTests(M2MBase):
     def test_validar_frequencia_mostra_a_conta(self):
         v = m2m.validar_frequencia(60, 40, 30)
         self.assertTrue(v["ok"])
-        self.assertAlmostEqual(v["req_por_minuto"], 1.3333, places=3)
-        self.assertEqual(v["conta"], "2 consultas x 40 chips / 60 min = 1,33 req/min (limite: 30 req/min)")
+        self.assertFalse(v["limitado"])
+        self.assertAlmostEqual(v["req_por_minuto"], 0.6667, places=3)
+        self.assertEqual(
+            v["conta"], "40 chips a cada 60 min = 0,7 consultas/min; com o limite de 30 req/min cabem 26,0.",
+        )
 
-    def test_validar_frequencia_recusa_o_que_estoura_o_limite_e_sugere_o_minimo(self):
-        v = m2m.validar_frequencia(15, 400, 30)                       # 800 / 15 = 53,33 req/min
-        self.assertFalse(v["ok"])
-        self.assertEqual(v["intervalo_minimo_sugerido"], 27)           # ceil(800 / 30)
-        self.assertIn("53,33", v["motivo"])
-        self.assertTrue(m2m.validar_frequencia(27, 400, 30)["ok"])
-        self.assertFalse(m2m.validar_frequencia(14, 1, 30)["ok"])      # mínimo de 15 min
-        self.assertIn("mínimo", m2m.validar_frequencia(14, 1, 30)["motivo"])
+    def test_validar_frequencia_nao_recusa_o_que_estoura_o_limite_mas_diz_o_efetivo(self):
+        v = m2m.validar_frequencia(1, 400, 30)                        # 400 consultas/min, cabem 26 (30 x 0,9 - 1)
+        self.assertTrue(v["ok"])                                       # o ciclo cumpre o limite sozinho
+        self.assertTrue(v["limitado"])
+        self.assertEqual(v["efetivo_minutos"], 15.4)                   # 400 / 26
+        self.assertEqual(v["intervalo_minimo_sugerido"], 16)           # ceil(400 / 26): o menor que cabe sem alongar
+        self.assertIn("a cada 15,4 min", v["conta"])
+        self.assertFalse(m2m.validar_frequencia(16, 400, 30)["limitado"])
+        self.assertFalse(m2m.validar_frequencia(0, 1, 30)["ok"])       # mínimo de 1 min
+        self.assertIn("mínimo", m2m.validar_frequencia(0, 1, 30)["motivo"])
+
+    def test_plano_de_frequencia_prioriza_quem_tem_sessao_ativa(self):
+        cabe = m2m.plano_de_frequencia(1, 15, 2, 203, 30)             # 2 + 13,5 = 15,5 consultas/min
+        self.assertFalse(cabe["limitado"])
+        self.assertEqual((cabe["efetivo_ativo_min"], cabe["efetivo_repouso_min"]), (1.0, 15.0))
+        aperta = m2m.plano_de_frequencia(1, 5, 2, 203, 30)            # 2 + 40,6 > 26: quem está em repouso espera
+        self.assertTrue(aperta["limitado"])
+        self.assertEqual(aperta["efetivo_ativo_min"], 1.0)             # a sessão ativa continua no ritmo pedido
+        self.assertEqual(aperta["efetivo_repouso_min"], 8.5)           # 203 / (26 - 2)
+        sozinha = m2m.plano_de_frequencia(1, 15, 100, 100, 30)         # só os ativos já passam da capacidade
+        self.assertEqual(sozinha["efetivo_ativo_min"], 3.8)            # 100 / 26
+        self.assertIsNone(sozinha["efetivo_repouso_min"])              # não sobra nada para o repouso
+        self.assertIn("Na prática", sozinha["texto"])
+
+    def test_plano_atual_conta_os_chips_ativos_e_os_em_repouso(self):
+        a, b = self.chip(1), self.chip(2)
+        M2MChip.objects.filter(pk=a.pk).update(sessao_estado="ativa")
+        plano = m2m.plano_atual()
+        self.assertEqual((plano["chips_ativos"], plano["chips_repouso"]), (1, 1))
 
     def test_validar_frequencia_usa_os_chips_monitorados_e_o_limite_configurado(self):
         self.chip(1)
@@ -1800,29 +1868,35 @@ class ConfiguracaoTests(M2MBase):
         self.assertEqual((cfg.intervalo_minutos, cfg.pausa_entre_chamadas_ms, cfg.falhas_para_alerta, cfg.pct_consumo_alerta),
                          (30, 500, 5, 90))
         evento = M2MEvento.objects.get(tipo="config_alterada")
-        self.assertEqual(evento.dados["alteracoes"]["intervalo_minutos"], {"de": 60, "para": 30})
+        self.assertEqual(evento.dados["alteracoes"]["intervalo_minutos"], {"de": 1, "para": 30})
         self.assertNotIn("max_chips_execucao", evento.dados["alteracoes"])                 # só o que mudou
         m2m.salvar_configuracao({"intervalo_minutos": 30}, self.usuario)                   # sem mudança: sem evento novo
         self.assertEqual(M2MEvento.objects.filter(tipo="config_alterada").count(), 1)
 
+    def test_salvar_configuracao_grava_o_intervalo_de_repouso(self):
+        cfg = m2m.salvar_configuracao({"intervalo_repouso_minutos": "10"}, self.usuario)
+        self.assertEqual(cfg.intervalo_repouso_minutos, 10)
+        self.assertEqual(m2m.configuracao_atual()["intervalo_repouso_minutos"], 10)
+
     def test_salvar_configuracao_recusa_valores_ruins_sem_gravar_nada(self):
-        ruins = [{"intervalo_minutos": 10}, {"intervalo_minutos": "abc"}, {"pct_consumo_alerta": 150},
-                 {"falhas_para_alerta": 0}, {"max_chips_execucao": 5000}, {"limite_req_minuto": 0}]
+        ruins = [{"intervalo_minutos": 0}, {"intervalo_minutos": "abc"}, {"intervalo_repouso_minutos": 0},
+                 {"pct_consumo_alerta": 150}, {"falhas_para_alerta": 0}, {"max_chips_execucao": 5000},
+                 {"limite_req_minuto": 0}]
         for dados in ruins:
             with self.subTest(dados=dados), self.assertRaises(ValidationError) as ctx:
                 m2m.salvar_configuracao(dados, self.usuario)
             self.assertEqual(set(ctx.exception.message_dict), set(dados))
-        self.assertEqual(M2MIntegracao.get().intervalo_minutos, 60)
+        self.assertEqual(M2MIntegracao.get().intervalo_minutos, 1)
         self.assertFalse(M2MEvento.objects.filter(tipo="config_alterada").exists())
 
-    def test_salvar_configuracao_recusa_frequencia_acima_do_limite_com_a_conta_na_mensagem(self):
+    def test_salvar_configuracao_aceita_frequencia_acima_do_limite(self):
         for n in range(1, 11):
             self.chip(n)                                                                    # 10 chips
-        with self.assertRaises(ValidationError) as ctx:
-            m2m.salvar_configuracao({"intervalo_minutos": 15, "limite_req_minuto": 1}, self.usuario)   # 20/15 = 1,33 > 1
-        mensagem = ctx.exception.message_dict["intervalo_minutos"][0]
-        self.assertIn("2 consultas x 10 chips / 15 min = 1,33 req/min", mensagem)
-        self.assertEqual(M2MIntegracao.get().limite_req_minuto, 30)                          # nada foi gravado
+        cfg = m2m.salvar_configuracao(
+            {"intervalo_minutos": 1, "intervalo_repouso_minutos": 1, "limite_req_minuto": 5}, self.usuario,
+        )
+        self.assertEqual((cfg.intervalo_minutos, cfg.limite_req_minuto), (1, 5))             # gravou: o ciclo é que se limita
+        self.assertTrue(m2m.plano_atual(cfg)["limitado"])
 
     def test_salvar_mapeamento_normaliza_audita_e_nao_reescreve_o_passado(self):
         chip = self.chip(1)
@@ -1881,6 +1955,13 @@ class ConfiguracaoTests(M2MBase):
 # ═════════════════════════════════════════════════════════════
 
 class ComandosTests(M2MBase):
+    def setUp(self):
+        super().setUp()
+        # Estes testes provam UM ciclo por execução do comando. Com o intervalo desejado de 1 min e a tarefa de 15
+        # a execução repetiria o ciclo a cada minuto até o fim do tique (`VariosCiclosNoTiqueTests`, em
+        # test_m2m_sincronizacao.py): aqui a cadência é a do tique, e o comando roda uma vez.
+        M2MIntegracao.objects.filter(pk=1).update(intervalo_minutos=60)
+
     def rodar(self, resposta, *args):
         saida = io.StringIO()
         with mock.patch("services.tim_m2m_service.requests.Session", return_value=Sessao(resposta)):
@@ -1892,8 +1973,8 @@ class ComandosTests(M2MBase):
             with self.assertRaises(CommandError) as ctx:
                 call_command("monitorar_m2m", stdout=io.StringIO())
         mensagem = str(ctx.exception)
-        self.assertIn("Nenhum token configurado", mensagem)
-        self.assertIn("TIM_M2M_TOKEN", mensagem)
+        self.assertIn("Nenhuma credencial configurada", mensagem)
+        self.assertIn("TIM_M2M_CLIENT_ID", mensagem)
         mensagem.encode("cp1252")                                                       # o console do Windows aguenta
 
     def test_ciclo_bem_sucedido_imprime_resumo_so_com_cp1252(self):
@@ -1962,6 +2043,8 @@ class PermissoesTests(TestCase):
 
     VER = {"ver_frota", "ver_chips", "consultar_conectividade", "ver_historico_frota"}
     OPERAR = {"editar_frota", "importar_chips", "vincular_chips", "transferir_chips", "tratar_ocorrencias"}
+    # as três do inventário de Frotas e Maquinários, que a 0198 acrescentou ao grupo que OPERA a frota
+    INVENTARIO = {"importar_equipamentos_frota", "validar_inventario_frota", "exportar_frota"}
 
     def codigos(self, grupo):
         return set(
@@ -1975,13 +2058,14 @@ class PermissoesTests(TestCase):
         self.assertTrue(self.VER | self.OPERAR | {"administrar_frota_config"} <= codigos)
         self.assertFalse({"ver_m2m", "operar_m2m", "configurar_m2m"} & codigos)
 
-    def test_grupo_frotas_tem_as_nove_e_nao_tem_administrar(self):
+    def test_grupo_frotas_tem_as_do_modulo_e_nao_tem_administrar(self):
         self.assertEqual((GRUPO_FROTAS, GRUPO_FROTAS_CONSULTA), ("Frotas e Conectividade", "Frotas — Consulta"))
         grupo = Group.objects.get(name=GRUPO_FROTAS)
-        self.assertEqual(self.codigos(grupo), self.VER | self.OPERAR)
+        self.assertEqual(self.codigos(grupo), self.VER | self.OPERAR | self.INVENTARIO)
         self.assertFalse(Group.objects.filter(name="Monitoramento M2M").exists())     # foi renomeado
 
     def test_grupo_de_consulta_so_le(self):
+        # importar, validar o inventário e exportar não são leitura: ficam só no grupo que opera
         self.assertEqual(self.codigos(Group.objects.get(name=GRUPO_FROTAS_CONSULTA)), self.VER)
 
     def test_quem_esta_no_grupo_opera_mas_nao_administra(self):
@@ -2023,3 +2107,340 @@ class PermissoesTests(TestCase):
                 self.assertFalse(ma.has_add_permission(requisicao))
                 self.assertFalse(ma.has_change_permission(requisicao))
                 self.assertFalse(ma.has_delete_permission(requisicao))
+
+
+# ═════════════════════════════════════════════════════════════
+# API real do GSIM (Saitro): registro do SIM, OAuth2, lista completa, consumo em texto
+# ═════════════════════════════════════════════════════════════
+
+def registro_gsim(iccid, linha="5586999990001", conexao="nunca_conectou", consumo="0,00 KB"):
+    """Um SIM Card como a API real devolve (formato conferido em 13/11/2026)."""
+    return {
+        "cliente": "/api/clientes/4/", "id_simcard": 1, "iccid": iccid, "msisdn": linha,
+        "data_hlr": "30/09/2026 14:20:25", "ultimo_acesso": "", "rede": None,
+        "produto": "/api/produto/44/", "status": "desbloqueado", "conexao": conexao,
+        "ultima_apn": None, "tecnologia": "", "info_cliente": "", "bloqueio_funcional": False,
+        "bloqueio_administrativo": False, "suspensao": False, "cobertura": "OI",
+        "servicos": {"dados": {"aprovisionado": True, "consumo": consumo, "bloqueado": False, "reduzido": False}},
+        "perfil4g": {"ativo": False}, "apn": [], "resource_uri": f"/api/simcards/{linha}/",
+    }
+
+
+class RegistroDoSimTests(M2MBase):
+    """`GET /simcards/{id}/` devolve UMA LISTA com o registro (a doc mostra um objeto)."""
+
+    def consultar(self, resposta):
+        cliente, _ = self.cliente([resposta])
+        return cliente.consultar(self.chip(1), "sessao", "manual")
+
+    def test_lista_com_um_registro_vira_o_proprio_registro(self):
+        r = self.consultar(Resp(200, json=[registro_gsim("8955100000000000014")]))
+        self.assertEqual((r.resultado, r.payload["conexao"]), ("sucesso", "nunca_conectou"))
+
+    def test_objeto_como_na_documentacao_tambem_vale(self):
+        r = self.consultar(Resp(200, json=registro_gsim("8955100000000000014")))
+        self.assertEqual((r.resultado, r.payload["iccid"]), ("sucesso", "8955100000000000014"))
+
+    def test_lista_vazia_e_nao_encontrado_nunca_sem_sessao(self):
+        r = self.consultar(Resp(200, json=[]))
+        self.assertEqual(r.resultado, "nao_encontrado")
+        self.assertIn("não significa", r.mensagem_erro)
+
+    def test_mais_de_um_registro_nao_e_adivinhado(self):
+        r = self.consultar(Resp(200, json=[registro_gsim("1"), registro_gsim("2")]))
+        self.assertEqual(r.resultado, "resposta_invalida")
+        self.assertIn("2 registros", r.mensagem_erro)
+
+    def test_erro_em_texto_da_api_vira_resposta_invalida_com_a_mensagem(self):
+        r = self.consultar(Resp(200, json={"erro": "registro não encontrado"}))
+        self.assertEqual(r.resultado, "resposta_invalida")
+        self.assertIn("registro não encontrado", r.mensagem_erro)
+
+
+class MapeamentoGsimTests(M2MBase):
+    def test_o_padrao_e_valido_e_a_migration_guarda_o_mesmo_texto(self):
+        import importlib
+
+        migration = importlib.import_module("ProjetoEstoque.migrations.0199_m2m_mapeamento_gsim_padrao")
+        # A 0199 guarda o texto HISTÓRICO (base 1000); a 0203 o corrige para a base do portal (1024). Fora a base, sem deriva.
+        historico = {**migration.MAPEAMENTO_GSIM, "consumo": {**migration.MAPEAMENTO_GSIM["consumo"], "base": 1024}}
+        self.assertEqual(historico, interp.MAPEAMENTO_GSIM)
+        normal = interp.validar_mapeamento(interp.MAPEAMENTO_GSIM)
+        self.assertEqual(normal["sessao"]["campo_estado"], "conexao")
+        self.assertIs(normal["consumo"]["unidade_no_valor"], True)
+
+    def test_conexao_so_vira_estado_com_valor_conhecido(self):
+        casos = (
+            ("online", "ativa"), ("offline", "sem_sessao"), ("nunca_conectou", "sem_sessao"),
+            ("nunca_conecto", "nao_interpretado"),               # a grafia da doc: não é o que a API manda
+            ("manutencao", "nao_interpretado"),
+        )
+        for bruto, esperado in casos:
+            with self.subTest(conexao=bruto):
+                r = interp.interpretar_sessao(registro_gsim("1", conexao=bruto), interp.MAPEAMENTO_GSIM)
+                self.assertEqual((r.estado, r.estado_bruto), (esperado, bruto))
+
+    def test_atualizacao_de_ponta_a_ponta_com_o_registro_da_api(self):
+        self.mapear(interp.MAPEAMENTO_GSIM)
+        chip = self.vincular(self.chip(1))
+        registro = registro_gsim(chip.iccid, conexao="nunca_conectou", consumo="2,47 MB")
+        self.atualizar(chip, [Resp(200, json=[registro])], avaliar=False)
+        self.assertEqual(chip.sessao_estado, "sem_sessao")
+        self.assertEqual(chip.sessao_consulta.estado_bruto, "nunca_conectou")              # o texto da API fica à vista
+        self.assertEqual(chip.consumo_bytes, round(2.47 * 1024 * 1024))                  # o portal conta MB em base 1024
+        consumo = chip.consumo_consulta
+        self.assertEqual((consumo.valor_original, consumo.unidade_original), ("2,47 MB", "MB"))
+        self.assertEqual(consumo.payload["servicos"]["dados"]["consumo"], "2,47 MB")       # cru, intocado
+
+
+class ConsumoEmTextoTests(SimpleTestCase):
+    """A API entrega o volume como texto com a unidade colada ("0,00 KB", "2.47 MB")."""
+
+    def ler(self, texto, base=1000):
+        mapa = {"consumo": {"campo_volume": "v", "unidade_no_valor": True, "base": base}}
+        return interp.interpretar_consumo({"v": texto}, mapa)
+
+    def test_formatos_da_api_e_da_documentacao(self):
+        casos = {
+            "0,00 KB": 0, "2.47 MB": 2_470_000, "2,47 MB": 2_470_000,
+            "1.234,56 MB": 1_234_560_000, "512 B": 512, "1,5 GB": 1_500_000_000, "0,000 KB": 0,
+        }
+        for texto, esperado in casos.items():
+            with self.subTest(texto=texto):
+                r = self.ler(texto)
+                self.assertEqual((r.volume_bytes, r.valor_original), (esperado, texto))
+
+    def test_a_base_e_a_que_o_usuario_escolheu(self):
+        self.assertEqual(self.ler("1 MB", base=1024).volume_bytes, 1_048_576)
+        self.assertEqual(self.ler("1 MB", base=1000).volume_bytes, 1_000_000)
+
+    def test_separador_ambiguo_nao_e_adivinhado(self):
+        r = self.ler("1.234 MB")                         # 1,234 MB ou 1234 MB?
+        self.assertIsNone(r.volume_bytes)
+        self.assertIn("ambíguo", r.motivo)
+        self.assertEqual(r.valor_original, "1.234 MB")   # o original continua guardado
+
+    def test_o_que_nao_e_numero_com_unidade_nao_vira_volume(self):
+        for texto in ("abc", "12", "MB 12", "12 Mb", "1,2,3 MB", "-5 MB", ""):
+            with self.subTest(texto=texto):
+                r = self.ler(texto)
+                self.assertIsNone(r.volume_bytes)
+                self.assertTrue(r.motivo)
+
+    def test_campo_que_nao_e_texto_nao_e_interpretado(self):
+        self.assertIsNone(self.ler(250).volume_bytes)
+
+    def test_unidade_no_valor_nao_convive_com_campo_ou_unidade_fixa(self):
+        for extra in ({"campo_unidade": "u"}, {"unidade_fixa": "MB"}):
+            with self.subTest(extra=extra), self.assertRaises(ValidationError):
+                interp.validar_mapeamento({"consumo": {"campo_volume": "v", "unidade_no_valor": True, **extra}})
+
+    def test_marca_vinda_de_formulario_valia_como_verdadeira(self):
+        normal = interp.validar_mapeamento({"consumo": {"campo_volume": "v", "unidade_no_valor": "1"}})
+        self.assertIs(normal["consumo"]["unidade_no_valor"], True)
+
+
+class ListaCompletaTests(M2MBase):
+    """O ciclo lê a conta inteira de uma vez (`GET /simcards/`): uma chamada para N chips."""
+
+    def ciclo(self, respostas, **kw):
+        sessao = Sessao(respostas)
+        return m2m.executar_ciclo(cliente=tim.ClienteTIM(sessao), **kw), sessao
+
+    def test_varios_chips_vencidos_saem_de_uma_unica_chamada(self):
+        self.mapear()
+        chips = [self.vincular(self.chip(n), self.veiculo(n)) for n in range(1, 6)]
+        resumo, sessao = self.ciclo(roteador())
+        self.assertEqual(sessao.urls, [f"{BASE}/simcards/"])                  # UMA chamada para os 5 chips
+        self.assertEqual((resumo.consultados, resumo.sucessos, resumo.falhas), (5, 5, 0))
+        self.assertEqual(self.sleep.call_count, 0)                            # sem chamada por chip, sem pausa à toa
+        for chip in chips:
+            chip.refresh_from_db()
+            self.assertEqual(chip.sessao_estado, "ativa")
+            self.assertEqual(chip.consultas.count(), 2)
+
+    def test_um_chip_vencido_vai_sozinho_e_dois_ou_mais_leem_a_lista(self):
+        self.mapear()
+        a = self.chip(1)
+        resumo, sessao = self.ciclo(roteador())
+        self.assertEqual(len(sessao.chamadas), 1)
+        self.assertEqual(sessao.urls, [f"{BASE}/simcards/{a.iccid}/"])
+
+    def test_dois_chips_vencidos_leem_a_lista_uma_vez(self):
+        self.mapear()
+        self.chip(1), self.chip(2)
+        resumo, sessao = self.ciclo(roteador())
+        self.assertEqual(sessao.urls, [f"{BASE}/simcards/"])                            # UMA chamada para os dois
+
+    def test_chip_fora_da_lista_e_nao_encontrado_e_nao_sem_sessao(self):
+        self.mapear()
+        chips = [self.chip(n) for n in range(1, 5)]
+        fora = chips[-1]
+        base = roteador()
+
+        def fn(url):
+            r = base(url)
+            if url.rstrip("/").endswith("/simcards"):
+                corpo = r.json()
+                corpo["objetos"] = [o for o in corpo["objetos"] if o["iccid"] != fora.iccid]
+                return Resp(200, json=corpo)
+            return r
+
+        resumo, sessao = self.ciclo(fn)
+        fora.refresh_from_db()
+        self.assertEqual(fora.consultas.filter(tipo="sessao").get().resultado, "nao_encontrado")
+        self.assertEqual(fora.sessao_estado, "nao_consultado")                # nunca "sem sessão"
+        self.assertEqual(sessao.urls, [f"{BASE}/simcards/"])                  # lista completa: sem consulta individual
+
+    def test_chip_achado_pelo_numero_da_linha_com_ou_sem_o_55(self):
+        self.mapear()
+        a = self.chip(1, iccid="", imsi=imsi_valido(1), identificador_consulta="imsi", numero_linha="86999990001")
+        b = self.chip(2, iccid="", imsi=imsi_valido(2), identificador_consulta="imsi", numero_linha="5586999990002")
+        self.chip(3)
+
+        def fn(url):
+            objetos = [
+                registro_gsim(iccid_valido(11), linha="5586999990001", conexao="online"),
+                registro_gsim(iccid_valido(12), linha="5586999990002", conexao="offline"),
+                registro_gsim(iccid_valido(3), linha=""),
+            ]
+            return Resp(200, json={"meta": {"proxima": None}, "objetos": objetos})
+
+        self.ciclo(fn)
+        for chip in (a, b):
+            chip.refresh_from_db()
+        self.assertEqual(a.consultas.filter(tipo="sessao").get().resultado, "sucesso")
+        self.assertEqual(b.consultas.filter(tipo="sessao").get().resultado, "sucesso")
+        self.assertEqual(a.consultas.filter(tipo="sessao").get().payload["conexao"], "online")
+
+    def test_falha_ao_ler_a_lista_vira_falha_de_cada_chip_sem_chamada_extra(self):
+        chips = [self.chip(n) for n in range(1, 4)]
+        resumo, sessao = self.ciclo(roteador(status=503))
+        self.assertEqual(len(sessao.chamadas), 3)                             # a lista + 2 retentativas; nada por chip
+        self.assertTrue(all(u == f"{BASE}/simcards/" for u in sessao.urls))
+        self.assertEqual(resumo.falhas, 3)
+        for chip in chips:
+            chip.refresh_from_db()
+            self.assertEqual((chip.ultima_falha_tipo, chip.falhas_consecutivas), ("indisponivel", 1))
+            self.assertEqual(chip.sessao_estado, "nao_consultado")            # falha da API não é "sem sessão"
+
+    def test_429_na_lista_para_no_primeiro_chip_e_grava_o_bloqueio(self):
+        for n in range(1, 5):
+            self.chip(n)
+        resumo, sessao = self.ciclo(lambda url: Resp(429, headers={"Retry-After": "900"}))
+        self.assertEqual(len(sessao.chamadas), 1)                             # 429 não é retentado
+        self.assertEqual((resumo.consultados, resumo.interrompido_por), (1, "limite_excedido"))
+        self.assertIsNotNone(M2MIntegracao.get().bloqueado_ate)
+
+    def test_a_paginacao_segue_a_proxima_no_mesmo_host(self):
+        self.mapear()
+        chips = [self.chip(n) for n in range(1, 4)]
+
+        def fn(url):
+            if "pagina=2" in url:
+                return Resp(200, json={"meta": {"proxima": None}, "objetos": [
+                    registro_gsim(chips[1].iccid, conexao="online"), registro_gsim(chips[2].iccid, conexao="online")]})
+            return Resp(200, json={"meta": {"proxima": "/api/simcards/?pagina=2"},
+                                   "objetos": [registro_gsim(chips[0].iccid, conexao="online")]})
+
+        resumo, sessao = self.ciclo(fn)
+        self.assertEqual(sessao.urls, [f"{BASE}/simcards/", f"{BASE}/api/simcards/?pagina=2"])
+        self.assertEqual((resumo.consultados, resumo.falhas), (3, 0))
+
+    def test_proxima_para_outro_host_nao_e_seguida_e_a_lista_fica_incompleta(self):
+        self.mapear()
+        chips = [self.chip(n) for n in range(1, 4)]
+
+        def fn(url):
+            if url.rstrip("/").endswith("/simcards"):
+                return Resp(200, json={"meta": {"proxima": "https://evil.example.com/api/simcards/?pagina=2"},
+                                       "objetos": [registro_gsim(chips[0].iccid, conexao="online")]})
+            return Resp(200, json=[registro_gsim("0", conexao="online")])
+
+        resumo, sessao = self.ciclo(fn)
+        self.assertFalse(any("evil" in u for u in sessao.urls))               # a credencial não vai para outro host
+        # lista incompleta: quem não apareceu NÃO vira "não encontrado" — é consultado um a um
+        self.assertIn(f"{BASE}/simcards/{chips[1].iccid}/", sessao.urls)
+        self.assertIn(f"{BASE}/simcards/{chips[2].iccid}/", sessao.urls)
+
+
+@override_settings(TIM_M2M_TOKEN="", TIM_M2M_CLIENT_ID="usuario-api", TIM_M2M_CLIENT_SECRET="senha-secreta-9876")
+class OAuthTests(M2MBase):
+    ACESSO = "ACESSO-TOKEN-123456"
+
+    def consultar(self, respostas, post=None, chip=None):
+        sessao = Sessao(respostas, post=post)
+        resposta = tim.ClienteTIM(sessao).consultar(chip or self.chip(1), "sessao", "manual")
+        return resposta, sessao
+
+    def test_o_token_vem_por_post_com_usuario_e_senha_no_corpo_nunca_na_url(self):
+        r, sessao = self.consultar([Resp(200, json=[registro_gsim("1")])])
+        self.assertTrue(r.valida)
+        url, kw = sessao.posts[0]
+        self.assertEqual(url, f"{BASE}/oauth/token")
+        self.assertEqual(kw["data"], {
+            "grant_type": "client_credentials", "client_id": "usuario-api", "client_secret": "senha-secreta-9876",
+        })
+        self.assertNotIn("senha-secreta", url)
+        self.assertIs(kw["allow_redirects"], False)
+        self.assertIs(kw["verify"], True)
+        self.assertEqual(sessao.chamadas[0][1]["headers"]["Authorization"], f"Bearer {self.ACESSO}")
+
+    def test_o_token_de_acesso_e_reaproveitado_entre_consultas(self):
+        _, primeira = self.consultar([Resp(200, json=[registro_gsim("1")])])
+        _, segunda = self.consultar([Resp(200, json=[registro_gsim("2")])], chip=self.chip(2))
+        self.assertEqual((len(primeira.posts), len(segunda.posts)), (1, 0))
+
+    def test_token_recusado_e_renovado_uma_vez_e_a_consulta_segue(self):
+        novo = Resp(200, json={"access_token": "ACESSO-NOVO-654321", "expires_in": 7200})
+        r, sessao = self.consultar(
+            [Resp(401), Resp(200, json=[registro_gsim("1")])],
+            post=[Resp(200, json={"access_token": self.ACESSO, "expires_in": 7200}), novo],
+        )
+        self.assertTrue(r.valida)
+        self.assertEqual(len(sessao.posts), 2)
+        self.assertEqual(sessao.chamadas[1][1]["headers"]["Authorization"], "Bearer ACESSO-NOVO-654321")
+
+    def test_duas_recusas_seguidas_sao_credencial_recusada_sem_laco(self):
+        r, sessao = self.consultar([Resp(401), Resp(401)])
+        self.assertEqual((r.resultado, len(sessao.posts), len(sessao.chamadas)), ("falha_autenticacao", 2, 2))
+
+    def test_usuario_e_senha_recusados_nao_fazem_consulta_e_nao_vazam(self):
+        r, sessao = self.consultar([], post=[Resp(400, json={"error": "invalid_client"})])
+        self.assertEqual((r.resultado, r.http_status), ("falha_autenticacao", 400))
+        self.assertEqual(sessao.chamadas, [])                                 # sem token não há consulta
+        self.assertIn("usuário e a senha", r.mensagem_erro)
+        self.assertNotIn("senha-secreta-9876", r.mensagem_erro)
+        self.assertNotIn("senha-secreta-9876", " ".join(self.logs))
+
+    def test_bloqueio_por_ip_nao_e_senha_errada(self):
+        corpo = {"status": False, "error_code": 403, "txt": "acesso_negado_ip_nao_autorizado"}
+        r, _ = self.consultar([], post=[Resp(403, json=corpo)])
+        self.assertEqual(r.resultado, "falha_autenticacao")                   # interrompe o ciclo igual
+        self.assertIn("IP", r.mensagem_erro)
+        self.assertIn("liberar", r.mensagem_erro)
+        self.assertNotIn("Confira", r.mensagem_erro)                          # não manda trocar a senha
+
+    def test_rede_fora_ao_pedir_o_token_e_falha_de_rede_nao_de_credencial(self):
+        r, _ = self.consultar([], post=[requests.ConnectionError("getaddrinfo failed")] * 2)
+        self.assertEqual(r.resultado, "erro_rede")
+        self.assertIn("host não encontrado", r.mensagem_erro)
+
+    def test_resposta_sem_access_token_e_invalida(self):
+        r, _ = self.consultar([], post=[Resp(200, json={"token_type": "Bearer"})])
+        self.assertEqual(r.resultado, "resposta_invalida")
+
+    def test_modo_e_estado_da_credencial(self):
+        self.assertEqual(tim.modo_credencial(), "oauth2")
+        estado = tim.estado_token()
+        self.assertEqual((estado["modo"], estado["origem"], estado["sufixo"]), ("oauth2", "env", ""))   # sem pedaço de senha
+        self.assertTrue(tim.configurada())
+
+    def test_so_o_usuario_sem_a_senha_nao_conta_como_configurada(self):
+        with override_settings(TIM_M2M_CLIENT_SECRET=""):
+            self.assertFalse(tim.configurada())
+            self.assertIn("metade da credencial", tim.motivo_nao_configurada())
+
+    def test_usuario_e_senha_vencem_o_token_estatico(self):
+        with override_settings(TIM_M2M_TOKEN="BEARER-PRONTO-777777"):
+            self.assertEqual(tim.modo_credencial(), "oauth2")

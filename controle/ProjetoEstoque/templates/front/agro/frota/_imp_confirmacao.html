@@ -1,0 +1,72 @@
+{% load l10n %}
+{% comment %}
+Passo 5 — Confirmação: o ÚNICO passo que grava na frota. Mostra o que será gravado, o que fica como está e o que
+muda se a atualização for autorizada, e só então oferece o botão. Equipamento já cadastrado só é atualizado com a
+caixa marcada, e mesmo assim só nos dados que o ERP conhece. Recebe `resumo`, `com_diferencas` (até 10 exemplos) e `grupos`.
+{% endcomment %}
+<section class="m2m-painel" aria-labelledby="agro-imp-confirma">
+  <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-imp-confirma">Confirmar a importação</h3></header>
+  <div class="agro-confirma">
+    <section aria-label="O que será gravado">
+      <h4>O que será gravado</h4>
+      <dl class="m2m-dl">
+        <div><dt>Equipamentos novos</dt><dd><b class="m2m-num">{{ resumo.novos|unlocalize }}</b></dd></div>
+        <div><dt>Próprios · Terceiros</dt><dd class="m2m-num">{{ resumo.por_natureza.proprio|unlocalize }} · {{ resumo.por_natureza.terceiro|unlocalize }}</dd></div>
+        <div><dt>Já cadastrados (ficam como estão)</dt><dd class="m2m-num">{{ resumo.ja_cadastrados|unlocalize }}</dd></div>
+        {% if resumo.repetidos_na_planilha %}<div><dt>Código repetido na planilha (ignorados)</dt><dd class="m2m-num">{{ resumo.repetidos_na_planilha|unlocalize }}</dd></div>{% endif %}
+        <div><dt>Rejeitados (não serão importados)</dt><dd class="m2m-num">{{ resumo.rejeitados|unlocalize }}</dd></div>
+        <div><dt>Com conferência pendente</dt><dd class="m2m-num">{{ importacao.avisos|unlocalize }}</dd></div>
+      </dl>
+      <p class="m2m-nota">Cada equipamento novo nasce com a validação pendente: “em uso” é o que o ERP diz, não uma confirmação de quem responde pelo inventário. Nada é corrigido na importação, e o código do ERP fica guardado como identificador legado.</p>
+    </section>
+
+    <section aria-label="A decisão">
+      <h4>Decisão</h4>
+      <form method="post" action="{% url 'frota_equip_importacao_confirmar' importacao.pk %}" data-frota-pagina id="agro-imp-confirmar">
+        {% csrf_token %}
+        {% if resumo.com_diferencas %}
+        <div class="agro-autoriza">
+          <label class="m2m-check"><input type="checkbox" name="atualizar" value="1"><span>Atualizar também os <b class="m2m-num">{{ resumo.com_diferencas|unlocalize }}</b> equipamento{{ resumo.com_diferencas|pluralize }} já cadastrado{{ resumo.com_diferencas|pluralize }} que a planilha mudaria</span></label>
+          <p class="m2m-nota">Só os dados que o ERP conhece (modelo, placa, chassi, anos, datas, setor, empresa, natureza, classes e centro de custo), e só onde a planilha tem valor: célula vazia nunca apaga. Nome, status, categoria, fazenda e responsável nunca são tocados. Cada mudança fica no histórico do equipamento.</p>
+        </div>
+        {% else %}
+        <p class="m2m-nota">Nenhum equipamento já cadastrado difere da planilha: não há o que atualizar.</p>
+        {% endif %}
+        <div class="m2m-previa-acoes">
+          <button type="submit" class="m2m-btn m2m-btn--primario" {% if not resumo.novos and not resumo.com_diferencas %}disabled title="Nenhuma linha válida para importar"{% endif %}>Confirmar a importação</button>
+          <a class="m2m-btn" href="{% url 'frota_equip_importacao_relatorio' importacao.pk %}?so=inconsistencias">Exportar as inconsistências (Excel)</a>
+        </div>
+      </form>
+      <div class="m2m-previa-acoes">
+        <a class="m2m-btn" href="?etapa=validacao">Rever a validação</a>
+        <a class="m2m-btn" href="?etapa=mapeamento">Voltar ao mapeamento</a>
+        <button type="submit" form="agro-imp-cancelar" class="m2m-btn m2m-btn--perigo">Descartar a importação</button>
+      </div>
+    </section>
+  </div>
+</section>
+
+{% if com_diferencas %}
+<section class="m2m-painel" aria-labelledby="agro-imp-difs">
+  <header class="m2m-painel-cab">
+    <h3 class="m2m-painel-t" id="agro-imp-difs">O que mudaria nos já cadastrados</h3>
+    <span class="m2m-sub">Primeiros {{ com_diferencas|length }} de {{ resumo.com_diferencas|unlocalize }}. Só vale se você marcar a caixa acima.</span>
+  </header>
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela m2m-tabela--curta">
+      <thead><tr><th>Equipamento</th><th>Modelo</th><th>O que muda</th></tr></thead>
+      <tbody>
+        {% for l in com_diferencas %}
+        <tr class="m2m-linha">
+          <td class="m2m-id" data-rotulo="Equipamento">{{ l.codigo_legado|default:"—" }}{% if l.veiculo_codigo %}<span class="m2m-id-2">{{ l.veiculo_codigo }}</span>{% endif %}</td>
+          <td class="m2m-quebra" data-rotulo="Modelo">{{ l.modelo|default:"—" }}</td>
+          <td class="m2m-largo" data-rotulo="O que muda">
+            <ul class="agro-diff">{% for m in l.mudancas %}<li><b>{{ m.rotulo }}</b> <span class="agro-diff-de">{{ m.de }}</span> → {{ m.para }}</li>{% endfor %}</ul>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}

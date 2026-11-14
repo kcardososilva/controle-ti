@@ -6,7 +6,6 @@
 {% block page_subtitle %}Chips{% endblock %}
 
 {% block extra_css %}
-{% if pode_vincular %}<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">{% endif %}
 {% comment %}A folha do módulo vem DEPOIS da do Select2: ela reveste o componente. Invertida, o CDN vence e nada tem efeito (regra 26).{% endcomment %}
 <link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
 {% endblock %}
@@ -14,7 +13,11 @@
 {% block content %}
 <div class="m2m-page">
   {% if pode_importar %}{% url 'm2m_chip_novo' as u_novo %}{% url 'frota_importar' as u_importar %}{% endif %}
+  {% if pode_ver_api %}
   {% include 'front/m2m/_frota_topo.html' with titulo="Chips" descricao="Cada chip, o veículo em que está e o que a última consulta à API respondeu." acao_url=u_novo acao_rotulo="Novo chip" acao_icone="fa-plus" acao2_url=u_importar acao2_rotulo="Importar planilha" acao2_icone="fa-file-arrow-up" %}
+  {% else %}
+  {% include 'front/m2m/_frota_topo.html' with titulo="Chips" descricao="Cada chip e o veículo ou equipamento em que está." acao_url=u_novo acao_rotulo="Novo chip" acao_icone="fa-plus" acao2_url=u_importar acao2_rotulo="Importar planilha" acao2_icone="fa-file-arrow-up" %}
+  {% endif %}
 
   {% if total_geral %}
   <nav class="m2m-segmentos m2m-segmentos--grande" aria-label="Chips vinculados e disponíveis">
@@ -39,6 +42,7 @@
         <label class="m2m-rotulo"><span>ICCID</span><input type="text" name="iccid" value="{{ filtros.iccid }}" class="m2m-campo m2m-campo--mono" inputmode="numeric" placeholder="só dígitos"></label>
         <label class="m2m-rotulo"><span>IMSI</span><input type="text" name="imsi" value="{{ filtros.imsi }}" class="m2m-campo m2m-campo--mono" inputmode="numeric" placeholder="só dígitos"></label>
         <label class="m2m-rotulo"><span>Veículo</span><input type="text" name="veiculo" value="{{ filtros.veiculo }}" class="m2m-campo" placeholder="código, nome ou placa"></label>
+        {% if pode_ver_api %}
         <label class="m2m-rotulo"><span>Sessão (última resposta válida)</span>
           <select name="sessao" class="m2m-campo" data-m2m-auto>
             <option value="">Todas</option>
@@ -51,6 +55,7 @@
             {% for valor, rotulo in situacoes %}<option value="{{ valor }}" {% if filtros.situacao == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
           </select>
         </label>
+        {% endif %}
         <label class="m2m-rotulo"><span>Unidade</span>
           <select name="localidade" class="m2m-campo" data-m2m-auto>
             <option value="">Todas</option>
@@ -61,14 +66,18 @@
           <input type="text" name="setor" value="{{ filtros.setor }}" class="m2m-campo" list="m2m-setores" placeholder="parte do nome">
           <datalist id="m2m-setores">{% for s in opcoes.setores %}<option value="{{ s }}">{% endfor %}</datalist>
         </label>
+        {% if pode_ver_api %}
         <label class="m2m-rotulo"><span>Consultado desde</span><input type="date" name="de" value="{{ filtros.de }}" class="m2m-campo"></label>
         <label class="m2m-rotulo"><span>Consultado até</span><input type="date" name="ate" value="{{ filtros.ate }}" class="m2m-campo"></label>
+        {% endif %}
         <label class="m2m-rotulo"><span>Ordenar por</span>
           <select name="ordem" class="m2m-campo" data-m2m-auto>
-            <option value="atencao" {% if filtros.ordem == "atencao" or not filtros.ordem %}selected{% endif %}>Quem precisa de atenção primeiro</option>
+            {% if pode_ver_api %}<option value="atencao" {% if filtros.ordem == "atencao" or not filtros.ordem %}selected{% endif %}>Quem precisa de atenção primeiro</option>{% endif %}
             <option value="nome" {% if filtros.ordem == "nome" %}selected{% endif %}>Nome</option>
+            {% if pode_ver_api %}
             <option value="consumo" {% if filtros.ordem == "consumo" %}selected{% endif %}>Maior volume informado</option>
             <option value="consulta" {% if filtros.ordem == "consulta" %}selected{% endif %}>Consulta mais recente</option>
+            {% endif %}
           </select>
         </label>
       </div>
@@ -87,7 +96,7 @@
   </ul>
   {% endif %}
 
-  {% if chips and not mapeado.sessao %}
+  {% if pode_ver_api and chips and not mapeado.sessao %}
   <p class="m2m-aviso" data-tom="neutro">
     Sem o mapeamento da sessão, nenhum chip aparece como “sessão ativa”: a resposta é guardada e fica como “não interpretado”.
     {% if pode_configurar %}<a href="{% url 'm2m_config' %}#mapeamento">Mapear os campos</a>{% endif %}
@@ -99,8 +108,10 @@
     <table class="m2m-tabela m2m-tabela--chips">
       <thead>
         <tr>
-          <th>Chip</th><th>Vínculo</th><th>Conectividade</th>
-          <th title="Último volume informado pela TIM em cada chip">Consumo</th><th>Última atualização</th><th><span class="m2m-sr">Ações</span></th>
+          <th>Chip</th><th>Vínculo</th>
+          {% if pode_ver_api %}<th>Conectividade</th>
+          <th title="Último volume informado pela TIM em cada chip">Consumo</th><th>Última atualização</th>{% endif %}
+          <th><span class="m2m-sr">Ações</span></th>
         </tr>
       </thead>
       <tbody id="m2m-corpo-chips">
@@ -124,7 +135,5 @@
 
 {% block extra_js %}
 {% if pode_vincular %}
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 {% endif %}
 {% endblock %}

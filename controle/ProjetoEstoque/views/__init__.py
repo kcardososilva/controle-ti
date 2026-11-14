@@ -41,6 +41,12 @@ from .subtipos import (
     subtipo_detail,
 )
 
+# ── Cadastro rápido (popup do formulário de item) ───────────────────────────
+from .cadastro_rapido import (
+    subtipo_cadastro_rapido,
+    localidade_cadastro_rapido,
+)
+
 # ── Usuários ────────────────────────────────────────────────────────────────
 from .usuarios import (
     usuario_list,
@@ -341,6 +347,9 @@ from .ninja import (
     ninja_oauth_callback,
     ninja_sincronizar,
     ninja_desconectar,
+    ninja_licencas_liberar,
+    ninja_licencas_marcar,
+    ninja_licencas_enviar,
 )
 
 # ── Status Board ─────────────────────────────────────────────────────────────
@@ -583,6 +592,7 @@ from .m2m_api import (  # noqa: E402
     m2m_chip_monitoramento,
     m2m_consulta_payload,
     m2m_opcoes,
+    m2m_sincronizacao,
     m2m_alerta_tratar,
     m2m_config_token,
     m2m_config_frequencia,
@@ -593,22 +603,50 @@ from .m2m_api import (  # noqa: E402
 )
 
 # ── Frotas e Conectividade (veículos, movimentações do chip, importação, configuração) ──
-from .frota import (  # noqa: E402
+from .frota_equipamentos import (  # noqa: E402
     frota_visao_geral,
+    frota_veiculos,
+    frota_equipamentos_proprios,
+    frota_equipamentos_terceiros,
+    frota_equipamentos_validar_lote,
+)
+from .frota_categorias import (  # noqa: E402
+    frota_categorias,
+    frota_config_tipos,
+    frota_cadastro_salvar,
+)
+from .frota_consultas import (  # noqa: E402
+    frota_equip_movimentacoes,
+    frota_equip_historico,
+)
+from .frota_composicao import frota_composicao  # noqa: E402
+from .frota_relatorios import frota_relatorios  # noqa: E402
+from .frota_importacao_equipamentos import (  # noqa: E402
+    frota_equip_importar,
+    frota_equip_importar_modelo,
+    frota_equip_importacoes,
+    frota_equip_importacao,
+    frota_equip_importacao_mapear,
+    frota_equip_importacao_confirmar,
+    frota_equip_importacao_cancelar,
+    frota_equip_importacao_relatorio,
+)
+from .frota import (  # noqa: E402
     frota_movimentacoes,
     frota_importar,
     frota_importacoes,
     frota_importacao,
-    frota_config_tipos,
     frota_config_operadoras,
     frota_config_regras,
-    frota_veiculos,
     frota_veiculo_detalhe,
     frota_veiculo_novo,
     frota_veiculo_editar,
 )
 from .frota_api import (  # noqa: E402
     frota_veiculo_status,
+    frota_veiculo_exclusao,
+    frota_veiculo_validar,
+    frota_veiculo_movimentar,
     frota_vincular,
     frota_desvincular,
     frota_transferir,
@@ -625,6 +663,23 @@ from .frota_api import (  # noqa: E402
     frota_config_operadora_salvar,
     frota_config_regra_salvar,
     frota_config_regra_restaurar,
+)
+# Chip na ficha do equipamento de TI (tablet, celular): rotas do ambiente TI, permissão do módulo de chips (regra 62).
+from .chip_estoque_ti import (  # noqa: E402
+    chips_conciliacao,
+    chip_estoque_conciliar,
+    chip_estoque_ligar,
+    chip_estoque_desligar,
+    chip_estoque_criar_chip,
+    chip_estoque_cadastrar_itens,
+    chip_estoque_opcoes,
+    chip_estoque_opcoes_itens,
+)
+from .equipamento_chip import (  # noqa: E402
+    equipamento_chip_vincular,
+    equipamento_chip_desvincular,
+    equipamento_chip_substituir,
+    equipamento_chip_opcoes,
 )
 
 # ── Tecnologia agrícola do Zelo Agro: estoque tecnológico e catálogo ──
@@ -652,6 +707,16 @@ from .tec_instalacao import (  # noqa: E402
     tec_instalacao_substituir,
     tec_material_aplicar,
     tec_material_devolver,
+)
+from .agro_mapa import agro_mapa, agro_mapa_config, agro_mapa_dados  # noqa: E402
+from .agro_infra import (  # noqa: E402
+    infra_visao_geral,
+    infra_estruturas,
+    infra_estrutura_nova,
+    infra_estrutura_editar,
+    infra_enlaces,
+    infra_enlace_novo,
+    infra_enlace_editar,
 )
 from .tec_catalogo import (  # noqa: E402
     tec_catalogo,

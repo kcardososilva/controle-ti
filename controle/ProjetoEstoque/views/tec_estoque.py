@@ -72,17 +72,51 @@ def _modelos_agrupados(controle: str, atual=None) -> list:
     return list(grupos.items())
 
 
-def _locais_ativos(atual=None) -> list:
-    return opcoes_de(AgroLocal.objects.filter(ativo=True).select_related("fazenda").order_by("fazenda__local", "nome"), atual=atual)
+def _campos_de_modelo(controle: str, rotulo: str, *, atual=None, valor="", vazio: str, dica: str = "", obrigatorio: bool = True) -> list:
+    """Os DOIS campos que escolhem um modelo: o FABRICANTE (auxiliar, só filtra) e o MODELO, que depende dele.
+
+    Escolher o fabricante deixa na lista só os modelos dele e limpa um modelo que não é dele (`data-s2-pai` em
+    `static/js/agro-select.js`, que casa o grupo do modelo com o nome do fabricante). Não escolher fabricante
+    mostra todos, agrupados por fabricante, e a busca do modelo também acha pelo nome do fabricante. O que o
+    service recebe e valida é o modelo (`fabricante_filtro` não entra nos dados): um fabricante que não bate com
+    o modelo simplesmente não existe para o servidor, que confere o modelo contra o catálogo."""
+    grupos = _modelos_agrupados(controle, atual)
+    nomes_de_fabricantes = [nome for nome, _ in grupos]
+    fabricantes = TecFabricante.objects.filter(nome__in=nomes_de_fabricantes).order_by("nome")
+    fabricante_atual = ""
+    if atual is not None:
+        fabricante_atual = atual.fabricante_id
+    elif valor:
+        escolhido = TecModelo.objects.filter(pk=valor).values_list("fabricante_id", flat=True).first()
+        fabricante_atual = escolhido or ""
+    return [
+        campo("fabricante_filtro", "Fabricante", "select", opcoes=[(f.pk, f.nome) for f in fabricantes], vazio="Todos os fabricantes",
+              valor=fabricante_atual, auxiliar=True, dica="Opcional: filtra os modelos pelo fabricante."),
+        campo("modelo", rotulo, "select", obrigatorio=obrigatorio, grupos=grupos, vazio=vazio, valor=valor or getattr(atual, "pk", ""),
+              dados={"s2-pai": "fabricante_filtro"}, dica=dica),
+    ]
+
+
+def _locais_das_fazendas() -> list:
+    """O que as telas de estoque oferecem como "local de armazenamento": só a Fazenda Karitel e a
+    Fazenda Rio do Meio (`catalogo.locais_das_fazendas`). É escolha de TELA — os services continuam
+    aceitando qualquer local ativo do catálogo, então o que já está num Almoxarifado ou numa Oficina
+    segue consultável e movível (ver `_locais_com_saldo`)."""
+    return opcoes_de(catalogo.locais_das_fazendas())
 
 
 def _locais_com_saldo(modelo: TecModelo, *, so_com_saldo: bool) -> list:
-    """Locais com o saldo do modelo no rótulo: "Almoxarifado · Karitel — 60 m". `so_com_saldo` tira os
-    vazios (saída e transferência só fazem sentido onde há material)."""
+    """As duas fazendas com o saldo do modelo no rótulo: "Fazenda Karitel — 60 m". `so_com_saldo` tira
+    as vazias (saída e transferência só fazem sentido onde há material). Um local antigo do catálogo
+    (Almoxarifado, Oficina…) que AINDA tem saldo entra também, pelo nome dele: sumir da lista deixaria
+    o material sem como sair."""
     saldos = {s.local_id: s.quantidade for s in estoque.saldos_do_modelo(modelo)}
     sigla = modelo.unidade.sigla if modelo.unidade_id else "un"
+    padroes = catalogo.locais_das_fazendas()
+    com_saldo = [pk for pk, q in saldos.items() if q > 0 and pk not in {l.pk for l in padroes}]
+    antigos = AgroLocal.objects.filter(pk__in=com_saldo, ativo=True).select_related("fazenda").order_by("fazenda__local", "nome")
     opcoes = []
-    for local in AgroLocal.objects.filter(ativo=True).select_related("fazenda").order_by("fazenda__local", "nome"):
+    for local in [*padroes, *antigos]:
         quantidade = saldos.get(local.pk, Decimal("0"))
         if so_com_saldo and quantidade <= 0:
             continue
@@ -104,7 +138,6 @@ def tec_visao_geral(request):
         request, "visao",
         resumo=estoque.resumo_estoque(),
         faltas=estoque.abaixo_do_minimo(limite=8),
-        sem_locais=not AgroLocal.objects.filter(ativo=True).exists(),
         sem_modelos=not TecModelo.objects.filter(ativo=True).exists(),
         situacoes=[(valor, rotulo) for valor, rotulo in Situacao.choices],
     )
@@ -176,9 +209,8 @@ def tec_equipamento_detalhe(request, pk):
 def _campos_do_equipamento(equipamento=None) -> list:
     criando = equipamento is None
     campos = [
-        campo("modelo", "Modelo", "select", obrigatorio=True, grupos=_modelos_agrupados(TecControle.INDIVIDUAL, getattr(equipamento, "modelo", None)),
-              vazio="Escolher o modelo", valor=getattr(equipamento, "modelo_id", ""),
-              dica="Falta o modelo? Cadastre-o no catálogo (fabricante, categoria e nome)."),
+        *_campos_de_modelo(TecControle.INDIVIDUAL, "Modelo", atual=getattr(equipamento, "modelo", None), vazio="Escolher o modelo",
+                           dica="Falta o modelo? Cadastre-o no catálogo (fabricante, categoria e nome)."),
         campo("numero_serie", "Número de série", valor=getattr(equipamento, "numero_serie", ""), maximo=80, mono=True,
               dica="Único por fabricante. Informe o número de série, o patrimônio ou os dois."),
         campo("patrimonio", "Patrimônio / identificação interna", valor=getattr(equipamento, "patrimonio", ""), maximo=40, mono=True, dica="Único."),
@@ -187,8 +219,8 @@ def _campos_do_equipamento(equipamento=None) -> list:
               valor=getattr(equipamento, "fornecedor_id", "")),
     ]
     if criando:
-        campos.insert(1, campo("local", "Local de armazenamento", "select", obrigatorio=True, opcoes=_locais_ativos(), vazio="Escolher o local",
-                               dica="Onde o equipamento fica guardado até ser instalado."))
+        campos.insert(1, campo("local", "Local de armazenamento", "select", obrigatorio=True, opcoes=_locais_das_fazendas(), vazio="Escolher o local",
+                               dica="Em qual fazenda o equipamento fica guardado até ser instalado."))
         campos.append(campo("documento", "Documento de entrada", maximo=60, placeholder="Ex.: NF 1234", dica="Nota fiscal ou outro documento, se houver."))
     campos.append(campo("observacoes", "Observações técnicas", "textarea", valor=getattr(equipamento, "observacoes", ""), largo=True))
     return campos
@@ -204,7 +236,7 @@ def tec_equipamento_novo(request):
     return formulario(
         request, aba="equipamentos", titulo="Novo equipamento", descricao="Cadastre um equipamento individual: ele entra no estoque e passa a ter histórico próprio.",
         voltar_url=reverse("tec_equipamentos"), voltar_rotulo="Equipamentos", campos=_campos_do_equipamento(), executar=executar, rotulo_enviar="Cadastrar equipamento",
-        secoes=[("Identificação", ["modelo", "numero_serie", "patrimonio"]), ("Entrada no estoque", ["local", "data_aquisicao", "fornecedor", "documento"]), ("Observações", ["observacoes"])],
+        secoes=[("Identificação", ["fabricante_filtro", "modelo", "numero_serie", "patrimonio"]), ("Entrada no estoque", ["local", "data_aquisicao", "fornecedor", "documento"]), ("Observações", ["observacoes"])],
     )
 
 
@@ -219,14 +251,14 @@ def tec_equipamento_editar(request, pk):
     return formulario(
         request, aba="equipamentos", titulo=f"Editar {equipamento.codigo}", descricao="Corrige o cadastro. Local e situação mudam só por operação (mover, instalar, enviar para manutenção…), para o histórico contar a história.",
         voltar_url=reverse("tec_equipamento_detalhe", args=[equipamento.pk]), voltar_rotulo=equipamento.codigo, campos=_campos_do_equipamento(equipamento), executar=executar,
-        tem_token=False, secoes=[("Identificação", ["modelo", "numero_serie", "patrimonio"]), ("Aquisição", ["data_aquisicao", "fornecedor"]), ("Observações", ["observacoes"])],
+        tem_token=False, secoes=[("Identificação", ["fabricante_filtro", "modelo", "numero_serie", "patrimonio"]), ("Aquisição", ["data_aquisicao", "fornecedor"]), ("Observações", ["observacoes"])],
     )
 
 
 @exige_tec("transferir_tec_equipamento")
 def tec_equipamento_mover(request, pk):
     equipamento = get_object_or_404(TecEquipamento.objects.select_related("modelo__fabricante", "local__fazenda"), pk=pk)
-    destinos = [o for o in _locais_ativos() if o[0] != equipamento.local_id]
+    destinos = [o for o in _locais_das_fazendas() if o[0] != equipamento.local_id]
 
     def executar(dados, token):
         resultado = estoque.mover_equipamento_de_local(equipamento, dados.get("local"), request.user, dados.get("motivo"), observacoes=dados.get("observacoes", ""), token=token)
@@ -328,7 +360,7 @@ def tec_material_entrada(request, pk=None):
         return f"Entrada de {mov.quantidade.normalize():f} {mov.modelo.unidade.sigla} de {mov.modelo} registrada.", _destino_do_material(mov.modelo), resultado.repetida
 
     campos = [
-        campo("local", "Local de armazenamento", "select", obrigatorio=True, opcoes=_locais_ativos(), vazio="Escolher o local"),
+        campo("local", "Local de armazenamento", "select", obrigatorio=True, opcoes=_locais_das_fazendas(), vazio="Escolher o local"),
         campo("quantidade", "Quantidade", "number", obrigatorio=True, mono=True, placeholder="0", dica=f"Em {fixo.unidade.nome.lower()}s." if fixo else ""),
         campo("fornecedor", "Fornecedor", "select", opcoes=_fornecedores(), vazio="Sem fornecedor"),
         campo("documento", "Documento", maximo=60, placeholder="Ex.: NF 1234"),
@@ -336,8 +368,9 @@ def tec_material_entrada(request, pk=None):
         campo("observacoes", "Observações", "textarea", largo=True),
     ]
     if fixo is None:
-        campos.insert(0, campo("modelo", "Material", "select", obrigatorio=True, grupos=_modelos_agrupados(TecControle.QUANTIDADE), vazio="Escolher o material",
-                               dica="Falta o material? Cadastre o modelo no catálogo, com controle por quantidade."))
+        for posicao, c in enumerate(_campos_de_modelo(TecControle.QUANTIDADE, "Material", vazio="Escolher o material",
+                                                      dica="Falta o material? Cadastre o modelo no catálogo, com controle por quantidade.")):
+            campos.insert(posicao, c)
     voltar = _destino_do_material(fixo) if fixo else reverse("tec_materiais")
     return formulario(
         request, aba="materiais", titulo="Entrada de material", descricao=(f"{fixo} · soma ao saldo do local escolhido." if fixo else "Soma ao saldo do local escolhido. Quantidade inicial também é uma entrada."),
@@ -401,7 +434,7 @@ def tec_material_transferir(request, pk):
         voltar_url=_destino_do_material(modelo), voltar_rotulo=str(modelo), rotulo_enviar="Transferir", executar=executar,
         campos=[
             campo("local_origem", "De qual local", "select", obrigatorio=True, opcoes=_locais_com_saldo(modelo, so_com_saldo=True), vazio="Escolher a origem"),
-            campo("local_destino", "Para qual local", "select", obrigatorio=True, opcoes=_locais_ativos(), vazio="Escolher o destino"),
+            campo("local_destino", "Para qual local", "select", obrigatorio=True, opcoes=_locais_das_fazendas(), vazio="Escolher o destino"),
             campo("quantidade", "Quantidade", "number", obrigatorio=True, mono=True, placeholder="0"),
             campo("motivo", "Motivo", obrigatorio=True, maximo=255, largo=True),
             campo("observacoes", "Observações", "textarea", largo=True),

@@ -1,0 +1,110 @@
+{% load static m2m_tags %}
+{% comment %}
+Cartão "Linha de conectividade" da ficha de um ITEM que É um chip (SIM) no estoque de TI (regra 66). É o outro lado do
+cartão "Chip (SIM)" (que mostra o chip DENTRO de um tablet): aqui o item é o chip, e o cartão mostra a linha, a operadora,
+a sessão e o consumo que Frotas e Conectividade guarda para o MESMO SIM, e onde ele está em uso. Só LEITURA — o item nunca
+é gravado — e só para quem tem `ver_chips`; os botões exigem `vincular_chips` (a view confere de novo).
+
+Contexto (de `contexto_da_linha`): linha_card_visivel, linha_chip, linha_divergencias, linha_onde, linha_sugestoes,
+linha_pode_ligar, linha_pode_ver_agro, linha_url_opcoes, linha_serie_valida.
+{% endcomment %}
+{% if linha_card_visivel %}
+<section class="ad-card ad-chip-card" id="ad-linha-card">
+  <div class="ad-card-header">
+    <div class="ad-card-title"><i class="fa-solid fa-tower-cell" aria-hidden="true"></i> Linha de conectividade</div>
+    {% if linha_chip %}<span class="ad-badge ad-badge-success">Ligado ao chip {{ linha_chip.nome }}</span>{% else %}<span class="ad-badge ad-badge-warning">Sem chip de conectividade</span>{% endif %}
+  </div>
+  <div class="ad-card-body">
+    {% if linha_chip %}
+    {% with chip=linha_chip %}
+    <div class="ad-chip-item">
+      <div class="ad-chip-topo">
+        <div>
+          <div class="ad-chip-nome">{{ chip.nome }}</div>
+          <div class="ad-chip-sub ad-mono">{% if chip.iccid %}{{ chip.iccid|m2m_blocos }}{% elif chip.imsi %}{{ chip.imsi|m2m_blocos }}{% else %}—{% endif %}</div>
+        </div>
+        <div class="ad-chip-estados">
+          {% if chip.sessao_estado == "ativa" %}<span class="ad-badge ad-badge-success"><span class="dot"></span> Sessão ativa</span>
+          {% elif chip.sessao_estado == "sem_sessao" %}<span class="ad-badge ad-badge-warning"><span class="dot"></span> Sem sessão</span>
+          {% else %}<span class="ad-badge ad-badge-neutral"><span class="dot"></span> {{ chip.get_sessao_estado_display }}</span>{% endif %}
+          {% if chip.situacao != "normal" %}<span class="ad-badge ad-badge-neutral" title="Saúde da CONSULTA à API, não do chip">{{ chip.situacao_rotulo }}</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="ad-info-grid ad-chip-grid">
+        <div class="ad-info-item"><div class="ad-info-label">Número da linha</div><div class="ad-info-value ad-mono">{{ chip.numero_linha|default:"—" }}</div></div>
+        <div class="ad-info-item"><div class="ad-info-label">Operadora</div><div class="ad-info-value">{{ chip.operadora.nome }}{% if not chip.consultavel_pela_api %} <span class="ad-chip-sub">sem integração</span>{% endif %}</div></div>
+        <div class="ad-info-item"><div class="ad-info-label">Em uso em</div><div class="ad-info-value">{% if linha_onde %}{{ linha_onde }}{% else %}<span class="ad-chip-sub">{{ chip.get_situacao_uso_display }} — não está vinculado a veículo nem a aparelho</span>{% endif %}</div></div>
+        <div class="ad-info-item"><div class="ad-info-label">Consumo (último valor)</div><div class="ad-info-value">{% if chip.consumo_bytes is not None %}{{ chip.consumo_txt }}{% else %}—{% endif %}</div></div>
+        <div class="ad-info-item"><div class="ad-info-label">Última consulta</div><div class="ad-info-value">{% if chip.ultima_tentativa_em %}{{ chip.ultima_tentativa_em|date:"d/m/Y H:i" }}{% else %}nunca consultado{% endif %}</div></div>
+        <div class="ad-info-item"><div class="ad-info-label">Ligado ao item</div><div class="ad-info-value">{{ chip.item_ti_em|date:"d/m/Y H:i"|default:"—" }}{% if chip.item_ti_por %} <span class="ad-chip-sub">por {{ chip.item_ti_por }}</span>{% endif %} <span class="ad-chip-sub">· {{ chip.get_item_ti_origem_display|default:"—" }}</span></div></div>
+      </div>
+
+      {% if linha_divergencias %}
+      <ul class="ad-chip-divergencias" aria-label="O que o chip e o item dizem de diferente">
+        {% for d in linha_divergencias %}<li><span class="ad-badge {% if d.tom == 'erro' %}ad-badge-danger{% elif d.tom == 'atencao' %}ad-badge-warning{% else %}ad-badge-info{% endif %}">{% if d.tom == 'erro' %}Divergência{% elif d.tom == 'atencao' %}Atenção{% else %}Nota{% endif %}</span> {{ d.texto }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+
+      <div class="ad-chip-acoes">
+        {% if linha_pode_ver_agro %}<a class="btn btn-sm" href="{% url 'm2m_chip_detalhe' chip.pk %}" title="Abre o chip em Frotas e Conectividade (Zelo Agro)"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Abrir o chip no Zelo Agro</a>{% endif %}
+        {% if linha_pode_ligar %}
+        <details class="ad-chip-form">
+          <summary class="btn btn-sm"><i class="fa-solid fa-link-slash" aria-hidden="true"></i> Desligar do chip</summary>
+          <form method="post" action="{% url 'chip_estoque_desligar' %}" class="ad-chip-form-corpo">
+            {% csrf_token %}<input type="hidden" name="chip" value="{{ chip.pk }}"><input type="hidden" name="voltar" value="{% url 'equipamento_detalhe' item.pk %}">
+            <label>Motivo <input type="text" name="motivo" required maxlength="255" placeholder="Ex.: ligado ao item errado"></label>
+            <p class="ad-chip-sub">O item e o chip continuam existindo, cada um no seu cadastro; só a ligação é desfeita (fica no histórico do chip).</p>
+            <button type="submit" class="btn-primary btn-sm">Desligar</button>
+          </form>
+        </details>
+        {% endif %}
+      </div>
+    </div>
+    {% endwith %}
+    {% else %}
+    <div class="ad-empty">
+      <i class="fa-solid fa-tower-cell" aria-hidden="true"></i>
+      <div>Este chip ainda não está ligado a um chip de conectividade.</div>
+      <small>A ligação traz para esta ficha a linha, a operadora, a sessão e o consumo do mesmo SIM, e leva para o Zelo Agro o valor, a nota fiscal e o termo daqui.</small>
+    </div>
+
+    {% if linha_pode_ligar %}
+    {% for c in linha_sugestoes %}
+    <form method="post" action="{% url 'chip_estoque_ligar' %}" class="ad-chip-sugestao">
+      {% csrf_token %}<input type="hidden" name="chip" value="{{ c.pk }}"><input type="hidden" name="item" value="{{ item.pk }}"><input type="hidden" name="voltar" value="{% url 'equipamento_detalhe' item.pk %}">
+      <span><b>{{ c.nome }}</b> <span class="ad-chip-sub ad-mono">{{ c.iccid|m2m_blocos }}</span> <span class="ad-badge ad-badge-success">mesmo ICCID</span></span>
+      <button type="submit" class="btn-primary btn-sm"><i class="fa-solid fa-link" aria-hidden="true"></i> Ligar a este item</button>
+    </form>
+    {% endfor %}
+
+    <div class="ad-chip-acoes">
+      {% if linha_serie_valida %}
+      <form method="post" action="{% url 'chip_estoque_criar_chip' %}">
+        {% csrf_token %}<input type="hidden" name="item" value="{{ item.pk }}"><input type="hidden" name="voltar" value="{% url 'equipamento_detalhe' item.pk %}">
+        <button type="submit" class="btn btn-sm" title="Cria o chip em Frotas e Conectividade com o ICCID deste item e já liga os dois"><i class="fa-solid fa-plus" aria-hidden="true"></i> Criar o chip de conectividade a partir deste item</button>
+      </form>
+      {% else %}
+      <p class="ad-chip-sub">O número de série deste item não é um ICCID: corrija-o na edição do item para poder criar o chip de conectividade.</p>
+      {% endif %}
+      <details class="ad-chip-form">
+        <summary class="btn btn-sm"><i class="fa-solid fa-link" aria-hidden="true"></i> Ligar a outro chip</summary>
+        <form method="post" action="{% url 'chip_estoque_ligar' %}" class="ad-chip-form-corpo">
+          {% csrf_token %}<input type="hidden" name="item" value="{{ item.pk }}"><input type="hidden" name="voltar" value="{% url 'equipamento_detalhe' item.pk %}">
+          <div class="ad-chip-busca" data-chip-busca data-url="{{ linha_url_opcoes }}">
+            <label>Chip de conectividade <input type="search" data-chip-busca-texto placeholder="Buscar por nome, ICCID ou linha" autocomplete="off"></label>
+            <select name="chip" required><option value="">Abra para listar os chips sem item</option></select>
+            <small data-chip-busca-status aria-live="polite"></small>
+          </div>
+          <label class="ad-chip-confirma"><input type="checkbox" name="forcar" value="1"> É o mesmo SIM, mesmo com o ICCID diferente da série deste item</label>
+          <button type="submit" class="btn-primary btn-sm">Ligar</button>
+        </form>
+      </details>
+      <a class="btn btn-sm" href="{% url 'chips_conciliacao' %}"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Conciliar todos os chips</a>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+</section>
+{% if linha_pode_ligar and not linha_chip %}<script src="{% static 'js/equipamento-chip.js' %}?v={{ assets_version }}" defer></script>{% endif %}
+{% endif %}

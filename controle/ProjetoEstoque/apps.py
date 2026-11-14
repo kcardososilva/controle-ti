@@ -22,6 +22,11 @@ class ProjetoestoqueConfig(AppConfig):
 
         connection_created.connect(ativar_wal)
 
+        # Busca sem acento e sem diferença de caixa no SQLite (ver services/busca_service.py).
+        from services import busca_service
+
+        connection_created.connect(busca_service.registrar_no_sqlite)
+
         # Conecta os signals (histórico de locação por status do item)
         from . import signals  # noqa: F401
 

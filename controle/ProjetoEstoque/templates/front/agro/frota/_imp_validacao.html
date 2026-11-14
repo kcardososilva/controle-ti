@@ -1,0 +1,78 @@
+{% load l10n %}
+{% comment %}
+Passo 4 — Validação dos dados. Mostra o que merece conferência e o que foi rejeitado, com o motivo. NADA aqui é corrigido:
+o sistema sinaliza, e quem responde pelo inventário decide. Conferência não impede a importação; rejeição de linha sim,
+só daquela linha. Recebe `grupos` (de `conferencias_agrupadas`) e `motivos` (de `motivos_de_rejeicao`).
+{% endcomment %}
+<p class="m2m-aviso" data-tom="neutro"><b>Nada aqui é corrigido.</b> O sistema só sinaliza o que merece conferência (chassi repetido, data improvável, ano estranho…); quem responde pelo inventário decide. Uma conferência não impede a importação: o equipamento entra como veio e fica marcado para validação.</p>
+
+{% if resumo.datas_em_lote %}
+<div class="m2m-aviso" data-tom="atencao">
+  <b>Datas repetidas em lote.</b> Em carga de ERP, muitos equipamentos com a mesma data costumam ser data provisória: confira antes de confiar nela.
+  <ul class="agro-lista-aviso">{% for d in resumo.datas_em_lote %}<li>{{ d.curto|default:d.texto }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<section class="m2m-painel" aria-labelledby="agro-imp-conferencias">
+  <header class="m2m-painel-cab">
+    <h3 class="m2m-painel-t" id="agro-imp-conferencias">Conferências<span class="m2m-painel-t-n">{{ grupos|length }}</span></h3>
+    {% if grupos %}<a class="m2m-painel-link" href="{% url 'frota_equip_importacao_relatorio' importacao.pk %}?so=inconsistencias">Exportar as inconsistências (Excel)</a>{% endif %}
+  </header>
+  {% for g in grupos %}
+  <details class="agro-grupo" {% if forloop.first %}open{% endif %}>
+    <summary>
+      <span class="agro-grupo-t">{{ g.titulo }}</span>
+      <b class="m2m-num">{{ g.n|unlocalize }}</b>
+      <span class="agro-grupo-grav" data-gravidade="{{ g.gravidade }}">{% if g.gravidade == "aviso" %}Aviso{% else %}Informação{% endif %}</span>
+    </summary>
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela m2m-tabela--curta">
+        <thead><tr><th class="num">Linha</th><th>Equipamento</th><th>Modelo</th><th>O que foi visto</th></tr></thead>
+        <tbody>
+          {% for e in g.equipamentos|slice:":50" %}
+          <tr class="m2m-linha">
+            <td class="num" data-rotulo="Linha"><span class="m2m-num">{{ e.numero }}</span></td>
+            <td class="m2m-id" data-rotulo="Equipamento">{{ e.codigo_legado|default:"—" }}</td>
+            <td class="m2m-quebra" data-rotulo="Modelo">{{ e.modelo|default:"—" }}</td>
+            <td class="m2m-largo" data-rotulo="O que foi visto">{{ e.detalhe }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if g.n > 50 %}<p class="m2m-nota m2m-nota--pad">Mostrando 50 de {{ g.n|unlocalize }}. O Excel de inconsistências traz todos.</p>{% endif %}
+  </details>
+  {% empty %}
+  <p class="m2m-painel-vazio">Nenhuma conferência: nada na planilha chamou a atenção pelas regras do sistema.</p>
+  {% endfor %}
+</section>
+
+<section class="m2m-painel" aria-labelledby="agro-imp-rejeicoes">
+  <header class="m2m-painel-cab">
+    <h3 class="m2m-painel-t" id="agro-imp-rejeicoes">Linhas rejeitadas<span class="m2m-painel-t-n">{{ importacao.rejeitados|unlocalize }}</span></h3>
+    {% if importacao.rejeitados %}<a class="m2m-painel-link" href="?etapa=previa&amp;situacao=rejeitada">Ver as linhas</a>{% endif %}
+  </header>
+  {% if motivos %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela m2m-tabela--curta">
+      <thead><tr><th>Motivo</th><th class="num">Linhas</th></tr></thead>
+      <tbody>
+        {% for motivo, n in motivos %}
+        <tr class="m2m-linha"><td class="m2m-largo" data-rotulo="Motivo">{{ motivo }}</td><td class="num" data-rotulo="Linhas"><span class="m2m-num">{{ n|unlocalize }}</span></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="m2m-nota m2m-nota--pad">Uma linha rejeitada não é importada, mas não derruba as outras. Para recuperá-la, volte ao mapeamento (se o motivo for uma decisão que faltou) ou corrija a planilha e envie de novo.</p>
+  {% else %}
+  <p class="m2m-painel-vazio">Nenhuma linha foi rejeitada.</p>
+  {% endif %}
+</section>
+
+<section class="m2m-painel">
+  <div class="m2m-previa-acoes">
+    <a class="m2m-btn" href="?etapa=previa">Voltar à prévia</a>
+    <a class="m2m-btn" href="?etapa=mapeamento">Voltar ao mapeamento</a>
+    <a class="m2m-btn m2m-btn--primario" href="?etapa=confirmacao">Seguir para a confirmação</a>
+  </div>
+</section>

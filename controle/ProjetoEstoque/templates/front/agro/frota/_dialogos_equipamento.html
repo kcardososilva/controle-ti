@@ -1,0 +1,88 @@
+{% comment %}
+Os diálogos das ações do EQUIPAMENTO (não do chip): registrar movimentação, validar o cadastro e excluir (desativar).
+Mesma mecânica dos diálogos de chip (`_frota_dialogos.html`): formulário POST com CSRF que o `frota.js` envia por
+fetch, com o erro do servidor mostrado DENTRO do diálogo. O botão que abre traz `data-frota-abrir="<nome>"`,
+`data-url` (a rota da ação) e `data-alvo` (o texto de contexto).
+
+Recebe do contexto: `veiculo`, `voltar`, `pode_editar_frota`, `pode_validar`, `fazendas`, `centros_de_custo`,
+`status_opcoes` e `exclusao` (o que `frota_service.verificar_exclusao` apurou). Cada diálogo aparece só para quem
+tem a permissão da ação — esconder não é autorizar, a view confere de novo.
+{% endcomment %}
+{% if pode_editar_frota %}
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-movimentar" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-movimentar-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-movimentar-t">Registrar movimentação</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <p class="m2m-nota">Preencha só o que muda: campo em branco continua como está. A movimentação fica registrada, com o motivo, e não pode ser editada.</p>
+      <label class="m2m-rotulo"><span>Fazenda</span>
+        <select name="localidade" class="m2m-campo">
+          <option value="">Manter{% if veiculo.localidade %}: {{ veiculo.localidade.local }}{% endif %}</option>
+          {% for f in fazendas %}{% if f.pk != veiculo.localidade_id %}<option value="{{ f.pk }}">{{ f.local }}</option>{% endif %}{% endfor %}
+        </select>
+      </label>
+      <label class="m2m-rotulo"><span>Setor</span><input type="text" name="setor" class="m2m-campo" maxlength="100" autocomplete="off" placeholder="{% if veiculo.setor %}Hoje: {{ veiculo.setor }}{% else %}Novo setor{% endif %}"></label>
+      <label class="m2m-rotulo"><span>Área de operação</span><input type="text" name="area_operacao" class="m2m-campo" maxlength="100" autocomplete="off" placeholder="{% if veiculo.area_operacao %}Hoje: {{ veiculo.area_operacao }}{% else %}Ex.: Plantio, Colheita{% endif %}"></label>
+      <label class="m2m-rotulo"><span>Centro de custo</span>
+        <select name="centro_custo" class="m2m-campo">
+          <option value="">Manter{% if veiculo.centro_custo %}: {{ veiculo.centro_custo.nome }}{% endif %}</option>
+          {% for c in centros_de_custo %}{% if c.pk != veiculo.centro_custo_id %}<option value="{{ c.pk }}">{% if c.codigo_erp %}{{ c.codigo_erp }} · {% endif %}{{ c.nome }}</option>{% endif %}{% endfor %}
+        </select>
+      </label>
+      <label class="m2m-rotulo"><span>Responsável</span>
+        <select name="responsavel" data-frota-s2="responsavel" data-placeholder="{% if veiculo.responsavel %}Hoje: {{ veiculo.responsavel.nome }}{% else %}Buscar colaborador ativo{% endif %}"><option value=""></option></select>
+      </label>
+      <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: transferido para a safra de cacau"></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Registrar</button></footer>
+  </form>
+</div>
+
+{% if veiculo.status != "desativado" and exclusao %}
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-excluir" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-excluir-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}"><input type="hidden" name="status" value="desativado">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-excluir-t">Excluir equipamento</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <p class="m2m-nota">Excluir é <b>desativar</b>: o equipamento sai das escolhas, mas o cadastro e todo o histórico ficam guardados. Antes, o sistema conferiu o que há em volta dele:</p>
+      <ul class="agro-verificacao">
+        <li data-ok="{% if exclusao.chips_ativos %}0{% else %}1{% endif %}"><b class="m2m-num">{{ exclusao.chips_ativos }}</b> chip{{ exclusao.chips_ativos|pluralize }} vinculado{{ exclusao.chips_ativos|pluralize }}</li>
+        <li data-ok="{% if exclusao.equipamentos_instalados %}0{% else %}1{% endif %}"><b class="m2m-num">{{ exclusao.equipamentos_instalados }}</b> equipamento{{ exclusao.equipamentos_instalados|pluralize }} tecnológico{{ exclusao.equipamentos_instalados|pluralize }} instalado{{ exclusao.equipamentos_instalados|pluralize }}</li>
+        <li data-ok="1" data-historico><b class="m2m-num">{{ exclusao.historico.eventos }}</b> evento{{ exclusao.historico.eventos|pluralize }} do cadastro · <b class="m2m-num">{{ exclusao.historico.vinculos_de_chip }}</b> vínculo{{ exclusao.historico.vinculos_de_chip|pluralize }} de chip · <b class="m2m-num">{{ exclusao.historico.instalacoes }}</b> instalaç{{ exclusao.historico.instalacoes|pluralize:"ão,ões" }} — preservados</li>
+      </ul>
+      {% if exclusao.impedimentos %}
+      <p class="m2m-aviso" data-tom="atencao"><b>Não dá para excluir agora.</b> {{ exclusao.impedimentos|join:" " }}</p>
+      {% endif %}
+      <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: equipamento vendido"{% if exclusao.impedimentos %} disabled{% endif %}></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--perigo"{% if exclusao.impedimentos %} disabled{% endif %}>Excluir equipamento</button></footer>
+  </form>
+</div>
+{% endif %}
+{% endif %}
+
+{% if pode_validar and veiculo.validacao_pendente %}
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-validar" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-validar-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-validar-t">Validar cadastro</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <p class="m2m-nota">{% if veiculo.situacao_origem %}O ERP informou a situação “{{ veiculo.situacao_origem }}”. {% endif %}Confirme que o equipamento está como o cadastro diz — ou ajuste a situação abaixo.</p>
+      <label class="m2m-rotulo"><span>Situação confirmada</span>
+        <select name="status" class="m2m-campo">
+          <option value="">Manter: {{ veiculo.get_status_display }}</option>
+          {% for valor, rotulo in status_opcoes %}{% if valor != veiculo.status %}<option value="{{ valor }}">{{ rotulo }}</option>{% endif %}{% endfor %}
+        </select>
+      </label>
+      <label class="m2m-rotulo"><span>Observação</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" autocomplete="off" placeholder="Opcional"></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Validar</button></footer>
+  </form>
+</div>
+{% endif %}

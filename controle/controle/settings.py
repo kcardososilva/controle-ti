@@ -191,6 +191,10 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Armazenamento de arquivos: estaticos servidos via WhiteNoise (comprimidos +
 # cache). Sem manifesto, para nao quebrar referencias estaticas existentes.
+# O WhiteNoise nao conhece .webmanifest e entregaria o manifesto do app instalavel
+# (static/pwa/zelo.webmanifest) como application/octet-stream.
+WHITENOISE_MIMETYPES = {'.webmanifest': 'application/manifest+json'}
+
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -225,14 +229,22 @@ CHAMADOS_GRAPH_CLIENT_SECRET = os.environ.get('CHAMADOS_GRAPH_CLIENT_SECRET', ''
 CHAMADOS_CAIXA = os.environ.get('CHAMADOS_CAIXA') or EMAIL_HOST_USER
 
 # ── Monitoramento de chips TIM M2M (services/tim_m2m_service.py) ──────────────
+# A API é a do GSIM, operada pela Saitro (documentação em https://tim.saitro.com/api/docs/,
+# que pede login). O domínio da especificação original (tim-m2m-platform.com) não existe.
 # TIM_M2M_BASE_URL: raiz da API. É a ÚNICA fonte do endereço — nenhuma tela
-#   aceita URL — e o serviço só fala https com o host daqui (o token nunca vai a
-#   outro host, nem por redirecionamento).
-# TIM_M2M_TOKEN: opcional. Se existir, VENCE o token salvo (cifrado) no banco.
+#   aceita URL — e o serviço só fala https com o host daqui (a credencial nunca vai
+#   a outro host, nem por redirecionamento).
+# TIM_M2M_CLIENT_ID / TIM_M2M_CLIENT_SECRET: usuário e senha da API. Trocam-se por
+#   um token OAuth2 (client_credentials, vale 2 h) a cada necessidade. A API só
+#   atende IPs previamente liberados pela Saitro (inclusive o do servidor).
+# TIM_M2M_TOKEN: opcional, para quem já tem um Bearer pronto. Sem CLIENT_ID/SECRET,
+#   VENCE o token salvo (cifrado) no banco.
 # TIM_M2M_CHAVE_CIFRA: chave Fernet que cifra o token salvo no banco. Sem ela a
 #   tela de configuração recusa gravar token. Gerar com:
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-TIM_M2M_BASE_URL = (os.environ.get('TIM_M2M_BASE_URL') or 'https://tim-m2m-platform.com').strip().rstrip('/')
+TIM_M2M_BASE_URL = (os.environ.get('TIM_M2M_BASE_URL') or 'https://tim.saitro.com/api').strip().rstrip('/')
+TIM_M2M_CLIENT_ID = os.environ.get('TIM_M2M_CLIENT_ID', '').strip()
+TIM_M2M_CLIENT_SECRET = os.environ.get('TIM_M2M_CLIENT_SECRET', '').strip()
 TIM_M2M_TOKEN = os.environ.get('TIM_M2M_TOKEN', '').strip()
 TIM_M2M_CHAVE_CIFRA = os.environ.get('TIM_M2M_CHAVE_CIFRA', '').strip()
 # Endereço pelo qual a TI e o RH abrem o Controle TI (sem barra no fim), ex.:

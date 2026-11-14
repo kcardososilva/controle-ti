@@ -393,6 +393,7 @@ def _build_queryset_and_context(request):
         Item.objects
         .select_related(
             "subtipo",
+            "subtipo__categoria",       # segunda chance do ícone do tipo (services/icone_service.py)
             "localidade",
             "centro_custo",
             "fornecedor",
@@ -1424,6 +1425,17 @@ def equipamento_detalhe(request, pk: int):
         "next_url": _safe_next_url(request, request.GET.get("next")),
     }
     context.update(_contexto_de_reserva(request, item))
+
+    # Cartão "Chip" (tablet, celular): lê o vínculo de Frotas e Conectividade, nunca grava no item (regra 62).
+    from .equipamento_chip import contexto_do_chip
+
+    context.update(contexto_do_chip(request, item))
+
+    # Cartão "Linha de conectividade" (o item É um chip): a linha, a operadora, a sessão e o consumo do chip ligado a ele,
+    # lidos de Frotas e Conectividade — o item nunca é gravado (regra 66).
+    from .chip_estoque_ti import contexto_da_linha
+
+    context.update(contexto_da_linha(request, item))
 
     return render(request, "front/equipamentos/equipamento_detalhe.html", context)
 

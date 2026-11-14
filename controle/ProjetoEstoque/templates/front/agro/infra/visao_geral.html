@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% load static l10n %}
+
+{% comment %}
+O dashboard da Infraestrutura (`views/agro_infra.py::infra_visao_geral`). Cada número vem do cadastro: o enlace só é
+"operacional" se alguém registrou assim — rádio cadastrado nas pontas não conta —, e estrutura sem coordenada é dita
+sem coordenada (e não some). Sem registro nenhum, estado vazio com o próximo passo (nada de gráfico de zeros).
+{% endcomment %}
+{% block title %}Visão geral — Infraestrutura — Zelo Agro{% endblock %}
+{% block page_title %}Infraestrutura{% endblock %}
+{% block page_subtitle %}Visão geral{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro-dash.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page">
+  {% include 'front/agro/infra/_topo.html' with titulo="Visão geral" descricao="Torres, estações e enlaces PTP: o que está cadastrado e o estado que alguém registrou." %}
+
+  {% if vazio %}
+    {% if pode_estrutura %}{% url 'infra_estrutura_nova' as u_nova %}{% endif %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-tower-cell" titulo="Nenhuma infraestrutura cadastrada" texto="Cadastre as torres e estações com a coordenada e, depois, os enlaces que ligam uma à outra. O mapa e estes indicadores nascem desses registros." acao_url=u_nova acao_rotulo="Cadastrar a primeira estrutura" acao_primaria=True only %}
+  {% else %}
+
+  {% comment %}1. Resumo{% endcomment %}
+  <section class="m2m-painel" aria-labelledby="inf-resumo">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="inf-resumo">Resumo</h3></header>
+    <div class="m2m-regua">
+      <a class="m2m-kpi" href="{% url 'infra_estruturas' %}?tipo=torre"><span class="m2m-micro">Torres</span><span class="m2m-kpi-n m2m-num">{{ ind.torres|unlocalize }}</span><span class="m2m-kpi-nota">cadastradas</span></a>
+      <a class="m2m-kpi" href="{% url 'infra_estruturas' %}?tipo=estacao"><span class="m2m-micro">Estações</span><span class="m2m-kpi-n m2m-num">{{ ind.estacoes|unlocalize }}</span><span class="m2m-kpi-nota">cadastradas</span></a>
+      <a class="m2m-kpi" href="{% url 'infra_enlaces' %}"><span class="m2m-micro">Enlaces PTP</span><span class="m2m-kpi-n m2m-num">{{ ind.enlaces|unlocalize }}</span><span class="m2m-kpi-nota">cadastrados</span></a>
+      <a class="m2m-kpi" href="{% url 'infra_enlaces' %}?estado=operacional" title="Só o que alguém registrou como operacional."><span class="m2m-micro">Operacionais</span><span class="m2m-kpi-n m2m-num">{{ ind.operacionais|unlocalize }}</span><span class="m2m-kpi-nota">estado registrado</span></a>
+      <a class="m2m-kpi" href="{% url 'infra_enlaces' %}?estado=manutencao" {% if ind.manutencao %}data-tom="atencao"{% endif %}><span class="m2m-micro">Em manutenção</span><span class="m2m-kpi-n m2m-num">{{ ind.manutencao|unlocalize }}</span><span class="m2m-kpi-nota">enlaces</span></a>
+      <a class="m2m-kpi" href="{% url 'infra_enlaces' %}?estado=indisponivel" {% if ind.indisponiveis %}data-tom="erro"{% endif %}><span class="m2m-micro">Indisponíveis</span><span class="m2m-kpi-n m2m-num">{{ ind.indisponiveis|unlocalize }}</span><span class="m2m-kpi-nota">enlaces</span></a>
+    </div>
+    <div class="m2m-regua">
+      <a class="m2m-kpi" href="{% url 'tec_equipamentos' %}?situacao=instalado"><span class="m2m-micro">Equipamentos instalados</span><span class="m2m-kpi-n m2m-num">{{ ind.equipamentos_instalados|unlocalize }}</span><span class="m2m-kpi-nota">no estoque tecnológico</span></a>
+      <a class="m2m-kpi" href="{% url 'tec_equipamentos' %}?situacao=disponivel"><span class="m2m-micro">Disponíveis em estoque</span><span class="m2m-kpi-n m2m-num">{{ ind.equipamentos_disponiveis|unlocalize }}</span><span class="m2m-kpi-nota">no estoque tecnológico</span></a>
+      <a class="m2m-kpi" href="{% url 'infra_estruturas' %}?coordenada=sem" {% if ind.sem_coordenada %}data-tom="atencao"{% endif %}><span class="m2m-micro">Sem coordenada</span><span class="m2m-kpi-n m2m-num">{{ ind.sem_coordenada|unlocalize }}</span><span class="m2m-kpi-nota">não aparecem no mapa</span></a>
+    </div>
+  </section>
+
+  {% comment %}2. Distribuição{% endcomment %}
+  <div class="dash-grade">
+    {% include 'front/agro/_dash_barras.html' with id="inf-estados" titulo="Enlaces por estado registrado" itens=estados unidade="enlaces ativos" origem="estado registrado em cada enlace (nada é medido ou deduzido)" vazio_texto="Nenhum enlace cadastrado." %}
+    {% include 'front/agro/_dash_barras.html' with id="inf-tipos" titulo="Estruturas por tipo" itens=tipos unidade="estruturas ativas" origem="cadastro de torres, estações e bases" vazio_texto="Nenhuma estrutura cadastrada." %}
+  </div>
+
+  {% comment %}3. Atenção{% endcomment %}
+  <div class="dash-grade">
+    <section class="m2m-painel dash-bloco" aria-labelledby="inf-aten-enl">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="inf-aten-enl">Enlaces que pedem atenção</h3><span class="m2m-sub">sem estado, em manutenção ou indisponíveis</span></header>
+      {% if atencao_enlaces %}
+      <ul class="dash-lista">
+        {% for e in atencao_enlaces %}
+        <li><a href="{% if pode_enlace %}{% url 'infra_enlace_editar' e.pk %}{% else %}{% url 'infra_enlaces' %}?q={{ e.identificacao|urlencode }}{% endif %}">{{ e.identificacao }}</a><span class="dash-lista-fim">{{ e.get_estado_display }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="dash-vazio">Nenhum enlace pede atenção.</p>
+      {% endif %}
+    </section>
+    <section class="m2m-painel dash-bloco" aria-labelledby="inf-aten-est">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="inf-aten-est">Estruturas sem coordenada</h3><span class="m2m-sub">não aparecem no mapa</span></header>
+      {% if sem_coordenada %}
+      <ul class="dash-lista">
+        {% for e in sem_coordenada %}
+        <li><a href="{% if pode_estrutura %}{% url 'infra_estrutura_editar' e.pk %}{% else %}{% url 'infra_estruturas' %}?q={{ e.nome|urlencode }}{% endif %}">{{ e.nome }}</a><span class="dash-lista-fim">{{ e.get_tipo_display }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="dash-vazio">Todas as estruturas têm coordenada.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  {% comment %}4. Atividade recente{% endcomment %}
+  <section class="m2m-painel dash-bloco" aria-labelledby="inf-recentes">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="inf-recentes">Últimas mudanças de estado</h3><span class="m2m-sub">cada uma com quem registrou e quando</span></header>
+    {% if recentes %}
+    <ul class="dash-lista">
+      {% for e in recentes %}
+      <li><span><b>{{ e.identificacao }}</b> <span class="m2m-sub">{{ e.estrutura_a.nome }} ↔ {{ e.estrutura_b.nome }}</span></span><span class="dash-lista-fim">{{ e.get_estado_display }} · {{ e.estado_em|date:"d/m/Y H:i" }}{% if e.estado_por %} · {{ e.estado_por.get_username }}{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="dash-vazio">Nenhum estado de enlace foi registrado ainda.</p>
+    {% endif %}
+  </section>
+
+  {% comment %}5. Acesso rápido{% endcomment %}
+  <section class="m2m-painel" aria-labelledby="inf-acessos">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="inf-acessos">Acesso rápido</h3></header>
+    <div class="dash-acessos">
+      <a class="m2m-btn" href="{% url 'infra_estruturas' %}"><i class="fa-solid fa-tower-cell" aria-hidden="true"></i>Torres e estações</a>
+      <a class="m2m-btn" href="{% url 'infra_enlaces' %}"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i>Enlaces PTP</a>
+      {% if pode_mapa %}<a class="m2m-btn" href="{% url 'agro_mapa' %}"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i>Mapa</a>{% endif %}
+      <a class="m2m-btn" href="{% url 'tec_equipamentos' %}"><i class="fa-solid fa-microchip" aria-hidden="true"></i>Equipamentos</a>
+    </div>
+  </section>
+  {% endif %}
+
+  {% include 'front/agro/tec/_rodape.html' %}
+</div>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% load static l10n %}
+
+{% block title %}Enlaces PTP — Infraestrutura — Zelo Agro{% endblock %}
+{% block page_title %}Infraestrutura{% endblock %}
+{% block page_subtitle %}Enlaces ponto a ponto{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page">
+  {% if pode_enlace %}{% url 'infra_enlace_novo' as u_novo %}{% endif %}
+  {% include 'front/agro/infra/_topo.html' with titulo="Enlaces PTP" descricao="Os enlaces entre as estruturas, com o estado que alguém registrou. O mapa os desenha entre as coordenadas das pontas." acao_url=u_novo acao_rotulo="Novo enlace" acao_icone="fa-plus" %}
+
+  <form class="m2m-filtros" method="get" role="search">
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="f-q">Buscar enlace</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="f-q" name="q" value="{{ filtros.q }}" class="m2m-campo" data-agro-busca placeholder="Buscar por identificação ou nome de uma ponta" autocomplete="off">
+      </div>
+      <span class="m2m-contagem-lista m2m-num">{% if page_obj.paginator.count != total_geral %}{{ page_obj.paginator.count }} de {{ total_geral }}{% else %}{{ total_geral }}{% endif %} enlace{{ total_geral|pluralize }}</span>
+    </div>
+    <div class="m2m-filtros-grade agro-filtros-linha">
+      <label class="m2m-rotulo"><span>Estado</span>
+        <select name="estado" class="m2m-campo" data-agro-auto><option value="">Todos</option>{% for v, r in opcoes.estados %}<option value="{{ v }}" {% if filtros.estado == v %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+      </label>
+      <label class="m2m-rotulo"><span>Ponta</span>
+        <select name="estrutura" class="m2m-campo" data-agro-auto><option value="">Qualquer</option>{% for v, r in opcoes.estruturas %}<option value="{{ v }}" {% if filtros.estrutura == v|stringformat:"s" %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+      </label>
+      <label class="m2m-rotulo"><span>Fazenda</span>
+        <select name="fazenda" class="m2m-campo" data-agro-auto><option value="">Todas</option>{% for v, r in opcoes.fazendas %}<option value="{{ v }}" {% if filtros.fazenda == v|stringformat:"s" %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+      </label>
+      <label class="m2m-rotulo"><span>Cadastro</span>
+        <select name="ativo" class="m2m-campo" data-agro-auto><option value="">Todos</option><option value="1" {% if filtros.ativo == "1" %}selected{% endif %}>Ativos</option><option value="0" {% if filtros.ativo == "0" %}selected{% endif %}>Inativos</option></select>
+      </label>
+      <div class="m2m-filtros-acoes"><a class="m2m-btn" href="{% url 'infra_enlaces' %}">Limpar</a></div>
+    </div>
+  </form>
+
+  {% if filtros_ativos %}
+  <ul class="m2m-filtros-ativos" aria-label="Filtros em uso">
+    {% for f in filtros_ativos %}<li class="m2m-etiqueta">{{ f.rotulo }} <a href="{{ f.remover }}" aria-label="Remover o filtro {{ f.rotulo }}" title="Remover o filtro">&times;</a></li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if enlaces %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela">
+      <thead><tr><th>Enlace</th><th>Ponta A</th><th>Ponta B</th><th class="agro-num">Distância</th><th>Estado registrado</th><th>Rádios</th><th><span class="m2m-sr">Ações</span></th></tr></thead>
+      <tbody>
+        {% for e in enlaces %}
+        <tr class="m2m-linha"{% if not e.ativo %} data-tom="inativo"{% elif e.estado == "indisponivel" %} data-tom="erro"{% elif e.estado == "manutencao" or e.estado == "nao_informado" %} data-tom="atencao"{% endif %}>
+          <td class="m2m-c-nome" data-rotulo="Enlace"><span class="m2m-ident"><b class="m2m-corta m2m-corta--larga">{{ e.identificacao }}</b>{% if e.frequencia_ghz %}<span class="m2m-ident-cod">{{ e.frequencia_ghz|unlocalize }} GHz</span>{% endif %}</span></td>
+          <td data-rotulo="Ponta A">{{ e.estrutura_a.nome }}</td>
+          <td data-rotulo="Ponta B">{{ e.estrutura_b.nome }}</td>
+          <td class="agro-num m2m-num" data-rotulo="Distância">{% if e.distancia_km %}{{ e.distancia_km|floatformat:1 }} km{% else %}<span class="m2m-sub" title="Uma das pontas não tem coordenada">—</span>{% endif %}</td>
+          <td data-rotulo="Estado registrado">
+            <b>{{ e.get_estado_display }}</b>
+            {% if e.estado_em %}<span class="m2m-sub">em {{ e.estado_em|date:"d/m/Y H:i" }}{% if e.estado_por %} por {{ e.estado_por.get_username }}{% endif %}</span>{% else %}<span class="m2m-sub">ninguém registrou o estado</span>{% endif %}
+          </td>
+          <td data-rotulo="Rádios"><span class="m2m-sub">{{ e.equipamento_a.codigo|default:"—" }} / {{ e.equipamento_b.codigo|default:"—" }}</span></td>
+          <td class="m2m-acoes" data-rotulo="Ações">{% if pode_enlace %}<a class="m2m-btn m2m-btn--sm" href="{% url 'infra_enlace_editar' e.pk %}">Editar</a>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% elif total_geral == 0 %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-diagram-project" titulo="Nenhum enlace cadastrado" texto="Cadastre primeiro as torres e estações; depois o enlace liga duas delas e aparece como uma linha no mapa." acao_url=u_novo acao_rotulo="Cadastrar o primeiro enlace" acao_primaria=True only %}
+  {% else %}
+    {% url 'infra_enlaces' as u_limpar %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum resultado para os filtros aplicados" texto="Ajuste a busca ou limpe os filtros." acao_url=u_limpar acao_rotulo="Limpar filtros" only %}
+  {% endif %}
+
+  {% include 'front/agro/tec/_rodape.html' %}
+</div>
+{% endblock %}

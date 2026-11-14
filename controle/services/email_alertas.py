@@ -146,6 +146,14 @@ CATALOGO_NOTIFICACOES: list[dict] = [
         "mudança de status de notebook/desktop que entra ou sai de Backup/Pausado",
     ),
     dict(
+        codigo="ninja_licencas_liberar", nome="NinjaOne — licenças de máquinas paradas", categoria="Estoque",
+        descricao="Máquinas em Backup, Defeito, Manutenção ou Pausado que ainda têm dispositivo no NinjaOne — cada uma "
+        "ocupa uma licença paga até o TI removê-la lá. A lista completa vai em CSV anexo.",
+        icone="fa-plug-circle-xmark", tipo_destinatarios="fixo",
+        origem_disparo="Semanal (Task Scheduler, via 'agendar_ninja_licencas') + botão 'Enviar e-mail agora' "
+        "na tela Licenças a liberar do NinjaOne",
+    ),
+    dict(
         codigo="chamado_contratacao_maquina", nome="Chamado de contratação — máquina", categoria="Contratações",
         descricao="Pedido de configuração e entrega de máquina para uma vaga em aberto. Um e-mail por "
         "pedido, com os dados da vaga e a descrição do equipamento.",
@@ -2361,11 +2369,27 @@ def alerta_m2m_ocorrencias(ocorrencias, destinatarios: list[str] | None = None) 
         "O último dado válido de cada chip continua guardado.",
         "info", "Como ler",
     )
+    def onde_esta(o) -> str:
+        """O veículo da ocorrência; senão o tablet/celular (estoque de TI) onde o chip está; senão `—`."""
+        if o.veiculo_id:
+            return f"{o.veiculo.codigo} · {o.veiculo.nome}"
+        if o.chip_id:
+            from ProjetoEstoque.models import FrotaVinculo, rotulo_do_equipamento_ti
+
+            vinculo = (
+                FrotaVinculo.objects.filter(chip_id=o.chip_id, fim_em__isnull=True, item__isnull=False)
+                .select_related("item").first()
+            )
+            if vinculo is not None:
+                return f"Equipamento {rotulo_do_equipamento_ti(vinculo.item)}"
+        return "—"
+
     doc.tabela(
-        "Ocorrências novas", ["Veículo", "Chip", "Ocorrência", "Nível", "Detectada em", "O que foi detectado", "Ação necessária"],
+        "Ocorrências novas",
+        ["Veículo / equipamento", "Chip", "Ocorrência", "Nível", "Detectada em", "O que foi detectado", "Ação necessária"],
         [
             [
-                f"{o.veiculo.codigo} · {o.veiculo.nome}" if o.veiculo_id else "—",
+                onde_esta(o),
                 o.chip.nome if o.chip_id else "—",
                 o.get_tipo_display(),
                 layout.Pilula(o.get_nivel_display(), "perigo" if o.nivel == "critico" else ("aviso" if o.nivel == "atencao" else "info")),
@@ -3381,3 +3405,124 @@ def alerta_computadores_parados(*, item_destaque_pk: int | None = None,
         f"[Controle TI] {len(dados)} computador(es) parado(s){assunto_destaque}",
         texto, html, codigo="computadores_parados", anexos=anexos,
     )
+
+
+# ─────────────────────────────────────────────────────────────
+# NinjaOne — licença presa a máquina parada
+# ─────────────────────────────────────────────────────────────
+#
+# A lista e as regras (o que conta como "ainda ocupa", o recado de "já removi") são de
+# `services/ninja_licenca_service`; aqui só a mensagem. A tela "Licenças a liberar" lê a MESMA lista.
+
+_CAB_NINJA = ["Equipamento", "Nº de série", "Dispositivo NinjaOne", "Parado há", "Último contato", "Localidade / Setor"]
+
+
+def _linha_ninja(l) -> list[str]:
+    from django.utils.html import escape
+
+    if l.dias is None:
+        tempo = "—"
+    elif l.dias == 0:
+        tempo = "hoje"
+    else:
+        tempo = f"{l.dias} dia(s)"
+
+    if l.ultimo_contato:
+        contato = timezone.localtime(l.ultimo_contato).strftime("%d/%m/%Y")
+    else:
+        contato = "—"
+    if l.online:
+        contato += " " + _badge("ONLINE", "#dcfce7", "#166534")
+    if l.voltou:
+        contato += " " + _badge("VOLTOU APÓS A REMOÇÃO", "#fee2e2", "#b91c1c")
+
+    return [
+        f"<strong>{escape(l.item.nome)}</strong>",
+        escape(l.item.numero_serie) if l.item.numero_serie else "—",
+        escape(l.device.display_name or l.device.hostname or "—"),
+        tempo,
+        contato,
+        escape(l.localidade or l.centro_custo or "—"),
+    ]
+
+
+_COR_STATUS_NINJA = {
+    "backup": ("🗄️", "#1d4ed8"), "defeito": ("🛠️", "#b91c1c"),
+    "manutencao": ("🔧", "#b45309"), "pausado": ("⏸️", "#b45309"),
+}
+
+
+def _montar_aviso_ninja():
+    """(assunto, texto, html, anexos) do aviso, ou None quando nenhuma máquina parada ainda ocupa licença do NinjaOne."""
+    from ProjetoEstoque.models import StatusItemChoices
+    from services import ninja_licenca_service as nl
+
+    dados = nl.pendentes()
+    if not dados:
+        return None
+
+    por_status = {s: [l for l in dados if l.status == s] for s in nl.STATUS_SEM_USO}
+    online = [l for l in dados if l.online]
+    voltaram = [l for l in dados if l.voltou]
+    rotulos = dict(StatusItemChoices.choices)
+    resumo = ", ".join(f"<strong>{len(por_status[s])}</strong> {rotulos[s].lower()}" for s in nl.STATUS_SEM_USO if por_status[s])
+    lido_em = max((l.device.last_sync for l in dados if l.device.last_sync), default=None)
+
+    intro = (
+        f'<p style="margin:0 0 4px;color:#334155;font-size:14px;">'
+        f'<strong>{len(dados)}</strong> máquina(s) fora de operação ainda têm dispositivo no NinjaOne — {resumo}. '
+        f'<strong>{len(online)}</strong> aparece(m) online (o agente ainda fala com o NinjaOne).</p>'
+        f'<p style="margin:0 0 10px;color:#64748b;font-size:13px;">'
+        f'Cada dispositivo é uma licença paga. Remova estes dispositivos no NinjaOne para liberar a licença e, depois, '
+        f'marque-os como removidos no Controle TI (NinjaOne › Licenças a liberar) — senão continuam nesta lista.</p>'
+        + (f'<p style="margin:0 0 10px;color:#b91c1c;font-size:13px;"><strong>{len(voltaram)}</strong> já tinha(m) sido '
+           f'marcada(s) como removida(s) e voltou(aram) a falar com o NinjaOne: a remoção não pegou.</p>' if voltaram else "")
+        + (f'<p style="margin:0 0 10px;color:#64748b;font-size:13px;">As tabelas mostram as primeiras 50 de cada situação. '
+           f'<strong>A lista completa ({len(dados)} máquinas) vai no CSV em anexo.</strong></p>' if len(dados) > 50 else "")
+        + (f'<p style="margin:0;color:#94a3b8;font-size:12px;">Contato e situação online são os da última importação do '
+           f'NinjaOne ({timezone.localtime(lido_em).strftime("%d/%m/%Y %H:%M")}).</p>' if lido_em else "")
+    )
+    corpo = _secao("Panorama", "🔌", "#1d4ed8", intro)
+    for status in nl.STATUS_SEM_USO:
+        if por_status[status]:
+            icone, cor = _COR_STATUS_NINJA[status]
+            corpo += _secao(
+                f"{rotulos[status]} ({len(por_status[status])})", icone, cor,
+                _tabela_html(_CAB_NINJA, [_linha_ninja(l) for l in por_status[status]]),
+            )
+
+    hoje = date.today()
+    html = _base_html(
+        f"{len(dados)} máquina(s) parada(s) com licença NinjaOne",
+        f"Backup, defeito, manutenção e pausado — apurado em {hoje.strftime('%d/%m/%Y')}",
+        corpo,
+    )
+    texto = (
+        f"CONTROLE TI — Licenças do NinjaOne em máquinas paradas\n"
+        f"Total: {len(dados)} ({', '.join(f'{len(por_status[s])} {rotulos[s].lower()}' for s in nl.STATUS_SEM_USO if por_status[s])})\n\n"
+        + "\n".join(
+            f"- {l.item.nome} | {l.status_label} | "
+            f"{'parado há ' + str(l.dias) + ' dia(s)' if l.dias is not None else 'sem histórico'} | NinjaOne: {l.device.display_name}"
+            for l in dados
+        )
+    )
+    anexos = [(f"ninja_licencas_a_remover_{hoje.strftime('%Y-%m-%d')}.csv", nl.csv_da_lista(dados), "text/csv")]
+    return f"[Controle TI] {len(dados)} máquina(s) parada(s) ainda com licença NinjaOne", texto, html, anexos
+
+
+def enviar_ninja_licencas_detalhado() -> "ResultadoEnvio | None":
+    """Envia o aviso e diz o que aconteceu (para a tela contar ao TI: enviado, canal desligado, sem destinatário…).
+    `None` quando não há nada a avisar — nenhum e-mail sai, como nos outros alertas: caixa semanal com "0 máquinas"
+    é o que faz o aviso ser ignorado no dia em que passa a ter conteúdo."""
+    montado = _montar_aviso_ninja()
+    if montado is None:
+        logger.info("alerta_ninja_licencas: nenhuma máquina parada com licença do NinjaOne a remover.")
+        return None
+    assunto, texto, html, anexos = montado
+    return _enviar_detalhado(assunto, texto, html, codigo="ninja_licencas_liberar", anexos=anexos)
+
+
+def alerta_ninja_licencas() -> bool:
+    """Forma `bool` para o `enviar_alertas`/agendador. False também quando não há nada a avisar."""
+    resultado = enviar_ninja_licencas_detalhado()
+    return bool(resultado and resultado.ok)

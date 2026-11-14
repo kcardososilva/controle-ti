@@ -152,6 +152,56 @@ def alertas_toggle(request):
     return redirect("alertas_dashboard")
 
 
+# ── Painel de notificações ────────────────────────────────────────────────────────────────────────────────────────
+# Cada ação do painel (ativar/desativar, trocar destinatários, tirar um e-mail, desvincular um login) pode ser feita de
+# duas maneiras: pelo formulário comum (POST + redirect + mensagem — é o que vale sem JavaScript) e pela própria tela,
+# que chama a mesma URL por fetch e recebe JSON com o cartão do canal JÁ redesenhado. A segunda existe porque a primeira
+# recarregava a página inteira a cada e-mail salvo: a pessoa perdia a posição de rolagem numa lista de ~20 canais e
+# voltava ao topo para conferir o que tinha acabado de mudar. A regra de cada ação é uma só (mesmo código nas duas).
+
+def _quer_json(request) -> bool:
+    return request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+
+def _preparar_canal(canal):
+    """Acrescenta ao canal o que o cartão mostra: quem recebe AGORA (resolvido em tempo real, não o texto gravado)."""
+    from services.email_alertas import resolver_destinatarios_atuais
+
+    pessoas, nota = resolver_destinatarios_atuais(canal)
+    canal.pessoas = pessoas
+    canal.pessoas_nota = nota
+    canal.pessoas_total = len(pessoas)
+    return canal
+
+
+def _kpi_canais() -> dict:
+    """Os quatro totais da faixa do topo. Uma consulta: a tabela tem ~20 linhas, mas a faixa é refeita a cada ação."""
+    from django.db.models import Count, Q, Sum
+
+    from ProjetoEstoque.models import CanalNotificacao
+
+    agregado = CanalNotificacao.objects.aggregate(total=Count("pk"), ativos=Count("pk", filter=Q(ativo=True)), envios=Sum("total_envios"))
+    total, ativos = agregado["total"] or 0, agregado["ativos"] or 0
+    return {"total": total, "ativos": ativos, "inativos": total - ativos, "envios": agregado["envios"] or 0}
+
+
+def _responder(request, canal, nivel: str, texto: str):
+    """Encerra uma ação do painel. `nivel` é o do `django.contrib.messages` (success, warning, error, info).
+    Pela tela (fetch): JSON com a mensagem, os totais e o cartão do canal redesenhado — e NENHUMA mensagem na sessão,
+    senão ela apareceria de novo na próxima vez que a página fosse aberta. Pelo formulário comum: mensagem + redirect."""
+    if _quer_json(request):
+        from django.http import JsonResponse
+        from django.template.loader import render_to_string
+
+        html = None
+        if canal is not None and nivel != "error":
+            html = render_to_string("front/alertas/_canal_notificacao.html", {"canal": _preparar_canal(canal)}, request=request)
+        status = 404 if canal is None else (400 if nivel == "error" else 200)
+        return JsonResponse({"ok": nivel != "error", "nivel": nivel, "mensagem": texto, "html": html, "kpi": _kpi_canais()}, status=status)
+    getattr(messages, nivel)(request, texto)
+    return redirect("alertas_notificacoes")
+
+
 @login_required
 def alertas_notificacoes(request):
     """Painel de controle central de TODAS as notificações por e-mail do sistema:
@@ -159,33 +209,19 @@ def alertas_notificacoes(request):
     redirecionar destinatários — sem mexer em código. O catálogo é sincronizado
     a cada acesso (novas notificações adicionadas ao código aparecem sozinhas)."""
     from ProjetoEstoque.models import CanalNotificacao, ConfiguracaoSistema
-    from services.email_alertas import sincronizar_catalogo_notificacoes, resolver_destinatarios_atuais
+    from services.email_alertas import sincronizar_catalogo_notificacoes
 
     sincronizar_catalogo_notificacoes()
     config = ConfiguracaoSistema.get()
 
-    canais = list(CanalNotificacao.objects.all().order_by("categoria", "nome"))
     categorias = {}
-    for c in canais:
-        pessoas, nota = resolver_destinatarios_atuais(c)
-        c.pessoas = pessoas
-        c.pessoas_nota = nota
-        c.pessoas_total = len(pessoas)
-        categorias.setdefault(c.categoria or "Outros", []).append(c)
-
-    total = len(canais)
-    ativos = sum(1 for c in canais if c.ativo)
-    envios = sum(c.total_envios for c in canais)
+    for c in CanalNotificacao.objects.all().order_by("categoria", "nome"):
+        categorias.setdefault(c.categoria or "Outros", []).append(_preparar_canal(c))
 
     context = {
         "alertas_ativos": config.alertas_email_ativos,
         "categorias": sorted(categorias.items(), key=lambda kv: kv[0]),
-        "kpi": {
-            "total": total,
-            "ativos": ativos,
-            "inativos": total - ativos,
-            "envios": envios,
-        },
+        "kpi": _kpi_canais(),
     }
     return render(request, "front/alertas/alertas_notificacoes.html", context)
 
@@ -199,19 +235,15 @@ def alertas_notificacao_toggle(request, pk):
 
     canal = CanalNotificacao.objects.filter(pk=pk).first()
     if canal is None:
-        messages.error(request, "Notificação não encontrada.")
-        return redirect("alertas_notificacoes")
+        return _responder(request, None, "error", "Notificação não encontrada.")
 
     canal.ativo = not canal.ativo
     canal.atualizado_por = request.user
     canal.save(update_fields=["ativo", "atualizado_por", "updated_at"])
 
     if canal.ativo:
-        messages.success(request, f"Notificação '{canal.nome}' ativada.")
-    else:
-        messages.warning(request, f"Notificação '{canal.nome}' desativada. Nenhum e-mail será enviado por este canal.")
-
-    return redirect("alertas_notificacoes")
+        return _responder(request, canal, "success", f"Notificação '{canal.nome}' ativada.")
+    return _responder(request, canal, "warning", f"Notificação '{canal.nome}' desativada. Nenhum e-mail será enviado por este canal.")
 
 
 @login_required
@@ -223,12 +255,10 @@ def alertas_notificacao_destinatarios(request, pk):
 
     canal = CanalNotificacao.objects.filter(pk=pk).first()
     if canal is None:
-        messages.error(request, "Notificação não encontrada.")
-        return redirect("alertas_notificacoes")
+        return _responder(request, None, "error", "Notificação não encontrada.")
 
     if canal.codigo == "item_defeito":
-        messages.error(request, "Esta notificação tem destinatários definidos por login — gerencie em Fornecedores → Acesso ao Portal.")
-        return redirect("alertas_notificacoes")
+        return _responder(request, canal, "error", "Esta notificação tem destinatários definidos por login — gerencie em Fornecedores → Acesso ao Portal.")
 
     destinatarios = request.POST.get("destinatarios", "").strip()
     canal.destinatarios_customizados = destinatarios
@@ -237,11 +267,8 @@ def alertas_notificacao_destinatarios(request, pk):
     canal.save(update_fields=["destinatarios_customizados", "destinatarios_customizados_ativo", "atualizado_por", "updated_at"])
 
     if destinatarios:
-        messages.success(request, f"Destinatários de '{canal.nome}' atualizados.")
-    else:
-        messages.success(request, f"'{canal.nome}' voltou a usar os destinatários padrão do sistema.")
-
-    return redirect("alertas_notificacoes")
+        return _responder(request, canal, "success", f"Destinatários de '{canal.nome}' atualizados.")
+    return _responder(request, canal, "success", f"'{canal.nome}' voltou a usar os destinatários padrão do sistema.")
 
 
 @login_required
@@ -262,16 +289,14 @@ def alertas_notificacao_remover_email(request, pk):
 
     canal = CanalNotificacao.objects.filter(pk=pk).first()
     if canal is None:
-        messages.error(request, "Notificação não encontrada.")
-        return redirect("alertas_notificacoes")
+        return _responder(request, None, "error", "Notificação não encontrada.")
 
     if canal.codigo == "item_defeito":
-        messages.error(request, "Esta notificação tem destinatários definidos por login — use o botão de desvincular do próprio card.")
-        return redirect("alertas_notificacoes")
+        return _responder(request, canal, "error", "Esta notificação tem destinatários definidos por login — use o botão de desvincular do próprio card.")
 
     alvo = request.POST.get("email", "").strip().lower()
     if not alvo:
-        return redirect("alertas_notificacoes")
+        return _responder(request, canal, "info", "Nenhum e-mail informado para remover.")
 
     pessoas, _ = resolver_destinatarios_atuais(canal)
     restantes = [p["email"] for p in pessoas if p["email"].strip().lower() != alvo]
@@ -282,11 +307,11 @@ def alertas_notificacao_remover_email(request, pk):
     canal.save(update_fields=["destinatarios_customizados", "destinatarios_customizados_ativo", "atualizado_por", "updated_at"])
 
     if restantes:
-        messages.success(request, f"'{alvo}' removido de '{canal.nome}'.")
-    else:
-        messages.warning(request, f"'{alvo}' removido de '{canal.nome}'. Nenhum destinatário restante — este canal não enviará até que alguém seja adicionado.")
-
-    return redirect("alertas_notificacoes")
+        return _responder(request, canal, "success", f"'{alvo}' removido de '{canal.nome}'.")
+    return _responder(
+        request, canal, "warning",
+        f"'{alvo}' removido de '{canal.nome}'. Nenhum destinatário restante — este canal não enviará até que alguém seja adicionado.",
+    )
 
 
 @login_required
@@ -302,16 +327,12 @@ def alertas_notificacao_desvincular_perfil(request, pk, perfil_id):
 
     canal = CanalNotificacao.objects.filter(pk=pk).first()
     if canal is None or canal.codigo != "item_defeito":
-        messages.error(request, "Esta notificação não pode ser desvinculada por aqui.")
-        return redirect("alertas_notificacoes")
+        return _responder(request, canal, "error", "Esta notificação não pode ser desvinculada por aqui.")
 
     perfil = PerfilFornecedor.objects.filter(pk=perfil_id).select_related("usuario", "fornecedor").first()
     if perfil is None:
-        messages.error(request, "Login do fornecedor não encontrado.")
-        return redirect("alertas_notificacoes")
+        return _responder(request, canal, "error", "Login do fornecedor não encontrado.")
 
     FornecedorAcessoService.definir_notificacao_defeito(perfil, False, request.user)
     nome = perfil.usuario.get_full_name() or perfil.usuario.username
-    messages.success(request, f"'{nome}' ({perfil.fornecedor.nome}) não receberá mais avisos de Defeito.")
-
-    return redirect("alertas_notificacoes")
+    return _responder(request, canal, "success", f"'{nome}' ({perfil.fornecedor.nome}) não receberá mais avisos de Defeito.")

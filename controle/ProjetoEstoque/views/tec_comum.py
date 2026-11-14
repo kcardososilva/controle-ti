@@ -96,14 +96,19 @@ def voltar_seguro(request, padrao: str) -> str:
 
 def campo(nome: str, rotulo: str, tipo: str = "text", *, valor="", opcoes=None, grupos=None, obrigatorio: bool = False,
           dica: str = "", maximo: int | None = None, mono: bool = False, placeholder: str = "", vazio: str = "",
-          so_leitura: bool = False, largo: bool = False) -> dict:
+          so_leitura: bool = False, largo: bool = False, dados: dict | None = None, auxiliar: bool = False) -> dict:
     """Descreve UM campo do formulário. `tipo`: text | textarea | select | date | number | checkbox.
     `opcoes`: `[(valor, rótulo)]`; `grupos`: `[(rótulo do grupo, [(valor, rótulo)])]` (optgroup);
-    `vazio`: rótulo da opção em branco do select ("" = sem opção em branco). `largo` ocupa a linha toda."""
+    `vazio`: rótulo da opção em branco do select ("" = sem opção em branco). `largo` ocupa a linha toda.
+    `dados`: atributos `data-*` do controle (`{"m2m-s2": "local"}` vira `data-m2m-s2="local"`): é como um select
+    ganha Select2 sem que o renderizador conheça o Select2. `auxiliar`: campo que só ajuda a preencher outro (o
+    FABRICANTE que filtra os modelos): vai na tela e volta preenchido se o envio falhar, mas NÃO entra nos `dados`
+    que o service recebe — o que ele grava é o modelo, e o fabricante vem dele."""
     return {
         "nome": nome, "rotulo": rotulo, "tipo": tipo, "valor": "" if valor is None else valor, "opcoes": opcoes or [],
         "grupos": grupos or [], "obrigatorio": obrigatorio, "dica": dica, "maximo": maximo, "mono": mono,
-        "placeholder": placeholder, "vazio": vazio, "so_leitura": so_leitura, "largo": largo, "erro": "",
+        "placeholder": placeholder, "vazio": vazio, "so_leitura": so_leitura, "largo": largo, "erro": "", "dados": dados or {},
+        "auxiliar": auxiliar,
     }
 
 
@@ -142,7 +147,8 @@ def formulario(request, *, aba: str, titulo: str, descricao: str, voltar_url: st
                 c["valor"] = c["nome"] in request.POST
             else:
                 c["valor"] = (request.POST.get(c["nome"]) or "").strip()
-            dados[c["nome"]] = c["valor"]
+            if not c["auxiliar"]:
+                dados[c["nome"]] = c["valor"]
         try:
             resultado = executar(dados, token)
             mensagem, destino = resultado[0], resultado[1]

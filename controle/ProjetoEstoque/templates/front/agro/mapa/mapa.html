@@ -1,0 +1,161 @@
+{% extends 'base.html' %}
+{% load static zelo_icones %}
+
+{% comment %}
+O mapa do Zelo Agro (`views/agro_mapa.py`). Leaflet + MarkerCluster servidos do próprio sistema
+(`static/vendor/leaflet`), fundo OpenStreetMap com a atribuição obrigatória. Os pontos vêm de um JSON
+(`agro_mapa_dados`) já filtrado pela permissão; este template só entrega a moldura, os filtros e a config.
+Nada de dado de ativo é escrito em atributo HTML: o JS monta o painel com `textContent`.
+{% endcomment %}
+{% block title %}Mapa — Zelo Agro{% endblock %}
+{% block page_title %}Mapa{% endblock %}
+{% block page_subtitle %}Veículos, torres, estações e enlaces{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'vendor/leaflet/MarkerCluster.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'vendor/leaflet/MarkerCluster.Default.css' %}?v={{ assets_version }}">
+{% comment %}A folha do módulo vem DEPOIS das de terceiros: ela reveste os componentes (regra 26).{% endcomment %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro-mapa.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page agro-mapa-page">
+  <header class="page-header page-header-compact m2m-cab">
+    <div class="page-header-main">
+      <h2 class="page-heading">Mapa</h2>
+      <p class="page-description">Onde estão os ativos cadastrados. Só aparece o que tem coordenada registrada; nada é deduzido do chip.</p>
+    </div>
+    <div class="m2m-cab-acoes">
+      {% if ver_frota %}
+      <nav class="m2m-segmentos" aria-label="Forma de visualização">
+        <a href="{{ url_lista }}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}">Lista</a>
+        <a class="is-ativa" href="{% url 'agro_mapa' %}" aria-current="page">Mapa</a>
+      </nav>
+      {% endif %}
+    </div>
+  </header>
+
+  {% comment %}Faixa acima do mapa: quais veículos TÊM chip M2M e não têm localização. O mapa só desenha o que tem coordenada cadastrada ou GPS (a posição nunca é deduzida do chip); sem esta faixa o usuário vê o mapa vazio e não sabe por quê.{% endcomment %}
+  <details class="agro-mapa-sem-chip" id="agro-mapa-sem-chip" hidden>
+    <summary id="agro-mapa-sem-chip-t"></summary>
+    <ul class="agro-mapa-sem-chip-lista" id="agro-mapa-sem-chip-lista"></ul>
+    <p class="m2m-nota">O mapa só desenha o que tem coordenada cadastrada ou GPS: a posição nunca é deduzida do chip. Abra o equipamento e registre a localização na aba “Localização” (ou conecte uma fonte de GPS).</p>
+  </details>
+
+  <div class="agro-mapa-layout">
+    <form class="agro-mapa-filtros m2m-painel" id="agro-mapa-form" method="get" action="{% url 'agro_mapa' %}" aria-label="Filtros do mapa">
+      <header class="m2m-painel-cab">
+        <h3 class="m2m-painel-t">Filtros</h3>
+        <span class="agro-mapa-cab-acoes">
+          <a class="m2m-painel-link" href="{% url 'agro_mapa' %}" data-mapa-limpar>Limpar</a>
+          <button type="button" class="m2m-btn m2m-btn--sm agro-mapa-recolher" id="agro-mapa-recolher" aria-controls="agro-mapa-filtros-corpo" aria-expanded="true">Recolher</button>
+        </span>
+      </header>
+      <div class="agro-mapa-filtros-corpo" id="agro-mapa-filtros-corpo">
+        <label class="m2m-rotulo"><span>Buscar</span>
+          <input type="search" name="q" value="{{ filtros.q }}" class="m2m-campo" placeholder="Código, nome, placa, estrutura…" autocomplete="off">
+        </label>
+
+        <fieldset class="agro-mapa-camadas">
+          <legend class="m2m-micro">Mostrar</legend>
+          {% if ver_frota %}<label class="m2m-check"><input type="checkbox" name="camada" value="veiculos" checked> {% zelo_icone "trator" %} Veículos e máquinas <b class="m2m-num" data-mapa-total="veiculos">–</b></label>{% endif %}
+          {% if ver_infra %}
+          <label class="m2m-check"><input type="checkbox" name="camada" value="estruturas" checked> {% zelo_icone "torre" %} Torres, estações e bases <b class="m2m-num" data-mapa-total="estruturas">–</b></label>
+          <label class="m2m-check"><input type="checkbox" name="camada" value="enlaces" checked> {% zelo_icone "enlace-ptp" %} Enlaces PTP <b class="m2m-num" data-mapa-total="enlaces">–</b></label>
+          {% endif %}
+        </fieldset>
+
+        <label class="m2m-rotulo"><span>Fazenda / unidade</span>
+          <select name="fazenda" class="m2m-campo">
+            <option value="">Todas</option>
+            {% for valor, rotulo in opcoes.fazendas %}<option value="{{ valor }}" {% if filtros.fazenda == valor|stringformat:"s" or filtros.localidade == valor|stringformat:"s" %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+
+        {% if ver_frota %}
+        <p class="m2m-micro agro-mapa-grupo">Veículos e máquinas</p>
+        <label class="m2m-rotulo"><span>Tipo de equipamento</span>
+          <select name="tipo" class="m2m-campo">
+            <option value="">Todos</option>
+            {% for valor, rotulo in opcoes.tipos %}<option value="{{ valor }}" {% if filtros.tipo == valor|stringformat:"s" %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Fabricante</span>
+          <select name="fabricante" class="m2m-campo">
+            <option value="">Todos</option>
+            {% for nome in opcoes.fabricantes %}<option value="{{ nome }}" {% if filtros.fabricante == nome %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Chips M2M</span>
+          <select name="chip" class="m2m-campo">
+            <option value="">Todos os veículos</option>
+            <option value="com" {% if filtros.chip == "com" %}selected{% endif %}>Com chip vinculado</option>
+            <option value="sem" {% if filtros.chip == "sem" %}selected{% endif %}>Sem chip</option>
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Status operacional</span>
+          <select name="status" class="m2m-campo">
+            <option value="">Todos</option>
+            {% for valor, rotulo in opcoes.status %}<option value="{{ valor }}" {% if filtros.status == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        {% if ver_chips and ver_api %}
+        <label class="m2m-rotulo"><span>Situação da conectividade</span>
+          <select name="conectividade" class="m2m-campo">
+            <option value="">Todas</option>
+            {% for valor, rotulo in opcoes.conectividade %}<option value="{{ valor }}" {% if filtros.conectividade == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        {% endif %}
+        {% endif %}
+
+        {% if ver_infra %}
+        <p class="m2m-micro agro-mapa-grupo">Infraestrutura</p>
+        <label class="m2m-rotulo"><span>Tipo de estrutura</span>
+          <select name="tipo_estrutura" class="m2m-campo">
+            <option value="">Todas</option>
+            {% for valor, rotulo in opcoes.tipos_estrutura %}<option value="{{ valor }}" {% if filtros.tipo_estrutura == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Estado do enlace</span>
+          <select name="estado_enlace" class="m2m-campo">
+            <option value="">Todos</option>
+            {% for valor, rotulo in opcoes.estados_enlace %}<option value="{{ valor }}" {% if filtros.estado_enlace == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        {% endif %}
+      </div>
+      <p class="m2m-nota m2m-nota--pad" id="agro-mapa-sem" hidden></p>
+
+    </form>
+
+    <section class="agro-mapa-quadro" aria-label="Mapa">
+      <div id="agro-mapa" role="application" aria-label="Mapa interativo dos ativos"></div>
+      <p class="agro-mapa-estado" id="agro-mapa-estado" role="status" aria-live="polite" hidden></p>
+      <aside class="agro-mapa-painel" id="agro-mapa-painel" aria-label="Detalhes do item selecionado" hidden>
+        <header class="agro-mapa-painel-cab">
+          <div><span class="m2m-micro" id="agro-mapa-painel-tipo"></span><h3 id="agro-mapa-painel-titulo"></h3></div>
+          <button type="button" class="m2m-btn m2m-btn--sm" id="agro-mapa-painel-fechar" aria-label="Fechar detalhes">Fechar</button>
+        </header>
+        <div class="agro-mapa-painel-corpo" id="agro-mapa-painel-corpo"></div>
+        <footer class="agro-mapa-painel-rodape"><a class="m2m-btn m2m-btn--sm m2m-btn--primario" id="agro-mapa-painel-link" href="#">Abrir detalhes completos</a></footer>
+      </aside>
+      <div class="agro-mapa-legenda" id="agro-mapa-legenda" aria-label="Legenda"></div>
+    </section>
+  </div>
+
+  <p class="agro-mapa-rodape m2m-nota">{% if pode_configurar %}<a class="m2m-painel-link" href="{% url 'agro_mapa_config' %}">Configurar a atualização da posição GPS</a> · {% endif %}Mapa: dados © <a href="{{ tiles_atribuicao_url }}" target="_blank" rel="noopener">colaboradores do OpenStreetMap</a>. A posição de um veículo é a coordenada cadastrada (ou, quando houver rastreador, o GPS — e o contorno do marcador diz se ela é atual, antiga ou sem atualização recente); o enlace é uma linha entre as duas torres e não mede a qualidade da comunicação.</p>
+</div>
+
+{{ config_mapa|json_script:"agro-mapa-config" }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'vendor/leaflet/leaflet.js' %}?v={{ assets_version }}"></script>
+<script src="{% static 'vendor/leaflet/leaflet.markercluster.js' %}?v={{ assets_version }}"></script>
+{% include 'front/quiosque/_kq_mapa_js.html' %}
+<script src="{% static 'js/agro-mapa.js' %}?v={{ assets_version }}" defer></script>
+{% endblock %}

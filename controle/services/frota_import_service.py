@@ -27,9 +27,6 @@ import csv
 import hashlib
 import io
 import os
-import re
-import unicodedata
-import zipfile
 from dataclasses import dataclass, field
 
 from django.core.exceptions import ValidationError
@@ -45,13 +42,14 @@ from ProjetoEstoque.models import (
     M2MChip,
 )
 from services import m2m_monitoramento_service as m2m
+from services import planilha_leitura as leitura
 from services import tim_m2m_service as tim
 
-MAX_BYTES = 5 * 1024 * 1024
+MAX_BYTES = leitura.MAX_BYTES
 MAX_LINHAS = 5000
-MAX_DESCOMPACTADO = 60 * 1024 * 1024      # teto do .xlsx já aberto (zip inflado)
+MAX_DESCOMPACTADO = leitura.MAX_DESCOMPACTADO      # teto do .xlsx já aberto (zip inflado)
 LOTE_IN = 400                              # `__in` em pedaços, longe do limite de variáveis do SQLite
-PREFIXOS_DE_FORMULA = ("=", "+", "-", "@")
+PREFIXOS_DE_FORMULA = leitura.PREFIXOS_DE_FORMULA
 
 Estado = FrotaImportacaoChips.Estado
 Situacao = FrotaImportacaoLinha.Situacao
@@ -72,20 +70,8 @@ _CAMPO_POR_CABECALHO = {alias: campo for campo, _, aliases in COLUNAS for alias 
 CABECALHO_ESPERADO = ", ".join(ROTULOS)
 
 
-def _norm(texto) -> str:
-    """minúsculas, sem acento, espaços colapsados — casa cabeçalhos, operadoras e unidades
-    sem depender de digitação idêntica."""
-    t = unicodedata.normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode()
-    return " ".join(t.strip().lower().split())
-
-
-def _texto_seguro(valor) -> str:
-    """Texto para o relatório Excel: o que começa com `=`, `+`, `-`, `@` (ou tab/CR, que
-    algumas versões também interpretam) ganha um apóstrofo na frente — injeção de fórmula."""
-    texto = "" if valor is None else str(valor)
-    if texto[:1] in PREFIXOS_DE_FORMULA or texto[:1] in ("\t", "\r"):
-        return "'" + texto
-    return texto
+_norm = leitura.normalizar                  # casa cabeçalhos, operadoras e unidades sem depender de digitação idêntica
+_texto_seguro = leitura.texto_seguro        # o relatório Excel não executa fórmula (injeção)
 
 
 # ═════════════════════════════════════════════════════════════
@@ -197,78 +183,20 @@ class _Arquivo:
     colunas: dict = field(default_factory=dict)     # campo -> índice
 
 
-def _nome_do_arquivo(arquivo) -> str:
-    nome = os.path.basename(str(getattr(arquivo, "name", "") or "")).strip()
-    nome = re.sub(r"[\x00-\x1f]", "", nome)
-    return nome[:255] or "planilha"
+_nome_do_arquivo = leitura.nome_do_arquivo
+_vazia = leitura.linha_vazia
+_linhas_do_csv = leitura.linhas_do_csv
 
 
+# Os limites vêm DESTE módulo (e não do `planilha_leitura`) para continuarem ajustáveis aqui: as
+# funções abaixo os leem no momento da chamada.
 def _ler_bytes(arquivo) -> bytes:
-    if hasattr(arquivo, "seek"):
-        arquivo.seek(0)
-    dados = arquivo.read(MAX_BYTES + 1)
-    if isinstance(dados, str):
-        dados = dados.encode("utf-8")
-    if len(dados) > MAX_BYTES:
-        raise ValidationError(f"O arquivo passa do limite de {MAX_BYTES // (1024 * 1024)} MB.")
-    if not dados:
-        raise ValidationError("O arquivo está vazio.")
-    return dados
+    return leitura.ler_bytes(arquivo, MAX_BYTES)
 
 
 def _linhas_do_xlsx(dados: bytes) -> list:
-    from openpyxl import load_workbook
-
-    if dados[:2] != b"PK":
-        raise ValidationError("Não foi possível ler o arquivo — envie uma planilha .xlsx válida.")
-    try:
-        with zipfile.ZipFile(io.BytesIO(dados)) as zipado:
-            if sum(i.file_size for i in zipado.infolist()) > MAX_DESCOMPACTADO:
-                raise ValidationError("O arquivo é grande demais depois de aberto. Envie uma planilha menor.")
-        wb = load_workbook(io.BytesIO(dados), read_only=True, data_only=True)
-    except ValidationError:
-        raise
-    except Exception:
-        raise ValidationError("Não foi possível ler o arquivo — envie uma planilha .xlsx válida.") from None
-    try:
-        ws = wb["Chips"] if "Chips" in wb.sheetnames else wb.worksheets[0]
-        ws.reset_dimensions()
-        return [(i, list(valores)) for i, valores in enumerate(ws.iter_rows(values_only=True), start=1)]
-    except Exception:
-        raise ValidationError("Não foi possível ler o arquivo — envie uma planilha .xlsx válida.") from None
-    finally:
-        wb.close()
-
-
-def _decodificar(dados: bytes) -> str:
-    for codificacao in ("utf-8-sig", "cp1252"):
-        try:
-            return dados.decode(codificacao)
-        except UnicodeDecodeError:
-            continue
-    raise ValidationError("Não foi possível ler o texto do arquivo. Salve-o como CSV (UTF-8) e envie de novo.")
-
-
-def _separador(texto: str) -> str:
-    primeira = next((linha for linha in texto.splitlines() if linha.strip()), "")
-    contagem = {sep: primeira.count(sep) for sep in (";", ",", "\t")}
-    melhor = max(contagem, key=contagem.get)
-    return melhor if contagem[melhor] else ";"
-
-
-def _linhas_do_csv(dados: bytes) -> list:
-    if dados[:2] == b"PK":
-        raise ValidationError("Este arquivo é uma planilha do Excel com extensão .csv. Envie-o como .xlsx.")
-    texto = _decodificar(dados)
-    try:
-        leitor = csv.reader(io.StringIO(texto, newline=""), delimiter=_separador(texto))
-        return [(i, list(valores)) for i, valores in enumerate(leitor, start=1)]
-    except csv.Error:
-        raise ValidationError("Não foi possível ler o CSV: confira as aspas e os separadores.") from None
-
-
-def _vazia(valores) -> bool:
-    return all(v is None or str(v).strip() == "" for v in valores)
+    """Só a aba "Chips" é lida, se existir; senão a primeira. Aceita também o formato Strict do Excel."""
+    return leitura.linhas_do_xlsx(dados, max_descompactado=MAX_DESCOMPACTADO, aba_preferida="Chips")
 
 
 def _carregar(arquivo) -> _Arquivo:
@@ -308,20 +236,7 @@ def _carregar(arquivo) -> _Arquivo:
 # Validação (uma linha)
 # ═════════════════════════════════════════════════════════════
 
-def _celula(valor):
-    """Valor da célula como texto aparado. Número do Excel: inteiro vira texto sem `.0`; número
-    comprido demais (ponto flutuante) já perdeu dígitos — devolve `None` para a linha ser recusada."""
-    if valor is None:
-        return ""
-    if isinstance(valor, bool):
-        return str(valor)
-    if isinstance(valor, int):
-        return str(valor)
-    if isinstance(valor, float):
-        if valor != valor or abs(valor) >= 1e15 or valor != int(valor):
-            return None
-        return str(int(valor))
-    return " ".join(str(valor).split()) if "\n" not in str(valor) else str(valor).strip()
+_celula = leitura.celula_como_texto
 
 
 def _bruto(valores, colunas, campo) -> str | None:
@@ -540,6 +455,16 @@ def analisar(arquivo, usuario) -> FrotaImportacaoChips:
         analisadas.append([numero, dados, motivos, avisos])
     banco = _Banco.carregar([d for _, d, _, _ in analisadas])
 
+    # Itens de chip do estoque de TI ainda sem chip, pela chave do ICCID: quem bate vira aviso ("já existe no estoque") e,
+    # ao confirmar, `criar_chip` liga sozinho (regra 66). Só informa: a importação nunca toca no item.
+    from services import chip_estoque_ti_service as estoque_ti
+
+    ligados = set(M2MChip.objects.filter(item_ti__isnull=False).values_list("item_ti_id", flat=True))
+    itens_livres: dict[str, list] = {}
+    for item in estoque_ti.itens_de_chip():
+        if item.pk not in ligados and estoque_ti.chave_iccid(item.numero_serie):
+            itens_livres.setdefault(estoque_ti.chave_iccid(item.numero_serie), []).append(item)
+
     vistos = {"iccid": {}, "imsi": {}, "nome": {}, "linha": {}}
     resultado = []
     for numero, dados, motivos, avisos in analisadas:
@@ -573,6 +498,16 @@ def analisar(arquivo, usuario) -> FrotaImportacaoChips:
                 )
             if situacao != Situacao.REJEITADA:
                 vistos["linha"].setdefault(dados["numero_linha"], numero)
+        if situacao == Situacao.VALIDA and dados["iccid"]:
+            achados = itens_livres.get(estoque_ti.chave_iccid(dados["iccid"]), [])
+            if len(achados) == 1:
+                avisos.append(
+                    f"Já existe no estoque de TI o item “{achados[0].nome}” com este ICCID: o chip será ligado a ele ao importar."
+                )
+            elif len(achados) > 1:
+                avisos.append(
+                    f"Há {len(achados)} itens no estoque de TI com este ICCID: o chip NÃO será ligado sozinho; concilie depois."
+                )
         resultado.append((numero, dados, situacao, motivos, avisos, chip))
 
     with transaction.atomic():

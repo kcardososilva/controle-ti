@@ -50,6 +50,7 @@ urlpatterns = [
     # ── Subtipos ────────────────────────────────────────────────────────────
     path("subtipos/", views.subtipo_list, name="subtipo_list"),
     path("subtipos/novo/", views.subtipo_create, name="subtipo_create"),
+    path("subtipos/novo-rapido/", views.subtipo_cadastro_rapido, name="subtipo_cadastro_rapido"),
     path("subtipos/<int:pk>/", views.subtipo_detail, name="subtipo_detail"),
     path("subtipos/<int:pk>/editar/", views.subtipo_update, name="subtipo_update"),
     path("subtipos/<int:pk>/excluir/", views.subtipo_delete, name="subtipo_delete"),
@@ -63,6 +64,7 @@ urlpatterns = [
     # ── Localidades ─────────────────────────────────────────────────────────
     path("localidades/", views.localidade_list, name="localidade_list"),
     path("localidades/novo/", views.localidade_create, name="localidade_create"),
+    path("localidades/novo-rapido/", views.localidade_cadastro_rapido, name="localidade_cadastro_rapido"),
     path("localidades/<int:pk>/", views.localidade_detail, name="localidade_detail"),
     path("localidades/<int:pk>/editar/", views.localidade_update, name="localidade_update"),
     path("localidades/<int:pk>/excluir/", views.localidade_delete, name="localidade_delete"),
@@ -264,6 +266,21 @@ urlpatterns = [
     path("equipamentos/<int:item_pk>/licenca-office/vincular/", views.licenca_office_vincular, name="licenca_office_vincular"),
     path("equipamentos/<int:item_pk>/licenca-office/desvincular/", views.licenca_office_desvincular, name="licenca_office_desvincular"),
 
+    # ── Chip no equipamento de TI (tablet, celular) — ambiente TI, permissão de Frotas e Conectividade (regra 62) ──
+    path("equipamentos/chip/opcoes/", views.equipamento_chip_opcoes, name="equipamento_chip_opcoes"),
+    # Chips do Agro × estoque de TI (regra 66): conciliação e as ações de ligar, desligar e cadastrar o patrimônio do chip.
+    path("equipamentos/chips/conciliacao/", views.chips_conciliacao, name="chips_conciliacao"),
+    path("equipamentos/chips/conciliar/", views.chip_estoque_conciliar, name="chip_estoque_conciliar"),
+    path("equipamentos/chips/ligar/", views.chip_estoque_ligar, name="chip_estoque_ligar"),
+    path("equipamentos/chips/desligar/", views.chip_estoque_desligar, name="chip_estoque_desligar"),
+    path("equipamentos/chips/criar-chip/", views.chip_estoque_criar_chip, name="chip_estoque_criar_chip"),
+    path("equipamentos/chips/cadastrar-itens/", views.chip_estoque_cadastrar_itens, name="chip_estoque_cadastrar_itens"),
+    path("equipamentos/chips/opcoes/", views.chip_estoque_opcoes, name="chip_estoque_opcoes"),
+    path("equipamentos/chips/opcoes-itens/", views.chip_estoque_opcoes_itens, name="chip_estoque_opcoes_itens"),
+    path("equipamentos/<int:pk>/chip/vincular/", views.equipamento_chip_vincular, name="equipamento_chip_vincular"),
+    path("equipamentos/<int:pk>/chip/<int:vinculo_id>/desvincular/", views.equipamento_chip_desvincular, name="equipamento_chip_desvincular"),
+    path("equipamentos/<int:pk>/chip/<int:vinculo_id>/substituir/", views.equipamento_chip_substituir, name="equipamento_chip_substituir"),
+
     # ── Dashboards ──────────────────────────────────────────────────────────
     path("dashboards/custos-cc/", views.cc_custos_dashboard, name="cc_custos_dashboard"),
     path("dashboards/custos-cc/detalhe/", views.cc_custos_detalhe, name="cc_custos_detalhe"),
@@ -357,6 +374,9 @@ urlpatterns = [
     path("ninja/oauth/callback/",     views.ninja_oauth_callback, name="ninja_oauth_callback"),
     path("ninja/sincronizar/",        views.ninja_sincronizar,   name="ninja_sincronizar"),
     path("ninja/desconectar/",        views.ninja_desconectar,   name="ninja_desconectar"),
+    path("ninja/licencas-a-liberar/", views.ninja_licencas_liberar, name="ninja_licencas_liberar"),
+    path("ninja/licencas-a-liberar/marcar/", views.ninja_licencas_marcar, name="ninja_licencas_marcar"),
+    path("ninja/licencas-a-liberar/enviar/", views.ninja_licencas_enviar, name="ninja_licencas_enviar"),
 
     # ── Módulo Quiosque — API do dispositivo (app Android) ──────────────────
     path("api/quiosque/enroll/",              views.kiosk_enroll,       name="kiosk_enroll"),
@@ -527,12 +547,35 @@ urlpatterns = [
     # views/frota.py e views/frota_api.py). Os tipos de veículo (administrar_frota_config)
     # são cadastro da frota, por isso ficam aqui e não na configuração da TIM.
     path("agro/frotas/", views.frota_visao_geral, name="frota_visao_geral"),
+    path("agro/frotas/proprios/", views.frota_equipamentos_proprios, name="frota_equipamentos_proprios"),
+    path("agro/frotas/terceiros/", views.frota_equipamentos_terceiros, name="frota_equipamentos_terceiros"),
+    path("agro/frotas/validar/", views.frota_equipamentos_validar_lote, name="frota_equipamentos_validar_lote"),
+    path("agro/frotas/movimentacoes/", views.frota_equip_movimentacoes, name="frota_equip_movimentacoes"),
+    path("agro/frotas/historico/", views.frota_equip_historico, name="frota_equip_historico"),
+    path("agro/frotas/composicao/", views.frota_composicao, name="frota_composicao"),
+    path("agro/frotas/relatorios/", views.frota_relatorios, name="frota_relatorios"),
     path("agro/frotas/veiculos/", views.frota_veiculos, name="frota_veiculos"),
     path("agro/frotas/veiculos/novo/", views.frota_veiculo_novo, name="frota_veiculo_novo"),
     path("agro/frotas/veiculos/<int:pk>/", views.frota_veiculo_detalhe, name="frota_veiculo_detalhe"),
     path("agro/frotas/veiculos/<int:pk>/editar/", views.frota_veiculo_editar, name="frota_veiculo_editar"),
     path("agro/frotas/veiculos/<int:pk>/status/", views.frota_veiculo_status, name="frota_veiculo_status"),
+    path("agro/frotas/veiculos/<int:pk>/exclusao/", views.frota_veiculo_exclusao, name="frota_veiculo_exclusao"),
+    path("agro/frotas/veiculos/<int:pk>/validar/", views.frota_veiculo_validar, name="frota_veiculo_validar"),
+    path("agro/frotas/veiculos/<int:pk>/movimentar/", views.frota_veiculo_movimentar, name="frota_veiculo_movimentar"),
     path("agro/frotas/opcoes/", views.frota_opcoes, name="frota_opcoes"),
+    # Importação da planilha de equipamentos motorizados (importar_equipamentos_frota), em seis
+    # passos: envio -> mapeamento -> prévia -> validação -> confirmação -> resultado. Os passos 2 a
+    # 6 são UMA tela (`?etapa=`) sobre a mesma importação; só a confirmação grava na frota.
+    path("agro/frotas/importar/", views.frota_equip_importar, name="frota_equip_importar"),
+    path("agro/frotas/importar/modelo/", views.frota_equip_importar_modelo, name="frota_equip_importar_modelo"),
+    path("agro/frotas/importar/historico/", views.frota_equip_importacoes, name="frota_equip_importacoes"),
+    path("agro/frotas/importar/<int:pk>/", views.frota_equip_importacao, name="frota_equip_importacao"),
+    path("agro/frotas/importar/<int:pk>/mapear/", views.frota_equip_importacao_mapear, name="frota_equip_importacao_mapear"),
+    path("agro/frotas/importar/<int:pk>/confirmar/", views.frota_equip_importacao_confirmar, name="frota_equip_importacao_confirmar"),
+    path("agro/frotas/importar/<int:pk>/cancelar/", views.frota_equip_importacao_cancelar, name="frota_equip_importacao_cancelar"),
+    path("agro/frotas/importar/<int:pk>/relatorio/", views.frota_equip_importacao_relatorio, name="frota_equip_importacao_relatorio"),
+    path("agro/frotas/categorias/", views.frota_categorias, name="frota_categorias"),
+    path("agro/frotas/categorias/salvar/", views.frota_cadastro_salvar, name="frota_cadastro_salvar"),
     path("agro/frotas/configuracao/tipos/", views.frota_config_tipos, name="frota_config_tipos"),
     path("agro/frotas/configuracao/tipos/salvar/", views.frota_config_tipo_salvar, name="frota_config_tipo_salvar"),
     path("agro/frotas/tipos/rapido/", views.frota_tipo_rapido, name="frota_tipo_rapido"),
@@ -555,6 +598,7 @@ urlpatterns = [
     path("agro/conectividade/chips/<int:pk>/inativar/", views.frota_inativar, name="frota_inativar"),
     path("agro/conectividade/consultas/<int:pk>/", views.m2m_consulta_payload, name="m2m_consulta_payload"),
     path("agro/conectividade/opcoes/", views.m2m_opcoes, name="m2m_opcoes"),
+    path("agro/conectividade/sincronizacao/", views.m2m_sincronizacao, name="m2m_sincronizacao"),
     path("agro/conectividade/sessoes/", views.m2m_sessoes, name="m2m_sessoes"),
     path("agro/conectividade/consumo/", views.m2m_consumo, name="m2m_consumo"),
     path("agro/conectividade/movimentacoes/", views.frota_movimentacoes, name="frota_movimentacoes"),
@@ -617,6 +661,17 @@ urlpatterns = [
     path("agro/estoque/catalogo/<slug:tipo>/", views.tec_catalogo, name="tec_catalogo"),
     path("agro/estoque/catalogo/<slug:tipo>/novo/", views.tec_catalogo_novo, name="tec_catalogo_novo"),
     path("agro/estoque/catalogo/<slug:tipo>/<int:pk>/editar/", views.tec_catalogo_editar, name="tec_catalogo_editar"),
+    # Infraestrutura georreferenciada e o mapa (2026-11-14). Rota nova nasce em /agro/, nunca na tabela legada.
+    path("agro/mapa/", views.agro_mapa, name="agro_mapa"),
+    path("agro/mapa/dados/", views.agro_mapa_dados, name="agro_mapa_dados"),
+    path("agro/mapa/configuracao/", views.agro_mapa_config, name="agro_mapa_config"),
+    path("agro/infraestrutura/", views.infra_visao_geral, name="infra_visao_geral"),
+    path("agro/infraestrutura/estruturas/", views.infra_estruturas, name="infra_estruturas"),
+    path("agro/infraestrutura/estruturas/nova/", views.infra_estrutura_nova, name="infra_estrutura_nova"),
+    path("agro/infraestrutura/estruturas/<int:pk>/editar/", views.infra_estrutura_editar, name="infra_estrutura_editar"),
+    path("agro/infraestrutura/enlaces/", views.infra_enlaces, name="infra_enlaces"),
+    path("agro/infraestrutura/enlaces/novo/", views.infra_enlace_novo, name="infra_enlace_novo"),
+    path("agro/infraestrutura/enlaces/<int:pk>/editar/", views.infra_enlace_editar, name="infra_enlace_editar"),
     re_path(r"^(?P<antigo>(?:frotas|m2m)/.*)$", views.rota_legada_frota, name="rota_legada_frota"),
 
 ]

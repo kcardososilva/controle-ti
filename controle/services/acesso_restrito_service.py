@@ -432,6 +432,11 @@ def _esquecer_cache(user_id: int) -> None:
     cache.delete(f"perfil_acesso_{user_id}")
 
 
+# Nome público: o Portal do Colaborador (`colaborador_agro_service`) também concede e revoga por grupo e precisa derrubar as
+# mesmas duas chaves — importar o nome com sublinhado de outro módulo é o que faz a segunda cópia envelhecer.
+esquecer_cache = _esquecer_cache
+
+
 def grupo_de(chave: str):
     """O `Group` do perfil, criado na hora se a migration 0181 não rodou."""
     from django.contrib.auth.models import Group

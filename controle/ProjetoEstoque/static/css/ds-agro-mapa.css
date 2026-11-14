@@ -1,0 +1,181 @@
+/* =========================================================
+   Zelo Agro — o mapa (`front/agro/mapa/mapa.html`)
+   =========================================================
+   Veste o Leaflet e o painel com os tokens do módulo (`--m2m-*`, que o `ds-m2m.css` deriva de `tokens.css`):
+   verde do Agro, superfícies brancas, filete de 1 px, raio curto, sem sombra decorativa. Carregar DEPOIS do
+   `ds-m2m.css` e do `ds-agro.css`. Nenhuma cor nasce aqui fora dos pinos de estado do enlace (que vêm do JS
+   com o mesmo vocabulário) e da cor dos agrupamentos, derivada do tema. */
+
+.agro-mapa-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.agro-mapa-filtros { position: sticky; top: 8px; max-height: calc(100vh - 32px); overflow: auto; }
+.agro-mapa-filtros-corpo { display: grid; gap: 10px; padding: 12px 14px 14px; }
+.agro-mapa-filtros-corpo[hidden] { display: none; }
+.agro-mapa-cab-acoes { display: inline-flex; align-items: center; gap: 10px; }
+.agro-mapa-recolher { display: none; }
+.agro-mapa-grupo { margin: 6px 0 0; padding-top: 8px; border-top: 1px solid var(--m2m-ln); color: var(--m2m-tx-3); font-weight: 600; }
+.agro-mapa-camadas { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+.agro-mapa-camadas legend { padding: 0; margin-bottom: 4px; }
+.agro-mapa-camadas .m2m-check { display: flex; align-items: center; gap: 6px; }
+.agro-mapa-camadas .m2m-check i { width: 16px; color: var(--m2m-a); text-align: center; }
+.agro-mapa-camadas .m2m-num { margin-left: auto; color: var(--m2m-tx-3); font-weight: 600; }
+
+.agro-mapa-quadro { position: relative; border: 1px solid var(--m2m-ln); border-radius: var(--m2m-raio-lg); overflow: hidden; background: var(--m2m-surface); }
+#agro-mapa { height: calc(100vh - 250px); min-height: 520px; width: 100%; z-index: 0; }
+#agro-mapa.is-carregando { cursor: progress; }
+.agro-mapa-estado {
+  position: absolute; z-index: 500; left: 50%; top: 10px; transform: translateX(-50%); margin: 0; padding: 6px 12px;
+  background: var(--m2m-surface); border: 1px solid var(--m2m-ln); border-radius: var(--m2m-raio);
+  font-size: var(--m2m-fs-small); color: var(--m2m-tx-2); max-width: calc(100% - 24px); text-align: center;
+}
+.agro-mapa-rodape { margin-top: 8px; }
+
+/* ── pinos ─────────────────────────────────────────────────
+   Círculo = veículo ou máquina; quadrado de canto vivo = estrutura da infraestrutura. O DESENHO (o ícone) diz o tipo;
+   o contorno diz o status — nunca só a cor: manutenção é tracejado, inativo é opaco. */
+.agro-pin { background: transparent; border: 0; }
+.agro-pin-corpo {
+  position: relative; display: grid; place-items: center; width: 34px; height: 34px; box-sizing: border-box;
+  background: var(--m2m-surface); color: var(--m2m-a); border: 2px solid var(--m2m-a);
+  font-size: 15px; box-shadow: 0 0 0 2px var(--m2m-surface);
+}
+.agro-pin-corpo .zi { vertical-align: 0; width: 1.25em; height: 1.25em; }
+.agro-pin--veiculo .agro-pin-corpo { border-radius: 50%; }
+.agro-pin--infra .agro-pin-corpo { border-radius: 4px; background: var(--m2m-a); color: var(--m2m-surface); }
+.agro-pin-corpo[data-status="manutencao"] { border-style: dashed; border-color: var(--m2m-warn); color: var(--m2m-warn); }
+.agro-pin--infra .agro-pin-corpo[data-status="manutencao"] { background: var(--m2m-surface); }
+.agro-pin-corpo[data-status="inativo"], .agro-pin-corpo[data-status="desativado"], .agro-pin-corpo[data-status="desativada"] { opacity: .55; filter: grayscale(1); }
+.agro-pin:focus-visible .agro-pin-corpo { outline: 3px solid var(--m2m-a-soft); outline-offset: 2px; }
+
+.agro-cluster { background: transparent; }
+.agro-cluster-n {
+  display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; box-sizing: border-box;
+  background: var(--m2m-a); color: var(--m2m-surface); font-weight: 700; font-size: 13px;
+  border: 3px solid var(--m2m-surface); box-shadow: 0 0 0 2px var(--m2m-a);
+}
+.agro-cluster--infra .agro-cluster-n { border-radius: 6px; }
+
+/* ── legenda ───────────────────────────────────────────── */
+.agro-mapa-legenda {
+  position: absolute; z-index: 450; left: 10px; bottom: 28px; max-width: calc(100% - 24px); display: flex; flex-wrap: wrap; gap: 4px 12px;
+  padding: 6px 10px; background: var(--m2m-surface); border: 1px solid var(--m2m-ln); border-radius: var(--m2m-raio);
+  font-size: var(--m2m-fs-small); color: var(--m2m-tx-2);
+}
+.agro-mapa-legenda:empty { display: none; }
+.agro-legenda-item { display: inline-flex; align-items: center; gap: 6px; }
+.agro-legenda-pino {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; font-size: 10px;
+  border: 2px solid var(--m2m-a); color: var(--m2m-a); background: var(--m2m-surface);
+}
+.agro-legenda-pino.agro-pin--veiculo { border-radius: 50%; }
+.agro-legenda-pino.agro-pin--infra { border-radius: 3px; background: var(--m2m-a); color: var(--m2m-surface); }
+
+/* ── painel de detalhes: compacto, deixa o mapa à vista ─────── */
+.agro-mapa-painel {
+  position: absolute; z-index: 600; top: 10px; right: 10px; bottom: 10px; width: min(340px, calc(100% - 20px));
+  display: flex; flex-direction: column; background: var(--m2m-surface); border: 1px solid var(--m2m-ln);
+  border-radius: var(--m2m-raio-lg); box-shadow: 0 6px 24px rgba(0, 0, 0, .14);
+}
+.agro-mapa-painel[hidden] { display: none; }
+.agro-mapa-painel-cab { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--m2m-ln); }
+.agro-mapa-painel-cab h3 { margin: 2px 0 0; font-size: var(--m2m-fs-lg, 1rem); line-height: 1.25; overflow-wrap: anywhere; }
+.agro-mapa-painel-corpo { flex: 1; overflow: auto; padding: 10px 14px; }
+.agro-mapa-painel-rodape { padding: 10px 14px; border-top: 1px solid var(--m2m-ln); }
+.agro-mapa-painel-rodape a[hidden] { display: none; }
+.agro-mapa-dl { margin: 0; display: grid; gap: 6px; }
+.agro-mapa-par { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; font-size: var(--m2m-fs-small); }
+.agro-mapa-par dt { color: var(--m2m-tx-3); }
+.agro-mapa-par dd { margin: 0; color: var(--m2m-tx); overflow-wrap: anywhere; }
+.agro-mapa-par dd.is-destaque { font-weight: 600; }
+.agro-mapa-sub { margin: 14px 0 6px; font-size: var(--m2m-fs-small); text-transform: uppercase; letter-spacing: .04em; color: var(--m2m-tx-3); }
+.agro-mapa-dl--chip { padding: 8px 0; border-top: 1px solid var(--m2m-ln); }
+.agro-mapa-aviso { margin: 4px 0 0; padding: 6px 8px; background: var(--m2m-sunken); border-radius: var(--m2m-raio); font-size: var(--m2m-fs-small); color: var(--m2m-tx-2); }
+
+/* o aviso de provedor de mapa que não carrega (`KQMapa`) */
+.kq-mapaviso {
+  max-width: 360px; padding: 8px 10px; background: var(--m2m-warn-soft); border: 1px solid var(--m2m-warn); border-radius: var(--m2m-raio);
+  font-size: var(--m2m-fs-small); color: var(--m2m-tx);
+}
+.kq-mapaviso i { margin-right: 6px; color: var(--m2m-warn); }
+
+/* tooltip do enlace segue a linguagem do resto */
+.leaflet-tooltip { font-family: inherit; font-size: 12px; border-radius: 4px; }
+
+/* ── tablet e celular ──────────────────────────────────────
+   Filtros viram um bloco acima do mapa; o painel vira uma folha na parte de baixo (o mapa continua à vista em cima). */
+@media (max-width: 960px) {
+  .agro-mapa-recolher { display: inline-flex; }
+  .agro-mapa-layout { grid-template-columns: minmax(0, 1fr); }
+  .agro-mapa-filtros { position: static; max-height: none; }
+  .agro-mapa-filtros-corpo { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  #agro-mapa { height: 62vh; min-height: 380px; }
+}
+@media (max-width: 640px) {
+  .agro-mapa-painel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 55%; }
+  .agro-mapa-legenda { bottom: 24px; }
+  .agro-mapa-par { grid-template-columns: 96px minmax(0, 1fr); }
+}
+
+
+/* ── estado da localização (o CONTORNO diz se a posição ainda vale; nunca só a cor) ──────────────────────────────
+   atualizada = contorno cheio na cor de sucesso · antiga = contorno de atenção · sem atualização recente = esmaecido e
+   tracejado (não é a posição de agora) · cadastral = ponto fixo, com aro pontilhado (nunca é "a posição atual"). O estado
+   vale para VEÍCULO; estrutura é ponto fixo por natureza e não carrega estado. */
+.agro-pin-corpo[data-loc="atualizada"] { border-color: var(--m2m-ok); color: var(--m2m-ok); }
+.agro-pin-corpo[data-loc="antiga"] { border-color: var(--m2m-warn); color: var(--m2m-warn); }
+.agro-pin-corpo[data-loc="sem_atualizacao"] { border-style: dashed; border-color: var(--m2m-tx-3); color: var(--m2m-tx-3); opacity: .75; }
+.agro-pin-corpo[data-loc="cadastral"] { outline: 2px dotted var(--m2m-tx-3); outline-offset: 3px; }
+
+/* selo de "tem chip M2M": um ponto no canto, com a mesma cor do acento */
+.agro-pin-chip {
+  position: absolute; top: -4px; right: -4px; width: 11px; height: 11px; border-radius: 50%; box-sizing: border-box;
+  background: var(--m2m-a); border: 2px solid var(--m2m-surface);
+}
+
+/* o veículo em foco (aberto a partir do detalhe do chip) */
+.agro-pin--foco { z-index: 800 !important; }
+.agro-pin--foco .agro-pin-corpo { box-shadow: 0 0 0 3px var(--m2m-surface), 0 0 0 6px var(--m2m-a); animation: agro-pulso 1.6s ease-out 3; }
+@keyframes agro-pulso {
+  0% { box-shadow: 0 0 0 3px var(--m2m-surface), 0 0 0 6px var(--m2m-a); }
+  70% { box-shadow: 0 0 0 3px var(--m2m-surface), 0 0 0 16px transparent; }
+  100% { box-shadow: 0 0 0 3px var(--m2m-surface), 0 0 0 6px var(--m2m-a); }
+}
+@media (prefers-reduced-motion: reduce) { .agro-pin--foco .agro-pin-corpo { animation: none; } }
+
+/* legenda: o mesmo contorno, em miniatura */
+.agro-legenda-pino .zi { vertical-align: 0; }
+.agro-legenda-estado { display: inline-block; width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--m2m-a); }
+.agro-legenda-estado[data-loc="atualizada"] { border-color: var(--m2m-ok); }
+.agro-legenda-estado[data-loc="antiga"] { border-color: var(--m2m-warn); }
+.agro-legenda-estado[data-loc="sem_atualizacao"] { border-style: dashed; border-color: var(--m2m-tx-3); opacity: .75; }
+.agro-legenda-estado[data-loc="cadastral"] { border-color: var(--m2m-tx-3); outline: 2px dotted var(--m2m-tx-3); outline-offset: 1px; }
+.agro-legenda-chip { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: var(--m2m-a); }
+
+/* cartão de localização (detalhe do veículo e do chip) */
+.agro-loc { display: grid; gap: 4px 20px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); padding: 12px 16px 4px; }
+.agro-loc-estado { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.agro-loc-estado::before { content: ""; width: 12px; height: 12px; border-radius: 50%; box-sizing: border-box; border: 2px solid var(--m2m-tx-3); }
+.agro-loc-estado[data-estado="atualizada"]::before { border-color: var(--m2m-ok); }
+.agro-loc-estado[data-estado="antiga"]::before { border-color: var(--m2m-warn); }
+.agro-loc-estado[data-estado="sem_atualizacao"]::before { border-style: dashed; opacity: .75; }
+.agro-loc-estado[data-estado="cadastral"]::before { outline: 2px dotted var(--m2m-tx-3); outline-offset: 1px; }
+.agro-loc-acoes { padding: 8px 16px 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.agro-loc-hist { list-style: none; margin: 0; padding: 0 16px 10px; font-size: var(--m2m-fs-small); color: var(--m2m-tx-2); }
+.agro-loc-hist li { display: flex; gap: 10px; padding: 5px 0; border-top: 1px solid var(--m2m-ln); }
+.agro-loc-hist li span:last-child { margin-left: auto; color: var(--m2m-tx-3); }
+
+/* faixa acima do mapa: veículos com chip M2M e sem localização (o mapa não os desenha, mas diz quais são) */
+.agro-mapa-sem-chip { margin: 0 0 12px; padding: 10px 14px; background: var(--m2m-warn-soft); border: 1px solid var(--m2m-ln); border-left: 3px solid var(--m2m-warn); border-radius: var(--m2m-raio-lg); font-size: var(--m2m-fs-base); }
+.agro-mapa-sem-chip > summary { cursor: pointer; font-weight: 600; color: var(--m2m-tx); }
+.agro-mapa-sem-chip > .m2m-nota { margin: 8px 0 0; padding: 0; }
+.agro-mapa-sem-chip-lista { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 0 24px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); max-height: 220px; overflow: auto; }
+.agro-mapa-sem-chip-lista li { display: grid; gap: 0; padding: 5px 0; border-top: 1px solid var(--m2m-ln); }
+.agro-mapa-sem-chip-lista a { display: inline-flex; align-items: center; gap: 6px; color: var(--m2m-tx); font-weight: 600; text-decoration: none; min-width: 0; }
+.agro-mapa-sem-chip-lista a:hover { text-decoration: underline; }
+.agro-mapa-sem-chip-lista a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agro-mapa-sem-chip-lista small { color: var(--m2m-tx-2); font-size: var(--m2m-fs-small); padding-left: 1.6em; }
+.agro-mapa-sem-chip-mais { color: var(--m2m-tx-2); font-size: var(--m2m-fs-small); }

@@ -1,0 +1,76 @@
+{% load l10n m2m_tags %}
+{% comment %}
+As linhas da importação, uma por equipamento da planilha, com o que cada uma vira (ou virou). Serve à prévia e ao
+resultado. Recebe `linhas` (de `_linha_da_tela`), `situacoes`, `regras`, `filtros`, `page_obj`, `paginas`, `querystring` e
+`etapa`. Os filtros viajam na URL (`?etapa=&situacao=&regra=&q=`), então a página pode ser compartilhada.
+Equipamento já cadastrado mostra o que a planilha mudaria (só se a atualização for autorizada); o rejeitado, o motivo.
+{% endcomment %}
+<nav class="m2m-segmentos m2m-segmentos--grande" aria-label="Filtrar as linhas por situação">
+  {% for chave, rotulo, n in situacoes %}
+  <a href="?etapa={{ etapa }}&amp;situacao={{ chave }}{% if filtros.regra %}&amp;regra={{ filtros.regra|urlencode }}{% endif %}{% if filtros.q %}&amp;q={{ filtros.q|urlencode }}{% endif %}" {% if filtros.situacao == chave %}class="is-ativa" aria-current="true"{% endif %}><span>{{ rotulo }}</span><b class="m2m-num">{{ n|unlocalize }}</b></a>
+  {% endfor %}
+</nav>
+
+<form method="get" class="agro-busca-aba agro-linhas-busca" role="search">
+  <input type="hidden" name="etapa" value="{{ etapa }}">
+  <input type="hidden" name="situacao" value="{{ filtros.situacao }}">
+  <input type="search" name="q" value="{{ filtros.q }}" class="m2m-campo" placeholder="Buscar por código ou modelo" aria-label="Buscar nas linhas por código ou modelo" autocomplete="off">
+  {% if regras %}
+  <select name="regra" class="m2m-campo" aria-label="Filtrar por conferência">
+    <option value="">Todas as conferências</option>
+    {% for codigo, titulo, n in regras %}<option value="{{ codigo }}" {% if filtros.regra == codigo %}selected{% endif %}>{{ titulo }} ({{ n|unlocalize }})</option>{% endfor %}
+  </select>
+  {% endif %}
+  <button type="submit" class="m2m-btn m2m-btn--sm">Filtrar</button>
+  {% if filtros.q or filtros.regra %}<a class="m2m-btn m2m-btn--sm m2m-btn--fantasma" href="?etapa={{ etapa }}&amp;situacao={{ filtros.situacao }}">Limpar</a>{% endif %}
+</form>
+
+{% if linhas %}
+<div class="m2m-tabela-wrap">
+  <table class="m2m-tabela m2m-tabela--curta">
+    <thead>
+      <tr><th class="num">Linha</th><th>Situação</th><th>Equipamento</th><th>Modelo</th><th>Natureza</th><th>Placa</th><th>Chassi / série</th><th>Classe operacional</th><th>Centro de custo</th><th>Motivos e conferências</th></tr>
+    </thead>
+    <tbody>
+      {% for l in linhas %}
+      <tr class="m2m-linha" data-situacao-linha="{{ l.situacao }}">
+        <td class="num" data-rotulo="Linha"><span class="m2m-num">{{ l.numero }}</span></td>
+        <td data-rotulo="Situação">
+          {% if l.situacao == "valida" %}{% m2m_ind "normal" "Válida" %}
+          {% elif l.situacao == "importada" %}{% m2m_ind "sucesso" "Importada" %}
+          {% elif l.situacao == "atualizada" %}{% m2m_ind "sucesso" "Atualizada" %}
+          {% elif l.situacao == "existente" %}{% m2m_ind "sem_sessao" "Já cadastrada" %}
+          {% else %}{% m2m_ind "falha" "Rejeitada" %}{% endif %}
+        </td>
+        <td class="m2m-id" data-rotulo="Equipamento">
+          {% if l.veiculo_id and pode_ver_frota %}<a class="m2m-link-forte" href="{% url 'frota_veiculo_detalhe' l.veiculo_id %}" title="Abrir {{ l.veiculo_codigo }}">{{ l.codigo_legado|default:"—" }}</a>{% else %}{{ l.codigo_legado|default:"—" }}{% endif %}
+          {% if l.veiculo_codigo %}<span class="m2m-id-2" title="Identificador interno">{{ l.veiculo_codigo }}</span>{% endif %}
+        </td>
+        <td class="m2m-quebra" data-rotulo="Modelo">{{ l.modelo|default:"—" }}</td>
+        <td data-rotulo="Natureza">{{ l.natureza_rotulo|default:"—" }}</td>
+        <td class="m2m-id" data-rotulo="Placa">{{ l.placa|default:"—" }}</td>
+        <td class="m2m-id" data-rotulo="Chassi / série">{{ l.chassi_serie|default:"—" }}</td>
+        <td class="m2m-quebra" data-rotulo="Classe operacional">{{ l.classe_operacional|default:"—" }}{% if l.categoria %} <span class="m2m-sub">{{ l.categoria }}</span>{% endif %}</td>
+        <td class="m2m-quebra" data-rotulo="Centro de custo">{{ l.centro_custo|default:"—" }}</td>
+        <td class="m2m-largo" data-rotulo="Motivos e conferências">
+          {% comment %}Só a linha REJEITADA é erro (vermelho). "Já cadastrada" tem motivo — o equipamento não é alterado —, mas não é falha, e 395 linhas vermelhas fariam a tela parecer alarme.{% endcomment %}
+          {% if l.motivos %}<ul class="m2m-motivos{% if l.situacao == 'rejeitada' %} m2m-motivos--erro{% else %} agro-motivos-neutros{% endif %}">{% for m in l.motivos %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+          {% if l.conferencias %}<ul class="m2m-motivos">{% for c in l.conferencias %}<li><span class="m2m-sub">Conferir:</span> {{ c.detalhe }}</li>{% endfor %}</ul>{% endif %}
+          {% if l.situacao == "atualizada" and l.aplicadas_lista %}
+          <ul class="agro-diff">{% for m in l.aplicadas_lista %}<li><span class="m2m-sub">Atualizado:</span> <b>{{ m.rotulo }}</b> <span class="agro-diff-de">{{ m.de }}</span> → {{ m.para }}</li>{% endfor %}</ul>
+          {% elif l.situacao == "existente" and l.mudancas %}
+          <ul class="agro-diff">{% for m in l.mudancas %}<li><span class="m2m-sub">A planilha mudaria:</span> <b>{{ m.rotulo }}</b> <span class="agro-diff-de">{{ m.de }}</span> → {{ m.para }}</li>{% endfor %}</ul>
+          {% endif %}
+          {% if not l.motivos and not l.conferencias and not l.mudancas and not l.aplicadas_lista %}<span class="m2m-vazio-linha">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include 'front/m2m/_paginacao.html' %}
+{% else %}
+{% with u_todas="?etapa="|add:etapa %}
+{% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhuma linha neste recorte" texto="Tire o filtro ou a busca para ver todas as linhas da planilha." acao_url=u_todas acao_rotulo="Ver todas as linhas" only %}
+{% endwith %}
+{% endif %}

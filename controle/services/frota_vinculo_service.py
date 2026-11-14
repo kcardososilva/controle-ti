@@ -1,9 +1,15 @@
 """
-Vínculo chip <-> veículo e as MOVIMENTAÇÕES do chip.
+Vínculo do chip com o seu DESTINO e as MOVIMENTAÇÕES do chip.
+
+O destino é um veículo (`FrotaVeiculo`) OU um equipamento do estoque de TI (`Item`: tablet, celular —
+os subtipos com `aceita_chip`). Cada operação recebe qualquer um dos dois e o service decide com
+`_Destino`; quem chama não precisa saber a diferença. Cada tipo de item continua no módulo dele: o
+tablet/celular é do TI, o veículo é do Agro, e o chip é o que liga os dois mundos.
 
 Camadas: views -> este service -> `m2m_monitoramento_service` (desativar/reativar o
-monitoramento, abrir ocorrência de evento) -> models. Nada aqui toca o estoque de TI
-(`Item`, `MovimentacaoItem`): a frota é independente dele.
+monitoramento, abrir ocorrência de evento) -> models. O `Item` é só REFERÊNCIA: nenhuma operação
+daqui grava em `Item`, `MovimentacaoItem` nem `ItemStatusHistorico` (regra 62) — o status do
+tablet continua sendo do TI, e a sessão do chip continua sendo da conectividade.
 
 Decisões que moldam este módulo — e não são óbvias olhando o código:
 
@@ -26,7 +32,9 @@ Decisões que moldam este módulo — e não são óbvias olhando o código:
     exclusão do usuário.
   • VEÍCULO `desativado` NÃO RECEBE CHIP; `manutencao`/`inativo` recebe, com aviso (a
     vinculação é do controle de chips, não do status operacional — que são coisas
-    separadas).
+    separadas). Com o EQUIPAMENTO DE TI é igual: `descarte`/`devolvido`/excluído não recebe;
+    `manutencao`/`defeito`/`pausado` recebe, com aviso. E só recebe quem o subtipo marca com
+    `aceita_chip` — um monitor não vira destino de chip por engano.
   • ALERTAS DE EVENTO (`chip_desvinculado`, `alteracao_vinculo`) são informativos e só
     existem se a regra correspondente (`FrotaRegraAlerta`) estiver ligada; uma falha ao
     abri-los nunca desfaz a movimentação.
@@ -53,8 +61,11 @@ from ProjetoEstoque.models import (
     FrotaMovimentacao,
     FrotaVeiculo,
     FrotaVinculo,
+    Item,
     M2MChip,
     M2MEvento,
+    StatusItemChoices,
+    rotulo_do_equipamento_ti,
 )
 from services import m2m_monitoramento_service as m2m
 
@@ -111,6 +122,65 @@ def _nome_do_veiculo(veiculo: FrotaVeiculo | None) -> str:
     return f"{veiculo.codigo} · {veiculo.nome}" if veiculo is not None else ""
 
 
+@dataclass(frozen=True, eq=False)
+class _Destino:
+    """Para onde o chip vai / de onde ele sai: UM veículo OU UM equipamento do estoque de TI.
+    É o que deixa o resto do service igual para os dois — só aqui se sabe qual é qual."""
+
+    veiculo: FrotaVeiculo | None = None
+    item: Item | None = None
+
+    @property
+    def tipo(self) -> str:
+        return "veiculo" if self.veiculo is not None else "item"
+
+    @property
+    def pk(self) -> int:
+        return (self.veiculo if self.veiculo is not None else self.item).pk
+
+    @property
+    def rotulo(self) -> str:
+        return _nome_do_veiculo(self.veiculo) if self.veiculo is not None else rotulo_do_equipamento_ti(self.item)
+
+    @property
+    def completo(self) -> str:
+        """`veículo VEI-001 · Trator` ou `equipamento Galaxy Tab A7 · R9XR…`. Os dois são masculinos, então
+        "ao / do / no / para o" servem na frente de qualquer um."""
+        return f"{'veículo' if self.veiculo is not None else 'equipamento'} {self.rotulo}"
+
+
+def _como_destino(valor) -> _Destino:
+    """Aceita o que a view tem na mão: um `FrotaVeiculo`, um `Item` (ou um `_Destino` já pronto)."""
+    if isinstance(valor, _Destino):
+        return valor
+    if isinstance(valor, FrotaVeiculo):
+        return _Destino(veiculo=valor)
+    if isinstance(valor, Item):
+        return _Destino(item=valor)
+    raise ValidationError("Escolha o veículo ou o equipamento que recebe o chip.")
+
+
+def _destino_do_vinculo(vinculo: FrotaVinculo) -> _Destino:
+    return _Destino(
+        veiculo=vinculo.veiculo if vinculo.veiculo_id else None,
+        item=vinculo.item if vinculo.item_id else None,
+    )
+
+
+def descrever_destino(vinculo: FrotaVinculo) -> str:
+    """`veículo VEI-001 · Trator` ou `equipamento Galaxy Tab A7 · R9XR…` — o texto pronto para mensagens e
+    rótulos das telas (o vínculo deve vir com `veiculo`/`item` carregados)."""
+    return _destino_do_vinculo(vinculo).completo
+
+
+def equipamento_aceita_chip(item: Item) -> bool:
+    """O equipamento de TI pode receber chip? Só o que o subtipo marca (`aceita_chip`), vivo e que não seja
+    de consumo. É a pergunta da FICHA ("mostro o cartão de chip?"); a recusa com motivo é do `vincular`."""
+    return bool(
+        item.subtipo_id and item.subtipo.aceita_chip and not item.excluido and item.item_consumo != "sim"
+    )
+
+
 def _quando(momento) -> str:
     return timezone.localtime(momento).strftime("%d/%m %H:%M")
 
@@ -136,23 +206,39 @@ def _reler_veiculo(veiculo: FrotaVeiculo) -> FrotaVeiculo:
         raise ValidationError({"veiculo": "Veículo não encontrado."}) from None
 
 
+def _reler_destino(destino: _Destino) -> _Destino:
+    """O destino como está AGORA no banco (a tela pode estar velha). O equipamento é relido com o
+    subtipo, que decide se ele aceita chip; o `Item` excluído (soft delete) também volta, para a
+    recusa dizer o motivo certo em vez de "não encontrado"."""
+    if destino.veiculo is not None:
+        return _Destino(veiculo=_reler_veiculo(destino.veiculo))
+    try:
+        item = Item.all_objects.select_for_update().select_related("subtipo").get(pk=destino.item.pk)
+    except Item.DoesNotExist:
+        raise ValidationError({"item": "Equipamento não encontrado."}) from None
+    return _Destino(item=item)
+
+
 def _vinculo_ativo_do_chip(chip: M2MChip) -> FrotaVinculo | None:
-    return FrotaVinculo.objects.filter(chip=chip, fim_em__isnull=True).select_related("veiculo").first()
+    return FrotaVinculo.objects.filter(chip=chip, fim_em__isnull=True).select_related("veiculo", "item").first()
 
 
 def _mensagem_ja_encerrado(vinculo: FrotaVinculo) -> str:
     """"Este chip já foi desvinculado por fulano em 12/11 14:05" — com o verbo certo para
     como o vínculo acabou (desvinculação, transferência, substituição ou inativação)."""
+    mov = vinculo.mov_fim if vinculo.mov_fim_id else None
+    transferido = "transferido para outro equipamento" if mov is not None and mov.item_destino_id else "transferido para outro veículo"
     verbos = {
-        Tipo.TRANSFERENCIA: "transferido para outro veículo",
+        Tipo.TRANSFERENCIA: transferido,
         Tipo.SUBSTITUICAO: "substituído por outro chip",
         Tipo.INATIVACAO: "inativado",
     }
-    tipo = vinculo.mov_fim.tipo if vinculo.mov_fim_id else Tipo.DESVINCULACAO
+    tipo = mov.tipo if mov is not None else Tipo.DESVINCULACAO
     verbo = verbos.get(tipo, "desvinculado")
     quando = f" em {_quando(vinculo.fim_em)}" if vinculo.fim_em else ""
+    onde = f"veículo {vinculo.veiculo.codigo}" if vinculo.veiculo_id else _destino_do_vinculo(vinculo).completo
     return (
-        f"Este chip já foi {verbo} por {_quem(vinculo.fim_por)}{quando} (veículo {vinculo.veiculo.codigo}). "
+        f"Este chip já foi {verbo} por {_quem(vinculo.fim_por)}{quando} ({onde}). "
         "Atualize a página para ver a situação atual."
     )
 
@@ -165,7 +251,7 @@ def _vinculo_esperado(vinculo_id) -> FrotaVinculo:
     except (TypeError, ValueError):
         raise ValidationError("Vínculo não encontrado.") from None
     vinculo = (
-        FrotaVinculo.objects.select_related("chip", "veiculo", "fim_por", "mov_fim").filter(pk=pk).first()
+        FrotaVinculo.objects.select_related("chip", "veiculo", "item", "fim_por", "mov_fim").filter(pk=pk).first()
     )
     if vinculo is None:
         raise ValidationError("Vínculo não encontrado.")
@@ -175,12 +261,15 @@ def _vinculo_esperado(vinculo_id) -> FrotaVinculo:
 
 
 def _gravar_movimentacao(
-    tipo, chip, usuario, motivo, *, operacao, veiculo_origem=None, veiculo_destino=None,
+    tipo, chip, usuario, motivo, *, operacao, origem: _Destino | None = None, destino: _Destino | None = None,
     chip_relacionado=None, observacoes="", importacao=None, agora=None,
 ) -> FrotaMovimentacao:
+    """Grava a linha imutável. `origem`/`destino` (um `_Destino` ou `None`) viram as FKs certas: o
+    veículo vai para `veiculo_*` e o equipamento de TI para `item_*` — nunca os dois do mesmo lado."""
     return FrotaMovimentacao.objects.create(
         tipo=tipo, chip=chip, chip_relacionado=chip_relacionado, operacao=operacao,
-        veiculo_origem=veiculo_origem, veiculo_destino=veiculo_destino,
+        veiculo_origem=origem.veiculo if origem else None, item_origem=origem.item if origem else None,
+        veiculo_destino=destino.veiculo if destino else None, item_destino=destino.item if destino else None,
         motivo=motivo, observacoes=(observacoes or "").strip(), usuario=usuario,
         usuario_nome=usuario.get_username(), em=agora or timezone.now(), importacao=importacao,
     )
@@ -198,12 +287,17 @@ _EVENTO_DO_TIPO = {
 
 
 def _gravar_evento(mov: FrotaMovimentacao, chip: M2MChip, usuario) -> None:
-    """Espelha a movimentação em `M2MEvento` (a trilha do chip) — o id dela vai em `dados`."""
+    """Espelha a movimentação em `M2MEvento` (a trilha do chip) — o id dela vai em `dados`.
+    `veiculo_*` continua como sempre foi (eventos antigos e leituras que dependem dele); `origem_texto`
+    e `destino_texto` dizem o lugar com o tipo ("veículo X" / "equipamento Y") para a frase da trilha."""
+    origem = _Destino(veiculo=mov.veiculo_origem, item=mov.item_origem) if (mov.veiculo_origem_id or mov.item_origem_id) else None
+    destino = _Destino(veiculo=mov.veiculo_destino, item=mov.item_destino) if (mov.veiculo_destino_id or mov.item_destino_id) else None
     M2MEvento.objects.create(
         chip=chip, tipo=_EVENTO_DO_TIPO[mov.tipo], usuario=usuario, em=mov.em,
         dados={
             "movimentacao_id": mov.pk, "operacao": str(mov.operacao), "motivo": mov.motivo,
             "veiculo_origem": _nome_do_veiculo(mov.veiculo_origem), "veiculo_destino": _nome_do_veiculo(mov.veiculo_destino),
+            "origem_texto": origem.completo if origem else "", "destino_texto": destino.completo if destino else "",
             "chip_relacionado": mov.chip_relacionado.nome if mov.chip_relacionado_id else "",
             "situacao_uso": chip.situacao_uso, "situacao_uso_rotulo": chip.get_situacao_uso_display(),
         },
@@ -216,13 +310,14 @@ def _gravar_situacao(chip: M2MChip, nova: str, usuario, agora) -> None:
     M2MChip.objects.filter(pk=chip.pk).update(situacao_uso=nova, atualizado_por=usuario, updated_at=agora)
 
 
-def _abrir_vinculo(chip, veiculo, usuario, mov, agora) -> FrotaVinculo:
+def _abrir_vinculo(chip, destino: _Destino, usuario, mov, agora) -> FrotaVinculo:
     """Cria o vínculo ATIVO. Quem perde a corrida contra outra pessoa leva o
     `IntegrityError` da restrição parcial — convertido aqui."""
     try:
         with transaction.atomic():
             return FrotaVinculo.objects.create(
-                chip=chip, veiculo=veiculo, inicio_em=agora, inicio_por=usuario, mov_inicio=mov,
+                chip=chip, veiculo=destino.veiculo, item=destino.item, inicio_em=agora, inicio_por=usuario,
+                mov_inicio=mov,
             )
     except IntegrityError:
         raise ValidationError(
@@ -237,7 +332,7 @@ def _encerrar_vinculo(vinculo: FrotaVinculo, usuario, mov, motivo, agora) -> Fro
         fim_em=agora, fim_por=usuario, motivo_fim=motivo, mov_fim=mov,
     )
     if not mudou:
-        atual = FrotaVinculo.objects.select_related("veiculo", "fim_por", "mov_fim").get(pk=vinculo.pk)
+        atual = FrotaVinculo.objects.select_related("veiculo", "item", "fim_por", "mov_fim").get(pk=vinculo.pk)
         raise ValidationError(_mensagem_ja_encerrado(atual))
     vinculo.fim_em, vinculo.fim_por, vinculo.motivo_fim, vinculo.mov_fim = agora, usuario, motivo, mov
     return vinculo
@@ -255,13 +350,48 @@ def _conferir_veiculo_recebe(veiculo: FrotaVeiculo) -> list[str]:
     return []
 
 
+def _conferir_equipamento_recebe(item: Item) -> list[str]:
+    """Recusa o equipamento de TI que não pode receber chip; devolve o aviso para o que está parado.
+
+    Quem decide se o TIPO aceita chip é o subtipo (`aceita_chip`, marcado pelo TI) — assim o monitor
+    ou o switch não viram destino por engano, e um tipo novo (roteador 4G) é só marcar. O `status`
+    é do TI e daqui só se LÊ: descartado/devolvido não recebe; manutenção/defeito/pausado recebe,
+    com aviso (mesma régua do veículo)."""
+    nome = rotulo_do_equipamento_ti(item)
+    if item.excluido:
+        raise ValidationError({"item": f"O equipamento {nome} foi excluído do estoque e não recebe chips."})
+    if item.item_consumo == "sim":
+        raise ValidationError({"item": f"{nome} é item de consumo e não recebe chip."})
+    if item.subtipo_id is None:
+        raise ValidationError({
+            "item": f"O equipamento {nome} não tem tipo (subtipo) definido, então não dá para saber se ele usa chip. "
+                    "Defina o tipo no cadastro do equipamento."
+        })
+    if not item.subtipo.aceita_chip:
+        raise ValidationError({
+            "item": f"O tipo \"{item.subtipo.nome}\" não está marcado para receber chip. "
+                    "Marque \"Aceita chip\" no cadastro do subtipo, se ele usa SIM."
+        })
+    if item.status in (StatusItemChoices.DESCARTE, StatusItemChoices.DEVOLVIDO):
+        raise ValidationError({"item": f"O equipamento {nome} está em \"{item.get_status_display()}\" e não recebe chips."})
+    if item.status in (StatusItemChoices.MANUTENCAO, StatusItemChoices.DEFEITO, StatusItemChoices.PAUSADO):
+        return [f"O equipamento {nome} está em {item.get_status_display().lower()}; o chip foi vinculado mesmo assim."]
+    return []
+
+
+def _conferir_destino_recebe(destino: _Destino) -> list[str]:
+    if destino.veiculo is not None:
+        return _conferir_veiculo_recebe(destino.veiculo)
+    return _conferir_equipamento_recebe(destino.item)
+
+
 def _conferir_chip_para_vincular(chip: M2MChip) -> None:
     """O chip precisa estar disponível, sem vínculo ativo e não inativo."""
     ativo = _vinculo_ativo_do_chip(chip)
     if ativo is not None or chip.situacao_uso == Uso.VINCULADO:
-        onde = f" ao veículo {ativo.veiculo.codigo} desde {_quando(ativo.inicio_em)}" if ativo else ""
+        onde = f" ao {_destino_do_vinculo(ativo).completo} desde {_quando(ativo.inicio_em)}" if ativo else ""
         raise ValidationError(
-            f"Este chip já está vinculado{onde}. Para mudá-lo de veículo, use transferir ou substituir."
+            f"Este chip já está vinculado{onde}. Para mudá-lo de lugar, use transferir ou substituir."
         )
     if chip.situacao_uso == Uso.MANUTENCAO:
         raise ValidationError("Este chip está em manutenção. Devolva-o à disponibilidade antes de vinculá-lo.")
@@ -269,12 +399,15 @@ def _conferir_chip_para_vincular(chip: M2MChip) -> None:
         raise ValidationError("Este chip está inativo. Devolva-o à disponibilidade antes de vinculá-lo.")
 
 
-def _avisar_evento(tipo: str, chip: M2MChip, veiculo, descricao: str, usuario, agora) -> None:
+def _avisar_evento(tipo: str, chip: M2MChip, destino: _Destino | None, descricao: str, usuario, agora) -> None:
     """Abre a ocorrência informativa (se a regra está ligada). Falhar aqui NUNCA desfaz a
-    movimentação: savepoint próprio e o erro só vai para o log."""
+    movimentação: savepoint próprio e o erro só vai para o log. A ocorrência guarda o VEÍCULO (a
+    coluna que ela tem); com equipamento de TI como destino fica sem veículo e a descrição diz onde."""
     try:
         with transaction.atomic():
-            m2m.abrir_ocorrencia_de_evento(tipo, chip, veiculo, descricao, usuario=usuario, agora=agora)
+            m2m.abrir_ocorrencia_de_evento(
+                tipo, chip, destino.veiculo if destino else None, descricao, usuario=usuario, agora=agora,
+            )
     except Exception:  # noqa: BLE001 — alerta é acessório da movimentação
         logger.exception("Frotas: a ocorrência de evento (%s) não foi aberta.", tipo)
 
@@ -301,35 +434,37 @@ def registrar_entrada(
     return ResultadoMovimentacao(operacao=operacao, movimentacoes=[mov])
 
 
-def vincular(chip: M2MChip, veiculo: FrotaVeiculo, usuario, motivo: str, *, observacoes: str = "") -> ResultadoMovimentacao:
-    """Vincula um chip DISPONÍVEL a um veículo (o veículo pode ter vários chips).
+def vincular(chip: M2MChip, destino, usuario, motivo: str, *, observacoes: str = "") -> ResultadoMovimentacao:
+    """Vincula um chip DISPONÍVEL a um destino: um `FrotaVeiculo` OU um `Item` do estoque de TI
+    (tablet, celular). O destino pode ter vários chips.
 
-    Recusa (`ValidationError`): sem `usuario` ou `motivo`; chip já vinculado (a mensagem
-    diz a qual veículo e desde quando), em manutenção ou inativo; veículo `desativado`.
-    Veículo em manutenção ou inativo recebe o chip, com um texto em `avisos`. Se outra
-    pessoa vincular o mesmo chip ao mesmo tempo, quem perde recebe "Este chip acabou de
-    ser vinculado por outra pessoa". Grava a movimentação `vinculacao` e o `M2MEvento`,
+    Recusa (`ValidationError`): sem `usuario` ou `motivo`; chip já vinculado (a mensagem diz a que
+    destino e desde quando), em manutenção ou inativo; veículo `desativado`; equipamento de TI de um
+    subtipo que não aceita chip, excluído, em descarte ou devolvido. Destino parado (veículo em
+    manutenção/inativo; equipamento em manutenção/defeito/pausado) recebe o chip, com um texto em
+    `avisos`. Se outra pessoa vincular o mesmo chip ao mesmo tempo, quem perde recebe "Este chip
+    acabou de ser vinculado por outra pessoa". Grava a movimentação `vinculacao` e o `M2MEvento`,
     põe o chip em `vinculado` e, se a regra estiver ligada, abre `alteracao_vinculo`.
-    Devolve `ResultadoMovimentacao` (`vinculo` = o novo)."""
+    NUNCA grava no `Item`. Devolve `ResultadoMovimentacao` (`vinculo` = o novo)."""
     _exigir_usuario(usuario)
     motivo = _motivo(motivo)
     agora = timezone.now()
     with transaction.atomic():
         chip = _reler_chip(chip)
-        veiculo = _reler_veiculo(veiculo)
+        destino = _reler_destino(_como_destino(destino))
         _conferir_chip_para_vincular(chip)
-        avisos = _conferir_veiculo_recebe(veiculo)
+        avisos = _conferir_destino_recebe(destino)
         operacao = uuid.uuid4()
         mov = _gravar_movimentacao(
-            Tipo.VINCULACAO, chip, usuario, motivo, operacao=operacao, veiculo_destino=veiculo,
+            Tipo.VINCULACAO, chip, usuario, motivo, operacao=operacao, destino=destino,
             observacoes=observacoes, agora=agora,
         )
-        vinculo = _abrir_vinculo(chip, veiculo, usuario, mov, agora)
+        vinculo = _abrir_vinculo(chip, destino, usuario, mov, agora)
         _gravar_situacao(chip, Uso.VINCULADO, usuario, agora)
         _gravar_evento(mov, chip, usuario)
         _avisar_evento(
-            "alteracao_vinculo", chip, veiculo,
-            f"O chip {chip.nome} foi vinculado ao veículo {_nome_do_veiculo(veiculo)} por {_quem(usuario)} "
+            "alteracao_vinculo", chip, destino,
+            f"O chip {chip.nome} foi vinculado ao {destino.completo} por {_quem(usuario)} "
             f"em {_quando(agora)}. Motivo: {motivo}",
             usuario, agora,
         )
@@ -355,18 +490,18 @@ def desvincular(
     with transaction.atomic():
         vinculo = _vinculo_esperado(vinculo_id_esperado)
         chip = _reler_chip(vinculo.chip)
-        veiculo = vinculo.veiculo
+        origem = _destino_do_vinculo(vinculo)
         operacao = uuid.uuid4()
         mov = _gravar_movimentacao(
-            Tipo.DESVINCULACAO, chip, usuario, motivo, operacao=operacao, veiculo_origem=veiculo,
+            Tipo.DESVINCULACAO, chip, usuario, motivo, operacao=operacao, origem=origem,
             observacoes=observacoes, agora=agora,
         )
         _encerrar_vinculo(vinculo, usuario, mov, motivo, agora)
         _gravar_situacao(chip, destino, usuario, agora)
         _gravar_evento(mov, chip, usuario)
         _avisar_evento(
-            "chip_desvinculado", chip, veiculo,
-            f"O chip {chip.nome} foi desvinculado do veículo {_nome_do_veiculo(veiculo)} por {_quem(usuario)} "
+            "chip_desvinculado", chip, origem,
+            f"O chip {chip.nome} foi desvinculado do {origem.completo} por {_quem(usuario)} "
             f"em {_quando(agora)} e ficou {chip.get_situacao_uso_display().lower()}. Motivo: {motivo}",
             usuario, agora,
         )
@@ -374,14 +509,15 @@ def desvincular(
 
 
 def transferir(
-    vinculo_id_esperado, veiculo_destino: FrotaVeiculo, usuario, motivo: str, *, observacoes: str = "",
+    vinculo_id_esperado, destino, usuario, motivo: str, *, observacoes: str = "",
 ) -> ResultadoMovimentacao:
-    """Passa o chip do vínculo `vinculo_id_esperado` para outro veículo, numa
-    transação: encerra o vínculo anterior e cria o novo, gerando UMA movimentação
-    `transferencia` com origem e destino. Os dois períodos ficam no histórico.
+    """Passa o chip do vínculo `vinculo_id_esperado` para outro destino (um `FrotaVeiculo` OU um
+    `Item` do TI — de qualquer um para qualquer um), numa transação: encerra o vínculo anterior e
+    cria o novo, gerando UMA movimentação `transferencia` com origem e destino. Os dois períodos
+    ficam no histórico.
 
-    Recusa: vínculo já encerrado (ver `desvincular`); destino igual à origem; destino
-    `desativado`. Destino em manutenção/inativo recebe com aviso. O chip segue
+    Recusa: vínculo já encerrado (ver `desvincular`); destino igual à origem; destino que não recebe
+    chip (as mesmas regras de `vincular`). Destino parado recebe com aviso. O chip segue
     `vinculado`. Se a regra estiver ligada, abre `alteracao_vinculo`.
     Devolve `ResultadoMovimentacao` (`vinculo` = o novo, `vinculo_encerrado` = o antigo)."""
     _exigir_usuario(usuario)
@@ -390,15 +526,17 @@ def transferir(
     with transaction.atomic():
         antigo = _vinculo_esperado(vinculo_id_esperado)
         chip = _reler_chip(antigo.chip)
-        destino = _reler_veiculo(veiculo_destino)
-        if destino.pk == antigo.veiculo_id:
-            raise ValidationError({"veiculo_destino": "O veículo de destino é o mesmo de origem."})
-        avisos = _conferir_veiculo_recebe(destino)
-        origem = antigo.veiculo
+        origem = _destino_do_vinculo(antigo)
+        destino = _reler_destino(_como_destino(destino))
+        if destino.tipo == origem.tipo and destino.pk == origem.pk:
+            raise ValidationError({
+                "veiculo_destino": f"O {'veículo' if destino.veiculo is not None else 'equipamento'} de destino é o mesmo de origem."
+            })
+        avisos = _conferir_destino_recebe(destino)
         operacao = uuid.uuid4()
         mov = _gravar_movimentacao(
-            Tipo.TRANSFERENCIA, chip, usuario, motivo, operacao=operacao, veiculo_origem=origem,
-            veiculo_destino=destino, observacoes=observacoes, agora=agora,
+            Tipo.TRANSFERENCIA, chip, usuario, motivo, operacao=operacao, origem=origem,
+            destino=destino, observacoes=observacoes, agora=agora,
         )
         _encerrar_vinculo(antigo, usuario, mov, motivo, agora)       # antes de criar o novo: a restrição é por chip
         novo = _abrir_vinculo(chip, destino, usuario, mov, agora)
@@ -407,8 +545,8 @@ def transferir(
         _gravar_evento(mov, chip, usuario)
         _avisar_evento(
             "alteracao_vinculo", chip, destino,
-            f"O chip {chip.nome} foi transferido do veículo {_nome_do_veiculo(origem)} para "
-            f"{_nome_do_veiculo(destino)} por {_quem(usuario)} em {_quando(agora)}. Motivo: {motivo}",
+            f"O chip {chip.nome} foi transferido do {origem.completo} para o {destino.completo} "
+            f"por {_quem(usuario)} em {_quando(agora)}. Motivo: {motivo}",
             usuario, agora,
         )
     return ResultadoMovimentacao(
@@ -420,9 +558,9 @@ def substituir(
     vinculo_id_esperado, chip_novo: M2MChip, usuario, motivo: str, destino_antigo: str = "disponivel",
     *, observacoes: str = "",
 ) -> ResultadoMovimentacao:
-    """Troca o chip do vínculo `vinculo_id_esperado` por `chip_novo` NO MESMO veículo:
-    o chip antigo sai (vai para `destino_antigo`: `disponivel` ou `manutencao`) e o novo
-    entra. Grava DUAS movimentações `substituicao` com o mesmo `operacao` (UUID) — uma por
+    """Troca o chip do vínculo `vinculo_id_esperado` por `chip_novo` NO MESMO destino (veículo ou
+    equipamento de TI): o chip antigo sai (vai para `destino_antigo`: `disponivel` ou `manutencao`)
+    e o novo entra. Grava DUAS movimentações `substituicao` com o mesmo `operacao` (UUID) — uma por
     chip, cada uma com o outro em `chip_relacionado`.
 
     Recusa: vínculo já encerrado; `chip_novo` igual ao atual, já vinculado, em manutenção ou
@@ -437,33 +575,34 @@ def substituir(
     with transaction.atomic():
         antigo = _vinculo_esperado(vinculo_id_esperado)
         chip_saindo = _reler_chip(antigo.chip)
+        local = "veículo" if antigo.veiculo_id else "equipamento"
         if chip_novo.pk == chip_saindo.pk:
-            raise ValidationError({"chip_novo": "O chip novo é o mesmo que já está no veículo."})
+            raise ValidationError({"chip_novo": f"O chip novo é o mesmo que já está no {local}."})
         chip_entrando = _reler_chip(chip_novo)
         try:
             _conferir_chip_para_vincular(chip_entrando)
         except ValidationError as exc:
             raise ValidationError({"chip_novo": " ".join(exc.messages)}) from None
-        veiculo = antigo.veiculo
+        lugar = _destino_do_vinculo(antigo)
         operacao = uuid.uuid4()
         mov_saida = _gravar_movimentacao(
-            Tipo.SUBSTITUICAO, chip_saindo, usuario, motivo, operacao=operacao, veiculo_origem=veiculo,
+            Tipo.SUBSTITUICAO, chip_saindo, usuario, motivo, operacao=operacao, origem=lugar,
             chip_relacionado=chip_entrando, observacoes=observacoes, agora=agora,
         )
         mov_entrada = _gravar_movimentacao(
-            Tipo.SUBSTITUICAO, chip_entrando, usuario, motivo, operacao=operacao, veiculo_destino=veiculo,
+            Tipo.SUBSTITUICAO, chip_entrando, usuario, motivo, operacao=operacao, destino=lugar,
             chip_relacionado=chip_saindo, observacoes=observacoes, agora=agora,
         )
         _encerrar_vinculo(antigo, usuario, mov_saida, motivo, agora)
-        novo = _abrir_vinculo(chip_entrando, veiculo, usuario, mov_entrada, agora)
+        novo = _abrir_vinculo(chip_entrando, lugar, usuario, mov_entrada, agora)
         _gravar_situacao(chip_saindo, destino_antigo, usuario, agora)
         _gravar_situacao(chip_entrando, Uso.VINCULADO, usuario, agora)
         _gravar_evento(mov_saida, chip_saindo, usuario)
         _gravar_evento(mov_entrada, chip_entrando, usuario)
         _avisar_evento(
-            "alteracao_vinculo", chip_entrando, veiculo,
-            f"O chip {chip_saindo.nome} foi substituído pelo chip {chip_entrando.nome} no veículo "
-            f"{_nome_do_veiculo(veiculo)} por {_quem(usuario)} em {_quando(agora)}. Motivo: {motivo}",
+            "alteracao_vinculo", chip_entrando, lugar,
+            f"O chip {chip_saindo.nome} foi substituído pelo chip {chip_entrando.nome} no {lugar.completo} "
+            f"por {_quem(usuario)} em {_quando(agora)}. Motivo: {motivo}",
             usuario, agora,
         )
     return ResultadoMovimentacao(
@@ -512,10 +651,11 @@ def inativar(chip: M2MChip, usuario, motivo: str, *, observacoes: str = "") -> R
         if chip.situacao_uso == Uso.INATIVO:
             raise ValidationError("Este chip já está inativo.")
         vinculo = _vinculo_ativo_do_chip(chip)
+        origem = _destino_do_vinculo(vinculo) if vinculo else None
         operacao = uuid.uuid4()
         mov = _gravar_movimentacao(
             Tipo.INATIVACAO, chip, usuario, motivo, operacao=operacao,
-            veiculo_origem=vinculo.veiculo if vinculo else None, observacoes=observacoes, agora=agora,
+            origem=origem, observacoes=observacoes, agora=agora,
         )
         if vinculo is not None:
             _encerrar_vinculo(vinculo, usuario, mov, motivo, agora)
@@ -525,8 +665,8 @@ def inativar(chip: M2MChip, usuario, motivo: str, *, observacoes: str = "") -> R
         _gravar_evento(mov, chip, usuario)
         if vinculo is not None:
             _avisar_evento(
-                "chip_desvinculado", chip, vinculo.veiculo,
-                f"O chip {chip.nome} foi inativado e desvinculado do veículo {_nome_do_veiculo(vinculo.veiculo)} "
+                "chip_desvinculado", chip, origem,
+                f"O chip {chip.nome} foi inativado e desvinculado do {origem.completo} "
                 f"por {_quem(usuario)} em {_quando(agora)}. Motivo: {motivo}",
                 usuario, agora,
             )
@@ -555,10 +695,12 @@ def formatar_duracao(duracao: timedelta | None) -> str:
 
 
 def historico_chip(chip: M2MChip) -> list[dict]:
-    """Os PERÍODOS do chip por veículo, do mais novo para o mais antigo (o ativo, se
+    """Os PERÍODOS do chip por destino, do mais novo para o mais antigo (o ativo, se
     houver, é o primeiro). Cada item:
 
-        {"vinculo_id", "veiculo": FrotaVeiculo, "inicio_em", "fim_em" (None se ativo),
+        {"vinculo_id", "veiculo": FrotaVeiculo ou None, "item": Item ou None,
+         "destino_tipo": "veiculo"|"item", "destino_rotulo": "COD · nome" / "nome · série",
+         "inicio_em", "fim_em" (None se ativo),
          "ativo": bool, "duracao": timedelta, "duracao_txt": "3 dias 4 h",
          "inicio_por": login, "fim_por": login ("" se ativo), "motivo_fim": str,
          "inicio_tipo": tipo da movimentação que abriu, "fim_tipo": tipo da que fechou ("" se ativo)}
@@ -566,14 +708,15 @@ def historico_chip(chip: M2MChip) -> list[dict]:
     Uma consulta, com `select_related` — sem N+1."""
     vinculos = (
         FrotaVinculo.objects.filter(chip=chip)
-        .select_related("veiculo", "veiculo__tipo", "inicio_por", "fim_por", "mov_inicio", "mov_fim")
+        .select_related("veiculo", "veiculo__tipo", "item", "inicio_por", "fim_por", "mov_inicio", "mov_fim")
         .order_by("-inicio_em", "-pk")
     )
     saida = []
     for v in vinculos:
         duracao = v.duracao
         saida.append({
-            "vinculo_id": v.pk, "veiculo": v.veiculo, "inicio_em": v.inicio_em, "fim_em": v.fim_em,
+            "vinculo_id": v.pk, "veiculo": v.veiculo, "item": v.item, "destino_tipo": v.destino_tipo,
+            "destino_rotulo": v.destino_rotulo, "inicio_em": v.inicio_em, "fim_em": v.fim_em,
             "ativo": v.fim_em is None, "duracao": duracao, "duracao_txt": formatar_duracao(duracao),
             "inicio_por": v.inicio_por.get_username() if v.inicio_por_id else "",
             "fim_por": v.fim_por.get_username() if v.fim_por_id else "",
@@ -582,6 +725,47 @@ def historico_chip(chip: M2MChip) -> list[dict]:
             "fim_tipo": v.mov_fim.tipo if v.mov_fim_id else "",
         })
     return saida
+
+
+def chips_do_equipamento(item: Item, *, anteriores: int = 5) -> dict:
+    """O que a FICHA de um equipamento do estoque de TI mostra do(s) chip(s) dele — só LEITURA:
+
+        {"ativos": [{"vinculo", "chip", "inicio_em", "inicio_por", "duracao_txt"}],   # o chip já passou por `anotar_chips`
+         "anteriores": [{"vinculo", "chip", "inicio_em", "fim_em", "duracao_txt", "fim_por", "motivo_fim", "fim_tipo"}],
+         "total_anteriores": int}
+
+    `ativos` traz a conectividade de cada chip como a lista de chips a mostra (sessão, frescor, consumo, falha):
+    o cartão da ficha NÃO reinterpreta nada — o que a API disse é lido de `anotar_chips`. `anteriores` são os
+    últimos períodos encerrados (quem teve chip neste aparelho, e por quê saiu), no máximo `anteriores`."""
+    periodos = list(
+        FrotaVinculo.objects.filter(item=item)
+        .select_related(
+            "chip", "chip__operadora", "chip__localidade", "chip__responsavel", "chip__sessao_consulta",
+            "chip__consumo_consulta", "inicio_por", "fim_por", "mov_fim",
+        )
+        .order_by("-inicio_em", "-pk")
+    )
+    ativos_vinculos = [v for v in periodos if v.fim_em is None]
+    encerrados = [v for v in periodos if v.fim_em is not None]
+    chips = m2m.anotar_chips([v.chip for v in ativos_vinculos]) if ativos_vinculos else []
+    ativos = [
+        {
+            "vinculo": v, "chip": chip, "inicio_em": v.inicio_em,
+            "inicio_por": v.inicio_por.get_username() if v.inicio_por_id else "",
+            "duracao_txt": formatar_duracao(v.duracao),
+        }
+        for v, chip in zip(ativos_vinculos, chips)
+    ]
+    historico = [
+        {
+            "vinculo": v, "chip": v.chip, "inicio_em": v.inicio_em, "fim_em": v.fim_em,
+            "duracao_txt": formatar_duracao(v.duracao),
+            "fim_por": v.fim_por.get_username() if v.fim_por_id else "",
+            "motivo_fim": v.motivo_fim, "fim_tipo": v.mov_fim.tipo if v.mov_fim_id else "",
+        }
+        for v in encerrados[: max(0, anteriores)]
+    ]
+    return {"ativos": ativos, "anteriores": historico, "total_anteriores": len(encerrados)}
 
 
 def _digitos(texto) -> str:
@@ -607,7 +791,11 @@ def historico_movimentacoes(filtros: dict | None = None):
     Para mostrar a substituição como UMA ação, passe o resultado por `agrupar_por_operacao`."""
     filtros = filtros or {}
     qs = FrotaMovimentacao.objects.select_related(
-        "chip", "chip__operadora", "chip_relacionado", "veiculo_origem", "veiculo_destino", "usuario", "importacao",
+        "chip", "chip__operadora", "chip_relacionado", "veiculo_origem", "veiculo_destino",
+        "item_origem", "item_destino", "usuario", "importacao",
+        # o tipo de cada ponta, para a lista desenhar o ícone (mesma consulta, sem uma por linha)
+        "veiculo_origem__tipo", "veiculo_origem__classe_operacional", "veiculo_destino__tipo", "veiculo_destino__classe_operacional",
+        "item_origem__subtipo__categoria", "item_destino__subtipo__categoria",
     )
     if filtros.get("tipo") in Tipo.values:
         qs = qs.filter(tipo=filtros["tipo"])
@@ -655,9 +843,18 @@ def historico_movimentacoes(filtros: dict | None = None):
             qs = qs.filter(operacao=uuid.UUID(operacao))
         except ValueError:
             pass
+    def por_equipamento(valor: str) -> Q:
+        """O equipamento de TI (tablet, celular) de qualquer lado da movimentação: nome ou número de série."""
+        return (
+            Q(item_origem__nome__icontains=valor) | Q(item_origem__numero_serie__icontains=valor)
+            | Q(item_destino__nome__icontains=valor) | Q(item_destino__numero_serie__icontains=valor)
+        )
+
     q = str(filtros.get("q") or "").strip()
     if q:
-        qs = qs.filter(por_chip(q) | por_veiculo(q) | Q(motivo__icontains=q) | Q(usuario_nome__icontains=q))
+        qs = qs.filter(
+            por_chip(q) | por_veiculo(q) | por_equipamento(q) | Q(motivo__icontains=q) | Q(usuario_nome__icontains=q)
+        )
     return qs.order_by("-em", "-pk")
 
 
@@ -742,20 +939,17 @@ def exportar_movimentacoes_xlsx(filtros: dict | None = None) -> bytes:
         celula.data_type = "s"
         return celula
 
-    def veiculo(v):
-        return _nome_do_veiculo(v)
-
     cabecalho = [
-        "Data e hora", "Tipo", "Chip", "ICCID", "IMSI", "Chip relacionado", "Veículo de origem",
-        "Veículo de destino", "Motivo", "Observações", "Usuário", "Operação", "Importação",
+        "Data e hora", "Tipo", "Chip", "ICCID", "IMSI", "Chip relacionado", "Origem (veículo ou equipamento)",
+        "Destino (veículo ou equipamento)", "Motivo", "Observações", "Usuário", "Operação", "Importação",
     ]
     for coluna, titulo in enumerate(cabecalho, start=1):
         texto(ws, 1, coluna, titulo).font = Font(bold=True)
     for i, m in enumerate(linhas, start=2):
         valores = (
             timezone.localtime(m.em).strftime("%d/%m/%Y %H:%M:%S"), m.get_tipo_display(), m.chip.nome, m.chip.iccid,
-            m.chip.imsi, m.chip_relacionado.nome if m.chip_relacionado_id else "", veiculo(m.veiculo_origem),
-            veiculo(m.veiculo_destino), m.motivo, m.observacoes, m.usuario_nome, str(m.operacao),
+            m.chip.imsi, m.chip_relacionado.nome if m.chip_relacionado_id else "", m.origem_rotulo,
+            m.destino_rotulo, m.motivo, m.observacoes, m.usuario_nome, str(m.operacao),
             m.importacao.arquivo_nome if m.importacao_id else "",
         )
         for coluna, valor in enumerate(valores, start=1):

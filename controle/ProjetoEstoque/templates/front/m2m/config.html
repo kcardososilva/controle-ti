@@ -36,13 +36,18 @@
     <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-cfg-cred">Credencial</h3></header>
     <div class="m2m-painel-corpo">
       <dl class="m2m-dl m2m-dl--compacta">
-        <div><dt>Origem do token em uso</dt><dd>{% if integracao.token_origem == "env" %}arquivo .env do servidor{% elif integracao.token_origem == "banco" %}banco de dados (cifrado){% else %}nenhum{% endif %}</dd></div>
-        <div><dt>Final do token</dt><dd class="m2m-num">{% if integracao.token_sufixo %}····{{ integracao.token_sufixo }}{% else %}—{% endif %}</dd></div>
+        <div><dt>Credencial em uso</dt><dd>{% if integracao.credencial_modo == "oauth2" %}usuário e senha da API, no arquivo .env do servidor{% elif integracao.token_origem == "env" %}token no arquivo .env do servidor{% elif integracao.token_origem == "banco" %}token no banco de dados (cifrado){% else %}nenhuma{% endif %}</dd></div>
+        {% if integracao.credencial_modo != "oauth2" %}<div><dt>Final do token</dt><dd class="m2m-num">{% if integracao.token_sufixo %}····{{ integracao.token_sufixo }}{% else %}—{% endif %}</dd></div>{% endif %}
         <div><dt>Chave de cifra</dt><dd>{% if integracao.chave_cifra_configurada %}configurada{% else %}<span class="m2m-sub m2m-sub--erro">ausente</span>{% endif %}</dd></div>
         <div><dt>Última troca</dt><dd>{% if cfg.token_atualizado_em %}<span class="m2m-num">{{ cfg.token_atualizado_em|date:"d/m/Y H:i" }}</span>{% if cfg.token_atualizado_por %} <span class="m2m-sub">por {{ cfg.token_atualizado_por }}</span>{% endif %}{% else %}—{% endif %}</dd></div>
       </dl>
 
-      {% if integracao.token_env_definido %}
+      {% if integracao.credencial_modo == "oauth2" %}
+      <p class="m2m-aviso" data-tom="atencao">
+        <b>A API é acessada com o usuário e a senha do .env (TIM_M2M_CLIENT_ID e TIM_M2M_CLIENT_SECRET).</b>
+        Um token gravado abaixo só passa a valer se essas duas variáveis saírem do .env. Para trocar a senha, edite o .env e reinicie o servidor inteiro.
+      </p>
+      {% elif integracao.token_env_definido %}
       <p class="m2m-aviso" data-tom="atencao">
         <b>TIM_M2M_TOKEN está definido no .env e vence o token do banco.</b>
         O que você gravar abaixo fica guardado, mas só passa a valer se a variável sair do .env.
@@ -113,9 +118,15 @@
     <form method="post" action="{% url 'm2m_config_frequencia' %}" class="m2m-painel-corpo" id="m2m-form-frequencia">
       {% csrf_token %}
       <div class="m2m-form-grade m2m-form-grade--4">
-        <label class="m2m-rotulo {% if erros.intervalo_minutos %}tem-erro{% endif %}"><span>Intervalo entre consultas (min)</span>
-          <input type="number" name="intervalo_minutos" value="{{ cfg.intervalo_minutos|unlocalize }}" min="15" max="10080" class="m2m-campo m2m-campo--mono" required data-m2m-simular>
-          <em class="m2m-dica">Mínimo de 15 minutos. Cada chip é consultado uma vez por intervalo.</em>
+        <label class="m2m-rotulo {% if erros.intervalo_minutos %}tem-erro{% endif %}"><span>Chip com sessão ativa (min)</span>
+          <input type="number" name="intervalo_minutos" value="{{ cfg.intervalo_minutos|unlocalize }}" min="1" max="10080" class="m2m-campo m2m-campo--mono" required data-m2m-simular>
+          <em class="m2m-dica">O intervalo DESEJADO (mínimo 1 min). Quem tem sessão ativa é onde o dado muda; o ciclo atende esses primeiro.</em>
+          {% if erros.intervalo_minutos %}<em class="m2m-dica m2m-sub--erro">{{ erros.intervalo_minutos }}</em>{% endif %}
+        </label>
+        <label class="m2m-rotulo {% if erros.intervalo_repouso_minutos %}tem-erro{% endif %}"><span>Chip sem sessão (min)</span>
+          <input type="number" name="intervalo_repouso_minutos" value="{{ cfg.intervalo_repouso_minutos|unlocalize }}" min="1" max="10080" class="m2m-campo m2m-campo--mono" required data-m2m-simular>
+          <em class="m2m-dica">Para os demais chips. A plataforma só atualiza uma sessão aberta de ~15 em ~15 min: consultar mais que isso não traz dado novo.</em>
+          {% if erros.intervalo_repouso_minutos %}<em class="m2m-dica m2m-sub--erro">{{ erros.intervalo_repouso_minutos }}</em>{% endif %}
         </label>
         <label class="m2m-rotulo {% if erros.pausa_entre_chamadas_ms %}tem-erro{% endif %}"><span>Pausa entre chamadas (ms)</span>
           <input type="number" name="pausa_entre_chamadas_ms" value="{{ cfg.pausa_entre_chamadas_ms|unlocalize }}" min="0" max="60000" class="m2m-campo m2m-campo--mono" required>
@@ -123,15 +134,15 @@
         </label>
         <label class="m2m-rotulo {% if erros.limite_req_minuto %}tem-erro{% endif %}"><span>Limite de requisições por minuto</span>
           <input type="number" name="limite_req_minuto" value="{{ cfg.limite_req_minuto|unlocalize }}" min="1" max="600" class="m2m-campo m2m-campo--mono" required data-m2m-simular>
-          <em class="m2m-dica">Conservador até a TIM informar o limite real.</em>
+          <em class="m2m-dica">O ciclo nunca passa disto, qualquer que seja o intervalo pedido. Conservador até a TIM informar o limite real.</em>
         </label>
         <label class="m2m-rotulo {% if erros.max_chips_execucao %}tem-erro{% endif %}"><span>Máximo de chips por execução</span>
           <input type="number" name="max_chips_execucao" value="{{ cfg.max_chips_execucao|unlocalize }}" min="1" max="1000" class="m2m-campo m2m-campo--mono" required>
         </label>
       </div>
-      <output class="m2m-conta" id="m2m-conta" data-ok="{% if conta.ok %}1{% else %}0{% endif %}" aria-live="polite">
-        <b>A conta:</b> <span class="m2m-num" id="m2m-conta-texto">{{ conta.conta }}</span>
-        <span id="m2m-conta-motivo" class="m2m-sub m2m-sub--erro">{{ conta.motivo }}</span>
+      <output class="m2m-conta" id="m2m-conta" data-ok="{% if conta.limitado %}0{% else %}1{% endif %}" aria-live="polite">
+        <b>A conta:</b> <span class="m2m-num" id="m2m-conta-texto">{{ conta.texto }}</span>
+        <span id="m2m-conta-motivo" class="m2m-sub m2m-sub--erro"></span>
       </output>
       <div class="m2m-form-acoes"><button type="submit" class="m2m-btn m2m-btn--primario">Salvar frequência</button></div>
     </form>
@@ -210,6 +221,10 @@
             <label class="m2m-rotulo"><span>Campo do volume</span>
               <input type="text" name="consumo__campo_volume" value="{{ mapa.consumo.campo_volume }}" class="m2m-campo m2m-campo--mono" list="m2m-caminhos" placeholder="ex.: uso.total" autocomplete="off" spellcheck="false">
             </label>
+            <div class="m2m-rotulo m2m-escolha"><span>Unidade dentro do valor</span>
+              <label><input type="checkbox" name="consumo__unidade_no_valor" value="1" {% if mapa.consumo.unidade_no_valor %}checked{% endif %}> O campo traz número e unidade juntos (ex.: 2,47 MB)</label>
+              <em class="m2m-dica">Marcado, deixe vazios o campo da unidade e a unidade fixa (abaixo). Número com separador ambíguo (como 1.234) não é interpretado.</em>
+            </div>
             <div class="m2m-form-grade">
               <label class="m2m-rotulo"><span>Campo da unidade</span>
                 <input type="text" name="consumo__campo_unidade" value="{{ mapa.consumo.campo_unidade }}" class="m2m-campo m2m-campo--mono" list="m2m-caminhos" autocomplete="off" spellcheck="false">

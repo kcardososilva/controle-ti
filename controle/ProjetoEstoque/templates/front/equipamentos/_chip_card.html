@@ -1,0 +1,139 @@
+{% load static m2m_tags %}
+{% comment %}
+Cartão "Chip (SIM)" da ficha do equipamento de TI (tablet, celular). Só LEITURA do que Frotas e Conectividade
+guarda (`FrotaVinculo.item`): a sessão e o consumo vêm do que a API disse (`anotar_chips`), nada é reinterpretado
+aqui, e o status do equipamento nunca é derivado do chip (nem o contrário). As ações (vincular, desvincular,
+substituir) são formulários comuns que voltam para esta ficha — `<details>` abre o formulário, sem JS; o JS só
+alimenta a BUSCA do chip (`equipamento-chip.js`).
+
+Contexto (de `contexto_do_chip`): chip_card_visivel, chip_aceita, chips_ativos, chips_anteriores,
+chips_total_anteriores, chip_pode_vincular, chip_pode_transferir, chip_url_opcoes.
+{% endcomment %}
+{% if chip_card_visivel %}
+<section class="ad-card ad-chip-card" id="ad-chip-card">
+  <div class="ad-card-header">
+    <div class="ad-card-title"><i class="fa-solid fa-sim-card" aria-hidden="true"></i> Chip (SIM)</div>
+    {% if chips_ativos %}
+      <span class="ad-badge ad-badge-info">{{ chips_ativos|length }} chip{{ chips_ativos|length|pluralize }} vinculado{{ chips_ativos|length|pluralize }}</span>
+    {% endif %}
+  </div>
+  <div class="ad-card-body">
+
+    {% for c in chips_ativos %}
+    {% with chip=c.chip %}
+    <div class="ad-chip-item">
+      <div class="ad-chip-topo">
+        <div>
+          <div class="ad-chip-nome">{{ chip.nome }}</div>
+          <div class="ad-chip-sub ad-mono">{% if chip.iccid %}{{ chip.iccid|m2m_blocos }}{% elif chip.imsi %}{{ chip.imsi|m2m_blocos }}{% else %}—{% endif %}</div>
+        </div>
+        <div class="ad-chip-estados">
+          {% if chip.sessao_estado == "ativa" %}<span class="ad-badge ad-badge-success"><span class="dot"></span> Sessão ativa</span>
+          {% elif chip.sessao_estado == "sem_sessao" %}<span class="ad-badge ad-badge-warning"><span class="dot"></span> Sem sessão</span>
+          {% else %}<span class="ad-badge ad-badge-neutral"><span class="dot"></span> {{ chip.get_sessao_estado_display }}</span>{% endif %}
+          {% if chip.situacao != "normal" %}<span class="ad-badge ad-badge-neutral" title="Saúde da CONSULTA à API, não do chip">{{ chip.situacao_rotulo }}</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="ad-info-grid ad-chip-grid">
+        <div class="ad-info-item">
+          <div class="ad-info-label">Número da linha</div>
+          <div class="ad-info-value ad-mono">{{ chip.numero_linha|default:"—" }}</div>
+        </div>
+        <div class="ad-info-item">
+          <div class="ad-info-label">Operadora</div>
+          <div class="ad-info-value">{{ chip.operadora.nome }}{% if not chip.consultavel_pela_api %} <span class="ad-chip-sub">sem integração</span>{% endif %}</div>
+        </div>
+        <div class="ad-info-item">
+          <div class="ad-info-label">Consumo (último valor)</div>
+          <div class="ad-info-value">{% if chip.consumo_bytes is not None %}{{ chip.consumo_txt }}{% else %}—{% endif %}{% if chip.consumo_consulta_id %} <span class="ad-chip-sub">{{ chip.frescor_consumo.rotulo }}</span>{% endif %}</div>
+        </div>
+        <div class="ad-info-item">
+          <div class="ad-info-label">Última consulta</div>
+          <div class="ad-info-value">{% if chip.ultima_tentativa_em %}{{ chip.ultima_tentativa_em|date:"d/m/Y H:i" }}{% else %}nunca consultado{% endif %}</div>
+        </div>
+        <div class="ad-info-item">
+          <div class="ad-info-label">Neste equipamento desde</div>
+          <div class="ad-info-value">{{ c.inicio_em|date:"d/m/Y H:i" }}{% if c.inicio_por %} <span class="ad-chip-sub">por {{ c.inicio_por }}</span>{% endif %} <span class="ad-chip-sub">({{ c.duracao_txt }})</span></div>
+        </div>
+      </div>
+
+      <div class="ad-chip-acoes">
+        {% if chip_pode_transferir %}
+        <details class="ad-chip-form">
+          <summary class="btn btn-sm"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Substituir chip</summary>
+          <form method="post" action="{% url 'equipamento_chip_substituir' item.pk c.vinculo.pk %}" class="ad-chip-form-corpo">
+            {% csrf_token %}
+            <div class="ad-chip-busca" data-chip-busca data-url="{{ chip_url_opcoes }}">
+              <label>Chip novo <input type="search" data-chip-busca-texto placeholder="Buscar por nome, ICCID ou linha" autocomplete="off"></label>
+              <select name="chip_novo" required><option value="">Abra para listar os chips disponíveis</option></select>
+              <small data-chip-busca-status aria-live="polite"></small>
+            </div>
+            <label>Para onde vai o chip que sai
+              <select name="destino_antigo"><option value="disponivel">Fica disponível</option><option value="manutencao">Vai para manutenção</option></select>
+            </label>
+            <label>Motivo <input type="text" name="motivo" required maxlength="255" placeholder="Ex.: chip danificado"></label>
+            <button type="submit" class="btn-primary btn-sm">Confirmar substituição</button>
+          </form>
+        </details>
+        <details class="ad-chip-form">
+          <summary class="btn btn-sm"><i class="fa-solid fa-link-slash" aria-hidden="true"></i> Desvincular</summary>
+          <form method="post" action="{% url 'equipamento_chip_desvincular' item.pk c.vinculo.pk %}" class="ad-chip-form-corpo">
+            {% csrf_token %}
+            <label>O chip fica
+              <select name="destino"><option value="disponivel">Disponível</option><option value="manutencao">Em manutenção</option></select>
+            </label>
+            <label>Motivo <input type="text" name="motivo" required maxlength="255" placeholder="Ex.: aparelho devolvido"></label>
+            <p class="ad-chip-sub">O chip continua cadastrado e o histórico é mantido. Nada muda no estoque deste equipamento.</p>
+            <button type="submit" class="btn-primary btn-sm">Confirmar desvinculação</button>
+          </form>
+        </details>
+        {% endif %}
+        <a class="btn btn-sm" href="{% url 'm2m_chip_detalhe' chip.pk %}" title="Abre o chip em Frotas e Conectividade"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Abrir o chip</a>
+      </div>
+    </div>
+    {% endwith %}
+    {% empty %}
+    <div class="ad-empty">
+      <i class="fa-solid fa-sim-card" aria-hidden="true"></i>
+      <div>Nenhum chip vinculado a este equipamento.</div>
+      {% if chip_aceita %}<small>Este tipo de equipamento aceita chip. Nem todo {{ item.subtipo.nome|lower }} usa SIM — vincule só se ele usa.</small>{% endif %}
+    </div>
+    {% endfor %}
+
+    {% if chip_pode_vincular %}
+    <details class="ad-chip-form ad-chip-vincular"{% if not chips_ativos %} open{% endif %}>
+      <summary class="btn btn-sm"><i class="fa-solid fa-link" aria-hidden="true"></i> Vincular chip</summary>
+      <form method="post" action="{% url 'equipamento_chip_vincular' item.pk %}" class="ad-chip-form-corpo">
+        {% csrf_token %}
+        <div class="ad-chip-busca" data-chip-busca data-url="{{ chip_url_opcoes }}">
+          <label>Chip disponível <input type="search" data-chip-busca-texto placeholder="Buscar por nome, ICCID ou linha" autocomplete="off"></label>
+          <select name="chip" required><option value="">Abra para listar os chips disponíveis</option></select>
+          <small data-chip-busca-status aria-live="polite"></small>
+        </div>
+        <label>Motivo <input type="text" name="motivo" required maxlength="255" placeholder="Ex.: tablet entregue ao setor"></label>
+        <p class="ad-chip-sub">O vínculo só registra qual chip está neste equipamento. O status e a movimentação do equipamento não mudam.</p>
+        <button type="submit" class="btn-primary btn-sm">Vincular chip</button>
+      </form>
+    </details>
+    {% endif %}
+
+    {% if chips_anteriores %}
+    <details class="ad-chip-historico">
+      <summary>Chips anteriores ({{ chips_total_anteriores }})</summary>
+      <ul>
+        {% for p in chips_anteriores %}
+        <li>
+          <b>{{ p.chip.nome }}</b>{% if p.chip.numero_linha %} <span class="ad-mono">{{ p.chip.numero_linha }}</span>{% endif %}
+          <span class="ad-chip-sub">{{ p.inicio_em|date:"d/m/Y" }} a {{ p.fim_em|date:"d/m/Y" }} ({{ p.duracao_txt }}){% if p.fim_por %} · saiu por {{ p.fim_por }}{% endif %}{% if p.motivo_fim %} · {{ p.motivo_fim }}{% endif %}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if chips_total_anteriores > chips_anteriores|length %}<p class="ad-chip-sub">Mostrando os {{ chips_anteriores|length }} mais recentes. O histórico completo está no chip, em Frotas e Conectividade.</p>{% endif %}
+    </details>
+    {% endif %}
+
+  </div>
+</section>
+{% if chip_pode_vincular or chip_pode_transferir %}<script src="{% static 'js/equipamento-chip.js' %}?v={{ assets_version }}" defer></script>{% endif %}
+{% endif %}

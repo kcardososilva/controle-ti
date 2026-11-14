@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, time as hora_do_dia
+from datetime import datetime, time as hora_do_dia, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.core.exceptions import ValidationError
@@ -47,11 +47,44 @@ SEM_SESSAO = "sem_sessao"
 NAO_INTERPRETADO = "nao_interpretado"
 
 BASES_VALIDAS = (1000, 1024)
+
+# Uma sessão aberta cuja duração a plataforma não atualiza há mais que isto deixou de estar viva: a
+# plataforma avança a sessão em andamento de ~15 em ~15 min, então 2 h sem avanço é sessão que
+# acabou sem ninguém fechá-la. Sem este teto, uma linha esquecida valeria "online" para sempre.
+LIMITE_SESSAO_PARADA_S = 2 * 3600
 MAX_BIGINT = 2 ** 63 - 1
 
 _CAMINHO_VALIDO = re.compile(r"(?:\.?[^.\[\]]+|\[\d+\])+")
 _PASSO = re.compile(r"\.?([^.\[\]]+)|\[(\d+)\]")
 _NUMERO = re.compile(r"-?\d+(?:\.\d+)?")
+
+# Mapeamento da API GSIM (tim.saitro.com), tirado da documentação oficial e da
+# resposta real da conta (13/11/2026) — NÃO é palpite:
+#   • `conexao` vale `online`, `offline` ou `nunca_conectou` (a doc escreve
+#     `nunca_conecto`, mas a resposta real traz `nunca_conectou`; qualquer outro
+#     texto continua "não interpretado" e aparece cru na tela);
+#   • `servicos.dados.consumo` é texto com a unidade colada ("0,00 KB"); a doc não
+#     diz o período a que ele se refere, por isso nenhum período é mapeado;
+#   • a base do KB/MB é 1024: o portal da Saitro mostra 703,70 KB / 14,50 MB / 15,19 MB para
+#     720.593 / 15.207.610 / 15.928.203 bytes (conferido em 13/11/2026). O valor e a unidade
+#     originais são guardados;
+#   • `_eventos` e `_dados_periodo` NÃO vêm da API: são acrescentados à resposta pelo serviço de
+#     dados (`m2m_dados_service`) a partir das sessões de dados da plataforma, que refletem o uso
+#     muito antes do resumo do SIM Card. Quando existem, mandam no estado da sessão e no volume.
+MAPEAMENTO_GSIM = {
+    "sessao": {
+        "campo_estado": "conexao",
+        "valores_ativa": ["online"],
+        "valores_sem_sessao": ["offline", "nunca_conectou"],
+        "campos_exibir": ["ultimo_acesso", "rede", "ultima_apn", "tecnologia", "cobertura", "status"],
+    },
+    "consumo": {
+        "campo_volume": "servicos.dados.consumo",
+        "unidade_no_valor": True,
+        "base": 1024,
+    },
+    "identidade": {"campo_iccid": "iccid"},
+}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -160,9 +193,9 @@ def unidade_conhecida(unidade) -> bool:
     return fator_unidade(unidade) is not None
 
 
-def formatar_bytes(valor, base: int = 1000) -> str:
+def formatar_bytes(valor, base: int = 1000, *, casas_fixas: bool = False) -> str:
     """Volume legível em B/KB/MB/GB/TB com vírgula decimal (`1,5 GB`); `—` quando
-    não há valor. É só EXIBIÇÃO — o valor e a unidade originais continuam
+    não há valor. `casas_fixas` mantém os dois decimais (`14,50 MB`), como o portal da Saitro. É só EXIBIÇÃO — o valor e a unidade originais continuam
     guardados na consulta."""
     if valor is None:
         return "—"
@@ -178,7 +211,7 @@ def formatar_bytes(valor, base: int = 1000) -> str:
         numero /= base
         i += 1
     texto = f"{numero.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):f}"
-    if "." in texto:
+    if "." in texto and not casas_fixas:
         texto = texto.rstrip("0").rstrip(".")
     return f"{texto.replace('.', ',')} {('B', 'KB', 'MB', 'GB', 'TB')[i]}"
 
@@ -198,6 +231,46 @@ def _decimal(valor) -> Decimal | None:
     except InvalidOperation:
         return None
     return numero if numero.is_finite() and numero >= 0 else None
+
+
+_VOLUME_COM_UNIDADE = re.compile(r"\s*(\d[\d.,]*)\s*([A-Za-z]+)\s*")
+
+
+def _numero_formatado(texto: str) -> tuple[Decimal | None, str]:
+    """Número com `.` ou `,` como separador ("0,00", "2.47", "1.234,56") → (Decimal, "").
+    Quando não dá para saber o que o separador significa, NÃO adivinha: devolve
+    (None, motivo). "1.234" é ambíguo (1,234 ou 1234) e é recusado; "0,000" não é,
+    porque vale zero nas duas leituras."""
+    t = (texto or "").strip()
+    if not re.fullmatch(r"\d[\d.,]*", t):
+        return None, f"O valor '{texto}' não é um número."
+    pontos, virgulas = t.count("."), t.count(",")
+    if pontos and virgulas:
+        decimal = "." if t.rfind(".") > t.rfind(",") else ","
+        milhar = "," if decimal == "." else "."
+        if t.count(decimal) != 1 or t.rfind(milhar) > t.rfind(decimal):
+            return None, f"O número '{texto}' tem separadores em ordem inválida."
+        t = t.replace(milhar, "").replace(decimal, ".")
+    elif pontos or virgulas:
+        sep = "." if pontos else ","
+        if t.count(sep) > 1:
+            grupos = t.split(sep)
+            if not (1 <= len(grupos[0]) <= 3 and all(len(g) == 3 for g in grupos[1:])):
+                return None, f"O número '{texto}' tem separadores de milhar inválidos."
+            t = "".join(grupos)
+        else:
+            inteiro, fracao = t.split(sep)
+            if len(fracao) == 3 and inteiro.strip("0") != "":
+                return None, (
+                    f"O número '{texto}' é ambíguo: o separador pode ser decimal ou de milhar. "
+                    "Não foi interpretado."
+                )
+            t = f"{inteiro}.{fracao}"
+    try:
+        numero = Decimal(t)
+    except InvalidOperation:
+        return None, f"O valor '{texto}' não é um número."
+    return (numero, "") if numero.is_finite() else (None, f"O valor '{texto}' não é um número.")
 
 
 def _texto(valor, limite: int = 100) -> str:
@@ -316,9 +389,13 @@ def validar_mapeamento(bruto) -> dict:
         "campo_volume": _caminho_opcional(c.get("campo_volume"), "Consumo, campo do volume", erros),
         "campo_unidade": _caminho_opcional(c.get("campo_unidade"), "Consumo, campo da unidade", erros),
         "unidade_fixa": _texto(c.get("unidade_fixa"), 40),
+        # A API entrega o volume como TEXTO com a unidade colada ("0,00 KB", "2.47 MB").
+        "unidade_no_valor": str(c.get("unidade_no_valor") or "").strip().lower() in ("1", "true", "on", "sim"),
         "campo_periodo_inicio": _caminho_opcional(c.get("campo_periodo_inicio"), "Consumo, início do período", erros),
         "campo_periodo_fim": _caminho_opcional(c.get("campo_periodo_fim"), "Consumo, fim do período", erros),
     }
+    if consumo["unidade_no_valor"] and (consumo["campo_unidade"] or consumo["unidade_fixa"]):
+        erros.append("Consumo: com a unidade dentro do valor, não informe campo da unidade nem unidade fixa.")
     base_informada = c.get("base")
     try:
         base = int(base_informada) if base_informada not in (None, "") else 1000
@@ -334,7 +411,7 @@ def validar_mapeamento(bruto) -> dict:
             "Consumo: unidade fixa não reconhecida. Use B, KB, MB, GB, TB (ou KiB, MiB, GiB, TiB); "
             "unidades em bits não são aceitas."
         )
-    if (consumo["campo_unidade"] or consumo["unidade_fixa"]) and not consumo["campo_volume"]:
+    if (consumo["campo_unidade"] or consumo["unidade_fixa"] or consumo["unidade_no_valor"]) and not consumo["campo_volume"]:
         erros.append("Consumo: informe o campo do volume.")
     consumo = {k: v for k, v in consumo.items() if v}
     if consumo:
@@ -380,7 +457,68 @@ class ResultadoConsumo:
     motivo: str = ""
 
 
+def _local(momento) -> str:
+    """`2026-11-13T21:47:22-03:00` -> `13/11/2026 21:47` (no fuso do sistema); vazio se não for data."""
+    achado = _como_data(momento)
+    return timezone.localtime(achado).strftime("%d/%m/%Y %H:%M") if achado else ""
+
+
+def _sessao_viva(sessao: dict, consultado_em) -> bool:
+    """A sessão aberta (`fim` vazio) ainda anda? Vale o último avanço que a plataforma informou
+    (`inicio` + `duracao_s`) contra o momento da leitura — ver `LIMITE_SESSAO_PARADA_S`."""
+    inicio = _como_data(sessao.get("inicio"))
+    if inicio is None:
+        return False
+    if consultado_em is None:
+        return True
+    try:
+        avancou_ate = inicio + timedelta(seconds=int(sessao.get("duracao_s") or 0))
+    except (TypeError, ValueError):
+        return False
+    return (consultado_em - avancou_ate).total_seconds() <= LIMITE_SESSAO_PARADA_S
+
+
+def _aplicar_eventos(r: ResultadoSessao, eventos: dict) -> None:
+    """Corrige o estado do RESUMO com o que as sessões de dados dizem (o resumo do SIM Card
+    seguiu em `nunca_conectou` por mais de 20 min com o chip online e 15 MB consumidos):
+
+      • há sessão aberta e viva  -> ATIVA ("online"), venha o que vier do resumo;
+      • senão, o resumo já dizia ATIVA -> continua (a plataforma também chama de online);
+      • senão, o chip já teve sessão -> SEM_SESSAO, "offline" (o resumo ainda podia dizer
+        `nunca_conectou`, que aí seria mentira);
+      • nenhuma sessão lida -> fica como o resumo disse."""
+    consultado = _como_data(eventos.get("consultado_em"))
+    vivas = [a for a in eventos.get("abertas") or [] if isinstance(a, dict) and _sessao_viva(a, consultado)]
+    if vivas:
+        atual = max(vivas, key=lambda a: str(a.get("inicio") or ""))
+        r.estado, r.estado_bruto, r.motivo = ATIVA, "online", ""
+        extras = [{"caminho": "sessao_aberta_desde", "valor": _local(atual.get("inicio"))}]
+        for chave, rotulo in (("ip", "ip_da_sessao"), ("apn", "apn_da_sessao")):
+            if atual.get(chave):
+                extras.append({"caminho": rotulo, "valor": _texto(atual[chave], 200)})
+        r.campos_exibir = extras + r.campos_exibir
+        return
+    if r.estado == ATIVA:
+        return
+    ultima = eventos.get("ultima")
+    if isinstance(ultima, dict):
+        r.estado, r.estado_bruto, r.motivo = SEM_SESSAO, "offline", ""
+        quando = _local(ultima.get("fim")) or _local(ultima.get("inicio"))
+        if quando:
+            r.campos_exibir = [{"caminho": "ultima_sessao_ate", "valor": quando}] + r.campos_exibir
+
+
 def interpretar_sessao(payload, mapeamento) -> ResultadoSessao:
+    """Estado da sessão: o do resumo (`mapeamento["sessao"]`) corrigido pelas sessões de dados da
+    plataforma quando a resposta as traz (`_eventos`, ver `_aplicar_eventos`)."""
+    r = _sessao_do_resumo(payload, mapeamento)
+    eventos = payload.get("_eventos") if isinstance(payload, dict) else None
+    if isinstance(eventos, dict):
+        _aplicar_eventos(r, eventos)
+    return r
+
+
+def _sessao_do_resumo(payload, mapeamento) -> ResultadoSessao:
     """Estado da sessão segundo `mapeamento["sessao"]`. Valor fora das duas listas
     (ou campo ausente, ou sem mapeamento) = `nao_interpretado`; o valor bruto é
     devolvido para a tela mostrá-lo."""
@@ -423,6 +561,16 @@ def interpretar_consumo(payload, mapeamento) -> ResultadoConsumo:
     if payload is None:
         r.motivo = "A resposta não trouxe conteúdo para interpretar."
         return r
+    periodo = payload.get("_dados_periodo") if isinstance(payload, dict) else None
+    if isinstance(periodo, dict) and isinstance(periodo.get("total_bytes"), int) and not isinstance(periodo["total_bytes"], bool):
+        # Soma exata, em bytes, das sessões de dados do período (do dia 1 até a leitura): não há
+        # texto nem unidade a interpretar, e por isso o volume não depende de mapeamento nenhum.
+        if 0 <= periodo["total_bytes"] <= MAX_BIGINT:
+            r.valor_original, r.unidade_original = str(periodo["total_bytes"]), "B"
+            r.volume_bytes = periodo["total_bytes"]
+            r.periodo_inicio = _como_data(periodo.get("inicio"))
+            r.periodo_fim = _como_data(periodo.get("fim"))
+            return r
     campo = cfg.get("campo_volume")
     if not campo:
         r.motivo = "Sem mapeamento do volume de consumo (Configuração da integração)."
@@ -432,17 +580,30 @@ def interpretar_consumo(payload, mapeamento) -> ResultadoConsumo:
         r.motivo = f"O campo '{campo}' não existe na resposta (ou não é um valor simples)."
         return r
     r.valor_original = _texto(bruto)
-    if cfg.get("campo_unidade"):
-        r.unidade_original = _texto(valor_em(payload, cfg["campo_unidade"]), 40)
-    else:
-        r.unidade_original = _texto(cfg.get("unidade_fixa"), 40)
     r.periodo_inicio = _como_data(valor_em(payload, cfg.get("campo_periodo_inicio") or ""))
     r.periodo_fim = _como_data(valor_em(payload, cfg.get("campo_periodo_fim") or ""))
 
-    numero = _decimal(bruto)
-    if numero is None:
-        r.motivo = f"O valor '{r.valor_original}' não é um número simples."
-        return r
+    if cfg.get("unidade_no_valor"):
+        # Volume em texto com a unidade colada ("0,00 KB", "2.47 MB"): o número e a
+        # unidade saem do MESMO campo. O valor original continua guardado inteiro.
+        achado = _VOLUME_COM_UNIDADE.fullmatch(bruto) if isinstance(bruto, str) else None
+        if not achado:
+            r.motivo = f"O valor '{r.valor_original}' não está no formato 'número unidade' (por exemplo, 2,47 MB)."
+            return r
+        r.unidade_original = _texto(achado.group(2), 40)
+        numero, motivo = _numero_formatado(achado.group(1))
+        if numero is None:
+            r.motivo = motivo
+            return r
+    else:
+        if cfg.get("campo_unidade"):
+            r.unidade_original = _texto(valor_em(payload, cfg["campo_unidade"]), 40)
+        else:
+            r.unidade_original = _texto(cfg.get("unidade_fixa"), 40)
+        numero = _decimal(bruto)
+        if numero is None:
+            r.motivo = f"O valor '{r.valor_original}' não é um número simples."
+            return r
     fator = fator_unidade(r.unidade_original, cfg.get("base") or 1000)
     if fator is None:
         r.motivo = (

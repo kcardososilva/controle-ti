@@ -492,8 +492,12 @@
             },
         };
 
-        $('.select2-enable:not([multiple])').select2({ ...select2Base, allowClear: true });
-        $('.select2-enable[multiple]').select2({ ...select2Base, allowClear: false });
+        // Subtipo com o ícone do tipo ao lado do nome (opções com data-icone; biblioteca em services/icone_service.py).
+        const comIcones = (el) => (window.ZeloIcones && window.ZeloIcones.selectTemIcones(el)
+            ? { templateResult: window.ZeloIcones.select2.result, templateSelection: window.ZeloIcones.select2.selection }
+            : {});
+        $('.select2-enable:not([multiple])').each(function () { $(this).select2({ ...select2Base, ...comIcones(this), allowClear: true }); });
+        $('.select2-enable[multiple]').each(function () { $(this).select2({ ...select2Base, ...comIcones(this), allowClear: false }); });
 
         $('.select2-enable').on('change', function() {
             if (this.id === 'filtro-status') {

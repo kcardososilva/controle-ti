@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags %}
+
+{% block title %}Categorias e classes — Frotas e Maquinários — Zelo Agro{% endblock %}
+{% block page_title %}Frotas e Maquinários{% endblock %}
+{% block page_subtitle %}Categorias e classes{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page" data-frota="categorias">
+  {% include 'front/agro/frota/_topo.html' with titulo="Categorias e classes" descricao="Como a frota é classificada: as classes do ERP e as categorias que as agrupam." %}
+
+  <nav class="m2m-segmentos m2m-segmentos--grande agro-abas" aria-label="Cadastros de classificação">
+    {% for chave_da_aba, rotulo, n in abas %}<a href="{% url 'frota_categorias' %}?aba={{ chave_da_aba }}" {% if chave_da_aba == aba_cadastro %}class="is-ativa" aria-current="page"{% endif %}><span>{{ rotulo }}</span> <b class="m2m-num">{{ n|unlocalize }}</b></a>{% endfor %}
+  </nav>
+
+  {% if aba_cadastro == "classes-operacionais" and classes_sem_categoria %}
+  <p class="m2m-aviso" data-tom="atencao"><b>{{ classes_sem_categoria|unlocalize }} classe{{ classes_sem_categoria|pluralize }} sem categoria.</b> Os equipamentos dessas classes ficam em “Outros” até a classe ser agrupada.</p>
+  {% endif %}
+
+  <section class="m2m-painel" aria-labelledby="agro-cat-t">
+    <header class="m2m-painel-cab">
+      <h3 class="m2m-painel-t" id="agro-cat-t">{% for a, r, n in abas %}{% if a == aba_cadastro %}{{ r }}<span class="m2m-painel-t-n">{{ itens|length }}</span>{% endif %}{% endfor %}</h3>
+      {% if aba_cadastro != "categorias" %}
+      <form method="get" class="agro-busca-aba" role="search">
+        <input type="hidden" name="aba" value="{{ aba_cadastro }}">
+        <input type="search" name="q" value="{{ busca }}" class="m2m-campo" placeholder="Buscar por nome ou código" aria-label="Buscar em {{ rotulo_do_cadastro }}" autocomplete="off">
+        <button type="submit" class="m2m-btn m2m-btn--sm">Buscar</button>
+        {% if busca %}<a class="m2m-btn m2m-btn--sm m2m-btn--fantasma" href="{% url 'frota_categorias' %}?aba={{ aba_cadastro }}">Limpar</a>{% endif %}
+      </form>
+      {% endif %}
+    </header>
+
+    {% comment %}Cada aba tem a MESMA mecânica: uma linha para criar e uma por item para editar. Quem muda o quê é decisão do service; aqui só se envia o formulário.{% endcomment %}
+    {% if aba_cadastro == "categorias" %}
+    <form class="agro-cfg-linha agro-cfg-linha--novo" method="post" action="{% url 'frota_config_tipo_salvar' %}">
+      {% csrf_token %}
+      <label class="m2m-rotulo"><span>Nova categoria</span><input type="text" name="nome" class="m2m-campo" maxlength="80" required placeholder="Ex.: Motocicleta"></label>
+      <div class="agro-cfg-checks">
+        <label class="m2m-check"><input type="checkbox" name="exige_conectividade" value="1"> Exige chip</label>
+        <label class="m2m-check"><input type="checkbox" name="espera_placa" value="1"> Costuma ter placa</label>
+        <label class="m2m-check"><input type="checkbox" name="espera_chassi" value="1"> Costuma ter chassi</label>
+      </div>
+      <button type="submit" class="m2m-btn m2m-btn--primario">Criar categoria</button>
+    </form>
+    {% for t in itens %}
+    <form class="agro-cfg-linha" method="post" action="{% url 'frota_config_tipo_salvar' %}" id="categoria-{{ t.pk }}">
+      {% csrf_token %}<input type="hidden" name="id" value="{{ t.pk }}">
+      <label class="m2m-rotulo"><span>Nome</span><input type="text" name="nome" value="{{ t.nome }}" class="m2m-campo" maxlength="80" required></label>
+      <div class="agro-cfg-checks">
+        <label class="m2m-check"><input type="checkbox" name="exige_conectividade" value="1" {% if t.exige_conectividade %}checked{% endif %}> Exige chip</label>
+        <label class="m2m-check"><input type="checkbox" name="espera_placa" value="1" {% if t.espera_placa %}checked{% endif %}> Costuma ter placa</label>
+        <label class="m2m-check"><input type="checkbox" name="espera_chassi" value="1" {% if t.espera_chassi %}checked{% endif %}> Costuma ter chassi</label>
+        <label class="m2m-check"><input type="checkbox" name="ativo" value="1" {% if t.ativo %}checked{% endif %}> Ativa</label>
+      </div>
+      <p class="agro-cfg-uso m2m-sub"><span class="m2m-num">{{ t.n_veiculos|unlocalize }}</span> equipamento{{ t.n_veiculos|pluralize }} · <span class="m2m-num">{{ t.n_classes|unlocalize }}</span> classe{{ t.n_classes|pluralize }}</p>
+      <button type="submit" class="m2m-btn">Salvar</button>
+    </form>
+    {% empty %}
+    <p class="m2m-painel-vazio">Nenhuma categoria cadastrada.</p>
+    {% endfor %}
+
+    {% else %}
+    <form class="agro-cfg-linha agro-cfg-linha--novo" method="post" action="{% url 'frota_cadastro_salvar' %}">
+      {% csrf_token %}<input type="hidden" name="chave" value="{{ chave }}">
+      <label class="m2m-rotulo"><span>Novo cadastro ({{ rotulo_do_cadastro }})</span><input type="text" name="nome" class="m2m-campo" maxlength="120" required autocomplete="off"></label>
+      <label class="m2m-rotulo"><span>Código no ERP</span><input type="text" name="codigo_erp" class="m2m-campo m2m-campo--mono" maxlength="20" autocomplete="off" placeholder="Opcional"></label>
+      {% if aba_cadastro == "classes-operacionais" %}
+      <label class="m2m-rotulo"><span>Categoria</span>
+        <select name="categoria" class="m2m-campo"><option value="">Sem categoria</option>{% for c in categorias %}<option value="{{ c.pk }}">{{ c.nome }}</option>{% endfor %}</select>
+      </label>
+      {% elif aba_cadastro == "empresas" %}
+      <label class="m2m-rotulo"><span>Natureza padrão</span>
+        <select name="natureza_padrao" class="m2m-campo">{% for valor, rotulo in naturezas %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}</select>
+      </label>
+      {% endif %}
+      <button type="submit" class="m2m-btn m2m-btn--primario">Criar</button>
+    </form>
+    {% for item in itens %}
+    <form class="agro-cfg-linha" method="post" action="{% url 'frota_cadastro_salvar' %}" id="cadastro-{{ item.pk }}">
+      {% csrf_token %}<input type="hidden" name="chave" value="{{ chave }}"><input type="hidden" name="id" value="{{ item.pk }}">
+      <label class="m2m-rotulo"><span>Nome</span><input type="text" name="nome" value="{{ item.nome }}" class="m2m-campo" maxlength="120" required autocomplete="off"></label>
+      <label class="m2m-rotulo"><span>Código no ERP</span><input type="text" name="codigo_erp" value="{{ item.codigo_erp }}" class="m2m-campo m2m-campo--mono" maxlength="20" autocomplete="off"></label>
+      {% if aba_cadastro == "classes-operacionais" %}
+      <label class="m2m-rotulo"><span>Categoria</span>
+        <select name="categoria" class="m2m-campo">
+          <option value="">Sem categoria</option>
+          {% for c in categorias %}<option value="{{ c.pk }}" {% if item.categoria_id == c.pk %}selected{% endif %}>{{ c.nome }}</option>{% endfor %}
+          {% if item.categoria and not item.categoria.ativo %}<option value="{{ item.categoria_id }}" selected>{{ item.categoria.nome }} (inativa)</option>{% endif %}
+        </select>
+      </label>
+      {% elif aba_cadastro == "empresas" %}
+      <label class="m2m-rotulo"><span>Natureza padrão</span>
+        <select name="natureza_padrao" class="m2m-campo">{% for valor, rotulo in naturezas %}<option value="{{ valor }}" {% if item.natureza_padrao == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select>
+      </label>
+      {% endif %}
+      <div class="agro-cfg-checks">
+        <label class="m2m-check"><input type="checkbox" name="ativo" value="1" {% if item.ativo %}checked{% endif %}> Ativo</label>
+        {% if aba_cadastro == "classes-operacionais" and item.n_equipamentos %}
+        <label class="m2m-check" title="Leva à categoria da classe os equipamentos que já estão cadastrados nela"><input type="checkbox" name="reclassificar" value="1"> Aplicar aos {{ item.n_equipamentos|unlocalize }} já cadastrado{{ item.n_equipamentos|pluralize }}</label>
+        {% endif %}
+      </div>
+      <p class="agro-cfg-uso m2m-sub"><span class="m2m-num">{{ item.n_equipamentos|unlocalize }}</span> equipamento{{ item.n_equipamentos|pluralize }}</p>
+      <button type="submit" class="m2m-btn">Salvar</button>
+    </form>
+    {% empty %}
+    <p class="m2m-painel-vazio">{% if busca %}Nada encontrado para “{{ busca }}”.{% else %}Nenhum cadastro ainda. Eles nascem sozinhos na importação da planilha do ERP, ou você cria aqui.{% endif %}</p>
+    {% endfor %}
+    {% endif %}
+    <p class="m2m-nota m2m-nota--pad">{{ ajuda }} Nada se exclui: inative o que não for mais usado — os equipamentos que já o usam continuam como estão.</p>
+  </section>
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

@@ -14,6 +14,9 @@ Views:
     ninja_oauth_callback  GET  /ninja/oauth/callback/    (staff: retorno do NinjaOne com o código)
     ninja_sincronizar     POST /ninja/sincronizar/       (busca os dispositivos pela API)
     ninja_desconectar     POST /ninja/desconectar/       (staff: esquece o token)
+    ninja_licencas_liberar  GET  /ninja/licencas-a-liberar/ (máquinas paradas que ainda ocupam licença do NinjaOne)
+    ninja_licencas_marcar   POST /ninja/licencas-a-liberar/marcar/   (o TI diz que removeu a licença)
+    ninja_licencas_enviar   POST /ninja/licencas-a-liberar/enviar/   (envia o aviso por e-mail agora)
 """
 
 import csv as _csv
@@ -27,6 +30,7 @@ from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -263,6 +267,14 @@ def _validacao_xlsx(resultados, titulo, subtitulo, filename_prefix="ninja_valida
 # Dashboard principal
 # ─────────────────────────────────────────────────────────────
 
+def _resumo_licencas_a_liberar() -> dict:
+    """O que o painel diz sobre licenças presas a máquinas paradas (a lista inteira está em `ninja_licencas_liberar`)."""
+    from services import ninja_licenca_service as nl
+
+    pendentes = nl.pendentes()
+    return {"n": len(pendentes), "online": sum(1 for l in pendentes if l.online)}
+
+
 @login_required
 def ninja_dashboard(request):
     from ProjetoEstoque.models import NinjaDevice, NinjaDeviceSnapshot, Item
@@ -337,6 +349,7 @@ def ninja_dashboard(request):
         },
         "por_local": por_local,
         "online_com_user": online_com_user,
+        "licencas_liberar": _resumo_licencas_a_liberar(),
         "sem_match_online": sem_match_online,
         "itens_sem_agente_sample": itens_sem_agente_qs[:8],
         "chart_status": {"online": online, "offline": total - online},
@@ -977,3 +990,93 @@ def ninja_desconectar(request):
         "revogue o token em Administração > Apps > API."
     )
     return redirect("ninja_dashboard")
+
+
+# ─────────────────────────────────────────────────────────────
+# Licenças do NinjaOne presas a máquinas paradas (regra 69)
+# ─────────────────────────────────────────────────────────────
+# Máquina em Backup, Defeito, Manutenção ou Pausado que ainda tem dispositivo no NinjaOne ocupa uma licença paga até o TI
+# removê-la lá. A lista e as regras são de `services/ninja_licenca_service`; o aviso por e-mail, de `email_alertas`.
+
+def _volta_para_a_lista(request):
+    """Volta para a lista com os mesmos filtros. Só aceita caminho desta própria tela: o `voltar` vem do formulário e
+    aceitar qualquer endereço seria redirecionamento aberto."""
+    base = reverse("ninja_licencas_liberar")
+    destino = request.POST.get("voltar") or base
+    return redirect(destino if destino.startswith(base) and "//" not in destino[1:] else base)
+
+
+@login_required
+def ninja_licencas_liberar(request):
+    from services import ninja_licenca_service as nl
+    from services.email_alertas import resolver_destinatarios_atuais, sincronizar_catalogo_notificacoes
+    from ProjetoEstoque.models import CanalNotificacao
+
+    p = nl.panorama(
+        status=request.GET.get("status", ""), situacao=request.GET.get("situacao", "pendentes"), busca=request.GET.get("q", ""),
+    )
+
+    if request.GET.get("export") == "csv":
+        resp = HttpResponse(nl.csv_da_lista(p["linhas"]), content_type="text/csv; charset=utf-8-sig")
+        resp["Content-Disposition"] = 'attachment; filename="ninja_licencas_a_remover.csv"'
+        return resp
+
+    paginator = Paginator(p["linhas"], 40)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    get_copy = request.GET.copy()
+    get_copy.pop("page", None)
+
+    # Quem recebe o aviso é o que a Central de Alertas diz — mostrar aqui, e não repetir a regra.
+    sincronizar_catalogo_notificacoes()
+    canal = CanalNotificacao.objects.filter(codigo="ninja_licencas_liberar").first()
+    pessoas, nota_destino = resolver_destinatarios_atuais(canal) if canal else ([], "")
+
+    return render(request, "front/ninja/ninja_licencas_liberar.html", {
+        "p": p,
+        "linhas": page_obj.object_list,
+        "page_obj": page_obj,
+        "total_registros": len(p["linhas"]),
+        "qs_keep": get_copy.urlencode(),
+        "voltar": request.get_full_path(),
+        "canal": canal,
+        "destinatarios": pessoas,
+        "nota_destino": nota_destino,
+    })
+
+
+@login_required
+@require_POST
+def ninja_licencas_marcar(request):
+    from services import ninja_licenca_service as nl
+
+    ids = [int(v) for v in request.POST.getlist("ids") if v.isdigit()]
+    acao = request.POST.get("acao")
+    if not ids:
+        messages.warning(request, "Marque ao menos uma máquina na lista.")
+    elif acao == "reabrir":
+        n = nl.reabrir(ids)
+        messages.success(request, f"{n} máquina(s) voltaram para “a remover”.")
+    elif acao == "remover":
+        n = nl.marcar_removidas(ids, request.user)
+        messages.success(
+            request,
+            f"{n} máquina(s) marcadas como removidas do NinjaOne. Se alguma voltar a falar com o NinjaOne, ela reaparece na lista.",
+        )
+    else:
+        messages.error(request, "Ação desconhecida.")
+    return _volta_para_a_lista(request)
+
+
+@login_required
+@require_POST
+def ninja_licencas_enviar(request):
+    from services.email_alertas import enviar_ninja_licencas_detalhado
+
+    resultado = enviar_ninja_licencas_detalhado()
+    if resultado is None:
+        messages.info(request, "Nenhuma máquina parada com licença do NinjaOne a remover — nenhum e-mail foi enviado.")
+    elif resultado.ok:
+        messages.success(request, "E-mail enviado para: " + ", ".join(resultado.destinatarios) + ".")
+    else:
+        messages.error(request, resultado.motivo)
+    return _volta_para_a_lista(request)

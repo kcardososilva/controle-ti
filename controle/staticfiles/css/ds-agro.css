@@ -1,0 +1,333 @@
+/* =========================================================
+   Zelo Agro — acréscimos das telas de tecnologia agrícola
+
+   O Agro tem UM desenho de módulo: Frotas e Chips e Conectividade nasceram em `ds-m2m.css` (`.m2m-*`)
+   e o estoque tecnológico, o catálogo e o que vem depois (infraestrutura, radiocomunicação,
+   manutenção) vestem os MESMOS componentes — abas, filtros, tabelas, painéis, linha do tempo,
+   formulário. Este arquivo só ACRESCENTA o que aqueles componentes não têm. Carregue-o DEPOIS do
+   `ds-m2m.css` (a ordem é contrato, regra 26).
+
+   Escopo: `.agro-page` (a mesma raiz `.m2m-page` das telas), nunca `:root`. Nenhuma cor nasce aqui:
+   tudo vem dos tokens `--m2m-*` (que vêm de `tokens.css` e acompanham o verde do Agro).
+   ========================================================= */
+
+/* Campo que ocupa a linha toda da grade do formulário (observações, motivo, nome do modelo). */
+.agro-page .agro-grade .agro-largo { grid-column: 1 / -1; }
+
+/* Coluna numérica: número alinhado ao fim, sem quebrar. */
+.agro-page .agro-num { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* O saldo em destaque no resumo do material. */
+.agro-page .agro-saldo {
+  font-size: var(--m2m-fs-big);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--m2m-tx);
+}
+
+/* "em falta": a etiqueta de estoque abaixo do mínimo. Âmbar do sistema, com texto na cor primária
+   para manter contraste nos dois temas. */
+.agro-page .agro-etiqueta-falta {
+  background: var(--m2m-warn-soft);
+  color: var(--m2m-tx);
+  border-color: var(--m2m-warn);
+}
+
+/* Linha de cadastro inativo: tinta clara, sem sumir (continua nos registros que a usam). */
+.agro-page .m2m-linha[data-inativo] td { color: var(--m2m-tx-3); }
+.agro-page .m2m-linha[data-inativo] .m2m-link-forte { color: var(--m2m-tx-3); }
+
+/* Situação "em manutenção" do equipamento: o mesmo ponto pela metade do status "manutenção" da frota. */
+.m2m-status[data-status="em_manutencao"] { color: var(--m2m-tx); }
+.m2m-status[data-status="em_manutencao"]::before { background: transparent; border: 1.5px solid var(--m2m-tx-2); border-bottom-color: transparent; }
+/* Equipamento instalado: em serviço (ponto cheio), como "ativo". */
+.m2m-status[data-status="instalado"] { color: var(--m2m-tx); }
+
+/* Material abaixo do mínimo: a linha ganha uma marca discreta na borda inicial. */
+.agro-page .m2m-linha[data-tom="atencao"] > td:first-child { box-shadow: inset 3px 0 0 var(--m2m-warn); }
+
+/* "Já passaram por esta máquina": o histórico da composição, recolhido por padrão para não competir com
+   o que está instalado agora. É um <details>: abre e fecha sem script e pelo teclado. */
+.m2m-passado { border-top: 1px solid var(--m2m-ln-2); }
+.m2m-passado > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px var(--m2m-pad);
+  font-size: var(--m2m-fs-base);
+  font-weight: 600;
+  color: var(--m2m-tx-2);
+  cursor: pointer;
+  list-style: none;
+}
+.m2m-passado > summary::-webkit-details-marker { display: none; }
+.m2m-passado > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--m2m-transicao, .12s ease);
+}
+.m2m-passado[open] > summary::before { transform: rotate(45deg); }
+.m2m-passado > summary:hover { color: var(--m2m-tx); }
+.m2m-passado > summary:focus-visible { outline: 2px solid var(--m2m-a-ring); outline-offset: -2px; }
+
+/* Os botões de ação no cabeçalho de um painel (Instalar equipamento, Aplicar material): juntos, à direita,
+   e descem para a linha de baixo no celular em vez de estourar a largura. */
+.m2m-painel-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/* =========================================================
+   Frotas e Maquinários — a tela principal, o detalhe em abas e o assistente de importação
+   ========================================================= */
+
+/* O caminho do alto da página (Zelo Agro / Frotas e Maquinários / …): pequeno e discreto. */
+.agro-migalhas ol { list-style: none; display: flex; flex-wrap: wrap; gap: 2px 6px; margin: 0 0 4px; padding: 0; font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); }
+.agro-migalhas li + li::before { content: "/"; margin-right: 6px; color: var(--m2m-tx-4); }
+.agro-migalhas a { color: var(--m2m-tx-3); text-decoration: none; }
+.agro-migalhas a:hover { color: var(--m2m-tx); text-decoration: underline; }
+.agro-migalhas [aria-current="page"] { color: var(--m2m-tx-2); }
+
+/* Filtros rápidos: o segundo grupo (a situação) fica separado do primeiro (a natureza) por um fio. */
+.agro-rapidos { align-self: start; }
+.agro-rapidos a[data-grupo="2"], .agro-rapidos a[data-grupo="3"] { position: relative; margin-left: 10px; }
+.agro-rapidos a[data-grupo="2"]::before, .agro-rapidos a[data-grupo="3"]::before { content: ""; position: absolute; left: -7px; top: 6px; bottom: 6px; width: 1px; background: var(--m2m-ln-3); }
+
+/* Contagem, tamanho da página e ações da lista, numa linha só. */
+.agro-controles { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.agro-contagem { margin: 0; color: var(--m2m-tx-2); }
+.agro-contagem b { color: var(--m2m-tx); font-weight: 650; }
+.agro-controles-fim { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.agro-por-pagina { display: inline-flex; align-items: center; gap: 6px; font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); }
+.agro-por-pagina select { width: auto; height: var(--m2m-h-sm); padding-block: 0; }
+.agro-filtros-conectividade { margin-top: 4px; }
+
+/* Cabeçalho que se ordena: o triângulo diz o sentido; só a coluna ativa o mostra. */
+.agro-tabela th > a.agro-ordem { display: inline-flex; align-items: center; gap: 6px; color: inherit; text-decoration: none; }
+.agro-tabela th > a.agro-ordem:hover { color: var(--m2m-tx); }
+.agro-tabela th > a.agro-ordem[data-sentido]::after { content: ""; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; }
+.agro-tabela th > a.agro-ordem[data-sentido="asc"]::after { border-bottom: 5px solid currentColor; }
+.agro-tabela th > a.agro-ordem[data-sentido="desc"]::after { border-top: 5px solid currentColor; }
+.agro-tabela .agro-sel { width: 34px; padding-right: 0; }
+.agro-linha { cursor: pointer; }
+.agro-linha[data-inativo] td { color: var(--m2m-tx-3); }
+
+/* Natureza do ativo: quadrado cheio = próprio, vazado = terceiro. A cor nunca vai sozinha. */
+.agro-natureza { font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); white-space: nowrap; }
+.agro-natureza::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border: 1.5px solid var(--m2m-tx-3); border-radius: 1px; vertical-align: 1px; }
+.agro-natureza[data-natureza="proprio"]::before { background: var(--m2m-tx-3); }
+
+/* "a validar": a situação veio do ERP e ninguém a confirmou. Tracejado = ainda não é fato. */
+.agro-a-validar {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px dashed var(--m2m-ln-3);
+  border-radius: var(--m2m-raio);
+  font-size: var(--m2m-fs-micro);
+  line-height: 1.5;
+  color: var(--m2m-tx-2);
+  white-space: nowrap;
+}
+
+/* Detalhe do equipamento ─────────────────────────────────── */
+.agro-id-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.agro-copiar {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--m2m-raio);
+  background: transparent;
+  color: var(--m2m-tx-3);
+  font-size: var(--m2m-fs-small);
+  cursor: pointer;
+}
+.agro-copiar:hover { background: var(--m2m-hover); color: var(--m2m-tx); }
+.agro-copiar:focus-visible { outline: 2px solid var(--m2m-a-ring); outline-offset: 1px; }
+.agro-copiar[data-copiado] { color: var(--m2m-ok); }
+
+/* A aba "Composição tecnológica" empilha os cartões (instalado agora, chips, conectividade) com o respiro do módulo. */
+.agro-aba { display: grid; gap: var(--m2m-gap); align-content: start; }
+.agro-aba[hidden] { display: none; }
+
+/* "Para conferir": o que o cadastro sinaliza. O fio da esquerda diz a gravidade, e o texto também (nunca só a cor). */
+.agro-conferencias { padding: 0 var(--m2m-pad) var(--m2m-pad); }
+.agro-lista-conferencia { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.agro-lista-conferencia li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--m2m-ln);
+  border-left: 3px solid var(--m2m-tx-4);
+  border-radius: var(--m2m-raio);
+  background: var(--m2m-sunken);
+  font-size: var(--m2m-fs-base);
+}
+.agro-lista-conferencia li[data-gravidade="aviso"] { border-left-color: var(--m2m-warn); }
+.agro-lista-conferencia li > span { color: var(--m2m-tx-2); }
+
+/* "De → para" de uma movimentação. */
+.agro-de-para { display: block; }
+.agro-de-para i { font-size: var(--m2m-fs-micro); color: var(--m2m-tx-3); margin: 0 4px; }
+
+/* A conferência do que há em volta, antes de excluir. */
+.m2m-btn--perigo-texto { color: var(--m2m-err) !important; }
+.m2m-btn--perigo-texto:hover { background: var(--m2m-err-soft); }
+.agro-verificacao { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: var(--m2m-fs-base); }
+.agro-verificacao li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
+.agro-verificacao li::before { content: ""; flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--m2m-tx-3); align-self: center; }
+.agro-verificacao li[data-ok="1"]::before { background: var(--m2m-tx-3); }
+.agro-verificacao li[data-ok="0"]::before { border-color: var(--m2m-warn); background: var(--m2m-warn); }
+
+/* O menu de ações aceita link além de botão. */
+.m2m-menu-lista a {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 12px;
+  color: var(--m2m-tx);
+  font-size: var(--m2m-fs-base);
+  text-align: left;
+  text-decoration: none;
+}
+.m2m-menu-lista a:hover { background: var(--m2m-hover); text-decoration: none; }
+
+/* O formulário do equipamento: o número do passo no título de cada seção, e o campo que ocupa a linha toda. */
+.agro-passo {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  border: 1px solid var(--m2m-ln-3);
+  border-radius: 50%;
+  font-size: var(--m2m-fs-micro);
+  font-weight: 600;
+  color: var(--m2m-tx-2);
+}
+.agro-form .m2m-form-grade { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.agro-form .m2m-form-grade .agro-largo { grid-column: 1 / -1; }
+
+/* Categorias e classes: uma linha editável por item, com campos que variam por aba. */
+.agro-cfg-linha {
+  display: grid;
+  grid-template-columns: minmax(180px, 2fr) repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px var(--m2m-gap);
+  align-items: end;
+  padding: 12px var(--m2m-pad);
+  border-bottom: 1px solid var(--m2m-ln-2);
+}
+.agro-cfg-linha:last-of-type { border-bottom: 0; }
+.agro-cfg-linha--novo { background: var(--m2m-sunken); border-bottom: 1px solid var(--m2m-ln); }
+.agro-cfg-checks { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; min-height: var(--m2m-h); }
+.agro-cfg-checks .m2m-check { min-height: 0; }
+.agro-cfg-uso { margin: 0; align-self: center; white-space: nowrap; }
+.agro-busca-aba { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.agro-busca-aba .m2m-campo { width: 220px; height: var(--m2m-h-sm); }
+.agro-abas { margin-bottom: 0; }
+@media (max-width: 759px) {
+  .agro-cfg-linha { grid-template-columns: minmax(0, 1fr); }
+  .agro-busca-aba { width: 100%; }
+  .agro-busca-aba .m2m-campo { flex: 1 1 auto; width: auto; }
+}
+
+/* Importação da planilha em seis passos: o passo a passo da importação de chips com seis casas. O passo a que se pode voltar é link. */
+.m2m-etapas.agro-passos { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.agro-passos > li > b > a { color: inherit; text-decoration: none; }
+.agro-passos > li > b > a:hover { color: var(--text-link); text-decoration: underline; }
+@media (max-width: 1099px) {
+  .m2m-etapas.agro-passos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 759px) {
+  .m2m-etapas.agro-passos { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+}
+
+/* Mapeamento: a coluna do arquivo de cada campo e o que cada valor da planilha vira. */
+/* O `base.css` fixa `min-width: 0 !important` em todo `select`: a largura se garante na CÉLULA, não no campo. */
+.agro-mapa .m2m-campo { width: 100%; }
+.agro-mapa td.agro-mapa-coluna { min-width: 15rem; }
+.agro-decide { display: flex; align-items: center; gap: 8px; }
+.agro-decide .m2m-campo { flex: 1 1 auto; width: auto; }
+.agro-decide .agro-sugerido { flex: 0 0 auto; margin: 0; }
+.agro-linhas-busca input.m2m-campo { width: 300px; max-width: 100%; }
+.agro-linhas-busca select.m2m-campo { width: auto; max-width: 100%; }
+.agro-motivos-neutros { color: var(--m2m-tx-2); }
+.agro-lista-aviso { margin: 6px 0 0; padding-left: 1.2em; }
+.agro-mapa td.agro-mapa-campo { white-space: normal; min-width: 11rem; }
+.agro-mapa .agro-mapa-obrig { font-size: var(--m2m-fs-micro); font-weight: 600; color: var(--m2m-err); }
+.agro-mapa .agro-mapa-nota { display: block; margin-top: 2px; font-size: var(--m2m-fs-small); color: var(--m2m-tx-3); white-space: normal; }
+.agro-valor-bruto { font-family: var(--font-mono); overflow-wrap: anywhere; }
+.agro-valor-vazio { font-style: normal; color: var(--m2m-tx-3); }
+.agro-sugerido { margin-left: 6px; font-size: var(--m2m-fs-micro); color: var(--m2m-tx-3); white-space: nowrap; }
+.agro-mapa-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px var(--m2m-pad); border-top: 1px solid var(--m2m-ln-2); }
+.agro-mapa-acoes form { margin: 0; }
+
+/* O que muda num equipamento já cadastrado, se a atualização for autorizada. */
+.agro-diff { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: var(--m2m-fs-small); }
+.agro-diff .agro-diff-de { color: var(--m2m-tx-3); text-decoration: line-through; }
+
+/* Validação: uma conferência por quadro, recolhida, com a lista de equipamentos dentro. */
+.agro-grupo { border-top: 1px solid var(--m2m-ln-2); }
+.agro-grupo:first-of-type { border-top: 0; }
+.agro-grupo > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px var(--m2m-pad);
+  cursor: pointer;
+  list-style: none;
+}
+.agro-grupo > summary::-webkit-details-marker { display: none; }
+.agro-grupo > summary::before { content: "\25B8"; color: var(--m2m-tx-3); }
+.agro-grupo[open] > summary::before { content: "\25BE"; }
+.agro-grupo-t { font-weight: 600; color: var(--m2m-tx); }
+.agro-grupo-grav { font-size: var(--m2m-fs-micro); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--m2m-tx-3); }
+.agro-grupo-grav[data-gravidade="aviso"] { color: var(--m2m-warn); }
+.agro-grupo .m2m-tabela-wrap { border-left: 0; border-right: 0; border-radius: 0; }
+
+/* Confirmação: o que será gravado, ao lado da decisão de atualizar quem já existe. */
+.agro-confirma { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--m2m-gap); padding: var(--m2m-pad); }
+.agro-confirma > section { min-width: 0; }
+.agro-confirma h4 { margin: 0 0 6px; font-size: var(--m2m-fs-base); color: var(--m2m-tx); }
+.agro-confirma .m2m-dl { grid-template-columns: minmax(0, 1fr); }
+.agro-confirma .m2m-dl > div { padding: 6px 0; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; }
+.agro-confirma .m2m-dl dd { text-align: right; }
+.agro-autoriza { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--m2m-ln); border-radius: var(--m2m-raio); background: var(--m2m-sunken); }
+.agro-autoriza .m2m-check { align-items: flex-start; }
+.agro-autoriza .m2m-check input { margin-top: 3px; }
+@media (max-width: 759px) {
+  .agro-confirma { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* A busca das linhas (prévia, composição) em tela estreita: o campo de texto ocupa a linha e o resto vem embaixo.
+   Fica no FIM do arquivo para vencer, na ordem, a largura fixa do desktop. */
+@media (max-width: 759px) {
+  .agro-linhas-busca input.m2m-campo { flex: 1 1 100%; width: 100%; }
+  .agro-linhas-busca select.m2m-campo { flex: 1 1 auto; }
+}
+
+/* Régua de indicadores com número ímpar de cartões, em 2 colunas: o último ocupa a linha (sem célula cinza vazia ao lado). */
+@media (max-width: 759px) {
+  .agro-page .m2m-regua > .m2m-kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+/* Tablet: uma régua de SEIS indicadores fecha em 3 + 3 (em vez de 5 + 1 com uma célula vazia). `:has()` não existe em navegador
+   antigo: lá a régua continua como era, só menos bonita. */
+@media (min-width: 760px) and (max-width: 1099px) {
+  .agro-page .m2m-regua:has(> .m2m-kpi:nth-child(6):last-child) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Tablet: a lista principal esconde as colunas secundárias (classe, modelo, setor e ano — todas na ficha do equipamento) para que
+   Situação e Ações não fiquem fora da tela. No celular a linha vira cartão e mostra tudo; no desktop, a tabela completa. */
+@media (min-width: 760px) and (max-width: 1099px) {
+  .agro-page .agro-tabela .agro-sec { display: none; }
+  .agro-page .agro-tabela th, .agro-page .agro-tabela td { padding-left: 8px; padding-right: 8px; }
+}

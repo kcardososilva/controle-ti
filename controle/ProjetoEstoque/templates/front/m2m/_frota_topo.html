@@ -1,9 +1,9 @@
 {% load m2m_tags %}
 {% comment %}
-Topo de TODAS as telas de Frotas e de Chips e Conectividade (Zelo Agro), na ordem: a barra de
-navegação da SEÇÃO, o cabeçalho da página (o `.page-header` do sistema) e, SÓ nas telas de
-conectividade (`m2m_com_faixa`), a faixa de saúde da integração TIM. Cada aba aparece só para quem
-tem a permissão dela.
+Topo das telas de Chips e Conectividade (Zelo Agro), na ordem: a barra de abas da seção, o cabeçalho
+da página (o `.page-header` do sistema) e, nas telas de conectividade (`m2m_com_faixa`), a faixa de
+saúde da integração TIM. Cada aba aparece só para quem tem a permissão dela. As telas de Frotas e
+Maquinários têm o próprio topo (`front/agro/frota/_topo.html`).
 
 Recebe por `with`: `titulo` e `descricao` (uma frase curta); opcionais `voltar_url` + `voltar_rotulo`
 (o caminho de volta nas páginas de detalhe) e as ações do cabeçalho: `acao_url` + `acao_rotulo`
@@ -21,35 +21,19 @@ recusada, limite de requisições e tarefa parada são os três casos em que o n
 ali, mas já não está sendo atualizado. Ela não aparece em veículo, movimentação e importação: a saúde
 da API da TIM não diz nada sobre cadastro.
 {% endcomment %}
-{% comment %}As abas são as da SEÇÃO da tela (`m2m_secao`, de `frota_comum.secao_da_aba`): no Zelo Agro,
-Frotas e Chips e Conectividade são acessos independentes, cada um com o próprio submenu, e o topo
-de uma não mostra as abas da outra. "Configurações" aparece nas duas: na Frota abre os tipos de
-veículo; na Conectividade, a integração TIM (as outras abas da configuração ficam na própria tela).{% endcomment %}
-{% if m2m_secao == "frota" %}
-<nav class="m2m-abas" aria-label="Seções de Frotas">
-  <div class="m2m-abas-grupo">
-    {% if pode_ver_frota %}<a href="{% url 'frota_visao_geral' %}" {% if m2m_aba == "visao_frota" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-gauge-high" aria-hidden="true"></i>Visão geral</a>{% endif %}
-    {% if pode_ver_frota %}<a href="{% url 'frota_veiculos' %}" {% if m2m_aba == "veiculos" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-tractor" aria-hidden="true"></i>Veículos e equipamentos</a>{% endif %}
-  </div>
-  {% if pode_configurar %}
-  <div class="m2m-abas-grupo m2m-abas-fim">
-    <a href="{% url 'frota_config_tipos' %}" {% if m2m_aba == "config" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-gear" aria-hidden="true"></i>Configurações</a>
-  </div>
-  {% endif %}
-</nav>
-{% else %}
+{% comment %}As abas são as de Chips e Conectividade (no Zelo Agro, um acesso próprio no menu lateral). As telas de Frotas e Maquinários não passam por aqui: têm o próprio topo (`front/agro/frota/_topo.html`), com o caminho e sem abas, porque a navegação do módulo está no menu lateral.{% endcomment %}
 <nav class="m2m-abas" aria-label="Seções de Chips e Conectividade">
   <div class="m2m-abas-grupo">
     {% if pode_ver_chips %}<a href="{% url 'm2m_visao_geral' %}" {% if m2m_aba == "visao" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-gauge-high" aria-hidden="true"></i>Visão geral</a>{% endif %}
     {% if pode_ver_chips %}<a href="{% url 'm2m_chips' %}" {% if m2m_aba == "chips" or m2m_aba == "importar" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-sim-card" aria-hidden="true"></i>Chips</a>{% endif %}
     {% if pode_historico %}<a href="{% url 'frota_movimentacoes' %}" {% if m2m_aba == "movimentacoes" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-right-left" aria-hidden="true"></i>Movimentações</a>{% endif %}
   </div>
-  {% if pode_atualizar or pode_historico %}
+  {% if pode_atualizar or pode_ver_api and pode_historico %}
   <span class="m2m-abas-sep" aria-hidden="true"></span>
   <div class="m2m-abas-grupo">
     {% if pode_atualizar %}<a href="{% url 'm2m_sessoes' %}" {% if m2m_aba == "sessoes" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-signal" aria-hidden="true"></i>Sessões</a>{% endif %}
     {% if pode_atualizar %}<a href="{% url 'm2m_consumo' %}" {% if m2m_aba == "consumo" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-chart-line" aria-hidden="true"></i>Consumo</a>{% endif %}
-    {% if pode_historico %}<a href="{% url 'm2m_alertas' %}" {% if m2m_aba == "alertas" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-bell" aria-hidden="true"></i>Alertas{% if m2m_alertas_abertos %} <span class="m2m-contagem" title="Ocorrências abertas ou em tratamento">{{ m2m_alertas_abertos }}</span>{% endif %}</a>{% endif %}
+    {% if pode_historico and pode_ver_api %}<a href="{% url 'm2m_alertas' %}" {% if m2m_aba == "alertas" %}class="is-ativa" aria-current="page"{% endif %}><i class="fa-solid fa-bell" aria-hidden="true"></i>Alertas{% if m2m_alertas_abertos %} <span class="m2m-contagem" title="Ocorrências abertas ou em tratamento">{{ m2m_alertas_abertos }}</span>{% endif %}</a>{% endif %}
   </div>
   {% endif %}
   {% if pode_configurar %}
@@ -58,7 +42,6 @@ veículo; na Conectividade, a integração TIM (as outras abas da configuração
   </div>
   {% endif %}
 </nav>
-{% endif %}
 
 <header class="page-header page-header-compact m2m-cab">
   <div class="page-header-main">
@@ -75,48 +58,58 @@ veículo; na Conectividade, a integração TIM (as outras abas da configuração
 </header>
 
 {% if m2m_com_faixa %}
-<section class="m2m-faixa" data-estado="{{ m2m_faixa.estado }}" aria-label="Saúde da integração com a TIM">
+<section class="m2m-faixa m2m-sync" data-estado="{{ m2m_faixa.estado }}" data-sync="{{ m2m_sinc.estado }}"{% if m2m_js.urls.sincronizacao %} data-sync-url="{{ m2m_js.urls.sincronizacao }}"{% endif %} aria-label="Sincronização automática com a TIM">
   <div class="m2m-faixa-item">
     <span class="m2m-micro">Integração TIM</span>
     {% m2m_ind m2m_faixa.estado m2m_faixa.rotulo %}
   </div>
 
   <div class="m2m-faixa-item">
+    <span class="m2m-micro">Sincronização</span>
+    <span data-sync-ind>{% m2m_ind m2m_sinc.ind m2m_sinc.rotulo m2m_sinc.motivo %}</span>
+  </div>
+
+  <div class="m2m-faixa-item">
     <span class="m2m-micro">Última sincronização</span>
-    {% if m2m_faixa.ultima_sincronizacao %}
-      <span class="m2m-num">{{ m2m_faixa.ultima_sincronizacao|date:"d/m H:i" }}</span>
-      <span class="m2m-faixa-nota">{{ m2m_sync.rotulo }}</span>
+    {% if m2m_sinc.ultima_sincronizacao %}
+      <span class="m2m-num" data-sync-campo="ultima">{{ m2m_sinc.ultima_sincronizacao|date:"d/m H:i" }}</span>
+      <span class="m2m-faixa-nota" data-sync-campo="ultima-rotulo">{{ m2m_sync.rotulo }}</span>
     {% else %}
-      <span class="m2m-num">—</span>
-      <span class="m2m-faixa-nota">nunca executou</span>
+      <span class="m2m-num" data-sync-campo="ultima">—</span>
+      <span class="m2m-faixa-nota" data-sync-campo="ultima-rotulo">nunca concluiu</span>
     {% endif %}
   </div>
 
   <div class="m2m-faixa-item m2m-faixa-item--lateral">
+    <span class="m2m-micro" title="A resposta válida mais recente de qualquer chip. Não é a hora do ciclo: o ciclo pode rodar sem a API responder.">Última resposta da API</span>
+    <span class="m2m-num" data-sync-campo="resposta">{% if m2m_sinc.ultima_resposta_valida %}{{ m2m_sinc.ultima_resposta_valida|date:"d/m H:i" }}{% else %}—{% endif %}</span>
+  </div>
+
+  <div class="m2m-faixa-item m2m-faixa-item--lateral">
     <span class="m2m-micro">Próxima</span>
-    {% if m2m_faixa.proxima %}
-      {% if m2m_proxima_devida %}
-        <span class="m2m-num">na próxima rodada</span>
-      {% else %}
-        <span class="m2m-num">{{ m2m_faixa.proxima|date:"d/m H:i" }}</span>
-      {% endif %}
+    {% if m2m_sinc.proxima %}
+      <span class="m2m-num" data-sync-campo="proxima">{% if m2m_proxima_devida %}na próxima rodada{% else %}{{ m2m_sinc.proxima|date:"d/m H:i" }}{% endif %}</span>
     {% else %}
-      <span class="m2m-num">—</span>
+      <span class="m2m-num" data-sync-campo="proxima">—</span>
       <span class="m2m-faixa-nota">sem chips monitorados</span>
     {% endif %}
   </div>
 
   <div class="m2m-faixa-item m2m-faixa-item--lateral">
-    <span class="m2m-micro">Tarefa agendada</span>
-    {% if m2m_faixa.executando %}
-      {% m2m_ind "pendente" "Executando agora" %}
-    {% elif m2m_faixa.tarefa_parada %}
-      {% m2m_ind "desatualizado" "Parada" "Sem execução há mais de 2 ciclos do Agendador do Windows. Os dados desta tela não estão sendo atualizados sozinhos." %}
-    {% elif m2m_faixa.ultima_sincronizacao %}
-      {% m2m_ind "normal" "Em dia" %}
-      <span class="m2m-faixa-nota">a cada {{ m2m_faixa.tique_minutos }} min</span>
+    <span class="m2m-micro">Último ciclo</span>
+    {% if m2m_sinc.execucao %}
+      <span class="m2m-num" data-sync-campo="ciclo">{{ m2m_sinc.execucao.consultados }} chip{{ m2m_sinc.execucao.consultados|pluralize }} · {{ m2m_sinc.execucao.falhas }} falha{{ m2m_sinc.execucao.falhas|pluralize }} · {{ m2m_sinc.execucao.chamadas }} req.</span>
     {% else %}
-      {% m2m_ind "pendente" "Nunca executou" %}
+      <span class="m2m-num" data-sync-campo="ciclo">—</span>
+    {% endif %}
+  </div>
+
+  <div class="m2m-faixa-item m2m-faixa-item--lateral">
+    <span class="m2m-micro">Tarefa agendada</span>
+    {% if m2m_sinc.tarefa_parada %}
+      {% m2m_ind "desatualizado" "Parada" "Sem execução há mais de 2 tiques do Agendador do Windows. Os dados desta tela não estão sendo atualizados sozinhos." %}
+    {% else %}
+      <span class="m2m-num">a cada {{ m2m_sinc.tique_minutos }} min</span>
     {% endif %}
   </div>
 
@@ -128,6 +121,13 @@ veículo; na Conectividade, a integração TIM (as outras abas da configuração
       <span class="m2m-num">{% if m2m_faixa.token_origem == "env" %}.env{% else %}banco{% endif %}{% if m2m_faixa.token_sufixo %} ····{{ m2m_faixa.token_sufixo }}{% endif %}</span>
     {% endif %}
   </div>
+
+  {% if m2m_sinc.estado != "atualizada" and m2m_sinc.estado != "em_andamento" and m2m_faixa.estado == "autenticada" or m2m_sinc.plano.limitado %}
+  <p class="m2m-faixa-aviso m2m-faixa-aviso--sync" data-sync-campo="motivo">
+    {% if m2m_sinc.estado != "atualizada" and m2m_sinc.estado != "em_andamento" and m2m_faixa.estado == "autenticada" %}{{ m2m_sinc.motivo }}{% endif %}
+    {% if m2m_sinc.plano.limitado %}<span class="m2m-faixa-nota-limite">{{ m2m_sinc.plano.texto }}</span>{% endif %}
+  </p>
+  {% endif %}
 
   {% if m2m_faixa.estado != "autenticada" and m2m_faixa.estado != "nao_testada" %}
   <p class="m2m-faixa-aviso">

@@ -1,4 +1,4 @@
-{% load m2m_tags %}
+{% load m2m_tags zelo_icones %}
 {% comment %}
 Uma linha da lista de chips. É renderizada pela lista E pelo POST de atualizar (o JSON
 devolve esta mesma marcação em `html_linha`, e o JS troca a linha): assim o desenho de
@@ -14,23 +14,27 @@ A leitura da conectividade traz DUAS coisas, de propósito: a sessão (o que a �
 disse) e, só quando não está normal, o estado do monitoramento (falha de consulta, desatualizado…).
 Falha de consulta nunca se confunde com "sem sessão". Unidade, setor e IMSI ficam no detalhe do chip.
 {% endcomment %}
-<tr class="m2m-linha" data-chip-id="{{ chip.pk }}" data-situacao="{{ chip.situacao }}"{% if chip.ocorrencia_aberta %} data-alerta="1"{% endif %}>
+<tr class="m2m-linha" data-chip-id="{{ chip.pk }}"{% if pode_ver_api %} data-situacao="{{ chip.situacao }}"{% if chip.ocorrencia_aberta %} data-alerta="1"{% endif %}{% endif %}>
   <td class="m2m-c-nome" data-rotulo="Chip">
     <span class="m2m-ident">
       <span>
         <a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' chip.pk %}"{% if chip.descricao %} title="{{ chip.descricao }}"{% endif %}>{{ chip.nome }}</a>
-        {% if chip.ocorrencia_aberta %}<a class="m2m-alerta-marca" href="{% url 'm2m_alertas' %}?q={{ chip.nome|urlencode }}" title="Há alerta aberto para este chip" aria-label="Há alerta aberto para este chip">!</a>{% endif %}
+        {% if chip.item_ti_id %}<span class="m2m-sub" title="Tem item no estoque de TI (valor, NF e termo lá)">· TI</span>{% endif %}
+        {% if pode_ver_api and chip.ocorrencia_aberta %}<a class="m2m-alerta-marca" href="{% url 'm2m_alertas' %}?q={{ chip.nome|urlencode }}" title="Há alerta aberto para este chip" aria-label="Há alerta aberto para este chip">!</a>{% endif %}
       </span>
       <span class="m2m-ident-cod" title="{% if chip.iccid %}ICCID{% else %}IMSI{% endif %}">{% if chip.iccid %}{{ chip.iccid|m2m_blocos }}{% elif chip.imsi %}{{ chip.imsi|m2m_blocos }}{% else %}—{% endif %}</span>
     </span>
   </td>
   <td data-rotulo="Vínculo">
     {% if chip.veiculo_atual %}
-      <span class="m2m-corta m2m-corta--media" title="{{ chip.veiculo_atual.codigo }} · {{ chip.veiculo_atual.nome }}">{{ chip.veiculo_atual.codigo }} · {{ chip.veiculo_atual.nome }}</span>
+      <span class="zi-rotulo">{% zelo_icone_veiculo chip.veiculo_atual %}<span class="m2m-corta m2m-corta--media" title="{{ chip.veiculo_atual.codigo }} · {{ chip.veiculo_atual.nome }}">{{ chip.veiculo_atual.codigo }} · {{ chip.veiculo_atual.nome }}</span></span>
+    {% elif chip.equipamento_atual %}
+      <span class="zi-rotulo" title="Equipamento do estoque de TI: {{ chip.destino_atual_rotulo }}">{% zelo_icone_item chip.equipamento_atual %}<span class="m2m-corta m2m-corta--media">{{ chip.destino_atual_rotulo }}</span></span>
     {% else %}
       {% frota_status chip.situacao_uso %}
     {% endif %}
   </td>
+  {% if pode_ver_api %}
   <td class="m2m-quebra" data-rotulo="Conectividade">
     {% m2m_ind chip.sessao_estado %}
     {% if chip.sessao_estado == "nao_interpretado" and chip.estado_bruto %}<span class="m2m-sub m2m-corta m2m-num" title="Valor informado pela API: {{ chip.estado_bruto }}">{{ chip.estado_bruto }}</span>{% endif %}
@@ -60,6 +64,7 @@ Falha de consulta nunca se confunde com "sem sessão". Unidade, setor e IMSI fic
       <span class="m2m-sub">nunca consultado</span>
     {% endif %}
   </td>
+  {% endif %}
   <td class="m2m-acoes" data-rotulo="Ações">
     {% if pode_atualizar %}
       {% if chip.monitorado %}

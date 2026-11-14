@@ -6,7 +6,6 @@
 {% block page_subtitle %}Detalhe do chip{% endblock %}
 
 {% block extra_css %}
-{% if pode_vincular or pode_transferir %}<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">{% endif %}
 {% comment %}A folha do módulo vem DEPOIS da do Select2: ela reveste o componente. Invertida, o CDN vence e nada tem efeito (regra 26).{% endcomment %}
 <link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
 {% endblock %}
@@ -20,8 +19,10 @@
   <section class="m2m-resumo" aria-label="Resumo e ações do chip">
     <div class="m2m-resumo-cab">
       <div class="m2m-resumo-estados">
+        {% if pode_ver_api %}
         {% m2m_ind chip.sessao_estado %}
         {% if resumo.situacao != "normal" %}{% m2m_ind resumo.situacao resumo.situacao_rotulo %}{% endif %}
+        {% endif %}
         {% frota_status chip.situacao_uso %}
       </div>
       <div class="m2m-resumo-acoes">
@@ -38,9 +39,9 @@
             {% endif %}
             {% if pode_transferir %}
               {% if chip.situacao_uso == "vinculado" and vinculo_atual_id %}
-                <button type="button" data-frota-abrir="transferir" data-url="{% url 'frota_transferir' vinculo_atual_id %}" data-alvo="Chip {{ chip.nome }} · hoje no veículo {{ veiculo_atual.codigo }}">Transferir para outro veículo</button>
-                <button type="button" data-frota-abrir="substituir" data-url="{% url 'frota_substituir' vinculo_atual_id %}" data-alvo="Chip {{ chip.nome }} · veículo {{ veiculo_atual.codigo }}">Substituir por outro chip</button>
-                <button type="button" data-frota-abrir="desvincular" data-url="{% url 'frota_desvincular' vinculo_atual_id %}" data-alvo="Chip {{ chip.nome }} · veículo {{ veiculo_atual.codigo }}">Desvincular</button>
+                <button type="button" data-frota-abrir="transferir" data-url="{% url 'frota_transferir' vinculo_atual_id %}" data-alvo="Chip {{ chip.nome }} · hoje no {{ destino_atual }}">{% if equipamento_atual %}Transferir para um veículo{% else %}Transferir para outro veículo{% endif %}</button>
+                <button type="button" data-frota-abrir="substituir" data-url="{% url 'frota_substituir' vinculo_atual_id %}" data-alvo="Chip {{ chip.nome }} · {{ destino_atual }}">Substituir por outro chip</button>
+                <button type="button" data-frota-abrir="desvincular" data-url="{% url 'frota_desvincular' vinculo_atual_id %}" data-alvo="Chip {{ chip.nome }} · {{ destino_atual }}">Desvincular</button>
               {% endif %}
               {% if chip.situacao_uso == "manutencao" or chip.situacao_uso == "inativo" %}
                 <button type="button" data-frota-abrir="retornar" data-url="{% url 'frota_retornar' chip.pk %}" data-alvo="Chip {{ chip.nome }} · hoje: {{ chip.get_situacao_uso_display }}">Devolver à disponibilidade</button>
@@ -57,14 +58,16 @@
     <dl class="m2m-resumo-fatos">
       <div><dt>ICCID</dt><dd class="m2m-id">{{ chip.iccid|m2m_blocos|default:"—" }}</dd></div>
       <div><dt>IMSI</dt><dd class="m2m-id">{{ chip.imsi|m2m_blocos|default:"—" }}</dd></div>
-      <div><dt>Operadora</dt><dd>{{ chip.operadora.nome }}{% if not chip.consultavel_pela_api %} <span class="m2m-sub">sem integração</span>{% endif %}</dd></div>
-      <div><dt>Veículo vinculado</dt><dd>{% if veiculo_atual %}{% if pode_ver_frota %}<a class="m2m-link-forte" href="{% url 'frota_veiculo_detalhe' veiculo_atual.pk %}">{{ veiculo_atual.codigo }} · {{ veiculo_atual.nome }}</a>{% else %}{{ veiculo_atual.codigo }} · {{ veiculo_atual.nome }}{% endif %}{% else %}—{% endif %}</dd></div>
+      <div><dt>Operadora</dt><dd>{{ chip.operadora.nome }}{% if pode_ver_api and not chip.consultavel_pela_api %} <span class="m2m-sub">sem integração</span>{% endif %}</dd></div>
+      <div><dt>{% if equipamento_atual %}Equipamento de TI{% else %}Veículo vinculado{% endif %}</dt><dd>{% if veiculo_atual %}{% if pode_ver_frota %}<a class="m2m-link-forte" href="{% url 'frota_veiculo_detalhe' veiculo_atual.pk %}">{{ veiculo_atual.codigo }} · {{ veiculo_atual.nome }}</a>{% else %}{{ veiculo_atual.codigo }} · {{ veiculo_atual.nome }}{% endif %}{% elif equipamento_atual %}{% if estoque_ti_acesso %}<a class="m2m-link-forte" href="{% url 'equipamento_detalhe' equipamento_atual.pk %}" title="Abre a ficha no estoque de TI">{{ equipamento_atual.nome }}{% if equipamento_atual.numero_serie and equipamento_atual.numero_serie != "S/N" %} · {{ equipamento_atual.numero_serie }}{% endif %}</a>{% else %}{{ equipamento_atual.nome }}{% endif %}{% else %}—{% endif %}</dd></div>
+      {% if pode_ver_api %}
       <div><dt>Última consulta</dt><dd class="m2m-num">{% if chip.ultima_tentativa_em %}{{ chip.ultima_tentativa_em|date:"d/m/Y H:i" }}{% else %}nunca consultado{% endif %}</dd></div>
       <div><dt>Consumo (último valor)</dt><dd class="m2m-num">{% if resumo.consumo.volume_bytes is not None %}{{ resumo.consumo.volume_txt }}{% else %}—{% endif %}</dd></div>
+      {% endif %}
     </dl>
   </section>
 
-  {% if not chip.monitorado %}
+  {% if pode_ver_api and not chip.monitorado %}
   <div class="m2m-aviso" data-tom="neutro">
     <b>Monitoramento desativado</b> em {{ chip.desativado_em|date:"d/m/Y H:i" }}{% if chip.desativado_por %} por {{ chip.desativado_por.get_username }}{% endif %}.
     Motivo: {{ chip.desativado_motivo|default:"não informado" }}. O histórico foi mantido e nenhuma consulta nova é feita.
@@ -79,6 +82,8 @@
   {% endif %}
 
   <div class="m2m-secoes" data-m2m-secoes>
+    {% comment %}Tudo da API — conectividade e sessão, consumo e sessões de dados — só para quem vê API (`pode_ver_api`); o resto da página é cadastro, vínculo e movimentação.{% endcomment %}
+    {% if pode_ver_api %}
     {% comment %}Conectividade e sessão{% endcomment %}
     <section class="m2m-painel" id="m2m-d-sessao" data-secao="Conectividade" aria-labelledby="m2m-d-sessao-t">
       <header class="m2m-painel-cab">
@@ -153,6 +158,16 @@
         <div class="m2m-consumo-valores">
           {% if resumo.consumo.volume_bytes is not None %}
             <p class="m2m-grande m2m-num">{{ resumo.consumo.volume_txt }}</p>
+            {% if resumo.consumo.fonte == "sessoes_de_dados" %}
+            <p class="m2m-nota">Soma das sessões de dados de <b class="m2m-num">{{ resumo.consumo.periodo_inicio|date:"d/m/Y" }}</b> até a leitura de <b class="m2m-num">{{ resumo.consumo.consulta.iniciada_em|date:"d/m/Y H:i" }}</b>, a mesma conta do portal · <span>{% m2m_frescor resumo.consumo.frescor %}</span></p>
+            <dl class="m2m-dl m2m-dl--compacta">
+              <div><dt>Em bytes</dt><dd class="m2m-num">{{ resumo.consumo.volume_bytes|unlocalize }}</dd></div>
+              <div><dt>Período</dt><dd class="m2m-num">{{ resumo.consumo.periodo_inicio|date:"d/m/Y"|default:"?" }} a {{ resumo.consumo.periodo_fim|date:"d/m/Y"|default:"?" }}</dd></div>
+            </dl>
+            {% if resumo.consumo.completo is False %}
+            <p class="m2m-aviso" data-tom="neutro">O histórico do mês ainda está sendo baixado{% if resumo.consumo.dados_desde %} (lido desde {{ resumo.consumo.dados_desde|date:"d/m" }}){% endif %}: até completar, este total pode ficar abaixo do que o portal mostra para o mês inteiro.</p>
+            {% endif %}
+            {% else %}
             <p class="m2m-nota">Volume informado pela TIM na consulta de <b class="m2m-num">{{ resumo.consumo.consulta.iniciada_em|date:"d/m/Y H:i" }}</b> · <span>{% m2m_frescor resumo.consumo.frescor %}</span></p>
             <dl class="m2m-dl m2m-dl--compacta">
               <div><dt>Valor original</dt><dd class="m2m-num">{{ resumo.consumo.valor_original }} {{ resumo.consumo.unidade_original }}</dd></div>
@@ -161,6 +176,7 @@
               <div><dt>Período informado</dt><dd class="m2m-num">{{ resumo.consumo.periodo_inicio|date:"d/m/Y"|default:"?" }} a {{ resumo.consumo.periodo_fim|date:"d/m/Y"|default:"?" }}</dd></div>
               {% endif %}
             </dl>
+            {% endif %}
             {% if resumo.consumo.pct_limite is not None %}
             <p class="m2m-nota">{{ resumo.consumo.pct_limite }}% do limite mensal cadastrado ({{ resumo.consumo.limite_txt }}).</p>
             <div class="m2m-barra-pct" role="img" aria-label="{{ resumo.consumo.pct_limite }}% do limite"><span style="width: {% if resumo.consumo.pct_limite > 100 %}100{% else %}{{ resumo.consumo.pct_limite|unlocalize }}{% endif %}%"></span></div>
@@ -191,7 +207,70 @@
       </div>
     </section>
 
+    {% comment %}Sessões de dados: a mesma lista da aba Dados do portal da Saitro{% endcomment %}
+    <section class="m2m-painel" id="m2m-d-dados" data-secao="Sessões de dados" aria-labelledby="m2m-d-dados-t">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-d-dados-t">Sessões de dados</h3></header>
+      {% if sessoes_dados.tem_sessoes %}
+      <div class="m2m-tabela-wrap">
+        <table class="m2m-tabela m2m-tabela--sessoes">
+          <thead>
+            <tr><th>Início</th><th>Término</th><th>Duração</th><th>IP</th><th>APN</th><th>Tecnologia</th><th class="num">Upload</th><th class="num">Download</th><th class="num">Total</th></tr>
+          </thead>
+          <tbody>
+            {% for s in sessoes_dados.sessoes %}
+            <tr>
+              <td class="m2m-num">{{ s.inicio|date:"d/m/Y H:i:s" }}</td>
+              <td class="m2m-num">{% if s.fim %}{{ s.fim|date:"d/m/Y H:i:s" }}{% elif s.ao_vivo %}<b>Online</b>{% else %}—{% endif %}</td>
+              <td class="m2m-num">{{ s.duracao_s|m2m_duracao }}</td>
+              <td class="m2m-num">{{ s.ip|default:"—" }}</td>
+              <td class="m2m-num">{{ s.apn|default:"—" }}</td>
+              <td>{{ s.tecnologia|default:"—" }}</td>
+              <td class="num m2m-num">{{ s.upload_bytes|m2m_bytes_fixo:consumo_base }}</td>
+              <td class="num m2m-num">{{ s.download_bytes|m2m_bytes_fixo:consumo_base }}</td>
+              <td class="num m2m-num">{{ s.total_bytes|m2m_bytes_fixo:consumo_base }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th colspan="2">Total no mês, desde {{ sessoes_dados.mes_inicio|date:"d/m" }} ({{ sessoes_dados.mes.n }} sess{{ sessoes_dados.mes.n|pluralize:"ão,ões" }})</th>
+              <td class="m2m-num">{{ sessoes_dados.mes.duracao|m2m_duracao }}</td>
+              <td colspan="3"></td>
+              <td class="num m2m-num">{{ sessoes_dados.mes.upload|m2m_bytes_fixo:consumo_base }}</td>
+              <td class="num m2m-num">{{ sessoes_dados.mes.download|m2m_bytes_fixo:consumo_base }}</td>
+              <td class="num m2m-num">{{ sessoes_dados.mes.total|m2m_bytes_fixo:consumo_base }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="m2m-nota m2m-nota--pad">
+        As {{ sessoes_dados.sessoes|length }} sessões mais recentes, lidas da plataforma{% if sessoes_dados.sincronizado_em %} em <b class="m2m-num">{{ sessoes_dados.sincronizado_em|date:"d/m/Y H:i" }}</b>{% endif %}. A plataforma atualiza uma sessão em andamento de cerca de 15 em 15 minutos. KB e MB em base {{ consumo_base }}, como no portal.
+        {% if not sessoes_dados.completo %}O histórico do mês ainda está sendo baixado{% if sessoes_dados.dados_desde %} (lido desde {{ sessoes_dados.dados_desde|date:"d/m" }}){% endif %}.{% endif %}
+      </p>
+      {% else %}
+        {% include 'front/m2m/_vazio.html' with icone="fa-signal" titulo="Nenhuma sessão de dados lida" texto="A plataforma não registrou sessão de dados para este chip nos dias lidos. Isso não diz que o chip esteja com defeito: ele pode ainda não ter sido instalado." only %}
+      {% endif %}
+    </section>
+
+    {% endif %}
+
     {% comment %}Histórico: consultas, eventos e ocorrências{% endcomment %}
+    {% comment %}O patrimônio do chip no estoque de TI (valor, NF, termo): lido do item, ligado pelo ICCID (regra 66).{% endcomment %}
+    {% include 'front/m2m/_chip_estoque_ti.html' %}
+
+    {% if localizacao_chip %}
+    {% comment %}Onde está o chip: é a localização do veículo em que ele está instalado agora (o vínculo ativo). A TIM não informa posição.{% endcomment %}
+    <section class="m2m-painel" id="m2m-d-local" data-secao="Localização" aria-labelledby="m2m-d-local-t">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-d-local-t">Localização do equipamento</h3>{% if localizacao_chip.veiculo %}<span class="m2m-sub">{{ localizacao_chip.veiculo.codigo }} · {{ localizacao_chip.veiculo.nome }}</span>{% endif %}</header>
+      {% if localizacao_chip.localizacao %}
+      {% include 'front/agro/mapa/_localizacao.html' with loc=localizacao_chip.localizacao historico=posicoes_chip %}
+      {% else %}
+      <p class="m2m-nota m2m-nota--pad">{{ localizacao_chip.mensagem }}</p>
+      {% endif %}
+      <p class="dash-origem">A operadora não informa posição: a localização é a do equipamento onde o chip está instalado agora, vinda de uma fonte de GPS ou da coordenada cadastrada. Se o chip for transferido, ela acompanha o novo vínculo; o histórico do equipamento anterior fica com ele.</p>
+    </section>
+    {% endif %}
+
     <section class="m2m-painel" id="m2m-d-hist" data-secao="Histórico" data-secao-query="hist" aria-labelledby="m2m-d-hist-t">
       <header class="m2m-painel-cab">
         <h3 class="m2m-painel-t" id="m2m-d-hist-t">Histórico</h3>
@@ -227,20 +306,20 @@
         <div><dt>Nome</dt><dd>{{ chip.nome }}</dd></div>
         <div><dt>ICCID</dt><dd class="m2m-id">{{ chip.iccid|m2m_blocos|default:"—" }}</dd></div>
         <div><dt>IMSI</dt><dd class="m2m-id">{{ chip.imsi|m2m_blocos|default:"—" }}</dd></div>
-        <div><dt>Consulta pelo</dt><dd>{{ chip.get_identificador_consulta_display }}</dd></div>
-        <div><dt>Operadora</dt><dd>{{ chip.operadora.nome }}{% if not chip.consultavel_pela_api %} <span class="m2m-sub">sem integração — não consultado pela API</span>{% endif %}</dd></div>
+        {% if pode_ver_api %}<div><dt>Consulta pelo</dt><dd>{{ chip.get_identificador_consulta_display }}</dd></div>{% endif %}
+        <div><dt>Operadora</dt><dd>{{ chip.operadora.nome }}{% if pode_ver_api and not chip.consultavel_pela_api %} <span class="m2m-sub">sem integração — não consultado pela API</span>{% endif %}</dd></div>
         <div><dt>Número da linha</dt><dd class="m2m-id">{{ chip.numero_linha|default:"—" }}</dd></div>
         <div><dt>Situação de uso</dt><dd>{{ chip.get_situacao_uso_display }}</dd></div>
-        <div><dt>Veículo</dt><dd>{% if veiculo_atual %}{{ veiculo_atual.codigo }} · {{ veiculo_atual.nome }}{% else %}—{% endif %}</dd></div>
+        <div><dt>{% if equipamento_atual %}Equipamento de TI{% else %}Veículo{% endif %}</dt><dd>{% if veiculo_atual %}{{ veiculo_atual.codigo }} · {{ veiculo_atual.nome }}{% elif equipamento_atual %}{{ equipamento_atual.nome }}{% else %}—{% endif %}</dd></div>
         <div><dt>Unidade</dt><dd>{{ chip.localidade.local|default:"—" }}</dd></div>
         <div><dt>Setor</dt><dd>{{ chip.setor|default:"—" }}</dd></div>
         <div><dt>Responsável</dt><dd>{{ chip.responsavel.nome|default:"—" }}</dd></div>
-        <div><dt>Limite mensal</dt><dd>{% if limite_txt %}<span class="m2m-num">{{ limite_txt }}</span>{% else %}<span class="m2m-sub">não definido</span>{% endif %}</dd></div>
+        {% if pode_ver_api %}<div><dt>Limite mensal</dt><dd>{% if limite_txt %}<span class="m2m-num">{{ limite_txt }}</span>{% else %}<span class="m2m-sub">não definido</span>{% endif %}</dd></div>{% endif %}
         {% if chip.observacoes %}<div class="m2m-dl-largo"><dt>Observações</dt><dd class="m2m-texto-livre">{{ chip.observacoes }}</dd></div>{% endif %}
         <div><dt>Cadastrado</dt><dd>{{ chip.created_at|date:"d/m/Y H:i" }}{% if chip.criado_por %} <span class="m2m-sub">por {{ chip.criado_por.get_username }}</span>{% endif %}</dd></div>
         <div><dt>Última edição</dt><dd>{{ chip.updated_at|date:"d/m/Y H:i" }}{% if chip.atualizado_por %} <span class="m2m-sub">por {{ chip.atualizado_por.get_username }}</span>{% endif %}</dd></div>
       </dl>
-      {% if pode_importar and chip.monitorado %}
+      {% if pode_ver_api and pode_importar and chip.monitorado %}
       <details class="m2m-desativar">
         <summary>Desativar o monitoramento deste chip</summary>
         <form class="m2m-form-linha" method="post" action="{% url 'm2m_chip_monitoramento' chip.pk %}">
@@ -262,7 +341,5 @@
 {% block extra_js %}
 {% if serie.suficiente %}<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>{% endif %}
 {% if pode_vincular or pode_transferir %}
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 {% endif %}
 {% endblock %}

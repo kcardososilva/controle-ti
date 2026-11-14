@@ -19,6 +19,15 @@ from ProjetoEstoque.tests.test_m2m_telas import TelasBase
 from services import frota_service as frota
 
 
+def opcoes_do_campo(resposta, nome):
+    """As opções de um campo do formulário do equipamento, que agora é montado em seções (`paineis`)."""
+    for painel in resposta.context["paineis"]:
+        for campo in painel["campos"]:
+            if campo["nome"] == nome:
+                return campo["opcoes"]
+    raise AssertionError(f"o formulário não tem o campo {nome}")
+
+
 class FazendasTests(TelasBase):
     def dados_do_veiculo(self, **extra):
         dados = {
@@ -46,7 +55,7 @@ class FazendasTests(TelasBase):
         Localidade.objects.create(local="Colheita Tabaco")
         resposta = self.get("frota_veiculo_novo")
         self.assertEqual(resposta.status_code, 200)
-        self.assertEqual([nome for _, nome in resposta.context["localidades"]], ["Fazenda Karitel", "Fazenda Rio do Meio"])
+        self.assertEqual([nome for _, nome in opcoes_do_campo(resposta, "localidade")], ["Fazenda Karitel", "Fazenda Rio do Meio"])
         html = resposta.content.decode("utf-8")
         self.assertIn("Fazenda Karitel", html)
         self.assertNotIn("Colheita Tabaco", html)
@@ -76,7 +85,7 @@ class FazendasTests(TelasBase):
         antiga = Localidade.objects.create(local="Setor Antigo")
         veiculo = self.veiculo(1, localidade=antiga.pk)
         pagina = self.get("frota_veiculo_editar", veiculo.pk)
-        self.assertIn("Setor Antigo", [nome for _, nome in pagina.context["localidades"]])
+        self.assertIn("Setor Antigo", [nome for _, nome in opcoes_do_campo(pagina, "localidade")])
         dados = self.dados_do_veiculo(codigo=veiculo.codigo, nome="Nome novo", localidade=antiga.pk)
         resposta = self.client.post(reverse("frota_veiculo_editar", args=[veiculo.pk]), dados)
         self.assertEqual(resposta.status_code, 302)
@@ -169,11 +178,18 @@ class VinculadosELivresTests(TelasBase):
         self.assertNotIn("Em manutenção", self.segmentos("m2m_chips"))
         self.assertNotIn("Inativos", self.segmentos("m2m_chips"))
 
-    def test_lista_de_veiculos_conta_com_e_sem_chip(self):
-        segmentos = self.segmentos("frota_veiculos")
-        self.assertEqual([(r, s["n"]) for r, s in segmentos.items()], [("Todos", 2), ("Com chip", 1), ("Sem chip", 1)])
-        resposta = self.client.get(reverse("frota_veiculos") + segmentos["Sem chip"]["url"])
-        self.assertEqual([v.codigo for v in resposta.context["veiculos"]], ["TR-02"])
+    def test_lista_de_veiculos_filtra_com_e_sem_chip(self):
+        """Os segmentos "Com chip / Sem chip" saíram do alto da lista (o prompt de Frotas e Maquinários pede
+        Todos · Próprios · Terceiros · Em uso · Em manutenção); a pergunta continua respondida pelo filtro "Chip"
+        do painel avançado — e o link "Veículos sem chip" da Conectividade segue funcionando."""
+        total = self.get("frota_veiculos").context["kpis"]["total"]
+        self.assertEqual(total, 2)
+        sem = self.get("frota_veiculos", chip="sem")
+        self.assertEqual([v.codigo for v in sem.context["veiculos"]], ["TR-02"])
+        com = self.get("frota_veiculos", chip="com")
+        self.assertEqual([v.codigo for v in com.context["veiculos"]], ["TR-01"])
+        self.assertTrue(sem.context["filtros_avancados_abertos"])
+        self.assertEqual([f["rotulo"] for f in sem.context["filtros_ativos"]], ["Chip: Sem chip"])
 
     def test_chip_disponivel_tem_o_botao_vincular_e_o_vinculado_nao(self):
         html = self.get("m2m_chips").content.decode("utf-8")

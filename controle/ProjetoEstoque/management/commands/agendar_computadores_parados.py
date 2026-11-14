@@ -38,6 +38,13 @@ _DIAS = {
 class Command(BaseCommand):
     help = "Gerencia a tarefa semanal do aviso de computadores parados (backup/pausado)"
 
+    # O `agendar_ninja_licencas` herda tudo isto e só troca estes três nomes e o que `_executar` dispara: o agendamento
+    # é o mesmo, e duas cópias do código de `schtasks` divergiriam na primeira correção.
+    nome_tarefa = NOME_TAREFA
+    tipo_alerta = "computadores"
+    nome_comando = "agendar_computadores_parados"
+    sem_dados = "nenhum notebook/desktop em backup ou pausado"
+
     def add_arguments(self, parser):
         parser.add_argument(
             "acao", choices=["criar", "listar", "remover", "executar"],
@@ -100,24 +107,24 @@ class Command(BaseCommand):
 
         python = sys.executable
         manage = self._manage_py()
-        comando = f'"{python}" "{manage}" enviar_alertas --tipo computadores'
+        comando = f'"{python}" "{manage}" enviar_alertas --tipo {self.tipo_alerta}'
 
         self.stdout.write(self.style.MIGRATE_HEADING("Registrando tarefa semanal…"))
-        self.stdout.write(f"  Tarefa  : {NOME_TAREFA}")
+        self.stdout.write(f"  Tarefa  : {self.nome_tarefa}")
         self.stdout.write(f"  Quando  : toda semana, {dia_schtasks} às {hora}")
         self.stdout.write(f"  Comando : {comando}")
         self.stdout.write("")
 
-        self._schtasks(["/Delete", "/TN", NOME_TAREFA, "/F"])
+        self._schtasks(["/Delete", "/TN", self.nome_tarefa, "/F"])
         rc, stdout, stderr = self._schtasks([
-            "/Create", "/TN", NOME_TAREFA, "/TR", comando,
+            "/Create", "/TN", self.nome_tarefa, "/TR", comando,
             "/SC", "WEEKLY", "/D", dia_schtasks, "/ST", hora,
             "/RL", "HIGHEST", "/F",
         ])
 
         if rc == 0:
             self.stdout.write(self.style.SUCCESS(
-                f"Tarefa '{NOME_TAREFA}' criada. A lista sai toda {dia_schtasks} às {hora}."
+                f"Tarefa '{self.nome_tarefa}' criada. A lista sai toda {dia_schtasks} às {hora}."
             ))
             return
 
@@ -126,7 +133,7 @@ class Command(BaseCommand):
             self.stdout.write(stdout.strip())
         if stderr:
             self.stdout.write(self.style.ERROR(stderr.strip()))
-        rc2, _, _ = self._schtasks(["/Query", "/TN", NOME_TAREFA, "/FO", "LIST"])
+        rc2, _, _ = self._schtasks(["/Query", "/TN", self.nome_tarefa, "/FO", "LIST"])
         if rc2 == 0:
             self.stdout.write(self.style.SUCCESS("Tarefa encontrada no agendador — criada mesmo assim."))
         else:
@@ -135,12 +142,12 @@ class Command(BaseCommand):
             )
 
     def _listar(self):
-        self.stdout.write(self.style.MIGRATE_HEADING(f"Status da tarefa: {NOME_TAREFA}"))
-        rc, stdout, _ = self._schtasks(["/Query", "/TN", NOME_TAREFA, "/FO", "LIST", "/V"])
+        self.stdout.write(self.style.MIGRATE_HEADING(f"Status da tarefa: {self.nome_tarefa}"))
+        rc, stdout, _ = self._schtasks(["/Query", "/TN", self.nome_tarefa, "/FO", "LIST", "/V"])
         if rc != 0:
             self.stdout.write(self.style.WARNING(
-                f"Tarefa '{NOME_TAREFA}' não encontrada.\n"
-                "Use: python manage.py agendar_computadores_parados criar"
+                f"Tarefa '{self.nome_tarefa}' não encontrada.\n"
+                f"Use: python manage.py {self.nome_comando} criar"
             ))
             return
 
@@ -156,20 +163,23 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Tarefa encontrada e ativa."))
 
     def _remover(self):
-        self.stdout.write(self.style.MIGRATE_HEADING(f"Removendo tarefa: {NOME_TAREFA}"))
-        rc, stdout, stderr = self._schtasks(["/Delete", "/TN", NOME_TAREFA, "/F"])
+        self.stdout.write(self.style.MIGRATE_HEADING(f"Removendo tarefa: {self.nome_tarefa}"))
+        rc, stdout, stderr = self._schtasks(["/Delete", "/TN", self.nome_tarefa, "/F"])
         if rc == 0:
-            self.stdout.write(self.style.SUCCESS(f"Tarefa '{NOME_TAREFA}' removida."))
+            self.stdout.write(self.style.SUCCESS(f"Tarefa '{self.nome_tarefa}' removida."))
         elif "não existe" in stderr.lower() or "does not exist" in stderr.lower() or rc == 1:
-            self.stdout.write(self.style.WARNING(f"Tarefa '{NOME_TAREFA}' não existia."))
+            self.stdout.write(self.style.WARNING(f"Tarefa '{self.nome_tarefa}' não existia."))
         else:
             self.stdout.write(self.style.ERROR(f"Erro ao remover: {stderr.strip() or stdout.strip()}"))
 
+    def _enviar(self) -> bool:
+        from services.email_alertas import alerta_computadores_parados
+        return alerta_computadores_parados()
+
     def _executar(self):
         self.stdout.write(self.style.MIGRATE_HEADING("Enviando a lista agora…"))
-        from services.email_alertas import alerta_computadores_parados
         try:
-            ok = alerta_computadores_parados()
+            ok = self._enviar()
         except Exception as exc:
             raise CommandError(f"Falha ao enviar: {exc}") from exc
 
@@ -177,6 +187,5 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("Lista enviada."))
         else:
             self.stdout.write(self.style.WARNING(
-                "Nada enviado — nenhum notebook/desktop em backup ou pausado "
-                "(ou o canal está desativado em Notificações)."
+                f"Nada enviado — {self.sem_dados} (ou o canal está desativado em Notificações)."
             ))

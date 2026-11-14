@@ -982,19 +982,21 @@ class FrotaVeiculoAdmin(SomenteLeituraAdmin):
 
 @admin.register(FrotaVinculo)
 class FrotaVinculoAdmin(SomenteLeituraAdmin):
-    list_display = ("chip", "veiculo", "inicio_em", "fim_em", "inicio_por", "fim_por")
-    search_fields = ("chip__nome", "veiculo__codigo", "veiculo__nome")
-    list_select_related = ("chip", "veiculo", "inicio_por", "fim_por")
+    list_display = ("chip", "veiculo", "item", "inicio_em", "fim_em", "inicio_por", "fim_por")
+    search_fields = ("chip__nome", "veiculo__codigo", "veiculo__nome", "item__nome", "item__numero_serie")
+    list_select_related = ("chip", "veiculo", "item", "inicio_por", "fim_por")
     date_hierarchy = "inicio_em"
     list_per_page = 50
 
 
 @admin.register(FrotaMovimentacao)
 class FrotaMovimentacaoAdmin(SomenteLeituraAdmin):
-    list_display = ("em", "tipo", "chip", "veiculo_origem", "veiculo_destino", "usuario_nome")
+    list_display = ("em", "tipo", "chip", "veiculo_origem", "veiculo_destino", "item_origem", "item_destino", "usuario_nome")
     list_filter = ("tipo",)
-    search_fields = ("chip__nome", "veiculo_origem__codigo", "veiculo_destino__codigo", "motivo")
-    list_select_related = ("chip", "veiculo_origem", "veiculo_destino")
+    search_fields = (
+        "chip__nome", "veiculo_origem__codigo", "veiculo_destino__codigo", "item_origem__nome", "item_destino__nome", "motivo",
+    )
+    list_select_related = ("chip", "veiculo_origem", "veiculo_destino", "item_origem", "item_destino")
     date_hierarchy = "em"
     list_per_page = 50
 

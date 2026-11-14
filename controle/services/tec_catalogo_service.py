@@ -340,6 +340,32 @@ def listar_locais(somente_ativos: bool = False):
     return qs.filter(ativo=True) if somente_ativos else qs
 
 
+def locais_das_fazendas(usuario=None) -> list[AgroLocal]:
+    """O local de armazenamento padrão (`AgroLocal.NOME_PADRAO`) de CADA uma das duas fazendas, na
+    ordem Karitel, Rio do Meio — é o que as telas de estoque oferecem no lugar de "escolha um local".
+
+    Cria o que falta (idempotente, como `frota_service.fazendas()`): sem isso, o campo obrigatório
+    nasceria vazio e ninguém conseguiria cadastrar equipamento antes de cadastrar local no catálogo.
+    Passa por `salvar_local`, então a criação fica na linha do tempo como qualquer outra. Um padrão
+    que alguém INATIVOU de propósito não volta: a fazenda some da lista em vez de ser reativada
+    escondido. Os locais que o catálogo já tem por dentro da fazenda (Almoxarifado, Oficina…) não são
+    tocados e continuam valendo para o que já está neles."""
+    from services import frota_service  # tardio: o frota_service importa m2m (mesma razão do salvar_local)
+
+    locais = []
+    for fazenda in frota_service.fazendas():
+        local = AgroLocal.objects.filter(fazenda=fazenda, nome__iexact=AgroLocal.NOME_PADRAO).order_by("pk").first()
+        if local is None:
+            try:
+                local = salvar_local({"nome": AgroLocal.NOME_PADRAO, "fazenda": fazenda}, usuario)
+            except ValidationError:  # outra requisição criou no mesmo instante: lê o que ela gravou
+                local = AgroLocal.objects.filter(fazenda=fazenda, nome__iexact=AgroLocal.NOME_PADRAO).order_by("pk").first()
+        if local is not None and local.ativo:
+            local.fazenda = fazenda  # evita uma consulta por local ao montar o rótulo
+            locais.append(local)
+    return locais
+
+
 def salvar_local(dados: dict, usuario=None, local: AgroLocal | None = None) -> AgroLocal:
     """Cria ou edita um local de armazenamento. `dados`: `nome` (único dentro da fazenda), `fazenda`
     (só Karitel ou Rio do Meio — conferido aqui), `observacoes`, `ativo`. Inativar um local que

@@ -19,8 +19,11 @@ Quem alcança cada ambiente:
 
   • **Zelo TI** é o padrão de todo usuário interno — exatamente como era antes
     de existir o Agro. Não é uma permissão a conceder: um login criado amanhã no
-    Django Admin continua entrando no TI. A exceção é o grupo
-    `GRUPO_SOMENTE_AGRO` ("Zelo Agro — Exclusivo"), que prende a pessoa no Agro.
+    Django Admin continua entrando no TI. A exceção são os grupos de
+    `GRUPOS_SOMENTE_AGRO` ("Zelo Agro — Exclusivo" e "Zelo Agro — Colaborador", este
+    o do Portal do Colaborador), que prendem a pessoa no Agro.
+    **Revogar um desses grupos devolve o TI à pessoa** (o TI é o padrão): é por isso
+    que `colaborador_agro_service.revogar` desativa o login em vez de só tirar o grupo.
   • **Zelo Agro** exige `acessar_zelo_agro` OU qualquer permissão de módulo do
     Agro. Permissão de módulo sem o ambiente não teria onde ser usada, então ela
     já implica o ambiente; `acessar_zelo_agro` sozinha é o "só a visão geral".
@@ -36,6 +39,7 @@ from django.urls import NoReverseMatch, reverse
 
 from ProjetoEstoque.middleware import _grupos_do_usuario
 from ProjetoEstoque.models import (
+    GRUPO_COLABORADOR_AGRO,
     GRUPO_CONSULTA_QUIOSQUE,
     GRUPO_FORNECEDOR,
     GRUPO_PARCEIRO_LICENCA,
@@ -43,12 +47,28 @@ from ProjetoEstoque.models import (
     GRUPO_SOMENTE_AGRO,
     PERMISSOES_AGRO_AMBIENTE,
     PERMISSOES_FROTA_CHIP,
+    PERMISSOES_FROTA_INVENTARIO,
     PERMISSOES_FROTA_VEICULO,
     PERMISSOES_TEC,
 )
 
 TI = "ti"
 AGRO = "agro"
+
+# Os grupos que prendem o login no Agro: o "Exclusivo" (só as permissões que a pessoa recebe à parte) e o do Portal do
+# Colaborador (`colaborador_agro_service`, com as permissões de uso do módulo já dentro). Para o ambiente os dois são iguais.
+GRUPOS_SOMENTE_AGRO = frozenset({GRUPO_SOMENTE_AGRO, GRUPO_COLABORADOR_AGRO})
+
+# O que é "API" no Agro: tudo que vem da integração com a operadora (TIM/Saitro) — sessão, consumo, consultas, sincronização,
+# alertas de conectividade e a configuração da integração. É UMA régua para o módulo inteiro: a lista de chips, o detalhe, o
+# mapa, os painéis e o menu perguntam `pode_ver_api`, e quem não tem NENHUMA destas permissões não vê dado de API em tela
+# nenhuma (o Portal do Colaborador existe em cima disto). A permissão `ver_chips` mostra o chip como cadastro e vínculo;
+# o que a API disse sobre ele pede uma destas.
+PERMISSOES_API = (
+    "ProjetoEstoque.consultar_conectividade",
+    "ProjetoEstoque.administrar_frota_config",
+    "ProjetoEstoque.tratar_ocorrencias",
+)
 
 # Grupos cujo login vive numa área própria, com middleware próprio. Para eles o
 # ambiente não se aplica (ver o cabeçalho).
@@ -84,7 +104,8 @@ PREFIXOS_AGRO = ("/agro/", "/frotas/", "/m2m/")
 _PERMISSOES_AGRO = tuple(
     f"ProjetoEstoque.{codigo}"
     for codigo, _ in (
-        list(PERMISSOES_AGRO_AMBIENTE) + list(PERMISSOES_FROTA_VEICULO) + list(PERMISSOES_FROTA_CHIP) + list(PERMISSOES_TEC)
+        list(PERMISSOES_AGRO_AMBIENTE) + list(PERMISSOES_FROTA_VEICULO) + list(PERMISSOES_FROTA_CHIP)
+        + list(PERMISSOES_FROTA_INVENTARIO) + list(PERMISSOES_TEC)
     )
 )
 
@@ -124,9 +145,9 @@ NAV_AGRO = (
     },
     {
         "chave": "estoque",
-        "rotulo": "Estoque tecnológico",
+        "rotulo": "Estoque",
         "icone": "ic-box",
-        "titulo": "Estoque tecnológico — equipamentos, materiais, movimentações e catálogo",
+        "titulo": "Estoque — equipamentos tecnológicos, materiais, movimentações e catálogo",
         "itens": (
             {"rotulo": "Visão geral", "url": "tec_visao_geral",
              "perms": ("ProjetoEstoque.ver_tec_estoque",),
@@ -146,20 +167,43 @@ NAV_AGRO = (
         ),
     },
     {
+        # Reorganizado em 2026-11-13 (prompt de Frotas e Maquinários, Parte 2, autorização para este grupo). "Todos os
+        # equipamentos" NÃO é um item à parte: a Visão geral JÁ é a lista de todos, com Próprios e Terceiros como
+        # visões da mesma base (o prompt manda não criar página por classificação). O detalhe, o formulário e as ações
+        # sobre o equipamento acendem a Visão geral, de onde se chega a eles.
         "chave": "frotas",
-        "rotulo": "Frotas",
+        "rotulo": "Frotas e Maquinários",
         "icone": "ic-tractor",
-        "titulo": "Frotas — veículos e equipamentos agrícolas",
+        "titulo": "Frotas e Maquinários — inventário motorizado, composição tecnológica e movimentações",
         "itens": (
             {"rotulo": "Visão geral", "url": "frota_visao_geral",
              "perms": ("ProjetoEstoque.ver_frota",),
-             "ativo": ("frota_visao_geral",)},
-            {"rotulo": "Veículos e equipamentos", "url": "frota_veiculos",
+             "ativo": ("frota_visao_geral", "frota_veiculo*", "frota_equipamentos_validar_lote", "frota_opcoes",
+                       "frota_tipo_rapido")},
+            {"rotulo": "Próprios", "url": "frota_equipamentos_proprios",
              "perms": ("ProjetoEstoque.ver_frota",),
-             "ativo": ("frota_veiculo*",)},
-            {"rotulo": "Tipos de veículo", "url": "frota_config_tipos",
+             "ativo": ("frota_equipamentos_proprios",)},
+            {"rotulo": "Terceiros", "url": "frota_equipamentos_terceiros",
+             "perms": ("ProjetoEstoque.ver_frota",),
+             "ativo": ("frota_equipamentos_terceiros",)},
+            {"rotulo": "Categorias e classes", "url": "frota_categorias",
              "perms": ("ProjetoEstoque.administrar_frota_config",),
-             "ativo": ("frota_config_tipo*",)},
+             "ativo": ("frota_categorias", "frota_cadastro_salvar", "frota_config_tipo*")},
+            {"rotulo": "Importação de planilha", "url": "frota_equip_importar",
+             "perms": ("ProjetoEstoque.importar_equipamentos_frota",),
+             "ativo": ("frota_equip_importa*",)},
+            {"rotulo": "Composição tecnológica", "url": "frota_composicao",
+             "perms": ("ProjetoEstoque.ver_tec_estoque",),
+             "ativo": ("frota_composicao",)},
+            {"rotulo": "Movimentações", "url": "frota_equip_movimentacoes",
+             "perms": ("ProjetoEstoque.ver_historico_frota",),
+             "ativo": ("frota_equip_movimentacoes",)},
+            {"rotulo": "Histórico", "url": "frota_equip_historico",
+             "perms": ("ProjetoEstoque.ver_historico_frota",),
+             "ativo": ("frota_equip_historico",)},
+            {"rotulo": "Relatórios", "url": "frota_relatorios",
+             "perms": ("ProjetoEstoque.ver_frota",),
+             "ativo": ("frota_relatorios",)},
         ),
     },
     {
@@ -177,23 +221,52 @@ NAV_AGRO = (
             {"rotulo": "Importação de chips", "url": "frota_importar",
              "perms": ("ProjetoEstoque.importar_chips",),
              "ativo": ("frota_importa*", "frota_modelo_planilha")},
+            # `"api": True` — o item é da API (sessão, consumo, alertas de conectividade, integração): só aparece para quem
+            # tem permissão de API (`pode_ver_api`), qualquer que seja a permissão de ver o histórico. Portal do Colaborador.
             {"rotulo": "Sessões", "url": "m2m_sessoes",
-             "perms": ("ProjetoEstoque.consultar_conectividade",),
+             "perms": ("ProjetoEstoque.consultar_conectividade",), "api": True,
              "ativo": ("m2m_sessoes",)},
             {"rotulo": "Consumo", "url": "m2m_consumo",
-             "perms": ("ProjetoEstoque.consultar_conectividade",),
+             "perms": ("ProjetoEstoque.consultar_conectividade",), "api": True,
              "ativo": ("m2m_consumo",)},
             {"rotulo": "Movimentações", "url": "frota_movimentacoes",
              "perms": ("ProjetoEstoque.ver_historico_frota",),
              "ativo": ("frota_movimentacoes",)},
             {"rotulo": "Alertas", "url": "m2m_alertas",
-             "perms": ("ProjetoEstoque.ver_historico_frota",),
+             "perms": ("ProjetoEstoque.ver_historico_frota",), "api": True,
              "ativo": ("m2m_alerta*",)},
             {"rotulo": "Configuração", "url": "m2m_config",
-             "perms": ("ProjetoEstoque.administrar_frota_config",),
+             "perms": ("ProjetoEstoque.administrar_frota_config",), "api": True,
              "ativo": ("m2m_config*", "m2m_reinterpretar", "frota_config_operadora*",
                        "frota_config_regra*")},
         ),
+    },
+    {
+        # Autorizado pelo pedido de 2026-11-14 (evolução do Zelo Agro: mapa e dashboard de infraestrutura): o grupo da
+        # infraestrutura georreferenciada e o mapa. A permissão é a do estoque tecnológico (`ver_tec_estoque`); editar
+        # estrutura e enlace têm as suas (`gerenciar_tec_estrutura`, `administrar_tec_enlace`), conferidas na view.
+        "chave": "infraestrutura",
+        "rotulo": "Infraestrutura",
+        "icone": "ic-network",
+        "titulo": "Infraestrutura — torres, estações e enlaces ponto a ponto",
+        "itens": (
+            {"rotulo": "Visão geral", "url": "infra_visao_geral",
+             "perms": ("ProjetoEstoque.ver_tec_estoque",),
+             "ativo": ("infra_visao_geral",)},
+            {"rotulo": "Torres e estações", "url": "infra_estruturas",
+             "perms": ("ProjetoEstoque.ver_tec_estoque",),
+             "ativo": ("infra_estrutura*",)},
+            {"rotulo": "Enlaces PTP", "url": "infra_enlaces",
+             "perms": ("ProjetoEstoque.ver_tec_estoque",),
+             "ativo": ("infra_enlace*",)},
+        ),
+    },
+    {
+        "rotulo": "Mapa",
+        "url": "agro_mapa",
+        "icone": "ic-map",
+        "perms": ("ProjetoEstoque.ver_frota", "ProjetoEstoque.ver_tec_estoque"),
+        "ativo": ("agro_mapa*",),
     },
 )
 
@@ -212,10 +285,10 @@ def fora_dos_ambientes(user) -> bool:
 
 
 def somente_agro(user) -> bool:
-    """Está no grupo que prende a pessoa no Agro? (Superusuário nunca está preso.)"""
+    """Está num grupo que prende a pessoa no Agro? (Superusuário nunca está preso.)"""
     if _superusuario(user):
         return False
-    return GRUPO_SOMENTE_AGRO in _grupos_do_usuario(user)
+    return not GRUPOS_SOMENTE_AGRO.isdisjoint(_grupos_do_usuario(user))
 
 
 def _tem_alguma(user, perms) -> bool:
@@ -223,6 +296,13 @@ def _tem_alguma(user, perms) -> bool:
         return True
     todas = user.get_all_permissions()  # cacheado no objeto user pelo backend
     return any(p in todas for p in perms)
+
+
+def pode_ver_api(user) -> bool:
+    """A pessoa enxerga dado de API (sessão, consumo, consultas, alertas, integração)? Ver `PERMISSOES_API`."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    return _tem_alguma(user, PERMISSOES_API)
 
 
 def pode_acessar(user, chave: str) -> bool:
@@ -329,6 +409,7 @@ def nav_de(user, url_name: str = "") -> list:
     `{"chave","rotulo","icone","titulo","ativo","itens":[{rotulo,href,ativo}]}` (grupo).
     """
     menu = []
+    api = pode_ver_api(user)
     for entrada in NAV_AGRO:
         if "itens" not in entrada:
             href = _href(entrada["url"])
@@ -340,6 +421,8 @@ def nav_de(user, url_name: str = "") -> list:
             continue
         itens = []
         for item in entrada["itens"]:
+            if item.get("api") and not api:
+                continue
             href = _href(item["url"])
             if href and _tem_alguma(user, item["perms"]):
                 itens.append({

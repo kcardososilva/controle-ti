@@ -198,7 +198,8 @@ class ShellTests(AmbientesBase):
         c = self.cliente(self.os_dois())
         html = c.get(reverse("frota_veiculos")).content.decode()
         self.assertIn('data-ambiente="agro"', html)
-        self.assertIn('class="sub-link is-active" aria-current="page">Veículos e equipamentos', html)
+        # a lista antiga de veículos é a Visão geral do grupo "Frotas e Maquinários" (prompt de 2026-11-13, Parte 2)
+        self.assertIn('class="sub-link is-active" aria-current="page">Visão geral', html)
 
     def test_seletor_so_para_quem_tem_os_dois(self):
         dois = self.cliente(self.os_dois()).get(reverse("dashboard")).content.decode()
@@ -219,11 +220,16 @@ class ShellTests(AmbientesBase):
         c = self.cliente(self.os_dois())
         frota = c.get(reverse("frota_visao_geral")).content.decode()
         conect = c.get(reverse("m2m_visao_geral")).content.decode()
-        self.assertIn('id="m2m-b-frota"', frota)
+        # Frotas e Maquinários: a Visão geral é a lista de equipamentos (prompt de 2026-11-13); a régua de conectividade
+        # é só da Visão geral de Chips e Conectividade, e a da frota nunca mais divide cartão com ela.
+        self.assertIn('data-frota="equipamentos"', frota)
         self.assertNotIn('id="m2m-b-conect"', frota)
         self.assertIn('id="m2m-b-conect"', conect)
         self.assertNotIn('id="m2m-b-frota"', conect)
-        self.assertIn('aria-label="Seções de Frotas"', frota)
+        self.assertNotIn('data-frota="equipamentos"', conect)
+        # o topo de Frotas e Maquinários tem o caminho (migalhas), sem a barra de abas: a navegação é o menu lateral
+        self.assertIn('aria-label="Você está em"', frota)
+        self.assertNotIn('aria-label="Seções de Chips e Conectividade"', frota)
         self.assertIn('aria-label="Seções de Chips e Conectividade"', conect)
 
     def test_visao_geral_leva_quem_so_ve_um_lado_para_o_seu(self):
@@ -247,8 +253,10 @@ class CorDoMenuTests(TestCase):
         agro = re.search(r'body\[data-ambiente="agro"\] #sidebar \{(.*?)\}', css, re.S)
         self.assertIsNotNone(ti)
         self.assertIsNotNone(agro)
-        self.assertIn("background: #1e40af", ti.group(1))
-        self.assertIn("background: #123a28", agro.group(1))
+        self.assertIn("background: #1f4a85", ti.group(1))
+        # o verde que ele mandou (2026-11-14): degradê do #1f836a (alto) ao #3cab88 (fim); a cor lisa fica de reserva
+        self.assertIn("background: #1f836a", agro.group(1))
+        self.assertIn("linear-gradient(180deg, #1f836a 0%, #3cab88 100%)", agro.group(1))
 
 
 class SinoTests(AmbientesBase):

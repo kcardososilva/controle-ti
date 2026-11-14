@@ -83,6 +83,31 @@ def m2m_bytes(valor, base=1000):
 
 
 @register.filter
+def m2m_bytes_fixo(valor, base=1000):
+    """Como `m2m_bytes`, mas com os dois decimais sempre ("14,50 MB"): é como o portal da Saitro mostra."""
+    try:
+        base = int(base)
+    except (TypeError, ValueError):
+        base = 1000
+    return interp.formatar_bytes(valor, base, casas_fixas=True)
+
+
+@register.filter
+def m2m_duracao(segundos):
+    """`929` -> "15m, 29s"; `3725` -> "1h, 2m, 5s"; `0` -> "0s" (a forma do portal); "—" sem valor."""
+    try:
+        total = int(segundos)
+    except (TypeError, ValueError):
+        return "—"
+    if total < 0:
+        return "—"
+    horas, resto = divmod(total, 3600)
+    minutos, segs = divmod(resto, 60)
+    partes = [f"{horas}h" if horas else "", f"{minutos}m" if minutos else "", f"{segs}s" if segs or not total else ""]
+    return ", ".join(p for p in partes if p)
+
+
+@register.filter
 def m2m_faltam(lista, total=24):
     """`range` das posições que faltam para completar `total` (a fita sempre tem 24 casas)."""
     try:
@@ -137,7 +162,7 @@ def m2m_frescor(f):
 # Status OPERACIONAL — do veículo (`FrotaVeiculo.Status`) e do chip em uso (`M2MChip.SituacaoUso`).
 # As chaves são as do CSS (`.m2m-status[data-status="..."]`): acrescentar uma aqui exige a regra lá.
 ROTULOS_DE_STATUS = {
-    "ativo": "Ativo",
+    "ativo": "Em uso",                       # o valor gravado continua `ativo`; o ERP chama de "Em Uso"
     "manutencao": "Em manutenção",
     "inativo": "Inativo",
     "desativado": "Desativado",

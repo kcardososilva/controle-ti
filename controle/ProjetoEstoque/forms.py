@@ -39,7 +39,7 @@ class CategoriaForm(forms.ModelForm):
 class SubtipoForm(forms.ModelForm):
     class Meta:
         model = Subtipo
-        fields = ["nome", "alocado", "categoria"]
+        fields = ["nome", "alocado", "categoria", "aceita_chip", "e_chip"]
         widgets = {
             "nome": forms.TextInput(attrs={"class": "ctrl", "placeholder": "Ex.: Notebook, Monitor, Headset…"}),
             "alocado": forms.Select(attrs={"class": "ctrl"}),

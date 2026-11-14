@@ -7,13 +7,16 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro-dash.css' %}?v={{ assets_version }}">
 {% endblock %}
 
 {% comment %}
-A porta do Zelo Agro. Um grupo por módulo, cada um com a régua dele e o link para a tela do
-módulo — nunca todos os números numa área só. Um grupo só aparece para quem tem a permissão
-do módulo. Estoque, Transferências, Fornecedores e o bloco de Gestão entram aqui quando cada
-módulo existir (fases seguintes): não há cartão "em breve" com número inventado.
+A porta do Zelo Agro (`views/ambiente.py::agro_visao_geral`), agora um dashboard. Ordem: o que pede ação, o resumo de
+cada módulo, os gráficos e a atividade recente. Cada bloco só existe para quem tem a permissão do módulo dele (a
+chave do painel volta vazia e o bloco nem é calculado), cada gráfico diz unidade, período e fonte, e nenhum número é
+estimado: sem registro, estado vazio. Estoque, Transferências, Fornecedores e Gestão entram quando cada módulo existir —
+não há cartão "em breve" com número inventado.
 {% endcomment %}
 {% block content %}
 <div class="m2m-page agro-page">
@@ -21,13 +24,39 @@ módulo existir (fases seguintes): não há cartão "em breve" com número inven
     <div class="page-header-main">
       <span class="page-kicker">Zelo Agro</span>
       <h2 class="page-heading">Visão geral</h2>
-      <p class="page-description">A situação da frota e da conectividade dos chips.</p>
+      <p class="page-description">A situação da frota, da conectividade dos chips e da infraestrutura.</p>
     </div>
   </header>
 
-  {% if kpis_frota or kpis_conectividade %}
-  <div class="m2m-grade{% if kpis_frota and kpis_conectividade %} m2m-grade--2{% endif %}">
-    {% if kpis_frota %}
+  {% if painel.vazio %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-seedling" titulo="Nenhum módulo do Agro liberado" texto="Seu acesso ao Zelo Agro ainda não inclui nenhum módulo. Peça ao administrador as permissões do que você usa." only %}
+  {% else %}
+
+  {% comment %}1. O que pede ação: só o que tem ocorrência, cada linha abre a lista já filtrada.{% endcomment %}
+  <section class="m2m-painel" aria-labelledby="agro-atencao">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-atencao">Requer atenção</h3><span class="m2m-sub">o que está quebrado antes do que está por cuidar</span></header>
+    {% if painel.atencao %}
+    <div class="m2m-regua">
+      {% for a in painel.atencao %}
+      <a class="m2m-kpi" href="{{ a.url }}" data-tom="{{ a.tom }}" title="{{ a.nota }}">
+        <span class="m2m-micro">{{ a.rotulo }}</span>
+        <span class="m2m-kpi-n m2m-num">{{ a.n|unlocalize }}</span>
+        <span class="m2m-kpi-nota">{{ a.modulo }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if painel.sincronizacao_pede_atencao %}
+    <p class="m2m-nota m2m-nota--pad"><a href="{% url 'm2m_visao_geral' %}">Sincronização: <b>{{ painel.sincronizacao.rotulo }}</b></a>{% if painel.sincronizacao.motivo %} — {{ painel.sincronizacao.motivo }}{% endif %}</p>
+    {% endif %}
+    {% if not painel.atencao and not painel.sincronizacao_pede_atencao %}
+    <p class="m2m-tudo-certo"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Nenhuma pendência nos módulos que você acompanha.</p>
+    {% endif %}
+  </section>
+
+  {% comment %}2. O resumo de cada módulo: um grupo por módulo, nunca todos os números numa área só.{% endcomment %}
+  <div class="dash-resumos dash-resumos--{{ painel.n_resumos }}">
+    {% if painel.kpis_frota %}
     <section class="m2m-painel" aria-labelledby="agro-g-frota">
       <header class="m2m-painel-cab">
         <h3 class="m2m-painel-t" id="agro-g-frota">Frotas</h3>
@@ -35,30 +64,30 @@ módulo existir (fases seguintes): não há cartão "em breve" com número inven
       </header>
       <div class="m2m-regua">
         <a class="m2m-kpi" href="{% url 'frota_veiculos' %}">
-          <span class="m2m-micro">Veículos</span>
-          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.total|unlocalize }}</span>
+          <span class="m2m-micro">Equipamentos</span>
+          <span class="m2m-kpi-n m2m-num">{{ painel.kpis_frota.total|unlocalize }}</span>
           <span class="m2m-kpi-nota">cadastrados</span>
         </a>
         <a class="m2m-kpi" href="{% url 'frota_veiculos' %}?status=ativo">
           <span class="m2m-micro">Ativos</span>
-          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.ativos|unlocalize }}</span>
+          <span class="m2m-kpi-n m2m-num">{{ painel.kpis_frota.ativos|unlocalize }}</span>
           <span class="m2m-kpi-nota">disponíveis para operar</span>
         </a>
         <a class="m2m-kpi" href="{% url 'frota_veiculos' %}?status=manutencao">
           <span class="m2m-micro">Em manutenção</span>
-          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.em_manutencao|unlocalize }}</span>
+          <span class="m2m-kpi-n m2m-num">{{ painel.kpis_frota.em_manutencao|unlocalize }}</span>
           <span class="m2m-kpi-nota">parados</span>
         </a>
         <a class="m2m-kpi" href="{% url 'frota_veiculos' %}?status=inativo">
           <span class="m2m-micro">Inativos</span>
-          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.inativos|unlocalize }}</span>
+          <span class="m2m-kpi-n m2m-num">{{ painel.kpis_frota.inativos|unlocalize }}</span>
           <span class="m2m-kpi-nota">fora de uso</span>
         </a>
       </div>
     </section>
     {% endif %}
 
-    {% if kpis_conectividade %}
+    {% if painel.kpis_conectividade %}
     <section class="m2m-painel" aria-labelledby="agro-g-conect">
       <header class="m2m-painel-cab">
         <h3 class="m2m-painel-t" id="agro-g-conect">Conectividade</h3>
@@ -67,33 +96,128 @@ módulo existir (fases seguintes): não há cartão "em breve" com número inven
       <div class="m2m-regua">
         <a class="m2m-kpi" {% if pode_ver_chips %}href="{% url 'm2m_chips' %}"{% endif %}>
           <span class="m2m-micro">Chips</span>
-          <span class="m2m-kpi-n m2m-num">{{ kpis_conectividade.chips_total|unlocalize }}</span>
+          <span class="m2m-kpi-n m2m-num">{{ painel.kpis_conectividade.chips_total|unlocalize }}</span>
           <span class="m2m-kpi-nota">cadastrados</span>
         </a>
         <a class="m2m-kpi" {% if pode_ver_chips %}href="{% url 'm2m_chips' %}?situacao_uso=vinculado"{% endif %}>
           <span class="m2m-micro">Vinculados</span>
-          <span class="m2m-kpi-n m2m-num">{{ kpis_conectividade.chips_vinculados|unlocalize }}</span>
-          <span class="m2m-kpi-nota">em veículos</span>
+          <span class="m2m-kpi-n m2m-num">{{ painel.kpis_conectividade.chips_vinculados|unlocalize }}</span>
+          <span class="m2m-kpi-nota">em equipamentos</span>
         </a>
+        {% if pode_ver_api %}
         <a class="m2m-kpi" {% if pode_ver_chips %}href="{% url 'm2m_chips' %}?situacao_uso=vinculado&amp;conectividade=ativa"{% endif %} title="Só chips vinculados e consultados pela API, com dado recente e confirmado pelo mapeamento.">
           <span class="m2m-micro">Sessões ativas</span>
-          <span class="m2m-kpi-n m2m-num">{{ kpis_conectividade.com_sessao_ativa|unlocalize }}</span>
+          <span class="m2m-kpi-n m2m-num">{{ painel.kpis_conectividade.com_sessao_ativa|unlocalize }}</span>
           <span class="m2m-kpi-nota">confirmadas</span>
         </a>
-        <a class="m2m-kpi" {% if pode_ver_chips %}href="{% url 'm2m_chips' %}?situacao_uso=vinculado&amp;situacao=erro_consulta"{% endif %} title="A falha é da consulta (rede, credencial, API ou identificador): ela não diz que o chip está fora do ar." {% if kpis_conectividade.com_falha %}data-tom="erro"{% endif %}>
+        <a class="m2m-kpi" {% if pode_ver_chips %}href="{% url 'm2m_chips' %}?situacao_uso=vinculado&amp;situacao=erro_consulta"{% endif %} title="A falha é da consulta (rede, credencial, API ou identificador): ela não diz que o chip está fora do ar." {% if painel.kpis_conectividade.com_falha %}data-tom="erro"{% endif %}>
           <span class="m2m-micro">Falhas de consulta</span>
-          <span class="m2m-kpi-n m2m-num">{{ kpis_conectividade.com_falha|unlocalize }}</span>
+          <span class="m2m-kpi-n m2m-num">{{ painel.kpis_conectividade.com_falha|unlocalize }}</span>
           <span class="m2m-kpi-nota">últimas consultas</span>
         </a>
+        {% endif %}
       </div>
-      {% if alertas_abertos %}
-      <p class="m2m-nota m2m-nota--pad"><a href="{% url 'm2m_alertas' %}">{{ alertas_abertos|unlocalize }} alerta{{ alertas_abertos|pluralize }} em aberto</a></p>
-      {% endif %}
+    </section>
+    {% endif %}
+
+    {% if painel.infra %}
+    <section class="m2m-painel" aria-labelledby="agro-g-infra">
+      <header class="m2m-painel-cab">
+        <h3 class="m2m-painel-t" id="agro-g-infra">Infraestrutura</h3>
+        <a class="m2m-painel-link" href="{% url 'infra_visao_geral' %}">Abrir Infraestrutura</a>
+      </header>
+      <div class="m2m-regua">
+        <a class="m2m-kpi" href="{% url 'infra_estruturas' %}"><span class="m2m-micro">Torres e estações</span><span class="m2m-kpi-n m2m-num">{{ painel.infra.torres|add:painel.infra.estacoes|unlocalize }}</span><span class="m2m-kpi-nota">cadastradas</span></a>
+        <a class="m2m-kpi" href="{% url 'infra_enlaces' %}"><span class="m2m-micro">Enlaces PTP</span><span class="m2m-kpi-n m2m-num">{{ painel.infra.enlaces|unlocalize }}</span><span class="m2m-kpi-nota">cadastrados</span></a>
+        <a class="m2m-kpi" href="{% url 'infra_enlaces' %}?estado=operacional" title="Só o que alguém registrou como operacional."><span class="m2m-micro">Operacionais</span><span class="m2m-kpi-n m2m-num">{{ painel.infra.operacionais|unlocalize }}</span><span class="m2m-kpi-nota">estado registrado</span></a>
+        <a class="m2m-kpi" href="{% url 'infra_enlaces' %}?estado=indisponivel" {% if painel.infra.indisponiveis %}data-tom="erro"{% endif %}><span class="m2m-micro">Indisponíveis</span><span class="m2m-kpi-n m2m-num">{{ painel.infra.indisponiveis|unlocalize }}</span><span class="m2m-kpi-nota">enlaces</span></a>
+      </div>
     </section>
     {% endif %}
   </div>
-  {% else %}
-    {% include 'front/m2m/_vazio.html' with icone="fa-seedling" titulo="Nenhum módulo do Agro liberado" texto="Seu acesso ao Zelo Agro ainda não inclui nenhum módulo. Peça ao administrador as permissões do que você usa." only %}
+
+  {% comment %}3. A frota: de que é feita e onde está. Cada barra abre a lista já filtrada.{% endcomment %}
+  {% if painel.frota %}
+  <div class="dash-grade">
+    {% include 'front/agro/_dash_barras.html' with id="agro-tipo" titulo="Equipamentos por categoria" itens=painel.frota.por_tipo unidade="equipamentos" origem="cadastro de equipamentos (sem os desativados)" vazio_texto="Nenhum equipamento cadastrado." %}
+    {% include 'front/agro/_dash_barras.html' with id="agro-faz" titulo="Equipamentos por fazenda" itens=painel.frota.por_fazenda unidade="equipamentos" origem="campo Fazenda do cadastro" vazio_texto="Nenhum equipamento cadastrado." %}
+  </div>
+  {% endif %}
+
+  {% comment %}4. A conectividade: o consumo vem do que a plataforma da TIM respondeu (sem franquia nem percentual de uso).{% endcomment %}
+  {% if painel.consumo %}
+  <div class="dash-filtros">
+    <nav class="dash-periodos" aria-label="Período do consumo de dados">
+      {% for d in periodos %}<a href="?periodo={{ d }}" {% if d == periodo %}class="is-ativa" aria-current="true"{% endif %}>{{ d }} dias</a>{% endfor %}
+    </nav>
+    <span class="m2m-sub">período do consumo de dados</span>
+  </div>
+  <div class="dash-grade">
+    {% include 'front/agro/_dash_serie.html' with id="agro-serie" titulo="Consumo de dados por dia" serie=painel.consumo %}
+    <section class="m2m-painel dash-bloco" aria-labelledby="agro-top">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-top">Chips com maior consumo</h3><span class="m2m-sub">{{ painel.consumo.periodo_texto }}</span></header>
+      {% if painel.maiores %}
+      <ul class="dash-barras">
+        {% for m in painel.maiores %}
+        <li><a class="dash-barras-linha" href="{% url 'm2m_chip_detalhe' m.chip.pk %}"><span class="dash-barras-rot">{{ m.chip.nome }}</span><span class="dash-barras-trilho" aria-hidden="true"><span class="dash-barras-valor" style="width: {{ m.pct|unlocalize }}%"></span></span><b class="dash-barras-n m2m-num">{{ m.texto }}</b></a></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="dash-vazio">Nenhuma sessão de dados registrada no período.</p>
+      {% endif %}
+      <footer class="dash-origem">Fonte: sessões de dados da plataforma da TIM. Sem franquia ou percentual: o limite contratado de cada chip não é conhecido pelo sistema.</footer>
+    </section>
+  </div>
+  {% endif %}
+
+  {% comment %}5. Cadastro, mapa e enlaces: o que falta cadastrar para o mapa mostrar tudo, e o estado que alguém registrou em cada enlace.{% endcomment %}
+  {% if painel.frota or painel.infra_estados is not None %}
+  <div class="dash-grade">
+    {% if painel.frota %}
+    {% include 'front/agro/_dash_barras.html' with id="agro-cadastro" titulo="Cadastro e mapa" itens=painel.frota.cadastro resumo=painel.frota.resumo_mapa unidade="equipamentos" origem="campos do cadastro de equipamentos; a coordenada é a que alguém cadastrou" vazio_texto="O cadastro dos equipamentos está completo." %}
+    {% endif %}
+    {% if painel.infra_estados is not None %}
+    {% include 'front/agro/_dash_barras.html' with id="agro-enlaces" titulo="Enlaces por estado registrado" itens=painel.infra_estados unidade="enlaces ativos" origem="estado registrado em cada enlace (nada é medido ou deduzido)" vazio_texto="Nenhum enlace cadastrado." %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% comment %}6. Atividade recente.{% endcomment %}
+  {% if painel.movimentacoes is not None or painel.sincronizacao %}
+  <div class="dash-grade">
+    {% if painel.movimentacoes is not None %}
+    <section class="m2m-painel dash-bloco" aria-labelledby="agro-movs">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-movs">Últimas movimentações de equipamentos</h3><span class="m2m-sub">mudança de fazenda, responsável ou setor</span></header>
+      {% if painel.movimentacoes %}
+      <ul class="dash-lista">
+        {% for e in painel.movimentacoes %}
+        <li><a href="{% url 'frota_veiculo_detalhe' e.veiculo_id %}">{{ e.veiculo.codigo_legado|default:e.veiculo.codigo }}</a> <span class="m2m-sub">{{ e.veiculo.nome }}</span><span class="dash-lista-fim">{{ e.em|date:"d/m/Y H:i" }}{% if e.usuario %} · {{ e.usuario.get_username }}{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="dash-vazio">Nenhuma movimentação registrada.</p>
+      {% endif %}
+      <footer class="dash-origem">Fonte: movimentações registradas em cada equipamento, com quem registrou e quando.</footer>
+    </section>
+    {% endif %}
+    {% if painel.sincronizacao %}
+    <section class="m2m-painel dash-bloco" aria-labelledby="agro-sync">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-sync">Sincronização com a TIM</h3><a class="m2m-painel-link" href="{% url 'm2m_visao_geral' %}">Detalhes</a></header>
+      <ul class="dash-lista">
+        <li><span>Situação</span><span class="dash-lista-fim"><b>{{ painel.sincronizacao.rotulo }}</b></span></li>
+        <li><span>Última sincronização</span><span class="dash-lista-fim">{% if painel.sincronizacao.ultima_sincronizacao %}{{ painel.sincronizacao.ultima_sincronizacao|date:"d/m/Y H:i" }}{% else %}nenhuma ainda{% endif %}</span></li>
+        <li><span>Última resposta válida da API</span><span class="dash-lista-fim">{% if painel.sincronizacao.ultima_resposta_valida %}{{ painel.sincronizacao.ultima_resposta_valida|date:"d/m/Y H:i" }}{% else %}nenhuma ainda{% endif %}</span></li>
+        <li><span>Próxima prevista</span><span class="dash-lista-fim">{% if painel.sincronizacao.proxima %}{{ painel.sincronizacao.proxima|date:"d/m/Y H:i" }}{% else %}—{% endif %}</span></li>
+      </ul>
+      <footer class="dash-origem">Fonte: registro de execuções do monitoramento. Esta tela só lê o que a tarefa agendada gravou: abri-la não dispara consulta nenhuma.</footer>
+    </section>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if pode_ver_mapa %}
+  <p class="m2m-nota"><a href="{% url 'agro_mapa' %}"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i> Abrir o mapa</a> — veículos, torres, estações e enlaces nas coordenadas cadastradas.</p>
+  {% endif %}
   {% endif %}
 </div>
 {% endblock %}

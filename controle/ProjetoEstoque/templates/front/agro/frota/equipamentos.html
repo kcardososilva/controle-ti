@@ -1,0 +1,349 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags zelo_icones %}
+
+{% block title %}{% if escopo.migalha %}{{ escopo.migalha }}{% else %}Visão geral{% endif %} — Frotas e Maquinários — Zelo Agro{% endblock %}
+{% block page_title %}Frotas e Maquinários{% endblock %}
+{% block page_subtitle %}{% if escopo.migalha %}{{ escopo.migalha }}{% else %}Visão geral{% endif %}{% endblock %}
+
+{% block extra_css %}
+{% comment %}A folha do módulo vem DEPOIS da do Select2: ela reveste o componente. Invertida, o CDN vence e nada tem efeito (regra 26).{% endcomment %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro-dash.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page" data-frota="equipamentos">
+  {% if pode_editar_frota %}{% url 'frota_veiculo_novo' as u_novo %}{% endif %}
+  {% if pode_importar_equip %}{% url 'frota_equip_importar' as u_importar %}{% endif %}
+  {% include 'front/agro/frota/_topo.html' with titulo="Frotas e Maquinários" descricao=escopo.descricao acao_url=u_novo acao_rotulo="Novo equipamento" acao_icone="fa-plus" acao2_url=u_importar acao2_rotulo="Importar planilha" acao2_icone="fa-file-import" %}
+
+  <nav class="m2m-segmentos m2m-segmentos--grande agro-visao-toggle" aria-label="Forma de visualização">
+    <a class="is-ativa" href="{% url rota_atual %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" aria-current="page">Lista</a>
+    <a href="{{ url_mapa }}">Mapa</a>
+  </nav>
+
+  {% comment %}Indicadores: uma faixa só, números em destaque. Tudo calculado do que está cadastrado; o que veio de importação e ainda não foi confirmado aparece como "a validar", nunca como número inventado.{% endcomment %}
+  <section class="m2m-painel agro-indicadores" aria-label="Indicadores da frota">
+    <div class="m2m-regua m2m-regua--seis">
+      <a class="m2m-kpi" href="{% url 'frota_visao_geral' %}">
+        <span class="m2m-micro">Total de equipamentos</span>
+        <span class="m2m-kpi-n m2m-num">{{ kpis.total|unlocalize }}</span>
+        <span class="m2m-kpi-nota">{% if kpis.desativados %}{{ kpis.desativados|unlocalize }} desativado{{ kpis.desativados|pluralize }}{% else %}cadastrados{% endif %}</span>
+      </a>
+      <a class="m2m-kpi" href="{% url 'frota_equipamentos_proprios' %}">
+        <span class="m2m-micro">Próprios</span>
+        <span class="m2m-kpi-n m2m-num">{{ kpis.proprios|unlocalize }}</span>
+        <span class="m2m-kpi-nota">da empresa</span>
+      </a>
+      <a class="m2m-kpi" href="{% url 'frota_equipamentos_terceiros' %}">
+        <span class="m2m-micro">Terceiros</span>
+        <span class="m2m-kpi-n m2m-num">{{ kpis.terceiros|unlocalize }}</span>
+        <span class="m2m-kpi-nota">de terceiros</span>
+      </a>
+      <a class="m2m-kpi" href="{% url 'frota_visao_geral' %}?status=ativo">
+        <span class="m2m-micro">Em uso</span>
+        <span class="m2m-kpi-n m2m-num">{{ kpis.em_uso|unlocalize }}</span>
+        <span class="m2m-kpi-nota">{% if kpis.em_uso_a_validar %}{{ kpis.em_uso_a_validar|unlocalize }} a validar{% else %}em utilização{% endif %}</span>
+      </a>
+      <a class="m2m-kpi" href="{% url 'frota_visao_geral' %}?status=manutencao">
+        <span class="m2m-micro">Em manutenção</span>
+        <span class="m2m-kpi-n m2m-num">{{ kpis.em_manutencao|unlocalize }}</span>
+        <span class="m2m-kpi-nota">parados</span>
+      </a>
+      <a class="m2m-kpi" href="{% url 'frota_visao_geral' %}?pendencia=identificacao" {% if kpis.sem_identificacao %}data-tom="atencao"{% endif %}>
+        <span class="m2m-micro">Sem identificação completa</span>
+        <span class="m2m-kpi-n m2m-num">{{ kpis.sem_identificacao|unlocalize }}</span>
+        <span class="m2m-kpi-nota">pendências cadastrais</span>
+      </a>
+    </div>
+  </section>
+
+  {% comment %}Resumo analítico da frota: distribuição por categoria, fabricante e fazenda (o número é a contagem de equipamentos NÃO desativados; cada barra leva para a lista já filtrada), o que falta no cadastro e as últimas movimentações. Tudo do cadastro, nada estimado. Recolhível: quem só quer a lista não precisa passar por ele.{% endcomment %}
+  {% if not escopo.natureza %}
+  <details class="agro-resumo" open>
+    <summary class="m2m-micro">Resumo da frota</summary>
+    <div class="dash-grade dash-grade--3">
+      {% include 'front/agro/_dash_barras.html' with id="fro-tipo" titulo="Por categoria" itens=painel.por_tipo unidade="equipamentos" origem="cadastro de equipamentos (sem os desativados)" vazio_texto="Nenhum equipamento cadastrado." %}
+      {% include 'front/agro/_dash_barras.html' with id="fro-fab" titulo="Por fabricante" itens=painel.por_fabricante unidade="equipamentos" origem="campo Fabricante do cadastro" vazio_texto="Nenhum equipamento cadastrado." %}
+      {% include 'front/agro/_dash_barras.html' with id="fro-faz" titulo="Por fazenda" itens=painel.por_fazenda unidade="equipamentos" origem="campo Fazenda do cadastro" vazio_texto="Nenhum equipamento cadastrado." %}
+    </div>
+    <div class="dash-grade">
+      <section class="m2m-painel dash-bloco" aria-labelledby="fro-incompleto">
+        <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="fro-incompleto">Cadastro incompleto</h3><span class="m2m-sub">{{ painel.incompletos.total|unlocalize }} equipamento{{ painel.incompletos.total|pluralize }}</span></header>
+        <ul class="dash-lista">
+          <li><a href="{% url 'frota_visao_geral' %}?pendencia=identificacao">Sem identificação completa</a><span class="dash-lista-fim m2m-num">{{ kpis.sem_identificacao|unlocalize }}</span></li>
+          <li><span>Sem fabricante</span><span class="dash-lista-fim m2m-num">{{ painel.incompletos.sem_fabricante|unlocalize }}</span></li>
+          <li><span>Sem modelo</span><span class="dash-lista-fim m2m-num">{{ painel.incompletos.sem_modelo|unlocalize }}</span></li>
+          <li><span>Sem fazenda</span><span class="dash-lista-fim m2m-num">{{ painel.incompletos.sem_fazenda|unlocalize }}</span></li>
+          <li><a href="{% url 'frota_visao_geral' %}?localizacao=sem">Sem coordenada no mapa</a><span class="dash-lista-fim m2m-num">{{ painel.incompletos.sem_localizacao|unlocalize }} de {{ painel.total|unlocalize }}</span></li>
+        </ul>
+      </section>
+      <section class="m2m-painel dash-bloco" aria-labelledby="fro-movs">
+        <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="fro-movs">Últimas movimentações</h3>{% if pode_historico %}<a class="m2m-painel-link" href="{% url 'frota_equip_movimentacoes' %}">Ver todas</a>{% endif %}</header>
+        {% if movimentacoes_recentes %}
+        <ul class="dash-lista">
+          {% for e in movimentacoes_recentes %}
+          <li><a href="{% url 'frota_veiculo_detalhe' e.veiculo_id %}">{{ e.veiculo.codigo_legado|default:e.veiculo.codigo }}</a> <span class="m2m-sub">{{ e.veiculo.nome }}</span><span class="dash-lista-fim">{{ e.em|date:"d/m/Y H:i" }}</span></li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="dash-vazio">Nenhuma movimentação registrada.</p>
+        {% endif %}
+      </section>
+    </div>
+  </details>
+  {% endif %}
+
+  <form class="m2m-filtros" method="get" id="m2m-form-filtros" role="search" action="{{ url_limpar }}">
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="f-q">Buscar equipamento</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="f-q" name="q" value="{{ filtros.q }}" class="m2m-campo" data-m2m-busca placeholder="Buscar por código, nome, modelo, placa, chassi ou centro de custo" autocomplete="off">
+      </div>
+      <button type="button" class="m2m-btn m2m-filtros-botao" data-m2m-filtros="m2m-filtros-painel" aria-expanded="{% if filtros_avancados_abertos %}true{% else %}false{% endif %}" aria-controls="m2m-filtros-painel"><i class="fa-solid fa-sliders" aria-hidden="true"></i>Filtros avançados</button>
+    </div>
+
+    <nav class="m2m-segmentos agro-rapidos" aria-label="Filtros principais">
+      {% for s in segmentos %}<a href="{{ s.url }}" {% if s.ativo %}class="is-ativa" aria-current="true"{% endif %}{% if s.grupo %} data-grupo="{{ s.grupo }}"{% endif %}><span>{{ s.rotulo }}</span> <b class="m2m-num">{{ s.n|unlocalize }}</b></a>{% endfor %}
+    </nav>
+
+    <div class="m2m-filtros-mais" id="m2m-filtros-painel" {% if not filtros_avancados_abertos %}hidden{% endif %}>
+      <div class="m2m-filtros-grade">
+        <label class="m2m-rotulo"><span>Classe operacional</span>
+          <select name="classe_operacional" class="m2m-campo" data-m2m-s2="local" data-placeholder="Todas">
+            <option value=""></option>
+            {% for pk, nome in opcoes.classes_operacionais %}<option value="{{ pk }}" {% if filtros.classe_operacional == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Classe mecânica</span>
+          <select name="classe_mecanica" class="m2m-campo" data-m2m-s2="local" data-placeholder="Todas">
+            <option value=""></option>
+            {% for pk, nome in opcoes.classes_mecanicas %}<option value="{{ pk }}" {% if filtros.classe_mecanica == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Categoria</span>
+          <select name="tipo" class="m2m-campo" data-m2m-s2="local" data-placeholder="Todas">
+            <option value=""></option>
+            {% for pk, nome in opcoes.tipos %}<option value="{{ pk }}" data-icone="{{ nome|zelo_icone_id:'agro' }}" {% if filtros.tipo == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Setor</span>
+          <select name="setor" class="m2m-campo" data-m2m-s2="local" data-placeholder="Todos">
+            <option value=""></option>
+            {% for valor, rotulo in opcoes.setores %}<option value="{{ valor }}" {% if filtros.setor == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Centro de custo</span>
+          <select name="centro_custo" class="m2m-campo" data-m2m-s2="local" data-placeholder="Todos">
+            <option value=""></option>
+            {% for pk, nome in opcoes.centros_de_custo %}<option value="{{ pk }}" {% if filtros.centro_custo == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Fabricante</span>
+          <select name="fabricante" class="m2m-campo" data-placeholder="Todos">
+            <option value="">Todos</option>
+            {% for nome in opcoes.fabricantes %}<option value="{{ nome }}" {% if filtros.fabricante == nome %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Localização no mapa</span>
+          <select name="localizacao" class="m2m-campo">
+            <option value="">Todas</option>
+            <option value="com" {% if filtros.localizacao == "com" %}selected{% endif %}>Com coordenada</option>
+            <option value="sem" {% if filtros.localizacao == "sem" %}selected{% endif %}>Sem coordenada</option>
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Empresa</span>
+          <select name="empresa" class="m2m-campo" data-m2m-s2="local" data-placeholder="Todas">
+            <option value=""></option>
+            {% for pk, nome in opcoes.empresas %}<option value="{{ pk }}" {% if filtros.empresa == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Ano de fabricação</span>
+          <select name="ano_fabricacao" class="m2m-campo" data-m2m-s2="local" data-placeholder="Todos">
+            <option value=""></option>
+            {% for valor, rotulo in opcoes.anos_fabricacao %}<option value="{{ valor|unlocalize }}" {% if filtros.ano_fabricacao == valor|stringformat:"s" %}selected{% endif %}>{{ rotulo|unlocalize }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Ano-modelo</span>
+          <select name="ano_modelo" class="m2m-campo" data-m2m-s2="local" data-placeholder="Todos">
+            <option value=""></option>
+            {% for valor, rotulo in opcoes.anos_modelo %}<option value="{{ valor|unlocalize }}" {% if filtros.ano_modelo == valor|stringformat:"s" %}selected{% endif %}>{{ rotulo|unlocalize }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Unidade / fazenda</span>
+          <select name="localidade" class="m2m-campo">
+            <option value="">Todas</option>
+            {% for pk, nome in opcoes.localidades %}<option value="{{ pk }}" {% if filtros.localidade == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Situação</span>
+          <select name="status" class="m2m-campo">
+            <option value="">Todas</option>
+            {% for valor, rotulo in opcoes.status %}<option value="{{ valor }}" {% if filtros.status == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Situação cadastral</span>
+          <select name="validacao" class="m2m-campo">
+            <option value="">Todas</option>
+            {% for valor, rotulo in opcoes.validacao %}<option value="{{ valor }}" {% if filtros.validacao == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="m2m-rotulo"><span>Pendência cadastral</span>
+          <select name="pendencia" class="m2m-campo">
+            <option value="">Todas</option>
+            {% for valor, rotulo in opcoes.pendencias %}<option value="{{ valor }}" {% if filtros.pendencia == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        {% if not escopo.natureza %}
+        <label class="m2m-rotulo"><span>Natureza</span>
+          <select name="natureza" class="m2m-campo">
+            <option value="">Todas</option>
+            {% for valor, rotulo in opcoes.natureza %}<option value="{{ valor }}" {% if filtros.natureza == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </label>
+        {% endif %}
+      </div>
+      <fieldset class="m2m-comparar agro-filtros-conectividade">
+        <legend>Conectividade</legend>
+        <div class="m2m-filtros-grade">
+          <label class="m2m-rotulo"><span>Chip</span>
+            <select name="chip" class="m2m-campo">
+              <option value="">Todos</option>
+              {% for valor, rotulo in opcoes.chip %}<option value="{{ valor }}" {% if filtros.chip == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+            </select>
+          </label>
+          {% if pode_ver_api %}
+          <label class="m2m-rotulo"><span>Situação da conectividade</span>
+            <select name="conectividade" class="m2m-campo">
+              <option value="">Todas</option>
+              {% for valor, rotulo in opcoes.conectividade %}<option value="{{ valor }}" {% if filtros.conectividade == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+            </select>
+          </label>
+          {% endif %}
+          <label class="m2m-rotulo"><span>Operadora do chip</span>
+            <select name="operadora" class="m2m-campo">
+              <option value="">Todas</option>
+              {% for pk, nome in opcoes.operadoras %}<option value="{{ pk }}" {% if filtros.operadora == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+            </select>
+          </label>
+        </div>
+      </fieldset>
+      <div class="m2m-filtros-acoes">
+        <button type="submit" class="m2m-btn m2m-btn--primario">Aplicar filtros</button>
+        <a class="m2m-btn" href="{{ url_limpar }}">Limpar filtros</a>
+      </div>
+    </div>
+
+    <input type="hidden" name="ordem" value="{{ filtros.ordem }}">
+    <input type="hidden" name="dir" value="{{ filtros.dir }}">
+
+    <div class="agro-controles">
+      <p class="agro-contagem m2m-num" aria-live="polite">
+        {% if total_filtrado != total_geral %}<b>{{ total_filtrado|unlocalize }}</b> de {{ total_geral|unlocalize }} equipamento{{ total_geral|pluralize }}{% else %}<b>{{ total_geral|unlocalize }}</b> equipamento{{ total_geral|pluralize }}{% endif %}
+      </p>
+      <div class="agro-controles-fim">
+        {% comment %}O tamanho da página mora no rodapé da tabela (`_paginacao.html`, igual em todas as listas do Agro); o valor escolhido segue nos envios deste formulário.{% endcomment %}
+        <input type="hidden" name="por_pagina" value="{{ por_pagina }}">
+        {% if filtros_ativos %}<a class="m2m-btn m2m-btn--sm m2m-btn--fantasma" href="{{ url_limpar }}">Limpar filtros</a>{% endif %}
+        {% if pode_exportar and total_filtrado %}<a class="m2m-btn m2m-btn--sm" href="{{ url_exportar }}"><i class="fa-solid fa-file-excel" aria-hidden="true"></i>Exportar</a>{% endif %}
+        {% if pode_validar and com_pendentes %}<button type="submit" form="agro-lote" class="m2m-btn m2m-btn--sm" data-agro-lote disabled>Validar selecionados</button>{% endif %}
+      </div>
+    </div>
+  </form>
+
+  {% if pode_validar and com_pendentes %}
+  <form method="post" id="agro-lote" action="{% url 'frota_equipamentos_validar_lote' %}" data-m2m-confirma="Confirmar a situação dos equipamentos marcados? Cada um recebe o registro de validação.">
+    {% csrf_token %}
+    <input type="hidden" name="voltar" value="{{ request.get_full_path }}">
+  </form>
+  {% endif %}
+
+  {% if filtros_ativos %}
+  <ul class="m2m-filtros-ativos" aria-label="Filtros em uso">
+    {% for f in filtros_ativos %}
+    <li class="m2m-etiqueta">{{ f.rotulo }} <a href="{{ f.remover }}" aria-label="Remover o filtro {{ f.rotulo }}" title="Remover o filtro">&times;</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if veiculos %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela agro-tabela">
+      <thead>
+        <tr>
+          {% if pode_validar and com_pendentes %}<th class="agro-sel"><input type="checkbox" data-agro-marcar-todos aria-label="Marcar os equipamentos a validar desta página"></th>{% endif %}
+          {% for c in cabecalhos %}
+          <th{% if c.chave == "classe" or c.chave == "modelo" or c.chave == "setor" or c.chave == "ano" %} class="agro-sec"{% endif %} aria-sort="{{ c.aria }}"><a class="agro-ordem" href="{{ c.url }}" {% if c.sentido %}data-sentido="{{ c.sentido }}"{% endif %}>{{ c.rotulo }}</a></th>
+          {% endfor %}
+          <th><span class="m2m-sr">Ações</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in veiculos %}
+        <tr class="m2m-linha agro-linha" data-href="{% url 'frota_veiculo_detalhe' v.pk %}" data-veiculo-id="{{ v.pk }}" data-status="{{ v.status }}" data-natureza="{{ v.natureza }}"{% if v.status == "desativado" %} data-inativo{% endif %}>
+          {% if pode_validar and com_pendentes %}
+          <td class="agro-sel">{% if v.validacao_pendente %}<input type="checkbox" form="agro-lote" name="ids" value="{{ v.pk }}" aria-label="Marcar {{ v.codigo_legado|default:v.codigo }} para validar">{% endif %}</td>
+          {% endif %}
+          <td data-rotulo="Código">
+            <span class="m2m-ident">
+              <a class="m2m-link-forte m2m-id" href="{% url 'frota_veiculo_detalhe' v.pk %}">{{ v.codigo_legado|default:v.codigo }}</a>
+              {% if v.codigo_legado %}<span class="m2m-ident-cod" title="Identificador interno do Zelo Agro">{{ v.codigo }}</span>{% endif %}
+            </span>
+          </td>
+          <td data-rotulo="Equipamento">
+            <span class="zi-rotulo">
+              <span class="zi-selo" title="{{ v.tipo.nome }}">{% zelo_icone_veiculo v %}</span>
+              <span class="m2m-ident">
+                <span class="m2m-corta m2m-corta--larga" title="{{ v.nome }}">{{ v.nome }}</span>
+                <span class="m2m-ident-cod">{{ v.tipo.nome }}</span>
+              </span>
+            </span>
+          </td>
+          <td class="agro-sec" data-rotulo="Classe">{% if v.classe_operacional %}<span class="m2m-corta m2m-corta--media" title="{{ v.classe_operacional.nome }}">{{ v.classe_operacional.nome }}</span>{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+          <td class="agro-sec" data-rotulo="Modelo">{% if v.modelo %}<span class="m2m-corta m2m-corta--media" title="{{ v.fabricante }} {{ v.modelo }}">{% if v.fabricante %}{{ v.fabricante }} {% endif %}{{ v.modelo }}</span>{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+          <td data-rotulo="Empresa">
+            <span class="m2m-ident">
+              <span class="m2m-corta m2m-corta--media" title="{{ v.empresa.nome }}">{{ v.empresa.nome|default:"—" }}</span>
+              <span class="agro-natureza" data-natureza="{{ v.natureza }}">{{ v.get_natureza_display }}</span>
+            </span>
+          </td>
+          <td class="agro-sec" data-rotulo="Setor">{% if v.setor %}{{ v.setor }}{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+          <td data-rotulo="Placa" class="m2m-id">{% if v.placa %}{{ v.placa }}{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+          <td data-rotulo="Ano" class="m2m-num agro-sec">{% if v.ano_fabricacao %}{{ v.ano_fabricacao|unlocalize }}{% if v.ano_modelo and v.ano_modelo != v.ano_fabricacao %}/{{ v.ano_modelo|unlocalize }}{% endif %}{% elif v.ano_modelo %}{{ v.ano_modelo|unlocalize }}{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+          <td class="m2m-quebra" data-rotulo="Situação">
+            {% frota_status v.status %}
+            {% if v.validacao_pendente %}<span class="agro-a-validar" title="Veio da planilha do ERP: a situação ainda não foi confirmada pelo responsável pelo inventário.">a validar</span>{% endif %}
+          </td>
+          <td class="m2m-acoes" data-rotulo="Ações">
+            <a class="m2m-btn m2m-btn--sm" href="{% url 'frota_veiculo_detalhe' v.pk %}">Visualizar</a>
+            {% if pode_editar_frota %}
+              {% if v.status == "desativado" %}
+              <button type="button" class="m2m-btn m2m-btn--sm m2m-btn--fantasma" data-frota-abrir="restaurar_lista" data-url="{% url 'frota_veiculo_status' v.pk %}" data-alvo="Equipamento {{ v.codigo_legado|default:v.codigo }} · {{ v.nome }}">Restaurar</button>
+              {% else %}
+              <a class="m2m-btn m2m-btn--sm m2m-btn--fantasma" href="{% url 'frota_veiculo_editar' v.pk %}">Editar</a>
+              <button type="button" class="m2m-btn m2m-btn--sm m2m-btn--fantasma m2m-btn--perigo-texto" data-frota-abrir="excluir_lista" data-url="{% url 'frota_veiculo_status' v.pk %}" data-verificar="{% url 'frota_veiculo_exclusao' v.pk %}" data-alvo="Equipamento {{ v.codigo_legado|default:v.codigo }} · {{ v.nome }}" aria-label="Excluir {{ v.codigo_legado|default:v.codigo }}">Excluir</button>
+              {% endif %}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% elif total_geral == 0 %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-tractor" titulo="Nenhum equipamento cadastrado" texto="Importe a planilha do ERP ou cadastre o primeiro equipamento para começar a acompanhar a frota." acao_url=u_novo acao_rotulo="Novo equipamento" acao_primaria=True acao2_url=u_importar acao2_rotulo="Importar planilha" only %}
+  {% else %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum equipamento para os filtros aplicados" texto="Ajuste a busca ou limpe os filtros para ver a frota inteira." acao_url=url_limpar acao_rotulo="Limpar filtros" only %}
+  {% endif %}
+
+  {% include 'front/agro/frota/_dialogos_lista.html' %}
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/frota-equipamentos.js' %}?v={{ assets_version }}" defer></script>
+{% endblock %}

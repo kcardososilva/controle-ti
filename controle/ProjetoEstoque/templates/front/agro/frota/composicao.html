@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags zelo_icones %}
+
+{% block title %}Composição tecnológica — Frotas e Maquinários — Zelo Agro{% endblock %}
+{% block page_title %}Frotas e Maquinários{% endblock %}
+{% block page_subtitle %}Composição tecnológica{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page" data-frota="composicao" data-vista="{{ vista }}">
+  {% url 'tec_visao_geral' as u_estoque %}
+  {% include 'front/agro/frota/_topo.html' with titulo="Composição tecnológica" descricao="O que está instalado em cada máquina: os equipamentos do estoque tecnológico e os chips. Só registros reais; quem instala e retira é o estoque tecnológico." acao2_url=u_estoque acao2_rotulo="Estoque tecnológico" acao2_icone="fa-box-open" %}
+
+  <section class="m2m-painel" aria-labelledby="agro-comp-resumo">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-comp-resumo">Resumo</h3></header>
+    <div class="m2m-regua m2m-regua--seis">
+      <div class="m2m-kpi"><span class="m2m-micro">Máquinas</span><span class="m2m-kpi-n m2m-num">{{ resumo.maquinas|unlocalize }}</span><span class="m2m-kpi-nota">sem as desativadas</span></div>
+      <div class="m2m-kpi"><span class="m2m-micro">Com tecnologia</span><span class="m2m-kpi-n m2m-num">{{ resumo.com_tecnologia|unlocalize }}</span><span class="m2m-kpi-nota">ao menos um componente</span></div>
+      <div class="m2m-kpi"><span class="m2m-micro">Sem tecnologia</span><span class="m2m-kpi-n m2m-num">{{ resumo.sem_tecnologia|unlocalize }}</span><span class="m2m-kpi-nota">nenhum componente</span></div>
+      <div class="m2m-kpi"><span class="m2m-micro">Equipamentos instalados</span><span class="m2m-kpi-n m2m-num">{{ resumo.componentes|unlocalize }}</span><span class="m2m-kpi-nota">do estoque tecnológico</span></div>
+      {% if resumo.chips is not None %}
+      <div class="m2m-kpi"><span class="m2m-micro">Chips vinculados</span><span class="m2m-kpi-n m2m-num">{{ resumo.chips|unlocalize }}</span><span class="m2m-kpi-nota">vínculos ativos</span></div>
+      {% endif %}
+    </div>
+    {% if resumo.por_categoria %}
+    <p class="m2m-nota m2m-nota--pad">
+      Instalados por categoria:
+      {% for c in resumo.por_categoria %}<a href="?vista=instalados&amp;categoria={{ c.categoria_id }}">{{ c.nome }}</a> <b class="m2m-num">{{ c.n|unlocalize }}</b>{% if not forloop.last %} · {% endif %}{% endfor %}
+    </p>
+    {% endif %}
+  </section>
+
+  <nav class="m2m-segmentos m2m-segmentos--grande" aria-label="Escolher a visão">
+    {% for s in segmentos %}
+    <a href="?vista={{ s.chave }}" {% if vista == s.chave %}class="is-ativa" aria-current="true"{% endif %}><span>{{ s.rotulo }}</span><b class="m2m-num">{{ s.n|unlocalize }}</b></a>
+    {% endfor %}
+  </nav>
+
+  <form method="get" class="agro-busca-aba agro-linhas-busca" role="search">
+    <input type="hidden" name="vista" value="{{ vista }}">
+    <input type="search" name="q" value="{{ filtros.q }}" class="m2m-campo" placeholder="Buscar máquina ou componente" aria-label="Buscar máquina ou componente" autocomplete="off">
+    {% if vista == "instalados" and categorias %}
+    <select name="categoria" class="m2m-campo" aria-label="Categoria do componente">
+      <option value="">Todas as categorias</option>
+      {% for valor, nome, n in categorias %}<option value="{{ valor }}" {% if filtros.categoria == valor %}selected{% endif %}>{{ nome }} ({{ n|unlocalize }})</option>{% endfor %}
+    </select>
+    {% endif %}
+    <select name="natureza" class="m2m-campo" aria-label="Natureza da máquina">
+      <option value="">Próprias e de terceiros</option>
+      <option value="proprio" {% if filtros.natureza == "proprio" %}selected{% endif %}>Só próprias</option>
+      <option value="terceiro" {% if filtros.natureza == "terceiro" %}selected{% endif %}>Só de terceiros</option>
+    </select>
+    <button type="submit" class="m2m-btn m2m-btn--sm">Filtrar</button>
+    {% if filtros.q or filtros.categoria or filtros.natureza %}<a class="m2m-btn m2m-btn--sm m2m-btn--fantasma" href="{{ url_limpar }}">Limpar</a>{% endif %}
+  </form>
+
+  {% if linhas %}
+  <section class="m2m-painel">
+    <div class="m2m-tabela-wrap">
+      {% if vista == "sem" %}
+      <table class="m2m-tabela m2m-tabela--curta">
+        <thead><tr><th>Equipamento</th><th>Categoria</th><th>Natureza</th><th>Situação</th><th>Chip</th></tr></thead>
+        <tbody>
+          {% for v in linhas %}
+          <tr class="m2m-linha">
+            <td class="m2m-quebra" data-rotulo="Equipamento">
+              <a class="m2m-link-forte" href="{% url 'frota_veiculo_detalhe' v.pk %}">{{ v.nome }}</a>
+              <span class="m2m-id-2">{{ v.codigo_legado|default:v.codigo }}</span>
+            </td>
+            <td data-rotulo="Categoria"><span class="zi-rotulo">{% zelo_icone_veiculo v %}<span>{{ v.tipo.nome }}</span></span></td>
+            <td data-rotulo="Natureza">{{ v.get_natureza_display }}</td>
+            <td data-rotulo="Situação">{{ v.get_status_display }}</td>
+            <td data-rotulo="Chip">{% if v.exige_efetivo %}<span class="m2m-sub">Exige chip e não tem</span>{% else %}<span class="m2m-vazio-linha">—</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <table class="m2m-tabela m2m-tabela--curta">
+        <thead><tr><th>Máquina</th><th>Componente</th><th>Fabricante</th><th>Modelo</th><th>Série / identificação</th><th>Instalado em</th><th>Por</th></tr></thead>
+        <tbody>
+          {% for l in linhas %}
+          <tr class="m2m-linha" data-origem="{{ l.origem }}">
+            <td class="m2m-quebra" data-rotulo="Máquina">
+              <a class="m2m-link-forte" href="{% url 'frota_veiculo_detalhe' l.veiculo.pk %}">{{ l.veiculo.nome }}</a>
+              <span class="m2m-id-2">{{ l.veiculo.codigo_legado|default:l.veiculo.codigo }}</span>
+            </td>
+            <td class="m2m-quebra" data-rotulo="Componente">
+              {% if l.origem == "chip" %}
+              <a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' l.objeto.pk %}">{{ l.categoria }}</a> <span class="m2m-sub">{{ l.codigo }}</span>
+              {% else %}
+              <a class="m2m-link-forte" href="{% url 'tec_equipamento_detalhe' l.objeto.pk %}">{{ l.categoria }}</a> <span class="m2m-sub">{{ l.codigo }}</span>
+              {% endif %}
+            </td>
+            <td data-rotulo="Fabricante">{{ l.fabricante|default:"—" }}</td>
+            <td class="m2m-quebra" data-rotulo="Modelo">{{ l.modelo|default:"—" }}</td>
+            <td class="m2m-id" data-rotulo="Série / identificação">{% if l.origem == "chip" %}{{ l.identificacao|m2m_blocos|default:"—" }}{% else %}{{ l.identificacao|default:"—" }}{% endif %}</td>
+            <td data-rotulo="Instalado em"><span class="m2m-num">{{ l.desde|date:"d/m/Y" }}</span></td>
+            <td data-rotulo="Por">{{ l.por|default:"—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+    {% include 'front/m2m/_paginacao.html' %}
+  </section>
+  {% elif vista == "sem" %}
+    {% if filtros.q or filtros.natureza %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhuma máquina neste recorte" texto="Tire a busca ou a natureza para ver todas as máquinas sem tecnologia." acao_url=url_limpar acao_rotulo="Limpar os filtros" only %}
+    {% else %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-circle-check" titulo="Toda máquina tem ao menos um componente" texto="Nenhuma máquina ativa está sem equipamento instalado e sem chip." only %}
+    {% endif %}
+  {% else %}
+    {% if filtros.q or filtros.categoria or filtros.natureza %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum componente neste recorte" texto="Tire a busca ou os filtros para ver todos os componentes instalados." acao_url=url_limpar acao_rotulo="Limpar os filtros" only %}
+    {% else %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-microchip" titulo="Nenhum componente instalado" texto="Os componentes aparecem aqui quando um equipamento do estoque tecnológico é instalado em uma máquina, ou um chip é vinculado a ela." acao_url=u_estoque acao_rotulo="Abrir o estoque tecnológico" only %}
+    {% endif %}
+  {% endif %}
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

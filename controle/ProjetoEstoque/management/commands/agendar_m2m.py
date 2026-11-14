@@ -4,14 +4,17 @@ Tarefas do Windows (schtasks). Mesmo padrão de `agendar_chamados`/`agendar_prtg
 
 Sem esta tarefa rodando, os chips TIM M2M NÃO são consultados: o monitoramento só
 acontece quando alguém aperta "Atualizar" na tela. (A faixa de saúde da integração
-mostra a hora da última execução e avisa quando a tarefa está parada.)
+mostra a hora da última execução e avisa quando a tarefa está parada.) É ESTA tarefa
+que sincroniza sozinho, com o navegador fechado — nenhuma tela dispara consulta.
 
 O intervalo da tarefa é só o "tique": a cada tique o comando olha quais chips já
 passaram do intervalo configurado na tela de Configuração e consulta esses. A
-frequência POR CHIP não vem daqui.
+frequência POR CHIP não vem daqui. O padrão é 1 minuto (o ciclo cabe no tique e se
+limita ao limite de requisições por minuto da API); se o tique for ≤ 5 min a tarefa
+usa `pythonw` (sem janela de console a cada execução) quando ele existir.
 
-Uso (terminal como Administrador):
-    python manage.py agendar_m2m criar                  # a cada 15 min
+Uso:
+    python manage.py agendar_m2m criar                  # a cada 1 min
     python manage.py agendar_m2m criar --intervalo 5    # a cada 5 min
     python manage.py agendar_m2m listar
     python manage.py agendar_m2m remover
@@ -27,7 +30,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 
 NOME_TAREFA = "ControleEstoque_MonitorarM2M"
-TIQUE_PADRAO = 15
+TIQUE_PADRAO = 1
 
 
 class Command(BaseCommand):
@@ -68,25 +71,44 @@ class Command(BaseCommand):
                            encoding="cp850", errors="replace")
         return r.returncode, r.stdout, r.stderr
 
+    def _executavel(self, intervalo):
+        """`pythonw` ao lado do `python` quando o tique é curto: a cada minuto uma janela de console piscando
+        na tela de quem usa o computador é inaceitável, e o comando não precisa dela (o resultado vai para o
+        banco e para logs/erros.log)."""
+        if intervalo <= 5:
+            sem_janela = Path(sys.executable).with_name("pythonw.exe")
+            if sem_janela.exists():
+                return str(sem_janela)
+        return sys.executable
+
     def _criar(self, intervalo):
         if intervalo < 1:
             raise CommandError("O intervalo mínimo é de 1 minuto.")
         # `--tique` grava o intervalo da tarefa para o painel saber quando ela parou.
-        comando = f'"{sys.executable}" "{self._manage_py()}" monitorar_m2m --tique {intervalo}'
+        comando = f'"{self._executavel(intervalo)}" "{self._manage_py()}" monitorar_m2m --tique {intervalo}'
         self.stdout.write(self.style.MIGRATE_HEADING("Registrando tarefa no Agendador..."))
         self.stdout.write(f"  Tarefa    : {NOME_TAREFA}\n  Intervalo : a cada {intervalo} minuto(s)\n  Comando   : {comando}\n")
         self._schtasks(["/Delete", "/TN", NOME_TAREFA, "/F"])
+        # Sem `/RL HIGHEST`: o comando só lê a rede e grava o banco; exigir elevação impedia criar a tarefa
+        # num terminal comum, e uma tarefa que ninguém consegue registrar é uma tarefa que não existe.
         rc, out, err = self._schtasks([
-            "/Create", "/TN", NOME_TAREFA, "/TR", comando,
-            "/SC", "MINUTE", "/MO", str(intervalo), "/RL", "HIGHEST", "/F",
+            "/Create", "/TN", NOME_TAREFA, "/TR", comando, "/SC", "MINUTE", "/MO", str(intervalo), "/F",
         ])
         if rc == 0:
             self.stdout.write(self.style.SUCCESS(f"Tarefa '{NOME_TAREFA}' criada: monitora os chips a cada {intervalo} minuto(s)."))
             return
-        if self._schtasks(["/Query", "/TN", NOME_TAREFA])[0] == 0:
-            self.stdout.write(self.style.SUCCESS("Tarefa encontrada no agendador — criação bem-sucedida."))
+        # Existir uma tarefa com esse nome NÃO prova que é a nova: se a antiga foi criada num terminal de
+        # Administrador, um terminal comum não consegue apagá-la nem trocá-la, e a criação falha com "acesso
+        # negado" — a antiga continua lá, no intervalo antigo. Só vale se o comando gravado é o desta chamada.
+        rc_q, saida_q, _ = self._schtasks(["/Query", "/TN", NOME_TAREFA, "/FO", "LIST", "/V"])
+        if rc_q == 0 and f"monitorar_m2m --tique {intervalo}" in saida_q and ("pythonw" in saida_q.lower() or "python" in saida_q.lower()):
+            self.stdout.write(self.style.SUCCESS("Tarefa encontrada no agendador com o comando desta chamada — criação bem-sucedida."))
             return
-        raise CommandError(f"Não foi possível criar a tarefa ({(err or out).strip()}). Tente como Administrador.")
+        raise CommandError(
+            f"Não foi possível criar a tarefa ({(err or out).strip()}). "
+            + ("A tarefa antiga continua registrada, com o intervalo antigo. " if rc_q == 0 else "")
+            + "Rode este comando num terminal aberto como Administrador (a tarefa antiga foi criada assim)."
+        )
 
     def _listar(self):
         rc, out, _ = self._schtasks(["/Query", "/TN", NOME_TAREFA, "/FO", "LIST", "/V"])

@@ -1,0 +1,30 @@
+{% load l10n zelo_icones %}
+{% comment %}
+A localização de UM veículo (detalhe do veículo e do chip). Recebe `loc` (`agro_localizacao_service.localizacao_do_veiculo`)
+e, opcional, `historico` (`historico_do_veiculo`). Sem coordenada o estado é "indisponível" e NADA é desenhado nem deduzido;
+o botão "Ver no mapa" só existe quando há coordenada. O estado diz se a posição é atual, antiga ou sem atualização recente:
+coordenada antiga nunca é apresentada como a posição atual.
+{% endcomment %}
+<dl class="m2m-dl">
+  <div><dt>Estado da localização</dt><dd><span class="agro-loc-estado" data-estado="{{ loc.estado }}">{{ loc.estado_rotulo }}</span></dd></div>
+  <div><dt>Origem</dt><dd>{{ loc.rotulo }}{% if loc.fonte %} <span class="m2m-sub">· {{ loc.fonte }}</span>{% endif %}</dd></div>
+  {% if loc.tem_coordenada %}
+  <div><dt>Coordenada</dt><dd class="m2m-num">{{ loc.lat|unlocalize }}, {{ loc.lon|unlocalize }}</dd></div>
+  <div><dt>{% if loc.origem == "gps" %}Última atualização GPS{% else %}Coordenada cadastrada em{% endif %}</dt><dd>{{ loc.em.texto|default:"—" }}{% if loc.em.rotulo %} <span class="m2m-sub">{{ loc.em.rotulo }}</span>{% endif %}</dd></div>
+  {% if loc.precisao_m is not None %}<div><dt>Precisão</dt><dd class="m2m-num">{{ loc.precisao_m|floatformat:"-1" }} m</dd></div>{% endif %}
+  {% if loc.velocidade_kmh is not None %}<div><dt>Velocidade</dt><dd class="m2m-num">{{ loc.velocidade_kmh|floatformat:"-1" }} km/h</dd></div>{% endif %}
+  {% if loc.direcao_graus is not None %}<div><dt>Direção</dt><dd class="m2m-num">{{ loc.direcao_graus }}°</dd></div>{% endif %}
+  {% endif %}
+</dl>
+{% if loc.aviso %}<p class="m2m-nota m2m-nota--pad">{{ loc.aviso }}</p>{% endif %}
+{% if loc.url_mapa %}
+<div class="agro-loc-acoes"><a class="m2m-btn m2m-btn--primario" href="{{ loc.url_mapa }}">{% zelo_icone "ponto-referencia" %} Ver no mapa</a></div>
+{% endif %}
+{% if historico %}
+<h4 class="dash-subt">Últimas posições GPS recebidas</h4>
+<ul class="agro-loc-hist">
+  {% for p in historico %}
+  <li><span class="m2m-num">{{ p.lat|unlocalize }}, {{ p.lon|unlocalize }}</span><span>{{ p.fonte }}{% if p.chip %} · {{ p.chip }}{% endif %}</span><span>{{ p.em.texto }}</span></li>
+  {% endfor %}
+</ul>
+{% endif %}

@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags %}
+
+{% block title %}Importação de planilha — Frotas e Maquinários — Zelo Agro{% endblock %}
+{% block page_title %}Frotas e Maquinários{% endblock %}
+{% block page_subtitle %}Importação de planilha{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page" data-frota="importar">
+  {% url 'frota_equip_importacoes' as u_historico %}
+  {% include 'front/agro/frota/_topo.html' with titulo="Importação de planilha" descricao="Atualize o inventário com a planilha do ERP. O sistema lê o arquivo, mostra o que cada linha vai virar e só grava depois da sua confirmação." acao2_url=u_historico acao2_rotulo="Importações anteriores" acao2_icone="fa-clock-rotate-left" %}
+
+  {% include 'front/agro/frota/_imp_passos.html' %}
+
+  <section class="m2m-painel" aria-labelledby="agro-imp-envio">
+    <header class="m2m-painel-cab">
+      <h3 class="m2m-painel-t" id="agro-imp-envio">Selecionar a planilha</h3>
+      <div class="m2m-botoes">
+        <a class="m2m-btn m2m-btn--sm" href="{% url 'frota_equip_importar_modelo' %}?formato=xlsx"><i class="fa-solid fa-download" aria-hidden="true"></i>Modelo Excel</a>
+        <a class="m2m-btn m2m-btn--sm" href="{% url 'frota_equip_importar_modelo' %}?formato=csv"><i class="fa-solid fa-download" aria-hidden="true"></i>Modelo CSV</a>
+      </div>
+    </header>
+    {% if erro %}<p class="m2m-aviso" data-tom="erro" role="alert">{{ erro }}</p>{% endif %}
+    <form method="post" enctype="multipart/form-data" class="m2m-envio" data-frota-pagina>
+      {% csrf_token %}
+      <label class="m2m-rotulo"><span>Planilha (.xlsx ou .csv)</span>
+        <input type="file" name="arquivo" class="m2m-campo m2m-campo--arquivo" accept=".xlsx,.csv" required>
+        <em class="m2m-dica">Até {{ max_mb }} MB e {{ max_linhas|unlocalize }} linhas. O Excel exportado pelo ERP é aceito como está, com o título acima do cabeçalho.</em>
+      </label>
+      <button type="submit" class="m2m-btn m2m-btn--primario">Analisar planilha</button>
+    </form>
+    <details class="m2m-saiba-mais">
+      <summary>Colunas e regras da importação</summary>
+      <div class="m2m-tabela-wrap">
+        <table class="m2m-tabela m2m-tabela--curta">
+          <thead><tr><th>Coluna do ERP</th><th>Obrigatória</th><th>Para onde vai no Zelo</th></tr></thead>
+          <tbody>
+            {% for c in colunas %}
+            <tr class="m2m-linha">
+              <td data-rotulo="Coluna do ERP">{{ c.rotulo }}</td>
+              <td data-rotulo="Obrigatória">{% if c.obrigatoria %}Sim{% else %}Não{% endif %}</td>
+              <td data-rotulo="Para onde vai">{{ c.destino }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="m2m-nota">Só Equipamento (o código do ERP) e Modelo são obrigatórias. O código do ERP é guardado como identificador legado, separado do identificador interno do Zelo (MQ-00001), e é ele que reconhece o equipamento: reimportar o mesmo arquivo não duplica nada.</p>
+      <p class="m2m-nota">A importação nunca corrige: chassi repetido, data improvável e ano estranho entram como vieram e aparecem na validação. Equipamento já cadastrado só é atualizado se você autorizar na confirmação, e nunca é considerado validado.</p>
+    </details>
+  </section>
+
+  <section class="m2m-painel" aria-labelledby="agro-imp-lista">
+    <header class="m2m-painel-cab">
+      <h3 class="m2m-painel-t" id="agro-imp-lista">Importações recentes</h3>
+      <a class="m2m-painel-link" href="{% url 'frota_equip_importacoes' %}">Ver todas</a>
+    </header>
+    {% if recentes %}
+      {% include 'front/agro/frota/_imp_tabela.html' with importacoes=recentes %}
+    {% else %}
+      {% include 'front/m2m/_vazio.html' with icone="fa-file-arrow-up" titulo="Nenhuma planilha enviada" texto="As importações feitas ficam registradas aqui, com o resultado de cada uma." only %}
+    {% endif %}
+  </section>
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

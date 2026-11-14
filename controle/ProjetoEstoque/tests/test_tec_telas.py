@@ -16,6 +16,7 @@ from ProjetoEstoque.models import (
     AgroLocal,
     TecCategoria,
     TecEquipamento,
+    TecEvento,
     TecFabricante,
     TecModelo,
     TecMovimentacao,
@@ -24,6 +25,14 @@ from ProjetoEstoque.models import (
 from services import frota_service
 from services import tec_catalogo_service as cat
 from services import tec_estoque_service as est
+
+
+def opcoes_do_select(html: str, nome: str) -> list:
+    """Os rótulos das opções do `<select name=...>` (sem a opção em branco), na ordem da tela."""
+    bloco = re.search(rf'<select name="{nome}"[^>]*>(.*?)</select>', html, re.S)
+    assert bloco is not None, f"a tela não tem o campo {nome}"
+    rotulos = [re.sub(r"\s+", " ", r).strip() for v, r in re.findall(r'<option value="([^"]*)"[^>]*>(.*?)</option>', bloco.group(1), re.S) if v]
+    return rotulos
 
 
 class TelasBase(TestCase):
@@ -396,10 +405,12 @@ class PrimeiroPassoTests(TestCase):
         self.client = Client()
         self.client.force_login(User.objects.create_superuser("primeiro", "p@p.com", "x"))
 
-    def test_sem_local_a_visao_geral_avisa_e_leva_ao_cadastro(self):
+    def test_sem_nenhum_local_cadastrado_o_campo_ja_oferece_as_duas_fazendas(self):
+        """Antes era preciso cadastrar local no catálogo para o campo obrigatório ter o que escolher."""
+        self.assertEqual(AgroLocal.objects.count(), 0)
         html = self.client.get(reverse("tec_visao_geral")).content.decode()
-        self.assertIn("Nenhum local de armazenamento cadastrado", html)
-        self.assertIn(reverse("tec_catalogo", args=["locais"]), html)
+        self.assertNotIn("Nenhum local de armazenamento cadastrado", html)
+        self.assertEqual(opcoes_do_select(self.client.get(reverse("tec_equipamento_novo")).content.decode(), "local"), ["Fazenda Karitel", "Fazenda Rio do Meio"])
 
     def test_sem_modelo_a_lista_de_equipamentos_manda_cadastrar_o_modelo(self):
         cat.salvar_local({"nome": "Almoxarifado", "fazenda": frota_service.fazendas()[0]}, None)
@@ -409,3 +420,83 @@ class PrimeiroPassoTests(TestCase):
         self.assertIn(reverse("tec_catalogo_novo", args=["modelos"]), html)
         self.assertEqual(self.client.get(reverse("tec_materiais")).status_code, 200)
         self.assertEqual(self.client.get(reverse("tec_movimentacoes")).status_code, 200)
+
+
+# ═════════════════════════════════════════════════════════════
+# Local de armazenamento = a fazenda
+# ═════════════════════════════════════════════════════════════
+
+class LocaisDasFazendasTests(TelasBase):
+    """As telas de estoque oferecem como local de armazenamento só a Fazenda Karitel e a Fazenda Rio do
+    Meio. É escolha de TELA: os locais que o catálogo já tinha (aqui, Almoxarifado e Oficina) continuam
+    existindo, e o que está neles continua consultável e movível."""
+
+    FAZENDAS = ["Fazenda Karitel", "Fazenda Rio do Meio"]
+
+    def pagina(self, nome, *args):
+        r = self.client.get(reverse(nome, args=list(args)))
+        self.assertEqual(r.status_code, 200)
+        return r.content.decode()
+
+    def test_o_service_cria_um_local_padrao_por_fazenda_e_e_idempotente(self):
+        antes = AgroLocal.objects.count()
+        a = cat.locais_das_fazendas()
+        b = cat.locais_das_fazendas()
+        self.assertEqual([l.pk for l in a], [l.pk for l in b])
+        self.assertEqual(AgroLocal.objects.count(), antes + 2)
+        self.assertEqual([str(l) for l in a], self.FAZENDAS)
+        self.assertEqual([l.fazenda for l in a], [self.karitel, self.rio])
+        criados = TecEvento.objects.filter(alvo=TecEvento.Alvo.LOCAL, tipo=TecEvento.Tipo.CADASTRO, alvo_id__in=[l.pk for l in a])
+        self.assertEqual(criados.count(), 2, "a criação do local padrão precisa constar na linha do tempo do catálogo")
+
+    def test_os_locais_antigos_do_catalogo_nao_sao_tocados_nem_confundidos_com_o_padrao(self):
+        cat.locais_das_fazendas()
+        self.deposito.refresh_from_db()
+        self.assertEqual((self.deposito.nome, self.deposito.ativo, str(self.deposito)), ("Almoxarifado", True, "Almoxarifado · Fazenda Karitel"))
+        self.assertFalse(self.deposito.e_padrao)
+
+    def test_padrao_inativado_de_proposito_nao_volta_sozinho(self):
+        karitel, _ = cat.locais_das_fazendas()
+        cat.salvar_local({"ativo": False}, self.admin, karitel)
+        self.assertEqual([str(l) for l in cat.locais_das_fazendas()], ["Fazenda Rio do Meio"])
+        karitel.refresh_from_db()
+        self.assertFalse(karitel.ativo)
+
+    def test_equipamento_novo_oferece_so_as_duas_fazendas_e_grava_no_local_padrao(self):
+        url = reverse("tec_equipamento_novo")
+        self.assertEqual(opcoes_do_select(self.pagina("tec_equipamento_novo"), "local"), self.FAZENDAS)
+        karitel, _ = cat.locais_das_fazendas()
+        r = self.client.post(url, {"token": str(uuid.uuid4()), "modelo": self.monitor.pk, "numero_serie": "SN-FAZ", "local": karitel.pk})
+        eq = TecEquipamento.objects.get(numero_serie="SN-FAZ")
+        self.assertRedirects(r, reverse("tec_equipamento_detalhe", args=[eq.pk]))
+        self.assertEqual(eq.local, karitel)
+        self.assertIn("Fazenda Karitel", TecMovimentacao.objects.get(equipamento=eq).destino_rotulo)
+
+    def test_mover_nao_oferece_a_fazenda_onde_o_equipamento_ja_esta(self):
+        karitel, _ = cat.locais_das_fazendas()
+        na_fazenda = est.criar_equipamento({"modelo": self.monitor, "numero_serie": "SN-M", "local": karitel}, self.admin).equipamento
+        self.assertEqual(opcoes_do_select(self.pagina("tec_equipamento_mover", na_fazenda.pk), "local"), ["Fazenda Rio do Meio"])
+        # o que ficou num local antigo (Almoxarifado) pode ir para qualquer uma das duas
+        self.assertEqual(opcoes_do_select(self.pagina("tec_equipamento_mover", self.eq.pk), "local"), self.FAZENDAS)
+
+    def test_entrada_e_transferencia_de_material_oferecem_so_as_fazendas_no_destino(self):
+        self.assertEqual(opcoes_do_select(self.pagina("tec_material_entrada", self.cabo.pk), "local"), self.FAZENDAS)
+        self.assertEqual(opcoes_do_select(self.pagina("tec_material_entrada_nova"), "local"), self.FAZENDAS)
+        self.assertEqual(opcoes_do_select(self.pagina("tec_material_transferir", self.cabo.pk), "local_destino"), self.FAZENDAS)
+
+    def test_devolver_e_aplicar_sem_material_fixo_tambem_oferecem_so_as_fazendas(self):
+        self.assertEqual(opcoes_do_select(self.pagina("tec_material_devolver", self.cabo.pk), "local"), self.FAZENDAS)
+        self.assertEqual(opcoes_do_select(self.pagina("tec_material_aplicar_novo"), "local"), self.FAZENDAS)
+
+    def test_origem_e_ajuste_mantem_o_local_antigo_que_ainda_tem_saldo(self):
+        """O cabo (40 m) está no Almoxarifado: se ele sumisse da lista, o material ficaria sem como sair."""
+        antigo = "Almoxarifado · Fazenda Karitel — 40 m"
+        self.assertEqual(opcoes_do_select(self.pagina("tec_material_saida", self.cabo.pk), "local"), [antigo])
+        self.assertEqual(opcoes_do_select(self.pagina("tec_material_transferir", self.cabo.pk), "local_origem"), [antigo])
+        self.assertEqual(opcoes_do_select(self.pagina("tec_material_aplicar", self.cabo.pk), "local"), [antigo])
+        self.assertEqual(opcoes_do_select(self.pagina("tec_material_ajuste", self.cabo.pk), "local"), ["Fazenda Karitel — 0 m", "Fazenda Rio do Meio — 0 m", antigo])
+
+    def test_depois_de_levar_o_saldo_para_a_fazenda_o_local_antigo_sai_da_origem(self):
+        karitel, _ = cat.locais_das_fazendas()
+        est.transferir_material_entre_locais(self.cabo, self.deposito, karitel, 40, self.admin, "consolidação")
+        self.assertEqual(opcoes_do_select(self.pagina("tec_material_saida", self.cabo.pk), "local"), ["Fazenda Karitel — 40 m"])

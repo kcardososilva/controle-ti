@@ -30,13 +30,23 @@ A decisão é sempre tomada a partir do CAMINHO RELATIVO do arquivo dentro do
 gravado no `FileField` — por isso a conferência de dono é uma consulta direta
 pelo campo, sem adivinhar nome de arquivo.
 """
-from ProjetoEstoque.models import GRUPO_FORNECEDOR, GRUPO_PARCEIRO_LICENCA
+from ProjetoEstoque.models import (
+    GRUPO_COLABORADOR_AGRO,
+    GRUPO_FORNECEDOR,
+    GRUPO_PARCEIRO_LICENCA,
+    GRUPO_SOMENTE_AGRO,
+)
 
 # Grupos de portal externo: a presença de QUALQUER um deles faz o usuário
 # deixar de ser tratado como interno. Mantido alinhado com os middlewares de
 # isolamento (ProjetoEstoque/middleware.py).
+#
+# Os dois grupos do Agro entram aqui por outro motivo: quem está preso ao Agro NÃO acessa o TI, e `/media/` é um caminho neutro
+# (o middleware de ambiente não o barra) que, para "interno comum", entrega QUALQUER arquivo — termo assinado, nota fiscal,
+# foto de preventiva. Nenhuma tela do Agro serve arquivo de `MEDIA_ROOT` (nenhum model do módulo tem FileField); se um dia
+# uma tiver, a liberação entra aqui, e só aqui.
 GRUPO_TV = "Visualizador TV"
-GRUPOS_EXTERNOS = (GRUPO_FORNECEDOR, GRUPO_PARCEIRO_LICENCA, GRUPO_TV)
+GRUPOS_EXTERNOS = (GRUPO_FORNECEDOR, GRUPO_PARCEIRO_LICENCA, GRUPO_TV, GRUPO_SOMENTE_AGRO, GRUPO_COLABORADOR_AGRO)
 
 
 def _grupos(user) -> set[str]:

@@ -1,0 +1,210 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags %}
+
+{% block title %}Conciliação de chips — Estoque de TI{% endblock %}
+{% block page_title %}Conciliação de chips{% endblock %}
+{% block page_subtitle %}Estoque de TI × Frotas e Conectividade{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-chips-ti.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% comment %}
+A conciliação dos chips (regra 66): o mesmo SIM existe no estoque de TI (patrimônio: valor, nota fiscal, termo) e em Frotas e
+Conectividade (linha, operadora, sessão, consumo). A chave é o ICCID. Esta tela só LÊ para propor; as gravações são os POSTs
+de `views/chip_estoque_ti.py` (ligar, desligar, criar um lado a partir do outro), cada um com a permissão `vincular_chips`.
+{% endcomment %}
+{% block content %}
+<div class="ct-page">
+  <header class="page-header page-header-compact">
+    <div class="page-header-main">
+      <span class="page-kicker">Estoque de TI</span>
+      <h2 class="page-heading">Conciliação de chips</h2>
+      <p class="page-description">O mesmo chip no estoque de TI (valor, nota fiscal, termo de responsabilidade) e em Frotas e Conectividade (linha, operadora, sessão, consumo). A ligação é pelo ICCID.</p>
+    </div>
+  </header>
+
+  <section class="ct-kpis" aria-label="Resumo da conciliação">
+    <div class="ct-kpi"><span class="ct-kpi-rot">Chips de conectividade</span><b class="ct-kpi-n">{{ conc.total_chips|unlocalize }}</b></div>
+    <div class="ct-kpi"><span class="ct-kpi-rot">Itens de chip no estoque</span><b class="ct-kpi-n">{{ conc.total_itens|unlocalize }}</b></div>
+    <div class="ct-kpi"><span class="ct-kpi-rot">Já ligados</span><b class="ct-kpi-n">{{ resumo.ligados|unlocalize }}</b><span class="ct-kpi-nota">{% if resumo.valor %}R$ {{ resumo.valor|floatformat:2 }} em aquisição{% else %}sem valor cadastrado{% endif %}</span></div>
+    <div class="ct-kpi" {% if total_automaticos %}data-tom="ok"{% endif %}><span class="ct-kpi-rot">Pares prontos (mesmo ICCID)</span><b class="ct-kpi-n">{{ total_automaticos|unlocalize }}</b></div>
+    <div class="ct-kpi" {% if total_sem_item %}data-tom="atencao"{% endif %}><span class="ct-kpi-rot">Chips sem item no estoque</span><b class="ct-kpi-n">{{ total_sem_item|unlocalize }}</b></div>
+    <div class="ct-kpi" {% if total_itens_sem_chip %}data-tom="atencao"{% endif %}><span class="ct-kpi-rot">Itens sem chip</span><b class="ct-kpi-n">{{ total_itens_sem_chip|unlocalize }}</b></div>
+    <div class="ct-kpi" {% if total_divergencias %}data-tom="erro"{% endif %}><span class="ct-kpi-rot">Divergências</span><b class="ct-kpi-n">{{ total_divergencias|unlocalize }}</b></div>
+  </section>
+
+  {% if erros.geral or erros.ids %}<p class="ct-aviso" data-tom="erro" role="alert">{{ erros.geral }} {{ erros.ids }}</p>{% endif %}
+
+  {% comment %}1. Os pares que o sistema encontrou pelo ICCID.{% endcomment %}
+  <section class="card ct-bloco" aria-labelledby="ct-pares">
+    <div class="card-head">
+      <h3 class="card-title" id="ct-pares">Pares encontrados pelo ICCID</h3>
+      {% if total_automaticos and pode_ligar %}
+      <form method="post" action="{% url 'chip_estoque_conciliar' %}" data-ct-confirma="Ligar {{ total_automaticos }} chip{{ total_automaticos|pluralize }} ao item de mesmo ICCID? Cada ligação fica registrada no histórico do chip.">
+        {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}">
+        <button type="submit" class="btn-primary btn-sm"><i class="fa-solid fa-link" aria-hidden="true"></i> Ligar os {{ total_automaticos|unlocalize }} pares</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if automaticos %}
+    <div class="ct-tabela-wrap">
+      <table class="table table-compact ct-tabela">
+        <thead><tr><th>Chip de conectividade</th><th>ICCID</th><th>Item no estoque de TI</th><th>Status no TI</th><th class="num">Valor</th></tr></thead>
+        <tbody>
+          {% for chip, item in automaticos %}
+          <tr>
+            <td>{% if pode_ver_agro %}<a href="{% url 'm2m_chip_detalhe' chip.pk %}">{{ chip.nome }}</a>{% else %}{{ chip.nome }}{% endif %}</td>
+            <td class="ct-mono">{{ chip.iccid|m2m_blocos }}</td>
+            <td><a href="{% url 'equipamento_detalhe' item.pk %}">{{ item.nome }}</a> <span class="ct-sub ct-mono">{{ item.numero_serie }}</span></td>
+            <td>{{ item.get_status_display }}</td>
+            <td class="num">{% if item.valor is not None %}R$ {{ item.valor|floatformat:2 }}{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if total_automaticos > automaticos|length %}<p class="ct-sub ct-pad">Mostrando {{ automaticos|length }} de {{ total_automaticos }}; “Ligar” vale para todos.</p>{% endif %}
+    {% else %}
+    <p class="ct-vazio">Nenhum par novo para ligar: todo chip e todo item com o mesmo ICCID já está ligado.</p>
+    {% endif %}
+    {% if ambiguos %}
+    <div class="ct-ambiguos">
+      <h4>Ambíguos — não são ligados sozinhos</h4>
+      <p class="ct-sub">Mais de um chip ou item com o mesmo ICCID: corrija o cadastro duplicado e ligue à mão pela ficha do item.</p>
+      <ul>{% for a in ambiguos %}<li class="ct-mono">{{ a.chave }} — {{ a.chips|length }} chip{{ a.chips|length|pluralize }} e {{ a.itens|length }} ite{{ a.itens|length|pluralize:"m,ns" }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+  </section>
+
+  {% comment %}2. Chips sem patrimônio: cadastrar no estoque, em lote, com a nota fiscal e o valor.{% endcomment %}
+  <section class="card ct-bloco" id="cadastro" aria-labelledby="ct-sem-item">
+    <div class="card-head">
+      <h3 class="card-title" id="ct-sem-item">Chips sem item no estoque de TI <span class="ct-sub">({{ total_sem_item_filtrados|unlocalize }}{% if busca %} da busca{% endif %})</span></h3>
+      <form method="get" class="ct-busca" role="search">
+        <input type="search" name="q" value="{{ busca }}" placeholder="Nome, ICCID ou linha" aria-label="Buscar chip sem item" autocomplete="off">
+        <button type="submit" class="btn btn-sm">Buscar</button>
+        {% if busca %}<a class="btn btn-sm btn-ghost" href="{% url 'chips_conciliacao' %}#cadastro">Limpar</a>{% endif %}
+      </form>
+    </div>
+    {% if sem_item %}
+    <form method="post" action="{% url 'chip_estoque_cadastrar_itens' %}" id="ct-form-cadastro" data-ct-confirma-lote>
+      {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}"><input type="hidden" name="q" value="{{ busca }}">
+      <div class="ct-tabela-wrap">
+        <table class="table table-compact ct-tabela">
+          <thead><tr>{% if pode_ligar %}<th class="ct-sel"><input type="checkbox" data-ct-marcar-todos aria-label="Marcar os chips desta lista"></th>{% endif %}<th>Chip</th><th>ICCID</th><th>Linha</th><th>Operadora</th><th>Uso na operação</th></tr></thead>
+          <tbody>
+            {% for c in sem_item %}
+            <tr>
+              {% if pode_ligar %}<td class="ct-sel"><input type="checkbox" name="ids" value="{{ c.pk|unlocalize }}" aria-label="Marcar {{ c.nome }}"{% if c.iccid %}{% else %} disabled title="Sem ICCID: não dá para cadastrar"{% endif %}></td>{% endif %}
+              <td>{% if pode_ver_agro %}<a href="{% url 'm2m_chip_detalhe' c.pk %}">{{ c.nome }}</a>{% else %}{{ c.nome }}{% endif %}</td>
+              <td class="ct-mono">{{ c.iccid|m2m_blocos|default:"—" }}</td>
+              <td class="ct-mono">{{ c.numero_linha|default:"—" }}</td>
+              <td>{{ c.operadora.nome }}</td>
+              <td>{{ c.get_situacao_uso_display }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if total_sem_item_filtrados > sem_item|length %}<p class="ct-sub ct-pad">Mostrando {{ sem_item|length }} de {{ total_sem_item_filtrados }}. Use a busca para afinar, ou marque “todos” abaixo para cadastrar todos os {{ total_sem_item_filtrados }}.</p>{% endif %}
+
+      {% if pode_ligar %}
+      <details class="ct-cadastro"{% if abrir_cadastro or busca %} open{% endif %}>
+        <summary class="btn btn-sm"><i class="fa-solid fa-box-open" aria-hidden="true"></i> Cadastrar os chips marcados no estoque de TI</summary>
+        <div class="ct-cadastro-corpo">
+          <p class="ct-sub">Cria um item de chip no estoque para cada chip marcado — número de série = ICCID — e já o liga ao chip de conectividade. Os dados abaixo valem para todo o lote (chips da mesma nota fiscal chegam iguais). Já vêm preenchidos com os do último chip cadastrado.</p>
+          {% if not tipos_de_chip %}<p class="ct-aviso" data-tom="erro">Nenhum tipo está marcado como chip. No cadastro de tipos, marque “É chip (SIM)” no tipo dos chips.</p>{% endif %}
+          <div class="ct-grade">
+            <label class="ct-campo{% if erros.nome %} is-erro{% endif %}"><span>Nome do item *</span><input type="text" name="nome" value="{{ padroes.nome }}" maxlength="100" required>{% if erros.nome %}<small>{{ erros.nome }}</small>{% endif %}</label>
+            <label class="ct-campo"><span>Marca</span><input type="text" name="marca" value="{{ padroes.marca }}" maxlength="100"></label>
+            <label class="ct-campo"><span>Modelo</span><input type="text" name="modelo" value="{{ padroes.modelo }}" maxlength="100"></label>
+            <label class="ct-campo{% if erros.valor %} is-erro{% endif %}"><span>Valor unitário (R$)</span><input type="text" inputmode="decimal" name="valor" value="{{ padroes.valor|unlocalize }}" placeholder="15,00">{% if erros.valor %}<small>{{ erros.valor }}</small>{% endif %}</label>
+            <label class="ct-campo{% if erros.numero_nf %} is-erro{% endif %}"><span>Nota fiscal</span><input type="text" name="numero_nf" value="{{ padroes.numero_nf }}" maxlength="60">{% if erros.numero_nf %}<small>{{ erros.numero_nf }}</small>{% endif %}</label>
+            <label class="ct-campo"><span>Nº do pedido</span><input type="text" name="numero_pedido" value="{{ padroes.numero_pedido }}" maxlength="100"></label>
+            <label class="ct-campo{% if erros.data_compra %} is-erro{% endif %}"><span>Data de compra</span><input type="date" name="data_compra" value="{{ padroes.data_compra }}">{% if erros.data_compra %}<small>{{ erros.data_compra }}</small>{% endif %}</label>
+            <label class="ct-campo"><span>Fornecedor</span>
+              <select name="fornecedor"><option value="">—</option>{% for f in fornecedores %}<option value="{{ f.pk|unlocalize }}" {% if padroes.fornecedor|stringformat:"s" == f.pk|stringformat:"s" %}selected{% endif %}>{{ f.nome }}</option>{% endfor %}</select>
+            </label>
+            <label class="ct-campo"><span>Centro de custo</span>
+              <select name="centro_custo"><option value="">—</option>{% for c in centros_de_custo %}<option value="{{ c.pk|unlocalize }}" {% if padroes.centro_custo|stringformat:"s" == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.numero }} · {{ c.departamento }}</option>{% endfor %}</select>
+            </label>
+            <label class="ct-campo"><span>Localidade</span>
+              <select name="localidade"><option value="">—</option>{% for l in localidades %}<option value="{{ l.pk|unlocalize }}" {% if padroes.localidade|stringformat:"s" == l.pk|stringformat:"s" %}selected{% endif %}>{{ l.local }}</option>{% endfor %}</select>
+            </label>
+            <label class="ct-campo{% if erros.status %} is-erro{% endif %}"><span>Status inicial</span>
+              <select name="status">{% for valor, rotulo in status_de_cadastro %}<option value="{{ valor }}" {% if padroes.status == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select>{% if erros.status %}<small>{{ erros.status }}</small>{% endif %}
+            </label>
+            {% if tipos_de_chip|length > 1 %}
+            <label class="ct-campo{% if erros.subtipo %} is-erro{% endif %}"><span>Tipo do item *</span>
+              <select name="subtipo" required><option value="">Escolha…</option>{% for t in tipos_de_chip %}<option value="{{ t.pk|unlocalize }}">{{ t.nome }}</option>{% endfor %}</select>{% if erros.subtipo %}<small>{{ erros.subtipo }}</small>{% endif %}
+            </label>
+            {% endif %}
+          </div>
+          <label class="ct-confirma"><input type="checkbox" name="todos" value="1"> Cadastrar <b>todos os {{ total_sem_item_filtrados|unlocalize }}</b> chips {% if busca %}desta busca{% else %}sem item{% endif %}, não só os marcados</label>
+          <div class="ct-acoes"><button type="submit" class="btn-primary"><i class="fa-solid fa-box-open" aria-hidden="true"></i> Cadastrar no estoque de TI</button></div>
+        </div>
+      </details>
+      {% endif %}
+    </form>
+    {% elif busca %}
+    <p class="ct-vazio">Nenhum chip sem item corresponde à busca.</p>
+    {% else %}
+    <p class="ct-vazio">Todo chip de conectividade já tem o seu item no estoque de TI.</p>
+    {% endif %}
+  </section>
+
+  {% comment %}3. Itens do estoque sem chip: criar o chip de conectividade a partir do item.{% endcomment %}
+  <section class="card ct-bloco" aria-labelledby="ct-sem-chip">
+    <div class="card-head"><h3 class="card-title" id="ct-sem-chip">Itens do estoque sem chip de conectividade <span class="ct-sub">({{ total_itens_sem_chip|unlocalize }})</span></h3></div>
+    {% if itens_sem_chip %}
+    <div class="ct-tabela-wrap">
+      <table class="table table-compact ct-tabela">
+        <thead><tr><th>Item</th><th>Nº de série</th><th>Status</th><th>Localidade</th><th class="ct-acoes-col"><span class="sr-only">Ações</span></th></tr></thead>
+        <tbody>
+          {% for i in itens_sem_chip %}
+          <tr>
+            <td><a href="{% url 'equipamento_detalhe' i.pk %}">{{ i.nome }}</a></td>
+            <td class="ct-mono">{{ i.numero_serie|default:"—" }}</td>
+            <td>{{ i.get_status_display }}</td>
+            <td>{{ i.localidade.local|default:"—" }}</td>
+            <td class="ct-acoes-col">
+              {% if pode_ligar %}
+              <form method="post" action="{% url 'chip_estoque_criar_chip' %}">
+                {% csrf_token %}<input type="hidden" name="item" value="{{ i.pk|unlocalize }}"><input type="hidden" name="voltar" value="{{ voltar }}">
+                <button type="submit" class="btn btn-sm" title="Cria o chip em Frotas e Conectividade com o ICCID deste item e já liga os dois">Criar chip de conectividade</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="ct-vazio">Todo item de chip do estoque tem o seu chip de conectividade.</p>
+    {% endif %}
+  </section>
+
+  {% comment %}4. O que os dois cadastros dizem de diferente: só aponta, quem decide é o TI.{% endcomment %}
+  <section class="card ct-bloco" aria-labelledby="ct-diverge">
+    <div class="card-head"><h3 class="card-title" id="ct-diverge">Divergências entre os dois cadastros <span class="ct-sub">({{ total_divergencias|unlocalize }})</span></h3></div>
+    {% if com_divergencia %}
+    <ul class="ct-lista">
+      {% for chip, item, achados in com_divergencia %}
+      <li>
+        <div class="ct-lista-topo"><b>{% if pode_ver_agro %}<a href="{% url 'm2m_chip_detalhe' chip.pk %}">{{ chip.nome }}</a>{% else %}{{ chip.nome }}{% endif %}</b> <span class="ct-sub">↔</span> <a href="{% url 'equipamento_detalhe' item.pk %}">{{ item.nome }}</a> <span class="ct-sub ct-mono">{{ item.numero_serie }}</span></div>
+        {% for d in achados %}<p class="ct-nota" data-tom="{{ d.tom }}">{{ d.texto }}</p>{% endfor %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="ct-vazio">{% if resumo.ligados %}Os {{ resumo.ligados }} chips ligados não têm divergência entre o estoque e a conectividade.{% else %}Ainda não há chips ligados para comparar.{% endif %}</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/chips-conciliacao.js' %}?v={{ assets_version }}" defer></script>
+{% endblock %}

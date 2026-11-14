@@ -8,7 +8,7 @@ cada 401 ou 429 e nunca martela uma credencial recusada.
 
 Uso:
     python manage.py monitorar_m2m             # um ciclo agora
-    python manage.py monitorar_m2m --tique 15  # idem, informando o tique da tarefa
+    python manage.py monitorar_m2m --tique 1   # idem, informando o tique da tarefa (1 min)
 
 Quem roda isto de tempos em tempos é o Agendador de Tarefas do Windows (a tarefa
 não se registra sozinha em produção):
@@ -24,6 +24,9 @@ terminal do servidor rodam) não codifica seta, "check" nem emoji, e o comando
 quebraria justamente ao relatar o resultado.
 """
 
+import io
+import sys
+
 from django.core.management.base import BaseCommand, CommandError
 
 from services import m2m_monitoramento_service as m2m
@@ -35,7 +38,20 @@ def _cp1252(texto: str) -> str:
 
 
 class Command(BaseCommand):
-    help = "Executa um ciclo de monitoramento dos chips TIM M2M (sessao e consumo)."
+    help = (
+        "Executa um ciclo de monitoramento dos chips TIM M2M (sessao e consumo). Com --tique (a tarefa do Agendador), "
+        "repete um ciclo por minuto ate o fim do tique."
+    )
+
+    def __init__(self, stdout=None, stderr=None, *args, **kwargs):
+        # Sob `pythonw` (a tarefa de 1 em 1 minuto, sem janela) `sys.stdout` e `sys.stderr` são None, e o
+        # `OutputWrapper` do Django quebraria no primeiro `write`. O resultado já vai para o banco
+        # (`M2MExecucao`) e para o log; aqui só se evita o erro.
+        if stdout is None and sys.stdout is None:
+            stdout = io.StringIO()
+        if stderr is None and sys.stderr is None:
+            stderr = io.StringIO()
+        super().__init__(stdout, stderr, *args, **kwargs)
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -49,14 +65,23 @@ class Command(BaseCommand):
         if tique is not None and tique < 1:
             raise CommandError("--tique deve ser de pelo menos 1 minuto.")
 
-        resumo = m2m.executar_ciclo("agendada", tique_minutos=tique)
-
-        if resumo.exige_atencao:
+        # Só a TAREFA (que informa `--tique`) roda ciclos em sequência até o fim do tique. Uma execução manual, sem
+        # `--tique` (o terminal, o `agendar_m2m executar`), faz UM ciclo e volta: senão um teste rápido ficaria preso
+        # por quase todo o tique da tarefa.
+        if tique is None:
+            resumos = [m2m.executar_ciclo("agendada")]
+        else:
+            resumos = m2m.executar_varios_ciclos("agendada", tique_minutos=tique)
+        # A tarefa pode rodar vários ciclos seguidos (um por minuto, até o fim do tique): o código de saída
+        # é de problema se QUALQUER deles pediu atenção, e o texto é o do último.
+        problema = next((r for r in resumos if r.exige_atencao), None)
+        if problema is not None:
             # Uma mensagem só, no stderr, e código de saída 1 (sem traceback).
-            if not resumo.executou:
-                raise CommandError(_cp1252(f"Monitoramento TIM M2M parado: {resumo.mensagem}"))
-            self.stdout.write(_cp1252(resumo.texto()))
-            raise CommandError(_cp1252(resumo.erro or "O ciclo terminou com erro."))
+            if not problema.executou:
+                raise CommandError(_cp1252(f"Monitoramento TIM M2M parado: {problema.mensagem}"))
+            self.stdout.write(_cp1252(problema.texto()))
+            raise CommandError(_cp1252(problema.erro or "O ciclo terminou com erro."))
 
-        texto = _cp1252(resumo.texto())
+        resumo = resumos[-1]
+        texto = _cp1252(f"{len(resumos)} ciclo(s). " + resumo.texto() if len(resumos) > 1 else resumo.texto())
         self.stdout.write(texto if resumo.executou else self.style.WARNING(texto))

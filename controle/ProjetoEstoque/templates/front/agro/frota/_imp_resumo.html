@@ -1,0 +1,38 @@
+{% load l10n %}
+{% comment %}
+O quadro dos passos 3 a 6: seis números que respondem "o que aconteceu / o que vai acontecer" e, abaixo, os fatos do
+arquivo (próprios e terceiros, sem placa, sem chassi). Sem placa e sem chassi são FATO, não erro: gerador, trator e
+implemento nem sempre têm. Recebe `importacao` e `resumo` (de `frota_equipamento_import_service.resumo`).
+{% endcomment %}
+<section class="m2m-painel" aria-labelledby="agro-imp-resumo">
+  <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-imp-resumo">Resumo</h3></header>
+  <div class="m2m-regua m2m-regua--seis">
+    <div class="m2m-kpi"><span class="m2m-micro">Linhas lidas</span><span class="m2m-kpi-n m2m-num">{{ resumo.totais.linhas|unlocalize }}</span><span class="m2m-kpi-nota">com dados na planilha</span></div>
+    {% if importacao.estado == "confirmada" %}
+    <div class="m2m-kpi"><span class="m2m-micro">Importados</span><span class="m2m-kpi-n m2m-num">{{ importacao.importados|unlocalize }}</span><span class="m2m-kpi-nota">equipamentos criados</span></div>
+    <div class="m2m-kpi"><span class="m2m-micro">Atualizados</span><span class="m2m-kpi-n m2m-num">{{ importacao.atualizados|unlocalize }}</span><span class="m2m-kpi-nota">já cadastrados, com autorização</span></div>
+    <div class="m2m-kpi"><span class="m2m-micro">Ignorados</span><span class="m2m-kpi-n m2m-num">{{ importacao.existentes|unlocalize }}</span><span class="m2m-kpi-nota">já cadastrados ou repetidos</span></div>
+    {% else %}
+    <div class="m2m-kpi"><span class="m2m-micro">Novos</span><span class="m2m-kpi-n m2m-num">{{ resumo.novos|unlocalize }}</span><span class="m2m-kpi-nota">serão importados</span></div>
+    <div class="m2m-kpi"><span class="m2m-micro">Já cadastrados</span><span class="m2m-kpi-n m2m-num">{{ resumo.ja_cadastrados|unlocalize }}</span><span class="m2m-kpi-nota">{% if resumo.com_diferencas %}{{ resumo.com_diferencas|unlocalize }} com diferença{{ resumo.com_diferencas|pluralize }}{% else %}ficam como estão{% endif %}</span></div>
+    <div class="m2m-kpi"><span class="m2m-micro">Repetidos</span><span class="m2m-kpi-n m2m-num">{{ resumo.repetidos_na_planilha|unlocalize }}</span><span class="m2m-kpi-nota">código repetido no arquivo</span></div>
+    {% endif %}
+    <div class="m2m-kpi" {% if importacao.rejeitados %}data-tom="erro"{% endif %}><span class="m2m-micro">Rejeitados</span><span class="m2m-kpi-n m2m-num">{{ importacao.rejeitados|unlocalize }}</span><span class="m2m-kpi-nota">com o motivo dito</span></div>
+    <div class="m2m-kpi" {% if importacao.avisos %}data-tom="atencao"{% endif %}><span class="m2m-micro">Com conferência</span><span class="m2m-kpi-n m2m-num">{{ importacao.avisos|unlocalize }}</span><span class="m2m-kpi-nota">entra, mas confira</span></div>
+  </div>
+  <p class="m2m-nota m2m-nota--pad">
+    Próprios: <b class="m2m-num">{{ resumo.por_natureza.proprio|unlocalize }}</b> · Terceiros: <b class="m2m-num">{{ resumo.por_natureza.terceiro|unlocalize }}</b>
+    · Sem placa: <b class="m2m-num">{{ resumo.sem_placa|unlocalize }}</b> · Sem chassi: <b class="m2m-num">{{ resumo.sem_chassi|unlocalize }}</b>
+    <span class="m2m-sub">(placa e chassi são opcionais: nem todo equipamento tem)</span>
+  </p>
+  <details class="m2m-saiba-mais m2m-saiba-mais--topo">
+    <summary>Detalhes do arquivo</summary>
+    <dl class="m2m-dl m2m-dl--compacta">
+      <div><dt>Arquivo</dt><dd>{{ importacao.arquivo_nome }} <span class="m2m-sub">{{ importacao.get_formato_display }}</span></dd></div>
+      <div><dt>SHA-256</dt><dd class="m2m-id" title="{{ importacao.sha256 }}">{{ importacao.sha256|slice:":16" }}…</dd></div>
+      <div><dt>Enviada</dt><dd>{{ importacao.criada_em|date:"d/m/Y H:i" }}{% if importacao.criada_por %} <span class="m2m-sub">por {{ importacao.criada_por.get_username }}</span>{% endif %}</dd></div>
+      {% if importacao.estado == "previa" %}<div><dt>A prévia vale até</dt><dd>{{ importacao.expira_em|date:"d/m/Y H:i" }}</dd></div>{% endif %}
+      {% if importacao.confirmada_em %}<div><dt>Confirmada</dt><dd>{{ importacao.confirmada_em|date:"d/m/Y H:i" }}{% if importacao.confirmada_por %} <span class="m2m-sub">por {{ importacao.confirmada_por.get_username }}</span>{% endif %}</dd></div>{% endif %}
+    </dl>
+  </details>
+</section>

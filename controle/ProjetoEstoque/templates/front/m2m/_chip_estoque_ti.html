@@ -1,0 +1,73 @@
+{% load l10n %}
+{% comment %}
+A seção "Estoque de TI" da tela do CHIP (Zelo Agro) — regra 66. O chip é também um item do estoque de TI, onde ficam o
+valor, a nota fiscal e o termo de responsabilidade; aqui esses dados são LIDOS do item (nunca copiados) e a ligação entre
+os dois cadastros é feita pelo ICCID. Quem não tem acesso ao ambiente TI vê que a ligação existe e nada do patrimônio.
+Os botões de ligar e desligar são do TI (`vincular_chips` + acesso ao estoque); a view confere de novo.
+
+Contexto (de `contexto_do_estoque_ti`): estoque_ti_acesso, estoque_ti_pode_ligar, estoque_ti_item, estoque_ti_ficha,
+estoque_ti_divergencias, estoque_ti_itens_livres, estoque_ti_conciliacao.
+{% endcomment %}
+<section class="m2m-painel" id="m2m-d-ti" data-secao="Estoque de TI" aria-labelledby="m2m-d-ti-t">
+  <header class="m2m-painel-cab">
+    <h3 class="m2m-painel-t" id="m2m-d-ti-t">Estoque de TI</h3>
+    {% if estoque_ti_conciliacao %}<a class="m2m-painel-link" href="{{ estoque_ti_conciliacao }}">Conciliar chips</a>{% endif %}
+  </header>
+  <div class="m2m-painel-corpo">
+    {% if estoque_ti_item %}
+      {% with f=estoque_ti_ficha item=estoque_ti_item %}
+      {% if f %}
+      <dl class="m2m-dl m2m-dl--compacta">
+        <div><dt>Item no estoque</dt><dd><a class="m2m-link-forte" href="{{ f.url }}" title="Abre a ficha no estoque de TI">{{ item.nome }} · {{ item.numero_serie|default:"s/ nº" }}</a></dd></div>
+        <div><dt>Status no TI</dt><dd>{{ f.status_rotulo }}{% if f.excluido %} <span class="m2m-sub">(item excluído)</span>{% endif %}</dd></div>
+        <div><dt>Valor de aquisição</dt><dd class="m2m-num">{% if f.valor is not None %}R$ {{ f.valor|floatformat:2 }}{% else %}—{% endif %}</dd></div>
+        <div><dt>Nota fiscal</dt><dd class="m2m-num">{{ f.numero_nf|default:"—" }}{% if f.numero_pedido %} <span class="m2m-sub">pedido {{ f.numero_pedido }}</span>{% endif %}</dd></div>
+        <div><dt>Data de compra</dt><dd class="m2m-num">{% if f.data_compra %}{{ f.data_compra|date:"d/m/Y" }}{% else %}—{% endif %}</dd></div>
+        <div><dt>Fornecedor</dt><dd>{{ f.fornecedor.nome|default:"—" }}</dd></div>
+        <div><dt>Centro de custo</dt><dd>{% if f.centro_custo %}{{ f.centro_custo.numero }} · {{ f.centro_custo.departamento }}{% else %}—{% endif %}</dd></div>
+        <div><dt>Localidade</dt><dd>{{ f.localidade.local|default:"—" }}</dd></div>
+        <div><dt>Responsável (TI)</dt><dd>{{ f.detentor.rotulo }}</dd></div>
+        <div><dt>Termo de responsabilidade</dt><dd>{% if f.termo.situacao == "sem" %}<span class="m2m-sub">sem termo</span>{% else %}<a href="{{ f.termo.url }}">{{ f.termo.rotulo }}</a> <span class="m2m-sub">{% if f.termo.colaborador %}{{ f.termo.colaborador.nome }} · {% endif %}{{ f.termo.em|date:"d/m/Y" }}{% if f.termo.codigo %} · cód. {{ f.termo.codigo }}{% endif %}</span>{% endif %}</dd></div>
+        <div><dt>Ligado em</dt><dd class="m2m-num">{{ chip.item_ti_em|date:"d/m/Y H:i" }}{% if chip.item_ti_por %} <span class="m2m-sub">por {{ chip.item_ti_por.get_username }}</span>{% endif %} <span class="m2m-sub">· {{ chip.get_item_ti_origem_display|default:"—" }}</span></dd></div>
+      </dl>
+      {% else %}
+      <p class="m2m-nota">Este chip está ligado ao item “{{ item.nome }}” do estoque de TI. O valor, a nota fiscal e o termo de responsabilidade ficam com quem tem acesso ao estoque de TI.</p>
+      {% endif %}
+      {% endwith %}
+
+      {% for d in estoque_ti_divergencias %}
+      <p class="m2m-aviso" data-tom="{% if d.tom == 'erro' %}erro{% elif d.tom == 'atencao' %}atencao{% else %}neutro{% endif %}">{{ d.texto }}</p>
+      {% endfor %}
+
+      {% if estoque_ti_pode_ligar %}
+      <details class="m2m-menu-simples">
+        <summary class="m2m-btn m2m-btn--sm">Desligar do estoque de TI</summary>
+        <form class="m2m-form-linha" method="post" action="{% url 'chip_estoque_desligar' %}">
+          {% csrf_token %}<input type="hidden" name="chip" value="{{ chip.pk }}"><input type="hidden" name="voltar" value="{{ request.get_full_path }}">
+          <input type="text" name="motivo" class="m2m-campo" required maxlength="255" placeholder="Motivo (ex.: ligado ao item errado)" aria-label="Motivo de desligar">
+          <button type="submit" class="m2m-btn m2m-btn--perigo">Desligar</button>
+        </form>
+        <p class="m2m-nota">O chip e o item continuam existindo; só a ligação é desfeita, e fica no histórico.</p>
+      </details>
+      {% endif %}
+    {% else %}
+      <p class="m2m-nota">Este chip ainda <b>não tem patrimônio no estoque de TI</b>: o valor, a nota fiscal e o termo de responsabilidade são cadastrados lá, e a ligação é feita pelo ICCID.</p>
+      {% if estoque_ti_pode_ligar %}
+        {% if estoque_ti_itens_livres %}
+        <form class="m2m-form-linha" method="post" action="{% url 'chip_estoque_ligar' %}">
+          {% csrf_token %}<input type="hidden" name="chip" value="{{ chip.pk }}"><input type="hidden" name="voltar" value="{{ request.get_full_path }}">
+          <select name="item" class="m2m-campo" required aria-label="Item do estoque de TI" data-s2="off">
+            <option value="">Ligar a um item de chip sem chip…</option>
+            {% for i in estoque_ti_itens_livres %}<option value="{{ i.pk|unlocalize }}">{{ i.nome }} · {{ i.numero_serie|default:"s/ nº" }} · {{ i.get_status_display }}</option>{% endfor %}
+          </select>
+          <label class="m2m-check"><input type="checkbox" name="forcar" value="1"> é o mesmo SIM, mesmo com o ICCID diferente</label>
+          <button type="submit" class="m2m-btn m2m-btn--primario">Ligar ao item</button>
+        </form>
+        {% endif %}
+        <p class="m2m-nota"><a href="{{ estoque_ti_conciliacao }}?q={{ chip.iccid|slice:'-6:' }}#cadastro">Cadastrar este chip no estoque de TI</a> (com valor e nota fiscal), ou <a href="{{ estoque_ti_conciliacao }}">conciliar todos de uma vez</a>.</p>
+      {% elif estoque_ti_acesso %}
+        <p class="m2m-nota">Peça a quem administra os chips no TI (permissão “vincular chips”) para cadastrá-lo no estoque.</p>
+      {% endif %}
+    {% endif %}
+  </div>
+</section>

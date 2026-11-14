@@ -1,16 +1,22 @@
 {% comment %}
-Paginação no `ui-pager` do sistema. Recebe `page_obj`, `paginas` (números com
-reticências, de `Paginator.get_elided_page_range`) e `querystring` (os filtros, sem
-`page`). Sem resultado nenhum não desenha nada.
+Paginação no `ui-pager` do sistema — UMA só para todas as listas do Zelo Agro. Recebe `page_obj`, `paginas`
+(números com reticências, de `Paginator.get_elided_page_range`) e `querystring` (os filtros, sem `page`);
+`page_obj.qs_base` e `page_obj.opcoes_por_pagina` vêm de `paginar()` (views/frota_comum.py).
+
+Tem: total de registros, primeira, anterior, números, próxima e última página e o tamanho da página
+(10, 25, 50, 100 — links, sem JS). Trocar o tamanho volta para a página 1 e preserva pesquisa, filtros e
+ordenação. Sem resultado nenhum não desenha nada (a tela mostra o estado vazio dela).
 {% endcomment %}
 {% if page_obj.paginator.count %}
-<div class="ui-pager m2m-pager">
-  <span class="ui-pager-info">{{ page_obj.start_index }}–{{ page_obj.end_index }} de {{ page_obj.paginator.count }}</span>
+<div class="ui-pager m2m-pager" data-paginacao>
+  <span class="ui-pager-info">{{ page_obj.start_index }}–{{ page_obj.end_index }} de {{ page_obj.paginator.count }} registro{{ page_obj.paginator.count|pluralize }}</span>
   {% if page_obj.paginator.num_pages > 1 %}
   <nav class="ui-pager-links" aria-label="Páginas">
     {% if page_obj.has_previous %}
-      <a class="ui-pager-link" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page_obj.previous_page_number }}" aria-label="Página anterior">&lsaquo;</a>
+      <a class="ui-pager-link" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page=1" aria-label="Primeira página" title="Primeira página">&laquo;</a>
+      <a class="ui-pager-link" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page_obj.previous_page_number }}" aria-label="Página anterior" title="Página anterior">&lsaquo;</a>
     {% else %}
+      <span class="ui-pager-link is-disabled" aria-hidden="true">&laquo;</span>
       <span class="ui-pager-link is-disabled" aria-hidden="true">&lsaquo;</span>
     {% endif %}
     {% for n in paginas %}
@@ -23,10 +29,24 @@ reticências, de `Paginator.get_elided_page_range`) e `querystring` (os filtros,
       {% endif %}
     {% endfor %}
     {% if page_obj.has_next %}
-      <a class="ui-pager-link" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page_obj.next_page_number }}" aria-label="Próxima página">&rsaquo;</a>
+      <a class="ui-pager-link" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page_obj.next_page_number }}" aria-label="Próxima página" title="Próxima página">&rsaquo;</a>
+      <a class="ui-pager-link" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page_obj.paginator.num_pages }}" aria-label="Última página" title="Última página">&raquo;</a>
     {% else %}
       <span class="ui-pager-link is-disabled" aria-hidden="true">&rsaquo;</span>
+      <span class="ui-pager-link is-disabled" aria-hidden="true">&raquo;</span>
     {% endif %}
+  </nav>
+  {% endif %}
+  {% if page_obj.opcoes_por_pagina and page_obj.paginator.count > 10 %}
+  <nav class="m2m-pager-tamanho" aria-label="Registros por página">
+    <span class="m2m-micro">Por página</span>
+    {% for n in page_obj.opcoes_por_pagina %}
+      {% if n == page_obj.paginator.per_page %}
+        <span class="m2m-pager-opcao is-ativa" aria-current="true">{{ n }}</span>
+      {% else %}
+        <a class="m2m-pager-opcao" href="?{% if page_obj.qs_base %}{{ page_obj.qs_base }}&amp;{% endif %}por_pagina={{ n }}">{{ n }}</a>
+      {% endif %}
+    {% endfor %}
   </nav>
   {% endif %}
 </div>

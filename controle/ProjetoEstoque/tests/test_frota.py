@@ -13,8 +13,9 @@ está errado):
     encerrado por outra pessoa (cenário 8 da spec).
   • HISTÓRICO IMUTÁVEL — movimentação, evento e vínculo não se editam nem se apagam.
   • STATUS OPERACIONAL ≠ CONECTIVIDADE — nos dois sentidos.
-  • SEPARAÇÃO DO ESTOQUE DE TI — nenhum model novo aponta para `Item` e nenhuma operação mexe
-    em `Item`, `MovimentacaoItem` ou `ItemStatusHistorico`.
+  • SEPARAÇÃO DO ESTOQUE DE TI — só o vínculo e a movimentação do chip apontam para `Item` (a
+    referência do tablet/celular, regra 62) e nenhuma operação mexe em `Item`, `MovimentacaoItem`
+    ou `ItemStatusHistorico`.
   • ALERTA HONESTO — `sem_sessao` só para chip vinculado; regra desligada não gera
     ocorrência; o texto nunca diz "fora de cobertura" nem "defeito".
 """
@@ -38,6 +39,7 @@ from ProjetoEstoque.models import (
     GRUPO_FROTAS,
     GRUPO_FROTAS_CONSULTA,
     PERMISSOES_FROTA_CHIP,
+    PERMISSOES_FROTA_INVENTARIO,
     PERMISSOES_FROTA_VEICULO,
     REGRAS_DE_ALERTA_PADRAO,
     CanalNotificacao,
@@ -1428,17 +1430,29 @@ class EmailDasRegrasTests(FrotaBase):
 # ═════════════════════════════════════════════════════════════
 
 class SeparacaoDoEstoqueDeTITests(FrotaBase):
-    def test_nenhum_model_do_modulo_tem_fk_para_item(self):
+    # As ÚNICAS pontes para o estoque de TI. Regra 62: o vínculo de chip pode apontar para o tablet/celular
+    # onde o chip está, e a movimentação do chip lembra de onde veio e para onde foi. Regra 66: o chip aponta
+    # para o seu PATRIMÔNIO no estoque (`item_ti`, pelo ICCID). Todas são só REFERÊNCIA — nenhuma operação
+    # grava no `Item` existente (`test_frota_equipamento_ti` e `test_chip_estoque_ti`). Qualquer outra FK para
+    # `Item` nos models do módulo é acoplamento novo e tem de derrubar este teste.
+    PONTES_PERMITIDAS = {
+        ("FrotaVinculo", "item"),
+        ("FrotaMovimentacao", "item_origem"),
+        ("FrotaMovimentacao", "item_destino"),
+        ("M2MChip", "item_ti"),
+    }
+
+    def test_so_as_pontes_do_vinculo_apontam_para_item(self):
         prefixos = ("Frota", "M2M", "Conectividade")
         modelos = [m for m in django_apps.get_app_config("ProjetoEstoque").get_models() if m.__name__.startswith(prefixos)]
         self.assertGreaterEqual(len(modelos), 14)
+        achadas = set()
         for modelo in modelos:
             for campo in modelo._meta.get_fields():
-                if campo.is_relation and campo.concrete:
-                    with self.subTest(modelo=modelo.__name__, campo=campo.name):
-                        self.assertIsNot(campo.related_model, Item, f"{modelo.__name__}.{campo.name} aponta para Item")
-        self.assertFalse(any(isinstance(f, ForeignKey) and f.related_model is Item for f in M2MChip._meta.get_fields() if f.concrete))
-        self.assertFalse(hasattr(M2MChip, "item"))
+                if campo.is_relation and campo.concrete and campo.related_model is Item:
+                    achadas.add((modelo.__name__, campo.name))
+        self.assertEqual(achadas, self.PONTES_PERMITIDAS, "FK nova para Item no módulo de Frotas e Conectividade")
+        self.assertFalse(hasattr(M2MChip, "item"))                                  # o FK DIRETO antigo (0190) não voltou; a ponte de hoje é `item_ti`
 
     def test_o_ciclo_completo_da_frota_nao_toca_no_estoque_de_ti(self):
         contagens = lambda: (Item.objects.count(), MovimentacaoItem.objects.count(), ItemStatusHistorico.objects.count())
@@ -1553,6 +1567,10 @@ class MigracaoDePermissoesTests(TestCase):
     def test_o_reverso_recria_as_antigas_e_mapeia_de_volta(self):
         MIGRACAO.migrar_permissoes(django_apps, None)
         grupo = Group.objects.get(name=GRUPO_FROTAS)
+        # O banco de teste já passou pela 0198, que acrescentou as 3 permissões do inventário a este
+        # grupo. A 0191 não as conhece, então o cenário volta ao estado DELA: o que se testa aqui é o
+        # reverso da 0191 sobre o que a 0191 criou.
+        grupo.permissions.remove(*Permission.objects.filter(codename__in=[c for c, _ in PERMISSOES_FROTA_INVENTARIO]))
         membro = User.objects.create(username="r_membro")
         membro.groups.add(grupo)
         consulta_membro = User.objects.create(username="r_consulta")

@@ -1,0 +1,47 @@
+{% load l10n %}
+{% comment %}
+Um quadro de "o que cada valor da planilha vira" (situação → status, empresa → natureza, classe operacional → categoria).
+Recebe `g` (de `_grupos_de_valores`): `campo`, `titulo`, `destino`, `ajuda`, `rejeita`, `vazio`, `itens` (valor, n, decisao,
+sugerido), `opcoes` (valor, rótulo), `pendentes` e `equipamentos_pendentes`. Os campos `<campo>_valor` e `<campo>_decisao`
+andam em pares, na mesma ordem: é assim que a view junta o valor à decisão.
+{% endcomment %}
+<section class="m2m-painel" aria-labelledby="agro-imp-v-{{ g.campo }}">
+  <header class="m2m-painel-cab">
+    <h3 class="m2m-painel-t" id="agro-imp-v-{{ g.campo }}">{{ g.titulo }} → {{ g.destino }}<span class="m2m-painel-t-n">{{ g.itens|length }}</span></h3>
+  </header>
+  <p class="m2m-nota m2m-nota--pad">{{ g.ajuda }}</p>
+  {% if g.itens %}
+    {% if g.pendentes %}
+    <p class="m2m-aviso" data-tom="atencao"><b>{{ g.pendentes|unlocalize }} valor{{ g.pendentes|pluralize:"es" }} sem destino.</b> {{ g.equipamentos_pendentes|unlocalize }} equipamento{{ g.equipamentos_pendentes|pluralize }} ficar{{ g.equipamentos_pendentes|pluralize:"á,ão" }} rejeitado{{ g.equipamentos_pendentes|pluralize }} até você escolher.</p>
+    {% endif %}
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela m2m-tabela--curta agro-mapa">
+        <thead><tr><th>Valor na planilha</th><th class="num">Equipamentos</th><th>{{ g.destino }}</th></tr></thead>
+        <tbody>
+          {% for i in g.itens %}
+          <tr class="m2m-linha">
+            <td data-rotulo="Valor na planilha">
+              <input type="hidden" name="{{ g.campo }}_valor" value="{{ i.valor }}">
+              {% if i.valor %}<span class="agro-valor-bruto">{{ i.valor }}</span>{% else %}<em class="agro-valor-vazio">(vazio)</em>{% endif %}
+            </td>
+            <td class="num" data-rotulo="Equipamentos"><span class="m2m-num">{{ i.n|unlocalize }}</span></td>
+            <td data-rotulo="{{ g.destino }}">
+              <div class="agro-decide">
+                <select name="{{ g.campo }}_decisao" class="m2m-campo" aria-label="{{ g.destino }} de {{ i.valor|default:'valor vazio' }}">
+                  <option value="">{{ g.vazio }}</option>
+                  {% for valor, rotulo in g.opcoes %}
+                  <option value="{{ valor }}" {% if i.decisao == valor %}selected{% endif %}>{{ rotulo }}</option>
+                  {% endfor %}
+                </select>
+                {% if i.sugerido and i.decisao == i.sugerido %}<span class="agro-sugerido" title="Sugestão do sistema, a partir do nome: confira">sugerido</span>{% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="m2m-painel-vazio">Nenhum valor para decidir: a coluna não foi mapeada ou veio vazia no arquivo.</p>
+  {% endif %}
+</section>

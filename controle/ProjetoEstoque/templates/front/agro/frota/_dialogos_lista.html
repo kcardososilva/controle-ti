@@ -1,0 +1,41 @@
+{% comment %}
+Os diálogos de EXCLUIR e RESTAURAR da LISTA de equipamentos (um só de cada, reaproveitado por todas as linhas). Mesma
+mecânica dos diálogos do equipamento (`_dialogos_equipamento.html`): formulário POST com CSRF que o `frota.js` envia por
+fetch, com o erro do servidor mostrado dentro do diálogo; o botão da linha traz `data-frota-abrir`, `data-url` (a rota
+do status) e `data-alvo`. Aqui, além disso, o botão de excluir traz `data-verificar` (a rota JSON do que impede a
+exclusão): o `frota-equipamentos.js` pergunta ao abrir e preenche a lista — a conferência é de AGORA, não da hora em que
+a página foi desenhada, e o POST confere de novo no servidor (esconder ou habilitar botão nunca autoriza nada).
+Excluir é DESATIVAR: o cadastro e todo o histórico ficam guardados, e o equipamento volta pela situação "Excluídos".
+Só aparece para quem tem `editar_frota`.
+{% endcomment %}
+{% if pode_editar_frota %}
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-excluir_lista" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-excluir_lista-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ request.get_full_path }}"><input type="hidden" name="status" value="desativado">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-excluir_lista-t">Excluir equipamento</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <p class="m2m-nota">Excluir é <b>desativar</b>: o equipamento sai da lista e das escolhas, mas o cadastro e todo o histórico ficam guardados — e ele pode ser restaurado em “Excluídos”. Antes, o sistema confere o que há em volta dele:</p>
+      <ul class="agro-verificacao" data-excluir-verificacao aria-live="polite"><li data-ok="1">Conferindo…</li></ul>
+      <p class="m2m-aviso" data-tom="atencao" data-excluir-impedimento hidden></p>
+      <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: equipamento vendido" disabled></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--perigo" data-excluir-confirmar disabled>Excluir equipamento</button></footer>
+  </form>
+</div>
+
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-restaurar_lista" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-restaurar_lista-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ request.get_full_path }}"><input type="hidden" name="status" value="ativo">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-restaurar_lista-t">Restaurar equipamento</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <p class="m2m-nota">O equipamento volta para a lista com a situação <b>Em uso</b>. Se não é essa a situação dele, ajuste depois em “Mudar situação”. A exclusão e a restauração ficam registradas no histórico.</p>
+      <label class="m2m-rotulo"><span>Motivo</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" autocomplete="off" placeholder="Opcional. Ex.: excluído por engano"></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Restaurar equipamento</button></footer>
+  </form>
+</div>
+{% endif %}

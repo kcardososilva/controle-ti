@@ -1,60 +1,25 @@
 {% extends 'base.html' %}
-{% load static l10n m2m_tags %}
+{% load static l10n m2m_tags zelo_icones %}
 
-{% comment %}A MESMA tela serve as duas seções do Zelo Agro (Frotas e Chips e Conectividade), cada
-uma com o seu recorte — ver `views/frota.py::visao_geral_da_secao`.{% endcomment %}
-{% block title %}Visão geral — {% if m2m_secao == "frota" %}Frotas{% else %}Chips e Conectividade{% endif %} — Zelo Agro{% endblock %}
-{% block page_title %}{% if m2m_secao == "frota" %}Frotas{% else %}Chips e Conectividade{% endif %}{% endblock %}
+{% comment %}A Visão geral de Chips e Conectividade (`views/frota.py::visao_geral_da_conectividade`). A de Frotas e Maquinários é a lista de equipamentos (`front/agro/frota/equipamentos.html`): até 2026-11-13 as duas seções dividiam esta tela.{% endcomment %}
+{% block title %}Visão geral — Chips e Conectividade — Zelo Agro{% endblock %}
+{% block page_title %}Chips e Conectividade{% endblock %}
 {% block page_subtitle %}Visão geral{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro-dash.css' %}?v={{ assets_version }}">
 {% endblock %}
 
 {% block content %}
 <div class="m2m-page">
-  {% if m2m_secao == "frota" %}
-  {% include 'front/m2m/_frota_topo.html' with titulo="Visão geral" descricao="A situação dos veículos e equipamentos da frota." %}
-  {% else %}
   {% include 'front/m2m/_frota_topo.html' with titulo="Visão geral" descricao="A situação da conectividade dos chips." %}
-  {% endif %}
 
   {% if mostrar_passos %}{% include 'front/m2m/_config_inicial.html' with completo=False %}{% endif %}
 
-  {% comment %}Resumo: dois cartões, quatro números em cada. O status do veículo é decisão de quem opera; a conectividade é o que a API respondeu — por isso nunca dividem o mesmo cartão.{% endcomment %}
-  <div class="m2m-grade{% if kpis_frota and kpis_conectividade %} m2m-grade--2{% endif %}">
-    {% if kpis_frota %}
-    <section class="m2m-painel" aria-labelledby="m2m-b-frota">
-      <header class="m2m-painel-cab">
-        <h3 class="m2m-painel-t" id="m2m-b-frota">Frota</h3>
-        <a class="m2m-painel-link" href="{% url 'frota_veiculos' %}">Ver veículos</a>
-      </header>
-      <div class="m2m-regua">
-        <a class="m2m-kpi" href="{% url 'frota_veiculos' %}">
-          <span class="m2m-micro">Veículos</span>
-          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.total|unlocalize }}</span>
-          <span class="m2m-kpi-nota">{% if kpis_frota.desativados %}{{ kpis_frota.desativados|unlocalize }} desativado{{ kpis_frota.desativados|pluralize }} fora da conta{% else %}cadastrados{% endif %}</span>
-        </a>
-        <a class="m2m-kpi" href="{% url 'frota_veiculos' %}?status=ativo">
-          <span class="m2m-micro">Ativos</span>
-          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.ativos|unlocalize }}</span>
-          <span class="m2m-kpi-nota">em operação</span>
-        </a>
-        <a class="m2m-kpi" href="{% url 'frota_veiculos' %}?status=manutencao">
-          <span class="m2m-micro">Em manutenção</span>
-          <span class="m2m-kpi-n m2m-num">{{ kpis_frota.em_manutencao|unlocalize }}</span>
-          <span class="m2m-kpi-nota">parados</span>
-        </a>
-        <a class="m2m-kpi" href="{% url 'frota_veiculos' %}?chip=sem&amp;status=ativo" {% if atencao.veiculos_sem_chip.total %}data-tom="atencao"{% endif %}>
-          <span class="m2m-micro">Sem chip</span>
-          <span class="m2m-kpi-n m2m-num">{{ atencao.veiculos_sem_chip.total|unlocalize }}</span>
-          <span class="m2m-kpi-nota">ativos que exigem chip</span>
-        </a>
-      </div>
-    </section>
-    {% endif %}
-
-    {% if kpis_conectividade %}
+  {% comment %}Resumo da conectividade: o que a API respondeu. O status do veículo é decisão de quem opera e fica na Visão geral de Frotas e Maquinários — as duas leituras nunca dividem o mesmo cartão.{% endcomment %}
+  <div class="m2m-grade">
+    {% if kpis_conectividade and not painel_conect and not analise %}
     <section class="m2m-painel" aria-labelledby="m2m-b-conect">
       <header class="m2m-painel-cab">
         <h3 class="m2m-painel-t" id="m2m-b-conect">Conectividade</h3>
@@ -89,7 +54,212 @@ uma com o seu recorte — ver `views/frota.py::visao_geral_da_secao`.{% endcomme
     {% endif %}
   </div>
 
-  {% comment %}Área de atenção: UMA lista, só com o que pede ação. Sem pendência, uma linha discreta.{% endcomment %}
+  {% if analise %}
+  {% comment %}
+  Dashboard analítico (período e fazenda): cada número vem do que a plataforma da TIM respondeu e do cadastro, e cada
+  gráfico diz unidade, período e fonte. Não há franquia nem percentual de uso: o limite contratado de cada chip não é
+  conhecido pelo sistema. Sem sessão de dados no período, o estado vazio diz isso em vez de um gráfico de zeros.
+  {% endcomment %}
+  <form class="dash-filtros dash-filtros--analise" method="get" role="search" aria-label="{% if pode_ver_api %}Período, fazenda e escopo da análise{% else %}Fazenda da análise{% endif %}">
+    {% comment %}Período e escopo são do consumo e da inatividade (o que a API disse): quem não vê API só escolhe a fazenda.{% endcomment %}
+    {% if pode_ver_api %}
+    <nav class="dash-periodos" aria-label="Período de análise">
+      {% for p in analise.periodos %}
+        {% if p.disponivel %}<a href="?periodo={{ p.valor }}{% if fazenda_pedida %}&amp;unidade={{ fazenda_pedida }}{% endif %}&amp;escopo={{ analise.escopo }}" {% if p.valor == analise.periodo %}class="is-ativa" aria-current="true"{% endif %}{% if p.nota %} title="{{ p.nota }}"{% endif %}>{{ p.rotulo }}</a>{% else %}<a aria-disabled="true" role="link" title="{{ p.nota }}">{{ p.rotulo }}</a>{% endif %}
+      {% endfor %}
+    </nav>
+    <input type="hidden" name="periodo" value="{{ analise.periodo }}">
+    {% endif %}
+    <label class="m2m-rotulo"><span>Fazenda / unidade</span>
+      <select name="unidade" class="m2m-campo" data-agro-auto>
+        <option value="">Todas</option>
+        {% for pk, nome in fazendas %}<option value="{{ pk }}" {% if fazenda_pedida == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+      </select>
+    </label>
+    {% if pode_ver_api %}
+    <label class="m2m-rotulo"><span>Chips analisados</span>
+      <select name="escopo" class="m2m-campo" data-agro-auto>
+        {% for valor, rotulo in analise.escopos %}<option value="{{ valor }}" {% if analise.escopo == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    {% if not pode_ver_api %}
+    {% elif analise.atualizado_texto %}<span class="dash-atualizado" title="O dado mais recente lido da plataforma da TIM entre os chips analisados">Dados da TIM lidos em {{ analise.atualizado_texto }} ({{ analise.atualizado_rotulo }})</span>
+    {% else %}<span class="dash-atualizado">Nenhuma leitura de sessões da TIM registrada ainda</span>{% endif %}
+  </form>
+
+  {% comment %}Primeira área — indicadores gerais. "Em uso" e "Disponíveis" são do cadastro (vínculo); sessão e falha são da última leitura da TIM. Cada número abre a lista com o MESMO critério.{% endcomment %}
+  <section class="m2m-painel" aria-labelledby="m2m-b-conect">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-b-conect">Situação dos chips</h3><span class="m2m-sub">{% if pode_ver_api %}uso pelo cadastro · sessão e falhas pela última leitura da TIM{% else %}uso pelo cadastro e pelo vínculo{% endif %}</span></header>
+    <div class="m2m-regua">
+      <a class="m2m-kpi" href="{{ analise.indicadores.url_total }}"><span class="m2m-micro">Total de chips</span><span class="m2m-kpi-n m2m-num">{{ analise.indicadores.total|unlocalize }}</span><span class="m2m-kpi-nota">cadastrados</span></a>
+      <a class="m2m-kpi" href="{{ analise.indicadores.url_em_uso }}" title="Chip com vínculo ativo num equipamento em operação."><span class="m2m-micro">Em uso</span><span class="m2m-kpi-n m2m-num">{{ analise.indicadores.em_uso|unlocalize }}</span><span class="m2m-kpi-nota">vinculados</span></a>
+      <a class="m2m-kpi" href="{{ analise.indicadores.url_disponiveis }}" title="Chip disponível, sem vínculo com equipamento."><span class="m2m-micro">Disponíveis</span><span class="m2m-kpi-n m2m-num">{{ analise.indicadores.disponiveis|unlocalize }}</span><span class="m2m-kpi-nota">sem vínculo</span></a>
+      {% if pode_ver_api %}
+      <a class="m2m-kpi" href="{{ analise.indicadores.url_sessao_ativa }}" title="Só chips consultados pela API, com dado recente e confirmado pelo mapeamento."><span class="m2m-micro">Sessões ativas confirmadas</span><span class="m2m-kpi-n m2m-num">{{ analise.indicadores.sessao_ativa|unlocalize }}</span><span class="m2m-kpi-nota">agora</span></a>
+      <a class="m2m-kpi" href="{{ analise.indicadores.url_sem_sessao }}"><span class="m2m-micro">Sem sessão identificada</span><span class="m2m-kpi-n m2m-num">{{ analise.indicadores.sem_sessao|unlocalize }}</span><span class="m2m-kpi-nota">na última leitura</span></a>
+      <a class="m2m-kpi" href="{{ analise.indicadores.url_falha }}" title="A falha é da consulta (rede, credencial, API ou identificador): ela não diz que o chip está fora do ar." {% if analise.indicadores.falha_consulta %}data-tom="erro"{% endif %}><span class="m2m-micro">Falhas de consulta</span><span class="m2m-kpi-n m2m-num">{{ analise.indicadores.falha_consulta|unlocalize }}</span><span class="m2m-kpi-nota">última tentativa</span></a>
+      {% endif %}
+    </div>
+    {% if sem_mapeamento %}
+    <p class="m2m-nota m2m-nota--pad">Sem o mapeamento da resposta da API, nenhuma sessão é confirmada.{% if pode_configurar %} <a href="{% url 'm2m_config' %}#mapeamento">Mapear os campos</a>{% endif %}</p>
+    {% endif %}
+  </section>
+
+  {% comment %}Segunda área — análises gráficas. Utilização (donut) e inatividade (faixas); o consumo ocupa a linha inteira porque carrega duas listas. Todo segmento é link para a lista de chips filtrada; os números vêm de m2m_analise_service e a lista usa a MESMA classificação.{% endcomment %}
+  <div class="dash-analise">
+    {% with u=analise.utilizacao %}
+    <section class="m2m-painel dash-bloco" aria-labelledby="an-uso">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="an-uso">Chips utilizados e não utilizados</h3><span class="m2m-sub">{{ u.total|unlocalize }} cadastrado{{ u.total|pluralize }}</span></header>
+      {% if u.vazio %}
+      <p class="dash-estado">Nenhum chip em uso ou disponível neste recorte: não há distribuição a mostrar.</p>
+      {% else %}
+      <div class="dash-donut-quadro">
+        <div class="dash-donut">
+          <svg viewBox="0 0 42 42" role="img" aria-label="Chips em uso: {{ u.principais.0.n }} de {{ u.considerados }} considerados">
+            <circle class="dash-donut-trilho" cx="21" cy="21" r="15.9155" fill="none" stroke-width="5"></circle>
+            {% for g in u.principais %}{% if g.n %}
+            <a href="{{ g.url }}" aria-label="{{ g.rotulo }}: {{ g.n }} chips. Abrir a lista"><title>{{ g.rotulo }}: {{ g.n }} ({{ g.pct|floatformat:1 }}%)</title>
+              <circle class="dash-donut-arco dash-donut-arco--{{ g.chave }}" cx="21" cy="21" r="15.9155" fill="none" stroke-width="5" pathLength="100" stroke-dasharray="{{ g.traco|unlocalize }} {{ g.resto|unlocalize }}" stroke-dashoffset="-{{ g.inicio|unlocalize }}"></circle>
+            </a>
+            {% endif %}{% endfor %}
+          </svg>
+          <div class="dash-donut-centro"><b class="m2m-num">{{ u.considerados|unlocalize }}</b><span>considerados</span></div>
+        </div>
+        <ul class="dash-legenda">
+          {% for g in u.principais %}
+          <li><a href="{{ g.url }}"><i data-chave="{{ g.chave }}" aria-hidden="true"></i><span>{{ g.rotulo }}</span><b class="m2m-num">{{ g.n|unlocalize }}<span class="m2m-sub">{{ g.pct|floatformat:1 }}%</span></b></a></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if u.fora %}
+      <h4 class="dash-subt">Separados (fora do percentual)</h4>
+      <ul class="dash-fora">
+        {% for g in u.fora %}<li><a href="{{ g.url }}"><span>{{ g.rotulo }}</span><b class="m2m-num">{{ g.n|unlocalize }}</b></a></li>{% endfor %}
+      </ul>
+      {% endif %}
+      <footer class="dash-origem">Fonte: {{ u.origem }} Total considerado: {{ u.considerados|unlocalize }} de {{ u.total|unlocalize }}.{% if analise.atualizado_texto %} Dados da TIM lidos em {{ analise.atualizado_texto }}.{% endif %}</footer>
+    </section>
+    {% endwith %}
+
+    {% if pode_ver_api %}
+    {% include 'front/agro/_dash_barras.html' with id="an-inat" titulo="Tempo de inatividade" itens=analise.inatividade.faixas unidade="chips" resumo=analise.inatividade.resumo origem=analise.inatividade.origem vazio_texto="Nenhum chip no escopo escolhido." %}
+    {% endif %}
+  </div>
+
+  {% comment %}Daqui até o fim do bloco analítico é tudo da API (consumo, inatividade, sincronização, falhas): só para quem a vê.{% endcomment %}
+  {% if pode_ver_api %}
+  {% with c=analise.consumo %}
+  <section class="m2m-painel dash-analise-largo" aria-labelledby="an-consumo">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="an-consumo">Consumo de dados: maiores e menores</h3><span class="m2m-sub">{{ c.janela.texto }}</span></header>
+    {% if c.sem_numero %}
+    <p class="dash-estado">Nenhuma sessão de dados registrada no período para {% if c.vazio %}nenhum chip deste recorte: não há chip consultado pela API{% else %}os {{ c.total|unlocalize }} chip{{ c.total|pluralize }} deste recorte{% endif %}.</p>
+    {% else %}
+    <div class="dash-consumo">
+      <div>
+        <h4 class="dash-subt">Maiores consumidores</h4>
+        <ol class="dash-rank dash-rank--maiores">
+          {% for m in c.maiores %}
+          <li><a class="dash-rank-linha" href="{{ m.url }}" title="ICCID {{ m.iccid }}">
+            <span class="dash-rank-nome">{{ m.nome }}</span><b class="dash-rank-n m2m-num">{{ m.texto }}</b>
+            <span class="dash-rank-sub">{% if m.destino %}{% zelo_icone m.destino.icone %}<span>{{ m.destino.rotulo }}</span>{% else %}<span>Sem vínculo com equipamento</span>{% endif %}{% if m.parcial %}<em class="dash-marca" title="O histórico lido não cobre o período inteiro: o valor é um mínimo.">histórico parcial</em>{% endif %}{% if m.defasado %}<em class="dash-marca" title="Falha na última consulta ou dado sem leitura recente.">dado defasado</em>{% endif %}</span>
+            <span class="dash-rank-trilho" aria-hidden="true"><span class="dash-rank-valor" style="width: {{ m.pct|unlocalize }}%"></span></span>
+          </a></li>
+          {% endfor %}
+        </ol>
+      </div>
+      <div>
+        <h4 class="dash-subt">Menores consumidores</h4>
+        {% if c.menores %}
+        <ol class="dash-rank dash-rank--menores">
+          {% for m in c.menores %}
+          <li><a class="dash-rank-linha" href="{{ m.url }}" title="ICCID {{ m.iccid }}">
+            <span class="dash-rank-nome">{{ m.nome }}</span><b class="dash-rank-n m2m-num">{{ m.texto }}</b>
+            <span class="dash-rank-sub">{% if m.destino %}{% zelo_icone m.destino.icone %}<span>{{ m.destino.rotulo }}</span>{% else %}<span>Sem vínculo com equipamento</span>{% endif %}</span>
+            <span class="dash-rank-trilho" aria-hidden="true"><span class="dash-rank-valor" style="width: {{ m.pct|unlocalize }}%"></span></span>
+          </a></li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <p class="dash-estado">Nenhum chip com o histórico completo neste período: comparar quem foi lido por menos tempo seria comparar períodos diferentes.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+    {% if c.resumo %}
+    <p class="dash-resumo-consumo">
+      {% for r in c.resumo %}<a href="{{ r.url }}"><b class="m2m-num">{{ r.n|unlocalize }}</b> {{ r.rotulo|lower }}</a>{% endfor %}
+    </p>
+    {% endif %}
+    <footer class="dash-origem">Fonte: {{ c.origem }} Unidade: {{ c.unidade_de_medida }}. Sem franquia ou percentual: o limite contratado de cada chip não é conhecido pelo sistema.</footer>
+  </section>
+  {% endwith %}
+
+  {% comment %}Terceira área — acompanhamento: quem está parado, o consumo diário, as sincronizações e as falhas de comunicação.{% endcomment %}
+  <div class="dash-grade">
+    <section class="m2m-painel dash-bloco" aria-labelledby="an-parados">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="an-parados">Chips sem atividade recente</h3><a class="m2m-painel-link" href="{{ analise.inatividade.faixas.3.url }}">Ver de 1 a 7 dias</a></header>
+      {% if analise.inatividade.lista %}
+      <ul class="dash-lista">
+        {% for l in analise.inatividade.lista %}
+        <li><a href="{{ l.url }}">{{ l.nome }}</a>{% if l.destino %}<span class="m2m-sub zi-rotulo">{% zelo_icone l.destino.icone %}<span>{{ l.destino.rotulo }}</span></span>{% endif %}<span class="dash-lista-fim">{{ l.texto }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="dash-vazio">Nenhum chip há mais de 1 dia sem atividade neste recorte.</p>
+      {% endif %}
+      <footer class="dash-origem">Última atividade de sessão conhecida; falha de comunicação não é inatividade e fica em faixa própria.</footer>
+    </section>
+    {% include 'front/agro/_dash_serie.html' with id="dc-serie" titulo="Consumo de dados por dia" serie=painel_conect.consumo %}
+  </div>
+
+  <div class="dash-grade">
+    <section class="m2m-painel dash-bloco" aria-labelledby="dc-sync">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="dc-sync">Últimas sincronizações</h3><span class="m2m-sub">{{ painel_conect.sincronizacao.rotulo }}</span></header>
+      {% if painel_conect.execucoes %}
+      <div class="m2m-tabela-wrap">
+        <table class="m2m-tabela m2m-tabela--curta">
+          <thead><tr><th>Início</th><th>Resultado</th><th class="agro-num">Chips</th><th class="agro-num">Falhas</th><th class="agro-num">Requisições</th><th class="agro-num">Duração</th><th>O que atualizou</th></tr></thead>
+          <tbody>
+            {% for e in painel_conect.execucoes %}
+            <tr>
+              <td data-rotulo="Início"><span class="m2m-num">{{ e.iniciada_em|date:"d/m H:i:s" }}</span></td>
+              <td data-rotulo="Resultado">{{ e.get_estado_display }}</td>
+              <td class="agro-num m2m-num" data-rotulo="Chips">{{ e.consultados }}{% if e.pendentes %} <span class="m2m-sub">+{{ e.pendentes }} na fila</span>{% endif %}</td>
+              <td class="agro-num m2m-num" data-rotulo="Falhas">{{ e.falhas }}</td>
+              <td class="agro-num m2m-num" data-rotulo="Requisições">{{ e.chamadas }}</td>
+              <td class="agro-num m2m-num" data-rotulo="Duração">{% if e.concluida_em %}{{ e.duracao_s|floatformat:1 }} s{% else %}<span class="m2m-sub">em andamento</span>{% endif %}</td>
+              <td data-rotulo="O que atualizou">{% if e.mudancas %}<span class="m2m-sub">{{ e.mudancas.estado_sessao|default:0 }} estado{{ e.mudancas.estado_sessao|default:0|pluralize }} de sessão · {{ e.mudancas.consumo|default:0 }} consumo{{ e.mudancas.consumo|default:0|pluralize }} · {{ e.mudancas.sessoes_novas|default:0 }} sessões de dados novas</span>{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="dash-vazio">Nenhum ciclo de sincronização registrado ainda.{% if painel_conect.sincronizacao.tarefa_parada %} A tarefa do Agendador não está rodando.{% endif %}</p>
+      {% endif %}
+      <footer class="dash-origem">Fonte: registro de execuções do monitoramento. {{ painel_conect.sincronizacao.plano.texto }}</footer>
+    </section>
+    <section class="m2m-painel dash-bloco" aria-labelledby="dc-falhas">
+      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="dc-falhas">Histórico de falhas</h3>{% if pode_atualizar %}<a class="m2m-painel-link" href="{% url 'm2m_sessoes' %}">Ver sessões</a>{% endif %}</header>
+      {% if painel_conect.falhas %}
+      <ul class="dash-lista">
+        {% for c in painel_conect.falhas %}
+        <li><a href="{% url 'm2m_chip_detalhe' c.chip_id %}">{{ c.chip.nome }}</a><span class="m2m-sub">{{ c.get_resultado_display }}</span><span class="dash-lista-fim">{{ c.iniciada_em|date:"d/m H:i" }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="dash-vazio">Nenhuma consulta com falha registrada.</p>
+      {% endif %}
+      <footer class="dash-origem">Falha é da CONSULTA (rede, credencial, API): não diz que o chip está fora do ar. O último dado válido de cada chip é preservado.</footer>
+    </section>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  {% comment %}Área de atenção: UMA lista, só com o que pede ação. Sem pendência, uma linha discreta. Hoje só junta pendência de consulta e alerta de conectividade (a API): sem API a seção diria "tudo certo" sobre o que a pessoa não vê.{% endcomment %}
+  {% if pode_ver_api %}
   <section class="m2m-painel" aria-labelledby="m2m-atencao-t">
     <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-atencao-t">Requer atenção</h3></header>
     {% if pendencias %}
@@ -104,11 +274,6 @@ uma com o seu recorte — ver `views/frota.py::visao_geral_da_secao`.{% endcomme
         <ul class="m2m-lista-linhas">
           {% for item in p.itens %}
           <li>
-            {% if p.tipo == "veiculo" %}
-              <a class="m2m-link-forte" href="{% url 'frota_veiculo_detalhe' item.pk %}">{{ item.nome }}</a>
-              <span class="m2m-sub m2m-num">{{ item.codigo }}</span>
-              <span class="m2m-sub m2m-lista-fim">{{ item.tipo.nome }}</span>
-            {% else %}
               <a class="m2m-link-forte" href="{% url 'm2m_chip_detalhe' item.pk %}">{{ item.nome }}</a>
               {% if item.veiculo_atual %}<span class="m2m-sub m2m-num">{{ item.veiculo_atual.codigo }}</span>{% endif %}
               <span class="m2m-lista-fim">
@@ -116,7 +281,6 @@ uma com o seu recorte — ver `views/frota.py::visao_geral_da_secao`.{% endcomme
                 {% elif p.tipo == "falha" %}<span class="m2m-sub m2m-sub--erro m2m-num">&times;{{ item.falhas_consecutivas }}</span>{% if item.ultima_falha_rotulo %} <span class="m2m-sub">{{ item.ultima_falha_rotulo }}</span>{% endif %}
                 {% else %}<span class="m2m-sub">ainda não consultado</span>{% endif %}
               </span>
-            {% endif %}
           </li>
           {% endfor %}
           {% if p.restantes %}<li><span class="m2m-sub">e mais {{ p.restantes|unlocalize }}</span></li>{% endif %}
@@ -128,6 +292,7 @@ uma com o seu recorte — ver `views/frota.py::visao_geral_da_secao`.{% endcomme
       <p class="m2m-tudo-certo"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Nenhuma pendência. Tudo em situação normal.</p>
     {% endif %}
   </section>
+  {% endif %}
 
   {% if ver_historico %}
   <section class="m2m-painel" aria-labelledby="m2m-a-mov">
@@ -146,7 +311,7 @@ uma com o seu recorte — ver `views/frota.py::visao_geral_da_secao`.{% endcomme
             <td data-rotulo="Tipo"><b>{{ m.get_tipo_display }}</b></td>
             <td data-rotulo="Chip">{{ m.chip.nome }}</td>
             <td data-rotulo="Veículo">
-              {% if m.veiculo_origem %}{{ m.veiculo_origem.codigo }}{% endif %}{% if m.veiculo_origem and m.veiculo_destino %} <span class="m2m-sub">→</span> {% endif %}{% if m.veiculo_destino %}{{ m.veiculo_destino.codigo }}{% endif %}{% if not m.veiculo_origem and not m.veiculo_destino %}<span class="m2m-vazio-linha">—</span>{% endif %}
+              {% if m.veiculo_origem %}{{ m.veiculo_origem.codigo }}{% elif m.item_origem %}{{ m.item_origem.nome }}{% endif %}{% if m.origem_rotulo and m.destino_rotulo %} <span class="m2m-sub">→</span> {% endif %}{% if m.veiculo_destino %}{{ m.veiculo_destino.codigo }}{% elif m.item_destino %}{{ m.item_destino.nome }}{% endif %}{% if not m.origem_rotulo and not m.destino_rotulo %}<span class="m2m-vazio-linha">—</span>{% endif %}
             </td>
             <td data-rotulo="Responsável">{{ m.usuario_nome|default:"—" }}</td>
           </tr>

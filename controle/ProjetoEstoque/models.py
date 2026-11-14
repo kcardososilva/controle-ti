@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from django.db import models, transaction
+from django.db.models.functions import Lower
 from django.contrib.auth.models import User
 import datetime
 import os
@@ -177,6 +178,29 @@ class Subtipo(AuditModel):
     nome = models.CharField(max_length=100)
     alocado = models.CharField(max_length=3, choices=SimNaoChoices.choices)
     categoria = models.ForeignKey(Categoria, on_delete=models.CASCADE)
+    # Marca os tipos de equipamento que podem receber um chip (tablet, celular, roteador 4G…). É o que
+    # o módulo Frotas e Conectividade consulta para aceitar o equipamento como DESTINO de um chip —
+    # lido, nunca escrito por ele (regra 62). Quem decide é o TI, no cadastro do subtipo.
+    aceita_chip = models.BooleanField(
+        "Aceita chip (SIM)", default=False,
+        help_text="Marque para os tipos de equipamento que usam chip (ex.: Tablet, Celular). "
+                  "Só eles aparecem para vincular um chip na ficha do equipamento.",
+    )
+    # O OUTRO lado: o próprio item deste tipo É um chip (SIM) — o patrimônio do chip no estoque de TI (valor, NF,
+    # termo de responsabilidade, movimentações). É o que a conciliação com Frotas e Conectividade consulta para
+    # saber quais itens do estoque podem ser ligados a um chip de conectividade (`M2MChip.item_ti`, regra 66).
+    e_chip = models.BooleanField(
+        "É chip (SIM)", default=False,
+        help_text="Marque no tipo cujos itens SÃO chips (ex.: CHIP). Esses itens podem ser ligados ao chip de "
+                  "conectividade (linha, operadora, sessão e consumo) pelo ICCID. Um tipo não é chip e aceita chip ao mesmo tempo.",
+    )
+
+    def clean(self):
+        super().clean()
+        if self.e_chip and self.aceita_chip:
+            raise ValidationError({
+                "e_chip": "Um tipo não pode ser chip e aceitar chip ao mesmo tempo: o chip é o item; o tablet é onde ele vai.",
+            })
 
     def __str__(self):
         return f"{self.nome} ({self.categoria.nome})"
@@ -289,6 +313,10 @@ GRUPO_FROTAS_CONSULTA = "Frotas — Consulta"
 #   • O Agro exige `acessar_zelo_agro` OU qualquer permissão de módulo do Agro.
 #   • GRUPO_SOMENTE_AGRO prende o login no Agro (o "acesso somente ao Zelo Agro").
 GRUPO_SOMENTE_AGRO = "Zelo Agro — Exclusivo"
+# Portal do Colaborador (2026-11-14): quem VÊ, MOVIMENTA e CADASTRA no Agro, sem dado da API e sem o TI. Também prende o login no
+# Agro (`ambiente_service.GRUPOS_SOMENTE_AGRO`); a diferença para o "Exclusivo" é que este já leva as permissões de uso do
+# módulo e NENHUMA de API. A lista mora em `services/colaborador_agro_service.py` (a migration 0209 é o retrato dela).
+GRUPO_COLABORADOR_AGRO = "Zelo Agro — Colaborador"
 PERMISSOES_AGRO_AMBIENTE = [
     ("acessar_zelo_agro", "Pode acessar o ambiente Zelo Agro (visão geral)"),
 ]
@@ -3361,6 +3389,19 @@ class NinjaDevice(AuditModel):
     local = models.CharField(max_length=120, blank=True, db_index=True, verbose_name="Local / Site")
     node_class = models.CharField(max_length=60, blank=True, verbose_name="Tipo de dispositivo")
     last_sync = models.DateTimeField(auto_now=True, verbose_name="Última importação")
+    # A licença do NinjaOne se cobra por dispositivo, e a máquina parada (backup, defeito, manutenção, pausado) segue
+    # contando até alguém removê-la LÁ. A importação/sincronização nunca apaga um dispositivo daqui (regra 59-d), então
+    # "sumiu do NinjaOne" não é detectável; quem tira a licença dá o recado aqui, e a lista a liberar deixa de cobrá-lo
+    # (`services/ninja_licenca_service`, regra 69). Se o aparelho voltar a falar com o NinjaOne DEPOIS desta data, a
+    # remoção não pegou e ele volta à lista.
+    licenca_liberada_em = models.DateTimeField(
+        null=True, blank=True, db_index=True, verbose_name="Licença removida do NinjaOne em",
+        help_text="Quando o TI removeu este dispositivo do NinjaOne para liberar a licença. Vazio = ainda não removida.",
+    )
+    licenca_liberada_por = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL, related_name="ninja_licencas_liberadas",
+        verbose_name="Removida por",
+    )
 
     class Meta:
         verbose_name = "Dispositivo NinjaOne"
@@ -6375,9 +6416,18 @@ class M2MIntegracao(models.Model):
     )
 
     # ── frequência (a tarefa do Agendador é só o "tique"; quem manda é isto) ──
+    # Dois ritmos: chip com SESSÃO ATIVA é onde o dado muda (consumo e sessão andam) e merece o ritmo curto;
+    # chip sem sessão fica no ritmo de repouso. O que cabe de fato é decidido pelo limite de requisições
+    # por minuto (`limite_req_minuto`), que o ciclo respeita em qualquer configuração: o intervalo é o
+    # DESEJADO, e a tela mostra o efetivo.
     intervalo_minutos = models.PositiveIntegerField(
-        default=60, validators=[MinValueValidator(15)],
-        help_text="De quanto em quanto tempo cada chip é consultado. Mínimo de 15 minutos.",
+        default=1, validators=[MinValueValidator(1)],
+        help_text="De quanto em quanto tempo um chip com sessão ativa é consultado (desejado; o limite de "
+                  "requisições da API pode alongar). Mínimo de 1 minuto.",
+    )
+    intervalo_repouso_minutos = models.PositiveIntegerField(
+        default=15, validators=[MinValueValidator(1)],
+        help_text="De quanto em quanto tempo um chip SEM sessão ativa é consultado. Mínimo de 1 minuto.",
     )
     pausa_entre_chamadas_ms = models.PositiveIntegerField(default=1000)
     limite_req_minuto = models.PositiveIntegerField(
@@ -6398,6 +6448,14 @@ class M2MIntegracao(models.Model):
 
     # ── interpretação (ver services/m2m_interpretacao.py) ──
     mapeamento = models.JSONField(default=dict, blank=True)
+    dados_por_eventos = models.BooleanField(
+        default=True,
+        help_text=(
+            "Lê as sessões de dados do chip na plataforma (os mesmos eventos da aba Dados do portal) para dizer se "
+            "há sessão ativa e quanto foi consumido. Desligado, só vale o resumo do SIM Card, que na prática "
+            "demora para refletir o uso (ver a regra 61 do CLAUDE.md)."
+        ),
+    )
 
     # ── saúde ──
     ultima_execucao = models.DateTimeField(null=True, blank=True)
@@ -6480,6 +6538,14 @@ PERMISSOES_FROTA_CHIP = [
     ("tratar_ocorrencias", "Pode tratar as ocorrências de conectividade"),
     ("administrar_frota_config", "Pode administrar a integração, os tipos de veículo, as operadoras e as regras de alerta"),
 ]
+# Inventário de Frotas e Maquinários (planilha do ERP, validação, relatórios). Lista À PARTE de
+# `PERMISSOES_FROTA_VEICULO` de propósito: aquela é o retrato da migration 0191 (um teste confere
+# que as duas não divergem); estas nascem na 0198.
+PERMISSOES_FROTA_INVENTARIO = [
+    ("importar_equipamentos_frota", "Pode importar equipamentos motorizados por planilha"),
+    ("validar_inventario_frota", "Pode validar o inventário: a situação e o cadastro dos equipamentos importados"),
+    ("exportar_frota", "Pode exportar a frota e emitir os relatórios de frotas e maquinários"),
+]
 
 
 class M2MChip(AuditModel):
@@ -6513,8 +6579,27 @@ class M2MChip(AuditModel):
         help_text="Qual identificador vai na URL da consulta. O escolhido precisa estar preenchido.",
     )
     descricao = models.CharField(max_length=255, blank=True, default="")
-    # O "equipamento" do chip é o VEÍCULO, pelo vínculo (`FrotaVinculo`). O antigo FK
-    # para `Item` saiu na migration 0190: a frota é independente do estoque de TI.
+    # O "equipamento" do chip é o VEÍCULO ou o tablet/celular, pelo vínculo (`FrotaVinculo`). O antigo FK direto para
+    # `Item` saiu na migration 0190; a ligação de HOJE é outra coisa: `item_ti` é o PATRIMÔNIO do chip no estoque de TI
+    # (o `Item` do subtipo "É chip": valor, nota fiscal, termo de responsabilidade, status). A chave da ligação é o
+    # ICCID (= número de série do item). Só REFERÊNCIA: o módulo lê o item e nunca o grava (regra 66).
+    item_ti = models.OneToOneField(
+        "Item", on_delete=models.PROTECT, null=True, blank=True, related_name="chip_conectividade",
+        verbose_name="Item no estoque de TI",
+        help_text="O chip como PATRIMÔNIO no estoque de TI. Ligação 1 para 1: um item só tem um chip, e um chip só tem um item.",
+    )
+    item_ti_em = models.DateTimeField(null=True, blank=True)
+    item_ti_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    item_ti_origem = models.CharField(
+        max_length=16, blank=True, default="",
+        choices=[
+            ("manual", "Ligado à mão"),
+            ("iccid", "Mesmo ICCID (automático)"),
+            ("chip_do_item", "Chip criado a partir do item"),
+            ("item_do_chip", "Item criado a partir do chip"),
+        ],
+        help_text="Como a ligação nasceu; vazio quando não há item.",
+    )
     operadora = models.ForeignKey(
         "ConectividadeOperadora", on_delete=models.PROTECT, related_name="chips", default=operadora_padrao_id,
     )
@@ -6563,6 +6648,10 @@ class M2MChip(AuditModel):
     ultima_falha_tipo = models.CharField(max_length=20, blank=True, default="")
     falhas_consecutivas = models.PositiveIntegerField(default=0)
     proxima_consulta_em = models.DateTimeField(null=True, blank=True)
+    # Até onde as sessões de dados (`M2MSessaoDados`) já foram lidas na plataforma: o dia mais antigo
+    # já baixado por inteiro e a última leitura. Só o serviço de dados grava.
+    dados_desde = models.DateField(null=True, blank=True)
+    dados_sincronizados_em = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["nome"]
@@ -6724,6 +6813,97 @@ class M2MConsulta(models.Model):
         raise ValidationError("A consulta é histórico imutável e não pode ser apagada.")
 
 
+class M2MSessaoDados(models.Model):
+    """Uma SESSÃO DE DADOS do chip na plataforma — a mesma linha da aba "Dados" do portal da Saitro
+    (`GET /simcards/{id}/consumo/dados/{AAAA-MM-DD}/`). É daqui que saem "há sessão ativa?" e o
+    consumo: o resumo do SIM Card (`conexao`, `servicos.dados.consumo`) demora a refletir o uso.
+
+    `id_evento` é o id da PLATAFORMA e identifica a linha: a mesma sessão volta a cada leitura, com a
+    duração e os bytes maiores (a plataforma atualiza uma sessão aberta de ~15 em ~15 min), e a
+    leitura só a ATUALIZA. `fim` vazio é a sessão em andamento ("Online" no portal). Os bytes são os
+    do evento, exatos; o portal os mostra em base 1024.
+
+    Não é histórico imutável como `M2MConsulta`: é o espelho do que a plataforma informa, e a
+    plataforma corrige a própria linha."""
+
+    chip = models.ForeignKey(M2MChip, on_delete=models.CASCADE, related_name="sessoes_dados")
+    id_evento = models.BigIntegerField(unique=True)
+    inicio = models.DateTimeField()
+    fim = models.DateTimeField(null=True, blank=True)
+    duracao_s = models.PositiveIntegerField(default=0)
+    ip = models.CharField(max_length=45, blank=True, default="")
+    apn = models.CharField(max_length=100, blank=True, default="")
+    tecnologia = models.CharField(max_length=30, blank=True, default="")
+    location_info = models.CharField(max_length=100, blank=True, default="")
+    upload_bytes = models.PositiveBigIntegerField(default=0)
+    download_bytes = models.PositiveBigIntegerField(default=0)
+    total_bytes = models.PositiveBigIntegerField(default=0)
+    lido_em = models.DateTimeField(default=timezone.now, help_text="Quando o sistema leu esta linha pela última vez.")
+
+    class Meta:
+        ordering = ["-inicio", "-id_evento"]
+        verbose_name = "Sessão de dados"
+        verbose_name_plural = "Sessões de dados"
+        indexes = [models.Index(fields=["chip", "-inicio"], name="m2m_sessdados_chip_idx")]
+
+    def __str__(self):
+        return f"{self.chip_id} · {self.inicio:%d/%m/%Y %H:%M}"
+
+    @property
+    def em_andamento(self) -> bool:
+        return self.fim is None
+
+
+class M2MExecucao(models.Model):
+    """Uma execução do ciclo de monitoramento (o que a tarefa do Agendador roda a cada tique): quando,
+    quantos chips, quantas chamadas à API, o que mudou e como terminou. É o registro que responde "o
+    sistema está sincronizando sozinho?" sem depender de alguém ter a tela aberta.
+
+    Só nasce execução que de fato começou a consultar; ciclo que pulou (sem token, credencial recusada,
+    API pausada, outra execução em andamento) fica em `M2MIntegracao` — um ciclo a cada minuto que apenas
+    pula encheria a tabela sem dizer nada. Os números são do próprio ciclo, gravados no fim; execução
+    `em_andamento` há mais de `M2MIntegracao`'s trava é uma que morreu no meio (a próxima assume).
+
+    Retenção: `monitoramento_service.podar_execucoes` mantém os últimos 7 dias (o painel só mostra os
+    recentes), e a poda é a única exceção ao "histórico nunca é apagado" do módulo — as consultas, os
+    eventos e as sessões, que são o dado de verdade, continuam intactos."""
+
+    class Estado(models.TextChoices):
+        EM_ANDAMENTO = "em_andamento", "Em andamento"
+        CONCLUIDA = "concluida", "Concluída"
+        COM_FALHAS = "com_falhas", "Concluída com falhas"
+        INTERROMPIDA = "interrompida", "Interrompida"
+        ERRO = "erro", "Erro"
+
+    origem = models.CharField(max_length=20, default="agendada")
+    estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.EM_ANDAMENTO, db_index=True)
+    iniciada_em = models.DateTimeField(default=timezone.now, db_index=True)
+    concluida_em = models.DateTimeField(null=True, blank=True)
+    duracao_ms = models.PositiveIntegerField(default=0)
+    vencidos = models.PositiveIntegerField(default=0, help_text="Chips vencidos quando o ciclo começou.")
+    consultados = models.PositiveIntegerField(default=0)
+    sucessos = models.PositiveIntegerField(default=0)
+    falhas = models.PositiveIntegerField(default=0)
+    chamadas = models.PositiveIntegerField(default=0, help_text="Requisições HTTP feitas à API (a lista completa e as sessões de dados contam).")
+    pendentes = models.PositiveIntegerField(default=0, help_text="Chips que ficaram vencidos para o próximo ciclo (limite de tempo ou de requisições).")
+    interrompido_por = models.CharField(max_length=30, blank=True, default="")
+    erro = models.TextField(blank=True, default="")
+    mudancas = models.JSONField(default=dict, blank=True, help_text="O que este ciclo atualizou: estado de sessão, consumo, sessões de dados.")
+
+    class Meta:
+        ordering = ["-iniciada_em", "-id"]
+        verbose_name = "Execução do monitoramento"
+        verbose_name_plural = "Execuções do monitoramento"
+
+    def __str__(self):
+        return f"Execução {self.pk} · {self.iniciada_em:%d/%m %H:%M}"
+
+    @property
+    def duracao_s(self) -> float:
+        """A duração em segundos (uma casa), para a tela."""
+        return round(self.duracao_ms / 1000, 1)
+
+
 class M2MOcorrencia(models.Model):
     """Alerta do módulo. Dois tipos de origem:
 
@@ -6857,15 +7037,18 @@ class M2MEvento(models.Model):
         ESTADO_SESSAO_MUDOU = "estado_sessao_mudou", "Estado da sessão mudou"
         # Movimentações do chip (espelham `FrotaMovimentacao`, com o id dela em `dados`).
         ENTRADA = "entrada", "Entrada do chip"
-        VINCULADO = "vinculado", "Chip vinculado a veículo"
+        VINCULADO = "vinculado", "Chip vinculado"
         DESVINCULADO = "desvinculado", "Chip desvinculado"
-        TRANSFERIDO = "transferido", "Chip transferido de veículo"
+        TRANSFERIDO = "transferido", "Chip transferido"
         SUBSTITUIDO = "substituido", "Chip substituído"
         RETORNO_DISPONIBILIDADE = "retorno_disponibilidade", "Chip devolvido à disponibilidade"
         INATIVADO = "inativado", "Chip inativado"
         # Gravado pela migration 0190 ao remover o antigo vínculo direto com `Item`.
         ITEM_REMOVIDO = "item_removido", "Vínculo antigo com equipamento removido"
         CONFIG_FROTA = "config_frota", "Cadastro de apoio alterado"
+        # A ligação do chip ao seu item do estoque de TI (`M2MChip.item_ti`, regra 66).
+        ITEM_TI_LIGADO = "item_ti_ligado", "Chip ligado ao estoque de TI"
+        ITEM_TI_DESLIGADO = "item_ti_desligado", "Chip desligado do estoque de TI"
 
     chip = models.ForeignKey(M2MChip, on_delete=models.PROTECT, null=True, blank=True, related_name="eventos")
     tipo = models.CharField(max_length=25, choices=Tipo.choices)
@@ -6891,10 +7074,14 @@ class M2MEvento(models.Model):
 # os models abaixo (a lógica está em services/frota_service.py,
 # frota_vinculo_service.py, frota_import_service.py e m2m_monitoramento_service.py):
 #
-#   • INDEPENDENTE DO ESTOQUE DE TI. Nenhum model daqui tem FK para `Item` e nada
-#     passa por `MovimentacaoItem`. Só `Localidade` (unidade/fazenda) e `Usuario`
-#     (responsável) são reaproveitados, por serem cadastros organizacionais, não
-#     patrimoniais de TI.
+#   • NÃO MEXE NO ESTOQUE DE TI. Nenhuma operação de chip ou de veículo altera `Item`,
+#     `MovimentacaoItem` nem `ItemStatusHistorico`; a única escrita é CRIAR o item de um chip que ainda
+#     não tem patrimônio, por ação explícita do TI (regra 66) — nunca editar um item existente.
+#     As ÚNICAS pontes para `Item` são REFERÊNCIAS, e o teste de separação
+#     as lista: o destino do vínculo (`FrotaVinculo.item`, tablet/celular — regra 62), o que a
+#     movimentação lembra (`item_origem`/`item_destino`) e o PATRIMÔNIO do chip (`M2MChip.item_ti`
+#     — regra 66). Fora isso, só `Localidade` (unidade/fazenda) e `Usuario` (responsável) são
+#     reaproveitados, por serem cadastros organizacionais.
 #   • UM CHIP, UM VÍNCULO ATIVO. A garantia é a `UniqueConstraint` parcial de
 #     `FrotaVinculo` (chip, quando `fim_em` é nulo) — é o BANCO que impede dois
 #     vínculos ativos, mesmo com duas pessoas clicando ao mesmo tempo.
@@ -6915,6 +7102,16 @@ class FrotaTipo(models.Model):
         help_text="Veículo ativo deste tipo, sem chip vinculado, gera o alerta \"Veículo sem chip\".",
     )
     ativo = models.BooleanField(default=True)
+    # O que o tipo ESPERA ter. Não é validação: placa e chassi não se aplicam a todo equipamento
+    # (gerador, trator e implemento nem sempre têm), então a falta de um deles NUNCA bloqueia o
+    # cadastro. Só que, num tipo que costuma tê-los (moto, caminhão, utilitário), a falta passa a
+    # ser uma pendência cadastral ("Sem identificação completa").
+    espera_placa = models.BooleanField(
+        default=False, help_text="Equipamento deste tipo costuma ser emplacado: ficar sem placa vira pendência cadastral.",
+    )
+    espera_chassi = models.BooleanField(
+        default=False, help_text="Equipamento deste tipo costuma ter chassi / nº de série: ficar sem ele vira pendência cadastral.",
+    )
 
     class Meta:
         ordering = ["nome"]
@@ -6925,27 +7122,141 @@ class FrotaTipo(models.Model):
         return self.nome
 
 
+class FrotaNatureza(models.TextChoices):
+    """De quem é o ativo. Classificação INDEPENDENTE da classe operacional: um trator pode ser
+    próprio ou de terceiro. Equipamento de terceiro nunca entra na conta do patrimônio próprio."""
+
+    PROPRIO = "proprio", "Próprio"
+    TERCEIRO = "terceiro", "Terceiro"
+
+
+class _CatalogoERP(models.Model):
+    """Base dos cadastros de apoio que a planilha do ERP traz como PAR (código + nome): empresa,
+    classe operacional, classe mecânica e centro de custo. O `codigo_erp` é a identidade vinda do
+    ERP (preservado como veio, é o que a importação usa para reconhecer a mesma linha numa nova
+    planilha); o `nome` é o rótulo. Vazio de código = cadastro criado à mão no sistema.
+
+    Nunca se apaga: `ativo=False` tira das PRÓXIMAS escolhas e preserva os equipamentos que o usam."""
+
+    codigo_erp = models.CharField("Código no ERP", max_length=20, blank=True, default="")
+    nome = models.CharField(max_length=120)
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["nome"]
+        constraints = [
+            models.UniqueConstraint(fields=["codigo_erp"], condition=~models.Q(codigo_erp=""), name="%(class)s_codigo_erp_unico"),
+            models.UniqueConstraint(Lower("nome"), name="%(class)s_nome_unico"),
+        ]
+
+    def __str__(self):
+        return self.nome
+
+
+class FrotaEmpresa(_CatalogoERP):
+    """A empresa dona do equipamento, como o ERP a nomeia ("SANTA COLOMBA", "TERCEIROS"). A
+    `natureza_padrao` só SUGERE a natureza do ativo: ela é um campo próprio do equipamento."""
+
+    natureza_padrao = models.CharField(max_length=8, choices=FrotaNatureza.choices, default=FrotaNatureza.PROPRIO)
+
+    class Meta(_CatalogoERP.Meta):
+        verbose_name = "Empresa (frota)"
+        verbose_name_plural = "Empresas (frota)"
+
+
+class FrotaClasseOperacional(_CatalogoERP):
+    """A classe operacional do ERP ("TRATOR LEVE", "CAMINHÃO ROLL OFF"…) com o nome ORIGINAL
+    preservado. A `categoria` (um `FrotaTipo`) é a organização superior: agrupa várias classes sem
+    apagar a classificação de origem. Sem categoria = "a classificar"."""
+
+    categoria = models.ForeignKey(
+        FrotaTipo, on_delete=models.SET_NULL, null=True, blank=True, related_name="classes_operacionais",
+        help_text="A categoria superior que agrupa esta classe.",
+    )
+
+    class Meta(_CatalogoERP.Meta):
+        verbose_name = "Classe operacional"
+        verbose_name_plural = "Classes operacionais"
+
+
+class FrotaClasseMecanica(_CatalogoERP):
+    """A classe mecânica do ERP ("TRATOR LEVE", "LINHA AMARELA"…): outra leitura do mesmo equipamento,
+    que NÃO é um nível da classe operacional (uma "PA CARREGADEIRA" operacional pode ser "LINHA
+    AMARELA" mecânica) — por isso é uma classificação própria."""
+
+    class Meta(_CatalogoERP.Meta):
+        verbose_name = "Classe mecânica"
+        verbose_name_plural = "Classes mecânicas"
+
+
+class FrotaCentroCusto(_CatalogoERP):
+    """O centro de custo do ERP ("32107 · TRATOR LEVE - GRAOS"). É cadastro PRÓPRIO da frota: o
+    `CentroCusto` do estoque de TI é outro catálogo (departamentos), e misturá-los poluiria as
+    telas dos dois lados. O `codigo_erp` é a identidade — a planilha traz o mesmo código com nomes
+    grafados de duas formas, e a importação guarda o primeiro e AVISA da divergência."""
+
+    class Meta(_CatalogoERP.Meta):
+        verbose_name = "Centro de custo (frota)"
+        verbose_name_plural = "Centros de custo (frota)"
+
+
 class FrotaVeiculo(AuditModel):
-    """Veículo ou equipamento agrícola da frota. Documentos (placa, RENAVAM, chassi/série)
-    são opcionais: trator, pulverizador e implemento nem sempre têm placa."""
+    """Veículo ou equipamento agrícola da frota — o registro PRINCIPAL do ativo motorizado. Os
+    equipamentos tecnológicos (monitor, receptor, rádio…) não são campos daqui: moram no estoque
+    tecnológico e chegam à máquina por instalação (`TecInstalacao`), e os chips por vínculo.
+
+    Documentos (placa, RENAVAM, chassi/série) são opcionais: trator, pulverizador e implemento nem
+    sempre têm placa. Dois identificadores, de propósito: `codigo` é o do Zelo Agro (interno) e
+    `codigo_legado` é o do ERP, preservado como veio."""
 
     class Status(models.TextChoices):
-        ATIVO = "ativo", "Ativo"
+        ATIVO = "ativo", "Em uso"
         MANUTENCAO = "manutencao", "Em manutenção"
         INATIVO = "inativo", "Inativo"
         DESATIVADO = "desativado", "Desativado"
 
+    Natureza = FrotaNatureza
+
     # identificação
-    codigo = models.CharField(max_length=30, unique=True, help_text="Código interno (frota/patrimônio). Único; gravado em caixa alta.")
+    codigo = models.CharField(max_length=30, unique=True, help_text="Identificador interno do Zelo Agro. Único; gravado em caixa alta.")
+    codigo_legado = models.CharField(
+        "Código original (ERP)", max_length=30, blank=True, default="",
+        help_text="O código da coluna \"Equipamento\" da planilha do ERP, como veio. Único quando preenchido; é com ele que a importação reconhece o mesmo equipamento.",
+    )
     nome = models.CharField(max_length=120)
     tipo = models.ForeignKey(FrotaTipo, on_delete=models.PROTECT, related_name="veiculos")
     fabricante = models.CharField(max_length=80, blank=True, default="")
     modelo = models.CharField(max_length=80, blank=True, default="")
     ano_fabricacao = models.PositiveSmallIntegerField(null=True, blank=True)
+    ano_modelo = models.PositiveSmallIntegerField(null=True, blank=True)
+    # classificação: duas coisas independentes (de quem é × o que é) mais a leitura mecânica do ERP
+    natureza = models.CharField(max_length=8, choices=FrotaNatureza.choices, default=FrotaNatureza.PROPRIO, db_index=True)
+    empresa = models.ForeignKey(FrotaEmpresa, on_delete=models.PROTECT, null=True, blank=True, related_name="veiculos")
+    classe_operacional = models.ForeignKey(
+        FrotaClasseOperacional, on_delete=models.PROTECT, null=True, blank=True, related_name="veiculos",
+        verbose_name="Classe operacional",
+    )
+    classe_mecanica = models.ForeignKey(
+        FrotaClasseMecanica, on_delete=models.PROTECT, null=True, blank=True, related_name="veiculos",
+        verbose_name="Classe mecânica",
+    )
+    centro_custo = models.ForeignKey(
+        FrotaCentroCusto, on_delete=models.PROTECT, null=True, blank=True, related_name="veiculos", verbose_name="Centro de custo",
+    )
+    # datas (como o ERP as trouxe: não são corrigidas — as suspeitas viram conferência)
+    data_compra = models.DateField(null=True, blank=True, verbose_name="Data de compra")
+    data_inicio = models.DateField(null=True, blank=True, verbose_name="Data de início")
     # documentos (todos opcionais)
-    placa = models.CharField(max_length=8, blank=True, default="", help_text="AAA9999 (antiga) ou AAA9A99 (Mercosul). Única quando preenchida.")
+    placa = models.CharField(
+        max_length=8, blank=True, default="",
+        help_text="Placa do veículo (AAA9999 ou Mercosul) ou a identificação interna do equipamento. Única quando preenchida.",
+    )
     renavam = models.CharField(max_length=11, blank=True, default="", help_text="11 dígitos.")
-    chassi_serie = models.CharField(max_length=30, blank=True, default="", verbose_name="Chassi / nº de série", help_text="Único quando preenchido.")
+    chassi_serie = models.CharField(
+        max_length=30, blank=True, default="", verbose_name="Chassi / nº de série",
+        help_text="Chassi ou número de série. Não é único no banco: o ERP traz o mesmo chassi em dois equipamentos, e isso é conferência, não bloqueio.",
+    )
     # lotação e responsáveis
     localidade = models.ForeignKey(
         Localidade, on_delete=models.SET_NULL, null=True, blank=True, related_name="veiculos_frota",
@@ -6960,21 +7271,51 @@ class FrotaVeiculo(AuditModel):
     observacoes = models.TextField(blank=True, default="")
     # operação
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.ATIVO, db_index=True)
+    # A situação como o ERP a trouxe ("Em Uso"): só registro. Importar NÃO é validar — o equipamento
+    # nasce com a validação PENDENTE, até o responsável pelo inventário confirmar a situação.
+    situacao_origem = models.CharField(max_length=40, blank=True, default="", verbose_name="Situação na planilha")
+    validacao_pendente = models.BooleanField(
+        default=False, db_index=True,
+        help_text="Veio de importação e o responsável pelo inventário ainda não confirmou a situação.",
+    )
     exige_conectividade = models.BooleanField(
         null=True, blank=True,
         help_text="Vazio = herda do tipo. Sim/Não sobrepõe o padrão do tipo.",
     )
+    # Onde o equipamento está — e DE ONDE vem essa informação. Só existe coordenada que alguem cadastrou
+    # (`cadastral`) ou que um rastreador entregou (`gps`, quando houver integração). Nunca é deduzida de chip,
+    # sessão ou consumo: a TIM não informa posição (regra 63).
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    localizacao_origem = models.CharField(
+        max_length=10, blank=True, default="", choices=[("cadastral", "Coordenada cadastral"), ("gps", "GPS")],
+        help_text="Vazio = localização desconhecida.",
+    )
+    localizacao_em = models.DateTimeField(null=True, blank=True, help_text="Quando a coordenada foi cadastrada ou recebida.")
 
     class Meta:
         ordering = ["codigo"]
         verbose_name = "Veículo / equipamento"
         verbose_name_plural = "Veículos e equipamentos"
-        permissions = PERMISSOES_FROTA_VEICULO
+        permissions = PERMISSOES_FROTA_VEICULO + PERMISSOES_FROTA_INVENTARIO
         constraints = [
+            models.CheckConstraint(
+                condition=(models.Q(latitude__isnull=True, longitude__isnull=True)
+                           | (models.Q(latitude__isnull=False, longitude__isnull=False)
+                              & models.Q(latitude__gte=-90, latitude__lte=90, longitude__gte=-180, longitude__lte=180))),
+                name="frota_veiculo_coordenada_valida",
+            ),
             models.UniqueConstraint(fields=["placa"], condition=~models.Q(placa=""), name="frota_veiculo_placa_unica"),
             models.UniqueConstraint(
-                fields=["chassi_serie"], condition=~models.Q(chassi_serie=""), name="frota_veiculo_chassi_unico",
+                fields=["codigo_legado"], condition=~models.Q(codigo_legado=""), name="frota_veiculo_codigo_legado_unico",
             ),
+        ]
+        # O chassi deixou de ser ÚNICO no banco (era `frota_veiculo_chassi_unico`): o ERP traz o mesmo chassi
+        # em dois equipamentos, e a regra do projeto é importar e SINALIZAR, nunca recusar nem corrigir.
+        # A duplicidade continua barrada ao DIGITAR um chassi (service), e é apontada nas conferências.
+        indexes = [
+            models.Index(fields=["chassi_serie"], name="frota_veiculo_chassi_idx"),
+            models.Index(fields=["natureza", "status"], name="frota_veiculo_nat_status_idx"),
         ]
 
     def __str__(self):
@@ -7085,6 +7426,98 @@ class FrotaImportacaoLinha(models.Model):
         return f"Linha {self.numero} · {self.get_situacao_display()}"
 
 
+class FrotaImportacaoEquipamentos(models.Model):
+    """Uma importação da planilha de EQUIPAMENTOS MOTORIZADOS (a do ERP): nasce como PRÉVIA (nada é
+    gravado na frota), vira `confirmada` ou `cancelada`. A prévia expira em 24 h. Nunca é apagada: é o
+    relatório auditado de quem importou o quê. Tabela própria, e não a de chips: as duas listas de
+    auditoria não se misturam.
+
+    `mapeamento` guarda as decisões de quem conferiu — a coluna de cada campo e, para os valores que
+    pedem decisão, o destino de cada um (situação "Em Uso" → status; empresa → natureza; classe
+    operacional → categoria) — e é ele, não o texto da planilha, que a confirmação aplica."""
+
+    class Estado(models.TextChoices):
+        PREVIA = "previa", "Prévia"
+        CONFIRMADA = "confirmada", "Confirmada"
+        CANCELADA = "cancelada", "Cancelada"
+
+    class Formato(models.TextChoices):
+        XLSX = "xlsx", "Excel (.xlsx)"
+        CSV = "csv", "CSV"
+
+    VALIDADE_DA_PREVIA = timedelta(hours=24)
+
+    arquivo_nome = models.CharField(max_length=255)
+    sha256 = models.CharField(max_length=64, db_index=True)
+    formato = models.CharField(max_length=5, choices=Formato.choices)
+    estado = models.CharField(max_length=10, choices=Estado.choices, default=Estado.PREVIA, db_index=True)
+    mapeamento = models.JSONField(default=dict, blank=True)
+    atualizar_existentes = models.BooleanField(
+        default=False, help_text="Autorizado na confirmação: os equipamentos já cadastrados recebem os dados da planilha.",
+    )
+    criada_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    criada_em = models.DateTimeField(default=timezone.now)
+    confirmada_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    confirmada_em = models.DateTimeField(null=True, blank=True)
+    # totais: a prévia preenche `linhas`/`validas`/`existentes`/`rejeitados`/`avisos`; a confirmação,
+    # `importados` e `atualizados`. Sempre recalculados das LINHAS (a fonte da verdade).
+    linhas = models.PositiveIntegerField(default=0)
+    validas = models.PositiveIntegerField(default=0)
+    importados = models.PositiveIntegerField(default=0)
+    atualizados = models.PositiveIntegerField(default=0)
+    existentes = models.PositiveIntegerField(default=0)
+    rejeitados = models.PositiveIntegerField(default=0)
+    avisos = models.PositiveIntegerField(default=0, help_text="Linhas com pelo menos uma conferência.")
+
+    class Meta:
+        ordering = ["-criada_em", "-pk"]
+        verbose_name = "Importação de equipamentos"
+        verbose_name_plural = "Importações de equipamentos"
+
+    def __str__(self):
+        return f"{self.arquivo_nome} · {self.get_estado_display()}"
+
+    @property
+    def expira_em(self):
+        return self.criada_em + self.VALIDADE_DA_PREVIA
+
+    @property
+    def expirada(self) -> bool:
+        return self.estado == self.Estado.PREVIA and timezone.now() > self.expira_em
+
+
+class FrotaImportacaoEquipamentoLinha(models.Model):
+    """Uma linha da planilha de equipamentos e o que se decidiu sobre ela. `dados` é o valor JÁ
+    normalizado (e `bruto`, o que veio na célula, para o relatório); `motivos` rejeitam a linha e
+    `conferencias` só informam: `[{"codigo", "gravidade", "texto"}]`. Importar não corrige nada
+    suspeito — a conferência é de quem responde pelo inventário."""
+
+    class Situacao(models.TextChoices):
+        VALIDA = "valida", "Válida"
+        EXISTENTE = "existente", "Já cadastrada"
+        REJEITADA = "rejeitada", "Rejeitada"
+        IMPORTADA = "importada", "Importada"
+        ATUALIZADA = "atualizada", "Atualizada"
+
+    importacao = models.ForeignKey(FrotaImportacaoEquipamentos, on_delete=models.CASCADE, related_name="itens")
+    numero = models.PositiveIntegerField(help_text="Número da linha na planilha (a do cabeçalho é a 1).")
+    codigo_legado = models.CharField(max_length=30, blank=True, default="", db_index=True)
+    dados = models.JSONField(default=dict, blank=True)
+    situacao = models.CharField(max_length=10, choices=Situacao.choices, db_index=True)
+    motivos = models.JSONField(default=list, blank=True)
+    conferencias = models.JSONField(default=list, blank=True)
+    veiculo = models.ForeignKey(FrotaVeiculo, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+
+    class Meta:
+        ordering = ["importacao", "numero"]
+        verbose_name = "Linha de importação de equipamentos"
+        verbose_name_plural = "Linhas de importação de equipamentos"
+        indexes = [models.Index(fields=["importacao", "situacao"], name="frota_impeq_linha_sit_idx")]
+
+    def __str__(self):
+        return f"Linha {self.numero} · {self.get_situacao_display()}"
+
+
 class FrotaMovimentacao(models.Model):
     """Registro IMUTÁVEL de uma movimentação do chip. Nunca editado, nunca apagado
     (`save` recusa a edição, `delete` levanta, e o queryset recusa `update`/`delete` em
@@ -7113,6 +7546,15 @@ class FrotaMovimentacao(models.Model):
     veiculo_destino = models.ForeignKey(
         FrotaVeiculo, on_delete=models.PROTECT, null=True, blank=True, related_name="movimentacoes_de_entrada",
     )
+    # O OUTRO tipo de destino: um equipamento do estoque de TI (tablet, celular). É só uma REFERÊNCIA para
+    # dizer onde o chip esteve — o módulo nunca escreve no `Item` (regra 62). De cada lado, no máximo um
+    # dos dois (veículo OU equipamento), garantido pelas restrições abaixo.
+    item_origem = models.ForeignKey(
+        "Item", on_delete=models.PROTECT, null=True, blank=True, related_name="movimentacoes_de_chip_saida",
+    )
+    item_destino = models.ForeignKey(
+        "Item", on_delete=models.PROTECT, null=True, blank=True, related_name="movimentacoes_de_chip_entrada",
+    )
     motivo = models.CharField(max_length=255, blank=True, default="")
     observacoes = models.TextField(blank=True, default="")
     usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="+")
@@ -7127,9 +7569,33 @@ class FrotaMovimentacao(models.Model):
         verbose_name = "Movimentação de chip"
         verbose_name_plural = "Movimentações de chips"
         indexes = [models.Index(fields=["chip", "-em"], name="frota_mov_chip_idx")]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(veiculo_origem__isnull=True) | models.Q(item_origem__isnull=True),
+                name="frota_mov_origem_um_so",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(veiculo_destino__isnull=True) | models.Q(item_destino__isnull=True),
+                name="frota_mov_destino_um_so",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.get_tipo_display()} · chip {self.chip_id} · {self.em:%d/%m/%Y %H:%M}"
+
+    @property
+    def origem_rotulo(self) -> str:
+        """Onde o chip estava: `COD · nome` do veículo, ou o equipamento de TI, ou `""` (entrada/retorno)."""
+        if self.veiculo_origem_id:
+            return f"{self.veiculo_origem.codigo} · {self.veiculo_origem.nome}"
+        return rotulo_do_equipamento_ti(self.item_origem) if self.item_origem_id else ""
+
+    @property
+    def destino_rotulo(self) -> str:
+        """Para onde o chip foi (mesma leitura de `origem_rotulo`)."""
+        if self.veiculo_destino_id:
+            return f"{self.veiculo_destino.codigo} · {self.veiculo_destino.nome}"
+        return rotulo_do_equipamento_ti(self.item_destino) if self.item_destino_id else ""
 
     def save(self, *args, **kwargs):
         if not self._state.adding:
@@ -7140,10 +7606,25 @@ class FrotaMovimentacao(models.Model):
         raise ValidationError("A movimentação é histórico imutável e não pode ser apagada.")
 
 
+def rotulo_do_equipamento_ti(item) -> str:
+    """Como um equipamento do ESTOQUE DE TI aparece nas telas de chip: o nome e o número de série
+    (`Galaxy Tab A7 · R9XR500VDDJ`). Só lê o próprio `Item` — sem consulta extra por linha."""
+    if item is None:
+        return ""
+    serie = (item.numero_serie or "").strip()
+    return f"{item.nome} · {serie}" if serie and serie.upper() != "S/N" else item.nome
+
+
 class FrotaVinculo(models.Model):
-    """Um PERÍODO em que um chip esteve num veículo. Ativo enquanto `fim_em` é nulo.
-    O veículo pode ter N chips; o chip só pode ter UM vínculo ativo — garantido pela
-    restrição condicional abaixo, não pelo código (duas pessoas ao mesmo tempo).
+    """Um PERÍODO em que um chip esteve num destino. Ativo enquanto `fim_em` é nulo.
+
+    O destino é EXATAMENTE UM de dois: um veículo (`veiculo`) OU um equipamento do estoque de TI
+    (`item`: tablet, celular — o que o subtipo marca com `aceita_chip`). Mesmo padrão do
+    `TecInstalacao` (um destino por linha, garantido por restrição). O `item` é só REFERÊNCIA: o
+    módulo nunca altera estoque, movimentação ou status do `Item` (regra 62).
+
+    O destino pode ter N chips; o chip só pode ter UM vínculo ativo, em qualquer destino —
+    garantido pela restrição condicional abaixo, não pelo código (duas pessoas ao mesmo tempo).
 
     Nunca apagado. A única alteração permitida é ENCERRAR o período (`fim_em`,
     `fim_por`, `motivo_fim`, `mov_fim`), e só enquanto ele está ativo."""
@@ -7151,7 +7632,8 @@ class FrotaVinculo(models.Model):
     CAMPOS_ENCERRAMENTO = ("fim_em", "fim_por", "motivo_fim", "mov_fim")
 
     chip = models.ForeignKey(M2MChip, on_delete=models.PROTECT, related_name="vinculos")
-    veiculo = models.ForeignKey(FrotaVeiculo, on_delete=models.PROTECT, related_name="vinculos")
+    veiculo = models.ForeignKey(FrotaVeiculo, on_delete=models.PROTECT, null=True, blank=True, related_name="vinculos")
+    item = models.ForeignKey("Item", on_delete=models.PROTECT, null=True, blank=True, related_name="vinculos_chip")
     inicio_em = models.DateTimeField(default=timezone.now)
     inicio_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     fim_em = models.DateTimeField(null=True, blank=True)
@@ -7166,8 +7648,8 @@ class FrotaVinculo(models.Model):
 
     class Meta:
         ordering = ["-inicio_em", "-pk"]
-        verbose_name = "Vínculo chip-veículo"
-        verbose_name_plural = "Vínculos chip-veículo"
+        verbose_name = "Vínculo de chip"
+        verbose_name_plural = "Vínculos de chips"
         constraints = [
             models.UniqueConstraint(
                 fields=["chip"], condition=models.Q(fim_em__isnull=True), name="frota_vinculo_chip_ativo_unico",
@@ -7176,18 +7658,45 @@ class FrotaVinculo(models.Model):
                 condition=models.Q(fim_em__isnull=True) | models.Q(fim_em__gte=models.F("inicio_em")),
                 name="frota_vinculo_fim_depois_do_inicio",
             ),
+            # EXATAMENTE UM destino por linha: veículo XOR equipamento de TI.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(veiculo__isnull=False, item__isnull=True)
+                    | models.Q(veiculo__isnull=True, item__isnull=False)
+                ),
+                name="frota_vinculo_um_destino",
+            ),
         ]
         indexes = [
             models.Index(fields=["veiculo", "fim_em"], name="frota_vinculo_veiculo_idx"),
+            models.Index(fields=["item", "fim_em"], name="frota_vinculo_item_idx"),
             models.Index(fields=["chip", "-inicio_em"], name="frota_vinculo_chip_idx"),
         ]
 
     def __str__(self):
-        return f"chip {self.chip_id} → veículo {self.veiculo_id} ({'ativo' if self.fim_em is None else 'encerrado'})"
+        destino = f"veículo {self.veiculo_id}" if self.veiculo_id else f"equipamento {self.item_id}"
+        return f"chip {self.chip_id} → {destino} ({'ativo' if self.fim_em is None else 'encerrado'})"
 
     @property
     def ativo(self) -> bool:
         return self.fim_em is None
+
+    @property
+    def destino_tipo(self) -> str:
+        """`"veiculo"` ou `"item"` (equipamento do estoque de TI)."""
+        return "veiculo" if self.veiculo_id else "item"
+
+    @property
+    def destino(self):
+        """O `FrotaVeiculo` ou o `Item` onde o chip está/esteve."""
+        return self.veiculo if self.veiculo_id else self.item
+
+    @property
+    def destino_rotulo(self) -> str:
+        """`COD · nome` do veículo, ou `nome · série` do equipamento de TI."""
+        if self.veiculo_id:
+            return f"{self.veiculo.codigo} · {self.veiculo.nome}"
+        return rotulo_do_equipamento_ti(self.item) if self.item_id else ""
 
     @property
     def duracao(self):
@@ -7208,17 +7717,24 @@ class FrotaVinculo(models.Model):
 
 
 class FrotaEvento(models.Model):
-    """Linha do tempo do CADASTRO do veículo (criação, edição com de/para, status).
-    Vínculos e movimentações entram na linha do tempo por leitura, sem duplicar
-    dados. Imutável, como `FrotaMovimentacao`."""
+    """Linha do tempo do CADASTRO do veículo (criação, edição com de/para, status, movimentação,
+    validação do inventário). Vínculos e instalações entram na linha do tempo por leitura, sem
+    duplicar dados. Imutável, como `FrotaMovimentacao`.
+
+    `movimentacao` é o registro de uma mudança de LUGAR ou de RESPONSÁVEL (fazenda, setor, centro de
+    custo, responsável) feita pela operação "Registrar movimentação", com o motivo. O que o
+    formulário de edição muda desses mesmos campos fica como `edicao`; as telas de movimentação
+    leem os dois."""
 
     class Tipo(models.TextChoices):
         CADASTRO = "cadastro", "Veículo cadastrado"
         EDICAO = "edicao", "Veículo editado"
         STATUS = "status", "Status alterado"
+        MOVIMENTACAO = "movimentacao", "Movimentação registrada"
+        VALIDACAO = "validacao", "Cadastro validado"
 
     veiculo = models.ForeignKey(FrotaVeiculo, on_delete=models.PROTECT, related_name="eventos")
-    tipo = models.CharField(max_length=10, choices=Tipo.choices)
+    tipo = models.CharField(max_length=20, choices=Tipo.choices)
     usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     dados = models.JSONField(default=dict, blank=True)
     em = models.DateTimeField(default=timezone.now)
@@ -7453,6 +7969,10 @@ class AgroLocal(AuditModel):
     """Local de armazenamento do Agro (almoxarifado, oficina, container…), dentro de uma
     unidade (fazenda). Onde o material FICA quando não está instalado em nada."""
 
+    # O local que representa "a fazenda inteira": é ele que as telas de estoque oferecem (Fazenda Karitel /
+    # Fazenda Rio do Meio). Nasce sozinho em `tec_catalogo_service.locais_das_fazendas()`.
+    NOME_PADRAO = "Estoque"
+
     nome = models.CharField(max_length=100)
     fazenda = models.ForeignKey(Localidade, on_delete=models.PROTECT, related_name="locais_agro", verbose_name="Unidade / fazenda")
     observacoes = models.CharField(max_length=255, blank=True, default="")
@@ -7464,8 +7984,13 @@ class AgroLocal(AuditModel):
         verbose_name_plural = "Locais de armazenamento"
         constraints = [models.UniqueConstraint(fields=["fazenda", "nome"], name="agro_local_fazenda_nome_unico")]
 
+    @property
+    def e_padrao(self) -> bool:
+        return (self.nome or "").strip().lower() == self.NOME_PADRAO.lower()
+
     def __str__(self):
-        return f"{self.nome} · {self.fazenda.local}"
+        # O local padrão é "a fazenda": "Estoque · Fazenda Karitel" seria dizer a mesma coisa duas vezes.
+        return self.fazenda.local if self.e_padrao else f"{self.nome} · {self.fazenda.local}"
 
 
 class AgroFornecedor(AuditModel):
@@ -7791,3 +8316,193 @@ class TecInstalacao(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("A instalação é histórico e não pode ser apagada.")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Infraestrutura georreferenciada do Zelo Agro: estruturas (torre, estação, base, ponto de referência) e enlaces PTP
+# ════════════════════════════════════════════════════════════════════════════════
+
+class TecEstrutura(AuditModel):
+    """Um ponto fixo da infraestrutura: torre, estação, base de comunicação ou ponto de referência. A
+    coordenada é a que alguém CADASTROU — é fato de terreno, não dedução — e pode faltar (a estrutura existe
+    e aparece nas listas, mas não no mapa, e a tela diz "localização desconhecida"). `localizacao_em` é quando a
+    coordenada foi cadastrada ou corrigida pela última vez.
+
+    O que a estrutura TEM instalado vem do estoque tecnológico (`TecInstalacao`); aqui não há cópia disso."""
+
+    class Tipo(models.TextChoices):
+        TORRE = "torre", "Torre"
+        ESTACAO = "estacao", "Estação"
+        BASE = "base", "Base de comunicação"
+        REFERENCIA = "referencia", "Ponto de referência"
+
+    class Situacao(models.TextChoices):
+        EM_OPERACAO = "em_operacao", "Em operação"
+        MANUTENCAO = "manutencao", "Em manutenção"
+        DESATIVADA = "desativada", "Desativada"
+
+    nome = models.CharField(max_length=120, unique=True)
+    tipo = models.CharField(max_length=12, choices=Tipo.choices, default=Tipo.TORRE, db_index=True)
+    situacao = models.CharField(max_length=12, choices=Situacao.choices, default=Situacao.EM_OPERACAO, db_index=True)
+    fazenda = models.ForeignKey(
+        Localidade, on_delete=models.SET_NULL, null=True, blank=True, related_name="estruturas_agro",
+        verbose_name="Unidade / fazenda",
+    )
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    localizacao_em = models.DateTimeField(null=True, blank=True)
+    altura_m = models.DecimalField("Altura (m)", max_digits=6, decimal_places=1, null=True, blank=True)
+    observacoes = models.TextField(blank=True, default="")
+    ativo = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = ["nome"]
+        verbose_name = "Estrutura (torre, estação, base)"
+        verbose_name_plural = "Estruturas (torres, estações, bases)"
+        constraints = [
+            models.CheckConstraint(
+                condition=(models.Q(latitude__isnull=True, longitude__isnull=True)
+                           | (models.Q(latitude__isnull=False, longitude__isnull=False)
+                              & models.Q(latitude__gte=-90, latitude__lte=90, longitude__gte=-180, longitude__lte=180))),
+                name="tec_estrutura_coordenada_valida",
+            ),
+        ]
+
+    def __str__(self):
+        return self.nome
+
+    @property
+    def tem_coordenada(self) -> bool:
+        return self.latitude is not None and self.longitude is not None
+
+
+class TecEnlace(AuditModel):
+    """Um enlace ponto a ponto (PTP) entre duas estruturas. O mapa o desenha como uma LINHA entre as duas
+    coordenadas cadastradas — é geografia, não medição: não diz que há comunicação nem a qualidade dela.
+
+    `estado` é o que ALGUÉM REGISTROU (`estado_em`, `estado_por`). Ele nasce "Não informado": rádios cadastrados nas
+    pontas não fazem o enlace "operacional". `equipamento_a`/`equipamento_b` são o rádio de cada ponta, só
+    referência para consulta (o que se instala e se retira é o motor de instalação do estoque tecnológico)."""
+
+    class Estado(models.TextChoices):
+        NAO_INFORMADO = "nao_informado", "Não informado"
+        PLANEJADO = "planejado", "Planejado"
+        OPERACIONAL = "operacional", "Operacional"
+        MANUTENCAO = "manutencao", "Em manutenção"
+        INDISPONIVEL = "indisponivel", "Indisponível"
+
+    identificacao = models.CharField("Identificação do enlace", max_length=80, unique=True)
+    estrutura_a = models.ForeignKey(TecEstrutura, on_delete=models.PROTECT, related_name="enlaces_como_a", verbose_name="Ponta A")
+    estrutura_b = models.ForeignKey(TecEstrutura, on_delete=models.PROTECT, related_name="enlaces_como_b", verbose_name="Ponta B")
+    equipamento_a = models.ForeignKey(
+        "TecEquipamento", on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name="Rádio da ponta A",
+    )
+    equipamento_b = models.ForeignKey(
+        "TecEquipamento", on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name="Rádio da ponta B",
+    )
+    estado = models.CharField(max_length=14, choices=Estado.choices, default=Estado.NAO_INFORMADO, db_index=True)
+    estado_em = models.DateTimeField(null=True, blank=True)
+    estado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    frequencia_ghz = models.DecimalField("Frequência (GHz)", max_digits=5, decimal_places=2, null=True, blank=True)
+    observacoes = models.TextField(blank=True, default="")
+    ativo = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = ["identificacao"]
+        verbose_name = "Enlace PTP"
+        verbose_name_plural = "Enlaces PTP"
+        constraints = [
+            models.CheckConstraint(condition=~models.Q(estrutura_a=models.F("estrutura_b")), name="tec_enlace_pontas_diferentes"),
+        ]
+
+    def __str__(self):
+        return self.identificacao
+
+    @property
+    def tem_geometria(self) -> bool:
+        """As duas pontas têm coordenada: só então dá para desenhar a linha."""
+        return self.estrutura_a.tem_coordenada and self.estrutura_b.tem_coordenada
+
+
+class FrotaPosicao(models.Model):
+    """Uma posição que uma FONTE DE RASTREAMENTO (GPS do veículo, telemetria, rastreador) entregou para um veículo.
+    HISTÓRICO IMUTÁVEL: nunca editada, nunca apagada (`save`/`delete` recusam e o queryset recusa `update`/`delete` em
+    massa). A posição ATUAL do veículo é `FrotaVeiculo.latitude/longitude` (um espelho da última posição GPS gravada
+    aqui) — esta tabela é o que NÃO se sobrescreve: a posição do veículo anterior fica com ele quando o chip muda de
+    veículo, porque a linha pertence ao VEÍCULO, e o vínculo do chip é lido (nunca copiado) para dizer "onde está o chip".
+
+    Só entra aqui o que uma integração REAL entregou: a TIM não informa posição, e coordenada cadastrada à mão vive em
+    `FrotaVeiculo` com origem "cadastral" (regra 64). `fonte` diz de que sistema veio (é obrigatória: posição sem origem
+    é um número sem dono). `chip` é a FOTO do chip instalado no momento da leitura, só quando era exatamente um —
+    com vários chips no veículo a pergunta "qual deles?" não tem resposta, e a linha não finge ter."""
+
+    veiculo = models.ForeignKey(FrotaVeiculo, on_delete=models.PROTECT, related_name="posicoes")
+    chip = models.ForeignKey(M2MChip, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    medida_em = models.DateTimeField(help_text="Quando a FONTE mediu a posição (não quando o sistema a recebeu).")
+    recebida_em = models.DateTimeField(default=timezone.now, editable=False)
+    fonte = models.CharField(max_length=60, help_text="O sistema que entregou a posição (nome da integração ou do rastreador).")
+    precisao_m = models.DecimalField("Precisão (m)", max_digits=8, decimal_places=1, null=True, blank=True)
+    velocidade_kmh = models.DecimalField("Velocidade (km/h)", max_digits=6, decimal_places=1, null=True, blank=True)
+    direcao_graus = models.PositiveSmallIntegerField("Direção (graus)", null=True, blank=True)
+
+    objects = _SomenteInsercaoQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-medida_em", "-pk"]
+        verbose_name = "Posição GPS do veículo"
+        verbose_name_plural = "Posições GPS dos veículos"
+        indexes = [models.Index(fields=["veiculo", "-medida_em"], name="frota_posicao_veiculo_idx")]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(latitude__gte=-90, latitude__lte=90, longitude__gte=-180, longitude__lte=180),
+                name="frota_posicao_coordenada_valida",
+            ),
+            # a mesma leitura reenviada pela fonte (retentativa, reprocessamento) não vira linha nova
+            models.UniqueConstraint(fields=["veiculo", "fonte", "medida_em"], name="frota_posicao_leitura_unica"),
+            models.CheckConstraint(
+                condition=models.Q(direcao_graus__isnull=True) | models.Q(direcao_graus__lte=359),
+                name="frota_posicao_direcao_valida",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.veiculo_id} · {self.medida_em:%d/%m/%Y %H:%M} · {self.fonte}"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("A posição é histórico imutável e não pode ser editada.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("A posição é histórico imutável e não pode ser apagada.")
+
+
+class FrotaLocalizacaoConfig(models.Model):
+    """Quando uma posição GPS deixa de ser "atual" — uma linha só (`get()`), no molde de `M2MIntegracao`.
+
+    É INDEPENDENTE da sincronização da TIM (consumo e sessão do chip): a posição vem de outra fonte, com outro ritmo e
+    outros limites, e uma não pode atrasar nem esconder a outra. Cada fonte de GPS entrega num ritmo — de 10 segundos a
+    horas, conforme o plano e o equipamento —, então o sistema não decreta um: o TI diz quanto tempo uma posição vale."""
+
+    minutos_atualizada = models.PositiveSmallIntegerField(
+        default=30, help_text="Até quantos minutos depois da medição a posição ainda é tratada como ATUAL.",
+    )
+    horas_sem_atualizacao = models.PositiveSmallIntegerField(
+        default=24, help_text="Passado este tempo sem posição nova, a localização é dita SEM ATUALIZAÇÃO RECENTE.",
+    )
+    atualizado_em = models.DateTimeField(null=True, blank=True)
+    atualizado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+
+    class Meta:
+        verbose_name = "Configuração da localização GPS"
+        verbose_name_plural = "Configuração da localização GPS"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return f"atual até {self.minutos_atualizada} min; sem atualização depois de {self.horas_sem_atualizacao} h"

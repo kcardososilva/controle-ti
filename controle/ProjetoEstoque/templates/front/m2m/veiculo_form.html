@@ -1,147 +1,56 @@
 {% extends 'base.html' %}
 {% load static m2m_tags %}
 
-{% block title %}{% if veiculo %}Editar {{ veiculo.codigo }}{% else %}Novo veículo{% endif %} — Frotas — Zelo Agro{% endblock %}
-{% block page_title %}Frotas{% endblock %}
-{% block page_subtitle %}{% if veiculo %}Editar veículo{% else %}Cadastrar veículo{% endif %}{% endblock %}
+{% block title %}{{ titulo }} — Frotas e Maquinários — Zelo Agro{% endblock %}
+{% block page_title %}Frotas e Maquinários{% endblock %}
+{% block page_subtitle %}{% if veiculo %}Editar equipamento{% else %}Novo equipamento{% endif %}{% endblock %}
 
 {% block extra_css %}
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
 {% comment %}A folha do módulo vem DEPOIS da do Select2: ela reveste o componente. Invertida, o CDN vence e nada tem efeito (regra 26).{% endcomment %}
 <link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
 {% endblock %}
 
 {% block content %}
-<div class="m2m-page">
-  {% url 'frota_veiculos' as u_lista %}
-  {% include 'front/m2m/_frota_topo.html' with titulo=veiculo.nome|default:"Novo veículo" descricao="Só código, nome e tipo são obrigatórios. Placa, RENAVAM e chassi existem quando se aplicam." voltar_url=u_lista voltar_rotulo="Veículos e equipamentos" %}
+<div class="m2m-page agro-page" data-frota="formulario">
+  {% include 'front/agro/frota/_topo.html' with titulo=titulo descricao="Só a identificação, a categoria e a natureza são obrigatórias. Placa, chassi e RENAVAM existem quando se aplicam ao equipamento." %}
 
-  <form method="post" class="m2m-form" novalidate>
+  <form method="post" class="m2m-form agro-form" novalidate data-agro-envio-unico>
     {% csrf_token %}
     {% if erros.geral %}<p class="m2m-aviso" data-tom="erro" role="alert">{{ erros.geral }}</p>{% endif %}
 
-    <section class="m2m-painel" aria-labelledby="m2m-v-ident">
-      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-v-ident">Identificação</h3></header>
-      <div class="m2m-form-grade">
-        <label class="m2m-rotulo {% if erros.codigo %}tem-erro{% endif %}"><span>Código interno <b class="m2m-obrig" aria-hidden="true">*</b></span>
-          <input type="text" name="codigo" value="{{ valores.codigo }}" class="m2m-campo m2m-campo--mono" maxlength="30" required autofocus autocomplete="off" placeholder="Ex.: TR-014" {% if erros.codigo %}aria-invalid="true"{% endif %}>
-          {% if erros.codigo %}<em class="m2m-erro">{{ erros.codigo }}</em>{% else %}<em class="m2m-dica">Frota ou patrimônio. Único; gravado em caixa alta.</em>{% endif %}
-        </label>
-        <label class="m2m-rotulo {% if erros.nome %}tem-erro{% endif %}"><span>Nome <b class="m2m-obrig" aria-hidden="true">*</b></span>
-          <input type="text" name="nome" value="{{ valores.nome }}" class="m2m-campo" maxlength="120" required {% if erros.nome %}aria-invalid="true"{% endif %}>
-          {% if erros.nome %}<em class="m2m-erro">{{ erros.nome }}</em>{% endif %}
-        </label>
-        <label class="m2m-rotulo {% if erros.tipo %}tem-erro{% endif %}"><span class="m2m-rotulo-linha"><span>Tipo <b class="m2m-obrig" aria-hidden="true">*</b></span>{% if pode_configurar %}<button type="button" class="m2m-btn m2m-btn--sm m2m-btn--fantasma" data-frota-abrir="novo_tipo" data-url="{% url 'frota_tipo_rapido' %}"><i class="fa-solid fa-plus" aria-hidden="true"></i>Novo tipo</button>{% endif %}</span>
-          <select name="tipo" class="m2m-campo" required {% if erros.tipo %}aria-invalid="true"{% endif %}>
-            <option value="">Escolher o tipo</option>
-            {% for t in tipos %}<option value="{{ t.pk }}" {% if valores.tipo|stringformat:"s" == t.pk|stringformat:"s" %}selected{% endif %}>{{ t.nome }}{% if not t.ativo %} (inativo){% endif %}</option>{% endfor %}
-          </select>
-          {% if erros.tipo %}<em class="m2m-erro">{{ erros.tipo }}</em>{% elif pode_configurar %}<em class="m2m-dica">Falta o tipo? Use “Novo tipo”.</em>{% else %}<em class="m2m-dica">Falta o tipo? Peça a quem administra a configuração para cadastrá-lo.</em>{% endif %}
-        </label>
-        {% if not veiculo %}
-        <label class="m2m-rotulo {% if erros.status %}tem-erro{% endif %}"><span>Status inicial</span>
-          <select name="status" class="m2m-campo">
-            {% for valor, rotulo in status_opcoes %}<option value="{{ valor }}" {% if valores.status == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
-          </select>
-          {% if erros.status %}<em class="m2m-erro">{{ erros.status }}</em>{% else %}<em class="m2m-dica">Depois, o status muda pelo botão “Mudar status”, com motivo.</em>{% endif %}
-        </label>
-        {% endif %}
-        <label class="m2m-rotulo {% if erros.fabricante %}tem-erro{% endif %}"><span>Fabricante</span>
-          <input type="text" name="fabricante" value="{{ valores.fabricante }}" class="m2m-campo" maxlength="80" {% if erros.fabricante %}aria-invalid="true"{% endif %}>
-          {% if erros.fabricante %}<em class="m2m-erro">{{ erros.fabricante }}</em>{% endif %}
-        </label>
-        <label class="m2m-rotulo {% if erros.modelo %}tem-erro{% endif %}"><span>Modelo</span>
-          <input type="text" name="modelo" value="{{ valores.modelo }}" class="m2m-campo" maxlength="80" {% if erros.modelo %}aria-invalid="true"{% endif %}>
-          {% if erros.modelo %}<em class="m2m-erro">{{ erros.modelo }}</em>{% endif %}
-        </label>
-        <label class="m2m-rotulo {% if erros.ano_fabricacao %}tem-erro{% endif %}"><span>Ano de fabricação</span>
-          <input type="text" name="ano_fabricacao" value="{{ valores.ano_fabricacao }}" class="m2m-campo m2m-campo--mono" inputmode="numeric" maxlength="4" placeholder="AAAA" {% if erros.ano_fabricacao %}aria-invalid="true"{% endif %}>
-          {% if erros.ano_fabricacao %}<em class="m2m-erro">{{ erros.ano_fabricacao }}</em>{% endif %}
-        </label>
+    {% for painel in paineis %}
+    <section class="m2m-painel" aria-labelledby="agro-f-{{ painel.id }}">
+      <header class="m2m-painel-cab">
+        <h3 class="m2m-painel-t" id="agro-f-{{ painel.id }}"><span class="agro-passo m2m-num">{{ forloop.counter }}</span>{{ painel.titulo }}</h3>
+        {% if painel.novo_tipo and pode_configurar %}<button type="button" class="m2m-btn m2m-btn--sm m2m-btn--fantasma" data-frota-abrir="novo_tipo" data-url="{% url 'frota_tipo_rapido' %}"><i class="fa-solid fa-plus" aria-hidden="true"></i>Nova categoria</button>{% endif %}
+      </header>
+      <div class="m2m-form-grade agro-grade">
+        {% for c in painel.campos %}{% include 'front/agro/tec/_campo.html' %}{% endfor %}
       </div>
     </section>
-
-    <section class="m2m-painel" aria-labelledby="m2m-v-docs">
-      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-v-docs">Documentos <span class="m2m-sub">quando aplicável</span></h3></header>
-      <div class="m2m-form-grade">
-        <label class="m2m-rotulo {% if erros.placa %}tem-erro{% endif %}"><span>Placa <span class="m2m-sub">quando aplicável</span></span>
-          <input type="text" name="placa" value="{{ valores.placa }}" class="m2m-campo m2m-campo--mono" maxlength="8" autocomplete="off" placeholder="AAA9999 ou AAA9A99" {% if erros.placa %}aria-invalid="true"{% endif %}>
-          {% if erros.placa %}<em class="m2m-erro">{{ erros.placa }}</em>{% else %}<em class="m2m-dica">Formato antigo ou Mercosul. Única entre os veículos.</em>{% endif %}
-        </label>
-        <label class="m2m-rotulo {% if erros.renavam %}tem-erro{% endif %}"><span>RENAVAM <span class="m2m-sub">quando aplicável</span></span>
-          <input type="text" name="renavam" value="{{ valores.renavam }}" class="m2m-campo m2m-campo--mono" inputmode="numeric" maxlength="14" autocomplete="off" placeholder="11 dígitos" {% if erros.renavam %}aria-invalid="true"{% endif %}>
-          {% if erros.renavam %}<em class="m2m-erro">{{ erros.renavam }}</em>{% else %}<em class="m2m-dica">Exatamente 11 dígitos.</em>{% endif %}
-        </label>
-        <label class="m2m-rotulo {% if erros.chassi_serie %}tem-erro{% endif %}"><span>Chassi / nº de série</span>
-          <input type="text" name="chassi_serie" value="{{ valores.chassi_serie }}" class="m2m-campo m2m-campo--mono" maxlength="30" autocomplete="off" {% if erros.chassi_serie %}aria-invalid="true"{% endif %}>
-          {% if erros.chassi_serie %}<em class="m2m-erro">{{ erros.chassi_serie }}</em>{% else %}<em class="m2m-dica">Único entre os veículos, quando preenchido.</em>{% endif %}
-        </label>
-      </div>
-    </section>
-
-    <section class="m2m-painel" aria-labelledby="m2m-v-lot">
-      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-v-lot">Lotação e responsável</h3></header>
-      <div class="m2m-form-grade">
-        <label class="m2m-rotulo {% if erros.localidade %}tem-erro{% endif %}"><span>Fazenda</span>
-          <select name="localidade" class="m2m-campo" {% if erros.localidade %}aria-invalid="true"{% endif %}>
-            <option value="">Escolher a fazenda</option>
-            {% for pk, nome in localidades %}<option value="{{ pk }}" {% if valores.localidade|stringformat:"s" == pk|stringformat:"s" %}selected{% endif %}>{{ nome }}</option>{% endfor %}
-          </select>
-          {% if erros.localidade %}<em class="m2m-erro">{{ erros.localidade }}</em>{% endif %}
-        </label>
-        <label class="m2m-rotulo {% if erros.setor %}tem-erro{% endif %}"><span>Setor</span>
-          <input type="text" name="setor" value="{{ valores.setor }}" class="m2m-campo" maxlength="100" {% if erros.setor %}aria-invalid="true"{% endif %}>
-          {% if erros.setor %}<em class="m2m-erro">{{ erros.setor }}</em>{% endif %}
-        </label>
-        <label class="m2m-rotulo {% if erros.area_operacao %}tem-erro{% endif %}"><span>Área de operação</span>
-          <input type="text" name="area_operacao" value="{{ valores.area_operacao }}" class="m2m-campo" maxlength="100" placeholder="Ex.: Plantio, Colheita" {% if erros.area_operacao %}aria-invalid="true"{% endif %}>
-          {% if erros.area_operacao %}<em class="m2m-erro">{{ erros.area_operacao }}</em>{% endif %}
-        </label>
-        <label class="m2m-rotulo {% if erros.responsavel %}tem-erro{% endif %}"><span>Responsável</span>
-          <select name="responsavel" data-m2m-s2="ajax" data-fonte="frota_opcoes" data-campo="responsavel" data-placeholder="Buscar colaborador ativo">
-            <option value=""></option>
-            {% if responsavel_atual %}<option value="{{ responsavel_atual.0 }}" selected>{{ responsavel_atual.1 }}</option>{% endif %}
-          </select>
-          {% if erros.responsavel %}<em class="m2m-erro">{{ erros.responsavel }}</em>{% endif %}
-        </label>
-      </div>
-    </section>
-
-    <section class="m2m-painel" aria-labelledby="m2m-v-conect">
-      <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="m2m-v-conect">Conectividade e observações</h3></header>
-      <div class="m2m-form-grade">
-        <label class="m2m-rotulo {% if erros.exige_conectividade %}tem-erro{% endif %}"><span>Exige chip de conectividade?</span>
-          <select name="exige_conectividade" class="m2m-campo">
-            <option value="" {% if not valores.exige_conectividade %}selected{% endif %}>Herdar do tipo</option>
-            <option value="sim" {% if valores.exige_conectividade == "sim" %}selected{% endif %}>Sim, sempre</option>
-            <option value="nao" {% if valores.exige_conectividade == "nao" %}selected{% endif %}>Não</option>
-          </select>
-          {% if erros.exige_conectividade %}<em class="m2m-erro">{{ erros.exige_conectividade }}</em>{% else %}<em class="m2m-dica">Veículo ativo que exige chip e não tem nenhum gera o alerta “Veículo sem chip”.</em>{% endif %}
-        </label>
-        <label class="m2m-rotulo m2m-rotulo--largo"><span>Observações</span>
-          <textarea name="observacoes" rows="3" class="m2m-campo m2m-campo--area">{{ valores.observacoes }}</textarea>
-        </label>
-      </div>
-    </section>
+    {% endfor %}
 
     <div class="m2m-form-acoes">
-      <button type="submit" class="m2m-btn m2m-btn--primario">{% if veiculo %}Salvar alterações{% else %}Cadastrar veículo{% endif %}</button>
-      <a class="m2m-btn" href="{% if veiculo %}{% url 'frota_veiculo_detalhe' veiculo.pk %}{% else %}{% url 'frota_veiculos' %}{% endif %}">Cancelar</a>
+      <button type="submit" class="m2m-btn m2m-btn--primario">{% if veiculo %}Salvar alterações{% else %}Cadastrar equipamento{% endif %}</button>
+      <a class="m2m-btn" href="{{ voltar_url }}">Cancelar</a>
     </div>
   </form>
 
+  {{ config_do_formulario|json_script:"agro-form-config" }}
+
   {% if pode_configurar %}
-  {% comment %}Cria o tipo sem sair do formulário: o frota.js envia por fetch (`data-frota-inline`) e a opção nova entra no select de Tipo, já escolhida. Fica FORA do form do veículo: form dentro de form não existe em HTML.{% endcomment %}
+  {% comment %}Cria a categoria sem sair do formulário: o frota.js envia por fetch (`data-frota-inline`) e a opção nova entra no select de Categoria, já escolhida. Fica FORA do form do equipamento: form dentro de form não existe em HTML.{% endcomment %}
   <div class="m2m-modal m2m-dialogo" id="frota-dlg-novo_tipo" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-novo_tipo-t" hidden>
     <form method="post" action="" class="m2m-dialogo-form" data-frota-form data-frota-inline novalidate>
       {% csrf_token %}
-      <header class="m2m-dialogo-cab"><h3 id="frota-dlg-novo_tipo-t">Novo tipo de veículo</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+      <header class="m2m-dialogo-cab"><h3 id="frota-dlg-novo_tipo-t">Nova categoria</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
       <div class="m2m-dialogo-corpo">
-        <label class="m2m-rotulo"><span>Nome do tipo *</span><input type="text" name="nome" class="m2m-campo" maxlength="80" required autocomplete="off" placeholder="Ex.: Motoniveladora"></label>
+        <label class="m2m-rotulo"><span>Nome da categoria *</span><input type="text" name="nome" class="m2m-campo" maxlength="80" required autocomplete="off" placeholder="Ex.: Motoniveladora"></label>
         <label class="m2m-check"><input type="checkbox" name="exige_conectividade" value="1"> Exige chip de conectividade por padrão</label>
         <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
       </div>
-      <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Criar tipo</button></footer>
+      <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Criar categoria</button></footer>
     </form>
   </div>
   {% endif %}
@@ -151,6 +60,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="{% static 'js/frota-equipamentos.js' %}?v={{ assets_version }}" defer></script>
 {% endblock %}

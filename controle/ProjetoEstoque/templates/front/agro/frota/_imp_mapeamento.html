@@ -1,0 +1,67 @@
+{% load l10n m2m_tags %}
+{% comment %}
+Passo 2 — Mapeamento. O sistema já ligou as colunas pelo cabeçalho do arquivo e sugeriu o destino dos valores que se
+repetem (situação, empresa, classe operacional); aqui quem responde pelo inventário CONFERE e decide. Nada é gravado na
+frota: salvar o mapeamento reanalisa as linhas e abre a prévia. Os valores sem decisão rejeitam a linha (situação e empresa)
+ou caem na categoria "Outros" (classe operacional) — a tela diz qual dos dois.
+Recebe `painel` (de `painel_do_mapeamento`), `indices_do_arquivo` (número a partir de 1 + texto do cabeçalho),
+`grupos_de_valores` e `sem_empresa`.
+{% endcomment %}
+{% if sem_empresa %}
+<p class="m2m-aviso" data-tom="erro" role="alert"><b>O arquivo não tem a coluna Empresa mapeada.</b> A natureza do equipamento (próprio ou de terceiro) vem dela; sem a coluna o sistema não tem de onde tirá-la e todas as linhas seriam rejeitadas. Escolha abaixo a coluna da empresa, se ela existe no arquivo com outro nome.</p>
+{% endif %}
+
+<form method="post" action="{% url 'frota_equip_importacao_mapear' importacao.pk %}" data-frota-pagina id="agro-imp-mapear">
+  {% csrf_token %}
+
+  <section class="m2m-painel" aria-labelledby="agro-imp-colunas">
+    <header class="m2m-painel-cab">
+      <h3 class="m2m-painel-t" id="agro-imp-colunas">Colunas do arquivo<span class="m2m-painel-t-n">{{ painel.cabecalho|length }}</span></h3>
+      <span class="m2m-sub">Equipamento e Modelo são obrigatórias.</span>
+    </header>
+    <div class="m2m-tabela-wrap">
+      <table class="m2m-tabela m2m-tabela--curta agro-mapa">
+        <thead><tr><th>Campo da planilha do ERP</th><th>Coluna do arquivo</th><th>Vai para</th><th>Situação</th></tr></thead>
+        <tbody>
+          {% for c in painel.colunas %}
+          <tr class="m2m-linha">
+            <td class="agro-mapa-campo" data-rotulo="Campo">
+              <b>{{ c.rotulo }}</b>{% if c.obrigatoria %} <span class="agro-mapa-obrig">obrigatória</span>{% endif %}
+              {% if c.justificativa %}<span class="agro-mapa-nota">{{ c.justificativa }}</span>{% endif %}
+            </td>
+            <td class="agro-mapa-coluna" data-rotulo="Coluna do arquivo">
+              <select name="coluna_{{ c.campo }}" class="m2m-campo" aria-label="Coluna do arquivo para {{ c.rotulo }}" {% if c.obrigatoria %}required{% endif %}>
+                <option value="">— não usar —</option>
+                {% for numero, nome in indices_do_arquivo %}
+                <option value="{{ forloop.counter0 }}" {% if c.indice == forloop.counter0 %}selected{% endif %}>{{ numero }}. {{ nome|default:"(sem título)" }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td data-rotulo="Vai para">{{ c.destino }}</td>
+            <td data-rotulo="Situação">
+              {% if c.situacao == "mapeada" %}{% m2m_ind "normal" "Mapeada" %}
+              {% elif c.situacao == "faltando" %}{% m2m_ind "falha" "Falta" %}
+              {% else %}{% m2m_ind "nao_consultado" "Não usada" %}{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if painel.nao_usadas %}
+    <p class="m2m-nota m2m-nota--pad">Colunas do arquivo sem destino (não serão importadas): {{ painel.nao_usadas|join:", " }}.</p>
+    {% endif %}
+  </section>
+
+  {% for g in grupos_de_valores %}
+    {% include 'front/agro/frota/_imp_valores.html' %}
+  {% endfor %}
+
+  <section class="m2m-painel">
+    <div class="agro-mapa-acoes">
+      <button type="submit" class="m2m-btn m2m-btn--primario">Salvar o mapeamento e ver a prévia</button>
+      <button type="submit" form="agro-imp-cancelar" class="m2m-btn m2m-btn--fantasma">Descartar a importação</button>
+      <span class="m2m-sub">Nada é gravado na frota neste passo.</span>
+    </div>
+  </section>
+</form>

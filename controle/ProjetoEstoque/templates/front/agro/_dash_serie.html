@@ -1,0 +1,29 @@
+{% load l10n %}
+{% comment %}
+Série diária em colunas, sem JS (altura em %, de `agro_dash_service.serie_de_consumo`). Recebe `id`, `titulo` e
+`serie`. Diz a unidade, o período e a fonte; avisa quando o histórico de algum chip ainda não cobre o período
+inteiro (`serie.cobertura.parcial`) e, sem nenhum dado, mostra o estado vazio em vez de um gráfico de zeros.
+{% endcomment %}
+<section class="m2m-painel dash-bloco" aria-labelledby="{{ id }}">
+  <header class="m2m-painel-cab">
+    <h3 class="m2m-painel-t" id="{{ id }}">{{ titulo }}</h3>
+    <span class="m2m-sub">{{ serie.periodo_texto }}</span>
+  </header>
+  {% if serie.vazio %}
+  <p class="dash-vazio">Nenhuma sessão de dados registrada no período.</p>
+  {% else %}
+  <p class="dash-serie-total"><b class="m2m-num">{{ serie.total_texto }}</b> <span class="m2m-sub">no período, somando as sessões de dados de todos os chips consultados</span></p>
+  <div class="dash-serie" role="img" aria-label="Consumo de dados por dia, em colunas">
+    {% for p in serie.pontos %}
+    <span class="dash-serie-col" title="{{ p.rotulo }}: {{ p.texto }}"><span class="dash-serie-barra" style="height: {{ p.altura|unlocalize }}%"></span></span>
+    {% endfor %}
+  </div>
+  <div class="dash-serie-eixo" aria-hidden="true"><span>{{ serie.pontos.0.rotulo }}</span>{% with ultimo=serie.pontos|last %}<span>{{ ultimo.rotulo }}</span>{% endwith %}</div>
+  {% endif %}
+  <footer class="dash-origem">
+    Fonte: {{ serie.origem }}. Unidade: bytes (B, KB, MB, GB).
+    {% if serie.cobertura.parcial and serie.cobertura.total %}
+    <span class="dash-aviso">O histórico baixado cobre o período inteiro em {{ serie.cobertura.completos }} de {{ serie.cobertura.total }} chips: os totais podem estar abaixo do consumo real até o restante ser baixado.</span>
+    {% endif %}
+  </footer>
+</section>

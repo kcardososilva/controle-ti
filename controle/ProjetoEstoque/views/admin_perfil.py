@@ -17,6 +17,8 @@ from django.core.exceptions import ValidationError
 from django.shortcuts import render, redirect
 from django.utils import timezone
 
+from services import ambiente_service as amb
+
 from ..models import (
     Item,
     Usuario,
@@ -89,14 +91,20 @@ def admin_perfil(request):
     sistema = {
         "versao": SISTEMA_VERSAO,
         "django": django.get_version(),
-        "itens": Item.objects.count(),
-        "colaboradores_ativos": Usuario.objects.filter(status="ativo").count(),
-        "licencas": Licenca.objects.count(),
-        "centros_custo": CentroCusto.objects.count(),
-        "fornecedores": Fornecedor.objects.count(),
-        "os_abertas": OrdemManutencao.objects
-            .exclude(status__in=[SOM.CONCLUIDO, SOM.CANCELADO, SOM.DESCARTADO]).count(),
+        # As contagens são do TI (equipamentos, licenças, manutenções...). Esta tela é um caminho neutro — abre para qualquer
+        # login — e quem não alcança o Zelo TI (o colaborador do Agro) não pode ler o tamanho do TI por aqui.
+        "com_contagens": amb.pode_acessar(user, amb.TI),
     }
+    if sistema["com_contagens"]:
+        sistema.update(
+            itens=Item.objects.count(),
+            colaboradores_ativos=Usuario.objects.filter(status="ativo").count(),
+            licencas=Licenca.objects.count(),
+            centros_custo=CentroCusto.objects.count(),
+            fornecedores=Fornecedor.objects.count(),
+            os_abertas=OrdemManutencao.objects
+                .exclude(status__in=[SOM.CONCLUIDO, SOM.CANCELADO, SOM.DESCARTADO]).count(),
+        )
 
     # ── Segurança da conta (novidade: monitoramento de autenticação A.8.16) ──
     is_admin = bool(user.is_staff or user.is_superuser)

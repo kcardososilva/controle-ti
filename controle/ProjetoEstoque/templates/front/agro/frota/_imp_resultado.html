@@ -1,0 +1,52 @@
+{% load l10n %}
+{% comment %}
+Passo 6 — Resultado. É também onde cai uma importação cancelada ou com a prévia vencida: o texto diz qual dos três casos é,
+porque "nada foi gravado" e "gravou N equipamentos" não podem se confundir. Recebe `motivos`, `avisos_de_cadastro`,
+`pode_ver_equipamentos` e a tabela de linhas (`_imp_linhas.html`).
+{% endcomment %}
+{% if importacao.estado == "confirmada" %}
+<p class="m2m-aviso" data-tom="neutro"><b>Importação concluída</b> em {{ importacao.confirmada_em|date:"d/m/Y H:i" }}{% if importacao.confirmada_por %} por {{ importacao.confirmada_por.get_username }}{% endif %}.
+  {% if importacao.atualizar_existentes %}Com autorização para atualizar os equipamentos já cadastrados.{% else %}Os equipamentos já cadastrados ficaram como estavam.{% endif %}
+  Os novos entraram com a validação pendente.</p>
+{% elif importacao.estado == "cancelada" %}
+<p class="m2m-aviso" data-tom="neutro"><b>Importação cancelada.</b> Nada foi gravado na frota a partir deste arquivo.</p>
+{% else %}
+<p class="m2m-aviso" data-tom="erro" role="alert"><b>A prévia expirou.</b> Ela vale por 24 horas e nada foi gravado. Envie a planilha de novo para gerar outra.</p>
+{% endif %}
+
+{% if avisos_de_cadastro %}
+<section class="m2m-painel" aria-labelledby="agro-imp-avisos">
+  <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-imp-avisos">Avisos de cadastro<span class="m2m-painel-t-n">{{ avisos_de_cadastro|length }}</span></h3></header>
+  <ul class="m2m-motivos m2m-nota--pad">{% for a in avisos_de_cadastro %}<li>{{ a }}</li>{% endfor %}</ul>
+  <p class="m2m-nota m2m-nota--pad">O mesmo código do ERP chegou com mais de uma grafia. O cadastro manteve a primeira e nada foi renomeado.</p>
+</section>
+{% endif %}
+
+{% if motivos %}
+<section class="m2m-painel" aria-labelledby="agro-imp-motivos">
+  <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="agro-imp-motivos">Por que linhas foram rejeitadas<span class="m2m-painel-t-n">{{ importacao.rejeitados|unlocalize }}</span></h3></header>
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela m2m-tabela--curta">
+      <thead><tr><th>Motivo</th><th class="num">Linhas</th></tr></thead>
+      <tbody>
+        {% for motivo, n in motivos %}
+        <tr class="m2m-linha"><td class="m2m-largo" data-rotulo="Motivo">{{ motivo }}</td><td class="num" data-rotulo="Linhas"><span class="m2m-num">{{ n|unlocalize }}</span></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="m2m-painel" aria-labelledby="agro-imp-linhas">
+  <header class="m2m-painel-cab">
+    <h3 class="m2m-painel-t" id="agro-imp-linhas">Linha a linha<span class="m2m-painel-t-n">{{ page_obj.paginator.count|unlocalize }}</span></h3>
+  </header>
+  <div class="m2m-previa-acoes">
+    <a class="m2m-btn m2m-btn--primario" href="{% url 'frota_equip_importacao_relatorio' importacao.pk %}"><i class="fa-solid fa-download" aria-hidden="true"></i>Baixar o relatório (Excel)</a>
+    <a class="m2m-btn" href="{% url 'frota_equip_importacao_relatorio' importacao.pk %}?so=inconsistencias">Só as inconsistências</a>
+    {% if importacao.estado == "confirmada" and pode_ver_equipamentos %}<a class="m2m-btn" href="{% url 'frota_visao_geral' %}?validacao=pendente">Ver os equipamentos a validar</a>{% endif %}
+    <a class="m2m-btn m2m-btn--fantasma" href="{% url 'frota_equip_importar' %}">Enviar outra planilha</a>
+  </div>
+  {% include 'front/agro/frota/_imp_linhas.html' %}
+</section>

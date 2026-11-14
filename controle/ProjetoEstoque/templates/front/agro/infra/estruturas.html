@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% load static l10n zelo_icones %}
+
+{% block title %}Torres e estações — Infraestrutura — Zelo Agro{% endblock %}
+{% block page_title %}Infraestrutura{% endblock %}
+{% block page_subtitle %}Torres, estações e bases{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page">
+  {% if pode_estrutura %}{% url 'infra_estrutura_nova' as u_nova %}{% endif %}
+  {% include 'front/agro/infra/_topo.html' with titulo="Torres e estações" descricao="Torres, estações, bases de comunicação e pontos de referência, com a coordenada cadastrada." acao_url=u_nova acao_rotulo="Nova estrutura" acao_icone="fa-plus" %}
+
+  <form class="m2m-filtros" method="get" role="search">
+    <div class="m2m-barra">
+      <div class="m2m-busca">
+        <label class="m2m-micro" for="f-q">Buscar estrutura</label>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="f-q" name="q" value="{{ filtros.q }}" class="m2m-campo" data-agro-busca placeholder="Buscar por nome ou observação" autocomplete="off">
+      </div>
+      <span class="m2m-contagem-lista m2m-num">{% if page_obj.paginator.count != total_geral %}{{ page_obj.paginator.count }} de {{ total_geral }}{% else %}{{ total_geral }}{% endif %} estrutura{{ total_geral|pluralize }}</span>
+    </div>
+    <div class="m2m-filtros-grade agro-filtros-linha">
+      <label class="m2m-rotulo"><span>Tipo</span>
+        <select name="tipo" class="m2m-campo" data-agro-auto><option value="">Todos</option>{% for v, r in opcoes.tipos %}<option value="{{ v }}" {% if filtros.tipo == v %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+      </label>
+      <label class="m2m-rotulo"><span>Situação</span>
+        <select name="situacao" class="m2m-campo" data-agro-auto><option value="">Todas</option>{% for v, r in opcoes.situacoes %}<option value="{{ v }}" {% if filtros.situacao == v %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+      </label>
+      <label class="m2m-rotulo"><span>Fazenda</span>
+        <select name="fazenda" class="m2m-campo" data-agro-auto><option value="">Todas</option>{% for v, r in opcoes.fazendas %}<option value="{{ v }}" {% if filtros.fazenda == v|stringformat:"s" %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+      </label>
+      <label class="m2m-rotulo"><span>Localização</span>
+        <select name="coordenada" class="m2m-campo" data-agro-auto><option value="">Todas</option><option value="com" {% if filtros.coordenada == "com" %}selected{% endif %}>Com coordenada</option><option value="sem" {% if filtros.coordenada == "sem" %}selected{% endif %}>Sem coordenada</option></select>
+      </label>
+      <label class="m2m-rotulo"><span>Cadastro</span>
+        <select name="ativo" class="m2m-campo" data-agro-auto><option value="">Todos</option><option value="1" {% if filtros.ativo == "1" %}selected{% endif %}>Ativos</option><option value="0" {% if filtros.ativo == "0" %}selected{% endif %}>Inativos</option></select>
+      </label>
+      <div class="m2m-filtros-acoes"><a class="m2m-btn" href="{% url 'infra_estruturas' %}">Limpar</a></div>
+    </div>
+  </form>
+
+  {% if filtros_ativos %}
+  <ul class="m2m-filtros-ativos" aria-label="Filtros em uso">
+    {% for f in filtros_ativos %}<li class="m2m-etiqueta">{{ f.rotulo }} <a href="{{ f.remover }}" aria-label="Remover o filtro {{ f.rotulo }}" title="Remover o filtro">&times;</a></li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if estruturas %}
+  <div class="m2m-tabela-wrap">
+    <table class="m2m-tabela">
+      <thead><tr><th>Nome</th><th>Tipo</th><th>Fazenda</th><th>Situação</th><th>Localização</th><th class="agro-num">Altura</th><th><span class="m2m-sr">Ações</span></th></tr></thead>
+      <tbody>
+        {% for e in estruturas %}
+        <tr class="m2m-linha"{% if not e.ativo %} data-tom="inativo"{% endif %}>
+          <td class="m2m-c-nome" data-rotulo="Nome"><span class="m2m-ident"><b class="m2m-corta m2m-corta--larga">{{ e.nome }}</b>{% if not e.ativo %}<span class="m2m-ident-cod">cadastro inativo</span>{% endif %}</span></td>
+          <td data-rotulo="Tipo"><span class="zi-rotulo">{% zelo_icone_estrutura e.tipo %}<span>{{ e.get_tipo_display }}</span></span></td>
+          <td data-rotulo="Fazenda">{{ e.fazenda.local|default:"—" }}</td>
+          <td data-rotulo="Situação">{{ e.get_situacao_display }}</td>
+          <td data-rotulo="Localização">{% if e.tem_coordenada %}<span class="m2m-num">{{ e.latitude|unlocalize }}, {{ e.longitude|unlocalize }}</span> <span class="m2m-sub">cadastrada em {{ e.localizacao_em|date:"d/m/Y" }}</span>{% else %}<span class="m2m-sub">localização desconhecida</span>{% endif %}</td>
+          <td class="agro-num m2m-num" data-rotulo="Altura">{% if e.altura_m %}{{ e.altura_m|unlocalize }} m{% else %}<span class="m2m-sub">—</span>{% endif %}</td>
+          <td class="m2m-acoes" data-rotulo="Ações">{% if pode_estrutura %}<a class="m2m-btn m2m-btn--sm" href="{% url 'infra_estrutura_editar' e.pk %}">Editar</a>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'front/m2m/_paginacao.html' %}
+  {% elif total_geral == 0 %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-tower-cell" titulo="Nenhuma estrutura cadastrada" texto="Cadastre as torres, estações e bases com a coordenada: elas aparecem no mapa e são as pontas dos enlaces PTP." acao_url=u_nova acao_rotulo="Cadastrar a primeira estrutura" acao_primaria=True only %}
+  {% else %}
+    {% url 'infra_estruturas' as u_limpar %}
+    {% include 'front/m2m/_vazio.html' with icone="fa-filter-circle-xmark" titulo="Nenhum resultado para os filtros aplicados" texto="Ajuste a busca ou limpe os filtros." acao_url=u_limpar acao_rotulo="Limpar filtros" only %}
+  {% endif %}
+
+  {% include 'front/agro/tec/_rodape.html' %}
+</div>
+{% endblock %}

@@ -90,7 +90,18 @@
 # 2026-11-13d: base.css — azul do menu do TI mais claro (#1e40af); equipamento-detalhe.css — Voltar/QR/Editar saem da barra superior para o cartão do ativo.
 # 2026-11-13f: ds-agro.css — "Ja passaram por esta maquina" (.m2m-passado) na composicao tecnologica do veiculo.
 # 2026-11-13g: ds-agro.css — grupo de acoes do cabecalho do painel (.m2m-painel-acoes: Instalar equipamento, Aplicar material).
-ASSETS_VERSION = "20261113g"
+# 2026-11-13h: ds-agro.css + frota-equipamentos.js — Frotas e Maquinários (lista com filtros e ordenação, detalhe em abas, formulário em
+#   7 seções, categorias e classes, assistente de importação em 6 passos, composição tecnológica e relatórios) e a limpeza da
+#   Visão geral da Conectividade (ds-m2m.css não mudou).
+# 2026-11-14h: base.css + tokens.css — verde do Agro um tom mais claro, azul do menu do TI mais sóbrio (#1f4a85) e ícones do menu
+#   mais visíveis; ui-kit.css + cadastro-rapido.js — popup de cadastro rápido de subtipo/localidade no formulário de item.
+# 2026-11-14i: ui-kit.css — o popup de cadastro rápido centraliza por conta própria (position/inset/margin/height explícitos; a versão
+#   "h" foi servida ANTES do `margin: auto` e quem a abriu ficou com o popup colado no canto) + notificacoes-ajax.js (salvar
+#   destinatário/ativar canal sem recarregar a página inteira).
+# 2026-11-14j: base.css + tokens.css — o verde que ele mandou no Zelo Agro (menu em degradê #1f836a→#3cab88, marca #1f836a);
+#   agro-mapa.js — o painel do chip só desenha o estado da sessão quando o JSON o traz (Portal do Colaborador, sem API);
+#   notificacoes-ajax.js — comentário sem tag de template (o teste de estáticos recusa `{% ... %}` literal).
+ASSETS_VERSION = "20261114j"
 
 
 def assets(request):

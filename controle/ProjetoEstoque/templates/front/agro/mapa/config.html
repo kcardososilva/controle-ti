@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% comment %}
+Limites de frescor da posição GPS (`views/agro_mapa.py::agro_mapa_config`, `services/agro_localizacao_service.py`). Só quem
+administra a configuração do módulo. Independente da sincronização do consumo da TIM.
+{% endcomment %}
+{% block title %}Atualização da posição GPS — Mapa — Zelo Agro{% endblock %}
+{% block page_title %}Mapa{% endblock %}
+{% block page_subtitle %}Configuração · Posição GPS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page">
+  <header class="page-header page-header-compact m2m-cab">
+    <div class="page-header-main">
+      <h2 class="page-heading">Atualização da posição GPS</h2>
+      <p class="page-description">Quando uma posição recebida de um rastreador deixa de valer como atual. Não tem relação com a sincronização do consumo da TIM: a posição vem de outra fonte, com outro ritmo.</p>
+    </div>
+    <div class="m2m-cab-acoes"><a class="m2m-btn" href="{% url 'agro_mapa' %}">Voltar ao mapa</a></div>
+  </header>
+
+  <p class="m2m-aviso" data-tom="neutro"><b>Nenhuma fonte de GPS está conectada hoje.</b> Estes limites passam a valer quando uma integração de rastreamento entregar a primeira posição (<code>agro_localizacao_service.registrar_posicao</code>). Enquanto isso, só existem coordenadas cadastradas à mão, que o mapa mostra como “fixas”.</p>
+
+  <section class="m2m-painel" aria-labelledby="gps-cfg-t">
+    <header class="m2m-painel-cab"><h3 class="m2m-painel-t" id="gps-cfg-t">Frescor da posição</h3></header>
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% if erros %}
+      <p class="m2m-aviso" data-tom="atencao"><b>Confira os limites.</b>{% for campo, lista in erros.items %}{% for e in lista %} {{ e }}{% endfor %}{% endfor %}</p>
+      {% endif %}
+      <div class="m2m-form-grade m2m-form-grade--4">
+        <label class="m2m-rotulo"><span>Posição atual até (minutos)</span>
+          <input type="number" name="minutos_atualizada" class="m2m-campo" min="1" max="1440" value="{{ valores.minutos_atualizada }}" required>
+          <span class="m2m-dica">Até quanto tempo depois da medição a posição é tratada como <b>GPS atualizado</b>.</span>
+        </label>
+        <label class="m2m-rotulo"><span>Sem atualização recente após (horas)</span>
+          <input type="number" name="horas_sem_atualizacao" class="m2m-campo" min="1" max="720" value="{{ valores.horas_sem_atualizacao }}" required>
+          <span class="m2m-dica">Passado este tempo sem posição nova, a localização é dita <b>sem atualização recente</b>. Entre os dois limites ela é <b>GPS antigo</b>.</span>
+        </label>
+      </div>
+      <div class="m2m-acoes m2m-nota--pad"><button type="submit" class="m2m-btn m2m-btn--primario">Salvar limites</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

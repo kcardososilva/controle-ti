@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% load static l10n m2m_tags %}
+
+{% block title %}{{ importacao.arquivo_nome }} — Importação de planilha — Zelo Agro{% endblock %}
+{% block page_title %}Frotas e Maquinários{% endblock %}
+{% block page_subtitle %}Importação de planilha{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/ds-m2m.css' %}?v={{ assets_version }}">
+<link rel="stylesheet" href="{% static 'css/ds-agro.css' %}?v={{ assets_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="m2m-page agro-page" data-frota="importacao" data-importacao-id="{{ importacao.pk }}" data-etapa="{{ etapa }}">
+  {% url 'frota_equip_importar' as u_importar %}
+  {% include 'front/agro/frota/_topo.html' with titulo=importacao.arquivo_nome descricao=importacao.get_estado_display acao2_url=u_importar acao2_rotulo="Enviar outra planilha" acao2_icone="fa-file-arrow-up" %}
+
+  {% include 'front/agro/frota/_imp_passos.html' %}
+
+  {% if ja_importado %}
+  <p class="m2m-aviso" data-tom="atencao">
+    <b>Um arquivo com o mesmo conteúdo já foi importado.</b> Foi confirmado em {{ ja_importado.confirmada_em|date:"d/m/Y H:i" }}{% if ja_importado.confirmada_por %} por {{ ja_importado.confirmada_por.get_username }}{% endif %}.
+    Reimportar não duplica nada: o código do ERP reconhece o equipamento, e o que já existe só muda se você autorizar.
+    <a href="{% url 'frota_equip_importacao' ja_importado.pk %}">Ver aquela importação</a>
+  </p>
+  {% endif %}
+
+  {% if etapa != "mapeamento" %}
+    {% include 'front/agro/frota/_imp_resumo.html' %}
+  {% endif %}
+
+  {% if etapa == "mapeamento" %}
+    {% include 'front/agro/frota/_imp_mapeamento.html' %}
+  {% elif etapa == "previa" %}
+    {% include 'front/agro/frota/_imp_previa.html' %}
+  {% elif etapa == "validacao" %}
+    {% include 'front/agro/frota/_imp_validacao.html' %}
+  {% elif etapa == "confirmacao" %}
+    {% include 'front/agro/frota/_imp_confirmacao.html' %}
+  {% else %}
+    {% include 'front/agro/frota/_imp_resultado.html' %}
+  {% endif %}
+
+  {% comment %}O descarte é um formulário à parte (um form dentro de form não existe em HTML); os botões o alcançam pelo atributo form.{% endcomment %}
+  {% if resumo.pronta or etapa == "mapeamento" %}
+  <form id="agro-imp-cancelar" method="post" action="{% url 'frota_equip_importacao_cancelar' importacao.pk %}" data-frota-pagina data-frota-confirma="Descartar esta importação? Nada foi gravado na frota, e a prévia deixa de valer.">
+    {% csrf_token %}
+  </form>
+  {% endif %}
+
+  {% include 'front/m2m/_m2m_rodape.html' %}
+</div>
+{% endblock %}

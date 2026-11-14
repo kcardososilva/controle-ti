@@ -21,7 +21,7 @@ from django.urls import reverse
 
 from ProjetoEstoque.models import FrotaVeiculo, TecControle, TecEquipamento, TecInstalacao
 from ProjetoEstoque.views.tec_comum import campo, exige_tec, formulario, voltar_seguro
-from ProjetoEstoque.views.tec_estoque import _locais_ativos, _locais_com_saldo, _material_ou_404, _modelos_agrupados
+from ProjetoEstoque.views.tec_estoque import _campos_de_modelo, _locais_com_saldo, _locais_das_fazendas, _material_ou_404, _modelos_agrupados
 from services import tec_base as base
 from services import tec_estoque_service as estoque
 from services import tec_instalacao_service as ins
@@ -168,7 +168,7 @@ def tec_instalacao_retirar(request, pk):
         voltar_url=voltar_url, voltar_rotulo=voltar_rotulo, executar=executar,
         aviso="O equipamento volta ao estoque no local escolhido e fica disponível. O período em que esteve aqui continua no histórico.",
         campos=[
-            campo("local", "Guardar em", "select", obrigatorio=True, opcoes=_locais_ativos(), vazio="Escolher o local de armazenamento"),
+            campo("local", "Guardar em", "select", obrigatorio=True, opcoes=_locais_das_fazendas(), vazio="Escolher o local de armazenamento"),
             campo("motivo", "Motivo", obrigatorio=True, maximo=255, largo=True, placeholder="Ex.: defeito, fim da safra, troca de máquina"),
             campo("observacoes", "Observações", "textarea", largo=True),
         ],
@@ -234,7 +234,7 @@ def tec_instalacao_substituir(request, pk):
         campos=[
             campo("equipamento_novo", "Equipamento que entra", "select", obrigatorio=True, grupos=grupos, vazio="Escolher o equipamento", valor=request.GET.get("equipamento", ""), largo=True),
             campo("destino_do_antigo", "O que sai", "select", obrigatorio=True, opcoes=list(TEXTO_DO_DESTINO.items()), valor="disponivel"),
-            campo("local", "Guardar o que sai em", "select", opcoes=_locais_ativos(), vazio="Escolher o local", dica="Obrigatório quando o equipamento volta ao estoque."),
+            campo("local", "Guardar o que sai em", "select", opcoes=_locais_das_fazendas(), vazio="Escolher o local", dica="Obrigatório quando o equipamento volta ao estoque."),
             campo("motivo", "Motivo da troca", obrigatorio=True, maximo=255, largo=True, placeholder="Ex.: tela rachada, defeito no receptor"),
             campo("observacoes", "Observações", "textarea", largo=True),
         ],
@@ -264,14 +264,15 @@ def tec_material_aplicar(request, pk=None):
         return f"{mov.quantidade.normalize():f} {mov.modelo.unidade.sigla} de {mov.modelo} aplicados em {mov.destino_rotulo}.", padrao, resultado.repetida
 
     campos = [
-        campo("local", "Sai de qual local", "select", obrigatorio=True, opcoes=_locais_com_saldo(fixo, so_com_saldo=True) if fixo else _locais_ativos(), vazio="Escolher o local"),
+        campo("local", "Sai de qual local", "select", obrigatorio=True, opcoes=_locais_com_saldo(fixo, so_com_saldo=True) if fixo else _locais_das_fazendas(), vazio="Escolher o local"),
         campo("quantidade", "Quantidade", "number", obrigatorio=True, mono=True, placeholder="0", dica=f"Em {fixo.unidade.nome.lower()}s." if fixo else ""),
         campo("destino", "Aplicar em", "select", obrigatorio=True, grupos=ins.opcoes_de_destino(), vazio="Escolher a máquina ou o operador", valor=request.GET.get("destino", ""), largo=True),
         campo("motivo", "Motivo", obrigatorio=True, maximo=255, largo=True, placeholder="Ex.: chicote da cabine, cabo do receptor"),
         campo("observacoes", "Observações", "textarea", largo=True),
     ]
     if fixo is None:
-        campos.insert(0, campo("modelo", "Material", "select", obrigatorio=True, grupos=_modelos_agrupados(TecControle.QUANTIDADE), vazio="Escolher o material", valor=request.GET.get("modelo", "")))
+        for posicao, c in enumerate(_campos_de_modelo(TecControle.QUANTIDADE, "Material", vazio="Escolher o material", valor=request.GET.get("modelo", ""))):
+            campos.insert(posicao, c)
     voltar_url, voltar_rotulo = _volta(request, padrao, str(fixo) if fixo else "Materiais")
     return formulario(
         request, aba="materiais", titulo="Aplicar material", rotulo_enviar="Aplicar material",
@@ -308,7 +309,7 @@ def tec_material_devolver(request, pk):
             campo("destino", "Devolver de", "select", obrigatorio=True, vazio="Escolher a máquina ou o operador", largo=True,
                   opcoes=[(f"{a['tipo']}:{a['id']}", f"{a['rotulo']} — {a['quantidade'].normalize():f} {sigla}") for a in aplicacoes], valor=request.GET.get("destino", "")),
             campo("quantidade", "Quantidade", "number", obrigatorio=True, mono=True, placeholder="0"),
-            campo("local", "Guardar em", "select", obrigatorio=True, opcoes=_locais_ativos(), vazio="Escolher o local de armazenamento"),
+            campo("local", "Guardar em", "select", obrigatorio=True, opcoes=_locais_das_fazendas(), vazio="Escolher o local de armazenamento"),
             campo("motivo", "Motivo", obrigatorio=True, maximo=255, largo=True, placeholder="Ex.: sobrou da instalação, aplicado por engano"),
             campo("observacoes", "Observações", "textarea", largo=True),
         ],

@@ -1,4 +1,4 @@
-{% load static %}
+{% load static zelo_icones %}
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -22,7 +22,7 @@
 
   <link rel="icon" type="image/svg+xml" href="{% static 'img/zelo-mark.svg' %}">
   <link rel="alternate icon" href="{% static 'img/logo2.png' %}">
-  <link rel="apple-touch-icon" href="{% static 'img/zelo-mark.svg' %}">
+  {% include '_pwa_head.html' %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   {% comment %}Design system v5: Inter (corpo) + Inter Tight (títulos) +
@@ -41,6 +41,10 @@
      switch, barra de progresso, KPI, toolbar de tabela, estado vazio...). Vem
      DEPOIS do base.css de propósito: é vocabulário novo, não sobrescrita.{% endcomment %}
   <link rel="stylesheet" href="{% static 'css/ui-kit.css' %}?v={{ assets_version }}">
+  {% if ambiente_atual.chave == 'agro' %}
+  {% comment %}Select2 do Zelo Agro, servido do próprio sistema (sem CDN). A folha do módulo vem DEPOIS, em extra_css: ela reveste o componente (regra 26).{% endcomment %}
+  <link rel="stylesheet" href="{% static 'vendor/select2.min.css' %}?v={{ assets_version }}">
+  {% endif %}
 
   {% block extra_css %}{% endblock %}
 </head>
@@ -71,6 +75,7 @@
     <symbol id="ic-truck" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></symbol>
     <symbol id="ic-briefcase" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></symbol>
     <symbol id="ic-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></symbol>
+    <symbol id="ic-map" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></symbol>
     <symbol id="ic-network" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></symbol>
     <symbol id="ic-mobile" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/><line x1="10.5" y1="18.2" x2="13.5" y2="18.2"/></symbol>
     <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 22s8-3.8 8-9.6V5.2L12 2 4 5.2v7.2C4 18.2 12 22 12 22z"/><path d="m9.2 11.8 2 2 3.6-3.6"/></symbol>
@@ -948,6 +953,16 @@
       });
     })();
   </script>
+
+  {% comment %}Ícones dos equipamentos no navegador (static/js/zelo-icones.js): a URL do sprite vai no data-sprite porque o .js não passa pelo motor de template. Antes dos scripts que montam Select2 e mapa.{% endcomment %}
+  <script src="{% static 'js/zelo-icones.js' %}?v={{ assets_version }}" data-sprite="{% zelo_sprite_url %}"></script>
+
+  {% if ambiente_atual.chave == 'agro' %}
+  {% comment %}jQuery + Select2 + o iniciador único dos campos de seleção do Agro (static/js/agro-select.js): UMA carga por página, antes dos scripts da tela. As telas do Agro não carregam mais jQuery nem Select2 por conta própria — uma segunda carga do jQuery apagaria o plugin da primeira.{% endcomment %}
+  <script src="{% static 'vendor/jquery-3.7.1.min.js' %}"></script>
+  <script src="{% static 'vendor/select2.min.js' %}"></script>
+  <script src="{% static 'js/agro-select.js' %}?v={{ assets_version }}"></script>
+  {% endif %}
 
   {% block extra_js %}{% endblock %}
 </body>
